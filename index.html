@@ -1,0 +1,326 @@
+<html>
+<head>
+<script src="https://togetherjs.com/togetherjs-min.js"></script>
+<script src="./draggable.js"></script>
+<style>
+#gamearea {
+  background-color: darkgreen;
+  width: 80%;
+  height: 300px;
+}
+.static {
+  cursor: not-allowed;
+}
+.draggable, .draggable-group {
+  cursor: move; /* fallback if grab is unsupported */
+  cursor: grab;
+}
+.draggable:active, .draggable-group:active {
+  cursor: grabbing;
+}
+
+</style>
+
+<script>
+
+var knownUsers = {};
+var myClientId = null;
+
+function getUserColor() {
+  el = document.getElementsByClassName('togetherjs-person-self')[0];
+  return el.style.borderColor;
+}
+
+function fire(payload) {
+  if (!myClientId) {
+    console.log('TogetherJS not ready for send')
+    return
+  }
+  try {
+    console.log('fiiiiiiiiiiiiiiiiiiiiiiiiiiiiiire', payload.type)
+    TogetherJS.send(payload);
+  }
+  catch (err) {
+    console.log('togetherjs error', err);
+    // TODO: pop up a dialog?
+  }
+}
+
+TogetherJS.on('ready', () => {
+  session = TogetherJS.require('session')
+  myClientId = session.clientId;
+  //console.log('myClientId', myClientId)
+  //console.log('TogetherJS ready.', session)
+});
+
+TogetherJS.hub.on("peer-update", (msg) => {
+  console.log('p-u msg', msg);
+  knownUsers[msg.clientId] = Object.assign(knownUsers[msg.clientId], msg);
+});
+
+TogetherJS.hub.on("hello", (msg) => {
+  console.log('hello msg', msg);
+  knownUsers[msg.clientId] = msg;
+});
+
+TogetherJS.hub.on("change", (msg) => {
+  console.log('msg', msg);
+
+  var x = byId(msg.data.id);
+  Object.keys(msg.data).map(key => {
+    x.setAttribute(key, msg.data[key]);
+  });
+});
+
+TogetherJS.hub.on("create", (msg) => {
+  console.log('msg', msg);
+  var newElement = make_die(msg.data.id);
+  get_world().appendChild(newElement);
+});
+
+TogetherJS.hub.on("createSelect", (msg) => {
+  console.log('msg', msg.data.select_rect);
+  var {group, select_rect, target} = msg.data;
+  // get local version
+  target = byId(target.id);
+  select_rect2 = Rect(select_rect.id, select_rect);
+  console.log('made', select_rect2)
+  group2 = _make_selection(target, select_rect2);
+});
+
+TogetherJS.hub.on('dropSelect', (msg) => {
+  _de_select(byId(msg.select_rect.id));
+});
+
+
+function g(el, label) {
+  if (Object.keys(el.dataset).indexOf(label) != -1) {
+    return el.dataset[label];
+  }
+  if (Object.keys(el.attributes).indexOf(label) != -1) {
+    return el.getAttribute(label);
+  }
+  return el.getAttribute(label);
+}
+
+function s(el, label, val) {
+  if (val === undefined || val === null) {
+    console.log('rem', label, val)
+    return el.removeAttribute(label);
+  }
+  el.setAttribute(label, val);
+}
+
+function byId(id) {
+  return document.getElementById(id);
+}
+
+function getTranslation(el) {
+  // Make sure the first transform on the element is a translate transform
+  var transforms = el.transform.baseVal;
+
+  if (transforms.length === 0 || transforms.getItem(0).type !== SVGTransform.SVG_TRANSFORM_TRANSLATE) {
+    // Create an transform that translates by (0, 0)
+    var translate = get_world().createSVGTransform();
+    translate.setTranslate(0, 0);
+    el.transform.baseVal.insertItemBefore(translate, 0);
+  }
+  return transforms.getItem(0);
+}
+
+function serializeSvg(el) {
+  return el.getAttributeNames()
+  .reduce((acc,n) => {
+    acc[n] = el.getAttribute(n);
+    return acc
+  }, {});
+}
+
+
+function move_to_center(el, target) {
+  // move the target to where the group moved
+  var el_transform = getTranslation(el);
+  var target_transform = getTranslation(target)
+
+  centerize = [
+    parseInt(g(el, 'width'))/2 - parseInt(g(target, 'width')) / 2,
+    parseInt(g(el, 'height'))/2 - parseInt(g(target, 'height')) / 2,
+  ];
+
+  el_transform.setTranslate(
+    el_transform.matrix.e + target_transform.matrix.e - centerize[0],
+    el_transform.matrix.f + target_transform.matrix.f - centerize[1],
+  );
+  //console.log('new el transform', el_transform.matrix)
+}
+
+function move_to(el, target) {
+  // move the target to where the group moved
+  var el_transform = getTranslation(el);
+  var target_transform = getTranslation(target)
+
+  el_transform.setTranslate(
+    el_transform.matrix.e + target_transform.matrix.e,
+    el_transform.matrix.f + target_transform.matrix.f,
+  );
+  //console.log('new el transform', el_transform.matrix)
+}
+
+function SVGElem(etype, id, attrs) {
+  var el = document.createElementNS('http://www.w3.org/2000/svg', etype);
+  s(el, 'id', id)
+  Object.keys(attrs).map(key => {
+    s(el, key, attrs[key])
+  })
+  return el;
+}
+
+function Rect(id, attrs) {
+  return SVGElem('rect', id, Object.assign({
+    x: 0,
+    y: 0,
+  }, attrs));
+}
+
+function make_selection(target) {
+  // make the highlight rectangle
+  var color = getUserColor() || 'cyan';
+  var select_rect = Rect('selection' + Date.now(), {
+    rx: 4,
+    ry: 4,
+    width: parseInt(g(target, 'width')) + 4,
+    height: parseInt(g(target, 'height')) + 4,
+    'data-selection-rect': true,
+    fill: color,
+    'fill-opacity': 0.1,
+    stroke: color,
+    'stroke-opacity': 0.8,
+    'stroke-width': 1,
+  })
+  move_to_center(select_rect, target);
+
+  group = _make_selection(target, select_rect)
+
+  fire({type: "createSelect", data: {
+    group: serializeSvg(group),
+    select_rect: serializeSvg(select_rect),
+    target: serializeSvg(target),
+  }});
+}
+
+function _make_selection(target, select_rect) {
+  console.log('ms t', target)
+  console.log('ms s', select_rect)
+  select_rect.addEventListener('dblclick', de_select);
+
+  //make the group
+  var group = SVGElem('g', 'g' + select_rect.id, { 'class': 'draggable-group' });
+  target.remove();
+  group.appendChild(target);
+  group.appendChild(select_rect);
+  get_world().appendChild(group);
+  return group;
+}
+
+function parse_transforms(str) {
+  var result = {};
+  for (var i in str = str.match(/(\w+)\(([^,)]+),?([^)]+)?\)/gi)) {
+    var c = str[i].match(/[\w\.\-]+/g);
+    result[c.shift()] = c.map(x => parseFloat(x));
+  }
+  return result;
+}
+
+
+function de_select(evt) {
+  select_rect = evt.target;
+  _de_select(select_rect);
+  fire({type: "dropSelect", select_rect: serializeSvg(select_rect) });
+}
+
+function _de_select(select_rect) {
+  svg = get_world();
+  group = byId('g' + select_rect.id);
+
+  group.childNodes.forEach(target => {
+    if (!target.classList.contains('draggable')) {
+      return;
+    }
+    target.remove()
+    move_to(target, group)
+    svg.appendChild(target);
+  })
+
+  select_rect.remove()
+  group.remove()
+}
+
+function die_select(evt) {
+  target = evt.target;
+  console.log('die_select!', target);
+  if (target.classList.contains('draggable')) {
+    make_selection(target);
+  }
+}
+
+function make_die(id) {
+  var die = Rect(id || 'die' + Date.now(), {
+    rx: 20,
+    ry: 20,
+    width: 100,
+    height: 100,
+    'class': 'draggable',
+    fill: 'ivory',
+    stroke: 'black',
+    'fill-opacity': 1,
+    'stroke-opacity': 0.8,
+    'stroke-width': 5,
+  })
+  die.addEventListener('dblclick', die_select);
+  return die;
+}
+
+function get_world() {
+  return document.getElementsByTagName('svg')[0];
+}
+
+function add_die(e, target) {
+  var newElement = make_die();
+  get_world().appendChild(newElement);
+  fire({type: "create", data: serializeSvg(newElement)});
+}
+
+function initDraggable() {
+  world = byId('svgdoc')
+  makeDraggable(world, {
+    endDragCb: (selectedElement) => {
+      fire({type: "change", data: serializeSvg(selectedElement)});
+    }
+  });
+}
+
+</script>
+</head>
+<body>
+<button onclick="TogetherJS(this); return false;">Start TogetherJS</button>
+  <button onclick="add_die(this)">
+  Add die
+  </button>
+
+  <input id="text1" type="text" />
+
+  <div id="gamearea" contextmenu="gamemenu">
+  <svg id="svgdoc" width="100%" height="300" onload="initDraggable()">
+    <circle id="circle1"
+      cx="50" cy="50" r="40" stroke="green" stroke-width="4" fill="yellow" />
+  </svg>
+  <menu type="context" id="gamemenu">
+    <menuitem label="A A A"></menuitem>
+    <menuitem label="Number 2"></menuitem>
+  </menu>
+  </div>
+
+
+</body>
+</html>
+
