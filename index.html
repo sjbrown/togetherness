@@ -24,8 +24,13 @@
 <script>
 
 function getUserColor() {
-  var el = document.getElementsByClassName('togetherjs-person-self')[0];
-  return el.style.borderColor;
+  try {
+    var el = document.getElementsByClassName('togetherjs-person-self')[0];
+    return el.style.borderColor;
+  }
+  catch {
+    return null;
+  }
 }
 
 
@@ -108,9 +113,10 @@ function deserialize(payload) {
 }
 
 TogetherJS.hub.on("create", (msg) => {
-  console.log('msg', msg);
-  var newElement = make_die(msg.data.id);
-  get_world().appendChild(newElement);
+  console.log('create msg', msg);
+  get_world().appendChild(deserialize(msg.data));
+  //var newElement = make_die(msg.data.id);
+  //get_world().appendChild(newElement);
 });
 
 TogetherJS.hub.on("createSelect", (msg) => {
@@ -120,7 +126,7 @@ TogetherJS.hub.on("createSelect", (msg) => {
   target = byId(target.id);
   select_rect = make_select(select_rect.id, select_rect);
   console.log('made', select_rect)
-  group2 = _make_selection(target, select_rect);
+  _make_selection(target, select_rect);
 });
 
 TogetherJS.hub.on('dropSelect', (msg) => {
@@ -138,7 +144,13 @@ function g(el, label) {
   if (Object.keys(el.attributes).indexOf(label) != -1) {
     return el.getAttribute(label);
   }
-  return el.getAttribute(label);
+  var value = el.getAttribute(label);
+  if (value !== null) {
+    return value;
+  }
+  if (label === 'width' || label === 'height') {
+    return el.getBBox()[label];
+  }
 }
 
 function s(el, label, val) {
@@ -205,6 +217,7 @@ function str_to_fn(fname) {
 }
 
 function serializeSvg(el) {
+  console.log('trying to serialize', el)
   var fn = str_to_fn('serialize_' + g(el, 'data-app-class'))
   if (fn) {
     return fn(el);
@@ -225,6 +238,10 @@ function move_to_center(el, target) {
     parseInt(g(el, 'width'))/2 - parseInt(g(target, 'width')) / 2,
     parseInt(g(el, 'height'))/2 - parseInt(g(target, 'height')) / 2,
   ];
+
+  console.log('from matrix', el_transform.matrix)
+  console.log('to matrix', target_transform.matrix)
+  console.log('cenete', centerize)
 
   el_transform.setTranslate(
     el_transform.matrix.e + target_transform.matrix.e - centerize[0],
@@ -265,23 +282,6 @@ function Rect(id, attrs) {
   }, attrs));
 }
 
-function Text(id, attrs) {
-  textEl = SVGElem('text', id, Object.assign({
-    'data-app-class': 'text',
-    'class': 'draggable',
-    x: 0,
-    y: 0,
-    'fill': 'black',
-    'fill-opacity': 1,
-    'text-anchor': 'middle',
-    'alignment-baseline': 'middle',
-    'font-size': '3px',
-  }, attrs));
-  document.createTextNode(val);
-  textEl.appendChild(attrs['data-text'] || 'foo');
-  return textEl;
-}
-
 function make_select(id, data) {
   var select_rect = Rect(id, Object.assign({
     'data-app-class': 'select',
@@ -299,24 +299,6 @@ function make_select(id, data) {
   return select_rect;
 }
 
-function make_selection(target) {
-  // make the highlight rectangle
-  var color = getUserColor() || 'cyan';
-  var select_rect = make_select('selection' + Date.now(), {
-    width: parseInt(g(target, 'width')) + 4,
-    height: parseInt(g(target, 'height')) + 4,
-    fill: color,
-    stroke: color,
-  })
-  move_to_center(select_rect, target);
-
-  group = _make_selection(target, select_rect)
-
-  fire({type: "createSelect", data: {
-    select_rect: serializeSvg(select_rect),
-    target: serializeSvg(target),
-  }});
-}
 
 function make_group(id, attrs) {
   var validAttrs = Object.keys(attrs).reduce((acc, key) => {
@@ -376,13 +358,27 @@ function _de_select(select_rect) {
   group.remove()
 }
 
-function el_select(evt) {
-  target = evt.target;
-  if (target.classList.contains('draggable')) {
-    make_selection(target);
-  }
-}
+function die_select(evt) {
+  // evt.target might be the rect or the text node
+  group_target = evt.target.parentNode;
 
+  // make the highlight rectangle
+  var color = getUserColor() || 'cyan';
+  var select_rect = make_select('selection' + Date.now(), {
+    width: parseInt(g(group_target, 'width')) + 4,
+    height: parseInt(g(group_target, 'height')) + 4,
+    fill: color,
+    stroke: color,
+  })
+  move_to_center(select_rect, group_target);
+
+  group = _make_selection(group_target, select_rect)
+
+  fire({type: "createSelect", data: {
+    select_rect: serializeSvg(select_rect),
+    target: serializeSvg(group_target),
+  }});
+}
 
 function make_die(id, attrs) {
   var die = Rect(id || 'die' + Date.now(), Object.assign({
@@ -391,20 +387,37 @@ function make_die(id, attrs) {
     ry: 20,
     width: 100,
     height: 100,
-    'class': 'draggable',
+    //'class': 'draggable',
     fill: 'ivory',
     stroke: 'black',
     'fill-opacity': 1,
     'stroke-opacity': 0.8,
     'stroke-width': 5,
   }, attrs))
-  die.addEventListener('dblclick', el_select);
+  die.addEventListener('dblclick', die_select);
   return die;
+}
+
+function Text(id, attrs) {
+  textEl = SVGElem('text', id, Object.assign({
+    'data-app-class': 'text',
+    //'class': 'draggable',
+    x: 0,
+    y: 0,
+    'fill': 'black',
+    'fill-opacity': 1,
+    'text-anchor': 'middle',
+    'alignment-baseline': 'middle',
+    'font-size': '30px',
+  }, attrs));
+  var tNode = document.createTextNode(attrs['data-text'] || 'foo');
+  textEl.appendChild(tNode);
+  return textEl;
 }
 
 function make_text(id, attrs) {
   var text = Text(id || 'text' + Date.now(), attrs);
-  text.addEventListener('dblclick', el_select);
+  text.addEventListener('dblclick', die_select);
   return text
 }
 
@@ -413,18 +426,23 @@ function get_world() {
 }
 
 function add_d6(e, target) {
-  var newElement = make_die();
-  get_world().appendChild(newElement);
-  fire({type: "create", data: serializeSvg(newElement)});
+  group = make_group('g' + Date.now(), {})
+  get_world().appendChild(group);
+  var die = make_die();
+  group.appendChild(die)
 
   var txtEl = make_text('text' + Date.now(), {'data-text': randInt(1,6)})
-  get_world().appendChild(txtEl);
+  group.appendChild(txtEl);
+  move_to_center(txtEl, die);
+
+  fire({type: "create", data: serializeSvg(group)});
 }
 
 function initDraggable() {
   world = byId('svgdoc')
   makeDraggable(world, {
     endDragCb: (selectedElement) => {
+      console.log('done drag', selectedElement)
       fire({type: "change", data: serializeSvg(selectedElement)});
     }
   });
