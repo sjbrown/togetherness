@@ -77,7 +77,7 @@ TogetherJS.hub.on("togetherjs.hello", (msg) => {
 });
 
 TogetherJS.hub.on("change", (msg) => {
-  console.log('msg', msg);
+  console.log('change msg', msg);
   deserialize(msg.data);
 });
 
@@ -115,8 +115,6 @@ function deserialize(payload) {
 TogetherJS.hub.on("create", (msg) => {
   console.log('create msg', msg);
   get_world().appendChild(deserialize(msg.data));
-  //var newElement = make_die(msg.data.id);
-  //get_world().appendChild(newElement);
 });
 
 TogetherJS.hub.on("createSelect", (msg) => {
@@ -125,7 +123,6 @@ TogetherJS.hub.on("createSelect", (msg) => {
   // get local version
   target = byId(target.id);
   select_rect = make_select(select_rect.id, select_rect);
-  console.log('made', select_rect)
   _make_selection(target, select_rect);
 });
 
@@ -360,6 +357,8 @@ function _de_select(select_rect) {
 
 function die_select(evt) {
   // evt.target might be the rect or the text node
+  console.log('sel parent', evt.target.parentNode)
+  console.log('sel elem', evt.target)
   group_target = evt.target.parentNode;
 
   // make the highlight rectangle
