@@ -1,13 +1,16 @@
 <html>
 <head>
+<meta charset="utf-8">
 <script src="https://togetherjs.com/togetherjs-min.js"></script>
 <script src="./draggable.js"></script>
 <script src="./come_together.js"></script>
 <style>
 #gamearea {
-  background-color: darkgreen;
+  background-color: #efe;
   width: 80%;
-  height: 300px;
+  height: 80%;
+  /*ddheight: 500px;
+  */
 }
 .static {
   cursor: not-allowed;
@@ -105,6 +108,7 @@ togetherFunctions.on_delete = (msg) => {
   recursive_delete(msg.data);
 };
 
+togetherFunctions.on_change_background = (msg) => { change_background(msg.data) };
 
 function deserialize(payload) {
   var el = null;
@@ -337,7 +341,6 @@ function _de_select(select_rect) {
   svg = get_world();
   group = byId('g' + select_rect.id);
 
-  //group.childNodes.forEach(target => {
   svgMap(group, (target) => {
     target.remove()
     move_to(target, group)
@@ -492,6 +495,30 @@ function delete_selected(evt) {
   ui_fire({type: 'delete', data: collection });
 }
 
+function ui_change_background(evt) {
+  input = byId('background_url')
+  if (!input.value) {
+    return;
+  }
+  var value = "url('" + input.value + "')";
+  change_background(value)
+  ui_popdown_dialog()
+  fire({ type: 'change_background', data: value })
+}
+
+function change_background(value) {
+  svg = byId('svgdoc')
+  svg.style.backgroundImage = value
+}
+
+function ui_popdown_dialog(target) {
+  s(byId(g(target, 'data-dialog-id')), 'open', null)
+}
+
+function ui_popup_dialog(target) {
+  s(byId(g(target, 'data-dialog-id')), 'open', 'open')
+}
+
 </script>
 </head>
 <body>
@@ -503,19 +530,94 @@ function delete_selected(evt) {
     title="double-click objects to select and delete them"
     disabled="disabled"
   >
-  Delete <span id="num_selected">0</span> Objects
+    Delete <span id="num_selected">0</span> Objects
   </button>
 
-  <input id="text1" type="text" />
+  <button id="bg_button" onclick="ui_popup_dialog(this)"
+    data-dialog-id="dialog_bg">
+    Change Background
+  </button>
+
+  <button id="draw_button" onclick="ui_popup_dialog(this)"
+    data-dialog-id="dialog_rect">
+    Draw rect
+  </button>
 
   <div id="gamearea" contextmenu="gamemenu">
-  <svg id="svgdoc" width="100%" height="300" onload="initDraggable()">
+  <svg id="svgdoc" width="100%" height="500" onload="initDraggable()">
   </svg>
+
   <menu type="context" id="gamemenu">
     <menuitem label="A A A"></menuitem>
     <menuitem label="Number 2"></menuitem>
   </menu>
   </div>
+
+  <dialog id="dialog_bg">
+    <button class="dialog_cancel" onclick="ui_popdown_dialog(this)"
+      data-dialog-id="dialog_bg"
+    >
+      &#215;
+    </button>
+    <ul>
+      <li>http://www.1kfa.com/table/base_map.svg
+      <li>http://www.1kfa.com/table/topography.svg
+      <li>http://www.1kfa.com/table/hexagons.svg
+      <li>https://images.ira.abramov.org/Propaganda/
+    </ul>
+    <input id="background_url" type="url"
+      value="http://www.1kfa.com/table/base_map.svg"
+    />
+    <button id="dialog_submit" onclick="ui_change_background(this)">
+      Change Background URL
+    </button>
+  </dialog>
+
+  <dialog id="dialog_rect">
+    <script>
+
+function ui_submit_rect(evt) {
+  w = parseInt(byId('rect_input_width').value);
+  h = parseInt(byId('rect_input_height').value);
+  if (!w || !h) {
+    return;
+  }
+  var rect = Rect('rect' + Date.now(), {
+    'data-app-class': 'rect',
+    'class': 'draggable',
+    rx: 0,
+    ry: 0,
+    width: w,
+    height: h,
+    fill: getUserColor(),
+    stroke: 'black',
+    'fill-opacity': 1,
+    'stroke-opacity': 0.8,
+    'stroke-width': 1,
+  });
+  //rect.addEventListener('dblclick', rect_select);
+  ui_popdown_dialog()
+  fire({ type: 'create', data: rect })
+}
+
+    </script>
+    <button class="dialog_cancel" onclick="ui_popdown_dialog(this)"
+      data-dialog-id="dialog_rect"
+    >
+      &#215;
+    </button>
+    <br />
+    <label for="rect_input_width">Width</label>
+    <input id="rect_input_width" type="text" value="100"/>
+    <br />
+    <label for="rect_input_height">Height</label>
+    <input id="rect_input_height" type="text" value="50"/>
+    <br />
+    <button id="dialog_submit" onclick="ui_submit_rect(this)">
+      Create
+    </button>
+  </dialog>
+
 </body>
 </html>
 

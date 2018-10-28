@@ -79,4 +79,11 @@ TogetherJS.hub.on('delete', (msg) => {
   }
 });
 
+TogetherJS.hub.on('change_background', (msg) => {
+  console.log('change_background msg', msg);
+  if(togetherFunctions.on_change_background) {
+    togetherFunctions.on_change_background(msg);
+  }
+});
+
 
