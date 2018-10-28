@@ -2,6 +2,7 @@
 <head>
 <script src="https://togetherjs.com/togetherjs-min.js"></script>
 <script src="./draggable.js"></script>
+<script src="./come_together.js"></script>
 <style>
 #gamearea {
   background-color: darkgreen;
@@ -23,48 +24,47 @@
 
 <script>
 
-function getUserColor() {
-  try {
-    var el = document.getElementsByClassName('togetherjs-person-self')[0];
-    return el.style.borderColor;
-  }
-  catch {
-    return null;
-  }
+function randInt(min, max) {
+  // get a random integer in the range, inclusive.
+  // randInt(1,6) might return 1,2,3,4,5,6
+  min = Math.ceil(min);
+  max = Math.floor(max);
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-
-var myClientId = null;
-
-function fire(payload) {
-  if (!myClientId) {
-    console.log('TogetherJS not ready for send')
-    return
+function byId(id) {
+  var rv = document.getElementById(id);
+  if (!rv) {
+    throw Error('element not found '+ id)
   }
-  try {
-    TogetherJS.send(payload);
-  }
-  catch (err) {
-    console.log('togetherjs error', err);
-    // TODO: pop up a dialog?
-  }
+  return rv;
 }
 
-TogetherJS.on('ready', () => {
-  session = TogetherJS.require('session')
-  myClientId = session.clientId;
-});
+function str_to_fn(fname) {
+  // given a string, return a function
+  return (
+    (window[fname] && typeof window[fname] === 'function')
+    ?  window[fname]
+    : null
+  );
+}
 
-TogetherJS.hub.on('syncState', (msg) => {
-  console.log('syncing', msg)
-  world = get_world();
-  msg.data.map(payload => {
-    world.appendChild(deserialize(payload))
+function svgMap(parent, fn) {
+  // iterate through an SVG element's children like [].map()
+  var retval = [];
+  parent.childNodes.forEach((el) => {
+    if (g(el, 'data-app-class')) {
+      var result = fn(el);
+      if (result) {
+        retval.push(result);
+      }
+    }
   });
-});
+  return retval;
+}
 
-TogetherJS.hub.on("togetherjs.hello", (msg) => {
-  console.log('hello msg', msg);
+
+togetherFunctions.on_hello = (msg) => {
   worldData = svgMap(get_world(), (el) => {
     return serializeSvg(el);
   });
@@ -74,17 +74,42 @@ TogetherJS.hub.on("togetherjs.hello", (msg) => {
       data: worldData,
     });
   }
-});
+};
 
-TogetherJS.hub.on("change", (msg) => {
-  console.log('change msg', msg);
-  deserialize(msg.data);
-});
+togetherFunctions.on_sync = (msg) => {
+  world = get_world();
+  msg.data.map(payload => {
+    world.appendChild(deserialize(payload))
+  });
+};
+
+togetherFunctions.on_change = (msg) => { deserialize(msg.data) };
+
+togetherFunctions.on_create = (msg) => {
+  get_world().appendChild(deserialize(msg.data));
+};
+
+togetherFunctions.on_create_select = (msg) => {
+  var {select_rect, target} = msg.data;
+  // get local version
+  target = byId(target.id);
+  select_rect = make_select(select_rect.id, select_rect);
+  _make_selection(target, select_rect);
+};
+
+togetherFunctions.on_drop_select = (msg) => {
+  _de_select(byId(msg.select_rect.id));
+};
+
+togetherFunctions.on_delete = (msg) => {
+  recursive_delete(msg.data);
+};
 
 
 function deserialize(payload) {
   var el = null;
   if (document.getElementById(payload.id)) {
+    // el is something that already exists in the local SVG doc
     el = byId(payload.id);
     Object.keys(payload).map(key => {
       if (isNaN(parseInt(key)) && key !== 'kids') {
@@ -92,12 +117,13 @@ function deserialize(payload) {
       }
     });
   } else {
+    // el is something new - remote has it, but it's not yet in the local doc
     var fn = str_to_fn('make_' + payload['data-app-class'])
     if (fn) {
       console.log('calling ', 'make_'+ payload['data-app-class'])
       el = fn(payload.id, payload);
     } else {
-      throw Error('what to do?')
+      throw Error('how to make? '+ payload['data-app-class'])
     }
   }
   if (payload.kids) {
@@ -112,58 +138,54 @@ function deserialize(payload) {
   return el;
 }
 
-TogetherJS.hub.on("create", (msg) => {
-  console.log('create msg', msg);
-  get_world().appendChild(deserialize(msg.data));
-});
-
-TogetherJS.hub.on("createSelect", (msg) => {
-  console.log('msg', msg.data.select_rect);
-  var {select_rect, target} = msg.data;
-  // get local version
-  target = byId(target.id);
-  select_rect = make_select(select_rect.id, select_rect);
-  _make_selection(target, select_rect);
-});
-
-TogetherJS.hub.on('dropSelect', (msg) => {
-  _de_select(byId(msg.select_rect.id));
-});
-
-
-function g(el, label) {
-  if (el.dataset === undefined) {
-    return el[label];
+function recursive_delete(payload) {
+  if (document.getElementById(payload.id)) {
+    // el is something that already exists in the local SVG doc
+    var el = byId(payload.id);
+    el.remove();
   }
-  if (Object.keys(el.dataset).indexOf(label) != -1) {
-    return el.dataset[label];
-  }
-  if (Object.keys(el.attributes).indexOf(label) != -1) {
-    return el.getAttribute(label);
-  }
-  var value = el.getAttribute(label);
-  if (value !== null) {
-    return value;
-  }
-  if (label === 'width' || label === 'height') {
-    return el.getBBox()[label];
+  if (payload.kids) {
+    payload.kids.map(inner_payload => {
+      recursive_delete(inner_payload);
+    });
   }
 }
 
+
+function g(el, label) {
+// getter - more natural "attributes" from SVG elements
+  var get_fn = () => {
+      if (el.dataset === undefined) {
+        return el[label];
+      }
+      if (Object.keys(el.dataset).indexOf(label) != -1) {
+        return el.dataset[label];
+      }
+      if (Object.keys(el.attributes).indexOf(label) != -1) {
+        return el.getAttribute(label);
+      }
+      var value = el.getAttribute(label);
+      if (value !== null) {
+        return value;
+      }
+      if (label === 'width' || label === 'height') {
+        return el.getBBox()[label];
+      }
+  };
+  var retval = get_fn()
+  if (retval === 'false' || retval === 'null' || retval === 'undefined') {
+    throw Error(`Tried to set element attr to JS value? Something probably went wrong (${label})`);
+  }
+  return retval
+}
+
 function s(el, label, val) {
+// getter - more natural "attributes" from SVG elements
   if (val === undefined || val === null) {
     console.log('rem', label, val)
     return el.removeAttribute(label);
   }
   el.setAttribute(label, val);
-}
-
-function byId(id) {
-  var rv = document.getElementById(id);
-  if (!rv) {
-    throw Error('element not found '+ id)
-  }
-  return rv;
 }
 
 function getTranslation(el) {
@@ -179,25 +201,18 @@ function getTranslation(el) {
   return transforms.getItem(0);
 }
 
-function svgMap(parent, fn) {
-  var retval = [];
-  parent.childNodes.forEach((el) => {
-    if (g(el, 'data-app-class')) {
-      var result = fn(el);
-      if (result) {
-        retval.push(result);
-      }
+function reduceNonUiAttributes(el) {
+  return el.getAttributeNames()
+  .reduce((acc,n) => {
+    if (n.indexOf('data-ui-') === -1) {
+      acc[n] = g(el, n);
     }
-  });
-  return retval;
+    return acc
+  }, {});
 }
 
 function serialize_group(group) {
-  var retval = group.getAttributeNames()
-  .reduce((acc,n) => {
-    acc[n] = g(group, n);
-    return acc
-  }, {});
+  var retval = reduceNonUiAttributes(group)
   retval.kids = [];
   svgMap(group, (el) => {
     retval.kids.push(serializeSvg(el));
@@ -205,27 +220,18 @@ function serialize_group(group) {
   return retval;
 }
 
-function str_to_fn(fname) {
-  return (
-    (window[fname] && typeof window[fname] === 'function')
-    ?  window[fname]
-    : null
-  );
-}
-
 function serializeSvg(el) {
+  if (!myClientId) {
+    // no network connection - skip it
+    return;
+  }
   console.log('trying to serialize', el)
   var fn = str_to_fn('serialize_' + g(el, 'data-app-class'))
   if (fn) {
     return fn(el);
   }
-  return el.getAttributeNames()
-  .reduce((acc,n) => {
-    acc[n] = g(el, n);
-    return acc
-  }, {});
+  return reduceNonUiAttributes(el);
 }
-
 
 function move_to_center(el, target) {
   var el_transform = getTranslation(el);
@@ -255,12 +261,6 @@ function move_to(el, target) {
     el_transform.matrix.e + target_transform.matrix.e,
     el_transform.matrix.f + target_transform.matrix.f,
   );
-}
-
-function randInt(min, max) {
-  min = Math.ceil(min);
-  max = Math.floor(max);
-  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 function SVGElem(etype, id, attrs) {
@@ -324,19 +324,12 @@ function _make_selection(target, select_rect) {
   return group;
 }
 
-function parse_transforms(str) {
-  var result = {};
-  for (var i in str = str.match(/(\w+)\(([^,)]+),?([^)]+)?\)/gi)) {
-    var c = str[i].match(/[\w\.\-]+/g);
-    result[c.shift()] = c.map(x => parseFloat(x));
-  }
-  return result;
-}
-
 function de_select(evt) {
   console.log('de select', evt.target)
   select_rect = evt.target;
   _de_select(select_rect);
+
+  ui_fire({type: 'dropSelect', data: select_rect.parentNode});
   fire({type: "dropSelect", select_rect: serializeSvg(select_rect) });
 }
 
@@ -362,7 +355,7 @@ function die_select(evt) {
   group_target = evt.target.parentNode;
 
   // make the highlight rectangle
-  var color = getUserColor() || 'cyan';
+  var color = getUserColor();
   var select_rect = make_select('selection' + Date.now(), {
     width: parseInt(g(group_target, 'width')) + 4,
     height: parseInt(g(group_target, 'height')) + 4,
@@ -373,6 +366,7 @@ function die_select(evt) {
 
   group = _make_selection(group_target, select_rect)
 
+  ui_fire({ type: 'createSelect', data: group })
   fire({type: "createSelect", data: {
     select_rect: serializeSvg(select_rect),
     target: serializeSvg(group_target),
@@ -420,10 +414,6 @@ function make_text(id, attrs) {
   return text
 }
 
-function get_world() {
-  return document.getElementsByTagName('svg')[0];
-}
-
 function add_d6(e, target) {
   group = make_group('g' + Date.now(), {})
   get_world().appendChild(group);
@@ -437,6 +427,10 @@ function add_d6(e, target) {
   fire({type: "create", data: serializeSvg(group)});
 }
 
+function get_world() {
+  return document.getElementsByTagName('svg')[0];
+}
+
 function initDraggable() {
   world = byId('svgdoc')
   makeDraggable(world, {
@@ -447,12 +441,69 @@ function initDraggable() {
   });
 }
 
+function all_selected_objects() {
+  return svgMap(get_world(), (el) => {
+    if (g(el, 'data-ui-selected') === 'true') {
+      return el;
+    }
+  })
+}
+
+function ui_update_delete_button() {
+  var allSel = all_selected_objects()
+
+  var span = byId('num_selected')
+  span.innerText = allSel.length;
+
+  var btn = byId('delete_button')
+  btn.disabled = (allSel.length === 0)
+}
+
+function ui_fire(msg) {
+  var fn = {
+    createSelect: (msg) => {
+      s(msg.data, 'data-ui-selected', true)
+      ui_update_delete_button()
+    },
+    dropSelect: (msg) => {
+      console.log('ui drop sel')
+      ui_update_delete_button()
+    },
+    delete: (msg) => {
+      ui_update_delete_button()
+    },
+  }[msg.type];
+
+  if (fn) {
+    fn(msg);
+  } else {
+    throw Error('Unknown msg type '+ msg.type);
+  }
+}
+
+function delete_selected(evt) {
+  var allSel = all_selected_objects()
+  var collection = make_group('deletegroup', {})
+  allSel.map(el => {
+    el.remove()
+    collection.appendChild(el)
+  })
+  fire({ type: 'delete', data: serialize_group(collection) });
+  ui_fire({type: 'delete', data: collection });
+}
+
 </script>
 </head>
 <body>
 <button onclick="TogetherJS(this); return false;">Start TogetherJS</button>
   <button onclick="add_d6(this)">
   Add d6
+  </button>
+  <button id="delete_button" onclick="delete_selected(this)"
+    title="double-click objects to select and delete them"
+    disabled="disabled"
+  >
+  Delete <span id="num_selected">0</span> Objects
   </button>
 
   <input id="text1" type="text" />
@@ -465,8 +516,6 @@ function initDraggable() {
     <menuitem label="Number 2"></menuitem>
   </menu>
   </div>
-
-
 </body>
 </html>
 
