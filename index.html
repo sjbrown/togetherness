@@ -27,7 +27,7 @@ var knownUsers = {};
 var myClientId = null;
 
 function getUserColor() {
-  el = document.getElementsByClassName('togetherjs-person-self')[0];
+  var el = document.getElementsByClassName('togetherjs-person-self')[0];
   return el.style.borderColor;
 }
 
@@ -53,23 +53,68 @@ TogetherJS.on('ready', () => {
   //console.log('TogetherJS ready.', session)
 });
 
-TogetherJS.hub.on("peer-update", (msg) => {
+TogetherJS.hub.on("togetherjs.peer-update", (msg) => {
   console.log('p-u msg', msg);
   knownUsers[msg.clientId] = Object.assign(knownUsers[msg.clientId], msg);
 });
 
-TogetherJS.hub.on("hello", (msg) => {
+TogetherJS.hub.on('syncState', (msg) => {
+  console.log('syncing', msg)
+  world = get_world();
+
+  function realize(payload) {
+    console.log('consider', payload)
+    var realized = null;
+    var fn = make_fn('make_' + payload['data-app-class'])
+    if (fn) {
+      console.log('calling ', 'make_'+ payload['data-app-class'])
+      realized = fn(payload.id, payload);
+    } else if (payload.length) {
+      var elements = payload.map(inner_payload => realize(inner_payload));
+      console.log('got aray', elements)
+      realized = _make_selection(elements[0], elements[1]);
+    }
+    return realized;
+  }
+
+  msg.data.map(payload => {
+    world.appendChild(realize(payload))
+  });
+});
+
+TogetherJS.hub.on("togetherjs.hello", (msg) => {
   console.log('hello msg', msg);
   knownUsers[msg.clientId] = msg;
+  worldData = svgMap(get_world(), (el) => {
+    return serializeSvg(el);
+  });
+  if (worldData.length) {
+    fire({
+      type: "syncState",
+      data: worldData,
+    });
+  }
 });
 
 TogetherJS.hub.on("change", (msg) => {
   console.log('msg', msg);
 
-  var x = byId(msg.data.id);
-  Object.keys(msg.data).map(key => {
-    x.setAttribute(key, msg.data[key]);
-  });
+  if (msg.data['data-app-class'] === 'group') {
+    var group = byId(msg.data.id)
+    console.log('changing', group.id)
+    Object.keys(msg.data).map(key => {
+      if (isNaN(parseInt(key))) {
+        s(group, key, msg.data[key]);
+      }
+    });
+  } else if (msg.data.id) {
+    var x = byId(msg.data.id);
+    Object.keys(msg.data).map(key => {
+      x.setAttribute(key, msg.data[key]);
+    });
+  } else {
+    throw Error('what to do with this? ' + msg);
+  }
 });
 
 TogetherJS.hub.on("create", (msg) => {
@@ -80,13 +125,14 @@ TogetherJS.hub.on("create", (msg) => {
 
 TogetherJS.hub.on("createSelect", (msg) => {
   console.log('msg', msg.data.select_rect);
-  var {group, select_rect, target} = msg.data;
+  var {select_rect, target} = msg.data;
   // get local version
   target = byId(target.id);
-  select_rect2 = Rect(select_rect.id, select_rect);
-  console.log('made', select_rect2)
-  group2 = _make_selection(target, select_rect2);
+  select_rect = make_select(select_rect.id, select_rect);
+  console.log('made', select_rect)
+  group2 = _make_selection(target, select_rect);
 });
+
 
 TogetherJS.hub.on('dropSelect', (msg) => {
   _de_select(byId(msg.select_rect.id));
@@ -94,6 +140,9 @@ TogetherJS.hub.on('dropSelect', (msg) => {
 
 
 function g(el, label) {
+  if (el.dataset === undefined) {
+    return el[label];
+  }
   if (Object.keys(el.dataset).indexOf(label) != -1) {
     return el.dataset[label];
   }
@@ -112,7 +161,11 @@ function s(el, label, val) {
 }
 
 function byId(id) {
-  return document.getElementById(id);
+  var rv = document.getElementById(id);
+  if (!rv) {
+    throw Error('element not found '+ id)
+  }
+  return rv;
 }
 
 function getTranslation(el) {
@@ -128,7 +181,48 @@ function getTranslation(el) {
   return transforms.getItem(0);
 }
 
+function svgMap(parent, fn) {
+  var retval = [];
+  parent.childNodes.forEach((el) => {
+    //console.log('considering el', el)
+    if (g(el, 'data-app-class')) {
+      var result = fn(el);
+      if (result) {
+        retval.push(result);
+      }
+    }
+  });
+  console.log('map reting ', retval)
+  return retval;
+}
+
+function serialize_group(group) {
+  var retval = group.getAttributeNames()
+  .reduce((acc,n) => {
+    acc[n] = group.getAttribute(n);
+    return acc
+  }, {});
+  var index = 0;
+  svgMap(group, (el) => {
+    retval[index] = serializeSvg(el);
+    index += 1;
+  })
+  return retval;
+}
+
+function make_fn(fname) {
+  return (
+    (window[fname] && typeof window[fname] === 'function')
+    ?  window[fname]
+    : null
+  );
+}
+
 function serializeSvg(el) {
+  var fn = make_fn('serialize_' + g(el, 'data-app-class'))
+  if (fn) {
+    return fn(el);
+  }
   return el.getAttributeNames()
   .reduce((acc,n) => {
     acc[n] = el.getAttribute(n);
@@ -138,7 +232,6 @@ function serializeSvg(el) {
 
 
 function move_to_center(el, target) {
-  // move the target to where the group moved
   var el_transform = getTranslation(el);
   var target_transform = getTranslation(target)
 
@@ -151,11 +244,10 @@ function move_to_center(el, target) {
     el_transform.matrix.e + target_transform.matrix.e - centerize[0],
     el_transform.matrix.f + target_transform.matrix.f - centerize[1],
   );
-  //console.log('new el transform', el_transform.matrix)
 }
 
 function move_to(el, target) {
-  // move the target to where the group moved
+  // move the element to where the target is
   var el_transform = getTranslation(el);
   var target_transform = getTranslation(target)
 
@@ -182,27 +274,37 @@ function Rect(id, attrs) {
   }, attrs));
 }
 
+function make_select(id, data) {
+  var select_rect = Rect(id, Object.assign({
+    'data-app-class': 'select',
+    rx: 4,
+    ry: 4,
+    width: 4,
+    height: 4,
+    fill: 'cyan',
+    'fill-opacity': 0.1,
+    stroke: 'cyan',
+    'stroke-opacity': 0.8,
+    'stroke-width': 1,
+  }, data));
+  select_rect.addEventListener('dblclick', de_select);
+  return select_rect;
+}
+
 function make_selection(target) {
   // make the highlight rectangle
   var color = getUserColor() || 'cyan';
-  var select_rect = Rect('selection' + Date.now(), {
-    rx: 4,
-    ry: 4,
+  var select_rect = make_select('selection' + Date.now(), {
     width: parseInt(g(target, 'width')) + 4,
     height: parseInt(g(target, 'height')) + 4,
-    'data-selection-rect': true,
     fill: color,
-    'fill-opacity': 0.1,
     stroke: color,
-    'stroke-opacity': 0.8,
-    'stroke-width': 1,
   })
   move_to_center(select_rect, target);
 
   group = _make_selection(target, select_rect)
 
   fire({type: "createSelect", data: {
-    group: serializeSvg(group),
     select_rect: serializeSvg(select_rect),
     target: serializeSvg(target),
   }});
@@ -211,10 +313,12 @@ function make_selection(target) {
 function _make_selection(target, select_rect) {
   console.log('ms t', target)
   console.log('ms s', select_rect)
-  select_rect.addEventListener('dblclick', de_select);
 
   //make the group
-  var group = SVGElem('g', 'g' + select_rect.id, { 'class': 'draggable-group' });
+  var group = SVGElem('g', 'g' + select_rect.id, {
+    'class': 'draggable-group',
+    'data-app-class': 'group',
+  });
   target.remove();
   group.appendChild(target);
   group.appendChild(select_rect);
@@ -231,8 +335,8 @@ function parse_transforms(str) {
   return result;
 }
 
-
 function de_select(evt) {
+  console.log('de select', evt.target)
   select_rect = evt.target;
   _de_select(select_rect);
   fire({type: "dropSelect", select_rect: serializeSvg(select_rect) });
@@ -242,10 +346,8 @@ function _de_select(select_rect) {
   svg = get_world();
   group = byId('g' + select_rect.id);
 
-  group.childNodes.forEach(target => {
-    if (!target.classList.contains('draggable')) {
-      return;
-    }
+  //group.childNodes.forEach(target => {
+  svgMap(group, (target) => {
     target.remove()
     move_to(target, group)
     svg.appendChild(target);
@@ -263,8 +365,10 @@ function die_select(evt) {
   }
 }
 
-function make_die(id) {
-  var die = Rect(id || 'die' + Date.now(), {
+
+function make_die(id, attrs) {
+  var die = Rect(id || 'die' + Date.now(), Object.assign({
+    'data-app-class': 'die',
     rx: 20,
     ry: 20,
     width: 100,
@@ -275,7 +379,7 @@ function make_die(id) {
     'fill-opacity': 1,
     'stroke-opacity': 0.8,
     'stroke-width': 5,
-  })
+  }, attrs))
   die.addEventListener('dblclick', die_select);
   return die;
 }
