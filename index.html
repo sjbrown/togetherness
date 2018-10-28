@@ -190,11 +190,8 @@ function serialize_group(group) {
     return acc
   }, {});
   retval.kids = [];
-  var index = 0;
   svgMap(group, (el) => {
-    retval[index] = serializeSvg(el);
     retval.kids.push(serializeSvg(el));
-    index += 1;
   })
   return retval;
 }
