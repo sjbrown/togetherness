@@ -23,13 +23,13 @@
 
 <script>
 
-var knownUsers = {};
-var myClientId = null;
-
 function getUserColor() {
   var el = document.getElementsByClassName('togetherjs-person-self')[0];
   return el.style.borderColor;
 }
+
+
+var myClientId = null;
 
 function fire(payload) {
   if (!myClientId) {
@@ -37,7 +37,6 @@ function fire(payload) {
     return
   }
   try {
-    console.log('fiiiiiiiiiiiiiiiiiiiiiiiiiiiiiire', payload.type)
     TogetherJS.send(payload);
   }
   catch (err) {
@@ -49,42 +48,18 @@ function fire(payload) {
 TogetherJS.on('ready', () => {
   session = TogetherJS.require('session')
   myClientId = session.clientId;
-  //console.log('myClientId', myClientId)
-  //console.log('TogetherJS ready.', session)
-});
-
-TogetherJS.hub.on("togetherjs.peer-update", (msg) => {
-  console.log('p-u msg', msg);
-  knownUsers[msg.clientId] = Object.assign(knownUsers[msg.clientId], msg);
 });
 
 TogetherJS.hub.on('syncState', (msg) => {
   console.log('syncing', msg)
   world = get_world();
-
-  function realize(payload) {
-    console.log('consider', payload)
-    var realized = null;
-    var fn = make_fn('make_' + payload['data-app-class'])
-    if (fn) {
-      console.log('calling ', 'make_'+ payload['data-app-class'])
-      realized = fn(payload.id, payload);
-    } else if (payload.length) {
-      var elements = payload.map(inner_payload => realize(inner_payload));
-      console.log('got aray', elements)
-      realized = _make_selection(elements[0], elements[1]);
-    }
-    return realized;
-  }
-
   msg.data.map(payload => {
-    world.appendChild(realize(payload))
+    world.appendChild(deserialize(payload))
   });
 });
 
 TogetherJS.hub.on("togetherjs.hello", (msg) => {
   console.log('hello msg', msg);
-  knownUsers[msg.clientId] = msg;
   worldData = svgMap(get_world(), (el) => {
     return serializeSvg(el);
   });
@@ -98,24 +73,39 @@ TogetherJS.hub.on("togetherjs.hello", (msg) => {
 
 TogetherJS.hub.on("change", (msg) => {
   console.log('msg', msg);
+  deserialize(msg.data);
+});
 
-  if (msg.data['data-app-class'] === 'group') {
-    var group = byId(msg.data.id)
-    console.log('changing', group.id)
-    Object.keys(msg.data).map(key => {
-      if (isNaN(parseInt(key))) {
-        s(group, key, msg.data[key]);
+
+function deserialize(payload) {
+  var el = null;
+  if (document.getElementById(payload.id)) {
+    el = byId(payload.id);
+    Object.keys(payload).map(key => {
+      if (isNaN(parseInt(key)) && key !== 'kids') {
+        s(el, key, payload[key]);
       }
     });
-  } else if (msg.data.id) {
-    var x = byId(msg.data.id);
-    Object.keys(msg.data).map(key => {
-      x.setAttribute(key, msg.data[key]);
-    });
   } else {
-    throw Error('what to do with this? ' + msg);
+    var fn = str_to_fn('make_' + payload['data-app-class'])
+    if (fn) {
+      console.log('calling ', 'make_'+ payload['data-app-class'])
+      el = fn(payload.id, payload);
+    } else {
+      throw Error('what to do?')
+    }
   }
-});
+  if (payload.kids) {
+    payload.kids.map(inner_payload => {
+      var kid = deserialize(inner_payload);
+      if (kid.parentNode) {
+        kid.remove()
+      }
+      el.appendChild(deserialize(inner_payload));
+    });
+  }
+  return el;
+}
 
 TogetherJS.hub.on("create", (msg) => {
   console.log('msg', msg);
@@ -132,7 +122,6 @@ TogetherJS.hub.on("createSelect", (msg) => {
   console.log('made', select_rect)
   group2 = _make_selection(target, select_rect);
 });
-
 
 TogetherJS.hub.on('dropSelect', (msg) => {
   _de_select(byId(msg.select_rect.id));
@@ -184,7 +173,6 @@ function getTranslation(el) {
 function svgMap(parent, fn) {
   var retval = [];
   parent.childNodes.forEach((el) => {
-    //console.log('considering el', el)
     if (g(el, 'data-app-class')) {
       var result = fn(el);
       if (result) {
@@ -192,25 +180,26 @@ function svgMap(parent, fn) {
       }
     }
   });
-  console.log('map reting ', retval)
   return retval;
 }
 
 function serialize_group(group) {
   var retval = group.getAttributeNames()
   .reduce((acc,n) => {
-    acc[n] = group.getAttribute(n);
+    acc[n] = g(group, n);
     return acc
   }, {});
+  retval.kids = [];
   var index = 0;
   svgMap(group, (el) => {
     retval[index] = serializeSvg(el);
+    retval.kids.push(serializeSvg(el));
     index += 1;
   })
   return retval;
 }
 
-function make_fn(fname) {
+function str_to_fn(fname) {
   return (
     (window[fname] && typeof window[fname] === 'function')
     ?  window[fname]
@@ -219,13 +208,13 @@ function make_fn(fname) {
 }
 
 function serializeSvg(el) {
-  var fn = make_fn('serialize_' + g(el, 'data-app-class'))
+  var fn = str_to_fn('serialize_' + g(el, 'data-app-class'))
   if (fn) {
     return fn(el);
   }
   return el.getAttributeNames()
   .reduce((acc,n) => {
-    acc[n] = el.getAttribute(n);
+    acc[n] = g(el, n);
     return acc
   }, {});
 }
@@ -255,7 +244,12 @@ function move_to(el, target) {
     el_transform.matrix.e + target_transform.matrix.e,
     el_transform.matrix.f + target_transform.matrix.f,
   );
-  //console.log('new el transform', el_transform.matrix)
+}
+
+function randInt(min, max) {
+  min = Math.ceil(min);
+  max = Math.floor(max);
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 function SVGElem(etype, id, attrs) {
@@ -272,6 +266,23 @@ function Rect(id, attrs) {
     x: 0,
     y: 0,
   }, attrs));
+}
+
+function Text(id, attrs) {
+  textEl = SVGElem('text', id, Object.assign({
+    'data-app-class': 'text',
+    'class': 'draggable',
+    x: 0,
+    y: 0,
+    'fill': 'black',
+    'fill-opacity': 1,
+    'text-anchor': 'middle',
+    'alignment-baseline': 'middle',
+    'font-size': '3px',
+  }, attrs));
+  document.createTextNode(val);
+  textEl.appendChild(attrs['data-text'] || 'foo');
+  return textEl;
 }
 
 function make_select(id, data) {
@@ -310,10 +321,21 @@ function make_selection(target) {
   }});
 }
 
-function _make_selection(target, select_rect) {
-  console.log('ms t', target)
-  console.log('ms s', select_rect)
+function make_group(id, attrs) {
+  var validAttrs = Object.keys(attrs).reduce((acc, key) => {
+    if (isNaN(parseInt(key)) && key !== 'kids') {
+      acc[key] = attrs[key];
+    }
+    return acc;
+  }, {});
+  var group = SVGElem('g', id, Object.assign({
+    'class': 'draggable-group',
+    'data-app-class': 'group',
+  }, validAttrs));
+  return group;
+}
 
+function _make_selection(target, select_rect) {
   //make the group
   var group = SVGElem('g', 'g' + select_rect.id, {
     'class': 'draggable-group',
@@ -357,9 +379,8 @@ function _de_select(select_rect) {
   group.remove()
 }
 
-function die_select(evt) {
+function el_select(evt) {
   target = evt.target;
-  console.log('die_select!', target);
   if (target.classList.contains('draggable')) {
     make_selection(target);
   }
@@ -380,18 +401,27 @@ function make_die(id, attrs) {
     'stroke-opacity': 0.8,
     'stroke-width': 5,
   }, attrs))
-  die.addEventListener('dblclick', die_select);
+  die.addEventListener('dblclick', el_select);
   return die;
+}
+
+function make_text(id, attrs) {
+  var text = Text(id || 'text' + Date.now(), attrs);
+  text.addEventListener('dblclick', el_select);
+  return text
 }
 
 function get_world() {
   return document.getElementsByTagName('svg')[0];
 }
 
-function add_die(e, target) {
+function add_d6(e, target) {
   var newElement = make_die();
   get_world().appendChild(newElement);
   fire({type: "create", data: serializeSvg(newElement)});
+
+  var txtEl = make_text('text' + Date.now(), {'data-text': randInt(1,6)})
+  get_world().appendChild(txtEl);
 }
 
 function initDraggable() {
@@ -407,16 +437,14 @@ function initDraggable() {
 </head>
 <body>
 <button onclick="TogetherJS(this); return false;">Start TogetherJS</button>
-  <button onclick="add_die(this)">
-  Add die
+  <button onclick="add_d6(this)">
+  Add d6
   </button>
 
   <input id="text1" type="text" />
 
   <div id="gamearea" contextmenu="gamemenu">
   <svg id="svgdoc" width="100%" height="300" onload="initDraggable()">
-    <circle id="circle1"
-      cx="50" cy="50" r="40" stroke="green" stroke-width="4" fill="yellow" />
   </svg>
   <menu type="context" id="gamemenu">
     <menuitem label="A A A"></menuitem>
