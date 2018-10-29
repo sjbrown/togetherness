@@ -102,15 +102,12 @@ togetherFunctions.on_create = (msg) => {
 };
 
 togetherFunctions.on_create_select = (msg) => {
-  var {select_rect, target} = msg.data;
-  // get local version
-  target = byId(target.id);
-  select_rect = make_select(select_rect.id, select_rect);
-  _make_selection(target, select_rect);
+  target = byId(msg.data.target.id);
+  highlight(target, msg.data.highlight_rect)
 };
 
 togetherFunctions.on_drop_select = (msg) => {
-  _de_select(byId(msg.select_rect.id));
+  _de_select(byId(msg.highlight_rect.id));
 };
 
 togetherFunctions.on_delete = (msg) => {
@@ -250,10 +247,20 @@ function move_to_center(el, target) {
   var el_transform = getTranslation(el);
   var target_transform = getTranslation(target)
 
-  centerize = [
-    parseInt(g(el, 'width'))/2 - parseInt(g(target, 'width')) / 2,
-    parseInt(g(el, 'height'))/2 - parseInt(g(target, 'height')) / 2,
+  t_width = target.getBBox().width
+  console.log('t bbox w', t_width)
+  console.log('t bbox w', parseInt(t_width))
+  half_t_width = parseInt(t_width)/2
+  console.log('half t w', half_t_width)
+  var a = parseInt(g(el, 'width'))/2
+  console.log('a', a)
+  var x = a - half_t_width;
+  console.log('x', x)
+  var centerize = [
+    x,
+    parseInt(g(el, 'height'))/2 - parseInt(target.getBBox().height) / 2,
   ];
+  console.log('c', centerize)
 
   console.log('from matrix', el_transform.matrix)
   console.log('to matrix', target_transform.matrix)
@@ -292,23 +299,6 @@ function Rect(id, attrs) {
   }, attrs));
 }
 
-function make_select(id, data) {
-  var select_rect = Rect(id, Object.assign({
-    'data-app-class': 'select',
-    rx: 4,
-    ry: 4,
-    width: 4,
-    height: 4,
-    fill: 'cyan',
-    'fill-opacity': 0.1,
-    stroke: 'cyan',
-    'stroke-opacity': 0.8,
-    'stroke-width': 1,
-  }, data));
-  select_rect.addEventListener('dblclick', ui_de_select);
-  return select_rect;
-}
-
 
 function make_group(id, attrs) {
   var validAttrs = Object.keys(attrs).reduce((acc, key) => {
@@ -324,31 +314,30 @@ function make_group(id, attrs) {
   return group;
 }
 
-function _make_selection(target, select_rect) {
+function envelop(target, group_id) {
   //make the group
-  var group = SVGElem('g', 'g' + select_rect.id, {
+  var group = SVGElem('g', group_id, {
     'class': 'draggable-group',
     'data-app-class': 'group',
   });
   target.remove();
   group.appendChild(target);
-  group.appendChild(select_rect);
   get_world().appendChild(group);
   return group;
 }
 
 function ui_de_select(evt) {
   console.log('de select', evt.target)
-  select_rect = evt.target;
-  _de_select(select_rect);
+  highlight_rect = evt.target;
+  _de_select(highlight_rect);
 
-  ui_fire({type: 'dropSelect', data: select_rect.parentNode});
-  fire({type: "dropSelect", select_rect: serializeSvg(select_rect) });
+  ui_fire({type: 'dropSelect', data: highlight_rect.parentNode});
+  fire({type: "dropSelect", highlight_rect: serializeSvg(highlight_rect) });
 }
 
-function _de_select(select_rect) {
+function _de_select(highlight_rect) {
   svg = get_world();
-  group = byId('g' + select_rect.id);
+  group = byId('g' + highlight_rect.id);
 
   svgMap(group, (target) => {
     target.remove()
@@ -356,8 +345,50 @@ function _de_select(select_rect) {
     svg.appendChild(target);
   })
 
-  select_rect.remove()
+  highlight_rect.remove()
   group.remove()
+}
+
+function make_select(id, attrs) {
+  var rect = Rect(
+    (attrs && attrs.id) || 'selection' + Date.now(),
+    Object.assign({
+      'data-app-class': 'select',
+      x: -2,
+      y: -2,
+      fill: 'cyan',
+      stroke: 'cyan',
+      rx: 4,
+      ry: 4,
+      'fill-opacity': 0.1,
+      'stroke-opacity': 0.8,
+      'stroke-width': 1,
+    }, attrs)
+  )
+  rect.addEventListener('dblclick', ui_de_select);
+  return rect
+}
+
+function highlight(target, attrs) {
+  // make the highlight rectangle
+  var color = getUserColor();
+  var rect = make_select(
+    (attrs && attrs.id) || 'selection' + Date.now(),
+    Object.assign({
+      'data-app-class': 'select',
+      width: parseInt(g(target, 'width')) + 4,
+      height: parseInt(g(target, 'height')) + 4,
+      fill: color,
+      stroke: color,
+      transform: g(target, 'transform'),
+    }, attrs),
+  )
+  group = envelop(target, 'g' + rect.id)
+  group.appendChild(rect);
+  return {
+    highlight_rect: rect,
+    highlight_group: group,
+  }
 }
 
 function die_select(evt) {
@@ -366,21 +397,11 @@ function die_select(evt) {
   console.log('sel elem', evt.target)
   group_target = evt.target.parentNode;
 
-  // make the highlight rectangle
-  var color = getUserColor();
-  var select_rect = make_select('selection' + Date.now(), {
-    width: parseInt(g(group_target, 'width')) + 4,
-    height: parseInt(g(group_target, 'height')) + 4,
-    fill: color,
-    stroke: color,
-  })
-  move_to_center(select_rect, group_target);
+  var { highlight_rect, highlight_group } = highlight(group_target)
 
-  group = _make_selection(group_target, select_rect)
-
-  ui_fire({ type: 'createSelect', data: group })
+  ui_fire({ type: 'createSelect', data: highlight_group })
   fire({type: "createSelect", data: {
-    select_rect: serializeSvg(select_rect),
+    highlight_rect: serializeSvg(highlight_rect),
     target: serializeSvg(group_target),
   }});
 }
@@ -697,23 +718,13 @@ function ui_submit_rect(evt) {
 
 function rect_select(evt) {
   console.log('sel elem', evt.target)
-  target = evt.target;
+  var target = evt.target;
 
-  // make the highlight rectangle
-  var color = getUserColor();
-  var select_rect = make_select('selection' + Date.now(), {
-    width: parseInt(g(target, 'width')) + 4,
-    height: parseInt(g(target, 'height')) + 4,
-    fill: color,
-    stroke: color,
-  })
-  move_to_center(select_rect, target);
+  var { highlight_rect, highlight_group } = highlight(target)
 
-  group = _make_selection(target, select_rect)
-
-  ui_fire({ type: 'createSelect', data: group })
+  ui_fire({ type: 'createSelect', data: highlight_group })
   fire({type: "createSelect", data: {
-    select_rect: serializeSvg(select_rect),
+    highlight_rect: serializeSvg(highlight_rect),
     target: serializeSvg(target),
   }});
 }
