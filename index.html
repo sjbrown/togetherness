@@ -4,6 +4,7 @@
 <script src="https://togetherjs.com/togetherjs-min.js"></script>
 <script src="./draggable.js"></script>
 <script src="./come_together.js"></script>
+<link rel="stylesheet" type="text/css" href="animate.css">
 <style>
 #gamearea {
   background-color: #efe;
@@ -447,6 +448,22 @@ function make_text(id, attrs) {
   return text
 }
 
+function do_animate(el, attrs) {
+  var { ms, name } = Object.assign({
+    ms: 900,
+    name: 'slideInDown',
+  }, attrs)
+  el.classList.add('animated')
+  el.classList.add(name)
+  console.log('el', el)
+  var timedFn;
+  timedFn = setInterval(() => {
+    el.classList.remove('animated')
+    el.classList.remove(name)
+    clearInterval(timedFn);
+  }, ms);
+}
+
 function add_d6(e, target) {
   group = make_group('g' + Date.now(), {})
   get_world().appendChild(group);
@@ -456,6 +473,8 @@ function add_d6(e, target) {
   var txtEl = make_text('text' + Date.now(), {'data-text': randInt(1,6)})
   group.appendChild(txtEl);
   move_to_center(txtEl, die);
+
+  do_animate(group)
 
   fire({type: "create", data: serializeSvg(group)});
 }
@@ -506,6 +525,7 @@ function ui_fire(msg) {
       ui_update_buttons()
     },
     delete: (msg) => {
+      console.log('ui delete sel')
       ui_update_buttons()
     },
   }[msg.type];
@@ -517,10 +537,31 @@ function ui_fire(msg) {
   }
 }
 
+function animated_delete(el) {
+  var ms = 900
+  var animationClone = el.cloneNode(true)
+  animationClone.id = 'clone' + Date.now()
+  el.parentNode.insertBefore(animationClone, el)
+  animationClone.getAttributeNames().map((n) => {
+    if (n.indexOf('data-ui-') !== -1) {
+      console.log('dropping', n)
+      s(animationClone, n, null);
+    }
+  });
+  s(animationClone, 'draggable-group', null);
+  do_animate(animationClone, {name: 'rotateOut', ms: ms})
+  var timedFn;
+  timedFn = setInterval(() => {
+    animationClone.remove();
+    clearInterval(timedFn);
+  }, ms);
+}
+
 function delete_selected(evt) {
   var allSel = all_selected_groups()
   var collection = make_group('deletegroup', {})
   allSel.map(el => {
+    animated_delete(el)
     el.remove()
     collection.appendChild(el)
   })
