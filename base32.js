@@ -22,33 +22,7 @@ THE SOFTWARE.
 
 ;(function(){
 
-// This would be the place to edit if you want a different
-// Base32 implementation
-
 var alphabet = '0123456789abcdefghjkmnpqrtuvwxyz'
-var alias = { o:0, i:1, l:1, s:5 }
-
-/**
- * Build a lookup table and memoize it
- *
- * Return an object that maps a character to its
- * byte value.
- */
-
-var lookup = function() {
-    var table = {}
-    // Invert 'alphabet'
-    for (var i = 0; i < alphabet.length; i++) {
-        table[alphabet[i]] = i
-    }
-    // Splice in 'alias'
-    for (var key in alias) {
-        if (!alias.hasOwnProperty(key)) continue
-        table[key] = table['' + alias[key]]
-    }
-    lookup = function() { return table }
-    return table
-}
 
 /**
  * A streaming encoder
@@ -121,8 +95,6 @@ Encoder.prototype.update = function(input, flush) {
     }
     return output
 }
-
-// Functions analogously to Encoder
 
 
 /** Convenience functions
