@@ -22,6 +22,12 @@
 .draggable:active, .draggable-group:active {
   cursor: grabbing;
 }
+dialog label {
+  display: block;
+}
+.template {
+  display: none;
+}
 
 </style>
 
@@ -73,8 +79,9 @@ togetherFunctions.on_hello = (msg) => {
   });
   if (worldData.length) {
     fire({
-      type: "syncState",
+      type: "sync",
       data: worldData,
+      bg: byId('svgdoc').style.backgroundImage || null,
     });
   }
 };
@@ -84,6 +91,8 @@ togetherFunctions.on_sync = (msg) => {
   msg.data.map(payload => {
     world.appendChild(deserialize(payload))
   });
+  console.log('syncing bg', msg.bg)
+  change_background(msg.bg);
 };
 
 togetherFunctions.on_change = (msg) => { deserialize(msg.data) };
@@ -296,7 +305,7 @@ function make_select(id, data) {
     'stroke-opacity': 0.8,
     'stroke-width': 1,
   }, data));
-  select_rect.addEventListener('dblclick', de_select);
+  select_rect.addEventListener('dblclick', ui_de_select);
   return select_rect;
 }
 
@@ -328,7 +337,7 @@ function _make_selection(target, select_rect) {
   return group;
 }
 
-function de_select(evt) {
+function ui_de_select(evt) {
   console.log('de select', evt.target)
   select_rect = evt.target;
   _de_select(select_rect);
@@ -444,7 +453,7 @@ function initDraggable() {
   });
 }
 
-function all_selected_objects() {
+function all_selected_groups() {
   return svgMap(get_world(), (el) => {
     if (g(el, 'data-ui-selected') === 'true') {
       return el;
@@ -452,28 +461,31 @@ function all_selected_objects() {
   })
 }
 
-function ui_update_delete_button() {
-  var allSel = all_selected_objects()
+function ui_update_buttons() {
+  var allSel = all_selected_groups()
 
   var span = byId('num_selected')
   span.innerText = allSel.length;
 
   var btn = byId('delete_button')
   btn.disabled = (allSel.length === 0)
+
+  btn = byId('properties_button')
+  btn.disabled = (allSel.length !== 1)
 }
 
 function ui_fire(msg) {
   var fn = {
     createSelect: (msg) => {
       s(msg.data, 'data-ui-selected', true)
-      ui_update_delete_button()
+      ui_update_buttons()
     },
     dropSelect: (msg) => {
       console.log('ui drop sel')
-      ui_update_delete_button()
+      ui_update_buttons()
     },
     delete: (msg) => {
-      ui_update_delete_button()
+      ui_update_buttons()
     },
   }[msg.type];
 
@@ -485,7 +497,7 @@ function ui_fire(msg) {
 }
 
 function delete_selected(evt) {
-  var allSel = all_selected_objects()
+  var allSel = all_selected_groups()
   var collection = make_group('deletegroup', {})
   allSel.map(el => {
     el.remove()
@@ -502,7 +514,7 @@ function ui_change_background(evt) {
   }
   var value = "url('" + input.value + "')";
   change_background(value)
-  ui_popdown_dialog()
+  ui_popdown_dialog({'data-dialog-id': 'dialog_bg'})
   fire({ type: 'change_background', data: value })
 }
 
@@ -543,15 +555,13 @@ function ui_popup_dialog(target) {
     Draw rect
   </button>
 
-  <div id="gamearea" contextmenu="gamemenu">
-  <svg id="svgdoc" width="100%" height="500" onload="initDraggable()">
-  </svg>
+  <button id="properties_button" onclick="ui_popup_properties(this)"
+    title="double-click objects to select them"
+    disabled="disabled"
+    data-dialog-id="dialog_properties">
+    Object Properties
+  </button>
 
-  <menu type="context" id="gamemenu">
-    <menuitem label="A A A"></menuitem>
-    <menuitem label="Number 2"></menuitem>
-  </menu>
-  </div>
 
   <dialog id="dialog_bg">
     <button class="dialog_cancel" onclick="ui_popdown_dialog(this)"
@@ -573,8 +583,101 @@ function ui_popup_dialog(target) {
     </button>
   </dialog>
 
+  <dialog id="dialog_properties">
+    <script>
+function ui_popup_properties(target) {
+  var allSel = all_selected_groups()
+  if (allSel.length !== 1) {
+    alert('You must select exactly 1 object to edit its properties');
+    return
+  }
+  var el = allSel[0].firstChild;
+  var attrs = reduceNonUiAttributes(el)
+
+  fieldset = byId('properties_fields')
+  // first, clean up earlier messes
+  var to_remove = []
+  fieldset.childNodes.forEach((el) => {
+    if (!el.classList || !el.classList.contains('template')) {
+      to_remove.push(el)
+    }
+  });
+  to_remove.map((el) => { el.remove() });
+
+  inputTemplate = byId('properties_input_template')
+  labelTemplate = byId('properties_label_template')
+  Object.keys(attrs).map((key) => {
+    input = inputTemplate.cloneNode(true)
+    label = labelTemplate.cloneNode(false)
+    s(label, 'id', 'properties_label_' + key)
+    label.innerText = key;
+    label.appendChild(input)
+    s(input, 'name', key)
+    s(input, 'id', 'properties_' + key)
+    s(input, 'value', attrs[key])
+    input.classList.add('properties_input')
+    input.classList.remove('template')
+    label.classList.remove('template')
+    fieldset.appendChild(label)
+  })
+  return ui_popup_dialog(target)
+}
+function ui_submit_properties(evt) {
+  var allSel = all_selected_groups()
+  var target = allSel[0].firstChild;
+
+  ui_de_select({target: target.parentNode.lastChild})
+
+  var inputs = document.getElementsByClassName('properties_input')
+  Array.prototype.map.call(inputs, (input) => {
+    var name = g(input, 'name')
+    if (name) {
+      console.log('setting', target, name, input.value)
+      s(target, name, input.value);
+    }
+  });
+
+  ui_popdown_dialog({'data-dialog-id': 'dialog_properties'})
+  fire({ type: 'change', data: serializeSvg(target) })
+}
+    </script>
+    <button class="dialog_cancel" onclick="ui_popdown_dialog(this)"
+      data-dialog-id="dialog_properties"
+    >
+      &#215;
+    </button>
+    <br />
+    <fieldset id="properties_fields">
+    <label id="properties_label_template" class="template" >
+      Template
+      <input id="properties_input_template" class="template" type="text" value="x"/>
+    </label>
+    </fieldset>
+    <br />
+    <button id="dialog_submit" onclick="ui_submit_properties(this)">
+      Change
+    </button>
+  </dialog>
+
   <dialog id="dialog_rect">
     <script>
+function make_rect(id, attrs) {
+  var rect = Rect(id || 'rect' + Date.now(), Object.assign({
+    'data-app-class': 'rect',
+    'class': 'draggable',
+    rx: 0,
+    ry: 0,
+    width: 100,
+    height: 50,
+    fill: 'cyan',
+    stroke: 'black',
+    'fill-opacity': 0.5,
+    'stroke-opacity': 0.8,
+    'stroke-width': 1,
+  }, attrs))
+  rect.addEventListener('dblclick', rect_select);
+  return rect;
+}
 
 function ui_submit_rect(evt) {
   w = parseInt(byId('rect_input_width').value);
@@ -582,22 +685,37 @@ function ui_submit_rect(evt) {
   if (!w || !h) {
     return;
   }
-  var rect = Rect('rect' + Date.now(), {
-    'data-app-class': 'rect',
-    'class': 'draggable',
-    rx: 0,
-    ry: 0,
+  var rect = make_rect('rect' + Date.now(), {
     width: w,
     height: h,
     fill: getUserColor(),
-    stroke: 'black',
-    'fill-opacity': 1,
-    'stroke-opacity': 0.8,
-    'stroke-width': 1,
   });
-  //rect.addEventListener('dblclick', rect_select);
-  ui_popdown_dialog()
-  fire({ type: 'create', data: rect })
+  get_world().appendChild(rect);
+  ui_popdown_dialog({'data-dialog-id': 'dialog_rect'})
+  fire({ type: 'create', data: serializeSvg(rect) })
+}
+
+function rect_select(evt) {
+  console.log('sel elem', evt.target)
+  target = evt.target;
+
+  // make the highlight rectangle
+  var color = getUserColor();
+  var select_rect = make_select('selection' + Date.now(), {
+    width: parseInt(g(target, 'width')) + 4,
+    height: parseInt(g(target, 'height')) + 4,
+    fill: color,
+    stroke: color,
+  })
+  move_to_center(select_rect, target);
+
+  group = _make_selection(target, select_rect)
+
+  ui_fire({ type: 'createSelect', data: group })
+  fire({type: "createSelect", data: {
+    select_rect: serializeSvg(select_rect),
+    target: serializeSvg(target),
+  }});
 }
 
     </script>
@@ -617,6 +735,22 @@ function ui_submit_rect(evt) {
       Create
     </button>
   </dialog>
+
+  <div id="gamearea" contextmenu="gamemenu">
+  <svg id="svgdoc" width="100%" height="500" onload="initDraggable()">
+  </svg>
+
+  <menu type="context" id="gamemenu">
+    <menuitem label="Delete selected objects"
+     onclick="delete_selected(this)"
+    ></menuitem>
+    <menuitem id="properties_menuitem"
+      onclick="ui_popup_properties(this)"
+      label="Object Properties"
+      data-dialog-id="dialog_properties">
+    </menuitem>
+  </menu>
+  </div>
 
 </body>
 </html>

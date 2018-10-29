@@ -31,7 +31,7 @@ TogetherJS.on('ready', () => {
   myClientId = session.clientId;
 });
 
-TogetherJS.hub.on('syncState', (msg) => {
+TogetherJS.hub.on('sync', (msg) => {
   console.log('syncing', msg)
   if(togetherFunctions.on_sync) {
     togetherFunctions.on_sync(msg);
