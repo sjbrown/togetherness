@@ -4,6 +4,7 @@
 <script src="https://togetherjs.com/togetherjs-min.js"></script>
 <script src="./draggable.js"></script>
 <script src="./come_together.js"></script>
+<script src="./base32.js"></script>
 <link rel="stylesheet" type="text/css" href="animate.css">
 <style>
 #gamearea {
@@ -327,6 +328,84 @@ function envelop(target, group_id) {
   return group;
 }
 
+function is_rect_highlighted(rect) {
+  return (
+    g(rect.parentNode, 'data-app-class') === 'group'
+    &&
+    g(rect.parentNode.lastChild, 'data-app-class') === 'select'
+  )
+}
+
+var rect_verbs = {
+  'Highlight': {
+    test: (rect) => { return !is_rect_highlighted(rect) },
+    action: (evt, rect) => {
+      return rect_select({target: rect})
+    },
+  },
+  'Object properties': {
+    test: () => { return true },
+    action: (evt, rect) => {
+      ui_popup_properties(
+        rect,
+        {'data-dialog-id': 'dialog_properties'}
+      )
+    }
+  },
+}
+
+var select_verbs = {
+  'Remove highlight': {
+    test: is_rect_highlighted,
+    action: (evt, select) => {
+      console.log('r', select);
+      console.log('m', evt.target);
+      return ui_de_select({target: select})
+    },
+  },
+  'Object properties': {
+    test: () => { return true },
+    action: (evt, select) => {
+      ui_popup_properties(
+        select.parentNode.firstChild,
+        {'data-dialog-id': 'dialog_properties'}
+      )
+    }
+  },
+}
+
+function ui_mouseover(evt, verbs) {
+  console.log('hover', evt.target)
+
+  deleteList = document.querySelectorAll('.cloned-menuitem')
+  Array.prototype.forEach.call(deleteList, (el) => {
+    el.remove();
+  })
+
+  var hover_rect = evt.target
+  var menu = byId('gamemenu')
+  var template = byId('template_menuitem')
+  Object.keys(verbs).map((title) => {
+    if (!verbs[title].test(hover_rect)) {
+      return
+    }
+    var clone = template.content.firstElementChild.cloneNode(true)
+    s(clone, 'id', 'menuitem-' + hover_rect.id)
+    s(clone, 'label', title)
+    clone.classList.add('cloned-menuitem')
+    clone.addEventListener('click', (evt) => {
+      console.log('x', hover_rect)
+      return verbs[title].action(evt, hover_rect)
+    })
+    console.log('m', clone)
+    menu.insertAdjacentElement('beforeend', clone)
+  })
+}
+
+function ui_mouseout(evt) {
+  console.log('hoveroff', evt.target)
+}
+
 function ui_de_select(evt) {
   console.log('de select', evt.target)
   highlight_rect = evt.target;
@@ -367,6 +446,8 @@ function make_select(id, attrs) {
     }, attrs)
   )
   rect.addEventListener('dblclick', ui_de_select);
+  rect.addEventListener('mouseover', (evt) => { ui_mouseover(evt, select_verbs) });
+  rect.addEventListener('mouseout', ui_mouseout)
   return rect
 }
 
@@ -407,6 +488,7 @@ function die_select(evt) {
   }});
 }
 
+var die_verbs = {}
 function make_die(id, attrs) {
   var die = Rect(id || 'die' + Date.now(), Object.assign({
     'data-app-class': 'die',
@@ -421,7 +503,9 @@ function make_die(id, attrs) {
     'stroke-opacity': 0.8,
     'stroke-width': 5,
   }, attrs))
-  die.addEventListener('dblclick', die_select);
+  die.addEventListener('dblclick', die_select)
+  die.addEventListener('mouseover', (evt) => { ui_mouseover(evt, die_verbs) });
+  die.addEventListener('mouseout', ui_mouseout)
   return die;
 }
 
@@ -444,7 +528,9 @@ function Text(id, attrs) {
 
 function make_text(id, attrs) {
   var text = Text(id || 'text' + Date.now(), attrs);
-  text.addEventListener('dblclick', die_select);
+  text.addEventListener('dblclick', die_select)
+  text.addEventListener('mouseover', (evt) => { ui_mouseover(evt, text_verbs) });
+  text.addEventListener('mouseout', ui_mouseout)
   return text
 }
 
@@ -617,7 +703,7 @@ function ui_popup_dialog(target) {
     Draw rect
   </button>
 
-  <button id="properties_button" onclick="ui_popup_properties(this)"
+  <button id="properties_button" onclick="ui_popup_button(this)"
     title="double-click objects to select them"
     disabled="disabled"
     data-dialog-id="dialog_properties">
@@ -640,21 +726,45 @@ function ui_popup_dialog(target) {
     <input id="background_url" type="url"
       value="http://www.1kfa.com/table/base_map.svg"
     />
-    <button id="dialog_submit" onclick="ui_change_background(this)">
+    <button id="dialog_bg_submit" onclick="ui_change_background(this)">
       Change Background URL
     </button>
   </dialog>
 
   <dialog id="dialog_properties">
     <script>
-function ui_popup_properties(target) {
+function ui_popup_button(target) {
   var allSel = all_selected_groups()
   if (allSel.length !== 1) {
     alert('You must select exactly 1 object to edit its properties');
     return
   }
   var el = allSel[0].firstChild;
+  return ui_popup_properties(el, target)
+}
+function ui_popup_properties(el, dialog_specifier) {
+  var submitButton = byId('dialog_properties_submit')
   var attrs = reduceNonUiAttributes(el)
+
+  submitButton.addEventListener('click', (evt) => {
+      var target = el
+
+      if (is_rect_highlighted(target)) {
+        ui_de_select({target: target.parentNode.lastChild})
+      }
+
+      var inputs = document.getElementsByClassName('properties_input')
+      Array.prototype.map.call(inputs, (input) => {
+        var name = g(input, 'name')
+        if (name) {
+          console.log('setting', target, name, input.value)
+          s(target, name, input.value);
+        }
+      });
+
+      ui_popdown_dialog({'data-dialog-id': 'dialog_properties'})
+      fire({ type: 'change', data: serializeSvg(target) })
+  });
 
   fieldset = byId('properties_fields')
   // first, clean up earlier messes
@@ -682,25 +792,7 @@ function ui_popup_properties(target) {
     label.classList.remove('template')
     fieldset.appendChild(label)
   })
-  return ui_popup_dialog(target)
-}
-function ui_submit_properties(evt) {
-  var allSel = all_selected_groups()
-  var target = allSel[0].firstChild;
-
-  ui_de_select({target: target.parentNode.lastChild})
-
-  var inputs = document.getElementsByClassName('properties_input')
-  Array.prototype.map.call(inputs, (input) => {
-    var name = g(input, 'name')
-    if (name) {
-      console.log('setting', target, name, input.value)
-      s(target, name, input.value);
-    }
-  });
-
-  ui_popdown_dialog({'data-dialog-id': 'dialog_properties'})
-  fire({ type: 'change', data: serializeSvg(target) })
+  return ui_popup_dialog(dialog_specifier)
 }
     </script>
     <button class="dialog_cancel" onclick="ui_popdown_dialog(this)"
@@ -716,7 +808,7 @@ function ui_submit_properties(evt) {
     </label>
     </fieldset>
     <br />
-    <button id="dialog_submit" onclick="ui_submit_properties(this)">
+    <button id="dialog_properties_submit">
       Change
     </button>
   </dialog>
@@ -738,6 +830,8 @@ function make_rect(id, attrs) {
     'stroke-width': 1,
   }, attrs))
   rect.addEventListener('dblclick', rect_select);
+  rect.addEventListener('mouseover', (evt) => { ui_mouseover(evt, rect_verbs) });
+  rect.addEventListener('mouseout', ui_mouseout);
   return rect;
 }
 
@@ -793,14 +887,13 @@ function rect_select(evt) {
   </svg>
 
   <menu type="context" id="gamemenu">
+    <template id="template_menuitem">
+      <menuitem label="X"
+      ></menuitem>
+    </template>
     <menuitem label="Delete selected objects"
      onclick="delete_selected(this)"
     ></menuitem>
-    <menuitem id="properties_menuitem"
-      onclick="ui_popup_properties(this)"
-      label="Object Properties"
-      data-dialog-id="dialog_properties">
-    </menuitem>
   </menu>
   </div>
 
