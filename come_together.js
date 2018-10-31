@@ -59,16 +59,16 @@ TogetherJS.hub.on("create", (msg) => {
   }
 });
 
-TogetherJS.hub.on("createSelect", (msg) => {
+TogetherJS.hub.on("createMark", (msg) => {
   console.log('create sel msg', msg);
-  if(togetherFunctions.on_create_select) {
-    togetherFunctions.on_create_select(msg);
+  if(togetherFunctions.on_create_mark) {
+    togetherFunctions.on_create_mark(msg);
   }
 });
 
-TogetherJS.hub.on('dropSelect', (msg) => {
-  if(togetherFunctions.on_drop_select) {
-    togetherFunctions.on_drop_select(msg);
+TogetherJS.hub.on('dropMark', (msg) => {
+  if(togetherFunctions.on_drop_mark) {
+    togetherFunctions.on_drop_mark(msg);
   }
 });
 

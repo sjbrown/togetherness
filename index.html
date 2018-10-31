@@ -24,12 +24,16 @@
 .draggable:active, .draggable-group:active {
   cursor: grabbing;
 }
+dialog {
+  max-width: 70%;
+}
 dialog label {
   display: block;
 }
 .template {
   display: none;
 }
+
 
 </style>
 
@@ -103,13 +107,13 @@ togetherFunctions.on_create = (msg) => {
   get_world().appendChild(deserialize(msg.data));
 };
 
-togetherFunctions.on_create_select = (msg) => {
+togetherFunctions.on_create_mark = (msg) => {
   target = byId(msg.data.target.id);
-  highlight(target, msg.data.highlight_rect)
+  mark(target, msg.data.mark_rect)
 };
 
-togetherFunctions.on_drop_select = (msg) => {
-  _de_select(byId(msg.highlight_rect.id));
+togetherFunctions.on_drop_mark= (msg) => {
+  _unmark(byId(msg.mark_rect.id));
 };
 
 togetherFunctions.on_delete = (msg) => {
@@ -328,17 +332,17 @@ function envelop(target, group_id) {
   return group;
 }
 
-function is_rect_highlighted(rect) {
+function is_rect_marked(rect) {
   return (
     g(rect.parentNode, 'data-app-class') === 'group'
     &&
-    g(rect.parentNode.lastChild, 'data-app-class') === 'select'
+    g(rect.parentNode.lastChild, 'data-app-class') === 'mark'
   )
 }
 
 var rect_verbs = {
-  'Highlight': {
-    test: (rect) => { return !is_rect_highlighted(rect) },
+  'Mark': {
+    test: (rect) => { return !is_rect_marked(rect) },
     action: (evt, rect) => {
       return rect_select({target: rect})
     },
@@ -354,20 +358,20 @@ var rect_verbs = {
   },
 }
 
-var select_verbs = {
-  'Remove highlight': {
-    test: is_rect_highlighted,
-    action: (evt, select) => {
-      console.log('r', select);
+var mark_verbs = {
+  'Remove mark': {
+    test: is_rect_marked,
+    action: (evt, mark) => {
+      console.log('r', mark);
       console.log('m', evt.target);
-      return ui_de_select({target: select})
+      return ui_unmark({target: mark})
     },
   },
   'Object properties': {
     test: () => { return true },
-    action: (evt, select) => {
+    action: (evt, mark) => {
       ui_popup_properties(
-        select.parentNode.firstChild,
+        mark.parentNode.firstChild,
         {'data-dialog-id': 'dialog_properties'}
       )
     }
@@ -406,18 +410,17 @@ function ui_mouseout(evt) {
   console.log('hoveroff', evt.target)
 }
 
-function ui_de_select(evt) {
-  console.log('de select', evt.target)
-  highlight_rect = evt.target;
-  _de_select(highlight_rect);
+function ui_unmark(evt) {
+  mark_rect = evt.target;
+  _unmark(mark_rect);
 
-  ui_fire({type: 'dropSelect', data: highlight_rect.parentNode});
-  fire({type: "dropSelect", highlight_rect: serializeSvg(highlight_rect) });
+  ui_fire({type: 'dropMark', data: mark_rect.parentNode});
+  fire({type: "dropMark", mark_rect: serializeSvg(mark_rect) });
 }
 
-function _de_select(highlight_rect) {
+function _unmark(mark_rect) {
   svg = get_world();
-  group = byId('g' + highlight_rect.id);
+  group = byId('g' + mark_rect.id);
 
   svgMap(group, (target) => {
     target.remove()
@@ -425,15 +428,15 @@ function _de_select(highlight_rect) {
     svg.appendChild(target);
   })
 
-  highlight_rect.remove()
+  mark_rect.remove()
   group.remove()
 }
 
-function make_select(id, attrs) {
+function make_mark(id, attrs) {
   var rect = Rect(
-    (attrs && attrs.id) || 'selection' + Date.now(),
+    (attrs && attrs.id) || 'mark' + base32.short_id(),
     Object.assign({
-      'data-app-class': 'select',
+      'data-app-class': 'mark',
       x: -2,
       y: -2,
       fill: 'cyan',
@@ -445,19 +448,19 @@ function make_select(id, attrs) {
       'stroke-width': 1,
     }, attrs)
   )
-  rect.addEventListener('dblclick', ui_de_select);
-  rect.addEventListener('mouseover', (evt) => { ui_mouseover(evt, select_verbs) });
+  rect.addEventListener('dblclick', ui_unmark);
+  rect.addEventListener('mouseover', (evt) => { ui_mouseover(evt, mark_verbs) });
   rect.addEventListener('mouseout', ui_mouseout)
   return rect
 }
 
-function highlight(target, attrs) {
+function mark(target, attrs) {
   // make the highlight rectangle
   var color = getUserColor();
-  var rect = make_select(
-    (attrs && attrs.id) || 'selection' + Date.now(),
+  var rect = make_mark(
+    (attrs && attrs.id) || 'mark' + base32.short_id(),
     Object.assign({
-      'data-app-class': 'select',
+      'data-app-class': 'mark',
       width: parseInt(g(target, 'width')) + 4,
       height: parseInt(g(target, 'height')) + 4,
       fill: color,
@@ -468,7 +471,7 @@ function highlight(target, attrs) {
   group = envelop(target, 'g' + rect.id)
   group.appendChild(rect);
   return {
-    highlight_rect: rect,
+    mark_rect: rect,
     highlight_group: group,
   }
 }
@@ -479,18 +482,18 @@ function die_select(evt) {
   console.log('sel elem', evt.target)
   group_target = evt.target.parentNode;
 
-  var { highlight_rect, highlight_group } = highlight(group_target)
+  var { mark_rect, highlight_group } = mark(group_target)
 
-  ui_fire({ type: 'createSelect', data: highlight_group })
-  fire({type: "createSelect", data: {
-    highlight_rect: serializeSvg(highlight_rect),
+  ui_fire({ type: 'createMark', data: highlight_group })
+  fire({type: "createMark", data: {
+    mark_rect: serializeSvg(mark_rect),
     target: serializeSvg(group_target),
   }});
 }
 
 var die_verbs = {}
 function make_die(id, attrs) {
-  var die = Rect(id || 'die' + Date.now(), Object.assign({
+  var die = Rect(id || 'die' + base32.short_id(), Object.assign({
     'data-app-class': 'die',
     rx: 20,
     ry: 20,
@@ -527,7 +530,7 @@ function Text(id, attrs) {
 }
 
 function make_text(id, attrs) {
-  var text = Text(id || 'text' + Date.now(), attrs);
+  var text = Text(id || 'text' + base32.short_id(), attrs);
   text.addEventListener('dblclick', die_select)
   text.addEventListener('mouseover', (evt) => { ui_mouseover(evt, text_verbs) });
   text.addEventListener('mouseout', ui_mouseout)
@@ -551,12 +554,12 @@ function do_animate(el, attrs) {
 }
 
 function add_d6(e, target) {
-  group = make_group('g' + Date.now(), {})
+  group = make_group('g' + base32.short_id(), {})
   get_world().appendChild(group);
   var die = make_die();
   group.appendChild(die)
 
-  var txtEl = make_text('text' + Date.now(), {'data-text': randInt(1,6)})
+  var txtEl = make_text('text' + base32.short_id(), {'data-text': randInt(1,6)})
   group.appendChild(txtEl);
   move_to_center(txtEl, die);
 
@@ -579,16 +582,16 @@ function initDraggable() {
   });
 }
 
-function all_selected_groups() {
+function all_marked_groups() {
   return svgMap(get_world(), (el) => {
-    if (g(el, 'data-ui-selected') === 'true') {
+    if (g(el, 'data-ui-marked') === 'true') {
       return el;
     }
   })
 }
 
 function ui_update_buttons() {
-  var allSel = all_selected_groups()
+  var allSel = all_marked_groups()
 
   var span = byId('num_selected')
   span.innerText = allSel.length;
@@ -602,11 +605,11 @@ function ui_update_buttons() {
 
 function ui_fire(msg) {
   var fn = {
-    createSelect: (msg) => {
-      s(msg.data, 'data-ui-selected', true)
+    createMark: (msg) => {
+      s(msg.data, 'data-ui-marked', true)
       ui_update_buttons()
     },
-    dropSelect: (msg) => {
+    dropMark: (msg) => {
       console.log('ui drop sel')
       ui_update_buttons()
     },
@@ -644,7 +647,7 @@ function animated_delete(el) {
 }
 
 function delete_selected(evt) {
-  var allSel = all_selected_groups()
+  var allSel = all_marked_groups()
   var collection = make_group('deletegroup', {})
   allSel.map(el => {
     animated_delete(el)
@@ -704,12 +707,55 @@ function ui_popup_dialog(target) {
   </button>
 
   <button id="properties_button" onclick="ui_popup_button(this)"
-    title="double-click objects to select them"
+    title="double-click objects to mark them"
     disabled="disabled"
     data-dialog-id="dialog_properties">
     Object Properties
   </button>
 
+  <button id="save_button" onclick="ui_popup_dialog_save()"
+    data-dialog-id="dialog_save">
+    Save
+  </button>
+
+
+  <dialog id="dialog_save">
+  <script>
+function ui_popup_dialog_save() {
+  textarea = byId('textarea_save_output')
+  svg = byId('svgdoc')
+  textarea.innerHTML = svg.outerHTML
+  return ui_popup_dialog({'data-dialog-id': 'dialog_save'})
+}
+  </script>
+    <button class="dialog_cancel" onclick="ui_popdown_dialog(this)"
+      data-dialog-id="dialog_save"
+    >
+      &#215;
+    </button>
+    <nav id="save_nav">
+      <a href="#copy_and_paste">Copy/Paste</a>
+      <a href="#cloud">Cloud Storage</a>
+    </nav>
+    <section>
+      <a name="copy_and_paste">
+      <h1 class="save_h1">Copy and Paste</h1>
+      <textarea id="textarea_save_output" cols="82" rows=20>X</textarea>
+      <div class="save_explain">
+      Copy and paste the contents of this text box to a file on your computer.
+      </div>
+    </section>
+    <section>
+      <a name="cloud">
+      <h1 class="save_h1">Cloud Storage</h1>
+      <div class="save_explain">
+      This feature has not been implemented yet. If you would like it to exist,
+      <span style="color:teal">tweet</span> "Hey @boardcrafting, please make Cloud Storage
+      work on http://1kfa.com/table ! #ttrpg #1kfa #featurerequest"
+      <b>or</b> start participating with the development on Github
+      </div>
+    </section>
+  </dialog>
 
   <dialog id="dialog_bg">
     <button class="dialog_cancel" onclick="ui_popdown_dialog(this)"
@@ -734,9 +780,9 @@ function ui_popup_dialog(target) {
   <dialog id="dialog_properties">
     <script>
 function ui_popup_button(target) {
-  var allSel = all_selected_groups()
+  var allSel = all_marked_groups()
   if (allSel.length !== 1) {
-    alert('You must select exactly 1 object to edit its properties');
+    alert('You must mark exactly 1 object to edit its properties');
     return
   }
   var el = allSel[0].firstChild;
@@ -749,8 +795,8 @@ function ui_popup_properties(el, dialog_specifier) {
   submitButton.addEventListener('click', (evt) => {
       var target = el
 
-      if (is_rect_highlighted(target)) {
-        ui_de_select({target: target.parentNode.lastChild})
+      if (is_rect_marked(target)) {
+        ui_unmark({target: target.parentNode.lastChild})
       }
 
       var inputs = document.getElementsByClassName('properties_input')
@@ -816,7 +862,7 @@ function ui_popup_properties(el, dialog_specifier) {
   <dialog id="dialog_rect">
     <script>
 function make_rect(id, attrs) {
-  var rect = Rect(id || 'rect' + Date.now(), Object.assign({
+  var rect = Rect(id || 'rect' + base32.short_id(), Object.assign({
     'data-app-class': 'rect',
     'class': 'draggable',
     rx: 0,
@@ -841,7 +887,7 @@ function ui_submit_rect(evt) {
   if (!w || !h) {
     return;
   }
-  var rect = make_rect('rect' + Date.now(), {
+  var rect = make_rect('rect' + base32.short_id(), {
     width: w,
     height: h,
     fill: getUserColor(),
@@ -855,11 +901,79 @@ function rect_select(evt) {
   console.log('sel elem', evt.target)
   var target = evt.target;
 
-  var { highlight_rect, highlight_group } = highlight(target)
+  var { mark_rect, highlight_group } = mark(target)
 
-  ui_fire({ type: 'createSelect', data: highlight_group })
-  fire({type: "createSelect", data: {
-    highlight_rect: serializeSvg(highlight_rect),
+  ui_fire({ type: 'createMark', data: highlight_group })
+  fire({type: "createMark", data: {
+    mark_rect: serializeSvg(mark_rect),
+    target: serializeSvg(target),
+  }});
+}
+
+    </script>
+    <button class="dialog_cancel" onclick="ui_popdown_dialog(this)"
+      data-dialog-id="dialog_rect"
+    >
+      &#215;
+    </button>
+    <br />
+    <label for="rect_input_width">Width</label>
+    <input id="rect_input_width" type="text" value="100"/>
+    <br />
+    <label for="rect_input_height">Height</label>
+    <input id="rect_input_height" type="text" value="50"/>
+    <br />
+    <button id="dialog_submit" onclick="ui_submit_rect(this)">
+      Create
+    </button>
+  </dialog>
+  <dialog id="dialog_rect">
+    <script>
+function make_rect(id, attrs) {
+  var rect = Rect(id || 'rect' + base32.short_id(), Object.assign({
+    'data-app-class': 'rect',
+    'class': 'draggable',
+    rx: 0,
+    ry: 0,
+    width: 100,
+    height: 50,
+    fill: 'cyan',
+    stroke: 'black',
+    'fill-opacity': 0.5,
+    'stroke-opacity': 0.8,
+    'stroke-width': 1,
+  }, attrs))
+  rect.addEventListener('dblclick', rect_select);
+  rect.addEventListener('mouseover', (evt) => { ui_mouseover(evt, rect_verbs) });
+  rect.addEventListener('mouseout', ui_mouseout);
+  return rect;
+}
+
+function ui_submit_rect(evt) {
+  w = parseInt(byId('rect_input_width').value);
+  h = parseInt(byId('rect_input_height').value);
+  if (!w || !h) {
+    return;
+  }
+  var rect = make_rect('rect' + base32.short_id(), {
+    width: w,
+    height: h,
+    fill: getUserColor(),
+  });
+  get_world().appendChild(rect);
+  ui_popdown_dialog({'data-dialog-id': 'dialog_rect'})
+  fire({ type: 'create', data: serializeSvg(rect) })
+}
+
+function rect_select(evt) {
+  console.log('sel elem', evt.target)
+  var target = evt.target;
+
+  var { mark_rect, highlight_group } = mark(target)
+
+  ui_fire({ type: 'createMark', data: highlight_group })
+  fire({type: "createMark", data: {
+    mark_rect: serializeSvg(mark_rect),
     target: serializeSvg(target),
   }});
 }
