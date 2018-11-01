@@ -6,6 +6,8 @@
 <script src="./come_together.js"></script>
 <script src="./base32.js"></script>
 <link rel="stylesheet" type="text/css" href="animate.css">
+<link rel="stylesheet" type="text/css" href="hiq.css">
+
 <style>
 #gamearea {
   background-color: #efe;
@@ -344,7 +346,7 @@ var rect_verbs = {
   'Mark': {
     test: (rect) => { return !is_rect_marked(rect) },
     action: (evt, rect) => {
-      return rect_select({target: rect})
+      return rect_mark({target: rect})
     },
   },
   'Object properties': {
@@ -406,9 +408,6 @@ function ui_mouseover(evt, verbs) {
   })
 }
 
-function ui_mouseout(evt) {
-  console.log('hoveroff', evt.target)
-}
 
 function ui_unmark(evt) {
   mark_rect = evt.target;
@@ -450,7 +449,6 @@ function make_mark(id, attrs) {
   )
   rect.addEventListener('dblclick', ui_unmark);
   rect.addEventListener('mouseover', (evt) => { ui_mouseover(evt, mark_verbs) });
-  rect.addEventListener('mouseout', ui_mouseout)
   return rect
 }
 
@@ -476,9 +474,8 @@ function mark(target, attrs) {
   }
 }
 
-function die_select(evt) {
+function die_mark(evt) {
   // evt.target might be the rect or the text node
-  console.log('sel parent', evt.target.parentNode)
   console.log('sel elem', evt.target)
   group_target = evt.target.parentNode;
 
@@ -506,9 +503,8 @@ function make_die(id, attrs) {
     'stroke-opacity': 0.8,
     'stroke-width': 5,
   }, attrs))
-  die.addEventListener('dblclick', die_select)
+  die.addEventListener('dblclick', die_mark)
   die.addEventListener('mouseover', (evt) => { ui_mouseover(evt, die_verbs) });
-  die.addEventListener('mouseout', ui_mouseout)
   return die;
 }
 
@@ -529,11 +525,11 @@ function Text(id, attrs) {
   return textEl;
 }
 
+text_verbs = {}
 function make_text(id, attrs) {
   var text = Text(id || 'text' + base32.short_id(), attrs);
-  text.addEventListener('dblclick', die_select)
+  text.addEventListener('dblclick', die_mark)
   text.addEventListener('mouseover', (evt) => { ui_mouseover(evt, text_verbs) });
-  text.addEventListener('mouseout', ui_mouseout)
   return text
 }
 
@@ -554,12 +550,12 @@ function do_animate(el, attrs) {
 }
 
 function add_d6(e, target) {
-  group = make_group('g' + base32.short_id(), {})
+  group = make_group('g_' + base32.short_id(), {})
   get_world().appendChild(group);
   var die = make_die();
   group.appendChild(die)
 
-  var txtEl = make_text('text' + base32.short_id(), {'data-text': randInt(1,6)})
+  var txtEl = make_text('text_' + base32.short_id(), {'data-text': randInt(1,6)})
   group.appendChild(txtEl);
   move_to_center(txtEl, die);
 
@@ -593,7 +589,7 @@ function all_marked_groups() {
 function ui_update_buttons() {
   var allSel = all_marked_groups()
 
-  var span = byId('num_selected')
+  var span = byId('num_marked')
   span.innerText = allSel.length;
 
   var btn = byId('delete_button')
@@ -646,7 +642,7 @@ function animated_delete(el) {
   }, ms);
 }
 
-function delete_selected(evt) {
+function delete_marked(evt) {
   var allSel = all_marked_groups()
   var collection = make_group('deletegroup', {})
   allSel.map(el => {
@@ -689,11 +685,11 @@ function ui_popup_dialog(target) {
   <button onclick="add_d6(this)">
   Add d6
   </button>
-  <button id="delete_button" onclick="delete_selected(this)"
-    title="double-click objects to select and delete them"
+  <button id="delete_button" onclick="delete_marked(this)"
+    title="double-click objects to mark and delete them"
     disabled="disabled"
   >
-    Delete <span id="num_selected">0</span> Objects
+    Delete <span id="num_marked">0</span> Objects
   </button>
 
   <button id="bg_button" onclick="ui_popup_dialog(this)"
@@ -875,9 +871,8 @@ function make_rect(id, attrs) {
     'stroke-opacity': 0.8,
     'stroke-width': 1,
   }, attrs))
-  rect.addEventListener('dblclick', rect_select);
+  rect.addEventListener('dblclick', rect_mark);
   rect.addEventListener('mouseover', (evt) => { ui_mouseover(evt, rect_verbs) });
-  rect.addEventListener('mouseout', ui_mouseout);
   return rect;
 }
 
@@ -897,7 +892,7 @@ function ui_submit_rect(evt) {
   fire({ type: 'create', data: serializeSvg(rect) })
 }
 
-function rect_select(evt) {
+function rect_mark(evt) {
   console.log('sel elem', evt.target)
   var target = evt.target;
 
@@ -943,9 +938,8 @@ function make_rect(id, attrs) {
     'stroke-opacity': 0.8,
     'stroke-width': 1,
   }, attrs))
-  rect.addEventListener('dblclick', rect_select);
+  rect.addEventListener('dblclick', rect_mark);
   rect.addEventListener('mouseover', (evt) => { ui_mouseover(evt, rect_verbs) });
-  rect.addEventListener('mouseout', ui_mouseout);
   return rect;
 }
 
@@ -965,7 +959,7 @@ function ui_submit_rect(evt) {
   fire({ type: 'create', data: serializeSvg(rect) })
 }
 
-function rect_select(evt) {
+function rect_mark(evt) {
   console.log('sel elem', evt.target)
   var target = evt.target;
 
@@ -1005,8 +999,8 @@ function rect_select(evt) {
       <menuitem label="X"
       ></menuitem>
     </template>
-    <menuitem label="Delete selected objects"
-     onclick="delete_selected(this)"
+    <menuitem label="Delete marked objects"
+     onclick="delete_marked(this)"
     ></menuitem>
   </menu>
   </div>
