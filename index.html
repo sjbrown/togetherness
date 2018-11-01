@@ -1,10 +1,13 @@
 <html>
 <head>
 <meta charset="utf-8">
+
 <script src="https://togetherjs.com/togetherjs-min.js"></script>
 <script src="./draggable.js"></script>
 <script src="./come_together.js"></script>
 <script src="./base32.js"></script>
+<script src="./svg.js"></script>
+
 <link rel="stylesheet" type="text/css" href="animate.css">
 <link rel="stylesheet" type="text/css" href="hiq.css">
 
@@ -80,6 +83,21 @@ function svgMap(parent, fn) {
   return retval;
 }
 
+function do_animate(el, attrs) {
+  var { ms, name } = Object.assign({
+    ms: 900,
+    name: 'slideInDown',
+  }, attrs)
+  el.classList.add('animated')
+  el.classList.add(name)
+  var timedFn;
+  timedFn = setInterval(() => {
+    el.classList.remove('animated')
+    el.classList.remove(name)
+    clearInterval(timedFn);
+  }, ms);
+}
+
 
 togetherFunctions.on_hello = (msg) => {
   worldData = svgMap(get_world(), (el) => {
@@ -130,6 +148,9 @@ function deserialize(payload) {
     // el is something that already exists in the local SVG doc
     el = byId(payload.id);
     Object.keys(payload).map(key => {
+      if (key === 'data-text') {
+        el.innerHTML = payload[key]
+      }
       if (isNaN(parseInt(key)) && key !== 'kids') {
         s(el, key, payload[key]);
       }
@@ -238,6 +259,12 @@ function serialize_group(group) {
   return retval;
 }
 
+function serialize_text(el) {
+  var retval = reduceNonUiAttributes(el)
+  retval['data-text'] = el.innerHTML
+  return retval;
+}
+
 function serializeSvg(el) {
   if (!myClientId) {
     // no network connection - skip it
@@ -334,35 +361,17 @@ function envelop(target, group_id) {
   return group;
 }
 
-function is_rect_marked(rect) {
+function is_marked(el) {
   return (
-    g(rect.parentNode, 'data-app-class') === 'group'
+    g(el.parentNode, 'data-app-class') === 'group'
     &&
-    g(rect.parentNode.lastChild, 'data-app-class') === 'mark'
+    g(el.parentNode.lastChild, 'data-app-class') === 'mark'
   )
-}
-
-var rect_verbs = {
-  'Mark': {
-    test: (rect) => { return !is_rect_marked(rect) },
-    action: (evt, rect) => {
-      return rect_mark({target: rect})
-    },
-  },
-  'Object properties': {
-    test: () => { return true },
-    action: (evt, rect) => {
-      ui_popup_properties(
-        rect,
-        {'data-dialog-id': 'dialog_properties'}
-      )
-    }
-  },
 }
 
 var mark_verbs = {
   'Remove mark': {
-    test: is_rect_marked,
+    test: is_marked,
     action: (evt, mark) => {
       console.log('r', mark);
       console.log('m', evt.target);
@@ -388,26 +397,25 @@ function ui_mouseover(evt, verbs) {
     el.remove();
   })
 
-  var hover_rect = evt.target
+  var hovered_el = evt.target
   var menu = byId('gamemenu')
   var template = byId('template_menuitem')
   Object.keys(verbs).map((title) => {
-    if (!verbs[title].test(hover_rect)) {
+    if (!verbs[title].test(hovered_el)) {
       return
     }
     var clone = template.content.firstElementChild.cloneNode(true)
-    s(clone, 'id', 'menuitem-' + hover_rect.id)
+    s(clone, 'id', 'menuitem-' + hovered_el.id)
     s(clone, 'label', title)
     clone.classList.add('cloned-menuitem')
     clone.addEventListener('click', (evt) => {
-      console.log('x', hover_rect)
-      return verbs[title].action(evt, hover_rect)
+      console.log('x', hovered_el)
+      return verbs[title].action(evt, hovered_el)
     })
     console.log('m', clone)
     menu.insertAdjacentElement('beforeend', clone)
   })
 }
-
 
 function ui_unmark(evt) {
   mark_rect = evt.target;
@@ -456,7 +464,7 @@ function mark(target, attrs) {
   // make the highlight rectangle
   var color = getUserColor();
   var rect = make_mark(
-    (attrs && attrs.id) || 'mark' + base32.short_id(),
+    (attrs && attrs.id) || 'mark_' + base32.short_id(),
     Object.assign({
       'data-app-class': 'mark',
       width: parseInt(g(target, 'width')) + 4,
@@ -474,23 +482,75 @@ function mark(target, attrs) {
   }
 }
 
-function die_mark(evt) {
+function group_child_mark(evt) {
   // evt.target might be the rect or the text node
   console.log('sel elem', evt.target)
   group_target = evt.target.parentNode;
+  element_mark(group_target)
+}
 
-  var { mark_rect, highlight_group } = mark(group_target)
-
+function element_mark(target) {
+  var { mark_rect, highlight_group } = mark(target)
   ui_fire({ type: 'createMark', data: highlight_group })
   fire({type: "createMark", data: {
     mark_rect: serializeSvg(mark_rect),
-    target: serializeSvg(group_target),
+    target: serializeSvg(target),
   }});
 }
 
-var die_verbs = {}
+var die_verbs = {
+  'Mark': {
+    test: (el) => { return !is_marked(el) },
+    action: (evt, el) => {
+      return group_child_mark({target: el})
+    },
+  },
+  'Reroll': {
+    test: () => { return true },
+    action: (evt, die) => {
+      var t = die.parentNode.querySelector('text')
+      var origOpacity = die.style.opacity
+      var newNum = randInt(1,6)
+      animated_ghost(die.parentNode, { name: 'rollOut' })
+      t.innerHTML = " "
+      die.style.opacity = 0.1
+      animated_ghost(die.parentNode, {
+        name: 'rollIn',
+        before_begin: (ghost) => {
+          ghost.querySelector('rect').style.opacity = origOpacity
+        },
+        on_done: () => {
+          t.innerHTML = newNum
+          s(t, 'data-text', newNum)
+          die.style.opacity = origOpacity
+          fire({type: "change", data: serializeSvg(die.parentNode)});
+        },
+      })
+    }
+  },
+  'Turn': {
+    test: () => { return true },
+    action: (evt, die) => {
+      var t = die.parentNode.querySelector('text')
+      var origOpacity = die.style.opacity
+      var origNum = parseInt(t.innerHTML)
+      animated_ghost(die.parentNode, {
+        name: 'thumb',
+        on_done: () => {
+          t.innerHTML = (origNum % 6) + 1
+          s(t, 'data-text', (origNum % 6) + 1)
+          die.style.opacity = origOpacity
+          fire({type: "change", data: serializeSvg(die.parentNode)});
+        },
+      })
+      t.innerHTML = " "
+      die.style.opacity = 0.1
+    }
+  },
+}
+
 function make_die(id, attrs) {
-  var die = Rect(id || 'die' + base32.short_id(), Object.assign({
+  var die = Rect(id || 'die_' + base32.short_id(), Object.assign({
     'data-app-class': 'die',
     rx: 20,
     ry: 20,
@@ -503,7 +563,7 @@ function make_die(id, attrs) {
     'stroke-opacity': 0.8,
     'stroke-width': 5,
   }, attrs))
-  die.addEventListener('dblclick', die_mark)
+  die.addEventListener('dblclick', group_child_mark)
   die.addEventListener('mouseover', (evt) => { ui_mouseover(evt, die_verbs) });
   return die;
 }
@@ -511,6 +571,7 @@ function make_die(id, attrs) {
 function Text(id, attrs) {
   textEl = SVGElem('text', id, Object.assign({
     'data-app-class': 'text',
+    'data-text': '',
     //'class': 'draggable',
     x: 0,
     y: 0,
@@ -527,26 +588,10 @@ function Text(id, attrs) {
 
 text_verbs = {}
 function make_text(id, attrs) {
-  var text = Text(id || 'text' + base32.short_id(), attrs);
-  text.addEventListener('dblclick', die_mark)
+  var text = Text(id, attrs);
+  text.addEventListener('dblclick', group_child_mark)
   text.addEventListener('mouseover', (evt) => { ui_mouseover(evt, text_verbs) });
   return text
-}
-
-function do_animate(el, attrs) {
-  var { ms, name } = Object.assign({
-    ms: 900,
-    name: 'slideInDown',
-  }, attrs)
-  el.classList.add('animated')
-  el.classList.add(name)
-  console.log('el', el)
-  var timedFn;
-  timedFn = setInterval(() => {
-    el.classList.remove('animated')
-    el.classList.remove(name)
-    clearInterval(timedFn);
-  }, ms);
 }
 
 function add_d6(e, target) {
@@ -620,6 +665,55 @@ function ui_fire(msg) {
   } else {
     throw Error('Unknown msg type '+ msg.type);
   }
+}
+
+function flatten_translation(el) {
+  console.log('del flattn', el)
+  console.log('flattn', el.transform.baseVal)
+  var translate = el.transform.baseVal.getItem(0)
+  if (el.tagName === 'g') {
+    svgMap(el, (kid) => {
+      s(kid, 'x', translate.matrix.e)
+      s(kid, 'y', translate.matrix.f)
+    })
+  } else {
+    s(el, 'x', translate.matrix.e)
+    s(el, 'y', translate.matrix.f)
+  }
+  el.transform.baseVal.removeItem(0)
+}
+
+function animated_ghost(el, attrs) {
+  var { ms, name, before_begin, on_done } = Object.assign({
+    ms: 900,
+    name: 'slideInDown',
+    before_begin: () => { return },
+    on_done: () => { return },
+  }, attrs)
+  var animationClone = el.cloneNode(true)
+
+  // Disable interactivity
+  animationClone.id = 'clone' + Date.now()
+  animationClone.getAttributeNames().map((n) => {
+    if (n.indexOf('data-ui-') !== -1) {
+      s(animationClone, n, null);
+    }
+  });
+  s(animationClone, 'draggable-group', null);
+
+  flatten_translation(animationClone)
+  el.parentNode.appendChild(animationClone, el)
+
+  before_begin(animationClone)
+
+  // Animate, then die
+  do_animate(animationClone, {name: name, ms: ms})
+  var timedFn;
+  timedFn = setInterval(() => {
+    animationClone.remove()
+    clearInterval(timedFn)
+    on_done(el)
+  }, ms);
 }
 
 function animated_delete(el) {
@@ -715,6 +809,7 @@ function ui_popup_dialog(target) {
   </button>
 
 
+<!-- SAVE ============================================================ SAVE -->
   <dialog id="dialog_save">
   <script>
 function ui_popup_dialog_save() {
@@ -752,6 +847,7 @@ function ui_popup_dialog_save() {
       </div>
     </section>
   </dialog>
+<!-- /SAVE ========================================================== /SAVE -->
 
   <dialog id="dialog_bg">
     <button class="dialog_cancel" onclick="ui_popdown_dialog(this)"
@@ -773,6 +869,9 @@ function ui_popup_dialog_save() {
     </button>
   </dialog>
 
+
+<!-- PROPERTIES  =============================================== PROPERTIES -->
+
   <dialog id="dialog_properties">
     <script>
 function ui_popup_button(target) {
@@ -791,7 +890,7 @@ function ui_popup_properties(el, dialog_specifier) {
   submitButton.addEventListener('click', (evt) => {
       var target = el
 
-      if (is_rect_marked(target)) {
+      if (is_marked(target)) {
         ui_unmark({target: target.parentNode.lastChild})
       }
 
@@ -854,11 +953,34 @@ function ui_popup_properties(el, dialog_specifier) {
       Change
     </button>
   </dialog>
+<!-- /PROPERTIES  ============================================= /PROPERTIES -->
+
+
+<!-- RECT =========================================================== RECT -->
 
   <dialog id="dialog_rect">
     <script>
+
+var rect_verbs = {
+  'Mark': {
+    test: (rect) => { return !is_marked(rect) },
+    action: (evt, rect) => {
+      return rect_mark({target: rect})
+    },
+  },
+  'Object properties': {
+    test: () => { return true },
+    action: (evt, rect) => {
+      ui_popup_properties(
+        rect,
+        {'data-dialog-id': 'dialog_properties'}
+      )
+    }
+  },
+}
+
 function make_rect(id, attrs) {
-  var rect = Rect(id || 'rect' + base32.short_id(), Object.assign({
+  var rect = Rect(id || 'rect_' + base32.short_id(), Object.assign({
     'data-app-class': 'rect',
     'class': 'draggable',
     rx: 0,
@@ -882,7 +1004,7 @@ function ui_submit_rect(evt) {
   if (!w || !h) {
     return;
   }
-  var rect = make_rect('rect' + base32.short_id(), {
+  var rect = make_rect('rect_' + base32.short_id(), {
     width: w,
     height: h,
     fill: getUserColor(),
@@ -895,16 +1017,8 @@ function ui_submit_rect(evt) {
 function rect_mark(evt) {
   console.log('sel elem', evt.target)
   var target = evt.target;
-
-  var { mark_rect, highlight_group } = mark(target)
-
-  ui_fire({ type: 'createMark', data: highlight_group })
-  fire({type: "createMark", data: {
-    mark_rect: serializeSvg(mark_rect),
-    target: serializeSvg(target),
-  }});
+  return element_mark(target)
 }
-
     </script>
     <button class="dialog_cancel" onclick="ui_popdown_dialog(this)"
       data-dialog-id="dialog_rect"
@@ -922,73 +1036,9 @@ function rect_mark(evt) {
       Create
     </button>
   </dialog>
-  <dialog id="dialog_rect">
-    <script>
-function make_rect(id, attrs) {
-  var rect = Rect(id || 'rect' + base32.short_id(), Object.assign({
-    'data-app-class': 'rect',
-    'class': 'draggable',
-    rx: 0,
-    ry: 0,
-    width: 100,
-    height: 50,
-    fill: 'cyan',
-    stroke: 'black',
-    'fill-opacity': 0.5,
-    'stroke-opacity': 0.8,
-    'stroke-width': 1,
-  }, attrs))
-  rect.addEventListener('dblclick', rect_mark);
-  rect.addEventListener('mouseover', (evt) => { ui_mouseover(evt, rect_verbs) });
-  return rect;
-}
 
-function ui_submit_rect(evt) {
-  w = parseInt(byId('rect_input_width').value);
-  h = parseInt(byId('rect_input_height').value);
-  if (!w || !h) {
-    return;
-  }
-  var rect = make_rect('rect' + base32.short_id(), {
-    width: w,
-    height: h,
-    fill: getUserColor(),
-  });
-  get_world().appendChild(rect);
-  ui_popdown_dialog({'data-dialog-id': 'dialog_rect'})
-  fire({ type: 'create', data: serializeSvg(rect) })
-}
+<!-- END RECT =================================================== END RECT -->
 
-function rect_mark(evt) {
-  console.log('sel elem', evt.target)
-  var target = evt.target;
-
-  var { mark_rect, highlight_group } = mark(target)
-
-  ui_fire({ type: 'createMark', data: highlight_group })
-  fire({type: "createMark", data: {
-    mark_rect: serializeSvg(mark_rect),
-    target: serializeSvg(target),
-  }});
-}
-
-    </script>
-    <button class="dialog_cancel" onclick="ui_popdown_dialog(this)"
-      data-dialog-id="dialog_rect"
-    >
-      &#215;
-    </button>
-    <br />
-    <label for="rect_input_width">Width</label>
-    <input id="rect_input_width" type="text" value="100"/>
-    <br />
-    <label for="rect_input_height">Height</label>
-    <input id="rect_input_height" type="text" value="50"/>
-    <br />
-    <button id="dialog_submit" onclick="ui_submit_rect(this)">
-      Create
-    </button>
-  </dialog>
 
   <div id="gamearea" contextmenu="gamemenu">
   <svg id="svgdoc" width="100%" height="500" onload="initDraggable()">
