@@ -670,6 +670,9 @@ function ui_fire(msg) {
 function flatten_translation(el) {
   console.log('del flattn', el)
   console.log('flattn', el.transform.baseVal)
+  if (el.transform.baseVal.length === 0) {
+    return;
+  }
   var translate = el.transform.baseVal.getItem(0)
   if (el.tagName === 'g') {
     svgMap(el, (kid) => {
@@ -716,31 +719,12 @@ function animated_ghost(el, attrs) {
   }, ms);
 }
 
-function animated_delete(el) {
-  var ms = 900
-  var animationClone = el.cloneNode(true)
-  animationClone.id = 'clone' + Date.now()
-  el.parentNode.insertBefore(animationClone, el)
-  animationClone.getAttributeNames().map((n) => {
-    if (n.indexOf('data-ui-') !== -1) {
-      console.log('dropping', n)
-      s(animationClone, n, null);
-    }
-  });
-  s(animationClone, 'draggable-group', null);
-  do_animate(animationClone, {name: 'rotateOut', ms: ms})
-  var timedFn;
-  timedFn = setInterval(() => {
-    animationClone.remove();
-    clearInterval(timedFn);
-  }, ms);
-}
 
 function delete_marked(evt) {
   var allSel = all_marked_groups()
   var collection = make_group('deletegroup', {})
   allSel.map(el => {
-    animated_delete(el)
+    animated_ghost(el, {name: 'rotateOut'})
     el.remove()
     collection.appendChild(el)
   })
