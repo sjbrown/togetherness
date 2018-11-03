@@ -2,4 +2,32 @@ dialog {
   position: absolute;
   top: 10%;
   left: 10%;
+  max-width: 70%;
 }
+dialog label {
+  display: block;
+}
+
+#gamearea {
+  background-color: #efe;
+  width: 80%;
+  height: 80%;
+  /*ddheight: 500px;
+  */
+}
+
+.static {
+  cursor: not-allowed;
+}
+.draggable, .draggable-group {
+  cursor: move; /* fallback if grab is unsupported */
+  cursor: grab;
+}
+.draggable:active, .draggable-group:active {
+  cursor: grabbing;
+}
+
+.template {
+  display: none;
+}
+
