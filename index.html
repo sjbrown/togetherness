@@ -52,6 +52,11 @@
     Save
   </button>
 
+  <button id="load_button" onclick="ui_popup_dialog(this)"
+    data-dialog-id="dialog_load">
+    Load
+  </button>
+
   <div id="gamearea" contextmenu="gamemenu">
   <svg id="svgdoc" width="100%" height="500" onload="initDraggable()">
   </svg>
@@ -72,20 +77,20 @@ function ui_popup_dialog_save() {
     >
       &#215;
     </button>
-    <nav id="save_nav">
+    <nav class="dialog_nav"  id="save_nav">
       <a href="#copy_and_paste">Copy/Paste</a>
       <a href="#cloud">Cloud Storage</a>
     </nav>
     <section>
-      <a name="copy_and_paste">
+      <a name="copy_and_paste"></a>
       <h1 class="save_h1">Copy and Paste</h1>
-      <textarea id="textarea_save_output" cols="82" rows=20>X</textarea>
+      <textarea id="textarea_save_output" cols="82" rows=10>X</textarea>
       <div class="save_explain">
       Copy and paste the contents of this text box to a file on your computer.
       </div>
     </section>
     <section>
-      <a name="cloud">
+      <a name="cloud"></a>
       <h1 class="save_h1">Cloud Storage</h1>
       <div class="save_explain">
       This feature has not been implemented yet. If you would like it to exist,
@@ -96,6 +101,52 @@ function ui_popup_dialog_save() {
     </section>
   </dialog>
 <!-- /SAVE ========================================================== /SAVE -->
+
+<!-- LOAD ============================================================ LOAD -->
+  <dialog id="dialog_load">
+  <script>
+function load_svg() {
+  textarea = byId('textarea_load_input')
+  svg = byId('svgdoc')
+  console.log('texar', textarea.value)
+  svg.outerHTML = textarea.value
+  ui_popdown_dialog({'data-dialog-id': 'dialog_load'})
+}
+  </script>
+    <button class="dialog_cancel" onclick="ui_popdown_dialog(this)"
+      data-dialog-id="dialog_load"
+    >
+      &#215;
+    </button>
+    <nav class="dialog_nav" id="load_nav">
+      <a href="#copy_and_paste">Copy/Paste</a>
+      <a href="#upload">Upload file</a>
+    </nav>
+    <section>
+      <a name="copy_and_paste"></a>
+      <h1 class="load_h1">Copy and Paste</h1>
+      <textarea id="textarea_load_input" cols="82" rows=5></textarea>
+      <div class="load_explain">
+      Copy and paste the contents from a previously saved session into this
+      text box.
+      </div>
+      <button class="btn btn-dialog btn-primary" onclick="load_svg()">
+      Load
+      </button>
+    </section>
+    <section>
+      <a name="upload"></a>
+      <h1 class="load_h1">Upload file</h1>
+      <div class="load_explain">
+      This feature has not been implemented yet. If you would like it to exist,
+      <span style="color:teal">tweet</span> "Hey @boardcrafting, please make
+      file uploading
+      work on http://1kfa.com/table ! #ttrpg #1kfa #featurerequest"
+      <b>or</b> start participating with the development on Github
+      </div>
+    </section>
+  </dialog>
+<!-- /LOAD ========================================================== /LOAD -->
 
   <dialog id="dialog_bg">
     <button class="dialog_cancel" onclick="ui_popdown_dialog(this)"

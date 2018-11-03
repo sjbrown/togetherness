@@ -8,6 +8,20 @@ dialog label {
   display: block;
 }
 
+dialog nav {
+  font-size: small;
+}
+
+dialog nav a {
+  display: inline-block;
+  background-color: #ddd;
+}
+
+dialog h1 {
+  font-size: larger;
+  font-weight: bold;
+}
+
 #gamearea {
   background-color: #efe;
   width: 80%;
