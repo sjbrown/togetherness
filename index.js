@@ -369,7 +369,7 @@ var die_verbs = {
           tspan.textContent = newNum
           s(text, 'data-text', newNum)
           dieNode.style.opacity = origOpacity
-          fire({type: "change", data: serialize(dieNode.parentNode)});
+          fire({type: "change", data: serialize(dieNode)});
         },
       })
     }
