@@ -187,17 +187,17 @@ function load_svg() {
   <dialog id="dialog_properties">
     <script>
 function ui_popup_button(target) {
-  var allSel = all_marked_groups()
+  var allSel = svgdoc.select('[data-ui-marked]').members
   if (allSel.length !== 1) {
     alert('You must mark exactly 1 object to edit its properties');
     return
   }
-  var el = allSel[0].firstChild;
+  var el = allSel[0].node.firstChild;
   return ui_popup_properties(el, target)
 }
 function ui_popup_properties(el, dialog_specifier) {
   var submitButton = byId('dialog_properties_submit')
-  var attrs = reduceNonUiAttributes(el)
+  var attrs = justNonUiAttributes(el)
 
   submitButton.addEventListener('click', (evt) => {
       var target = el
@@ -240,6 +240,9 @@ function ui_popup_properties(el, dialog_specifier) {
     s(input, 'name', key)
     s(input, 'id', 'properties_' + key)
     s(input, 'value', attrs[key])
+    if (key.indexOf('data-') !== -1 ) {
+      s(input, 'disabled', 'disabled')
+    }
     input.classList.add('properties_input')
     input.classList.remove('template')
     label.classList.remove('template')
