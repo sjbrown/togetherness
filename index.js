@@ -590,8 +590,7 @@ function ui_change_background(evt) {
 }
 
 function change_background(value) {
-  svg = byId('svgdoc')
-  svg.style.backgroundImage = value
+  svgdoc.style('background-image', value)
 }
 
 function ui_popdown_dialog(target) {
