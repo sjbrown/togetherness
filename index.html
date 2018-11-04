@@ -232,7 +232,7 @@ function ui_popup_properties(el, dialog_specifier) {
       });
 
       ui_popdown_dialog({'data-dialog-id': 'dialog_properties'})
-      fire({ type: 'change', data: serializeSvg(target) })
+      fire({ type: 'change', data: serialize(target) })
   });
 
   fieldset = byId('properties_fields')
@@ -341,7 +341,7 @@ function ui_submit_rect(evt) {
     fill: getUserColor(),
   });
   ui_popdown_dialog({'data-dialog-id': 'dialog_rect'})
-  fire({ type: 'create', data: serializeSvg(rect) })
+  fire({ type: 'create', data: serialize(rect) })
 }
 
     </script>

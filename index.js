@@ -55,7 +55,7 @@ function do_animate(node, attrs) {
 
 
 togetherFunctions.on_hello = (msg) => {
-  worldData = nodeMap(svgdoc.node, serializeNode);
+  worldData = nodeMap(svgdoc.node, serialize);
   if (worldData.length) {
     fire({
       type: "sync",
@@ -177,45 +177,43 @@ function justNonUiAttributes(node) {
 }
 
 function serialize_group(group) {
-  var retval = justNonUiAttributes(group.node)
-  retval.kids = [];
-  nodeMap(group.node, (el) => {
-    retval.kids.push(serializeNode(el));
+  var retval = { kids: [] }
+  nodeMap(group, (el) => {
+    retval.kids.push(serialize(el));
   })
   return retval;
 }
 
 function serialize_nest(nest) {
-  var retval = justNonUiAttributes(nest.node)
-  retval.kids = [];
-  nodeMap(nest.node, (el) => {
-    retval.kids.push(serializeNode(el));
+  var retval = { kids: [] }
+  nodeMap(nest, (el) => {
+    retval.kids.push(serialize(el));
   })
   return retval;
 }
 
 function serialize_text(textEl) {
-  var retval = justNonUiAttributes(textEl.node)
-  retval['data-text'] = el.innerHTML
-  return retval;
+  return { 'data-text': textEl.textContent }
 }
 
-function serializeSvg(svgEl) {
-  return serializeNode(svgEl.node)
-}
-
-function serializeNode(node) {
+function serialize(thing, extras) {
   if (!myClientId) {
     // no network connection - skip it
     return;
   }
-  console.log('trying to serialize', node)
+  console.log('trying to serialize', thing)
+  var node = (thing.attr) ? thing.node : thing;
+  var retval = justNonUiAttributes(node)
   var fn = str_to_fn('serialize_' + g(node, 'data-app-class'))
   if (fn) {
-    return fn(node);
+    retval = Object.assign( retval, fn(node) )
   }
-  return justNonUiAttributes(node);
+  if (extras) {
+    retval = Object.assign( retval, extras )
+  }
+  return retval
 }
+
 
 function is_marked(node) {
   return (
@@ -281,7 +279,7 @@ function make_mark(target_id, attrs) {
   nest.addClass('draggable-group')
   nest.id('g_' + rect.attr('id')) // special ID
 
-  // Home the enveloped object inside the <svg>, and then
+  // Re-home the enveloped object inside the <svg>, and then
   // move that <svg> to the old x,y coords of the enveloped object
   oldXY = {
     x: target.x(),
@@ -292,14 +290,14 @@ function make_mark(target_id, attrs) {
   target.toParent(nest)
   target.attr('data-enveloped', true)
   nest.attr( oldXY )
-  nest.attr( { 'data-nest-for': 'mark' } )
+  nest.attr('data-nest-for', 'mark')
   nest.add(rect)
 
   nest.on('dblclick', ui_unmark);
   nest.on('mouseover', (evt) => { ui_mouseover(nest.node, mark_verbs) });
   makeDraggable(svgdoc, nest, {
     endDragCb: (selectedElement) => {
-      fire({type: "change", data: serializeSvg(selectedElement)});
+      fire({type: "change", data: serialize(selectedElement)});
     }
   })
 
@@ -313,7 +311,7 @@ function markElementById(target_id) {
   var { mark_rect, mark_nest } = make_mark(target_id)
   ui_fire({ type: 'createMark', data: mark_nest })
   fire({type: "createMark", data: {
-    mark_rect: serializeSvg(mark_rect),
+    mark_rect: serialize(mark_rect),
     target_id: target_id,
   }});
 }
@@ -323,7 +321,7 @@ function ui_unmark(evt) {
   _unmark(mark_rect.id);
 
   ui_fire({type: 'dropMark', data: mark_rect.parentNode});
-  fire({type: "dropMark", mark_rect: serializeNode(mark_rect) });
+  fire({type: "dropMark", mark_rect: serialize(mark_rect) });
 }
 
 function _unmark(mark_rect_id) {
@@ -359,10 +357,10 @@ var die_verbs = {
       var tspan = dieNode.querySelector('tspan')
       var origOpacity = dieNode.style.opacity
       var newNum = '' + randInt(1,6)
-      animated_ghost(dieNode.parentNode, { animation: 'rollOut' })
+      animated_ghost(dieNode, { animation: 'rollOut' })
       tspan.textContent = ' '
       dieNode.style.opacity = 0.1
-      animated_ghost(dieNode.parentNode, {
+      animated_ghost(dieNode, {
         animation: 'rollIn',
         before_begin: (ghost) => {
           ghost.querySelector('rect').style.opacity = origOpacity
@@ -371,7 +369,7 @@ var die_verbs = {
           tspan.textContent = newNum
           s(text, 'data-text', newNum)
           dieNode.style.opacity = origOpacity
-          fire({type: "change", data: serializeNode(dieNode.parentNode)});
+          fire({type: "change", data: serialize(dieNode.parentNode)});
         },
       })
     }
@@ -379,17 +377,18 @@ var die_verbs = {
   'Turn': {
     test: () => { return true },
     action: (evt, dieNode) => {
+      console.log("turn action on", dieNode)
       var text = dieNode.querySelector('text')
       var tspan = dieNode.querySelector('tspan')
       var origOpacity = dieNode.style.opacity
       var origNum = parseInt(tspan.textContent)
-      animated_ghost(dieNode.parentNode, {
+      animated_ghost(dieNode, {
         animation: 'thumb',
         on_done: () => {
           tspan.textContent = (origNum % 6) + 1
           s(text, 'data-text', (origNum % 6) + 1)
           dieNode.style.opacity = origOpacity
-          fire({type: "change", data: serializeSvg(dieNode.parentNode)});
+          fire({type: "change", data: serialize(dieNode)});
         },
       })
       tspan.textContent = " "
@@ -445,7 +444,7 @@ function add_d6(die_attrs) {
   do_animate(nest.node)
   hookup_interactions(nest, die_verbs)
 
-  fire({type: "create", data: serializeSvg(nest)});
+  fire({type: "create", data: serialize(nest)});
 }
 
 function hookup_interactions(svgEl, verbs) {
@@ -454,7 +453,7 @@ function hookup_interactions(svgEl, verbs) {
   makeDraggable(svgdoc, svgEl, {
     endDragCb: (selectedElement) => {
       console.log('done drag', selectedElement)
-      fire({type: "change", data: serializeSvg(selectedElement)});
+      fire({type: "change", data: serialize(selectedElement)});
     }
   })
 }
@@ -586,7 +585,7 @@ function delete_marked(evt) {
     collection.add(el)
   })
   collection.remove()
-  fire({ type: 'delete', data: serialize_group(collection.node) });
+  fire({ type: 'delete', data: serialize(collection.node) });
   ui_fire({type: 'delete', data: collection });
 }
 
