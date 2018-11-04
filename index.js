@@ -295,11 +295,6 @@ function make_mark(target_id, attrs) {
 
   nest.on('dblclick', ui_unmark);
   nest.on('mouseover', (evt) => { ui_mouseover(nest.node, mark_verbs) });
-  makeDraggable(svgdoc, nest, {
-    endDragCb: (selectedElement) => {
-      fire({type: "change", data: serialize(selectedElement)});
-    }
-  })
 
   return {
     mark_rect: rect,
@@ -450,12 +445,6 @@ function add_d6(die_attrs) {
 function hookup_interactions(svgEl, verbs) {
   svgEl.on('dblclick', (evt) => { markElementById(svgEl.id()) })
   svgEl.on('mouseover', (evt) => { ui_mouseover(svgEl.node, verbs) })
-  makeDraggable(svgdoc, svgEl, {
-    endDragCb: (selectedElement) => {
-      console.log('done drag', selectedElement)
-      fire({type: "change", data: serialize(selectedElement)});
-    }
-  })
 }
 
 function ui_mouseover(target, verbs) {
@@ -492,7 +481,7 @@ function ui_update_buttons() {
   var numMarked = svgdoc.select('[data-ui-marked]').members.length
 
   var span = byId('num_marked')
-  span.innerText = numMarked;
+  span.textContent = numMarked;
 
   var btn = byId('delete_button')
   btn.disabled = (numMarked === 0)

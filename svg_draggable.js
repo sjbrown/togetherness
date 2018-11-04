@@ -1,7 +1,7 @@
 /*
   Peter's draggable library, with some modifications
 */
-function makeDraggable(world, svgEl, callbacks) {
+function makeDraggable(world, callbacks) {
   // Source:
   // https://github.com/petercollingridge/code-for-blog/
   // Tutorial:
@@ -9,15 +9,15 @@ function makeDraggable(world, svgEl, callbacks) {
   var cbDict = callbacks;
   var selectedEl, origMouse, origXY;
 
-  svgEl.on('mousedown', startDrag);
-  svgEl.on('mousemove', drag);
-  svgEl.on('mouseup', endDrag);
-  svgEl.on('mouseleave', endDrag);
-  svgEl.on('touchstart', startDrag);
-  svgEl.on('touchmove', drag);
-  svgEl.on('touchend', endDrag);
-  svgEl.on('touchleave', endDrag);
-  svgEl.on('touchcancel', endDrag);
+  world.on('mousedown', startDrag);
+  world.on('mousemove', drag);
+  world.on('mouseup', endDrag);
+  world.on('mouseleave', endDrag);
+  world.on('touchstart', startDrag);
+  world.on('touchmove', drag);
+  world.on('touchend', endDrag);
+  world.on('touchleave', endDrag);
+  world.on('touchcancel', endDrag);
 
 
   function getMousePosition(evt) {

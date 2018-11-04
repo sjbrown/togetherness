@@ -26,6 +26,12 @@ SVG.on(document, 'DOMContentLoaded', () => {
   SVG.eid = (name) => {
     return name + '_' + base32.short_id()
   }
+  makeDraggable(svgdoc, {
+    endDragCb: (selectedElement) => {
+      console.log('done drag', selectedElement)
+      fire({type: "change", data: serialize(selectedElement)});
+    }
+  })
 })
 </script>
 
