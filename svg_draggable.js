@@ -7,6 +7,7 @@ function makeDraggable(world, svgEl, callbacks) {
   // Tutorial:
   // http://www.petercollingridge.co.uk/tutorials/svg/interactive/dragging/
   var cbDict = callbacks;
+  var selectedEl, origMouse, origXY;
 
   svgEl.on('mousedown', startDrag);
   svgEl.on('mousemove', drag);
@@ -27,8 +28,6 @@ function makeDraggable(world, svgEl, callbacks) {
       y: (evt.clientY - CTM.f) / CTM.d
     };
   }
-
-  var selectedEl, origMouse, origXY;
 
   function initialiseDragging(evt) {
       origMouse = getMousePosition(evt);
@@ -74,6 +73,4 @@ function makeDraggable(world, svgEl, callbacks) {
   }
 }
 
-//module.exports.makeDraggable = makeDraggable;
-//module.exports.makeDraggable = makeDraggable;
 
