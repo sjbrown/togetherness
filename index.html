@@ -127,6 +127,7 @@ function ui_popup_dialog_save() {
   </dialog>
 <!-- /SAVE ========================================================== /SAVE -->
 
+
 <!-- LOAD ============================================================ LOAD -->
   <dialog id="dialog_load">
   <script>
@@ -173,6 +174,8 @@ function load_svg() {
   </dialog>
 <!-- /LOAD ========================================================== /LOAD -->
 
+
+<!-- BACKGROUND  =============================================== BACKGROUND -->
   <dialog id="dialog_bg">
     <button class="dialog_cancel" onclick="ui_popdown_dialog(this)"
       data-dialog-id="dialog_bg"
@@ -180,18 +183,19 @@ function load_svg() {
       &#215;
     </button>
     <ul>
-      <li>http://www.1kfa.com/table/base_map.svg
-      <li>http://www.1kfa.com/table/topography.svg
-      <li>http://www.1kfa.com/table/hexagons.svg
+      <li>http://www.1kfa.com/table/svg/bg_base_map.svg
+      <li>http://www.1kfa.com/table/svg/bg_topography.svg
+      <li>http://www.1kfa.com/table/svg/bg_hexagons.svg
       <li>https://images.ira.abramov.org/Propaganda/
     </ul>
     <input id="background_url" type="url"
-      value="http://www.1kfa.com/table/base_map.svg"
+      value="http://www.1kfa.com/table/svg/topography.svg"
     />
     <button id="dialog_bg_submit" onclick="ui_change_background(this)">
       Change Background URL
     </button>
   </dialog>
+<!-- /BACKGROUND ============================================== /BACKGROUND -->
 
 
 <!-- PROPERTIES  =============================================== PROPERTIES -->
