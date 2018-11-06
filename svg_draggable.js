@@ -38,21 +38,23 @@ function makeDraggable(world, callbacks) {
   }
 
   function startDrag(evt) {
+    evt.preventDefault() // prevent, for example, text selection
     console.log('st ', evt.target)
-    if (evt.target.classList.contains('draggable')) {
+    if (
+      evt.target.classList.contains('draggable')
+      ||
+      evt.target.classList.contains('draggable-group')
+    ) {
       selectedEl = SVG.get(evt.target.id);
       initialiseDragging(evt);
-    } else if (evt.target.classList.contains('draggable-group')) {
-      selectedEl = SVG.get(evt.target.id);
-      initialiseDragging(evt);
-    } else if (evt.target.parentNode.classList.contains('draggable-group')) {
-      selectedEl = SVG.get(evt.target.parentNode.id);
+    } else if (evt.target.closest('.draggable-group')) {
+      selectedEl = SVG.get(evt.target.closest('.draggable-group').id);
       initialiseDragging(evt);
     }
   }
 
   function drag(evt) {
-    evt.preventDefault();
+    evt.preventDefault() // prevent, for example, text selection
     if (selectedEl) {
       var mouse = getMousePosition(evt);
       selectedEl.x(origXY.x + (mouse.x - origMouse.x))
@@ -63,14 +65,14 @@ function makeDraggable(world, callbacks) {
   function endDrag(evt) {
     try {
       if (selectedEl) {
-        cbDict.endDragCb(selectedEl);
+        cbDict.endDragCb(selectedEl)
       }
     }
     catch (err) {
-      console.log(err);
+      console.log(err)
     }
     finally {
-      selectedEl = false;
+      selectedEl = false
     }
   }
 }
