@@ -446,7 +446,7 @@ function add_d6(die_attrs) {
 
 function add_d8() {
   var res;
-  var url = 'symbols/v1/dice_d8.svg'
+  var url = 'svg/v1/dice_d8.svg'
 
   if (!DEBUG) {
     var answer = confirm('Do you trust the security of '+ url +'?')
