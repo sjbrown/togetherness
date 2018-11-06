@@ -1,4 +1,6 @@
 
+DEBUG = 1
+
 function randInt(min, max) {
   // get a random integer in the range, inclusive.
   // randInt(1,6) might return 1,2,3,4,5,6
@@ -225,14 +227,14 @@ function is_marked(node) {
 
 var mark_verbs = {
   'Remove mark': {
-    test: (target) => { return g(target, 'data-app-class') === 'nest' },
+    applicable: (target) => { return g(target, 'data-app-class') === 'nest' },
     action: (evt, nestNode) => {
       console.log('r', nestNode);
       return ui_unmark({target: nestNode.lastChild})
     },
   },
   'Object properties': {
-    test: () => { return true },
+    applicable: () => { return true },
     action: (evt, nestNode) => {
       ui_popup_properties(
         nestNode.parentNode.firstChild,
@@ -340,13 +342,13 @@ function _unmark(mark_rect_id) {
 
 var die_verbs = {
   'Mark': {
-    test: (dieNode) => { return !is_marked(dieNode) },
+    applicable: (dieNode) => { return !is_marked(dieNode) },
     action: (evt, dieNode) => {
       return markElementById(dieNode.id)
     },
   },
   'Reroll': {
-    test: () => { return true },
+    applicable: () => { return true },
     action: (evt, dieNode) => {
       var text = dieNode.querySelector('text')
       var tspan = dieNode.querySelector('tspan')
@@ -370,7 +372,7 @@ var die_verbs = {
     }
   },
   'Turn': {
-    test: () => { return true },
+    applicable: () => { return true },
     action: (evt, dieNode) => {
       console.log("turn action on", dieNode)
       var text = dieNode.querySelector('text')
@@ -442,6 +444,48 @@ function add_d6(die_attrs) {
   fire({type: "create", data: serialize(nest)});
 }
 
+function add_d8() {
+  var res;
+  var url = 'symbols/v1/dice_d8.svg'
+
+  if (!DEBUG) {
+    var answer = confirm('Do you trust the security of '+ url +'?')
+    if (!answer) {
+      return;
+    }
+  }
+
+  return fetch(url)
+  .then((res) => {
+    if (res.headers.get('content-length') > 50000) {
+      console.error('That file is too big')
+      return
+    }
+    return res.text()
+  })
+  .then((body) => {
+    var frame = document.createElementNS(SVG.ns, 'svg')
+    frame.innerHTML = (
+      body.replace(/\n/, '').replace(/<([\w:-]+)([^<]+?)\/>/g, '<$1$2></$1>')
+    )
+    var importedScript = frame.querySelector('script')
+    var nest = frame.getElementsByTagName('svg')[0]
+    var id = 'isvg_' + base32.short_id()
+    s(nest, 'id', id)
+    nest = SVG.adopt(nest)
+    nest.attr({
+      'data-app-class': 'nest',
+      'data-nest-for': 'svg',
+      'data-import-from': url,
+    })
+    nest.addClass('draggable-group')
+    svgdoc.add(nest)
+    do_animate(nest.node)
+    hookup_interactions(nest, die_verbs)
+    fire({type: "create", data: serialize(nest)});
+  })
+}
+
 function hookup_interactions(svgEl, verbs) {
   svgEl.on('dblclick', (evt) => { markElementById(svgEl.id()) })
   svgEl.on('mouseover', (evt) => { ui_mouseover(svgEl.node, verbs) })
@@ -460,8 +504,7 @@ function ui_mouseover(target, verbs) {
   var menu = byId('gamemenu')
   var template = byId('template_menuitem')
   Object.keys(verbs).map((title) => {
-  console.log("testing ", title)
-    if (!verbs[title].test(hovered_el)) {
+    if (!verbs[title].applicable(hovered_el)) {
       return
     }
     var clone = template.content.firstElementChild.cloneNode(true)

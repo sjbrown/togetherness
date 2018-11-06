@@ -38,12 +38,14 @@ function makeDraggable(world, callbacks) {
   }
 
   function startDrag(evt) {
+    console.log('st ', evt.target)
     if (evt.target.classList.contains('draggable')) {
-    console.log("init", evt.target.id)
+      selectedEl = SVG.get(evt.target.id);
+      initialiseDragging(evt);
+    } else if (evt.target.classList.contains('draggable-group')) {
       selectedEl = SVG.get(evt.target.id);
       initialiseDragging(evt);
     } else if (evt.target.parentNode.classList.contains('draggable-group')) {
-    console.log("init", evt.target.parentNode.id)
       selectedEl = SVG.get(evt.target.parentNode.id);
       initialiseDragging(evt);
     }

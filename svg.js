@@ -3449,7 +3449,6 @@ SVG.on = function(node, event, listener, binding, options) {
   SVG.listeners[index][ev][ns][listener._svgjsListenerId] = l
 
   // add listener
-  console.log("adding listener to", node)
   node.addEventListener(ev, l, options || false)
 }
 
@@ -5601,3 +5600,4 @@ if (typeof window.CustomEvent !== 'function') {
 return SVG
 
 }));
+

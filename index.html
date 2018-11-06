@@ -40,6 +40,11 @@ SVG.on(document, 'DOMContentLoaded', () => {
   <button onclick="add_d6()">
   Add d6
   </button>
+
+  <button onclick="add_d8()">
+  Add d8
+  </button>
+
   <button id="delete_button" onclick="delete_marked(this)"
     title="double-click objects to mark and delete them"
     disabled="disabled"
@@ -300,13 +305,13 @@ function ui_popup_properties(el, dialog_specifier) {
 
 var rect_verbs = {
   'Mark': {
-    test: (rectNode) => { return !is_marked(rectNode) },
+    applicable: (rectNode) => { return !is_marked(rectNode) },
     action: (evt, rectNode) => {
       return markElementById(rectNode.id)
     },
   },
   'Object properties': {
-    test: () => { return true },
+    applicable: () => { return true },
     action: (evt, rectNode) => {
       ui_popup_properties(
         rectNode,
