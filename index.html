@@ -2,6 +2,13 @@
 <head>
 <meta charset="utf-8">
 
+<!--
+ The SVG viewport is the scrolling / panning / zooming area, so
+ prevent touch events from zooming into the page
+ ( from https://www.html5rocks.com/en/mobile/touchandmouse/ )
+-->
+<meta name="viewport" content="width=device-width,user-scalable=no">
+
 <script src="https://togetherjs.com/togetherjs-min.js"></script>
 <script src="./svg_draggable.js"></script>
 <script src="./come_together.js"></script>
