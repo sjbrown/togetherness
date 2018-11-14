@@ -29,7 +29,7 @@
 <script>
 var svgdoc;
 SVG.on(document, 'DOMContentLoaded', () => {
-  svgdoc = SVG('gamearea').size(600, 400)
+  svgdoc = SVG('gamearea').size(700, 400)
   SVG.eid = (name) => {
     return name + '_' + base32.short_id()
   }
@@ -86,6 +86,11 @@ SVG.on(document, 'DOMContentLoaded', () => {
     Load
   </button>
 
+  <button id="load_button" onclick="ui_popup_dialog(this)"
+    data-dialog-id="dialog_contribute">
+    Help this project
+  </button>
+
   <div id="gamearea" contextmenu="gamemenu">
   <!--
   <svg id="svgdoc" width="100%" height="500" onload="initDraggable()">
@@ -110,6 +115,7 @@ function ui_popup_dialog_save() {
     </button>
     <nav class="dialog_nav"  id="save_nav">
       <a href="#copy_and_paste">Copy/Paste</a>
+      <a href="#local">Local Storage</a>
       <a href="#cloud">Cloud Storage</a>
     </nav>
     <section>
@@ -381,6 +387,51 @@ function ui_submit_rect(evt) {
   </dialog>
 
 <!-- END RECT =================================================== END RECT -->
+
+<!-- CONTRIBUTE =============================================== CONTRIBUTE -->
+  <dialog id="dialog_contribute">
+    <button class="dialog_cancel" onclick="ui_popdown_dialog(this)"
+      data-dialog-id="dialog_contribute"
+    >
+      &#215;
+    </button>
+    <nav class="dialog_nav" id="contribute_nav">
+      If you enjoy this tool, you can spread the love:
+      <a href="#recognize">Give some recognition</a>
+      <a href="#develop">Contribute to the codebase</a>
+      <a href="#donate">Donate to related causes</a>
+    </nav>
+    <section>
+      <a name="recognize"></a>
+      <h1 class="contribute_h1">Give some recognition</h1>
+      <div class="contribute_explain">
+      If you do the whole social media thing:
+      <a href="https://twitter.com/home?status=Thanks be to @boardcrafting for hosting https://www.1kfa.com/table !">By tweeting a tweet</a> or <a href="https://mastodon.social/">tooting a toot</a>.
+      <p>
+      If you've got a Github account, you can 
+      <a href="https://github.com/sjbrown/1kfa">Star this project</a>
+      </div>
+    </section>
+    <section>
+      <a name="develop"></a>
+      <h1 class="contribute_h1">Contribute to the codebase</h1>
+      <div class="contribute_explain">
+      Speaking of Github, you can
+      <a href="https://github.com/sjbrown/1kfa">fork and contribute to this project</a>
+      </div>
+    </section>
+    <section>
+      <a name="donate"></a>
+      <h1 class="contribute_h1">Donate</h1>
+      <div class="contribute_explain">
+      This is built on top of TogetherJS, a free, open-source project created by
+      the Mozilla Foundation. They need money to continue making great software
+      like this.
+      <a href="https://donate.mozilla.org/en-US/">Donate to Mozilla here.</a>
+      </div>
+    </section>
+  </dialog>
+<!-- /CONTRIBUTE ============================================== /CONTRIBUTE -->
 
 
 
