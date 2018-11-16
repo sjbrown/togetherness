@@ -29,7 +29,7 @@
 <script>
 var svgdoc;
 SVG.on(document, 'DOMContentLoaded', () => {
-  svgdoc = SVG('gamearea').size(700, 400)
+  svgdoc = SVG('gamearea').size(1000, 500)
   SVG.eid = (name) => {
     return name + '_' + base32.short_id()
   }
@@ -115,8 +115,8 @@ function ui_popup_dialog_save() {
     </button>
     <nav class="dialog_nav"  id="save_nav">
       <a href="#copy_and_paste">Copy/Paste</a>
-      <a href="#local">Local Storage</a>
-      <a href="#cloud">Cloud Storage</a>
+      <a href="#local">Local storage</a>
+      <a href="#cloud">Cloud storage</a>
     </nav>
     <section>
       <a name="copy_and_paste"></a>
@@ -139,7 +139,7 @@ function ui_popup_dialog_save() {
     </section>
     <section>
       <a name="cloud"></a>
-      <h1 class="save_h1">Cloud Storage</h1>
+      <h1 class="save_h1">Cloud storage</h1>
       <div class="save_explain">
       This feature has not been implemented yet. If you would like it to exist,
       <span style="color:teal">tweet</span> "Hey @boardcrafting, please
@@ -213,7 +213,7 @@ function load_svg() {
       <li>https://images.ira.abramov.org/Propaganda/
     </ul>
     <input id="background_url" type="url"
-      value="http://www.1kfa.com/table/svg/topography.svg"
+      value="http://www.1kfa.com/table/svg/bg_topography.svg"
     />
     <button id="dialog_bg_submit" onclick="ui_change_background(this)">
       Change Background URL
