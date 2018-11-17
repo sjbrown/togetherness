@@ -14,14 +14,14 @@ function getUserColor() {
 
 function fire(payload) {
   if (!myClientId) {
-    console.log('TogetherJS not ready for send')
+    //console.log('TogetherJS not ready for send')
     return
   }
   try {
     TogetherJS.send(payload);
   }
   catch (err) {
-    console.log('togetherjs error', err);
+    console.error('togetherjs error', err);
     // TODO: pop up a dialog?
   }
 }

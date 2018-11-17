@@ -353,6 +353,7 @@ var die_verbs = {
       var text = dieNode.querySelector('text')
       var tspan = dieNode.querySelector('tspan')
       var origOpacity = dieNode.style.opacity
+      console.log("rolling between 1 and 6")
       var newNum = '' + randInt(1,6)
       animated_ghost(dieNode, { animation: 'rollOut' })
       tspan.textContent = ' '
@@ -403,51 +404,7 @@ function make_text(attrs) {
   return text
 }
 
-function add_d6(die_attrs) {
-  var rect = svgdoc.rect()
-  rect.attr(Object.assign({
-    'data-app-class': 'rect',
-    rx: 20,
-    ry: 20,
-    width: 100,
-    height: 100,
-    fill: 'ivory',
-    stroke: 'black',
-    'fill-opacity': 1,
-    'stroke-opacity': 0.8,
-    'stroke-width': 5,
-  }, die_attrs))
-
-  var nest = make_nest({
-    'data-nest-for': 'die',
-    width: rect.width(),
-    height: rect.height(),
-  })
-
-  nest.add(rect)
-
-  var txtEl = make_text({
-    'data-text': ''+ randInt(1,6),
-    'font-size': parseInt(rect.attr('width') * 0.7) || 1,
-    'fill-opacity': 0.9,
-  })
-  // TODO: there's something about line height here that needs fixing??
-  //       something to do with leading() ???
-  console.log('leading', txtEl.leading())
-  //textEl.leading(1.0)
-  txtEl.center(rect.cx(), (rect.cy() - 10))
-  nest.add(txtEl);
-
-  do_animate(nest.node)
-  hookup_interactions(nest, die_verbs)
-
-  fire({type: "create", data: serialize(nest)});
-}
-
-function add_d8() {
-  var res;
-  var url = 'svg/v1/dice_d8.svg'
-
+function import_foreign_svg(url) {
   if (!DEBUG) {
     var answer = confirm('Do you trust the security of '+ url +'?')
     if (!answer) {
@@ -478,7 +435,50 @@ function add_d8() {
       'data-nest-for': 'svg',
       'data-import-from': url,
     })
+    // Ensure the imported SVG is of a reasonable size
+    if (nest.width() < 30 || nest.width() > 200) {
+      console.warning('Reigned in the width to 100. Was', nest.width())
+      nest.width(100)
+    }
+    if (nest.height() < 30 || nest.height() > 200) {
+      console.warning('Reigned in the height to 100. Was', nest.height())
+      nest.height(100)
+    }
     nest.addClass('draggable-group')
+    return nest
+  })
+}
+
+function add_d6(die_attrs) {
+  var url = 'svg/v1/dice_d6.svg'
+
+  return import_foreign_svg(url)
+  .then((nest) => {
+    var txtEl = make_text({
+      'data-text': ''+ randInt(1,6),
+      'font-size': parseInt(nest.attr('width') * 0.7) || 1,
+      'fill-opacity': 0.9,
+    })
+    // TODO: there's something about line height here that needs fixing??
+    //       something to do with leading() ???
+    console.log('leading', txtEl.leading())
+    //textEl.leading(1.0)
+    txtEl.center(nest.cx(), (nest.cy() - 10))
+    nest.add(txtEl);
+
+    svgdoc.add(nest)
+    do_animate(nest.node)
+    hookup_interactions(nest, die_verbs)
+    fire({type: "create", data: serialize(nest)});
+  })
+
+}
+
+function add_d8() {
+  var url = 'svg/v1/dice_d8.svg'
+
+  return import_foreign_svg(url)
+  .then((nest) => {
     svgdoc.add(nest)
     do_animate(nest.node)
     hookup_interactions(nest, die_verbs)
@@ -492,8 +492,8 @@ function hookup_interactions(svgEl, verbs) {
 }
 
 function ui_mouseover(target, verbs) {
-  console.log('hover', target)
-  console.log('ver', verbs)
+  //console.log('hover', target)
+  //console.log('ver', verbs)
 
   deleteList = document.querySelectorAll('.cloned-menuitem')
   Array.prototype.forEach.call(deleteList, (el) => {
@@ -515,7 +515,6 @@ function ui_mouseover(target, verbs) {
       console.log('x', hovered_el)
       return verbs[title].action(evt, hovered_el)
     })
-    console.log('m', clone)
     menu.insertAdjacentElement('beforeend', clone)
   })
 }
