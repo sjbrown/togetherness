@@ -36,7 +36,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
   makeDraggable(svgdoc, {
     endDragCb: (selectedElement) => {
       console.log('done drag', selectedElement)
-      fire({type: "change", data: serialize(selectedElement)});
+      net_fire({type: "change", data: serialize(selectedElement)});
     }
   })
 })
@@ -256,7 +256,7 @@ function ui_popup_properties(el, dialog_specifier) {
       });
 
       ui_popdown_dialog({'data-dialog-id': 'dialog_properties'})
-      fire({ type: 'change', data: serialize(target) })
+      net_fire({ type: 'change', data: serialize(target) })
   });
 
   fieldset = byId('properties_fields')
@@ -365,7 +365,7 @@ function ui_submit_rect(evt) {
     fill: getUserColor(),
   });
   ui_popdown_dialog({'data-dialog-id': 'dialog_rect'})
-  fire({ type: 'create', data: serialize(rect) })
+  net_fire({ type: 'create', data: serialize(rect) })
 }
 
     </script>

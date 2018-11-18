@@ -59,7 +59,7 @@ function do_animate(node, attrs) {
 togetherFunctions.on_hello = (msg) => {
   worldData = nodeMap(svgdoc.node, serialize);
   if (worldData.length) {
-    fire({
+    net_fire({
       type: "sync",
       data: worldData,
       bg: byId('svgdoc').style.backgroundImage || null,
@@ -160,7 +160,7 @@ function g(el, label) {
 }
 
 function s(el, label, val) {
-// getter - more natural "attributes" from SVG elements
+// setter - more natural "attributes" from SVG elements
   if (val === undefined || val === null) {
     console.log('rem', label, val)
     return el.removeAttribute(label);
@@ -227,13 +227,11 @@ function is_marked(node) {
 
 var mark_verbs = {
   'Remove mark': {
+    eventName: 'remove_mark',
     applicable: (target) => { return g(target, 'data-app-class') === 'nest' },
-    action: (evt, nestNode) => {
-      console.log('r', nestNode);
-      return ui_unmark({target: nestNode.lastChild})
-    },
   },
   'Object properties': {
+    eventName: 'object_properties',
     applicable: () => { return true },
     action: (evt, nestNode) => {
       ui_popup_properties(
@@ -293,10 +291,11 @@ function make_mark(target_id, attrs) {
   target.attr('data-enveloped', true)
   nest.attr( oldXY )
   nest.attr('data-nest-for', 'mark')
-  nest.add(rect)
+  nest.add(rect) // Add it last, so that it renders on top
 
-  nest.on('dblclick', ui_unmark);
-  nest.on('mouseover', (evt) => { ui_mouseover(nest.node, mark_verbs) });
+  nest.on('dblclick', ui_unmark)
+  nest.on('remove_mark', ui_unmark)
+  nest.on('mouseover', (evt) => { ui_mouseover(evt, nest.node, mark_verbs) });
 
   return {
     mark_rect: rect,
@@ -307,18 +306,22 @@ function make_mark(target_id, attrs) {
 function markElementById(target_id) {
   var { mark_rect, mark_nest } = make_mark(target_id)
   ui_fire({ type: 'createMark', data: mark_nest })
-  fire({type: "createMark", data: {
+  net_fire({type: "createMark", data: {
     mark_rect: serialize(mark_rect),
     target_id: target_id,
   }});
 }
 
 function ui_unmark(evt) {
-  mark_rect = evt.target;
+    console.log("got ui unmark", evt)
+  if (evt.target.tagName === 'svg') {
+    mark_rect = evt.target.lastChild
+  } else {
+    mark_rect = evt.target
+  }
   _unmark(mark_rect.id);
-
   ui_fire({type: 'dropMark', data: mark_rect.parentNode});
-  fire({type: "dropMark", mark_rect: serialize(mark_rect) });
+  net_fire({type: 'dropMark', mark_rect: serialize(mark_rect) });
 }
 
 function _unmark(mark_rect_id) {
@@ -340,62 +343,7 @@ function _unmark(mark_rect_id) {
   nestSVG.remove()
 }
 
-var die_verbs = {
-  'Mark': {
-    applicable: (dieNode) => { return !is_marked(dieNode) },
-    action: (evt, dieNode) => {
-      return markElementById(dieNode.id)
-    },
-  },
-  'Reroll': {
-    applicable: () => { return true },
-    action: (evt, dieNode) => {
-      var text = dieNode.querySelector('text')
-      var tspan = dieNode.querySelector('tspan')
-      var origOpacity = dieNode.style.opacity
-      console.log("rolling between 1 and 6")
-      var newNum = '' + randInt(1,6)
-      animated_ghost(dieNode, { animation: 'rollOut' })
-      tspan.textContent = ' '
-      dieNode.style.opacity = 0.1
-      animated_ghost(dieNode, {
-        animation: 'rollIn',
-        before_begin: (ghost) => {
-          ghost.querySelector('rect').style.opacity = origOpacity
-        },
-        on_done: () => {
-          tspan.textContent = newNum
-          s(text, 'data-text', newNum)
-          dieNode.style.opacity = origOpacity
-          fire({type: "change", data: serialize(dieNode)});
-        },
-      })
-    }
-  },
-  'Turn': {
-    applicable: () => { return true },
-    action: (evt, dieNode) => {
-      console.log("turn action on", dieNode)
-      var text = dieNode.querySelector('text')
-      var tspan = dieNode.querySelector('tspan')
-      var origOpacity = dieNode.style.opacity
-      var origNum = parseInt(tspan.textContent)
-      animated_ghost(dieNode, {
-        animation: 'thumb',
-        on_done: () => {
-          tspan.textContent = (origNum % 6) + 1
-          s(text, 'data-text', (origNum % 6) + 1)
-          dieNode.style.opacity = origOpacity
-          fire({type: "change", data: serialize(dieNode)});
-        },
-      })
-      tspan.textContent = " "
-      dieNode.style.opacity = 0.1
-    }
-  },
-}
 
-text_verbs = {}
 function make_text(attrs) {
   var text = svgdoc.text(attrs['data-text'])
   text.attr(Object.assign( {
@@ -423,9 +371,9 @@ function import_foreign_svg(url) {
   .then((body) => {
     var frame = document.createElementNS(SVG.ns, 'svg')
     frame.innerHTML = (
+      // not sure if this is necessary...
       body.replace(/\n/, '').replace(/<([\w:-]+)([^<]+?)\/>/g, '<$1$2></$1>')
     )
-    var importedScript = frame.querySelector('script')
     var nest = frame.getElementsByTagName('svg')[0]
     var id = 'isvg_' + base32.short_id()
     s(nest, 'id', id)
@@ -445,33 +393,40 @@ function import_foreign_svg(url) {
       nest.height(100)
     }
     nest.addClass('draggable-group')
+
+    // Make the scripts run by putting them into the live DOM
+    frame.querySelectorAll('script').forEach((script) => {
+      appendDocumentScript(script, nest.node)
+    })
+
     return nest
   })
 }
 
-function add_d6(die_attrs) {
+function appendDocumentScript(sElem, elem) {
+  console.log("appending", sElem.id, g(sElem, 'src'))
+  var s2Elem = document.createElement('script')
+  if (g(sElem, 'src')) {
+    s2Elem.src = g(sElem, 'src')
+  } else {
+    s2Elem.textContent = sElem.textContent
+  }
+  elem.appendChild(s2Elem)
+}
+
+function add_d6() {
   var url = 'svg/v1/dice_d6.svg'
 
   return import_foreign_svg(url)
   .then((nest) => {
-    var txtEl = make_text({
-      'data-text': ''+ randInt(1,6),
-      'font-size': parseInt(nest.attr('width') * 0.7) || 1,
-      'fill-opacity': 0.9,
-    })
-    // TODO: there's something about line height here that needs fixing??
-    //       something to do with leading() ???
-    console.log('leading', txtEl.leading())
-    //textEl.leading(1.0)
-    txtEl.center(nest.cx(), (nest.cy() - 10))
-    nest.add(txtEl);
-
     svgdoc.add(nest)
     do_animate(nest.node)
-    hookup_interactions(nest, die_verbs)
-    fire({type: "create", data: serialize(nest)});
+    console.log("d", dice_d6_v1_menu)
+    if (dice_d6_v1_menu) {
+      hookup_interactions(nest, dice_d6_v1_menu)
+    }
+    net_fire({type: "create", data: serialize(nest)});
   })
-
 }
 
 function add_d8() {
@@ -481,39 +436,57 @@ function add_d8() {
   .then((nest) => {
     svgdoc.add(nest)
     do_animate(nest.node)
-    hookup_interactions(nest, die_verbs)
-    fire({type: "create", data: serialize(nest)});
+    console.log("dd8men", dice_d8_v1_menu)
+    if (dice_d8_v1_menu) {
+      hookup_interactions(nest, dice_d8_v1_menu)
+    }
+    net_fire({type: "create", data: serialize(nest)});
   })
 }
 
-function hookup_interactions(svgEl, verbs) {
+
+function hookup_interactions(svgEl, actionMenu) {
+  var newMenu = Object.assign(actionMenu, {
+    'Mark': {
+      eventName: 'node_mark',
+      applicable: (node) => { return !is_marked(node) },
+    },
+  })
+  svgEl.on('node_mark', (evt) => { markElementById(svgEl.id()) })
   svgEl.on('dblclick', (evt) => { markElementById(svgEl.id()) })
-  svgEl.on('mouseover', (evt) => { ui_mouseover(svgEl.node, verbs) })
+  svgEl.on('mouseover', (evt) => { ui_mouseover(evt, svgEl.node, newMenu) })
 }
 
-function ui_mouseover(target, verbs) {
+function ui_mouseover(evt, target, actionMenu) {
   //console.log('hover', target)
-  //console.log('ver', verbs)
+  //console.log('ver', actionMenu)
 
   deleteList = document.querySelectorAll('.cloned-menuitem')
   Array.prototype.forEach.call(deleteList, (el) => {
     el.remove();
   })
 
-  var hovered_el = target
+  var hoveredEl = target
   var menu = byId('gamemenu')
   var template = byId('template_menuitem')
-  Object.keys(verbs).map((title) => {
-    if (!verbs[title].applicable(hovered_el)) {
+  Object.keys(actionMenu).map((title) => {
+    if (!actionMenu[title].applicable(hoveredEl)) {
       return
     }
+    var uiLabel = (
+      actionMenu[title].uiLabel
+      ?
+      actionMenu[title].uiLabel(hoveredEl)
+      :
+      title
+    )
     var clone = template.content.firstElementChild.cloneNode(true)
-    s(clone, 'id', 'menuitem-' + hovered_el.id)
-    s(clone, 'label', title)
+    s(clone, 'id', 'menuitem-' + hoveredEl.id)
+    s(clone, 'label', uiLabel)
     clone.classList.add('cloned-menuitem')
     clone.addEventListener('click', (evt) => {
-      console.log('x', hovered_el)
-      return verbs[title].action(evt, hovered_el)
+      //console.log('hoveredElement', hoveredEl)
+      evt_fire(actionMenu[title].eventName, hoveredEl, evt)
     })
     menu.insertAdjacentElement('beforeend', clone)
   })
@@ -532,6 +505,15 @@ function ui_update_buttons() {
   btn.disabled = (numMarked !== 1)
 }
 
+function evt_fire(eventName, triggerNode, origEvent, other) {
+  triggerNode.dispatchEvent(new CustomEvent(eventName, {
+    bubbles: true,
+    detail: Object.assign(
+      { origEvent: origEvent, elemId: triggerNode.id },
+      other
+    ),
+  }))
+}
 function ui_fire(msg) {
   var fn = {
     createMark: (msg) => {
@@ -616,7 +598,7 @@ function delete_marked(evt) {
     collection.add(el)
   })
   collection.remove()
-  fire({ type: 'delete', data: serialize(collection.node) });
+  net_fire({ type: 'delete', data: serialize(collection.node) });
   ui_fire({type: 'delete', data: collection });
 }
 
@@ -628,7 +610,7 @@ function ui_change_background(evt) {
   var value = "url('" + input.value + "')";
   change_background(value)
   ui_popdown_dialog({'data-dialog-id': 'dialog_bg'})
-  fire({ type: 'change_background', data: value })
+  net_fire({ type: 'change_background', data: value })
 }
 
 function change_background(value) {

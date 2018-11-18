@@ -11,6 +11,7 @@
    height="100"
    width="80"
    version="1.1"
+   onLoad="hookup_handlers(this);"
    inkscape:version="0.91 r13725"
    sodipodi:docname="dice_d8.svg">
   <sodipodi:namedview
@@ -44,56 +45,83 @@
       </cc:Work>
     </rdf:RDF>
   </metadata>
-  <defs
-     id="defs13" />
+  <defs id="defs13" />
+  <script type="text/javascript" src="js/dice_utils.js" />
   <script
      type="text/javascript"
      id="script6158"><![CDATA[
 
-function randInt(min, max) {
-  // get a random integer in the range, inclusive.
-  // randInt(1,6) might return 1,2,3,4,5,6
-  console.log('randint', min, max )
-  min = Math.ceil(min);
-  max = Math.floor(max);
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+function roll_handler(evt) {
+  console.log('d8 ', this, 'roll!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!', evt.detail)
+  if (this.id !== evt.detail.elemId) {
+    return;
+  }
+  var text = this.querySelector('text')
+  var tspan = this.querySelector('tspan')
+  var origOpacity = this.style.opacity
+  var newNum = randDiceString(1,8)
+  animated_ghost(this, { animation: 'rollOut' })
+  tspan.textContent = ' '
+  this.style.opacity = 0.1
+  animated_ghost(this, {
+    animation: 'rollIn',
+    before_begin: (ghost) => {
+      ghost.querySelector('g').style.opacity = origOpacity
+    },
+    on_done: () => {
+      tspan.textContent = newNum
+      s(text, 'data-text', newNum)
+      this.style.opacity = origOpacity
+      net_fire({type: "change", data: serialize(this)});
+    },
+  })
+};
+
+function turn_handler(evt) {
+  console.log('d8 ', this, 'turn!!!!!!!!!!!!!!!!!!!!!!!!!!!!', evt.detail)
+  if (this.id !== evt.detail.elemId) {
+    return;
+  }
+  var text = this.querySelector('text')
+  var tspan = this.querySelector('tspan')
+  var origOpacity = this.style.opacity
+  var origNum = parseInt(tspan.textContent)
+  animated_ghost(this, {
+    animation: 'thumb',
+    on_done: () => {
+      tspan.textContent = (origNum % 8) + 1
+      s(text, 'data-text', (origNum % 8) + 1)
+      this.style.opacity = origOpacity
+      net_fire({type: "change", data: serialize(this)});
+    },
+  })
+  tspan.textContent = " "
+  this.style.opacity = 0.1
 }
 
-var verbs = {
-  'Reroll': {
-    applicable: () => { return true },
-    action: (evt, dieNode) => {
-      console.log('d8 reroll!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-      var text = dieNode.querySelector('text')
+function hookup_handlers(elem) {
+  elem.addEventListener('die_roll', roll_handler)
+  elem.addEventListener('die_turn_up', turn_handler)
+}
+
+dice_d8_v1_menu = {
+  'Roll': {
+    eventName: 'die_roll',
+    applicable: (dieNode) => { return true },
+  },
+  'Turn Up': {
+    eventName: 'die_turn_up',
+    applicable: (dieNode) => { return true },
+    uiLabel: (dieNode) => { 
       var tspan = dieNode.querySelector('tspan')
-      var origOpacity = dieNode.style.opacity
-      var newNum = '' + randInt(1,8)
-      animated_ghost(dieNode, { animation: 'rollOut' })
-      tspan.textContent = ' '
-      dieNode.style.opacity = 0.1
-      animated_ghost(dieNode, {
-        animation: 'rollIn',
-        before_begin: (ghost) => {
-          ghost.querySelector('g').style.opacity = origOpacity
-        },
-        on_done: () => {
-          tspan.textContent = newNum
-          s(text, 'data-text', newNum)
-          dieNode.style.opacity = origOpacity
-          fire({type: "change", data: serialize(dieNode)});
-        },
-      })
-    }
+      var nextNum = (parseInt(tspan.textContent) % 8) + 1
+      return 'Turn to ' + nextNum
+      },
   },
 }
 
-console.log('xxxx')
-console.log('xxxx')
-console.log('xxxx')
-console.log('xxxx')
-
     ]]></script>
-  <g class="draggable" data-on-foo="randInt()">
+  <g class="draggable">
   <ellipse
      style="opacity:1;fill:#000000;fill-opacity:0.15686275;stroke:none;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
      id="ellipse4248"

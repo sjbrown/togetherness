@@ -12,7 +12,7 @@ function getUserColor() {
   }
 }
 
-function fire(payload) {
+function net_fire(payload) {
   if (!myClientId) {
     //console.log('TogetherJS not ready for send')
     return
