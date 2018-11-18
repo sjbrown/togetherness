@@ -394,24 +394,47 @@ function import_foreign_svg(url) {
     }
     nest.addClass('draggable-group')
 
-    // Make the scripts run by putting them into the live DOM
     frame.querySelectorAll('script').forEach((script) => {
       appendDocumentScript(script, nest.node)
+    })
+
+    frame.querySelectorAll('#filter-matrix-1').forEach((matrixNode) => {
+      recolorize(matrixNode)
     })
 
     return nest
   })
 }
 
-function appendDocumentScript(sElem, elem) {
-  console.log("appending", sElem.id, g(sElem, 'src'))
-  var s2Elem = document.createElement('script')
-  if (g(sElem, 'src')) {
-    s2Elem.src = g(sElem, 'src')
-  } else {
-    s2Elem.textContent = sElem.textContent
+function recolorize(matrixNode) {
+  function getRGBColor(colorStr) {
+    var a = document.createElement('div')
+    a.style.color = colorStr
+    var colors = window.getComputedStyle(document.body.appendChild(a)).color
+    document.body.removeChild(a)
+    return colors.match(/\d+/g).map((a) => { return parseFloat(a,10)/255; })
   }
-  elem.appendChild(s2Elem)
+  var c = getRGBColor(getUserColor())
+  matrixNode.setAttribute(
+    'values',
+    c[0] + ' 0 0 0 0 ' +
+    c[1] + ' 0 0 0 0 ' +
+    c[2] + ' 0 0 0 0 ' +
+    '0 0 0 1 0'
+  )
+}
+
+function appendDocumentScript(scriptElem, parentElem) {
+  // Make the scripts run by putting them into the live DOM
+  console.log("appending", scriptElem.id, g(scriptElem, 'src'))
+  var newScript = document.createElement('script')
+  if (g(scriptElem, 'src')) {
+    newScript.src = g(scriptElem, 'src')
+  } else {
+    newScript.textContent = scriptElem.textContent
+  }
+  parentElem.appendChild(newScript)
+  scriptElem.remove()
 }
 
 function add_d6() {

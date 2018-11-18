@@ -75,6 +75,14 @@
        y1="713.79077"
        x2="305.69736"
        y2="242.36218" />
+    <filter id="filter-colorize-1" color-interpolation-filters="sRGB" >
+      <feColorMatrix id="filter-matrix-1" type="matrix"
+         values="0.2 0.0 0.0 0.0  0.0
+                 0.3 0.0 0.0 0.0  0.0
+                 0.4 0.0 0.0 0.0  0.0
+                 0.0 0.0 0.0 1.0  0.0" />
+    </filter>
+  </defs>
   </defs>
   <script
      type="text/javascript"
@@ -193,14 +201,16 @@ dice_d6_v1_menu = {
   </metadata>
   <g
      inkscape:label="Layer 1"
+     filter="url(#filter-colorize-1)"
      inkscape:groupmode="layer"
      id="layer1"
-     transform="translate(0,-952.37017)">
+     transform="translate(0,-952.37017)"
+     >
     <rect
-       ry="9.1354685"
-       rx="9.1354685"
+       ry="9.13"
+       rx="9.13"
        y="955.81067"
-       x="3.1187377"
+       x="3.1"
        height="93.442787"
        width="93.442787"
        id="rect4162"
