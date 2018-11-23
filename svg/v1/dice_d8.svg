@@ -47,7 +47,7 @@
   </metadata>
   <defs id="defs1" >
     <filter id="filter-colorize-1" color-interpolation-filters="sRGB" >
-      <feColorMatrix id="filter-matrix-1" type="matrix"
+      <feColorMatrix id="recolorize-filter-matrix" type="matrix"
          values="0.2 0.0 0.0 0.0  0.0
                  0.3 0.0 0.0 0.0  0.0
                  0.4 0.0 0.0 0.0  0.0
