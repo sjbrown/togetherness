@@ -362,8 +362,9 @@ function import_foreign_svg(url) {
 
   return fetch(url)
   .then((res) => {
-    if (res.headers.get('content-length') > 50000) {
-      console.error('That file is too big')
+    if (res.headers.get('content-length') > 1000000) {
+      console.error('That file is too big (> 1MB)')
+      alert('That file is too big (> 1MB)')
       return
     }
     return res.text()
@@ -375,6 +376,14 @@ function import_foreign_svg(url) {
       body.replace(/\n/, '').replace(/<([\w:-]+)([^<]+?)\/>/g, '<$1$2></$1>')
     )
     var nest = frame.getElementsByTagName('svg')[0]
+    if (
+      ( g(nest, 'x') !== undefined && g(nest, 'x') !== '0' )
+      ||
+      ( g(nest, 'y') !== undefined && g(nest, 'y') !== '0' )
+    ) {
+      console.error('X/Y coords must be "0"', g(nest, 'x'), g(nest, 'y'))
+      alert('X/Y coords must be "0"', g(nest, 'x'))
+    }
     var id = 'isvg_' + base32.short_id()
     s(nest, 'id', id)
     nest = SVG.adopt(nest)
@@ -384,21 +393,22 @@ function import_foreign_svg(url) {
       'data-import-from': url,
     })
     // Ensure the imported SVG is of a reasonable size
-    if (nest.width() < 30 || nest.width() > 200) {
-      console.warning('Reigned in the width to 100. Was', nest.width())
+    if (nest.width() < 30 || nest.width() > 520) {
+      console.warn('Reigned in the width to 100. Was', nest.width())
       nest.width(100)
     }
-    if (nest.height() < 30 || nest.height() > 200) {
-      console.warning('Reigned in the height to 100. Was', nest.height())
+    if (nest.height() < 30 || nest.height() > 520) {
+      console.warn('Reigned in the height to 100. Was', nest.height())
       nest.height(100)
     }
     nest.addClass('draggable-group')
 
     frame.querySelectorAll('script').forEach((script) => {
+      console.log("appending script", script)
       appendDocumentScript(script, nest.node)
     })
 
-    frame.querySelectorAll('#filter-matrix-1').forEach((matrixNode) => {
+    frame.querySelectorAll('#recolorize-filter-matrix').forEach((matrixNode) => {
       recolorize(matrixNode)
     })
 
@@ -462,6 +472,21 @@ function add_d8() {
     console.log("dd8men", dice_d8_v1_menu)
     if (dice_d8_v1_menu) {
       hookup_interactions(nest, dice_d8_v1_menu)
+    }
+    net_fire({type: "create", data: serialize(nest)});
+  })
+}
+
+function add_deckahedron() {
+  var url = 'svg/v1/deckahedron.svg'
+
+  return import_foreign_svg(url)
+  .then((nest) => {
+    svgdoc.add(nest)
+    do_animate(nest.node)
+    console.log("ddeckahedronmen", deckahedron_v1_menu)
+    if (deckahedron_v1_menu) {
+      hookup_interactions(nest, deckahedron_v1_menu)
     }
     net_fire({type: "create", data: serialize(nest)});
   })
