@@ -265,35 +265,7 @@
        x2="196.92377"
        y2="52.830528"
        gradientUnits="userSpaceOnUse"
-       gradientTransform="translate(42.998162,-6.0000017)" /><radialGradient
-       inkscape:collect="always"
-       xlink:href="#linearGradient4618-8"
-       id="radialGradient4634"
-       cx="319.71851"
-       cy="146.34428"
-       fx="319.71851"
-       fy="146.34428"
-       r="211.69048"
-       gradientUnits="userSpaceOnUse"
-       gradientTransform="matrix(0.43596881,0,0,0.43400074,-270.13457,-2.95356)" /><linearGradient
-       id="linearGradient4618-8"
-       inkscape:collect="always"><stop
-         id="stop4638"
-         offset="0"
-         style="stop-color:#b3b3b3;stop-opacity:1" /><stop
-         id="stop4640"
-         offset="1"
-         style="stop-color:#3e4545;stop-opacity:1" /></linearGradient><radialGradient
-       inkscape:collect="always"
-       xlink:href="#linearGradient4618"
-       id="radialGradient4624"
-       cx="321.1778"
-       cy="141.9649"
-       fx="321.1778"
-       fy="141.9649"
-       r="208.94043"
-       gradientTransform="matrix(-0.52429413,0.64883762,0.3397035,0.27202517,250.27673,-188.35095)"
-       gradientUnits="userSpaceOnUse" /><linearGradient
+       gradientTransform="translate(42.998162,-6.0000017)" /><linearGradient
        inkscape:collect="always"
        xlink:href="#linearGradient4666"
        id="linearGradient4672"
@@ -398,6 +370,18 @@ function shuffle(deckJSON) {
 
 function flip_handler(evt) {
   console.log("FLIP", evt)
+  deck = evt.target.querySelector('.deckahedron_deck')
+  console.log("FLIP", deck)
+  top_card = SVG.adopt(deck.lastChild)
+  play_area = evt.target.querySelector('#play_area_ellipse')
+  console.log("FLIP", play_area)
+  play_area = SVG.adopt(play_area)
+  play_area.cx()
+  console.log("before", top_card.cx(), top_card.cy())
+  top_card.cx(play_area.cx())
+  top_card.cy(play_area.cy())
+  console.log("after", top_card.cx(), top_card.cy())
+
 }
 function reshuffle_handler(evt) {
   console.log("RESHUF", evt)
@@ -420,45 +404,61 @@ function generate_card(cardJSON) {
     3: 'two_check',
     4: 'three_check',
   }
+
+  back_group = document.querySelector('#layer_back')
+  back = SVG.adopt(back_group.querySelectorAll('rect')[0])
+  console.log('tr', back.x(), back.y())
+
   var cardText = JSON.stringify(cardJSON)
   var card = document.createElementNS(SVG.ns, 'svg')
   card.dataset.deckahedronCard = cardJSON
+  /*
   var jitterHighlight = (
     '<rect class="card_jitter_highlight" x="'
     + jittered(200, 0, 10)
     + '" y="474" width="20" height="1" fill="#222" />'
   )
+  */
   card.innerHTML = (
-    `<use href="#layer_bg_lighting" />
-     <use href="#layer_bg" />
+    `
+     <use href="#layer_bg_lighting" />
+     <rect fill="#f00000a5" width="100%" height="100%" />
+     <use x="-` + back.x() + `" y="-200" href="#layer_bg" />
      <use href="#layer_books_flourish" />
      <text
-       style="font-size:8px;line-height:125%;display:inline;fill:#000000;fill-opacity:1;"
+       style="font-size:8px;line-height:125%;fill:#000000;fill-opacity:1;"
        x="120"
        y="360"
        ><tspan>` +
     cardText +
     '</tspan></text>'
-    + '<use href="#layer_back" />'
-    + jitterHighlight
+    //+ jitterHighlight
     + '<use href="#g_anchor_' + mymap[cardJSON['a']] + '" />'
     + '<use href="#g_bulb_' + mymap[cardJSON['b']] + '" />'
     + '<use href="#g_crescent_' + mymap[cardJSON['c']] + '" />'
     + '<use href="#g_dart_' + mymap[cardJSON['d']] + '" />'
+    + '<use href="#layer_back" />'
   )
   card = SVG.adopt(card)
+  console.log('back', back)
+  card.width(back.width())
+  card.height(back.height())
   return card
 }
 
 function generate_cards(elem) {
   console.log('gen')
   handle = SVG(elem)
+  deck = handle.group()
+  deck.addClass('deckahedron_deck')
+  deck.id( 'deck_' + base32.short_id() )
+  handle.add(deck)
   var i = 0
   shuffle(cardsJSON).map((cardJSON) => {
     card = generate_card(cardJSON)
     card.y(handle.y() - i)
     i += 2
-    handle.add(card)
+    deck.add(card)
   })
 }
 
@@ -495,13 +495,13 @@ deckahedron_v1_menu = {
      showgrid="false"
      inkscape:snap-bbox="true"
      inkscape:snap-bbox-midpoints="true"
-     inkscape:zoom="1.518"
-     inkscape:cx="-12.745344"
-     inkscape:cy="96.173829"
+     inkscape:zoom="0.53669405"
+     inkscape:cx="-227.9309"
+     inkscape:cy="-180.26578"
      inkscape:window-x="0"
      inkscape:window-y="24"
      inkscape:window-maximized="1"
-     inkscape:current-layer="layer_checks_xs"
+     inkscape:current-layer="layer_back"
      inkscape:object-nodes="false"
      inkscape:snap-nodes="false"
      inkscape:snap-object-midpoints="true"
@@ -3734,9 +3734,10 @@ deckahedron_v1_menu = {
        cy="166.12386"
        cx="150"
        id="ellipse5712"
-       style="opacity:1;fill:none;fill-opacity:1;stroke:#808080;stroke-width:3.05116081;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:3.05116093, 3.05116093;stroke-dashoffset:0;stroke-opacity:1" /><ellipse
+       style="opacity:1;fill:none;fill-opacity:1;stroke:#808080;stroke-width:3.05116081;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:3.05116093, 3.05116093;stroke-dashoffset:0;stroke-opacity:1" />
+       <ellipse
        style="opacity:1;fill:#000000;fill-opacity:0.07729468;stroke:#cccccc;stroke-width:3;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:3, 3;stroke-dashoffset:0;stroke-opacity:1"
-       id="path5710"
+       id="play_area_ellipse"
        cx="150"
        cy="166.12386"
        rx="75.757576"
@@ -3769,7 +3770,7 @@ deckahedron_v1_menu = {
          style="opacity:1;fill:#000000;fill-opacity:1;stroke:none;stroke-width:9;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1" /><g
          transform="translate(0.43477631,-0.43876839)"
          id="g4502"><rect
-           style="opacity:1;fill:url(#radialGradient4634);fill-opacity:1;stroke:#000000;stroke-width:2.39241004;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+           style="opacity:1;fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:2.39241004;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
            id="rect4218-7-8"
            width="182.18306"
            height="181.36064"
@@ -3778,7 +3779,7 @@ deckahedron_v1_menu = {
            rx="10.803117"
            ry="10.754349"
            transform="scale(-1,1)" /><path
-           style="opacity:1;fill:url(#radialGradient4624);fill-opacity:1;stroke:none;stroke-width:5.5;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+           style="opacity:1;fill:#000000;fill-opacity:1;stroke:none;stroke-width:5.5;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
            d="m 186.85303,16.758299 c 5.98493,0 10.80385,4.79717 10.80385,10.755081 l 0,159.85128 c 0,5.95791 -4.81892,10.75424 -10.80385,10.75424 l -160.576167,0 c -5.984927,0 -10.803002,-4.79633 -10.803002,-10.75424 l 0,-159.85128 c 0,-5.957911 4.818075,-10.755081 10.803002,-10.755081 l 160.576167,0 z m -142.858974,28.391447 22.699326,35.197291 0,54.394193 -22.56394,34.98707 35.22151,-22.5104 54.640858,0 35.01119,22.37562 -22.47709,-34.85229 0,-54.394193 22.61078,-35.061666 -35.14488,22.460385 -54.640858,0 -35.356896,-22.59601 z"
            id="rect4218-7-8-7"
            inkscape:connector-curvature="0" /><path
@@ -3884,8 +3885,4 @@ deckahedron_v1_menu = {
            id="circle4328"
            style="fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:4;stroke-miterlimit:2;stroke-dasharray:none;stroke-opacity:1"
            rx="5.0829053"
-           ry="5.0944171" /><path
-           id="path4551"
-           style="color:#000000;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:medium;line-height:normal;font-family:sans-serif;text-indent:0;text-align:start;text-decoration:none;text-decoration-line:none;text-decoration-style:solid;text-decoration-color:#000000;letter-spacing:normal;word-spacing:normal;text-transform:none;direction:ltr;block-progression:tb;writing-mode:lr-tb;baseline-shift:baseline;text-anchor:start;white-space:normal;clip-rule:nonzero;display:inline;overflow:visible;visibility:visible;opacity:1;isolation:auto;mix-blend-mode:normal;color-interpolation:sRGB;color-interpolation-filters:linearRGB;solid-color:#000000;solid-opacity:1;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:6;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;color-rendering:auto;image-rendering:auto;shape-rendering:auto;text-rendering:auto;enable-background:accumulate"
-           d="m 43.993467,45.149512 22.699331,35.197291 0,54.394187 -22.56394,34.98708 35.22151,-22.5104 54.640852,0 35.01119,22.37562 -22.47709,-34.8523 0,-54.394187 22.61078,-35.061666 -35.14488,22.460389 -54.640852,0 -35.356901,-22.596014 z m -3.634205,-5.417401 39.758311,25.409389 53.106447,0 39.54799,-25.274611 1.80689,1.79873 -25.43776,39.444903 0,52.866718 25.30322,39.23468 -1.80689,1.79957 -39.41345,-25.18984 -53.106447,0 -39.622925,25.32378 -1.807736,-1.79958 25.390073,-39.36861 0,-52.866718 -25.525463,-39.579682 1.80774,-1.798729 z"
-           inkscape:connector-curvature="0" /></g></g></g></svg>
+           ry="5.0944171" /></g></g></g></svg>
