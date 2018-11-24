@@ -38,7 +38,7 @@
 <script>
 var svgdoc;
 SVG.on(document, 'DOMContentLoaded', () => {
-  svgdoc = SVG('gamearea').size(1000, 300)
+  svgdoc = SVG('gamearea').size(1000, 480)
   svgdoc.style('background-image', 'url(svg/bg_hexagons.svg)')
   SVG.eid = (name) => {
     return name + '_' + base32.short_id()
