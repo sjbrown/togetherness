@@ -561,7 +561,7 @@ function ui_update_buttons() {
   submenu.querySelectorAll('.cloned-button').forEach((btn) => {
     btn.remove()
   })
-  header.innerText = 'Select an object'
+  header.innerText = 'Select one object'
 
   if (numMarked === 1) {
     elemNode = document.querySelector('.mark-rect').parentNode.firstChild
