@@ -258,6 +258,7 @@ function make_mark(target_id, attrs) {
 
   var color = getUserColor()
   var rect = svgdoc.rect()
+  rect.addClass('mark-rect')
   rect.attr(
     Object.assign({
       'data-app-class': 'mark',
@@ -303,13 +304,13 @@ function make_mark(target_id, attrs) {
   }
 }
 
-function markElementById(target_id) {
+function markElementById(target_id, actionMenu) {
   var { mark_rect, mark_nest } = make_mark(target_id)
   ui_fire({ type: 'createMark', data: mark_nest })
   net_fire({type: "createMark", data: {
     mark_rect: serialize(mark_rect),
     target_id: target_id,
-  }});
+  }})
 }
 
 function ui_unmark(evt) {
@@ -385,12 +386,14 @@ function import_foreign_svg(url) {
       alert('X/Y coords must be "0"', g(nest, 'x'))
     }
     var id = 'isvg_' + base32.short_id()
+    var origId = g(nest, 'id')
     s(nest, 'id', id)
     nest = SVG.adopt(nest)
     nest.attr({
       'data-app-class': 'nest',
       'data-nest-for': 'svg',
       'data-import-from': url,
+      'data-orig-name': origId,
     })
     // Ensure the imported SVG is of a reasonable size
     if (nest.width() < 30 || nest.width() > 520) {
@@ -500,8 +503,9 @@ function hookup_interactions(svgEl, actionMenu) {
       applicable: (node) => { return !is_marked(node) },
     },
   })
-  svgEl.on('node_mark', (evt) => { markElementById(svgEl.id()) })
-  svgEl.on('dblclick', (evt) => { markElementById(svgEl.id()) })
+  svgEl.node.actionMenu = actionMenu
+  svgEl.on('node_mark', (evt) => { markElementById(svgEl.id(), newMenu) })
+  svgEl.on('dblclick', (evt) => { markElementById(svgEl.id(), newMenu) })
   svgEl.on('mouseover', (evt) => { ui_mouseover(evt, svgEl.node, newMenu) })
 }
 
@@ -551,9 +555,44 @@ function ui_update_buttons() {
 
   btn = byId('properties_button')
   btn.disabled = (numMarked !== 1)
+
+  submenu = byId('object_actions')
+  header = byId('object_actions_header')
+  submenu.querySelectorAll('.cloned-button').forEach((btn) => {
+    btn.remove()
+  })
+  header.innerText = 'Select an object'
+
+  if (numMarked === 1) {
+    elemNode = document.querySelector('.mark-rect').parentNode.firstChild
+    header.innerText = g(elemNode, 'data-orig-name')
+    template = byId('template_object_actions')
+    actionMenu = elemNode.actionMenu
+
+    // actionMenu looks like this: {
+    // 'Mark': {
+    //   eventName: 'node_mark',
+    //   applicable: (node) => { return !is_marked(node) },
+    //   uiLabel: (node) => { return 'MyLabel' },
+    //  },  ...}
+    Object.keys(actionMenu).map((title) => {
+      console.log("doing", title)
+      var btn = template.content.firstElementChild.cloneNode(true)
+      btn.innerText = title 
+      if (!actionMenu[title].applicable(elemNode)) {
+        btn.disabled = 'disabled'
+      }
+      btn.classList.add('cloned-button')
+      btn.addEventListener('click', (evt) => {
+        evt_fire(actionMenu[title].eventName, elemNode, evt)
+      })
+      submenu.appendChild(btn)
+    })
+  }
 }
 
 function evt_fire(eventName, triggerNode, origEvent, other) {
+  console.log("dispatching", eventName, 'to', triggerNode.id)
   triggerNode.dispatchEvent(new CustomEvent(eventName, {
     bubbles: true,
     detail: Object.assign(
