@@ -38,20 +38,67 @@
 </head>
 
 <script>
-var svgdoc;
+var svg_table;
+var viewport;
+var gViewport;
+var widget_panzoom;
 SVG.on(document, 'DOMContentLoaded', () => {
-  svgdoc = SVG('gamearea').size(1000, 480)
-  svgdoc.style('background-image', 'url(svg/bg_hexagons.svg)')
+  viewport = SVG('gamearea').size(1000, 480)
+  viewport.node.id = 'svg_viewport'
+  viewport.style('background-image', 'url(svg/bg_hexagons.svg)')
+
+  gViewport = SVG.adopt(document.createElementNS(SVG.ns, 'g'))
+  gViewport.node.id = 'g_viewport'
+  viewport.add(gViewport)
+
+  svg_table = SVG.adopt(document.createElementNS(SVG.ns, 'svg'))
+  svg_table.node.id = 'svgtable'
+  svg_table.size(1000, 480)
+  gViewport.add(svg_table)
+
   SVG.eid = (name) => {
     return name + '_' + base32.short_id()
   }
-  makeDraggable(svgdoc, {
+
+  makeDraggable(svg_table, {
     endDragCb: (selectedElement) => {
       console.log('done drag', selectedElement)
       net_fire({type: "change", data: serialize(selectedElement)});
     }
   })
+
+  widgetElem = document.querySelector('#widget_panzoom')
+  widget_panzoom = widgetElem.getSVGDocument().querySelector('svg');
+  widget_panzoom = SVG.adopt(widget_panzoom)
+  viewport.add(widget_panzoom)
+  widget_panzoom.x( viewport.width() - widget_panzoom.width() )
+  widget_panzoom.select('#x_left').on('click', () => pan(50, 0))
+  widget_panzoom.select('#x_right').on('click', () => pan(-50, 0))
+  widget_panzoom.select('#y_up').on('click', () => pan(0, 50))
+  widget_panzoom.select('#y_down').on('click', () => pan(0, -50))
+  widget_panzoom.select('#zoom_in').on('click', () => zoom('in'))
+  widget_panzoom.select('#zoom_out').on('click', () => zoom('out'))
+  widgetElem.remove()
 })
+
+function pan(xDelta, yDelta) {
+  prev = gViewport.transform()
+  gViewport.transform( {x: prev.x + xDelta, y: prev.y + yDelta} )
+}
+
+var currentZoom = 1.0;
+function zoom(inOrOut) {
+  zooms = {
+    0.25: { out: 0.25, in: 0.5 },
+    0.5: { out: 0.25, in: 1.0 },
+    1.0: { out: 0.5, in: 1.5 },
+    1.5: { out: 1.0, in: 2.0 },
+    2.0: { out: 1.5, in: 4.0 },
+    4.0: { out: 2.0, in: 4.0 },
+  }
+  currentZoom = zooms[currentZoom][inOrOut];
+  gViewport.transform( {scale: currentZoom} )
+}
 </script>
 
 <body>
@@ -108,6 +155,8 @@ SVG.on(document, 'DOMContentLoaded', () => {
   </button>
 
   <div id="gamearea" contextmenu="gamemenu">
+    <object id="widget_panzoom" data="svg/widget_panzoom.svg" type="image/svg+xml">
+    </object>
   <!--
   <svg id="svgdoc" width="100%" height="500" onload="initDraggable()">
   </svg>
@@ -249,7 +298,7 @@ function load_svg() {
   <dialog id="dialog_properties">
     <script>
 function ui_popup_button(target) {
-  var allSel = svgdoc.select('[data-ui-marked]').members
+  var allSel = svg_table.select('[data-ui-marked]').members
   if (allSel.length !== 1) {
     alert('You must mark exactly 1 object to edit its properties');
     return
@@ -357,7 +406,7 @@ var rect_verbs = {
 }
 
 function make_rect(attrs) {
-  var rect = svgdoc.rect()
+  var rect = svg_table.rect()
   rect.attr(Object.assign({
     'data-app-class': 'rect',
     'class': 'draggable',

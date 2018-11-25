@@ -57,26 +57,26 @@ function do_animate(node, attrs) {
 
 
 togetherFunctions.on_hello = (msg) => {
-  worldData = nodeMap(svgdoc.node, serialize);
+  worldData = nodeMap(svg_table.node, serialize);
   if (worldData.length) {
     net_fire({
       type: "sync",
       data: worldData,
-      bg: byId('svgdoc').style.backgroundImage || null,
+      bg: byId('svg_viewport').style.backgroundImage || null,
     });
   }
 };
 
 togetherFunctions.on_sync = (msg) => {
   msg.data.map(payload => {
-    svgdoc.appendChild(deserialize(payload))
+    svg_table.appendChild(deserialize(payload))
   });
   change_background(msg.bg);
 };
 
 togetherFunctions.on_change = (msg) => { deserialize(msg.data) };
 
-togetherFunctions.on_create = (msg) => { svgdoc.add(deserialize(msg.data)) };
+togetherFunctions.on_create = (msg) => { svg_table.add(deserialize(msg.data)) };
 
 togetherFunctions.on_create_mark = (msg) => {
   make_mark(msg.data.target_id, msg.data.mark_rect)
@@ -90,8 +90,8 @@ togetherFunctions.on_change_background = (msg) => { change_background(msg.data) 
 
 function deserialize(payload) {
   var elem = null;
-  if (svgdoc.get(payload.id)) {
-    elem = svgdoc.get(payload.id)
+  if (svg_table.get(payload.id)) {
+    elem = svg_table.get(payload.id)
     Object.keys(payload).map(key => {
       if (key === 'data-text') {
         elem.text(payload[key])
@@ -120,9 +120,9 @@ function deserialize(payload) {
 }
 
 function recursive_delete(payload) {
-  if (svgdoc.get(payload.id)) {
+  if (svg_table.get(payload.id)) {
     // el is something that already exists in the local SVG doc
-    svgdoc.get(payload.id).remove();
+    svg_table.get(payload.id).remove();
   }
   if (payload.kids) {
     payload.kids.map(innerPayload => {
@@ -243,7 +243,7 @@ var mark_verbs = {
 }
 
 function make_nest(attrs) {
-  var nest = svgdoc.nested()
+  var nest = svg_table.nested()
   nest.addClass('draggable-group')
   nest.attr(Object.assign({
     'data-app-class': 'nest',
@@ -257,7 +257,7 @@ function make_mark(target_id, attrs) {
   console.log("making mark on", target_id, target)
 
   var color = getUserColor()
-  var rect = svgdoc.rect()
+  var rect = svg_table.rect()
   rect.addClass('mark-rect')
   rect.attr(
     Object.assign({
@@ -338,7 +338,7 @@ function _unmark(mark_rect_id) {
       kid.remove()
       x = SVG.adopt(kid)
       x.attr(oldXY)
-      svgdoc.add(x)
+      svg_table.add(x)
     }
   })
   nestSVG.remove()
@@ -346,7 +346,7 @@ function _unmark(mark_rect_id) {
 
 
 function make_text(attrs) {
-  var text = svgdoc.text(attrs['data-text'])
+  var text = svg_table.text(attrs['data-text'])
   text.attr(Object.assign( {
     'data-app-class': 'text',
   }, attrs));
@@ -455,7 +455,7 @@ function add_d6() {
 
   return import_foreign_svg(url)
   .then((nest) => {
-    svgdoc.add(nest)
+    svg_table.add(nest)
     do_animate(nest.node)
     console.log("d", dice_d6_v1_menu)
     if (dice_d6_v1_menu) {
@@ -470,7 +470,7 @@ function add_d8() {
 
   return import_foreign_svg(url)
   .then((nest) => {
-    svgdoc.add(nest)
+    svg_table.add(nest)
     do_animate(nest.node)
     console.log("dd8men", dice_d8_v1_menu)
     if (dice_d8_v1_menu) {
@@ -485,7 +485,7 @@ function add_deckahedron() {
 
   return import_foreign_svg(url)
   .then((nest) => {
-    svgdoc.add(nest)
+    svg_table.add(nest)
     do_animate(nest.node)
     console.log("ddeckahedronmen", deckahedron_v1_menu)
     if (deckahedron_v1_menu) {
@@ -545,7 +545,7 @@ function ui_mouseover(evt, target, actionMenu) {
 }
 
 function ui_update_buttons() {
-  var numMarked = svgdoc.select('[data-ui-marked]').members.length
+  var numMarked = svg_table.select('[data-ui-marked]').members.length
 
   var span = byId('num_marked')
   span.textContent = numMarked;
@@ -676,9 +676,9 @@ function animated_ghost(el, attrs) {
 }
 
 function delete_marked(evt) {
-  var collection = svgdoc.group()
+  var collection = svg_table.group()
   collection.attr({ 'data-app-class': 'deletegroup' })
-  svgdoc.select('[data-ui-marked]').members.forEach(el => {
+  svg_table.select('[data-ui-marked]').members.forEach(el => {
     node = el.node
     animated_ghost(node, {animation: 'rotateOut'})
     el.remove()
@@ -701,7 +701,7 @@ function ui_change_background(evt) {
 }
 
 function change_background(value) {
-  svgdoc.style('background-image', value)
+  viewport.style('background-image', value)
 }
 
 function ui_popdown_dialog(target) {
