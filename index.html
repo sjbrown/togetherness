@@ -17,8 +17,11 @@
 <script src="./index.js"></script>
 
 <link rel="stylesheet" type="text/css" href="animate.css">
-<link rel="stylesheet" type="text/css" href="hiq.css">
 <link rel="stylesheet" type="text/css" href="index.css">
+
+
+<script src="./lib/materialize/js/materialize.js"></script>
+<link rel="stylesheet" type="text/css" href="./lib/materialize/css/materialize.css">
 
 <style>
 
@@ -79,6 +82,11 @@ SVG.on(document, 'DOMContentLoaded', () => {
   widget_panzoom.select('#zoom_in').on('click', () => zoom('in'))
   widget_panzoom.select('#zoom_out').on('click', () => zoom('out'))
   widgetElem.remove()
+
+  // Initialize modals
+  instances = M.Modal.init(document.querySelectorAll('.modal'), {
+    opacity: 0.75,
+  });
 })
 
 function pan(xDelta, yDelta) {
@@ -99,57 +107,66 @@ function zoom(inOrOut) {
   currentZoom = zooms[currentZoom][inOrOut];
   gViewport.transform( {scale: currentZoom} )
 }
+
 </script>
 
 <body>
-<button onclick="TogetherJS(this); return false;">Start TogetherJS</button>
-  <button onclick="add_d6()">
+  <button class="btn" onclick="TogetherJS(this); return false;"
+  >Start TogetherJS</button>
+
+  <button class="btn" onclick="add_d6()">
   Add d6
   </button>
 
-  <button onclick="add_d8()">
+  <button class="btn" onclick="add_d8()">
   Add d8
   </button>
 
-  <button onclick="add_deckahedron()">
+  <button class="btn" onclick="add_deckahedron()">
   Add Deckahedron
   </button>
 
-  <button id="delete_button" onclick="delete_marked(this)"
+  <button class="btn" id="delete_button" onclick="delete_marked(this)"
     title="double-click objects to mark and delete them"
     disabled="disabled"
   >
     Delete&nbsp;<span id="num_marked">0</span>&nbsp;Objects
   </button>
 
-  <button id="bg_button" onclick="ui_popup_dialog(this)"
+  <button id="bg_button" class="btn modal-trigger"
+    data-target="dialog_bg"
     data-dialog-id="dialog_bg">
     Change Background
   </button>
 
-  <button id="draw_button" onclick="ui_popup_dialog(this)"
+  <button id="draw_button" class="btn modal-trigger"
+    data-target="dialog_rect"
     data-dialog-id="dialog_rect">
     Draw rect
   </button>
 
-  <button id="properties_button" onclick="ui_popup_button(this)"
+  <button id="properties_button" class="btn modal-trigger"
     title="double-click objects to mark them"
     disabled="disabled"
+    data-target="dialog_properties"
     data-dialog-id="dialog_properties">
     Object Properties
   </button>
 
-  <button id="save_button" onclick="ui_popup_dialog_save()"
+  <button id="save_button" class="btn modal-trigger"
+    data-target="dialog_save"
     data-dialog-id="dialog_save">
     Save
   </button>
 
-  <button id="load_button" onclick="ui_popup_dialog(this)"
+  <button id="load_button" class="btn modal-trigger"
+    data-target="dialog_load"
     data-dialog-id="dialog_load">
     Load
   </button>
 
-  <button id="load_button" onclick="ui_popup_dialog(this)"
+  <button id="load_button" class="btn modal-trigger"
+    data-target="dialog_contribute"
     data-dialog-id="dialog_contribute">
     Help this project
   </button>
@@ -170,7 +187,7 @@ function zoom(inOrOut) {
   </div>
 
 <!-- SAVE ============================================================ SAVE -->
-  <dialog id="dialog_save">
+  <div id="dialog_save" class="modal">
   <script>
 function ui_popup_dialog_save() {
   textarea = byId('textarea_save_output')
@@ -179,19 +196,22 @@ function ui_popup_dialog_save() {
   return ui_popup_dialog({'data-dialog-id': 'dialog_save'})
 }
   </script>
-    <button class="dialog_cancel" onclick="ui_popdown_dialog(this)"
-      data-dialog-id="dialog_save"
-    >
+    <button class="btn dialog_cancel modal-close">
       &#215;
     </button>
     <nav class="dialog_nav"  id="save_nav">
-      <a href="#copy_and_paste">Copy/Paste</a>
-      <a href="#local">Local storage</a>
-      <a href="#cloud">Cloud storage</a>
+    <div class="nav-wrapper">
+      <ul class="left">
+        <li><a href="#copy_and_paste">Copy/Paste</a></li>
+        <li><a href="#local">Local storage</a></li>
+        <li><a href="#cloud">Cloud storage</a></li>
+      </ul>
+    </div>
     </nav>
+  <div class="modal-content">
     <section>
       <a name="copy_and_paste"></a>
-      <h1 class="save_h1">Copy and Paste</h1>
+      <h2 class="save_h2">Copy and Paste</h2>
       <textarea id="textarea_save_output" cols="82" rows=10>X</textarea>
       <div class="save_explain">
       Copy and paste the contents of this text box to a file on your computer.
@@ -199,7 +219,7 @@ function ui_popup_dialog_save() {
     </section>
     <section>
       <a name="local"></a>
-      <h1 class="save_h1">Local storage on your browser</h1>
+      <h2 class="save_h2">Local storage on your browser</h2>
       <div class="save_explain">
       This feature has not been implemented yet. If you would like it to exist,
       <span style="color:teal">tweet</span> "Hey @boardcrafting, please
@@ -210,7 +230,7 @@ function ui_popup_dialog_save() {
     </section>
     <section>
       <a name="cloud"></a>
-      <h1 class="save_h1">Cloud storage</h1>
+      <h2 class="save_h2">Cloud storage</h2>
       <div class="save_explain">
       This feature has not been implemented yet. If you would like it to exist,
       <span style="color:teal">tweet</span> "Hey @boardcrafting, please
@@ -219,33 +239,39 @@ function ui_popup_dialog_save() {
       <b>or</b> start participating with the development on Github
       </div>
     </section>
-  </dialog>
+  </div>
+  </div>
 <!-- /SAVE ========================================================== /SAVE -->
 
 
 <!-- LOAD ============================================================ LOAD -->
-  <dialog id="dialog_load">
+  <div id="dialog_load" class="modal">
   <script>
 function load_svg() {
   textarea = byId('textarea_load_input')
   svg = byId('gamearea').querySelector('svg')
   console.log('texar', textarea.value)
   svg.outerHTML = textarea.value
-  ui_popdown_dialog({'data-dialog-id': 'dialog_load'})
+  ui_popdown_dialog('dialog_load')
 }
   </script>
-    <button class="dialog_cancel" onclick="ui_popdown_dialog(this)"
+    <button class="dialog_cancel btn modal-close"
       data-dialog-id="dialog_load"
     >
       &#215;
     </button>
     <nav class="dialog_nav" id="load_nav">
-      <a href="#copy_and_paste">Copy/Paste</a>
-      <a href="#upload">Upload file</a>
+    <div class="nav-wrapper">
+      <ul class="left">
+        <li><a href="#copy_and_paste">Copy/Paste</a></li>
+        <li><a href="#upload">Upload file</a></li>
+      </ul>
+    </div>
     </nav>
+  <div class="modal-content">
     <section>
       <a name="copy_and_paste"></a>
-      <h1 class="load_h1">Copy and Paste</h1>
+      <h2 class="load_h2">Copy and Paste</h2>
       <textarea id="textarea_load_input" cols="82" rows=5></textarea>
       <div class="load_explain">
       Copy and paste the contents from a previously saved session into this
@@ -257,7 +283,7 @@ function load_svg() {
     </section>
     <section>
       <a name="upload"></a>
-      <h1 class="load_h1">Upload file</h1>
+      <h2 class="load_h2">Upload file</h2>
       <div class="load_explain">
       This feature has not been implemented yet. If you would like it to exist,
       <span style="color:teal">tweet</span> "Hey @boardcrafting, please make
@@ -266,36 +292,41 @@ function load_svg() {
       <b>or</b> start participating with the development on Github
       </div>
     </section>
-  </dialog>
+  </div>
+  </div>
 <!-- /LOAD ========================================================== /LOAD -->
 
 
 <!-- BACKGROUND  =============================================== BACKGROUND -->
-  <dialog id="dialog_bg">
-    <button class="dialog_cancel" onclick="ui_popdown_dialog(this)"
+  <div class="modal" id="dialog_bg">
+    <button class="dialog_cancel btn modal-close"
       data-dialog-id="dialog_bg"
     >
       &#215;
     </button>
+  <div class="modal-content">
+    Use a URL as a background.  Examples:
     <ul>
       <li>http://www.1kfa.com/table/svg/bg_base_map.svg
       <li>http://www.1kfa.com/table/svg/bg_topography.svg
       <li>http://www.1kfa.com/table/svg/bg_hexagons.svg
       <li>https://images.ira.abramov.org/Propaganda/
     </ul>
+    <label for="background_url">Enter a URL</label>
     <input id="background_url" type="url"
       value="http://www.1kfa.com/table/svg/bg_topography.svg"
     />
     <button id="dialog_bg_submit" onclick="ui_change_background(this)">
       Change Background URL
     </button>
-  </dialog>
+  </div>
+  </div>
 <!-- /BACKGROUND ============================================== /BACKGROUND -->
 
 
 <!-- PROPERTIES  =============================================== PROPERTIES -->
 
-  <dialog id="dialog_properties">
+  <div class="modal" id="dialog_properties">
     <script>
 function ui_popup_button(target) {
   var allSel = svg_table.select('[data-ui-marked]').members
@@ -326,7 +357,7 @@ function ui_popup_properties(el, dialog_specifier) {
         }
       });
 
-      ui_popdown_dialog({'data-dialog-id': 'dialog_properties'})
+      ui_popdown_dialog('dialog_properties')
       net_fire({ type: 'change', data: serialize(target) })
   });
 
@@ -362,12 +393,12 @@ function ui_popup_properties(el, dialog_specifier) {
   return ui_popup_dialog(dialog_specifier)
 }
     </script>
-    <button class="dialog_cancel" onclick="ui_popdown_dialog(this)"
+    <button class="dialog_cancel btn modal-close"
       data-dialog-id="dialog_properties"
     >
       &#215;
     </button>
-    <br />
+  <div class="modal-content">
     <fieldset id="properties_fields">
     <label id="properties_label_template" class="template" >
       Template
@@ -378,13 +409,14 @@ function ui_popup_properties(el, dialog_specifier) {
     <button id="dialog_properties_submit">
       Change
     </button>
-  </dialog>
+  </div>
+  </div>
 <!-- /PROPERTIES  ============================================= /PROPERTIES -->
 
 
 <!-- RECT =========================================================== RECT -->
 
-  <dialog id="dialog_rect">
+  <div class="modal" id="dialog_rect">
     <script>
 
 var rect_verbs = {
@@ -435,46 +467,53 @@ function ui_submit_rect(evt) {
     height: h,
     fill: getUserColor(),
   });
-  ui_popdown_dialog({'data-dialog-id': 'dialog_rect'})
+  ui_popdown_dialog('dialog_rect')
   net_fire({ type: 'create', data: serialize(rect) })
 }
 
     </script>
-    <button class="dialog_cancel" onclick="ui_popdown_dialog(this)"
+    <button class="dialog_cancel btn modal-close"
       data-dialog-id="dialog_rect"
     >
       &#215;
     </button>
-    <br />
+  <div class="modal-content">
     <label for="rect_input_width">Width</label>
     <input id="rect_input_width" type="text" value="100"/>
     <br />
     <label for="rect_input_height">Height</label>
     <input id="rect_input_height" type="text" value="50"/>
     <br />
-    <button id="dialog_submit" onclick="ui_submit_rect(this)">
+    <button id="dialog_submit" onclick="ui_submit_rect(this)"
+      class="btn modal-close">
       Create
     </button>
-  </dialog>
+  </div>
+  </div>
 
 <!-- END RECT =================================================== END RECT -->
 
 <!-- CONTRIBUTE =============================================== CONTRIBUTE -->
-  <dialog id="dialog_contribute">
-    <button class="dialog_cancel" onclick="ui_popdown_dialog(this)"
+  <div class="modal" id="dialog_contribute">
+    <button class="dialog_cancel btn modal-close"
       data-dialog-id="dialog_contribute"
     >
       &#215;
     </button>
+    If you enjoy this tool, you can spread the love:
     <nav class="dialog_nav" id="contribute_nav">
-      If you enjoy this tool, you can spread the love:
-      <a href="#recognize">Give some recognition</a>
-      <a href="#develop">Contribute to the codebase</a>
-      <a href="#donate">Donate to related causes</a>
+    <div class="nav-wrapper">
+      <ul class="left">
+        <li><a href="#recognize">Give some recognition</a></li>
+        <li><a href="#develop">Contribute to the codebase</a></li>
+        <li><a href="#donate">Donate to related causes</a></li>
+      </ul>
+    </div>
     </nav>
+  <div class="modal-content">
     <section>
       <a name="recognize"></a>
-      <h1 class="contribute_h1">Give some recognition</h1>
+      <h2 class="contribute_h2">Give some recognition</h2>
       <div class="contribute_explain">
       If you do the whole social media thing:
       <a href="https://twitter.com/home?status=Thanks be to @boardcrafting for hosting https://www.1kfa.com/table !">By tweeting a tweet</a> or <a href="https://mastodon.social/">tooting a toot</a>.
@@ -485,7 +524,7 @@ function ui_submit_rect(evt) {
     </section>
     <section>
       <a name="develop"></a>
-      <h1 class="contribute_h1">Contribute to the codebase</h1>
+      <h2 class="contribute_h2">Contribute to the codebase</h2>
       <div class="contribute_explain">
       Speaking of Github, you can
       <a href="https://github.com/sjbrown/1kfa">fork and contribute to this project</a>
@@ -493,7 +532,7 @@ function ui_submit_rect(evt) {
     </section>
     <section>
       <a name="donate"></a>
-      <h1 class="contribute_h1">Donate</h1>
+      <h2 class="contribute_h2">Donate</h2>
       <div class="contribute_explain">
       This is built on top of TogetherJS, a free, open-source project created by
       the Mozilla Foundation. They need money to continue making great software
@@ -501,7 +540,8 @@ function ui_submit_rect(evt) {
       <a href="https://donate.mozilla.org/en-US/">Donate to Mozilla here.</a>
       </div>
     </section>
-  </dialog>
+  </div>
+  </div>
 <!-- /CONTRIBUTE ============================================== /CONTRIBUTE -->
 
 

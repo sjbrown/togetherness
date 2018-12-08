@@ -696,7 +696,7 @@ function ui_change_background(evt) {
   }
   var value = "url('" + input.value + "')";
   change_background(value)
-  ui_popdown_dialog({'data-dialog-id': 'dialog_bg'})
+  ui_popdown_dialog('dialog_bg')
   net_fire({ type: 'change_background', data: value })
 }
 
@@ -704,8 +704,12 @@ function change_background(value) {
   viewport.style('background-image', value)
 }
 
-function ui_popdown_dialog(target) {
-  s(byId(g(target, 'data-dialog-id')), 'open', null)
+function ui_popdown_dialog(elem_id) {
+  elem = document.querySelector('#' + elem_id)
+  console.log("e", elem)
+  instance = M.Modal.getInstance(elem)
+  console.log('i', instance)
+  instance.close()
 }
 
 function ui_popup_dialog(target) {
