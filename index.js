@@ -611,7 +611,6 @@ function ui_update_buttons() {
     //   uiLabel: (node) => { return 'MyLabel' },
     //  },  ...}
     Object.keys(actionMenu).map((title) => {
-      console.log("doing", title)
       var btn = template.content.firstElementChild.cloneNode(true)
       btn.innerText = title 
       if (!actionMenu[title].applicable(elemNode)) {
