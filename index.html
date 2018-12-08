@@ -71,17 +71,19 @@ SVG.on(document, 'DOMContentLoaded', () => {
   })
 
   widgetElem = document.querySelector('#widget_panzoom')
-  widget_panzoom = widgetElem.getSVGDocument().querySelector('svg');
-  widget_panzoom = SVG.adopt(widget_panzoom)
-  viewport.add(widget_panzoom)
-  widget_panzoom.x( viewport.width() - widget_panzoom.width() )
-  widget_panzoom.select('#x_left').on('click', () => pan(50, 0))
-  widget_panzoom.select('#x_right').on('click', () => pan(-50, 0))
-  widget_panzoom.select('#y_up').on('click', () => pan(0, 50))
-  widget_panzoom.select('#y_down').on('click', () => pan(0, -50))
-  widget_panzoom.select('#zoom_in').on('click', () => zoom('in'))
-  widget_panzoom.select('#zoom_out').on('click', () => zoom('out'))
-  widgetElem.remove()
+  widgetElem.addEventListener('load', () => {
+    widget_panzoom = widgetElem.getSVGDocument().querySelector('svg');
+    widget_panzoom = SVG.adopt(widget_panzoom)
+    viewport.add(widget_panzoom)
+    widget_panzoom.x( viewport.width() - widget_panzoom.width() )
+    widget_panzoom.select('#x_left').on('click', () => pan(50, 0))
+    widget_panzoom.select('#x_right').on('click', () => pan(-50, 0))
+    widget_panzoom.select('#y_up').on('click', () => pan(0, 50))
+    widget_panzoom.select('#y_down').on('click', () => pan(0, -50))
+    widget_panzoom.select('#zoom_in').on('click', () => zoom('in'))
+    widget_panzoom.select('#zoom_out').on('click', () => zoom('out'))
+    widgetElem.remove()
+  });
 
   // Initialize modals
   instances = M.Modal.init(document.querySelectorAll('.modal'), {

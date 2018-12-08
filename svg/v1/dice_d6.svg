@@ -14,7 +14,7 @@
    height="100"
    viewBox="0 0 100.002 100.002"
    id="d6 die"
-   onLoad="hookup_handlers(this);"
+   onLoad="d6.hookup_handlers(this);"
    version="1.1"
    inkscape:version="0.91 r13725"
    sodipodi:docname="dice_d6.svg">
@@ -90,76 +90,83 @@
      id="script13" />
   <script
      type="text/javascript"
+     data-namespace="d6"
      id="script_d6"><![CDATA[
 
-function roll_handler(evt) {
-  console.log('d6 ', this, 'roll!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!', evt.detail)
-  if (this.id !== evt.detail.elemId) {
-    return;
-  }
-  var text = this.querySelector('text')
-  var tspan = this.querySelector('tspan')
-  var origOpacity = this.style.opacity
-  var newNum = randDiceString(1,6)
-  animated_ghost(this, { animation: 'rollOut' })
-  tspan.textContent = ' '
-  this.style.opacity = 0.1
-  animated_ghost(this, {
-    animation: 'rollIn',
-    before_begin: (ghost) => {
-      ghost.querySelector('g').style.opacity = origOpacity
-    },
-    on_done: () => {
-      tspan.textContent = newNum
-      s(text, 'data-text', newNum)
-      this.style.opacity = origOpacity
-      net_fire({type: "change", data: serialize(this)});
-    },
-  })
-};
+var d6 = {
 
-function turn_handler(evt) {
-  console.log('d6 ', this, 'turn!!!!!!!!!!!!!!!!!!!!!!!!!!!!', evt.detail)
-  if (this.id !== evt.detail.elemId) {
-    return;
-  }
-  var text = this.querySelector('text')
-  var tspan = this.querySelector('tspan')
-  var origOpacity = this.style.opacity
-  var origNum = parseInt(tspan.textContent)
-  animated_ghost(this, {
-    animation: 'thumb',
-    on_done: () => {
-      tspan.textContent = (origNum % 6) + 1
-      s(text, 'data-text', (origNum % 6) + 1)
-      this.style.opacity = origOpacity
-      net_fire({type: "change", data: serialize(this)});
-    },
-  })
-  tspan.textContent = " "
-  this.style.opacity = 0.1
-}
-
-function hookup_handlers(elem) {
-  console.log('hookup d6!')
-  elem.addEventListener('die_roll', roll_handler)
-  elem.addEventListener('die_turn_up', turn_handler)
-}
-
-dice_d6_v1_menu = {
-  'Roll': {
-    eventName: 'die_roll',
-    applicable: (dieNode) => { return true },
-  },
-  'Turn Up': {
-    eventName: 'die_turn_up',
-    applicable: (dieNode) => { return true },
-    uiLabel: (dieNode) => { 
-      var tspan = dieNode.querySelector('tspan')
-      var nextNum = (parseInt(tspan.textContent) % 6) + 1
-      return 'Turn to ' + nextNum
+  roll_handler: function(evt) {
+    console.log('d6 ', this, 'roll!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!', evt.detail)
+    if (this.id !== evt.detail.elemId) {
+      return;
+    }
+    var text = this.querySelector('text')
+    var tspan = this.querySelector('tspan')
+    var origOpacity = this.style.opacity
+    var newNum = randDiceString(1,6)
+    animated_ghost(this, { animation: 'rollOut' })
+    tspan.textContent = ' '
+    this.style.opacity = 0.1
+    animated_ghost(this, {
+      animation: 'rollIn',
+      before_begin: (ghost) => {
+        ghost.querySelector('g').style.opacity = origOpacity
       },
+      on_done: () => {
+        tspan.textContent = newNum
+        s(text, 'data-text', newNum)
+        this.style.opacity = origOpacity
+        net_fire({type: "change", data: serialize(this)});
+      },
+    })
   },
+
+  turn_handler: function(evt) {
+    console.log('d6 ', this, 'turn!!!!!!!!!!!!!!!!!!!!!!!!!!!!', evt.detail)
+    if (this.id !== evt.detail.elemId) {
+      return;
+    }
+    var text = this.querySelector('text')
+    var tspan = this.querySelector('tspan')
+    var origOpacity = this.style.opacity
+    var origNum = parseInt(tspan.textContent)
+    animated_ghost(this, {
+      animation: 'thumb',
+      on_done: () => {
+        tspan.textContent = (origNum % 6) + 1
+        s(text, 'data-text', (origNum % 6) + 1)
+        this.style.opacity = origOpacity
+        net_fire({type: "change", data: serialize(this)});
+      },
+    })
+    tspan.textContent = " "
+    this.style.opacity = 0.1
+  },
+
+  hookup_handlers: function(elem) {
+    console.log('hookup d6!')
+    elem.addEventListener('die_roll', this.roll_handler)
+    elem.addEventListener('die_turn_up', this.turn_handler)
+    // This is necessary because Chrome has problems doing onLoad
+    s(elem, 'data-hooked-up', true)
+  },
+
+  v1_menu: {
+    'Roll': {
+      eventName: 'die_roll',
+      applicable: (dieNode) => { return true },
+    },
+    'Turn Up': {
+      eventName: 'die_turn_up',
+      applicable: (dieNode) => { return true },
+      uiLabel: (dieNode) => { 
+        var tspan = dieNode.querySelector('tspan')
+        var nextNum = (parseInt(tspan.textContent) % 6) + 1
+        return 'Turn to ' + nextNum
+        },
+    },
+  },
+
 }
 
     ]]></script>

@@ -13,7 +13,7 @@
    y="0"
    width="300"
    height="480"
-   onLoad="onLoad(this);"
+   onLoad="hookup_handlers(this);"
    viewBox="0 0 300 480"
    enable-background="new 0 0 216 216"
    xml:space="preserve"
@@ -333,14 +333,17 @@
          id="stop4652" /><stop
          style="stop-color:#008000;stop-opacity:0;"
          offset="1"
-         id="stop4654" /></linearGradient></defs><script
+         id="stop4654" /></linearGradient></defs>
+ <script
      type="text/javascript"
      src="js/deckahedron_utils.js"
-     id="script80" /><script
+     id="script80" />
+ <script
      type="text/javascript"
+     data-namespace="deckahedron"
      id="script6158"><![CDATA[
 
-cardsJSON = [
+const cardsJSON = [
  {'Pro': false, 'Stamina': false, 'a': 1, 'b': 1, 'c': 1, 'd': 1, 'crit_fail': true},
  {'Pro': false, 'Stamina': false, 'a': 1, 'b': 2, 'c': 3, 'd': 2},
  {'Pro': false, 'Stamina': false, 'a': 1, 'b': 4, 'c': 3, 'd': 4},
@@ -363,153 +366,155 @@ cardsJSON = [
  {'Pro': false, 'Stamina': true, 'a': 3, 'b': 3, 'c': 4, 'd': 3},
 ]
 
-function shuffle(deckJSON) {
-  // TODO
-  return deckJSON
-}
+var deckahedron = {
 
-function flip_handler(evt) {
-  console.log("FLIP", evt)
-  deck = evt.target.querySelector('.deckahedron_deck')
-  if (deck.childNodes.length === 0) {
-    return;
-  }
-  console.log("FLIP deck", deck)
+  shuffle: function(deckJSON) {
+    // TODO
+    return deckJSON
+  },
 
-  top_card = SVG.adopt(deck.lastChild)
-  play_area_pos = evt.target.querySelector('#play_area_ellipse')
-  console.log("FLIP", play_area_pos)
+  flip_handler: function(evt) {
+    console.log("FLIP", evt)
+    deck = evt.target.querySelector('.deckahedron_deck')
+    if (deck.childNodes.length === 0) {
+      return;
+    }
+    console.log("FLIP deck", deck)
 
-  play_area_pos = SVG.adopt(play_area_pos)
-  play_area_pos.cx()
-  console.log("before", top_card.cx(), top_card.cy())
+    top_card = SVG.adopt(deck.lastChild)
+    play_area_pos = evt.target.querySelector('#play_area_ellipse')
+    console.log("FLIP", play_area_pos)
 
-  top_card.cx(play_area_pos.cx())
-  top_card.cy(play_area_pos.cy() - 50)
+    play_area_pos = SVG.adopt(play_area_pos)
+    play_area_pos.cx()
+    console.log("before", top_card.cx(), top_card.cy())
 
-  back = top_card.node.querySelector('.card_back')
-  back.remove()
-  top_card.node.insertBefore(back, top_card.node.firstChild)
+    top_card.cx(play_area_pos.cx())
+    top_card.cy(play_area_pos.cy() - 50)
 
-  top_card.remove() // remove from deck
-  play_area_group = evt.target.querySelector('#play_area')
-  play_area_group.appendChild(top_card.node)
+    back = top_card.node.querySelector('.card_back')
+    back.remove()
+    top_card.node.insertBefore(back, top_card.node.firstChild)
 
-  console.log("after", top_card.cx(), top_card.cy())
+    top_card.remove() // remove from deck
+    play_area_group = evt.target.querySelector('#play_area')
+    play_area_group.appendChild(top_card.node)
 
+    console.log("after", top_card.cx(), top_card.cy())
+  },
 
-}
-function reshuffle_handler(evt) {
-  console.log("RESHUF", evt)
-}
+  reshuffle_handler: function(evt) {
+    console.log("RESHUF", evt)
+  },
 
-function jittered(src, min, max) {
-  min = Math.ceil(min)
-  max = Math.floor(max)
-  return '' + (src + (Math.floor(Math.random() * (max - min + 1)) + min))
-}
+  jittered: function(src, min, max) {
+    min = Math.ceil(min)
+    max = Math.floor(max)
+    return '' + (src + (Math.floor(Math.random() * (max - min + 1)) + min))
+  },
 
+  generate_card: function(cardJSON, index) {
+    console.log('ccc', cardJSON['a'])
+    var mymap = {
+      1: 'one_x',
+      2: 'one_check',
+      3: 'two_check',
+      4: 'three_check',
+    }
 
-function generate_card(cardJSON, index) {
-  console.log('ccc', cardJSON['a'])
-  var mymap = {
-    1: 'one_x',
-    2: 'one_check',
-    3: 'two_check',
-    4: 'three_check',
-  }
+    back_group = document.querySelector('#layer_back')
+    trans_x = SVG.adopt(back_group).x()
+    trans_y = SVG.adopt(back_group).y()
+    back = SVG.adopt(back_group.querySelectorAll('rect')[0])
+    console.log('tr', back.x(), back.y())
 
-  back_group = document.querySelector('#layer_back')
-  trans_x = SVG.adopt(back_group).x()
-  trans_y = SVG.adopt(back_group).y()
-  back = SVG.adopt(back_group.querySelectorAll('rect')[0])
-  console.log('tr', back.x(), back.y())
+    var cardText = JSON.stringify(cardJSON)
+    var card = document.createElementNS(SVG.ns, 'svg')
+    card.dataset.deckahedronCard = cardJSON
+    card.id = 'card_' + index
+    var jitterHighlight = (
+      '<rect class="card_jitter_highlight" x="'
+      + this.jittered(170, 0, 10)
+      + '" y="213" width="20" height="1" fill="#222" />'
+    )
+    std_trans = ' x="-' + trans_x + '" y="-' + trans_y + '" '
+    card.innerHTML = (
+      `
+       <use `+ std_trans +` href="#layer_bg_lighting" />
+       <use `+ std_trans +` href="#layer_bg" />
+       <use `+ std_trans +` href="#layer_books_flourish" />
+       <text
+         style="font-size:8px;line-height:125%;fill:#000000;fill-opacity:1;"
+         x="20"
+         y="60"
+         ><tspan>` +
+      cardText +
+      '</tspan></text>'
+      + '<use x="-'+ trans_x +'" href="#g_anchor_' + mymap[cardJSON['a']] + '" />'
+      + '<use x="-'+ trans_x +'" href="#g_bulb_' + mymap[cardJSON['b']] + '" />'
+      + '<use x="-'+ trans_x +'" href="#g_crescent_' + mymap[cardJSON['c']] + '" />'
+      + '<use x="-'+ trans_x +'" href="#g_dart_' + mymap[cardJSON['d']] + '" />'
+      + '<use class="card_back" href="#layer_back_sans_translate" />'
+      + jitterHighlight
+    )
+    card = SVG.adopt(card)
+    card.width(back.width())
+    card.height(back.height())
+    return card
+  },
 
-  var cardText = JSON.stringify(cardJSON)
-  var card = document.createElementNS(SVG.ns, 'svg')
-  card.dataset.deckahedronCard = cardJSON
-  card.id = 'card_' + index
-  var jitterHighlight = (
-    '<rect class="card_jitter_highlight" x="'
-    + jittered(170, 0, 10)
-    + '" y="213" width="20" height="1" fill="#222" />'
-  )
-  std_trans = ' x="-' + trans_x + '" y="-' + trans_y + '" '
-  card.innerHTML = (
-    `
-     <use `+ std_trans +` href="#layer_bg_lighting" />
-     <use `+ std_trans +` href="#layer_bg" />
-     <use `+ std_trans +` href="#layer_books_flourish" />
-     <text
-       style="font-size:8px;line-height:125%;fill:#000000;fill-opacity:1;"
-       x="20"
-       y="60"
-       ><tspan>` +
-    cardText +
-    '</tspan></text>'
-    + '<use x="-'+ trans_x +'" href="#g_anchor_' + mymap[cardJSON['a']] + '" />'
-    + '<use x="-'+ trans_x +'" href="#g_bulb_' + mymap[cardJSON['b']] + '" />'
-    + '<use x="-'+ trans_x +'" href="#g_crescent_' + mymap[cardJSON['c']] + '" />'
-    + '<use x="-'+ trans_x +'" href="#g_dart_' + mymap[cardJSON['d']] + '" />'
-    + '<use class="card_back" href="#layer_back_sans_translate" />'
-    + jitterHighlight
-  )
-  card = SVG.adopt(card)
-  card.width(back.width())
-  card.height(back.height())
-  return card
-}
+  generate_deck: function(elem) {
+    console.log('gen')
+    handle = SVG(elem)
+    deck = handle.group()
+    deck.addClass('deckahedron_deck')
+    deck.id( 'deck_' + base32.short_id() )
+    handle.add(deck)
 
-function generate_deck(elem) {
-  console.log('gen')
-  handle = SVG(elem)
-  deck = handle.group()
-  deck.addClass('deckahedron_deck')
-  deck.id( 'deck_' + base32.short_id() )
-  handle.add(deck)
+    var deck_area = elem.querySelector('#rect_area_deck')
+    deck_area = SVG.adopt(deck_area)
+    console.log('da', deck_area.cx(), deck_area.cy())
 
-  var deck_area = elem.querySelector('#rect_area_deck')
-  deck_area = SVG.adopt(deck_area)
-  console.log('da', deck_area.cx(), deck_area.cy())
+    var delta_x = 0
+    var delta_y = 0
+    var index = 0
+    this.shuffle(cardsJSON).map((cardJSON) => {
+      card = this.generate_card(cardJSON, index)
+      console.log('card', card.cx(), card.cy())
+      // TODO - why do i need this 20 pixel fudge?
+      card.cy(deck_area.cy() - (20+delta_y))
+      card.cx(deck_area.cx() + delta_x)
+      delta_x += 0.2
+      delta_y += 0.66
+      index += 1
+      deck.add(card)
+    })
+  },
 
-  var delta_x = 0
-  var delta_y = 0
-  var index = 0
-  shuffle(cardsJSON).map((cardJSON) => {
-    card = generate_card(cardJSON, index)
-    console.log('card', card.cx(), card.cy())
-    // TODO - why do i need this 20 pixel fudge?
-    card.cy(deck_area.cy() - (20+delta_y))
-    card.cx(deck_area.cx() + delta_x)
-    delta_x += 0.2
-    delta_y += 0.66
-    index += 1
-    deck.add(card)
-  })
-}
+  hookup_handlers: function(elem) {
+    this.generate_deck(elem)
+    console.log('hookup', elem)
+    elem.addEventListener('deckahedron_flip', this.flip_handler)
+    elem.addEventListener('deckahedron_reshuffle', this.reshuffle_handler)
+  },
 
-function onLoad(elem) {
-  generate_deck(elem)
-  console.log('hookup', elem)
-  elem.addEventListener('deckahedron_flip', flip_handler)
-  elem.addEventListener('deckahedron_reshuffle', reshuffle_handler)
-}
-
-deckahedron_v1_menu = {
-  'Flip': {
-    eventName: 'deckahedron_flip',
-    applicable: (dNode) => {
-      deck = dNode.querySelector('.deckahedron_deck')
-      if (deck.childNodes.length === 0) {
-        return false;
-      }
-      return true
+  v1_menu: {
+    'Flip': {
+      eventName: 'deckahedron_flip',
+      applicable: (dNode) => {
+        deck = dNode.querySelector('.deckahedron_deck')
+        if (deck.childNodes.length === 0) {
+          return false;
+        }
+        return true
+      },
+    },
+    'Reshuffle': {
+      eventName: 'deckahedron_reshuffle',
+      applicable: (dNode) => { return true },
     },
   },
-  'Reshuffle': {
-    eventName: 'deckahedron_reshuffle',
-    applicable: (dNode) => { return true },
-  },
+
 }
 
    ]]></script><sodipodi:namedview

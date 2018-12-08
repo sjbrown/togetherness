@@ -71,22 +71,22 @@ togetherFunctions.on_sync = (msg) => {
   msg.data.map(payload => {
     svg_table.appendChild(deserialize(payload))
   });
-  change_background(msg.bg);
-};
+  change_background(msg.bg)
+}
 
-togetherFunctions.on_change = (msg) => { deserialize(msg.data) };
+togetherFunctions.on_change = (msg) => { deserialize(msg.data) }
 
-togetherFunctions.on_create = (msg) => { svg_table.add(deserialize(msg.data)) };
+togetherFunctions.on_create = (msg) => { svg_table.add(deserialize(msg.data)) }
 
 togetherFunctions.on_create_mark = (msg) => {
   make_mark(msg.data.target_id, msg.data.mark_rect)
-};
+}
 
 togetherFunctions.on_drop_mark= (msg) => { _unmark(msg.mark_rect.id) }
 
 togetherFunctions.on_delete = (msg) => { recursive_delete(msg.data) }
 
-togetherFunctions.on_change_background = (msg) => { change_background(msg.data) };
+togetherFunctions.on_change_background = (msg) => { change_background(msg.data) }
 
 function deserialize(payload) {
   var elem = null;
@@ -407,7 +407,8 @@ function import_foreign_svg(url) {
     nest.addClass('draggable-group')
 
     frame.querySelectorAll('script').forEach((script) => {
-      console.log("appending script", script)
+      var ns_text = g(script, 'data-namespace')
+      console.log("appending script", script, 'namespace', ns_text)
       appendDocumentScript(script, nest.node)
     })
 
@@ -439,15 +440,46 @@ function recolorize(matrixNode) {
 
 function appendDocumentScript(scriptElem, parentElem) {
   // Make the scripts run by putting them into the live DOM
-  console.log("appending", scriptElem.id, g(scriptElem, 'src'))
+  console.log("appending doc script", scriptElem.id, g(scriptElem, 'src'))
+  console.log("to parent", parentElem.id)
   var newScript = document.createElement('script')
   if (g(scriptElem, 'src')) {
     newScript.src = g(scriptElem, 'src')
   } else {
     newScript.textContent = scriptElem.textContent
   }
+  s(newScript, 'id', scriptElem.id)
+  s(newScript, 'data-namespace', g(scriptElem, 'data-namespace'))
   parentElem.appendChild(newScript)
+  console.log("appended")
   scriptElem.remove()
+}
+
+function hookup_foreign_scripts(nest) {
+  // This assumes import_foreign_svg has already been executed
+  // and the nest element has been added to the DOM
+  nest.node.querySelectorAll('script').forEach((script) => {
+    var ns_text = g(script, 'data-namespace')
+    if (ns_text) {
+      var ns = window[ns_text]
+      if (!ns) {
+        alert(ns_text + ' has not been added to the DOM')
+        console.error(ns_text + ' has not been added to the DOM')
+        return;
+      }
+
+      // The foreign <svg> should have an onLoad to do this, but
+      // Chrome has problems doing onLoad
+      if (!g(nest.node, 'data-hooked-up')) {
+        ns.hookup_handlers(nest.node)
+      }
+
+      console.log("menu", ns.v1_menu)
+      if (ns.v1_menu) {
+        hookup_menu_actions(nest, ns.v1_menu)
+      }
+    }
+  })
 }
 
 function add_d6() {
@@ -455,13 +487,14 @@ function add_d6() {
 
   return import_foreign_svg(url)
   .then((nest) => {
+    console.log("d6 import", nest)
     svg_table.add(nest)
     do_animate(nest.node)
-    console.log("d", dice_d6_v1_menu)
-    if (dice_d6_v1_menu) {
-      hookup_interactions(nest, dice_d6_v1_menu)
-    }
     net_fire({type: "create", data: serialize(nest)});
+    return nest
+  })
+  .then((nest) => {
+    hookup_foreign_scripts(nest)
   })
 }
 
@@ -470,13 +503,14 @@ function add_d8() {
 
   return import_foreign_svg(url)
   .then((nest) => {
+    console.log("d8 import", nest)
     svg_table.add(nest)
     do_animate(nest.node)
-    console.log("dd8men", dice_d8_v1_menu)
-    if (dice_d8_v1_menu) {
-      hookup_interactions(nest, dice_d8_v1_menu)
-    }
     net_fire({type: "create", data: serialize(nest)});
+    return nest
+  })
+  .then((nest) => {
+    hookup_foreign_scripts(nest)
   })
 }
 
@@ -485,18 +519,19 @@ function add_deckahedron() {
 
   return import_foreign_svg(url)
   .then((nest) => {
+    console.log("dkhdrn import", nest)
     svg_table.add(nest)
     do_animate(nest.node)
-    console.log("ddeckahedronmen", deckahedron_v1_menu)
-    if (deckahedron_v1_menu) {
-      hookup_interactions(nest, deckahedron_v1_menu)
-    }
     net_fire({type: "create", data: serialize(nest)});
+    return nest
+  })
+  .then((nest) => {
+    hookup_foreign_scripts(nest)
   })
 }
 
 
-function hookup_interactions(svgEl, actionMenu) {
+function hookup_menu_actions(svgEl, actionMenu) {
   var newMenu = Object.assign(actionMenu, {
     'Mark': {
       eventName: 'node_mark',
@@ -592,7 +627,7 @@ function ui_update_buttons() {
 }
 
 function evt_fire(eventName, triggerNode, origEvent, other) {
-  console.log("dispatching", eventName, 'to', triggerNode.id)
+  console.log("dispatching", eventName, 'to', triggerNode.id, 'other', other)
   triggerNode.dispatchEvent(new CustomEvent(eventName, {
     bubbles: true,
     detail: Object.assign(
