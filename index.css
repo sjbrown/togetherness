@@ -24,8 +24,8 @@ dialog h1 {
 
 #gamearea {
   background-color: #efe;
-  width: 80%;
-  height: 60%;
+  min-width: 80%;
+  min-height: 60%;
   /*ddheight: 500px;
   */
 }
