@@ -49,8 +49,9 @@ var viewport;
 var gViewport;
 var widget_panzoom;
 SVG.on(document, 'DOMContentLoaded', () => {
-  viewport = SVG('gamearea').size(1000, 480)
+  viewport = SVG('gamearea').size(500, 480)
   viewport.node.id = 'svg_viewport'
+  s(viewport.node, 'width', '100%')
   viewport.style('background-image', 'url(svg/bg_hexagons.svg)')
 
   gViewport = SVG.adopt(document.createElementNS(SVG.ns, 'g'))
@@ -60,6 +61,18 @@ SVG.on(document, 'DOMContentLoaded', () => {
   svg_table = SVG.adopt(document.createElementNS(SVG.ns, 'svg'))
   svg_table.node.id = 'svgtable'
   svg_table.size(1000, 480)
+  table_rect = gViewport.rect()
+  table_rect.attr({
+     x: -1,
+     y: -1,
+     rx: 0,
+     ry: 0,
+     width: 1002,
+     height: 482,
+     fill: 'none',
+     stroke: 'black',
+     'stroke-opacity': 0.1,
+  })
   gViewport.add(svg_table)
 
   SVG.eid = (name) => {
@@ -78,7 +91,8 @@ SVG.on(document, 'DOMContentLoaded', () => {
     widget_panzoom = widgetElem.getSVGDocument().querySelector('svg');
     widget_panzoom = SVG.adopt(widget_panzoom)
     viewport.add(widget_panzoom)
-    widget_panzoom.x( viewport.width() - widget_panzoom.width() )
+    widget_panzoom.x(0)
+    widget_panzoom.y( viewport.height() - widget_panzoom.height() )
     widget_panzoom.select('#x_left').on('click', () => pan(50, 0))
     widget_panzoom.select('#x_right').on('click', () => pan(-50, 0))
     widget_panzoom.select('#y_up').on('click', () => pan(0, 50))
