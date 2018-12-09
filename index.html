@@ -164,7 +164,8 @@ function zoom(inOrOut) {
     Draw rect
   </button>
 
-  <button id="properties_button" class="btn modal-trigger"
+  <button id="properties_button" class="btn"
+    onclick="ui_popup_button()"
     title="double-click objects to mark them"
     disabled="disabled"
     data-target="dialog_properties"
@@ -172,8 +173,8 @@ function zoom(inOrOut) {
     Object Properties
   </button>
 
-  <button id="save_button" class="btn modal-trigger"
-    data-target="dialog_save"
+  <button id="save_button" class="btn"
+    onclick="ui_popup_dialog_save()"
     data-dialog-id="dialog_save">
     Save
   </button>
@@ -349,15 +350,16 @@ function load_svg() {
 
   <div class="modal" id="dialog_properties">
     <script>
-function ui_popup_button(target) {
+function ui_popup_button() {
   var allSel = svg_table.select('[data-ui-marked]').members
   if (allSel.length !== 1) {
     alert('You must mark exactly 1 object to edit its properties');
     return
   }
   var el = allSel[0].node.firstChild;
-  return ui_popup_properties(el, target)
+  return ui_popup_properties(el, {'data-dialog-id': 'dialog_properties'})
 }
+
 function ui_popup_properties(el, dialog_specifier) {
   var submitButton = byId('dialog_properties_submit')
   var attrs = justNonUiAttributes(el)
@@ -441,17 +443,12 @@ function ui_popup_properties(el, dialog_specifier) {
     <script>
 
 var rect_verbs = {
-  'Mark': {
-    applicable: (rectNode) => { return !is_marked(rectNode) },
-    action: (evt, rectNode) => {
-      return markElementById(rectNode.id)
-    },
-  },
   'Object properties': {
     applicable: () => { return true },
-    action: (evt, rectNode) => {
+    eventName: 'object_properties',
+    handler: (evt) => {
       ui_popup_properties(
-        rectNode,
+        byId(evt.detail.elemId),
         {'data-dialog-id': 'dialog_properties'}
       )
     }
@@ -473,7 +470,7 @@ function make_rect(attrs) {
     'stroke-opacity': 0.8,
     'stroke-width': 1,
   }, attrs))
-  hookup_interactions(rect, rect_verbs)
+  hookup_menu_actions(rect, rect_verbs)
   return rect;
 }
 

@@ -225,7 +225,7 @@ function is_marked(node) {
   )
 }
 
-var mark_verbs = {
+var mark_menu = {
   'Remove mark': {
     eventName: 'remove_mark',
     applicable: (target) => { return g(target, 'data-app-class') === 'nest' },
@@ -233,9 +233,10 @@ var mark_verbs = {
   'Object properties': {
     eventName: 'object_properties',
     applicable: () => { return true },
-    action: (evt, nestNode) => {
+    handler: (evt) => {
+      nestNode = byId(evt.detail.elemId)
       ui_popup_properties(
-        nestNode.parentNode.firstChild,
+        nestNode.firstChild,
         {'data-dialog-id': 'dialog_properties'}
       )
     }
@@ -295,9 +296,10 @@ function make_mark(target_id, attrs) {
   nest.add(rect) // Add it last, so that it renders on top
 
   nest.on('dblclick', ui_unmark)
-  nest.on('svg_longtouch', ui_unmark)
   nest.on('remove_mark', ui_unmark)
-  nest.on('mouseover', (evt) => { ui_mouseover(evt, nest.node, mark_verbs) });
+  nest.on('svg_longtouch', ui_unmark)
+  nest.on('mouseover', (evt) => { ui_mouseover(evt, nest.node, mark_menu) });
+  hookup_self_event_handlers(nest.node, mark_menu)
 
   return {
     mark_rect: rect,
@@ -494,11 +496,23 @@ function hookup_menu_actions(svgEl, actionMenu) {
   svgEl.on('dblclick', (evt) => { markElementById(svgEl.id(), newMenu) })
   svgEl.on('svg_longtouch', (evt) => { markElementById(svgEl.id(), newMenu) })
   svgEl.on('mouseover', (evt) => { ui_mouseover(evt, svgEl.node, newMenu) })
+
+  // Hookup any self-event handlers
+  hookup_self_event_handlers(svgEl.node, actionMenu)
+}
+
+function hookup_self_event_handlers(el, actionMenu) {
+  Object.keys(actionMenu).map((title) => {
+    if (!actionMenu[title].handler) {
+      return
+    }
+    console.log("hooking up", actionMenu[title].eventName, actionMenu[title].handler)
+    el.addEventListener(actionMenu[title].eventName, actionMenu[title].handler)
+  })
 }
 
 
 function add_object(url) {
-  byId('properties_button').textContent = 'addd'
   return import_foreign_svg(url)
   .then((nest) => {
     console.log("d6 import", nest)
@@ -709,13 +723,13 @@ function change_background(value) {
 
 function ui_popdown_dialog(elem_id) {
   elem = document.querySelector('#' + elem_id)
-  console.log("e", elem)
   instance = M.Modal.getInstance(elem)
-  console.log('i', instance)
   instance.close()
 }
 
 function ui_popup_dialog(target) {
-  s(byId(g(target, 'data-dialog-id')), 'open', 'open')
+  elem = byId(g(target, 'data-dialog-id'))
+  instance = M.Modal.getInstance(elem)
+  instance.open()
 }
 
