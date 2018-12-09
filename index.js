@@ -295,6 +295,7 @@ function make_mark(target_id, attrs) {
   nest.add(rect) // Add it last, so that it renders on top
 
   nest.on('dblclick', ui_unmark)
+  nest.on('svg_longtouch', ui_unmark)
   nest.on('remove_mark', ui_unmark)
   nest.on('mouseover', (evt) => { ui_mouseover(evt, nest.node, mark_verbs) });
 
@@ -407,8 +408,7 @@ function import_foreign_svg(url) {
     nest.addClass('draggable-group')
 
     frame.querySelectorAll('script').forEach((script) => {
-      var ns_text = g(script, 'data-namespace')
-      console.log("appending script", script, 'namespace', ns_text)
+      console.log("appending script", script)
       appendDocumentScript(script, nest.node)
     })
 
@@ -482,9 +482,23 @@ function hookup_foreign_scripts(nest) {
   })
 }
 
-function add_d6() {
-  var url = 'svg/v1/dice_d6.svg'
+function hookup_menu_actions(svgEl, actionMenu) {
+  var newMenu = Object.assign(actionMenu, {
+    'Mark': {
+      eventName: 'node_mark',
+      applicable: (node) => { return !is_marked(node) },
+    },
+  })
+  svgEl.node.actionMenu = actionMenu
+  svgEl.on('node_mark', (evt) => { markElementById(svgEl.id(), newMenu) })
+  svgEl.on('dblclick', (evt) => { markElementById(svgEl.id(), newMenu) })
+  svgEl.on('svg_longtouch', (evt) => { markElementById(svgEl.id(), newMenu) })
+  svgEl.on('mouseover', (evt) => { ui_mouseover(evt, svgEl.node, newMenu) })
+}
 
+
+function add_object(url) {
+  byId('properties_button').textContent = 'addd'
   return import_foreign_svg(url)
   .then((nest) => {
     console.log("d6 import", nest)
@@ -498,51 +512,6 @@ function add_d6() {
   })
 }
 
-function add_d8() {
-  var url = 'svg/v1/dice_d8.svg'
-
-  return import_foreign_svg(url)
-  .then((nest) => {
-    console.log("d8 import", nest)
-    svg_table.add(nest)
-    do_animate(nest.node)
-    net_fire({type: "create", data: serialize(nest)});
-    return nest
-  })
-  .then((nest) => {
-    hookup_foreign_scripts(nest)
-  })
-}
-
-function add_deckahedron() {
-  var url = 'svg/v1/deckahedron.svg'
-
-  return import_foreign_svg(url)
-  .then((nest) => {
-    console.log("dkhdrn import", nest)
-    svg_table.add(nest)
-    do_animate(nest.node)
-    net_fire({type: "create", data: serialize(nest)});
-    return nest
-  })
-  .then((nest) => {
-    hookup_foreign_scripts(nest)
-  })
-}
-
-
-function hookup_menu_actions(svgEl, actionMenu) {
-  var newMenu = Object.assign(actionMenu, {
-    'Mark': {
-      eventName: 'node_mark',
-      applicable: (node) => { return !is_marked(node) },
-    },
-  })
-  svgEl.node.actionMenu = actionMenu
-  svgEl.on('node_mark', (evt) => { markElementById(svgEl.id(), newMenu) })
-  svgEl.on('dblclick', (evt) => { markElementById(svgEl.id(), newMenu) })
-  svgEl.on('mouseover', (evt) => { ui_mouseover(evt, svgEl.node, newMenu) })
-}
 
 function ui_mouseover(evt, target, actionMenu) {
   //console.log('hover', target)
