@@ -17,7 +17,8 @@
    viewBox="0 0 300 480"
    enable-background="new 0 0 216 216"
    xml:space="preserve"
-   id="svg_deckahedron1"
+   id="svg_deckahedron"
+   class="svg_deckahedron"
    inkscape:version="0.91 r13725"
    sodipodi:docname="deckahedron.svg"><metadata
      id="metadata926"><rdf:RDF><cc:Work
@@ -364,6 +365,13 @@ const cardsJSON = [
  {'Pro': false, 'Stamina': true, 'a': 3, 'b': 3, 'c': 4, 'd': 3},
 ]
 
+function pile_offset(index) {
+  return {
+    x: 0.2 * index,
+    y: 0.66 * index,
+  }
+}
+
 var deckahedron = {
 
   shuffle: function(deckJSON) {
@@ -373,32 +381,71 @@ var deckahedron = {
 
   flip_handler: function(evt) {
     console.log("FLIP", evt)
-    deck = evt.target.querySelector('.deckahedron_deck')
-    if (deck.childNodes.length === 0) {
+
+    var deck
+
+    if (evt.target.classList.contains('deckahedron_deck')) {
+      deck = evt.target
+    } else {
+      deck = evt.target.querySelector('.deckahedron_deck')
+    }
+    local_doc = deck.closest('.svg_deckahedron')
+
+    play_area_group = local_doc.querySelector('#play_area')
+
+    var card
+
+    if (evt.detail.selectedCardId) {
+      // user is dragging a card
+      card = SVG.adopt(byId(evt.detail.selectedCardId))
+    } else if (deck.childNodes.length !== 0) {
+      // take the top card off the deck
+      card = SVG.adopt(deck.lastChild)
+    } else {
+      console.log('no card')
       return;
     }
-    console.log("FLIP deck", deck)
 
-    top_card = SVG.adopt(deck.lastChild)
-    play_area_pos = evt.target.querySelector('#play_area_ellipse')
-    console.log("FLIP", play_area_pos)
-
+    play_area_pos = local_doc.querySelector('#play_area_ellipse')
     play_area_pos = SVG.adopt(play_area_pos)
-    play_area_pos.cx()
-    console.log("before", top_card.cx(), top_card.cy())
 
-    top_card.cx(play_area_pos.cx())
-    top_card.cy(play_area_pos.cy() - 50)
+    offset = pile_offset(play_area_group.childNodes.length)
+    card.cx(play_area_pos.cx() + offset.x)
+    card.cy(play_area_pos.cy() - 50 + offset.y)
 
-    back = top_card.node.querySelector('.card_back')
+    back = card.node.querySelector('.card_back')
     back.remove()
-    top_card.node.insertBefore(back, top_card.node.firstChild)
+    card.node.insertBefore(back, card.node.firstChild)
 
-    top_card.remove() // remove from deck
-    play_area_group = evt.target.querySelector('#play_area')
-    play_area_group.appendChild(top_card.node)
+    card.remove() // remove from deck or exhaustion pile
+    play_area_group.appendChild(card.node)
 
-    console.log("after", top_card.cx(), top_card.cy())
+    console.log("after", card.cx(), card.cy())
+  },
+
+  exhaustion_handler: function(evt) {
+    console.log("EXH", evt)
+
+    var deck
+
+    if (evt.target.classList.contains('deckahedron_deck')) {
+      deck = evt.target
+    } else {
+      deck = evt.target.querySelector('.deckahedron_deck')
+    }
+    local_doc = deck.closest('.svg_deckahedron')
+
+    card = SVG.adopt(byId(evt.detail.selectedCardId))
+    ex_area = local_doc.querySelector('#rect_area_exhaustion')
+    ex_area = SVG.adopt(ex_area)
+
+    card.cx(ex_area.cx())
+    card.cy(ex_area.cy())
+
+    card.remove() // remove from deck
+    exhaustion_area_group = local_doc.querySelector('#exhaustion_area')
+    exhaustion_area_group.appendChild(card.node)
+
   },
 
   reshuffle_handler: function(evt) {
@@ -411,7 +458,7 @@ var deckahedron = {
     return '' + (src + (Math.floor(Math.random() * (max - min + 1)) + min))
   },
 
-  generate_card: function(cardJSON, index) {
+  generate_card: function(cardJSON, unique_id, deck_id) {
     console.log('ccc', cardJSON['a'])
     var mymap = {
       1: 'one_x',
@@ -429,7 +476,8 @@ var deckahedron = {
     var cardText = JSON.stringify(cardJSON)
     var card = document.createElementNS(SVG.ns, 'svg')
     card.dataset.deckahedronCard = cardJSON
-    card.id = 'card_' + index
+    card.dataset.deckId = deck_id
+    card.id = unique_id
     var jitterHighlight = (
       '<rect class="card_jitter_highlight" x="'
       + this.jittered(170, 0, 10)
@@ -452,12 +500,19 @@ var deckahedron = {
       + '<use x="-'+ trans_x +'" href="#g_bulb_' + mymap[cardJSON['b']] + '" />'
       + '<use x="-'+ trans_x +'" href="#g_crescent_' + mymap[cardJSON['c']] + '" />'
       + '<use x="-'+ trans_x +'" href="#g_dart_' + mymap[cardJSON['d']] + '" />'
-      + '<use class="card_back" href="#layer_back_sans_translate" />'
+      + '<use id="cb_'+ unique_id +'" class="card_back" href="#layer_back_sans_translate" />'
       + jitterHighlight
     )
     card = SVG.adopt(card)
     card.width(back.width())
     card.height(back.height())
+    card.addClass('draggable-group')
+    card.node.addEventListener('svg_dragstart', (evt) => {
+      console.log('listening', evt.detail, card.node.id)
+      if (evt.detail.elemId === card.node.id) {
+        console.log('its me', card.node.id)
+      }
+    })
     return card
   },
 
@@ -466,34 +521,73 @@ var deckahedron = {
     handle = SVG(elem)
     deck = handle.group()
     deck.addClass('deckahedron_deck')
-    deck.id( 'deck_' + base32.short_id() )
+    deck_id = 'deck_' + base32.short_id()
+    deck.id(deck_id)
     handle.add(deck)
 
     var deck_area = elem.querySelector('#rect_area_deck')
     deck_area = SVG.adopt(deck_area)
     console.log('da', deck_area.cx(), deck_area.cy())
 
-    var delta_x = 0
-    var delta_y = 0
     var index = 0
     this.shuffle(cardsJSON).map((cardJSON) => {
-      card = this.generate_card(cardJSON, index)
+      card = this.generate_card(cardJSON, 'c' + (index+1) + deck_id, deck_id)
       console.log('card', card.cx(), card.cy())
       // TODO - why do i need this 20 pixel fudge?
-      card.cy(deck_area.cy() - (20+delta_y))
-      card.cx(deck_area.cx() + delta_x)
-      delta_x += 0.2
-      delta_y += 0.66
-      index += 1
+      card.cy(deck_area.cy() - (20 + pile_offset(index).y))
+      card.cx(deck_area.cx() + pile_offset(index).x)
       deck.add(card)
+      index += 1
     })
+  },
+
+  drag_handler: function(evt) {
+    //console.log('tt', new Date())
+    //console.log('t', evt.target.id, evt.detail)
+    card = SVG.get(evt.target.id)
+    play_area = SVG.get('ellipse_play_area')
+    ex_area = SVG.get('rect_area_exhaustion')
+
+    console.log('c', card.cx(), card.cy())
+    console.log('e', ex_area.inside(card.cx(), card.cy()))
+
+    if (play_area.inside(card.cx(), card.cy())) {
+      card.style({ opacity: 0.8 })
+    } else if (ex_area.inside(card.cx(), card.cy())) {
+      card.style({ opacity: 0.8 })
+    } else {
+      card.style({ opacity: 1.0 })
+    }
+  },
+
+  dragend_handler: function(evt) {
+    play_area = SVG.get('ellipse_play_area')
+    ex_area = SVG.get('rect_area_exhaustion')
+
+    card = SVG.get(evt.target.id)
+    card.style({ opacity: 1.0 })
+
+    if (play_area.inside(card.cx(), card.cy())) {
+      console.log('1dropped in play area', card.node.dataset.deckId)
+      deck = byId(card.node.dataset.deckId)
+      evt_fire('deckahedron_flip', deck, evt, {selectedCardId: card.node.id})
+    } else if (ex_area.inside( card.cx(), card.cy())) {
+      console.log('dropped in ex area')
+      evt_fire('deckahedron_exhaustion', deck, evt, {selectedCardId: card.node.id})
+    } else {
+      console.log('dropped elsewhere')
+    }
   },
 
   hookup_handlers: function(elem) {
     this.generate_deck(elem)
     console.log('hookup', elem)
     elem.addEventListener('deckahedron_flip', this.flip_handler)
+    elem.addEventListener('deckahedron_exhaustion', this.exhaustion_handler)
     elem.addEventListener('deckahedron_reshuffle', this.reshuffle_handler)
+    byId('ellipse_play_area').classList.add('droptarget')
+    elem.addEventListener('svg_drag', this.drag_handler)
+    elem.addEventListener('svg_dragend', this.dragend_handler)
   },
 
   v1_menu: {
@@ -2449,8 +2543,7 @@ var deckahedron = {
      id="layer_areas"
      inkscape:label="areas"
      transform="translate(0,-20)"
-     style="display:inline"
-     sodipodi:insensitive="true"><g
+     style="display:inline"><g
        style="display:inline"
        id="g5089"
        transform="translate(-182,282)"><rect
@@ -2484,21 +2577,22 @@ var deckahedron = {
 <g
        style="display:inline"
        id="g_area_exhaustion"
-       transform="matrix(-1,0,0,1,484,282)"><rect
+       ><rect
          ry="10"
          rx="10"
-         y="0"
-         x="0"
+         y="282"
+         x="267.5"
          height="214"
          width="214"
-         id="rect5062-3-0"
-         style="display:inline;opacity:1;fill:none;fill-opacity:1;stroke:#666666;stroke-width:3;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:3, 3;stroke-dashoffset:0;stroke-opacity:1" /><rect
+         id="rect_area_exhaustion"
+         style="display:inline;opacity:1;fill:none;fill-opacity:1;stroke:#666666;stroke-width:3;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:3, 3;stroke-dashoffset:0;stroke-opacity:1" />
+         <rect
          style="display:inline;opacity:1;fill:#000000;fill-opacity:0.07729468;stroke:#cccccc;stroke-width:2.97344923;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:2.9734492, 2.9734492;stroke-dashoffset:0;stroke-opacity:1"
          id="rect5081-4"
          width="212"
          height="212"
-         x="1"
-         y="1"
+         x="268.5"
+         y="283"
          rx="9.9114971"
          ry="9.9114971" /></g><text
        xml:space="preserve"
@@ -2535,7 +2629,7 @@ var deckahedron = {
        rx="77.049515"
        cy="166.12386"
        cx="150"
-       id="ellipse5712"
+       id="ellipse_play_area"
        style="opacity:1;fill:none;fill-opacity:1;stroke:#808080;stroke-width:3.05116081;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:3.05116093, 3.05116093;stroke-dashoffset:0;stroke-opacity:1" /><ellipse
        style="opacity:1;fill:#000000;fill-opacity:0.07729468;stroke:#cccccc;stroke-width:3;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:3, 3;stroke-dashoffset:0;stroke-opacity:1"
        id="play_area_ellipse"
@@ -2685,5 +2779,8 @@ var deckahedron = {
            id="circle4328"
            style="fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:4;stroke-miterlimit:2;stroke-dasharray:none;stroke-opacity:1"
            rx="5.0829053"
-           ry="5.0944171" /></g></g></g><g
-     id="play_area" /></svg>
+           ry="5.0944171" /></g></g></g>
+           <g id="play_area" />
+           <g id="exhaustion_area" />
+           <g id="discard_area" />
+           </svg>

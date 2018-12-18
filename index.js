@@ -618,6 +618,7 @@ function evt_fire(eventName, triggerNode, origEvent, other) {
     ),
   }))
 }
+
 function ui_fire(msg) {
   var fn = {
     createMark: (msg) => {

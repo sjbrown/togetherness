@@ -1,14 +1,14 @@
 /*
   Peter's draggable library, with some modifications
 */
-function makeDraggable(world, callbacks) {
+function makeDraggable(world) {
   // Source:
   // https://github.com/petercollingridge/code-for-blog/
   // Tutorial:
   // http://www.petercollingridge.co.uk/tutorials/svg/interactive/dragging/
-  var cbDict = callbacks;
   var selectedEl, origMouse, origXY;
-  var timer, lockTimer;
+  var longtouchTimer, lockLongtouchTimer;
+  var broadcastTimer, lockBroadcastTimer;
   var mouse;
 
   world.on('mousedown', startDrag);
@@ -21,27 +21,31 @@ function makeDraggable(world, callbacks) {
   world.on('touchleave', endDrag);
   world.on('touchcancel', endDrag);
 
+  function broadcast(event_name, detail) {
+    console.log("brodcast", event_name)
+    selectedEl.node.dispatchEvent(new CustomEvent(event_name, {
+      bubbles: true,
+      detail: detail,
+    }))
+  }
+
   function onLongTouch() {
     if (
       mouse &&
       Math.abs(mouse.x - origMouse.x) + Math.abs(mouse.y - origMouse.y) > 20
     ) {
-      console.log("drift - n o fire", mouse, origMouse)
+      //console.log("drift - n o fire", mouse, origMouse)
       return
     }
-    console.log("fire longtouch", selectedEl.node)
-    selectedEl.node.dispatchEvent(new CustomEvent('svg_longtouch', {
-      bubbles: true,
-      detail: { elemId: selectedEl.id },
-    }))
-
+    //console.log("fire longtouch", selectedEl.node)
+    broadcast('svg_longtouch', { elemId: selectedEl.node.id })
   }
 
   function touchStart(e) {
     // Chrome doesn't do long touch by default, so it must be done by force
-    if (lockTimer) { return }
-    timer = setTimeout(onLongTouch, 400) // miliseconds
-    lockTimer = true
+    if (lockLongtouchTimer) { return }
+    longtouchTimer = setTimeout(onLongTouch, 400) // miliseconds
+    lockLongtouchTimer = true
     return startDrag(e)
   }
 
@@ -57,14 +61,15 @@ function makeDraggable(world, callbacks) {
   function initialiseDragging(evt) {
     origMouse = getMousePosition(evt)
     mouse = getMousePosition(evt)
-    console.log("initial", origMouse)
     origXY = {
       x: selectedEl.x(),
       y: selectedEl.y(),
     }
+    broadcast('svg_dragstart', { elemId: evt.target.id })
   }
 
   function startDrag(evt) {
+    //console.log('startdrag', evt.target)
     evt.preventDefault() // prevent, for example, text selection
     if (
       evt.target.classList.contains('draggable')
@@ -75,33 +80,49 @@ function makeDraggable(world, callbacks) {
       initialiseDragging(evt);
     } else if (evt.target.closest('.draggable-group')) {
       selectedEl = SVG.get(evt.target.closest('.draggable-group').id);
+      console.log('closests draggable group', selectedEl)
       initialiseDragging(evt);
     }
   }
 
   function drag(evt) {
     evt.preventDefault() // prevent, for example, text selection
-    if (selectedEl) {
-      mouse = getMousePosition(evt)
-      selectedEl.x(origXY.x + (mouse.x - origMouse.x))
-      selectedEl.y(origXY.y + (mouse.y - origMouse.y))
+    if (!selectedEl) {
+      return
     }
+    mouse = getMousePosition(evt)
+    selectedEl.x(origXY.x + (mouse.x - origMouse.x))
+    selectedEl.y(origXY.y + (mouse.y - origMouse.y))
+
+    // Don't spam - limit to roughly every 400 miliseconds
+    if (lockBroadcastTimer) { return }
+    lockBroadcastTimer = true
+    broadcastTimer = setTimeout(() => { lockBroadcastTimer = false }, 400)
+    broadcast('svg_drag', {
+      elem: selectedEl,
+      elemId: selectedEl.node.id,
+      mouse: mouse,
+    })
   }
 
   function endDrag(evt) {
     try {
       if (selectedEl) {
-        cbDict.endDragCb(selectedEl)
+        broadcast('svg_dragend', { elemId: selectedEl.node.id })
       }
     }
     catch (err) {
       console.log(err)
     }
     finally {
-      if (timer) {
-        clearTimeout(timer)
+      if (longtouchTimer) {
+        clearTimeout(longtouchTimer)
       }
-      lockTimer = false
+      if (broadcastTimer) {
+        clearTimeout(broadcastTimer)
+      }
+      lockLongtouchTimer = false
+      lockBroadcastTimer = false
       selectedEl = false
     }
   }

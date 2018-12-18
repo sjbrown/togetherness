@@ -79,11 +79,11 @@ SVG.on(document, 'DOMContentLoaded', () => {
     return name + '_' + base32.short_id()
   }
 
-  makeDraggable(svg_table, {
-    endDragCb: (selectedElement) => {
-      console.log('done drag', selectedElement)
-      net_fire({type: "change", data: serialize(selectedElement)});
-    }
+  makeDraggable(svg_table)
+  document.addEventListener('svg_dragend', (evt) => {
+    selectedElement = byId(evt.detail.elemId)
+    console.log('done drag', selectedElement)
+    net_fire({type: "change", data: serialize(selectedElement)})
   })
 
   widgetElem = document.querySelector('#widget_panzoom')
@@ -338,7 +338,8 @@ function load_svg() {
     <input id="background_url" type="url"
       value="http://www.1kfa.com/table/svg/bg_topography.svg"
     />
-    <button id="dialog_bg_submit" onclick="ui_change_background(this)">
+    <button class="btn" id="dialog_bg_submit"
+      onclick="ui_change_background(this)">
       Change Background URL
     </button>
   </div>
