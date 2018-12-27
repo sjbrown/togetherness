@@ -1,0 +1,424 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   version="1.1"
+   x="0"
+   y="0"
+   width="220"
+   height="480"
+   onLoad="hookup_handlers(this);"
+   viewBox="0 0 220 480"
+   enable-background="new 0 0 216 216"
+   xml:space="preserve"
+   id="svg_poker_deck"
+   class="svg_poker_deck"
+   inkscape:version="0.91 r13725"
+   sodipodi:docname="poker_deck.svg"><metadata
+     id="metadata926"><rdf:RDF><cc:Work
+         rdf:about=""><dc:format>image/svg+xml</dc:format><dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" /><dc:title /></cc:Work></rdf:RDF></metadata><defs
+     id="defs494"><linearGradient
+       inkscape:collect="always"
+       id="linearGradient4796"><stop
+         style="stop-color:#5f9c00;stop-opacity:1"
+         offset="0"
+         id="stop4798" /><stop
+         style="stop-color:#005117;stop-opacity:1"
+         offset="1"
+         id="stop4800" /></linearGradient><linearGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient4796"
+       id="linearGradient5912"
+       x1="97.751755"
+       y1="92.60479"
+       x2="103.05542"
+       y2="109.92422"
+       gradientUnits="userSpaceOnUse" />
+</defs>
+<script
+     type="text/javascript"
+     src="js/poker_deck_utils.js"
+     id="utils_script" />
+ <script
+     type="text/javascript"
+     data-namespace="poker_deck"
+     id="script6158"><![CDATA[
+
+const pokerDeckJSON = [
+ {name: 'Ace of Hearts'},
+ {name: '2 of Hearts'},
+ {name: '3 of Hearts'},
+ {name: '4 of Hearts'},
+ {name: '5 of Hearts'},
+ {name: '6 of Hearts'},
+ {name: '7 of Hearts'},
+ {name: '8 of Hearts'},
+ {name: '9 of Hearts'},
+ {name: '10 of Hearts'},
+ {name: 'Jack of Hearts'},
+ {name: 'Queen of Hearts'},
+ {name: 'King of Hearts'},
+ {name: 'Ace of Clubs'},
+ {name: '2 of Clubs'},
+ {name: '3 of Clubs'},
+ {name: '4 of Clubs'},
+ {name: '5 of Clubs'},
+ {name: '6 of Clubs'},
+ {name: '7 of Clubs'},
+ {name: '8 of Clubs'},
+ {name: '9 of Clubs'},
+ {name: '10 of Clubs'},
+ {name: 'Jack of Clubs'},
+ {name: 'Queen of Clubs'},
+ {name: 'King of Clubs'},
+ {name: 'Ace of Clubs'},
+ {name: '2 of Diamonds'},
+ {name: '3 of Diamonds'},
+ {name: '4 of Diamonds'},
+ {name: '5 of Diamonds'},
+ {name: '6 of Diamonds'},
+ {name: '7 of Diamonds'},
+ {name: '8 of Diamonds'},
+ {name: '9 of Diamonds'},
+ {name: '10 of Diamonds'},
+ {name: 'Jack of Diamonds'},
+ {name: 'Queen of Diamonds'},
+ {name: 'King of Diamonds'},
+ {name: 'Ace of Spades'},
+ {name: '2 of Spades'},
+ {name: '3 of Spades'},
+ {name: '4 of Spades'},
+ {name: '5 of Spades'},
+ {name: '6 of Spades'},
+ {name: '7 of Spades'},
+ {name: '8 of Spades'},
+ {name: '9 of Spades'},
+ {name: '10 of Spades'},
+ {name: 'Jack of Spades'},
+ {name: 'Queen of Spades'},
+ {name: 'King of Spades'},
+]
+
+function pile_offset(index) {
+  return {
+    x: 0.2 * index,
+    y: 0.66 * index,
+  }
+}
+
+var poker_deck = {
+
+  shuffle: function(deckJSON) {
+    // TODO
+    return deckJSON
+  },
+
+  flip_handler: function(evt) {
+    console.log("FLIP", evt)
+
+    var deck
+
+    if (evt.target.classList.contains('poker_deck')) {
+      deck = evt.target
+    } else {
+      deck = evt.target.querySelector('.poker_deck')
+    }
+    local_doc = deck.closest('.svg_poker_deck')
+
+    play_area_group = local_doc.querySelector('#play_area')
+
+    var card
+
+    if (evt.detail.selectedCardId) {
+      // user is dragging a card
+      card = SVG.adopt(byId(evt.detail.selectedCardId))
+    } else if (deck.childNodes.length !== 0) {
+      // take the top card off the deck
+      card = SVG.adopt(deck.lastChild)
+    } else {
+      console.log('no card')
+      return;
+    }
+
+    play_area_pos = local_doc.querySelector('#play_area_ellipse')
+    play_area_pos = SVG.adopt(play_area_pos)
+
+    offset = pile_offset(play_area_group.childNodes.length)
+    card.cx(play_area_pos.cx() + offset.x)
+    card.cy(play_area_pos.cy() - 50 + offset.y)
+
+    back = card.node.querySelector('.card_back')
+    back.remove()
+    //card.node.insertBefore(back, card.node.firstChild)
+    console.log('card', card.node)
+
+    card.remove() // remove from deck
+    play_area_group.appendChild(card.node)
+
+    console.log("after", card.cx(), card.cy())
+  },
+
+  reshuffle_handler: function(evt) {
+    console.log("RESHUF", evt)
+  },
+
+  generate_card: function(cardJSON, unique_id, deck_id) {
+    back_group = document.querySelector('#g_back')
+    trans_x = SVG.adopt(back_group).x()
+    trans_y = SVG.adopt(back_group).y()
+    back = SVG.adopt(back_group.querySelectorAll('rect')[0])
+
+    var cardText = cardJSON.name
+    var card = document.createElementNS(SVG.ns, 'svg')
+    card.dataset.src = cardJSON
+    card.dataset.deckId = deck_id
+    card.id = unique_id
+
+    std_trans = ' x="-' + trans_x + '" y="-' + trans_y + '" '
+    card.innerHTML = (
+      `
+       <use `+ std_trans +` href="#rect_front" />
+       <text
+         style="font-size:16px;line-height:125%;fill:#000000;fill-opacity:1;"
+         x="10"
+         y="60"
+         ><tspan>` +
+      cardText +
+      '</tspan></text>'
+      + '<use id="cb_'+ unique_id +'" class="card_back" href="#g_back" />'
+    )
+    card = SVG.adopt(card)
+    card.width(back.width())
+    card.height(back.height())
+    card.addClass('draggable-group')
+    card.node.addEventListener('svg_dragstart', (evt) => {
+      console.log('listening', evt.detail, card.node.id)
+      if (evt.detail.elemId === card.node.id) {
+        console.log('its me', card.node.id)
+      }
+    })
+    return card
+  },
+
+  generate_deck: function(elem) {
+    console.log('gen')
+    handle = SVG(elem)
+    deck = handle.group()
+    deck.addClass('poker_deck')
+    deck_id = 'deck_' + base32.short_id()
+    deck.id(deck_id)
+    handle.add(deck)
+
+    var deck_area = elem.querySelector('#g_deck_area')
+    deck_area = SVG.adopt(deck_area)
+    console.log('da', deck_area.cx(), deck_area.cy())
+
+    var index = 0
+    this.shuffle(pokerDeckJSON).map((cardJSON) => {
+
+      card = this.generate_card(cardJSON, 'c' + (index+1) + deck_id, deck_id)
+      console.log('card', card.cx(), card.cy())
+
+      // TODO - why do i need this 20 pixel fudge?
+      card.cy(deck_area.cy() - (20 + pile_offset(index).y))
+      card.cx(deck_area.cx() + pile_offset(index).x)
+      deck.add(card)
+      index += 1
+    })
+
+    back_template = SVG.adopt(byId('layer_back'))
+    front_template = SVG.adopt(byId('layer_front'))
+    back_template.style({display: 'none'})
+    front_template.style({display: 'none'})
+  },
+
+  drag_handler: function(evt) {
+    //console.log('tt', new Date())
+    //console.log('t', evt.target.id, evt.detail)
+    card = SVG.get(evt.target.id)
+    play_area = SVG.get('ellipse_play_area')
+
+    console.log('c', card.cx(), card.cy())
+
+    if (play_area.inside(card.cx(), card.cy())) {
+      card.style({ opacity: 0.8 })
+    } else {
+      card.style({ opacity: 1.0 })
+    }
+  },
+
+  dragend_handler: function(evt) {
+    play_area = SVG.get('ellipse_play_area')
+
+    card = SVG.get(evt.target.id)
+    card.style({ opacity: 1.0 })
+
+    if (play_area.inside(card.cx(), card.cy())) {
+      console.log('1dropped in play area', card.node.dataset.deckId)
+      deck = byId(card.node.dataset.deckId)
+      evt_fire('poker_deck_flip', deck, evt, {selectedCardId: card.node.id})
+    } else {
+      console.log('dropped elsewhere')
+    }
+  },
+
+  hookup_handlers: function(elem) {
+    this.generate_deck(elem)
+    console.log('hookup', elem)
+    elem.addEventListener('poker_deck_flip', this.flip_handler)
+    elem.addEventListener('poker_deck_reshuffle', this.reshuffle_handler)
+    byId('ellipse_play_area').classList.add('droptarget')
+    elem.addEventListener('svg_drag', this.drag_handler)
+    elem.addEventListener('svg_dragend', this.dragend_handler)
+  },
+
+  v1_menu: {
+    'Flip': {
+      eventName: 'poker_deck_flip',
+      applicable: (dNode) => {
+        deck = dNode.querySelector('.poker_deck')
+        if (deck.childNodes.length === 0) {
+          return false;
+        }
+        return true
+      },
+    },
+    'Reshuffle': {
+      eventName: 'poker_deck_reshuffle',
+      applicable: (dNode) => { return true },
+    },
+  },
+
+}
+
+   ]]></script><sodipodi:namedview
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1"
+     objecttolerance="10"
+     gridtolerance="10"
+     guidetolerance="10"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:window-width="1600"
+     inkscape:window-height="876"
+     id="namedview492"
+     showgrid="false"
+     inkscape:snap-bbox="true"
+     inkscape:snap-bbox-midpoints="true"
+     inkscape:zoom="1.2539581"
+     inkscape:cx="158.51573"
+     inkscape:cy="322.27863"
+     inkscape:window-x="0"
+     inkscape:window-y="24"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1"
+     inkscape:object-nodes="false"
+     inkscape:snap-nodes="false"
+     inkscape:snap-object-midpoints="true"
+     inkscape:snap-center="true"
+     showguides="true"
+     inkscape:guide-bbox="true"
+     inkscape:bbox-nodes="true"
+     inkscape:snap-smooth-nodes="false"
+     inkscape:object-paths="false"
+     units="px"
+     inkscape:snap-global="true"
+     inkscape:snap-to-guides="true"><sodipodi:guide
+       position="149.99815,110.99999"
+       orientation="0,1"
+       id="guide5087" /></sodipodi:namedview><g
+     inkscape:groupmode="layer"
+     id="layer_areas"
+     inkscape:label="areas"
+     transform="translate(0,-20)"
+     style="display:inline"><g
+       id="g_deck_area"
+       transform="translate(-38,0)"
+       inkscape:label="#g4850"><rect
+         id="rect5062-3-0-2"
+         ry="10.025447"
+         rx="6.6820292"
+         x="78.002289"
+         y="281.72772"
+         height="214.54457"
+         width="142.99542"
+         style="display:inline;opacity:1;fill:none;fill-opacity:1;stroke:#666666;stroke-width:2.4554286;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:2.45542863, 2.45542863;stroke-dashoffset:0;stroke-opacity:1" /><rect
+         id="rect_area_deck"
+         style="display:inline;opacity:1;fill:#000000;fill-opacity:0.07729468;stroke:#cccccc;stroke-width:2.43369746;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:2.43369743, 2.43369743;stroke-dashoffset:0;stroke-opacity:1"
+         width="141.65903"
+         height="212.53947"
+         x="78.670486"
+         y="282.73026"
+         rx="6.6228914"
+         ry="9.9367189" /></g><ellipse
+       ry="49.579689"
+       rx="77.049515"
+       cy="166.12386"
+       cx="112"
+       id="ellipse_play_area"
+       style="opacity:1;fill:none;fill-opacity:1;stroke:#808080;stroke-width:3.05116081;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:3.05116093, 3.05116093;stroke-dashoffset:0;stroke-opacity:1" /><ellipse
+       style="opacity:1;fill:#000000;fill-opacity:0.07729468;stroke:#cccccc;stroke-width:3;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:3, 3;stroke-dashoffset:0;stroke-opacity:1"
+       id="play_area_ellipse"
+       cx="112"
+       cy="166.12386"
+       rx="75.757576"
+       ry="48.748352" /><text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:500;font-stretch:normal;font-size:15px;line-height:125%;font-family:OptimusPrinceps;-inkscape-font-specification:'OptimusPrinceps Medium';letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+       x="78.167732"
+       y="171.80136"
+       id="text_play_area"
+       sodipodi:linespacing="125%"
+       inkscape:label="#text5714"><tspan
+         sodipodi:role="line"
+         id="tspan5716"
+         x="78.167732"
+         y="171.80136">Play Area</tspan></text>
+</g><g
+     inkscape:groupmode="layer"
+     id="layer_front"
+     inkscape:label="front"
+     transform="translate(43,262)"
+     style="display:inline"><rect
+       ry="10"
+       rx="10"
+       y="0"
+       x="0"
+       height="214"
+       width="140"
+       id="rect_front"
+       style="display:inline;opacity:1;fill:#f9f9f9;fill-opacity:1;stroke:none;stroke-width:9;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+       inkscape:label="#rect6336" /></g><g
+     inkscape:groupmode="layer"
+     id="layer_back"
+     inkscape:label="back"
+     style="display:inline"
+     transform="translate(43,262)"><g
+       id="g_back"
+       inkscape:label="#g6339"><rect
+         ry="10"
+         rx="10"
+         y="0"
+         x="0"
+         height="214"
+         width="140"
+         id="rect_back_white"
+         style="opacity:1;fill:#f9f9f9;fill-opacity:1;stroke:none;stroke-width:9;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1" /><rect
+         style="opacity:1;fill:#800000;fill-opacity:1;stroke:none;stroke-width:9;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+         id="rect_back_red"
+         width="129.53"
+         height="203.71001"
+         x="4.23"
+         y="5.1399999"
+         rx="9.25"
+         ry="9.5100002" /></g></g><g
+     id="play_area" /><g
+     id="discard_area" /></svg>
