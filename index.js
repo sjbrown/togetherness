@@ -398,7 +398,7 @@ function import_foreign_svg(url) {
       'data-import-from': url,
       'data-orig-name': origId,
     })
-    // Ensure the imported SVG is of a reasonable size
+    // Ensure the imported SVG is of a reasonable screen size
     if (nest.width() < 30 || nest.width() > 520) {
       console.warn('Reigned in the width to 100. Was', nest.width())
       nest.width(100)
@@ -442,7 +442,7 @@ function recolorize(matrixNode) {
 
 function appendDocumentScript(scriptElem, parentElem) {
   // Make the scripts run by putting them into the live DOM
-  console.log("appending doc script", scriptElem.id, g(scriptElem, 'src'))
+  console.log("appendDocumentScript", scriptElem.id, g(scriptElem, 'src'))
   console.log("to parent", parentElem.id)
   var newScript = document.createElement('script')
   if (g(scriptElem, 'src')) {
@@ -515,7 +515,7 @@ function hookup_self_event_handlers(el, actionMenu) {
 function add_object(url) {
   return import_foreign_svg(url)
   .then((nest) => {
-    console.log("d6 import", nest)
+    console.log("import done, adding to table", nest.node.id)
     svg_table.add(nest)
     do_animate(nest.node)
     net_fire({type: "create", data: serialize(nest)});

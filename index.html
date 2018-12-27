@@ -131,7 +131,7 @@ function zoom(inOrOut) {
 
 <body>
   <button class="btn" onclick="TogetherJS(this); return false;"
-  >Start TogetherJS</button>
+  >Go Multiplayer</button>
 
   <button class="btn" onclick="add_object('svg/v1/dice_d6.svg')">
   + d6
@@ -145,23 +145,21 @@ function zoom(inOrOut) {
   + Deckahedron
   </button>
 
-  <button class="btn" id="delete_button" onclick="delete_marked(this)"
-    title="double-click objects to mark and delete them"
-    disabled="disabled"
-  >
-    Delete&nbsp;<span id="num_marked">0</span>&nbsp;Objects
-  </button>
-
-  <button id="bg_button" class="btn modal-trigger"
-    data-target="dialog_bg"
-    data-dialog-id="dialog_bg">
-    Change Background
+  <button class="btn" onclick="add_object('svg/v1/poker_deck.svg')">
+  + Deck
   </button>
 
   <button id="draw_button" class="btn modal-trigger"
     data-target="dialog_rect"
     data-dialog-id="dialog_rect">
-    Draw rect
+    + Rect
+  </button>
+
+  <button class="btn" id="delete_button" onclick="delete_marked(this)"
+    title="double-click objects to mark and delete them"
+    disabled="disabled"
+  >
+    Delete&nbsp;<span id="num_marked">0</span>&nbsp;Objects
   </button>
 
   <button id="properties_button" class="btn"
@@ -170,7 +168,13 @@ function zoom(inOrOut) {
     disabled="disabled"
     data-target="dialog_properties"
     data-dialog-id="dialog_properties">
-    Object Properties
+    Properties
+  </button>
+
+  <button id="bg_button" class="btn modal-trigger"
+    data-target="dialog_bg"
+    data-dialog-id="dialog_bg">
+    Change Background
   </button>
 
   <button id="save_button" class="btn"
