@@ -9,6 +9,14 @@ function randInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array
+}
+
 function byId(id) {
   var rv = document.getElementById(id);
   if (!rv) {
@@ -366,7 +374,7 @@ function import_foreign_svg(url) {
 
   return fetch(url)
   .then((res) => {
-    if (res.headers.get('content-length') > 1000000) {
+    if (res.headers.get('content-length') > 1700000) {
       console.error('That file is too big (> 1MB)')
       alert('That file is too big (> 1MB)')
       return
@@ -447,6 +455,7 @@ function appendDocumentScript(scriptElem, parentElem) {
   var newScript = document.createElement('script')
   if (g(scriptElem, 'src')) {
     newScript.src = g(scriptElem, 'src')
+    document.querySelector('body').appendChild(newScript)
   } else {
     newScript.textContent = scriptElem.textContent
   }
@@ -462,6 +471,7 @@ function hookup_foreign_scripts(nest) {
   // and the nest element has been added to the DOM
   nest.node.querySelectorAll('script').forEach((script) => {
     var ns_text = g(script, 'data-namespace')
+    console.log('hookup script', script, ns_text)
     if (ns_text) {
       var ns = window[ns_text]
       if (!ns) {
@@ -473,6 +483,7 @@ function hookup_foreign_scripts(nest) {
       // The foreign <svg> should have an onLoad to do this, but
       // Chrome has problems doing onLoad
       if (!g(nest.node, 'data-hooked-up')) {
+        console.log('hookup handlers for ', nest.node)
         ns.hookup_handlers(nest.node)
       }
 
