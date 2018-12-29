@@ -124,12 +124,22 @@ var poker_deck = {
     card.cx(play_area_pos.cx() + offset.x)
     card.cy(play_area_pos.cy() - 50 + offset.y)
 
-    back = card.node.querySelector('.card_back')
-    back.remove()
-    card.node.insertBefore(back, card.node.firstChild)
+    poker_deck.flip_card_to_front(card)
 
     card.remove() // remove from deck
     play_area_group.appendChild(card.node)
+  },
+
+  flip_card_to_front: function(card) {
+    back = card.node.querySelector('.card_back')
+    back.remove()
+    card.node.insertBefore(back, card.node.firstChild)
+  },
+
+  flip_card_to_back: function(card) {
+    back = card.node.querySelector('.card_back')
+    back.remove()
+    card.node.appendChild(back)
   },
 
   reshuffle_handler: function(evt) {
@@ -142,16 +152,20 @@ var poker_deck = {
     }
     local_doc = deck.closest('.svg_poker_deck')
 
-    deck.remove()
-    local_doc.querySelectorAll('.poker_card').forEach((card) => {
+    cardArray = []
+    sDeck = SVG.adopt(deck)
+    local_doc.querySelectorAll('.of_' + deck.id).forEach((card) => {
       card.remove()
+      cardArray.push(card)
     })
-
-    poker_deck.generate_deck(local_doc)
+    shuffle(cardArray).map((card) => {
+      sCard = SVG.adopt(card)
+      poker_deck.endeck(sDeck, sCard)
+    })
 
   },
 
-  generate_card: function(cardJSON, unique_id, deck_id) {
+  generate_card: function(cardJSON, deck_id) {
     back_group = document.querySelector('#g_back')
     trans_x = 0 - SVG.adopt(back_group.firstElementChild).x()
     trans_y = 0 - SVG.adopt(back_group.firstElementChild).y()
@@ -170,7 +184,7 @@ var poker_deck = {
     card.dataset.suit = cardJSON.suit
     card.dataset.rank = cardJSON.rank
     card.dataset.deckId = deck_id
-    card.id = unique_id
+    card.id = deck_id + '_' + cardJSON.suit + cardJSON.rank
 
     card.innerHTML = (
       `<use `+ front_trans +` class="card_front" href="`+ href +`" />` +
@@ -181,12 +195,25 @@ var poker_deck = {
     card.height(back.height())
     card.addClass('draggable-group')
     card.addClass('poker_card')
+    card.addClass('of_' + deck_id)
     card.node.addEventListener('svg_dragstart', (evt) => {
       if (evt.detail.elemId === card.node.id) {
         console.log('its me', card.node.id)
       }
     })
     return card
+  },
+
+  endeck: function(deck, card) {
+    local_doc = deck.node.closest('.svg_poker_deck')
+    deck_area = local_doc.querySelector('#g_deck_area')
+    index = deck.node.querySelectorAll('.poker_card').length
+    deck_area = SVG.adopt(deck_area)
+    poker_deck.flip_card_to_back(card)
+    // TODO - why do i need this 20 pixel fudge?
+    card.cy(deck_area.cy() - (20 + pile_offset(index).y))
+    card.cx(deck_area.cx() + pile_offset(index).x)
+    deck.add(card)
   },
 
   generate_deck: function(elem) {
@@ -197,19 +224,9 @@ var poker_deck = {
     deck.id(deck_id)
     handle.add(deck)
 
-    var deck_area = elem.querySelector('#g_deck_area')
-    deck_area = SVG.adopt(deck_area)
-
-    var index = 0
     shuffle(pokerDeckJSON).map((cardJSON) => {
-
-      card = this.generate_card(cardJSON, 'c' + (index+1) + deck_id, deck_id)
-
-      // TODO - why do i need this 20 pixel fudge?
-      card.cy(deck_area.cy() - (20 + pile_offset(index).y))
-      card.cx(deck_area.cx() + pile_offset(index).x)
-      deck.add(card)
-      index += 1
+      card = this.generate_card(cardJSON, deck_id)
+      this.endeck(deck, card)
     })
   },
 
