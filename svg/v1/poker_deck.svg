@@ -29,58 +29,58 @@
      id="script6158"><![CDATA[
 
 const pokerDeckJSON = [
- {name: 'Ace of Hearts', code: 'ha'},
- {name: '2 of Hearts', code: 'h2'},
- {name: '3 of Hearts', code: 'h3'},
- {name: '4 of Hearts', code: 'h4'},
- {name: '5 of Hearts', code: 'h5'},
- {name: '6 of Hearts', code: 'h6'},
- {name: '7 of Hearts', code: 'h7'},
- {name: '8 of Hearts', code: 'h8'},
- {name: '9 of Hearts', code: 'h9'},
- {name: '10 of Hearts', code: 'h10'},
- {name: 'Jack of Hearts', code: 'hj'},
- {name: 'Queen of Hearts', code: 'hq'},
- {name: 'King of Hearts', code: 'hk'},
- {name: 'Ace of Clubs', code: 'ca'},
- {name: '2 of Clubs', code: 'c2'},
- {name: '3 of Clubs', code: 'c3'},
- {name: '4 of Clubs', code: 'c4'},
- {name: '5 of Clubs', code: 'c5'},
- {name: '6 of Clubs', code: 'c6'},
- {name: '7 of Clubs', code: 'c7'},
- {name: '8 of Clubs', code: 'c8'},
- {name: '9 of Clubs', code: 'c9'},
- {name: '10 of Clubs', code: 'c10'},
- {name: 'Jack of Clubs', code: 'cj'},
- {name: 'Queen of Clubs', code: 'cq'},
- {name: 'King of Clubs', code: 'ck'},
- {name: 'Ace of Diamonds', code: 'da'},
- {name: '2 of Diamonds', code: 'd2'},
- {name: '3 of Diamonds', code: 'd3'},
- {name: '4 of Diamonds', code: 'd4'},
- {name: '5 of Diamonds', code: 'd5'},
- {name: '6 of Diamonds', code: 'd6'},
- {name: '7 of Diamonds', code: 'd7'},
- {name: '8 of Diamonds', code: 'd8'},
- {name: '9 of Diamonds', code: 'd9'},
- {name: '10 of Diamonds', code: 'd10'},
- {name: 'Jack of Diamonds', code: 'dj'},
- {name: 'Queen of Diamonds', code: 'dq'},
- {name: 'King of Diamonds', code: 'dk'},
- {name: 'Ace of Spades', code: 'sa'},
- {name: '2 of Spades', code: 's2'},
- {name: '3 of Spades', code: 's3'},
- {name: '4 of Spades', code: 's4'},
- {name: '5 of Spades', code: 's5'},
- {name: '6 of Spades', code: 's6'},
- {name: '7 of Spades', code: 's7'},
- {name: '8 of Spades', code: 's8'},
- {name: '9 of Spades', code: 's9'},
- {name: '10 of Spades', code: 's10'},
- {name: 'Jack of Spades', code: 'sj'},
- {name: 'Queen of Spades', code: 'sq'},
- {name: 'King of Spades', code: 'sk'},
+ {name: 'Ace of Hearts', suit: 'h', rank: 'a'},
+ {name: '2 of Hearts', suit: 'h', rank: '2'},
+ {name: '3 of Hearts', suit: 'h', rank: '3'},
+ {name: '4 of Hearts', suit: 'h', rank: '4'},
+ {name: '5 of Hearts', suit: 'h', rank: '5'},
+ {name: '6 of Hearts', suit: 'h', rank: '6'},
+ {name: '7 of Hearts', suit: 'h', rank: '7'},
+ {name: '8 of Hearts', suit: 'h', rank: '8'},
+ {name: '9 of Hearts', suit: 'h', rank: '9'},
+ {name: '10 of Hearts', suit: 'h', rank: '10'},
+ {name: 'Jack of Hearts', suit: 'h', rank: 'j'},
+ {name: 'Queen of Hearts', suit: 'h', rank: 'q'},
+ {name: 'King of Hearts', suit: 'h', rank: 'k'},
+ {name: 'Ace of Clubs', suit: 'c', rank: 'a'},
+ {name: '2 of Clubs', suit: 'c', rank: '2'},
+ {name: '3 of Clubs', suit: 'c', rank: '3'},
+ {name: '4 of Clubs', suit: 'c', rank: '4'},
+ {name: '5 of Clubs', suit: 'c', rank: '5'},
+ {name: '6 of Clubs', suit: 'c', rank: '6'},
+ {name: '7 of Clubs', suit: 'c', rank: '7'},
+ {name: '8 of Clubs', suit: 'c', rank: '8'},
+ {name: '9 of Clubs', suit: 'c', rank: '9'},
+ {name: '10 of Clubs', suit: 'c', rank: '10'},
+ {name: 'Jack of Clubs', suit: 'c', rank: 'j'},
+ {name: 'Queen of Clubs', suit: 'c', rank: 'q'},
+ {name: 'King of Clubs', suit: 'c', rank: 'k'},
+ {name: 'Ace of Diamonds', suit: 'd', rank: 'a'},
+ {name: '2 of Diamonds', suit: 'd', rank: '2'},
+ {name: '3 of Diamonds', suit: 'd', rank: '3'},
+ {name: '4 of Diamonds', suit: 'd', rank: '4'},
+ {name: '5 of Diamonds', suit: 'd', rank: '5'},
+ {name: '6 of Diamonds', suit: 'd', rank: '6'},
+ {name: '7 of Diamonds', suit: 'd', rank: '7'},
+ {name: '8 of Diamonds', suit: 'd', rank: '8'},
+ {name: '9 of Diamonds', suit: 'd', rank: '9'},
+ {name: '10 of Diamonds', suit: 'd', rank: '10'},
+ {name: 'Jack of Diamonds', suit: 'd', rank: 'j'},
+ {name: 'Queen of Diamonds', suit: 'd', rank: 'q'},
+ {name: 'King of Diamonds', suit: 'd', rank: 'k'},
+ {name: 'Ace of Spades', suit: 's', rank: 'a'},
+ {name: '2 of Spades', suit: 's', rank: '2'},
+ {name: '3 of Spades', suit: 's', rank: '3'},
+ {name: '4 of Spades', suit: 's', rank: '4'},
+ {name: '5 of Spades', suit: 's', rank: '5'},
+ {name: '6 of Spades', suit: 's', rank: '6'},
+ {name: '7 of Spades', suit: 's', rank: '7'},
+ {name: '8 of Spades', suit: 's', rank: '8'},
+ {name: '9 of Spades', suit: 's', rank: '9'},
+ {name: '10 of Spades', suit: 's', rank: '10'},
+ {name: 'Jack of Spades', suit: 's', rank: 'j'},
+ {name: 'Queen of Spades', suit: 's', rank: 'q'},
+ {name: 'King of Spades', suit: 's', rank: 'k'},
 ]
 
 function pile_offset(index) {
@@ -93,8 +93,6 @@ function pile_offset(index) {
 var poker_deck = {
 
   flip_handler: function(evt) {
-    console.log("FLIP", evt)
-
     var deck
 
     if (evt.target.classList.contains('poker_deck')) {
@@ -129,17 +127,12 @@ var poker_deck = {
     back = card.node.querySelector('.card_back')
     back.remove()
     card.node.insertBefore(back, card.node.firstChild)
-    console.log('card', card.node)
 
     card.remove() // remove from deck
     play_area_group.appendChild(card.node)
-
-    console.log("after", card.cx(), card.cy())
   },
 
   reshuffle_handler: function(evt) {
-    console.log("RESHUFFF", evt)
-
     var deck
 
     if (evt.target.classList.contains('poker_deck')) {
@@ -165,32 +158,23 @@ var poker_deck = {
     back = SVG.adopt(back_group.querySelectorAll('rect')[0])
     back_trans = ' x="' + trans_x + '" y="' + trans_y + '" '
 
-    href = '#g_' + cardJSON.code
+    href = '#g_' + cardJSON.suit + cardJSON.rank
     front_group = document.querySelector(href)
     trans_x = 0 - SVG.adopt(front_group.firstElementChild).x()
     trans_y = 0 - SVG.adopt(front_group.firstElementChild).y()
     front_trans = ' x="' + trans_x + '" y="' + trans_y + '" '
-    //front_trans = ' x="0" y="-300"'
 
     var cardText = cardJSON.name
     var card = document.createElementNS(SVG.ns, 'svg')
-    card.dataset.src = cardJSON
     card.dataset.name = cardJSON.name
+    card.dataset.suit = cardJSON.suit
+    card.dataset.rank = cardJSON.rank
     card.dataset.deckId = deck_id
     card.id = unique_id
 
     card.innerHTML = (
-      `
-       <use `+ front_trans +` href="`+ href +`" />
-       <text
-         style="font-size:14px;line-height:125%;fill:#000000;fill-opacity:1;"
-         x="10"
-         y="60"
-         ><tspan>` +
-      cardText +
-      '</tspan></text>' +
-      `<use id="cb_`+ unique_id +`"`+ back_trans +
-      ` class="card_back" href="#g_back" />`
+      `<use `+ front_trans +` class="card_front" href="`+ href +`" />` +
+      `<use `+ back_trans + ` class="card_back" href="#g_back" />`
     )
     card = SVG.adopt(card)
     card.width(back.width())
@@ -198,7 +182,6 @@ var poker_deck = {
     card.addClass('draggable-group')
     card.addClass('poker_card')
     card.node.addEventListener('svg_dragstart', (evt) => {
-      console.log('listening', evt.detail, card.node.id)
       if (evt.detail.elemId === card.node.id) {
         console.log('its me', card.node.id)
       }
@@ -207,7 +190,6 @@ var poker_deck = {
   },
 
   generate_deck: function(elem) {
-    console.log('gen', elem)
     handle = SVG(elem)
     deck = handle.group()
     deck.addClass('poker_deck')
@@ -217,7 +199,6 @@ var poker_deck = {
 
     var deck_area = elem.querySelector('#g_deck_area')
     deck_area = SVG.adopt(deck_area)
-    console.log('da', deck_area.cx(), deck_area.cy())
 
     var index = 0
     shuffle(pokerDeckJSON).map((cardJSON) => {
@@ -233,12 +214,8 @@ var poker_deck = {
   },
 
   drag_handler: function(evt) {
-    //console.log('tt', new Date())
-    //console.log('t', evt.target.id, evt.detail)
     card = SVG.get(evt.target.id)
     play_area = SVG.get('ellipse_play_area')
-
-    console.log('c', card.cx(), card.cy())
 
     if (play_area.inside(card.cx(), card.cy())) {
       card.style({ opacity: 0.8 })
@@ -264,7 +241,6 @@ var poker_deck = {
 
   hookup_handlers: function(elem) {
     this.generate_deck(elem)
-    console.log('hookup', elem)
     elem.addEventListener('poker_deck_flip', this.flip_handler)
     elem.addEventListener('poker_deck_reshuffle', this.reshuffle_handler)
     byId('ellipse_play_area').classList.add('droptarget')
