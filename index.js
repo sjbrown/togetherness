@@ -285,9 +285,9 @@ function make_mark(target_id, attrs) {
     }, attrs)
   )
 
-  var nest = make_nest()
+  var nest = make_nest({'data-nest-for': 'mark'})
   nest.addClass('draggable-group')
-  nest.id('g_' + rect.attr('id')) // special ID
+  nest.id('nest_' + rect.attr('id')) // special ID
 
   // Re-home the enveloped object inside the <svg>, and then
   // move that <svg> to the old x,y coords of the enveloped object
@@ -300,19 +300,35 @@ function make_mark(target_id, attrs) {
   target.toParent(nest)
   target.attr('data-enveloped', true)
   nest.attr( oldXY )
-  nest.attr('data-nest-for', 'mark')
   nest.add(rect) // Add it last, so that it renders on top
 
-  nest.on('dblclick', ui_unmark)
-  nest.on('remove_mark', ui_unmark)
-  nest.on('svg_longtouch', ui_unmark)
-  nest.on('mouseover', (evt) => { ui_mouseover(evt, nest.node, mark_menu) });
-  hookup_self_event_handlers(nest.node, mark_menu)
+  hookup_mark_handlers(nest.node)
 
   return {
     mark_rect: rect,
     mark_nest: nest,
   }
+}
+
+function hookup_mark_handlers(markEl) {
+  if (markEl.dataset.nestFor !== 'mark') {
+    console.error('this is not a proper "mark" nest', nest)
+    return
+  }
+  nest = SVG.adopt(markEl)
+
+  //      event,      handler,   binding,   capture/bubbling phase
+  nest.on('dblclick', ui_unmark, undefined, true)
+  nest.on('remove_mark', ui_unmark, undefined, true)
+  nest.on('svg_longtouch', ui_unmark, undefined, true)
+  nest.on(
+    'mouseover',
+    (evt) => { ui_mouseover(evt, nest.node, mark_menu) },
+    undefined,
+    true,
+  );
+
+  hookup_self_event_handlers(nest.node, mark_menu)
 }
 
 function markElementById(target_id, actionMenu) {
@@ -325,7 +341,7 @@ function markElementById(target_id, actionMenu) {
 }
 
 function ui_unmark(evt) {
-    console.log("got ui unmark", evt)
+  evt.stopPropagation()
   if (evt.target.tagName === 'svg') {
     mark_rect = evt.target.lastChild
   } else {
@@ -337,7 +353,7 @@ function ui_unmark(evt) {
 }
 
 function _unmark(mark_rect_id) {
-  nestSVG = SVG.get('g_' + mark_rect_id)
+  nestSVG = SVG.get('nest_' + mark_rect_id)
   oldXY = {
     x: nestSVG.x(),
     y: nestSVG.y(),
@@ -422,15 +438,19 @@ function import_foreign_svg(url) {
       appendDocumentScript(script, nest.node)
     })
 
-    frame.querySelectorAll('#recolorize-filter-matrix').forEach((matrixNode) => {
-      recolorize(matrixNode)
-    })
+    makeMyColor(frame)
 
     return nest
   })
 }
 
-function recolorize(matrixNode) {
+function makeMyColor(parentNode) {
+  parentNode.querySelectorAll('#recolorize-filter-matrix').forEach((matrixNode) => {
+    recolorize(matrixNode, getUserColor())
+  })
+}
+
+function recolorize(matrixNode, color) {
   function getRGBColor(colorStr) {
     var a = document.createElement('div')
     a.style.color = colorStr
@@ -438,7 +458,7 @@ function recolorize(matrixNode) {
     document.body.removeChild(a)
     return colors.match(/\d+/g).map((a) => { return parseFloat(a,10)/255; })
   }
-  var c = getRGBColor(getUserColor())
+  var c = getRGBColor(color)
   matrixNode.setAttribute(
     'values',
     c[0] + ' 0 0 0 0 ' +
@@ -466,10 +486,10 @@ function appendDocumentScript(scriptElem, parentElem) {
   scriptElem.remove()
 }
 
-function hookup_foreign_scripts(nest) {
+function hookup_foreign_scripts(elem) {
   // This assumes import_foreign_svg has already been executed
-  // and the nest element has been added to the DOM
-  nest.node.querySelectorAll('script').forEach((script) => {
+  // and the svg element has been added to the DOM
+  elem.querySelectorAll('script').forEach((script) => {
     var ns_text = g(script, 'data-namespace')
     console.log('hookup script', script, ns_text)
     if (ns_text) {
@@ -482,14 +502,15 @@ function hookup_foreign_scripts(nest) {
 
       // The foreign <svg> should have an onLoad to do this, but
       // Chrome has problems doing onLoad
-      if (!g(nest.node, 'data-hooked-up')) {
-        console.log('hookup handlers for ', nest.node)
-        ns.hookup_handlers(nest.node)
+      if (!g(elem, 'data-hooked-up')) {
+        console.log('hookup handlers for ', elem)
+        ns.hookup_handlers(elem)
+        s(elem, 'data-hooked-up', true)
       }
 
       console.log("menu", ns.v1_menu)
       if (ns.v1_menu) {
-        hookup_menu_actions(nest, ns.v1_menu)
+        hookup_menu_actions(elem, ns.v1_menu)
       }
     }
   })
@@ -502,14 +523,15 @@ function hookup_menu_actions(svgEl, actionMenu) {
       applicable: (node) => { return !is_marked(node) },
     },
   })
-  svgEl.node.actionMenu = actionMenu
-  svgEl.on('node_mark', (evt) => { markElementById(svgEl.id(), newMenu) })
-  svgEl.on('dblclick', (evt) => { markElementById(svgEl.id(), newMenu) })
-  svgEl.on('svg_longtouch', (evt) => { markElementById(svgEl.id(), newMenu) })
-  svgEl.on('mouseover', (evt) => { ui_mouseover(evt, svgEl.node, newMenu) })
+  svgEl.actionMenu = actionMenu
+  nest = SVG.adopt(svgEl)
+  nest.on('node_mark', (evt) => { markElementById(svgEl.id, newMenu) })
+  nest.on('dblclick', (evt) => { markElementById(svgEl.id, newMenu) })
+  nest.on('svg_longtouch', (evt) => { markElementById(svgEl.id, newMenu) })
+  nest.on('mouseover', (evt) => { ui_mouseover(evt, svgEl, newMenu) })
 
   // Hookup any self-event handlers
-  hookup_self_event_handlers(svgEl.node, actionMenu)
+  hookup_self_event_handlers(svgEl, actionMenu)
 }
 
 function hookup_self_event_handlers(el, actionMenu) {
@@ -533,7 +555,7 @@ function add_object(url) {
     return nest
   })
   .then((nest) => {
-    hookup_foreign_scripts(nest)
+    hookup_foreign_scripts(nest.node)
   })
 }
 

@@ -22,7 +22,6 @@ function makeDraggable(world) {
   world.on('touchcancel', endDrag);
 
   function broadcast(event_name, detail) {
-    console.log("brodcast", event_name)
     selectedEl.node.dispatchEvent(new CustomEvent(event_name, {
       bubbles: true,
       detail: detail,
@@ -37,7 +36,6 @@ function makeDraggable(world) {
       //console.log("drift - n o fire", mouse, origMouse)
       return
     }
-    //console.log("fire longtouch", selectedEl.node)
     broadcast('svg_longtouch', { elemId: selectedEl.node.id })
   }
 
@@ -69,7 +67,6 @@ function makeDraggable(world) {
   }
 
   function startDrag(evt) {
-    //console.log('startdrag', evt.target)
     evt.preventDefault() // prevent, for example, text selection
     if (
       evt.target.classList.contains('draggable')

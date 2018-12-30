@@ -13,7 +13,6 @@
    y="0"
    width="300"
    height="480"
-   onLoad="hookup_handlers(this);"
    viewBox="0 0 300 480"
    enable-background="new 0 0 216 216"
    xml:space="preserve"

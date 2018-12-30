@@ -48,7 +48,28 @@ var svg_table;
 var viewport;
 var gViewport;
 var widget_panzoom;
+
+function initSvgTable(el) {
+  oldTable = gViewport.node.querySelector('#svg_table')
+  if (oldTable) {
+    console.log('found old table', oldTable)
+    svg_table.remove()
+  }
+  console.log('creating new table from el', el)
+  el.id = 'svg_table'
+  svg_table = SVG.adopt(el)
+  svg_table.size(1000, 480)
+  gViewport.add(svg_table)
+  makeDraggable(svg_table)
+  return svg_table
+}
+
 SVG.on(document, 'DOMContentLoaded', () => {
+  // Override the id-generating function of the svg.js library
+  SVG.eid = (name) => {
+    return name + '_' + base32.short_id()
+  }
+
   viewport = SVG('gamearea').size(500, 480)
   viewport.node.id = 'svg_viewport'
   s(viewport.node, 'width', '100%')
@@ -58,9 +79,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
   gViewport.node.id = 'g_viewport'
   viewport.add(gViewport)
 
-  svg_table = SVG.adopt(document.createElementNS(SVG.ns, 'svg'))
-  svg_table.node.id = 'svgtable'
-  svg_table.size(1000, 480)
+  initSvgTable(document.createElementNS(SVG.ns, 'svg'))
   table_rect = gViewport.rect()
   table_rect.attr({
      x: -1,
@@ -73,16 +92,10 @@ SVG.on(document, 'DOMContentLoaded', () => {
      stroke: 'black',
      'stroke-opacity': 0.1,
   })
-  gViewport.add(svg_table)
 
-  SVG.eid = (name) => {
-    return name + '_' + base32.short_id()
-  }
-
-  makeDraggable(svg_table)
   document.addEventListener('svg_dragend', (evt) => {
     selectedElement = byId(evt.detail.elemId)
-    console.log('done drag', selectedElement)
+    console.log('document done drag', selectedElement)
     net_fire({type: "change", data: serialize(selectedElement)})
   })
 
@@ -191,7 +204,7 @@ function zoom(inOrOut) {
     Load
   </button>
 
-  <button id="load_button" class="btn modal-trigger"
+  <button id="help_button" class="btn modal-trigger"
     data-target="dialog_contribute"
     data-dialog-id="dialog_contribute">
     Help this project
@@ -219,8 +232,22 @@ function zoom(inOrOut) {
   <script>
 function ui_popup_dialog_save() {
   textarea = byId('textarea_save_output')
-  svg = byId('gamearea').querySelector('svg')
+  svg = byId('svg_table').cloneNode(true)
+  svg.querySelectorAll('svg').forEach((subSvg) => {
+    // Unset the state that ties the element to this active document
+    /* This has a bug right now...
+    Object.keys(subSvg.dataset).map((dataKey) => {
+      console.log('lookat', dataKey)
+      if (dataKey.slice(0,2) === 'ui') {
+        console.log('dropping', dataKey, 'in', subSvg.id)
+        delete subSvg.dataset[dataKey]
+      }
+    })
+    */
+    s(subSvg, 'data-hooked-up', null)
+  })
   textarea.innerHTML = svg.outerHTML
+  svg.remove()
   return ui_popup_dialog({'data-dialog-id': 'dialog_save'})
 }
   </script>
@@ -277,10 +304,23 @@ function ui_popup_dialog_save() {
   <script>
 function load_svg() {
   textarea = byId('textarea_load_input')
-  svg = byId('gamearea').querySelector('svg')
-  console.log('texar', textarea.value)
+  svg = byId('svg_table')
   svg.outerHTML = textarea.value
-  ui_popdown_dialog('dialog_load')
+  initSvgTable(svg)
+  svg = byId('svg_table')
+  svg.querySelectorAll('[data-app-class] script').forEach((script) => {
+    subSvg = script.parentNode
+    console.log("appending script", script)
+    appendDocumentScript(script, subSvg)
+  })
+  svg.querySelectorAll('[data-app-class]').forEach((subSvg) => {
+    hookup_foreign_scripts(subSvg)
+  })
+  svg.querySelectorAll('[data-nest-for=mark]').forEach((subSvg) => {
+    hookup_mark_handlers(subSvg)
+  })
+
+  return ui_popdown_dialog('dialog_load')
 }
   </script>
     <button class="dialog_cancel btn modal-close"

@@ -14,7 +14,6 @@
    height="100"
    viewBox="0 0 100.002 100.002"
    id="d6 die"
-   onLoad="d6.hookup_handlers(this);"
    version="1.1"
    inkscape:version="0.91 r13725"
    sodipodi:docname="dice_d6.svg">
@@ -147,8 +146,6 @@ var d6 = {
     console.log('hookup d6!')
     elem.addEventListener('die_roll', this.roll_handler)
     elem.addEventListener('die_turn_up', this.turn_handler)
-    // This is necessary because Chrome has problems doing onLoad
-    s(elem, 'data-hooked-up', true)
   },
 
   v1_menu: {
