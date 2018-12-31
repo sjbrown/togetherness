@@ -13,7 +13,7 @@
    width="100"
    height="100"
    viewBox="0 0 100.002 100.002"
-   id="d6 die"
+   id="d6_die"
    version="1.1"
    inkscape:version="0.91 r13725"
    sodipodi:docname="dice_d6.svg">
@@ -142,13 +142,12 @@ var d6 = {
     this.style.opacity = 0.1
   },
 
-  hookup_handlers: function(elem) {
-    console.log('hookup d6!')
+  initialize: function(elem) {
     elem.addEventListener('die_roll', this.roll_handler)
     elem.addEventListener('die_turn_up', this.turn_handler)
   },
 
-  v1_menu: {
+  menu: {
     'Roll': {
       eventName: 'die_roll',
       applicable: (dieNode) => { return true },
@@ -162,6 +161,11 @@ var d6 = {
         return 'Turn to ' + nextNum
         },
     },
+  },
+
+  serialize: function(el) {
+    value = el.querySelector('tspan').textContent
+    return {dieValue: value}
   },
 
 }
@@ -241,7 +245,7 @@ var d6 = {
        id="text4148"
        sodipodi:linespacing="125%"><tspan
          sodipodi:role="line"
-         id="tspan4150"
+         id="tspan_die_value"
          x="30.547754"
          y="1024.3733">6</tspan></text>
   </g>

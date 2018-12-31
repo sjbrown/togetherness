@@ -108,13 +108,13 @@ var d8 = {
     this.style.opacity = 0.1
   },
 
-  hookup_handlers: function(elem) {
+  initialize: function(elem) {
     console.log('hooking up handlers for ', elem)
     elem.addEventListener('die_roll', this.roll_handler)
     elem.addEventListener('die_turn_up', this.turn_handler)
   },
 
-  v1_menu: {
+  menu: {
     'Roll': {
       eventName: 'die_roll',
       applicable: (dieNode) => { return true },

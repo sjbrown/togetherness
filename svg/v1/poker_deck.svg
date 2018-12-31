@@ -255,7 +255,7 @@ var poker_deck = {
     }
   },
 
-  hookup_handlers: function(elem) {
+  initialize: function(elem) {
     this.generate_deck(elem)
     elem.addEventListener('poker_deck_flip', this.flip_handler)
     elem.addEventListener('poker_deck_reshuffle', this.reshuffle_handler)
@@ -264,7 +264,7 @@ var poker_deck = {
     elem.addEventListener('svg_dragend', this.dragend_handler)
   },
 
-  v1_menu: {
+  menu: {
     'Flip': {
       eventName: 'poker_deck_flip',
       applicable: (dNode) => {

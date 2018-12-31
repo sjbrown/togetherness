@@ -26,7 +26,7 @@ function byId(id) {
 }
 
 function str_to_fn(fname) {
-  // given a string, return a function
+  // given a string, return a globally-scoped function
   return (
     (window[fname] && typeof window[fname] === 'function')
     ?  window[fname]
@@ -95,6 +95,8 @@ togetherFunctions.on_drop_mark= (msg) => { _unmark(msg.mark_rect.id) }
 togetherFunctions.on_delete = (msg) => { recursive_delete(msg.data) }
 
 togetherFunctions.on_change_background = (msg) => { change_background(msg.data) }
+
+serializers = {}
 
 function deserialize(payload) {
   var elem = null;
@@ -199,6 +201,12 @@ function serialize_nest(nest) {
   nodeMap(nest, (el) => {
     retval.kids.push(serialize(el));
   })
+  console.log("retval starts as", retval)
+  url = nest.dataset.importFrom
+  if (url && serializers[url]) {
+    retval = Object.assign(retval, serializers[url](nest))
+  }
+  console.log("retval is now", retval)
   return retval;
 }
 
@@ -215,6 +223,7 @@ function serialize(thing, extras) {
   var node = (thing.attr) ? thing.node : thing;
   var retval = justNonUiAttributes(node)
   var fn = str_to_fn('serialize_' + g(node, 'data-app-class'))
+  console.log('trying to ', fn)
   if (fn) {
     retval = Object.assign( retval, fn(node) )
   }
@@ -471,7 +480,6 @@ function recolorize(matrixNode, color) {
 function appendDocumentScript(scriptElem, parentElem) {
   // Make the scripts run by putting them into the live DOM
   console.log("appendDocumentScript", scriptElem.id, g(scriptElem, 'src'))
-  console.log("to parent", parentElem.id)
   var newScript = document.createElement('script')
   if (g(scriptElem, 'src')) {
     newScript.src = g(scriptElem, 'src')
@@ -482,16 +490,14 @@ function appendDocumentScript(scriptElem, parentElem) {
   s(newScript, 'id', scriptElem.id)
   s(newScript, 'data-namespace', g(scriptElem, 'data-namespace'))
   parentElem.appendChild(newScript)
-  console.log("appended")
   scriptElem.remove()
 }
 
-function hookup_foreign_scripts(elem) {
+function hookup_foreign_scripts(elem, url) {
   // This assumes import_foreign_svg has already been executed
   // and the svg element has been added to the DOM
   elem.querySelectorAll('script').forEach((script) => {
     var ns_text = g(script, 'data-namespace')
-    console.log('hookup script', script, ns_text)
     if (ns_text) {
       var ns = window[ns_text]
       if (!ns) {
@@ -502,15 +508,17 @@ function hookup_foreign_scripts(elem) {
 
       // The foreign <svg> should have an onLoad to do this, but
       // Chrome has problems doing onLoad
-      if (!g(elem, 'data-hooked-up')) {
-        console.log('hookup handlers for ', elem)
-        ns.hookup_handlers(elem)
-        s(elem, 'data-hooked-up', true)
+      if (ns.initialize && !g(elem, 'data-ui-initialized')) {
+        ns.initialize(elem)
+        s(elem, 'data-ui-initialized', true)
       }
 
-      console.log("menu", ns.v1_menu)
-      if (ns.v1_menu) {
-        hookup_menu_actions(elem, ns.v1_menu)
+      if (ns.serialize) {
+        serializers[url] = ns.serialize
+      }
+
+      if (ns.menu) {
+        hookup_menu_actions(elem, ns.menu)
       }
     }
   })
@@ -555,7 +563,7 @@ function add_object(url) {
     return nest
   })
   .then((nest) => {
-    hookup_foreign_scripts(nest.node)
+    hookup_foreign_scripts(nest.node, url)
   })
 }
 

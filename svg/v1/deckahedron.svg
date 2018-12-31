@@ -578,9 +578,8 @@ var deckahedron = {
     }
   },
 
-  hookup_handlers: function(elem) {
+  initialize: function(elem) {
     this.generate_deck(elem)
-    console.log('hookup', elem)
     elem.addEventListener('deckahedron_flip', this.flip_handler)
     elem.addEventListener('deckahedron_exhaustion', this.exhaustion_handler)
     elem.addEventListener('deckahedron_reshuffle', this.reshuffle_handler)
@@ -589,7 +588,7 @@ var deckahedron = {
     elem.addEventListener('svg_dragend', this.dragend_handler)
   },
 
-  v1_menu: {
+  menu: {
     'Flip': {
       eventName: 'deckahedron_flip',
       applicable: (dNode) => {
