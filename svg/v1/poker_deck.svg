@@ -231,10 +231,15 @@ var poker_deck = {
 
   drag_handler: function(evt) {
     card = SVG.get(evt.target.id)
+    if (!card.node.classList.contains('poker_card')) {
+      return
+    }
     play_area = SVG.get('ellipse_play_area')
 
     if (play_area.inside(card.cx(), card.cy())) {
       card.style({ opacity: 0.8 })
+    } else if (poker_deck.touching_removal_area(card)) {
+      card.style({ opacity: 0.7 })
     } else {
       card.style({ opacity: 1.0 })
     }
@@ -250,9 +255,40 @@ var poker_deck = {
       console.log('1dropped in play area', card.node.dataset.deckId)
       deck = byId(card.node.dataset.deckId)
       evt_fire('poker_deck_flip', deck, evt, {selectedCardId: card.node.id})
+    } else if (poker_deck.touching_removal_area(card)) {
+      poker_deck.remove_card(evt, card)
     } else {
       console.log('dropped elsewhere')
     }
+  },
+
+  touching_removal_area: function(card) {
+    removal_area_n = SVG.get('rect_removal_n')
+    removal_area_e = SVG.get('rect_removal_e')
+    removal_area_s = SVG.get('rect_removal_s')
+    removal_area_w = SVG.get('rect_removal_w')
+    return (
+      removal_area_n.inside(card.cx(), card.cy())
+      ||
+      removal_area_e.inside(card.cx(), card.cy())
+      ||
+      removal_area_s.inside(card.cx(), card.cy())
+      ||
+      removal_area_w.inside(card.cx(), card.cy())
+    )
+  },
+
+  remove_card: function(evt, card) {
+    //evt_fire('poker_deck_remove', evt, {selectedCardId: card.node.id})
+    deckSVG = SVG.adopt(card.node.closest('.svg_poker_deck'))
+    console.log('xy', deckSVG.x(), deckSVG.y())
+    card.x(card.x() + deckSVG.x())
+    card.y(card.y() + deckSVG.y())
+    poker_deck_card.initialize(card.node)
+    card.node.dataset.appClass = 'nest'
+    card.node.dataset.origName = 'poker_card'
+    console.log('c', card)
+    svg_table.add(card)
   },
 
   initialize: function(elem) {
@@ -277,6 +313,36 @@ var poker_deck = {
     },
     'Reshuffle': {
       eventName: 'poker_deck_reshuffle',
+      applicable: (dNode) => { return true },
+    },
+  },
+
+}
+
+poker_deck_card = {
+  initialize: function(elem) {
+    elem.addEventListener('poker_deck_card_flip', this.flip_handler)
+    elem.addEventListener('svg_dragend', this.dragend_handler)
+    hookup_menu_actions(elem, this.menu)
+  },
+
+  flip_handler: function(evt) {
+    console.log('CARD FLIP', evt)
+    card = SVG.get(evt.target.id)
+    if (card.node.lastElementChild.classList.contains('card_back')) {
+      poker_deck.flip_card_to_front(card)
+    } else {
+      poker_deck.flip_card_to_back(card)
+    }
+  },
+
+  dragend_handler: function(evt) {
+    console.log('CARD DRAGEND')
+  },
+
+  menu: {
+    'Flip': {
+      eventName: 'poker_deck_card_flip',
       applicable: (dNode) => { return true },
     },
   },
@@ -370,15 +436,15 @@ var poker_deck = {
 <rect
        style="opacity:1;fill:#ff5555;fill-opacity:1;stroke:none;stroke-width:0.80000001;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
        id="rect_removal_e"
-       width="30"
+       width="50"
        height="480"
        x="220"
        y="20"
        inkscape:label="#rect4781" /><rect
        y="20"
-       x="-30"
+       x="-50"
        height="480"
-       width="30"
+       width="50"
        id="rect_removal_w"
        style="opacity:1;fill:#ff5555;fill-opacity:1;stroke:none;stroke-width:0.80000001;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
        inkscape:label="#rect4783" /><rect
