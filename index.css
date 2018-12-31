@@ -22,6 +22,12 @@ dialog h1 {
   font-weight: bold;
 }
 
+#object_actions_header {
+  font-size: larger;
+  margin-left: 10px;
+  margin-right: 40px;
+}
+
 #gamearea {
   background-color: #efe;
   min-width: 80%;
