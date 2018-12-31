@@ -163,8 +163,8 @@ var d6 = {
     },
   },
 
-  serialize: function(el) {
-    value = el.querySelector('tspan').textContent
+  serialize: function(elem) {
+    value = elem.querySelector('tspan').textContent
     return {dieValue: value}
   },
 
