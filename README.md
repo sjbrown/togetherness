@@ -22,6 +22,17 @@ Here are some goals for Togetherness:
      * user presence
      * text chat
 
+# Quick Start
+
+```
+cd /tmp
+git clone <this repo>
+```
+
+Then open your browser and go to `file:///tmp/togetherness/index.html`
+
+That's it!
+
 # Making your own "objects" for the table
 
 Any interactive objects (dice, decks of cards, etc) are simply SVG files.
