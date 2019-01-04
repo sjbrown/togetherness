@@ -22,6 +22,11 @@ Here are some goals for Togetherness:
      * user presence
      * text chat
 
+# Live Demo
+
+I'm going to try to keep a demo up and running at
+[https://www.1kfa.com/table](https://www.1kfa.com/table)
+
 # Quick Start
 
 ```
