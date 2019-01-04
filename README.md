@@ -1,13 +1,50 @@
+# Togetherness
+
+After playing around with the awesome
+[roller](https://github.com/shanel/roller),
+I got the itch to create my own "dice-rolling" application.
+
+Here are some goals for Togetherness:
+
+ * Document-centric.  The state should all live in the document.
+ * Use HTML5. Use SVG.
+   * Don't reinvent wheels that already exist
+   * Use the opportunity to deeply learn the standards
+ * No server
+   * No software to install
+   * Easy for new developers to contribute / fork
+ * Use [TogetherJS](https://togetherjs.com/)
+   * Don't reinvent wheels
+   * Meets above goals
+   * Batteries included!
+     * real time content sync
+     * user focus
+     * user presence
+     * text chat
 
 # Making your own "objects" for the table
 
 Any interactive objects (dice, decks of cards, etc) are simply SVG files.
 
+I'm planning to have the default interface support dynamically inserting
+foreign SVGs, but for now, you'll have to fork this repo and add
+a `+ My Thing` button to the `index.html` file.
+
+```
+<button class="btn" onclick="add_object('svg/v1/my_thing.svg')">
+ + My Thing
+</button>
+```
+
+Then just add the file `svg/v1/my_thing.svg`.
+
 ## Interactivity Interface
 
-To make your object interactive, you need to include just script. Inside
-the script, there must be one javascript object with three potential
-keys (though you can add more).
+To make your object interactive, you need to include some javascript.
+Inside the script, there must be one javascript object with three
+potential keys (though you can add more of your own): `menu`,
+`initialize`, and `serialize`.
+
 
 ```
 <svg x="0" y="0" width="100" height="100">
@@ -37,6 +74,6 @@ myThing = {
 }
 
 ]]></script>
-<rect x="1" y="1" width="50" height="50" style="fill:#ff0000" />
+<rect x="25" y="25" width="50" height="50" style="fill:#ff0000" />
 </svg>
 ```
