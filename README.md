@@ -34,7 +34,7 @@ cd /tmp
 git clone <this repo>
 ```
 
-Then open your browser and go to `file:///tmp/togetherness/index.html`
+Then open your browser and go to `file:///tmp/togetherness/src/index.html`
 
 That's it!
 
