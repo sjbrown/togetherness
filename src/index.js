@@ -77,14 +77,34 @@ togetherFunctions.on_hello = (msg) => {
 
 togetherFunctions.on_sync = (msg) => {
   msg.data.map(payload => {
-    svg_table.appendChild(deserialize(payload))
+    return Promise.resolve()
+    .then(() => {
+      return deserialize(payload)
+    })
+    .then((elem) => {
+      svg_table.node.appendChild(elem)
+      if (payload['data-import-from']) {
+        hookup_foreign_scripts(elem, payload['data-import-from'])
+      }
+    })
   });
   change_background(msg.bg)
 }
 
 togetherFunctions.on_change = (msg) => { deserialize(msg.data) }
 
-togetherFunctions.on_create = (msg) => { svg_table.add(deserialize(msg.data)) }
+togetherFunctions.on_create = (msg) => {
+  return Promise.resolve()
+  .then(() => {
+    return deserialize(msg.data)
+  })
+  .then((elem) => {
+    svg_table.node.appendChild(elem)
+    if (msg.data['data-import-from']) {
+      hookup_foreign_scripts(elem, msg.data['data-import-from'])
+    }
+  })
+}
 
 togetherFunctions.on_create_mark = (msg) => {
   make_mark(msg.data.target_id, msg.data.mark_rect)
@@ -99,6 +119,7 @@ togetherFunctions.on_change_background = (msg) => { change_background(msg.data) 
 serializers = {}
 
 function deserialize(payload) {
+  console.log("deserialize: ", payload)
   var elem = null;
   if (svg_table.get(payload.id)) {
     elem = svg_table.get(payload.id)
@@ -112,6 +133,20 @@ function deserialize(payload) {
     });
   } else {
     // elem is something new - remote has it, but it's not yet in the local doc
+
+//--------
+    url = payload['data-import-from']
+    if (url) {
+      return import_foreign_svg(url)
+      .then((nest) => {
+        if (payload['data-color']) {
+          setColor(nest.node, payload['data-color'])
+        }
+        return nest.node
+      })
+    }
+//--------
+
     var fn = str_to_fn('make_' + payload['data-app-class'])
     if (fn) {
       console.log('calling ', 'make_'+ payload['data-app-class'])
@@ -126,7 +161,8 @@ function deserialize(payload) {
       elem.put(kid)
     });
   }
-  return elem;
+  console.log("resulting elem", elem)
+  return elem.node;
 }
 
 function recursive_delete(payload) {
@@ -172,7 +208,6 @@ function g(el, label) {
 function s(el, label, val) {
 // setter - more natural "attributes" from SVG elements
   if (val === undefined || val === null) {
-    console.log('rem', label, val)
     return el.removeAttribute(label);
   }
   el.setAttribute(label, val);
@@ -202,28 +237,26 @@ function serialize_nest(nest) {
     retval.kids.push(serialize(el));
   })
   console.log("retval starts as", retval)
+  console.log('x', nest.dataset, nest.dataset.importFrom, serializers)
   url = nest.dataset.importFrom
+  console.log('oh', url, JSON.stringify(serializers), serializers[url], (url && serializers[url]))
   if (url && serializers[url]) {
+    console.log('calling serializer fn')
     retval = Object.assign(retval, serializers[url](nest))
   }
   console.log("retval is now", retval)
   return retval;
 }
 
-function serialize_text(textEl) {
-  return { 'data-text': textEl.textContent }
-}
 
 function serialize(thing, extras) {
   if (!myClientId) {
     // no network connection - skip it
     return;
   }
-  console.log('trying to serialize', thing)
   var node = (thing.attr) ? thing.node : thing;
   var retval = justNonUiAttributes(node)
   var fn = str_to_fn('serialize_' + g(node, 'data-app-class'))
-  console.log('trying to ', fn)
   if (fn) {
     retval = Object.assign( retval, fn(node) )
   }
@@ -260,12 +293,15 @@ var mark_menu = {
   },
 }
 
-function make_nest(attrs) {
+function make_nest(id, attrs) {
   var nest = svg_table.nested()
-  nest.addClass('draggable-group')
+  nest.id(id)
   nest.attr(Object.assign({
     'data-app-class': 'nest',
   }, attrs))
+  nest.addClass('draggable-group')
+
+
   return nest;
 }
 
@@ -294,9 +330,11 @@ function make_mark(target_id, attrs) {
     }, attrs)
   )
 
-  var nest = make_nest({'data-nest-for': 'mark'})
+  var nest = make_nest({
+    'id': 'nest_' + rect.attr('id'), // special ID
+    'data-nest-for': 'mark',
+  })
   nest.addClass('draggable-group')
-  nest.id('nest_' + rect.attr('id')) // special ID
 
   // Re-home the enveloped object inside the <svg>, and then
   // move that <svg> to the old x,y coords of the enveloped object
@@ -381,14 +419,6 @@ function _unmark(mark_rect_id) {
 }
 
 
-function make_text(attrs) {
-  var text = svg_table.text(attrs['data-text'])
-  text.attr(Object.assign( {
-    'data-app-class': 'text',
-  }, attrs));
-  return text
-}
-
 function import_foreign_svg(url) {
   if (!DEBUG) {
     var answer = confirm('Do you trust the security of '+ url +'?')
@@ -447,16 +477,25 @@ function import_foreign_svg(url) {
       appendDocumentScript(script, nest.node)
     })
 
-    makeMyColor(frame)
-
     return nest
   })
 }
 
-function makeMyColor(parentNode) {
-  parentNode.querySelectorAll('#recolorize-filter-matrix').forEach((matrixNode) => {
-    recolorize(matrixNode, getUserColor())
+function setColor(elem, newColor) {
+  color = newColor || getUserColor()
+  filterElem = elem.querySelector('#filter-colorize-1')
+  clone = filterElem.cloneNode(true)
+  clone.id = 'filter-' + elem.id
+  filterElem.parentNode.appendChild(clone)
+  // Find all the <g> elements with filter="..." and point to the new filter
+  elem.querySelectorAll('g[filter]').forEach((gElem) => {
+    val =  'url(#' + clone.id +')'
+    s(gElem, 'filter', val)
   })
+  clone.querySelectorAll('#recolorize-filter-matrix').forEach((matrixNode) => {
+    recolorize(matrixNode, color)
+  })
+  elem.dataset.color = color
 }
 
 function recolorize(matrixNode, color) {
@@ -513,6 +552,7 @@ function hookup_foreign_scripts(elem, url) {
         s(elem, 'data-ui-initialized', true)
       }
 
+      console.log('serializers adding', ns.serialize)
       if (ns.serialize) {
         serializers[url] = ns.serialize
       }
@@ -557,13 +597,17 @@ function add_object(url) {
   return import_foreign_svg(url)
   .then((nest) => {
     console.log("import done, adding to table", nest.node.id)
+    setColor(nest.node)
     svg_table.add(nest)
-    do_animate(nest.node)
-    net_fire({type: "create", data: serialize(nest)});
     return nest
   })
   .then((nest) => {
     hookup_foreign_scripts(nest.node, url)
+    return nest
+  })
+  .then((nest) => {
+    do_animate(nest.node)
+    net_fire({type: "create", data: serialize(nest)});
   })
 }
 

@@ -55,7 +55,6 @@ function initSvgTable(el) {
     console.log('found old table', oldTable)
     svg_table.remove()
   }
-  console.log('creating new table from el', el)
   el.id = 'svg_table'
   svg_table = SVG.adopt(el)
   svg_table.size(1000, 480)
