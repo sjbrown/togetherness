@@ -45,7 +45,7 @@
     </rdf:RDF>
   </metadata>
   <defs id="defs1" >
-    <filter id="filter-colorize-1" color-interpolation-filters="sRGB" >
+    <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
       <feColorMatrix id="recolorize-filter-matrix" type="matrix"
          values="0.2 0.0 0.0 0.0  0.0
                  0.3 0.0 0.0 0.0  0.0
@@ -134,7 +134,7 @@ var d8 = {
 console.log('d8 script has run')
 
     ]]></script>
-  <g id="group-monochrome-1" class="draggable" filter="url(#filter-colorize-1)">
+  <g id="group-monochrome-1" class="draggable" filter="url(#app-filter-colorize)">
   <ellipse
      style="opacity:1;fill:#000000;fill-opacity:0.15686275;stroke:none;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
      id="ellipse4248"

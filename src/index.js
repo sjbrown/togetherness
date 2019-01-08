@@ -139,8 +139,8 @@ function deserialize(payload) {
     if (url) {
       return import_foreign_svg(url)
       .then((nest) => {
-        if (payload['data-color']) {
-          setColor(nest.node, payload['data-color'])
+        if (payload['data-app-color']) {
+          setColor(nest.node, payload['data-app-color'])
         }
         return nest.node
       })
@@ -481,12 +481,13 @@ function import_foreign_svg(url) {
   })
 }
 
-function setColor(elem, newColor) {
-  color = newColor || getUserColor()
-  filterElem = elem.querySelector('#filter-colorize-1')
+function setColor(elem, color) {
+  filterElem = elem.querySelector('#app-filter-colorize')
+  parent = filterElem.parentNode
   clone = filterElem.cloneNode(true)
   clone.id = 'filter-' + elem.id
-  filterElem.parentNode.appendChild(clone)
+  parent.appendChild(clone)
+  parent.removeChild(filterElem)
   // Find all the <g> elements with filter="..." and point to the new filter
   elem.querySelectorAll('g[filter]').forEach((gElem) => {
     val =  'url(#' + clone.id +')'
@@ -495,7 +496,7 @@ function setColor(elem, newColor) {
   clone.querySelectorAll('#recolorize-filter-matrix').forEach((matrixNode) => {
     recolorize(matrixNode, color)
   })
-  elem.dataset.color = color
+  s(elem, 'data-app-color', color)
 }
 
 function recolorize(matrixNode, color) {
@@ -597,7 +598,7 @@ function add_object(url) {
   return import_foreign_svg(url)
   .then((nest) => {
     console.log("import done, adding to table", nest.node.id)
-    setColor(nest.node)
+    setColor(nest.node, getUserColor())
     svg_table.add(nest)
     return nest
   })

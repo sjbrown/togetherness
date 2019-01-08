@@ -74,7 +74,7 @@
        y1="713.79077"
        x2="305.69736"
        y2="242.36218" />
-    <filter id="filter-colorize-1" color-interpolation-filters="sRGB" >
+    <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
       <feColorMatrix id="recolorize-filter-matrix" type="matrix"
          values="0.2 0.0 0.0 0.0  0.0
                  0.3 0.0 0.0 0.0  0.0
@@ -209,7 +209,7 @@ var d6 = {
   </metadata>
   <g
      inkscape:label="Layer 1"
-     filter="url(#filter-colorize-1)"
+     filter="url(#app-filter-colorize)"
      inkscape:groupmode="layer"
      id="layer1"
      transform="translate(0,-952.37017)"
