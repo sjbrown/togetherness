@@ -167,7 +167,7 @@ var d6 = {
   deserialize: function(elem, payload) {
     var tspan = elem.querySelector('tspan')
     tspan.textContent = payload.dieValue
-  }
+  },
 
 }
 

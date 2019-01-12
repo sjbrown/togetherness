@@ -553,6 +553,7 @@ function hookup_foreign_scripts(elem, url) {
         s(elem, 'data-ui-initialized', true)
       }
 
+      console.log("adding ser and deser", Object.keys(ns))
       if (ns.serialize) {
         serializers[url] = ns.serialize
       }

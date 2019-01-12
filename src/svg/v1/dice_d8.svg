@@ -129,6 +129,16 @@ var d8 = {
         },
     },
   },
+
+  serialize: function(elem) {
+    value = elem.querySelector('tspan').textContent
+    return {dieValue: value}
+  },
+
+  deserialize: function(elem, payload) {
+    elem.querySelector('tspan').textContent = payload.dieValue
+  },
+
 }
 
 console.log('d8 script has run')
