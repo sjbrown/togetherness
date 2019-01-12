@@ -83,8 +83,8 @@ togetherFunctions.on_sync = (msg) => {
     })
     .then((elem) => {
       svg_table.node.appendChild(elem)
-      if (payload['data-import-from']) {
-        hookup_foreign_scripts(elem, payload['data-import-from'])
+      if (payload['data-app-url']) {
+        hookup_foreign_scripts(elem, payload['data-app-url'])
       }
     })
   });
@@ -100,8 +100,8 @@ togetherFunctions.on_create = (msg) => {
   })
   .then((elem) => {
     svg_table.node.appendChild(elem)
-    if (msg.data['data-import-from']) {
-      hookup_foreign_scripts(elem, msg.data['data-import-from'])
+    if (msg.data['data-app-url']) {
+      hookup_foreign_scripts(elem, msg.data['data-app-url'])
     }
   })
 }
@@ -117,58 +117,60 @@ togetherFunctions.on_delete = (msg) => { recursive_delete(msg.data) }
 togetherFunctions.on_change_background = (msg) => { change_background(msg.data) }
 
 serializers = {}
+deserializers = {}
 
 function deserialize(payload) {
   console.log("deserialize: ", payload)
-  var elem = null;
-  if (svg_table.get(payload.id)) {
-    elem = svg_table.get(payload.id)
+  var obj = null;
+  if (document.getElementById(payload.id)) {
+    console.log("i've seen this before", payload.id)
+    obj = SVG.adopt(byId(payload.id))
     Object.keys(payload).map(key => {
       if (key === 'data-text') {
-        elem.text(payload[key])
+        obj.text(payload[key])
       }
       if (key !== 'kids') {
-        elem.attr(key, payload[key])
+        console.log('setting', key, 'to', payload[key])
+        obj.attr(key, payload[key])
       }
     });
+    url = payload['data-app-url']
+    if (url) {
+      deserializers[url](obj.node, payload)
+    }
   } else {
     // elem is something new - remote has it, but it's not yet in the local doc
+    console.log("this is something new", payload.id)
 
 //--------
-    url = payload['data-import-from']
+    url = payload['data-app-url']
     if (url) {
-      return import_foreign_svg(url)
-      .then((nest) => {
-        if (payload['data-app-color']) {
-          setColor(nest.node, payload['data-app-color'])
-        }
-        return nest.node
-      })
+      return add_object_from_payload(payload)
     }
 //--------
 
     var fn = str_to_fn('make_' + payload['data-app-class'])
     if (fn) {
       console.log('calling ', 'make_'+ payload['data-app-class'])
-      elem = fn(payload.id, payload);
+      obj = fn(payload);
     } else {
       throw Error('how to make? '+ payload['data-app-class'])
     }
   }
-  if (payload.kids && elem) {
+  if (payload.kids && obj) {
     payload.kids.map(innerPayload => {
       var kid = deserialize(innerPayload)
-      elem.put(kid)
+      obj.put(kid)
     });
   }
-  console.log("resulting elem", elem)
-  return elem.node;
+  return obj.node;
 }
 
 function recursive_delete(payload) {
-  if (svg_table.get(payload.id)) {
+  console.log("in recursive delete", payload)
+  if (document.getElementById(payload.id)) {
     // el is something that already exists in the local SVG doc
-    svg_table.get(payload.id).remove();
+    byId(payload.id).remove()
   }
   if (payload.kids) {
     payload.kids.map(innerPayload => {
@@ -237,9 +239,8 @@ function serialize_nest(nest) {
     retval.kids.push(serialize(el));
   })
   console.log("retval starts as", retval)
-  console.log('x', nest.dataset, nest.dataset.importFrom, serializers)
-  url = nest.dataset.importFrom
-  console.log('oh', url, JSON.stringify(serializers), serializers[url], (url && serializers[url]))
+  console.log('x', nest.dataset, nest.dataset.appUrl, serializers)
+  url = nest.dataset.appUrl
   if (url && serializers[url]) {
     console.log('calling serializer fn')
     retval = Object.assign(retval, serializers[url](nest))
@@ -293,14 +294,12 @@ var mark_menu = {
   },
 }
 
-function make_nest(id, attrs) {
+function make_nest(attrs) {
   var nest = svg_table.nested()
-  nest.id(id)
   nest.attr(Object.assign({
     'data-app-class': 'nest',
   }, attrs))
   nest.addClass('draggable-group')
-
 
   return nest;
 }
@@ -335,6 +334,7 @@ function make_mark(target_id, attrs) {
     'data-nest-for': 'mark',
   })
   nest.addClass('draggable-group')
+  console.log("nest node is now", nest.node)
 
   // Re-home the enveloped object inside the <svg>, and then
   // move that <svg> to the old x,y coords of the enveloped object
@@ -458,7 +458,7 @@ function import_foreign_svg(url) {
     nest.attr({
       'data-app-class': 'nest',
       'data-nest-for': 'svg',
-      'data-import-from': url,
+      'data-app-url': url,
       'data-orig-name': origId,
     })
     // Ensure the imported SVG is of a reasonable screen size
@@ -553,9 +553,12 @@ function hookup_foreign_scripts(elem, url) {
         s(elem, 'data-ui-initialized', true)
       }
 
-      console.log('serializers adding', ns.serialize)
       if (ns.serialize) {
         serializers[url] = ns.serialize
+      }
+
+      if (ns.deserialize) {
+        deserializers[url] = ns.deserialize
       }
 
       if (ns.menu) {
@@ -609,6 +612,22 @@ function add_object(url) {
   .then((nest) => {
     do_animate(nest.node)
     net_fire({type: "create", data: serialize(nest)});
+  })
+}
+
+function add_object_from_payload(payload) {
+  url = payload['data-app-url']
+  return import_foreign_svg(url)
+  .then((nest) => {
+    if (payload['data-color']) {
+      setColor(nest.node, payload['data-color'])
+    }
+    nest.attr(payload)
+    return nest
+  })
+  .then((nest) => {
+    do_animate(nest.node)
+    return nest.node
   })
 }
 
@@ -780,17 +799,14 @@ function animated_ghost(el, attrs) {
 }
 
 function delete_marked(evt) {
-  var collection = svg_table.group()
-  collection.attr({ 'data-app-class': 'deletegroup' })
-  svg_table.select('[data-ui-marked]').members.forEach(el => {
-    node = el.node
-    animated_ghost(node, {animation: 'rotateOut'})
+  var payload = { id: null, kids: [] }
+  document.querySelectorAll('[data-ui-marked]').forEach(el => {
+    animated_ghost(el, {animation: 'rotateOut'})
     el.remove()
-    collection.add(el)
+    payload.kids.push({ id: el.id })
   })
-  collection.remove()
-  net_fire({ type: 'delete', data: serialize(collection.node) });
-  ui_fire({type: 'delete', data: collection });
+  net_fire({ type: 'delete', data: payload });
+  ui_fire({type: 'delete', data: payload });
 }
 
 function ui_change_background(evt) {

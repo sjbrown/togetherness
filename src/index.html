@@ -22,7 +22,6 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
 
-
 <script src="./lib/materialize/js/materialize.js"></script>
 <link rel="stylesheet" type="text/css" href="./lib/materialize/css/materialize.css">
 
@@ -505,7 +504,7 @@ function make_rect(attrs) {
   var rect = svg_table.rect()
   rect.attr(Object.assign({
     'data-app-class': 'rect',
-    'class': 'draggable',
+    id: 'rect_' + base32.short_id(),
     rx: 0,
     ry: 0,
     width: 100,
@@ -516,7 +515,9 @@ function make_rect(attrs) {
     'stroke-opacity': 0.8,
     'stroke-width': 1,
   }, attrs))
-  hookup_menu_actions(rect, rect_verbs)
+  rect.addClass('draggable')
+
+  hookup_menu_actions(rect.node, rect_verbs)
   return rect;
 }
 
