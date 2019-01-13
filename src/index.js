@@ -483,6 +483,9 @@ function import_foreign_svg(url) {
 
 function setColor(elem, color) {
   filterElem = elem.querySelector('#app-filter-colorize')
+  if (!filterElem) {
+    return
+  }
   parent = filterElem.parentNode
   clone = filterElem.cloneNode(true)
   clone.id = 'filter-' + elem.id

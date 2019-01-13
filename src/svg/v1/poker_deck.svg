@@ -1,8 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
-   xmlns:dc="http://purl.org/dc/elements/1.1/"
-   xmlns:cc="http://creativecommons.org/ns#"
-   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
    xmlns:svg="http://www.w3.org/2000/svg"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
@@ -18,11 +15,17 @@
    id="svg_poker_deck"
    class="svg_poker_deck"
    inkscape:version="0.91 r13725"
-   sodipodi:docname="poker_deck.svg"><metadata
-     id="metadata926"><rdf:RDF><cc:Work
-         rdf:about=""><dc:format>image/svg+xml</dc:format><dc:type
-           rdf:resource="http://purl.org/dc/dcmitype/StillImage" /><dc:title /></cc:Work></rdf:RDF></metadata><defs
-     id="defs494" /><script
+   sodipodi:docname="poker_deck.svg">
+   <defs id="defs001">
+    <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
+      <feColorMatrix id="recolorize-filter-matrix" type="matrix"
+         values="0.2 0.0 0.0 0.0  0.0
+                 0.3 0.0 0.0 0.0  0.0
+                 0.4 0.0 0.0 0.0  0.0
+                 0.0 0.0 0.0 1.0  0.0" />
+    </filter>
+   </defs>
+   <script
      type="text/javascript"
      data-namespace="poker_deck"
      id="script6158"><![CDATA[
@@ -3433,7 +3436,8 @@ poker_deck_card = {
      inkscape:label="back"
      style="display:inline"><g
        id="g_back"
-       inkscape:label="#g4789"><rect
+       inkscape:label="#g4789">
+       <rect
          y="278.14868"
          x="250.32314"
          height="201.52817"
@@ -3441,7 +3445,11 @@ poker_deck_card = {
          id="rect_back_white"
          style="display:inline;fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.64626968;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
          rx="6.8923101"
-         ry="6.8923106" /><rect
+         ry="6.8923106" />
+       <g id="g_back_colorzone"
+          filter="url(#app-filter-colorize)"
+       >
+       <rect
          style="opacity:1;fill:#800000;fill-opacity:1;stroke:none;stroke-width:9;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
          id="rect_back_red"
          width="127.12749"
@@ -3449,6 +3457,10 @@ poker_deck_card = {
          x="258.80551"
          y="287.03159"
          rx="9.0784321"
-         ry="8.5787687" /></g></g><g
-     id="play_area" /><g
-     id="discard_area" /></svg>
+         ry="8.5787687" />
+       </g>
+     </g>
+</g>
+ <g id="play_area" />
+ <g id="discard_area" />
+</svg>
