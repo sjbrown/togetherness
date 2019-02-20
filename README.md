@@ -56,14 +56,14 @@ Then just add the file `svg/v1/my_thing.svg`.
 
 ## Interactivity Interface
 
-To make your object interactive, you need to include some javascript.
+To make your object interactive, you need to include some JavaScript.
 
 Your `<script>` element needs to have an attribute `data-namespace`
-with a name that's uniuqe to your object.
+with a name that's unique to your object.
 
-Inside the script, there must be one javascript object whose name
+Inside the script, there must be one JavaScript object whose name
 matches that `data-namespace` value. This object uses 3 specially-named
-keys to integrate with the main web ui:
+keys to integrate with the main web UI:
 `menu`, `initialize`, and `serialize`.
 
 

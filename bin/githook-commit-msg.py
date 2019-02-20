@@ -1,29 +1,51 @@
 #!/usr/bin/python2
+
 #
-# An example hook script to check the commit log message.
+# A hook script called by .git/hooks/commit-msg
+#
+
+import os, sys
+import subprocess
+
+
+
+dot_git_hooks_commit_msg = '''
+#!/bin/sh
+#
+# .git/hooks/commit-msg
+#
+# A hook script to check the commit log message.
 # Called by "git commit" with one argument, the name of the file
 # that has the commit message.  The hook should exit with non-zero
 # status after issuing an appropriate message if it wants to stop the
 # commit.  The hook is allowed to edit the commit message file.
 #
-# To enable this hook, rename this file to "commit-msg".
 
-# Uncomment the below to add a Signed-off-by line to the message.
-# Doing this in a hook is a bad idea in general, but the prepare-commit-msg
-# hook is more suited to it.
-#
-# SOB=$(git var GIT_AUTHOR_IDENT | sed -n 's/^\(.*>\).*$/Signed-off-by: \1/p')
-# grep -qs "^$SOB" "$1" || echo "$SOB" >> "$1"
+echo "PWD is $PWD"
+./bin/githook-commit-msg.py $1
+'''
 
-# This example catches duplicate Signed-off-by lines.
-
-import os, sys
-
-#test "" = "$(grep '^Signed-off-by: ' "$1" |
-	 #sort | uniq -c | sed -e '/^[ 	]*1[ 	]/d')" || {
-	#echo >&2 Duplicate Signed-off-by lines.
-	#exit 1
-#}
 
 c = open(sys.argv[1]).read()
 print 'got a file of length', len(c)
+
+lines = [
+    l for l in c.split('\n')
+    if not (l.startswith('#') or l.strip() == '')
+]
+message = ' '.join(lines)
+print 'message was', message
+tweet = (
+    'https://twitter.com/home?status='
+    + '%23ttrpg %23gamedesign New update to https://www.1kfa.com/table - '
+    + message
+).replace(' ', '+')
+
+print ''
+print 'Tweet!'
+print ''
+print tweet
+print ''
+
+files = subprocess.check_output(['git', 'status', '-s'])
+print 'files:', files
