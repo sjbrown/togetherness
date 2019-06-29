@@ -72,6 +72,11 @@ SVG.on(document, 'DOMContentLoaded', () => {
   viewport.node.id = 'svg_viewport'
   s(viewport.node, 'width', '100%')
   viewport.style('background-image', 'url(svg/bg_hexagons.svg)')
+  viewport.node.onclick = (e) => {
+    if (e.target.id === viewport.node.id) {
+      ui_unmark_mine()
+    }
+  }
 
   gViewport = SVG.adopt(document.createElementNS(SVG.ns, 'g'))
   gViewport.node.id = 'g_viewport'
@@ -93,7 +98,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
 
   document.addEventListener('svg_dragend', (evt) => {
     selectedElement = byId(evt.detail.elemId)
-    console.log('document done drag', selectedElement)
+    //console.log('document done drag', selectedElement)
     net_fire({type: "change", data: serialize(selectedElement)})
   })
 

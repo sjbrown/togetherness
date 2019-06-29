@@ -61,7 +61,6 @@
 var d8 = {
 
   roll_handler: function(evt) {
-    console.log('d8 ', this, 'roll!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!', evt.detail)
     if (this.id !== evt.detail.elemId) {
       return;
     }
@@ -87,7 +86,7 @@ var d8 = {
   },
 
   turn_handler: function(evt) {
-    console.log('d8 ', this, 'turn!!!!!!!!!!!!!!!!!!!!!!!!!!!!', evt.detail)
+    //console.log('d8 ', this, 'turn!!!!!!!!!!!!!!!!!!!!!!!!!!!!', evt.detail)
     if (this.id !== evt.detail.elemId) {
       return;
     }
@@ -140,8 +139,6 @@ var d8 = {
   },
 
 }
-
-console.log('d8 script has run')
 
     ]]></script>
   <g id="group-monochrome-1" class="draggable" filter="url(#app-filter-colorize)">

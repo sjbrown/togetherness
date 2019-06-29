@@ -1,6 +1,10 @@
 
 DEBUG = 1
 
+function distance(v1, v2) {
+  return Math.abs(v1[0] - v2[0]) + Math.abs(v1[1] - v2[1])
+}
+
 function randInt(min, max) {
   // get a random integer in the range, inclusive.
   // randInt(1,6) might return 1,2,3,4,5,6
@@ -365,7 +369,7 @@ function hookup_mark_handlers(markEl) {
   nest = SVG.adopt(markEl)
 
   //      event,      handler,   binding,   capture/bubbling phase
-  nest.on('dblclick', ui_unmark, undefined, true)
+  //nest.on('click', ui_unmark, undefined, true)
   nest.on('remove_mark', ui_unmark, undefined, true)
   nest.on('svg_longtouch', ui_unmark, undefined, true)
   nest.on(
@@ -378,7 +382,20 @@ function hookup_mark_handlers(markEl) {
   hookup_self_event_handlers(nest.node, mark_menu)
 }
 
-function markElementById(target_id, actionMenu) {
+function ui_mark_by_id(evt, target_id) {
+  console.log('ui_mark_by_id target_id', evt, target_id)
+  // unmark everything else, unless shift or ctrl is being held
+  if (!evt.ctrlKey & !evt.shiftKey) {
+    ui_unmark_mine(target_id)
+  }
+
+  // am I already marked?
+  target = SVG.get(target_id)
+  if (g(byId(target_id), 'data-enveloped')) {
+    console.log('ALREADY MARKED')
+    return
+  }
+
   var { mark_rect, mark_nest } = make_mark(target_id)
   ui_fire({ type: 'createMark', data: mark_nest })
   net_fire({type: "createMark", data: {
@@ -388,6 +405,7 @@ function markElementById(target_id, actionMenu) {
 }
 
 function ui_unmark(evt) {
+  console.log('ui unmark', evt)
   evt.stopPropagation()
   if (evt.target.tagName === 'svg') {
     mark_rect = evt.target.lastChild
@@ -399,20 +417,40 @@ function ui_unmark(evt) {
   net_fire({type: 'dropMark', mark_rect: serialize(mark_rect) });
 }
 
+function ui_unmark_mine(exceptId) {
+  var payload = { id: null, kids: [] }
+  document.querySelectorAll('[data-ui-marked]').forEach(el => {
+    if (!exceptId || el.id !== exceptId) {
+      console.log("unmarking", el)
+      if (el.tagName === 'svg') {
+        mark_rect = el.lastChild
+      } else {
+        mark_rect = el
+      }
+      _unmark(mark_rect.id);
+      ui_fire({type: 'dropMark', data: mark_rect.parentNode});
+      net_fire({type: 'dropMark', mark_rect: serialize(mark_rect) });
+    }
+  })
+}
+
 function _unmark(mark_rect_id) {
+    console.log("unmark", mark_rect_id)
   nestSVG = SVG.get('nest_' + mark_rect_id)
   oldXY = {
     x: nestSVG.x(),
     y: nestSVG.y(),
   }
+  console.log('unmarking ', oldXY)
   // move all the enveloped ones back into the doc
   nodeMap(nestSVG.node, (kid) => {
     if (g(kid, 'data-enveloped')) {
       s(kid, 'data-enveloped', null)
       kid.remove()
-      x = SVG.adopt(kid)
-      x.attr(oldXY)
-      svg_table.add(x)
+      kidObj = SVG.adopt(kid)
+      kidObj.attr(oldXY)
+      svg_table.add(kidObj)
+      console.log('back in the doc', kidObj)
     }
   })
   nestSVG.remove()
@@ -581,9 +619,10 @@ function hookup_menu_actions(svgEl, actionMenu) {
   })
   svgEl.actionMenu = actionMenu
   nest = SVG.adopt(svgEl)
-  nest.on('node_mark', (evt) => { markElementById(svgEl.id, newMenu) })
-  nest.on('dblclick', (evt) => { markElementById(svgEl.id, newMenu) })
-  nest.on('svg_longtouch', (evt) => { markElementById(svgEl.id, newMenu) })
+  nest.on('node_mark', (evt) => { ui_mark_by_id(evt, svgEl.id) })
+  nest.on('svg_dragsafe_click', (evt) => { ui_mark_by_id(evt.detail.origEvent, svgEl.id) })
+  nest.on('dblclick', (evt) => { console.log('dblclick') })
+  nest.on('svg_longtouch', (evt) => { ui_mark_by_id(evt, svgEl.id) })
   nest.on('mouseover', (evt) => { ui_mouseover(evt, svgEl, newMenu) })
 
   // Hookup any self-event handlers
@@ -637,6 +676,7 @@ function add_object_from_payload(payload) {
 
 
 function ui_mouseover(evt, target, actionMenu) {
+  /* Add clickable options onto the menu */
   //console.log('hover', target)
   //console.log('ver', actionMenu)
 
@@ -751,8 +791,8 @@ function ui_fire(msg) {
 }
 
 function flatten_translation(el) {
-  console.log('del flattn', el)
-  console.log('flattn', el.transform.baseVal)
+  //console.log('flattn el', el)
+  //console.log('flattn baseval', el.transform.baseVal)
   if (el.transform.baseVal.length === 0) {
     return;
   }
@@ -787,7 +827,12 @@ function animated_ghost(el, attrs) {
   });
   s(animationClone, 'draggable-group', null);
 
+  // Move to the start position
   flatten_translation(animationClone)
+  cc = SVG(animationClone)
+  ee = SVG(el.id)
+  cc.move(ee.x(), ee.y())
+
   el.parentNode.appendChild(animationClone, el)
 
   before_begin(animationClone)

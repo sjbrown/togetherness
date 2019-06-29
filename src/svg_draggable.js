@@ -6,7 +6,7 @@ function makeDraggable(world) {
   // https://github.com/petercollingridge/code-for-blog/
   // Tutorial:
   // http://www.petercollingridge.co.uk/tutorials/svg/interactive/dragging/
-  var selectedEl, origMouse, origXY;
+  var selectedEl, origMouse, origXY, isJustAClick;
   var longtouchTimer, lockLongtouchTimer;
   var broadcastTimer, lockBroadcastTimer;
   var mouse;
@@ -28,12 +28,15 @@ function makeDraggable(world) {
     }))
   }
 
+  function distance(v1, v2) {
+    return Math.abs(v1.x - v2.x) + Math.abs(v1.y - v2.y)
+  }
+
   function onLongTouch() {
     if (
-      mouse &&
-      Math.abs(mouse.x - origMouse.x) + Math.abs(mouse.y - origMouse.y) > 20
+      mouse && distance(mouse, origMouse) > 20
     ) {
-      //console.log("drift - n o fire", mouse, origMouse)
+      //console.log("drift - no fire", mouse, origMouse)
       return
     }
     broadcast('svg_longtouch', { elemId: selectedEl.node.id })
@@ -57,6 +60,7 @@ function makeDraggable(world) {
   }
 
   function initialiseDragging(evt) {
+    isJustAClick = evt
     origMouse = getMousePosition(evt)
     mouse = getMousePosition(evt)
     origXY = {
@@ -67,6 +71,7 @@ function makeDraggable(world) {
   }
 
   function startDrag(evt) {
+    //console.log("startdrag", evt)
     evt.preventDefault() // prevent, for example, text selection
     if (
       evt.target.classList.contains('draggable')
@@ -90,8 +95,11 @@ function makeDraggable(world) {
     mouse = getMousePosition(evt)
     selectedEl.x(origXY.x + (mouse.x - origMouse.x))
     selectedEl.y(origXY.y + (mouse.y - origMouse.y))
+    if (isJustAClick && distance(selectedEl, origXY) > 20) {
+      isJustAClick = null
+    }
 
-    // Don't spam - limit to roughly every 400 miliseconds
+    // Don't spam - throttle to roughly every 400 miliseconds
     if (lockBroadcastTimer) { return }
     lockBroadcastTimer = true
     broadcastTimer = setTimeout(() => { lockBroadcastTimer = false }, 400)
@@ -106,6 +114,12 @@ function makeDraggable(world) {
     try {
       if (selectedEl) {
         broadcast('svg_dragend', { elemId: selectedEl.node.id })
+        if (isJustAClick) {
+          broadcast('svg_dragsafe_click', {
+            elemId: selectedEl.node.id,
+            origEvent: isJustAClick,
+          })
+        }
       }
     }
     catch (err) {
