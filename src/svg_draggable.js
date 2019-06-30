@@ -10,6 +10,7 @@ function makeDraggable(world) {
   var longtouchTimer, lockLongtouchTimer;
   var broadcastTimer, lockBroadcastTimer;
   var mouse;
+  var lastClickTime = 0;
 
   world.on('mousedown', startDrag);
   world.on('mousemove', drag);
@@ -113,12 +114,23 @@ function makeDraggable(world) {
   function endDrag(evt) {
     try {
       if (selectedEl) {
+        now = new Date()
         broadcast('svg_dragend', { elemId: selectedEl.node.id })
         if (isJustAClick) {
+          console.log("click")
           broadcast('svg_dragsafe_click', {
             elemId: selectedEl.node.id,
             origEvent: isJustAClick,
           })
+          if ((now - lastClickTime) < 500) {
+            broadcast('svg_dragsafe_dblclick', {
+              elemId: selectedEl.node.id,
+              origEvent: isJustAClick,
+            })
+            lastClickTime = 0
+          } else {
+            lastClickTime = now
+          }
         }
       }
     }

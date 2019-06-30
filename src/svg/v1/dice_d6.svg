@@ -92,9 +92,10 @@ var d6 = {
 
   roll_handler: function(evt) {
     console.log('d6 ', this, 'roll!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!', evt.detail)
-    if (this.id !== evt.detail.elemId) {
-      return;
+    if (this.isChanging) {
+      return false
     }
+    this.isChanging = true
     var text = this.querySelector('text')
     var tspan = this.querySelector('tspan')
     var origOpacity = this.style.opacity
@@ -111,6 +112,7 @@ var d6 = {
         tspan.textContent = newNum
         s(text, 'data-text', newNum)
         this.style.opacity = origOpacity
+        this.isChanging = false
         net_fire({type: "change", data: serialize(this)});
       },
     })
@@ -121,6 +123,10 @@ var d6 = {
     if (this.id !== evt.detail.elemId) {
       return;
     }
+    if (this.isChanging) {
+      return false
+    }
+    this.isChanging = true
     var text = this.querySelector('text')
     var tspan = this.querySelector('tspan')
     var origOpacity = this.style.opacity
@@ -131,6 +137,7 @@ var d6 = {
         tspan.textContent = (origNum % 6) + 1
         s(text, 'data-text', (origNum % 6) + 1)
         this.style.opacity = origOpacity
+        this.isChanging = false
         net_fire({type: "change", data: serialize(this)});
       },
     })
@@ -140,6 +147,7 @@ var d6 = {
 
   initialize: function(elem) {
     elem.addEventListener('die_roll', this.roll_handler)
+    elem.addEventListener('dblclick', this.roll_handler)
     elem.addEventListener('die_turn_up', this.turn_handler)
   },
 

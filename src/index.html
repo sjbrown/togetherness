@@ -317,6 +317,7 @@ function load_svg() {
     appendDocumentScript(script, subSvg)
   })
   svg.querySelectorAll('[data-app-class]').forEach((subSvg) => {
+    hookup_ui(subSvg)
     hookup_foreign_scripts(subSvg)
   })
   svg.querySelectorAll('[data-nest-for=mark]').forEach((subSvg) => {
@@ -522,6 +523,7 @@ function make_rect(attrs) {
   }, attrs))
   rect.addClass('draggable')
 
+  hookup_ui(rect.node)
   hookup_menu_actions(rect.node, rect_verbs)
   return rect;
 }

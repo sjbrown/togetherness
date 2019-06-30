@@ -61,9 +61,14 @@
 var d8 = {
 
   roll_handler: function(evt) {
-    if (this.id !== evt.detail.elemId) {
-      return;
+    console.log('roll handle!', this.id, evt)
+    if (this.isChanging) {
+      return false
     }
+    this.isChanging = true
+    //if (this.id !== evt.detail.elemId) {
+      //return;
+    //}
     var text = this.querySelector('text')
     var tspan = this.querySelector('tspan')
     var origOpacity = this.style.opacity
@@ -80,6 +85,7 @@ var d8 = {
         tspan.textContent = newNum
         s(text, 'data-text', newNum)
         this.style.opacity = origOpacity
+        this.isChanging = false
         net_fire({type: "change", data: serialize(this)});
       },
     })
@@ -87,9 +93,13 @@ var d8 = {
 
   turn_handler: function(evt) {
     //console.log('d8 ', this, 'turn!!!!!!!!!!!!!!!!!!!!!!!!!!!!', evt.detail)
-    if (this.id !== evt.detail.elemId) {
-      return;
+    if (this.isChanging) {
+      return false
     }
+    this.isChanging = true
+    //if (this.id !== evt.detail.elemId) {
+      //return;
+    //}
     var text = this.querySelector('text')
     var tspan = this.querySelector('tspan')
     var origOpacity = this.style.opacity
@@ -100,6 +110,7 @@ var d8 = {
         tspan.textContent = (origNum % 8) + 1
         s(text, 'data-text', (origNum % 8) + 1)
         this.style.opacity = origOpacity
+        this.isChanging = false
         net_fire({type: "change", data: serialize(this)});
       },
     })
@@ -110,6 +121,7 @@ var d8 = {
   initialize: function(elem) {
     console.log('hooking up handlers for ', elem)
     elem.addEventListener('die_roll', this.roll_handler)
+    elem.addEventListener('dblclick', this.roll_handler)
     elem.addEventListener('die_turn_up', this.turn_handler)
   },
 

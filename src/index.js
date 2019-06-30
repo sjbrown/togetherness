@@ -1,6 +1,16 @@
 
 DEBUG = 1
 
+function documentDblclick(triggerNode, detail) {
+  console.log("dock dbl", triggerNode.id)
+  triggerNode.dispatchEvent(new MouseEvent('dblclick', {
+    view: window,
+    bubbles: true,
+    cancelable: true,
+    detail: detail,
+  }))
+}
+
 function distance(v1, v2) {
   return Math.abs(v1[0] - v2[0]) + Math.abs(v1[1] - v2[1])
 }
@@ -87,6 +97,7 @@ togetherFunctions.on_sync = (msg) => {
     })
     .then((elem) => {
       svg_table.node.appendChild(elem)
+      hookup_ui(elem)
       if (payload['data-app-url']) {
         hookup_foreign_scripts(elem, payload['data-app-url'])
       }
@@ -104,6 +115,7 @@ togetherFunctions.on_create = (msg) => {
   })
   .then((elem) => {
     svg_table.node.appendChild(elem)
+    hookup_ui(elem)
     if (msg.data['data-app-url']) {
       hookup_foreign_scripts(elem, msg.data['data-app-url'])
     }
@@ -378,14 +390,26 @@ function hookup_mark_handlers(markEl) {
     undefined,
     true,
   );
-
+  nest.on('svg_dragsafe_click', (evt) => {
+    //ui_mark_by_id(evt.detail.origEvent, elem.id)
+    if (evt.ctrlKey) {
+      ui_unmark(evt)
+    } else {
+      ui_unmark_mine(nest.node.id)
+      console.log('clicked on a mark')
+    }
+  })
+  nest.on('svg_dragsafe_dblclick', (evt) => {
+    console.log('dragsafe dblclick')
+    documentDblclick(nest.node.firstChild, {elemId: nest.node.firstChild.id})
+  })
   hookup_self_event_handlers(nest.node, mark_menu)
 }
 
 function ui_mark_by_id(evt, target_id) {
   console.log('ui_mark_by_id target_id', evt, target_id)
   // unmark everything else, unless shift or ctrl is being held
-  if (!evt.ctrlKey & !evt.shiftKey) {
+  if (!evt.ctrlKey && !evt.shiftKey) {
     ui_unmark_mine(target_id)
   }
 
@@ -594,7 +618,7 @@ function hookup_foreign_scripts(elem, url) {
         s(elem, 'data-ui-initialized', true)
       }
 
-      console.log("adding ser and deser", Object.keys(ns))
+      //console.log("adding ser and deser", Object.keys(ns))
       if (ns.serialize) {
         serializers[url] = ns.serialize
       }
@@ -610,6 +634,21 @@ function hookup_foreign_scripts(elem, url) {
   })
 }
 
+function hookup_ui(elem) {
+  console.log("hookup uoi", elem.id)
+  nest = SVG.adopt(elem)
+  nest.on('svg_dragsafe_click', (evt) => {
+    console.log('i', elem.id, 'got click', evt)
+    ui_mark_by_id(evt.detail.origEvent, elem.id)
+  })
+  nest.on('svg_dragsafe_dblclick', (evt) => {
+    console.log('dblclick')
+  })
+  nest.on('svg_longtouch', (evt) => {
+    ui_mark_by_id(evt, elem.id)
+  })
+}
+
 function hookup_menu_actions(svgEl, actionMenu) {
   var newMenu = Object.assign(actionMenu, {
     'Mark': {
@@ -620,9 +659,6 @@ function hookup_menu_actions(svgEl, actionMenu) {
   svgEl.actionMenu = actionMenu
   nest = SVG.adopt(svgEl)
   nest.on('node_mark', (evt) => { ui_mark_by_id(evt, svgEl.id) })
-  nest.on('svg_dragsafe_click', (evt) => { ui_mark_by_id(evt.detail.origEvent, svgEl.id) })
-  nest.on('dblclick', (evt) => { console.log('dblclick') })
-  nest.on('svg_longtouch', (evt) => { ui_mark_by_id(evt, svgEl.id) })
   nest.on('mouseover', (evt) => { ui_mouseover(evt, svgEl, newMenu) })
 
   // Hookup any self-event handlers
@@ -649,6 +685,7 @@ function add_object(url) {
     return nest
   })
   .then((nest) => {
+    hookup_ui(nest.node)
     hookup_foreign_scripts(nest.node, url)
     return nest
   })
