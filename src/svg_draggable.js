@@ -122,7 +122,7 @@ function makeDraggable(world) {
             elemId: selectedEl.node.id,
             origEvent: isJustAClick,
           })
-          if ((now - lastClickTime) < 500) {
+          if ((now - lastClickTime) < 200) {
             broadcast('svg_dragsafe_dblclick', {
               elemId: selectedEl.node.id,
               origEvent: isJustAClick,
