@@ -146,14 +146,14 @@ function zoom(inOrOut) {
 </script>
 
 <body>
-  <button class="btn" onclick="TogetherJS(this); return false;"
+  <button class="btn btn-small" onclick="TogetherJS(this); return false;"
   >Go Multiplayer</button>
 
-  <button class="btn" onclick="add_object('svg/v1/dice_d6.svg')">
+  <button class="btn btn-small" onclick="add_object('svg/v1/dice_d6.svg')">
   + d6
   </button>
 
-  <button class="btn" onclick="add_object('svg/v1/dice_d8.svg')">
+  <button class="btn btn-small" onclick="add_object('svg/v1/dice_d8.svg')">
   + d8
   </button>
 
@@ -163,24 +163,24 @@ function zoom(inOrOut) {
   </button>
   -->
 
-  <button class="btn" onclick="add_object('svg/v1/poker_deck.svg')">
+  <button class="btn btn-small" onclick="add_object('svg/v1/poker_deck.svg')">
   + Deck
   </button>
 
-  <button id="draw_button" class="btn modal-trigger"
+  <button id="draw_button" class="btn btn-small modal-trigger"
     data-target="dialog_rect"
     data-dialog-id="dialog_rect">
     + Rect
   </button>
 
-  <button class="btn" id="delete_button" onclick="delete_marked(this)"
+  <button class="btn btn-small" id="delete_button" onclick="delete_marked(this)"
     title="double-click objects to mark and delete them"
     disabled="disabled"
   >
     Delete&nbsp;<span id="num_marked">0</span>&nbsp;Objects
   </button>
 
-  <button id="properties_button" class="btn"
+  <button id="properties_button" class="btn btn-small"
     onclick="ui_popup_button()"
     title="double-click objects to mark them"
     disabled="disabled"
@@ -189,25 +189,25 @@ function zoom(inOrOut) {
     Properties
   </button>
 
-  <button id="bg_button" class="btn modal-trigger"
+  <button id="bg_button" class="btn btn-small modal-trigger"
     data-target="dialog_bg"
     data-dialog-id="dialog_bg">
     Change Background
   </button>
 
-  <button id="save_button" class="btn"
+  <button id="save_button" class="btn btn-small"
     onclick="ui_popup_dialog_save()"
     data-dialog-id="dialog_save">
     Save
   </button>
 
-  <button id="load_button" class="btn modal-trigger"
+  <button id="load_button" class="btn btn-small modal-trigger"
     data-target="dialog_load"
     data-dialog-id="dialog_load">
     Load
   </button>
 
-  <button id="help_button" class="btn modal-trigger"
+  <button id="help_button" class="btn btn-small modal-trigger"
     data-target="dialog_contribute"
     data-dialog-id="dialog_contribute">
     Help this project
@@ -515,7 +515,7 @@ function make_rect(attrs) {
     ry: 0,
     width: 100,
     height: 50,
-    fill: 'cyan',
+    fill: '#fff59d',
     stroke: 'black',
     'fill-opacity': 0.5,
     'stroke-opacity': 0.8,

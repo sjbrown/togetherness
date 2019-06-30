@@ -8,7 +8,7 @@ function getUserColor() {
     return el.style.borderColor;
   }
   catch {
-    return 'cyan';
+    return '#fff59d';
   }
 }
 

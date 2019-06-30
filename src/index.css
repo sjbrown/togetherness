@@ -1,3 +1,20 @@
+body .btn {
+  background-color: #fff59d;
+  color: black;
+}
+
+body .btn:hover {
+  background-color: #ffffcf;
+}
+
+body .btn:focus {
+  background-color: #cbc26d;
+}
+
+.nav-wrapper {
+  background-color: #cbc26d;
+}
+
 dialog {
   position: absolute;
   top: 10%;
