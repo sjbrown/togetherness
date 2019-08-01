@@ -29,12 +29,14 @@ I'm going to try to keep a demo up and running at
 
 # Quick Start
 
-```
+```bash
 cd /tmp
 git clone <this repo>
+cd togetherness/src
+python2 -m SimpleHTTPServer 8000 # or, python3 -m http.server
 ```
 
-Then open your browser and go to `file:///tmp/togetherness/src/index.html`
+Then open your browser to [localhost:8000](http://localhost:8000/)
 
 That's it!
 
