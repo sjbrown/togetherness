@@ -261,6 +261,7 @@ var poker_deck = {
       deck = byId(card.node.dataset.deckId)
       evt_fire('poker_deck_flip', deck, evt, {selectedCardId: card.node.id})
     } else if (poker_deck.touching_removal_area(card)) {
+      console.log('dropped in removal area', card.node)
       poker_deck.remove_card(evt, card)
     } else {
       console.log('dropped elsewhere')
@@ -285,15 +286,14 @@ var poker_deck = {
 
   remove_card: function(evt, card) {
     //evt_fire('poker_deck_remove', evt, {selectedCardId: card.node.id})
-    deckSVG = SVG.adopt(card.node.closest('.svg_poker_deck'))
-    console.log('xy', deckSVG.x(), deckSVG.y())
-    card.x(card.x() + deckSVG.x())
-    card.y(card.y() + deckSVG.y())
-    poker_deck_card.initialize(card.node)
+
     card.node.dataset.appClass = 'nest'
     card.node.dataset.origName = 'poker_card'
-    console.log('c', card)
-    svg_table.add(card)
+    add_object_local(
+      card.node,
+      card.node.closest('.svg_poker_deck'),
+      poker_deck_card
+    )
   },
 
   initialize: function(elem) {
@@ -303,6 +303,7 @@ var poker_deck = {
     byId('ellipse_play_area').classList.add('droptarget')
     elem.addEventListener('svg_drag', this.drag_handler)
     elem.addEventListener('svg_dragend', this.dragend_handler)
+    elem.addEventListener('dblclick', lock_selection)
   },
 
   menu: {
@@ -327,8 +328,20 @@ var poker_deck = {
 poker_deck_card = {
   initialize: function(elem) {
     elem.addEventListener('poker_deck_card_flip', this.flip_handler)
+    elem.addEventListener('poker_deck_card_return', this.return_handler)
     elem.addEventListener('svg_dragend', this.dragend_handler)
-    hookup_menu_actions(elem, this.menu)
+    elem.addEventListener('dblclick', this.flip_handler)
+  },
+
+  return_handler: function(evt) {
+    remove_object_local(evt)
+    card = SVG.get(evt.target.id)
+    s(card.node, 'data-enveloped', null)
+    s(card.node, 'data-app-class', null)
+    card.addClass('draggable-group')
+    deck = byId(evt.target.dataset.deckId)
+    deck = SVG.adopt(deck)
+    poker_deck.endeck(deck, card)
   },
 
   flip_handler: function(evt) {
@@ -348,6 +361,10 @@ poker_deck_card = {
   menu: {
     'Flip': {
       eventName: 'poker_deck_card_flip',
+      applicable: (dNode) => { return true },
+    },
+    'Return to deck': {
+      eventName: 'poker_deck_card_return',
       applicable: (dNode) => { return true },
     },
   },

@@ -2,13 +2,29 @@
 DEBUG = 1
 
 function documentDblclick(triggerNode, detail) {
-  console.log("dock dbl", triggerNode.id)
+  console.log("document dbl", triggerNode.id, detail)
   triggerNode.dispatchEvent(new MouseEvent('dblclick', {
     view: window,
     bubbles: true,
     cancelable: true,
     detail: detail,
   }))
+}
+
+function lock_selection(evt) {
+  console.log("EVT", evt)
+  selection = evt.target.closest('[data-nest-for=mark]')
+  if (selection.dataset.locked) {
+    return
+  }
+  selection.dataset.locked = true
+  selection = SVG.adopt(selection)
+  //selection.removeClass('draggable-group')
+  rect = selection.last()
+  rect.attr('stroke-opacity', 0.99)
+  rect.attr('stroke-width', (4 * rect.attr('stroke-width')))
+  rect.attr('fill', 'none')
+  //SVG.adopt(evt.target).off('svg_dragsafe_click')
 }
 
 function distance(v1, v2) {
@@ -349,8 +365,7 @@ function make_mark(target_id, attrs) {
     'id': 'nest_' + rect.attr('id'), // special ID
     'data-nest-for': 'mark',
   })
-  nest.addClass('draggable-group')
-  console.log("nest node is now", nest.node)
+  //console.log("nest node is now", nest.node)
 
   // Re-home the enveloped object inside the <svg>, and then
   // move that <svg> to the old x,y coords of the enveloped object
@@ -362,6 +377,7 @@ function make_mark(target_id, attrs) {
   target.y(0)
   target.toParent(nest)
   target.attr('data-enveloped', true)
+  un_hookup_ui(target.node)
   nest.attr( oldXY )
   nest.add(rect) // Add it last, so that it renders on top
 
@@ -391,26 +407,25 @@ function hookup_mark_handlers(markEl) {
     true,
   );
   nest.on('svg_dragsafe_click', (evt) => {
-    //ui_mark_by_id(evt.detail.origEvent, elem.id)
+    console.log('clicked on a mark', evt.ctrlKey)
     if (evt.ctrlKey) {
       ui_unmark(evt)
     } else {
-      ui_unmark_mine(nest.node.id)
-      console.log('clicked on a mark')
+      ui_unmark_all_but(nest.node.id)
     }
   })
   nest.on('svg_dragsafe_dblclick', (evt) => {
-    console.log('dragsafe dblclick')
+    console.log('dragsafe dblclick on a mark', nest.node.id)
     documentDblclick(nest.node.firstChild, {elemId: nest.node.firstChild.id})
   })
   hookup_self_event_handlers(nest.node, mark_menu)
 }
 
 function ui_mark_by_id(evt, target_id) {
-  console.log('ui_mark_by_id target_id', evt, target_id)
+  //console.log('ui_mark_by_id target_id', evt, target_id)
   // unmark everything else, unless shift or ctrl is being held
   if (!evt.ctrlKey && !evt.shiftKey) {
-    ui_unmark_mine(target_id)
+    ui_unmark_all_but(target_id)
   }
 
   // am I already marked?
@@ -441,7 +456,7 @@ function ui_unmark(evt) {
   net_fire({type: 'dropMark', mark_rect: serialize(mark_rect) });
 }
 
-function ui_unmark_mine(exceptId) {
+function ui_unmark_all_but(exceptId) {
   var payload = { id: null, kids: [] }
   document.querySelectorAll('[data-ui-marked]').forEach(el => {
     if (!exceptId || el.id !== exceptId) {
@@ -459,13 +474,13 @@ function ui_unmark_mine(exceptId) {
 }
 
 function _unmark(mark_rect_id) {
-    console.log("unmark", mark_rect_id)
+  //console.log("unmark", mark_rect_id)
   nestSVG = SVG.get('nest_' + mark_rect_id)
   oldXY = {
     x: nestSVG.x(),
     y: nestSVG.y(),
   }
-  console.log('unmarking ', oldXY)
+  //console.log('unmarking ', oldXY)
   // move all the enveloped ones back into the doc
   nodeMap(nestSVG.node, (kid) => {
     if (g(kid, 'data-enveloped')) {
@@ -474,7 +489,8 @@ function _unmark(mark_rect_id) {
       kidObj = SVG.adopt(kid)
       kidObj.attr(oldXY)
       svg_table.add(kidObj)
-      console.log('back in the doc', kidObj)
+      //console.log('back in the doc', kidObj)
+      hookup_ui(kid)
     }
   })
   nestSVG.remove()
@@ -535,7 +551,6 @@ function import_foreign_svg(url) {
     nest.addClass('draggable-group')
 
     frame.querySelectorAll('script').forEach((script) => {
-      console.log("appending script", script)
       appendDocumentScript(script, nest.node)
     })
 
@@ -635,18 +650,28 @@ function hookup_foreign_scripts(elem, url) {
 }
 
 function hookup_ui(elem) {
-  console.log("hookup uoi", elem.id)
+  console.log("hookup_ui", elem.id)
   nest = SVG.adopt(elem)
+  nest.addClass('draggable-group')
   nest.on('svg_dragsafe_click', (evt) => {
-    console.log('i', elem.id, 'got click', evt)
+    console.log('id', elem.id, 'got click', evt)
     ui_mark_by_id(evt.detail.origEvent, elem.id)
   })
   nest.on('svg_dragsafe_dblclick', (evt) => {
-    console.log('dblclick')
+    console.log('nest ', nest.id, ' got dblclick')
   })
   nest.on('svg_longtouch', (evt) => {
     ui_mark_by_id(evt, elem.id)
   })
+}
+
+function un_hookup_ui(elem) {
+  console.log("un_hookup_ui", elem.id)
+  nest = SVG.adopt(elem)
+  nest.removeClass('draggable-group')
+  nest.off('svg_dragsafe_click')
+  nest.off('svg_dragsafe_dblclick')
+  nest.off('svg_longtouch')
 }
 
 function hookup_menu_actions(svgEl, actionMenu) {
@@ -711,6 +736,34 @@ function add_object_from_payload(payload) {
   })
 }
 
+function add_object_local(elem, nestEl, ns) {
+    if (nestEl.dataset.enveloped) {
+      nestSVG = SVG.adopt(nestEl.closest('[data-nest-for=mark]'))
+    } else {
+      nestSVG = SVG.adopt(nestEl)
+    }
+
+    newObj = SVG.adopt(elem)
+    newObj.x(newObj.x() + nestSVG.x())
+    newObj.y(newObj.y() + nestSVG.y())
+
+    ns.initialize(newObj.node)
+    hookup_menu_actions(newObj.node, ns.menu)
+    hookup_ui(newObj.node)
+    newObj.node.dataset.appClass = 'nest'
+    svg_table.add(newObj)
+}
+
+function remove_object_local(evt) {
+    nestEl = evt.target
+    if (nestEl.dataset.enveloped) {
+      markNestEl = nestEl.closest('[data-nest-for=mark]')
+      delete_element(markNestEl)
+    } else {
+      delete_element(nestEl)
+    }
+    return true
+}
 
 function ui_mouseover(evt, target, actionMenu) {
   /* Add clickable options onto the menu */
@@ -815,7 +868,7 @@ function ui_fire(msg) {
       ui_update_buttons()
     },
     delete: (msg) => {
-      console.log('ui delete sel', msg)
+      //console.log('ui delete sel', msg)
       ui_update_buttons()
     },
   }[msg.type];
@@ -891,6 +944,15 @@ function delete_marked(evt) {
     el.remove()
     payload.kids.push({ id: el.id })
   })
+  net_fire({ type: 'delete', data: payload });
+  ui_fire({type: 'delete', data: payload });
+}
+
+function delete_element(el) {
+  var payload = { id: null, kids: [] }
+  animated_ghost(el, {animation: 'rotateOut'})
+  el.remove()
+  payload.kids.push({ id: el.id })
   net_fire({ type: 'delete', data: payload });
   ui_fire({type: 'delete', data: payload });
 }

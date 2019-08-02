@@ -74,7 +74,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
   viewport.style('background-image', 'url(svg/bg_hexagons.svg)')
   viewport.node.onclick = (e) => {
     if (e.target.id === viewport.node.id) {
-      ui_unmark_mine()
+      ui_unmark_all_but()
     }
   }
 
@@ -93,12 +93,12 @@ SVG.on(document, 'DOMContentLoaded', () => {
      height: 482,
      fill: 'none',
      stroke: 'black',
+     'stroke-width': 10,
      'stroke-opacity': 0.1,
   })
 
   document.addEventListener('svg_dragend', (evt) => {
     selectedElement = byId(evt.detail.elemId)
-    //console.log('document done drag', selectedElement)
     net_fire({type: "change", data: serialize(selectedElement)})
   })
 
@@ -132,9 +132,10 @@ function pan(xDelta, yDelta) {
 var currentZoom = 1.0;
 function zoom(inOrOut) {
   zooms = {
-    0.25: { out: 0.25, in: 0.5 },
-    0.5: { out: 0.25, in: 1.0 },
-    1.0: { out: 0.5, in: 1.5 },
+    0.25: { out: 0.25, in: 0.50 },
+    0.50: { out: 0.25, in: 0.75 },
+    0.75: { out: 0.50, in: 1.0 },
+    1.0: { out: 0.75, in: 1.5 },
     1.5: { out: 1.0, in: 2.0 },
     2.0: { out: 1.5, in: 4.0 },
     4.0: { out: 2.0, in: 4.0 },
@@ -588,7 +589,9 @@ function ui_submit_rect(evt) {
       <h2 class="contribute_h2">Give some recognition</h2>
       <div class="contribute_explain">
       If you do the whole social media thing:
-      <a href="https://twitter.com/home?status=Thanks be to @boardcrafting for hosting https://www.1kfa.com/table !">By tweeting a tweet</a> or <a href="https://mastodon.social/">tooting a toot</a>.
+      <a href="https://twitter.com/home?status=Thanks be to @boardcrafting for
+      hosting https://www.1kfa.com/table !">By tweeting a tweet</a> or
+      <a href="https://mastodon.social/">tooting a toot</a>.
       <p>
       If you've got a Github account, you can 
       <a href="https://github.com/sjbrown/1kfa">Star this project</a>
