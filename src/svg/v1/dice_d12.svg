@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   id="d12 die"
+   height="100"
+   width="100"
+   version="1.1"
+   inkscape:version="0.92.3 (2405546, 2018-03-11)"
+   sodipodi:docname="dice_d12.svg">
+  <sodipodi:namedview
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1"
+     objecttolerance="10"
+     gridtolerance="10"
+     guidetolerance="10"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:window-width="1920"
+     inkscape:window-height="1025"
+     id="namedview11"
+     showgrid="false"
+     inkscape:zoom="6.675088"
+     inkscape:cx="33.527606"
+     inkscape:cy="25.887135"
+     inkscape:window-x="0"
+     inkscape:window-y="27"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="d12 die"
+     inkscape:snap-bbox="true"
+     inkscape:snap-bbox-midpoints="true" />
+  <metadata
+     id="metadata15">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <defs
+     id="defs1">
+    <filter
+       id="app-filter-colorize"
+       style="color-interpolation-filters:sRGB">
+      <feColorMatrix
+         id="recolorize-filter-matrix"
+         type="matrix"
+         values="0.2 0.0 0.0 0.0  0.0                  0.3 0.0 0.0 0.0  0.0                  0.4 0.0 0.0 0.0  0.0                  0.0 0.0 0.0 1.0  0.0" />
+    </filter>
+  </defs>
+  <script
+     type="text/javascript"
+     src="js/dice_utils.js"
+     id="script_d12_utils" />
+  <script
+     type="text/javascript"
+     data-namespace="d12"
+     id="script_d12"><![CDATA[
+var d12 = {
+
+  roll_handler: function(evt) {
+    if (this.isChanging) {
+      return false
+    }
+    this.isChanging = true
+    var text = this.querySelector('text')
+    var tspan = this.querySelector('tspan')
+    var origOpacity = this.style.opacity
+    var newNum = randDiceString(1,12)
+    animated_ghost(this, { animation: 'rollOut' })
+    tspan.textContent = ' '
+    this.style.opacity = 0.1
+    animated_ghost(this, {
+      animation: 'rollIn',
+      before_begin: (ghost) => {
+        ghost.querySelector('g').style.opacity = origOpacity
+      },
+      on_done: () => {
+        tspan.textContent = newNum
+        s(text, 'data-text', newNum)
+        this.style.opacity = origOpacity
+        this.isChanging = false
+        net_fire({type: "change", data: serialize(this)});
+      },
+    })
+  },
+
+  turn_handler: function(evt) {
+    //console.log('d12 ', this, 'turn!!!!!!!!!!!!!!!!!!!!!!!!!!!!', evt.detail)
+    if (this.isChanging) {
+      return false
+    }
+    this.isChanging = true
+    var text = this.querySelector('text')
+    var tspan = this.querySelector('tspan')
+    var origOpacity = this.style.opacity
+    var origNum = parseInt(tspan.textContent)
+    animated_ghost(this, {
+      animation: 'thumb',
+      on_done: () => {
+        tspan.textContent = (origNum % 12) + 1
+        s(text, 'data-text', (origNum % 12) + 1)
+        this.style.opacity = origOpacity
+        this.isChanging = false
+        net_fire({type: "change", data: serialize(this)});
+      },
+    })
+    tspan.textContent = " "
+    this.style.opacity = 0.1
+  },
+
+  initialize: function(elem) {
+    console.log('hooking up handlers for ', elem)
+    elem.addEventListener('die_roll', this.roll_handler)
+    elem.addEventListener('dblclick', this.roll_handler)
+    elem.addEventListener('die_turn_up', this.turn_handler)
+  },
+
+  menu: {
+    'Roll': {
+      eventName: 'die_roll',
+      applicable: (dieNode) => { return true },
+    },
+    'Turn Up': {
+      eventName: 'die_turn_up',
+      applicable: (dieNode) => { return true },
+      uiLabel: (dieNode) => { 
+        var tspan = dieNode.querySelector('tspan')
+        var nextNum = (parseInt(tspan.textContent) % 12) + 1
+        return 'Turn to ' + nextNum
+        },
+    },
+  },
+
+  serialize: function(elem) {
+    value = elem.querySelector('tspan').textContent
+    return {dieValue: value}
+  },
+
+  deserialize: function(elem, payload) {
+    elem.querySelector('tspan').textContent = payload.dieValue
+  },
+
+}
+
+    ]]></script>
+  <path
+     style="fill:#000000;fill-opacity:0.50196081;stroke:none;stroke-width:1.34599996;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+     d="m 7.3224856,65.198188 -0.132414,3.81214 19.2533554,22.956832 23.603245,7.80455 27.76934,-10.26882 14.551679,-22.375076 0.07906,-1.929626 z"
+     id="path824-3"
+     inkscape:connector-curvature="0" />
+  <g
+     id="group-monochrome-1"
+     class="draggable"
+     filter="url(#app-filter-colorize)">
+    <path
+       style="fill:#dedede;fill-opacity:1;stroke:none;stroke-width:1.30999994;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="M 50.948515,2.0593029 20.933293,11.918849 6.7498327,35.745612 5.7045643,64.957375 25.661108,87.913872 50.125703,95.719564 78.908044,85.450333 93.992046,63.074913 95.22492,34.219287 78.117397,10.684399 Z"
+       id="path890"
+       inkscape:connector-curvature="0" />
+    <path
+       style="fill:#9b9b9b;fill-opacity:1;stroke:#000000;stroke-width:1.30999994;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="M 37.742691,74.936929 69.751114,75.14079 78.517749,85.537763 49.975215,95.730889 25.714054,87.984114 Z"
+       id="path33-5"
+       inkscape:connector-curvature="0" />
+    <path
+       sodipodi:nodetypes="cccccc"
+       style="fill:#9b9b9b;fill-opacity:1;stroke:#000000;stroke-width:1.30999994;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="M 37.742691,74.936929 25.306306,42.930524 6.9575259,36.203056 5.9217288,65.198188 25.714054,87.984114 Z"
+       id="path37-5"
+       inkscape:connector-curvature="0" />
+    <path
+       inkscape:connector-curvature="0"
+       id="path35-3"
+       d="m 69.751114,75.14079 10.686559,-32.782606 14.26234,-7.668093 -1.220878,28.6384 -14.961386,22.209272 z"
+       style="fill:#9b9b9b;fill-opacity:1;stroke:#000000;stroke-width:1.30999994;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       sodipodi:nodetypes="cccccc" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:1.30999994;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="M 51.606208,23.359723 50.790712,2.7696163 21.024918,12.555013 6.9575259,36.203056 25.306306,42.930524 Z"
+       id="path27-6"
+       inkscape:connector-curvature="0" />
+    <path
+       inkscape:connector-curvature="0"
+       id="path29-7"
+       d="M 51.606208,23.359723 50.790712,2.7696163 77.735839,11.329253 94.700013,34.690091 80.437673,42.358184 Z"
+       style="fill:none;stroke:#000000;stroke-width:1.30999994;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       sodipodi:nodetypes="cccccc" />
+    <path
+       style="fill:#e4e4e4;fill-opacity:1;stroke:#000000;stroke-width:1.30999994;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="M 51.606713,23.359433 80.437808,42.360131 69.75008,75.14158 37.742691,74.936929 25.305993,42.931557 Z"
+       id="path877"
+       inkscape:connector-curvature="0" />
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:37.33333206px;line-height:1.25;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none"
+       x="52.698727"
+       y="65.104675"
+       id="text848"><tspan
+         sodipodi:role="line"
+         id="tspan846"
+         x="52.698727"
+         y="65.104675"
+         dx="0 -4.4491529"
+         style="font-size:37.33333206px;text-align:center;text-anchor:middle">12</tspan></text>
+  </g>
+</svg>

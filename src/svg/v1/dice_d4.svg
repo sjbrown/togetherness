@@ -7,12 +7,12 @@
    xmlns="http://www.w3.org/2000/svg"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   id="d8 die"
+   id="d4 die"
    height="100"
    width="80"
    version="1.1"
    inkscape:version="0.92.3 (2405546, 2018-03-11)"
-   sodipodi:docname="dice_d8.svg">
+   sodipodi:docname="dice_d4.svg">
   <sodipodi:namedview
      pagecolor="#ffffff"
      bordercolor="#666666"
@@ -22,17 +22,17 @@
      guidetolerance="10"
      inkscape:pageopacity="0"
      inkscape:pageshadow="2"
-     inkscape:window-width="1079"
-     inkscape:window-height="601"
+     inkscape:window-width="1920"
+     inkscape:window-height="1025"
      id="namedview11"
      showgrid="false"
-     inkscape:zoom="2.36"
-     inkscape:cx="-10.59322"
-     inkscape:cy="50"
+     inkscape:zoom="4.72"
+     inkscape:cx="31.042049"
+     inkscape:cy="52.731247"
      inkscape:window-x="0"
      inkscape:window-y="27"
-     inkscape:window-maximized="0"
-     inkscape:current-layer="d8 die" />
+     inkscape:window-maximized="1"
+     inkscape:current-layer="d4 die" />
   <metadata
      id="metadata15">
     <rdf:RDF>
@@ -61,26 +61,22 @@
   <script
      type="text/javascript"
      src="js/dice_utils.js"
-     id="script7" />
+     id="script_d4_utils" />
   <script
      type="text/javascript"
-     data-namespace="d8"
-     id="script6158"><![CDATA[
-var d8 = {
+     data-namespace="d4"
+     id="script_d4"><![CDATA[
+var d4 = {
 
   roll_handler: function(evt) {
-    console.log('roll handle!', this.id, evt)
     if (this.isChanging) {
       return false
     }
     this.isChanging = true
-    //if (this.id !== evt.detail.elemId) {
-      //return;
-    //}
     var text = this.querySelector('text')
     var tspan = this.querySelector('tspan')
     var origOpacity = this.style.opacity
-    var newNum = randDiceString(1,8)
+    var newNum = randDiceString(1,4)
     animated_ghost(this, { animation: 'rollOut' })
     tspan.textContent = ' '
     this.style.opacity = 0.1
@@ -100,14 +96,11 @@ var d8 = {
   },
 
   turn_handler: function(evt) {
-    //console.log('d8 ', this, 'turn!!!!!!!!!!!!!!!!!!!!!!!!!!!!', evt.detail)
+    //console.log('d4 ', this, 'turn!!!!!!!!!!!!!!!!!!!!!!!!!!!!', evt.detail)
     if (this.isChanging) {
       return false
     }
     this.isChanging = true
-    //if (this.id !== evt.detail.elemId) {
-      //return;
-    //}
     var text = this.querySelector('text')
     var tspan = this.querySelector('tspan')
     var origOpacity = this.style.opacity
@@ -115,8 +108,8 @@ var d8 = {
     animated_ghost(this, {
       animation: 'thumb',
       on_done: () => {
-        tspan.textContent = (origNum % 8) + 1
-        s(text, 'data-text', (origNum % 8) + 1)
+        tspan.textContent = (origNum % 4) + 1
+        s(text, 'data-text', (origNum % 4) + 1)
         this.style.opacity = origOpacity
         this.isChanging = false
         net_fire({type: "change", data: serialize(this)});
@@ -143,7 +136,7 @@ var d8 = {
       applicable: (dieNode) => { return true },
       uiLabel: (dieNode) => { 
         var tspan = dieNode.querySelector('tspan')
-        var nextNum = (parseInt(tspan.textContent) % 8) + 1
+        var nextNum = (parseInt(tspan.textContent) % 4) + 1
         return 'Turn to ' + nextNum
         },
     },
@@ -166,37 +159,26 @@ var d8 = {
      class="draggable"
      filter="url(#app-filter-colorize)">
     <ellipse
-       style="opacity:1;fill:#000000;fill-opacity:0.15686275;stroke:none;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
-       id="ellipse4248"
-       cx="39.932785"
-       cy="40.495136"
-       rx="31.718672"
-       ry="28.365911" />
-    <ellipse
-       ry="28.365911"
-       rx="39.932789"
-       cy="67.417534"
-       cx="39.932785"
+       ry="15.54886"
+       rx="35.907364"
+       cy="55.468376"
+       cx="39.297192"
        id="path4246"
-       style="opacity:1;fill:#000000;fill-opacity:0.15686275;stroke:none;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1" />
+       style="opacity:1;fill:#000000;fill-opacity:0.15686275;stroke:none;
+       stroke-width:4.21239519;stroke-linecap:round;stroke-linejoin:round;
+       stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1" />
     <path
-       sodipodi:nodetypes="ccccccc"
+       sodipodi:nodetypes="cccccc"
        inkscape:connector-curvature="0"
        id="path4157-2"
-       d="M 39.535923,1.093274 76.72131,39.222102 78.323832,65.022735 39.555567,99.326963 0.77762885,65.022735 5.7454487,37.800788 Z"
+       d="M 39.535923,1.093274 74.72131,39.222102 76.323832,65.022735 H 2.7776289 L 7.7454487,37.800788 Z"
        style="fill:#9b9b9b;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:1.34612;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
     <path
        sodipodi:nodetypes="cccc"
        inkscape:connector-curvature="0"
        id="path-6"
-       d="M 78.323832,65.022735 39.525773,1.9502252 0.77762885,65.022735 Z"
+       d="M 76.323832,65.022735 39.525773,1.9502252 2.7776289,65.022735 Z"
        style="fill:#dedede;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:1.34612;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
-    <path
-       style="fill:#aaffff;fill-opacity:0.15686275;fill-rule:evenodd;stroke:none;stroke-width:5.4000001;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="M 74.446522,66.737946 39.555083,97.61175 4.654939,66.737946 c 25.747199,8.214117 39.268734,18.338495 69.791583,0 z"
-       id="path_end1"
-       inkscape:connector-curvature="0"
-       sodipodi:nodetypes="cccc" />
     <text
        xml:space="preserve"
        style="font-style:normal;font-weight:normal;line-height:0%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
@@ -207,6 +189,6 @@ var d8 = {
          id="tspan4141"
          x="25.847456"
          y="57.627117"
-         style="font-size:40px;line-height:1.25">8</tspan></text>
+         style="font-size:40px;line-height:1.25">4</tspan></text>
   </g>
 </svg>
