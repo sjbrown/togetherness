@@ -604,8 +604,10 @@ function appendDocumentScript(scriptElem, parentElem) {
   if (g(scriptElem, 'src')) {
     newScript.src = g(scriptElem, 'src')
     document.querySelector('body').appendChild(newScript)
-  } else {
+  } else if (scriptElem.textContent) {
     newScript.textContent = scriptElem.textContent
+  } else {
+    throw Error(`Imported script (${scriptElem.id}) had no src or textContent`)
   }
   s(newScript, 'id', scriptElem.id)
   s(newScript, 'data-namespace', g(scriptElem, 'data-namespace'))
@@ -704,7 +706,6 @@ function hookup_self_event_handlers(el, actionMenu) {
 function add_object(url) {
   return import_foreign_svg(url)
   .then((nest) => {
-    console.log("import done, adding to table", nest.node.id)
     setColor(nest.node, getUserColor())
     svg_table.add(nest)
     return nest
