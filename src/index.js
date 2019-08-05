@@ -803,7 +803,9 @@ function ui_mouseover(evt, target, actionMenu) {
 }
 
 function ui_update_buttons() {
-  var numMarked = svg_table.select('[data-ui-marked]').members.length
+  var markedNodes = document.querySelectorAll('[data-ui-marked]')
+  var numMarked = markedNodes.length
+  //var numMarked = svg_table.select('[data-ui-marked]').members.length
 
   var span = byId('num_marked')
   span.textContent = numMarked;
@@ -819,33 +821,85 @@ function ui_update_buttons() {
   submenu.querySelectorAll('.cloned-button').forEach((btn) => {
     btn.remove()
   })
-  header.innerText = 'Select one object'
+  header.innerText = 'Select objects by clicking on them'
 
-  if (numMarked === 1) {
-    elemNode = document.querySelector('.mark-rect').parentNode.firstChild
-    header.innerText = g(elemNode, 'data-orig-name')
-    template = byId('template_object_actions')
-    actionMenu = elemNode.actionMenu
-
-    // actionMenu looks like this: {
+  template = byId('template_object_actions')
+  function makeButton(elemNode, title) {
+    // elemNode.actionMenu looks like this: {
     // 'Mark': {
     //   eventName: 'node_mark',
     //   applicable: (node) => { return !is_marked(node) },
     //   uiLabel: (node) => { return 'MyLabel' },
     //  },  ...}
-    Object.keys(actionMenu).map((title) => {
-      var btn = template.content.firstElementChild.cloneNode(true)
-      btn.innerText = title 
-      if (!actionMenu[title].applicable(elemNode)) {
-        btn.disabled = 'disabled'
-      }
-      btn.classList.add('cloned-button')
-      btn.addEventListener('click', (evt) => {
-        evt_fire(actionMenu[title].eventName, elemNode, evt)
-      })
-      submenu.appendChild(btn)
-    })
+    var btn = template.content.firstElementChild.cloneNode(true)
+    btn.innerText = title
+    btn.classList.add('cloned-button')
+    if (!elemNode.actionMenu[title].applicable(elemNode)) {
+      btn.disabled = 'disabled'
+    }
+    return btn
   }
+
+  var buttons = {}
+  var i = 0
+  markedNodes.forEach((markNode) => {
+    i++
+    var elemNode = markNode.firstChild
+    if (numMarked === 1) {
+      header.innerText = g(elemNode, 'data-orig-name')
+      Object.keys(elemNode.actionMenu).map((title) => {
+        buttons[title] = {
+          btn: makeButton(elemNode, title),
+          clickEvents: [
+            (evt) => {
+              evt_fire(elemNode.actionMenu[title].eventName, elemNode, evt)
+            }
+          ],
+        }
+      })
+
+    } else { // more than 1
+      header.innerText = numMarked + ' objects selected'
+      Object.keys(elemNode.actionMenu).map((title) => {
+        if (i === 1) { // the first one sets up the 'buttons' object
+          buttons[title] = {
+            btn: makeButton(elemNode, title),
+            clickEvents: [
+              (evt) => {
+                evt_fire(elemNode.actionMenu[title].eventName, elemNode, evt)
+              }
+            ],
+          }
+        } else {
+          if (title in buttons) {
+            buttons[title].clickEvents.push(
+              (evt) => {
+                evt_fire(elemNode.actionMenu[title].eventName, elemNode, evt)
+              }
+            )
+          }
+        }
+      })
+      Object.keys(buttons).map((key) => {
+        if (
+          key in elemNode.actionMenu === false
+          ||
+          !elemNode.actionMenu[key].applicable(elemNode)
+        ) {
+          delete buttons[key]
+        }
+      })
+    }
+  })
+
+  Object.keys(buttons).map((key) => {
+    buttonRecord = buttons[key]
+    buttonRecord.clickEvents.forEach((handler) => {
+      buttonRecord.btn.addEventListener('click', handler)
+    })
+    submenu.appendChild(buttonRecord.btn)
+  })
+
 }
 
 function evt_fire(eventName, triggerNode, origEvent, other) {
