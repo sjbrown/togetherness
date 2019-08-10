@@ -703,10 +703,14 @@ function hookup_self_event_handlers(el, actionMenu) {
 }
 
 
-function add_object(url) {
+function add_object(url, center) {
   return import_foreign_svg(url)
   .then((nest) => {
     setColor(nest.node, getUserColor())
+    if (center !== undefined) {
+      nest.cx(center[0])
+      nest.cy(center[1])
+    }
     svg_table.add(nest)
     return nest
   })

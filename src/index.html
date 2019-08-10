@@ -150,30 +150,6 @@ function zoom(inOrOut) {
   <button class="btn btn-small" onclick="TogetherJS(this); return false;"
   >Go Multiplayer</button>
 
-  <button class="btn btn-small" onclick="add_object('svg/v1/dice_d4.svg')">
-  + d4
-  </button>
-
-  <button class="btn btn-small" onclick="add_object('svg/v1/dice_d6.svg')">
-  + d6
-  </button>
-
-  <button class="btn btn-small" onclick="add_object('svg/v1/dice_d8.svg')">
-  + d8
-  </button>
-
-  <button class="btn btn-small" onclick="add_object('svg/v1/dice_d10.svg')">
-  + d10
-  </button>
-
-  <button class="btn btn-small" onclick="add_object('svg/v1/dice_d12.svg')">
-  + d12
-  </button>
-
-  <button class="btn btn-small" onclick="add_object('svg/v1/dice_d20.svg')">
-  + d20
-  </button>
-
 <!--
   <button class="btn" onclick="add_object('svg/v1/deckahedron.svg')">
   + Deckahedron
@@ -184,10 +160,17 @@ function zoom(inOrOut) {
   + Deck
   </button>
 
+  <button id="dice_dialog_button" class="btn btn-small modal-trigger"
+    data-target="dialog_dice"
+    data-dialog-id="dialog_dice">
+    + Dice
+  </button>
+
+
   <button id="draw_button" class="btn btn-small modal-trigger"
     data-target="dialog_rect"
     data-dialog-id="dialog_rect">
-    + Rect
+    + Shapes
   </button>
 
   <button class="btn btn-small" id="delete_button" onclick="delete_marked(this)"
@@ -505,6 +488,135 @@ function ui_popup_properties(el, dialog_specifier) {
   </div>
   </div>
 <!-- /PROPERTIES  ============================================= /PROPERTIES -->
+
+
+<!-- DIALOG_DICE ============================================= DIALOG_DICE -->
+
+  <div class="modal" id="dialog_dice">
+    <script>
+
+function add_dtype(dtype, inputEl, center) {
+  num = parseInt(inputEl.value) || 0
+  for( var i=0; i < num; i++ ) {
+    add_object(
+      'svg/v1/dice_' + dtype +'.svg',
+      [center[0], center[1]], // Wrap in a new array to avoid async bugs
+    )
+    center[0] = center[0] + 90
+    center[1] = center[1] + 10
+  }
+  inputEl.value = 0
+}
+
+function diceIncrement(dtype) {
+  el = byId('dice_input_' + dtype)
+  num = parseInt(el.value) || 0
+  el.value = num + 1
+  return true
+}
+
+function ui_submit_dice(section) {
+  center = [50, 50]
+  if (section === 'weird') {
+    dtypes = ['weird_d8']
+    dtypes.forEach((dtype) => {
+      add_dtype(dtype, byId('dice_input_' + dtype), center)
+    })
+  } else {
+    dtypes = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20']
+    dtypes.forEach((dtype) => {
+      add_dtype(dtype, byId('dice_input_' + dtype), center)
+    })
+  }
+  ui_popdown_dialog('dialog_dice')
+}
+
+
+    </script>
+    <button class="dialog_cancel btn modal-close"
+      data-dialog-id="dialog_dice"
+    >
+      &#215;
+    </button>
+    <nav class="dialog_nav" id="dialog_dice_nav">
+    <div class="nav-wrapper">
+      <ul class="left">
+        <li><a href="#standard">Standard Dice</a></li>
+        <li><a href="#weird">Weird Dice</a></li>
+      </ul>
+    </div>
+    </nav>
+  <div class="modal-content">
+    <section class="dice_section" id="standard_dice_section">
+      <a name="standard"></a>
+      <h2 id="standard_dice_h2">Standard Dice</h2>
+      <!--
+      <label for="dice_text_input">Add dice via text specification</label>
+      <input id="dice_text_input" type="text" placeholder="1d10, 2d20"/>
+      -->
+      <table><tr>
+      <td>
+        <input id="dice_input_d4" type="text" value="1"/>
+        <button class="btn" id="dice_button_d4" onclick="diceIncrement('d4')">
+          <img src="svg/v1/dice_d4.svg" width="24" height="24" />
+        </button>
+      </td>
+      <td>
+        <input id="dice_input_d6" type="text" value="1"/>
+        <button class="btn" id="dice_button_d6" onclick="diceIncrement('d6')">
+          <img src="svg/v1/dice_d6.svg" width="24" height="24" />
+        </button>
+      </td>
+      <td>
+        <input id="dice_input_d8" type="text" value="1"/>
+        <button class="btn" id="dice_button_d8" onclick="diceIncrement('d8')">
+          <img src="svg/v1/dice_d8.svg" width="24" height="24" />
+        </button>
+      </td>
+      <td>
+        <input id="dice_input_d10" type="text" value="1"/>
+        <button class="btn" id="dice_button_d10" onclick="diceIncrement('d10')">
+          <img src="svg/v1/dice_d10.svg" width="24" height="24" />
+        </button>
+      </td>
+      <td>
+        <input id="dice_input_d12" type="text" value="1"/>
+        <button class="btn" id="dice_button_d12" onclick="diceIncrement('d12')">
+          <img src="svg/v1/dice_d12.svg" width="24" height="24" />
+        </button>
+      </td>
+      <td>
+        <input id="dice_input_d20" type="text" value="1"/>
+        <button class="btn" id="dice_button_d20" onclick="diceIncrement('d20')">
+          <img src="svg/v1/dice_d20.svg" width="24" height="24" />
+        </button>
+      </td>
+      </tr></table>
+      <button id="dialog_submit" onclick="ui_submit_dice('standard')"
+        class="btn modal-close">
+        Submit
+      </button>
+    </section>
+    <section class="dice_section" id="weird_dice_section">
+      <a name="weird"></a>
+      <h2 id="weird_dice_h2">Weird Dice</h2>
+      <table><tr>
+      <td>
+        <input id="dice_input_weird_d8" type="text" value="1"/>
+        <button class="btn" id="dice_button_weird_d8" onclick="diceIncrement('weird_d8')">
+          <img src="svg/v1/dice_weird_d8.svg" width="24" height="24" />
+        </button>
+      </td>
+      </tr></table>
+      <button id="dialog_submit" onclick="ui_submit_dice('weird')"
+        class="btn modal-close">
+        Submit
+      </button>
+    </section>
+  </div>
+  </div>
+
+<!-- END DIALOG_DICE ====================================== END DIALOG_DICE -->
 
 
 <!-- RECT =========================================================== RECT -->
