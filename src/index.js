@@ -805,7 +805,6 @@ function ui_mouseover(evt, target, actionMenu) {
 function ui_update_buttons() {
   var markedNodes = document.querySelectorAll('[data-ui-marked]')
   var numMarked = markedNodes.length
-  //var numMarked = svg_table.select('[data-ui-marked]').members.length
 
   var span = byId('num_marked')
   span.textContent = numMarked;
@@ -813,8 +812,10 @@ function ui_update_buttons() {
   var btn = byId('delete_button')
   btn.disabled = (numMarked === 0)
 
+/*
   btn = byId('properties_button')
   btn.disabled = (numMarked !== 1)
+  */
 
   submenu = byId('object_actions')
   header = byId('object_actions_header')
