@@ -144,6 +144,13 @@ function zoom(inOrOut) {
   gViewport.transform( {scale: currentZoom} )
 }
 
+function updateColorSample(target) {
+  el = target.parentNode.querySelector('#colorsample')
+  el.style.setProperty('border', 'solid thin black')
+  el.style.setProperty('color', target.value)
+}
+
+
 </script>
 
 <body>
@@ -168,8 +175,8 @@ function zoom(inOrOut) {
 
 
   <button id="draw_button" class="btn btn-small modal-trigger"
-    data-target="dialog_rect"
-    data-dialog-id="dialog_rect">
+    data-target="dialog_shapes"
+    data-dialog-id="dialog_shapes">
     + Shapes
   </button>
 
@@ -410,6 +417,7 @@ function ui_popup_button() {
     return
   }
   var el = allSel[0].node.firstChild;
+      console.log('ui popup handler')
   return ui_popup_properties(el, {'data-dialog-id': 'dialog_properties'})
 }
 
@@ -693,6 +701,7 @@ var rect_verbs = {
     applicable: () => { return true },
     eventName: 'object_properties',
     handler: (evt) => {
+      console.log('rect hand')
       ui_popup_properties(
         byId(evt.detail.elemId),
         {'data-dialog-id': 'dialog_properties'}
@@ -712,8 +721,8 @@ function make_rect(attrs) {
     height: 50,
     fill: '#fff59d',
     stroke: 'black',
-    'fill-opacity': 0.5,
-    'stroke-opacity': 0.8,
+    'fill-opacity': 0.9,
+    'stroke-opacity': 0.9,
     'stroke-width': 1,
   }, attrs))
   rect.addClass('draggable')
@@ -726,13 +735,14 @@ function make_rect(attrs) {
 function ui_submit_rect(evt) {
   w = parseInt(byId('rect_input_width').value);
   h = parseInt(byId('rect_input_height').value);
-  if (!w || !h) {
+  color = byId('rect_input_color').value;
+  if (!w || !h || !color ) {
     return;
   }
   var rect = make_rect({
     width: w,
     height: h,
-    fill: getUserColor(),
+    fill: color,
   });
   ui_popdown_dialog('dialog_rect')
   net_fire({ type: 'create', data: serialize(rect) })
@@ -751,6 +761,11 @@ function ui_submit_rect(evt) {
     <label for="rect_input_height">Height</label>
     <input id="rect_input_height" type="text" value="50"/>
     <br />
+    <label for="rect_input_color">Color <span id="colorsample">■</span></label>
+    <input id="rect_input_color" type="text" value="#ffff00"
+           onKeyUp="updateColorSample(this)"
+    />
+    <br />
     <button id="dialog_submit" onclick="ui_submit_rect(this)"
       class="btn modal-close">
       Create
@@ -759,6 +774,226 @@ function ui_submit_rect(evt) {
   </div>
 
 <!-- END RECT =================================================== END RECT -->
+
+
+<!-- TEXT =========================================================== TEXT -->
+
+  <div class="modal" id="dialog_text">
+    <script>
+
+var text_verbs = {
+  'Object properties': {
+    applicable: () => { return true },
+    eventName: 'object_properties',
+    handler: (evt) => {
+      id = evt.detail.elemId.substring('nest_'.length)
+      console.log('propsss', id, evt.detail)
+      el = byId(id)
+      console.log('propsss', el)
+
+      ui_popup_properties(
+        el,
+        {'data-dialog-id': 'dialog_properties'}
+      )
+    }
+  },
+}
+
+
+function make_text(attrs, content) {
+  var text = svg_table.plain(content)
+  text.attr(Object.assign({
+    'data-app-class': 'text',
+    id: 'text_' + base32.short_id(),
+    fill: '#000000',
+    stroke: 'black',
+    x: 0,
+    y: 0,
+    'stroke-opacity': 0,
+    'font-weight': 'normal',
+    'font-size': '12pt',
+  }, attrs))
+  var rbox = text.rbox()
+  text.attr('y', rbox.height + 4)
+
+  var rect = svg_table.rect()
+  rect.attr(Object.assign({
+    id: 'rect_' + text.attr('id'), // special ID
+    rx: 5,
+    ry: 5,
+    fill: '#ffffff',
+    stroke: 'black',
+    'fill-opacity': 0.5,
+    'stroke-opacity': 0.5,
+    'stroke-width': 1,
+  }, rbox))
+  rect.addClass('text-rect')
+
+  var nest = make_nest({
+    'id': 'nest_' + text.attr('id'), // special ID
+    'data-nest-for': 'text',
+    x: 0,
+    y: 30,
+    width: rect.width(),
+    height: rect.height() * 2,
+  })
+  nest.addClass('draggable-group')
+  nest.add(rect)
+  nest.add(text)
+
+  hookup_ui(nest.node)
+  hookup_menu_actions(nest.node, text_verbs)
+  return nest;
+}
+
+function ui_submit_text(evt) {
+  c = byId('text_input_content').value;
+  color = byId('text_input_color').value;
+  if (!c || !color ) {
+    return;
+  }
+  var text = make_text({ fill: color }, c);
+  ui_popdown_dialog('dialog_text')
+  net_fire({ type: 'create', data: serialize(text) })
+}
+
+    </script>
+    <button class="dialog_cancel btn modal-close"
+      data-dialog-id="dialog_text"
+    >
+      &#215;
+    </button>
+  <div class="modal-content">
+    <label for="text_input_content">Content</label>
+    <input id="text_input_content" type="text" value="" Placeholder="Hello World"/>
+    <br />
+    <label for="text_input_color">Color <span id="colorsample">■</span></label>
+    <input id="text_input_color" type="text" value="#ffff00"
+           onKeyUp="updateColorSample(this)"
+    />
+    <br />
+    <button id="dialog_submit" onclick="ui_submit_text(this)"
+      class="btn modal-close">
+      Create
+    </button>
+  </div>
+  </div>
+
+<!-- END TEXT =================================================== END TEXT -->
+
+
+<!-- CIRCLE ========================================================CIRCLE -->
+
+  <div class="modal" id="dialog_ellipse">
+    <script>
+
+var ellipse_verbs = {
+  'Object properties': {
+    applicable: () => { return true },
+    eventName: 'object_properties',
+    handler: (evt) => {
+      console.log('ellipse handler')
+      ui_popup_properties(
+        byId(evt.detail.elemId),
+        {'data-dialog-id': 'dialog_properties'}
+      )
+    }
+  },
+}
+
+function make_ellipse(attrs) {
+  var ellipse = svg_table.ellipse()
+  ellipse.attr(Object.assign({
+    'data-app-class': 'ellipse',
+    id: 'ellipse_' + base32.short_id(),
+    rx: 100,
+    ry: 50,
+    cx: 50,
+    cy: 50,
+    fill: '#fff59d',
+    stroke: 'black',
+    'fill-opacity': 0.9,
+    'stroke-opacity': 0.9,
+    'stroke-width': 1,
+  }, attrs))
+  ellipse.addClass('draggable')
+
+  hookup_ui(ellipse.node)
+  hookup_menu_actions(ellipse.node, ellipse_verbs)
+  return ellipse;
+}
+
+function ui_submit_ellipse(evt) {
+  w = parseInt(byId('ellipse_input_width').value);
+  h = parseInt(byId('ellipse_input_height').value);
+  color = byId('ellipse_input_color').value;
+  if (!w || !h || !color ) {
+    return;
+  }
+  var ellipse = make_ellipse({
+    rx: w / 2,
+    ry: h / 2,
+    cx: w / 2,
+    cy: h / 2,
+    fill: color,
+  });
+  ui_popdown_dialog('dialog_ellipse')
+  net_fire({ type: 'create', data: serialize(ellipse) })
+}
+
+    </script>
+    <button class="dialog_cancel btn modal-close"
+      data-dialog-id="dialog_ellipse"
+    >
+      &#215;
+    </button>
+  <div class="modal-content">
+    <label for="ellipse_input_width">Width</label>
+    <input id="ellipse_input_width" type="text" value="100"/>
+    <br />
+    <label for="ellipse_input_height">Height</label>
+    <input id="ellipse_input_height" type="text" value="50"/>
+    <br />
+    <label for="ellipse_input_color">Color <span id="colorsample">■</span></label>
+    <input id="ellipse_input_color" type="text" value="#ffff00"
+           onKeyUp="updateColorSample(this)"
+    />
+    <br />
+    <button id="dialog_submit" onclick="ui_submit_ellipse(this)"
+      class="btn modal-close">
+      Create
+    </button>
+  </div>
+  </div>
+
+<!-- END CIRCLE =============================================== END CIRCLE -->
+
+
+<!-- SHAPES ======================================================= SHAPES -->
+
+  <div class="modal" id="dialog_shapes">
+    <button class="dialog_cancel btn modal-close" data-dialog-id="dialog_shapes"
+    > &#215; </button>
+    <div class="modal-content">
+      <button id="draw_button" class="btn btn-small modal-trigger modal-close"
+        data-target="dialog_rect"
+        data-dialog-id="dialog_rect">
+        + Rectangle
+      </button>
+      <button id="draw_button" class="btn btn-small modal-trigger modal-close"
+        data-target="dialog_ellipse"
+        data-dialog-id="dialog_ellipse">
+        + Circle
+      </button>
+      <button id="draw_button" class="btn btn-small modal-trigger modal-close"
+        data-target="dialog_text"
+        data-dialog-id="dialog_text">
+        + Text
+      </button>
+    </div>
+  </div>
+
+<!-- END SHAPES =============================================== END SHAPES -->
 
 <!-- CONTRIBUTE =============================================== CONTRIBUTE -->
   <div class="modal" id="dialog_contribute">

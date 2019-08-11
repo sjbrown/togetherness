@@ -313,6 +313,7 @@ var mark_menu = {
     eventName: 'remove_mark',
     applicable: (target) => { return g(target, 'data-app-class') === 'nest' },
   },
+  /* causes bugs with "text" types
   'Object properties': {
     eventName: 'object_properties',
     applicable: () => { return true },
@@ -324,6 +325,7 @@ var mark_menu = {
       )
     }
   },
+  */
 }
 
 function make_nest(attrs) {
