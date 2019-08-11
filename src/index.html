@@ -519,7 +519,7 @@ function ui_submit_dice(section) {
   console.log('submit', section)
   center = [50, 50]
   if (section === 'sw') {
-    dtypes = ['sw_d81', 'sw_d82', 'sw_d121']
+    dtypes = ['sw_d61', 'sw_d62', 'sw_d81', 'sw_d82', 'sw_d121', 'sw_d122', 'sw_d123']
     dtypes.forEach((dtype) => {
       add_dtype(dtype, byId('dice_input_' + dtype), center)
     })
@@ -603,6 +603,18 @@ function ui_submit_dice(section) {
       <h2 id="sw_dice_h2">SW Dice</h2>
       <table><tr>
       <td>
+        <input id="dice_input_sw_d61" type="text" value="1"/>
+        <button class="btn" id="dice_button_sw_d61" onclick="diceIncrement('sw_d61')">
+          <img src="svg/v1/dice_sw_d61.svg" width="24" height="24" />
+        </button>
+      </td>
+      <td>
+        <input id="dice_input_sw_d62" type="text" value="1"/>
+        <button class="btn" id="dice_button_sw_d62" onclick="diceIncrement('sw_d62')">
+          <img src="svg/v1/dice_sw_d62.svg" width="24" height="24" />
+        </button>
+      </td>
+      <td>
         <input id="dice_input_sw_d81" type="text" value="1"/>
         <button class="btn" id="dice_button_sw_d81" onclick="diceIncrement('sw_d81')">
           <img src="svg/v1/dice_sw_d81.svg" width="24" height="24" />
@@ -618,6 +630,18 @@ function ui_submit_dice(section) {
         <input id="dice_input_sw_d121" type="text" value="1"/>
         <button class="btn" id="dice_button_sw_d121" onclick="diceIncrement('sw_d121')">
           <img src="svg/v1/dice_sw_d121.svg" width="24" height="24" />
+        </button>
+      </td>
+      <td>
+        <input id="dice_input_sw_d122" type="text" value="1"/>
+        <button class="btn" id="dice_button_sw_d122" onclick="diceIncrement('sw_d122')">
+          <img src="svg/v1/dice_sw_d122.svg" width="24" height="24" />
+        </button>
+      </td>
+      <td>
+        <input id="dice_input_sw_d123" type="text" value="1"/>
+        <button class="btn" id="dice_button_sw_d123" onclick="diceIncrement('sw_d123')">
+          <img src="svg/v1/dice_sw_d123.svg" width="24" height="24" />
         </button>
       </td>
       </tr></table>
