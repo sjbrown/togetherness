@@ -516,9 +516,10 @@ function diceIncrement(dtype) {
 }
 
 function ui_submit_dice(section) {
+  console.log('submit', section)
   center = [50, 50]
-  if (section === 'weird') {
-    dtypes = ['weird_d8']
+  if (section === 'sw') {
+    dtypes = ['sw_d81', 'sw_d82', 'sw_d121']
     dtypes.forEach((dtype) => {
       add_dtype(dtype, byId('dice_input_' + dtype), center)
     })
@@ -542,7 +543,7 @@ function ui_submit_dice(section) {
     <div class="nav-wrapper">
       <ul class="left">
         <li><a href="#standard">Standard Dice</a></li>
-        <li><a href="#weird">Weird Dice</a></li>
+        <li><a href="#sw">SW Dice</a></li>
       </ul>
     </div>
     </nav>
@@ -597,18 +598,30 @@ function ui_submit_dice(section) {
         Submit
       </button>
     </section>
-    <section class="dice_section" id="weird_dice_section">
-      <a name="weird"></a>
-      <h2 id="weird_dice_h2">Weird Dice</h2>
+    <section class="dice_section" id="sw_dice_section">
+      <a name="sw"></a>
+      <h2 id="sw_dice_h2">SW Dice</h2>
       <table><tr>
       <td>
-        <input id="dice_input_weird_d8" type="text" value="1"/>
-        <button class="btn" id="dice_button_weird_d8" onclick="diceIncrement('weird_d8')">
-          <img src="svg/v1/dice_weird_d8.svg" width="24" height="24" />
+        <input id="dice_input_sw_d81" type="text" value="1"/>
+        <button class="btn" id="dice_button_sw_d81" onclick="diceIncrement('sw_d81')">
+          <img src="svg/v1/dice_sw_d81.svg" width="24" height="24" />
+        </button>
+      </td>
+      <td>
+        <input id="dice_input_sw_d82" type="text" value="1"/>
+        <button class="btn" id="dice_button_sw_d82" onclick="diceIncrement('sw_d82')">
+          <img src="svg/v1/dice_sw_d82.svg" width="24" height="24" />
+        </button>
+      </td>
+      <td>
+        <input id="dice_input_sw_d121" type="text" value="1"/>
+        <button class="btn" id="dice_button_sw_d121" onclick="diceIncrement('sw_d121')">
+          <img src="svg/v1/dice_sw_d121.svg" width="24" height="24" />
         </button>
       </td>
       </tr></table>
-      <button id="dialog_submit" onclick="ui_submit_dice('weird')"
+      <button id="dialog_submit" onclick="ui_submit_dice('sw')"
         class="btn modal-close">
         Submit
       </button>

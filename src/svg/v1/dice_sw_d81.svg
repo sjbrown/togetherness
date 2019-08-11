@@ -7,12 +7,12 @@
    xmlns="http://www.w3.org/2000/svg"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   id="weird d8 die"
+   id="SW d8 die"
    height="100"
    width="80"
    version="1.1"
    inkscape:version="0.92.3 (2405546, 2018-03-11)"
-   sodipodi:docname="dice_weird_d8.svg">
+   sodipodi:docname="dice_sw_d81.svg">
   <sodipodi:namedview
      pagecolor="#ffffff"
      bordercolor="#666666"
@@ -32,7 +32,7 @@
      inkscape:window-x="0"
      inkscape:window-y="27"
      inkscape:window-maximized="1"
-     inkscape:current-layer="weird d8 die"
+     inkscape:current-layer="SW d8 die"
      showguides="true"
      inkscape:guide-bbox="true"
      inkscape:snap-bbox="true"
@@ -52,9 +52,9 @@
   </defs>
   <script
      type="text/javascript"
-     data-namespace="weird_d8"
+     data-namespace="sw_d81"
      id="script6158"><![CDATA[
-var weird_d8 = {
+var sw_d81 = {
 
   roll_handler: function(evt) {
     if (this.isChanging) {
@@ -146,7 +146,7 @@ var weird_d8 = {
        sodipodi:nodetypes="cccc" />
     <g
        id="g_oct"
-       style="display:none"
+       style="display: none"
        inkscape:label="#g934"
        transform="translate(125.99141,34.388048)">
       <title
@@ -163,8 +163,8 @@ var weird_d8 = {
     </g>
     <g
        id="g_octoct"
-       style="display:none"
        inkscape:label="#g940"
+       style="display: none"
        transform="translate(118.05676,-15.570309)">
       <title
          id="title958">g_octoct</title>
@@ -192,8 +192,8 @@ var weird_d8 = {
     </g>
     <g
        id="g_trioct"
-       style="display:none"
        inkscape:label="#g945"
+       style="display: none"
        transform="translate(157.67471,-15.047725)">
       <title
          id="title960">g_trioct</title>
@@ -216,7 +216,7 @@ var weird_d8 = {
     </g>
     <g
        id="g_tritri"
-       style="display:none"
+       style="display: none"
        inkscape:label="#g949"
        transform="translate(197.6747,-14.202821)">
       <title
