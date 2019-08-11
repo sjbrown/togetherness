@@ -493,6 +493,11 @@ function ui_popup_properties(el, dialog_specifier) {
 <!-- DIALOG_DICE ============================================= DIALOG_DICE -->
 
   <div class="modal" id="dialog_dice">
+  <style>
+  .dice_section {
+    margin-bottom: 80px;
+  }
+  </style>
     <script>
 
 function add_dtype(dtype, inputEl, center) {
@@ -523,6 +528,11 @@ function ui_submit_dice(section) {
     dtypes.forEach((dtype) => {
       add_dtype(dtype, byId('dice_input_' + dtype), center)
     })
+  } else if (section === 'fudge') {
+    dtypes = ['fudge_d6',]
+    dtypes.forEach((dtype) => {
+      add_dtype(dtype, byId('dice_input_' + dtype), center)
+    })
   } else {
     dtypes = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20']
     dtypes.forEach((dtype) => {
@@ -544,6 +554,7 @@ function ui_submit_dice(section) {
       <ul class="left">
         <li><a href="#standard">Standard Dice</a></li>
         <li><a href="#sw">SW Dice</a></li>
+        <li><a href="#sw">FUDGE Dice</a></li>
       </ul>
     </div>
     </nav>
@@ -646,6 +657,22 @@ function ui_submit_dice(section) {
       </td>
       </tr></table>
       <button id="dialog_submit" onclick="ui_submit_dice('sw')"
+        class="btn modal-close">
+        Submit
+      </button>
+    </section>
+    <section class="dice_section" id="fudge_dice_section">
+      <a name="fudge"></a>
+      <h2 id="fudge_dice_h2">FUDGE (FATE) Dice</h2>
+      <table><tr>
+      <td>
+        <input id="dice_input_fudge_d6" type="text" value="1"/>
+        <button class="btn" id="dice_button_fudge_d6" onclick="diceIncrement('fudge_d6')">
+          <img src="svg/v1/dice_fudge_d6.svg" width="24" height="24" />
+        </button>
+      </td>
+      </tr></table>
+      <button id="dialog_submit" onclick="ui_submit_dice('fudge')"
         class="btn modal-close">
         Submit
       </button>

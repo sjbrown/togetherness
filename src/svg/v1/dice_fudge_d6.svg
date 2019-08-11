@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   height="100"
+   width="80"
+   id="fudge_d6_die"
+   version="1.1"
+   >
+  <defs id="defs4">
+    <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
+      <feColorMatrix id="recolorize-filter-matrix" type="matrix"
+         values="0.9 0.0 0.0 0.0  0.0
+                 0.9 0.0 0.0 0.0  0.0
+                 0.9 0.0 0.0 0.0  0.0
+                 0.0 0.0 0.0 1.0  0.0" />
+    </filter>
+    <linearGradient
+       inkscape:collect="always"
+       id="linearGradient1476">
+      <stop
+         style="stop-color:#000000;stop-opacity:1;"
+         offset="0"
+         id="stop1472" />
+      <stop
+         style="stop-color:#000000;stop-opacity:0.39"
+         offset="1"
+         id="stop1474" />
+    </linearGradient>
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient1476"
+       id="linearGradient1478"
+       x1="-43.30563"
+       y1="21.421244"
+       x2="-43.30563"
+       y2="87.722519"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="translate(82.856366,1.2798899)" />
+  </defs>
+  <script
+     type="text/javascript"
+     src="js/dice_utils.js"
+     id="script13" />
+  <script
+     type="text/javascript"
+     data-namespace="fudge_d6"
+     id="script_d6"><![CDATA[
+
+var fudge_d6 = {
+
+  roll_handler: function(evt) {
+    if (this.isChanging) {
+      return false
+    }
+    this.isChanging = true
+    var text = this.querySelector('text')
+    var tspan = this.querySelector('tspan')
+    var origOpacity = this.style.opacity
+    animated_ghost(this, { animation: 'rollOut' })
+    tspan.textContent = ' '
+    this.style.opacity = 0.1
+    animated_ghost(this, {
+      animation: 'rollIn',
+      before_begin: (ghost) => {
+        ghost.querySelector('g').style.opacity = origOpacity
+      },
+      on_done: () => {
+        symbol = [' ', '-', '+'][randInt(1,3) - 1]
+        tspan.textContent = symbol
+        s(text, 'data-text', symbol)
+        this.style.opacity = origOpacity
+        this.isChanging = false
+        net_fire({type: "change", data: serialize(this)});
+      },
+    })
+  },
+
+  initialize: function(elem) {
+    elem.addEventListener('die_roll', this.roll_handler)
+    elem.addEventListener('dblclick', this.roll_handler)
+  },
+
+  menu: {
+    'Roll': {
+      eventName: 'die_roll',
+      applicable: (dieNode) => { return true },
+    },
+  },
+
+  serialize: function(elem) {
+    value = elem.querySelector('tspan').textContent
+    return {dieValue: value}
+  },
+
+  deserialize: function(elem, payload) {
+    var tspan = elem.querySelector('tspan')
+    tspan.textContent = payload.dieValue
+  },
+
+}
+
+    ]]></script>
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="2.6907176"
+     inkscape:cx="-25.138504"
+     inkscape:cy="73.954824"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     inkscape:snap-bbox="true"
+     inkscape:snap-bbox-midpoints="true"
+     units="px"
+     inkscape:window-width="1600"
+     inkscape:window-height="876"
+     inkscape:window-x="0"
+     inkscape:window-y="24"
+     inkscape:window-maximized="1"
+     inkscape:bbox-nodes="false"
+     inkscape:snap-smooth-nodes="true"
+     inkscape:object-nodes="true" />
+  <g
+     inkscape:label="Layer 1"
+     filter="url(#app-filter-colorize)"
+     inkscape:groupmode="layer"
+     id="layer1"
+     >
+    <g id="g_die">
+      <path
+         style="fill:#000000;fill-opacity:0.50196078;stroke:none;stroke-width:1.30999994;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+         d="m 16.266526,45.579474 c -1.68432,-0.0012 -5.18571,0.06788 -6.23438,0.637907 -1.5957502,0.90302 -1.7272502,1.615566 -1.9062502,5.013899 l -2.88281,32.27422 c 0.0306,1.384198 6.4061402,6.270484 8.3222602,6.270484 h 51.97266 c 1.91612,0 8.29167,-4.886286 8.32227,-6.270484 l -2.88282,-32.27422 c -0.179,-3.398333 -0.3105,-4.110879 -1.90625,-5.013899 -1.04867,-0.570031 -4.55005,-0.639123 -6.23437,-0.637907 z"
+         id="path_shadow"
+         inkscape:connector-curvature="0"
+         sodipodi:nodetypes="ccccccccccc" />
+      <path
+         sodipodi:nodetypes="ccccccccccc"
+         inkscape:connector-curvature="0"
+         id="path_sides"
+         d="m 16.266526,11.455671 c -1.68432,-0.0021 -5.18571,0.117211 -6.23438,1.101563 -1.5957502,1.559372 -1.7272502,2.789824 -1.9062502,8.658203 l -2.88281,55.732422 c 0.0306,2.390289 6.4061402,10.828125 8.3222602,10.828125 h 51.97266 c 1.91612,0 8.29167,-8.437836 8.32227,-10.828125 l -2.88282,-55.732422 c -0.179,-5.868379 -0.3105,-7.098831 -1.90625,-8.658203 -1.04867,-0.984352 -4.55005,-1.103663 -6.23437,-1.101563 z"
+         style="fill:#9b9b9b;fill-opacity:1;stroke:#000000;stroke-width:1.30999994;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
+      <path
+         style="fill:#dedede;fill-opacity:1;stroke:url(#linearGradient1478);stroke-width:1.31000006;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+         d="m 12.007916,11.667299 h 55.08564 c 1.662,0 2.94377,1.338951 3,3 l 2,59.08564 c 0.0562,1.661049 -1.338,3 -3,3 h -59.08564 c -1.6620002,0 -3.0562302,-1.338951 -3.0000002,-3 l 2,-59.08564 c 0.0562,-1.661049 1.3380002,-3 3.0000002,-3 z"
+         id="topface"
+         inkscape:connector-curvature="0"
+         sodipodi:nodetypes="sssssssss" />
+    </g>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:bold;font-size:50px;
+       line-height:125%;font-family:sans-serif;letter-spacing:0px;
+       word-spacing:0px;
+       fill:#000000;fill-opacity:1;stroke:none;stroke-width:1px;
+       stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+       x="40"
+       y="60"
+       id="text4148"
+       sodipodi:linespacing="125%"
+       ><tspan
+         sodipodi:role="line"
+         style="text-align:center;text-anchor:middle"
+         id="tspan_die_value"
+         x="40"
+         y="60">+</tspan></text>
+  </g>
+</svg>
