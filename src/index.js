@@ -287,11 +287,11 @@ function serialize(thing, extras) {
     // no network connection - skip it
     return;
   }
-  var node = (thing.attr) ? thing.node : thing;
-  var retval = justNonUiAttributes(node)
-  var fn = str_to_fn('serialize_' + g(node, 'data-app-class'))
+  var el = (thing.attr) ? thing.node : thing;
+  var retval = justNonUiAttributes(el)
+  var fn = str_to_fn('serialize_' + g(el, 'data-app-class'))
   if (fn) {
-    retval = Object.assign( retval, fn(node) )
+    retval = Object.assign( retval, fn(el) )
   }
   if (extras) {
     retval = Object.assign( retval, extras )
@@ -743,22 +743,24 @@ function add_object_from_payload(payload) {
   })
 }
 
-function add_object_local(elem, nestEl, ns) {
-    if (nestEl.dataset.enveloped) {
-      nestSVG = SVG.adopt(nestEl.closest('[data-nest-for=mark]'))
-    } else {
-      nestSVG = SVG.adopt(nestEl)
+function pop_from_parent(svgElem, ns) {
+    if (svgElem.tagName !== 'svg') {
+      throw Error('Not an SVG element')
     }
+    parentWithXY = svgElem.parentNode.closest('.draggable-group')
+    grandparent = parentWithXY.parentNode.closest('svg')
+    child = SVG.adopt(svgElem)
+    parentWithXY = SVG.adopt(parentWithXY)
+    grandparent = SVG.adopt(grandparent)
 
-    newObj = SVG.adopt(elem)
-    newObj.x(newObj.x() + nestSVG.x())
-    newObj.y(newObj.y() + nestSVG.y())
+    child.x(child.x() + parentWithXY.x())
+    child.y(child.y() + parentWithXY.y())
 
-    ns.initialize(newObj.node)
-    hookup_menu_actions(newObj.node, ns.menu)
-    hookup_ui(newObj.node)
-    newObj.node.dataset.appClass = 'nest'
-    svg_table.add(newObj)
+    ns.initialize(child.node)
+    hookup_menu_actions(child.node, ns.menu)
+    hookup_ui(child.node)
+    child.node.dataset.appClass = 'nest'
+    grandparent.add(child)
 }
 
 function remove_object_local(evt) {
@@ -854,6 +856,8 @@ function ui_update_buttons() {
     var elemNode = markNode.firstChild
     if (numMarked === 1) {
       header.innerText = g(elemNode, 'data-orig-name')
+      //#header.innerText = g(elemNode, 'data-name')
+
       Object.keys(elemNode.actionMenu).map((title) => {
         buttons[title] = {
           btn: makeButton(elemNode, title),

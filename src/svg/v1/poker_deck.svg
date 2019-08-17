@@ -287,11 +287,9 @@ var poker_deck = {
   remove_card: function(evt, card) {
     //evt_fire('poker_deck_remove', evt, {selectedCardId: card.node.id})
 
-    card.node.dataset.appClass = 'nest'
-    card.node.dataset.origName = 'poker_card'
-    add_object_local(
+    card.node.dataset.origName = card.node.dataset.name
+    pop_from_parent(
       card.node,
-      card.node.closest('.svg_poker_deck'),
       poker_deck_card
     )
   },

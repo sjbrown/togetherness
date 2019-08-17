@@ -163,7 +163,7 @@ function updateColorSample(target) {
   </button>
   -->
 
-  <button class="btn btn-small" onclick="add_object('svg/v1/poker_deck.svg')">
+  <button class="btn btn-small" onclick="add_object('svg/v1/ppoker_deck.svg')">
   + Deck
   </button>
 
@@ -701,9 +701,9 @@ var rect_verbs = {
     applicable: () => { return true },
     eventName: 'object_properties',
     handler: (evt) => {
-      console.log('rect hand')
+      console.log('rect hand', evt)
       ui_popup_properties(
-        byId(evt.detail.elemId),
+        byId(evt.detail.elemId.substring('nest_'.length)),
         {'data-dialog-id': 'dialog_properties'}
       )
     }
@@ -725,11 +725,19 @@ function make_rect(attrs) {
     'stroke-opacity': 0.9,
     'stroke-width': 1,
   }, attrs))
-  rect.addClass('draggable')
 
-  hookup_ui(rect.node)
-  hookup_menu_actions(rect.node, rect_verbs)
-  return rect;
+  var nest = make_nest({
+    'id': 'nest_' + rect.attr('id'), // special ID
+    'data-nest-for': 'rect',
+    'width': rect.rbox().width,
+    'height': rect.rbox().height,
+  })
+
+  nest.add(rect)
+
+  hookup_ui(nest.node)
+  hookup_menu_actions(nest.node, rect_verbs)
+  return nest;
 }
 
 function ui_submit_rect(evt) {
@@ -739,13 +747,13 @@ function ui_submit_rect(evt) {
   if (!w || !h || !color ) {
     return;
   }
-  var rect = make_rect({
+  var nest = make_rect({
     width: w,
     height: h,
     fill: color,
   });
   ui_popdown_dialog('dialog_rect')
-  net_fire({ type: 'create', data: serialize(rect) })
+  net_fire({ type: 'create', data: serialize(nest) })
 }
 
     </script>
@@ -787,10 +795,7 @@ var text_verbs = {
     eventName: 'object_properties',
     handler: (evt) => {
       id = evt.detail.elemId.substring('nest_'.length)
-      console.log('propsss', id, evt.detail)
       el = byId(id)
-      console.log('propsss', el)
-
       ui_popup_properties(
         el,
         {'data-dialog-id': 'dialog_properties'}
@@ -801,6 +806,7 @@ var text_verbs = {
 
 
 function make_text(attrs, content) {
+  var padding = 8
   var text = svg_table.plain(content)
   text.attr(Object.assign({
     'data-app-class': 'text',
@@ -814,7 +820,12 @@ function make_text(attrs, content) {
     'font-size': '12pt',
   }, attrs))
   var rbox = text.rbox()
-  text.attr('y', rbox.height + 4)
+  //console.log('text y', text.y())
+  //console.log('text rbox', rbox)
+  text.y(0)
+  text.x(padding/2)
+  //console.log('text y', text.y())
+  //console.log('text rbox', text.rbox())
 
   var rect = svg_table.rect()
   rect.attr(Object.assign({
@@ -826,20 +837,26 @@ function make_text(attrs, content) {
     'fill-opacity': 0.5,
     'stroke-opacity': 0.5,
     'stroke-width': 1,
-  }, rbox))
+  }, {
+    width: rbox.width + padding,
+    height: rbox.height
+  }))
   rect.addClass('text-rect')
 
   var nest = make_nest({
     'id': 'nest_' + text.attr('id'), // special ID
     'data-nest-for': 'text',
     x: 0,
-    y: 30,
+    y: 0,
     width: rect.width(),
     height: rect.height() * 2,
   })
   nest.addClass('draggable-group')
+  rect.y(rect.y() + (rect.height()/2))
   nest.add(rect)
+  text.y(text.y() + (rect.height()/2))
   nest.add(text)
+  //console.log('post insert text y', text.y())
 
   hookup_ui(nest.node)
   hookup_menu_actions(nest.node, text_verbs)
@@ -894,7 +911,7 @@ var ellipse_verbs = {
     handler: (evt) => {
       console.log('ellipse handler')
       ui_popup_properties(
-        byId(evt.detail.elemId),
+        byId(evt.detail.elemId.substring('nest_'.length)),
         {'data-dialog-id': 'dialog_properties'}
       )
     }
@@ -916,11 +933,19 @@ function make_ellipse(attrs) {
     'stroke-opacity': 0.9,
     'stroke-width': 1,
   }, attrs))
-  ellipse.addClass('draggable')
 
-  hookup_ui(ellipse.node)
-  hookup_menu_actions(ellipse.node, ellipse_verbs)
-  return ellipse;
+  var nest = make_nest({
+    'id': 'nest_' + ellipse.attr('id'), // special ID
+    'data-nest-for': 'ellipse',
+    'width': ellipse.rbox().width,
+    'height': ellipse.rbox().height,
+  })
+
+  nest.add(ellipse)
+
+  hookup_ui(nest.node)
+  hookup_menu_actions(nest.node, ellipse_verbs)
+  return nest;
 }
 
 function ui_submit_ellipse(evt) {
@@ -930,7 +955,7 @@ function ui_submit_ellipse(evt) {
   if (!w || !h || !color ) {
     return;
   }
-  var ellipse = make_ellipse({
+  var nest = make_ellipse({
     rx: w / 2,
     ry: h / 2,
     cx: w / 2,
@@ -938,7 +963,7 @@ function ui_submit_ellipse(evt) {
     fill: color,
   });
   ui_popdown_dialog('dialog_ellipse')
-  net_fire({ type: 'create', data: serialize(ellipse) })
+  net_fire({ type: 'create', data: serialize(nest) })
 }
 
     </script>
