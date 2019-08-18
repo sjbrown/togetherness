@@ -684,10 +684,15 @@ function hookup_menu_actions(svgEl, actionMenu) {
       eventName: 'node_mark',
       applicable: (node) => { return !is_marked(node) },
     },
+    'Delete': {
+      eventName: 'node_delete',
+      applicable: (node) => { return true },
+    },
   })
   svgEl.actionMenu = actionMenu
   nest = SVG.adopt(svgEl)
   nest.on('node_mark', (evt) => { ui_mark_by_id(evt, svgEl.id) })
+  nest.on('node_delete', (evt) => { delete_marked() })
   nest.on('mouseover', (evt) => { ui_mouseover(evt, svgEl, newMenu) })
 
   // Hookup any self-event handlers
@@ -814,11 +819,11 @@ function ui_update_buttons() {
   var markedNodes = document.querySelectorAll('[data-ui-marked]')
   var numMarked = markedNodes.length
 
-  var span = byId('num_marked')
-  span.textContent = numMarked;
+  //var span = byId('num_marked')
+  //span.textContent = numMarked;
 
-  var btn = byId('delete_button')
-  btn.disabled = (numMarked === 0)
+  //var btn = byId('delete_button')
+  //btn.disabled = (numMarked === 0)
 
 /*
   btn = byId('properties_button')
