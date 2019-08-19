@@ -36,55 +36,55 @@ const pokerDeckJSON = [
  {name: 'Ace of Hearts', suit: 'h', rank: 'a'},
  {name: '2 of Hearts', suit: 'h', rank: '2'},
  {name: '3 of Hearts', suit: 'h', rank: '3'},
-//  {name: '4 of Hearts', suit: 'h', rank: '4'},
-//  {name: '5 of Hearts', suit: 'h', rank: '5'},
-//  {name: '6 of Hearts', suit: 'h', rank: '6'},
-//  {name: '7 of Hearts', suit: 'h', rank: '7'},
-//  {name: '8 of Hearts', suit: 'h', rank: '8'},
-//  {name: '9 of Hearts', suit: 'h', rank: '9'},
-//  {name: '10 of Hearts', suit: 'h', rank: '10'},
-//  {name: 'Jack of Hearts', suit: 'h', rank: 'j'},
-//  {name: 'Queen of Hearts', suit: 'h', rank: 'q'},
-//  {name: 'King of Hearts', suit: 'h', rank: 'k'},
-//  {name: 'Ace of Clubs', suit: 'c', rank: 'a'},
-//  {name: '2 of Clubs', suit: 'c', rank: '2'},
-//  {name: '3 of Clubs', suit: 'c', rank: '3'},
-//  {name: '4 of Clubs', suit: 'c', rank: '4'},
-//  {name: '5 of Clubs', suit: 'c', rank: '5'},
-//  {name: '6 of Clubs', suit: 'c', rank: '6'},
-//  {name: '7 of Clubs', suit: 'c', rank: '7'},
-//  {name: '8 of Clubs', suit: 'c', rank: '8'},
-//  {name: '9 of Clubs', suit: 'c', rank: '9'},
-//  {name: '10 of Clubs', suit: 'c', rank: '10'},
-//  {name: 'Jack of Clubs', suit: 'c', rank: 'j'},
-//  {name: 'Queen of Clubs', suit: 'c', rank: 'q'},
-//  {name: 'King of Clubs', suit: 'c', rank: 'k'},
-//  {name: 'Ace of Diamonds', suit: 'd', rank: 'a'},
-//  {name: '2 of Diamonds', suit: 'd', rank: '2'},
-//  {name: '3 of Diamonds', suit: 'd', rank: '3'},
-//  {name: '4 of Diamonds', suit: 'd', rank: '4'},
-//  {name: '5 of Diamonds', suit: 'd', rank: '5'},
-//  {name: '6 of Diamonds', suit: 'd', rank: '6'},
-//  {name: '7 of Diamonds', suit: 'd', rank: '7'},
-//  {name: '8 of Diamonds', suit: 'd', rank: '8'},
-//  {name: '9 of Diamonds', suit: 'd', rank: '9'},
-//  {name: '10 of Diamonds', suit: 'd', rank: '10'},
-//  {name: 'Jack of Diamonds', suit: 'd', rank: 'j'},
-//  {name: 'Queen of Diamonds', suit: 'd', rank: 'q'},
-//  {name: 'King of Diamonds', suit: 'd', rank: 'k'},
-//  {name: 'Ace of Spades', suit: 's', rank: 'a'},
-//  {name: '2 of Spades', suit: 's', rank: '2'},
-//  {name: '3 of Spades', suit: 's', rank: '3'},
-//  {name: '4 of Spades', suit: 's', rank: '4'},
-//  {name: '5 of Spades', suit: 's', rank: '5'},
-//  {name: '6 of Spades', suit: 's', rank: '6'},
-//  {name: '7 of Spades', suit: 's', rank: '7'},
-//  {name: '8 of Spades', suit: 's', rank: '8'},
-//  {name: '9 of Spades', suit: 's', rank: '9'},
-//  {name: '10 of Spades', suit: 's', rank: '10'},
-//  {name: 'Jack of Spades', suit: 's', rank: 'j'},
-//  {name: 'Queen of Spades', suit: 's', rank: 'q'},
-//  {name: 'King of Spades', suit: 's', rank: 'k'},
+ {name: '4 of Hearts', suit: 'h', rank: '4'},
+ {name: '5 of Hearts', suit: 'h', rank: '5'},
+ {name: '6 of Hearts', suit: 'h', rank: '6'},
+ {name: '7 of Hearts', suit: 'h', rank: '7'},
+ {name: '8 of Hearts', suit: 'h', rank: '8'},
+ {name: '9 of Hearts', suit: 'h', rank: '9'},
+ {name: '10 of Hearts', suit: 'h', rank: '10'},
+ {name: 'Jack of Hearts', suit: 'h', rank: 'j'},
+ {name: 'Queen of Hearts', suit: 'h', rank: 'q'},
+ {name: 'King of Hearts', suit: 'h', rank: 'k'},
+ {name: 'Ace of Clubs', suit: 'c', rank: 'a'},
+ {name: '2 of Clubs', suit: 'c', rank: '2'},
+ {name: '3 of Clubs', suit: 'c', rank: '3'},
+ {name: '4 of Clubs', suit: 'c', rank: '4'},
+ {name: '5 of Clubs', suit: 'c', rank: '5'},
+ {name: '6 of Clubs', suit: 'c', rank: '6'},
+ {name: '7 of Clubs', suit: 'c', rank: '7'},
+ {name: '8 of Clubs', suit: 'c', rank: '8'},
+ {name: '9 of Clubs', suit: 'c', rank: '9'},
+ {name: '10 of Clubs', suit: 'c', rank: '10'},
+ {name: 'Jack of Clubs', suit: 'c', rank: 'j'},
+ {name: 'Queen of Clubs', suit: 'c', rank: 'q'},
+ {name: 'King of Clubs', suit: 'c', rank: 'k'},
+ {name: 'Ace of Diamonds', suit: 'd', rank: 'a'},
+ {name: '2 of Diamonds', suit: 'd', rank: '2'},
+ {name: '3 of Diamonds', suit: 'd', rank: '3'},
+ {name: '4 of Diamonds', suit: 'd', rank: '4'},
+ {name: '5 of Diamonds', suit: 'd', rank: '5'},
+ {name: '6 of Diamonds', suit: 'd', rank: '6'},
+ {name: '7 of Diamonds', suit: 'd', rank: '7'},
+ {name: '8 of Diamonds', suit: 'd', rank: '8'},
+ {name: '9 of Diamonds', suit: 'd', rank: '9'},
+ {name: '10 of Diamonds', suit: 'd', rank: '10'},
+ {name: 'Jack of Diamonds', suit: 'd', rank: 'j'},
+ {name: 'Queen of Diamonds', suit: 'd', rank: 'q'},
+ {name: 'King of Diamonds', suit: 'd', rank: 'k'},
+ {name: 'Ace of Spades', suit: 's', rank: 'a'},
+ {name: '2 of Spades', suit: 's', rank: '2'},
+ {name: '3 of Spades', suit: 's', rank: '3'},
+ {name: '4 of Spades', suit: 's', rank: '4'},
+ {name: '5 of Spades', suit: 's', rank: '5'},
+ {name: '6 of Spades', suit: 's', rank: '6'},
+ {name: '7 of Spades', suit: 's', rank: '7'},
+ {name: '8 of Spades', suit: 's', rank: '8'},
+ {name: '9 of Spades', suit: 's', rank: '9'},
+ {name: '10 of Spades', suit: 's', rank: '10'},
+ {name: 'Jack of Spades', suit: 's', rank: 'j'},
+ {name: 'Queen of Spades', suit: 's', rank: 'q'},
+ {name: 'King of Spades', suit: 's', rank: 'k'},
 ]
 
 function pile_offset(index) {
@@ -324,6 +324,8 @@ var poker_deck = {
 
     el = byId('ellipse_play_area')
     el.style['fill-opacity'] = 1.0
+    tspan = byId('tspan_play_area')
+    tspan.textContent('Drop here')
   },
 
   dragend_droptarget_handler: function(evt) {
@@ -336,6 +338,8 @@ var poker_deck = {
 
     el = byId('ellipse_play_area')
     el.style['fill-opacity'] = 0.2
+    tspan = byId('tspan_play_area')
+    tspan.textContent('Play area')
 
     is_inside = isInside(dragged.node, drop.node)
     if (!is_inside) {
@@ -519,7 +523,7 @@ poker_deck_card = {
    id="text_play_area"
    inkscape:label="#text5714"><tspan
      sodipodi:role="line"
-     id="tspan5716"
+     id="tspan_play_area"
      x="78.167732"
      y="171.80136"
      style="font-size:15px;line-height:1.25">Play Area</tspan></text>

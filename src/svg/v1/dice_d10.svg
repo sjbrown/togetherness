@@ -133,6 +133,7 @@ var d10 = {
         this.style.opacity = origOpacity
         this.isChanging = false
         net_fire({type: "change", data: serialize(this)});
+        evt_fire('change', this, null, {})
       },
     })
   },
@@ -155,6 +156,7 @@ var d10 = {
         this.style.opacity = origOpacity
         this.isChanging = false
         net_fire({type: "change", data: serialize(this)});
+        evt_fire('change', this, null, {})
       },
     })
     tspan.textContent = " "

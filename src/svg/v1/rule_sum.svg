@@ -53,10 +53,10 @@ var rule_sum = {
 
   rule_roll_handler: function(evt) {
     console.log('rule_sum hears rule_roll event', evt)
-  },
-
-  die_roll_handler: function(evt) {
-    console.log('rule_sum hears die_roll event', evt)
+    contentsGroup = ruleElem.querySelector('#contents_group')
+    contentsGroup.querySelectorAll('svg').forEach((s) => {
+      evt_fire('die_roll', s, null, {})
+    })
   },
 
   activate: function(evt) {
@@ -64,10 +64,91 @@ var rule_sum = {
     lock_selection(evt)
   },
 
+  dragover_handler: function(evt) {
+    console.log('rulesum dragover_handler', evt.detail.draggedElemId, evt.detail.dropElemId)
+    draggedElem = byId(evt.detail.draggedElemId)
+    dragged = SVG.adopt(draggedElem)
+    dropElem = byId(evt.detail.dropElemId)
+    drop = SVG.adopt(dropElem)
+
+    is_inside = isInside(dragged.node, drop.node)
+    if (!is_inside) {
+      drop.opacity(0.9)
+      return
+    }
+    drop.opacity(1.0)
+  },
+
+  dragstart_droptarget_handler: function(evt) {
+    console.log('rulesum dragstart_droptarget_handler', evt.detail.draggedElemId, evt.detail.dropElemId)
+    el = byId('big_rect')
+    el.style['fill-opacity'] = 1.0
+  },
+
+  dragend_droptarget_handler: function(evt) {
+    ruleElem = this
+    console.log('rulesum dragend_droptarget_handler', ruleElem.id, evt.detail.draggedElemId, evt.detail.dropElemId)
+    draggedElem = byId(evt.detail.draggedElemId)
+    dragged = SVG.adopt(draggedElem)
+    dropElem = byId(evt.detail.dropElemId)
+    drop = SVG.adopt(dropElem)
+    drop.opacity(1.0)
+    dropElem.style['fill-opacity'] = 0.2
+
+    contentsGroup = ruleElem.querySelector('#contents_group')
+    is_inside = isInside(dragged.node, drop.node)
+
+    if (contentsGroup.querySelector('#' + draggedElem.id)) {
+      // already inside the contents
+      if (is_inside) {
+        return
+      }
+      pop_from_parent(draggedElem, {})
+    } else {
+      if (!is_inside) {
+        return
+      }
+      push_to_parent(
+        draggedElem,
+        ruleElem,
+        (dieElem, parentElem) => {
+          console.log('consume it here', dieElem.id, parentElem.id)
+          dieElem.classList.add('draggable-group')
+          contentsGroup.appendChild(dieElem)
+        }
+      )
+    }
+    ruleElem.dispatchEvent(new CustomEvent('contents_change', {
+      bubbles: true,
+      detail: { 'ruleElemId': ruleElem.id },
+    }))
+  },
+
+  contents_change_handler: function(evt) {
+    ruleElem = this
+    contentsGroup = ruleElem.querySelector('#contents_group')
+    console.log('contents_change_handler', ruleElem.id, evt.detail)
+    sum = 0
+    contentsGroup.querySelectorAll('svg').forEach((s) => {
+      s.querySelectorAll('tspan').forEach((t) => {
+        num = parseInt(t.textContent)
+        if (!isNaN(num)) {
+          sum = sum + num
+        }
+      })
+    })
+    tspan = ruleElem.querySelector('#tspan_sum')
+    tspan.textContent = sum
+  },
+
   initialize: function(elem) {
-    elem.addEventListener('die_roll', this.die_roll_handler)
+    elem.addEventListener('change', this.contents_change_handler)
     elem.addEventListener('rule_roll', this.rule_roll_handler)
+    elem.addEventListener('contents_change', this.contents_change_handler)
     elem.addEventListener('dblclick', this.activate)
+    elem.addEventListener('svg_drag_droptarget', this.dragover_handler)
+    elem.addEventListener('svg_dragstart_droptarget', this.dragstart_droptarget_handler)
+    elem.addEventListener('svg_dragend_droptarget', this.dragend_droptarget_handler)
   },
 
   menu: {
@@ -94,23 +175,26 @@ var rule_sum = {
   <g
      id="group-monochrome-1"
      filter="url(#app-filter-colorize)">
-    <rect
-       style="fill:none;fill-opacity:1;stroke:#a0a0a0;stroke-width:4;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       id="rect10"
-       width="280"
-       height="280"
-       x="10"
-       y="10" />
+    <g id="contents_group">
+      <rect
+         style="fill:#ffffff;fill-opacity:0.2;stroke:#a0a0a0;stroke-width:4;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+         id="big_rect"
+         class="droptarget"
+         width="280"
+         height="280"
+         x="10"
+         y="10" />
+    </g>
     <rect
        style="fill:#ffffff;fill-opacity:1;stroke:#f0f0f0;stroke-width:1.92222762;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       id="rect12"
+       id="top_rect"
        width="48.0"
        height="12.0"
        x="126.0"
        y="4.26" />
     <rect
        style="fill:#ffffff;fill-opacity:1;stroke:#f0f0f0;stroke-width:2.6975491;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       id="rect14"
+       id="bottom_rect"
        width="77.3"
        height="21.3"
        x="111.34"
@@ -126,7 +210,7 @@ var rule_sum = {
          id="tspan_rule"
          x="149.8"
          y="14.28"
-         style="font-size:10.5px;text-align:center;text-anchor:middle">rule</tspan></text>
+         style="font-size:10.5px;text-align:center;text-anchor:middle">SUM(...)</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-weight:normal;font-size:16px;line-height:1.25;font-family:sans-serif;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1"
@@ -137,5 +221,5 @@ var rule_sum = {
          id="tspan_sum"
          x="150.26"
          y="290.77"
-         style="font-size:16px;text-align:center;text-anchor:middle">SUM</tspan></text>
+         style="font-size:16px;text-align:center;text-anchor:middle">0</tspan></text>
 </svg>

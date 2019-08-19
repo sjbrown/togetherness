@@ -76,7 +76,8 @@ var d6 = {
         s(text, 'data-text', newNum)
         this.style.opacity = origOpacity
         this.isChanging = false
-        net_fire({type: "change", data: serialize(this)});
+        net_fire({type: "change", data: serialize(this)})
+        evt_fire('change', this, null, {})
       },
     })
   },
@@ -102,6 +103,7 @@ var d6 = {
         this.style.opacity = origOpacity
         this.isChanging = false
         net_fire({type: "change", data: serialize(this)});
+        evt_fire('change', this, null, {})
       },
     })
     tspan.textContent = " "

@@ -632,6 +632,15 @@ function appendDocumentScript(scriptElem, parentElem) {
   scriptElem.remove()
 }
 
+function initialize_with_ns(elem, ns) {
+  // The foreign <svg> should have an onLoad to do this, but
+  // Chrome has problems doing onLoad
+  if (ns.initialize && !g(elem, 'data-ui-initialized')) {
+    ns.initialize(elem)
+    s(elem, 'data-ui-initialized', true)
+  }
+}
+
 function hookup_foreign_scripts(elem, url) {
   console.log('hookup_foreign_scripts', elem, url)
   // This assumes import_foreign_svg has already been executed
@@ -646,12 +655,7 @@ function hookup_foreign_scripts(elem, url) {
         return;
       }
 
-      // The foreign <svg> should have an onLoad to do this, but
-      // Chrome has problems doing onLoad
-      if (ns.initialize && !g(elem, 'data-ui-initialized')) {
-        ns.initialize(elem)
-        s(elem, 'data-ui-initialized', true)
-      }
+      initialize_with_ns(elem, ns)
 
       //console.log("adding ser and deser", Object.keys(ns))
       if (ns.serialize) {
@@ -781,8 +785,10 @@ function pop_from_parent(svgElem, ns) {
     child.x(child.x() + parentWithXY.x())
     child.y(child.y() + parentWithXY.y())
 
-    ns.initialize(child.node)
-    hookup_menu_actions(child.node, ns.menu)
+    initialize_with_ns(child.node, ns)
+    if (ns.menu) {
+      hookup_menu_actions(child.node, ns.menu)
+    }
     hookup_ui(child.node)
     child.node.dataset.appClass = 'nest'
     grandparent.add(child)
@@ -797,6 +803,10 @@ function push_to_parent(childEl, parentEl, pushFn) {
 
     un_hookup_ui(childEl)
     childEl.remove()
+    c = SVG.adopt(childEl)
+    p = SVG.adopt(parentEl)
+    c.x( c.x() - p.x() )
+    c.y( c.y() - p.y() )
     s(childEl, 'data-enveloped', null)
     pushFn(childEl, parentEl)
 }
