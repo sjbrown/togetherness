@@ -154,18 +154,6 @@ function updateColorSample(target) {
 </script>
 
 <body>
-  <button class="btn btn-small" onclick="TogetherJS(this); return false;"
-  >Go Multiplayer</button>
-
-<!--
-  <button class="btn" onclick="add_object('svg/v1/deckahedron.svg')">
-  + Deckahedron
-  </button>
-  -->
-
-  <button class="btn btn-small" onclick="add_object('svg/v1/poker_deck.svg')">
-  + Cards
-  </button>
 
   <button id="dice_dialog_button" class="btn btn-small modal-trigger"
     data-target="dialog_dice"
@@ -173,8 +161,16 @@ function updateColorSample(target) {
     + Dice
   </button>
 
+  <button class="btn btn-small" onclick="add_object('svg/v1/poker_deck.svg')">
+  + Cards
+  </button>
+<!--
+  <button class="btn" onclick="add_object('svg/v1/deckahedron.svg')">
+  + Deckahedron
+  </button>
+  -->
 
-  <button id="draw_button" class="btn btn-small modal-trigger"
+  <button id="other_button" class="btn btn-small modal-trigger"
     data-target="dialog_other"
     data-dialog-id="dialog_other">
     + Other
@@ -215,6 +211,10 @@ function updateColorSample(target) {
     data-dialog-id="dialog_contribute">
     Help this project
   </button>
+
+  <button class="btn btn-small" onclick="TogetherJS(this); return false;"
+  >Go Multiplayer</button>
+
 
   <center>
     <div id="gamearea" contextmenu="gamemenu">
