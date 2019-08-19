@@ -505,7 +505,10 @@ function add_dtype(dtype, inputEl, center) {
   for( var i=0; i < num; i++ ) {
     add_object(
       'svg/v1/dice_' + dtype +'.svg',
-      [center[0], center[1]], // Wrap in a new array to avoid async bugs
+      {
+        // Wrap 'center' in a new array to avoid async bugs
+        'center': [center[0], center[1]]
+      },
     )
     center[0] = center[0] + 90
     center[1] = center[1] + 10

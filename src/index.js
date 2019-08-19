@@ -514,7 +514,7 @@ function _unmark(mark_rect_id) {
 }
 
 
-function import_foreign_svg(url) {
+function import_foreign_svg(url, attrs) {
   if (!DEBUG) {
     var answer = confirm('Do you trust the security of '+ url +'?')
     if (!answer) {
@@ -524,7 +524,7 @@ function import_foreign_svg(url) {
 
   return fetch(url)
   .then((res) => {
-    if (res.headers.get('content-length') > 1700000) {
+    if (res.headers.get('content-length') > 1000000) {
       console.error('That file is too big (> 1MB)')
       alert('That file is too big (> 1MB)')
       return
@@ -632,17 +632,17 @@ function appendDocumentScript(scriptElem, parentElem) {
   scriptElem.remove()
 }
 
-function initialize_with_ns(elem, ns) {
+function initialize_with_ns(elem, ns, attrs) {
   // The foreign <svg> should have an onLoad to do this, but
   // Chrome has problems doing onLoad
   if (ns.initialize && !g(elem, 'data-ui-initialized')) {
-    ns.initialize(elem)
+    ns.initialize(elem, attrs)
     s(elem, 'data-ui-initialized', true)
   }
 }
 
-function hookup_foreign_scripts(elem, url) {
-  console.log('hookup_foreign_scripts', elem, url)
+function hookup_foreign_scripts(elem, url, attrs) {
+  console.log('hookup_foreign_scripts', elem, url, attrs)
   // This assumes import_foreign_svg has already been executed
   // and the svg element has been added to the DOM
   elem.querySelectorAll('script').forEach((script) => {
@@ -655,7 +655,7 @@ function hookup_foreign_scripts(elem, url) {
         return;
       }
 
-      initialize_with_ns(elem, ns)
+      initialize_with_ns(elem, ns, attrs)
 
       //console.log("adding ser and deser", Object.keys(ns))
       if (ns.serialize) {
@@ -733,20 +733,20 @@ function hookup_self_event_handlers(el, actionMenu) {
 }
 
 
-function add_object(url, center) {
+function add_object(url, attrs) {
   return import_foreign_svg(url)
   .then((nest) => {
-    setColor(nest.node, getUserColor())
-    if (center !== undefined) {
-      nest.cx(center[0])
-      nest.cy(center[1])
+    setColor(nest.node, (attrs && attrs.color) || getUserColor())
+    if (attrs && attrs.center !== undefined) {
+      nest.cx(attrs.center[0])
+      nest.cy(attrs.center[1])
     }
     svg_table.add(nest)
     return nest
   })
   .then((nest) => {
     hookup_ui(nest.node)
-    hookup_foreign_scripts(nest.node, url)
+    hookup_foreign_scripts(nest.node, url, attrs.scriptAttrs)
     return nest
   })
   .then((nest) => {

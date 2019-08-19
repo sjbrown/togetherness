@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   id="symbol die"
+   height="100"
+   width="80"
+   version="1.1"
+   inkscape:version="0.92.3 (2405546, 2018-03-11)"
+   sodipodi:docname="dice_dsymbol.svg">
+  <sodipodi:namedview
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1"
+     objecttolerance="10"
+     gridtolerance="10"
+     guidetolerance="10"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:window-width="1079"
+     inkscape:window-height="601"
+     id="namedview11"
+     showgrid="false"
+     inkscape:zoom="2.36"
+     inkscape:cx="-10.59322"
+     inkscape:cy="50"
+     inkscape:window-x="0"
+     inkscape:window-y="27"
+     inkscape:window-maximized="0"
+     />
+  <defs id="defs1">
+    <filter
+       id="app-filter-colorize"
+       color-interpolation-filters="sRGB">
+      <feColorMatrix
+         id="recolorize-filter-matrix"
+         type="matrix"
+         values="0.9 0.0 0.0 0.0  0.0
+                 0.9 0.0 0.0 0.0  0.0
+                 0.9 0.0 0.0 0.0  0.0
+                 0.0 0.0 0.0 1.0  0.0" />
+    </filter>
+  </defs>
+  <script
+     type="text/javascript"
+     src="js/dice_utils.js"
+     id="script7" />
+  <script
+     type="text/javascript"
+     data-namespace="dsymbol"
+     id="script6158"><![CDATA[
+var dsymbol = {
+
+  roll_handler: function(evt) {
+    console.log('roll handle!', this.id, evt)
+    if (this.isChanging) {
+      return false
+    }
+    this.isChanging = true
+    //if (this.id !== evt.detail.elemId) {
+      //return;
+    //}
+    var text = this.querySelector('text')
+    var tspan = this.querySelector('tspan')
+    var origOpacity = this.style.opacity
+    var newNum = randDiceString(1,8)
+    animated_ghost(this, { animation: 'rollOut' })
+    tspan.textContent = ' '
+    this.style.opacity = 0.1
+    animated_ghost(this, {
+      animation: 'rollIn',
+      before_begin: (ghost) => {
+        ghost.querySelector('g').style.opacity = origOpacity
+      },
+      on_done: () => {
+        tspan.textContent = newNum
+        s(text, 'data-text', newNum)
+        this.style.opacity = origOpacity
+        this.isChanging = false
+        net_fire({type: "change", data: serialize(this)});
+        evt_fire('change', this, null, {})
+      },
+    })
+  },
+
+  turn_handler: function(evt) {
+    //console.log('dsymbol ', this, 'turn!!!!!!!!!!!!!!!!!!!!!!!!!!!!', evt.detail)
+    if (this.isChanging) {
+      return false
+    }
+    this.isChanging = true
+    //if (this.id !== evt.detail.elemId) {
+      //return;
+    //}
+    var text = this.querySelector('text')
+    var tspan = this.querySelector('tspan')
+    var origOpacity = this.style.opacity
+    var origNum = parseInt(tspan.textContent)
+    animated_ghost(this, {
+      animation: 'thumb',
+      on_done: () => {
+        tspan.textContent = (origNum % 8) + 1
+        s(text, 'data-text', (origNum % 8) + 1)
+        this.style.opacity = origOpacity
+        this.isChanging = false
+        net_fire({type: "change", data: serialize(this)});
+        evt_fire('change', this, null, {})
+      },
+    })
+    tspan.textContent = " "
+    this.style.opacity = 0.1
+  },
+
+  initialize: function(elem, attrs) {
+    console.log('hooking up handlers for ', elem)
+    elem.addEventListener('die_roll', this.roll_handler)
+    elem.addEventListener('dblclick', this.roll_handler)
+    elem.addEventListener('die_turn_up', this.turn_handler)
+    console.log('symbols here!', attrs.symbols)
+    this.dataset.symbols = attrs.symbols
+  },
+
+  menu: {
+    'Roll': {
+      eventName: 'die_roll',
+      applicable: (dieNode) => { return true },
+    },
+    'Turn Up': {
+      eventName: 'die_turn_up',
+      applicable: (dieNode) => { return true },
+      uiLabel: (dieNode) => { 
+        var tspan = dieNode.querySelector('tspan')
+        var nextNum = (parseInt(tspan.textContent) % 8) + 1
+        return 'Turn to ' + nextNum
+        },
+    },
+  },
+
+  serialize: function(elem) {
+    value = elem.querySelector('tspan').textContent
+    return {dieValue: value}
+  },
+
+  deserialize: function(elem, payload) {
+    elem.querySelector('tspan').textContent = payload.dieValue
+  },
+
+}
+
+    ]]></script>
+  <g
+     id="group-monochrome-1"
+     class="draggable"
+     filter="url(#app-filter-colorize)">
+    <ellipse
+       style="opacity:1;fill:#000000;fill-opacity:0.15686275;stroke:none;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+       id="ellipse4248"
+       cx="39.932785"
+       cy="40.495136"
+       rx="31.718672"
+       ry="28.365911" />
+    <ellipse
+       ry="28.365911"
+       rx="39.932789"
+       cy="67.417534"
+       cx="39.932785"
+       id="path4246"
+       style="opacity:1;fill:#000000;fill-opacity:0.15686275;stroke:none;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1" />
+    <path
+       sodipodi:nodetypes="ccccccc"
+       inkscape:connector-curvature="0"
+       id="path4157-2"
+       d="M 39.535923,1.093274 76.72131,39.222102 78.323832,65.022735 39.555567,99.326963 0.77762885,65.022735 5.7454487,37.800788 Z"
+       style="fill:#9b9b9b;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:1.34612;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
+    <path
+       sodipodi:nodetypes="cccc"
+       inkscape:connector-curvature="0"
+       id="path-6"
+       d="M 78.323832,65.022735 39.525773,1.9502252 0.77762885,65.022735 Z"
+       style="fill:#dedede;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:1.34612;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
+    <path
+       style="fill:#aaffff;fill-opacity:0.15686275;fill-rule:evenodd;stroke:none;stroke-width:5.4000001;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="M 74.446522,66.737946 39.555083,97.61175 4.654939,66.737946 c 25.747199,8.214117 39.268734,18.338495 69.791583,0 z"
+       id="path_end1"
+       inkscape:connector-curvature="0"
+       sodipodi:nodetypes="cccc" />
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;line-height:0%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+       x="25.847456"
+       y="57.627117"
+       id="text4139"><tspan
+         sodipodi:role="line"
+         id="tspan4141"
+         x="25.847456"
+         y="57.627117"
+         style="font-size:40px;line-height:1.25">✗</tspan></text>
+  </g>
+</svg>
