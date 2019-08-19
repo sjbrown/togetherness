@@ -22,9 +22,12 @@ function makeDraggable(world) {
   world.on('touchleave', endDrag);
   world.on('touchcancel', endDrag);
 
-  function broadcast(event_name, detail) {
-    console.log('broadcasting', event_name)
-    selectedEl.node.dispatchEvent(new CustomEvent(event_name, {
+  function broadcast(eventName, detail, dispatchEl) {
+    //console.log('broadcasting', eventName)
+    if (dispatchEl === undefined) {
+      dispatchEl = selectedEl.node
+    }
+    dispatchEl.dispatchEvent(new CustomEvent(eventName, {
       bubbles: true,
       detail: detail,
     }))
@@ -70,18 +73,11 @@ function makeDraggable(world) {
       y: selectedEl.y(),
     }
     broadcast('svg_dragstart', { elemId: evt.target.id })
+    notifyDropTargets(evt, 'svg_dragstart')
   }
 
   function startDrag(evt) {
     console.log("startdrag", evt)
-    /*document.querySelectorAll('.droptarget').forEach((el) => {
-      console.log("making active", el)
-      el.active = true;
-      el.oldFill = el.style.fill
-      el.classList.add('droptarget_active')
-      el.style.fill = 'white'
-    })
-    */
     evt.preventDefault() // prevent, for example, text selection
     if (
       evt.target.classList.contains('draggable')
@@ -115,25 +111,32 @@ function makeDraggable(world) {
     // Don't spam - throttle to roughly every 200 miliseconds
     if (lockBroadcastTimer) { return }
     lockBroadcastTimer = true
-    broadcastTimer = setTimeout(() => { lockBroadcastTimer = false }, 200)
+    broadcastTimer = setTimeout(() => { lockBroadcastTimer = false }, 600)//200)
     broadcast('svg_drag', {
-      elem: selectedEl,
       elemId: selectedEl.node.id,
       mouse: mouse,
+    })
+    notifyDropTargets(evt, 'svg_drag')
+  }
+
+  function notifyDropTargets(evt, eventName) {
+    mouse = getMousePosition(evt)
+    world.node.querySelectorAll('.droptarget').forEach(el => {
+      //console.log('broadcasting for ', el.id, evt.currentTarget)
+      broadcast(eventName + '_droptarget', {
+        draggedElemId: selectedEl.node.id,
+        dropElemId: el.id,
+        mouse: mouse,
+      }, el)
     })
   }
 
   function endDrag(evt) {
-    /*document.querySelectorAll('.droptarget').forEach((el) => {
-      el.active = false;
-      el.classList.remove('droptarget_active')
-      el.style.fill = el.oldFill
-    })
-    */
     try {
       if (selectedEl) {
         now = new Date()
         broadcast('svg_dragend', { elemId: selectedEl.node.id })
+        notifyDropTargets(evt, 'svg_dragend')
         if (isJustAClick) {
           broadcast('svg_dragsafe_click', {
             elemId: selectedEl.node.id,

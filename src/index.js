@@ -55,6 +55,21 @@ function byId(id) {
   return rv;
 }
 
+function isInside(el1, el2) {
+  box = SVG.adopt(el2).rbox()
+  piece = SVG.adopt(el1).rbox()
+  return (
+    piece.x > box.x
+    &&
+    piece.x + piece.width < box.x + box.width
+    &&
+    piece.y > box.y
+    &&
+    piece.y + piece.height < box.y + box.height
+  )
+}
+
+
 function str_to_fn(fname) {
   // given a string, return a globally-scoped function
   return (
@@ -618,6 +633,7 @@ function appendDocumentScript(scriptElem, parentElem) {
 }
 
 function hookup_foreign_scripts(elem, url) {
+  console.log('hookup_foreign_scripts', elem, url)
   // This assumes import_foreign_svg has already been executed
   // and the svg element has been added to the DOM
   elem.querySelectorAll('script').forEach((script) => {
@@ -657,6 +673,7 @@ function hookup_ui(elem) {
   console.log("hookup_ui", elem.id)
   nest = SVG.adopt(elem)
   nest.addClass('draggable-group')
+  nest.addClass('ui-toplevel')
   nest.on('svg_dragsafe_click', (evt) => {
     console.log('id', elem.id, 'got click', evt)
     ui_mark_by_id(evt.detail.origEvent, elem.id)
@@ -673,12 +690,14 @@ function un_hookup_ui(elem) {
   console.log("un_hookup_ui", elem.id)
   nest = SVG.adopt(elem)
   nest.removeClass('draggable-group')
+  nest.removeClass('ui-toplevel')
   nest.off('svg_dragsafe_click')
   nest.off('svg_dragsafe_dblclick')
   nest.off('svg_longtouch')
 }
 
 function hookup_menu_actions(svgEl, actionMenu) {
+  console.log('hookup_menu_actions', svgEl, actionMenu)
   var newMenu = Object.assign(actionMenu, {
     'Mark': {
       eventName: 'node_mark',
@@ -749,6 +768,7 @@ function add_object_from_payload(payload) {
 }
 
 function pop_from_parent(svgElem, ns) {
+    console.log('pop_from_parent', svgElem.id)
     if (svgElem.tagName !== 'svg') {
       throw Error('Not an SVG element')
     }
@@ -768,20 +788,32 @@ function pop_from_parent(svgElem, ns) {
     grandparent.add(child)
 }
 
-function remove_object_local(evt) {
-    nestEl = evt.target
-    if (nestEl.dataset.enveloped) {
-      markNestEl = nestEl.closest('[data-nest-for=mark]')
+function push_to_parent(childEl, parentEl, pushFn) {
+    console.log("push_to_parent", childEl.id, parentEl.id)
+    if (childEl.dataset.enveloped) {
+      markNestEl = childEl.closest('[data-nest-for=mark]')
       delete_element(markNestEl)
-    } else {
-      delete_element(nestEl)
     }
-    return true
+
+    un_hookup_ui(childEl)
+    childEl.remove()
+    s(childEl, 'data-enveloped', null)
+    pushFn(childEl, parentEl)
 }
+
+function delete_element(el) {
+  var payload = { id: null, kids: [] }
+  animated_ghost(el, {animation: 'rotateOut'})
+  el.remove()
+  payload.kids.push({ id: el.id })
+  net_fire({ type: 'delete', data: payload });
+  ui_fire({type: 'delete', data: payload });
+}
+
 
 function ui_mouseover(evt, target, actionMenu) {
   /* Add clickable options onto the menu */
-  //console.log('hover', target)
+  console.log('ui_mouseover', target.id)
   //console.log('ver', actionMenu)
 
   deleteList = document.querySelectorAll('.cloned-menuitem')
@@ -819,17 +851,6 @@ function ui_update_buttons() {
   var markedNodes = document.querySelectorAll('[data-ui-marked]')
   var numMarked = markedNodes.length
 
-  //var span = byId('num_marked')
-  //span.textContent = numMarked;
-
-  //var btn = byId('delete_button')
-  //btn.disabled = (numMarked === 0)
-
-/*
-  btn = byId('properties_button')
-  btn.disabled = (numMarked !== 1)
-  */
-
   submenu = byId('object_actions')
   header = byId('object_actions_header')
   submenu.querySelectorAll('.cloned-button').forEach((btn) => {
@@ -859,6 +880,9 @@ function ui_update_buttons() {
   markedNodes.forEach((markNode) => {
     i++
     var elemNode = markNode.firstChild
+    if (elemNode.actionMenu === undefined) {
+      elemNode.actionMenu = {}
+    }
     if (numMarked === 1) {
       header.innerText = g(elemNode, 'data-orig-name')
       //#header.innerText = g(elemNode, 'data-name')
@@ -1015,15 +1039,6 @@ function delete_marked(evt) {
     el.remove()
     payload.kids.push({ id: el.id })
   })
-  net_fire({ type: 'delete', data: payload });
-  ui_fire({type: 'delete', data: payload });
-}
-
-function delete_element(el) {
-  var payload = { id: null, kids: [] }
-  animated_ghost(el, {animation: 'rotateOut'})
-  el.remove()
-  payload.kids.push({ id: el.id })
   net_fire({ type: 'delete', data: payload });
   ui_fire({type: 'delete', data: payload });
 }

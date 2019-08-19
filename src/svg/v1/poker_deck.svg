@@ -16,7 +16,7 @@
    enable-background="new 0 0 216 216"
    xml:space="preserve"
    id="svg_poker_deck"
-   class="svg_poker_deck"
+   class="svg_poker_deck droptarget"
    inkscape:version="0.92.3 (2405546, 2018-03-11)"
    sodipodi:docname="poker_deck.svg"><metadata
      id="metadata663"><rdf:RDF><cc:Work
@@ -36,55 +36,55 @@ const pokerDeckJSON = [
  {name: 'Ace of Hearts', suit: 'h', rank: 'a'},
  {name: '2 of Hearts', suit: 'h', rank: '2'},
  {name: '3 of Hearts', suit: 'h', rank: '3'},
- {name: '4 of Hearts', suit: 'h', rank: '4'},
- {name: '5 of Hearts', suit: 'h', rank: '5'},
- {name: '6 of Hearts', suit: 'h', rank: '6'},
- {name: '7 of Hearts', suit: 'h', rank: '7'},
- {name: '8 of Hearts', suit: 'h', rank: '8'},
- {name: '9 of Hearts', suit: 'h', rank: '9'},
- {name: '10 of Hearts', suit: 'h', rank: '10'},
- {name: 'Jack of Hearts', suit: 'h', rank: 'j'},
- {name: 'Queen of Hearts', suit: 'h', rank: 'q'},
- {name: 'King of Hearts', suit: 'h', rank: 'k'},
- {name: 'Ace of Clubs', suit: 'c', rank: 'a'},
- {name: '2 of Clubs', suit: 'c', rank: '2'},
- {name: '3 of Clubs', suit: 'c', rank: '3'},
- {name: '4 of Clubs', suit: 'c', rank: '4'},
- {name: '5 of Clubs', suit: 'c', rank: '5'},
- {name: '6 of Clubs', suit: 'c', rank: '6'},
- {name: '7 of Clubs', suit: 'c', rank: '7'},
- {name: '8 of Clubs', suit: 'c', rank: '8'},
- {name: '9 of Clubs', suit: 'c', rank: '9'},
- {name: '10 of Clubs', suit: 'c', rank: '10'},
- {name: 'Jack of Clubs', suit: 'c', rank: 'j'},
- {name: 'Queen of Clubs', suit: 'c', rank: 'q'},
- {name: 'King of Clubs', suit: 'c', rank: 'k'},
- {name: 'Ace of Diamonds', suit: 'd', rank: 'a'},
- {name: '2 of Diamonds', suit: 'd', rank: '2'},
- {name: '3 of Diamonds', suit: 'd', rank: '3'},
- {name: '4 of Diamonds', suit: 'd', rank: '4'},
- {name: '5 of Diamonds', suit: 'd', rank: '5'},
- {name: '6 of Diamonds', suit: 'd', rank: '6'},
- {name: '7 of Diamonds', suit: 'd', rank: '7'},
- {name: '8 of Diamonds', suit: 'd', rank: '8'},
- {name: '9 of Diamonds', suit: 'd', rank: '9'},
- {name: '10 of Diamonds', suit: 'd', rank: '10'},
- {name: 'Jack of Diamonds', suit: 'd', rank: 'j'},
- {name: 'Queen of Diamonds', suit: 'd', rank: 'q'},
- {name: 'King of Diamonds', suit: 'd', rank: 'k'},
- {name: 'Ace of Spades', suit: 's', rank: 'a'},
- {name: '2 of Spades', suit: 's', rank: '2'},
- {name: '3 of Spades', suit: 's', rank: '3'},
- {name: '4 of Spades', suit: 's', rank: '4'},
- {name: '5 of Spades', suit: 's', rank: '5'},
- {name: '6 of Spades', suit: 's', rank: '6'},
- {name: '7 of Spades', suit: 's', rank: '7'},
- {name: '8 of Spades', suit: 's', rank: '8'},
- {name: '9 of Spades', suit: 's', rank: '9'},
- {name: '10 of Spades', suit: 's', rank: '10'},
- {name: 'Jack of Spades', suit: 's', rank: 'j'},
- {name: 'Queen of Spades', suit: 's', rank: 'q'},
- {name: 'King of Spades', suit: 's', rank: 'k'},
+//  {name: '4 of Hearts', suit: 'h', rank: '4'},
+//  {name: '5 of Hearts', suit: 'h', rank: '5'},
+//  {name: '6 of Hearts', suit: 'h', rank: '6'},
+//  {name: '7 of Hearts', suit: 'h', rank: '7'},
+//  {name: '8 of Hearts', suit: 'h', rank: '8'},
+//  {name: '9 of Hearts', suit: 'h', rank: '9'},
+//  {name: '10 of Hearts', suit: 'h', rank: '10'},
+//  {name: 'Jack of Hearts', suit: 'h', rank: 'j'},
+//  {name: 'Queen of Hearts', suit: 'h', rank: 'q'},
+//  {name: 'King of Hearts', suit: 'h', rank: 'k'},
+//  {name: 'Ace of Clubs', suit: 'c', rank: 'a'},
+//  {name: '2 of Clubs', suit: 'c', rank: '2'},
+//  {name: '3 of Clubs', suit: 'c', rank: '3'},
+//  {name: '4 of Clubs', suit: 'c', rank: '4'},
+//  {name: '5 of Clubs', suit: 'c', rank: '5'},
+//  {name: '6 of Clubs', suit: 'c', rank: '6'},
+//  {name: '7 of Clubs', suit: 'c', rank: '7'},
+//  {name: '8 of Clubs', suit: 'c', rank: '8'},
+//  {name: '9 of Clubs', suit: 'c', rank: '9'},
+//  {name: '10 of Clubs', suit: 'c', rank: '10'},
+//  {name: 'Jack of Clubs', suit: 'c', rank: 'j'},
+//  {name: 'Queen of Clubs', suit: 'c', rank: 'q'},
+//  {name: 'King of Clubs', suit: 'c', rank: 'k'},
+//  {name: 'Ace of Diamonds', suit: 'd', rank: 'a'},
+//  {name: '2 of Diamonds', suit: 'd', rank: '2'},
+//  {name: '3 of Diamonds', suit: 'd', rank: '3'},
+//  {name: '4 of Diamonds', suit: 'd', rank: '4'},
+//  {name: '5 of Diamonds', suit: 'd', rank: '5'},
+//  {name: '6 of Diamonds', suit: 'd', rank: '6'},
+//  {name: '7 of Diamonds', suit: 'd', rank: '7'},
+//  {name: '8 of Diamonds', suit: 'd', rank: '8'},
+//  {name: '9 of Diamonds', suit: 'd', rank: '9'},
+//  {name: '10 of Diamonds', suit: 'd', rank: '10'},
+//  {name: 'Jack of Diamonds', suit: 'd', rank: 'j'},
+//  {name: 'Queen of Diamonds', suit: 'd', rank: 'q'},
+//  {name: 'King of Diamonds', suit: 'd', rank: 'k'},
+//  {name: 'Ace of Spades', suit: 's', rank: 'a'},
+//  {name: '2 of Spades', suit: 's', rank: '2'},
+//  {name: '3 of Spades', suit: 's', rank: '3'},
+//  {name: '4 of Spades', suit: 's', rank: '4'},
+//  {name: '5 of Spades', suit: 's', rank: '5'},
+//  {name: '6 of Spades', suit: 's', rank: '6'},
+//  {name: '7 of Spades', suit: 's', rank: '7'},
+//  {name: '8 of Spades', suit: 's', rank: '8'},
+//  {name: '9 of Spades', suit: 's', rank: '9'},
+//  {name: '10 of Spades', suit: 's', rank: '10'},
+//  {name: 'Jack of Spades', suit: 's', rank: 'j'},
+//  {name: 'Queen of Spades', suit: 's', rank: 'q'},
+//  {name: 'King of Spades', suit: 's', rank: 'k'},
 ]
 
 function pile_offset(index) {
@@ -201,6 +201,7 @@ var poker_deck = {
     card.addClass('poker_card')
     card.addClass('of_' + deck_id)
     card.node.addEventListener('svg_dragstart', (evt) => {
+      console.log('card gets svg_dragstart', evt)
       if (evt.detail.elemId === card.node.id) {
         console.log('its me', card.node.id)
       }
@@ -217,6 +218,7 @@ var poker_deck = {
     // TODO - why do i need this 20 pixel fudge?
     card.cy(deck_area.cy() - (20 + pile_offset(index).y))
     card.cx(deck_area.cx() + pile_offset(index).x)
+    console.log('ADDING', deck, card)
     deck.add(card)
   },
 
@@ -251,6 +253,8 @@ var poker_deck = {
   },
 
   dragend_handler: function(evt) {
+    console.log('poker deck dragend_handler', evt)
+    deck = SVG.adopt(this)
     play_area = SVG.get('ellipse_play_area')
 
     card = SVG.get(evt.target.id)
@@ -294,6 +298,62 @@ var poker_deck = {
     )
   },
 
+  dragover_handler: function(evt) {
+    console.log('poker deck dragover_handler', evt.detail.draggedElemId, evt.detail.dropElemId)
+    draggedElem = byId(evt.detail.draggedElemId)
+    dragged = SVG.adopt(draggedElem)
+    dropElem = byId(evt.detail.dropElemId)
+    drop = SVG.adopt(dropElem)
+
+    // don't have the ellipse be listening
+    if (dropElem.tagName !== 'svg') {
+      return
+    }
+
+    is_inside = isInside(dragged.node, drop.node)
+    if (!is_inside) {
+      drop.opacity(0.9)
+      return
+    }
+    drop.opacity(1.0)
+  },
+
+  dragstart_droptarget_handler: function(evt) {
+    console.log('poker deck dragstart_droptarget_handler', evt.detail.draggedElemId, evt.detail.dropElemId)
+    drop = SVG.adopt(this)
+
+    el = byId('ellipse_play_area')
+    el.style['fill-opacity'] = 1.0
+  },
+
+  dragend_droptarget_handler: function(evt) {
+    console.log('poker deck dragend_droptarget_handler', evt.detail.draggedElemId, evt.detail.dropElemId)
+    draggedElem = byId(evt.detail.draggedElemId)
+    dragged = SVG.adopt(draggedElem)
+    dropElem = byId(evt.detail.dropElemId)
+    drop = SVG.adopt(dropElem)
+    drop.opacity(1.0)
+
+    el = byId('ellipse_play_area')
+    el.style['fill-opacity'] = 0.2
+
+    is_inside = isInside(dragged.node, drop.node)
+    if (!is_inside) {
+      return
+    }
+
+    console.log('return section', evt)
+    push_to_parent(
+      draggedElem,
+      dropElem.querySelector('.poker_deck'),
+      (cardEl, deckEl) => {
+        s(cardEl, 'data-app-class', null)
+        cardEl.classList.add('draggable-group')
+        poker_deck.endeck(SVG.adopt(deckEl), SVG.adopt(cardEl))
+      }
+    )
+  },
+
   initialize: function(elem) {
     this.generate_deck(elem)
     elem.addEventListener('poker_deck_flip', this.flip_handler)
@@ -301,6 +361,9 @@ var poker_deck = {
     byId('ellipse_play_area').classList.add('droptarget')
     elem.addEventListener('svg_drag', this.drag_handler)
     elem.addEventListener('svg_dragend', this.dragend_handler)
+    elem.addEventListener('svg_drag_droptarget', this.dragover_handler)
+    elem.addEventListener('svg_dragstart_droptarget', this.dragstart_droptarget_handler)
+    elem.addEventListener('svg_dragend_droptarget', this.dragend_droptarget_handler)
     elem.addEventListener('dblclick', lock_selection)
   },
 
@@ -332,14 +395,16 @@ poker_deck_card = {
   },
 
   return_handler: function(evt) {
-    remove_object_local(evt)
-    card = SVG.get(evt.target.id)
-    s(card.node, 'data-enveloped', null)
-    s(card.node, 'data-app-class', null)
-    card.addClass('draggable-group')
-    deck = byId(evt.target.dataset.deckId)
-    deck = SVG.adopt(deck)
-    poker_deck.endeck(deck, card)
+    console.log('return_handler', evt)
+    push_to_parent(
+      byId(evt.target.id),
+      byId(evt.target.dataset.deckId),
+      (cardEl, deckEl) => {
+        s(cardEl, 'data-app-class', null)
+        cardEl.classList.add('draggable-group')
+        poker_deck.endeck(SVG.adopt(deckEl), SVG.adopt(cardEl))
+      }
+    )
   },
 
   flip_handler: function(evt) {
@@ -353,7 +418,7 @@ poker_deck_card = {
   },
 
   dragend_handler: function(evt) {
-    console.log('CARD DRAGEND')
+    console.log('CARD DRAGEND', evt)
   },
 
   menu: {
@@ -369,7 +434,8 @@ poker_deck_card = {
 
 }
 
-   ]]></script><sodipodi:namedview
+   ]]></script>
+<sodipodi:namedview
      pagecolor="#ffffff"
      bordercolor="#666666"
      borderopacity="1"
@@ -402,16 +468,19 @@ poker_deck_card = {
      inkscape:object-paths="false"
      units="px"
      inkscape:snap-global="true"
-     inkscape:snap-to-guides="true"><sodipodi:guide
+     inkscape:snap-to-guides="true">
+ <sodipodi:guide
        position="149.99815,110.99999"
        orientation="0,1"
        id="guide5087"
-       inkscape:locked="false" /></sodipodi:namedview><g
+       inkscape:locked="false" /></sodipodi:namedview>
+<g
      inkscape:groupmode="layer"
      id="layer_areas"
      inkscape:label="areas"
      transform="translate(0,-20)"
-     style="display:inline"><g
+     style="display:inline">
+ <g
    id="g_deck_area"
    transform="translate(-38,0)"
    inkscape:label="#g4850"><rect
@@ -436,7 +505,7 @@ poker_deck_card = {
    cy="166.12386"
    cx="112"
    id="ellipse_play_area"
-   style="opacity:1;fill:none;fill-opacity:1;stroke:#808080;stroke-width:3.05116081;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:3.05116093, 3.05116093;stroke-dashoffset:0;stroke-opacity:1" /><ellipse
+   style="opacity:1;fill:#ffffff;fill-opacity:0.2;stroke:#808080;stroke-width:3.05116081;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:3.05116093, 3.05116093;stroke-dashoffset:0;stroke-opacity:1" /><ellipse
    style="opacity:1;fill:#000000;fill-opacity:0.07729468;stroke:#cccccc;stroke-width:3;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:3, 3;stroke-dashoffset:0;stroke-opacity:1"
    id="play_area_ellipse"
    cx="112"

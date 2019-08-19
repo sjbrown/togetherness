@@ -163,8 +163,8 @@ function updateColorSample(target) {
   </button>
   -->
 
-  <button class="btn btn-small" onclick="add_object('svg/v1/ppoker_deck.svg')">
-  + Deck
+  <button class="btn btn-small" onclick="add_object('svg/v1/poker_deck.svg')">
+  + Cards
   </button>
 
   <button id="dice_dialog_button" class="btn btn-small modal-trigger"
@@ -175,9 +175,9 @@ function updateColorSample(target) {
 
 
   <button id="draw_button" class="btn btn-small modal-trigger"
-    data-target="dialog_shapes"
-    data-dialog-id="dialog_shapes">
-    + Shapes
+    data-target="dialog_other"
+    data-dialog-id="dialog_other">
+    + Other
   </button>
 
 
@@ -382,10 +382,8 @@ function load_svg() {
   <div class="modal-content">
     Use a URL as a background.  Examples:
     <ul>
-      <li>http://www.1kfa.com/table/svg/bg_base_map.svg
       <li>http://www.1kfa.com/table/svg/bg_topography.svg
       <li>http://www.1kfa.com/table/svg/bg_hexagons.svg
-      <li>https://images.ira.abramov.org/Propaganda/
     </ul>
     <label for="background_url">Enter a URL</label>
     <input id="background_url" type="url"
@@ -556,7 +554,7 @@ function ui_submit_dice(section) {
       <ul class="left">
         <li><a href="#standard">Standard Dice</a></li>
         <li><a href="#sw">SW / Genesys Dice</a></li>
-        <li><a href="#sw">FUDGE Dice</a></li>
+        <li><a href="#fudge">FUDGE Dice</a></li>
       </ul>
     </div>
     </nav>
@@ -988,31 +986,51 @@ function ui_submit_ellipse(evt) {
 <!-- END CIRCLE =============================================== END CIRCLE -->
 
 
-<!-- SHAPES ======================================================= SHAPES -->
+<!-- OTHER ======================================================= OTHER -->
 
-  <div class="modal" id="dialog_shapes">
-    <button class="dialog_cancel btn modal-close" data-dialog-id="dialog_shapes"
+  <div class="modal" id="dialog_other">
+    <button class="dialog_cancel btn modal-close" data-dialog-id="dialog_other"
     > &#215; </button>
+    <nav class="dialog_nav" id="dialog_dice_nav">
+    <div class="nav-wrapper">
+      <ul class="left">
+        <li><a href="#drawing">Drawing</a></li>
+        <li><a href="#rules">Rules</a></li>
+      </ul>
+    </div>
+    </nav>
     <div class="modal-content">
-      <button id="draw_button" class="btn btn-small modal-trigger modal-close"
+    <section id="drawing_section">
+      <a name="drawing"></a>
+      <h2 id="drawing_h2">Drawing</h2>
+      <button id="rect_button" class="btn btn-small modal-trigger modal-close"
         data-target="dialog_rect"
         data-dialog-id="dialog_rect">
         + Rectangle
       </button>
-      <button id="draw_button" class="btn btn-small modal-trigger modal-close"
+      <button id="ellipse_button" class="btn btn-small modal-trigger modal-close"
         data-target="dialog_ellipse"
         data-dialog-id="dialog_ellipse">
         + Circle
       </button>
-      <button id="draw_button" class="btn btn-small modal-trigger modal-close"
+      <button id="text_button" class="btn btn-small modal-trigger modal-close"
         data-target="dialog_text"
         data-dialog-id="dialog_text">
         + Text
       </button>
+    </section>
+    <section id="rules_section">
+      <a name="rules"></a>
+      <h2 id="rules_h2">Rules</h2>
+      <button class="btn btn-small modal-close"
+        onclick="add_object('svg/v1/rule_sum.svg')">
+        + Sum
+      </button>
+    </section>
     </div>
   </div>
 
-<!-- END SHAPES =============================================== END SHAPES -->
+<!-- END OTHER =============================================== END OTHER -->
 
 <!-- CONTRIBUTE =============================================== CONTRIBUTE -->
   <div class="modal" id="dialog_contribute">

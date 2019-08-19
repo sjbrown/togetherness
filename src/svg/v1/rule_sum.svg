@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="300"
+   height="300"
+   version="1.1"
+   id="rule_sum"
+   inkscape:version="0.92.3 (2405546, 2018-03-11)"
+   sodipodi:docname="rule_sum.svg">
+  <defs id="defs2">
+    <filter
+       id="app-filter-colorize"
+       style="color-interpolation-filters:sRGB">
+      <feColorMatrix
+         id="recolorize-filter-matrix"
+         type="matrix"
+         values="0.9 0.0 0.0 0.0  0.0
+                 0.9 0.0 0.0 0.0  0.0
+                 0.9 0.0 0.0 0.0  0.0
+                 0.0 0.0 0.0 1.0  0.0" />
+    </filter>
+  </defs>
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="1.4"
+     inkscape:cx="-157.2857"
+     inkscape:cy="53.559156"
+     inkscape:document-units="px"
+     showgrid="false"
+     units="px"
+     inkscape:window-width="1920"
+     inkscape:window-height="1025"
+     inkscape:window-x="0"
+     inkscape:window-y="27"
+     inkscape:window-maximized="1" />
+  <script
+     type="text/javascript"
+     data-namespace="rule_sum"
+     id="script_rule_sum"><![CDATA[
+var rule_sum = {
+
+  rule_roll_handler: function(evt) {
+    console.log('rule_sum hears rule_roll event', evt)
+  },
+
+  die_roll_handler: function(evt) {
+    console.log('rule_sum hears die_roll event', evt)
+  },
+
+  activate: function(evt) {
+    console.log('rule_sum hears activate event', evt)
+    lock_selection(evt)
+  },
+
+  initialize: function(elem) {
+    elem.addEventListener('die_roll', this.die_roll_handler)
+    elem.addEventListener('rule_roll', this.rule_roll_handler)
+    elem.addEventListener('dblclick', this.activate)
+  },
+
+  menu: {
+    'Roll All': {
+      eventName: 'rule_roll',
+      applicable: (node) => { return true },
+    },
+  },
+
+  serialize: function(elem) {
+    value = elem.querySelector('tspan').textContent
+    value = elem.lastChild.querySelector('tspan').textContent
+    return {value: value}
+  },
+
+  deserialize: function(elem, payload) {
+    elem.lastChild.querySelector('tspan').textContent = payload.value
+  },
+
+}
+
+
+    ]]></script>
+  <g
+     id="group-monochrome-1"
+     filter="url(#app-filter-colorize)">
+    <rect
+       style="fill:none;fill-opacity:1;stroke:#a0a0a0;stroke-width:4;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       id="rect10"
+       width="280"
+       height="280"
+       x="10"
+       y="10" />
+    <rect
+       style="fill:#ffffff;fill-opacity:1;stroke:#f0f0f0;stroke-width:1.92222762;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       id="rect12"
+       width="48.0"
+       height="12.0"
+       x="126.0"
+       y="4.26" />
+    <rect
+       style="fill:#ffffff;fill-opacity:1;stroke:#f0f0f0;stroke-width:2.6975491;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       id="rect14"
+       width="77.3"
+       height="21.3"
+       x="111.34"
+       y="274.29" />
+  </g>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:10.5px;line-height:1.25;font-family:sans-serif;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none"
+       x="149.8"
+       y="14.28"
+       id="text_rule"><tspan
+         sodipodi:role="line"
+         id="tspan_rule"
+         x="149.8"
+         y="14.28"
+         style="font-size:10.5px;text-align:center;text-anchor:middle">rule</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:16px;line-height:1.25;font-family:sans-serif;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1"
+       x="150.23"
+       y="290.77"
+       id="text_sum"><tspan
+         sodipodi:role="line"
+         id="tspan_sum"
+         x="150.26"
+         y="290.77"
+         style="font-size:16px;text-align:center;text-anchor:middle">SUM</tspan></text>
+</svg>
