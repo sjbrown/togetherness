@@ -131,8 +131,15 @@ var rule_sum = {
     sum = 0
     contentsGroup.querySelectorAll('svg').forEach((s) => {
       s.querySelectorAll('tspan').forEach((t) => {
-        num = parseInt(t.textContent)
-        if (!isNaN(num)) {
+        c = t.textContent.trim()
+        num = parseInt(c)
+        if (isNaN(num)) {
+          if (c == '+') {
+            sum = sum + 1
+          } else if (c == '-') {
+            sum = sum - 1
+          }
+        } else {
           sum = sum + num
         }
       })
