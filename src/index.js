@@ -632,17 +632,17 @@ function appendDocumentScript(scriptElem, parentElem) {
   scriptElem.remove()
 }
 
-function initialize_with_ns(elem, ns, attrs) {
+function initialize_with_ns(elem, ns, serializedState) {
   // The foreign <svg> should have an onLoad to do this, but
   // Chrome has problems doing onLoad
   if (ns.initialize && !g(elem, 'data-ui-initialized')) {
-    ns.initialize(elem, attrs)
-    s(elem, 'data-ui-initialized', true)
+    ns.initialize(elem, serializedState)
   }
+  s(elem, 'data-ui-initialized', true)
 }
 
-function hookup_foreign_scripts(elem, url, attrs) {
-  console.log('hookup_foreign_scripts', elem, url, attrs)
+function hookup_foreign_scripts(elem, url, serializedState) {
+  console.log('hookup_foreign_scripts', elem, url, serializedState)
   // This assumes import_foreign_svg has already been executed
   // and the svg element has been added to the DOM
   elem.querySelectorAll('script').forEach((script) => {
@@ -655,7 +655,7 @@ function hookup_foreign_scripts(elem, url, attrs) {
         return;
       }
 
-      initialize_with_ns(elem, ns, attrs)
+      initialize_with_ns(elem, ns, serializedState)
 
       //console.log("adding ser and deser", Object.keys(ns))
       if (ns.serialize) {
@@ -746,7 +746,7 @@ function add_object(url, attrs) {
   })
   .then((nest) => {
     hookup_ui(nest.node)
-    hookup_foreign_scripts(nest.node, url, attrs.scriptAttrs)
+    hookup_foreign_scripts(nest.node, url, attrs.serializedState)
     return nest
   })
   .then((nest) => {
@@ -785,9 +785,11 @@ function pop_from_parent(svgElem, ns) {
     child.x(child.x() + parentWithXY.x())
     child.y(child.y() + parentWithXY.y())
 
-    initialize_with_ns(child.node, ns)
-    if (ns.menu) {
-      hookup_menu_actions(child.node, ns.menu)
+    if (!g(child.node, 'data-ui-initialized')) {
+      initialize_with_ns(child.node, ns)
+      if (ns.menu) {
+        hookup_menu_actions(child.node, ns.menu)
+      }
     }
     hookup_ui(child.node)
     child.node.dataset.appClass = 'nest'
