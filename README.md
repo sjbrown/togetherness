@@ -69,34 +69,37 @@ keys to integrate with the main web UI:
 `menu`, `initialize`, and `serialize`.
 
 
-```
+```xml
 <svg x="0" y="0" width="100" height="100">
-<script
-  type="text/javascript"
-  data-namespace="myThing"
-><![CDATA[
+  <rect x="25" y="25" width="50" height="50" style="fill:#ff0000" />
+  <script
+    type="text/javascript"
+    data-namespace="myThing"
+  ><![CDATA[
 
 myThing = {
 
   menu: {
-    'Do Something': {
-      eventName: 'doAThing',
+    'Change Color': {
+      eventName: 'changeMyColor',
       applicable: (elem) => { return true },
-      uiLabel: (elem) => { return 'Do A Thing' },
+      uiLabel: (elem) => { return 'Change Color To Green' },
     },
   },
 
   initialize: function(elem) {
-    elem.addEventListener( 'doAThing', (evt) => { console.log('Doing it!') } )
+    elem.addEventListener( 'changeMyColor', (evt) => {
+      console.log('Changing color!')
+      this.querySelector('rect').style['fill'] = '#00ff00'
+    } )
   },
 
   serialize: function(elem) {
-    return { state: 'whatever you like' }
+    return { myColor: this.querySelector('rect').style['fill'] }
   },
 
 }
 
 ]]></script>
-<rect x="25" y="25" width="50" height="50" style="fill:#ff0000" />
 </svg>
 ```
