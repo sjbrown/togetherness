@@ -60,7 +60,7 @@ var rule_sum = {
   },
 
   activate: function(evt) {
-    console.log('rule_sum hears activate event', evt)
+    console.log('rule_sum this', this, 'hears activate event', evt)
     lock_selection(evt)
   },
 
@@ -113,7 +113,6 @@ var rule_sum = {
         ruleElem,
         (dieElem, parentElem) => {
           console.log('consume it here', dieElem.id, parentElem.id)
-          dieElem.classList.add('draggable-group')
           contentsGroup.appendChild(dieElem)
         }
       )

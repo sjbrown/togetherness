@@ -12,14 +12,19 @@ function documentDblclick(triggerNode, detail) {
 }
 
 function lock_selection(evt) {
-  console.log("EVT", evt)
   selection = evt.target.closest('[data-nest-for=mark]')
+  console.log("EVT", evt, 'selection', selection)
   if (selection.dataset.locked) {
     return
   }
   selection.dataset.locked = true
   selection = SVG.adopt(selection)
-  //selection.removeClass('draggable-group')
+  selection.removeClass('draggable-group')
+  innerSVG = selection.first()
+  console.log("inner", innerSVG)
+  if (innerSVG.node.classList.contains('drag-closed')) {
+    innerSVG.addClass('drag-open')
+  }
   rect = selection.last()
   rect.attr('stroke-opacity', 0.99)
   rect.attr('stroke-width', (4 * rect.attr('stroke-width')))
@@ -58,6 +63,8 @@ function byId(id) {
 function isInside(el1, el2) {
   box = SVG.adopt(el2).rbox()
   piece = SVG.adopt(el1).rbox()
+  console.log("box", el2.id, box, el2.x)
+  console.log("piece", el1.id, piece, el1.x)
   return (
     piece.x > box.x
     &&
@@ -344,7 +351,8 @@ var mark_menu = {
 }
 
 function make_nest(attrs) {
-  var nest = svg_table.nested()
+  //var nest = svg_table.nested()
+  var nest = svg_table.element('svg', SVG.Container)
   nest.attr(Object.assign({
     'data-app-class': 'nest',
   }, attrs))
@@ -364,8 +372,8 @@ function make_mark(target_id, attrs) {
   rect.attr(
     Object.assign({
       'data-app-class': 'mark',
-      x: - 2,
-      y: - 2,
+      x: 0,
+      y: 0,
       rx: 4,
       ry: 4,
       'fill-opacity': 0.1,
@@ -379,9 +387,14 @@ function make_mark(target_id, attrs) {
   )
 
   var nest = make_nest({
-    'id': 'nest_' + rect.attr('id'), // special ID
+    id: 'nest_' + rect.attr('id'), // special ID
+    width: rect.width(),
+    height: rect.height(),
+    x: target.x() - 2,
+    y: target.y() - 2,
     'data-nest-for': 'mark',
   })
+  nest.addClass('drag-closed')
   //console.log("nest node is now", nest.node)
 
   // Re-home the enveloped object inside the <svg>, and then
@@ -392,7 +405,8 @@ function make_mark(target_id, attrs) {
   }
   target.x(0)
   target.y(0)
-  target.toParent(nest)
+  nest.node.appendChild(target.node)
+  //target.toParent(nest)
   target.attr('data-enveloped', true)
   un_hookup_ui(target.node)
   nest.attr( oldXY )
@@ -502,6 +516,9 @@ function _unmark(mark_rect_id) {
   nodeMap(nestSVG.node, (kid) => {
     if (g(kid, 'data-enveloped')) {
       s(kid, 'data-enveloped', null)
+      if (kid.classList.contains('drag-open')) {
+        kid.classList.remove('drag-open')
+      }
       kid.remove()
       kidObj = SVG.adopt(kid)
       kidObj.attr(oldXY)
@@ -566,6 +583,7 @@ function import_foreign_svg(url, attrs) {
       nest.height(100)
     }
     nest.addClass('draggable-group')
+    nest.addClass('drag-closed')
 
     frame.querySelectorAll('script').forEach((script) => {
       appendDocumentScript(script, nest.node)
@@ -676,8 +694,6 @@ function hookup_foreign_scripts(elem, url, serializedState) {
 function hookup_ui(elem) {
   console.log("hookup_ui", elem.id)
   nest = SVG.adopt(elem)
-  nest.addClass('draggable-group')
-  nest.addClass('ui-toplevel')
   nest.on('svg_dragsafe_click', (evt) => {
     console.log('id', elem.id, 'got click', evt)
     ui_mark_by_id(evt.detail.origEvent, elem.id)
@@ -693,8 +709,6 @@ function hookup_ui(elem) {
 function un_hookup_ui(elem) {
   console.log("un_hookup_ui", elem.id)
   nest = SVG.adopt(elem)
-  nest.removeClass('draggable-group')
-  nest.removeClass('ui-toplevel')
   nest.off('svg_dragsafe_click')
   nest.off('svg_dragsafe_dblclick')
   nest.off('svg_longtouch')
@@ -776,11 +790,12 @@ function pop_from_parent(svgElem, ns) {
     if (svgElem.tagName !== 'svg') {
       throw Error('Not an SVG element')
     }
-    parentWithXY = svgElem.parentNode.closest('.draggable-group')
+    parentWithXY = svgElem.parentNode.closest('svg')
     grandparent = parentWithXY.parentNode.closest('svg')
+    console.log('child', svgElem.id, 'parent', parentWithXY.id, 'gp', grandparent.id)
     child = SVG.adopt(svgElem)
     parentWithXY = SVG.adopt(parentWithXY)
-    grandparent = SVG.adopt(grandparent)
+    //grandparent = SVG.adopt(grandparent)
 
     child.x(child.x() + parentWithXY.x())
     child.y(child.y() + parentWithXY.y())
@@ -793,24 +808,37 @@ function pop_from_parent(svgElem, ns) {
     }
     hookup_ui(child.node)
     child.node.dataset.appClass = 'nest'
-    grandparent.add(child)
+    //grandparent.add(child)
+    push_to_parent(child.node, grandparent, (c, p) => {
+      p.appendChild(c)
+    })
 }
 
 function push_to_parent(childEl, parentEl, pushFn) {
     console.log("push_to_parent", childEl.id, parentEl.id)
+    console.log("parent dataset", parentEl.dataset)
+    if (parentEl.dataset.nestFor === 'mark') {
+      parentEl = parentEl.parentElement
+    }
     if (childEl.dataset.enveloped) {
       markNestEl = childEl.closest('[data-nest-for=mark]')
       delete_element(markNestEl)
+      s(childEl, 'data-enveloped', null)
     }
 
-    un_hookup_ui(childEl)
+    if (parentEl.id === 'svg_table') {
+      hookup_ui(childEl)
+    } else {
+      un_hookup_ui(childEl)
+    }
     childEl.remove()
     c = SVG.adopt(childEl)
     p = SVG.adopt(parentEl)
     c.x( c.x() - p.x() )
     c.y( c.y() - p.y() )
-    s(childEl, 'data-enveloped', null)
-    pushFn(childEl, parentEl)
+    if (pushFn) {
+      pushFn(childEl, parentEl)
+    }
 }
 
 function delete_element(el) {

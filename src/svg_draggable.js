@@ -77,19 +77,41 @@ function makeDraggable(world) {
   }
 
   function startDrag(evt) {
-    console.log("startdrag", evt)
+    //console.log("startdrag this", this, " evt", evt)
     evt.preventDefault() // prevent, for example, text selection
-    if (
-      evt.target.classList.contains('draggable')
-      ||
-      evt.target.classList.contains('draggable-group')
-    ) {
-      selectedEl = SVG.get(evt.target.id);
-      initialiseDragging(evt);
-    } else if (evt.target.closest('.draggable-group')) {
-      selectedEl = SVG.get(evt.target.closest('.draggable-group').id);
-      initialiseDragging(evt);
+    dragTarget = evt.target.closest('.draggable-group')
+    console.log("got dragTarget", dragTarget)
+    while (dragTarget) {
+      // Highest priority goes to drag-open (these are immediate children of
+      // locked selections)
+      console.log("looking for drag open / closed", dragTarget.id, dragTarget.parentNode)
+      openParent = dragTarget.parentNode.closest('.drag-open')
+      console.log("openParent", openParent)
+
+      // Disqualify drag targets if they are enclosed by a .drag-closed element
+      closedParent = dragTarget.parentNode.closest('.drag-closed')
+      console.log("closedParent", closedParent)
+
+      if (!closedParent) {
+        break
+      }
+      if (openParent) {
+        if (openParent.closest('.drag-closed').id === closedParent.id) {
+          // openParent is underneath or equal to closedParent
+          // so, allow the dragTarget to be dragged
+          break
+        }
+        // otherwise, ignore the openParent, as the closedParent is
+        // more proximate to the dragTarget
+      }
+      dragTarget = closedParent.closest('.draggable-group')
     }
+    if (!dragTarget) {
+      return
+    }
+    selectedEl = SVG.adopt(dragTarget)
+    console.log("selected el closest", selectedEl)
+    initialiseDragging(evt);
   }
 
   function drag(evt) {
@@ -111,7 +133,7 @@ function makeDraggable(world) {
     // Don't spam - throttle to roughly every 200 miliseconds
     if (lockBroadcastTimer) { return }
     lockBroadcastTimer = true
-    broadcastTimer = setTimeout(() => { lockBroadcastTimer = false }, 600)//200)
+    broadcastTimer = setTimeout(() => { lockBroadcastTimer = false }, 400)//200)
     broadcast('svg_drag', {
       elemId: selectedEl.node.id,
       mouse: mouse,
