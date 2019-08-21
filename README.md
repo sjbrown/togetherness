@@ -90,12 +90,12 @@ myThing = {
   initialize: function(elem) {
     elem.addEventListener( 'changeMyColor', (evt) => {
       console.log('Changing color!')
-      this.querySelector('rect').style['fill'] = '#00ff00'
+      elem.querySelector('rect').style['fill'] = '#00ff00'
     } )
   },
 
   serialize: function(elem) {
-    return { myColor: this.querySelector('rect').style['fill'] }
+    return { myColor: elem.querySelector('rect').style['fill'] }
   },
 
 }
