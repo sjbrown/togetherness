@@ -746,7 +746,7 @@ function add_object(url, attrs) {
   })
   .then((nest) => {
     hookup_ui(nest.node)
-    hookup_foreign_scripts(nest.node, url, attrs.serializedState)
+    hookup_foreign_scripts(nest.node, url, attrs && attrs.serializedState)
     return nest
   })
   .then((nest) => {
