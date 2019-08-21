@@ -653,8 +653,14 @@ function appendDocumentScript(scriptElem, parentElem) {
 function initialize_with_ns(elem, ns, serializedState) {
   // The foreign <svg> should have an onLoad to do this, but
   // Chrome has problems doing onLoad
-  if (ns.initialize && !g(elem, 'data-ui-initialized')) {
+  if g(elem, 'data-ui-initialized') {
+    return
+  }
+  if (ns.initialize) {
     ns.initialize(elem, serializedState)
+  }
+  if (ns.menu) {
+    hookup_menu_actions(elem, ns.menu)
   }
   s(elem, 'data-ui-initialized', true)
 }
@@ -682,10 +688,6 @@ function hookup_foreign_scripts(elem, url, serializedState) {
 
       if (ns.deserialize) {
         deserializers[url] = ns.deserialize
-      }
-
-      if (ns.menu) {
-        hookup_menu_actions(elem, ns.menu)
       }
     }
   })
@@ -785,60 +787,60 @@ function add_object_from_payload(payload) {
   })
 }
 
-function pop_from_parent(svgElem, ns) {
-    console.log('pop_from_parent', svgElem.id)
-    if (svgElem.tagName !== 'svg') {
-      throw Error('Not an SVG element')
-    }
-    parentWithXY = svgElem.parentNode.closest('svg')
-    grandparent = parentWithXY.parentNode.closest('svg')
-    console.log('child', svgElem.id, 'parent', parentWithXY.id, 'gp', grandparent.id)
-    child = SVG.adopt(svgElem)
-    parentWithXY = SVG.adopt(parentWithXY)
-    //grandparent = SVG.adopt(grandparent)
+function pop_from_parent(childElem, ns) {
+  console.log('pop_from_parent', childElem.id)
+  if (childElem.tagName !== 'svg') {
+    throw Error('Not an SVG element')
+  }
+  parentWithXY = childElem.parentNode.closest('svg')
+  grandparent = parentWithXY.parentNode.closest('svg')
+  console.log('child', childElem.id, 'parent', parentWithXY.id, 'gp', grandparent.id)
+  child = SVG.adopt(childElem)
+  parentWithXY = SVG.adopt(parentWithXY)
 
-    child.x(child.x() + parentWithXY.x())
-    child.y(child.y() + parentWithXY.y())
+  child.x(child.x() + parentWithXY.x())
+  child.y(child.y() + parentWithXY.y())
 
-    if (!g(child.node, 'data-ui-initialized')) {
-      initialize_with_ns(child.node, ns)
-      if (ns.menu) {
-        hookup_menu_actions(child.node, ns.menu)
-      }
-    }
-    hookup_ui(child.node)
-    child.node.dataset.appClass = 'nest'
-    //grandparent.add(child)
-    push_to_parent(child.node, grandparent, (c, p) => {
-      p.appendChild(c)
-    })
+  if (ns) {
+    initialize_with_ns(childElem, ns)
+    hookup_ui(childElem)
+    childElem.dataset.appClass = 'nest'
+  }
+
+  push_to_parent(childElem, grandparent, (c, p) => {
+    p.appendChild(c)
+  })
 }
 
 function push_to_parent(childEl, parentEl, pushFn) {
-    console.log("push_to_parent", childEl.id, parentEl.id)
-    console.log("parent dataset", parentEl.dataset)
-    if (parentEl.dataset.nestFor === 'mark') {
-      parentEl = parentEl.parentElement
-    }
-    if (childEl.dataset.enveloped) {
-      markNestEl = childEl.closest('[data-nest-for=mark]')
-      delete_element(markNestEl)
-      s(childEl, 'data-enveloped', null)
-    }
+  console.log("push_to_parent", childEl.id, parentEl.id)
+  console.log("parent dataset", parentEl.dataset)
+  if (parentEl.dataset.nestFor === 'mark') {
+    // if the parent is just a mark, step the focus up one level
+    mark = SVG.adopt(parentEl)
+    markXY = { x: mark.x(), y: mark.y() }
+    parentEl = parentEl.parentNode.closest('svg')
+  } else {
+    markXY = { x: 0, y: 0 }
+  }
+  if (childEl.dataset.enveloped) {
+    // re-parenting removes the mark
+    markNestEl = childEl.closest('[data-nest-for=mark]')
+    delete_element(markNestEl)
+    s(childEl, 'data-enveloped', null)
+  }
 
-    if (parentEl.id === 'svg_table') {
-      hookup_ui(childEl)
-    } else {
-      un_hookup_ui(childEl)
-    }
-    childEl.remove()
-    c = SVG.adopt(childEl)
-    p = SVG.adopt(parentEl)
-    c.x( c.x() - p.x() )
-    c.y( c.y() - p.y() )
-    if (pushFn) {
-      pushFn(childEl, parentEl)
-    }
+  if (parentEl.id === 'svg_table') {
+    hookup_ui(childEl)
+  } else {
+    un_hookup_ui(childEl)
+  }
+  childEl.remove()
+  c = SVG.adopt(childEl)
+  p = SVG.adopt(parentEl)
+  c.x( c.x() - (p.x() + markXY.x) )
+  c.y( c.y() - (p.y() + markXY.y) )
+  pushFn(childEl, parentEl)
 }
 
 function delete_element(el) {
