@@ -88,6 +88,10 @@ var rule_sum = {
   dragend_droptarget_handler: function(evt) {
     ruleElem = this
     console.log('rulesum dragend_droptarget_handler', ruleElem.id, evt.detail.draggedElemId, evt.detail.dropElemId)
+    if (evt.detail.dropElemId !== ruleElem.id + '_big_rect') {
+      console.log('I dont care. skipiping')
+      return
+    }
     draggedElem = byId(evt.detail.draggedElemId)
     dragged = SVG.adopt(draggedElem)
     dropElem = byId(evt.detail.dropElemId)
@@ -122,6 +126,35 @@ var rule_sum = {
       bubbles: true,
       detail: { 'ruleElemId': ruleElem.id },
     }))
+  },
+
+  contents_change_handler: function(evt) {
+    ruleElem = this
+    console.log('contents_change_handler', ruleElem.id, evt.detail)
+    q = '#' + ruleElem.id + '_contents_group > svg'
+    containedSVGs = this.querySelectorAll(q)
+    let sum = 0
+    containedSVGs.forEach((s) => {
+      let tempNum = 0
+      s.querySelectorAll('tspan').forEach((t) => {
+        console.log('found tspan', t.id, 'with', t.textContent)
+        c = t.textContent.trim()
+        num = parseInt(c)
+        if (isNaN(num)) {
+          if (c == '+') {
+            tempNum = 1
+          } else if (c == '-') {
+            tempNum = -1
+          }
+        } else {
+          tempNum =  num
+        }
+      })
+      sum = sum + tempNum
+    })
+    console.log('sum was', sum)
+    tspan = ruleElem.querySelector('#tspan_sum')
+    tspan.textContent = sum
   },
 
   shape_change_handler: function(evt) {
@@ -173,32 +206,6 @@ var rule_sum = {
     x.height( x.height() + delta.y )
 
   },
-
-  contents_change_handler: function(evt) {
-    ruleElem = this
-    console.log('contents_change_handler', ruleElem.id, evt.detail)
-    sum = 0
-    q = '#' + ruleElem.id + '_contents_group > svg'
-    containedSVGs = this.querySelectorAll(q)
-    containedSVGs.forEach((s) => {
-      s.querySelectorAll('tspan').forEach((t) => {
-        c = t.textContent.trim()
-        num = parseInt(c)
-        if (isNaN(num)) {
-          if (c == '+') {
-            sum = sum + 1
-          } else if (c == '-') {
-            sum = sum - 1
-          }
-        } else {
-          sum = sum + num
-        }
-      })
-    })
-    tspan = ruleElem.querySelector('#tspan_sum')
-    tspan.textContent = sum
-  },
-
 
   initialize: function(elem) {
     elem.addEventListener('change', this.contents_change_handler)

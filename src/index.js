@@ -809,7 +809,7 @@ function add_object_from_payload(payload) {
 }
 
 function pop_from_parent(childElem, ns) {
-  console.log('pop_from_parent', childElem.id)
+  console.log('pop child', childElem.id, 'from_parent')
   if (childElem.tagName !== 'svg') {
     throw Error('Not an SVG element')
   }
@@ -866,8 +866,8 @@ function push_to_parent(childEl, parentEl, pushFn) {
   childEl.remove()
   c = SVG.adopt(childEl)
   p = SVG.adopt(parentEl)
-  console.log('c', c.x(), c.y(), 'mark', markXY, 'p', p.x(), p.y())
-  console.log('crbox', c.rbox(), 'prbox', p.rbox())
+  //console.log('c', c.x(), c.y(), 'mark', markXY, 'p', p.x(), p.y())
+  //console.log('crbox', c.rbox(), 'prbox', p.rbox())
   c.x( c.x() + markXY.x - p.x() )
   c.y( c.y() + markXY.y - p.y() )
   pushFn(childEl, parentEl)
