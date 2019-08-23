@@ -476,7 +476,7 @@ function ui_mark_by_id(evt, target_id) {
 
 function ui_unmark(evt) {
   console.log('ui unmark', evt)
-  evt.stopPropagation()
+  //evt.stopPropagation()
   if (evt.target.tagName === 'svg') {
     mark_rect = evt.target.lastChild
   } else {
@@ -502,6 +502,27 @@ function ui_unmark_all_but(exceptId) {
       net_fire({type: 'dropMark', mark_rect: serialize(mark_rect) });
     }
   })
+}
+
+function raw_unmark(el) {
+  console.log('raw unmark', el)
+  if (!el.dataset.enveloped) {
+    console.error('element', el, 'was not marked')
+    return
+  }
+  nestSVG = SVG.adopt(el.parentElement)
+  oldXY = {
+    x: nestSVG.x(),
+    y: nestSVG.y(),
+  }
+  SVG.adopt(el).attr(oldXY)
+  s(el, 'data-enveloped', null)
+  if (el.classList.contains('drag-open')) {
+    el.classList.remove('drag-open')
+  }
+  nestSVG.remove()
+  ui_fire({type: 'dropMark', data: el.parentElement});
+  net_fire({type: 'dropMark', mark_rect: serialize(nestSVG.lastChild) });
 }
 
 function _unmark(mark_rect_id) {
@@ -653,7 +674,7 @@ function appendDocumentScript(scriptElem, parentElem) {
 function initialize_with_ns(elem, ns, serializedState) {
   // The foreign <svg> should have an onLoad to do this, but
   // Chrome has problems doing onLoad
-  if g(elem, 'data-ui-initialized') {
+  if (g(elem, 'data-ui-initialized')) {
     return
   }
   if (ns.initialize) {
@@ -798,7 +819,9 @@ function pop_from_parent(childElem, ns) {
   child = SVG.adopt(childElem)
   parentWithXY = SVG.adopt(parentWithXY)
 
+  console.log('setting to', child.x() + parentWithXY.x())
   child.x(child.x() + parentWithXY.x())
+  console.log('now ', child.x() )
   child.y(child.y() + parentWithXY.y())
 
   if (ns) {
@@ -820,14 +843,19 @@ function push_to_parent(childEl, parentEl, pushFn) {
     mark = SVG.adopt(parentEl)
     markXY = { x: mark.x(), y: mark.y() }
     parentEl = parentEl.parentNode.closest('svg')
+  } else if (parentEl.dataset.enveloped) {
+    console.log("ENVel")
+    mark = SVG.adopt(parentEl.parentElement)
+    markXY = { x: -mark.x(), y: -mark.y() }
   } else {
     markXY = { x: 0, y: 0 }
   }
-  if (childEl.dataset.enveloped) {
+  if (childEl.dataset.nestFor === 'mark') {
+    childEl = childEl.firstChild
+    raw_unmark(childEl)
+  } else if (childEl.dataset.enveloped) {
     // re-parenting removes the mark
-    markNestEl = childEl.closest('[data-nest-for=mark]')
-    delete_element(markNestEl)
-    s(childEl, 'data-enveloped', null)
+    raw_unmark(childEl)
   }
 
   if (parentEl.id === 'svg_table') {
@@ -838,8 +866,10 @@ function push_to_parent(childEl, parentEl, pushFn) {
   childEl.remove()
   c = SVG.adopt(childEl)
   p = SVG.adopt(parentEl)
-  c.x( c.x() - (p.x() + markXY.x) )
-  c.y( c.y() - (p.y() + markXY.y) )
+  console.log('c', c.x(), c.y(), 'mark', markXY, 'p', p.x(), p.y())
+  console.log('crbox', c.rbox(), 'prbox', p.rbox())
+  c.x( c.x() + markXY.x - p.x() )
+  c.y( c.y() + markXY.y - p.y() )
   pushFn(childEl, parentEl)
 }
 
