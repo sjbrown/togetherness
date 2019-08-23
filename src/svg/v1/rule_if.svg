@@ -125,6 +125,9 @@ var rule_if = {
 
   shape_change_handler: function(evt) {
     console.log('shape_change_handler', this.id, evt)
+    contentsGroup = this.querySelector('#' + this.id + '_contents_group')
+    cgObj = SVG.adopt(contentsGroup)
+    bounds = cgObj.bbox()
     if (evt.type == 'rule_height_minus') {
       delta = { x: 0, y: -10 }
     } else if (evt.type == 'rule_height_plus') {
@@ -137,6 +140,14 @@ var rule_if = {
 
     el = this.querySelector('#' + this.id + '_big_rect')
     x = SVG.adopt(el)
+    if ((x.width() + delta.x) < (bounds.width + bounds.x)) {
+        console.error('out of bounds', bounds)
+        return
+    }
+    if ((x.height() + delta.y) < (bounds.height + bounds.y)) {
+        console.error('out of bounds', bounds)
+        return
+    }
     x.width( x.width() + delta.x )
     x.height( x.height() + delta.y )
 
@@ -283,15 +294,15 @@ var rule_if = {
   <g
      id="group-monochrome-1"
      filter="url(#app-filter-colorize)">
+    <rect
+       style="fill:#ffffff;fill-opacity:0.2;stroke:#a0a0a0;stroke-width:4;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       id="big_rect"
+       class="droptarget"
+       width="280"
+       height="280"
+       x="10"
+       y="10" />
     <g id="contents_group">
-      <rect
-         style="fill:#ffffff;fill-opacity:0.2;stroke:#a0a0a0;stroke-width:4;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-         id="big_rect"
-         class="droptarget"
-         width="280"
-         height="280"
-         x="10"
-         y="10" />
     </g>
     <rect
        style="fill:#ffffff;fill-opacity:1;stroke:#f0f0f0;stroke-width:1.92222762;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"

@@ -159,6 +159,9 @@ var rule_sum = {
 
   shape_change_handler: function(evt) {
     console.log('shape_change_handler', this.id, evt)
+    contentsGroup = this.querySelector('#' + this.id + '_contents_group')
+    cgObj = SVG.adopt(contentsGroup)
+    bounds = cgObj.bbox()
     if (evt.type == 'rule_height_minus') {
       delta = { x: 0, y: -10 }
     } else if (evt.type == 'rule_height_plus') {
@@ -171,6 +174,14 @@ var rule_sum = {
 
     el = this.querySelector('#' + this.id + '_big_rect')
     x = SVG.adopt(el)
+    if ((x.width() + delta.x) < (bounds.width + bounds.x)) {
+        console.error('out of bounds', bounds)
+        return
+    }
+    if ((x.height() + delta.y) < (bounds.height + bounds.y)) {
+        console.error('out of bounds', bounds)
+        return
+    }
     x.width( x.width() + delta.x )
     x.height( x.height() + delta.y )
 
