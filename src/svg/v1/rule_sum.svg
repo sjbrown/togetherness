@@ -140,19 +140,31 @@ var rule_sum = {
     x.width( x.width() + delta.x )
     x.height( x.height() + delta.y )
 
+    el = this.querySelector('#top_rect')
+    x = SVG.adopt(el)
+    x.x( x.x() + (delta.x/2) )
+
     el = this.querySelector('#bottom_rect')
     x = SVG.adopt(el)
-    x.x( x.x() + delta.x )
+    x.x( x.x() + (delta.x/2) )
     x.y( x.y() + delta.y )
+
+    el = this.querySelector('#text_rule')
+    x = SVG.adopt(el)
+    x.x( x.x() + (delta.x/2) )
+
+    el = this.querySelector('#tspan_rule')
+    x = SVG.adopt(el)
+    x.x( x.x() + (delta.x/2) )
 
     el = this.querySelector('#text_sum')
     x = SVG.adopt(el)
-    x.x( x.x() + delta.x )
+    x.x( x.x() + (delta.x/2) )
     x.y( x.y() + delta.y )
 
     el = this.querySelector('#tspan_sum')
     x = SVG.adopt(el)
-    x.x( x.x() + delta.x )
+    x.x( x.x() + (delta.x/2) )
     x.y( x.y() + delta.y )
 
     x = SVG.adopt(this)
