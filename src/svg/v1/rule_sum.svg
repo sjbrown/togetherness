@@ -81,7 +81,7 @@ var rule_sum = {
 
   dragstart_droptarget_handler: function(evt) {
     console.log('rulesum dragstart_droptarget_handler', evt.detail.draggedElemId, evt.detail.dropElemId)
-    el = byId('big_rect')
+    el = this.querySelector('#big_rect')
     el.style['fill-opacity'] = 1.0
   },
 
@@ -123,6 +123,44 @@ var rule_sum = {
     }))
   },
 
+  shape_change_handler: function(evt) {
+    console.log('shape_change_handler', this.id, evt)
+    if (evt.type == 'rule_height_minus') {
+      delta = { x: 0, y: -10 }
+    } else if (evt.type == 'rule_height_plus') {
+      delta = { x: 0, y: 10 }
+    } else if (evt.type == 'rule_width_minus') {
+      delta = { x: -10, y: 0 }
+    } else if (evt.type == 'rule_width_plus') {
+      delta = { x: 10, y: 0 }
+    }
+
+    el = this.querySelector('#big_rect')
+    x = SVG.adopt(el)
+    x.width( x.width() + delta.x )
+    x.height( x.height() + delta.y )
+
+    el = this.querySelector('#bottom_rect')
+    x = SVG.adopt(el)
+    x.x( x.x() + delta.x )
+    x.y( x.y() + delta.y )
+
+    el = this.querySelector('#text_sum')
+    x = SVG.adopt(el)
+    x.x( x.x() + delta.x )
+    x.y( x.y() + delta.y )
+
+    el = this.querySelector('#tspan_sum')
+    x = SVG.adopt(el)
+    x.x( x.x() + delta.x )
+    x.y( x.y() + delta.y )
+
+    x = SVG.adopt(this)
+    x.width( x.width() + delta.x )
+    x.height( x.height() + delta.y )
+
+  },
+
   contents_change_handler: function(evt) {
     ruleElem = this
     contentsGroup = ruleElem.querySelector('#contents_group')
@@ -150,6 +188,10 @@ var rule_sum = {
   initialize: function(elem) {
     elem.addEventListener('change', this.contents_change_handler)
     elem.addEventListener('rule_roll', this.rule_roll_handler)
+    elem.addEventListener('rule_height_minus', this.shape_change_handler)
+    elem.addEventListener('rule_height_plus', this.shape_change_handler)
+    elem.addEventListener('rule_width_minus', this.shape_change_handler)
+    elem.addEventListener('rule_width_plus', this.shape_change_handler)
     elem.addEventListener('contents_change', this.contents_change_handler)
     elem.addEventListener('dblclick', this.activate)
     elem.addEventListener('svg_drag_droptarget', this.dragover_handler)
@@ -160,6 +202,22 @@ var rule_sum = {
   menu: {
     'Roll All': {
       eventName: 'rule_roll',
+      applicable: (node) => { return true },
+    },
+    'Height -': {
+      eventName: 'rule_height_minus',
+      applicable: (node) => { return true },
+    },
+    'Height +': {
+      eventName: 'rule_height_plus',
+      applicable: (node) => { return true },
+    },
+    'Width -': {
+      eventName: 'rule_width_minus',
+      applicable: (node) => { return true },
+    },
+    'Width +': {
+      eventName: 'rule_width_plus',
       applicable: (node) => { return true },
     },
   },
