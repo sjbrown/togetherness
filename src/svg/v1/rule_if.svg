@@ -11,9 +11,9 @@
    width="300"
    height="300"
    version="1.1"
-   id="rule_sum"
+   id="rule_if"
    inkscape:version="0.92.3 (2405546, 2018-03-11)"
-   sodipodi:docname="rule_sum.svg">
+   sodipodi:docname="rule_if.svg">
   <defs id="defs2">
     <filter
        id="app-filter-colorize"
@@ -47,12 +47,12 @@
      inkscape:window-maximized="1" />
   <script
      type="text/javascript"
-     data-namespace="rule_sum"
-     id="script_rule_sum"><![CDATA[
-var rule_sum = {
+     data-namespace="rule_if"
+     id="script_rule_if"><![CDATA[
+var rule_if = {
 
   rule_roll_handler: function(evt) {
-    console.log('rule_sum ', this.id, 'hears rule_roll event', evt)
+    console.log('rule_if', this.id, 'hears rule_roll event', evt)
     contentsGroup = this.querySelector('#' + this.id + '_contents_group')
     contentsGroup.querySelectorAll('svg').forEach((s) => {
       evt_fire('die_roll', s, null, {})
@@ -60,12 +60,12 @@ var rule_sum = {
   },
 
   activate: function(evt) {
-    console.log('rule_sum this', this, 'hears activate event', evt)
+    console.log('rule_if this', this, 'hears activate event', evt)
     lock_selection(evt)
   },
 
   dragover_handler: function(evt) {
-    console.log('rulesum dragover_handler', evt.detail.draggedElemId, evt.detail.dropElemId)
+    console.log('ruleif dragover_handler', evt.detail.draggedElemId, evt.detail.dropElemId)
     draggedElem = byId(evt.detail.draggedElemId)
     dragged = SVG.adopt(draggedElem)
     dropElem = byId(evt.detail.dropElemId)
@@ -80,14 +80,14 @@ var rule_sum = {
   },
 
   dragstart_droptarget_handler: function(evt) {
-    console.log('rulesum dragstart_droptarget_handler', evt.detail.draggedElemId, evt.detail.dropElemId)
+    console.log('ruleif', this.id, 'dragstart_droptarget_handler', evt.detail.draggedElemId, evt.detail.dropElemId)
     el = this.querySelector('#' + this.id + '_big_rect')
     el.style['fill-opacity'] = 1.0
   },
 
   dragend_droptarget_handler: function(evt) {
     ruleElem = this
-    console.log('rulesum dragend_droptarget_handler', ruleElem.id, evt.detail.draggedElemId, evt.detail.dropElemId)
+    console.log('ruleif dragend_droptarget_handler', ruleElem.id, evt.detail.draggedElemId, evt.detail.dropElemId)
     draggedElem = byId(evt.detail.draggedElemId)
     dragged = SVG.adopt(draggedElem)
     dropElem = byId(evt.detail.dropElemId)
@@ -97,7 +97,6 @@ var rule_sum = {
 
     contentsGroup = this.querySelector('#' + ruleElem.id + '_contents_group')
     is_inside = isInside(dragged.node, drop.node)
-    console.log('dragged', draggedElem.id, 'is inside drop', evt.detail.dropElemId, '?', is_inside)
 
     if (contentsGroup.querySelector('#' + draggedElem.id)) {
       // already inside the contents
@@ -154,16 +153,12 @@ var rule_sum = {
     x = SVG.adopt(el)
     x.x( x.x() + (delta.x/2) )
 
-    el = this.querySelector('#tspan_rule')
-    x = SVG.adopt(el)
-    x.x( x.x() + (delta.x/2) )
-
-    el = this.querySelector('#text_sum')
+    el = this.querySelector('#text_if')
     x = SVG.adopt(el)
     x.x( x.x() + (delta.x/2) )
     x.y( x.y() + delta.y )
 
-    el = this.querySelector('#tspan_sum')
+    el = this.querySelector('#tspan_if')
     x = SVG.adopt(el)
     x.x( x.x() + (delta.x/2) )
     x.y( x.y() + delta.y )
@@ -179,7 +174,9 @@ var rule_sum = {
     console.log('contents_change_handler', ruleElem.id, evt.detail)
     sum = 0
     q = '#' + ruleElem.id + '_contents_group > svg'
+    console.log('q', q)
     containedSVGs = this.querySelectorAll(q)
+    console.log('c', containedSVGs)
     containedSVGs.forEach((s) => {
       s.querySelectorAll('tspan').forEach((t) => {
         c = t.textContent.trim()
@@ -195,10 +192,11 @@ var rule_sum = {
         }
       })
     })
-    tspan = ruleElem.querySelector('#tspan_sum')
-    tspan.textContent = sum
+    condition_tspan = ruleElem.querySelector('#tspan_rule_num')
+    gate = parseInt(condition_tspan.textContent)
+    result_tspan = ruleElem.querySelector('#tspan_if')
+    result_tspan.textContent = (sum >= gate) ? 1 : 0
   },
-
 
   initialize: function(elem) {
     elem.addEventListener('change', this.contents_change_handler)
@@ -213,9 +211,9 @@ var rule_sum = {
     elem.addEventListener('svg_dragstart_droptarget', this.dragstart_droptarget_handler)
     elem.addEventListener('svg_dragend_droptarget', this.dragend_droptarget_handler)
     contentsEl = elem.querySelector('#contents_group')
-    contentsEl.id = (elem.id + '_contents_group')
+    contentsEl.id = elem.id + '_contents_group'
     bigRectEl = elem.querySelector('#big_rect')
-    bigRectEl.id = (elem.id + '_big_rect')
+    bigRectEl.id = elem.id + '_big_rect'
   },
 
   menu: {
@@ -288,20 +286,24 @@ var rule_sum = {
        style="font-style:normal;font-weight:normal;font-size:10.5px;line-height:1.25;font-family:sans-serif;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none"
        x="149.8"
        y="14.28"
-       id="text_rule"><tspan
-         sodipodi:role="line"
-         id="tspan_rule"
-         x="149.8"
-         y="14.28"
-         style="font-size:10.5px;text-align:center;text-anchor:middle">SUM(...)</tspan></text>
+       id="text_rule"
+       ><tspan id="tspan_rule_prefix"
+               style="font-size:10.5px;text-align:center;text-anchor:middle"
+               >IF(x ≥ </tspan><tspan
+               id="tspan_rule_num"
+               style="font-size:10.5px;text-align:center;text-anchor:middle"
+               >6</tspan><tspan
+               id="tspan_rule_suffix"
+               style="font-size:10.5px;text-align:center;text-anchor:middle"
+               >)</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-weight:normal;font-size:16px;line-height:1.25;font-family:sans-serif;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1"
        x="150.23"
        y="290.77"
-       id="text_sum"><tspan
+       id="text_if"><tspan
          sodipodi:role="line"
-         id="tspan_sum"
+         id="tspan_if"
          x="150.26"
          y="290.77"
          style="font-size:16px;text-align:center;text-anchor:middle">0</tspan></text>

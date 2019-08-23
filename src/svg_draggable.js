@@ -143,9 +143,10 @@ function makeDraggable(world) {
 
   function notifyDropTargets(evt, eventName) {
     mouse = getMousePosition(evt)
-    world.node.querySelectorAll('.droptarget').forEach(el => {
-      //console.log('broadcasting for ', el.id, evt.currentTarget)
-      broadcast(eventName + '_droptarget', {
+    world.node.querySelectorAll('.droptarget').forEach((el) => {
+      newEventName = eventName + '_droptarget'
+      console.log('broadcasting', newEventName, 'for', el.id, evt.currentTarget)
+      broadcast(newEventName, {
         draggedElemId: selectedEl.node.id,
         dropElemId: el.id,
         mouse: mouse,
