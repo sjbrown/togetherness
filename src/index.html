@@ -802,7 +802,8 @@ var text_verbs = {
 
 function make_text(attrs, content) {
   var padding = 8
-  var text = svg_table.plain(content)
+  var text = svg_table.plain('')
+  var tspan = text.tspan(content)
   text.attr(Object.assign({
     'data-app-class': 'text',
     id: 'text_' + base32.short_id(),
