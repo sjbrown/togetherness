@@ -87,11 +87,7 @@ var rule_sum = {
 
   dragend_droptarget_handler: function(evt) {
     ruleElem = this
-    console.log('rulesum dragend_droptarget_handler', ruleElem.id, evt.detail.draggedElemId, evt.detail.dropElemId)
-    if (evt.detail.dropElemId !== ruleElem.id + '_big_rect') {
-      console.log('I dont care. skipiping')
-      return
-    }
+    console.log('ruleif dragend_droptarget_handler', ruleElem.id, evt.detail.draggedElemId, evt.detail.dropElemId)
     draggedElem = byId(evt.detail.draggedElemId)
     dragged = SVG.adopt(draggedElem)
     dropElem = byId(evt.detail.dropElemId)
@@ -126,35 +122,6 @@ var rule_sum = {
       bubbles: true,
       detail: { 'ruleElemId': ruleElem.id },
     }))
-  },
-
-  contents_change_handler: function(evt) {
-    ruleElem = this
-    console.log('contents_change_handler', ruleElem.id, evt.detail)
-    q = '#' + ruleElem.id + '_contents_group > svg'
-    containedSVGs = this.querySelectorAll(q)
-    let sum = 0
-    containedSVGs.forEach((s) => {
-      let tempNum = 0
-      s.querySelectorAll('tspan').forEach((t) => {
-        console.log('found tspan', t.id, 'with', t.textContent)
-        c = t.textContent.trim()
-        num = parseInt(c)
-        if (isNaN(num)) {
-          if (c == '+') {
-            tempNum = 1
-          } else if (c == '-') {
-            tempNum = -1
-          }
-        } else {
-          tempNum =  num
-        }
-      })
-      sum = sum + tempNum
-    })
-    console.log('sum was', sum)
-    tspan = ruleElem.querySelector('#tspan_sum')
-    tspan.textContent = sum
   },
 
   shape_change_handler: function(evt) {
@@ -218,6 +185,39 @@ var rule_sum = {
 
   },
 
+  contents_change_handler: function(evt) {
+    ruleElem = this
+    console.log('contents_change_handler', ruleElem.id, evt.detail)
+    let sum = 0
+    q = '#' + ruleElem.id + '_contents_group > svg'
+    containedSVGs = this.querySelectorAll(q)
+    containedSVGs.forEach((s) => {
+      let tempNum = 0
+      s.querySelectorAll('tspan').forEach((t) => {
+        if (t.closest('svg').id !== s.id) {
+          // it's buried multiple levels deep in sub-SVGs
+          // so skip it lest it be double-counted
+          return
+        }
+        c = t.textContent.trim()
+        num = parseInt(c)
+        if (isNaN(num)) {
+          if (c == '+') {
+            tempNum = 1
+          } else if (c == '-') {
+            tempNum = -1
+          }
+        } else {
+          tempNum =  num
+        }
+      })
+      sum = sum + tempNum
+    })
+    console.log('sum was', sum)
+    tspan = ruleElem.querySelector('#tspan_sum')
+    tspan.textContent = sum
+  },
+
   initialize: function(elem) {
     elem.addEventListener('change', this.contents_change_handler)
     elem.addEventListener('rule_roll', this.rule_roll_handler)
@@ -276,26 +276,28 @@ var rule_sum = {
   <g
      id="group-monochrome-1"
      filter="url(#app-filter-colorize)">
-    <g id="contents_group">
-      <rect
-         style="fill:#ffffff;fill-opacity:0.2;stroke:#a0a0a0;stroke-width:4;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-         id="big_rect"
-         class="droptarget"
-         width="280"
-         height="280"
-         x="10"
-         y="10" />
+    <rect
+       style="fill:#ffffff;fill-opacity:0.2;stroke:#a0a0a0;stroke-width:4;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       id="big_rect"
+       class="droptarget"
+       width="280"
+       height="280"
+       x="10"
+       y="10" />
+    <g id="contents_group" class="contents_group">
     </g>
     <rect
-       style="fill:#ffffff;fill-opacity:1;stroke:#f0f0f0;stroke-width:1.92222762;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       style="fill:#ffffff;fill-opacity:1;stroke:#f0f0f0;stroke-width:1.9;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
        id="top_rect"
        width="48.0"
        height="12.0"
        x="126.0"
        y="4.26" />
     <rect
-       style="fill:#ffffff;fill-opacity:1;stroke:#f0f0f0;stroke-width:2.6975491;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       style="fill:#ffffff;fill-opacity:1;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
        id="bottom_rect"
+       stroke-width="2.7"
+       stroke="#f0f0f0"
        width="77.3"
        height="21.3"
        x="111.34"
@@ -306,9 +308,9 @@ var rule_sum = {
        style="font-style:normal;font-weight:normal;font-size:10.5px;line-height:1.25;font-family:sans-serif;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none"
        x="149.8"
        y="14.28"
-       id="text_rule"><tspan
+       id="text_rule"
+       ><tspan id="tspan_rule"
          sodipodi:role="line"
-         id="tspan_rule"
          x="149.8"
          y="14.28"
          style="font-size:10.5px;text-align:center;text-anchor:middle">SUM(...)</tspan></text>

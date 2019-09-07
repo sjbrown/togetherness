@@ -183,13 +183,18 @@ var rule_if = {
   contents_change_handler: function(evt) {
     ruleElem = this
     console.log('contents_change_handler', ruleElem.id, evt.detail)
-    sum = 0
+    let sum = 0
     q = '#' + ruleElem.id + '_contents_group > svg'
     console.log('q', q)
     containedSVGs = this.querySelectorAll(q)
     console.log('c', containedSVGs)
     containedSVGs.forEach((s) => {
       s.querySelectorAll('tspan').forEach((t) => {
+        if (t.closest('svg').id !== s.id) {
+          // it's buried multiple levels deep in sub-SVGs
+          // so skip it lest it be double-counted
+          return
+        }
         c = t.textContent.trim()
         num = parseInt(c)
         if (isNaN(num)) {
@@ -309,7 +314,7 @@ var rule_if = {
        height="280"
        x="10"
        y="10" />
-    <g id="contents_group">
+    <g id="contents_group" class="contents_group">
     </g>
     <rect
        style="fill:#ffffff;fill-opacity:1;stroke:#f0f0f0;stroke-width:1.9;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
