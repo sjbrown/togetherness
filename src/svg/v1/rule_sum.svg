@@ -53,7 +53,7 @@ var rule_sum = {
 
   rule_roll_handler: function(evt) {
     console.log('rule_sum ', this.id, 'hears rule_roll event', evt)
-    contentsGroup = this.querySelector('#' + this.id + '_contents_group')
+    contentsGroup = rule_sum.select_my(this, 'contents_group')
     contentsGroup.querySelectorAll('svg').forEach((s) => {
       evt_fire('die_roll', s, null, {})
     })
@@ -81,7 +81,7 @@ var rule_sum = {
 
   dragstart_droptarget_handler: function(evt) {
     console.log('rulesum dragstart_droptarget_handler', evt.detail.draggedElemId, evt.detail.dropElemId)
-    el = this.querySelector('#' + this.id + '_big_rect')
+    el = rule_sum.select_my(this, 'big_rect')
     el.style['fill-opacity'] = 1.0
   },
 
@@ -95,7 +95,7 @@ var rule_sum = {
     drop.opacity(1.0)
     dropElem.style['fill-opacity'] = 0.2
 
-    contentsGroup = this.querySelector('#' + ruleElem.id + '_contents_group')
+    contentsGroup = rule_sum.select_my(ruleElem, 'contents_group')
     is_inside = isInside(dragged.node, drop.node)
     console.log('dragged', draggedElem.id, 'is inside drop', evt.detail.dropElemId, '?', is_inside)
 
@@ -126,7 +126,7 @@ var rule_sum = {
 
   shape_change_handler: function(evt) {
     console.log('shape_change_handler', this.id, evt)
-    contentsGroup = this.querySelector('#' + this.id + '_contents_group')
+    contentsGroup = rule_sum.select_my(this, 'contents_group')
     cgObj = SVG.adopt(contentsGroup)
     bounds = cgObj.bbox()
     if (evt.type == 'rule_height_minus') {
@@ -139,49 +139,45 @@ var rule_sum = {
       delta = { x: 10, y: 0 }
     }
 
-    el = this.querySelector('#' + this.id + '_big_rect')
-    x = SVG.adopt(el)
-    if ((x.width() + delta.x) < (bounds.width + bounds.x)) {
+    el = rule_sum.select_my(this, 'big_rect')
+    bigRect = SVG.adopt(el)
+    if ((bigRect.width() + delta.x) < (bounds.width + bounds.x)) {
         console.error('out of bounds', bounds)
         return
     }
-    if ((x.height() + delta.y) < (bounds.height + bounds.y)) {
+    if ((bigRect.height() + delta.y) < (bounds.height + bounds.y)) {
         console.error('out of bounds', bounds)
         return
     }
-    x.width( x.width() + delta.x )
-    x.height( x.height() + delta.y )
+    bigRect.width( bigRect.width() + delta.x )
+    bigRect.height( bigRect.height() + delta.y )
 
-    el = this.querySelector('#top_rect')
-    x = SVG.adopt(el)
-    x.x( x.x() + (delta.x/2) )
+    var idStrings = [
+      'top_rect',
+      'text_rule',
+      'tspan_rule',
+    ]
+    idStrings.forEach((id) => {
+      el = rule_sum.select_my(this, id)
+      el_ = SVG.adopt(el)
+      el_.x( el_.x() + (delta.x/2) )
+    })
 
-    el = this.querySelector('#bottom_rect')
-    x = SVG.adopt(el)
-    x.x( x.x() + (delta.x/2) )
-    x.y( x.y() + delta.y )
+    idStrings = [
+      'bottom_rect',
+      'text_sum',
+      'tspan_sum',
+    ]
+    idStrings.forEach((id) => {
+      el = rule_sum.select_my(this, id)
+      el_ = SVG.adopt(el)
+      el_.x( el_.x() + (delta.x/2) )
+      el_.y( el_.y() + delta.y )
+    })
 
-    el = this.querySelector('#text_rule')
-    x = SVG.adopt(el)
-    x.x( x.x() + (delta.x/2) )
-
-    el = this.querySelector('#tspan_rule')
-    x = SVG.adopt(el)
-    x.x( x.x() + (delta.x/2) )
-
-    el = this.querySelector('#text_sum')
-    x = SVG.adopt(el)
-    x.x( x.x() + (delta.x/2) )
-    x.y( x.y() + delta.y )
-
-    el = this.querySelector('#tspan_sum')
-    x = SVG.adopt(el)
-    x.x( x.x() + (delta.x/2) )
-    x.y( x.y() + delta.y )
-
-    x = SVG.adopt(this)
-    x.width( x.width() + delta.x )
-    x.height( x.height() + delta.y )
+    this_ = SVG.adopt(this)
+    this_.width( this_.width() + delta.x )
+    this_.height( this_.height() + delta.y )
 
   },
 
@@ -214,7 +210,7 @@ var rule_sum = {
       sum = sum + tempNum
     })
     console.log('sum was', sum)
-    tspan = ruleElem.querySelector('#tspan_sum')
+    tspan = rule_sum.select_my(ruleElem, 'tspan_sum')
     tspan.textContent = sum
   },
 
@@ -230,11 +226,29 @@ var rule_sum = {
     elem.addEventListener('svg_drag_droptarget', this.dragover_handler)
     elem.addEventListener('svg_dragstart_droptarget', this.dragstart_droptarget_handler)
     elem.addEventListener('svg_dragend_droptarget', this.dragend_droptarget_handler)
-    contentsEl = elem.querySelector('#contents_group')
-    contentsEl.id = (elem.id + '_contents_group')
-    bigRectEl = elem.querySelector('#big_rect')
-    bigRectEl.id = (elem.id + '_big_rect')
+
+    var idStrings = [
+      'contents_group',
+      'big_rect',
+      'top_rect',
+      'bottom_rect',
+      'text_rule',
+      'tspan_rule',
+      'text_sum',
+      'tspan_sum',
+    ]
+    idStrings.forEach((idString) => {
+      el = elem.querySelector('#' + idString)
+      el.id = elem.id + '_' + idString
+    })
+
   },
+
+  select_my: function(ruleElem, oldId) {
+    q = '#' + ruleElem.id + '_' + oldId
+    return ruleElem.querySelector(q)
+  },
+
 
   menu: {
     'Roll All': {
