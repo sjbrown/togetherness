@@ -62,13 +62,12 @@ var dsymbol = {
       return false
     }
     this.isChanging = true
-    //if (this.id !== evt.detail.elemId) {
-      //return;
-    //}
-    var text = this.querySelector('text')
-    var tspan = this.querySelector('tspan')
+    var tspan = this.querySelector('#tspan_value')
     var origOpacity = this.style.opacity
-    var newNum = randDiceString(1,8)
+    var newNum = randDiceString(
+      0, dsymbol.num_symbols(this) - 1
+    )
+    console.log('newnum, ', newNum)
     animated_ghost(this, { animation: 'rollOut' })
     tspan.textContent = ' '
     this.style.opacity = 0.1
@@ -78,8 +77,8 @@ var dsymbol = {
         ghost.querySelector('g').style.opacity = origOpacity
       },
       on_done: () => {
-        tspan.textContent = newNum
-        s(text, 'data-text', newNum)
+        tspan.textContent = dsymbol.get_face(this, newNum)
+        console.log('newface', tspan.textContent)
         this.style.opacity = origOpacity
         this.isChanging = false
         net_fire({type: "change", data: serialize(this)});
@@ -88,56 +87,48 @@ var dsymbol = {
     })
   },
 
-  turn_handler: function(evt) {
-    //console.log('dsymbol ', this, 'turn!!!!!!!!!!!!!!!!!!!!!!!!!!!!', evt.detail)
-    if (this.isChanging) {
-      return false
+  get_face: function(elem, index) {
+    console.log('get_face', elem.id, index)
+    t = recordTspan = elem.querySelector('#tspan_faces').textContent
+    console.log('t', t)
+    arr = t.split(/\s/)
+    if (index < 0) {
+      index = arr.length + index
     }
-    this.isChanging = true
-    //if (this.id !== evt.detail.elemId) {
-      //return;
-    //}
-    var text = this.querySelector('text')
-    var tspan = this.querySelector('tspan')
-    var origOpacity = this.style.opacity
-    var origNum = parseInt(tspan.textContent)
-    animated_ghost(this, {
-      animation: 'thumb',
-      on_done: () => {
-        tspan.textContent = (origNum % 8) + 1
-        s(text, 'data-text', (origNum % 8) + 1)
-        this.style.opacity = origOpacity
-        this.isChanging = false
-        net_fire({type: "change", data: serialize(this)});
-        evt_fire('change', this, null, {})
-      },
-    })
-    tspan.textContent = " "
-    this.style.opacity = 0.1
+    console.log('t', t, 'arr', arr, 'index', index)
+    return arr[index]
   },
 
-  initialize: function(elem, attrs) {
+  num_symbols(elem) {
+    t = recordTspan = elem.querySelector('#tspan_faces').textContent
+    arr = t.split(/\s/)
+    return arr.length
+  },
+
+  initialize: function(elem, serializedState) {
     console.log('hooking up handlers for ', elem)
     elem.addEventListener('die_roll', this.roll_handler)
     elem.addEventListener('dblclick', this.roll_handler)
-    elem.addEventListener('die_turn_up', this.turn_handler)
-    console.log('symbols here!', attrs.symbols)
-    this.dataset.symbols = attrs.symbols
+    console.log('symbols here!', serializedState.faces)
+    elem.dataset.symbols = serializedState.faces
+
+    if (! /^.( .)*$/.test(serializedState.faces) ) {
+      console.error('Faces are not properly formatted!')
+      return
+    }
+
+    recordTspan = elem.querySelector('#tspan_faces')
+    recordTspan.textContent = serializedState.faces
+
+    showTspan = elem.querySelector('#tspan_value')
+    showTspan.textContent = dsymbol.get_face(elem, -1)
+
   },
 
   menu: {
     'Roll': {
       eventName: 'die_roll',
       applicable: (dieNode) => { return true },
-    },
-    'Turn Up': {
-      eventName: 'die_turn_up',
-      applicable: (dieNode) => { return true },
-      uiLabel: (dieNode) => { 
-        var tspan = dieNode.querySelector('tspan')
-        var nextNum = (parseInt(tspan.textContent) % 8) + 1
-        return 'Turn to ' + nextNum
-        },
     },
   },
 
@@ -189,16 +180,26 @@ var dsymbol = {
        id="path_end1"
        inkscape:connector-curvature="0"
        sodipodi:nodetypes="cccc" />
-    <text
-       xml:space="preserve"
-       style="font-style:normal;font-weight:normal;line-height:0%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-       x="25.847456"
-       y="57.627117"
-       id="text4139"><tspan
-         sodipodi:role="line"
-         id="tspan4141"
-         x="25.847456"
-         y="57.627117"
-         style="font-size:40px;line-height:1.25">✗</tspan></text>
   </g>
+  <!-- ================================================= -->
+  <text
+     xml:space="preserve"
+     style="fill:#ffffff;fill-opacity:0.0;stroke:none"
+     x="52.0"
+     y="94.0"
+     id="text_faces"><tspan
+       id="tspan_faces"
+       x="52.0"
+       y="94.0"
+       style="text-align:center;text-anchor:middle">a b c</tspan></text>
+  <text
+     xml:space="preserve"
+     style="font-style:normal;font-weight:normal;line-height:0%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+     x="24"
+     y="57"
+     id="text_value"><tspan
+       id="tspan_value"
+       x="24"
+       y="57"
+       style="font-size:40px;line-height:1.25">✗</tspan></text>
 </svg>

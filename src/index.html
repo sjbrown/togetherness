@@ -502,7 +502,6 @@ function ui_popup_properties(el, dialog_specifier) {
 
 function add_dtype(dtype, inputEl, center, serializedState) {
   console.log('add_dtype', dtype, inputEl.id, center, serializedState)
-  //num = parseInt(inputEl.getAttribute('value')) || 0
   num = parseInt(inputEl.value) || 0
   console.log('num', num)
   for( var i=0; i < num; i++ ) {
@@ -541,16 +540,18 @@ function ui_submit_dice(section) {
       add_dtype(dtype, byId('dice_input_' + dtype), center)
     })
   } else if (section === 'special') {
-    dtypes = ['dn',]
-    dtypes.forEach((dtype) => {
-      console.log('val', byId('dice_input_dn_num_faces').value)
-      add_dtype(
-        dtype, byId('dice_input_' + dtype), center,
-        {
-          numFaces: byId('dice_input_dn_num_faces').value
-        }
-      )
-    })
+    add_dtype(
+      'dn', byId('dice_input_dn'), center,
+      {
+        numFaces: byId('dice_input_dn_num_faces').value
+      }
+    )
+    add_dtype(
+      'dsymbol', byId('dice_input_dsymbol'), center,
+      {
+        faces: byId('dice_input_dsymbol_faces').value
+      }
+    )
   } else {
     dtypes = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20']
     dtypes.forEach((dtype) => {
@@ -559,13 +560,6 @@ function ui_submit_dice(section) {
   }
   ui_popdown_dialog('dialog_dice')
 }
-
-function ui_change_dn_value() {
-  var newVal = byId('dice_input_dn_num_faces').value
-  var imgEl = byId('img_dice_dn')
-  console.log(imgEl.querySelectorAll('tspan'))
-}
-
 
     </script>
     <button class="dialog_cancel btn modal-close"
@@ -711,10 +705,19 @@ function ui_change_dn_value() {
         How many faces? <input
           id="dice_input_dn_num_faces" type="text" value="100" size="3"
           max="999" min="2"
-          onchange="ui_change_dn_value()"
         />
         <button class="btn" id="dice_button_dn" onclick="diceIncrement('dn')">
           <img id="img_dice_dn" src="svg/v1/dice_dn.svg" width="24" height="24" />
+        </button>
+      </td>
+      <td>
+        <input id="dice_input_dsymbol" type="text" value="1"/>
+        Enter single numbers, letters or emoji, separated by spaces. <input
+          id="dice_input_dsymbol_faces" type="text" value="0 1 ✗" size="3"
+          pattern="^.( .)*$"
+        />
+        <button class="btn" id="dice_button_dsymbol" onclick="diceIncrement('dsymbol')">
+          <img id="img_dice_dsymbol" src="svg/v1/dice_dsymbol.svg" width="24" height="24" />
         </button>
       </td>
       </tr></table>
