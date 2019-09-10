@@ -771,6 +771,7 @@ function hookup_self_event_handlers(el, actionMenu) {
 
 
 function add_object(url, attrs) {
+  console.log('add_object', url, attrs)
   return import_foreign_svg(url)
   .then((nest) => {
     setColor(nest.node, (attrs && attrs.color) || getUserColor())

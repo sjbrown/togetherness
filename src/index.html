@@ -500,14 +500,18 @@ function ui_popup_properties(el, dialog_specifier) {
   </style>
     <script>
 
-function add_dtype(dtype, inputEl, center) {
+function add_dtype(dtype, inputEl, center, serializedState) {
+  console.log('add_dtype', dtype, inputEl.id, center, serializedState)
+  //num = parseInt(inputEl.getAttribute('value')) || 0
   num = parseInt(inputEl.value) || 0
+  console.log('num', num)
   for( var i=0; i < num; i++ ) {
     add_object(
       'svg/v1/dice_' + dtype +'.svg',
       {
         // Wrap 'center' in a new array to avoid async bugs
-        'center': [center[0], center[1]]
+        'center': [center[0], center[1]],
+        'serializedState': serializedState,
       },
     )
     center[0] = center[0] + 90
@@ -536,6 +540,17 @@ function ui_submit_dice(section) {
     dtypes.forEach((dtype) => {
       add_dtype(dtype, byId('dice_input_' + dtype), center)
     })
+  } else if (section === 'special') {
+    dtypes = ['dn',]
+    dtypes.forEach((dtype) => {
+      console.log('val', byId('dice_input_dn_num_faces').value)
+      add_dtype(
+        dtype, byId('dice_input_' + dtype), center,
+        {
+          numFaces: byId('dice_input_dn_num_faces').value
+        }
+      )
+    })
   } else {
     dtypes = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20']
     dtypes.forEach((dtype) => {
@@ -543,6 +558,12 @@ function ui_submit_dice(section) {
     })
   }
   ui_popdown_dialog('dialog_dice')
+}
+
+function ui_change_dn_value() {
+  var newVal = byId('dice_input_dn_num_faces').value
+  var imgEl = byId('img_dice_dn')
+  console.log(imgEl.querySelectorAll('tspan'))
 }
 
 
@@ -558,6 +579,7 @@ function ui_submit_dice(section) {
         <li><a href="#standard">Standard Dice</a></li>
         <li><a href="#sw">SW / Genesys Dice</a></li>
         <li><a href="#fudge">FUDGE Dice</a></li>
+        <li><a href="#special">Special Dice</a></li>
       </ul>
     </div>
     </nav>
@@ -676,6 +698,27 @@ function ui_submit_dice(section) {
       </td>
       </tr></table>
       <button id="dialog_submit" onclick="ui_submit_dice('fudge')"
+        class="btn modal-close">
+        Submit
+      </button>
+    </section>
+    <section class="dice_section" id="special_dice_section">
+      <a name="special"></a>
+      <h2 id="special_dice_h2">Special Dice</h2>
+      <table><tr>
+      <td>
+        <input id="dice_input_dn" type="text" value="1"/>
+        How many faces? <input
+          id="dice_input_dn_num_faces" type="text" value="100" size="3"
+          max="999" min="2"
+          onchange="ui_change_dn_value()"
+        />
+        <button class="btn" id="dice_button_dn" onclick="diceIncrement('dn')">
+          <img id="img_dice_dn" src="svg/v1/dice_dn.svg" width="24" height="24" />
+        </button>
+      </td>
+      </tr></table>
+      <button id="dialog_submit" onclick="ui_submit_dice('special')"
         class="btn modal-close">
         Submit
       </button>
