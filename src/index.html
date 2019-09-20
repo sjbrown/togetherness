@@ -155,6 +155,7 @@ function updateColorSample(target) {
 
 <body>
 
+<div id="buttongroup_add">
   <button id="dice_dialog_button" class="btn btn-small modal-trigger"
     data-target="dialog_dice"
     data-dialog-id="dialog_dice">
@@ -176,6 +177,10 @@ function updateColorSample(target) {
     + Other
   </button>
 
+</div>
+
+<details id="buttongroup_menu">
+<summary>Menu</summary>
 
 <!--
   <button id="properties_button" class="btn btn-small"
@@ -215,6 +220,7 @@ function updateColorSample(target) {
   <button class="btn btn-small" onclick="TogetherJS(this); return false;"
   >Go Multiplayer</button>
 
+</details>
 
   <center>
     <div id="gamearea" contextmenu="gamemenu">
