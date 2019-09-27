@@ -9,4 +9,6 @@ fi
 
 echo "Running tests..."
 echo ""
-docker run --rm -p 8000:80 togetherness node_modules/.bin/cypress run
+# docker run --rm -p 8000:80 togetherness node_modules/.bin/cypress run
+
+docker run -it -v $PWD:/e2e -w /e2e cypress/included:3.4.1

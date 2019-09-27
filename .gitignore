@@ -1,1 +1,5 @@
 *.swp
+cypress/videos/*
+cypress/fixtures/*
+cypress/plugins/*
+cypress/support/*
