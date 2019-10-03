@@ -3,3 +3,4 @@ cypress/videos/*
 cypress/fixtures/*
 cypress/plugins/*
 cypress/support/*
+cypress/screenshots/*
