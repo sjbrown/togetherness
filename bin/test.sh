@@ -7,8 +7,20 @@ if [ `basename $(pwd)` != "togetherness" ]; then
   exit 1
 fi
 
+if [ -z "$CYPRESS_baseUrl" ]; then
+  echo "Environment variable CYPRESS_baseUrl must be set!"
+  echo ""
+  echo "eg: CYPRESS_baseUrl=http://172.17.0.3 bin/test.sh"
+  echo "eg: CYPRESS_baseUrl=http://host.docker.internal:8000 bin/test.sh"
+  exit 1
+fi
+
 echo "Running tests..."
 echo ""
-# docker run --rm -p 8000:80 togetherness node_modules/.bin/cypress run
 
-docker run -it -v $PWD:/e2e -w /e2e cypress/included:3.4.1
+docker run -it \
+  -v $PWD:/e2e \
+  -w /e2e \
+  -e CYPRESS_baseUrl=$CYPRESS_baseUrl \
+  cypress/included:3.4.1
+
