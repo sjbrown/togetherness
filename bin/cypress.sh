@@ -28,4 +28,4 @@ docker run --rm -it \
   -e DISPLAY=unix$DISPLAY \
   -e CYPRESS_baseUrl=$CYPRESS_baseUrl \
   --entrypoint=cypress \
-  cypress/included:3.4.1 open --project .
+  cypress/included:4.5.0 open --project .

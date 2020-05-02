@@ -22,5 +22,5 @@ docker run -it \
   -v $PWD:/e2e \
   -w /e2e \
   -e CYPRESS_baseUrl=$CYPRESS_baseUrl \
-  cypress/included:3.4.1
+  cypress/included:4.5.0
 

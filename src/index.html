@@ -22,8 +22,6 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
 
-<script src="./lib/materialize/js/materialize.js"></script>
-<link rel="stylesheet" type="text/css" href="./lib/materialize/css/materialize.css">
 
 <style>
 
@@ -49,11 +47,13 @@ var gViewport;
 var widget_panzoom;
 
 function initSvgTable(el) {
+/*
   oldTable = gViewport.node.querySelector('#svg_table')
   if (oldTable) {
     console.log('found old table', oldTable)
     svg_table.remove()
   }
+  */
   el.id = 'svg_table'
   svg_table = SVG.adopt(el)
   svg_table.size(1000, 480)
@@ -104,7 +104,17 @@ SVG.on(document, 'DOMContentLoaded', () => {
 
   widgetElem = document.querySelector('#widget_panzoom')
   widgetElem.addEventListener('load', () => {
-    widget_panzoom = widgetElem.getSVGDocument().querySelector('svg');
+    let widgetElem = document.querySelector('#widget_panzoom')
+    // TODO -----------------------------------------
+    // Some browsers can't do getSVGDocument(), so just
+    // hide the panzoom widget
+    // TODO -----------------------------------------
+    let svgDom = widgetElem.getSVGDocument()
+    if (svgDom == null) {
+      widgetElem.remove()
+      return
+    }
+    widget_panzoom = svgDom.querySelector('svg');
     widget_panzoom = SVG.adopt(widget_panzoom)
     viewport.add(widget_panzoom)
     widget_panzoom.x(0)
@@ -170,6 +180,12 @@ function updateColorSample(target) {
   + Deckahedron
   </button>
   -->
+
+  <button id="pbta_button" class="btn btn-small modal-trigger"
+    onclick="add_object('svg/v1/pbta.svg')"
+    >
+    + pbta
+  </button>
 
   <button id="other_button" class="btn btn-small modal-trigger"
     data-target="dialog_other"
@@ -831,6 +847,114 @@ function ui_submit_rect(evt) {
 <!-- END RECT =================================================== END RECT -->
 
 
+<!-- RANDOM_TABLE =========================================== RANDOM_TABLE -->
+
+  <div class="modal" id="dialog_random_table">
+    <script>
+
+function make_random_table(attrs, content) {
+  var padding = 8
+  var text = svg_table.plain('')
+  var tspan = text.tspan(content)
+  text.attr(Object.assign({
+    'data-app-class': 'random_table',
+    id: 'random_table_' + base32.short_id(),
+    fill: '#000000',
+    stroke: 'black',
+    x: 0,
+    y: 0,
+    'stroke-opacity': 0,
+    'font-weight': 'normal',
+    'font-size': '12pt',
+  }, attrs))
+  var rbox = text.rbox()
+  text.y(0)
+  text.x(padding/2)
+
+  var rect = svg_table.rect()
+  rect.attr(Object.assign({
+    id: 'rect_' + text.attr('id'), // special ID
+    rx: 5,
+    ry: 5,
+    fill: '#ffffff',
+    stroke: 'black',
+    'fill-opacity': 0.5,
+    'stroke-opacity': 0.5,
+    'stroke-width': 1,
+  }, {
+    width: rbox.width + padding,
+    height: rbox.height
+  }))
+  rect.addClass('text-rect')
+
+  var nest = make_nest({
+    'id': 'nest_' + text.attr('id'), // special ID
+    'data-nest-for': 'text',
+    x: 0,
+    y: 0,
+    width: rect.width(),
+    height: rect.height() * 2,
+  })
+  nest.addClass('draggable-group')
+  rect.y(rect.y() + (rect.height()/2))
+  nest.add(rect)
+  text.y(text.y() + (rect.height()/2))
+  nest.add(text)
+
+  hookup_ui(nest.node)
+  hookup_menu_actions(nest.node, text_verbs)
+  return nest;
+}
+
+function ui_submit_random_table(evt) {
+  c = byId('random_table_input_content').value;
+
+  color = byId('random_table_input_color').value;
+  if (!c || !color ) {
+    return;
+  }
+  console.log('add_dtype', dtype, inputEl.id, center, serializedState)
+  var random_table = add_object(
+      'svg/v1/random_table.svg',
+      {
+        'serializedState': { content: c },
+        'color': color,
+      },
+    )
+  byId('random_table_input_content').value = ''
+  ui_popdown_dialog('dialog_random_table')
+  net_fire({ type: 'create', data: serialize(random_table) })
+}
+
+    </script>
+    <button class="dialog_cancel btn modal-close"
+      data-dialog-id="dialog_random_table"
+    >
+      &#215;
+    </button>
+  <div class="modal-content">
+    <label for="random_table_input_content">Content</label>
+    <textarea id="random_table_input_content" >
+    Option 1
+    Option 2
+    Option 3
+    </textarea>
+    <br />
+    <label for="random_table_input_color">Color <span id="colorsample">■</span></label>
+    <input id="random_table_input_color" type="text" value="#1f1f1f"
+           onKeyUp="updateColorSample(this)"
+    />
+    <br />
+    <button id="dialog_submit" onclick="ui_submit_random_table(this)"
+      class="btn modal-close">
+      Create
+    </button>
+  </div>
+  </div>
+
+<!-- END RANDOM_TABLE =================================== END RANDOM_TABLE -->
+
+
 <!-- TEXT =========================================================== TEXT -->
 
   <div class="modal" id="dialog_text">
@@ -1073,6 +1197,11 @@ function ui_submit_ellipse(evt) {
         data-target="dialog_text"
         data-dialog-id="dialog_text">
         + Text
+      </button>
+      <button id="random_table_button" class="btn btn-small modal-trigger modal-close"
+        data-target="dialog_random_table"
+        data-dialog-id="dialog_random_table">
+        + Random Table
       </button>
     </section>
     <section id="rules_section">

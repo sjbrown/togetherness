@@ -1,6 +1,43 @@
 
 DEBUG = 1
 
+function g(el, label) {
+// getter - more natural "attributes" from SVG elements
+  var get_fn = () => {
+      if (el.dataset === undefined) {
+        return el[label];
+      }
+      if (Object.keys(el.dataset).indexOf(label) != -1) {
+        return el.dataset[label];
+      }
+      if (Object.keys(el.attributes).indexOf(label) != -1) {
+        return el.getAttribute(label);
+      }
+      var value = el.getAttribute(label);
+      if (value !== null) {
+        return value;
+      }
+      if (label === 'width' || label === 'height') {
+        return el.getBBox()[label];
+      }
+  };
+  var retval = get_fn()
+  if (retval === 'false' || retval === 'null' || retval === 'undefined') {
+    throw Error(`Tried to set element attr to JS value? Something probably went wrong (${label})`);
+  }
+  return retval
+}
+
+function s(el, label, val) {
+// setter - more natural "attributes" from SVG elements
+  if (val === undefined || val === null) {
+    return el.removeAttribute(label);
+  }
+  el.setAttribute(label, val);
+}
+
+/*
+
 function documentDblclick(triggerNode, detail) {
   console.log("document dbl", triggerNode.id, detail)
   triggerNode.dispatchEvent(new MouseEvent('dblclick', {
@@ -234,40 +271,6 @@ function recursive_delete(payload) {
 }
 
 
-function g(el, label) {
-// getter - more natural "attributes" from SVG elements
-  var get_fn = () => {
-      if (el.dataset === undefined) {
-        return el[label];
-      }
-      if (Object.keys(el.dataset).indexOf(label) != -1) {
-        return el.dataset[label];
-      }
-      if (Object.keys(el.attributes).indexOf(label) != -1) {
-        return el.getAttribute(label);
-      }
-      var value = el.getAttribute(label);
-      if (value !== null) {
-        return value;
-      }
-      if (label === 'width' || label === 'height') {
-        return el.getBBox()[label];
-      }
-  };
-  var retval = get_fn()
-  if (retval === 'false' || retval === 'null' || retval === 'undefined') {
-    throw Error(`Tried to set element attr to JS value? Something probably went wrong (${label})`);
-  }
-  return retval
-}
-
-function s(el, label, val) {
-// setter - more natural "attributes" from SVG elements
-  if (val === undefined || val === null) {
-    return el.removeAttribute(label);
-  }
-  el.setAttribute(label, val);
-}
 
 function justNonUiAttributes(node) {
   return node.getAttributeNames()
@@ -330,6 +333,8 @@ function is_marked(node) {
   )
 }
 
+*/
+
 var mark_menu = {
   'Remove mark': {
     eventName: 'remove_mark',
@@ -349,6 +354,8 @@ var mark_menu = {
   },
   */
 }
+
+/*
 
 function make_nest(attrs) {
   //var nest = svg_table.nested()
@@ -452,6 +459,7 @@ function hookup_mark_handlers(markEl) {
   hookup_self_event_handlers(nest.node, mark_menu)
 }
 
+
 function ui_mark_by_id(evt, target_id) {
   //console.log('ui_mark_by_id target_id', evt, target_id)
   // unmark everything else, unless shift or ctrl is being held
@@ -486,6 +494,7 @@ function ui_unmark(evt) {
   ui_fire({type: 'dropMark', data: mark_rect.parentNode});
   net_fire({type: 'dropMark', mark_rect: serialize(mark_rect) });
 }
+
 
 function ui_unmark_all_but(exceptId) {
   var payload = { id: null, kids: [] }
@@ -551,7 +560,10 @@ function _unmark(mark_rect_id) {
   nestSVG.remove()
 }
 
+*/
 
+
+/*
 function import_foreign_svg(url, attrs) {
   if (!DEBUG) {
     var answer = confirm('Do you trust the security of '+ url +'?')
@@ -885,7 +897,7 @@ function delete_element(el) {
 
 
 function ui_mouseover(evt, target, actionMenu) {
-  /* Add clickable options onto the menu */
+  // Add clickable options onto the menu
   console.log('ui_mouseover', target.id)
   //console.log('ver', actionMenu)
 
@@ -919,6 +931,10 @@ function ui_mouseover(evt, target, actionMenu) {
     menu.insertAdjacentElement('beforeend', clone)
   })
 }
+
+*/
+
+/*
 
 function ui_update_buttons() {
   var markedNodes = document.querySelectorAll('[data-ui-marked]')
@@ -1142,4 +1158,4 @@ function ui_popup_dialog(target) {
   instance = M.Modal.getInstance(elem)
   instance.open()
 }
-
+*/
