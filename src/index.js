@@ -36,7 +36,6 @@ function s(el, label, val) {
   el.setAttribute(label, val);
 }
 
-/*
 
 function documentDblclick(triggerNode, detail) {
   console.log("document dbl", triggerNode.id, detail)
@@ -333,7 +332,6 @@ function is_marked(node) {
   )
 }
 
-*/
 
 var mark_menu = {
   'Remove mark': {
@@ -355,7 +353,6 @@ var mark_menu = {
   */
 }
 
-/*
 
 function make_nest(attrs) {
   //var nest = svg_table.nested()
@@ -560,10 +557,8 @@ function _unmark(mark_rect_id) {
   nestSVG.remove()
 }
 
-*/
 
 
-/*
 function import_foreign_svg(url, attrs) {
   if (!DEBUG) {
     var answer = confirm('Do you trust the security of '+ url +'?')
@@ -932,9 +927,7 @@ function ui_mouseover(evt, target, actionMenu) {
   })
 }
 
-*/
 
-/*
 
 function ui_update_buttons() {
   var markedNodes = document.querySelectorAll('[data-ui-marked]')
@@ -1158,4 +1151,3 @@ function ui_popup_dialog(target) {
   instance = M.Modal.getInstance(elem)
   instance.open()
 }
-*/
