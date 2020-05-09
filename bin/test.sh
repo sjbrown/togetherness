@@ -10,6 +10,7 @@ fi
 if [ -z "$CYPRESS_baseUrl" ]; then
   echo "Environment variable CYPRESS_baseUrl must be set!"
   echo ""
+  echo "eg: CYPRESS_baseUrl=http://172.17.0.1:8000 bin/test.sh"
   echo "eg: CYPRESS_baseUrl=http://172.17.0.3 bin/test.sh"
   echo "eg: CYPRESS_baseUrl=http://host.docker.internal:8000 bin/test.sh"
   exit 1
