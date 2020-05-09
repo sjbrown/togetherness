@@ -11,5 +11,6 @@ echo "Starting togetherness on port 8000"
 echo ""
 docker run --rm \
   -p 8000:80 \
-  -v $PWD/src:/app/ \
+  -v $PWD:/togetherness \
+  -it \
   togetherness

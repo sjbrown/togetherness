@@ -1,5 +1,6 @@
 <html>
 <head>
+<title>Togetherness Table</title>
 <meta charset="utf-8">
 
 <!--
@@ -9,6 +10,18 @@
 -->
 <meta name="viewport" content="width=device-width,user-scalable=no">
 
+<script>
+var TogetherJSConfig_siteName = "table"
+var TogetherJSConfig_toolName = "Multiplayer"
+
+// This might actually be useful
+//var TogetherJSConfig_cloneClicks = "foo";
+
+//var TogetherJSConfig_dontShowClicks = "foo";
+//var TogetherJSConfig_enableShortcut = "foo";
+var TogetherJSConfig_suppressJoinConfirmation = true
+var TogetherJSConfig_suppressInvite = false // turn on when I develop UI
+</script>
 <script src="https://togetherjs.com/togetherjs-min.js"></script>
 <script src="./svg_draggable.js"></script>
 <script src="./come_together.js"></script>
@@ -165,7 +178,7 @@ function updateColorSample(target) {
 
 <body>
 
-<div id="buttongroup_add">
+<div id="buttongroup_table">
   <button id="dice_dialog_button" class="btn btn-small modal-trigger"
     data-target="dialog_dice"
     data-dialog-id="dialog_dice">
@@ -195,7 +208,7 @@ function updateColorSample(target) {
 
 </div>
 
-<details id="buttongroup_menu">
+<details id="buttongroup_player">
 <summary>Menu</summary>
 
 <!--
@@ -234,6 +247,7 @@ function updateColorSample(target) {
   </button>
 
   <button class="btn btn-small" onclick="TogetherJS(this); return false;"
+  id="start-togetherjs"
   >Go Multiplayer</button>
 
 </details>
