@@ -8,9 +8,13 @@ if [ `basename $(pwd)` != "togetherness" ]; then
 fi
 
 echo "Starting togetherness on port 8000"
+echo "Volume-mounting $PWD as /app"
 echo ""
+
 docker run --rm \
-  -p 8000:80 \
-  -v $PWD:/togetherness \
   -it \
-  togetherness
+  -p 8000:80 \
+  -v $PWD:/app \
+  --workdir=/app/src \
+  python:2 \
+  python -m SimpleHTTPServer 80

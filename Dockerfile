@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /togetherness/src
 
-COPY ./ /togetherness
+COPY . /togetherness
 
 CMD python2 -m SimpleHTTPServer 80
 

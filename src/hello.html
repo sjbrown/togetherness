@@ -1,0 +1,53 @@
+<html>
+<head>
+<meta charset="utf-8">
+
+<script>
+TogetherJSConfig_hubBase = "https://togetherjs-hub.glitch.me/"
+TogetherJSConfig_suppressJoinConfirmation = true
+TogetherJSConfig_includeHashInUrl = true
+TogetherJSConfig_disableWebRTC = true
+TogetherJSConfig_suppressInvite = true
+//TogetherJSConfig_cloneClicks = true
+</script>
+<script src="https://togetherjs.com/togetherjs-min.js"></script>
+</head>
+
+
+<body>
+
+  <button class="btn btn-small" onclick="TogetherJS(this); return false;"
+  >Go Multiplayer</button>
+
+<hr>
+<script>
+TogetherJSConfig_on_ready = function () {
+  el = document.getElementById('url_here')
+  el.innerHTML = TogetherJS.shareUrl()
+};
+</script>
+<span id="url_here">url placeholder</span>
+<hr>
+  <button class="btn btn-small" >HI</button>
+Hllo
+<hr>
+
+<script>
+function clicky() {
+  el = document.getElementById('hlo1')
+  el.value = 'Dynamic content!'
+  return false
+}
+</script>
+<button class="btn btn-small" onClick="clicky()" >HI</button>
+<input type="text" id="hlo1" value="greeting">Hello</input>
+
+<hr>
+  <input type="checkbox" />
+Hllo
+<hr>
+
+
+</body>
+</html>
+
