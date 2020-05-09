@@ -18,5 +18,3 @@ docker run --rm \
   --workdir=/app/src \
   python:2 \
   python -m SimpleHTTPServer 80
-
-

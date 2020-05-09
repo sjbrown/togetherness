@@ -1,19 +1,40 @@
 version: '3.2'
 services:
+
   # this is the web application we are going to test
   app:
     build: .
+    ports:
+     - "80"
 
   # Cypress container
-  cypress:
+  test:
     # the Docker image to use from https://github.com/cypress-io/cypress-docker-images
     image: "cypress/included:4.5.0"
     depends_on:
       - app
     environment:
       # pass base url to test pointing at the web application
-      - CYPRESS_baseUrl=http://app/
+      - CYPRESS_BASE_URL=http://localhost
+      - START_SERVER_AND_TEST_INSECURE=1
+    # share the current folder as volume to avoid copying
+    volumes:
+      - ./:/e2e
+    working_dir: /e2e/src
+    entrypoint: python2 -m SimpleHTTPServer 80 & wait-on http://localhost &
+    command: cypress run
+
+  shell:
+    # the Docker image to use from https://github.com/cypress-io/cypress-docker-images
+    image: "cypress/included:4.5.0"
+    depends_on:
+      - app
+    environment:
+      # pass base url to test pointing at the web application
+      - CYPRESS_BASE_URL=http://app
     # share the current folder as volume to avoid copying
     working_dir: /e2e
     volumes:
       - ./:/e2e
+    #command: bash
+    entrypoint: bash

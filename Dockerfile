@@ -9,5 +9,5 @@ WORKDIR /togetherness/src
 
 COPY . /togetherness
 
-CMD python -m SimpleHTTPServer 80
+CMD python2 -m SimpleHTTPServer 80
 
