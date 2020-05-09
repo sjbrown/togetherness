@@ -11,16 +11,40 @@
 <meta name="viewport" content="width=device-width,user-scalable=no">
 
 <script>
-var TogetherJSConfig_siteName = "table"
-var TogetherJSConfig_toolName = "Multiplayer"
+/*
+ *
+ * Configure TogetherJS
+ *
+ */
+TogetherJSConfig_siteName = "table"
+TogetherJSConfig_toolName = "Multiplayer"
+//TogetherJSConfig_cloneClicks = "foo"; // This might be useful, or not
+//TogetherJSConfig_dontShowClicks = "foo";
+//TogetherJSConfig_enableShortcut = "foo";
+TogetherJSConfig_suppressJoinConfirmation = true
+TogetherJSConfig_suppressInvite = true
+TogetherJSConfig_includeHashInUrl = true
+TogetherJSConfig_disableWebRTC = true
 
-// This might actually be useful
-//var TogetherJSConfig_cloneClicks = "foo";
 
-//var TogetherJSConfig_dontShowClicks = "foo";
-//var TogetherJSConfig_enableShortcut = "foo";
-var TogetherJSConfig_suppressJoinConfirmation = true
-var TogetherJSConfig_suppressInvite = false // turn on when I develop UI
+TogetherJSConfig_on_ready = () => {
+  el = document.getElementById('share_url')
+  el.value = TogetherJS.shareUrl()
+  el = document.getElementById('share_url_bar')
+  el.classList.remove('inactive')
+  el.classList.add('active')
+  el.classList.remove('whitebg')
+  el.classList.add('bluebg')
+}
+TogetherJSConfig_on_close = () => {
+  el = document.getElementById('share_url')
+  el.value = ''
+  el = document.getElementById('share_url_bar')
+  el.classList.remove('active')
+  el.classList.add('inactive')
+  el.classList.remove('bluebg')
+  el.classList.add('whitebg')
+}
 </script>
 <script src="https://togetherjs.com/togetherjs-min.js"></script>
 <script src="./svg_draggable.js"></script>
@@ -35,21 +59,6 @@ var TogetherJSConfig_suppressInvite = false // turn on when I develop UI
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
 
-
-<style>
-
-#object_actions {
-  width: 100%;
-  background-color: #a0a0a0;
-  position:fixed;
-  bottom:0px;
-}
-
-#object_actions h3 {
-  display: inline;
-}
-
-</style>
 
 </head>
 
@@ -262,11 +271,106 @@ function updateColorSample(target) {
     -->
     </div>
   </center>
-  <div id="object_actions">
-      <h3 id="object_actions_header">Obj heading</h3>
-    <template id="template_object_actions">
-      <button class="btn">Button label</button>
-    </template>
+
+<style>
+
+#footer {
+  min-width: 80%;
+  position:fixed;
+  bottom:0px;
+}
+
+.footerbar.inactive {
+  //height: 1px;
+  //overflow: hidden;
+  animation: slide-out 0.5s forwards;
+  transform: translateY(200%)
+}
+
+.footerbar {
+  width: 100%;
+  padding: 4px 10px;
+  transition: background-color 2s;
+  transition: transform 2s;
+}
+
+.graybg {
+  background-color: #a0a0a0;
+}
+
+.bluebg {
+  background-color: rgb(0, 149, 221);
+}
+
+.whitebg {
+  background-color: #f0f0f0;
+}
+
+.footerbar h3 {
+  display: inline;
+}
+
+</style>
+  <div id="footer">
+    <div id="share_url_bar" class="inactive footerbar whitebg">
+    <style>
+     #share_url_bar td {
+       padding: 0px;
+       border-radius: 0px;
+     }
+     #share_url_bar tr {
+       border: 0px;
+     }
+     #share_url_label {
+       font-size: larger;
+       margin-right: 40px;
+     }
+    </style>
+      <table
+      title="Share this URL with your friends and have them join you"
+      >
+      <tr>
+      <td>
+      <span id="share_url_label">Share URL:</span>
+      </td>
+      <td>
+      <style>
+      #share_url {
+        font-family: monospace;
+        display: inline-block;
+        background-color: transparent;
+        border: none;
+        font-size: inherit;
+        height: inherit;
+        margin: inherit;
+
+      }
+      </style>
+      <input id="share_url" value="" />
+      </td>
+      <td>
+      <script>
+      function copyURLToClipboard() {
+        copyText = document.getElementById('share_url')
+        /* Select the text field */
+        copyText.select()
+        copyText.setSelectionRange(0, 99999) /*For mobile devices*/
+        document.execCommand("copy")
+      }
+      </script>
+      <button id="share_url_copy_button" class="btn btn-small"
+        onClick="copyURLToClipboard()"
+      >Copy URL</button>
+      </td>
+      </tr>
+      </table>
+    </div>
+    <div id="object_actions" class="footerbar graybg">
+        <h3 id="object_actions_header">Obj heading</h3>
+      <template id="template_object_actions">
+        <button class="btn">Button label</button>
+      </template>
+    </div>
   </div>
 
 <!-- SAVE ============================================================ SAVE -->
