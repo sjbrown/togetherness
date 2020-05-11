@@ -183,6 +183,24 @@ function updateColorSample(target) {
   el.style.setProperty('color', target.value)
 }
 
+function downKey(e) {
+  button = null
+  document.querySelectorAll('button').forEach((x) => {
+    console.log(x.id, x.accessKey)
+    if (button && x.accessKey === e.key) {
+      console.error('Two buttons have the same accessKey')
+      return
+    }
+    if (x.accessKey === e.key) {
+      button = x
+    }
+  })
+  if (button) {
+      console.log('CLICK', button.id, button.accessKey)
+    button.click()
+  }
+}
+document.addEventListener('keydown', downKey);
 
 </script>
 
@@ -190,9 +208,10 @@ function updateColorSample(target) {
 
 <div id="buttongroup_table">
   <button id="dice_dialog_button" class="btn btn-small modal-trigger"
+    accesskey="d"
     data-target="dialog_dice"
     data-dialog-id="dialog_dice">
-    + Dice
+    + <u>D</u>ice
   </button>
 
   <button class="btn btn-small" onclick="add_object('svg/v1/poker_deck.svg')">
@@ -211,9 +230,10 @@ function updateColorSample(target) {
   </button>
 
   <button id="other_button" class="btn btn-small modal-trigger"
+    accesskey="o"
     data-target="dialog_other"
     data-dialog-id="dialog_other">
-    + Other
+    + <u>O</u>ther
   </button>
 
 </div>
