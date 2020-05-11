@@ -949,7 +949,15 @@ function ui_update_buttons() {
     //   uiLabel: (node) => { return 'MyLabel' },
     //  },  ...}
     var btn = template.content.firstElementChild.cloneNode(true)
-    btn.innerText = title
+    btn.id = elemNode.id + title
+    accessKey = title[0].toLocaleLowerCase()
+    if (accessKey !== 'd' && accessKey !== 'o') {
+      // TODO make better
+      btn.accessKey = title[0].toLocaleLowerCase()
+      btn.innerHTML = '<u>' + title[0] + '</u>' + title.substring(1)
+    } else {
+      btn.innerText = title
+    }
     btn.classList.add('cloned-button')
     if (!elemNode.actionMenu[title].applicable(elemNode)) {
       btn.disabled = 'disabled'

@@ -186,7 +186,7 @@ function updateColorSample(target) {
 function downKey(e) {
   button = null
   document.querySelectorAll('button').forEach((x) => {
-    console.log(x.id, x.accessKey)
+    //console.log(x.id, x.accessKey)
     if (button && x.accessKey === e.key) {
       console.error('Two buttons have the same accessKey')
       return
@@ -386,6 +386,7 @@ document.addEventListener('keydown', downKey);
       </tr>
       </table>
     </div>
+    <!-- =============OBJECT ACTIONS ==================== -->
     <div id="object_actions" class="footerbar graybg">
         <h3 id="object_actions_header">Obj heading</h3>
       <template id="template_object_actions">
