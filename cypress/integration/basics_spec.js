@@ -1,7 +1,7 @@
 describe('Dice Button', () => {
   it('Pops up the modal', () => {
 
-    cy.visit('http://172.17.0.1:8000');
+    cy.visit('/');
 
     cy.get('#dialog_dice').should('not.be.visible')
 
@@ -13,7 +13,7 @@ describe('Dice Button', () => {
 
 describe('Cards button', () => {
   it('Pops up the modal', () => {
-    cy.visit('http://172.17.0.1:8000');
+    cy.visit('/');
 
     cy.contains('+ Cards').click()
   });
@@ -21,18 +21,20 @@ describe('Cards button', () => {
 
 describe('Other button', () => {
   it('Pops up the modal', () => {
-    cy.visit('http://172.17.0.1:8000');
+    cy.visit('/')
 
     cy.get('#dialog_other').should('not.be.visible')
     cy.contains('+ Other').click()
     cy.get('#dialog_other').should('be.visible')
 
-  });
+  })
 });
 
 describe('Standard dice', () => {
   it('Pops up the modal', () => {
-    cy.visit('http://172.17.0.1:8000')
+    cy.visit('/')
+
+    cy.get('#gamearea')
 
     cy.contains('+ Dice').click()
 
@@ -51,6 +53,7 @@ describe('Standard dice', () => {
 
     cy.get('#dialog_submit_standard').click()
     cy.wait(400).get('#dialog_dice').should('not.be.visible')
+
   });
 });
 

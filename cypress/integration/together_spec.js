@@ -1,9 +1,9 @@
 describe('Expanding the Menu', () => {
   it('Pops up the modal', () => {
 
-    cy.visit('http://172.17.0.1:8000');
+    cy.visit('/')
 
-    cy.get('#buttongroup_menu summary').click()
+    cy.get('#buttongroup_player summary').click()
 
     cy.contains('Go Multiplayer').should('be.visible')
   });
@@ -11,11 +11,11 @@ describe('Expanding the Menu', () => {
 
 describe('Go Multiplayer', () => {
   before(() => {
-    cy.visit('http://172.17.0.1:8000');
+    cy.visit('/')
   })
   it('Pops up the modal', () => {
 
-    cy.get('#buttongroup_menu summary').click()
+    cy.get('#buttongroup_player summary').click()
 
     cy.contains('Go Multiplayer').should('be.visible')
   });
