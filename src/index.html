@@ -196,7 +196,6 @@ function downKey(e) {
     }
   })
   if (button) {
-      console.log('CLICK', button.id, button.accessKey)
     button.click()
   }
 }
@@ -788,6 +787,18 @@ function ui_submit_dice(section) {
       <button id="dialog_submit_standard" onclick="ui_submit_dice('standard')"
         class="btn modal-close">
         Submit
+        <script>
+          /* TODO: this really doesn't seem like the right way to get
+           * something simple like pressing "Enter" to work
+           */
+          section = document.getElementById('standard_dice_section')
+          s_button = document.getElementById('dialog_submit_standard')
+          section.querySelectorAll('input').forEach(i => {
+            i.addEventListener('keyup', e => {
+              if (e.key === 'Enter') { s_button.click() }
+            })
+          })
+        </script>
       </button>
     </section>
     <section class="dice_section" id="sw_dice_section">
@@ -840,6 +851,18 @@ function ui_submit_dice(section) {
       <button id="dialog_submit_sw" onclick="ui_submit_dice('sw')"
         class="btn modal-close">
         Submit
+        <script>
+          /* TODO: this really doesn't seem like the right way to get
+           * something simple like pressing "Enter" to work
+           */
+          section = document.getElementById('sw_dice_section')
+          s_button = document.getElementById('dialog_submit_sw')
+          section.querySelectorAll('input').forEach(i => {
+            i.addEventListener('keyup', e => {
+              if (e.key === 'Enter') { s_button.click() }
+            })
+          })
+        </script>
       </button>
     </section>
     <section class="dice_section" id="fudge_dice_section">
@@ -856,6 +879,18 @@ function ui_submit_dice(section) {
       <button id="dialog_submit_fudge" onclick="ui_submit_dice('fudge')"
         class="btn modal-close">
         Submit
+        <script>
+          /* TODO: this really doesn't seem like the right way to get
+           * something simple like pressing "Enter" to work
+           */
+          section = document.getElementById('fudge_dice_section')
+          s_button = document.getElementById('dialog_submit_fudge')
+          section.querySelectorAll('input').forEach(i => {
+            i.addEventListener('keyup', e => {
+              if (e.key === 'Enter') { s_button.click() }
+            })
+          })
+        </script>
       </button>
     </section>
     <section class="dice_section" id="special_dice_section">
@@ -886,6 +921,18 @@ function ui_submit_dice(section) {
       <button id="dialog_submit_special" onclick="ui_submit_dice('special')"
         class="btn modal-close">
         Submit
+        <script>
+          /* TODO: this really doesn't seem like the right way to get
+           * something simple like pressing "Enter" to work
+           */
+          section = document.getElementById('special_dice_section')
+          s_button = document.getElementById('dialog_submit_special')
+          section.querySelectorAll('input').forEach(i => {
+            i.addEventListener('keyup', e => {
+              if (e.key === 'Enter') { s_button.click() }
+            })
+          })
+        </script>
       </button>
     </section>
   </div>
