@@ -16,8 +16,8 @@ cat > package.json <<EOF
 EOF
 
 npm install
-npm install wait-on
-npm install http-server
+npm install wait-on -g
+npm install http-server -g
 
 
 echo "Starting the server"
