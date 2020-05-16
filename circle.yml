@@ -9,6 +9,9 @@ jobs:
     working_directory: ~/togetherness
     steps:
       - checkout
+      - run: echo "{}" > package.json
+      - run: npm install
+      - run: ls -lha
       - restore_cache:
           keys:
             - v1-deps-{{ .Branch }}-{{ checksum "README.md" }}
