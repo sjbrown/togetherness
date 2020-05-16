@@ -16,6 +16,10 @@ body .btn:focus {
   background-color: #cbc26d;
 }
 
+body button[accessKey]::first-letter {
+  text-decoration: underline;
+}
+
 .nav-wrapper {
   background-color: #cbc26d;
 }

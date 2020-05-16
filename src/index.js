@@ -951,14 +951,7 @@ function ui_update_buttons() {
     //  },  ...}
     var btn = template.content.firstElementChild.cloneNode(true)
     btn.id = elemNode.id + title
-    accessKey = title[0].toLocaleLowerCase()
-    if (accessKey !== 'd' && accessKey !== 'o') {
-      // TODO make better
-      btn.accessKey = title[0].toLocaleLowerCase()
-      btn.innerHTML = '<u>' + title[0] + '</u>' + title.substring(1)
-    } else {
-      btn.innerText = title
-    }
+    btn.innerText = title
     btn.classList.add('cloned-button')
     if (!elemNode.actionMenu[title].applicable(elemNode)) {
       btn.disabled = 'disabled'
@@ -1023,12 +1016,21 @@ function ui_update_buttons() {
     }
   })
 
+  /*
+   * Attach the created buttons onto the DOM
+   */
   Object.keys(buttons).map((key) => {
     buttonRecord = buttons[key]
     buttonRecord.clickEvents.forEach((handler) => {
       buttonRecord.btn.addEventListener('click', handler)
     })
     submenu.appendChild(buttonRecord.btn)
+    // Hookup hotkeys
+    accessKey = buttonRecord.btn.innerText[0].toLocaleLowerCase()
+    if (document.querySelector('[accessKey=' + accessKey + ']') === null) {
+      // TODO make better
+      buttonRecord.btn.accessKey = accessKey
+    }
   })
 
 }

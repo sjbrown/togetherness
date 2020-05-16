@@ -188,11 +188,12 @@ function updateColorSample(target) {
 }
 
 function downKey(e) {
+  if (e.target.tagName.toLowerCase() !== 'body') { return }
+  if (e.altKey || e.shiftKey || e.metaKey || e.ctrlKey) { return }
   button = null
   document.querySelectorAll('button').forEach((x) => {
-    //console.log(x.id, x.accessKey)
     if (button && x.accessKey === e.key) {
-      console.error('Two buttons have the same accessKey')
+      console.error('Two buttons have the same accessKey', x.accessKey)
       return
     }
     if (x.accessKey === e.key) {
@@ -203,7 +204,10 @@ function downKey(e) {
     button.click()
   }
 }
-document.addEventListener('keydown', downKey);
+
+window.addEventListener('load', () => {
+  document.querySelector('body').addEventListener('keydown', downKey)
+})
 
 </script>
 
@@ -224,13 +228,13 @@ document.addEventListener('keydown', downKey);
   <button class="btn" onclick="add_object('svg/v1/deckahedron.svg')">
   + Deckahedron
   </button>
-  -->
 
   <button id="pbta_button" class="btn btn-small modal-trigger"
     onclick="add_object('svg/v1/pbta.svg')"
     >
     + pbta
   </button>
+  -->
 
   <button id="other_button" class="btn btn-small modal-trigger"
     accesskey="o"
