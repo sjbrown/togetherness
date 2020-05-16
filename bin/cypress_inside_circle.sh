@@ -16,6 +16,7 @@ cat > package.json <<EOF
 EOF
 
 npm install
+npm install wait-on
 
 
 echo "Starting the server"
