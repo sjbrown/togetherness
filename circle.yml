@@ -9,7 +9,7 @@ jobs:
     working_directory: ~/app
     steps:
       - checkout
-      - build: bin/build.sh
+      - run: bin/build.sh
       - restore_cache:
           keys:
             - v1-deps-{{ .Branch }}-{{ checksum "README.md" }}
