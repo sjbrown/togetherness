@@ -18,6 +18,7 @@ EOF
 npm install
 npm install wait-on -g
 npm install http-server -g
+npm install cypress@4.5.0
 
 
 echo "Starting the server"
