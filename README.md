@@ -1,5 +1,7 @@
 # Togetherness
 
+[![sjbrown](https://circleci.com/gh/sjbrown/togetherness.svg?style=svg)](https://circleci.com/gh/sjbrown/togetherness)
+
 After playing around with the awesome
 [roller](https://github.com/shanel/roller),
 I got the itch to create my own "dice-rolling" application.
