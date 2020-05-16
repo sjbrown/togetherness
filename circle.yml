@@ -6,10 +6,10 @@ jobs:
         environment:
           ## this enables colors in the output
           TERM: xterm
+      - run: bin/build.sh
     working_directory: ~/togetherness
     steps:
       - checkout
-      - run: bin/build.sh
       - restore_cache:
           keys:
             - v1-deps-{{ .Branch }}-{{ checksum "README.md" }}
