@@ -9,6 +9,10 @@ jobs:
     working_directory: ~/togetherness
     steps:
       - checkout
+             # These make `npm ci` work
+      - run: echo "{}" > package.json
+      - run: npm install
+
       - restore_cache:
           keys:
             - v1-deps-{{ .Branch }}-{{ checksum "README.md" }}
