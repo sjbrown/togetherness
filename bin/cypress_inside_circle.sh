@@ -17,11 +17,13 @@ EOF
 
 npm install
 npm install wait-on
+npm install http-server
 
 
 echo "Starting the server"
 
-python2 -m SimpleHTTPServer 80 & wait-on http://localhost:80
+http-server -a localhost -p 80 src/ & wait-on http://localhost:80
+#python2 -m SimpleHTTPServer 80 & wait-on http://localhost:80
 
 echo "Starting cypress"
 
