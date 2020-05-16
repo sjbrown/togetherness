@@ -5,9 +5,8 @@ workflows:
   build:
     jobs:
       - cypress/install:
-          build: |
-            npm run build
-            bin/build.sh
+          build: 'npm run build'
+            #bin/build.sh
       - cypress/run:
           requires:
             - cypress/install
