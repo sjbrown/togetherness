@@ -33,7 +33,11 @@ I'm going to try to keep a demo up and running at
 cd /tmp
 git clone <this repo>
 cd togetherness/src
-python2 -m SimpleHTTPServer 8000 # or, python3 -m http.server
+python2 -m SimpleHTTPServer 8000
+# Or,if you prefer Python3 to Python2:
+# python3 -m http.server
+# Or if you prefer Node.js to Python:
+# npm install npx -g; npx http-server -a localhost -p 8000
 ```
 
 Then open your browser to [localhost:8000](http://localhost:8000/)

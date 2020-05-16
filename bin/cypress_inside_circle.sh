@@ -21,14 +21,19 @@ npm install http-server -g
 npm install cypress@4.5.0
 
 
+echo ""
+echo "==================="
 echo "Starting the server"
 
 http-server -a localhost -p 80 src/ & wait-on http://localhost:80
 curl -v http://localhost:80
-#python2 -m SimpleHTTPServer 80 & wait-on http://localhost:80
 
+echo ""
+echo "================"
 echo "Starting cypress"
 
-CYPRESS_BASE_URL=http://localhost:80/ npx cypress run --spec "cypress/integration/basics_spec.js"
+CYPRESS_BASE_URL=http://localhost:80/ npx cypress run \
+  --record --key 1234 \
+  --spec "cypress/integration/basics_spec.js"
 
 
