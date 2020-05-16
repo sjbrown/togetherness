@@ -26,6 +26,10 @@ TogetherJSConfig_suppressJoinConfirmation = true
 TogetherJSConfig_suppressInvite = true
 TogetherJSConfig_includeHashInUrl = true
 TogetherJSConfig_disableWebRTC = true
+// Hack: to get stable Share URLs
+TogetherJSConfig_findRoom = 'abcd1234i'
+// Hack: I had to look into the TogetherJS source code for this one.
+localStorage.setItem('togetherjs.settings.seenIntroDialog', true)
 
 
 TogetherJSConfig_on_ready = () => {
@@ -1050,7 +1054,6 @@ function ui_submit_random_table(evt) {
   if (!c || !color ) {
     return;
   }
-  console.log('add_dtype', dtype, inputEl.id, center, serializedState)
   var random_table = add_object(
       'svg/v1/random_table.svg',
       {

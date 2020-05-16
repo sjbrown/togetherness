@@ -29,4 +29,4 @@ docker run --rm -it \
   -e DISPLAY=unix$DISPLAY \
   -e CYPRESS_BASE_URL=$CYPRESS_BASE_URL \
   --entrypoint=cypress \
-  cypress/included:4.5.0 open --project .
+  cypress/included:4.5.0 run --spec cypress/integration/player1.spec.js

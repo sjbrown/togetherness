@@ -622,6 +622,15 @@ function import_foreign_svg(url, attrs) {
 }
 
 function setColor(elem, color) {
+  console.log("Fix Me!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+  console.log("Fix Me!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+  console.log("Fix Me!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+  console.log("Fix Me!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+  return
+  console.log("Fix Me!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+  console.log("Fix Me!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+  console.log("Fix Me!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+  console.log("Fix Me!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
   filterElem = elem.querySelector('#app-filter-colorize')
   if (!filterElem) {
     return
@@ -777,27 +786,19 @@ function hookup_self_event_handlers(el, actionMenu) {
 }
 
 
-function add_object(url, attrs) {
+async function add_object(url, attrs) {
   console.log('add_object', url, attrs)
-  return import_foreign_svg(url)
-  .then((nest) => {
-    setColor(nest.node, (attrs && attrs.color) || getUserColor())
-    if (attrs && attrs.center !== undefined) {
-      nest.cx(attrs.center[0])
-      nest.cy(attrs.center[1])
-    }
-    svg_table.add(nest)
-    return nest
-  })
-  .then((nest) => {
-    hookup_ui(nest.node)
-    hookup_foreign_scripts(nest.node, url, attrs && attrs.serializedState)
-    return nest
-  })
-  .then((nest) => {
-    do_animate(nest.node)
-    net_fire({type: "create", data: serialize(nest)});
-  })
+  let nest = await import_foreign_svg(url)
+  setColor(nest.node, (attrs && attrs.color) || getUserColor())
+  if (attrs && attrs.center !== undefined) {
+    nest.cx(attrs.center[0])
+    nest.cy(attrs.center[1])
+  }
+  svg_table.add(nest)
+  hookup_ui(nest.node)
+  hookup_foreign_scripts(nest.node, url, attrs && attrs.serializedState)
+  do_animate(nest.node)
+  net_fire({type: "create", data: serialize(nest)});
 }
 
 function add_object_from_payload(payload) {
