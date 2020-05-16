@@ -1,31 +1,42 @@
-version: 2
-jobs:
-  build:
-    docker:
-      - image: cypress/base:8
-        environment:
-          ## this enables colors in the output
-          TERM: xterm
-    working_directory: ~/togetherness
-    steps:
-      - checkout
-      - run: echo "{}" > package.json
-      - run: npm install
-      - run: ls -lha
-      - restore_cache:
-          keys:
-            - v1-deps-{{ .Branch }}-{{ checksum "README.md" }}
-            - v1-deps-{{ .Branch }}
-            - v1-deps
-      - run:
-          name: Install Dependencies
-          command: npm ci
-      - save_cache:
-          key: v1-deps-{{ .Branch }}-{{ checksum "README.md" }}
-          # cache NPM modules and the folder with the Cypress binary
-          paths:
-            - ~/.npm
-            - ~/.cache
-      - run: bin/start.sh
-      - run: $(npm bin)/cypress run --record --key <record_key>
+#version: 2
+#jobs:
+#  build:
+#    docker:
+#      - image: cypress/base:8
+#        environment:
+#          ## this enables colors in the output
+#          TERM: xterm
+#    working_directory: ~/togetherness
+#    steps:
+#      - checkout
+#      - run: echo "{}" > package.json
+#      - run: npm install
+#      - run: ls -lha
+#      - restore_cache:
+#          keys:
+#            - v1-deps-{{ .Branch }}-{{ checksum "README.md" }}
+#            - v1-deps-{{ .Branch }}
+#            - v1-deps
+#      - run:
+#          name: Install Dependencies
+#          command: npm ci
+#      - save_cache:
+#          key: v1-deps-{{ .Branch }}-{{ checksum "README.md" }}
+#          # cache NPM modules and the folder with the Cypress binary
+#          paths:
+#            - ~/.npm
+#            - ~/.cache
+#      - run: bin/start.sh
+#      - run: $(npm bin)/cypress run --record --key <record_key>
 
+version: 2.1
+orbs:
+  cypress: cypress-io/cypress@1.1.0
+workflows:
+  build:
+    run: echo "{}" > package.json
+    run: npm install
+    run: ls -lha
+    jobs:
+      - cypress/install
+      - cypress/run
