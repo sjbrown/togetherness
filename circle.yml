@@ -27,5 +27,6 @@ jobs:
             - ~/.npm
             - ~/.cache
       #- run: bin/start.sh
+      - run: bin/cypress_inside_circle.sh
       - run: $(npm bin)/cypress run --record --key <record_key>
 
