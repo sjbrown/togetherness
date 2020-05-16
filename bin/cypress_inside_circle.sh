@@ -27,6 +27,6 @@ http-server -a localhost -p 80 src/ & wait-on http://localhost:80
 
 echo "Starting cypress"
 
-cypress run
+npm cypress run
 
 
