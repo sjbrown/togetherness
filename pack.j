@@ -1,0 +1,5 @@
+{
+  "dependencies" : {
+    "wait-on": "*"
+  }
+}

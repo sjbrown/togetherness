@@ -7,7 +7,7 @@ if [ `basename $(pwd)` != "togetherness" ]; then
   exit 1
 fi
 
-echo > package.json <<EOF
+cat > package.json <<EOF
 {
   "dependencies" : {
     "wait-on": "*"
