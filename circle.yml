@@ -6,7 +6,6 @@ jobs:
         environment:
           ## this enables colors in the output
           TERM: xterm
-      - run: bin/build.sh
     working_directory: ~/togetherness
     steps:
       - checkout
@@ -24,5 +23,6 @@ jobs:
           paths:
             - ~/.npm
             - ~/.cache
+      - run: bin/start.sh
       - run: $(npm bin)/cypress run --record --key <record_key>
 
