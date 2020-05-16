@@ -33,7 +33,6 @@ echo "================"
 echo "Starting cypress"
 
 CYPRESS_BASE_URL=http://localhost:80/ npx cypress run \
-  --record --key 1234 \
   --spec "cypress/integration/basics_spec.js"
 
 
