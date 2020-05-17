@@ -13,8 +13,8 @@ describe('Player 1', () => {
 
     cy.wait(2000) // Player 1 will be doing their thing now...
 
-    cy.get('#buttongroup_player summary').click()
-    cy.contains('Go Multiplayer').click().should(() => {
+    cy.contains('Player')
+    cy.contains('Invite').click().should(() => {
       expect(true)
     })
     cy.contains('Share URL').should('be.visible')

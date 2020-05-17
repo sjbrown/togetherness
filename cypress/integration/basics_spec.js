@@ -57,18 +57,6 @@ describe('Standard dice', () => {
   });
 });
 
-const seen = new WeakSet();
-function makeString(x) {
-  return JSON.stringify(x, (key, value) => {
-    if (typeof value === "object" && value !== null) {
-      if (seen.has(value)) {
-        return;
-      }
-      seen.add(value);
-    }
-    return value;
-  })
-}
 
 describe('One d6', () => {
   it('Pops up the modal', () => {

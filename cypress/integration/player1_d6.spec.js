@@ -11,9 +11,9 @@ describe('Player 1', () => {
     cy.get('#svg_table svg').should('not.be.visible')
     cy.get('#svg_viewport [data-app-url="svg/v1/dice_d6.svg"]').should('not.be.visible')
 
-    cy.get('#buttongroup_player summary').click()
+    cy.contains('Player')
 
-    cy.contains('Go Multiplayer').click().should(() => {
+    cy.contains('Invite').click().should(() => {
       expect(true)
     })
     cy.contains('Share URL', { timeout: 5000 }).should('be.visible')

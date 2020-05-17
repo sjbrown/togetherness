@@ -213,7 +213,14 @@ window.addEventListener('load', () => {
 
 <body>
 
-<div id="buttongroup_table">
+<!-- ==================================================================== -->
+<style>
+.menu-left {
+  max-width: 100px;
+  display: inline-block;
+}
+</style>
+<section class="menu menu-left buttongroup collapsegroup" id="buttongroup_table">
   <button id="dice_dialog_button" class="btn btn-small modal-trigger"
     accesskey="d"
     data-target="dialog_dice"
@@ -243,10 +250,73 @@ window.addEventListener('load', () => {
     + <u>O</u>ther
   </button>
 
-</div>
+</section>
 
-<details id="buttongroup_player">
-<summary>Menu</summary>
+
+<!-- ==================================================================== -->
+<script>
+window.addEventListener('load', () => {
+  document.querySelectorAll('.collapsetoggle').forEach((el) => {
+    el.addEventListener('click', () => {
+      el.classList.toggle('active')
+      content = el.nextElementSibling
+      if (content.classList.contains('initial')) {
+        content.classList.remove('initial')
+      }
+      content.classList.toggle('collapsed')
+    })
+  })
+})
+</script>
+<style>
+.menu {
+  position: fixed;
+  top: 0px;
+}
+.menu button {
+  width: 100%;
+}
+.menu-right {
+  max-width: 150px;
+  display: inline-block;
+  right: 0%;
+}
+@media only screen and (max-width: 900px) {
+  .menu {
+    top: auto;
+    bottom: 0%;
+  }
+  .menu-right {
+    left: auto;
+    right: 0%;
+  }
+}
+
+.collapsegroup > .collapsible {
+  overflow: hidden;
+  transition: max-height 0.2s ease-out;
+}
+.collapsible.initial {
+  max-height: 1000px;
+}
+.collapsible.collapsed {
+  max-height: 0px
+}
+.collapsetoggle:not(.active):after {
+  content:" ⮯";
+}
+.collapsetoggle.active:after {
+  content:" ☰";
+}
+@media only screen and (max-width: 900px) {
+  .collapsible.initial {
+    max-height: 10px;
+  }
+}
+</style>
+<section class="menu menu-right buttongroup collapsegroup" id="buttongroup_player">
+<button class="collapsetoggle btn" name="playermenu" >Player</button>
+<div class="collapsible initial">
 
 <!--
   <button id="properties_button" class="btn btn-small"
@@ -260,9 +330,10 @@ window.addEventListener('load', () => {
   -->
 
   <button id="bg_button" class="btn btn-small modal-trigger"
+    title="Change Background"
     data-target="dialog_bg"
     data-dialog-id="dialog_bg">
-    Change Background
+    Change BG
   </button>
 
   <button id="save_button" class="btn btn-small"
@@ -278,39 +349,57 @@ window.addEventListener('load', () => {
   </button>
 
   <button id="help_button" class="btn btn-small modal-trigger"
+    title="Help this project"
     data-target="dialog_contribute"
     data-dialog-id="dialog_contribute">
     Help this project
   </button>
 
   <button class="btn btn-small" onclick="TogetherJS(this); return false;"
-  id="start-togetherjs"
-  >Go Multiplayer</button>
+    title="Invite Friends"
+    id="start-togetherjs"
+  >Invite</button>
 
-</details>
+</div>
+</section>
 
-  <center>
-    <div id="gamearea" contextmenu="gamemenu">
-      <object id="widget_panzoom" data="svg/widget_panzoom.svg" type="image/svg+xml">
-      </object>
-    <!--
-    <svg id="svgdoc" width="100%" height="500" onload="initDraggable()">
-    </svg>
-    -->
-    </div>
-  </center>
+
+<!-- ==================================================================== -->
+<!-- ==================================================================== -->
+<style>
+#gamearea {
+  max-width: 800px;
+}
+</style>
+<center>
+  <div id="gamearea" contextmenu="gamemenu">
+    <object id="widget_panzoom" data="svg/widget_panzoom.svg" type="image/svg+xml">
+    </object>
+  <!--
+  <svg id="svgdoc" width="100%" height="500" onload="initDraggable()">
+  </svg>
+  -->
+  </div>
+</center>
+<!-- ==================================================================== -->
+<!-- ==================================================================== -->
+
 
 <style>
 
 #footer {
   min-width: 80%;
-  position:fixed;
-  bottom:0px;
 }
+@media screen and (max-width: 1200px) {
+  #footer {
+    min-width: 100%;
+  }
+}
+
 
 .footerbar.inactive {
   animation: slide-out 0.5s forwards;
-  transform: translateY(250%)
+  transform: translateY(1050%)
 }
 
 .footerbar {
@@ -338,6 +427,14 @@ window.addEventListener('load', () => {
 
 </style>
   <div id="footer">
+    <!-- =============OBJECT ACTIONS ==================== -->
+    <div id="object_actions" class="footerbar graybg">
+        <h3 id="object_actions_header">Obj heading</h3>
+      <template id="template_object_actions">
+        <button class="btn btn-large">Button label</button>
+      </template>
+    </div>
+    <!-- =============SHARE URL BAR ==================== -->
     <div id="share_url_bar" class="inactive footerbar whitebg">
     <style>
      #share_url_bar td {
@@ -390,13 +487,6 @@ window.addEventListener('load', () => {
       </td>
       </tr>
       </table>
-    </div>
-    <!-- =============OBJECT ACTIONS ==================== -->
-    <div id="object_actions" class="footerbar graybg">
-        <h3 id="object_actions_header">Obj heading</h3>
-      <template id="template_object_actions">
-        <button class="btn btn-large">Button label</button>
-      </template>
     </div>
   </div>
 
@@ -661,6 +751,11 @@ function ui_popup_properties(el, dialog_specifier) {
 
   <div class="modal" id="dialog_dice">
   <style>
+  @media only screen and (max-width: 900px) {
+    .modal table .btn {
+      padding: 0px;
+    }
+  }
   .dice_section {
     margin-bottom: 80px;
   }
