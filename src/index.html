@@ -242,6 +242,12 @@ window.addEventListener('load', () => {
     + pbta
   </button>
   -->
+  <button id="clocks_dialog_button" class="btn btn-small modal-trigger"
+    accesskey="k"
+    data-target="dialog_clocks"
+    data-dialog-id="dialog_clocks">
+    + Cloc<u>k</u>s
+  </button>
 
   <button id="other_button" class="btn btn-small modal-trigger"
     accesskey="o"
@@ -1453,6 +1459,23 @@ function ui_submit_ellipse(evt) {
       <button class="btn btn-small modal-close"
         onclick="add_object('svg/v1/rule_if.svg')">
         + If
+      </button>
+    </section>
+    </div>
+  </div>
+
+<!-- END OTHER =============================================== END OTHER -->
+
+<!-- CLOCKS ======================================================= CLOCKS -->
+
+  <div class="modal" id="dialog_clocks">
+    <button class="dialog_cancel btn modal-close" data-dialog-id="dialog_clocks"
+    > &#215; </button>
+    <div class="modal-content">
+    <section id="clocks_section">
+      <button class="btn btn-small modal-close"
+        onclick="add_object('svg/v1/clock_6.svg')">
+        + 6-Clock
       </button>
     </section>
     </div>
