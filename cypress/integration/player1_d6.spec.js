@@ -13,7 +13,7 @@ describe('Player 1', () => {
 
     cy.contains('Player')
 
-    cy.contains('Invite').click().should(() => {
+    cy.contains('Multiplayer').click().should(() => {
       expect(true)
     })
     cy.contains('Share URL', { timeout: 5000 }).should('be.visible')

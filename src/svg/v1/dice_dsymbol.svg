@@ -114,6 +114,7 @@ var dsymbol = {
 
     if (! /^.( .)*$/.test(serializedState.faces) ) {
       console.error('Faces are not properly formatted!')
+      alert('Faces are not properly formatted!')
       return
     }
 
