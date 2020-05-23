@@ -263,15 +263,24 @@ window.addEventListener('load', () => {
 <!-- ==================================================================== -->
 <script>
 window.addEventListener('load', () => {
-  document.querySelectorAll('.collapsetoggle').forEach((el) => {
-    el.addEventListener('click', () => {
-      el.classList.toggle('active')
-      content = el.nextElementSibling
-      if (content.classList.contains('initial')) {
-        content.classList.remove('initial')
+  document.querySelector('.player_menu_button_large')
+  .addEventListener('click', (e) => {
+      cgroup = e.target.closest('.collapsegroup')
+      cgroup.classList.toggle('active')
+      if (cgroup.classList.contains('initial')) {
+        cgroup.classList.remove('initial')
       }
-      content.classList.toggle('collapsed')
-    })
+      cgroup.classList.toggle('collapsed')
+  })
+  document.querySelector('.player_menu_button_mobile')
+  .addEventListener('click', (e) => {
+      cgroup = e.target.closest('.collapsegroup')
+      cgroup.classList.toggle('active')
+      if (cgroup.classList.contains('initial')) {
+        cgroup.classList.remove('initial')
+      } else {
+        cgroup.classList.toggle('collapsed')
+      }
   })
 })
 </script>
@@ -291,39 +300,58 @@ window.addEventListener('load', () => {
 @media only screen and (max-width: 900px) {
   .menu {
     top: auto;
-    bottom: 0%;
+    bottom: 0;
   }
   .menu-right {
     left: auto;
-    right: 0%;
+    right: 0;
   }
 }
 
+.menu .player_menu_button_mobile {
+display: none;
+}
 .collapsegroup > .collapsible {
   overflow: hidden;
   transition: max-height 0.2s ease-out;
+  margin: 0px;
 }
-.collapsible.initial {
+.initial > .collapsible {
   max-height: 1000px;
 }
-.collapsible.collapsed {
-  max-height: 0px
+.collapsed > .collapsible {
+  max-height: 0px;
+  margin: 0px;
 }
-.collapsetoggle:not(.active):after {
+.collapsetoggle:after {
   content:" ▾";
 }
-.collapsetoggle.active:after {
+.collapsed > .collapsetoggle:after {
   content:" ☰";
 }
+
 @media only screen and (max-width: 900px) {
-  .collapsible.initial {
-    max-height: 10px;
+  .initial > .collapsible {
+    max-height: 0px;
+  }
+  .initial > .collapsetoggle:after {
+    content:" ☰";
+  }
+  .menu .player_menu_button_large {
+    display: none;
+    border: red;
+  }
+  .menu .player_menu_button_mobile {
+    display: block;
   }
 }
+
+
 </style>
-<section class="menu menu-right buttongroup collapsegroup" id="buttongroup_player">
-<button class="collapsetoggle btn" name="playermenu" >Player</button>
-<div class="collapsible initial">
+<section class="menu menu-right buttongroup collapsegroup initial" id="buttongroup_player">
+<button class="player_menu_button_large collapsetoggle btn" name="playermenu" >Player</button>
+<button class="player_menu_button_mobile collapsetoggle btn mobile" name="playermenu" >Player</button>
+<div class="collapsible">
 
 <!--
   <button id="properties_button" class="btn btn-small"
@@ -406,7 +434,8 @@ window.addEventListener('load', () => {
 
 .footerbar.inactive {
   animation: slide-out 0.5s forwards;
-  transform: translateY(1050%)
+  transform: translateY(1050%);
+  visibility: collapse;
 }
 
 .footerbar {
@@ -440,7 +469,6 @@ window.addEventListener('load', () => {
     window.addEventListener('load', () => {
       document.querySelector('#object_actions_header.mobile')
       .addEventListener('click', (e) => {
-        console.log(e.target)
         e.target.style.setProperty('display', 'none')
       })
     })
@@ -484,11 +512,6 @@ window.addEventListener('load', () => {
     <!-- =============SHARE URL BAR ==================== -->
     <div id="share_url_bar" class="inactive footerbar whitebg">
     <style>
-    @media only screen and (max-width: 900px) {
-      #share_url_bar {
-        display: none;
-      }
-    }
 
      #share_url_bar td {
        padding: 0px;
