@@ -436,7 +436,38 @@ window.addEventListener('load', () => {
   <div id="footer">
     <!-- =============OBJECT ACTIONS ==================== -->
     <div id="object_actions" class="footerbar graybg">
-        <h3 id="object_actions_header">Obj heading</h3>
+    <style>
+    #object_actions_header {
+      font-size: larger;
+      margin-right: 40px;
+    }
+    #object_actions_header.mobile {
+      display: none;
+    }
+    @media only screen and (max-width: 900px) {
+      #object_actions {
+        position: fixed;
+        top: 0;
+        left: 0;
+        max-width: 200px;
+        background-color: #00000000;
+      }
+      #object_actions .btn-large {
+        min-width: 120px;
+        height: 34px;
+        line-height: 34px;
+        font-size: 13px;
+      }
+      #object_actions_header {
+        display: none;
+      }
+      #object_actions_header.mobile {
+        display: inline;
+      }
+    }
+    </style>
+        <h3 id="object_actions_header">Select objects by clicking on them</h3>
+        <h3 id="object_actions_header" class="mobile">Select objects by long-pressing on them</h3>
       <template id="template_object_actions">
         <button class="btn btn-large">Button label</button>
       </template>
@@ -444,6 +475,12 @@ window.addEventListener('load', () => {
     <!-- =============SHARE URL BAR ==================== -->
     <div id="share_url_bar" class="inactive footerbar whitebg">
     <style>
+    @media only screen and (max-width: 900px) {
+      #share_url_bar {
+        display: none;
+      }
+    }
+
      #share_url_bar td {
        padding: 0px;
        border-radius: 0px;

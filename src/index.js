@@ -936,10 +936,12 @@ function ui_update_buttons() {
 
   submenu = byId('object_actions')
   header = byId('object_actions_header')
+  mobile_header = document.querySelector('#object_actions_header.mobile')
   submenu.querySelectorAll('.cloned-button').forEach((btn) => {
     btn.remove()
   })
   header.innerText = 'Select objects by clicking on them'
+  mobile_header.innerText = 'Select objects by long-pressing on them'
 
   template = byId('template_object_actions')
   function makeButton(elemNode, title) {
@@ -969,6 +971,7 @@ function ui_update_buttons() {
     }
     if (numMarked === 1) {
       header.innerText = g(elemNode, 'data-orig-name')
+      mobile_header.innerText = g(elemNode, 'data-orig-name')
       //#header.innerText = g(elemNode, 'data-name')
 
       Object.keys(elemNode.actionMenu).map((title) => {
@@ -984,6 +987,7 @@ function ui_update_buttons() {
 
     } else { // more than 1
       header.innerText = numMarked + ' objects selected'
+      mobile_header.innerText = numMarked + ' objects selected'
       Object.keys(elemNode.actionMenu).map((title) => {
         if (i === 1) { // the first one sets up the 'buttons' object
           buttons[title] = {
