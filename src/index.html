@@ -436,6 +436,15 @@ window.addEventListener('load', () => {
   <div id="footer">
     <!-- =============OBJECT ACTIONS ==================== -->
     <div id="object_actions" class="footerbar graybg">
+    <script>
+    window.addEventListener('load', () => {
+      document.querySelector('#object_actions_header.mobile')
+      .addEventListener('click', (e) => {
+        console.log(e.target)
+        e.target.style.setProperty('display', 'none')
+      })
+    })
+    </script>
     <style>
     #object_actions_header {
       font-size: larger;
@@ -447,7 +456,7 @@ window.addEventListener('load', () => {
     @media only screen and (max-width: 900px) {
       #object_actions {
         position: fixed;
-        top: 0;
+        top: 20%;
         left: 0;
         max-width: 200px;
         background-color: #00000000;
