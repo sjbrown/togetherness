@@ -99,11 +99,12 @@ SVG.on(document, 'DOMContentLoaded', () => {
   viewport.node.id = 'svg_viewport'
   s(viewport.node, 'width', viewport.node.parentNode.clientWidth)
   viewport.style('background-image', 'url(svg/bg_hexagons.svg)')
-  viewport.node.onclick = (e) => {
-    if (e.target.id === viewport.node.id) {
+  viewport.node.addEventListener('svg_dragsafe_click', (e) => {
+    console.log("-0--------------------------", e.detail.elemId, viewport.node.id)
+    if (e.detail.elemId === viewport.node.id) {
       ui_unmark_all_but()
     }
-  }
+  })
 
   gViewport = SVG.adopt(document.createElementNS(SVG.ns, 'g'))
   gViewport.node.id = 'g_viewport'
@@ -505,7 +506,7 @@ display: none;
     }
     </style>
         <h3 id="object_actions_header">Select objects by clicking on them</h3>
-        <h3 id="object_actions_header" class="mobile">Select objects by long-pressing on them</h3>
+        <h3 id="object_actions_header" class="mobile">Select objects by clicking on them</h3>
       <template id="template_object_actions">
         <button class="btn btn-large">Button label</button>
       </template>

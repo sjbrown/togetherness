@@ -434,7 +434,6 @@ function hookup_mark_handlers(markEl) {
   //      event,      handler,   binding,   capture/bubbling phase
   //nest.on('click', ui_unmark, undefined, true)
   nest.on('remove_mark', ui_unmark, undefined, true)
-  nest.on('svg_longtouch', ui_unmark, undefined, true)
   nest.on(
     'mouseover',
     (evt) => { ui_mouseover(evt, nest.node, mark_menu) },
@@ -446,6 +445,7 @@ function hookup_mark_handlers(markEl) {
     if (evt.ctrlKey) {
       ui_unmark(evt)
     } else {
+      console.log("A")
       ui_unmark_all_but(nest.node.id)
     }
   })
@@ -461,6 +461,7 @@ function ui_mark_by_id(evt, target_id) {
   //console.log('ui_mark_by_id target_id', evt, target_id)
   // unmark everything else, unless shift or ctrl is being held
   if (!evt.ctrlKey && !evt.shiftKey) {
+    console.log("B")
     ui_unmark_all_but(target_id)
   }
 
@@ -734,14 +735,11 @@ function hookup_ui(elem) {
   console.log("hookup_ui", elem.id)
   nest = SVG.adopt(elem)
   nest.on('svg_dragsafe_click', (evt) => {
-    //console.log('id', elem.id, 'got click', evt)
+    console.log('id', elem.id, 'got click', evt)
     ui_mark_by_id(evt.detail.origEvent, elem.id)
   })
   nest.on('svg_dragsafe_dblclick', (evt) => {
     console.log('nest ', nest.id, ' got dblclick')
-  })
-  nest.on('svg_longtouch', (evt) => {
-    ui_mark_by_id(evt, elem.id)
   })
 }
 
@@ -750,7 +748,6 @@ function un_hookup_ui(elem) {
   nest = SVG.adopt(elem)
   nest.off('svg_dragsafe_click')
   nest.off('svg_dragsafe_dblclick')
-  nest.off('svg_longtouch')
 }
 
 function hookup_menu_actions(svgEl, actionMenu) {
@@ -940,8 +937,8 @@ function ui_update_buttons() {
   submenu.querySelectorAll('.cloned-button').forEach((btn) => {
     btn.remove()
   })
-  header.innerText = 'Select objects by clicking on them'
-  mobile_header.innerText = 'Select objects by long-pressing on them'
+  header.innerText = 'Select objects by clicking on them; roll by double-clicking'
+  mobile_header.innerText = 'Select objects by clicking on them; roll by double-clicking'
 
   template = byId('template_object_actions')
   function makeButton(elemNode, title) {
