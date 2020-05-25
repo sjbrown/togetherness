@@ -734,7 +734,7 @@ function hookup_ui(elem) {
   console.log("hookup_ui", elem.id)
   nest = SVG.adopt(elem)
   nest.on('svg_dragsafe_click', (evt) => {
-    console.log('id', elem.id, 'got click', evt)
+    //console.log('id', elem.id, 'got click', evt)
     ui_mark_by_id(evt.detail.origEvent, elem.id)
   })
   nest.on('svg_dragsafe_dblclick', (evt) => {
@@ -746,7 +746,7 @@ function hookup_ui(elem) {
 }
 
 function un_hookup_ui(elem) {
-  console.log("un_hookup_ui", elem.id)
+  //console.log("un_hookup_ui", elem.id)
   nest = SVG.adopt(elem)
   nest.off('svg_dragsafe_click')
   nest.off('svg_dragsafe_dblclick')
@@ -754,7 +754,7 @@ function un_hookup_ui(elem) {
 }
 
 function hookup_menu_actions(svgEl, actionMenu) {
-  console.log('hookup_menu_actions', svgEl, actionMenu)
+  //console.log('hookup_menu_actions', svgEl, actionMenu)
   var newMenu = Object.assign(actionMenu, {
     'Mark': {
       eventName: 'node_mark',

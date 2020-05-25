@@ -1,26 +1,45 @@
-/*
-  Peter's draggable library, with some modifications
-*/
-function makeDraggable(world) {
+function distance(v1, v2) {
+  return Math.abs(v1.x - v2.x) + Math.abs(v1.y - v2.y)
+}
+function clamp(val, minVal, maxVal) {
+  return Math.min(Math.max(val, minVal), maxVal);
+}
+
+function makeDraggable(viewport, table) {
+  /*
+    Peter's draggable library, with some modifications
+  */
   // Source:
   // https://github.com/petercollingridge/code-for-blog/
   // Tutorial:
   // http://www.petercollingridge.co.uk/tutorials/svg/interactive/dragging/
+  //
+  // 'viewport' is SVG.adopt(document.getElementById('#svg_viewport'))
+  // 'table' is SVG.adopt(document.getElementById('#svg_table'))
+  //
   var selectedEl, origMouse, origXY, isJustAClick;
   var longtouchTimer, lockLongtouchTimer;
   var broadcastTimer, lockBroadcastTimer;
   var mouse;
   var lastClickTime = 0;
+  var tableBoundaries = {
+    minX: table.x(),
+    minY: table.y(),
+    maxX: table.width(),
+    maxY: table.height(),
+  }
 
-  world.on('mousedown', startDrag);
-  world.on('mousemove', drag);
-  world.on('mouseup', endDrag);
-  world.on('mouseleave', endDrag);
-  world.on('touchstart', touchStart);
-  world.on('touchmove', drag);
-  world.on('touchend', endDrag);
-  world.on('touchleave', endDrag);
-  world.on('touchcancel', endDrag);
+  // MOUSE
+  viewport.on('mousedown', startDrag);
+  viewport.on('mousemove', drag);
+  viewport.on('mouseup', endDrag);
+  viewport.on('mouseleave', endDrag);
+  // TOUCH
+  viewport.on('touchstart', touchStart);
+  viewport.on('touchmove', drag);
+  viewport.on('touchend', endDrag);
+  viewport.on('touchleave', endDrag);
+  viewport.on('touchcancel', endDrag);
 
   function broadcast(eventName, detail, dispatchEl) {
     //console.log('broadcasting', eventName)
@@ -31,10 +50,6 @@ function makeDraggable(world) {
       bubbles: true,
       detail: detail,
     }))
-  }
-
-  function distance(v1, v2) {
-    return Math.abs(v1.x - v2.x) + Math.abs(v1.y - v2.y)
   }
 
   function onLongTouch() {
@@ -56,7 +71,8 @@ function makeDraggable(world) {
   }
 
   function getMousePosition(evt) {
-    var CTM = world.node.getScreenCTM();
+    //var CTM = viewport.node.getScreenCTM();
+    var CTM = table.node.getScreenCTM();
     if (evt.touches) { evt = evt.touches[0]; }
     return {
       x: (evt.clientX - CTM.e) / CTM.a,
@@ -77,10 +93,10 @@ function makeDraggable(world) {
   }
 
   function startDrag(evt) {
-    //console.log("startdrag this", this, " evt", evt)
+    //console.log("startdrag evt", evt)
     evt.preventDefault() // prevent, for example, text selection
     dragTarget = evt.target.closest('.draggable-group')
-    console.log("got dragTarget", dragTarget)
+    //console.log("got dragTarget", dragTarget)
     while (dragTarget) {
       // Highest priority goes to drag-open (these are immediate children of
       // locked selections)
@@ -115,13 +131,26 @@ function makeDraggable(world) {
   }
 
   function drag(evt) {
-    evt.preventDefault() // prevent, for example, text selection
     if (!selectedEl) {
       return
     }
+    //console.log("drag", evt)
+    evt.preventDefault() // prevent, for example, text selection
     mouse = getMousePosition(evt)
-    selectedEl.x(origXY.x + (mouse.x - origMouse.x))
-    selectedEl.y(origXY.y + (mouse.y - origMouse.y))
+    selectedEl.x(
+      clamp(
+        origXY.x + (mouse.x - origMouse.x),
+        tableBoundaries.minX,
+        (tableBoundaries.maxX - selectedEl.width())
+      )
+    )
+    selectedEl.y(
+      clamp(
+        origXY.y + (mouse.y - origMouse.y),
+        tableBoundaries.minY,
+        tableBoundaries.maxY - selectedEl.height(),
+      )
+    )
     if (
       isJustAClick
       &&
@@ -143,7 +172,7 @@ function makeDraggable(world) {
 
   function notifyDropTargets(evt, eventName) {
     mouse = getMousePosition(evt)
-    world.node.querySelectorAll('.droptarget').forEach((el) => {
+    table.node.querySelectorAll('.droptarget').forEach((el) => {
       newEventName = eventName + '_droptarget'
       console.log('broadcasting', newEventName, 'for', el.id, evt.currentTarget)
       broadcast(newEventName, {
@@ -155,6 +184,26 @@ function makeDraggable(world) {
   }
 
   function endDrag(evt) {
+    //console.log("endDrag evt", evt)
+    let mouse = getMousePosition(evt)
+    // TODO: for some reason there are "spurious" mouseleave events
+    // that trigger when the mouse leaves the element being dragged,
+    // but doesn't leave the #svg_table, which is what we added the
+    // event listener for.  So, until this mystery is solved, just
+    // disqualify these events
+    if (evt.type === 'mouseleave' && !(
+      mouse.x < viewport.x()
+      ||
+      mouse.x > viewport.width()
+      ||
+      mouse.y < viewport.y()
+      ||
+      mouse.y > viewport.height()
+    )) {
+      // mouse is still inside viewport
+      console.log("SHORT CIR")
+      return;
+    }
     try {
       if (selectedEl) {
         now = new Date()

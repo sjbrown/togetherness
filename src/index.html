@@ -86,7 +86,6 @@ function initSvgTable(el) {
   svg_table = SVG.adopt(el)
   svg_table.size(1000, 480)
   gViewport.add(svg_table)
-  makeDraggable(svg_table)
   return svg_table
 }
 
@@ -98,7 +97,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
 
   viewport = SVG('gamearea').size(500, 480)
   viewport.node.id = 'svg_viewport'
-  s(viewport.node, 'width', '100%')
+  s(viewport.node, 'width', viewport.node.parentNode.clientWidth)
   viewport.style('background-image', 'url(svg/bg_hexagons.svg)')
   viewport.node.onclick = (e) => {
     if (e.target.id === viewport.node.id) {
@@ -110,7 +109,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
   gViewport.node.id = 'g_viewport'
   viewport.add(gViewport)
 
-  initSvgTable(document.createElementNS(SVG.ns, 'svg'))
+  svg_table = initSvgTable(document.createElementNS(SVG.ns, 'svg'))
   table_rect = gViewport.rect()
   table_rect.attr({
      x: -1,
@@ -122,8 +121,10 @@ SVG.on(document, 'DOMContentLoaded', () => {
      fill: 'none',
      stroke: 'black',
      'stroke-width': 10,
-     'stroke-opacity': 0.1,
+     'stroke-opacity': 0.2,
   })
+
+  makeDraggable(viewport, svg_table)
 
   document.addEventListener('svg_dragend', (evt) => {
     selectedElement = byId(evt.detail.elemId)
