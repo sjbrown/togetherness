@@ -224,7 +224,7 @@ function makeDraggable(viewport, table) {
       now = new Date()
       broadcast('svg_dragend', { elemId: elemId })
       notifyDropTargets(evt, 'svg_dragend')
-      if (isJustAClick) {
+      if ((evt.type === 'mouseup' || evt.type === 'touchend') && isJustAClick) {
         //debug('justclick' + (selectedEl && selectedEl.node.id))
         broadcast('svg_dragsafe_click', {
           elemId: elemId,
