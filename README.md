@@ -2,9 +2,24 @@
 
 [![sjbrown](https://circleci.com/gh/sjbrown/togetherness.svg?style=svg)](https://circleci.com/gh/sjbrown/togetherness)
 
-After playing around with the awesome
+Tabletop RPGs are no longer just played in physical spaces. More and more,
+this kind of gaming is being played online, and players are
+discovering online dice rollers, communal game maps, virtual tabletops,
+and digital character keepers. But too often these tools are walled
+gardens whose owners see players as *products*, not human beings.
+
+Togetherness is a web-based virtual tabletop whose chief aim is
+the empowerment of players as free human beings participating voluntarily
+in a community. There are no "owners", just equal participants enjoying a
+gamut of activities including "creation", "play" and "hosting".
+
+## History
+
+After joining The Gauntlet and playing around with the awesome
 [roller](https://github.com/shanel/roller),
 I got the itch to create my own "dice-rolling" application.
+
+## Goals
 
 Here are some goals for Togetherness:
 
