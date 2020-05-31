@@ -79,17 +79,11 @@ var gViewport;
 var widget_panzoom;
 
 function initSvgTable(el) {
-/*
-  oldTable = gViewport.node.querySelector('#svg_table')
-  if (oldTable) {
-    console.log('found old table', oldTable)
-    svg_table.remove()
-  }
-  */
   el.id = 'svg_table'
   svg_table = SVG.adopt(el)
   svg_table.size(1000, 480)
   gViewport.add(svg_table)
+  makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
   return svg_table
 }
 
@@ -114,7 +108,6 @@ SVG.on(document, 'DOMContentLoaded', () => {
   gViewport.node.id = 'g_viewport'
   viewport.add(gViewport)
 
-  svg_table = initSvgTable(document.createElementNS(SVG.ns, 'svg'))
   table_rect = gViewport.rect()
   table_rect.attr({
      x: -1,
@@ -129,7 +122,8 @@ SVG.on(document, 'DOMContentLoaded', () => {
      'stroke-opacity': 0.2,
   })
 
-  makeDraggable(viewport, svg_table)
+  svg_table = initSvgTable(document.createElementNS(SVG.ns, 'svg'))
+  //#makeDraggable(viewport, svg_table)
 
   document.addEventListener('svg_dragend', (evt) => {
     selectedElement = byId(evt.detail.elemId)
@@ -383,8 +377,8 @@ display: none;
     Save
   </button>
 
-  <button id="load_button" class="btn btn-small modal-trigger"
-    data-target="dialog_load"
+  <button id="load_button" class="btn btn-small"
+    onclick="ui_popup_dialog_load()"
     data-dialog-id="dialog_load">
     Load
   </button>
@@ -420,6 +414,15 @@ display: none;
   <svg id="svgdoc" width="100%" height="500" onload="initDraggable()">
   </svg>
   -->
+  <svg width="0" height="0">
+  <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
+    <feColorMatrix id="recolorize-filter-matrix" type="matrix"
+       values="0.9 0.0 0.0 0.0  0.0
+               0.9 0.0 0.0 0.0  0.0
+               0.9 0.0 0.0 0.0  0.0
+               0.0 0.0 0.0 1.0  0.0" />
+  </filter>
+  </svg>
   </div>
 </center>
 <!-- ==================================================================== -->
@@ -570,29 +573,45 @@ display: none;
       </tr>
       </table>
     </div>
+    <!-- =================================DEBUG======================= -->
+    <div id="debug_bar" class="footerbar graybg debug_none">
+    <script>
+    window.addEventListener('load', () => {
+      let q = new URLSearchParams(window.location.search)
+      if (q.get('debug') === '1') {
+        let bar = document.getElementById('debug_bar')
+        bar.classList.remove('debug_none')
+      }
+    })
+    </script>
+    <style>
+    .debug_none {
+      display: none;
+    }
+    </style>
+        <pre id="debug_bar_log">
+        </pre>
+    </div>
   </div>
 
 <!-- SAVE ============================================================ SAVE -->
   <div id="dialog_save" class="modal">
   <script>
 function ui_popup_dialog_save() {
+  if(document.querySelectorAll('#svg_table').length > 1) {
+    alert('too many svg_table elements')
+  }
+  elJSON = domJSON.toJSON(
+    byId('svg_table'),
+    { domProperties: false }
+  )
+  fragment = domJSON.toDOM(elJSON)
+  var dd = document.createElement('div')
+  dd.appendChild(fragment)
+console.log('POPPOP', fragment.id)
+console.log('POPPOP', dd.innerHTML.substring(30))
   textarea = byId('textarea_save_output')
-  svg = byId('svg_table').cloneNode(true)
-  svg.querySelectorAll('svg').forEach((subSvg) => {
-    // Unset the state that ties the element to this active document
-    /* This has a bug right now...
-    Object.keys(subSvg.dataset).map((dataKey) => {
-      console.log('lookat', dataKey)
-      if (dataKey.slice(0,2) === 'ui') {
-        console.log('dropping', dataKey, 'in', subSvg.id)
-        delete subSvg.dataset[dataKey]
-      }
-    })
-    */
-    s(subSvg, 'data-ui-initialized', null)
-  })
-  textarea.innerHTML = svg.outerHTML
-  svg.remove()
+  textarea.value = dd.innerHTML
   return ui_popup_dialog({'data-dialog-id': 'dialog_save'})
 }
   </script>
@@ -647,26 +666,46 @@ function ui_popup_dialog_save() {
 <!-- LOAD ============================================================ LOAD -->
   <div id="dialog_load" class="modal">
   <script>
-function load_svg() {
+async function load_svg() {
   textarea = byId('textarea_load_input')
-  svg = byId('svg_table')
-  svg.outerHTML = textarea.value
-  initSvgTable(svg)
-  svg = byId('svg_table')
-  svg.querySelectorAll('[data-app-class] script').forEach((script) => {
-    subSvg = script.parentNode
-    console.log("appending script", script)
-    appendDocumentScript(script, subSvg)
+  let table = byId('svg_table')
+
+  newDoc = new DOMParser().parseFromString(textarea.value, 'image/svg+xml')
+  //defanged = domJSON.toJSON(newDoc.firstChild)
+  //docFragment = domJSON.toDOM(defanged)
+  table.parentNode.replaceChild(newDoc.firstChild, table)
+  table = byId('svg_table')
+
+  initSvgTable(table)
+  table  = byId('svg_table')
+
+  // None of the UI is hooked up for the freshly-loaded document
+  table .querySelectorAll('[data-ui-initialized]').forEach((elem) => {
+    elem.removeAttribute('data-ui-initialized')
   })
-  svg.querySelectorAll('[data-app-class]').forEach((subSvg) => {
+
+  // Async stuff happens here, so iterate with an old school for() loop
+  nl = table .querySelectorAll('[data-app-url]')
+  for(var i=0; i < nl.length; i ++) {
+    elem = nl[i]
+    await import_foreign_svg(elem.dataset.appUrl)
+  }
+
+  table .querySelectorAll('[data-app-class]').forEach((subSvg) => {
     hookup_ui(subSvg)
     hookup_foreign_scripts(subSvg)
   })
-  svg.querySelectorAll('[data-nest-for=mark]').forEach((subSvg) => {
+  table .querySelectorAll('[data-nest-for=mark]').forEach((subSvg) => {
     hookup_mark_handlers(subSvg)
   })
 
   return ui_popdown_dialog('dialog_load')
+}
+function ui_popup_dialog_load() {
+  textarea = byId('textarea_load_input')
+  textarea.value = ''
+  textarea.innerHTML = ''
+  return ui_popup_dialog({'data-dialog-id': 'dialog_load'})
 }
   </script>
     <button class="dialog_cancel btn modal-close"
@@ -748,7 +787,6 @@ function ui_popup_button() {
     return
   }
   var el = allSel[0].node.firstChild;
-      console.log('ui popup handler')
   return ui_popup_properties(el, {'data-dialog-id': 'dialog_properties'})
 }
 
@@ -1313,12 +1351,8 @@ function make_text(attrs, content) {
     'font-size': '12pt',
   }, attrs))
   var rbox = text.rbox()
-  //console.log('text y', text.y())
-  //console.log('text rbox', rbox)
   text.y(0)
   text.x(padding/2)
-  //console.log('text y', text.y())
-  //console.log('text rbox', text.rbox())
 
   var rect = svg_table.rect()
   rect.attr(Object.assign({
@@ -1349,7 +1383,6 @@ function make_text(attrs, content) {
   nest.add(rect)
   text.y(text.y() + (rect.height()/2))
   nest.add(text)
-  //console.log('post insert text y', text.y())
 
   hookup_ui(nest.node)
   hookup_menu_actions(nest.node, text_verbs)

@@ -152,7 +152,15 @@ function do_animate(node, attrs) {
 }
 
 
+function debugBar(s) {
+  if (!DEBUG) { return }
+  log = byId('debug_bar_log')
+  text = log.innerHTML
+  log.innerHTML = s + '\n' + text
+}
+
 togetherFunctions.on_hello = (msg) => {
+  debugBar('HELLO: ' + msg)
   worldData = nodeMap(svg_table.node, serialize);
   if (worldData.length) {
     net_fire({
@@ -164,12 +172,14 @@ togetherFunctions.on_hello = (msg) => {
 };
 
 togetherFunctions.on_sync = (msg) => {
+  debugBar('SYNC: ' + msg)
   msg.data.map(payload => {
     return Promise.resolve()
     .then(() => {
       return deserialize(payload)
     })
     .then((elem) => {
+      s(elem, 'uiInitialized', null)
       svg_table.node.appendChild(elem)
       hookup_ui(elem)
       if (payload['data-app-url']) {
@@ -180,14 +190,19 @@ togetherFunctions.on_sync = (msg) => {
   change_background(msg.bg)
 }
 
-togetherFunctions.on_change = (msg) => { deserialize(msg.data) }
+togetherFunctions.on_change = (msg) => {
+  debugBar('CHANGE: ' + msg)
+  deserialize(msg.data)
+}
 
 togetherFunctions.on_create = (msg) => {
+  debugBar('CREATE: ' + msg)
   return Promise.resolve()
   .then(() => {
     return deserialize(msg.data)
   })
   .then((elem) => {
+    elem.dataset.uiInitialized=false
     svg_table.node.appendChild(elem)
     hookup_ui(elem)
     if (msg.data['data-app-url']) {
@@ -197,6 +212,7 @@ togetherFunctions.on_create = (msg) => {
 }
 
 togetherFunctions.on_create_mark = (msg) => {
+  debugBar('CREATEMARK: ' + msg)
   make_mark(msg.data.target_id, msg.data.mark_rect)
 }
 
@@ -615,6 +631,7 @@ function import_foreign_svg(url, attrs) {
     nest.addClass('drag-closed')
 
     frame.querySelectorAll('script').forEach((script) => {
+      console.log("FOUND A SCRIPT", script.id, "IN", nest.node.id)
       appendDocumentScript(script, nest.node)
     })
 
@@ -670,25 +687,78 @@ function recolorize(matrixNode, color) {
   )
 }
 
+function getNamespacesForElement(elem) {
+  nses = elem.dataset.appNamespaces
+  nses = nses ? nses.split(',') : []
+  return nses
+}
+function setNamespacesForElement(elem, namespacesArr) {
+  elem.dataset.appNamespaces = namespacesArr
+}
+function getScriptsForElement(elem) {
+  scripts = elem.dataset.appScripts
+  scripts = scripts ? scripts.split(',') : []
+  return scripts
+}
+function setScriptsForElement(elem, scriptsArr) {
+  elem.dataset.appScripts = scriptsArr
+}
 function appendDocumentScript(scriptElem, parentElem) {
   // Make the scripts run by putting them into the live DOM
   console.log("appendDocumentScript", scriptElem.id, g(scriptElem, 'src'))
-  var newScript = document.createElement('script')
-  if (g(scriptElem, 'src')) {
+  debugBar("appendDocumentScript" + scriptElem.id + g(scriptElem, 'src'))
+  let newScript = document.createElement('script')
+  let scriptUrl = g(scriptElem, 'src')
+  if (scriptUrl) {
     newScript.src = g(scriptElem, 'src')
-    document.querySelector('body').appendChild(newScript)
   } else if (scriptElem.textContent) {
+    if (parentElem.dataset.appUrl) {
+      scriptUrl = parentElem.dataset.appUrl
+    }
     newScript.textContent = scriptElem.textContent
   } else {
     throw Error(`Imported script (${scriptElem.id}) had no src or textContent`)
   }
+  currentScripts = getScriptsForElement(parentElem)
+  currentScripts.push(scriptUrl)
+
+  let namespace = g(scriptElem, 'data-namespace')
+  if (namespace) {
+    newNamespaces = getNamespacesForElement(parentElem)
+    newNamespaces.push(namespace)
+    setNamespacesForElement(parentElem, newNamespaces)
+  }
+
   s(newScript, 'id', scriptElem.id)
+  s(newScript, 'data-orig-url', scriptUrl)
   s(newScript, 'data-namespace', g(scriptElem, 'data-namespace'))
-  parentElem.appendChild(newScript)
+
+  ga = byId('gamearea')
+  if (!ga.querySelector(`[data-orig-url="${scriptUrl}"]`)) {
+    ga.appendChild(newScript)
+  }
+  // Remove the javascript node so it doesn't clutter up the svg_table DOM
   scriptElem.remove()
 }
 
+function initialize_sans_ns(elem, scriptElem) {
+  console.log('initialize_sans_ns', elem.id)
+  // The foreign <svg> should have an onLoad to do this, but
+  // Chrome has problems doing onLoad
+  if (g(elem, 'data-ui-initialized')) {
+    return
+  }
+  if (ns.initialize) {
+    ns.initialize(elem, serializedState)
+  }
+  if (ns.menu) {
+    hookup_menu_actions(elem, ns.menu)
+  }
+  s(elem, 'data-ui-initialized', true)
+}
+
 function initialize_with_ns(elem, ns, serializedState) {
+  console.log('initialize_with_ns', elem.id)
   // The foreign <svg> should have an onLoad to do this, but
   // Chrome has problems doing onLoad
   if (g(elem, 'data-ui-initialized')) {
@@ -707,26 +777,16 @@ function hookup_foreign_scripts(elem, url, serializedState) {
   console.log('hookup_foreign_scripts', elem, url, serializedState)
   // This assumes import_foreign_svg has already been executed
   // and the svg element has been added to the DOM
-  elem.querySelectorAll('script').forEach((script) => {
-    var ns_text = g(script, 'data-namespace')
-    if (ns_text) {
-      var ns = window[ns_text]
-      if (!ns) {
-        alert(ns_text + ' has not been added to the DOM')
-        console.error(ns_text + ' has not been added to the DOM')
-        return;
-      }
+  getNamespacesForElement(elem).forEach((nsName) => {
+    let ns = window[nsName]
+    initialize_with_ns(elem, ns, serializedState)
+    //console.log("adding ser and deser", Object.keys(ns))
+    if (ns.serialize) {
+      serializers[url] = ns.serialize
+    }
 
-      initialize_with_ns(elem, ns, serializedState)
-
-      //console.log("adding ser and deser", Object.keys(ns))
-      if (ns.serialize) {
-        serializers[url] = ns.serialize
-      }
-
-      if (ns.deserialize) {
-        deserializers[url] = ns.deserialize
-      }
+    if (ns.deserialize) {
+      deserializers[url] = ns.deserialize
     }
   })
 }

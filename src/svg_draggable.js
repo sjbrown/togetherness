@@ -5,9 +5,8 @@ function clamp(val, minVal, maxVal) {
   return Math.min(Math.max(val, minVal), maxVal);
 }
 
-DEBUG=false
 function debug(s, evt) {
-  if (!DEBUG) { return }
+  if (true) { return }
   console.log(s, evt);
   r = new XMLHttpRequest()
   q = '/debug/' + s
