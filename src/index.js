@@ -858,6 +858,7 @@ async function add_object(url, attrs) {
   hookup_ui(nest.node)
   hookup_foreign_scripts(nest.node, url, attrs && attrs.serializedState)
   do_animate(nest.node)
+  ui_fire({type: "create", data: { createdEl: nest.node }});
   net_fire({type: "create", data: serialize(nest)});
 }
 
@@ -1110,7 +1111,18 @@ function evt_fire(eventName, triggerNode, origEvent, other) {
   }))
 }
 
+function broadcast(eventName, detail, dispatchEl) {
+  //console.log('broadcasting', eventName, detail)
+  if (dispatchEl === undefined) {
+    dispatchEl = byId('svg_table')
+  }
+  dispatchEl.dispatchEvent(new CustomEvent(eventName, {
+    bubbles: true,
+    detail: detail,
+  }))
+}
 function ui_fire(msg) {
+  broadcast(msg.type, msg.data)
   var fn = {
     createMark: (msg) => {
       msg.data.attr({'data-ui-marked': true})
@@ -1118,6 +1130,9 @@ function ui_fire(msg) {
     },
     dropMark: (msg) => {
       ui_update_buttons()
+    },
+    create: (msg) => {
+      console.log('ui create', msg)
     },
     delete: (msg) => {
       //console.log('ui delete sel', msg)

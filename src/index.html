@@ -222,6 +222,27 @@ window.addEventListener('load', () => {
 }
 </style>
 <section class="menu menu-left buttongroup collapsegroup" id="buttongroup_table">
+  <button id="quick_die_button" class="btn btn-small"
+    onclick="quick_die_button_add()"
+    title="Add one die of the most recent type"
+    >
+    <img src="svg/v1/dice_d6.svg" width="24" height="24" />
+  </button>
+  <script>
+  function quick_die_button_add() {
+    url = document.querySelector('#quick_die_button img').src
+    add_object( url, { 'center': [50, 50] })
+  }
+  window.addEventListener('load', () => {
+    window.addEventListener('create', (e) => {
+      redDot = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg=='
+      newSrc = e.detail.createdEl.dataset.appUrl || redDot
+      document.querySelector('#quick_die_button img').src = newSrc
+    })
+  })
+
+  </script>
+
   <button id="dice_dialog_button" class="btn btn-small modal-trigger"
     accesskey="d"
     data-target="dialog_dice"
@@ -876,7 +897,6 @@ function ui_popup_properties(el, dialog_specifier) {
 function add_dtype(dtype, inputEl, center, serializedState) {
   console.log('add_dtype', dtype, inputEl.id, center, serializedState)
   num = parseInt(inputEl.value) || 0
-  console.log('num', num)
   for( var i=0; i < num; i++ ) {
     add_object(
       'svg/v1/dice_' + dtype +'.svg',
