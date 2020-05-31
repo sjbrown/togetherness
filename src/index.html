@@ -608,8 +608,6 @@ function ui_popup_dialog_save() {
   fragment = domJSON.toDOM(elJSON)
   var dd = document.createElement('div')
   dd.appendChild(fragment)
-console.log('POPPOP', fragment.id)
-console.log('POPPOP', dd.innerHTML.substring(30))
   textarea = byId('textarea_save_output')
   textarea.value = dd.innerHTML
   return ui_popup_dialog({'data-dialog-id': 'dialog_save'})
@@ -671,6 +669,10 @@ async function load_svg() {
   let table = byId('svg_table')
 
   newDoc = new DOMParser().parseFromString(textarea.value, 'image/svg+xml')
+  if (newDoc.firstChild.id !== 'svg_table') {
+    alert('Save file corrupted!\n(Did you intend to add an SVG doc with the Other menu?)')
+    return
+  }
   //defanged = domJSON.toJSON(newDoc.firstChild)
   //docFragment = domJSON.toDOM(defanged)
   table.parentNode.replaceChild(newDoc.firstChild, table)
@@ -679,11 +681,6 @@ async function load_svg() {
   initSvgTable(table)
   table  = byId('svg_table')
 
-  // None of the UI is hooked up for the freshly-loaded document
-  table .querySelectorAll('[data-ui-initialized]').forEach((elem) => {
-    elem.removeAttribute('data-ui-initialized')
-  })
-
   // Async stuff happens here, so iterate with an old school for() loop
   nl = table .querySelectorAll('[data-app-url]')
   for(var i=0; i < nl.length; i ++) {
@@ -691,13 +688,7 @@ async function load_svg() {
     await import_foreign_svg(elem.dataset.appUrl)
   }
 
-  table .querySelectorAll('[data-app-class]').forEach((subSvg) => {
-    hookup_ui(subSvg)
-    hookup_foreign_scripts(subSvg)
-  })
-  table .querySelectorAll('[data-nest-for=mark]').forEach((subSvg) => {
-    hookup_mark_handlers(subSvg)
-  })
+  add_fresh_svg(table)
 
   return ui_popdown_dialog('dialog_load')
 }
@@ -1112,6 +1103,72 @@ function ui_submit_dice(section) {
   </div>
 
 <!-- END DIALOG_DICE ====================================== END DIALOG_DICE -->
+
+
+<!-- SVGFILE =========================================================== SVGFILE -->
+
+  <div class="modal" id="dialog_svgfile">
+    <script>
+
+var svgfile_verbs = {
+  'Object properties': {
+    applicable: () => { return true },
+    eventName: 'object_properties',
+    handler: (evt) => {
+      console.log('svgfile hand', evt)
+      ui_popup_properties(
+        byId(evt.detail.elemId.substring('nest_'.length)),
+        {'data-dialog-id': 'dialog_properties'}
+      )
+    }
+  },
+}
+
+function ui_submit_svgfile(evt) {
+  textarea = byId('svgfile_body')
+
+  /*
+  newDoc = new DOMParser().parseFromString(textarea.value, 'image/svg+xml')
+  //defanged = domJSON.toJSON(newDoc.firstChild)
+  //newDoc = domJSON.toDOM(defanged)
+  root = newDoc.firstChild
+  root.remove()
+  table = byId('svg_table')
+  table.appendChild(root)
+  */
+
+
+  nest = _import_foreign_svg(textarea.value, '')
+  console.log('got nest', nest)
+  add_fresh_svg(nest.node)
+  svg_table.node.appendChild(nest.node)
+
+  ui_popdown_dialog('dialog_svgfile')
+  net_fire({ type: 'create', data: serialize(nest.node) })
+}
+
+    </script>
+    <button class="dialog_cancel btn modal-close"
+      data-dialog-id="dialog_svgfile"
+    >
+      &#215;
+    </button>
+  <div class="modal-content">
+    <label for="svgfile_body">Width</label>
+    <textarea id="svgfile_body" cols="82" rows=5></textarea>
+    <div class="load_explain">
+    Copy and paste the contents from an SVG file into this
+    text box.
+    </div>
+    <br />
+    <button id="dialog_submit" onclick="ui_submit_svgfile(this)"
+      class="btn modal-close">
+      Create
+    </button>
+  </div>
+  </div>
+
+<!-- END SVGFILE =================================================== END SVGFILE -->
 
 
 <!-- RECT =========================================================== RECT -->
@@ -1537,6 +1594,11 @@ function ui_submit_ellipse(evt) {
     <section id="drawing_section">
       <a name="drawing"></a>
       <h2 id="drawing_h2">Drawing</h2>
+      <button id="svgfile_button" class="btn btn-small modal-trigger modal-close"
+        data-target="dialog_svgfile"
+        data-dialog-id="dialog_svgfile">
+        + SVG File
+      </button>
       <button id="rect_button" class="btn btn-small modal-trigger modal-close"
         data-target="dialog_rect"
         data-dialog-id="dialog_rect">

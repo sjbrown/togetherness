@@ -594,50 +594,69 @@ function import_foreign_svg(url, attrs) {
     return res.text()
   })
   .then((body) => {
-    var frame = document.createElementNS(SVG.ns, 'svg')
-    frame.innerHTML = (
-      // not sure if this is necessary...
-      body.replace(/\n/, '').replace(/<([\w:-]+)([^<]+?)\/>/g, '<$1$2></$1>')
-    )
-    var nest = frame.getElementsByTagName('svg')[0]
-    if (
-      ( g(nest, 'x') !== undefined && g(nest, 'x') !== '0' )
-      ||
-      ( g(nest, 'y') !== undefined && g(nest, 'y') !== '0' )
-    ) {
-      console.error('X/Y coords must be "0"', g(nest, 'x'), g(nest, 'y'))
-      alert('X/Y coords must be "0"', g(nest, 'x'))
-    }
-    var id = 'isvg_' + base32.short_id()
-    var origId = g(nest, 'id')
-    s(nest, 'id', id)
-    nest = SVG.adopt(nest)
-    nest.attr({
-      'data-app-class': 'nest',
-      'data-nest-for': 'svg',
-      'data-app-url': url,
-      'data-orig-name': origId,
-    })
-    // Ensure the imported SVG is of a reasonable screen size
-    if (nest.width() < 30 || nest.width() > 520) {
-      console.warn('Reigned in the width to 100. Was', nest.width())
-      nest.width(100)
-    }
-    if (nest.height() < 30 || nest.height() > 520) {
-      console.warn('Reigned in the height to 100. Was', nest.height())
-      nest.height(100)
-    }
-    nest.addClass('draggable-group')
-    nest.addClass('drag-closed')
-
-    frame.querySelectorAll('script').forEach((script) => {
-      console.log("FOUND A SCRIPT", script.id, "IN", nest.node.id)
-      appendDocumentScript(script, nest.node)
-    })
-
-    return nest
+    return _import_foreign_svg(body, url)
   })
 }
+
+function _import_foreign_svg(body, url) {
+  var frame = document.createElementNS(SVG.ns, 'svg')
+  frame.innerHTML = (
+    // not sure if this is necessary...
+    body.replace(/\n/, '').replace(/<([\w:-]+)([^<]+?)\/>/g, '<$1$2></$1>')
+  )
+  var nest = frame.getElementsByTagName('svg')[0]
+  if (
+    ( g(nest, 'x') !== undefined && g(nest, 'x') !== '0' )
+    ||
+    ( g(nest, 'y') !== undefined && g(nest, 'y') !== '0' )
+  ) {
+    console.error('X/Y coords must be "0"', g(nest, 'x'), g(nest, 'y'))
+    alert('X/Y coords must be "0"', g(nest, 'x'))
+  }
+  var id = 'isvg_' + base32.short_id()
+  var origId = g(nest, 'id')
+  s(nest, 'id', id)
+  nest = SVG.adopt(nest)
+  nest.attr({
+    'data-app-class': 'nest',
+    'data-nest-for': 'svg',
+    'data-app-url': url,
+    'data-orig-name': origId,
+  })
+  // Ensure the imported SVG is of a reasonable screen size
+  if (nest.width() < 30 || nest.width() > 520) {
+    console.warn('Reigned in the width to 100. Was', nest.width())
+    nest.width(100)
+  }
+  if (nest.height() < 30 || nest.height() > 520) {
+    console.warn('Reigned in the height to 100. Was', nest.height())
+    nest.height(100)
+  }
+  nest.addClass('draggable-group')
+  nest.addClass('drag-closed')
+  //TODO: should this be nest.node instead of frame?
+  frame.querySelectorAll('script').forEach((script) => {
+    console.log("FOUND A SCRIPT", script.id, "IN", nest.node.id)
+    appendDocumentScript(script, nest.node)
+  })
+  return nest
+}
+
+function add_fresh_svg(svgElem) {
+  // None of the UI is hooked up for the freshly-loaded document
+  svgElem.querySelectorAll('[data-ui-initialized]').forEach((elem) => {
+    elem.removeAttribute('data-ui-initialized')
+  })
+
+  svgElem.querySelectorAll('[data-app-class]').forEach((subSvg) => {
+    hookup_ui(subSvg)
+    hookup_foreign_scripts(subSvg)
+  })
+  svgElem.querySelectorAll('[data-nest-for=mark]').forEach((subSvg) => {
+    hookup_mark_handlers(subSvg)
+  })
+}
+
 
 function setColor(elem, color) {
   console.log("Fix Me!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
@@ -739,22 +758,6 @@ function appendDocumentScript(scriptElem, parentElem) {
   }
   // Remove the javascript node so it doesn't clutter up the svg_table DOM
   scriptElem.remove()
-}
-
-function initialize_sans_ns(elem, scriptElem) {
-  console.log('initialize_sans_ns', elem.id)
-  // The foreign <svg> should have an onLoad to do this, but
-  // Chrome has problems doing onLoad
-  if (g(elem, 'data-ui-initialized')) {
-    return
-  }
-  if (ns.initialize) {
-    ns.initialize(elem, serializedState)
-  }
-  if (ns.menu) {
-    hookup_menu_actions(elem, ns.menu)
-  }
-  s(elem, 'data-ui-initialized', true)
 }
 
 function initialize_with_ns(elem, ns, serializedState) {

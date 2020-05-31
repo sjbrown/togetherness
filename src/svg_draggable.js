@@ -53,7 +53,7 @@ function makeDraggable(viewport, table) {
   viewport.on('touchcancel', endDrag);
 
   function broadcast(eventName, detail, dispatchEl) {
-    //console.log('broadcasting', eventName)
+    //console.log('broadcasting', eventName, detail)
     if (dispatchEl === undefined) {
       dispatchEl = selectedEl ? selectedEl.node : viewport.node
     }
@@ -133,11 +133,11 @@ function makeDraggable(viewport, table) {
         //console.log("looking for drag open / closed", dragTarget.id, dragTarget.parentNode)
         openParent = dragTarget.parentNode.closest('.drag-open')
         //console.log("openParent", openParent)
-  
+
         // Disqualify drag targets if they are enclosed by a .drag-closed element
         closedParent = dragTarget.parentNode.closest('.drag-closed')
         //console.log("closedParent", closedParent)
-  
+
         if (!closedParent) {
           //console.log("done dragTarget", dragTarget.id)
           break
@@ -170,19 +170,20 @@ function makeDraggable(viewport, table) {
     if ( isJustAClick && distance(mouse, origMouse) > 20) {
       isJustAClick = null
     }
+    //console.log("S", selectedEl, 'mode', mode)
     if (selectedEl && mode === 0) {
       selectedEl.x(
         clamp(
           origXY.x + (mouse.x - origMouse.x),
           tableBoundaries.minX,
-          (tableBoundaries.maxX - selectedEl.width())
+          tableBoundaries.maxX - selectedEl.bbox().width,
         )
       )
       selectedEl.y(
         clamp(
           origXY.y + (mouse.y - origMouse.y),
           tableBoundaries.minY,
-          tableBoundaries.maxY - selectedEl.height(),
+          tableBoundaries.maxY - selectedEl.bbox().height,
         )
       )
       // Don't spam - throttle to roughly every 200 miliseconds
