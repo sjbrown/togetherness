@@ -96,22 +96,6 @@ function byId(id) {
   return rv;
 }
 
-function isInside(el1, el2) {
-  box = SVG.adopt(el2).rbox()
-  piece = SVG.adopt(el1).rbox()
-  console.log("box", el2.id, box, el2.x)
-  console.log("piece", el1.id, piece, el1.x)
-  return (
-    piece.x > box.x
-    &&
-    piece.x + piece.width < box.x + box.width
-    &&
-    piece.y > box.y
-    &&
-    piece.y + piece.height < box.y + box.height
-  )
-}
-
 
 function str_to_fn(fname) {
   // given a string, return a globally-scoped function
@@ -1001,8 +985,8 @@ function ui_update_buttons() {
   submenu.querySelectorAll('.cloned-button').forEach((btn) => {
     btn.remove()
   })
-  header.innerText = 'Select objects by clicking on them; roll by double-clicking'
-  mobile_header.innerText = 'Select objects by clicking on them; roll by double-clicking'
+  header.innerText = 'Select dice by clicking on them; roll by double-clicking'
+  mobile_header.innerText = 'Select dice by clicking on them; roll by double-clicking'
 
   template = byId('template_object_actions')
   function makeButton(elemNode, title) {
