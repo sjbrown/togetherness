@@ -57,13 +57,21 @@ function lock_selection(evt) {
   selection = SVG.adopt(selection)
   selection.removeClass('draggable-group')
   innerSVG = selection.first()
+  cGroup = innerSVG.node.querySelector('.contents_group')
+  if (cGroup) {
+    cGroup.classList.add('drag-open')
+  }
+  /*
   console.log("inner", innerSVG)
   if (innerSVG.node.classList.contains('drag-closed')) {
     innerSVG.addClass('drag-open')
   }
+  */
   rect = selection.last()
   rect.attr('stroke-opacity', 0.99)
   rect.attr('stroke-width', (4 * rect.attr('stroke-width')))
+  rect.attr('stroke-dasharray', '3 1')
+  rect.attr('stroke-linecap', 'round')
   rect.attr('fill', 'none')
   //SVG.adopt(evt.target).off('svg_dragsafe_click')
 }
@@ -917,6 +925,7 @@ function push_to_parent(childEl, parentEl, pushFn) {
   } else {
     un_hookup_ui(childEl)
   }
+  origParentEl = childEl.parentNode.closest('svg')
   childEl.remove()
   c = SVG.adopt(childEl)
   p = SVG.adopt(parentEl)
@@ -925,6 +934,9 @@ function push_to_parent(childEl, parentEl, pushFn) {
   c.x( c.x() + markXY.x - p.x() )
   c.y( c.y() + markXY.y - p.y() )
   pushFn(childEl, parentEl)
+  if (origParentEl) {
+    evt_fire('change', origParentEl, {})
+  }
 }
 
 function delete_element(el) {
@@ -939,7 +951,7 @@ function delete_element(el) {
 
 function ui_mouseover(evt, target, actionMenu) {
   // Add clickable options onto the menu
-  console.log('ui_mouseover', target.id)
+  //console.log('ui_mouseover', target.id)
   //console.log('ver', actionMenu)
 
   deleteList = document.querySelectorAll('.cloned-menuitem')

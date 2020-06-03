@@ -153,7 +153,7 @@ var paper_sum = {
         }
       )
     }
-    ruleElem.dispatchEvent(new CustomEvent('contents_change', {
+    ruleElem.dispatchEvent(new CustomEvent('dom_change', {
       bubbles: true,
       detail: { 'ruleElemId': ruleElem.id },
     }))
@@ -216,9 +216,9 @@ var paper_sum = {
 
   },
 
-  contents_change_handler: function(evt) {
+  dom_change_handler: function(evt) {
     ruleElem = this
-    console.log('contents_change_handler', ruleElem.id, evt.detail)
+    console.log('dom_change_handler', ruleElem.id, evt.detail)
     let sum = 0
     q = '#' + ruleElem.id + '_contents_group > svg'
     containedSVGs = this.querySelectorAll(q)
@@ -249,16 +249,24 @@ var paper_sum = {
     tspan.textContent = sum
   },
 
+  drag_handler: function(evt) {
+    if (!this.contains(evt.target)) {
+      return
+    }
+    console.log('inner element being dragged', evt.target.id)
+  },
+
   initialize: function(elem) {
-    elem.addEventListener('change', this.contents_change_handler)
+    elem.addEventListener('change', this.dom_change_handler)
     elem.addEventListener('rule_roll', this.rule_roll_handler)
     elem.addEventListener('rule_height_minus', this.shape_change_handler)
     elem.addEventListener('rule_height_plus', this.shape_change_handler)
     elem.addEventListener('rule_width_minus', this.shape_change_handler)
     elem.addEventListener('rule_width_plus', this.shape_change_handler)
-    elem.addEventListener('contents_change', this.contents_change_handler)
+    elem.addEventListener('dom_change', this.dom_change_handler)
     elem.addEventListener('dblclick', this.activate)
 
+    elem.addEventListener('svg_drag', this.drag_handler)
     elem.addEventListener('svg_drop', this.drop_handler)
     elem.addEventListener('svg_dragover', this.dragover_handler)
     elem.addEventListener('svg_dragenter', () => {console.log('E')})

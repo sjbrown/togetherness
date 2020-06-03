@@ -6,7 +6,7 @@ function clamp(val, minVal, maxVal) {
 }
 
 function debug(s, evt) {
-  if (true) { return }
+  //if (true) { return }
   console.log(s, evt);
   r = new XMLHttpRequest()
   q = '/debug/' + s
@@ -142,40 +142,29 @@ function makeDraggable(viewport, table) {
     mode = evt.touches ? 0 : evt.button
 
     if (mode === 0) {
+      let dragTarget = null
 
-      dragTarget = evt.target.closest('.draggable-group')
-      //console.log("got dragTarget", dragTarget)
-      while (dragTarget) {
-        // Highest priority goes to drag-open (these are immediate children of
-        // locked selections)
-        //console.log("looking for drag open / closed", dragTarget.id, dragTarget.parentNode)
-        openParent = dragTarget.parentNode.closest('.drag-open')
-        //console.log("openParent", openParent)
-
-        // Disqualify drag targets if they are enclosed by a .drag-closed element
-        closedParent = dragTarget.parentNode.closest('.drag-closed')
-        //console.log("closedParent", closedParent)
-
-        if (!closedParent) {
-          //console.log("done dragTarget", dragTarget.id)
-          break
+      // HACK because :scope is not yet in MSIE
+      let q = `#${table.node.id} > .draggable-group`
+      table.node.querySelectorAll(q).forEach(draggableGroup => {
+        if (draggableGroup.contains(evt.target)) {
+          dragTarget = draggableGroup
         }
-        if (openParent) {
-          if (openParent.closest('.drag-closed').id === closedParent.id) {
-            // openParent is underneath or equal to closedParent
-            // so, allow the dragTarget to be dragged
-            break
+      })
+      if (!dragTarget) {
+        let q = `#${table.node.id} .drag-open > .draggable-group`
+        table.node.querySelectorAll(q).forEach(draggableGroup => {
+          if (draggableGroup.contains(evt.target)) {
+            dragTarget = draggableGroup
+            pop_from_parent(dragTarget, {})
           }
-          // otherwise, ignore the openParent, as the closedParent is
-          // more proximate to the dragTarget
-        }
-        dragTarget = closedParent.closest('.draggable-group')
-        //console.log("dragTarget moved up to ", dragTarget.id)
+        })
       }
+
       if (dragTarget) {
+        //console.log('dragtaret: ', dragTarget.id)
         selectedEl = SVG.adopt(dragTarget)
         currentDragovers = {}
-        //console.log("selected el closest", selectedEl)
       }
     }
     initialiseDragging(evt);
@@ -217,7 +206,7 @@ function makeDraggable(viewport, table) {
       notifyDropTargets(evt, 'svg_drag')
       notifyDropTargetsDrag(evt)
     } else if (!selectedEl && mode === 0) {
-      console.log('dragbox')
+      //console.log('dragbox')
     } else if (!selectedEl && mode === 1) {
       console.log('wheeldown drag')
     }
@@ -274,6 +263,7 @@ function makeDraggable(viewport, table) {
     })
   }
 
+  //TODO: get rid of this
   function notifyDropTargets(evt, eventName) {
     newEventName = eventName + '_droptarget'
     table.node.querySelectorAll('.droptarget').forEach((el) => {
@@ -300,7 +290,7 @@ function makeDraggable(viewport, table) {
       notifyDropTargets(evt, 'svg_dragend')
       notifyDropTargetsDrop(evt)
       if ((evt.type === 'mouseup' || evt.type === 'touchend') && isJustAClick) {
-        //debug('justclick' + (selectedEl && selectedEl.node.id))
+        debug('isJustAClick' + (selectedEl && selectedEl.node.id))
         broadcast('svg_dragsafe_click', {
           elemId: elemId,
           origEvent: isJustAClick,
