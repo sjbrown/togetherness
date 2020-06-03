@@ -9,11 +9,11 @@
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    width="200"
-   height="150"
+   height="200"
    version="1.1"
-   id="paper_sum"
+   id="paper_modifier"
    inkscape:version="0.92.3 (2405546, 2018-03-11)"
-   sodipodi:docname="paper_sum.svg">
+   sodipodi:docname="paper_modifier.svg">
   <defs
      id="defs2">
     <linearGradient
@@ -41,25 +41,25 @@
   </defs>
   <script
      type="text/javascript"
-     data-namespace="paper_sum"
-     id="script_paper_sum"><![CDATA[
-var paper_sum = {
+     data-namespace="paper_modifier"
+     id="script_paper_modifier"><![CDATA[
+var paper_modifier = {
 
   rule_roll_handler: function(evt) {
-    console.log('paper_sum ', this.id, 'hears rule_roll event', evt)
-    contentsGroup = paper_sum.select_my(this, 'contents_group')
+    console.log('paper_modifier ', this.id, 'hears rule_roll event', evt)
+    contentsGroup = paper_modifier.select_my(this, 'contents_group')
     contentsGroup.querySelectorAll('svg').forEach((s) => {
       evt_fire('die_roll', s, null, {})
     })
   },
 
   activate: function(evt) {
-    console.log('paper_sum this', this, 'hears activate event', evt)
+    console.log('paper_modifier this', this, 'hears activate event', evt)
     lock_selection(evt)
   },
 
   dragover_handler: function(evt) {
-    console.log('paper_sum dragover_handler', evt.detail.draggedElemId, evt.detail.dropElemId)
+    console.log('paper_modifier dragover_handler', evt.detail.draggedElemId, evt.detail.dropElemId)
     draggedElem = byId(evt.detail.draggedElemId)
     dragged = SVG.adopt(draggedElem)
     dropElem = byId(evt.detail.dropElemId)
@@ -77,7 +77,7 @@ var paper_sum = {
     console.log('target should be ', this)
     console.log('target is', evt.target)
     ruleElem = this
-    console.log('paper_sum drop_handler', ruleElem.id, evt.detail.draggedElemId, evt.detail.dropElemId)
+    console.log('paper_modifier drop_handler', ruleElem.id, evt.detail.draggedElemId, evt.detail.dropElemId)
     draggedElem = byId(evt.detail.draggedElemId)
     dropElem = byId(evt.detail.dropElemId)
     if (
@@ -94,7 +94,7 @@ var paper_sum = {
     dragged = SVG.adopt(draggedElem)
     drop = SVG.adopt(dropElem)
 
-    contentsGroup = paper_sum.select_my(ruleElem, 'contents_group')
+    contentsGroup = paper_modifier.select_my(ruleElem, 'contents_group')
     is_inside = isInside(dragged.node, drop.node)
     console.log('dragged', draggedElem.id, 'is inside drop', evt.detail.dropElemId, '?', is_inside)
 
@@ -124,14 +124,14 @@ var paper_sum = {
   },
 
   dom_change_handler: function(evt) {
-    ruleElem = this
-    console.log('dom_change_handler', ruleElem.id, evt.detail)
+    console.log('dom_change_handler', this.id, evt.detail)
     let sum = 0
-    q = '#' + ruleElem.id + '_contents_group > svg'
+    q = '#' + this.id + '_contents_group > svg'
     containedSVGs = this.querySelectorAll(q)
     containedSVGs.forEach((s) => {
       let tempNum = 0
       s.querySelectorAll('tspan').forEach((t) => {
+        console.log('t', t.id, t.textContent)
         if (t.closest('svg').id !== s.id) {
           // it's buried multiple levels deep in sub-SVGs
           // so skip it lest it be double-counted
@@ -151,10 +151,30 @@ var paper_sum = {
       })
       sum = sum + tempNum
     })
-    console.log('sum was', sum)
-    tspan = paper_sum.select_my(ruleElem, 'tspan_sum')
-    tspan.textContent = sum
+    modifier_tspan = paper_modifier.select_my(this, 'tspan_rule_num')
+    let modifier = parseInt(modifier_tspan.textContent)
+    tspan = paper_modifier.select_my(this, 'tspan_count')
+    tspan.textContent = (sum + modifier)
   },
+
+  mod_change_handler: function(evt) {
+    console.log('contents_change_handler', this.id, evt.detail)
+    change = 0
+    if (evt.type == 'rule_modifier_plus') {
+      change = 1
+    } else if (evt.type == 'rule_modifier_minus') {
+      change = -1
+    }
+    modifier_tspan = paper_modifier.select_my(this, 'tspan_rule_num')
+    modifier = parseInt(modifier_tspan.textContent)
+    let sum = modifier + change
+    modifier_tspan.textContent = sum < 1 ? sum : '+' + sum
+    this.dispatchEvent(new CustomEvent('dom_change', {
+      bubbles: true,
+      detail: { 'ruleElemId': this.id },
+    }))
+  },
+
 
   drag_handler: function(evt) {
     if (!this.contains(evt.target)) {
@@ -175,13 +195,19 @@ var paper_sum = {
     elem.addEventListener('svg_dragenter', () => {console.log('E')})
     elem.addEventListener('svg_dragleave', () => {console.log('L')})
 
+    elem.addEventListener('rule_modifier_plus', this.mod_change_handler)
+    elem.addEventListener('rule_modifier_minus', this.mod_change_handler)
+
+
     var idStrings = [
       'contents_group',
       'big_rect',
       'text_rule',
-      'tspan_rule',
-      'text_sum',
-      'tspan_sum',
+      'tspan_rule_prefix',
+      'tspan_rule_num',
+      'tspan_rule_suffix',
+      'text_count',
+      'tspan_count',
     ]
     idStrings.forEach((idString) => {
       el = elem.querySelector('#' + idString)
@@ -201,6 +227,14 @@ var paper_sum = {
       eventName: 'rule_roll',
       applicable: (node) => { return true },
     },
+    'Mod +': {
+      eventName: 'rule_modifier_plus',
+      applicable: (node) => { return true },
+    },
+    'Mod -': {
+      eventName: 'rule_modifier_minus',
+      applicable: (node) => { return true },
+    },
   },
 
   serialize: function(elem) {
@@ -218,48 +252,61 @@ var paper_sum = {
     ]]></script>
   <path
      style="color:#000000;display:inline;overflow:visible;visibility:visible;opacity:1;isolation:auto;solid-color:#000000;solid-opacity:1;fill:#000000;fill-opacity:0.5;fill-rule:nonzero;stroke:none;stroke-width:1.58"
-     d="M 0.62,3.98 C -0.05,53.315 1.782,98.6769 1.08,148.00 l 2.62,0.373 c 64.23,2.104 138.07,0.539 195.42,0.67 L 192.75,3.59 C 156.22,15.333 23.268,5.742 0.622,3.98 Z"
+     d="M 0.6,4.0
+     C 0.0,150.3
+       1.78,98.6
+       1.08,198.0
+     l 2.6,0.3
+     c 64.23,2.104
+       138.07,0.539
+       198.42,0.6
+     L 195.75,3.5
+     C 156.22,15.333
+       23.268,5.742
+       0.622,3.98 Z"
      id="paper_shadow"
      inkscape:connector-curvature="0"
      sodipodi:nodetypes="cccccc" />
   <g id="group-monochrome-1" class="colorable">
   <path
      style="opacity:1;fill:url(#linearGradient822);fill-opacity:1;stroke:#b3b3b3;stroke-width:5.0;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.9"
-     d="M 4.91,3.34
-     C 38.70,8.39
-       192.75,3.59
-       192.75,3.59
-     l 2.74,141.49
+     d="M 1.0,3.0
+     C 50.0,3.0
+       195.0,4.5
+       195.0,4.5
+     l 2.0,190.0
      c 0,0
-       -182.50,-0.46
-       -192.57,-1.90 z"
+       -182.5,0.0
+       -195.0,-2.0 z"
      class="droptarget"
      id="big_rect"
+     title="double-click to release members"
      inkscape:connector-curvature="0"
      sodipodi:nodetypes="ccccc" />
   </g>
-  <g id="contents_group" class="contents_group">
+  <g id="contents_group" class="contents_group"
+  >
   </g>
   <text
      id="text_rule"
-     y="128"
-     x="90"
+     x="60" y="180"
      style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:38.072px;line-height:125%;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;letter-spacing:0px;word-spacing:0px;fill:#000080;fill-opacity:1;stroke:none;stroke-width:0.269px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-     xml:space="preserve"><tspan
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;fill:#000080;stroke-width:0.269px"
-       x="90"
-       y="128"
-       id="tspan_rule"
-       sodipodi:role="line">Sum=</tspan></text>
+     xml:space="preserve">
+     <tspan id="tspan_rule_prefix"
+       style="font-size:30px;font-weight:normal;font-family:SubotypeSteady;fill:#000080;"
+     >(</tspan><tspan
+       id="tspan_rule_num"
+       style="font-size:30px;font-weight:bold;font-family:SubotypeSteady;fill:#000080;"
+     >+1</tspan><tspan
+       id="tspan_rule_suffix"
+       style="font-size:30px;font-weight:normal;font-family:SubotypeSteady;fill:#000080;"
+     >) =</tspan>
+  </text>
   <text
      xml:space="preserve"
      style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:38.072px;line-height:125%;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;letter-spacing:0px;word-spacing:0px;fill:#000080;fill-opacity:1;stroke:none;stroke-width:0.26px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-     x="160"
-     y="128"
-     id="text_sum"><tspan
-       sodipodi:role="line"
-       id="tspan_sum"
-       x="160"
-       y="128"
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;fill:#000080;stroke-width:0.26458329px">0</tspan></text>
+     x="160" y="180"
+     id="text_count"><tspan
+       id="tspan_count"
+       style="font-weight:bold;font-stretch:normal;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;fill:#000080;stroke-width:0.26458329px">0</tspan></text>
 </svg>

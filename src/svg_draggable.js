@@ -6,7 +6,7 @@ function clamp(val, minVal, maxVal) {
 }
 
 function debug(s, evt) {
-  //if (true) { return }
+  if (true) { return }
   console.log(s, evt);
   r = new XMLHttpRequest()
   q = '/debug/' + s
@@ -130,7 +130,6 @@ function makeDraggable(viewport, table) {
         y: selectedEl.y(),
       }
       broadcast('svg_dragstart', { elemId: evt.target.id })
-      notifyDropTargets(evt, 'svg_dragstart')
     } else {
       console.log("viewport begin box boundary")
     }
@@ -202,8 +201,6 @@ function makeDraggable(viewport, table) {
         elemId: selectedEl.node.id,
         mouse: mouse,
       })
-      // TODO get rid of svg_drag_droptarget
-      notifyDropTargets(evt, 'svg_drag')
       notifyDropTargetsDrag(evt)
     } else if (!selectedEl && mode === 0) {
       //console.log('dragbox')
@@ -263,21 +260,6 @@ function makeDraggable(viewport, table) {
     })
   }
 
-  //TODO: get rid of this
-  function notifyDropTargets(evt, eventName) {
-    newEventName = eventName + '_droptarget'
-    table.node.querySelectorAll('.droptarget').forEach((el) => {
-      //console.log('broadcasting', newEventName, 'for', el.id, evt.currentTarget)
-      if ( selectedEl.node.id === el.id ) {
-        return // don't tell things they're being dropped into themselves
-      }
-      broadcast(newEventName, {
-        draggedElemId: selectedEl.node.id,
-        dropElemId: el.id,
-        mouse: mouse,
-      }, el)
-    })
-  }
 
   function endDrag(evt) {
     debug("endDrag", evt)
@@ -287,7 +269,6 @@ function makeDraggable(viewport, table) {
       //debug('inside try' + (selectedEl && selectedEl.id()))
       now = new Date()
       broadcast('svg_dragend', { elemId: elemId })
-      notifyDropTargets(evt, 'svg_dragend')
       notifyDropTargetsDrop(evt)
       if ((evt.type === 'mouseup' || evt.type === 'touchend') && isJustAClick) {
         debug('isJustAClick' + (selectedEl && selectedEl.node.id))

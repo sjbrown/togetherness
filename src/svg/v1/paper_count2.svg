@@ -11,16 +11,16 @@
    width="200"
    height="150"
    version="1.1"
-   id="paper_sum"
+   id="paper_count"
    inkscape:version="0.92.3 (2405546, 2018-03-11)"
-   sodipodi:docname="paper_sum.svg">
+   sodipodi:docname="paper_count.svg">
   <defs
      id="defs2">
     <linearGradient
        id="linearGradient820"
        inkscape:collect="always">
       <stop
-         style="stop-color:#f0f0f0;stop-opacity:1"
+         style="stop-color:#e0e0e0;stop-opacity:1"
          offset="0"
          id="stop826" />
       <stop
@@ -41,25 +41,25 @@
   </defs>
   <script
      type="text/javascript"
-     data-namespace="paper_sum"
-     id="script_paper_sum"><![CDATA[
-var paper_sum = {
+     data-namespace="paper_count"
+     id="script_paper_count"><![CDATA[
+var paper_count = {
 
   rule_roll_handler: function(evt) {
-    console.log('paper_sum ', this.id, 'hears rule_roll event', evt)
-    contentsGroup = paper_sum.select_my(this, 'contents_group')
+    console.log('paper_count ', this.id, 'hears rule_roll event', evt)
+    contentsGroup = paper_count.select_my(this, 'contents_group')
     contentsGroup.querySelectorAll('svg').forEach((s) => {
       evt_fire('die_roll', s, null, {})
     })
   },
 
   activate: function(evt) {
-    console.log('paper_sum this', this, 'hears activate event', evt)
+    console.log('paper_count this', this, 'hears activate event', evt)
     lock_selection(evt)
   },
 
   dragover_handler: function(evt) {
-    console.log('paper_sum dragover_handler', evt.detail.draggedElemId, evt.detail.dropElemId)
+    console.log('paper_count dragover_handler', evt.detail.draggedElemId, evt.detail.dropElemId)
     draggedElem = byId(evt.detail.draggedElemId)
     dragged = SVG.adopt(draggedElem)
     dropElem = byId(evt.detail.dropElemId)
@@ -77,7 +77,7 @@ var paper_sum = {
     console.log('target should be ', this)
     console.log('target is', evt.target)
     ruleElem = this
-    console.log('paper_sum drop_handler', ruleElem.id, evt.detail.draggedElemId, evt.detail.dropElemId)
+    console.log('paper_count drop_handler', ruleElem.id, evt.detail.draggedElemId, evt.detail.dropElemId)
     draggedElem = byId(evt.detail.draggedElemId)
     dropElem = byId(evt.detail.dropElemId)
     if (
@@ -94,7 +94,7 @@ var paper_sum = {
     dragged = SVG.adopt(draggedElem)
     drop = SVG.adopt(dropElem)
 
-    contentsGroup = paper_sum.select_my(ruleElem, 'contents_group')
+    contentsGroup = paper_count.select_my(ruleElem, 'contents_group')
     is_inside = isInside(dragged.node, drop.node)
     console.log('dragged', draggedElem.id, 'is inside drop', evt.detail.dropElemId, '?', is_inside)
 
@@ -124,9 +124,10 @@ var paper_sum = {
   },
 
   dom_change_handler: function(evt) {
+    console.log('dom_change_handler', this.id, evt.detail)
     ruleElem = this
-    console.log('dom_change_handler', ruleElem.id, evt.detail)
-    let sum = 0
+    targetNum = 
+    let count = 0
     q = '#' + ruleElem.id + '_contents_group > svg'
     containedSVGs = this.querySelectorAll(q)
     containedSVGs.forEach((s) => {
@@ -149,11 +150,11 @@ var paper_sum = {
           tempNum =  num
         }
       })
-      sum = sum + tempNum
+      count += tempNum >= targetNum ? 1 : 0
     })
-    console.log('sum was', sum)
-    tspan = paper_sum.select_my(ruleElem, 'tspan_sum')
-    tspan.textContent = sum
+    console.log('count was', count)
+    tspan = paper_count.select_my(ruleElem, 'tspan_count')
+    tspan.textContent = count
   },
 
   drag_handler: function(evt) {
@@ -164,6 +165,7 @@ var paper_sum = {
   },
 
   initialize: function(elem) {
+    console.log("INITIALIZE", elem)
     elem.addEventListener('change', this.dom_change_handler)
     elem.addEventListener('rule_roll', this.rule_roll_handler)
     elem.addEventListener('dom_change', this.dom_change_handler)
@@ -180,8 +182,8 @@ var paper_sum = {
       'big_rect',
       'text_rule',
       'tspan_rule',
-      'text_sum',
-      'tspan_sum',
+      'text_count',
+      'tspan_count',
     ]
     idStrings.forEach((idString) => {
       el = elem.querySelector('#' + idString)
@@ -241,24 +243,29 @@ var paper_sum = {
   <g id="contents_group" class="contents_group">
   </g>
   <text
+     xml:space="preserve"
      id="text_rule"
      y="128"
      x="90"
      style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:38.072px;line-height:125%;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;letter-spacing:0px;word-spacing:0px;fill:#000080;fill-opacity:1;stroke:none;stroke-width:0.269px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-     xml:space="preserve"><tspan
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;fill:#000080;stroke-width:0.269px"
-       x="90"
-       y="128"
-       id="tspan_rule"
-       sodipodi:role="line">Sum=</tspan></text>
+     ><tspan
+       id="tspan_rule_prefix"
+       style="font-weight:normal;font-family:SubotypeSteady;fill:#000080;"
+       >⩾ </tspan><tspan
+       id="tspan_rule_num"
+       style="font-weight:bold;font-family:SubotypeSteady;fill:#000080;"
+       >6</tspan><tspan
+       id="tspan_rule_suffix"
+       style="font-weight:normal;font-family:SubotypeSteady;fill:#000080;"
+       >:</tspan></text>
   <text
      xml:space="preserve"
      style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:38.072px;line-height:125%;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;letter-spacing:0px;word-spacing:0px;fill:#000080;fill-opacity:1;stroke:none;stroke-width:0.26px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
      x="160"
      y="128"
-     id="text_sum"><tspan
+     id="text_count"><tspan
        sodipodi:role="line"
-       id="tspan_sum"
+       id="tspan_count"
        x="160"
        y="128"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;fill:#000080;stroke-width:0.26458329px">0</tspan></text>
