@@ -61,16 +61,10 @@ function lock_selection(evt) {
   if (cGroup) {
     cGroup.classList.add('drag-open')
   }
-  /*
-  console.log("inner", innerSVG)
-  if (innerSVG.node.classList.contains('drag-closed')) {
-    innerSVG.addClass('drag-open')
-  }
-  */
   rect = selection.last()
   rect.attr('stroke-opacity', 0.99)
   rect.attr('stroke-width', (4 * rect.attr('stroke-width')))
-  rect.attr('stroke-dasharray', '3 1')
+  rect.attr('stroke-dasharray', '8')
   rect.attr('stroke-linecap', 'round')
   rect.attr('fill', 'none')
   //SVG.adopt(evt.target).off('svg_dragsafe_click')
@@ -406,7 +400,6 @@ function make_mark(target_id, attrs) {
     y: target.y() - 2,
     'data-nest-for': 'mark',
   })
-  nest.addClass('drag-closed')
   //console.log("nest node is now", nest.node)
 
   // Re-home the enveloped object inside the <svg>, and then
@@ -625,7 +618,6 @@ function _import_foreign_svg(body, url) {
     nest.height(100)
   }
   nest.addClass('draggable-group')
-  nest.addClass('drag-closed')
   //TODO: should this be nest.node instead of frame?
   frame.querySelectorAll('script').forEach((script) => {
     console.log("FOUND A SCRIPT", script.id, "IN", nest.node.id)
