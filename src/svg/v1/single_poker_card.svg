@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="100"
+   height="150"
+   version="1.1"
+   id="single_poker_card"
+   class="single_poker_card"
+   inkscape:version="0.92.3 (2405546, 2018-03-11)"
+   sodipodi:docname="single_poker_card.svg">
+  <defs
+     id="defs2" />
+  <script
+     type="text/javascript"
+     data-namespace="single_poker_card"
+     id="single_poker_card"><![CDATA[
+
+var single_poker_card = {
+  pokerDeckJSON: {
+    'ah': {name: 'Ace of Hearts', suit: '♥', rank: 'A'},
+    '2h': {name: '2 of Hearts', suit: '♥', rank: '2'},
+    '3h': {name: '3 of Hearts', suit: '♥', rank: '3'},
+    '4h': {name: '4 of Hearts', suit: '♥', rank: '4'},
+    '5h': {name: '5 of Hearts', suit: '♥', rank: '5'},
+    '6h': {name: '6 of Hearts', suit: '♥', rank: '6'},
+    '7h': {name: '7 of Hearts', suit: '♥', rank: '7'},
+    '8h': {name: '8 of Hearts', suit: '♥', rank: '8'},
+    '9h': {name: '9 of Hearts', suit: '♥', rank: '9'},
+    '10h': {name: '10 of Hearts', suit: '♥', rank: '10'},
+    'jh': {name: 'Jack of Hearts', suit: '♥', rank: 'J'},
+    'qh': {name: 'Queen of Hearts', suit: '♥', rank: 'Q'},
+    'kh': {name: 'King of Hearts', suit: '♥', rank: 'K'},
+    'ac': {name: 'Ace of Clubs', suit: '♣', rank: 'A'},
+    '2c': {name: '2 of Clubs', suit: '♣', rank: '2'},
+    '3c': {name: '3 of Clubs', suit: '♣', rank: '3'},
+    '4c': {name: '4 of Clubs', suit: '♣', rank: '4'},
+    '5c': {name: '5 of Clubs', suit: '♣', rank: '5'},
+    '6c': {name: '6 of Clubs', suit: '♣', rank: '6'},
+    '7c': {name: '7 of Clubs', suit: '♣', rank: '7'},
+    '8c': {name: '8 of Clubs', suit: '♣', rank: '8'},
+    '9c': {name: '9 of Clubs', suit: '♣', rank: '9'},
+    '10c': {name: '10 of Clubs', suit: '♣', rank: '10'},
+    'jc': {name: 'Jack of Clubs', suit: '♣', rank: 'J'},
+    'qc': {name: 'Queen of Clubs', suit: '♣', rank: 'Q'},
+    'kc': {name: 'King of Clubs', suit: '♣', rank: 'K'},
+    'ad': {name: 'Ace of Diamonds', suit: '♦', rank: 'A'},
+    '2d': {name: '2 of Diamonds', suit: '♦', rank: '2'},
+    '3d': {name: '3 of Diamonds', suit: '♦', rank: '3'},
+    '4d': {name: '4 of Diamonds', suit: '♦', rank: '4'},
+    '5d': {name: '5 of Diamonds', suit: '♦', rank: '5'},
+    '6d': {name: '6 of Diamonds', suit: '♦', rank: '6'},
+    '7d': {name: '7 of Diamonds', suit: '♦', rank: '7'},
+    '8d': {name: '8 of Diamonds', suit: '♦', rank: '8'},
+    '9d': {name: '9 of Diamonds', suit: '♦', rank: '9'},
+    '10d': {name: '10 of Diamonds', suit: '♦', rank: '10'},
+    'jd': {name: 'Jack of Diamonds', suit: '♦', rank: 'J'},
+    'qd': {name: 'Queen of Diamonds', suit: '♦', rank: 'Q'},
+    'kd': {name: 'King of Diamonds', suit: '♦', rank: 'K'},
+    'as': {name: 'Ace of Spades', suit: '♠', rank: 'A'},
+    '2s': {name: '2 of Spades', suit: '♠', rank: '2'},
+    '3s': {name: '3 of Spades', suit: '♠', rank: '3'},
+    '4s': {name: '4 of Spades', suit: '♠', rank: '4'},
+    '5s': {name: '5 of Spades', suit: '♠', rank: '5'},
+    '6s': {name: '6 of Spades', suit: '♠', rank: '6'},
+    '7s': {name: '7 of Spades', suit: '♠', rank: '7'},
+    '8s': {name: '8 of Spades', suit: '♠', rank: '8'},
+    '9s': {name: '9 of Spades', suit: '♠', rank: '9'},
+    '10s': {name: '10 of Spades', suit: '♠', rank: '10'},
+    'js': {name: 'Jack of Spades', suit: '♠', rank: 'J'},
+    'qs': {name: 'Queen of Spades', suit: '♠', rank: 'Q'},
+    'ks': {name: 'King of Spades', suit: '♠', rank: 'K'},
+  },
+
+  generate_card: function(template, cardJSON, parentEl) {
+    let card = template.cloneNode(true)
+    let human_readable = {
+      '♠': 's',
+      '♦': 'd',
+      '♥': 'h',
+      '♣': 'c',
+    }
+
+    card.dataset.name = cardJSON.name
+    card.dataset.suit = cardJSON.suit
+    card.dataset.rank = cardJSON.rank
+    card.dataset.deckId = parentEl.id
+    card.id = (
+      parentEl.id
+      + '_'
+      + human_readable[cardJSON.suit]
+      + cardJSON.rank
+    )
+
+    card.querySelectorAll('.tspan_suit').forEach(t => {
+      console.log('ts s', t)
+      t.textContent = cardJSON.suit
+    })
+    card.querySelectorAll('.tspan_rank').forEach(t => {
+      t.textContent = cardJSON.rank
+    })
+    card.querySelectorAll('text').forEach(t => {
+      if (cardJSON.suit === '♦') {
+        t.style.fill = 'rgb(240,0,0)'
+      } else if (cardJSON.suit === '♥') {
+        t.style.fill = 'rgb(255,10,10)'
+      } else if (cardJSON.suit === '♠') {
+        t.style.fill = 'rgb(5,10,10)'
+      } else {
+        t.style.fill = 'rgb(0,0,0)'
+      }
+    })
+
+    card_face = SVG.adopt(card.querySelector('#card_face'))
+    card_rank = SVG.adopt(card.querySelector('#text_rank'))
+    card_rank.cx(card_face.cx())
+    card = SVG.adopt(card)
+    card.removeClass('card_template')
+    card.addClass('card')
+    card.addClass('draggable-group')
+    card.addClass('c' + cardJSON.rank + human_readable[cardJSON.suit])
+    card.addClass('of_' + parentEl.id)
+    card.node.dataset.appNamespaces = ['single_poker_card']
+
+    card.node.addEventListener('svg_dragstart', (evt) => {
+      console.log('card gets svg_dragstart', evt)
+      if (evt.detail.elemId === card.node.id) {
+        console.log('its me', card.node.id)
+      }
+    })
+    return card
+  },
+
+  flip_card_to_front: function(cardEl) {
+    back = cardEl.querySelector('.card_back')
+    back.remove()
+    cardEl.insertBefore(back, cardEl.firstChild)
+  },
+
+  flip_card_to_back: function(cardEl) {
+    back = cardEl.querySelector('.card_back')
+    back.remove()
+    cardEl.appendChild(back)
+  },
+
+  flip_card: function(cardEl) {
+    if (cardEl.lastElementChild.classList.contains('card_back')) {
+      single_poker_card.flip_card_to_front(cardEl)
+    } else {
+      single_poker_card.flip_card_to_back(cardEl)
+    }
+  },
+
+  initialize: function(elem, serializedState) {
+    let template = elem.querySelector('.card_template')
+
+    let cardJSON = (serializedState ?
+      this.pokerDeckJSON[serializedState]
+      :
+      shuffle(Object.values(this.pokerDeckJSON))[0]
+    )
+    card = this.generate_card(template, cardJSON, elem)
+    single_poker_card.flip_card_to_back(card.node)
+
+    template.parentNode.replaceChild(card.node, template)
+
+    elem.addEventListener('single_poker_card_flip', this.flip_handler)
+    elem.addEventListener('dblclick', this.flip_handler)
+  },
+
+  menu: {
+    'Flip': {
+      eventName: 'single_poker_card_flip',
+      applicable: (dNode) => { return true },
+    },
+  },
+
+  flip_handler: function(evt) {
+    let topcard = this.querySelector('.card')
+    single_poker_card.flip_card(topcard)
+  },
+
+}
+
+    ]]></script>
+
+  <svg
+     id="card_template"
+     class="card_template"
+     x="0"
+     y="0"
+     width="100"
+     height="150"
+     >
+    <g class="card_front">
+    <rect
+       style="opacity:1;fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.26458332;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+       id="card_face"
+       width="100"
+       height="150"
+       x="0"
+       y="0"
+       rx="10"
+       ry="10" />
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;
+       font-weight:bold;font-stretch:normal;
+       font-size:50px;line-height:125%;
+       font-family:serif;
+       letter-spacing:0px;word-spacing:0px;
+       fill:#F00000;fill-opacity:1;"
+       x="33"
+       y="100"
+       id="text_rank"><tspan
+         sodipodi:role="line"
+         id="tspan_rank_center"
+         class="tspan_rank"
+         >K</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;
+       font-weight:bold;font-stretch:normal;
+       font-size:50px;line-height:125%;
+       font-family:serif;
+       letter-spacing:0px;word-spacing:0px;
+       fill:#F00000;fill-opacity:1;"
+       x="55"
+       y="45"
+       id="text823"><tspan
+         sodipodi:role="line"
+         id="tspan_suit"
+         class="tspan_suit"
+         >♥</tspan></text>
+      <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;
+       font-weight:normal;font-stretch:normal;
+       font-size:20px;line-height:125%;
+       font-family:serif;
+       letter-spacing:0px;word-spacing:0px;
+       fill:#F00000;fill-opacity:1;"
+       x="5"
+       y="145"
+       id="text_sw"
+       ><tspan
+         id="tspan_rank_sw"
+         class="tspan_rank"
+         >K</tspan><tspan
+         id="tspan_suit_sw"
+         class="tspan_suit"
+         >♥</tspan>
+      </text>
+    </g>
+    <g class="card_back">
+    <rect
+       style="opacity:1;
+       fill:#ffffff;fill-opacity:1;
+       stroke:#000000;stroke-width:0.5;
+       stroke-opacity:1"
+       id="card_back_outer"
+       width="100"
+       height="150"
+       x="0"
+       y="0"
+       rx="10"
+       ry="10" />
+    <rect
+       style="opacity:1;
+       fill:#a0a0a0;fill-opacity:1;
+       stroke:none"
+       id="card_back_inner"
+       width="90"
+       height="140"
+       x="5"
+       y="5"
+       rx="5"
+       ry="5" />
+    </g>
+  </svg>
+</svg>

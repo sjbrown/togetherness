@@ -1674,17 +1674,55 @@ function ui_submit_ellipse(evt) {
 <!-- CARDS ======================================================= CARDS -->
 
   <div class="modal" id="dialog_cards">
+  <script>
+function ui_submit_card() {
+  inputEl = byId('card_input_card_code')
+  if (!inputEl.checkValidity()) {
+    return
+  }
+  card_code = inputEl.value
+  add_object('svg/v1/single_poker_card.svg',
+    { 'serializedState': card_code },
+  )
+  inputEl.value = ''
+  ui_popdown_dialog('dialog_cards')
+}
+  </script>
     <button class="dialog_cancel btn modal-close" data-dialog-id="dialog_cards"
     > &#215; </button>
     <div class="modal-content">
-    <section id="cards_section">
+    <section id="decks_section">
+      <a name="decks"></a>
+      <h3 class="decks_h2">Decks</h2>
+      <button class="btn btn-small modal-close"
+        onclick="add_object('svg/v1/poker_deck_mobile.svg')">
+        + Mobile-friendly Poker Deck
+      </button>
       <button class="btn btn-small modal-close"
         onclick="add_object('svg/v1/poker_deck.svg')">
         + Poker Deck
       </button>
-      <button class="btn btn-small modal-close"
-        onclick="add_object('svg/v1/poker_deck_mobile.svg')">
-        + Mobile-friendly Poker Deck
+    </section>
+    <section id="cards_section">
+      <a name="single"></a>
+      <h3 class="single_h2">Single card</h2>
+      <style>
+      #card_input_card_code:invalid {
+        border: solid red;
+      }
+      </style>
+      <label>
+        Enter card "code", or blank for a random card.
+        Each card is new and not from a deck, so repeats may happen.
+      <input
+          id="card_input_card_code" type="text" placeholder="3h" size="3"
+          title="A rank-suit card code. Like 'Ac' for the Ace of Clubs"
+          pattern="1?[0-9ajqkAJQK][hcdsHCDS]"
+      />
+      </label>
+      <button id="dialog_submit_single_card" onclick="ui_submit_card()"
+        class="btn">
+        + Card
       </button>
     </section>
     </div>

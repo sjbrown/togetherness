@@ -138,13 +138,13 @@ var poker_deck_mobile = {
   },
 
   generate_deck: function(elem) {
-    handle = SVG.adopt(elem)
-    deck = handle.group()
+    local_doc = SVG.adopt(elem)
+    deck = local_doc.group()
     deck.addClass('deck')
     deck.addClass('contents_group')
     deck_id = 'deck_' + base32.short_id()
     deck.id(deck_id)
-    handle.add(deck)
+    local_doc.add(deck)
 
     let template = elem.querySelector('.card_template')
     shuffle(this.pokerDeckJSON).map((cardJSON) => {
@@ -155,8 +155,8 @@ var poker_deck_mobile = {
   },
 
   endeck: function(deck, card) {
-    local_doc = deck.node.closest('.poker_deck_mobile')
-    deck_area = local_doc.querySelector('#g_deck_area')
+    localDocEl = deck.node.closest('.poker_deck_mobile')
+    deck_area = localDocEl.querySelector('#g_deck_area')
     deck_area = SVG.adopt(deck_area)
 
     poker_deck_mobile.flip_card_to_back(card.node)
