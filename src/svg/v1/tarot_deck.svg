@@ -1,0 +1,440 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="180"
+   height="250"
+   version="1.1"
+   id="tarot_deck"
+   class="tarot_deck droptarget"
+   inkscape:version="0.92.3 (2405546, 2018-03-11)"
+   sodipodi:docname="tarot_deck.svg">
+  <defs
+     id="defs2" />
+  <script
+     type="text/javascript"
+     data-namespace="tarot_deck"
+     id="tarot_deck"><![CDATA[
+
+function pile_offset(index) {
+  return {
+    x: 0.2 * index,
+    y: 0.66 * index,
+  }
+}
+
+var tarot_deck = {
+  tarotDeckJSON: [
+    {name: 'The Magician', suit: 'M', rank: '1'},
+    {name: 'The High Priestess', suit: 'M', rank: '2'},
+    {name: 'The Empress', suit: 'M', rank: '3'},
+    {name: 'The Emperor', suit: 'M', rank: '4'},
+    {name: 'The Hierophant', suit: 'M', rank: '5'},
+    {name: 'The Lovers', suit: 'M', rank: '6'},
+    {name: 'The Chariot', suit: 'M', rank: '7'},
+    {name: 'Strength', suit: 'M', rank: '8'},
+    {name: 'The Hermit', suit: 'M', rank: '9'},
+    {name: 'Wheel of Fortune', suit: 'M', rank: '10'},
+    {name: 'Justice', suit: 'M', rank: '11'},
+    {name: 'The Hanged Man', suit: 'M', rank: '12'},
+    {name: 'Death', suit: 'M', rank: '13'},
+    {name: 'Temperance', suit: 'M', rank: '14'},
+    {name: 'The Devil', suit: 'M', rank: '15'},
+    {name: 'The Tower', suit: 'M', rank: '16'},
+    {name: 'The Star', suit: 'M', rank: '17'},
+    {name: 'The Moon', suit: 'M', rank: '18'},
+    {name: 'The Sun', suit: 'M', rank: '19'},
+    {name: 'Judgement', suit: 'M', rank: '20'},
+    {name: 'The World', suit: 'M', rank: '21'},
+    {name: 'The Fool', suit: 'M', rank: '0'},
+    {name: '1 of Wands', suit: '☤', rank: '1'},
+    {name: '2 of Wands', suit: '☤', rank: '2'},
+    {name: '3 of Wands', suit: '☤', rank: '3'},
+    {name: '4 of Wands', suit: '☤', rank: '4'},
+    {name: '5 of Wands', suit: '☤', rank: '5'},
+    {name: '6 of Wands', suit: '☤', rank: '6'},
+    {name: '7 of Wands', suit: '☤', rank: '7'},
+    {name: '8 of Wands', suit: '☤', rank: '8'},
+    {name: '9 of Wands', suit: '☤', rank: '9'},
+    {name: '10 of Wands', suit: '☤', rank: '10'},
+    {name: 'Jack of Wands', suit: '☤', rank: 'J'},
+    {name: 'Knight of Wands', suit: '☤', rank: 'Kn'},
+    {name: 'Queen of Wands', suit: '☤', rank: 'Q'},
+    {name: 'King of Wands', suit: '☤', rank: 'K'},
+    {name: '1 of Coins', suit: '⛀', rank: '1'},
+    {name: '2 of Coins', suit: '⛀', rank: '2'},
+    {name: '3 of Coins', suit: '⛀', rank: '3'},
+    {name: '4 of Coins', suit: '⛀', rank: '4'},
+    {name: '5 of Coins', suit: '⛀', rank: '5'},
+    {name: '6 of Coins', suit: '⛀', rank: '6'},
+    {name: '7 of Coins', suit: '⛀', rank: '7'},
+    {name: '8 of Coins', suit: '⛀', rank: '8'},
+    {name: '9 of Coins', suit: '⛀', rank: '9'},
+    {name: '10 of Coins', suit: '⛀', rank: '10'},
+    {name: 'Jack of Coins', suit: '⛀', rank: 'J'},
+    {name: 'Knight of Coins', suit: '⛀', rank: 'Kn'},
+    {name: 'Queen of Coins', suit: '⛀', rank: 'Q'},
+    {name: 'King of Coins', suit: '⛀', rank: 'K'},
+    {name: '1 of Swords', suit: '⚔', rank: '1'},
+    {name: '2 of Swords', suit: '⚔', rank: '2'},
+    {name: '3 of Swords', suit: '⚔', rank: '3'},
+    {name: '4 of Swords', suit: '⚔', rank: '4'},
+    {name: '5 of Swords', suit: '⚔', rank: '5'},
+    {name: '6 of Swords', suit: '⚔', rank: '6'},
+    {name: '7 of Swords', suit: '⚔', rank: '7'},
+    {name: '8 of Swords', suit: '⚔', rank: '8'},
+    {name: '9 of Swords', suit: '⚔', rank: '9'},
+    {name: '10 of Swords', suit: '⚔', rank: '10'},
+    {name: 'Jack of Swords', suit: '⚔', rank: 'J'},
+    {name: 'Knight of Swords', suit: '⚔', rank: 'Kn'},
+    {name: 'Queen of Swords', suit: '⚔', rank: 'Q'},
+    {name: 'King of Swords', suit: '⚔', rank: 'K'},
+    {name: '1 of Cups', suit: '🝦', rank: '1'},
+    {name: '2 of Cups', suit: '🝦', rank: '2'},
+    {name: '3 of Cups', suit: '🝦', rank: '3'},
+    {name: '4 of Cups', suit: '🝦', rank: '4'},
+    {name: '5 of Cups', suit: '🝦', rank: '5'},
+    {name: '6 of Cups', suit: '🝦', rank: '6'},
+    {name: '7 of Cups', suit: '🝦', rank: '7'},
+    {name: '8 of Cups', suit: '🝦', rank: '8'},
+    {name: '9 of Cups', suit: '🝦', rank: '9'},
+    {name: '10 of Cups', suit: '🝦', rank: '10'},
+    {name: 'Jack of Cups', suit: '🝦', rank: 'J'},
+    {name: 'Knight of Cups', suit: '🝦', rank: 'Kn'},
+    {name: 'Queen of Cups', suit: '🝦', rank: 'Q'},
+    {name: 'King of Cups', suit: '🝦', rank: 'K'},
+  ],
+
+  generate_card: function(template, cardJSON, deckEl) {
+    let card = template.cloneNode(true)
+    let human_readable = {
+      '🝦': 's',
+      '⚔': 'd',
+      '☤': 'h',
+      '⛀': 'c',
+    }
+
+    card.dataset.name = cardJSON.name
+    card.dataset.suit = cardJSON.suit
+    card.dataset.rank = cardJSON.rank
+    card.dataset.deckId = deckEl.id
+    card.id = (
+      deckEl.id
+      + '_'
+      + human_readable[cardJSON.suit]
+      + cardJSON.rank
+    )
+
+    card.querySelector('.tspan_suit').textContent = cardJSON.suit
+    card.querySelector('.tspan_rank').textContent = cardJSON.rank
+    card.querySelectorAll('text').forEach(t => {
+      if (cardJSON.suit === '⚔') {
+        t.style.fill = 'rgb(200,0,0)'
+      } else if (cardJSON.suit === '☤') {
+        t.style.fill = 'rgb(255,10,10)'
+      } else if (cardJSON.suit === '🝦') {
+        t.style.fill = 'rgb(5,60,10)'
+      } else if (cardJSON.suit === '⛀') {
+        t.style.fill = 'rgb(0,0,0)'
+      } else {
+        t.style.fill = 'rgb(0,0,90)'
+      }
+    })
+
+    cardNameEl = card.querySelector('#text_name')
+    cardNameEl.textContent = cardJSON.name
+
+    card_name = SVG.adopt(cardNameEl)
+    card_face = SVG.adopt(card.querySelector('#card_face'))
+    card_rank = SVG.adopt(card.querySelector('#text_rank'))
+    card_rank.cx(card_face.cx())
+    card_name.cx(card_face.cx())
+
+    card = SVG.adopt(card)
+    card.removeClass('card_template')
+    card.addClass('card')
+    card.addClass('draggable-group')
+    card.addClass('c' + cardJSON.rank + human_readable[cardJSON.suit])
+    card.addClass('of_' + deckEl.id)
+    card.node.dataset.appNamespaces = ['tarot_deck_card']
+
+    card.node.addEventListener('svg_dragstart', (evt) => {
+      console.log('card gets svg_dragstart', evt)
+      if (evt.detail.elemId === card.node.id) {
+        console.log('its me', card.node.id)
+      }
+    })
+    return card
+  },
+
+  generate_deck: function(elem) {
+    local_doc = SVG.adopt(elem)
+    deck = local_doc.group()
+    deck.addClass('deck')
+    deck.addClass('contents_group')
+    deck_id = 'deck_' + base32.short_id()
+    deck.id(deck_id)
+    local_doc.add(deck)
+
+    let template = elem.querySelector('.card_template')
+    shuffle(this.tarotDeckJSON).map((cardJSON) => {
+      card = this.generate_card(template, cardJSON, deck.node)
+      this.endeck(deck, card)
+    })
+    template.remove()
+  },
+
+  endeck: function(deck, card) {
+    localDocEl = deck.node.closest('.tarot_deck')
+    deck_area = localDocEl.querySelector('#g_deck_area')
+    deck_area = SVG.adopt(deck_area)
+
+    tarot_deck.flip_card_to_back(card.node)
+
+    let offset = pile_offset(
+      deck.node.querySelectorAll('.card').length
+    )
+    card.cy(deck_area.cy() + offset.y)
+    card.cx(deck_area.cx() + offset.x)
+    deck.add(card)
+  },
+
+  flip_card_to_front: function(cardEl) {
+    back = cardEl.querySelector('.card_back')
+    back.remove()
+    cardEl.insertBefore(back, cardEl.firstChild)
+  },
+
+  flip_card_to_back: function(cardEl) {
+    back = cardEl.querySelector('.card_back')
+    back.remove()
+    cardEl.appendChild(back)
+  },
+
+  flip_card: function(cardEl) {
+    if (cardEl.lastElementChild.classList.contains('card_back')) {
+      tarot_deck.flip_card_to_front(cardEl)
+    } else {
+      tarot_deck.flip_card_to_back(cardEl)
+    }
+  },
+
+  initialize: function(elem) {
+    this.generate_deck(elem)
+    elem.addEventListener('tarot_deck_flip', this.flip_handler)
+    elem.addEventListener('tarot_deck_reshuffle', this.reshuffle_handler)
+
+    //elem.addEventListener('svg_drag', this.drag_handler)
+    //elem.addEventListener('svg_drop', this.drop_handler)
+    //elem.addEventListener('svg_dragover', this.dragover_handler)
+    //elem.addEventListener('svg_dragenter', () => {console.log('E')})
+    //elem.addEventListener('svg_dragleave', () => {console.log('L')})
+
+    elem.addEventListener('dblclick', lock_selection)
+  },
+
+  menu: {
+    'Flip': {
+      eventName: 'tarot_deck_flip',
+      applicable: (dNode) => {
+        deck = dNode.querySelector('.deck')
+        if (deck.childNodes.length > 0) {
+          return true
+        }
+        return false
+      },
+    },
+    'Reshuffle': {
+      eventName: 'tarot_deck_reshuffle',
+      applicable: (dNode) => { return true },
+    },
+  },
+
+  flip_handler: function(evt) {
+    let topcard = this.querySelector('.deck .card:last-child')
+    tarot_deck.flip_card(topcard)
+  },
+
+  reshuffle_handler: function(evt) {
+    var deck
+
+    if (evt.target.classList.contains('deck')) {
+      deck = evt.target
+    } else {
+      deck = evt.target.querySelector('.deck')
+    }
+    local_doc = deck.closest('.tarot_deck')
+
+    cardArray = []
+    sDeck = SVG.adopt(deck)
+    local_doc.querySelectorAll('.of_' + deck.id).forEach((card) => {
+      card.remove()
+      cardArray.push(card)
+    })
+    shuffle(cardArray).map((card) => {
+      sCard = SVG.adopt(card)
+      tarot_deck.endeck(sDeck, sCard)
+    })
+  },
+
+}
+
+
+tarot_deck_card = {
+  initialize: function(elem) {
+    elem.addEventListener('tarot_deck_card_flip', this.flip_handler)
+    elem.addEventListener('tarot_deck_card_return', this.return_handler)
+    elem.addEventListener('dblclick', this.flip_handler)
+  },
+
+  return_handler: function(evt) {
+    push_to_parent(
+      byId(evt.target.id),
+      byId(evt.target.dataset.deckId),
+      (cardEl, deckEl) => {
+        s(cardEl, 'data-app-class', null)
+        cardEl.classList.add('draggable-group')
+        tarot_deck.endeck(SVG.adopt(deckEl), SVG.adopt(cardEl))
+      }
+    )
+  },
+
+  flip_handler: function(evt) {
+    tarot_deck.flip_card(this)
+  },
+
+  menu: {
+    'Flip': {
+      eventName: 'tarot_deck_card_flip',
+      applicable: (dNode) => { return true },
+    },
+    'Return to deck': {
+      eventName: 'tarot_deck_card_return',
+      applicable: (dNode) => {
+        console.log('dnode', dNode)
+        if(document.querySelector('#' + dNode.dataset.deckId)) {
+          return true
+        } else {
+          return false
+        }
+      },
+    },
+  },
+
+}
+
+
+    ]]></script>
+
+  <svg
+     id="card_template"
+     class="card_template"
+     x="40"
+     y="60"
+     width="100"
+     height="150"
+     >
+    <g class="card_front">
+    <rect
+       style="opacity:1;fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.26458332;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+       id="card_face"
+       width="100"
+       height="150"
+       x="0"
+       y="0"
+       rx="10"
+       ry="10" />
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;
+       font-weight:bold;font-stretch:normal;
+       font-size:50px;line-height:125%;
+       font-family:serif;
+       letter-spacing:0px;word-spacing:0px;
+       fill:#F00000;fill-opacity:1;"
+       x="33"
+       y="100"
+       id="text_rank"><tspan
+         sodipodi:role="line"
+         id="tspan_rank"
+         class="tspan_rank"
+         >K</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;
+       font-weight:bold;font-stretch:normal;
+       font-size:50px;line-height:125%;
+       font-family:serif;
+       letter-spacing:0px;word-spacing:0px;
+       fill:#F00000;fill-opacity:1;"
+       x="40"
+       y="45"
+       id="text823"><tspan
+         sodipodi:role="line"
+         id="tspan_suit"
+         class="tspan_suit"
+         >☤</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;
+       font-weight:normal;font-stretch:normal;
+       font-size:10px;line-height:125%;
+       font-family:serif;
+       letter-spacing:0px;word-spacing:0px;
+       fill:#F00000;fill-opacity:1;"
+       x="5"
+       y="135"
+       id="text_name"><tspan
+         id="tspan_name"
+         class="tspan_name"
+         >The High Priestess</tspan></text>
+    </g>
+    <g class="card_back">
+    <rect
+       style="opacity:1;
+       fill:#ffffff;fill-opacity:1;
+       stroke:#000000;stroke-width:0.5;
+       stroke-opacity:1"
+       id="card_back_outer"
+       width="100"
+       height="150"
+       x="0"
+       y="0"
+       rx="10"
+       ry="10" />
+    <rect
+       style="opacity:1;
+       fill:#a0a0a0;fill-opacity:1;
+       stroke:none"
+       id="card_back_inner"
+       width="90"
+       height="140"
+       x="5"
+       y="5"
+       rx="5"
+       ry="5" />
+    </g>
+  </svg>
+    <g id="g_deck_area" >
+      <rect
+         style="opacity:1;
+         fill-opacity:0;
+         stroke:#ffffff;
+         stroke-width:0.5;
+         stroke-opacity:0.5"
+         id="deck_area_rect"
+         width="180"
+         height="250"
+         x="0.0"
+         y="0.0"
+         rx="0"
+         ry="0" />
+    </g>
+</svg>
