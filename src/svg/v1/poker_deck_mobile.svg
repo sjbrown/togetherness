@@ -9,71 +9,286 @@
    xmlns="http://www.w3.org/2000/svg"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   width="200"
-   height="300"
+   width="180"
+   height="240"
    version="1.1"
-   id="svg8"
+   id="poker_deck_mobile"
+   class="poker_deck_mobile droptarget"
    inkscape:version="0.92.3 (2405546, 2018-03-11)"
    sodipodi:docname="poker_deck_mobile.svg">
   <defs
      id="defs2" />
-  <sodipodi:namedview
-     id="base"
-     pagecolor="#ffffff"
-     bordercolor="#666666"
-     borderopacity="1.0"
-     inkscape:pageopacity="0.0"
-     inkscape:pageshadow="2"
-     inkscape:zoom="1.4"
-     inkscape:cx="21.288291"
-     inkscape:cy="212.65559"
-     inkscape:document-units="mm"
-     inkscape:current-layer="layer1"
-     showgrid="false"
-     units="px"
-     inkscape:window-width="750"
-     inkscape:window-height="401"
-     inkscape:window-x="2519"
-     inkscape:window-y="225"
-     inkscape:window-maximized="0" />
-  <metadata
-     id="metadata5">
-    <rdf:RDF>
-      <cc:Work
-         rdf:about="">
-        <dc:format>image/svg+xml</dc:format>
-        <dc:type
-           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
-      </cc:Work>
-    </rdf:RDF>
-  </metadata>
   <script
      type="text/javascript"
      data-namespace="poker_deck_mobile"
      id="poker_deck_mobile"><![CDATA[
+
+function pile_offset(index) {
+  return {
+    x: 0.2 * index,
+    y: 0.66 * index,
+  }
+}
+
 var poker_deck_mobile = {
-  suits: {
-    hearts: '♥',
-    diamonds: '♦',
-    clubs: '♣',
-    spades: '♠',
+  pokerDeckJSON: [
+    {name: 'Ace of Hearts', suit: '♥', rank: 'A'},
+    {name: '2 of Hearts', suit: '♥', rank: '2'},
+    {name: '3 of Hearts', suit: '♥', rank: '3'},
+    {name: '4 of Hearts', suit: '♥', rank: '4'},
+    {name: '5 of Hearts', suit: '♥', rank: '5'},
+    {name: '6 of Hearts', suit: '♥', rank: '6'},
+    {name: '7 of Hearts', suit: '♥', rank: '7'},
+    {name: '8 of Hearts', suit: '♥', rank: '8'},
+    {name: '9 of Hearts', suit: '♥', rank: '9'},
+    {name: '10 of Hearts', suit: '♥', rank: '10'},
+    {name: 'Jack of Hearts', suit: '♥', rank: 'J'},
+    {name: 'Queen of Hearts', suit: '♥', rank: 'Q'},
+    {name: 'King of Hearts', suit: '♥', rank: 'K'},
+    {name: 'Ace of Clubs', suit: '♣', rank: 'A'},
+    {name: '2 of Clubs', suit: '♣', rank: '2'},
+    {name: '3 of Clubs', suit: '♣', rank: '3'},
+    {name: '4 of Clubs', suit: '♣', rank: '4'},
+    {name: '5 of Clubs', suit: '♣', rank: '5'},
+    {name: '6 of Clubs', suit: '♣', rank: '6'},
+    {name: '7 of Clubs', suit: '♣', rank: '7'},
+    {name: '8 of Clubs', suit: '♣', rank: '8'},
+    {name: '9 of Clubs', suit: '♣', rank: '9'},
+    {name: '10 of Clubs', suit: '♣', rank: '10'},
+    {name: 'Jack of Clubs', suit: '♣', rank: 'J'},
+    {name: 'Queen of Clubs', suit: '♣', rank: 'Q'},
+    {name: 'King of Clubs', suit: '♣', rank: 'K'},
+    {name: 'Ace of Diamonds', suit: '♦', rank: 'A'},
+    {name: '2 of Diamonds', suit: '♦', rank: '2'},
+    {name: '3 of Diamonds', suit: '♦', rank: '3'},
+    {name: '4 of Diamonds', suit: '♦', rank: '4'},
+    {name: '5 of Diamonds', suit: '♦', rank: '5'},
+    {name: '6 of Diamonds', suit: '♦', rank: '6'},
+    {name: '7 of Diamonds', suit: '♦', rank: '7'},
+    {name: '8 of Diamonds', suit: '♦', rank: '8'},
+    {name: '9 of Diamonds', suit: '♦', rank: '9'},
+    {name: '10 of Diamonds', suit: '♦', rank: '10'},
+    {name: 'Jack of Diamonds', suit: '♦', rank: 'J'},
+    {name: 'Queen of Diamonds', suit: '♦', rank: 'Q'},
+    {name: 'King of Diamonds', suit: '♦', rank: 'K'},
+    {name: 'Ace of Spades', suit: '♠', rank: 'A'},
+    {name: '2 of Spades', suit: '♠', rank: '2'},
+    {name: '3 of Spades', suit: '♠', rank: '3'},
+    {name: '4 of Spades', suit: '♠', rank: '4'},
+    {name: '5 of Spades', suit: '♠', rank: '5'},
+    {name: '6 of Spades', suit: '♠', rank: '6'},
+    {name: '7 of Spades', suit: '♠', rank: '7'},
+    {name: '8 of Spades', suit: '♠', rank: '8'},
+    {name: '9 of Spades', suit: '♠', rank: '9'},
+    {name: '10 of Spades', suit: '♠', rank: '10'},
+    {name: 'Jack of Spades', suit: '♠', rank: 'J'},
+    {name: 'Queen of Spades', suit: '♠', rank: 'Q'},
+    {name: 'King of Spades', suit: '♠', rank: 'K'},
+  ],
+
+  generate_card: function(template, cardJSON, deckEl) {
+    let card = template.cloneNode(true)
+    let human_readable = {
+      '♠': 's',
+      '♦': 'd',
+      '♥': 'h',
+      '♣': 'c',
+    }
+
+    card.dataset.name = cardJSON.name
+    card.dataset.suit = cardJSON.suit
+    card.dataset.rank = cardJSON.rank
+    card.dataset.deckId = deckEl.id
+    card.id = (
+      deckEl.id
+      + '_'
+      + human_readable[cardJSON.suit]
+      + cardJSON.rank
+    )
+
+    card.querySelector('.tspan_suit').textContent = cardJSON.suit
+    card.querySelector('.tspan_rank').textContent = cardJSON.rank
+    card.querySelectorAll('text').forEach(t => {
+      if (cardJSON.suit === '♦') {
+        t.style.fill = 'rgb(240,0,0)'
+      } else if (cardJSON.suit === '♥') {
+        t.style.fill = 'rgb(255,10,10)'
+      } else if (cardJSON.suit === '♠') {
+        t.style.fill = 'rgb(5,10,10)'
+      } else {
+        t.style.fill = 'rgb(0,0,0)'
+      }
+    })
+
+    card = SVG.adopt(card)
+    card.removeClass('card_template')
+    card.addClass('card')
+    card.addClass('draggable-group')
+    card.addClass('c' + cardJSON.rank + human_readable[cardJSON.suit])
+    card.addClass('of_' + deckEl.id)
+    card.node.dataset.appNamespaces = ['poker_deck_mobile_card']
+
+    card.node.addEventListener('svg_dragstart', (evt) => {
+      console.log('card gets svg_dragstart', evt)
+      if (evt.detail.elemId === card.node.id) {
+        console.log('its me', card.node.id)
+      }
+    })
+    return card
+  },
+
+  generate_deck: function(elem) {
+    handle = SVG.adopt(elem)
+    deck = handle.group()
+    deck.addClass('deck')
+    deck.addClass('contents_group')
+    deck_id = 'deck_' + base32.short_id()
+    deck.id(deck_id)
+    handle.add(deck)
+
+    let template = elem.querySelector('.card_template')
+    shuffle(this.pokerDeckJSON).map((cardJSON) => {
+      card = this.generate_card(template, cardJSON, deck.node)
+      this.endeck(deck, card)
+    })
+    template.remove()
+  },
+
+  endeck: function(deck, card) {
+    local_doc = deck.node.closest('.poker_deck_mobile')
+    deck_area = local_doc.querySelector('#g_deck_area')
+    deck_area = SVG.adopt(deck_area)
+
+    poker_deck_mobile.flip_card_to_back(card.node)
+
+    let offset = pile_offset(
+      deck.node.querySelectorAll('.card').length
+    )
+    card.cy(deck_area.cy() + offset.y)
+    card.cx(deck_area.cx() + offset.x)
+    deck.add(card)
+  },
+
+  flip_card_to_front: function(cardEl) {
+    back = cardEl.querySelector('.card_back')
+    back.remove()
+    cardEl.insertBefore(back, cardEl.firstChild)
+  },
+
+  flip_card_to_back: function(cardEl) {
+    back = cardEl.querySelector('.card_back')
+    back.remove()
+    cardEl.appendChild(back)
+  },
+
+  flip_card: function(cardEl) {
+    if (cardEl.lastElementChild.classList.contains('card_back')) {
+      poker_deck_mobile.flip_card_to_front(cardEl)
+    } else {
+      poker_deck_mobile.flip_card_to_back(cardEl)
+    }
+  },
+
+  initialize: function(elem) {
+    this.generate_deck(elem)
+    elem.addEventListener('poker_deck_mobile_flip', this.flip_handler)
+    elem.addEventListener('poker_deck_mobile_reshuffle', this.reshuffle_handler)
+
+    //elem.addEventListener('svg_drag', this.drag_handler)
+    //elem.addEventListener('svg_drop', this.drop_handler)
+    //elem.addEventListener('svg_dragover', this.dragover_handler)
+    //elem.addEventListener('svg_dragenter', () => {console.log('E')})
+    //elem.addEventListener('svg_dragleave', () => {console.log('L')})
+
+    elem.addEventListener('dblclick', lock_selection)
   },
 
   menu: {
     'Flip': {
       eventName: 'poker_deck_mobile_flip',
-      applicable: (node) => { return true },
+      applicable: (dNode) => {
+        deck = dNode.querySelector('.deck')
+        if (deck.childNodes.length > 0) {
+          return true
+        }
+        return false
+      },
+    },
+    'Reshuffle': {
+      eventName: 'poker_deck_mobile_reshuffle',
+      applicable: (dNode) => { return true },
     },
   },
 
-  serialize: function(elem) {
-    value = elem.querySelector('tspan:last-of-type').textContent
-    return {value: value}
+  flip_handler: function(evt) {
+    let topcard = this.querySelector('.deck .card:last-child')
+    poker_deck_mobile.flip_card(topcard)
   },
 
-  deserialize: function(elem, payload) {
-    elem.querySelector('tspan:last-of-type').textContent = payload.value
+  reshuffle_handler: function(evt) {
+    var deck
+
+    if (evt.target.classList.contains('deck')) {
+      deck = evt.target
+    } else {
+      deck = evt.target.querySelector('.deck')
+    }
+    local_doc = deck.closest('.poker_deck_mobile')
+
+    cardArray = []
+    sDeck = SVG.adopt(deck)
+    local_doc.querySelectorAll('.of_' + deck.id).forEach((card) => {
+      card.remove()
+      cardArray.push(card)
+    })
+    shuffle(cardArray).map((card) => {
+      sCard = SVG.adopt(card)
+      poker_deck_mobile.endeck(sDeck, sCard)
+    })
+  },
+
+}
+
+
+poker_deck_mobile_card = {
+  initialize: function(elem) {
+    elem.addEventListener('poker_deck_mobile_card_flip', this.flip_handler)
+    elem.addEventListener('poker_deck_mobile_card_return', this.return_handler)
+    elem.addEventListener('dblclick', this.flip_handler)
+  },
+
+  return_handler: function(evt) {
+    push_to_parent(
+      byId(evt.target.id),
+      byId(evt.target.dataset.deckId),
+      (cardEl, deckEl) => {
+        s(cardEl, 'data-app-class', null)
+        cardEl.classList.add('draggable-group')
+        poker_deck_mobile.endeck(SVG.adopt(deckEl), SVG.adopt(cardEl))
+      }
+    )
+  },
+
+  flip_handler: function(evt) {
+    poker_deck_mobile.flip_card(this)
+  },
+
+  menu: {
+    'Flip': {
+      eventName: 'poker_deck_mobile_card_flip',
+      applicable: (dNode) => { return true },
+    },
+    'Return to deck': {
+      eventName: 'poker_deck_mobile_card_return',
+      applicable: (dNode) => {
+        console.log('dnode', dNode)
+        if(document.querySelector('#' + dNode.dataset.deckId)) {
+          return true
+        } else {
+          return false
+        }
+      },
+    },
   },
 
 }
@@ -81,35 +296,94 @@ var poker_deck_mobile = {
 
     ]]></script>
 
-  <g
-     inkscape:label="Layer 1"
-     inkscape:groupmode="layer"
-     id="layer1"
+  <svg
+     id="card_template"
+     class="card_template"
+     x="40"
+     y="60"
+     width="100"
+     height="150"
      >
+    <g class="card_front">
     <rect
        style="opacity:1;fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.26458332;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
        id="card_face"
-       width="198"
-       height="297"
-       x="0.5"
-       y="0.5"
+       width="100"
+       height="150"
+       x="0"
+       y="0"
        rx="10"
        ry="10" />
     <text
        xml:space="preserve"
-       x="30"
-       y="45"
+       style="font-style:normal;font-variant:normal;
+       font-weight:bold;font-stretch:normal;
+       font-size:50px;line-height:125%;
+       font-family:serif;
+       letter-spacing:0px;word-spacing:0px;
+       fill:#F00000;fill-opacity:1;"
+       x="33"
+       y="100"
        id="text819"><tspan
          sodipodi:role="line"
          id="tspan_rank"
+         class="tspan_rank"
          >K</tspan></text>
     <text
        xml:space="preserve"
-       x="40"
+       style="font-style:normal;font-variant:normal;
+       font-weight:bold;font-stretch:normal;
+       font-size:50px;line-height:125%;
+       font-family:serif;
+       letter-spacing:0px;word-spacing:0px;
+       fill:#F00000;fill-opacity:1;"
+       x="55"
        y="45"
        id="text823"><tspan
          sodipodi:role="line"
          id="tspan_suit"
+         class="tspan_suit"
          >♥</tspan></text>
-  </g>
+    </g>
+    <g class="card_back">
+    <rect
+       style="opacity:1;
+       fill:#ffffff;fill-opacity:1;
+       stroke:#000000;stroke-width:0.5;
+       stroke-opacity:1"
+       id="card_back_outer"
+       width="100"
+       height="150"
+       x="0"
+       y="0"
+       rx="10"
+       ry="10" />
+    <rect
+       style="opacity:1;
+       fill:#a0a0a0;fill-opacity:1;
+       stroke:none"
+       id="card_back_inner"
+       width="90"
+       height="140"
+       x="5"
+       y="5"
+       rx="5"
+       ry="5" />
+    </g>
+  </svg>
+    <g id="g_deck_area" >
+      <rect
+         style="opacity:1;
+         fill-opacity:0;
+         stroke:#ffffff;
+         stroke-width:0.5;
+         stroke-opacity:0.5"
+         id="deck_area_rect"
+         width="180"
+         height="240"
+         x="0.0"
+         y="0.0"
+         rx="0"
+         ry="0" />
+    </g>
 </svg>

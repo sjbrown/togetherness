@@ -862,7 +862,7 @@ function add_object_from_payload(payload) {
   })
 }
 
-function pop_from_parent(childElem, ns) {
+function pop_from_parent(childElem) {
   console.log('pop child', childElem.id, 'from_parent')
   if (childElem.tagName !== 'svg') {
     throw Error('Not an SVG element')
@@ -878,11 +878,12 @@ function pop_from_parent(childElem, ns) {
   console.log('now ', child.x() )
   child.y(child.y() + parentWithXY.y())
 
-  if (ns) {
+  getNamespacesForElement(childElem).forEach((nsName) => {
+    let ns = window[nsName]
     initialize_with_ns(childElem, ns)
     hookup_ui(childElem)
     childElem.dataset.appClass = 'nest'
-  }
+  })
 
   push_to_parent(childElem, grandparent, (c, p) => {
     p.appendChild(c)

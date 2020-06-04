@@ -155,7 +155,7 @@ function makeDraggable(viewport, table) {
         table.node.querySelectorAll(q).forEach(draggableGroup => {
           if (draggableGroup.contains(evt.target)) {
             dragTarget = draggableGroup
-            pop_from_parent(dragTarget, {})
+            pop_from_parent(dragTarget)
           }
         })
       }

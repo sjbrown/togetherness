@@ -292,10 +292,8 @@ var poker_deck = {
     //evt_fire('poker_deck_remove', evt, {selectedCardId: card.node.id})
 
     card.node.dataset.origName = card.node.dataset.name
-    pop_from_parent(
-      card.node,
-      poker_deck_card
-    )
+    card.node.dataset.appNamespaces = ['poker_deck_card']
+    pop_from_parent(card.node)
   },
 
   dragover_handler: function(evt) {

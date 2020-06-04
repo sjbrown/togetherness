@@ -103,7 +103,7 @@ var paper_count = {
       if (is_inside) {
         return
       }
-      pop_from_parent(draggedElem, {})
+      pop_from_parent(draggedElem)
     } else {
       if (!is_inside) {
         return

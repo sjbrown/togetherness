@@ -233,7 +233,7 @@ window.addEventListener('load', () => {
     onclick="quick_die_button_add()"
     title="Add one die of the most recent type"
     >
-    <img src="svg/v1/dice_d6.svg" width="24" height="24" />
+    <img src="svg/v1/dice_d6.svg"  height="24" />
   </button>
   <script>
   function quick_die_button_add() {
@@ -257,8 +257,11 @@ window.addEventListener('load', () => {
     + <u>D</u>ice
   </button>
 
-  <button class="btn btn-small" onclick="add_object('svg/v1/poker_deck.svg')">
-  + Cards
+  <button id="cards_dialog_button" class="btn btn-small modal-trigger"
+    accesskey="c"
+    data-target="dialog_cards"
+    data-dialog-id="dialog_cards">
+  + <u>C</u>ards
   </button>
 <!--
   <button class="btn" onclick="add_object('svg/v1/deckahedron.svg')">
@@ -1668,6 +1671,27 @@ function ui_submit_ellipse(evt) {
 
 <!-- END OTHER =============================================== END OTHER -->
 
+<!-- CARDS ======================================================= CARDS -->
+
+  <div class="modal" id="dialog_cards">
+    <button class="dialog_cancel btn modal-close" data-dialog-id="dialog_cards"
+    > &#215; </button>
+    <div class="modal-content">
+    <section id="cards_section">
+      <button class="btn btn-small modal-close"
+        onclick="add_object('svg/v1/poker_deck.svg')">
+        + Poker Deck
+      </button>
+      <button class="btn btn-small modal-close"
+        onclick="add_object('svg/v1/poker_deck_mobile.svg')">
+        + Mobile-friendly Poker Deck
+      </button>
+    </section>
+    </div>
+  </div>
+
+<!-- END CARDS =============================================== END CARDS -->
+
 <!-- CLOCKS ======================================================= CLOCKS -->
 
   <div class="modal" id="dialog_clocks">
@@ -1683,7 +1707,7 @@ function ui_submit_ellipse(evt) {
     </div>
   </div>
 
-<!-- END OTHER =============================================== END OTHER -->
+<!-- END CLOCKS =============================================== END CLOCKS -->
 
 <!-- CONTRIBUTE =============================================== CONTRIBUTE -->
   <div class="modal" id="dialog_contribute">
