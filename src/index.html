@@ -659,7 +659,7 @@ function ui_popup_dialog_save() {
   <div class="modal-content">
     <section>
       <a name="copy_and_paste"></a>
-      <h2 class="save_h2">Copy and Paste</h2>
+      <h1 >Copy and Paste</h1>
       <textarea id="textarea_save_output" cols="82" rows=10>X</textarea>
       <div class="save_explain">
       Copy and paste the contents of this text box to a file on your computer.
@@ -667,7 +667,7 @@ function ui_popup_dialog_save() {
     </section>
     <section>
       <a name="local"></a>
-      <h2 class="save_h2">Local storage on your browser</h2>
+      <h1 >Local storage on your browser</h1>
       <div class="save_explain">
       This feature has not been implemented yet. If you would like it to exist,
       <span style="color:teal">tweet</span> "Hey @boardcrafting, please
@@ -678,7 +678,7 @@ function ui_popup_dialog_save() {
     </section>
     <section>
       <a name="cloud"></a>
-      <h2 class="save_h2">Cloud storage</h2>
+      <h1 >Cloud storage</h1>
       <div class="save_explain">
       This feature has not been implemented yet. If you would like it to exist,
       <span style="color:teal">tweet</span> "Hey @boardcrafting, please
@@ -746,7 +746,7 @@ function ui_popup_dialog_load() {
   <div class="modal-content">
     <section>
       <a name="copy_and_paste"></a>
-      <h2 class="load_h2">Copy and Paste</h2>
+      <h1 class="load_h1">Copy and Paste</h1>
       <textarea id="textarea_load_input" cols="82" rows=5></textarea>
       <div class="load_explain">
       Copy and paste the contents from a previously saved session into this
@@ -758,7 +758,7 @@ function ui_popup_dialog_load() {
     </section>
     <section>
       <a name="upload"></a>
-      <h2 class="load_h2">Upload file</h2>
+      <h1 class="load_h1">Upload file</h1>
       <div class="load_explain">
       This feature has not been implemented yet. If you would like it to exist,
       <span style="color:teal">tweet</span> "Hey @boardcrafting, please make
@@ -983,7 +983,7 @@ function ui_submit_dice(section) {
   <div class="modal-content">
     <section class="dice_section" id="standard_dice_section">
       <a name="standard"></a>
-      <h2 id="standard_dice_h2">Standard Dice</h2>
+      <h1 id="standard_dice_h1">Standard Dice</h1>
       <!--
       <label for="dice_text_input">Add dice via text specification</label>
       <input id="dice_text_input" type="text" placeholder="1d10, 2d20"/>
@@ -1033,7 +1033,7 @@ function ui_submit_dice(section) {
     </section>
     <section class="dice_section" id="sw_dice_section">
       <a name="sw"></a>
-      <h2 id="sw_dice_h2">SW / Genesys Dice</h2>
+      <h1 id="sw_dice_h1">SW / Genesys Dice</h1>
       <table><tr>
       <td>
         <input id="dice_input_sw_d61" type="text" value="1"/>
@@ -1085,7 +1085,7 @@ function ui_submit_dice(section) {
     </section>
     <section class="dice_section" id="fudge_dice_section">
       <a name="fudge"></a>
-      <h2 id="fudge_dice_h2">FUDGE (FATE) Dice</h2>
+      <h1 id="fudge_dice_h1">FUDGE (FATE) Dice</h1>
       <table><tr>
       <td>
         <input id="dice_input_fudge_d6" type="text" value="1"/>
@@ -1101,7 +1101,7 @@ function ui_submit_dice(section) {
     </section>
     <section class="dice_section" id="special_dice_section">
       <a name="special"></a>
-      <h2 id="special_dice_h2">Special Dice</h2>
+      <h1 id="special_dice_h1">Special Dice</h1>
       <table><tr>
       <td>
         <input id="dice_input_dn" type="text" value="1"/>
@@ -1184,7 +1184,16 @@ function ui_submit_svgfile(evt) {
       &#215;
     </button>
   <div class="modal-content">
-    <label for="svgfile_body">Width</label>
+      <label>
+      <input name="allow_javascript" type="radio" checked value="yes" />
+      <span>Allow JavaScript (JavaScript not usable by others in multiplayer)</span>
+      </label>
+      <br />
+      <label>
+      <input name="allow_javascript" type="radio" value="no" />
+      <span>Safety mode</span>
+      </label>
+      <p>
     <textarea id="svgfile_body" cols="82" rows=5></textarea>
     <div class="load_explain">
     Copy and paste the contents from an SVG file into this
@@ -1623,12 +1632,7 @@ function ui_submit_ellipse(evt) {
     <div class="modal-content">
     <section id="drawing_section">
       <a name="drawing"></a>
-      <h2 id="drawing_h2">Drawing</h2>
-      <button id="svgfile_button" class="btn btn-small modal-trigger modal-close"
-        data-target="dialog_svgfile"
-        data-dialog-id="dialog_svgfile">
-        + SVG File
-      </button>
+      <h1 id="drawing_h1">Drawing</h1>
       <button id="rect_button" class="btn btn-small modal-trigger modal-close"
         data-target="dialog_rect"
         data-dialog-id="dialog_rect">
@@ -1644,15 +1648,23 @@ function ui_submit_ellipse(evt) {
         data-dialog-id="dialog_text">
         + Text ⌨
       </button>
+      <p>
+      <button id="svgfile_button" class="btn btn-small modal-trigger modal-close"
+        data-target="dialog_svgfile"
+        data-dialog-id="dialog_svgfile">
+        + SVG File
+      </button>
+      <!--
       <button id="random_table_button" class="btn btn-small modal-trigger modal-close"
         data-target="dialog_random_table"
         data-dialog-id="dialog_random_table">
         + Random Table
       </button>
+      -->
     </section>
     <section id="dynamic_paper_section">
       <a name="dynamic_paper"></a>
-      <h2 id="dynamic_paper_h2">Dynamic Paper</h2>
+      <h1 id="dynamic_paper_h1">Dynamic Paper</h1>
       <button class="btn btn-small modal-close"
         onclick="add_object('svg/v1/paper_sum.svg')">
         + Sum
@@ -1693,7 +1705,7 @@ function ui_submit_card() {
     <div class="modal-content">
     <section id="decks_section">
       <a name="decks"></a>
-      <h3 class="decks_h2">Decks</h2>
+      <h1 class="decks_h1">Decks</h1>
       <button class="btn btn-small modal-close"
         onclick="add_object('svg/v1/poker_deck_mobile.svg')">
         + Mobile-friendly Poker Deck
@@ -1709,7 +1721,7 @@ function ui_submit_card() {
     </section>
     <section id="cards_section">
       <a name="single"></a>
-      <h3 class="single_h2">Single card</h2>
+      <h1 class="single_h1">Single card</h1>
       <style>
       #card_input_card_code:invalid {
         border: solid red;
@@ -1771,7 +1783,7 @@ function ui_submit_card() {
   <div class="modal-content">
     <section>
       <a name="recognize"></a>
-      <h2 class="contribute_h2">Give some recognition</h2>
+      <h1 class="contribute_h1">Give some recognition</h1>
       <div class="contribute_explain">
       If you do the whole social media thing:
       <a href="https://twitter.com/home?status=Thanks be to @boardcrafting for
@@ -1784,7 +1796,7 @@ function ui_submit_card() {
     </section>
     <section>
       <a name="develop"></a>
-      <h2 class="contribute_h2">Contribute to the codebase</h2>
+      <h1 class="contribute_h1">Contribute to the codebase</h1>
       <div class="contribute_explain">
       Speaking of Github, you can
       <a href="https://github.com/sjbrown/1kfa">fork and contribute to this project</a>
@@ -1792,7 +1804,7 @@ function ui_submit_card() {
     </section>
     <section>
       <a name="donate"></a>
-      <h2 class="contribute_h2">Donate</h2>
+      <h1 class="contribute_h1">Donate</h1>
       <div class="contribute_explain">
       This is built on top of TogetherJS, a free, open-source project created by
       the Mozilla Foundation. They need money to continue making great software

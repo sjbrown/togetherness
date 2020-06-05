@@ -24,6 +24,19 @@ body button[accessKey]::first-letter {
   background-color: #cbc26d;
 }
 
+.modal h1 {
+  font-size: larger;
+  font-weight: bold;
+  margin-left: 10px;
+  margin-bottom: 1rem;
+}
+
+.modal section {
+  margin-bottom: 3rem;
+  border-left: solid 1px gray;
+  padding-left: 24px;
+}
+
 dialog {
   position: absolute;
   top: 10%;
