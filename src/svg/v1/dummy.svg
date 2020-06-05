@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   id="dummy" height="100" width="80"
+   version="1.1"
+   >
+  <defs id="defs4">
+    <linearGradient id="linearGradient1">
+      <stop style="stop-color:#000000;stop-opacity:1;" offset="0" id="stop1" />
+      <stop style="stop-color:#000000;stop-opacity:0.4" offset="1" id="stop2" />
+    </linearGradient>
+    <linearGradient id="linearGradient10" xlink:href="#linearGradient1" gradientUnits="userSpaceOnUse"
+       x1="0.0" y1="22.6" x2="0.0" y2="88.9" />
+  </defs>
+  <script type="text/javascript" src="js/dice_utils.js" id="script13" />
+  <script type="text/javascript" data-namespace="dummy" id="script_dummy"><![CDATA[
+var dummy = {
+  roll_handler: function(evt) {
+    if (this.isChanging) {
+      return false
+    }
+    this.isChanging = true
+    var text = this.querySelector('text')
+    var tspan = this.querySelector('tspan')
+    var origOpacity = this.style.opacity
+    var newNum = randDiceString(1,6)
+    animated_ghost(this, { animation: 'rollOut' })
+    tspan.textContent = ' '
+    this.style.opacity = 0.1
+    animated_ghost(this, {
+      animation: 'rollIn',
+      before_begin: (ghost) => {
+        ghost.querySelector('g').style.opacity = origOpacity
+      },
+      on_done: () => {
+        tspan.textContent = newNum
+        s(text, 'data-text', newNum)
+        this.style.opacity = origOpacity
+        this.isChanging = false
+        net_fire({type: "change", data: serialize(this)})
+        evt_fire('change', this, null, {})
+      },
+    })
+  },
+
+  initialize: function(elem) {
+    console.log('DUMMY INIT')
+    elem.addEventListener('die_roll', this.roll_handler)
+    elem.addEventListener('dblclick', this.roll_handler)
+  },
+
+  menu: {
+    'Roll': {
+      eventName: 'die_roll',
+      applicable: (dieNode) => { return true },
+    },
+  },
+}
+    ]]></script>
+  <g id="layer1" >
+      <path
+        style="fill:#000000;fill-opacity:0.5;stroke:none;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+        d="m 16.2,45.5 c -1.6,-0.0012 -5.1,0.0 -6.2,0.6 -1.52,0.9 -1.72,1.6 -1.92,5.0 l -2.8,32.2 c 0.0306,1.3 6.42,6.2 8.32,6.2 h 51.9 c 1.9,0 8.2,-4.8 8.3,-6.2 l -2.8,-32.2 c -0.179,-3.3 -0.3105,-4.1 -1.90625,-5.0 -1.0,-0.5 -4.5,-0.6 -6.2,-0.6 z"
+        id="path_shadow"
+      />
+      <path
+        id="path_sides"
+        d="m 16.2,11.4 c -1.6,-0.0021 -5.1,0.1 -6.2,1.1 -1.52,1.5 -1.72,2.7 -1.92,8.6 l -2.88281,55.7 c 0.0306,2.3 6.42,10.8 8.32,10.8 h 51.9 c 1.9,0 8.2,-8.4 8.3,-10.8 l -2.8,-55.7 c -0.179,-5.8 -0.3105,-7.0 -1.9,-8.6 -1.0,-0.9 -4.55005,-1.1 -6.2,-1.1 z"
+        style="fill:#9b9b9b;fill-opacity:1;stroke:#000000;stroke-width:1.394;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+      />
+      <path
+        style="fill:#dedede;fill-opacity:1;stroke:url(#linearGradient10);stroke-width:1.31;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+        d="m 12.0,11.6 h 55.0 c 1.662,0 2.9,1.3 3,3 l 2,59.0 c 0.0562,1.6 -1.338,3 -3,3 h -59.0 c -1.62,0 -3.02,-1.3 -3.02,-3 l 2,-59.0 c 0.0562,-1.6 1.32,-3 3.02,-3 z"
+        id="topface"
+      />
+  </g>
+  <text
+     xml:space="preserve"
+     style="font-size:50px;line-height:125%;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;"
+     x="24"
+     y="62"
+     id="text_die_value"
+     ><tspan id="tspan_die_value">6</tspan></text>
+</svg>

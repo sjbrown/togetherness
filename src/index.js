@@ -639,6 +639,13 @@ function add_fresh_svg(svgElem) {
   svgElem.querySelectorAll('[data-nest-for=mark]').forEach((subSvg) => {
     hookup_mark_handlers(subSvg)
   })
+  /*
+  svg_table.add(nest)
+  hookup_ui(nest.node)
+  hookup_foreign_scripts(nest.node, url, attrs && attrs.serializedState)
+  ui_fire({type: "create", data: { createdEl: nest.node }});
+  net_fire({type: "create", data: serialize(nest)});
+  */
 }
 
 

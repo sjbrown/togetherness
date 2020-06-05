@@ -1157,21 +1157,28 @@ var svgfile_verbs = {
 function ui_submit_svgfile(evt) {
   textarea = byId('svgfile_body')
 
-  /*
-  newDoc = new DOMParser().parseFromString(textarea.value, 'image/svg+xml')
-  //defanged = domJSON.toJSON(newDoc.firstChild)
-  //newDoc = domJSON.toDOM(defanged)
-  root = newDoc.firstChild
-  root.remove()
-  table = byId('svg_table')
-  table.appendChild(root)
-  */
+  allowJS = byId('dialog_svgfile').querySelector(
+    'input[name=allow_javascript]:checked'
+  )
+  if (allowJS.value !== 'yes') {
+    newDoc = new DOMParser().parseFromString(textarea.value, 'image/svg+xml')
+    defanged = domJSON.toJSON(newDoc.firstChild)
+    newDoc = domJSON.toDOM(defanged)
+    body = newDoc.firstChild.outerHTML
+  } else {
+    body = textarea.value
+  }
 
-
-  nest = _import_foreign_svg(textarea.value, '')
+  nest = _import_foreign_svg(body, '')
   console.log('got nest', nest)
   add_fresh_svg(nest.node)
   svg_table.node.appendChild(nest.node)
+  hookup_ui(nest.node)
+  if (allowJS.value === 'yes') {
+    hookup_foreign_scripts(nest.node, '')
+  } else {
+    hookup_menu_actions(nest.node, {})
+  }
 
   ui_popdown_dialog('dialog_svgfile')
   net_fire({ type: 'create', data: serialize(nest.node) })
