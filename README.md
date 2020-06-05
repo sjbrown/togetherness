@@ -65,17 +65,8 @@ That's it!
 
 Any interactive objects (dice, decks of cards, etc) are simply SVG files.
 
-I'm planning to have the default interface support dynamically inserting
-foreign SVGs, but for now, you'll have to fork this repo and add
-a `+ My Thing` button to the `index.html` file.
-
-```
-<button class="btn" onclick="add_object('svg/v1/my_thing.svg')">
- + My Thing
-</button>
-```
-
-Then just add the file `svg/v1/my_thing.svg`.
+Click on `+ Other` and then `+ SVG File` and you can paste in an SVG
+file.  Ensure the "Allow JavaScript" option is selected.
 
 ## Interactivity Interface
 
@@ -115,12 +106,24 @@ myThing = {
     } )
   },
 
-  serialize: function(elem) {
-    return { myColor: elem.querySelector('rect').style['fill'] }
-  },
-
 }
 
 ]]></script>
 </svg>
 ```
+
+## Developers: Permanently adding objects
+
+If you've forked this repo and want to make your interactive objects
+permanent, you can do the following:
+
+First, add a `+ My Thing` button to the `index.html` file.
+
+```
+<button class="btn" onclick="add_object('svg/v1/my_thing.svg')">
+ + My Thing
+</button>
+```
+
+Then just add the file `svg/v1/my_thing.svg`.
+
