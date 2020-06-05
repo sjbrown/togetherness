@@ -1211,6 +1211,10 @@ function ui_submit_svgfile(evt) {
       class="btn modal-close">
       Create
     </button>
+    <p>
+    <i>Note:</i> Some great SVG files can be found at <a
+      href="https://game-icons.net">game-icons.net</a> and <a
+      href="https://thenounproject.com"Noun Project</a>.
   </div>
   </div>
 
@@ -1626,9 +1630,32 @@ function ui_submit_ellipse(evt) {
 <!-- OTHER ======================================================= OTHER -->
 
   <div class="modal" id="dialog_other">
+  <script>
+function ui_submit_image(evt) {
+  inputEl = byId('input_image_url')
+  let url = inputEl.value
+  if (!url) {
+    alert('No URL!')
+    return
+  }
+  nest = _import_foreign_svg(`
+    <svg width="200" height="200"
+    xmlns="http://www.w3.org/2000/svg"
+    xmlns:xlink="http://www.w3.org/1999/xlink">
+    <image href="${url}" height="200" width="200"/>
+    </svg>
+  `, '')
+  add_fresh_svg(nest.node)
+  svg_table.node.appendChild(nest.node)
+  hookup_ui(nest.node)
+  hookup_menu_actions(nest.node, {})
+  ui_popdown_dialog('dialog_other')
+  net_fire({ type: 'create', data: serialize(nest) })
+}
+  </script>
     <button class="dialog_cancel btn modal-close" data-dialog-id="dialog_other"
     > &#215; </button>
-    <nav class="dialog_nav" id="dialog_dice_nav">
+    <nav class="dialog_nav">
     <div class="nav-wrapper">
       <ul class="left">
         <li><a href="#drawing">Drawing</a></li>
@@ -1661,6 +1688,21 @@ function ui_submit_ellipse(evt) {
         data-dialog-id="dialog_svgfile">
         + SVG File
       </button>
+      <p>
+      <label>
+        Image URL
+      <input
+          id="input_image_url" type="text"
+          placeholder="https://www.1kfa.com/assets/img/atfa_white_on_transparent.png"
+          pattern="http.*"
+      />
+      </label>
+      <button class="btn btn-small modal-close"
+        onclick="ui_submit_image()">
+        + Image
+      </button>
+      <i>Note:</i> Some great images can be found on <a
+        href="https://en.wikipedia.org/wiki/Wikipedia:Featured_pictures">Wikipedia</a>
       <!--
       <button id="random_table_button" class="btn btn-small modal-trigger modal-close"
         data-target="dialog_random_table"
