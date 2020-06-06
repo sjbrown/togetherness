@@ -1,23 +1,17 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!-- Created with Inkscape (http://www.inkscape.org/) -->
 
 <svg
+   version="1.1"
    xmlns:dc="http://purl.org/dc/elements/1.1/"
    xmlns:cc="http://creativecommons.org/ns#"
    xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
    xmlns:svg="http://www.w3.org/2000/svg"
    xmlns="http://www.w3.org/2000/svg"
-   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
-   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    width="240"
    height="240"
-   version="1.1"
    id="deckahedron_deck"
    class="deckahedron_deck droptarget"
-   inkscape:version="0.92.3 (2405546, 2018-03-11)"
-   sodipodi:docname="deckahedron_deck.svg">
-  <defs
-     id="defs2" />
+   >
   <script
      type="text/javascript"
      data-namespace="deckahedron_deck"
@@ -31,95 +25,60 @@ function pile_offset(index) {
 }
 
 var deckahedron_deck = {
-  pokerDeckJSON: [
-    {name: 'Ace of Hearts', suit: '♥', rank: 'A'},
-    {name: '2 of Hearts', suit: '♥', rank: '2'},
-    {name: '3 of Hearts', suit: '♥', rank: '3'},
-    {name: '4 of Hearts', suit: '♥', rank: '4'},
-    {name: '5 of Hearts', suit: '♥', rank: '5'},
-    {name: '6 of Hearts', suit: '♥', rank: '6'},
-    {name: '7 of Hearts', suit: '♥', rank: '7'},
-    {name: '8 of Hearts', suit: '♥', rank: '8'},
-    {name: '9 of Hearts', suit: '♥', rank: '9'},
-    {name: '10 of Hearts', suit: '♥', rank: '10'},
-    {name: 'Jack of Hearts', suit: '♥', rank: 'J'},
-    {name: 'Queen of Hearts', suit: '♥', rank: 'Q'},
-    {name: 'King of Hearts', suit: '♥', rank: 'K'},
-    {name: 'Ace of Clubs', suit: '♣', rank: 'A'},
-    {name: '2 of Clubs', suit: '♣', rank: '2'},
-    {name: '3 of Clubs', suit: '♣', rank: '3'},
-    {name: '4 of Clubs', suit: '♣', rank: '4'},
-    {name: '5 of Clubs', suit: '♣', rank: '5'},
-    {name: '6 of Clubs', suit: '♣', rank: '6'},
-    {name: '7 of Clubs', suit: '♣', rank: '7'},
-    {name: '8 of Clubs', suit: '♣', rank: '8'},
-    {name: '9 of Clubs', suit: '♣', rank: '9'},
-    {name: '10 of Clubs', suit: '♣', rank: '10'},
-    {name: 'Jack of Clubs', suit: '♣', rank: 'J'},
-    {name: 'Queen of Clubs', suit: '♣', rank: 'Q'},
-    {name: 'King of Clubs', suit: '♣', rank: 'K'},
-    {name: 'Ace of Diamonds', suit: '♦', rank: 'A'},
-    {name: '2 of Diamonds', suit: '♦', rank: '2'},
-    {name: '3 of Diamonds', suit: '♦', rank: '3'},
-    {name: '4 of Diamonds', suit: '♦', rank: '4'},
-    {name: '5 of Diamonds', suit: '♦', rank: '5'},
-    {name: '6 of Diamonds', suit: '♦', rank: '6'},
-    {name: '7 of Diamonds', suit: '♦', rank: '7'},
-    {name: '8 of Diamonds', suit: '♦', rank: '8'},
-    {name: '9 of Diamonds', suit: '♦', rank: '9'},
-    {name: '10 of Diamonds', suit: '♦', rank: '10'},
-    {name: 'Jack of Diamonds', suit: '♦', rank: 'J'},
-    {name: 'Queen of Diamonds', suit: '♦', rank: 'Q'},
-    {name: 'King of Diamonds', suit: '♦', rank: 'K'},
-    {name: 'Ace of Spades', suit: '♠', rank: 'A'},
-    {name: '2 of Spades', suit: '♠', rank: '2'},
-    {name: '3 of Spades', suit: '♠', rank: '3'},
-    {name: '4 of Spades', suit: '♠', rank: '4'},
-    {name: '5 of Spades', suit: '♠', rank: '5'},
-    {name: '6 of Spades', suit: '♠', rank: '6'},
-    {name: '7 of Spades', suit: '♠', rank: '7'},
-    {name: '8 of Spades', suit: '♠', rank: '8'},
-    {name: '9 of Spades', suit: '♠', rank: '9'},
-    {name: '10 of Spades', suit: '♠', rank: '10'},
-    {name: 'Jack of Spades', suit: '♠', rank: 'J'},
-    {name: 'Queen of Spades', suit: '♠', rank: 'Q'},
-    {name: 'King of Spades', suit: '♠', rank: 'K'},
+  deckJSON: [
+   {'id': 1, 'xp': false, 'Stamina': false, 'a': 1, 'b': 1, 'c': 1, 'd': 1, 'crit': 'fail'},
+   {'id': 2, 'xp': false, 'Stamina': false, 'a': 1, 'b': 2, 'c': 3, 'd': 2},
+   {'id': 3, 'xp': false, 'Stamina': false, 'a': 1, 'b': 4, 'c': 3, 'd': 4},
+   {'id': 4, 'xp': false, 'Stamina': false, 'a': 2, 'b': 2, 'c': 3, 'd': 4},
+   {'id': 5, 'xp': false, 'Stamina': false, 'a': 2, 'b': 3, 'c': 2, 'd': 3},
+   {'id': 6, 'xp': false, 'Stamina': false, 'a': 1, 'b': 2, 'c': 2, 'd': 3},
+   {'id': 7, 'xp': false, 'Stamina': false, 'a': 2, 'b': 1, 'c': 2, 'd': 3},
+   {'id': 8, 'xp': true,  'Stamina': false, 'a': 1, 'b': 1, 'c': 4, 'd': 1},
+   {'id': 9, 'xp': true,  'Stamina': false, 'a': 2, 'b': 2, 'c': 1, 'd': 2},
+   {'id': 10, 'xp': false, 'Stamina': false, 'a': 3, 'b': 1, 'c': 2, 'd': 2},
+   {'id': 11, 'xp': false, 'Stamina': true, 'a': 3, 'b': 3, 'c': 4, 'd': 3},
+   {'id': 12, 'xp': false, 'Stamina': true, 'a': 1, 'b': 3, 'c': 3, 'd': 4},
+   {'id': 13, 'xp': false, 'Stamina': true, 'a': 3, 'b': 3, 'c': 4, 'd': 4},
+   {'id': 14, 'xp': false, 'Stamina': true, 'a': 3, 'b': 4, 'c': 3, 'd': 4},
+   {'id': 15, 'xp': true , 'Stamina': true, 'a': 1, 'b': 2, 'c': 2, 'd': 4},
+   {'id': 16, 'xp': true,  'Stamina': true, 'a': 3, 'b': 2, 'c': 1, 'd': 2},
+   {'id': 17, 'xp': true,  'Stamina': true, 'a': 4, 'b': 1, 'c': 1, 'd': 2},
+   {'id': 18, 'xp': false, 'Stamina': true, 'a': 3, 'b': 4, 'c': 3, 'd': 4},
+   {'id': 19, 'xp': false, 'Stamina': true, 'a': 1, 'b': 3, 'c': 4, 'd': 2},
+   {'id': 20, 'xp': false, 'Stamina': true, 'a': 4, 'b': 4, 'c': 4, 'd': 4, 'crit': 'win'},
   ],
 
   generate_card: function(template, cardJSON, deckEl) {
     let card = template.cloneNode(true)
-    let human_readable = {
-      '♠': 's',
-      '♦': 'd',
-      '♥': 'h',
-      '♣': 'c',
-    }
 
-    card.dataset.name = cardJSON.name
-    card.dataset.rank = cardJSON.rank
     card.dataset.deckId = deckEl.id
     card.id = (
       deckEl.id
       + '_'
-      + cardJSON.rank
+      + cardJSON.id
     )
 
-    card.querySelector('.tspan_rank').textContent = cardJSON.rank
+    card.querySelector('.tspan_detail').textContent = (
+      '' +
+      (cardJSON.xp ? 'XP' : '') +
+      (cardJSON.crit ? cardJSON.crit : '')
+    )
+    card.querySelector('.tspan_stamina').textContent = (
+      cardJSON.Stamina ?  '[S]' : '[ ]'
+    )
+    card.querySelector('.tspan_anvil').textContent = cardJSON.a
+    card.querySelector('.tspan_blades').textContent = cardJSON.b
+    card.querySelector('.tspan_crown').textContent = cardJSON.c
+    card.querySelector('.tspan_dragon').textContent = cardJSON.d
 
     card = SVG.adopt(card)
     card.removeClass('card_template')
     card.addClass('card')
     card.addClass('draggable-group')
-    card.addClass('c' + cardJSON.rank)
+    card.addClass('c' + cardJSON.id)
     card.addClass('of_' + deckEl.id)
     card.node.dataset.appNamespaces = ['deckahedron_deck_card']
 
-    card.node.addEventListener('svg_dragstart', (evt) => {
-      console.log('card gets svg_dragstart', evt)
-      if (evt.detail.elemId === card.node.id) {
-        console.log('its me', card.node.id)
-      }
-    })
     return card
   },
 
@@ -133,7 +92,7 @@ var deckahedron_deck = {
     local_doc.add(deck)
 
     let template = elem.querySelector('.card_template')
-    shuffle(this.pokerDeckJSON).map((cardJSON) => {
+    shuffle(this.deckJSON).map((cardJSON) => {
       card = this.generate_card(template, cardJSON, deck.node)
       this.endeck(deck, card)
     })
@@ -179,13 +138,6 @@ var deckahedron_deck = {
     this.generate_deck(elem)
     elem.addEventListener('deckahedron_deck_flip', this.flip_handler)
     elem.addEventListener('deckahedron_deck_reshuffle', this.reshuffle_handler)
-
-    //elem.addEventListener('svg_drag', this.drag_handler)
-    //elem.addEventListener('svg_drop', this.drop_handler)
-    //elem.addEventListener('svg_dragover', this.dragover_handler)
-    //elem.addEventListener('svg_dragenter', () => {console.log('E')})
-    //elem.addEventListener('svg_dragleave', () => {console.log('L')})
-
     elem.addEventListener('dblclick', lock_selection)
   },
 
@@ -287,14 +239,14 @@ deckahedron_deck_card = {
      class="card_template"
      x="40"
      y="60"
-     width="100"
+     width="150"
      height="150"
      >
     <g class="card_front">
     <rect
        style="opacity:1;fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.26458332;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
        id="card_face"
-       width="100"
+       width="150"
        height="150"
        x="0"
        y="0"
@@ -304,16 +256,91 @@ deckahedron_deck_card = {
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;
        font-weight:bold;font-stretch:normal;
-       font-size:50px;line-height:125%;
+       font-size:20px;line-height:125%;
        font-family:serif;
        letter-spacing:0px;word-spacing:0px;
        fill:#F00000;fill-opacity:1;"
-       x="33"
-       y="100"
-       id="text819"><tspan
+       x="5"
+       y="40"
+       id="text_detail"><tspan
          sodipodi:role="line"
-         id="tspan_rank"
-         class="tspan_rank"
+         id="tspan_detail"
+         class="tspan_detail"
+         >Details</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;
+       font-weight:bold;font-stretch:normal;
+       font-size:30px;line-height:125%;
+       font-family:serif;
+       letter-spacing:0px;word-spacing:0px;
+       fill:#F00000;fill-opacity:1;"
+       x="45"
+       y="130"
+       id="text_anvil"><tspan
+         sodipodi:role="line"
+         id="tspan_anvil"
+         class="tspan_anvil"
+         >A</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;
+       font-weight:bold;font-stretch:normal;
+       font-size:30px;line-height:125%;
+       font-family:serif;
+       letter-spacing:0px;word-spacing:0px;
+       fill:#F00000;fill-opacity:1;"
+       x="10"
+       y="100"
+       id="text_blades"><tspan
+         sodipodi:role="line"
+         id="tspan_blades"
+         class="tspan_blades"
+         >B</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;
+       font-weight:bold;font-stretch:normal;
+       font-size:30px;line-height:125%;
+       font-family:serif;
+       letter-spacing:0px;word-spacing:0px;
+       fill:#F00000;fill-opacity:1;"
+       x="110"
+       y="100"
+       id="text_crown"><tspan
+         sodipodi:role="line"
+         id="tspan_crown"
+         class="tspan_crown"
+         >C</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;
+       font-weight:bold;font-stretch:normal;
+       font-size:30px;line-height:125%;
+       font-family:serif;
+       letter-spacing:0px;word-spacing:0px;
+       fill:#F00000;fill-opacity:1;"
+       x="45"
+       y="20"
+       id="text_dragon"><tspan
+         sodipodi:role="line"
+         id="tspan_dragon"
+         class="tspan_dragon"
+         >D</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;
+       font-weight:bold;font-stretch:normal;
+       font-size:30px;line-height:125%;
+       font-family:serif;
+       letter-spacing:0px;word-spacing:0px;
+       fill:#a0a0a0;fill-opacity:1;"
+       x="45"
+       y="100"
+       id="text_stamina"><tspan
+         sodipodi:role="line"
+         id="tspan_stamina"
+         class="tspan_stamina"
          >K</tspan></text>
     </g>
     <g class="card_back">
