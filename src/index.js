@@ -442,16 +442,15 @@ function hookup_mark_handlers(markEl) {
     true,
   );
   nest.on('svg_dragsafe_click', (evt) => {
-    console.log('clicked on a mark', evt.ctrlKey)
+    console.log('svg_dragsafe_click on a mark', evt.ctrlKey)
     if (evt.ctrlKey) {
       ui_unmark(evt)
     } else {
-      console.log("A")
       ui_unmark_all_but(nest.node.id)
     }
   })
   nest.on('svg_dragsafe_dblclick', (evt) => {
-    console.log('dragsafe dblclick on a mark', nest.node.id)
+    console.log('svg_dragsafe_dblclick on a mark', nest.node.id)
     documentDblclick(nest.node.firstChild, {elemId: nest.node.firstChild.id})
   })
   hookup_self_event_handlers(nest.node, mark_menu)
@@ -482,7 +481,7 @@ function ui_mark_by_id(evt, target_id) {
 }
 
 function ui_unmark(evt) {
-  console.log('ui unmark', evt)
+  //console.log('ui unmark', evt)
   //evt.stopPropagation()
   if (evt.target.tagName === 'svg') {
     mark_rect = evt.target.lastChild
@@ -499,7 +498,7 @@ function ui_unmark_all_but(exceptId) {
   var payload = { id: null, kids: [] }
   document.querySelectorAll('[data-ui-marked]').forEach(el => {
     if (!exceptId || el.id !== exceptId) {
-      console.log("unmarking", el)
+      //console.log("unmarking", el)
       if (el.tagName === 'svg') {
         mark_rect = el.lastChild
       } else {
@@ -513,7 +512,7 @@ function ui_unmark_all_but(exceptId) {
 }
 
 function raw_unmark(el) {
-  console.log('raw unmark', el)
+  //console.log('raw unmark', el)
   if (!el.dataset.enveloped) {
     console.error('element', el, 'was not marked')
     return
@@ -906,7 +905,6 @@ function push_to_parent(childEl, parentEl, pushFn) {
     markXY = { x: mark.x(), y: mark.y() }
     parentEl = parentEl.parentNode.closest('svg')
   } else if (parentEl.dataset.enveloped) {
-    console.log("ENVel")
     mark = SVG.adopt(parentEl.parentElement)
     markXY = { x: -mark.x(), y: -mark.y() }
   } else {

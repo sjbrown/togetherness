@@ -129,7 +129,7 @@ var poker_deck_mobile = {
     card.node.dataset.appNamespaces = ['poker_deck_mobile_card']
 
     card.node.addEventListener('svg_dragstart', (evt) => {
-      console.log('card gets svg_dragstart', evt)
+      //console.log('card gets svg_dragstart', evt)
       if (evt.detail.elemId === card.node.id) {
         console.log('its me', card.node.id)
       }
@@ -281,7 +281,6 @@ poker_deck_mobile_card = {
     'Return to deck': {
       eventName: 'poker_deck_mobile_card_return',
       applicable: (dNode) => {
-        console.log('dnode', dNode)
         if(document.querySelector('#' + dNode.dataset.deckId)) {
           return true
         } else {
@@ -298,6 +297,7 @@ poker_deck_mobile_card = {
 
   <svg
      id="card_template"
+     data-orig-name="card"
      class="card_template"
      x="40"
      y="60"

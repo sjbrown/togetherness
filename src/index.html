@@ -105,7 +105,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
   s(viewport.node, 'width', viewport.node.parentNode.clientWidth)
   viewport.style('background-image', 'url(svg/bg_hexagons.svg)')
   viewport.node.addEventListener('svg_dragsafe_click', (e) => {
-    console.log("-0--------------------------", e.detail.elemId, viewport.node.id)
+    //console.log("-0--------------------------", e.detail.elemId, viewport.node.id)
     if (e.detail.elemId === viewport.node.id) {
       ui_unmark_all_but()
     }

@@ -152,6 +152,9 @@ var deckahedron_deck = {
     front.style.transform = ''
     backY.style.transform = ''
     back.style.transform = ''
+
+    parent = frontY.parentElement
+    parent.insertBefore(frontY, backY)
   },
 
   generate_deck: function(elem) {
@@ -172,7 +175,7 @@ var deckahedron_deck = {
   },
 
   endeck: function(deck, card) {
-    console.log('endeck', deck.id, card.id)
+    //console.log('endeck', deck.id, card.id)
     localDocEl = deck.closest('.deckahedron_deck')
     deck_area = localDocEl.querySelector('#g_deck_area')
     deck_area = SVG.adopt(deck_area)
@@ -244,7 +247,6 @@ var deckahedron_deck = {
     shuffle(cardArray).map((card) => {
       deckahedron_deck.endeck(deck, card)
     })
-    console.log('r', deck)
     // Must go AFTER all the calls to endeck()
     deck.style.transition = '1s ease-in'
     deck.style.transformOrigin = 'center'
@@ -333,7 +335,7 @@ deckahedron_deck_card = {
   },
 
   toggle_boost: function(active_group, forceOff) {
-    console.log('toggling', forceOff ? "OFF" : '.', active_group.id)
+    //console.log('toggling', forceOff ? "OFF" : '.', active_group.id)
     if (forceOff || active_group.style.transform) {
       active_group.style.transform = ''
     } else {
@@ -347,14 +349,18 @@ deckahedron_deck_card = {
   flip_handler: function(evt) {
     frontY = this.querySelector('.card_front_y')
     backY = this.querySelector('.card_back_y')
+    parent = frontY.parentElement
+    //console.log('flip', frontY.id, backY.id, parent.id)
 
     if (frontY.style.transform && frontY.style.transform.includes('rotateY(180deg)')) {
       frontY.style.transform = 'rotateY(0deg)'
       backY.style.transform = 'rotateY(-180deg)'
+      parent.insertBefore(backY, frontY)
     } else {
       // already flipped, so flip backY.
       frontY.style.transform = 'rotateY(180deg)'
       backY.style.transform = 'rotateY(0deg)'
+      parent.insertBefore(frontY, backY)
     }
 
   },
@@ -362,19 +368,27 @@ deckahedron_deck_card = {
   menu: {
     'Anvil': {
       eventName: 'deckahedron_deck_card_anvil',
-      applicable: (dNode) => { return true },
+      applicable: (dNode) => {
+        return navigator.userAgent.toLowerCase().includes('firefox')
+      },
     },
     'Blades': {
       eventName: 'deckahedron_deck_card_blades',
-      applicable: (dNode) => { return true },
+      applicable: (dNode) => {
+        return navigator.userAgent.toLowerCase().includes('firefox')
+      },
     },
     'Crown': {
       eventName: 'deckahedron_deck_card_crown',
-      applicable: (dNode) => { return true },
+      applicable: (dNode) => {
+        return navigator.userAgent.toLowerCase().includes('firefox')
+      },
     },
     'Dragon': {
       eventName: 'deckahedron_deck_card_dragon',
-      applicable: (dNode) => { return true },
+      applicable: (dNode) => {
+        return navigator.userAgent.toLowerCase().includes('firefox')
+      },
     },
     'Flip': {
       eventName: 'deckahedron_deck_card_flip',
@@ -383,7 +397,6 @@ deckahedron_deck_card = {
     'Return to deck': {
       eventName: 'deckahedron_deck_card_return',
       applicable: (dNode) => {
-        console.log('dnode', dNode)
         if(document.querySelector('#' + dNode.dataset.deckId)) {
           return true
         } else {
@@ -396,9 +409,11 @@ deckahedron_deck_card = {
 }
 
 
+
     ]]></script>
 
 <svg id="card_template"
+     data-orig-name="card"
      class="card_template"
      x="40"
      y="60"
