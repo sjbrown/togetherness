@@ -163,11 +163,28 @@ var paper_sum = {
     console.log('inner element being dragged', evt.target.id)
   },
 
-  initialize: function(elem) {
+  label_click_handler: function() {
+    console.log('lbclick', this)
+    ui_popup_text_input(
+      this,
+      'Label',
+      this.querySelector('#tspan_label').textContent,
+      'label_change'
+    )
+  },
+  label_change_handler: function(evt) {
+    this.querySelector('#tspan_label').textContent = evt.detail.inputValue
+  },
+
+  initialize: function(elem, serializedState) {
     elem.addEventListener('change', this.dom_change_handler)
     elem.addEventListener('rule_roll', this.rule_roll_handler)
     elem.addEventListener('dom_change', this.dom_change_handler)
     elem.addEventListener('dblclick', this.activate)
+
+    elem.querySelector('#tspan_label').textContent = ''
+    elem.addEventListener('label_click', this.label_click_handler)
+    elem.addEventListener('label_change', this.label_change_handler)
 
     elem.addEventListener('svg_drag', this.drag_handler)
     elem.addEventListener('svg_drop', this.drop_handler)
@@ -199,6 +216,10 @@ var paper_sum = {
   menu: {
     'Roll All': {
       eventName: 'rule_roll',
+      applicable: (node) => { return true },
+    },
+    'Label': {
+      eventName: 'label_click',
       applicable: (node) => { return true },
     },
   },
@@ -238,8 +259,20 @@ var paper_sum = {
      inkscape:connector-curvature="0"
      sodipodi:nodetypes="ccccc" />
   </g>
-  <g id="contents_group" class="contents_group">
-  </g>
+  <text
+     id="text_label"
+     y="28"
+     x="10"
+     style="font-style:normal;
+     font-weight:normal;
+     font-size:28px;line-height:125%;font-family:SubotypeSteady;
+     letter-spacing:0px;word-spacing:0px;
+     fill:#000080;fill-opacity:1;
+     "
+     xml:space="preserve"><tspan
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;fill:#000080;stroke-width:0.269px"
+       id="tspan_label"
+       sodipodi:role="line">Label</tspan></text>
   <text
      id="text_rule"
      y="128"
@@ -247,10 +280,10 @@ var paper_sum = {
      style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:38.072px;line-height:125%;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;letter-spacing:0px;word-spacing:0px;fill:#000080;fill-opacity:1;stroke:none;stroke-width:0.269px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
      xml:space="preserve"><tspan
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;fill:#000080;stroke-width:0.269px"
-       x="90"
-       y="128"
        id="tspan_rule"
        sodipodi:role="line">Sum=</tspan></text>
+  <g id="contents_group" class="contents_group">
+  </g>
   <text
      xml:space="preserve"
      style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:38.072px;line-height:125%;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;letter-spacing:0px;word-spacing:0px;fill:#000080;fill-opacity:1;stroke:none;stroke-width:0.26px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"

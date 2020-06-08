@@ -798,6 +798,58 @@ function ui_popup_dialog_load() {
 <!-- /BACKGROUND ============================================== /BACKGROUND -->
 
 
+<!-- TEXT_INPUT  =============================================== TEXT_INPUT -->
+
+  <div class="modal" id="dialog_text_input">
+    <script>
+
+function ui_popup_text_input(el, name, currentVal, eventToFire) {
+  let template = byId('popup_text_input_template')
+  let inputDiv = template.cloneNode(true)
+  template.parentElement.appendChild(inputDiv)
+  inputDiv.style.display = 'block'
+  inputDiv.id = 'popup_text_input'
+  var submitButton = inputDiv.querySelector('#dialog_text_input_submit')
+
+  submitButton.addEventListener('click', (evt) => {
+      var target = el
+      target.dispatchEvent( new CustomEvent(eventToFire, {
+        bubbles: true,
+        detail: {
+          inputValue: inputDiv.querySelector('#text_input_input').value,
+        }
+      }))
+      inputDiv.remove()
+      ui_popdown_dialog('dialog_text_input')
+  });
+
+  byId('text_input_label_text').textContent = name
+  inputDiv.querySelector('#text_input_input').value = currentVal
+  return ui_popup_dialog({'data-dialog-id': 'dialog_text_input'})
+}
+    </script>
+    <button class="dialog_cancel btn modal-close"
+      data-dialog-id="dialog_text_input"
+    >
+      &#215;
+    </button>
+  <div id="popup_text_input_template" class="modal-content"
+    style="display:none"
+  >
+    <fieldset id="text_input_fields">
+    <label id="text_input_label" >
+      <span id="text_input_label_text">Enter text:</span>
+      <input id="text_input_input" type="text" value="x"/>
+    </label>
+    </fieldset>
+    <br />
+    <button id="dialog_text_input_submit">
+      Change
+    </button>
+  </div>
+  </div>
+<!-- /TEXT_INPUT  ============================================= /TEXT_INPUT -->
+
 <!-- PROPERTIES  =============================================== PROPERTIES -->
 
   <div class="modal" id="dialog_properties">
