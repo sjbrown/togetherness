@@ -250,12 +250,73 @@ window.addEventListener('load', () => {
 
   </script>
 
+  <div id="dice_button_wrapper">
+  <style>
+  #dice_button_slide {
+    display: none;
+  }
+  #dice_button_slide td {
+    padding: 0px;
+  }
+  #dice_button_wrapper:hover #dice_button_slide {
+    display: inline-block;
+    position: absolute;
+    //transform: translate(100px);
+  }
+  </style>
   <button id="dice_dialog_button" class="btn btn-small modal-trigger"
     accesskey="d"
     data-target="dialog_dice"
     data-dialog-id="dialog_dice">
     + <u>D</u>ice
   </button>
+  <div id="dice_button_slide">
+      <table><tr>
+      <td>
+        <button class="btn" id="dice_button_d4"
+          onclick="add_object('svg/v1/dice_d4.svg')"
+          >
+          <img src="svg/v1/dice_d4.svg" width="24" height="24" />
+        </button>
+      </td>
+      <td>
+        <button class="btn" id="dice_button_d6"
+          onclick="add_object('svg/v1/dice_d6.svg')"
+          >
+          <img src="svg/v1/dice_d6.svg" width="24" height="24" />
+        </button>
+      </td>
+      <td>
+        <button class="btn" id="dice_button_d8"
+          onclick="add_object('svg/v1/dice_d8.svg')"
+          >
+          <img src="svg/v1/dice_d8.svg" width="24" height="24" />
+        </button>
+      </td>
+      <td>
+        <button class="btn" id="dice_button_d10"
+          onclick="add_object('svg/v1/dice_d10.svg')"
+          >
+          <img src="svg/v1/dice_d10.svg" width="24" height="24" />
+        </button>
+      </td>
+      <td>
+        <button class="btn" id="dice_button_d12"
+          onclick="add_object('svg/v1/dice_d12.svg')"
+          >
+          <img src="svg/v1/dice_d12.svg" width="24" height="24" />
+        </button>
+      </td>
+      <td>
+        <button class="btn" id="dice_button_d20"
+          onclick="add_object('svg/v1/dice_d20.svg')"
+          >
+          <img src="svg/v1/dice_d20.svg" width="24" height="24" />
+        </button>
+      </td>
+      </tr></table>
+  </div>
+  </div>
 
   <button id="cards_dialog_button" class="btn btn-small modal-trigger"
     accesskey="c"
