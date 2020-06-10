@@ -88,10 +88,10 @@ var random_table = {
     }
     var choiceIndex = Math.floor(Math.random() * (choices.length))
     var choice = choices[choiceIndex]
-    animated_ghost(this, { animation: 'rollOut' })
+    ui.animated_ghost(this, { animation: 'rollOut' })
     tspan.textContent = ' '
     this.style.opacity = 0.1
-    animated_ghost(this, {
+    ui.animated_ghost(this, {
       animation: 'rollIn',
       before_begin: (ghost) => {
         ghost.querySelector('g').style.opacity = origOpacity

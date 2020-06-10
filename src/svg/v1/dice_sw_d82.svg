@@ -62,14 +62,14 @@ var sw_d82 = {
     }
     this.isChanging = true
     var origOpacity = this.style.opacity
-    animated_ghost(this, { animation: 'rollOut' })
+    ui.animated_ghost(this, { animation: 'rollOut' })
     console.log('t f', this.faces)
     this.faces.forEach((name) => {
       gEl = this.getElementById(name)
       gEl.style.setProperty('display', 'none')
     })
     this.style.opacity = 0.1
-    animated_ghost(this, {
+    ui.animated_ghost(this, {
       animation: 'rollIn',
       before_begin: (ghost) => {
         ghost.querySelector('g').style.opacity = origOpacity

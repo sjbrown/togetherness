@@ -56,6 +56,7 @@ TogetherJSConfig_on_close = () => {
 <script src="./come_together.js"></script>
 <script src="./base32.js"></script>
 <script src="./svg.js"></script>
+<script src="./ui.js"></script>
 <script src="./index.js"></script>
 <script src="./js/domJSON.js"></script>
 
@@ -107,7 +108,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
   viewport.node.addEventListener('svg_dragsafe_click', (e) => {
     //console.log("-0--------------------------", e.detail.elemId, viewport.node.id)
     if (e.detail.elemId === viewport.node.id) {
-      ui_unmark_all_but()
+      ui.unmark_all_but()
     }
   })
 
@@ -702,7 +703,7 @@ function ui_popup_dialog_save() {
   dd.appendChild(fragment)
   textarea = byId('textarea_save_output')
   textarea.value = dd.innerHTML
-  return ui_popup_dialog({'data-dialog-id': 'dialog_save'})
+  return ui.popup_dialog({'data-dialog-id': 'dialog_save'})
 }
   </script>
     <button class="btn dialog_cancel modal-close">
@@ -782,13 +783,13 @@ async function load_svg() {
 
   add_fresh_svg(table)
 
-  return ui_popdown_dialog('dialog_load')
+  return ui.popdown_dialog('dialog_load')
 }
 function ui_popup_dialog_load() {
   textarea = byId('textarea_load_input')
   textarea.value = ''
   textarea.innerHTML = ''
-  return ui_popup_dialog({'data-dialog-id': 'dialog_load'})
+  return ui.popup_dialog({'data-dialog-id': 'dialog_load'})
 }
   </script>
     <button class="dialog_cancel btn modal-close"
@@ -834,6 +835,18 @@ function ui_popup_dialog_load() {
 
 
 <!-- BACKGROUND  =============================================== BACKGROUND -->
+  <script>
+function ui_change_background(evt) {
+  input = byId('background_url')
+  if (!input.value) {
+    return;
+  }
+  var value = "url('" + input.value + "')";
+  viewport.style('background-image', value)
+  ui.popdown_dialog('dialog_bg')
+  net_fire({ type: 'change_background', data: value })
+}
+  </script>
   <div class="modal" id="dialog_bg">
     <button class="dialog_cancel btn modal-close"
       data-dialog-id="dialog_bg"
@@ -881,12 +894,12 @@ function ui_popup_text_input(el, name, currentVal, eventToFire) {
         }
       }))
       inputDiv.remove()
-      ui_popdown_dialog('dialog_text_input')
+      ui.popdown_dialog('dialog_text_input')
   });
 
   byId('text_input_label_text').textContent = name
   inputDiv.querySelector('#text_input_input').value = currentVal
-  return ui_popup_dialog({'data-dialog-id': 'dialog_text_input'})
+  return ui.popup_dialog({'data-dialog-id': 'dialog_text_input'})
 }
     </script>
     <button class="dialog_cancel btn modal-close"
@@ -927,13 +940,13 @@ function ui_popup_button() {
 
 function ui_popup_properties(el, dialog_specifier) {
   var submitButton = byId('dialog_properties_submit')
-  var attrs = justNonUiAttributes(el)
+  var attrs = ui.justNonUiAttributes(el)
 
   submitButton.addEventListener('click', (evt) => {
       var target = el
 
       if (is_marked(target)) {
-        ui_unmark({target: target.parentNode.lastChild})
+        ui.unmark({target: target.parentNode.lastChild})
       }
 
       var inputs = document.getElementsByClassName('properties_input')
@@ -945,7 +958,7 @@ function ui_popup_properties(el, dialog_specifier) {
         }
       });
 
-      ui_popdown_dialog('dialog_properties')
+      ui.popdown_dialog('dialog_properties')
       net_fire({ type: 'change', data: serialize(target) })
   });
 
@@ -978,7 +991,7 @@ function ui_popup_properties(el, dialog_specifier) {
     label.classList.remove('template')
     fieldset.appendChild(label)
   })
-  return ui_popup_dialog(dialog_specifier)
+  return ui.popup_dialog(dialog_specifier)
 }
     </script>
     <button class="dialog_cancel btn modal-close"
@@ -1074,7 +1087,7 @@ function ui_submit_dice(section) {
       add_dtype(dtype, byId('dice_input_' + dtype), center)
     })
   }
-  ui_popdown_dialog('dialog_dice')
+  ui.popdown_dialog('dialog_dice')
 }
 
     </script>
@@ -1286,14 +1299,14 @@ function ui_submit_svgfile(evt) {
   console.log('got nest', nest)
   add_fresh_svg(nest.node)
   svg_table.node.appendChild(nest.node)
-  hookup_ui(nest.node)
+  ui.hookup_ui(nest.node)
   if (allowJS.value === 'yes') {
     hookup_foreign_scripts(nest.node, '')
   } else {
-    hookup_menu_actions(nest.node, {})
+    ui.hookup_menu_actions(nest.node, {})
   }
 
-  ui_popdown_dialog('dialog_svgfile')
+  ui.popdown_dialog('dialog_svgfile')
   net_fire({ type: 'create', data: serialize(nest.node) })
 }
 
@@ -1369,7 +1382,7 @@ function make_rect(attrs) {
     'stroke-width': 1,
   }, attrs))
 
-  var nest = make_nest({
+  var nest = ui.make_nest({
     'id': 'nest_' + rect.attr('id'), // special ID
     'data-nest-for': 'rect',
     'width': rect.rbox().width,
@@ -1378,8 +1391,8 @@ function make_rect(attrs) {
 
   nest.add(rect)
 
-  hookup_ui(nest.node)
-  hookup_menu_actions(nest.node, rect_verbs)
+  ui.hookup_ui(nest.node)
+  ui.hookup_menu_actions(nest.node, rect_verbs)
   return nest;
 }
 
@@ -1395,7 +1408,7 @@ function ui_submit_rect(evt) {
     height: h,
     fill: color,
   });
-  ui_popdown_dialog('dialog_rect')
+  ui.popdown_dialog('dialog_rect')
   net_fire({ type: 'create', data: serialize(nest) })
 }
 
@@ -1467,7 +1480,7 @@ function make_random_table(attrs, content) {
   }))
   rect.addClass('text-rect')
 
-  var nest = make_nest({
+  var nest = ui.make_nest({
     'id': 'nest_' + text.attr('id'), // special ID
     'data-nest-for': 'text',
     x: 0,
@@ -1481,8 +1494,8 @@ function make_random_table(attrs, content) {
   text.y(text.y() + (rect.height()/2))
   nest.add(text)
 
-  hookup_ui(nest.node)
-  hookup_menu_actions(nest.node, text_verbs)
+  ui.hookup_ui(nest.node)
+  ui.hookup_menu_actions(nest.node, text_verbs)
   return nest;
 }
 
@@ -1501,7 +1514,7 @@ function ui_submit_random_table(evt) {
       },
     )
   byId('random_table_input_content').value = ''
-  ui_popdown_dialog('dialog_random_table')
+  ui.popdown_dialog('dialog_random_table')
   net_fire({ type: 'create', data: serialize(random_table) })
 }
 
@@ -1590,7 +1603,7 @@ function make_text(attrs, content) {
   }))
   rect.addClass('text-rect')
 
-  var nest = make_nest({
+  var nest = ui.make_nest({
     'id': 'nest_' + text.attr('id'), // special ID
     'data-nest-for': 'text',
     x: 0,
@@ -1604,8 +1617,8 @@ function make_text(attrs, content) {
   text.y(text.y() + (rect.height()/2))
   nest.add(text)
 
-  hookup_ui(nest.node)
-  hookup_menu_actions(nest.node, text_verbs)
+  ui.hookup_ui(nest.node)
+  ui.hookup_menu_actions(nest.node, text_verbs)
   return nest;
 }
 
@@ -1616,7 +1629,7 @@ function ui_submit_text(evt) {
     return;
   }
   var text = make_text({ fill: color }, c);
-  ui_popdown_dialog('dialog_text')
+  ui.popdown_dialog('dialog_text')
   net_fire({ type: 'create', data: serialize(text) })
 }
 
@@ -1680,7 +1693,7 @@ function make_ellipse(attrs) {
     'stroke-width': 1,
   }, attrs))
 
-  var nest = make_nest({
+  var nest = ui.make_nest({
     'id': 'nest_' + ellipse.attr('id'), // special ID
     'data-nest-for': 'ellipse',
     'width': ellipse.rbox().width,
@@ -1689,8 +1702,8 @@ function make_ellipse(attrs) {
 
   nest.add(ellipse)
 
-  hookup_ui(nest.node)
-  hookup_menu_actions(nest.node, ellipse_verbs)
+  ui.hookup_ui(nest.node)
+  ui.hookup_menu_actions(nest.node, ellipse_verbs)
   return nest;
 }
 
@@ -1708,7 +1721,7 @@ function ui_submit_ellipse(evt) {
     cy: h / 2,
     fill: color,
   });
-  ui_popdown_dialog('dialog_ellipse')
+  ui.popdown_dialog('dialog_ellipse')
   net_fire({ type: 'create', data: serialize(nest) })
 }
 
@@ -1760,9 +1773,9 @@ function ui_submit_image(evt) {
   `, '')
   add_fresh_svg(nest.node)
   svg_table.node.appendChild(nest.node)
-  hookup_ui(nest.node)
-  hookup_menu_actions(nest.node, {})
-  ui_popdown_dialog('dialog_other')
+  ui.hookup_ui(nest.node)
+  ui.hookup_menu_actions(nest.node, {})
+  ui.popdown_dialog('dialog_other')
   net_fire({ type: 'create', data: serialize(nest) })
 }
   </script>
@@ -1867,7 +1880,7 @@ function ui_submit_card() {
     { 'serializedState': card_code },
   )
   inputEl.value = ''
-  ui_popdown_dialog('dialog_cards')
+  ui.popdown_dialog('dialog_cards')
 }
   </script>
     <button class="dialog_cancel btn modal-close" data-dialog-id="dialog_cards"

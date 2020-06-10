@@ -62,10 +62,10 @@ var fudge_d6 = {
     var text = this.querySelector('text')
     var tspan = this.querySelector('tspan')
     var origOpacity = this.style.opacity
-    animated_ghost(this, { animation: 'rollOut' })
+    ui.animated_ghost(this, { animation: 'rollOut' })
     tspan.textContent = ' '
     this.style.opacity = 0.1
-    animated_ghost(this, {
+    ui.animated_ghost(this, {
       animation: 'rollIn',
       before_begin: (ghost) => {
         ghost.querySelector('g').style.opacity = origOpacity

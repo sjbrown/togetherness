@@ -120,10 +120,10 @@ var dn = {
     dieMax = parseInt(dieMax.substring(1))
     var newNum = randDiceString(1,dieMax)
 
-    animated_ghost(this, { animation: 'rollOut' })
+    ui.animated_ghost(this, { animation: 'rollOut' })
     tspan.textContent = ' '
     this.style.opacity = 0.1
-    animated_ghost(this, {
+    ui.animated_ghost(this, {
       animation: 'rollIn',
       before_begin: (ghost) => {
         ghost.querySelector('g').style.opacity = origOpacity
@@ -151,7 +151,7 @@ var dn = {
     dieMax = this.querySelector('#tspan_num_faces').textContent
     dieMax = parseInt(dieMax.substring(1))
 
-    animated_ghost(this, {
+    ui.animated_ghost(this, {
       animation: 'thumb',
       on_done: () => {
         tspan.textContent = (origNum % dieMax) + 1

@@ -36,7 +36,6 @@ function s(el, label, val) {
   el.setAttribute(label, val);
 }
 
-
 function documentDblclick(triggerNode, detail) {
   console.log("document dbl", triggerNode.id, detail)
   triggerNode.dispatchEvent(new MouseEvent('dblclick', {
@@ -122,21 +121,6 @@ function nodeMap(parent, fn) {
   return retval;
 }
 
-function do_animate(node, attrs) {
-  var { ms, animation } = Object.assign({
-    ms: 900,
-    animation: 'slideInDown',
-  }, attrs)
-  node.classList.add('animated')
-  node.classList.add(animation)
-  var timedFn;
-  timedFn = setInterval(() => {
-    node.classList.remove('animated')
-    node.classList.remove(animation)
-    clearInterval(timedFn);
-  }, ms);
-}
-
 
 function debugBar(s) {
   if (!DEBUG) { return }
@@ -167,13 +151,13 @@ togetherFunctions.on_sync = (msg) => {
     .then((elem) => {
       s(elem, 'uiInitialized', null)
       svg_table.node.appendChild(elem)
-      hookup_ui(elem)
+      ui.hookup_ui(elem)
       if (payload['data-app-url']) {
         hookup_foreign_scripts(elem, payload['data-app-url'])
       }
     })
   });
-  change_background(msg.bg)
+  ui.change_background(msg.bg)
 }
 
 togetherFunctions.on_change = (msg) => {
@@ -190,7 +174,7 @@ togetherFunctions.on_create = (msg) => {
   .then((elem) => {
     elem.dataset.uiInitialized=false
     svg_table.node.appendChild(elem)
-    hookup_ui(elem)
+    ui.hookup_ui(elem)
     if (msg.data['data-app-url']) {
       hookup_foreign_scripts(elem, msg.data['data-app-url'])
     }
@@ -199,14 +183,14 @@ togetherFunctions.on_create = (msg) => {
 
 togetherFunctions.on_create_mark = (msg) => {
   debugBar('CREATEMARK: ' + msg)
-  make_mark(msg.data.target_id, msg.data.mark_rect)
+  ui.make_mark(msg.data.target_id, msg.data.mark_rect)
 }
 
-togetherFunctions.on_drop_mark= (msg) => { _unmark(msg.mark_rect.id) }
+togetherFunctions.on_drop_mark= (msg) => { ui._unmark(msg.mark_rect.id) }
 
 togetherFunctions.on_delete = (msg) => { recursive_delete(msg.data) }
 
-togetherFunctions.on_change_background = (msg) => { change_background(msg.data) }
+togetherFunctions.on_change_background = (msg) => { ui.change_background(msg.data) }
 
 serializers = {}
 deserializers = {}
@@ -271,18 +255,6 @@ function recursive_delete(payload) {
   }
 }
 
-
-
-function justNonUiAttributes(node) {
-  return node.getAttributeNames()
-  .reduce((acc,n) => {
-    if (n.indexOf('data-ui-') === -1) {
-      acc[n] = g(node, n);
-    }
-    return acc
-  }, {});
-}
-
 function serialize_group(group) {
   var retval = { kids: [] }
   nodeMap(group, (el) => {
@@ -314,7 +286,7 @@ function serialize(thing, extras) {
     return;
   }
   var el = (thing.attr) ? thing.node : thing;
-  var retval = justNonUiAttributes(el)
+  var retval = ui.justNonUiAttributes(el)
   var fn = str_to_fn('serialize_' + g(el, 'data-app-class'))
   if (fn) {
     retval = Object.assign( retval, fn(el) )
@@ -354,211 +326,6 @@ var mark_menu = {
   },
   */
 }
-
-
-function make_nest(attrs) {
-  //var nest = svg_table.nested()
-  var nest = svg_table.element('svg', SVG.Container)
-  nest.attr(Object.assign({
-    'data-app-class': 'nest',
-  }, attrs))
-  nest.addClass('draggable-group')
-
-  return nest;
-}
-
-function make_mark(target_id, attrs) {
-  // make the highlight rectangle
-  target = SVG.get(target_id)
-  console.log("making mark on", target_id, target)
-
-  var color = getUserColor()
-  var rect = svg_table.rect()
-  rect.addClass('mark-rect')
-  rect.attr(
-    Object.assign({
-      'data-app-class': 'mark',
-      x: 0,
-      y: 0,
-      rx: 4,
-      ry: 4,
-      'fill-opacity': 0.1,
-      'stroke-opacity': 0.8,
-      'stroke-width': 1,
-      width: target.width() + 4,
-      height: target.height() + 4,
-      fill: color,
-      stroke: color,
-    }, attrs)
-  )
-
-  var nest = make_nest({
-    id: 'nest_' + rect.attr('id'), // special ID
-    width: rect.width(),
-    height: rect.height(),
-    x: target.x() - 2,
-    y: target.y() - 2,
-    'data-nest-for': 'mark',
-  })
-  //console.log("nest node is now", nest.node)
-
-  // Re-home the enveloped object inside the <svg>, and then
-  // move that <svg> to the old x,y coords of the enveloped object
-  oldXY = {
-    x: target.x(),
-    y: target.y(),
-  }
-  target.x(0)
-  target.y(0)
-  nest.node.appendChild(target.node)
-  //target.toParent(nest)
-  target.attr('data-enveloped', true)
-  un_hookup_ui(target.node)
-  nest.attr( oldXY )
-  nest.add(rect) // Add it last, so that it renders on top
-
-  hookup_mark_handlers(nest.node)
-
-  return {
-    mark_rect: rect,
-    mark_nest: nest,
-  }
-}
-
-function hookup_mark_handlers(markEl) {
-  if (markEl.dataset.nestFor !== 'mark') {
-    console.error('this is not a proper "mark" nest', nest)
-    return
-  }
-  nest = SVG.adopt(markEl)
-
-  //      event,      handler,   binding,   capture/bubbling phase
-  //nest.on('click', ui_unmark, undefined, true)
-  nest.on('remove_mark', ui_unmark, undefined, true)
-  nest.on(
-    'mouseover',
-    (evt) => { ui_mouseover(evt, nest.node, mark_menu) },
-    undefined,
-    true,
-  );
-  nest.on('svg_dragsafe_click', (evt) => {
-    console.log('svg_dragsafe_click on a mark', evt.ctrlKey)
-    if (evt.ctrlKey) {
-      ui_unmark(evt)
-    } else {
-      ui_unmark_all_but(nest.node.id)
-    }
-  })
-  nest.on('svg_dragsafe_dblclick', (evt) => {
-    console.log('svg_dragsafe_dblclick on a mark', nest.node.id)
-    documentDblclick(nest.node.firstChild, {elemId: nest.node.firstChild.id})
-  })
-  hookup_self_event_handlers(nest.node, mark_menu)
-}
-
-
-function ui_mark_by_id(evt, target_id) {
-  //console.log('ui_mark_by_id target_id', evt, target_id)
-  // unmark everything else, unless shift or ctrl is being held
-  if (!evt.ctrlKey && !evt.shiftKey) {
-    console.log("B")
-    ui_unmark_all_but(target_id)
-  }
-
-  // am I already marked?
-  target = SVG.get(target_id)
-  if (g(byId(target_id), 'data-enveloped')) {
-    console.log('ALREADY MARKED')
-    return
-  }
-
-  var { mark_rect, mark_nest } = make_mark(target_id)
-  ui_fire({ type: 'createMark', data: mark_nest })
-  net_fire({type: "createMark", data: {
-    mark_rect: serialize(mark_rect),
-    target_id: target_id,
-  }})
-}
-
-function ui_unmark(evt) {
-  //console.log('ui unmark', evt)
-  //evt.stopPropagation()
-  if (evt.target.tagName === 'svg') {
-    mark_rect = evt.target.lastChild
-  } else {
-    mark_rect = evt.target
-  }
-  _unmark(mark_rect.id);
-  ui_fire({type: 'dropMark', data: mark_rect.parentNode});
-  net_fire({type: 'dropMark', mark_rect: serialize(mark_rect) });
-}
-
-
-function ui_unmark_all_but(exceptId) {
-  var payload = { id: null, kids: [] }
-  document.querySelectorAll('[data-ui-marked]').forEach(el => {
-    if (!exceptId || el.id !== exceptId) {
-      //console.log("unmarking", el)
-      if (el.tagName === 'svg') {
-        mark_rect = el.lastChild
-      } else {
-        mark_rect = el
-      }
-      _unmark(mark_rect.id);
-      ui_fire({type: 'dropMark', data: mark_rect.parentNode});
-      net_fire({type: 'dropMark', mark_rect: serialize(mark_rect) });
-    }
-  })
-}
-
-function raw_unmark(el) {
-  //console.log('raw unmark', el)
-  if (!el.dataset.enveloped) {
-    console.error('element', el, 'was not marked')
-    return
-  }
-  nestSVG = SVG.adopt(el.parentElement)
-  oldXY = {
-    x: nestSVG.x(),
-    y: nestSVG.y(),
-  }
-  SVG.adopt(el).attr(oldXY)
-  s(el, 'data-enveloped', null)
-  if (el.classList.contains('drag-open')) {
-    el.classList.remove('drag-open')
-  }
-  nestSVG.remove()
-  ui_fire({type: 'dropMark', data: el.parentElement});
-  net_fire({type: 'dropMark', mark_rect: serialize(nestSVG.lastChild) });
-}
-
-function _unmark(mark_rect_id) {
-  //console.log("unmark", mark_rect_id)
-  nestSVG = SVG.get('nest_' + mark_rect_id)
-  oldXY = {
-    x: nestSVG.x(),
-    y: nestSVG.y(),
-  }
-  //console.log('unmarking ', oldXY)
-  // move all the enveloped ones back into the doc
-  nodeMap(nestSVG.node, (kid) => {
-    if (g(kid, 'data-enveloped')) {
-      s(kid, 'data-enveloped', null)
-      if (kid.classList.contains('drag-open')) {
-        kid.classList.remove('drag-open')
-      }
-      kid.remove()
-      kidObj = SVG.adopt(kid)
-      kidObj.attr(oldXY)
-      svg_table.add(kidObj)
-      //console.log('back in the doc', kidObj)
-      hookup_ui(kid)
-    }
-  })
-  nestSVG.remove()
-}
-
-
 
 function import_foreign_svg(url, attrs) {
   if (!DEBUG) {
@@ -632,17 +399,17 @@ function add_fresh_svg(svgElem) {
   })
 
   svgElem.querySelectorAll('[data-app-class]').forEach((subSvg) => {
-    hookup_ui(subSvg)
+    ui.hookup_ui(subSvg)
     hookup_foreign_scripts(subSvg)
   })
   svgElem.querySelectorAll('[data-nest-for=mark]').forEach((subSvg) => {
-    hookup_mark_handlers(subSvg)
+    ui.hookup_mark_handlers(subSvg)
   })
   /*
   svg_table.add(nest)
-  hookup_ui(nest.node)
+  ui.hookup_ui(nest.node)
   hookup_foreign_scripts(nest.node, url, attrs && attrs.serializedState)
-  ui_fire({type: "create", data: { createdEl: nest.node }});
+  ui.fire({type: "create", data: { createdEl: nest.node }});
   net_fire({type: "create", data: serialize(nest)});
   */
 }
@@ -761,7 +528,7 @@ function initialize_with_ns(elem, ns, serializedState) {
     ns.initialize(elem, serializedState)
   }
   if (ns.menu) {
-    hookup_menu_actions(elem, ns.menu)
+    ui.hookup_menu_actions(elem, ns.menu)
   }
   s(elem, 'data-ui-initialized', true)
 }
@@ -784,47 +551,6 @@ function hookup_foreign_scripts(elem, url, serializedState) {
   })
 }
 
-function hookup_ui(elem) {
-  console.log("hookup_ui", elem.id)
-  nest = SVG.adopt(elem)
-  nest.on('svg_dragsafe_click', (evt) => {
-    console.log('id', elem.id, 'got click', evt)
-    ui_mark_by_id(evt.detail.origEvent, elem.id)
-  })
-  nest.on('svg_dragsafe_dblclick', (evt) => {
-    console.log('nest ', nest.id, ' got dblclick')
-  })
-}
-
-function un_hookup_ui(elem) {
-  //console.log("un_hookup_ui", elem.id)
-  nest = SVG.adopt(elem)
-  nest.off('svg_dragsafe_click')
-  nest.off('svg_dragsafe_dblclick')
-}
-
-function hookup_menu_actions(svgEl, actionMenu) {
-  //console.log('hookup_menu_actions', svgEl, actionMenu)
-  var newMenu = Object.assign(actionMenu, {
-    'Mark': {
-      eventName: 'node_mark',
-      applicable: (node) => { return !is_marked(node) },
-    },
-    'Delete': {
-      eventName: 'node_delete',
-      applicable: (node) => { return true },
-    },
-  })
-  svgEl.actionMenu = actionMenu
-  nest = SVG.adopt(svgEl)
-  nest.on('node_mark', (evt) => { ui_mark_by_id(evt, svgEl.id) })
-  nest.on('node_delete', (evt) => { delete_marked() })
-  nest.on('mouseover', (evt) => { ui_mouseover(evt, svgEl, newMenu) })
-
-  // Hookup any self-event handlers
-  hookup_self_event_handlers(svgEl, actionMenu)
-}
-
 function hookup_self_event_handlers(el, actionMenu) {
   Object.keys(actionMenu).map((title) => {
     if (!actionMenu[title].handler) {
@@ -835,7 +561,6 @@ function hookup_self_event_handlers(el, actionMenu) {
   })
 }
 
-
 async function add_object(url, attrs) {
   console.log('add_object', url, attrs)
   let nest = await import_foreign_svg(url)
@@ -845,10 +570,10 @@ async function add_object(url, attrs) {
     nest.cy(attrs.center[1])
   }
   svg_table.add(nest)
-  hookup_ui(nest.node)
+  ui.hookup_ui(nest.node)
   hookup_foreign_scripts(nest.node, url, attrs && attrs.serializedState)
-  do_animate(nest.node)
-  ui_fire({type: "create", data: { createdEl: nest.node }});
+  ui.do_animate(nest.node)
+  ui.fire({type: "create", data: { createdEl: nest.node }});
   net_fire({type: "create", data: serialize(nest)});
 }
 
@@ -863,7 +588,7 @@ function add_object_from_payload(payload) {
     return nest
   })
   .then((nest) => {
-    do_animate(nest.node)
+    ui.do_animate(nest.node)
     return nest.node
   })
 }
@@ -887,7 +612,7 @@ function pop_from_parent(childElem) {
   getNamespacesForElement(childElem).forEach((nsName) => {
     let ns = window[nsName]
     initialize_with_ns(childElem, ns)
-    hookup_ui(childElem)
+    ui.hookup_ui(childElem)
     childElem.dataset.appClass = 'nest'
   })
 
@@ -912,16 +637,16 @@ function push_to_parent(childEl, parentEl, pushFn) {
   }
   if (childEl.dataset.nestFor === 'mark') {
     childEl = childEl.firstChild
-    raw_unmark(childEl)
+    ui.raw_unmark(childEl)
   } else if (childEl.dataset.enveloped) {
     // re-parenting removes the mark
-    raw_unmark(childEl)
+    ui.raw_unmark(childEl)
   }
 
   if (parentEl.id === 'svg_table') {
-    hookup_ui(childEl)
+    ui.hookup_ui(childEl)
   } else {
-    un_hookup_ui(childEl)
+    ui.un_hookup_ui(childEl)
   }
   origParentEl = childEl.parentNode.closest('svg')
   childEl.remove()
@@ -939,159 +664,11 @@ function push_to_parent(childEl, parentEl, pushFn) {
 
 function delete_element(el) {
   var payload = { id: null, kids: [] }
-  animated_ghost(el, {animation: 'rotateOut'})
+  ui.animated_ghost(el, {animation: 'rotateOut'})
   el.remove()
   payload.kids.push({ id: el.id })
   net_fire({ type: 'delete', data: payload });
-  ui_fire({type: 'delete', data: payload });
-}
-
-
-function ui_mouseover(evt, target, actionMenu) {
-  // Add clickable options onto the menu
-  //console.log('ui_mouseover', target.id)
-  //console.log('ver', actionMenu)
-
-  deleteList = document.querySelectorAll('.cloned-menuitem')
-  Array.prototype.forEach.call(deleteList, (el) => {
-    el.remove();
-  })
-
-  var hoveredEl = target
-  var menu = byId('gamemenu')
-  var template = byId('template_menuitem')
-  Object.keys(actionMenu).map((title) => {
-    if (!actionMenu[title].applicable(hoveredEl)) {
-      return
-    }
-    var uiLabel = (
-      actionMenu[title].uiLabel
-      ?
-      actionMenu[title].uiLabel(hoveredEl)
-      :
-      title
-    )
-    var clone = template.content.firstElementChild.cloneNode(true)
-    s(clone, 'id', 'menuitem-' + hoveredEl.id)
-    s(clone, 'label', uiLabel)
-    clone.classList.add('cloned-menuitem')
-    clone.addEventListener('click', (evt) => {
-      //console.log('hoveredElement', hoveredEl)
-      evt_fire(actionMenu[title].eventName, hoveredEl, evt)
-    })
-    menu.insertAdjacentElement('beforeend', clone)
-  })
-}
-
-
-
-function ui_update_buttons() {
-  var markedNodes = document.querySelectorAll('[data-ui-marked]')
-  var numMarked = markedNodes.length
-
-  submenu = byId('object_actions')
-  header = byId('object_actions_header')
-  mobile_header = document.querySelector('#object_actions_header.mobile')
-  submenu.querySelectorAll('.cloned-button').forEach((btn) => {
-    btn.remove()
-  })
-  header.innerText = 'Select dice by clicking on them; roll by double-clicking'
-  mobile_header.innerText = 'Select dice by clicking on them; roll by double-clicking'
-
-  template = byId('template_object_actions')
-  function makeButton(elemNode, title) {
-    // elemNode.actionMenu looks like this: {
-    // 'Mark': {
-    //   eventName: 'node_mark',
-    //   applicable: (node) => { return !is_marked(node) },
-    //   uiLabel: (node) => { return 'MyLabel' },
-    //  },  ...}
-    var btn = template.content.firstElementChild.cloneNode(true)
-    btn.id = elemNode.id + title
-    btn.innerText = title
-    btn.classList.add('cloned-button')
-    if (!elemNode.actionMenu[title].applicable(elemNode)) {
-      btn.disabled = 'disabled'
-    }
-    return btn
-  }
-
-  var buttons = {}
-  var i = 0
-  markedNodes.forEach((markNode) => {
-    i++
-    var elemNode = markNode.firstChild
-    if (elemNode.actionMenu === undefined) {
-      elemNode.actionMenu = {}
-    }
-    if (numMarked === 1) {
-      header.innerText = g(elemNode, 'data-orig-name')
-      mobile_header.innerText = g(elemNode, 'data-orig-name')
-      //#header.innerText = g(elemNode, 'data-name')
-
-      Object.keys(elemNode.actionMenu).map((title) => {
-        buttons[title] = {
-          btn: makeButton(elemNode, title),
-          clickEvents: [
-            (evt) => {
-              evt_fire(elemNode.actionMenu[title].eventName, elemNode, evt)
-            }
-          ],
-        }
-      })
-
-    } else { // more than 1
-      header.innerText = numMarked + ' objects selected'
-      mobile_header.innerText = numMarked + ' objects selected'
-      Object.keys(elemNode.actionMenu).map((title) => {
-        if (i === 1) { // the first one sets up the 'buttons' object
-          buttons[title] = {
-            btn: makeButton(elemNode, title),
-            clickEvents: [
-              (evt) => {
-                evt_fire(elemNode.actionMenu[title].eventName, elemNode, evt)
-              }
-            ],
-          }
-        } else {
-          if (title in buttons) {
-            buttons[title].clickEvents.push(
-              (evt) => {
-                evt_fire(elemNode.actionMenu[title].eventName, elemNode, evt)
-              }
-            )
-          }
-        }
-      })
-      Object.keys(buttons).map((key) => {
-        if (
-          key in elemNode.actionMenu === false
-          ||
-          !elemNode.actionMenu[key].applicable(elemNode)
-        ) {
-          delete buttons[key]
-        }
-      })
-    }
-  })
-
-  /*
-   * Attach the created buttons onto the DOM
-   */
-  Object.keys(buttons).map((key) => {
-    buttonRecord = buttons[key]
-    buttonRecord.clickEvents.forEach((handler) => {
-      buttonRecord.btn.addEventListener('click', handler)
-    })
-    submenu.appendChild(buttonRecord.btn)
-    // Hookup hotkeys
-    accessKey = buttonRecord.btn.innerText[0].toLocaleLowerCase()
-    if (document.querySelector('[accessKey=' + accessKey + ']') === null) {
-      // TODO make better
-      buttonRecord.btn.accessKey = accessKey
-    }
-  })
-
+  ui.fire({type: 'delete', data: payload });
 }
 
 function evt_fire(eventName, triggerNode, origEvent, other) {
@@ -1105,133 +682,14 @@ function evt_fire(eventName, triggerNode, origEvent, other) {
   }))
 }
 
-function broadcast(eventName, detail, dispatchEl) {
-  //console.log('broadcasting', eventName, detail)
-  if (dispatchEl === undefined) {
-    dispatchEl = byId('svg_table')
-  }
-  dispatchEl.dispatchEvent(new CustomEvent(eventName, {
-    bubbles: true,
-    detail: detail,
-  }))
-}
-function ui_fire(msg) {
-  broadcast(msg.type, msg.data)
-  var fn = {
-    createMark: (msg) => {
-      msg.data.attr({'data-ui-marked': true})
-      ui_update_buttons()
-    },
-    dropMark: (msg) => {
-      ui_update_buttons()
-    },
-    create: (msg) => {
-      console.log('ui create', msg)
-    },
-    delete: (msg) => {
-      //console.log('ui delete sel', msg)
-      ui_update_buttons()
-    },
-  }[msg.type];
-
-  if (fn) {
-    fn(msg);
-  } else {
-    throw Error('Unknown msg type '+ msg.type);
-  }
-}
-
-function flatten_translation(el) {
-  //console.log('flattn el', el)
-  //console.log('flattn baseval', el.transform.baseVal)
-  if (el.transform.baseVal.length === 0) {
-    return;
-  }
-  var translate = el.transform.baseVal.getItem(0)
-  if (el.tagName === 'g') {
-    nodeMap(el, (kid) => {
-      s(kid, 'x', translate.matrix.e)
-      s(kid, 'y', translate.matrix.f)
-    })
-  } else {
-    s(el, 'x', translate.matrix.e)
-    s(el, 'y', translate.matrix.f)
-  }
-  el.transform.baseVal.removeItem(0)
-}
-
-function animated_ghost(el, attrs) {
-  var { ms, animation, before_begin, on_done } = Object.assign({
-    ms: 900,
-    animation: 'slideInDown',
-    before_begin: () => { return },
-    on_done: () => { return },
-  }, attrs)
-  var animationClone = el.cloneNode(true)
-
-  // Disable interactivity
-  animationClone.id = 'clone' + Date.now()
-  animationClone.getAttributeNames().map((n) => {
-    if (n.indexOf('data-ui-') !== -1) {
-      s(animationClone, n, null);
-    }
-  });
-  s(animationClone, 'draggable-group', null);
-
-  // Move to the start position
-  flatten_translation(animationClone)
-  cc = SVG(animationClone)
-  ee = SVG(el.id)
-  cc.move(ee.x(), ee.y())
-
-  el.parentNode.appendChild(animationClone, el)
-
-  before_begin(animationClone)
-
-  // Animate, then die
-  do_animate(animationClone, {animation: animation, ms: ms})
-  var timedFn;
-  timedFn = setInterval(() => {
-    animationClone.remove()
-    clearInterval(timedFn)
-    on_done(el)
-  }, ms);
-}
-
 function delete_marked(evt) {
   var payload = { id: null, kids: [] }
   document.querySelectorAll('[data-ui-marked]').forEach(el => {
-    animated_ghost(el, {animation: 'rotateOut'})
+    ui.animated_ghost(el, {animation: 'rotateOut'})
     el.remove()
     payload.kids.push({ id: el.id })
   })
   net_fire({ type: 'delete', data: payload });
-  ui_fire({type: 'delete', data: payload });
+  ui.fire({type: 'delete', data: payload });
 }
 
-function ui_change_background(evt) {
-  input = byId('background_url')
-  if (!input.value) {
-    return;
-  }
-  var value = "url('" + input.value + "')";
-  change_background(value)
-  ui_popdown_dialog('dialog_bg')
-  net_fire({ type: 'change_background', data: value })
-}
-
-function change_background(value) {
-  viewport.style('background-image', value)
-}
-
-function ui_popdown_dialog(elem_id) {
-  elem = document.querySelector('#' + elem_id)
-  instance = M.Modal.getInstance(elem)
-  instance.close()
-}
-
-function ui_popup_dialog(target) {
-  elem = byId(g(target, 'data-dialog-id'))
-  instance = M.Modal.getInstance(elem)
-  instance.open()
-}
