@@ -127,6 +127,24 @@ var paper_best = {
     console.log('dom_change_handler', this.id, evt.detail)
     howmany_tspan = paper_best.select_my(this, 'tspan_rule_num')
     let howmany = parseInt(howmany_tspan.textContent)
+    let removeExtremeFn = (
+      howmany >= 0
+      ?
+      (tally) => {
+        tally.splice(tally.indexOf(Math.min.apply(undefined, tally)))
+      }
+      :
+      (tally) => {
+        tally.splice(tally.indexOf(Math.max.apply(undefined, tally)))
+      }
+    )
+    let compareFn = (
+      howmany >= 0
+      ?
+      (tempNum, tally) => { return tempNum > Math.min.apply(undefined, tally) }
+      :
+      (tempNum, tally) => { return tempNum < Math.max.apply(undefined, tally) }
+    )
     let tally = []
     q = '#' + this.id + '_contents_group > svg'
     containedSVGs = this.querySelectorAll(q)
@@ -150,10 +168,10 @@ var paper_best = {
         } else {
           tempNum =  num
         }
-        if (tally.length < howmany) {
+        if (tally.length < Math.abs(howmany)) {
           tally.push(tempNum)
-        } else if (tempNum > Math.min.apply(undefined, tally)) {
-          tally.splice(tally.indexOf(Math.min.apply(undefined, tally)), 1)
+        } else if (compareFn(tempNum, tally)) {
+          removeExtremeFn(tally)
           tally.push(tempNum)
         }
       })
@@ -173,7 +191,6 @@ var paper_best = {
     best_tspan = paper_best.select_my(this, 'tspan_rule_num')
     best = parseInt(best_tspan.textContent)
     let sum = best + change
-    sum = (sum < 1) ? 1 : sum
     best_tspan.textContent = sum
     this.dispatchEvent(new CustomEvent('dom_change', {
       bubbles: true,
