@@ -62,7 +62,7 @@ function makeDraggable(viewport, table) {
   viewport.on('mousedown', startDrag);
   viewport.on('mousemove', drag);
   viewport.on('mouseup', endDrag);
-  viewport.on('mouseleave', endDrag);
+  viewport.on('mouseleave', mouseLeave);
   // TOUCH
   viewport.on('touchstart', touchStartDrag);
   viewport.on('touchmove', touchDrag);
@@ -71,7 +71,6 @@ function makeDraggable(viewport, table) {
   viewport.on('touchcancel', endDrag);
 
   function broadcast(eventName, detail, dispatchEl) {
-    //console.log('broadcasting', eventName, detail)
     if (dispatchEl === undefined) {
       dispatchEl = selectedEl ? selectedEl.node : viewport.node
     }
@@ -98,6 +97,12 @@ function makeDraggable(viewport, table) {
     };
   }
 
+  function mouseLeave(evt) {
+    debug('mouseLeave')
+    if (selectedEl) {
+      return endDrag(evt)
+    }
+  }
   function touchStartDrag(evt) {
     debug('touchStartDrag')
     // preventDefault to avoid both touch AND move events from being sent
@@ -244,6 +249,9 @@ function makeDraggable(viewport, table) {
     })
   }
   function notifyDropTargetsDrop(evt) {
+    if (!selectedEl) {
+      return
+    }
     table.node.querySelectorAll('.droptarget').forEach((el) => {
       //console.log('broadcasting', newEventName, 'for', el.id, evt.currentTarget)
       if ( selectedEl.node.id === el.id ) {
@@ -266,11 +274,11 @@ function makeDraggable(viewport, table) {
     //mouse = getMousePosition(evt)
     try {
       elemId = selectedEl ? selectedEl.node.id : viewport.node.id
-      //debug('inside try' + (selectedEl && selectedEl.id()))
-      now = new Date()
       broadcast('svg_dragend', { elemId: elemId })
+      //debug('inside try' + (selectedEl && selectedEl.id()))
       notifyDropTargetsDrop(evt)
       if ((evt.type === 'mouseup' || evt.type === 'touchend') && isJustAClick) {
+        now = new Date()
         debug('isJustAClick' + (selectedEl && selectedEl.node.id))
         broadcast('svg_dragsafe_click', {
           elemId: elemId,
@@ -288,6 +296,7 @@ function makeDraggable(viewport, table) {
       }
     }
     catch (err) {
+      console.error('caught', err)
       debug('caught err' + err)
     }
     finally {

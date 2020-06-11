@@ -33,7 +33,7 @@ const ui = {
   make_mark: (target_id, attrs) => {
     // make the highlight rectangle
     target = SVG.get(target_id)
-    console.log("making mark on", target_id, target)
+    //console.log("making mark on", target_id, target)
 
     var color = getUserColor()
     var rect = svg_table.rect()
@@ -163,7 +163,7 @@ const ui = {
   },
 
   unmark: (evt) => {
-    //console.log('ui unmark', evt)
+    //console.log('ui.unmark', evt)
     //evt.stopPropagation()
     if (evt.target.tagName === 'svg') {
       mark_rect = evt.target.lastChild
@@ -176,6 +176,7 @@ const ui = {
   },
 
   unmark_all_but: (exceptId) => {
+    //console.log('unmark_all_but', exceptId)
     var payload = { id: null, kids: [] }
     document.querySelectorAll('[data-ui-marked]').forEach(el => {
       if (!exceptId || el.id !== exceptId) {
@@ -193,7 +194,7 @@ const ui = {
   },
 
   raw_unmark: (el) => {
-    //console.log('raw unmark', el)
+    //console.log('raw unmark', el.id)
     if (!el.dataset.enveloped) {
       console.error('element', el, 'was not marked')
       return
@@ -214,7 +215,7 @@ const ui = {
   },
 
   _unmark: (mark_rect_id) => {
-    //console.log("unmark", mark_rect_id)
+    //console.log("_unmark", mark_rect_id)
     nestSVG = SVG.get('nest_' + mark_rect_id)
     oldXY = {
       x: nestSVG.x(),
@@ -240,10 +241,10 @@ const ui = {
   },
 
   hookup_ui: (elem) => {
-    console.log("hookup_ui", elem.id)
+    //console.log("hookup_ui", elem.id)
     nest = SVG.adopt(elem)
     nest.on('svg_dragsafe_click', (evt) => {
-      console.log('id', elem.id, 'got click', evt)
+      //console.log('id', elem.id, 'got click', evt)
       ui.mark_by_id(evt.detail.origEvent, elem.id)
     })
     nest.on('svg_dragsafe_dblclick', (evt) => {
@@ -283,7 +284,6 @@ const ui = {
   mouseover: (evt, target, actionMenu) => {
     // Add clickable options onto the menu
     //console.log('ui.mouseover', target.id)
-    //console.log('ver', actionMenu)
 
     deleteList = document.querySelectorAll('.cloned-menuitem')
     Array.prototype.forEach.call(deleteList, (el) => {
