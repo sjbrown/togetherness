@@ -153,10 +153,9 @@ clock4 = {
      inkscape:label="Layer 1"
      inkscape:groupmode="layer"
      id="layer1">
-    <circle
+    <circle id="bg"
        r="23.48"
        style="opacity:1;fill:#f2ecf2;fill-opacity:0.25;stroke:none;stroke-opacity:1"
-       id="bg"
        cx="25.53"
        cy="26.70"
        inkscape:label="#path833" />
@@ -240,23 +239,5 @@ clock4 = {
        id="pie2"
        inkscape:label="#path843"
        inkscape:connector-curvature="0" />
-    <circle
-       r="0"
-       cy="79.22"
-       cx="88.96"
-       id="ellipse865"
-       style="opacity:1;fill:#0a0000;fill-opacity:0.27;stroke:#ff2a2a;stroke-width:0;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1" />
-    <circle
-       r="0"
-       cy="79.22"
-       cx="41.34"
-       id="ellipse875"
-       style="opacity:1;fill:#0a0000;fill-opacity:0.27;stroke:#ff2a2a;stroke-width:0;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1" />
-    <circle
-       r="0"
-       cy="79.22"
-       cx="36.05"
-       id="ellipse877"
-       style="opacity:1;fill:#0a0000;fill-opacity:0.27;stroke:#ff2a2a;stroke-width:0;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1" />
   </g>
 </svg>
