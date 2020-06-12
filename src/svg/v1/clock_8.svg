@@ -11,7 +11,8 @@
    height="200"
    viewBox="0 0 52.91 52.91"
    version="1.1"
-   id="svg9116"
+   id="clock_8"
+   data-pie-num="8"
    inkscape:version="0.92.3 (2405546, 2018-03-11)"
    sodipodi:docname="clock_8.svg">
   <metadata
@@ -89,14 +90,14 @@ clock8 = {
 
   menu: {
     'Tick': {
-      eventName: 'clock8_tick',
+      eventName: 'clock_tick',
       applicable: (elem) => {
         return elem.querySelector('#pie8').style['opacity'] !== '1'
       },
       uiLabel: (elem) => { return 'Tick clock forward' },
     },
     'Untick': {
-      eventName: 'clock8_untick',
+      eventName: 'clock_untick',
       applicable: (elem) => {
         return elem.querySelector('#pie1').style['opacity'] === '1'
       },
@@ -116,28 +117,32 @@ clock8 = {
     elem.addEventListener( 'colorRed', (evt) => {
       elem.querySelector('#bg').style['fill'] = '#ff0000'
     } )
-    elem.addEventListener( 'clock8_tick', (evt) => {
-      for(let num of [1,2,3,4,5,6,7,8]) {
-        let sel = `#pie${num}`
-        if(elem.querySelector(sel).style['opacity'] !== '1') {
-          elem.querySelector(sel).style['opacity'] = 1
-          break
-        }
-      }
-    })
-    elem.addEventListener( 'clock8_untick', (evt) => {
-      for(let num of [8,7,6,5,4,3,2,1]) {
-        let sel = `#pie${num}`
-        if(elem.querySelector(sel).style['opacity'] !== '0') {
-          elem.querySelector(sel).style['opacity'] = 0
-          break
-        }
-      }
-    })
+    elem.addEventListener('clock_tick', clock8.tick_handler)
+    elem.addEventListener('clock_untick', clock8.untick_handler)
 
     for(let num of [8,7,6,5,4,3,2,1]) {
       let sel = `#pie${num}`
       elem.querySelector(sel).style['opacity'] = 0
+    }
+  },
+
+  tick_handler: function(evt) {
+    for(let num=1; num<=parseInt(this.dataset.pieNum); num++) {
+      let sel = `#pie${num}`
+      if(this.querySelector(sel).style['opacity'] !== '1') {
+        this.querySelector(sel).style['opacity'] = 1
+        break
+      }
+    }
+  },
+  untick_handler: function(evt) {
+    console.log('tpn', this.dataset.pieNum)
+    for(let num=parseInt(this.dataset.pieNum); num>0; num--) {
+      let sel = `#pie${num}`
+      if(this.querySelector(sel).style['opacity'] !== '0') {
+        this.querySelector(sel).style['opacity'] = 0
+        break
+      }
     }
   },
 
