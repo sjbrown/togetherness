@@ -72,6 +72,12 @@ TogetherJS.hub.on('dropMark', (msg) => {
   }
 });
 
+TogetherJS.hub.on('dropNestMark', (msg) => {
+  if(togetherFunctions.on_drop_nest_mark) {
+    togetherFunctions.on_drop_nest_mark(msg);
+  }
+});
+
 TogetherJS.hub.on('delete', (msg) => {
   console.log('delete msg', msg);
   if(togetherFunctions.on_delete) {

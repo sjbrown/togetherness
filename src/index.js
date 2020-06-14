@@ -186,7 +186,10 @@ togetherFunctions.on_create_mark = (msg) => {
   ui.make_mark(msg.data.target_id, msg.data.mark_rect)
 }
 
-togetherFunctions.on_drop_mark= (msg) => { ui._unmark(msg.mark_rect.id) }
+
+togetherFunctions.on_drop_nest_mark= (msg) => {
+  ui._unmark_nest(document.querySelector('#' + msg.nest.id))
+}
 
 togetherFunctions.on_delete = (msg) => { recursive_delete(msg.data) }
 

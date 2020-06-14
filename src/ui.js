@@ -54,6 +54,22 @@ const ui = {
         stroke: color,
       }, attrs)
     )
+    var resize_handle = svg_table.rect()
+    resize_handle.addClass('resize_handle')
+    resize_handle.attr(
+      Object.assign({
+        'data-app-class': 'resize_handle',
+        x: target.width() - 10,
+        y: target.height() - 10,
+        'fill-opacity': 0.5,
+        'stroke-opacity': 0.8,
+        'stroke-width': 1,
+        width: target.width() + 10,
+        height: target.height() + 10,
+        fill: color,
+        stroke: color,
+      }, attrs)
+    )
 
     var nest = ui.make_nest({
       id: 'nest_' + rect.attr('id'), // special ID
@@ -79,6 +95,7 @@ const ui = {
     ui.un_hookup_ui(target.node)
     nest.attr( oldXY )
     nest.add(rect) // Add it last, so that it renders on top
+    nest.add(resize_handle) // Add it last, so that it renders on top
 
     ui.hookup_mark_handlers(nest.node)
 
@@ -165,30 +182,19 @@ const ui = {
   unmark: (evt) => {
     //console.log('ui.unmark', evt)
     //evt.stopPropagation()
-    if (evt.target.tagName === 'svg') {
-      mark_rect = evt.target.lastChild
-    } else {
-      mark_rect = evt.target
-    }
-    ui._unmark(mark_rect.id);
+    ui._unmark_nest(evt.target.closest('[data-nest-for=mark]'))
     ui.fire({type: 'dropMark', data: mark_rect.parentNode});
     net_fire({type: 'dropMark', mark_rect: serialize(mark_rect) });
   },
 
   unmark_all_but: (exceptId) => {
-    //console.log('unmark_all_but', exceptId)
-    var payload = { id: null, kids: [] }
-    document.querySelectorAll('[data-ui-marked]').forEach(el => {
-      if (!exceptId || el.id !== exceptId) {
-        //console.log("unmarking", el)
-        if (el.tagName === 'svg') {
-          mark_rect = el.lastChild
-        } else {
-          mark_rect = el
-        }
-        ui._unmark(mark_rect.id);
-        ui.fire({type: 'dropMark', data: mark_rect.parentNode});
-        net_fire({type: 'dropMark', mark_rect: serialize(mark_rect) });
+    console.log('unmark_all_but', exceptId)
+    document.querySelectorAll('[data-nest-for=mark]').forEach(el => {
+      if (!exceptId || el.querySelector('#' + exceptId) === null) {
+        console.log("unmarking", el)
+        ui._unmark_nest(el);
+        ui.fire({type: 'dropMark', data: el});
+        net_fire({type: 'dropMark', nest: { id: el.id }});
       }
     })
   },
@@ -214,30 +220,29 @@ const ui = {
     net_fire({type: 'dropMark', mark_rect: serialize(nestSVG.lastChild) });
   },
 
-  _unmark: (mark_rect_id) => {
-    //console.log("_unmark", mark_rect_id)
-    nestSVG = SVG.get('nest_' + mark_rect_id)
+  _unmark_nest: (nestEl) => {
+    console.log("_unmark_nest", nestEl.id)
+    let nestSVG = SVG.adopt(nestEl)
     oldXY = {
       x: nestSVG.x(),
       y: nestSVG.y(),
     }
-    //console.log('unmarking ', oldXY)
-    // move all the enveloped ones back into the doc
-    nodeMap(nestSVG.node, (kid) => {
-      if (g(kid, 'data-enveloped')) {
-        s(kid, 'data-enveloped', null)
-        if (kid.classList.contains('drag-open')) {
-          kid.classList.remove('drag-open')
-        }
-        kid.remove()
-        kidObj = SVG.adopt(kid)
-        kidObj.attr(oldXY)
-        svg_table.add(kidObj)
-        //console.log('back in the doc', kidObj)
-        ui.hookup_ui(kid)
+    console.log('unmarking ', oldXY, )
+    // re-parent all the enveloped ones back into the svg_table element
+    nestEl.querySelectorAll('#' + nestEl.id + ' > [data-enveloped]').forEach(kid => {
+      console.log('kid ', kid.id)
+      s(kid, 'data-enveloped', null)
+      if (kid.classList.contains('drag-open')) {
+        kid.classList.remove('drag-open')
       }
+      kid.remove()
+      kidObj = SVG.adopt(kid)
+      kidObj.attr(oldXY)
+      svg_table.add(kidObj)
+      //console.log('back in the doc', kidObj)
+      ui.hookup_ui(kid)
     })
-    nestSVG.remove()
+    nestEl.remove()
   },
 
   hookup_ui: (elem) => {
