@@ -1,4 +1,4 @@
-# Togetherness
+# Togetherness Table
 
 [![sjbrown](https://circleci.com/gh/sjbrown/togetherness.svg?style=svg)](https://circleci.com/gh/sjbrown/togetherness)
 
