@@ -3,7 +3,7 @@
 [![sjbrown](https://circleci.com/gh/sjbrown/togetherness.svg?style=svg)](https://circleci.com/gh/sjbrown/togetherness)
 
 Tabletop RPGs are no longer just played in physical spaces. More and more,
-this kind of gaming is being played online, and players are
+this kind of game is being played online, and players are
 discovering online dice rollers, communal game maps, virtual tabletops,
 and digital character keepers. But too often these tools are walled
 gardens whose owners see players as *products*, not human beings.
@@ -76,9 +76,9 @@ Your `<script>` element needs to have an attribute `data-namespace`
 with a name that's unique to your object.
 
 Inside the script, there must be one JavaScript object whose name
-matches that `data-namespace` value. This object uses 3 specially-named
+matches that `data-namespace` value. This object uses 2 specially-named
 keys to integrate with the main web UI:
-`menu`, `initialize`, and `serialize`.
+`menu` and `initialize`.
 
 
 ```xml
@@ -111,6 +111,8 @@ myThing = {
 ]]></script>
 </svg>
 ```
+
+That's it!
 
 ## Developers: Permanently adding objects
 
