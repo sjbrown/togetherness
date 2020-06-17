@@ -473,10 +473,10 @@ display: none;
   </button>
 
   <button id="help_button" class="btn btn-small modal-trigger"
-    title="Help this project"
+    title="Help/About this project"
     data-target="dialog_contribute"
     data-dialog-id="dialog_contribute">
-    Help this project
+    Help / About
   </button>
 
   <button class="btn btn-small" onclick="TogetherJS(this); return false;"
@@ -1970,6 +1970,7 @@ function ui_submit_card() {
     <nav class="dialog_nav" id="contribute_nav">
     <div class="nav-wrapper">
       <ul class="left">
+        <li><a href="#surf">Surf the geekring</a></li>
         <li><a href="#recognize">Give some recognition</a></li>
         <li><a href="#develop">Contribute to the codebase</a></li>
         <li><a href="#donate">Donate to related causes</a></li>
@@ -1977,6 +1978,19 @@ function ui_submit_card() {
     </div>
     </nav>
   <div class="modal-content">
+    <section>
+      <a name="surf"></a>
+      <h1 class="contribute_h1">Surf
+      <a href="https://geekring.net">The Geek Ring</a></h1>
+  <!-- Geekring widget #1 - simple links -->
+    <a class="btn btn-large"
+      href="http://geekring.net/site/8/previous">Previous</a>
+    <a class="btn btn-large"
+      href="http://geekring.net/site/8/random">Random site</a>
+    <a class="btn btn-large"
+      href="http://geekring.net/site/8/next">Next</a>
+
+    </section>
     <section>
       <a name="recognize"></a>
       <h1 class="contribute_h1">Give some recognition</h1>
@@ -1986,8 +2000,10 @@ function ui_submit_card() {
       hosting https://www.1kfa.com/table !">By tweeting a tweet</a> or
       <a href="https://mastodon.social/">tooting a toot</a>.
       <p>
-      If you've got a Github account, you can 
-      <a href="https://github.com/sjbrown/1kfa">Star this project</a>
+      If you've got a Github account, you can
+      <a href="https://github.com/sjbrown/1kfa">"star" this project</a>
+      or
+      <a href="https://github.com/sjbrown/1kfa">report an issue</a>
       </div>
     </section>
     <section>
