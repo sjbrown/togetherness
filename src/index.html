@@ -24,10 +24,10 @@ TogetherJSConfig_toolName = "Multiplayer"
 //TogetherJSConfig_enableShortcut = "foo";
 TogetherJSConfig_suppressJoinConfirmation = true
 TogetherJSConfig_suppressInvite = true
-TogetherJSConfig_includeHashInUrl = true
+//TogetherJSConfig_includeHashInUrl = true
 TogetherJSConfig_disableWebRTC = true
 // Hack: to get stable Share URLs
-TogetherJSConfig_findRoom = 'abcd1234i'
+TogetherJSConfig_findRoom = 'anonymous'
 // Hack: I had to look into the TogetherJS source code for this one.
 localStorage.setItem('togetherjs.settings.seenIntroDialog', true)
 
@@ -212,6 +212,14 @@ function downKey(e) {
 
 window.addEventListener('load', () => {
   document.querySelector('body').addEventListener('keydown', downKey)
+  load_profile_ui()
+  TogetherJSConfig_getUserColor = function () {
+    return localStorage.getItem('profile_color')
+  }
+  TogetherJSConfig_getUserName = function () {
+    return localStorage.getItem('profile_name') || base32.short_id()
+  };
+  TogetherJSConfig_findRoom = TogetherJSConfig_getUserName()
 })
 
 </script>
@@ -442,16 +450,12 @@ display: none;
 <button class="player_menu_button_mobile collapsetoggle btn mobile" name="playermenu" >Player</button>
 <div class="collapsible">
 
-<!--
-  <button id="properties_button" class="btn btn-small"
-    onclick="ui_popup_button()"
-    title="double-click objects to mark them"
-    disabled="disabled"
-    data-target="dialog_properties"
-    data-dialog-id="dialog_properties">
-    Properties
+  <button id="profile_button" class="btn btn-small modal-trigger"
+    title="Profile"
+    data-target="dialog_profile"
+    data-dialog-id="dialog_profile">
+    Profile
   </button>
-  -->
 
   <button id="bg_button" class="btn btn-small modal-trigger"
     title="Change Background"
@@ -682,6 +686,63 @@ display: none;
         </pre>
     </div>
   </div>
+
+<!-- PROFILE  =============================================== PROFILE -->
+  <script>
+function ui_change_profile(evt) {
+  name_input = byId('profile_input_name')
+  color_input = byId('profile_input_color')
+  if (!name_input.value) {
+    return;
+  }
+  col_elem = color_input.parentNode.querySelector('#colorsample')
+  color = col_elem.style.color
+  localStorage.setItem('profile_name', name_input.value)
+  localStorage.setItem('profile_color', color)
+  load_profile_ui()
+  ui.popdown_dialog('dialog_profile')
+  net_fire({ type: 'change_profile', data: name_input.value })
+}
+function load_profile_ui() {
+  name = localStorage.getItem('profile_name') || ''
+  color = localStorage.getItem('profile_color')
+  if (!name) {
+    return
+  }
+  TogetherJS.refreshUserData()
+  TogetherJSConfig_findRoom = name
+  input = document.querySelector('#profile_input_name')
+  input.value = name
+  input = document.querySelector('#profile_input_color')
+  input.value = color
+  updateColorSample(input)
+  profile_button = document.querySelector('#profile_button')
+  profile_button.textContent = ' ' + name + ' '
+  profile_button.style.textDecoration = 'underline'
+  profile_button.style.textDecorationStyle = 'dotted'
+  profile_button.style.textDecorationThickness = '3px'
+  profile_button.style.textDecorationColor = color
+}
+  </script>
+  <div class="modal" id="dialog_profile">
+    <button class="dialog_cancel btn modal-close"
+      data-dialog-id="dialog_profile"
+    > &#215; </button>
+  <div class="modal-content">
+    <label for="profile_input_name">Name</label>
+    <input id="profile_input_name" type="text" value="" />
+    <label for="profile_input_color">Color <span id="colorsample">■</span></label>
+    <input id="profile_input_color" type="text" value="#ffffff"
+           onKeyUp="updateColorSample(this)"
+    />
+    <br />
+    <button class="btn" id="dialog_profile_submit"
+      onclick="ui_change_profile(this)">
+      Update
+    </button>
+  </div>
+  </div>
+<!-- /PROFILE ============================================== /PROFILE -->
 
 <!-- SAVE ============================================================ SAVE -->
   <div id="dialog_save" class="modal">
@@ -1321,7 +1382,7 @@ function ui_submit_svgfile(evt) {
         more here.</a>
       </p>
       <p>
-        To create your drawings with Free programs like
+        You can create your drawings with Free programs like
         <a href="https">Inkscape</a>
         or websites like
         <a href="https://svg-edit.github.io/svgedit/editor/svg-editor.html">SVGEdit</a>
