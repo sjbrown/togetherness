@@ -14,9 +14,11 @@ echo "      ---------------------"
 
 docker run --rm \
   -it \
-  -p 8000:80 \
+  -p 8000:8000 \
   -v $PWD:/app \
   --workdir=/app/src \
-  python:2 \
-  python -m SimpleHTTPServer 80
+  python:3 \
+  python3 -m http.server
+
+  #python -m SimpleHTTPServer 80
 
