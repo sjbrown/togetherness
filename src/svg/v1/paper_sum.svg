@@ -47,7 +47,7 @@ var paper_sum = {
 
   rule_roll_handler: function(evt) {
     console.log('paper_sum ', this.id, 'hears rule_roll event', evt)
-    contentsGroup = paper_sum.select_my(this, 'contents_group')
+    let contentsGroup = this.querySelector('#' + this.id + ' > .contents_group')
     contentsGroup.querySelectorAll('svg').forEach((s) => {
       evt_fire('die_roll', s, null, {})
     })
@@ -59,11 +59,12 @@ var paper_sum = {
   },
 
   dragover_handler: function(evt) {
-    console.log('paper_sum dragover_handler', evt.detail.draggedElemId, evt.detail.dropElemId)
-    draggedElem = byId(evt.detail.draggedElemId)
-    dragged = SVG.adopt(draggedElem)
-    dropElem = byId(evt.detail.dropElemId)
-    drop = SVG.adopt(dropElem)
+    console.log('paper_sum', this.id, 'dragover_handler',
+    evt.detail.draggedElem.id, evt.detail.dropElem.id)
+    dragged = SVG.adopt(evt.detail.draggedElem)
+    drop = SVG.adopt(evt.detail.dropElem)
+
+    let parentId = 
 
     is_inside = isInside(dragged.node, drop.node)
     if (!is_inside) {
@@ -76,27 +77,34 @@ var paper_sum = {
   drop_handler: function(evt) {
     console.log('target should be ', this)
     console.log('target is', evt.target)
-    ruleElem = this
-    console.log('paper_sum drop_handler', ruleElem.id, evt.detail.draggedElemId, evt.detail.dropElemId)
+    console.log('paper_sum drop_handler', this.id,
+      evt.detail.draggedElemId, evt.target)
+
     draggedElem = byId(evt.detail.draggedElemId)
-    dropElem = byId(evt.detail.dropElemId)
+    //dropElem = this.querySelector('#' + evt.detail.dropElemId)
+    //dropElem = this.querySelector('#' + this.id + ' > g > .droptarget')
+    //dropElem = this.querySelector('#' + this.id + ' > g > .droptarget')
+    dropElem = evt.target
     if (
-      ruleElem.id === draggedElem.id
+      this.id === draggedElem.id
       ||
-      ruleElem.contains(draggedElem)
+      this.contains(draggedElem)
       ||
-      draggedElem.contains(ruleElem)
+      draggedElem.contains(this)
       ||
-      !ruleElem.contains(dropElem)
+      !this.contains(dropElem)
     ) {
       return
     }
     dragged = SVG.adopt(draggedElem)
     drop = SVG.adopt(dropElem)
 
-    contentsGroup = paper_sum.select_my(ruleElem, 'contents_group')
+    let contentsGroup = this.querySelector('#' + this.id + ' > .contents_group')
     is_inside = isInside(dragged.node, drop.node)
-    console.log('dragged', draggedElem.id, 'is inside drop', evt.detail.dropElemId, '?', is_inside)
+    console.log('dragged', draggedElem.id, 'box is inside drop',
+      dropElem,
+      '?', is_inside)
+    console.log('contentsgropu: ', contentsGroup)
 
     if (contentsGroup.querySelector('#' + draggedElem.id)) {
       // already inside the contents
@@ -110,16 +118,16 @@ var paper_sum = {
       }
       push_to_parent(
         draggedElem,
-        ruleElem,
+        this,
         (dieElem, parentElem) => {
           console.log('consume it here', dieElem.id, parentElem.id)
           contentsGroup.appendChild(dieElem)
         }
       )
     }
-    ruleElem.dispatchEvent(new CustomEvent('dom_change', {
+    this.dispatchEvent(new CustomEvent('dom_change', {
       bubbles: true,
-      detail: { 'ruleElemId': ruleElem.id },
+      detail: { 'ruleElemId': this.id },
     }))
   },
 
@@ -127,8 +135,9 @@ var paper_sum = {
     ruleElem = this
     console.log('dom_change_handler', ruleElem.id, evt.detail)
     let sum = 0
-    q = '#' + ruleElem.id + '_contents_group > svg'
-    containedSVGs = this.querySelectorAll(q)
+    containedSVGs = this.querySelectorAll(
+      '#' + this.id + ' > .contents_group > svg'
+    )
     containedSVGs.forEach((s) => {
       let tempNum = 0
       s.querySelectorAll('tspan').forEach((t) => {
@@ -152,7 +161,7 @@ var paper_sum = {
       sum = sum + tempNum
     })
     console.log('sum was', sum)
-    tspan = paper_sum.select_my(ruleElem, 'tspan_sum')
+    let tspan = this.querySelector('#' + this.id + ' > text > #tspan_sum')
     tspan.textContent = sum
   },
 
@@ -192,26 +201,32 @@ var paper_sum = {
     elem.addEventListener('svg_dragenter', () => {console.log('E')})
     elem.addEventListener('svg_dragleave', () => {console.log('L')})
 
-    var idStrings = [
-      'contents_group',
-      'big_rect',
-      'text_rule',
-      'tspan_rule',
-      'text_sum',
-      'tspan_sum',
-    ]
-    idStrings.forEach((idString) => {
-      el = elem.querySelector('#' + idString)
-      el.id = elem.id + '_' + idString
-    })
+    elem.addEventListener('resize', this.resize_handler)
 
   },
 
-  select_my: function(ruleElem, oldId) {
-    q = '#' + ruleElem.id + '_' + oldId
-    return ruleElem.querySelector(q)
-  },
+  resize_handler: function(evt) {
+    console.log('i', this.id, ' got resize', evt.detail.width, evt.detail.height)
+    let w = evt.detail.width
+    let h = evt.detail.height
+    path_area = this.querySelector('.path_area')
+    if (path_area) { path_area.remove() }
+    xbox = SVG.adopt(this.querySelector('#area_rect'))
+    xbox.node.classList.add('droptarget')
+    xbox.style({ opacity: 1, 'stroke-opacity': 0.9 })
+    xbox.width(w)
+    xbox.height(h)
+    this_svg = SVG.adopt(this)
+    this_svg.width(w)
+    this_svg.height(h)
 
+    text_sum = SVG.adopt(this.querySelector('.text_sum'))
+    text_sum.x(w - 20)
+    text_sum.y(h - 50)
+    text_rule = SVG.adopt(this.querySelector('.text_rule'))
+    text_rule.x(w - 80)
+    text_rule.y(h - 50)
+  },
 
   menu: {
     'Roll All': {
@@ -244,8 +259,22 @@ var paper_sum = {
      inkscape:connector-curvature="0"
      sodipodi:nodetypes="cccccc" />
   <g id="group-monochrome-1" class="colorable">
+  <rect
+     id="area_rect"
+     style="opacity:0;
+     fill:url(#linearGradient822);fill-opacity:1;
+     stroke:#b3b3b3;stroke-width:5.0;stroke-linejoin:miter;
+     stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;
+     stroke-opacity:0"
+     x="0" y="0"
+     width="0"
+     height="0"
+  />
   <path
-     style="opacity:1;fill:url(#linearGradient822);fill-opacity:1;stroke:#b3b3b3;stroke-width:5.0;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.9"
+     style="opacity:1;fill:url(#linearGradient822);fill-opacity:1;
+     stroke:#b3b3b3;stroke-width:5.0;stroke-linejoin:miter;
+     stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;
+     stroke-opacity:0.9"
      d="M 4.91,3.34
      C 38.70,8.39
        192.75,3.59
@@ -254,7 +283,7 @@ var paper_sum = {
      c 0,0
        -182.50,-0.46
        -192.57,-1.90 z"
-     class="droptarget"
+     class="droptarget path_area"
      id="big_rect"
      inkscape:connector-curvature="0"
      sodipodi:nodetypes="ccccc" />
@@ -275,6 +304,7 @@ var paper_sum = {
        sodipodi:role="line">Label</tspan></text>
   <text
      id="text_rule"
+     class="text_rule"
      y="128"
      x="90"
      style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:38.072px;line-height:125%;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;letter-spacing:0px;word-spacing:0px;fill:#000080;fill-opacity:1;stroke:none;stroke-width:0.269px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
@@ -285,14 +315,14 @@ var paper_sum = {
   <g id="contents_group" class="contents_group">
   </g>
   <text
+     id="text_sum"
+     class="text_sum"
      xml:space="preserve"
      style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:38.072px;line-height:125%;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;letter-spacing:0px;word-spacing:0px;fill:#000080;fill-opacity:1;stroke:none;stroke-width:0.26px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
      x="160"
      y="128"
-     id="text_sum"><tspan
+     ><tspan
        sodipodi:role="line"
        id="tspan_sum"
-       x="160"
-       y="128"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;fill:#000080;stroke-width:0.26458329px">0</tspan></text>
 </svg>

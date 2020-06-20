@@ -67,9 +67,99 @@ function lock_selection(evt) {
   rect.attr('stroke-linecap', 'round')
   rect.attr('fill', 'none')
   //SVG.adopt(evt.target).off('svg_dragsafe_click')
+
+  var resize_handle = resize_widget.create(
+    selection,
+    selection.node.querySelector('[data-enveloped]'),
+  )
+  cGroup.appendChild(resize_handle.node)
+}
+
+var resize_widget = {
+  create: function(parentSVG, targetEl) {
+    var resize_handle = parentSVG.element('svg', SVG.Container)
+    resize_handle.addClass('resize_handle')
+    resize_handle.addClass('draggable-group')
+    resize_handle.attr({
+      'data-app-class': 'resize_handle',
+      'data-app-target-id': targetEl.id,
+      x: parentSVG.width() - 20,
+      y: parentSVG.height() - 20,
+      width: 30,
+      height: 30,
+    })
+    var resize_rect = resize_handle.rect()
+    resize_rect.attr({
+      'data-app-class': 'resize_rect',
+      x: 0,
+      y: 0,
+      'fill-opacity': 0.9,
+      'stroke-opacity': 1.0,
+      'stroke-width': 1,
+      width: 30,
+      height: 30,
+      fill: '#a0a0a0',
+      stroke: '#fafafa',
+    })
+    var resize_dotted_rect = resize_handle.rect()
+    resize_dotted_rect.addClass('resize_dotted_rect')
+    resize_dotted_rect.attr({
+      'data-app-class': 'resize_dotted_rect',
+      x: selection.x(),
+      y: selection.y(),
+      'fill-opacity': 0,
+      'stroke-opacity': 1.0,
+      'stroke-width': 1,
+      'stroke-dasharray': 4,
+      width: selection.width(),
+      height: selection.height(),
+      fill: getUserColor(),
+      stroke: "#000000",
+    })
+    resize_handle.on('svg_dragstart', (e) => {
+      svg_table.node.insertBefore(resize_dotted_rect.node, svg_table.node.firstChild)
+      console.log("dragstart RESIZE", e)
+    })
+    resize_handle.on('svg_drag', (e) => {
+      console.log("drag RESIZE", e, e.detail.mouse)
+      console.log('orig xy', selection.x(), selection.y())
+      console.log('new xy', resize_handle.cx(), resize_handle.cy())
+      resize_dotted_rect.attr({
+        width: resize_handle.cx() - selection.x(),
+        height: resize_handle.cy() - selection.y(),
+      })
+    })
+    resize_handle.node.addEventListener('svg_dragend', function (e) {
+      handle = this
+      resize_dotted_rect.remove()
+      console.log("dragend RESIZE", e)
+      console.log('orig nest', selection.node)
+      console.log('orig xy', selection.x(), selection.y())
+      console.log('orig xy', selection.bbox())
+      console.log('new xy', resize_handle.cx(), resize_handle.cy())
+      console.log('new xy', resize_handle.bbox())
+
+      ui.unmark_all_but()
+      evt_fire(
+        'resize',
+        byId(handle.dataset.appTargetId),
+        e,
+        {
+          width: resize_handle.cx() - selection.x(),
+          height: resize_handle.cy() - selection.y(),
+        },
+      )
+      handle.remove()
+    })
+    resize_handle.add(resize_rect)
+    return resize_handle
+  },
 }
 
 function distance(v1, v2) {
+  if (v1.hasOwnProperty('x')) {
+    return Math.abs(v1.x - v2.x) + Math.abs(v1.y - v2.y)
+  }
   return Math.abs(v1[0] - v2[0]) + Math.abs(v1[1] - v2[1])
 }
 

@@ -176,6 +176,9 @@ function makeDraggable(viewport, table) {
 
   function drag(evt) {
     debug("drag", evt)
+    if (!origMouse) {
+      return
+    }
     mouse = getMousePosition(evt)
     mode = evt.touches ? 0 : evt.button
     evt.preventDefault() // prevent, for example, text selection
@@ -241,8 +244,8 @@ function makeDraggable(viewport, table) {
       }
       if (inside) {
         broadcast('svg_dragover', {
-          draggedElemId: selectedEl.node.id,
-          dropElemId: el.id,
+          draggedElem: selectedEl.node,
+          dropElem: el,
           mouse: mouse,
         }, el)
       }
@@ -305,6 +308,7 @@ function makeDraggable(viewport, table) {
       }
       lockBroadcastTimer = false
       selectedEl = false
+      origMouse = null
     }
   }
 }

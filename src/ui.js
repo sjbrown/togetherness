@@ -54,23 +54,6 @@ const ui = {
         stroke: color,
       }, attrs)
     )
-    var resize_handle = svg_table.rect()
-    resize_handle.addClass('resize_handle')
-    resize_handle.attr(
-      Object.assign({
-        'data-app-class': 'resize_handle',
-        x: target.width() - 10,
-        y: target.height() - 10,
-        'fill-opacity': 0.5,
-        'stroke-opacity': 0.8,
-        'stroke-width': 1,
-        width: target.width() + 10,
-        height: target.height() + 10,
-        fill: color,
-        stroke: color,
-      }, attrs)
-    )
-
     var nest = ui.make_nest({
       id: 'nest_' + rect.attr('id'), // special ID
       width: rect.width(),
@@ -95,7 +78,6 @@ const ui = {
     ui.un_hookup_ui(target.node)
     nest.attr( oldXY )
     nest.add(rect) // Add it last, so that it renders on top
-    nest.add(resize_handle) // Add it last, so that it renders on top
 
     ui.hookup_mark_handlers(nest.node)
 
@@ -141,7 +123,7 @@ const ui = {
       true,
     );
     nest.on('svg_dragsafe_click', (evt) => {
-      console.log('svg_dragsafe_click on a mark', evt.ctrlKey)
+      console.log('svg_dragsafe_click on a mark', evt)
       if (evt.ctrlKey) {
         ui.unmark(evt)
       } else {
@@ -190,12 +172,18 @@ const ui = {
   unmark_all_but: (exceptId) => {
     console.log('unmark_all_but', exceptId)
     document.querySelectorAll('[data-nest-for=mark]').forEach(el => {
-      if (!exceptId || el.querySelector('#' + exceptId) === null) {
-        console.log("unmarking", el)
-        ui._unmark_nest(el);
-        ui.fire({type: 'dropMark', data: el});
-        net_fire({type: 'dropMark', nest: { id: el.id }});
+      console.log('considering', exceptId, el, el.id === exceptId)
+      if (
+        exceptId
+        &&
+        (el.id === exceptId || el.querySelector('#' + exceptId))
+      ) {
+        return
       }
+      console.log("unmarking", el)
+      ui._unmark_nest(el);
+      ui.fire({type: 'dropMark', data: el});
+      net_fire({type: 'dropMark', nest: { id: el.id }});
     })
   },
 
@@ -221,7 +209,13 @@ const ui = {
   },
 
   _unmark_nest: (nestEl) => {
-    console.log("_unmark_nest", nestEl.id)
+    //console.log("_unmark_nest", nestEl.id)
+    nestEl.querySelectorAll('.resize_handle').forEach(handle => {
+      handle.remove()
+    })
+    nestEl.querySelectorAll('.resize_dotted_rect').forEach(el => {
+      el.remove()
+    })
     let nestSVG = SVG.adopt(nestEl)
     oldXY = {
       x: nestSVG.x(),
@@ -267,10 +261,6 @@ const ui = {
   hookup_menu_actions: (svgEl, actionMenu) => {
     //console.log('hookup_menu_actions', svgEl, actionMenu)
     var newMenu = Object.assign(actionMenu, {
-      'Mark': {
-        eventName: 'node_mark',
-        applicable: (node) => { return !is_marked(node) },
-      },
       'Delete': {
         eventName: 'node_delete',
         applicable: (node) => { return true },
