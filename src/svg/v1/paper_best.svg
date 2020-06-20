@@ -262,11 +262,6 @@ var paper_best = {
     let w = evt.detail.width
     let h = evt.detail.height
 
-    let path_area = this.querySelector(
-      `#${this.id} > :not(.contents_group) .path_area`
-    )
-    if (path_area) { path_area.remove() }
-
     let area_rect = this.querySelector(
       `#${this.id} > :not(.contents-group) #area_rect`
     )
@@ -279,8 +274,8 @@ var paper_best = {
     this_svg.width(w)
     this_svg.height(h)
 
-    textSumEl = this.querySelector(`#${this.id} > .text_count`)
-    text_result = SVG.adopt(textSumEl)
+    textEl = this.querySelector(`#${this.id} > .text_count`)
+    text_result = SVG.adopt(textEl)
     text_result.x(w - 30)
     text_result.y(h - 50)
     textRuleEl = this.querySelector(`#${this.id} > .text_rule`)

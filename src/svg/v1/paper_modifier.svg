@@ -45,10 +45,16 @@
      id="script_paper_modifier"><![CDATA[
 var paper_modifier = {
 
+  visit_contents_group(el, visitFn) {
+    let containedSVGs = el.querySelectorAll(
+      `#${el.id} > .contents_group > svg`
+    )
+    containedSVGs.forEach(visitFn)
+  },
+
   rule_roll_handler: function(evt) {
     console.log('paper_modifier ', this.id, 'hears rule_roll event', evt)
-    contentsGroup = paper_modifier.select_my(this, 'contents_group')
-    contentsGroup.querySelectorAll('svg').forEach((s) => {
+    paper_modifier.visit_contents_group(this, (s) => {
       evt_fire('die_roll', s, null, {})
     })
   },
@@ -59,45 +65,51 @@ var paper_modifier = {
   },
 
   dragover_handler: function(evt) {
-    console.log('paper_modifier dragover_handler', evt.detail.draggedElemId, evt.detail.dropElemId)
-    draggedElem = byId(evt.detail.draggedElemId)
-    dragged = SVG.adopt(draggedElem)
-    dropElem = byId(evt.detail.dropElemId)
-    drop = SVG.adopt(dropElem)
+    console.log('paper_modifier', this.id, 'dragover_handler',
+    evt.detail.draggedElem.id, evt.detail.dropElem.id)
+    dragged = SVG.adopt(evt.detail.draggedElem)
+    drop = SVG.adopt(evt.detail.dropElem)
 
+    let textEl = this.querySelector(`#${this.id} > .text_count`)
+    text = SVG.adopt(textEl)
     is_inside = isInside(dragged.node, drop.node)
     if (!is_inside) {
-      drop.opacity(0.9)
+      drop.opacity(0.1)
+      text.fill('#f0f000')
       return
     }
+    text.fill('#000080')
     drop.opacity(1.0)
   },
 
   drop_handler: function(evt) {
     console.log('target should be ', this)
     console.log('target is', evt.target)
-    ruleElem = this
-    console.log('paper_modifier drop_handler', ruleElem.id, evt.detail.draggedElemId, evt.detail.dropElemId)
+    console.log('paper_modifier drop_handler', this.id,
+      evt.detail.draggedElemId, evt.target)
+
     draggedElem = byId(evt.detail.draggedElemId)
-    dropElem = byId(evt.detail.dropElemId)
+    dropElem = evt.target
     if (
-      ruleElem.id === draggedElem.id
+      this.id === draggedElem.id
       ||
-      ruleElem.contains(draggedElem)
+      this.contains(draggedElem)
       ||
-      draggedElem.contains(ruleElem)
+      draggedElem.contains(this)
       ||
-      !ruleElem.contains(dropElem)
+      !this.contains(dropElem)
     ) {
       return
     }
     dragged = SVG.adopt(draggedElem)
     drop = SVG.adopt(dropElem)
 
-    contentsGroup = paper_modifier.select_my(ruleElem, 'contents_group')
     is_inside = isInside(dragged.node, drop.node)
-    console.log('dragged', draggedElem.id, 'is inside drop', evt.detail.dropElemId, '?', is_inside)
+    console.log('dragged', draggedElem.id, 'box is inside drop',
+      dropElem,
+      '?', is_inside)
 
+    let contentsGroup = this.querySelector(`#${this.id} > .contents_group`)
     if (contentsGroup.querySelector('#' + draggedElem.id)) {
       // already inside the contents
       if (is_inside) {
@@ -110,28 +122,31 @@ var paper_modifier = {
       }
       push_to_parent(
         draggedElem,
-        ruleElem,
+        this,
         (dieElem, parentElem) => {
           console.log('consume it here', dieElem.id, parentElem.id)
           contentsGroup.appendChild(dieElem)
         }
       )
     }
-    ruleElem.dispatchEvent(new CustomEvent('dom_change', {
+    this.dispatchEvent(new CustomEvent('dom_change', {
       bubbles: true,
-      detail: { 'ruleElemId': ruleElem.id },
+      detail: { 'ruleElemId': this.id },
     }))
   },
 
   dom_change_handler: function(evt) {
     console.log('dom_change_handler', this.id, evt.detail)
+    modifier_tspan = this.querySelector(
+      `#${this.id} > :not(.contents_group) #tspan_rule_num`
+    )
+    let modifier = parseInt(modifier_tspan.textContent)
+
     let sum = 0
-    q = '#' + this.id + '_contents_group > svg'
-    containedSVGs = this.querySelectorAll(q)
-    containedSVGs.forEach((s) => {
+
+    paper_modifier.visit_contents_group(this, (s) => {
       let tempNum = 0
       s.querySelectorAll('tspan').forEach((t) => {
-        console.log('t', t.id, t.textContent)
         if (t.closest('svg').id !== s.id) {
           // it's buried multiple levels deep in sub-SVGs
           // so skip it lest it be double-counted
@@ -151,10 +166,10 @@ var paper_modifier = {
       })
       sum = sum + tempNum
     })
-    modifier_tspan = paper_modifier.select_my(this, 'tspan_rule_num')
-    let modifier = parseInt(modifier_tspan.textContent)
-    tspan = paper_modifier.select_my(this, 'tspan_count')
-    tspan.textContent = (sum + modifier)
+    tspan = this.querySelector(
+      `#${this.id} > :not(.contents_group) #tspan_count`
+    )
+    tspan.textContent = sum + modifier
   },
 
   mod_change_handler: function(evt) {
@@ -165,7 +180,9 @@ var paper_modifier = {
     } else if (evt.type == 'rule_modifier_minus') {
       change = -1
     }
-    modifier_tspan = paper_modifier.select_my(this, 'tspan_rule_num')
+    modifier_tspan = this.querySelector(
+      `#${this.id} > :not(.contents_group) #tspan_rule_num`
+    )
     modifier = parseInt(modifier_tspan.textContent)
     let sum = modifier + change
     modifier_tspan.textContent = sum < 1 ? sum : '+' + sum
@@ -175,7 +192,6 @@ var paper_modifier = {
     }))
   },
 
-
   drag_handler: function(evt) {
     if (!this.contains(evt.target)) {
       return
@@ -184,26 +200,29 @@ var paper_modifier = {
   },
 
   label_click_handler: function() {
-      console.log('lbclick', this)
-
+    console.log('lbclick', this)
+    let label = this.querySelector(`#${this.id} > text > #tspan_label`)
     ui_popup_text_input(
       this,
       'Label',
-      this.querySelector('#tspan_label').textContent,
+      label.textContent,
       'label_change'
     )
   },
   label_change_handler: function(evt) {
-    this.querySelector('#tspan_label').textContent = evt.detail.inputValue
+    let label = this.querySelector(`#${this.id} > text > #tspan_label`)
+    label.textContent = evt.detail.inputValue
   },
 
-  initialize: function(elem) {
+  initialize: function(elem, serializedState) {
+    let label = elem.querySelector(`#${elem.id} > text > #tspan_label`)
+    label.textContent = ''
+
     elem.addEventListener('change', this.dom_change_handler)
     elem.addEventListener('rule_roll', this.rule_roll_handler)
     elem.addEventListener('dom_change', this.dom_change_handler)
     elem.addEventListener('dblclick', this.activate)
 
-    elem.querySelector('#tspan_label').textContent = ''
     elem.addEventListener('label_click', this.label_click_handler)
     elem.addEventListener('label_change', this.label_change_handler)
 
@@ -213,32 +232,37 @@ var paper_modifier = {
     elem.addEventListener('svg_dragenter', () => {console.log('E')})
     elem.addEventListener('svg_dragleave', () => {console.log('L')})
 
+    elem.addEventListener('resize', this.resize_handler)
     elem.addEventListener('rule_modifier_plus', this.mod_change_handler)
     elem.addEventListener('rule_modifier_minus', this.mod_change_handler)
-
-
-    var idStrings = [
-      'contents_group',
-      'big_rect',
-      'text_rule',
-      'tspan_rule_prefix',
-      'tspan_rule_num',
-      'tspan_rule_suffix',
-      'text_count',
-      'tspan_count',
-    ]
-    idStrings.forEach((idString) => {
-      el = elem.querySelector('#' + idString)
-      el.id = elem.id + '_' + idString
-    })
-
   },
 
-  select_my: function(ruleElem, oldId) {
-    q = '#' + ruleElem.id + '_' + oldId
-    return ruleElem.querySelector(q)
-  },
+  resize_handler: function(evt) {
+    console.log('i', this.id, ' got resize', evt.detail.width, evt.detail.height)
+    let w = evt.detail.width
+    let h = evt.detail.height
 
+    let area_rect = this.querySelector(
+      `#${this.id} > :not(.contents_group) #area_rect`
+    )
+    xbox = SVG.adopt(area_rect)
+    xbox.node.classList.add('droptarget')
+    xbox.style({ opacity: 1, 'stroke-opacity': 0.9 })
+    xbox.width(w)
+    xbox.height(h)
+    this_svg = SVG.adopt(this)
+    this_svg.width(w)
+    this_svg.height(h)
+
+    let textEl = this.querySelector(`#${this.id} > .text_count`)
+    text_result = SVG.adopt(textEl)
+    text_result.x(w - 30)
+    text_result.y(h - 60)
+    textRuleEl = this.querySelector(`#${this.id} > .text_rule`)
+    text_rule  = SVG.adopt(textRuleEl)
+    text_rule.x(w - 140)
+    text_rule.y(h - 60)
+  },
 
   menu: {
     'Roll All': {
@@ -301,7 +325,7 @@ var paper_modifier = {
        -182.5,0.0
        -195.0,-2.0 z"
      class="droptarget"
-     id="big_rect"
+     id="area_rect"
      title="double-click to release members"
      inkscape:connector-curvature="0"
      sodipodi:nodetypes="ccccc" />
@@ -322,7 +346,7 @@ var paper_modifier = {
        sodipodi:role="line">Label</tspan></text>
 
   <text
-     id="text_rule"
+     class="text_rule"
      x="60" y="180"
      style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:38.072px;line-height:125%;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;letter-spacing:0px;word-spacing:0px;fill:#000080;fill-opacity:1;stroke:none;stroke-width:0.269px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
      xml:space="preserve">
@@ -340,9 +364,13 @@ var paper_modifier = {
   </g>
   <text
      xml:space="preserve"
-     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:38.072px;line-height:125%;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;letter-spacing:0px;word-spacing:0px;fill:#000080;fill-opacity:1;stroke:none;stroke-width:0.26px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+     style="font-style:normal;font-variant:normal;font-weight:normal;
+     font-stretch:normal;font-size:38.072px;line-height:125%;
+     font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;
+     letter-spacing:0px;word-spacing:0px;fill:#000080;
+     fill-opacity:1;stroke:none;stroke-width:0.26px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
      x="160" y="180"
-     id="text_count"><tspan
+     class="text_count"><tspan
        id="tspan_count"
        style="font-weight:bold;font-stretch:normal;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;fill:#000080;stroke-width:0.26458329px">0</tspan></text>
 </svg>

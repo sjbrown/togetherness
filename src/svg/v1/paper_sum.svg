@@ -217,7 +217,7 @@ var paper_sum = {
     if (path_area) { path_area.remove() }
 
     let area_rect = this.querySelector(
-      `#${this.id} > :not(.contents-group) #area_rect`
+      `#${this.id} > :not(.contents_group) #area_rect`
     )
     xbox = SVG.adopt(area_rect)
     xbox.node.classList.add('droptarget')
