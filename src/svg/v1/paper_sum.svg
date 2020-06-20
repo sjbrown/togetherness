@@ -45,10 +45,16 @@
      id="script_paper_sum"><![CDATA[
 var paper_sum = {
 
+  visit_contents_group(el, visitFn) {
+    let containedSVGs = el.querySelectorAll(
+      `#${el.id} > .contents_group > svg`
+    )
+    containedSVGs.forEach(visitFn)
+  },
+
   rule_roll_handler: function(evt) {
     console.log('paper_sum ', this.id, 'hears rule_roll event', evt)
-    let contentsGroup = this.querySelector('#' + this.id + ' > .contents_group')
-    contentsGroup.querySelectorAll('svg').forEach((s) => {
+    paper_sum.visit_contents_group(this, (s) => {
       evt_fire('die_roll', s, null, {})
     })
   },
@@ -63,8 +69,6 @@ var paper_sum = {
     evt.detail.draggedElem.id, evt.detail.dropElem.id)
     dragged = SVG.adopt(evt.detail.draggedElem)
     drop = SVG.adopt(evt.detail.dropElem)
-
-    let parentId = 
 
     is_inside = isInside(dragged.node, drop.node)
     if (!is_inside) {
@@ -81,9 +85,6 @@ var paper_sum = {
       evt.detail.draggedElemId, evt.target)
 
     draggedElem = byId(evt.detail.draggedElemId)
-    //dropElem = this.querySelector('#' + evt.detail.dropElemId)
-    //dropElem = this.querySelector('#' + this.id + ' > g > .droptarget')
-    //dropElem = this.querySelector('#' + this.id + ' > g > .droptarget')
     dropElem = evt.target
     if (
       this.id === draggedElem.id
@@ -99,13 +100,12 @@ var paper_sum = {
     dragged = SVG.adopt(draggedElem)
     drop = SVG.adopt(dropElem)
 
-    let contentsGroup = this.querySelector('#' + this.id + ' > .contents_group')
     is_inside = isInside(dragged.node, drop.node)
     console.log('dragged', draggedElem.id, 'box is inside drop',
       dropElem,
       '?', is_inside)
-    console.log('contentsgropu: ', contentsGroup)
 
+    let contentsGroup = this.querySelector(`#${this.id} > .contents_group`)
     if (contentsGroup.querySelector('#' + draggedElem.id)) {
       // already inside the contents
       if (is_inside) {
@@ -132,13 +132,10 @@ var paper_sum = {
   },
 
   dom_change_handler: function(evt) {
-    ruleElem = this
-    console.log('dom_change_handler', ruleElem.id, evt.detail)
+    console.log('dom_change_handler', this.id, evt.detail)
     let sum = 0
-    containedSVGs = this.querySelectorAll(
-      '#' + this.id + ' > .contents_group > svg'
-    )
-    containedSVGs.forEach((s) => {
+
+    paper_sum.visit_contents_group(this, (s) => {
       let tempNum = 0
       s.querySelectorAll('tspan').forEach((t) => {
         if (t.closest('svg').id !== s.id) {
@@ -161,7 +158,7 @@ var paper_sum = {
       sum = sum + tempNum
     })
     console.log('sum was', sum)
-    let tspan = this.querySelector('#' + this.id + ' > text > #tspan_sum')
+    let tspan = this.querySelector(`#${this.id} > text > #tspan_sum`)
     tspan.textContent = sum
   },
 
@@ -174,24 +171,28 @@ var paper_sum = {
 
   label_click_handler: function() {
     console.log('lbclick', this)
+    let label = this.querySelector(`#${this.id} > text > #tspan_label`)
     ui_popup_text_input(
       this,
       'Label',
-      this.querySelector('#tspan_label').textContent,
+      label.textContent,
       'label_change'
     )
   },
   label_change_handler: function(evt) {
-    this.querySelector('#tspan_label').textContent = evt.detail.inputValue
+    let label = this.querySelector(`#${this.id} > text > #tspan_label`)
+    label.textContent = evt.detail.inputValue
   },
 
   initialize: function(elem, serializedState) {
+    let label = elem.querySelector(`#${elem.id} > text > #tspan_label`)
+    label.textContent = ''
+
     elem.addEventListener('change', this.dom_change_handler)
     elem.addEventListener('rule_roll', this.rule_roll_handler)
     elem.addEventListener('dom_change', this.dom_change_handler)
     elem.addEventListener('dblclick', this.activate)
 
-    elem.querySelector('#tspan_label').textContent = ''
     elem.addEventListener('label_click', this.label_click_handler)
     elem.addEventListener('label_change', this.label_change_handler)
 
@@ -209,9 +210,16 @@ var paper_sum = {
     console.log('i', this.id, ' got resize', evt.detail.width, evt.detail.height)
     let w = evt.detail.width
     let h = evt.detail.height
-    path_area = this.querySelector('.path_area')
+
+    let path_area = this.querySelector(
+      `#${this.id} > :not(.contents_group) .path_area`
+    )
     if (path_area) { path_area.remove() }
-    xbox = SVG.adopt(this.querySelector('#area_rect'))
+
+    let area_rect = this.querySelector(
+      `#${this.id} > :not(.contents-group) #area_rect`
+    )
+    xbox = SVG.adopt(area_rect)
     xbox.node.classList.add('droptarget')
     xbox.style({ opacity: 1, 'stroke-opacity': 0.9 })
     xbox.width(w)
@@ -220,10 +228,12 @@ var paper_sum = {
     this_svg.width(w)
     this_svg.height(h)
 
-    text_sum = SVG.adopt(this.querySelector('.text_sum'))
+    textSumEl = this.querySelector(`#${this.id} > .text_sum`)
+    text_sum = SVG.adopt(textSumEl)
     text_sum.x(w - 20)
     text_sum.y(h - 50)
-    text_rule = SVG.adopt(this.querySelector('.text_rule'))
+    textRuleEl = this.querySelector(`#${this.id} > .text_rule`)
+    text_rule  = SVG.adopt(textRuleEl)
     text_rule.x(w - 80)
     text_rule.y(h - 50)
   },
@@ -284,7 +294,6 @@ var paper_sum = {
        -182.50,-0.46
        -192.57,-1.90 z"
      class="droptarget path_area"
-     id="big_rect"
      inkscape:connector-curvature="0"
      sodipodi:nodetypes="ccccc" />
   </g>
