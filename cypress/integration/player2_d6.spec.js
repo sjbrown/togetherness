@@ -11,6 +11,10 @@ describe('Player 1', () => {
     cy.get('#svg_table svg').should('not.be.visible')
     cy.get('#svg_viewport [data-app-url="svg/v1/dice_d6.svg"]').should('not.be.visible')
 
+    cy.get('#profile_button').click()
+    cy.get('#profile_input_name').type('cy')
+    cy.get('#dialog_profile_submit').click()
+
     cy.wait(2000) // Player 1 will be doing their thing now...
 
     cy.contains('Player')
