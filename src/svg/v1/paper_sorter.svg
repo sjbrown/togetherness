@@ -221,19 +221,6 @@ var paper_sorter = {
 
     elem.addEventListener('rule_sorter_plus', this.sorter_change_handler)
     elem.addEventListener('rule_sorter_minus', this.sorter_change_handler)
-
-
-    var idStrings = [
-      'contents_group',
-      'big_rect',
-      'text_rule',
-      'tspan_rule',
-    ]
-    idStrings.forEach((idString) => {
-      el = elem.querySelector('#' + idString)
-      el.id = elem.id + '_' + idString
-    })
-
   },
 
   select_my: function(ruleElem, oldId) {
@@ -295,7 +282,7 @@ var paper_sorter = {
        -182.5,0.0
        -195.0,-2.0 z"
      class="droptarget"
-     id="big_rect"
+     id="area_rect"
      title="double-click to release members"
      inkscape:connector-curvature="0"
      sodipodi:nodetypes="ccccc" />
