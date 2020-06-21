@@ -148,13 +148,16 @@ function makeDraggable(viewport, table) {
     if (mode === 0) {
       let dragTarget = null
 
-      // HACK because :scope is not yet in MSIE
+      // First, look for dragTargets as the direct children of "table"
       let q = `#${table.node.id} > .draggable-group`
       table.node.querySelectorAll(q).forEach(draggableGroup => {
         if (draggableGroup.contains(evt.target)) {
           dragTarget = draggableGroup
+          // Make it the top-most element
+          dragTarget.remove(); table.node.appendChild(dragTarget)
         }
       })
+      // Otherwise, look for dragTargets as the direct children of .drag-opens
       if (!dragTarget) {
         let q = `#${table.node.id} .drag-open > .draggable-group`
         table.node.querySelectorAll(q).forEach(draggableGroup => {
