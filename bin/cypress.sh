@@ -1,6 +1,7 @@
 #! /bin/bash
 
 set -e
+set -x
 
 if [ `basename $(pwd)` != "togetherness" ]; then
   echo "You must be in the togetherness directory to run this command"

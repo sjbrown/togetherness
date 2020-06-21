@@ -20,7 +20,7 @@ fi
 echo "Running tests..."
 echo ""
 
-docker run -it \
+docker run --rm -it \
   -v $PWD:/e2e \
   -w /e2e \
   -e CYPRESS_BASE_URL=$CYPRESS_BASE_URL \
