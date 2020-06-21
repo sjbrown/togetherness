@@ -2,16 +2,6 @@
 var myClientId = null;
 var togetherFunctions = {};
 
-function getUserColor() {
-  try {
-    var el = document.getElementsByClassName('togetherjs-person-self')[0];
-    return el.style.borderColor;
-  }
-  catch {
-    return '#fff59d';
-  }
-}
-
 function net_fire(payload) {
   if (!myClientId) {
     //console.log('TogetherJS not ready for send')

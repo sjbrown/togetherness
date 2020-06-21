@@ -213,9 +213,7 @@ function downKey(e) {
 window.addEventListener('load', () => {
   document.querySelector('body').addEventListener('keydown', downKey)
   load_profile_ui()
-  TogetherJSConfig_getUserColor = function () {
-    return localStorage.getItem('profile_color')
-  }
+  TogetherJSConfig_getUserColor = getUserColor
   TogetherJSConfig_getUserName = function () {
     return localStorage.getItem('profile_name') || base32.short_id()
   };
