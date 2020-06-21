@@ -187,7 +187,7 @@ function zoom(inOrOut) {
 }
 
 function updateColorSample(target) {
-  el = target.parentNode.querySelector('#colorsample')
+  el = target.parentNode.querySelector('.colorsample')
   el.style.setProperty('border', 'solid thin black')
   el.style.setProperty('color', target.value)
 }
@@ -454,7 +454,9 @@ display: none;
     title="Profile"
     data-target="dialog_profile"
     data-dialog-id="dialog_profile">
-    Profile
+    <span class="colorsample" style="color: #ffffff00">■</span>
+    <span id="profile_button_span">Profile</span>
+    <span class="colorsample" style="color: #ffffff00">■</span>
   </button>
 
   <button id="bg_button" class="btn btn-small modal-trigger"
@@ -695,7 +697,7 @@ function ui_change_profile(evt) {
   if (!name_input.value) {
     return;
   }
-  col_elem = color_input.parentNode.querySelector('#colorsample')
+  col_elem = color_input.parentNode.querySelector('.colorsample')
   color = col_elem.style.color
   localStorage.setItem('profile_name', name_input.value)
   localStorage.setItem('profile_color', color)
@@ -716,12 +718,12 @@ function load_profile_ui() {
   input = document.querySelector('#profile_input_color')
   input.value = color
   updateColorSample(input)
-  profile_button = document.querySelector('#profile_button')
-  profile_button.textContent = ' ' + name + ' '
-  profile_button.style.textDecoration = 'underline'
-  profile_button.style.textDecorationStyle = 'dotted'
-  profile_button.style.textDecorationThickness = '3px'
-  profile_button.style.textDecorationColor = color
+  profile_bs = document.querySelector('#profile_button_span')
+  document.querySelectorAll('#profile_button > .colorsample').forEach((el) => {
+    console.log('s', el, color)
+    el.style.color = color
+  })
+  profile_bs.textContent = name
 }
   </script>
   <div class="modal" id="dialog_profile">
@@ -731,7 +733,7 @@ function load_profile_ui() {
   <div class="modal-content">
     <label for="profile_input_name">Name</label>
     <input id="profile_input_name" type="text" value="" />
-    <label for="profile_input_color">Color <span id="colorsample">■</span></label>
+    <label for="profile_input_color">Color <span class="colorsample">■</span></label>
     <input id="profile_input_color" type="text" value="#ffffff"
            onKeyUp="updateColorSample(this)"
     />
@@ -1495,7 +1497,7 @@ function ui_submit_rect(evt) {
     <label for="rect_input_height">Height</label>
     <input id="rect_input_height" type="text" value="50"/>
     <br />
-    <label for="rect_input_color">Color <span id="colorsample">■</span></label>
+    <label for="rect_input_color">Color <span class="colorsample">■</span></label>
     <input id="rect_input_color" type="text" value="#ffff00"
            onKeyUp="updateColorSample(this)"
     />
@@ -1602,7 +1604,7 @@ function ui_submit_random_table(evt) {
     Option 3
     </textarea>
     <br />
-    <label for="random_table_input_color">Color <span id="colorsample">■</span></label>
+    <label for="random_table_input_color">Color <span class="colorsample">■</span></label>
     <input id="random_table_input_color" type="text" value="#1f1f1f"
            onKeyUp="updateColorSample(this)"
     />
@@ -1713,7 +1715,7 @@ function ui_submit_text(evt) {
     <label for="text_input_content">Content</label>
     <input id="text_input_content" type="text" value="" Placeholder="Hello World"/>
     <br />
-    <label for="text_input_color">Color <span id="colorsample">■</span></label>
+    <label for="text_input_color">Color <span class="colorsample">■</span></label>
     <input id="text_input_color" type="text" value="#ffff00"
            onKeyUp="updateColorSample(this)"
     />
@@ -1808,7 +1810,7 @@ function ui_submit_ellipse(evt) {
     <label for="ellipse_input_height">Height</label>
     <input id="ellipse_input_height" type="text" value="50"/>
     <br />
-    <label for="ellipse_input_color">Color <span id="colorsample">■</span></label>
+    <label for="ellipse_input_color">Color <span class="colorsample">■</span></label>
     <input id="ellipse_input_color" type="text" value="#ffff00"
            onKeyUp="updateColorSample(this)"
     />
