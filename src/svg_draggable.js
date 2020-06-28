@@ -6,8 +6,8 @@ function clamp(val, minVal, maxVal) {
 }
 
 function debug(s, evt) {
-  if (true) { return }
-  console.log(s, evt);
+  if (!DEBUG) { return }
+  /*
   r = new XMLHttpRequest()
   q = '/debug/' + s
   r.open('GET', q, true)
@@ -15,6 +15,7 @@ function debug(s, evt) {
     s: s,
     evt: JSON.stringify(evt || null)
   }))
+  */
 }
 
 function isInside(el1, el2) {
@@ -69,6 +70,20 @@ function makeDraggable(viewport, table) {
   viewport.on('touchend', touchEndDrag);
   viewport.on('touchleave', endDrag);
   viewport.on('touchcancel', endDrag);
+
+  document.querySelector('#gamearea').style.overflow = 'scroll'
+  document.querySelector('#gamearea').addEventListener('wheel', (evt) => {
+    if (!evt.ctrlKey) { // only zoom if the user holds down ctrl
+      return
+    }
+    evt.preventDefault()
+    evt.stopPropagation()
+    if (evt.deltaY > 0) {
+      zoom('out')
+    } else if (evt.deltaY < 0) {
+      zoom('in')
+    }
+  })
 
   function broadcast(eventName, detail, dispatchEl) {
     if (dispatchEl === undefined) {
