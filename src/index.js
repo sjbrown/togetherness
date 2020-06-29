@@ -758,7 +758,7 @@ function initialize_with_ns(elem, ns, serializedState) {
 }
 
 function init_with_namespaces(elem, serializedState) {
-  console.log('init_with_namespaces', elem, serializedState)
+  //console.log('init_with_namespaces', elem, serializedState)
   // This assumes import_foreign_svg has already been executed
   // and the svg element has been added to the DOM
   getNamespacesForElement(elem).forEach((nsName) => {
@@ -873,11 +873,11 @@ function push_to_parent(childEl, parentEl, pushFn) {
 
   if (parentEl.id === 'svg_table') {
     ui.hookup_ui(childEl)
-    getNamespacesForElement(childElem).forEach((nsName) => {
+    getNamespacesForElement(childEl).forEach((nsName) => {
       let ns = window[nsName]
-      initialize_with_ns(childElem, ns)
+      initialize_with_ns(childEl, ns)
     })
-    ui.hookup_menu_actions(childElem)
+    ui.hookup_menu_actions(childEl)
   } else {
     ui.un_hookup_ui(childEl)
   }

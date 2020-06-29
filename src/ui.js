@@ -296,7 +296,7 @@ const ui = {
   },
 
   update_buttons: () => {
-    console.log("ui.update_buttons")
+    //console.log("ui.update_buttons")
     var markedNodes = document.querySelectorAll('[data-ui-marked]')
     var numMarked = markedNodes.length
 
@@ -417,7 +417,7 @@ const ui = {
   },
 
   fire: function(msg) {
-    console.log('ui.fire', msg)
+    //console.log('ui.fire', msg)
     ui.broadcast(msg.type, msg.data)
     var fn = {
       createMark: (msg) => {
