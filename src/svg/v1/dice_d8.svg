@@ -69,67 +69,14 @@
 var d8 = {
 
   roll_handler: function(evt) {
-    console.log('roll handle!', this.id, evt)
-    if (this.isChanging) {
-      return false
-    }
-    this.isChanging = true
-    //if (this.id !== evt.detail.elemId) {
-      //return;
-    //}
-    var text = this.querySelector('text')
-    var tspan = this.querySelector('tspan')
-    var origOpacity = this.style.opacity
-    var newNum = randDiceString(1,8)
-    ui.animated_ghost(this, { animation: 'rollOut' })
-    tspan.textContent = ' '
-    this.style.opacity = 0.1
-    ui.animated_ghost(this, {
-      animation: 'rollIn',
-      before_begin: (ghost) => {
-        ghost.querySelector('g').style.opacity = origOpacity
-      },
-      on_done: () => {
-        tspan.textContent = newNum
-        s(text, 'data-text', newNum)
-        this.style.opacity = origOpacity
-        this.isChanging = false
-        net_fire({type: "change", data: serialize(this)});
-        evt_fire('change', this, null, {})
-      },
-    })
+    return dice.roll_handler(this, 8)
   },
 
   turn_handler: function(evt) {
-    //console.log('d8 ', this, 'turn!!!!!!!!!!!!!!!!!!!!!!!!!!!!', evt.detail)
-    if (this.isChanging) {
-      return false
-    }
-    this.isChanging = true
-    //if (this.id !== evt.detail.elemId) {
-      //return;
-    //}
-    var text = this.querySelector('text')
-    var tspan = this.querySelector('tspan')
-    var origOpacity = this.style.opacity
-    var origNum = parseInt(tspan.textContent)
-    ui.animated_ghost(this, {
-      animation: 'thumb',
-      on_done: () => {
-        tspan.textContent = (origNum % 8) + 1
-        s(text, 'data-text', (origNum % 8) + 1)
-        this.style.opacity = origOpacity
-        this.isChanging = false
-        net_fire({type: "change", data: serialize(this)});
-        evt_fire('change', this, null, {})
-      },
-    })
-    tspan.textContent = " "
-    this.style.opacity = 0.1
+    return dice.turn_handler(this, 8)
   },
 
   initialize: function(elem) {
-    console.log('hooking up handlers for ', elem)
     elem.addEventListener('die_roll', this.roll_handler)
     elem.addEventListener('dblclick', this.roll_handler)
     elem.addEventListener('die_turn_up', this.turn_handler)
@@ -143,11 +90,11 @@ var d8 = {
     'Turn Up': {
       eventName: 'die_turn_up',
       applicable: (dieNode) => { return true },
-      uiLabel: (dieNode) => { 
+      uiLabel: (dieNode) => {
         var tspan = dieNode.querySelector('tspan')
         var nextNum = (parseInt(tspan.textContent) % 8) + 1
         return 'Turn to ' + nextNum
-        },
+      },
     },
   },
 

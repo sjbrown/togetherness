@@ -88,25 +88,6 @@ const ui = {
   },
 
   hookup_mark_handlers: (markEl) => {
-    var mark_menu = {
-      'Remove mark': {
-        eventName: 'remove_mark',
-        applicable: (target) => { return g(target, 'data-app-class') === 'nest' },
-      },
-      /* causes bugs with "text" types
-      'Object properties': {
-        eventName: 'object_properties',
-        applicable: () => { return true },
-        handler: (evt) => {
-          nestNode = byId(evt.detail.elemId)
-          ui_popup_properties(
-            nestNode.firstChild,
-            {'data-dialog-id': 'dialog_properties'}
-          )
-        }
-      },
-      */
-    }
     if (markEl.dataset.nestFor !== 'mark') {
       console.error('this is not a proper "mark" nest', nest)
       return
@@ -116,14 +97,8 @@ const ui = {
     //      event,      handler,   binding,   capture/bubbling phase
     //nest.on('click', ui_unmark, undefined, true)
     nest.on('remove_mark', ui.unmark, undefined, true)
-    nest.on(
-      'mouseover',
-      (evt) => { ui.mouseover(evt, nest.node, mark_menu) },
-      undefined,
-      true,
-    );
     nest.on('svg_dragsafe_click', (evt) => {
-      console.log('svg_dragsafe_click on a mark', evt)
+      //console.log('svg_dragsafe_click on a mark', evt)
       if (evt.ctrlKey) {
         ui.unmark(evt)
       } else {
@@ -131,10 +106,9 @@ const ui = {
       }
     })
     nest.on('svg_dragsafe_dblclick', (evt) => {
-      console.log('svg_dragsafe_dblclick on a mark', nest.node.id)
+      //console.log('svg_dragsafe_dblclick on a mark', nest.node.id)
       documentDblclick(nest.node.firstChild, {elemId: nest.node.firstChild.id})
     })
-    hookup_self_event_handlers(nest.node, mark_menu)
   },
 
 
@@ -142,7 +116,6 @@ const ui = {
     //console.log('ui.mark_by_id target_id', evt, target_id)
     // unmark everything else, unless shift or ctrl is being held
     if (!evt.ctrlKey && !evt.shiftKey) {
-      console.log("B")
       ui.unmark_all_but(target_id)
     }
 
@@ -155,10 +128,13 @@ const ui = {
 
     var { mark_rect, mark_nest } = ui.make_mark(target_id)
     ui.fire({ type: 'createMark', data: mark_nest })
+    /*
     net_fire({type: "createMark", data: {
       mark_rect: serialize(mark_rect),
       target_id: target_id,
     }})
+    */
+    push_sync()
   },
 
   unmark: (evt) => {
@@ -166,13 +142,14 @@ const ui = {
     //evt.stopPropagation()
     ui._unmark_nest(evt.target.closest('[data-nest-for=mark]'))
     ui.fire({type: 'dropMark', data: mark_rect.parentNode});
-    net_fire({type: 'dropMark', mark_rect: serialize(mark_rect) });
+    //net_fire({type: 'dropMark', mark_rect: serialize(mark_rect) });
+    push_sync()
   },
 
   unmark_all_but: (exceptId) => {
-    console.log('unmark_all_but', exceptId)
+    //console.log('unmark_all_but', exceptId)
     document.querySelectorAll('[data-nest-for=mark]').forEach(el => {
-      console.log('considering', exceptId, el, el.id === exceptId)
+      //console.log('considering', exceptId, el, el.id === exceptId)
       if (
         exceptId
         &&
@@ -180,11 +157,12 @@ const ui = {
       ) {
         return
       }
-      console.log("unmarking", el)
+      //console.log("unmarking", el)
       ui._unmark_nest(el);
       ui.fire({type: 'dropMark', data: el});
-      net_fire({type: 'dropMark', nest: { id: el.id }});
+      //net_fire({type: 'dropMark', nest: { id: el.id }});
     })
+    push_sync()
   },
 
   raw_unmark: (el) => {
@@ -205,7 +183,8 @@ const ui = {
     }
     nestSVG.remove()
     ui.fire({type: 'dropMark', data: el.parentElement});
-    net_fire({type: 'dropMark', mark_rect: serialize(nestSVG.lastChild) });
+    //net_fire({type: 'dropMark', mark_rect: serialize(nestSVG.lastChild) });
+    push_sync()
   },
 
   _unmark_nest: (nestEl) => {
@@ -221,10 +200,9 @@ const ui = {
       x: nestSVG.x(),
       y: nestSVG.y(),
     }
-    console.log('unmarking ', oldXY, )
+    //console.log('unmarking ', oldXY, )
     // re-parent all the enveloped ones back into the svg_table element
     nestEl.querySelectorAll('#' + nestEl.id + ' > [data-enveloped]').forEach(kid => {
-      console.log('kid ', kid.id)
       s(kid, 'data-enveloped', null)
       if (kid.classList.contains('drag-open')) {
         kid.classList.remove('drag-open')
@@ -235,6 +213,7 @@ const ui = {
       svg_table.add(kidObj)
       //console.log('back in the doc', kidObj)
       ui.hookup_ui(kid)
+      ui.hookup_menu_actions(kid)
     })
     nestEl.remove()
   },
@@ -258,34 +237,39 @@ const ui = {
     nest.off('svg_dragsafe_dblclick')
   },
 
-  hookup_menu_actions: (svgEl, actionMenu) => {
-    //console.log('hookup_menu_actions', svgEl, actionMenu)
-    var newMenu = Object.assign(actionMenu, {
-      'Delete': {
-        eventName: 'node_delete',
-        applicable: (node) => { return true },
-      },
-    })
-    svgEl.actionMenu = actionMenu
-    nest = SVG.adopt(svgEl)
-    nest.on('node_mark', (evt) => { ui.mark_by_id(evt, svgEl.id) })
-    nest.on('node_delete', (evt) => { delete_marked() })
-    nest.on('mouseover', (evt) => { ui.mouseover(evt, svgEl, newMenu) })
-
+  hookup_menu_actions: (svgEl) => {
+    console.log('hookup_menu_actions', svgEl)
+    svgEl.addEventListener('node_delete', delete_marked)
+    svgEl.addEventListener('mouseover', ui.mouseover)
     // Hookup any self-event handlers
-    hookup_self_event_handlers(svgEl, actionMenu)
+    ui.hookup_self_event_handlers(svgEl)
   },
 
-  mouseover: (evt, target, actionMenu) => {
-    // Add clickable options onto the menu
-    //console.log('ui.mouseover', target.id)
+  hookup_self_event_handlers: (el) => {
+    let actionMenu = getFullMenuForElement(el)
+    Object.keys(actionMenu).map((title) => {
+      if (!actionMenu[title].handler) {
+        return
+      }
+      console.log("hooking up", actionMenu[title].eventName, actionMenu[title].handler)
+      el.addEventListener(actionMenu[title].eventName, actionMenu[title].handler)
+    })
+  },
+
+  mouseover: function (evt) {
+    // Add clickable (right-click) options onto the menu
+    // Note: addEventListener must use this named, static, non-arrow function
+    //       to prevent memory-leak bug:
+    // https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener#Memory_issues
+    //console.log('ui.mouseover', evt, this)
+    let hoveredEl = this
 
     deleteList = document.querySelectorAll('.cloned-menuitem')
     Array.prototype.forEach.call(deleteList, (el) => {
       el.remove();
     })
 
-    var hoveredEl = target
+    let actionMenu = getFullMenuForElement(hoveredEl)
     var menu = byId('gamemenu')
     var template = byId('template_menuitem')
     Object.keys(actionMenu).map((title) => {
@@ -312,6 +296,7 @@ const ui = {
   },
 
   update_buttons: () => {
+    //console.log("ui.update_buttons")
     var markedNodes = document.querySelectorAll('[data-ui-marked]')
     var numMarked = markedNodes.length
 
@@ -325,10 +310,10 @@ const ui = {
     mobile_header.innerText = 'Select dice by clicking on them; roll by double-clicking'
 
     template = byId('template_object_actions')
-    function makeButton(elemNode, title) {
-      // elemNode.actionMenu looks like this: {
-      // 'Mark': {
-      //   eventName: 'node_mark',
+    function makeButton(elemNode, actionMenu, title) {
+      // actionMenu looks like this: {
+      // 'Foo': {
+      //   eventName: 'foo_event',
       //   applicable: (node) => { return !is_marked(node) },
       //   uiLabel: (node) => { return 'MyLabel' },
       //  },  ...}
@@ -336,7 +321,7 @@ const ui = {
       btn.id = elemNode.id + title
       btn.innerText = title
       btn.classList.add('cloned-button')
-      if (!elemNode.actionMenu[title].applicable(elemNode)) {
+      if (!actionMenu[title].applicable(elemNode)) {
         btn.disabled = 'disabled'
       }
       return btn
@@ -344,23 +329,23 @@ const ui = {
 
     var buttons = {}
     var i = 0
+    let actionMenu
     markedNodes.forEach((markNode) => {
       i++
       var elemNode = markNode.firstChild
-      if (elemNode.actionMenu === undefined) {
-        elemNode.actionMenu = {}
-      }
+      console.log("elemNode", elemNode.id)
+      actionMenu = getFullMenuForElement(elemNode)
       if (numMarked === 1) {
         header.innerText = g(elemNode, 'data-orig-name')
         mobile_header.innerText = g(elemNode, 'data-orig-name')
         //#header.innerText = g(elemNode, 'data-name')
 
-        Object.keys(elemNode.actionMenu).map((title) => {
+        Object.keys(actionMenu).map((title) => {
           buttons[title] = {
-            btn: makeButton(elemNode, title),
+            btn: makeButton(elemNode, actionMenu, title),
             clickEvents: [
               (evt) => {
-                evt_fire(elemNode.actionMenu[title].eventName, elemNode, evt)
+                evt_fire(actionMenu[title].eventName, elemNode, evt)
               }
             ],
           }
@@ -369,13 +354,13 @@ const ui = {
       } else { // more than 1
         header.innerText = numMarked + ' objects selected'
         mobile_header.innerText = numMarked + ' objects selected'
-        Object.keys(elemNode.actionMenu).map((title) => {
+        Object.keys(actionMenu).map((title) => {
           if (i === 1) { // the first one sets up the 'buttons' object
             buttons[title] = {
-              btn: makeButton(elemNode, title),
+              btn: makeButton(elemNode, actionMenu, title),
               clickEvents: [
                 (evt) => {
-                  evt_fire(elemNode.actionMenu[title].eventName, elemNode, evt)
+                  evt_fire(actionMenu[title].eventName, elemNode, evt)
                 }
               ],
             }
@@ -383,7 +368,7 @@ const ui = {
             if (title in buttons) {
               buttons[title].clickEvents.push(
                 (evt) => {
-                  evt_fire(elemNode.actionMenu[title].eventName, elemNode, evt)
+                  evt_fire(actionMenu[title].eventName, elemNode, evt)
                 }
               )
             }
@@ -391,9 +376,9 @@ const ui = {
         })
         Object.keys(buttons).map((key) => {
           if (
-            key in elemNode.actionMenu === false
+            key in actionMenu === false
             ||
-            !elemNode.actionMenu[key].applicable(elemNode)
+            !actionMenu[key].applicable(elemNode)
           ) {
             delete buttons[key]
           }
@@ -431,10 +416,12 @@ const ui = {
     }))
   },
 
-  fire: (msg) => {
+  fire: function(msg) {
+    //console.log('ui.fire', msg)
     ui.broadcast(msg.type, msg.data)
     var fn = {
       createMark: (msg) => {
+        //console.log("createMark arrow")
         msg.data.attr({'data-ui-marked': true})
         ui.update_buttons()
       },
