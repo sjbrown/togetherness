@@ -37,7 +37,7 @@
   <script
      type="text/javascript"
      src="js/dice_utils.js"
-     id="script13" />
+     id="script_dice_utils" />
   <script
      type="text/javascript"
      data-namespace="d6"

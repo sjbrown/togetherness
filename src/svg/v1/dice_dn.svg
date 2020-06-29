@@ -11,6 +11,7 @@
    id="dn die"
    height="100"
    width="100"
+   viewBox="0 0 100 100"
    version="1.1"
    inkscape:version="0.92.3 (2405546, 2018-03-11)"
    sodipodi:docname="dice_dn.svg">
@@ -107,74 +108,45 @@
      id="script_dn"><![CDATA[
 var dn = {
 
+  num_faces: function(elem) {
+    numTspan = elem.querySelector('#tspan_num_faces')
+    console.log('a', numTspan)
+    dNum = numTspan.textContent.split('d')[1]
+    console.log('d', dNum)
+    return parseInt(dNum)
+  },
+
   roll_handler: function(evt) {
-    if (this.isChanging) {
-      return false
-    }
-    this.isChanging = true
-    //var tspan = this.querySelector('tspan')
-    var tspan = this.querySelector('#tspan_numeric_value')
-    var origOpacity = this.style.opacity
-
-    dieMax = this.querySelector('#tspan_num_faces').textContent
-    dieMax = parseInt(dieMax.substring(1))
-    var newNum = randDiceString(1,dieMax)
-
-    ui.animated_ghost(this, { animation: 'rollOut' })
-    tspan.textContent = ' '
-    this.style.opacity = 0.1
-    ui.animated_ghost(this, {
-      animation: 'rollIn',
-      before_begin: (ghost) => {
-        ghost.querySelector('g').style.opacity = origOpacity
-      },
-      on_done: () => {
-        tspan.textContent = newNum
-        this.style.opacity = origOpacity
-        this.isChanging = false
-        net_fire({type: "change", data: serialize(this)});
-        evt_fire('change', this, null, {})
-      },
-    })
+    return dice.roll_handler(
+      this,
+      dn.num_faces(this),
+      this.querySelector('#tspan_numeric_value')
+    )
   },
 
   turn_handler: function(evt) {
-    //console.log('dn ', this, 'turn!!!!!!!!!!!!!!!!!!!!!!!!!!!!', evt.detail)
-    if (this.isChanging) {
-      return false
-    }
-    this.isChanging = true
-    var tspan = this.querySelector('#tspan_numeric_value')
-    var origOpacity = this.style.opacity
-    var origNum = parseInt(tspan.textContent)
-
-    dieMax = this.querySelector('#tspan_num_faces').textContent
-    dieMax = parseInt(dieMax.substring(1))
-
-    ui.animated_ghost(this, {
-      animation: 'thumb',
-      on_done: () => {
-        tspan.textContent = (origNum % dieMax) + 1
-        this.style.opacity = origOpacity
-        this.isChanging = false
-        net_fire({type: "change", data: serialize(this)});
-        evt_fire('change', this, null, {})
-      },
-    })
-    tspan.textContent = " "
-    this.style.opacity = 0.1
+    return dice.turn_handler(
+      this,
+      dn.num_faces(this),
+      this.querySelector('#tspan_numeric_value')
+    )
   },
 
-  initialize: function(elem, serializedState) {
-    console.log('hooking up handlers for ', elem, serializedState)
+  initialize: function(elem, prototype) {
+    console.log('hooking up handlers for ', elem, 'proto', prototype)
     elem.addEventListener('die_roll', this.roll_handler)
     elem.addEventListener('dblclick', this.roll_handler)
     elem.addEventListener('die_turn_up', this.turn_handler)
-    recordTspan = elem.querySelector('#tspan_num_faces')
-    recordTspan.textContent = 'd' + serializedState['numFaces']
 
-    showTspan = elem.querySelector('#tspan_numeric_value')
-    showTspan.textContent = serializedState['numFaces']
+    if (prototype) {
+      facesTspan = elem.querySelector('#tspan_num_faces')
+      protoFacesTspan = prototype.querySelector('#tspan_num_faces')
+      facesTspan.textContent = protoFacesTspan.textContent
+
+      showTspan = elem.querySelector('#tspan_numeric_value')
+      protoShowTspan = prototype.querySelector('#tspan_numeric_value')
+      showTspan.textContent = protoShowTspan.textContent
+    }
   },
 
   menu: {
@@ -186,11 +158,9 @@ var dn = {
       eventName: 'die_turn_up',
       applicable: (dieNode) => { return true },
       uiLabel: (dieNode) => { 
-        var dieMax = dieNode.querySelector('#tspan_num_faces').textContent
-        dieMax = parseInt(dieMax.substring(1))
-
-        var tspan = dieNode.querySelector('#tspan_numeric_value')
-        var nextNum = (parseInt(tspan.textContent) % dieMax) + 1
+        let dieMax = dn.num_faces(dieNode)
+        let tspan = dieNode.querySelector('#tspan_numeric_value')
+        let nextNum = (parseInt(tspan.textContent) % dieMax) + 1
         return 'Turn to ' + nextNum
         },
     },

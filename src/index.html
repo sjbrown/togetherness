@@ -133,7 +133,8 @@ SVG.on(document, 'DOMContentLoaded', () => {
 
   document.addEventListener('svg_dragend', (evt) => {
     selectedElement = byId(evt.detail.elemId)
-    net_fire({type: "change", data: serialize(selectedElement)})
+    //net_fire({type: "change", data: serialize(selectedElement)})
+    push_sync()
   })
 
   // Initialize modals
@@ -887,7 +888,7 @@ function ui_change_background(evt) {
   var value = "url('" + input.value + "')";
   viewport.style('background-image', value)
   ui.popdown_dialog('dialog_bg')
-  net_fire({ type: 'sync', data: svg_table.node })
+  push_sync()
 }
   </script>
   <div class="modal" id="dialog_bg">
@@ -1002,7 +1003,8 @@ function ui_popup_properties(el, dialog_specifier) {
       });
 
       ui.popdown_dialog('dialog_properties')
-      net_fire({ type: 'change', data: serialize(target) })
+      //net_fire({ type: 'change', data: serialize(target) })
+      push_sync()
   });
 
   fieldset = byId('properties_fields')
@@ -1380,14 +1382,12 @@ function ui_submit_svgfile(evt) {
   add_fresh_svg(nest.node)
   svg_table.node.appendChild(nest.node)
   ui.hookup_ui(nest.node)
-  if (allowJS.value === 'yes') {
-    hookup_namespaces(nest.node, '')
-  } else {
-    ui.hookup_menu_actions(nest.node, {})
-  }
+  init_with_namespaces(nest.node)
+  ui.hookup_menu_actions(nest.node)
 
   ui.popdown_dialog('dialog_svgfile')
-  net_fire({ type: 'create', data: serialize(nest.node) })
+  //net_fire({ type: 'create', data: serialize(nest.node) })
+  push_sync()
 }
 
     </script>
@@ -1483,9 +1483,9 @@ function make_rect(attrs) {
   })
 
   nest.add(rect)
-
+  nest.node.dataset.appNamespaces = 'rect_verbs'
   ui.hookup_ui(nest.node)
-  ui.hookup_menu_actions(nest.node, rect_verbs)
+  ui.hookup_menu_actions(nest.node)
   return nest;
 }
 
@@ -1502,7 +1502,8 @@ function ui_submit_rect(evt) {
     fill: color,
   });
   ui.popdown_dialog('dialog_rect')
-  net_fire({ type: 'create', data: serialize(nest) })
+  //net_fire({ type: 'create', data: serialize(nest) })
+  push_sync()
 }
 
     </script>
@@ -1588,7 +1589,8 @@ function make_random_table(attrs, content) {
   nest.add(text)
 
   ui.hookup_ui(nest.node)
-  ui.hookup_menu_actions(nest.node, text_verbs)
+  nest.node.dataset.appNamespaces = 'text_verbs'
+  ui.hookup_menu_actions(nest.node)
   return nest;
 }
 
@@ -1608,7 +1610,8 @@ function ui_submit_random_table(evt) {
     )
   byId('random_table_input_content').value = ''
   ui.popdown_dialog('dialog_random_table')
-  net_fire({ type: 'create', data: serialize(random_table) })
+  //net_fire({ type: 'create', data: serialize(random_table) })
+  push_sync()
 }
 
     </script>
@@ -1711,7 +1714,8 @@ function make_text(attrs, content) {
   nest.add(text)
 
   ui.hookup_ui(nest.node)
-  ui.hookup_menu_actions(nest.node, text_verbs)
+  nest.node.dataset.appNamespaces = 'text_verbs'
+  ui.hookup_menu_actions(nest.node)
   return nest;
 }
 
@@ -1723,7 +1727,8 @@ function ui_submit_text(evt) {
   }
   var text = make_text({ fill: color }, c);
   ui.popdown_dialog('dialog_text')
-  net_fire({ type: 'create', data: serialize(text) })
+  //net_fire({ type: 'create', data: serialize(text) })
+  push_sync()
 }
 
     </script>
@@ -1796,7 +1801,8 @@ function make_ellipse(attrs) {
   nest.add(ellipse)
 
   ui.hookup_ui(nest.node)
-  ui.hookup_menu_actions(nest.node, ellipse_verbs)
+  nest.node.dataset.appNamespaces = 'ellipse_verbs'
+  ui.hookup_menu_actions(nest.node)
   return nest;
 }
 
@@ -1815,7 +1821,8 @@ function ui_submit_ellipse(evt) {
     fill: color,
   });
   ui.popdown_dialog('dialog_ellipse')
-  net_fire({ type: 'create', data: serialize(nest) })
+  //net_fire({ type: 'create', data: serialize(nest) })
+  push_sync()
 }
 
     </script>
@@ -1867,9 +1874,10 @@ function ui_submit_image(evt) {
   add_fresh_svg(nest.node)
   svg_table.node.appendChild(nest.node)
   ui.hookup_ui(nest.node)
-  ui.hookup_menu_actions(nest.node, {})
+  ui.hookup_menu_actions(nest.node)
   ui.popdown_dialog('dialog_other')
-  net_fire({ type: 'create', data: serialize(nest) })
+  //net_fire({ type: 'create', data: serialize(nest) })
+  push_sync()
 }
   </script>
     <button class="dialog_cancel btn modal-close" data-dialog-id="dialog_other"
@@ -2055,6 +2063,7 @@ function ui_submit_card() {
 
 <!-- END CLOCKS =============================================== END CLOCKS -->
 
+
 <!-- CONTRIBUTE =============================================== CONTRIBUTE -->
   <div class="modal" id="dialog_contribute">
     <button class="dialog_cancel btn modal-close"
@@ -2076,6 +2085,28 @@ function ui_submit_card() {
     </div>
     </nav>
   <div class="modal-content">
+    <section>
+      <a name="controls"></a>
+      <h1 class="contribute_h1">Controls</h1>
+        To roll dice, either click on them once, then press the Roll button,
+        or double-click on them
+      <p>
+        To remove cards from a deck, double-click on the deck.
+      </p>
+      <p>
+        To remove objects from a Dynamic Paper, double-click it.
+      </p>
+      <p>
+        To resize a Dynamic Paper, double-click it, then drag the gray square
+        handle in the lower corner.
+      </p>
+      <p>
+        To select multiple dice, hold <b>Shift</b> and click on each one.
+      </p>
+      <p>
+        To zoom in/out, hold <b>Ctrl</b> and roll your mouse wheel.
+      </p>
+    </section>
     <section>
       <a name="surf"></a>
       <h1 class="contribute_h1">Surf
@@ -2122,34 +2153,42 @@ function ui_submit_card() {
       <a href="https://donate.mozilla.org/en-US/">Donate to Mozilla here.</a>
       </div>
     </section>
-    <section>
-      <a name="controls"></a>
-      <h1 class="contribute_h1">Controls</h1>
-      <p>
-        To roll dice, either click on them once, then press the Roll button,
-        or double-click on them
-      </p>
-      <p>
-        To remove cards from a deck, double-click on the deck.
-      </p>
-      <p>
-        To remove objects from a Dynamic Paper, double-click it.
-      </p>
-      <p>
-        To resize a Dynamic Paper, double-click it, then drag the gray square
-        handle in the lower corner.
-      </p>
-      <p>
-        To select multiple dice, hold <b>Shift</b> and click on each one.
-      </p>
-      <p>
-        To zoom in/out, hold <b>Ctrl</b> and roll your mouse wheel.
-      </p>
-    </section>
   </div>
   </div>
 <!-- /CONTRIBUTE ============================================== /CONTRIBUTE -->
 
+
+<div id="hint_controls">
+  <style>
+#hint_controls {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  display: none;
+}
+  </style>
+  <script>
+window.addEventListener('load', () => {
+  if (localStorage['dismissHintControls'] !== 'yes') {
+    document.querySelector('#hint_controls').style.display = 'block'
+  }
+})
+function dismissHintControls() {
+  localStorage['dismissHintControls'] = 'yes'
+  document.querySelector('#hint_controls').style.display = 'none'
+}
+  </script>
+  <button id="hint_controls_button" class="btn btn-small modal-trigger"
+    data-target="dialog_contribute"
+    data-dialog-id="dialog_contribute">
+    Help with keyboard and mouse controls
+  </button>
+  <button id="hint_controls_dismiss" class="btn btn-small"
+   onclick="dismissHintControls()"
+  >
+  &#215;
+  </button>
+</div>
 
 
   <menu type="context" id="gamemenu">

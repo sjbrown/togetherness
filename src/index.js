@@ -1,5 +1,5 @@
 
-DEBUG = 1
+var DEBUG = 1
 
 function g(el, label) {
 // getter - more natural "attributes" from SVG elements
@@ -227,35 +227,85 @@ function debugBar(s) {
   log.innerHTML = s + '\n' + text
 }
 
+function push_sync() {
+  defanged = domJSON.toJSON(byId('svg_viewport'))
+  net_fire({ type: "sync", data: defanged })
+}
+
 togetherFunctions.on_hello = (msg) => {
   debugBar('HELLO: ' + msg)
-  worldData = nodeMap(svg_table.node, serialize);
-  if (worldData.length) {
-    net_fire({
-      type: "sync",
-      data: worldData,
-      bg: byId('svg_viewport').style.backgroundImage || null,
-    });
-  }
-};
+  push_sync()
+}
 
 togetherFunctions.on_sync = (msg) => {
   debugBar('SYNC: ' + msg)
-  msg.data.map(payload => {
-    return Promise.resolve()
-    .then(() => {
-      return deserialize(payload)
-    })
-    .then((elem) => {
-      s(elem, 'uiInitialized', null)
-      svg_table.node.appendChild(elem)
-      ui.hookup_ui(elem)
-      if (payload['data-app-url']) {
-        hookup_foreign_scripts(elem, payload['data-app-url'])
+  newEl = domJSON.toDOM(msg.data)
+
+  myViewport = document.querySelector('#svg_viewport')
+  newViewport = newEl.querySelector('#svg_viewport')
+  //console.log('nw el', newViewport)
+  myViewport.style.backgroundImage = newViewport.style.backgroundImage
+
+  svg_table.node.querySelectorAll('#svg_table > .draggable-group').forEach((el) => {
+    el.remove()
+  })
+  newTable = newEl.querySelector('#svg_table')
+  //console.log('nw tab', newTable)
+  /*
+  newTable.querySelectorAll('#svg_table > .draggable-group').forEach((el) => {
+    let existingEl = svg_table.node.querySelector('#' + el.id)
+    console.log("curtains: ", el.id)
+    if (existingEl === null) {
+      return
+    }
+    console.log("found: ", el.id)
+    existingEl.classList.remove('draggable-group')
+    existingEl.style.outline = 'solid 20px white'
+    existingEl.style.opacity = 0.4
+    setTimeout(() => { existingEl.remove() }, 400)
+  })
+  */
+
+  seenUrls = {}
+  let nodeList = newTable.querySelectorAll('[data-app-url]')
+  let urlLoop = async() => {
+    for (let index = 0; index < nodeList.length; index++) {
+      let node = nodeList.item(index)
+      let url = node.dataset.appUrl
+      if (!url) {
+        return
       }
+      if (url.indexOf('://') !== -1) {
+        url = new URL(node.dataset.appUrl).pathname // JUST USE PATHNAME TO BE SECURE!
+        // BUT IT"S NOT WHAT WE WANT OF COURSE.  TODO GET THIS RIGHT
+      }
+      if (!seenUrls[url]) {
+        console.log("grabbing url", url)
+        await import_foreign_svg(url)
+      }
+    }
+  }
+  return urlLoop().then(() => {
+    return newTable.querySelectorAll('#svg_table > .draggable-group').forEach((el) => {
+      el.remove()
+      /*
+       * WHY WHY WHY
+       *
+       * This seems to be the only way to get the <filter> to work correctly
+       */
+      console.log("Making new svg for ", el.id)
+      let s = el.outerHTML
+      svg_table.svg(s)
+      nestEl = byId(el.id)
+      console.log("Got result", nestEl)
+      ui.hookup_ui(nestEl)
+      init_with_namespaces(nestEl, el)
+      ui.hookup_menu_actions(nestEl)
+      /*
+       * WHY WHY WHY
+       */
     })
-  });
-  ui.change_background(msg.bg)
+  })
 }
 
 togetherFunctions.on_change = (msg) => {
@@ -270,11 +320,16 @@ togetherFunctions.on_create = (msg) => {
     return deserialize(msg.data)
   })
   .then((elem) => {
-    elem.dataset.uiInitialized=false
     svg_table.node.appendChild(elem)
     ui.hookup_ui(elem)
     if (msg.data['data-app-url']) {
-      hookup_foreign_scripts(elem, msg.data['data-app-url'])
+      return import_foreign_svg(msg.data['data-app-url'])
+      .then(() => {
+        init_with_namespaces(elem, msg.data)
+        ui.hookup_menu_actions(elem)
+      })
+    } else {
+      ui.hookup_menu_actions(elem)
     }
   })
 }
@@ -290,8 +345,6 @@ togetherFunctions.on_drop_nest_mark= (msg) => {
 }
 
 togetherFunctions.on_delete = (msg) => { recursive_delete(msg.data) }
-
-togetherFunctions.on_change_background = (msg) => { ui.change_background(msg.data) }
 
 serializers = {}
 deserializers = {}
@@ -428,7 +481,8 @@ var mark_menu = {
   */
 }
 
-function import_foreign_svg(url, attrs) {
+function import_foreign_svg(url) {
+  console.log("import foreign URL", url)
   if (!DEBUG) {
     var answer = confirm('Do you trust the security of '+ url +'?')
     if (!answer) {
@@ -495,13 +549,11 @@ function _import_foreign_svg(body, url) {
 
 function add_fresh_svg(svgElem) {
   // None of the UI is hooked up for the freshly-loaded document
-  svgElem.querySelectorAll('[data-ui-initialized]').forEach((elem) => {
-    elem.removeAttribute('data-ui-initialized')
-  })
 
   svgElem.querySelectorAll('[data-app-class]').forEach((subSvg) => {
     ui.hookup_ui(subSvg)
-    hookup_foreign_scripts(subSvg)
+    init_with_namespaces(subSvg)
+    ui.hookup_menu_actions(subSvg)
   })
   svgElem.querySelectorAll('[data-nest-for=mark]').forEach((subSvg) => {
     ui.hookup_mark_handlers(subSvg)
@@ -509,9 +561,9 @@ function add_fresh_svg(svgElem) {
   /*
   svg_table.add(nest)
   ui.hookup_ui(nest.node)
-  hookup_foreign_scripts(nest.node, url, attrs && attrs.serializedState)
+  init_with_namespaces(nest.node, url, attrs && attrs.serializedState)
+  ui.hookup_menu_actions(nest.node)
   ui.fire({type: "create", data: { createdEl: nest.node }});
-  net_fire({type: "create", data: serialize(nest)});
   */
 }
 
@@ -626,7 +678,25 @@ function hslToRgb(h, s, l){
   return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
 }
 
+function getFullMenuForElement(elem) {
+  let actionMenu = {}
+  getNamespacesForElement(elem).forEach((nsName) => {
+    let ns = window[nsName]
+    if (ns.menu) {
+      actionMenu = Object.assign(actionMenu, ns.menu)
+    }
+  })
+  actionMenu = Object.assign(actionMenu, {
+    'Delete': {
+      eventName: 'node_delete',
+      applicable: (node) => { return true },
+    },
+  })
+  return actionMenu
+}
+
 function getNamespacesForElement(elem) {
+  //console.log("getNamespacesForElement", elem)
   nses = elem.dataset.appNamespaces
   nses = nses ? nses.split(',') : []
   return nses
@@ -682,46 +752,45 @@ function appendDocumentScript(scriptElem, parentElem) {
 
 function initialize_with_ns(elem, ns, serializedState) {
   console.log('initialize_with_ns', elem.id)
-  // The foreign <svg> should have an onLoad to do this, but
-  // Chrome has problems doing onLoad
-  if (g(elem, 'data-ui-initialized')) {
-    return
-  }
   if (ns.initialize) {
     ns.initialize(elem, serializedState)
   }
-  if (ns.menu) {
-    ui.hookup_menu_actions(elem, ns.menu)
-  }
-  s(elem, 'data-ui-initialized', true)
 }
 
-function hookup_foreign_scripts(elem, url, serializedState) {
-  console.log('hookup_foreign_scripts', elem, url, serializedState)
+function init_with_namespaces(elem, serializedState) {
+  console.log('init_with_namespaces', elem, serializedState)
   // This assumes import_foreign_svg has already been executed
   // and the svg element has been added to the DOM
   getNamespacesForElement(elem).forEach((nsName) => {
     let ns = window[nsName]
     initialize_with_ns(elem, ns, serializedState)
-    //console.log("adding ser and deser", Object.keys(ns))
-    if (ns.serialize) {
-      serializers[url] = ns.serialize
-    }
-
-    if (ns.deserialize) {
-      deserializers[url] = ns.deserialize
-    }
   })
 }
 
-function hookup_self_event_handlers(el, actionMenu) {
-  Object.keys(actionMenu).map((title) => {
-    if (!actionMenu[title].handler) {
-      return
-    }
-    console.log("hooking up", actionMenu[title].eventName, actionMenu[title].handler)
-    el.addEventListener(actionMenu[title].eventName, actionMenu[title].handler)
-  })
+async function make_prototype(url, attrs) {
+  console.log('make_prototype', url, attrs)
+  let nest = await import_foreign_svg(url)
+  setColor(nest.node, (attrs && attrs.color) || getUserColor())
+  return nest.node
+}
+
+function add_n_objects_from_prototype(n, prototype, center) {
+  console.log("add_n_objects_from_prototype", prototype.id, 'nter', center)
+  newCenter = [center[0], center[1]]
+  for( var i=0; i < n; i++ ) {
+    clone = prototype.cloneNode(true)
+    let id = 'isvg_' + base32.short_id()
+    clone.id = id
+    nest = SVG.adopt(clone)
+    nest.cx(newCenter[0])
+    nest.cy(newCenter[1])
+    svg_table.add(nest)
+    ui.hookup_ui(nest.node)
+    init_with_namespaces(nest.node, attrs && attrs.serializedState)
+    ui.hookup_menu_actions(nest.node)
+    newCenter[0] = newCenter[0] + 90
+    newCenter[1] = newCenter[1] + 10
+  }
 }
 
 async function add_object(url, attrs) {
@@ -734,10 +803,11 @@ async function add_object(url, attrs) {
   }
   svg_table.add(nest)
   ui.hookup_ui(nest.node)
-  hookup_foreign_scripts(nest.node, url, attrs && attrs.serializedState)
+  init_with_namespaces(nest.node, attrs && attrs.serializedState)
+  ui.hookup_menu_actions(nest.node)
   ui.do_animate(nest.node)
   ui.fire({type: "create", data: { createdEl: nest.node }});
-  net_fire({type: "create", data: serialize(nest)});
+  push_sync()
 }
 
 function add_object_from_payload(payload) {
@@ -772,12 +842,7 @@ function pop_from_parent(childElem) {
   console.log('now ', child.x() )
   child.y(child.y() + parentWithXY.y())
 
-  getNamespacesForElement(childElem).forEach((nsName) => {
-    let ns = window[nsName]
-    initialize_with_ns(childElem, ns)
-    ui.hookup_ui(childElem)
-    childElem.dataset.appClass = 'nest'
-  })
+  childElem.dataset.appClass = 'nest'
 
   push_to_parent(childElem, grandparent, (c, p) => {
     p.appendChild(c)
@@ -808,6 +873,11 @@ function push_to_parent(childEl, parentEl, pushFn) {
 
   if (parentEl.id === 'svg_table') {
     ui.hookup_ui(childEl)
+    getNamespacesForElement(childElem).forEach((nsName) => {
+      let ns = window[nsName]
+      initialize_with_ns(childElem, ns)
+    })
+    ui.hookup_menu_actions(childElem)
   } else {
     ui.un_hookup_ui(childEl)
   }
@@ -830,8 +900,8 @@ function delete_element(el) {
   ui.animated_ghost(el, {animation: 'rotateOut'})
   el.remove()
   payload.kids.push({ id: el.id })
-  net_fire({ type: 'delete', data: payload });
   ui.fire({type: 'delete', data: payload });
+  push_sync()
 }
 
 function evt_fire(eventName, triggerNode, origEvent, other) {
@@ -852,7 +922,7 @@ function delete_marked(evt) {
     el.remove()
     payload.kids.push({ id: el.id })
   })
-  net_fire({ type: 'delete', data: payload });
   ui.fire({type: 'delete', data: payload });
+  push_sync()
 }
 

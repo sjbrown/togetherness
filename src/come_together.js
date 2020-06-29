@@ -7,6 +7,12 @@ function net_fire(payload) {
     //console.log('TogetherJS not ready for send')
     return
   }
+  if (payload.type !== 'sync') {
+    console.log("GOT NON-SYNC", payload)
+    console.log("SENDING SYNC INSTEAD")
+    push_sync()
+    return
+  }
   try {
     TogetherJS.send(payload);
   }
@@ -17,52 +23,55 @@ function net_fire(payload) {
 }
 
 TogetherJS.on('ready', () => {
+  console.log('received ready msg')
   session = TogetherJS.require('session')
   myClientId = session.clientId;
 });
 
 TogetherJS.hub.on('sync', (msg) => {
-  console.log('syncing', msg)
+  console.log('received sync msg', msg)
   if(togetherFunctions.on_sync) {
     togetherFunctions.on_sync(msg);
   }
 });
 
 TogetherJS.hub.on("togetherjs.hello", (msg) => {
-  console.log('hello msg', msg);
+  console.log('received hello msg', msg);
   if(togetherFunctions.on_hello) {
     togetherFunctions.on_hello(msg);
   }
 });
 
 TogetherJS.hub.on("change", (msg) => {
-  console.log('change msg', msg);
+  console.log('received change msg', msg);
   if(togetherFunctions.on_change) {
     togetherFunctions.on_change(msg);
   }
 });
 
 TogetherJS.hub.on("create", (msg) => {
-  console.log('create msg', msg);
+  console.log('received create msg', msg);
   if(togetherFunctions.on_create) {
     togetherFunctions.on_create(msg);
   }
 });
 
 TogetherJS.hub.on("createMark", (msg) => {
-  console.log('create sel msg', msg);
+  console.log('received create sel msg', msg);
   if(togetherFunctions.on_create_mark) {
     togetherFunctions.on_create_mark(msg);
   }
 });
 
 TogetherJS.hub.on('dropMark', (msg) => {
+  console.log('dropMark msg', msg);
   if(togetherFunctions.on_drop_mark) {
     togetherFunctions.on_drop_mark(msg);
   }
 });
 
 TogetherJS.hub.on('dropNestMark', (msg) => {
+  console.log('dropNestMark msg', msg);
   if(togetherFunctions.on_drop_nest_mark) {
     togetherFunctions.on_drop_nest_mark(msg);
   }
@@ -72,13 +81,6 @@ TogetherJS.hub.on('delete', (msg) => {
   console.log('delete msg', msg);
   if(togetherFunctions.on_delete) {
     togetherFunctions.on_delete(msg);
-  }
-});
-
-TogetherJS.hub.on('change_background', (msg) => {
-  console.log('change_background msg', msg);
-  if(togetherFunctions.on_change_background) {
-    togetherFunctions.on_change_background(msg);
   }
 });
 
