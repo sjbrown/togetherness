@@ -238,7 +238,7 @@ const ui = {
   },
 
   hookup_menu_actions: (svgEl) => {
-    console.log('hookup_menu_actions', svgEl)
+    //console.log('hookup_menu_actions', svgEl)
     svgEl.addEventListener('node_delete', delete_marked)
     svgEl.addEventListener('mouseover', ui.mouseover)
     // Hookup any self-event handlers

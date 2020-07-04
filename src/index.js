@@ -227,10 +227,6 @@ function debugBar(s) {
   log.innerHTML = s + '\n' + text
 }
 
-function push_sync() {
-  defanged = domJSON.toJSON(byId('svg_viewport'))
-  net_fire({ type: "sync", data: defanged })
-}
 
 togetherFunctions.on_hello = (msg) => {
   debugBar('HELLO: ' + msg)

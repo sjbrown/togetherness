@@ -2,11 +2,22 @@
 var myClientId = null;
 var togetherFunctions = {};
 
+function push_sync() {
+  if (!myClientId) {
+    //console.log('TogetherJS not ready for send')
+    return
+  }
+  console.timeStamp('push_sync')
+  defanged = domJSON.toJSON(byId('svg_viewport'))
+  net_fire({ type: "sync", data: defanged })
+}
+
 function net_fire(payload) {
   if (!myClientId) {
     //console.log('TogetherJS not ready for send')
     return
   }
+  console.timeStamp('net_fire')
   if (payload.type !== 'sync') {
     console.log("GOT NON-SYNC", payload)
     console.log("SENDING SYNC INSTEAD")

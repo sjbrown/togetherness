@@ -270,11 +270,12 @@ function makeDraggable(viewport, table) {
     })
   }
   function notifyDropTargetsDrop(evt) {
+    console.timeStamp('notifyDropTargetsDrop')
     if (!selectedEl) {
       return
     }
     table.node.querySelectorAll('.droptarget').forEach((el) => {
-      //console.log('broadcasting', newEventName, 'for', el.id, evt.currentTarget)
+      console.log('broadcasting', 'svg_drop', 'for', el.id, selectedEl.node.id)
       if ( selectedEl.node.id === el.id ) {
         return // don't tell things they're being dropped into themselves
       }
@@ -291,20 +292,27 @@ function makeDraggable(viewport, table) {
 
 
   function endDrag(evt) {
+    console.timeStamp('endDrag')
     debug("endDrag", evt)
     //mouse = getMousePosition(evt)
     try {
       elemId = selectedEl ? selectedEl.node.id : viewport.node.id
+      console.time('broadcast(svg_dragend) - outer')
       broadcast('svg_dragend', { elemId: elemId })
+      console.timeEnd('broadcast(svg_dragend) - outer')
       //debug('inside try' + (selectedEl && selectedEl.id()))
+      console.time('notifyDropTargetsDrop - outer')
       notifyDropTargetsDrop(evt)
+      console.timeEnd('notifyDropTargetsDrop - outer')
       if ((evt.type === 'mouseup' || evt.type === 'touchend') && isJustAClick) {
         now = new Date()
         debug('isJustAClick' + (selectedEl && selectedEl.node.id))
+        console.time('broadcast(svg_dragsafe_click) - outer')
         broadcast('svg_dragsafe_click', {
           elemId: elemId,
           origEvent: isJustAClick,
         })
+        console.timeEnd('broadcast(svg_dragsafe_click) - outer')
         if ((now - lastClickTime) < 350) {
           broadcast('svg_dragsafe_dblclick', {
             elemId: elemId,
