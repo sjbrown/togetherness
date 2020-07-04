@@ -201,6 +201,7 @@ function downKey(e) {
 window.addEventListener('load', () => {
   document.querySelector('body').addEventListener('keydown', downKey)
   load_profile_ui()
+  loadPrototypeDN()
   TogetherJSConfig_getUserColor = getUserColor
   TogetherJSConfig_getUserName = function () {
     return localStorage.getItem('profile_name') || base32.short_id()
@@ -1116,9 +1117,7 @@ function ui_submit_dice(section) {
   } else if (section === 'special') {
     add_dtype(
       'dn', byId('dice_input_dn'), center,
-      {
-        numFaces: byId('dice_input_dn_num_faces').value
-      }
+      document.querySelector('#dn_prototype svg')
     )
     add_dtype(
       'dsymbol', byId('dice_input_dsymbol'), center,
@@ -1284,10 +1283,12 @@ function alterFaces(el) {
     facesTspan.textContent = 'd' + parseInt(el.value)
     showTspan = p.querySelector('#tspan_numeric_value')
     showTspan.textContent = parseInt(el.value)
-    btn = document.querySelector('#dice_button_dn')
 
-    temp = document.querySelector('#dn_template')
-    temp.innerHTML = '' // Clear it out - prevent memory leaks
+    temp = document.querySelector('#dn_prototype')
+    while(temp.firstElementChild) {
+      // Clear it out - prevent memory leaks
+      temp.firstElementChild.remove()
+    }
     temp.appendChild(p)
 
     svg_dn = document.querySelector('#svg_dn')
@@ -1295,10 +1296,10 @@ function alterFaces(el) {
 
     useEl = document.querySelector('#svg_dn use')
     useEl.setAttribute('href', '#' + p.id)
-
-    imgEl = document.querySelector('#img_dice_dn')
-    imgEl.remove()
   })
+}
+function loadPrototypeDN() {
+  return alterFaces( document.querySelector('#dice_input_dn_num_faces'))
 }
         </script>
         <input id="dice_input_dn" type="text" value="1"/>
@@ -1308,16 +1309,11 @@ function alterFaces(el) {
           max="999" min="2"
         />
         <button class="btn" id="dice_button_dn" onclick="diceIncrement('dn')">
-          <template id="dn_template">
-          <!--
-    <object id="widget_panzoom" data="svg/widget_panzoom.svg" type="image/svg+xml">
-    </object>
-    -->
+          <template id="dn_prototype">
           </template>
-          <svg style="display:none" id="svg_dn" viewbox="0 0 100 100" width="24" height="24" >
+          <svg style="" id="svg_dn" viewbox="0 0 100 100" width="24" height="24" >
             <use xlink:href="#dice_dn_object" />
           </svg>
-          <img id="img_dice_dn" src="svg/v1/dice_dn.svg" width="24" height="24" />
         </button>
       </td>
 
