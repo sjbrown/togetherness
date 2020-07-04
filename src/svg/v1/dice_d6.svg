@@ -45,91 +45,40 @@
 
 var d6 = {
 
-  roll_handler: function(evt) {
-    if (this.isChanging) {
-      return false
-    }
-    this.isChanging = true
-    var text = this.querySelector('text')
-    var tspan = this.querySelector('tspan')
-    var origOpacity = this.style.opacity
-    var newNum = randDiceString(1,6)
-    ui.animated_ghost(this, { animation: 'rollOut' })
-    tspan.textContent = ' '
-    this.style.opacity = 0.1
-    ui.animated_ghost(this, {
-      animation: 'rollIn',
-      before_begin: (ghost) => {
-        ghost.querySelector('g').style.opacity = origOpacity
-      },
-      on_done: () => {
-        tspan.textContent = newNum
-        s(text, 'data-text', newNum)
-        this.style.opacity = origOpacity
-        this.isChanging = false
-        net_fire({type: "change", data: serialize(this)})
-        evt_fire('change', this, null, {})
-      },
-    })
-  },
-
-  turn_handler: function(evt) {
-    if (this.id !== evt.detail.elemId) {
-      return;
-    }
-    if (this.isChanging) {
-      return false
-    }
-    this.isChanging = true
-    var text = this.querySelector('text')
-    var tspan = this.querySelector('tspan')
-    var origOpacity = this.style.opacity
-    var origNum = parseInt(tspan.textContent)
-    ui.animated_ghost(this, {
-      animation: 'thumb',
-      on_done: () => {
-        tspan.textContent = (origNum % 6) + 1
-        s(text, 'data-text', (origNum % 6) + 1)
-        this.style.opacity = origOpacity
-        this.isChanging = false
-        net_fire({type: "change", data: serialize(this)});
-        evt_fire('change', this, null, {})
-      },
-    })
-    tspan.textContent = " "
-    this.style.opacity = 0.1
-  },
-
-  initialize: function(elem) {
-    elem.addEventListener('die_roll', this.roll_handler)
-    elem.addEventListener('dblclick', this.roll_handler)
-    elem.addEventListener('die_turn_up', this.turn_handler)
-  },
-
   menu: {
     'Roll': {
       eventName: 'die_roll',
+      otherEvents: ['dblclick'],
       applicable: (dieNode) => { return true },
+      handler: function(evt) {
+        return dice.roll_handler(this, 6)
+      },
     },
     'Turn Up': {
       eventName: 'die_turn_up',
       applicable: (dieNode) => { return true },
-      uiLabel: (dieNode) => { 
-        var tspan = dieNode.querySelector('tspan')
-        var nextNum = (parseInt(tspan.textContent) % 6) + 1
+      uiLabel: (dieNode) => {
+        let tspan = dieNode.querySelector('tspan')
+        let nextNum = (parseInt(tspan.textContent) % 6) + 1
         return 'Turn to ' + nextNum
-        },
+      },
+      handler: function(evt) {
+        return dice.turn_handler(this, 6)
+      },
     },
   },
 
-  serialize: function(elem) {
-    value = elem.querySelector('tspan').textContent
-    return {dieValue: value}
+  initialize: function(elem, prototype) {
+    if (!prototype) {
+      return
+    }
+    elem.querySelector('tspan').textContent = (
+      prototype.querySelector('tspan').textContent
+    )
   },
 
-  deserialize: function(elem, payload) {
-    var tspan = elem.querySelector('tspan')
-    tspan.textContent = payload.dieValue
+  getSerializerHints: function(elem) {
+    return ['tspan']
   },
 
 }

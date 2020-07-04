@@ -88,70 +88,46 @@
   </defs>
   <script
      type="text/javascript"
+     src="js/sw_dice.js"
+     id="script_sw_dice_utils" />
+  <script
+     type="text/javascript"
      data-namespace="sw_d61"
      id="script6158"><![CDATA[
 var sw_d61 = {
 
-  roll_handler: function(evt) {
-    if (this.isChanging) {
-      return false
+  initialize: function(elem, prototype) {
+    if (!prototype) {
+      return
     }
-    this.isChanging = true
-    var origOpacity = this.style.opacity
-    ui.animated_ghost(this, { animation: 'rollOut' })
-    this.faces.forEach((name) => {
-      if (name === null) {
-        return
+    prototype.querySelectorAll('g').forEach((gEl) => {
+      if (gEl.id && elem.getElementById(gEl.id)) {
+        elem.getElementById(gEl.id).setAttribute(
+          'display',
+          gEl.getAttribute('display'),
+        )
       }
-      gEl = this.getElementById(name)
-      gEl.style.setProperty('display', 'none')
     })
-    this.style.opacity = 0.1
-    ui.animated_ghost(this, {
-      animation: 'rollIn',
-      before_begin: (ghost) => {
-        ghost.querySelector('g').style.opacity = origOpacity
-      },
-      on_done: () => {
-        activeFace = this.faces[randInt(1,6) - 1]
-        if (activeFace !== null) {
-           gEl = this.getElementById(activeFace)
-           gEl.style.setProperty('display', '')
-        }
-        this.style.opacity = origOpacity
-        this.isChanging = false
-        net_fire({type: "change", data: serialize(this)});
-      },
-    })
-  },
-
-  initialize: function(elem) {
-    elem.faces = [
-      'g_oct', 'g_oct', 'g_tri', 'g_tri', null, null,
-    ]
-
-    elem.addEventListener('die_roll', this.roll_handler)
-    elem.addEventListener('dblclick', this.roll_handler)
   },
 
   menu: {
     'Roll': {
       eventName: 'die_roll',
+      otherEvents: ['dblclick'],
       applicable: (dieNode) => { return true },
+      handler: function(evt) {
+        let faces = [
+          'g_oct', 'g_oct', 'g_tri', 'g_tri', null, null,
+        ]
+        return sw_dice.roll_handler(this, faces)
+      },
     },
   },
 
-  serialize: function(elem) {
-    value = elem.querySelector('tspan').textContent
-    return {dieValue: value}
+  getSerializerHints: function(elem) {
+    return ['g']
   },
-
-  deserialize: function(elem, payload) {
-    elem.querySelector('tspan').textContent = payload.dieValue
-  },
-
 }
-
     ]]></script>
   <g
      id="group-monochrome-1"

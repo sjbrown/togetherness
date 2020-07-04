@@ -56,40 +56,40 @@
      id="script6158"><![CDATA[
 var dsymbol = {
 
-  roll_handler: function(evt) {
-    console.log('roll handle!', this.id, evt)
-    if (this.isChanging) {
+  roll_handler: function(evt, elem) {
+    console.log('roll handle!', elem.id, evt)
+    if (elem.isChanging) {
       return false
     }
-    this.isChanging = true
-    var tspan = this.querySelector('#tspan_value')
-    var origOpacity = this.style.opacity
+    elem.isChanging = true
+    var tspan = elem.querySelector('#tspan_value')
+    var origOpacity = elem.style.opacity
     var newNum = randDiceString(
-      0, dsymbol.num_symbols(this) - 1
+      0, dsymbol.num_symbols(elem) - 1
     )
     console.log('newnum, ', newNum)
-    ui.animated_ghost(this, { animation: 'rollOut' })
+    ui.animated_ghost(elem, { animation: 'rollOut' })
     tspan.textContent = ' '
-    this.style.opacity = 0.1
-    ui.animated_ghost(this, {
+    elem.style.opacity = 0.1
+    ui.animated_ghost(elem, {
       animation: 'rollIn',
       before_begin: (ghost) => {
         ghost.querySelector('g').style.opacity = origOpacity
       },
       on_done: () => {
-        tspan.textContent = dsymbol.get_face(this, newNum)
+        tspan.textContent = dsymbol.get_face(elem, newNum)
         console.log('newface', tspan.textContent)
-        this.style.opacity = origOpacity
-        this.isChanging = false
-        net_fire({type: "change", data: serialize(this)});
-        evt_fire('change', this, null, {})
+        elem.style.opacity = origOpacity
+        elem.isChanging = false
+        net_fire({type: "change", data: serialize(elem)});
+        evt_fire('change', elem, null, {})
       },
     })
   },
 
   get_face: function(elem, index) {
     console.log('get_face', elem.id, index)
-    t = recordTspan = elem.querySelector('#tspan_faces').textContent
+    t = elem.querySelector('#tspan_faces').textContent
     console.log('t', t)
     arr = t.split(/\s/)
     if (index < 0) {
@@ -100,17 +100,14 @@ var dsymbol = {
   },
 
   num_symbols(elem) {
-    t = recordTspan = elem.querySelector('#tspan_faces').textContent
+    t = elem.querySelector('#tspan_faces').textContent
     arr = t.split(/\s/)
     return arr.length
   },
 
   initialize: function(elem, serializedState) {
     console.log('hooking up handlers for ', elem)
-    elem.addEventListener('die_roll', this.roll_handler)
-    elem.addEventListener('dblclick', this.roll_handler)
     console.log('symbols here!', serializedState.faces)
-    elem.dataset.symbols = serializedState.faces
 
     if (! /^.( .)*$/.test(serializedState.faces) ) {
       console.error('Faces are not properly formatted!')
@@ -123,24 +120,23 @@ var dsymbol = {
 
     showTspan = elem.querySelector('#tspan_value')
     showTspan.textContent = dsymbol.get_face(elem, -1)
-
   },
 
   menu: {
     'Roll': {
       eventName: 'die_roll',
+      otherEvents: ['dblclick'],
       applicable: (dieNode) => { return true },
+      handler: function(evt) {
+        dsymbol.roll_handler(evt, this)
+      },
     },
   },
 
-  serialize: function(elem) {
-    value = elem.querySelector('tspan').textContent
-    return {dieValue: value}
+  getSerializerHints: function(elem) {
+    return ['#tspan_faces', '#tspan_value']
   },
 
-  deserialize: function(elem, payload) {
-    elem.querySelector('tspan').textContent = payload.dieValue
-  },
 
 }
 

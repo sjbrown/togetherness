@@ -33,17 +33,6 @@
      inkscape:window-y="27"
      inkscape:window-maximized="0"
      inkscape:current-layer="d8 die" />
-  <metadata
-     id="metadata15">
-    <rdf:RDF>
-      <cc:Work
-         rdf:about="">
-        <dc:format>image/svg+xml</dc:format>
-        <dc:type
-           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-      </cc:Work>
-    </rdf:RDF>
-  </metadata>
   <defs
      id="defs1">
     <filter
@@ -68,43 +57,40 @@
      id="script6158"><![CDATA[
 var d8 = {
 
-  roll_handler: function(evt) {
-    return dice.roll_handler(this, 8)
-  },
-
-  turn_handler: function(evt) {
-    return dice.turn_handler(this, 8)
-  },
-
-  initialize: function(elem) {
-    elem.addEventListener('die_roll', this.roll_handler)
-    elem.addEventListener('dblclick', this.roll_handler)
-    elem.addEventListener('die_turn_up', this.turn_handler)
-  },
-
   menu: {
     'Roll': {
       eventName: 'die_roll',
+      otherEvents: ['dblclick'],
       applicable: (dieNode) => { return true },
+      handler: function(evt) {
+        return dice.roll_handler(this, 8)
+      },
     },
     'Turn Up': {
       eventName: 'die_turn_up',
       applicable: (dieNode) => { return true },
       uiLabel: (dieNode) => {
-        var tspan = dieNode.querySelector('tspan')
-        var nextNum = (parseInt(tspan.textContent) % 8) + 1
+        let tspan = dieNode.querySelector('tspan')
+        let nextNum = (parseInt(tspan.textContent) % 8) + 1
         return 'Turn to ' + nextNum
+      },
+      handler: function(evt) {
+        return dice.turn_handler(this, 8)
       },
     },
   },
 
-  serialize: function(elem) {
-    value = elem.querySelector('tspan').textContent
-    return {dieValue: value}
+  initialize: function(elem, prototype) {
+    if (!prototype) {
+      return
+    }
+    elem.querySelector('tspan').textContent = (
+      prototype.querySelector('tspan').textContent
+    )
   },
 
-  deserialize: function(elem, payload) {
-    elem.querySelector('tspan').textContent = payload.dieValue
+  getSerializerHints: function(elem) {
+    return ['tspan']
   },
 
 }

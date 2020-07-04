@@ -52,64 +52,44 @@
   </defs>
   <script
      type="text/javascript"
+     src="js/sw_dice.js"
+     id="script_sw_dice_utils" />
+  <script
+     type="text/javascript"
      data-namespace="sw_d81"
      id="script6158"><![CDATA[
 var sw_d81 = {
 
-  roll_handler: function(evt) {
-    if (this.isChanging) {
-      return false
+  initialize: function(elem, prototype) {
+    if (!prototype) {
+      return
     }
-    this.isChanging = true
-    var origOpacity = this.style.opacity
-    ui.animated_ghost(this, { animation: 'rollOut' })
-    var faces = [
-      'g_oct', 'g_oct', 'g_oct', 'g_tri', 'g_tritri', 'g_trioct', 'g_octoct'
-    ]
-    faces.forEach((name) => {
-      gEl = this.getElementById(name)
-      gEl.style.setProperty('display', 'none')
+    prototype.querySelectorAll('g').forEach((gEl) => {
+      if (gEl.id && elem.getElementById(gEl.id)) {
+        elem.getElementById(gEl.id).setAttribute(
+          'display',
+          gEl.getAttribute('display'),
+        )
+      }
     })
-    this.style.opacity = 0.1
-    ui.animated_ghost(this, {
-      animation: 'rollIn',
-      before_begin: (ghost) => {
-        ghost.querySelector('g').style.opacity = origOpacity
-      },
-      on_done: () => {
-        var newNum = randInt(1,8)
-        if (newNum !== 8) {
-           activeFace = faces[newNum-1]
-           gEl = this.getElementById(activeFace)
-           gEl.style.setProperty('display', '')
-        }
-
-        this.style.opacity = origOpacity
-        this.isChanging = false
-        net_fire({type: "change", data: serialize(this)});
-      },
-    })
-  },
-
-  initialize: function(elem) {
-    elem.addEventListener('die_roll', this.roll_handler)
-    elem.addEventListener('dblclick', this.roll_handler)
   },
 
   menu: {
     'Roll': {
       eventName: 'die_roll',
+      otherEvents: ['dblclick'],
       applicable: (dieNode) => { return true },
+      handler: function(evt) {
+        let faces = [
+          'g_oct', 'g_oct', 'g_oct', 'g_tri', 'g_tritri', 'g_trioct', 'g_octoct'
+        ]
+        return sw_dice.roll_handler(this, faces)
+      },
     },
   },
 
-  serialize: function(elem) {
-    value = elem.querySelector('tspan').textContent
-    return {dieValue: value}
-  },
-
-  deserialize: function(elem, payload) {
-    elem.querySelector('tspan').textContent = payload.dieValue
+  getSerializerHints: function(elem) {
+    return ['g']
   },
 
 }

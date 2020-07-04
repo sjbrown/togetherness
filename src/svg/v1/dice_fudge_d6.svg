@@ -54,54 +54,46 @@
 
 var fudge_d6 = {
 
-  roll_handler: function(evt) {
-    if (this.isChanging) {
-      return false
-    }
-    this.isChanging = true
-    var text = this.querySelector('text')
-    var tspan = this.querySelector('tspan')
-    var origOpacity = this.style.opacity
-    ui.animated_ghost(this, { animation: 'rollOut' })
-    tspan.textContent = ' '
-    this.style.opacity = 0.1
-    ui.animated_ghost(this, {
-      animation: 'rollIn',
-      before_begin: (ghost) => {
-        ghost.querySelector('g').style.opacity = origOpacity
-      },
-      on_done: () => {
-        symbol = [' ', '-', '+'][randInt(1,3) - 1]
-        tspan.textContent = symbol
-        s(text, 'data-text', symbol)
-        this.style.opacity = origOpacity
-        this.isChanging = false
-        net_fire({type: "change", data: serialize(this)});
-        evt_fire('change', this, null, {})
-      },
-    })
-  },
-
   initialize: function(elem) {
-    elem.addEventListener('die_roll', this.roll_handler)
-    elem.addEventListener('dblclick', this.roll_handler)
   },
 
   menu: {
     'Roll': {
       eventName: 'die_roll',
+      otherEvents: ['dblclick'],
       applicable: (dieNode) => { return true },
+      handler: function(evt) {
+        if (this.isChanging) {
+          return false
+        }
+        this.isChanging = true
+        var text = this.querySelector('text')
+        var tspan = this.querySelector('tspan')
+        var origOpacity = this.style.opacity
+        ui.animated_ghost(this, { animation: 'rollOut' })
+        tspan.textContent = ' '
+        this.style.opacity = 0.1
+        ui.animated_ghost(this, {
+          animation: 'rollIn',
+          before_begin: (ghost) => {
+            ghost.querySelector('g').style.opacity = origOpacity
+          },
+          on_done: () => {
+            symbol = [' ', '-', '+'][randInt(1,3) - 1]
+            tspan.textContent = symbol
+            s(text, 'data-text', symbol)
+            this.style.opacity = origOpacity
+            this.isChanging = false
+            net_fire({type: "change", data: serialize(this)});
+            evt_fire('change', this, null, {})
+          },
+        })
+      },
     },
   },
 
-  serialize: function(elem) {
-    value = elem.querySelector('tspan').textContent
-    return {dieValue: value}
-  },
-
-  deserialize: function(elem, payload) {
-    var tspan = elem.querySelector('tspan')
-    tspan.textContent = payload.dieValue
+  getSerializerHints: function(elem) {
+    return ['tspan']
   },
 
 }

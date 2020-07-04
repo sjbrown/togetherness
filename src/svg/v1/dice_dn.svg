@@ -37,18 +37,6 @@
      inkscape:current-layer="dn die"
      inkscape:snap-bbox="true"
      inkscape:snap-bbox-midpoints="true" />
-  <metadata
-     id="metadata15">
-    <rdf:RDF>
-      <cc:Work
-         rdf:about="">
-        <dc:format>image/svg+xml</dc:format>
-        <dc:type
-           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title />
-      </cc:Work>
-    </rdf:RDF>
-  </metadata>
   <defs
      id="defs1">
     <linearGradient
@@ -116,28 +104,40 @@ var dn = {
     return parseInt(dNum)
   },
 
-  roll_handler: function(evt) {
-    return dice.roll_handler(
-      this,
-      dn.num_faces(this),
-      this.querySelector('#tspan_numeric_value')
-    )
-  },
-
-  turn_handler: function(evt) {
-    return dice.turn_handler(
-      this,
-      dn.num_faces(this),
-      this.querySelector('#tspan_numeric_value')
-    )
+  menu: {
+    'Roll': {
+      eventName: 'die_roll',
+      otherEvents: ['dblclick'],
+      applicable: (dieNode) => { return true },
+      handler: function(evt) {
+        return dice.roll_handler(
+          this,
+          dn.num_faces(this),
+          this.querySelector('#tspan_numeric_value')
+        )
+      },
+    },
+    'Turn Up': {
+      eventName: 'die_turn_up',
+      applicable: (dieNode) => { return true },
+      uiLabel: (dieNode) => { 
+        let dieMax = dn.num_faces(dieNode)
+        let tspan = dieNode.querySelector('#tspan_numeric_value')
+        let nextNum = (parseInt(tspan.textContent) % dieMax) + 1
+        return 'Turn to ' + nextNum
+      },
+      handler: function(evt) {
+        return dice.turn_handler(
+          this,
+          dn.num_faces(this),
+          this.querySelector('#tspan_numeric_value')
+        )
+      },
+    },
   },
 
   initialize: function(elem, prototype) {
-    console.log('hooking up handlers for ', elem, 'proto', prototype)
-    elem.addEventListener('die_roll', this.roll_handler)
-    elem.addEventListener('dblclick', this.roll_handler)
-    elem.addEventListener('die_turn_up', this.turn_handler)
-
+    console.log('initializing with prototype', prototype)
     if (prototype) {
       facesTspan = elem.querySelector('#tspan_num_faces')
       protoFacesTspan = prototype.querySelector('#tspan_num_faces')
@@ -149,35 +149,8 @@ var dn = {
     }
   },
 
-  menu: {
-    'Roll': {
-      eventName: 'die_roll',
-      applicable: (dieNode) => { return true },
-    },
-    'Turn Up': {
-      eventName: 'die_turn_up',
-      applicable: (dieNode) => { return true },
-      uiLabel: (dieNode) => { 
-        let dieMax = dn.num_faces(dieNode)
-        let tspan = dieNode.querySelector('#tspan_numeric_value')
-        let nextNum = (parseInt(tspan.textContent) % dieMax) + 1
-        return 'Turn to ' + nextNum
-        },
-    },
-  },
-
-  serialize: function(elem) {
-    numFaces = elem.querySelector('#tspan_num_faces').textContent
-    value = elem.querySelector('#tspan_numeric_value').textContent
-    return {
-      numFaces: numFaces,
-      dieValue: value,
-    }
-  },
-
-  deserialize: function(elem, payload) {
-    elem.querySelector('#tspan_numeric_value').textContent = payload.numFaces
-    elem.querySelector('#tspan_num_faces').textContent = payload.dieValue
+  getSerializeHints: function(elem) {
+    return ['#tspan_num_faces', '#tspan_numeric_value']
   },
 
 }
