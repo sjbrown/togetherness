@@ -248,11 +248,17 @@ const ui = {
   hookup_self_event_handlers: (el) => {
     let actionMenu = getFullMenuForElement(el)
     Object.keys(actionMenu).map((title) => {
-      if (!actionMenu[title].handler) {
+      let menuItem = actionMenu[title]
+      if (!menuItem.handler) {
         return
       }
-      console.log("hooking up", actionMenu[title].eventName, actionMenu[title].handler)
-      el.addEventListener(actionMenu[title].eventName, actionMenu[title].handler)
+      console.log("hooking up", menuItem.eventName, menuItem.handler)
+      el.addEventListener(menuItem.eventName, menuItem.handler)
+      if (menuItem.otherEvents) {
+        menuItem.otherEvents.forEach(evName => {
+          el.addEventListener(evName, menuItem.handler)
+        })
+      }
     })
   },
 
