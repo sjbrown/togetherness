@@ -1,6 +1,4 @@
 
-console.info(' x dice_utils.js being read')
-
 function randDiceString(min, max) {
   // get a random integer in the range, inclusive.
   // randInt(1,6) might return 1,2,3,4,5,6

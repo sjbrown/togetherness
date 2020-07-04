@@ -83,6 +83,10 @@
      inkscape:object-paths="true" />
   <script
      type="text/javascript"
+     src="js/clock.js"
+     id="script_clock" />
+  <script
+     type="text/javascript"
      data-namespace="clock4"
      id="script10"><![CDATA[
 
@@ -92,9 +96,12 @@ clock4 = {
     'Tick': {
       eventName: 'clock_tick',
       applicable: (elem) => {
-        return elem.querySelector('#pie4').style['opacity'] !== '1'
+        return elem.querySelector('#pie10').style['opacity'] !== '1'
       },
       uiLabel: (elem) => { return 'Tick clock forward' },
+      handler: function(evt) {
+        clock.tick_handler(this)
+      },
     },
     'Untick': {
       eventName: 'clock_untick',
@@ -102,52 +109,17 @@ clock4 = {
         return elem.querySelector('#pie1').style['opacity'] === '1'
       },
       uiLabel: (elem) => { return 'Tick clock backward' },
-    },
-    'Red': {
-      eventName: 'colorRed',
-      applicable: (elem) => {
-        console.log(elem.querySelector('#bg').style['fill'])
-        return elem.querySelector('#bg').style['fill'] !== 'rgb(255, 0, 0)'
+      handler: function(evt) {
+        clock.untick_handler(this)
       },
-      uiLabel: (elem) => { return 'Change Color To Red' },
     },
   },
 
-  initialize: function(elem) {
-    elem.addEventListener( 'colorRed', (evt) => {
-      elem.querySelector('#bg').style['fill'] = '#ff0000'
-    } )
-    elem.addEventListener('clock_tick', clock4.tick_handler)
-    elem.addEventListener('clock_untick', clock4.untick_handler)
-
-    for(let num of [4,3,2,1]) {
-      let sel = `#pie${num}`
-      elem.querySelector(sel).style['opacity'] = 0
-    }
-  },
-
-  tick_handler: function(evt) {
-    for(let num=1; num<=parseInt(this.dataset.pieNum); num++) {
-      let sel = `#pie${num}`
-      if(this.querySelector(sel).style['opacity'] !== '1') {
-        this.querySelector(sel).style['opacity'] = 1
-        break
-      }
-    }
-  },
-  untick_handler: function(evt) {
-    console.log('tpn', this.dataset.pieNum)
-    for(let num=parseInt(this.dataset.pieNum); num>0; num--) {
-      let sel = `#pie${num}`
-      if(this.querySelector(sel).style['opacity'] !== '0') {
-        this.querySelector(sel).style['opacity'] = 0
-        break
-      }
-    }
+  initialize: function(elem, prototype) {
+    return clock.initialize(elem, prototype)
   },
 
 }
-
 ]]></script>
   <g
      inkscape:label="Layer 1"
