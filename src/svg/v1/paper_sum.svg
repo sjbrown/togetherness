@@ -59,8 +59,8 @@ var paper_sum = {
     })
   },
 
-  activate: function(evt) {
-    console.log('paper_sum this', this, 'hears activate event', evt)
+  fix: function(evt) {
+    console.log('paper_sum this', this, 'hears fix event', evt)
     lock_selection(evt)
   },
 
@@ -191,7 +191,8 @@ var paper_sum = {
     elem.addEventListener('change', this.dom_change_handler)
     elem.addEventListener('rule_roll', this.rule_roll_handler)
     elem.addEventListener('dom_change', this.dom_change_handler)
-    elem.addEventListener('dblclick', this.activate)
+    elem.addEventListener('dblclick', this.fix)
+    elem.addEventListener('rule_fix', this.fix)
 
     elem.addEventListener('label_click', this.label_click_handler)
     elem.addEventListener('label_change', this.label_change_handler)
@@ -245,6 +246,10 @@ var paper_sum = {
     },
     'Label': {
       eventName: 'label_click',
+      applicable: (node) => { return true },
+    },
+    'Fix': {
+      eventName: 'rule_fix',
       applicable: (node) => { return true },
     },
   },
