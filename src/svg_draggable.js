@@ -297,14 +297,21 @@ function makeDraggable(viewport, table) {
     //mouse = getMousePosition(evt)
     try {
       elemId = selectedEl ? selectedEl.node.id : viewport.node.id
-      console.time('broadcast(svg_dragend) - outer')
-      broadcast('svg_dragend', { elemId: elemId })
-      console.timeEnd('broadcast(svg_dragend) - outer')
-      //debug('inside try' + (selectedEl && selectedEl.id()))
-      console.time('notifyDropTargetsDrop - outer')
-      notifyDropTargetsDrop(evt)
-      console.timeEnd('notifyDropTargetsDrop - outer')
+      if (!isJustAClick) {
+        console.time('broadcast(svg_dragend) - outer')
+        broadcast('svg_dragend', { elemId: elemId })
+        console.timeEnd('broadcast(svg_dragend) - outer')
+        console.time('notifyDropTargetsDrop - outer')
+        notifyDropTargetsDrop(evt)
+        console.timeEnd('notifyDropTargetsDrop - outer')
+      }
       if ((evt.type === 'mouseup' || evt.type === 'touchend') && isJustAClick) {
+        if (selectedEl && mode === 0) {
+          // Put it back where we found it
+          // (this prevents the need for noisy network spam)
+          selectedEl.x(origXY.x)
+          selectedEl.y(origXY.y)
+        }
         now = new Date()
         debug('isJustAClick' + (selectedEl && selectedEl.node.id))
         console.time('broadcast(svg_dragsafe_click) - outer')
