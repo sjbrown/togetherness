@@ -740,6 +740,7 @@ function appendDocumentScript(scriptElem, parentElem) {
 
   ga = byId('gamearea')
   if (!ga.querySelector(`[data-orig-url="${scriptUrl}"]`)) {
+    console.log("appending ", scriptElem.id, '(', scriptUrl, ')')
     ga.appendChild(newScript)
   }
   // Remove the javascript node so it doesn't clutter up the svg_table DOM
@@ -789,21 +790,34 @@ function add_n_objects_from_prototype(n, prototype, center) {
   }
 }
 
+var alreadyAddedObjectURLs = {}
 async function add_object(url, attrs) {
   console.log('add_object', url, attrs)
   let nest = await import_foreign_svg(url)
-  setColor(nest.node, (attrs && attrs.color) || getUserColor())
-  if (attrs && attrs.center !== undefined) {
-    nest.cx(attrs.center[0])
-    nest.cy(attrs.center[1])
+
+  // Allow 400 miliseconds for the scripts to load
+  if (alreadyAddedObjectURLs[url]) {
+    pause = 0
+  } else {
+    pause = 400
   }
-  svg_table.add(nest)
-  ui.hookup_ui(nest.node)
-  init_with_namespaces(nest.node, attrs && attrs.serializedState)
-  ui.hookup_menu_actions(nest.node)
-  ui.do_animate(nest.node)
-  ui.fire({type: "create", data: { createdEl: nest.node }});
-  push_sync()
+
+  setTimeout(() => {
+    setColor(nest.node, (attrs && attrs.color) || getUserColor())
+    if (attrs && attrs.center !== undefined) {
+      nest.cx(attrs.center[0])
+      nest.cy(attrs.center[1])
+    }
+    svg_table.add(nest)
+    ui.hookup_ui(nest.node)
+    init_with_namespaces(nest.node, attrs && attrs.serializedState)
+    ui.hookup_menu_actions(nest.node)
+    ui.do_animate(nest.node)
+    ui.fire({type: "create", data: { createdEl: nest.node }});
+    push_sync()
+  }, pause);
+
+  alreadyAddedObjectURLs[url] = 1
 }
 
 function add_object_from_payload(payload) {
