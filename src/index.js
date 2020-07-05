@@ -795,18 +795,12 @@ async function add_object(url, attrs) {
   console.log('add_object', url, attrs)
   let nest = await import_foreign_svg(url)
 
-  // Allow 400 miliseconds for the scripts to load
-  if (alreadyAddedObjectURLs[url]) {
-    pause = 0
-  } else {
-    pause = 400
-  }
-
-  setTimeout(() => {
+  let hookup = () => {
     setColor(nest.node, (attrs && attrs.color) || getUserColor())
     if (attrs && attrs.center !== undefined) {
-      nest.cx(attrs.center[0])
-      nest.cy(attrs.center[1])
+      let center = spatial.avoidTopLevelCollision(nest, attrs.center, 0)
+      nest.cx(center[0])
+      nest.cy(center[1])
     }
     svg_table.add(nest)
     ui.hookup_ui(nest.node)
@@ -815,8 +809,14 @@ async function add_object(url, attrs) {
     ui.do_animate(nest.node)
     ui.fire({type: "create", data: { createdEl: nest.node }});
     push_sync()
-  }, pause);
+  }
 
+  // Allow 400 miliseconds for the scripts to load
+  if (alreadyAddedObjectURLs[url]) {
+    hookup()
+  } else {
+    setTimeout(hookup, 400)
+  }
   alreadyAddedObjectURLs[url] = 1
 }
 

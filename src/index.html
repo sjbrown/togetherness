@@ -58,7 +58,9 @@ TogetherJSConfig_on_close = () => {
 <script src="./svg.js"></script>
 <script src="./ui.js"></script>
 <script src="./index.js"></script>
+<script src="./spatial.js"></script>
 <script src="./js/domJSON.js"></script>
+<script src="./physicsjs-full.js"></script>
 
 <link rel="stylesheet" type="text/css" href="animate.css">
 <link rel="stylesheet" type="text/css" href="index.css">
@@ -266,42 +268,42 @@ window.addEventListener('load', () => {
       <table><tr>
       <td>
         <button class="btn" id="dice_button_d4"
-          onclick="add_object('svg/v1/dice_d4.svg')"
+          onclick="add_object('svg/v1/dice_d4.svg', { center: [50,50] })"
           >
           <img src="svg/v1/dice_d4.svg" width="24" height="24" />
         </button>
       </td>
       <td>
         <button class="btn" id="dice_button_d6"
-          onclick="add_object('svg/v1/dice_d6.svg')"
+          onclick="add_object('svg/v1/dice_d6.svg', { center: [50,50] })"
           >
           <img src="svg/v1/dice_d6.svg" width="24" height="24" />
         </button>
       </td>
       <td>
         <button class="btn" id="dice_button_d8"
-          onclick="add_object('svg/v1/dice_d8.svg')"
+          onclick="add_object('svg/v1/dice_d8.svg', { center: [50,50] })"
           >
           <img src="svg/v1/dice_d8.svg" width="24" height="24" />
         </button>
       </td>
       <td>
         <button class="btn" id="dice_button_d10"
-          onclick="add_object('svg/v1/dice_d10.svg')"
+          onclick="add_object('svg/v1/dice_d10.svg', { center: [50,50] })"
           >
           <img src="svg/v1/dice_d10.svg" width="24" height="24" />
         </button>
       </td>
       <td>
         <button class="btn" id="dice_button_d12"
-          onclick="add_object('svg/v1/dice_d12.svg')"
+          onclick="add_object('svg/v1/dice_d12.svg', { center: [50,50] })"
           >
           <img src="svg/v1/dice_d12.svg" width="24" height="24" />
         </button>
       </td>
       <td>
         <button class="btn" id="dice_button_d20"
-          onclick="add_object('svg/v1/dice_d20.svg')"
+          onclick="add_object('svg/v1/dice_d20.svg', { center: [50,50] })"
           >
           <img src="svg/v1/dice_d20.svg" width="24" height="24" />
         </button>
