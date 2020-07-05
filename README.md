@@ -76,9 +76,8 @@ Your `<script>` element needs to have an attribute `data-namespace`
 with a name that's unique to your object.
 
 Inside the script, there must be one JavaScript object whose name
-matches that `data-namespace` value. This object uses 2 specially-named
-keys to integrate with the main web UI:
-`menu` and `initialize`.
+matches that `data-namespace` value. This object uses a specially-named
+key, "menu", to integrate with the main web UI:
 
 
 ```xml
@@ -96,14 +95,13 @@ myThing = {
       eventName: 'changeMyColor',
       applicable: (elem) => { return true },
       uiLabel: (elem) => { return 'Change Color To Green' },
+      handler: function(evt) {
+        // Note - "handler" must be written as a traditional function,
+        // not an arrow-function, so that "this" is bound correctly
+        console.log('Changing color!')
+        this.querySelector('rect').style['fill'] = '#00ff00'
+      },
     },
-  },
-
-  initialize: function(elem) {
-    elem.addEventListener( 'changeMyColor', (evt) => {
-      console.log('Changing color!')
-      elem.querySelector('rect').style['fill'] = '#00ff00'
-    } )
   },
 
 }
