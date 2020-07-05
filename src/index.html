@@ -139,16 +139,17 @@ SVG.on(document, 'DOMContentLoaded', () => {
     push_sync()
   })
 
+  window.addEventListener("resize", () => {
+    let ga = byId('gamearea')
+    viewport.width(ga.clientWidth)
+    viewport.height(ga.clientHeight)
+  })
+
   // Initialize modals
   instances = M.Modal.init(document.querySelectorAll('.modal'), {
     opacity: 0.75,
   });
 })
-
-function pan(xDelta, yDelta) {
-  prev = gViewport.transform()
-  gViewport.transform( {x: prev.x + xDelta, y: prev.y + yDelta} )
-}
 
 var currentZoom = 1.0;
 function zoom(inOrOut) {

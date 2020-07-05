@@ -312,7 +312,7 @@ const ui = {
     submenu.querySelectorAll('.cloned-button').forEach((btn) => {
       btn.remove()
     })
-    header.innerText = 'Select dice by clicking on them; roll by double-clicking'
+    header.innerText = 'Select dice by clicking on them; roll by double-clicking; zoom with Ctrl-wheel'
     mobile_header.innerText = 'Select dice by clicking on them; roll by double-clicking'
 
     template = byId('template_object_actions')
