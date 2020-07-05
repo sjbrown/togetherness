@@ -52,12 +52,6 @@ function makeDraggable(viewport, table) {
   var broadcastTimer, lockBroadcastTimer;
   var mouse;
   var lastClickTime = 0;
-  var tableBoundaries = {
-    minX: table.x(),
-    minY: table.y(),
-    maxX: table.width(),
-    maxY: table.height(),
-  }
 
   // MOUSE
   viewport.on('mousedown', startDrag);
@@ -205,6 +199,12 @@ function makeDraggable(viewport, table) {
     }
     //console.log("S", selectedEl, 'mode', mode)
     if (selectedEl && mode === 0) {
+      var tableBoundaries = {
+        minX: table.x(),
+        minY: table.y(),
+        maxX: table.width(),
+        maxY: table.height(),
+      }
       selectedEl.x(
         clamp(
           origXY.x + (mouse.x - origMouse.x),

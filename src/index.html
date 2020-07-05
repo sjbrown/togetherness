@@ -173,7 +173,10 @@ function zoom(inOrOut) {
   let h_prime = parseInt(origViewportSize[1] * currentZoom)
   viewport.node.setAttribute('width', w_prime)
   viewport.node.setAttribute('height', h_prime)
-  viewport.node.setAttribute('viewBox', `0 0 1200 800`)
+  viewport.node.setAttribute(
+    'viewBox',
+    `0 0 ${svg_table.width()} ${svg_table.height()}`
+  )
 }
 
 function updateColorSample(target) {
@@ -343,6 +346,13 @@ window.addEventListener('load', () => {
     + <u>O</u>ther
   </button>
 
+  <button id="table_button" class="btn btn-small"
+    onclick="ui_popup_dialog_table()"
+    accesskey="t"
+    >
+    <u>T</u>able
+  </button>
+
 </section>
 
 
@@ -446,13 +456,6 @@ display: none;
     <span class="colorsample" style="color: #ffffff00">■</span>
     <span id="profile_button_span">Profile</span>
     <span class="colorsample" style="color: #ffffff00">■</span>
-  </button>
-
-  <button id="bg_button" class="btn btn-small modal-trigger"
-    title="Change Background"
-    data-target="dialog_bg"
-    data-dialog-id="dialog_bg">
-    Change BG
   </button>
 
   <button id="save_button" class="btn btn-small"
@@ -881,26 +884,53 @@ function ui_popup_dialog_load() {
 <!-- /LOAD ========================================================== /LOAD -->
 
 
-<!-- BACKGROUND  =============================================== BACKGROUND -->
+<!-- TABLE  =============================================== TABLE -->
   <script>
-function ui_change_background(evt) {
+function ui_popup_dialog_table() {
+  let wInput = byId('table_width_input')
+  let hInput = byId('table_height_input')
+  wInput.value = svg_table.width()
+  hInput.value = svg_table.height()
+  return ui.popup_dialog({'data-dialog-id': 'dialog_table'})
+}
+
+function ui_change_background() {
   input = byId('background_url')
   if (!input.value) {
     return;
   }
   var value = "url('" + input.value + "')";
   viewport.style('background-image', value)
-  ui.popdown_dialog('dialog_bg')
+  ui.popdown_dialog('dialog_table')
+  push_sync()
+}
+
+function ui_change_table_size() {
+  let wInput = byId('table_width_input')
+  let hInput = byId('table_height_input')
+
+  svg_table.width(parseInt(wInput.value))
+  svg_table.height(parseInt(hInput.value))
+  table_rect.width(svg_table.width() + 2)
+  table_rect.height(svg_table.height() + 2)
+  viewport.node.setAttribute(
+    'viewBox',
+    `0 0 ${svg_table.width()} ${svg_table.height()}`
+  )
+
+  ui.popdown_dialog('dialog_table')
   push_sync()
 }
   </script>
-  <div class="modal" id="dialog_bg">
+  <div class="modal" id="dialog_table">
     <button class="dialog_cancel btn modal-close"
-      data-dialog-id="dialog_bg"
+      data-dialog-id="dialog_table"
     >
       &#215;
     </button>
   <div class="modal-content">
+    <section>
+    <h1>Background</h1>
     Use a URL as a background.  Examples:
     <ul>
       <li>http://www.1kfa.com/table/svg/bg_topography.svg
@@ -911,12 +941,38 @@ function ui_change_background(evt) {
       value="http://www.1kfa.com/table/svg/bg_topography.svg"
     />
     <button class="btn" id="dialog_bg_submit"
-      onclick="ui_change_background(this)">
+      onclick="ui_change_background()">
       Change Background URL
     </button>
+    </section>
+    <section>
+    <h1>Size</h1>
+    <fieldset id="table_size_input_fields">
+    <label>
+      <span >Width:</span>
+      <input id="table_width_input" type="number"
+        min="500"
+        max="10000"
+        value="10"/>
+    </label>
+    <label>
+      <span >Height:</span>
+      <input id="table_height_input" type="number"
+        min="500"
+        max="10000"
+        value="10"/>
+    </label>
+    </fieldset>
+    <br />
+    <button id="dialog_table_size_submit"
+      class="btn"
+      onclick="ui_change_table_size()">
+      Change Size
+    </button>
+    </section>
   </div>
   </div>
-<!-- /BACKGROUND ============================================== /BACKGROUND -->
+<!-- /TABLE ============================================== /TABLE -->
 
 
 <!-- TEXT_INPUT  =============================================== TEXT_INPUT -->
