@@ -11,20 +11,10 @@
    height="200"
    viewBox="0 0 52.91 52.91"
    version="1.1"
-   id="svg9116"
+   id="clock_6"
+   data-pie-num="6"
    inkscape:version="0.92.3 (2405546, 2018-03-11)"
    sodipodi:docname="clock_6.svg">
-  <metadata
-     id="metadata25">
-    <rdf:RDF>
-      <cc:Work
-         rdf:about="">
-        <dc:format>image/svg+xml</dc:format>
-        <dc:type
-           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-      </cc:Work>
-    </rdf:RDF>
-  </metadata>
   <defs
      id="defs9110">
     <clipPath
@@ -57,27 +47,6 @@
          id="feGaussianBlur8967-7" />
     </filter>
   </defs>
-  <sodipodi:namedview
-     id="base"
-     pagecolor="#ffffff"
-     bordercolor="#666666"
-     borderopacity="1.0"
-     inkscape:pageopacity="0.0"
-     inkscape:pageshadow="2"
-     inkscape:zoom="1.4"
-     inkscape:cx="-262.17"
-     inkscape:cy="-7.68"
-     inkscape:document-units="mm"
-     inkscape:current-layer="layer1"
-     showgrid="false"
-     inkscape:window-width="1920"
-     inkscape:window-height="1025"
-     inkscape:window-x="0"
-     inkscape:window-y="27"
-     inkscape:window-maximized="1"
-     units="px"
-     inkscape:snap-bbox="true"
-     inkscape:snap-bbox-midpoints="true" />
   <script
      type="text/javascript"
      src="js/clock.js"
@@ -93,7 +62,7 @@ clock6 = {
     'Tick': {
       eventName: 'clock_tick',
       applicable: (elem) => {
-        return elem.querySelector('#pie10').style['opacity'] !== '1'
+        return elem.querySelector('#pie6').style['opacity'] !== '1'
       },
       uiLabel: (elem) => { return 'Tick clock forward' },
       handler: function(evt) {

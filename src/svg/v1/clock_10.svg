@@ -58,29 +58,6 @@
          id="feGaussianBlur2237" />
     </filter>
   </defs>
-  <sodipodi:namedview
-     id="base"
-     pagecolor="#ffffff"
-     bordercolor="#666666"
-     borderopacity="1.0"
-     inkscape:pageopacity="0.0"
-     inkscape:pageshadow="2"
-     inkscape:zoom="1.54"
-     inkscape:cx="241.49"
-     inkscape:cy="74.99"
-     inkscape:document-units="mm"
-     inkscape:current-layer="layer1"
-     showgrid="false"
-     inkscape:window-width="1920"
-     inkscape:window-height="1052"
-     inkscape:window-x="1920"
-     inkscape:window-y="0"
-     inkscape:window-maximized="1"
-     units="px"
-     inkscape:snap-bbox="true"
-     inkscape:snap-bbox-midpoints="true"
-     inkscape:snap-center="true"
-     inkscape:object-paths="true" />
   <script
      type="text/javascript"
      src="js/clock.js"
@@ -163,21 +140,9 @@ clock10 = {
        inkscape:connector-curvature="0" />
     <path
        style="opacity:1;fill:#0a0000;fill-opacity:0.4;stroke:none;stroke-width:4.02;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
-       d="M 25.62,3.63 A 23.38,23.38 0 0 0 12.34,7.97 L 25.62,26.24 Z"
-       id="pie10"
-       inkscape:label="#path857"
-       inkscape:connector-curvature="0" />
-    <path
-       style="opacity:1;fill:#0a0000;fill-opacity:0.4;stroke:none;stroke-width:4.02;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
        d="M 26.12,3.63 V 26.24 L 39.40,7.96 A 23.38,23.38 0 0 0 26.12,3.63 Z"
        id="pie1"
        inkscape:label="#path855"
-       inkscape:connector-curvature="0" />
-    <path
-       style="opacity:1;fill:#0a0000;fill-opacity:0.4;stroke:none;stroke-width:4.02;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
-       d="M 11.93,8.26 A 23.38,23.38 0 0 0 3.72,19.55 L 25.21,26.53 Z"
-       id="pie9"
-       inkscape:label="#path853"
        inkscape:connector-curvature="0" />
     <path
        style="opacity:1;fill:#0a0000;fill-opacity:0.4;stroke:none;stroke-width:4.02;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
@@ -187,21 +152,9 @@ clock10 = {
        inkscape:connector-curvature="0" />
     <path
        style="opacity:1;fill:#0a0000;fill-opacity:0.4;stroke:none;stroke-width:4.02;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
-       d="m 3.55,20.02 a 23.38,23.38 0 0 0 -1.07,6.98 23.38,23.38 0 0 0 1.09,6.98 L 25.06,27.01 Z"
-       id="pie8"
-       inkscape:label="#path849"
-       inkscape:connector-curvature="0" />
-    <path
-       style="opacity:1;fill:#0a0000;fill-opacity:0.4;stroke:none;stroke-width:4.02;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
        d="m 48.16,20.03 -21.48,6.98 21.50,6.98 a 23.38,23.38 0 0 0 1.07,-6.98 23.38,23.38 0 0 0 -1.09,-6.98 z"
        id="pie3"
        inkscape:label="#path847"
-       inkscape:connector-curvature="0" />
-    <path
-       style="opacity:1;fill:#0a0000;fill-opacity:0.4;stroke:none;stroke-width:4.02;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
-       d="m 25.21,27.48 -21.48,6.98 a 23.38,23.38 0 0 0 8.20,11.29 z"
-       id="pie7"
-       inkscape:label="#path845"
        inkscape:connector-curvature="0" />
     <path
        style="opacity:1;fill:#0a0000;fill-opacity:0.4;stroke:none;stroke-width:4.02;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
@@ -211,15 +164,39 @@ clock10 = {
        inkscape:connector-curvature="0" />
     <path
        style="opacity:1;fill:#0a0000;fill-opacity:0.4;stroke:none;stroke-width:4.02;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+       d="M 26.12,27.78 V 50.39 A 23.38,23.38 0 0 0 39.40,46.05 Z"
+       id="pie5"
+       inkscape:label="#path879"
+       inkscape:connector-curvature="0" />
+    <path
+       style="opacity:1;fill:#0a0000;fill-opacity:0.4;stroke:none;stroke-width:4.02;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
        d="M 25.62,27.78 12.33,46.06 a 23.38,23.38 0 0 0 13.28,4.32 z"
        id="pie6"
        inkscape:label="#path841"
        inkscape:connector-curvature="0" />
     <path
        style="opacity:1;fill:#0a0000;fill-opacity:0.4;stroke:none;stroke-width:4.02;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
-       d="M 26.12,27.78 V 50.39 A 23.38,23.38 0 0 0 39.40,46.05 Z"
-       id="pie5"
-       inkscape:label="#path879"
+       d="m 25.21,27.48 -21.48,6.98 a 23.38,23.38 0 0 0 8.20,11.29 z"
+       id="pie7"
+       inkscape:label="#path845"
+       inkscape:connector-curvature="0" />
+    <path
+       style="opacity:1;fill:#0a0000;fill-opacity:0.4;stroke:none;stroke-width:4.02;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+       d="m 3.55,20.02 a 23.38,23.38 0 0 0 -1.07,6.98 23.38,23.38 0 0 0 1.09,6.98 L 25.06,27.01 Z"
+       id="pie8"
+       inkscape:label="#path849"
+       inkscape:connector-curvature="0" />
+    <path
+       style="opacity:1;fill:#0a0000;fill-opacity:0.4;stroke:none;stroke-width:4.02;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+       d="M 11.93,8.26 A 23.38,23.38 0 0 0 3.72,19.55 L 25.21,26.53 Z"
+       id="pie9"
+       inkscape:label="#path853"
+       inkscape:connector-curvature="0" />
+    <path
+       style="opacity:1;fill:#0a0000;fill-opacity:0.4;stroke:none;stroke-width:4.02;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+       d="M 25.62,3.63 A 23.38,23.38 0 0 0 12.34,7.97 L 25.62,26.24 Z"
+       id="pie10"
+       inkscape:label="#path857"
        inkscape:connector-curvature="0" />
   </g>
 </svg>
