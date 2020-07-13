@@ -221,10 +221,109 @@ window.addEventListener('load', () => {
 
 <!-- ==================================================================== -->
 <style>
+.menu {
+  position: fixed;
+  top: 0px;
+}
+.menu button {
+  min-width: 7em;
+  min-height: 7em;
+  padding: 1em;
+  font-size: 8pt;
+}
+
+.menu-right button {
+  min-width: 150px;
+  min-height: 7em;
+  padding: 1em;
+  font-size: 8pt;
+}
+.menu .btn {
+  background-color: #030303;
+  opacity: 80%;
+  color: #f0f0f0;
+
+}
+
+.menu .btn:hover {
+  background-color: #000000;
+  opacity: 100%;
+  color: #ffffff;
+}
+
+.menu .btn:focus {
+  background-color: #a0a0a0;
+}
+
+body button[accessKey]::first-letter {
+  text-decoration: underline;
+}
+
+
+
+
 .menu-left {
   max-width: 100px;
   display: inline-block;
 }
+.menu-right {
+  display: flex;
+  flex-direction: column;
+  align-items: right;
+  justify-content: right;
+  max-width: 10em;
+  right: 0%;
+}
+@media only screen and (max-width: 900px) {
+  .menu {
+    top: auto;
+    bottom: 0;
+  }
+  .menu-right {
+    left: auto;
+    right: 0;
+  }
+}
+
+.menu .player_menu_button_mobile {
+display: none;
+}
+.collapsegroup > .collapsible {
+  overflow: hidden;
+  transition: max-height 0.2s ease-out;
+  margin: 0px;
+}
+.initial > .collapsible {
+  max-height: 1000px;
+}
+.collapsed > .collapsible {
+  max-height: 0px;
+  margin: 0px;
+}
+.collapsetoggle:after {
+  content:" ▾";
+}
+.collapsed > .collapsetoggle:after {
+  content:" ☰";
+}
+
+@media only screen and (max-width: 900px) {
+  .initial > .collapsible {
+    max-height: 0px;
+  }
+  .initial > .collapsetoggle:after {
+    content:" ☰";
+  }
+  .menu .player_menu_button_large {
+    display: none;
+    border: red;
+  }
+  .menu .player_menu_button_mobile {
+    display: block;
+  }
+}
+
+
 </style>
 <section class="menu menu-left buttongroup collapsegroup" id="buttongroup_table">
   <button id="quick_die_button" class="btn btn-small"
@@ -381,70 +480,6 @@ window.addEventListener('load', () => {
   })
 })
 </script>
-<style>
-.menu {
-  position: fixed;
-  top: 0px;
-}
-.menu button {
-  width: 100%;
-}
-.menu-right {
-  max-width: 150px;
-  display: inline-block;
-  right: 0%;
-}
-@media only screen and (max-width: 900px) {
-  .menu {
-    top: auto;
-    bottom: 0;
-  }
-  .menu-right {
-    left: auto;
-    right: 0;
-  }
-}
-
-.menu .player_menu_button_mobile {
-display: none;
-}
-.collapsegroup > .collapsible {
-  overflow: hidden;
-  transition: max-height 0.2s ease-out;
-  margin: 0px;
-}
-.initial > .collapsible {
-  max-height: 1000px;
-}
-.collapsed > .collapsible {
-  max-height: 0px;
-  margin: 0px;
-}
-.collapsetoggle:after {
-  content:" ▾";
-}
-.collapsed > .collapsetoggle:after {
-  content:" ☰";
-}
-
-@media only screen and (max-width: 900px) {
-  .initial > .collapsible {
-    max-height: 0px;
-  }
-  .initial > .collapsetoggle:after {
-    content:" ☰";
-  }
-  .menu .player_menu_button_large {
-    display: none;
-    border: red;
-  }
-  .menu .player_menu_button_mobile {
-    display: block;
-  }
-}
-
-
-</style>
 <section class="menu menu-right buttongroup collapsegroup initial" id="buttongroup_player">
 <button class="player_menu_button_large collapsetoggle btn" name="playermenu" >Player</button>
 <button class="player_menu_button_mobile collapsetoggle btn mobile" name="playermenu" >Player</button>
