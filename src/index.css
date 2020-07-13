@@ -21,7 +21,10 @@ body button[accessKey]::first-letter {
 }
 
 .nav-wrapper {
-  background-color: #cbc26d;
+  background-color: #0c0c0c;
+  opacity: 85%;
+  display: flex;
+  justify-content: space-between;
 }
 
 .modal h1 {

@@ -326,12 +326,27 @@ display: none;
 
 
 </style>
+<script>
+  // Do not scroll when swiping around on a menu
+  window.addEventListener('load', () => {
+    document.querySelectorAll('.menu').forEach(el => {
+      el.addEventListener('scroll', (evt) => {
+        evt.preventDefault()
+        evt.stopPropagation()
+      })
+      el.addEventListener('touchmove', (evt) => {
+        evt.preventDefault()
+        evt.stopPropagation()
+      })
+    })
+  })
+</script>
 <section class="menu menu-left buttongroup collapsegroup" id="buttongroup_table">
   <button id="quick_die_button" class="btn btn-small"
     onclick="quick_die_button_add()"
     title="Add one die of the most recent type"
     >
-    <img src="svg/v1/dice_d6.svg"  height="24" data-serialized-state=""/>
+    <img src="svg/v1/dice_d6.svg"  height="48" data-serialized-state=""/>
   </button>
   <script>
   function quick_die_button_add() {
@@ -800,11 +815,11 @@ function ui_popup_dialog_save() {
   return ui.popup_dialog({'data-dialog-id': 'dialog_save'})
 }
   </script>
-    <button class="btn dialog_cancel modal-close">
-      &#215;
-    </button>
     <nav class="dialog_nav"  id="save_nav">
     <div class="nav-wrapper">
+      <button class="btn dialog_cancel modal-close">
+        &#215;
+      </button>
       <ul class="left">
         <li><a href="#copy_and_paste">Copy/Paste</a></li>
         <li><a href="#local">Local storage</a></li>
@@ -886,13 +901,13 @@ function ui_popup_dialog_load() {
   return ui.popup_dialog({'data-dialog-id': 'dialog_load'})
 }
   </script>
+    <nav class="dialog_nav" id="load_nav">
+    <div class="nav-wrapper">
     <button class="dialog_cancel btn modal-close"
       data-dialog-id="dialog_load"
     >
       &#215;
     </button>
-    <nav class="dialog_nav" id="load_nav">
-    <div class="nav-wrapper">
       <ul class="left">
         <li><a href="#copy_and_paste">Copy/Paste</a></li>
         <li><a href="#upload">Upload file</a></li>
@@ -1237,13 +1252,13 @@ function ui_submit_dice(section) {
 }
 
     </script>
-    <button class="dialog_cancel btn modal-close"
-      data-dialog-id="dialog_dice"
-    >
-      &#215;
-    </button>
     <nav class="dialog_nav" id="dialog_dice_nav">
     <div class="nav-wrapper">
+      <button class="dialog_cancel btn modal-close"
+        data-dialog-id="dialog_dice"
+      >
+        &#215;
+      </button>
       <ul class="left">
         <li><a href="#standard">Standard Dice</a></li>
         <li><a href="#sw">SW / Genesys Dice</a></li>
@@ -2164,19 +2179,19 @@ function ui_submit_card() {
 
 <!-- CONTRIBUTE =============================================== CONTRIBUTE -->
   <div class="modal" id="dialog_contribute">
-    <button class="dialog_cancel btn modal-close"
-      data-dialog-id="dialog_contribute"
-    >
-      &#215;
-    </button>
    <b>Did Togetherness Table help you today?</b>
    <p>If you enjoy this tool, you can spread the love:</p>
     <nav class="dialog_nav" id="contribute_nav">
     <div class="nav-wrapper">
+      <button class="dialog_cancel btn modal-close"
+        data-dialog-id="dialog_contribute"
+      >
+        &#215;
+      </button>
       <ul class="left">
         <li><a href="#surf">Surf the geekring</a></li>
-        <li><a href="#recognize">Give some recognition</a></li>
-        <li><a href="#develop">Contribute to the codebase</a></li>
+        <li><a href="#recognize">Spread the word</a></li>
+        <li><a href="#develop">Contribute time</a></li>
         <li><a href="#donate">Donate to related causes</a></li>
         <li><a href="#controls">Help with controls</a></li>
       </ul>
