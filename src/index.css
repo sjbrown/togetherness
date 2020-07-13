@@ -1,4 +1,12 @@
+html {
+  height: 100%;
+}
+
 body {
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  flex-direction: column;
   padding-left: 0px;
   padding-right: 0px;
 }
@@ -62,14 +70,6 @@ dialog nav a {
 dialog h1 {
   font-size: larger;
   font-weight: bold;
-}
-
-#gamearea {
-  background-color: #efe;
-  min-width: 80%;
-  min-height: 60%;
-  /*ddheight: 500px;
-  */
 }
 
 .static {
