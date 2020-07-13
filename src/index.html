@@ -180,12 +180,6 @@ function zoom(inOrOut) {
   )
 }
 
-function updateColorSample(target) {
-  el = target.parentNode.querySelector('.colorsample')
-  el.style.setProperty('border', 'solid thin black')
-  el.style.setProperty('color', target.value)
-}
-
 function downKey(e) {
   if (e.target.tagName.toLowerCase() !== 'body') { return }
   if (e.altKey || e.shiftKey || e.metaKey || e.ctrlKey) { return }
@@ -758,10 +752,8 @@ function ui_change_profile(evt) {
   if (!name_input.value) {
     return;
   }
-  col_elem = color_input.parentNode.querySelector('.colorsample')
-  color = col_elem.style.color
   localStorage.setItem('profile_name', name_input.value)
-  localStorage.setItem('profile_color', color)
+  localStorage.setItem('profile_color', color_input.value)
   load_profile_ui()
   ui.popdown_dialog('dialog_profile')
   net_fire({ type: 'change_profile', data: name_input.value })
@@ -778,7 +770,6 @@ function load_profile_ui() {
   input.value = name
   input = document.querySelector('#profile_input_color')
   input.value = color
-  updateColorSample(input)
   profile_bs = document.querySelector('#profile_button_span')
   document.querySelectorAll('#profile_button > .colorsample').forEach((el) => {
     el.style.color = color
@@ -793,10 +784,10 @@ function load_profile_ui() {
   <div class="modal-content">
     <label for="profile_input_name">Name</label>
     <input id="profile_input_name" type="text" value="" />
-    <label for="profile_input_color">Color <span class="colorsample">■</span></label>
-    <input id="profile_input_color" type="text" value="#ffffff"
-           onKeyUp="updateColorSample(this)"
+    <label for="profile_input_color">Color
+    <input id="profile_input_color" type="color" value="#ffffff"
     />
+    </label>
     <br />
     <button class="btn" id="dialog_profile_submit"
       onclick="ui_change_profile(this)">
@@ -1663,10 +1654,9 @@ function ui_submit_rect(evt) {
     <label for="rect_input_height">Height</label>
     <input id="rect_input_height" type="text" value="50"/>
     <br />
-    <label for="rect_input_color">Color <span class="colorsample">■</span></label>
-    <input id="rect_input_color" type="text" value="#ffff00"
-           onKeyUp="updateColorSample(this)"
-    />
+    <label for="rect_input_color">Color
+    <input id="rect_input_color" type="color" value="#ffff00" />
+    </label>
     <br />
     <button id="dialog_submit" onclick="ui_submit_rect(this)"
       class="btn modal-close">
@@ -1676,115 +1666,6 @@ function ui_submit_rect(evt) {
   </div>
 
 <!-- END RECT =================================================== END RECT -->
-
-
-<!-- RANDOM_TABLE =========================================== RANDOM_TABLE -->
-
-  <div class="modal" id="dialog_random_table">
-    <script>
-
-function make_random_table(attrs, content) {
-  var padding = 8
-  var text = svg_table.plain('')
-  var tspan = text.tspan(content)
-  text.attr(Object.assign({
-    'data-app-class': 'random_table',
-    id: 'random_table_' + base32.short_id(),
-    fill: '#000000',
-    stroke: 'black',
-    x: 0,
-    y: 0,
-    'stroke-opacity': 0,
-    'font-weight': 'normal',
-    'font-size': '12pt',
-  }, attrs))
-  var rbox = text.rbox()
-  text.y(0)
-  text.x(padding/2)
-
-  var rect = svg_table.rect()
-  rect.attr(Object.assign({
-    id: 'rect_' + text.attr('id'), // special ID
-    rx: 5,
-    ry: 5,
-    fill: '#ffffff',
-    stroke: 'black',
-    'fill-opacity': 0.5,
-    'stroke-opacity': 0.5,
-    'stroke-width': 1,
-  }, {
-    width: rbox.width + padding,
-    height: rbox.height
-  }))
-  rect.addClass('text-rect')
-
-  var nest = ui.make_nest({
-    'id': 'nest_' + text.attr('id'), // special ID
-    'data-nest-for': 'text',
-    x: 0,
-    y: 0,
-    width: rect.width(),
-    height: rect.height() * 2,
-  })
-  nest.addClass('draggable-group')
-  rect.y(rect.y() + (rect.height()/2))
-  nest.add(rect)
-  text.y(text.y() + (rect.height()/2))
-  nest.add(text)
-
-  ui.hookup_ui(nest.node)
-  nest.node.dataset.appNamespaces = 'text_verbs'
-  ui.hookup_menu_actions(nest.node)
-  return nest;
-}
-
-function ui_submit_random_table(evt) {
-  c = byId('random_table_input_content').value;
-
-  color = byId('random_table_input_color').value;
-  if (!c || !color ) {
-    return;
-  }
-  var random_table = add_object(
-      'svg/v1/random_table.svg',
-      {
-        'serializedState': { content: c },
-        'color': color,
-      },
-    )
-  byId('random_table_input_content').value = ''
-  ui.popdown_dialog('dialog_random_table')
-  //net_fire({ type: 'create', data: serialize(random_table) })
-  push_sync()
-}
-
-    </script>
-    <button class="dialog_cancel btn modal-close"
-      data-dialog-id="dialog_random_table"
-    >
-      &#215;
-    </button>
-  <div class="modal-content">
-    <label for="random_table_input_content">Content</label>
-    <textarea id="random_table_input_content" >
-    Option 1
-    Option 2
-    Option 3
-    </textarea>
-    <br />
-    <label for="random_table_input_color">Color <span class="colorsample">■</span></label>
-    <input id="random_table_input_color" type="text" value="#1f1f1f"
-           onKeyUp="updateColorSample(this)"
-    />
-    <br />
-    <button id="dialog_submit" onclick="ui_submit_random_table(this)"
-      class="btn modal-close">
-      Create
-    </button>
-  </div>
-  </div>
-
-<!-- END RANDOM_TABLE =================================== END RANDOM_TABLE -->
 
 
 <!-- TEXT =========================================================== TEXT -->
@@ -1885,10 +1766,10 @@ function ui_submit_text(evt) {
     <label for="text_input_content">Content</label>
     <input id="text_input_content" type="text" value="" Placeholder="Hello World"/>
     <br />
-    <label for="text_input_color">Color <span class="colorsample">■</span></label>
-    <input id="text_input_color" type="text" value="#ffff00"
-           onKeyUp="updateColorSample(this)"
+    <label for="text_input_color">Color
+    <input id="text_input_color" type="color" value="#ffff00"
     />
+    </label>
     <br />
     <button id="dialog_submit" onclick="ui_submit_text(this)"
       class="btn modal-close">
@@ -1982,10 +1863,10 @@ function ui_submit_ellipse(evt) {
     <label for="ellipse_input_height">Height</label>
     <input id="ellipse_input_height" type="text" value="50"/>
     <br />
-    <label for="ellipse_input_color">Color <span class="colorsample">■</span></label>
-    <input id="ellipse_input_color" type="text" value="#ffff00"
-           onKeyUp="updateColorSample(this)"
+    <label for="ellipse_input_color">Color
+    <input id="ellipse_input_color" type="color" value="#ffff00"
     />
+    </label>
     <br />
     <button id="dialog_submit" onclick="ui_submit_ellipse(this)"
       class="btn modal-close">
