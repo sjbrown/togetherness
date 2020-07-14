@@ -308,12 +308,10 @@ const ui = {
 
     submenu = byId('object_actions')
     header = byId('object_actions_header')
-    mobile_header = document.querySelector('#object_actions_header.mobile')
     submenu.querySelectorAll('.cloned-button').forEach((btn) => {
       btn.remove()
     })
     header.innerText = 'Select dice by clicking on them; roll by double-clicking; zoom with Ctrl-wheel'
-    mobile_header.innerText = 'Select dice by clicking on them; roll by double-clicking'
 
     template = byId('template_object_actions')
     function makeButton(elemNode, actionMenu, title) {
@@ -343,7 +341,6 @@ const ui = {
       actionMenu = getFullMenuForElement(elemNode)
       if (numMarked === 1) {
         header.innerText = g(elemNode, 'data-orig-name')
-        mobile_header.innerText = g(elemNode, 'data-orig-name')
         //#header.innerText = g(elemNode, 'data-name')
 
         Object.keys(actionMenu).map((title) => {
@@ -359,7 +356,6 @@ const ui = {
 
       } else { // more than 1
         header.innerText = numMarked + ' objects selected'
-        mobile_header.innerText = numMarked + ' objects selected'
         Object.keys(actionMenu).map((title) => {
           if (i === 1) { // the first one sets up the 'buttons' object
             buttons[title] = {
@@ -400,7 +396,7 @@ const ui = {
       buttonRecord.clickEvents.forEach((handler) => {
         buttonRecord.btn.addEventListener('click', handler)
       })
-      submenu.appendChild(buttonRecord.btn)
+      template.parentElement.appendChild(buttonRecord.btn)
       // Hookup hotkeys
       accessKey = buttonRecord.btn.innerText[0].toLocaleLowerCase()
       if (document.querySelector('[accessKey=' + accessKey + ']') === null) {

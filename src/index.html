@@ -215,7 +215,11 @@ window.addEventListener('load', () => {
 
 <!-- ==================================================================== -->
 <style>
-.menu {
+.menu-left {
+  position: fixed;
+  top: 0px;
+}
+.menu-right {
   position: fixed;
   top: 0px;
 }
@@ -236,22 +240,18 @@ window.addEventListener('load', () => {
   background-color: #030303;
   opacity: 80%;
   color: #f0f0f0;
-
 }
-
 .menu .btn:hover {
   background-color: #000000;
   opacity: 100%;
   color: #ffffff;
 }
-
 .menu .btn:focus {
   background-color: #a0a0a0;
 }
 .menu button[accessKey]::first-letter {
   text-decoration: underline;
 }
-
 .menu-left {
   max-width: 100px;
   display: inline-block;
@@ -287,6 +287,7 @@ display: none;
   overflow: hidden;
   transition: max-height 0.2s ease-out;
   margin: 0px;
+  border: none;
 }
 .initial > .collapsible {
   max-height: 1000px;
@@ -572,7 +573,67 @@ window.addEventListener('load', () => {
 <!-- ==================================================================== -->
 <!-- ==================================================================== -->
 
+<!-- =============OBJECT ACTIONS ==================== -->
+<style>
+.central_collapser {
+  text-align: center;
+  position: fixed;
+  top: 0px;
+  left: 25%;
+}
+.central_collapser .collapsetoggle {
+  width: 100%;
+  background-color: rgb(0,0,0,0);
+  vertical-align: middle;
+  border: none;
+  display: inline-block;
+  border-bottom: 1px solid rgb(200,200,200,0.5);
+}
+#object_actions {
+  background-color: #030303;
+  opacity: 80%;
+  color: #f0f0f0;
+}
+#object_actions_header {
+  font-size: larger;
+  padding: 0px 10px;
+}
+@media only screen and (max-width: 900px) {
+  #object_actions {
+    position: fixed;
+    max-width: 200px;
+  }
+  .central_collapser .collapsetoggle {
+    min-height: 25px;
+  }
+  #object_actions_header {
+    font-size: normal;
+    margin: 4px 0px;
+    line-height: 100%;
+  }
+}
+</style>
+<script>
+window.addEventListener('load', () => {
+  document.querySelector('.central_collapser .collapsetoggle')
+  .addEventListener('click', (e) => {
+      cgroup = e.target.closest('.collapsegroup')
+      cgroup.classList.toggle('active')
+      cgroup.classList.toggle('collapsed')
+  })
+})
+</script>
+<div id="object_actions" class="central_collapser collapsegroup">
+  <button class="collapsetoggle" name="toggle_object_actions"></button>
+  <div class="collapsible menu menu-center">
+    <h3 id="object_actions_header">Select objects by clicking on them</h3>
+    <template id="template_object_actions">
+      <button class="btn btn-large">Button label</button>
+    </template>
+  </div>
+</div>
 
+<!-- =========================FOOTER==================== -->
 <style>
 
 #footer {
@@ -592,8 +653,8 @@ window.addEventListener('load', () => {
 
 .footerbar.inactive {
   animation: slide-out 0.5s forwards;
-  transform: translateY(50%);
   visibility: collapse;
+  padding: 0px 0px;
 }
 
 .footerbar {
@@ -621,52 +682,6 @@ window.addEventListener('load', () => {
 
 </style>
   <div id="footer">
-    <!-- =============OBJECT ACTIONS ==================== -->
-    <div id="object_actions" class="footerbar graybg">
-    <script>
-    window.addEventListener('load', () => {
-      document.querySelector('#object_actions_header.mobile')
-      .addEventListener('click', (e) => {
-        e.target.style.setProperty('display', 'none')
-      })
-    })
-    </script>
-    <style>
-    #object_actions_header {
-      font-size: larger;
-      margin-right: 40px;
-    }
-    #object_actions_header.mobile {
-      display: none;
-    }
-    @media only screen and (max-width: 900px) {
-      #object_actions {
-        position: fixed;
-        top: 20%;
-        left: 0;
-        max-width: 200px;
-        background-color: #00000000;
-      }
-      #object_actions .btn-large {
-        min-width: 120px;
-        height: 34px;
-        line-height: 34px;
-        font-size: 13px;
-      }
-      #object_actions_header {
-        display: none;
-      }
-      #object_actions_header.mobile {
-        display: inline;
-      }
-    }
-    </style>
-        <h3 id="object_actions_header">Select objects by clicking on them</h3>
-        <h3 id="object_actions_header" class="mobile">Select objects by clicking on them</h3>
-      <template id="template_object_actions">
-        <button class="btn btn-large">Button label</button>
-      </template>
-    </div>
     <!-- =============SHARE URL BAR ==================== -->
     <div id="share_url_bar" class="inactive footerbar whitebg">
     <style>
@@ -723,7 +738,7 @@ window.addEventListener('load', () => {
       </table>
     </div>
     <!-- =================================DEBUG======================= -->
-    <div id="debug_bar" class="footerbar graybg debug_none">
+    <div id="debug_bar" class="footerbar inactive graybg debug_none">
     <script>
     window.addEventListener('load', () => {
       let q = new URLSearchParams(window.location.search)
@@ -731,6 +746,7 @@ window.addEventListener('load', () => {
         DEBUG = 1
         let bar = document.getElementById('debug_bar')
         bar.classList.remove('debug_none')
+        bar.classList.remove('inactive')
       }
     })
     </script>
