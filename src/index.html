@@ -296,8 +296,8 @@ window.addEventListener('load', () => {
 .hudmenu-left {
   border-top-right-radius: 10px;
   border-bottom-right-radius: 10px;
-  max-width: 75px;
-  display: inline-block;
+  display: flex;
+  flex-direction: row;
 }
 .hudmenu-right {
   border-top-left-radius: 10px;
@@ -312,6 +312,24 @@ window.addEventListener('load', () => {
 .hudmenu-top {
   border-bottom-left-radius: 10px;
   border-bottom-right-radius: 10px;
+}
+
+.hudmenu-left .collapsible {
+  max-width: 75px;
+  display: flex;
+  flex-direction: column;
+}
+.hudmenu-left .collapsetoggle {
+  padding: 5px;
+  height: 100%;
+  min-width: 10px;
+  max-width: 15px;
+  border: none;
+  border-right: 1px solid rgb(200,200,200,0.5);
+}
+
+.hudmenu-left .collapsetoggle:after {
+  content:" 🞂";
 }
 
 @media only screen and (max-width: 900px) {
@@ -329,6 +347,27 @@ window.addEventListener('load', () => {
   #hud_overlay_right {
     justify-content: flex-end;
   }
+
+  .hudmenu-left {
+    border-top-right-radius: 10px;
+    border-top-left-radius: 10px;
+    border-bottom-right-radius: 0px;
+    display: flex;
+    flex-direction: column-reverse;
+  }
+  .hudmenu-left .collapsetoggle {
+    height: 20px;
+    padding: 5px;
+    width: 100%;
+    min-width: 100%;
+    max-width: auto;
+    border: none;
+    border-top: 1px solid rgb(200,200,200,0.5);
+  }
+  .hudmenu-left .collapsetoggle:after {
+    content:" 🞁";
+  }
+
 }
 
 .hudmenu button {
@@ -409,147 +448,151 @@ display: none;
 
 </style>
 <script>
-  // Do not scroll when swiping around on a menu
-  window.addEventListener('load', () => {
-    document.querySelectorAll('.hudmenu').forEach(el => {
-      el.addEventListener('scroll', (evt) => {
-        evt.preventDefault()
-        evt.stopPropagation()
-      })
-      el.addEventListener('touchmove', (evt) => {
-        evt.preventDefault()
-        evt.stopPropagation()
-      })
+// Do not scroll when swiping around on a menu
+window.addEventListener('load', () => {
+  document.querySelectorAll('.hudmenu').forEach(el => {
+    el.addEventListener('scroll', (evt) => {
+      evt.preventDefault()
+      evt.stopPropagation()
+    })
+    el.addEventListener('touchmove', (evt) => {
+      evt.preventDefault()
+      evt.stopPropagation()
     })
   })
+  document.querySelectorAll('.hudmenu .collapsetoggle').forEach(el => {
+    el.addEventListener('click', (e) => {
+      cgroup = e.target.closest('.collapsegroup')
+      cgroup.classList.toggle('active')
+      cgroup.classList.toggle('collapsed')
+    })
+  })
+})
+</script>
 </script>
 <section class="hudmenu hudmenu-left buttongroup collapsegroup" id="buttongroup_table">
-  <button id="quick_die_button" class="btn btn-small"
-    onclick="quick_die_button_add()"
-    title="Add one die of the most recent type"
-    >
-    <img src="svg/v1/dice_d6.svg"  height="48" data-serialized-state=""/>
-  </button>
-  <script>
-  function quick_die_button_add() {
-    url = document.querySelector('#quick_die_button img').src
-    add_object( url, { 'center': [100, 100] })
-  }
-  window.addEventListener('load', () => {
-    window.addEventListener('create', (e) => {
-      redDot = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg=='
-      newSrc = e.detail.createdEl.dataset.appUrl || redDot
-      document.querySelector('#quick_die_button img').src = newSrc
+  <button class="collapsetoggle" name="toggle_object_actions"></button>
+  <div class="collapsible">
+    <button id="quick_die_button" class="btn btn-small"
+      onclick="quick_die_button_add()"
+      title="Add one die of the most recent type"
+      >
+      <img src="svg/v1/dice_d6.svg"  height="48" data-serialized-state=""/>
+    </button>
+    <script>
+    function quick_die_button_add() {
+      url = document.querySelector('#quick_die_button img').src
+      add_object( url, { 'center': [100, 100] })
+    }
+    window.addEventListener('load', () => {
+      window.addEventListener('create', (e) => {
+        redDot = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg=='
+        newSrc = e.detail.createdEl.dataset.appUrl || redDot
+        document.querySelector('#quick_die_button img').src = newSrc
+      })
     })
-  })
-
-  </script>
-
-  <div id="dice_button_wrapper">
-  <style>
-  #dice_button_slide {
-    display: none;
-  }
-  #dice_button_slide td {
-    padding: 0px;
-  }
-  #dice_button_wrapper:hover #dice_button_slide {
-    display: inline-block;
-    position: absolute;
-    //transform: translate(100px);
-  }
-  </style>
-  <button id="dice_dialog_button" class="btn btn-small modal-trigger"
-    accesskey="d"
-    data-target="dialog_dice"
-    data-dialog-id="dialog_dice">
-    + <u>D</u>ice
-  </button>
-  <div id="dice_button_slide">
-      <table><tr>
-      <td>
-        <button class="btn" id="dice_button_d4"
-          onclick="add_object('svg/v1/dice_d4.svg', { center: [100,100] })"
-          >
-          <img src="svg/v1/dice_d4.svg" height="48" />
-        </button>
-      </td>
-      <td>
-        <button class="btn" id="dice_button_d6"
-          onclick="add_object('svg/v1/dice_d6.svg', { center: [100,100] })"
-          >
-          <img src="svg/v1/dice_d6.svg" height="48" />
-        </button>
-      </td>
-      <td>
-        <button class="btn" id="dice_button_d8"
-          onclick="add_object('svg/v1/dice_d8.svg', { center: [100,100] })"
-          >
-          <img src="svg/v1/dice_d8.svg" height="48" />
-        </button>
-      </td>
-      <td>
-        <button class="btn" id="dice_button_d10"
-          onclick="add_object('svg/v1/dice_d10.svg', { center: [100,100] })"
-          >
-          <img src="svg/v1/dice_d10.svg" height="48" />
-        </button>
-      </td>
-      <td>
-        <button class="btn" id="dice_button_d12"
-          onclick="add_object('svg/v1/dice_d12.svg', { center: [100,100] })"
-          >
-          <img src="svg/v1/dice_d12.svg" height="48" />
-        </button>
-      </td>
-      <td>
-        <button class="btn" id="dice_button_d20"
-          onclick="add_object('svg/v1/dice_d20.svg', { center: [100,100] })"
-          >
-          <img src="svg/v1/dice_d20.svg" height="48" />
-        </button>
-      </td>
-      </tr></table>
+    </script>
+    <div id="dice_button_wrapper">
+    <style>
+    #dice_button_slide {
+      display: none;
+    }
+    #dice_button_slide td {
+      padding: 0px;
+    }
+    #dice_button_wrapper:hover #dice_button_slide {
+      display: inline-block;
+      position: absolute;
+    }
+    </style>
+    <button id="dice_dialog_button" class="btn btn-small modal-trigger"
+      accesskey="d"
+      data-target="dialog_dice"
+      data-dialog-id="dialog_dice">
+      + <u>D</u>ice
+    </button>
+    <div id="dice_button_slide">
+        <table><tr>
+        <td>
+          <button class="btn" id="dice_button_d4"
+            onclick="add_object('svg/v1/dice_d4.svg', { center: [100,100] })"
+            >
+            <img src="svg/v1/dice_d4.svg" height="48" />
+          </button>
+        </td>
+        <td>
+          <button class="btn" id="dice_button_d6"
+            onclick="add_object('svg/v1/dice_d6.svg', { center: [100,100] })"
+            >
+            <img src="svg/v1/dice_d6.svg" height="48" />
+          </button>
+        </td>
+        <td>
+          <button class="btn" id="dice_button_d8"
+            onclick="add_object('svg/v1/dice_d8.svg', { center: [100,100] })"
+            >
+            <img src="svg/v1/dice_d8.svg" height="48" />
+          </button>
+        </td>
+        <td>
+          <button class="btn" id="dice_button_d10"
+            onclick="add_object('svg/v1/dice_d10.svg', { center: [100,100] })"
+            >
+            <img src="svg/v1/dice_d10.svg" height="48" />
+          </button>
+        </td>
+        <td>
+          <button class="btn" id="dice_button_d12"
+            onclick="add_object('svg/v1/dice_d12.svg', { center: [100,100] })"
+            >
+            <img src="svg/v1/dice_d12.svg" height="48" />
+          </button>
+        </td>
+        <td>
+          <button class="btn" id="dice_button_d20"
+            onclick="add_object('svg/v1/dice_d20.svg', { center: [100,100] })"
+            >
+            <img src="svg/v1/dice_d20.svg" height="48" />
+          </button>
+        </td>
+        </tr></table>
+    </div>
+    </div>
+    <button id="cards_dialog_button" class="btn btn-small modal-trigger"
+      accesskey="c"
+      data-target="dialog_cards"
+      data-dialog-id="dialog_cards">
+    + <u>C</u>ards
+    </button>
+  <!--
+    <button class="btn" onclick="add_object('svg/v1/deckahedron.svg')">
+    + Deckahedron
+    </button>
+    <button id="pbta_button" class="btn btn-small modal-trigger"
+      onclick="add_object('svg/v1/pbta.svg')"
+      >
+      + pbta
+    </button>
+    -->
+    <button id="clocks_dialog_button" class="btn btn-small modal-trigger"
+      accesskey="k"
+      data-target="dialog_clocks"
+      data-dialog-id="dialog_clocks">
+      + Cloc<u>k</u>s
+    </button>
+    <button id="other_button" class="btn btn-small modal-trigger"
+      accesskey="o"
+      data-target="dialog_other"
+      data-dialog-id="dialog_other">
+      + <u>O</u>ther
+    </button>
+    <button id="table_button" class="btn btn-small"
+      onclick="ui_popup_dialog_table()"
+      accesskey="t"
+      >
+      <u>T</u>able
+    </button>
   </div>
-  </div>
-
-  <button id="cards_dialog_button" class="btn btn-small modal-trigger"
-    accesskey="c"
-    data-target="dialog_cards"
-    data-dialog-id="dialog_cards">
-  + <u>C</u>ards
-  </button>
-<!--
-  <button class="btn" onclick="add_object('svg/v1/deckahedron.svg')">
-  + Deckahedron
-  </button>
-
-  <button id="pbta_button" class="btn btn-small modal-trigger"
-    onclick="add_object('svg/v1/pbta.svg')"
-    >
-    + pbta
-  </button>
-  -->
-  <button id="clocks_dialog_button" class="btn btn-small modal-trigger"
-    accesskey="k"
-    data-target="dialog_clocks"
-    data-dialog-id="dialog_clocks">
-    + Cloc<u>k</u>s
-  </button>
-
-  <button id="other_button" class="btn btn-small modal-trigger"
-    accesskey="o"
-    data-target="dialog_other"
-    data-dialog-id="dialog_other">
-    + <u>O</u>ther
-  </button>
-
-  <button id="table_button" class="btn btn-small"
-    onclick="ui_popup_dialog_table()"
-    accesskey="t"
-    >
-    <u>T</u>able
-  </button>
 
 </section>
 </div> <!-- end hud_overlay_left -->
@@ -656,16 +699,6 @@ button.collapsetoggle {
   }
 }
 </style>
-<script>
-window.addEventListener('load', () => {
-  document.querySelector('.hudmenu-top .collapsetoggle')
-  .addEventListener('click', (e) => {
-      cgroup = e.target.closest('.collapsegroup')
-      cgroup.classList.toggle('active')
-      cgroup.classList.toggle('collapsed')
-  })
-})
-</script>
 <div id="object_actions" class="hudmenu hudmenu-top collapsegroup">
   <button class="collapsetoggle" name="toggle_object_actions"></button>
   <div class="collapsible">
