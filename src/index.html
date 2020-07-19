@@ -215,48 +215,97 @@ window.addEventListener('load', () => {
 
 <!-- ==================================================================== -->
 <style>
-.menu-left {
-  position: fixed;
-  top: 0px;
-}
-.menu-right {
-  position: fixed;
-  top: 0px;
-}
-.menu button {
-  min-width: 7em;
-  min-height: 7em;
-  padding: 1em;
-  font-size: 8pt;
+#gamearea {
+  max-width: 100%;
+  min-width: 80%;
+  min-height: 60%;
+  background-color: #efe;
+  margin-left: 80px;
 }
 
-.menu-right button {
-  min-width: 150px;
-  min-height: 7em;
-  padding: 1em;
-  font-size: 8pt;
+
+@media screen and (max-width: 900px) {
+  #gamearea {
+    max-width: 100vw;
+    height: 100vh;
+    margin-left: 0px;
+  }
 }
-.menu .btn {
+</style>
+
+  <div id="gamearea" contextmenu="gamemenu">
+  <!--
+  <svg id="svgdoc" width="100%" height="500" onload="initDraggable()">
+  </svg>
+  -->
+  <svg width="0" height="0">
+  <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
+    <feColorMatrix id="recolorize-filter-matrix" type="matrix"
+       values="0.9 0.0 0.0 0.0  0.0
+               0.9 0.0 0.0 0.0  0.0
+               0.9 0.0 0.0 0.0  0.0
+               0.0 0.0 0.0 1.0  0.0" />
+  </filter>
+  </svg>
+  </div>
+<!-- ==================================================================== -->
+<!-- ==================================================================== -->
+
+<!-- ==================================================================== -->
+<div class="hud_overlay" id="hud_overlay_left">
+<style>
+.hud_overlay {
+  z-index: 100;
+  pointer-events: none;
+}
+#hud_overlay_left {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+#hud_overlay_right {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+#hud_overlay_top {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: auto;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+}
+
+.hudmenu {
+  pointer-events: auto;
+  position: relative;
   background-color: #030303;
-  opacity: 80%;
-  color: #f0f0f0;
 }
-.menu .btn:hover {
-  background-color: #000000;
-  opacity: 100%;
-  color: #ffffff;
-}
-.menu .btn:focus {
-  background-color: #a0a0a0;
-}
-.menu button[accessKey]::first-letter {
-  text-decoration: underline;
-}
-.menu-left {
+
+.hudmenu-left {
+  border-top-right-radius: 5px;
+  border-bottom-right-radius: 5px;
   max-width: 100px;
   display: inline-block;
 }
-.menu-right {
+.hudmenu-right {
+  border-top-left-radius: 5px;
+  border-bottom-left-radius: 5px;
   display: flex;
   flex-direction: column;
   align-items: right;
@@ -265,22 +314,52 @@ window.addEventListener('load', () => {
   right: 0%;
 }
 @media only screen and (max-width: 900px) {
-  .menu {
+  .hudmenu {
     top: auto;
     bottom: 0;
   }
-  .menu-right {
+  .hudmenu-right {
     left: auto;
     right: 0;
   }
 }
+
+.hudmenu button {
+  min-width: 7em;
+  min-height: 7em;
+  padding: 1em;
+  font-size: 8pt;
+  background-color: #030303;
+}
+
+.hudmenu-right button {
+  min-width: 150px;
+  min-height: 7em;
+  padding: 1em;
+  font-size: 8pt;
+}
+.hudmenu .btn {
+  opacity: 80%;
+  color: #f0f0f0;
+}
+.hudmenu .btn:hover {
+  background-color: #000000;
+  opacity: 100%;
+  color: #ffffff;
+}
+.hudmenu .btn:focus {
+  background-color: #a0a0a0;
+}
+.hudmenu button[accessKey]::first-letter {
+  text-decoration: underline;
+}
 @media only screen and (max-height: 600px) {
-  .menu button {
+  .hudmenu button {
     min-height: 3em;
   }
 }
 
-.menu .player_menu_button_mobile {
+.hudmenu .player_menu_button_mobile {
 display: none;
 }
 .collapsegroup > .collapsible {
@@ -310,11 +389,11 @@ display: none;
   .initial > .collapsetoggle:after {
     content:" ☰";
   }
-  .menu .player_menu_button_large {
+  .hudmenu .player_menu_button_large {
     display: none;
     border: red;
   }
-  .menu .player_menu_button_mobile {
+  .hudmenu .player_menu_button_mobile {
     display: block;
   }
 }
@@ -324,7 +403,7 @@ display: none;
 <script>
   // Do not scroll when swiping around on a menu
   window.addEventListener('load', () => {
-    document.querySelectorAll('.menu').forEach(el => {
+    document.querySelectorAll('.hudmenu').forEach(el => {
       el.addEventListener('scroll', (evt) => {
         evt.preventDefault()
         evt.stopPropagation()
@@ -336,7 +415,7 @@ display: none;
     })
   })
 </script>
-<section class="menu menu-left buttongroup collapsegroup" id="buttongroup_table">
+<section class="hudmenu hudmenu-left buttongroup collapsegroup" id="buttongroup_table">
   <button id="quick_die_button" class="btn btn-small"
     onclick="quick_die_button_add()"
     title="Add one die of the most recent type"
@@ -465,9 +544,11 @@ display: none;
   </button>
 
 </section>
+</div> <!-- end hud_overlay_left -->
 
 
 <!-- ==================================================================== -->
+<div class="hud_overlay" id="hud_overlay_right">
 <script>
 window.addEventListener('load', () => {
   document.querySelector('.player_menu_button_large')
@@ -491,7 +572,7 @@ window.addEventListener('load', () => {
   })
 })
 </script>
-<section class="menu menu-right buttongroup collapsegroup initial" id="buttongroup_player">
+<section class="hudmenu hudmenu-right buttongroup collapsegroup initial" id="buttongroup_player">
 <button class="player_menu_button_large collapsetoggle btn" name="playermenu" >Player</button>
 <button class="player_menu_button_mobile collapsetoggle btn mobile" name="playermenu" >Player</button>
 <div class="collapsible">
@@ -531,55 +612,17 @@ window.addEventListener('load', () => {
 
 </div>
 </section>
+</div> <!-- end hud_overlay_right -->
 
 
 <!-- ==================================================================== -->
-<!-- ==================================================================== -->
-<style>
-#gamearea {
-  max-width: 100%;
-  min-width: 80%;
-  min-height: 60%;
-  background-color: #efe;
-  flex: 1 0 auto;
-  margin-left: 80px;
-}
 
-
-@media screen and (max-width: 900px) {
-  #gamearea {
-    max-width: 100vw;
-    height: 100vh;
-    margin-left: 0px;
-  }
-}
-</style>
-
-  <div id="gamearea" contextmenu="gamemenu">
-  <!--
-  <svg id="svgdoc" width="100%" height="500" onload="initDraggable()">
-  </svg>
-  -->
-  <svg width="0" height="0">
-  <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
-    <feColorMatrix id="recolorize-filter-matrix" type="matrix"
-       values="0.9 0.0 0.0 0.0  0.0
-               0.9 0.0 0.0 0.0  0.0
-               0.9 0.0 0.0 0.0  0.0
-               0.0 0.0 0.0 1.0  0.0" />
-  </filter>
-  </svg>
-  </div>
-<!-- ==================================================================== -->
-<!-- ==================================================================== -->
-
+<div class="hud_overlay" id="hud_overlay_top">
 <!-- =============OBJECT ACTIONS ==================== -->
 <style>
 .central_collapser {
   text-align: center;
-  position: fixed;
-  top: 0px;
-  left: 25%;
+  position: relative;
 }
 .central_collapser .collapsetoggle {
   width: 100%;
@@ -625,140 +668,15 @@ window.addEventListener('load', () => {
 </script>
 <div id="object_actions" class="central_collapser collapsegroup">
   <button class="collapsetoggle" name="toggle_object_actions"></button>
-  <div class="collapsible menu menu-center">
+  <div class="collapsible hudmenu hudmenu-top">
     <h3 id="object_actions_header">Select objects by clicking on them</h3>
     <template id="template_object_actions">
       <button class="btn btn-large">Button label</button>
     </template>
   </div>
 </div>
+</div> <!-- end hud_overlay_top -->
 
-<!-- =========================FOOTER==================== -->
-<style>
-
-#footer {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  min-width: 80%;
-  overflow: scroll;
-  max-height: 100px;
-}
-@media screen and (max-width: 1200px) {
-  #footer {
-    min-width: 100%;
-  }
-}
-
-
-.footerbar.inactive {
-  animation: slide-out 0.5s forwards;
-  visibility: collapse;
-  padding: 0px 0px;
-}
-
-.footerbar {
-  width: 100%;
-  padding: 4px 10px;
-  transition: background-color 2s;
-  transition: transform 2s;
-}
-
-.graybg {
-  background-color: #a0a0a0;
-}
-
-.bluebg {
-  background-color: rgb(0, 149, 221);
-}
-
-.whitebg {
-  background-color: #f0f0f0;
-}
-
-.footerbar h3 {
-  display: inline;
-}
-
-</style>
-  <div id="footer">
-    <!-- =============SHARE URL BAR ==================== -->
-    <div id="share_url_bar" class="inactive footerbar whitebg">
-    <style>
-
-     #share_url_bar td {
-       padding: 0px;
-       border-radius: 0px;
-     }
-     #share_url_bar tr {
-       border: 0px;
-     }
-     #share_url_label {
-       font-size: larger;
-       margin-right: 40px;
-     }
-    </style>
-      <table
-      title="Share this URL with your friends and have them join you"
-      >
-      <tr>
-      <td>
-      <span id="share_url_label">Share URL:</span>
-      </td>
-      <td>
-      <style>
-      #share_url {
-        font-family: monospace;
-        display: inline-block;
-        background-color: transparent;
-        border: none;
-        font-size: inherit;
-        height: inherit;
-        margin: inherit;
-
-      }
-      </style>
-      <input id="share_url" value="" />
-      </td>
-      <td>
-      <script>
-      function copyURLToClipboard() {
-        copyText = document.getElementById('share_url')
-        /* Select the text field */
-        copyText.select()
-        copyText.setSelectionRange(0, 99999) /*For mobile devices*/
-        document.execCommand("copy")
-      }
-      </script>
-      <button id="share_url_copy_button" class="btn btn-small"
-        onClick="copyURLToClipboard()"
-      >Copy URL</button>
-      </td>
-      </tr>
-      </table>
-    </div>
-    <!-- =================================DEBUG======================= -->
-    <div id="debug_bar" class="footerbar inactive graybg debug_none">
-    <script>
-    window.addEventListener('load', () => {
-      let q = new URLSearchParams(window.location.search)
-      if (q.get('debug') === '1') {
-        DEBUG = 1
-        let bar = document.getElementById('debug_bar')
-        bar.classList.remove('debug_none')
-        bar.classList.remove('inactive')
-      }
-    })
-    </script>
-    <style>
-    .debug_none {
-      display: none;
-    }
-    </style>
-        <pre id="debug_bar_log">
-        </pre>
-    </div>
-  </div>
 
 <!-- PROFILE  =============================================== PROFILE -->
   <script>
@@ -2241,6 +2159,134 @@ function dismissHintControls() {
      onclick="delete_marked(this)"
     ></menuitem>
   </menu>
+
+
+<!-- =========================FOOTER==================== -->
+<style>
+
+#footer {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 80%;
+  overflow: scroll;
+  max-height: 100px;
+}
+@media screen and (max-width: 1200px) {
+  #footer {
+    min-width: 100%;
+  }
+}
+
+
+.footerbar.inactive {
+  animation: slide-out 0.5s forwards;
+  visibility: collapse;
+  padding: 0px 0px;
+}
+
+.footerbar {
+  width: 100%;
+  padding: 4px 10px;
+  transition: background-color 2s;
+  transition: transform 2s;
+}
+
+.graybg {
+  background-color: #a0a0a0;
+}
+
+.bluebg {
+  background-color: rgb(0, 149, 221);
+}
+
+.whitebg {
+  background-color: #f0f0f0;
+}
+
+.footerbar h3 {
+  display: inline;
+}
+
+</style>
+  <div id="footer">
+    <!-- =============SHARE URL BAR ==================== -->
+    <div id="share_url_bar" class="inactive footerbar whitebg">
+    <style>
+
+     #share_url_bar td {
+       padding: 0px;
+       border-radius: 0px;
+     }
+     #share_url_bar tr {
+       border: 0px;
+     }
+     #share_url_label {
+       font-size: larger;
+       margin-right: 40px;
+     }
+    </style>
+      <table
+      title="Share this URL with your friends and have them join you"
+      >
+      <tr>
+      <td>
+      <span id="share_url_label">Share URL:</span>
+      </td>
+      <td>
+      <style>
+      #share_url {
+        font-family: monospace;
+        display: inline-block;
+        background-color: transparent;
+        border: none;
+        font-size: inherit;
+        height: inherit;
+        margin: inherit;
+
+      }
+      </style>
+      <input id="share_url" value="" />
+      </td>
+      <td>
+      <script>
+      function copyURLToClipboard() {
+        copyText = document.getElementById('share_url')
+        /* Select the text field */
+        copyText.select()
+        copyText.setSelectionRange(0, 99999) /*For mobile devices*/
+        document.execCommand("copy")
+      }
+      </script>
+      <button id="share_url_copy_button" class="btn btn-small"
+        onClick="copyURLToClipboard()"
+      >Copy URL</button>
+      </td>
+      </tr>
+      </table>
+    </div>
+    <!-- =================================DEBUG======================= -->
+    <div id="debug_bar" class="footerbar inactive graybg debug_none">
+    <script>
+    window.addEventListener('load', () => {
+      let q = new URLSearchParams(window.location.search)
+      if (q.get('debug') === '1') {
+        DEBUG = 1
+        let bar = document.getElementById('debug_bar')
+        bar.classList.remove('debug_none')
+        bar.classList.remove('inactive')
+      }
+    })
+    </script>
+    <style>
+    .debug_none {
+      display: none;
+    }
+    </style>
+        <pre id="debug_bar_log">
+        </pre>
+    </div>
+  </div>
 
 </body>
 </html>
