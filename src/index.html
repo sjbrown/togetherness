@@ -223,8 +223,9 @@ window.addEventListener('load', () => {
 }
 @media screen and (max-width: 900px) {
   #gamearea {
+    margin-top: 10px;
     max-width: 100vw;
-    height: 100vh;
+    height: calc(100vh - 10px);
   }
 }
 </style>
@@ -303,11 +304,7 @@ window.addEventListener('load', () => {
   border-top-left-radius: 10px;
   border-bottom-left-radius: 10px;
   display: flex;
-  flex-direction: column;
-  align-items: right;
-  justify-content: right;
-  max-width: 10em;
-  right: 0%;
+  flex-direction: row-reverse;
 }
 .hudmenu-top {
   border-bottom-left-radius: 10px;
@@ -319,6 +316,14 @@ window.addEventListener('load', () => {
   display: flex;
   flex-direction: column;
 }
+.hudmenu-right .collapsible {
+  max-width: 150px;
+  display: flex;
+  flex-direction: column;
+}
+.collapsetoggle {
+  line-height: 100%;
+}
 .hudmenu-left .collapsetoggle {
   padding: 5px;
   height: 100%;
@@ -327,9 +332,32 @@ window.addEventListener('load', () => {
   border: none;
   border-right: 1px solid rgb(200,200,200,0.5);
 }
+.hudmenu-right .collapsetoggle {
+  padding: 5px;
+  height: 100%;
+  min-width: 10px;
+  max-width: 15px;
+  border: none;
+  border-left: 1px solid rgb(200,200,200,0.5);
+}
 
 .hudmenu-left .collapsetoggle:after {
   content:" 🞂";
+}
+.hudmenu-right .collapsetoggle:after {
+  content:" 🞀";
+}
+.collapsed > .collapsible {
+  margin: 0px;
+}
+.hudmenu-left.collapsed > .collapsible {
+  max-width: 0px;
+}
+.hudmenu-right.collapsed > .collapsible {
+  max-width: 0px;
+}
+.hudmenu-top.collapsed > .collapsible {
+  max-height: 0px;
 }
 
 @media only screen and (max-width: 900px) {
@@ -355,17 +383,47 @@ window.addEventListener('load', () => {
     display: flex;
     flex-direction: column-reverse;
   }
+  .hudmenu-right {
+    border-top-right-radius: 10px;
+    border-top-left-radius: 10px;
+    border-bottom-left-radius: 0px;
+    display: flex;
+    flex-direction: column-reverse;
+  }
   .hudmenu-left .collapsetoggle {
     height: 20px;
     padding: 5px;
     width: 100%;
-    min-width: 100%;
+    min-width: 75px;
+    max-width: auto;
+    border: none;
+    border-top: 1px solid rgb(200,200,200,0.5);
+  }
+  .hudmenu-right .collapsetoggle {
+    height: 20px;
+    padding: 5px;
+    width: 100%;
+    min-width: 150px;
     max-width: auto;
     border: none;
     border-top: 1px solid rgb(200,200,200,0.5);
   }
   .hudmenu-left .collapsetoggle:after {
     content:" 🞁";
+  }
+  .hudmenu-right .collapsetoggle:after {
+    content:" 🞁";
+  }
+  .hudmenu-left.collapsed > .collapsible {
+    max-width: auto;
+    max-height: 0px;
+  }
+  .hudmenu-right.collapsed > .collapsible {
+    max-width: auto;
+    max-height: 0px;
+  }
+  .hudmenu-top.collapsed > .collapsible {
+    max-height: 0px;
   }
 
 }
@@ -380,10 +438,6 @@ window.addEventListener('load', () => {
 }
 
 .hudmenu-right button {
-  min-width: 150px;
-  min-height: 7em;
-  padding: 1em;
-  font-size: 8pt;
 }
 .hudmenu .btn {
   opacity: 80%;
@@ -406,45 +460,18 @@ window.addEventListener('load', () => {
   }
 }
 
-.hudmenu .player_menu_button_mobile {
-display: none;
-}
 .collapsegroup > .collapsible {
   overflow: hidden;
-  transition: max-height 0.2s ease-out;
+  transition: 0.2s ease-out;
   margin: 0px;
   border: none;
-}
-.initial > .collapsible {
-  max-height: 1000px;
-}
-.collapsed > .collapsible {
-  max-height: 0px;
-  margin: 0px;
 }
 .collapsetoggle:after {
   content:" ▾";
 }
 .collapsed > .collapsetoggle:after {
-  content:" ☰";
+  content:"☰";
 }
-
-@media only screen and (max-width: 900px) {
-  .initial > .collapsible {
-    max-height: 0px;
-  }
-  .initial > .collapsetoggle:after {
-    content:" ☰";
-  }
-  .hudmenu .player_menu_button_large {
-    display: none;
-    border: red;
-  }
-  .hudmenu .player_menu_button_mobile {
-    display: block;
-  }
-}
-
 
 </style>
 <script>
@@ -470,8 +497,8 @@ window.addEventListener('load', () => {
 })
 </script>
 </script>
-<section class="hudmenu hudmenu-left buttongroup collapsegroup" id="buttongroup_table">
-  <button class="collapsetoggle" name="toggle_object_actions"></button>
+<section class="hudmenu hudmenu-left collapsegroup" >
+  <button class="collapsetoggle" name="toggle_table_buttons"></button>
   <div class="collapsible">
     <button id="quick_die_button" class="btn btn-small"
       onclick="quick_die_button_add()"
@@ -600,32 +627,8 @@ window.addEventListener('load', () => {
 
 <!-- ==================================================================== -->
 <div class="hud_overlay" id="hud_overlay_right">
-<script>
-window.addEventListener('load', () => {
-  document.querySelector('.player_menu_button_large')
-  .addEventListener('click', (e) => {
-      cgroup = e.target.closest('.collapsegroup')
-      cgroup.classList.toggle('active')
-      if (cgroup.classList.contains('initial')) {
-        cgroup.classList.remove('initial')
-      }
-      cgroup.classList.toggle('collapsed')
-  })
-  document.querySelector('.player_menu_button_mobile')
-  .addEventListener('click', (e) => {
-      cgroup = e.target.closest('.collapsegroup')
-      cgroup.classList.toggle('active')
-      if (cgroup.classList.contains('initial')) {
-        cgroup.classList.remove('initial')
-      } else {
-        cgroup.classList.toggle('collapsed')
-      }
-  })
-})
-</script>
-<section class="hudmenu hudmenu-right buttongroup collapsegroup initial" id="buttongroup_player">
-<button class="player_menu_button_large collapsetoggle btn" name="playermenu" >Player</button>
-<button class="player_menu_button_mobile collapsetoggle btn mobile" name="playermenu" >Player</button>
+<section class="hudmenu hudmenu-right collapsegroup">
+<button class="collapsetoggle btn" name="playermenu"></button>
 <div class="collapsible">
 
   <button id="profile_button" class="btn btn-small modal-trigger"
@@ -689,8 +692,11 @@ button.collapsetoggle {
   padding: 0px 10px;
 }
 @media only screen and (max-width: 900px) {
+  .hudmenu-top .collapsetoggle {
+    width: 100vw;
+  }
   #object_actions {
-    max-width: 200px;
+    //max-width: 200px;
   }
   #object_actions_header {
     font-size: normal;

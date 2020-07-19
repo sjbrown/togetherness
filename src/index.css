@@ -86,27 +86,3 @@ dialog h1 {
   display: none;
 }
 
-#buttongroup_add {
-  display: inline-block;
-}
-
-#buttongroup_menu {
-  display: inline-block;
-  margin-left: 20px;
-}
-
-@media screen and (max-width: 1200px) {
-  #buttongroup_menu {
-    float: right;
-    margin-left: 0px;
-    padding-left: 10px;
-    padding-right: 10px;
-    background-color: white;
-    display: inline-block;
-  }
-
-  body {
-    padding-left: 0px;
-    padding-right: 0px;
-  }
-}
