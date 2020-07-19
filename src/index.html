@@ -220,15 +220,11 @@ window.addEventListener('load', () => {
   min-width: 80%;
   min-height: 60%;
   background-color: #efe;
-  margin-left: 80px;
 }
-
-
 @media screen and (max-width: 900px) {
   #gamearea {
     max-width: 100vw;
     height: 100vh;
-    margin-left: 0px;
   }
 }
 </style>
@@ -298,14 +294,14 @@ window.addEventListener('load', () => {
 }
 
 .hudmenu-left {
-  border-top-right-radius: 5px;
-  border-bottom-right-radius: 5px;
-  max-width: 100px;
+  border-top-right-radius: 10px;
+  border-bottom-right-radius: 10px;
+  max-width: 75px;
   display: inline-block;
 }
 .hudmenu-right {
-  border-top-left-radius: 5px;
-  border-bottom-left-radius: 5px;
+  border-top-left-radius: 10px;
+  border-bottom-left-radius: 10px;
   display: flex;
   flex-direction: column;
   align-items: right;
@@ -313,6 +309,11 @@ window.addEventListener('load', () => {
   max-width: 10em;
   right: 0%;
 }
+.hudmenu-top {
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+}
+
 @media only screen and (max-width: 900px) {
   .hudmenu {
     top: auto;
@@ -322,6 +323,12 @@ window.addEventListener('load', () => {
     left: auto;
     right: 0;
   }
+  #hud_overlay_left {
+    justify-content: flex-end;
+  }
+  #hud_overlay_right {
+    justify-content: flex-end;
+  }
 }
 
 .hudmenu button {
@@ -329,6 +336,7 @@ window.addEventListener('load', () => {
   min-height: 7em;
   padding: 1em;
   font-size: 8pt;
+  border-radius: 10px;
   background-color: #030303;
 }
 
@@ -425,7 +433,7 @@ display: none;
   <script>
   function quick_die_button_add() {
     url = document.querySelector('#quick_die_button img').src
-    add_object( url, { 'center': [50, 50] })
+    add_object( url, { 'center': [100, 100] })
   }
   window.addEventListener('load', () => {
     window.addEventListener('create', (e) => {
@@ -461,42 +469,42 @@ display: none;
       <table><tr>
       <td>
         <button class="btn" id="dice_button_d4"
-          onclick="add_object('svg/v1/dice_d4.svg', { center: [50,50] })"
+          onclick="add_object('svg/v1/dice_d4.svg', { center: [100,100] })"
           >
           <img src="svg/v1/dice_d4.svg" height="48" />
         </button>
       </td>
       <td>
         <button class="btn" id="dice_button_d6"
-          onclick="add_object('svg/v1/dice_d6.svg', { center: [50,50] })"
+          onclick="add_object('svg/v1/dice_d6.svg', { center: [100,100] })"
           >
           <img src="svg/v1/dice_d6.svg" height="48" />
         </button>
       </td>
       <td>
         <button class="btn" id="dice_button_d8"
-          onclick="add_object('svg/v1/dice_d8.svg', { center: [50,50] })"
+          onclick="add_object('svg/v1/dice_d8.svg', { center: [100,100] })"
           >
           <img src="svg/v1/dice_d8.svg" height="48" />
         </button>
       </td>
       <td>
         <button class="btn" id="dice_button_d10"
-          onclick="add_object('svg/v1/dice_d10.svg', { center: [50,50] })"
+          onclick="add_object('svg/v1/dice_d10.svg', { center: [100,100] })"
           >
           <img src="svg/v1/dice_d10.svg" height="48" />
         </button>
       </td>
       <td>
         <button class="btn" id="dice_button_d12"
-          onclick="add_object('svg/v1/dice_d12.svg', { center: [50,50] })"
+          onclick="add_object('svg/v1/dice_d12.svg', { center: [100,100] })"
           >
           <img src="svg/v1/dice_d12.svg" height="48" />
         </button>
       </td>
       <td>
         <button class="btn" id="dice_button_d20"
-          onclick="add_object('svg/v1/dice_d20.svg', { center: [50,50] })"
+          onclick="add_object('svg/v1/dice_d20.svg', { center: [100,100] })"
           >
           <img src="svg/v1/dice_d20.svg" height="48" />
         </button>
@@ -620,20 +628,16 @@ window.addEventListener('load', () => {
 <div class="hud_overlay" id="hud_overlay_top">
 <!-- =============OBJECT ACTIONS ==================== -->
 <style>
-.central_collapser {
-  text-align: center;
-  position: relative;
-}
-.central_collapser .collapsetoggle {
+.hudmenu-top .collapsetoggle {
   width: 100%;
-  background-color: rgb(0,0,0,0);
-  vertical-align: middle;
   border: none;
-  display: inline-block;
   border-bottom: 1px solid rgb(200,200,200,0.5);
 }
+button.collapsetoggle {
+  min-height: 10px;
+  padding: 5px;
+}
 #object_actions {
-  background-color: #030303;
   opacity: 80%;
   color: #f0f0f0;
 }
@@ -643,11 +647,7 @@ window.addEventListener('load', () => {
 }
 @media only screen and (max-width: 900px) {
   #object_actions {
-    position: fixed;
     max-width: 200px;
-  }
-  .central_collapser .collapsetoggle {
-    min-height: 25px;
   }
   #object_actions_header {
     font-size: normal;
@@ -658,7 +658,7 @@ window.addEventListener('load', () => {
 </style>
 <script>
 window.addEventListener('load', () => {
-  document.querySelector('.central_collapser .collapsetoggle')
+  document.querySelector('.hudmenu-top .collapsetoggle')
   .addEventListener('click', (e) => {
       cgroup = e.target.closest('.collapsegroup')
       cgroup.classList.toggle('active')
@@ -666,9 +666,9 @@ window.addEventListener('load', () => {
   })
 })
 </script>
-<div id="object_actions" class="central_collapser collapsegroup">
+<div id="object_actions" class="hudmenu hudmenu-top collapsegroup">
   <button class="collapsetoggle" name="toggle_object_actions"></button>
-  <div class="collapsible hudmenu hudmenu-top">
+  <div class="collapsible">
     <h3 id="object_actions_header">Select objects by clicking on them</h3>
     <template id="template_object_actions">
       <button class="btn btn-large">Button label</button>
@@ -1158,7 +1158,7 @@ function diceIncrement(dtype) {
 
 function ui_submit_dice(section) {
   //console.log('submit', section)
-  center = [50, 50]
+  center = [100, 100]
   if (section === 'sw') {
     dtypes = ['sw_d61', 'sw_d62', 'sw_d81', 'sw_d82', 'sw_d121', 'sw_d122', 'sw_d123']
     dtypes.forEach((dtype) => {
