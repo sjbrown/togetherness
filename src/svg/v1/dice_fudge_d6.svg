@@ -84,7 +84,8 @@ var fudge_d6 = {
             s(text, 'data-text', symbol)
             this.style.opacity = origOpacity
             this.isChanging = false
-            net_fire({type: "change", data: serialize(this)});
+            synced.change(elem)
+            synced.run()
             evt_fire('change', this, null, {})
           },
         })

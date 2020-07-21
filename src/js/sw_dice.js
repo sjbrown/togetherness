@@ -30,7 +30,8 @@ var sw_dice = {
 
         elem.style.opacity = origOpacity
         elem.isChanging = false
-        net_fire({type: "change", data: serialize(elem)});
+        synced.change(elem)
+        synced.run()
       },
     })
   },

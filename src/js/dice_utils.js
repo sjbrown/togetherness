@@ -23,7 +23,8 @@ var dice = {
         tspan.textContent = (origNum % maxFace) + 1
         elem.style.opacity = origOpacity
         elem.isChanging = false
-        net_fire({type: "change", data: serialize(elem)});
+        synced.change(elem)
+        synced.run()
         evt_fire('change', elem, null, {})
       },
     })
@@ -32,7 +33,7 @@ var dice = {
   },
 
   roll_handler: function(elem, maxFace, valueTspan) {
-    //console.log('roll handle!', elem.id, evt)
+    //console.log('roll handle!', elem)
     if (elem.isChanging) {
       return false
     }
@@ -52,7 +53,8 @@ var dice = {
         tspan.textContent = newNum
         elem.style.opacity = origOpacity
         elem.isChanging = false
-        net_fire({type: "change", data: serialize(elem)});
+        synced.change(elem)
+        synced.run()
         evt_fire('change', elem, null, {})
       },
     })

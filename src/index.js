@@ -309,6 +309,11 @@ togetherFunctions.on_change = (msg) => {
   deserialize(msg.data)
 }
 
+togetherFunctions.on_change = (msg) => {
+  debugBar('CHANGE: ' + msg)
+  deserialize(msg.data)
+}
+
 togetherFunctions.on_create = (msg) => {
   debugBar('CREATE: ' + msg)
   return Promise.resolve()
@@ -346,6 +351,7 @@ serializers = {}
 deserializers = {}
 
 function deserialize(payload) {
+  return
   console.log("deserialize: ", payload)
   var obj = null;
   if (document.getElementById(payload.id)) {

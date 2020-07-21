@@ -10,50 +10,9 @@
 -->
 <meta name="viewport" content="width=device-width,user-scalable=no">
 
-<script>
-/*
- *
- * Configure TogetherJS
- *
- */
-TogetherJSConfig_hubBase = "https://togetherjs-hub.glitch.me/"
-TogetherJSConfig_siteName = "table"
-TogetherJSConfig_toolName = "Multiplayer"
-//TogetherJSConfig_cloneClicks = "foo"; // This might be useful, or not
-//TogetherJSConfig_dontShowClicks = "foo";
-//TogetherJSConfig_enableShortcut = "foo";
-TogetherJSConfig_suppressJoinConfirmation = true
-TogetherJSConfig_suppressInvite = true
-//TogetherJSConfig_includeHashInUrl = true
-TogetherJSConfig_disableWebRTC = true
-// Hack: to get stable Share URLs
-TogetherJSConfig_findRoom = 'anonymous'
-// Hack: I had to look into the TogetherJS source code for this one.
-localStorage.setItem('togetherjs.settings.seenIntroDialog', true)
-
-
-TogetherJSConfig_on_ready = () => {
-  el = document.getElementById('share_url')
-  el.value = TogetherJS.shareUrl()
-  el = document.getElementById('share_url_bar')
-  el.classList.remove('inactive')
-  el.classList.add('active')
-  el.classList.remove('whitebg')
-  el.classList.add('bluebg')
-}
-TogetherJSConfig_on_close = () => {
-  el = document.getElementById('share_url')
-  el.value = ''
-  el = document.getElementById('share_url_bar')
-  el.classList.remove('active')
-  el.classList.add('inactive')
-  el.classList.remove('bluebg')
-  el.classList.add('whitebg')
-}
-</script>
+<script src="./come_together.js"></script><!-- should be imported before togetherjs -->
 <script src="https://togetherjs.com/togetherjs-min.js"></script>
 <script src="./svg_draggable.js"></script>
-<script src="./come_together.js"></script>
 <script src="./base32.js"></script>
 <script src="./svg.js"></script>
 <script src="./ui.js"></script>
@@ -109,6 +68,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
     //console.log("-0--------------------------", e.detail.elemId, viewport.node.id)
     if (e.detail.elemId === viewport.node.id) {
       ui.unmark_all_but()
+      synced.run()
     }
   })
 

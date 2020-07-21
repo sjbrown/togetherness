@@ -142,8 +142,6 @@ const ui = {
     //evt.stopPropagation()
     ui._unmark_nest(evt.target.closest('[data-nest-for=mark]'))
     ui.fire({type: 'dropMark', data: mark_rect.parentNode});
-    //net_fire({type: 'dropMark', mark_rect: serialize(mark_rect) });
-    push_sync()
   },
 
   unmark_all_but: (exceptId) => {
@@ -160,9 +158,7 @@ const ui = {
       //console.log("unmarking", el)
       ui._unmark_nest(el);
       ui.fire({type: 'dropMark', data: el});
-      //net_fire({type: 'dropMark', nest: { id: el.id }});
     })
-    push_sync()
   },
 
   raw_unmark: (el) => {
@@ -190,10 +186,10 @@ const ui = {
   _unmark_nest: (nestEl) => {
     //console.log("_unmark_nest", nestEl.id)
     nestEl.querySelectorAll('.resize_handle').forEach(handle => {
-      handle.remove()
+      synced.remove(handle)
     })
     nestEl.querySelectorAll('.resize_dotted_rect').forEach(el => {
-      el.remove()
+      synced.remove(el)
     })
     let nestSVG = SVG.adopt(nestEl)
     oldXY = {
@@ -210,12 +206,12 @@ const ui = {
       kid.remove()
       kidObj = SVG.adopt(kid)
       kidObj.attr(oldXY)
-      svg_table.add(kidObj)
+      synced.add(kid)
       //console.log('back in the doc', kidObj)
       ui.hookup_ui(kid)
       ui.hookup_menu_actions(kid)
     })
-    nestEl.remove()
+    synced.remove(nestEl)
   },
 
   hookup_ui: (elem) => {
@@ -253,10 +249,18 @@ const ui = {
         return
       }
       console.log("hooking up", menuItem.eventName, menuItem.handler)
-      el.addEventListener(menuItem.eventName, menuItem.handler)
+      let wrapper = function(evt) {
+        // console.log("IN WRAPPER", evt, el)
+        menuItem.handler.bind(el)(evt)
+        synced.change(el)
+        synced.run()
+      }
+      //el.addEventListener(menuItem.eventName, menuItem.handler)
+      el.addEventListener(menuItem.eventName, wrapper)
       if (menuItem.otherEvents) {
         menuItem.otherEvents.forEach(evName => {
-          el.addEventListener(evName, menuItem.handler)
+          //el.addEventListener(evName, menuItem.handler)
+          el.addEventListener(evName, wrapper)
         })
       }
     })
