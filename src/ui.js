@@ -79,7 +79,16 @@ const ui = {
     nest.attr( oldXY )
     nest.add(rect) // Add it last, so that it renders on top
 
-    ui.hookup_mark_handlers(nest.node)
+    /*
+    setNamespacesForElement(nest.node, ['mark'])
+    window['mark'] = {
+      makeMenu: (elem) => {
+        console.log('in makeMenu')
+      }
+    }
+    */
+
+    ui.hookup_ui(nest.node)
 
     return {
       mark_rect: rect,
@@ -87,29 +96,6 @@ const ui = {
     }
   },
 
-  hookup_mark_handlers: (markEl) => {
-    if (markEl.dataset.nestFor !== 'mark') {
-      console.error('this is not a proper "mark" nest', nest)
-      return
-    }
-    nest = SVG.adopt(markEl)
-
-    //      event,      handler,   binding,   capture/bubbling phase
-    //nest.on('click', ui_unmark, undefined, true)
-    nest.on('remove_mark', ui.unmark, undefined, true)
-    nest.on('svg_dragsafe_click', (evt) => {
-      //console.log('svg_dragsafe_click on a mark', evt)
-      if (evt.ctrlKey) {
-        ui.unmark(evt)
-      } else {
-        ui.unmark_all_but(nest.node.id)
-      }
-    })
-    nest.on('svg_dragsafe_dblclick', (evt) => {
-      //console.log('svg_dragsafe_dblclick on a mark', nest.node.id)
-      documentDblclick(nest.node.firstChild, {elemId: nest.node.firstChild.id})
-    })
-  },
 
 
   mark_by_id: (evt, target_id) => {
@@ -120,21 +106,17 @@ const ui = {
     }
 
     // am I already marked?
-    target = SVG.get(target_id)
-    if (g(byId(target_id), 'data-enveloped')) {
+    // target = SVG.get(target_id)
+    let targetEl = byId(target_id)
+    if (g(targetEl, 'data-enveloped')) {
       console.log('ALREADY MARKED')
       return
     }
 
     var { mark_rect, mark_nest } = ui.make_mark(target_id)
     ui.fire({ type: 'createMark', data: mark_nest })
-    /*
-    net_fire({type: "createMark", data: {
-      mark_rect: serialize(mark_rect),
-      target_id: target_id,
-    }})
-    */
-    push_sync()
+    synced.dirty_remove(targetEl)
+    synced.dirty_add(mark_nest.node)
   },
 
   unmark: (evt) => {
@@ -218,11 +200,30 @@ const ui = {
     //console.log("hookup_ui", elem.id)
     nest = SVG.adopt(elem)
     nest.on('svg_dragsafe_click', (evt) => {
-      //console.log('id', elem.id, 'got click', evt)
-      ui.mark_by_id(evt.detail.origEvent, elem.id)
+      console.log('id', elem.id, 'got click', evt)
+      if (elem.dataset.nestFor !== 'mark') {
+        ui.mark_by_id(evt.detail.origEvent, elem.id)
+      } else {
+        if (evt.ctrlKey) {
+          ui.unmark(evt)
+        } else {
+          ui.unmark_all_but(nest.node.id)
+        }
+      }
     })
     nest.on('svg_dragsafe_dblclick', (evt) => {
       console.log('nest ', nest.id, ' got dblclick')
+      if (elem.dataset.nestFor === 'mark') {
+        let triggerNode = nest.node.firstChild
+        let detail = {elemId: nest.node.firstChild.id}
+        console.log("document dbl", triggerNode.id, detail)
+        triggerNode.dispatchEvent(new MouseEvent('dblclick', {
+          view: window,
+          bubbles: true,
+          cancelable: true,
+          detail: detail,
+        }))
+      }
     })
   },
 
@@ -253,13 +254,10 @@ const ui = {
         // console.log("IN WRAPPER", evt, el)
         menuItem.handler.bind(el)(evt)
         synced.change(el)
-        synced.run()
       }
-      //el.addEventListener(menuItem.eventName, menuItem.handler)
       el.addEventListener(menuItem.eventName, wrapper)
       if (menuItem.otherEvents) {
         menuItem.otherEvents.forEach(evName => {
-          //el.addEventListener(evName, menuItem.handler)
           el.addEventListener(evName, wrapper)
         })
       }
@@ -492,6 +490,7 @@ const ui = {
 
     // Disable interactivity
     animationClone.id = 'clone' + Date.now()
+    animationClone.classList.add('ghost')
     animationClone.getAttributeNames().map((n) => {
       if (n.indexOf('data-ui-') !== -1) {
         s(animationClone, n, null);
@@ -520,18 +519,23 @@ const ui = {
   },
 
   do_animate: (node, attrs) => {
-    var { ms, animation } = Object.assign({
+    let { ms, animation } = Object.assign({
       ms: 900,
       animation: 'slideInDown',
     }, attrs)
     node.classList.add('animated')
     node.classList.add(animation)
-    var timedFn;
-    timedFn = setInterval(() => {
+    if (!node.classList.contains('ghost')) {
+      synced.change(node)
+    }
+    let timedFn = setInterval(() => {
       node.classList.remove('animated')
       node.classList.remove(animation)
+      if (!node.classList.contains('ghost')) {
+        synced.change(node)
+      }
       clearInterval(timedFn);
-    }, ms);
+    }, ms)
   },
 
 }

@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
    xmlns:dc="http://purl.org/dc/elements/1.1/"
-   xmlns:cc="http://creativecommons.org/ns#"
-   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
    xmlns:svg="http://www.w3.org/2000/svg"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:xlink="http://www.w3.org/1999/xlink"
@@ -41,94 +39,20 @@
   </defs>
   <script
      type="text/javascript"
+     src="js/paper.js"
+     id="script_paper" />
+  <script
+     type="text/javascript"
      data-namespace="paper_count"
      id="script_paper_count"><![CDATA[
 var paper_count = {
 
-  visit_contents_group(el, visitFn) {
-    let containedSVGs = el.querySelectorAll(
-      `#${el.id} > .contents_group > svg`
-    )
-    containedSVGs.forEach(visitFn)
-  },
-
-  rule_roll_handler: function(evt) {
-    console.log('paper_count ', this.id, 'hears rule_roll event', evt)
-    paper_count.visit_contents_group(this, (s) => {
-      evt_fire('die_roll', s, null, {})
-    })
-  },
-
-  activate: function(evt) {
-    console.log('paper_count this', this, 'hears activate event', evt)
-    lock_selection(evt)
-  },
-
-  dragover_handler: function(evt) {
-    console.log('paper_count', this.id, 'dragover_handler',
-    evt.detail.draggedElem.id, evt.detail.dropElem.id)
-    dragged = SVG.adopt(evt.detail.draggedElem)
-    drop = SVG.adopt(evt.detail.dropElem)
-
-    is_inside = isInside(dragged.node, drop.node)
-    if (!is_inside) {
-      drop.opacity(0.1)
-      return
-    }
-    drop.opacity(1.0)
+  paper_roll_handler: function(evt) {
+    return paper.roll_handler(this, evt)
   },
 
   drop_handler: function(evt) {
-    console.log('target should be ', this)
-    console.log('target is', evt.target)
-    console.log('paper_count drop_handler', this.id,
-      evt.detail.draggedElemId, evt.target)
-
-    draggedElem = byId(evt.detail.draggedElemId)
-    dropElem = evt.target
-    if (
-      this.id === draggedElem.id
-      ||
-      this.contains(draggedElem)
-      ||
-      draggedElem.contains(this)
-      ||
-      !this.contains(dropElem)
-    ) {
-      return
-    }
-    dragged = SVG.adopt(draggedElem)
-    drop = SVG.adopt(dropElem)
-
-    is_inside = isInside(dragged.node, drop.node)
-    console.log('dragged', draggedElem.id, 'box is inside drop',
-      dropElem,
-      '?', is_inside)
-
-    let contentsGroup = this.querySelector(`#${this.id} > .contents_group`)
-    if (contentsGroup.querySelector('#' + draggedElem.id)) {
-      // already inside the contents
-      if (is_inside) {
-        return
-      }
-      pop_from_parent(draggedElem)
-    } else {
-      if (!is_inside) {
-        return
-      }
-      push_to_parent(
-        draggedElem,
-        this,
-        (dieElem, parentElem) => {
-          console.log('consume it here', dieElem.id, parentElem.id)
-          contentsGroup.appendChild(dieElem)
-        }
-      )
-    }
-    this.dispatchEvent(new CustomEvent('dom_change', {
-      bubbles: true,
-      detail: { 'ruleElemId': this.id },
-    }))
+    return paper.drop_handler(this, evt)
   },
 
   dom_change_handler: function(evt) {
@@ -140,7 +64,7 @@ var paper_count = {
 
     let count = 0
 
-    paper_count.visit_contents_group(this, (s) => {
+    paper.visit_contents_group(this, (s) => {
       let tempNum = 0
       s.querySelectorAll('tspan').forEach((t) => {
         if (t.closest('svg').id !== s.id) {
@@ -163,7 +87,7 @@ var paper_count = {
       count = count + (tempNum >= gate ? 1 : 0)
     })
     tspan = this.querySelector(
-      `#${this.id} > :not(.contents_group) #tspan_count`
+      `#${this.id} > :not(.contents_group) #tspan_result`
     )
     tspan.textContent = count
   },
@@ -176,78 +100,47 @@ var paper_count = {
   },
 
   label_click_handler: function() {
-    console.log('lbclick', this)
-    let label = this.querySelector(`#${this.id} > text > #tspan_label`)
-    ui_popup_text_input(
-      this,
-      'Label',
-      label.textContent,
-      'label_change'
-    )
+    paper.label_click_handler(this)
   },
   label_change_handler: function(evt) {
-    let label = this.querySelector(`#${this.id} > text > #tspan_label`)
-    label.textContent = evt.detail.inputValue
+    paper.label_change_handler(this, evt)
   },
 
-  initialize: function(elem, serializedState) {
-    let label = elem.querySelector(`#${elem.id} > text > #tspan_label`)
-    label.textContent = ''
-
+  initialize: function(elem, prototype) {
     elem.addEventListener('change', this.dom_change_handler)
-    elem.addEventListener('rule_roll', this.rule_roll_handler)
+    elem.addEventListener('paper_roll', this.paper_roll_handler)
     elem.addEventListener('dom_change', this.dom_change_handler)
-    elem.addEventListener('dblclick', this.activate)
 
     elem.addEventListener('label_click', this.label_click_handler)
     elem.addEventListener('label_change', this.label_change_handler)
 
     elem.addEventListener('svg_drag', this.drag_handler)
     elem.addEventListener('svg_drop', this.drop_handler)
-    elem.addEventListener('svg_dragover', this.dragover_handler)
     elem.addEventListener('svg_dragenter', () => {console.log('E')})
     elem.addEventListener('svg_dragleave', () => {console.log('L')})
 
     elem.addEventListener('resize', this.resize_handler)
     elem.addEventListener('rule_count_cond_plus', this.cond_change_handler)
     elem.addEventListener('rule_count_cond_minus', this.cond_change_handler)
+
+    paper.initialize(elem, prototype)
   },
 
   resize_handler: function(evt) {
-    console.log('i', this.id, ' got resize', evt.detail.width, evt.detail.height)
-    let w = evt.detail.width
-    let h = evt.detail.height
-
-    let area_rect = this.querySelector(
-      `#${this.id} > :not(.contents_group) #area_rect`
-    )
-    xbox = SVG.adopt(area_rect)
-    xbox.node.classList.add('droptarget')
-    xbox.style({ opacity: 1, 'stroke-opacity': 0.9 })
-    xbox.width(w)
-    xbox.height(h)
-    this_svg = SVG.adopt(this)
-    this_svg.width(w)
-    this_svg.height(h)
-
-    let textEl = this.querySelector(`#${this.id} > .text_count`)
-    console.log('te', textEl)
-    text_result = SVG.adopt(textEl)
-    text_result.x(w - 30)
-    text_result.y(h - 50)
-    textRuleEl = this.querySelector(`#${this.id} > .text_rule`)
-    text_rule  = SVG.adopt(textRuleEl)
-    text_rule.x(w - 180)
-    text_rule.y(h - 50)
+    return paper.resize_handler(this, evt)
   },
 
   menu: {
     'Roll All': {
-      eventName: 'rule_roll',
+      eventName: 'paper_roll',
       applicable: (node) => { return true },
     },
     'Label': {
       eventName: 'label_click',
+      applicable: (node) => { return true },
+    },
+    'Fix': {
+      eventName: 'paper_fix',
       applicable: (node) => { return true },
     },
     'Cond +': {
@@ -348,8 +241,8 @@ var paper_count = {
      style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:38.072px;line-height:125%;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;letter-spacing:0px;word-spacing:0px;fill:#000080;fill-opacity:1;stroke:none;stroke-width:0.26px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
      x="160"
      y="128"
-     class="text_count"><tspan
+     class="text_result"><tspan
        sodipodi:role="line"
-       id="tspan_count"
+       id="tspan_result"
        style="font-weight:bold;font-stretch:normal;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;fill:#000080;stroke-width:0.26458329px">0</tspan></text>
 </svg>

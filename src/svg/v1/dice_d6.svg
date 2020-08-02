@@ -69,7 +69,7 @@ var d6 = {
   },
 
   initialize: function(elem, prototype) {
-    // console.log('initialize with proto', prototype)
+    console.log('initialize with proto', prototype)
     if (!prototype) {
       return
     }

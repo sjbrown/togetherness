@@ -42,9 +42,14 @@ TogetherJSConfig_on_ready = () => {
     }
   });
 
-  TogetherJS.hub.on('dirty', (msg) => {
+  TogetherJS.hub.on('dirty', async(msg) => {
     console.log('received dirty msg', msg)
-    synced.receive(msg.data);
+    console.log('my client id', myClientId)
+    let retval = await synced.receive(msg.data)
+    if (retval.syncNeeded) {
+      console.error('I am out of sync! sync_needed msg', msg)
+      net_fire({ type: "sync_needed", data: { clientId: msg.clientId } })
+    }
   });
 
   TogetherJS.hub.on("togetherjs.hello", (msg) => {
@@ -94,6 +99,13 @@ TogetherJSConfig_on_ready = () => {
     console.log('delete msg', msg);
     if(togetherFunctions.on_delete) {
       togetherFunctions.on_delete(msg);
+    }
+  });
+
+  TogetherJS.hub.on('sync_needed', (msg) => {
+    console.log('sync_needed msg', msg);
+    if (msg.data.clientId === myClientId) {
+      push_sync()
     }
   });
 
@@ -147,52 +159,130 @@ var synced = {
     return el.outerHTML
   },
   run: function() {
+    console.log("WHAT IS THIS", this)
+    if(
+      this._dirty.removed.length === 0
+      &&
+      Object.keys(this._dirty.added).length === 0
+      &&
+      Object.keys(this._dirty.changed).length === 0
+    ) {
+      // Nothing to do
+      return
+    }
     net_fire({ type: "dirty", data: this._dirty })
     this.init()
   },
+  dirty_add: function(el) {
+    this._dirty.added[el.id] = this.serialized(el)
+    window.requestAnimationFrame(this.run.bind(this))
+  },
+  dirty_remove: function(el) {
+    this._dirty.removed.push(el.id)
+    window.requestAnimationFrame(this.run.bind(this))
+  },
   add: function(el) {
     svg_table.add(SVG.adopt(el))
-    this._dirty.added[el.id] = this.serialized(el)
+    this.dirty_add(el)
   },
   remove: function(el) {
     el.remove()
-    this._dirty.removed.push(el.id)
+    this.dirty_remove(el)
   },
   change: function(el) {
-    this._dirty.changed[el.id] = this.serialized(el)
+    if (this._dirty.added[el.id]) {
+      this._dirty.added[el.id] = this.serialized(el)
+    } else {
+      this._dirty.changed[el.id] = this.serialized(el)
+    }
+    window.requestAnimationFrame(this.run.bind(this))
   },
   receive: function(msg) {
+    let retval = {
+      syncNeeded: false,
+    }
     console.log("received", msg)
+    changed = msg.changed
     msg.removed.forEach(id => {
       let el = document.getElementById(id)
-      el.remove()
+      if (el) {
+        el.remove()
+      }
     })
+    let promises = []
     Object.keys(msg.added).forEach(id => {
-      console.log("GOT", id)
+      if (document.getElementById(msg.added[id])) {
+        retval.syncNeeded = true
+        return
+      }
+      // console.log("GOT", id)
       svg_table.svg(msg.added[id])
       nestEl = byId(id)
+      if (nestEl.classList.contains('ghost')) {
+        console.error('ADDED A GHOST', nestEl)
+      }
       ui.hookup_ui(nestEl)
-      init_with_namespaces(nestEl, nestEl.node)
-      ui.hookup_menu_actions(nestEl)
+      console.log("start getting foreign svg", id)
+      promises.push(
+        import_foreign_svg_for_element(nestEl)
+        .then(() => {
+          console.log("finally got foreign svg", id)
+          init_with_namespaces(nestEl, nestEl.node)
+          ui.hookup_menu_actions(nestEl)
+        })
+      )
     })
-    Object.keys(msg.changed).forEach(id => {
-      /*
-      console.log("changed GOT", id)
-      svg_table.svg(msg.added[id])
-      nestEl = byId(id)
-      ui.hookup_ui(nestEl)
-      init_with_namespaces(nestEl, nestEl.node)
-      ui.hookup_menu_actions(nestEl)
-      */
-      let el = document.getElementById(id)
-      console.log("changed found", el)
-      let g = svg_table.group()
-      g.svg(msg.changed[id])
-      prototype = g.node.querySelector('#' + id)
-      init_with_namespaces(el, prototype)
-      g.remove()
+    return Promise.allSettled(promises)
+    .then((values) => {
+      console.log('vals are ', values)
+      values.forEach(val => {
+        if (val.status === 'rejected') {
+          throw new Error('a import_foreign_svg_for_element promise failed')
+        }
+      })
+    })
+    .then(() => {
+      console.log("changed", Object.keys(msg.changed).length)
+      Object.keys(msg.changed).forEach(id => {
+        console.log('el ', id)
+        let el = document.getElementById(id)
+        console.log("changed: el is", el)
+        if (!el) {
+          retval.syncNeeded = true
+          console.error('el not found', id)
+          throw new Error('el not found')
+        }
+        if (el.classList.contains('ghost')) {
+          console.error('CHANGED A GHOST', el)
+        }
+        console.log("B", el.dataset)
+        console.log("B", el.dataset.appUrl)
+        console.log("B", is_svg_src_loaded(el.dataset.appUrl))
+        if (el.dataset.appUrl && !is_svg_src_loaded(el.dataset.appUrl)) {
+          console.error('svg src not loaded', el.dataset.appUrl)
+          retval.syncNeeded = true
+          throw new Error('svg src not loaded')
+        }
+        console.log("HERE")
+        let group = svg_table.group()
+        group.svg(msg.changed[id])
+        prototype = group.node.querySelector('#' + id)
+        console.log("changed: prototype is", prototype)
+        init_with_namespaces(el, prototype)
+        initialize_with_prototype(el, prototype)
+        group.remove()
+      })
+    })
+    .then(() => {
+      ui.update_buttons()
+      return retval
+    })
+    .catch((err) => {
+      console.error('ERROR during receive', err)
+      return retval
     })
   },
 }
+var changed; // todo: remove this
 
 synced.init()

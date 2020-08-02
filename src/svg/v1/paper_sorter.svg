@@ -1,8 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
-   xmlns:dc="http://purl.org/dc/elements/1.1/"
-   xmlns:cc="http://creativecommons.org/ns#"
-   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
    xmlns:svg="http://www.w3.org/2000/svg"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:xlink="http://www.w3.org/1999/xlink"
@@ -12,8 +9,7 @@
    height="200"
    version="1.1"
    id="paper_sorter"
-   inkscape:version="0.92.3 (2405546, 2018-03-11)"
-   sodipodi:docname="paper_sorter.svg">
+   >
   <defs
      id="defs2">
     <linearGradient
@@ -41,94 +37,20 @@
   </defs>
   <script
      type="text/javascript"
+     src="js/paper.js"
+     id="script_paper" />
+  <script
+     type="text/javascript"
      data-namespace="paper_sorter"
      id="script_paper_sorter"><![CDATA[
 var paper_sorter = {
 
-  visit_contents_group(el, visitFn) {
-    let containedSVGs = el.querySelectorAll(
-      `#${el.id} > .contents_group > svg`
-    )
-    containedSVGs.forEach(visitFn)
-  },
-
-  rule_roll_handler: function(evt) {
-    console.log('paper_sorter ', this.id, 'hears rule_roll event', evt)
-    paper_sorter.visit_contents_group(this, (s) => {
-      evt_fire('die_roll', s, null, {})
-    })
-  },
-
-  activate: function(evt) {
-    console.log('paper_sorter this', this, 'hears activate event', evt)
-    lock_selection(evt)
-  },
-
-  dragover_handler: function(evt) {
-    console.log('paper_sorter', this.id, 'dragover_handler',
-    evt.detail.draggedElem.id, evt.detail.dropElem.id)
-    dragged = SVG.adopt(evt.detail.draggedElem)
-    drop = SVG.adopt(evt.detail.dropElem)
-
-    is_inside = isInside(dragged.node, drop.node)
-    if (!is_inside) {
-      drop.opacity(0.1)
-      return
-    }
-    drop.opacity(1.0)
+  paper_roll_handler: function(evt) {
+    return paper.roll_handler(this, evt)
   },
 
   drop_handler: function(evt) {
-    console.log('target should be ', this)
-    console.log('target is', evt.target)
-    console.log('paper_sorter drop_handler', this.id,
-      evt.detail.draggedElemId, evt.target)
-
-    draggedElem = byId(evt.detail.draggedElemId)
-    dropElem = evt.target
-    if (
-      this.id === draggedElem.id
-      ||
-      this.contains(draggedElem)
-      ||
-      draggedElem.contains(this)
-      ||
-      !this.contains(dropElem)
-    ) {
-      return
-    }
-    dragged = SVG.adopt(draggedElem)
-    drop = SVG.adopt(dropElem)
-
-    is_inside = isInside(dragged.node, drop.node)
-    console.log('dragged', draggedElem.id, 'box is inside drop',
-      dropElem,
-      '?', is_inside)
-
-    let contentsGroup = this.querySelector(`#${this.id} > .contents_group`)
-    if (contentsGroup.querySelector('#' + draggedElem.id)) {
-      // already inside the contents
-      if (is_inside) {
-        return
-      }
-      pop_from_parent(draggedElem)
-    } else {
-      if (!is_inside) {
-        return
-      }
-      push_to_parent(
-        draggedElem,
-        this,
-        (dieElem, parentElem) => {
-          console.log('consume it here', dieElem.id, parentElem.id)
-          contentsGroup.appendChild(dieElem)
-        }
-      )
-    }
-    this.dispatchEvent(new CustomEvent('dom_change', {
-      bubbles: true,
-      detail: { 'ruleElemId': this.id },
-    }))
+    return paper.drop_handler(this, evt)
   },
 
   dom_change_handler: function(evt) {
@@ -196,84 +118,49 @@ var paper_sorter = {
   },
 
   label_click_handler: function() {
-    console.log('lbclick', this)
-    let label = this.querySelector(`#${this.id} > text > #tspan_label`)
-    ui_popup_text_input(
-      this,
-      'Label',
-      label.textContent,
-      'label_change'
-    )
+    paper.label_click_handler(this)
   },
   label_change_handler: function(evt) {
-    let label = this.querySelector(`#${this.id} > text > #tspan_label`)
-    label.textContent = evt.detail.inputValue
+    paper.label_change_handler(this, evt)
   },
 
-  initialize: function(elem, serializedState) {
-    let label = elem.querySelector(`#${elem.id} > text > #tspan_label`)
-    label.textContent = ''
-
+  initialize: function(elem, prototype) {
     elem.addEventListener('change', this.dom_change_handler)
-    elem.addEventListener('rule_roll', this.rule_roll_handler)
+    elem.addEventListener('paper_roll', this.paper_roll_handler)
     elem.addEventListener('dom_change', this.dom_change_handler)
-    elem.addEventListener('dblclick', this.activate)
 
     elem.addEventListener('label_click', this.label_click_handler)
     elem.addEventListener('label_change', this.label_change_handler)
 
     elem.addEventListener('svg_drag', this.drag_handler)
     elem.addEventListener('svg_drop', this.drop_handler)
-    elem.addEventListener('svg_dragover', this.dragover_handler)
     elem.addEventListener('svg_dragenter', () => {console.log('E')})
     elem.addEventListener('svg_dragleave', () => {console.log('L')})
 
     elem.addEventListener('resize', this.resize_handler)
     elem.addEventListener('rule_sorter_plus', this.sorter_change_handler)
     elem.addEventListener('rule_sorter_minus', this.sorter_change_handler)
+
+    paper.initialize(elem, prototype)
   },
 
   resize_handler: function(evt) {
-    console.log('i', this.id, ' got resize', evt.detail.width, evt.detail.height)
-    let w = evt.detail.width
-    let h = evt.detail.height
-
-    let area_rect = this.querySelector(
-      `#${this.id} > :not(.contents_group) #area_rect`
-    )
-    xbox = SVG.adopt(area_rect)
-    xbox.node.classList.add('droptarget')
-    xbox.style({ opacity: 1, 'stroke-opacity': 0.9 })
-    xbox.width(w)
-    xbox.height(h)
-    this_svg = SVG.adopt(this)
-    this_svg.width(w)
-    this_svg.height(h)
-
-    textRuleEl = this.querySelector(`#${this.id} > .text_rule`)
-    text_rule  = SVG.adopt(textRuleEl)
-    text_rule.x(w - 120)
-    text_rule.y(h - 50)
+    return paper.resize_handler(this, evt)
   },
 
   menu: {
     'Roll All': {
-      eventName: 'rule_roll',
+      eventName: 'paper_roll',
       applicable: (node) => { return true },
     },
     'Label': {
       eventName: 'label_click',
       applicable: (node) => { return true },
     },
-  },
-
-  serialize: function(elem) {
-    value = elem.querySelector('tspan:last-of-type').textContent
-    return {value: value}
-  },
-
-  deserialize: function(elem, payload) {
-    elem.querySelector('tspan:last-of-type').textContent = payload.value
+    'Fix': {
+      eventName: 'paper_fix',
+      applicable: (node) => { return true },
+    },
   },
 
 }

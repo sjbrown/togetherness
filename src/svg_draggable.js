@@ -87,6 +87,7 @@ function makeDraggable(viewport, table) {
       bubbles: true,
       detail: detail,
     }))
+    synced.change(dispatchEl)
   }
 
   function getMousePosition(evt) {
@@ -240,6 +241,9 @@ function makeDraggable(viewport, table) {
       if ( selectedEl.node.id === el.id ) {
         return // don't tell things they're being dropped into themselves
       }
+      if (el.ownerSVGElement && el.ownerSVGElement.id === selectedEl.node.id) {
+        return // don't drop things into their own children
+      }
       let inside = isInside(selectedEl.node, el)
       if (currentDragovers[el.id]) {
         if (!inside) {
@@ -298,12 +302,12 @@ function makeDraggable(viewport, table) {
     try {
       elemId = selectedEl ? selectedEl.node.id : viewport.node.id
       if (!isJustAClick) {
-        console.time('broadcast(svg_dragend) - outer')
+        // console.time('broadcast(svg_dragend) - outer')
         broadcast('svg_dragend', { elemId: elemId })
-        console.timeEnd('broadcast(svg_dragend) - outer')
-        console.time('notifyDropTargetsDrop - outer')
+        // console.timeEnd('broadcast(svg_dragend) - outer')
+        // console.time('notifyDropTargetsDrop - outer')
         notifyDropTargetsDrop(evt)
-        console.timeEnd('notifyDropTargetsDrop - outer')
+        // console.timeEnd('notifyDropTargetsDrop - outer')
       }
       if ((evt.type === 'mouseup' || evt.type === 'touchend') && isJustAClick) {
         if (selectedEl && mode === 0) {

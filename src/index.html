@@ -21,6 +21,9 @@
 <script src="./js/domJSON.js"></script>
 <script src="./physicsjs-full.js"></script>
 
+<!-- polyfill Promises for Internet Explorer -->
+<script src="https://cdn.jsdelivr.net/npm/promise-polyfill@8/dist/polyfill.min.js"></script>
+
 <link rel="stylesheet" type="text/css" href="animate.css">
 <link rel="stylesheet" type="text/css" href="index.css">
 
@@ -68,7 +71,6 @@ SVG.on(document, 'DOMContentLoaded', () => {
     //console.log("-0--------------------------", e.detail.elemId, viewport.node.id)
     if (e.detail.elemId === viewport.node.id) {
       ui.unmark_all_but()
-      synced.run()
     }
   })
 
@@ -94,9 +96,12 @@ SVG.on(document, 'DOMContentLoaded', () => {
   //#makeDraggable(viewport, svg_table)
 
   document.addEventListener('svg_dragend', (evt) => {
-    selectedElement = byId(evt.detail.elemId)
-    //net_fire({type: "change", data: serialize(selectedElement)})
-    push_sync()
+    selectedElement = document.querySelector('#' + evt.detail.elemId)
+    // Sometimes the element that triggered the dragend gets deleted before
+    // we get here, like in the case of resize handles.
+    if (selectedElement) {
+      synced.change(selectedElement)
+    }
   })
 
   window.addEventListener("resize", () => {
@@ -623,6 +628,12 @@ window.addEventListener('load', () => {
     title="Invite / Join Friends"
     id="start-togetherjs"
   >Multiplayer</button>
+
+  <button class="debug_none btn btn-small"
+    onclick="push_sync(); return false;"
+    id="sync_button"
+  >Sync</button>
+
 
 </div>
 </section>
@@ -2271,9 +2282,10 @@ function dismissHintControls() {
       let q = new URLSearchParams(window.location.search)
       if (q.get('debug') === '1') {
         DEBUG = 1
-        let bar = document.getElementById('debug_bar')
-        bar.classList.remove('debug_none')
-        bar.classList.remove('inactive')
+        let bar = document.querySelectorAll('.debug_none').forEach(el => {
+          el.classList.remove('debug_none')
+          el.classList.remove('inactive')
+        })
       }
     })
     </script>

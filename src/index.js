@@ -36,16 +36,6 @@ function s(el, label, val) {
   el.setAttribute(label, val);
 }
 
-function documentDblclick(triggerNode, detail) {
-  console.log("document dbl", triggerNode.id, detail)
-  triggerNode.dispatchEvent(new MouseEvent('dblclick', {
-    view: window,
-    bubbles: true,
-    cancelable: true,
-    detail: detail,
-  }))
-}
-
 function lock_selection(evt) {
   selection = evt.target.closest('[data-nest-for=mark]')
   console.log("EVT", evt, 'selection', selection)
@@ -262,26 +252,15 @@ togetherFunctions.on_sync = (msg) => {
   })
   */
 
-  seenUrls = {}
   let nodeList = newTable.querySelectorAll('[data-app-url]')
   let urlLoop = async() => {
     for (let index = 0; index < nodeList.length; index++) {
       let node = nodeList.item(index)
-      let url = node.dataset.appUrl
-      if (!url) {
-        return
-      }
-      if (url.indexOf('://') !== -1) {
-        url = new URL(node.dataset.appUrl).pathname // JUST USE PATHNAME TO BE SECURE!
-        // BUT IT"S NOT WHAT WE WANT OF COURSE.  TODO GET THIS RIGHT
-      }
-      if (!seenUrls[url]) {
-        console.log("grabbing url", url)
-        await import_foreign_svg(url)
-      }
+      await import_foreign_svg_for_element(node)
     }
   }
   return urlLoop().then(() => {
+    console.log("NEWT", newTable.outerHTML)
     return newTable.querySelectorAll('#svg_table > .draggable-group').forEach((el) => {
       el.remove()
       /*
@@ -292,8 +271,10 @@ togetherFunctions.on_sync = (msg) => {
       console.log("Making new svg for ", el.id)
       let s = el.outerHTML
       svg_table.svg(s)
-      nestEl = byId(el.id)
+      nestEl = svg_table.node.querySelector('#' + el.id)
       console.log("Got result", nestEl)
+      console.log("necg", nestEl.querySelector('.contents_group').outerHTML)
+      console.log("e cg", el.querySelector('.contents_group').outerHTML)
       ui.hookup_ui(nestEl)
       init_with_namespaces(nestEl, el)
       ui.hookup_menu_actions(nestEl)
@@ -302,6 +283,29 @@ togetherFunctions.on_sync = (msg) => {
        */
     })
   })
+}
+
+var seenUrls = {}
+function is_svg_src_loaded(url) {
+  if (url.indexOf('://') !== -1) {
+    url = new URL(url).pathname // JUST USE PATHNAME TO BE SECURE!
+    // BUT IT"S NOT WHAT WE WANT OF COURSE.  TODO GET THIS RIGHT
+  }
+  return seenUrls[url] === true
+}
+async function import_foreign_svg_for_element(el) {
+  let url = el.dataset.appUrl
+  if (!url) {
+    return
+  }
+  if (url.indexOf('://') !== -1) {
+    url = new URL(url).pathname // JUST USE PATHNAME TO BE SECURE!
+    // BUT IT"S NOT WHAT WE WANT OF COURSE.  TODO GET THIS RIGHT
+  }
+  if (!seenUrls[url]) {
+    await import_foreign_svg(url)
+    seenUrls[url] = true
+  }
 }
 
 togetherFunctions.on_change = (msg) => {
@@ -463,26 +467,6 @@ function is_marked(node) {
 }
 
 
-var mark_menu = {
-  'Remove mark': {
-    eventName: 'remove_mark',
-    applicable: (target) => { return g(target, 'data-app-class') === 'nest' },
-  },
-  /* causes bugs with "text" types
-  'Object properties': {
-    eventName: 'object_properties',
-    applicable: () => { return true },
-    handler: (evt) => {
-      nestNode = byId(evt.detail.elemId)
-      ui_popup_properties(
-        nestNode.firstChild,
-        {'data-dialog-id': 'dialog_properties'}
-      )
-    }
-  },
-  */
-}
-
 function import_foreign_svg(url) {
   console.log("import foreign URL", url)
   if (!DEBUG) {
@@ -506,7 +490,8 @@ function import_foreign_svg(url) {
   })
 }
 
-function _import_foreign_svg(body, url) {
+async function _import_foreign_svg(body, url) {
+  console.log("_import_foreign_svg", url)
   var frame = document.createElementNS(SVG.ns, 'svg')
   frame.innerHTML = (
     // not sure if this is necessary...
@@ -542,12 +527,20 @@ function _import_foreign_svg(body, url) {
   }
   nest.addClass('draggable-group')
   //TODO: should this be nest.node instead of frame?
+  var promises = []
   frame.querySelectorAll('script').forEach((script) => {
     console.log("FOUND A SCRIPT", script.id, "IN", nest.node.id)
-    appendDocumentScript(script, nest.node)
+    promises.push(appendDocumentScript(script, nest.node))
   })
-  return nest
+  promproms = promises
+  console.log("a = RE", promises)
+  return Promise.allSettled(promises)
+  .then(() => {
+    console.log("RETURNING")
+    return nest
+  })
 }
+var promproms
 
 function add_fresh_svg(svgElem) {
   // None of the UI is hooked up for the freshly-loaded document
@@ -558,15 +551,8 @@ function add_fresh_svg(svgElem) {
     ui.hookup_menu_actions(subSvg)
   })
   svgElem.querySelectorAll('[data-nest-for=mark]').forEach((subSvg) => {
-    ui.hookup_mark_handlers(subSvg)
+    ui.hookup_ui(subSvg)
   })
-  /*
-  svg_table.add(nest)
-  ui.hookup_ui(nest.node)
-  init_with_namespaces(nest.node, url, attrs && attrs.serializedState)
-  ui.hookup_menu_actions(nest.node)
-  ui.fire({type: "create", data: { createdEl: nest.node }});
-  */
 }
 
 
@@ -687,6 +673,9 @@ function getFullMenuForElement(elem) {
     if (ns.menu) {
       actionMenu = Object.assign(actionMenu, ns.menu)
     }
+    if (ns.makeMenu) {
+      actionMenu = Object.assign(actionMenu, ns.makeMenu(elem))
+    }
   })
   actionMenu = Object.assign(actionMenu, {
     'Delete': {
@@ -714,7 +703,7 @@ function getScriptsForElement(elem) {
 function setScriptsForElement(elem, scriptsArr) {
   elem.dataset.appScripts = scriptsArr
 }
-function appendDocumentScript(scriptElem, parentElem) {
+async function appendDocumentScript(scriptElem, parentElem) {
   // Make the scripts run by putting them into the live DOM
   console.log("appendDocumentScript", scriptElem.id, g(scriptElem, 'src'))
   debugBar("appendDocumentScript" + scriptElem.id + g(scriptElem, 'src'))
@@ -744,29 +733,63 @@ function appendDocumentScript(scriptElem, parentElem) {
   s(newScript, 'data-orig-url', scriptUrl)
   s(newScript, 'data-namespace', g(scriptElem, 'data-namespace'))
 
+  let alreadyMounted = false
   ga = byId('gamearea')
   if (!ga.querySelector(`[data-orig-url="${scriptUrl}"]`)) {
     console.log("appending ", scriptElem.id, '(', scriptUrl, ')')
     ga.appendChild(newScript)
+  } else {
+    alreadyMounted = true
   }
   // Remove the javascript node so it doesn't clutter up the svg_table DOM
   scriptElem.remove()
+
+  if (alreadyMounted || newScript.textContent.length > 0) {
+    return true
+  }
+  return new Promise((resolve, reject) => {
+    console.log("making prmise for ", scriptUrl, scriptElem.id)
+    newScript.addEventListener('load', () => {
+      console.log("RESOLVING")
+      return resolve()
+    });
+    newScript.addEventListener('error', e => {
+      console.log("REJECTING")
+      return reject(e.error)
+    });
+  })
 }
 
-function initialize_with_ns(elem, ns, serializedState) {
-  console.log('initialize_with_ns', elem.id)
+function initialize_with_ns(elem, ns, prototype) {
+  console.log('initialize_with_ns', elem.id, ns)
   if (ns.initialize) {
-    ns.initialize(elem, serializedState)
+    ns.initialize(elem, prototype)
+  }
+}
+function initialize_with_prototype(elem, prototype) {
+  console.log('initialize_with_prototype', elem.id)
+  // The "UI level logic" is concerned with the color and the position
+  if (prototype && prototype.querySelector) {
+    let prototypeMatrix = prototype.querySelector('#recolorize-filter-matrix')
+    if(prototypeMatrix) {
+      elem.querySelectorAll('#recolorize-filter-matrix').forEach((matrixNode) => {
+        matrixNode.setAttribute('values', prototypeMatrix.getAttribute('values'))
+      })
+    }
+    if (prototype.hasAttribute('x')) {
+      elem.setAttribute('x', prototype.getAttribute('x'))
+      elem.setAttribute('y', prototype.getAttribute('y'))
+    }
   }
 }
 
-function init_with_namespaces(elem, serializedState) {
-  //console.log('init_with_namespaces', elem, serializedState)
+function init_with_namespaces(elem, prototype) {
+  console.log('init_with_namespaces', elem, prototype, getNamespacesForElement(elem))
   // This assumes import_foreign_svg has already been executed
   // and the svg element has been added to the DOM
   getNamespacesForElement(elem).forEach((nsName) => {
     let ns = window[nsName]
-    initialize_with_ns(elem, ns, serializedState)
+    initialize_with_ns(elem, ns, prototype)
   })
 }
 
@@ -789,7 +812,7 @@ function add_n_objects_from_prototype(n, prototype, center) {
     nest.cy(newCenter[1])
     svg_table.add(nest)
     ui.hookup_ui(nest.node)
-    init_with_namespaces(nest.node, attrs && attrs.serializedState)
+    init_with_namespaces(nest.node, prototype)
     ui.hookup_menu_actions(nest.node)
     newCenter[0] = newCenter[0] + 90
     newCenter[1] = newCenter[1] + 10
@@ -812,9 +835,9 @@ async function add_object(url, attrs) {
     ui.hookup_ui(nest.node)
     init_with_namespaces(nest.node, attrs && attrs.serializedState)
     ui.hookup_menu_actions(nest.node)
+    synced.dirty_add(nest.node) // send the sync before the animation
     ui.do_animate(nest.node)
     ui.fire({type: "create", data: { createdEl: nest.node }});
-    push_sync()
   }
 
   // Allow 400 miliseconds for the scripts to load
@@ -898,7 +921,8 @@ function push_to_parent(childEl, parentEl, pushFn) {
     ui.un_hookup_ui(childEl)
   }
   origParentEl = childEl.parentNode.closest('svg')
-  childEl.remove()
+  /// childEl.remove()
+  synced.remove(childEl)
   c = SVG.adopt(childEl)
   p = SVG.adopt(parentEl)
   //console.log('c', c.x(), c.y(), 'mark', markXY, 'p', p.x(), p.y())
@@ -921,7 +945,7 @@ function delete_element(el) {
 }
 
 function evt_fire(eventName, triggerNode, origEvent, other) {
-  console.log("dispatching", eventName, 'to', triggerNode.id, 'other', other)
+  console.log("evt_fire", eventName, 'to', triggerNode.id, 'other', other)
   triggerNode.dispatchEvent(new CustomEvent(eventName, {
     bubbles: true,
     detail: Object.assign(
