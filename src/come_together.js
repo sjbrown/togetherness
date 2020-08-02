@@ -255,15 +255,11 @@ var synced = {
         if (el.classList.contains('ghost')) {
           console.error('CHANGED A GHOST', el)
         }
-        console.log("B", el.dataset)
-        console.log("B", el.dataset.appUrl)
-        console.log("B", is_svg_src_loaded(el.dataset.appUrl))
         if (el.dataset.appUrl && !is_svg_src_loaded(el.dataset.appUrl)) {
           console.error('svg src not loaded', el.dataset.appUrl)
           retval.syncNeeded = true
           throw new Error('svg src not loaded')
         }
-        console.log("HERE")
         let group = svg_table.group()
         group.svg(msg.changed[id])
         prototype = group.node.querySelector('#' + id)
