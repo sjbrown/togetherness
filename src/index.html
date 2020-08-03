@@ -93,27 +93,76 @@ SVG.on(document, 'DOMContentLoaded', () => {
   })
 
   svg_table = initSvgTable(document.createElementNS(SVG.ns, 'svg'))
-  //#makeDraggable(viewport, svg_table)
 
-  document.addEventListener('svg_dragend', (evt) => {
-    selectedElement = document.querySelector('#' + evt.detail.elemId)
-    // Sometimes the element that triggered the dragend gets deleted before
-    // we get here, like in the case of resize handles.
-    if (selectedElement) {
-      synced.change(selectedElement)
-    }
-  })
-
-  window.addEventListener("resize", () => {
-    let g = byId('gamearea')
-    viewport.width(g.clientWidth)
-    viewport.height(g.clientHeight)
-  })
+  window.addEventListener("resize", viewportToGameArea)
 
   // Initialize modals
   instances = M.Modal.init(document.querySelectorAll('.modal'), {
     opacity: 0.75,
   });
+
+  // Initialize drag_select_box
+  import_foreign_svg('svg/v1/drag_select_box.svg')
+  .then((nest) => {
+    nest.id('drag_select_box')
+    let innerRect = nest.node.querySelector('rect')
+    let svg_rect = SVG.adopt(innerRect)
+    let contentsGroup = nest.node.querySelector('.contents_group')
+    let init = function() {
+      nest.attr({ x: 0, y: 0, width: 0, height: 0 })
+      svg_rect.attr({ x: 0, y: 0, width: 0, height: 0 })
+    }
+    let emptyContentsGroup = function() {
+      let nextNode = contentsGroup.querySelector('.draggable-group')
+      while(nextNode) {
+        console.log('cg node', nextNode.id)
+        pop_from_parent(nextNode)
+        nextNode = contentsGroup.querySelector('.draggable-group')
+      }
+      init()
+    }
+    viewport.node.addEventListener('dragselect_init', (evt) => {
+      init()
+    })
+    viewport.node.addEventListener('svg_dragselect_start', (evt) => {
+      console.log('viewport got svg_dragselect_start', evt, evt.detail.box)
+      emptyContentsGroup()
+      let selbox = svg_table.node.querySelector('#drag_select_box')
+      if (!selbox) {
+        nest.attr(evt.detail.box)
+        synced.add(nest.node)
+      }
+    })
+    viewport.node.addEventListener('svg_dragselect_drag', (evt) => {
+      console.log('viewport got svg_dragselect_drag', evt, evt.detail.box)
+      nest.attr(evt.detail.box)
+      svg_rect.width(evt.detail.box.width - 1)
+      svg_rect.height(evt.detail.box.height - 1)
+    })
+    viewport.node.addEventListener('svg_dragselect_end', (evt) => {
+      console.log('viewport got svg_dragselect_end', evt)
+      let surrounded = spatial.topLevelSurrounded(evt.detail.box)
+      let sbox = spatial.surroundingBox(surrounded)
+      console.log('surrounded', surrounded)
+      console.log('surr box', sbox)
+      nest.attr(sbox)
+
+      svg_rect.width(sbox.width - 1)
+      svg_rect.height(sbox.height - 1)
+
+      let contentsGroup = nest.node.querySelector('.contents_group')
+      surrounded.forEach(el => {
+        push_to_parent(
+          el,
+          nest.node,
+          (childElem, parentElem) => {
+            console.log('consume it here', childElem.id, parentElem.id)
+            contentsGroup.appendChild(childElem)
+          }
+        )
+      })
+    })
+  })
 })
 
 var currentZoom = 1.0;
@@ -143,6 +192,13 @@ function zoom(inOrOut) {
     'viewBox',
     `0 0 ${svg_table.width()} ${svg_table.height()}`
   )
+  viewportToGameArea()
+}
+
+function viewportToGameArea() {
+  let g = byId('gamearea')
+  viewport.width(g.clientWidth)
+  viewport.height(g.clientHeight)
 }
 
 function downKey(e) {

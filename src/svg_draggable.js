@@ -34,6 +34,15 @@ function isInside(el1, el2) {
   )
 }
 
+function normalizeBox(box) {
+  return {
+    x: (box.width < 0) ? box.x + box.width : box.x,
+    y: (box.height < 0) ? box.y + box.height: box.y,
+    width: Math.abs(box.width),
+    height: Math.abs(box.height),
+  }
+}
+
 
 function makeDraggable(viewport, table) {
   /*
@@ -52,6 +61,8 @@ function makeDraggable(viewport, table) {
   var broadcastTimer, lockBroadcastTimer;
   var mouse;
   var lastClickTime = 0;
+  var interactionMode = 'object'
+  var dragSelectBox = null
 
   // MOUSE
   viewport.on('mousedown', startDrag);
@@ -87,7 +98,9 @@ function makeDraggable(viewport, table) {
       bubbles: true,
       detail: detail,
     }))
-    synced.change(dispatchEl)
+    if (selectedEl) {
+      synced.change(selectedEl.node)
+    }
   }
 
   function getMousePosition(evt) {
@@ -135,27 +148,25 @@ function makeDraggable(viewport, table) {
     return endDrag(evt)
   }
 
-  function initialiseDragging(evt) {
-    isJustAClick = evt
-    origMouse = getMousePosition(evt)
-    mouse = getMousePosition(evt)
-    if (selectedEl) {
-      origXY = {
-        x: selectedEl.x(),
-        y: selectedEl.y(),
-      }
-      broadcast('svg_dragstart', { elemId: evt.target.id })
-    } else {
-      console.log("viewport begin box boundary")
+  function updateInteractionMode(evt) {
+    console.log("IM", evt.touches, evt.button)
+    if (evt.touches) {
+      interactionMode = 'object'
+    } else if (evt.button === 0) {
+      interactionMode = 'object'
+    } else if (evt.button === 1) {
+      interactionMode = 'panzoom'
+    } else if (evt.button === 2) {
+      interactionMode = 'rightclick'
     }
   }
 
   function startDrag(evt) {
     debug("startDrag", evt)
     evt.preventDefault() // prevent, for example, text selection
-    mode = evt.touches ? 0 : evt.button
+    updateInteractionMode(evt)
 
-    if (mode === 0) {
+    if (interactionMode === 'object') {
       let dragTarget = null
 
       // First, look for dragTargets as the direct children of "table"
@@ -182,10 +193,34 @@ function makeDraggable(viewport, table) {
         //console.log('dragtaret: ', dragTarget.id)
         selectedEl = SVG.adopt(dragTarget)
         currentDragovers = {}
+        dragSelectBox = null
       }
     }
     initialiseDragging(evt);
   }
+
+  function initialiseDragging(evt) {
+    isJustAClick = evt
+    origMouse = getMousePosition(evt)
+    mouse = getMousePosition(evt)
+    if (selectedEl) {
+      origXY = {
+        x: selectedEl.x(),
+        y: selectedEl.y(),
+      }
+      broadcast('svg_dragstart', { elemId: evt.target.id })
+    } else if (interactionMode === 'object') {
+      console.log("viewport begin select box")
+      dragSelectBox = {
+        x: mouse.x,
+        y: mouse.y,
+        width: 0,
+        height: 0,
+      }
+      broadcast('svg_dragselect_start', { box: normalizeBox(dragSelectBox) })
+    }
+  }
+
 
   function drag(evt) {
     debug("drag", evt)
@@ -193,46 +228,53 @@ function makeDraggable(viewport, table) {
       return
     }
     mouse = getMousePosition(evt)
-    mode = evt.touches ? 0 : evt.button
     evt.preventDefault() // prevent, for example, text selection
     if ( isJustAClick && distance(mouse, origMouse) > 20) {
       isJustAClick = null
     }
-    //console.log("S", selectedEl, 'mode', mode)
-    if (selectedEl && mode === 0) {
-      var tableBoundaries = {
-        minX: table.x(),
-        minY: table.y(),
-        maxX: table.width(),
-        maxY: table.height(),
+    if (interactionMode === 'object') {
+      if (selectedEl) {
+        var tableBoundaries = {
+          minX: table.x(),
+          minY: table.y(),
+          maxX: table.width(),
+          maxY: table.height(),
+        }
+        selectedEl.x(
+          clamp(
+            origXY.x + (mouse.x - origMouse.x),
+            tableBoundaries.minX,
+            tableBoundaries.maxX - selectedEl.bbox().width,
+          )
+        )
+        selectedEl.y(
+          clamp(
+            origXY.y + (mouse.y - origMouse.y),
+            tableBoundaries.minY,
+            tableBoundaries.maxY - selectedEl.bbox().height,
+          )
+        )
+        // Don't spam - throttle to roughly every 200 miliseconds
+        if (lockBroadcastTimer) { return }
+        lockBroadcastTimer = true
+        broadcastTimer = setTimeout(() => { lockBroadcastTimer = false }, 400)//200)
+          broadcast('svg_drag', {
+          elemId: selectedEl.node.id,
+          mouse: mouse,
+        })
+        notifyDropTargetsDrag(evt)
+      } else if (dragSelectBox) {
+        dragSelectBox.width = mouse.x - dragSelectBox.x
+        dragSelectBox.height = mouse.y - dragSelectBox.y
+        // Don't spam - throttle to roughly every 100 miliseconds
+        if (lockBroadcastTimer) { return }
+        lockBroadcastTimer = true
+        broadcastTimer = setTimeout(() => { lockBroadcastTimer = false }, 100)
+        console.log("dragselect_drag", dragSelectBox)
+        broadcast('svg_dragselect_drag', { box: normalizeBox(dragSelectBox) })
       }
-      selectedEl.x(
-        clamp(
-          origXY.x + (mouse.x - origMouse.x),
-          tableBoundaries.minX,
-          tableBoundaries.maxX - selectedEl.bbox().width,
-        )
-      )
-      selectedEl.y(
-        clamp(
-          origXY.y + (mouse.y - origMouse.y),
-          tableBoundaries.minY,
-          tableBoundaries.maxY - selectedEl.bbox().height,
-        )
-      )
-      // Don't spam - throttle to roughly every 200 miliseconds
-      if (lockBroadcastTimer) { return }
-      lockBroadcastTimer = true
-      broadcastTimer = setTimeout(() => { lockBroadcastTimer = false }, 400)//200)
-        broadcast('svg_drag', {
-        elemId: selectedEl.node.id,
-        mouse: mouse,
-      })
-      notifyDropTargetsDrag(evt)
-    } else if (!selectedEl && mode === 0) {
-      //console.log('dragbox')
-    } else if (!selectedEl && mode === 1) {
-      console.log('wheeldown drag')
+    } else if (interactionMode === 'panzoom') {
+      console.log('wheeldown drag - panzoom time!')
     }
   }
 
@@ -302,19 +344,29 @@ function makeDraggable(viewport, table) {
     try {
       elemId = selectedEl ? selectedEl.node.id : viewport.node.id
       if (!isJustAClick) {
-        // console.time('broadcast(svg_dragend) - outer')
         broadcast('svg_dragend', { elemId: elemId })
-        // console.timeEnd('broadcast(svg_dragend) - outer')
-        // console.time('notifyDropTargetsDrop - outer')
-        notifyDropTargetsDrop(evt)
-        // console.timeEnd('notifyDropTargetsDrop - outer')
+        if (interactionMode === 'object') {
+          if (selectedEl) {
+            notifyDropTargetsDrop(evt)
+          } else if (dragSelectBox) {
+            broadcast(
+              'svg_dragselect_end', { box: normalizeBox(dragSelectBox) }
+            )
+          }
+        }
       }
       if ((evt.type === 'mouseup' || evt.type === 'touchend') && isJustAClick) {
-        if (selectedEl && mode === 0) {
-          // Put it back where we found it
-          // (this prevents the need for noisy network spam)
-          selectedEl.x(origXY.x)
-          selectedEl.y(origXY.y)
+        if (interactionMode === 'object') {
+          if (selectedEl) {
+            // Put it back where we found it
+            // (this prevents the need for noisy network spam)
+            selectedEl.x(origXY.x)
+            selectedEl.y(origXY.y)
+          }
+          if (dragSelectBox) {
+            // TODO
+            console.log("just a click, do something with dragSelectBox")
+          }
         }
         now = new Date()
         debug('isJustAClick' + (selectedEl && selectedEl.node.id))
@@ -346,6 +398,7 @@ function makeDraggable(viewport, table) {
       lockBroadcastTimer = false
       selectedEl = false
       origMouse = null
+      dragSelectBox = null
     }
   }
 }

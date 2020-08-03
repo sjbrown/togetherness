@@ -159,7 +159,6 @@ var synced = {
     return el.outerHTML
   },
   run: function() {
-    console.log("WHAT IS THIS", this)
     if(
       this._dirty.removed.length === 0
       &&

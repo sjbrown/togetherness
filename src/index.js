@@ -876,10 +876,10 @@ function pop_from_parent(childElem) {
   child = SVG.adopt(childElem)
   parentWithXY = SVG.adopt(parentWithXY)
 
-  console.log('setting to', child.x() + parentWithXY.x())
-  child.x(child.x() + parentWithXY.x())
-  console.log('now ', child.x() )
-  child.y(child.y() + parentWithXY.y())
+  // console.log('setting x to', child.x(), '+', parentWithXY.x())
+  // child.x(child.x() + parentWithXY.x())
+  // console.log('setting y to', child.y(), '+', parentWithXY.y())
+  // child.y(child.y() + parentWithXY.y())
 
   childElem.dataset.appClass = 'nest'
 
@@ -888,50 +888,70 @@ function pop_from_parent(childElem) {
   })
 }
 
-function push_to_parent(childEl, parentEl, pushFn) {
-  console.log("push_to_parent", childEl.id, parentEl.id)
-  console.log("parent dataset", parentEl.dataset)
-  if (parentEl.dataset.nestFor === 'mark') {
+function push_to_parent(childEl, newParentEl, pushFn) {
+  console.log("push_to_parent", childEl.id, newParentEl.id)
+  console.log("parent dataset", newParentEl.dataset)
+  if (newParentEl.dataset.nestFor === 'mark') {
     // if the parent is just a mark, step the focus up one level
-    mark = SVG.adopt(parentEl)
-    markXY = { x: mark.x(), y: mark.y() }
-    parentEl = parentEl.parentNode.closest('svg')
-  } else if (parentEl.dataset.enveloped) {
-    mark = SVG.adopt(parentEl.parentElement)
-    markXY = { x: -mark.x(), y: -mark.y() }
+    mark = SVG.adopt(newParentEl)
+    pMarkXY = { x: -mark.x(), y: -mark.y() }
+    newParentEl = newParentEl.parentNode.closest('svg')
+  } else if (newParentEl.dataset.enveloped) {
+    mark = SVG.adopt(newParentEl.parentElement)
+    pMarkXY = { x: mark.x(), y: mark.y() }
   } else {
-    markXY = { x: 0, y: 0 }
-  }
-  if (childEl.dataset.nestFor === 'mark') {
-    childEl = childEl.firstChild
-    ui.raw_unmark(childEl)
-  } else if (childEl.dataset.enveloped) {
-    // re-parenting removes the mark
-    ui.raw_unmark(childEl)
+    pMarkXY = { x: 0, y: 0 }
   }
 
-  if (parentEl.id === 'svg_table') {
-    ui.hookup_ui(childEl)
-    getNamespacesForElement(childEl).forEach((nsName) => {
-      let ns = window[nsName]
-      initialize_with_ns(childEl, ns)
+  let childNodes = []
+  let oldParentEl = childEl.parentNode.closest('svg')
+
+  if (childEl.dataset.nestFor === 'mark') {
+    oldParentEl = childEl
+    childNodes = [childEl.firstChild]
+  } else if (childEl.classList.contains('drag_select_box')) {
+    oldParentEl = childEl
+    childNodes = []
+    childEl.querySelector('.contents_group').childNodes.forEach(el => {
+      childNodes.push(el)
     })
-    ui.hookup_menu_actions(childEl)
   } else {
-    ui.un_hookup_ui(childEl)
+    childNodes = [childEl]
   }
-  origParentEl = childEl.parentNode.closest('svg')
-  /// childEl.remove()
-  synced.remove(childEl)
-  c = SVG.adopt(childEl)
-  p = SVG.adopt(parentEl)
-  //console.log('c', c.x(), c.y(), 'mark', markXY, 'p', p.x(), p.y())
-  //console.log('crbox', c.rbox(), 'prbox', p.rbox())
-  c.x( c.x() + markXY.x - p.x() )
-  c.y( c.y() + markXY.y - p.y() )
-  pushFn(childEl, parentEl)
-  if (origParentEl) {
-    evt_fire('change', origParentEl, {})
+  new_p_svg = SVG.adopt(newParentEl)
+  old_p_svg = SVG.adopt(oldParentEl)
+  console.log("orig parent", oldParentEl.id, 'childs', childNodes)
+  childNodes.forEach(el => {
+    console.log("doing child", el)
+    let oldPXY = {x: 0, y: 0}
+    if (oldParentEl.dataset.nestFor === 'mark') {
+      ui.raw_unmark(el)
+    }
+    if (oldParentEl.classList.contains('drag_select_box')) {
+      oldPXY = {x: old_p_svg.x(), y: old_p_svg.y()}
+    }
+    if (newParentEl.id === 'svg_table') {
+      ui.hookup_ui(el)
+      getNamespacesForElement(el).forEach((nsName) => {
+        let ns = window[nsName]
+        initialize_with_ns(el, ns)
+      })
+      ui.hookup_menu_actions(el)
+    } else {
+      ui.un_hookup_ui(el)
+    }
+    synced.remove(el)
+    c = SVG.adopt(el)
+    console.log('c', c.x(), c.y(), 'old p', oldPXY, 'new pmark', pMarkXY, 'new p', new_p_svg.x(), new_p_svg.y())
+    console.log('crbox', c.rbox(), 'prbox', new_p_svg.rbox())
+    c.x( (c.x() + oldPXY.x) - (pMarkXY.x + new_p_svg.x()) )
+    c.y( (c.y() + oldPXY.y) - (pMarkXY.y + new_p_svg.y()) )
+    pushFn(el, newParentEl)
+  })
+  if (childEl.classList.contains('drag_select_box')) {
+    childEl.dispatchEvent(
+      new CustomEvent('dragselect_init', { bubbles: true })
+    )
   }
 }
 

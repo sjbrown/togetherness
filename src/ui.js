@@ -159,10 +159,8 @@ const ui = {
     if (el.classList.contains('drag-open')) {
       el.classList.remove('drag-open')
     }
-    nestSVG.remove()
+    synced.remove(nestSVG)
     ui.fire({type: 'dropMark', data: el.parentElement});
-    //net_fire({type: 'dropMark', mark_rect: serialize(nestSVG.lastChild) });
-    push_sync()
   },
 
   _unmark_nest: (nestEl) => {

@@ -112,8 +112,7 @@ var paper = {
   drop_handler: function(elem, evt) {
     console.log('target should be ', elem)
     console.log('target is', evt.target)
-    console.log('paper_sum drop_handler', elem.id,
-      evt.detail.draggedElemId, evt.target)
+    console.log('paper_sum drop_handler', elem.id, evt.detail.draggedElemId, evt.target)
 
     draggedElem = byId(evt.detail.draggedElemId)
     dropElem = evt.target
