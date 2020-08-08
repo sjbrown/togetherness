@@ -201,7 +201,6 @@ var synced = {
       syncNeeded: false,
     }
     console.log("received", msg)
-    changed = msg.changed
     msg.removed.forEach(id => {
       let el = document.getElementById(id)
       if (el) {
@@ -278,6 +277,5 @@ var synced = {
     })
   },
 }
-var changed; // todo: remove this
 
 synced.init()
