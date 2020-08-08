@@ -33,7 +33,7 @@ var spatial = {
     return captured
   },
 
-  surroundingBox: (elements) => {
+  smallestSurroundingBox: (elements) => {
     let box = {x: Infinity, y: Infinity, width: 0, height: 0}
     let maxX = 0
     let maxY = 0

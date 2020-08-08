@@ -18,6 +18,7 @@
 <script src="./ui.js"></script>
 <script src="./index.js"></script>
 <script src="./spatial.js"></script>
+<script src="./js/select_box.js"></script>
 <script src="./js/domJSON.js"></script>
 <script src="./physicsjs-full.js"></script>
 
@@ -105,62 +106,27 @@ SVG.on(document, 'DOMContentLoaded', () => {
   import_foreign_svg('svg/v1/drag_select_box.svg')
   .then((nest) => {
     nest.id('drag_select_box')
-    let innerRect = nest.node.querySelector('rect')
-    let svg_rect = SVG.adopt(innerRect)
-    let contentsGroup = nest.node.querySelector('.contents_group')
-    let init = function() {
-      nest.attr({ x: 0, y: 0, width: 0, height: 0 })
-      svg_rect.attr({ x: 0, y: 0, width: 0, height: 0 })
-    }
-    let emptyContentsGroup = function() {
-      let nextNode = contentsGroup.querySelector('.draggable-group')
-      while(nextNode) {
-        console.log('cg node', nextNode.id)
-        pop_from_parent(nextNode)
-        nextNode = contentsGroup.querySelector('.draggable-group')
-      }
-      init()
-    }
+
     viewport.node.addEventListener('dragselect_init', (evt) => {
-      init()
+      console.log('viewport got svg_dragselect_init', evt)
     })
     viewport.node.addEventListener('svg_dragselect_start', (evt) => {
       console.log('viewport got svg_dragselect_start', evt, evt.detail.box)
-      emptyContentsGroup()
       let selbox = svg_table.node.querySelector('#drag_select_box')
       if (!selbox) {
         nest.attr(evt.detail.box)
         synced.add(nest.node)
       }
+      select_box.initialize(nest.node)
     })
     viewport.node.addEventListener('svg_dragselect_drag', (evt) => {
       console.log('viewport got svg_dragselect_drag', evt, evt.detail.box)
-      nest.attr(evt.detail.box)
-      svg_rect.width(evt.detail.box.width - 1)
-      svg_rect.height(evt.detail.box.height - 1)
+      select_box.reshape(nest.node, evt.detail.box)
     })
     viewport.node.addEventListener('svg_dragselect_end', (evt) => {
       console.log('viewport got svg_dragselect_end', evt)
       let surrounded = spatial.topLevelSurrounded(evt.detail.box)
-      let sbox = spatial.surroundingBox(surrounded)
-      console.log('surrounded', surrounded)
-      console.log('surr box', sbox)
-      nest.attr(sbox)
-
-      svg_rect.width(sbox.width - 1)
-      svg_rect.height(sbox.height - 1)
-
-      let contentsGroup = nest.node.querySelector('.contents_group')
-      surrounded.forEach(el => {
-        push_to_parent(
-          el,
-          nest.node,
-          (childElem, parentElem) => {
-            console.log('consume it here', childElem.id, parentElem.id)
-            contentsGroup.appendChild(childElem)
-          }
-        )
-      })
+      select_box.selectElements(nest.node, surrounded)
     })
   })
 })

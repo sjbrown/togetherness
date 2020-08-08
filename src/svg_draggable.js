@@ -221,7 +221,6 @@ function makeDraggable(viewport, table) {
     }
   }
 
-
   function drag(evt) {
     debug("drag", evt)
     if (!origMouse) {
@@ -240,20 +239,25 @@ function makeDraggable(viewport, table) {
           maxX: table.width(),
           maxY: table.height(),
         }
-        selectedEl.x(
-          clamp(
-            origXY.x + (mouse.x - origMouse.x),
-            tableBoundaries.minX,
-            tableBoundaries.maxX - selectedEl.bbox().width,
-          )
+        let newX = clamp(
+          origXY.x + (mouse.x - origMouse.x),
+          tableBoundaries.minX,
+          tableBoundaries.maxX - selectedEl.bbox().width,
         )
-        selectedEl.y(
-          clamp(
-            origXY.y + (mouse.y - origMouse.y),
-            tableBoundaries.minY,
-            tableBoundaries.maxY - selectedEl.bbox().height,
-          )
+        let newY = clamp(
+          origXY.y + (mouse.y - origMouse.y),
+          tableBoundaries.minY,
+          tableBoundaries.maxY - selectedEl.bbox().height,
         )
+        selectedEl.x(newX)
+        selectedEl.y(newY)
+        if (selectedEl.node.classList.contains('select_box')) {
+          // Special case for select boxes: we tell them to move their
+          // surrounded elements here, before the broadcast() so that
+          // we don't get a render between the movement of the select
+          // box and the movement of the surrounded elements
+          select_box.svg_drag(selectedEl.node, newX, newY)
+        }
         // Don't spam - throttle to roughly every 200 miliseconds
         if (lockBroadcastTimer) { return }
         lockBroadcastTimer = true

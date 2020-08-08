@@ -6,54 +6,26 @@
    height="100"
    version="1.1"
    id="drag_select_box"
-   class="drag_select_box"
+   class="drag_select_box select_box"
+   data-for=""
+   data-offsets=""
    >
-  <defs id="defs2" />
   <script
      type="text/javascript"
-     src="js/paper.js"
-     id="script_paper" />
-  <script
-     type="text/javascript"
-     data-namespace="drag_select_box"
-     id="script_drag_select_box"><![CDATA[
-var drag_select_box = {
-
-  paper_roll_handler: function(evt) {
-    return paper.roll_handler(this, evt)
-  },
-
-  initialize: function(elem, prototype) {
-    elem.addEventListener('selection_roll', this.paper_roll_handler)
-    elem.addEventListener('resize', this.resize_handler)
-  },
-
-  resize_handler: function(evt) {
-    paper.resize_handler(this, evt)
-  },
-
-  menu: {
-    'Roll All': {
-      eventName: 'selection_roll',
-      applicable: (node) => { return true },
-    },
-  },
-
-}
-    ]]></script>
-  <g id="contents_group" class="contents_group"></g>
+     src="js/select_box.js"
+     id="script_select_box" />
   <rect
+     fill="#0000ff"
+     stroke="#000080"
      style="opacity:1;
-       fill:#0000ff;
        fill-opacity:0.3;
-       stroke:#000080;
        stroke-width:1;
        stroke-linejoin:miter;
        stroke-miterlimit:4;
        stroke-dasharray:1,1;
        stroke-dashoffset:0;
        stroke-opacity:1"
-     id="rect834"
+     id="select_rect"
      width="99.5"
      height="99.5"
      x="0.5"

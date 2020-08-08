@@ -1,6 +1,21 @@
 
 const ui = {
 
+  getSelectedElements: () => {
+    let selected = []
+    svg_table.node.querySelectorAll('.select_box').forEach(el => {
+      if (el.dataset.for.includes(',')) {
+        let ids = el.dataset.for.split(',')
+        ids.forEach(id => {
+          selected.push(svg_table.getElementById(id))
+        })
+      } else {
+        selected.push(svg_table.node.getElementById(el.dataset.for))
+      }
+    })
+    return selected
+  },
+
   justNonUiAttributes: (node) => {
     return node.getAttributeNames()
     .reduce((acc,n) => {
