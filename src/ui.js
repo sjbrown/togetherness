@@ -1,242 +1,125 @@
-
 const ui = {
+
+  selectBoxPrototype: null,
+
+  initializeDragSelectBox: (viewportEl) => {
+    return import_foreign_svg('svg/v1/select_box.svg')
+    .then((nest) => {
+      nest.id('select_box_prototype')
+      this.selectBoxPrototype = nest
+      dragSelBoxEl = nest.node.cloneNode(true)
+      dragSelBox = SVG.adopt(dragSelBoxEl)
+      dragSelBox.id('drag_select_box')
+      dragSelBox.addClass('drag_select_box')
+
+      viewportEl.addEventListener('dragselect_init', (evt) => {
+        console.log('viewport got svg_dragselect_init', evt)
+      })
+      viewportEl.addEventListener('svg_dragselect_start', (evt) => {
+        console.log('viewport got svg_dragselect_start', evt, evt.detail.box)
+        ui.unselectAll()
+        let selbox = svg_table.node.querySelector('#drag_select_box')
+        if (!selbox) {
+          dragSelBox.attr(evt.detail.box)
+          synced.ui_add(dragSelBoxEl)
+        }
+        select_box.initialize(dragSelBoxEl)
+      })
+      viewportEl.addEventListener('svg_dragselect_drag', (evt) => {
+        console.log('viewport got svg_dragselect_drag', evt, evt.detail.box)
+        select_box.reshape(dragSelBoxEl, evt.detail.box)
+      })
+      viewportEl.addEventListener('svg_dragselect_end', (evt) => {
+        console.log('viewport got svg_dragselect_end', evt)
+        let surrounded = spatial.topLevelSurrounded(evt.detail.box)
+        select_box.selectElements(dragSelBoxEl, surrounded)
+      })
+    })
+  },
+
+  getSelectBoxes: () => {
+    let selBoxes = []
+    layer_ui.node.querySelectorAll('.select_box').forEach(el => {
+      selBoxes.push(el)
+    })
+    return selBoxes
+  },
+
+  getSelectBoxSelectedElements: (selBoxElem) => {
+    let selected = []
+    let newIds = []
+    let ids = []
+
+    if (selBoxElem.dataset.for.includes(',')) {
+      ids = selBoxElem.dataset.for.split(',')
+    } else if (selBoxElem.dataset.for.length > 0) {
+      ids = [selBoxElem.dataset.for]
+    }
+
+    ids.forEach(id => {
+      el = layer_objects.node.querySelector('#' + id)
+      if (el) {
+        selected.push(el)
+        newIds.push(id)
+      }
+    })
+    if (newIds.length !== ids.length) { // If avoidable, don't change the DOM
+      selBoxElem.dataset.for = newIds
+    }
+    return selected
+  },
 
   getSelectedElements: () => {
     let selected = []
-    svg_table.node.querySelectorAll('.select_box').forEach(el => {
-      if (el.dataset.for.includes(',')) {
-        let ids = el.dataset.for.split(',')
-        ids.forEach(id => {
-          selected.push(svg_table.getElementById(id))
-        })
-      } else {
-        selected.push(svg_table.node.getElementById(el.dataset.for))
-      }
+    layer_ui.node.querySelectorAll('.select_box').forEach(el => {
+      let nodes = ui.getSelectBoxSelectedElements(el)
+      selected = selected.concat(nodes)
     })
     return selected
   },
 
-  justNonUiAttributes: (node) => {
-    return node.getAttributeNames()
-    .reduce((acc,n) => {
-      if (n.indexOf('data-ui-') === -1) {
-        acc[n] = g(node, n);
-      }
-      return acc
-    }, {});
-  },
+  selectElement: (elem, evt) => {
+    console.log('selectElement', elem.id, evt)
 
-  is_marked: (node) => {
-    return (
-      g(node.parentNode, 'data-app-class') === 'nest'
-      &&
-      g(node.parentNode.lastChild, 'data-app-class') === 'mark'
-    )
-  },
+    ui.unselectAll()
 
-  make_nest: (attrs) => {
-    //var nest = svg_table.nested()
-    var nest = svg_table.element('svg', SVG.Container)
-    nest.attr(Object.assign({
-      'data-app-class': 'nest',
-    }, attrs))
-    nest.addClass('draggable-group')
-
-    return nest;
-  },
-
-  make_mark: (target_id, attrs) => {
-    // make the highlight rectangle
-    target = SVG.get(target_id)
-    //console.log("making mark on", target_id, target)
-
-    var color = getUserColor()
-    var rect = svg_table.rect()
-    rect.addClass('mark-rect')
-    rect.attr(
-      Object.assign({
-        'data-app-class': 'mark',
-        x: 0,
-        y: 0,
-        rx: 4,
-        ry: 4,
-        'fill-opacity': 0.1,
-        'stroke-opacity': 0.8,
-        'stroke-width': 1,
-        width: target.width() + 4,
-        height: target.height() + 4,
-        fill: color,
-        stroke: color,
-      }, attrs)
-    )
-    var nest = ui.make_nest({
-      id: 'nest_' + rect.attr('id'), // special ID
-      width: rect.width(),
-      height: rect.height(),
-      x: target.x() - 2,
-      y: target.y() - 2,
-      'data-nest-for': 'mark',
+    let svgSelBoxEl = this.selectBoxPrototype.node.cloneNode(true)
+    console.log("made select_box", svgSelBoxEl)
+    svg_elem = SVG.adopt(elem)
+    select_box.initialize(svgSelBoxEl)
+    select_box.reshape(svgSelBoxEl, {
+      x: svg_elem.x(),
+      y: svg_elem.y(),
+      width: svg_elem.width(),
+      height: svg_elem.height(),
     })
-    //console.log("nest node is now", nest.node)
+    select_box.selectElements(svgSelBoxEl, [elem])
+    synced.ui_add(svgSelBoxEl)
+  },
 
-    // Re-home the enveloped object inside the <svg>, and then
-    // move that <svg> to the old x,y coords of the enveloped object
-    oldXY = {
-      x: target.x(),
-      y: target.y(),
-    }
-    target.x(0)
-    target.y(0)
-    nest.node.appendChild(target.node)
-    //target.toParent(nest)
-    target.attr('data-enveloped', true)
-    ui.un_hookup_ui(target.node)
-    nest.attr( oldXY )
-    nest.add(rect) // Add it last, so that it renders on top
-
-    /*
-    setNamespacesForElement(nest.node, ['mark'])
-    window['mark'] = {
-      makeMenu: (elem) => {
-        console.log('in makeMenu')
+  removeEmptySelectBoxes: () => {
+    console.log("remove empty boxes")
+    ui.getSelectBoxes().forEach(sbox => {
+      console.log("box", sbox)
+      if (ui.getSelectBoxSelectedElements(sbox).length < 1) {
+        synced.remove(sbox)
       }
-    }
-    */
-
-    ui.hookup_ui(nest.node)
-
-    return {
-      mark_rect: rect,
-      mark_nest: nest,
-    }
-  },
-
-
-
-  mark_by_id: (evt, target_id) => {
-    //console.log('ui.mark_by_id target_id', evt, target_id)
-    // unmark everything else, unless shift or ctrl is being held
-    if (!evt.ctrlKey && !evt.shiftKey) {
-      ui.unmark_all_but(target_id)
-    }
-
-    // am I already marked?
-    // target = SVG.get(target_id)
-    let targetEl = byId(target_id)
-    if (g(targetEl, 'data-enveloped')) {
-      console.log('ALREADY MARKED')
-      return
-    }
-
-    var { mark_rect, mark_nest } = ui.make_mark(target_id)
-    ui.fire({ type: 'createMark', data: mark_nest })
-    synced.dirty_remove(targetEl)
-    synced.dirty_add(mark_nest.node)
-  },
-
-  unmark: (evt) => {
-    //console.log('ui.unmark', evt)
-    //evt.stopPropagation()
-    ui._unmark_nest(evt.target.closest('[data-nest-for=mark]'))
-    ui.fire({type: 'dropMark', data: mark_rect.parentNode});
-  },
-
-  unmark_all_but: (exceptId) => {
-    //console.log('unmark_all_but', exceptId)
-    document.querySelectorAll('[data-nest-for=mark]').forEach(el => {
-      //console.log('considering', exceptId, el, el.id === exceptId)
-      if (
-        exceptId
-        &&
-        (el.id === exceptId || el.querySelector('#' + exceptId))
-      ) {
-        return
-      }
-      //console.log("unmarking", el)
-      ui._unmark_nest(el);
-      ui.fire({type: 'dropMark', data: el});
     })
   },
 
-  raw_unmark: (el) => {
-    //console.log('raw unmark', el.id)
-    if (!el.dataset.enveloped) {
-      console.error('element', el, 'was not marked')
-      return
-    }
-    nestSVG = SVG.adopt(el.parentElement)
-    oldXY = {
-      x: nestSVG.x(),
-      y: nestSVG.y(),
-    }
-    SVG.adopt(el).attr(oldXY)
-    s(el, 'data-enveloped', null)
-    if (el.classList.contains('drag-open')) {
-      el.classList.remove('drag-open')
-    }
-    synced.remove(nestSVG)
-    ui.fire({type: 'dropMark', data: el.parentElement});
-  },
-
-  _unmark_nest: (nestEl) => {
-    //console.log("_unmark_nest", nestEl.id)
-    nestEl.querySelectorAll('.resize_handle').forEach(handle => {
-      synced.remove(handle)
-    })
-    nestEl.querySelectorAll('.resize_dotted_rect').forEach(el => {
+  unselectAll: () => {
+    ui.getSelectBoxes().forEach(el => {
+      console.log("removing", el)
       synced.remove(el)
     })
-    let nestSVG = SVG.adopt(nestEl)
-    oldXY = {
-      x: nestSVG.x(),
-      y: nestSVG.y(),
-    }
-    //console.log('unmarking ', oldXY, )
-    // re-parent all the enveloped ones back into the svg_table element
-    nestEl.querySelectorAll('#' + nestEl.id + ' > [data-enveloped]').forEach(kid => {
-      s(kid, 'data-enveloped', null)
-      if (kid.classList.contains('drag-open')) {
-        kid.classList.remove('drag-open')
-      }
-      kid.remove()
-      kidObj = SVG.adopt(kid)
-      kidObj.attr(oldXY)
-      synced.add(kid)
-      //console.log('back in the doc', kidObj)
-      ui.hookup_ui(kid)
-      ui.hookup_menu_actions(kid)
-    })
-    synced.remove(nestEl)
   },
 
   hookup_ui: (elem) => {
     //console.log("hookup_ui", elem.id)
     nest = SVG.adopt(elem)
     nest.on('svg_dragsafe_click', (evt) => {
-      console.log('id', elem.id, 'got click', evt)
-      if (elem.dataset.nestFor !== 'mark') {
-        ui.mark_by_id(evt.detail.origEvent, elem.id)
-      } else {
-        if (evt.ctrlKey) {
-          ui.unmark(evt)
-        } else {
-          ui.unmark_all_but(nest.node.id)
-        }
-      }
-    })
-    nest.on('svg_dragsafe_dblclick', (evt) => {
-      console.log('nest ', nest.id, ' got dblclick')
-      if (elem.dataset.nestFor === 'mark') {
-        let triggerNode = nest.node.firstChild
-        let detail = {elemId: nest.node.firstChild.id}
-        console.log("document dbl", triggerNode.id, detail)
-        triggerNode.dispatchEvent(new MouseEvent('dblclick', {
-          view: window,
-          bubbles: true,
-          cancelable: true,
-          detail: detail,
-        }))
-      }
+      // console.log('id', elem.id, 'got click', evt)
+      ui.selectElement(elem, evt)
     })
   },
 
@@ -244,19 +127,16 @@ const ui = {
     //console.log("un_hookup_ui", elem.id)
     nest = SVG.adopt(elem)
     nest.off('svg_dragsafe_click')
-    nest.off('svg_dragsafe_dblclick')
   },
 
   hookup_menu_actions: (svgEl) => {
     //console.log('hookup_menu_actions', svgEl)
-    svgEl.addEventListener('node_delete', delete_marked)
-    svgEl.addEventListener('mouseover', ui.mouseover)
-    // Hookup any self-event handlers
+    svgEl.addEventListener('mouseover', ui.buildRightClickMenu)
     ui.hookup_self_event_handlers(svgEl)
   },
 
   hookup_self_event_handlers: (el) => {
-    let actionMenu = getFullMenuForElement(el)
+    let actionMenu = ui.getFullMenuForElement(el)
     Object.keys(actionMenu).map((title) => {
       let menuItem = actionMenu[title]
       if (!menuItem.handler) {
@@ -277,12 +157,12 @@ const ui = {
     })
   },
 
-  mouseover: function (evt) {
+  buildRightClickMenu: function (evt) {
     // Add clickable (right-click) options onto the menu
     // Note: addEventListener must use this named, static, non-arrow function
     //       to prevent memory-leak bug:
     // https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener#Memory_issues
-    //console.log('ui.mouseover', evt, this)
+    //console.log('ui.buildRightClickMenu', evt, this)
     let hoveredEl = this
 
     deleteList = document.querySelectorAll('.cloned-menuitem')
@@ -290,7 +170,7 @@ const ui = {
       el.remove();
     })
 
-    let actionMenu = getFullMenuForElement(hoveredEl)
+    let actionMenu = ui.getFullMenuForElement(hoveredEl)
     var menu = byId('gamemenu')
     var template = byId('template_menuitem')
     Object.keys(actionMenu).map((title) => {
@@ -316,10 +196,27 @@ const ui = {
     })
   },
 
-  update_buttons: () => {
-    //console.log("ui.update_buttons")
-    var markedNodes = document.querySelectorAll('[data-ui-marked]')
-    var numMarked = markedNodes.length
+  getFullMenuForElement: function(elem) {
+    let actionMenu = {}
+    getNamespacesForElement(elem).forEach((nsName) => {
+      let ns = window[nsName]
+      if (ns.menu) {
+        actionMenu = Object.assign(actionMenu, ns.menu)
+      }
+      if (ns.makeMenu) {
+        actionMenu = Object.assign(actionMenu, ns.makeMenu(elem))
+      }
+    })
+    return actionMenu
+  },
+
+  updateButtons: () => {
+    //console.log("ui.updateButtons")
+    let markedNodes = ui.getSelectedElements()
+    let numMarked = markedNodes.length
+    let buttons = {}
+    let template = byId('template_object_actions')
+
 
     submenu = byId('object_actions')
     header = byId('object_actions_header')
@@ -328,12 +225,11 @@ const ui = {
     })
     header.innerText = 'Select dice by clicking on them; roll by double-clicking; zoom with Ctrl-wheel'
 
-    template = byId('template_object_actions')
     function makeButton(elemNode, actionMenu, title) {
       // actionMenu looks like this: {
       // 'Foo': {
       //   eventName: 'foo_event',
-      //   applicable: (node) => { return !is_marked(node) },
+      //   applicable: (node) => { return node },
       //   uiLabel: (node) => { return 'MyLabel' },
       //  },  ...}
       var btn = template.content.firstElementChild.cloneNode(true)
@@ -345,42 +241,35 @@ const ui = {
       }
       return btn
     }
+    function addNewButton(title, menu, node) {
+      buttons[title] = {
+        btn: makeButton(node, menu, title),
+        clickEvents: [
+          (evt) => {
+            evt_fire(menu[title].eventName, node, evt)
+          }
+        ],
+      }
+    }
 
-    var buttons = {}
     var i = 0
-    let actionMenu
-    markedNodes.forEach((markNode) => {
+    markedNodes.forEach((elemNode) => {
       i++
-      var elemNode = markNode.firstChild
       console.log("elemNode", elemNode.id)
-      actionMenu = getFullMenuForElement(elemNode)
+      actionMenu = ui.getFullMenuForElement(elemNode)
       if (numMarked === 1) {
         header.innerText = g(elemNode, 'data-orig-name')
         //#header.innerText = g(elemNode, 'data-name')
 
         Object.keys(actionMenu).map((title) => {
-          buttons[title] = {
-            btn: makeButton(elemNode, actionMenu, title),
-            clickEvents: [
-              (evt) => {
-                evt_fire(actionMenu[title].eventName, elemNode, evt)
-              }
-            ],
-          }
+          addNewButton(title, actionMenu, elemNode)
         })
 
       } else { // more than 1
         header.innerText = numMarked + ' objects selected'
         Object.keys(actionMenu).map((title) => {
           if (i === 1) { // the first one sets up the 'buttons' object
-            buttons[title] = {
-              btn: makeButton(elemNode, actionMenu, title),
-              clickEvents: [
-                (evt) => {
-                  evt_fire(actionMenu[title].eventName, elemNode, evt)
-                }
-              ],
-            }
+            addNewButton(title, actionMenu, elemNode)
           } else {
             if (title in buttons) {
               buttons[title].clickEvents.push(
@@ -403,13 +292,27 @@ const ui = {
       }
     })
 
+    let selectBoxes = ui.getSelectBoxes()
+    if (markedNodes.length > 0 && selectBoxes.length > 0) {
+      let selectionActionMenu = {
+        'Delete': {
+          eventName: 'delete_selected',
+          applicable: (node) => { return true },
+        },
+      }
+      Object.keys(selectionActionMenu).map((title) => {
+        let elemNode = selectBoxes[0]
+        addNewButton(title, selectionActionMenu, elemNode)
+      })
+    }
+
     /*
      * Attach the created buttons onto the DOM
      */
     Object.keys(buttons).map((key) => {
       buttonRecord = buttons[key]
-      buttonRecord.clickEvents.forEach((handler) => {
-        buttonRecord.btn.addEventListener('click', handler)
+      buttonRecord.clickEvents.forEach(evtSpawner => {
+        buttonRecord.btn.addEventListener('click', evtSpawner)
       })
       template.parentElement.appendChild(buttonRecord.btn)
       // Hookup hotkeys
@@ -425,7 +328,7 @@ const ui = {
   broadcast: (eventName, detail, dispatchEl) => {
     //console.log('broadcasting', eventName, detail)
     if (dispatchEl === undefined) {
-      dispatchEl = byId('svg_table')
+      dispatchEl = svg_table.node
     }
     dispatchEl.dispatchEvent(new CustomEvent(eventName, {
       bubbles: true,
@@ -436,29 +339,6 @@ const ui = {
   fire: function(msg) {
     //console.log('ui.fire', msg)
     ui.broadcast(msg.type, msg.data)
-    var fn = {
-      createMark: (msg) => {
-        //console.log("createMark arrow")
-        msg.data.attr({'data-ui-marked': true})
-        ui.update_buttons()
-      },
-      dropMark: (msg) => {
-        ui.update_buttons()
-      },
-      create: (msg) => {
-        console.log('ui create', msg)
-      },
-      delete: (msg) => {
-        //console.log('ui delete sel', msg)
-        ui.update_buttons()
-      },
-    }[msg.type];
-
-    if (fn) {
-      fn(msg);
-    } else {
-      throw Error('Unknown msg type '+ msg.type);
-    }
   },
 
   flatten_translation: (el) => {

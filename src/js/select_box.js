@@ -48,6 +48,8 @@ var select_box = {
       return [svg_el.x() - nest.x(), svg_el.y() - nest.y()]
     })
     nest.node.dataset.offsets = offsets // nested arrays will be flattened
+
+    return (surroundedIds.length > 0)
   },
 
   reshape: function(elem, box) {
@@ -80,7 +82,7 @@ var select_box = {
     let i = 0
     ids.forEach(id => {
       console.log('id', id)
-      selectedEl = svg_table.node.querySelector('#' + id)
+      selectedEl = layer_objects.node.querySelector('#' + id)
       svg_el = SVG.adopt(selectedEl)
       console.log('x', newX + offsets[i][0] )
       svg_el.x( newX + offsets[i][0] )
@@ -101,6 +103,24 @@ var select_box = {
       width: 0, height: 0,
       fill: color,
       stroke: color,
+    })
+    elem.addEventListener('delete_selected', () => {
+      console.log("select_box.js delete_selected")
+      ui.getSelectBoxSelectedElements(elem).forEach(selectedEl => {
+        delete_element(selectedEl)
+      })
+    })
+    elem.addEventListener('svg_dragsafe_dblclick', () => {
+      ui.getSelectBoxSelectedElements(elem).forEach(selectedEl => {
+        let detail = {elemId: selectedEl.id}
+        console.log("selected el dbl", selectedEl.id, detail)
+        selectedEl.dispatchEvent(new MouseEvent('dblclick', {
+          view: window,
+          bubbles: true,
+          cancelable: true,
+          detail: detail,
+        }))
+      })
     })
   },
 

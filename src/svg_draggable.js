@@ -91,6 +91,7 @@ function makeDraggable(viewport, table) {
   })
 
   function broadcast(eventName, detail, dispatchEl) {
+    console.log('broadcasting', eventName, detail, dispatchEl)
     if (dispatchEl === undefined) {
       dispatchEl = selectedEl ? selectedEl.node : viewport.node
     }
@@ -149,7 +150,7 @@ function makeDraggable(viewport, table) {
   }
 
   function updateInteractionMode(evt) {
-    console.log("IM", evt.touches, evt.button)
+    // console.log("updateInteractionMode", evt.touches, evt.button)
     if (evt.touches) {
       interactionMode = 'object'
     } else if (evt.button === 0) {
@@ -169,13 +170,16 @@ function makeDraggable(viewport, table) {
     if (interactionMode === 'object') {
       let dragTarget = null
 
-      // First, look for dragTargets as the direct children of "table"
-      let q = `#${table.node.id} > .draggable-group`
+      // First, look for dragTargets as the direct children of
+      // the svg_table's "layers"
+      let q = `#${table.node.id} > g > .draggable-group`
       table.node.querySelectorAll(q).forEach(draggableGroup => {
         if (draggableGroup.contains(evt.target)) {
           dragTarget = draggableGroup
           // Make it the top-most element
-          dragTarget.remove(); table.node.appendChild(dragTarget)
+          p = dragTarget.parentElement
+          dragTarget.remove()
+          p.appendChild(dragTarget)
         }
       })
       // Otherwise, look for dragTargets as the direct children of .drag-opens
@@ -331,8 +335,16 @@ function makeDraggable(viewport, table) {
       }
       let inside = isInside(selectedEl.node, el)
       if (inside) {
+        let draggedSVGs = (
+          selectedEl.node.classList.contains('select_box')
+          ?
+          ui.getSelectBoxSelectedElements(selectedEl.node)
+          :
+          [selectedEl.node]
+        )
         broadcast('svg_drop', {
           draggedElemId: selectedEl.node.id,
+          draggedSVGs: draggedSVGs,
           dropElemId: el.id,
           mouse: mouse,
         }, el)

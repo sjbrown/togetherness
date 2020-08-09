@@ -181,7 +181,11 @@ var synced = {
     window.requestAnimationFrame(this.run.bind(this))
   },
   add: function(el) {
-    svg_table.add(SVG.adopt(el))
+    layer_objects.add(SVG.adopt(el))
+    this.dirty_add(el)
+  },
+  ui_add: function(el) {
+    layer_ui.add(SVG.adopt(el))
     this.dirty_add(el)
   },
   remove: function(el) {
@@ -214,7 +218,7 @@ var synced = {
         return
       }
       // console.log("GOT", id)
-      svg_table.svg(msg.added[id])
+      layer_objects.svg(msg.added[id])
       nestEl = byId(id)
       if (nestEl.classList.contains('ghost')) {
         console.error('ADDED A GHOST', nestEl)
@@ -258,7 +262,7 @@ var synced = {
           retval.syncNeeded = true
           throw new Error('svg src not loaded')
         }
-        let group = svg_table.group()
+        let group = layer_objects.group()
         group.svg(msg.changed[id])
         prototype = group.node.querySelector('#' + id)
         console.log("changed: prototype is", prototype)

@@ -107,7 +107,7 @@ var resize_widget = {
       stroke: "#000000",
     })
     resize_handle.on('svg_dragstart', (e) => {
-      svg_table.node.insertBefore(resize_dotted_rect.node, svg_table.node.firstChild)
+      layer_ui.node.insertBefore(resize_dotted_rect.node, layer_ui.node.firstChild)
       console.log("dragstart RESIZE", e)
     })
     resize_handle.on('svg_drag', (e) => {
@@ -129,7 +129,7 @@ var resize_widget = {
       console.log('new xy', resize_handle.cx(), resize_handle.cy())
       console.log('new xy', resize_handle.bbox())
 
-      ui.unmark_all_but()
+      ui.unselectAll()
       evt_fire(
         'resize',
         byId(handle.dataset.appTargetId),
@@ -232,13 +232,13 @@ togetherFunctions.on_sync = (msg) => {
   //console.log('nw el', newViewport)
   myViewport.style.backgroundImage = newViewport.style.backgroundImage
 
-  svg_table.node.querySelectorAll('#svg_table > .draggable-group').forEach((el) => {
+  svg_table.node.querySelectorAll('.draggable-group').forEach((el) => {
     el.remove()
   })
   newTable = newEl.querySelector('#svg_table')
   //console.log('nw tab', newTable)
   /*
-  newTable.querySelectorAll('#svg_table > .draggable-group').forEach((el) => {
+  newTable.querySelectorAll('#layer_objects > .draggable-group').forEach((el) => {
     let existingEl = svg_table.node.querySelector('#' + el.id)
     console.log("curtains: ", el.id)
     if (existingEl === null) {
@@ -261,7 +261,7 @@ togetherFunctions.on_sync = (msg) => {
   }
   return urlLoop().then(() => {
     console.log("NEWT", newTable.outerHTML)
-    return newTable.querySelectorAll('#svg_table > .draggable-group').forEach((el) => {
+    return newTable.querySelectorAll('#layer_objects> .draggable-group').forEach((el) => {
       el.remove()
       /*
        * WHY WHY WHY
@@ -270,8 +270,29 @@ togetherFunctions.on_sync = (msg) => {
        */
       console.log("Making new svg for ", el.id)
       let s = el.outerHTML
-      svg_table.svg(s)
-      nestEl = svg_table.node.querySelector('#' + el.id)
+      layer_objects.svg(s)
+      nestEl = layer_objects.node.querySelector('#' + el.id)
+      console.log("Got result", nestEl)
+      console.log("necg", nestEl.querySelector('.contents_group').outerHTML)
+      console.log("e cg", el.querySelector('.contents_group').outerHTML)
+      ui.hookup_ui(nestEl)
+      init_with_namespaces(nestEl, el)
+      ui.hookup_menu_actions(nestEl)
+      /*
+       * WHY WHY WHY
+       */
+    })
+    return newTable.querySelectorAll('#layer_ui > .draggable-group').forEach((el) => {
+      el.remove()
+      /*
+       * WHY WHY WHY
+       *
+       * This seems to be the only way to get the <filter> to work correctly
+       */
+      console.log("Making new svg for ", el.id)
+      let s = el.outerHTML
+      layer_ui.svg(s)
+      nestEl = layer_ui.node.querySelector('#' + el.id)
       console.log("Got result", nestEl)
       console.log("necg", nestEl.querySelector('.contents_group').outerHTML)
       console.log("e cg", el.querySelector('.contents_group').outerHTML)
@@ -312,44 +333,6 @@ togetherFunctions.on_change = (msg) => {
   debugBar('CHANGE: ' + msg)
   deserialize(msg.data)
 }
-
-togetherFunctions.on_change = (msg) => {
-  debugBar('CHANGE: ' + msg)
-  deserialize(msg.data)
-}
-
-togetherFunctions.on_create = (msg) => {
-  debugBar('CREATE: ' + msg)
-  return Promise.resolve()
-  .then(() => {
-    return deserialize(msg.data)
-  })
-  .then((elem) => {
-    svg_table.node.appendChild(elem)
-    ui.hookup_ui(elem)
-    if (msg.data['data-app-url']) {
-      return import_foreign_svg(msg.data['data-app-url'])
-      .then(() => {
-        init_with_namespaces(elem, msg.data)
-        ui.hookup_menu_actions(elem)
-      })
-    } else {
-      ui.hookup_menu_actions(elem)
-    }
-  })
-}
-
-togetherFunctions.on_create_mark = (msg) => {
-  debugBar('CREATEMARK: ' + msg)
-  ui.make_mark(msg.data.target_id, msg.data.mark_rect)
-}
-
-
-togetherFunctions.on_drop_nest_mark= (msg) => {
-  ui._unmark_nest(document.querySelector('#' + msg.nest.id))
-}
-
-togetherFunctions.on_delete = (msg) => { recursive_delete(msg.data) }
 
 serializers = {}
 deserializers = {}
@@ -446,7 +429,7 @@ function serialize(thing, extras) {
     return;
   }
   var el = (thing.attr) ? thing.node : thing;
-  var retval = ui.justNonUiAttributes(el)
+  var retval = {}
   var fn = str_to_fn('serialize_' + g(el, 'data-app-class'))
   if (fn) {
     retval = Object.assign( retval, fn(el) )
@@ -455,15 +438,6 @@ function serialize(thing, extras) {
     retval = Object.assign( retval, extras )
   }
   return retval
-}
-
-
-function is_marked(node) {
-  return (
-    g(node.parentNode, 'data-app-class') === 'nest'
-    &&
-    g(node.parentNode.lastChild, 'data-app-class') === 'mark'
-  )
 }
 
 
@@ -549,9 +523,6 @@ function add_fresh_svg(svgElem) {
     ui.hookup_ui(subSvg)
     init_with_namespaces(subSvg)
     ui.hookup_menu_actions(subSvg)
-  })
-  svgElem.querySelectorAll('[data-nest-for=mark]').forEach((subSvg) => {
-    ui.hookup_ui(subSvg)
   })
 }
 
@@ -666,26 +637,6 @@ function hslToRgb(h, s, l){
   return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
 }
 
-function getFullMenuForElement(elem) {
-  let actionMenu = {}
-  getNamespacesForElement(elem).forEach((nsName) => {
-    let ns = window[nsName]
-    if (ns.menu) {
-      actionMenu = Object.assign(actionMenu, ns.menu)
-    }
-    if (ns.makeMenu) {
-      actionMenu = Object.assign(actionMenu, ns.makeMenu(elem))
-    }
-  })
-  actionMenu = Object.assign(actionMenu, {
-    'Delete': {
-      eventName: 'node_delete',
-      applicable: (node) => { return true },
-    },
-  })
-  return actionMenu
-}
-
 function getNamespacesForElement(elem) {
   //console.log("getNamespacesForElement", elem)
   nses = elem.dataset.appNamespaces
@@ -741,7 +692,7 @@ async function appendDocumentScript(scriptElem, parentElem) {
   } else {
     alreadyMounted = true
   }
-  // Remove the javascript node so it doesn't clutter up the svg_table DOM
+  // Remove the javascript node so it doesn't clutter up the DOM
   scriptElem.remove()
 
   if (alreadyMounted || newScript.textContent.length > 0) {
@@ -810,7 +761,7 @@ function add_n_objects_from_prototype(n, prototype, center) {
     nest = SVG.adopt(clone)
     nest.cx(newCenter[0])
     nest.cy(newCenter[1])
-    svg_table.add(nest)
+    layer_objects.add(nest)
     ui.hookup_ui(nest.node)
     init_with_namespaces(nest.node, prototype)
     ui.hookup_menu_actions(nest.node)
@@ -831,13 +782,12 @@ async function add_object(url, attrs) {
       nest.cx(center[0])
       nest.cy(center[1])
     }
-    svg_table.add(nest)
+    layer_objects.add(nest)
     ui.hookup_ui(nest.node)
     init_with_namespaces(nest.node, attrs && attrs.serializedState)
     ui.hookup_menu_actions(nest.node)
     synced.dirty_add(nest.node) // send the sync before the animation
     ui.do_animate(nest.node)
-    ui.fire({type: "create", data: { createdEl: nest.node }});
   }
 
   // Allow 400 miliseconds for the scripts to load
@@ -909,12 +859,6 @@ function push_to_parent(childEl, newParentEl, pushFn) {
   if (childEl.dataset.nestFor === 'mark') {
     oldParentEl = childEl
     childNodes = [childEl.firstChild]
-  } else if (childEl.classList.contains('drag_select_box')) {
-    oldParentEl = childEl
-    childNodes = []
-    childEl.querySelector('.contents_group').childNodes.forEach(el => {
-      childNodes.push(el)
-    })
   } else {
     childNodes = [childEl]
   }
@@ -924,13 +868,7 @@ function push_to_parent(childEl, newParentEl, pushFn) {
   childNodes.forEach(el => {
     console.log("doing child", el)
     let oldPXY = {x: 0, y: 0}
-    if (oldParentEl.dataset.nestFor === 'mark') {
-      ui.raw_unmark(el)
-    }
-    if (oldParentEl.classList.contains('drag_select_box')) {
-      oldPXY = {x: old_p_svg.x(), y: old_p_svg.y()}
-    }
-    if (newParentEl.id === 'svg_table') {
+    if (newParentEl.id === 'layer_objects') {
       ui.hookup_ui(el)
       getNamespacesForElement(el).forEach((nsName) => {
         let ns = window[nsName]
@@ -956,11 +894,9 @@ function push_to_parent(childEl, newParentEl, pushFn) {
 }
 
 function delete_element(el) {
-  var payload = { id: null, kids: [] }
   ui.animated_ghost(el, {animation: 'rotateOut'})
   el.remove()
-  payload.kids.push({ id: el.id })
-  ui.fire({type: 'delete', data: payload });
+  ui.removeEmptySelectBoxes()
   push_sync()
 }
 
@@ -973,16 +909,5 @@ function evt_fire(eventName, triggerNode, origEvent, other) {
       other
     ),
   }))
-}
-
-function delete_marked(evt) {
-  var payload = { id: null, kids: [] }
-  document.querySelectorAll('[data-ui-marked]').forEach(el => {
-    ui.animated_ghost(el, {animation: 'rotateOut'})
-    el.remove()
-    payload.kids.push({ id: el.id })
-  })
-  ui.fire({type: 'delete', data: payload });
-  push_sync()
 }
 

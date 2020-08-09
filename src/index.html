@@ -43,6 +43,8 @@
 
 <script>
 var svg_table;
+var layer_objects;
+var layer_ui;
 var viewport;
 var gViewport;
 var origViewportSize = [1200, 800]
@@ -51,6 +53,18 @@ function initSvgTable(el) {
   el.id = 'svg_table'
   svg_table = SVG.adopt(el)
   svg_table.size(1200, 800)
+  layer_objects = svg_table.group()
+  layer_objects.attr({
+    id: 'layer_objects',
+  })
+  layer_objects.addClass('layer')
+  layer_objects.addClass('layer_objects')
+  layer_ui = svg_table.group()
+  layer_ui.attr({
+    id: 'layer_ui',
+  })
+  layer_ui.addClass('layer')
+  layer_ui.addClass('layer_ui')
   gViewport.add(svg_table)
   makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
   return svg_table
@@ -71,7 +85,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
   viewport.node.addEventListener('svg_dragsafe_click', (e) => {
     //console.log("-0--------------------------", e.detail.elemId, viewport.node.id)
     if (e.detail.elemId === viewport.node.id) {
-      ui.unmark_all_but()
+      ui.unselectAll()
     }
   })
 
@@ -102,33 +116,18 @@ SVG.on(document, 'DOMContentLoaded', () => {
     opacity: 0.75,
   });
 
-  // Initialize drag_select_box
-  import_foreign_svg('svg/v1/drag_select_box.svg')
-  .then((nest) => {
-    nest.id('drag_select_box')
+  ui.initializeDragSelectBox(viewport.node)
 
-    viewport.node.addEventListener('dragselect_init', (evt) => {
-      console.log('viewport got svg_dragselect_init', evt)
-    })
-    viewport.node.addEventListener('svg_dragselect_start', (evt) => {
-      console.log('viewport got svg_dragselect_start', evt, evt.detail.box)
-      let selbox = svg_table.node.querySelector('#drag_select_box')
-      if (!selbox) {
-        nest.attr(evt.detail.box)
-        synced.add(nest.node)
-      }
-      select_box.initialize(nest.node)
-    })
-    viewport.node.addEventListener('svg_dragselect_drag', (evt) => {
-      console.log('viewport got svg_dragselect_drag', evt, evt.detail.box)
-      select_box.reshape(nest.node, evt.detail.box)
-    })
-    viewport.node.addEventListener('svg_dragselect_end', (evt) => {
-      console.log('viewport got svg_dragselect_end', evt)
-      let surrounded = spatial.topLevelSurrounded(evt.detail.box)
-      select_box.selectElements(nest.node, surrounded)
-    })
+  var uiObserver = new MutationObserver((mutations) => {
+    console.log('---------------mutation obs', mutations)
+    ui.updateButtons()
   })
+  uiObserver.observe(layer_ui.node, {
+    attributes: true,
+    childList: true,
+    subtree: true,
+  })
+
 })
 
 var currentZoom = 1.0;
@@ -1070,14 +1069,10 @@ function ui_popup_button() {
 
 function ui_popup_properties(el, dialog_specifier) {
   var submitButton = byId('dialog_properties_submit')
-  var attrs = ui.justNonUiAttributes(el)
+  var attrs = SVG.adopt(el).attr()
 
   submitButton.addEventListener('click', (evt) => {
       var target = el
-
-      if (is_marked(target)) {
-        ui.unmark({target: target.parentNode.lastChild})
-      }
 
       var inputs = document.getElementsByClassName('properties_input')
       Array.prototype.map.call(inputs, (input) => {
@@ -1577,12 +1572,15 @@ function make_rect(attrs) {
     'stroke-width': 1,
   }, attrs))
 
-  var nest = ui.make_nest({
+  var nest = svg_table.element('svg', SVG.Container)
+  nest.attr(Object.assign({
+    'data-app-class': 'nest',
     'id': 'nest_' + rect.attr('id'), // special ID
     'data-nest-for': 'rect',
     'width': rect.rbox().width,
     'height': rect.rbox().height,
-  })
+  }, attrs))
+  nest.addClass('draggable-group')
 
   nest.add(rect)
   nest.node.dataset.appNamespaces = 'rect_verbs'
@@ -1691,14 +1689,18 @@ function make_text(attrs, content) {
   }))
   rect.addClass('text-rect')
 
-  var nest = ui.make_nest({
+  var nest = svg_table.element('svg', SVG.Container)
+  nest.attr(Object.assign({
+    'data-app-class': 'nest',
     'id': 'nest_' + text.attr('id'), // special ID
     'data-nest-for': 'text',
     x: 0,
     y: 0,
     width: rect.width(),
     height: rect.height() * 2,
-  })
+  }, attrs))
+  nest.addClass('draggable-group')
+
   nest.addClass('draggable-group')
   rect.y(rect.y() + (rect.height()/2))
   nest.add(rect)
@@ -1783,12 +1785,15 @@ function make_ellipse(attrs) {
     'stroke-width': 1,
   }, attrs))
 
-  var nest = ui.make_nest({
+  var nest = svg_table.element('svg', SVG.Container)
+  nest.attr(Object.assign({
+    'data-app-class': 'nest',
     'id': 'nest_' + ellipse.attr('id'), // special ID
     'data-nest-for': 'ellipse',
     'width': ellipse.rbox().width,
     'height': ellipse.rbox().height,
-  })
+  }, attrs))
+  nest.addClass('draggable-group')
 
   nest.add(ellipse)
 
@@ -2188,9 +2193,6 @@ function dismissHintControls() {
       <menuitem label="X"
       ></menuitem>
     </template>
-    <menuitem label="Delete marked objects"
-     onclick="delete_marked(this)"
-    ></menuitem>
   </menu>
 
 

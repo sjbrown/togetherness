@@ -11,9 +11,15 @@ function pointInsideBox(point, box) {
 }
 
 var spatial = {
+  getTopLevelSVGNodeList: () => {
+    return layer_objects.node.querySelectorAll(
+      '#' + layer_objects.id() + ' > .draggable-group'
+    )
+  },
+
   topLevelSurrounded: (box) => {
     let captured = []
-    let toplevelSVGs = svg_table.node.querySelectorAll('.draggable-group')
+    let toplevelSVGs = spatial.getTopLevelSVGNodeList()
     toplevelSVGs.forEach(el => {
       svg_el = SVG.adopt(el)
       svg_box = svg_el.rbox()
@@ -26,7 +32,7 @@ var spatial = {
         &&
         pointInsideBox([svg_box.x2, svg_box.y2], box)
       ) {
-        console.log('box surrounds', el.id)
+        // console.log('box surrounds', el.id)
         captured.push(el)
       }
     })
@@ -40,7 +46,6 @@ var spatial = {
     elements.forEach(el => {
       svg_el = SVG.adopt(el)
       svg_box = svg_el.rbox()
-      console.log("el", el.id, "BBB", svg_box)
       box.x = Math.min(box.x, svg_box.x)
       box.y = Math.min(box.y, svg_box.y)
       maxX = Math.max(maxX, svg_box.x2)
@@ -56,7 +61,7 @@ var spatial = {
       return candidateCenter
     }
     let collision = false
-    toplevelSVGs = svg_table.node.querySelectorAll('.draggable-group')
+    let toplevelSVGs = spatial.getTopLevelSVGNodeList()
     for (let i=0; i < Math.min(toplevelSVGs.length,20); i++) {
       let el = toplevelSVGs.item(i)
       svg_el = SVG.adopt(el)
