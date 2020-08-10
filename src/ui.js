@@ -1,6 +1,7 @@
 const ui = {
 
   selectBoxPrototype: null,
+  selectOpenBoxPrototype: null,
 
   initializeDragSelectBox: (viewportEl) => {
     return import_foreign_svg('svg/v1/select_box.svg')
@@ -35,11 +36,29 @@ const ui = {
         select_box.selectElements(dragSelBoxEl, surrounded)
       })
     })
+    .then(() => {
+      return import_foreign_svg('svg/v1/select_open_box.svg')
+    })
+    .then((nest) => {
+      this.selectOpenBoxPrototype = nest
+    })
+  },
+
+  getSelectOpenBox: () => {
+    ui.unselectAll()
+    let newSelOpenBox = this.selectOpenBoxPrototype.node.cloneNode(true)
+    newSelOpenBox.classList.remove('draggable-group')
+    synced.ui_add(newSelOpenBox)
+    select_open_box.initialize(newSelOpenBox)
+    return newSelOpenBox
   },
 
   getSelectBoxes: () => {
     let selBoxes = []
     layer_ui.node.querySelectorAll('.select_box').forEach(el => {
+      selBoxes.push(el)
+    })
+    layer_ui.node.querySelectorAll('.select_open_box').forEach(el => {
       selBoxes.push(el)
     })
     return selBoxes
@@ -110,6 +129,7 @@ const ui = {
   unselectAll: () => {
     ui.getSelectBoxes().forEach(el => {
       console.log("removing", el)
+      unlock_selection(el)
       synced.remove(el)
     })
   },

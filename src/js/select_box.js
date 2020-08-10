@@ -48,8 +48,6 @@ var select_box = {
       return [svg_el.x() - nest.x(), svg_el.y() - nest.y()]
     })
     nest.node.dataset.offsets = offsets // nested arrays will be flattened
-
-    return (surroundedIds.length > 0)
   },
 
   reshape: function(elem, box) {
@@ -73,7 +71,7 @@ var select_box = {
   },
 
   svg_drag: function(elem, newX, newY) {
-    console.log('drag_select_box gets svg_drag', elem, newX, newY)
+    console.log('select_box gets svg_drag', elem, newX, newY)
     nest = SVG.adopt(elem)
 
     offsets = select_box.getOffsets(elem)
