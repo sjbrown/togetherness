@@ -19,8 +19,9 @@ function debug(s, evt) {
 }
 
 function isInside(el1, el2) {
-  piece = SVG.adopt(el1).rbox()
-  box = SVG.adopt(el2).rbox()
+  // use rbox() here because it's all about the screen dimensions and positions
+  let piece = SVG.adopt(el1).rbox()
+  let box = SVG.adopt(el2).rbox()
   //console.log("box", el2.id, box, el2.x)
   //console.log("piece", el1.id, piece, el1.x)
   return (
@@ -91,7 +92,7 @@ function makeDraggable(viewport, table) {
   })
 
   function broadcast(eventName, detail, dispatchEl) {
-    console.log('broadcasting', eventName, detail, dispatchEl)
+    // console.log('broadcasting', eventName, detail, dispatchEl)
     if (dispatchEl === undefined) {
       dispatchEl = selectedEl ? selectedEl.node : viewport.node
     }
@@ -214,7 +215,7 @@ function makeDraggable(viewport, table) {
       }
       broadcast('svg_dragstart', { elemId: evt.target.id })
     } else if (interactionMode === 'object') {
-      console.log("viewport begin select box")
+      // console.log("viewport begin select box")
       dragSelectBox = {
         x: mouse.x,
         y: mouse.y,
@@ -278,7 +279,7 @@ function makeDraggable(viewport, table) {
         if (lockBroadcastTimer) { return }
         lockBroadcastTimer = true
         broadcastTimer = setTimeout(() => { lockBroadcastTimer = false }, 100)
-        console.log("dragselect_drag", dragSelectBox)
+        // console.log("dragselect_drag", dragSelectBox)
         broadcast('svg_dragselect_drag', { box: normalizeBox(dragSelectBox) })
       }
     } else if (interactionMode === 'panzoom') {
@@ -329,7 +330,7 @@ function makeDraggable(viewport, table) {
       return
     }
     table.node.querySelectorAll('.droptarget').forEach((el) => {
-      console.log('broadcasting', 'svg_drop', 'for', el.id, selectedEl.node.id)
+      // console.log('broadcasting', 'svg_drop', 'for', el.id, selectedEl.node.id)
       if ( selectedEl.node.id === el.id ) {
         return // don't tell things they're being dropped into themselves
       }

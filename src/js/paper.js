@@ -114,24 +114,29 @@ var paper = {
     console.log('target is', evt.target)
     console.log('paper_sum drop_handler', elem.id, evt.detail.draggedElemId, evt.target)
 
-    draggedElem = byId(evt.detail.draggedElemId)
-    dropElem = evt.target
-    if (
-      elem.id === draggedElem.id
-      ||
-      elem.contains(draggedElem)
-      ||
-      draggedElem.contains(elem)
-      ||
-      !elem.contains(dropElem)
-    ) {
+    draggedElem = document.querySelector('#' + evt.detail.draggedElemId)
+    if (draggedElem === null) {
       return
     }
 
+    let dropElem = evt.target
     let drop = SVG.adopt(dropElem)
     let contentsGroup = elem.querySelector(`#${elem.id} > .contents_group`)
 
     evt.detail.draggedSVGs.forEach(draggedEl => {
+      if (
+        draggedEl === null
+        ||
+        elem.id === draggedEl.id
+        ||
+        elem.contains(draggedEl)
+        ||
+        draggedEl.contains(elem)
+        ||
+        !elem.contains(dropElem)
+      ) {
+        return
+      }
       let dragged = SVG.adopt(draggedEl)
 
       is_inside = isInside(draggedEl, drop.node)

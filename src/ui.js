@@ -14,10 +14,10 @@ const ui = {
       dragSelBox.addClass('drag_select_box')
 
       viewportEl.addEventListener('dragselect_init', (evt) => {
-        console.log('viewport got svg_dragselect_init', evt)
+        // console.log('viewport got svg_dragselect_init', evt)
       })
       viewportEl.addEventListener('svg_dragselect_start', (evt) => {
-        console.log('viewport got svg_dragselect_start', evt, evt.detail.box)
+        // console.log('viewport got svg_dragselect_start', evt, evt.detail.box)
         ui.unselectAll()
         let selbox = svg_table.node.querySelector('#drag_select_box')
         if (!selbox) {
@@ -27,11 +27,11 @@ const ui = {
         select_box.initialize(dragSelBoxEl)
       })
       viewportEl.addEventListener('svg_dragselect_drag', (evt) => {
-        console.log('viewport got svg_dragselect_drag', evt, evt.detail.box)
+        // console.log('viewport got svg_dragselect_drag', evt, evt.detail.box)
         select_box.reshape(dragSelBoxEl, evt.detail.box)
       })
       viewportEl.addEventListener('svg_dragselect_end', (evt) => {
-        console.log('viewport got svg_dragselect_end', evt)
+        // console.log('viewport got svg_dragselect_end', evt)
         let surrounded = spatial.topLevelSurrounded(evt.detail.box)
         select_box.selectElements(dragSelBoxEl, surrounded)
       })
@@ -45,6 +45,7 @@ const ui = {
   },
 
   getSelectOpenBox: () => {
+    // console.log('getSelectOpenBox', this.selectOpenBoxPrototype.node)
     ui.unselectAll()
     let newSelOpenBox = this.selectOpenBoxPrototype.node.cloneNode(true)
     newSelOpenBox.classList.remove('draggable-group')
@@ -98,12 +99,12 @@ const ui = {
   },
 
   selectElement: (elem, evt) => {
-    console.log('selectElement', elem.id, evt)
+    // console.log('selectElement', elem.id, evt)
 
     ui.unselectAll()
 
     let svgSelBoxEl = this.selectBoxPrototype.node.cloneNode(true)
-    console.log("made select_box", svgSelBoxEl)
+    // console.log("made select_box", svgSelBoxEl)
     svg_elem = SVG.adopt(elem)
     select_box.initialize(svgSelBoxEl)
     select_box.reshape(svgSelBoxEl, {
@@ -117,9 +118,9 @@ const ui = {
   },
 
   removeEmptySelectBoxes: () => {
-    console.log("remove empty boxes")
+    // console.log("remove empty boxes")
     ui.getSelectBoxes().forEach(sbox => {
-      console.log("box", sbox)
+      // console.log("box", sbox)
       if (ui.getSelectBoxSelectedElements(sbox).length < 1) {
         synced.remove(sbox)
       }
@@ -128,8 +129,10 @@ const ui = {
 
   unselectAll: () => {
     ui.getSelectBoxes().forEach(el => {
-      console.log("removing", el)
-      unlock_selection(el)
+      // console.log("removing", el)
+      if (el.classList.contains('drag-open')) {
+        unlock_selection(el)
+      }
       synced.remove(el)
     })
   },
@@ -141,6 +144,7 @@ const ui = {
       // console.log('id', elem.id, 'got click', evt)
       ui.selectElement(elem, evt)
     })
+    elem.addEventListener('mouseover', ui.buildRightClickMenu)
   },
 
   un_hookup_ui: (elem) => {
@@ -151,27 +155,22 @@ const ui = {
 
   hookup_menu_actions: (svgEl) => {
     //console.log('hookup_menu_actions', svgEl)
-    svgEl.addEventListener('mouseover', ui.buildRightClickMenu)
-    ui.hookup_self_event_handlers(svgEl)
-  },
-
-  hookup_self_event_handlers: (el) => {
-    let actionMenu = ui.getFullMenuForElement(el)
+    let actionMenu = ui.getFullMenuForElement(svgEl)
     Object.keys(actionMenu).map((title) => {
       let menuItem = actionMenu[title]
       if (!menuItem.handler) {
         return
       }
-      console.log("hooking up", menuItem.eventName, menuItem.handler)
+      // console.log("hooking up", menuItem.eventName, menuItem.handler)
       let wrapper = function(evt) {
-        // console.log("IN WRAPPER", evt, el)
-        menuItem.handler.bind(el)(evt)
-        synced.change(el)
+        // console.log("IN WRAPPER", evt, svgEl)
+        menuItem.handler.bind(svgEl)(evt)
+        synced.change(svgEl)
       }
-      el.addEventListener(menuItem.eventName, wrapper)
+      svgEl.addEventListener(menuItem.eventName, wrapper)
       if (menuItem.otherEvents) {
         menuItem.otherEvents.forEach(evName => {
-          el.addEventListener(evName, wrapper)
+          svgEl.addEventListener(evName, wrapper)
         })
       }
     })
@@ -275,7 +274,7 @@ const ui = {
     var i = 0
     markedNodes.forEach((elemNode) => {
       i++
-      console.log("elemNode", elemNode.id)
+      // console.log("elemNode", elemNode.id)
       actionMenu = ui.getFullMenuForElement(elemNode)
       if (numMarked === 1) {
         header.innerText = g(elemNode, 'data-orig-name')
@@ -356,11 +355,6 @@ const ui = {
     }))
   },
 
-  fire: function(msg) {
-    //console.log('ui.fire', msg)
-    ui.broadcast(msg.type, msg.data)
-  },
-
   flatten_translation: (el) => {
     //console.log('flattn el', el)
     //console.log('flattn baseval', el.transform.baseVal)
@@ -378,18 +372,6 @@ const ui = {
       s(el, 'y', translate.matrix.f)
     }
     el.transform.baseVal.removeItem(0)
-  },
-
-  popdown_dialog: (elem_id) => {
-    elem = document.querySelector('#' + elem_id)
-    instance = M.Modal.getInstance(elem)
-    instance.close()
-  },
-
-  popup_dialog: (target) => {
-    elem = byId(g(target, 'data-dialog-id'))
-    instance = M.Modal.getInstance(elem)
-    instance.open()
   },
 
   animated_ghost: (el, attrs) => {
@@ -449,6 +431,18 @@ const ui = {
       }
       clearInterval(timedFn);
     }, ms)
+  },
+
+  popup_dialog: (target) => {
+    elem = byId(g(target, 'data-dialog-id'))
+    instance = M.Modal.getInstance(elem)
+    instance.open()
+  },
+
+  popdown_dialog: (elem_id) => {
+    elem = document.querySelector('#' + elem_id)
+    instance = M.Modal.getInstance(elem)
+    instance.close()
   },
 
 }

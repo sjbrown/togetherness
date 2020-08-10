@@ -1474,17 +1474,19 @@ function ui_submit_svgfile(evt) {
     body = textarea.value
   }
 
-  nest = _import_foreign_svg(body, '')
-  //console.log('got nest', nest)
-  add_fresh_svg(nest.node)
-  svg_table.node.appendChild(nest.node)
-  ui.hookup_ui(nest.node)
-  init_with_namespaces(nest.node)
-  ui.hookup_menu_actions(nest.node)
+  _import_foreign_svg(body, '')
+  .then(nest => {
+    console.log('got nest', nest)
+    add_fresh_svg(nest.node)
+    layer_objects.node.appendChild(nest.node)
+    ui.hookup_ui(nest.node)
+    init_with_namespaces(nest.node)
+    ui.hookup_menu_actions(nest.node)
 
-  ui.popdown_dialog('dialog_svgfile')
-  //net_fire({ type: 'create', data: serialize(nest.node) })
-  push_sync()
+    ui.popdown_dialog('dialog_svgfile')
+    //net_fire({ type: 'create', data: serialize(nest.node) })
+    push_sync()
+  })
 }
 
     </script>
@@ -1557,7 +1559,7 @@ var rect_verbs = {
 }
 
 function make_rect(attrs) {
-  var rect = svg_table.rect()
+  var rect = layer_objects.rect()
   rect.attr(Object.assign({
     'data-app-class': 'rect',
     id: 'rect_' + base32.short_id(),
@@ -1572,7 +1574,7 @@ function make_rect(attrs) {
     'stroke-width': 1,
   }, attrs))
 
-  var nest = svg_table.element('svg', SVG.Container)
+  var nest = layer_objects.element('svg', SVG.Container)
   nest.attr(Object.assign({
     'data-app-class': 'nest',
     'id': 'nest_' + rect.attr('id'), // special ID
@@ -1656,7 +1658,7 @@ var text_verbs = {
 
 function make_text(attrs, content) {
   var padding = 8
-  var text = svg_table.plain('')
+  var text = layer_objects.plain('')
   var tspan = text.tspan(content)
   text.attr(Object.assign({
     'data-app-class': 'text',
@@ -1673,7 +1675,7 @@ function make_text(attrs, content) {
   text.y(0)
   text.x(padding/2)
 
-  var rect = svg_table.rect()
+  var rect = layer_objects.rect()
   rect.attr(Object.assign({
     id: 'rect_' + text.attr('id'), // special ID
     rx: 5,
@@ -1689,7 +1691,7 @@ function make_text(attrs, content) {
   }))
   rect.addClass('text-rect')
 
-  var nest = svg_table.element('svg', SVG.Container)
+  var nest = layer_objects.element('svg', SVG.Container)
   nest.attr(Object.assign({
     'data-app-class': 'nest',
     'id': 'nest_' + text.attr('id'), // special ID
@@ -1770,7 +1772,7 @@ var ellipse_verbs = {
 }
 
 function make_ellipse(attrs) {
-  var ellipse = svg_table.ellipse()
+  var ellipse = layer_objects.ellipse()
   ellipse.attr(Object.assign({
     'data-app-class': 'ellipse',
     id: 'ellipse_' + base32.short_id(),
@@ -1785,7 +1787,7 @@ function make_ellipse(attrs) {
     'stroke-width': 1,
   }, attrs))
 
-  var nest = svg_table.element('svg', SVG.Container)
+  var nest = layer_objects.element('svg', SVG.Container)
   nest.attr(Object.assign({
     'data-app-class': 'nest',
     'id': 'nest_' + ellipse.attr('id'), // special ID
@@ -1861,20 +1863,23 @@ function ui_submit_image(evt) {
     alert('No URL!')
     return
   }
-  nest = _import_foreign_svg(`
+  _import_foreign_svg(`
     <svg width="200" height="200"
+    id="image"
     xmlns="http://www.w3.org/2000/svg"
     xmlns:xlink="http://www.w3.org/1999/xlink">
     <image href="${url}" height="200" width="200"/>
     </svg>
   `, '')
-  add_fresh_svg(nest.node)
-  svg_table.node.appendChild(nest.node)
-  ui.hookup_ui(nest.node)
-  ui.hookup_menu_actions(nest.node)
-  ui.popdown_dialog('dialog_other')
-  //net_fire({ type: 'create', data: serialize(nest) })
-  push_sync()
+  .then(nest => {
+    add_fresh_svg(nest.node)
+    layer_objects.node.appendChild(nest.node)
+    ui.hookup_ui(nest.node)
+    ui.hookup_menu_actions(nest.node)
+    ui.popdown_dialog('dialog_other')
+    //net_fire({ type: 'create', data: serialize(nest) })
+    push_sync()
+  })
 }
   </script>
     <button class="dialog_cancel btn modal-close" data-dialog-id="dialog_other"

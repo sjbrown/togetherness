@@ -188,6 +188,7 @@ var paper_sum = {
      c 0,0
        -182.50,-0.46
        -192.57,-1.90 z"
+     id="sum_path_area_droptarget"
      class="droptarget path_area"
      inkscape:connector-curvature="0"
      sodipodi:nodetypes="ccccc" />

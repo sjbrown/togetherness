@@ -21,16 +21,15 @@ var spatial = {
     let captured = []
     let toplevelSVGs = spatial.getTopLevelSVGNodeList()
     toplevelSVGs.forEach(el => {
-      svg_el = SVG.adopt(el)
-      svg_box = svg_el.rbox()
+      let svgBox = elBox(el)
       if (
-        pointInsideBox([svg_box.x, svg_box.y], box)
+        pointInsideBox([svgBox.x, svgBox.y], box)
         &&
-        pointInsideBox([svg_box.x2, svg_box.y], box)
+        pointInsideBox([svgBox.x2, svgBox.y], box)
         &&
-        pointInsideBox([svg_box.x, svg_box.y2], box)
+        pointInsideBox([svgBox.x, svgBox.y2], box)
         &&
-        pointInsideBox([svg_box.x2, svg_box.y2], box)
+        pointInsideBox([svgBox.x2, svgBox.y2], box)
       ) {
         // console.log('box surrounds', el.id)
         captured.push(el)
@@ -44,12 +43,13 @@ var spatial = {
     let maxX = 0
     let maxY = 0
     elements.forEach(el => {
-      svg_el = SVG.adopt(el)
-      svg_box = svg_el.rbox()
-      box.x = Math.min(box.x, svg_box.x)
-      box.y = Math.min(box.y, svg_box.y)
-      maxX = Math.max(maxX, svg_box.x2)
-      maxY = Math.max(maxY, svg_box.y2)
+      console.log('id', el.id)
+      let svgBox = elBox(el)
+      console.log("svg", svgBox)
+      box.x = Math.min(box.x, svgBox.x)
+      box.y = Math.min(box.y, svgBox.y)
+      maxX = Math.max(maxX, svgBox.x2)
+      maxY = Math.max(maxY, svgBox.y2)
     })
     box.width = maxX - box.x
     box.height= maxY - box.y
