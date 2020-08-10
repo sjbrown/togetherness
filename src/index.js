@@ -391,14 +391,12 @@ async function _import_foreign_svg(body, url) {
     // console.log("FOUND A SCRIPT", script.id, "IN", nest.node.id)
     promises.push(appendDocumentScript(script, nest.node))
   })
-  promproms = promises
-  return Promise.allSettled(promises)
+  return Promise.all(promises)
   .then(() => {
     // console.log("RETURNING")
     return nest
   })
 }
-var promproms
 
 function add_fresh_svg(svgElem) {
   // None of the UI is hooked up for the freshly-loaded document

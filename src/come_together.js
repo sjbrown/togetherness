@@ -234,7 +234,7 @@ var synced = {
         })
       )
     })
-    return Promise.allSettled(promises)
+    return Promise.all(promises)
     .then((values) => {
       console.log('vals are ', values)
       values.forEach(val => {
