@@ -19,8 +19,9 @@ function debug(s, evt) {
 }
 
 function isInside(el1, el2) {
-  piece = SVG.adopt(el1).rbox()
-  box = SVG.adopt(el2).rbox()
+  // use rbox() here because it's all about the screen dimensions and positions
+  let piece = SVG.adopt(el1).rbox()
+  let box = SVG.adopt(el2).rbox()
   //console.log("box", el2.id, box, el2.x)
   //console.log("piece", el1.id, piece, el1.x)
   return (
@@ -91,6 +92,7 @@ function makeDraggable(viewport, table) {
   })
 
   function broadcast(eventName, detail, dispatchEl) {
+    // console.log('broadcasting', eventName, detail, dispatchEl)
     if (dispatchEl === undefined) {
       dispatchEl = selectedEl ? selectedEl.node : viewport.node
     }
@@ -149,7 +151,7 @@ function makeDraggable(viewport, table) {
   }
 
   function updateInteractionMode(evt) {
-    console.log("IM", evt.touches, evt.button)
+    // console.log("updateInteractionMode", evt.touches, evt.button)
     if (evt.touches) {
       interactionMode = 'object'
     } else if (evt.button === 0) {
@@ -169,13 +171,16 @@ function makeDraggable(viewport, table) {
     if (interactionMode === 'object') {
       let dragTarget = null
 
-      // First, look for dragTargets as the direct children of "table"
-      let q = `#${table.node.id} > .draggable-group`
+      // First, look for dragTargets as the direct children of
+      // the svg_table's "layers"
+      let q = `#${table.node.id} > g > .draggable-group`
       table.node.querySelectorAll(q).forEach(draggableGroup => {
         if (draggableGroup.contains(evt.target)) {
           dragTarget = draggableGroup
           // Make it the top-most element
-          dragTarget.remove(); table.node.appendChild(dragTarget)
+          p = dragTarget.parentElement
+          dragTarget.remove()
+          p.appendChild(dragTarget)
         }
       })
       // Otherwise, look for dragTargets as the direct children of .drag-opens
@@ -210,7 +215,7 @@ function makeDraggable(viewport, table) {
       }
       broadcast('svg_dragstart', { elemId: evt.target.id })
     } else if (interactionMode === 'object') {
-      console.log("viewport begin select box")
+      // console.log("viewport begin select box")
       dragSelectBox = {
         x: mouse.x,
         y: mouse.y,
@@ -220,7 +225,6 @@ function makeDraggable(viewport, table) {
       broadcast('svg_dragselect_start', { box: normalizeBox(dragSelectBox) })
     }
   }
-
 
   function drag(evt) {
     debug("drag", evt)
@@ -240,20 +244,25 @@ function makeDraggable(viewport, table) {
           maxX: table.width(),
           maxY: table.height(),
         }
-        selectedEl.x(
-          clamp(
-            origXY.x + (mouse.x - origMouse.x),
-            tableBoundaries.minX,
-            tableBoundaries.maxX - selectedEl.bbox().width,
-          )
+        let newX = clamp(
+          origXY.x + (mouse.x - origMouse.x),
+          tableBoundaries.minX,
+          tableBoundaries.maxX - selectedEl.bbox().width,
         )
-        selectedEl.y(
-          clamp(
-            origXY.y + (mouse.y - origMouse.y),
-            tableBoundaries.minY,
-            tableBoundaries.maxY - selectedEl.bbox().height,
-          )
+        let newY = clamp(
+          origXY.y + (mouse.y - origMouse.y),
+          tableBoundaries.minY,
+          tableBoundaries.maxY - selectedEl.bbox().height,
         )
+        selectedEl.x(newX)
+        selectedEl.y(newY)
+        if (selectedEl.node.classList.contains('select_box')) {
+          // Special case for select boxes: we tell them to move their
+          // surrounded elements here, before the broadcast() so that
+          // we don't get a render between the movement of the select
+          // box and the movement of the surrounded elements
+          select_box.svg_drag(selectedEl.node, newX, newY)
+        }
         // Don't spam - throttle to roughly every 200 miliseconds
         if (lockBroadcastTimer) { return }
         lockBroadcastTimer = true
@@ -270,7 +279,7 @@ function makeDraggable(viewport, table) {
         if (lockBroadcastTimer) { return }
         lockBroadcastTimer = true
         broadcastTimer = setTimeout(() => { lockBroadcastTimer = false }, 100)
-        console.log("dragselect_drag", dragSelectBox)
+        // console.log("dragselect_drag", dragSelectBox)
         broadcast('svg_dragselect_drag', { box: normalizeBox(dragSelectBox) })
       }
     } else if (interactionMode === 'panzoom') {
@@ -321,14 +330,22 @@ function makeDraggable(viewport, table) {
       return
     }
     table.node.querySelectorAll('.droptarget').forEach((el) => {
-      console.log('broadcasting', 'svg_drop', 'for', el.id, selectedEl.node.id)
+      // console.log('broadcasting', 'svg_drop', 'for', el.id, selectedEl.node.id)
       if ( selectedEl.node.id === el.id ) {
         return // don't tell things they're being dropped into themselves
       }
       let inside = isInside(selectedEl.node, el)
       if (inside) {
+        let draggedSVGs = (
+          selectedEl.node.classList.contains('select_box')
+          ?
+          ui.getSelectBoxSelectedElements(selectedEl.node)
+          :
+          [selectedEl.node]
+        )
         broadcast('svg_drop', {
           draggedElemId: selectedEl.node.id,
+          draggedSVGs: draggedSVGs,
           dropElemId: el.id,
           mouse: mouse,
         }, el)

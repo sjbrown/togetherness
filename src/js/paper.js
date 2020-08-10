@@ -114,48 +114,57 @@ var paper = {
     console.log('target is', evt.target)
     console.log('paper_sum drop_handler', elem.id, evt.detail.draggedElemId, evt.target)
 
-    draggedElem = byId(evt.detail.draggedElemId)
-    dropElem = evt.target
-    if (
-      elem.id === draggedElem.id
-      ||
-      elem.contains(draggedElem)
-      ||
-      draggedElem.contains(elem)
-      ||
-      !elem.contains(dropElem)
-    ) {
+    draggedElem = document.querySelector('#' + evt.detail.draggedElemId)
+    if (draggedElem === null) {
       return
     }
-    dragged = SVG.adopt(draggedElem)
-    drop = SVG.adopt(dropElem)
 
-    is_inside = isInside(dragged.node, drop.node)
-    console.log('dragged', draggedElem.id, 'box is inside drop',
-      dropElem,
-      '?', is_inside
-    )
-
+    let dropElem = evt.target
+    let drop = SVG.adopt(dropElem)
     let contentsGroup = elem.querySelector(`#${elem.id} > .contents_group`)
-    if (contentsGroup.querySelector('#' + draggedElem.id)) {
-      // already inside the contents
-      if (is_inside) {
+
+    evt.detail.draggedSVGs.forEach(draggedEl => {
+      if (
+        draggedEl === null
+        ||
+        elem.id === draggedEl.id
+        ||
+        elem.contains(draggedEl)
+        ||
+        draggedEl.contains(elem)
+        ||
+        !elem.contains(dropElem)
+      ) {
         return
       }
-      pop_from_parent(draggedElem)
-    } else {
-      if (!is_inside) {
-        return
-      }
-      push_to_parent(
-        draggedElem,
-        elem,
-        (dieElem, parentElem) => {
-          console.log('consume it here', dieElem.id, parentElem.id)
-          contentsGroup.appendChild(dieElem)
-        }
+      let dragged = SVG.adopt(draggedEl)
+
+      is_inside = isInside(draggedEl, drop.node)
+      console.log('dragged', draggedEl.id, 'box is inside drop',
+        dropElem,
+        '?', is_inside
       )
-    }
+
+      if (contentsGroup.querySelector('#' + draggedEl.id)) {
+        // already inside the contents
+        if (is_inside) {
+          return
+        }
+        pop_from_parent(draggedEl)
+      } else {
+        if (!is_inside) {
+          return
+        }
+        push_to_parent(
+          draggedEl,
+          elem,
+          (svgElem, parentElem) => {
+            console.log('consume it here', svgElem.id, parentElem.id)
+            contentsGroup.appendChild(svgElem)
+          }
+        )
+      }
+    })
     elem.dispatchEvent(new CustomEvent('dom_change', {
       bubbles: true,
       detail: { 'ruleElemId': elem.id },

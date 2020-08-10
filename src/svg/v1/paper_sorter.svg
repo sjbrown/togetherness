@@ -56,7 +56,7 @@ var paper_sorter = {
   dom_change_handler: function(evt) {
     console.log('dom_change_handler', this.id, evt.detail)
     let tally = []
-    paper_sorter.visit_contents_group(this, (s) => {
+    paper.visit_contents_group(this, (s) => {
       let tempNum = 0
       s.querySelectorAll('tspan').forEach((t) => {
         if (t.closest('svg').id !== s.id) {
@@ -91,25 +91,6 @@ var paper_sorter = {
     }
   },
 
-  sorter_change_handler: function(evt) {
-    console.log('contents_change_handler', this.id, evt.detail)
-    change = 0
-    if (evt.type == 'rule_sorter_plus') {
-      change = 1
-    } else if (evt.type == 'rule_sorter_minus') {
-      change = -1
-    }
-    sorter_tspan = paper_sorter.select_my(this, 'tspan_rule_num')
-    sorter = parseInt(sorter_tspan.textContent)
-    let sum = sorter + change
-    sum = (sum < 1) ? 1 : sum
-    sorter_tspan.textContent = sum
-    this.dispatchEvent(new CustomEvent('dom_change', {
-      bubbles: true,
-      detail: { 'ruleElemId': this.id },
-    }))
-  },
-
   drag_handler: function(evt) {
     if (!this.contains(evt.target)) {
       return
@@ -138,8 +119,6 @@ var paper_sorter = {
     elem.addEventListener('svg_dragleave', () => {console.log('L')})
 
     elem.addEventListener('resize', this.resize_handler)
-    elem.addEventListener('rule_sorter_plus', this.sorter_change_handler)
-    elem.addEventListener('rule_sorter_minus', this.sorter_change_handler)
 
     paper.initialize(elem, prototype)
   },
