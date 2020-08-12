@@ -5,7 +5,7 @@ describe('Dice Button', () => {
 
     cy.get('#dialog_dice').should('not.be.visible')
 
-    cy.contains('+ Dice').click()
+    cy.contains('Dice').click()
 
     cy.get('#dialog_dice').should('be.visible')
   });
@@ -15,7 +15,7 @@ describe('Cards button', () => {
   it('Pops up the modal', () => {
     cy.visit('/');
 
-    cy.contains('+ Cards').click()
+    cy.contains('Cards').click()
   });
 });
 
@@ -24,7 +24,7 @@ describe('Other button', () => {
     cy.visit('/')
 
     cy.get('#dialog_other').should('not.be.visible')
-    cy.contains('+ Other').click()
+    cy.contains('Other').click()
     cy.get('#dialog_other').should('be.visible')
 
   })
@@ -36,7 +36,7 @@ describe('Standard dice', () => {
 
     cy.get('#gamearea')
 
-    cy.contains('+ Dice').click()
+    cy.contains('Dice').click()
 
     cy.get('#dice_input_d4').type('{selectall}1')
       .should('have.value', '1')
@@ -65,7 +65,7 @@ describe('One d6', () => {
     cy.get('#svg_table svg').should('not.be.visible')
     cy.get('#svg_viewport [data-app-url="svg/v1/dice_d6.svg"]').should('not.be.visible')
 
-    cy.contains('+ Dice').click()
+    cy.contains('Dice').click()
 
     cy.get('#dice_input_d6').type('{selectall}1')
       .should('have.value', '1')
