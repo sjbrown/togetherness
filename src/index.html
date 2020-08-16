@@ -495,7 +495,10 @@ window.addEventListener('load', () => {
     <script>
     function quick_die_button_add() {
       url = document.querySelector('#quick_die_button img').src
-      add_object( url, { 'center': [100, 100] })
+      add_object( url, {
+        'center': [100, 100],
+        'color': getChosenDiceColor(),
+      })
     }
     window.addEventListener('load', () => {
       window.addEventListener('create', (e) => {
@@ -529,42 +532,61 @@ window.addEventListener('load', () => {
         <table><tr>
         <td>
           <button class="btn" id="dice_button_d4"
-            onclick="add_object('svg/v1/dice_d4.svg', { center: [100,100] })"
+            onclick="add_object('svg/v1/dice_d4.svg', {
+              center: [100,100],
+              color: getChosenDiceColor(),
+            })"
             >
             <img src="svg/v1/dice_d4.svg" height="48" />
           </button>
         </td>
         <td>
           <button class="btn" id="dice_button_d6"
-            onclick="add_object('svg/v1/dice_d6.svg', { center: [100,100] })"
+            onclick="add_object('svg/v1/dice_d6.svg', {
+              center: [100,100],
+              color: getChosenDiceColor(),
+            })"
+            >
             >
             <img src="svg/v1/dice_d6.svg" height="48" />
           </button>
         </td>
         <td>
           <button class="btn" id="dice_button_d8"
-            onclick="add_object('svg/v1/dice_d8.svg', { center: [100,100] })"
+            onclick="add_object('svg/v1/dice_d8.svg', {
+              center: [100,100],
+              color: getChosenDiceColor(),
+            })"
             >
             <img src="svg/v1/dice_d8.svg" height="48" />
           </button>
         </td>
         <td>
           <button class="btn" id="dice_button_d10"
-            onclick="add_object('svg/v1/dice_d10.svg', { center: [100,100] })"
+            onclick="add_object('svg/v1/dice_d10.svg', {
+              center: [100,100],
+              color: getChosenDiceColor(),
+            })"
             >
             <img src="svg/v1/dice_d10.svg" height="48" />
           </button>
         </td>
         <td>
           <button class="btn" id="dice_button_d12"
-            onclick="add_object('svg/v1/dice_d12.svg', { center: [100,100] })"
+            onclick="add_object('svg/v1/dice_d12.svg', {
+              center: [100,100],
+              color: getChosenDiceColor(),
+            })"
             >
             <img src="svg/v1/dice_d12.svg" height="48" />
           </button>
         </td>
         <td>
           <button class="btn" id="dice_button_d20"
-            onclick="add_object('svg/v1/dice_d20.svg', { center: [100,100] })"
+            onclick="add_object('svg/v1/dice_d20.svg', {
+              center: [100,100],
+              color: getChosenDiceColor(),
+            })"
             >
             <img src="svg/v1/dice_d20.svg" height="48" />
           </button>
@@ -728,8 +750,10 @@ function load_profile_ui() {
   TogetherJSConfig_findRoom = name
   input = document.querySelector('#profile_input_name')
   input.value = name
-  input = document.querySelector('#profile_input_color')
-  input.value = color
+  inputs = document.querySelectorAll('#profile_input_color')
+  inputs.forEach(input => {
+    input.value = color
+  })
   profile_bs = document.querySelector('#profile_button_span')
   document.querySelectorAll('#profile_button > .colorsample').forEach((el) => {
     el.style.color = color
@@ -1162,6 +1186,7 @@ function add_dtype(dtype, inputEl, center, serializedState) {
       {
         // Wrap 'center' in a new array to avoid async bugs
         'center': [center[0], center[1]],
+        'color': getChosenDiceColor(),
         'serializedState': serializedState,
       },
     )
@@ -1228,6 +1253,54 @@ function ui_submit_dice(section) {
     </div>
     </nav>
   <div class="modal-content">
+    <section class="color_section">
+      <script>
+      function dice_color_change(evt) {
+        spec_color = byId('dice_input_color').value;
+        radio = document.querySelector('[name=dice_color_radio]:checked')
+        spec_color = document.querySelector('#dice_input_color')
+        // console.log('here', evt, spec_color, radio)
+        spec_color.disabled = (radio.id !== 'dice_color_radio_specify')
+        // console.log(spec_color)
+      }
+      function getChosenDiceColor() {
+        radio = document.querySelector('[name=dice_color_radio]:checked')
+        spec_color = document.querySelector('#dice_input_color')
+        profile_color = localStorage.getItem('profile_color')
+        if (radio.id === 'dice_color_radio_specify') {
+          return spec_color.value
+        } else {
+          return profile_color
+        }
+      }
+      </script>
+      <label for="dice_color_radio_player">
+      <input type="radio"
+        checked="true"
+        onchange="dice_color_change()"
+        name="dice_color_radio" id="dice_color_radio_player" />
+      <span>Player's Color
+      <div>
+        <input class="btn-flat"
+          id="profile_input_color" type="color" disabled="true" value="#ffffff"/>
+      </div>
+      </span>
+      </label>
+
+      <label for="dice_color_radio_specify">
+      <input type="radio"
+        onchange="dice_color_change()"
+        name="dice_color_radio" id="dice_color_radio_specify" />
+      <span>Specify Color
+      <div>
+        <input class="btn" disabled
+          onchange="dice_color_change()"
+          id="dice_input_color" type="color" value="#ffffff" />
+      </div>
+      </span>
+      </label>
+
+    </section>
     <section class="dice_section" id="standard_dice_section">
       <a name="standard"></a>
       <h1 id="standard_dice_h1">Standard Dice</h1>
@@ -1369,7 +1442,7 @@ function ui_submit_dice(section) {
       <td id="dice_cell_dn">
         <script>
 function alterFaces(el) {
-  console.log(el.value)
+  // console.log(el.value)
   make_prototype('svg/v1/dice_dn.svg')
   .then(p => {
     facesTspan = p.querySelector('#tspan_num_faces')
