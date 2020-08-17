@@ -486,6 +486,7 @@ window.addEventListener('load', () => {
 <section class="hudmenu hudmenu-left collapsegroup" >
   <button class="collapsetoggle" name="toggle_table_buttons"></button>
   <div class="collapsible">
+
     <button id="quick_die_button" class="btn btn-small"
       onclick="quick_die_button_add()"
       title="Add one die of the most recent type"
@@ -508,6 +509,7 @@ window.addEventListener('load', () => {
       })
     })
     </script>
+
     <div id="dice_button_wrapper">
     <style>
     #dice_button_slide {
@@ -1586,7 +1588,18 @@ function ui_submit_svgfile(evt) {
       <span>Safety mode</span>
       </label>
       <p>
-    <textarea id="svgfile_body" cols="82" rows=5></textarea>
+    <textarea id="svgfile_body"
+      cols="82" style="font-family:monospace"
+      onLoad="textareaFit(this)"
+      onInput="textareaFit(this)"></textarea>
+<script>
+function textareaFit(e) {
+  console.log(e)
+  const tx = document.querySelector('#svgfile_body')
+  tx.style.height = 'auto'
+  tx.style.height = Math.max(40, Math.min(200, tx.scrollHeight))
+}
+</script>
     <div class="load_explain">
     Copy and paste the contents from an SVG file into this
     text box.
@@ -1600,6 +1613,40 @@ function ui_submit_svgfile(evt) {
     <i>Note:</i> Some great SVG files can be found at <a
       href="https://game-icons.net" target="_">game-icons.net</a> and <a
       href="https://thenounproject.com" target="_">Noun Project</a>.
+  <hr />
+  <section>
+  <h3>Examples:</h3>
+  <p>Try pasting this into the box:</p>
+  <pre>
+&lt;svg x="0" y="0" width="100" height="100"&gt;
+  &lt;rect x="25" y="25" width="50" height="50" style="fill:#ff0000" /&gt;
+  &lt;script
+    type="text/javascript"
+    data-namespace="myThing"
+  &gt;&lt;![CDATA[
+
+myThing = {
+
+  menu: {
+    'Change Color': {
+      eventName: 'changeMyColor',
+      applicable: (elem) =&gt; { return true },
+      uiLabel: (elem) =&gt; { return 'Change Color To Green' },
+      handler: function(evt) {
+        // Note - "handler" must be written as a traditional function,
+        // not an arrow-function, so that "this" is bound correctly
+        console.log('Changing color!')
+        this.querySelector('rect').style['fill'] = '#00ff00'
+      },
+    },
+  },
+
+}
+
+]]&gt;&lt;/script&gt;
+&lt;/svg&gt;
+  </pre>
+  </section>
   </div>
   </div>
 
