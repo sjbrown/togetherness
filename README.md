@@ -8,6 +8,8 @@ discovering online dice rollers, communal game maps, virtual tabletops,
 and digital character keepers. But too often these tools are walled
 gardens whose owners see players as *products*, not human beings.
 
+![screenshot](images/screenshot01.png)
+
 Togetherness is a web-based virtual tabletop whose chief aim is
 the empowerment of players as free human beings participating voluntarily
 in a community. There are no "owners", just equal participants enjoying a
