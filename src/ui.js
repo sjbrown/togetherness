@@ -230,12 +230,11 @@ const ui = {
   },
 
   updateButtons: () => {
-    //console.log("ui.updateButtons")
+     console.log("ui.updateButtons")
     let markedNodes = ui.getSelectedElements()
     let numMarked = markedNodes.length
     let buttons = {}
     let template = byId('template_object_actions')
-
 
     submenu = byId('object_actions')
     header = byId('object_actions_header')
@@ -244,28 +243,25 @@ const ui = {
     })
     header.innerText = 'Select dice by clicking on them; roll by double-clicking; zoom with Ctrl-wheel'
 
-    function makeButton(elemNode, actionMenu, title) {
-      // actionMenu looks like this: {
+    function addNewButton(title, menu, elemNode) {
+      // menu looks like this: {
       // 'Foo': {
       //   eventName: 'foo_event',
       //   applicable: (node) => { return node },
       //   uiLabel: (node) => { return 'MyLabel' },
       //  },  ...}
-      var btn = template.content.firstElementChild.cloneNode(true)
+      let btn = template.content.firstElementChild.cloneNode(true)
       btn.id = elemNode.id + title
       btn.innerText = title
       btn.classList.add('cloned-button')
-      if (!actionMenu[title].applicable(elemNode)) {
+      if (!menu[title].applicable(elemNode)) {
         btn.disabled = 'disabled'
       }
-      return btn
-    }
-    function addNewButton(title, menu, node) {
       buttons[title] = {
-        btn: makeButton(node, menu, title),
+        btn: btn,
         clickEvents: [
           (evt) => {
-            evt_fire(menu[title].eventName, node, evt)
+            evt_fire(menu[title].eventName, elemNode, evt)
           }
         ],
       }
@@ -274,7 +270,7 @@ const ui = {
     var i = 0
     markedNodes.forEach((elemNode) => {
       i++
-      // console.log("elemNode", elemNode.id)
+       console.log("elemNode", elemNode.id)
       actionMenu = ui.getFullMenuForElement(elemNode)
       if (numMarked === 1) {
         header.innerText = g(elemNode, 'data-orig-name')
@@ -283,6 +279,8 @@ const ui = {
         Object.keys(actionMenu).map((title) => {
           addNewButton(title, actionMenu, elemNode)
         })
+
+        ui.updateQuickButton(elemNode)
 
       } else { // more than 1
         header.innerText = numMarked + ' objects selected'
@@ -322,6 +320,8 @@ const ui = {
       Object.keys(selectionActionMenu).map((title) => {
         let elemNode = selectBoxes[0]
         addNewButton(title, selectionActionMenu, elemNode)
+        console.log("btnstime", buttons[title])
+        buttons[title].btn.accessKey = 'delete'
       })
     }
 
@@ -334,14 +334,21 @@ const ui = {
         buttonRecord.btn.addEventListener('click', evtSpawner)
       })
       template.parentElement.appendChild(buttonRecord.btn)
-      // Hookup hotkeys
+      // Hookup hotkeys (after we're attaching to DOM to avoid collisions)
       accessKey = buttonRecord.btn.innerText[0].toLocaleLowerCase()
       if (document.querySelector('[accessKey=' + accessKey + ']') === null) {
+        console.log( 'a key', accessKey)
         // TODO make better
         buttonRecord.btn.accessKey = accessKey
       }
     })
 
+  },
+
+  updateQuickButton: (el) => {
+    redDot = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg=='
+    newSrc = el.dataset.appUrl || redDot
+    document.querySelector('#quick_die_button img').src = newSrc
   },
 
   broadcast: (eventName, detail, dispatchEl) => {

@@ -167,20 +167,16 @@ function viewportToGameArea() {
 }
 
 function downKey(e) {
-  if (e.target.tagName.toLowerCase() !== 'body') { return }
+   console.log('downkey', e)
+  let pressedKey = e.key.toLowerCase()
+  if (e.isComposing) { return }
   if (e.altKey || e.shiftKey || e.metaKey || e.ctrlKey) { return }
-  button = null
-  document.querySelectorAll('button').forEach((x) => {
-    if (button && x.accessKey === e.key) {
-      console.error('Two buttons have the same accessKey', x.accessKey)
-      return
-    }
-    if (x.accessKey === e.key) {
-      button = x
-    }
-  })
-  if (button) {
-    button.click()
+  let buttons = document.querySelectorAll('[accessKey=' + pressedKey +']')
+  if (buttons.length > 1) {
+    console.error('Two buttons have the same accessKey', x.accessKey)
+    return
+  } else if (buttons.length === 1) {
+    buttons[0].click()
   }
 }
 
@@ -501,13 +497,6 @@ window.addEventListener('load', () => {
         'color': getChosenDiceColor(),
       })
     }
-    window.addEventListener('load', () => {
-      window.addEventListener('create', (e) => {
-        redDot = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg=='
-        newSrc = e.detail.createdEl.dataset.appUrl || redDot
-        document.querySelector('#quick_die_button img').src = newSrc
-      })
-    })
     </script>
 
     <div id="dice_button_wrapper">
