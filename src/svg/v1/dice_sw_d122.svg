@@ -54,9 +54,9 @@
      id="script_sw_dice_utils" />
   <script
      type="text/javascript"
-     data-namespace="sw_d121"
-     id="script_sw_d121"><![CDATA[
-var sw_d121 = {
+     data-namespace="sw_d122"
+     id="script_sw_d122"><![CDATA[
+var sw_d122 = {
 
   initialize: function(elem, prototype) {
     if (!prototype) {

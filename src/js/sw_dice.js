@@ -8,6 +8,7 @@ var sw_dice = {
     var origOpacity = elem.style.opacity
     ui.animated_ghost(elem, { animation: 'rollOut' })
     faces.forEach((name) => {
+      console.log("face", name)
       if (name === null) {
         return
       }

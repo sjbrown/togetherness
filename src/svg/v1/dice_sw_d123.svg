@@ -90,9 +90,9 @@
      id="script_sw_dice_utils" />
   <script
      type="text/javascript"
-     data-namespace="sw_d121"
-     id="script_sw_d121"><![CDATA[
-var sw_d121 = {
+     data-namespace="sw_d123"
+     id="script_sw_d123"><![CDATA[
+var sw_d123 = {
 
   initialize: function(elem, prototype) {
     if (!prototype) {
