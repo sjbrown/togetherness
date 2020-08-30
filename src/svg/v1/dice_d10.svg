@@ -90,6 +90,7 @@
   </defs>
   <script
      type="text/javascript"
+     data-namespace="dice"
      src="js/dice_utils.js"
      id="script_d10_utils" />
   <script

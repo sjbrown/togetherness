@@ -7,12 +7,12 @@
    xmlns="http://www.w3.org/2000/svg"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   id="SW d8 die"
+   id="sw_difficulty die"
    height="100"
    width="80"
    version="1.1"
    inkscape:version="0.92.3 (2405546, 2018-03-11)"
-   sodipodi:docname="dice_sw_d81.svg">
+   sodipodi:docname="dice_sw_difficulty.svg">
   <sodipodi:namedview
      pagecolor="#ffffff"
      bordercolor="#666666"
@@ -56,9 +56,9 @@
      id="script_sw_dice_utils" />
   <script
      type="text/javascript"
-     data-namespace="sw_d81"
+     data-namespace="sw_difficulty"
      id="script6158"><![CDATA[
-var sw_d81 = {
+var sw_difficulty = {
 
   initialize: function(elem, prototype) {
     if (!prototype) {
@@ -90,6 +90,25 @@ var sw_d81 = {
 
   getSerializerHints: function(elem) {
     return ['g']
+  },
+
+  getValue: function(elem) {
+    console.log('getValue', elem)
+    let val = []
+    let allValues = {
+      'g_oct': ['Threat'],
+      'g_octoct': ['Threat', 'Threat'],
+      'g_tri': ['Failure'],
+      'g_tritri': ['Failure', 'Failure'],
+      'g_trioct': ['Failure', 'Threat'],
+      'g_ctri': ['Despair'],
+    }
+    elem.querySelectorAll('.face').forEach(f => {
+      if (f.style.display !== 'none') {
+        val = allValues[f.id]
+      }
+    })
+    return val
   },
 
 }
@@ -126,6 +145,7 @@ var sw_d81 = {
        sodipodi:nodetypes="cccc" />
     <g
        id="g_oct"
+       class="face"
        style="display: none"
        inkscape:label="#g934"
        transform="translate(125.99141,34.388048)">
@@ -143,6 +163,7 @@ var sw_d81 = {
     </g>
     <g
        id="g_octoct"
+       class="face"
        inkscape:label="#g940"
        style="display: none"
        transform="translate(118.05676,-15.570309)">
@@ -172,6 +193,7 @@ var sw_d81 = {
     </g>
     <g
        id="g_trioct"
+       class="face"
        inkscape:label="#g945"
        style="display: none"
        transform="translate(157.67471,-15.047725)">
@@ -196,6 +218,7 @@ var sw_d81 = {
     </g>
     <g
        id="g_tritri"
+       class="face"
        style="display: none"
        inkscape:label="#g949"
        transform="translate(197.6747,-14.202821)">
@@ -214,6 +237,7 @@ var sw_d81 = {
     </g>
     <g
        id="g_tri"
+       class="face"
        inkscape:label="#g954"
        transform="translate(232.73342,-15.454044)">
       <title

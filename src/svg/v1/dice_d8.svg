@@ -49,6 +49,7 @@
   </defs>
   <script
      type="text/javascript"
+     data-namespace="dice"
      src="js/dice_utils.js"
      id="script7" />
   <script

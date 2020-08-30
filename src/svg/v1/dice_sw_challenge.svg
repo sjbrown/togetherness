@@ -5,7 +5,7 @@
    xmlns="http://www.w3.org/2000/svg"
    xmlns:xlink="http://www.w3.org/1999/xlink"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   id="sw_d121 die"
+   id="challenge die"
    height="100"
    width="100"
    version="1.1"
@@ -50,9 +50,9 @@
      id="script_sw_dice_utils" />
   <script
      type="text/javascript"
-     data-namespace="sw_d121"
-     id="script_sw_d121"><![CDATA[
-var sw_d121 = {
+     data-namespace="sw_challenge"
+     id="script_sw_challenge"><![CDATA[
+var sw_challenge = {
 
   initialize: function(elem, prototype) {
     if (!prototype) {
@@ -86,6 +86,25 @@ var sw_d121 = {
 
   getSerializerHints: function(elem) {
     return ['g']
+  },
+
+  getValue: function(elem) {
+    console.log('getValue', elem)
+    let val = []
+    let allValues = {
+      'g_oct': ['Threat'],
+      'g_octoct': ['Threat', 'Threat'],
+      'g_tri': ['Failure'],
+      'g_tritri': ['Failure', 'Failure'],
+      'g_trioct': ['Failure', 'Threat'],
+      'g_ctri': ['Despair'],
+    }
+    elem.querySelectorAll('.face').forEach(f => {
+      if (f.style.display !== 'none') {
+        val = allValues[f.id]
+      }
+    })
+    return val
   },
 
 }
@@ -134,6 +153,7 @@ var sw_d121 = {
        />
     <g
        id="g_tritri"
+       class="face"
        style="display: none"
        inkscape:label="#g896">
       <path
@@ -149,6 +169,7 @@ var sw_d121 = {
     </g>
     <g
        id="g_trioct"
+       class="face"
        style="display: none"
        inkscape:label="#g904">
       <path
@@ -169,6 +190,7 @@ var sw_d121 = {
     </g>
     <g
        id="g_octoct"
+       class="face"
        style="display: none"
        inkscape:label="#g914">
       <path
@@ -194,6 +216,7 @@ var sw_d121 = {
     </g>
     <g
        id="g_oct"
+       class="face"
        style="display: none"
        inkscape:label="#g920">
       <path
@@ -209,6 +232,7 @@ var sw_d121 = {
     </g>
     <g
        id="g_ctri"
+       class="face"
        style="display: none"
        inkscape:label="#g_ctri">
       <circle
@@ -225,6 +249,7 @@ var sw_d121 = {
     </g>
     <g
        id="g_tri"
+       class="face"
        inkscape:label="#g884">
       <path
          style="fill:#000000;fill-opacity:1;stroke:none;stroke-width:8.862257;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"

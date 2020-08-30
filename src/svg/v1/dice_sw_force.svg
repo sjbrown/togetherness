@@ -8,12 +8,12 @@
    xmlns:xlink="http://www.w3.org/1999/xlink"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   id="sw_d123 die"
+   id="sw_force die"
    height="100"
    width="100"
    version="1.1"
    inkscape:version="0.92.3 (2405546, 2018-03-11)"
-   sodipodi:docname="dice_sw_d123.svg">
+   sodipodi:docname="dice_sw_force.svg">
   <metadata
      id="metadata55">
     <rdf:RDF>
@@ -90,9 +90,9 @@
      id="script_sw_dice_utils" />
   <script
      type="text/javascript"
-     data-namespace="sw_d123"
-     id="script_sw_d123"><![CDATA[
-var sw_d123 = {
+     data-namespace="sw_force"
+     id="script_sw_force"><![CDATA[
+var sw_force = {
 
   initialize: function(elem, prototype) {
     if (!prototype) {
@@ -127,6 +127,23 @@ var sw_d123 = {
 
   getSerializerHints: function(elem) {
     return ['g']
+  },
+
+  getValue: function(elem) {
+    console.log('getValue force', elem)
+    let val = []
+    let allValues = {
+      'g_solid1': ['Dark'],
+      'g_solid2': ['Dark', 'Dark'],
+      'g_hollow1': ['Light'],
+      'g_hollow2': ['Light', 'Light'],
+    }
+    elem.querySelectorAll('.face').forEach(f => {
+      if (f.style.display !== 'none') {
+        val = allValues[f.id]
+      }
+    })
+    return val
   },
 
 }
@@ -174,6 +191,7 @@ var sw_d123 = {
        sodipodi:nodetypes="cccccc" />
     <g
        id="g_hollow1"
+       class="face"
        style="display: none"
        inkscape:label="#g52">
       <circle
@@ -185,6 +203,7 @@ var sw_d123 = {
     </g>
     <g
        id="g_hollow2"
+       class="face"
        style="display: none"
        inkscape:label="#g40">
       <circle
@@ -202,6 +221,7 @@ var sw_d123 = {
     </g>
     <g
        id="g_solid2"
+       class="face"
        style="display: none"
        inkscape:label="#g46">
       <circle
@@ -219,6 +239,7 @@ var sw_d123 = {
     </g>
     <g
        id="g_solid1"
+       class="face"
        inkscape:label="#g49">
       <circle
          r="7.63"

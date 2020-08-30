@@ -58,6 +58,24 @@ var paper = {
     return sum
   },
 
+  get_contents_values(elem) {
+    let values = {}
+    let containedSVGs = elem.querySelectorAll(
+      `#${elem.id} > .contents_group > svg`
+    )
+    containedSVGs.forEach((subElem) => {
+      nses = getNamespacesForElement(subElem)
+      nses.forEach((nsName) => {
+        let ns = window[nsName]
+        if (ns.getValue) {
+          values[subElem.id] = ns.getValue(subElem)
+          return
+        }
+      })
+    })
+    return values
+  },
+
   roll_handler: function(elem, evt) {
     console.log('paper', elem.id, 'hears roll event', evt)
     paper.visit_contents_group(elem, (s) => {

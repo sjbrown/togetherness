@@ -1200,7 +1200,12 @@ function ui_submit_dice(section) {
   //console.log('submit', section)
   center = [100, 100]
   if (section === 'sw') {
-    dtypes = ['sw_d61', 'sw_d62', 'sw_d81', 'sw_d82', 'sw_d121', 'sw_d122', 'sw_d123']
+    dtypes = [
+      'sw_setback', 'sw_boost',
+      'sw_difficulty', 'sw_ability',
+      'sw_challenge', 'sw_proficiency',
+      'sw_force'
+    ]
     dtypes.forEach((dtype) => {
       add_dtype(dtype, byId('dice_input_' + dtype), center)
     })
@@ -1357,53 +1362,53 @@ function ui_submit_dice(section) {
       <h1 id="sw_dice_h1">SW / Genesys Dice</h1>
       <table class="dice_input_table"><tr>
       <td>
-        <button class="btn" id="dice_button_sw_d61" onclick="diceIncrement('sw_d61')">
-          <img src="svg/v1/dice_sw_d61.svg" width="24" height="24" />
+        <button class="btn" id="dice_button_sw_setback" onclick="diceIncrement('sw_setback')">
+          <img src="svg/v1/dice_sw_setback.svg" width="24" height="24" />
         </button>
         &#215;
-        <input id="dice_input_sw_d61" type="number" class="dice_quantity" min="0" value="0"/>
+        <input id="dice_input_sw_setback" type="number" class="dice_quantity" min="0" value="0"/>
       </td>
       <td>
-        <button class="btn" id="dice_button_sw_d62" onclick="diceIncrement('sw_d62')">
-          <img src="svg/v1/dice_sw_d62.svg" width="24" height="24" />
+        <button class="btn" id="dice_button_sw_boost" onclick="diceIncrement('sw_boost')">
+          <img src="svg/v1/dice_sw_boost.svg" width="24" height="24" />
         </button>
         &#215;
-        <input id="dice_input_sw_d62" type="number" class="dice_quantity" min="0" value="0"/>
+        <input id="dice_input_sw_boost" type="number" class="dice_quantity" min="0" value="0"/>
       </td>
       <td>
-        <button class="btn" id="dice_button_sw_d81" onclick="diceIncrement('sw_d81')">
-          <img src="svg/v1/dice_sw_d81.svg" width="24" height="24" />
+        <button class="btn" id="dice_button_sw_difficulty" onclick="diceIncrement('sw_difficulty')">
+          <img src="svg/v1/dice_sw_difficulty.svg" width="24" height="24" />
         </button>
         &#215;
-        <input id="dice_input_sw_d81" type="number" class="dice_quantity" min="0" value="0"/>
+        <input id="dice_input_sw_difficulty" type="number" class="dice_quantity" min="0" value="0"/>
       </td>
       <td>
-        <button class="btn" id="dice_button_sw_d82" onclick="diceIncrement('sw_d82')">
-          <img src="svg/v1/dice_sw_d82.svg" width="24" height="24" />
+        <button class="btn" id="dice_button_sw_ability" onclick="diceIncrement('sw_ability')">
+          <img src="svg/v1/dice_sw_ability.svg" width="24" height="24" />
         </button>
         &#215;
-        <input id="dice_input_sw_d82" type="number" class="dice_quantity" min="0" value="0"/>
+        <input id="dice_input_sw_ability" type="number" class="dice_quantity" min="0" value="0"/>
       </td>
       <td>
-        <button class="btn" id="dice_button_sw_d121" onclick="diceIncrement('sw_d121')">
-          <img src="svg/v1/dice_sw_d121.svg" width="24" height="24" />
+        <button class="btn" id="dice_button_sw_challenge" onclick="diceIncrement('sw_challenge')">
+          <img src="svg/v1/dice_sw_challenge.svg" width="24" height="24" />
         </button>
         &#215;
-        <input id="dice_input_sw_d121" type="number" class="dice_quantity" min="0" value="0"/>
+        <input id="dice_input_sw_challenge" type="number" class="dice_quantity" min="0" value="0"/>
       </td>
       <td>
-        <button class="btn" id="dice_button_sw_d122" onclick="diceIncrement('sw_d122')">
-          <img src="svg/v1/dice_sw_d122.svg" width="24" height="24" />
+        <button class="btn" id="dice_button_sw_proficiency" onclick="diceIncrement('sw_proficiency')">
+          <img src="svg/v1/dice_sw_proficiency.svg" width="24" height="24" />
         </button>
         &#215;
-        <input id="dice_input_sw_d122" type="number" class="dice_quantity" min="0" value="0"/>
+        <input id="dice_input_sw_proficiency" type="number" class="dice_quantity" min="0" value="0"/>
       </td>
       <td>
-        <button class="btn" id="dice_button_sw_d123" onclick="diceIncrement('sw_d123')">
-          <img src="svg/v1/dice_sw_d123.svg" width="24" height="24" />
+        <button class="btn" id="dice_button_sw_force" onclick="diceIncrement('sw_force')">
+          <img src="svg/v1/dice_sw_force.svg" width="24" height="24" />
         </button>
         &#215;
-        <input id="dice_input_sw_d123" type="number" class="dice_quantity" min="0" value="0"/>
+        <input id="dice_input_sw_force" type="number" class="dice_quantity" min="0" value="0"/>
       </td>
       </tr></table>
       <button id="dialog_submit_sw" onclick="ui_submit_dice('sw')"
@@ -2067,6 +2072,10 @@ function ui_submit_image(evt) {
       <button class="btn btn-small modal-close"
         onclick="add_object('svg/v1/paper_sorter.svg')">
         + Sorter
+      </button>
+      <button class="btn btn-small modal-close"
+        onclick="add_object('svg/v1/paper_tabulate.svg')">
+        + Tabulate
       </button>
     </section>
     </div>

@@ -7,12 +7,12 @@
    xmlns="http://www.w3.org/2000/svg"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   id="sw_d82 die"
+   id="sw_ability die"
    height="100"
    width="80"
    version="1.1"
    inkscape:version="0.92.3 (2405546, 2018-03-11)"
-   sodipodi:docname="dice_sw_d82.svg">
+   sodipodi:docname="dice_sw_ability.svg">
   <sodipodi:namedview
      pagecolor="#ffffff"
      bordercolor="#666666"
@@ -32,7 +32,7 @@
      inkscape:window-x="0"
      inkscape:window-y="27"
      inkscape:window-maximized="1"
-     inkscape:current-layer="sw_d82 die"
+     inkscape:current-layer="sw_ability die"
      showguides="true"
      inkscape:guide-bbox="true"
      inkscape:snap-bbox="true"
@@ -56,9 +56,9 @@
      id="script_sw_dice_utils" />
   <script
      type="text/javascript"
-     data-namespace="sw_d82"
+     data-namespace="sw_ability"
      id="script6158"><![CDATA[
-var sw_d82 = {
+var sw_ability = {
 
   initialize: function(elem, prototype) {
     if (!prototype) {
@@ -94,6 +94,25 @@ var sw_d82 = {
     return ['g']
   },
 
+  getValue: function(elem) {
+    console.log('getValue', elem)
+    let val = []
+    let allValues = {
+      'g_cro': ['Advantage'],
+      'g_crocro': ['Advantage', 'Advantage'],
+      'g_bang': ['Success'],
+      'g_bangbang': ['Success', 'Success'],
+      'g_crobang': ['Advantage', 'Success'],
+      'g_cbang': ['Triumph'],
+    }
+    elem.querySelectorAll('.face').forEach(f => {
+      if (f.style.display !== 'none') {
+        val = allValues[f.id]
+      }
+    })
+    return val
+  },
+
 }
     ]]></script>
   <g
@@ -127,6 +146,7 @@ var sw_d82 = {
        sodipodi:nodetypes="cccc" />
     <g
        id="g_cro"
+       class="face"
        inkscape:label="#g978">
       <title
          id="title1002">g_cro</title>
@@ -139,6 +159,7 @@ var sw_d82 = {
     <g
        display="none"
        id="g_crocro"
+       class="face"
        inkscape:label="#g996">
       <title
          id="title998">g_crocro</title>
@@ -156,6 +177,7 @@ var sw_d82 = {
     <g
        display="none"
        id="g_bang"
+       class="face"
        inkscape:label="#g974">
       <title
          id="title1000">g_bang</title>
@@ -167,6 +189,7 @@ var sw_d82 = {
     </g>
     <g
        display="none"
+       class="face"
        id="g_bangbang">
       <path
          d="m 41.402896,32.051521 0.48193,5.771764 -2.447835,-5.249154 -4.212069,3.975423 2.577754,-5.186588 -5.734293,-0.814492 5.662242,-1.218416 -2.938478,-4.991078 4.482945,3.667249 2.070071,-5.409281 -0.0721,5.7914 5.519815,-1.754184 -4.572853,3.554509 4.813025,3.221848 z"
@@ -180,6 +203,7 @@ var sw_d82 = {
     </g>
     <g
        display="none"
+       class="face"
        id="g_crobang">
       <path
          id="path950"

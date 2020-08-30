@@ -2,29 +2,17 @@
 <svg
    xmlns:dc="http://purl.org/dc/elements/1.1/"
    xmlns:cc="http://creativecommons.org/ns#"
-   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
    xmlns:svg="http://www.w3.org/2000/svg"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:xlink="http://www.w3.org/1999/xlink"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   id="sw_d61 die"
+   id="sw_setback die"
    height="100"
    width="80"
    version="1.1"
    inkscape:version="0.92.3 (2405546, 2018-03-11)"
-   sodipodi:docname="dice_sw_d61.svg">
-  <metadata
-     id="metadata29">
-    <rdf:RDF>
-      <cc:Work
-         rdf:about="">
-        <dc:format>image/svg+xml</dc:format>
-        <dc:type
-           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-      </cc:Work>
-    </rdf:RDF>
-  </metadata>
+   sodipodi:docname="dice_sw_setback.svg">
   <sodipodi:namedview
      pagecolor="#ffffff"
      bordercolor="#666666"
@@ -44,7 +32,7 @@
      inkscape:window-x="0"
      inkscape:window-y="27"
      inkscape:window-maximized="1"
-     inkscape:current-layer="sw_d61 die"
+     inkscape:current-layer="sw_setback die"
      showguides="true"
      inkscape:guide-bbox="true"
      inkscape:snap-bbox="true"
@@ -92,9 +80,9 @@
      id="script_sw_dice_utils" />
   <script
      type="text/javascript"
-     data-namespace="sw_d61"
+     data-namespace="sw_setback"
      id="script6158"><![CDATA[
-var sw_d61 = {
+var sw_setback = {
 
   initialize: function(elem, prototype) {
     if (!prototype) {
@@ -116,6 +104,7 @@ var sw_d61 = {
       otherEvents: ['dblclick'],
       applicable: (dieNode) => { return true },
       handler: function(evt) {
+        console.log('evt roll', evt)
         let faces = [
           'g_oct', 'g_oct', 'g_tri', 'g_tri', null, null,
         ]
@@ -127,6 +116,23 @@ var sw_d61 = {
   getSerializerHints: function(elem) {
     return ['g']
   },
+
+  getValue: function(elem) {
+    console.log('getValue', elem)
+    let val = []
+    let allValues = {
+      'g_oct': 'Threat',
+      'g_tri': 'Failure',
+    }
+    elem.querySelectorAll('.face').forEach(f => {
+      console.log('examping', f)
+      if (f.style.display !== 'none') {
+        val.push(allValues[f.id])
+      }
+    })
+    return val
+  },
+
 }
     ]]></script>
   <g
@@ -153,10 +159,12 @@ var sw_d61 = {
          inkscape:connector-curvature="0"
          sodipodi:nodetypes="sssssssss" />
     </g>
+
     <g
        id="g_octoct"
+       class="face"
        style="display: none"
-       inkscape:label="#g53">
+       >
       <path
          style="fill:#000000;fill-opacity:1;stroke:none;stroke-width:1.85184896;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.64705882"
          id="path849"
@@ -180,8 +188,9 @@ var sw_d61 = {
     </g>
     <g
        id="g_oct"
+       class="face"
        style="display: none"
-       inkscape:label="#g60">
+       >
       <path
          d="M 53.982421,58.641801 39.550739,64.6196 25.11906,58.641801 l -5.9778,-14.431682 5.9778,-14.431682 14.431678,-5.977799 14.431683,5.977799 5.977799,14.431682 z"
          id="path827"
@@ -195,8 +204,9 @@ var sw_d61 = {
     </g>
     <g
        id="g_trioct"
+       class="face"
        style="display: none"
-       inkscape:label="#g39">
+       >
       <path
          inkscape:connector-curvature="0"
          id="path884"
@@ -215,8 +225,9 @@ var sw_d61 = {
     </g>
     <g
        id="g_tritri"
+       class="face"
        style="display: none"
-       inkscape:label="#g43">
+       >
       <path
          style="fill:#000000;fill-opacity:1;stroke:none;stroke-width:3.77952766;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
          d="m 39.54753,26.063078 a 37.923729,21.504238 60 0 0 3.37891,6.701171 37.923729,21.504238 60 0 0 5.75976,8.404297 37.923729,21.504238 0 0 0 -9.13672,-0.662109 37.923729,21.504238 0 0 0 -9.13281,0.65625 21.504238,37.923729 30 0 0 5.75586,-8.398438 21.504238,37.923729 30 0 0 3.375,-6.701171 z"
@@ -224,15 +235,18 @@ var sw_d61 = {
          inkscape:connector-curvature="0" />
       <path
          inkscape:connector-curvature="0"
-         id="path915"
          d="m 39.54753,46.063078 a 37.923729,21.504238 60 0 0 3.37891,6.701171 37.923729,21.504238 60 0 0 5.75976,8.404297 37.923729,21.504238 0 0 0 -9.13672,-0.662109 37.923729,21.504238 0 0 0 -9.13281,0.65625 21.504238,37.923729 30 0 0 5.75586,-8.398438 21.504238,37.923729 30 0 0 3.375,-6.701171 z"
          style="fill:#000000;fill-opacity:1;stroke:none;stroke-width:3.77952766;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
     </g>
-    <path
-       inkscape:connector-curvature="0"
+    <g
        id="g_tri"
+       class="face"
+       >
+      <path
+       inkscape:connector-curvature="0"
        d="M 39.54158,24.500426 A 88.923768,50.423256 60 0 0 47.46447,40.213369 88.923768,50.423256 60 0 0 60.96999,59.919811 88.923768,50.423256 0 0 0 39.54615,58.367295 88.923768,50.423256 0 0 0 18.13149,59.906073 50.423256,88.923768 30 0 0 31.62786,40.213369 50.423256,88.923768 30 0 0 39.54158,24.500426 Z"
        style="fill:#000000;fill-opacity:1;stroke:none;stroke-width:8.862257;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       inkscape:label="#path913-6" />
+       />
+    </g>
   </g>
 </svg>

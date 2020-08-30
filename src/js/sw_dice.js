@@ -12,7 +12,7 @@ var sw_dice = {
       if (name === null) {
         return
       }
-      gEl = elem.getElementById(name)
+      let gEl = elem.getElementById(name)
       gEl.style.setProperty('display', 'none')
     })
     elem.style.opacity = 0.1
@@ -22,17 +22,19 @@ var sw_dice = {
         ghost.querySelector('g').style.opacity = origOpacity
       },
       on_done: () => {
-        var activeFace = faces[ randInt(1,faces.length) - 1 ]
+        let activeFace = faces[ randInt(1,faces.length) - 1 ]
         if (activeFace !== null) {
-           gEl = elem.getElementById(activeFace)
-           gEl.setAttribute('display', '')
+           let gEl = elem.getElementById(activeFace)
+           console.log("on done", activeFace, gEl)
+           gEl.removeAttribute('display')
            gEl.style.setProperty('display', '')
+           console.log("here")
         }
 
         elem.style.opacity = origOpacity
         elem.isChanging = false
         synced.change(elem)
-        synced.run()
+        evt_fire('change', elem, null, {})
       },
     })
   },

@@ -60,5 +60,28 @@ var dice = {
     })
   },
 
+  getValue(elem) {
+    let sum = 0
+    elem.querySelectorAll('tspan').forEach((t) => {
+      if (t.closest('svg').id !== elem.id) {
+        // it's buried multiple levels deep in sub-SVGs
+        // so skip it lest it be double-counted
+        return
+      }
+      c = t.textContent.trim()
+      num = parseInt(c)
+      if (!isNaN(num)) {
+        sum += num
+      }
+      // FATE dice are +, _, and -
+      if (c == '+') {
+        sum += 1
+      }
+      if (c == '-') {
+        sum -= 1
+      }
+    })
+    return sum
+  },
 }
 

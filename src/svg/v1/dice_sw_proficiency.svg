@@ -8,12 +8,12 @@
    xmlns:xlink="http://www.w3.org/1999/xlink"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   id="sw_d122 die"
+   id="sw_proficiency die"
    height="100"
    width="100"
    version="1.1"
    inkscape:version="0.92.3 (2405546, 2018-03-11)"
-   sodipodi:docname="dice_sw_d122.svg">
+   sodipodi:docname="dice_sw_proficiency.svg">
   <defs
      id="defs1">
     <filter
@@ -54,9 +54,9 @@
      id="script_sw_dice_utils" />
   <script
      type="text/javascript"
-     data-namespace="sw_d122"
-     id="script_sw_d122"><![CDATA[
-var sw_d122 = {
+     data-namespace="sw_proficiency"
+     id="script_sw_proficiency"><![CDATA[
+var sw_proficiency = {
 
   initialize: function(elem, prototype) {
     if (!prototype) {
@@ -92,6 +92,25 @@ var sw_d122 = {
 
   getSerializerHints: function(elem) {
     return ['g']
+  },
+
+  getValue: function(elem) {
+    console.log('getValue', elem)
+    let val = []
+    let allValues = {
+      'g_cro': ['Advantage'],
+      'g_crocro': ['Advantage', 'Advantage'],
+      'g_bang': ['Success'],
+      'g_bangbang': ['Success', 'Success'],
+      'g_crobang': ['Advantage', 'Success'],
+      'g_cbang': ['Triumph'],
+    }
+    elem.querySelectorAll('.face').forEach(f => {
+      if (f.style.display !== 'none') {
+        val = allValues[f.id]
+      }
+    })
+    return val
   },
 
 }
@@ -139,6 +158,7 @@ var sw_d122 = {
        sodipodi:nodetypes="cccccc" />
     <g
        id="g_crocro"
+       class="face"
        style="display: none"
        inkscape:label="#g73">
       <path
@@ -154,6 +174,7 @@ var sw_d122 = {
     </g>
     <g
        id="g_bang"
+       class="face"
        style="display: none"
        inkscape:label="#g77">
       <path
@@ -164,6 +185,7 @@ var sw_d122 = {
     </g>
     <g
        id="g_bangbang"
+       class="face"
        style="display: none"
        inkscape:label="#g61">
       <path
@@ -179,6 +201,7 @@ var sw_d122 = {
     </g>
     <g
        id="g_crobang"
+       class="face"
        style="display: none"
        inkscape:label="#g67">
       <path
@@ -194,6 +217,7 @@ var sw_d122 = {
     </g>
     <g
        id="g_cbang"
+       class="face"
        style="display: none"
        inkscape:label="#g3747">
       <circle
@@ -211,6 +235,7 @@ var sw_d122 = {
     </g>
     <g
        id="g_cro"
+       class="face"
        inkscape:label="#g81">
       <path
          inkscape:connector-curvature="0"
