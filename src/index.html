@@ -167,10 +167,13 @@ function viewportToGameArea() {
 }
 
 function downKey(e) {
-   console.log('downkey', e)
+  // console.log('downkey', e)
   let pressedKey = e.key.toLowerCase()
   if (e.isComposing) { return }
   if (e.altKey || e.shiftKey || e.metaKey || e.ctrlKey) { return }
+  if (e.target.selectionStart !== undefined) { // text entry or textarea
+    return
+  }
   let buttons = document.querySelectorAll('[accessKey=' + pressedKey +']')
   if (buttons.length > 1) {
     console.error('Two buttons have the same accessKey', x.accessKey)
