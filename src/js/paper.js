@@ -34,6 +34,30 @@ var paper = {
     containedSVGs.forEach(visitFn)
   },
 
+  get_die_value(elem) {
+    let sum = 0
+    elem.querySelectorAll('tspan').forEach((t) => {
+      if (t.closest('svg').id !== elem.id) {
+        // it's buried multiple levels deep in sub-SVGs
+        // so skip it lest it be double-counted
+        return
+      }
+      c = t.textContent.trim()
+      console.log("c", c)
+      num = parseInt(c)
+      if (!isNaN(num)) {
+        sum += num
+      }
+      if (c == '+') {
+        sum += 1
+      }
+      if (c == '-') {
+        sum -= 1
+      }
+    })
+    return sum
+  },
+
   roll_handler: function(elem, evt) {
     console.log('paper', elem.id, 'hears roll event', evt)
     paper.visit_contents_group(elem, (s) => {

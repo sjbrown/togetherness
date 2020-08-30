@@ -58,62 +58,30 @@ var paper_best = {
   },
 
   dom_change_handler: function(evt) {
-    console.log('dom_change_handler', this.id, evt.detail)
+    // console.log('dom_change_handler', this.id, evt.detail)
 
     howmany_tspan = this.querySelector(
       `#${this.id} > :not(.contents_group) #tspan_rule_num`
     )
 
-    let howmany = parseInt(howmany_tspan.textContent)
-    let removeExtremeFn = (
-      howmany >= 0
-      ?
-      (tally) => {
-        tally.splice(tally.indexOf(Math.min.apply(undefined, tally)))
-      }
-      :
-      (tally) => {
-        tally.splice(tally.indexOf(Math.max.apply(undefined, tally)))
-      }
-    )
-    let compareFn = (
-      howmany >= 0
-      ?
-      (tempNum, tally) => { return tempNum > Math.min.apply(undefined, tally) }
-      :
-      (tempNum, tally) => { return tempNum < Math.max.apply(undefined, tally) }
-    )
+    let howMany = parseInt(howmany_tspan.textContent)
+    let sign = howMany / Math.abs(howMany) // -1 or +1
     let tally = []
 
-    paper.visit_contents_group(this, (s) => {
-      let tempNum = 0
-      s.querySelectorAll('tspan').forEach((t) => {
-        if (t.closest('svg').id !== s.id) {
-          // it's buried multiple levels deep in sub-SVGs
-          // so skip it lest it be double-counted
-          return
+    paper.visit_contents_group(this, (dieElem) => {
+      tally.sort((a,b) => (a-b))
+      let tempNum = paper.get_die_value(dieElem)
+      if (tempNum !== undefined) {
+        tempNum = sign * tempNum
+        if (tally.length < Math.abs(howMany)) {
+          tally.push( tempNum )
+        } else if (tempNum > tally[0]) {
+          tally[0] = tempNum
         }
-        c = t.textContent.trim()
-        num = parseInt(c)
-        if (isNaN(num)) {
-          if (c == '+') {
-            tempNum = 1
-          } else if (c == '-') {
-            tempNum = -1
-          }
-        } else {
-          tempNum =  num
-        }
-        if (tally.length < Math.abs(howmany)) {
-          tally.push(tempNum)
-        } else if (compareFn(tempNum, tally)) {
-          removeExtremeFn(tally)
-          tally.push(tempNum)
-        }
-      })
+      }
     })
     let tspan = this.querySelector(`#${this.id} > text > #tspan_result`)
-    tspan.textContent = tally.reduce((x,y) => x+y, 0)
+    tspan.textContent = sign * tally.reduce((x,y) => x+y, 0)
   },
 
   best_change_handler: function(evt) {
@@ -127,8 +95,8 @@ var paper_best = {
     howmany_tspan = this.querySelector(
       `#${this.id} > :not(.contents_group) #tspan_rule_num`
     )
-    howmany = parseInt(howmany_tspan.textContent)
-    let sum = howmany + change
+    howMany = parseInt(howmany_tspan.textContent)
+    let sum = howMany + change
     howmany_tspan.textContent = sum
     this.dispatchEvent(new CustomEvent('dom_change', {
       bubbles: true,
