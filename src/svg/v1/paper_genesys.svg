@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="200"
+   height="200"
+   version="1.1"
+   id="paper_genesys"
+   inkscape:version="0.92.3 (2405546, 2018-03-11)"
+   sodipodi:docname="paper_genesys.svg">
+  <defs
+     id="defs2">
+    <linearGradient
+       id="linearGradient820"
+       inkscape:collect="always">
+      <stop
+         style="stop-color:#f0f0f0;stop-opacity:1"
+         offset="0"
+         id="stop826" />
+      <stop
+         style="stop-color:#ffffff;stop-opacity:1;"
+         offset="1"
+         id="stop824" />
+    </linearGradient>
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient820"
+       id="linearGradient822"
+       x1="36.70"
+       y1="263.7"
+       x2="37.07"
+       y2="285.0"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="matrix(3.8041646,0,0,3.8135004,-0.53771847,-984.16693)" />
+  </defs>
+  <script
+     type="text/javascript"
+     src="js/paper.js"
+     id="script_paper" />
+  <script
+     type="text/javascript"
+     data-namespace="paper_genesys"
+     id="script_paper_genesys"><![CDATA[
+var paper_genesys = {
+
+  paper_roll_handler: function(evt) {
+    return paper.roll_handler(this, evt)
+  },
+
+  drop_handler: function(evt) {
+    paper.drop_handler(this, evt)
+  },
+
+  dom_change_handler: function(evt) {
+    console.log('dom_change_handler', this.id, evt.detail)
+    let allValues = paper.get_contents_values(this)
+    let table = {
+      'Success': 0,
+      'Failure': 0,
+      'Advantage': 0,
+      'Threat': 0,
+      'Triumph': 0,
+      'Despair': 0,
+    }
+    Object.values(allValues).forEach(v => {
+      if (Array.isArray(v)) {
+        v.forEach(vv => {
+          table[vv] = (table[vv] === undefined) ? 1 : table[vv] + 1
+        })
+      } else {
+        table[v] = (table[v] === undefined) ? 1 : table[v] + 1
+      }
+    })
+    let successOrFail = (
+      (table['Success'] + table['Triumph'] )
+      -
+      (table['Failure'] + table['Despair'])
+    )
+    let advantageOrThreat = table['Advantage'] - table['Threat']
+    if (successOrFail < 0) {
+      table['Success'] = 0
+      table['Failure'] = -1 * successOrFail
+    } else {
+      table['Success'] = successOrFail
+      table['Failure'] = 0
+    }
+    if (advantageOrThreat < 0) {
+      table['Advantage'] = 0
+      table['Threat'] = -1 * advantageOrThreat
+    } else {
+      table['Advantage'] = advantageOrThreat
+      table['Threat'] = 0
+    }
+    strRepr = JSON.stringify(table)
+    strRepr = strRepr.replace('{', '')
+    strRepr = strRepr.replace('}', '')
+    strRepr = strRepr.replace(/,/g, ' ')
+    strRepr = strRepr.replace(/"/g, '')
+    let tspan = this.querySelector(`#${this.id} > text > #tspan_result`)
+    tspan.textContent = strRepr
+  },
+
+  drag_handler: function(evt) {
+    if (!this.contains(evt.target)) {
+      return
+    }
+    console.log('inner element being dragged', evt.target.id)
+  },
+
+  label_click_handler: function() {
+    paper.label_click_handler(this)
+  },
+  label_change_handler: function(evt) {
+    paper.label_change_handler(this, evt)
+  },
+
+  initialize: function(elem, prototype) {
+    elem.addEventListener('change', this.dom_change_handler)
+    elem.addEventListener('paper_roll', this.paper_roll_handler)
+    elem.addEventListener('dom_change', this.dom_change_handler)
+
+    elem.addEventListener('label_click', this.label_click_handler)
+    elem.addEventListener('label_change', this.label_change_handler)
+
+    elem.addEventListener('svg_drag', this.drag_handler)
+    elem.addEventListener('svg_drop', this.drop_handler)
+    elem.addEventListener('svg_dragenter', () => {console.log('E')})
+    elem.addEventListener('svg_dragleave', () => {console.log('L')})
+
+    elem.addEventListener('resize', this.resize_handler)
+
+    paper.initialize(elem, prototype)
+  },
+
+  resize_handler: function(evt) {
+    let elem = this
+    console.log('paper', elem.id, ' got resize', evt.detail.width, evt.detail.height)
+    let w = evt.detail.width
+    let h = evt.detail.height
+
+    let area_rect = elem.querySelector(
+      `#${elem.id} > :not(.contents_group) #area_rect`
+    )
+    xbox = SVG.adopt(area_rect)
+    xbox.node.classList.add('droptarget')
+    xbox.style({ opacity: 1, 'stroke-opacity': 0.9 })
+    xbox.width(w)
+    xbox.height(h)
+    elem_svg = SVG.adopt(elem)
+    elem_svg.width(w)
+    elem_svg.height(h)
+
+    textResultEl = elem.querySelector(`#${elem.id} > .text_result`)
+    if (textResultEl) {
+      text_result  = SVG.adopt(textResultEl)
+      text_result.y(h - 50)
+    }
+    synced.change(elem)
+  },
+
+
+  menu: {
+    'Roll All': {
+      eventName: 'paper_roll',
+      applicable: (node) => { return true },
+    },
+    'Label': {
+      eventName: 'label_click',
+      applicable: (node) => { return true },
+    },
+    'Fix': {
+      eventName: 'paper_fix',
+      applicable: (node) => { return true },
+    },
+  },
+
+}
+
+
+    ]]></script>
+  <path
+     style="color:#000000;display:inline;overflow:visible;visibility:visible;opacity:1;isolation:auto;solid-color:#000000;solid-opacity:1;fill:#000000;fill-opacity:0.5;fill-rule:nonzero;stroke:none;stroke-width:1.58"
+     d="M 0.6,4.0
+     C 0.0,150.3
+       1.78,98.6
+       1.08,198.0
+     l 2.6,0.3
+     c 64.23,2.104
+       138.07,0.539
+       198.42,0.6
+     L 195.75,3.5
+     C 156.22,15.333
+       23.268,5.742
+       0.622,3.98 Z"
+     id="paper_shadow"
+     inkscape:connector-curvature="0"
+     sodipodi:nodetypes="cccccc" />
+  <g id="group-monochrome-1" class="colorable">
+  <path
+     style="opacity:1;fill:url(#linearGradient822);fill-opacity:1;stroke:#b3b3b3;stroke-width:5.0;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.9"
+     d="M 1.0,3.0
+     C 50.0,3.0
+       195.0,4.5
+       195.0,4.5
+     l 2.0,190.0
+     c 0,0
+       -182.5,0.0
+       -195.0,-2.0 z"
+     class="droptarget"
+     id="area_rect"
+     title="double-click to release members"
+     inkscape:connector-curvature="0"
+     sodipodi:nodetypes="ccccc" />
+  </g>
+  <text
+     id="text_label"
+     y="28"
+     x="10"
+     style="font-style:normal;
+     font-weight:normal;
+     font-size:24px;line-height:125%;font-family:noto sans,helvetica;
+     letter-spacing:0px;word-spacing:0px;
+     fill:#000080;fill-opacity:1;
+     "
+     xml:space="preserve"><tspan
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:noto sans,helvetica;-inkscape-font-specification:noto sans,helvetica;fill:#000080;stroke-width:0.269px"
+       id="tspan_label"
+       sodipodi:role="line">Label</tspan></text>
+
+  <g id="contents_group" class="contents_group" >
+  </g>
+  <text
+     xml:space="preserve"
+     style="font-style:normal;font-variant:normal;font-weight:normal;
+     font-stretch:normal;
+     font-size:28px;
+     line-height:125%;
+     font-family:noto sans,helvetica;
+     word-spacing:0px;fill:#000080;
+     fill-opacity:1;stroke:none;
+     stroke-width:0.26px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+     x="10" y="180"
+     class="text_result"><tspan
+       id="tspan_result"
+       style="font-stretch:normal;font-family:noto sans,helvetica;-inkscape-font-specification:noto sans,helvetica;fill:#000080;stroke-width:0.2">{}</tspan></text>
+</svg>
