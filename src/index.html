@@ -75,28 +75,7 @@ function initSvgTable(el) {
     objectsObserver.disconnect()
   }
   objectsObserver = new MutationObserver((mutationsList, observer) => {
-    //console.log(mutationsList)
-    elements = new Set()
-    mutationsList.forEach(mut => {
-      //console.log('mut', mut)
-      if (mut.target.id === 'layer_objects') {
-        if (mut.addedNodes.length) {
-          console.log('added top-level object')
-        }
-        if (mut.removedNodes.length) {
-          console.log('removed top-level object')
-        }
-      } else {
-        el = mut.target.closest('.draggable-group')
-        //console.log('dg el', el)
-        if (!elements.has(el)) {
-          synced.change(el)
-        }
-        elements.add(el)
-      }
-    })
-    console.log('elsel', elements)
-    synced.run()
+    synced.process_local_mutations(mutationsList)
   })
   objectsObserver.observe(layer_objects.node, {
     attributes: true,

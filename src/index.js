@@ -143,11 +143,6 @@ function debugBar(s) {
 }
 
 
-togetherFunctions.on_hello = (msg) => {
-  debugBar('HELLO: ' + msg)
-  push_sync()
-}
-
 togetherFunctions.on_sync = (msg) => {
   debugBar('SYNC: ' + msg)
   newEl = domJSON.toDOM(msg.data)

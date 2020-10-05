@@ -53,10 +53,8 @@ TogetherJSConfig_on_ready = () => {
   });
 
   TogetherJS.hub.on("togetherjs.hello", (msg) => {
-    console.log('received hello msg', msg);
-    if(togetherFunctions.on_hello) {
-      togetherFunctions.on_hello(msg);
-    }
+    console.log('HELLO --- received hello msg', msg);
+    push_sync()
   });
 
   TogetherJS.hub.on("change", (msg) => {
@@ -71,27 +69,6 @@ TogetherJSConfig_on_ready = () => {
     console.log('received create msg', msg);
     if(togetherFunctions.on_create) {
       togetherFunctions.on_create(msg);
-    }
-  });
-
-  TogetherJS.hub.on("createMark", (msg) => {
-    console.log('received create sel msg', msg);
-    if(togetherFunctions.on_create_mark) {
-      togetherFunctions.on_create_mark(msg);
-    }
-  });
-
-  TogetherJS.hub.on('dropMark', (msg) => {
-    console.log('dropMark msg', msg);
-    if(togetherFunctions.on_drop_mark) {
-      togetherFunctions.on_drop_mark(msg);
-    }
-  });
-
-  TogetherJS.hub.on('dropNestMark', (msg) => {
-    console.log('dropNestMark msg', msg);
-    if(togetherFunctions.on_drop_nest_mark) {
-      togetherFunctions.on_drop_nest_mark(msg);
     }
   });
 
@@ -188,6 +165,44 @@ var synced = {
     layer_ui.add(SVG.adopt(el))
     this.dirty_add(el)
   },
+  local_mutations_stop: function() {
+    synced.local_mutations_process(objectsObserver.takeRecords())
+    objectsObserver.disconnect()
+  },
+  local_mutations_start: function() {
+    console.log("local_mutations_start")
+    objectsObserver.observe(layer_objects.node, {
+      attributes: true,
+      childList: true,
+      subtree: true,
+    })
+  },
+  local_mutations_process: function(mutationsList) {
+    elements = new Set()
+    mutationsList.forEach(mut => {
+      //console.log('mut', mut)
+      if (mut.target.id === 'layer_objects') {
+        if (mut.addedNodes.length) {
+          console.log('added top-level object')
+        }
+        if (mut.removedNodes.length) {
+          console.log('removed top-level object')
+        }
+      } else {
+        el = mut.target.closest('.draggable-group')
+        console.log('dg el', el)
+        if (el === null) {
+          console.log('very strange! null!')
+          console.log('mut.target', mut.target)
+        } else if (!elements.has(el)) {
+          synced.change(el)
+          elements.add(el)
+        }
+      }
+    })
+    console.log('elsel', elements)
+    synced.run()
+  },
   remove: function(el) {
     el.remove()
     this.dirty_remove(el)
@@ -205,6 +220,9 @@ var synced = {
       syncNeeded: false,
     }
     console.log("received", msg)
+
+    synced.local_mutations_stop() // pause, otherwise infinit loop begins
+
     msg.removed.forEach(id => {
       let el = document.getElementById(id)
       if (el) {
@@ -231,6 +249,7 @@ var synced = {
           console.log("finally got foreign svg", id)
           init_with_namespaces(nestEl, nestEl.node)
           ui.hookup_menu_actions(nestEl)
+          return { status: 'success' }
         })
       )
     })
@@ -272,12 +291,15 @@ var synced = {
       })
     })
     .then(() => {
-      ui.update_buttons()
+      ui.updateButtons()
       return retval
     })
     .catch((err) => {
       console.error('ERROR during receive', err)
       return retval
+    })
+    .finally(() => {
+      synced.local_mutations_start() // resume listening for local mutations
     })
   },
 }
