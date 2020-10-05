@@ -107,7 +107,6 @@ var paper_count = {
   },
 
   initialize: function(elem, prototype) {
-    elem.addEventListener('change', this.dom_change_handler)
     elem.addEventListener('paper_roll', this.paper_roll_handler)
     elem.addEventListener('dom_change', this.dom_change_handler)
 

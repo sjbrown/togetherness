@@ -81,7 +81,6 @@ var deck = {
       bubbles: true,
       detail: { 'ruleElemId': elem.id },
     }))
-    synced.change(elem)
   },
 
   endeck: function(deck, card) {

@@ -22,6 +22,8 @@
 <script src="./js/domJSON.js"></script>
 <script src="./physicsjs-full.js"></script>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.5.1/gsap.js"></script>
+
 <!-- polyfill Promises for Internet Explorer -->
 <script src="https://cdn.jsdelivr.net/npm/promise-polyfill@8/dist/polyfill.min.js"></script>
 
@@ -42,12 +44,13 @@
 </head>
 
 <script>
+var objectsObserver;
 var svg_table;
 var layer_objects;
 var layer_ui;
 var viewport;
 var gViewport;
-var origViewportSize = [1200, 800]
+var origViewportSize = [1200, 800];
 
 function initSvgTable(el) {
   el.id = 'svg_table'
@@ -67,6 +70,40 @@ function initSvgTable(el) {
   layer_ui.addClass('layer_ui')
   gViewport.add(svg_table)
   makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
+
+  if (objectsObserver) {
+    objectsObserver.disconnect()
+  }
+  objectsObserver = new MutationObserver((mutationsList, observer) => {
+    //console.log(mutationsList)
+    elements = new Set()
+    mutationsList.forEach(mut => {
+      //console.log('mut', mut)
+      if (mut.target.id === 'layer_objects') {
+        if (mut.addedNodes.length) {
+          console.log('added top-level object')
+        }
+        if (mut.removedNodes.length) {
+          console.log('removed top-level object')
+        }
+      } else {
+        el = mut.target.closest('.draggable-group')
+        //console.log('dg el', el)
+        if (!elements.has(el)) {
+          synced.change(el)
+        }
+        elements.add(el)
+      }
+    })
+    console.log('elsel', elements)
+    synced.run()
+  })
+  objectsObserver.observe(layer_objects.node, {
+    attributes: true,
+    childList: true,
+    subtree: true,
+  })
+
   return svg_table
 }
 

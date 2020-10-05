@@ -59,33 +59,13 @@ var dsymbol = {
 
   roll_handler: function(evt, elem) {
     console.log('roll handle!', elem.id, evt)
-    if (elem.isChanging) {
-      return false
-    }
-    elem.isChanging = true
     var tspan = elem.querySelector('#tspan_value')
-    var origOpacity = elem.style.opacity
     var newNum = randDiceString(
       0, dsymbol.num_symbols(elem) - 1
     )
     console.log('newnum, ', newNum)
-    ui.animated_ghost(elem, { animation: 'rollOut' })
-    tspan.textContent = ' '
-    elem.style.opacity = 0.1
-    ui.animated_ghost(elem, {
-      animation: 'rollIn',
-      before_begin: (ghost) => {
-        ghost.querySelector('g').style.opacity = origOpacity
-      },
-      on_done: () => {
-        tspan.textContent = dsymbol.get_face(elem, newNum)
-        console.log('newface', tspan.textContent)
-        elem.style.opacity = origOpacity
-        elem.isChanging = false
-        synced.change(elem)
-        synced.run()
-        evt_fire('change', elem, null, {})
-      },
+    ui.do_animate(elem, {animation: 'rollOut'})
+    tspan.textContent = newNum
     })
   },
 
@@ -155,6 +135,8 @@ var dsymbol = {
        rx="31.718672"
        ry="28.365911" />
     <ellipse
+       class="object_shadow"
+
        ry="28.365911"
        rx="39.932789"
        cy="67.417534"

@@ -121,7 +121,6 @@ var paper_genesys = {
   },
 
   initialize: function(elem, prototype) {
-    elem.addEventListener('change', this.dom_change_handler)
     elem.addEventListener('paper_roll', this.paper_roll_handler)
     elem.addEventListener('dom_change', this.dom_change_handler)
 
@@ -161,7 +160,6 @@ var paper_genesys = {
       text_result  = SVG.adopt(textResultEl)
       text_result.y(h - 50)
     }
-    synced.change(elem)
   },
 
 

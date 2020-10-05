@@ -81,7 +81,7 @@ var paper = {
     paper.visit_contents_group(elem, (s) => {
       evt_fire('die_roll', s, null, {})
     })
-    synced.change(elem)
+    evt_fire('dom_change', elem, null, {})
   },
 
   fix: function(evt) {
@@ -119,7 +119,6 @@ var paper = {
     offset += parseInt(text_rule.bbox().width)
     text_rule.x(w - offset)
     text_rule.y(h - 50)
-    synced.change(elem)
   },
 
   label_click_handler: function(elem) {
@@ -136,7 +135,6 @@ var paper = {
   label_change_handler: function(elem, evt) {
     let label = elem.querySelector(`#${elem.id} > text > #tspan_label`)
     label.textContent = evt.detail.inputValue
-    synced.change(elem)
   },
 
   dragover_handler: function(evt) {
@@ -211,7 +209,6 @@ var paper = {
       bubbles: true,
       detail: { 'ruleElemId': elem.id },
     }))
-    synced.change(elem)
   },
 
 

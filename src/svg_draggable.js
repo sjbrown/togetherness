@@ -100,9 +100,11 @@ function makeDraggable(viewport, table) {
       bubbles: true,
       detail: detail,
     }))
+    /*
     if (selectedEl) {
       synced.change(selectedEl.node)
     }
+    */
   }
 
   function getMousePosition(evt) {

@@ -164,8 +164,9 @@ const ui = {
       // console.log("hooking up", menuItem.eventName, menuItem.handler)
       let wrapper = function(evt) {
         // console.log("IN WRAPPER", evt, svgEl)
+        // TODO: I can probably put this back the way it was now that the MutationObserver is working
         menuItem.handler.bind(svgEl)(evt)
-        synced.change(svgEl)
+        //synced.change(svgEl)
       }
       svgEl.addEventListener(menuItem.eventName, wrapper)
       if (menuItem.otherEvents) {
@@ -421,22 +422,18 @@ const ui = {
   },
 
   do_animate: (node, attrs) => {
-    let { ms, animation } = Object.assign({
+    if (node.classList.contains('animated')) {
+      // do not play 2 animations simultaneously
+      return
+    }
+    let { ms, animation, from } = Object.assign({
       ms: 900,
       animation: 'slideInDown',
+      from: {},
     }, attrs)
-    node.classList.add('animated')
-    node.classList.add(animation)
-    if (!node.classList.contains('ghost')) {
-      synced.change(node)
-    }
-    let timedFn = setInterval(() => {
-      node.classList.remove('animated')
-      node.classList.remove(animation)
-      if (!node.classList.contains('ghost')) {
-        synced.change(node)
-      }
-      clearInterval(timedFn);
+    node.classList.add('animated', animation)
+    let timedFn = setTimeout(() => {
+      node.classList.remove('animated', animation)
     }, ms)
   },
 
