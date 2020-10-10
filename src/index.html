@@ -44,7 +44,6 @@
 </head>
 
 <script>
-var objectsObserver;
 var svg_table;
 var layer_objects;
 var layer_ui;
@@ -71,17 +70,7 @@ function initSvgTable(el) {
   gViewport.add(svg_table)
   makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
 
-  if (objectsObserver) {
-    objectsObserver.disconnect()
-  }
-  objectsObserver = new MutationObserver((mutationsList, observer) => {
-    synced.process_local_mutations(mutationsList)
-  })
-  objectsObserver.observe(layer_objects.node, {
-    attributes: true,
-    childList: true,
-    subtree: true,
-  })
+  synced.local_mutations_start()
 
   return svg_table
 }

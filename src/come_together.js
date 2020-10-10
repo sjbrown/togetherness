@@ -124,6 +124,7 @@ function net_fire(payload) {
   }
 }
 
+var objectsObserver;
 var synced = {
   init: function() {
     this._dirty = {
@@ -171,6 +172,11 @@ var synced = {
   },
   local_mutations_start: function() {
     console.log("local_mutations_start")
+    if (!objectsObserver) {
+      objectsObserver = new MutationObserver((mutationsList, observer) => {
+        synced.local_mutations_process(mutationsList)
+      })
+    }
     objectsObserver.observe(layer_objects.node, {
       attributes: true,
       childList: true,
@@ -221,7 +227,7 @@ var synced = {
     }
     console.log("received", msg)
 
-    synced.local_mutations_stop() // pause, otherwise infinit loop begins
+    synced.local_mutations_stop() // pause, otherwise infinite loop begins
 
     msg.removed.forEach(id => {
       let el = document.getElementById(id)
