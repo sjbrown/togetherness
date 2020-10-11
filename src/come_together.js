@@ -343,7 +343,7 @@ const receive = function(msg, layerObs) {
       import_foreign_svg_for_element(nestEl)
       .then(() => {
         //console.log("NET finally got foreign svg", id)
-        init_with_namespaces(nestEl, nestEl.node)
+        init_with_namespaces(nestEl, nestEl)
         ui.hookup_menu_actions(nestEl)
         return { status: 'success' }
       })
@@ -353,12 +353,13 @@ const receive = function(msg, layerObs) {
   .then((values) => {
     //console.log('NET vals are ', values)
     values.forEach(val => {
-      if (val.status === 'rejected') {
+      if (val.status !== 'success') {
         throw new Error('a import_foreign_svg_for_element promise failed')
       }
     })
   })
   .then(() => {
+    promises = []
     //console.log("NET changed", Object.keys(msg.changed).length)
     Object.keys(msg.changed).forEach(id => {
       //console.log('NET el ', id)
@@ -372,6 +373,7 @@ const receive = function(msg, layerObs) {
       }
       if (existingEl.classList.contains('ghost')) {
         console.error('NET CHANGED A GHOST', existingEl)
+        return
       }
       if (
         existingEl.dataset.appUrl
@@ -380,7 +382,8 @@ const receive = function(msg, layerObs) {
       ) {
         console.error('NET svg src not loaded', existingEl.dataset.appUrl)
         retval.syncNeeded = true
-        throw new Error('svg src not loaded')
+        promises.push(import_foreign_svg_for_element(existingEl))
+        return
       }
       let group = layer_objects.group()
       group.svg(msg.changed[id])
@@ -392,8 +395,19 @@ const receive = function(msg, layerObs) {
     })
   })
   .then(() => {
-    ui.updateButtons()
-    return retval
+    return Promise.all(promises)
+    .then((values) => {
+      //console.log('NET vals are ', values)
+      values.forEach((val) => {
+        if (val && val.status !== 'success') {
+          throw new Error('a import_foreign_svg_for_element promise failed')
+        }
+      })
+    })
+    .then(() => {
+      ui.updateButtons()
+      return retval
+    })
   })
   .catch((err) => {
     console.error('NET ERROR during receive', err)
@@ -422,7 +436,7 @@ togetherFunctions.on_sync = (msg) => {
     el.remove()
   })
   newTable = newEl.querySelector('#svg_table')
-  //console.log('nw tab', newTable)
+  console.log('nw tab', newTable)
   /*
   newTable.querySelectorAll('#layer_objects > .draggable-group').forEach((el) => {
     let existingEl = svg_table.node.querySelector('#' + el.id)
@@ -442,13 +456,14 @@ togetherFunctions.on_sync = (msg) => {
   let urlLoop = async() => {
     for (let index = 0; index < nodeList.length; index++) {
       let node = nodeList.item(index)
+      console.log('import_foreign_svg_for_element', node.id)
       await import_foreign_svg_for_element(node)
     }
   }
   return urlLoop()
   .then(() => {
     // console.log("NEWT", newTable.outerHTML)
-    return newTable.querySelectorAll('#layer_objects> .draggable-group').forEach((el) => {
+    return newTable.querySelectorAll('#layer_objects > .draggable-group').forEach((el) => {
       el.remove()
       /*
        * WHY WHY WHY
@@ -459,7 +474,7 @@ togetherFunctions.on_sync = (msg) => {
       let s = el.outerHTML
       layer_objects.svg(s)
       nestEl = layer_objects.node.querySelector('#' + el.id)
-      // console.log("Got result", nestEl)
+      console.log("Got result", nestEl.id)
       // console.log("necg", nestEl.querySelector('.contents_group').outerHTML)
       // console.log("e cg", el.querySelector('.contents_group').outerHTML)
       ui.hookup_ui(nestEl)
