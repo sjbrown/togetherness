@@ -100,11 +100,6 @@ function makeDraggable(viewport, table) {
       bubbles: true,
       detail: detail,
     }))
-    /*
-    if (selectedEl) {
-      synced.change(selectedEl.node)
-    }
-    */
   }
 
   function getMousePosition(evt) {
@@ -181,7 +176,7 @@ function makeDraggable(viewport, table) {
           dragTarget = draggableGroup
           // Make it the top-most element
           p = dragTarget.parentElement
-          dragTarget.remove()
+          //dragTarget.remove()
           p.appendChild(dragTarget)
         }
       })

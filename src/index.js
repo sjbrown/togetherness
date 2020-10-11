@@ -143,92 +143,8 @@ function debugBar(s) {
 }
 
 
-togetherFunctions.on_sync = (msg) => {
-  console.log("SYNC SYNC SYNC")
-  console.log("SYNC SYNC SYNC")
-  console.log("SYNC SYNC SYNC")
-  debugBar('SYNC: ' + msg)
-  newEl = domJSON.toDOM(msg.data)
 
-  myViewport = document.querySelector('#svg_viewport')
-  newViewport = newEl.querySelector('#svg_viewport')
-  //console.log('nw el', newViewport)
-  myViewport.style.backgroundImage = newViewport.style.backgroundImage
-
-  svg_table.node.querySelectorAll('.draggable-group').forEach((el) => {
-    el.remove()
-  })
-  newTable = newEl.querySelector('#svg_table')
-  //console.log('nw tab', newTable)
-  /*
-  newTable.querySelectorAll('#layer_objects > .draggable-group').forEach((el) => {
-    let existingEl = svg_table.node.querySelector('#' + el.id)
-    console.log("curtains: ", el.id)
-    if (existingEl === null) {
-      return
-    }
-    console.log("found: ", el.id)
-    existingEl.classList.remove('draggable-group')
-    existingEl.style.outline = 'solid 20px white'
-    existingEl.style.opacity = 0.4
-    setTimeout(() => { existingEl.remove() }, 400)
-  })
-  */
-
-  let nodeList = newTable.querySelectorAll('[data-app-url]')
-  let urlLoop = async() => {
-    for (let index = 0; index < nodeList.length; index++) {
-      let node = nodeList.item(index)
-      await import_foreign_svg_for_element(node)
-    }
-  }
-  return urlLoop().then(() => {
-    // console.log("NEWT", newTable.outerHTML)
-    return newTable.querySelectorAll('#layer_objects> .draggable-group').forEach((el) => {
-      el.remove()
-      /*
-       * WHY WHY WHY
-       *
-       * This seems to be the only way to get the <filter> to work correctly
-       */
-      // console.log("Making new svg for ", el.id)
-      let s = el.outerHTML
-      layer_objects.svg(s)
-      nestEl = layer_objects.node.querySelector('#' + el.id)
-      // console.log("Got result", nestEl)
-      // console.log("necg", nestEl.querySelector('.contents_group').outerHTML)
-      // console.log("e cg", el.querySelector('.contents_group').outerHTML)
-      ui.hookup_ui(nestEl)
-      init_with_namespaces(nestEl, el)
-      ui.hookup_menu_actions(nestEl)
-      /*
-       * WHY WHY WHY
-       */
-    })
-    return newTable.querySelectorAll('#layer_ui > .draggable-group').forEach((el) => {
-      el.remove()
-      /*
-       * WHY WHY WHY
-       *
-       * This seems to be the only way to get the <filter> to work correctly
-       */
-      // console.log("Making new svg for ", el.id)
-      let s = el.outerHTML
-      layer_ui.svg(s)
-      nestEl = layer_ui.node.querySelector('#' + el.id)
-      // console.log("Got result", nestEl)
-      // console.log("necg", nestEl.querySelector('.contents_group').outerHTML)
-      // console.log("e cg", el.querySelector('.contents_group').outerHTML)
-      ui.hookup_ui(nestEl)
-      init_with_namespaces(nestEl, el)
-      ui.hookup_menu_actions(nestEl)
-      /*
-       * WHY WHY WHY
-       */
-    })
-  })
-}
-
+// ----------------------------------------------------------------------------
 var seenUrls = {}
 function is_svg_src_loaded(url) {
   if (url.indexOf('://') !== -1) {
@@ -595,7 +511,7 @@ async function add_object(url, attrs) {
     ui.hookup_ui(nest.node)
     init_with_namespaces(nest.node, attrs && attrs.serializedState)
     ui.hookup_menu_actions(nest.node)
-    synced.dirty_add(nest.node) // send the sync before the animation
+    //synced.dirty_add(nest.node) // send the sync before the animation
     ui.do_animate(nest.node)
   }
 
@@ -667,7 +583,7 @@ function push_to_parent(childEl, newParentEl, pushFn) {
   } else {
     ui.un_hookup_ui(childEl)
   }
-  synced.remove(childEl)
+  //synced.remove(childEl)
   // console.log('c', c.x(), c.y(), 'old p', oldPXY, 'new p', new_p_svg.x(), new_p_svg.y())
   c.x( (c.x() + oldPXY.x) - new_p_svg.x() )
   c.y( (c.y() + oldPXY.y) - new_p_svg.y() )

@@ -70,7 +70,10 @@ function initSvgTable(el) {
   gViewport.add(svg_table)
   makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
 
-  synced.local_mutations_start()
+  //#synced.init(layer_objects.node)
+  //synced.init(layer_ui.node)
+  objectsObserver = new LayerObserver(layer_objects.node)
+  uiObserver = new LayerObserver(layer_ui.node)
 
   return svg_table
 }

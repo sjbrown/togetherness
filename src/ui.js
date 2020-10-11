@@ -25,7 +25,7 @@ const ui = {
         let selbox = svg_table.node.querySelector('#drag_select_box')
         if (!selbox) {
           dragSelBox.attr(evt.detail.box)
-          synced.ui_add(dragSelBoxEl)
+          layer_ui.add(SVG.adopt(dragSelBoxEl))
         }
         if (myClientId) {
           dragSelBoxEl.classList.add(
@@ -54,6 +54,8 @@ const ui = {
           return !exemptedIds[el.id]
         })
         select_box.selectElements(dragSelBoxEl, surrounded)
+        layer_ui.add(SVG.adopt(dragSelBoxEl))
+
       })
     })
     .then(() => {
@@ -73,7 +75,7 @@ const ui = {
       newSelOpenBox.classList.add('has-owner', 'owner-' + ui.escapedClientId())
     }
     select_open_box.initialize(newSelOpenBox)
-    synced.ui_add(newSelOpenBox)
+    layer_ui.add(SVG.adopt(newSelOpenBox))
     return newSelOpenBox
   },
 
@@ -151,7 +153,7 @@ const ui = {
       height: svg_elem.height(),
     })
     select_box.selectElements(svgSelBoxEl, [elem])
-    synced.ui_add(svgSelBoxEl)
+    layer_ui.add(SVG.adopt(svgSelBoxEl))
   },
 
   removeEmptySelectBoxes: () => {
@@ -159,7 +161,7 @@ const ui = {
     ui.getSelectBoxes().forEach(sbox => {
       // console.log("box", sbox)
       if (ui.getSelectBoxSelectedElements(sbox).length < 1) {
-        synced.ui_remove(sbox)
+        sbox.remove()
       }
     })
   },
@@ -173,7 +175,7 @@ const ui = {
       if (el.classList.contains('drag-open')) {
         unlock_selection(el)
       }
-      synced.ui_remove(el)
+      el.remove()
     })
   },
 
