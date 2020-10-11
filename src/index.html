@@ -1101,7 +1101,6 @@ function ui_popup_properties(el, dialog_specifier) {
 
       ui.popdown_dialog('dialog_properties')
       //net_fire({ type: 'change', data: serialize(target) })
-      push_sync()
   });
 
   fieldset = byId('properties_fields')
@@ -1555,7 +1554,6 @@ function ui_submit_svgfile(evt) {
 
     ui.popdown_dialog('dialog_svgfile')
     //net_fire({ type: 'create', data: serialize(nest.node) })
-    push_sync()
   })
 }
 
@@ -1720,7 +1718,6 @@ function ui_submit_rect(evt) {
   });
   ui.popdown_dialog('dialog_rect')
   //net_fire({ type: 'create', data: serialize(nest) })
-  push_sync()
 }
 
     </script>
@@ -1839,7 +1836,6 @@ function ui_submit_text(evt) {
   var text = make_text({ fill: color }, c);
   ui.popdown_dialog('dialog_text')
   //net_fire({ type: 'create', data: serialize(text) })
-  push_sync()
 }
 
     </script>
@@ -1936,7 +1932,6 @@ function ui_submit_ellipse(evt) {
   });
   ui.popdown_dialog('dialog_ellipse')
   //net_fire({ type: 'create', data: serialize(nest) })
-  push_sync()
 }
 
     </script>
@@ -1993,7 +1988,6 @@ function ui_submit_image(evt) {
     ui.hookup_menu_actions(nest.node)
     ui.popdown_dialog('dialog_other')
     //net_fire({ type: 'create', data: serialize(nest) })
-    push_sync()
   })
 }
   </script>

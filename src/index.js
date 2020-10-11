@@ -144,6 +144,9 @@ function debugBar(s) {
 
 
 togetherFunctions.on_sync = (msg) => {
+  console.log("SYNC SYNC SYNC")
+  console.log("SYNC SYNC SYNC")
+  console.log("SYNC SYNC SYNC")
   debugBar('SYNC: ' + msg)
   newEl = domJSON.toDOM(msg.data)
 
@@ -247,77 +250,6 @@ async function import_foreign_svg_for_element(el) {
     await import_foreign_svg(url)
     seenUrls[url] = true
   }
-}
-
-togetherFunctions.on_change = (msg) => {
-  debugBar('CHANGE: ' + msg)
-  deserialize(msg.data)
-}
-
-deserializers = {}
-function deserialize(payload) {
-  return
-  console.log("deserialize: ", payload)
-  var obj = null;
-  if (document.getElementById(payload.id)) {
-    console.log("i've seen this before", payload.id)
-    obj = SVG.adopt(byId(payload.id))
-    Object.keys(payload).map(key => {
-      if (key === 'data-text') {
-        obj.text(payload[key])
-      }
-      if (key !== 'kids') {
-        console.log('setting', key, 'to', payload[key])
-        obj.attr(key, payload[key])
-      }
-    });
-    url = payload['data-app-url']
-    if (url) {
-      deserializers[url](obj.node, payload)
-    }
-  } else {
-    // elem is something new - remote has it, but it's not yet in the local doc
-    console.log("this is something new", payload.id)
-
-//--------
-    url = payload['data-app-url']
-    if (url) {
-      return add_object_from_payload(payload)
-    }
-//--------
-
-    var fn = str_to_fn('make_' + payload['data-app-class'])
-    if (fn) {
-      console.log('calling ', 'make_'+ payload['data-app-class'])
-      obj = fn(payload);
-    } else {
-      throw Error('how to make? '+ payload['data-app-class'])
-    }
-  }
-  if (payload.kids && obj) {
-    payload.kids.map(innerPayload => {
-      var kid = deserialize(innerPayload)
-      obj.put(kid)
-    });
-  }
-  return obj.node;
-}
-
-function serialize(thing, extras) {
-  if (!myClientId) {
-    // no network connection - skip it
-    return;
-  }
-  var el = (thing.attr) ? thing.node : thing;
-  var retval = {}
-  var fn = str_to_fn('serialize_' + g(el, 'data-app-class'))
-  if (fn) {
-    retval = Object.assign( retval, fn(el) )
-  }
-  if (extras) {
-    retval = Object.assign( retval, extras )
-  }
-  return retval
 }
 
 

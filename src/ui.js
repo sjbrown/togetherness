@@ -3,10 +3,13 @@ const ui = {
   selectBoxPrototype: null,
   selectOpenBoxPrototype: null,
 
+  escapedClientId: () => {
+    return myClientId ? myClientId.replace('.', '-') : ''
+  },
+
   initializeDragSelectBox: (viewportEl) => {
     return import_foreign_svg('svg/v1/select_box.svg')
     .then((nest) => {
-      nest.id('select_box_prototype')
       this.selectBoxPrototype = nest
       dragSelBoxEl = nest.node.cloneNode(true)
       dragSelBox = SVG.adopt(dragSelBoxEl)
@@ -24,6 +27,11 @@ const ui = {
           dragSelBox.attr(evt.detail.box)
           synced.ui_add(dragSelBoxEl)
         }
+        if (myClientId) {
+          dragSelBoxEl.classList.add(
+            'has-owner', 'owner-' + ui.escapedClientId()
+          )
+        }
         select_box.initialize(dragSelBoxEl)
       })
       viewportEl.addEventListener('svg_dragselect_drag', (evt) => {
@@ -33,6 +41,18 @@ const ui = {
       viewportEl.addEventListener('svg_dragselect_end', (evt) => {
         // console.log('viewport got svg_dragselect_end', evt)
         let surrounded = spatial.topLevelSurrounded(evt.detail.box)
+        let peerSelectBoxes = document.querySelectorAll(
+          '.select_box:not(.owner-' + ui.escapedClientId() + ')'
+        )
+        exemptedIds = {}
+        peerSelectBoxes.forEach(sbox => {
+          ui.getSelectBoxSelectedElements(sbox).forEach(el => {
+            exemptedIds[el.id] = true
+          })
+        })
+        surrounded = surrounded.filter((el) => {
+          return !exemptedIds[el.id]
+        })
         select_box.selectElements(dragSelBoxEl, surrounded)
       })
     })
@@ -49,8 +69,11 @@ const ui = {
     ui.unselectAll()
     let newSelOpenBox = this.selectOpenBoxPrototype.node.cloneNode(true)
     newSelOpenBox.classList.remove('draggable-group')
-    synced.ui_add(newSelOpenBox)
+    if (myClientId) {
+      newSelOpenBox.classList.add('has-owner', 'owner-' + ui.escapedClientId())
+    }
     select_open_box.initialize(newSelOpenBox)
+    synced.ui_add(newSelOpenBox)
     return newSelOpenBox
   },
 
@@ -89,9 +112,20 @@ const ui = {
     return selected
   },
 
-  getSelectedElements: () => {
+  belongsToPeer: (el) => {
+    return (
+      el.classList.contains('has-owner')
+      &&
+      !el.classList.contains('owner-' + ui.escapedClientId())
+    )
+  },
+
+  getMySelectedElements: () => {
     let selected = []
     layer_ui.node.querySelectorAll('.select_box').forEach(el => {
+      if (ui.belongsToPeer(el)) {
+        return
+      }
       let nodes = ui.getSelectBoxSelectedElements(el)
       selected = selected.concat(nodes)
     })
@@ -106,6 +140,9 @@ const ui = {
     let svgSelBoxEl = this.selectBoxPrototype.node.cloneNode(true)
     // console.log("made select_box", svgSelBoxEl)
     svg_elem = SVG.adopt(elem)
+    if (myClientId) {
+      svgSelBoxEl.classList.add('has-owner', 'owner-' + ui.escapedClientId())
+    }
     select_box.initialize(svgSelBoxEl)
     select_box.reshape(svgSelBoxEl, {
       x: svg_elem.x(),
@@ -122,18 +159,21 @@ const ui = {
     ui.getSelectBoxes().forEach(sbox => {
       // console.log("box", sbox)
       if (ui.getSelectBoxSelectedElements(sbox).length < 1) {
-        synced.remove(sbox)
+        synced.ui_remove(sbox)
       }
     })
   },
 
   unselectAll: () => {
     ui.getSelectBoxes().forEach(el => {
-      // console.log("removing", el)
+      console.log("removing", el)
+      if(ui.belongsToPeer(el)) {
+        return // skip this peer's select box
+      }
       if (el.classList.contains('drag-open')) {
         unlock_selection(el)
       }
-      synced.remove(el)
+      synced.ui_remove(el)
     })
   },
 
@@ -163,10 +203,8 @@ const ui = {
       }
       // console.log("hooking up", menuItem.eventName, menuItem.handler)
       let wrapper = function(evt) {
-        // console.log("IN WRAPPER", evt, svgEl)
-        // TODO: I can probably put this back the way it was now that the MutationObserver is working
+        console.log('LOG user', myClientId, 'does', evt, 'on', svgEl)
         menuItem.handler.bind(svgEl)(evt)
-        //synced.change(svgEl)
       }
       svgEl.addEventListener(menuItem.eventName, wrapper)
       if (menuItem.otherEvents) {
@@ -232,7 +270,7 @@ const ui = {
 
   updateButtons: () => {
      console.log("ui.updateButtons")
-    let markedNodes = ui.getSelectedElements()
+    let markedNodes = ui.getMySelectedElements()
     let numMarked = markedNodes.length
     let buttons = {}
     let template = byId('template_object_actions')
