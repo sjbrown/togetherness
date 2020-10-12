@@ -195,25 +195,34 @@ const ui = {
     nest.off('svg_dragsafe_click')
   },
 
-  hookup_menu_actions: (svgEl) => {
-    //console.log('hookup_menu_actions', svgEl)
+  event_handlers_for_element: (svgEl) => {
+    let eventHandlers = {}
     let actionMenu = ui.getFullMenuForElement(svgEl)
-    Object.keys(actionMenu).map((title) => {
+    Object.keys(actionMenu).forEach((title) => {
       let menuItem = actionMenu[title]
       if (!menuItem.handler) {
         return
       }
+      eventHandlers[menuItem.eventName] = menuItem.handler
+      if (menuItem.otherEvents) {
+        menuItem.otherEvents.forEach(evName => {
+          eventHandlers[evName] = menuItem.handler
+        })
+      }
+    })
+    return eventHandlers
+  },
+
+  hookup_menu_actions: (svgEl) => {
+    //console.log('hookup_menu_actions', svgEl)
+    let allHandlers = ui.event_handlers_for_element(svgEl)
+    Object.entries(allHandlers).forEach(([eventName, handler]) => {
       // console.log("hooking up", menuItem.eventName, menuItem.handler)
       let wrapper = function(evt) {
         console.log('LOG user', myClientId, 'does', evt, 'on', svgEl)
-        menuItem.handler.bind(svgEl)(evt)
+        handler.bind(svgEl)(evt)
       }
-      svgEl.addEventListener(menuItem.eventName, wrapper)
-      if (menuItem.otherEvents) {
-        menuItem.otherEvents.forEach(evName => {
-          svgEl.addEventListener(evName, wrapper)
-        })
-      }
+      svgEl.addEventListener(eventName, wrapper)
     })
   },
 

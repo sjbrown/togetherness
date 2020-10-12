@@ -605,7 +605,7 @@ function delete_element(el) {
 }
 
 function evt_fire(eventName, triggerNode, origEvent, other) {
-  // console.log("evt_fire", eventName, 'to', triggerNode.id, 'other', other)
+  console.log("evt_fire", eventName, 'to', triggerNode.id, 'other', other)
   triggerNode.dispatchEvent(new CustomEvent(eventName, {
     bubbles: true,
     detail: Object.assign(

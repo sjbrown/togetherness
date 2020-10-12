@@ -6,6 +6,7 @@ var paper = {
     elem.addEventListener('svg_dragover', this.dragover_handler)
 
     let label = elem.querySelector(`#${elem.id} > text > #tspan_label`)
+    let tspanResult = elem.querySelector(`#${elem.id} > text > #tspan_result`)
     if (prototype) {
 
       elem.setAttribute('width', prototype.getAttribute('width'))
@@ -13,6 +14,11 @@ var paper = {
 
       let protoLabel = prototype.querySelector('#tspan_label')
       label.textContent = protoLabel.textContent
+
+      if (tspanResult !== null) {
+        let protoTspan = prototype.querySelector('#tspan_result')
+        tspanResult.textContent = protoTspan.textContent
+      }
 
       let contentsGroup = elem.querySelector(`#${elem.id} > .contents_group`)
       paper.visit_contents_group(elem, (child) => {
@@ -79,7 +85,11 @@ var paper = {
   roll_handler: function(elem, evt) {
     console.log('paper', elem.id, 'hears roll event', evt)
     paper.visit_contents_group(elem, (s) => {
-      evt_fire('die_roll', s, null, {})
+      let handler = ui.event_handlers_for_element(s)['die_roll']
+      if (handler) {
+        console.log('LOG user', myClientId, 'explicit die_roll on', s)
+        handler.bind(s)()
+      }
     })
     evt_fire('dom_change', elem, null, {})
   },

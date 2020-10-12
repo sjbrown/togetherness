@@ -172,28 +172,28 @@ function LayerObserver(layerEl) {
     this._observer.disconnect()
   },
   this.local_mutations_process = function(mutationsList) {
-    elements = new Set()
+    let layerId = this._layerEl.id
     mutationsList.forEach(mut => {
-      //console.log('NET mut', mut)
-      if (
-        mut.target.id === 'layer_objects'
-        ||
-        mut.target.id === 'layer_ui'
-      ) {
+      // console.log('NET mut', mut)
+      if (mut.target.id === layerId) {
+        // ===============================ADDED
         if (mut.addedNodes.length) {
+          console.log('NET *add*', this._layerEl.id)
           //console.log('NET', this._layerEl.id, ' added top-level object(s)', mut.addedNodes)
           mut.addedNodes.forEach(el => {
             if(this._dirty.removed[el.id]) {
               delete this._dirty.removed[el.id]
             }
             if(this._dirty.changed[el.id]) {
-              this._dirty.changed[el.id] = serialized(el)
+              this._dirty.changed[el.id] = el
             } else {
-              this._dirty.added[el.id] = serialized(el)
+              this._dirty.added[el.id] = el
             }
           })
         }
+        // ===============================REMOVED
         if (mut.removedNodes.length) {
+          console.log('NET *remove*', this._layerEl.id)
           //console.log('NET', this._layerEl.id, ' removed top-level object', mut.removedNodes)
           mut.removedNodes.forEach(el => {
             if(this._dirty.added[el.id]) {
@@ -206,26 +206,35 @@ function LayerObserver(layerEl) {
             }
           })
         }
+      // ===============================CHANGED
       } else {
+        // To reduce number of changes in each message,
+        // try to coarsen the granularity to draggable-group elements,
+        // which should be roughly the top-level elements on a layer
         el = mut.target.closest('.draggable-group')
-        console.log('NET', this._layerEl.id, ' draggablegroup el', el)
         if (el === null) {
-          console.log('NET', this._layerEl.id, ' very strange! null!')
-          console.log('NET', this._layerEl.id, ' mut.target', mut.target)
-        } else if (!elements.has(el)) {
-          if (this._dirty.removed[el.id]) {
-            delete this._dirty.removed[el.id]
-          }
-          if (this._dirty.added[el.id]) {
-            this._dirty.added[el.id] = serialized(el)
-          } else {
-            this._dirty.changed[el.id] = serialized(el)
-          }
-          elements.add(el)
+          // console.log('NET', this._layerEl.id, ' very strange! null!')
+          //console.log('NET', this._layerEl.id, ' mut.target', mut.target)
+          el = mut.target
+        }
+        console.log('NET *change*', this._layerEl.id, 'el', el)
+        if (this._dirty.removed[el.id]) {
+          delete this._dirty.removed[el.id]
+        }
+        if (this._dirty.added[el.id]) {
+          this._dirty.added[el.id] = el
+        } else {
+          this._dirty.changed[el.id] = el
         }
       }
     })
-    //console.log('NET', this._layerEl.id, ' el set', elements)
+    // Only serialize once, not on every change of x, y, class, etc.
+    Object.keys(this._dirty.added).forEach(elId => {
+      this._dirty.added[elId] = serialized(this._dirty.added[elId])
+    })
+    Object.keys(this._dirty.changed).forEach(elId => {
+      this._dirty.changed[elId] = serialized(this._dirty.changed[elId])
+    })
     window.requestAnimationFrame(this.run.bind(this))
   },
   this.run = function() {
@@ -281,7 +290,8 @@ const receive_ui = function(msg, layerObs) {
     }
     if (document.getElementById(id)) {
       console.log("NET ADDED AN ELEMENT I ALREADY HAVE", id)
-      retval.syncNeeded = true
+      // this should mean it just got flipped around in order
+      // retval.syncNeeded = true
       return
     }
     console.log("NET adding svg", msg.added[id])
@@ -328,7 +338,8 @@ const receive = function(msg, layerObs) {
   Object.keys(msg.added).forEach(id => {
     if (document.getElementById(id)) {
       console.log("NET ADDED AN ELEMENT I ALREADY HAVE", id)
-      retval.syncNeeded = true
+      // this should mean it just got flipped around in order
+      // retval.syncNeeded = true
       return
     }
     // console.log("NET GOT", id)
@@ -360,7 +371,7 @@ const receive = function(msg, layerObs) {
   })
   .then(() => {
     promises = []
-    //console.log("NET changed", Object.keys(msg.changed).length)
+    console.log("NET changed", Object.keys(msg.changed).length)
     Object.keys(msg.changed).forEach(id => {
       //console.log('NET el ', id)
       let existingEl = document.getElementById(id)
@@ -456,7 +467,7 @@ togetherFunctions.on_sync = (msg) => {
   let urlLoop = async() => {
     for (let index = 0; index < nodeList.length; index++) {
       let node = nodeList.item(index)
-      console.log('import_foreign_svg_for_element', node.id)
+      console.log('import_foreign_svg_for_element', node.id, node.dataset.appUrl)
       await import_foreign_svg_for_element(node)
     }
   }
@@ -472,9 +483,9 @@ togetherFunctions.on_sync = (msg) => {
        */
       // console.log("Making new svg for ", el.id)
       let s = el.outerHTML
+      console.log("Deserialized", el.id, el.classList)
       layer_objects.svg(s)
       nestEl = layer_objects.node.querySelector('#' + el.id)
-      console.log("Got result", nestEl.id)
       // console.log("necg", nestEl.querySelector('.contents_group').outerHTML)
       // console.log("e cg", el.querySelector('.contents_group').outerHTML)
       ui.hookup_ui(nestEl)
@@ -486,9 +497,17 @@ togetherFunctions.on_sync = (msg) => {
     })
   })
   .then(() => {
+    return document.querySelectorAll('#layer_ui > svg').forEach((el) => {
+      console.log('layer-ui examining', el)
+      if (!el.classList.contains('owner-' + ui.escapedClientId())) {
+      console.log('layer-ui removig', el)
+        el.remove()
+      }
+    })
     return newTable.querySelectorAll('#layer_ui > .draggable-group').forEach((el) => {
       el.remove()
       let s = el.outerHTML
+      console.log("Deserialized", el.id, el.classList)
       layer_ui.svg(s)
     })
   })

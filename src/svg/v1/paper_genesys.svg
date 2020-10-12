@@ -49,10 +49,6 @@
      id="script_paper_genesys"><![CDATA[
 var paper_genesys = {
 
-  paper_roll_handler: function(evt) {
-    return paper.roll_handler(this, evt)
-  },
-
   drop_handler: function(evt) {
     paper.drop_handler(this, evt)
   },
@@ -113,18 +109,12 @@ var paper_genesys = {
     console.log('inner element being dragged', evt.target.id)
   },
 
-  label_click_handler: function() {
-    paper.label_click_handler(this)
-  },
   label_change_handler: function(evt) {
     paper.label_change_handler(this, evt)
   },
 
   initialize: function(elem, prototype) {
-    elem.addEventListener('paper_roll', this.paper_roll_handler)
     elem.addEventListener('dom_change', this.dom_change_handler)
-
-    elem.addEventListener('label_click', this.label_click_handler)
     elem.addEventListener('label_change', this.label_change_handler)
 
     elem.addEventListener('svg_drag', this.drag_handler)
@@ -167,10 +157,16 @@ var paper_genesys = {
     'Roll All': {
       eventName: 'paper_roll',
       applicable: (node) => { return true },
+      handler: function(evt) {
+        return paper.roll_handler(this, evt)
+      },
     },
     'Label': {
       eventName: 'label_click',
       applicable: (node) => { return true },
+      handler: function() {
+        paper.label_click_handler(this)
+      },
     },
     'Fix': {
       eventName: 'paper_fix',

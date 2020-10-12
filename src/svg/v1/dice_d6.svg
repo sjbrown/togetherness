@@ -52,6 +52,7 @@ var d6 = {
       otherEvents: ['dblclick'],
       applicable: (dieNode) => { return true },
       handler: function(evt) {
+        console.log('in d6 handler', this)
         return dice.roll_handler(this, 6)
       },
     },
