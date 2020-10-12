@@ -1749,6 +1749,67 @@ function ui_submit_rect(evt) {
 
 <!-- END RECT =================================================== END RECT -->
 
+<!-- IMAGE =========================================================== IMAGE -->
+
+  <div class="modal" id="dialog_image">
+    <script>
+function ui_submit_image(evt) {
+  w = parseInt(byId('image_input_width').value);
+  h = parseInt(byId('image_input_height').value);
+  inputEl = byId('input_image_url')
+  let url = inputEl.value
+  if (!url) {
+    alert('No URL!')
+    return
+  }
+  return _import_foreign_svg(`
+    <svg width="${w}" height="${h}"
+    id="image"
+    xmlns="http://www.w3.org/2000/svg"
+    xmlns:xlink="http://www.w3.org/1999/xlink">
+    <image href="${url}" height="${h}" width="${w}"/>
+    </svg>
+  `, '')
+  .then(nest => {
+    add_fresh_svg(nest.node)
+    layer_objects.node.appendChild(nest.node)
+    ui.hookup_ui(nest.node)
+    ui.hookup_menu_actions(nest.node)
+    ui.popdown_dialog('dialog_image')
+  })
+}
+  </script>
+    <button class="dialog_cancel btn modal-close"
+      data-dialog-id="dialog_image"
+    >
+      &#215;
+    </button>
+  <div class="modal-content">
+    <label>
+      Image URL
+    <input
+        id="input_image_url" type="text"
+        placeholder="https://www.1kfa.com/assets/img/atfa_white_on_transparent.png"
+        pattern="http.*"
+    />
+    </label>
+    <label for="image_input_width">Width</label>
+    <input id="image_input_width" type="number" min="20" max="500" value="200"/>
+    <br />
+    <label for="image_input_height">Height</label>
+    <input id="image_input_height" type="number" min="20" max="500"value="200"/>
+    <br />
+    <button id="dialog_submit" onclick="ui_submit_image(this)"
+      class="btn modal-close">
+      Create
+    </button>
+    <i>Note:</i> Some great images can be found on <a
+      href="https://en.wikipedia.org/wiki/Wikipedia:Featured_pictures">Wikipedia</a>
+  </div>
+  </div>
+
+<!-- END IMAGE =================================================== END IMAGE -->
+
 
 <!-- TEXT =========================================================== TEXT -->
 
@@ -1968,32 +2029,31 @@ function ui_submit_ellipse(evt) {
 <!-- OTHER ======================================================= OTHER -->
 
   <div class="modal" id="dialog_other">
-  <script>
-function ui_submit_image(evt) {
-  inputEl = byId('input_image_url')
-  let url = inputEl.value
-  if (!url) {
-    alert('No URL!')
-    return
-  }
-  _import_foreign_svg(`
-    <svg width="200" height="200"
-    id="image"
-    xmlns="http://www.w3.org/2000/svg"
-    xmlns:xlink="http://www.w3.org/1999/xlink">
-    <image href="${url}" height="200" width="200"/>
-    </svg>
-  `, '')
-  .then(nest => {
-    add_fresh_svg(nest.node)
-    layer_objects.node.appendChild(nest.node)
-    ui.hookup_ui(nest.node)
-    ui.hookup_menu_actions(nest.node)
-    ui.popdown_dialog('dialog_other')
-    //net_fire({ type: 'create', data: serialize(nest) })
-  })
+  <style>
+#dialog_other section button {
+  min-width: 7em;
+  min-height: 7em;
+  padding: 1em;
+  font-size: 8pt;
+  border-radius: 10px;
+  background-color: #030303;
 }
-  </script>
+
+#dialog_other section .btn {
+  opacity: 80%;
+  color: #f0f0f0;
+}
+#dialog_other section .btn:hover {
+  background-color: #000000;
+  opacity: 100%;
+  color: #ffffff;
+}
+@media only screen and (max-height: 600px) {
+  #dialog_other section  button {
+    min-height: 3em;
+  }
+}
+</style>
     <button class="dialog_cancel btn modal-close" data-dialog-id="dialog_other"
     > &#215; </button>
     <nav class="dialog_nav">
@@ -2008,42 +2068,31 @@ function ui_submit_image(evt) {
     <section id="drawing_section">
       <a name="drawing"></a>
       <h1 id="drawing_h1">Drawing</h1>
+      <button id="svgfile_button" class="btn btn-small modal-trigger modal-close"
+        data-target="dialog_svgfile"
+        data-dialog-id="dialog_svgfile">
+        <img src="img/svgfile.svg" height="26" />SVG File
+      </button>
       <button id="rect_button" class="btn btn-small modal-trigger modal-close"
         data-target="dialog_rect"
         data-dialog-id="dialog_rect">
-        + Rectangle ▭
+        <img src="img/rect.svg" height="26" />Rectangle
       </button>
       <button id="ellipse_button" class="btn btn-small modal-trigger modal-close"
         data-target="dialog_ellipse"
         data-dialog-id="dialog_ellipse">
-        + Circle ⬭
+        <img src="img/ellipse.svg" height="26" />Circle
       </button>
       <button id="text_button" class="btn btn-small modal-trigger modal-close"
         data-target="dialog_text"
         data-dialog-id="dialog_text">
-        + Text ⌨
+        <img src="img/text.svg" height="26" />Text
       </button>
-      <p>
-      <button id="svgfile_button" class="btn btn-small modal-trigger modal-close"
-        data-target="dialog_svgfile"
-        data-dialog-id="dialog_svgfile">
-        + SVG File
+      <button id="image_button" class="btn btn-small modal-trigger modal-close"
+        data-target="dialog_image"
+        data-dialog-id="dialog_image">
+        <img src="img/image.svg" height="26" />Image
       </button>
-      <p>
-      <label>
-        Image URL
-      <input
-          id="input_image_url" type="text"
-          placeholder="https://www.1kfa.com/assets/img/atfa_white_on_transparent.png"
-          pattern="http.*"
-      />
-      </label>
-      <button class="btn btn-small modal-close"
-        onclick="ui_submit_image()">
-        + Image
-      </button>
-      <i>Note:</i> Some great images can be found on <a
-        href="https://en.wikipedia.org/wiki/Wikipedia:Featured_pictures">Wikipedia</a>
       <!--
       <button id="random_table_button" class="btn btn-small modal-trigger modal-close"
         data-target="dialog_random_table"
@@ -2055,33 +2104,37 @@ function ui_submit_image(evt) {
     <section id="dynamic_paper_section">
       <a name="dynamic_paper"></a>
       <h1 id="dynamic_paper_h1">Dynamic Paper</h1>
+      <p>
+      Dynamic papers will automatically do calculations based on
+      the dice (or other objects like text) placed inside them
+      </p>
       <button class="btn btn-small modal-close"
         onclick="add_object('svg/v1/paper_sum.svg')">
-        + Sum
+        Sum
       </button>
       <button class="btn btn-small modal-close"
         onclick="add_object('svg/v1/paper_count.svg')">
-        + Count
+        Count
       </button>
       <button class="btn btn-small modal-close"
         onclick="add_object('svg/v1/paper_modifier.svg')">
-        + Modifier
+        Modifier
       </button>
       <button class="btn btn-small modal-close"
         onclick="add_object('svg/v1/paper_best.svg')">
-        + Best-of
+        Best-of
       </button>
       <button class="btn btn-small modal-close"
         onclick="add_object('svg/v1/paper_sorter.svg')">
-        + Sorter
+        Sorter
       </button>
       <button class="btn btn-small modal-close"
         onclick="add_object('svg/v1/paper_tabulate.svg')">
-        + Tabulate
+        Tabulate
       </button>
       <button class="btn btn-small modal-close"
         onclick="add_object('svg/v1/paper_genesys.svg')">
-        + Genesys
+        Genesys
       </button>
     </section>
     </div>
