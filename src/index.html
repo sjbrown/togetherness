@@ -22,6 +22,8 @@
 <script src="./js/domJSON.js"></script>
 <script src="./physicsjs-full.js"></script>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.5.1/gsap.js"></script>
+
 <!-- polyfill Promises for Internet Explorer -->
 <script src="https://cdn.jsdelivr.net/npm/promise-polyfill@8/dist/polyfill.min.js"></script>
 
@@ -47,7 +49,7 @@ var layer_objects;
 var layer_ui;
 var viewport;
 var gViewport;
-var origViewportSize = [1200, 800]
+var origViewportSize = [1200, 800];
 
 function initSvgTable(el) {
   el.id = 'svg_table'
@@ -67,6 +69,12 @@ function initSvgTable(el) {
   layer_ui.addClass('layer_ui')
   gViewport.add(svg_table)
   makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
+
+  //#synced.init(layer_objects.node)
+  //synced.init(layer_ui.node)
+  objectsObserver = new LayerObserver(layer_objects.node)
+  uiObserver = new LayerObserver(layer_ui.node)
+
   return svg_table
 }
 
@@ -1096,7 +1104,6 @@ function ui_popup_properties(el, dialog_specifier) {
 
       ui.popdown_dialog('dialog_properties')
       //net_fire({ type: 'change', data: serialize(target) })
-      push_sync()
   });
 
   fieldset = byId('properties_fields')
@@ -1550,7 +1557,6 @@ function ui_submit_svgfile(evt) {
 
     ui.popdown_dialog('dialog_svgfile')
     //net_fire({ type: 'create', data: serialize(nest.node) })
-    push_sync()
   })
 }
 
@@ -1715,7 +1721,6 @@ function ui_submit_rect(evt) {
   });
   ui.popdown_dialog('dialog_rect')
   //net_fire({ type: 'create', data: serialize(nest) })
-  push_sync()
 }
 
     </script>
@@ -1834,7 +1839,6 @@ function ui_submit_text(evt) {
   var text = make_text({ fill: color }, c);
   ui.popdown_dialog('dialog_text')
   //net_fire({ type: 'create', data: serialize(text) })
-  push_sync()
 }
 
     </script>
@@ -1931,7 +1935,6 @@ function ui_submit_ellipse(evt) {
   });
   ui.popdown_dialog('dialog_ellipse')
   //net_fire({ type: 'create', data: serialize(nest) })
-  push_sync()
 }
 
     </script>
@@ -1988,7 +1991,6 @@ function ui_submit_image(evt) {
     ui.hookup_menu_actions(nest.node)
     ui.popdown_dialog('dialog_other')
     //net_fire({ type: 'create', data: serialize(nest) })
-    push_sync()
   })
 }
   </script>

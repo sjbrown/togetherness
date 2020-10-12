@@ -124,6 +124,8 @@ var sw_difficulty = {
        cy="67.417534"
        cx="39.932785"
        id="shadow_2"
+       class="object_shadow"
+
        style="opacity:1;fill:#000000;fill-opacity:0.5;stroke:none;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1" />
     <path
        sodipodi:nodetypes="ccccccc"

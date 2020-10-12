@@ -158,6 +158,8 @@ var sw_boost = {
          style="fill:#000000;fill-opacity:0.50196078;stroke:none;stroke-width:1.30999994;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
          d="m 16.266526,45.579474 c -1.68432,-0.0012 -5.18571,0.06788 -6.23438,0.637907 -1.5957502,0.90302 -1.7272502,1.615566 -1.9062502,5.013899 l -2.88281,32.27422 c 0.0306,1.384198 6.4061402,6.270484 8.3222602,6.270484 h 51.97266 c 1.91612,0 8.29167,-4.886286 8.32227,-6.270484 l -2.88282,-32.27422 c -0.179,-3.398333 -0.3105,-4.110879 -1.90625,-5.013899 -1.04867,-0.570031 -4.55005,-0.639123 -6.23437,-0.637907 z"
          id="path_shadow"
+         class="object_shadow"
+
          inkscape:connector-curvature="0"
          sodipodi:nodetypes="ccccccccccc" />
       <path

@@ -116,7 +116,7 @@ var select_open_box = {
       }))
     })
     ui.unselectAll()
-    synced.remove(handle)
+    handle.remove()
   },
 
   initialize: function(elem, prototype) {

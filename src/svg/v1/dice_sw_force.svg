@@ -152,6 +152,7 @@ var sw_force = {
      style="fill:#000000;fill-opacity:0.50196078;stroke:none;stroke-width:1.43660581;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
      d="m 7.4087091,61.198188 c 0,0 -4.1508409,0.819812 -4.1508409,7.81214 C 5.0868283,75.8361 23.19054,91.96716 23.19054,91.96716 c 0,0 17.556487,7.950995 26.887897,7.80455 11.084877,-0.173963 31.63375,-10.26882 31.63375,-10.26882 0,0 14.759289,-15.592388 16.576705,-22.375076 0,-5.614407 -3.909938,-5.929626 -3.909938,-5.929626 z"
      id="path_shadow1"
+     class="object_shadow"
      inkscape:connector-curvature="0"
      sodipodi:nodetypes="cccscccc"
      inkscape:label="#patha1" />

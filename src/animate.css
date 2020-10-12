@@ -2945,33 +2945,52 @@
 
 /* originally authored by Nick Pettit - https://github.com/nickpettit/glide */
 
-@-webkit-keyframes rollOut {
+@keyframes rollOut {
   from {
-    opacity: 1;
+    opacity: 0.5;
+    text-color: rgba(0,0,0,0);
+    transform-style: preserve-3d;
+    transform: rotateX(-30deg);
+    perspective: -10px;
   }
 
   to {
-    opacity: 0;
-    -webkit-transform: translate3d(100%, 0, 0) rotate3d(0, 0, 1, 120deg);
-    transform: translate3d(100%, 0, 0) rotate3d(0, 0, 1, 120deg);
+    opacity: 1;
+    text-color: rgba(0,0,0,1);
+    transform: rotateX(0deg);
+    perspective: 0px;
   }
 }
 
-@keyframes rollOut {
+@keyframes rollShadow {
   from {
-    opacity: 1;
+    opacity: 0.5;
+    transform: scale(120%);
   }
 
   to {
-    opacity: 0;
-    -webkit-transform: translate3d(100%, 0, 0) rotate3d(0, 0, 1, 120deg);
-    transform: translate3d(100%, 0, 0) rotate3d(0, 0, 1, 120deg);
+    opacity: 1;
+    transform: scale(100%);
   }
 }
 
 .rollOut {
-  -webkit-animation-name: rollOut;
   animation-name: rollOut;
+}
+
+.rollOut .object_shadow {
+  animation-duration: 1s;
+  animation-fill-mode: both;
+  animation-name: rollShadow;
+}
+
+.slideInDown .object_shadow {
+  animation-duration: 2s;
+  animation-name: rollShadow;
+}
+
+#layer_objects: {
+  perspective: 10px;
 }
 
 @-webkit-keyframes zoomIn {

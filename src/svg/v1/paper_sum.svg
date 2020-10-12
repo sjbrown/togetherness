@@ -1,8 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
-   xmlns:dc="http://purl.org/dc/elements/1.1/"
-   xmlns:cc="http://creativecommons.org/ns#"
-   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
    xmlns:svg="http://www.w3.org/2000/svg"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:xlink="http://www.w3.org/1999/xlink"
@@ -12,10 +9,8 @@
    height="150"
    version="1.1"
    id="paper_sum"
-   inkscape:version="0.92.3 (2405546, 2018-03-11)"
-   sodipodi:docname="paper_sum.svg">
-  <defs
-     id="defs2">
+   >
+  <defs id="defs2">
     <linearGradient
        id="linearGradient820"
        inkscape:collect="always">
@@ -48,10 +43,6 @@
      data-namespace="paper_sum"
      id="script_paper_sum"><![CDATA[
 var paper_sum = {
-
-  paper_roll_handler: function(evt) {
-    return paper.roll_handler(this, evt)
-  },
 
   drop_handler: function(evt) {
     paper.drop_handler(this, evt)
@@ -95,19 +86,12 @@ var paper_sum = {
     console.log('inner element being dragged', evt.target.id)
   },
 
-  label_click_handler: function() {
-    paper.label_click_handler(this)
-  },
   label_change_handler: function(evt) {
     paper.label_change_handler(this, evt)
   },
 
   initialize: function(elem, prototype) {
-    elem.addEventListener('change', this.dom_change_handler)
-    elem.addEventListener('paper_roll', this.paper_roll_handler)
     elem.addEventListener('dom_change', this.dom_change_handler)
-
-    elem.addEventListener('label_click', this.label_click_handler)
     elem.addEventListener('label_change', this.label_change_handler)
 
     elem.addEventListener('svg_drag', this.drag_handler)
@@ -133,24 +117,21 @@ var paper_sum = {
     'Roll All': {
       eventName: 'paper_roll',
       applicable: (node) => { return true },
+      handler: function(evt) {
+        return paper.roll_handler(this, evt)
+      },
     },
     'Label': {
       eventName: 'label_click',
       applicable: (node) => { return true },
+      handler: function() {
+        paper.label_click_handler(this)
+      },
     },
     'Fix': {
       eventName: 'paper_fix',
       applicable: (node) => { return true },
     },
-  },
-
-  serialize: function(elem) {
-    value = elem.querySelector('tspan:last-of-type').textContent
-    return {value: value}
-  },
-
-  deserialize: function(elem, payload) {
-    elem.querySelector('tspan:last-of-type').textContent = payload.value
   },
 
 }

@@ -107,6 +107,8 @@ var d4 = {
        cy="55.468376"
        cx="39.297192"
        id="path4246"
+       class="object_shadow"
+
        style="opacity:1;fill:#000000;fill-opacity:0.15686275;stroke:none;
        stroke-width:4.21239519;stroke-linecap:round;stroke-linejoin:round;
        stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1" />

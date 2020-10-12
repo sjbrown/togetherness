@@ -3,10 +3,13 @@ const ui = {
   selectBoxPrototype: null,
   selectOpenBoxPrototype: null,
 
+  escapedClientId: () => {
+    return myClientId ? myClientId.replace('.', '-') : ''
+  },
+
   initializeDragSelectBox: (viewportEl) => {
     return import_foreign_svg('svg/v1/select_box.svg')
     .then((nest) => {
-      nest.id('select_box_prototype')
       this.selectBoxPrototype = nest
       dragSelBoxEl = nest.node.cloneNode(true)
       dragSelBox = SVG.adopt(dragSelBoxEl)
@@ -22,7 +25,12 @@ const ui = {
         let selbox = svg_table.node.querySelector('#drag_select_box')
         if (!selbox) {
           dragSelBox.attr(evt.detail.box)
-          synced.ui_add(dragSelBoxEl)
+          layer_ui.add(SVG.adopt(dragSelBoxEl))
+        }
+        if (myClientId) {
+          dragSelBoxEl.classList.add(
+            'has-owner', 'owner-' + ui.escapedClientId()
+          )
         }
         select_box.initialize(dragSelBoxEl)
       })
@@ -33,7 +41,21 @@ const ui = {
       viewportEl.addEventListener('svg_dragselect_end', (evt) => {
         // console.log('viewport got svg_dragselect_end', evt)
         let surrounded = spatial.topLevelSurrounded(evt.detail.box)
+        let peerSelectBoxes = document.querySelectorAll(
+          '.select_box:not(.owner-' + ui.escapedClientId() + ')'
+        )
+        exemptedIds = {}
+        peerSelectBoxes.forEach(sbox => {
+          ui.getSelectBoxSelectedElements(sbox).forEach(el => {
+            exemptedIds[el.id] = true
+          })
+        })
+        surrounded = surrounded.filter((el) => {
+          return !exemptedIds[el.id]
+        })
         select_box.selectElements(dragSelBoxEl, surrounded)
+        layer_ui.add(SVG.adopt(dragSelBoxEl))
+
       })
     })
     .then(() => {
@@ -49,8 +71,11 @@ const ui = {
     ui.unselectAll()
     let newSelOpenBox = this.selectOpenBoxPrototype.node.cloneNode(true)
     newSelOpenBox.classList.remove('draggable-group')
-    synced.ui_add(newSelOpenBox)
+    if (myClientId) {
+      newSelOpenBox.classList.add('has-owner', 'owner-' + ui.escapedClientId())
+    }
     select_open_box.initialize(newSelOpenBox)
+    layer_ui.add(SVG.adopt(newSelOpenBox))
     return newSelOpenBox
   },
 
@@ -89,9 +114,20 @@ const ui = {
     return selected
   },
 
-  getSelectedElements: () => {
+  belongsToPeer: (el) => {
+    return (
+      el.classList.contains('has-owner')
+      &&
+      !el.classList.contains('owner-' + ui.escapedClientId())
+    )
+  },
+
+  getMySelectedElements: () => {
     let selected = []
     layer_ui.node.querySelectorAll('.select_box').forEach(el => {
+      if (ui.belongsToPeer(el)) {
+        return
+      }
       let nodes = ui.getSelectBoxSelectedElements(el)
       selected = selected.concat(nodes)
     })
@@ -106,6 +142,9 @@ const ui = {
     let svgSelBoxEl = this.selectBoxPrototype.node.cloneNode(true)
     // console.log("made select_box", svgSelBoxEl)
     svg_elem = SVG.adopt(elem)
+    if (myClientId) {
+      svgSelBoxEl.classList.add('has-owner', 'owner-' + ui.escapedClientId())
+    }
     select_box.initialize(svgSelBoxEl)
     select_box.reshape(svgSelBoxEl, {
       x: svg_elem.x(),
@@ -114,7 +153,7 @@ const ui = {
       height: svg_elem.height(),
     })
     select_box.selectElements(svgSelBoxEl, [elem])
-    synced.ui_add(svgSelBoxEl)
+    layer_ui.add(SVG.adopt(svgSelBoxEl))
   },
 
   removeEmptySelectBoxes: () => {
@@ -122,18 +161,21 @@ const ui = {
     ui.getSelectBoxes().forEach(sbox => {
       // console.log("box", sbox)
       if (ui.getSelectBoxSelectedElements(sbox).length < 1) {
-        synced.remove(sbox)
+        sbox.remove()
       }
     })
   },
 
   unselectAll: () => {
     ui.getSelectBoxes().forEach(el => {
-      // console.log("removing", el)
+      console.log("removing", el)
+      if(ui.belongsToPeer(el)) {
+        return // skip this peer's select box
+      }
       if (el.classList.contains('drag-open')) {
         unlock_selection(el)
       }
-      synced.remove(el)
+      el.remove()
     })
   },
 
@@ -153,26 +195,34 @@ const ui = {
     nest.off('svg_dragsafe_click')
   },
 
-  hookup_menu_actions: (svgEl) => {
-    //console.log('hookup_menu_actions', svgEl)
+  event_handlers_for_element: (svgEl) => {
+    let eventHandlers = {}
     let actionMenu = ui.getFullMenuForElement(svgEl)
-    Object.keys(actionMenu).map((title) => {
+    Object.keys(actionMenu).forEach((title) => {
       let menuItem = actionMenu[title]
       if (!menuItem.handler) {
         return
       }
-      // console.log("hooking up", menuItem.eventName, menuItem.handler)
-      let wrapper = function(evt) {
-        // console.log("IN WRAPPER", evt, svgEl)
-        menuItem.handler.bind(svgEl)(evt)
-        synced.change(svgEl)
-      }
-      svgEl.addEventListener(menuItem.eventName, wrapper)
+      eventHandlers[menuItem.eventName] = menuItem.handler
       if (menuItem.otherEvents) {
         menuItem.otherEvents.forEach(evName => {
-          svgEl.addEventListener(evName, wrapper)
+          eventHandlers[evName] = menuItem.handler
         })
       }
+    })
+    return eventHandlers
+  },
+
+  hookup_menu_actions: (svgEl) => {
+    //console.log('hookup_menu_actions', svgEl)
+    let allHandlers = ui.event_handlers_for_element(svgEl)
+    Object.entries(allHandlers).forEach(([eventName, handler]) => {
+      // console.log("hooking up", menuItem.eventName, menuItem.handler)
+      let wrapper = function(evt) {
+        console.log('LOG user', myClientId, 'does', evt, 'on', svgEl)
+        handler.bind(svgEl)(evt)
+      }
+      svgEl.addEventListener(eventName, wrapper)
     })
   },
 
@@ -231,7 +281,7 @@ const ui = {
 
   updateButtons: () => {
      console.log("ui.updateButtons")
-    let markedNodes = ui.getSelectedElements()
+    let markedNodes = ui.getMySelectedElements()
     let numMarked = markedNodes.length
     let buttons = {}
     let template = byId('template_object_actions')
@@ -421,22 +471,18 @@ const ui = {
   },
 
   do_animate: (node, attrs) => {
-    let { ms, animation } = Object.assign({
+    if (node.classList.contains('animated')) {
+      // do not play 2 animations simultaneously
+      return
+    }
+    let { ms, animation, from } = Object.assign({
       ms: 900,
       animation: 'slideInDown',
+      from: {},
     }, attrs)
-    node.classList.add('animated')
-    node.classList.add(animation)
-    if (!node.classList.contains('ghost')) {
-      synced.change(node)
-    }
-    let timedFn = setInterval(() => {
-      node.classList.remove('animated')
-      node.classList.remove(animation)
-      if (!node.classList.contains('ghost')) {
-        synced.change(node)
-      }
-      clearInterval(timedFn);
+    node.classList.add('animated', animation)
+    let timedFn = setTimeout(() => {
+      node.classList.remove('animated', animation)
     }, ms)
   },
 

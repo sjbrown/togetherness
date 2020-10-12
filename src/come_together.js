@@ -1,6 +1,10 @@
 
 var myClientId = null;
 var togetherFunctions = {};
+var objectsObserver = null;
+var uiObserver = null;
+var syncNeeded = false;
+
 
 /*
  *
@@ -31,79 +35,56 @@ TogetherJSConfig_on_ready = () => {
   el.classList.add('active')
   el.classList.remove('whitebg')
   el.classList.add('bluebg')
-  console.log('received ready msg')
+  console.log('NET received ready msg')
   session = TogetherJS.require('session')
   myClientId = session.clientId;
 
-  TogetherJS.hub.on('sync', (msg) => {
-    console.log('received sync msg', msg)
+  TogetherJS.hub.on('sync', async (msg) => {
+    console.log('NET received sync msg', msg)
+    setStatus('SYNCING ...')
+    objectsObserver.local_mutations_stop() // pause to avoid infinite loop
+    uiObserver.local_mutations_stop() // pause to avoid infinite loop
     if(togetherFunctions.on_sync) {
-      togetherFunctions.on_sync(msg);
+      await togetherFunctions.on_sync(msg);
     }
+    uiObserver.local_mutations_start() // resume listening
+    objectsObserver.local_mutations_start() // resume listening
+    syncNeeded = false
+    setStatus('...')
   });
 
-  TogetherJS.hub.on('dirty', async(msg) => {
-    console.log('received dirty msg', msg)
-    console.log('my client id', myClientId)
-    let retval = await synced.receive(msg.data)
+  TogetherJS.hub.on('dirtylayer', async(msg) => {
+    if (syncNeeded) {
+      return // just wait for the sync
+    }
+    console.log('NET received dirtylayer msg', msg)
+    console.log('NET my client id', myClientId)
+    let layerObs = null
+    let retval = {}
+    if (msg.layerId === 'layer_objects') {
+      layerObs = objectsObserver
+      retval = await receive(msg.data, layerObs)
+    } else if (msg.layerId === 'layer_ui') {
+      layerObs = uiObserver
+      retval = await receive_ui(msg.data, layerObs)
+    } else {
+      console.error("UNKNOWN LAYER ID", msg.layerId)
+    }
     if (retval.syncNeeded) {
-      console.error('I am out of sync! sync_needed msg', msg)
+      console.error('NET I am out of sync! sync_needed msg', msg)
+      syncNeeded = true
       net_fire({ type: "sync_needed", data: { clientId: msg.clientId } })
+      setStatus('SYNCING...')
     }
   });
 
   TogetherJS.hub.on("togetherjs.hello", (msg) => {
-    console.log('received hello msg', msg);
-    if(togetherFunctions.on_hello) {
-      togetherFunctions.on_hello(msg);
-    }
-  });
-
-  TogetherJS.hub.on("change", (msg) => {
-    console.log('received change msg', msg);
-    if(togetherFunctions.on_change) {
-      togetherFunctions.on_change(msg);
-    }
-  });
-
-  TogetherJS.hub.on("create", (msg) => {
-    return; //------------------------------------------------------TODO
-    console.log('received create msg', msg);
-    if(togetherFunctions.on_create) {
-      togetherFunctions.on_create(msg);
-    }
-  });
-
-  TogetherJS.hub.on("createMark", (msg) => {
-    console.log('received create sel msg', msg);
-    if(togetherFunctions.on_create_mark) {
-      togetherFunctions.on_create_mark(msg);
-    }
-  });
-
-  TogetherJS.hub.on('dropMark', (msg) => {
-    console.log('dropMark msg', msg);
-    if(togetherFunctions.on_drop_mark) {
-      togetherFunctions.on_drop_mark(msg);
-    }
-  });
-
-  TogetherJS.hub.on('dropNestMark', (msg) => {
-    console.log('dropNestMark msg', msg);
-    if(togetherFunctions.on_drop_nest_mark) {
-      togetherFunctions.on_drop_nest_mark(msg);
-    }
-  });
-
-  TogetherJS.hub.on('delete', (msg) => {
-    console.log('delete msg', msg);
-    if(togetherFunctions.on_delete) {
-      togetherFunctions.on_delete(msg);
-    }
+    console.log('NET HELLO --- received hello msg', msg);
+    push_sync()
   });
 
   TogetherJS.hub.on('sync_needed', (msg) => {
-    console.log('sync_needed msg', msg);
+    console.log('NET sync_needed msg', msg);
     if (msg.data.clientId === myClientId) {
       push_sync()
     }
@@ -120,166 +101,415 @@ TogetherJSConfig_on_close = () => {
   el.classList.add('whitebg')
 }
 
+const setStatus = function(msg) {
+  msgEl = document.querySelector('#object_actions_header')
+  if (msgEl) {
+    msgEl.textContent = msg
+  }
+}
 
+const serialized = function(el) {
+  return el.outerHTML
+}
 
 function push_sync() {
   if (!myClientId) {
-    //console.log('TogetherJS not ready for send')
+    //console.log('NET TogetherJS not ready for send')
     return
   }
-  console.timeStamp('push_sync')
+  console.timeStamp('NET push_sync')
   defanged = domJSON.toJSON(byId('svg_viewport'))
   net_fire({ type: "sync", data: defanged })
 }
 
 function net_fire(payload) {
   if (!myClientId) {
-    //console.log('TogetherJS not ready for send')
+    //console.log('NET TogetherJS not ready for send')
     return
   }
-  console.timeStamp('net_fire')
+  console.timeStamp('NET net_fire')
   try {
     TogetherJS.send(payload);
   }
   catch (err) {
-    console.error('togetherjs error', err);
+    console.error('NET togetherjs error', err);
     // TODO: pop up a dialog?
   }
 }
 
-var synced = {
-  init: function() {
+function LayerObserver(layerEl) {
+  this._observer = null
+  this._layerEl = layerEl
+  this.local_mutations_start = function() {
+    //console.log("NET ", this._layerEl.id, "local_mutations_start")
+    if (!this._observer) {
+      this._observer = new MutationObserver((mutationsList, observer) => {
+        this.local_mutations_process(mutationsList)
+      })
+    }
+    this._observer.observe(this._layerEl, {
+      attributes: true,
+      childList: true,
+      subtree: true,
+    })
+    // Cancel animations after 1 second
+    let currentlyAnimating = this._layerEl.querySelectorAll('.animated')
+    if (currentlyAnimating.length > 0) {
+      let endAnimationFn = function() {
+        this.local_mutations_stop()
+        currentlyAnimating.forEach(el => {
+          if (el.classList.contains('animated')) {
+            el.classList.remove('animated')
+          }
+        })
+        this.local_mutations_start()
+      }
+      setTimeout(endAnimationFn.bind(this), 1000)
+    }
+  },
+  this.local_mutations_stop = function() {
+    this.local_mutations_process(this._observer.takeRecords())
+    this._observer.disconnect()
+  },
+  this.local_mutations_process = function(mutationsList) {
+    let layerId = this._layerEl.id
+    mutationsList.forEach(mut => {
+      // console.log('NET mut', mut)
+      if (mut.target.id === layerId) {
+        // ===============================ADDED
+        if (mut.addedNodes.length) {
+          console.log('NET *add*', this._layerEl.id)
+          //console.log('NET', this._layerEl.id, ' added top-level object(s)', mut.addedNodes)
+          mut.addedNodes.forEach(el => {
+            if(this._dirty.removed[el.id]) {
+              delete this._dirty.removed[el.id]
+            }
+            if(this._dirty.changed[el.id]) {
+              this._dirty.changed[el.id] = el
+            } else {
+              this._dirty.added[el.id] = el
+            }
+          })
+        }
+        // ===============================REMOVED
+        if (mut.removedNodes.length) {
+          console.log('NET *remove*', this._layerEl.id)
+          //console.log('NET', this._layerEl.id, ' removed top-level object', mut.removedNodes)
+          mut.removedNodes.forEach(el => {
+            if(this._dirty.added[el.id]) {
+              delete this._dirty.added[el.id]
+            } else if(this._dirty.changed[el.id]) {
+              delete this._dirty.changed[el.id]
+              this._dirty.removed[el.id] = true
+            } else {
+              this._dirty.removed[el.id] = true
+            }
+          })
+        }
+      // ===============================CHANGED
+      } else {
+        // To reduce number of changes in each message,
+        // try to coarsen the granularity to draggable-group elements,
+        // which should be roughly the top-level elements on a layer
+        el = mut.target.closest('.draggable-group')
+        if (el === null) {
+          // console.log('NET', this._layerEl.id, ' very strange! null!')
+          //console.log('NET', this._layerEl.id, ' mut.target', mut.target)
+          el = mut.target
+        }
+        console.log('NET *change*', this._layerEl.id, 'el', el)
+        if (this._dirty.removed[el.id]) {
+          delete this._dirty.removed[el.id]
+        }
+        if (this._dirty.added[el.id]) {
+          this._dirty.added[el.id] = el
+        } else {
+          this._dirty.changed[el.id] = el
+        }
+      }
+    })
+    // Only serialize once, not on every change of x, y, class, etc.
+    Object.keys(this._dirty.added).forEach(elId => {
+      this._dirty.added[elId] = serialized(this._dirty.added[elId])
+    })
+    Object.keys(this._dirty.changed).forEach(elId => {
+      this._dirty.changed[elId] = serialized(this._dirty.changed[elId])
+    })
+    window.requestAnimationFrame(this.run.bind(this))
+  },
+  this.run = function() {
+    //console.log("LayerObserver", this._layerEl.id, 'RUN')
+    if(
+      Object.keys(this._dirty.removed).length > 0
+      ||
+      Object.keys(this._dirty.added).length > 0
+      ||
+      Object.keys(this._dirty.changed).length > 0
+    ) {
+      net_fire({
+        type: "dirtylayer",
+        layerId: this._layerEl.id,
+        data: this._dirty
+      })
+    }
+    this.init()
+  }
+  this.init = function() {
     this._dirty = {
-      removed: [],
+      removed: {},
       added: {},
       changed: {},
     }
-  },
-  serialized: function(el) {
-    return el.outerHTML
-  },
-  run: function() {
-    if(
-      this._dirty.removed.length === 0
-      &&
-      Object.keys(this._dirty.added).length === 0
-      &&
-      Object.keys(this._dirty.changed).length === 0
-    ) {
-      // Nothing to do
+  }
+  this.init()
+  this.local_mutations_start()
+}
+
+const receive_ui = function(msg, layerObs) {
+  let retval = {
+    syncNeeded: false,
+  }
+  console.log("NET receive_ui", msg)
+
+  layerObs.local_mutations_stop() // pause, otherwise infinite loop begins
+
+  Object.keys(msg.removed).forEach(id => {
+    console.log("NET removed id", id)
+    if (id === 'drag_select_box') {
+      return // skip drag_select_box
+    }
+    let el = document.getElementById(id)
+    if (el) {
+      el.remove()
+    }
+  })
+  Object.keys(msg.added).forEach(id => {
+    console.log("NET added id", id)
+    if (id === 'drag_select_box') {
+      return // skip drag_select_box
+    }
+    if (document.getElementById(id)) {
+      console.log("NET ADDED AN ELEMENT I ALREADY HAVE", id)
+      // this should mean it just got flipped around in order
+      // retval.syncNeeded = true
       return
     }
-    net_fire({ type: "dirty", data: this._dirty })
-    this.init()
-  },
-  dirty_add: function(el) {
-    this._dirty.added[el.id] = this.serialized(el)
-    window.requestAnimationFrame(this.run.bind(this))
-  },
-  dirty_remove: function(el) {
-    this._dirty.removed.push(el.id)
-    window.requestAnimationFrame(this.run.bind(this))
-  },
-  add: function(el) {
-    layer_objects.add(SVG.adopt(el))
-    this.dirty_add(el)
-  },
-  ui_add: function(el) {
-    layer_ui.add(SVG.adopt(el))
-    this.dirty_add(el)
-  },
-  remove: function(el) {
-    el.remove()
-    this.dirty_remove(el)
-  },
-  change: function(el) {
-    if (this._dirty.added[el.id]) {
-      this._dirty.added[el.id] = this.serialized(el)
+    console.log("NET adding svg", msg.added[id])
+    layer_ui.svg(msg.added[id])
+  })
+  Object.keys(msg.changed).forEach(id => {
+    console.log('NET changed id', id)
+    if (id === 'drag_select_box') {
+      return // skip drag_select_box
+    }
+    let existingEl = document.getElementById(id)
+    console.log("NET changed: el is", existingEl)
+    if (!existingEl) {
+      console.log("NET CHANGED AN ELEMENT I DONT HAVE", id)
+      retval.syncNeeded = true
+      console.error('NET ERROR during receive', id)
     } else {
-      this._dirty.changed[el.id] = this.serialized(el)
+      let parent_node = SVG.adopt(existingEl.parentNode)
+      let new_svg = parent_node.svg(msg.changed[id])
+      existingEl.remove()
+      console.log("NET new el is:", new_svg.node)
+      //existingEl.parentNode.replaceChild(new_svg.node, existingEl)
     }
-    window.requestAnimationFrame(this.run.bind(this))
-  },
-  receive: function(msg) {
-    let retval = {
-      syncNeeded: false,
+  })
+  layerObs.local_mutations_start() // resume listening for local mutations
+  return retval
+}
+
+const receive = function(msg, layerObs) {
+  let retval = {
+    syncNeeded: false,
+  }
+  //console.log("NET received", msg)
+
+  layerObs.local_mutations_stop() // pause, otherwise infinite loop begins
+
+  Object.keys(msg.removed).forEach(id => {
+    let el = document.getElementById(id)
+    if (el) {
+      el.remove()
     }
-    console.log("received", msg)
-    msg.removed.forEach(id => {
-      let el = document.getElementById(id)
-      if (el) {
-        el.remove()
+  })
+  let promises = []
+  Object.keys(msg.added).forEach(id => {
+    if (document.getElementById(id)) {
+      console.log("NET ADDED AN ELEMENT I ALREADY HAVE", id)
+      // this should mean it just got flipped around in order
+      // retval.syncNeeded = true
+      return
+    }
+    // console.log("NET GOT", id)
+    layer_objects.svg(msg.added[id])
+    nestEl = byId(id)
+    if (nestEl.classList.contains('ghost')) {
+      console.error('NET ADDED A GHOST', nestEl)
+    }
+    ui.hookup_ui(nestEl)
+    //console.log("NET start getting foreign svg", id)
+    promises.push(
+      import_foreign_svg_for_element(nestEl)
+      .then(() => {
+        //console.log("NET finally got foreign svg", id)
+        init_with_namespaces(nestEl, nestEl)
+        ui.hookup_menu_actions(nestEl)
+        return { status: 'success' }
+      })
+    )
+  })
+  return Promise.all(promises)
+  .then((values) => {
+    //console.log('NET vals are ', values)
+    values.forEach(val => {
+      if (val.status !== 'success') {
+        throw new Error('a import_foreign_svg_for_element promise failed')
       }
     })
-    let promises = []
-    Object.keys(msg.added).forEach(id => {
-      if (document.getElementById(msg.added[id])) {
+  })
+  .then(() => {
+    promises = []
+    console.log("NET changed", Object.keys(msg.changed).length)
+    Object.keys(msg.changed).forEach(id => {
+      //console.log('NET el ', id)
+      let existingEl = document.getElementById(id)
+      //console.log("NET changed: el is", existingEl)
+      if (!existingEl) {
+        console.log("NET CHANGED AN ELEMENT I DONT HAVE", id)
         retval.syncNeeded = true
+        console.error('NET el not found', id)
+        throw new Error('el not found')
+      }
+      if (existingEl.classList.contains('ghost')) {
+        console.error('NET CHANGED A GHOST', existingEl)
         return
       }
-      // console.log("GOT", id)
-      layer_objects.svg(msg.added[id])
-      nestEl = byId(id)
-      if (nestEl.classList.contains('ghost')) {
-        console.error('ADDED A GHOST', nestEl)
+      if (
+        existingEl.dataset.appUrl
+        &&
+        !is_svg_src_loaded(existingEl.dataset.appUrl)
+      ) {
+        console.error('NET svg src not loaded', existingEl.dataset.appUrl)
+        retval.syncNeeded = true
+        promises.push(import_foreign_svg_for_element(existingEl))
+        return
       }
-      ui.hookup_ui(nestEl)
-      console.log("start getting foreign svg", id)
-      promises.push(
-        import_foreign_svg_for_element(nestEl)
-        .then(() => {
-          console.log("finally got foreign svg", id)
-          init_with_namespaces(nestEl, nestEl.node)
-          ui.hookup_menu_actions(nestEl)
-        })
-      )
+      let group = layer_objects.group()
+      group.svg(msg.changed[id])
+      prototype = group.node.querySelector('#' + id)
+      //console.log("NET changed: prototype is", prototype)
+      init_with_namespaces(existingEl, prototype)
+      initialize_with_prototype(existingEl, prototype)
+      group.remove()
     })
+  })
+  .then(() => {
     return Promise.all(promises)
     .then((values) => {
-      console.log('vals are ', values)
-      values.forEach(val => {
-        if (val.status === 'rejected') {
+      //console.log('NET vals are ', values)
+      values.forEach((val) => {
+        if (val && val.status !== 'success') {
           throw new Error('a import_foreign_svg_for_element promise failed')
         }
       })
     })
     .then(() => {
-      console.log("changed", Object.keys(msg.changed).length)
-      Object.keys(msg.changed).forEach(id => {
-        console.log('el ', id)
-        let el = document.getElementById(id)
-        console.log("changed: el is", el)
-        if (!el) {
-          retval.syncNeeded = true
-          console.error('el not found', id)
-          throw new Error('el not found')
-        }
-        if (el.classList.contains('ghost')) {
-          console.error('CHANGED A GHOST', el)
-        }
-        if (el.dataset.appUrl && !is_svg_src_loaded(el.dataset.appUrl)) {
-          console.error('svg src not loaded', el.dataset.appUrl)
-          retval.syncNeeded = true
-          throw new Error('svg src not loaded')
-        }
-        let group = layer_objects.group()
-        group.svg(msg.changed[id])
-        prototype = group.node.querySelector('#' + id)
-        console.log("changed: prototype is", prototype)
-        init_with_namespaces(el, prototype)
-        initialize_with_prototype(el, prototype)
-        group.remove()
-      })
-    })
-    .then(() => {
-      ui.update_buttons()
+      ui.updateButtons()
       return retval
     })
-    .catch((err) => {
-      console.error('ERROR during receive', err)
-      return retval
-    })
-  },
+  })
+  .catch((err) => {
+    console.error('NET ERROR during receive', err)
+    return retval
+  })
+  .finally(() => {
+    layerObs.local_mutations_start() // resume listening for local mutations
+  })
 }
 
-synced.init()
+
+// ----------------------------------------------------------------------------
+togetherFunctions.on_sync = (msg) => {
+  console.log("SYNC SYNC SYNC")
+  console.log("SYNC SYNC SYNC")
+  console.log("SYNC SYNC SYNC")
+  debugBar('SYNC: ' + msg)
+  newEl = domJSON.toDOM(msg.data)
+
+  myViewport = document.querySelector('#svg_viewport')
+  newViewport = newEl.querySelector('#svg_viewport')
+  //console.log('nw el', newViewport)
+  myViewport.style.backgroundImage = newViewport.style.backgroundImage
+
+  svg_table.node.querySelectorAll('.draggable-group').forEach((el) => {
+    el.remove()
+  })
+  newTable = newEl.querySelector('#svg_table')
+  console.log('nw tab', newTable)
+  /*
+  newTable.querySelectorAll('#layer_objects > .draggable-group').forEach((el) => {
+    let existingEl = svg_table.node.querySelector('#' + el.id)
+    console.log("curtains: ", el.id)
+    if (existingEl === null) {
+      return
+    }
+    console.log("found: ", el.id)
+    existingEl.classList.remove('draggable-group')
+    existingEl.style.outline = 'solid 20px white'
+    existingEl.style.opacity = 0.4
+    setTimeout(() => { existingEl.remove() }, 400)
+  })
+  */
+
+  let nodeList = newTable.querySelectorAll('[data-app-url]')
+  let urlLoop = async() => {
+    for (let index = 0; index < nodeList.length; index++) {
+      let node = nodeList.item(index)
+      console.log('import_foreign_svg_for_element', node.id, node.dataset.appUrl)
+      await import_foreign_svg_for_element(node)
+    }
+  }
+  return urlLoop()
+  .then(() => {
+    // console.log("NEWT", newTable.outerHTML)
+    return newTable.querySelectorAll('#layer_objects > .draggable-group').forEach((el) => {
+      el.remove()
+      /*
+       * WHY WHY WHY
+       *
+       * This seems to be the only way to get the <filter> to work correctly
+       */
+      // console.log("Making new svg for ", el.id)
+      let s = el.outerHTML
+      console.log("Deserialized", el.id, el.classList)
+      layer_objects.svg(s)
+      nestEl = layer_objects.node.querySelector('#' + el.id)
+      // console.log("necg", nestEl.querySelector('.contents_group').outerHTML)
+      // console.log("e cg", el.querySelector('.contents_group').outerHTML)
+      ui.hookup_ui(nestEl)
+      init_with_namespaces(nestEl, el)
+      ui.hookup_menu_actions(nestEl)
+      /*
+       * WHY WHY WHY
+       */
+    })
+  })
+  .then(() => {
+    return document.querySelectorAll('#layer_ui > svg').forEach((el) => {
+      console.log('layer-ui examining', el)
+      if (!el.classList.contains('owner-' + ui.escapedClientId())) {
+      console.log('layer-ui removig', el)
+        el.remove()
+      }
+    })
+    return newTable.querySelectorAll('#layer_ui > .draggable-group').forEach((el) => {
+      el.remove()
+      let s = el.outerHTML
+      console.log("Deserialized", el.id, el.classList)
+      layer_ui.svg(s)
+    })
+  })
+}
+

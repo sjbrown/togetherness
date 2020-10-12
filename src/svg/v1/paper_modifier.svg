@@ -12,10 +12,8 @@
    height="200"
    version="1.1"
    id="paper_modifier"
-   inkscape:version="0.92.3 (2405546, 2018-03-11)"
    sodipodi:docname="paper_modifier.svg">
-  <defs
-     id="defs2">
+  <defs id="defs2">
     <linearGradient
        id="linearGradient820"
        inkscape:collect="always">
@@ -48,10 +46,6 @@
      data-namespace="paper_modifier"
      id="script_paper_modifier"><![CDATA[
 var paper_modifier = {
-
-  paper_roll_handler: function(evt) {
-    return paper.roll_handler(this, evt)
-  },
 
   drop_handler: function(evt) {
     return paper.drop_handler(this, evt)
@@ -94,26 +88,6 @@ var paper_modifier = {
     tspan.textContent = sum + modifier
   },
 
-  mod_change_handler: function(evt) {
-    console.log('contents_change_handler', this.id, evt.detail)
-    change = 0
-    if (evt.type == 'rule_modifier_plus') {
-      change = 1
-    } else if (evt.type == 'rule_modifier_minus') {
-      change = -1
-    }
-    modifier_tspan = this.querySelector(
-      `#${this.id} > :not(.contents_group) #tspan_rule_num`
-    )
-    modifier = parseInt(modifier_tspan.textContent)
-    let sum = modifier + change
-    modifier_tspan.textContent = sum < 1 ? sum : '+' + sum
-    this.dispatchEvent(new CustomEvent('dom_change', {
-      bubbles: true,
-      detail: { 'ruleElemId': this.id },
-    }))
-  },
-
   drag_handler: function(evt) {
     if (!this.contains(evt.target)) {
       return
@@ -121,19 +95,12 @@ var paper_modifier = {
     console.log('inner element being dragged', evt.target.id)
   },
 
-  label_click_handler: function() {
-    paper.label_click_handler(this)
-  },
   label_change_handler: function(evt) {
     paper.label_change_handler(this, evt)
   },
 
   initialize: function(elem, prototype) {
-    elem.addEventListener('change', this.dom_change_handler)
-    elem.addEventListener('paper_roll', this.paper_roll_handler)
     elem.addEventListener('dom_change', this.dom_change_handler)
-
-    elem.addEventListener('label_click', this.label_click_handler)
     elem.addEventListener('label_change', this.label_change_handler)
 
     elem.addEventListener('svg_drag', this.drag_handler)
@@ -142,24 +109,11 @@ var paper_modifier = {
     elem.addEventListener('svg_dragleave', () => {console.log('L')})
 
     elem.addEventListener('resize', this.resize_handler)
-    elem.addEventListener('rule_modifier_plus', this.mod_change_handler)
-    elem.addEventListener('rule_modifier_minus', this.mod_change_handler)
 
     paper.initialize(elem, prototype)
   },
 
   resize_handler: function(evt) {
-    let w = evt.detail.width
-    let h = evt.detail.height
-
-    // let textEl = this.querySelector(`#${this.id} > .text_result`)
-    // text_result = SVG.adopt(textEl)
-    // text_result.x(w - 30)
-    // text_result.y(h - 60)
-    // textRuleEl = this.querySelector(`#${this.id} > .text_rule`)
-    // text_rule  = SVG.adopt(textRuleEl)
-    // text_rule.x(w - 140)
-    // text_rule.y(h - 60)
     paper.resize_handler(this, evt)
   },
 
@@ -167,10 +121,16 @@ var paper_modifier = {
     'Roll All': {
       eventName: 'paper_roll',
       applicable: (node) => { return true },
+      handler: function(evt) {
+        return paper.roll_handler(this, evt)
+      },
     },
     'Label': {
       eventName: 'label_click',
       applicable: (node) => { return true },
+      handler: function() {
+        paper.label_click_handler(this)
+      },
     },
     'Fix': {
       eventName: 'paper_fix',
@@ -179,15 +139,34 @@ var paper_modifier = {
     'Mod +': {
       eventName: 'rule_modifier_plus',
       applicable: (node) => { return true },
+      handler: function() {
+        paper_modifier.mod_change_handler(this, +1)
+      },
     },
     'Mod -': {
       eventName: 'rule_modifier_minus',
       applicable: (node) => { return true },
+      handler: function() {
+        paper_modifier.mod_change_handler(this, -1)
+      },
     },
   },
 
-}
+  mod_change_handler: function(elem, change) {
+    console.log('contents_change_handler', elem.id, change)
+    modifier_tspan = elem.querySelector(
+      `#${elem.id} > :not(.contents_group) #tspan_rule_num`
+    )
+    modifier = parseInt(modifier_tspan.textContent)
+    let sum = modifier + change
+    modifier_tspan.textContent = sum < 1 ? sum : '+' + sum
+    elem.dispatchEvent(new CustomEvent('dom_change', {
+      bubbles: true,
+      detail: { 'ruleElemId': elem.id },
+    }))
+  },
 
+}
 
     ]]></script>
   <path

@@ -143,94 +143,8 @@ function debugBar(s) {
 }
 
 
-togetherFunctions.on_hello = (msg) => {
-  debugBar('HELLO: ' + msg)
-  push_sync()
-}
 
-togetherFunctions.on_sync = (msg) => {
-  debugBar('SYNC: ' + msg)
-  newEl = domJSON.toDOM(msg.data)
-
-  myViewport = document.querySelector('#svg_viewport')
-  newViewport = newEl.querySelector('#svg_viewport')
-  //console.log('nw el', newViewport)
-  myViewport.style.backgroundImage = newViewport.style.backgroundImage
-
-  svg_table.node.querySelectorAll('.draggable-group').forEach((el) => {
-    el.remove()
-  })
-  newTable = newEl.querySelector('#svg_table')
-  //console.log('nw tab', newTable)
-  /*
-  newTable.querySelectorAll('#layer_objects > .draggable-group').forEach((el) => {
-    let existingEl = svg_table.node.querySelector('#' + el.id)
-    console.log("curtains: ", el.id)
-    if (existingEl === null) {
-      return
-    }
-    console.log("found: ", el.id)
-    existingEl.classList.remove('draggable-group')
-    existingEl.style.outline = 'solid 20px white'
-    existingEl.style.opacity = 0.4
-    setTimeout(() => { existingEl.remove() }, 400)
-  })
-  */
-
-  let nodeList = newTable.querySelectorAll('[data-app-url]')
-  let urlLoop = async() => {
-    for (let index = 0; index < nodeList.length; index++) {
-      let node = nodeList.item(index)
-      await import_foreign_svg_for_element(node)
-    }
-  }
-  return urlLoop().then(() => {
-    // console.log("NEWT", newTable.outerHTML)
-    return newTable.querySelectorAll('#layer_objects> .draggable-group').forEach((el) => {
-      el.remove()
-      /*
-       * WHY WHY WHY
-       *
-       * This seems to be the only way to get the <filter> to work correctly
-       */
-      // console.log("Making new svg for ", el.id)
-      let s = el.outerHTML
-      layer_objects.svg(s)
-      nestEl = layer_objects.node.querySelector('#' + el.id)
-      // console.log("Got result", nestEl)
-      // console.log("necg", nestEl.querySelector('.contents_group').outerHTML)
-      // console.log("e cg", el.querySelector('.contents_group').outerHTML)
-      ui.hookup_ui(nestEl)
-      init_with_namespaces(nestEl, el)
-      ui.hookup_menu_actions(nestEl)
-      /*
-       * WHY WHY WHY
-       */
-    })
-    return newTable.querySelectorAll('#layer_ui > .draggable-group').forEach((el) => {
-      el.remove()
-      /*
-       * WHY WHY WHY
-       *
-       * This seems to be the only way to get the <filter> to work correctly
-       */
-      // console.log("Making new svg for ", el.id)
-      let s = el.outerHTML
-      layer_ui.svg(s)
-      nestEl = layer_ui.node.querySelector('#' + el.id)
-      // console.log("Got result", nestEl)
-      // console.log("necg", nestEl.querySelector('.contents_group').outerHTML)
-      // console.log("e cg", el.querySelector('.contents_group').outerHTML)
-      ui.hookup_ui(nestEl)
-      init_with_namespaces(nestEl, el)
-      ui.hookup_menu_actions(nestEl)
-      /*
-       * WHY WHY WHY
-       */
-    })
-  })
-}
-
+// ----------------------------------------------------------------------------
 var seenUrls = {}
 function is_svg_src_loaded(url) {
   if (url.indexOf('://') !== -1) {
@@ -252,77 +166,6 @@ async function import_foreign_svg_for_element(el) {
     await import_foreign_svg(url)
     seenUrls[url] = true
   }
-}
-
-togetherFunctions.on_change = (msg) => {
-  debugBar('CHANGE: ' + msg)
-  deserialize(msg.data)
-}
-
-deserializers = {}
-function deserialize(payload) {
-  return
-  console.log("deserialize: ", payload)
-  var obj = null;
-  if (document.getElementById(payload.id)) {
-    console.log("i've seen this before", payload.id)
-    obj = SVG.adopt(byId(payload.id))
-    Object.keys(payload).map(key => {
-      if (key === 'data-text') {
-        obj.text(payload[key])
-      }
-      if (key !== 'kids') {
-        console.log('setting', key, 'to', payload[key])
-        obj.attr(key, payload[key])
-      }
-    });
-    url = payload['data-app-url']
-    if (url) {
-      deserializers[url](obj.node, payload)
-    }
-  } else {
-    // elem is something new - remote has it, but it's not yet in the local doc
-    console.log("this is something new", payload.id)
-
-//--------
-    url = payload['data-app-url']
-    if (url) {
-      return add_object_from_payload(payload)
-    }
-//--------
-
-    var fn = str_to_fn('make_' + payload['data-app-class'])
-    if (fn) {
-      console.log('calling ', 'make_'+ payload['data-app-class'])
-      obj = fn(payload);
-    } else {
-      throw Error('how to make? '+ payload['data-app-class'])
-    }
-  }
-  if (payload.kids && obj) {
-    payload.kids.map(innerPayload => {
-      var kid = deserialize(innerPayload)
-      obj.put(kid)
-    });
-  }
-  return obj.node;
-}
-
-function serialize(thing, extras) {
-  if (!myClientId) {
-    // no network connection - skip it
-    return;
-  }
-  var el = (thing.attr) ? thing.node : thing;
-  var retval = {}
-  var fn = str_to_fn('serialize_' + g(el, 'data-app-class'))
-  if (fn) {
-    retval = Object.assign( retval, fn(el) )
-  }
-  if (extras) {
-    retval = Object.assign( retval, extras )
-  }
-  return retval
 }
 
 
@@ -668,7 +511,7 @@ async function add_object(url, attrs) {
     ui.hookup_ui(nest.node)
     init_with_namespaces(nest.node, attrs && attrs.serializedState)
     ui.hookup_menu_actions(nest.node)
-    synced.dirty_add(nest.node) // send the sync before the animation
+    //synced.dirty_add(nest.node) // send the sync before the animation
     ui.do_animate(nest.node)
   }
 
@@ -740,7 +583,7 @@ function push_to_parent(childEl, newParentEl, pushFn) {
   } else {
     ui.un_hookup_ui(childEl)
   }
-  synced.remove(childEl)
+  //synced.remove(childEl)
   // console.log('c', c.x(), c.y(), 'old p', oldPXY, 'new p', new_p_svg.x(), new_p_svg.y())
   c.x( (c.x() + oldPXY.x) - new_p_svg.x() )
   c.y( (c.y() + oldPXY.y) - new_p_svg.y() )
@@ -762,7 +605,7 @@ function delete_element(el) {
 }
 
 function evt_fire(eventName, triggerNode, origEvent, other) {
-  // console.log("evt_fire", eventName, 'to', triggerNode.id, 'other', other)
+  console.log("evt_fire", eventName, 'to', triggerNode.id, 'other', other)
   triggerNode.dispatchEvent(new CustomEvent(eventName, {
     bubbles: true,
     detail: Object.assign(

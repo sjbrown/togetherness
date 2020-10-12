@@ -47,10 +47,6 @@
      id="script_paper_count"><![CDATA[
 var paper_count = {
 
-  paper_roll_handler: function(evt) {
-    return paper.roll_handler(this, evt)
-  },
-
   drop_handler: function(evt) {
     return paper.drop_handler(this, evt)
   },
@@ -107,11 +103,7 @@ var paper_count = {
   },
 
   initialize: function(elem, prototype) {
-    elem.addEventListener('change', this.dom_change_handler)
-    elem.addEventListener('paper_roll', this.paper_roll_handler)
     elem.addEventListener('dom_change', this.dom_change_handler)
-
-    elem.addEventListener('label_click', this.label_click_handler)
     elem.addEventListener('label_change', this.label_change_handler)
 
     elem.addEventListener('svg_drag', this.drag_handler)
@@ -120,8 +112,6 @@ var paper_count = {
     elem.addEventListener('svg_dragleave', () => {console.log('L')})
 
     elem.addEventListener('resize', this.resize_handler)
-    elem.addEventListener('rule_count_cond_plus', this.cond_change_handler)
-    elem.addEventListener('rule_count_cond_minus', this.cond_change_handler)
 
     paper.initialize(elem, prototype)
   },
@@ -134,10 +124,16 @@ var paper_count = {
     'Roll All': {
       eventName: 'paper_roll',
       applicable: (node) => { return true },
+      handler: function(evt) {
+        return paper.roll_handler(this, evt)
+      },
     },
     'Label': {
       eventName: 'label_click',
       applicable: (node) => { return true },
+      handler: function() {
+        paper.label_click_handler(this)
+      },
     },
     'Fix': {
       eventName: 'paper_fix',
@@ -146,27 +142,27 @@ var paper_count = {
     'Cond +': {
       eventName: 'rule_count_cond_plus',
       applicable: (node) => { return true },
+      handler: function() {
+        paper_count.cond_change_handler(this, +1)
+      },
     },
     'Cond -': {
       eventName: 'rule_count_cond_minus',
       applicable: (node) => { return true },
+      handler: function() {
+        paper_count.cond_change_handler(this, -1)
+      },
     },
   },
 
-  cond_change_handler: function(evt) {
-    console.log('contents_change_handler', this.id, evt.detail)
-    change = 0
-    if (evt.type == 'rule_count_cond_plus') {
-      change = 1
-    } else if (evt.type == 'rule_count_cond_minus') {
-      change = -1
-    }
-    condition_tspan = this.querySelector( `#${this.id} > :not(.contents_group) #tspan_rule_num`)
+  cond_change_handler: function(elem, change) {
+    console.log('contents_change_handler', elem.id, change)
+    condition_tspan = elem.querySelector( `#${elem.id} > :not(.contents_group) #tspan_rule_num`)
     gate = parseInt(condition_tspan.textContent)
     condition_tspan.textContent = gate + change
-    this.dispatchEvent(new CustomEvent('dom_change', {
+    elem.dispatchEvent(new CustomEvent('dom_change', {
       bubbles: true,
-      detail: { 'ruleElemId': this.id },
+      detail: { 'ruleElemId': elem.id },
     }))
   },
   serialize: function(elem) {
