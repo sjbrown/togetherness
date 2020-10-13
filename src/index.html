@@ -195,6 +195,7 @@ window.addEventListener('load', () => {
   document.querySelector('body').addEventListener('keydown', downKey)
   load_profile_ui()
   loadPrototypeDN()
+  loadPrototypeTokens()
   TogetherJSConfig_getUserColor = getUserColor
   TogetherJSConfig_getUserName = function () {
     return localStorage.getItem('profile_name') || base32.short_id()
@@ -602,11 +603,16 @@ window.addEventListener('load', () => {
     <img src="img/poker-hand.svg" height="32" />
     <u>C</u>ards
     </button>
-    <button id="clocks_dialog_button" class="btn btn-small modal-trigger"
+    <button id="tokens_dialog_button" class="btn btn-small modal-trigger"
       accesskey="k"
+      data-target="dialog_tokens"
+      data-dialog-id="dialog_tokens">
+      <img src="img/tokens.svg" height="26" />To<u>k</u>ens
+    </button>
+    <button id="clocks_dialog_button" class="btn btn-small modal-trigger"
       data-target="dialog_clocks"
       data-dialog-id="dialog_clocks">
-      <img src="img/clockwork.svg" height="26" />Cloc<u>k</u>s
+      <img src="img/clockwork.svg" height="26" />Clocks
     </button>
     <button id="other_button" class="btn btn-small modal-trigger"
       accesskey="o"
@@ -2237,6 +2243,276 @@ function ui_submit_card() {
   </div>
 
 <!-- END CLOCKS =============================================== END CLOCKS -->
+
+<!-- TOKENS ======================================================= TOKENS -->
+
+  <div class="modal" id="dialog_tokens">
+    <style>
+#dialog_tokens section .tokens_quantity {
+  width: 50%;
+}
+.frontback_table tr *:nth-child(2) {
+  background-color: #f0f0f0;
+}
+    </style>
+    <script>
+function resetPrototypeButton(buttonEl, proto) {
+  temp = buttonEl.querySelector(`#${buttonEl.id} > template`)
+  while(temp.firstElementChild) {
+    // Clear it out - prevent memory leaks
+    temp.firstElementChild.remove()
+  }
+  temp.appendChild(proto)
+  useEl = buttonEl.querySelector(`#${buttonEl.id} > svg use`)
+  useEl.setAttribute('href', '#' + proto.id)
+}
+function alterSolidColorToken() {
+  return make_prototype('svg/v1/token_solidcolor.svg')
+  .then(p => {
+    frontColor = document.querySelector('#token_solidcolor_input_color_front').value
+    backColor = document.querySelector('#token_solidcolor_input_color_back').value
+    frontEl = SVG.adopt(p.querySelector('#token_front'))
+    frontEl.fill(frontColor)
+    backEl = SVG.adopt(p.querySelector('#token_back'))
+    backEl.fill(backColor)
+
+    buttonEl = document.querySelector('#token_solidcolor_button')
+    resetPrototypeButton(buttonEl, p)
+  })
+}
+function alterImageToken() {
+  return make_prototype('svg/v1/token_image.svg')
+  .then(p => {
+    frontUrl = document.querySelector('#token_image_input_front').value
+    backUrl = document.querySelector('#token_image_input_back').value
+    frontExampleEl = document.querySelector('#token_image_example_front')
+    backExampleEl = document.querySelector('#token_image_example_back')
+    frontEl = p.querySelector('#token_front')
+    backEl = p.querySelector('#token_back')
+    frontEl.setAttribute('href', frontUrl)
+    backEl.setAttribute('href', backUrl)
+    frontExampleEl.setAttribute('src', frontUrl)
+    backExampleEl.setAttribute('src', backUrl)
+
+    buttonEl = document.querySelector('#token_image_button')
+    resetPrototypeButton(buttonEl, p)
+  })
+}
+function alterCustomSVGToken() {
+  return make_prototype('svg/v1/token_customsvg.svg')
+  .then(p => {
+    buttonEl = document.querySelector('#token_customsvg_button')
+    svgEl = SVG.adopt(buttonEl.querySelector(`#${buttonEl.id} > svg`))
+
+    frontData = document.querySelector('#token_customsvg_input_front').value
+    svgEl.svg('<g>' + frontData + '</g>')
+    newFrontGroup = svgEl.node.lastElementChild
+    newFrontGroup.remove()
+    frontSVG = SVG.adopt(p.querySelector('#token_front'))
+    console.log('removing', frontSVG.node.lastElementChild)
+    frontSVG.node.lastElementChild.remove()
+    frontSVG.node.appendChild(newFrontGroup)
+
+    backData = document.querySelector('#token_customsvg_input_back').value
+    svgEl.svg('<g>' + backData + '</g>')
+    newBackGroup = svgEl.node.lastElementChild
+    newBackGroup.remove()
+    backSVG = SVG.adopt(p.querySelector('#token_back'))
+    console.log('removing', backSVG.node.lastElementChild)
+    backSVG.node.lastElementChild.remove()
+    backSVG.node.appendChild(newBackGroup)
+
+    resetPrototypeButton(buttonEl, p)
+  })
+}
+function loadPrototypeTokens() {
+  alterSolidColorToken()
+  alterImageToken()
+  alterCustomSVGToken()
+}
+function token_add(buttonEl) {
+  //console.log('buttonEl is', buttonEl)
+  let serializedState = buttonEl.querySelector('template svg')
+  let quantityEl = buttonEl.parentNode.querySelector('.tokens_quantity')
+  let num = parseInt(quantityEl.value) || 1
+  let center = [50,50]
+  //console.log('adding ', num, 'tokens')
+  for( var i=0; i < num; i++ ) {
+    add_object(
+      serializedState.dataset.appUrl,
+      {
+        // Wrap 'center' in a new array to avoid async bugs
+        'center': [center[0], center[1]],
+        'serializedState': serializedState,
+      },
+    )
+    center[0] = center[0] + 90
+    center[1] = center[1] + 10
+  }
+  quantityEl.value = 1
+}
+    </script>
+    <button class="dialog_cancel btn modal-close" data-dialog-id="dialog_tokens"
+    > &#215; </button>
+    <nav class="dialog_nav">
+    <div class="nav-wrapper">
+      <ul class="left">
+        <li><a href="#solidcolor">Solid Color</a></li>
+        <li><a href="#imagetoken">Image Token</a></li>
+        <li><a href="#customsvg">Custom SVG</a></li>
+      </ul>
+    </div>
+    </nav>
+    <div class="modal-content">
+
+    <section id="tokens_solidcolor_section">
+      <a name="solidcolor"></a>
+      <h1 id="solidcolor_h1">Solid color</h1>
+      <table id="token_solidcolor_table" class="frontback_table"><tr>
+        <th>
+          <label for="token_solidcolor_input_color_front">
+          Front
+          </label>
+        </th>
+        <th>
+          <label for="token_solidcolor_input_color_back">
+          Back
+          </label>
+        </th>
+        </tr><tr>
+        <td>
+          <input id="token_solidcolor_input_color_front" type="color" value="#ffff00"
+            onchange="alterSolidColorToken(this)"
+          />
+        </td>
+        <td>
+          <input id="token_solidcolor_input_color_back" type="color" value="#ff0000"
+            onchange="alterSolidColorToken(this)"
+          />
+        </td>
+      </tr></table>
+      <input id="token_solidcolor_input_quantity" class="tokens_quantity"
+        type="number" min="1" max=30" value="1"/>
+      <button id="token_solidcolor_button" class="btn modal-close"
+        onclick="token_add(this)">
+        <template id="token_solidcolor_prototype">
+        </template>
+        <svg style="display:inline-block;" id="svg_token_solidcolor"
+          viewbox="0 0 80 90" width="24" height="24" >
+          <use xlink:href="#token_solidcolor_object" />
+        </svg>
+        Create
+      </button>
+    </section>
+
+    <section id="tokens_imagetoken_section">
+      <a name="imagetoken"></a>
+      <h1 id="imagetoken_h1">Image token</h1>
+      <i>Note:</i> Some great images can be found on <a href="https://en.wikipedia.org/wiki/Wikipedia:Featured_pictures">Wikipedia</a>
+      <table id="token_image_table" class="frontback_table"><tr>
+        <th>
+          <label for="token_image_input_front">
+          Front
+          </label>
+        </th>
+        <th>
+          <label for="token_image_input_back">
+          Back
+          </label>
+        </th>
+        </tr><tr>
+        <td>
+          <img id="token_image_example_front"
+          width="50" height="50" src="/dev/null" />
+          <input id="token_image_input_front" type="url"
+            value="img/image.png"
+            onchange="alterImageToken(this)"
+          />
+        </td>
+        <td>
+          <img id="token_image_example_back"
+          width="50" height="50" src="/dev/null" />
+          <input id="token_image_input_back" type="url"
+            value="img/image.png"
+            onchange="alterImageToken(this)"
+          />
+        </td>
+      </tr></table>
+      <input id="token_image_input_quantity" class="tokens_quantity"
+        type="number" min="1" max=30" value="1"/>
+      <button id="token_image_button" class="btn modal-close"
+        onclick="token_add(this)">
+        <template id="token_image_prototype">
+        </template>
+        <svg style="display:inline-block;" id="svg_token_image"
+          viewbox="0 0 80 90" width="24" height="24" >
+          <use xlink:href="#token_image_object" />
+        </svg>
+        Create
+      </button>
+    </section>
+
+    <section id="tokens_customsvg_section">
+      <a name="customsvg"></a>
+      <h1 id="customsvg_h1">Custom SVG</h1>
+      <table id="token_customsvg_table" class="frontback_table"><tr>
+        <th>
+          <label for="token_customsvg_input_front">
+          Front
+          </label>
+        </th>
+        <th>
+          <label for="token_customsvg_input_back">
+          Back
+          </label>
+        </th>
+        </tr><tr>
+        <td>
+          <textarea id="token_customsvg_input_front"
+            onchange="alterCustomSVGToken(this)"
+          >
+          </textarea>
+        </td>
+        <td>
+          <textarea id="token_customsvg_input_back"
+            onchange="alterCustomSVGToken(this)"
+          >
+          </textarea>
+        </td>
+      </tr></table>
+      <input id="token_customsvg_input_quantity" class="tokens_quantity"
+        type="number" min="1" max=30" value="1"/>
+      <button id="token_customsvg_button" class="btn modal-close"
+        onclick="token_add(this)">
+        <template id="token_customsvg_prototype">
+        </template>
+        <svg style="display:inline-block;" id="svg_token_customsvg"
+          viewbox="0 0 80 90" width="24" height="24" >
+          <use xlink:href="#token_customsvg_object" />
+        </svg>
+        Create
+      </button>
+    </section>
+    <section>
+    <h3>Examples:</h3>
+    <p>Try pasting this into the box:</p>
+    <pre>
+&lt;defs&gt;
+  &lt;pattern id=&quot;pattern1&quot;
+    x=&quot;10&quot; y=&quot;10&quot; width=&quot;20&quot; height=&quot;20&quot;
+    patternUnits=&quot;userSpaceOnUse&quot;&gt;
+    &lt;circle cx=&quot;10&quot; cy=&quot;10&quot; r=&quot;10&quot; style=&quot;stroke: none; fill: #0000ff&quot; /&gt;
+  &lt;/pattern&gt;
+&lt;/defs&gt;
+
+&lt;rect x=&quot;10&quot; y=&quot;10&quot; width=&quot;100&quot; height=&quot;100&quot;
+    style=&quot;stroke: #000000; fill: url(#pattern1);&quot; /&gt;
+    </pre>
+    </section>
+    </div>
+  </div>
+
+<!-- END TOKENS =============================================== END TOKENS -->
 
 
 <!-- CONTRIBUTE =============================================== CONTRIBUTE -->

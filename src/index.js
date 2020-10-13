@@ -497,7 +497,7 @@ function add_n_objects_from_prototype(n, prototype, center) {
 
 var alreadyAddedObjectURLs = {}
 async function add_object(url, attrs) {
-  // console.log('add_object', url, attrs)
+  //console.log('add_object', url, attrs)
   let nest = await import_foreign_svg(url)
 
   let hookup = () => {
