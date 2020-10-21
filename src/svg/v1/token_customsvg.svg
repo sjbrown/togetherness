@@ -74,49 +74,26 @@ var token_image = {
   />
   </g>
 
-  <clipPath id="clippath1">
-    <circle
-       id="clip_circle"
-       r="34"
-       cy="45"
-       cx="40"
-       fill="#a00000"
-       stroke="none"
-       />
-  </clipPath>
-  <svg
+  <g
+     class="token_face"
      id="token_back"
-     x="0" y="0"
      width="80"
      height="100"
      opacity="0.1"
-     clip-path="url(#clippath1)"
   >
   <g>
-    <image
-     href="img/image.png"
-     x="30" y="20"
-     width="40"
-     height="40"
-    />
     <rect x="30" y="10" width="30" height="33" fill="#a0a000" stroke="#00c000" />
   </g>
-  </svg>
-  <svg
+  </g>
+
+  <g
+     class="token_face"
      id="token_front"
-     x="0" y="0"
      width="80"
      height="100"
-     clip-path="url(#clippath1)"
   >
   <g>
-    <image
-     href="img/image.png"
-     x="20" y="30"
-     width="40"
-     height="40"
-    />
     <rect x="0" y="0" width="30" height="33" fill="#00a0c0" stroke="#c0c000" />
   </g>
-  </svg>
+  </g>
 </svg>

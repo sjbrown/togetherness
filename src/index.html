@@ -2317,21 +2317,23 @@ function alterCustomSVGToken() {
   return make_prototype('svg/v1/token_customsvg.svg')
   .then(p => {
     buttonEl = document.querySelector('#token_customsvg_button')
-    svgEl = SVG.adopt(buttonEl.querySelector(`#${buttonEl.id} > svg`))
+    placeholderEl = SVG.adopt(buttonEl.querySelector(`#${buttonEl.id} > svg`))
 
     frontData = document.querySelector('#token_customsvg_input_front').value
-    svgEl.svg('<g>' + frontData + '</g>')
-    newFrontGroup = svgEl.node.lastElementChild
+    placeholderEl.svg('<g>' + frontData + '</g>')
+    newFrontGroup = placeholderEl.node.lastElementChild
     newFrontGroup.remove()
-    frontSVG = SVG.adopt(p.querySelector('#token_front'))
-    console.log('removing', frontSVG.node.lastElementChild)
-    frontSVG.node.lastElementChild.remove()
-    frontSVG.node.appendChild(newFrontGroup)
+    console.log('nfg', newFrontGroup)
+    front_g = SVG.adopt(p.querySelector('#token_front'))
+    console.log('removing', front_g.node.lastElementChild)
+    front_g.node.lastElementChild.remove()
+    front_g.node.appendChild(newFrontGroup)
 
     backData = document.querySelector('#token_customsvg_input_back').value
-    svgEl.svg('<g>' + backData + '</g>')
-    newBackGroup = svgEl.node.lastElementChild
+    placeholderEl.svg('<g>' + backData + '</g>')
+    newBackGroup = placeholderEl.node.lastElementChild
     newBackGroup.remove()
+    console.log('nbg', newBackGroup)
     backSVG = SVG.adopt(p.querySelector('#token_back'))
     console.log('removing', backSVG.node.lastElementChild)
     backSVG.node.lastElementChild.remove()
@@ -2510,7 +2512,27 @@ function token_add(buttonEl) {
     </section>
     <section>
     <h3>Examples:</h3>
-    <p>Try pasting this into the box:</p>
+    <p>Try pasting these into the box:</p>
+      <table id="token_examples_table" class="frontback_table"><tr>
+        <td>
+          <pre>
+&lt;text x=&quot;24&quot; y=&quot;65&quot;
+  fill=&quot;white&quot;
+  style=&quot;font-size:60px&quot;&gt;
+&lt;tspan&gt;5&lt;/tspan&gt;
+&lt;/text&gt;
+          </pre>
+        </td>
+        <td>
+          <pre>
+&lt;text x=&quot;24&quot; y=&quot;65&quot;
+  fill=&quot;white&quot;
+  style=&quot;font-size:60px&quot;&gt;
+&lt;tspan&gt;5&lt;/tspan&gt;
+&lt;/text&gt;
+          </pre>
+        </td>
+      </tr></table>
     <pre>
 &lt;defs&gt;
   &lt;pattern id=&quot;pattern1&quot;
