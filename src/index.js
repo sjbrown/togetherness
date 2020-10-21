@@ -51,9 +51,9 @@ function elBox(el) {
   return svg_box(SVG.adopt(el))
 }
 
-function lock_selection(evt) {
+function lock_selection(evt, elem) {
   // console.log("lock_selection (evt)", evt)
-  target = evt.target
+  target = elem ? elem : evt.target
   if (!target.classList.contains('draggable-group')) {
     return
   }
@@ -601,7 +601,6 @@ function delete_element(el) {
   ui.animated_ghost(el, {animation: 'rotateOut'})
   el.remove()
   ui.removeEmptySelectBoxes()
-  push_sync()
 }
 
 function evt_fire(eventName, triggerNode, origEvent, other) {

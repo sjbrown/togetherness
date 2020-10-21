@@ -102,12 +102,6 @@ var select_box = {
       fill: color,
       stroke: color,
     })
-    elem.addEventListener('delete_selected', () => {
-      console.log("select_box.js delete_selected")
-      ui.getSelectBoxSelectedElements(elem).forEach(selectedEl => {
-        delete_element(selectedEl)
-      })
-    })
     elem.addEventListener('svg_dragsafe_dblclick', () => {
       ui.getSelectBoxSelectedElements(elem).forEach(selectedEl => {
         let detail = {elemId: selectedEl.id}

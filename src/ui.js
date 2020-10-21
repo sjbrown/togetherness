@@ -114,26 +114,6 @@ const ui = {
     return selected
   },
 
-  belongsToPeer: (el) => {
-    return (
-      el.classList.contains('has-owner')
-      &&
-      !el.classList.contains('owner-' + ui.escapedClientId())
-    )
-  },
-
-  getMySelectedElements: () => {
-    let selected = []
-    layer_ui.node.querySelectorAll('.select_box').forEach(el => {
-      if (ui.belongsToPeer(el)) {
-        return
-      }
-      let nodes = ui.getSelectBoxSelectedElements(el)
-      selected = selected.concat(nodes)
-    })
-    return selected
-  },
-
   selectElement: (elem, evt) => {
     // console.log('selectElement', elem.id, evt)
 
@@ -164,6 +144,14 @@ const ui = {
         sbox.remove()
       }
     })
+  },
+
+  belongsToPeer: (el) => {
+    return (
+      el.classList.contains('has-owner')
+      &&
+      !el.classList.contains('owner-' + ui.escapedClientId())
+    )
   },
 
   unselectAll: () => {
@@ -219,7 +207,7 @@ const ui = {
     Object.entries(allHandlers).forEach(([eventName, handler]) => {
       // console.log("hooking up", menuItem.eventName, menuItem.handler)
       let wrapper = function(evt) {
-        console.log('LOG user', myClientId, 'does', evt, 'on', svgEl)
+        console.log('HMU LOG user', myClientId, 'does', evt, 'on', svgEl)
         handler.bind(svgEl)(evt)
       }
       svgEl.addEventListener(eventName, wrapper)
@@ -279,69 +267,81 @@ const ui = {
     return actionMenu
   },
 
+  getMySelectedElements: () => {
+    let selected = []
+    layer_ui.node.querySelectorAll('.select_box').forEach(el => {
+      if (ui.belongsToPeer(el)) {
+        return // skip select boxes owned by other users
+      }
+      let nodes = ui.getSelectBoxSelectedElements(el)
+      selected = selected.concat(nodes)
+    })
+    return selected
+  },
+
   updateButtons: () => {
      console.log("ui.updateButtons")
-    let markedNodes = ui.getMySelectedElements()
-    let numMarked = markedNodes.length
+    let focusedNodes = ui.getMySelectedElements()
+    let numMarked = focusedNodes.length
     let buttons = {}
     let template = byId('template_object_actions')
 
-    submenu = byId('object_actions')
-    header = byId('object_actions_header')
+    let submenu = byId('object_actions')
+    let header = byId('object_actions_header')
     submenu.querySelectorAll('.cloned-button').forEach((btn) => {
       btn.remove()
     })
     header.innerText = 'Select dice by clicking on them; roll by double-clicking; zoom with Ctrl-wheel'
 
-    function addNewButton(title, menu, elemNode) {
-      // menu looks like this: {
-      // 'Foo': {
-      //   eventName: 'foo_event',
-      //   applicable: (node) => { return node },
-      //   uiLabel: (node) => { return 'MyLabel' },
-      //  },  ...}
+    function addNewButton(title, applicableFn, svgNode, handler) {
       let btn = template.content.firstElementChild.cloneNode(true)
-      btn.id = elemNode.id + title
+      btn.id = svgNode.id + title
       btn.innerText = title
       btn.classList.add('cloned-button')
-      if (!menu[title].applicable(elemNode)) {
+      if (!applicableFn(svgNode)) {
         btn.disabled = 'disabled'
       }
       buttons[title] = {
         btn: btn,
-        clickEvents: [
+        clickFns: [
           (evt) => {
-            evt_fire(menu[title].eventName, elemNode, evt)
+            console.log('LOG user', myClientId, 'does', evt, 'on', svgNode)
+            handler.bind(svgNode)(evt)
           }
         ],
       }
     }
 
     var i = 0
-    markedNodes.forEach((elemNode) => {
+    focusedNodes.forEach((focusedSVG) => {
       i++
-       console.log("elemNode", elemNode.id)
-      actionMenu = ui.getFullMenuForElement(elemNode)
+      let allHandlers = ui.event_handlers_for_element(focusedSVG)
+      let actionMenu = ui.getFullMenuForElement(focusedSVG)
+      // console.log("focusedSVG", focusedSVG.id, allHandlers, actionMenu)
       if (numMarked === 1) {
-        header.innerText = g(elemNode, 'data-orig-name')
-        //#header.innerText = g(elemNode, 'data-name')
+        header.innerText = g(focusedSVG, 'data-orig-name')
 
         Object.keys(actionMenu).map((title) => {
-          addNewButton(title, actionMenu, elemNode)
+          let handler = allHandlers[actionMenu[title].eventName]
+          addNewButton(title, actionMenu[title].applicable, focusedSVG, handler)
         })
 
-        ui.updateQuickButton(elemNode)
+        ui.updateQuickButton(focusedSVG)
 
       } else { // more than 1
         header.innerText = numMarked + ' objects selected'
         Object.keys(actionMenu).map((title) => {
+          let handler = allHandlers[actionMenu[title].eventName]
+
           if (i === 1) { // the first one sets up the 'buttons' object
-            addNewButton(title, actionMenu, elemNode)
+            addNewButton(title, actionMenu[title].applicable, focusedSVG, handler)
           } else {
             if (title in buttons) {
-              buttons[title].clickEvents.push(
+              buttons[title].clickFns.push(
                 (evt) => {
-                  evt_fire(actionMenu[title].eventName, elemNode, evt)
+                  // evt_fire(actionMenu[title].eventName, focusedSVG, evt)
+                  console.log('LOG user', myClientId, 'does', evt, 'on', focusedSVG)
+                  handler.bind(focusedSVG)(evt)
                 }
               )
             }
@@ -351,7 +351,7 @@ const ui = {
           if (
             key in actionMenu === false
             ||
-            !actionMenu[key].applicable(elemNode)
+            !actionMenu[key].applicable(focusedSVG)
           ) {
             delete buttons[key]
           }
@@ -360,19 +360,18 @@ const ui = {
     })
 
     let selectBoxes = ui.getSelectBoxes()
-    if (markedNodes.length > 0 && selectBoxes.length > 0) {
-      let selectionActionMenu = {
-        'Delete': {
-          eventName: 'delete_selected',
-          applicable: (node) => { return true },
+    if (focusedNodes.length > 0 && selectBoxes.length > 0) {
+      let sBoxNode = selectBoxes[0]
+      addNewButton('Delete', () => { return true }, sBoxNode, (evt) => {
+          console.log('LOG user', myClientId, 'does DELETE on', sBoxNode)
+          ui.getSelectBoxSelectedElements(sBoxNode).forEach(el => {
+            ui.animated_ghost(el, {animation: 'rotateOut'})
+            el.remove()
+          })
+          ui.removeEmptySelectBoxes()
         },
-      }
-      Object.keys(selectionActionMenu).map((title) => {
-        let elemNode = selectBoxes[0]
-        addNewButton(title, selectionActionMenu, elemNode)
-        console.log("btnstime", buttons[title])
-        buttons[title].btn.accessKey = 'delete'
-      })
+      )
+      buttons['Delete'].btn.accessKey = 'delete'
     }
 
     /*
@@ -380,14 +379,14 @@ const ui = {
      */
     Object.keys(buttons).map((key) => {
       buttonRecord = buttons[key]
-      buttonRecord.clickEvents.forEach(evtSpawner => {
-        buttonRecord.btn.addEventListener('click', evtSpawner)
+      buttonRecord.clickFns.forEach(clickFn => {
+        buttonRecord.btn.addEventListener('click', clickFn)
       })
       template.parentElement.appendChild(buttonRecord.btn)
       // Hookup hotkeys (after we're attaching to DOM to avoid collisions)
       accessKey = buttonRecord.btn.innerText[0].toLocaleLowerCase()
       if (document.querySelector('[accessKey=' + accessKey + ']') === null) {
-        console.log( 'a key', accessKey)
+        // console.log( 'a key', accessKey)
         // TODO make better
         buttonRecord.btn.accessKey = accessKey
       }

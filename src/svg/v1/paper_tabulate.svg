@@ -136,6 +136,9 @@ var paper_tabulate = {
     'Fix': {
       eventName: 'paper_fix',
       applicable: (node) => { return true },
+      handler: function(evt) {
+        paper.fix(evt, this)
+      },
     },
   },
 

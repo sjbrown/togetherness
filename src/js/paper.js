@@ -1,7 +1,6 @@
 console.log('PAPER')
 var paper = {
   initialize: function(elem, prototype) {
-    elem.addEventListener('paper_fix', this.fix)
     elem.addEventListener('dblclick', this.fix)
     elem.addEventListener('svg_dragover', this.dragover_handler)
 
@@ -94,9 +93,9 @@ var paper = {
     evt_fire('dom_change', elem, null, {})
   },
 
-  fix: function(evt) {
-    console.log('paper hears fix event', evt)
-    lock_selection(evt)
+  fix: function(evt, elem) {
+    // console.log('paper hears fix event', elem, evt)
+    lock_selection(evt, elem)
   },
 
   resize_handler: function(elem, evt) {

@@ -124,6 +124,9 @@ var paper_best = {
     'Fix': {
       eventName: 'paper_fix',
       applicable: (node) => { return true },
+      handler: function(evt) {
+        paper.fix(evt, this)
+      },
     },
     'Best +': {
       eventName: 'rule_best_plus',

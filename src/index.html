@@ -32,6 +32,10 @@
 
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+<!--
+<link rel="stylesheet" href="/lib/materialize/materialize.min.css">
+<script src="/lib/materialize/materialize.min.js"></script>
+-->
 
 <style type="text/css" />
 @font-face {
@@ -748,6 +752,9 @@ function ui_change_profile(evt) {
   net_fire({ type: 'change_profile', data: name_input.value })
 }
 function load_profile_ui() {
+  if (TogetherJS === undefined) {
+    return
+  }
   name = localStorage.getItem('profile_name') || ''
   color = localStorage.getItem('profile_color')
   if (!name) {

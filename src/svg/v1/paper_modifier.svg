@@ -135,6 +135,9 @@ var paper_modifier = {
     'Fix': {
       eventName: 'paper_fix',
       applicable: (node) => { return true },
+      handler: function(evt) {
+        paper.fix(evt, this)
+      },
     },
     'Mod +': {
       eventName: 'rule_modifier_plus',
