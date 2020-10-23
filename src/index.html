@@ -32,6 +32,10 @@
 
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+<!--
+<link rel="stylesheet" href="/lib/materialize/materialize.min.css">
+<script src="/lib/materialize/materialize.min.js"></script>
+-->
 
 <style type="text/css" />
 @font-face {
@@ -195,6 +199,7 @@ window.addEventListener('load', () => {
   document.querySelector('body').addEventListener('keydown', downKey)
   load_profile_ui()
   loadPrototypeDN()
+  loadPrototypeTokens()
   TogetherJSConfig_getUserColor = getUserColor
   TogetherJSConfig_getUserName = function () {
     return localStorage.getItem('profile_name') || base32.short_id()
@@ -602,11 +607,16 @@ window.addEventListener('load', () => {
     <img src="img/poker-hand.svg" height="32" />
     <u>C</u>ards
     </button>
-    <button id="clocks_dialog_button" class="btn btn-small modal-trigger"
+    <button id="tokens_dialog_button" class="btn btn-small modal-trigger"
       accesskey="k"
+      data-target="dialog_tokens"
+      data-dialog-id="dialog_tokens">
+      <img src="img/tokens.svg" height="26" />To<u>k</u>ens
+    </button>
+    <button id="clocks_dialog_button" class="btn btn-small modal-trigger"
       data-target="dialog_clocks"
       data-dialog-id="dialog_clocks">
-      <img src="img/clockwork.svg" height="26" />Cloc<u>k</u>s
+      <img src="img/clockwork.svg" height="26" />Clocks
     </button>
     <button id="other_button" class="btn btn-small modal-trigger"
       accesskey="o"
@@ -742,6 +752,9 @@ function ui_change_profile(evt) {
   net_fire({ type: 'change_profile', data: name_input.value })
 }
 function load_profile_ui() {
+  if (TogetherJS === undefined) {
+    return
+  }
   name = localStorage.getItem('profile_name') || ''
   color = localStorage.getItem('profile_color')
   if (!name) {
@@ -979,7 +992,15 @@ function ui_change_table_size() {
     Use a URL as a background.  Examples:
     <ul>
       <li>http://www.1kfa.com/table/svg/bg_topography.svg
+        <img height="32" src="svg/bg_topography.svg" />
       <li>http://www.1kfa.com/table/svg/bg_hexagons.svg
+        <img height="32" src="svg/bg_hexagons.svg" />
+      <li>http://www.1kfa.com/table/svg/bg_clouds.svg
+        <img height="32" src="svg/bg_clouds.svg" />
+      <li>http://www.1kfa.com/table/svg/bg_graphpaper.svg
+        <img height="32" src="svg/bg_graphpaper.svg" />
+      <li>http://www.1kfa.com/table/svg/bg_winter_sun.svg
+        <img height="32" src="svg/bg_winter_sun.svg" />
     </ul>
     <label for="background_url">Enter a URL</label>
     <input id="background_url" type="url"
@@ -1749,6 +1770,67 @@ function ui_submit_rect(evt) {
 
 <!-- END RECT =================================================== END RECT -->
 
+<!-- IMAGE =========================================================== IMAGE -->
+
+  <div class="modal" id="dialog_image">
+    <script>
+function ui_submit_image(evt) {
+  w = parseInt(byId('image_input_width').value);
+  h = parseInt(byId('image_input_height').value);
+  inputEl = byId('input_image_url')
+  let url = inputEl.value
+  if (!url) {
+    alert('No URL!')
+    return
+  }
+  return _import_foreign_svg(`
+    <svg width="${w}" height="${h}"
+    id="image"
+    xmlns="http://www.w3.org/2000/svg"
+    xmlns:xlink="http://www.w3.org/1999/xlink">
+    <image href="${url}" height="${h}" width="${w}"/>
+    </svg>
+  `, '')
+  .then(nest => {
+    add_fresh_svg(nest.node)
+    layer_objects.node.appendChild(nest.node)
+    ui.hookup_ui(nest.node)
+    ui.hookup_menu_actions(nest.node)
+    ui.popdown_dialog('dialog_image')
+  })
+}
+  </script>
+    <button class="dialog_cancel btn modal-close"
+      data-dialog-id="dialog_image"
+    >
+      &#215;
+    </button>
+  <div class="modal-content">
+    <label>
+      Image URL
+    <input
+        id="input_image_url" type="text"
+        placeholder="https://www.1kfa.com/assets/img/atfa_white_on_transparent.png"
+        pattern="http.*"
+    />
+    </label>
+    <label for="image_input_width">Width</label>
+    <input id="image_input_width" type="number" min="20" max="500" value="200"/>
+    <br />
+    <label for="image_input_height">Height</label>
+    <input id="image_input_height" type="number" min="20" max="500"value="200"/>
+    <br />
+    <button id="dialog_submit" onclick="ui_submit_image(this)"
+      class="btn modal-close">
+      Create
+    </button>
+    <i>Note:</i> Some great images can be found on <a
+      href="https://en.wikipedia.org/wiki/Wikipedia:Featured_pictures">Wikipedia</a>
+  </div>
+  </div>
+
+<!-- END IMAGE =================================================== END IMAGE -->
+
 
 <!-- TEXT =========================================================== TEXT -->
 
@@ -1968,32 +2050,31 @@ function ui_submit_ellipse(evt) {
 <!-- OTHER ======================================================= OTHER -->
 
   <div class="modal" id="dialog_other">
-  <script>
-function ui_submit_image(evt) {
-  inputEl = byId('input_image_url')
-  let url = inputEl.value
-  if (!url) {
-    alert('No URL!')
-    return
-  }
-  _import_foreign_svg(`
-    <svg width="200" height="200"
-    id="image"
-    xmlns="http://www.w3.org/2000/svg"
-    xmlns:xlink="http://www.w3.org/1999/xlink">
-    <image href="${url}" height="200" width="200"/>
-    </svg>
-  `, '')
-  .then(nest => {
-    add_fresh_svg(nest.node)
-    layer_objects.node.appendChild(nest.node)
-    ui.hookup_ui(nest.node)
-    ui.hookup_menu_actions(nest.node)
-    ui.popdown_dialog('dialog_other')
-    //net_fire({ type: 'create', data: serialize(nest) })
-  })
+  <style>
+#dialog_other section button {
+  min-width: 7em;
+  min-height: 7em;
+  padding: 1em;
+  font-size: 8pt;
+  border-radius: 10px;
+  background-color: #030303;
 }
-  </script>
+
+#dialog_other section .btn {
+  opacity: 80%;
+  color: #f0f0f0;
+}
+#dialog_other section .btn:hover {
+  background-color: #000000;
+  opacity: 100%;
+  color: #ffffff;
+}
+@media only screen and (max-height: 600px) {
+  #dialog_other section  button {
+    min-height: 3em;
+  }
+}
+</style>
     <button class="dialog_cancel btn modal-close" data-dialog-id="dialog_other"
     > &#215; </button>
     <nav class="dialog_nav">
@@ -2008,42 +2089,31 @@ function ui_submit_image(evt) {
     <section id="drawing_section">
       <a name="drawing"></a>
       <h1 id="drawing_h1">Drawing</h1>
+      <button id="svgfile_button" class="btn btn-small modal-trigger modal-close"
+        data-target="dialog_svgfile"
+        data-dialog-id="dialog_svgfile">
+        <img src="img/svgfile.svg" height="26" />SVG File
+      </button>
       <button id="rect_button" class="btn btn-small modal-trigger modal-close"
         data-target="dialog_rect"
         data-dialog-id="dialog_rect">
-        + Rectangle ▭
+        <img src="img/rect.svg" height="26" />Rectangle
       </button>
       <button id="ellipse_button" class="btn btn-small modal-trigger modal-close"
         data-target="dialog_ellipse"
         data-dialog-id="dialog_ellipse">
-        + Circle ⬭
+        <img src="img/ellipse.svg" height="26" />Circle
       </button>
       <button id="text_button" class="btn btn-small modal-trigger modal-close"
         data-target="dialog_text"
         data-dialog-id="dialog_text">
-        + Text ⌨
+        <img src="img/text.svg" height="26" />Text
       </button>
-      <p>
-      <button id="svgfile_button" class="btn btn-small modal-trigger modal-close"
-        data-target="dialog_svgfile"
-        data-dialog-id="dialog_svgfile">
-        + SVG File
+      <button id="image_button" class="btn btn-small modal-trigger modal-close"
+        data-target="dialog_image"
+        data-dialog-id="dialog_image">
+        <img src="img/image.svg" height="26" />Image
       </button>
-      <p>
-      <label>
-        Image URL
-      <input
-          id="input_image_url" type="text"
-          placeholder="https://www.1kfa.com/assets/img/atfa_white_on_transparent.png"
-          pattern="http.*"
-      />
-      </label>
-      <button class="btn btn-small modal-close"
-        onclick="ui_submit_image()">
-        + Image
-      </button>
-      <i>Note:</i> Some great images can be found on <a
-        href="https://en.wikipedia.org/wiki/Wikipedia:Featured_pictures">Wikipedia</a>
       <!--
       <button id="random_table_button" class="btn btn-small modal-trigger modal-close"
         data-target="dialog_random_table"
@@ -2055,33 +2125,37 @@ function ui_submit_image(evt) {
     <section id="dynamic_paper_section">
       <a name="dynamic_paper"></a>
       <h1 id="dynamic_paper_h1">Dynamic Paper</h1>
+      <p>
+      Dynamic papers will automatically do calculations based on
+      the dice (or other objects like text) placed inside them
+      </p>
       <button class="btn btn-small modal-close"
         onclick="add_object('svg/v1/paper_sum.svg')">
-        + Sum
+        Sum
       </button>
       <button class="btn btn-small modal-close"
         onclick="add_object('svg/v1/paper_count.svg')">
-        + Count
+        Count
       </button>
       <button class="btn btn-small modal-close"
         onclick="add_object('svg/v1/paper_modifier.svg')">
-        + Modifier
+        Modifier
       </button>
       <button class="btn btn-small modal-close"
         onclick="add_object('svg/v1/paper_best.svg')">
-        + Best-of
+        Best-of
       </button>
       <button class="btn btn-small modal-close"
         onclick="add_object('svg/v1/paper_sorter.svg')">
-        + Sorter
+        Sorter
       </button>
       <button class="btn btn-small modal-close"
         onclick="add_object('svg/v1/paper_tabulate.svg')">
-        + Tabulate
+        Tabulate
       </button>
       <button class="btn btn-small modal-close"
         onclick="add_object('svg/v1/paper_genesys.svg')">
-        + Genesys
+        Genesys
       </button>
     </section>
     </div>
@@ -2184,6 +2258,327 @@ function ui_submit_card() {
   </div>
 
 <!-- END CLOCKS =============================================== END CLOCKS -->
+
+<!-- TOKENS ======================================================= TOKENS -->
+
+  <div class="modal" id="dialog_tokens">
+    <style>
+#dialog_tokens section .tokens_quantity {
+  width: 50%;
+}
+.frontback_table tr *:nth-child(2) {
+  background-color: #f0f0f0;
+}
+    </style>
+    <script>
+function resetPrototypeButton(buttonEl, proto) {
+  temp = buttonEl.querySelector(`#${buttonEl.id} > template`)
+  while(temp.firstElementChild) {
+    // Clear it out - prevent memory leaks
+    temp.firstElementChild.remove()
+  }
+  temp.appendChild(proto)
+  useEl = buttonEl.querySelector(`#${buttonEl.id} > svg use`)
+  useEl.setAttribute('href', '#' + proto.id)
+}
+function alterSolidColorToken() {
+  return make_prototype('svg/v1/token_solidcolor.svg')
+  .then(p => {
+    frontColor = document.querySelector('#token_solidcolor_input_color_front').value
+    backColor = document.querySelector('#token_solidcolor_input_color_back').value
+    frontEl = SVG.adopt(p.querySelector('#token_front'))
+    frontEl.fill(frontColor)
+    backEl = SVG.adopt(p.querySelector('#token_back'))
+    backEl.fill(backColor)
+
+    buttonEl = document.querySelector('#token_solidcolor_button')
+    resetPrototypeButton(buttonEl, p)
+  })
+}
+function alterImageToken() {
+  return make_prototype('svg/v1/token_image.svg')
+  .then(p => {
+    frontUrl = document.querySelector('#token_image_input_front').value
+    backUrl = document.querySelector('#token_image_input_back').value
+    frontExampleEl = document.querySelector('#token_image_example_front')
+    backExampleEl = document.querySelector('#token_image_example_back')
+    frontEl = p.querySelector('#token_front')
+    backEl = p.querySelector('#token_back')
+    frontEl.setAttribute('href', frontUrl)
+    backEl.setAttribute('href', backUrl)
+    frontExampleEl.setAttribute('src', frontUrl)
+    backExampleEl.setAttribute('src', backUrl)
+
+    buttonEl = document.querySelector('#token_image_button')
+    resetPrototypeButton(buttonEl, p)
+  })
+}
+function alterCustomSVGToken() {
+  return make_prototype('svg/v1/token_customsvg.svg')
+  .then(p => {
+    buttonEl = document.querySelector('#token_customsvg_button')
+    placeholderEl = SVG.adopt(buttonEl.querySelector(`#${buttonEl.id} > svg`))
+
+    frontData = document.querySelector('#token_customsvg_input_front').value
+    placeholderEl.svg('<g>' + frontData + '</g>')
+    newFrontGroup = placeholderEl.node.lastElementChild
+    newFrontGroup.remove()
+    console.log('nfg', newFrontGroup)
+    front_g = SVG.adopt(p.querySelector('#token_front'))
+    console.log('removing', front_g.node.lastElementChild)
+    front_g.node.lastElementChild.remove()
+    front_g.node.appendChild(newFrontGroup)
+
+    backData = document.querySelector('#token_customsvg_input_back').value
+    placeholderEl.svg('<g>' + backData + '</g>')
+    newBackGroup = placeholderEl.node.lastElementChild
+    newBackGroup.remove()
+    console.log('nbg', newBackGroup)
+    backSVG = SVG.adopt(p.querySelector('#token_back'))
+    console.log('removing', backSVG.node.lastElementChild)
+    backSVG.node.lastElementChild.remove()
+    backSVG.node.appendChild(newBackGroup)
+
+    resetPrototypeButton(buttonEl, p)
+  })
+}
+function loadPrototypeTokens() {
+  alterSolidColorToken()
+  alterImageToken()
+  alterCustomSVGToken()
+}
+function token_add(buttonEl) {
+  //console.log('buttonEl is', buttonEl)
+  let serializedState = buttonEl.querySelector('template svg')
+  let quantityEl = buttonEl.parentNode.querySelector('.tokens_quantity')
+  let num = parseInt(quantityEl.value) || 1
+  let center = [50,50]
+  //console.log('adding ', num, 'tokens')
+  for( var i=0; i < num; i++ ) {
+    add_object(
+      serializedState.dataset.appUrl,
+      {
+        // Wrap 'center' in a new array to avoid async bugs
+        'center': [center[0], center[1]],
+        'serializedState': serializedState,
+      },
+    )
+    center[0] = center[0] + 90
+    center[1] = center[1] + 10
+  }
+  quantityEl.value = 1
+}
+    </script>
+    <button class="dialog_cancel btn modal-close" data-dialog-id="dialog_tokens"
+    > &#215; </button>
+    <nav class="dialog_nav">
+    <div class="nav-wrapper">
+      <ul class="left">
+        <li><a href="#solidcolor">Solid Color</a></li>
+        <li><a href="#imagetoken">Image Token</a></li>
+        <li><a href="#customsvg">Custom SVG</a></li>
+      </ul>
+    </div>
+    </nav>
+    <div class="modal-content">
+
+    <section id="tokens_solidcolor_section">
+      <a name="solidcolor"></a>
+      <h1 id="solidcolor_h1">Solid color</h1>
+      <table id="token_solidcolor_table" class="frontback_table"><tr>
+        <th>
+          <label for="token_solidcolor_input_color_front">
+          Front
+          </label>
+        </th>
+        <th>
+          <label for="token_solidcolor_input_color_back">
+          Back
+          </label>
+        </th>
+        </tr><tr>
+        <td>
+          <input id="token_solidcolor_input_color_front" type="color" value="#ffff00"
+            onchange="alterSolidColorToken(this)"
+          />
+        </td>
+        <td>
+          <input id="token_solidcolor_input_color_back" type="color" value="#ff0000"
+            onchange="alterSolidColorToken(this)"
+          />
+        </td>
+      </tr></table>
+      <input id="token_solidcolor_input_quantity" class="tokens_quantity"
+        type="number" min="1" max=30" value="1"/>
+      <button id="token_solidcolor_button" class="btn modal-close"
+        onclick="token_add(this)">
+        <template id="token_solidcolor_prototype">
+        </template>
+        <svg style="display:inline-block;" id="svg_token_solidcolor"
+          viewbox="0 0 80 90" width="24" height="24" >
+          <use xlink:href="#token_solidcolor_object" />
+        </svg>
+        Create
+      </button>
+    </section>
+
+    <section id="tokens_imagetoken_section">
+      <a name="imagetoken"></a>
+      <h1 id="imagetoken_h1">Image token</h1>
+      <i>Note:</i> Some great images can be found on <a href="https://en.wikipedia.org/wiki/Wikipedia:Featured_pictures">Wikipedia</a>
+      <table id="token_image_table" class="frontback_table"><tr>
+        <th>
+          <label for="token_image_input_front">
+          Front
+          </label>
+        </th>
+        <th>
+          <label for="token_image_input_back">
+          Back
+          </label>
+        </th>
+        </tr><tr>
+        <td>
+          <img id="token_image_example_front"
+          width="50" height="50" src="/dev/null" />
+          <input id="token_image_input_front" type="url"
+            value="img/image.png"
+            onchange="alterImageToken(this)"
+          />
+        </td>
+        <td>
+          <img id="token_image_example_back"
+          width="50" height="50" src="/dev/null" />
+          <input id="token_image_input_back" type="url"
+            value="img/image.png"
+            onchange="alterImageToken(this)"
+          />
+        </td>
+      </tr></table>
+      <input id="token_image_input_quantity" class="tokens_quantity"
+        type="number" min="1" max=30" value="1"/>
+      <button id="token_image_button" class="btn modal-close"
+        onclick="token_add(this)">
+        <template id="token_image_prototype">
+        </template>
+        <svg style="display:inline-block;" id="svg_token_image"
+          viewbox="0 0 80 90" width="24" height="24" >
+          <use xlink:href="#token_image_object" />
+        </svg>
+        Create
+      </button>
+    </section>
+
+    <section id="tokens_customsvg_section">
+      <a name="customsvg"></a>
+      <h1 id="customsvg_h1">Custom SVG</h1>
+      <table id="token_customsvg_table" class="frontback_table"><tr>
+        <th>
+          <label for="token_customsvg_input_front">
+          Front
+          </label>
+        </th>
+        <th>
+          <label for="token_customsvg_input_back">
+          Back
+          </label>
+        </th>
+        </tr><tr>
+        <td>
+          <textarea id="token_customsvg_input_front"
+            onchange="alterCustomSVGToken(this)"
+          >
+          </textarea>
+        </td>
+        <td>
+          <textarea id="token_customsvg_input_back"
+            onchange="alterCustomSVGToken(this)"
+          >
+          </textarea>
+        </td>
+      </tr></table>
+      <input id="token_customsvg_input_quantity" class="tokens_quantity"
+        type="number" min="1" max=30" value="1"/>
+      <button id="token_customsvg_button" class="btn modal-close"
+        onclick="token_add(this)">
+        <template id="token_customsvg_prototype">
+        </template>
+        <svg style="display:inline-block;" id="svg_token_customsvg"
+          viewbox="0 0 80 90" width="24" height="24" >
+          <use xlink:href="#token_customsvg_object" />
+        </svg>
+        Create
+      </button>
+    </section>
+    <section>
+    <h3>Examples:</h3>
+    <p>Try pasting these into the box:</p>
+      <table id="token_examples_table" class="frontback_table"><tr>
+        <tr>
+        <td colspan="2">
+        Try this for the front / back in order to create a "poker chip"
+        token that will interact with Dynamic Paper to do things like
+        quickly calculate their sum.
+        </td>
+        </tr>
+        <tr>
+        <td>
+          <pre>
+&lt;circle
+  r=&quot;36&quot; cy=&quot;45&quot; cx=&quot;40&quot;
+  fill=&quot;black&quot;
+/&gt;
+&lt;text x=&quot;24&quot; y=&quot;65&quot;
+  fill=&quot;white&quot;
+  style=&quot;font-size:60px&quot;&gt;
+&lt;tspan&gt;5&lt;/tspan&gt;
+&lt;/text&gt;
+          </pre>
+        </td>
+        <td>
+          <pre>
+&lt;circle
+  r=&quot;36&quot; cy=&quot;45&quot; cx=&quot;40&quot;
+  fill=&quot;white&quot;
+/&gt;
+&lt;text x=&quot;24&quot; y=&quot;65&quot;
+  fill=&quot;black&quot;
+  style=&quot;font-size:60px&quot;&gt;
+&lt;tspan&gt;5&lt;/tspan&gt;
+&lt;/text&gt;
+          </pre>
+        </td>
+        </tr>
+        <tr>
+        <td colspan="2">
+        Standee-style tokens can be made with the 
+        <a href="https://www.heroforge.com/">HeroForge</a>
+        customization tool.
+        <img src="img/standee_hero_front.png" height="32" />
+        </td>
+        </tr>
+        <tr>
+        <td>
+          <pre>
+&lt;image href=&quot;img/standee_hero_front.png&quot;
+  width=&quot;80&quot; height=&quot;100&quot;
+/&gt;
+          </pre>
+        </td>
+        <td>
+          <pre>
+&lt;image href=&quot;img/standee_hero_back.png&quot;
+  width=&quot;80&quot; height=&quot;100&quot;
+/&gt;
+          </pre>
+        </td>
+        </tr>
+      </table>
+    </section>
+    </div>
+  </div>
+
+<!-- END TOKENS =============================================== END TOKENS -->
 
 
 <!-- CONTRIBUTE =============================================== CONTRIBUTE -->

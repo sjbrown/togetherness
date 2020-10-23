@@ -131,6 +131,9 @@ var paper_sum = {
     'Fix': {
       eventName: 'paper_fix',
       applicable: (node) => { return true },
+      handler: function(evt) {
+        paper.fix(evt, this)
+      },
     },
   },
 

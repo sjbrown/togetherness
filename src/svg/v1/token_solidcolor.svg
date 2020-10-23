@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   height="100"
+   width="80"
+   id="token_solidcolor"
+   version="1.1"
+   inkscape:version="0.92.3 (2405546, 2018-03-11)">
+  <defs id="defs4">
+    <filter
+       id="app-filter-colorize"
+       color-interpolation-filters="sRGB">
+      <feColorMatrix
+         id="recolorize-filter-matrix"
+         type="matrix"
+         values="1.0 0.0 0.0 0.0  0.0                  1.0 0.0 0.0 0.0  0.0                  1.0 0.0 0.0 0.0  0.0                  0.0 0.0 0.0 1.0  0.0" />
+    </filter>
+  </defs>
+  <script
+     type="text/javascript"
+     src="js/token.js"
+     data-namespace="token"
+     id="script_token" />
+  <script
+     type="text/javascript"
+     data-namespace="token_solidcolor"
+     id="script_token_solidcolor"><![CDATA[
+
+var token_solidcolor = {
+
+  menu: {
+    'Flip': {
+      eventName: 'flip',
+      otherEvents: ['dblclick'],
+      applicable: (node) => { return true },
+      handler: function(evt) {
+        return token.flip_handler(this)
+      },
+    },
+  },
+
+  initialize: function(elem, prototype) {
+    return token.initialize(elem, prototype)
+  },
+
+}
+
+    ]]></script>
+  <circle
+    id="path_shadow"
+    class="object_shadow"
+    r="37"
+    cx="40"
+    cy="52"
+    style="fill:#000000;fill-opacity:0.50;"
+  />
+  <g
+     filter="url(#app-filter-colorize)"
+     id="layer1">
+  <circle
+    id="dark_circle"
+    r="36"
+    cx="40"
+    cy="51"
+    style="opacity:1;fill:#111111;fill-opacity:1;stroke:#000000;stroke-width:1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.98188405"
+  />
+  <circle
+    id="light_circle"
+    r="36"
+    cy="45"
+    cx="40"
+    style="opacity:1;fill:#444444;fill-opacity:1"
+  />
+  </g>
+  <circle
+     id="token_back"
+     r="34"
+     cy="45"
+     cx="40"
+     fill="#a00000"
+     stroke="none"
+     opacity="0.1"
+     />
+  <circle
+     id="token_front"
+     r="34"
+     cy="45"
+     cx="40"
+     fill="#300030"
+     stroke="none"
+     />
+</svg>
