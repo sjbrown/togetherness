@@ -6,7 +6,7 @@
    xmlns:xlink="http://www.w3.org/1999/xlink"
    height="100"
    width="80"
-   id="token_image"
+   id="token_customsvg"
    version="1.1"
    >
   <defs id="defs4">
@@ -16,7 +16,10 @@
       <feColorMatrix
          id="recolorize-filter-matrix"
          type="matrix"
-         values="1.0 0.0 0.0 0.0  0.0                  1.0 0.0 0.0 0.0  0.0                  1.0 0.0 0.0 0.0  0.0                  0.0 0.0 0.0 1.0  0.0" />
+         values="1.0 0.0 0.0 0.0  0.0
+                 1.0 0.0 0.0 0.0  0.0
+                 1.0 0.0 0.0 0.0  0.0
+                 0.0 0.0 0.0 1.0  0.0" />
     </filter>
   </defs>
   <script
@@ -26,10 +29,10 @@
      id="script_token" />
   <script
      type="text/javascript"
-     data-namespace="token_image"
-     id="script_token_image"><![CDATA[
+     data-namespace="token_customsvg"
+     id="script_token_customsvg"><![CDATA[
 
-var token_image = {
+var token_customsvg = {
 
   menu: {
     'Flip': {
@@ -56,34 +59,21 @@ var token_image = {
     r="37"
     cx="40"
     cy="52"
-    style="fill:#000000;fill-opacity:0.50;"
+    style="fill:#000000;fill-opacity:0.20;"
   />
-
-  <g
-     filter="url(#app-filter-colorize)"
-     id="layer1">
-  <circle
-    id="dark_circle"
-    r="36" cx="40" cy="51"
-    style="opacity:1;fill:#111111;fill-opacity:1;stroke:#000000;stroke-width:1;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.98188405"
-  />
-  <circle
-    id="light_circle"
-    r="36" cy="45" cx="40"
-    style="opacity:1;fill:#444444;fill-opacity:1"
-  />
-  </g>
 
   <g
      class="token_face"
      id="token_back"
      width="80"
      height="100"
-     opacity="0.1"
   >
-  <g>
-    <rect x="30" y="10" width="30" height="33" fill="#a0a000" stroke="#00c000" />
-  </g>
+    <g>
+
+<image href="img/standee_hero_front.png"
+  width="80" height="100"
+/>
+    </g>
   </g>
 
   <g
@@ -92,8 +82,19 @@ var token_image = {
      width="80"
      height="100"
   >
-  <g>
-    <rect x="0" y="0" width="30" height="33" fill="#00a0c0" stroke="#c0c000" />
-  </g>
+    <g>
+
+<circle
+  r="36" cy="45" cx="40"
+  fill="white"
+/>
+<text x="24" y="65"
+  fill="black"
+  style="font-size:60px">
+<tspan>5</tspan>
+</text>
+
+    </g>
+
   </g>
 </svg>

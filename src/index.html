@@ -2514,8 +2514,20 @@ function token_add(buttonEl) {
     <h3>Examples:</h3>
     <p>Try pasting these into the box:</p>
       <table id="token_examples_table" class="frontback_table"><tr>
+        <tr>
+        <td colspan="2">
+        Try this for the front / back in order to create a "poker chip"
+        token that will interact with Dynamic Paper to do things like
+        quickly calculate their sum.
+        </td>
+        </tr>
+        <tr>
         <td>
           <pre>
+&lt;circle
+  r=&quot;36&quot; cy=&quot;45&quot; cx=&quot;40&quot;
+  fill=&quot;black&quot;
+/&gt;
 &lt;text x=&quot;24&quot; y=&quot;65&quot;
   fill=&quot;white&quot;
   style=&quot;font-size:60px&quot;&gt;
@@ -2525,26 +2537,43 @@ function token_add(buttonEl) {
         </td>
         <td>
           <pre>
-&lt;text x=&quot;24&quot; y=&quot;65&quot;
+&lt;circle
+  r=&quot;36&quot; cy=&quot;45&quot; cx=&quot;40&quot;
   fill=&quot;white&quot;
+/&gt;
+&lt;text x=&quot;24&quot; y=&quot;65&quot;
+  fill=&quot;black&quot;
   style=&quot;font-size:60px&quot;&gt;
 &lt;tspan&gt;5&lt;/tspan&gt;
 &lt;/text&gt;
           </pre>
         </td>
-      </tr></table>
-    <pre>
-&lt;defs&gt;
-  &lt;pattern id=&quot;pattern1&quot;
-    x=&quot;10&quot; y=&quot;10&quot; width=&quot;20&quot; height=&quot;20&quot;
-    patternUnits=&quot;userSpaceOnUse&quot;&gt;
-    &lt;circle cx=&quot;10&quot; cy=&quot;10&quot; r=&quot;10&quot; style=&quot;stroke: none; fill: #0000ff&quot; /&gt;
-  &lt;/pattern&gt;
-&lt;/defs&gt;
-
-&lt;rect x=&quot;10&quot; y=&quot;10&quot; width=&quot;100&quot; height=&quot;100&quot;
-    style=&quot;stroke: #000000; fill: url(#pattern1);&quot; /&gt;
-    </pre>
+        </tr>
+        <tr>
+        <td colspan="2">
+        Standee-style tokens can be made with the 
+        <a href="https://www.heroforge.com/">HeroForge</a>
+        customization tool.
+        <img src="img/standee_hero_front.png" height="32" />
+        </td>
+        </tr>
+        <tr>
+        <td>
+          <pre>
+&lt;image href=&quot;img/standee_hero_front.png&quot;
+  width=&quot;80&quot; height=&quot;100&quot;
+/&gt;
+          </pre>
+        </td>
+        <td>
+          <pre>
+&lt;image href=&quot;img/standee_hero_back.png&quot;
+  width=&quot;80&quot; height=&quot;100&quot;
+/&gt;
+          </pre>
+        </td>
+        </tr>
+      </table>
     </section>
     </div>
   </div>
