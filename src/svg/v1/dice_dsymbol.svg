@@ -87,18 +87,18 @@ var dsymbol = {
     return arr.length
   },
 
-  initialize: function(elem, serializedState) {
+  initialize: function(elem, prototype) {
     console.log('hooking up handlers for ', elem)
-    console.log('symbols here!', serializedState.faces)
+    console.log('symbols here!', prototype.faces)
 
-    if (! /^.( .)*$/.test(serializedState.faces) ) {
+    if (! /^.( .)*$/.test(prototype.faces) ) {
       console.error('Faces are not properly formatted!')
       alert('Faces are not properly formatted!')
       return
     }
 
     recordTspan = elem.querySelector('#tspan_faces')
-    recordTspan.textContent = serializedState.faces
+    recordTspan.textContent = prototype.faces
 
     showTspan = elem.querySelector('#tspan_value')
     showTspan.textContent = dsymbol.get_face(elem, -1)
@@ -114,11 +114,6 @@ var dsymbol = {
       },
     },
   },
-
-  getSerializerHints: function(elem) {
-    return ['#tspan_faces', '#tspan_value']
-  },
-
 
 }
 

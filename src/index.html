@@ -131,7 +131,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
   ui.initializeDragSelectBox(viewport.node)
 
   var uiObserver = new MutationObserver((mutations) => {
-    console.log('---------------mutation obs', mutations)
+    // console.log('---------------mutation obs', mutations)
     ui.updateButtons()
   })
   uiObserver.observe(layer_ui.node, {
@@ -157,7 +157,7 @@ function zoom(inOrOut) {
   }
   let oldZoom = currentZoom
   currentZoom = zooms[currentZoom][inOrOut];
-  console.log("c", currentZoom, "o", oldZoom)
+  // console.log("c", currentZoom, "o", oldZoom)
   if (oldZoom === currentZoom) {
     return
   }
@@ -1124,7 +1124,6 @@ function ui_popup_properties(el, dialog_specifier) {
       });
 
       ui.popdown_dialog('dialog_properties')
-      //net_fire({ type: 'change', data: serialize(target) })
   });
 
   fieldset = byId('properties_fields')
@@ -1199,7 +1198,7 @@ function ui_popup_properties(el, dialog_specifier) {
     <script>
 
 function add_dtype(dtype, inputEl, center, serializedState) {
-  console.log("add dtype", dtype, 'state', serializedState)
+  // console.log("add dtype", dtype, 'state', serializedState)
   num = parseInt(inputEl.value) || 0
   for( var i=0; i < num; i++ ) {
     add_object(
@@ -1569,7 +1568,7 @@ function ui_submit_svgfile(evt) {
 
   _import_foreign_svg(body, '')
   .then(nest => {
-    console.log('got nest', nest)
+    // console.log('got nest', nest)
     add_fresh_svg(nest.node)
     layer_objects.node.appendChild(nest.node)
     ui.hookup_ui(nest.node)
@@ -1577,7 +1576,6 @@ function ui_submit_svgfile(evt) {
     ui.hookup_menu_actions(nest.node)
 
     ui.popdown_dialog('dialog_svgfile')
-    //net_fire({ type: 'create', data: serialize(nest.node) })
   })
 }
 
@@ -1617,7 +1615,7 @@ function ui_submit_svgfile(evt) {
       onInput="textareaFit(this)"></textarea>
 <script>
 function textareaFit(e) {
-  console.log(e)
+  // console.log(e)
   const tx = document.querySelector('#svgfile_body')
   tx.style.height = 'auto'
   tx.style.height = Math.max(40, Math.min(200, tx.scrollHeight))
@@ -1658,7 +1656,7 @@ myThing = {
       handler: function(evt) {
         // Note - "handler" must be written as a traditional function,
         // not an arrow-function, so that "this" is bound correctly
-        console.log('Changing color!')
+        // console.log('Changing color!')
         this.querySelector('rect').style['fill'] = '#00ff00'
       },
     },
@@ -1741,7 +1739,6 @@ function ui_submit_rect(evt) {
     fill: color,
   });
   ui.popdown_dialog('dialog_rect')
-  //net_fire({ type: 'create', data: serialize(nest) })
 }
 
     </script>
@@ -1920,7 +1917,6 @@ function ui_submit_text(evt) {
   }
   var text = make_text({ fill: color }, c);
   ui.popdown_dialog('dialog_text')
-  //net_fire({ type: 'create', data: serialize(text) })
 }
 
     </script>
@@ -2016,7 +2012,6 @@ function ui_submit_ellipse(evt) {
     fill: color,
   });
   ui.popdown_dialog('dialog_ellipse')
-  //net_fire({ type: 'create', data: serialize(nest) })
 }
 
     </script>
@@ -2323,9 +2318,9 @@ function alterCustomSVGToken() {
     placeholderEl.svg('<g>' + frontData + '</g>')
     newFrontGroup = placeholderEl.node.lastElementChild
     newFrontGroup.remove()
-    console.log('nfg', newFrontGroup)
+    // console.log('nfg', newFrontGroup)
     front_g = SVG.adopt(p.querySelector('#token_front'))
-    console.log('removing', front_g.node.lastElementChild)
+    // console.log('removing', front_g.node.lastElementChild)
     front_g.node.lastElementChild.remove()
     front_g.node.appendChild(newFrontGroup)
 
@@ -2333,9 +2328,9 @@ function alterCustomSVGToken() {
     placeholderEl.svg('<g>' + backData + '</g>')
     newBackGroup = placeholderEl.node.lastElementChild
     newBackGroup.remove()
-    console.log('nbg', newBackGroup)
+    // console.log('nbg', newBackGroup)
     backSVG = SVG.adopt(p.querySelector('#token_back'))
-    console.log('removing', backSVG.node.lastElementChild)
+    // console.log('removing', backSVG.node.lastElementChild)
     backSVG.node.lastElementChild.remove()
     backSVG.node.appendChild(newBackGroup)
 
