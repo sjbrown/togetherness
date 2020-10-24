@@ -125,10 +125,6 @@ var sw_force = {
     },
   },
 
-  getSerializerHints: function(elem) {
-    return ['g']
-  },
-
   getValue: function(elem) {
     console.log('getValue force', elem)
     let val = []

@@ -73,10 +73,6 @@ var fudge_d6 = {
     },
   },
 
-  getSerializerHints: function(elem) {
-    return ['tspan']
-  },
-
 }
 
     ]]></script>

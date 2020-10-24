@@ -150,10 +150,6 @@ var dn = {
     }
   },
 
-  getSerializeHints: function(elem) {
-    return ['#tspan_num_faces', '#tspan_numeric_value']
-  },
-
 }
 
     ]]></script>

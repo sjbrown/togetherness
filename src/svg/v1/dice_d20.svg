@@ -120,10 +120,6 @@ var d20 = {
     )
   },
 
-  getSerializerHints: function(elem) {
-    return ['tspan']
-  },
-
 }
 
     ]]></script>

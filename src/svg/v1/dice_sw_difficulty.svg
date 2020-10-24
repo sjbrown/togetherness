@@ -88,10 +88,6 @@ var sw_difficulty = {
     },
   },
 
-  getSerializerHints: function(elem) {
-    return ['g']
-  },
-
   getValue: function(elem) {
     console.log('getValue', elem)
     let val = []

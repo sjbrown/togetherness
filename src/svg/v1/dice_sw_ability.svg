@@ -90,10 +90,6 @@ var sw_ability = {
     },
   },
 
-  getSerializerHints: function(elem) {
-    return ['g']
-  },
-
   getValue: function(elem) {
     console.log('getValue', elem)
     let val = []

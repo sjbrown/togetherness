@@ -54,25 +54,21 @@
   <script
      type="text/javascript"
      data-namespace="dsymbol"
-     id="script6158"><![CDATA[
+     id="dsymbolscript"><![CDATA[
 var dsymbol = {
 
   roll_handler: function(evt, elem) {
-    console.log('roll handle!', elem.id, evt)
     var tspan = elem.querySelector('#tspan_value')
     var newNum = randDiceString(
       0, dsymbol.num_symbols(elem) - 1
     )
-    console.log('newnum, ', newNum)
     ui.do_animate(elem, {animation: 'rollOut'})
-    tspan.textContent = newNum
-    })
+    tspan.textContent = dsymbol.get_face(elem, newNum)
   },
 
   get_face: function(elem, index) {
     console.log('get_face', elem.id, index)
     t = elem.querySelector('#tspan_faces').textContent
-    console.log('t', t)
     arr = t.split(/\s/)
     if (index < 0) {
       index = arr.length + index
