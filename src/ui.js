@@ -301,6 +301,7 @@ const ui = {
     function addNewButton(title, applicableFn, svgNode, handler) {
       let btn = template.content.firstElementChild.cloneNode(true)
       btn.id = svgNode.id + title
+      btn.dataset.eventTitle = title
       btn.innerText = title
       btn.classList.add('cloned-button')
       if (!applicableFn(svgNode)) {
@@ -310,7 +311,10 @@ const ui = {
         btn: btn,
         clickFns: [
           (evt) => {
-            console.log('LOG user', myClientId, 'does', evt, 'on', svgNode)
+            console.log('LOG user', myClientId,
+              'does', evt.target.dataset.eventTitle, // evt,
+              'on', svgNode.id, svgNode.dataset.appUrl,
+            )
             handler.bind(svgNode)(evt)
           }
         ],

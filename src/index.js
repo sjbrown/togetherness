@@ -200,7 +200,6 @@ async function _import_foreign_svg(body, url) {
   s(nest, 'id', id)
   nest = SVG.adopt(nest)
   nest.attr({
-    'data-app-class': 'nest',
     'data-nest-for': 'svg',
     'data-app-url': url,
     'data-orig-name': origId,
@@ -231,7 +230,7 @@ async function _import_foreign_svg(body, url) {
 function add_fresh_svg(svgElem) {
   // None of the UI is hooked up for the freshly-loaded document
 
-  svgElem.querySelectorAll('[data-app-class]').forEach((subSvg) => {
+  svgElem.querySelectorAll('[data-app-url]').forEach((subSvg) => {
     ui.hookup_ui(subSvg)
     init_with_namespaces(subSvg)
     ui.hookup_menu_actions(subSvg)
