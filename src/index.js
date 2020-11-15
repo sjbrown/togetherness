@@ -120,21 +120,6 @@ function str_to_fn(fname) {
   );
 }
 
-function nodeMap(parent, fn) {
-  // iterate through an SVG element's children like [].map()
-  var retval = [];
-  parent.childNodes.forEach((node) => {
-    if (g(node, 'data-app-class')) {
-      var result = fn(node);
-      if (result) {
-        retval.push(result);
-      }
-    }
-  });
-  return retval;
-}
-
-
 function debugBar(s) {
   if (!DEBUG) { return }
   log = byId('debug_bar_log')
@@ -206,14 +191,15 @@ async function _import_foreign_svg(body, url) {
     ( g(nest, 'y') !== undefined && g(nest, 'y') !== '0' )
   ) {
     console.error('X/Y coords must be "0"', g(nest, 'x'), g(nest, 'y'))
-    alert('X/Y coords must be "0"', g(nest, 'x'))
   }
   var id = 'isvg_' + base32.short_id()
   var origId = g(nest, 'id')
+  if (!url) {
+    url = '#' + origId
+  }
   s(nest, 'id', id)
   nest = SVG.adopt(nest)
   nest.attr({
-    'data-app-class': 'nest',
     'data-nest-for': 'svg',
     'data-app-url': url,
     'data-orig-name': origId,
@@ -244,7 +230,7 @@ async function _import_foreign_svg(body, url) {
 function add_fresh_svg(svgElem) {
   // None of the UI is hooked up for the freshly-loaded document
 
-  svgElem.querySelectorAll('[data-app-class]').forEach((subSvg) => {
+  svgElem.querySelectorAll('[data-app-url]').forEach((subSvg) => {
     ui.hookup_ui(subSvg)
     init_with_namespaces(subSvg)
     ui.hookup_menu_actions(subSvg)
@@ -495,33 +481,40 @@ function add_n_objects_from_prototype(n, prototype, center) {
   }
 }
 
+function add_to_screen(nest, attrs) {
+  setColor(nest.node, (attrs && attrs.color) || getUserColor())
+  if (attrs && attrs.center !== undefined) {
+    let center = spatial.avoidTopLevelCollision(nest, attrs.center, 0)
+    console.log("acent", attrs.center, "cent", center)
+    nest.cx(center[0])
+    nest.cy(center[1])
+  }
+  layer_objects.add(nest)
+  ui.hookup_ui(nest.node)
+  init_with_namespaces(nest.node, attrs && attrs.serializedState)
+  ui.hookup_menu_actions(nest.node)
+  //synced.dirty_add(nest.node) // send the sync before the animation
+  ui.do_animate(nest.node)
+}
+
 var alreadyAddedObjectURLs = {}
 async function add_object(url, attrs) {
   //console.log('add_object', url, attrs)
   let nest = await import_foreign_svg(url)
 
-  let hookup = () => {
-    setColor(nest.node, (attrs && attrs.color) || getUserColor())
-    if (attrs && attrs.center !== undefined) {
-      let center = spatial.avoidTopLevelCollision(nest, attrs.center, 0)
-      nest.cx(center[0])
-      nest.cy(center[1])
-    }
-    layer_objects.add(nest)
-    ui.hookup_ui(nest.node)
-    init_with_namespaces(nest.node, attrs && attrs.serializedState)
-    ui.hookup_menu_actions(nest.node)
-    //synced.dirty_add(nest.node) // send the sync before the animation
-    ui.do_animate(nest.node)
-  }
-
   // Allow 400 miliseconds for the scripts to load
   if (alreadyAddedObjectURLs[url]) {
-    hookup()
+    add_to_screen(nest, attrs)
   } else {
-    setTimeout(hookup, 400)
+    setTimeout(add_to_screen.bind(null, nest, attrs), 400)
   }
   alreadyAddedObjectURLs[url] = 1
+}
+
+async function clone_object(el, attrs) {
+  console.log("clone_object", el.id, attrs)
+  let nest = await _import_foreign_svg(el.outerHTML, el.dataset.appUrl || '')
+  add_to_screen(nest, attrs)
 }
 
 function add_object_from_payload(payload) {
@@ -539,6 +532,7 @@ function add_object_from_payload(payload) {
     return nest.node
   })
 }
+
 
 function pop_from_parent(childElem) {
   // console.log('pop child', childElem.id, 'from_parent')

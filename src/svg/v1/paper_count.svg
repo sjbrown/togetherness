@@ -168,14 +168,6 @@ var paper_count = {
       detail: { 'ruleElemId': elem.id },
     }))
   },
-  serialize: function(elem) {
-    value = elem.querySelector('tspan:last-of-type').textContent
-    return {value: value}
-  },
-
-  deserialize: function(elem, payload) {
-    elem.querySelector('tspan:last-of-type').textContent = payload.value
-  },
 
 }
 

@@ -92,10 +92,6 @@ var d12 = {
     )
   },
 
-  getSerializerHints: function(elem) {
-    return ['tspan']
-  },
-
 }
 
     ]]></script>

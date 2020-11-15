@@ -35,12 +35,12 @@ TogetherJSConfig_on_ready = () => {
   el.classList.add('active')
   el.classList.remove('whitebg')
   el.classList.add('bluebg')
-  console.log('NET received ready msg')
+  // console.log('NET received ready msg')
   session = TogetherJS.require('session')
   myClientId = session.clientId;
 
   TogetherJS.hub.on('sync', async (msg) => {
-    console.log('NET received sync msg', msg)
+    // console.log('NET received sync msg', msg)
     setStatus('SYNCING ...')
     objectsObserver.local_mutations_stop() // pause to avoid infinite loop
     uiObserver.local_mutations_stop() // pause to avoid infinite loop
@@ -57,8 +57,8 @@ TogetherJSConfig_on_ready = () => {
     if (syncNeeded) {
       return // just wait for the sync
     }
-    console.log('NET received dirtylayer msg', msg)
-    console.log('NET my client id', myClientId)
+    // console.log('NET received dirtylayer msg', msg)
+    // console.log('NET my client id', myClientId)
     let layerObs = null
     let retval = {}
     if (msg.layerId === 'layer_objects') {
@@ -79,12 +79,12 @@ TogetherJSConfig_on_ready = () => {
   });
 
   TogetherJS.hub.on("togetherjs.hello", (msg) => {
-    console.log('NET HELLO --- received hello msg', msg);
+    // console.log('NET HELLO --- received hello msg', msg);
     push_sync()
   });
 
   TogetherJS.hub.on('sync_needed', (msg) => {
-    console.log('NET sync_needed msg', msg);
+    // console.log('NET sync_needed msg', msg);
     if (msg.data.clientId === myClientId) {
       push_sync()
     }
@@ -178,7 +178,7 @@ function LayerObserver(layerEl) {
       if (mut.target.id === layerId) {
         // ===============================ADDED
         if (mut.addedNodes.length) {
-          console.log('NET *add*', this._layerEl.id)
+          // console.log('NET *add*', this._layerEl.id)
           //console.log('NET', this._layerEl.id, ' added top-level object(s)', mut.addedNodes)
           mut.addedNodes.forEach(el => {
             if(this._dirty.removed[el.id]) {
@@ -193,7 +193,7 @@ function LayerObserver(layerEl) {
         }
         // ===============================REMOVED
         if (mut.removedNodes.length) {
-          console.log('NET *remove*', this._layerEl.id)
+          // console.log('NET *remove*', this._layerEl.id)
           //console.log('NET', this._layerEl.id, ' removed top-level object', mut.removedNodes)
           mut.removedNodes.forEach(el => {
             if(this._dirty.added[el.id]) {
@@ -217,7 +217,7 @@ function LayerObserver(layerEl) {
           //console.log('NET', this._layerEl.id, ' mut.target', mut.target)
           el = mut.target
         }
-        console.log('NET *change*', this._layerEl.id, 'el', el)
+        // console.log('NET *change*', this._layerEl.id, 'el', el)
         if (this._dirty.removed[el.id]) {
           delete this._dirty.removed[el.id]
         }
@@ -269,12 +269,12 @@ const receive_ui = function(msg, layerObs) {
   let retval = {
     syncNeeded: false,
   }
-  console.log("NET receive_ui", msg)
+  // console.log("NET receive_ui", msg)
 
   layerObs.local_mutations_stop() // pause, otherwise infinite loop begins
 
   Object.keys(msg.removed).forEach(id => {
-    console.log("NET removed id", id)
+    // console.log("NET removed id", id)
     if (id === 'drag_select_box') {
       return // skip drag_select_box
     }
@@ -284,35 +284,35 @@ const receive_ui = function(msg, layerObs) {
     }
   })
   Object.keys(msg.added).forEach(id => {
-    console.log("NET added id", id)
+    // console.log("NET added id", id)
     if (id === 'drag_select_box') {
       return // skip drag_select_box
     }
     if (document.getElementById(id)) {
-      console.log("NET ADDED AN ELEMENT I ALREADY HAVE", id)
+      // console.log("NET ADDED AN ELEMENT I ALREADY HAVE", id)
       // this should mean it just got flipped around in order
       // retval.syncNeeded = true
       return
     }
-    console.log("NET adding svg", msg.added[id])
+    // console.log("NET adding svg", msg.added[id])
     layer_ui.svg(msg.added[id])
   })
   Object.keys(msg.changed).forEach(id => {
-    console.log('NET changed id', id)
+    // console.log('NET changed id', id)
     if (id === 'drag_select_box') {
       return // skip drag_select_box
     }
     let existingEl = document.getElementById(id)
-    console.log("NET changed: el is", existingEl)
+    // console.log("NET changed: el is", existingEl)
     if (!existingEl) {
-      console.log("NET CHANGED AN ELEMENT I DONT HAVE", id)
+      // console.log("NET CHANGED AN ELEMENT I DONT HAVE", id)
       retval.syncNeeded = true
       console.error('NET ERROR during receive', id)
     } else {
       let parent_node = SVG.adopt(existingEl.parentNode)
       let new_svg = parent_node.svg(msg.changed[id])
       existingEl.remove()
-      console.log("NET new el is:", new_svg.node)
+      // console.log("NET new el is:", new_svg.node)
       //existingEl.parentNode.replaceChild(new_svg.node, existingEl)
     }
   })
@@ -337,7 +337,7 @@ const receive = function(msg, layerObs) {
   let promises = []
   Object.keys(msg.added).forEach(id => {
     if (document.getElementById(id)) {
-      console.log("NET ADDED AN ELEMENT I ALREADY HAVE", id)
+      console.warn("ADDED AN ELEMENT I ALREADY HAVE", id)
       // this should mean it just got flipped around in order
       // retval.syncNeeded = true
       return
@@ -371,15 +371,14 @@ const receive = function(msg, layerObs) {
   })
   .then(() => {
     promises = []
-    console.log("NET changed", Object.keys(msg.changed).length)
+    // console.log("NET changed", Object.keys(msg.changed).length)
     Object.keys(msg.changed).forEach(id => {
       //console.log('NET el ', id)
       let existingEl = document.getElementById(id)
       //console.log("NET changed: el is", existingEl)
       if (!existingEl) {
-        console.log("NET CHANGED AN ELEMENT I DONT HAVE", id)
-        retval.syncNeeded = true
         console.error('NET el not found', id)
+        retval.syncNeeded = true
         throw new Error('el not found')
       }
       if (existingEl.classList.contains('ghost')) {
@@ -447,6 +446,10 @@ togetherFunctions.on_sync = (msg) => {
     el.remove()
   })
   newTable = newEl.querySelector('#svg_table')
+  return load_new_table(newTable)
+}
+
+async function load_new_table(newTable) {
   console.log('nw tab', newTable)
   /*
   newTable.querySelectorAll('#layer_objects > .draggable-group').forEach((el) => {
@@ -467,7 +470,7 @@ togetherFunctions.on_sync = (msg) => {
   let urlLoop = async() => {
     for (let index = 0; index < nodeList.length; index++) {
       let node = nodeList.item(index)
-      console.log('import_foreign_svg_for_element', node.id, node.dataset.appUrl)
+      // console.log('import_foreign_svg_for_element', node.id, node.dataset.appUrl)
       await import_foreign_svg_for_element(node)
     }
   }
@@ -475,6 +478,11 @@ togetherFunctions.on_sync = (msg) => {
   .then(() => {
     // console.log("NEWT", newTable.outerHTML)
     return newTable.querySelectorAll('#layer_objects > .draggable-group').forEach((el) => {
+      let existingCopy = layer_objects.node.querySelector('#' + el.id)
+      if (existingCopy) {
+        console.warn('document already has', el.id)
+        el.id = el.id + base32.short_id()
+      }
       el.remove()
       /*
        * WHY WHY WHY
@@ -483,7 +491,6 @@ togetherFunctions.on_sync = (msg) => {
        */
       // console.log("Making new svg for ", el.id)
       let s = el.outerHTML
-      console.log("Deserialized", el.id, el.classList)
       layer_objects.svg(s)
       nestEl = layer_objects.node.querySelector('#' + el.id)
       // console.log("necg", nestEl.querySelector('.contents_group').outerHTML)
@@ -498,18 +505,17 @@ togetherFunctions.on_sync = (msg) => {
   })
   .then(() => {
     return document.querySelectorAll('#layer_ui > svg').forEach((el) => {
-      console.log('layer-ui examining', el)
+      // console.log('layer-ui examining', el)
       if (!el.classList.contains('owner-' + ui.escapedClientId())) {
-      console.log('layer-ui removig', el)
+      // console.log('layer-ui removig', el)
         el.remove()
       }
     })
     return newTable.querySelectorAll('#layer_ui > .draggable-group').forEach((el) => {
       el.remove()
       let s = el.outerHTML
-      console.log("Deserialized", el.id, el.classList)
+      // console.log("Deserialized", el.id, el.classList)
       layer_ui.svg(s)
     })
   })
 }
-

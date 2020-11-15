@@ -123,10 +123,6 @@ var sw_boost = {
     },
   },
 
-  getSerializerHints: function(elem) {
-    return ['g']
-  },
-
   getValue: function(elem) {
     console.log('getValue', elem)
     let val = []

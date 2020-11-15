@@ -90,10 +90,6 @@ var d8 = {
     )
   },
 
-  getSerializerHints: function(elem) {
-    return ['tspan']
-  },
-
 }
 
     ]]></script>

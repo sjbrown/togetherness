@@ -72,10 +72,8 @@ function initSvgTable(el) {
   layer_ui.addClass('layer')
   layer_ui.addClass('layer_ui')
   gViewport.add(svg_table)
-  makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
 
-  //#synced.init(layer_objects.node)
-  //synced.init(layer_ui.node)
+  makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
   objectsObserver = new LayerObserver(layer_objects.node)
   uiObserver = new LayerObserver(layer_ui.node)
 
@@ -131,7 +129,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
   ui.initializeDragSelectBox(viewport.node)
 
   var uiObserver = new MutationObserver((mutations) => {
-    console.log('---------------mutation obs', mutations)
+    // console.log('---------------mutation obs', mutations)
     ui.updateButtons()
   })
   uiObserver.observe(layer_ui.node, {
@@ -157,7 +155,7 @@ function zoom(inOrOut) {
   }
   let oldZoom = currentZoom
   currentZoom = zooms[currentZoom][inOrOut];
-  console.log("c", currentZoom, "o", oldZoom)
+  // console.log("c", currentZoom, "o", oldZoom)
   if (oldZoom === currentZoom) {
     return
   }
@@ -500,20 +498,11 @@ window.addEventListener('load', () => {
   <div class="collapsible">
 
     <button id="quick_die_button" class="btn btn-small"
-      onclick="quick_die_button_add()"
-      title="Add one die of the most recent type"
+      onclick="ui.clickQuickButton()"
+      title="Clone the selected object"
       >
-      <img src="svg/v1/dice_d6.svg"  height="48" data-serialized-state=""/>
+      <img src="svg/v1/dice_d6.svg"  height="48" />
     </button>
-    <script>
-    function quick_die_button_add() {
-      url = document.querySelector('#quick_die_button img').src
-      add_object( url, {
-        'center': [100, 100],
-        'color': getChosenDiceColor(),
-      })
-    }
-    </script>
 
     <div id="dice_button_wrapper">
     <style>
@@ -867,30 +856,12 @@ function ui_popup_dialog_save() {
   <script>
 async function load_svg() {
   textarea = byId('textarea_load_input')
-  let table = byId('svg_table')
-
-  newDoc = new DOMParser().parseFromString(textarea.value, 'image/svg+xml')
+  let newDoc = new DOMParser().parseFromString(textarea.value, 'image/svg+xml')
   if (newDoc.firstChild.id !== 'svg_table') {
     alert('Save file corrupted!\n(Did you intend to add an SVG doc with the Other menu?)')
     return
   }
-  //defanged = domJSON.toJSON(newDoc.firstChild)
-  //docFragment = domJSON.toDOM(defanged)
-  table.parentNode.replaceChild(newDoc.firstChild, table)
-  table = byId('svg_table')
-
-  initSvgTable(table)
-  table  = byId('svg_table')
-
-  // Async stuff happens here, so iterate with an old school for() loop
-  nl = table .querySelectorAll('[data-app-url]')
-  for(var i=0; i < nl.length; i ++) {
-    elem = nl[i]
-    await import_foreign_svg(elem.dataset.appUrl)
-  }
-
-  add_fresh_svg(table)
-
+  load_new_table(newDoc.firstChild)
   return ui.popdown_dialog('dialog_load')
 }
 function ui_popup_dialog_load() {
@@ -1124,7 +1095,6 @@ function ui_popup_properties(el, dialog_specifier) {
       });
 
       ui.popdown_dialog('dialog_properties')
-      //net_fire({ type: 'change', data: serialize(target) })
   });
 
   fieldset = byId('properties_fields')
@@ -1199,7 +1169,7 @@ function ui_popup_properties(el, dialog_specifier) {
     <script>
 
 function add_dtype(dtype, inputEl, center, serializedState) {
-  console.log("add dtype", dtype, 'state', serializedState)
+  // console.log("add dtype", dtype, 'state', serializedState)
   num = parseInt(inputEl.value) || 0
   for( var i=0; i < num; i++ ) {
     add_object(
@@ -1567,9 +1537,9 @@ function ui_submit_svgfile(evt) {
     body = textarea.value
   }
 
-  _import_foreign_svg(body, '')
+  _import_foreign_svg(body)
   .then(nest => {
-    console.log('got nest', nest)
+    // console.log('got nest', nest)
     add_fresh_svg(nest.node)
     layer_objects.node.appendChild(nest.node)
     ui.hookup_ui(nest.node)
@@ -1577,7 +1547,6 @@ function ui_submit_svgfile(evt) {
     ui.hookup_menu_actions(nest.node)
 
     ui.popdown_dialog('dialog_svgfile')
-    //net_fire({ type: 'create', data: serialize(nest.node) })
   })
 }
 
@@ -1617,7 +1586,7 @@ function ui_submit_svgfile(evt) {
       onInput="textareaFit(this)"></textarea>
 <script>
 function textareaFit(e) {
-  console.log(e)
+  // console.log(e)
   const tx = document.querySelector('#svgfile_body')
   tx.style.height = 'auto'
   tx.style.height = Math.max(40, Math.min(200, tx.scrollHeight))
@@ -1641,7 +1610,8 @@ function textareaFit(e) {
   <h3>Examples:</h3>
   <p>Try pasting this into the box:</p>
   <pre>
-&lt;svg x="0" y="0" width="100" height="100"&gt;
+&lt;svg xmlns="http://www.w3.org/2000/svg"
+  x="0" y="0" width="100" height="100"&gt;
   &lt;rect x="25" y="25" width="50" height="50" style="fill:#ff0000" /&gt;
   &lt;script
     type="text/javascript"
@@ -1658,7 +1628,7 @@ myThing = {
       handler: function(evt) {
         // Note - "handler" must be written as a traditional function,
         // not an arrow-function, so that "this" is bound correctly
-        console.log('Changing color!')
+        // console.log('Changing color!')
         this.querySelector('rect').style['fill'] = '#00ff00'
       },
     },
@@ -1697,9 +1667,10 @@ var rect_verbs = {
 
 function make_rect(attrs) {
   var rect = layer_objects.rect()
+  let sid = base32.short_id()
   rect.attr(Object.assign({
-    'data-app-class': 'rect',
-    id: 'rect_' + base32.short_id(),
+    'data-app-url': '#rect_' + sid,
+    id: 'rect_' + sid,
     rx: 0,
     ry: 0,
     width: 100,
@@ -1713,7 +1684,7 @@ function make_rect(attrs) {
 
   var nest = layer_objects.element('svg', SVG.Container)
   nest.attr(Object.assign({
-    'data-app-class': 'nest',
+    'data-app-url': '#nest',
     'id': 'nest_' + rect.attr('id'), // special ID
     'data-nest-for': 'rect',
     'width': rect.rbox().width,
@@ -1741,7 +1712,6 @@ function ui_submit_rect(evt) {
     fill: color,
   });
   ui.popdown_dialog('dialog_rect')
-  //net_fire({ type: 'create', data: serialize(nest) })
 }
 
     </script>
@@ -1790,7 +1760,7 @@ function ui_submit_image(evt) {
     xmlns:xlink="http://www.w3.org/1999/xlink">
     <image href="${url}" height="${h}" width="${w}"/>
     </svg>
-  `, '')
+  `)
   .then(nest => {
     add_fresh_svg(nest.node)
     layer_objects.node.appendChild(nest.node)
@@ -1857,9 +1827,10 @@ function make_text(attrs, content) {
   var padding = 8
   var text = layer_objects.plain('')
   var tspan = text.tspan(content)
+  let sid = base32.short_id()
   text.attr(Object.assign({
-    'data-app-class': 'text',
-    id: 'text_' + base32.short_id(),
+    'data-app-url': '#text_' + sid,
+    id: 'text_' + sid,
     fill: '#000000',
     stroke: 'black',
     x: 0,
@@ -1890,7 +1861,7 @@ function make_text(attrs, content) {
 
   var nest = layer_objects.element('svg', SVG.Container)
   nest.attr(Object.assign({
-    'data-app-class': 'nest',
+    'data-app-url': '#nest',
     'id': 'nest_' + text.attr('id'), // special ID
     'data-nest-for': 'text',
     x: 0,
@@ -1920,7 +1891,6 @@ function ui_submit_text(evt) {
   }
   var text = make_text({ fill: color }, c);
   ui.popdown_dialog('dialog_text')
-  //net_fire({ type: 'create', data: serialize(text) })
 }
 
     </script>
@@ -1968,10 +1938,11 @@ var ellipse_verbs = {
 }
 
 function make_ellipse(attrs) {
-  var ellipse = layer_objects.ellipse()
+  let ellipse = layer_objects.ellipse()
+  let sid = base32.short_id()
   ellipse.attr(Object.assign({
-    'data-app-class': 'ellipse',
-    id: 'ellipse_' + base32.short_id(),
+    'data-app-url': '#ellipse_' + sid,
+    id: 'ellipse_' + sid,
     rx: 100,
     ry: 50,
     cx: 50,
@@ -1985,7 +1956,7 @@ function make_ellipse(attrs) {
 
   var nest = layer_objects.element('svg', SVG.Container)
   nest.attr(Object.assign({
-    'data-app-class': 'nest',
+    'data-app-url': '#nest_' + sid,
     'id': 'nest_' + ellipse.attr('id'), // special ID
     'data-nest-for': 'ellipse',
     'width': ellipse.rbox().width,
@@ -2016,7 +1987,6 @@ function ui_submit_ellipse(evt) {
     fill: color,
   });
   ui.popdown_dialog('dialog_ellipse')
-  //net_fire({ type: 'create', data: serialize(nest) })
 }
 
     </script>
@@ -2323,9 +2293,9 @@ function alterCustomSVGToken() {
     placeholderEl.svg('<g>' + frontData + '</g>')
     newFrontGroup = placeholderEl.node.lastElementChild
     newFrontGroup.remove()
-    console.log('nfg', newFrontGroup)
+    // console.log('nfg', newFrontGroup)
     front_g = SVG.adopt(p.querySelector('#token_front'))
-    console.log('removing', front_g.node.lastElementChild)
+    // console.log('removing', front_g.node.lastElementChild)
     front_g.node.lastElementChild.remove()
     front_g.node.appendChild(newFrontGroup)
 
@@ -2333,9 +2303,9 @@ function alterCustomSVGToken() {
     placeholderEl.svg('<g>' + backData + '</g>')
     newBackGroup = placeholderEl.node.lastElementChild
     newBackGroup.remove()
-    console.log('nbg', newBackGroup)
+    // console.log('nbg', newBackGroup)
     backSVG = SVG.adopt(p.querySelector('#token_back'))
-    console.log('removing', backSVG.node.lastElementChild)
+    // console.log('removing', backSVG.node.lastElementChild)
     backSVG.node.lastElementChild.remove()
     backSVG.node.appendChild(newBackGroup)
 

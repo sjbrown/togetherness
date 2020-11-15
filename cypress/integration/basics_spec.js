@@ -62,7 +62,7 @@ describe('One d6', () => {
   it('Pops up the modal', () => {
     cy.visit('/')
 
-    cy.get('#svg_table svg').should('not.be.visible')
+    cy.get('#layer_objects svg').should('not.be.visible')
     cy.get('#svg_viewport [data-app-url="svg/v1/dice_d6.svg"]').should('not.be.visible')
 
     cy.contains('Dice').click()
@@ -78,7 +78,7 @@ describe('One d6', () => {
       assert.equal(vp.length, 1)
     })
 
-    cy.get('#svg_table svg').should('be.visible')
+    cy.get('#layer_objects svg').should('be.visible')
     cy.get('#svg_viewport [data-app-url="svg/v1/dice_d6.svg"]').should('be.visible')
 
   });

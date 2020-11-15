@@ -136,7 +136,7 @@ var poker_deck_mobile = {
     card.addClass('card')
     card.addClass('draggable-group')
     card.addClass('c' + cardJSON.rank + human_readable[cardJSON.suit])
-    card.addClass('of_' + deckEl.id)
+    card.node.dataset.homeDeckId = deckEl.id
     card.node.dataset.appNamespaces = ['poker_deck_mobile_card']
 
     card.node.addEventListener('svg_dragstart', (evt) => {
@@ -149,12 +149,12 @@ var poker_deck_mobile = {
   },
 
   generate_deck: function(elem) {
+    console.log('generate_deck with', elem)
     local_doc = SVG.adopt(elem)
     deck = local_doc.group()
     deck.addClass('deck')
     deck.addClass('contents_group')
-    deck_id = 'deck_' + base32.short_id()
-    deck.id(deck_id)
+    deck.id = 'deck_' + base32.short_id()
     local_doc.add(deck)
 
     let template = elem.querySelector('.card_template')
@@ -202,8 +202,6 @@ var poker_deck_mobile = {
 
   initialize: function(elem) {
     this.generate_deck(elem)
-    elem.addEventListener('poker_deck_mobile_flip', this.flip_handler)
-    elem.addEventListener('poker_deck_mobile_reshuffle', this.reshuffle_handler)
 
     //elem.addEventListener('svg_drag', this.drag_handler)
     //elem.addEventListener('svg_drop', this.drop_handler)
@@ -224,31 +222,32 @@ var poker_deck_mobile = {
         }
         return false
       },
+      handler: function() {
+        poker_deck_mobile.flip_handler(this)
+      },
     },
     'Reshuffle': {
       eventName: 'poker_deck_mobile_reshuffle',
       applicable: (dNode) => { return true },
+      handler: function() {
+       console.log('han')
+        poker_deck_mobile.reshuffle_handler(this)
+      },
     },
   },
 
-  flip_handler: function(evt) {
-    let topcard = this.querySelector('.deck .card:last-child')
+  flip_handler: function(elem) {
+    let topcard = elem.querySelector('.deck .card:last-child')
     poker_deck_mobile.flip_card(topcard)
   },
 
-  reshuffle_handler: function(evt) {
-    var deck
-
-    if (evt.target.classList.contains('deck')) {
-      deck = evt.target
-    } else {
-      deck = evt.target.querySelector('.deck')
-    }
-    local_doc = deck.closest('.poker_deck_mobile')
-
+  reshuffle_handler: function(elem) {
+    let cg = elem.querySelector('.contents_group')
     cardArray = []
-    sDeck = SVG.adopt(deck)
-    local_doc.querySelectorAll('.of_' + deck.id).forEach((card) => {
+    sDeck = SVG.adopt(cg)
+    elem.querySelectorAll(
+      `[data-home-deck-id="${cg.id}"]`
+    ).forEach((card) => {
       card.remove()
       cardArray.push(card)
     })
@@ -262,41 +261,37 @@ var poker_deck_mobile = {
 
 
 poker_deck_mobile_card = {
-  initialize: function(elem) {
-    elem.addEventListener('poker_deck_mobile_card_flip', this.flip_handler)
-    elem.addEventListener('poker_deck_mobile_card_return', this.return_handler)
-    elem.addEventListener('dblclick', this.flip_handler)
-  },
-
-  return_handler: function(evt) {
+  return_handler: function(elem) {
     push_to_parent(
-      byId(evt.target.id),
-      byId(evt.target.dataset.deckId),
+      elem,
+      byId(elem.dataset.homeDeckId),
       (cardEl, deckEl) => {
-        s(cardEl, 'data-app-class', null)
         cardEl.classList.add('draggable-group')
         poker_deck_mobile.endeck(SVG.adopt(deckEl), SVG.adopt(cardEl))
       }
     )
   },
 
-  flip_handler: function(evt) {
-    poker_deck_mobile.flip_card(this)
-  },
-
   menu: {
     'Flip': {
       eventName: 'poker_deck_mobile_card_flip',
+      otherEvents: ['dblclick'],
       applicable: (dNode) => { return true },
+      handler: function() {
+        poker_deck_mobile.flip_card(this)
+      },
     },
     'Return to deck': {
       eventName: 'poker_deck_mobile_card_return',
       applicable: (dNode) => {
-        if(document.querySelector('#' + dNode.dataset.deckId)) {
+        if(document.querySelector('#' + dNode.dataset.homeDeckId)) {
           return true
         } else {
           return false
         }
+      },
+      handler: function() {
+        poker_deck_mobile_card.return_handler(this)
       },
     },
   },

@@ -54,25 +54,21 @@
   <script
      type="text/javascript"
      data-namespace="dsymbol"
-     id="script6158"><![CDATA[
+     id="dsymbolscript"><![CDATA[
 var dsymbol = {
 
   roll_handler: function(evt, elem) {
-    console.log('roll handle!', elem.id, evt)
     var tspan = elem.querySelector('#tspan_value')
     var newNum = randDiceString(
       0, dsymbol.num_symbols(elem) - 1
     )
-    console.log('newnum, ', newNum)
     ui.do_animate(elem, {animation: 'rollOut'})
-    tspan.textContent = newNum
-    })
+    tspan.textContent = dsymbol.get_face(elem, newNum)
   },
 
   get_face: function(elem, index) {
     console.log('get_face', elem.id, index)
     t = elem.querySelector('#tspan_faces').textContent
-    console.log('t', t)
     arr = t.split(/\s/)
     if (index < 0) {
       index = arr.length + index
@@ -87,18 +83,18 @@ var dsymbol = {
     return arr.length
   },
 
-  initialize: function(elem, serializedState) {
+  initialize: function(elem, prototype) {
     console.log('hooking up handlers for ', elem)
-    console.log('symbols here!', serializedState.faces)
+    console.log('symbols here!', prototype.faces)
 
-    if (! /^.( .)*$/.test(serializedState.faces) ) {
+    if (! /^.( .)*$/.test(prototype.faces) ) {
       console.error('Faces are not properly formatted!')
       alert('Faces are not properly formatted!')
       return
     }
 
     recordTspan = elem.querySelector('#tspan_faces')
-    recordTspan.textContent = serializedState.faces
+    recordTspan.textContent = prototype.faces
 
     showTspan = elem.querySelector('#tspan_value')
     showTspan.textContent = dsymbol.get_face(elem, -1)
@@ -114,11 +110,6 @@ var dsymbol = {
       },
     },
   },
-
-  getSerializerHints: function(elem) {
-    return ['#tspan_faces', '#tspan_value']
-  },
-
 
 }
 
