@@ -856,32 +856,12 @@ function ui_popup_dialog_save() {
   <script>
 async function load_svg() {
   textarea = byId('textarea_load_input')
-  let table = byId('svg_table')
-
   let newDoc = new DOMParser().parseFromString(textarea.value, 'image/svg+xml')
   if (newDoc.firstChild.id !== 'svg_table') {
     alert('Save file corrupted!\n(Did you intend to add an SVG doc with the Other menu?)')
     return
   }
-  //defanged = domJSON.toJSON(newDoc.firstChild)
-  //docFragment = domJSON.toDOM(defanged)
-  table.parentNode.replaceChild(newDoc.firstChild, table)
-  table = byId('svg_table')
-
-  makeDraggable(SVG.adopt(byId('svg_viewport')), SVG.adopt(table))
-  objectsObserver = new LayerObserver(table.querySelector('#layer_objects'))
-  uiObserver = new LayerObserver(table.querySelector('#layer_ui'))
-
-  // Async stuff happens here, so iterate with an old school for() loop
-  nl = table.querySelectorAll('[data-app-url]')
-  for(var i=0; i < nl.length; i ++) {
-    elem = nl[i]
-    console.log('elem', elem)
-    await import_foreign_svg(elem.dataset.appUrl)
-  }
-
-  add_fresh_svg(table)
-
+  load_new_table(newDoc.firstChild)
   return ui.popdown_dialog('dialog_load')
 }
 function ui_popup_dialog_load() {

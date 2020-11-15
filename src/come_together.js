@@ -446,6 +446,10 @@ togetherFunctions.on_sync = (msg) => {
     el.remove()
   })
   newTable = newEl.querySelector('#svg_table')
+  return load_new_table(newTable)
+}
+
+async function load_new_table(newTable) {
   console.log('nw tab', newTable)
   /*
   newTable.querySelectorAll('#layer_objects > .draggable-group').forEach((el) => {
@@ -474,6 +478,11 @@ togetherFunctions.on_sync = (msg) => {
   .then(() => {
     // console.log("NEWT", newTable.outerHTML)
     return newTable.querySelectorAll('#layer_objects > .draggable-group').forEach((el) => {
+      let existingCopy = layer_objects.node.querySelector('#' + el.id)
+      if (existingCopy) {
+        console.warn('document already has', el.id)
+        el.id = el.id + base32.short_id()
+      }
       el.remove()
       /*
        * WHY WHY WHY
@@ -510,4 +519,3 @@ togetherFunctions.on_sync = (msg) => {
     })
   })
 }
-
