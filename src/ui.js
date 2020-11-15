@@ -1,5 +1,6 @@
 const ui = {
 
+  _quickButtonSVG: null,
   selectBoxPrototype: null,
   selectOpenBoxPrototype: null,
 
@@ -398,9 +399,35 @@ const ui = {
 
   },
 
-  updateQuickButton: (el) => {
-    redDot = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg=='
-    newSrc = el.dataset.appUrl || redDot
+  clickQuickButton: function() {
+    if (!this._quickButtonSVG) {
+      url = document.querySelector('#quick_die_button img').src
+      add_object( url, {
+        'center': [100, 100],
+      })
+      return
+    }
+    qb_svg = SVG.adopt(this._quickButtonSVG)
+    clone_object( this._quickButtonSVG, {
+      'center': [qb_svg.x() + 50, qb_svg.y() + 50],
+    })
+  },
+
+  updateQuickButton: function(el) {
+    this._quickButtonSVG = el
+    placeholder = `data:image/svg+xml;utf8,<svg
+      xmlns="http://www.w3.org/2000/svg" x="0" y="0">
+      <rect x="0" y="0" width="48" height="48" fill="white"/>
+      <rect x="4" y="4" width="40" height="40" fill="black"/>
+      <rect x="23" y="12" width="2" height="24" fill="white"/>
+      <rect x="12" y="23" width="24" height="2" fill="white"/>
+      </svg>
+    `
+    newSrc = el.dataset.appUrl || placeholder
+    if (newSrc[0] === '#') {
+      // TODO make a <use href="..."> tag here
+      newSrc = placeholder
+    }
     document.querySelector('#quick_die_button img').src = newSrc
   },
 
@@ -423,7 +450,7 @@ const ui = {
     }
     var translate = el.transform.baseVal.getItem(0)
     if (el.tagName === 'g') {
-      nodeMap(el, (kid) => {
+      el.querySelectorAll('[data-app-url]').forEach((kid) => {
         s(kid, 'x', translate.matrix.e)
         s(kid, 'y', translate.matrix.f)
       })

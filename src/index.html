@@ -72,10 +72,8 @@ function initSvgTable(el) {
   layer_ui.addClass('layer')
   layer_ui.addClass('layer_ui')
   gViewport.add(svg_table)
-  makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
 
-  //#synced.init(layer_objects.node)
-  //synced.init(layer_ui.node)
+  makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
   objectsObserver = new LayerObserver(layer_objects.node)
   uiObserver = new LayerObserver(layer_ui.node)
 
@@ -500,20 +498,11 @@ window.addEventListener('load', () => {
   <div class="collapsible">
 
     <button id="quick_die_button" class="btn btn-small"
-      onclick="quick_die_button_add()"
+      onclick="ui.clickQuickButton()"
       title="Add one die of the most recent type"
       >
-      <img src="svg/v1/dice_d6.svg"  height="48" data-serialized-state=""/>
+      <img src="svg/v1/dice_d6.svg"  height="48" />
     </button>
-    <script>
-    function quick_die_button_add() {
-      url = document.querySelector('#quick_die_button img').src
-      add_object( url, {
-        'center': [100, 100],
-        'color': getChosenDiceColor(),
-      })
-    }
-    </script>
 
     <div id="dice_button_wrapper">
     <style>
@@ -869,7 +858,7 @@ async function load_svg() {
   textarea = byId('textarea_load_input')
   let table = byId('svg_table')
 
-  newDoc = new DOMParser().parseFromString(textarea.value, 'image/svg+xml')
+  let newDoc = new DOMParser().parseFromString(textarea.value, 'image/svg+xml')
   if (newDoc.firstChild.id !== 'svg_table') {
     alert('Save file corrupted!\n(Did you intend to add an SVG doc with the Other menu?)')
     return
@@ -879,13 +868,15 @@ async function load_svg() {
   table.parentNode.replaceChild(newDoc.firstChild, table)
   table = byId('svg_table')
 
-  initSvgTable(table)
-  table  = byId('svg_table')
+  makeDraggable(SVG.adopt(byId('svg_viewport')), SVG.adopt(table))
+  objectsObserver = new LayerObserver(table.querySelector('#layer_objects'))
+  uiObserver = new LayerObserver(table.querySelector('#layer_ui'))
 
   // Async stuff happens here, so iterate with an old school for() loop
-  nl = table .querySelectorAll('[data-app-url]')
+  nl = table.querySelectorAll('[data-app-url]')
   for(var i=0; i < nl.length; i ++) {
     elem = nl[i]
+    console.log('elem', elem)
     await import_foreign_svg(elem.dataset.appUrl)
   }
 
@@ -1566,7 +1557,7 @@ function ui_submit_svgfile(evt) {
     body = textarea.value
   }
 
-  _import_foreign_svg(body, '')
+  _import_foreign_svg(body)
   .then(nest => {
     // console.log('got nest', nest)
     add_fresh_svg(nest.node)
@@ -1639,7 +1630,8 @@ function textareaFit(e) {
   <h3>Examples:</h3>
   <p>Try pasting this into the box:</p>
   <pre>
-&lt;svg x="0" y="0" width="100" height="100"&gt;
+&lt;svg xmlns="http://www.w3.org/2000/svg"
+  x="0" y="0" width="100" height="100"&gt;
   &lt;rect x="25" y="25" width="50" height="50" style="fill:#ff0000" /&gt;
   &lt;script
     type="text/javascript"
@@ -1787,7 +1779,7 @@ function ui_submit_image(evt) {
     xmlns:xlink="http://www.w3.org/1999/xlink">
     <image href="${url}" height="${h}" width="${w}"/>
     </svg>
-  `, '')
+  `)
   .then(nest => {
     add_fresh_svg(nest.node)
     layer_objects.node.appendChild(nest.node)
