@@ -197,7 +197,7 @@ const ui = {
         return
       }
       let boundHandler = (evt) => {
-        userlog.add({ user: myClientId, event: evt, el: svgEl })
+        userlog.add({ user: myClientId, title: title, event: evt, el: svgEl })
         menuItem.handler.bind(svgEl)(evt)
       }
       eventHandlers[menuItem.eventName] = boundHandler
@@ -224,6 +224,7 @@ const ui = {
     })
 
     let actionMenu = ui.getFullMenuForElement(hoveredEl)
+    let allHandlers = ui.augmented_handlers_for_element(hoveredEl)
     var menu = byId('gamemenu')
     var template = byId('template_menuitem')
     Object.keys(actionMenu).map((title) => {
@@ -246,7 +247,8 @@ const ui = {
           'does', title, // evt,
           'on', hoveredEl.id, hoveredEl.dataset.appUrl,
         )
-        actionMenu[title].handler.bind(hoveredEl)(evt)
+        let handler = allHandlers[actionMenu[title].eventName]
+        handler(evt)
       })
       menu.insertAdjacentElement('beforeend', clone)
     })
