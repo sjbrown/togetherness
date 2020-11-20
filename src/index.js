@@ -233,7 +233,6 @@ function add_fresh_svg(svgElem) {
   svgElem.querySelectorAll('[data-app-url]').forEach((subSvg) => {
     ui.hookup_ui(subSvg)
     init_with_namespaces(subSvg)
-    ui.hookup_menu_actions(subSvg)
   })
 }
 
@@ -475,13 +474,13 @@ function add_n_objects_from_prototype(n, prototype, center) {
     layer_objects.add(nest)
     ui.hookup_ui(nest.node)
     init_with_namespaces(nest.node, prototype)
-    ui.hookup_menu_actions(nest.node)
     newCenter[0] = newCenter[0] + 90
     newCenter[1] = newCenter[1] + 10
   }
 }
 
 function add_to_screen(nest, attrs) {
+  console.log('add_to_screen', attrs)
   setColor(nest.node, (attrs && attrs.color) || getUserColor())
   if (attrs && attrs.center !== undefined) {
     let center = spatial.avoidTopLevelCollision(nest, attrs.center, 0)
@@ -492,7 +491,6 @@ function add_to_screen(nest, attrs) {
   layer_objects.add(nest)
   ui.hookup_ui(nest.node)
   init_with_namespaces(nest.node, attrs && attrs.serializedState)
-  ui.hookup_menu_actions(nest.node)
   //synced.dirty_add(nest.node) // send the sync before the animation
   ui.do_animate(nest.node)
 }
@@ -573,7 +571,6 @@ function push_to_parent(childEl, newParentEl, pushFn) {
       let ns = window[nsName]
       initialize_with_ns(childEl, ns)
     })
-    ui.hookup_menu_actions(childEl)
   } else {
     ui.un_hookup_ui(childEl)
   }

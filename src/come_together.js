@@ -355,7 +355,6 @@ const receive = function(msg, layerObs) {
       .then(() => {
         //console.log("NET finally got foreign svg", id)
         init_with_namespaces(nestEl, nestEl)
-        ui.hookup_menu_actions(nestEl)
         return { status: 'success' }
       })
     )
@@ -497,7 +496,6 @@ async function load_new_table(newTable) {
       // console.log("e cg", el.querySelector('.contents_group').outerHTML)
       ui.hookup_ui(nestEl)
       init_with_namespaces(nestEl, el)
-      ui.hookup_menu_actions(nestEl)
       /*
        * WHY WHY WHY
        */

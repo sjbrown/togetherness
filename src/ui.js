@@ -170,12 +170,16 @@ const ui = {
 
   hookup_ui: (elem) => {
     //console.log("hookup_ui", elem.id)
-    nest = SVG.adopt(elem)
+    let allHandlers = ui.augmented_handlers_for_element(elem)
+    let nest = SVG.adopt(elem)
     nest.on('svg_dragsafe_click', (evt) => {
       // console.log('id', elem.id, 'got click', evt)
       ui.selectElement(elem, evt)
     })
     elem.addEventListener('mouseover', ui.buildRightClickMenu)
+    if (allHandlers['dblclick']) {
+      elem.addEventListener('dblclick', allHandlers['dblclick'])
+    }
   },
 
   un_hookup_ui: (elem) => {
@@ -184,7 +188,7 @@ const ui = {
     nest.off('svg_dragsafe_click')
   },
 
-  event_handlers_for_element: (svgEl) => {
+  augmented_handlers_for_element: (svgEl) => {
     let eventHandlers = {}
     let actionMenu = ui.getFullMenuForElement(svgEl)
     Object.keys(actionMenu).forEach((title) => {
@@ -192,27 +196,18 @@ const ui = {
       if (!menuItem.handler) {
         return
       }
-      eventHandlers[menuItem.eventName] = menuItem.handler
+      let boundHandler = (evt) => {
+        userlog.add({ user: myClientId, event: evt, el: svgEl })
+        menuItem.handler.bind(svgEl)(evt)
+      }
+      eventHandlers[menuItem.eventName] = boundHandler
       if (menuItem.otherEvents) {
         menuItem.otherEvents.forEach(evName => {
-          eventHandlers[evName] = menuItem.handler
+          eventHandlers[evName] = boundHandler
         })
       }
     })
     return eventHandlers
-  },
-
-  hookup_menu_actions: (svgEl) => {
-    //console.log('hookup_menu_actions', svgEl)
-    let allHandlers = ui.event_handlers_for_element(svgEl)
-    Object.entries(allHandlers).forEach(([eventName, handler]) => {
-      // console.log("hooking up", menuItem.eventName, menuItem.handler)
-      let wrapper = function(evt) {
-        console.log('HMU LOG user', myClientId, 'does', evt, 'on', svgEl)
-        handler.bind(svgEl)(evt)
-      }
-      svgEl.addEventListener(eventName, wrapper)
-    })
   },
 
   buildRightClickMenu: function (evt) {
@@ -247,11 +242,15 @@ const ui = {
       s(clone, 'label', uiLabel)
       clone.classList.add('cloned-menuitem')
       clone.addEventListener('click', (evt) => {
-        //console.log('hoveredElement', hoveredEl)
-        evt_fire(actionMenu[title].eventName, hoveredEl, evt)
+        console.log('LOG user', myClientId,
+          'does', title, // evt,
+          'on', hoveredEl.id, hoveredEl.dataset.appUrl,
+        )
+        actionMenu[title].handler.bind(hoveredEl)(evt)
       })
       menu.insertAdjacentElement('beforeend', clone)
     })
+
   },
 
   getFullMenuForElement: function(elem) {
@@ -309,22 +308,14 @@ const ui = {
       }
       buttons[title] = {
         btn: btn,
-        clickFns: [
-          (evt) => {
-            console.log('LOG user', myClientId,
-              'does', evt.target.dataset.eventTitle, // evt,
-              'on', svgNode.id, svgNode.dataset.appUrl,
-            )
-            handler.bind(svgNode)(evt)
-          }
-        ],
+        clickFns: [ handler ],
       }
     }
 
     var i = 0
     focusedNodes.forEach((focusedSVG) => {
       i++
-      let allHandlers = ui.event_handlers_for_element(focusedSVG)
+      let allHandlers = ui.augmented_handlers_for_element(focusedSVG)
       let actionMenu = ui.getFullMenuForElement(focusedSVG)
       // console.log("focusedSVG", focusedSVG.id, allHandlers, actionMenu)
       if (numMarked === 1) {
@@ -344,16 +335,8 @@ const ui = {
 
           if (i === 1) { // the first one sets up the 'buttons' object
             addNewButton(title, actionMenu[title].applicable, focusedSVG, handler)
-          } else {
-            if (title in buttons) {
-              buttons[title].clickFns.push(
-                (evt) => {
-                  // evt_fire(actionMenu[title].eventName, focusedSVG, evt)
-                  console.log('LOG user', myClientId, 'does', evt, 'on', focusedSVG)
-                  handler.bind(focusedSVG)(evt)
-                }
-              )
-            }
+          } else if (title in buttons) {
+            buttons[title].clickFns.push(handler)
           }
         })
         Object.keys(buttons).map((key) => {
@@ -372,7 +355,7 @@ const ui = {
     if (focusedNodes.length > 0 && selectBoxes.length > 0) {
       let sBoxNode = selectBoxes[0]
       addNewButton('Delete', () => { return true }, sBoxNode, (evt) => {
-          console.log('LOG user', myClientId, 'does DELETE on', sBoxNode)
+          userlog.add({ user: myClientId, event: 'DELETE', el: sBoxNode })
           ui.getSelectBoxSelectedElements(sBoxNode).forEach(el => {
             ui.animated_ghost(el, {animation: 'rotateOut'})
             el.remove()

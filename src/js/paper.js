@@ -84,10 +84,9 @@ var paper = {
   roll_handler: function(elem, evt) {
     console.log('paper', elem.id, 'hears roll event', evt)
     paper.visit_contents_group(elem, (s) => {
-      let handler = ui.event_handlers_for_element(s)['die_roll']
-      if (handler) {
-        console.log('LOG user', myClientId, 'explicit die_roll on', s)
-        handler.bind(s)()
+      let die_roll_handler = ui.augmented_handlers_for_element(s)['die_roll']
+      if (die_roll_handler) {
+        die_roll_handler()
       }
     })
     evt_fire('dom_change', elem, null, {})
