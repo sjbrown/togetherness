@@ -111,15 +111,6 @@ function getUserColor() {
   return '#ffffff';
 }
 
-function str_to_fn(fname) {
-  // given a string, return a globally-scoped function
-  return (
-    (window[fname] && typeof window[fname] === 'function')
-    ?  window[fname]
-    : null
-  );
-}
-
 function debugBar(s) {
   if (!DEBUG) { return }
   log = byId('debug_bar_log')
