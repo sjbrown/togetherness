@@ -57,7 +57,7 @@ TogetherJSConfig_on_ready = () => {
     if (syncNeeded) {
       return // just wait for the sync
     }
-    // console.log('NET received dirtylayer msg', msg)
+     console.log('NET received dirtylayer msg', msg)
     // console.log('NET my client id', myClientId)
     let layerObs = null
     let retval = {}
@@ -109,6 +109,10 @@ const setStatus = function(msg) {
 }
 
 const serialized = function(el) {
+  if (typeof(el) === 'string') {
+    // already serialized on an earlier pass
+    return el
+  }
   return el.outerHTML
 }
 
@@ -238,7 +242,7 @@ function LayerObserver(layerEl) {
     window.requestAnimationFrame(this.run.bind(this))
   },
   this.run = function() {
-    //console.log("LayerObserver", this._layerEl.id, 'RUN')
+    // console.log("LayerObserver", this._layerEl.id, 'RUN')
     if(
       Object.keys(this._dirty.removed).length > 0
       ||

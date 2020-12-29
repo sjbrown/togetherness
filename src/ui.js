@@ -157,7 +157,7 @@ const ui = {
 
   unselectAll: () => {
     ui.getSelectBoxes().forEach(el => {
-      console.log("removing", el)
+      // console.log("removing", el)
       if(ui.belongsToPeer(el)) {
         return // skip this peer's select box
       }
@@ -169,7 +169,7 @@ const ui = {
   },
 
   hookup_ui: (elem) => {
-    //console.log("hookup_ui", elem.id)
+    // console.log("hookup_ui", elem.id)
     let allHandlers = ui.augmented_handlers_for_element(elem)
     let nest = SVG.adopt(elem)
     nest.on('svg_dragsafe_click', (evt) => {
@@ -286,7 +286,7 @@ const ui = {
   },
 
   updateButtons: () => {
-     console.log("ui.updateButtons")
+    // console.log("ui.updateButtons")
     let focusedNodes = ui.getMySelectedElements()
     let numMarked = focusedNodes.length
     let buttons = {}
@@ -299,22 +299,28 @@ const ui = {
     })
     header.innerText = 'Select dice by clicking on them; roll by double-clicking; zoom with Ctrl-wheel'
 
-    function addNewButton(title, applicableFn, svgNode, handler) {
+    function addNewButton(title) {
       let btn = template.content.firstElementChild.cloneNode(true)
-      btn.id = svgNode.id + title
+      btn.id = 'button-' + title
       btn.dataset.eventTitle = title
       btn.innerText = title
       btn.classList.add('cloned-button')
-      if (!applicableFn(svgNode)) {
-        btn.disabled = 'disabled'
-      }
       buttons[title] = {
         btn: btn,
-        clickFns: [ handler ],
+        clickFns: [],
       }
     }
+    function attachButton(title, svgNode, handler, applicableFn) {
+      if (buttons[title] === undefined) {
+        addNewButton(title)
+      }
+      if (!applicableFn(svgNode)) {
+        buttons[title].btn.disabled = 'disabled'
+      }
+      buttons[title].clickFns.push(handler)
+    }
 
-    var i = 0
+    let i = 0
     focusedNodes.forEach((focusedSVG) => {
       i++
       let allHandlers = ui.augmented_handlers_for_element(focusedSVG)
@@ -325,7 +331,7 @@ const ui = {
 
         Object.keys(actionMenu).map((title) => {
           let handler = allHandlers[actionMenu[title].eventName]
-          addNewButton(title, actionMenu[title].applicable, focusedSVG, handler)
+          attachButton(title, focusedSVG, handler, actionMenu[title].applicable)
         })
 
         ui.updateQuickButton(focusedSVG)
@@ -336,17 +342,14 @@ const ui = {
           let handler = allHandlers[actionMenu[title].eventName]
 
           if (i === 1) { // the first one sets up the 'buttons' object
-            addNewButton(title, actionMenu[title].applicable, focusedSVG, handler)
+            attachButton(title, focusedSVG, handler, actionMenu[title].applicable)
           } else if (title in buttons) {
-            buttons[title].clickFns.push(handler)
+            attachButton(title, focusedSVG, handler, actionMenu[title].applicable)
           }
         })
+        // Remove any 'verbs' that don't pertain to ALL focused nodes
         Object.keys(buttons).map((key) => {
-          if (
-            key in actionMenu === false
-            ||
-            !actionMenu[key].applicable(focusedSVG)
-          ) {
+          if (actionMenu[key] === undefined) {
             delete buttons[key]
           }
         })
@@ -356,7 +359,10 @@ const ui = {
     let selectBoxes = ui.getSelectBoxes()
     if (focusedNodes.length > 0 && selectBoxes.length > 0) {
       let sBoxNode = selectBoxes[0]
-      addNewButton('Delete', () => { return true }, sBoxNode, (evt) => {
+      attachButton(
+        'Delete',
+        sBoxNode,
+        (evt) => {
           userlog.add({ user: myClientId, event: 'DELETE', el: sBoxNode })
           ui.getSelectBoxSelectedElements(sBoxNode).forEach(el => {
             ui.animated_ghost(el, {animation: 'rotateOut'})
@@ -364,6 +370,7 @@ const ui = {
           })
           ui.removeEmptySelectBoxes()
         },
+        () => { return true },
       )
       buttons['Delete'].btn.accessKey = 'delete'
     }
