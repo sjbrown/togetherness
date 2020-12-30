@@ -481,6 +481,8 @@ async function load_new_table(newTable) {
   .then(() => {
     // console.log("NEWT", newTable.outerHTML)
     return newTable.querySelectorAll('#layer_objects > .draggable-group').forEach((el) => {
+      //console.log('UGH', newTable.querySelectorAll('#layer_objects > .draggable-group'))
+      console.log('processing', el.dataset.appUrl, el.id)
       let existingCopy = layer_objects.node.querySelector('#' + el.id)
       if (existingCopy) {
         console.warn('document already has', el.id)
@@ -506,7 +508,7 @@ async function load_new_table(newTable) {
        */
       svg_table.svg(s)
       el2 = document.querySelector('#svg_table > #' + el.id)
-      console.log('3l2', el2.id)
+      // console.log('el2', el2.id)
       init_with_namespaces(nestEl, el2)
       el2.remove()
       /*

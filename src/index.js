@@ -142,6 +142,7 @@ async function import_foreign_svg_for_element(el) {
     await import_foreign_svg(url)
     seenUrls[url] = true
   }
+  // console.log('done import_f_s_f_e', seenUrls)
 }
 
 
@@ -386,10 +387,11 @@ async function appendDocumentScript(scriptElem, parentElem) {
   s(newScript, 'data-namespace', g(scriptElem, 'data-namespace'))
 
   let alreadyMounted = false
-  ga = byId('gamearea')
-  if (!ga.querySelector(`[data-orig-url="${scriptUrl}"]`)) {
+  let qstring = `#gamearea [data-orig-url="${scriptUrl}"]`
+  // console.log("QUSTRING", qstring)
+  if (!document.querySelector(qstring)) {
     // console.log("appending ", scriptElem.id, '(', scriptUrl, ')')
-    ga.appendChild(newScript)
+    document.querySelector('#gamearea').appendChild(newScript)
   } else {
     alreadyMounted = true
   }
@@ -397,23 +399,24 @@ async function appendDocumentScript(scriptElem, parentElem) {
   scriptElem.remove()
 
   if (alreadyMounted || newScript.textContent.length > 0) {
+    // console.log("Script SHORTING")
     return true
   }
   return new Promise((resolve, reject) => {
     // console.log("making prmise for ", scriptUrl, scriptElem.id)
     newScript.addEventListener('load', () => {
-      // console.log("RESOLVING")
+      // console.log("Script RESOLVING")
       return resolve()
     });
     newScript.addEventListener('error', e => {
-      // console.log("REJECTING")
+      // console.log("Script REJECTING")
       return reject(e.error)
     });
   })
 }
 
 function initialize_with_ns(elem, ns, prototype) {
-   console.log('initialize_with_ns', elem.id, ns)
+  // console.log('initialize_with_ns', elem.id, ns)
   if (ns.initialize) {
     ns.initialize(elem, prototype)
   }
@@ -436,7 +439,7 @@ function initialize_with_prototype(elem, prototype) {
 }
 
 function init_with_namespaces(elem, prototype) {
-   console.log('init_with_namespaces', elem, prototype, getNamespacesForElement(elem))
+  // console.log('init_with_namespaces', elem, prototype, getNamespacesForElement(elem))
   // This assumes import_foreign_svg has already been executed
   // and the svg element has been added to the DOM
   getNamespacesForElement(elem).forEach((nsName) => {

@@ -1,4 +1,3 @@
-console.log('SELECT OPEN BOX')
 var select_open_box = {
 
   getOrigXY: function(elem) {
