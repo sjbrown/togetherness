@@ -473,7 +473,7 @@ async function load_new_table(newTable) {
   let urlLoop = async() => {
     for (let index = 0; index < nodeList.length; index++) {
       let node = nodeList.item(index)
-      // console.log('import_foreign_svg_for_element', node.id, node.dataset.appUrl)
+       console.log('import_foreign_svg_for_element', node.id, node.dataset.appUrl)
       await import_foreign_svg_for_element(node)
     }
   }
@@ -481,7 +481,6 @@ async function load_new_table(newTable) {
   .then(() => {
     // console.log("NEWT", newTable.outerHTML)
     return newTable.querySelectorAll('#layer_objects > .draggable-group').forEach((el) => {
-      console.log('newt', el.dataset.appUrl, el.id)
       let existingCopy = layer_objects.node.querySelector('#' + el.id)
       if (existingCopy) {
         console.warn('document already has', el.id)
