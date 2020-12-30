@@ -293,11 +293,10 @@ const ui = {
     let template = byId('template_object_actions')
 
     let submenu = byId('object_actions')
-    let header = byId('object_actions_header')
     submenu.querySelectorAll('.cloned-button').forEach((btn) => {
       btn.remove()
     })
-    header.innerText = 'Select dice by clicking on them; roll by double-clicking; zoom with Ctrl-wheel'
+    ui.setHeaderText('Select dice by clicking on them; roll by double-clicking; zoom with Ctrl-wheel')
 
     function addNewButton(title) {
       let btn = template.content.firstElementChild.cloneNode(true)
@@ -327,7 +326,7 @@ const ui = {
       let actionMenu = ui.getFullMenuForElement(focusedSVG)
       // console.log("focusedSVG", focusedSVG.id, allHandlers, actionMenu)
       if (numMarked === 1) {
-        header.innerText = g(focusedSVG, 'data-orig-name')
+        ui.setHeaderText(g(focusedSVG, 'data-orig-name'))
 
         Object.keys(actionMenu).map((title) => {
           let handler = allHandlers[actionMenu[title].eventName]
@@ -337,7 +336,7 @@ const ui = {
         ui.updateQuickButton(focusedSVG)
 
       } else { // more than 1
-        header.innerText = numMarked + ' objects selected'
+        ui.setHeaderText(g(numMarked + ' objects selected'))
         Object.keys(actionMenu).map((title) => {
           let handler = allHandlers[actionMenu[title].eventName]
 
@@ -393,6 +392,13 @@ const ui = {
       }
     })
 
+  },
+
+  setHeaderText: function(msg) {
+    msgEl = document.querySelector('#object_actions_header')
+    if (msgEl) {
+      msgEl.textContent = msg
+    }
   },
 
   clickQuickButton: function() {

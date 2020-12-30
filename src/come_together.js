@@ -41,7 +41,7 @@ TogetherJSConfig_on_ready = () => {
 
   TogetherJS.hub.on('sync', async (msg) => {
     // console.log('NET received sync msg', msg)
-    setStatus('SYNCING ...')
+    ui.setHeaderText('SYNCING ...')
     objectsObserver.local_mutations_stop() // pause to avoid infinite loop
     uiObserver.local_mutations_stop() // pause to avoid infinite loop
     if(togetherFunctions.on_sync) {
@@ -50,7 +50,7 @@ TogetherJSConfig_on_ready = () => {
     uiObserver.local_mutations_start() // resume listening
     objectsObserver.local_mutations_start() // resume listening
     syncNeeded = false
-    setStatus('...')
+    ui.setHeaderText('SYNC DONE.')
   });
 
   TogetherJS.hub.on('dirtylayer', async(msg) => {
@@ -74,7 +74,7 @@ TogetherJSConfig_on_ready = () => {
       console.error('NET I am out of sync! sync_needed msg', msg)
       syncNeeded = true
       net_fire({ type: "sync_needed", data: { clientId: msg.clientId } })
-      setStatus('SYNCING...')
+      ui.setHeaderText('SYNCING...')
     }
   });
 
@@ -99,13 +99,6 @@ TogetherJSConfig_on_close = () => {
   el.classList.add('inactive')
   el.classList.remove('bluebg')
   el.classList.add('whitebg')
-}
-
-const setStatus = function(msg) {
-  msgEl = document.querySelector('#object_actions_header')
-  if (msgEl) {
-    msgEl.textContent = msg
-  }
 }
 
 const serialized = function(el) {
