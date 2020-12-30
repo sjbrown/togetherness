@@ -502,6 +502,7 @@ async function load_new_table(newTable) {
       //init_with_namespaces(nestEl, el)
       /*
        * WHY WHY WHY
+       *
        */
       layer_ui.svg(`<svg id="temporary0">${s}</svg>`)
       el2 = layer_ui.node.querySelector('#layer_ui > #temporary0')
