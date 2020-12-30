@@ -145,7 +145,7 @@ async function import_foreign_svg_for_element(el) {
 }
 
 
-function import_foreign_svg(url) {
+function import_foreign_svg(url) { /* RETURNS PROMISE */
   // console.log("import foreign URL", url)
   if (!DEBUG) {
     var answer = confirm('Do you trust the security of '+ url +'?')
@@ -168,7 +168,7 @@ function import_foreign_svg(url) {
   })
 }
 
-async function _import_foreign_svg(body, url) {
+function _import_foreign_svg(body, url) { /* RETURNS PROMISE */
   // console.log("_import_foreign_svg", url)
   var frame = document.createElementNS(SVG.ns, 'svg')
   frame.innerHTML = (
@@ -413,7 +413,7 @@ async function appendDocumentScript(scriptElem, parentElem) {
 }
 
 function initialize_with_ns(elem, ns, prototype) {
-  // console.log('initialize_with_ns', elem.id, ns)
+   console.log('initialize_with_ns', elem.id, ns)
   if (ns.initialize) {
     ns.initialize(elem, prototype)
   }
@@ -436,7 +436,7 @@ function initialize_with_prototype(elem, prototype) {
 }
 
 function init_with_namespaces(elem, prototype) {
-  // console.log('init_with_namespaces', elem, prototype, getNamespacesForElement(elem))
+   console.log('init_with_namespaces', elem, prototype, getNamespacesForElement(elem))
   // This assumes import_foreign_svg has already been executed
   // and the svg element has been added to the DOM
   getNamespacesForElement(elem).forEach((nsName) => {

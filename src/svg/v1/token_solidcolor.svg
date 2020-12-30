@@ -44,10 +44,6 @@ var token_solidcolor = {
     },
   },
 
-  initialize: function(elem, prototype) {
-    return token.initialize(elem, prototype)
-  },
-
 }
 
     ]]></script>

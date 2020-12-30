@@ -481,6 +481,7 @@ async function load_new_table(newTable) {
   .then(() => {
     // console.log("NEWT", newTable.outerHTML)
     return newTable.querySelectorAll('#layer_objects > .draggable-group').forEach((el) => {
+      console.log('newt', el.dataset.appUrl, el.id)
       let existingCopy = layer_objects.node.querySelector('#' + el.id)
       if (existingCopy) {
         console.warn('document already has', el.id)
@@ -499,14 +500,22 @@ async function load_new_table(newTable) {
       // console.log("necg", nestEl.querySelector('.contents_group').outerHTML)
       // console.log("e cg", el.querySelector('.contents_group').outerHTML)
       ui.hookup_ui(nestEl)
-      init_with_namespaces(nestEl, el)
+      //init_with_namespaces(nestEl, el)
+      /*
+       * WHY WHY WHY
+       */
+      layer_ui.svg(`<svg id="temporary0">${s}</svg>`)
+      el2 = layer_ui.node.querySelector('#layer_ui > #temporary0')
+      console.log('3l2', el2.id)
+      init_with_namespaces(nestEl, el2.firstElementChild)
+      el2.remove()
       /*
        * WHY WHY WHY
        */
     })
   })
   .then(() => {
-    return document.querySelectorAll('#layer_ui > svg').forEach((el) => {
+    document.querySelectorAll('#layer_ui > svg').forEach((el) => {
       // console.log('layer-ui examining', el)
       if (!el.classList.contains('owner-' + ui.escapedClientId())) {
       // console.log('layer-ui removig', el)
@@ -521,3 +530,5 @@ async function load_new_table(newTable) {
     })
   })
 }
+
+var el2
