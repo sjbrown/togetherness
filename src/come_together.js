@@ -504,8 +504,8 @@ async function load_new_table(newTable) {
        * WHY WHY WHY
        *
        */
-      layer_ui.svg(s)
-      el2 = document.querySelector('#layer_ui > #' + el.id)
+      svg_table.svg(s)
+      el2 = document.querySelector('#svg_table > #' + el.id)
       console.log('3l2', el2.id)
       init_with_namespaces(nestEl, el2)
       el2.remove()
