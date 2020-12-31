@@ -482,7 +482,6 @@ function add_to_screen(nest, attrs) {
   }
   layer_objects.add(nest)
   init_with_namespaces(nest.node, attrs && attrs.serializedState)
-  //synced.dirty_add(nest.node) // send the sync before the animation
   ui.do_animate(nest.node)
 }
 
@@ -503,6 +502,13 @@ async function add_object(url, attrs) {
 async function clone_object(el, attrs) {
   console.log("clone_object", el.id, attrs)
   let nest = await _import_foreign_svg(el.outerHTML, el.dataset.appUrl || '')
+  let i = 1
+  nest.node.querySelectorAll(`#${nest.node.id} .draggable-group`).forEach((subEl) => {
+    // remove these or the ids will collide
+    //subEl.remove()
+    subEl.id = 'isvg_' + base32.short_id() + i
+    i++
+  })
   add_to_screen(nest, attrs)
 }
 
@@ -562,7 +568,6 @@ function push_to_parent(childEl, newParentEl, pushFn) {
       initialize_with_ns(childEl, ns)
     })
   }
-  //synced.remove(childEl)
   // console.log('c', c.x(), c.y(), 'old p', oldPXY, 'new p', new_p_svg.x(), new_p_svg.y())
   c.x( (c.x() + oldPXY.x) - new_p_svg.x() )
   c.y( (c.y() + oldPXY.y) - new_p_svg.y() )
