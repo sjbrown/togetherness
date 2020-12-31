@@ -197,27 +197,13 @@ var deckahedron_deck = {
 
   initialize: function(elem) {
     this.generate_deck(elem)
-    elem.addEventListener('deckahedron_deck_reshuffle', this.reshuffle_handler)
-    elem.addEventListener('dblclick', this.dblclick_handler)
   },
 
-  menu: {
-    'Reshuffle': {
-      eventName: 'deckahedron_deck_reshuffle',
-      applicable: (dNode) => { return true },
-    },
-  },
-
-  dblclick_handler: function(evt) {
-    let deck = (
-      evt.target.classList.contains('deck')
-      ?
-      evt.target
-      :
-      evt.target.querySelector('.deck')
-    )
+  dblclick_handler: function(evt, elem) {
+    // console.log('elem', elem.id)
+    let deck = elem.querySelector('.deck')
     deckahedron_deck.reset_reshuffle(deck)
-    return lock_selection(evt)
+    return lock_selection(evt, elem)
   },
 
   /*
@@ -227,15 +213,8 @@ var deckahedron_deck = {
   },
   */
 
-  reshuffle_handler: function(evt) {
-    let deck = (
-      evt.target.classList.contains('deck')
-      ?
-      evt.target
-      :
-      evt.target.querySelector('.deck')
-    )
-
+  reshuffle_handler: function(evt, elem) {
+    let deck = elem.querySelector('.deck')
     local_doc = deck.closest('.deckahedron_deck')
 
     cardArray = []
@@ -253,24 +232,37 @@ var deckahedron_deck = {
     deck.style.transform = 'rotate(360deg) rotateY(360deg)'
   },
 
+  menu: {
+    'Reshuffle': {
+      eventName: 'deckahedron_deck_reshuffle',
+      applicable: (dNode) => { return true },
+      handler: function(evt) {
+        deckahedron_deck.reshuffle_handler(evt, this)
+      },
+    },
+    'Fix': {
+      eventName: 'deck_fix',
+      otherEvents: ['dblclick'],
+      applicable: (node) => { return true },
+      handler: function(evt) {
+        deckahedron_deck.dblclick_handler(evt, this)
+      },
+    },
+  },
+
 }
 
 
 deckahedron_deck_card = {
   initialize: function(elem) {
-    elem.addEventListener('deckahedron_deck_card_anvil', this.anvil_handler)
-    elem.addEventListener('deckahedron_deck_card_blades', this.blades_handler)
-    elem.addEventListener('deckahedron_deck_card_crown', this.crown_handler)
-    elem.addEventListener('deckahedron_deck_card_dragon', this.dragon_handler)
-    elem.addEventListener('deckahedron_deck_card_flip', this.flip_handler)
     elem.addEventListener('deckahedron_deck_card_return', this.return_handler)
-    elem.addEventListener('dblclick', this.flip_handler)
   },
 
-  return_handler: function(evt) {
+  return_handler: function(evt, elem) {
+    let deck = byId(elem.dataset.deckId)
     push_to_parent(
-      byId(evt.target.id),
-      byId(evt.target.dataset.deckId),
+      elem,
+      deck,
       (cardEl, deckEl) => {
         s(cardEl, 'data-app-class', null)
         cardEl.classList.add('draggable-group')
@@ -280,42 +272,42 @@ deckahedron_deck_card = {
     )
   },
 
-  anvil_handler: function(evt) {
-    let active_group = deckahedron_deck_card.get_active_group(this)
+  anvil_handler: function(evt, elem) {
+    let active_group = deckahedron_deck_card.get_active_group(elem)
     if (active_group.id !== 'g_anvil') {
       deckahedron_deck_card.toggle_boost(active_group, true)
-      this.querySelector('.card_front').style.transform = 'rotate(180deg)'
-      this.querySelector('.card_back').style.transform = 'rotate(-180deg)'
+      elem.querySelector('.card_front').style.transform = 'rotate(180deg)'
+      elem.querySelector('.card_back').style.transform = 'rotate(-180deg)'
     } else {
       deckahedron_deck_card.toggle_boost(active_group)
     }
   },
-  blades_handler: function(evt) {
-    let active_group = deckahedron_deck_card.get_active_group(this)
+  blades_handler: function(evt, elem) {
+    let active_group = deckahedron_deck_card.get_active_group(elem)
     if (active_group.id !== 'g_blades') {
       deckahedron_deck_card.toggle_boost(active_group, true)
-      this.querySelector('.card_front').style.transform = 'rotate(-90deg)'
-      this.querySelector('.card_back').style.transform = 'rotate(90deg)'
+      elem.querySelector('.card_front').style.transform = 'rotate(-90deg)'
+      elem.querySelector('.card_back').style.transform = 'rotate(90deg)'
     } else {
       deckahedron_deck_card.toggle_boost(active_group)
     }
   },
-  crown_handler: function(evt) {
-    let active_group = deckahedron_deck_card.get_active_group(this)
+  crown_handler: function(evt, elem) {
+    let active_group = deckahedron_deck_card.get_active_group(elem)
     if (active_group.id !== 'g_crown') {
       deckahedron_deck_card.toggle_boost(active_group, true)
-      this.querySelector('.card_front').style.transform = 'rotate(90deg)'
-      this.querySelector('.card_back').style.transform = 'rotate(-90deg)'
+      elem.querySelector('.card_front').style.transform = 'rotate(90deg)'
+      elem.querySelector('.card_back').style.transform = 'rotate(-90deg)'
     } else {
       deckahedron_deck_card.toggle_boost(active_group)
     }
   },
-  dragon_handler: function(evt) {
-    let active_group = deckahedron_deck_card.get_active_group(this)
+  dragon_handler: function(evt, elem) {
+    let active_group = deckahedron_deck_card.get_active_group(elem)
     if (active_group.id !== 'g_dragon') {
       deckahedron_deck_card.toggle_boost(active_group, true)
-      this.querySelector('.card_front').style.transform = ''
-      this.querySelector('.card_back').style.transform = ''
+      elem.querySelector('.card_front').style.transform = ''
+      elem.querySelector('.card_back').style.transform = ''
     } else {
       deckahedron_deck_card.toggle_boost(active_group)
     }
@@ -346,11 +338,11 @@ deckahedron_deck_card = {
     }
   },
 
-  flip_handler: function(evt) {
-    frontY = this.querySelector('.card_front_y')
-    backY = this.querySelector('.card_back_y')
+  flip_handler: function(evt, elem) {
+    frontY = elem.querySelector('.card_front_y')
+    backY = elem.querySelector('.card_back_y')
     parent = frontY.parentElement
-    //console.log('flip', frontY.id, backY.id, parent.id)
+    console.log('flip', frontY.id, backY.id, parent.id)
 
     if (frontY.style.transform && frontY.style.transform.includes('rotateY(180deg)')) {
       frontY.style.transform = 'rotateY(0deg)'
@@ -371,11 +363,17 @@ deckahedron_deck_card = {
       applicable: (dNode) => {
         return navigator.userAgent.toLowerCase().includes('firefox')
       },
+      handler: function(evt) {
+        deckahedron_deck_card.anvil_handler(evt, this)
+      },
     },
     'Blades': {
       eventName: 'deckahedron_deck_card_blades',
       applicable: (dNode) => {
         return navigator.userAgent.toLowerCase().includes('firefox')
+      },
+      handler: function(evt) {
+        deckahedron_deck_card.blades_handler(evt, this)
       },
     },
     'Crown': {
@@ -383,16 +381,26 @@ deckahedron_deck_card = {
       applicable: (dNode) => {
         return navigator.userAgent.toLowerCase().includes('firefox')
       },
+      handler: function(evt) {
+        deckahedron_deck_card.crown_handler(evt, this)
+      },
     },
     'Dragon': {
       eventName: 'deckahedron_deck_card_dragon',
       applicable: (dNode) => {
         return navigator.userAgent.toLowerCase().includes('firefox')
       },
+      handler: function(evt) {
+        deckahedron_deck_card.dragon_handler(evt, this)
+      },
     },
     'Flip': {
       eventName: 'deckahedron_deck_card_flip',
-      applicable: (dNode) => { return true },
+      otherEvents: ['dblclick'],
+      applicable: (node) => { return true },
+      handler: function(evt) {
+        deckahedron_deck_card.flip_handler(evt, this)
+      },
     },
     'Return to deck': {
       eventName: 'deckahedron_deck_card_return',
@@ -402,6 +410,9 @@ deckahedron_deck_card = {
         } else {
           return false
         }
+      },
+      handler: function(evt) {
+        deckahedron_deck_card.return_handler(evt, this)
       },
     },
   },

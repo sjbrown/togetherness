@@ -1,18 +1,18 @@
-console.log('DECK')
-var deck = {
-  initialize: function(elem, prototype) {
-  },
+console.log('CARDDECK')
 
+function pile_offset(index) {
+  return {
+    x: 0.2 * index,
+    y: 0.66 * index,
+  }
+}
+
+var card_deck = {
   visit_contents_group(elem, visitFn) {
     let containedSVGs = elem.querySelectorAll(
       `#${elem.id} > .contents_group > svg`
     )
     containedSVGs.forEach(visitFn)
-  },
-
-  fix: function(evt) {
-    console.log('deck hears fix event', evt)
-    lock_selection(evt)
   },
 
   dragover_handler: function(evt) {
@@ -84,11 +84,11 @@ var deck = {
   },
 
   endeck: function(deck, card) {
-    localDocEl = deck.node.closest('.deck')
+    localDocEl = deck.node.closest('.draggable-group')
     deck_area = localDocEl.querySelector('#g_deck_area')
     deck_area = SVG.adopt(deck_area)
 
-    deck.flip_card_to_back(card.node)
+    card_deck.flip_card_to_back(card.node)
 
     let offset = pile_offset(
       deck.node.querySelectorAll('.card').length
@@ -112,24 +112,44 @@ var deck = {
 
   flip_card: function(cardEl) {
     if (cardEl.lastElementChild.classList.contains('card_back')) {
-      deck.flip_card_to_front(cardEl)
+      card_deck.flip_card_to_front(cardEl)
     } else {
-      deck.flip_card_to_back(cardEl)
+      card_deck.flip_card_to_back(cardEl)
     }
   },
 
   initialize: function(elem) {
-    this.generate_deck(elem)
-    elem.addEventListener('deck_flip', this.flip_handler)
-    elem.addEventListener('deck_reshuffle', this.reshuffle_handler)
-
     //elem.addEventListener('svg_drag', this.drag_handler)
     //elem.addEventListener('svg_drop', this.drop_handler)
     //elem.addEventListener('svg_dragover', this.dragover_handler)
     elem.addEventListener('svg_dragenter', () => {console.log('E')})
     elem.addEventListener('svg_dragleave', () => {console.log('L')})
+  },
 
-    elem.addEventListener('dblclick', deck.fix)
+  menu: {
+    'Fix': {
+      eventName: 'deck_fix',
+      otherEvents: ['dblclick'],
+      applicable: (node) => { return true },
+      handler: function(evt) {
+        console.log('deck hears fix event', evt)
+        lock_selection(evt, this)
+      },
+    },
+  },
+
+  card: {
+    return_handler: function(elem) {
+      push_to_parent(
+        elem,
+        byId(elem.dataset.homeDeckId),
+        (cardEl, deckEl) => {
+          cardEl.classList.add('draggable-group')
+          card_deck.endeck(SVG.adopt(deckEl), SVG.adopt(cardEl))
+        }
+      )
+    },
+
   },
 
 }
