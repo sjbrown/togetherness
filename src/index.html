@@ -223,10 +223,6 @@ window.addEventListener('load', () => {
 </style>
 
   <div id="gamearea" contextmenu="gamemenu">
-  <!--
-  <svg id="svgdoc" width="100%" height="500" onload="initDraggable()">
-  </svg>
-  -->
   <svg width="0" height="0">
   <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
     <feColorMatrix id="recolorize-filter-matrix" type="matrix"
@@ -1677,13 +1673,15 @@ function make_rect(attrs) {
   }, attrs))
 
   var nest = layer_objects.element('svg', SVG.Container)
-  nest.attr(Object.assign({
+  //nest.attr(Object.assign({
+  nest.attr({
     'data-app-url': '#nest',
     'id': 'nest_' + rect.attr('id'), // special ID
     'data-nest-for': 'rect',
     'width': rect.rbox().width,
     'height': rect.rbox().height,
-  }, attrs))
+  })
+  //}, attrs))
   nest.addClass('draggable-group')
 
   nest.add(rect)
@@ -1745,11 +1743,13 @@ function ui_submit_image(evt) {
     alert('No URL!')
     return
   }
+  let viewBox = `0 0 ${w} ${h}` // viewBox is necessary to avoid render bug:
+                             // https://github.com/mozilla/kitsune/issues/4633
   return _import_foreign_svg(`
-    <svg width="${w}" height="${h}"
-    id="image"
-    xmlns="http://www.w3.org/2000/svg"
-    xmlns:xlink="http://www.w3.org/1999/xlink">
+    <svg id="image" xmlns="http://www.w3.org/2000/svg"
+    width="${w}" height="${h}"
+    viewBox="${viewBox}"
+    >
     <image href="${url}" height="${h}" width="${w}"/>
     </svg>
   `)
