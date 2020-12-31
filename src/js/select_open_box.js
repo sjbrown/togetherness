@@ -1,4 +1,3 @@
-console.log('SELECT OPEN BOX')
 var select_open_box = {
 
   getOrigXY: function(elem) {
@@ -145,9 +144,9 @@ var select_open_box = {
       this.svg_dragend_handle(elem, handle, evt)
     })
 
+      /*
     elem.addEventListener('svg_dragsafe_dblclick', () => {
       console.log("select_open_box dbl")
-      /*
       ui.getSelectBoxSelectedElements(elem).forEach(selectedEl => {
         let detail = {elemId: selectedEl.id}
         console.log("selected el dbl", selectedEl.id, detail)
@@ -158,8 +157,8 @@ var select_open_box = {
           detail: detail,
         }))
       })
-      */
     })
+    */
   },
 
 }

@@ -34,13 +34,6 @@
      data-namespace="poker_deck_mobile"
      id="poker_deck_mobile"><![CDATA[
 
-function pile_offset(index) {
-  return {
-    x: 0.2 * index,
-    y: 0.66 * index,
-  }
-}
-
 var poker_deck_mobile = {
   pokerDeckJSON: [
     {name: 'Ace of Hearts', suit: '♥', rank: 'A'},
@@ -160,56 +153,34 @@ var poker_deck_mobile = {
     let template = elem.querySelector('.card_template')
     shuffle(this.pokerDeckJSON).map((cardJSON) => {
       card = this.generate_card(template, cardJSON, deck.node)
-      this.endeck(deck, card)
+      card_deck.endeck(deck, card)
     })
     template.remove()
   },
 
-  endeck: function(deck, card) {
-    localDocEl = deck.node.closest('.poker_deck_mobile')
-    deck_area = localDocEl.querySelector('#g_deck_area')
-    deck_area = SVG.adopt(deck_area)
-
-    poker_deck_mobile.flip_card_to_back(card.node)
-
-    let offset = pile_offset(
-      deck.node.querySelectorAll('.card').length
-    )
-    card.cy(deck_area.cy() + offset.y)
-    card.cx(deck_area.cx() + offset.x)
-    deck.add(card)
+  flip_handler: function(elem) {
+    let topcard = elem.querySelector('.deck .card:last-child')
+    card_deck.flip_card(topcard)
   },
 
-  flip_card_to_front: function(cardEl) {
-    back = cardEl.querySelector('.card_back')
-    back.remove()
-    cardEl.insertBefore(back, cardEl.firstChild)
-  },
-
-  flip_card_to_back: function(cardEl) {
-    back = cardEl.querySelector('.card_back')
-    back.remove()
-    cardEl.appendChild(back)
-  },
-
-  flip_card: function(cardEl) {
-    if (cardEl.lastElementChild.classList.contains('card_back')) {
-      poker_deck_mobile.flip_card_to_front(cardEl)
-    } else {
-      poker_deck_mobile.flip_card_to_back(cardEl)
-    }
+  reshuffle_handler: function(elem) {
+    let cg = elem.querySelector('.contents_group')
+    cardArray = []
+    sDeck = SVG.adopt(cg)
+    elem.querySelectorAll(
+      `[data-home-deck-id="${cg.id}"]`
+    ).forEach((card) => {
+      card.remove()
+      cardArray.push(card)
+    })
+    shuffle(cardArray).map((card) => {
+      sCard = SVG.adopt(card)
+      card_deck.endeck(sDeck, sCard)
+    })
   },
 
   initialize: function(elem) {
     this.generate_deck(elem)
-
-    //elem.addEventListener('svg_drag', this.drag_handler)
-    //elem.addEventListener('svg_drop', this.drop_handler)
-    //elem.addEventListener('svg_dragover', this.dragover_handler)
-    //elem.addEventListener('svg_dragenter', () => {console.log('E')})
-    //elem.addEventListener('svg_dragleave', () => {console.log('L')})
-
-    elem.addEventListener('dblclick', lock_selection)
   },
 
   menu: {
@@ -236,41 +207,11 @@ var poker_deck_mobile = {
     },
   },
 
-  flip_handler: function(elem) {
-    let topcard = elem.querySelector('.deck .card:last-child')
-    poker_deck_mobile.flip_card(topcard)
-  },
-
-  reshuffle_handler: function(elem) {
-    let cg = elem.querySelector('.contents_group')
-    cardArray = []
-    sDeck = SVG.adopt(cg)
-    elem.querySelectorAll(
-      `[data-home-deck-id="${cg.id}"]`
-    ).forEach((card) => {
-      card.remove()
-      cardArray.push(card)
-    })
-    shuffle(cardArray).map((card) => {
-      sCard = SVG.adopt(card)
-      poker_deck_mobile.endeck(sDeck, sCard)
-    })
-  },
 
 }
 
 
 poker_deck_mobile_card = {
-  return_handler: function(elem) {
-    push_to_parent(
-      elem,
-      byId(elem.dataset.homeDeckId),
-      (cardEl, deckEl) => {
-        cardEl.classList.add('draggable-group')
-        poker_deck_mobile.endeck(SVG.adopt(deckEl), SVG.adopt(cardEl))
-      }
-    )
-  },
 
   menu: {
     'Flip': {
@@ -278,7 +219,7 @@ poker_deck_mobile_card = {
       otherEvents: ['dblclick'],
       applicable: (dNode) => { return true },
       handler: function() {
-        poker_deck_mobile.flip_card(this)
+        card_deck.flip_card(this)
       },
     },
     'Return to deck': {
@@ -291,7 +232,7 @@ poker_deck_mobile_card = {
         }
       },
       handler: function() {
-        poker_deck_mobile_card.return_handler(this)
+        card_deck.card.return_handler(this)
       },
     },
   },
@@ -300,6 +241,12 @@ poker_deck_mobile_card = {
 
 
     ]]></script>
+   <script
+     type="text/javascript"
+     src="js/card_deck.js"
+     data-namespace="card_deck"
+     id="script_card_deck" />
+
 
   <svg
      id="card_template"

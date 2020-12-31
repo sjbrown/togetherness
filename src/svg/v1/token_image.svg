@@ -42,10 +42,6 @@ var token_image = {
     },
   },
 
-  initialize: function(elem, prototype) {
-    return token.initialize(elem, prototype)
-  },
-
 }
 
     ]]></script>

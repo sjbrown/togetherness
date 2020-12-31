@@ -70,6 +70,7 @@ function makeDraggable(viewport, table) {
   viewport.on('mousemove', drag);
   viewport.on('mouseup', endDrag);
   viewport.on('mouseleave', mouseLeave);
+  viewport.on('mouseover', mouseOver);
   // TOUCH
   viewport.on('touchstart', touchStartDrag);
   viewport.on('touchmove', touchDrag);
@@ -92,7 +93,7 @@ function makeDraggable(viewport, table) {
   })
 
   function broadcast(eventName, detail, dispatchEl) {
-    // console.log('broadcasting', eventName, detail, dispatchEl)
+    // console.log('broadcasting', eventName, detail, dispatchEl, selectedEl)
     if (dispatchEl === undefined) {
       dispatchEl = selectedEl ? selectedEl.node : viewport.node
     }
@@ -125,6 +126,11 @@ function makeDraggable(viewport, table) {
       return endDrag(evt)
     }
   }
+
+  function mouseOver(evt) {
+    debug('mouseOver')
+  }
+
   function touchStartDrag(evt) {
     debug('touchStartDrag')
     // preventDefault to avoid both touch AND move events from being sent
@@ -165,7 +171,7 @@ function makeDraggable(viewport, table) {
     evt.preventDefault() // prevent, for example, text selection
     updateInteractionMode(evt)
 
-    if (interactionMode === 'object') {
+    if (interactionMode === 'object' || interactionMode === 'rightclick') {
       let dragTarget = null
 
       // First, look for dragTargets as the direct children of
@@ -176,7 +182,6 @@ function makeDraggable(viewport, table) {
           dragTarget = draggableGroup
           // Make it the top-most element
           p = dragTarget.parentElement
-          //dragTarget.remove()
           p.appendChild(dragTarget)
         }
       })
@@ -196,6 +201,9 @@ function makeDraggable(viewport, table) {
         selectedEl = SVG.adopt(dragTarget)
         currentDragovers = {}
         dragSelectBox = null
+        if (interactionMode === 'rightclick') {
+          ui.buildRightClickMenu(dragTarget)
+        }
       }
     }
     initialiseDragging(evt);
@@ -393,7 +401,8 @@ function makeDraggable(viewport, table) {
         if ((now - lastClickTime) < 350) {
           broadcast('svg_dragsafe_dblclick', {
             elemId: elemId,
-            origEvent: isJustAClick,
+            origEvent: evt,
+            svgPos: mouse,
           })
           lastClickTime = 0
         } else {

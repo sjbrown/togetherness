@@ -41,17 +41,9 @@
   </defs>
   <script
      type="text/javascript"
-     src="js/paper.js"
-     id="script_paper" />
-  <script
-     type="text/javascript"
      data-namespace="paper_genesys"
      id="script_paper_genesys"><![CDATA[
 var paper_genesys = {
-
-  drop_handler: function(evt) {
-    paper.drop_handler(this, evt)
-  },
 
   dom_change_handler: function(evt) {
     console.log('dom_change_handler', this.id, evt.detail)
@@ -102,29 +94,9 @@ var paper_genesys = {
     tspan.textContent = strRepr
   },
 
-  drag_handler: function(evt) {
-    if (!this.contains(evt.target)) {
-      return
-    }
-    console.log('inner element being dragged', evt.target.id)
-  },
-
-  label_change_handler: function(evt) {
-    paper.label_change_handler(this, evt)
-  },
-
   initialize: function(elem, prototype) {
     elem.addEventListener('dom_change', this.dom_change_handler)
-    elem.addEventListener('label_change', this.label_change_handler)
-
-    elem.addEventListener('svg_drag', this.drag_handler)
-    elem.addEventListener('svg_drop', this.drop_handler)
-    elem.addEventListener('svg_dragenter', () => {console.log('E')})
-    elem.addEventListener('svg_dragleave', () => {console.log('L')})
-
-    elem.addEventListener('resize', this.resize_handler)
-
-    paper.initialize(elem, prototype)
+    elem.addEventListener('resize', this.resize_handler.bind(elem))
   },
 
   resize_handler: function(evt) {
@@ -152,7 +124,6 @@ var paper_genesys = {
     }
   },
 
-
   menu: {
     'Roll All': {
       eventName: 'paper_roll',
@@ -161,26 +132,17 @@ var paper_genesys = {
         return paper.roll_handler(this, evt)
       },
     },
-    'Label': {
-      eventName: 'label_click',
-      applicable: (node) => { return true },
-      handler: function() {
-        paper.label_click_handler(this)
-      },
-    },
-    'Fix': {
-      eventName: 'paper_fix',
-      applicable: (node) => { return true },
-      handler: function(evt) {
-        paper.fix(evt, this)
-      },
-    },
   },
 
 }
 
 
     ]]></script>
+  <script
+     type="text/javascript"
+     src="js/paper.js"
+     data-namespace="paper"
+     id="script_paper" />
   <path
      style="color:#000000;display:inline;overflow:visible;visibility:visible;opacity:1;isolation:auto;solid-color:#000000;solid-opacity:1;fill:#000000;fill-opacity:0.5;fill-rule:nonzero;stroke:none;stroke-width:1.58"
      d="M 0.6,4.0

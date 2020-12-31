@@ -1,8 +1,12 @@
 console.log('PAPER')
 var paper = {
   initialize: function(elem, prototype) {
-    elem.addEventListener('dblclick', this.fix)
-    elem.addEventListener('svg_dragover', this.dragover_handler)
+    elem.addEventListener('label_change', this.label_change_handler)
+    elem.addEventListener('svg_dragenter', () => {console.log('E')})
+    elem.addEventListener('svg_dragleave', this.dragleave_handler.bind(elem))
+    elem.addEventListener('svg_drag', this.drag_handler.bind(elem))
+    elem.addEventListener('svg_drop', this.drop_handler.bind(elem))
+    elem.addEventListener('svg_dragover', this.dragover_handler.bind(elem))
 
     let label = elem.querySelector(`#${elem.id} > text > #tspan_label`)
     let tspanResult = elem.querySelector(`#${elem.id} > text > #tspan_result`)
@@ -30,6 +34,19 @@ var paper = {
     } else {
       label.textContent = ''
     }
+  },
+
+  dragleave_handler: function(evt) {
+    console.log('L', this.id)
+    evt_fire('dom_change', this, null, {})
+  },
+
+  drag_handler: function(evt) {
+    console.log("DH this", this, 'evt', evt)
+    if (!this.contains(evt.target)) {
+      return
+    }
+    console.log('inner element being dragged', evt.target.id)
   },
 
   visit_contents_group(elem, visitFn) {
@@ -84,10 +101,9 @@ var paper = {
   roll_handler: function(elem, evt) {
     console.log('paper', elem.id, 'hears roll event', evt)
     paper.visit_contents_group(elem, (s) => {
-      let handler = ui.event_handlers_for_element(s)['die_roll']
-      if (handler) {
-        console.log('LOG user', myClientId, 'explicit die_roll on', s)
-        handler.bind(s)()
+      let die_roll_handler = ui.augmented_handlers_for_element(s)['die_roll']
+      if (die_roll_handler) {
+        die_roll_handler()
       }
     })
     evt_fire('dom_change', elem, null, {})
@@ -98,7 +114,8 @@ var paper = {
     lock_selection(evt, elem)
   },
 
-  resize_handler: function(elem, evt) {
+  resize_handler: function(evt) {
+    elem = this
     console.log('paper', elem.id, ' got resize', evt.detail.width, evt.detail.height)
     let w = evt.detail.width
     let h = evt.detail.height
@@ -141,7 +158,8 @@ var paper = {
     )
   },
 
-  label_change_handler: function(elem, evt) {
+  label_change_handler: function(evt) {
+    elem = evt.target
     let label = elem.querySelector(`#${elem.id} > text > #tspan_label`)
     label.textContent = evt.detail.inputValue
   },
@@ -153,21 +171,26 @@ var paper = {
     is_inside = isInside(dragged.node, drop.node)
     if (is_inside) {
       drop.opacity(0.4)
+      //SVG.adopt(this).opacity(0.4)
       return
     }
     drop.opacity(1.0)
+    //SVG.adopt(this).opacity(1.0)
   },
 
-  drop_handler: function(elem, evt) {
-    console.log('target should be ', elem)
-    console.log('target is', evt.target)
-    console.log('paper_sum drop_handler', elem.id, evt.detail.draggedElemId, evt.target)
+  drop_handler: function(evt) {
+    console.log('evt is', evt)
+    console.log('this is', this)
 
     draggedElem = document.querySelector('#' + evt.detail.draggedElemId)
     if (draggedElem === null) {
       return
     }
 
+    let elem = this
+    console.log('target should be ', elem)
+    console.log('target is', evt.target)
+    console.log('paper drop_handler', elem.id, evt.detail.draggedElemId, evt.target)
     let dropElem = evt.target
     let drop = SVG.adopt(dropElem)
     let contentsGroup = elem.querySelector(`#${elem.id} > .contents_group`)
@@ -219,6 +242,25 @@ var paper = {
       detail: { 'ruleElemId': elem.id },
     }))
   },
+
+  menu: {
+    'Label': {
+      eventName: 'label_click',
+      applicable: (node) => { return true },
+      handler: function() {
+        paper.label_click_handler(this)
+      },
+    },
+    'Fix': {
+      eventName: 'paper_fix',
+      otherEvents: ['dblclick'],
+      applicable: (node) => { return true },
+      handler: function(evt) {
+        paper.fix(evt, this)
+      },
+    },
+  },
+
 
 
 }

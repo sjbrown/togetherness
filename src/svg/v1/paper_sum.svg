@@ -3,8 +3,6 @@
    xmlns:svg="http://www.w3.org/2000/svg"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:xlink="http://www.w3.org/1999/xlink"
-   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
-   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    width="200"
    height="150"
    version="1.1"
@@ -13,7 +11,7 @@
   <defs id="defs2">
     <linearGradient
        id="linearGradient820"
-       inkscape:collect="always">
+       >
       <stop
          style="stop-color:#f0f0f0;stop-opacity:1"
          offset="0"
@@ -24,7 +22,6 @@
          id="stop824" />
     </linearGradient>
     <linearGradient
-       inkscape:collect="always"
        xlink:href="#linearGradient820"
        id="linearGradient822"
        x1="36.70"
@@ -36,20 +33,12 @@
   </defs>
   <script
      type="text/javascript"
-     src="js/paper.js"
-     id="script_paper" />
-  <script
-     type="text/javascript"
      data-namespace="paper_sum"
      id="script_paper_sum"><![CDATA[
 var paper_sum = {
 
-  drop_handler: function(evt) {
-    paper.drop_handler(this, evt)
-  },
-
   dom_change_handler: function(evt) {
-    console.log('dom_change_handler', this.id, evt.detail)
+     console.log('dom_change_handler', this.id, evt.detail)
     let sum = 0
 
     paper.visit_contents_group(this, (s) => {
@@ -74,43 +63,22 @@ var paper_sum = {
       })
       sum = sum + tempNum
     })
-    console.log('sum was', sum)
     let tspan = this.querySelector(`#${this.id} > text > #tspan_result`)
     tspan.textContent = sum
   },
 
-  drag_handler: function(evt) {
-    if (!this.contains(evt.target)) {
-      return
-    }
-    console.log('inner element being dragged', evt.target.id)
-  },
-
-  label_change_handler: function(evt) {
-    paper.label_change_handler(this, evt)
-  },
-
   initialize: function(elem, prototype) {
     elem.addEventListener('dom_change', this.dom_change_handler)
-    elem.addEventListener('label_change', this.label_change_handler)
-
-    elem.addEventListener('svg_drag', this.drag_handler)
-    elem.addEventListener('svg_drop', this.drop_handler)
-    elem.addEventListener('svg_dragenter', () => {console.log('E')})
-    elem.addEventListener('svg_dragleave', () => {console.log('L')})
-
+    elem.addEventListener('resize', paper.resize_handler.bind(elem))
     elem.addEventListener('resize', this.resize_handler)
-
-    paper.initialize(elem, prototype)
   },
 
   resize_handler: function(evt) {
+    console.log('getting rid of sum special path')
     let path_area = this.querySelector(
       `#${this.id} > :not(.contents_group) .path_area`
     )
     if (path_area) { path_area.remove() }
-
-    paper.resize_handler(this, evt)
   },
 
   menu: {
@@ -121,32 +89,21 @@ var paper_sum = {
         return paper.roll_handler(this, evt)
       },
     },
-    'Label': {
-      eventName: 'label_click',
-      applicable: (node) => { return true },
-      handler: function() {
-        paper.label_click_handler(this)
-      },
-    },
-    'Fix': {
-      eventName: 'paper_fix',
-      applicable: (node) => { return true },
-      handler: function(evt) {
-        paper.fix(evt, this)
-      },
-    },
   },
 
 }
 
-
     ]]></script>
+  <script
+     type="text/javascript"
+     src="js/paper.js"
+     data-namespace="paper"
+     id="script_paper" />
   <path
      style="color:#000000;display:inline;overflow:visible;visibility:visible;opacity:1;isolation:auto;solid-color:#000000;solid-opacity:1;fill:#000000;fill-opacity:0.5;fill-rule:nonzero;stroke:none;stroke-width:1.58"
      d="M 0.62,3.98 C -0.05,53.315 1.782,98.6769 1.08,148.00 l 2.62,0.373 c 64.23,2.104 138.07,0.539 195.42,0.67 L 192.75,3.59 C 156.22,15.333 23.268,5.742 0.622,3.98 Z"
      id="paper_shadow"
-     inkscape:connector-curvature="0"
-     sodipodi:nodetypes="cccccc" />
+     />
   <g id="group-monochrome-1" class="colorable">
   <rect
      id="area_rect"
@@ -174,8 +131,7 @@ var paper_sum = {
        -192.57,-1.90 z"
      id="sum_path_area_droptarget"
      class="droptarget path_area"
-     inkscape:connector-curvature="0"
-     sodipodi:nodetypes="ccccc" />
+     />
   </g>
   <text
      id="text_label"
@@ -188,30 +144,29 @@ var paper_sum = {
      fill:#000080;fill-opacity:1;
      "
      xml:space="preserve"><tspan
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;fill:#000080;stroke-width:0.269px"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:SubotypeSteady;fill:#000080;stroke-width:0.269px"
        id="tspan_label"
-       sodipodi:role="line">Label</tspan></text>
+       >Label</tspan></text>
   <text
      id="text_rule"
      class="text_rule"
      y="128"
      x="90"
-     style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:38.072px;line-height:125%;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;letter-spacing:0px;word-spacing:0px;fill:#000080;fill-opacity:1;stroke:none;stroke-width:0.269px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+     style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:38.072px;line-height:125%;font-family:SubotypeSteady;letter-spacing:0px;word-spacing:0px;fill:#000080;fill-opacity:1;stroke:none;stroke-width:0.269px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
      xml:space="preserve"><tspan
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;fill:#000080;stroke-width:0.269px"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:SubotypeSteady;fill:#000080;stroke-width:0.269px"
        id="tspan_rule"
-       sodipodi:role="line">Sum= </tspan></text>
+       >Sum= </tspan></text>
   <g id="contents_group" class="contents_group">
   </g>
   <text
      id="text_result"
      class="text_result"
      xml:space="preserve"
-     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:38.072px;line-height:125%;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;letter-spacing:0px;word-spacing:0px;fill:#000080;fill-opacity:1;stroke:none;stroke-width:0.26px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:38.072px;line-height:125%;font-family:SubotypeSteady;letter-spacing:0px;word-spacing:0px;fill:#000080;fill-opacity:1;stroke:none;stroke-width:0.26px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
      x="160"
      y="128"
      ><tspan
-       sodipodi:role="line"
        id="tspan_result"
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:SubotypeSteady;-inkscape-font-specification:SubotypeSteady;stroke-width:0.26">0</tspan></text>
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:SubotypeSteady;stroke-width:0.26">0</tspan></text>
 </svg>

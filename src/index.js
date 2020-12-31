@@ -111,15 +111,6 @@ function getUserColor() {
   return '#ffffff';
 }
 
-function str_to_fn(fname) {
-  // given a string, return a globally-scoped function
-  return (
-    (window[fname] && typeof window[fname] === 'function')
-    ?  window[fname]
-    : null
-  );
-}
-
 function debugBar(s) {
   if (!DEBUG) { return }
   log = byId('debug_bar_log')
@@ -151,10 +142,11 @@ async function import_foreign_svg_for_element(el) {
     await import_foreign_svg(url)
     seenUrls[url] = true
   }
+  // console.log('done import_f_s_f_e', seenUrls)
 }
 
 
-function import_foreign_svg(url) {
+function import_foreign_svg(url) { /* RETURNS PROMISE */
   // console.log("import foreign URL", url)
   if (!DEBUG) {
     var answer = confirm('Do you trust the security of '+ url +'?')
@@ -177,7 +169,7 @@ function import_foreign_svg(url) {
   })
 }
 
-async function _import_foreign_svg(body, url) {
+function _import_foreign_svg(body, url) { /* RETURNS PROMISE */
   // console.log("_import_foreign_svg", url)
   var frame = document.createElementNS(SVG.ns, 'svg')
   frame.innerHTML = (
@@ -231,9 +223,7 @@ function add_fresh_svg(svgElem) {
   // None of the UI is hooked up for the freshly-loaded document
 
   svgElem.querySelectorAll('[data-app-url]').forEach((subSvg) => {
-    ui.hookup_ui(subSvg)
     init_with_namespaces(subSvg)
-    ui.hookup_menu_actions(subSvg)
   })
 }
 
@@ -396,10 +386,11 @@ async function appendDocumentScript(scriptElem, parentElem) {
   s(newScript, 'data-namespace', g(scriptElem, 'data-namespace'))
 
   let alreadyMounted = false
-  ga = byId('gamearea')
-  if (!ga.querySelector(`[data-orig-url="${scriptUrl}"]`)) {
+  let qstring = `#gamearea [data-orig-url="${scriptUrl}"]`
+  // console.log("QUSTRING", qstring)
+  if (!document.querySelector(qstring)) {
     // console.log("appending ", scriptElem.id, '(', scriptUrl, ')')
-    ga.appendChild(newScript)
+    document.querySelector('#gamearea').appendChild(newScript)
   } else {
     alreadyMounted = true
   }
@@ -407,16 +398,17 @@ async function appendDocumentScript(scriptElem, parentElem) {
   scriptElem.remove()
 
   if (alreadyMounted || newScript.textContent.length > 0) {
+    // console.log("Script SHORTING")
     return true
   }
   return new Promise((resolve, reject) => {
     // console.log("making prmise for ", scriptUrl, scriptElem.id)
     newScript.addEventListener('load', () => {
-      // console.log("RESOLVING")
+      // console.log("Script RESOLVING")
       return resolve()
     });
     newScript.addEventListener('error', e => {
-      // console.log("REJECTING")
+      // console.log("Script REJECTING")
       return reject(e.error)
     });
   })
@@ -473,15 +465,14 @@ function add_n_objects_from_prototype(n, prototype, center) {
     nest.cx(newCenter[0])
     nest.cy(newCenter[1])
     layer_objects.add(nest)
-    ui.hookup_ui(nest.node)
     init_with_namespaces(nest.node, prototype)
-    ui.hookup_menu_actions(nest.node)
     newCenter[0] = newCenter[0] + 90
     newCenter[1] = newCenter[1] + 10
   }
 }
 
 function add_to_screen(nest, attrs) {
+  console.log('add_to_screen', attrs)
   setColor(nest.node, (attrs && attrs.color) || getUserColor())
   if (attrs && attrs.center !== undefined) {
     let center = spatial.avoidTopLevelCollision(nest, attrs.center, 0)
@@ -490,10 +481,7 @@ function add_to_screen(nest, attrs) {
     nest.cy(center[1])
   }
   layer_objects.add(nest)
-  ui.hookup_ui(nest.node)
   init_with_namespaces(nest.node, attrs && attrs.serializedState)
-  ui.hookup_menu_actions(nest.node)
-  //synced.dirty_add(nest.node) // send the sync before the animation
   ui.do_animate(nest.node)
 }
 
@@ -514,6 +502,13 @@ async function add_object(url, attrs) {
 async function clone_object(el, attrs) {
   console.log("clone_object", el.id, attrs)
   let nest = await _import_foreign_svg(el.outerHTML, el.dataset.appUrl || '')
+  let i = 1
+  nest.node.querySelectorAll(`#${nest.node.id} .draggable-group`).forEach((subEl) => {
+    // remove these or the ids will collide
+    //subEl.remove()
+    subEl.id = 'isvg_' + base32.short_id() + i
+    i++
+  })
   add_to_screen(nest, attrs)
 }
 
@@ -568,16 +563,11 @@ function push_to_parent(childEl, newParentEl, pushFn) {
 
   let oldPXY = {x: old_p_svg.x(), y: old_p_svg.y()}
   if (newParentEl.id === 'svg_table') {
-    ui.hookup_ui(childEl)
     getNamespacesForElement(childEl).forEach((nsName) => {
       let ns = window[nsName]
       initialize_with_ns(childEl, ns)
     })
-    ui.hookup_menu_actions(childEl)
-  } else {
-    ui.un_hookup_ui(childEl)
   }
-  //synced.remove(childEl)
   // console.log('c', c.x(), c.y(), 'old p', oldPXY, 'new p', new_p_svg.x(), new_p_svg.y())
   c.x( (c.x() + oldPXY.x) - new_p_svg.x() )
   c.y( (c.y() + oldPXY.y) - new_p_svg.y() )

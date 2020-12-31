@@ -677,7 +677,7 @@
 		switch(type) {
 		case 1: //HTMLElement
 			if (typeof data.tagName === 'string') {
-				return doc.createElement(data.tagName);
+				return doc.createElementNS('http://www.w3.org/2000/svg', data.tagName);
 			}
 			return false;
 
