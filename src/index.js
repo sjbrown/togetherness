@@ -223,7 +223,6 @@ function add_fresh_svg(svgElem) {
   // None of the UI is hooked up for the freshly-loaded document
 
   svgElem.querySelectorAll('[data-app-url]').forEach((subSvg) => {
-    ui.hookup_ui(subSvg)
     init_with_namespaces(subSvg)
   })
 }
@@ -466,7 +465,6 @@ function add_n_objects_from_prototype(n, prototype, center) {
     nest.cx(newCenter[0])
     nest.cy(newCenter[1])
     layer_objects.add(nest)
-    ui.hookup_ui(nest.node)
     init_with_namespaces(nest.node, prototype)
     newCenter[0] = newCenter[0] + 90
     newCenter[1] = newCenter[1] + 10
@@ -483,7 +481,6 @@ function add_to_screen(nest, attrs) {
     nest.cy(center[1])
   }
   layer_objects.add(nest)
-  ui.hookup_ui(nest.node)
   init_with_namespaces(nest.node, attrs && attrs.serializedState)
   //synced.dirty_add(nest.node) // send the sync before the animation
   ui.do_animate(nest.node)
@@ -560,13 +557,10 @@ function push_to_parent(childEl, newParentEl, pushFn) {
 
   let oldPXY = {x: old_p_svg.x(), y: old_p_svg.y()}
   if (newParentEl.id === 'svg_table') {
-    ui.hookup_ui(childEl)
     getNamespacesForElement(childEl).forEach((nsName) => {
       let ns = window[nsName]
       initialize_with_ns(childEl, ns)
     })
-  } else {
-    ui.un_hookup_ui(childEl)
   }
   //synced.remove(childEl)
   // console.log('c', c.x(), c.y(), 'old p', oldPXY, 'new p', new_p_svg.x(), new_p_svg.y())

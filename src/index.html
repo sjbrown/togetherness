@@ -20,7 +20,7 @@
 <script src="./index.js"></script>
 <script src="./spatial.js"></script>
 <script src="./js/select_box.js"></script>
-<script src="./js/domJSON.js"></script>
+<script src="./js/svg_dom_json.js"></script>
 <script src="./physicsjs-full.js"></script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.5.1/gsap.js"></script>
@@ -93,12 +93,6 @@ SVG.on(document, 'DOMContentLoaded', () => {
   viewport.node.style.overflow = 'scroll'
   s(viewport.node, 'width', viewport.node.parentNode.clientWidth)
   viewport.style('background-image', 'url(svg/bg_hexagons.svg)')
-  viewport.node.addEventListener('svg_dragsafe_click', (e) => {
-    //console.log("-0--------------------------", e.detail.elemId, viewport.node.id)
-    if (e.detail.elemId === viewport.node.id) {
-      ui.unselectAll()
-    }
-  })
 
   gViewport = SVG.adopt(document.createElementNS(SVG.ns, 'g'))
   gViewport.node.id = 'g_viewport'
@@ -127,6 +121,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
     opacity: 0.75,
   });
 
+  ui.initializeViewport(viewport.node)
   ui.initializeDragSelectBox(viewport.node)
 
   var uiObserver = new MutationObserver((mutations) => {
@@ -1543,7 +1538,6 @@ function ui_submit_svgfile(evt) {
     // console.log('got nest', nest)
     add_fresh_svg(nest.node)
     layer_objects.node.appendChild(nest.node)
-    ui.hookup_ui(nest.node)
     init_with_namespaces(nest.node)
 
     ui.popdown_dialog('dialog_svgfile')
@@ -1694,7 +1688,6 @@ function make_rect(attrs) {
 
   nest.add(rect)
   nest.node.dataset.appNamespaces = 'rect_verbs'
-  ui.hookup_ui(nest.node)
   return nest;
 }
 
@@ -1763,7 +1756,6 @@ function ui_submit_image(evt) {
   .then(nest => {
     add_fresh_svg(nest.node)
     layer_objects.node.appendChild(nest.node)
-    ui.hookup_ui(nest.node)
     ui.popdown_dialog('dialog_image')
   })
 }
@@ -1875,7 +1867,6 @@ function make_text(attrs, content) {
   text.y(text.y() + (rect.height()/2))
   nest.add(text)
 
-  ui.hookup_ui(nest.node)
   nest.node.dataset.appNamespaces = 'text_verbs'
   return nest;
 }
@@ -1963,7 +1954,6 @@ function make_ellipse(attrs) {
 
   nest.add(ellipse)
 
-  ui.hookup_ui(nest.node)
   nest.node.dataset.appNamespaces = 'ellipse_verbs'
   return nest;
 }

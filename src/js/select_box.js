@@ -60,7 +60,7 @@ var select_box = {
   },
 
   svg_dragstart: function(elem) {
-    console.log('select_box gets svg_dragstart', elem)
+    // console.log('select_box gets svg_dragstart', elem)
     nest = SVG.adopt(elem)
     let origXY = {
       x: nest.x(),
@@ -70,11 +70,11 @@ var select_box = {
   },
 
   svg_drag: function(elem, newX, newY) {
-    console.log('select_box gets svg_drag', elem, newX, newY)
+    // console.log('select_box gets svg_drag', elem, newX, newY)
     nest = SVG.adopt(elem)
 
     offsets = select_box.getOffsets(elem)
-    console.log("offsets", offsets)
+    // console.log("offsets", offsets)
     ids = elem.dataset.for.split(',')
     let i = 0
     ids.forEach(id => {
@@ -100,18 +100,6 @@ var select_box = {
       width: 0, height: 0,
       fill: color,
       stroke: color,
-    })
-    elem.addEventListener('svg_dragsafe_dblclick', () => {
-      ui.getSelectBoxSelectedElements(elem).forEach(selectedEl => {
-        let detail = {elemId: selectedEl.id}
-        console.log("selected el dbl", selectedEl.id, detail)
-        selectedEl.dispatchEvent(new MouseEvent('dblclick', {
-          view: window,
-          bubbles: true,
-          cancelable: true,
-          detail: detail,
-        }))
-      })
     })
   },
 

@@ -8,6 +8,42 @@ const ui = {
     return myClientId ? myClientId.replace('.', '-') : ''
   },
 
+  initializeViewport: (viewportEl) => {
+    viewportEl.addEventListener('svg_dragsafe_click', (e) => {
+      console.log("-c--------------------------", e.detail.elemId, viewportEl.id)
+      if (e.detail.elemId === viewportEl.id) {
+        ui.unselectAll()
+      } else if (e.detail.elemId) {
+        elem = byId(e.detail.elemId)
+        if (
+          elem.classList
+          &&
+          elem.classList.contains('draggable-group')
+          &&
+          !elem.closest('#layer_ui') // don't select objects in the UI layer
+        ) {
+          ui.selectElement(elem, e)
+        }
+      }
+    })
+
+    viewportEl.addEventListener('svg_dragsafe_dblclick', (e) => {
+      console.log("-c2--------------------------", e, viewportEl.id)
+      if (e.detail.elemId === viewportEl.id) {
+        ui.alertHere(e)
+      } else if (e.detail.elemId) {
+        elem = byId(e.detail.elemId)
+        if (
+          elem.classList
+          &&
+          elem.classList.contains('draggable-group')
+        ) {
+          ui.dblclickElement(elem, e)
+        }
+      }
+    })
+  },
+
   initializeDragSelectBox: (viewportEl) => {
     return import_foreign_svg('svg/v1/select_box.svg')
     .then((nest) => {
@@ -17,9 +53,6 @@ const ui = {
       dragSelBox.id('drag_select_box')
       dragSelBox.addClass('drag_select_box')
 
-      viewportEl.addEventListener('dragselect_init', (evt) => {
-        // console.log('viewport got svg_dragselect_init', evt)
-      })
       viewportEl.addEventListener('svg_dragselect_start', (evt) => {
         // console.log('viewport got svg_dragselect_start', evt, evt.detail.box)
         ui.unselectAll()
@@ -35,12 +68,14 @@ const ui = {
         }
         select_box.initialize(dragSelBoxEl)
       })
+
       viewportEl.addEventListener('svg_dragselect_drag', (evt) => {
         // console.log('viewport got svg_dragselect_drag', evt, evt.detail.box)
         select_box.reshape(dragSelBoxEl, evt.detail.box)
       })
+
       viewportEl.addEventListener('svg_dragselect_end', (evt) => {
-        // console.log('viewport got svg_dragselect_end', evt)
+         console.log('viewport got svg_dragselect_end', evt)
         let surrounded = spatial.topLevelSurrounded(evt.detail.box)
         let peerSelectBoxes = document.querySelectorAll(
           '.select_box:not(.owner-' + ui.escapedClientId() + ')'
@@ -56,8 +91,8 @@ const ui = {
         })
         select_box.selectElements(dragSelBoxEl, surrounded)
         layer_ui.add(SVG.adopt(dragSelBoxEl))
-
       })
+
     })
     .then(() => {
       return import_foreign_svg('svg/v1/select_open_box.svg')
@@ -137,6 +172,22 @@ const ui = {
     layer_ui.add(SVG.adopt(svgSelBoxEl))
   },
 
+  dblclickElement: (elem, evt) => {
+    if (elem.classList.contains('select_box')) {
+      if (!ui.belongsToPeer(elem)) {
+        ui.getSelectBoxSelectedElements(elem).forEach(el => {
+          ui.dblclickElement(el, evt)
+        })
+      }
+      return
+    }
+    let allHandlers = ui.augmented_handlers_for_element(elem)
+    if (allHandlers['dblclick']) {
+      console.log("calling", allHandlers['dblclick'])
+      allHandlers['dblclick'](evt)
+    }
+  },
+
   removeEmptySelectBoxes: () => {
     // console.log("remove empty boxes")
     ui.getSelectBoxes().forEach(sbox => {
@@ -168,24 +219,30 @@ const ui = {
     })
   },
 
+  alertHere: (evt) => {
+    notice = layer_ui.circle(200)
+    notice.attr({
+      cx: evt.detail.svgPos.x,
+      cy: evt.detail.svgPos.y,
+      fill: getUserColor(),
+      'fill-opacity': 0.3,
+      stroke: getUserColor(),
+      'stroke-width': 20,
+    })
+    ui.animated_ghost(notice.node, {
+      ms: 1000,
+      animation: 'shake',
+      on_done: (noticeNode) => { noticeNode.remove() },
+    })
+  },
+
   hookup_ui: (elem) => {
     // console.log("hookup_ui", elem.id)
-    let allHandlers = ui.augmented_handlers_for_element(elem)
-    let nest = SVG.adopt(elem)
-    nest.on('svg_dragsafe_click', (evt) => {
-      // console.log('id', elem.id, 'got click', evt)
-      ui.selectElement(elem, evt)
-    })
-    elem.addEventListener('mouseover', ui.buildRightClickMenu)
-    if (allHandlers['dblclick']) {
-      elem.addEventListener('dblclick', allHandlers['dblclick'])
-    }
   },
+
 
   un_hookup_ui: (elem) => {
     //console.log("un_hookup_ui", elem.id)
-    nest = SVG.adopt(elem)
-    nest.off('svg_dragsafe_click')
   },
 
   augmented_handlers_for_element: (svgEl) => {
@@ -210,42 +267,48 @@ const ui = {
     return eventHandlers
   },
 
-  buildRightClickMenu: function (evt) {
+  buildRightClickMenu: function (target) {
     // Add clickable (right-click) options onto the menu
     // Note: addEventListener must use this named, static, non-arrow function
     //       to prevent memory-leak bug:
     // https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener#Memory_issues
-    //console.log('ui.buildRightClickMenu', evt, this)
-    let hoveredEl = this
+    console.log('ui.buildRightClickMenu', target)
+    if (target.classList.contains('select_box')) {
+      let focusedNodes = ui.getMySelectedElements()
+      if (focusedNodes.length !== 1) {
+        return
+      }
+      target = focusedNodes[0]
+    }
 
     deleteList = document.querySelectorAll('.cloned-menuitem')
     Array.prototype.forEach.call(deleteList, (el) => {
       el.remove();
     })
 
-    let actionMenu = ui.getFullMenuForElement(hoveredEl)
-    let allHandlers = ui.augmented_handlers_for_element(hoveredEl)
+    let actionMenu = ui.getFullMenuForElement(target)
+    let allHandlers = ui.augmented_handlers_for_element(target)
     var menu = byId('gamemenu')
     var template = byId('template_menuitem')
     Object.keys(actionMenu).map((title) => {
-      if (!actionMenu[title].applicable(hoveredEl)) {
+      if (!actionMenu[title].applicable(target)) {
         return
       }
       var uiLabel = (
         actionMenu[title].uiLabel
         ?
-        actionMenu[title].uiLabel(hoveredEl)
+        actionMenu[title].uiLabel(target)
         :
         title
       )
       var clone = template.content.firstElementChild.cloneNode(true)
-      s(clone, 'id', 'menuitem-' + hoveredEl.id)
+      s(clone, 'id', 'menuitem-' + target.id)
       s(clone, 'label', uiLabel)
       clone.classList.add('cloned-menuitem')
       clone.addEventListener('click', (evt) => {
         console.log('LOG user', myClientId,
           'does', title, // evt,
-          'on', hoveredEl.id, hoveredEl.dataset.appUrl,
+          'on', target.id, target.dataset.appUrl,
         )
         let handler = allHandlers[actionMenu[title].eventName]
         handler(evt)

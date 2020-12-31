@@ -345,7 +345,6 @@ const receive = function(msg, layerObs) {
     if (nestEl.classList.contains('ghost')) {
       console.error('NET ADDED A GHOST', nestEl)
     }
-    ui.hookup_ui(nestEl)
     //console.log("NET start getting foreign svg", id)
     promises.push(
       import_foreign_svg_for_element(nestEl)
@@ -430,84 +429,36 @@ togetherFunctions.on_sync = (msg) => {
   console.log("SYNC SYNC SYNC")
   console.log("SYNC SYNC SYNC")
   console.log("SYNC SYNC SYNC")
-  debugBar('SYNC: ' + msg)
-  newEl = domJSON.toDOM(msg.data)
+
+  newEl = domJSON.toDOM(msg.data) // Modified to create SVG-namespace elements
+  newViewport = newEl.querySelector('#svg_viewport')
+  newTable = newEl.querySelector('#svg_table')
 
   myViewport = document.querySelector('#svg_viewport')
-  newViewport = newEl.querySelector('#svg_viewport')
-  //console.log('nw el', newViewport)
   myViewport.style.backgroundImage = newViewport.style.backgroundImage
-
   svg_table.node.querySelectorAll('.draggable-group').forEach((el) => {
     el.remove()
   })
-  newTable = newEl.querySelector('#svg_table')
   return load_new_table(newTable)
 }
 
 async function load_new_table(newTable) {
   console.log('nw tab', newTable)
-  /*
-  newTable.querySelectorAll('#layer_objects > .draggable-group').forEach((el) => {
-    let existingEl = svg_table.node.querySelector('#' + el.id)
-    console.log("curtains: ", el.id)
-    if (existingEl === null) {
-      return
-    }
-    console.log("found: ", el.id)
-    existingEl.classList.remove('draggable-group')
-    existingEl.style.outline = 'solid 20px white'
-    existingEl.style.opacity = 0.4
-    setTimeout(() => { existingEl.remove() }, 400)
-  })
-  */
-
   let nodeList = newTable.querySelectorAll('[data-app-url]')
   let urlLoop = async() => {
     for (let index = 0; index < nodeList.length; index++) {
       let node = nodeList.item(index)
-       console.log('import_foreign_svg_for_element', node.id, node.dataset.appUrl)
+      // console.log('import_foreign_svg_for_element', node.id, node.dataset.appUrl)
       await import_foreign_svg_for_element(node)
     }
   }
   return urlLoop()
   .then(() => {
-    // console.log("NEWT", newTable.outerHTML)
-    return newTable.querySelectorAll('#layer_objects > .draggable-group').forEach((el) => {
-      //console.log('UGH', newTable.querySelectorAll('#layer_objects > .draggable-group'))
-      console.log('processing', el.dataset.appUrl, el.id)
-      let existingCopy = layer_objects.node.querySelector('#' + el.id)
-      if (existingCopy) {
-        console.warn('document already has', el.id)
-        el.id = el.id + base32.short_id()
-      }
-      el.remove()
-      /*
-       * WHY WHY WHY
-       *
-       * This seems to be the only way to get the <filter> to work correctly
-       */
-      // console.log("Making new svg for ", el.id)
-      let s = el.outerHTML
-      layer_objects.svg(s)
-      nestEl = layer_objects.node.querySelector('#' + el.id)
-      // console.log("necg", nestEl.querySelector('.contents_group').outerHTML)
-      // console.log("e cg", el.querySelector('.contents_group').outerHTML)
-      ui.hookup_ui(nestEl)
-      //init_with_namespaces(nestEl, el)
-      /*
-       * WHY WHY WHY
-       *
-       */
-      svg_table.svg(s)
-      el2 = document.querySelector('#svg_table > #' + el.id)
-      // console.log('el2', el2.id)
-      init_with_namespaces(nestEl, el2)
-      el2.remove()
-      /*
-       * WHY WHY WHY
-       */
-    })
+    layerEl = newTable.querySelector('#layer_objects')
+    layer_objects.node.remove()
+    layer_objects = SVG.adopt(layerEl)
+    objectsObserver = new LayerObserver(layer_objects.node)
+    svg_table.node.insertBefore(layerEl, layer_ui.node)
   })
   .then(() => {
     document.querySelectorAll('#layer_ui > svg').forEach((el) => {
@@ -526,4 +477,3 @@ async function load_new_table(newTable) {
   })
 }
 
-var el2
