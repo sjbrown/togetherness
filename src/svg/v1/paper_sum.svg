@@ -1,14 +1,20 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
-   xmlns:svg="http://www.w3.org/2000/svg"
+   id="paper_sum"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:xlink="http://www.w3.org/1999/xlink"
-   width="200"
-   height="150"
-   version="1.1"
-   id="paper_sum"
+   width="200" height="150"
+   viewBox="0 0 200 150"
+   preserveAspectRatio="none"
    >
   <defs id="defs2">
+    <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
+      <feColorMatrix id="recolorize-filter-matrix" type="matrix"
+         values="1.0 0.0 0.0 0.0  0.0
+                 1.0 0.0 0.0 0.0  0.0
+                 1.0 0.0 0.0 0.0  0.0
+                 0.0 0.0 0.0 1.0  0.0" />
+    </filter>
     <linearGradient
        id="linearGradient820"
        >
@@ -23,10 +29,10 @@
     </linearGradient>
     <linearGradient
        xlink:href="#linearGradient820"
-       id="linearGradient822"
-       x1="36.70"
+       id="linearGradient22"
+       x1="36.7"
        y1="263.7"
-       x2="37.07"
+       x2="37.0"
        y2="285.0"
        gradientUnits="userSpaceOnUse"
        gradientTransform="matrix(3.8041646,0,0,3.8135004,-0.53771847,-984.16693)" />
@@ -70,16 +76,16 @@ var paper_sum = {
   initialize: function(elem, prototype) {
     elem.addEventListener('dom_change', this.dom_change_handler)
     elem.addEventListener('resize', paper.resize_handler.bind(elem))
-    elem.addEventListener('resize', this.resize_handler)
+    // elem.addEventListener('resize', this.resize_handler)
   },
 
-  resize_handler: function(evt) {
-    console.log('getting rid of sum special path')
-    let path_area = this.querySelector(
-      `#${this.id} > :not(.contents_group) .path_area`
-    )
-    if (path_area) { path_area.remove() }
-  },
+ // resize_handler: function(evt) {
+ //   console.log('getting rid of sum special path')
+ //   let path_area = this.querySelector(
+ //     `#${this.id} > :not(.contents_group) .path_area`
+ //   )
+ //   if (path_area) { path_area.remove() }
+ // },
 
   menu: {
     'Roll All': {
@@ -95,48 +101,49 @@ var paper_sum = {
 
     ]]></script>
   <script
-     type="text/javascript"
-     src="js/paper.js"
-     data-namespace="paper"
-     id="script_paper" />
-  <path
-     style="color:#000000;display:inline;overflow:visible;visibility:visible;opacity:1;isolation:auto;solid-color:#000000;solid-opacity:1;fill:#000000;fill-opacity:0.5;fill-rule:nonzero;stroke:none;stroke-width:1.58"
-     d="M 0.62,3.98 C -0.05,53.315 1.782,98.6769 1.08,148.00 l 2.62,0.373 c 64.23,2.104 138.07,0.539 195.42,0.67 L 192.75,3.59 C 156.22,15.333 23.268,5.742 0.622,3.98 Z"
-     id="paper_shadow"
-     />
-  <g id="group-monochrome-1" class="colorable">
-  <rect
-     id="area_rect"
-     style="opacity:0;
-     fill:url(#linearGradient822);fill-opacity:1;
-     stroke:#b3b3b3;stroke-width:5.0;stroke-linejoin:miter;
-     stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;
-     stroke-opacity:0"
-     x="0" y="0"
-     width="0"
-     height="0"
-  />
-  <path
-     style="opacity:1;fill:url(#linearGradient822);fill-opacity:1;
-     stroke:#b3b3b3;stroke-width:5.0;stroke-linejoin:miter;
-     stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;
-     stroke-opacity:0.9"
-     d="M 4.91,3.34
-     C 38.70,8.39
-       192.75,3.59
-       192.75,3.59
-     l 2.74,141.49
-     c 0,0
-       -182.50,-0.46
-       -192.57,-1.90 z"
-     id="sum_path_area_droptarget"
-     class="droptarget path_area"
-     />
-  </g>
+    type="text/javascript"
+    src="js/paper.js"
+    data-namespace="paper"
+    id="script_paper" />
+  <svg id="resizable_bg"
+    x="0" y="0" width="200" height="150"
+    viewBox="0 0 200 150"
+    preserveAspectRatio="none"
+    class="droptarget"
+  >
+    <rect
+       id="shadow_rect"
+       fill="#000"
+       opacity="0.4"
+       x="4" y="4"
+       width="196"
+       height="146"
+    />
+    <rect
+       id="white_rect"
+       fill="#fff"
+       x="0" y="0"
+       width="190"
+       height="140"
+    />
+    <g id="group-monochrome-1" class="colorable" filter="url(#app-filter-colorize)">
+      <rect
+         id="stroke_rect"
+         fill-opacity="0"
+         stroke="#d3d3d3"
+         stroke-width="4"
+         style="stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+         x="2" y="2"
+         width="190"
+         height="140"
+      />
+    </g>
+  </svg>
+  <svg x="10" y="0" >
   <text
      id="text_label"
-     y="28"
-     x="10"
+     y="30"
+     x="0"
      style="font-style:normal;
      font-weight:normal;
      font-size:28px;line-height:125%;font-family:SubotypeSteady;
@@ -147,26 +154,32 @@ var paper_sum = {
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:SubotypeSteady;fill:#000080;stroke-width:0.269px"
        id="tspan_label"
        >Label</tspan></text>
+  </svg>
+  <g id="contents_group" class="contents_group">
+  </g>
+  <svg x="0" y="80%"
+  width="100%" height="50"
+  viewBox="0 0 100 50" preserveAspectRatio="xMaxYMin meet" >
   <text
      id="text_rule"
      class="text_rule"
-     y="128"
-     x="90"
+     x="0"
+     y="30"
      style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:38.072px;line-height:125%;font-family:SubotypeSteady;letter-spacing:0px;word-spacing:0px;fill:#000080;fill-opacity:1;stroke:none;stroke-width:0.269px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
      xml:space="preserve"><tspan
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:SubotypeSteady;fill:#000080;stroke-width:0.269px"
        id="tspan_rule"
        >Sum= </tspan></text>
-  <g id="contents_group" class="contents_group">
-  </g>
   <text
      id="text_result"
      class="text_result"
      xml:space="preserve"
      style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:38.072px;line-height:125%;font-family:SubotypeSteady;letter-spacing:0px;word-spacing:0px;fill:#000080;fill-opacity:1;stroke:none;stroke-width:0.26px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-     x="160"
-     y="128"
+     x="70"
+     y="30"
      ><tspan
        id="tspan_result"
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:SubotypeSteady;stroke-width:0.26">0</tspan></text>
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:SubotypeSteady;stroke-width:0.26">0</tspan>
+       </text>
+  </svg>
 </svg>

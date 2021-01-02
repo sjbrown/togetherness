@@ -8,7 +8,7 @@ var paper = {
     elem.addEventListener('svg_drop', this.drop_handler.bind(elem))
     elem.addEventListener('svg_dragover', this.dragover_handler.bind(elem))
 
-    let label = elem.querySelector(`#${elem.id} > text > #tspan_label`)
+    let label = elem.querySelector(`#${elem.id} > svg > text > #tspan_label`)
     let tspanResult = elem.querySelector(`#${elem.id} > text > #tspan_result`)
     if (prototype) {
 
@@ -120,18 +120,18 @@ var paper = {
     let w = evt.detail.width
     let h = evt.detail.height
 
-    let area_rect = elem.querySelector(
-      `#${elem.id} > :not(.contents_group) #area_rect`
+    let bg = elem.querySelector(
+      `#${elem.id} > #resizable_bg`
     )
-    xbox = SVG.adopt(area_rect)
-    xbox.node.classList.add('droptarget')
-    xbox.style({ opacity: 1, 'stroke-opacity': 0.9 })
-    xbox.width(w)
-    xbox.height(h)
+    xbox = SVG.adopt(bg)
+    xbox.width(w - xbox.attr('stroke-width'))
+    xbox.height(h - xbox.attr('stroke-width'))
     elem_svg = SVG.adopt(elem)
     elem_svg.width(w)
     elem_svg.height(h)
+    elem_svg.viewbox(0,0,w,h)
 
+/*
     textRuleEl = elem.querySelector(`#${elem.id} > .text_rule`)
     text_rule  = SVG.adopt(textRuleEl)
     let offset = 20
@@ -145,6 +145,7 @@ var paper = {
     offset += parseInt(text_rule.bbox().width)
     text_rule.x(w - offset)
     text_rule.y(h - 50)
+    */
   },
 
   label_click_handler: function(elem) {
