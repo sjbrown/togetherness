@@ -1677,7 +1677,6 @@ function make_rect(attrs) {
   nest.attr({
     'data-app-url': '#nest',
     'id': 'nest_' + rect.attr('id'), // special ID
-    'data-nest-for': 'rect',
     'width': rect.rbox().width,
     'height': rect.rbox().height,
   })
@@ -1853,7 +1852,6 @@ function make_text(attrs, content) {
   nest.attr(Object.assign({
     'data-app-url': '#nest',
     'id': 'nest_' + text.attr('id'), // special ID
-    'data-nest-for': 'text',
     x: 0,
     y: 0,
     width: rect.width(),
@@ -1946,7 +1944,6 @@ function make_ellipse(attrs) {
   nest.attr(Object.assign({
     'data-app-url': '#nest_' + sid,
     'id': 'nest_' + ellipse.attr('id'), // special ID
-    'data-nest-for': 'ellipse',
     'width': ellipse.rbox().width,
     'height': ellipse.rbox().height,
   }, attrs))

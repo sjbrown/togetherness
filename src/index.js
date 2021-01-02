@@ -192,7 +192,6 @@ function _import_foreign_svg(body, url) { /* RETURNS PROMISE */
   s(nest, 'id', id)
   nest = SVG.adopt(nest)
   nest.attr({
-    'data-nest-for': 'svg',
     'data-app-url': url,
     'data-orig-name': origId,
   })
