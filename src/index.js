@@ -104,6 +104,14 @@ function byId(id) {
   return rv;
 }
 
+function qs(selector) {
+  return document.querySelector(selector)
+}
+
+function qsa(selector) {
+  return document.querySelectorAll(selector)
+}
+
 function getUserColor() {
   if (localStorage.getItem('profile_color')) {
     return localStorage.getItem('profile_color')
@@ -440,6 +448,12 @@ function initialize_with_prototype(elem, prototype) {
     if (prototype.hasAttribute('x')) {
       elem.setAttribute('x', prototype.getAttribute('x'))
       elem.setAttribute('y', prototype.getAttribute('y'))
+    }
+    if (prototype.hasAttribute('viewbox')) {
+      elem.setAttributeNS(SVG.ns, 'viewbox', prototype.getAttribute('viewbox'))
+    }
+    if (prototype.hasAttribute('viewBox')) {
+      elem.setAttributeNS(SVG.ns, 'viewBox', prototype.getAttribute('viewBox'))
     }
   }
 }
