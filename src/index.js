@@ -33,7 +33,7 @@ function s(el, label, val) {
   if (val === undefined || val === null) {
     return el.removeAttribute(label);
   }
-  el.setAttribute(label, val);
+  return el.setAttribute(label, val);
 }
 
 function svg_box(svg_el) {
@@ -265,7 +265,7 @@ function recolorize(matrixNode, color) {
     c = hslToRgb(hsl[0], 0.5, 0.5).map(to01)
     // console.log("c", c)
   }
-  matrixNode.setAttribute(
+  matrixNode.setAttributeNS(SVG.ns,
     'values',
     c[0] + ' 0 0 0 0 ' +
     c[1] + ' 0 0 0 0 ' +
@@ -434,7 +434,7 @@ function initialize_with_prototype(elem, prototype) {
     let prototypeMatrix = prototype.querySelector('#recolorize-filter-matrix')
     if(prototypeMatrix) {
       elem.querySelectorAll('#recolorize-filter-matrix').forEach((matrixNode) => {
-        matrixNode.setAttribute('values', prototypeMatrix.getAttribute('values'))
+        matrixNode.setAttributeNS(SVG.ns, 'values', prototypeMatrix.getAttribute('values'))
       })
     }
     if (prototype.hasAttribute('x')) {
