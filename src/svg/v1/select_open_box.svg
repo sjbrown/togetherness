@@ -23,6 +23,7 @@
 
      style="opacity:1; stroke-linejoin:miter; stroke-miterlimit:4; stroke-dasharray:9,3; stroke-dashoffset:0; "
      id="select_rect"
+     class="select_rect"
      width="99.5"
      height="99.5"
      x="0.5"

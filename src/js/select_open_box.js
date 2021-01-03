@@ -29,14 +29,14 @@ var select_open_box = {
   },
 
   selectElement: function(elem, elementToSelect) {
-    nest = SVG.adopt(elem)
-    let selRect = nest.node.querySelector('#select_rect')
+    let nest = SVG.adopt(elem)
+    let selRect = elem.querySelector(`#${elem.id} .select_rect`)
     let sel_rect_svg = SVG.adopt(selRect)
-    let handle = nest.node.querySelector('#resize_handle')
+    let handle = elem.querySelector(`#${elem.id} .resize_handle`)
     let handle_svg = SVG.adopt(handle)
 
     let sbox = spatial.smallestSurroundingBox([elementToSelect])
-    console.log('surr box', sbox)
+    // console.log('surr box', sbox)
     nest.attr(sbox)
 
     sel_rect_svg.width(sbox.width - 1)
@@ -53,8 +53,8 @@ var select_open_box = {
 
   reshape: function(elem, box) {
     console.log("reshape", elem.id, box)
-    nest = SVG.adopt(elem)
-    let selRect = nest.node.querySelector('#select_rect')
+    let nest = SVG.adopt(elem)
+    let selRect = elem.querySelector(`#${elem.id} .select_rect`)
     let sel_rect_svg = SVG.adopt(selRect)
 
     nest.attr(box)
@@ -82,25 +82,10 @@ var select_open_box = {
       width: mouse.x - nest.x(),
       height: mouse.y - nest.y(),
     })
-
-    /*
-    ui.getSelectBoxSelectedElements(elem).forEach(selectedEl => {
-      console.log("selected el resize", selectedEl.id, evt.detail)
-      let detail = {
-        width: nest.width(),
-        height: nest.height(),
-      }
-      selectedEl.dispatchEvent(new CustomEvent('resize', {
-        view: window,
-        bubbles: true,
-        cancelable: true,
-        detail: detail,
-      }))
-    })
-    */
   },
 
   svg_dragend_handle: function(elem, handle, evt) {
+    console.log('select_open_box gets svg_dragend_handle', elem, handle, evt.detail)
     ui.getSelectBoxSelectedElements(elem).forEach(selectedEl => {
       console.log("selected el resize", selectedEl.id, evt.detail)
       let detail = {
@@ -115,18 +100,27 @@ var select_open_box = {
       }))
     })
     ui.unselectAll()
+    //console.log('REMOVING HANDLE')
     handle.remove()
   },
 
   initialize: function(elem, prototype) {
     let color = getUserColor()
-    let nest = SVG.adopt(elem)
-    let handle = nest.node.querySelector('#resize_handle')
-    let handle_svg = SVG.adopt(handle)
-    nest.node.dataset.for = []
+    elem.dataset.for = []
 
-    let innerRect = nest.node.querySelector('rect')
+    elem.querySelectorAll(`#${elem.id} > *[id]`).forEach(el => {
+      // Rewrite the IDs of all the child elements
+      // Because IDs should be unique!
+      // (really this should be done for *every* element with an ID...)
+      if (el.id.indexOf(elem.id) === -1) {
+        el.classList.add(el.id)
+        el.id = el.id + '_' + elem.id
+      }
+    })
+
+    let innerRect = elem.querySelector('rect')
     let svg_rect = SVG.adopt(innerRect)
+    let nest = SVG.adopt(elem)
     nest.attr({ x: 0, y: 0, width: 0, height: 0 })
     svg_rect.attr({
       x: 0, y: 0,
@@ -134,31 +128,16 @@ var select_open_box = {
       stroke: color,
     })
 
+    let handle = elem.querySelector(`#${elem.id} .resize_handle`)
     handle.addEventListener('svg_drag', (evt) => {
       console.log("select_open_box handle svg_drag")
       this.svg_drag_handle(elem, handle, evt)
     })
 
     handle.addEventListener('svg_dragend', (evt) => {
-      console.log("select_open_box handle svg_drag")
+      console.log("select_open_box handle svg_dragend")
       this.svg_dragend_handle(elem, handle, evt)
     })
-
-      /*
-    elem.addEventListener('svg_dragsafe_dblclick', () => {
-      console.log("select_open_box dbl")
-      ui.getSelectBoxSelectedElements(elem).forEach(selectedEl => {
-        let detail = {elemId: selectedEl.id}
-        console.log("selected el dbl", selectedEl.id, detail)
-        selectedEl.dispatchEvent(new MouseEvent('dblclick', {
-          view: window,
-          bubbles: true,
-          cancelable: true,
-          detail: detail,
-        }))
-      })
-    })
-    */
   },
 
 }

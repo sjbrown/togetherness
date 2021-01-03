@@ -13,8 +13,10 @@ var paper = {
       // Rewrite the IDs of all the sub-SVGs
       // Because IDs should be unique!
       // (really this should be done for *every* element with an ID...)
-      el.classList.add(el.id)
-      el.id = el.id + '_' + elem.id
+      if (el.id.indexOf(elem.id) === -1) {
+        el.classList.add(el.id)
+        el.id = el.id + '_' + elem.id
+      }
     })
 
     let label = elem.querySelector(`#${elem.id} > .label_container .tspan_label`)
