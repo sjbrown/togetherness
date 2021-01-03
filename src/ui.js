@@ -320,12 +320,7 @@ const ui = {
 
   getFullMenuForElement: function(elem) {
     let actionMenu = {}
-    getNamespacesForElement(elem).forEach((nsName) => {
-      let ns = window[nsName]
-      if (!ns) {
-        console.error(`The "${nsName}" namespace was not found in the window`)
-        return {}
-      }
+    getNamespacesForElement(elem).forEach((ns) => {
       if (ns.menu) {
         actionMenu = Object.assign(actionMenu, ns.menu)
       }

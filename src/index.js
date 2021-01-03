@@ -228,6 +228,7 @@ function add_fresh_svg(svgElem) {
 
 
 function setColor(elem, color) {
+  console.log('setColor', elem.id, color)
   filterElem = elem.querySelector('#app-filter-colorize')
   if (!filterElem) {
     return
@@ -339,13 +340,19 @@ function hslToRgb(h, s, l){
 
 function getNamespacesForElement(elem) {
   //console.log("getNamespacesForElement", elem)
-  nses = elem.dataset.appNamespaces
-  nses = nses ? nses.split(',') : []
-  return nses
+  nsNames = elem.dataset.appNamespaces
+  nsNames = nsNames ? nsNames.split(',') : []
+  allNs = nsNames.map(nsName => {
+    let ns = window[nsName]
+    if (!ns) {
+      console.error(`The "${nsName}" namespace was not found in the window`)
+      return {}
+    }
+    return ns
+  })
+  return allNs
 }
-function setNamespacesForElement(elem, namespacesArr) {
-  elem.dataset.appNamespaces = namespacesArr
-}
+
 function getScriptsForElement(elem) {
   scripts = elem.dataset.appScripts
   scripts = scripts ? scripts.split(',') : []
@@ -375,9 +382,10 @@ async function appendDocumentScript(scriptElem, parentElem) {
 
   let namespace = g(scriptElem, 'data-namespace')
   if (namespace) {
-    newNamespaces = getNamespacesForElement(parentElem)
-    newNamespaces.push(namespace)
-    setNamespacesForElement(parentElem, newNamespaces)
+    let nsNames = parentElem.dataset.appNamespaces
+    nsNames = nsNames ? nsNames.split(',') : []
+    nsNames.push(namespace)
+    parentElem.dataset.appNamespaces = nsNames
   }
 
   s(newScript, 'id', scriptElem.id)
@@ -440,8 +448,7 @@ function init_with_namespaces(elem, prototype) {
   // console.log('init_with_namespaces', elem, prototype, getNamespacesForElement(elem))
   // This assumes import_foreign_svg has already been executed
   // and the svg element has been added to the DOM
-  getNamespacesForElement(elem).forEach((nsName) => {
-    let ns = window[nsName]
+  getNamespacesForElement(elem).forEach((ns) => {
     initialize_with_ns(elem, ns, prototype)
   })
 }
@@ -562,8 +569,7 @@ function push_to_parent(childEl, newParentEl, pushFn) {
 
   let oldPXY = {x: old_p_svg.x(), y: old_p_svg.y()}
   if (newParentEl.id === 'svg_table') {
-    getNamespacesForElement(childEl).forEach((nsName) => {
-      let ns = window[nsName]
+    getNamespacesForElement(childEl).forEach((ns) => {
       initialize_with_ns(childEl, ns)
     })
   }

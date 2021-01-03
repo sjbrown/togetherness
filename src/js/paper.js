@@ -1,25 +1,34 @@
 console.log('PAPER')
 var paper = {
   initialize: function(elem, prototype) {
+    // console.log('init', elem.id, elem)
     elem.addEventListener('label_change', this.label_change_handler)
     elem.addEventListener('svg_dragenter', () => {console.log('E')})
     elem.addEventListener('svg_dragleave', this.dragleave_handler.bind(elem))
+    elem.addEventListener('svg_dragover', this.dragover_handler.bind(elem))
     elem.addEventListener('svg_drag', this.drag_handler.bind(elem))
     elem.addEventListener('svg_drop', this.drop_handler.bind(elem))
-    elem.addEventListener('svg_dragover', this.dragover_handler.bind(elem))
 
-    let label = elem.querySelector(`#${elem.id} > svg > text > #tspan_label`)
-    let tspanResult = elem.querySelector(`#${elem.id} > text > #tspan_result`)
+    elem.querySelectorAll('svg[id]').forEach(el => {
+      // Rewrite the IDs of all the sub-SVGs
+      // Because IDs should be unique!
+      // (really this should be done for *every* element with an ID...)
+      el.classList.add(el.id)
+      el.id = el.id + '_' + elem.id
+    })
+
+    let label = elem.querySelector(`#${elem.id} > .label_container .tspan_label`)
+    let tspanResult = elem.querySelector(`#${elem.id} > .result_container .tspan_result`)
     if (prototype) {
 
       elem.setAttribute('width', prototype.getAttribute('width'))
       elem.setAttribute('height', prototype.getAttribute('height'))
 
-      let protoLabel = prototype.querySelector('#tspan_label')
+      let protoLabel = prototype.querySelector(`#${prototype.id} > .label_container .tspan_label`)
       label.textContent = protoLabel.textContent
 
       if (tspanResult !== null) {
-        let protoTspan = prototype.querySelector('#tspan_result')
+        let protoTspan = prototype.querySelector(`#${prototype.id} > .result_container .tspan_result`)
         tspanResult.textContent = protoTspan.textContent
       }
 
@@ -34,50 +43,65 @@ var paper = {
     } else {
       label.textContent = ''
     }
+
   },
 
   dragleave_handler: function(evt) {
-    console.log('L', this.id)
-    evt_fire('dom_change', this, null, {})
+    // console.log('L', this.id, evt)
+    paper.unhover(evt.detail.dropElem)
+    paper.contents_change(this)
   },
 
   drag_handler: function(evt) {
-    console.log("DH this", this, 'evt', evt)
+    // console.log("DH this", this, 'evt', evt)
     if (!this.contains(evt.target)) {
       return
     }
-    console.log('inner element being dragged', evt.target.id)
+    // console.log('inner element being dragged', evt.target.id)
   },
 
-  visit_contents_group(elem, visitFn) {
+  visit_contents_group: function(elem, visitFn) {
     let containedSVGs = elem.querySelectorAll(
       `#${elem.id} > .contents_group > svg`
     )
     containedSVGs.forEach(visitFn)
   },
 
-  get_die_value(elem) {
-    let sum = 0
-    elem.querySelectorAll('tspan').forEach((t) => {
-      if (t.closest('svg').id !== elem.id) {
-        // it's buried multiple levels deep in sub-SVGs
-        // so skip it lest it be double-counted
-        return
+  get_numeric_value(elem) {
+    if(elem.classList.contains('paper')) {
+      let num = parseInt(paper.getValue(elem))
+      if (isNaN(num)) {
+        return 0
+      } else {
+        return num
       }
-      c = t.textContent.trim()
-      console.log("c", c)
-      num = parseInt(c)
-      if (!isNaN(num)) {
-        sum += num
-      }
-      if (c == '+') {
-        sum += 1
-      }
-      if (c == '-') {
-        sum -= 1
-      }
-    })
-    return sum
+    } else {
+      let sum = 0
+      elem.querySelectorAll('tspan').forEach((t) => {
+        if (t.closest('svg').id !== elem.id) {
+          // it's buried multiple levels deep in sub-SVGs
+          // so skip it lest it be double-counted
+          return
+        }
+        let c = t.textContent.trim()
+        let num = parseInt(c)
+        if (!isNaN(num)) {
+          sum += num
+        }
+        if (c == '+') {
+          sum += 1
+        }
+        if (c == '-') {
+          sum -= 1
+        }
+      })
+      return sum
+    }
+  },
+
+  getValue: function(elem) {
+    tspan = elem.querySelector(`#${elem.id} > .result_container .tspan_result`)
+    return tspan.textContent.trim()
   },
 
   get_contents_values(elem) {
@@ -87,8 +111,7 @@ var paper = {
     )
     containedSVGs.forEach((subElem) => {
       nses = getNamespacesForElement(subElem)
-      nses.forEach((nsName) => {
-        let ns = window[nsName]
+      nses.forEach((ns) => {
         if (ns.getValue) {
           values[subElem.id] = ns.getValue(subElem)
           return
@@ -99,14 +122,14 @@ var paper = {
   },
 
   roll_handler: function(elem, evt) {
-    console.log('paper', elem.id, 'hears roll event', evt)
+    // console.log('paper', elem.id, 'hears roll event', evt)
     paper.visit_contents_group(elem, (s) => {
       let die_roll_handler = ui.augmented_handlers_for_element(s)['die_roll']
       if (die_roll_handler) {
         die_roll_handler()
       }
     })
-    evt_fire('dom_change', elem, null, {})
+    paper.contents_change(elem)
   },
 
   fix: function(evt, elem) {
@@ -116,41 +139,23 @@ var paper = {
 
   resize_handler: function(evt) {
     elem = this
-    console.log('paper', elem.id, ' got resize', evt.detail.width, evt.detail.height)
+    // console.log('paper', elem.id, ' got resize', evt.detail.width, evt.detail.height)
     let w = evt.detail.width
     let h = evt.detail.height
 
-    let bg = elem.querySelector(
-      `#${elem.id} > #resizable_bg`
-    )
-    xbox = SVG.adopt(bg)
-    xbox.width(w - xbox.attr('stroke-width'))
-    xbox.height(h - xbox.attr('stroke-width'))
+    let bg = elem.querySelector(`#${elem.id} > .resizable_bg`)
+    bgbox = SVG.adopt(bg)
+    bgbox.width(w)
+    bgbox.height(h)
     elem_svg = SVG.adopt(elem)
     elem_svg.width(w)
     elem_svg.height(h)
     elem_svg.viewbox(0,0,w,h)
-
-/*
-    textRuleEl = elem.querySelector(`#${elem.id} > .text_rule`)
-    text_rule  = SVG.adopt(textRuleEl)
-    let offset = 20
-    textResultEl = elem.querySelector(`#${elem.id} > .text_result`)
-    if (textResultEl) {
-      text_result  = SVG.adopt(textResultEl)
-      offset += parseInt(text_result.bbox().width)
-      text_result.x(w - offset)
-      text_result.y(h - 50)
-    }
-    offset += parseInt(text_rule.bbox().width)
-    text_rule.x(w - offset)
-    text_rule.y(h - 50)
-    */
   },
 
   label_click_handler: function(elem) {
-    console.log('lbclick', elem)
-    let label = elem.querySelector(`#${elem.id} > text > #tspan_label`)
+    // console.log('lbclick', elem)
+    let label = elem.querySelector(`#${elem.id} > .label_container .tspan_label`)
     ui_popup_text_input(
       elem,
       'Label',
@@ -161,37 +166,41 @@ var paper = {
 
   label_change_handler: function(evt) {
     elem = evt.target
-    let label = elem.querySelector(`#${elem.id} > text > #tspan_label`)
+    let label = elem.querySelector(`#${elem.id} > .label_container .tspan_label`)
     label.textContent = evt.detail.inputValue
   },
 
+  hover: function(dropElem) {
+    dropElem.querySelectorAll('.hover_indicator').forEach(el => {
+      SVG.adopt(el).opacity(1)
+    })
+  },
+
+  unhover: function(dropElem) {
+    dropElem.querySelectorAll('.hover_indicator').forEach(el => {
+      SVG.adopt(el).opacity(0)
+    })
+  },
+
   dragover_handler: function(evt) {
-    console.log('paper', 'dragover_handler', evt.detail)
+    // console.log('paper', 'dragover_handler', evt.detail)
     dragged = SVG.adopt(evt.detail.draggedElem)
     drop = SVG.adopt(evt.detail.dropElem)
     is_inside = isInside(dragged.node, drop.node)
     if (is_inside) {
-      drop.opacity(0.4)
-      //SVG.adopt(this).opacity(0.4)
-      return
+      paper.hover(evt.detail.dropElem)
     }
-    drop.opacity(1.0)
-    //SVG.adopt(this).opacity(1.0)
   },
 
   drop_handler: function(evt) {
-    console.log('evt is', evt)
-    console.log('this is', this)
-
-    draggedElem = document.querySelector('#' + evt.detail.draggedElemId)
+    draggedElem = evt.detail.draggedElem
     if (draggedElem === null) {
       return
     }
 
+    paper.unhover(evt.detail.dropElem)
+
     let elem = this
-    console.log('target should be ', elem)
-    console.log('target is', evt.target)
-    console.log('paper drop_handler', elem.id, evt.detail.draggedElemId, evt.target)
     let dropElem = evt.target
     let drop = SVG.adopt(dropElem)
     let contentsGroup = elem.querySelector(`#${elem.id} > .contents_group`)
@@ -232,16 +241,21 @@ var paper = {
           draggedEl,
           elem,
           (svgElem, parentElem) => {
-            console.log('consume it here', svgElem.id, parentElem.id)
+            // console.log('consume it here', svgElem.id, parentElem.id)
             contentsGroup.appendChild(svgElem)
           }
         )
       }
     })
-    elem.dispatchEvent(new CustomEvent('dom_change', {
-      bubbles: true,
-      detail: { 'ruleElemId': elem.id },
-    }))
+    paper.contents_change(elem)
+  },
+
+  contents_change: function(elem) {
+    getNamespacesForElement(elem).forEach(ns => {
+      if (ns.notify_contents_change) {
+        ns.notify_contents_change(elem)
+      }
+    })
   },
 
   menu: {

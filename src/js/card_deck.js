@@ -31,7 +31,7 @@ var card_deck = {
     console.log('target should be ', elem)
     console.log('target is', evt.target)
 
-    draggedElem = byId(evt.detail.draggedElemId)
+    draggedElem = evt.detail.draggedElem
     dropElem = evt.target
     if (
       elem.id === draggedElem.id

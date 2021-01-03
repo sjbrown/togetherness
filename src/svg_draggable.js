@@ -271,7 +271,7 @@ function makeDraggable(viewport, table) {
         // Don't spam - throttle to roughly every 200 miliseconds
         if (lockBroadcastTimer) { return }
         lockBroadcastTimer = true
-        broadcastTimer = setTimeout(() => { lockBroadcastTimer = false }, 400)//200)
+        broadcastTimer = setTimeout(() => { lockBroadcastTimer = false }, 200)
           broadcast('svg_drag', {
           elemId: selectedEl.node.id,
           mouse: mouse,
@@ -304,17 +304,17 @@ function makeDraggable(viewport, table) {
       if (currentDragovers[el.id]) {
         if (!inside) {
           broadcast('svg_dragleave', {
-            draggedElemId: selectedEl.node.id,
-            dropElemId: el.id,
+            draggedElem: selectedEl.node,
+            dropElem: el,
             mouse: mouse,
           }, el)
-          currentDragovers[el.id] = undefined
+          delete currentDragovers[el.id]
         }
       } else {
         if (inside) {
           broadcast('svg_dragenter', {
-            draggedElemId: selectedEl.node.id,
-            dropElemId: el.id,
+            draggedElem: selectedEl.node,
+            dropElem: el,
             mouse: mouse,
           }, el)
           currentDragovers[el.id] = 1
@@ -349,9 +349,9 @@ function makeDraggable(viewport, table) {
           [selectedEl.node]
         )
         broadcast('svg_drop', {
-          draggedElemId: selectedEl.node.id,
+          draggedElem: selectedEl.node,
           draggedSVGs: draggedSVGs,
-          dropElemId: el.id,
+          dropElem: el,
           mouse: mouse,
         }, el)
       }
