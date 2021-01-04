@@ -30,7 +30,9 @@ const ui = {
     viewportEl.addEventListener('svg_dragsafe_dblclick', (e) => {
       console.log("-c2--------------------------", e, viewportEl.id)
       if (e.detail.elemId === viewportEl.id) {
+        net_fire({ type: 'sync_needed', data: {} })
         ui.alertHere(e)
+        ui.setHeaderText('SYNCING...')
       } else if (e.detail.elemId) {
         elem = byId(e.detail.elemId)
         if (
@@ -41,6 +43,12 @@ const ui = {
           ui.dblclickElement(elem, e)
         }
       }
+    })
+
+    viewportEl.addEventListener('resize', (e) => {
+      console.log("-rs--------------------------", e, viewportEl.id)
+      elem = byId(e.detail.elemId)
+      fireHandlerForEvent(elem, 'resize_handler', e)
     })
   },
 

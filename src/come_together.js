@@ -5,6 +5,8 @@ var objectsObserver = null;
 var uiObserver = null;
 var syncNeeded = false;
 
+var msgSeqNum = 0
+
 
 /*
  *
@@ -85,7 +87,7 @@ TogetherJSConfig_on_ready = () => {
 
   TogetherJS.hub.on('sync_needed', (msg) => {
     // console.log('NET sync_needed msg', msg);
-    if (msg.data.clientId === myClientId) {
+    if (msg.data.clientId === undefined || msg.data.clientId === myClientId) {
       push_sync()
     }
   });
@@ -110,7 +112,7 @@ const serialized = function(el) {
 }
 
 function push_sync() {
-  if (!myClientId) {
+  if (!TogetherJS.running || !myClientId) {
     //console.log('NET TogetherJS not ready for send')
     return
   }
@@ -120,13 +122,16 @@ function push_sync() {
 }
 
 function net_fire(payload) {
-  if (!myClientId) {
+  if (!TogetherJS.running || !myClientId) {
     //console.log('NET TogetherJS not ready for send')
     return
   }
-  console.timeStamp('NET net_fire')
+  msgSeqNum++
+  msgSeqNum %= 100
+
+  console.timeStamp('NET net_fire', msgSeqNum)
   try {
-    TogetherJS.send(payload);
+    TogetherJS.send(Object.assign({}, payload, {msgSeqNum}));
   }
   catch (err) {
     console.error('NET togetherjs error', err);
@@ -350,7 +355,7 @@ const receive = function(msg, layerObs) {
       import_foreign_svg_for_element(nestEl)
       .then(() => {
         //console.log("NET finally got foreign svg", id)
-        init_with_namespaces(nestEl, nestEl)
+        fireHandlerForEvent(newEle, 'addListeners')
         return { status: 'success' }
       })
     )
@@ -392,10 +397,12 @@ const receive = function(msg, layerObs) {
       }
       let group = layer_objects.group()
       group.svg(msg.changed[id])
-      prototype = group.node.querySelector('#' + id)
-      //console.log("NET changed: prototype is", prototype)
-      init_with_namespaces(existingEl, prototype)
-      initialize_with_prototype(existingEl, prototype)
+      newEle = group.node.querySelector('#' + id)
+      //console.log("NET changed: newEle is", newEle)
+      existingEl.parentElement.insertBefore(newEle, existingEl)
+      existingEl.remove()
+      hookup_subsvg_listeners(newEle)
+      fireHandlerForEvent(newEle, 'addListeners')
       group.remove()
     })
   })
@@ -458,6 +465,7 @@ async function load_new_table(newTable) {
     layer_objects.node.remove()
     layer_objects = SVG.adopt(layerEl)
     objectsObserver = new LayerObserver(layer_objects.node)
+    hookup_subsvg_listeners(layerEl)
     svg_table.node.insertBefore(layerEl, layer_ui.node)
   })
   .then(() => {

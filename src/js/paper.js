@@ -1,26 +1,19 @@
 console.log('PAPER')
 var paper = {
   initialize: function(elem, prototype) {
-    // console.log('init', elem.id, elem)
-    elem.addEventListener('label_change', this.label_change_handler)
-    elem.addEventListener('svg_dragenter', () => {console.log('E')})
-    elem.addEventListener('svg_dragleave', this.dragleave_handler.bind(elem))
-    elem.addEventListener('svg_dragover', this.dragover_handler.bind(elem))
-    elem.addEventListener('svg_drag', this.drag_handler.bind(elem))
-    elem.addEventListener('svg_drop', this.drop_handler.bind(elem))
-
+    // console.log('paper.initialize', elem.id, elem)
+    paper.addListeners(elem)
     elem.querySelectorAll('svg[id]').forEach(el => {
       // Rewrite the IDs of all the sub-SVGs
       // Because IDs should be unique!
       // (really this should be done for *every* element with an ID...)
-      if (el.id.indexOf(elem.id) === -1) {
+      if (el.id.indexOf('o_') === -1) {
         el.classList.add(el.id)
         el.id = el.id + '_' + elem.id
       }
     })
 
     let label = elem.querySelector(`#${elem.id} > .label_container .tspan_label`)
-    let tspanResult = elem.querySelector(`#${elem.id} > .result_container .tspan_result`)
     if (prototype) {
 
       elem.setAttribute('width', prototype.getAttribute('width'))
@@ -29,6 +22,7 @@ var paper = {
       let protoLabel = prototype.querySelector(`#${prototype.id} > .label_container .tspan_label`)
       label.textContent = protoLabel.textContent
 
+      let tspanResult = elem.querySelector(`#${elem.id} > .result_container .tspan_result`)
       if (tspanResult !== null) {
         let protoTspan = prototype.querySelector(`#${prototype.id} > .result_container .tspan_result`)
         tspanResult.textContent = protoTspan.textContent
@@ -48,10 +42,20 @@ var paper = {
 
   },
 
+  addListeners: function(elem) {
+    elem.addEventListener('label_change', this.label_change_handler)
+    elem.addEventListener('svg_dragenter', () => {console.log('E')})
+    elem.addEventListener('svg_dragleave', this.dragleave_handler.bind(elem))
+    elem.addEventListener('svg_dragover', this.dragover_handler.bind(elem))
+    elem.addEventListener('svg_drag', this.drag_handler.bind(elem))
+    elem.addEventListener('svg_drop', this.drop_handler.bind(elem))
+  },
+
   dragleave_handler: function(evt) {
+    elem = this
     // console.log('L', this.id, evt)
     paper.unhover(evt.detail.dropElem)
-    paper.contents_change(this)
+    fireHandlerForEvent(elem, 'contents_change_handler')
   },
 
   drag_handler: function(evt) {
@@ -78,7 +82,7 @@ var paper = {
         return num
       }
     } else {
-      let sum = 0
+      let topmostNumber = null
       elem.querySelectorAll('tspan').forEach((t) => {
         if (t.closest('svg').id !== elem.id) {
           // it's buried multiple levels deep in sub-SVGs
@@ -88,16 +92,16 @@ var paper = {
         let c = t.textContent.trim()
         let num = parseInt(c)
         if (!isNaN(num)) {
-          sum += num
+          topmostNumber = num
         }
-        if (c == '+') {
-          sum += 1
+        if (topmostNumber === null && c == '+') {
+          topmostNumber = 1
         }
-        if (c == '-') {
-          sum -= 1
+        if (topmostNumber === null && c == '-') {
+          topmostNumber = 1
         }
       })
-      return sum
+      return topmostNumber || 0
     }
   },
 
@@ -131,7 +135,7 @@ var paper = {
         die_roll_handler()
       }
     })
-    paper.contents_change(elem)
+    fireHandlerForEvent(elem, 'contents_change_handler')
   },
 
   fix: function(evt, elem) {
@@ -139,8 +143,7 @@ var paper = {
     lock_selection(evt, elem)
   },
 
-  resize_handler: function(evt) {
-    elem = this
+  resize_handler: function(elem, evt) {
     // console.log('paper', elem.id, ' got resize', evt.detail.width, evt.detail.height)
     let w = evt.detail.width
     let h = evt.detail.height
@@ -249,16 +252,9 @@ var paper = {
         )
       }
     })
-    paper.contents_change(elem)
+    fireHandlerForEvent(elem, 'contents_change_handler')
   },
 
-  contents_change: function(elem) {
-    getNamespacesForElement(elem).forEach(ns => {
-      if (ns.notify_contents_change) {
-        ns.notify_contents_change(elem)
-      }
-    })
-  },
 
   menu: {
     'Label': {
@@ -277,8 +273,6 @@ var paper = {
       },
     },
   },
-
-
 
 }
 

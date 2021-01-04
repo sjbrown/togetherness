@@ -89,6 +89,7 @@ var select_open_box = {
     ui.getSelectBoxSelectedElements(elem).forEach(selectedEl => {
       console.log("selected el resize", selectedEl.id, evt.detail)
       let detail = {
+        elemId: selectedEl.id,
         width: nest.width(),
         height: nest.height(),
       }
@@ -112,7 +113,7 @@ var select_open_box = {
       // Rewrite the IDs of all the child elements
       // Because IDs should be unique!
       // (really this should be done for *every* element with an ID...)
-      if (el.id.indexOf(elem.id) === -1) {
+      if (el.id.indexOf('o_') === -1) {
         el.classList.add(el.id)
         el.id = el.id + '_' + elem.id
       }
@@ -128,6 +129,10 @@ var select_open_box = {
       stroke: color,
     })
 
+    select_open_box.addListeners(elem)
+  },
+
+  addListeners: function(elem) {
     let handle = elem.querySelector(`#${elem.id} .resize_handle`)
     handle.addEventListener('svg_drag', (evt) => {
       console.log("select_open_box handle svg_drag")

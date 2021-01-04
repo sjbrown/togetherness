@@ -22,8 +22,8 @@
      id="script_paper_sum"><![CDATA[
 var paper_sum = {
 
-  notify_contents_change: function(elem) {
-    // console.log('notify_contents_change ', elem.id)
+  contents_change_handler: function(elem) {
+    // console.log('contents_change_handler ', elem.id)
     let sum = 0
     paper.visit_contents_group(elem, (s) => {
       let tempNum = paper.get_numeric_value(s)
@@ -31,10 +31,6 @@ var paper_sum = {
     })
     let tspan = elem.querySelector(`#${elem.id} > .result_container .tspan_result`)
     tspan.textContent = sum
-  },
-
-  initialize: function(elem, prototype) {
-    elem.addEventListener('resize', paper.resize_handler.bind(elem))
   },
 
   menu: {

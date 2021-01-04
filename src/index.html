@@ -1532,7 +1532,7 @@ function ui_submit_svgfile(evt) {
   _import_foreign_svg(body)
   .then(nest => {
     // console.log('got nest', nest)
-    add_fresh_svg(nest.node)
+    hookup_subsvg_listeners(nest.node)
     layer_objects.node.appendChild(nest.node)
     init_with_namespaces(nest.node)
 
@@ -1753,7 +1753,6 @@ function ui_submit_image(evt) {
     </svg>
   `)
   .then(nest => {
-    add_fresh_svg(nest.node)
     layer_objects.node.appendChild(nest.node)
     ui.popdown_dialog('dialog_image')
   })

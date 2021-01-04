@@ -5,25 +5,22 @@ function g(el, label) {
 // getter - more natural "attributes" from SVG elements
   var get_fn = () => {
       if (el.dataset === undefined) {
-        return el[label];
+        return el[label]
       }
       if (Object.keys(el.dataset).indexOf(label) != -1) {
-        return el.dataset[label];
+        return el.dataset[label]
       }
-      if (Object.keys(el.attributes).indexOf(label) != -1) {
-        return el.getAttribute(label);
+      if (el.hasAttributeNS(SVG.ns, label)) {
+        return el.getAttributeNS(SVG.ns, label)
       }
-      var value = el.getAttribute(label);
-      if (value !== null) {
-        return value;
+      if (el.hasAttribute(label)) {
+        return el.getAttribute(label)
       }
-      if (label === 'width' || label === 'height') {
-        return el.getBBox()[label];
-      }
+      return null
   };
   var retval = get_fn()
   if (retval === 'false' || retval === 'null' || retval === 'undefined') {
-    throw Error(`Tried to set element attr to JS value? Something probably went wrong (${label})`);
+    throw Error(`Tried to set element attr to JS value? Something probably went wrong (${label})`)
   }
   return retval
 }
@@ -31,9 +28,19 @@ function g(el, label) {
 function s(el, label, val) {
 // setter - more natural "attributes" from SVG elements
   if (val === undefined || val === null) {
-    return el.removeAttribute(label);
+    if (el.hasAttributeNS(SVG.ns, label)) {
+      el.removeAttributeNS(SVG.ns, label)
+    }
+    if (el.hasAttribute(label)) {
+      el.removeAttribute(label)
+    }
   }
-  return el.setAttribute(label, val);
+  if (el.hasAttributeNS(SVG.ns, label)) {
+    el.setAttributeNS(SVG.ns, label, val)
+  }
+  if (el.hasAttribute(label)) {
+    el.setAttribute(label, val)
+  }
 }
 
 function svg_box(svg_el) {
@@ -186,13 +193,13 @@ function _import_foreign_svg(body, url) { /* RETURNS PROMISE */
   )
   var nest = frame.getElementsByTagName('svg')[0]
   if (
-    ( g(nest, 'x') !== undefined && g(nest, 'x') !== '0' )
+    ( g(nest, 'x') !== null && g(nest, 'x') !== '0' )
     ||
-    ( g(nest, 'y') !== undefined && g(nest, 'y') !== '0' )
+    ( g(nest, 'y') !== null && g(nest, 'y') !== '0' )
   ) {
-    console.error('X/Y coords must be "0"', g(nest, 'x'), g(nest, 'y'))
+    console.warn('X/Y coords must be "0"', g(nest, 'x'), g(nest, 'y'))
   }
-  var id = 'isvg_' + base32.short_id()
+  var id = 'o_' + base32.short_id()
   var origId = g(nest, 'id')
   if (!url) {
     url = '#' + origId
@@ -200,6 +207,8 @@ function _import_foreign_svg(body, url) { /* RETURNS PROMISE */
   s(nest, 'id', id)
   nest = SVG.adopt(nest)
   nest.attr({
+    'x': 100,
+    'y': 100,
     'data-app-url': url,
     'data-orig-name': origId,
   })
@@ -226,11 +235,10 @@ function _import_foreign_svg(body, url) { /* RETURNS PROMISE */
   })
 }
 
-function add_fresh_svg(svgElem) {
+function hookup_subsvg_listeners(svgElem) {
   // None of the UI is hooked up for the freshly-loaded document
-
   svgElem.querySelectorAll('[data-app-url]').forEach((subSvg) => {
-    init_with_namespaces(subSvg)
+    fireHandlerForEvent(subSvg, 'addListeners')
   })
 }
 
@@ -273,8 +281,7 @@ function recolorize(matrixNode, color) {
     c = hslToRgb(hsl[0], 0.5, 0.5).map(to01)
     // console.log("c", c)
   }
-  matrixNode.setAttributeNS(SVG.ns,
-    'values',
+  s(matrixNode, 'values',
     c[0] + ' 0 0 0 0 ' +
     c[1] + ' 0 0 0 0 ' +
     c[2] + ' 0 0 0 0 ' +
@@ -350,6 +357,7 @@ function getNamespacesForElement(elem) {
   //console.log("getNamespacesForElement", elem)
   nsNames = elem.dataset.appNamespaces
   nsNames = nsNames ? nsNames.split(',') : []
+  // console.log("nsNames", nsNames)
   allNs = nsNames.map(nsName => {
     let ns = window[nsName]
     if (!ns) {
@@ -359,6 +367,15 @@ function getNamespacesForElement(elem) {
     return ns
   })
   return allNs
+}
+
+function fireHandlerForEvent(elem, handlerName, evt) {
+  getNamespacesForElement(elem).forEach(ns => {
+    if (ns.hasOwnProperty(handlerName)) {
+      console.log("firing", handlerName)
+      return ns[handlerName](elem, evt)
+    }
+  })
 }
 
 function getScriptsForElement(elem) {
@@ -435,28 +452,6 @@ function initialize_with_ns(elem, ns, prototype) {
     ns.initialize(elem, prototype)
   }
 }
-function initialize_with_prototype(elem, prototype) {
-  // console.log('initialize_with_prototype', elem.id)
-  // The "UI level logic" is concerned with the color and the position
-  if (prototype && prototype.querySelector) {
-    let prototypeMatrix = prototype.querySelector('#recolorize-filter-matrix')
-    if(prototypeMatrix) {
-      elem.querySelectorAll('#recolorize-filter-matrix').forEach((matrixNode) => {
-        matrixNode.setAttributeNS(SVG.ns, 'values', prototypeMatrix.getAttribute('values'))
-      })
-    }
-    if (prototype.hasAttribute('x')) {
-      elem.setAttribute('x', prototype.getAttribute('x'))
-      elem.setAttribute('y', prototype.getAttribute('y'))
-    }
-    if (prototype.hasAttribute('viewbox')) {
-      elem.setAttributeNS(SVG.ns, 'viewbox', prototype.getAttribute('viewbox'))
-    }
-    if (prototype.hasAttribute('viewBox')) {
-      elem.setAttributeNS(SVG.ns, 'viewBox', prototype.getAttribute('viewBox'))
-    }
-  }
-}
 
 function init_with_namespaces(elem, prototype) {
   // console.log('init_with_namespaces', elem, prototype, getNamespacesForElement(elem))
@@ -479,7 +474,7 @@ function add_n_objects_from_prototype(n, prototype, center) {
   newCenter = [center[0], center[1]]
   for( var i=0; i < n; i++ ) {
     clone = prototype.cloneNode(true)
-    let id = 'isvg_' + base32.short_id()
+    let id = 'o_' + base32.short_id()
     clone.id = id
     nest = SVG.adopt(clone)
     nest.cx(newCenter[0])
@@ -507,7 +502,7 @@ function add_to_screen(nest, attrs) {
 
 var alreadyAddedObjectURLs = {}
 async function add_object(url, attrs) {
-  //console.log('add_object', url, attrs)
+  // console.log('add_object', url, attrs)
   let nest = await import_foreign_svg(url)
 
   // Allow 400 miliseconds for the scripts to load
@@ -526,39 +521,20 @@ async function clone_object(el, attrs) {
   nest.node.querySelectorAll(`#${nest.node.id} .draggable-group`).forEach((subEl) => {
     // remove these or the ids will collide
     //subEl.remove()
-    subEl.id = 'isvg_' + base32.short_id() + i
+    subEl.id = 'o_' + base32.short_id() + i
     i++
   })
   add_to_screen(nest, attrs)
 }
-
-function add_object_from_payload(payload) {
-  url = payload['data-app-url']
-  return import_foreign_svg(url)
-  .then((nest) => {
-    if (payload['data-color']) {
-      setColor(nest.node, payload['data-color'])
-    }
-    nest.attr(payload)
-    return nest
-  })
-  .then((nest) => {
-    ui.do_animate(nest.node)
-    return nest.node
-  })
-}
-
 
 function pop_from_parent(childElem) {
   // console.log('pop child', childElem.id, 'from_parent')
   if (childElem.tagName !== 'svg') {
     throw Error('Not an SVG element')
   }
-  parentWithXY = childElem.parentNode.closest('svg')
-  grandparent = parentWithXY.parentNode.closest('svg')
-  // console.log('child', childElem.id, 'parent', parentWithXY, 'grandp', grandparent.id)
-  child = SVG.adopt(childElem)
-  parentWithXY = SVG.adopt(parentWithXY)
+  parentNode = childElem.parentNode.closest('svg')
+  grandparent = parentNode.parentNode.closest('svg')
+  // console.log('child', childElem.id, 'parent', parentNode, 'grandp', grandparent.id)
 
   let pushFn = (c,p) => {
     // console.log("pushing to layer_objects")
@@ -582,22 +558,10 @@ function push_to_parent(childEl, newParentEl, pushFn) {
   c = SVG.adopt(childEl)
 
   let oldPXY = {x: old_p_svg.x(), y: old_p_svg.y()}
-  if (newParentEl.id === 'svg_table') {
-    getNamespacesForElement(childEl).forEach((ns) => {
-      initialize_with_ns(childEl, ns)
-    })
-  }
   // console.log('c', c.x(), c.y(), 'old p', oldPXY, 'new p', new_p_svg.x(), new_p_svg.y())
   c.x( (c.x() + oldPXY.x) - new_p_svg.x() )
   c.y( (c.y() + oldPXY.y) - new_p_svg.y() )
   pushFn(childEl, newParentEl)
-
-  if (childEl.classList.contains('drag_select_box')) {
-    console.warn("----------------------------------- WHEN WIL I NEED THIS")
-    childEl.dispatchEvent(
-      new CustomEvent('dragselect_init', { bubbles: true })
-    )
-  }
 }
 
 function delete_element(el) {

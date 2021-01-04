@@ -37,6 +37,4 @@ var clock = {
   },
 
 }
-console.log('CLOOOOCKc', clock)
-console.log('CLOOOOCKwc', window.clock)
 
