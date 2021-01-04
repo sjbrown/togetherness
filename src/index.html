@@ -92,7 +92,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
   viewport.node.setAttribute('overflow', 'scroll')
   viewport.node.style.overflow = 'scroll'
   s(viewport.node, 'width', viewport.node.parentNode.clientWidth)
-  viewport.style('background-image', 'url(svg/bg_hexagons.svg)')
+  viewport.style('background-image', 'url(svg/bg_wiggle.svg)')
 
   gViewport = SVG.adopt(document.createElementNS(SVG.ns, 'g'))
   gViewport.node.id = 'g_viewport'
@@ -985,6 +985,8 @@ function ui_change_table_size() {
         <img height="32" src="svg/bg_graphpaper.svg" />
       <li>http://www.1kfa.com/table/svg/bg_winter_sun.svg
         <img height="32" src="svg/bg_winter_sun.svg" />
+      <li>http://www.1kfa.com/table/svg/bg_wiggle.svg
+        <img height="32" src="svg/bg_wiggle.svg" />
     </ul>
     <label for="background_url">Enter a URL</label>
     <input id="background_url" type="url"
