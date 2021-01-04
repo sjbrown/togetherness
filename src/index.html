@@ -779,19 +779,32 @@ function load_profile_ui() {
 <!-- SAVE ============================================================ SAVE -->
   <div id="dialog_save" class="modal">
   <script>
+function make_safe_svg_string() {
+  let elJSON = domJSON.toJSON(
+    byId('svg_table'),
+    { domProperties: false }
+  )
+  let fragment = domJSON.toDOM(elJSON)
+  let dd = document.createElement('div')
+  dd.appendChild(fragment)
+  return dd.innerHTML
+}
+function download_svg() {
+  let svg_string = make_safe_svg_string()
+  let blob = new Blob([svg_string], {type: 'image/svg+xml'})
+  let tmplink = document.createElement('a')
+  tmplink.href = window.URL.createObjectURL(blob)
+  let filename = 'tt_' + (new Date().toISOString().substr(0,19)) + '.svg'
+  tmplink.download = filename.replace(/[-: ]/g, '_')
+  tmplink.click()
+}
 function ui_popup_dialog_save() {
   if(document.querySelectorAll('#svg_table').length > 1) {
     alert('too many svg_table elements')
   }
-  elJSON = domJSON.toJSON(
-    byId('svg_table'),
-    { domProperties: false }
-  )
-  fragment = domJSON.toDOM(elJSON)
-  var dd = document.createElement('div')
-  dd.appendChild(fragment)
+  let svg_string = make_safe_svg_string()
   textarea = byId('textarea_save_output')
-  textarea.value = dd.innerHTML
+  textarea.value = svg_string
   return ui.popup_dialog({'data-dialog-id': 'dialog_save'})
 }
   </script>
@@ -812,6 +825,14 @@ function ui_popup_dialog_save() {
       <a name="copy_and_paste"></a>
       <h1 >Copy and Paste</h1>
       <textarea id="textarea_save_output" cols="82" rows=10>X</textarea>
+      <div class="save_explain">
+      Copy and paste the contents of this text box to a file on your computer.
+      </div>
+    </section>
+    <section>
+      <a name="download"></a>
+      <h1 >Download</h1>
+      <button class="btn" onclick="download_svg()">Download SVG</button>
       <div class="save_explain">
       Copy and paste the contents of this text box to a file on your computer.
       </div>
