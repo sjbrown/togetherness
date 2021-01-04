@@ -169,11 +169,6 @@ var tarot_deck = {
     card.addClass('of_' + deckEl.id)
     card.node.dataset.appNamespaces = ['tarot_deck_card']
 
-    card.node.addEventListener('svg_dragstart', (evt) => {
-      if (evt.detail.elemId === card.node.id) {
-        console.log('its me', card.node.id)
-      }
-    })
     return card
   },
 

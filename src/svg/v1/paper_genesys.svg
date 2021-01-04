@@ -1,43 +1,20 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
-   xmlns:dc="http://purl.org/dc/elements/1.1/"
-   xmlns:cc="http://creativecommons.org/ns#"
-   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-   xmlns:svg="http://www.w3.org/2000/svg"
+   id="paper_genesys"
+   class="paper_genesys paper"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:xlink="http://www.w3.org/1999/xlink"
-   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
-   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   width="200"
-   height="200"
-   version="1.1"
-   id="paper_genesys"
-   inkscape:version="0.92.3 (2405546, 2018-03-11)"
-   sodipodi:docname="paper_genesys.svg">
-  <defs
-     id="defs2">
-    <linearGradient
-       id="linearGradient820"
-       inkscape:collect="always">
-      <stop
-         style="stop-color:#f0f0f0;stop-opacity:1"
-         offset="0"
-         id="stop826" />
-      <stop
-         style="stop-color:#ffffff;stop-opacity:1;"
-         offset="1"
-         id="stop824" />
-    </linearGradient>
-    <linearGradient
-       inkscape:collect="always"
-       xlink:href="#linearGradient820"
-       id="linearGradient822"
-       x1="36.70"
-       y1="263.7"
-       x2="37.07"
-       y2="285.0"
-       gradientUnits="userSpaceOnUse"
-       gradientTransform="matrix(3.8041646,0,0,3.8135004,-0.53771847,-984.16693)" />
+   width="500" height="150"
+   viewBox="0 0 500 150"
+   >
+  <defs id="defs_paper_genesys">
+    <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
+      <feColorMatrix id="recolorize-filter-matrix" type="matrix"
+         values="1.0 0.0 0.0 0.0  0.0
+                 1.0 0.0 0.0 0.0  0.0
+                 1.0 0.0 0.0 0.0  0.0
+                 0.0 0.0 0.0 1.0  0.0" />
+    </filter>
   </defs>
   <script
      type="text/javascript"
@@ -45,9 +22,10 @@
      id="script_paper_genesys"><![CDATA[
 var paper_genesys = {
 
-  dom_change_handler: function(evt) {
-    console.log('dom_change_handler', this.id, evt.detail)
-    let allValues = paper.get_contents_values(this)
+  contents_change_handler: function(elem) {
+    // console.log('contents_change_handler ', elem.id)
+
+    let allValues = paper.get_contents_values(elem)
     let table = {
       'Success': 0,
       'Failure': 0,
@@ -90,38 +68,8 @@ var paper_genesys = {
     strRepr = strRepr.replace('}', '')
     strRepr = strRepr.replace(/,/g, ' ')
     strRepr = strRepr.replace(/"/g, '')
-    let tspan = this.querySelector(`#${this.id} > text > #tspan_result`)
+    let tspan = elem.querySelector(`#${elem.id} > .result_container .tspan_result`)
     tspan.textContent = strRepr
-  },
-
-  initialize: function(elem, prototype) {
-    elem.addEventListener('dom_change', this.dom_change_handler)
-    elem.addEventListener('resize', this.resize_handler.bind(elem))
-  },
-
-  resize_handler: function(evt) {
-    let elem = this
-    console.log('paper', elem.id, ' got resize', evt.detail.width, evt.detail.height)
-    let w = evt.detail.width
-    let h = evt.detail.height
-
-    let area_rect = elem.querySelector(
-      `#${elem.id} > :not(.contents_group) #area_rect`
-    )
-    xbox = SVG.adopt(area_rect)
-    xbox.node.classList.add('droptarget')
-    xbox.style({ opacity: 1, 'stroke-opacity': 0.9 })
-    xbox.width(w)
-    xbox.height(h)
-    elem_svg = SVG.adopt(elem)
-    elem_svg.width(w)
-    elem_svg.height(h)
-
-    textResultEl = elem.querySelector(`#${elem.id} > .text_result`)
-    if (textResultEl) {
-      text_result  = SVG.adopt(textResultEl)
-      text_result.y(h - 50)
-    }
   },
 
   menu: {
@@ -135,77 +83,99 @@ var paper_genesys = {
   },
 
 }
-
-
     ]]></script>
   <script
-     type="text/javascript"
-     src="js/paper.js"
-     data-namespace="paper"
-     id="script_paper" />
-  <path
-     style="color:#000000;display:inline;overflow:visible;visibility:visible;opacity:1;isolation:auto;solid-color:#000000;solid-opacity:1;fill:#000000;fill-opacity:0.5;fill-rule:nonzero;stroke:none;stroke-width:1.58"
-     d="M 0.6,4.0
-     C 0.0,150.3
-       1.78,98.6
-       1.08,198.0
-     l 2.6,0.3
-     c 64.23,2.104
-       138.07,0.539
-       198.42,0.6
-     L 195.75,3.5
-     C 156.22,15.333
-       23.268,5.742
-       0.622,3.98 Z"
-     id="paper_shadow"
-     inkscape:connector-curvature="0"
-     sodipodi:nodetypes="cccccc" />
-  <g id="group-monochrome-1" class="colorable">
-  <path
-     style="opacity:1;fill:url(#linearGradient822);fill-opacity:1;stroke:#b3b3b3;stroke-width:5.0;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.9"
-     d="M 1.0,3.0
-     C 50.0,3.0
-       195.0,4.5
-       195.0,4.5
-     l 2.0,190.0
-     c 0,0
-       -182.5,0.0
-       -195.0,-2.0 z"
-     class="droptarget"
-     id="area_rect"
-     title="double-click to release members"
-     inkscape:connector-curvature="0"
-     sodipodi:nodetypes="ccccc" />
+    type="text/javascript"
+    src="js/paper.js"
+    data-namespace="paper"
+    id="script_paper" />
+  <svg id="resizable_bg"
+    x="0" y="0" width="500" height="150"
+    viewBox="0 0 500 150"
+    preserveAspectRatio="none"
+    class="droptarget"
+  >
+    <rect
+       id="shadow_rect"
+       fill="#000"
+       opacity="0.4"
+       x="4" y="4"
+       width="496"
+       height="146"
+    />
+    <rect
+       id="white_rect"
+       fill="#fff"
+       x="0" y="0"
+       width="490"
+       height="140"
+    />
+    <g id="group-monochrome-1" class="colorable" filter="url(#app-filter-colorize)">
+      <rect
+         id="stroke_rect"
+         fill-opacity="0"
+         stroke="#d3d3d3"
+         stroke-width="2"
+         style="stroke-miterlimit:4;stroke-opacity:1"
+         x="1" y="1"
+         width="490"
+         height="140"
+      />
+    </g>
+    <rect
+       id="dashed_hover_indicator"
+       class="hover_indicator"
+       opacity="0"
+       fill-opacity="0"
+       stroke="#f3f3f3"
+       stroke-width="2"
+       style="stroke-opacity:1;stroke-dasharray:5"
+       x="1" y="1"
+       width="490"
+       height="140"
+    />
+  </svg>
+  <svg id="label_container" x="10" y="0" >
+    <text
+       id="text_label"
+       y="30"
+       x="0"
+       style="font-style:normal;font-weight:normal;
+       font-size:28px;line-height:125%;font-family:SubotypeSteady;
+       letter-spacing:0px;word-spacing:0px;
+       fill:#000080;fill-opacity:1;
+       "
+       xml:space="preserve"><tspan
+         style="font-style:normal;font-variant:normal;font-weight:normal;
+         font-family:SubotypeSteady;
+         fill:#000080"
+         id="tspan_label"
+         class="tspan_label"
+         >Label</tspan></text>
+  </svg>
+  <g id="contents_group" class="contents_group">
   </g>
-  <text
-     id="text_label"
-     y="28"
-     x="10"
-     style="font-style:normal;
-     font-weight:normal;
-     font-size:24px;line-height:125%;font-family:noto sans,helvetica;
-     letter-spacing:0px;word-spacing:0px;
-     fill:#000080;fill-opacity:1;
-     "
-     xml:space="preserve"><tspan
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:noto sans,helvetica;-inkscape-font-specification:noto sans,helvetica;fill:#000080;stroke-width:0.269px"
-       id="tspan_label"
-       sodipodi:role="line">Label</tspan></text>
-
-  <g id="contents_group" class="contents_group" >
-  </g>
-  <text
-     xml:space="preserve"
-     style="font-style:normal;font-variant:normal;font-weight:normal;
-     font-stretch:normal;
-     font-size:28px;
-     line-height:125%;
-     font-family:noto sans,helvetica;
-     word-spacing:0px;fill:#000080;
-     fill-opacity:1;stroke:none;
-     stroke-width:0.26px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-     x="10" y="180"
-     class="text_result"><tspan
-       id="tspan_result"
-       style="font-stretch:normal;font-family:noto sans,helvetica;-inkscape-font-specification:noto sans,helvetica;fill:#000080;stroke-width:0.2">{}</tspan></text>
+  <svg id="result_container"
+  x="10" y="75%"
+  width="95%" height="50"
+  viewBox="0 0 500 50" preserveAspectRatio="xMinYMin meet" >
+    <rect id="text_bg" width="500" height="30" fill="white" opacity="0.4" />
+    <text
+       id="text_result"
+       class="text_result"
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;
+       font-size:34px;line-height:125%;font-family:SubotypeSteady;
+       letter-spacing:0px;word-spacing:0px;
+       fill:#000080;fill-opacity:1;
+       "
+       x="0"
+       y="30"
+     ><tspan
+         id="tspan_result"
+         class="tspan_result"
+         style="font-family:SubotypeSteady;fill:#000080"
+         >{}</tspan
+    ></text>
+  </svg>
 </svg>

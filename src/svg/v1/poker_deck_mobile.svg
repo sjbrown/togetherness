@@ -132,12 +132,6 @@ var poker_deck_mobile = {
     card.node.dataset.homeDeckId = deckEl.id
     card.node.dataset.appNamespaces = ['poker_deck_mobile_card']
 
-    card.node.addEventListener('svg_dragstart', (evt) => {
-      //console.log('card gets svg_dragstart', evt)
-      if (evt.detail.elemId === card.node.id) {
-        console.log('its me', card.node.id)
-      }
-    })
     return card
   },
 
