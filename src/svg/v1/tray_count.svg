@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
-   id="paper_best"
-   class="paper_best paper"
+   id="tray_count"
+   class="tray_count tray"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:xlink="http://www.w3.org/1999/xlink"
    width="200" height="150"
    viewBox="0 0 200 150"
    >
-  <defs id="defs_paper_best">
+  <defs id="defs_tray_count">
     <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
       <feColorMatrix id="recolorize-filter-matrix" type="matrix"
          values="1.0 0.0 0.0 0.0  0.0
@@ -18,74 +18,62 @@
   </defs>
   <script
      type="text/javascript"
-     data-namespace="paper_best"
-     id="script_paper_best"><![CDATA[
-var paper_best = {
+     data-namespace="tray_count"
+     id="script_tray_count"><![CDATA[
+var tray_count = {
 
   contents_change_handler: function(elem) {
-
-    howmany_tspan = elem.querySelector(`#${elem.id} > svg .tspan_rule_num`)
-
-    let howMany = parseInt(howmany_tspan.textContent)
-    let sign = howMany / Math.abs(howMany) // -1 or +1
-    let tally = []
-
-    paper.visit_contents_group(elem, (s) => {
-      tally.sort((a,b) => (a-b))
-      let tempNum = paper.get_numeric_value(s)
-      if (tempNum !== undefined) {
-        tempNum = sign * tempNum
-        if (tally.length < Math.abs(howMany)) {
-          tally.push( tempNum )
-        } else if (tempNum > tally[0]) {
-          tally[0] = tempNum
-        }
-      }
+    // console.log('contents_change_handler ', elem.id)
+    let count = 0
+    condition_tspan = elem.querySelector(`#${elem.id} > svg .tspan_rule_num`)
+    let gate = parseInt(condition_tspan.textContent)
+    tray.visit_contents_group(elem, (s) => {
+      let tempNum = tray.get_numeric_value(s)
+      count = count + (tempNum >= gate ? 1 : 0)
     })
     let tspan = elem.querySelector(`#${elem.id} > .result_container .tspan_result`)
-    tspan.textContent = sign * tally.reduce((x,y) => x+y, 0)
+    tspan.textContent = count
   },
 
   menu: {
     'Roll All': {
-      eventName: 'paper_roll',
+      eventName: 'tray_roll',
       applicable: (node) => { return true },
       handler: function(evt) {
-        return paper.roll_handler(this, evt)
+        return tray.roll_handler(this, evt)
       },
     },
-    'Best +': {
-      eventName: 'rule_best_plus',
+    'Cond +': {
+      eventName: 'rule_count_cond_plus',
       applicable: (node) => { return true },
       handler: function() {
-        paper_best.best_change_handler(this, +1)
+        tray_count.cond_change_handler(this, +1)
       },
     },
-    'Best -': {
-      eventName: 'rule_best_minus',
+    'Cond -': {
+      eventName: 'rule_count_cond_minus',
       applicable: (node) => { return true },
       handler: function() {
-        paper_best.best_change_handler(this, -1)
+        tray_count.cond_change_handler(this, -1)
       },
     },
   },
 
-  best_change_handler: function(elem, change) {
-    // console.log('best_change_handler', elem.id, change)
-    howmany_tspan = elem.querySelector(`#${elem.id} > svg .tspan_rule_num`)
-    howMany = parseInt(howmany_tspan.textContent)
-    let sum = howMany + change
-    howmany_tspan.textContent = sum
-    paper_best.contents_change_handler(elem)
+  cond_change_handler: function(elem, change) {
+    // console.log('cond_change_handler', elem.id, change)
+    condition_tspan = elem.querySelector(`#${elem.id} > svg .tspan_rule_num`)
+    gate = parseInt(condition_tspan.textContent)
+    condition_tspan.textContent = gate + change
+    tray_count.contents_change_handler(elem)
   },
 
 }
     ]]></script>
   <script
     type="text/javascript"
-    src="js/paper.js"
-    data-namespace="paper"
-    id="script_paper" />
+    src="js/tray.js"
+    data-namespace="tray"
+    id="script_tray" />
   <svg id="resizable_bg"
     x="0" y="0" width="200" height="150"
     viewBox="0 0 200 150"
@@ -155,8 +143,8 @@ var paper_best = {
   <svg id="result_container"
   x="0" y="75%"
   width="95%" height="50"
-  viewBox="0 0 100 50" preserveAspectRatio="xMaxYMin meet" >
-    <rect id="text_bg" width="100" height="30" fill="white" opacity="0.4" />
+  viewBox="0 0 140 50" preserveAspectRatio="xMaxYMin meet" >
+    <rect id="text_bg" width="140" height="30" fill="white" opacity="0.4" />
     <text
        id="text_rule"
        class="text_rule"
@@ -168,16 +156,16 @@ var paper_best = {
        fill:#000080;fill-opacity:1;"
        xml:space="preserve"
      ><tspan
-         style="font-family:SubotypeSteady;fill:#000080;"
-         id="tspan_rule_prefix"
-         >Best(</tspan><tspan
-           id="tspan_rule_num"
-           class="tspan_rule_num"
-           style="font-size:30px;font-weight:bold;font-family:SubotypeSteady;fill:#000080;"
-         >1</tspan><tspan
-           id="tspan_rule_suffix"
-           style="font-size:30px;font-weight:normal;font-family:SubotypeSteady;fill:#000080;"
-         >) =</tspan
+       id="tspan_rule_prefix"
+         style="font-family:SubotypeSteady;fill:#000080"
+       >Count(≥</tspan><tspan
+         id="tspan_rule_num"
+         class="tspan_rule_num"
+         style="font-family:SubotypeSteady;fill:#000080"
+       >6</tspan><tspan
+         id="tspan_rule_suffix"
+         style="font-family:SubotypeSteady;fill:#000080"
+       >) =</tspan
     ></text>
     <text
        id="text_result"
@@ -188,7 +176,7 @@ var paper_best = {
        letter-spacing:0px;word-spacing:0px;
        fill:#000080;fill-opacity:1;
        "
-       x="70"
+       x="110"
        y="30"
      ><tspan
          id="tspan_result"

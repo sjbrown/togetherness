@@ -2056,7 +2056,7 @@ function ui_submit_ellipse(evt) {
     <div class="nav-wrapper">
       <ul class="left">
         <li><a href="#drawing">Drawing</a></li>
-        <li><a href="#dynamic_paper">Dynamic Paper</a></li>
+        <li><a href="#dynamic_tray">Dynamic Tray</a></li>
       </ul>
     </div>
     </nav>
@@ -2097,39 +2097,43 @@ function ui_submit_ellipse(evt) {
       </button>
       -->
     </section>
-    <section id="dynamic_paper_section">
-      <a name="dynamic_paper"></a>
-      <h1 id="dynamic_paper_h1">Dynamic Paper</h1>
+    <section id="dynamic_tray_section">
+      <a name="dynamic_tray"></a>
+      <h1 id="dynamic_tray_h1">Dynamic Tray</h1>
       <p>
-      Dynamic papers will automatically do calculations based on
+      Dynamic Trays will automatically do calculations based on
       the dice (or other objects like text) placed inside them
       </p>
       <button class="btn btn-small modal-close"
-        onclick="add_object('svg/v1/paper_sum.svg')">
+        onclick="add_object('svg/v1/tray_sum.svg')">
         Sum
       </button>
       <button class="btn btn-small modal-close"
-        onclick="add_object('svg/v1/paper_count.svg')">
+        onclick="add_object('svg/v1/tray_count.svg')">
         Count
       </button>
       <button class="btn btn-small modal-close"
-        onclick="add_object('svg/v1/paper_modifier.svg')">
+        onclick="add_object('svg/v1/tray_modifier.svg')">
         Modifier
       </button>
       <button class="btn btn-small modal-close"
-        onclick="add_object('svg/v1/paper_best.svg')">
+        onclick="add_object('svg/v1/tray_best.svg')">
         Best-of
       </button>
       <button class="btn btn-small modal-close"
-        onclick="add_object('svg/v1/paper_sorter.svg')">
+        onclick="add_object('svg/v1/tray_sorter.svg')">
         Sorter
       </button>
       <button class="btn btn-small modal-close"
-        onclick="add_object('svg/v1/paper_tabulate.svg')">
+        onclick="add_object('svg/v1/tray_tabulate.svg')">
         Tabulate
       </button>
       <button class="btn btn-small modal-close"
-        onclick="add_object('svg/v1/paper_genesys.svg')">
+        onclick="add_object('svg/v1/tray_explode.svg')">
+        Explode
+      </button>
+      <button class="btn btn-small modal-close"
+        onclick="add_object('svg/v1/tray_genesys.svg')">
         Genesys
       </button>
     </section>
@@ -2495,7 +2499,7 @@ function token_add(buttonEl) {
         <tr>
         <td colspan="2">
         Try this for the front / back in order to create a "poker chip"
-        token that will interact with Dynamic Paper to do things like
+        token that will interact with Dynamic Tray to do things like
         quickly calculate their sum.
         </td>
         </tr>
@@ -2591,10 +2595,10 @@ function token_add(buttonEl) {
         To remove cards from a deck, double-click on the deck.
       </p>
       <p>
-        To remove objects from a Dynamic Paper, double-click it.
+        To remove objects from a Dynamic Tray, double-click it.
       </p>
       <p>
-        To resize a Dynamic Paper, double-click it, then drag the gray square
+        To resize a Dynamic Tray, double-click it, then drag the gray square
         handle in the lower corner.
       </p>
       <p>

@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
-   id="paper_modifier"
-   class="paper_modifier paper"
+   id="tray_modifier"
+   class="tray_modifier tray"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:xlink="http://www.w3.org/1999/xlink"
    width="200" height="150"
    viewBox="0 0 200 150"
    >
-  <defs id="defs_paper_modifier">
+  <defs id="defs_tray_modifier">
     <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
       <feColorMatrix id="recolorize-filter-matrix" type="matrix"
          values="1.0 0.0 0.0 0.0  0.0
@@ -18,17 +18,17 @@
   </defs>
   <script
      type="text/javascript"
-     data-namespace="paper_modifier"
-     id="script_paper_modifier"><![CDATA[
-var paper_modifier = {
+     data-namespace="tray_modifier"
+     id="script_tray_modifier"><![CDATA[
+var tray_modifier = {
 
   contents_change_handler: function(elem) {
     let sum = 0
     modifier_tspan = elem.querySelector(`#${elem.id} > svg .tspan_rule_num`)
     let modifier = parseInt(modifier_tspan.textContent)
 
-    paper.visit_contents_group(elem, (s) => {
-      let tempNum = paper.get_numeric_value(s)
+    tray.visit_contents_group(elem, (s) => {
+      let tempNum = tray.get_numeric_value(s)
       sum = sum + tempNum
     })
     let tspan = elem.querySelector(`#${elem.id} > .result_container .tspan_result`)
@@ -37,24 +37,24 @@ var paper_modifier = {
 
   menu: {
     'Roll All': {
-      eventName: 'paper_roll',
+      eventName: 'tray_roll',
       applicable: (node) => { return true },
       handler: function(evt) {
-        return paper.roll_handler(this, evt)
+        return tray.roll_handler(this, evt)
       },
     },
     'Mod +': {
       eventName: 'rule_modifier_plus',
       applicable: (node) => { return true },
       handler: function() {
-        paper_modifier.mod_change_handler(this, +1)
+        tray_modifier.mod_change_handler(this, +1)
       },
     },
     'Mod -': {
       eventName: 'rule_modifier_minus',
       applicable: (node) => { return true },
       handler: function() {
-        paper_modifier.mod_change_handler(this, -1)
+        tray_modifier.mod_change_handler(this, -1)
       },
     },
   },
@@ -65,16 +65,16 @@ var paper_modifier = {
     modifier = parseInt(modifier_tspan.textContent)
     let sum = modifier + change
     modifier_tspan.textContent = sum < 1 ? sum : '+' + sum
-    paper_modifier.contents_change_handler(elem)
+    tray_modifier.contents_change_handler(elem)
   },
 
 }
     ]]></script>
   <script
     type="text/javascript"
-    src="js/paper.js"
-    data-namespace="paper"
-    id="script_paper" />
+    src="js/tray.js"
+    data-namespace="tray"
+    id="script_tray" />
   <svg id="resizable_bg"
     x="0" y="0" width="200" height="150"
     viewBox="0 0 200 150"

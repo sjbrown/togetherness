@@ -1,8 +1,7 @@
-console.log('PAPER')
-var paper = {
+var tray = {
   initialize: function(elem, prototype) {
-    // console.log('paper.initialize', elem.id, elem)
-    paper.addListeners(elem)
+    // console.log('tray.initialize', elem.id, elem)
+    tray.addListeners(elem)
     elem.querySelectorAll('svg[id]').forEach(el => {
       // Rewrite the IDs of all the sub-SVGs
       // Because IDs should be unique!
@@ -29,10 +28,10 @@ var paper = {
       }
 
       let contentsGroup = elem.querySelector(`#${elem.id} > .contents_group`)
-      paper.visit_contents_group(elem, (child) => {
+      tray.visit_contents_group(elem, (child) => {
         child.remove()
       })
-      paper.visit_contents_group(prototype, (child) => {
+      tray.visit_contents_group(prototype, (child) => {
         contentsGroup.appendChild(child)
       })
 
@@ -54,7 +53,7 @@ var paper = {
   dragleave_handler: function(evt) {
     elem = this
     // console.log('L', this.id, evt)
-    paper.unhover(evt.detail.dropElem)
+    tray.unhover(evt.detail.dropElem)
     fireHandlerForEvent(elem, 'contents_change_handler')
   },
 
@@ -74,8 +73,8 @@ var paper = {
   },
 
   get_numeric_value(elem) {
-    if(elem.classList.contains('paper')) {
-      let num = parseInt(paper.getValue(elem))
+    if(elem.classList.contains('tray')) {
+      let num = parseInt(tray.getValue(elem))
       if (isNaN(num)) {
         return 0
       } else {
@@ -128,8 +127,8 @@ var paper = {
   },
 
   roll_handler: function(elem, evt) {
-    // console.log('paper', elem.id, 'hears roll event', evt)
-    paper.visit_contents_group(elem, (s) => {
+    // console.log('tray', elem.id, 'hears roll event', evt)
+    tray.visit_contents_group(elem, (s) => {
       let die_roll_handler = ui.augmented_handlers_for_element(s)['die_roll']
       if (die_roll_handler) {
         die_roll_handler()
@@ -139,12 +138,12 @@ var paper = {
   },
 
   fix: function(evt, elem) {
-    // console.log('paper hears fix event', elem, evt)
+    // console.log('tray hears fix event', elem, evt)
     lock_selection(evt, elem)
   },
 
   resize_handler: function(elem, evt) {
-    // console.log('paper', elem.id, ' got resize', evt.detail.width, evt.detail.height)
+    // console.log('tray', elem.id, ' got resize', evt.detail.width, evt.detail.height)
     let w = evt.detail.width
     let h = evt.detail.height
 
@@ -188,12 +187,12 @@ var paper = {
   },
 
   dragover_handler: function(evt) {
-    // console.log('paper', 'dragover_handler', evt.detail)
+    // console.log('tray', 'dragover_handler', evt.detail)
     dragged = SVG.adopt(evt.detail.draggedElem)
     drop = SVG.adopt(evt.detail.dropElem)
     is_inside = isInside(dragged.node, drop.node)
     if (is_inside) {
-      paper.hover(evt.detail.dropElem)
+      tray.hover(evt.detail.dropElem)
     }
   },
 
@@ -203,7 +202,7 @@ var paper = {
       return
     }
 
-    paper.unhover(evt.detail.dropElem)
+    tray.unhover(evt.detail.dropElem)
 
     let elem = this
     let dropElem = evt.target
@@ -261,15 +260,15 @@ var paper = {
       eventName: 'label_click',
       applicable: (node) => { return true },
       handler: function() {
-        paper.label_click_handler(this)
+        tray.label_click_handler(this)
       },
     },
     'Fix': {
-      eventName: 'paper_fix',
+      eventName: 'tray_fix',
       otherEvents: ['dblclick'],
       applicable: (node) => { return true },
       handler: function(evt) {
-        paper.fix(evt, this)
+        tray.fix(evt, this)
       },
     },
   },

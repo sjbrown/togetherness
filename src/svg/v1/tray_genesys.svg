@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
-   id="paper_genesys"
-   class="paper_genesys paper"
+   id="tray_genesys"
+   class="tray_genesys tray"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:xlink="http://www.w3.org/1999/xlink"
    width="500" height="150"
    viewBox="0 0 500 150"
    >
-  <defs id="defs_paper_genesys">
+  <defs id="defs_tray_genesys">
     <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
       <feColorMatrix id="recolorize-filter-matrix" type="matrix"
          values="1.0 0.0 0.0 0.0  0.0
@@ -18,14 +18,14 @@
   </defs>
   <script
      type="text/javascript"
-     data-namespace="paper_genesys"
-     id="script_paper_genesys"><![CDATA[
-var paper_genesys = {
+     data-namespace="tray_genesys"
+     id="script_tray_genesys"><![CDATA[
+var tray_genesys = {
 
   contents_change_handler: function(elem) {
     // console.log('contents_change_handler ', elem.id)
 
-    let allValues = paper.get_contents_values(elem)
+    let allValues = tray.get_contents_values(elem)
     let table = {
       'Success': 0,
       'Failure': 0,
@@ -74,10 +74,10 @@ var paper_genesys = {
 
   menu: {
     'Roll All': {
-      eventName: 'paper_roll',
+      eventName: 'tray_roll',
       applicable: (node) => { return true },
       handler: function(evt) {
-        return paper.roll_handler(this, evt)
+        return tray.roll_handler(this, evt)
       },
     },
   },
@@ -86,9 +86,9 @@ var paper_genesys = {
     ]]></script>
   <script
     type="text/javascript"
-    src="js/paper.js"
-    data-namespace="paper"
-    id="script_paper" />
+    src="js/tray.js"
+    data-namespace="tray"
+    id="script_tray" />
   <svg id="resizable_bg"
     x="0" y="0" width="500" height="150"
     viewBox="0 0 500 150"
