@@ -24,11 +24,17 @@ var tray_explode = {
 
   contents_change_handler: function(elem) {
     let sum = 0
+    let steps = 0
+    let stepLimit = 20
 
     target_tspan = elem.querySelector(`#${elem.id} > svg .tspan_rule_num`)
     let target = parseInt(target_tspan.textContent)
 
     function explode_it(rollable) {
+      steps++
+      if (steps > stepLimit) {
+        return Infinity
+      }
       let tempNum = tray.get_numeric_value(rollable)
 
       let handlers = ui.augmented_handlers_for_element(rollable)

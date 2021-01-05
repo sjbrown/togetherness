@@ -264,6 +264,7 @@ const ui = {
       let boundHandler = (evt) => {
         userlog.add({ user: myClientId, title: title, event: evt, el: svgEl })
         menuItem.handler.bind(svgEl)(evt)
+        ui.updateButtons() // state-changes due to handler affect disabled state
       }
       eventHandlers[menuItem.eventName] = boundHandler
       if (menuItem.otherEvents) {
@@ -364,20 +365,20 @@ const ui = {
     })
     ui.setHeaderText('Select dice by clicking on them; roll by double-clicking; zoom with Ctrl-wheel')
 
-    function addNewButton(title) {
+    function addNewButton(title, uiLabel) {
       let btn = template.content.firstElementChild.cloneNode(true)
       btn.id = 'button-' + title
       btn.dataset.eventTitle = title
-      btn.innerText = title
+      btn.innerText = uiLabel
       btn.classList.add('cloned-button')
       buttons[title] = {
         btn: btn,
         clickFns: [],
       }
     }
-    function attachButton(title, svgNode, handler, applicableFn) {
+    function attachButton(title, uiLabel, svgNode, handler, applicableFn) {
       if (buttons[title] === undefined) {
-        addNewButton(title)
+        addNewButton(title, uiLabel)
       }
       if (!applicableFn(svgNode)) {
         buttons[title].btn.disabled = 'disabled'
@@ -396,7 +397,14 @@ const ui = {
 
         Object.keys(actionMenu).map((title) => {
           let handler = allHandlers[actionMenu[title].eventName]
-          attachButton(title, focusedSVG, handler, actionMenu[title].applicable)
+          let uiLabel = (
+            actionMenu[title].uiLabel
+            ?
+            actionMenu[title].uiLabel(focusedSVG)
+            :
+            title
+          )
+          attachButton(title, uiLabel, focusedSVG, handler, actionMenu[title].applicable)
         })
 
         ui.updateQuickButton(focusedSVG)
@@ -407,9 +415,9 @@ const ui = {
           let handler = allHandlers[actionMenu[title].eventName]
 
           if (i === 1) { // the first one sets up the 'buttons' object
-            attachButton(title, focusedSVG, handler, actionMenu[title].applicable)
+            attachButton(title, title, focusedSVG, handler, actionMenu[title].applicable)
           } else if (title in buttons) {
-            attachButton(title, focusedSVG, handler, actionMenu[title].applicable)
+            attachButton(title, title, focusedSVG, handler, actionMenu[title].applicable)
           }
         })
         // Remove any 'verbs' that don't pertain to ALL focused nodes
@@ -425,6 +433,7 @@ const ui = {
     if (focusedNodes.length > 0 && selectBoxes.length > 0) {
       let sBoxNode = selectBoxes[0]
       attachButton(
+        'Delete',
         'Delete',
         sBoxNode,
         (evt) => {
