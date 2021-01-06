@@ -526,15 +526,12 @@ const ui = {
   },
 
   clickQuickButton: function() {
-    if (!this._quickButtonSVG) {
+    if (this._quickButtonSVG) {
+      clone_object(this._quickButtonSVG)
+    } else {
       url = document.querySelector('#quick_die_button img').src
-      add_object( url, {
-        'offset': [100, 100],
-      })
-      return
+      add_object(url)
     }
-    qb_svg = SVG.adopt(this._quickButtonSVG)
-    clone_object(this._quickButtonSVG)
   },
 
   updateQuickButton: function(el) {

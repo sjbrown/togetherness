@@ -517,7 +517,7 @@ async function add_object(url, attrs) {
 }
 
 async function clone_object(el, attrs) {
-  console.log("clone_object", el.id, attrs)
+  // console.log("clone_object", el.id, attrs)
   let nest = await _import_foreign_svg(el.outerHTML, el.dataset.appUrl || '')
   let i = 1
   nest.node.querySelectorAll(`#${nest.node.id} .draggable-group`).forEach((subEl) => {
