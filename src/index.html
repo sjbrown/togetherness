@@ -521,7 +521,6 @@ window.addEventListener('load', () => {
         <td>
           <button class="btn" id="dice_button_d4"
             onclick="add_object('svg/v1/dice_d4.svg', {
-              center: [100,100],
               color: getChosenDiceColor(),
             })"
             >
@@ -531,7 +530,6 @@ window.addEventListener('load', () => {
         <td>
           <button class="btn" id="dice_button_d6"
             onclick="add_object('svg/v1/dice_d6.svg', {
-              center: [100,100],
               color: getChosenDiceColor(),
             })"
             >
@@ -541,7 +539,6 @@ window.addEventListener('load', () => {
         <td>
           <button class="btn" id="dice_button_d8"
             onclick="add_object('svg/v1/dice_d8.svg', {
-              center: [100,100],
               color: getChosenDiceColor(),
             })"
             >
@@ -551,7 +548,6 @@ window.addEventListener('load', () => {
         <td>
           <button class="btn" id="dice_button_d10"
             onclick="add_object('svg/v1/dice_d10.svg', {
-              center: [100,100],
               color: getChosenDiceColor(),
             })"
             >
@@ -561,7 +557,6 @@ window.addEventListener('load', () => {
         <td>
           <button class="btn" id="dice_button_d12"
             onclick="add_object('svg/v1/dice_d12.svg', {
-              center: [100,100],
               color: getChosenDiceColor(),
             })"
             >
@@ -571,7 +566,6 @@ window.addEventListener('load', () => {
         <td>
           <button class="btn" id="dice_button_d20"
             onclick="add_object('svg/v1/dice_d20.svg', {
-              center: [100,100],
               color: getChosenDiceColor(),
             })"
             >
@@ -1191,7 +1185,7 @@ function add_dtype(dtype, inputEl, center, serializedState) {
       'svg/v1/dice_' + dtype +'.svg',
       {
         // Wrap 'center' in a new array to avoid async bugs
-        'center': [center[0], center[1]],
+        'offset': [center[0], center[1]],
         'color': getChosenDiceColor(),
         'serializedState': serializedState,
       },
@@ -1211,7 +1205,7 @@ function diceIncrement(dtype) {
 
 function ui_submit_dice(section) {
   //console.log('submit', section)
-  center = [100, 100]
+  center = [0, 0]
   if (section === 'sw') {
     dtypes = [
       'sw_setback', 'sw_boost',
@@ -1554,11 +1548,7 @@ function ui_submit_svgfile(evt) {
 
   _import_foreign_svg(body)
   .then(nest => {
-    // console.log('got nest', nest)
-    hookup_subsvg_listeners(nest.node)
-    layer_objects.node.appendChild(nest.node)
-    init_with_namespaces(nest.node)
-
+    add_to_screen(nest, {})
     ui.popdown_dialog('dialog_svgfile')
   })
 }
@@ -2334,14 +2324,14 @@ function token_add(buttonEl) {
   let serializedState = buttonEl.querySelector('template svg')
   let quantityEl = buttonEl.parentNode.querySelector('.tokens_quantity')
   let num = parseInt(quantityEl.value) || 1
-  let center = [50,50]
+  let center = [0,0]
   //console.log('adding ', num, 'tokens')
   for( var i=0; i < num; i++ ) {
     add_object(
       serializedState.dataset.appUrl,
       {
         // Wrap 'center' in a new array to avoid async bugs
-        'center': [center[0], center[1]],
+        'offset': [center[0], center[1]],
         'serializedState': serializedState,
       },
     )
