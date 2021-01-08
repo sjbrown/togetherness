@@ -444,6 +444,10 @@ togetherFunctions.on_sync = (msg) => {
   myViewport = document.querySelector('#svg_viewport')
   myViewport.style.backgroundImage = newViewport.style.backgroundImage
   svg_table.node.querySelectorAll('.draggable-group').forEach((el) => {
+    if (el.classList.contains('owner-' + ui.escapedClientId())) {
+      // Don't delete my own objects in layer_ui
+      return
+    }
     el.remove()
   })
   return load_new_table(newTable)
@@ -469,15 +473,11 @@ async function load_new_table(newTable) {
     svg_table.node.insertBefore(layerEl, layer_ui.node)
   })
   .then(() => {
-    document.querySelectorAll('#layer_ui > svg').forEach((el) => {
-      // console.log('layer-ui examining', el)
-      if (!el.classList.contains('owner-' + ui.escapedClientId())) {
-      // console.log('layer-ui removig', el)
-        el.remove()
-      }
-    })
     return newTable.querySelectorAll('#layer_ui > .draggable-group').forEach((el) => {
-      el.remove()
+       console.log('layer-ui examining draggable gropu', el)
+      if (el.classList.contains('owner-' + ui.escapedClientId())) {
+        return
+      }
       let s = el.outerHTML
       // console.log("Deserialized", el.id, el.classList)
       layer_ui.svg(s)

@@ -92,7 +92,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
   viewport.node.setAttribute('overflow', 'scroll')
   viewport.node.style.overflow = 'scroll'
   s(viewport.node, 'width', viewport.node.parentNode.clientWidth)
-  viewport.style('background-image', 'url(svg/bg_hexagons.svg)')
+  viewport.style('background-image', 'url(svg/bg_wiggle.svg)')
 
   gViewport = SVG.adopt(document.createElementNS(SVG.ns, 'g'))
   gViewport.node.id = 'g_viewport'
@@ -521,7 +521,6 @@ window.addEventListener('load', () => {
         <td>
           <button class="btn" id="dice_button_d4"
             onclick="add_object('svg/v1/dice_d4.svg', {
-              center: [100,100],
               color: getChosenDiceColor(),
             })"
             >
@@ -531,7 +530,6 @@ window.addEventListener('load', () => {
         <td>
           <button class="btn" id="dice_button_d6"
             onclick="add_object('svg/v1/dice_d6.svg', {
-              center: [100,100],
               color: getChosenDiceColor(),
             })"
             >
@@ -541,7 +539,6 @@ window.addEventListener('load', () => {
         <td>
           <button class="btn" id="dice_button_d8"
             onclick="add_object('svg/v1/dice_d8.svg', {
-              center: [100,100],
               color: getChosenDiceColor(),
             })"
             >
@@ -551,7 +548,6 @@ window.addEventListener('load', () => {
         <td>
           <button class="btn" id="dice_button_d10"
             onclick="add_object('svg/v1/dice_d10.svg', {
-              center: [100,100],
               color: getChosenDiceColor(),
             })"
             >
@@ -561,7 +557,6 @@ window.addEventListener('load', () => {
         <td>
           <button class="btn" id="dice_button_d12"
             onclick="add_object('svg/v1/dice_d12.svg', {
-              center: [100,100],
               color: getChosenDiceColor(),
             })"
             >
@@ -571,7 +566,6 @@ window.addEventListener('load', () => {
         <td>
           <button class="btn" id="dice_button_d20"
             onclick="add_object('svg/v1/dice_d20.svg', {
-              center: [100,100],
               color: getChosenDiceColor(),
             })"
             >
@@ -779,19 +773,32 @@ function load_profile_ui() {
 <!-- SAVE ============================================================ SAVE -->
   <div id="dialog_save" class="modal">
   <script>
+function make_safe_svg_string() {
+  let elJSON = domJSON.toJSON(
+    byId('svg_table'),
+    { domProperties: false }
+  )
+  let fragment = domJSON.toDOM(elJSON)
+  let dd = document.createElement('div')
+  dd.appendChild(fragment)
+  return dd.innerHTML
+}
+function download_svg() {
+  let svg_string = make_safe_svg_string()
+  let blob = new Blob([svg_string], {type: 'image/svg+xml'})
+  let tmplink = document.createElement('a')
+  tmplink.href = window.URL.createObjectURL(blob)
+  let filename = 'tt_' + (new Date().toISOString().substr(0,19)) + '.svg'
+  tmplink.download = filename.replace(/[-: ]/g, '_')
+  tmplink.click()
+}
 function ui_popup_dialog_save() {
   if(document.querySelectorAll('#svg_table').length > 1) {
     alert('too many svg_table elements')
   }
-  elJSON = domJSON.toJSON(
-    byId('svg_table'),
-    { domProperties: false }
-  )
-  fragment = domJSON.toDOM(elJSON)
-  var dd = document.createElement('div')
-  dd.appendChild(fragment)
+  let svg_string = make_safe_svg_string()
   textarea = byId('textarea_save_output')
-  textarea.value = dd.innerHTML
+  textarea.value = svg_string
   return ui.popup_dialog({'data-dialog-id': 'dialog_save'})
 }
   </script>
@@ -812,6 +819,14 @@ function ui_popup_dialog_save() {
       <a name="copy_and_paste"></a>
       <h1 >Copy and Paste</h1>
       <textarea id="textarea_save_output" cols="82" rows=10>X</textarea>
+      <div class="save_explain">
+      Copy and paste the contents of this text box to a file on your computer.
+      </div>
+    </section>
+    <section>
+      <a name="download"></a>
+      <h1 >Download</h1>
+      <button class="btn" onclick="download_svg()">Download SVG</button>
       <div class="save_explain">
       Copy and paste the contents of this text box to a file on your computer.
       </div>
@@ -964,6 +979,8 @@ function ui_change_table_size() {
         <img height="32" src="svg/bg_graphpaper.svg" />
       <li>http://www.1kfa.com/table/svg/bg_winter_sun.svg
         <img height="32" src="svg/bg_winter_sun.svg" />
+      <li>http://www.1kfa.com/table/svg/bg_wiggle.svg
+        <img height="32" src="svg/bg_wiggle.svg" />
     </ul>
     <label for="background_url">Enter a URL</label>
     <input id="background_url" type="url"
@@ -1168,7 +1185,7 @@ function add_dtype(dtype, inputEl, center, serializedState) {
       'svg/v1/dice_' + dtype +'.svg',
       {
         // Wrap 'center' in a new array to avoid async bugs
-        'center': [center[0], center[1]],
+        'offset': [center[0], center[1]],
         'color': getChosenDiceColor(),
         'serializedState': serializedState,
       },
@@ -1188,7 +1205,7 @@ function diceIncrement(dtype) {
 
 function ui_submit_dice(section) {
   //console.log('submit', section)
-  center = [100, 100]
+  center = [0, 0]
   if (section === 'sw') {
     dtypes = [
       'sw_setback', 'sw_boost',
@@ -1531,11 +1548,7 @@ function ui_submit_svgfile(evt) {
 
   _import_foreign_svg(body)
   .then(nest => {
-    // console.log('got nest', nest)
-    hookup_subsvg_listeners(nest.node)
-    layer_objects.node.appendChild(nest.node)
-    init_with_namespaces(nest.node)
-
+    add_to_screen(nest, {})
     ui.popdown_dialog('dialog_svgfile')
   })
 }
@@ -2033,7 +2046,7 @@ function ui_submit_ellipse(evt) {
     <div class="nav-wrapper">
       <ul class="left">
         <li><a href="#drawing">Drawing</a></li>
-        <li><a href="#dynamic_paper">Dynamic Paper</a></li>
+        <li><a href="#dynamic_tray">Dynamic Tray</a></li>
       </ul>
     </div>
     </nav>
@@ -2074,39 +2087,43 @@ function ui_submit_ellipse(evt) {
       </button>
       -->
     </section>
-    <section id="dynamic_paper_section">
-      <a name="dynamic_paper"></a>
-      <h1 id="dynamic_paper_h1">Dynamic Paper</h1>
+    <section id="dynamic_tray_section">
+      <a name="dynamic_tray"></a>
+      <h1 id="dynamic_tray_h1">Dynamic Tray</h1>
       <p>
-      Dynamic papers will automatically do calculations based on
+      Dynamic Trays will automatically do calculations based on
       the dice (or other objects like text) placed inside them
       </p>
       <button class="btn btn-small modal-close"
-        onclick="add_object('svg/v1/paper_sum.svg')">
+        onclick="add_object('svg/v1/tray_sum.svg')">
         Sum
       </button>
       <button class="btn btn-small modal-close"
-        onclick="add_object('svg/v1/paper_count.svg')">
+        onclick="add_object('svg/v1/tray_count.svg')">
         Count
       </button>
       <button class="btn btn-small modal-close"
-        onclick="add_object('svg/v1/paper_modifier.svg')">
+        onclick="add_object('svg/v1/tray_modifier.svg')">
         Modifier
       </button>
       <button class="btn btn-small modal-close"
-        onclick="add_object('svg/v1/paper_best.svg')">
+        onclick="add_object('svg/v1/tray_best.svg')">
         Best-of
       </button>
       <button class="btn btn-small modal-close"
-        onclick="add_object('svg/v1/paper_sorter.svg')">
+        onclick="add_object('svg/v1/tray_sorter.svg')">
         Sorter
       </button>
       <button class="btn btn-small modal-close"
-        onclick="add_object('svg/v1/paper_tabulate.svg')">
+        onclick="add_object('svg/v1/tray_tabulate.svg')">
         Tabulate
       </button>
       <button class="btn btn-small modal-close"
-        onclick="add_object('svg/v1/paper_genesys.svg')">
+        onclick="add_object('svg/v1/tray_explode.svg')">
+        Explode
+      </button>
+      <button class="btn btn-small modal-close"
+        onclick="add_object('svg/v1/tray_genesys.svg')">
         Genesys
       </button>
     </section>
@@ -2307,14 +2324,14 @@ function token_add(buttonEl) {
   let serializedState = buttonEl.querySelector('template svg')
   let quantityEl = buttonEl.parentNode.querySelector('.tokens_quantity')
   let num = parseInt(quantityEl.value) || 1
-  let center = [50,50]
+  let center = [0,0]
   //console.log('adding ', num, 'tokens')
   for( var i=0; i < num; i++ ) {
     add_object(
       serializedState.dataset.appUrl,
       {
         // Wrap 'center' in a new array to avoid async bugs
-        'center': [center[0], center[1]],
+        'offset': [center[0], center[1]],
         'serializedState': serializedState,
       },
     )
@@ -2472,7 +2489,7 @@ function token_add(buttonEl) {
         <tr>
         <td colspan="2">
         Try this for the front / back in order to create a "poker chip"
-        token that will interact with Dynamic Paper to do things like
+        token that will interact with Dynamic Tray to do things like
         quickly calculate their sum.
         </td>
         </tr>
@@ -2568,10 +2585,10 @@ function token_add(buttonEl) {
         To remove cards from a deck, double-click on the deck.
       </p>
       <p>
-        To remove objects from a Dynamic Paper, double-click it.
+        To remove objects from a Dynamic Tray, double-click it.
       </p>
       <p>
-        To resize a Dynamic Paper, double-click it, then drag the gray square
+        To resize a Dynamic Tray, double-click it, then drag the gray square
         handle in the lower corner.
       </p>
       <p>

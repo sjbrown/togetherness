@@ -244,7 +244,7 @@ function hookup_subsvg_listeners(svgElem) {
 
 
 function setColor(elem, color) {
-  console.log('setColor', elem.id, color)
+  // console.log('setColor', elem.id, color)
   filterElem = elem.querySelector('#app-filter-colorize')
   if (!filterElem) {
     return
@@ -489,12 +489,14 @@ function add_n_objects_from_prototype(n, prototype, center) {
 function add_to_screen(nest, attrs) {
   console.log('add_to_screen', attrs)
   setColor(nest.node, (attrs && attrs.color) || getUserColor())
-  if (attrs && attrs.center !== undefined) {
-    let center = spatial.avoidTopLevelCollision(nest, attrs.center, 0)
-    console.log("acent", attrs.center, "cent", center)
-    nest.cx(center[0])
-    nest.cy(center[1])
+  let center = ui.player_marker_position()
+  if (attrs && attrs.offset !== undefined) {
+    center[0] += attrs.offset[0]
+    center[1] += attrs.offset[1]
   }
+  center = spatial.avoidTopLevelCollision(nest, center, 0)
+  nest.cx(center[0])
+  nest.cy(center[1])
   layer_objects.add(nest)
   init_with_namespaces(nest.node, attrs && attrs.serializedState)
   ui.do_animate(nest.node)
@@ -515,7 +517,7 @@ async function add_object(url, attrs) {
 }
 
 async function clone_object(el, attrs) {
-  console.log("clone_object", el.id, attrs)
+  // console.log("clone_object", el.id, attrs)
   let nest = await _import_foreign_svg(el.outerHTML, el.dataset.appUrl || '')
   let i = 1
   nest.node.querySelectorAll(`#${nest.node.id} .draggable-group`).forEach((subEl) => {

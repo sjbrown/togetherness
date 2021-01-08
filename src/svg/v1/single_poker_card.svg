@@ -161,28 +161,31 @@ var single_poker_card = {
     let template = elem.querySelector('.card_template')
 
     let cardJSON = (serializedState ?
-      this.pokerDeckJSON[serializedState]
+      single_poker_card.pokerDeckJSON[serializedState]
       :
-      shuffle(Object.values(this.pokerDeckJSON))[0]
+      shuffle(Object.values(single_poker_card.pokerDeckJSON))[0]
     )
-    card = this.generate_card(template, cardJSON, elem)
+    card = single_poker_card.generate_card(template, cardJSON, elem)
     single_poker_card.flip_card_to_back(card.node)
 
     template.parentNode.replaceChild(card.node, template)
 
-    elem.addEventListener('single_poker_card_flip', this.flip_handler)
-    elem.addEventListener('dblclick', this.flip_handler)
+    single_poker_card.addListeners(elem)
   },
 
   menu: {
     'Flip': {
+      otherEvents: ['dblclick'],
       eventName: 'single_poker_card_flip',
-      applicable: (dNode) => { return true },
+      applicable: (node) => { return true },
+      handler: function(evt) {
+        single_poker_card.flip_handler(evt, this)
+      },
     },
   },
 
-  flip_handler: function(evt) {
-    let topcard = this.querySelector('.card')
+  flip_handler: function(evt, elem) {
+    let topcard = elem.querySelector('.card')
     single_poker_card.flip_card(topcard)
   },
 

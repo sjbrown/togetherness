@@ -255,6 +255,10 @@ var deckahedron_deck = {
 
 deckahedron_deck_card = {
   initialize: function(elem) {
+    deckahedron_deck_card.addListeners(elem)
+  },
+
+  addListeners: function(elem) {
     elem.addEventListener('deckahedron_deck_card_return', this.return_handler)
   },
 

@@ -3,6 +3,7 @@ const ui = {
   _quickButtonSVG: null,
   selectBoxPrototype: null,
   selectOpenBoxPrototype: null,
+  playerMarkerPrototype: null,
 
   escapedClientId: () => {
     return myClientId ? myClientId.replace('.', '-') : ''
@@ -32,6 +33,7 @@ const ui = {
       if (e.detail.elemId === viewportEl.id) {
         net_fire({ type: 'sync_needed', data: {} })
         ui.alertHere(e)
+        ui.move_player_marker(e.detail.svgPos.x, e.detail.svgPos.y)
         ui.setHeaderText('SYNCING...')
       } else if (e.detail.elemId) {
         elem = byId(e.detail.elemId)
@@ -50,6 +52,47 @@ const ui = {
       elem = byId(e.detail.elemId)
       fireHandlerForEvent(elem, 'resize_handler', e)
     })
+  },
+
+  move_player_marker: (x, y) => {
+    let marker = ui.getPlayerMarker()
+    // setColor each time, in case it changes
+    setColor(marker, getUserColor())
+    svg_marker = SVG.adopt(marker)
+    svg_marker.cx(x)
+    svg_marker.cy(y)
+    ui.do_animate(marker)
+  },
+
+  getPlayerMarker: () => {
+    let selector = '.player_marker.owner-' + ui.escapedClientId()
+    let existingMarker = layer_ui.node.querySelector(selector)
+    if (existingMarker) {
+      return existingMarker
+    }
+    let newMarker = this.playerMarkerPrototype.node.cloneNode(true)
+    newMarker.classList.add('has-owner', 'owner-' + ui.escapedClientId())
+    layer_ui.add(SVG.adopt(newMarker))
+    return newMarker
+  },
+
+  player_marker_position: () => {
+    let selector = '.player_marker.owner-' + ui.escapedClientId()
+    let existingMarker = layer_ui.node.querySelector(selector)
+    if (!existingMarker) {
+      return [50, 50]
+    } else {
+      let svgMarker = SVG.adopt(existingMarker)
+      return [svgMarker.cx(), svgMarker.cy()]
+    }
+  },
+
+  deletePlayerMarker: () => {
+    let selector = '.player_marker.owner-' + ui.escapedClientId()
+    let existingMarker = layer_ui.node.querySelector(selector)
+    if (existingMarker) {
+      return existingMarker.remove()
+    }
   },
 
   initializeDragSelectBox: (viewportEl) => {
@@ -107,6 +150,12 @@ const ui = {
     })
     .then((nest) => {
       this.selectOpenBoxPrototype = nest
+    })
+    .then(() => {
+      return import_foreign_svg('svg/v1/player_marker.svg')
+    })
+    .then((nest) => {
+      this.playerMarkerPrototype = nest
     })
   },
 
@@ -264,6 +313,7 @@ const ui = {
       let boundHandler = (evt) => {
         userlog.add({ user: myClientId, title: title, event: evt, el: svgEl })
         menuItem.handler.bind(svgEl)(evt)
+        ui.updateButtons() // state-changes due to handler affect disabled state
       }
       eventHandlers[menuItem.eventName] = boundHandler
       if (menuItem.otherEvents) {
@@ -364,20 +414,20 @@ const ui = {
     })
     ui.setHeaderText('Select dice by clicking on them; roll by double-clicking; zoom with Ctrl-wheel')
 
-    function addNewButton(title) {
+    function addNewButton(title, uiLabel) {
       let btn = template.content.firstElementChild.cloneNode(true)
       btn.id = 'button-' + title
       btn.dataset.eventTitle = title
-      btn.innerText = title
+      btn.innerText = uiLabel
       btn.classList.add('cloned-button')
       buttons[title] = {
         btn: btn,
         clickFns: [],
       }
     }
-    function attachButton(title, svgNode, handler, applicableFn) {
+    function attachButton(title, uiLabel, svgNode, handler, applicableFn) {
       if (buttons[title] === undefined) {
-        addNewButton(title)
+        addNewButton(title, uiLabel)
       }
       if (!applicableFn(svgNode)) {
         buttons[title].btn.disabled = 'disabled'
@@ -396,7 +446,14 @@ const ui = {
 
         Object.keys(actionMenu).map((title) => {
           let handler = allHandlers[actionMenu[title].eventName]
-          attachButton(title, focusedSVG, handler, actionMenu[title].applicable)
+          let uiLabel = (
+            actionMenu[title].uiLabel
+            ?
+            actionMenu[title].uiLabel(focusedSVG)
+            :
+            title
+          )
+          attachButton(title, uiLabel, focusedSVG, handler, actionMenu[title].applicable)
         })
 
         ui.updateQuickButton(focusedSVG)
@@ -407,9 +464,9 @@ const ui = {
           let handler = allHandlers[actionMenu[title].eventName]
 
           if (i === 1) { // the first one sets up the 'buttons' object
-            attachButton(title, focusedSVG, handler, actionMenu[title].applicable)
+            attachButton(title, title, focusedSVG, handler, actionMenu[title].applicable)
           } else if (title in buttons) {
-            attachButton(title, focusedSVG, handler, actionMenu[title].applicable)
+            attachButton(title, title, focusedSVG, handler, actionMenu[title].applicable)
           }
         })
         // Remove any 'verbs' that don't pertain to ALL focused nodes
@@ -425,6 +482,7 @@ const ui = {
     if (focusedNodes.length > 0 && selectBoxes.length > 0) {
       let sBoxNode = selectBoxes[0]
       attachButton(
+        'Delete',
         'Delete',
         sBoxNode,
         (evt) => {
@@ -468,17 +526,12 @@ const ui = {
   },
 
   clickQuickButton: function() {
-    if (!this._quickButtonSVG) {
+    if (this._quickButtonSVG) {
+      clone_object(this._quickButtonSVG)
+    } else {
       url = document.querySelector('#quick_die_button img').src
-      add_object( url, {
-        'center': [100, 100],
-      })
-      return
+      add_object(url)
     }
-    qb_svg = SVG.adopt(this._quickButtonSVG)
-    clone_object( this._quickButtonSVG, {
-      'center': [qb_svg.x() + 50, qb_svg.y() + 50],
-    })
   },
 
   updateQuickButton: function(el) {
