@@ -49,17 +49,21 @@
 </head>
 
 <script>
-var svg_table;
-var layer_objects;
-var layer_ui;
-var viewport;
-var gViewport;
-var origViewportSize = [1200, 800];
+var table_border_rect
+var svg_table
+var layer_objects
+var layer_ui
+var viewport
+var gViewport
+var origViewportSize
 
 function initSvgTable(el) {
-  el.id = 'svg_table'
   svg_table = SVG.adopt(el)
-  svg_table.size(1200, 800)
+  svg_table.attr({
+    id: 'svg_table',
+    width: origViewportSize[0],
+    height: origViewportSize[1],
+  })
   layer_objects = svg_table.group()
   layer_objects.attr({
     id: 'layer_objects',
@@ -87,25 +91,42 @@ SVG.on(document, 'DOMContentLoaded', () => {
     return name + '_' + base32.short_id()
   }
 
-  viewport = SVG('gamearea').size(origViewportSize[0], origViewportSize[1])
+  function landscapeOrPortrait() {
+    let bodyEl = qs('body')
+    if (bodyEl.clientHeight > bodyEl.clientWidth) {
+      // 'portrait'
+      origViewportSize = [800,1200]
+    } else {
+      // 'landscape'
+      origViewportSize = [1200,800]
+    }
+  }
+  landscapeOrPortrait()
+
+  viewport = SVG('gamearea')
+  viewport.attr({
+    id: 'svg_viewport',
+    overflow: 'scroll',
+    width: qs('body').clientWidth,
+    viewBox: `0 0 ${origViewportSize[0]} ${origViewportSize[1]}`,
+  })
   viewport.node.id = 'svg_viewport'
   viewport.node.setAttribute('overflow', 'scroll')
   viewport.node.style.overflow = 'scroll'
-  s(viewport.node, 'width', viewport.node.parentNode.clientWidth)
   viewport.style('background-image', 'url(svg/bg_wiggle.svg)')
 
   gViewport = SVG.adopt(document.createElementNS(SVG.ns, 'g'))
   gViewport.node.id = 'g_viewport'
   viewport.add(gViewport)
 
-  table_rect = gViewport.rect()
-  table_rect.attr({
+  table_border_rect = gViewport.rect()
+  table_border_rect.attr({
      x: -1,
      y: -1,
      rx: 0,
      ry: 0,
-     width: 1202,
-     height: 802,
+     width: origViewportSize[0] + 2,
+     height: origViewportSize[1] + 2,
      fill: 'none',
      stroke: 'black',
      'stroke-width': 10,
@@ -124,11 +145,11 @@ SVG.on(document, 'DOMContentLoaded', () => {
   ui.initializeViewport(viewport.node)
   ui.initializeDragSelectBox(viewport.node)
 
-  var uiObserver = new MutationObserver((mutations) => {
+  var uiButtonObserver = new MutationObserver((mutations) => {
     // console.log('---------------mutation obs', mutations)
     ui.updateButtons()
   })
-  uiObserver.observe(layer_ui.node, {
+  uiButtonObserver.observe(layer_ui.node, {
     attributes: true,
     childList: true,
     subtree: true,
@@ -947,8 +968,8 @@ function ui_change_table_size() {
 
   svg_table.width(parseInt(wInput.value))
   svg_table.height(parseInt(hInput.value))
-  table_rect.width(svg_table.width() + 2)
-  table_rect.height(svg_table.height() + 2)
+  table_border_rect.width(svg_table.width() + 2)
+  table_border_rect.height(svg_table.height() + 2)
   viewport.node.setAttribute(
     'viewBox',
     `0 0 ${svg_table.width()} ${svg_table.height()}`
