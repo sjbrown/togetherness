@@ -56,11 +56,23 @@ var spatial = {
     return box
   },
 
+  isOffscreen: (nest, candidateCenter) => {
+    return (
+      (candidateCenter[0] - (nest.width()/2)) < 0
+      ||
+      (candidateCenter[1] - (nest.height()/2)) < 0
+      ||
+      (candidateCenter[0] + (nest.width()/2)) > svg_table.width()
+      ||
+      (candidateCenter[1] + (nest.height()/2)) > svg_table.height()
+    )
+  },
+
   avoidTopLevelCollision: (nest, candidateCenter, depth) => {
     if (depth >= 5) {
       return candidateCenter
     }
-    let collision = false
+    let collision = spatial.isOffscreen(nest, candidateCenter)
     let toplevelSVGs = spatial.getTopLevelSVGNodeList()
     for (let i=0; i < Math.min(toplevelSVGs.length,20); i++) {
       let el = toplevelSVGs.item(i)
