@@ -1538,20 +1538,6 @@ function loadPrototypeDN() {
   <div class="modal" id="dialog_svgfile">
     <script>
 
-var svgfile_verbs = {
-  'Object properties': {
-    applicable: () => { return true },
-    eventName: 'object_properties',
-    handler: (evt) => {
-      //console.log('svgfile hand', evt)
-      ui_popup_properties(
-        byId(evt.detail.elemId.substring('nest_'.length)),
-        {'data-dialog-id': 'dialog_properties'}
-      )
-    }
-  },
-}
-
 function ui_submit_svgfile(evt) {
   textarea = byId('svgfile_body')
 
@@ -1675,19 +1661,6 @@ myThing = {
   <div class="modal" id="dialog_rect">
     <script>
 
-var rect_verbs = {
-  'Object properties': {
-    applicable: () => { return true },
-    eventName: 'object_properties',
-    handler: (evt) => {
-      //console.log('rect hand', evt)
-      ui_popup_properties(
-        byId(evt.detail.elemId.substring('nest_'.length)),
-        {'data-dialog-id': 'dialog_properties'}
-      )
-    }
-  },
-}
 
 function make_rect(attrs) {
   var rect = layer_objects.rect()
@@ -1697,6 +1670,8 @@ function make_rect(attrs) {
     id: 'rect_' + sid,
     rx: 0,
     ry: 0,
+    x: 0.5,
+    y: 0.5,
     width: 100,
     height: 50,
     fill: '#fff59d',
@@ -1710,15 +1685,15 @@ function make_rect(attrs) {
   //nest.attr(Object.assign({
   nest.attr({
     'data-app-url': '#nest',
-    'id': 'nest_' + rect.attr('id'), // special ID
-    'width': rect.rbox().width,
-    'height': rect.rbox().height,
+    'id': 'o_' + rect.attr('id'), // special ID
+    'width': rect.width() + 1,
+    'height': rect.width() + 1,
   })
   //}, attrs))
   nest.addClass('draggable-group')
+  nest.addClass('o_rect')
 
   nest.add(rect)
-  nest.node.dataset.appNamespaces = 'rect_verbs'
   return nest;
 }
 
@@ -1734,6 +1709,7 @@ function ui_submit_rect(evt) {
     height: h,
     fill: color,
   });
+  add_to_screen(nest)
   ui.popdown_dialog('dialog_rect')
 }
 
@@ -1751,7 +1727,7 @@ function ui_submit_rect(evt) {
     <input id="rect_input_height" type="text" value="50"/>
     <br />
     <label for="rect_input_color">Color
-    <input id="rect_input_color" type="color" value="#ffff00" />
+    <input id="rect_input_color" type="color" value="#ff9000" />
     </label>
     <br />
     <button id="dialog_submit" onclick="ui_submit_rect(this)"
@@ -1787,7 +1763,7 @@ function ui_submit_image(evt) {
     </svg>
   `)
   .then(nest => {
-    layer_objects.node.appendChild(nest.node)
+    add_to_screen(nest)
     ui.popdown_dialog('dialog_image')
   })
 }
@@ -1829,86 +1805,67 @@ function ui_submit_image(evt) {
   <div class="modal" id="dialog_text">
     <script>
 
-var text_verbs = {
-  'Object properties': {
-    applicable: () => { return true },
-    eventName: 'object_properties',
-    handler: (evt) => {
-      id = evt.detail.elemId.substring('nest_'.length)
-      el = byId(id)
-      ui_popup_properties(
-        el,
-        {'data-dialog-id': 'dialog_properties'}
-      )
-    }
-  },
-}
-
-
-function make_text(attrs, content) {
+function make_text(content, color, bgcolor) {
   var padding = 8
   var text = layer_objects.plain('')
   var tspan = text.tspan(content)
   let sid = base32.short_id()
-  text.attr(Object.assign({
+  text.attr({
     'data-app-url': '#text_' + sid,
     id: 'text_' + sid,
-    fill: '#000000',
-    stroke: 'black',
+    fill: color ? color : '#000000',
     x: 0,
     y: 0,
     'stroke-opacity': 0,
     'font-weight': 'normal',
     'font-size': '12pt',
-  }, attrs))
-  var rbox = text.rbox()
-  text.y(0)
+  })
+  var bbox = text.bbox()
+  text.y(padding/2)
   text.x(padding/2)
 
   var rect = layer_objects.rect()
-  rect.attr(Object.assign({
+  rect.attr({
     id: 'rect_' + text.attr('id'), // special ID
     rx: 5,
     ry: 5,
-    fill: '#ffffff',
-    stroke: 'black',
+    fill: bgcolor ? bgcolor : '#ffffff',
     'fill-opacity': 0.5,
-    'stroke-opacity': 0.5,
-    'stroke-width': 1,
-  }, {
-    width: rbox.width + padding,
-    height: rbox.height
-  }))
+    'stroke-opacity': 0,
+    width: bbox.width + padding,
+    height: bbox.height + padding,
+  })
   rect.addClass('text-rect')
 
   var nest = layer_objects.element('svg', SVG.Container)
-  nest.attr(Object.assign({
+  nest.attr({
     'data-app-url': '#nest',
-    'id': 'nest_' + text.attr('id'), // special ID
+    'id': 'o_' + text.attr('id'), // special ID
     x: 0,
     y: 0,
     width: rect.width(),
     height: rect.height() * 2,
-  }, attrs))
+  })
   nest.addClass('draggable-group')
+  nest.addClass('o_text')
 
-  nest.addClass('draggable-group')
   rect.y(rect.y() + (rect.height()/2))
   nest.add(rect)
   text.y(text.y() + (rect.height()/2))
   nest.add(text)
 
-  nest.node.dataset.appNamespaces = 'text_verbs'
   return nest;
 }
 
 function ui_submit_text(evt) {
-  c = byId('text_input_content').value;
-  color = byId('text_input_color').value;
+  let c = byId('text_input_content').value;
+  let color = byId('text_input_color').value;
+  let bgcolor = byId('text_input_bgcolor').value;
   if (!c || !color ) {
     return;
   }
-  var text = make_text({ fill: color }, c);
+  var nest = make_text(c, color, bgcolor)
+  add_to_screen(nest)
   ui.popdown_dialog('dialog_text')
 }
 
@@ -1923,7 +1880,12 @@ function ui_submit_text(evt) {
     <input id="text_input_content" type="text" value="" Placeholder="Hello World"/>
     <br />
     <label for="text_input_color">Color
-    <input id="text_input_color" type="color" value="#ffff00"
+    <input id="text_input_color" type="color" value="#000080"
+    />
+    </label>
+    <br />
+    <label for="text_input_bgcolor">Background Color
+    <input id="text_input_bgcolor" type="color" value="#ffffff"
     />
     </label>
     <br />
@@ -1942,20 +1904,6 @@ function ui_submit_text(evt) {
   <div class="modal" id="dialog_ellipse">
     <script>
 
-var ellipse_verbs = {
-  'Object properties': {
-    applicable: () => { return true },
-    eventName: 'object_properties',
-    handler: (evt) => {
-      //console.log('ellipse handler')
-      ui_popup_properties(
-        byId(evt.detail.elemId.substring('nest_'.length)),
-        {'data-dialog-id': 'dialog_properties'}
-      )
-    }
-  },
-}
-
 function make_ellipse(attrs) {
   let ellipse = layer_objects.ellipse()
   let sid = base32.short_id()
@@ -1972,19 +1920,21 @@ function make_ellipse(attrs) {
     'stroke-opacity': 0.9,
     'stroke-width': 1,
   }, attrs))
+  ellipse.x(ellipse.x() + 1)
+  ellipse.y(ellipse.y() + 1)
 
   var nest = layer_objects.element('svg', SVG.Container)
   nest.attr(Object.assign({
     'data-app-url': '#nest_' + sid,
-    'id': 'nest_' + ellipse.attr('id'), // special ID
-    'width': ellipse.rbox().width,
-    'height': ellipse.rbox().height,
+    'id': 'o_' + ellipse.attr('id'), // special ID
+    'width': ellipse.width() + 2,
+    'height': ellipse.height() + 2,
   }, attrs))
   nest.addClass('draggable-group')
+  nest.addClass('o_ellipse')
 
   nest.add(ellipse)
 
-  nest.node.dataset.appNamespaces = 'ellipse_verbs'
   return nest;
 }
 
@@ -1993,7 +1943,7 @@ function ui_submit_ellipse(evt) {
   h = parseInt(byId('ellipse_input_height').value);
   color = byId('ellipse_input_color').value;
   if (!w || !h || !color ) {
-    return;
+    return
   }
   var nest = make_ellipse({
     rx: w / 2,
@@ -2001,7 +1951,8 @@ function ui_submit_ellipse(evt) {
     cx: w / 2,
     cy: h / 2,
     fill: color,
-  });
+  })
+  add_to_screen(nest)
   ui.popdown_dialog('dialog_ellipse')
 }
 
@@ -2019,7 +1970,7 @@ function ui_submit_ellipse(evt) {
     <input id="ellipse_input_height" type="text" value="50"/>
     <br />
     <label for="ellipse_input_color">Color
-    <input id="ellipse_input_color" type="color" value="#ffff00"
+    <input id="ellipse_input_color" type="color" value="#ff9000"
     />
     </label>
     <br />
