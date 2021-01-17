@@ -355,7 +355,7 @@ function hslToRgb(h, s, l){
 
 function getNamespacesForElement(elem) {
   //console.log("getNamespacesForElement", elem)
-  nsNames = elem.dataset.appNamespaces
+  nsNames = elem.getAttribute('data-app-namespaces')
   nsNames = nsNames ? nsNames.split(',') : []
   // console.log("nsNames", nsNames)
   allNs = nsNames.map(nsName => {
@@ -379,24 +379,23 @@ function fireHandlerForEvent(elem, handlerName, evt) {
 }
 
 function getScriptsForElement(elem) {
-  scripts = elem.dataset.appScripts
+  scripts = elem.getAttribute('data-app-scripts')
   scripts = scripts ? scripts.split(',') : []
   return scripts
 }
 function setScriptsForElement(elem, scriptsArr) {
-  elem.dataset.appScripts = scriptsArr
+  elem.setAttribute('data-app-scripts', scriptsArr)
 }
 async function appendDocumentScript(scriptElem, parentElem) {
   // Make the scripts run by putting them into the live DOM
-  // console.log("appendDocumentScript", scriptElem.id, g(scriptElem, 'src'))
-  debugBar("appendDocumentScript" + scriptElem.id + g(scriptElem, 'src'))
+  // console.log("appendDocumentScript", scriptElem.id, scriptElem.getAttribute('src'))
   let newScript = document.createElement('script')
-  let scriptUrl = g(scriptElem, 'src')
+  let scriptUrl = scriptElem.getAttribute('src')
   if (scriptUrl) {
-    newScript.src = g(scriptElem, 'src')
+    newScript.src = scriptElem.getAttribute('src')
   } else if (scriptElem.textContent) {
-    if (parentElem.dataset.appUrl) {
-      scriptUrl = parentElem.dataset.appUrl
+    if (parentElem.getAttribute('data-app-url')) {
+      scriptUrl = parentElem.getAttribute('data-app-url')
     }
     newScript.textContent = scriptElem.textContent
   } else {
@@ -407,10 +406,10 @@ async function appendDocumentScript(scriptElem, parentElem) {
 
   let namespace = g(scriptElem, 'data-namespace')
   if (namespace) {
-    let nsNames = parentElem.dataset.appNamespaces
+    let nsNames = parentElem.getAttribute('data-app-namespaces')
     nsNames = nsNames ? nsNames.split(',') : []
     nsNames.push(namespace)
-    parentElem.dataset.appNamespaces = nsNames
+    parentElem.setAttribute('data-app-namespaces', nsNames)
   }
 
   s(newScript, 'id', scriptElem.id)
@@ -487,7 +486,7 @@ function add_n_objects_from_prototype(n, prototype, center) {
 }
 
 function add_to_screen(nest, attrs) {
-  console.log('add_to_screen', attrs)
+  console.log('add_to_screen', nest, attrs)
   setColor(nest.node, (attrs && attrs.color) || getUserColor())
   let center = ui.player_marker_position()
   if (attrs && attrs.offset !== undefined) {
@@ -504,7 +503,7 @@ function add_to_screen(nest, attrs) {
 
 var alreadyAddedObjectURLs = {}
 async function add_object(url, attrs) {
-  // console.log('add_object', url, attrs)
+   console.log('add_object', url, attrs)
   let nest = await import_foreign_svg(url)
 
   // Allow 400 miliseconds for the scripts to load
@@ -518,6 +517,7 @@ async function add_object(url, attrs) {
 
 async function clone_object(el, attrs) {
   // console.log("clone_object", el.id, attrs)
+   console.log("clone_object", el.id, attrs)
   let nest = await _import_foreign_svg(el.outerHTML, el.dataset.appUrl || '')
   let i = 1
   nest.node.querySelectorAll(`#${nest.node.id} .draggable-group`).forEach((subEl) => {

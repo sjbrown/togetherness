@@ -104,8 +104,8 @@ function makeDraggable(viewport, table) {
   }
 
   function getMousePosition(evt) {
-    //var CTM = viewport.node.getScreenCTM();
-    var CTM = table.node.getScreenCTM();
+    var CTM = viewport.node.getScreenCTM();
+    //var CTM = table.node.getScreenCTM();
     if (evt.touches) {
       if (evt.touches.length === 0) {
         return mouse

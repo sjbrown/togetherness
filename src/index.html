@@ -56,10 +56,12 @@ var viewport;
 var gViewport;
 var origViewportSize = [1200, 800];
 
-function initSvgTable(el) {
-  el.id = 'svg_table'
-  svg_table = SVG.adopt(el)
-  svg_table.size(1200, 800)
+function initSvgTable() {
+  svg_table.attr({
+    id: 'svg_table',
+    width: 1200,
+    height: 800,
+  })
   layer_objects = svg_table.group()
   layer_objects.attr({
     id: 'layer_objects',
@@ -72,13 +74,10 @@ function initSvgTable(el) {
   })
   layer_ui.addClass('layer')
   layer_ui.addClass('layer_ui')
-  gViewport.add(svg_table)
 
-  makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
+  makeDraggable(viewport, svg_table)
   objectsObserver = new LayerObserver(layer_objects.node)
   uiObserver = new LayerObserver(layer_ui.node)
-
-  return svg_table
 }
 
 SVG.on(document, 'DOMContentLoaded', () => {
@@ -86,20 +85,25 @@ SVG.on(document, 'DOMContentLoaded', () => {
   SVG.eid = (name) => {
     return name + '_' + base32.short_id()
   }
+  SVG.ns = '"http://www.w3.org/2000/svg' //backwards compatible with SVG.js 2.7
 
-  viewport = SVG('gamearea').size(origViewportSize[0], origViewportSize[1])
-  viewport.node.id = 'svg_viewport'
-  viewport.node.setAttribute('overflow', 'scroll')
-  viewport.node.style.overflow = 'scroll'
-  s(viewport.node, 'width', viewport.node.parentNode.clientWidth)
-  viewport.style('background-image', 'url(svg/bg_wiggle.svg)')
+  viewport = SVG().addTo('#gamearea')
+  viewport.css('overflow', 'scroll')
+  viewport.css('background-image', 'url(svg/bg_wiggle.svg)')
+  viewport.attr({
+    id: 'svg_viewport',
+    overflow: 'scroll',
+    width: viewport.node.parentNode.clientWidth,
+    height: 800,
+    viewBox: '0 0 1200 800',
+  })
 
-  gViewport = SVG.adopt(document.createElementNS(SVG.ns, 'g'))
+  gViewport = viewport.group()
   gViewport.node.id = 'g_viewport'
-  viewport.add(gViewport)
 
-  table_rect = gViewport.rect()
-  table_rect.attr({
+  table_border_rect = gViewport.rect()
+  table_border_rect.attr({
+     id: 'table_border_rect',
      x: -1,
      y: -1,
      rx: 0,
@@ -112,27 +116,28 @@ SVG.on(document, 'DOMContentLoaded', () => {
      'stroke-opacity': 0.2,
   })
 
-  svg_table = initSvgTable(document.createElementNS(SVG.ns, 'svg'))
+  svg_table = gViewport.nested()
+  initSvgTable()
 
   window.addEventListener("resize", viewportToGameArea)
-
-  // Initialize modals
-  instances = M.Modal.init(document.querySelectorAll('.modal'), {
-    opacity: 0.75,
-  });
 
   ui.initializeViewport(viewport.node)
   ui.initializeDragSelectBox(viewport.node)
 
-  var uiObserver = new MutationObserver((mutations) => {
-    // console.log('---------------mutation obs', mutations)
+  let uiButtonsObserver = new MutationObserver((mutations) => {
+    // Whenever the UI Layer changes, update the UI buttons
     ui.updateButtons()
   })
-  uiObserver.observe(layer_ui.node, {
+  uiButtonsObserver.observe(layer_ui.node, {
     attributes: true,
     childList: true,
     subtree: true,
   })
+
+  // Initialize modals
+  let instances = M.Modal.init(document.querySelectorAll('.modal'), {
+    opacity: 0.75,
+  });
 
 })
 
@@ -223,7 +228,9 @@ window.addEventListener('load', () => {
 </style>
 
   <div id="gamearea" contextmenu="gamemenu">
-  <svg width="0" height="0">
+  <svg
+  xmlns="http://www.w3.org/2000/svg"
+  id="xsvg_viewport" width="0" height="0">
   <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
     <feColorMatrix id="recolorize-filter-matrix" type="matrix"
        values="0.9 0.0 0.0 0.0  0.0
@@ -936,7 +943,7 @@ function ui_change_background() {
     return;
   }
   var value = "url('" + input.value + "')";
-  viewport.style('background-image', value)
+  viewport.css('background-image', value)
   ui.popdown_dialog('dialog_table')
   push_sync()
 }
@@ -947,8 +954,8 @@ function ui_change_table_size() {
 
   svg_table.width(parseInt(wInput.value))
   svg_table.height(parseInt(hInput.value))
-  table_rect.width(svg_table.width() + 2)
-  table_rect.height(svg_table.height() + 2)
+  table_border_rect.width(svg_table.width() + 2)
+  table_border_rect.height(svg_table.height() + 2)
   viewport.node.setAttribute(
     'viewBox',
     `0 0 ${svg_table.width()} ${svg_table.height()}`

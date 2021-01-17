@@ -583,6 +583,7 @@ const ui = {
   },
 
   animated_ghost: (el, attrs) => {
+    console.log("animated_ghost", el, attrs)
     var { ms, animation, before_begin, on_done } = Object.assign({
       ms: 900,
       animation: 'slideInDown',
@@ -604,7 +605,7 @@ const ui = {
     // Move to the start position
     ui.flatten_translation(animationClone)
     cc = SVG(animationClone)
-    ee = SVG(el.id)
+    ee = SVG(el)
     cc.move(ee.x(), ee.y())
 
     el.parentNode.appendChild(animationClone, el)
