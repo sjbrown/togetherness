@@ -274,6 +274,11 @@ const ui = {
       }
       el.remove()
     })
+    let selector = '.player_marker.owner-' + ui.escapedClientId()
+    let existingMarker = layer_ui.node.querySelector(selector)
+    if (existingMarker) {
+      existingMarker.remove()
+    }
   },
 
   alertHere: (evt) => {
