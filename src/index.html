@@ -54,7 +54,6 @@ var svg_table
 var layer_objects
 var layer_ui
 var viewport
-var gViewport
 var origViewportSize
 
 function initSvgTable(el) {
@@ -76,7 +75,7 @@ function initSvgTable(el) {
   })
   layer_ui.addClass('layer')
   layer_ui.addClass('layer_ui')
-  gViewport.add(svg_table)
+  viewport.add(svg_table)
 
   makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
   objectsObserver = new LayerObserver(layer_objects.node)
@@ -115,11 +114,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
   viewport.node.style.overflow = 'scroll'
   viewport.style('background-image', 'url(svg/bg_wiggle.svg)')
 
-  gViewport = SVG.adopt(document.createElementNS(SVG.ns, 'g'))
-  gViewport.node.id = 'g_viewport'
-  viewport.add(gViewport)
-
-  table_border_rect = gViewport.rect()
+  table_border_rect = viewport.rect()
   table_border_rect.attr({
      x: -1,
      y: -1,
