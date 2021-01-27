@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   id="image_object"
+   class="image_object"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   x="0" y="0" width="100" height="100"
+   viewBox="0 0 100 100"
+   preserveAspectRatio="none"
+   >
+  <script
+     type="text/javascript"
+     data-namespace="image_object"
+     id="script_image_object"><![CDATA[
+var image_object = {
+
+  initialize: function(elem, prototype) {
+     console.log('image_object.initialize', elem.id, elem, prototype)
+     if (!prototype) {
+       return
+     }
+     let srcNode = prototype.querySelector('.internal_image')
+     let internalImage = SVG.adopt(elem.querySelector('.internal_image'))
+     internalImage.attr('href', srcNode.getAttribute('href'))
+  },
+
+  fix: function(evt, elem) {
+    lock_selection(evt, elem)
+  },
+
+  resize_handler: function(elem, evt) {
+    // console.log('image_object', elem.id, ' got resize', evt.detail.width, evt.detail.height)
+    let w = evt.detail.width
+    let h = evt.detail.height
+    if (w < 10 || h < 10) {
+      return
+    }
+
+    elem_svg = SVG.adopt(elem)
+    elem_svg.width(w)
+    elem_svg.height(h)
+  },
+
+  menu: {
+    'Fix': {
+      eventName: 'object_fix',
+      otherEvents: ['dblclick'],
+      applicable: (node) => { return true },
+      handler: function(evt) {
+        image_object.fix(evt, this)
+      },
+    },
+  },
+
+}
+    ]]></script>
+    <rect fill="black"
+    fill-opacity="0.2"
+    x="0" y="0"
+    width="100" height="100"
+    />
+  <image href="/img/image.png"
+    class="internal_image"
+    x="0" y="0"
+    width="100" height="100"
+  />
+</svg>
