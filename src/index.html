@@ -1237,6 +1237,11 @@ function ui_submit_dice(section) {
     dtypes.forEach((dtype) => {
       add_dtype(dtype, byId('dice_input_' + dtype), center)
     })
+  } else if (section === 'spiral') {
+    dtypes = ['spiral',]
+    dtypes.forEach((dtype) => {
+      add_dtype(dtype, byId('dice_input_' + dtype), center)
+    })
   } else if (section === 'special') {
     add_dtype(
       'dn', byId('dice_input_dn'), center,
@@ -1452,6 +1457,23 @@ function ui_submit_dice(section) {
       </td>
       </tr></table>
       <button id="dialog_submit_fudge" onclick="ui_submit_dice('fudge')"
+        class="btn modal-close">
+        Submit
+      </button>
+    </section>
+    <section class="dice_section" id="spiral_dice_section">
+      <a name="spiral"></a>
+      <h1 id="spiral_dice_h1">Spiral Dice</h1>
+      <table class="dice_input_table"><tr>
+      <td>
+        <button class="btn" id="dice_button_spiral" onclick="diceIncrement('spiral')">
+          <img src="svg/v1/dice_spiral.svg" width="24" height="24" />
+        </button>
+        &#215;
+        <input id="dice_input_spiral" type="number" class="dice_quantity" min="0" value="0"/>
+      </td>
+      </tr></table>
+      <button id="dialog_submit_spiral" onclick="ui_submit_dice('spiral')"
         class="btn modal-close">
         Submit
       </button>
