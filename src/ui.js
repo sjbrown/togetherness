@@ -302,6 +302,77 @@ const ui = {
     //console.log("un_hookup_ui", elem.id)
   },
 
+  scaleNode: (node, width, height = width) => {
+    node.setAttribute('x', 0)
+    node.setAttribute('y', 0)
+    const originalWidth = node.getAttribute('width')
+    const originalHeight = node.getAttribute('height')
+
+    const svgWrapper = document.createElementNS(SVG.ns, 'svg')
+    svgWrapper.setAttribute('width', width)
+    svgWrapper.setAttribute('height', height)
+    svgWrapper.setAttribute('viewBox', `0 0 ${originalWidth} ${originalHeight}`)
+    svgWrapper.appendChild(node)
+
+    return svgWrapper
+  },
+
+  getTimestamp: () => {
+    const now = new Date()
+    let hours = now.getHours()
+    let minutes = now.getMinutes()
+    let seconds = now.getSeconds()
+
+    if (minutes < 10) minutes = '0' + minutes
+    if (seconds < 10) seconds = '0' + seconds
+
+    return `${hours}:${minutes}:${seconds}`
+  },
+
+  addActivityLogItem: (verb, beforeNode, afterNode) => {
+    let li = document.createElement('li')
+
+    const leftDiv = document.createElement('div')
+    leftDiv.className = 'activity_log_timestamp'
+    leftDiv.innerHTML = ui.getTimestamp()
+
+    const rightDiv = document.createElement('div')
+
+    let nounSpan = document.createElement('span')
+    const noun = localStorage.getItem('profile_name') || 'Unknown'
+    nounSpan.style.color = localStorage.getItem('profile_color')
+    nounSpan.innerHTML = noun + ' '
+
+    let verbSpan = document.createElement('span')
+    verbSpan.innerHTML = verb + ' '
+
+    let arrow = document.createElement('span')
+    arrow.innerHTML = ' &#9758 '
+
+    const size = 64
+    const scaledBeforeNode = ui.scaleNode(beforeNode, size)
+    const scaledAfterNode = ui.scaleNode(afterNode, size)
+
+    rightDiv.appendChild(nounSpan)
+    rightDiv.appendChild(verbSpan)
+    rightDiv.appendChild(scaledBeforeNode)
+    rightDiv.appendChild(arrow)
+    rightDiv.appendChild(scaledAfterNode)
+
+    li.appendChild(leftDiv)
+    li.appendChild(rightDiv)
+
+    const activityLog = byId('activity_log')
+    const items = activityLog.getElementsByTagName('li')
+
+    activityLog.insertBefore(li, activityLog.childNodes[0])
+
+    const MAX_ACTIVITY_LOG_ITEMS = 100
+    while (items.length > MAX_ACTIVITY_LOG_ITEMS) {
+      items[items.length - 1].remove()
+    }
+  },
+
   augmented_handlers_for_element: (svgEl) => {
     let eventHandlers = {}
     let actionMenu = ui.getFullMenuForElement(svgEl)
@@ -312,7 +383,13 @@ const ui = {
       }
       let boundHandler = (evt) => {
         userlog.add({ user: myClientId, title: title, event: evt, el: svgEl })
+
+        let nodeBefore = svgEl.cloneNode(true)
         menuItem.handler.bind(svgEl)(evt)
+        let nodeAfter = svgEl.cloneNode(true)
+
+        ui.addActivityLogItem(title, nodeBefore, nodeAfter)
+
         ui.updateButtons() // state-changes due to handler affect disabled state
       }
       eventHandlers[menuItem.eventName] = boundHandler

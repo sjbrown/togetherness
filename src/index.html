@@ -661,6 +661,13 @@ window.addEventListener('load', () => {
     Load
   </button>
 
+  <button id="activity_button" class="btn btn-small modal-trigger"
+    title="Log of game events"
+    data-target="dialog_activity_log"
+    data-dialog-id="dialog_activity_log">
+    Activity Log
+  </button>
+
   <button id="help_button" class="btn btn-small modal-trigger"
     title="Help/About this project"
     data-target="dialog_contribute"
@@ -2526,6 +2533,44 @@ function token_add(buttonEl) {
 
 <!-- END TOKENS =============================================== END TOKENS -->
 
+<!-- ACTIVITY LOG =============================================== ACTIVITY LOG -->
+  <style>
+    #dialog_activity_log h2 {
+      font-size: 40px;
+      margin: 8px;
+      text-align: center;
+    }
+    #activity_log li {
+      background: #ddd;
+      border-radius: 5px;
+      display: flex;
+      font-size: 40px;
+      height: 80px;
+      justify-content: space-between;
+      list-style: none;
+      margin-bottom: 4px;
+      padding: 9px 9px 0 9px;
+      text-align: right;
+    }
+    #activity_log li:nth-child(even) {
+      background: #bbb;
+    }
+    #activity_log .activity_log_timestamp {
+      display: flex;
+      align-items: center;
+      font-size: 24px;
+    }
+    #activity_log svg {
+      vertical-align: bottom;
+    }
+  </style>
+  <div class="modal" id="dialog_activity_log">
+    <h2>Activity Log</h2>
+    <div class="modal-content">
+      <ol id="activity_log"></ol>
+    </div>
+  </div>
+<!-- /ACTIVITY LOG ============================================== /ACTIVITY LOG -->
 
 <!-- CONTRIBUTE =============================================== CONTRIBUTE -->
   <div class="modal" id="dialog_contribute">
