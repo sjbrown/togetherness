@@ -2564,6 +2564,20 @@ function token_add(buttonEl) {
       vertical-align: bottom;
     }
   </style>
+
+  <template id="template_activity_item">
+    <li>
+      <div class="activity_item_timestamp"></div>
+      <div>
+        <span id="activity_item_player_name"></span>
+        <span id="activity_item_player_action"></span>
+        <svg id="activity_item_before_node"></svg>
+        <span>&#9758</span>
+        <svg id="activity_item_after_node"></svg>
+      </div>
+    </li>
+  </template>
+
   <div class="modal" id="dialog_activity_log">
     <h2>Activity Log</h2>
     <div class="modal-content">

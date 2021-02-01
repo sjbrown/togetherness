@@ -302,73 +302,48 @@ const ui = {
     //console.log("un_hookup_ui", elem.id)
   },
 
-  scaleNode: (node, width, height = width) => {
+  injectSvgNode: (node, targetNode, width, height = width) => {
     node.setAttribute('x', 0)
     node.setAttribute('y', 0)
     const originalWidth = node.getAttribute('width')
     const originalHeight = node.getAttribute('height')
 
-    const svgWrapper = document.createElementNS(SVG.ns, 'svg')
-    svgWrapper.setAttribute('width', width)
-    svgWrapper.setAttribute('height', height)
-    svgWrapper.setAttribute('viewBox', `0 0 ${originalWidth} ${originalHeight}`)
-    svgWrapper.appendChild(node)
-
-    return svgWrapper
+    targetNode.setAttribute('width', width)
+    targetNode.setAttribute('height', height)
+    targetNode.setAttribute('viewBox', `0 0 ${originalWidth} ${originalHeight}`)
+    targetNode.appendChild(node)
   },
 
-  getTimestamp: () => {
-    const now = new Date()
-    let hours = now.getHours()
-    let minutes = now.getMinutes()
-    let seconds = now.getSeconds()
+  generateActivityItemFromTemplate: (playerAction, beforeNode, afterNode) => {
+    const templateActivityItem = document.querySelector('#template_activity_item')
 
-    if (minutes < 10) minutes = '0' + minutes
-    if (seconds < 10) seconds = '0' + seconds
+    templateActivityItem.content.querySelector('.activity_item_timestamp').innerText = new Date().toLocaleTimeString()
 
-    return `${hours}:${minutes}:${seconds}`
-  },
+    const playerNameSpan = templateActivityItem.content.querySelector('#activity_item_player_name')
+    playerNameSpan.innerText = localStorage.getItem('profile_name') || 'Unknown'
+    playerNameSpan.style.color = localStorage.getItem('profile_color')
 
-  addActivityLogItem: (verb, beforeNode, afterNode) => {
-    let li = document.createElement('li')
+    templateActivityItem.content.querySelector('#activity_item_player_action').innerText = playerAction
 
-    const leftDiv = document.createElement('div')
-    leftDiv.className = 'activity_log_timestamp'
-    leftDiv.innerHTML = ui.getTimestamp()
-
-    const rightDiv = document.createElement('div')
-
-    let nounSpan = document.createElement('span')
-    const noun = localStorage.getItem('profile_name') || 'Unknown'
-    nounSpan.style.color = localStorage.getItem('profile_color')
-    nounSpan.innerHTML = noun + ' '
-
-    let verbSpan = document.createElement('span')
-    verbSpan.innerHTML = verb + ' '
-
-    let arrow = document.createElement('span')
-    arrow.innerHTML = ' &#9758 '
+    const beforeNodeWrapper = templateActivityItem.content.querySelector('#activity_item_before_node')
+    const afterNodeWrapper = templateActivityItem.content.querySelector('#activity_item_after_node')
 
     const size = 64
-    const scaledBeforeNode = ui.scaleNode(beforeNode, size)
-    const scaledAfterNode = ui.scaleNode(afterNode, size)
+    ui.injectSvgNode(beforeNode, beforeNodeWrapper, size)
+    ui.injectSvgNode(afterNode, afterNodeWrapper, size)
 
-    rightDiv.appendChild(nounSpan)
-    rightDiv.appendChild(verbSpan)
-    rightDiv.appendChild(scaledBeforeNode)
-    rightDiv.appendChild(arrow)
-    rightDiv.appendChild(scaledAfterNode)
+    return document.importNode(templateActivityItem.content, true)
+  },
 
-    li.appendChild(leftDiv)
-    li.appendChild(rightDiv)
-
+  addActivityLogItem: (playerAction, beforeNode, afterNode) => {
+    const maxActivityItems = 100
     const activityLog = byId('activity_log')
+    const activityItem = ui.generateActivityItemFromTemplate(playerAction, beforeNode, afterNode)
+
+    activityLog.insertBefore(activityItem, activityLog.childNodes[0])
+
     const items = activityLog.getElementsByTagName('li')
-
-    activityLog.insertBefore(li, activityLog.childNodes[0])
-
-    const MAX_ACTIVITY_LOG_ITEMS = 100
-    while (items.length > MAX_ACTIVITY_LOG_ITEMS) {
+    while (items.length > maxActivityItems) {
       items[items.length - 1].remove()
     }
   },
