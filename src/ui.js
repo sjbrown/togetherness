@@ -319,14 +319,14 @@ const ui = {
 
     templateActivityItem.content.querySelector('.activity_item_timestamp').innerText = new Date().toLocaleTimeString()
 
-    const playerNameSpan = templateActivityItem.content.querySelector('#activity_item_player_name')
+    const playerNameSpan = templateActivityItem.content.querySelector('.activity_item_player_name')
     playerNameSpan.innerText = localStorage.getItem('profile_name') || 'Unknown'
     playerNameSpan.style.color = localStorage.getItem('profile_color')
 
-    templateActivityItem.content.querySelector('#activity_item_player_action').innerText = playerAction
+    templateActivityItem.content.querySelector('.activity_item_player_action').innerText = playerAction
 
-    const beforeNodeWrapper = templateActivityItem.content.querySelector('#activity_item_before_node')
-    const afterNodeWrapper = templateActivityItem.content.querySelector('#activity_item_after_node')
+    const beforeNodeWrapper = templateActivityItem.content.querySelector('.activity_item_before_node')
+    const afterNodeWrapper = templateActivityItem.content.querySelector('.activity_item_after_node')
 
     const size = 64
     ui.injectSvgNode(beforeNode, beforeNodeWrapper, size)
