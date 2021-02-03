@@ -307,6 +307,52 @@ const ui = {
     //console.log("un_hookup_ui", elem.id)
   },
 
+  injectSvgNode: (node, targetNode, width, height = width) => {
+    node.setAttribute('x', 0)
+    node.setAttribute('y', 0)
+    const originalWidth = node.getAttribute('width')
+    const originalHeight = node.getAttribute('height')
+
+    targetNode.setAttribute('width', width)
+    targetNode.setAttribute('height', height)
+    targetNode.setAttribute('viewBox', `0 0 ${originalWidth} ${originalHeight}`)
+    targetNode.appendChild(node)
+  },
+
+  generateActivityItemFromTemplate: (playerAction, beforeNode, afterNode) => {
+    const templateActivityItem = document.querySelector('#template_activity_item')
+
+    templateActivityItem.content.querySelector('.activity_item_timestamp').innerText = new Date().toLocaleTimeString()
+
+    const playerNameSpan = templateActivityItem.content.querySelector('.activity_item_player_name')
+    playerNameSpan.innerText = localStorage.getItem('profile_name') || 'Unknown'
+    playerNameSpan.style.color = localStorage.getItem('profile_color')
+
+    templateActivityItem.content.querySelector('.activity_item_player_action').innerText = playerAction
+
+    const beforeNodeWrapper = templateActivityItem.content.querySelector('.activity_item_before_node')
+    const afterNodeWrapper = templateActivityItem.content.querySelector('.activity_item_after_node')
+
+    const size = 64
+    ui.injectSvgNode(beforeNode, beforeNodeWrapper, size)
+    ui.injectSvgNode(afterNode, afterNodeWrapper, size)
+
+    return document.importNode(templateActivityItem.content, true)
+  },
+
+  addActivityLogItem: (playerAction, beforeNode, afterNode) => {
+    const maxActivityItems = 100
+    const activityLog = byId('activity_log')
+    const activityItem = ui.generateActivityItemFromTemplate(playerAction, beforeNode, afterNode)
+
+    activityLog.insertBefore(activityItem, activityLog.childNodes[0])
+
+    const items = activityLog.getElementsByTagName('li')
+    while (items.length > maxActivityItems) {
+      items[items.length - 1].remove()
+    }
+  },
+
   augmented_handlers_for_element: (svgEl) => {
     let eventHandlers = {}
     let actionMenu = ui.getFullMenuForElement(svgEl)
@@ -317,7 +363,13 @@ const ui = {
       }
       let boundHandler = (evt) => {
         userlog.add({ user: myClientId, title: title, event: evt, el: svgEl })
+
+        let nodeBefore = svgEl.cloneNode(true)
         menuItem.handler.bind(svgEl)(evt)
+        let nodeAfter = svgEl.cloneNode(true)
+
+        ui.addActivityLogItem(title, nodeBefore, nodeAfter)
+
         ui.updateButtons() // state-changes due to handler affect disabled state
       }
       eventHandlers[menuItem.eventName] = boundHandler
