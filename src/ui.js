@@ -320,33 +320,39 @@ const ui = {
   },
 
   generateActivityItemFromTemplate: (playerAction, beforeNode, afterNode) => {
-    const templateActivityItem = document.querySelector('#template_activity_item')
+    const templateItem = document.querySelector('#template_activity_item')
+    const clone = templateItem.content.cloneNode(true)
 
-    templateActivityItem.content.querySelector('.activity_item_timestamp').innerText = new Date().toLocaleTimeString()
+    const timestampStr = new Date().toLocaleTimeString()
+    clone.querySelector('.timestamp').innerText = timestampStr
 
-    const playerNameSpan = templateActivityItem.content.querySelector('.activity_item_player_name')
-    playerNameSpan.innerText = localStorage.getItem('profile_name') || 'Unknown'
-    playerNameSpan.style.color = localStorage.getItem('profile_color')
+    const playerNameEl = clone.querySelector('.player_name')
+    playerNameEl.innerText = localStorage.getItem('profile_name') || 'Unknown'
+    playerNameEl.style.color = localStorage.getItem('profile_color')
 
-    templateActivityItem.content.querySelector('.activity_item_player_action').innerText = playerAction
+    clone.querySelector('.player_action').innerText = playerAction
 
-    const beforeNodeWrapper = templateActivityItem.content.querySelector('.activity_item_before_node')
-    const afterNodeWrapper = templateActivityItem.content.querySelector('.activity_item_after_node')
+    const beforeNodeWrapper = clone.querySelector('.before_node')
+    const afterNodeWrapper = clone.querySelector('.after_node')
 
     const size = 64
     ui.injectSvgNode(beforeNode, beforeNodeWrapper, size)
     ui.injectSvgNode(afterNode, afterNodeWrapper, size)
 
-    return document.importNode(templateActivityItem.content, true)
+    return clone
   },
 
   addActivityLogItem: (playerAction, beforeNode, afterNode) => {
-    const maxActivityItems = 100
-    const activityLog = byId('activity_log')
-    const activityItem = ui.generateActivityItemFromTemplate(playerAction, beforeNode, afterNode)
+    const activityItem = ui.generateActivityItemFromTemplate(
+      playerAction,
+      beforeNode,
+      afterNode,
+    )
 
+    const activityLog = byId('activity_log_list')
     activityLog.insertBefore(activityItem, activityLog.childNodes[0])
 
+    const maxActivityItems = 100
     const items = activityLog.getElementsByTagName('li')
     while (items.length > maxActivityItems) {
       items[items.length - 1].remove()
