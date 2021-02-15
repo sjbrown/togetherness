@@ -465,6 +465,10 @@ function init_with_namespaces(elem, prototype) {
 async function make_prototype(url, attrs) {
   // console.log('make_prototype', url, attrs)
   let nest = await import_foreign_svg(url)
+  nest.attr({
+    x: 0,
+    y: 0,
+  })
   setColor(nest.node, (attrs && attrs.color) || getChosenDiceColor())
   return nest.node
 }

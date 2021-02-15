@@ -74,39 +74,70 @@ var tray = {
 
   get_numeric_value(elem) {
     if(elem.classList.contains('tray')) {
-      let num = parseInt(tray.getValue(elem))
-      if (isNaN(num)) {
-        return 0
-      } else {
+      let num = tray.getUnderstoodNumber(tray.getValue(elem))
+      if (num !== null) {
         return num
+      } else {
+        return 0
       }
-    } else {
-      let topmostNumber = null
-      elem.querySelectorAll('tspan').forEach((t) => {
-        if (t.closest('svg').id !== elem.id) {
-          // it's buried multiple levels deep in sub-SVGs
-          // so skip it lest it be double-counted
-          return
-        }
-        let c = t.textContent.trim()
-        let num = parseInt(c)
-        if (!isNaN(num)) {
-          topmostNumber = num
-        }
-        if (topmostNumber === null && c == '+') {
-          topmostNumber = 1
-        }
-        if (topmostNumber === null && c == '-') {
-          topmostNumber = 1
-        }
-      })
-      return topmostNumber || 0
     }
+
+    let evaluated = tray.evaluate_sub_element(elem)
+    if (evaluated !== null) {
+      let num = tray.getUnderstoodNumber(evaluated)
+      if (num !== null) {
+        return num
+      } else {
+        return 0
+      }
+    }
+
+    let topmostNumber = null
+    elem.querySelectorAll('tspan').forEach((t) => {
+      if (t.closest('svg').id !== elem.id) {
+        // it's buried multiple levels deep in sub-SVGs
+        // so skip it lest it be double-counted
+        return
+      }
+      let trimmed = t.textContent.trim()
+      let num = tray.getUnderstoodNumber(trimmed)
+      if (num !== null) {
+        topmostNumber = num
+      }
+    })
+    return topmostNumber || 0
+  },
+
+  getUnderstoodNumber: function(val) {
+    //FATE / FUDGE dice have "-" and "+" which mean -1 and +1
+    let num = parseFloat(val)
+    if (!isNaN(num)) {
+      return num
+    }
+    if (val == '+') {
+      return 1
+    }
+    if (val == '-') {
+      return -1
+    }
+    return null
   },
 
   getValue: function(elem) {
     tspan = elem.querySelector(`#${elem.id} > .result_container .tspan_result`)
     return tspan.textContent.trim()
+  },
+
+  evaluate_sub_element(subElem) {
+    let retval = null
+    nses = getNamespacesForElement(subElem)
+    nses.forEach((ns) => {
+      if (ns.getValue) {
+        retval = ns.getValue(subElem)
+        return
+      }
+    })
+    return retval
   },
 
   get_contents_values(elem) {
@@ -115,13 +146,10 @@ var tray = {
       `#${elem.id} > .contents_group > svg`
     )
     containedSVGs.forEach((subElem) => {
-      nses = getNamespacesForElement(subElem)
-      nses.forEach((ns) => {
-        if (ns.getValue) {
-          values[subElem.id] = ns.getValue(subElem)
-          return
-        }
-      })
+      values[subElem.id] = tray.evaluate_sub_element(subElem)
+      if (values[subElem.id] === null) {
+        delete values[subElem.id]
+      }
     })
     return values
   },
@@ -226,10 +254,10 @@ var tray = {
       let dragged = SVG.adopt(draggedEl)
 
       is_inside = isInside(draggedEl, drop.node)
-      console.log('dragged', draggedEl.id, 'box is inside drop',
-        dropElem,
-        '?', is_inside
-      )
+      // console.log('dragged', draggedEl.id, 'box is inside drop',
+      //  dropElem,
+      //  '?', is_inside
+      //)
 
       if (contentsGroup.querySelector('#' + draggedEl.id)) {
         // already inside the contents

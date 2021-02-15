@@ -72,7 +72,10 @@
       <feColorMatrix
          id="recolorize-filter-matrix"
          type="matrix"
-         values="0.9 0.0 0.0 0.0  0.0                  0.9 0.0 0.0 0.0  0.0                  0.9 0.0 0.0 0.0  0.0                  0.0 0.0 0.0 1.0  0.0" />
+         values="1.0 0.0 0.0 0.0  0.0
+                 1.0 0.0 0.0 0.0  0.0
+                 1.0 0.0 0.0 0.0  0.0
+                 0.0 0.0 0.0 1.0  0.0" />
     </filter>
     <linearGradient
        inkscape:collect="always"
