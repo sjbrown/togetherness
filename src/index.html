@@ -1249,11 +1249,12 @@ function ui_submit_dice(section) {
     dtypes.forEach((dtype) => {
       add_dtype(dtype, byId('dice_input_' + dtype), center)
     })
-  } else if (section === 'special') {
+  } else if (section === 'custom') {
     add_dtype(
       'dn', byId('dice_input_dn'), center,
       document.querySelector('#dn_prototype svg')
     )
+  } else if (section === 'user') {
     add_dtype(
       'dsymbol', byId('dice_input_dsymbol'), center,
       {
@@ -1281,7 +1282,7 @@ function ui_submit_dice(section) {
         <li><a href="#standard">Standard Dice</a></li>
         <li><a href="#sw">SW / Genesys Dice</a></li>
         <li><a href="#fudge">FUDGE Dice</a></li>
-        <li><a href="#special">Special Dice</a></li>
+        <li><a href="#custom">Custom Dice</a></li>
       </ul>
     </div>
     </nav>
@@ -1486,11 +1487,12 @@ function ui_submit_dice(section) {
         Submit
       </button>
     </section>
-    <section class="dice_section" id="special_dice_section">
-      <a name="special"></a>
-      <h1 id="special_dice_h1">Special Dice</h1>
+    <section class="dice_section" id="custom_dice_section">
+      <a name="custom"></a>
+      <h1 id="custom_dice_h1">N-Sided Dice</h1>
       <table class="dice_input_table"><tr>
       <td id="dice_cell_dn">
+
         <script>
 function alterFaces(el) {
   // console.log(el.value)
@@ -1512,18 +1514,24 @@ function alterFaces(el) {
     svg_dn.style.display = 'block'
 
     useEl = document.querySelector('#svg_dn use')
-    useEl.setAttribute('href', '#' + p.id)
+    useEl.setAttributeNS(SVG.xlink, 'href', '#' + p.id)
   })
 }
 function loadPrototypeDN() {
   return alterFaces( document.querySelector('#dice_input_dn_num_faces'))
 }
         </script>
-        How many faces? <input
+
+        <label for="dice_input_dn_num_faces">
+        How many faces?
+        <input
           id="dice_input_dn_num_faces" type="text" value="100" size="3"
           oninput="alterFaces(this)"
           max="999" min="2"
+          style="width:auto"
         />
+        </label><br />
+        N-Sided Dice:
         <button class="btn" id="dice_button_dn" onclick="diceIncrement('dn')">
           <template id="dn_prototype">
           </template>
@@ -1534,20 +1542,55 @@ function loadPrototypeDN() {
         &#215;
         <input id="dice_input_dn" type="number" class="dice_quantity" min="0" value="0"/>
       </td>
+      </tr>
+      </table>
+      <button id="dialog_submit_custom" onclick="ui_submit_dice('custom')"
+        class="btn modal-close">
+        Submit
+      </button>
 
-      <td>
-        Enter single numbers, letters or emoji, separated by spaces. <input
-          id="dice_input_dsymbol_faces" type="text" value="0 1 ✗ ✔ y n" size="3"
-          pattern="^.( .)*$"
-        />
+    </section>
+    <section class="dice_section" id="user_dice_section">
+
+      <a name="user"></a>
+      <h1 id="user_dice_h1">User-Defined Dice</h1>
+        <style>
+        #user_dice_section #dice_input_dsymbol_faces {
+          height: 6rem;
+          width: 10rem;
+          text-align: center;
+          word-wrap: normal;
+        }
+        </style>
+
+      <table class="dice_input_table"><tr>
+      <td id="dice_cell_dn">
+        <table><tr style="border:none">
+        <td>
+        <textarea
+          id="dice_input_dsymbol_faces"
+          name="dice_input_dsymbol_faces"
+          rows="6"
+          cols="10"
+        ></textarea>
+        </td>
+        <th>
+        On each line, enter numbers, letters or emoji. Blank lines will be
+        interpreted as empty faces.
+        </th>
+        </tr></table>
+
+        User-Defined Dice:
         <button class="btn" id="dice_button_dsymbol" onclick="diceIncrement('dsymbol')">
           <img id="img_dice_dsymbol" src="svg/v1/dice_dsymbol.svg" width="24" height="24" />
         </button>
         &#215;
         <input id="dice_input_dsymbol" type="number" class="dice_quantity" min="0" value="0"/>
+
       </td>
-      </tr></table>
-      <button id="dialog_submit_special" onclick="ui_submit_dice('special')"
+      </tr>
+      </table>
+      <button id="dialog_submit_custom" onclick="ui_submit_dice('user')"
         class="btn modal-close">
         Submit
       </button>
@@ -2575,6 +2618,9 @@ function token_add(buttonEl) {
       }
       #activity_log svg {
         vertical-align: bottom;
+      }
+      .activity_item .player_name {
+        text-shadow: 1px 1px white;
       }
     </style>
 
