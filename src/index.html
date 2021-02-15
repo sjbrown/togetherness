@@ -2549,54 +2549,62 @@ function token_add(buttonEl) {
 <!-- END TOKENS =============================================== END TOKENS -->
 
 <!-- ACTIVITY LOG =============================================== ACTIVITY LOG -->
-  <style>
-    #dialog_activity_log h2 {
-      font-size: 40px;
-      margin: 8px;
-      text-align: center;
-    }
-    #activity_log li {
-      background: #ddd;
-      border-radius: 5px;
-      display: flex;
-      font-size: 40px;
-      height: 80px;
-      justify-content: space-between;
-      list-style: none;
-      margin-bottom: 4px;
-      padding: 9px 9px 0 9px;
-      text-align: right;
-    }
-    #activity_log li:nth-child(even) {
-      background: #bbb;
-    }
-    #activity_log .activity_log_timestamp {
-      display: flex;
-      align-items: center;
-      font-size: 24px;
-    }
-    #activity_log svg {
-      vertical-align: bottom;
-    }
-  </style>
-
-  <template id="template_activity_item">
-    <li>
-      <div class="activity_item_timestamp"></div>
-      <div>
-        <span class="activity_item_player_name"></span>
-        <span class="activity_item_player_action"></span>
-        <svg class="activity_item_before_node"></svg>
-        <span>&#9758</span>
-        <svg class="activity_item_after_node"></svg>
-      </div>
-    </li>
-  </template>
-
   <div class="modal" id="dialog_activity_log">
-    <h2>Activity Log</h2>
+    <style>
+      #activity_log_list li {
+        background: #ddd;
+        border-radius: 5px;
+        display: flex;
+        height: 80px;
+        justify-content: space-between;
+        list-style: none;
+        margin-bottom: 4px;
+        padding: 9px 9px 0 9px;
+        text-align: right;
+      }
+      #activity_log_list li:nth-child(even) {
+        background: #bbb;
+      }
+      .activity_item div {
+        font-size: 24px;
+        display: flex;
+        align-items: center;
+      }
+      .activity_item span {
+        padding-right: 8px;
+      }
+      #activity_log svg {
+        vertical-align: bottom;
+      }
+    </style>
+
+    <nav class="dialog_nav"  id="activity_log_nav">
+      <div class="nav-wrapper">
+      <button class="btn dialog_cancel modal-close">
+        &#215;
+      </button>
+      </div>
+    </nav>
     <div class="modal-content">
-      <ol id="activity_log"></ol>
+      <section id="activity_log_section">
+        <a name="activity_log"></a>
+        <h1 id="activity_log_h1">Activity Log</h1>
+        <ol id="activity_log_list"></ol>
+
+        <template id="template_activity_item">
+          <li class="activity_item">
+            <div class="timestamp"></div>
+            <div>
+              <span class="player_name"></span>
+              <span class="player_action"></span>
+              <svg class="before_node"></svg>
+              <span>&#9758;</span>
+              <svg class="after_node"></svg>
+            </div>
+          </li>
+        </template>
+
+      </section>
     </div>
   </div>
 <!-- /ACTIVITY LOG ============================================== /ACTIVITY LOG -->
