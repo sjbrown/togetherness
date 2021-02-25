@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   id="d0 die"
+   height="100"
+   width="100"
+   version="1.1"
+   inkscape:version="0.92.3 (2405546, 2018-03-11)"
+   sodipodi:docname="dice_d0.svg">
+  <sodipodi:namedview
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1"
+     objecttolerance="10"
+     gridtolerance="10"
+     guidetolerance="10"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:window-width="1920"
+     inkscape:window-height="1025"
+     id="namedview11"
+     showgrid="false"
+     inkscape:zoom="6.675088"
+     inkscape:cx="20.321023"
+     inkscape:cy="45.949896"
+     inkscape:window-x="0"
+     inkscape:window-y="27"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="d0 die"
+     inkscape:snap-bbox="true"
+     inkscape:snap-bbox-midpoints="true" />
+  <defs
+     id="defs1">
+    <linearGradient
+       inkscape:collect="always"
+       id="linearGradient831">
+      <stop
+         style="stop-color:#444444;stop-opacity:0.0;"
+         offset="0"
+         id="stop827" />
+      <stop
+         style="stop-color:#444444;stop-opacity:0.1;"
+         offset="0.5"
+         id="stop828" />
+      <stop
+         style="stop-color:#000000;stop-opacity:0.5;"
+         offset="1"
+         id="stop829" />
+    </linearGradient>
+    <filter
+       id="app-filter-colorize"
+       style="color-interpolation-filters:sRGB">
+      <feColorMatrix
+         id="recolorize-filter-matrix"
+         type="matrix"
+         values="0.9 0.0 0.0 0.0  0.0
+                 0.9 0.0 0.0 0.0  0.0
+                 0.9 0.0 0.0 0.0  0.0
+                 0.0 0.0 0.0 1.0  0.0" />
+    </filter>
+    <radialGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient831"
+       id="radialGradient833"
+       cx="52"
+       cy="52"
+       fx="52"
+       fy="52"
+       r="30"
+       gradientTransform="matrix(1,0,0,0.89646717,0,4.335196)"
+       gradientUnits="userSpaceOnUse" />
+    <radialGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient831"
+       id="radialGradient883"
+       cx="-167.12856"
+       cy="40.083916"
+       fx="-167.12856"
+       fy="40.083916"
+       r="26.634365"
+       gradientTransform="matrix(1,0,0,1.3508056,220,-14.061661)"
+       gradientUnits="userSpaceOnUse" />
+  </defs>
+  <script
+     type="text/javascript"
+     data-namespace="dice"
+     src="js/dice_utils.js"
+     id="script_d0_utils" />
+  <script
+     type="text/javascript"
+     data-namespace="d0"
+     id="script_d0"><![CDATA[
+var d0 = {
+
+  menu: {
+    'Roll': {
+      eventName: 'die_roll',
+      otherEvents: ['dblclick'],
+      applicable: (dieNode) => { return true },
+      handler: function(evt) {
+        dice.roll_handler(this, 10)
+        let tspan = this.querySelector('tspan')
+        let origNum = parseInt(tspan.textContent)
+        if (origNum == 10) {
+          tspan.textContent = '0'
+        }
+      },
+    },
+    'Turn Up': {
+      eventName: 'die_turn_up',
+      applicable: (dieNode) => { return true },
+      uiLabel: (dieNode) => {
+        let tspan = dieNode.querySelector('tspan')
+        let nextNum = (parseInt(tspan.textContent) + 1) % 10
+        return 'Turn to ' + nextNum
+      },
+      handler: function(evt) {
+        dice.turn_handler(this, 10)
+        let tspan = this.querySelector('tspan')
+        let origNum = parseInt(tspan.textContent)
+        if (origNum == 10) {
+          tspan.textContent = '0'
+        }
+      },
+    },
+  },
+
+  initialize: function(elem, prototype) {
+    if (!prototype) {
+      return
+    }
+    elem.querySelector('tspan').textContent = (
+      prototype.querySelector('tspan').textContent
+    )
+  },
+
+}
+
+    ]]></script>
+  <path
+     style="fill:#000000;fill-opacity:0.5;stroke:none"
+     d="M 12.966797 55.296875 C 12.8805 57.757764 13.027381 60.137175 13.558594 62.34375 C 13.558594 62.34375 47.17012 94.0625 52.871094 94.0625 L 52.871094 94.005859 C 58.572067 94.005859 92.185547 62.287109 92.185547 62.287109 C 92.712645 60.09763 92.861437 57.737369 92.779297 55.296875 L 12.966797 55.296875 z "
+     class="object_shadow"
+     id="path_shadow" />
+  <g
+     id="group-monochrome-1"
+     class="draggable"
+     filter="url(#app-filter-colorize)">
+    <path
+       style="fill:#e6e6e6;fill-opacity:1;stroke:url(#radialGradient833);stroke-width:1.30999994;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="M 23.47559,66.503546 C 30.26142,50.71849 39.50425,33.965521 52.87191,15.587623 c 13.36766,18.377898 22.6105,35.130867 29.39633,50.915922 -22.59956,2.387785 -41.72948,2.015834 -58.79265,10e-7 z"
+       id="path893-3"
+       inkscape:connector-curvature="0"
+       sodipodi:nodetypes="cccc" />
+    <path
+       style="fill:#c8c8c8;fill-opacity:1;stroke:#000000;stroke-width:1.31000006;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="M 10.42578,35.740234 C 8.68663,42.730388 7.09973,50.190806 8.76172,56.34375 c 0,0 37.71284,31.71875 44.10937,31.71875 v -0.05664 c 6.39653,0 44.11133,-31.71875 44.11133,-31.71875 1.66199,-6.152943 0.0731,-13.61337 -1.66601,-20.603515 0,0 -36.04879,-30.980469 -42.44532,-30.9511721 C 46.47457,4.7617199 10.42578,35.740235 10.42578,35.740234 Z"
+       id="path846"
+       inkscape:connector-curvature="0"
+       sodipodi:nodetypes="cccccccc" />
+    <path
+       inkscape:transform-center-y="8.1937143"
+       inkscape:transform-center-x="-3.46389"
+       sodipodi:nodetypes="ccccc"
+       inkscape:connector-curvature="0"
+       id="path863"
+       d="m 52.87142,88.063186 c -6.39653,0 -44.11059,-31.719379 -44.11059,-31.719379 l 18.13122,3.304637 25.97937,15.758333 z"
+       style="fill:#9b9b9b;fill-opacity:1;stroke:#000000;stroke-width:1.31000006;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
+    <path
+       inkscape:transform-center-y="8.1937143"
+       inkscape:transform-center-x="3.4638891"
+       sodipodi:nodetypes="ccccc"
+       inkscape:connector-curvature="0"
+       id="path867"
+       d="m 52.87145,88.006108 c 6.39653,0 44.11059,-31.719374 44.11059,-31.719374 L 78.85082,59.591363 52.87145,75.349689 Z"
+       style="fill:#9b9b9b;fill-opacity:1;stroke:#000000;stroke-width:1.31000006;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
+    <path
+       style="fill:#e6e6e6;fill-opacity:1;stroke:url(#radialGradient883);stroke-width:1.30999994;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="M 52.87145,4.7609777 26.89205,59.648446 52.87142,75.406777 78.85082,59.591363 Z"
+       id="path875"
+       inkscape:connector-curvature="0" />
+    <!-- ================================================= -->
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:34px;line-height:1.25;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none"
+       x="54.0"
+       y="59.0"
+       id="text_face"><tspan
+         sodipodi:role="line"
+         id="tspan_face"
+         x="57.0"
+         y="59.0"
+         dx="-4.4 -3.8"
+         style="font-size:34px;text-align:center;text-anchor:middle">0</tspan></text>
+  </g>
+</svg>

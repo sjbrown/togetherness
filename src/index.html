@@ -208,8 +208,8 @@ function downKey(e) {
 window.addEventListener('load', () => {
   document.querySelector('body').addEventListener('keydown', downKey)
   load_profile_ui()
-  loadPrototypeDN()
   loadPrototypeTokens()
+  loadPrototypeDice()
   TogetherJSConfig_getUserColor = getUserColor
   TogetherJSConfig_getUserName = function () {
     return localStorage.getItem('profile_name') || base32.short_id()
@@ -1262,12 +1262,31 @@ function ui_submit_dice(section) {
       }
     )
   } else {
-    dtypes = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20']
+    dtypes = ['d4', 'd6', 'd8', 'd10', 'd0', 'd00', 'd12', 'd20']
     dtypes.forEach((dtype) => {
       add_dtype(dtype, byId('dice_input_' + dtype), center)
     })
   }
   ui.popdown_dialog('dialog_dice')
+}
+
+function alterD10Variant(variant='d10') {
+  btnEl = document.querySelector('#dice_button_d10')
+
+  imgEl = btnEl.querySelector('img')
+  imgEl.setAttribute('src', `svg/v1/dice_${variant}.svg`) // TODO why no work???
+
+  document.querySelector('#dice_input_d10').setAttribute('type', 'hidden')
+  document.querySelector('#dice_input_d0').setAttribute('type', 'hidden')
+  document.querySelector('#dice_input_d00').setAttribute('type', 'hidden')
+  document.querySelector('#d10_variants_tab_d10').removeAttribute('disabled')
+  document.querySelector('#d10_variants_tab_d0').removeAttribute('disabled')
+  document.querySelector('#d10_variants_tab_d00').removeAttribute('disabled')
+
+  document.querySelector(`#dice_input_${variant}`).setAttribute('type', 'number')
+  document.querySelector(`#d10_variants_tab_${variant}`).setAttribute('disabled', 'disabled')
+  btnEl.setAttribute('onclick', `diceIncrement('${variant}')`)
+
 }
 
     </script>
@@ -1372,6 +1391,27 @@ function ui_submit_dice(section) {
         </button>
         &#215;
         <input id="dice_input_d10" type="number" class="dice_quantity" min="0" value="0"/>
+        <input id="dice_input_d0" type="hidden" class="dice_quantity" min="0" value="0"/>
+        <input id="dice_input_d00" type="hidden" class="dice_quantity" min="0" value="0"/>
+        <br />
+        <style>
+        #d10_variants_tabs > .btn-flat {
+          font-size: 10px;
+          line-height: 10px;
+          height: 24px;
+          padding-left: 10px;
+          padding-right: 10px;
+          text-transform: none;
+        }
+        </style>
+        <div id="d10_variants_tabs">
+          <button id="d10_variants_tab_d10"
+            class="btn btn-flat" onclick="alterD10Variant('d10')" disabled>d10</button>
+          <button id="d10_variants_tab_d0"
+            class="btn btn-flat" onclick="alterD10Variant('d0')">d0</button>
+          <button id="d10_variants_tab_d00"
+            class="btn btn-flat" onclick="alterD10Variant('d00')">d00</button>
+        </div>
       </td>
       <td>
         <button class="btn" id="dice_button_d12" onclick="diceIncrement('d12')">
@@ -1496,7 +1536,7 @@ function ui_submit_dice(section) {
         <script>
 function alterFaces(el) {
   // console.log(el.value)
-  make_prototype('svg/v1/dice_dn.svg')
+  return make_prototype('svg/v1/dice_dn.svg')
   .then(p => {
     facesTspan = p.querySelector('#tspan_num_faces')
     facesTspan.textContent = 'd' + parseInt(el.value)
@@ -1517,8 +1557,11 @@ function alterFaces(el) {
     useEl.setAttributeNS(SVG.xlink, 'href', '#' + p.id)
   })
 }
-function loadPrototypeDN() {
-  return alterFaces( document.querySelector('#dice_input_dn_num_faces'))
+function loadPrototypeDice() {
+  return alterFaces(document.querySelector('#dice_input_dn_num_faces'))
+  .then(() => {
+    return alterD10Variant()
+  });
 }
         </script>
 
@@ -2449,7 +2492,7 @@ function token_add(buttonEl) {
         </tr><tr>
         <td>
           <img id="token_image_example_front"
-          width="50" height="50" src="/dev/null" />
+          width="50" height="50" src="img/image.png" />
           <input id="token_image_input_front" type="url"
             value="img/image.png"
             onchange="alterImageToken(this)"
@@ -2457,7 +2500,7 @@ function token_add(buttonEl) {
         </td>
         <td>
           <img id="token_image_example_back"
-          width="50" height="50" src="/dev/null" />
+          width="50" height="50" src="img/image.png" />
           <input id="token_image_input_back" type="url"
             value="img/image.png"
             onchange="alterImageToken(this)"
