@@ -5,6 +5,7 @@
    xmlns:xlink="http://www.w3.org/1999/xlink"
    height="100"
    width="80"
+   viewBox="0 0 80 100"
    id="dimage_die"
    class="dimage_die dice"
    version="1.1"
