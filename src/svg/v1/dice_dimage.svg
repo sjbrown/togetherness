@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   height="100"
+   width="80"
+   id="dimage_die"
+   class="dimage_die dice"
+   version="1.1"
+   >
+  <defs id="defs4">
+    <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
+      <feColorMatrix id="recolorize-filter-matrix" type="matrix"
+         values="1.0 0.0 0.0 0.0  0.0
+                 1.0 0.0 0.0 0.0  0.0
+                 1.0 0.0 0.0 0.0  0.0
+                 0.0 0.0 0.0 1.0  0.0" />
+    </filter>
+    <linearGradient id="linearGradient1">
+      <stop
+         style="stop-color:#000000;stop-opacity:1;"
+         offset="0"
+         id="stop1" />
+      <stop
+         style="stop-color:#000000;stop-opacity:0.4"
+         offset="1"
+         id="stop2" />
+    </linearGradient>
+    <linearGradient
+       id="linearGradient10"
+       xlink:href="#linearGradient1"
+       x1="0.0" y1="22.6"
+       x2="0.0" y2="88.9"
+       gradientUnits="userSpaceOnUse"
+       />
+  </defs>
+  <script
+     type="text/javascript"
+     src="js/dice_utils.js"
+     data-namespace="dice"
+     id="script_dice_utils" />
+  <script
+     type="text/javascript"
+     data-namespace="dimage"
+     id="script_dimage"><![CDATA[
+
+var dimage = {
+
+  menu: {
+    'Roll': {
+      eventName: 'die_roll',
+      otherEvents: ['dblclick'],
+      applicable: (dieNode) => { return true },
+      handler: function(evt) {
+        console.log('in d6 handler', this)
+        return dice.multiface_roll_handler(this)
+      },
+    },
+    'Turn Up': {
+      eventName: 'die_turn_up',
+      applicable: (dieNode) => { return true },
+      handler: function(evt) {
+        return dice.multiface_turn_handler(this)
+      },
+    },
+  },
+
+  initialize: function(elem, config) {
+    console.log('init with', config)
+    let urls = config.urls.split('\n')
+    let values = config.values.split('\n')
+
+    protoEl = elem.querySelector('g.face')
+    for (let i=0; i<urls.length; i++) {
+      let url = urls[i].trim()
+      if (url === '') {
+        continue
+      }
+      let faceVal = values[i].trim()
+      if (faceVal === '') {
+        faceVal = 0
+      }
+      let clone = protoEl.cloneNode(true)
+      clone.dataset.value = faceVal
+      clone.querySelector('image').setAttribute('href', url)
+      clone.setAttribute('display', 'none')
+      protoEl.parentElement.insertBefore(clone, protoEl)
+    }
+
+    protoEl.previousElementSibling.removeAttribute('display')
+    protoEl.remove()
+  },
+
+  getValue: function(elem) {
+    let activeFace = elem.querySelector('g.face:not([display=none])')
+    return activeFace.dataset.value
+  },
+}
+
+    ]]></script>
+
+  <path
+    style="fill:#000000;fill-opacity:0.50196078;stroke:none;stroke-width:1.30999994;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+    d="m 16.266526,45.579474 c -1.68432,-0.0012 -5.18571,0.06788 -6.23438,0.637907 -1.5957502,0.90302 -1.7272502,1.615566 -1.9062502,5.013899 l -2.88281,32.27422 c 0.0306,1.384198 6.4061402,6.270484 8.3222602,6.270484 h 51.97266 c 1.91612,0 8.29167,-4.886286 8.32227,-6.270484 l -2.88282,-32.27422 c -0.179,-3.398333 -0.3105,-4.110879 -1.90625,-5.013899 -1.04867,-0.570031 -4.55005,-0.639123 -6.23437,-0.637907 z"
+    id="path_shadow"
+    class="object_shadow"
+  />
+  <g filter="url(#app-filter-colorize)" id="layer1" >
+      <path
+        id="path_sides"
+        d="m 16.266526,11.455671 c -1.68432,-0.0021 -5.18571,0.117211 -6.23438,1.101563 -1.5957502,1.559372 -1.7272502,2.789824 -1.9062502,8.658203 l -2.88281,55.732422 c 0.0306,2.390289 6.4061402,10.828125 8.3222602,10.828125 h 51.97266 c 1.91612,0 8.29167,-8.437836 8.32227,-10.828125 l -2.88282,-55.732422 c -0.179,-5.868379 -0.3105,-7.098831 -1.90625,-8.658203 -1.04867,-0.984352 -4.55005,-1.103663 -6.23437,-1.101563 z"
+        style="fill:#9b9b9b;fill-opacity:1;stroke:#000000;stroke-width:1.30999994;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+      />
+      <path
+        style="fill:#dedede;fill-opacity:1;stroke:url(#linearGradient10);stroke-width:1.31;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+        d="m 12.007916,11.667299 h 55.08564 c 1.662,0 2.94377,1.338951 3,3 l 2,59.08564 c 0.0562,1.661049 -1.338,3 -3,3 h -59.08564 c -1.6620002,0 -3.0562302,-1.338951 -3.0000002,-3 l 2,-59.08564 c 0.0562,-1.661049 1.3380002,-3 3.0000002,-3 z"
+        id="topface"
+      />
+  </g>
+  <!-- ================================================= -->
+  <g class="face" data-value="0">
+    <image href="/img/pips1.png"
+           x="12" y="14"
+           width="55" height="55"
+    />
+  </g>
+</svg>

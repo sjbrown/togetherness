@@ -32,31 +32,6 @@
      id="dsymbolscript"><![CDATA[
 var dsymbol = {
 
-  roll_handler: function(elem) {
-    let faceEls = elem.querySelectorAll('g.face')
-    let faceArray = []
-    faceEls.forEach((gEl) => {
-      gEl.setAttribute('display', 'none')
-      faceArray.push(gEl)
-    })
-    ui.do_animate(elem, {animation: 'rollOut'})
-    let activeFace = faceArray[ randInt(1,faceEls.length) - 1 ]
-    if (activeFace !== null) {
-       activeFace.removeAttribute('display')
-    }
-  },
-
-  turn_handler: function(elem) {
-    let activeFace = elem.querySelector('g.face:not([display=none])')
-    let nextFace = activeFace.nextElementSibling
-    if (nextFace === null) {
-      nextFace = activeFace.parentElement.querySelector('g.face')
-    }
-    activeFace.setAttribute('display', 'none')
-    nextFace.removeAttribute('display')
-    elem.classList.add('animating-turn')
-  },
-
   num_symbols(elem) {
     return elem.querySelectorAll('.face').length
   },
@@ -83,14 +58,14 @@ var dsymbol = {
       otherEvents: ['dblclick'],
       applicable: (dieNode) => { return true },
       handler: function(evt) {
-        dsymbol.roll_handler(this)
+        return dice.multiface_roll_handler(this)
       },
     },
     'Turn Up': {
       eventName: 'die_turn_up',
       applicable: (dieNode) => { return true },
       handler: function(evt) {
-        return dsymbol.turn_handler(this)
+        return dice.multiface_turn_handler(this)
       },
     },
   },

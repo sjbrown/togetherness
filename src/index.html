@@ -1249,7 +1249,7 @@ function ui_submit_dice(section) {
     dtypes.forEach((dtype) => {
       add_dtype(dtype, byId('dice_input_' + dtype), center)
     })
-  } else if (section === 'custom') {
+  } else if (section === 'nsided') {
     add_dtype(
       'dn', byId('dice_input_dn'), center,
       document.querySelector('#dn_prototype svg')
@@ -1259,6 +1259,14 @@ function ui_submit_dice(section) {
       'dsymbol', byId('dice_input_dsymbol'), center,
       {
         faces: byId('dice_input_dsymbol_faces').value
+      }
+    )
+  } else if (section === 'image') {
+    add_dtype(
+      'dimage', byId('dice_input_dimage'), center,
+      {
+        urls: byId('dice_input_dimage_urls').value,
+        values: byId('dice_input_dimage_values').value,
       }
     )
   } else {
@@ -1301,7 +1309,9 @@ function alterD10Variant(variant='d10') {
         <li><a href="#standard">Standard Dice</a></li>
         <li><a href="#sw">SW / Genesys Dice</a></li>
         <li><a href="#fudge">FUDGE Dice</a></li>
-        <li><a href="#custom">Custom Dice</a></li>
+        <li><a href="#nsided">N-Sided Dice</a></li>
+        <li><a href="#user">User-defined Dice</a></li>
+        <li><a href="#image">Image Dice</a></li>
       </ul>
     </div>
     </nav>
@@ -1527,9 +1537,9 @@ function alterD10Variant(variant='d10') {
         Submit
       </button>
     </section>
-    <section class="dice_section" id="custom_dice_section">
-      <a name="custom"></a>
-      <h1 id="custom_dice_h1">N-Sided Dice</h1>
+    <section class="dice_section" id="nsided_dice_section">
+      <a name="nsided"></a>
+      <h1 id="nsided_dice_h1">N-Sided Dice</h1>
       <table class="dice_input_table"><tr>
       <td id="dice_cell_dn">
 
@@ -1587,7 +1597,7 @@ function loadPrototypeDice() {
       </td>
       </tr>
       </table>
-      <button id="dialog_submit_custom" onclick="ui_submit_dice('custom')"
+      <button id="dialog_submit_nsided" onclick="ui_submit_dice('nsided')"
         class="btn modal-close">
         Submit
       </button>
@@ -1633,7 +1643,83 @@ function loadPrototypeDice() {
       </td>
       </tr>
       </table>
-      <button id="dialog_submit_custom" onclick="ui_submit_dice('user')"
+      <button id="dialog_submit_user" onclick="ui_submit_dice('user')"
+        class="btn modal-close">
+        Submit
+      </button>
+
+    </section>
+    <section class="dice_section" id="image_dice_section">
+
+      <a name="image"></a>
+      <h1 id="image_dice_h1">Image Dice</h1>
+        <style>
+        #image_dice_section #dice_input_dimage_faces {
+          height: 6rem;
+          width: 10rem;
+          text-align: center;
+          word-wrap: normal;
+        }
+        </style>
+
+      <table class="dice_input_table"><tr>
+      <td id="dice_cell_dn">
+        <table><tr style="border:none">
+        <th>
+        On each line, enter a URL to an image.
+        Blank lines will be interpreted as empty faces.
+        </th>
+        <th>
+        On each line, enter a value (numeric or text) corresponding to the URL.
+        Blank lines will be interpreted as 0.
+        Values entered will work with the Dynamic Trays.
+        </th>
+        </tr>
+        <tr>
+        <td>
+        <textarea
+          id="dice_input_dimage_urls"
+          name="dice_input_dimage_urls"
+          rows="8"
+          cols="50"
+        >
+/img/pips1.png
+/img/pips2.png
+/img/pips3.png
+/img/pips4.png
+/img/pips5.png
+/img/pips6.png
+        </textarea>
+        </td>
+        <td>
+        <textarea
+          id="dice_input_dimage_values"
+          name="dice_input_dimage_values"
+          rows="8"
+          cols="10"
+        >
+        1
+        2
+        3
+        4
+        5
+        6
+        </textarea>
+        </td>
+        <th>
+        </tr></table>
+
+        Image Dice:
+        <button class="btn" id="dice_button_dimage" onclick="diceIncrement('dimage')">
+          <img id="img_dice_dimage" src="svg/v1/dice_dimage.svg" width="24" height="24" />
+        </button>
+        &#215;
+        <input id="dice_input_dimage" type="number" class="dice_quantity" min="0" value="0"/>
+
+      </td>
+      </tr>
+      </table>
+      <button id="dialog_submit_image" onclick="ui_submit_dice('image')"
         class="btn modal-close">
         Submit
       </button>

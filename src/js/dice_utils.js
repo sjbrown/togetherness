@@ -23,6 +23,31 @@ var dice = {
     tspan.textContent = randDiceString(1,maxFace)
   },
 
+  multiface_roll_handler: function(elem) {
+    let faceEls = elem.querySelectorAll('g.face')
+    let faceArray = []
+    faceEls.forEach((gEl) => {
+      gEl.setAttribute('display', 'none')
+      faceArray.push(gEl)
+    })
+    ui.do_animate(elem, {animation: 'rollOut'})
+    let activeFace = faceArray[ randInt(1,faceEls.length) - 1 ]
+    if (activeFace !== null) {
+       activeFace.removeAttribute('display')
+    }
+  },
+
+  multiface_turn_handler: function(elem) {
+    let activeFace = elem.querySelector('g.face:not([display=none])')
+    let nextFace = activeFace.nextElementSibling
+    if (nextFace === null) {
+      nextFace = activeFace.parentElement.querySelector('g.face')
+    }
+    activeFace.setAttribute('display', 'none')
+    nextFace.removeAttribute('display')
+    elem.classList.add('animating-turn')
+  },
+
   getValue(elem) {
     let sum = 0
     elem.querySelectorAll('tspan').forEach((t) => {
