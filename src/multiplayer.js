@@ -16,7 +16,6 @@ var msgSeqNum = 0
 TogetherJSConfig_hubBase = "https://togetherjs-hub.glitch.me/"
 TogetherJSConfig_siteName = "table"
 TogetherJSConfig_toolName = "Multiplayer"
-//TogetherJSConfig_cloneClicks = "foo"; // This might be useful, or not
 //TogetherJSConfig_dontShowClicks = "foo";
 //TogetherJSConfig_enableShortcut = "foo";
 TogetherJSConfig_suppressJoinConfirmation = true
@@ -73,27 +72,41 @@ TogetherJSConfig_on_ready = () => {
       console.error("UNKNOWN LAYER ID", msg.layerId)
     }
     if (retval.syncNeeded) {
-      console.error('NET I am out of sync! sync_needed msg', msg)
-      syncNeeded = true
-      net_fire({ type: "sync_needed", data: { clientId: msg.clientId } })
-      ui.setHeaderText('SYNCING...')
+      if (i_am_the_host()) {
+        push_sync()
+      } else {
+        console.error('NET I am out of sync! sync_needed msg', msg)
+        syncNeeded = true
+        net_fire({ type: "sync_needed", data: { clientId: msg.clientId } })
+        ui.setHeaderText('SYNCING...')
+      }
     }
   });
 
   TogetherJS.hub.on("togetherjs.hello", (msg) => {
     // console.log('NET HELLO --- received hello msg', msg);
-    push_sync()
+    if (i_am_the_host()) {
+      push_sync()
+    }
   });
 
   TogetherJS.hub.on('sync_needed', (msg) => {
     // console.log('NET sync_needed msg', msg);
-    if (msg.data.clientId === undefined || msg.data.clientId === myClientId) {
+    if (i_am_the_host()) {
       push_sync()
     }
   });
 
 }
+
+
 TogetherJSConfig_on_close = () => {
+  ui.setHeaderText('Disconnected.')
+  if (!i_am_the_host()) {
+    ui.setHeaderText('Disconnected. I am now the host.')
+    becomeTableHost()
+    ui.unselectAll(retainPeers=false)
+  }
   el = document.getElementById('share_url')
   el.value = ''
   el = document.getElementById('share_url_bar')
@@ -282,7 +295,7 @@ function LayerObserver(layerEl, db=null) {
         try {
           let response = await this._db.bulkDocs(bulk)
           response.forEach(stub => {
-            console.log('stub', stub)
+            // console.log('stub', stub)
             if (stub.ok) {
               let dirtyEl = byId(stub.id)
               dirtyEl.dataset['rev'] = stub.rev
@@ -494,6 +507,7 @@ togetherFunctions.on_sync = (msg) => {
 
   myViewport = document.querySelector('#svg_viewport')
   myViewport.style.backgroundImage = newViewport.style.backgroundImage
+  svg_table.node.dataset['db'] = newTable.dataset['db']
   svg_table.node.querySelectorAll('.draggable-group').forEach((el) => {
     if (el.classList.contains('owner-' + ui.escapedClientId())) {
       // Don't delete my own objects in layer_ui
@@ -525,7 +539,7 @@ async function load_new_table(newTable) {
   })
   .then(() => {
     return newTable.querySelectorAll('#layer_ui > .draggable-group').forEach((el) => {
-       console.log('layer-ui examining draggable gropu', el)
+      // console.log('layer-ui examining draggable gropu', el)
       if (el.classList.contains('owner-' + ui.escapedClientId())) {
         return
       }
@@ -536,3 +550,6 @@ async function load_new_table(newTable) {
   })
 }
 
+function i_am_the_host() {
+  return (db && db.name) === svg_table.node.dataset['db']
+}

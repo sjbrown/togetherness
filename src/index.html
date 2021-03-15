@@ -84,16 +84,20 @@ function initSvgTable(el) {
 
   viewport.add(svg_table)
 
-  let username = localStorage.getItem('profile_name')
-  let dbName = (username ? username + '-' : '') + base32.short_id()
-  svg_table.node.dataset['db'] = dbName
-  db = new PouchDB(dbName)
+  becomeTableHost()
 
   makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
   objectsObserver = new LayerObserver(layer_objects.node, db)
   uiObserver = new LayerObserver(layer_ui.node)
 
   return svg_table
+}
+
+function becomeTableHost() {
+  let username = localStorage.getItem('profile_name')
+  let dbName = (username ? username + '-' : '') + base32.short_id()
+  svg_table.node.dataset['db'] = dbName
+  db = new PouchDB(dbName)
 }
 
 SVG.on(document, 'DOMContentLoaded', () => {
@@ -233,7 +237,7 @@ window.addEventListener('load', () => {
   TogetherJSConfig_getUserName = function () {
     return localStorage.getItem('profile_name') || base32.short_id()
   };
-  TogetherJSConfig_findRoom = TogetherJSConfig_getUserName()
+  TogetherJSConfig_findRoom = db.name
 })
 
 </script>
@@ -695,12 +699,6 @@ window.addEventListener('load', () => {
   ><b style="display: inline-block; line-height: 1.0">Multiplayer
   (Experimental)</b></button>
 
-  <button class="debug_none btn btn-small"
-    onclick="push_sync(); return false;"
-    id="sync_button"
-  >Sync</button>
-
-
 </div>
 </section>
 </div> <!-- end hud_overlay_right -->
@@ -778,7 +776,7 @@ function load_profile_ui() {
     return
   }
   TogetherJS.refreshUserData()
-  TogetherJSConfig_findRoom = name
+  TogetherJSConfig_findRoom = db.name
   input = document.querySelector('#profile_input_name')
   input.value = name
   inputs = document.querySelectorAll('#profile_input_color')

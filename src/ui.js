@@ -263,10 +263,10 @@ const ui = {
     )
   },
 
-  unselectAll: () => {
+  unselectAll: (retainPeers = true) => {
     ui.getSelectBoxes().forEach(el => {
-      // console.log("removing", el)
-      if(ui.belongsToPeer(el)) {
+       console.log("removing", el)
+      if(ui.belongsToPeer(el) && retainPeers) {
         return // skip this peer's select box
       }
       if (el.classList.contains('drag-open')) {
