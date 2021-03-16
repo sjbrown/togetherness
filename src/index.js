@@ -221,11 +221,11 @@ function _import_foreign_svg(body, url) { /* RETURNS PROMISE */
     'data-orig-name': origId,
   })
   // Ensure the imported SVG is of a reasonable screen size
-  if (nest.width() < 30 || nest.width() > 520) {
+  if (nest.width() < 30 || nest.width() > 820) {
     console.warn('Reigned in the width to 100. Was', nest.width())
     nest.width(100)
   }
-  if (nest.height() < 30 || nest.height() > 520) {
+  if (nest.height() < 30 || nest.height() > 820) {
     console.warn('Reigned in the height to 100. Was', nest.height())
     nest.height(100)
   }

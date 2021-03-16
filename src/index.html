@@ -51,10 +51,21 @@
 <script>
 var table_border_rect
 var svg_table
+var layer_mats
 var layer_objects
 var layer_ui
 var viewport
 var origViewportSize
+
+function createLayer(id) {
+  layer = svg_table.group()
+  layer.attr({
+    id: id,
+  })
+  layer.addClass('layer')
+  layer.addClass(id)
+  return layer
+}
 
 function initSvgTable(el) {
   svg_table = SVG.adopt(el)
@@ -63,18 +74,11 @@ function initSvgTable(el) {
     width: origViewportSize[0],
     height: origViewportSize[1],
   })
-  layer_objects = svg_table.group()
-  layer_objects.attr({
-    id: 'layer_objects',
-  })
-  layer_objects.addClass('layer')
-  layer_objects.addClass('layer_objects')
-  layer_ui = svg_table.group()
-  layer_ui.attr({
-    id: 'layer_ui',
-  })
-  layer_ui.addClass('layer')
-  layer_ui.addClass('layer_ui')
+
+  layer_mats = createLayer('layer_mats')
+  layer_objects = createLayer('layer_objects')
+  layer_ui = createLayer('layer_ui')
+
   viewport.add(svg_table)
 
   makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
@@ -2207,6 +2211,7 @@ function ui_submit_ellipse(evt) {
       <ul class="left">
         <li><a href="#drawing">Drawing</a></li>
         <li><a href="#dynamic_tray">Dynamic Tray</a></li>
+        <li><a href="#mats">Mats</a></li>
       </ul>
     </div>
     </nav>
@@ -2289,6 +2294,17 @@ function ui_submit_ellipse(evt) {
       <button class="btn btn-small modal-close"
         onclick="add_object('svg/v1/tray_genesys.svg')">
         Genesys
+      </button>
+    </section>
+    <section id="mats_section">
+      <a name="mats"></a>
+      <h1 id="mats_h1">Mats</h1>
+      <p>
+      Mats go beneath other objects and have snap-to behaviour
+      </p>
+      <button class="btn btn-small modal-close"
+        onclick="add_object('svg/v1/gridpaper.svg')">
+        Grid Paper
       </button>
     </section>
     </div>
