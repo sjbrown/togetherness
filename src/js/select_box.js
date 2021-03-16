@@ -78,12 +78,14 @@ var select_box = {
     ids = elem.dataset.for.split(',')
     let i = 0
     ids.forEach(id => {
-      console.log('id', id)
+      //console.log('id', id)
       selectedEl = layer_objects.node.querySelector('#' + id)
       svg_el = SVG.adopt(selectedEl)
-      console.log('x', newX + offsets[i][0] )
-      svg_el.x( newX + offsets[i][0] )
-      svg_el.y( newY + offsets[i][1] )
+      //console.log('x', newX + offsets[i][0] )
+      svg_el.attr({
+        x: newX + offsets[i][0],
+        y: newY + offsets[i][1],
+      })
       i += 1
     })
   },

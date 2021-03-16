@@ -11,6 +11,8 @@ function pointInsideBox(point, box) {
 }
 
 var spatial = {
+  pointInsideBox: pointInsideBox,
+
   getTopLevelSVGNodeList: () => {
     return layer_objects.node.querySelectorAll(
       '#' + layer_objects.id() + ' > .draggable-group'
