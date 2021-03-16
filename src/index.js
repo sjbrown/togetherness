@@ -34,12 +34,20 @@ function s(el, label, val) {
     if (el.hasAttribute(label)) {
       el.removeAttribute(label)
     }
-  }
-  if (el.hasAttributeNS(SVG.ns, label)) {
-    el.setAttributeNS(SVG.ns, label, val)
-  }
-  if (el.hasAttribute(label)) {
-    el.setAttribute(label, val)
+  } else {
+    if (el.hasAttributeNS(SVG.ns, label)) {
+      el.setAttributeNS(SVG.ns, label, val)
+    }
+    if (el.hasAttribute(label)) {
+      el.setAttribute(label, val)
+    }
+    if (!el.hasAttribute(label) && !el.hasAttributeNS(SVG.ns, label)) {
+      if (el.namespaceURI.indexOf('svg') !== -1) {
+        el.setAttributeNS(SVG.ns, label, val)
+      } else {
+        el.setAttribute(label, val)
+      }
+    }
   }
 }
 
@@ -204,9 +212,9 @@ function _import_foreign_svg(body, url) { /* RETURNS PROMISE */
   if (!url) {
     url = '#' + origId
   }
-  s(nest, 'id', id)
   nest = SVG.adopt(nest)
   nest.attr({
+    'id': id,
     'x': 100,
     'y': 100,
     'data-app-url': url,
