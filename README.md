@@ -10,10 +10,21 @@ gardens whose owners see players as *products*, not human beings.
 
 ![screenshot](images/screenshot01.png)
 
-Togetherness is a web-based virtual tabletop whose chief aim is
+Togetherness Table is a web-based virtual tabletop whose chief aim is
 the empowerment of players as free human beings participating voluntarily
 in a community. There are no "owners", just equal participants enjoying a
 gamut of activities including "creation", "play" and "hosting".
+
+Togetherness Table aims to be
+[Local-First Software](https://www.inkandswitch.com/local-first.html)
+
+ * No spinners: your work at your fingertips
+ * Your work is not trapped on one device
+ * The network is optional
+ * Seamless collaboration with your colleagues
+ * Survival post-demise
+ * Security and privacy by default
+ * You retain ultimate ownership and control
 
 ## History
 
@@ -84,6 +95,10 @@ key, "menu", to integrate with the main web UI:
 
 ```xml
 <svg x="0" y="0" width="100" height="100">
+  <!-- This is a red rectangle.
+       It has a context menu.
+       A context menu option will allow the user to change it to green.
+  -->
   <rect x="25" y="25" width="50" height="50" style="fill:#ff0000" />
   <script
     type="text/javascript"
