@@ -475,7 +475,7 @@ const ui = {
     submenu.querySelectorAll('.cloned-button').forEach((btn) => {
       btn.remove()
     })
-    ui.setHeaderText('Select dice by clicking on them; roll by double-clicking; zoom with Ctrl-wheel')
+    ui.setHeaderText('Select dice by clicking on them; roll by double-clicking. (Tap / double-tap on mobile)')
 
     function addNewButton(title, uiLabel) {
       let btn = template.content.firstElementChild.cloneNode(true)

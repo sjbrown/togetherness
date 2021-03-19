@@ -726,7 +726,7 @@ button.collapsetoggle {
 <div id="object_actions" class="hudmenu hudmenu-top collapsegroup">
   <button class="collapsetoggle" name="toggle_object_actions"></button>
   <div class="collapsible">
-    <h3 id="object_actions_header">Select objects by clicking on them</h3>
+    <h3 id="object_actions_header">Add dice or cards to the table</h3>
     <template id="template_object_actions">
       <button class="btn btn-large">Button label</button>
     </template>
@@ -2794,7 +2794,6 @@ function token_add(buttonEl) {
         &#215;
       </button>
       <ul class="left">
-        <li><a href="#surf">Surf the geekring</a></li>
         <li><a href="#recognize">Spread the word</a></li>
         <li><a href="#develop">Contribute time</a></li>
         <li><a href="#donate">Donate to related causes</a></li>
@@ -2807,36 +2806,29 @@ function token_add(buttonEl) {
       <a name="controls"></a>
       <h1 class="contribute_h1">Controls</h1>
         To roll dice, either click on them once, then press the Roll button,
-        or double-click on them
-      <p>
-        To remove cards from a deck, double-click on the deck.
+        or double-click on them. (Tap or double-tap on mobile devices).
       </p>
       <p>
-        To remove objects from a Dynamic Tray, double-click it.
+        There are also keyboard shortcuts for most actions. You can type
+        <b>r</b> to roll all the dice you have selected.
+      <p>
+        To remove cards from a deck, double-click on the deck so that you
+        see the dashed border.
+        The same technique works to remove objects from Dynamic Trays.
       </p>
       <p>
-        To resize a Dynamic Tray, double-click it, then drag the gray square
-        handle in the lower corner.
+        Some objects, like Dynamic Trays, can be resized. To resize,
+        double-click an object, then drag the gray square handle in the
+        lower corner.
       </p>
       <p>
         To select multiple dice, hold <b>Shift</b> and click on each one.
+        Otherwise, you can drag a selection box that covers all the objects
+        you're targeting.
       </p>
       <p>
         To zoom in/out, hold <b>Ctrl</b> and roll your mouse wheel.
       </p>
-    </section>
-    <section>
-      <a name="surf"></a>
-      <h1 class="contribute_h1">Surf
-      <a href="https://geekring.net">The Geek Ring</a></h1>
-  <!-- Geekring widget #1 - simple links -->
-    <a class="btn btn-large"
-      href="http://geekring.net/site/8/previous">Previous</a>
-    <a class="btn btn-large"
-      href="http://geekring.net/site/8/random">Random site</a>
-    <a class="btn btn-large"
-      href="http://geekring.net/site/8/next">Next</a>
-
     </section>
     <section>
       <a name="recognize"></a>
@@ -2876,6 +2868,7 @@ function token_add(buttonEl) {
 <!-- /CONTRIBUTE ============================================== /CONTRIBUTE -->
 
 
+<!-- HINT CONTROLS ======================================== HINT CONTROLS -->
 <div id="hint_controls">
   <style>
 #hint_controls {
@@ -2907,6 +2900,7 @@ function dismissHintControls() {
   &#215;
   </button>
 </div>
+<!-- /HINT CONTROLS ======================================== /HINT CONTROLS -->
 
 
   <menu type="context" id="gamemenu">
