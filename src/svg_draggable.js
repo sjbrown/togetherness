@@ -105,7 +105,6 @@ function makeDraggable(viewport, table) {
 
   function getMousePosition(evt) {
     //var CTM = viewport.node.getScreenCTM();
-    var CTM = table.node.getScreenCTM();
     if (evt.touches) {
       if (evt.touches.length === 0) {
         return mouse
@@ -114,9 +113,18 @@ function makeDraggable(viewport, table) {
     } else {
       evtPos = evt
     }
+    var CTM = table.node.getScreenCTM();
     return {
       x: (evtPos.clientX - CTM.e) / CTM.a,
       y: (evtPos.clientY - CTM.f) / CTM.d
+    };
+  }
+
+  function fromClientToSVGCoords(x,y) {
+    var CTM = table.node.getScreenCTM();
+    return {
+      x: (x) / CTM.a,
+      y: (y) / CTM.d,
     };
   }
 
@@ -259,8 +267,17 @@ function makeDraggable(viewport, table) {
           tableBoundaries.minY,
           tableBoundaries.maxY - selectedEl.bbox().height,
         )
-        selectedEl.x(newX)
-        selectedEl.y(newY)
+        selectedEl.attr({
+          x: newX,
+          y: newY,
+        })
+        let snapDeltaCoords = snapTo()
+        if (snapDeltaCoords) {
+        selectedEl.attr({
+          x: newX + snapDeltaCoords.x,
+          y: newY + snapDeltaCoords.y,
+        })
+        }
         if (selectedEl.node.classList.contains('select_box')) {
           // Special case for select boxes: we tell them to move their
           // surrounded elements here, before the broadcast() so that
@@ -290,6 +307,39 @@ function makeDraggable(viewport, table) {
     } else if (interactionMode === 'panzoom') {
       console.log('wheeldown drag - panzoom time!')
     }
+  }
+
+  function snapTo() {
+    let deltaXY = null
+    let selBox = selectedEl.node.getBoundingClientRect()
+    let center = [
+      (selBox.x + selBox.width/2),
+      (selBox.y + selBox.height/2)
+    ]
+    // console.log("projected cneter", center)
+    table.node.querySelectorAll('.snaptarget > rect').forEach((el) => {
+      if ( selectedEl.node.id === el.id ) {
+        return // don't tell things they're being snapped into themselves
+      }
+      if (el.ownerSVGElement && el.ownerSVGElement.id === selectedEl.node.id) {
+        return // don't snap things into their own children
+      }
+      let snapBox = el.getBoundingClientRect()
+      let inside = spatial.pointInsideBox(center, snapBox)
+      if (!inside) {
+        return
+      }
+      // console.log('snap rect', el)
+      // console.log('snapbox ', snapBox)
+      // console.log('p center, ', center)
+      deltaXY = [
+        ((snapBox.x + snapBox.width/2) - center[0]),
+        ((snapBox.y + snapBox.height/2) - center[1]),
+      ]
+      // console.log('deltaXY', deltaXY)
+    })
+    // console.log('to svg coor', deltaXY ? fromClientToSVGCoords(deltaXY[0], deltaXY[1]) : null)
+    return deltaXY ? fromClientToSVGCoords(deltaXY[0], deltaXY[1]) : null
   }
 
   function notifyDropTargetsDrag(evt) {
