@@ -220,15 +220,6 @@ function _import_foreign_svg(body, url) { /* RETURNS PROMISE */
     'data-app-url': url,
     'data-orig-name': origId,
   })
-  // Ensure the imported SVG is of a reasonable screen size
-  if (nest.width() < 30 || nest.width() > 820) {
-    console.warn('Reigned in the width to 100. Was', nest.width())
-    nest.width(100)
-  }
-  if (nest.height() < 30 || nest.height() > 820) {
-    console.warn('Reigned in the height to 100. Was', nest.height())
-    nest.height(100)
-  }
   nest.addClass('draggable-group')
   //TODO: should this be nest.node instead of frame?
   var promises = []
@@ -527,6 +518,16 @@ var alreadyAddedObjectURLs = {}
 async function add_object(url, attrs) {
   // console.log('add_object', url, attrs)
   let nest = await import_foreign_svg(url)
+
+  // Ensure the imported SVG is of a reasonable screen size
+  if (nest.width() < 30 || nest.width() > 420) {
+    console.warn('Reined in the width to 100. Was', nest.width())
+    nest.width(100)
+  }
+  if (nest.height() < 30 || nest.height() > 420) {
+    console.warn('Reined in the height to 100. Was', nest.height())
+    nest.height(100)
+  }
 
   // Allow 400 miliseconds for the scripts to load
   if (alreadyAddedObjectURLs[url]) {
