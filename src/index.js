@@ -498,8 +498,17 @@ function add_n_objects_from_prototype(n, prototype, center) {
   }
 }
 
-function add_to_screen(nest, attrs) {
-  console.log('add_to_screen', attrs)
+function add_to_layer_mats(nest) {
+  console.log('add_to_layer_mats')
+  let center = ui.player_marker_position()
+  nest.x(center[0])
+  nest.y(center[1])
+  layer_mats.add(nest)
+  init_with_namespaces(nest.node)
+}
+
+function add_to_layer_objects(nest, attrs) {
+  console.log('add_to_layer_objects', attrs)
   setColor(nest.node, (attrs && attrs.color) || getUserColor())
   let center = ui.player_marker_position()
   if (attrs && attrs.offset !== undefined) {
@@ -521,9 +530,22 @@ async function add_object(url, attrs) {
 
   // Allow 400 miliseconds for the scripts to load
   if (alreadyAddedObjectURLs[url]) {
-    add_to_screen(nest, attrs)
+    add_to_layer_objects(nest, attrs)
   } else {
-    setTimeout(add_to_screen.bind(null, nest, attrs), 400)
+    setTimeout(add_to_layer_objects.bind(null, nest, attrs), 400)
+  }
+  alreadyAddedObjectURLs[url] = 1
+}
+
+async function add_mat(url) {
+  // console.log('add_mat', url )
+  let nest = await import_foreign_svg(url)
+
+  // Allow 400 miliseconds for the scripts to load
+  if (alreadyAddedObjectURLs[url]) {
+    add_to_layer_mats(nest)
+  } else {
+    setTimeout(add_to_layer_mats.bind(null, nest), 400)
   }
   alreadyAddedObjectURLs[url] = 1
 }
@@ -538,7 +560,7 @@ async function clone_object(el, attrs) {
     subEl.id = 'o_' + base32.short_id() + i
     i++
   })
-  add_to_screen(nest, attrs)
+  add_to_layer_objects(nest, attrs)
 }
 
 function pop_from_parent(childElem) {
