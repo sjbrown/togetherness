@@ -1754,7 +1754,7 @@ function ui_submit_svgfile(evt) {
 
   _import_foreign_svg(body)
   .then(nest => {
-    add_to_screen(nest, {})
+    add_to_layer_objects(nest, {})
     ui.popdown_dialog('dialog_svgfile')
   })
 }
@@ -1908,7 +1908,7 @@ function ui_submit_rect(evt) {
     height: h,
     fill: color,
   });
-  add_to_screen(nest)
+  add_to_layer_objects(nest)
   ui.popdown_dialog('dialog_rect')
 }
 
@@ -2057,7 +2057,7 @@ function ui_submit_text(evt) {
     return;
   }
   var nest = make_text(c, color, bgcolor)
-  add_to_screen(nest)
+  add_to_layer_objects(nest)
   ui.popdown_dialog('dialog_text')
 }
 
@@ -2144,7 +2144,7 @@ function ui_submit_ellipse(evt) {
     cy: h / 2,
     fill: color,
   })
-  add_to_screen(nest)
+  add_to_layer_objects(nest)
   ui.popdown_dialog('dialog_ellipse')
 }
 
@@ -2303,8 +2303,12 @@ function ui_submit_ellipse(evt) {
       Mats go beneath other objects and have snap-to behaviour
       </p>
       <button class="btn btn-small modal-close"
-        onclick="add_object('svg/v1/gridpaper.svg')">
+        onclick="add_mat('svg/v1/mat_gridpaper.svg')">
         Grid Paper
+      </button>
+      <button class="btn btn-small modal-close"
+        onclick="add_mat('svg/v1/mat_chessboard.svg')">
+        Chessboard
       </button>
     </section>
     </div>

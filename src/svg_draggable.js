@@ -316,7 +316,7 @@ function makeDraggable(viewport, table) {
       (selBox.x + selBox.width/2),
       (selBox.y + selBox.height/2)
     ]
-    console.log("projected cneter", center)
+    // console.log("projected cneter", center)
     table.node.querySelectorAll('.snaptarget > rect').forEach((el) => {
       if ( selectedEl.node.id === el.id ) {
         return // don't tell things they're being snapped into themselves
@@ -329,16 +329,16 @@ function makeDraggable(viewport, table) {
       if (!inside) {
         return
       }
-      console.log('snap rect', el)
-      console.log('snapbox ', snapBox)
-      console.log('p center, ', center)
+      // console.log('snap rect', el)
+      // console.log('snapbox ', snapBox)
+      // console.log('p center, ', center)
       deltaXY = [
         ((snapBox.x + snapBox.width/2) - center[0]),
         ((snapBox.y + snapBox.height/2) - center[1]),
       ]
-      console.log('deltaXY', deltaXY)
+      // console.log('deltaXY', deltaXY)
     })
-    console.log('to svg coor', deltaXY ? fromClientToSVGCoords(deltaXY[0], deltaXY[1]) : null)
+    // console.log('to svg coor', deltaXY ? fromClientToSVGCoords(deltaXY[0], deltaXY[1]) : null)
     return deltaXY ? fromClientToSVGCoords(deltaXY[0], deltaXY[1]) : null
   }
 
