@@ -14,6 +14,7 @@
 <script src="https://togetherjs.com/togetherjs-min.js"></script>
 <script src="./svg_draggable.js"></script>
 <script src="./base32.js"></script>
+<script src="./storage.js"></script>
 <script src="./svg.js"></script>
 <script src="./ui.js"></script>
 <script src="./userlog.js"></script>
@@ -94,13 +95,15 @@ function initSvgTable(el) {
 }
 
 function becomeTableHost() {
-  let username = localStorage.getItem('profile_name')
+  let username = storage.getPreference('profile_name')
   let dbName = (username ? username + '-' : '') + base32.short_id()
   svg_table.node.dataset['db'] = dbName
   db = new PouchDB(dbName)
 }
 
 SVG.on(document, 'DOMContentLoaded', () => {
+  storage.setDefaultPreferences()
+
   // Override the id-generating function of the svg.js library
   SVG.eid = (name) => {
     return name + '_' + base32.short_id()
@@ -233,9 +236,11 @@ window.addEventListener('load', () => {
   load_profile_ui()
   loadPrototypeTokens()
   loadPrototypeDice()
-  TogetherJSConfig_getUserColor = getUserColor
-  TogetherJSConfig_getUserName = function () {
-    return localStorage.getItem('profile_name') || base32.short_id()
+  TogetherJSConfig_getUserColor = function() {
+    return storage.getPreference('profile_color')
+  }
+  TogetherJSConfig_getUserName = function() {
+    return storage.getPreference('profile_name')
   };
   TogetherJSConfig_findRoom = db.name
 })
@@ -760,8 +765,8 @@ function ui_change_profile(evt) {
   if (!name_input.value) {
     return;
   }
-  localStorage.setItem('profile_name', name_input.value)
-  localStorage.setItem('profile_color', color_input.value)
+  storage.setPreference('profile_name', name_input.value)
+  storage.setPreference('profile_color', color_input.value)
   load_profile_ui()
   ui.popdown_dialog('dialog_profile')
   net_fire({ type: 'change_profile', data: name_input.value })
@@ -770,8 +775,8 @@ function load_profile_ui() {
   if (TogetherJS === undefined) {
     return
   }
-  name = localStorage.getItem('profile_name') || ''
-  color = localStorage.getItem('profile_color')
+  name = storage.getPreference('profile_name') || ''
+  color = storage.getPreference('profile_color')
   if (!name) {
     return
   }
@@ -1346,7 +1351,7 @@ function alterD10Variant(variant='d10') {
       function getChosenDiceColor() {
         radio = document.querySelector('[name=dice_color_radio]:checked')
         spec_color = document.querySelector('#dice_input_color')
-        profile_color = localStorage.getItem('profile_color')
+        profile_color = storage.getPreference('profile_color')
         if (radio.id === 'dice_color_radio_specify') {
           return spec_color.value
         } else {
@@ -2913,12 +2918,12 @@ function token_add(buttonEl) {
   </style>
   <script>
 window.addEventListener('load', () => {
-  if (localStorage['dismissHintControls'] !== 'yes') {
+  if (storage.getPreference('dismissHintControls') !== 'yes') {
     document.querySelector('#hint_controls').style.display = 'block'
   }
 })
 function dismissHintControls() {
-  localStorage['dismissHintControls'] = 'yes'
+  storage.setPreference('dismissHintControls', 'yes')
   document.querySelector('#hint_controls').style.display = 'none'
 }
   </script>

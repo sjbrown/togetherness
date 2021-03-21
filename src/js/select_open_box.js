@@ -106,7 +106,7 @@ var select_open_box = {
   },
 
   initialize: function(elem, prototype) {
-    let color = getUserColor()
+    let color = storage.getPreference('profile_color')
     elem.dataset.for = []
 
     elem.querySelectorAll(`#${elem.id} > *[id]`).forEach(el => {
