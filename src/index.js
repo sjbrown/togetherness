@@ -127,13 +127,6 @@ function qsa(selector) {
   return document.querySelectorAll(selector)
 }
 
-function getUserColor() {
-  if (localStorage.getItem('profile_color')) {
-    return localStorage.getItem('profile_color')
-  }
-  return '#ffffff';
-}
-
 function debugBar(s) {
   if (!DEBUG) { return }
   log = byId('debug_bar_log')
@@ -500,7 +493,7 @@ function add_to_layer_mats(nest) {
 
 function add_to_layer_objects(nest, attrs) {
   console.log('add_to_layer_objects', attrs)
-  setColor(nest.node, (attrs && attrs.color) || getUserColor())
+  setColor(nest.node, (attrs && attrs.color) || storage.getPreference('profile_color'))
   let center = ui.player_marker_position()
   if (attrs && attrs.offset !== undefined) {
     center[0] += attrs.offset[0]

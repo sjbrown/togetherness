@@ -57,7 +57,7 @@ const ui = {
   move_player_marker: (x, y) => {
     let marker = ui.getPlayerMarker()
     // setColor each time, in case it changes
-    setColor(marker, getUserColor())
+    setColor(marker, storage.getPreference('profile_color'))
     svg_marker = SVG.adopt(marker)
     svg_marker.cx(x)
     svg_marker.cy(y)
@@ -286,9 +286,9 @@ const ui = {
     notice.attr({
       cx: evt.detail.svgPos.x,
       cy: evt.detail.svgPos.y,
-      fill: getUserColor(),
+      fill: storage.getPreference('profile_color'),
       'fill-opacity': 0.3,
-      stroke: getUserColor(),
+      stroke: storage.getPreference('profile_color'),
       'stroke-width': 20,
     })
     ui.animated_ghost(notice.node, {
@@ -327,8 +327,8 @@ const ui = {
     clone.querySelector('.timestamp').innerText = timestampStr
 
     const playerNameEl = clone.querySelector('.player_name')
-    playerNameEl.innerText = localStorage.getItem('profile_name') || 'Unknown'
-    playerNameEl.style.color = localStorage.getItem('profile_color')
+    playerNameEl.innerText = storage.getPreference('profile_name')
+    playerNameEl.style.color = storage.getPreference('profile_color')
 
     clone.querySelector('.player_action').innerText = playerAction
 
