@@ -6,7 +6,8 @@ const ui = {
   playerMarkerPrototype: null,
 
   escapedClientId: () => {
-    return myClientId ? myClientId.replace('.', '-') : ''
+    let username = storage.getPreference('profile_name')
+    return username.replace('.', '-')
   },
 
   initializeViewport: (viewportEl) => {
@@ -34,7 +35,7 @@ const ui = {
     viewportEl.addEventListener('svg_dragsafe_dblclick', (e) => {
       // console.log("-c2--------------------------", e, viewportEl.id)
       if (e.detail.elemId === viewportEl.id) {
-        net_fire({ type: 'sync_needed', data: {} })
+        multiplayer.net_fire({ type: 'sync_needed', data: {} })
         ui.alertHere(e)
         ui.move_player_marker(e.detail.svgPos.x, e.detail.svgPos.y)
         ui.setHeaderText('SYNCING...')
@@ -131,9 +132,10 @@ const ui = {
         if (!selbox) {
           dragSelBox.attr(evt.detail.box)
           layer_ui.add(SVG.adopt(dragSelBoxEl))
-          dragSelBoxEl.classList.remove('owner-')
-          dragSelBoxEl.classList.add('owner-' + ui.escapedClientId())
         }
+        dragSelBoxEl.classList.add(
+          'has-owner', 'owner-' + ui.escapedClientId()
+        )
         select_box.initialize(dragSelBoxEl)
       })
 
@@ -231,6 +233,7 @@ const ui = {
     svgSelBoxEl.classList.add('has-owner', 'owner-' + ui.escapedClientId())
     // console.log("made select_box", svgSelBoxEl)
     svg_elem = SVG.adopt(elem)
+    svgSelBoxEl.classList.add('has-owner', 'owner-' + ui.escapedClientId())
     select_box.initialize(svgSelBoxEl)
     select_box.reshape(svgSelBoxEl, {
       x: svg_elem.x(),
@@ -381,7 +384,12 @@ const ui = {
         return
       }
       let boundHandler = (evt) => {
-        userlog.add({ user: myClientId, title: title, event: evt, el: svgEl })
+        userlog.add({
+          user: storage.getPreference('profile_name'),
+          title: title,
+          event: evt,
+          el: svgEl
+        })
 
         let nodeBefore = svgEl.cloneNode(true)
         menuItem.handler.bind(svgEl)(evt)
@@ -440,10 +448,6 @@ const ui = {
       s(clone, 'label', uiLabel)
       clone.classList.add('cloned-menuitem')
       clone.addEventListener('click', (evt) => {
-        console.log('LOG user', myClientId,
-          'does', title, // evt,
-          'on', target.id, target.dataset.appUrl,
-        )
         let handler = allHandlers[actionMenu[title].eventName]
         handler(evt)
       })
@@ -565,7 +569,11 @@ const ui = {
         'Delete',
         sBoxNode,
         (evt) => {
-          userlog.add({ user: myClientId, event: 'DELETE', el: sBoxNode })
+          userlog.add({
+            user: storage.getPreference('profile_name'),
+            event: 'DELETE',
+            el: sBoxNode
+          })
           ui.getSelectBoxSelectedElements(sBoxNode).forEach(el => {
             ui.animated_ghost(el, {animation: 'rotateOut'})
             el.remove()
