@@ -124,9 +124,16 @@ function short_id(input) {
   return encode_int(Date.now()).substring(6);
 }
 
+function chars(len) {
+  let x = encode_int(Date.now())
+  return x.substring(x.length - len)
+}
+
+
 var base32 = {
     short_id: short_id,
     encode_int: encode_int,
+    chars: chars,
 }
 
 if (typeof window !== 'undefined') {
