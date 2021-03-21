@@ -1,12 +1,57 @@
+var multiplayer = {
+  _clientId: null,
+  _syncNeeded: false,
+  _msgSeqNum: 0,
+  _observers: {
+    'layer_mats': null,
+    'layer_objects': null,
+    'layer_ui': null,
+  },
 
-var myClientId = null;
-var togetherFunctions = {};
-var objectsObserver = null;
-var uiObserver = null;
-var syncNeeded = false;
+  init: function() {
+  },
 
-var msgSeqNum = 0
+  initObserver: function(layerName, el) {
+    this._observers[layerName] = new LayerObserver(el)
+  },
 
+  serialized: function(el) {
+    if (typeof(el) === 'string') {
+      // already serialized on an earlier pass
+      return el
+    }
+    return el.outerHTML
+  },
+
+  push_sync: function() {
+    if (!TogetherJS.running || !multiplayer._clientId) {
+      //console.log('NET TogetherJS not ready for send')
+      return
+    }
+    // console.timeStamp('NET push_sync')
+    defanged = domJSON.toJSON(byId('svg_viewport'))
+    multiplayer.net_fire({ type: "sync", data: defanged })
+  },
+
+  net_fire: function(payload) {
+    if (!TogetherJS.running || !multiplayer._clientId) {
+      //console.log('NET TogetherJS not ready for send')
+      return
+    }
+    this._msgSeqNum++
+    this._msgSeqNum %= 100
+    // console.timeStamp('NET net_fire', this._msgSeqNum)
+    try {
+      TogetherJS.send(
+        Object.assign({}, payload, {msgSeqNum: this._msgSeqNum})
+      );
+    } catch (err) {
+      console.error('NET togetherjs error', err)
+      // TODO: pop up a dialog?
+    }
+  },
+
+}
 
 /*
  *
@@ -38,46 +83,43 @@ TogetherJSConfig_on_ready = () => {
   el.classList.add('bluebg')
   // console.log('NET received ready msg')
   session = TogetherJS.require('session')
-  myClientId = session.clientId;
+  multiplayer._clientId = session.clientId;
 
   TogetherJS.hub.on('sync', async (msg) => {
     // console.log('NET received sync msg', msg)
     ui.setHeaderText('SYNCING ...')
-    objectsObserver.local_mutations_stop() // pause to avoid infinite loop
-    uiObserver.local_mutations_stop() // pause to avoid infinite loop
-    if(togetherFunctions.on_sync) {
-      await togetherFunctions.on_sync(msg);
-    }
-    uiObserver.local_mutations_start() // resume listening
-    objectsObserver.local_mutations_start() // resume listening
-    syncNeeded = false
+    multiplayer.observers['layer_objects'].local_mutations_stop() // pause to avoid infinite loop
+    multiplayer.observers['layer_ui'].local_mutations_stop() // pause to avoid infinite loop
+    await on_sync(msg);
+    multiplayer.observers['layer_ui'].local_mutations_start() // resume listening
+    multiplayer.observers['layer_objects'].local_mutations_start() // resume listening
+    multiplayer._syncNeeded = false
     ui.setHeaderText('SYNC DONE.')
   });
 
   TogetherJS.hub.on('dirtylayer', async(msg) => {
-    if (syncNeeded) {
+    if (multiplayer._syncNeeded) {
       return // just wait for the sync
     }
      console.log('NET received dirtylayer msg', msg)
-    // console.log('NET my client id', myClientId)
     let layerObs = null
     let retval = {}
     if (msg.layerId === 'layer_objects') {
-      layerObs = objectsObserver
+      layerObs = multiplayer.observers['layer_objects']
       retval = await receive(msg.data, layerObs)
     } else if (msg.layerId === 'layer_ui') {
-      layerObs = uiObserver
+      layerObs = multiplayer.observers['layer_ui']
       retval = await receive_ui(msg.data, layerObs)
     } else {
       console.error("UNKNOWN LAYER ID", msg.layerId)
     }
     if (retval.syncNeeded) {
-      if (i_am_the_host()) {
-        push_sync()
+      if (storage.iAmTheHost()) {
+        multiplayer.push_sync()
       } else {
         console.error('NET I am out of sync! sync_needed msg', msg)
-        syncNeeded = true
-        net_fire({ type: "sync_needed", data: { clientId: msg.clientId } })
+        multiplayer._syncNeeded = true
+        multiplayer.net_fire({ type: "sync_needed", data: { clientId: msg.clientId } })
         ui.setHeaderText('SYNCING...')
       }
     }
@@ -85,15 +127,15 @@ TogetherJSConfig_on_ready = () => {
 
   TogetherJS.hub.on("togetherjs.hello", (msg) => {
     // console.log('NET HELLO --- received hello msg', msg);
-    if (i_am_the_host()) {
-      push_sync()
+    if (storage.iAmTheHost()) {
+      multiplayer.push_sync()
     }
   });
 
   TogetherJS.hub.on('sync_needed', (msg) => {
     // console.log('NET sync_needed msg', msg);
-    if (i_am_the_host()) {
-      push_sync()
+    if (storage.iAmTheHost()) {
+      multiplayer.push_sync()
     }
   });
 
@@ -102,7 +144,7 @@ TogetherJSConfig_on_ready = () => {
 
 TogetherJSConfig_on_close = () => {
   ui.setHeaderText('Disconnected.')
-  if (!i_am_the_host()) {
+  if (!storage.iAmTheHost()) {
     ui.setHeaderText('Disconnected. I am now the host.')
     becomeTableHost()
     ui.unselectAll(retainPeers=false)
@@ -116,46 +158,9 @@ TogetherJSConfig_on_close = () => {
   el.classList.add('whitebg')
 }
 
-const serialized = function(el) {
-  if (typeof(el) === 'string') {
-    // already serialized on an earlier pass
-    return el
-  }
-  return el.outerHTML
-}
-
-function push_sync() {
-  if (!TogetherJS.running || !myClientId) {
-    //console.log('NET TogetherJS not ready for send')
-    return
-  }
-  console.timeStamp('NET push_sync')
-  defanged = domJSON.toJSON(byId('svg_viewport'))
-  net_fire({ type: "sync", data: defanged })
-}
-
-function net_fire(payload) {
-  if (!TogetherJS.running || !myClientId) {
-    //console.log('NET TogetherJS not ready for send')
-    return
-  }
-  msgSeqNum++
-  msgSeqNum %= 100
-
-  console.timeStamp('NET net_fire', msgSeqNum)
-  try {
-    TogetherJS.send(Object.assign({}, payload, {msgSeqNum}));
-  }
-  catch (err) {
-    console.error('NET togetherjs error', err);
-    // TODO: pop up a dialog?
-  }
-}
-
-function LayerObserver(layerEl, db=null) {
+function LayerObserver(layerEl) {
   this._observer = null
   this._layerEl = layerEl
-  this._db = db
 
   this.local_mutations_start = function() {
     //console.log("NET ", this._layerEl.id, "local_mutations_start")
@@ -249,10 +254,10 @@ function LayerObserver(layerEl, db=null) {
     })
     // Only serialize once, not on every change of x, y, class, etc.
     Object.keys(this._dirty.added).forEach(elId => {
-      this._dirty.added[elId] = serialized(this._dirty.added[elId])
+      this._dirty.added[elId] = multiplayer.serialized(this._dirty.added[elId])
     })
     Object.keys(this._dirty.changed).forEach(elId => {
-      this._dirty.changed[elId] = serialized(this._dirty.changed[elId])
+      this._dirty.changed[elId] = multiplayer.serialized(this._dirty.changed[elId])
     })
     window.requestAnimationFrame(this.run.bind(this))
   }
@@ -310,7 +315,7 @@ function LayerObserver(layerEl, db=null) {
         }
         this.local_mutations_start()
       }
-      net_fire({
+      multiplayer.net_fire({
         type: "dirtylayer",
         layerId: this._layerEl.id,
         data: this._dirty
@@ -496,7 +501,7 @@ const receive = function(msg, layerObs) {
 
 
 // ----------------------------------------------------------------------------
-togetherFunctions.on_sync = (msg) => {
+function on_sync(msg) {
   console.log("SYNC SYNC SYNC")
   console.log("SYNC SYNC SYNC")
   console.log("SYNC SYNC SYNC")
@@ -533,7 +538,7 @@ async function load_new_table(newTable) {
     layerEl = newTable.querySelector('#layer_objects')
     layer_objects.node.remove()
     layer_objects = SVG.adopt(layerEl)
-    objectsObserver = new LayerObserver(layer_objects.node)
+    multiplayer.observers['layer_objects'] = new LayerObserver(layer_objects.node)
     hookup_subsvg_listeners(layerEl)
     svg_table.node.insertBefore(layerEl, layer_ui.node)
   })
@@ -550,6 +555,3 @@ async function load_new_table(newTable) {
   })
 }
 
-function i_am_the_host() {
-  return (db && db.name) === svg_table.node.dataset['db']
-}

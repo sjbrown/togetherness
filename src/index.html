@@ -58,7 +58,6 @@ var layer_objects
 var layer_ui
 var viewport
 var origViewportSize
-var db
 var storedTables
 
 function createLayer(id) {
@@ -88,17 +87,15 @@ function initSvgTable(el) {
   becomeTableHost()
 
   makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
-  objectsObserver = new LayerObserver(layer_objects.node, db)
-  uiObserver = new LayerObserver(layer_ui.node)
+  multiplayer.initObserver('layer_objects', layer_objects.node)
+  multiplayer.initObserver('layer_ui', layer_ui.node)
 
   return svg_table
 }
 
 function becomeTableHost() {
-  let username = storage.getPreference('profile_name')
-  let dbName = (username ? username + '-' : '') + base32.short_id()
-  svg_table.node.dataset['db'] = dbName
-  db = new PouchDB(dbName)
+  let db = storage.newTable()
+  svg_table.node.dataset['db'] = db.name
 }
 
 SVG.on(document, 'DOMContentLoaded', () => {
@@ -128,9 +125,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
     width: qs('body').clientWidth,
     viewBox: `0 0 ${origViewportSize[0]} ${origViewportSize[1]}`,
   })
-  viewport.node.id = 'svg_viewport'
-  viewport.node.setAttribute('overflow', 'scroll')
-  viewport.node.style.overflow = 'scroll'
+  viewport.style('overflow', 'scroll')
   viewport.style('background-image', 'url(svg/bg_wiggle.svg)')
 
   table_border_rect = viewport.rect()
@@ -148,13 +143,6 @@ SVG.on(document, 'DOMContentLoaded', () => {
   })
 
   svg_table = initSvgTable(document.createElementNS(SVG.ns, 'svg'))
-
-  storedTables = new PouchDB('storedTables')
-  storedTables.put({
-    _id: db.name,
-    name: db.name,
-    createdAt: new Date().toISOString(),
-  })
 
   window.addEventListener("resize", viewportToGameArea)
 
@@ -242,7 +230,7 @@ window.addEventListener('load', () => {
   TogetherJSConfig_getUserName = function() {
     return storage.getPreference('profile_name')
   };
-  TogetherJSConfig_findRoom = db.name
+  TogetherJSConfig_findRoom = storage._db.name
 })
 
 </script>
@@ -267,6 +255,7 @@ window.addEventListener('load', () => {
 </style>
 
   <div id="gamearea" contextmenu="gamemenu">
+  <!--
   <svg width="0" height="0">
   <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
     <feColorMatrix id="recolorize-filter-matrix" type="matrix"
@@ -276,6 +265,7 @@ window.addEventListener('load', () => {
                0.0 0.0 0.0 1.0  0.0" />
   </filter>
   </svg>
+  -->
   </div>
 <!-- ==================================================================== -->
 <!-- ==================================================================== -->
@@ -769,7 +759,7 @@ function ui_change_profile(evt) {
   storage.setPreference('profile_color', color_input.value)
   load_profile_ui()
   ui.popdown_dialog('dialog_profile')
-  net_fire({ type: 'change_profile', data: name_input.value })
+  multiplayer.net_fire({ type: 'change_profile', data: name_input.value })
 }
 function load_profile_ui() {
   if (TogetherJS === undefined) {
@@ -781,7 +771,7 @@ function load_profile_ui() {
     return
   }
   TogetherJS.refreshUserData()
-  TogetherJSConfig_findRoom = db.name
+  TogetherJSConfig_findRoom = storage._db.name
   input = document.querySelector('#profile_input_name')
   input.value = name
   inputs = document.querySelectorAll('#profile_input_color')
@@ -983,7 +973,7 @@ function ui_change_background() {
   var value = "url('" + input.value + "')";
   viewport.style('background-image', value)
   ui.popdown_dialog('dialog_table')
-  push_sync()
+  multiplayer.push_sync()
 }
 
 function ui_change_table_size() {
@@ -1000,7 +990,7 @@ function ui_change_table_size() {
   )
 
   ui.popdown_dialog('dialog_table')
-  push_sync()
+  multiplayer.push_sync()
 }
   </script>
   <div class="modal" id="dialog_table">
