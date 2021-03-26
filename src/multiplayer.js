@@ -185,6 +185,7 @@ function LayerObserver(layerEl) {
           mut.addedNodes.forEach(el => {
             if(this._dirty.removed[el.id]) {
               delete this._dirty.removed[el.id]
+              this._dirty.changed[el.id] = el
             }
             if(this._dirty.changed[el.id]) {
               this._dirty.changed[el.id] = el
@@ -277,9 +278,6 @@ const receive_ui = function(msg, layerObs) {
 
   Object.keys(msg.removed).forEach(id => {
     // console.log("NET removed id", id)
-    if (id === 'drag_select_box') {
-      return // skip drag_select_box
-    }
     let el = document.getElementById(id)
     if (el) {
       el.remove()
@@ -287,9 +285,6 @@ const receive_ui = function(msg, layerObs) {
   })
   Object.keys(msg.added).forEach(id => {
     // console.log("NET added id", id)
-    if (id === 'drag_select_box') {
-      return // skip drag_select_box
-    }
     if (document.getElementById(id)) {
       // console.log("NET ADDED AN ELEMENT I ALREADY HAVE", id)
       // this should mean it just got flipped around in order
@@ -301,9 +296,6 @@ const receive_ui = function(msg, layerObs) {
   })
   Object.keys(msg.changed).forEach(id => {
     // console.log('NET changed id', id)
-    if (id === 'drag_select_box') {
-      return // skip drag_select_box
-    }
     let existingEl = document.getElementById(id)
     // console.log("NET changed: el is", existingEl)
     if (!existingEl) {

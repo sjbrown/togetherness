@@ -11,7 +11,7 @@ const ui = {
 
   initializeViewport: (viewportEl) => {
     viewportEl.addEventListener('svg_dragsafe_click', (e) => {
-      console.log("-c--------------------------", e.detail.elemId, viewportEl.id)
+      // console.log("-c--------------------------", e.detail.elemId, viewportEl.id)
       if (e.detail.elemId === viewportEl.id) {
         ui.unselectAll()
       } else if (e.detail.elemId) {
@@ -20,16 +20,19 @@ const ui = {
           elem.classList
           &&
           elem.classList.contains('draggable-group')
-          &&
-          !elem.closest('#layer_ui') // don't select objects in the UI layer
         ) {
-          ui.selectElement(elem, e)
+          if (elem.closest('#layer_ui')) {
+            // Selected an element that lives in the UI Layer
+            ui.remove_peer_select_box(elem)
+          } else {
+            ui.selectElement(elem, e)
+          }
         }
       }
     })
 
     viewportEl.addEventListener('svg_dragsafe_dblclick', (e) => {
-      console.log("-c2--------------------------", e, viewportEl.id)
+      // console.log("-c2--------------------------", e, viewportEl.id)
       if (e.detail.elemId === viewportEl.id) {
         net_fire({ type: 'sync_needed', data: {} })
         ui.alertHere(e)
@@ -48,10 +51,16 @@ const ui = {
     })
 
     viewportEl.addEventListener('resize', (e) => {
-      console.log("-rs--------------------------", e, viewportEl.id)
+      // console.log("-rs--------------------------", e, viewportEl.id)
       elem = byId(e.detail.elemId)
       fireHandlerForEvent(elem, 'resize_handler', e)
     })
+  },
+
+  remove_peer_select_box: (elem) => {
+    if (elem.classList.contains('select_box') && ui.belongsToPeer(elem)) {
+      elem.remove()
+    }
   },
 
   move_player_marker: (x, y) => {
@@ -64,9 +73,13 @@ const ui = {
     ui.do_animate(marker)
   },
 
-  getPlayerMarker: () => {
+  getMyPlayerMarker: () => {
     let selector = '.player_marker.owner-' + ui.escapedClientId()
-    let existingMarker = layer_ui.node.querySelector(selector)
+    return layer_ui.node.querySelector(selector)
+  },
+
+  getPlayerMarker: () => {
+    let existingMarker = ui.getMyPlayerMarker()
     if (existingMarker) {
       return existingMarker
     }
@@ -95,27 +108,31 @@ const ui = {
     }
   },
 
+  getMyDragSelectBox: () => {
+    let selector = '.drag_select_box.owner-' + ui.escapedClientId()
+    return layer_ui.node.querySelector(selector)
+  },
+
   initializeDragSelectBox: (viewportEl) => {
     return import_foreign_svg('svg/v1/select_box.svg')
     .then((nest) => {
       this.selectBoxPrototype = nest
       dragSelBoxEl = nest.node.cloneNode(true)
+      dragSelBoxEl.classList.add('has-owner', 'owner-' + ui.escapedClientId())
       dragSelBox = SVG.adopt(dragSelBoxEl)
-      dragSelBox.id('drag_select_box')
+      dragSelBox.id('drag_select_box' + base32.short_id())
       dragSelBox.addClass('drag_select_box')
 
       viewportEl.addEventListener('svg_dragselect_start', (evt) => {
         // console.log('viewport got svg_dragselect_start', evt, evt.detail.box)
         ui.unselectAll()
-        let selbox = svg_table.node.querySelector('#drag_select_box')
+        let selbox = ui.getMyDragSelectBox()
+        // TODO: this protects from clientId changes at runtime. bit of a hack.
         if (!selbox) {
           dragSelBox.attr(evt.detail.box)
           layer_ui.add(SVG.adopt(dragSelBoxEl))
-        }
-        if (myClientId) {
-          dragSelBoxEl.classList.add(
-            'has-owner', 'owner-' + ui.escapedClientId()
-          )
+          dragSelBoxEl.classList.remove('owner-')
+          dragSelBoxEl.classList.add('owner-' + ui.escapedClientId())
         }
         select_box.initialize(dragSelBoxEl)
       })
@@ -126,7 +143,7 @@ const ui = {
       })
 
       viewportEl.addEventListener('svg_dragselect_end', (evt) => {
-         console.log('viewport got svg_dragselect_end', evt)
+        // console.log('viewport got svg_dragselect_end', evt)
         let surrounded = spatial.topLevelSurrounded(evt.detail.box)
         let peerSelectBoxes = document.querySelectorAll(
           '.select_box:not(.owner-' + ui.escapedClientId() + ')'
@@ -141,7 +158,7 @@ const ui = {
           return !exemptedIds[el.id]
         })
         select_box.selectElements(dragSelBoxEl, surrounded)
-        layer_ui.add(SVG.adopt(dragSelBoxEl))
+        ui.updateButtons()
       })
 
     })
@@ -164,9 +181,7 @@ const ui = {
     ui.unselectAll()
     let newSelOpenBox = this.selectOpenBoxPrototype.node.cloneNode(true)
     newSelOpenBox.classList.remove('draggable-group')
-    if (myClientId) {
-      newSelOpenBox.classList.add('has-owner', 'owner-' + ui.escapedClientId())
-    }
+    newSelOpenBox.classList.add('has-owner', 'owner-' + ui.escapedClientId())
     select_open_box.initialize(newSelOpenBox)
     layer_ui.add(SVG.adopt(newSelOpenBox))
     return newSelOpenBox
@@ -213,11 +228,9 @@ const ui = {
     ui.unselectAll()
 
     let svgSelBoxEl = this.selectBoxPrototype.node.cloneNode(true)
+    svgSelBoxEl.classList.add('has-owner', 'owner-' + ui.escapedClientId())
     // console.log("made select_box", svgSelBoxEl)
     svg_elem = SVG.adopt(elem)
-    if (myClientId) {
-      svgSelBoxEl.classList.add('has-owner', 'owner-' + ui.escapedClientId())
-    }
     select_box.initialize(svgSelBoxEl)
     select_box.reshape(svgSelBoxEl, {
       x: svg_elem.x(),
@@ -240,7 +253,7 @@ const ui = {
     }
     let allHandlers = ui.augmented_handlers_for_element(elem)
     if (allHandlers['dblclick']) {
-      console.log("calling", allHandlers['dblclick'])
+      // console.log("calling", allHandlers['dblclick'])
       allHandlers['dblclick'](evt)
     }
   },
@@ -393,7 +406,7 @@ const ui = {
     // Note: addEventListener must use this named, static, non-arrow function
     //       to prevent memory-leak bug:
     // https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener#Memory_issues
-    console.log('ui.buildRightClickMenu', target)
+    // console.log('ui.buildRightClickMenu', target)
     if (target.classList.contains('select_box')) {
       let focusedNodes = ui.getMySelectedElements()
       if (focusedNodes.length !== 1) {
@@ -454,10 +467,13 @@ const ui = {
 
   getMySelectedElements: () => {
     let selected = []
-    layer_ui.node.querySelectorAll('.select_box').forEach(el => {
-      if (ui.belongsToPeer(el)) {
-        return // skip select boxes owned by other users
-      }
+    let selector = '.select_box.owner-' + ui.escapedClientId()
+    layer_ui.node.querySelectorAll(selector).forEach(el => {
+      let nodes = ui.getSelectBoxSelectedElements(el)
+      selected = selected.concat(nodes)
+    })
+    // TODO: hack. append all abandoned (from clientId changes) elements
+    layer_ui.node.querySelectorAll('.select_box.owner-').forEach(el => {
       let nodes = ui.getSelectBoxSelectedElements(el)
       selected = selected.concat(nodes)
     })
