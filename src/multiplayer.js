@@ -15,6 +15,18 @@ var multiplayer = {
     this._observers[layerName] = new LayerObserver(el)
   },
 
+  stopObservers: function() {
+    for (key in this._observers) {
+      this._observers[key].local_mutations_stop()
+    }
+  },
+
+  startObservers: function() {
+    for (key in this._observers) {
+      this._observers[key].local_mutations_start()
+    }
+  },
+
   serialized: function(el) {
     if (typeof(el) === 'string') {
       // already serialized on an earlier pass
@@ -88,30 +100,28 @@ TogetherJSConfig_on_ready = () => {
   TogetherJS.hub.on('sync', async (msg) => {
     // console.log('NET received sync msg', msg)
     ui.setHeaderText('SYNCING ...')
-    multiplayer.observers['layer_objects'].local_mutations_stop() // pause to avoid infinite loop
-    multiplayer.observers['layer_ui'].local_mutations_stop() // pause to avoid infinite loop
+    multiplayer.stopObservers() // pause to avoid infinite loop
     await on_sync(msg);
-    multiplayer.observers['layer_ui'].local_mutations_start() // resume listening
-    multiplayer.observers['layer_objects'].local_mutations_start() // resume listening
+    multiplayer.startObservers() // resume listening
     multiplayer._syncNeeded = false
     ui.setHeaderText('SYNC DONE.')
   });
 
   TogetherJS.hub.on('dirtylayer', async(msg) => {
+     console.log('NET received dirtylayer msg', msg)
     if (multiplayer._syncNeeded) {
       return // just wait for the sync
     }
-     console.log('NET received dirtylayer msg', msg)
-    let layerObs = null
+    if (!multiplayer._observers.hasOwnProperty(msg.layerId)) {
+      console.error("UNKNOWN LAYER ID", msg.layerId)
+      return
+    }
     let retval = {}
-    if (msg.layerId === 'layer_objects') {
-      layerObs = multiplayer.observers['layer_objects']
-      retval = await receive(msg.data, layerObs)
-    } else if (msg.layerId === 'layer_ui') {
-      layerObs = multiplayer.observers['layer_ui']
+    let layerObs = multiplayer._observers[msg.layerId]
+    if (msg.layerId === 'layer_ui') {
       retval = await receive_ui(msg.data, layerObs)
     } else {
-      console.error("UNKNOWN LAYER ID", msg.layerId)
+      retval = await receive(msg.data, layerObs)
     }
     if (retval.syncNeeded) {
       if (storage.iAmTheHost()) {
@@ -163,7 +173,7 @@ function LayerObserver(layerEl) {
   this._layerEl = layerEl
 
   this.local_mutations_start = function() {
-    //console.log("NET ", this._layerEl.id, "local_mutations_start")
+    //console.log("mutations_start", this._layerEl.id, "local_mutations_start")
     if (!this._observer) {
       this._observer = new MutationObserver(async (mutationsList, observer) => {
         await this.local_mutations_process(mutationsList)
@@ -191,14 +201,16 @@ function LayerObserver(layerEl) {
   }
 
   this.local_mutations_stop = function() {
+    console.log(this._layerEl.id, "local_mutations_stop pre-stop process")
     this.local_mutations_process(this._observer.takeRecords())
+    console.log(this._layerEl.id, "local_mutations_stop stopping")
     this._observer.disconnect()
   }
 
   this.local_mutations_process = function(mutationsList) {
     let layerId = this._layerEl.id
     mutationsList.forEach(mut => {
-      // console.log('NET mut', mut)
+       console.log('NET mut', mut, layerId)
       if (mut.target.id === layerId) {
         // ===============================ADDED
         if (mut.addedNodes.length) {
@@ -260,11 +272,12 @@ function LayerObserver(layerEl) {
     Object.keys(this._dirty.changed).forEach(elId => {
       this._dirty.changed[elId] = multiplayer.serialized(this._dirty.changed[elId])
     })
+    console.log("dirty?", this._dirty)
     window.requestAnimationFrame(this.run.bind(this))
   }
 
   this.run = async function() {
-    // console.log("LayerObserver", this._layerEl.id, 'RUN')
+     console.log("LayerObserver", this._layerEl.id, 'RUN (animationFrame)', this._dirty)
     if(
       Object.keys(this._dirty.removed).length > 0
       ||
@@ -272,57 +285,63 @@ function LayerObserver(layerEl) {
       ||
       Object.keys(this._dirty.changed).length > 0
     ) {
-      if (this._db) {
-        let bulk = []
-        Object.keys(this._dirty.added).forEach(id => {
-          bulk.push({
-            _id: id,
-            serialized: this._dirty.added[id],
-          })
-        })
-        Object.keys(this._dirty.changed).forEach(id => {
-          let dirtyEl = byId(id)
-          bulk.push({
-            _id: id,
-            _rev: dirtyEl.dataset['rev'],
-            serialized: this._dirty.added[id],
-          })
-        })
-        Object.keys(this._dirty.removed).forEach(id => {
-          let dirtyEl = byId(id)
-          bulk.push({
-            _id: id,
-            _rev: dirtyEl.dataset['rev'],
-            _deleted: true,
-          })
-        })
-        console.log("bulk", bulk)
-        this.local_mutations_stop()
-        try {
-          let response = await this._db.bulkDocs(bulk)
-          response.forEach(stub => {
-            // console.log('stub', stub)
-            if (stub.ok) {
-              let dirtyEl = byId(stub.id)
-              dirtyEl.dataset['rev'] = stub.rev
-            } else {
-              console.error('pouchdb failure')
-              console.error(stub)
-            }
-          })
-        } catch (err) {
-          console.error('failed to pouchdb.bulkDocs')
-          console.error(err)
-        }
-        this.local_mutations_start()
-      }
+      await this.updateDB()
       multiplayer.net_fire({
         type: "dirtylayer",
         layerId: this._layerEl.id,
-        data: this._dirty
+        data: this._dirty,
       })
     }
     this.init()
+  }
+
+  this.updateDB = async function() {
+    if (!storage.iAmTheHost()) {
+      return
+    }
+    let svgmap = await storage.getTableLayerMap(this._layerEl.id)
+    console.log("layer map", svgmap)
+    let bulk = []
+    Object.keys(this._dirty.added).forEach(id => {
+      bulk.push({
+        _id: id,
+        _rev: svgmap.map[id], // likely 'undefined', but here just in case
+        serialized: this._dirty.added[id],
+      })
+    })
+    console.log("CHANED", Object.keys(this._dirty.changed))
+    Object.keys(this._dirty.changed).forEach(id => {
+      bulk.push({
+        _id: id,
+        _rev: svgmap.map[id],
+        serialized: this._dirty.changed[id],
+      })
+    })
+    Object.keys(this._dirty.removed).forEach(id => {
+      bulk.push({
+        _id: id,
+        _rev: svgmap.map[id],
+        _deleted: true,
+      })
+    })
+    console.log("bulk", bulk)
+    try {
+      let response = await storage.currentDB().bulkDocs(bulk)
+      response.forEach(stub => {
+        // console.log('stub', stub)
+        if (stub.ok) {
+          console.log('ok', stub)
+          svgmap.map[stub.id] = stub.rev
+        } else {
+          console.error('pouchdb failure', stub.id, svgmap.map[stub.id])
+          console.error(stub)
+        }
+      })
+      await storage.currentDB().put(svgmap)
+    } catch (err) {
+      console.error('failed to pouchdb.bulkDocs')
+      console.error(err)
+    }
   }
 
   this.init = function() {
@@ -530,7 +549,7 @@ async function load_new_table(newTable) {
     layerEl = newTable.querySelector('#layer_objects')
     layer_objects.node.remove()
     layer_objects = SVG.adopt(layerEl)
-    multiplayer.observers['layer_objects'] = new LayerObserver(layer_objects.node)
+    multiplayer._observers['layer_objects'] = new LayerObserver(layer_objects.node)
     hookup_subsvg_listeners(layerEl)
     svg_table.node.insertBefore(layerEl, layer_ui.node)
   })
