@@ -6,7 +6,7 @@ const ui = {
   playerMarkerPrototype: null,
 
   escapedClientId: () => {
-    let username = storage.getPreference('profile_name')
+    let username = storage.getPreference('username')
     return username.replace('.', '-')
   },
 
@@ -58,7 +58,7 @@ const ui = {
   move_player_marker: (x, y) => {
     let marker = ui.getPlayerMarker()
     // setColor each time, in case it changes
-    setColor(marker, storage.getPreference('profile_color'))
+    setColor(marker, storage.getPreference('user_color'))
     svg_marker = SVG.adopt(marker)
     svg_marker.cx(x)
     svg_marker.cy(y)
@@ -281,9 +281,9 @@ const ui = {
     notice.attr({
       cx: evt.detail.svgPos.x,
       cy: evt.detail.svgPos.y,
-      fill: storage.getPreference('profile_color'),
+      fill: storage.getPreference('user_color'),
       'fill-opacity': 0.3,
-      stroke: storage.getPreference('profile_color'),
+      stroke: storage.getPreference('user_color'),
       'stroke-width': 20,
     })
     ui.animated_ghost(notice.node, {
@@ -322,8 +322,8 @@ const ui = {
     clone.querySelector('.timestamp').innerText = timestampStr
 
     const playerNameEl = clone.querySelector('.player_name')
-    playerNameEl.innerText = storage.getPreference('profile_name')
-    playerNameEl.style.color = storage.getPreference('profile_color')
+    playerNameEl.innerText = storage.getPreference('username')
+    playerNameEl.style.color = storage.getPreference('user_color')
 
     clone.querySelector('.player_action').innerText = playerAction
 
@@ -364,7 +364,7 @@ const ui = {
       }
       let boundHandler = (evt) => {
         userlog.add({
-          user: storage.getPreference('profile_name'),
+          user: storage.getPreference('username'),
           title: title,
           event: evt,
           el: svgEl
@@ -546,7 +546,7 @@ const ui = {
         sBoxNode,
         (evt) => {
           userlog.add({
-            user: storage.getPreference('profile_name'),
+            user: storage.getPreference('username'),
             event: 'DELETE',
             el: sBoxNode
           })

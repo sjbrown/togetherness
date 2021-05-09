@@ -493,7 +493,7 @@ function add_to_layer_mats(nest) {
 
 function add_to_layer_objects(nest, attrs) {
   console.log('add_to_layer_objects', attrs)
-  setColor(nest.node, (attrs && attrs.color) || storage.getPreference('profile_color'))
+  setColor(nest.node, (attrs && attrs.color) || storage.getPreference('user_color'))
   let center = ui.player_marker_position()
   if (attrs && attrs.offset !== undefined) {
     center[0] += attrs.offset[0]

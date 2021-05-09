@@ -58,7 +58,6 @@ var layer_objects
 var layer_ui
 var viewport
 var origViewportSize
-var storedTables
 
 function createLayer(id) {
   layer = svg_table.group()
@@ -84,9 +83,18 @@ function initSvgTable(el) {
 
   viewport.add(svg_table)
 
-  becomeTableHost()
-
   makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
+
+  let db = storage.newTable(svg_table.node)
+  svg_table.node.dataset['db'] = db.name
+
+  // one storage layer for each table layer, else there will be
+  // a race condition as the MutationObservers operate in parallel
+  storage.newTableLayer('layer_mats', layer_mats.node)
+  storage.newTableLayer('layer_objects', layer_objects.node)
+  storage.newTableLayer('layer_ui', layer_ui.node)
+
+  multiplayer.initObserver('layer_mats', layer_mats.node)
   multiplayer.initObserver('layer_objects', layer_objects.node)
   multiplayer.initObserver('layer_ui', layer_ui.node)
 
@@ -94,7 +102,7 @@ function initSvgTable(el) {
 }
 
 function becomeTableHost() {
-  let db = storage.newTable()
+  let db = storage.newTable(viewport.node.outerHTML)
   svg_table.node.dataset['db'] = db.name
 }
 
@@ -153,6 +161,8 @@ SVG.on(document, 'DOMContentLoaded', () => {
 
   ui.initializeViewport(viewport.node)
   ui.initializeDragSelectBox(viewport.node)
+
+  storage.newViewport(viewport.node.outerHTML)
 
   var uiButtonObserver = new MutationObserver((mutations) => {
     // console.log('---------------mutation obs', mutations)
@@ -225,10 +235,10 @@ window.addEventListener('load', () => {
   loadPrototypeTokens()
   loadPrototypeDice()
   TogetherJSConfig_getUserColor = function() {
-    return storage.getPreference('profile_color')
+    return storage.getPreference('user_color')
   }
   TogetherJSConfig_getUserName = function() {
-    return storage.getPreference('profile_name')
+    return storage.getPreference('username')
   };
   TogetherJSConfig_findRoom = storage._db.name
 })
@@ -755,8 +765,8 @@ function ui_change_profile(evt) {
   if (!name_input.value) {
     return;
   }
-  storage.setPreference('profile_name', name_input.value)
-  storage.setPreference('profile_color', color_input.value)
+  storage.setPreference('username', name_input.value)
+  storage.setPreference('user_color', color_input.value)
   load_profile_ui()
   ui.popdown_dialog('dialog_profile')
   multiplayer.net_fire({ type: 'change_profile', data: name_input.value })
@@ -765,8 +775,8 @@ function load_profile_ui() {
   if (TogetherJS === undefined) {
     return
   }
-  name = storage.getPreference('profile_name') || ''
-  color = storage.getPreference('profile_color')
+  name = storage.getPreference('username') || ''
+  color = storage.getPreference('user_color')
   if (!name) {
     return
   }
@@ -1341,11 +1351,11 @@ function alterD10Variant(variant='d10') {
       function getChosenDiceColor() {
         radio = document.querySelector('[name=dice_color_radio]:checked')
         spec_color = document.querySelector('#dice_input_color')
-        profile_color = storage.getPreference('profile_color')
+        user_color = storage.getPreference('user_color')
         if (radio.id === 'dice_color_radio_specify') {
           return spec_color.value
         } else {
-          return profile_color
+          return user_color
         }
       }
       </script>

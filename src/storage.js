@@ -2,15 +2,7 @@ var storage = {
   _db: null,
 
   getPreference: function(key) {
-    let result
-    try {
-      result = JSON.parse(localStorage.getItem(key))
-    } catch(err) {
-      // must have been previous, non-JSON version
-      result = localStorage.getItem(key)
-      storage.setPreference(key, result)
-    }
-    return result
+    return JSON.parse(localStorage.getItem(key))
   },
 
   setPreference: function(key, val) {
@@ -19,9 +11,9 @@ var storage = {
 
   setDefaultPreferences: function() {
     defaults = {
-      'profile_version': '1.0',
-      'profile_color': '#ffffff',
-      'profile_name': 'user_' + base32.chars(2),
+      'preferences_version': '1.0',
+      'user_color': '#ffffff',
+      'username': 'user_' + base32.chars(2),
       'known_dbs': {},
     }
     for (key in defaults) {
@@ -32,7 +24,7 @@ var storage = {
   },
 
   updateDbRegistration: function(db) {
-    let username = storage.getPreference('profile_name')
+    let username = storage.getPreference('username')
     let dbName = db.name
     let known_dbs = storage.getPreference('known_dbs')
     if (known_dbs[dbName]) {
@@ -49,16 +41,38 @@ var storage = {
   },
 
   newTable: function() {
-    let username = storage.getPreference('profile_name')
+    let username = storage.getPreference('username')
     let dbName = username + '-' + base32.short_id()
     this._db = new PouchDB(dbName)
     storage.updateDbRegistration(this._db)
     return this._db
   },
 
+  newViewport: function(rawViewport) {
+    this._db.put({
+      _id: this._dbName + ':viewport',
+      raw: rawViewport,
+    })
+  },
+
+  newTableLayer: function(layerId) {
+    this._db.put({
+      _id: this._db.name + ':' + layerId,
+      map: {},
+    })
+  },
+
+  getTableLayerMap: function(layerId) {
+    return this._db.get(this._db.name + ':' + layerId)
+  },
+
+  currentDB: function() {
+    return this._db
+  },
+
   iAmTheHost: function() {
     //TODO: make unhackable
-    let username = storage.getPreference('profile_name')
+    let username = storage.getPreference('username')
     return this._db.name.indexOf(username + '-') === 0
   },
 }

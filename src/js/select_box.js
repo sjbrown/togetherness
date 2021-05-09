@@ -91,7 +91,7 @@ var select_box = {
   },
 
   initialize: function(elem, prototype) {
-    let color = storage.getPreference('profile_color')
+    let color = storage.getPreference('user_color')
     nest = SVG.adopt(elem)
     nest.node.dataset.for = []
     let innerRect = nest.node.querySelector('rect')
