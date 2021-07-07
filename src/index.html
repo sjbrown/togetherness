@@ -37,6 +37,7 @@
 <link rel="stylesheet" href="/lib/materialize/materialize.min.css">
 <script src="/lib/materialize/materialize.min.js"></script>
 -->
+<script src="/lib/pouchdb.js"></script>
 
 <style type="text/css" />
 @font-face {
@@ -56,6 +57,8 @@ var layer_objects
 var layer_ui
 var viewport
 var origViewportSize
+var db
+var storedTables
 
 function createLayer(id) {
   layer = svg_table.group()
@@ -81,8 +84,13 @@ function initSvgTable(el) {
 
   viewport.add(svg_table)
 
+  let username = localStorage.getItem('profile_name')
+  let dbName = (username ? username + '-' : '') + base32.short_id()
+  svg_table.node.dataset['db'] = dbName
+  db = new PouchDB(dbName)
+
   makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
-  objectsObserver = new LayerObserver(layer_objects.node)
+  objectsObserver = new LayerObserver(layer_objects.node, db)
   uiObserver = new LayerObserver(layer_ui.node)
 
   return svg_table
@@ -133,6 +141,13 @@ SVG.on(document, 'DOMContentLoaded', () => {
   })
 
   svg_table = initSvgTable(document.createElementNS(SVG.ns, 'svg'))
+
+  storedTables = new PouchDB('storedTables')
+  storedTables.put({
+    _id: db.name,
+    name: db.name,
+    createdAt: new Date().toISOString(),
+  })
 
   window.addEventListener("resize", viewportToGameArea)
 
