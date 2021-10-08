@@ -916,7 +916,23 @@ async function load_svg() {
   load_new_table(newDoc.firstChild)
   return ui.popdown_dialog('dialog_load')
 }
+function show_load_options(e) {
+  optionList = byId('load_options')
+  temp = document.querySelector('#load_options > li')
+  while(optionList.firstElementChild) {
+    // Clear it out - prevent memory leaks
+    optionList.firstElementChild.remove()
+  }
+  dbs = storage.getPreference('known_dbs')
+  Object.keys(dbs).forEach(key => {
+    let dbMeta = dbs[key]
+    let newLoadOption = temp.cloneNode(true)
+    newLoadOption.innerText = `${key} ${dbMeta.creator} ${dbMeta.modified} ${dbMeta.serverUrl}`
+    optionList.appendChild(newLoadOption)
+  })
+}
 function ui_popup_dialog_load() {
+  show_load_options()
   textarea = byId('textarea_load_input')
   textarea.value = ''
   textarea.innerHTML = ''
@@ -933,6 +949,7 @@ function ui_popup_dialog_load() {
       <ul class="left">
         <li><a href="#copy_and_paste">Copy/Paste</a></li>
         <li><a href="#upload">Upload file</a></li>
+        <li><a href="#local">Local</a></li>
       </ul>
     </div>
     </nav>
@@ -958,6 +975,16 @@ function ui_popup_dialog_load() {
       file uploading
       work on http://1kfa.com/table ! #ttrpg #1kfa #featurerequest"
       <b>or</b> start participating with the development on Github
+      </div>
+    </section>
+    <section>
+      <a name="local"></a>
+      <h1 class="load_h1">Local</h1>
+      <div class="load_explain">
+      Here's the options:
+      <ul id="load_options" style="font-family: courier">
+        <li class="local_load_option_template" />
+      </ul>
       </div>
     </section>
   </div>

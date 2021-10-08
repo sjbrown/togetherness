@@ -50,7 +50,7 @@ var storage = {
 
   newViewport: function(rawViewport) {
     this._db.put({
-      _id: this._dbName + ':viewport',
+      _id: this._db.name + ':viewport',
       raw: rawViewport,
     })
   },
