@@ -309,7 +309,7 @@ function LayerObserver(layerEl) {
         serialized: this._dirty.added[id],
       })
     })
-    console.log("CHANED", Object.keys(this._dirty.changed))
+    console.log("CHANGED", Object.keys(this._dirty.changed))
     Object.keys(this._dirty.changed).forEach(id => {
       bulk.push({
         _id: id,
@@ -544,16 +544,7 @@ function on_sync(msg) {
 }
 
 async function load_new_table(newTable) {
-  console.log('nw tab', newTable)
-  let nodeList = newTable.querySelectorAll('[data-app-url]')
-  let urlLoop = async() => {
-    for (let index = 0; index < nodeList.length; index++) {
-      let node = nodeList.item(index)
-      // console.log('import_foreign_svg_for_element', node.id, node.dataset.appUrl)
-      await import_foreign_svg_for_element(node)
-    }
-  }
-  return urlLoop()
+  return load_all_necessary_scripts(newTable)
   .then(() => {
     layerEl = newTable.querySelector('#layer_objects')
     layer_objects.node.remove()
@@ -561,11 +552,19 @@ async function load_new_table(newTable) {
     multiplayer._observers['layer_objects'] = new LayerObserver(layer_objects.node)
     hookup_subsvg_listeners(layerEl)
     svg_table.node.insertBefore(layerEl, layer_ui.node)
+    if (newTable.dataset['dbid']) {
+      svg_table.node.dataset['dbid'] = newTable.dataset['dbid']
+    }
   })
   .then(() => {
+    // Empty out all the UI-layer doodads
+    while (layer_ui.node.firstChild) {
+      layer_ui.node.removeChild(layer_ui.node.lastChild)
+    }
+    // Add into the UI-layer all the doodads of this new table
     return newTable.querySelectorAll('#layer_ui > .draggable-group').forEach((el) => {
-      // console.log('layer-ui examining draggable gropu', el)
-      if (el.classList.contains('owner-' + ui.escapedClientId())) {
+      //console.log('layer-ui examining draggable gropu', el)
+      if (ui.belongsToMe(el)) {
         return
       }
       let s = el.outerHTML
@@ -575,3 +574,16 @@ async function load_new_table(newTable) {
   })
 }
 
+async function load_all_necessary_scripts(newTable) {
+  let nodeList = newTable.querySelectorAll('[data-app-url]')
+  let urlLoop = async() => {
+    // Since some of these elements have associated behaviour (JavaScript),
+    // we need to load up all of those scripts
+    for (let index = 0; index < nodeList.length; index++) {
+      let node = nodeList.item(index)
+      // console.log('import_foreign_svg_for_element', node.id, node.dataset.appUrl)
+      await import_foreign_svg_for_element(node)
+    }
+  }
+  return urlLoop()
+}

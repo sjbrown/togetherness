@@ -258,6 +258,12 @@ const ui = {
     )
   },
 
+  belongsToMe: (el) => {
+    return (
+      el.classList.contains('owner-' + ui.escapedClientId())
+    )
+  },
+
   unselectAll: (retainPeers = true) => {
     ui.getSelectBoxes().forEach(el => {
        console.log("removing", el)
