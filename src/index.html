@@ -59,17 +59,21 @@ var layer_ui
 var viewport
 var origViewportSize
 
-function createLayer(id) {
-  layer = svg_table.group()
-  layer.attr({
-    id: id,
-  })
-  layer.addClass('layer')
-  layer.addClass(id)
-  return layer
-}
 
-function initSvgTable(el) {
+function initNewTable() {
+  if (viewport.node.querySelector('#svg_table')) {
+    viewport.node.removeChild(viewport.node.querySelector('#svg_table'))
+  }
+  function createLayer(name) {
+    layer = svg_table.group()
+    layer.attr({
+      id: name,
+    })
+    layer.addClass('layer')
+    layer.addClass(name)
+    return layer
+  }
+  let el = document.createElementNS(SVG.ns, 'svg')
   svg_table = SVG.adopt(el)
   svg_table.attr({
     id: 'svg_table',
@@ -80,34 +84,37 @@ function initSvgTable(el) {
   layer_mats = createLayer('layer_mats')
   layer_objects = createLayer('layer_objects')
   layer_ui = createLayer('layer_ui')
-
   viewport.add(svg_table)
-
   makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
-
-  let db = storage.newTable(svg_table.node)
-  svg_table.node.dataset['db'] = db.name
-
-  // one storage layer for each table layer, else there will be
-  // a race condition as the MutationObservers operate in parallel
-  storage.newTableLayer('layer_mats', layer_mats.node)
-  storage.newTableLayer('layer_objects', layer_objects.node)
-  storage.newTableLayer('layer_ui', layer_ui.node)
-
   multiplayer.initObserver('layer_mats', layer_mats.node)
   multiplayer.initObserver('layer_objects', layer_objects.node)
   multiplayer.initObserver('layer_ui', layer_ui.node)
 
-  return svg_table
+  storage.newTable(svg_table.node)
+}
+
+async function initPreviousTable() {
+  let el = await storage.loadTable(storage.getPreference('last_table'))
+  svg_table = SVG.adopt(el)
+
+  layer_mats = SVG.adopt(el.querySelector('#layer_mats'))
+  layer_objects = SVG.adopt(el.querySelector('#layer_objects'))
+  layer_ui = SVG.adopt(el.querySelector('#layer_ui'))
+  load_all_necessary_scripts(el)
+  viewport.add(svg_table)
+  makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
+  multiplayer.initObserver('layer_mats', layer_mats.node)
+  multiplayer.initObserver('layer_objects', layer_objects.node)
+  multiplayer.initObserver('layer_ui', layer_ui.node)
 }
 
 function becomeTableHost() {
-  let db = storage.newTable(viewport.node.outerHTML)
-  svg_table.node.dataset['db'] = db.name
+  storage.newTable(svg_table.node)
 }
 
-SVG.on(document, 'DOMContentLoaded', () => {
+SVG.on(document, 'DOMContentLoaded', async() => {
   storage.setDefaultPreferences()
+  storage.init()
 
   // Override the id-generating function of the svg.js library
   SVG.eid = (name) => {
@@ -150,7 +157,11 @@ SVG.on(document, 'DOMContentLoaded', () => {
      'stroke-opacity': 0.2,
   })
 
-  svg_table = initSvgTable(document.createElementNS(SVG.ns, 'svg'))
+  if (storage.getPreference('last_table')) {
+    await initPreviousTable()
+  } else {
+    initNewTable()
+  }
 
   window.addEventListener("resize", viewportToGameArea)
 
@@ -684,6 +695,12 @@ window.addEventListener('load', () => {
     Load
   </button>
 
+  <button id="new_button" class="btn btn-small"
+    onclick="initNewTable()"
+    >
+    New
+  </button>
+
   <button id="activity_button" class="btn btn-small modal-trigger"
     title="Log of game events"
     data-target="dialog_activity_log"
@@ -820,7 +837,7 @@ function load_profile_ui() {
   <script>
 function make_safe_svg_string() {
   let elJSON = domJSON.toJSON(
-    byId('svg_table'),
+    svg_table.node,
     { domProperties: false }
   )
   let fragment = domJSON.toDOM(elJSON)
@@ -837,14 +854,15 @@ function download_svg() {
   tmplink.download = filename.replace(/[-: ]/g, '_')
   tmplink.click()
 }
-function ui_popup_dialog_save() {
-  if(document.querySelectorAll('#svg_table').length > 1) {
-    alert('too many svg_table elements')
-  }
+async function ui_popup_dialog_save() {
   let svg_string = make_safe_svg_string()
   textarea = byId('textarea_save_output')
   textarea.value = svg_string
-  return ui.popup_dialog({'data-dialog-id': 'dialog_save'})
+  ui.popup_dialog({'data-dialog-id': 'dialog_save'})
+  let nameEl = byId('local_save_name')
+  nameEl.innerHTML = '<progress />'
+  await storage.saveTable(svg_table.node)
+  nameEl.innerHTML = `<b>${svg_table.node.dataset['dbid']}</b>`
 }
   </script>
     <nav class="dialog_nav"  id="save_nav">
@@ -880,11 +898,7 @@ function ui_popup_dialog_save() {
       <a name="local"></a>
       <h1 >Local storage on your browser</h1>
       <div class="save_explain">
-      This feature has not been implemented yet. If you would like it to exist,
-      <span style="color:teal">tweet</span> "Hey @boardcrafting, please
-      make Local Storage work on http://1kfa.com/table ! #ttrpg #1kfa
-      #featurerequest"
-      <b>or</b> start participating with the development on Github
+      The table has been saved locally as <span id="local_save_name"></span>
       </div>
     </section>
     <section>
@@ -916,23 +930,41 @@ async function load_svg() {
   load_new_table(newDoc.firstChild)
   return ui.popdown_dialog('dialog_load')
 }
-function show_load_options(e) {
+async function show_load_options() {
   optionList = byId('load_options')
   temp = document.querySelector('#load_options > li')
   while(optionList.firstElementChild) {
     // Clear it out - prevent memory leaks
     optionList.firstElementChild.remove()
   }
+  /*
   dbs = storage.getPreference('known_dbs')
-  Object.keys(dbs).forEach(key => {
+  Object.keys(dbs).reverse().forEach(key => {
     let dbMeta = dbs[key]
     let newLoadOption = temp.cloneNode(true)
     newLoadOption.innerText = `${key} ${dbMeta.creator} ${dbMeta.modified} ${dbMeta.serverUrl}`
     optionList.appendChild(newLoadOption)
   })
+  */
+  let tables = await storage.getAllTables()
+  await tables.reverse().map(async(table) => {
+    let newLoadOption = temp.cloneNode(true)
+    let thumb = await storage.loadThumbnail(table)
+    let loadOptionLink = newLoadOption.querySelector('a')
+    loadOptionLink.innerText = `${table}`
+    loadOptionLink.dataset['tableId'] = table
+    loadOptionLink.appendChild(thumb)
+    loadOptionLink.addEventListener('click', async (evt) => {
+      let tableId = evt.target.dataset['tableId']
+      let newTable = await storage.loadTable(tableId)
+      await load_new_table(newTable)
+      return ui.popdown_dialog('dialog_load')
+    })
+    optionList.appendChild(newLoadOption)
+  })
 }
-function ui_popup_dialog_load() {
-  show_load_options()
+async function ui_popup_dialog_load() {
+  await show_load_options()
   textarea = byId('textarea_load_input')
   textarea.value = ''
   textarea.innerHTML = ''
@@ -948,8 +980,8 @@ function ui_popup_dialog_load() {
     </button>
       <ul class="left">
         <li><a href="#copy_and_paste">Copy/Paste</a></li>
-        <li><a href="#upload">Upload file</a></li>
         <li><a href="#local">Local</a></li>
+        <li><a href="#upload">Upload file</a></li>
       </ul>
     </div>
     </nav>
@@ -967,6 +999,33 @@ function ui_popup_dialog_load() {
       </button>
     </section>
     <section>
+      <a name="local"></a>
+      <h1 class="load_h1">Local</h1>
+      <div class="load_explain">
+      Locally-saved tables:
+      <style>
+        .local_load_option_template > a {
+          margin-bottom: 2px;
+          background-color: #ddd;
+        }
+        .local_load_option_template > a > svg {
+          margin-left: 1em;
+        }
+        .local_load_option_link {
+          display: flex;
+          flex-flow: row wrap;
+          justify-content: flex-start;
+          align-items: center;
+        }
+      </style>
+      <ul id="load_options" style="font-family: courier">
+        <li class="local_load_option_template">
+          <a class="local_load_option_link"></a>
+        </li>
+      </ul>
+      </div>
+    </section>
+    <section>
       <a name="upload"></a>
       <h1 class="load_h1">Upload file</h1>
       <div class="load_explain">
@@ -975,16 +1034,6 @@ function ui_popup_dialog_load() {
       file uploading
       work on http://1kfa.com/table ! #ttrpg #1kfa #featurerequest"
       <b>or</b> start participating with the development on Github
-      </div>
-    </section>
-    <section>
-      <a name="local"></a>
-      <h1 class="load_h1">Local</h1>
-      <div class="load_explain">
-      Here's the options:
-      <ul id="load_options" style="font-family: courier">
-        <li class="local_load_option_template" />
-      </ul>
       </div>
     </section>
   </div>
