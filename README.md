@@ -1,10 +1,9 @@
-![logo](images/logo.png)
+![logo](images/wordmark.png)
 
-# Togetherness Table
-
-**A virtual and liberated tabletop**
 
 [![sjbrown](https://circleci.com/gh/sjbrown/togetherness.svg?style=svg)](https://circleci.com/gh/sjbrown/togetherness)
+
+# Togetherness Table
 
 | [Live Demo](#live-demo) | [Quick Start](#quick-start) | [Goals](#goals) |
 

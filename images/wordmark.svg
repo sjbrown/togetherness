@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="100mm"
+   height="100mm"
+   viewBox="0 0 100 100"
+   version="1.1"
+   id="svg886"
+   inkscape:version="0.92.5 (2060ec1f9f, 2020-04-08)"
+   sodipodi:docname="wordmark.svg">
+  <defs
+     id="defs880">
+    <linearGradient
+       inkscape:collect="always"
+       id="linearGradient2205">
+      <stop
+         style="stop-color:#474747;stop-opacity:0.47843137"
+         offset="0"
+         id="stop2201" />
+      <stop
+         style="stop-color:#000000;stop-opacity:0"
+         offset="1"
+         id="stop2203" />
+    </linearGradient>
+    <radialGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient2205"
+       id="radialGradient2207"
+       cx="31.105288"
+       cy="88.810471"
+       fx="31.105288"
+       fy="88.810471"
+       r="22.651093"
+       gradientTransform="matrix(1,0,0,0.17699114,0,73.091804)"
+       gradientUnits="userSpaceOnUse" />
+  </defs>
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="0.7"
+     inkscape:cx="63.66698"
+     inkscape:cy="326.84693"
+     inkscape:document-units="mm"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     inkscape:window-width="1920"
+     inkscape:window-height="1016"
+     inkscape:window-x="0"
+     inkscape:window-y="27"
+     inkscape:window-maximized="1" />
+  <metadata
+     id="metadata883">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(0,-197)">
+    <rect
+       style="opacity:1;fill:#ffffff;fill-opacity:0.47843137;stroke:none;stroke-width:1.19062495;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+       id="rect2209"
+       width="61.421127"
+       height="34.962795"
+       x="-1.110223e-16"
+       y="262.0372" />
+    <g
+       id="g2224"
+       transform="translate(-0.39472389,199.08197)">
+      <text
+         id="text1433"
+         y="68.70237"
+         x="9.5779657"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:4.63020849px;line-height:125%;font-family:'Universalis ADF Std';-inkscape-font-specification:'Universalis ADF Std Bold';letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+         xml:space="preserve"><tspan
+           style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:4.93888903px;font-family:'Universalis ADF Std';-inkscape-font-specification:'Universalis ADF Std Bold';stroke-width:0.26458332px"
+           y="68.70237"
+           x="9.5779657"
+           id="tspan1431"
+           sodipodi:role="line">Togetherness Table</tspan></text>
+      <ellipse
+         ry="4.0090427"
+         rx="22.651093"
+         cy="88.810471"
+         cx="31.105288"
+         id="path2199"
+         style="opacity:1;fill:url(#radialGradient2207);fill-opacity:1;stroke:none;stroke-width:1.19062495;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1" />
+      <g
+         id="g857"
+         transform="matrix(0.25296535,0,0,0.25296535,13.652611,15.455927)">
+        <rect
+           style="opacity:1;fill:#603514;fill-opacity:1;stroke:#1a1a1a;stroke-width:4;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.98188405"
+           id="rect822"
+           width="24.38271"
+           height="31.199263"
+           x="96.941513"
+           y="261.15079"
+           rx="4.99999"
+           ry="3.0000043" />
+        <rect
+           ry="3.0000043"
+           rx="4.99999"
+           y="261.15079"
+           x="12.357258"
+           height="31.199263"
+           width="24.38271"
+           id="rect820"
+           style="opacity:1;fill:#603514;fill-opacity:1;stroke:#1a1a1a;stroke-width:4;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.98188405" />
+        <path
+           style="opacity:1;fill:#603514;fill-opacity:1;stroke:#1a1a1a;stroke-width:4;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.98188405"
+           d="M 10.405904,255.08427 H 123.27557 c 3.16262,0 5.70872,1.53393 5.70872,3.43929 v 24.32068 c 0,1.90537 -2.55081,3.26593 -5.70872,3.43929 -36.53368,2.00568 -73.900445,2.47779 -112.869666,0 -3.1563057,-0.20068 -5.7087132,-1.53392 -5.7087132,-3.43929 v -24.32068 c 0,-1.90536 2.5460856,-3.43929 5.7087132,-3.43929 z"
+           id="rect815"
+           inkscape:connector-curvature="0"
+           sodipodi:nodetypes="sssssssss" />
+        <path
+           style="opacity:1;fill:#70e584;fill-opacity:1;stroke:#1a1a1a;stroke-width:4;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.98188405"
+           d="m 18.864332,228.9982 c 31.781304,-1.4266 63.764639,-1.43318 95.952818,0 3.15952,0.14068 5.09671,1.63574 5.70871,3.4393 l 8.45843,24.92723 c 0.61198,1.80355 -2.56345,3.10702 -5.70872,3.43929 -38.334965,4.04976 -75.747455,2.85072 -112.869666,0 -3.1534183,-0.24216 -6.3207022,-1.63574 -5.7087132,-3.43929 L 13.155618,232.4375 c 0.61199,-1.80356 2.549241,-3.29748 5.708714,-3.4393 z"
+           id="rect817"
+           inkscape:connector-curvature="0"
+           sodipodi:nodetypes="sssssssss" />
+        <path
+           style="opacity:1;fill:none;fill-opacity:1;stroke:#00892b;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.98188405"
+           d="m 32.963875,245.76782 c 0,-4.6667 3.671039,-8.4498 8.199496,-8.4498 4.528456,0 7.767944,2.93812 8.199496,6.62984"
+           id="path830"
+           inkscape:connector-curvature="0"
+           sodipodi:nodetypes="csc" />
+        <path
+           sodipodi:nodetypes="csc"
+           inkscape:connector-curvature="0"
+           id="path833"
+           d="m 81.297753,243.94786 c 0.107895,-3.15006 3.671042,-6.62984 8.199499,-6.62984 4.528458,0 8.199499,3.7831 8.199499,8.4498"
+           style="opacity:1;fill:none;fill-opacity:1;stroke:#00892b;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.98188405" />
+      </g>
+      <text
+         xml:space="preserve"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.17499995px;line-height:125%;font-family:'Universalis ADF Std';-inkscape-font-specification:'Universalis ADF Std';letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+         x="10.261477"
+         y="95.16069"
+         id="text2195"><tspan
+           sodipodi:role="line"
+           id="tspan2193"
+           x="10.261477"
+           y="95.16069"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.17499995px;font-family:'Universalis ADF Std';-inkscape-font-specification:'Universalis ADF Std';stroke-width:0.26458332px">A virtual and <tspan
+   id="tspan2197"
+   style="font-style:italic">liberated</tspan> tabletop</tspan></text>
+    </g>
+  </g>
+</svg>
