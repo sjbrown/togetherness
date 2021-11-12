@@ -26,8 +26,8 @@
      inkscape:pageopacity="0.0"
      inkscape:pageshadow="2"
      inkscape:zoom="0.7"
-     inkscape:cx="419.73655"
-     inkscape:cy="569.77559"
+     inkscape:cx="795.83879"
+     inkscape:cy="622.52043"
      inkscape:document-units="px"
      inkscape:current-layer="layer1"
      showgrid="true"
@@ -65,7 +65,7 @@
      id="layer4"
      inkscape:label="table">
     <rect
-       style="display:inline;opacity:1;fill:#28cf7a;fill-opacity:1;stroke:none;stroke-width:2.67530251;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+       style="display:inline;opacity:1;fill:#6fe582;fill-opacity:1;stroke:none;stroke-width:2.67530251;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
        id="rect872"
        width="169.33333"
        height="300.56668"
@@ -114,14 +114,14 @@
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:4.63020849px;line-height:125%;font-family:sans-serif;-inkscape-font-specification:'sans-serif Bold';letter-spacing:0px;word-spacing:0px;fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:0.26458335px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-       x="59.566776"
+       x="64.995277"
        y="6.0217867"
        id="text4527"><tspan
          sodipodi:role="line"
          id="tspan4525"
-         x="59.566776"
+         x="64.995277"
          y="6.0217867"
-         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-family:sans-serif;-inkscape-font-specification:'sans-serif Bold';fill:#ffffff;stroke-width:0.26458335px">Togetherness Table</tspan></text>
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-family:'Universalis ADF Std';-inkscape-font-specification:'Universalis ADF Std Bold';fill:#ffffff;stroke-width:0.26458335px">Togetherness Table</tspan></text>
     <path
        style="opacity:1;fill:#00ffff;fill-opacity:1;stroke:none;stroke-width:0.20574766;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
        d="m 141.0404,0.96820367 c -0.89132,0 -1.33641,0.56772873 -1.33641,1.99383433 2.3e-4,0.2242329 0.0187,0.447458 0.0551,0.6640401 -1.65479,0.5144314 -2.7449,1.7889776 -2.74484,3.2092485 v 1.721463 h 8.60731 v -1.721463 c -0.002,-1.4193789 -1.09251,-2.692333 -2.74652,-3.205886 0.037,-0.2175503 0.0562,-0.4419257 0.0567,-0.6674026 0,-1.4261056 -0.44508,-1.99383433 -1.33639,-1.99383433 z"
@@ -132,17 +132,6 @@
        id="g4546"
        transform="translate(8.9958339,1.3257708)">
       <text
-         id="text4536"
-         y="6.3039927"
-         x="137.85062"
-         style="font-style:normal;font-weight:normal;font-size:4.63020849px;line-height:125%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#00ffff;fill-opacity:1;stroke:#000000;stroke-width:0.26458335px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-         xml:space="preserve"><tspan
-           style="fill:#00ffff;stroke:#000000;stroke-width:0.26458335px"
-           y="6.3039927"
-           x="137.85062"
-           id="tspan4534"
-           sodipodi:role="line">user_ge</tspan></text>
-      <text
          xml:space="preserve"
          style="font-style:normal;font-weight:normal;font-size:4.63020849px;line-height:125%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#00ffff;fill-opacity:1;stroke:none;stroke-width:0.26458335px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
          x="137.85062"
@@ -152,7 +141,7 @@
            id="tspan4538"
            x="137.85062"
            y="6.3039927"
-           style="fill:#00ffff;stroke:none;stroke-width:0.26458335px">user_ge</tspan></text>
+           style="fill:#00ffff;stroke:none;stroke-width:0.26458335px;-inkscape-font-specification:'Universalis ADF Std';font-family:'Universalis ADF Std';font-weight:normal;font-style:normal;font-stretch:normal;font-variant:normal">user_ge</tspan></text>
     </g>
   </g>
   <g
