@@ -1,6 +1,12 @@
+![logo](images/logo.png)
+
 # Togetherness Table
 
+**A virtual and liberated tabletop**
+
 [![sjbrown](https://circleci.com/gh/sjbrown/togetherness.svg?style=svg)](https://circleci.com/gh/sjbrown/togetherness)
+
+| [Live Demo](#live-demo) | [Quick Start](#quick-start) | [Goals](#goals) |
 
 Tabletop RPGs are no longer just played in physical spaces. More and more,
 this kind of game is being played online, and players are
@@ -15,6 +21,8 @@ the empowerment of players as free human beings participating voluntarily
 in a community. There are no "owners", just equal participants enjoying a
 gamut of activities including "creation", "play" and "hosting".
 
+## Goals
+
 Togetherness Table aims to be
 [Local-First Software](https://www.inkandswitch.com/local-first.html)
 
@@ -26,31 +34,22 @@ Togetherness Table aims to be
  * Security and privacy by default
  * You retain ultimate ownership and control
 
-## History
+Furthermore, Togetherness Table should:
 
-After joining The Gauntlet and playing around with the awesome
-[roller](https://github.com/shanel/roller),
-I got the itch to create my own "dice-rolling" application.
-
-## Goals
-
-Here are some goals for Togetherness:
-
- * Document-centric.  The state should all live in the document.
+ * Be document-centric. The state should all live in the document. Let
+   creators treat their game state like documents they can save to disk,
+   edit in Inkscape, and use their own SVG-editing workflows in the way
+   they feel most comfortable and productive.
  * Use HTML5. Use SVG.
    * Don't reinvent wheels that already exist
    * Use the opportunity to deeply learn the standards
- * No server
-   * No software to install
-   * Easy for new developers to contribute / fork
- * Use [TogetherJS](https://togetherjs.com/)
-   * Don't reinvent wheels
-   * Meets above goals
-   * Batteries included!
-     * real time content sync
-     * user focus
-     * user presence
-     * text chat
+   * Leverage other contributors' knowledge of the standards
+ * Not require special server-side software
+   * No software to install, no security concerns, no dependency hell.
+     A contributor should have to do nothing more than run a single command
+     then open up their web browser.
+   * Easy to fork.  If someone wants to add Togetherness Table as a widget
+     on a website they host, that should be possible.
 
 # Live Demo
 
@@ -60,12 +59,12 @@ I'm going to try to keep a demo up and running at
 # Quick Start
 
 ```bash
-cd /tmp
 git clone <this repo>
 cd togetherness/src
-python2 -m SimpleHTTPServer 8000
-# Or,if you prefer Python3 to Python2:
-# python3 -m http.server
+python3 -m http.server
+
+# Or,if you prefer,
+# python2 -m SimpleHTTPServer 8000
 # Or if you prefer Node.js to Python:
 # npm install npx -g; npx http-server -a localhost -p 8000
 ```
@@ -143,4 +142,10 @@ First, add a `+ My Thing` button to the `index.html` file.
 ```
 
 Then just add the file `svg/v1/my_thing.svg`.
+
+## History
+
+After joining The Gauntlet and playing around with the awesome
+[roller](https://github.com/shanel/roller),
+I got the itch to create my own "dice-rolling" application.
 
