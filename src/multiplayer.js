@@ -565,16 +565,3 @@ async function load_new_table(newTable) {
   })
 }
 
-async function load_all_necessary_scripts(newTable) {
-  let nodeList = newTable.querySelectorAll('[data-app-url]')
-  let urlLoop = async() => {
-    // Since some of these elements have associated behaviour (JavaScript),
-    // we need to load up all of those scripts
-    for (let index = 0; index < nodeList.length; index++) {
-      let node = nodeList.item(index)
-      // console.log('import_foreign_svg_for_element', node.id, node.dataset.appUrl)
-      await import_foreign_svg_for_element(node)
-    }
-  }
-  return urlLoop()
-}
