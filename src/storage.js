@@ -50,6 +50,7 @@ var storage = {
   },
 
   newTable: function(tableEl) {
+    console.log('newTabl', tableEl)
     tableEl.dataset['dbid'] = tableEl.id + ':' + base32.short_id()
     tableEl.dataset['db'] = this._db.name
     this._db.put({
@@ -168,8 +169,9 @@ var storage = {
     thumb.style.backgroundSize = 'cover'
     thumb.setAttribute(
       'viewBox',
-      `-100 -40 ${doc.width} ${doc.height}`,
+      `-100 -40 ${parseInt(doc.width) + 200} ${parseInt(doc.height) + 80}`,
     )
+    thumb.setAttribute('preserveAspectRatio', 'none')
     return thumb
   },
 

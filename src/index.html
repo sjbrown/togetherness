@@ -69,6 +69,7 @@ var uiButtonObserver
 
 
 async function initNewTable() {
+  let sid = base32.short_id()
   function createLayer(name) {
     layer = svg_table.group()
     layer.attr({
@@ -81,14 +82,16 @@ async function initNewTable() {
   let el = document.createElementNS(SVG.ns, 'svg')
   svg_table = SVG.adopt(el)
   svg_table.attr({
-    id: 'svg_table',
+    id: 'svg_table' + sid,
+    class: 'svg_table',
     width: origViewportSize[0],
     height: origViewportSize[1],
   })
 
   pattern = svg_table.defs().pattern()
   pattern.attr({
-    id: 'bg_pattern',
+    id: 'bg_pattern' + sid,
+    class: 'bg_pattern',
     width: 100,
     height: 100,
     x: 0,
@@ -96,7 +99,8 @@ async function initNewTable() {
   })
   pattern_img = pattern.image()
   pattern_img.attr({
-    id: 'bg_pattern_image',
+    id: 'bg_pattern_image' + sid,
+    class: 'bg_pattern_image',
     width: 100,
     height: 100,
     href: 'svg/bg_greentile.svg',
@@ -104,12 +108,13 @@ async function initNewTable() {
 
   bgrect = svg_table.rect()
   bgrect.attr({
-     id: 'table_bgrect',
+     id: 'table_bgrect' + sid,
+     class: 'table_bgrect',
      x: 0,
      y: 0,
      width: svg_table.width(),
      height: svg_table.height(),
-     fill: 'url(#bg_pattern)',
+     fill: `url(#${pattern.id()})`,
      stroke: 'none',
   })
   svg_table.add(bgrect)
@@ -132,13 +137,12 @@ async function initNewTable() {
   storage.newTable(svg_table.node)
 }
 
-async function initPreviousTable() {
-  let prevTable = storage.getPreference('last_table')
+async function initPreviousTable(prev_dbid) {
   let el;
   try {
-    el = await storage.loadTable(prevTable)
+    el = await storage.loadTable(prev_dbid)
   } catch (error) {
-    console.warn(`Previous table ${prevTable} not found`)
+    console.warn(`Previous table ${prev_dbid} not found`)
     return initNewTable()
   }
   svg_table = SVG.adopt(el)
@@ -147,13 +151,13 @@ async function initPreviousTable() {
   layer_mats = SVG.adopt(el.querySelector('#layer_mats'))
   layer_objects = SVG.adopt(el.querySelector('#layer_objects'))
   layer_ui = SVG.adopt(el.querySelector('#layer_ui'))
-  load_all_necessary_scripts(el)
-  hookupTable()
+  await load_all_necessary_scripts(el)
+  await hookupTable()
 }
 
 async function hookupTable() {
-  if (viewport.node.querySelector('#svg_table')) {
-    viewport.node.removeChild(viewport.node.querySelector('#svg_table'))
+  if (viewport.node.querySelector('.svg_table')) {
+    viewport.node.removeChild(viewport.node.querySelector('.svg_table'))
   }
   viewport.add(svg_table)
   makeDraggable(viewport)
@@ -227,7 +231,7 @@ SVG.on(document, 'DOMContentLoaded', async() => {
   })
 
   if (storage.getPreference('last_table')) {
-    await initPreviousTable()
+    await initPreviousTable(storage.getPreference('last_table'))
   } else {
     await initNewTable()
   }
@@ -1026,9 +1030,8 @@ async function show_load_options() {
     loadOptionLink.appendChild(thumb)
     loadOptionLink.addEventListener('click', async (evt) => {
       let tableId = evt.target.dataset['tableId']
-      let newTable = await storage.loadTable(tableId)
       try {
-        await load_new_table(newTable)
+        await initPreviousTable(tableId)
       } catch(error) {
         console.error(error)
         alert('Please report:'+ error)
@@ -1133,11 +1136,11 @@ function ui_change_background() {
   }
   let width = byId('background_width').value
   let height = byId('background_height').value
-  let image_el = byId('bg_pattern_image')
+  let image_el = qs('.bg_pattern_image')
   image_el.setAttribute('href', url_input.value);
   image_el.setAttribute('width', width);
   image_el.setAttribute('height', height);
-  let pattern_el = byId('bg_pattern')
+  let pattern_el = qs('.bg_pattern')
   pattern_el.setAttribute('width', width);
   pattern_el.setAttribute('height', height);
   ui.popdown_dialog('dialog_table')

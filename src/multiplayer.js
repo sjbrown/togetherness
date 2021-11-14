@@ -519,7 +519,7 @@ function on_sync(msg) {
 
   newEl = domJSON.toDOM(msg.data) // Modified to create SVG-namespace elements
   newViewport = newEl.querySelector('#svg_viewport')
-  newTable = newEl.querySelector('#svg_table')
+  newTable = newEl.querySelector('.svg_table')
 
   myViewport = document.querySelector('#svg_viewport')
   myViewport.style.backgroundImage = newViewport.style.backgroundImage
