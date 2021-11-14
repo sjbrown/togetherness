@@ -45,7 +45,7 @@ function normalizeBox(box) {
 }
 
 
-function makeDraggable(viewport, table) {
+function makeDraggable(viewport) {
   /*
     Peter's draggable library, with some modifications
   */
@@ -55,7 +55,6 @@ function makeDraggable(viewport, table) {
   // http://www.petercollingridge.co.uk/tutorials/svg/interactive/dragging/
   //
   // 'viewport' is SVG.adopt(document.getElementById('#svg_viewport'))
-  // 'table' is SVG.adopt(document.getElementById('#svg_table'))
   //
   var selectedEl, origMouse, origXY, isJustAClick;
   var currentDragovers = {};
@@ -113,7 +112,7 @@ function makeDraggable(viewport, table) {
     } else {
       evtPos = evt
     }
-    var CTM = table.node.getScreenCTM();
+    var CTM = svg_table.node.getScreenCTM();
     return {
       x: (evtPos.clientX - CTM.e) / CTM.a,
       y: (evtPos.clientY - CTM.f) / CTM.d
@@ -121,7 +120,7 @@ function makeDraggable(viewport, table) {
   }
 
   function fromClientToSVGCoords(x,y) {
-    var CTM = table.node.getScreenCTM();
+    var CTM = svg_table.node.getScreenCTM();
     return {
       x: (x) / CTM.a,
       y: (y) / CTM.d,
@@ -184,8 +183,8 @@ function makeDraggable(viewport, table) {
 
       // First, look for dragTargets as the direct children of
       // the svg_table's "layers"
-      let q = `#${table.node.id} > g > .draggable-group`
-      table.node.querySelectorAll(q).forEach(draggableGroup => {
+      let q = `#${svg_table.node.id} > g > .draggable-group`
+      svg_table.node.querySelectorAll(q).forEach(draggableGroup => {
         if (draggableGroup.contains(evt.target)) {
           dragTarget = draggableGroup
           // Make it the top-most element
@@ -195,8 +194,8 @@ function makeDraggable(viewport, table) {
       })
       // Otherwise, look for dragTargets as the direct children of .drag-opens
       if (!dragTarget) {
-        let q = `#${table.node.id} .drag-open > .draggable-group`
-        table.node.querySelectorAll(q).forEach(draggableGroup => {
+        let q = `#${svg_table.node.id} .drag-open > .draggable-group`
+        svg_table.node.querySelectorAll(q).forEach(draggableGroup => {
           if (draggableGroup.contains(evt.target)) {
             dragTarget = draggableGroup
             pop_from_parent(dragTarget)
@@ -252,10 +251,10 @@ function makeDraggable(viewport, table) {
     if (interactionMode === 'object') {
       if (selectedEl) {
         var tableBoundaries = {
-          minX: table.x(),
-          minY: table.y(),
-          maxX: table.width(),
-          maxY: table.height(),
+          minX: svg_table.x(),
+          minY: svg_table.y(),
+          maxX: svg_table.width(),
+          maxY: svg_table.height(),
         }
         let newX = clamp(
           origXY.x + (mouse.x - origMouse.x),
@@ -317,7 +316,7 @@ function makeDraggable(viewport, table) {
       (selBox.y + selBox.height/2)
     ]
     // console.log("projected cneter", center)
-    table.node.querySelectorAll('.snaptarget > rect').forEach((el) => {
+    svg_table.node.querySelectorAll('.snaptarget > rect').forEach((el) => {
       if ( selectedEl.node.id === el.id ) {
         return // don't tell things they're being snapped into themselves
       }
@@ -343,7 +342,7 @@ function makeDraggable(viewport, table) {
   }
 
   function notifyDropTargetsDrag(evt) {
-    table.node.querySelectorAll('.droptarget').forEach((el) => {
+    svg_table.node.querySelectorAll('.droptarget').forEach((el) => {
       if ( selectedEl.node.id === el.id ) {
         return // don't tell things they're being dropped into themselves
       }
@@ -384,7 +383,7 @@ function makeDraggable(viewport, table) {
     if (!selectedEl) {
       return
     }
-    table.node.querySelectorAll('.droptarget').forEach((el) => {
+    svg_table.node.querySelectorAll('.droptarget').forEach((el) => {
       // console.log('broadcasting', 'svg_drop', 'for', el.id, selectedEl.node.id)
       if ( selectedEl.node.id === el.id ) {
         return // don't tell things they're being dropped into themselves

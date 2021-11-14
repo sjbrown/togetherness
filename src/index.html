@@ -45,6 +45,10 @@
   font-family: SubotypeSteady;
   src: url("subotype_steady.otf") format("opentype");
 }
+@font-face {
+  font-family: UniversalisADFStd-Bold;
+  src: url("universalis_adf_std_bold.otf") format("opentype");
+}
 </style>
 
 
@@ -59,12 +63,12 @@ var layer_objects
 var layer_ui
 var viewport
 var origViewportSize
+var tableRunnerStretchSize
+var tableRunnerOffset
+var uiButtonObserver
 
 
 async function initNewTable() {
-  if (viewport.node.querySelector('#svg_table')) {
-    viewport.node.removeChild(viewport.node.querySelector('#svg_table'))
-  }
   function createLayer(name) {
     layer = svg_table.group()
     layer.attr({
@@ -112,10 +116,10 @@ async function initNewTable() {
 
   let table_runner = await import_foreign_svg('svg/table_runner.svg')
   table_runner.attr({
-    width: origViewportSize[0] + 300,
-    height: origViewportSize[1] + 210,
-    x: -150,
-    y: -105,
+    width: tableRunnerStretchSize[0],
+    height: tableRunnerStretchSize[1],
+    x: tableRunnerOffset[0],
+    y: tableRunnerOffset[1],
   })
   svg_table.add(table_runner)
 
@@ -124,17 +128,19 @@ async function initNewTable() {
   layer_mats = createLayer('layer_mats')
   layer_objects = createLayer('layer_objects')
   layer_ui = createLayer('layer_ui')
-  viewport.add(svg_table)
-  makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
-  multiplayer.initObserver('layer_mats', layer_mats.node)
-  multiplayer.initObserver('layer_objects', layer_objects.node)
-  multiplayer.initObserver('layer_ui', layer_ui.node)
-
+  hookupTable()
   storage.newTable(svg_table.node)
 }
 
 async function initPreviousTable() {
-  let el = await storage.loadTable(storage.getPreference('last_table'))
+  let prevTable = storage.getPreference('last_table')
+  let el;
+  try {
+    el = await storage.loadTable(prevTable)
+  } catch (error) {
+    console.warn(`Previous table ${prevTable} not found`)
+    return initNewTable()
+  }
   svg_table = SVG.adopt(el)
 
   layer_bg = SVG.adopt(el.querySelector('#layer_mats'))
@@ -142,12 +148,29 @@ async function initPreviousTable() {
   layer_objects = SVG.adopt(el.querySelector('#layer_objects'))
   layer_ui = SVG.adopt(el.querySelector('#layer_ui'))
   load_all_necessary_scripts(el)
+  hookupTable()
+}
+
+async function hookupTable() {
+  if (viewport.node.querySelector('#svg_table')) {
+    viewport.node.removeChild(viewport.node.querySelector('#svg_table'))
+  }
   viewport.add(svg_table)
-  makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
+  makeDraggable(viewport)
   multiplayer.initObserver('layer_mats', layer_mats.node)
   multiplayer.initObserver('layer_objects', layer_objects.node)
   multiplayer.initObserver('layer_ui', layer_ui.node)
+
+  uiButtonObserver = new MutationObserver((mutations) => {
+    ui.updateButtons()
+  })
+  uiButtonObserver.observe(layer_ui.node, {
+    attributes: true,
+    childList: true,
+    subtree: true,
+  })
 }
+
 
 function becomeTableHost() {
   storage.newTable(svg_table.node)
@@ -166,10 +189,14 @@ SVG.on(document, 'DOMContentLoaded', async() => {
     let bodyEl = qs('body')
     if (bodyEl.clientHeight > bodyEl.clientWidth) {
       // 'portrait'
-      origViewportSize = [800,1200]
+      origViewportSize = [800,1500]
+      tableRunnerStretchSize = [1000, 1850]
+      tableRunnerOffset= [-100, -180]
     } else {
       // 'landscape'
       origViewportSize = [1200,800]
+      tableRunnerStretchSize = [1500, 1100]
+      tableRunnerOffset= [-150, -105]
     }
   }
   landscapeOrPortrait()
@@ -216,16 +243,6 @@ SVG.on(document, 'DOMContentLoaded', async() => {
   ui.initializeDragSelectBox(viewport.node)
 
   storage.newViewport(viewport.node.outerHTML)
-
-  var uiButtonObserver = new MutationObserver((mutations) => {
-    // console.log('---------------mutation obs', mutations)
-    ui.updateButtons()
-  })
-  uiButtonObserver.observe(layer_ui.node, {
-    attributes: true,
-    childList: true,
-    subtree: true,
-  })
 
 })
 
@@ -307,13 +324,27 @@ window.addEventListener('load', () => {
   width: 100%;
   height: 36px;
   background-color: #000;
+  color: #fff;
   text-align: left;
+  display: flex;
+  flex-flow: row nowrap;
+  justify-content: space-between;
 }
 #topbar h1 {
+  font-family: UniversalisADFStd-Bold sans-serif;
   line-height: 36px;
   font-size: 22px;
-  color: #fff;
   margin: 0px 20px;
+}
+#topbar #header_text {
+  color: #ddd;
+  line-height: 36px;
+  font-size: 16px;
+  margin: 0px 20px;
+}
+#topbar_right {
+  margin: 0px 20px;
+  overflow: hidden;
 }
 #gamearea {
   max-width: 100%;
@@ -323,15 +354,31 @@ window.addEventListener('load', () => {
 }
 @media screen and (max-width: 900px) {
   #gamearea {
-    margin-top: 10px;
+    margin-top: 0px;
     max-width: 100vw;
     height: calc(100vh - 10px);
+  }
+  #topbar h1 {
+    font-size: 12px;
   }
 }
 </style>
 
 <div id="topbar">
-<h1>Togetherness Table</h1>
+  <h1>Togetherness Table</h1>
+  <h3 id="header_text">Add dice or cards to the table</h3>
+  <div id="topbar_right">
+  <a title="Profile" class="modal-trigger" style="cursor: pointer;"
+    data-target="dialog_profile"
+    data-dialog-id="dialog_profile">
+    <svg class="profile_usercolor" fill="#fff" height="36" viewBox="0 0 200 100" >
+      <rect x="30" y="5" width="140" height="90" />
+      <style>text { font: 26px sans-serif; }</style>
+      <text fill="#000a" x="38" y="56" textLength="120" class="profile_username">user</text>
+      <text fill="#fff" x="40" y="54" textLength="120" class="profile_username">user</text>
+    </svg>
+  </a>
+  </div>
 </div>
   <div id="gamearea"/>
   </div>
@@ -367,17 +414,6 @@ window.addEventListener('load', () => {
   justify-content: center;
 }
 
-#hud_overlay_top {
-  position: fixed;
-  top: 0;
-  right: 0;
-  left: 0;
-  height: auto;
-  display: flex;
-  flex-direction: row;
-  justify-content: center;
-}
-
 .hudmenu {
   pointer-events: auto;
   position: relative;
@@ -396,11 +432,6 @@ window.addEventListener('load', () => {
   display: flex;
   flex-direction: row-reverse;
 }
-.hudmenu-top {
-  border-bottom-left-radius: 10px;
-  border-bottom-right-radius: 10px;
-}
-
 .hudmenu-left .collapsible {
   max-width: 75px;
   display: flex;
@@ -446,7 +477,7 @@ window.addEventListener('load', () => {
 .hudmenu-right.collapsed > .collapsible {
   max-width: 0px;
 }
-.hudmenu-top.collapsed > .collapsible {
+.hudmenu-bottom.collapsed > .collapsible {
   max-height: 0px;
 }
 
@@ -512,7 +543,7 @@ window.addEventListener('load', () => {
     max-width: auto;
     max-height: 0px;
   }
-  .hudmenu-top.collapsed > .collapsible {
+  .hudmenu-bottom.collapsed > .collapsible {
     max-height: 0px;
   }
 
@@ -721,15 +752,6 @@ window.addEventListener('load', () => {
 <button class="collapsetoggle btn" name="playermenu"></button>
 <div class="collapsible">
 
-  <button id="profile_button" class="btn btn-small modal-trigger"
-    title="Profile"
-    data-target="dialog_profile"
-    data-dialog-id="dialog_profile">
-    <span class="colorsample" style="color: #ffffff00">■</span>
-    <span id="profile_button_span">Profile</span>
-    <span class="colorsample" style="color: #ffffff00">■</span>
-  </button>
-
   <button id="save_button" class="btn btn-small"
     onclick="ui_popup_dialog_save()"
     data-dialog-id="dialog_save">
@@ -775,13 +797,27 @@ window.addEventListener('load', () => {
 
 <!-- ==================================================================== -->
 
-<div class="hud_overlay" id="hud_overlay_top">
 <!-- =============OBJECT ACTIONS ==================== -->
 <style>
-.hudmenu-top .collapsetoggle {
+#hud_overlay_bottom {
+  position: fixed;
+  bottom: 0px;
+  right: 0;
+  height: auto;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+}
+
+.hudmenu-bottom {
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+}
+
+.hudmenu-bottom .collapsetoggle {
   width: 100%;
   border: none;
-  border-bottom: 1px solid rgb(200,200,200,0.5);
+  border-top: 1px solid rgb(200,200,200,0.5);
 }
 button.collapsetoggle {
   min-height: 10px;
@@ -791,34 +827,26 @@ button.collapsetoggle {
   opacity: 80%;
   color: #f0f0f0;
 }
-#object_actions_header {
+#header_text {
   font-size: larger;
   padding: 0px 10px;
 }
 @media only screen and (max-width: 900px) {
-  .hudmenu-top .collapsetoggle {
+  .hudmenu-bottom .collapsetoggle {
     width: 100vw;
-  }
-  #object_actions {
-    //max-width: 200px;
-  }
-  #object_actions_header {
-    font-size: normal;
-    margin: 4px 0px;
-    line-height: 100%;
   }
 }
 </style>
-<div id="object_actions" class="hudmenu hudmenu-top collapsegroup">
+<div class="hud_overlay" id="hud_overlay_bottom">
+<div id="object_actions" class="hudmenu hudmenu-bottom collapsegroup">
   <button class="collapsetoggle" name="toggle_object_actions"></button>
   <div class="collapsible">
-    <h3 id="object_actions_header">Add dice or cards to the table</h3>
     <template id="template_object_actions">
       <button class="btn btn-large">Button label</button>
     </template>
   </div>
 </div>
-</div> <!-- end hud_overlay_top -->
+</div> <!-- end hud_overlay_bottom -->
 
 
 <!-- PROFILE  =============================================== PROFILE -->
@@ -852,11 +880,15 @@ function load_profile_ui() {
   inputs.forEach(input => {
     input.value = color
   })
-  profile_bs = document.querySelector('#profile_button_span')
-  document.querySelectorAll('#profile_button > .colorsample').forEach((el) => {
-    el.style.color = color
+  document.querySelectorAll('.profile_username').forEach(el => {
+    el.textContent = name
   })
-  profile_bs.textContent = name
+  document.querySelectorAll('.profile_usercolor').forEach((el) => {
+    el.style.color = color
+    if (el.getAttribute('fill')) {
+      el.setAttribute('fill', color)
+    }
+  })
 }
   </script>
   <div class="modal" id="dialog_profile">
@@ -984,15 +1016,6 @@ async function show_load_options() {
     // Clear it out - prevent memory leaks
     optionList.firstElementChild.remove()
   }
-  /*
-  dbs = storage.getPreference('known_dbs')
-  Object.keys(dbs).reverse().forEach(key => {
-    let dbMeta = dbs[key]
-    let newLoadOption = temp.cloneNode(true)
-    newLoadOption.innerText = `${key} ${dbMeta.creator} ${dbMeta.modified} ${dbMeta.serverUrl}`
-    optionList.appendChild(newLoadOption)
-  })
-  */
   let tables = await storage.getAllTables()
   await tables.reverse().map(async(table) => {
     let newLoadOption = temp.cloneNode(true)
@@ -1004,7 +1027,12 @@ async function show_load_options() {
     loadOptionLink.addEventListener('click', async (evt) => {
       let tableId = evt.target.dataset['tableId']
       let newTable = await storage.loadTable(tableId)
-      await load_new_table(newTable)
+      try {
+        await load_new_table(newTable)
+      } catch(error) {
+        console.error(error)
+        alert('Please report:'+ error)
+      }
       return ui.popdown_dialog('dialog_load')
     })
     optionList.appendChild(newLoadOption)
@@ -3086,14 +3114,6 @@ function dismissHintControls() {
   </button>
 </div>
 <!-- /HINT CONTROLS ======================================== /HINT CONTROLS -->
-
-
-  <menu type="context" id="gamemenu">
-    <template id="template_menuitem">
-      <menuitem label="X"
-      ></menuitem>
-    </template>
-  </menu>
 
 
 <!-- =========================FOOTER==================== -->

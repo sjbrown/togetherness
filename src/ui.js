@@ -415,53 +415,6 @@ const ui = {
     return eventHandlers
   },
 
-  buildRightClickMenu: function (target) {
-    // Add clickable (right-click) options onto the menu
-    // Note: addEventListener must use this named, static, non-arrow function
-    //       to prevent memory-leak bug:
-    // https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener#Memory_issues
-    // console.log('ui.buildRightClickMenu', target)
-    if (target.classList.contains('select_box')) {
-      let focusedNodes = ui.getMySelectedElements()
-      if (focusedNodes.length !== 1) {
-        return
-      }
-      target = focusedNodes[0]
-    }
-
-    deleteList = document.querySelectorAll('.cloned-menuitem')
-    Array.prototype.forEach.call(deleteList, (el) => {
-      el.remove();
-    })
-
-    let actionMenu = ui.getFullMenuForElement(target)
-    let allHandlers = ui.augmented_handlers_for_element(target)
-    var menu = byId('gamemenu')
-    var template = byId('template_menuitem')
-    Object.keys(actionMenu).map((title) => {
-      if (!actionMenu[title].applicable(target)) {
-        return
-      }
-      var uiLabel = (
-        actionMenu[title].uiLabel
-        ?
-        actionMenu[title].uiLabel(target)
-        :
-        title
-      )
-      var clone = template.content.firstElementChild.cloneNode(true)
-      s(clone, 'id', 'menuitem-' + target.id)
-      s(clone, 'label', uiLabel)
-      clone.classList.add('cloned-menuitem')
-      clone.addEventListener('click', (evt) => {
-        let handler = allHandlers[actionMenu[title].eventName]
-        handler(evt)
-      })
-      menu.insertAdjacentElement('beforeend', clone)
-    })
-
-  },
-
   getFullMenuForElement: function(elem) {
     let actionMenu = {}
     getNamespacesForElement(elem).forEach((ns) => {
@@ -491,7 +444,7 @@ const ui = {
   },
 
   updateButtons: () => {
-    // console.log("ui.updateButtons")
+     console.log("ui.updateButtons")
     let focusedNodes = ui.getMySelectedElements()
     let numMarked = focusedNodes.length
     let buttons = {}
@@ -612,7 +565,7 @@ const ui = {
   },
 
   setHeaderText: function(msg) {
-    msgEl = document.querySelector('#object_actions_header')
+    msgEl = document.querySelector('#header_text')
     if (msgEl) {
       msgEl.textContent = msg
     }
