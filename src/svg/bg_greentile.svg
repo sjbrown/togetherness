@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+
+<svg
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   width="100"
+   height="100"
+   viewBox="0 0 26.458333 26.458334"
+   version="1.1"
+   >
+    <rect
+       y="0"
+       x="0"
+       height="26.458334"
+       width="26.458334"
+       id="rect2692"
+       style="display:inline;opacity:1;fill:#6fe582;fill-opacity:1;stroke:none;stroke-width:0.31375721;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1" />
+    <path
+       d="M 13.229176,0 V 26.458323"
+       style="display:inline;fill:none;stroke:#ffffff;stroke-width:0.26px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:0.23529412" />
+    <path
+       style="display:inline;fill:none;stroke:#ffffff;stroke-width:0.26px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:0.23529412"
+       d="M 0,13.229143 26.458352,13.229163"
+       />
+    <path
+       style="display:inline;fill:none;stroke:#39bc3d;stroke-width:0.26px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:0.23529412"
+       d="M 13.096885,0 V 26.458323"
+       />
+    <path
+       d="M 0,13.361423 26.458352,13.361443"
+       style="display:inline;fill:none;stroke:#44c449;stroke-width:0.26px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:0.23529412" />
+</svg>

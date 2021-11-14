@@ -53,6 +53,7 @@
 <script>
 var table_border_rect
 var svg_table
+var layer_bg
 var layer_mats
 var layer_objects
 var layer_ui
@@ -60,7 +61,7 @@ var viewport
 var origViewportSize
 
 
-function initNewTable() {
+async function initNewTable() {
   if (viewport.node.querySelector('#svg_table')) {
     viewport.node.removeChild(viewport.node.querySelector('#svg_table'))
   }
@@ -81,6 +82,45 @@ function initNewTable() {
     height: origViewportSize[1],
   })
 
+  pattern = svg_table.defs().pattern()
+  pattern.attr({
+    id: 'bg_pattern',
+    width: 100,
+    height: 100,
+    x: 0,
+    y: 0,
+  })
+  pattern_img = pattern.image()
+  pattern_img.attr({
+    id: 'bg_pattern_image',
+    width: 100,
+    height: 100,
+    href: 'svg/bg_greentile.svg',
+  })
+
+  bgrect = svg_table.rect()
+  bgrect.attr({
+     id: 'table_bgrect',
+     x: 0,
+     y: 0,
+     width: svg_table.width(),
+     height: svg_table.height(),
+     fill: 'url(#bg_pattern)',
+     stroke: 'none',
+  })
+  svg_table.add(bgrect)
+
+  let table_runner = await import_foreign_svg('svg/table_runner.svg')
+  table_runner.attr({
+    width: origViewportSize[0] + 300,
+    height: origViewportSize[1] + 210,
+    x: -150,
+    y: -105,
+  })
+  svg_table.add(table_runner)
+
+
+  layer_bg = createLayer('layer_bg')
   layer_mats = createLayer('layer_mats')
   layer_objects = createLayer('layer_objects')
   layer_ui = createLayer('layer_ui')
@@ -97,6 +137,7 @@ async function initPreviousTable() {
   let el = await storage.loadTable(storage.getPreference('last_table'))
   svg_table = SVG.adopt(el)
 
+  layer_bg = SVG.adopt(el.querySelector('#layer_mats'))
   layer_mats = SVG.adopt(el.querySelector('#layer_mats'))
   layer_objects = SVG.adopt(el.querySelector('#layer_objects'))
   layer_ui = SVG.adopt(el.querySelector('#layer_ui'))
@@ -141,7 +182,8 @@ SVG.on(document, 'DOMContentLoaded', async() => {
     viewBox: `0 0 ${origViewportSize[0]} ${origViewportSize[1]}`,
   })
   viewport.style('overflow', 'scroll')
-  viewport.style('background-image', 'url(svg/bg_wiggle.svg)')
+  viewport.style('background-image', 'url(svg/viewport.svg)')
+  viewport.style('background-size', 'cover')
 
   table_border_rect = viewport.rect()
   table_border_rect.attr({
@@ -160,7 +202,7 @@ SVG.on(document, 'DOMContentLoaded', async() => {
   if (storage.getPreference('last_table')) {
     await initPreviousTable()
   } else {
-    initNewTable()
+    await initNewTable()
   }
 
   window.addEventListener("resize", viewportToGameArea)
@@ -258,8 +300,21 @@ window.addEventListener('load', () => {
 
 <body>
 
+<!-- ============================================================GAMEAREA -->
 <!-- ==================================================================== -->
 <style>
+#topbar {
+  width: 100%;
+  height: 36px;
+  background-color: #000;
+  text-align: left;
+}
+#topbar h1 {
+  line-height: 36px;
+  font-size: 22px;
+  color: #fff;
+  margin: 0px 20px;
+}
 #gamearea {
   max-width: 100%;
   min-width: 80%;
@@ -275,23 +330,15 @@ window.addEventListener('load', () => {
 }
 </style>
 
-  <div id="gamearea" contextmenu="gamemenu">
-  <!--
-  <svg width="0" height="0">
-  <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
-    <feColorMatrix id="recolorize-filter-matrix" type="matrix"
-       values="0.9 0.0 0.0 0.0  0.0
-               0.9 0.0 0.0 0.0  0.0
-               0.9 0.0 0.0 0.0  0.0
-               0.0 0.0 0.0 1.0  0.0" />
-  </filter>
-  </svg>
-  -->
+<div id="topbar">
+<h1>Togetherness Table</h1>
+</div>
+  <div id="gamearea"/>
   </div>
 <!-- ==================================================================== -->
-<!-- ==================================================================== -->
+<!-- ===========================================================/GAMEAREA -->
 
-<!-- ==================================================================== -->
+<!-- =================================================================HUD -->
 <div class="hud_overlay" id="hud_overlay_left">
 <style>
 .hud_overlay {
@@ -1052,12 +1099,19 @@ function ui_popup_dialog_table() {
 }
 
 function ui_change_background() {
-  input = byId('background_url')
-  if (!input.value) {
+  url_input = byId('background_url')
+  if (!url_input.value) {
     return;
   }
-  var value = "url('" + input.value + "')";
-  viewport.style('background-image', value)
+  let width = byId('background_width').value
+  let height = byId('background_height').value
+  let image_el = byId('bg_pattern_image')
+  image_el.setAttribute('href', url_input.value);
+  image_el.setAttribute('width', width);
+  image_el.setAttribute('height', height);
+  let pattern_el = byId('bg_pattern')
+  pattern_el.setAttribute('width', width);
+  pattern_el.setAttribute('height', height);
   ui.popdown_dialog('dialog_table')
   multiplayer.push_sync()
 }
@@ -1078,6 +1132,11 @@ function ui_change_table_size() {
   ui.popdown_dialog('dialog_table')
   multiplayer.push_sync()
 }
+function set_bg(url, w, h) {
+  byId('background_url').value = url
+  byId('background_width').value = w
+  byId('background_height').value = h
+}
   </script>
   <div class="modal" id="dialog_table">
     <button class="dialog_cancel btn modal-close"
@@ -1088,25 +1147,37 @@ function ui_change_table_size() {
   <div class="modal-content">
     <section>
     <h1>Background</h1>
-    Use a URL as a background.  Examples:
-    <ul>
-      <li>http://www.1kfa.com/table/svg/bg_topography.svg
-        <img height="32" src="svg/bg_topography.svg" />
-      <li>http://www.1kfa.com/table/svg/bg_hexagons.svg
-        <img height="32" src="svg/bg_hexagons.svg" />
-      <li>http://www.1kfa.com/table/svg/bg_clouds.svg
-        <img height="32" src="svg/bg_clouds.svg" />
-      <li>http://www.1kfa.com/table/svg/bg_graphpaper.svg
-        <img height="32" src="svg/bg_graphpaper.svg" />
-      <li>http://www.1kfa.com/table/svg/bg_winter_sun.svg
-        <img height="32" src="svg/bg_winter_sun.svg" />
-      <li>http://www.1kfa.com/table/svg/bg_wiggle.svg
-        <img height="32" src="svg/bg_wiggle.svg" />
+    Use a URL as a background.  Examples (click to use):
+    <ul style="display: flex; flex-flow: row wrap; justify-content: space-evenly;">
+      <li><a
+        onclick="set_bg('http://www.1kfa.com/table/svg/bg_topography.svg', 600, 600)"
+        ><img height="32" src="svg/bg_topography.svg" />
+      <li><a
+        onclick="set_bg('http://www.1kfa.com/table/svg/bg_hexagons.svg', 28, 49)"
+        ><img height="32" src="svg/bg_hexagons.svg" />
+      <li><a
+        onclick="set_bg('http://www.1kfa.com/table/svg/bg_clouds.svg', 56, 28)"
+        ><img height="32" src="svg/bg_clouds.svg" /></a>
+      <li><a
+        onclick="set_bg('http://www.1kfa.com/table/svg/bg_graphpaper.svg', 100, 100)"
+        ><img height="32" src="svg/bg_graphpaper.svg" />
+      <li><a
+        onclick="set_bg('http://www.1kfa.com/table/svg/bg_winter_sun.svg', 800, 800)"
+        ><img height="32" src="svg/bg_winter_sun.svg" />
+      <li><a
+        onclick="set_bg('http://www.1kfa.com/table/svg/bg_wiggle.svg', 52, 26)"
+        ><img height="32" src="svg/bg_wiggle.svg" />
     </ul>
+    <fieldset id="table_bg_input_fields">
     <label for="background_url">Enter a URL</label>
     <input id="background_url" type="url"
       value="http://www.1kfa.com/table/svg/bg_topography.svg"
     />
+    <label for="background_width">Width</label>
+    <input id="background_width" type="number" min="1" value="100" />
+    <label for="background_width">Height</label>
+    <input id="background_height" type="number" min="1" value="100" />
+    </fieldset>
     <button class="btn" id="dialog_bg_submit"
       onclick="ui_change_background()">
       Change Background URL
