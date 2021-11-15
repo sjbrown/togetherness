@@ -364,7 +364,7 @@ function getNamespacesForElement(elem) {
 function fireHandlerForEvent(elem, handlerName, evt) {
   getNamespacesForElement(elem).forEach(ns => {
     if (ns.hasOwnProperty(handlerName)) {
-      console.log("firing", handlerName)
+      // console.log("firing", handlerName)
       return ns[handlerName](elem, evt)
     }
   })
@@ -483,7 +483,7 @@ function add_n_objects_from_prototype(n, prototype, center) {
 }
 
 function add_to_layer_mats(nest) {
-  console.log('add_to_layer_mats')
+  // console.log('add_to_layer_mats')
   let center = ui.player_marker_position()
   nest.x(center[0])
   nest.y(center[1])
@@ -492,7 +492,7 @@ function add_to_layer_mats(nest) {
 }
 
 function add_to_layer_objects(nest, attrs) {
-  console.log('add_to_layer_objects', attrs)
+  // console.log('add_to_layer_objects', attrs)
   setColor(nest.node, (attrs && attrs.color) || storage.getPreference('user_color'))
   let center = ui.player_marker_position()
   if (attrs && attrs.offset !== undefined) {
@@ -601,7 +601,7 @@ function delete_element(el) {
 }
 
 function evt_fire(eventName, triggerNode, origEvent, other) {
-  console.log("evt_fire", eventName, 'to', triggerNode.id, 'other', other)
+  // console.log("evt_fire", eventName, 'to', triggerNode.id, 'other', other)
   triggerNode.dispatchEvent(new CustomEvent(eventName, {
     bubbles: true,
     detail: Object.assign(

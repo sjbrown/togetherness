@@ -46,8 +46,8 @@
   src: url("subotype_steady.otf") format("opentype");
 }
 @font-face {
-  font-family: UniversalisADFStd-Bold;
-  src: url("universalis_adf_std_bold.otf") format("opentype");
+  font-family: "UniversalisADFStd-Bold";
+  src: url("UniversalisADFStd-Bold.otf") format("opentype");
 }
 </style>
 
@@ -335,7 +335,7 @@ window.addEventListener('load', () => {
   justify-content: space-between;
 }
 #topbar h1 {
-  font-family: UniversalisADFStd-Bold sans-serif;
+  font-family: "UniversalisADFStd-Bold";
   line-height: 36px;
   font-size: 22px;
   margin: 0px 20px;
@@ -788,7 +788,14 @@ window.addEventListener('load', () => {
     Help / About
   </button>
 
-  <button class="btn btn-small" onclick="TogetherJS(this); return false;"
+  <script>
+function start_multiplayer(el) {
+  console.log('el', el)
+  TogetherJS(el)
+  storage.initMultiplayerAsHost()
+}
+  </script>
+  <button class="btn btn-small" onclick="start_multiplayer(this);"
     title="Invite / Join Friends"
     id="start-togetherjs"
   ><b style="display: inline-block; line-height: 1.0">Multiplayer

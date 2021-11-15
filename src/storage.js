@@ -1,13 +1,40 @@
 var storage = {
   _db: null,
+  _doc_store: null,
+  _multiplayer_db: null,
   _versions: ['0.1'],
   _version: ['0.1'],
+  _replication: null,
 
   init: function() {
     let username = storage.getPreference('username')
     let dbName = 'user:' + username + '-dbVersion:' + this._version
     this._db = new PouchDB(dbName)
+    this._doc_store = new PouchDB('doc_store001')
     storage.updateDbRegistration(this._db)
+  },
+
+  initMultiplayerAsHost: function() {
+    this._replication = PouchDB.sync(
+      this._doc_store,
+      'https://7abde76a-0ed1-4f34-a5d8-a7c0184fddad-bluemix.cloudantnosqldb.appdomain.cloud/doc_store001',
+      {
+        live: true,
+        retry: true,
+      }
+    ).on('change', function (info) {
+      console.log('handle change', info)
+    }).on('paused', function (err) {
+      console.log('replication paused (e.g. replication up to date, user went offline)', err)
+    }).on('active', function () {
+      console.log('replicate resumed (e.g. new changes replicating, user went back online)')
+    }).on('denied', function (err) {
+      console.log('a document failed to replicate (e.g. due to permissions)', err)
+    }).on('complete', function (info) {
+      console.log('handle complete', info)
+    }).on('error', function (err) {
+      console.log('handle error', err)
+    });
   },
 
   getPreference: function(key) {
@@ -51,6 +78,7 @@ var storage = {
 
   newTable: function(tableEl) {
     console.log('newTabl', tableEl)
+    this._replication && this._replication.cancel()
     tableEl.dataset['dbid'] = tableEl.id + ':' + base32.short_id()
     tableEl.dataset['db'] = this._db.name
     this._db.put({
@@ -100,6 +128,12 @@ var storage = {
 
   currentDB: function() {
     return this._db
+  },
+
+  refreshFromRemote: async function(doc_id) {
+    let doc = await this._doc_store.get(doc_id)
+    let el = byId(doc_id)
+    el.dataset['pouch_rev'] = doc._rev
   },
 
   iAmTheHost: function() {

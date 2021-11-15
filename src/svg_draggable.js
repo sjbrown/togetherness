@@ -436,17 +436,17 @@ function makeDraggable(viewport) {
           }
           if (dragSelectBox) {
             // TODO
-            console.log("just a click, do something with dragSelectBox")
+            // console.log("just a click, do something with dragSelectBox")
           }
         }
         now = new Date()
         debug('isJustAClick' + (selectedEl && selectedEl.node.id))
-        console.time('broadcast(svg_dragsafe_click) - outer')
+        // console.time('broadcast(svg_dragsafe_click) - outer')
         broadcast('svg_dragsafe_click', {
           elemId: elemId,
           origEvent: isJustAClick,
         })
-        console.timeEnd('broadcast(svg_dragsafe_click) - outer')
+        // console.timeEnd('broadcast(svg_dragsafe_click) - outer')
         if ((now - lastClickTime) < 350) {
           broadcast('svg_dragsafe_dblclick', {
             elemId: elemId,

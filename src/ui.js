@@ -444,7 +444,7 @@ const ui = {
   },
 
   updateButtons: () => {
-     console.log("ui.updateButtons")
+    // console.log("ui.updateButtons")
     let focusedNodes = ui.getMySelectedElements()
     let numMarked = focusedNodes.length
     let buttons = {}

@@ -272,7 +272,7 @@ function LayerObserver(layerEl) {
     Object.keys(this._dirty.changed).forEach(elId => {
       this._dirty.changed[elId] = multiplayer.serialized(this._dirty.changed[elId])
     })
-    console.log("dirty?", this._dirty)
+    console.log("dirty?", this._layerEl.id, this._dirty)
     window.requestAnimationFrame(this.run.bind(this))
   }
 
@@ -296,16 +296,13 @@ function LayerObserver(layerEl) {
   }
 
   this.updateDB = async function() {
-    if (!storage.iAmTheHost()) {
-      return
-    }
-    let svgmap = await storage.getTableLayerMap(this._layerEl.id)
-    console.log("layer map", svgmap)
+    await storage.initMultiplayerAsHost()
     let bulk = []
     Object.keys(this._dirty.added).forEach(id => {
       bulk.push({
         _id: id,
-        _rev: svgmap.map[id], // likely 'undefined', but here just in case
+        _rev: byId(id).dataset['pouch_rev'] || null,
+        // _rev: svgmap.map[id], // likely 'undefined', but here just in case
         serialized: this._dirty.added[id],
       })
     })
@@ -313,31 +310,32 @@ function LayerObserver(layerEl) {
     Object.keys(this._dirty.changed).forEach(id => {
       bulk.push({
         _id: id,
-        _rev: svgmap.map[id],
+        _rev: byId(id).dataset['pouch_rev'] || null,
         serialized: this._dirty.changed[id],
       })
     })
     Object.keys(this._dirty.removed).forEach(id => {
       bulk.push({
         _id: id,
-        _rev: svgmap.map[id],
+        _rev: byId(id).dataset['pouch_rev'] || null,
         _deleted: true,
       })
     })
     console.log("bulk", bulk)
     try {
-      let response = await storage.currentDB().bulkDocs(bulk)
+      let response = await storage._doc_store.bulkDocs(bulk)
       response.forEach(stub => {
         // console.log('stub', stub)
         if (stub.ok) {
           console.log('ok', stub)
-          svgmap.map[stub.id] = stub.rev
+          let el = byId(stub.id)
+          el.dataset['pouch_rev'] = stub.rev
         } else {
-          console.error('pouchdb failure', stub.id, svgmap.map[stub.id])
+          console.error('pouchdb failure', stub.id)
           console.error(stub)
+          await storage.refreshFromRemote(stub.id)
         }
       })
-      await storage.currentDB().put(svgmap)
     } catch (err) {
       console.error('failed to pouchdb.bulkDocs')
       console.error(err)
