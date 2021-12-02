@@ -14,6 +14,12 @@ var storage = {
     storage.updateDbRegistration(this._db)
   },
 
+  quitMultiplayerAsHost: function() {
+    if (this._replication) {
+      this._replication.cancel()
+    }
+  },
+
   initMultiplayerAsHost: function() {
     this._replication = PouchDB.sync(
       this._doc_store,
@@ -139,7 +145,7 @@ var storage = {
   iAmTheHost: function() {
     //TODO: make unhackable
     let username = storage.getPreference('username')
-    return this._db.name.indexOf(username + '-') === 0
+    return this._db.name.indexOf(username + '-') === 5
   },
 
   bubbleSVGs: function(el) {

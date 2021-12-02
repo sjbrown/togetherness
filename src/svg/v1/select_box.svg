@@ -3,9 +3,7 @@
    xmlns:svg="http://www.w3.org/2000/svg"
    xmlns="http://www.w3.org/2000/svg"
    x="0" y="0" width="100" height="100"
-   version="1.1"
-   id="select_box"
-   class="select_box"
+   id="select_box" class="select_box"
    data-for=""
    data-offsets=""
    >
@@ -14,19 +12,9 @@
      src="js/select_box.js"
      id="script_select_box" />
   <rect
-     fill="#0000ff"
-     stroke="#000080"
-     style="opacity:1;
-       fill-opacity:0.3;
-       stroke-width:1;
-       stroke-linejoin:miter;
-       stroke-miterlimit:4;
-       stroke-dasharray:1,1;
-       stroke-dashoffset:0;
-       stroke-opacity:1"
      id="select_rect"
-     width="99.5"
-     height="99.5"
-     x="0.5"
-     y="0.5" />
+     fill="#0000ff" stroke="#000080"
+     style="opacity:1; fill-opacity:0.3; stroke-width:1; stroke-linejoin:miter; stroke-miterlimit:4; stroke-dasharray:1,1; stroke-dashoffset:0; stroke-opacity:1"
+     width="99.5" height="99.5"
+     x="0.5" y="0.5" />
 </svg>

@@ -16,6 +16,7 @@ var multiplayer = {
   },
 
   stopObservers: function() {
+    console.log("stopObservers")
     for (key in this._observers) {
       this._observers[key].local_mutations_stop()
     }
@@ -88,11 +89,10 @@ localStorage.setItem('togetherjs.settings.seenIntroDialog', true)
 TogetherJSConfig_on_ready = () => {
   el = document.getElementById('share_url')
   el.value = TogetherJS.shareUrl()
-  el = document.getElementById('share_url_bar')
-  el.classList.remove('inactive')
-  el.classList.add('active')
-  el.classList.remove('whitebg')
-  el.classList.add('bluebg')
+  document.querySelectorAll('.multiplayer_on').forEach(mo_el => {
+    mo_el.classList.remove('inactive')
+    mo_el.classList.add('active')
+  })
   // console.log('NET received ready msg')
   session = TogetherJS.require('session')
   multiplayer._clientId = session.clientId;
@@ -109,6 +109,9 @@ TogetherJSConfig_on_ready = () => {
 
   TogetherJS.hub.on('dirtylayer', async(msg) => {
      console.log('NET received dirtylayer msg', msg)
+    console.log("SKIPPING")
+    return
+    /*
     if (multiplayer._syncNeeded) {
       return // just wait for the sync
     }
@@ -133,6 +136,7 @@ TogetherJSConfig_on_ready = () => {
         ui.setHeaderText('SYNCING...')
       }
     }
+    */
   });
 
   TogetherJS.hub.on("togetherjs.hello", (msg) => {
@@ -161,16 +165,16 @@ TogetherJSConfig_on_close = () => {
   }
   el = document.getElementById('share_url')
   el.value = ''
-  el = document.getElementById('share_url_bar')
-  el.classList.remove('active')
-  el.classList.add('inactive')
-  el.classList.remove('bluebg')
-  el.classList.add('whitebg')
+  document.querySelectorAll('.multiplayer_on').forEach(mo_el => {
+    mo_el.classList.remove('active')
+    mo_el.classList.add('inactive')
+  })
 }
 
 function LayerObserver(layerEl) {
   this._observer = null
   this._layerEl = layerEl
+  this._interruptedRecords = []
 
   this.local_mutations_start = function() {
     //console.log("mutations_start", this._layerEl.id, "local_mutations_start")
@@ -184,10 +188,12 @@ function LayerObserver(layerEl) {
       childList: true,
       subtree: true,
     })
+
     // Cancel animations after 1 second
     let currentlyAnimating = this._layerEl.querySelectorAll('.animated')
     if (currentlyAnimating.length > 0) {
       let endAnimationFn = function() {
+        console.log("endAnimationFn")
         this.local_mutations_stop()
         currentlyAnimating.forEach(el => {
           if (el.classList.contains('animated')) {
@@ -202,15 +208,20 @@ function LayerObserver(layerEl) {
 
   this.local_mutations_stop = function() {
     console.log(this._layerEl.id, "local_mutations_stop pre-stop process")
-    this.local_mutations_process(this._observer.takeRecords())
+    this._interruptedRecords = this._observer.takeRecords()
     console.log(this._layerEl.id, "local_mutations_stop stopping")
     this._observer.disconnect()
   }
 
   this.local_mutations_process = function(mutationsList) {
     let layerId = this._layerEl.id
-    mutationsList.forEach(mut => {
-       console.log('NET mut', mut, layerId)
+
+    // When resuming from a stopped state, process the interrupted mutations
+    let allRecords = [...this._interruptedRecords, ...mutationsList]
+    this._interruptedRecords = []
+
+    allRecords.forEach(mut => {
+      console.log('NET mut', mut, layerId)
       if (mut.target.id === layerId) {
         // ===============================ADDED
         if (mut.addedNodes.length) {
@@ -237,9 +248,9 @@ function LayerObserver(layerEl) {
               delete this._dirty.added[el.id]
             } else if(this._dirty.changed[el.id]) {
               delete this._dirty.changed[el.id]
-              this._dirty.removed[el.id] = true
+              this._dirty.removed[el.id] = el.dataset['pouch_rev'] || true
             } else {
-              this._dirty.removed[el.id] = true
+              this._dirty.removed[el.id] = el.dataset['pouch_rev'] || true
             }
           })
         }
@@ -286,17 +297,18 @@ function LayerObserver(layerEl) {
       Object.keys(this._dirty.changed).length > 0
     ) {
       await this.updateDB()
+      /*
       multiplayer.net_fire({
         type: "dirtylayer",
         layerId: this._layerEl.id,
         data: this._dirty,
       })
+      */
     }
     this.init()
   }
 
   this.updateDB = async function() {
-    await storage.initMultiplayerAsHost()
     let bulk = []
     Object.keys(this._dirty.added).forEach(id => {
       bulk.push({
@@ -306,7 +318,7 @@ function LayerObserver(layerEl) {
         serialized: this._dirty.added[id],
       })
     })
-    console.log("CHANGED", Object.keys(this._dirty.changed))
+    //console.log("CHANGED", Object.keys(this._dirty.changed))
     Object.keys(this._dirty.changed).forEach(id => {
       bulk.push({
         _id: id,
@@ -317,25 +329,31 @@ function LayerObserver(layerEl) {
     Object.keys(this._dirty.removed).forEach(id => {
       bulk.push({
         _id: id,
-        _rev: byId(id).dataset['pouch_rev'] || null,
+        _rev: this._dirty.removed[id] || null,
         _deleted: true,
       })
     })
     console.log("bulk", bulk)
     try {
+      this.local_mutations_stop() // ----------------------------- -------
       let response = await storage._doc_store.bulkDocs(bulk)
-      response.forEach(stub => {
+      console.log('response', response)
+      await Promise.all(response.map(async(stub) => {
         // console.log('stub', stub)
         if (stub.ok) {
           console.log('ok', stub)
-          let el = byId(stub.id)
-          el.dataset['pouch_rev'] = stub.rev
+          let el = document.getElementById(stub.id)
+          if (el) {
+            console.log(`setting pouch_rev on ${el.id}`)
+            el.dataset['pouch_rev'] = stub.rev
+          }
         } else {
           console.error('pouchdb failure', stub.id)
           console.error(stub)
           await storage.refreshFromRemote(stub.id)
         }
-      })
+      }))
+      this.local_mutations_start() // ----------------------------- -------
     } catch (err) {
       console.error('failed to pouchdb.bulkDocs')
       console.error(err)
@@ -358,7 +376,7 @@ const receive_ui = function(msg, layerObs) {
   let retval = {
     syncNeeded: false,
   }
-  // console.log("NET receive_ui", msg)
+   console.log("NET receive_ui", msg)
 
   layerObs.local_mutations_stop() // pause, otherwise infinite loop begins
 
@@ -404,7 +422,7 @@ const receive = function(msg, layerObs) {
   let retval = {
     syncNeeded: false,
   }
-  //console.log("NET received", msg)
+   console.log("NET received", msg)
 
   layerObs.local_mutations_stop() // pause, otherwise infinite loop begins
 

@@ -333,6 +333,7 @@ window.addEventListener('load', () => {
   display: flex;
   flex-flow: row nowrap;
   justify-content: space-between;
+  align-items: center;
 }
 #topbar h1 {
   font-family: "UniversalisADFStd-Bold";
@@ -349,12 +350,39 @@ window.addEventListener('load', () => {
 #topbar_right {
   margin: 0px 20px;
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
 }
 #gamearea {
   max-width: 100%;
   min-width: 80%;
   min-height: 60%;
   background-color: #efe;
+}
+#share_url_bar {
+  display: flex;
+  flex-flow: row nowrap;
+  justify-content: space-between;
+  align-items: center;
+  max-height: 32px;
+}
+.multiplayer_on.inactive {
+  animation: slide-out 0.5s forwards;
+  visibility: collapse;
+  padding: 0px 0px;
+}
+#share_url {
+  font-family: monospace;
+  display: inline-block;
+  background-color: transparent;
+  border: none;
+  font-size: smaller;
+  height: inherit;
+  margin: 0px 4px;
+}
+#topbar_right .icon {
+  margin: 0px 10px;
 }
 @media screen and (max-width: 900px) {
   #gamearea {
@@ -372,16 +400,43 @@ window.addEventListener('load', () => {
   <h1>Togetherness Table</h1>
   <h3 id="header_text">Add dice or cards to the table</h3>
   <div id="topbar_right">
-  <a title="Profile" class="modal-trigger" style="cursor: pointer;"
-    data-target="dialog_profile"
-    data-dialog-id="dialog_profile">
-    <svg class="profile_usercolor" fill="#fff" height="36" viewBox="0 0 200 100" >
-      <rect x="30" y="5" width="140" height="90" />
-      <style>text { font: 26px sans-serif; }</style>
-      <text fill="#000a" x="38" y="56" textLength="120" class="profile_username">user</text>
-      <text fill="#fff" x="40" y="54" textLength="120" class="profile_username">user</text>
-    </svg>
-  </a>
+    <!-- ============= SHARE URL BAR ==================== -->
+    <img class="icon multiplayer_on inactive" src="img/host.svg" height="20" />
+    <div id="share_url_bar" class="multiplayer_on inactive bluebg">
+      <input id="share_url"
+        title="Share this URL with friends so they can join your table"
+        value="" />
+      <script>
+      function copyURLToClipboard() {
+        copyText = document.getElementById('share_url')
+        /* Select the text field */
+        copyText.select()
+        copyText.setSelectionRange(0, 99999) /*For mobile devices*/
+        document.execCommand("copy")
+      }
+      </script>
+      <button id="share_url_copy_button" class="btn btn-small"
+        style="padding: 0px 6px;"
+        title="Copy URL to clipboard"
+        onClick="copyURLToClipboard()"
+      >&#128203;</button>
+    </div>
+    <!-- ============= PROFILE BAR ==================== -->
+    <a title="User Profile" class="modal-trigger"
+      style="cursor: pointer"
+      data-target="dialog_profile" data-dialog-id="dialog_profile">
+      <img class="icon profile_usercolor" src="img/profile.svg" height="20" />
+    </a>
+    <a title="User Profile" class="modal-trigger"
+      style="cursor: pointer; min-width:140px"
+      data-target="dialog_profile" data-dialog-id="dialog_profile">
+      <svg class="profile_usercolor" fill="#fff" height="36" viewBox="0 0 200 100" >
+        <rect x="30" y="5" width="140" height="90" />
+        <style>text { font: 26px sans-serif; }</style>
+        <text fill="#000a" x="38" y="56" textLength="120" class="profile_username">user</text>
+        <text fill="#fff" x="40" y="54" textLength="120" class="profile_username">user</text>
+      </svg>
+    </a>
   </div>
 </div>
   <div id="gamearea"/>
@@ -730,12 +785,11 @@ window.addEventListener('load', () => {
       data-dialog-id="dialog_clocks">
       <img src="img/clockwork.svg" height="26" />Clocks
     </button>
-    <button id="other_button" class="btn btn-small modal-trigger"
+    <button id="toys_button" class="btn btn-small modal-trigger"
       accesskey="o"
-      data-target="dialog_other"
-      data-dialog-id="dialog_other">
-      <img src="img/jigsaw-box.svg" height="32" />
-      <u>O</u>ther
+      data-target="dialog_toys"
+      data-dialog-id="dialog_toys">
+      <img src="img/jigsaw-box.svg" height="32" />T<u>o</u>ys
     </button>
     <button id="table_button" class="btn btn-small"
       onclick="ui_popup_dialog_table()"
@@ -743,6 +797,18 @@ window.addEventListener('load', () => {
       >
       <img src="img/table.svg" height="32" />
       <u>T</u>able
+    </button>
+    <button id="host_button" class="btn btn-small modal-trigger"
+      onclick="ui_popup_dialog_host()"
+      title="Host this table and invite friends"
+      >
+      <img src="img/host.svg" height="32" />Host
+    </button>
+    <button id="join_button" class="btn btn-small modal-trigger"
+      data-target="dialog_join"
+      data-dialog-id="dialog_join"
+      title="Join a table hosted by a friend">
+      <img src="img/join.svg" height="32" />Join
     </button>
   </div>
 
@@ -788,18 +854,7 @@ window.addEventListener('load', () => {
     Help / About
   </button>
 
-  <script>
-function start_multiplayer(el) {
-  console.log('el', el)
-  TogetherJS(el)
-  storage.initMultiplayerAsHost()
-}
-  </script>
-  <button class="btn btn-small" onclick="start_multiplayer(this);"
-    title="Invite / Join Friends"
-    id="start-togetherjs"
-  ><b style="display: inline-block; line-height: 1.0">Multiplayer
-  (Experimental)</b></button>
+
 
 </div>
 </section>
@@ -1014,7 +1069,7 @@ async function load_svg() {
   textarea = byId('textarea_load_input')
   let newDoc = new DOMParser().parseFromString(textarea.value, 'image/svg+xml')
   if (newDoc.firstChild.id !== 'svg_table') {
-    alert('Save file corrupted!\n(Did you intend to add an SVG doc with the Other menu?)')
+    alert('Save file corrupted!\n(Did you intend to add an SVG doc with the Toys menu?)')
     return
   }
   load_new_table(newDoc.firstChild)
@@ -1188,6 +1243,9 @@ function set_bg(url, w, h) {
     Use a URL as a background.  Examples (click to use):
     <ul style="display: flex; flex-flow: row wrap; justify-content: space-evenly;">
       <li><a
+        onclick="set_bg('svg/bg_greentile.svg', 100, 100)"
+        ><img height="32" src="svg/bg_greentile.svg" />
+      <li><a
         onclick="set_bg('http://www.1kfa.com/table/svg/bg_topography.svg', 600, 600)"
         ><img height="32" src="svg/bg_topography.svg" />
       <li><a
@@ -1249,6 +1307,107 @@ function set_bg(url, w, h) {
   </div>
   </div>
 <!-- /TABLE ============================================== /TABLE -->
+
+<!-- HOST  =============================================== HOST -->
+<script>
+function ui_popup_dialog_host() {
+  cloud_url = document.querySelector('#cloud_url')
+  host_btn = document.querySelector('#dialog_host_submit')
+  quit_btn = document.querySelector('#dialog_host_quit')
+  if (storage._replication) {
+    quit_btn.disabled = false;
+    host_btn.disabled = true;
+    cloud_url.disabled = true;
+  } else {
+    quit_btn.disabled = true;
+    host_btn.disabled = false;
+    cloud_url.disabled = false;
+  }
+  return ui.popup_dialog({'data-dialog-id': 'dialog_host'})
+}
+function toggle_multiplayer(el) {
+  TogetherJS(el)
+  if (storage._replication) {
+    storage.quitMultiplayerAsHost()
+  } else {
+    storage.initMultiplayerAsHost()
+  }
+}
+function submit_host() {
+  toggle_multiplayer(document.querySelector('#host_button'))
+  ui.popdown_dialog('dialog_host')
+}
+function quit_host() {
+  toggle_multiplayer(document.querySelector('#host_button'))
+  ui.popdown_dialog('dialog_host')
+}
+</script>
+  <div class="modal" id="dialog_host">
+    <button class="dialog_cancel btn modal-close"
+      data-dialog-id="dialog_host"
+    >
+      &#215;
+    </button>
+  <div class="modal-content">
+    <section>
+    <h1>Host Multiplayer</h1>
+    Note: The default URL is provided <b>for free</b> by your friendly Open
+    Source community.  It will be maintained on a <b>best-effort basis</b>.
+    If you need privacy or uptime guarantees, you can set up your own CouchDB
+    instance. Using the default URL will mean all of <b>your data will be
+    viewable</b> by everyone.
+    <fieldset id="host_input_fields">
+    <label for="cloud_url">Cloud Syncing Service (CouchDB)</label>
+    <input id="cloud_url" type="url"
+      value="https://7abde76a-0ed1-4f34-a5d8-a7c0184fddad-bluemix.cloudantnosqldb.appdomain.cloud/doc_store001"
+    />
+    </fieldset>
+    <button class="btn" id="dialog_host_submit"
+      onclick="submit_host()">
+      Host This Table
+    </button>
+    <button class="btn" id="dialog_host_quit"
+      disabled
+      onclick="quit_host()">
+      Quit This Table
+    </button>
+    </section>
+  </div>
+  </div>
+<!-- /HOST ============================================== /HOST -->
+
+<!-- JOIN  =============================================== JOIN -->
+<script>
+function submit_join() {
+  join_url = document.querySelector('#join_url')
+  if (join_url.value.length > 0) {
+    window.location.href = join_url.value
+    ui.popdown_dialog('dialog_join')
+  }
+}
+</script>
+  <div class="modal" id="dialog_join">
+    <button class="dialog_cancel btn modal-close"
+      data-dialog-id="dialog_join"
+    >
+      &#215;
+    </button>
+  <div class="modal-content">
+    <section>
+    <h1>Join Multiplayer</h1>
+    <fieldset id="join_input_fields">
+    <label for="join_url">URL of your friend's table</label>
+    <input id="join_url" type="url"
+    />
+    </fieldset>
+    <button class="btn" id="dialog_join_submit"
+      onclick="submit_join()">
+      Join This Table
+    </button>
+    </section>
+  </div>
+  </div>
+<!-- /JOIN ============================================== /JOIN -->
 
 
 <!-- TEXT_INPUT  =============================================== TEXT_INPUT -->
@@ -2379,11 +2538,11 @@ function ui_submit_ellipse(evt) {
 <!-- END CIRCLE =============================================== END CIRCLE -->
 
 
-<!-- OTHER ======================================================= OTHER -->
+<!-- TOYS ======================================================= TOYS -->
 
-  <div class="modal" id="dialog_other">
+  <div class="modal" id="dialog_toys">
   <style>
-#dialog_other section button {
+#dialog_toys section button {
   min-width: 7em;
   min-height: 7em;
   padding: 1em;
@@ -2392,22 +2551,22 @@ function ui_submit_ellipse(evt) {
   background-color: #030303;
 }
 
-#dialog_other section .btn {
+#dialog_toys section .btn {
   opacity: 80%;
   color: #f0f0f0;
 }
-#dialog_other section .btn:hover {
+#dialog_toys section .btn:hover {
   background-color: #000000;
   opacity: 100%;
   color: #ffffff;
 }
 @media only screen and (max-height: 600px) {
-  #dialog_other section  button {
+  #dialog_toys section  button {
     min-height: 3em;
   }
 }
 </style>
-    <button class="dialog_cancel btn modal-close" data-dialog-id="dialog_other"
+    <button class="dialog_cancel btn modal-close" data-dialog-id="dialog_toys"
     > &#215; </button>
     <nav class="dialog_nav">
     <div class="nav-wrapper">
@@ -2517,7 +2676,7 @@ function ui_submit_ellipse(evt) {
     </div>
   </div>
 
-<!-- END OTHER =============================================== END OTHER -->
+<!-- END TOYS =============================================== END TOYS -->
 
 <!-- CARDS ======================================================= CARDS -->
 
@@ -3165,71 +3324,12 @@ function dismissHintControls() {
   background-color: rgb(0, 149, 221);
 }
 
-.whitebg {
-  background-color: #f0f0f0;
-}
-
 .footerbar h3 {
   display: inline;
 }
 
 </style>
   <div id="footer">
-    <!-- =============SHARE URL BAR ==================== -->
-    <div id="share_url_bar" class="inactive footerbar whitebg">
-    <style>
-
-     #share_url_bar td {
-       padding: 0px;
-       border-radius: 0px;
-     }
-     #share_url_bar tr {
-       border: 0px;
-     }
-     #share_url_label {
-       font-size: larger;
-       margin-right: 40px;
-     }
-    </style>
-      <table
-      title="Share this URL with your friends and have them join you"
-      >
-      <tr>
-      <td>
-      <span id="share_url_label">Share URL:</span>
-      </td>
-      <td>
-      <style>
-      #share_url {
-        font-family: monospace;
-        display: inline-block;
-        background-color: transparent;
-        border: none;
-        font-size: inherit;
-        height: inherit;
-        margin: inherit;
-
-      }
-      </style>
-      <input id="share_url" value="" />
-      </td>
-      <td>
-      <script>
-      function copyURLToClipboard() {
-        copyText = document.getElementById('share_url')
-        /* Select the text field */
-        copyText.select()
-        copyText.setSelectionRange(0, 99999) /*For mobile devices*/
-        document.execCommand("copy")
-      }
-      </script>
-      <button id="share_url_copy_button" class="btn btn-small"
-        onClick="copyURLToClipboard()"
-      >Copy URL</button>
-      </td>
-      </tr>
-      </table>
-    </div>
     <!-- =================================DEBUG======================= -->
     <div id="debug_bar" class="footerbar inactive graybg debug_none">
     <script>
