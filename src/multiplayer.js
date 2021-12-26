@@ -139,14 +139,16 @@ function net_fire(payload) {
   }
 }
 
-function LayerObserver(layerEl) {
+function LayerObserver(layerEl, db=null) {
   this._observer = null
   this._layerEl = layerEl
+  this._db = db
+
   this.local_mutations_start = function() {
     //console.log("NET ", this._layerEl.id, "local_mutations_start")
     if (!this._observer) {
-      this._observer = new MutationObserver((mutationsList, observer) => {
-        this.local_mutations_process(mutationsList)
+      this._observer = new MutationObserver(async (mutationsList, observer) => {
+        await this.local_mutations_process(mutationsList)
       })
     }
     this._observer.observe(this._layerEl, {
@@ -168,11 +170,13 @@ function LayerObserver(layerEl) {
       }
       setTimeout(endAnimationFn.bind(this), 1000)
     }
-  },
+  }
+
   this.local_mutations_stop = function() {
     this.local_mutations_process(this._observer.takeRecords())
     this._observer.disconnect()
-  },
+  }
+
   this.local_mutations_process = function(mutationsList) {
     let layerId = this._layerEl.id
     mutationsList.forEach(mut => {
@@ -239,8 +243,9 @@ function LayerObserver(layerEl) {
       this._dirty.changed[elId] = serialized(this._dirty.changed[elId])
     })
     window.requestAnimationFrame(this.run.bind(this))
-  },
-  this.run = function() {
+  }
+
+  this.run = async function() {
     // console.log("LayerObserver", this._layerEl.id, 'RUN')
     if(
       Object.keys(this._dirty.removed).length > 0
@@ -249,6 +254,50 @@ function LayerObserver(layerEl) {
       ||
       Object.keys(this._dirty.changed).length > 0
     ) {
+      if (this._db) {
+        let bulk = []
+        Object.keys(this._dirty.added).forEach(id => {
+          bulk.push({
+            _id: id,
+            serialized: this._dirty.added[id],
+          })
+        })
+        Object.keys(this._dirty.changed).forEach(id => {
+          let dirtyEl = byId(id)
+          bulk.push({
+            _id: id,
+            _rev: dirtyEl.dataset['rev'],
+            serialized: this._dirty.added[id],
+          })
+        })
+        Object.keys(this._dirty.removed).forEach(id => {
+          let dirtyEl = byId(id)
+          bulk.push({
+            _id: id,
+            _rev: dirtyEl.dataset['rev'],
+            _deleted: true,
+          })
+        })
+        console.log("bulk", bulk)
+        this.local_mutations_stop()
+        try {
+          let response = await this._db.bulkDocs(bulk)
+          response.forEach(stub => {
+            console.log('stub', stub)
+            if (stub.ok) {
+              let dirtyEl = byId(stub.id)
+              dirtyEl.dataset['rev'] = stub.rev
+            } else {
+              console.error('pouchdb failure')
+              console.error(stub)
+            }
+          })
+        } catch (err) {
+          console.error('failed to pouchdb.bulkDocs')
+          console.error(err)
+        }
+        this.local_mutations_start()
+      }
       net_fire({
         type: "dirtylayer",
         layerId: this._layerEl.id,
@@ -257,6 +306,7 @@ function LayerObserver(layerEl) {
     }
     this.init()
   }
+
   this.init = function() {
     this._dirty = {
       removed: {},
@@ -264,6 +314,7 @@ function LayerObserver(layerEl) {
       changed: {},
     }
   }
+
   this.init()
   this.local_mutations_start()
 }
