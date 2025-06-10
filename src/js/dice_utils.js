@@ -9,9 +9,9 @@ function randDiceString(min, max) {
 
 var dice = {
   turn_handler: function(elem, maxFace, valueTspan) {
-    console.log("turn handler", elem.id, maxFace)
     var tspan = valueTspan || elem.querySelector('tspan')
     var origNum = parseInt(tspan.textContent)
+    console.log("turn handler", elem.id, maxFace, "was", origNum)
     elem.classList.add('animating-turn')
     tspan.textContent = (origNum % maxFace) + 1
   },

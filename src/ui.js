@@ -223,7 +223,7 @@ const ui = {
   },
 
   selectElement: (elem, evt) => {
-    // console.log('selectElement', elem.id, evt)
+    console.log('selectElement', elem.id, evt)
 
     ui.unselectAll()
 
@@ -373,6 +373,7 @@ const ui = {
   },
 
   augmented_handlers_for_element: (svgEl) => {
+    //console.log('augmented_handlers_for_element', svgEl)
     let eventHandlers = {}
     let actionMenu = ui.getFullMenuForElement(svgEl)
     Object.keys(actionMenu).forEach((title) => {
@@ -440,9 +441,9 @@ const ui = {
       s(clone, 'label', uiLabel)
       clone.classList.add('cloned-menuitem')
       clone.addEventListener('click', (evt) => {
-        console.log('LOG user', myClientId,
-          'does', title, // evt,
-          'on', target.id, target.dataset.appUrl,
+        console.log('-- buildRightClickMenu LOG user', myClientId,
+          '-- does', title, // evt,
+          '-- on', target.id, target.dataset.appUrl,
         )
         let handler = allHandlers[actionMenu[title].eventName]
         handler(evt)
@@ -477,11 +478,19 @@ const ui = {
       let nodes = ui.getSelectBoxSelectedElements(el)
       selected = selected.concat(nodes)
     })
+    // De-duplicate
+    const seen = new Set();
+    return selected.filter(el => {
+      const key = el.id || el;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
     return selected
   },
 
   updateButtons: () => {
-    // console.log("ui.updateButtons")
+    console.log("ui.updateButtons")
     let focusedNodes = ui.getMySelectedElements()
     let numMarked = focusedNodes.length
     let buttons = {}
@@ -495,7 +504,7 @@ const ui = {
 
     function addNewButton(title, uiLabel) {
       let btn = template.content.firstElementChild.cloneNode(true)
-      btn.id = 'button-' + title
+      btn.id = 'button-' + title.replace(/\s/g, "");
       btn.dataset.eventTitle = title
       btn.innerText = uiLabel
       btn.classList.add('cloned-button')
@@ -516,6 +525,7 @@ const ui = {
 
     let i = 0
     focusedNodes.forEach((focusedSVG) => {
+      console.log('i', i, focusedSVG)
       i++
       let allHandlers = ui.augmented_handlers_for_element(focusedSVG)
       let actionMenu = ui.getFullMenuForElement(focusedSVG)
@@ -583,6 +593,7 @@ const ui = {
     Object.keys(buttons).map((key) => {
       buttonRecord = buttons[key]
       buttonRecord.clickFns.forEach(clickFn => {
+	console.log(buttonRecord.btn, 'listening to click', clickFn)
         buttonRecord.btn.addEventListener('click', clickFn)
       })
       template.parentElement.appendChild(buttonRecord.btn)

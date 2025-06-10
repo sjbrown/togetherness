@@ -60,6 +60,10 @@ TogetherJSConfig_on_ready = () => {
       return // just wait for the sync
     }
      console.log('NET received dirtylayer msg', msg)
+    // TogetherJS automatically tags `msg.clientId`
+    if (msg.clientId === myClientId) {
+      return;  // skip re-applying our own change
+    }
     // console.log('NET my client id', myClientId)
     let layerObs = null
     let retval = {}

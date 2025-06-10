@@ -60,15 +60,19 @@ I'm going to try to keep a demo up and running at
 ```bash
 git clone <this repo>
 cd togetherness/src
-python3 -m http.server
+python3 -m http.server 8008
 
 # Or,if you prefer,
-# python2 -m SimpleHTTPServer 8000
+# python2 -m SimpleHTTPServer 8008
 # Or if you prefer Node.js to Python:
-# npm install npx -g; npx http-server -a localhost -p 8000
+# npm install npx -g; npx http-server -a localhost -p 8008
+
+# Or, to get live-reloading:
+# pip install livereload
+# livereload --port 8008
 ```
 
-Then open your browser to [localhost:8000](http://localhost:8000/)
+Then open your browser to [localhost:8008](http://localhost:8008/)
 
 That's it!
 
