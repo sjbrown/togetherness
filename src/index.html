@@ -107,6 +107,10 @@ SVG.on(document, 'DOMContentLoaded', () => {
   landscapeOrPortrait()
 
   viewport = SVG('gamearea')
+  console.log(' SVG() →', viewport);
+  if (!viewport) {
+    console.error('SVG() returned null or undefined—selector might be wrong or script ran too early');
+  }
   viewport.attr({
     id: 'svg_viewport',
     overflow: 'scroll',
