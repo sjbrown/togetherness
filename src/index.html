@@ -67,25 +67,25 @@ function createLayer(id) {
   return layer
 }
 
-function initSvgTable(el) {
-  svg_table = SVG.adopt(el)
-  svg_table.attr({
-    id: 'svg_table',
-    width: origViewportSize[0],
-    height: origViewportSize[1],
-  })
+function initSvgTable() {
+  // Create a fresh <svg> and append it into the viewport
+  svg_table = SVG()
+    .addTo(viewport)
+    .size(origViewportSize[0], origViewportSize[1])
+    .attr({ id: 'svg_table' })
 
+  // Build three layering groups directly off svg_table
   layer_mats = createLayer('layer_mats')
   layer_objects = createLayer('layer_objects')
   layer_ui = createLayer('layer_ui')
 
-  viewport.add(svg_table)
+  makeDraggable(viewport, svg_table)
 
-  makeDraggable(SVG.adopt(byId('svg_viewport')), svg_table)
-  objectsObserver = new LayerObserver(layer_objects.node)
-  uiObserver = new LayerObserver(layer_ui.node)
+  // Hook up your observers
+  objectsObserver = new LayerObserver(layer_objects.node);
+  uiObserver      = new LayerObserver(layer_ui.node);
 
-  return svg_table
+  return svg_table;
 }
 
 SVG.on(document, 'DOMContentLoaded', () => {
@@ -106,21 +106,15 @@ SVG.on(document, 'DOMContentLoaded', () => {
   }
   landscapeOrPortrait()
 
-  viewport = SVG('gamearea')
-  console.log(' SVG() →', viewport);
-  if (!viewport) {
-    console.error('SVG() returned null or undefined—selector might be wrong or script ran too early');
-  }
+  viewport = SVG().addTo('#gamearea').size(origViewportSize[0], origViewportSize[1])
   viewport.attr({
     id: 'svg_viewport',
     overflow: 'scroll',
     width: qs('body').clientWidth,
     viewBox: `0 0 ${origViewportSize[0]} ${origViewportSize[1]}`,
   })
-  viewport.node.id = 'svg_viewport'
-  viewport.node.setAttribute('overflow', 'scroll')
   viewport.node.style.overflow = 'scroll'
-  viewport.style('background-image', 'url(svg/bg_wiggle.svg)')
+  viewport.css('background-image', 'url(svg/bg_wiggle.svg)')
 
   table_border_rect = viewport.rect()
   table_border_rect.attr({
@@ -136,7 +130,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
      'stroke-opacity': 0.2,
   })
 
-  svg_table = initSvgTable(document.createElementNS(SVG.ns, 'svg'))
+  svg_table = initSvgTable()
 
   window.addEventListener("resize", viewportToGameArea)
 
@@ -967,7 +961,7 @@ function ui_change_background() {
     return;
   }
   var value = "url('" + input.value + "')";
-  viewport.style('background-image', value)
+  viewport.css('background-image', value)
   ui.popdown_dialog('dialog_table')
   push_sync()
 }
