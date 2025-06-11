@@ -6921,4 +6921,3 @@ var SVG = (function () {
   return SVG;
 
 })();
-//# sourceMappingURL=svg.js.map
