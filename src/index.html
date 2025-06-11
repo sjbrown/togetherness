@@ -67,12 +67,40 @@ function createLayer(id) {
   return layer
 }
 
+function table_change_background(url) {
+  fetch(url)
+  .then(response => response.text())
+  .then(svgText => {
+    // Parse the SVG string
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgText, 'image/svg+xml');
+    const svgTag = doc.querySelector('svg');
+    innerSvg = SVG(svgTag)
+    console.log(innerSvg)
+
+    const width = innerSvg.width() || 100;
+    const height = innerSvg.height() || 100;
+
+    const pattern = svg_table.defs().pattern(width, height, function(add) {
+      add.image(url).size(width, height);
+    });
+
+    bgRect = SVG(byId('svg_table_bg_rect'))
+    bgRect.fill(pattern)
+  });
+
+}
+
 function initSvgTable() {
   // Create a fresh <svg> and append it into the viewport
   svg_table = SVG()
     .addTo(viewport)
     .size(origViewportSize[0], origViewportSize[1])
-    .attr({ id: 'svg_table' })
+    .id('svg_table')
+
+  bgRect = svg_table.rect(origViewportSize[0], origViewportSize[1])
+    .id('svg_table_bg_rect')
+  table_change_background('svg/bg_hexagons.svg')
 
   // Build three layering groups directly off svg_table
   layer_mats = createLayer('layer_mats')
@@ -114,7 +142,10 @@ SVG.on(document, 'DOMContentLoaded', () => {
     viewBox: `0 0 ${origViewportSize[0]} ${origViewportSize[1]}`,
   })
   viewport.node.style.overflow = 'scroll'
-  viewport.css('background-image', 'url(svg/bg_wiggle.svg)')
+  viewport.css('background-image', 'url(svg/viewport_background.svg)')
+  viewport.css('background-size', '100% 100%')
+
+  svg_table = initSvgTable()
 
   table_border_rect = viewport.rect()
   table_border_rect.attr({
@@ -129,8 +160,6 @@ SVG.on(document, 'DOMContentLoaded', () => {
      'stroke-width': 10,
      'stroke-opacity': 0.2,
   })
-
-  svg_table = initSvgTable()
 
   window.addEventListener("resize", viewportToGameArea)
 
@@ -230,6 +259,11 @@ window.addEventListener('load', () => {
   min-width: 80%;
   min-height: 60%;
   background-color: #efe;
+}
+
+body {
+  background-image: url(svg/viewport_background.svg);
+  background-size: 100% 100%;
 }
 @media screen and (max-width: 900px) {
   #gamearea {
@@ -960,8 +994,7 @@ function ui_change_background() {
   if (!input.value) {
     return;
   }
-  var value = "url('" + input.value + "')";
-  viewport.css('background-image', value)
+  table_change_background(input.value)
   ui.popdown_dialog('dialog_table')
   push_sync()
 }
@@ -3057,7 +3090,6 @@ function dismissHintControls() {
     </div>
   </div>
 
-  <! -- <script src="http://localhost:8008/livereload.js"></script> -->
 </body>
 </html>
 
