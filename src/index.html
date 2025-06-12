@@ -439,6 +439,42 @@ window.addEventListener('load', () => {
   })
 })
 </script>
+
+<!-- ==================================================================== -->
+<div class="hud_overlay" id="hud_overlay_top">
+<!-- =============OBJECT ACTIONS ==================== -->
+<style>
+#object_actions {
+  opacity: 80%;
+  color: #f0f0f0;
+}
+#object_actions_header {
+  font-size: larger;
+  padding: 0px 10px;
+}
+@media only screen and (max-width: 900px) {
+  #object_actions {
+    //max-width: 200px;
+  }
+  #object_actions_header {
+    font-size: normal;
+    margin: 4px 0px;
+    line-height: 100%;
+  }
+}
+</style>
+<div id="object_actions" class="hudmenu hudmenu-top collapsegroup">
+  <div class="collapsible">
+    <h3 id="object_actions_header">Add dice or cards to the table</h3>
+    <template id="template_object_actions">
+      <button class="btn btn-large">Button label</button>
+    </template>
+  </div>
+</div>
+</div> <!-- end hud_overlay_top -->
+
+
+<!-- ==================================================================== -->
 <div class="hud_overlay" id="hud_overlay_left">
 <section class="hudmenu hudmenu-left">
   <!-- Only visible on mobile -->
@@ -570,40 +606,6 @@ window.addEventListener('load', () => {
 </div>
 
 
-
-
-<!-- ==================================================================== -->
-<div class="hud_overlay" id="hud_overlay_top">
-<!-- =============OBJECT ACTIONS ==================== -->
-<style>
-#object_actions {
-  opacity: 80%;
-  color: #f0f0f0;
-}
-#object_actions_header {
-  font-size: larger;
-  padding: 0px 10px;
-}
-@media only screen and (max-width: 900px) {
-  #object_actions {
-    //max-width: 200px;
-  }
-  #object_actions_header {
-    font-size: normal;
-    margin: 4px 0px;
-    line-height: 100%;
-  }
-}
-</style>
-<div id="object_actions" class="hudmenu hudmenu-top collapsegroup">
-  <div class="collapsible">
-    <h3 id="object_actions_header">Add dice or cards to the table</h3>
-    <template id="template_object_actions">
-      <button class="btn btn-large">Button label</button>
-    </template>
-  </div>
-</div>
-</div> <!-- end hud_overlay_top -->
 
 
 
