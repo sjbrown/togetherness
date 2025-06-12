@@ -76,7 +76,6 @@ function table_change_background(url) {
     const doc = parser.parseFromString(svgText, 'image/svg+xml');
     const svgTag = doc.querySelector('svg');
     innerSvg = SVG(svgTag)
-    console.log(innerSvg)
 
     const width = innerSvg.width() || 100;
     const height = innerSvg.height() || 100;
@@ -124,17 +123,25 @@ SVG.on(document, 'DOMContentLoaded', () => {
 
   function landscapeOrPortrait() {
     let bodyEl = qs('body')
-    if (bodyEl.clientHeight > bodyEl.clientWidth) {
-      // 'portrait'
+
+    if (bodyEl.clientHeight > bodyEl.clientWidth) { // 'portrait'
       origViewportSize = [800,1200]
-    } else {
-      // 'landscape'
+    } else { // 'landscape'
       origViewportSize = [1200,800]
     }
   }
   landscapeOrPortrait()
+  function expandMenusOnWidescreens() {
+    if ( qs('body').clientWidth > 1200 ) {
+      qs('#collapsetoggle-left').checked = true
+      qs('#collapsetoggle-right').checked = true
+    }
+  }
+  expandMenusOnWidescreens()
 
-  viewport = SVG().addTo('#gamearea').size(origViewportSize[0], origViewportSize[1])
+  viewport = SVG()
+    .addTo('#gamearea')
+    .size('100vw', '100vh')
   viewport.attr({
     id: 'svg_viewport',
     overflow: 'scroll',
@@ -289,32 +296,41 @@ body {
 <!-- ==================================================================== -->
 
 <!-- ==================================================================== -->
-<div class="hud_overlay" id="hud_overlay_left">
 <style>
 .hud_overlay {
   z-index: 100;
   pointer-events: none;
-}
-#hud_overlay_left {
   position: fixed;
   top: 0;
   left: 0;
   bottom: 0;
   height: auto;
+}
+
+.hudmenu {
+  pointer-events: auto;
+  position: fixed;
   display: flex;
-  flex-direction: column;
+  gap: 0.5rem;
+  flex-direction: column-reverse;
+}
+
+.hudmenu-left {
+  bottom: 1rem;
+  left: 1rem;
+}
+
+.hudmenu-right {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  height: auto;
   justify-content: center;
 }
 
-#hud_overlay_right {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  height: auto;
+.hudmenu .collapsegroup {
   display: flex;
   flex-direction: column;
-  justify-content: center;
 }
 
 #hud_overlay_top {
@@ -328,160 +344,67 @@ body {
   justify-content: center;
 }
 
-.hudmenu {
-  pointer-events: auto;
-  position: relative;
-  background-color: #030303;
-}
-
-.hudmenu-left {
-  border-top-right-radius: 10px;
-  border-bottom-right-radius: 10px;
-  display: flex;
-  flex-direction: row;
-}
-.hudmenu-right {
-  border-top-left-radius: 10px;
-  border-bottom-left-radius: 10px;
-  display: flex;
-  flex-direction: row-reverse;
-}
 .hudmenu-top {
   border-bottom-left-radius: 10px;
   border-bottom-right-radius: 10px;
 }
 
-.hudmenu-left .collapsible {
-  max-width: 75px;
-  display: flex;
-  flex-direction: column;
-}
-.hudmenu-right .collapsible {
-  max-width: 150px;
-  display: flex;
-  flex-direction: column;
-}
-.collapsetoggle {
-  line-height: 100%;
-}
-.hudmenu-left .collapsetoggle {
-  padding: 5px;
-  height: 100%;
-  min-width: 10px;
-  max-width: 15px;
+.hudmenu .btn {
+  padding: 0.75rem;
+  border-radius: 50%;
+  background: #333;
+  color: white;
   border: none;
-  border-right: 1px solid rgb(200,200,200,0.5);
-}
-.hudmenu-right .collapsetoggle {
-  padding: 5px;
-  height: 100%;
-  min-width: 10px;
-  max-width: 15px;
-  border: none;
-  border-left: 1px solid rgb(200,200,200,0.5);
+  cursor: pointer;
 }
 
-.hudmenu-left .collapsetoggle:after {
-  content:" ▸";
-}
-.hudmenu-right .collapsetoggle:after {
-  content:" ◂";
-}
-.collapsed > .collapsible {
-  margin: 0px;
-}
-.hudmenu-left.collapsed > .collapsible {
-  max-width: 0px;
-}
-.hudmenu-right.collapsed > .collapsible {
-  max-width: 0px;
-}
-.hudmenu-top.collapsed > .collapsible {
-  max-height: 0px;
+.hudmenu-right {
+  left: auto;
+  right: 0;
 }
 
-@media only screen and (max-width: 900px) {
-  .hudmenu {
-    top: auto;
-    bottom: 0;
-  }
-  .hudmenu-right {
-    left: auto;
-    right: 0;
-  }
-  #hud_overlay_left {
+#hud_overlay_left {
     justify-content: flex-end;
   }
-  #hud_overlay_right {
+#hud_overlay_right {
     justify-content: flex-end;
   }
 
-  .hudmenu-left {
-    border-top-right-radius: 10px;
-    border-top-left-radius: 10px;
-    border-bottom-right-radius: 0px;
-    display: flex;
-    flex-direction: column-reverse;
-  }
-  .hudmenu-right {
-    border-top-right-radius: 10px;
-    border-top-left-radius: 10px;
-    border-bottom-left-radius: 0px;
-    display: flex;
-    flex-direction: column-reverse;
-  }
-  .hudmenu-left .collapsetoggle {
-    height: 20px;
-    padding: 5px;
-    width: 100%;
-    min-width: 75px;
-    max-width: auto;
-    border: none;
-    border-top: 1px solid rgb(200,200,200,0.5);
-  }
-  .hudmenu-right .collapsetoggle {
-    height: 20px;
-    padding: 5px;
-    width: 100%;
-    min-width: 150px;
-    max-width: auto;
-    border: none;
-    border-top: 1px solid rgb(200,200,200,0.5);
-  }
-  .hudmenu-left .collapsetoggle:after {
-    content:" ▲";
-  }
-  .hudmenu-right .collapsetoggle:after {
-    content:" ▲";
-  }
-  .hudmenu-left.collapsed > .collapsible {
-    max-width: auto;
-    max-height: 0px;
-  }
-  .hudmenu-right.collapsed > .collapsible {
-    max-width: auto;
-    max-height: 0px;
-  }
-  .hudmenu-top.collapsed > .collapsible {
-    max-height: 0px;
-  }
-
+.hudmenu .collapsegroup {
+  display: none;
+  flex-direction: column;
 }
 
-.hudmenu button {
+.hudmenu input[type="checkbox"]:checked ~ .collapsegroup {
+    display: flex;
+    max-height: auto;
+}
+
+.hudmenu input[type="checkbox"]:checked + label .collapsed {
+  display: none;
+}
+
+.hudmenu input[type="checkbox"]:not(:checked) + label .expanded {
+  display: none;
+}
+
+.hudmenu input[type="checkbox"]:not(:checked) + label .collapsed {
+  display: inline;
+}
+
+.hudmenu input[type="checkbox"]:checked + label .expanded {
+  display: inline;
+}
+
+
+.hudmenu .btn {
   min-width: 7em;
   min-height: 7em;
   padding: 1em;
   font-size: 8pt;
   border-radius: 10px;
   background-color: #030303;
-}
-
-.hudmenu-right button {
-}
-.hudmenu .btn {
   opacity: 80%;
-  color: #f0f0f0;
 }
 .hudmenu .btn:hover {
   background-color: #000000;
@@ -495,22 +418,9 @@ body {
   text-decoration: underline;
 }
 @media only screen and (max-height: 600px) {
-  .hudmenu button {
+  .hudmenu .btn {
     min-height: 3em;
   }
-}
-
-.collapsegroup > .collapsible {
-  overflow: hidden;
-  transition: 0.2s ease-out;
-  margin: 0px;
-  border: none;
-}
-.collapsetoggle:after {
-  content:" ▾";
-}
-.collapsed > .collapsetoggle:after {
-  content:"☰";
 }
 
 </style>
@@ -527,19 +437,21 @@ window.addEventListener('load', () => {
       evt.stopPropagation()
     })
   })
-  document.querySelectorAll('.hudmenu .collapsetoggle').forEach(el => {
-    el.addEventListener('click', (e) => {
-      cgroup = e.target.closest('.collapsegroup')
-      cgroup.classList.toggle('active')
-      cgroup.classList.toggle('collapsed')
-    })
-  })
 })
 </script>
-</script>
-<section class="hudmenu hudmenu-left collapsegroup" >
-  <button class="collapsetoggle" name="toggle_table_buttons"></button>
-  <div class="collapsible">
+<div class="hud_overlay" id="hud_overlay_left">
+<section class="hudmenu hudmenu-left">
+  <!-- Only visible on mobile -->
+  <!-- CSS/HTML hack to save the collapse / expand state in an invisible checkbox -->
+  <input type="checkbox" id="collapsetoggle-left" />
+  <label class="hamburger" for="collapsetoggle-left">
+    <div class="btn">
+      <img class="collapsed" src="img/jigsaw-box.svg" height="32" />
+      <span class="expanded">▾</span>
+    </div>
+  </label>
+
+  <div class="collapsegroup" >
 
     <button id="quick_die_button" class="btn btn-small"
       onclick="ui.clickQuickButton()"
@@ -548,19 +460,6 @@ window.addEventListener('load', () => {
       <img src="svg/v1/dice_d6.svg"  height="48" />
     </button>
 
-    <div id="dice_button_wrapper">
-    <style>
-    #dice_button_slide {
-      display: none;
-    }
-    #dice_button_slide td {
-      padding: 0px;
-    }
-    #dice_button_wrapper:hover #dice_button_slide {
-      display: inline-block;
-      position: absolute;
-    }
-    </style>
     <button id="dice_dialog_button" class="btn btn-small modal-trigger"
       accesskey="d"
       data-target="dialog_dice"
@@ -568,65 +467,6 @@ window.addEventListener('load', () => {
       <img src="img/cubes.svg" height="32" />
       <u>D</u>ice
     </button>
-    <div id="dice_button_slide">
-        <table><tr>
-        <td>
-          <button class="btn" id="slide_dice_button_d4"
-            onclick="add_object('svg/v1/dice_d4.svg', {
-              color: getChosenDiceColor(),
-            })"
-            >
-            <img src="svg/v1/dice_d4.svg" height="48" />
-          </button>
-        </td>
-        <td>
-          <button class="btn" id="slide_dice_button_d6"
-            onclick="add_object('svg/v1/dice_d6.svg', {
-              color: getChosenDiceColor(),
-            })"
-            >
-            <img src="svg/v1/dice_d6.svg" height="48" />
-          </button>
-        </td>
-        <td>
-          <button class="btn" id="slide_dice_button_d8"
-            onclick="add_object('svg/v1/dice_d8.svg', {
-              color: getChosenDiceColor(),
-            })"
-            >
-            <img src="svg/v1/dice_d8.svg" height="48" />
-          </button>
-        </td>
-        <td>
-          <button class="btn" id="slide_dice_button_d10"
-            onclick="add_object('svg/v1/dice_d10.svg', {
-              color: getChosenDiceColor(),
-            })"
-            >
-            <img src="svg/v1/dice_d10.svg" height="48" />
-          </button>
-        </td>
-        <td>
-          <button class="btn" id="slide_dice_button_d12"
-            onclick="add_object('svg/v1/dice_d12.svg', {
-              color: getChosenDiceColor(),
-            })"
-            >
-            <img src="svg/v1/dice_d12.svg" height="48" />
-          </button>
-        </td>
-        <td>
-          <button class="btn" id="slide_dice_button_d20"
-            onclick="add_object('svg/v1/dice_d20.svg', {
-              color: getChosenDiceColor(),
-            })"
-            >
-            <img src="svg/v1/dice_d20.svg" height="48" />
-          </button>
-        </td>
-        </tr></table>
-    </div>
-    </div>
     <button id="cards_dialog_button" class="btn btn-small modal-trigger"
       accesskey="c"
       data-target="dialog_cards"
@@ -667,76 +507,75 @@ window.addEventListener('load', () => {
 
 <!-- ==================================================================== -->
 <div class="hud_overlay" id="hud_overlay_right">
-<section class="hudmenu hudmenu-right collapsegroup">
-<button class="collapsetoggle btn" name="playermenu"></button>
-<div class="collapsible">
+<section class="hudmenu hudmenu-right">
+  <!-- Only visible on mobile -->
+  <!-- CSS/HTML hack to save the collapse / expand state in an invisible checkbox -->
+  <input type="checkbox" id="collapsetoggle-right" />
+  <label class="hamburger" for="collapsetoggle-right">
+    <div class="btn">
+      <span class="collapsed">...</span>
+      <span class="expanded">▾</span>
+    </div>
+  </label>
 
-  <button id="profile_button" class="btn btn-small modal-trigger"
-    title="Profile"
-    data-target="dialog_profile"
-    data-dialog-id="dialog_profile">
-    <span class="colorsample" style="color: #ffffff00">■</span>
-    <span id="profile_button_span">Profile</span>
-    <span class="colorsample" style="color: #ffffff00">■</span>
-  </button>
+  <div class="collapsegroup" >
+    <button id="profile_button" class="btn btn-small modal-trigger"
+      title="Profile"
+      data-target="dialog_profile"
+      data-dialog-id="dialog_profile">
+      <span class="colorsample" style="color: #ffffff00">■</span>
+      <span id="profile_button_span">Profile</span>
+      <span class="colorsample" style="color: #ffffff00">■</span>
+    </button>
 
-  <button id="save_button" class="btn btn-small"
-    onclick="ui_popup_dialog_save()"
-    data-dialog-id="dialog_save">
-    Save
-  </button>
+    <button id="save_button" class="btn btn-small"
+      onclick="ui_popup_dialog_save()"
+      data-dialog-id="dialog_save">
+      Save
+    </button>
 
-  <button id="load_button" class="btn btn-small"
-    onclick="ui_popup_dialog_load()"
-    data-dialog-id="dialog_load">
-    Load
-  </button>
+    <button id="load_button" class="btn btn-small"
+      onclick="ui_popup_dialog_load()"
+      data-dialog-id="dialog_load">
+      Load
+    </button>
 
-  <button id="activity_button" class="btn btn-small modal-trigger"
-    title="Log of game events"
-    data-target="dialog_activity_log"
-    data-dialog-id="dialog_activity_log">
-    Activity Log
-  </button>
+    <button id="activity_button" class="btn btn-small modal-trigger"
+      title="Log of game events"
+      data-target="dialog_activity_log"
+      data-dialog-id="dialog_activity_log">
+      Activity Log
+    </button>
 
-  <button id="help_button" class="btn btn-small modal-trigger"
-    title="Help/About this project"
-    data-target="dialog_contribute"
-    data-dialog-id="dialog_contribute">
-    Help / About
-  </button>
+    <button id="help_button" class="btn btn-small modal-trigger"
+      title="Help/About this project"
+      data-target="dialog_contribute"
+      data-dialog-id="dialog_contribute">
+      Help / About
+    </button>
 
-  <button class="btn btn-small" onclick="TogetherJS(this); return false;"
-    title="Invite / Join Friends"
-    id="start-togetherjs"
-  ><b style="display: inline-block; line-height: 1.0">Multiplayer
-  (Experimental)</b></button>
+    <button class="btn btn-small" onclick="TogetherJS(this); return false;"
+      title="Invite / Join Friends"
+      id="start-togetherjs"
+    ><b style="display: inline-block; line-height: 1.0">Multiplayer
+    (Experimental)</b></button>
 
-  <button class="debug_none btn btn-small"
-    onclick="push_sync(); return false;"
-    id="sync_button"
-  >Sync</button>
+    <button class="debug_none btn btn-small"
+      onclick="push_sync(); return false;"
+      id="sync_button"
+    >Sync</button>
+  </div>
 
-
-</div>
 </section>
-</div> <!-- end hud_overlay_right -->
+</div>
+
+
 
 
 <!-- ==================================================================== -->
-
 <div class="hud_overlay" id="hud_overlay_top">
 <!-- =============OBJECT ACTIONS ==================== -->
 <style>
-.hudmenu-top .collapsetoggle {
-  width: 100%;
-  border: none;
-  border-bottom: 1px solid rgb(200,200,200,0.5);
-}
-button.collapsetoggle {
-  min-height: 10px;
-  padding: 5px;
-}
 #object_actions {
   opacity: 80%;
   color: #f0f0f0;
@@ -746,9 +585,6 @@ button.collapsetoggle {
   padding: 0px 10px;
 }
 @media only screen and (max-width: 900px) {
-  .hudmenu-top .collapsetoggle {
-    width: 100vw;
-  }
   #object_actions {
     //max-width: 200px;
   }
@@ -760,7 +596,6 @@ button.collapsetoggle {
 }
 </style>
 <div id="object_actions" class="hudmenu hudmenu-top collapsegroup">
-  <button class="collapsetoggle" name="toggle_object_actions"></button>
   <div class="collapsible">
     <h3 id="object_actions_header">Add dice or cards to the table</h3>
     <template id="template_object_actions">
@@ -769,6 +604,8 @@ button.collapsetoggle {
   </div>
 </div>
 </div> <!-- end hud_overlay_top -->
+
+
 
 
 <!-- PROFILE  =============================================== PROFILE -->
