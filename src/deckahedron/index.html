@@ -1,0 +1,952 @@
+<html>
+<head>
+<title>Deckahedron</title>
+<meta charset="utf-8">
+
+<!--
+ The SVG viewport is the scrolling / panning / zooming area, so
+ prevent touch events from zooming into the page
+ ( from https://www.html5rocks.com/en/mobile/touchandmouse/ )
+-->
+<meta name="viewport" content="width=device-width,user-scalable=no">
+
+<script src="../multiplayer.js"></script><!-- should be imported before togetherjs -->
+<script src="https://togetherjs.com/togetherjs-min.js"></script>
+<script src="../svg_draggable.js"></script>
+<script src="../base32.js"></script>
+<script src="../svg.js"></script>
+<script src="../userlog.js"></script>
+<script src="../index.js"></script>
+<script src="../spatial.js"></script>
+<script src="../js/svg_dom_json.js"></script>
+<script src="../physicsjs-full.js"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.5.1/gsap.js"></script>
+
+<!-- polyfill Promises for Internet Explorer -->
+<script src="https://cdn.jsdelivr.net/npm/promise-polyfill@8/dist/polyfill.min.js"></script>
+
+<link rel="stylesheet" href="./bulma/css/bulma.css">
+<link rel="stylesheet" type="text/css" href="../animate.css">
+
+<!-- Bulma overrides -->
+<style>
+/* MUST go AFTER Bulma import */
+@media screen and (max-width: 900px) {
+  .modal-card {
+    height: calc(100vh - 10px);
+    background-image: url(../svg/viewport_background.svg);
+  }
+}
+:root {
+  /* Optional global background & text */
+  --background-color: 30, 40%, 10%;   /* very dark brownish-green */
+  --text-color:       120, 10%, 95%;  /* off-white for readability */
+
+  /* Primary (forest green) */
+  --bulma-primary:       120, 40%, 20%;
+  --bulma-primary-invert: hsl(0, 100%, 95%);
+
+  /* Link (mossy green) */
+  --bulma-link:          120, 30%, 30%;
+
+  /* Info (pine) */
+  --bulma-info:          120, 35%, 25%;
+
+  /* Success (olive) */
+  --bulma-success:       80, 30%, 40%;
+
+  /* Warning (walnut brown) */
+  --bulma-warning:       30, 40%, 25%;
+
+  /* Danger (rusty brown) */
+  --bulma-danger:        10, 60%, 35%;
+}
+.modal-card-head {
+  background-color: var(--bulma-primary);
+  color: var(--bulma-primary-invert);
+  background-image: url(../svg/viewport_background.svg);
+}
+.modal-card-title {
+  background-color: var(--bulma-primary);
+  color: var(--bulma-primary-invert);
+}
+.modal-card-body {
+  background-color: var(--bulma-primary);
+  color: var(--bulma-primary-invert);
+  background-image: url(../svg/viewport_background.svg);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  background-position: center center;
+}
+</style>
+
+</head><body>
+<script>
+var table_border_rect
+var svg_table
+var layer_mats
+var layer_objects
+var layer_ui
+var viewport
+var origViewportSize
+
+function createLayer(id) {
+  layer = svg_table.group()
+  layer.attr({
+    id: id,
+  })
+  layer.addClass('layer')
+  layer.addClass(id)
+  return layer
+}
+
+function table_change_background(url) {
+  fetch(url)
+  .then(response => response.text())
+  .then(svgText => {
+    // Parse the SVG string
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgText, 'image/svg+xml');
+    const svgTag = doc.querySelector('svg');
+    innerSvg = SVG(svgTag)
+
+    const width = innerSvg.width() || 100;
+    const height = innerSvg.height() || 100;
+
+    const pattern = svg_table.defs().pattern(width, height, function(add) {
+      add.image(url).size(width, height);
+    });
+
+    bgRect = SVG(byId('svg_table_bg_rect'))
+    bgRect.fill(pattern)
+  });
+
+}
+
+function initSvgTable() {
+  // Create a fresh <svg> and append it into the viewport
+  svg_table = SVG()
+    .addTo(viewport)
+    .size(origViewportSize[0], origViewportSize[1])
+    .id('svg_table')
+
+  bgRect = svg_table.rect(origViewportSize[0], origViewportSize[1])
+    .id('svg_table_bg_rect')
+  table_change_background('../svg/bg_hexagons.svg')
+
+  // Build three layering groups directly off svg_table
+  layer_mats = createLayer('layer_mats')
+  layer_objects = createLayer('layer_objects')
+  layer_ui = createLayer('layer_ui')
+
+  makeDraggable(viewport, svg_table)
+
+  // Hook up your observers
+  objectsObserver = new LayerObserver(layer_objects.node);
+  uiObserver      = new LayerObserver(layer_ui.node);
+
+  return svg_table;
+}
+
+SVG.on(document, 'DOMContentLoaded', () => {
+  // Override the id-generating function of the svg.js library
+  SVG.eid = (name) => {
+    return name + '_' + base32.short_id()
+  }
+
+  function landscapeOrPortrait() {
+    let bodyEl = qs('body')
+
+    if (bodyEl.clientHeight > bodyEl.clientWidth) { // 'portrait'
+      origViewportSize = [800,1200]
+    } else { // 'landscape'
+      origViewportSize = [1200,800]
+    }
+  }
+  landscapeOrPortrait()
+  function expandMenusOnWidescreens() {
+    if ( qs('body').clientWidth > 1200 ) {
+      qs('#collapsetoggle-left').checked = true
+      qs('#collapsetoggle-right').checked = true
+    }
+  }
+  expandMenusOnWidescreens()
+
+  viewport = SVG()
+    .addTo('#gamearea')
+    .size('100vw', '100vh')
+  viewport.attr({
+    id: 'svg_viewport',
+    overflow: 'scroll',
+    width: qs('body').clientWidth,
+    viewBox: `0 0 ${origViewportSize[0]} ${origViewportSize[1]}`,
+  })
+  viewport.node.style.overflow = 'scroll'
+  viewport.css('background-image', 'url(../svg/viewport_background.svg)')
+  viewport.css('background-size', '100% 100%')
+  viewport.css('background-position', 'center center')
+  viewport.css('background-repeat', 'no-repeat')
+
+  svg_table = initSvgTable()
+
+  table_border_rect = viewport.rect()
+  table_border_rect.attr({
+     x: -1,
+     y: -1,
+     rx: 0,
+     ry: 0,
+     width: origViewportSize[0] + 2,
+     height: origViewportSize[1] + 2,
+     fill: 'none',
+     stroke: 'black',
+     'stroke-width': 10,
+     'stroke-opacity': 0.2,
+  })
+
+  window.addEventListener("resize", viewportToGameArea)
+
+})
+
+var currentZoom = 1.0;
+function zoom(inOrOut) {
+  zooms = {
+    0.5: { out: 0.5, in: 0.6 },
+    0.6: { out: 0.5, in: 0.7 },
+    0.7: { out: 0.6, in: 0.8 },
+    0.8: { out: 0.7, in: 0.9 },
+    0.9: { out: 0.8, in: 1.0 },
+    1.0: { out: 0.9, in: 1.25 },
+    1.25: { out: 1.0, in: 1.5 },
+    1.5: { out: 1.25, in: 1.75 },
+    1.75: { out: 1.5, in: 1.75 },
+  }
+  let oldZoom = currentZoom
+  currentZoom = zooms[currentZoom][inOrOut];
+  // console.log("c", currentZoom, "o", oldZoom)
+  if (oldZoom === currentZoom) {
+    return
+  }
+  let w_prime = parseInt(origViewportSize[0] * currentZoom)
+  let h_prime = parseInt(origViewportSize[1] * currentZoom)
+  viewport.node.setAttribute('width', w_prime)
+  viewport.node.setAttribute('height', h_prime)
+  viewport.node.setAttribute(
+    'viewBox',
+    `0 0 ${svg_table.width()} ${svg_table.height()}`
+  )
+  viewportToGameArea()
+}
+
+function viewportToGameArea() {
+  let g = byId('gamearea')
+  viewport.width(g.clientWidth)
+  viewport.height(g.clientHeight)
+}
+
+function downKey(e) {
+  // console.log('downkey', e)
+  let pressedKey = e.key.toLowerCase()
+  if (e.isComposing) { return }
+  if (e.altKey || e.shiftKey || e.metaKey || e.ctrlKey) { return }
+  if (e.target.selectionStart !== undefined) { // text entry or textarea
+    return
+  }
+  let buttons = document.querySelectorAll('[accessKey=' + pressedKey +']')
+  if (buttons.length > 1) {
+    console.error('Two buttons have the same accessKey', x.accessKey)
+    return
+  } else if (buttons.length === 1) {
+    buttons[0].click()
+  }
+}
+
+window.addEventListener('load', () => {
+  document.querySelector('body').addEventListener('keydown', downKey)
+  load_profile_ui()
+  TogetherJSConfig_getUserColor = getUserColor
+  TogetherJSConfig_getUserName = function () {
+    return localStorage.getItem('profile_name') || base32.short_id()
+  };
+  TogetherJSConfig_findRoom = TogetherJSConfig_getUserName()
+})
+
+</script>
+
+<!-- ==================================================================== -->
+<style>
+#gamearea {
+  max-width: 100%;
+  min-width: 80%;
+  min-height: 60%;
+  background-color: #efe;
+}
+
+body {
+  background-image: url(../svg/viewport_background.svg);
+  background-size: 100% 100%;
+}
+</style>
+
+  <div id="gamearea" contextmenu="gamemenu">
+  <svg width="0" height="0">
+  <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
+    <feColorMatrix id="recolorize-filter-matrix" type="matrix"
+       values="0.9 0.0 0.0 0.0  0.0
+               0.9 0.0 0.0 0.0  0.0
+               0.9 0.0 0.0 0.0  0.0
+               0.0 0.0 0.0 1.0  0.0" />
+  </filter>
+  </svg>
+  </div>
+<!-- ==================================================================== -->
+<!-- ==================================================================== -->
+
+<!-- ==================================================================== -->
+<style>
+.hud_overlay {
+  pointer-events: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  height: auto;
+}
+
+.hudmenu {
+  pointer-events: auto;
+  position: fixed;
+  display: flex;
+  gap: 0.5rem;
+  flex-direction: column-reverse;
+}
+
+.hudmenu-left {
+  bottom: 1rem;
+  left: 1rem;
+}
+
+.hudmenu-right {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  height: auto;
+  justify-content: center;
+}
+
+.hudmenu .collapsegroup {
+  display: flex;
+  flex-direction: column;
+}
+
+#hud_overlay_top {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: auto;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+}
+
+.hudmenu-top {
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+}
+
+.hudmenu .btn {
+  padding: 0.75rem;
+  border-radius: 50%;
+  background: #333;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+
+.hudmenu-right {
+  left: auto;
+  right: 0;
+}
+
+#hud_overlay_left {
+    justify-content: flex-end;
+  }
+#hud_overlay_right {
+    justify-content: flex-end;
+  }
+
+.hudmenu .collapsegroup {
+  display: none;
+  flex-direction: column;
+}
+
+.hudmenu input[type="checkbox"]:checked ~ .collapsegroup {
+    display: flex;
+    max-height: auto;
+}
+
+.hudmenu input[type="checkbox"]:checked + label .collapsed {
+  display: none;
+}
+
+.hudmenu input[type="checkbox"]:not(:checked) + label .expanded {
+  display: none;
+}
+
+.hudmenu input[type="checkbox"]:not(:checked) + label .collapsed {
+  display: inline;
+}
+
+.hudmenu input[type="checkbox"]:checked + label .expanded {
+  display: inline;
+}
+
+
+.hudmenu .btn {
+  min-width: 7em;
+  min-height: 7em;
+  padding: 1em;
+  font-size: 8pt;
+  border-radius: 10px;
+  background-color: #030303;
+  opacity: 80%;
+}
+.hudmenu .btn:hover {
+  background-color: #000000;
+  opacity: 100%;
+  color: #ffffff;
+}
+.hudmenu .btn:focus {
+  background-color: #a0a0a0;
+}
+.hudmenu button[accessKey]::first-letter {
+  text-decoration: underline;
+}
+@media only screen and (max-height: 600px) {
+  .hudmenu .btn {
+    min-height: 3em;
+  }
+}
+
+</style>
+<script>
+// Do not scroll when swiping around on a menu
+window.addEventListener('load', () => {
+  document.querySelectorAll('.hudmenu').forEach(el => {
+    el.addEventListener('scroll', (evt) => {
+      evt.preventDefault()
+      evt.stopPropagation()
+    })
+    el.addEventListener('touchmove', (evt) => {
+      evt.preventDefault()
+      evt.stopPropagation()
+    })
+  })
+})
+</script>
+
+<!-- HUD TOP =============================================================== -->
+
+<div class="hud_overlay" id="hud_overlay_top">
+<!-- =============OBJECT ACTIONS ==================== -->
+<style>
+#object_actions {
+  opacity: 80%;
+  color: #f0f0f0;
+}
+#object_actions_header {
+  font-size: larger;
+  padding: 0px 10px;
+}
+@media only screen and (max-width: 900px) {
+  #object_actions {
+    //max-width: 200px;
+  }
+  #object_actions_header {
+    font-size: normal;
+    margin: 4px 0px;
+    line-height: 100%;
+  }
+}
+</style>
+<div id="object_actions" class="hudmenu hudmenu-top collapsegroup">
+  <div class="collapsible">
+    <h3 id="object_actions_header">Add dice or cards to the table</h3>
+    <template id="template_object_actions">
+      <button class="btn btn-large">Button label</button>
+    </template>
+  </div>
+</div>
+</div>
+
+<!-- END HUD TOP ======================================================= -->
+
+
+<!-- HUD LEFT ========================================================== -->
+
+<div class="hud_overlay" id="hud_overlay_left">
+<section class="hudmenu hudmenu-left">
+  <!-- Only visible on mobile -->
+  <!-- CSS/HTML hack to save the collapse / expand state in an invisible checkbox -->
+  <input type="checkbox" id="collapsetoggle-left" style="display:none" />
+  <label class="hamburger" for="collapsetoggle-left">
+    <div class="btn">
+      <img class="collapsed" src="../img/jigsaw-box.svg" height="32" />
+      <img class="expanded" src="../img/collapse.svg" height="32" />
+    </div>
+  </label>
+
+  <div class="collapsegroup" >
+
+    <button id="cards_dialog_button" class="btn btn-small modal-trigger"
+      accesskey="c"
+      data-target="dialog_cards"
+      data-dialog-id="dialog_cards">
+    <img src="../img/poker-hand.svg" height="32" />
+    <u>C</u>ards
+    </button>
+    <button id="table_button" class="btn btn-small"
+      onclick="ui_popup_dialog_table()"
+      accesskey="t"
+      >
+      <img src="../img/table.svg" height="32" />
+      <u>T</u>able
+    </button>
+  </div>
+
+</section>
+</div>
+
+<!-- END HUD LEFT ====================================================== -->
+
+
+<!-- HUD RIGHT ========================================================= -->
+
+<div class="hud_overlay" id="hud_overlay_right">
+<section class="hudmenu hudmenu-right">
+  <!-- CSS/HTML hack to save the collapse / expand state in an invisible checkbox -->
+  <input type="checkbox" id="collapsetoggle-right" style="display: none" />
+  <label class="hamburger" for="collapsetoggle-right">
+    <div class="btn">
+      <img class="collapsed" src="../img/ellipsis.svg" height="32" />
+      <img class="expanded" src="../img/collapse.svg" height="32" />
+    </div>
+  </label>
+
+  <div class="collapsegroup" >
+    <button id="profile_button" class="btn btn-small modal-trigger"
+      title="Profile"
+      data-target="dialog_profile"
+      data-dialog-id="dialog_profile">
+      <span id="profile_button_span">Profile</span>
+    </button>
+
+    <button id="save_button" class="btn btn-small"
+      onclick="ui_popup_dialog_save()"
+      data-dialog-id="dialog_save">
+      Save
+    </button>
+
+    <button id="load_button" class="btn btn-small"
+      onclick="ui_popup_dialog_load()"
+      data-dialog-id="dialog_load">
+      Load
+    </button>
+
+    <button id="activity_button" class="btn btn-small modal-trigger"
+      title="Log of game events"
+      data-target="dialog_activity_log"
+      data-dialog-id="dialog_activity_log">
+      Activity Log
+    </button>
+
+    <button id="help_button" class="btn btn-small modal-trigger"
+      title="Help/About this project"
+      data-target="dialog_contribute"
+      data-dialog-id="dialog_contribute">
+      Help / About
+    </button>
+
+
+  </div>
+
+</section>
+</div>
+<!-- END HUD RIGHT ====================================================== -->
+
+
+
+<!-- PROFILE  =============================================== PROFILE -->
+  <script>
+function ui_change_profile(evt) {
+  name_input = byId('profile_input_name')
+  color_input = byId('profile_input_color')
+  if (!name_input.value) {
+    return;
+  }
+  localStorage.setItem('profile_name', name_input.value)
+  localStorage.setItem('profile_color', color_input.value)
+  load_profile_ui()
+  ui.popdown_dialog('dialog_profile')
+  net_fire({ type: 'change_profile', data: name_input.value })
+}
+function load_profile_ui() {
+  if (TogetherJS === undefined) {
+    return
+  }
+  name = localStorage.getItem('profile_name') || ''
+  color = localStorage.getItem('profile_color')
+  if (!name) {
+    return
+  }
+  TogetherJS.refreshUserData()
+  TogetherJSConfig_findRoom = name
+  input = document.querySelector('#profile_input_name')
+  input.value = name
+  inputs = document.querySelectorAll('#profile_input_color')
+  inputs.forEach(input => {
+    input.value = color
+  })
+  profile_bs = document.querySelector('#profile_button_span')
+  profile_bs.textContent = name
+}
+  </script>
+  <div class="modal" id="dialog_profile">
+    <button class="dialog_cancel btn modal-close"
+      data-dialog-id="dialog_profile"
+    > &#215; </button>
+  <div class="modal-content">
+    <label for="profile_input_name">Name</label>
+    <input id="profile_input_name" type="text" value="" />
+    <label for="profile_input_color">Color
+    <input id="profile_input_color" type="color" value="#ffffff"
+    />
+    </label>
+    <br />
+    <button class="btn" id="dialog_profile_submit"
+      onclick="ui_change_profile(this)">
+      Update
+    </button>
+  </div>
+  </div>
+<!-- /PROFILE ============================================== /PROFILE -->
+
+<!-- SAVE ============================================================ SAVE -->
+  <div id="dialog_save" class="modal">
+  <script>
+function make_safe_svg_string() {
+  let elJSON = domJSON.toJSON(
+    byId('svg_table'),
+    { domProperties: false }
+  )
+  let fragment = domJSON.toDOM(elJSON)
+  let dd = document.createElement('div')
+  dd.appendChild(fragment)
+  return dd.innerHTML
+}
+function download_svg() {
+  let svg_string = make_safe_svg_string()
+  let blob = new Blob([svg_string], {type: 'image/svg+xml'})
+  let tmplink = document.createElement('a')
+  tmplink.href = window.URL.createObjectURL(blob)
+  let filename = 'tt_' + (new Date().toISOString().substr(0,19)) + '.svg'
+  tmplink.download = filename.replace(/[-: ]/g, '_')
+  tmplink.click()
+}
+function ui_popup_dialog_save() {
+  if(document.querySelectorAll('#svg_table').length > 1) {
+    alert('too many svg_table elements')
+  }
+  let svg_string = make_safe_svg_string()
+  textarea = byId('textarea_save_output')
+  textarea.value = svg_string
+  return ui.popup_dialog({'data-dialog-id': 'dialog_save'})
+}
+  </script>
+    <nav class="dialog_nav"  id="save_nav">
+    <div class="nav-wrapper">
+      <button class="btn dialog_cancel modal-close">
+        &#215;
+      </button>
+      <ul class="left">
+        <li><a href="#copy_and_paste">Copy/Paste</a></li>
+        <li><a href="#local">Local storage</a></li>
+        <li><a href="#cloud">Cloud storage</a></li>
+      </ul>
+    </div>
+    </nav>
+  <div class="modal-content">
+    <section>
+      <a name="copy_and_paste"></a>
+      <h1 >Copy and Paste</h1>
+      <textarea id="textarea_save_output" cols="82" rows=10>X</textarea>
+      <div class="save_explain">
+      Copy and paste the contents of this text box to a file on your computer.
+      </div>
+    </section>
+    <section>
+      <a name="download"></a>
+      <h1 >Download</h1>
+      <button class="btn" onclick="download_svg()">Download SVG</button>
+      <div class="save_explain">
+      Save to your computer.
+      </div>
+    </section>
+    <section>
+      <a name="local"></a>
+      <h1 >Local storage on your browser</h1>
+      <div class="save_explain">
+      This feature has not been implemented yet. If you would like it to exist,
+      <span style="color:teal">tweet</span> "Hey @boardcrafting, please
+      make Local Storage work on http://1kfa.com/table ! #ttrpg #1kfa
+      #featurerequest"
+      <b>or</b> start participating with the development on Github
+      </div>
+    </section>
+    <section>
+      <a name="cloud"></a>
+      <h1 >Cloud storage</h1>
+      <div class="save_explain">
+      This feature has not been implemented yet. If you would like it to exist,
+      <span style="color:teal">tweet</span> "Hey @boardcrafting, please
+      make Cloud Storage work on http://1kfa.com/table ! #ttrpg #1kfa
+      #featurerequest"
+      <b>or</b> start participating with the development on Github
+      </div>
+    </section>
+  </div>
+  </div>
+<!-- /SAVE ========================================================== /SAVE -->
+
+
+<!-- LOAD ============================================================ LOAD -->
+  <div id="dialog_load" class="modal">
+  <script>
+async function load_svg() {
+  textarea = byId('textarea_load_input')
+  let newDoc = new DOMParser().parseFromString(textarea.value, 'image/svg+xml')
+  if (newDoc.firstChild.id !== 'svg_table') {
+    alert('Save file corrupted!\n(Did you intend to add an SVG doc with the Other menu?)')
+    return
+  }
+  load_new_table(newDoc.firstChild)
+  return ui.popdown_dialog('dialog_load')
+}
+function ui_popup_dialog_load() {
+  textarea = byId('textarea_load_input')
+  textarea.value = ''
+  textarea.innerHTML = ''
+  return ui.popup_dialog({'data-dialog-id': 'dialog_load'})
+}
+  </script>
+    <nav class="dialog_nav" id="load_nav">
+    <div class="nav-wrapper">
+    <button class="dialog_cancel btn modal-close"
+      data-dialog-id="dialog_load"
+    >
+      &#215;
+    </button>
+      <ul class="left">
+        <li><a href="#copy_and_paste">Copy/Paste</a></li>
+        <li><a href="#upload">Upload file</a></li>
+      </ul>
+    </div>
+    </nav>
+  <div class="modal-content">
+    <section>
+      <a name="copy_and_paste"></a>
+      <h1 class="load_h1">Copy and Paste</h1>
+      <textarea id="textarea_load_input" cols="82" rows=5></textarea>
+      <div class="load_explain">
+      Copy and paste the contents from a previously saved session into this
+      text box.
+      </div>
+      <button class="btn btn-dialog btn-primary" onclick="load_svg()">
+      Load
+      </button>
+    </section>
+    <section>
+      <a name="upload"></a>
+      <h1 class="load_h1">Upload file</h1>
+      <div class="load_explain">
+      This feature has not been implemented yet. If you would like it to exist,
+      <span style="color:teal">tweet</span> "Hey @boardcrafting, please make
+      file uploading
+      work on http://1kfa.com/table ! #ttrpg #1kfa #featurerequest"
+      <b>or</b> start participating with the development on Github
+      </div>
+    </section>
+  </div>
+  </div>
+<!-- /LOAD ========================================================== /LOAD -->
+
+
+<!-- TABLE  =============================================== TABLE -->
+  <script>
+function ui_popup_dialog_table() {
+  let wInput = byId('table_width_input')
+  let hInput = byId('table_height_input')
+  wInput.value = svg_table.width()
+  hInput.value = svg_table.height()
+  return ui.popup_dialog({'data-dialog-id': 'dialog_table'})
+}
+
+function ui_change_background() {
+  input = byId('background_url')
+  if (!input.value) {
+    return;
+  }
+  table_change_background(input.value)
+  ui.popdown_dialog('dialog_table')
+  push_sync()
+}
+
+function ui_change_table_size() {
+  let wInput = byId('table_width_input')
+  let hInput = byId('table_height_input')
+
+  svg_table.width(parseInt(wInput.value))
+  svg_table.height(parseInt(hInput.value))
+  table_border_rect.width(svg_table.width() + 2)
+  table_border_rect.height(svg_table.height() + 2)
+  viewport.node.setAttribute(
+    'viewBox',
+    `0 0 ${svg_table.width()} ${svg_table.height()}`
+  )
+
+  ui.popdown_dialog('dialog_table')
+  push_sync()
+}
+  </script>
+  <div class="modal" id="dialog_table">
+    <button class="dialog_cancel btn modal-close"
+      data-dialog-id="dialog_table"
+    >
+      &#215;
+    </button>
+  <div class="modal-content">
+    <section>
+    <h1>Background</h1>
+    Use a URL as a background.  Examples:
+    <ul>
+      <li>http://www.1kfa.com/table/svg/bg_topography.svg
+        <img height="32" src="../svg/bg_topography.svg" />
+      <li>http://www.1kfa.com/table/svg/bg_hexagons.svg
+        <img height="32" src="../svg/bg_hexagons.svg" />
+    </ul>
+    <label for="background_url">Enter a URL</label>
+    <input id="background_url" type="url"
+      value="http://www.1kfa.com/table/svg/bg_topography.svg"
+    />
+    <button class="btn" id="dialog_bg_submit"
+      onclick="ui_change_background()">
+      Change Background URL
+    </button>
+    </section>
+    <section>
+    <h1>Size</h1>
+    <fieldset id="table_size_input_fields">
+    <label>
+      <span >Width:</span>
+      <input id="table_width_input" type="number"
+        min="500"
+        max="10000"
+        value="10"/>
+    </label>
+    <label>
+      <span >Height:</span>
+      <input id="table_height_input" type="number"
+        min="500"
+        max="10000"
+        value="10"/>
+    </label>
+    </fieldset>
+    <br />
+    <button id="dialog_table_size_submit"
+      class="btn"
+      onclick="ui_change_table_size()">
+      Change Size
+    </button>
+    </section>
+  </div>
+  </div>
+<!-- /TABLE ============================================== /TABLE -->
+
+
+<!-- CARDS ======================================================= CARDS -->
+
+  <div class="modal" id="dialog_cards">
+  <script>
+function ui_submit_card() {
+  inputEl = byId('card_input_card_code')
+  if (!inputEl.checkValidity()) {
+    return
+  }
+  card_code = inputEl.value
+  add_object('svg/v1/single_poker_card.svg',
+    { 'serializedState': card_code },
+  )
+  inputEl.value = ''
+  ui.popdown_dialog('dialog_cards')
+}
+  </script>
+    <button class="dialog_cancel btn modal-close" data-dialog-id="dialog_cards"
+    > &#215; </button>
+    <div class="modal-content">
+    <section id="decks_section">
+      <a name="decks"></a>
+      <h1 class="decks_h1">Decks</h1>
+      <button class="btn btn-small modal-close"
+        onclick="add_object('../svg/v1/deckahedron_deck.svg')">
+        + Deckahedron
+      </button>
+    </section>
+    </div>
+  </div>
+
+<!-- END CARDS =============================================== END CARDS -->
+
+<!-- Bulma modal scaffold -->
+  <div class="modal" id="modal">
+    <div class="modal-background"></div>
+    <div class="modal-card">
+      <header class="modal-card-head">
+        <p class="modal-card-title">Choose an Action</p>
+        <button class="delete" aria-label="close" id="closeModal"></button>
+      </header>
+      <section class="modal-card-body">
+        <div class="buttons is-multiline">
+          <button class="button">Option 1</button>
+          <button class="button">Option 2</button>
+          <button class="button">Option 3</button>
+          <button class="button">Option 4</button>
+          <button class="button">Option 5</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    // minimal JS to toggle Bulma modal
+    document.getElementById('profile_button').onclick = () =>
+      document.getElementById('modal').classList.add('is-active');
+    document.getElementById('closeModal').onclick = () =>
+      document.getElementById('modal').classList.remove('is-active');
+  </script>
+
+
+
+
+<menu type="context" id="gamemenu">
+  <template id="template_menuitem">
+    <menuitem label="X"
+    ></menuitem>
+  </template>
+</menu>
+
+
+
+</body>
+</html>
+
