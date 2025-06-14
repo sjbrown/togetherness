@@ -26,6 +26,55 @@
 <!-- polyfill Promises for Internet Explorer -->
 <script src="https://cdn.jsdelivr.net/npm/promise-polyfill@8/dist/polyfill.min.js"></script>
 
+<link href="fonts/URWBookman-DemiItalic.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="fonts/URWBookman-Demi.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="fonts/URWBookman-LightItalic.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="fonts/URWBookman-Light.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+
+<style>
+@font-face {
+  font-family: 'URWBookman';
+  src: url('URWBookman-Light.woff2') format('woff2');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'URWBookman';
+  src: url('URWBookman-LightItalic.woff2') format('woff2');
+  font-weight: 300;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'URWBookman';
+  src: url('URWBookman-Demi.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'URWBookman';
+  src: url('URWBookman-DemiItalic.woff2') format('woff2');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+text {
+  font-family: 'URWBookman', serif;
+  font-weight: 300;    /* or 700 */
+  font-style: italic;  /* or normal */
+}
+
+svg text {
+  font-family: 'URWBookman';
+}
+</style>
+
 <link rel="stylesheet" href="./bulma/css/bulma.css">
 <link rel="stylesheet" type="text/css" href="../animate.css">
 
