@@ -121,7 +121,23 @@ function table_change_background(url) {
     bgRect = SVG(byId('svg_table_bg_rect'))
     bgRect.fill(pattern)
   });
+}
 
+function load_lines() {
+  import_foreign_svg('lines.svg').then(nest => {
+    nest.cx(svg_table.cx())
+    nest.cy(svg_table.cy())
+    nest.node.querySelectorAll('g .centermarker').forEach((el, idx) => {
+      el.style.opacity = '0'
+    })
+    nest.node.querySelectorAll('g .suit').forEach((el, idx) => {
+      console.log(el)
+      if (!el.classList.contains('suit_anvil')) {
+        el.style.opacity = '0'
+      }
+    })
+    svg_table.add(nest)
+  })
 }
 
 function initSvgTable() {
@@ -155,16 +171,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
     return name + '_' + base32.short_id()
   }
 
-  function landscapeOrPortrait() {
-    let bodyEl = qs('body')
-
-    if (bodyEl.clientHeight > bodyEl.clientWidth) { // 'portrait'
-      origViewportSize = [800,1200]
-    } else { // 'landscape'
-      origViewportSize = [1200,800]
-    }
-  }
-  landscapeOrPortrait()
+  origViewportSize = [800,1200]
   function expandMenusOnWidescreens() {
     if ( qs('body').clientWidth > 1200 ) {
       qs('#collapsetoggle-left').checked = true
@@ -182,7 +189,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
     width: qs('body').clientWidth,
     viewBox: `0 0 ${origViewportSize[0]} ${origViewportSize[1]}`,
   })
-  viewport.node.style.overflow = 'scroll'
+  viewport.css('overflow', 'scroll')
   viewport.css('background-image', 'url(../svg/viewport_background.svg)')
   viewport.css('background-size', '100% 100%')
   viewport.css('background-position', 'center center')
@@ -206,6 +213,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
 
   window.addEventListener("resize", viewportToGameArea)
 
+  load_lines()
 })
 
 var currentZoom = 1.0;
@@ -449,35 +457,29 @@ window.addEventListener('load', () => {
 <!-- HUD TOP =============================================================== -->
 
 <div class="hud_overlay" id="hud_overlay_top">
-<!-- =============OBJECT ACTIONS ==================== -->
-<style>
-#object_actions {
-  opacity: 80%;
-  color: #f0f0f0;
-}
-#object_actions_header {
-  font-size: larger;
-  padding: 0px 10px;
-}
-@media only screen and (max-width: 900px) {
+  <style>
   #object_actions {
-    //max-width: 200px;
+    opacity: 80%;
+    color: #f0f0f0;
   }
   #object_actions_header {
-    font-size: normal;
-    margin: 4px 0px;
-    line-height: 100%;
+    font-size: larger;
+    padding: 0px 10px;
   }
-}
-</style>
-<div id="object_actions" class="hudmenu hudmenu-top collapsegroup">
-  <div class="collapsible">
-    <h3 id="object_actions_header">Add dice or cards to the table</h3>
+  @media only screen and (max-width: 900px) {
+    #object_actions_header {
+      font-size: normal;
+      margin: 4px 0px;
+      line-height: 100%;
+    }
+  }
+  </style>
+  <div id="object_actions" class="hudmenu hudmenu-top collapsegroup">
+    <h3 id="object_actions_header">Deckahedron</h3>
     <template id="template_object_actions">
       <button class="btn btn-large">Button label</button>
     </template>
   </div>
-</div>
 </div>
 
 <!-- END HUD TOP ======================================================= -->
