@@ -46,10 +46,10 @@
     <circle class="centermarker center_g" style="display:inline;fill:#ff00ff;fill-opacity:1;stroke:none;stroke-width:2.64583;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.5" id="circle61738-7" cx="105.83334" cy="29.691345" r="3.5456281" />
     <g id="g26169" transform="translate(-0.41848373,0.04243763)" style="display:inline">
       <rect style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:2.64583;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.5" id="rect23334" width="59.182426" height="33.363567" x="76.660606" y="12.967124" rx="3.175" ry="3.175" />
-      <text xml:space="preserve" style="font-size:3.88056px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:sans-serif;fill:#000000;stroke-width:0.264583" x="85.790741" y="15.12435" id="text26144">
+      <text xml:space="preserve" style="font-size:3.88056px;line-height:1.25;font-family:'URW Bookman';-inkscape-font-specification:'URW Bookman';fill:#000000;stroke-width:0.264583" x="85.790741" y="15.12435" id="text26144">
         <tspan sodipodi:role="line" id="tspan26142" style="font-style:normal;font-variant:normal;font-weight:300;font-stretch:normal;font-size:11.2889px;font-family:'URW Bookman';-inkscape-font-specification:'URW Bookman, Light';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;stroke-width:0.264583" x="85.790741" y="15.12435">Results</tspan>
       </text>
-      <text xml:space="preserve" style="font-size:3.88056px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:sans-serif;stroke-width:0.264583" x="85.790741" y="14.595183" id="text10946">
+      <text xml:space="preserve" style="font-size:3.88056px;line-height:1.25;font-family:'URW Bookman';-inkscape-font-specification:'URW Bookman';stroke-width:0.264583" x="85.790741" y="14.595183" id="text10946">
         <tspan sodipodi:role="line" id="tspan10944" style="font-style:normal;font-variant:normal;font-weight:300;font-stretch:normal;font-size:11.2889px;font-family:'URW Bookman';-inkscape-font-specification:'URW Bookman, Light';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#ffffff;stroke-width:0.264583" x="85.790741" y="14.595183">Results</tspan>
       </text>
     </g>
