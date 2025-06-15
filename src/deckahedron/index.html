@@ -248,6 +248,7 @@ function initHUDMenus() {
 
 async function initTableLines() {
   table_lines = await import_foreign_svg('lines.svg')
+  injectURWBookmanCSS(table_lines.node)
   table_lines.cx(svg_table.cx())
   table_lines.cy(svg_table.cy())
   table_lines.node.querySelectorAll('g .centermarker').forEach((el, idx) => {
