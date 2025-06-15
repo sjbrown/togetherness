@@ -136,7 +136,11 @@ function getUserColor() {
 
 function debugBar(s) {
   if (!DEBUG) { return }
-  log = byId('debug_bar_log')
+  log = qs('#debug_bar_log')
+  if (log == null) {
+    console.log('DEBUG', s)
+    return
+  }
   text = log.innerHTML
   log.innerHTML = s + '\n' + text
 }

@@ -134,11 +134,12 @@ svg text {
 <script>
 var table_border_rect
 var svg_table
+var table_lines
 var layer_mats
 var layer_objects
 var layer_ui
 var viewport
-var origViewportSize
+var origViewportSize = [800,1200]
 
 function createLayer(id) {
   layer = svg_table.group()
@@ -172,22 +173,6 @@ function table_change_background(url) {
   });
 }
 
-function load_lines() {
-  import_foreign_svg('lines.svg').then(nest => {
-    nest.cx(svg_table.cx())
-    nest.cy(svg_table.cy())
-    nest.node.querySelectorAll('g .centermarker').forEach((el, idx) => {
-      el.style.opacity = '0'
-    })
-    nest.node.querySelectorAll('g .suit').forEach((el, idx) => {
-      console.log(el)
-      if (!el.classList.contains('suit_anvil')) {
-        el.style.opacity = '0'
-      }
-    })
-    svg_table.add(nest)
-  })
-}
 
 function initSvgTable() {
   // Create a fresh <svg> and append it into the viewport
@@ -195,6 +180,7 @@ function initSvgTable() {
     .addTo(viewport)
     .size(origViewportSize[0], origViewportSize[1])
     .id('svg_table')
+  injectURWBookmanCSS(svg_table.node)
 
   bgRect = svg_table.rect(origViewportSize[0], origViewportSize[1])
     .id('svg_table_bg_rect')
@@ -210,25 +196,9 @@ function initSvgTable() {
   // Hook up your observers
   objectsObserver = new LayerObserver(layer_objects.node);
   uiObserver      = new LayerObserver(layer_ui.node);
-
-  return svg_table;
 }
 
-SVG.on(document, 'DOMContentLoaded', () => {
-  // Override the id-generating function of the svg.js library
-  SVG.eid = (name) => {
-    return name + '_' + base32.short_id()
-  }
-
-  origViewportSize = [800,1200]
-  function expandMenusOnWidescreens() {
-    if ( qs('body').clientWidth > 1200 ) {
-      qs('#collapsetoggle-left').checked = true
-      qs('#collapsetoggle-right').checked = true
-    }
-  }
-  expandMenusOnWidescreens()
-
+function initViewport() {
   viewport = SVG()
     .addTo('#gamearea')
     .size('100vw', '100vh')
@@ -244,8 +214,6 @@ SVG.on(document, 'DOMContentLoaded', () => {
   viewport.css('background-position', 'center center')
   viewport.css('background-repeat', 'no-repeat')
 
-  svg_table = initSvgTable()
-
   table_border_rect = viewport.rect()
   table_border_rect.attr({
      x: -1,
@@ -259,10 +227,118 @@ SVG.on(document, 'DOMContentLoaded', () => {
      'stroke-width': 10,
      'stroke-opacity': 0.2,
   })
+}
+
+function initSVGJS() {
+  // Override the id-generating function of the svg.js library
+  SVG.eid = (name) => {
+    return name + '_' + base32.short_id()
+  }
+}
+
+function initHUDMenus() {
+  function expandMenusOnWidescreens() {
+    if ( qs('body').clientWidth > 1200 ) {
+      qs('#collapsetoggle-left').checked = true
+      qs('#collapsetoggle-right').checked = true
+    }
+  }
+  expandMenusOnWidescreens()
+}
+
+async function initTableLines() {
+  table_lines = await import_foreign_svg('lines.svg')
+  table_lines.cx(svg_table.cx())
+  table_lines.cy(svg_table.cy())
+  table_lines.node.querySelectorAll('g .centermarker').forEach((el, idx) => {
+    el.style.opacity = '0'
+  })
+  table_lines.node.querySelectorAll('g .suit').forEach((el, idx) => {
+    console.log(el)
+    if (!el.classList.contains('suit_anvil')) {
+      el.style.opacity = '0'
+    }
+  })
+  svg_table.add(table_lines)
+}
+
+function centerMarkerPos(selector) {
+  cmarker = table_lines.findOne(selector)
+  const pt = cmarker.node.ownerSVGElement.createSVGPoint();
+  const bbox = cmarker.bbox();
+  pt.x = bbox.cx
+  pt.y = bbox.cy
+  const globalCenter = pt.matrixTransform(cmarker.node.getCTM());
+  // console.log('g c', globalCenter)
+  return globalCenter
+}
+
+async function initDeckahedron() {
+  d = await import_foreign_svg('deckahedron_deck.svg')
+  centerPos = centerMarkerPos('#g_deckahedron .centermarker')
+  d.center(centerPos.x, centerPos.y)
+  svg_table.add(d)
+}
+
+async function initAsyncObjects() {
+  //split this out into its own function so that the fetches are ordered
+  await initTableLines()
+  await initDeckahedron()
+}
+
+function injectURWBookmanCSS(svgEl) {
+  const css = `
+    @font-face {
+      font-family: 'fonts/URWBookman';
+      src: url('URWBookman-Light.woff2') format('woff2');
+      font-weight: 300;
+      font-style: normal;
+    }
+    @font-face {
+      font-family: 'URWBookman';
+      src: url('fonts/URWBookman-LightItalic.woff2') format('woff2');
+      font-weight: 300;
+      font-style: italic;
+    }
+    @font-face {
+      font-family: 'URWBookman';
+      src: url('fonts/URWBookman-Demi.woff2') format('woff2');
+      font-weight: 700;
+      font-style: normal;
+    }
+    @font-face {
+      font-family: 'URWBookman';
+      src: url('fonts/URWBookman-DemiItalic.woff2') format('woff2');
+      font-weight: 700;
+      font-style: italic;
+    }
+
+    text {
+      font-family: 'URWBookman', serif;
+    }
+  `;
+
+  const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+  style.setAttribute('type', 'text/css');
+  style.textContent = css;
+
+  // Insert the style as the first child of the SVG root
+  svgEl.insertBefore(style, svgEl.firstChild);
+}
+
+
+SVG.on(document, 'DOMContentLoaded', () => {
+  initSVGJS()
+
+  initHUDMenus()
+
+  initViewport()
+
+  initSvgTable()
+
+  initAsyncObjects()
 
   window.addEventListener("resize", viewportToGameArea)
-
-  load_lines()
 })
 
 var currentZoom = 1.0;
