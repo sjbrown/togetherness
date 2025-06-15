@@ -33,7 +33,7 @@
 
 <style>
 @font-face {
-  font-family: 'URWBookman';
+  font-family: 'URW Bookman';
   src: url('URWBookman-Light.woff2') format('woff2');
   font-weight: 300;
   font-style: normal;
@@ -41,7 +41,7 @@
 }
 
 @font-face {
-  font-family: 'URWBookman';
+  font-family: 'URW Bookman';
   src: url('URWBookman-LightItalic.woff2') format('woff2');
   font-weight: 300;
   font-style: italic;
@@ -49,7 +49,7 @@
 }
 
 @font-face {
-  font-family: 'URWBookman';
+  font-family: 'URW Bookman';
   src: url('URWBookman-Demi.woff2') format('woff2');
   font-weight: 700;
   font-style: normal;
@@ -57,7 +57,7 @@
 }
 
 @font-face {
-  font-family: 'URWBookman';
+  font-family: 'URW Bookman';
   src: url('URWBookman-DemiItalic.woff2') format('woff2');
   font-weight: 700;
   font-style: italic;
@@ -65,13 +65,13 @@
 }
 
 text {
-  font-family: 'URWBookman', serif;
+  font-family: 'URW Bookman', serif;
   font-weight: 300;    /* or 700 */
   font-style: italic;  /* or normal */
 }
 
 svg text {
-  font-family: 'URWBookman';
+  font-family: 'URW Bookman';
 }
 </style>
 
@@ -287,34 +287,35 @@ async function initAsyncObjects() {
 }
 
 function injectURWBookmanCSS(svgEl) {
+  return;
   const css = `
     @font-face {
-      font-family: 'fonts/URWBookman';
+      font-family: 'URW Bookman';
       src: url('URWBookman-Light.woff2') format('woff2');
       font-weight: 300;
       font-style: normal;
     }
     @font-face {
-      font-family: 'URWBookman';
+      font-family: 'URW Bookman';
       src: url('fonts/URWBookman-LightItalic.woff2') format('woff2');
       font-weight: 300;
       font-style: italic;
     }
     @font-face {
-      font-family: 'URWBookman';
+      font-family: 'URW Bookman';
       src: url('fonts/URWBookman-Demi.woff2') format('woff2');
       font-weight: 700;
       font-style: normal;
     }
     @font-face {
-      font-family: 'URWBookman';
+      font-family: 'URW Bookman';
       src: url('fonts/URWBookman-DemiItalic.woff2') format('woff2');
       font-weight: 700;
       font-style: italic;
     }
 
     text {
-      font-family: 'URWBookman', serif;
+      font-family: 'URW Bookman', serif;
     }
   `;
 
