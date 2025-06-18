@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+
+<svg
+   version="1.1"
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns="http://www.w3.org/2000/svg"
+   width="420"
+   height="420"
+   id="card_template"
+   class="card_template"
+   >
+<use href="deckahedron_back.svg#deckahedron_back" x="0" y="0" />
+<use href="deckahedron_front.svg#deckahedron_front" x="0" y="0" />
+<g transform="translate(210 90)">
+<use id="g_dragon_4" href="results_symbols.svg#g_result_4" />
+<use id="g_dragon_3" href="results_symbols.svg#g_result_3" />
+<use id="g_dragon_2" href="results_symbols.svg#g_result_2" />
+<use id="g_dragon_1" href="results_symbols.svg#g_result_1" />
+</g>
+
+<g transform="translate(330 210)">
+<use id="g_blades_4" href="results_symbols.svg#g_result_4" transform="rotate(90 0 0)" />
+<use id="g_blades_3" href="results_symbols.svg#g_result_3" transform="rotate(90 0 0)" />
+<use id="g_blades_2" href="results_symbols.svg#g_result_2" transform="rotate(90 0 0)" />
+<use id="g_blades_1" href="results_symbols.svg#g_result_1" transform="rotate(90 0 0)" />
+</g>
+
+<g transform="translate(210 330)">
+<use id="g_anvil_4" href="results_symbols.svg#g_result_4" transform="rotate(180 0 0)" />
+<use id="g_anvil_3" href="results_symbols.svg#g_result_3" transform="rotate(180 0 0)" />
+<use id="g_anvil_2" href="results_symbols.svg#g_result_2" transform="rotate(180 0 0)" />
+<use id="g_anvil_1" href="results_symbols.svg#g_result_1" transform="rotate(180 0 0)" />
+</g>
+
+
+<g transform="translate(90 210)">
+<use id="g_crown_4" href="results_symbols.svg#g_result_4" transform="rotate(-90 0 0)" />
+<use id="g_crown_3" href="results_symbols.svg#g_result_3" transform="rotate(-90 0 0)" />
+<use id="g_crown_2" href="results_symbols.svg#g_result_2" transform="rotate(-90 0 0)" />
+<use id="g_crown_1" href="results_symbols.svg#g_result_1" transform="rotate(-90 0 0)" />
+</g>
+
+</svg>

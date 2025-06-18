@@ -16,6 +16,7 @@
 <script src="../base32.js"></script>
 <script src="../svg.js"></script>
 <script src="../userlog.js"></script>
+<script src="index.js"></script>
 <script src="../index.js"></script>
 <script src="../spatial.js"></script>
 <script src="../js/svg_dom_json.js"></script>
@@ -34,7 +35,7 @@
 <style>
 @font-face {
   font-family: 'URW Bookman';
-  src: url('URWBookman-Light.woff2') format('woff2');
+  src: url('fonts/URWBookman-Light.woff2') format('woff2');
   font-weight: 300;
   font-style: normal;
   font-display: swap;
@@ -42,7 +43,7 @@
 
 @font-face {
   font-family: 'URW Bookman';
-  src: url('URWBookman-LightItalic.woff2') format('woff2');
+  src: url('fonts/URWBookman-LightItalic.woff2') format('woff2');
   font-weight: 300;
   font-style: italic;
   font-display: swap;
@@ -50,7 +51,7 @@
 
 @font-face {
   font-family: 'URW Bookman';
-  src: url('URWBookman-Demi.woff2') format('woff2');
+  src: url('fonts/URWBookman-Demi.woff2') format('woff2');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -58,7 +59,7 @@
 
 @font-face {
   font-family: 'URW Bookman';
-  src: url('URWBookman-DemiItalic.woff2') format('woff2');
+  src: url('fonts/URWBookman-DemiItalic.woff2') format('woff2');
   font-weight: 700;
   font-style: italic;
   font-display: swap;
@@ -135,11 +136,11 @@ svg text {
 var table_border_rect
 var svg_table
 var table_lines
-var layer_mats
 var layer_objects
 var layer_ui
 var viewport
 var origViewportSize = [800,1200]
+var currentZoom = 1.0;
 
 function createLayer(id) {
   layer = svg_table.group()
@@ -186,8 +187,6 @@ function initSvgTable() {
     .id('svg_table_bg_rect')
   table_change_background('../svg/bg_hexagons.svg')
 
-  // Build three layering groups directly off svg_table
-  layer_mats = createLayer('layer_mats')
   layer_objects = createLayer('layer_objects')
   layer_ui = createLayer('layer_ui')
 
@@ -256,42 +255,25 @@ async function initTableLines() {
   })
   table_lines.node.querySelectorAll('g .suit').forEach((el, idx) => {
     console.log(el)
-    if (!el.classList.contains('suit_anvil')) {
+    if (!el.classList.contains('suit_dragon')) {
       el.style.opacity = '0'
     }
   })
   svg_table.add(table_lines)
 }
 
-function centerMarkerPos(selector) {
-  cmarker = table_lines.findOne(selector)
-  const pt = cmarker.node.ownerSVGElement.createSVGPoint();
-  const bbox = cmarker.bbox();
-  pt.x = bbox.cx
-  pt.y = bbox.cy
-  const globalCenter = pt.matrixTransform(cmarker.node.getCTM());
-  // console.log('g c', globalCenter)
-  return globalCenter
-}
-
-async function initDeckahedron() {
-  d = await import_foreign_svg('deckahedron_deck.svg')
-  centerPos = centerMarkerPos('#g_deckahedron .centermarker')
-  d.center(centerPos.x, centerPos.y)
-  svg_table.add(d)
-}
-
 async function initAsyncObjects() {
   //split this out into its own function so that the fetches are ordered
   await initTableLines()
-  await initDeckahedron()
+  await initDeckahedron(svg_table)
+  await initPlayArea(svg_table)
 }
 
 function injectURWBookmanCSS(svgEl) {
   const css = `
     @font-face {
       font-family: 'URW Bookman';
-      src: url('URWBookman-Light.woff2') format('woff2');
+      src: url('fonts/URWBookman-Light.woff2') format('woff2');
       font-weight: 300;
       font-style: normal;
     }
@@ -342,35 +324,6 @@ SVG.on(document, 'DOMContentLoaded', () => {
   window.addEventListener("resize", viewportToGameArea)
 })
 
-var currentZoom = 1.0;
-function zoom(inOrOut) {
-  zooms = {
-    0.5: { out: 0.5, in: 0.6 },
-    0.6: { out: 0.5, in: 0.7 },
-    0.7: { out: 0.6, in: 0.8 },
-    0.8: { out: 0.7, in: 0.9 },
-    0.9: { out: 0.8, in: 1.0 },
-    1.0: { out: 0.9, in: 1.25 },
-    1.25: { out: 1.0, in: 1.5 },
-    1.5: { out: 1.25, in: 1.75 },
-    1.75: { out: 1.5, in: 1.75 },
-  }
-  let oldZoom = currentZoom
-  currentZoom = zooms[currentZoom][inOrOut];
-  // console.log("c", currentZoom, "o", oldZoom)
-  if (oldZoom === currentZoom) {
-    return
-  }
-  let w_prime = parseInt(origViewportSize[0] * currentZoom)
-  let h_prime = parseInt(origViewportSize[1] * currentZoom)
-  viewport.node.setAttribute('width', w_prime)
-  viewport.node.setAttribute('height', h_prime)
-  viewport.node.setAttribute(
-    'viewBox',
-    `0 0 ${svg_table.width()} ${svg_table.height()}`
-  )
-  viewportToGameArea()
-}
 
 function viewportToGameArea() {
   let g = byId('gamearea')
@@ -1026,7 +979,7 @@ function ui_submit_card() {
       <a name="decks"></a>
       <h1 class="decks_h1">Decks</h1>
       <button class="btn btn-small modal-close"
-        onclick="add_object('../svg/v1/deckahedron_deck.svg')">
+        onclick="add_object('deckahedron_deck.svg')">
         + Deckahedron
       </button>
     </section>
@@ -1034,6 +987,21 @@ function ui_submit_card() {
   </div>
 
 <!-- END CARDS =============================================== END CARDS -->
+
+  <div class="modal" id="deckahedron_modal">
+    <div class="modal-background"></div>
+    <div class="modal-card">
+      <header class="modal-card-head">
+        <p class="modal-card-title">Deckahedron Actions</p>
+        <button class="delete closeButton" aria-label="close" id="deckahedron_modal_close"></button>
+      </header>
+      <section class="modal-card-body">
+        <div class="buttons is-multiline">
+          <button class="button modal_button_template">Option 1</button>
+        </div>
+      </section>
+    </div>
+  </div>
 
 <!-- Bulma modal scaffold -->
   <div class="modal" id="modal">
