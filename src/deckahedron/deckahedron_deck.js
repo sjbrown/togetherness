@@ -6,6 +6,17 @@ function pile_offset(index) {
   }
 }
 
+let svgEl
+function centerSvg(card, cx, cy) {
+  console.log('cent', card, cx, cy)
+  const w = card.width;
+  const h = card.height;
+  //svgEl.move(cx - w / 2, cy - h / 2);
+  card.node.setAttribute('x', cx - w / 2);
+  card.node.setAttribute('y', cy - h / 2);
+}
+
+
 var deckahedron_deck = {
   deckJSON: [
    {'id': 1, 'xp': false, 'Stamina': false, 'a': 1, 'b': 1, 'c': 1, 'd': 1, 'crit': 'fail'},
@@ -149,6 +160,28 @@ var deckahedron_deck = {
     })
   },
 
+  draw: function(deck) {
+    console.log('draw', deck.id)
+    
+    let offset = pile_offset(
+      deck.querySelectorAll('.card').length
+    )
+
+    //top_card = "last card"
+    top_card = SVG.adopt(deck.lastElementChild)
+
+    // Undo the offset of endeck()
+    centerSvg(top_card, 210, 210)
+
+    // Flip the card so that the front is facing the viewer
+    front = top_card.findOne('.card_front_y')
+    back = top_card.findOne('.card_back_y')
+    front.parent().node.insertBefore(back.node, front.node)
+
+    return top_card
+
+  },
+
   endeck: function(deck, card) {
     //console.log('endeck', deck.id, card.id)
     localDocEl = deck.closest('.deckahedron_deck')
@@ -205,24 +238,6 @@ var deckahedron_deck = {
     deck.style.transition = '1s ease-in'
     deck.style.transformOrigin = 'center'
     deck.style.transform = 'rotate(360deg) rotateY(360deg)'
-  },
-
-  menu: {
-    'Reshuffle': {
-      eventName: 'deckahedron_deck_reshuffle',
-      applicable: (dNode) => { return true },
-      handler: function(evt) {
-        deckahedron_deck.reshuffle_handler(evt, this)
-      },
-    },
-    'Fix': {
-      eventName: 'deck_fix',
-      otherEvents: ['dblclick'],
-      applicable: (node) => { return true },
-      handler: function(evt) {
-        deckahedron_deck.dblclick_handler(evt, this)
-      },
-    },
   },
 
 }

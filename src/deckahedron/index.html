@@ -74,6 +74,11 @@ text {
 svg text {
   font-family: 'URW Bookman';
 }
+
+.hotkey {
+  text-decoration: underline;
+  font-weight: bold;
+}
 </style>
 
 <link rel="stylesheet" href="./bulma/css/bulma.css">
@@ -988,51 +993,41 @@ function ui_submit_card() {
 
 <!-- END CARDS =============================================== END CARDS -->
 
-  <div class="modal" id="deckahedron_modal">
+  <div class="modal" id="modal_template">
     <div class="modal-background"></div>
     <div class="modal-card">
       <header class="modal-card-head">
-        <p class="modal-card-title">Deckahedron Actions</p>
-        <button class="delete closeButton" aria-label="close" id="deckahedron_modal_close"></button>
+        <p class="modal-card-title">Template Title</p>
+        <button class="delete closeButton" aria-label="close"></button>
       </header>
       <section class="modal-card-body">
         <div class="buttons is-multiline">
-          <button class="button modal_button_template">Option 1</button>
+          <button class="button modal_button_template is-fullwidth is-outlined">Option 1</button>
         </div>
       </section>
     </div>
   </div>
 
-<!-- Bulma modal scaffold -->
-  <div class="modal" id="modal">
+  <div class="modal" id="error_modal">
     <div class="modal-background"></div>
     <div class="modal-card">
       <header class="modal-card-head">
-        <p class="modal-card-title">Choose an Action</p>
-        <button class="delete" aria-label="close" id="closeModal"></button>
+        <p class="modal-card-title">Error</p>
+        <button class="delete closeButton"
+          aria-label="close"
+          onclick="this.closest('#error_modal').classList.remove('is-active')"
+          ></button>
       </header>
       <section class="modal-card-body">
+        <p class="msg has-text-warning mb-3">Message here...</p>
         <div class="buttons is-multiline">
-          <button class="button">Option 1</button>
-          <button class="button">Option 2</button>
-          <button class="button">Option 3</button>
-          <button class="button">Option 4</button>
-          <button class="button">Option 5</button>
+          <button class="button modal_button_template is-large is-fullwidth"
+            onclick="this.closest('#error_modal').classList.remove('is-active')"
+            >OK</button>
         </div>
       </section>
     </div>
   </div>
-
-  <script>
-    // minimal JS to toggle Bulma modal
-    document.getElementById('profile_button').onclick = () =>
-      document.getElementById('modal').classList.add('is-active');
-    document.getElementById('closeModal').onclick = () =>
-      document.getElementById('modal').classList.remove('is-active');
-  </script>
-
-
-
 
 <menu type="context" id="gamemenu">
   <template id="template_menuitem">
