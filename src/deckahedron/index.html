@@ -89,7 +89,7 @@ svg text {
 /* MUST go AFTER Bulma import */
 @media screen and (max-width: 900px) {
   .modal-card {
-    height: calc(100vh - 10px);
+    height: 60vh;
     background-image: url(../svg/viewport_background.svg);
   }
 }
@@ -272,6 +272,7 @@ async function initAsyncObjects() {
   await initTableLines()
   await initDeckahedron(svg_table)
   await initPlayArea(svg_table)
+  await initDiscard(svg_table)
 }
 
 function injectURWBookmanCSS(svgEl) {

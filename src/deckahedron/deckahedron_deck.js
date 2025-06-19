@@ -196,6 +196,11 @@ var deckahedron_deck = {
     card_.cx(210 + offset.x)
     deck.appendChild(card)
     deckahedron_deck.reset_reshuffle(deck)
+
+    //Make sure the card goes into the deck FACE-DOWN
+    front = card_.findOne('.card_front_y')
+    back = card_.findOne('.card_back_y')
+    front.parent().node.insertBefore(front.node, back.node)
   },
 
   reset_reshuffle: function(deck) {
