@@ -281,6 +281,7 @@ function iconify(el) {
     width: 26,
     height: 26,
     viewBox: '0 0 420 420',
+    transform: '',
   })
   svgIcon.css({
     'vertical-align': 'middle',
