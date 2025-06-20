@@ -79,6 +79,10 @@ svg text {
   font-family: 'URW Bookman';
 }
 
+svg tspan {
+  font-family: 'URW Bookman';
+}
+
 .hotkey {
   text-decoration: underline;
   font-weight: bold;
@@ -128,6 +132,8 @@ svg text {
   background-image: url(../svg/viewport_background.svg);
 }
 .modal-card-title {
+  font-family: 'URW Bookman';
+  font-weight: 300;
   background-color: var(--bulma-primary);
   color: var(--bulma-primary-invert);
 }
@@ -145,9 +151,10 @@ svg text {
   font-weight: bold;
   border: white solid var(--bulma-button-border-width) !important;
   font-family: 'URW Bookman';
+  font-weight: 700;
 }
 .modal-card-body button:hover {
-  border: gold solid var(--bulma-button-border-width);
+  border: gold solid var(--bulma-button-border-width) !important;
 }
 </style>
 
@@ -273,21 +280,16 @@ async function initTableLines() {
   table_lines.node.querySelectorAll('g .centermarker').forEach((el, idx) => {
     el.style.opacity = '0'
   })
-  table_lines.node.querySelectorAll('g .suit').forEach((el, idx) => {
-    console.log(el)
-    if (!el.classList.contains('suit_dragon')) {
-      el.style.opacity = '0'
-    }
-  })
   svg_table.add(table_lines)
 }
 
 async function initAsyncObjects() {
   //split this out into its own function so that the fetches are ordered
   await initTableLines()
-  await initDeckahedron(svg_table)
-  await initPlayArea(svg_table)
-  await initDiscard(svg_table)
+  await deckahedron.init(svg_table)
+  await playarea.init(svg_table)
+  await discard.init(svg_table)
+  await results.init(svg_table)
 }
 
 function injectURWBookmanCSS(svgEl) {
@@ -351,33 +353,6 @@ function viewportToGameArea() {
   viewport.width(g.clientWidth)
   viewport.height(g.clientHeight)
 }
-
-function downKey(e) {
-  // console.log('downkey', e)
-  let pressedKey = e.key.toLowerCase()
-  if (e.isComposing) { return }
-  if (e.altKey || e.shiftKey || e.metaKey || e.ctrlKey) { return }
-  if (e.target.selectionStart !== undefined) { // text entry or textarea
-    return
-  }
-  let buttons = document.querySelectorAll('[accessKey=' + pressedKey +']')
-  if (buttons.length > 1) {
-    console.error('Two buttons have the same accessKey', x.accessKey)
-    return
-  } else if (buttons.length === 1) {
-    buttons[0].click()
-  }
-}
-
-window.addEventListener('load', () => {
-  document.querySelector('body').addEventListener('keydown', downKey)
-  load_profile_ui()
-  TogetherJSConfig_getUserColor = getUserColor
-  TogetherJSConfig_getUserName = function () {
-    return localStorage.getItem('profile_name') || base32.short_id()
-  };
-  TogetherJSConfig_findRoom = TogetherJSConfig_getUserName()
-})
 
 </script>
 

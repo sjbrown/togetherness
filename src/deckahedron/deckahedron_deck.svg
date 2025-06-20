@@ -30,39 +30,39 @@
     <use class="card_front" href="deckahedron_front.svg#deckahedron_front" x="0" y="0" />
 
     <g id="center_symbols" transform="translate(210 210)">
-      <use id="g_circle" href="results_center_symbols.svg#g_circle" />
-      <use id="g_stamina" href="results_center_symbols.svg#g_stamina" />
-      <use id="g_crit_win" href="results_center_symbols.svg#g_crit_win" />
-      <use id="g_xp" href="results_center_symbols.svg#g_xp" />
+      <use id="g_circle" class="reveal_secondary_result" href="results_center_symbols.svg#g_circle" />
+      <use id="g_stamina" class="reveal_secondary_result" href="results_center_symbols.svg#g_stamina" />
+      <use id="g_crit_win" class="flip_secondary_result" href="results_center_symbols.svg#g_crit_win" />
+      <use id="g_xp" class="flip_secondary_result" href="results_center_symbols.svg#g_xp" />
     </g>
 
     <g id="dragon_result" transform="translate(210 90)">
-      <use id="g_dragon_4" href="results_symbols.svg#g_result_4" />
-      <use id="g_dragon_3" href="results_symbols.svg#g_result_3" />
-      <use id="g_dragon_2" href="results_symbols.svg#g_result_2" />
-      <use id="g_dragon_1" href="results_symbols.svg#g_result_1" />
+      <use id="g_dragon_4" data-num="4" class="primary_result" href="results_symbols.svg#g_result_4" />
+      <use id="g_dragon_3" data-num="3" class="primary_result" href="results_symbols.svg#g_result_3" />
+      <use id="g_dragon_2" data-num="2" class="primary_result" href="results_symbols.svg#g_result_2" />
+      <use id="g_dragon_1" data-num="1" class="primary_result" href="results_symbols.svg#g_result_1" />
     </g>
     
     <g id="blades_result" transform="translate(330 210)">
-      <use id="g_blades_4" href="results_symbols.svg#g_result_4" transform="rotate(90 0 0)" />
-      <use id="g_blades_3" href="results_symbols.svg#g_result_3" transform="rotate(90 0 0)" />
-      <use id="g_blades_2" href="results_symbols.svg#g_result_2" transform="rotate(90 0 0)" />
-      <use id="g_blades_1" href="results_symbols.svg#g_result_1" transform="rotate(90 0 0)" />
+      <use id="g_blades_4" data-num="4" class="primary_result" href="results_symbols.svg#g_result_4" transform="rotate(90 0 0)" />
+      <use id="g_blades_3" data-num="3" class="primary_result" href="results_symbols.svg#g_result_3" transform="rotate(90 0 0)" />
+      <use id="g_blades_2" data-num="2" class="primary_result" href="results_symbols.svg#g_result_2" transform="rotate(90 0 0)" />
+      <use id="g_blades_1" data-num="1" class="primary_result" href="results_symbols.svg#g_result_1" transform="rotate(90 0 0)" />
     </g>
     
     <g id="anvil_result" transform="translate(210 330)">
-      <use id="g_anvil_4" href="results_symbols.svg#g_result_4" transform="rotate(180 0 0)" />
-      <use id="g_anvil_3" href="results_symbols.svg#g_result_3" transform="rotate(180 0 0)" />
-      <use id="g_anvil_2" href="results_symbols.svg#g_result_2" transform="rotate(180 0 0)" />
-      <use id="g_anvil_1" href="results_symbols.svg#g_result_1" transform="rotate(180 0 0)" />
+      <use id="g_anvil_4" data-num="4" class="primary_result" href="results_symbols.svg#g_result_4" transform="rotate(180 0 0)" />
+      <use id="g_anvil_3" data-num="3" class="primary_result" href="results_symbols.svg#g_result_3" transform="rotate(180 0 0)" />
+      <use id="g_anvil_2" data-num="2" class="primary_result" href="results_symbols.svg#g_result_2" transform="rotate(180 0 0)" />
+      <use id="g_anvil_1" data-num="1" class="primary_result" href="results_symbols.svg#g_result_1" transform="rotate(180 0 0)" />
     </g>
     
     
     <g id="crown_result" transform="translate(90 210)">
-      <use id="g_crown_4" href="results_symbols.svg#g_result_4" transform="rotate(-90 0 0)" />
-      <use id="g_crown_3" href="results_symbols.svg#g_result_3" transform="rotate(-90 0 0)" />
-      <use id="g_crown_2" href="results_symbols.svg#g_result_2" transform="rotate(-90 0 0)" />
-      <use id="g_crown_1" href="results_symbols.svg#g_result_1" transform="rotate(-90 0 0)" />
+      <use id="g_crown_4" data-num="4" class="primary_result" href="results_symbols.svg#g_result_4" transform="rotate(-90 0 0)" />
+      <use id="g_crown_3" data-num="3" class="primary_result" href="results_symbols.svg#g_result_3" transform="rotate(-90 0 0)" />
+      <use id="g_crown_2" data-num="2" class="primary_result" href="results_symbols.svg#g_result_2" transform="rotate(-90 0 0)" />
+      <use id="g_crown_1" data-num="1" class="primary_result" href="results_symbols.svg#g_result_1" transform="rotate(-90 0 0)" />
     </g>
   </svg>
 
