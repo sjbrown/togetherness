@@ -264,6 +264,7 @@ var playarea = {
         deck = svg_table.findOne('.deckahedron_deck')
         //console.log(card, deck)
         deckahedron_deck.endeck(deck.node, card.node)
+        results.playareaChanged()
       },
     },
     'Discard': {
@@ -280,6 +281,7 @@ var playarea = {
           const card = SVG.adopt(cardEl);
           discard.addCard(card)
         });
+        results.playareaChanged()
 
       },
     },
