@@ -123,7 +123,7 @@ var deckahedron = {
         placeholder = SVG.adopt(emptyPlaceholder)
         top_card = deckahedron_deck.draw(svg_table.findOne('.deckahedron_deck').node)
         placeholder.add(top_card)
-        results.playareaChanged()
+        results.stateChanged()
       },
     }
   },
@@ -193,7 +193,7 @@ var results = {
     })
   },
 
-  playareaChanged: function() {
+  stateChanged: function() {
     results.clear()
     results.displayPlayareaResults()
   },
@@ -201,6 +201,7 @@ var results = {
 
 var suit_chooser = {
   state: ['dragon', 'crown', 'anvil', 'blades'],
+  rotations: {dragon: 0, crown:90, anvil:180, blades:270},
   clockwiseButton: null,
   anticlockwiseButton: null,
 
@@ -227,25 +228,22 @@ var suit_chooser = {
         arrowIcon = SVG.adopt(iconify(arrow, [50,80]))
         arrowIcon.center(30,50)
       }
-      r = SVG().rect().size(200,100).rx(10).ry(10)
-      r.css({
-        fill: 'white',
-        'fill-opacity': 0,
-        'stroke-width': 1,
-        'stroke': 'gold',
+
+      r = SVG().rect().size(200,100)
+      r.attr({
+        class: 'chooser-btn-outline',
+        rx: 10,
+        ry: 10,
       })
-      svgButton.add(r)
+
       svgButton.add(arrowIcon)
+      svgButton.add(r)
       svg_table.add(svgButton)
       arrow.remove()
       return svgButton
     }
 
-    table_lines.node.querySelectorAll('g .suit').forEach((el, idx) => {
-      if (!el.classList.contains(`suit_${suit_chooser.state[0]}`)) {
-        el.style.opacity = '0'
-      }
-    })
+    suit_chooser.updateActive()
 
     clockwiseArrow = qs('#arrow_clockwise')
     suit_chooser.clockwiseButton = buttonize(clockwiseArrow)
@@ -257,21 +255,44 @@ var suit_chooser = {
 
     suit_chooser.updateButtons()
   },
+  
+  updateActive: function() {
+    table_lines.node.querySelectorAll('g .suit').forEach((el) => {
+      if (el.classList.contains(`suit_${suit_chooser.state[0]}`)) {
+        el.style.opacity = '1'
+      } else {
+        el.style.opacity = '0'
+      }
+    })
+    results.stateChanged()
+  },
 
   updateButtons: function() {
-    clockwise_suit = suit_chooser.state[1]
-    clockwise_prototype = qs(`#suit_chooser_${clockwise_suit}`)
-    clockwiseIcon = SVG.adopt(iconify(clockwise_prototype, [50,50]))
-    clockwiseIcon.node.firstChild.style.opacity = 0.6
-    suit_chooser.clockwiseButton.add(clockwiseIcon)
-    clockwiseIcon.center(110,60)
+    oldIconEls = qsa('.suit_chooser_button_icon')
+    oldIconEls.forEach((el) => {
+      el.remove()
+    })
 
-    anticlockwise_suit = suit_chooser.state[suit_chooser.state.length - 1]
-    anticlockwise_prototype = qs(`#suit_chooser_${anticlockwise_suit}`)
-    anticlockwiseIcon = SVG.adopt(iconify(anticlockwise_prototype, [50,50]))
-    anticlockwiseIcon.node.firstChild.style.opacity = 0.6
-    suit_chooser.anticlockwiseButton.add(anticlockwiseIcon)
-    anticlockwiseIcon.center(90,60)
+    function makeChooserIcon(suit, button, center) {
+      prototype = qs(`#suit_chooser_${suit}`)
+      icon = SVG.adopt(iconify(prototype, [50,50]))
+      icon.node.firstChild.style.opacity = 0.6
+      button.add(icon)
+      icon.back() // or else it interfere's with the rect's :hover
+      icon.addClass('suit_chooser_button_icon') // so it can be removed later
+      icon.center(center[0], center[1])
+    }
+
+    makeChooserIcon(
+      suit_chooser.state[1],
+      suit_chooser.anticlockwiseButton,
+      [90,60]
+    )
+    makeChooserIcon(
+      suit_chooser.state[suit_chooser.state.length - 1],
+      suit_chooser.clockwiseButton,
+      [110,60]
+    )
   },
 
   activeSuit: function() {
@@ -289,12 +310,33 @@ var suit_chooser = {
     }
   },
 
+  updateCards: function() {
+    qsa('.card').forEach((el, idx) => {
+      card = SVG.adopt(el)
+      amount = suit_chooser.rotations[suit_chooser.state[0]]
+      card.attr({
+        transform: `rotate(${amount}, 210, 210)`,
+      })
+    })
+  },
+
   events: {
     clockwise_click: function(evt) {
       console.log('clockwise click')
+      sneg1 = suit_chooser.state[suit_chooser.state.length-1]
+      suit_chooser.state = suit_chooser.state.slice(0, suit_chooser.state.length-1)
+      suit_chooser.state.unshift(sneg1)
+      suit_chooser.updateActive()
+      suit_chooser.updateButtons()
+      suit_chooser.updateCards()
     },
     anticlockwise_click: function(evt) {
-      console.log('anticlockwise click')
+      s0 = suit_chooser.state[0]
+      suit_chooser.state = suit_chooser.state.slice(1, suit_chooser.state.length)
+      suit_chooser.state.push(s0)
+      suit_chooser.updateActive()
+      suit_chooser.updateButtons()
+      suit_chooser.updateCards()
     },
   },
 }
@@ -339,7 +381,7 @@ var playarea = {
         deck = svg_table.findOne('.deckahedron_deck')
         //console.log(card, deck)
         deckahedron_deck.endeck(deck.node, card.node)
-        results.playareaChanged()
+        results.stateChanged()
       },
     },
     'Discard': {
@@ -356,7 +398,7 @@ var playarea = {
           const card = SVG.adopt(cardEl);
           discard.addCard(card)
         });
-        results.playareaChanged()
+        results.stateChanged()
 
       },
     },
@@ -451,12 +493,14 @@ function iconify(el, size) {
   } else {
     svgIcon = SVG()
     svgClone = SVG.adopt(clone)
+    svgClone.attr({
+      transform: '',
+    })
     bb = svgClone.bbox()
     svgIcon.add(clone)
     svgIcon.attr({
       id: 'icon_clone_' + el.id,
       viewBox: `${bb.x} ${bb.y} ${bb.width} ${bb.height}`,
-      transform: '',
     })
   }
   svgIcon.attr({
