@@ -38,7 +38,7 @@ var discard = {
 
   events: {
     click: function(evt) {
-      console.log('discard_events.click')
+      //console.log('discard_events.click')
       const lastOccupiedVWrapper = Array.from(qsa('.discard_vwrapper'))
         .reverse()
         .find(el => el.children.length > 0);
@@ -133,11 +133,6 @@ var results = {
   placeholder: null,
 
   init: function(svg_table) {
-    table_lines.node.querySelectorAll('g .suit').forEach((el, idx) => {
-      if (!el.classList.contains('suit_dragon')) {
-        el.style.opacity = '0'
-      }
-    })
   },
 
   clear: function() {
@@ -161,22 +156,7 @@ var results = {
     if (cardNodes.length === 0) {
       return
     }
-    const visibleSuit = Array.from(document.querySelectorAll('#g_suit_chooser .suit'))
-      .find(el => getComputedStyle(el).opacity !== '0')
-
-    let suit = null;
-    const suits = ['dragon', 'anvil', 'blades', 'crown'];
-
-    for (const cls of visibleSuit.classList) {
-      for (const s of suits) {
-        if (cls === `suit_${s}`) {
-          suit = s;
-          break;
-        }
-      }
-      if (suit) break; // exit outer loop early once found
-    }
-
+    const suit = suit_chooser.activeSuit()
     let bestResult = null
     let bestNum = 0
     let bestSecondaries = null
@@ -184,11 +164,8 @@ var results = {
     let worstNum = 100
     let worstSecondaries = null
     cardNodes.forEach(cardEl => {
-      console.log('card', cardEl)
-
       primary_result = cardEl.querySelector(`#${suit}_result .primary_result`)
       secondary_results = cardEl.querySelectorAll('.flip_secondary_result')
-      console.log('p', primary_result)
       numValue = parseInt(primary_result.dataset.num)
       if (numValue > bestNum || (numValue === bestNum && secondary_results.length > bestSecondaries.length)) {
         bestResult = primary_result
@@ -201,15 +178,14 @@ var results = {
         worstSecondaries = secondary_results
       }
     });
-    console.log('best', bestNum, bestResult, bestSecondaries)
-    console.log('worst', worstNum, worstResult, worstSecondaries)
+    //console.log('best', bestNum, bestResult, bestSecondaries)
+    //console.log('worst', worstNum, worstResult, worstSecondaries)
 
     resultIcon = SVG.adopt(iconify(bestResult, [100,100]))
     resultIcon.center(120,60)
     results.placeholder.add(resultIcon)
     let offsetX = 0
     bestSecondaries.forEach(el => {
-      console.log('sec', el)
       icon = SVG.adopt(iconify(el, [50,50]))
       icon.center(210 + offsetX, 100)
       results.placeholder.add(icon)
@@ -220,6 +196,106 @@ var results = {
   playareaChanged: function() {
     results.clear()
     results.displayPlayareaResults()
+  },
+}
+
+var suit_chooser = {
+  state: ['dragon', 'crown', 'anvil', 'blades'],
+  clockwiseButton: null,
+  anticlockwiseButton: null,
+
+  init: async function(svg_table) {
+    function buttonize(arrow) {
+      let svgButton = SVG().size(200,100)
+      svgButton.attr({
+        id: `suit_chooser_button_${arrow.id}`,
+        class: 'suit_chooser_button',
+        viewBox: '0 0 200 100',
+      })
+      const pt = arrow.ownerSVGElement.createSVGPoint();
+      const bbox = SVG.adopt(arrow).bbox()
+      pt.x = bbox.cx
+      pt.y = bbox.cy
+      const pos = pt.matrixTransform(cmarker.node.getCTM());
+      svgButton.center(pos.x, pos.y)
+      if (arrow.id == 'arrow_clockwise') {
+        svgButton.x( svgButton.x() - 90)
+        arrowIcon = SVG.adopt(iconify(arrow, [50,80]))
+        arrowIcon.center(170,50)
+      } else {
+        svgButton.x( svgButton.x() + 90)
+        arrowIcon = SVG.adopt(iconify(arrow, [50,80]))
+        arrowIcon.center(30,50)
+      }
+      r = SVG().rect().size(200,100).rx(10).ry(10)
+      r.css({
+        fill: 'white',
+        'fill-opacity': 0,
+        'stroke-width': 1,
+        'stroke': 'gold',
+      })
+      svgButton.add(r)
+      svgButton.add(arrowIcon)
+      svg_table.add(svgButton)
+      arrow.remove()
+      return svgButton
+    }
+
+    table_lines.node.querySelectorAll('g .suit').forEach((el, idx) => {
+      if (!el.classList.contains(`suit_${suit_chooser.state[0]}`)) {
+        el.style.opacity = '0'
+      }
+    })
+
+    clockwiseArrow = qs('#arrow_clockwise')
+    suit_chooser.clockwiseButton = buttonize(clockwiseArrow)
+    suit_chooser.clockwiseButton.node.addEventListener('click', suit_chooser.events.clockwise_click)
+
+    anticlockwiseArrow = qs('#arrow_anticlockwise')
+    suit_chooser.anticlockwiseButton = buttonize(anticlockwiseArrow)
+    suit_chooser.anticlockwiseButton.node.addEventListener('click', suit_chooser.events.anticlockwise_click)
+
+    suit_chooser.updateButtons()
+  },
+
+  updateButtons: function() {
+    clockwise_suit = suit_chooser.state[1]
+    clockwise_prototype = qs(`#suit_chooser_${clockwise_suit}`)
+    clockwiseIcon = SVG.adopt(iconify(clockwise_prototype, [50,50]))
+    clockwiseIcon.node.firstChild.style.opacity = 0.6
+    suit_chooser.clockwiseButton.add(clockwiseIcon)
+    clockwiseIcon.center(110,60)
+
+    anticlockwise_suit = suit_chooser.state[suit_chooser.state.length - 1]
+    anticlockwise_prototype = qs(`#suit_chooser_${anticlockwise_suit}`)
+    anticlockwiseIcon = SVG.adopt(iconify(anticlockwise_prototype, [50,50]))
+    anticlockwiseIcon.node.firstChild.style.opacity = 0.6
+    suit_chooser.anticlockwiseButton.add(anticlockwiseIcon)
+    anticlockwiseIcon.center(90,60)
+  },
+
+  activeSuit: function() {
+    const visibleSuit = Array.from(qsa('#g_suit_chooser .suit'))
+      .find(el => getComputedStyle(el).opacity !== '0')
+
+    const suits = ['dragon', 'anvil', 'blades', 'crown']
+
+    for (const cls of visibleSuit.classList) {
+      for (const s of suits) {
+        if (cls === `suit_${s}`) {
+          return s
+        }
+      }
+    }
+  },
+
+  events: {
+    clockwise_click: function(evt) {
+      console.log('clockwise click')
+    },
+    anticlockwise_click: function(evt) {
+      console.log('anticlockwise click')
+    },
   },
 }
 
@@ -237,7 +313,6 @@ var playarea = {
       placeholder.center(pos.x, pos.y)
       svg_table.add(placeholder)
       placeholder.node.addEventListener('click', (evt) => {
-        console.log(`${placeholder.node.id}  click`)
         playarea.events.click(evt)
       })
     }
@@ -359,6 +434,7 @@ function iconify(el, size) {
   function stripAllClasses(root) {
     // strip all classes so it doesn't get selected by other code
     root.setAttribute('class', '')
+    root.setAttribute('id', `icon_of_${root.id}`)
     for (const child of root.children) {
       stripAllClasses(child);
     }
@@ -368,7 +444,7 @@ function iconify(el, size) {
   if (el.tagName === 'svg') {
     svgIcon = SVG.adopt(clone)
     svgIcon.attr({
-      id: 'icon_clone',
+      id: 'icon_clone_' + el.id,
       viewBox: '0 0 420 420',
       transform: '',
     })
@@ -378,7 +454,7 @@ function iconify(el, size) {
     bb = svgClone.bbox()
     svgIcon.add(clone)
     svgIcon.attr({
-      id: 'icon_clone',
+      id: 'icon_clone_' + el.id,
       viewBox: `${bb.x} ${bb.y} ${bb.width} ${bb.height}`,
       transform: '',
     })
@@ -432,10 +508,9 @@ function buildModal(id, title, actions, icon) {
     setButtonLabelWithHotkey(btn, actionName, actionDict['hotkey'])
   })
   bTemplate.remove()
-  console.log('hotkeys', hotkeys)
+  //console.log('hotkeys', hotkeys)
   if (Object.keys(hotkeys).length) {
       keydownHandler = handle_modal_keydown(hotkeys)
-      console.log('kd handler', keydownHandler)
       document.addEventListener('keydown', keydownHandler)
   }
 }
