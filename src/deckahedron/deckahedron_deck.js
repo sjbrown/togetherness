@@ -145,7 +145,6 @@ var deckahedron_deck = {
   },
 
   generate_deck: function(elem) {
-    console.log('elem', elem)
     local_doc = SVG.adopt(elem)
     deck = local_doc.findOne('#g_deck')
     deck.addClass('deck')
@@ -161,40 +160,52 @@ var deckahedron_deck = {
   },
 
   draw: function(deck) {
-    console.log('draw', deck.id)
-    
     let offset = pile_offset(
       deck.querySelectorAll('.card').length
     )
 
     //top_card = "last card"
-    top_card = SVG.adopt(deck.lastElementChild)
-
-    // Undo the offset of endeck()
-    centerSvg(top_card, 210, 210)
+    topVWrapper = deck.lastElementChild
+    topCard = SVG.adopt(topVWrapper.querySelector('.card'))
 
     // Flip the card so that the front is facing the viewer
-    front = top_card.findOne('.card_front_y')
-    back = top_card.findOne('.card_back_y')
+    front = topCard.findOne('.card_front_y')
+    back = topCard.findOne('.card_back_y')
     front.parent().node.insertBefore(back.node, front.node)
 
-    return top_card
+    // Delete the vWrapper
+    topVWrapper.remove()
+
+    return topCard
 
   },
+
+  buildViewWrapper: function(deck, card) {
+    card_ = SVG.adopt(card)
+    w = card_.width()
+    h = card_.height()
+    vWrapper = SVG().size(w, h)
+    vWrapper.attr({
+      id: `deckahedron_card_vwrapper${num}`,
+      class: 'deckahedron_vwrapper',
+      viewBox: `0 0 ${w} ${h}`,
+    })
+    let offset = pile_offset(
+      deck.querySelectorAll('.card').length
+    )
+    vWrapper.center(w/2 + offset.x, h/2 + offset.y)
+    vWrapper.add(card_)
+    SVG.adopt(deck).add(vWrapper)
+    return vWrapper
+  },
+
 
   endeck: function(deck, card) {
     //console.log('endeck', deck.id, card.id)
     localDocEl = deck.closest('.deckahedron_deck')
-    //deck_area = localDocEl.querySelector('#g_deck_area')
-    //deck_area = SVG.adopt(deck_area)
 
-    let offset = pile_offset(
-      deck.querySelectorAll('.card').length
-    )
-    card_ = SVG.adopt(card)
-    card_.cy(210 + offset.y)
-    card_.cx(210 + offset.x)
-    deck.appendChild(card)
+    vWrapper = deckahedron_deck.buildViewWrapper(deck, card)
+
     deckahedron_deck.reset_reshuffle(deck)
 
     //Make sure the card goes into the deck FACE-DOWN
