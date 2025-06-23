@@ -102,6 +102,18 @@ svg tspan {
   outline-offset: 1px;
 }
 
+.deckahedron-count circle {
+  fill: white;
+  fill-opacity: 0.8;
+  stroke: black;
+  stroke-width: 1;
+}
+.deckahedron-count.is-low circle {
+  fill: red;
+  fill-opacity: 1;
+  stroke-width: 3;
+}
+
 </style>
 
 <link rel="stylesheet" href="./bulma/css/bulma.css">
@@ -300,7 +312,7 @@ async function initAsyncObjects() {
   await initTableLines()
   results.init(svg_table)
   await deckahedron.init(svg_table)
-  playarea.init(svg_table)
+  flipArea.init(svg_table)
   discard.init(svg_table)
   exhaustion.init(svg_table)
   suit_chooser.init(svg_table)

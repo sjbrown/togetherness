@@ -9,6 +9,11 @@ function centerMarkerPos(svgEl, selector) {
   return globalCenter
 }
 
+function stateChanged() {
+  results.stateChanged()
+  deckahedron.stateChanged()
+}
+
 var exhaustion = {
   init: async function() {
   },
@@ -61,9 +66,7 @@ var exhaustion = {
           'Discard': {
             applicable: function() { return true },
             handler: function() {
-              console.log('select discard handler')
               selectedCards = qsa('.select-card.is-selected')
-              console.log(selectedCards.length)
               selectedCards.forEach(cardIcon => {
                 cardId = cardIcon.dataset.cardId
                 card = qs(`.card[data-card-id="${cardId}"]`)
@@ -133,6 +136,7 @@ var discard = {
           vWrapperEl.remove()
         });
         deckahedron_deck.reshuffle_handler({}, svg_table.node)
+        stateChanged()
       },
     },
     'Re-Deck Top Card': {
@@ -157,6 +161,8 @@ var discard = {
 }
 
 var deckahedron = {
+  countGroup: null,
+
   init: async function(svg_table) {
     d = await import_foreign_svg('deckahedron_deck.svg')
     centerPos = centerMarkerPos(table_lines, '#g_deckahedron .centermarker')
@@ -168,6 +174,38 @@ var deckahedron = {
     d.node.addEventListener('click', (evt) => {
       deckahedron.events.click(evt)
     })
+
+    function makeCountGroup(num) {
+      countGroup = SVG().group().attr({
+        id: 'g_deckahedron_count',
+        class: 'deckahedron-count',
+      })
+      svg_table.add(countGroup)
+      let circle = countGroup.circle().attr({
+        cx: d.x() + d.width(),
+        cy: d.y(),
+        r: 24,
+      })
+      let svgText = countGroup.text(num).fill('#000').font({
+        family: 'sans-serif',
+        size: 32,
+        anchor: 'middle',
+      })
+      svgText.center(circle.cx() - 1, circle.cy() + 2)
+      return countGroup
+    }
+    deckahedron.countGroup = makeCountGroup(20)
+  },
+
+  stateChanged: function() {
+    cards = svg_table.findOne('.deckahedron_deck').node.querySelectorAll('.card')
+    tspan = deckahedron.countGroup.node.querySelector('tspan')
+    tspan.textContent = cards.length
+    if (cards.length > 3) {
+      deckahedron.countGroup.node.classList.remove('is-low')
+    } else {
+      deckahedron.countGroup.node.classList.add('is-low')
+    }
   },
 
   events: {
@@ -185,21 +223,21 @@ var deckahedron = {
         if (revealArea.getCards().length > 0) {
           throw new Error('Cannot flip while also revealing cards. Exhaust or Re-Deck.')
         }
-        const emptyPlaceholder = playarea.getEmptyFlipPlaceholder()
+        const emptyPlaceholder = flipArea.getEmptyPlaceholder()
         if (emptyPlaceholder === undefined) {
           throw new Error('Play area is full! Discard or Re-Deck.')
         }
         placeholder = SVG.adopt(emptyPlaceholder)
         top_card = deckahedron_deck.draw(svg_table.findOne('.deckahedron_deck').node)
         placeholder.add(top_card)
-        results.stateChanged()
+        stateChanged()
       },
     },
     'Reveal': {
       hotkey: 'r',
       applicable: function() { return true },
       handler: function() {
-        if (playarea.getFlipCards().length > 0) {
+        if (flipArea.getCards().length > 0) {
           throw new Error('Cannot reveal while also flipping cards. Discard or Re-Deck.')
         }
         const emptyPlaceholder = revealArea.getEmptyPlaceholder()
@@ -209,7 +247,7 @@ var deckahedron = {
         placeholder = SVG.adopt(emptyPlaceholder)
         top_card = deckahedron_deck.draw(svg_table.findOne('.deckahedron_deck').node)
         placeholder.add(top_card)
-        results.stateChanged()
+        stateChanged()
       },
     },
     'Shuffle (without discards)': {
@@ -252,7 +290,7 @@ var results = {
   },
 
   displayResults: function() {
-    cardNodes = playarea.getFlipCards()
+    cardNodes = flipArea.getCards()
     if (cardNodes.length > 1) {
       results.displayBestWorstButtons()
     }
@@ -338,16 +376,14 @@ var results = {
 
   events: {
     bestClick: function(evt) {
-      console.log('best click')
       results.bestButton.node.classList.add('is-selected')
       results.worstButton.node.classList.remove('is-selected')
-      results.stateChanged()
+      stateChanged()
     },
     worstClick: function(evt) {
-      console.log('worst click')
       results.worstButton.node.classList.add('is-selected')
       results.bestButton.node.classList.remove('is-selected')
-      results.stateChanged()
+      stateChanged()
     },
   },
 
@@ -422,7 +458,7 @@ var suit_chooser = {
         el.style.opacity = '0'
       }
     })
-    results.stateChanged()
+    stateChanged()
   },
 
   updateButtons: function() {
@@ -560,7 +596,7 @@ var revealArea = {
           const card = SVG.adopt(cardEl);
           exhaustion.addCard(card)
         });
-        results.stateChanged()
+        stateChanged()
       },
     },
     'Re-Deck': {
@@ -575,7 +611,7 @@ var revealArea = {
         card = placeholder.findOne('.card')
         deck = svg_table.findOne('.deckahedron_deck')
         deckahedron_deck.endeck(deck.node, card.node)
-        results.stateChanged()
+        stateChanged()
       },
     },
   },
@@ -590,7 +626,7 @@ var revealArea = {
   },
 }
 
-var playarea = {
+var flipArea = {
   init: async function(svg_table) {
     addPlaceholder = (num, rotation) => {
       let placeholder = SVG().size(300,300)
@@ -604,7 +640,7 @@ var playarea = {
       placeholder.center(pos.x, pos.y)
       svg_table.add(placeholder)
       placeholder.node.addEventListener('click', (evt) => {
-        playarea.events.click(evt)
+        flipArea.events.click(evt)
       })
     }
     addPlaceholder(1)
@@ -612,20 +648,20 @@ var playarea = {
     addPlaceholder(3, -15)
   },
 
-  getEmptyFlipPlaceholder: function() {
+  getEmptyPlaceholder: function() {
     // Might return undefined if there is none
     return Array.from(qsa('.play_area_placeholder'))
       .find(el => el.children.length === 0);
   },
 
-  getLastOccupiedFlipPlaceholder: function() {
+  getLastOccupiedPlaceholder: function() {
     // Might return undefined if there is none
     return Array.from(qsa('.play_area_placeholder'))
       .reverse()
       .find(el => el.children.length > 0);
   },
 
-  getFlipCards: function() {
+  getCards: function() {
     return qsa('.play_area_placeholder .card')
   },
 
@@ -634,7 +670,7 @@ var playarea = {
       hotkey: 'd',
       applicable: function() { return true },
       handler: function() {
-        const cardNodes = playarea.getFlipCards()
+        const cardNodes = flipArea.getCards()
         if (cardNodes.length === 0) {
           throw new Error('No cards in the play area to discard!');
         }
@@ -642,14 +678,14 @@ var playarea = {
           const card = SVG.adopt(cardEl);
           discard.addCard(card)
         });
-        results.stateChanged()
+        stateChanged()
       },
     },
     'Re-Deck': {
       hotkey: 'r',
       applicable: function() { return true },
       handler: function() {
-        const lastOccupiedPlaceholder = playarea.getLastOccupiedFlipPlaceholder()
+        const lastOccupiedPlaceholder = flipArea.getLastOccupiedPlaceholder()
         if (lastOccupiedPlaceholder === undefined) {
           throw new Error('No cards in the play area!')
         }
@@ -657,15 +693,15 @@ var playarea = {
         card = placeholder.findOne('.card')
         deck = svg_table.findOne('.deckahedron_deck')
         deckahedron_deck.endeck(deck.node, card.node)
-        results.stateChanged()
+        stateChanged()
       },
     },
   },
 
   events: {
     click: function(evt) {
-      const lastOccupiedPlaceholder = playarea.getLastOccupiedFlipPlaceholder()
-      buildModal('playarea_modal', 'Play Area Actions', playarea.actions,
+      const lastOccupiedPlaceholder = flipArea.getLastOccupiedPlaceholder()
+      buildModal('flip_area_modal', 'Play Area Actions', flipArea.actions,
         lastOccupiedPlaceholder,
       )
     },
