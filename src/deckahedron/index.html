@@ -298,13 +298,13 @@ async function initTableLines() {
 async function initAsyncObjects() {
   //split this out into its own function so that the fetches are ordered
   await initTableLines()
+  results.init(svg_table)
   await deckahedron.init(svg_table)
-  await playarea.init(svg_table)
-  await discard.init(svg_table)
-  await exhaustion.init(svg_table)
-  await results.init(svg_table)
-  await suit_chooser.init(svg_table)
-  await revealArea.init(svg_table)
+  playarea.init(svg_table)
+  discard.init(svg_table)
+  exhaustion.init(svg_table)
+  suit_chooser.init(svg_table)
+  revealArea.init(svg_table)
 }
 
 function injectURWBookmanCSS(svgEl) {
@@ -356,6 +356,7 @@ SVG.on(document, 'DOMContentLoaded', () => {
   initViewport()
 
   initSvgTable()
+
 
   initAsyncObjects()
 

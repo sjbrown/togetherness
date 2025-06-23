@@ -224,11 +224,18 @@ var deckahedron = {
 
 var results = {
   placeholder: null,
+  bestButton: null,
+  worstButton: null,
 
   init: function(svg_table) {
+    results.bestButton = SVG.adopt(qs('#g_best'))
+    results.worstButton = SVG.adopt(qs('#g_worst'))
+    results.bestButton.node.classList.add('is-selected')
   },
 
   clear: function() {
+    results.bestButton.node.classList.add('is-hidden')
+    results.worstButton.node.classList.add('is-hidden')
     if (results.placeholder) {
       results.placeholder.remove()
       results.placeholder = null
@@ -246,6 +253,9 @@ var results = {
 
   displayResults: function() {
     cardNodes = playarea.getFlipCards()
+    if (cardNodes.length > 1) {
+      results.displayBestWorstButtons()
+    }
     if (cardNodes.length > 0) {
       results.displayFlipResults(cardNodes)
     }
@@ -271,6 +281,13 @@ var results = {
     }
     makeIcon('center_circle', 60, 65)
     makeIcon('center_stamina', 180, 65)
+  },
+
+  displayBestWorstButtons: function() {
+    results.bestButton.node.classList.remove('is-hidden')
+    results.worstButton.node.classList.remove('is-hidden')
+    results.bestButton.node.addEventListener('click', results.events.bestClick)
+    results.worstButton.node.addEventListener('click', results.events.worstClick)
   },
 
   displayFlipResults: function(cardNodes) {
@@ -299,16 +316,39 @@ var results = {
     //console.log('best', bestNum, bestResult, bestSecondaries)
     //console.log('worst', worstNum, worstResult, worstSecondaries)
 
-    resultIcon = SVG.adopt(iconify(bestResult, [100,100]))
-    resultIcon.center(120,60)
-    results.placeholder.add(resultIcon)
-    let offsetX = 0
-    bestSecondaries.forEach(el => {
-      icon = SVG.adopt(iconify(el, [50,50]))
-      icon.center(210 + offsetX, 100)
-      results.placeholder.add(icon)
-      offsetX += 30
-    })
+    function displayBestOrWorst(result, secondaries) {
+      resultIcon = SVG.adopt(iconify(result, [130,100]))
+      resultIcon.center(120,60)
+      results.placeholder.add(resultIcon)
+      let offsetX = 0
+      secondaries.forEach(el => {
+        icon = SVG.adopt(iconify(el, [50,50]))
+        icon.center(210 + offsetX, 100)
+        results.placeholder.add(icon)
+        offsetX += 30
+      })
+    }
+
+    if (results.bestButton.node.classList.contains('is-selected')) {
+      displayBestOrWorst(bestResult, bestSecondaries)
+    } else {
+      displayBestOrWorst(worstResult, worstSecondaries)
+    }
+  },
+
+  events: {
+    bestClick: function(evt) {
+      console.log('best click')
+      results.bestButton.node.classList.add('is-selected')
+      results.worstButton.node.classList.remove('is-selected')
+      results.stateChanged()
+    },
+    worstClick: function(evt) {
+      console.log('worst click')
+      results.worstButton.node.classList.add('is-selected')
+      results.bestButton.node.classList.remove('is-selected')
+      results.stateChanged()
+    },
   },
 
   stateChanged: function() {
