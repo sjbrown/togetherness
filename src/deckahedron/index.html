@@ -221,8 +221,6 @@ function initSvgTable() {
   layer_objects = createLayer('layer_objects')
   layer_ui = createLayer('layer_ui')
 
-  //makeDraggable(viewport, svg_table)
-
   // Hook up your observers
   objectsObserver = new LayerObserver(layer_objects.node);
   uiObserver      = new LayerObserver(layer_ui.node);
@@ -293,8 +291,10 @@ async function initAsyncObjects() {
   await deckahedron.init(svg_table)
   await playarea.init(svg_table)
   await discard.init(svg_table)
+  await exhaustion.init(svg_table)
   await results.init(svg_table)
   await suit_chooser.init(svg_table)
+  await revealArea.init(svg_table)
 }
 
 function injectURWBookmanCSS(svgEl) {

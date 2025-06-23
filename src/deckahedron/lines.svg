@@ -78,8 +78,11 @@
   </g>
   <g inkscape:groupmode="layer" id="g_play_area" inkscape:label="play_area" style="display:inline">
     <circle id="circle_center_g" class="centermarker center_g" style="display:inline;fill:#ff00ff;fill-opacity:1;stroke:none;stroke-width:2.64583;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.5" cx="105.83334" cy="158.75" r="4" />
-    <circle id="circle_center_card1" class="centermarker center_card1" style="display:inline;fill:#ff00ff;fill-opacity:1;stroke:none;stroke-width:2.64583;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.5" cx="105.83334" cy="100.54166" r="4" />
-    <circle id="circle_center_card2" class="centermarker center_card2" style="display:inline;fill:#ff00ff;fill-opacity:1;stroke:none;stroke-width:2.64583;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.5" cx="116.41668" cy="127" r="4" />
-    <circle id="circle_center_card3" class="centermarker center_card3" style="display:inline;fill:#ff00ff;fill-opacity:1;stroke:none;stroke-width:2.64583;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.5" cx="85.25" cy="153.45834" r="4" />
+    <circle id="circle_center_card1" class="centermarker center_card1" style="display:inline;fill:#ff00ff;fill-opacity:1;stroke:none;stroke-width:2.64583;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.5" cx="105" cy="100" r="4" />
+    <circle id="circle_center_card2" class="centermarker center_card2" style="display:inline;fill:#ff00ff;fill-opacity:1;stroke:none;stroke-width:2.64583;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.5" cx="116" cy="127" r="4" />
+    <circle id="circle_center_card3" class="centermarker center_card3" style="display:inline;fill:#ff00ff;fill-opacity:1;stroke:none;stroke-width:2.64583;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.5" cx="70" cy="140" r="4" />
+  </g>
+  <g inkscape:groupmode="layer" id="g_reveal_area" inkscape:label="reveal_area" style="display:inline">
+    <circle id="circle_center_reveal" class="centermarker center_g" style="display:inline;fill:#ff00ff;fill-opacity:1;stroke:none" cx="105" cy="100" r="4" />
   </g>
 </svg>

@@ -9,6 +9,60 @@ function centerMarkerPos(svgEl, selector) {
   return globalCenter
 }
 
+var exhaustion = {
+  init: async function() {
+  },
+
+  build_view_wrapper: function() {
+    rotation = -15 + Math.floor(Math.random() * 31)
+    pos = centerMarkerPos(table_lines, '#g_exhaustion .centermarker')
+    vWrapper = SVG().size(300,300)
+    vWrapper.attr({
+      id: `exhaustion_card_vwrapper${num}`,
+      class: 'exhaustion_vwrapper',
+      viewBox: '0 0 420 420',
+      transform: (rotation ? `rotate(${rotation} ${pos.x} ${pos.y})` : ''),
+    })
+    vWrapper.center(pos.x, pos.y)
+    svg_table.add(vWrapper)
+    vWrapper.node.addEventListener('click', (evt) => {
+      exhaustion.events.click(evt)
+    })
+    return vWrapper
+  },
+
+  addCard: function(card) {
+    vWrapper = exhaustion.build_view_wrapper()
+    vWrapper.add(card)
+  },
+
+  events: {
+    click: function(evt) {
+      console.log('exhaustion_events.click')
+      const lastOccupiedVWrapper = Array.from(qsa('.exhaustion_vwrapper'))
+        .reverse()
+        .find(el => el.children.length > 0);
+      buildModal('exhaustion_modal', 'Exhaustion Actions', exhaustion.actions,
+        lastOccupiedVWrapper,
+      )
+    },
+  },
+
+  actions: {
+    'Select Card': {
+      hotkey: 's',
+      applicable: function() { return true },
+      handler: function() {
+        const vWrapperNodes = document.querySelectorAll('.exhaustion_vwrapper')
+        if (vWrapperNodes.length === 0) {
+          throw new Error('No cards in the exhaustion to select!');
+        }
+        console.log('exhaustion select card')
+      },
+    },
+  },
+}
+
 var discard = {
   init: async function() {
   },
@@ -86,7 +140,6 @@ var discard = {
       },
     },
   },
-
 }
 
 var deckahedron = {
@@ -115,17 +168,46 @@ var deckahedron = {
       hotkey: 'f',
       applicable: function() { return true },
       handler: function() {
-        const emptyPlaceholder = Array.from(qsa('.play_area_placeholder'))
-          .find(el => el.children.length === 0);
+        const revealCards = revealArea.getCards()
+        if (revealCards.length > 0) {
+          throw new Error('Cannot flip while also revealing card. Exhaust or Re-Deck.')
+        }
+        const emptyPlaceholder = playarea.getEmptyFlipPlaceholder()
         if (emptyPlaceholder === undefined) {
-          throw new Error('Play area is full! Discard, Exhaust, or Re-Deck.')
+          throw new Error('Play area is full! Discard or Re-Deck.')
         }
         placeholder = SVG.adopt(emptyPlaceholder)
         top_card = deckahedron_deck.draw(svg_table.findOne('.deckahedron_deck').node)
         placeholder.add(top_card)
         results.stateChanged()
       },
-    }
+    },
+    'Reveal': {
+      hotkey: 'r',
+      applicable: function() { return true },
+      handler: function() {
+        const flipCards = playarea.getFlipCards()
+        if (flipCards.length > 0) {
+          throw new Error('Cannot reveal while also flipping cards. Discard or Re-Deck.')
+        }
+        const emptyPlaceholder = revealArea.getEmptyPlaceholder()
+        if (emptyPlaceholder === undefined) {
+          throw new Error('Reveal area is full! Exhaust or Re-Deck.')
+        }
+        console.log('reveal')
+        placeholder = SVG.adopt(emptyPlaceholder)
+        top_card = deckahedron_deck.draw(svg_table.findOne('.deckahedron_deck').node)
+        placeholder.add(top_card)
+        results.stateChanged()
+      },
+    },
+    'Shuffle (without discards)': {
+      hotkey: 's',
+      applicable: function() { return true },
+      handler: function() {
+        deckahedron_deck.reshuffle_handler({}, svg_table.node)
+      },
+    },
   },
 }
 
@@ -151,11 +233,36 @@ var results = {
     svg_table.add(results.placeholder)
   },
 
-  displayPlayareaResults: function() {
-    const cardNodes = qsa('.play_area_placeholder .card')
-    if (cardNodes.length === 0) {
-      return
+  displayResults: function() {
+    cardNodes = playarea.getFlipCards()
+    if (cardNodes.length > 0) {
+      results.displayFlipResults(cardNodes)
     }
+    cardNodes = revealArea.getCards()
+    if (cardNodes.length > 0) {
+      results.displayRevealResults(cardNodes)
+    }
+  },
+
+  displayRevealResults: function(cardNodes) {
+    function makeIcon(className, cx, cy) {
+      revealed = qsa(`.reveal_area_placeholder .${className}`)
+      numRevealed = revealed.length
+      icon = SVG.adopt(iconify(qs(`.${className}`), [100,100]))
+      icon.center(cx, cy)
+      results.placeholder.add(icon)
+      let svgText = results.placeholder.text(numRevealed).fill('#000').font({
+        family: 'sans-serif',
+        size: 32,
+        anchor: 'middle',
+      })
+      svgText.center(icon.cx(), icon.cy())
+    }
+    makeIcon('center_circle', 60, 65)
+    makeIcon('center_stamina', 180, 65)
+  },
+
+  displayFlipResults: function(cardNodes) {
     const suit = suit_chooser.activeSuit()
     let bestResult = null
     let bestNum = 0
@@ -195,7 +302,7 @@ var results = {
 
   stateChanged: function() {
     results.clear()
-    results.displayPlayareaResults()
+    results.displayResults()
   },
 }
 
@@ -341,6 +448,98 @@ var suit_chooser = {
   },
 }
 
+var revealArea = {
+  centerPos: null,
+
+  init: async function(svg_table) {
+    revealArea.centerPos = centerMarkerPos(table_lines, '#g_reveal_area .centermarker')
+    rotations = [-30, -15, 0, 15, 30]
+    addPlaceholder = (idx) => {
+      num = idx + 1
+      line = parseInt(idx/5)
+      rotOffset = 550 + (line * 100)
+      rotation = rotations[idx % 5]
+      yOffset = line * 150
+      rotCenterX = revealArea.centerPos.x
+      rotCenterY = revealArea.centerPos.y + rotOffset
+      let placeholder = SVG().size(200,200)
+      placeholder.attr({
+        id: `reveal_area_card_placeholder${num}`,
+        class: 'reveal_area_placeholder',
+        viewBox: '0 0 420 420',
+        transform: (rotation ? `rotate(${rotation} ${rotCenterX} ${rotCenterY})` : ''),
+      })
+      placeholder.center(revealArea.centerPos.x, revealArea.centerPos.y + yOffset)
+      svg_table.add(placeholder)
+      placeholder.node.addEventListener('click', (evt) => {
+        revealArea.events.click(evt)
+      })
+    }
+    for (var i = 0; i < 20; i++) {
+      addPlaceholder(i)
+    }
+  },
+
+  getEmptyPlaceholder: function() {
+    // Might return undefined if there is none
+    return Array.from(qsa('.reveal_area_placeholder'))
+      .find(el => el.children.length === 0);
+  },
+
+  getLastOccupiedPlaceholder: function() {
+    // Might return undefined if there is none
+    return Array.from(qsa('.reveal_area_placeholder'))
+      .reverse()
+      .find(el => el.children.length > 0);
+  },
+
+  getCards: function() {
+    return qsa('.reveal_area_placeholder .card')
+  },
+
+  actions: {
+    'Exhaust': {
+      hotkey: 'e',
+      applicable: function() { return true },
+      handler: function() {
+        const cardNodes = revealArea.getCards()
+        if (cardNodes.length === 0) {
+          throw new Error('No cards in the reveal area to discard!');
+        }
+        cardNodes.forEach(cardEl => {
+          const card = SVG.adopt(cardEl);
+          exhaustion.addCard(card)
+        });
+        results.stateChanged()
+      },
+    },
+    'Re-Deck': {
+      hotkey: 'r',
+      applicable: function() { return true },
+      handler: function() {
+        const lastOccupiedPlaceholder = revealArea.getLastOccupiedPlaceholder()
+        if (lastOccupiedPlaceholder === undefined) {
+          throw new Error('No cards in the reveal area!')
+        }
+        placeholder = SVG.adopt(lastOccupiedPlaceholder)
+        card = placeholder.findOne('.card')
+        deck = svg_table.findOne('.deckahedron_deck')
+        deckahedron_deck.endeck(deck.node, card.node)
+        results.stateChanged()
+      },
+    },
+  },
+
+  events: {
+    click: function(evt) {
+      const lastOccupiedPlaceholder = revealArea.getLastOccupiedPlaceholder()
+      buildModal('reveal_area_modal', 'Reveal Area Actions', revealArea.actions,
+        lastOccupiedPlaceholder,
+      )
+    },
+  },
+}
+
 var playarea = {
   init: async function(svg_table) {
     addPlaceholder = (num, rotation) => {
@@ -363,52 +562,59 @@ var playarea = {
     addPlaceholder(3, -15)
   },
 
+  getEmptyFlipPlaceholder: function() {
+    // Might return undefined if there is none
+    return Array.from(qsa('.play_area_placeholder'))
+      .find(el => el.children.length === 0);
+  },
+
+  getLastOccupiedFlipPlaceholder: function() {
+    // Might return undefined if there is none
+    return Array.from(qsa('.play_area_placeholder'))
+      .reverse()
+      .find(el => el.children.length > 0);
+  },
+
+  getFlipCards: function() {
+    return qsa('.play_area_placeholder .card')
+  },
+
   actions: {
-    'Re-Deck': {
-      hotkey: 'r',
-      applicable: function() { return true },
-      handler: function() {
-        const lastOccupiedPlaceholder = Array.from(qsa('.play_area_placeholder'))
-          .reverse()
-          .find(el => el.children.length > 0);
-        //console.log('lop', lastOccupiedPlaceholder)
-        if (lastOccupiedPlaceholder === undefined) {
-          throw new Error('No cards in the play area!')
-          return
-        }
-        placeholder = SVG.adopt(lastOccupiedPlaceholder)
-        card = placeholder.findOne('.card')
-        deck = svg_table.findOne('.deckahedron_deck')
-        //console.log(card, deck)
-        deckahedron_deck.endeck(deck.node, card.node)
-        results.stateChanged()
-      },
-    },
     'Discard': {
       hotkey: 'd',
       applicable: function() { return true },
       handler: function() {
-        const cardNodes = document.querySelectorAll('.play_area_placeholder .card');
+        const cardNodes = playarea.getFlipCards()
         if (cardNodes.length === 0) {
           throw new Error('No cards in the play area to discard!');
         }
-        const deck = svg_table.findOne('.deckahedron_deck');
-      
         cardNodes.forEach(cardEl => {
           const card = SVG.adopt(cardEl);
           discard.addCard(card)
         });
         results.stateChanged()
-
+      },
+    },
+    'Re-Deck': {
+      hotkey: 'r',
+      applicable: function() { return true },
+      handler: function() {
+        const lastOccupiedPlaceholder = playarea.getLastOccupiedFlipPlaceholder()
+        if (lastOccupiedPlaceholder === undefined) {
+          throw new Error('No cards in the play area!')
+        }
+        placeholder = SVG.adopt(lastOccupiedPlaceholder)
+        card = placeholder.findOne('.card')
+        deck = svg_table.findOne('.deckahedron_deck')
+        deckahedron_deck.endeck(deck.node, card.node)
+        results.stateChanged()
       },
     },
   },
 
   events: {
     click: function(evt) {
-      const lastOccupiedPlaceholder = Array.from(qsa('.play_area_placeholder'))
-        .reverse()
-        .find(el => el.children.length > 0);
+      const lastOccupiedPlaceholder = playarea.getLastOccupiedFlipPlaceholder()
       buildModal('playarea_modal', 'Play Area Actions', playarea.actions,
         lastOccupiedPlaceholder,
       )
@@ -541,6 +747,7 @@ function buildModal(id, title, actions, icon) {
   bTemplate = modal.querySelector('.modal_button_template')
   hotkeys = {}
   Object.entries(actions).forEach(([actionName, actionDict]) => {
+    console.log('actionname', actionName)
     let wrappedHandler = wrap_action_function(actionDict['handler'], closeModal)
     let btn = bTemplate.cloneNode(true);
     btn.classList.remove('modal_button_template'); // So it's not hidden or excluded by style

@@ -30,8 +30,8 @@
     <use class="card_front" href="deckahedron_front.svg#deckahedron_front" x="0" y="0" />
 
     <g id="center_symbols" transform="translate(210 210)">
-      <use id="g_circle" class="reveal_secondary_result" href="results_center_symbols.svg#g_circle" />
-      <use id="g_stamina" class="reveal_secondary_result" href="results_center_symbols.svg#g_stamina" />
+      <use id="g_circle" class="reveal_secondary_result center_circle" href="results_center_symbols.svg#g_circle" />
+      <use id="g_stamina" class="reveal_secondary_result center_stamina" href="results_center_symbols.svg#g_stamina" />
       <use id="g_crit_win" class="flip_secondary_result" href="results_center_symbols.svg#g_crit_win" />
       <use id="g_xp" class="flip_secondary_result" href="results_center_symbols.svg#g_xp" />
     </g>
