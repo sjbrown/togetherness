@@ -38,7 +38,7 @@ var exhaustion = {
 
   events: {
     click: function(evt) {
-      console.log('exhaustion_events.click')
+      //console.log('exhaustion_events.click')
       const lastOccupiedVWrapper = Array.from(qsa('.exhaustion_vwrapper'))
         .reverse()
         .find(el => el.children.length > 0);
@@ -53,11 +53,26 @@ var exhaustion = {
       hotkey: 's',
       applicable: function() { return true },
       handler: function() {
-        const vWrapperNodes = document.querySelectorAll('.exhaustion_vwrapper')
-        if (vWrapperNodes.length === 0) {
+        let cards = qsa('.exhaustion_vwrapper .card')
+        if (cards.length === 0) {
           throw new Error('No cards in the exhaustion to select!');
         }
-        console.log('exhaustion select card')
+        selectActions = {
+          'Discard': {
+            applicable: function() { return true },
+            handler: function() {
+              console.log('select discard handler')
+              selectedCards = qsa('.select-card.is-selected')
+              console.log(selectedCards.length)
+              selectedCards.forEach(cardIcon => {
+                cardId = cardIcon.dataset.cardId
+                card = qs(`.card[data-card-id="${cardId}"]`)
+                discard.addCard(card)
+              })
+            }
+          }
+        }
+        buildSelectModal('exhaustion_select', 'Select Card', selectActions, cards)
       },
     },
   },
@@ -92,7 +107,6 @@ var discard = {
 
   events: {
     click: function(evt) {
-      //console.log('discard_events.click')
       const lastOccupiedVWrapper = Array.from(qsa('.discard_vwrapper'))
         .reverse()
         .find(el => el.children.length > 0);
@@ -107,7 +121,7 @@ var discard = {
       hotkey: 's',
       applicable: function() { return true },
       handler: function() {
-        const vWrapperNodes = document.querySelectorAll('.discard_vwrapper')
+        const vWrapperNodes = qsa('.discard_vwrapper')
         if (vWrapperNodes.length === 0) {
           throw new Error('No cards in the discard to reshuffle!');
         }
@@ -168,9 +182,8 @@ var deckahedron = {
       hotkey: 'f',
       applicable: function() { return true },
       handler: function() {
-        const revealCards = revealArea.getCards()
-        if (revealCards.length > 0) {
-          throw new Error('Cannot flip while also revealing card. Exhaust or Re-Deck.')
+        if (revealArea.getCards().length > 0) {
+          throw new Error('Cannot flip while also revealing cards. Exhaust or Re-Deck.')
         }
         const emptyPlaceholder = playarea.getEmptyFlipPlaceholder()
         if (emptyPlaceholder === undefined) {
@@ -186,15 +199,13 @@ var deckahedron = {
       hotkey: 'r',
       applicable: function() { return true },
       handler: function() {
-        const flipCards = playarea.getFlipCards()
-        if (flipCards.length > 0) {
+        if (playarea.getFlipCards().length > 0) {
           throw new Error('Cannot reveal while also flipping cards. Discard or Re-Deck.')
         }
         const emptyPlaceholder = revealArea.getEmptyPlaceholder()
         if (emptyPlaceholder === undefined) {
           throw new Error('Reveal area is full! Exhaust or Re-Deck.')
         }
-        console.log('reveal')
         placeholder = SVG.adopt(emptyPlaceholder)
         top_card = deckahedron_deck.draw(svg_table.findOne('.deckahedron_deck').node)
         placeholder.add(top_card)
@@ -429,7 +440,6 @@ var suit_chooser = {
 
   events: {
     clockwise_click: function(evt) {
-      console.log('clockwise click')
       sneg1 = suit_chooser.state[suit_chooser.state.length-1]
       suit_chooser.state = suit_chooser.state.slice(0, suit_chooser.state.length-1)
       suit_chooser.state.unshift(sneg1)
@@ -747,7 +757,7 @@ function buildModal(id, title, actions, icon) {
   bTemplate = modal.querySelector('.modal_button_template')
   hotkeys = {}
   Object.entries(actions).forEach(([actionName, actionDict]) => {
-    console.log('actionname', actionName)
+    //console.log('actionname', actionName)
     let wrappedHandler = wrap_action_function(actionDict['handler'], closeModal)
     let btn = bTemplate.cloneNode(true);
     btn.classList.remove('modal_button_template'); // So it's not hidden or excluded by style
@@ -759,9 +769,55 @@ function buildModal(id, title, actions, icon) {
     setButtonLabelWithHotkey(btn, actionName, actionDict['hotkey'])
   })
   bTemplate.remove()
-  //console.log('hotkeys', hotkeys)
   if (Object.keys(hotkeys).length) {
       keydownHandler = handle_modal_keydown(hotkeys)
       document.addEventListener('keydown', keydownHandler)
   }
+}
+
+function buildSelectModal(id, title, actions, cards) {
+  let mTemplate = qs('#modal_template')
+  let modal = mTemplate.cloneNode(true);
+
+  mTemplate.parentNode.appendChild(modal)
+  modal.setAttribute('id', id)
+  modal.classList.add('is-active');
+
+  tNode = modal.querySelector('.modal-card-title')
+  tNode.textContent = title
+
+  closeModal = () => {
+    modal.classList.remove('is-active')
+    modal.remove()
+  }
+  modal.querySelector('.closeButton').onclick = closeModal
+
+  function toggleCardSelect(e) {
+    c = e.target.closest('.select-card')
+    if (c.classList.contains('is-selected')) {
+      c.classList.remove('is-selected')
+    } else {
+      c.classList.add('is-selected')
+    }
+  }
+
+  cardBody = modal.querySelector('.modal-card-body')
+  cards.forEach(card => {
+    let selectCard = iconify(card, [80,80])
+    selectCard.classList.add('select-card')
+    selectCard.addEventListener('click', toggleCardSelect)
+    cardBody.prepend(selectCard)
+  })
+
+  bTemplate = modal.querySelector('.modal_button_template')
+  Object.entries(actions).forEach(([actionName, actionDict]) => {
+    //console.log('actionname', actionName)
+    let wrappedHandler = wrap_action_function(actionDict['handler'], closeModal)
+    let btn = bTemplate.cloneNode(true);
+    btn.classList.remove('modal_button_template'); // So it's not hidden or excluded by style
+    btn.addEventListener('click', wrappedHandler)
+    bTemplate.parentNode.appendChild(btn)
+    setButtonLabelWithHotkey(btn, actionName)
+  })
+  bTemplate.remove()
 }

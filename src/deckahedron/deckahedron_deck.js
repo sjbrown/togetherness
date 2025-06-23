@@ -45,9 +45,9 @@ var deckahedron_deck = {
     card = SVG().size(420, 420)
     card.attr({
       id: ( deckEl.id + '_card_' + cardJSON.id),
-      dataset: { deckId: deckEl.id },
       class: 'card draggable-group',
     })
+    card.node.dataset.cardId = cardJSON.id
     card.addClass('c' + cardJSON.id)
     card.addClass('of_' + deckEl.id)
 
