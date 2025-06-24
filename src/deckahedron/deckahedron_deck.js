@@ -6,18 +6,20 @@ function pile_offset(index) {
   }
 }
 
-let svgEl
-function centerSvg(card, cx, cy) {
-  console.log('cent', card, cx, cy)
-  const w = card.width;
-  const h = card.height;
-  //svgEl.move(cx - w / 2, cy - h / 2);
-  card.node.setAttribute('x', cx - w / 2);
-  card.node.setAttribute('y', cy - h / 2);
-}
-
-
 var deckahedron_deck = {
+  woundJSON: [
+   {'id': 'w1', 'wound': true, 'exhaust_top': true, 'a': 1, 'b': 1, 'c': 1, 'd': 1,},
+  ],
+
+  blessingJSON: [
+   {'id': 'b1', 'blessing': true, 'return_card': true, 'a': 4, 'b': 4, 'c': 3, 'd': 3,},
+   {'id': 'b2', 'blessing': true, 'return_card': true, 'a': 4, 'b': 3, 'c': 4, 'd': 3,},
+   {'id': 'b3', 'blessing': true, 'return_card': true, 'a': 4, 'b': 3, 'c': 3, 'd': 4,},
+   {'id': 'b4', 'blessing': true, 'return_card': true, 'a': 3, 'b': 4, 'c': 4, 'd': 3,},
+   {'id': 'b5', 'blessing': true, 'return_card': true, 'a': 3, 'b': 4, 'c': 3, 'd': 4,},
+   {'id': 'b6', 'blessing': true, 'return_card': true, 'a': 3, 'b': 3, 'c': 4, 'd': 4,},
+  ],
+
   deckJSON: [
    {'id': 1, 'xp': false, 'Stamina': false, 'a': 1, 'b': 1, 'c': 1, 'd': 1, 'crit': 'fail'},
    {'id': 2, 'xp': false, 'Stamina': false, 'a': 1, 'b': 2, 'c': 3, 'd': 2},
@@ -53,8 +55,8 @@ var deckahedron_deck = {
 
     let g_card = card.node.ownerDocument.importNode(template, true);
     g_card.classList.remove('card_template')
+    g_card.removeAttribute('id')
     g_card.removeAttribute('display');
-    g_card.dataset.appNamespaces = ['deckahedron_deck_card']
 
     card.node.appendChild(g_card)
 
@@ -64,11 +66,23 @@ var deckahedron_deck = {
     if (!cardJSON.xp) {
       g_card.querySelector('#g_xp').remove()
     }
+    if (!cardJSON.return_card) {
+      g_card.querySelector('#g_return_card').remove()
+    }
+    if (!cardJSON.exhaust_top) {
+      g_card.querySelector('#g_exhaust_top').remove()
+    }
 
     if (cardJSON.Stamina) {
       g_card.querySelector('#g_circle').remove()
     } else {
       g_card.querySelector('#g_stamina').remove()
+    }
+    if (!cardJSON.blessing) { 
+      g_card.querySelector('#g_blessing_circle').remove()
+    }
+    if (!cardJSON.wound) {
+      g_card.querySelector('#g_wound_circle').remove()
     }
     let anvils = [
       g_card.querySelector('#g_anvil_0'),
@@ -119,10 +133,6 @@ var deckahedron_deck = {
     let front = cardEl.querySelector('.card_front')
     let frontY = cardEl.querySelector('.card_front_y')
 
-    // get_active_group() must be called BEFORE the other transforms reset
-    let active_group = deckahedron_deck_card.get_active_group(cardEl)
-    deckahedron_deck_card.toggle_boost(active_group, true)
-
     frontY.style.backfaceVisibility = 'hidden'
     frontY.style.transition = '0.3s ease-in-out'
     frontY.style.transformOrigin = 'center'
@@ -148,7 +158,6 @@ var deckahedron_deck = {
     local_doc = SVG.adopt(elem)
     deck = local_doc.findOne('#g_deck')
     deck.addClass('deck')
-    deck.addClass('contents_group')
     deck_id = 'deck_' + base32.short_id()
     deck.id(deck_id)
 
@@ -177,7 +186,6 @@ var deckahedron_deck = {
     topVWrapper.remove()
 
     return topCard
-
   },
 
   buildViewWrapper: function(deck, card) {
@@ -199,7 +207,6 @@ var deckahedron_deck = {
     return vWrapper
   },
 
-
   endeck: function(deck, card) {
     //console.log('endeck', deck.id, card.id)
     localDocEl = deck.closest('.deckahedron_deck')
@@ -219,31 +226,13 @@ var deckahedron_deck = {
     deck.style.transform = ''
   },
 
-  initialize: function(elem) {
-    this.generate_deck(elem)
-  },
-
-  dblclick_handler: function(evt, elem) {
-    // console.log('elem', elem.id)
-    let deck = elem.querySelector('.deck')
-    deckahedron_deck.reset_reshuffle(deck)
-    return lock_selection(evt, elem)
-  },
-
-  /*
-  flip_handler: function(evt) {
-    let topcard = this.querySelector('.deck .card:last-child')
-    deckahedron_deck.flip_card(topcard)
-  },
-  */
-
   reshuffle_handler: function(evt, elem) {
     let deck = elem.querySelector('.deck')
     local_doc = deck.closest('.deckahedron_deck')
 
     cardArray = []
     sDeck = SVG.adopt(deck)
-    local_doc.querySelectorAll('.of_' + deck.id).forEach((card) => {
+    local_doc.querySelectorAll('.card').forEach((card) => {
       card.remove()
       cardArray.push(card)
     })
@@ -258,172 +247,3 @@ var deckahedron_deck = {
 
 }
 
-
-deckahedron_deck_card = {
-  initialize: function(elem) {
-    deckahedron_deck_card.addListeners(elem)
-  },
-
-  addListeners: function(elem) {
-    elem.addEventListener('deckahedron_deck_card_return', this.return_handler)
-  },
-
-  return_handler: function(evt, elem) {
-    let deck = byId(elem.dataset.deckId)
-    push_to_parent(
-      elem,
-      deck,
-      (cardEl, deckEl) => {
-        s(cardEl, 'data-app-class', null)
-        cardEl.classList.add('draggable-group')
-        deckahedron_deck.reset_card_transformations(cardEl)
-        deckahedron_deck.endeck(deckEl, cardEl)
-      }
-    )
-  },
-
-  anvil_handler: function(evt, elem) {
-    let active_group = deckahedron_deck_card.get_active_group(elem)
-    if (active_group.id !== 'anvil_result') {
-      deckahedron_deck_card.toggle_boost(active_group, true)
-      elem.querySelector('.card_front').style.transform = 'rotate(180deg)'
-      elem.querySelector('.card_back').style.transform = 'rotate(-180deg)'
-    } else {
-      deckahedron_deck_card.toggle_boost(active_group)
-    }
-  },
-  blades_handler: function(evt, elem) {
-    let active_group = deckahedron_deck_card.get_active_group(elem)
-    if (active_group.id !== 'blades_result') {
-      deckahedron_deck_card.toggle_boost(active_group, true)
-      elem.querySelector('.card_front').style.transform = 'rotate(-90deg)'
-      elem.querySelector('.card_back').style.transform = 'rotate(90deg)'
-    } else {
-      deckahedron_deck_card.toggle_boost(active_group)
-    }
-  },
-  crown_handler: function(evt, elem) {
-    let active_group = deckahedron_deck_card.get_active_group(elem)
-    if (active_group.id !== 'crown_result') {
-      deckahedron_deck_card.toggle_boost(active_group, true)
-      elem.querySelector('.card_front').style.transform = 'rotate(90deg)'
-      elem.querySelector('.card_back').style.transform = 'rotate(-90deg)'
-    } else {
-      deckahedron_deck_card.toggle_boost(active_group)
-    }
-  },
-  dragon_handler: function(evt, elem) {
-    let active_group = deckahedron_deck_card.get_active_group(elem)
-    if (active_group.id !== 'dragon_result') {
-      deckahedron_deck_card.toggle_boost(active_group, true)
-      elem.querySelector('.card_front').style.transform = ''
-      elem.querySelector('.card_back').style.transform = ''
-    } else {
-      deckahedron_deck_card.toggle_boost(active_group)
-    }
-  },
-
-  get_active_group: function(card) {
-    let frontTrans = card.querySelector('.card_front').style.transform
-    if (frontTrans.includes('rotate(180deg)')) {
-      return card.querySelector('#anvil_result')
-    } else if (frontTrans.includes('rotate(-90deg)')) {
-      return card.querySelector('#blades_result')
-    } else if (frontTrans.includes('rotate(90deg)')) {
-      return card.querySelector('#crown_result')
-    } else {
-      return card.querySelector('#dragon_result')
-    }
-  },
-
-  toggle_boost: function(active_group, forceOff) {
-    //console.log('toggling', forceOff ? "OFF" : '.', active_group.id)
-    if (forceOff || active_group.style.transform) {
-      active_group.style.transform = ''
-    } else {
-      let { cx, cy } = SVG.adopt(active_group).bbox()
-      active_group.style.transformOrigin = `${cx}px ${cy}px`
-      active_group.style.transform = 'scale(300%)'
-      active_group.style.transition = '0.3s ease-in-out'
-    }
-  },
-
-  flip_handler: function(evt, elem) {
-    frontY = elem.querySelector('.card_front_y')
-    backY = elem.querySelector('.card_back_y')
-    parent = frontY.parentElement
-    console.log('flip', frontY.id, backY.id, parent.id)
-
-    if (frontY.style.transform && frontY.style.transform.includes('rotateY(180deg)')) {
-      frontY.style.transform = 'rotateY(0deg)'
-      backY.style.transform = 'rotateY(-180deg)'
-      parent.insertBefore(backY, frontY)
-    } else {
-      // already flipped, so flip backY.
-      frontY.style.transform = 'rotateY(180deg)'
-      backY.style.transform = 'rotateY(0deg)'
-      parent.insertBefore(frontY, backY)
-    }
-
-  },
-
-  menu: {
-    'Anvil': {
-      eventName: 'deckahedron_deck_card_anvil',
-      applicable: (dNode) => {
-        return navigator.userAgent.toLowerCase().includes('firefox')
-      },
-      handler: function(evt) {
-        deckahedron_deck_card.anvil_handler(evt, this)
-      },
-    },
-    'Blades': {
-      eventName: 'deckahedron_deck_card_blades',
-      applicable: (dNode) => {
-        return navigator.userAgent.toLowerCase().includes('firefox')
-      },
-      handler: function(evt) {
-        deckahedron_deck_card.blades_handler(evt, this)
-      },
-    },
-    'Crown': {
-      eventName: 'deckahedron_deck_card_crown',
-      applicable: (dNode) => {
-        return navigator.userAgent.toLowerCase().includes('firefox')
-      },
-      handler: function(evt) {
-        deckahedron_deck_card.crown_handler(evt, this)
-      },
-    },
-    'Dragon': {
-      eventName: 'deckahedron_deck_card_dragon',
-      applicable: (dNode) => {
-        return navigator.userAgent.toLowerCase().includes('firefox')
-      },
-      handler: function(evt) {
-        deckahedron_deck_card.dragon_handler(evt, this)
-      },
-    },
-    'Flip': {
-      eventName: 'deckahedron_deck_card_flip',
-      otherEvents: ['dblclick'],
-      applicable: (node) => { return true },
-      handler: function(evt) {
-        deckahedron_deck_card.flip_handler(evt, this)
-      },
-    },
-    'Return to deck': {
-      eventName: 'deckahedron_deck_card_return',
-      applicable: (dNode) => {
-        if(document.querySelector('#' + dNode.dataset.deckId)) {
-          return true
-        } else {
-          return false
-        }
-      },
-      handler: function(evt) {
-        deckahedron_deck_card.return_handler(evt, this)
-      },
-    },
-  },
-}

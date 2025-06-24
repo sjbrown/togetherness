@@ -566,11 +566,15 @@ window.addEventListener('load', () => {
 
   <div class="collapsegroup" >
 
-    <button id="blessing_button" class="btn btn-small" title="Add Blessing Card">
+    <button id="blessing_button" class="btn btn-small" title="Add Blessing Card"
+      onclick="blessingDeck.draw()"
+      >
       + Blessing
     </button>
 
-    <button id="wound_button" class="btn btn-small" title="Add Wound Card">
+    <button id="wound_button" class="btn btn-small" title="Add Wound Card"
+      onclick="woundDeck.draw()"
+      >
       + Wound
     </button>
 

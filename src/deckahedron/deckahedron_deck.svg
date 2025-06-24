@@ -32,8 +32,12 @@
     <g id="center_symbols" transform="translate(210 210)">
       <use id="g_circle" class="reveal_secondary_result center_circle" href="results_center_symbols.svg#g_circle" />
       <use id="g_stamina" class="reveal_secondary_result center_stamina" href="results_center_symbols.svg#g_stamina" />
+      <use id="g_blessing_circle" class="reveal_secondary_result" href="results_center_symbols.svg#g_blessing_circle" />
+      <use id="g_wound_circle" class="reveal_secondary_result" href="results_center_symbols.svg#g_wound_circle" />
       <use id="g_crit_win" class="flip_secondary_result" href="results_center_symbols.svg#g_crit_win" />
       <use id="g_xp" class="flip_secondary_result" href="results_center_symbols.svg#g_xp" />
+      <use id="g_return_card" class="flip_secondary_result" href="results_center_symbols.svg#g_return_card" />
+      <use id="g_exhaust_top" class="flip_secondary_result" href="results_center_symbols.svg#g_exhaust_top" />
     </g>
 
     <g id="dragon_result" transform="translate(210 90)">

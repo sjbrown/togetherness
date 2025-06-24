@@ -160,18 +160,62 @@ var discard = {
   },
 }
 
+var blessingDeck = {
+  init: function(svg_table) {
+    if (deckahedron.loadedSVG == null) {
+      throw new Error('deckahedron.init() must be called before blessingDeck.init()')
+    }
+  },
+
+  draw: function() {
+    template = deckahedron.loadedSVG.node.querySelector('#card_template')
+    topCardJSON = shuffle(deckahedron_deck.blessingJSON)[0]
+    card = deckahedron_deck.generate_card(template, topCardJSON, deckahedron.loadedSVG.node)
+
+    // Flip the card so that the front is facing the viewer
+    front = card.findOne('.card_front_y')
+    back = card.findOne('.card_back_y')
+    front.parent().node.insertBefore(back.node, front.node)
+
+    discard.addCard(card)
+  },
+}
+
+var woundDeck = {
+  init: function(svg_table) {
+    if (deckahedron.loadedSVG == null) {
+      throw new Error('deckahedron.init() must be called before woundDeck.init()')
+    }
+  },
+
+  draw: function() {
+    template = deckahedron.loadedSVG.node.querySelector('#card_template')
+    topCardJSON = shuffle(deckahedron_deck.woundJSON)[0]
+    card = deckahedron_deck.generate_card(template, topCardJSON, deckahedron.loadedSVG.node)
+
+    // Flip the card so that the front is facing the viewer
+    front = card.findOne('.card_front_y')
+    back = card.findOne('.card_back_y')
+    front.parent().node.insertBefore(back.node, front.node)
+
+    discard.addCard(card)
+  },
+}
+
 var deckahedron = {
   countGroup: null,
+  loadedSVG: null,
 
   init: async function(svg_table) {
-    d = await import_foreign_svg('deckahedron_deck.svg')
+    deckahedron.loadedSVG = await import_foreign_svg('deckahedron_deck.svg')
     centerPos = centerMarkerPos(table_lines, '#g_deckahedron .centermarker')
-    d.center(centerPos.x, centerPos.y)
-    d.node.classList.add('table_deck')
-    init_with_namespaces(d.node, {})
-    svg_table.add(d)
+    deckahedron.loadedSVG.center(centerPos.x, centerPos.y)
+    deckahedron.loadedSVG.node.classList.add('table_deck')
+    deckahedron.loadedSVG.node.classList.remove('deck_template')
+    deckahedron_deck.generate_deck(deckahedron.loadedSVG.node)
+    svg_table.add(deckahedron.loadedSVG)
 
-    d.node.addEventListener('click', (evt) => {
+    deckahedron.loadedSVG.node.addEventListener('click', (evt) => {
       deckahedron.events.click(evt)
     })
 
@@ -182,8 +226,8 @@ var deckahedron = {
       })
       svg_table.add(countGroup)
       let circle = countGroup.circle().attr({
-        cx: d.x() + d.width(),
-        cy: d.y(),
+        cx: deckahedron.loadedSVG.x() + deckahedron.loadedSVG.width(),
+        cy: deckahedron.loadedSVG.y(),
         r: 24,
       })
       let svgText = countGroup.text(num).fill('#000').font({
