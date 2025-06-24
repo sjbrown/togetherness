@@ -10,19 +10,10 @@
 -->
 <meta name="viewport" content="width=device-width,user-scalable=no">
 
-<script src="../multiplayer.js"></script><!-- should be imported before togetherjs -->
-<script src="https://togetherjs.com/togetherjs-min.js"></script>
-<script src="../svg_draggable.js"></script>
-<script src="../base32.js"></script>
-<script src="../svg.js"></script>
-<script src="../userlog.js"></script>
+<script src="./js/base32.js"></script>
+<script src="./js/svg.js"></script>
 <script src="index.js"></script>
-<script src="../index.js"></script>
-<script src="../spatial.js"></script>
-<script src="../js/svg_dom_json.js"></script>
-<script src="../physicsjs-full.js"></script>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.5.1/gsap.js"></script>
+<script src="./js/utils.js"></script>
 
 <!-- polyfill Promises for Internet Explorer -->
 <script src="https://cdn.jsdelivr.net/npm/promise-polyfill@8/dist/polyfill.min.js"></script>
@@ -242,10 +233,6 @@ function initSvgTable() {
 
   layer_objects = createLayer('layer_objects')
   layer_ui = createLayer('layer_ui')
-
-  // Hook up your observers
-  objectsObserver = new LayerObserver(layer_objects.node);
-  uiObserver      = new LayerObserver(layer_ui.node);
 }
 
 function initViewport() {
