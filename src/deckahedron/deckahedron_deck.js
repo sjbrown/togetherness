@@ -44,12 +44,13 @@ var deckahedron_deck = {
   ],
 
   generate_card: function(template, cardJSON, deckEl) {
+    cardId = 'card_' + base32.short_id()
     card = SVG().size(420, 420)
     card.attr({
-      id: ( deckEl.id + '_card_' + cardJSON.id),
-      class: `card draggable-group c${cardJSON.id} of_${deckEl.id}`,
+      id: cardId,
+      class: `card c${cardJSON.id} of_${deckEl.id}`,
     })
-    card.node.dataset.cardId = cardJSON.id
+    card.node.dataset.cardId = cardId
     card.node.dataset.isWound = cardJSON.wound === true
     card.node.dataset.isBlessing = cardJSON.blessing === true
 
@@ -169,10 +170,6 @@ var deckahedron_deck = {
   },
 
   draw: function(deck) {
-    let offset = pile_offset(
-      deck.querySelectorAll('.card').length
-    )
-
     //top_card = "last card"
     topVWrapper = deck.lastElementChild
     topCard = SVG.adopt(topVWrapper.querySelector('.card'))
@@ -186,6 +183,21 @@ var deckahedron_deck = {
     topVWrapper.remove()
 
     return topCard
+  },
+
+  drawById: function(deck, cardId) {
+    cardEl = deck.querySelector(`.card[data-card-id="${cardId}"]`)
+
+    // Flip the card so that the front is facing the viewer
+    front = cardEl.querySelector('.card_front_y')
+    back = cardEl.querySelector('.card_back_y')
+    front.parentElement.insertBefore(back, front)
+
+    // Delete the vWrapper
+    vwrapper = SVG.adopt(cardEl.closest('.deckahedron_vwrapper'))
+    vwrapper.remove()
+
+    return SVG.adopt(cardEl)
   },
 
   buildViewWrapper: function(deck, card) {

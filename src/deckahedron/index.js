@@ -171,6 +171,9 @@ var blessingDeck = {
     template = deckahedron.loadedSVG.node.querySelector('#card_template')
     topCardJSON = shuffle(deckahedron_deck.blessingJSON)[0]
     card = deckahedron_deck.generate_card(template, topCardJSON, deckahedron.loadedSVG.node)
+    card.attr({
+      id: 'b' + base32.short_id()
+    })
 
     // Flip the card so that the front is facing the viewer
     front = card.findOne('.card_front_y')
@@ -315,18 +318,18 @@ var deckahedron = {
               acceptCards = []
               selectedCards = qsa('.select-card.is-selected')
               selectedCards.forEach(cardIcon => {
-                console.log('c icon', cardIcon)
                 cardId = cardIcon.dataset.cardId
                 card = qs(`.card[data-card-id="${cardId}"]`)
-                console.log('c', card)
                 if (card.dataset.isWound === 'true' || card.dataset.isBlessing === 'true') {
                   acceptCards.push(card)
                 } else {
                   throw new Error('Only Wound or Blessing cards can be returned!')
                 }
               })
+              deck = svg_table.findOne('.deckahedron_deck').node
               acceptCards.forEach(card => {
-                card.remove()
+                c = deckahedron_deck.drawById(deck, card.dataset.cardId)
+                c.remove()
               })
               stateChanged()
             }
