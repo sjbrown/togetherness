@@ -148,6 +148,11 @@ svg tspan {
   color: var(--bulma-primary-invert);
   background-image: url(../svg/viewport_background.svg);
 }
+.modal-card-foot {
+  background-color: var(--bulma-primary);
+  color: var(--bulma-primary-invert);
+  background-image: url(../svg/viewport_background.svg);
+}
 .modal-card-title {
   font-family: 'URW Bookman';
   font-weight: 300;
@@ -162,6 +167,10 @@ svg tspan {
   background-size: 100% 100%;
   background-position: center center;
 }
+.modal-card-body h1 {
+  background-color: var(--bulma-primary);
+  color: var(--bulma-primary-invert);
+}
 .modal-card-body button {
   color: white !important;
   background: none;
@@ -172,6 +181,12 @@ svg tspan {
 }
 .modal-card-body button:hover {
   border: gold solid var(--bulma-button-border-width) !important;
+}
+.modal .closeButton {
+  height: 2.25rem;
+  width: 2.25rem;
+  min-height: 2.25rem;
+  min-width: 2.25rem;
 }
 </style>
 
@@ -184,7 +199,6 @@ var layer_objects
 var layer_ui
 var viewport
 var origViewportSize = [800,1200]
-var currentZoom = 1.0;
 
 function createLayer(id) {
   layer = svg_table.group()
@@ -355,7 +369,6 @@ SVG.on(document, 'DOMContentLoaded', () => {
 
   initSvgTable()
 
-
   initAsyncObjects()
 
   window.addEventListener("resize", viewportToGameArea)
@@ -495,7 +508,6 @@ function viewportToGameArea() {
   display: inline;
 }
 
-
 .hudmenu .btn {
   min-width: 7em;
   min-height: 7em;
@@ -553,39 +565,20 @@ window.addEventListener('load', () => {
   </label>
 
   <div class="collapsegroup" >
-    <button id="profile_button" class="btn btn-small modal-trigger"
-      title="Profile"
-      data-target="dialog_profile"
-      data-dialog-id="dialog_profile">
-      <span id="profile_button_span">Profile</span>
+
+    <button id="blessing_button" class="btn btn-small" title="Add Blessing Card">
+      + Blessing
     </button>
 
-    <button id="save_button" class="btn btn-small"
-      onclick="ui_popup_dialog_save()"
-      data-dialog-id="dialog_save">
-      Save
+    <button id="wound_button" class="btn btn-small" title="Add Wound Card">
+      + Wound
     </button>
 
-    <button id="load_button" class="btn btn-small"
-      onclick="ui_popup_dialog_load()"
-      data-dialog-id="dialog_load">
-      Load
-    </button>
-
-    <button id="activity_button" class="btn btn-small modal-trigger"
-      title="Log of game events"
-      data-target="dialog_activity_log"
-      data-dialog-id="dialog_activity_log">
-      Activity Log
-    </button>
-
-    <button id="help_button" class="btn btn-small modal-trigger"
-      title="Help/About this project"
-      data-target="dialog_contribute"
-      data-dialog-id="dialog_contribute">
+    <button id="help_button" class="btn btn-small" title="Help/About this project"
+            onclick="qs('#modal_help').classList.add('is-active')"
+      >
       Help / About
     </button>
-
 
   </div>
 
@@ -594,34 +587,113 @@ window.addEventListener('load', () => {
 <!-- END HUD RIGHT ====================================================== -->
 
 
+  <div class="modal" id="modal_help">
+    <div class="modal-background"></div>
+    <div class="modal-card">
+      <header class="modal-card-head">
+        <p class="modal-card-title">Help / About</p>
+        <button class="delete closeButton" aria-label="close"
+            onclick="qs('#modal_help').classList.remove('is-active')"
+          ></button>
+      </header>
+      <section class="modal-card-body">
+        <div class="content">
+<h1>About the Deckahedron App</h1>
+<p>
+This app provides a digital version of the <b>Deckahedron</b>, a custom 20-card deck used in the tabletop RPG <i><a href="https://1kfa.com">A Thousand Faces of Adventure</a></i>.
+</p>
+<p>
+Each square card has four suits, one per edge:
+</p>
+<ol>
+  <li>Anvil</li>
+  <li>Blades</li>
+  <li>Crown</li>
+  <li>Dragon</li>
+</ol>
 
-<!-- PROFILE  =============================================== PROFILE -->
-  <div class="modal" id="dialog_profile">
+<p>
+When a card is <i>flipped</i>, it shows a result beneath each suit symbol.
+These results represent degrees of success:
+</p>
+<ol>
+  <li>Shadow</li>
+  <li>Diminished Success</li>
+  <li>Success</li>
+  <li>Double Success</li>
+</ol>
+<p>
+Some flips also show a <i>secondary result</i>, such as an XP symbol or a critical hit icon.
+</p>
+<h1>Flipping for Results</h1>
+<p>
+Usually, a single card is flipped to resolve an action.
+However, you can also flip <i>with advantage</i> or <i>with disadvantage</i>:
+</p>
+<ul>
+  <li><b>Advantage</b>: Flip 2–3 cards and use the <b>best</b> result.</li>
+  <li><b>Disadvantage</b>: Flip 2–3 cards and take the <b>worst</b> result.</li>
+</ul>
+<p>
+Once resolved, the flipped cards should be moved to the <i>Discard Pile</i>.
+</p>
+<h1>Revealing for Damage</h1>
+<p>
+When a character takes damage, reveal cards and move them into the
+<i>Exhaustion Pile</i> to track stamina loss.
+</p>
+<p>
+For example, if a PC takes <b>3 damage</b>, reveal cards one at a time until
+<b>3 stamina symbols</b> have appeared. Then move all revealed cards into the
+<i>Exhaustion Pile</i>.
+</p>
+<h1>Managing the Deck</h1>
+<p>
+You may reshuffle the Discard Pile into the Deckahedron at any time.
+</p>
+<p>
+When a PC recovers stamina, you may move cards from the Exhaustion Pile back into the Discard Pile.
+</p>
+<h1>Using the App</h1>
+<ul>
+  <li>Click on the Deckahedron to **Flip** cards into the play area</li>
+  <li> Click on the Deckahedron to **Reveal** cards to exhaust</li>
+  <li> Click on cards in the **Discard** or **Exhaustion** areas to move them</li>
+</ul>
+<p>
+This app helps streamline flips, tracks zones visually, and ensures that the Deckahedron stays fast, fair, and fun.
+</p>
+<h1>Why A Thousand Faces of Adventure</h1>
+<p>
+A Thousand Faces of Adventure is not just a game -- it's a narrative engine that
+combines the deep storytelling of tabletop RPGs with the accessible mechanics of
+modern board games . Designed for gamers and storytellers of all stripes, this
+system helps you:
+<ol>
+  <li>Craft immersive, improvisational stories with your friends</li>
+  <li>Level up characters by stepping through the classic Hero's Journey</li>
+  <li>Use a streamlined 20-card deck to handle all outcomes—no math, no dice</li>
+  <li>Remove barriers to entry: no massive rulebooks, just intuitive flips and narrative stakes</li>
+</ol>
+<p>
+Whether you’re introducing board gamers to role-playing, or RPG veterans to board game structure, this system bridges both worlds in a way that’s elegant, engaging, and endlessly replayable.
+</p>
+<h1>Ready to Embark?</h1>
+<p>
+Thanks for choosing the Deckahedron app. Load your deck, flip your fate, and step into the story. May your flips bring bold triumphs—and thrilling challenges.
+</p>
+        </div>
+        <footer class="modal-card-foot">
+        <div class="buttons is-multiline">
+          <button class="button modal_button_template is-fullwidth is-outlined"
+                  onclick="qs('#modal_help').classList.remove('is-active')"
+            >Close</button>
+        </div>
+        </footer>
+      </section>
+    </div>
   </div>
-<!-- /PROFILE ============================================== /PROFILE -->
 
-<!-- SAVE ============================================================ SAVE -->
-  <div id="dialog_save" class="modal">
-  </div>
-<!-- /SAVE ========================================================== /SAVE -->
-
-
-<!-- LOAD ============================================================ LOAD -->
-  <div id="dialog_load" class="modal">
-  </div>
-<!-- /LOAD ========================================================== /LOAD -->
-
-
-<!-- TABLE  =============================================== TABLE -->
-  <div class="modal" id="dialog_table">
-  </div>
-<!-- /TABLE ============================================== /TABLE -->
-
-
-<!-- CARDS ======================================================= CARDS -->
-  <div class="modal" id="dialog_cards">
-  </div>
-<!-- END CARDS =============================================== END CARDS -->
 
   <div class="modal" id="modal_template">
     <div class="modal-background"></div>
