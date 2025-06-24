@@ -47,11 +47,11 @@ var deckahedron_deck = {
     card = SVG().size(420, 420)
     card.attr({
       id: ( deckEl.id + '_card_' + cardJSON.id),
-      class: 'card draggable-group',
+      class: `card draggable-group c${cardJSON.id} of_${deckEl.id}`,
     })
     card.node.dataset.cardId = cardJSON.id
-    card.addClass('c' + cardJSON.id)
-    card.addClass('of_' + deckEl.id)
+    card.node.dataset.isWound = cardJSON.wound === true
+    card.node.dataset.isBlessing = cardJSON.blessing === true
 
     let g_card = card.node.ownerDocument.importNode(template, true);
     g_card.classList.remove('card_template')

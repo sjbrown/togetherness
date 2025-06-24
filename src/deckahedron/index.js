@@ -301,6 +301,40 @@ var deckahedron = {
         deckahedron_deck.reshuffle_handler({}, svg_table.node)
       },
     },
+    'Select Card': {
+      applicable: function() { return true },
+      handler: function() {
+        let cards = qsa('.table_deck .card')
+        if (cards.length === 0) {
+          throw new Error('No cards in the deckahedron to select!');
+        }
+        selectActions = {
+          'Return to Supply': {
+            applicable: function() { return true },
+            handler: function() {
+              acceptCards = []
+              selectedCards = qsa('.select-card.is-selected')
+              selectedCards.forEach(cardIcon => {
+                console.log('c icon', cardIcon)
+                cardId = cardIcon.dataset.cardId
+                card = qs(`.card[data-card-id="${cardId}"]`)
+                console.log('c', card)
+                if (card.dataset.isWound === 'true' || card.dataset.isBlessing === 'true') {
+                  acceptCards.push(card)
+                } else {
+                  throw new Error('Only Wound or Blessing cards can be returned!')
+                }
+              })
+              acceptCards.forEach(card => {
+                card.remove()
+              })
+              stateChanged()
+            }
+          }
+        }
+        buildSelectModal('exhaustion_select', 'Select Card', selectActions, cards)
+      },
+    },
   },
 }
 
@@ -923,7 +957,13 @@ function buildSelectModal(id, title, actions, cards) {
 
   cardBody = modal.querySelector('.modal-card-body')
   cards.forEach(card => {
-    let selectCard = iconify(card, [80,80])
+    let clone = card.cloneNode(true)
+    // Make sure the front is visible
+    front = clone.querySelector('.card_front_y')
+    back = clone.querySelector('.card_back_y')
+    front.parentElement.insertBefore(back, front)
+
+    let selectCard = iconify(clone, [80,80])
     selectCard.classList.add('select-card')
     selectCard.addEventListener('click', toggleCardSelect)
     cardBody.prepend(selectCard)
