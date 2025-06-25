@@ -381,6 +381,31 @@ function viewportToGameArea() {
   viewport.height(g.clientHeight)
 }
 
+function isFirefox() {
+  console.log(navigator.userAgent.toLowerCase())
+  return navigator.userAgent.toLowerCase().includes('firefox');
+}
+
+function getFirefoxDownloadLink() {
+  const ua = navigator.userAgent || navigator.vendor || window.opera;
+  if (/android/i.test(ua)) {
+    return 'https://play.google.com/store/apps/details?id=org.mozilla.firefox';
+  }
+  if (/iPad|iPhone|iPod/.test(ua) && !window.MSStream) {
+    return 'https://apps.apple.com/app/id989804926';
+  }
+  return 'https://www.mozilla.org/firefox/new/';
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  if (!isFirefox()) {
+    const modal = document.getElementById('browserModal');
+    const link = document.getElementById('firefoxLink');
+    link.href = getFirefoxDownloadLink();
+    modal.classList.add('is-active');
+  }
+});
+
 </script>
 
 <!-- ==================================================================== -->
@@ -735,14 +760,22 @@ Thanks for choosing the Deckahedron app. Load your deck, flip your fate, and ste
     </div>
   </div>
 
-<menu type="context" id="gamemenu">
-  <template id="template_menuitem">
-    <menuitem label="X"
-    ></menuitem>
-  </template>
-</menu>
-
-
+  <div id="browserModal" class="modal">
+    <div class="modal-background"></div>
+    <div class="modal-card">
+      <header class="modal-card-head">
+        <p class="modal-card-title">Incompatible Browser!</p>
+      </header>
+      <section class="modal-card-body">
+        This app works in a browser that implements the SVG standard.
+        Currently the only browser that does this is <b>Firefox</b>.
+        To continue, download and install Firefox.
+      </section>
+      <footer class="modal-card-foot">
+        <a id="firefoxLink" class="button is-primary" target="_blank">Get Firefox</a>
+      </footer>
+    </div>
+  </div>
 
 </body>
 </html>
