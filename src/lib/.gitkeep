@@ -1,0 +1,3 @@
+# This directory contains vendored JS dependencies.
+# Run bin/get_deps.sh to populate it.
+# Commit the generated .js files so the app works without a build step.

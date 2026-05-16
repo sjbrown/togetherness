@@ -1,0 +1,22 @@
+{
+  "name": "crdt-svg",
+  "version": "0.1.0",
+  "description": "Collaborative offline-first SVG editor using Yjs CRDTs",
+  "type": "module",
+  "scripts": {
+    "dev": "bin/dev.sh",
+    "test": "bin/test.sh unit",
+    "test:e2e": "bin/test.sh e2e",
+    "test:all": "bin/test.sh all",
+    "test:node": "vitest run --reporter=verbose"
+  },
+  "dependencies": {
+    "yjs": "^13.6.18",
+    "y-webrtc": "^10.3.0",
+    "y-indexeddb": "^9.0.12"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.0",
+    "@playwright/test": "^1.44.0"
+  }
+}

@@ -1,0 +1,38 @@
+name: crdt-svg-test
+
+services:
+  # Unit tests — no network services needed
+  test:
+    build:
+      context: .
+      dockerfile: docker/test.Dockerfile
+    # Exit code propagates to bin/test.sh and GitHub Actions
+    profiles: ["unit", "all"]
+
+  # Signaling server needed for e2e tests
+  signaling:
+    build:
+      context: .
+      dockerfile: docker/signaling.Dockerfile
+    profiles: ["e2e", "all"]
+
+  # App server needed for e2e tests
+  app:
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    depends_on:
+      - signaling
+    profiles: ["e2e", "all"]
+
+  # Playwright e2e tests — runs after app + signaling are up
+  e2e:
+    build:
+      context: .
+      dockerfile: docker/e2e.Dockerfile
+    environment:
+      - APP_URL=http://app:80
+    depends_on:
+      - app
+      - signaling
+    profiles: ["e2e", "all"]

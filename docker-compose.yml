@@ -1,0 +1,25 @@
+name: crdt-svg
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    ports:
+      - "3000:80"
+    volumes:
+      # Hot-reload without rebuild — mount src directly
+      - ./src/app/index.html:/usr/share/nginx/html/index.html:ro
+      - ./src/lib:/usr/share/nginx/html/lib:ro
+    depends_on:
+      - signaling
+
+  signaling:
+    build:
+      context: .
+      dockerfile: docker/signaling.Dockerfile
+    ports:
+      - "4444:4444"
+    environment:
+      - LOG=y-webrtc
+    restart: unless-stopped

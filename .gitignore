@@ -1,0 +1,16 @@
+node_modules/
+.env
+.env.*
+!.env.example
+
+# Test artifacts
+playwright-report/
+test-results/
+
+# Docker build cache
+.docker-cache/
+.npm-cache/
+
+# OS noise
+.DS_Store
+Thumbs.db

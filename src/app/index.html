@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRDT SVG — Collaborative Canvas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0c0c0f; --surface: #13131a; --border: #2a2a38;
+    --accent: #c8f060; --accent2: #60c8f0; --muted: #555570;
+    --text: #e8e8f0; --text-dim: #8888a8; --danger: #f06060;
+  }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; overflow: hidden; }
+  .shell { display: grid; grid-template-rows: 48px 1fr; grid-template-columns: 200px 1fr 200px; height: 100vh; }
+  .topbar {
+    grid-column: 1 / -1; display: flex; align-items: center; padding: 0 20px; gap: 16px;
+    border-bottom: 1px solid var(--border); background: var(--surface);
+  }
+  .logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 15px; color: var(--accent); }
+  .logo span { color: var(--text-dim); font-weight: 400; }
+  .room-pill {
+    display: flex; align-items: center; gap: 8px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 4px; padding: 4px 10px; font-size: 11px; color: var(--text-dim);
+  }
+  .room-pill code { color: var(--accent2); font-family: inherit; }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); transition: background 0.4s; }
+  .status-dot.connected { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .status-dot.connecting { background: #f0c060; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.3} }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 11px; color: var(--text-dim); }
+  .topbar-right strong { color: var(--accent); }
+  .sidebar {
+    background: var(--surface); border-right: 1px solid var(--border);
+    padding: 14px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; font-size: 11px;
+  }
+  .sidebar.right { border-right: none; border-left: 1px solid var(--border); }
+  .sec { display: flex; flex-direction: column; gap: 7px; }
+  .sec-label { text-transform: uppercase; letter-spacing: 0.12em; font-size: 9px; color: var(--muted); padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+  .tool-btn {
+    display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 4px;
+    border: 1px solid transparent; background: transparent; color: var(--text-dim);
+    font-family: 'DM Mono', monospace; font-size: 11px; cursor: pointer; transition: all 0.12s; text-align: left;
+  }
+  .tool-btn:hover { background: var(--bg); color: var(--text); border-color: var(--border); }
+  .tool-btn.active { background: var(--bg); color: var(--accent); border-color: var(--accent); }
+  .swatches { display: flex; flex-wrap: wrap; gap: 5px; }
+  .swatch {
+    width: 22px; height: 22px; border-radius: 3px; border: 2px solid transparent;
+    cursor: pointer; transition: transform 0.1s, border-color 0.12s;
+  }
+  .swatch:hover { transform: scale(1.15); }
+  .swatch.active { border-color: var(--text) !important; }
+  .slider-row { display: flex; flex-direction: column; gap: 3px; }
+  .slider-row label { color: var(--text-dim); display: flex; justify-content: space-between; font-size: 10px; }
+  .slider-row label span { color: var(--accent2); }
+  input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+  .shape-list { display: flex; flex-direction: column; gap: 3px; max-height: 280px; overflow-y: auto; }
+  .shape-item {
+    display: flex; align-items: center; gap: 6px; padding: 5px 7px; border-radius: 3px;
+    border: 1px solid var(--border); background: var(--bg); cursor: pointer; transition: border-color 0.12s;
+  }
+  .shape-item:hover { border-color: var(--muted); }
+  .shape-item.selected { border-color: var(--accent); }
+  .shape-swatch { width: 11px; height: 11px; border-radius: 2px; flex-shrink: 0; }
+  .shape-label { color: var(--text-dim); flex: 1; font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .shape-owner { font-size: 9px; }
+  .shape-del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 0 2px; line-height: 1; }
+  .shape-del:hover { color: var(--danger); }
+  .canvas-wrap {
+    position: relative; overflow: hidden; background: var(--bg);
+    background-image:
+      radial-gradient(circle at 50% 50%, #1a1a2e 0%, transparent 70%),
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 100% 100%, 28px 28px, 28px 28px;
+    cursor: crosshair;
+  }
+  #svg-canvas { width: 100%; height: 100%; display: block; user-select: none; }
+  #draw-preview {
+    position: absolute; border: 2px dashed var(--accent);
+    pointer-events: none; opacity: 0.7; display: none;
+  }
+  .event-log { display: flex; flex-direction: column; gap: 3px; max-height: 160px; overflow-y: auto; }
+  .log-entry {
+    padding: 3px 6px; border-radius: 2px; background: var(--bg); color: var(--text-dim);
+    font-size: 9px; border-left: 2px solid var(--muted); animation: fadeIn 0.2s ease;
+  }
+  .log-entry.local { border-left-color: var(--accent); }
+  .log-entry.remote { border-left-color: var(--accent2); }
+  .log-entry.del { border-left-color: var(--danger); }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none} }
+  .hint {
+    position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+    font-size: 10px; color: var(--muted); pointer-events: none; letter-spacing: 0.04em;
+    background: var(--surface); border: 1px solid var(--border); padding: 4px 12px; border-radius: 20px;
+  }
+  .meta-kv { font-size: 9px; color: var(--text-dim); display: flex; flex-direction: column; gap: 3px; }
+  .meta-kv div span:first-child { color: var(--muted); }
+  .meta-kv div span:last-child { color: var(--accent2); }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="logo">crdt<span>/svg</span></div>
+    <div class="room-pill">
+      <div class="status-dot connecting" id="statusDot"></div>
+      room: <code id="roomLabel">—</code>
+    </div>
+    <div class="topbar-right">
+      peers: <strong id="peerCount">0</strong>
+      &nbsp;|&nbsp; <span id="myIdLabel" style="color:var(--muted)">—</span>
+    </div>
+  </header>
+
+  <aside class="sidebar">
+    <div class="sec">
+      <div class="sec-label">Tool</div>
+      <button class="tool-btn active" id="toolRect">▭ &nbsp;Draw Rect <small style="margin-left:auto;color:var(--muted)">[R]</small></button>
+      <button class="tool-btn" id="toolSelect">↖ &nbsp;Select <small style="margin-left:auto;color:var(--muted)">[S]</small></button>
+    </div>
+    <div class="sec">
+      <div class="sec-label">Fill</div>
+      <div class="swatches" id="fillSwatches"></div>
+    </div>
+    <div class="sec">
+      <div class="sec-label">Opacity</div>
+      <div class="slider-row">
+        <label>opacity <span id="opacityVal">0.80</span></label>
+        <input type="range" id="opacitySlider" min="10" max="100" value="80">
+      </div>
+    </div>
+    <div class="sec">
+      <div class="sec-label">Stroke</div>
+      <div class="swatches" id="strokeSwatches"></div>
+      <div class="slider-row" style="margin-top:5px">
+        <label>width <span id="strokeWidthVal">1</span>px</label>
+        <input type="range" id="strokeWidthSlider" min="0" max="8" value="1">
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-wrap" id="canvasWrap">
+    <svg id="svg-canvas" xmlns="http://www.w3.org/2000/svg">
+      <g id="doc-layer"></g>
+      <g id="overlay-layer" pointer-events="none"></g>
+    </svg>
+    <div id="draw-preview"></div>
+    <div class="hint" id="hint">drag to draw a rect · open another tab to sync</div>
+  </main>
+
+  <aside class="sidebar right">
+    <div class="sec">
+      <div class="sec-label">Shapes (<span id="shapeCount">0</span>)</div>
+      <div class="shape-list" id="shapeList"></div>
+    </div>
+    <div class="sec">
+      <div class="sec-label">Event Log</div>
+      <div class="event-log" id="eventLog"></div>
+    </div>
+    <div class="sec">
+      <div class="sec-label">Doc Meta</div>
+      <div class="meta-kv" id="docMeta"></div>
+    </div>
+  </aside>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "yjs": "/lib/yjs.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as Y                   from '/lib/yjs.js';
+import { WebrtcProvider }       from '/lib/y-webrtc.js';
+import { IndexeddbPersistence } from '/lib/y-indexeddb.js';
+
+const uid = () => Math.random().toString(36).slice(2, 9);
+
+// Room + identity
+let roomId = location.hash.slice(1);
+if (!roomId) { roomId = uid(); location.hash = roomId; }
+const myId    = uid();
+const COLORS  = ['#c8f060','#60c8f0','#f06090','#f0c060','#a060f0','#60f0c8','#f09060','#e8e8f0'];
+const myColor = COLORS[Math.floor(Math.random() * COLORS.length)];
+document.getElementById('roomLabel').textContent = roomId;
+document.getElementById('myIdLabel').textContent = `me: ${myId}`;
+
+// ── Log (defined early — used by persistence.on('synced')) ───────────
+function addLog(msg, type = '') {
+  const log   = document.getElementById('eventLog');
+  const entry = document.createElement('div');
+  entry.className   = `log-entry ${type}`;
+  entry.textContent = `${new Date().toISOString().slice(11,19)} ${msg}`;
+  log.prepend(entry);
+  while (log.children.length > 40) log.lastChild.remove();
+}
+
+// ── Schema versioning ─────────────────────────────────────────────────
+const CURRENT_SCHEMA = 3;
+
+// Migration functions keyed by the version they migrate FROM.
+// Each receives (ydoc, yMeta, yShapes) and mutates in place.
+const MIGRATIONS = {
+  // v1: flat Y.Map('rects') of plain JS objects → v3 directly
+  1: (ydoc, yMeta, yShapes) => {
+    const oldRects = ydoc.getMap('rects');
+    const entries = [];
+    oldRects.forEach((shape, id) => entries.push([id, shape]));
+    entries.sort((a, b) => (a[1].created || 0) - (b[1].created || 0));
+    ydoc.transact(() => {
+      entries.forEach(([, shape]) => {
+        const yShape = new Y.Map();
+        Object.entries(shape).forEach(([k, v]) => yShape.set(k, v));
+        yShapes.push([yShape]);
+      });
+      yMeta.set('schemaVersion', 3);
+    });
+    console.log(`[migration] v1→v3: migrated ${entries.length} shapes`);
+  },
+  // v2: Y.Array('order') of IDs + Y.Map('shapes') → Y.Array('shapes') of Y.Maps
+  2: (ydoc, yMeta, yShapes) => {
+    const oldOrder  = ydoc.getArray('order');
+    const oldShapes = ydoc.getMap('shapes');
+    const ids = oldOrder.toArray();
+    ydoc.transact(() => {
+      ids.forEach(id => {
+        const old = oldShapes.get(id);
+        if (!old) return;
+        const yShape = new Y.Map();
+        old.forEach((v, k) => yShape.set(k, v));
+        yShapes.push([yShape]);
+      });
+      yMeta.set('schemaVersion', 3);
+    });
+    console.log(`[migration] v2→v3: migrated ${ids.length} shapes`);
+  },
+};
+
+function runMigrations(ydoc, yMeta, yShapes) {
+  let version = yMeta.get('schemaVersion') ?? 1;
+  while (version < CURRENT_SCHEMA) {
+    const migrate = MIGRATIONS[version];
+    if (!migrate) { console.warn(`[migration] no migrator for v${version}`); break; }
+    console.log(`[migration] running v${version}→v${version + 1}`);
+    migrate(ydoc, yMeta, yShapes);
+    version++;
+  }
+}
+
+// ── Yjs ──────────────────────────────────────────────────────────────
+const ydoc    = new Y.Doc();
+const yMeta   = ydoc.getMap('meta');
+// v3 data model: single Y.Array of Y.Maps — index = z-order (0=bottom, last=top)
+const yShapes = ydoc.getArray('shapes');  // Y.Array<Y.Map>
+
+// ── IndexedDB persistence ─────────────────────────────────────────────
+// Keyed per room so each room has its own persistent store.
+const persistence = new IndexeddbPersistence(`crdt-svg:${roomId}`, ydoc);
+let persistenceReady = false;
+
+persistence.on('synced', () => {
+  persistenceReady = true;
+  addLog('loaded from indexeddb', 'local');
+
+  // Seed meta if this is a fresh doc
+  if (!yMeta.get('docId')) {
+    ydoc.transact(() => {
+      yMeta.set('docId',         roomId);
+      yMeta.set('created',       new Date().toISOString());
+      yMeta.set('schemaVersion', CURRENT_SCHEMA);
+    });
+  }
+
+  // Run any pending migrations
+  runMigrations(ydoc, yMeta, yShapes);
+
+  renderDocLayer();
+});
+
+const provider  = new WebrtcProvider(roomId, ydoc, { signaling: ['ws://localhost:4444'] });
+const awareness = provider.awareness;
+awareness.setLocalState({ id: myId, color: myColor, cursor: null, selection: null });
+
+// ── Awareness helpers ───────────────────────────────────────────────
+function mySelection() {
+  return awareness.getLocalState()?.selection ?? null;
+}
+function setSelection(shapeId) {
+  awareness.setLocalStateField('selection', shapeId ? { shapeId } : null);
+  renderOverlayLayer();
+  renderShapeList();
+}
+
+// Status
+const dot = document.getElementById('statusDot');
+provider.on('synced', () => {
+  dot.className = 'status-dot connected';
+  addLog('synced with peers', 'remote');
+});
+provider.on('status', ({ connected }) => {
+  dot.className = connected ? 'status-dot connected' : 'status-dot connecting';
+});
+
+// UI state
+let tool        = 'rect';
+let fillColor   = COLORS[0];
+let strokeColor = 'none';
+let opacity     = 0.8;
+let strokeWidth = 1;
+
+// Swatches
+const STROKE_COLORS = ['none','#0c0c0f','#ffffff','#c8f060','#60c8f0','#f06090'];
+function buildSwatches(id, colors, initial, cb) {
+  const wrap = document.getElementById(id);
+  colors.forEach(c => {
+    const el = document.createElement('div');
+    el.className    = 'swatch' + (c === initial ? ' active' : '');
+    el.style.background = c === 'none' ? 'transparent' : c;
+    el.style.border     = c === 'none' ? '2px solid #555' : '2px solid transparent';
+    el.addEventListener('click', () => {
+      wrap.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+      el.classList.add('active');
+      cb(c);
+    });
+    wrap.appendChild(el);
+  });
+}
+buildSwatches('fillSwatches',   COLORS,        fillColor,   v => fillColor   = v);
+buildSwatches('strokeSwatches', STROKE_COLORS, strokeColor, v => strokeColor = v);
+
+document.getElementById('opacitySlider').addEventListener('input', e => {
+  opacity = e.target.value / 100;
+  document.getElementById('opacityVal').textContent = opacity.toFixed(2);
+});
+document.getElementById('strokeWidthSlider').addEventListener('input', e => {
+  strokeWidth = +e.target.value;
+  document.getElementById('strokeWidthVal').textContent = strokeWidth;
+});
+
+// Tools
+const canvasWrap = document.getElementById('canvasWrap');
+function setTool(t) {
+  tool = t;
+  document.getElementById('toolRect').classList.toggle('active',   t === 'rect');
+  document.getElementById('toolSelect').classList.toggle('active', t === 'select');
+  canvasWrap.style.cursor = t === 'rect' ? 'crosshair' : 'default';
+}
+document.getElementById('toolRect').addEventListener('click',   () => setTool('rect'));
+document.getElementById('toolSelect').addEventListener('click', () => setTool('select'));
+
+// Drawing
+const svgEl   = document.getElementById('svg-canvas');
+const preview = document.getElementById('draw-preview');
+let drawing   = false;
+let drawStart = null;
+
+function getPos(e) {
+  const r = canvasWrap.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+// mousedown on the wrap (catches svg and background)
+canvasWrap.addEventListener('mousedown', e => {
+  if (tool !== 'rect' || e.button !== 0) return;
+  drawing   = true;
+  drawStart = getPos(e);
+  preview.style.cssText = `display:block;left:${drawStart.x}px;top:${drawStart.y}px;width:0px;height:0px;`;
+  document.getElementById('hint').style.display = 'none';
+  e.preventDefault();
+});
+
+// mousemove + mouseup on window so we don't lose the drag if cursor leaves
+window.addEventListener('mousemove', e => {
+  if (!drawing) return;
+  const cur = getPos(e);
+  const x = Math.min(drawStart.x, cur.x);
+  const y = Math.min(drawStart.y, cur.y);
+  const w = Math.abs(cur.x - drawStart.x);
+  const h = Math.abs(cur.y - drawStart.y);
+  preview.style.left   = x + 'px';
+  preview.style.top    = y + 'px';
+  preview.style.width  = w + 'px';
+  preview.style.height = h + 'px';
+});
+
+window.addEventListener('mouseup', e => {
+  if (!drawing) return;
+  drawing = false;
+  preview.style.display = 'none';
+  const cur = getPos(e);
+  const x = Math.min(drawStart.x, cur.x);
+  const y = Math.min(drawStart.y, cur.y);
+  const w = Math.abs(cur.x - drawStart.x);
+  const h = Math.abs(cur.y - drawStart.y);
+  if (w < 4 || h < 4) return;
+
+  const id     = uid();
+  const yShape = new Y.Map();
+  const attrs  = {
+    id, x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h),
+    fill: fillColor, stroke: strokeColor, strokeWidth, opacity,
+    author: myId, created: Date.now(),
+  };
+  ydoc.transact(() => {
+    Object.entries(attrs).forEach(([k, v]) => yShape.set(k, v));
+    yShapes.push([yShape]);      // append = on top (highest z)
+  });
+  addLog(`added ${id.slice(0,6)} (${Math.round(w)}×${Math.round(h)})`, 'local');
+});
+
+// ── Render helpers ───────────────────────────────────────────────────
+function shapeFromYMap(yShape) {
+  const obj = {};
+  yShape.forEach((v, k) => obj[k] = v);
+  return obj;
+}
+
+const svgNS = 'http://www.w3.org/2000/svg';
+
+// ── Doc layer — driven by yShapes ────────────────────────────────────
+function renderDocLayer() {
+  const layer = svgEl.querySelector('#doc-layer');
+  layer.innerHTML = '';
+
+  yShapes.toArray().forEach(yShape => {
+    const shape = shapeFromYMap(yShape);
+    const id    = shape.id;
+
+    const el = document.createElementNS(svgNS, 'rect');
+    el.setAttribute('data-yid',     id);
+    el.setAttribute('x',            shape.x);
+    el.setAttribute('y',            shape.y);
+    el.setAttribute('width',        shape.w);
+    el.setAttribute('height',       shape.h);
+    el.setAttribute('fill',         shape.fill);
+    el.setAttribute('stroke',       shape.stroke === 'none' ? 'none' : shape.stroke);
+    el.setAttribute('stroke-width', shape.strokeWidth || 0);
+    el.setAttribute('opacity',      shape.opacity ?? 1);
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', ev => {
+      if (tool !== 'select') return;
+      ev.stopPropagation();
+      setSelection(id);
+    });
+    layer.appendChild(el);
+  });
+
+  document.getElementById('shapeCount').textContent = yShapes.length;
+  renderShapeList();
+  renderMeta();
+}
+
+// ── Overlay layer — driven by awareness ──────────────────────────────
+// Each peer's selection renders as a rect in their color.
+// Own selection: solid border. Remote peers: dashed border + name label.
+function renderOverlayLayer() {
+  const layer  = svgEl.querySelector('#overlay-layer');
+  layer.innerHTML = '';
+
+  const sel = mySelection();
+
+  awareness.getStates().forEach((state, clientId) => {
+    if (!state?.selection?.shapeId) return;
+    const { shapeId } = state.selection;
+    const isMe  = clientId === awareness.clientID;
+    const color = isMe ? '#c8f060' : (state.color || '#888');
+
+    // Find shape geometry from doc layer
+    const yShape = yShapes.toArray().find(s => s.get('id') === shapeId);
+    if (!yShape) return;
+    const shape = shapeFromYMap(yShape);
+
+    const PAD = 3; // padding around the shape
+
+    // Selection rect
+    const rect = document.createElementNS(svgNS, 'rect');
+    rect.setAttribute('x',            shape.x - PAD);
+    rect.setAttribute('y',            shape.y - PAD);
+    rect.setAttribute('width',        shape.w + PAD * 2);
+    rect.setAttribute('height',       shape.h + PAD * 2);
+    rect.setAttribute('fill',         'none');
+    rect.setAttribute('stroke',       color);
+    rect.setAttribute('stroke-width', isMe ? 2 : 1.5);
+    if (!isMe) rect.setAttribute('stroke-dasharray', '4 3');
+    rect.setAttribute('rx', 2);
+    layer.appendChild(rect);
+
+    // Name label (remote peers only — no need to label yourself)
+    if (!isMe) {
+      const name  = state.id?.slice(0, 6) || '?';
+      const lx    = shape.x - PAD;
+      const ly    = shape.y - PAD - 4; // just above the rect
+
+      const bg = document.createElementNS(svgNS, 'rect');
+      bg.setAttribute('x',      lx);
+      bg.setAttribute('y',      ly - 11);
+      bg.setAttribute('width',  name.length * 6.5 + 8);
+      bg.setAttribute('height', 13);
+      bg.setAttribute('fill',   color);
+      bg.setAttribute('rx',     2);
+      layer.appendChild(bg);
+
+      const txt = document.createElementNS(svgNS, 'text');
+      txt.setAttribute('x',           lx + 4);
+      txt.setAttribute('y',           ly - 1);
+      txt.setAttribute('font-size',   9);
+      txt.setAttribute('font-family', 'DM Mono, monospace');
+      txt.setAttribute('fill',        '#0c0c0f');
+      txt.textContent = name;
+      layer.appendChild(txt);
+    }
+  });
+}
+
+function renderAll() {
+  renderDocLayer();
+  renderOverlayLayer();
+}
+
+function renderShapeList() {
+  const list = document.getElementById('shapeList');
+  list.innerHTML = '';
+  // Show newest-first in the list (reverse of z-order)
+  [...yShapes.toArray()].reverse().forEach(yShape => {
+    const shape = shapeFromYMap(yShape);
+    const id    = shape.id;
+
+    const item = document.createElement('div');
+    const mySel = mySelection();
+    item.className = 'shape-item' + (mySel?.shapeId === id ? ' selected' : '');
+    const sw  = document.createElement('div');
+    sw.className        = 'shape-swatch';
+    sw.style.background = shape.fill;
+    const lbl = document.createElement('div');
+    lbl.className   = 'shape-label';
+    lbl.textContent = `${shape.w}×${shape.h} @ ${shape.x},${shape.y}`;
+    const own = document.createElement('div');
+    own.className   = 'shape-owner';
+    own.textContent = shape.author === myId ? 'me' : (shape.author?.slice(0,5) || '?');
+    own.style.color = shape.author === myId ? 'var(--accent)' : 'var(--muted)';
+    const del = document.createElement('button');
+    del.className   = 'shape-del';
+    del.textContent = '×';
+    del.addEventListener('click', ev => {
+      ev.stopPropagation();
+      deleteShape(id);
+    });
+    item.append(sw, lbl, own, del);
+    item.addEventListener('click', () => { setSelection(id); renderDocLayer(); });
+    list.appendChild(item);
+  });
+}
+
+function renderMeta() {
+  const el = document.getElementById('docMeta');
+  el.innerHTML = '';
+  yMeta.forEach((v, k) => {
+    const row = document.createElement('div');
+    row.innerHTML = `<span>${k}:</span> <span>${v}</span>`;
+    el.appendChild(row);
+  });
+}
+
+// Delete: find by id (linear scan), delete from array
+function deleteShape(id) {
+  const idx = yShapes.toArray().findIndex(s => s.get('id') === id);
+  if (idx !== -1) ydoc.transact(() => yShapes.delete(idx, 1));
+  if (mySelection()?.shapeId === id) setSelection(null);
+  addLog(`deleted ${id.slice(0,6)}`, 'del');
+}
+
+// Single observer on yShapes covers all changes
+yShapes.observe(event => {
+  event.changes.added.forEach(item => {
+    // item.content.getContent() returns the inserted Y.Maps
+    item.content.getContent().forEach(yShape => {
+      if (yShape instanceof Y.Map) {
+        const author = yShape.get('author');
+        if (author && author !== myId) {
+          const id = yShape.get('id') || '?';
+          addLog(`remote: added ${id.slice(0,6)} by ${author.slice(0,5)}`, 'remote');
+        }
+      }
+    });
+  });
+  event.changes.deleted.forEach(item => {
+    item.content.getContent().forEach(yShape => {
+      if (yShape instanceof Y.Map) {
+        const id = yShape.get('id') || '?';
+        addLog(`remote: deleted ${id.slice(0,6)}`, 'del');
+      }
+    });
+  });
+  renderDocLayer();
+  renderOverlayLayer();
+});
+
+// Peers + overlay
+awareness.on('change', () => {
+  let peers = 0;
+  awareness.getStates().forEach((_, cid) => { if (cid !== awareness.clientID) peers++; });
+  document.getElementById('peerCount').textContent = peers;
+  renderOverlayLayer();
+  renderShapeList();
+});
+
+// Keyboard
+window.addEventListener('keydown', e => {
+  if (e.key === 'r' || e.key === 'R') setTool('rect');
+  if (e.key === 's' || e.key === 'S') setTool('select');
+  if (e.key === 'Escape') { setSelection(null); renderDocLayer(); }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && mySelection()) {
+    if (!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) {
+      deleteShape(mySelection().shapeId);
+    }
+  }
+});
+svgEl.addEventListener('click', e => {
+  if (e.target === svgEl || e.target.closest('#doc-layer') === null && e.target !== svgEl) {
+    if (!e.target.closest('[data-yid]')) { setSelection(null); renderDocLayer(); }
+  }
+});
+
+// Init
+renderDocLayer();
+renderOverlayLayer();
+addLog(`joined room ${roomId}`, 'local');
+</script>
+</body>
+</html>
