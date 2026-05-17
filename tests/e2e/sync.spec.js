@@ -10,7 +10,7 @@
 
 import { test, expect, chromium } from '@playwright/test';
 
-const APP_URL = process.env.APP_URL || 'http://app:80';
+const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 
 test.describe('two-peer sync', () => {
   test('shapes drawn on peer A appear on peer B', async () => {
