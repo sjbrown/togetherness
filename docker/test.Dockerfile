@@ -7,7 +7,7 @@ COPY package.json package-lock.json* ./
 RUN npm ci --ignore-scripts
 
 # Copy source — tests import from src/lib/shapes.js
-COPY src/core/ ./src/core/
+COPY src/ ./src/
 COPY tests/   ./tests/
 COPY vitest.config.js ./
 
