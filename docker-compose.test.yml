@@ -23,6 +23,11 @@ services:
       dockerfile: docker/app.Dockerfile
     depends_on:
       - signaling
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
     profiles: ["e2e", "all"]
 
   # Playwright e2e tests — runs after app + signaling are up
@@ -33,6 +38,8 @@ services:
     environment:
       - APP_URL=http://app:80
     depends_on:
-      - app
-      - signaling
+      app:
+        condition: service_healthy
+      signaling:
+        condition: service_started
     profiles: ["e2e", "all"]
