@@ -26,7 +26,7 @@ services:
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:80"]
       interval: 2s
-      timeout: 5s
+      timeout: 10s
       retries: 10
     profiles: ["e2e", "all"]
 
