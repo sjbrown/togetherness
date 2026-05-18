@@ -18,6 +18,8 @@
   "devDependencies": {
     "@playwright/test": "^1.60.0",
     "serve": "^14.2.6",
-    "vitest": "^2.1.0"
+    "vitest": "^2.1.0",
+    "ws": "^8.20.1",
+    "y-websocket": "^3.0.0"
   }
 }
