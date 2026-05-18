@@ -1,22 +1,16 @@
 name: crdt-svg-test
 
 services:
-  # Unit tests — no network services needed
   test:
     build:
       context: .
       dockerfile: docker/test.Dockerfile
-    # Exit code propagates to bin/test.sh and GitHub Actions
-    profiles: ["unit", "all"]
 
-  # Signaling server needed for e2e tests
   signaling:
     build:
       context: .
       dockerfile: docker/signaling.Dockerfile
-    profiles: ["e2e", "all"]
 
-  # App server needed for e2e tests
   app:
     build:
       context: .
@@ -24,22 +18,26 @@ services:
     depends_on:
       - signaling
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:80"]
+      test: ["CMD", "wget", "-qO-", "http://app:80"]
       interval: 2s
-      timeout: 10s
+      timeout: 3s
       retries: 10
-    profiles: ["e2e", "all"]
 
   # Playwright e2e tests — runs after app + signaling are up
+  # dns section
+  # -----------
+  #  Chromium uses it's own dns and doesn't resolve http://app
   e2e:
+    dns:
+      - 127.0.0.11
     build:
       context: .
       dockerfile: docker/e2e.Dockerfile
     environment:
       - APP_URL=http://app:80
+      - SIGNALING_URL=ws://signaling:4444
     depends_on:
       app:
         condition: service_healthy
       signaling:
         condition: service_started
-    profiles: ["e2e", "all"]

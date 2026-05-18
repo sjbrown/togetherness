@@ -287,7 +287,8 @@ persistence.on('synced', () => {
   renderDocLayer();
 });
 
-const provider  = new WebrtcProvider(roomId, ydoc, { signaling: ['ws://localhost:4444'] });
+const signalingUrl = new URLSearchParams(location.search).get('signaling') || 'ws://localhost:4444';
+const provider  = new WebrtcProvider(roomId, ydoc, { signaling: [signalingUrl] });
 const awareness = provider.awareness;
 awareness.setLocalState({ id: myId, color: myColor, cursor: null, selection: null });
 

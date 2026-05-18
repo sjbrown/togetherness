@@ -11,6 +11,8 @@
 import { test, expect, chromium } from '@playwright/test';
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
+const SIGNALING_URL = process.env.SIGNALING_URL || 'ws://localhost:4444';
+
 
 test.describe('two-peer sync', () => {
   test('shapes drawn on peer A appear on peer B', async () => {
@@ -21,8 +23,8 @@ test.describe('two-peer sync', () => {
     const page2   = await ctx2.newPage();
 
     const room = `e2e-test-${Date.now()}`;
-    await page1.goto(`${APP_URL}/#${room}`);
-    await page2.goto(`${APP_URL}/#${room}`);
+    await page1.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
+    await page2.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
 
     // Wait for both peers to see each other
     await expect(page1.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
@@ -52,8 +54,8 @@ test.describe('two-peer sync', () => {
     const page2   = await ctx2.newPage();
 
     const room = `e2e-del-${Date.now()}`;
-    await page1.goto(`${APP_URL}/#${room}`);
-    await page2.goto(`${APP_URL}/#${room}`);
+    await page1.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
+    await page2.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
 
     await expect(page1.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
 

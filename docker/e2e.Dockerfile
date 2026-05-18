@@ -8,4 +8,5 @@ RUN npm ci --ignore-scripts
 COPY tests/e2e/  ./tests/e2e/
 COPY playwright.config.js ./
 
-CMD ["npx", "playwright", "test", "--reporter=list"]
+COPY bin/test.playwright.sh ./bin/
+CMD ["bin/test.playwright.sh"]
