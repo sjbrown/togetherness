@@ -5,8 +5,9 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --ignore-scripts
 
-COPY tests/e2e/  ./tests/e2e/
 COPY playwright.config.js ./
+COPY bin/ ./bin/
+COPY tests/ ./tests/
 
-COPY bin/test.playwright.sh ./bin/
-CMD ["bin/test.playwright.sh"]
+
+CMD ["bin/test_e2e.sh"]

@@ -17,7 +17,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Run unit tests
-        run: bin/test.sh unit
+        run: bin/test.github_wrapper.sh unit
 
   e2e:
     name: E2E tests
@@ -31,4 +31,4 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Run e2e tests
-        run: bin/test.sh e2e
+        run: bin/test.github_wrapper.sh e2e

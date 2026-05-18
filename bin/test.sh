@@ -38,23 +38,23 @@ else
       echo "▶ Running unit tests (Docker)..."
       docker compose -f docker-compose.test.yml \
         --profile unit \
-        run --rm --build test
+        run --rm test
       ;;
     e2e)
       echo "▶ Running e2e tests (Docker)..."
       docker compose -f docker-compose.test.yml \
         --profile e2e \
-        run --rm --build e2e
+        run --rm e2e
       docker compose -f docker-compose.test.yml --profile e2e down
       ;;
     all)
       echo "▶ Running all tests (Docker)..."
       docker compose -f docker-compose.test.yml \
         --profile unit \
-        run --rm --build test
+        run --rm test
       docker compose -f docker-compose.test.yml \
         --profile e2e \
-        run --rm --build e2e
+        run --rm e2e
       docker compose -f docker-compose.test.yml --profile e2e down
       ;;
     *)

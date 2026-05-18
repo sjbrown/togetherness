@@ -24,12 +24,7 @@ services:
       retries: 10
 
   # Playwright e2e tests — runs after app + signaling are up
-  # dns section
-  # -----------
-  #  Chromium uses it's own dns and doesn't resolve http://app
   e2e:
-    dns:
-      - 127.0.0.11
     build:
       context: .
       dockerfile: docker/e2e.Dockerfile

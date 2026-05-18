@@ -8,7 +8,9 @@ RUN npm ci --ignore-scripts
 
 # Copy source — tests import from src/lib/shapes.js
 COPY src/ ./src/
-COPY tests/   ./tests/
+COPY bin/ ./bin/
+COPY tests/ ./tests/
 COPY vitest.config.js ./
 
-CMD ["npx", "vitest", "run", "--reporter=verbose"]
+CMD ["bin/test_unit.sh"]
+
