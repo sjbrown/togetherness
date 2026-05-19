@@ -3,7 +3,6 @@
 set -ex
 
 echo "   ----"
-echo "CI=${CI}"
 echo "APP_URL=${APP_URL}"
 echo "SIGNALING_URL=${SIGNALING_URL}"
 echo "   ----"
@@ -17,7 +16,6 @@ echo "Getting IP from getent"
 SIGNALING_URL=http://$(getent hosts "signaling" | awk '{print $1}'):4444
 
 echo "   ----"
-echo "CI=${CI}"
 echo "APP_URL=${APP_URL}"
 echo "SIGNALING_URL=${SIGNALING_URL}"
 echo "   ----"

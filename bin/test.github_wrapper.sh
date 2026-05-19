@@ -7,12 +7,6 @@ if [ `basename $(pwd)` != "crdt-svg" ]; then
   exit 1
 fi
 
-if [ "${CI:-}" != "true" ]; then
-  echo "Error - not in Github's environment"
-  echo "  CI = ${CI}"
-  exit 1
-fi
-
 npm ci --ignore-scripts
 
 MODE="${1:-unit}"
