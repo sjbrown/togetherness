@@ -1,12 +1,10 @@
 import { defineConfig } from '@playwright/test';
 
-const appUrl = process.env.APP_URL || 'http://localhost:3000';
-
 export default defineConfig({
   testDir:  './tests/e2e',
   timeout:  30_000,
   use: {
-    baseURL:    appUrl,
+    baseURL:    process.env.APP_URL,
     headless:   true,
     video:      'retain-on-failure',
     screenshot: 'only-on-failure',

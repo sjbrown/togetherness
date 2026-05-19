@@ -13,9 +13,6 @@ if [ "${CI:-}" != "true" ]; then
   exit 1
 fi
 
-export APP_URL="http://localhost:3000"
-export SIGNALING_URL="ws://localhost:4444"
-
 npm ci --ignore-scripts
 
 MODE="${1:-unit}"
@@ -27,11 +24,9 @@ case "${MODE}" in
     e2e)
       echo "▶ Running e2e tests (native)..."
       docker compose -f docker-compose.test.yml run --rm e2e
-      #npx playwright install --with-deps chromium
-      #./bin/test_e2e.sh
       ;;
     *)
-      echo "Usage: bin/test.github_wrapper.sh [unit|e2e|all]"
+      echo "Usage: bin/test.github_wrapper.sh [unit|e2e]"
       exit 1
       ;;
 esac
