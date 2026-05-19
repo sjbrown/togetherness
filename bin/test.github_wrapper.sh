@@ -26,8 +26,9 @@ case "${MODE}" in
       ;;
     e2e)
       echo "▶ Running e2e tests (native)..."
-      npx playwright install --with-deps chromium
-      ./bin/test_e2e.sh
+      docker compose -f docker-compose.test.yml run --rm e2e
+      #npx playwright install --with-deps chromium
+      #./bin/test_e2e.sh
       ;;
     *)
       echo "Usage: bin/test.github_wrapper.sh [unit|e2e|all]"
