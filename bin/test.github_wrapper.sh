@@ -22,7 +22,7 @@ case "${MODE}" in
       npx vitest run --reporter=verbose
       ;;
     e2e)
-      echo "▶ Running e2e tests (native)..."
+      echo "▶ Running e2e tests (docker)..."
       docker compose -f docker-compose.test.yml run --rm e2e
       ;;
     *)

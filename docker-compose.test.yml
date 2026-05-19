@@ -1,10 +1,10 @@
 name: crdt-svg-test
 
 services:
-  test:
+  unit:
     build:
       context: .
-      dockerfile: docker/test.Dockerfile
+      dockerfile: docker/unit.Dockerfile
 
   signaling:
     build:

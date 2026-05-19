@@ -6,7 +6,6 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --ignore-scripts
 
-# Copy source — tests import from src/lib/shapes.js
 COPY src/ ./src/
 COPY bin/ ./bin/
 COPY tests/ ./tests/

@@ -8,7 +8,7 @@ fi
 
 echo "▶ Running e2e tests (Docker)..."
 
-docker compose -f docker-compose.test.yml --profile e2e run --rm e2e
-docker compose -f docker-compose.test.yml --profile e2e down
+docker compose -f docker-compose.test.yml run --build --rm e2e
+docker compose -f docker-compose.test.yml down e2e
 
 echo "✓ Done."
