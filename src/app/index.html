@@ -147,7 +147,10 @@
   </aside>
 
   <main class="canvas-wrap" id="canvasWrap">
-    <svg id="svg-canvas" xmlns="http://www.w3.org/2000/svg">
+    <svg id="svg-canvas" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+      <g id="background-layer">
+        <image href="img/bg_beigehex.png" x="0" y="0" width="100%" height="100%" preserveAspectRatio="xMidYMid slice" pointer-events="none"/>
+      </g>
       <g id="doc-layer"></g>
       <g id="overlay-layer" pointer-events="none"></g>
     </svg>
@@ -206,13 +209,13 @@ function addLog(msg, type = '') {
 }
 
 // ── Schema versioning ─────────────────────────────────────────────────
-const CURRENT_SCHEMA = 3;
+const CURRENT_SCHEMA = 4;
 
 // Migration functions keyed by the version they migrate FROM.
-// Each receives (ydoc, yMeta, yShapes) and mutates in place.
+// Each receives (ydoc, yMeta, yTable) and mutates in place.
 const MIGRATIONS = {
   // v1: flat Y.Map('rects') of plain JS objects → v3 directly
-  1: (ydoc, yMeta, yShapes) => {
+  1: (ydoc, yMeta, yTable) => {
     const oldRects = ydoc.getMap('rects');
     const entries = [];
     oldRects.forEach((shape, id) => entries.push([id, shape]));
@@ -221,14 +224,14 @@ const MIGRATIONS = {
       entries.forEach(([, shape]) => {
         const yShape = new Y.Map();
         Object.entries(shape).forEach(([k, v]) => yShape.set(k, v));
-        yShapes.push([yShape]);
+        yTable.push([yShape]);
       });
       yMeta.set('schemaVersion', 3);
     });
     console.log(`[migration] v1→v3: migrated ${entries.length} shapes`);
   },
   // v2: Y.Array('order') of IDs + Y.Map('shapes') → Y.Array('shapes') of Y.Maps
-  2: (ydoc, yMeta, yShapes) => {
+  2: (ydoc, yMeta, yTable) => {
     const oldOrder  = ydoc.getArray('order');
     const oldShapes = ydoc.getMap('shapes');
     const ids = oldOrder.toArray();
@@ -238,21 +241,33 @@ const MIGRATIONS = {
         if (!old) return;
         const yShape = new Y.Map();
         old.forEach((v, k) => yShape.set(k, v));
-        yShapes.push([yShape]);
+        yTable.push([yShape]);
       });
       yMeta.set('schemaVersion', 3);
     });
     console.log(`[migration] v2→v3: migrated ${ids.length} shapes`);
   },
+  // v3 migrator needed for existing Y.Array → Y.XmlFragment:
+  3: (ydoc, yMeta, yTable) => {
+    const oldShapes = ydoc.getArray('shapes').toArray();
+    ydoc.transact(() => {
+      oldShapes.forEach(yMap => {
+        const el = new Y.XmlElement('rect');
+        yMap.forEach((v, k) => el.setAttribute(k, String(v)));
+        yTable.insert(yTable.length, [el]);
+      });
+      yMeta.set('schemaVersion', 4);
+    });
+  },
 };
 
-function runMigrations(ydoc, yMeta, yShapes) {
+function runMigrations(ydoc, yMeta, yTable) {
   let version = yMeta.get('schemaVersion') ?? 1;
   while (version < CURRENT_SCHEMA) {
     const migrate = MIGRATIONS[version];
     if (!migrate) { console.warn(`[migration] no migrator for v${version}`); break; }
     console.log(`[migration] running v${version}→v${version + 1}`);
-    migrate(ydoc, yMeta, yShapes);
+    migrate(ydoc, yMeta, yTable);
     version++;
   }
 }
@@ -260,8 +275,10 @@ function runMigrations(ydoc, yMeta, yShapes) {
 // ── Yjs ──────────────────────────────────────────────────────────────
 const ydoc    = new Y.Doc();
 const yMeta   = ydoc.getMap('meta');
-// v3 data model: single Y.Array of Y.Maps — index = z-order (0=bottom, last=top)
-const yShapes = ydoc.getArray('shapes');  // Y.Array<Y.Map>
+// v4 data model: Y.XmlFragment of Y.XmlElement — tree order = z-order
+const yTable = ydoc.getXmlFragment('shapes');
+// Sidecar map: id → { author, created } — app metadata that isn't SVG
+const yShapeMeta = ydoc.getMap('shapeMeta');
 
 // ── IndexedDB persistence ─────────────────────────────────────────────
 // Keyed per room so each room has its own persistent store.
@@ -282,7 +299,7 @@ persistence.on('synced', () => {
   }
 
   // Run any pending migrations
-  runMigrations(ydoc, yMeta, yShapes);
+  runMigrations(ydoc, yMeta, yTable);
 
   renderDocLayer();
 });
@@ -360,6 +377,7 @@ document.getElementById('toolRect').addEventListener('click',   () => setTool('r
 document.getElementById('toolSelect').addEventListener('click', () => setTool('select'));
 
 // Drawing
+const svgNS = 'http://www.w3.org/2000/svg';
 const svgEl   = document.getElementById('svg-canvas');
 const preview = document.getElementById('draw-preview');
 let drawing   = false;
@@ -405,48 +423,39 @@ window.addEventListener('mouseup', e => {
   const h = Math.abs(cur.y - drawStart.y);
   if (w < 4 || h < 4) return;
 
-  const id     = uid();
-  const yShape = new Y.Map();
-  const attrs  = {
-    id, x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h),
-    fill: fillColor, stroke: strokeColor, strokeWidth, opacity,
-    author: myId, created: Date.now(),
-  };
+  const id = uid();
+  const el = new Y.XmlElement('rect');
   ydoc.transact(() => {
-    Object.entries(attrs).forEach(([k, v]) => yShape.set(k, v));
-    yShapes.push([yShape]);      // append = on top (highest z)
+    el.setAttribute('id',           id);
+    el.setAttribute('x',            String(Math.round(x)));
+    el.setAttribute('y',            String(Math.round(y)));
+    el.setAttribute('width',        String(Math.round(w)));
+    el.setAttribute('height',       String(Math.round(h)));
+    el.setAttribute('fill',         fillColor);
+    el.setAttribute('stroke',       strokeColor);
+    el.setAttribute('stroke-width', String(strokeWidth));
+    el.setAttribute('opacity',      String(opacity));
+    yTable.insert(yTable.length, [el]);
+    yShapeMeta.set(id, { author: myId, created: Date.now() });
   });
   addLog(`added ${id.slice(0,6)} (${Math.round(w)}×${Math.round(h)})`, 'local');
 });
 
-// ── Render helpers ───────────────────────────────────────────────────
-function shapeFromYMap(yShape) {
-  const obj = {};
-  yShape.forEach((v, k) => obj[k] = v);
-  return obj;
-}
 
-const svgNS = 'http://www.w3.org/2000/svg';
-
-// ── Doc layer — driven by yShapes ────────────────────────────────────
+// ── Doc layer — driven by yTable ────────────────────────────────────
 function renderDocLayer() {
   const layer = svgEl.querySelector('#doc-layer');
   layer.innerHTML = '';
 
-  yShapes.toArray().forEach(yShape => {
-    const shape = shapeFromYMap(yShape);
-    const id    = shape.id;
-
+  yTable.toArray().forEach(yEl => {
+    const id = yEl.getAttribute('id')
     const el = document.createElementNS(svgNS, 'rect');
+
     el.setAttribute('data-yid',     id);
-    el.setAttribute('x',            shape.x);
-    el.setAttribute('y',            shape.y);
-    el.setAttribute('width',        shape.w);
-    el.setAttribute('height',       shape.h);
-    el.setAttribute('fill',         shape.fill);
-    el.setAttribute('stroke',       shape.stroke === 'none' ? 'none' : shape.stroke);
-    el.setAttribute('stroke-width', shape.strokeWidth || 0);
-    el.setAttribute('opacity',      shape.opacity ?? 1);
+    const attrs = yEl.getAttributes();
+    for (const k in attrs) {
+      el.setAttribute(k, attrs[k]);
+    }
     el.style.cursor = 'pointer';
     el.addEventListener('click', ev => {
       if (tool !== 'select') return;
@@ -456,7 +465,7 @@ function renderDocLayer() {
     layer.appendChild(el);
   });
 
-  document.getElementById('shapeCount').textContent = yShapes.length;
+  document.getElementById('shapeCount').textContent = yTable.length;
   renderShapeList();
   renderMeta();
 }
@@ -477,18 +486,18 @@ function renderOverlayLayer() {
     const color = isMe ? '#c8f060' : (state.color || '#888');
 
     // Find shape geometry from doc layer
-    const yShape = yShapes.toArray().find(s => s.get('id') === shapeId);
-    if (!yShape) return;
-    const shape = shapeFromYMap(yShape);
+    const el = yTable.toArray().find(e => e.getAttribute('id') === shapeId);
+    if (!el) return;
+    const elAttrs = el.getAttributes();
 
     const PAD = 3; // padding around the shape
 
     // Selection rect
     const rect = document.createElementNS(svgNS, 'rect');
-    rect.setAttribute('x',            shape.x - PAD);
-    rect.setAttribute('y',            shape.y - PAD);
-    rect.setAttribute('width',        shape.w + PAD * 2);
-    rect.setAttribute('height',       shape.h + PAD * 2);
+    rect.setAttribute('x',            elAttrs.x - PAD);
+    rect.setAttribute('y',            elAttrs.y - PAD);
+    rect.setAttribute('width',        elAttrs.width + PAD * 2);
+    rect.setAttribute('height',       elAttrs.height + PAD * 2);
     rect.setAttribute('fill',         'none');
     rect.setAttribute('stroke',       color);
     rect.setAttribute('stroke-width', isMe ? 2 : 1.5);
@@ -499,8 +508,8 @@ function renderOverlayLayer() {
     // Name label (remote peers only — no need to label yourself)
     if (!isMe) {
       const name  = state.id?.slice(0, 6) || '?';
-      const lx    = shape.x - PAD;
-      const ly    = shape.y - PAD - 4; // just above the rect
+      const lx    = elAttrs.x - PAD;
+      const ly    = elAttrs.y - PAD - 4; // just above the rect
 
       const bg = document.createElementNS(svgNS, 'rect');
       bg.setAttribute('x',      lx);
@@ -532,23 +541,25 @@ function renderShapeList() {
   const list = document.getElementById('shapeList');
   list.innerHTML = '';
   // Show newest-first in the list (reverse of z-order)
-  [...yShapes.toArray()].reverse().forEach(yShape => {
-    const shape = shapeFromYMap(yShape);
-    const id    = shape.id;
+  [...yTable.toArray()].reverse().forEach(el => {
+    const attrs = el.getAttributes();
+    const id    = attrs.id;
 
     const item = document.createElement('div');
     const mySel = mySelection();
     item.className = 'shape-item' + (mySel?.shapeId === id ? ' selected' : '');
     const sw  = document.createElement('div');
     sw.className        = 'shape-swatch';
-    sw.style.background = shape.fill;
+    sw.style.background = attrs.fill;
     const lbl = document.createElement('div');
     lbl.className   = 'shape-label';
-    lbl.textContent = `${shape.w}×${shape.h} @ ${shape.x},${shape.y}`;
+    lbl.textContent = `${attrs.width}×${attrs.height} @ ${attrs.x},${attrs.y}`;
     const own = document.createElement('div');
     own.className   = 'shape-owner';
-    own.textContent = shape.author === myId ? 'me' : (shape.author?.slice(0,5) || '?');
-    own.style.color = shape.author === myId ? 'var(--accent)' : 'var(--muted)';
+    const meta = yShapeMeta.get(attrs.id);
+    const author = meta?.author;
+    own.textContent = author === myId ? 'me' : (author?.slice(0,5) || '?');
+    own.style.color = author === myId ? 'var(--accent)' : 'var(--muted)';
     const del = document.createElement('button');
     del.className   = 'shape-del';
     del.textContent = '×';
@@ -574,30 +585,33 @@ function renderMeta() {
 
 // Delete: find by id (linear scan), delete from array
 function deleteShape(id) {
-  const idx = yShapes.toArray().findIndex(s => s.get('id') === id);
-  if (idx !== -1) ydoc.transact(() => yShapes.delete(idx, 1));
+  // TODO does yTable not have a nice easy find by id?
+  const idx = yTable.toArray().findIndex(e => e.getAttribute('id') === id);
+  if (idx !== -1) ydoc.transact(() => {
+    yTable.delete(idx, 1);
+    yShapeMeta.delete(id);
+  });
   if (mySelection()?.shapeId === id) setSelection(null);
   addLog(`deleted ${id.slice(0,6)}`, 'del');
 }
 
-// Single observer on yShapes covers all changes
-yShapes.observe(event => {
+// Single observer on yTable covers all changes
+yTable.observe(event => {
   event.changes.added.forEach(item => {
-    // item.content.getContent() returns the inserted Y.Maps
-    item.content.getContent().forEach(yShape => {
-      if (yShape instanceof Y.Map) {
-        const author = yShape.get('author');
+    item.content.getContent().forEach(el => {
+      if (el instanceof Y.XmlElement) {
+        const author = yShapeMeta.get(el.getAttribute('id'))?.author;
         if (author && author !== myId) {
-          const id = yShape.get('id') || '?';
+          const id = el.getAttribute('id') || '?';
           addLog(`remote: added ${id.slice(0,6)} by ${author.slice(0,5)}`, 'remote');
         }
       }
     });
   });
   event.changes.deleted.forEach(item => {
-    item.content.getContent().forEach(yShape => {
-      if (yShape instanceof Y.Map) {
-        const id = yShape.get('id') || '?';
+    item.content.getContent().forEach(el => {
+      if (el instanceof Y.XmlElement) {
+        const id = el.getAttribute('id') || '?';
         addLog(`remote: deleted ${id.slice(0,6)}`, 'del');
       }
     });

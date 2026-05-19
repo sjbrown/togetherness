@@ -9,8 +9,7 @@ services:
       - "3000:80"
     volumes:
       # Hot-reload without rebuild — mount src directly
-      - ./src/app/index.html:/usr/share/nginx/html/index.html:ro
-      - ./src/lib:/usr/share/nginx/html/lib:ro
+      - ./src/app:/usr/share/nginx/html:ro
     depends_on:
       - signaling
 

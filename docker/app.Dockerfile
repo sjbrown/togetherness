@@ -1,7 +1,6 @@
 FROM nginx:1.27-alpine
 
-COPY src/app/index.html /usr/share/nginx/html/index.html
-COPY src/lib/           /usr/share/nginx/html/lib/
+COPY src/app/ /usr/share/nginx/html/
 
 RUN printf 'server {\n\
     listen 80;\n\
