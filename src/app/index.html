@@ -192,10 +192,10 @@ import * as Y                       from '/lib/yjs.js';
 import { WebrtcProvider }           from '/lib/y-webrtc.js';
 import { IndexeddbPersistence }     from '/lib/y-indexeddb.js';
 import {
+  CURRENT_SCHEMA,
   addShape, deleteShape, findShape, selectionGeometry, listShapes, makeDoc,
 }                                   from '/shapes.js';
 
-const CURRENT_SCHEMA = 4;
 const uid = () => Math.random().toString(36).slice(2, 9);
 
 // Room + identity
