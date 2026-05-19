@@ -14,16 +14,16 @@ services:
       dockerfile: docker/signaling.Dockerfile
 
   app:
-    build:
-      context: .
-      dockerfile: docker/app.Dockerfile
+    image: python:3.12-slim
+    ports:
+      - "80:80"
+    volumes:
+      - ./src/app:/app/
+    working_dir: /app
+    command: python -m http.server 80
     depends_on:
       - signaling
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://app:80"]
-      interval: 2s
-      timeout: 3s
-      retries: 10
+
 
   # Playwright e2e tests — runs after app + signaling are up
   e2e:
@@ -35,6 +35,6 @@ services:
       - SIGNALING_URL=ws://signaling:4444
     depends_on:
       app:
-        condition: service_healthy
+        condition: service_started
       signaling:
         condition: service_started
