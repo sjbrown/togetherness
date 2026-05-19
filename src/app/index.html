@@ -148,8 +148,13 @@
 
   <main class="canvas-wrap" id="canvasWrap">
     <svg id="svg-canvas" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+      <defs>
+        <pattern id="bg-pattern" x="0" y="0" width="815" height="718" patternUnits="userSpaceOnUse">
+          <image href="img/bg_beigehex.png" x="0" y="0" width="815" height="718"/>
+        </pattern>
+      </defs>
       <g id="background-layer">
-        <image href="img/bg_beigehex.png" x="0" y="0" width="100%" height="100%" preserveAspectRatio="xMidYMid slice" pointer-events="none"/>
+        <rect x="0" y="0" width="100%" height="100%" fill="url(#bg-pattern)" pointer-events="none"/>
       </g>
       <g id="doc-layer"></g>
       <g id="overlay-layer" pointer-events="none"></g>
@@ -489,15 +494,19 @@ function renderOverlayLayer() {
     const el = yTable.toArray().find(e => e.getAttribute('id') === shapeId);
     if (!el) return;
     const elAttrs = el.getAttributes();
+    const ex = Number(elAttrs.x);
+    const ey = Number(elAttrs.y);
+    const ew = Number(elAttrs.width);
+    const eh = Number(elAttrs.height);
 
     const PAD = 3; // padding around the shape
 
     // Selection rect
     const rect = document.createElementNS(svgNS, 'rect');
-    rect.setAttribute('x',            elAttrs.x - PAD);
-    rect.setAttribute('y',            elAttrs.y - PAD);
-    rect.setAttribute('width',        elAttrs.width + PAD * 2);
-    rect.setAttribute('height',       elAttrs.height + PAD * 2);
+    rect.setAttribute('x',            ex - PAD);
+    rect.setAttribute('y',            ey - PAD);
+    rect.setAttribute('width',        ew + PAD * 2);
+    rect.setAttribute('height',       eh + PAD * 2);
     rect.setAttribute('fill',         'none');
     rect.setAttribute('stroke',       color);
     rect.setAttribute('stroke-width', isMe ? 2 : 1.5);
@@ -508,8 +517,8 @@ function renderOverlayLayer() {
     // Name label (remote peers only — no need to label yourself)
     if (!isMe) {
       const name  = state.id?.slice(0, 6) || '?';
-      const lx    = elAttrs.x - PAD;
-      const ly    = elAttrs.y - PAD - 4; // just above the rect
+      const lx    = ex - PAD;
+      const ly    = ey - PAD - 4; // just above the rect
 
       const bg = document.createElementNS(svgNS, 'rect');
       bg.setAttribute('x',      lx);
