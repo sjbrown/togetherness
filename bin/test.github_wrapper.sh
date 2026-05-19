@@ -13,8 +13,8 @@ if [ "${CI:-}" != "true" ]; then
   exit 1
 fi
 
-APP_URL="http://localhost:3000"
-SIGNALING_URL="ws://localhost:4444"
+export APP_URL="http://localhost:3000"
+export SIGNALING_URL="ws://localhost:4444"
 
 npm ci --ignore-scripts
 

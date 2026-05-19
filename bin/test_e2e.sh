@@ -2,6 +2,12 @@
 
 set -ex
 
+echo "   ----"
+echo "CI=${CI}"
+echo "APP_URL=${APP_URL}"
+echo "SIGNALING_URL=${SIGNALING_URL}"
+echo "   ----"
+
 if [ -z "$APP_URL" ]; then
     # Chromium does its own async DNS and won't resolve Docker internal hostnames
     # like "app" or "signaling" — so we look them up via getent (libc) and pass
