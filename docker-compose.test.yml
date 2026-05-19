@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: docker/unit.Dockerfile
+    volumes:
+      - ./tests:/app/tests
 
   signaling:
     build:

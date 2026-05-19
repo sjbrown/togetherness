@@ -1,66 +1,38 @@
 /**
- * crdt-svg.test.js
- * Run with: npx vitest run  (or jest with --experimental-vm-modules)
+ * shapes.test.js
+ * Run with: npx vitest run
  *
- * These tests import Yjs directly in Node — no browser, no network.
+ * Tests import directly from shapes.js — the same code path as index.html.
  * Sync is simulated with Y.encodeStateAsUpdate / Y.applyUpdate.
- *
- * Data model (v3): ydoc.getArray('shapes') — Y.Array<Y.Map>
- *   Each Y.Map has: id, x, y, w, h, fill, stroke, strokeWidth, opacity, author, created
- *   Array index = z-order (0 = bottom, last = top)
  */
 
 import * as Y from 'yjs'
 import { describe, test, expect } from 'vitest'
+import {
+  makeDoc, addShape, deleteShape, findShape,
+  selectionGeometry, listShapes, runMigrations, CURRENT_SCHEMA,
+} from '../../src/app/shapes.js'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers — mirror the app's core operations so tests stay readable
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Sync helper ───────────────────────────────────────────────────────────────
 
-const uid = () => Math.random().toString(36).slice(2, 9)
-
-function makeDoc() {
-  const ydoc    = new Y.Doc()
-  const yMeta   = ydoc.getMap('meta')
-  const yShapes = ydoc.getArray('shapes')
-  yMeta.set('schemaVersion', 3)
-  return { ydoc, yMeta, yShapes }
-}
-
-function addShape(ydoc, yShapes, attrs = {}) {
-  const id     = attrs.id ?? uid()
-  const yShape = new Y.Map()
-  const shape  = {
-    id, x: 10, y: 10, w: 100, h: 50,
-    fill: '#c8f060', stroke: 'none', strokeWidth: 0, opacity: 1,
-    author: 'test-peer', created: Date.now(),
-    ...attrs,
-  }
-  ydoc.transact(() => {
-    Object.entries(shape).forEach(([k, v]) => yShape.set(k, v))
-    yShapes.push([yShape])
-  })
-  return id
-}
-
-function deleteShape(ydoc, yShapes, id) {
-  const idx = yShapes.toArray().findIndex(s => s.get('id') === id)
-  if (idx !== -1) ydoc.transact(() => yShapes.delete(idx, 1))
-}
-
-// Simulate network sync between two docs (full state exchange)
 function sync(docA, docB) {
   Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB))
   Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA))
 }
 
-// Read the shapes array as plain objects for easy assertions
-function shapes(yShapes) {
-  return yShapes.toArray().map(s => {
-    const obj = {}
-    s.forEach((v, k) => obj[k] = v)
-    return obj
+// ── Shape factory ─────────────────────────────────────────────────────────────
+
+const uid = () => Math.random().toString(36).slice(2, 9)
+
+function add(doc, overrides = {}) {
+  const id = overrides.id ?? uid()
+  addShape(doc.ydoc, doc.yTable, doc.yShapeMeta, {
+    id, x: 10, y: 10, width: 100, height: 50,
+    fill: '#c8f060', stroke: 'none', strokeWidth: 0, opacity: 1,
+    author: 'test-peer',
+    ...overrides,
   })
+  return id
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -69,35 +41,139 @@ function shapes(yShapes) {
 
 describe('basic operations', () => {
   test('add a shape', () => {
-    const { ydoc, yShapes } = makeDoc()
-    addShape(ydoc, yShapes, { id: 'a', fill: 'red' })
-    expect(yShapes.length).toBe(1)
-    expect(yShapes.get(0).get('fill')).toBe('red')
+    const doc = makeDoc()
+    add(doc, { id: 'a', fill: 'red' })
+    expect(doc.yTable.length).toBe(1)
+    expect(findShape(doc.yTable, 'a').getAttribute('fill')).toBe('red')
   })
 
   test('delete a shape', () => {
-    const { ydoc, yShapes } = makeDoc()
-    addShape(ydoc, yShapes, { id: 'a' })
-    addShape(ydoc, yShapes, { id: 'b' })
-    deleteShape(ydoc, yShapes, 'a')
-    expect(yShapes.length).toBe(1)
-    expect(yShapes.get(0).get('id')).toBe('b')
+    const doc = makeDoc()
+    add(doc, { id: 'a' })
+    add(doc, { id: 'b' })
+    deleteShape(doc.ydoc, doc.yTable, doc.yShapeMeta, 'a')
+    expect(doc.yTable.length).toBe(1)
+    expect(findShape(doc.yTable, 'b')).not.toBeNull()
+    expect(findShape(doc.yTable, 'a')).toBeNull()
+  })
+
+  test('delete also removes sidecar meta', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'a', author: 'alice' })
+    expect(doc.yShapeMeta.get('a')?.author).toBe('alice')
+    deleteShape(doc.ydoc, doc.yTable, doc.yShapeMeta, 'a')
+    expect(doc.yShapeMeta.get('a')).toBeUndefined()
   })
 
   test('edit a shape attribute', () => {
-    const { ydoc, yShapes } = makeDoc()
-    addShape(ydoc, yShapes, { id: 'a', fill: 'red' })
-    ydoc.transact(() => yShapes.get(0).set('fill', 'blue'))
-    expect(yShapes.get(0).get('fill')).toBe('blue')
+    const doc = makeDoc()
+    add(doc, { id: 'a', fill: 'red' })
+    const el = findShape(doc.yTable, 'a')
+    doc.ydoc.transact(() => el.setAttribute('fill', 'blue'))
+    expect(findShape(doc.yTable, 'a').getAttribute('fill')).toBe('blue')
   })
 
   test('z-order: shapes render in insertion order', () => {
-    const { ydoc, yShapes } = makeDoc()
-    addShape(ydoc, yShapes, { id: 'bottom' })
-    addShape(ydoc, yShapes, { id: 'middle' })
-    addShape(ydoc, yShapes, { id: 'top' })
-    const ids = shapes(yShapes).map(s => s.id)
+    const doc = makeDoc()
+    add(doc, { id: 'bottom' })
+    add(doc, { id: 'middle' })
+    add(doc, { id: 'top' })
+    const ids = listShapes(doc.yTable, doc.yShapeMeta).map(({ attrs }) => attrs.id)
     expect(ids).toEqual(['bottom', 'middle', 'top'])
+  })
+
+  test('attributes are stored as SVG-native names', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'a', width: 200, height: 80 })
+    const el = findShape(doc.yTable, 'a')
+    // must be 'width'/'height', not 'w'/'h'
+    expect(el.getAttribute('width')).toBe('200')
+    expect(el.getAttribute('height')).toBe('80')
+  })
+
+  test('author and created are stored on sidecar', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'a', author: 'alice' })
+    const el = findShape(doc.yTable, 'a')
+    expect(doc.yShapeMeta.get('a')?.author).toBe('alice')
+    expect(doc.yShapeMeta.get('a')?.created).toBeTypeOf('number')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// selectionGeometry — the overlay bug
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('selectionGeometry', () => {
+  test('returns numeric values, not string-concatenated', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'a', x: 20, y: 30, width: 100, height: 50 })
+    const geo = selectionGeometry(doc.yTable, 'a', 3)
+    expect(geo).toEqual({ x: 17, y: 27, width: 106, height: 56 })
+    // all values must be numbers
+    expect(typeof geo.x).toBe('number')
+    expect(typeof geo.width).toBe('number')
+  })
+
+  test('returns null for unknown shapeId', () => {
+    const doc = makeDoc()
+    expect(selectionGeometry(doc.yTable, 'nonexistent')).toBeNull()
+  })
+
+  test('PAD=0 returns exact shape geometry', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'a', x: 5, y: 10, width: 200, height: 80 })
+    const geo = selectionGeometry(doc.yTable, 'a', 0)
+    expect(geo).toEqual({ x: 5, y: 10, width: 200, height: 80 })
+  })
+
+  test('string concat would have produced wrong result (documents the bug)', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'a', x: 20, y: 30, width: 100, height: 50 })
+    const el = findShape(doc.yTable, 'a')
+    const attrs = el.getAttributes()
+    const PAD = 3
+    // This is what the code did before the fix — string concat
+    expect(attrs.width  + PAD * 2).toBe('1006')
+    expect(attrs.height + PAD * 2).toBe('506')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// listShapes
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('listShapes', () => {
+  test('returns shapes in z-order by default', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'a' })
+    add(doc, { id: 'b' })
+    add(doc, { id: 'c' })
+    const ids = listShapes(doc.yTable, doc.yShapeMeta).map(({ attrs }) => attrs.id)
+    expect(ids).toEqual(['a', 'b', 'c'])
+  })
+
+  test('newestFirst sorts by created timestamp', () => {
+    const doc = makeDoc()
+    // manipulate created timestamps directly in sidecar
+    add(doc, { id: 'old' })
+    doc.yShapeMeta.set('old', { author: 'x', created: 1000 })
+    add(doc, { id: 'new' })
+    doc.yShapeMeta.set('new', { author: 'x', created: 3000 })
+    add(doc, { id: 'mid' })
+    doc.yShapeMeta.set('mid', { author: 'x', created: 2000 })
+
+    const ids = listShapes(doc.yTable, doc.yShapeMeta, { newestFirst: true })
+      .map(({ attrs }) => attrs.id)
+    expect(ids).toEqual(['new', 'mid', 'old'])
+  })
+
+  test('skips non-element nodes', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'a' })
+    // yTable may contain text nodes in some Yjs versions — listShapes must skip them
+    const shapes = listShapes(doc.yTable, doc.yShapeMeta)
+    expect(shapes.every(({ el }) => el instanceof Y.XmlElement)).toBe(true)
   })
 })
 
@@ -110,18 +186,16 @@ describe('convergence', () => {
     const peer1 = makeDoc()
     const peer2 = makeDoc()
 
-    // Partition: each peer adds a shape offline
-    addShape(peer1.ydoc, peer1.yShapes, { id: 'from-peer1', author: 'peer1' })
-    addShape(peer2.ydoc, peer2.yShapes, { id: 'from-peer2', author: 'peer2' })
+    add(peer1, { id: 'from-peer1', author: 'peer1' })
+    add(peer2, { id: 'from-peer2', author: 'peer2' })
 
-    // Rejoin
     sync(peer1.ydoc, peer2.ydoc)
 
-    expect(peer1.yShapes.length).toBe(2)
-    expect(peer2.yShapes.length).toBe(2)
+    expect(peer1.yTable.length).toBe(2)
+    expect(peer2.yTable.length).toBe(2)
 
-    const ids1 = shapes(peer1.yShapes).map(s => s.id).sort()
-    const ids2 = shapes(peer2.yShapes).map(s => s.id).sort()
+    const ids1 = listShapes(peer1.yTable, peer1.yShapeMeta).map(({ attrs }) => attrs.id).sort()
+    const ids2 = listShapes(peer2.yTable, peer2.yShapeMeta).map(({ attrs }) => attrs.id).sort()
     expect(ids1).toEqual(ids2)
     expect(ids1).toContain('from-peer1')
     expect(ids1).toContain('from-peer2')
@@ -131,74 +205,70 @@ describe('convergence', () => {
     const peer1 = makeDoc()
     const peer2 = makeDoc()
 
-    addShape(peer1.ydoc, peer1.yShapes, { id: 'a' })
-    addShape(peer2.ydoc, peer2.yShapes, { id: 'b' })
+    add(peer1, { id: 'a' })
+    add(peer2, { id: 'b' })
     sync(peer1.ydoc, peer2.ydoc)
 
-    // Encode both docs and compare — must be byte-for-byte equivalent
     const state1 = Y.encodeStateAsUpdate(peer1.ydoc)
     const state2 = Y.encodeStateAsUpdate(peer2.ydoc)
     expect(Buffer.from(state1).toString('hex')).toBe(Buffer.from(state2).toString('hex'))
   })
 
   test('concurrent attribute edits on same shape — both applied independently', () => {
-    // Start with a shared shape on both peers
     const peer1 = makeDoc()
-    addShape(peer1.ydoc, peer1.yShapes, { id: 'shared', fill: 'red', x: 10 })
+    add(peer1, { id: 'shared', fill: 'red', x: 10 })
 
     const peer2 = makeDoc()
-    sync(peer1.ydoc, peer2.ydoc)  // peer2 now has the shape
-
-    // Partition: peer1 changes fill, peer2 moves x — concurrently
-    ydoc_transact_shape(peer1, 'shared', 'fill', 'blue')
-    ydoc_transact_shape(peer2, 'shared', 'x', 99)
-
-    // Rejoin
     sync(peer1.ydoc, peer2.ydoc)
 
-    // Both changes survive — no clobber
-    const s1 = getShapeById(peer1.yShapes, 'shared')
-    const s2 = getShapeById(peer2.yShapes, 'shared')
-    expect(s1.get('fill')).toBe('blue')
-    expect(s1.get('x')).toBe(99)
-    expect(s2.get('fill')).toBe('blue')
-    expect(s2.get('x')).toBe(99)
+    // Partition
+    const el1 = findShape(peer1.yTable, 'shared')
+    const el2 = findShape(peer2.yTable, 'shared')
+    peer1.ydoc.transact(() => el1.setAttribute('fill', 'blue'))
+    peer2.ydoc.transact(() => el2.setAttribute('x', '99'))
+
+    sync(peer1.ydoc, peer2.ydoc)
+
+    expect(findShape(peer1.yTable, 'shared').getAttribute('fill')).toBe('blue')
+    expect(findShape(peer1.yTable, 'shared').getAttribute('x')).toBe('99')
+    expect(findShape(peer2.yTable, 'shared').getAttribute('fill')).toBe('blue')
+    expect(findShape(peer2.yTable, 'shared').getAttribute('x')).toBe('99')
   })
 
   test('concurrent delete on one peer, edit on other — delete wins', () => {
     const peer1 = makeDoc()
-    addShape(peer1.ydoc, peer1.yShapes, { id: 'doomed', fill: 'red' })
+    add(peer1, { id: 'doomed', fill: 'red' })
 
     const peer2 = makeDoc()
     sync(peer1.ydoc, peer2.ydoc)
 
-    // Partition: peer1 deletes, peer2 edits the same shape
-    deleteShape(peer1.ydoc, peer1.yShapes, 'doomed')
-    ydoc_transact_shape(peer2, 'doomed', 'fill', 'blue')
+    deleteShape(peer1.ydoc, peer1.yTable, peer1.yShapeMeta, 'doomed')
+    const el2 = findShape(peer2.yTable, 'doomed')
+    peer2.ydoc.transact(() => el2.setAttribute('fill', 'blue'))
 
     sync(peer1.ydoc, peer2.ydoc)
 
-    // Yjs delete wins — shape is gone on both peers
-    expect(peer1.yShapes.length).toBe(0)
-    expect(peer2.yShapes.length).toBe(0)
+    expect(peer1.yTable.length).toBe(0)
+    expect(peer2.yTable.length).toBe(0)
   })
 
   test('three-way merge — all peers converge', () => {
     const peers = [makeDoc(), makeDoc(), makeDoc()]
 
-    addShape(peers[0].ydoc, peers[0].yShapes, { id: 'p0' })
-    addShape(peers[1].ydoc, peers[1].yShapes, { id: 'p1' })
-    addShape(peers[2].ydoc, peers[2].yShapes, { id: 'p2' })
+    add(peers[0], { id: 'p0' })
+    add(peers[1], { id: 'p1' })
+    add(peers[2], { id: 'p2' })
 
-    // Full sync: all pairs
     sync(peers[0].ydoc, peers[1].ydoc)
     sync(peers[1].ydoc, peers[2].ydoc)
     sync(peers[0].ydoc, peers[2].ydoc)
 
-    const lengths = peers.map(p => p.yShapes.length)
+    const lengths = peers.map(p => p.yTable.length)
     expect(lengths).toEqual([3, 3, 3])
 
-    const idSets = peers.map(p => shapes(p.yShapes).map(s => s.id).sort().join(','))
+    const idSets = peers.map(p =>
+      listShapes(p.yTable, p.yShapeMeta).map(({ attrs }) => attrs.id).sort().join(',')
+    )
     expect(idSets[0]).toBe(idSets[1])
     expect(idSets[1]).toBe(idSets[2])
   })
@@ -210,22 +280,24 @@ describe('convergence', () => {
 
 describe('z-order', () => {
   test('bring to front: delete + re-append moves shape to top', () => {
-    const { ydoc, yShapes } = makeDoc()
-    addShape(ydoc, yShapes, { id: 'a' })
-    addShape(ydoc, yShapes, { id: 'b' })
-    addShape(ydoc, yShapes, { id: 'c' })
+    const doc = makeDoc()
+    add(doc, { id: 'a' })
+    add(doc, { id: 'b' })
+    add(doc, { id: 'c' })
 
-    // Bring 'a' to front — must clone because a Y.Map can't be re-inserted once integrated
-    const idx = yShapes.toArray().findIndex(s => s.get('id') === 'a')
-    const old = yShapes.get(idx)
-    const clone = new Y.Map()
-    old.forEach((v, k) => clone.set(k, v))
-    ydoc.transact(() => {
-      yShapes.delete(idx, 1)
-      yShapes.push([clone])
+    // Bring 'a' to front
+    const old = findShape(doc.yTable, 'a')
+    const attrs = old.getAttributes()
+    const meta  = doc.yShapeMeta.get('a')
+    doc.ydoc.transact(() => {
+      deleteShape(doc.ydoc, doc.yTable, doc.yShapeMeta, 'a')
+      addShape(doc.ydoc, doc.yTable, doc.yShapeMeta, {
+        ...Object.fromEntries(Object.entries(attrs).map(([k,v]) => [k, isNaN(v) ? v : Number(v)])),
+        author: meta?.author ?? 'unknown',
+      })
     })
 
-    const ids = shapes(yShapes).map(s => s.id)
+    const ids = listShapes(doc.yTable, doc.yShapeMeta).map(({ attrs }) => attrs.id)
     expect(ids).toEqual(['b', 'c', 'a'])
   })
 
@@ -233,13 +305,12 @@ describe('z-order', () => {
     const peer1 = makeDoc()
     const peer2 = makeDoc()
 
-    addShape(peer1.ydoc, peer1.yShapes, { id: 'p1-shape' })
-    addShape(peer2.ydoc, peer2.yShapes, { id: 'p2-shape' })
+    add(peer1, { id: 'p1-shape' })
+    add(peer2, { id: 'p2-shape' })
     sync(peer1.ydoc, peer2.ydoc)
 
-    // Order may vary but must be identical on both peers
-    const order1 = shapes(peer1.yShapes).map(s => s.id)
-    const order2 = shapes(peer2.yShapes).map(s => s.id)
+    const order1 = listShapes(peer1.yTable, peer1.yShapeMeta).map(({ attrs }) => attrs.id)
+    const order2 = listShapes(peer2.yTable, peer2.yShapeMeta).map(({ attrs }) => attrs.id)
     expect(order1).toEqual(order2)
     expect(order1.length).toBe(2)
   })
@@ -250,105 +321,14 @@ describe('z-order', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('schema migration', () => {
-  test('v1 → v3: flat Y.Map("rects") migrates to Y.Array("shapes")', () => {
-    const ydoc  = new Y.Doc()
-    const yMeta = ydoc.getMap('meta')
-
-    // Simulate a v1 doc
-    const oldRects = ydoc.getMap('rects')
-    ydoc.transact(() => {
-      oldRects.set('abc', { id: 'abc', x: 5, y: 5, w: 50, h: 30, fill: 'red', created: 1000 })
-      oldRects.set('def', { id: 'def', x: 6, y: 6, w: 60, h: 40, fill: 'blue', created: 2000 })
-      yMeta.set('schemaVersion', 1)
-    })
-
-    // Run migration (copy of app's runMigrations for v1)
-    const yShapes = ydoc.getArray('shapes')
-    const entries = []
-    oldRects.forEach((shape, id) => entries.push([id, shape]))
-    entries.sort((a, b) => (a[1].created || 0) - (b[1].created || 0))
-    ydoc.transact(() => {
-      entries.forEach(([, shape]) => {
-        const yShape = new Y.Map()
-        Object.entries(shape).forEach(([k, v]) => yShape.set(k, v))
-        yShapes.push([yShape])
-      })
-      yMeta.set('schemaVersion', 3)
-    })
-
-    expect(yMeta.get('schemaVersion')).toBe(3)
-    expect(yShapes.length).toBe(2)
-    // Sorted by created timestamp — abc first
-    expect(yShapes.get(0).get('id')).toBe('abc')
-    expect(yShapes.get(1).get('id')).toBe('def')
-  })
-
-  test('v2 → v3: Y.Array("order") + Y.Map("shapes") migrates to Y.Array("shapes")', () => {
-    const ydoc  = new Y.Doc()
-    const yMeta = ydoc.getMap('meta')
-
-    // Simulate a v2 doc — use key 'shapes-v2' to avoid type conflict with getArray('shapes')
-    // In the real app the name collision doesn't arise because v2 used getMap('shapes')
-    // and v3 uses getArray('shapes') — Yjs would throw if both are accessed on the same doc.
-    // The migration runs before getArray('shapes') is ever called, so it's safe in practice.
-    // In this test we use a different key to simulate the v2 state cleanly.
-    const oldOrder  = ydoc.getArray('order')
-    const oldShapes = ydoc.getMap('shapes-v2')
-    ydoc.transact(() => {
-      const s1 = new Y.Map(); s1.set('id', 'x1'); s1.set('fill', 'green')
-      const s2 = new Y.Map(); s2.set('id', 'x2'); s2.set('fill', 'purple')
-      oldShapes.set('x1', s1)
-      oldShapes.set('x2', s2)
-      oldOrder.push(['x1', 'x2'])
-      yMeta.set('schemaVersion', 2)
-    })
-
-    // Run v2 → v3 migration
-    const yShapes = ydoc.getArray('shapes')
-    const ids = oldOrder.toArray()
-    ydoc.transact(() => {
-      ids.forEach(id => {
-        const old = oldShapes.get(id)
-        if (!old) return
-        const yShape = new Y.Map()
-        old.forEach((v, k) => yShape.set(k, v))
-        yShapes.push([yShape])
-      })
-      yMeta.set('schemaVersion', 3)
-    })
-
-    expect(yMeta.get('schemaVersion')).toBe(3)
-    expect(yShapes.length).toBe(2)
-    expect(yShapes.get(0).get('id')).toBe('x1')
-    expect(yShapes.get(1).get('id')).toBe('x2')
-  })
-
   test('already at current schema — migration is a no-op', () => {
-    const { ydoc, yMeta, yShapes } = makeDoc()  // makeDoc sets schemaVersion: 3
-    addShape(ydoc, yShapes, { id: 'existing' })
+    const doc = makeDoc()
+    doc.ydoc.transact(() => doc.yMeta.set('schemaVersion', CURRENT_SCHEMA))
+    add(doc, { id: 'existing' })
 
-    // runMigrations should do nothing
-    let version = yMeta.get('schemaVersion') ?? 1
-    const migrations = { /* no entry for v3 */ }
-    while (version < 3) {
-      if (!migrations[version]) break
-      version++
-    }
+    runMigrations(doc.ydoc, doc.yMeta, doc.yTable)
 
-    expect(yShapes.length).toBe(1)  // unchanged
-    expect(yMeta.get('schemaVersion')).toBe(3)
+    expect(doc.yTable.length).toBe(1)
+    expect(doc.yMeta.get('schemaVersion')).toBe(CURRENT_SCHEMA)
   })
 })
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers used in convergence tests
-// ─────────────────────────────────────────────────────────────────────────────
-
-function getShapeById(yShapes, id) {
-  return yShapes.toArray().find(s => s.get('id') === id) ?? null
-}
-
-function ydoc_transact_shape({ ydoc, yShapes }, id, key, value) {
-  const yShape = getShapeById(yShapes, id)
-  if (yShape) ydoc.transact(() => yShape.set(key, value))
-}

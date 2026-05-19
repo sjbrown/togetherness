@@ -188,9 +188,11 @@
 </script>
 
 <script type="module">
-import * as Y                   from '/lib/yjs.js';
-import { WebrtcProvider }       from '/lib/y-webrtc.js';
-import { IndexeddbPersistence } from '/lib/y-indexeddb.js';
+import * as Y                                                    from '/lib/yjs.js';
+import { WebrtcProvider }                                        from '/lib/y-webrtc.js';
+import { IndexeddbPersistence }                                  from '/lib/y-indexeddb.js';
+import { addShape, deleteShape, findShape, selectionGeometry,
+         listShapes, runMigrations, makeDoc }                    from '/app/shapes.js';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -213,77 +215,10 @@ function addLog(msg, type = '') {
   while (log.children.length > 40) log.lastChild.remove();
 }
 
-// ── Schema versioning ─────────────────────────────────────────────────
-const CURRENT_SCHEMA = 4;
-
-// Migration functions keyed by the version they migrate FROM.
-// Each receives (ydoc, yMeta, yTable) and mutates in place.
-const MIGRATIONS = {
-  // v1: flat Y.Map('rects') of plain JS objects → v3 directly
-  1: (ydoc, yMeta, yTable) => {
-    const oldRects = ydoc.getMap('rects');
-    const entries = [];
-    oldRects.forEach((shape, id) => entries.push([id, shape]));
-    entries.sort((a, b) => (a[1].created || 0) - (b[1].created || 0));
-    ydoc.transact(() => {
-      entries.forEach(([, shape]) => {
-        const yShape = new Y.Map();
-        Object.entries(shape).forEach(([k, v]) => yShape.set(k, v));
-        yTable.push([yShape]);
-      });
-      yMeta.set('schemaVersion', 3);
-    });
-    console.log(`[migration] v1→v3: migrated ${entries.length} shapes`);
-  },
-  // v2: Y.Array('order') of IDs + Y.Map('shapes') → Y.Array('shapes') of Y.Maps
-  2: (ydoc, yMeta, yTable) => {
-    const oldOrder  = ydoc.getArray('order');
-    const oldShapes = ydoc.getMap('shapes');
-    const ids = oldOrder.toArray();
-    ydoc.transact(() => {
-      ids.forEach(id => {
-        const old = oldShapes.get(id);
-        if (!old) return;
-        const yShape = new Y.Map();
-        old.forEach((v, k) => yShape.set(k, v));
-        yTable.push([yShape]);
-      });
-      yMeta.set('schemaVersion', 3);
-    });
-    console.log(`[migration] v2→v3: migrated ${ids.length} shapes`);
-  },
-  // v3 migrator needed for existing Y.Array → Y.XmlFragment:
-  3: (ydoc, yMeta, yTable) => {
-    const oldShapes = ydoc.getArray('shapes').toArray();
-    ydoc.transact(() => {
-      oldShapes.forEach(yMap => {
-        const el = new Y.XmlElement('rect');
-        yMap.forEach((v, k) => el.setAttribute(k, String(v)));
-        yTable.insert(yTable.length, [el]);
-      });
-      yMeta.set('schemaVersion', 4);
-    });
-  },
-};
-
-function runMigrations(ydoc, yMeta, yTable) {
-  let version = yMeta.get('schemaVersion') ?? 1;
-  while (version < CURRENT_SCHEMA) {
-    const migrate = MIGRATIONS[version];
-    if (!migrate) { console.warn(`[migration] no migrator for v${version}`); break; }
-    console.log(`[migration] running v${version}→v${version + 1}`);
-    migrate(ydoc, yMeta, yTable);
-    version++;
-  }
-}
-
 // ── Yjs ──────────────────────────────────────────────────────────────
-const ydoc    = new Y.Doc();
-const yMeta   = ydoc.getMap('meta');
 // v4 data model: Y.XmlFragment of Y.XmlElement — tree order = z-order
-const yTable = ydoc.getXmlFragment('shapes');
 // Sidecar map: id → { author, created } — app metadata that isn't SVG
-const yShapeMeta = ydoc.getMap('shapeMeta');
+const { ydoc, yMeta, yTable, yShapeMeta } = makeDoc();
 
 // ── IndexedDB persistence ─────────────────────────────────────────────
 // Keyed per room so each room has its own persistent store.
@@ -429,19 +364,13 @@ window.addEventListener('mouseup', e => {
   if (w < 4 || h < 4) return;
 
   const id = uid();
-  const el = new Y.XmlElement('rect');
-  ydoc.transact(() => {
-    el.setAttribute('id',           id);
-    el.setAttribute('x',            String(Math.round(x)));
-    el.setAttribute('y',            String(Math.round(y)));
-    el.setAttribute('width',        String(Math.round(w)));
-    el.setAttribute('height',       String(Math.round(h)));
-    el.setAttribute('fill',         fillColor);
-    el.setAttribute('stroke',       strokeColor);
-    el.setAttribute('stroke-width', String(strokeWidth));
-    el.setAttribute('opacity',      String(opacity));
-    yTable.insert(yTable.length, [el]);
-    yShapeMeta.set(id, { author: myId, created: Date.now() });
+  addShape(ydoc, yTable, yShapeMeta, {
+    id,
+    x: Math.round(x), y: Math.round(y),
+    width: Math.round(w), height: Math.round(h),
+    fill: fillColor, stroke: strokeColor,
+    strokeWidth, opacity,
+    author: myId,
   });
   addLog(`added ${id.slice(0,6)} (${Math.round(w)}×${Math.round(h)})`, 'local');
 });
@@ -491,22 +420,15 @@ function renderOverlayLayer() {
     const color = isMe ? '#c8f060' : (state.color || '#888');
 
     // Find shape geometry from doc layer
-    const el = yTable.toArray().find(e => e.getAttribute('id') === shapeId);
-    if (!el) return;
-    const elAttrs = el.getAttributes();
-    const ex = Number(elAttrs.x);
-    const ey = Number(elAttrs.y);
-    const ew = Number(elAttrs.width);
-    const eh = Number(elAttrs.height);
-
-    const PAD = 3; // padding around the shape
+    const geo = selectionGeometry(yTable, shapeId);
+    if (!geo) return;
 
     // Selection rect
     const rect = document.createElementNS(svgNS, 'rect');
-    rect.setAttribute('x',            ex - PAD);
-    rect.setAttribute('y',            ey - PAD);
-    rect.setAttribute('width',        ew + PAD * 2);
-    rect.setAttribute('height',       eh + PAD * 2);
+    rect.setAttribute('x',      geo.x);
+    rect.setAttribute('y',      geo.y);
+    rect.setAttribute('width',  geo.width);
+    rect.setAttribute('height', geo.height);
     rect.setAttribute('fill',         'none');
     rect.setAttribute('stroke',       color);
     rect.setAttribute('stroke-width', isMe ? 2 : 1.5);
@@ -517,8 +439,8 @@ function renderOverlayLayer() {
     // Name label (remote peers only — no need to label yourself)
     if (!isMe) {
       const name  = state.id?.slice(0, 6) || '?';
-      const lx    = ex - PAD;
-      const ly    = ey - PAD - 4; // just above the rect
+      const lx    = geo.x;
+      const ly    = geo.y - 4; // just above the rect
 
       const bg = document.createElementNS(svgNS, 'rect');
       bg.setAttribute('x',      lx);
@@ -549,10 +471,8 @@ function renderAll() {
 function renderShapeList() {
   const list = document.getElementById('shapeList');
   list.innerHTML = '';
-  // Show newest-first in the list (reverse of z-order)
-  [...yTable.toArray()].reverse().forEach(el => {
-    const attrs = el.getAttributes();
-    const id    = attrs.id;
+  listShapes(yTable, yShapeMeta, { newestFirst: true }).forEach(({ el, attrs, meta }) => {
+    const id = attrs.id;
 
     const item = document.createElement('div');
     const mySel = mySelection();
@@ -565,7 +485,6 @@ function renderShapeList() {
     lbl.textContent = `${attrs.width}×${attrs.height} @ ${attrs.x},${attrs.y}`;
     const own = document.createElement('div');
     own.className   = 'shape-owner';
-    const meta = yShapeMeta.get(attrs.id);
     const author = meta?.author;
     own.textContent = author === myId ? 'me' : (author?.slice(0,5) || '?');
     own.style.color = author === myId ? 'var(--accent)' : 'var(--muted)';
@@ -574,7 +493,7 @@ function renderShapeList() {
     del.textContent = '×';
     del.addEventListener('click', ev => {
       ev.stopPropagation();
-      deleteShape(id);
+      deleteShapeById(id);
     });
     item.append(sw, lbl, own, del);
     item.addEventListener('click', () => { setSelection(id); renderDocLayer(); });
@@ -592,14 +511,9 @@ function renderMeta() {
   });
 }
 
-// Delete: find by id (linear scan), delete from array
-function deleteShape(id) {
-  // TODO does yTable not have a nice easy find by id?
-  const idx = yTable.toArray().findIndex(e => e.getAttribute('id') === id);
-  if (idx !== -1) ydoc.transact(() => {
-    yTable.delete(idx, 1);
-    yShapeMeta.delete(id);
-  });
+// Delete: delegates to shapes.js, then cleans up UI state
+function deleteShapeById(id) {
+  deleteShape(ydoc, yTable, yShapeMeta, id);
   if (mySelection()?.shapeId === id) setSelection(null);
   addLog(`deleted ${id.slice(0,6)}`, 'del');
 }
@@ -645,7 +559,7 @@ window.addEventListener('keydown', e => {
   if (e.key === 'Escape') { setSelection(null); renderDocLayer(); }
   if ((e.key === 'Delete' || e.key === 'Backspace') && mySelection()) {
     if (!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) {
-      deleteShape(mySelection().shapeId);
+      deleteShapeById(mySelection().shapeId);
     }
   }
 });

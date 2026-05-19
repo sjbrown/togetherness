@@ -7,6 +7,10 @@ if [ `basename $(pwd)` != "crdt-svg" ]; then
 fi
 
 echo "▶ Running unit tests (Docker)..."
+echo ""
+echo " run it faster manually with:"
+echo "  docker compose -f docker-compose.test.yml run --rm unit"
+echo ""
 
 docker compose -f docker-compose.test.yml run --build --rm unit
 docker compose -f docker-compose.test.yml down
