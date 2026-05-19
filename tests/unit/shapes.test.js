@@ -10,7 +10,7 @@ import * as Y from 'yjs'
 import { describe, test, expect } from 'vitest'
 import {
   makeDoc, addShape, deleteShape, findShape,
-  selectionGeometry, listShapes, runMigrations, CURRENT_SCHEMA,
+  selectionGeometry, listShapes, CURRENT_SCHEMA,
 } from '../../src/app/shapes.js'
 
 // ── Sync helper ───────────────────────────────────────────────────────────────
@@ -316,19 +316,3 @@ describe('z-order', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Schema migration
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('schema migration', () => {
-  test('already at current schema — migration is a no-op', () => {
-    const doc = makeDoc()
-    doc.ydoc.transact(() => doc.yMeta.set('schemaVersion', CURRENT_SCHEMA))
-    add(doc, { id: 'existing' })
-
-    runMigrations(doc.ydoc, doc.yMeta, doc.yTable)
-
-    expect(doc.yTable.length).toBe(1)
-    expect(doc.yMeta.get('schemaVersion')).toBe(CURRENT_SCHEMA)
-  })
-})

@@ -2,14 +2,14 @@ name: crdt-svg
 
 services:
   app:
-    build:
-      context: .
-      dockerfile: docker/app.Dockerfile
+    image: python:3.12-slim
     ports:
-      - "3000:80"
+      - "3000:8000"
     volumes:
       # Hot-reload without rebuild — mount src directly
-      - ./src/app:/usr/share/nginx/html:ro
+      - ./src/app:/app/
+    working_dir: /app
+    command: python -m http.server 8000
     depends_on:
       - signaling
 

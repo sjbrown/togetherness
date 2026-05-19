@@ -188,12 +188,14 @@
 </script>
 
 <script type="module">
-import * as Y                                                    from '/lib/yjs.js';
-import { WebrtcProvider }                                        from '/lib/y-webrtc.js';
-import { IndexeddbPersistence }                                  from '/lib/y-indexeddb.js';
-import { addShape, deleteShape, findShape, selectionGeometry,
-         listShapes, runMigrations, makeDoc }                    from '/app/shapes.js';
+import * as Y                       from '/lib/yjs.js';
+import { WebrtcProvider }           from '/lib/y-webrtc.js';
+import { IndexeddbPersistence }     from '/lib/y-indexeddb.js';
+import {
+  addShape, deleteShape, findShape, selectionGeometry, listShapes, makeDoc,
+}                                   from '/shapes.js';
 
+const CURRENT_SCHEMA = 4;
 const uid = () => Math.random().toString(36).slice(2, 9);
 
 // Room + identity
@@ -237,9 +239,6 @@ persistence.on('synced', () => {
       yMeta.set('schemaVersion', CURRENT_SCHEMA);
     });
   }
-
-  // Run any pending migrations
-  runMigrations(ydoc, yMeta, yTable);
 
   renderDocLayer();
 });

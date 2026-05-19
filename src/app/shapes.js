@@ -91,67 +91,6 @@ export function listShapes(yTable, yShapeMeta, { newestFirst = false } = {}) {
   return results;
 }
 
-// ── Schema migrations ─────────────────────────────────────────────────────────
-
-export const MIGRATIONS = {
-  // v1: flat Y.Map('rects') of plain JS objects → v3 directly
-  1: (ydoc, yMeta, yTable) => {
-    const oldRects = ydoc.getMap('rects');
-    const entries  = [];
-    oldRects.forEach((shape, id) => entries.push([id, shape]));
-    entries.sort((a, b) => (a[1].created || 0) - (b[1].created || 0));
-    ydoc.transact(() => {
-      entries.forEach(([, shape]) => {
-        const yShape = new Y.Map();
-        Object.entries(shape).forEach(([k, v]) => yShape.set(k, v));
-        yTable.push([yShape]);
-      });
-      yMeta.set('schemaVersion', 3);
-    });
-    console.log(`[migration] v1→v3: migrated ${entries.length} shapes`);
-  },
-  // v2: Y.Array('order') of IDs + Y.Map('shapes') → Y.Array('shapes') of Y.Maps
-  2: (ydoc, yMeta, yTable) => {
-    const oldOrder  = ydoc.getArray('order');
-    const oldShapes = ydoc.getMap('shapes');
-    const ids = oldOrder.toArray();
-    ydoc.transact(() => {
-      ids.forEach(id => {
-        const old = oldShapes.get(id);
-        if (!old) return;
-        const yShape = new Y.Map();
-        old.forEach((v, k) => yShape.set(k, v));
-        yTable.push([yShape]);
-      });
-      yMeta.set('schemaVersion', 3);
-    });
-    console.log(`[migration] v2→v3: migrated ${ids.length} shapes`);
-  },
-  // v3: Y.Array of Y.Maps → Y.XmlFragment of Y.XmlElements
-  3: (ydoc, yMeta, yTable) => {
-    const oldShapes = ydoc.getArray('shapes').toArray();
-    ydoc.transact(() => {
-      oldShapes.forEach(yMap => {
-        const el = new Y.XmlElement('rect');
-        yMap.forEach((v, k) => el.setAttribute(k, String(v)));
-        yTable.insert(yTable.length, [el]);
-      });
-      yMeta.set('schemaVersion', 4);
-    });
-    console.log(`[migration] v3→v4: migrated ${oldShapes.length} shapes`);
-  },
-};
-
-export function runMigrations(ydoc, yMeta, yTable) {
-  let version = yMeta.get('schemaVersion') ?? 1;
-  while (version < CURRENT_SCHEMA) {
-    const migrate = MIGRATIONS[version];
-    if (!migrate) { console.warn(`[migration] no migrator for v${version}`); break; }
-    console.log(`[migration] running v${version}→v${version + 1}`);
-    migrate(ydoc, yMeta, yTable);
-    version++;
-  }
-}
 
 // ── Doc setup ─────────────────────────────────────────────────────────────────
 
