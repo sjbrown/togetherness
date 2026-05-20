@@ -75,4 +75,21 @@ test.describe('two-peer sync', () => {
 
     await browser.close();
   });
+
+  test('no console errors or warnings on load', async ({ page }) => {
+    const messages = [];
+    page.on('console', msg => {
+      if (msg.type() === 'error' || msg.type() === 'warning') {
+        const text = msg.text();
+        // WebRTC signaling failures are expected when running isolated
+        if (text.includes('WebSocket')) return;
+        messages.push(`[${msg.type()}] ${msg.text()}`);
+      }
+    });
+
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    expect(messages).toEqual([]);
+  });
 });
