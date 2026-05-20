@@ -2,6 +2,8 @@
 
 Collaborative offline-first SVG editor. Multiple users can draw and edit shapes in a shared document that syncs in real time using [Yjs](https://yjs.dev/) CRDTs over WebRTC.
 
+No accounts. No servers storing your data. No surveillance. The document lives in your browser and syncs peer-to-peer — the signaling server only brokers WebRTC handshakes and never sees document content.
+
 ## Quick start
 
 ```bash
@@ -21,13 +23,18 @@ Open the app in two browser windows with the same URL hash (e.g. `http://localho
 ## Testing
 
 ```bash
-bin/test.sh          # unit tests (default)
-bin/test.sh unit     # unit tests explicitly
-bin/test.sh e2e      # Playwright e2e tests
-bin/test.sh all      # both
+bin/test.sh              # unit tests + e2e tests
+bin/test_unit.docker.sh  # unit tests only (Docker)
+bin/test_e2e.docker.sh   # e2e tests only (Docker)
 ```
 
 All tests run inside Docker containers — no local Node installation required.
+
+There are two layers of tests:
+
+- **Unit tests** (`tests/unit/shapes.test.js`) — pure CRDT logic, no browser, no network. Sync is simulated with `Y.encodeStateAsUpdate` / `Y.applyUpdate`.
+- **Integration tests** (`tests/unit/sync.integration.test.js`) — two real `WebsocketProvider` clients syncing through a live WebSocket server spun up in the same Node process. Exercises the actual WS transport, sync protocol, and eventual consistency.
+- **E2E tests** (`tests/e2e/sync.spec.js`) — Playwright tests against a full running stack (app + signaling server).
 
 ## Project structure
 
@@ -36,34 +43,65 @@ crdt-svg/
 ├── .github/workflows/ci.yml   # GitHub Actions: unit tests on every push, e2e on PRs
 ├── bin/
 │   ├── dev.sh                 # start dev environment
-│   ├── test.sh                # run tests
-│   └── get_deps.sh            # vendor JS deps into src/lib/
+│   ├── test.sh                # run all tests
+│   ├── test_unit.docker.sh    # run unit tests in Docker
+│   ├── test_e2e.docker.sh     # run e2e tests in Docker
+│   └── get_deps.sh            # vendor JS deps into src/app/lib/
 ├── docker/
-│   ├── app.Dockerfile         # nginx serving src/app/
 │   ├── signaling.Dockerfile   # y-webrtc signaling server
-│   ├── test.Dockerfile        # vitest unit tests
+│   ├── unit.Dockerfile        # vitest unit + integration tests
 │   └── e2e.Dockerfile         # playwright e2e tests
 ├── src/
-│   ├── app/index.html         # the app (imports from /lib/)
-│   ├── lib/                   # vendored JS deps (yjs.js, y-webrtc.js, y-indexeddb.js)
-│   └── core/shapes.js         # core CRDT operations (imported by app + tests)
-├── tests/
-│   ├── unit/shapes.test.js    # vitest unit tests — no browser needed
-│   └── e2e/sync.spec.js       # playwright e2e tests
-├── docker-compose.yml         # dev stack
-├── docker-compose.test.yml    # test stack
-├── vitest.config.js
-├── playwright.config.js
-└── package.json
+│   ├── app/
+│   │   ├── index.html         # the app
+│   │   ├── shapes.js          # core CRDT operations (shared by app + tests)
+│   │   └── lib/               # vendored JS deps (yjs.js, y-webrtc.js, y-indexeddb.js)
+└── tests/
+    ├── unit/shapes.test.js            # unit tests — CRDT logic, no network
+    ├── unit/sync.integration.test.js  # integration tests — real WS transport
+    └── e2e/sync.spec.js               # playwright e2e tests
 ```
 
 ## Data model
 
-**Schema v3**: `ydoc.getArray('shapes')` — a `Y.Array` of `Y.Map`, one per shape.
+**Schema v4**: `ydoc.getXmlFragment('shapes')` — a `Y.XmlFragment` of `Y.XmlElement('rect')`.
 
-- Array index = z-order (index 0 = bottom, last = top)
-- Each `Y.Map` holds: `id`, `x`, `y`, `w`, `h`, `fill`, `stroke`, `strokeWidth`, `opacity`, `author`, `created`
-- Migrations for v1 and v2 schemas run automatically on first load
+- Fragment order = z-order (first child = bottom, last child = top)
+- Each `Y.XmlElement` holds SVG-native attributes directly: `id`, `x`, `y`, `width`, `height`, `fill`, `stroke`, `stroke-width`, `opacity`
+- A sidecar map `ydoc.getMap('shapeMeta')` keyed by shape `id` stores non-SVG metadata: `{ author, created }`
+- Document metadata lives in `ydoc.getMap('meta')`: `docId`, `created`, `schemaVersion`
+
+Using `Y.XmlFragment` means the CRDT structure maps directly onto SVG — the document tree *is* the shared data type, with no translation layer.
+
+## Core API (`src/app/shapes.js`)
+
+```js
+import { makeDoc, addShape, deleteShape, findShape,
+         selectionGeometry, listShapes } from '/shapes.js';
+
+const { ydoc, yMeta, yTable, yShapeMeta } = makeDoc();
+
+// Add a shape
+addShape(ydoc, yTable, yShapeMeta, {
+  id, x, y, width, height, fill, stroke, strokeWidth, opacity, author,
+});
+
+// Delete by id
+deleteShape(ydoc, yTable, yShapeMeta, id);
+
+// Find by id → Y.XmlElement | null
+const el = findShape(yTable, id);
+
+// Selection overlay geometry (with optional padding)
+const geo = selectionGeometry(yTable, id, PAD = 3);
+// → { x, y, width, height } (all Numbers) or null
+
+// List shapes
+const shapes = listShapes(yTable, yShapeMeta, { newestFirst: false });
+// → [{ el, attrs, meta }, ...]
+```
+
+All functions are pure over Yjs types — no DOM, no browser APIs. The same module is imported by `index.html` and the test suite.
 
 ## Self-hosting
 
@@ -81,4 +119,16 @@ const provider = new WebrtcProvider(roomId, ydoc, {
 });
 ```
 
-The signaling server only brokers WebRTC handshakes — document content is never sent through it.
+The signaling server only brokers WebRTC handshakes — document content is never sent through it. Once peers connect, all sync is direct and encrypted via WebRTC data channels.
+
+## Offline-first
+
+Documents persist locally via `IndexeddbPersistence` — the app works without a network connection and syncs when peers reconnect. There is no canonical server copy of any document.
+
+## Philosophy
+
+- **Offline-first, local-first** — your data lives in your browser, not on a server
+- **Minimal dependencies** — vendored deps are committed; the app runs without a build step
+- **Open standards** — SVG, HTML, hyperlinks, public domain formats
+- **No surveillance** — no analytics, no accounts, no corporate control
+- **Peer-to-peer** — the signaling server is a dumb matchmaker; it never sees your content
