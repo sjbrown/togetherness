@@ -65,6 +65,7 @@
   .shape-item:hover { border-color: var(--muted); }
   .shape-item.selected { border-color: var(--accent); }
   .shape-swatch { width: 11px; height: 11px; border-radius: 2px; flex-shrink: 0; }
+  .shape-swatch.circle { border-radius: 50%; }
   .shape-label { color: var(--text-dim); flex: 1; font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .shape-owner { font-size: 9px; }
   .shape-del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 0 2px; line-height: 1; }
@@ -83,6 +84,7 @@
     position: absolute; border: 2px dashed var(--accent);
     pointer-events: none; opacity: 0.7; display: none;
   }
+  #draw-preview.circle { border-radius: 50%; }
   .event-log { display: flex; flex-direction: column; gap: 3px; max-height: 160px; overflow-y: auto; }
   .log-entry {
     padding: 3px 6px; border-radius: 2px; background: var(--bg); color: var(--text-dim);
@@ -123,6 +125,7 @@
     <div class="sec">
       <div class="sec-label">Tool</div>
       <button class="tool-btn active" id="toolRect">▭ &nbsp;Draw Rect <small style="margin-left:auto;color:var(--muted)">[R]</small></button>
+      <button class="tool-btn" id="toolCircle">◯ &nbsp;Draw Circle <small style="margin-left:auto;color:var(--muted)">[C]</small></button>
       <button class="tool-btn" id="toolSelect">↖ &nbsp;Select <small style="margin-left:auto;color:var(--muted)">[S]</small></button>
     </div>
     <div class="sec">
@@ -151,6 +154,7 @@
       <defs>
         <pattern id="bg-pattern" x="0" y="0" width="1384" height="998" patternUnits="userSpaceOnUse">
           <image href="img/bg_slatehex.png" x="0" y="0" width="1384" height="998"/>
+
         </pattern>
       </defs>
       <g id="background-layer">
@@ -160,7 +164,7 @@
       <g id="overlay-layer" pointer-events="none"></g>
     </svg>
     <div id="draw-preview"></div>
-    <div class="hint" id="hint">drag to draw a rect · open another tab to sync</div>
+    <div class="hint" id="hint">drag to draw · open another tab to sync</div>
   </main>
 
   <aside class="sidebar right">
@@ -218,12 +222,9 @@ function addLog(msg, type = '') {
 }
 
 // ── Yjs ──────────────────────────────────────────────────────────────
-// v4 data model: Y.XmlFragment of Y.XmlElement — tree order = z-order
-// Sidecar map: id → { author, created } — app metadata that isn't SVG
 const { ydoc, yMeta, yTable, yShapeMeta } = makeDoc();
 
 // ── IndexedDB persistence ─────────────────────────────────────────────
-// Keyed per room so each room has its own persistent store.
 const persistence = new IndexeddbPersistence(`crdt-svg:${roomId}`, ydoc);
 let persistenceReady = false;
 
@@ -231,7 +232,6 @@ persistence.on('synced', () => {
   persistenceReady = true;
   addLog('loaded from indexeddb', 'local');
 
-  // Seed meta if this is a fresh doc
   if (!yMeta.get('docId')) {
     ydoc.transact(() => {
       yMeta.set('docId',         roomId);
@@ -309,10 +309,12 @@ const canvasWrap = document.getElementById('canvasWrap');
 function setTool(t) {
   tool = t;
   document.getElementById('toolRect').classList.toggle('active',   t === 'rect');
+  document.getElementById('toolCircle').classList.toggle('active', t === 'circle');
   document.getElementById('toolSelect').classList.toggle('active', t === 'select');
-  canvasWrap.style.cursor = t === 'rect' ? 'crosshair' : 'default';
+  canvasWrap.style.cursor = t === 'select' ? 'default' : 'crosshair';
 }
 document.getElementById('toolRect').addEventListener('click',   () => setTool('rect'));
+document.getElementById('toolCircle').addEventListener('click', () => setTool('circle'));
 document.getElementById('toolSelect').addEventListener('click', () => setTool('select'));
 
 // Drawing
@@ -327,28 +329,45 @@ function getPos(e) {
   return { x: e.clientX - r.left, y: e.clientY - r.top };
 }
 
-// mousedown on the wrap (catches svg and background)
 canvasWrap.addEventListener('mousedown', e => {
-  if (tool !== 'rect' || e.button !== 0) return;
+  if (tool === 'select' || e.button !== 0) return;
   drawing   = true;
   drawStart = getPos(e);
+  preview.className = tool === 'circle' ? 'circle' : '';
   preview.style.cssText = `display:block;left:${drawStart.x}px;top:${drawStart.y}px;width:0px;height:0px;`;
   document.getElementById('hint').style.display = 'none';
   e.preventDefault();
 });
 
-// mousemove + mouseup on window so we don't lose the drag if cursor leaves
 window.addEventListener('mousemove', e => {
   if (!drawing) return;
   const cur = getPos(e);
-  const x = Math.min(drawStart.x, cur.x);
-  const y = Math.min(drawStart.y, cur.y);
   const w = Math.abs(cur.x - drawStart.x);
   const h = Math.abs(cur.y - drawStart.y);
-  preview.style.left   = x + 'px';
-  preview.style.top    = y + 'px';
-  preview.style.width  = w + 'px';
-  preview.style.height = h + 'px';
+
+  if (tool === 'circle') {
+    // Keep it square (inscribed circle bounding box), anchored at drag start
+    const d = Math.max(w, h);
+    const x = drawStart.x - (cur.x < drawStart.x ? d - w : 0);
+    const y = drawStart.y - (cur.y < drawStart.y ? d - h : 0);
+    preview.style.left   = (Math.min(drawStart.x, drawStart.x - (cur.x < drawStart.x ? d - w : 0))) + 'px';
+    preview.style.top    = (Math.min(drawStart.y, drawStart.y - (cur.y < drawStart.y ? d - h : 0))) + 'px';
+    // Simpler: just use the larger dimension as diameter, centered on drag midpoint
+    const cx = (drawStart.x + cur.x) / 2;
+    const cy = (drawStart.y + cur.y) / 2;
+    const r  = Math.max(w, h) / 2;
+    preview.style.left   = (cx - r) + 'px';
+    preview.style.top    = (cy - r) + 'px';
+    preview.style.width  = (r * 2) + 'px';
+    preview.style.height = (r * 2) + 'px';
+  } else {
+    const x = Math.min(drawStart.x, cur.x);
+    const y = Math.min(drawStart.y, cur.y);
+    preview.style.left   = x + 'px';
+    preview.style.top    = y + 'px';
+    preview.style.width  = w + 'px';
+    preview.style.height = h + 'px';
+  }
 });
 
 window.addEventListener('mouseup', e => {
@@ -356,22 +375,31 @@ window.addEventListener('mouseup', e => {
   drawing = false;
   preview.style.display = 'none';
   const cur = getPos(e);
-  const x = Math.min(drawStart.x, cur.x);
-  const y = Math.min(drawStart.y, cur.y);
   const w = Math.abs(cur.x - drawStart.x);
   const h = Math.abs(cur.y - drawStart.y);
-  if (w < 4 || h < 4) return;
+  if (Math.max(w, h) < 4) return;
 
   const id = uid();
-  addShape(ydoc, yTable, yShapeMeta, {
-    id,
-    x: Math.round(x), y: Math.round(y),
-    width: Math.round(w), height: Math.round(h),
-    fill: fillColor, stroke: strokeColor,
-    strokeWidth, opacity,
-    author: myId,
-  });
-  addLog(`added ${id.slice(0,6)} (${Math.round(w)}×${Math.round(h)})`, 'local');
+  const commonAttrs = {
+    id, fill: fillColor, stroke: strokeColor,
+    strokeWidth, opacity, author: myId,
+  };
+
+  if (tool === 'circle') {
+    const cx = Math.round((drawStart.x + cur.x) / 2);
+    const cy = Math.round((drawStart.y + cur.y) / 2);
+    const r  = Math.round(Math.max(w, h) / 2);
+    addShape(ydoc, yTable, yShapeMeta, { ...commonAttrs, cx, cy, r }, 'circle');
+    addLog(`added circle ${id.slice(0,6)} (r=${r})`, 'local');
+  } else {
+    const x = Math.round(Math.min(drawStart.x, cur.x));
+    const y = Math.round(Math.min(drawStart.y, cur.y));
+    addShape(ydoc, yTable, yShapeMeta, {
+      ...commonAttrs,
+      x, y, width: Math.round(w), height: Math.round(h),
+    }, 'rect');
+    addLog(`added rect ${id.slice(0,6)} (${Math.round(w)}×${Math.round(h)})`, 'local');
+  }
 });
 
 
@@ -381,10 +409,11 @@ function renderDocLayer() {
   layer.innerHTML = '';
 
   yTable.toArray().forEach(yEl => {
-    const id = yEl.getAttribute('id')
-    const el = document.createElementNS(svgNS, 'rect');
+    const id      = yEl.getAttribute('id');
+    const tagName = yEl.nodeName;                              // 'rect' or 'circle'
+    const el      = document.createElementNS(svgNS, tagName); // don't assume rect
 
-    el.setAttribute('data-yid',     id);
+    el.setAttribute('data-yid', id);
     const attrs = yEl.getAttributes();
     for (const k in attrs) {
       el.setAttribute(k, attrs[k]);
@@ -404,13 +433,9 @@ function renderDocLayer() {
 }
 
 // ── Overlay layer — driven by awareness ──────────────────────────────
-// Each peer's selection renders as a rect in their color.
-// Own selection: solid border. Remote peers: dashed border + name label.
 function renderOverlayLayer() {
   const layer  = svgEl.querySelector('#overlay-layer');
   layer.innerHTML = '';
-
-  const sel = mySelection();
 
   awareness.getStates().forEach((state, clientId) => {
     if (!state?.selection?.shapeId) return;
@@ -418,11 +443,9 @@ function renderOverlayLayer() {
     const isMe  = clientId === awareness.clientID;
     const color = isMe ? '#c8f060' : (state.color || '#888');
 
-    // Find shape geometry from doc layer
     const geo = selectionGeometry(yTable, shapeId);
     if (!geo) return;
 
-    // Selection rect
     const rect = document.createElementNS(svgNS, 'rect');
     rect.setAttribute('x',      geo.x);
     rect.setAttribute('y',      geo.y);
@@ -435,11 +458,10 @@ function renderOverlayLayer() {
     rect.setAttribute('rx', 2);
     layer.appendChild(rect);
 
-    // Name label (remote peers only — no need to label yourself)
     if (!isMe) {
       const name  = state.id?.slice(0, 6) || '?';
       const lx    = geo.x;
-      const ly    = geo.y - 4; // just above the rect
+      const ly    = geo.y - 4;
 
       const bg = document.createElementNS(svgNS, 'rect');
       bg.setAttribute('x',      lx);
@@ -471,22 +493,31 @@ function renderShapeList() {
   const list = document.getElementById('shapeList');
   list.innerHTML = '';
   listShapes(yTable, yShapeMeta, { newestFirst: true }).forEach(({ el, attrs, meta }) => {
-    const id = attrs.id;
+    const id      = attrs.id;
+    const tagName = el.nodeName;
 
     const item = document.createElement('div');
     const mySel = mySelection();
     item.className = 'shape-item' + (mySel?.shapeId === id ? ' selected' : '');
+
     const sw  = document.createElement('div');
-    sw.className        = 'shape-swatch';
+    sw.className        = 'shape-swatch' + (tagName === 'circle' ? ' circle' : '');
     sw.style.background = attrs.fill;
+
     const lbl = document.createElement('div');
-    lbl.className   = 'shape-label';
-    lbl.textContent = `${attrs.width}×${attrs.height} @ ${attrs.x},${attrs.y}`;
+    lbl.className = 'shape-label';
+    if (tagName === 'circle') {
+      lbl.textContent = `r=${attrs.r} @ ${attrs.cx},${attrs.cy}`;
+    } else {
+      lbl.textContent = `${attrs.width}×${attrs.height} @ ${attrs.x},${attrs.y}`;
+    }
+
     const own = document.createElement('div');
     own.className   = 'shape-owner';
     const author = meta?.author;
     own.textContent = author === myId ? 'me' : (author?.slice(0,5) || '?');
     own.style.color = author === myId ? 'var(--accent)' : 'var(--muted)';
+
     const del = document.createElement('button');
     del.className   = 'shape-del';
     del.textContent = '×';
@@ -494,6 +525,7 @@ function renderShapeList() {
       ev.stopPropagation();
       deleteShapeById(id);
     });
+
     item.append(sw, lbl, own, del);
     item.addEventListener('click', () => { setSelection(id); renderDocLayer(); });
     list.appendChild(item);
@@ -510,14 +542,12 @@ function renderMeta() {
   });
 }
 
-// Delete: delegates to shapes.js, then cleans up UI state
 function deleteShapeById(id) {
   deleteShape(ydoc, yTable, yShapeMeta, id);
   if (mySelection()?.shapeId === id) setSelection(null);
   addLog(`deleted ${id.slice(0,6)}`, 'del');
 }
 
-// Single observer on yTable covers all changes
 yTable.observe(event => {
   event.changes.added.forEach(item => {
     item.content.getContent().forEach(el => {
@@ -542,7 +572,6 @@ yTable.observe(event => {
   renderOverlayLayer();
 });
 
-// Peers + overlay
 awareness.on('change', () => {
   let peers = 0;
   awareness.getStates().forEach((_, cid) => { if (cid !== awareness.clientID) peers++; });
@@ -551,9 +580,9 @@ awareness.on('change', () => {
   renderShapeList();
 });
 
-// Keyboard
 window.addEventListener('keydown', e => {
   if (e.key === 'r' || e.key === 'R') setTool('rect');
+  if (e.key === 'c' || e.key === 'C') setTool('circle');
   if (e.key === 's' || e.key === 'S') setTool('select');
   if (e.key === 'Escape') { setSelection(null); renderDocLayer(); }
   if ((e.key === 'Delete' || e.key === 'Backspace') && mySelection()) {

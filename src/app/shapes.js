@@ -12,22 +12,35 @@ export const CURRENT_SCHEMA = 4;
 // ── Shape operations ──────────────────────────────────────────────────────────
 
 /**
- * Add a rect to the doc.
- * attrs: { id, x, y, width, height, fill, stroke, strokeWidth, opacity, author }
+ * Add a shape to the doc.
+ *
+ * For tool='rect':   attrs must include { x, y, width, height }
+ * For tool='circle': attrs must include { cx, cy, r }
+ * Common attrs: { id, fill, stroke, strokeWidth, opacity, author }
  */
-export function addShape(ydoc, yTable, yShapeMeta, attrs) {
-  const { id, x, y, width, height, fill, stroke, strokeWidth, opacity, author } = attrs;
-  const el = new Y.XmlElement('rect');
+export function addShape(ydoc, yTable, yShapeMeta, attrs, tool = 'rect') {
+  const { id, fill, stroke, strokeWidth, opacity, author } = attrs;
+  const el = new Y.XmlElement(tool);
   ydoc.transact(() => {
     el.setAttribute('id',           id);
-    el.setAttribute('x',            String(x));
-    el.setAttribute('y',            String(y));
-    el.setAttribute('width',        String(width));
-    el.setAttribute('height',       String(height));
     el.setAttribute('fill',         fill);
     el.setAttribute('stroke',       stroke);
     el.setAttribute('stroke-width', String(strokeWidth));
     el.setAttribute('opacity',      String(opacity));
+
+    if (tool === 'circle') {
+      const { cx, cy, r } = attrs;
+      el.setAttribute('cx', String(cx));
+      el.setAttribute('cy', String(cy));
+      el.setAttribute('r',  String(r));
+    } else {
+      const { x, y, width, height } = attrs;
+      el.setAttribute('x',      String(x));
+      el.setAttribute('y',      String(y));
+      el.setAttribute('width',  String(width));
+      el.setAttribute('height', String(height));
+    }
+
     yTable.insert(yTable.length, [el]);
     yShapeMeta.set(id, { author, created: Date.now() });
   });
@@ -35,7 +48,7 @@ export function addShape(ydoc, yTable, yShapeMeta, attrs) {
 }
 
 /**
- * Delete a rect by id. Returns true if found and deleted.
+ * Delete a shape by id. Returns true if found and deleted.
  */
 export function deleteShape(ydoc, yTable, yShapeMeta, id) {
   const idx = yTable.toArray().findIndex(
@@ -60,13 +73,26 @@ export function findShape(yTable, id) {
 
 /**
  * Return geometry for the selection overlay rect, with PAD applied.
- * All values are Numbers (attributes are strings in XmlElement).
- * Returns { x, y, width, height } or null if shape not found.
+ * Works for both rect and circle elements.
+ * All values are Numbers. Returns { x, y, width, height } or null.
  */
 export function selectionGeometry(yTable, shapeId, PAD = 3) {
   const el = findShape(yTable, shapeId);
   if (!el) return null;
   const attrs = el.getAttributes();
+
+  if (el.nodeName === 'circle') {
+    const cx = Number(attrs.cx);
+    const cy = Number(attrs.cy);
+    const r  = Number(attrs.r);
+    return {
+      x:      cx - r - PAD,
+      y:      cy - r - PAD,
+      width:  (r + PAD) * 2,
+      height: (r + PAD) * 2,
+    };
+  }
+
   return {
     x:      Number(attrs.x)      - PAD,
     y:      Number(attrs.y)      - PAD,

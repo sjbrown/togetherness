@@ -20,20 +20,34 @@ function sync(docA, docB) {
   Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA))
 }
 
-// ── Shape factory ─────────────────────────────────────────────────────────────
+// ── Shape factories ───────────────────────────────────────────────────────────
 
 const uid = () => Math.random().toString(36).slice(2, 9)
 
-function add(doc, overrides = {}) {
+function addRect(doc, overrides = {}) {
   const id = overrides.id ?? uid()
   addShape(doc.ydoc, doc.yTable, doc.yShapeMeta, {
     id, x: 10, y: 10, width: 100, height: 50,
     fill: '#c8f060', stroke: 'none', strokeWidth: 0, opacity: 1,
     author: 'test-peer',
     ...overrides,
-  })
+  }, 'rect')
   return id
 }
+
+function addCircle(doc, overrides = {}) {
+  const id = overrides.id ?? uid()
+  addShape(doc.ydoc, doc.yTable, doc.yShapeMeta, {
+    id, cx: 50, cy: 50, r: 30,
+    fill: '#60c8f0', stroke: 'none', strokeWidth: 0, opacity: 1,
+    author: 'test-peer',
+    ...overrides,
+  }, 'circle')
+  return id
+}
+
+// Keep old name working for existing tests
+const add = addRect
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Basic operations
@@ -82,11 +96,10 @@ describe('basic operations', () => {
     expect(ids).toEqual(['bottom', 'middle', 'top'])
   })
 
-  test('attributes are stored as SVG-native names', () => {
+  test('rect attributes are stored as SVG-native names', () => {
     const doc = makeDoc()
     add(doc, { id: 'a', width: 200, height: 80 })
     const el = findShape(doc.yTable, 'a')
-    // must be 'width'/'height', not 'w'/'h'
     expect(el.getAttribute('width')).toBe('200')
     expect(el.getAttribute('height')).toBe('80')
   })
@@ -94,37 +107,115 @@ describe('basic operations', () => {
   test('author and created are stored on sidecar', () => {
     const doc = makeDoc()
     add(doc, { id: 'a', author: 'alice' })
-    const el = findShape(doc.yTable, 'a')
     expect(doc.yShapeMeta.get('a')?.author).toBe('alice')
     expect(doc.yShapeMeta.get('a')?.created).toBeTypeOf('number')
   })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// selectionGeometry — the overlay bug
+// Circle operations
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('circle operations', () => {
+  test('add a circle creates a Y.XmlElement with nodeName circle', () => {
+    const doc = makeDoc()
+    addCircle(doc, { id: 'c1' })
+    const el = findShape(doc.yTable, 'c1')
+    expect(el).not.toBeNull()
+    expect(el.nodeName).toBe('circle')
+  })
+
+  test('circle stores cx, cy, r attributes', () => {
+    const doc = makeDoc()
+    addCircle(doc, { id: 'c1', cx: 100, cy: 200, r: 40 })
+    const el = findShape(doc.yTable, 'c1')
+    expect(el.getAttribute('cx')).toBe('100')
+    expect(el.getAttribute('cy')).toBe('200')
+    expect(el.getAttribute('r')).toBe('40')
+  })
+
+  test('circle does not have x, y, width, height attributes', () => {
+    const doc = makeDoc()
+    addCircle(doc, { id: 'c1' })
+    const el = findShape(doc.yTable, 'c1')
+    expect(el.getAttribute('x')).toBeUndefined()
+    expect(el.getAttribute('width')).toBeUndefined()
+  })
+
+  test('rect does not have cx, cy, r attributes', () => {
+    const doc = makeDoc()
+    addRect(doc, { id: 'r1' })
+    const el = findShape(doc.yTable, 'r1')
+    expect(el.getAttribute('cx')).toBeUndefined()
+    expect(el.getAttribute('r')).toBeUndefined()
+  })
+
+  test('delete a circle removes it and its sidecar', () => {
+    const doc = makeDoc()
+    addCircle(doc, { id: 'c1', author: 'bob' })
+    deleteShape(doc.ydoc, doc.yTable, doc.yShapeMeta, 'c1')
+    expect(findShape(doc.yTable, 'c1')).toBeNull()
+    expect(doc.yShapeMeta.get('c1')).toBeUndefined()
+  })
+
+  test('rects and circles coexist in z-order', () => {
+    const doc = makeDoc()
+    addRect(doc,   { id: 'r1' })
+    addCircle(doc, { id: 'c1' })
+    addRect(doc,   { id: 'r2' })
+    const ids = listShapes(doc.yTable, doc.yShapeMeta).map(({ attrs }) => attrs.id)
+    expect(ids).toEqual(['r1', 'c1', 'r2'])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// selectionGeometry — rect and circle
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('selectionGeometry', () => {
-  test('returns numeric values, not string-concatenated', () => {
+  test('rect: returns numeric values, not string-concatenated', () => {
     const doc = makeDoc()
     add(doc, { id: 'a', x: 20, y: 30, width: 100, height: 50 })
     const geo = selectionGeometry(doc.yTable, 'a', 3)
     expect(geo).toEqual({ x: 17, y: 27, width: 106, height: 56 })
-    // all values must be numbers
     expect(typeof geo.x).toBe('number')
     expect(typeof geo.width).toBe('number')
   })
 
-  test('returns null for unknown shapeId', () => {
+  test('rect: returns null for unknown shapeId', () => {
     const doc = makeDoc()
     expect(selectionGeometry(doc.yTable, 'nonexistent')).toBeNull()
   })
 
-  test('PAD=0 returns exact shape geometry', () => {
+  test('rect: PAD=0 returns exact shape geometry', () => {
     const doc = makeDoc()
     add(doc, { id: 'a', x: 5, y: 10, width: 200, height: 80 })
     const geo = selectionGeometry(doc.yTable, 'a', 0)
     expect(geo).toEqual({ x: 5, y: 10, width: 200, height: 80 })
+  })
+
+  test('circle: bounding box is derived from cx, cy, r', () => {
+    const doc = makeDoc()
+    addCircle(doc, { id: 'c1', cx: 100, cy: 80, r: 30 })
+    const geo = selectionGeometry(doc.yTable, 'c1', 0)
+    expect(geo).toEqual({ x: 70, y: 50, width: 60, height: 60 })
+  })
+
+  test('circle: PAD is applied around the bounding box', () => {
+    const doc = makeDoc()
+    addCircle(doc, { id: 'c1', cx: 100, cy: 80, r: 30 })
+    const geo = selectionGeometry(doc.yTable, 'c1', 3)
+    expect(geo).toEqual({ x: 67, y: 47, width: 66, height: 66 })
+  })
+
+  test('circle: all returned values are numbers', () => {
+    const doc = makeDoc()
+    addCircle(doc, { id: 'c1', cx: 50, cy: 50, r: 20 })
+    const geo = selectionGeometry(doc.yTable, 'c1', 3)
+    expect(typeof geo.x).toBe('number')
+    expect(typeof geo.y).toBe('number')
+    expect(typeof geo.width).toBe('number')
+    expect(typeof geo.height).toBe('number')
   })
 
   test('string concat would have produced wrong result (documents the bug)', () => {
@@ -171,7 +262,6 @@ describe('listShapes', () => {
   test('skips non-element nodes', () => {
     const doc = makeDoc()
     add(doc, { id: 'a' })
-    // yTable may contain text nodes in some Yjs versions — listShapes must skip them
     const shapes = listShapes(doc.yTable, doc.yShapeMeta)
     expect(shapes.every(({ el }) => el instanceof Y.XmlElement)).toBe(true)
   })
@@ -272,6 +362,19 @@ describe('convergence', () => {
     expect(idSets[0]).toBe(idSets[1])
     expect(idSets[1]).toBe(idSets[2])
   })
+
+  test('circle syncs between peers', () => {
+    const peer1 = makeDoc()
+    const peer2 = makeDoc()
+
+    addCircle(peer1, { id: 'circle-a', cx: 100, cy: 100, r: 40 })
+    sync(peer1.ydoc, peer2.ydoc)
+
+    const el = findShape(peer2.yTable, 'circle-a')
+    expect(el).not.toBeNull()
+    expect(el.nodeName).toBe('circle')
+    expect(el.getAttribute('r')).toBe('40')
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -294,7 +397,7 @@ describe('z-order', () => {
       addShape(doc.ydoc, doc.yTable, doc.yShapeMeta, {
         ...Object.fromEntries(Object.entries(attrs).map(([k,v]) => [k, isNaN(v) ? v : Number(v)])),
         author: meta?.author ?? 'unknown',
-      })
+      }, 'rect')
     })
 
     const ids = listShapes(doc.yTable, doc.yShapeMeta).map(({ attrs }) => attrs.id)
@@ -315,4 +418,3 @@ describe('z-order', () => {
     expect(order1.length).toBe(2)
   })
 })
-
