@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   version="1.1"
+   id="symbol die"
+   height="100"
+   width="80"
+   viewBox="0 0 80 100"
+  >
+  <defs id="defs1">
+    <filter
+       id="app-filter-colorize"
+       color-interpolation-filters="sRGB">
+      <feColorMatrix
+         id="recolorize-filter-matrix"
+         type="matrix"
+         values="1.0 0.0 0.0 0.0  0.0
+                 1.0 0.0 0.0 0.0  0.0
+                 1.0 0.0 0.0 0.0  0.0
+                 0.0 0.0 0.0 1.0  0.0" />
+    </filter>
+  </defs>
+  <script
+     type="text/javascript"
+     data-namespace="dice"
+     src="js/dice_utils.js"
+     id="script7" />
+  <script
+     type="text/javascript"
+     data-namespace="dsymbol"
+     id="dsymbolscript"><![CDATA[
+var dsymbol = {
+
+  num_symbols(elem) {
+    return elem.querySelectorAll('.face').length
+  },
+
+  initialize: function(elem, prototype) {
+    let faces = prototype.faces.split('\n')
+
+    protoEl = elem.querySelector('g.face')
+    for (let i=0; i<faces.length; i++) {
+      let faceVal = faces[i]
+      let clone = protoEl.cloneNode(true)
+      clone.querySelector('tspan').textContent = faceVal
+      clone.setAttribute('display', 'none')
+      protoEl.parentElement.insertBefore(clone, protoEl)
+    }
+
+    protoEl.previousElementSibling.removeAttribute('display')
+    protoEl.remove()
+  },
+
+  menu: {
+    'Roll': {
+      eventName: 'die_roll',
+      otherEvents: ['dblclick'],
+      applicable: (dieNode) => { return true },
+      handler: function(evt) {
+        return dice.multiface_roll_handler(this)
+      },
+    },
+    'Turn Up': {
+      eventName: 'die_turn_up',
+      applicable: (dieNode) => { return true },
+      handler: function(evt) {
+        return dice.multiface_turn_handler(this)
+      },
+    },
+  },
+
+  getValue: function(elem) {
+    let activeFace = elem.querySelector('g.face:not([display=none])')
+    return activeFace.textContent
+  },
+
+}
+
+    ]]></script>
+  <ellipse
+       style="opacity:1;fill:#000000;fill-opacity:0.15686275;stroke:none;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+       id="ellipse4248"
+       cx="39.932785"
+       cy="40.495136"
+       rx="31.718672"
+       ry="28.365911" />
+  <ellipse
+       class="object_shadow"
+       ry="28.365911"
+       rx="39.932789"
+       cy="67.417534"
+       cx="39.932785"
+       id="path4246"
+       style="opacity:1;fill:#000000;fill-opacity:0.15686275;stroke:none;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1" />
+  <g
+     id="group-monochrome-1"
+     class="draggable"
+     filter="url(#app-filter-colorize)">
+    <path
+       id="path4157-2"
+       d="M 39.535923,1.093274 76.72131,39.222102 78.323832,65.022735 39.555567,99.326963 0.77762885,65.022735 5.7454487,37.800788 Z"
+       style="fill:#9b9b9b;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:1.34612;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
+    <path
+       id="path-6"
+       d="M 78.323832,65.022735 39.525773,1.9502252 0.77762885,65.022735 Z"
+       style="fill:#dedede;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:1.34612;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
+    <path
+       style="fill:#aaffff;fill-opacity:0.15686275;fill-rule:evenodd;stroke:none;stroke-width:5.4000001;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="M 74.446522,66.737946 39.555083,97.61175 4.654939,66.737946 c 25.747199,8.214117 39.268734,18.338495 69.791583,0 z"
+       id="path_end1"
+       />
+  </g>
+  <!-- ================================================= -->
+  <g class="face" >
+    <text
+     xml:space="preserve"
+     style="font-style:normal;font-weight:normal;font-family:sans-serif;fill:#000000;fill-opacity:1;"
+     x="24"
+     y="57"
+     id="text_value"><tspan
+       id="tspan_value"
+       x="24"
+       y="57"
+       style="font-size:40px;line-height:1.25">✗</tspan></text>
+  </g>
+</svg>

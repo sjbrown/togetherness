@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   x="0" y="0" width="100" height="100"
+   viewBox="0 0 26 26"
+   version="1.1"
+   id="player_marker"
+   class="player_marker"
+   >
+  <defs id="defs4">
+    <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
+      <feColorMatrix id="recolorize-filter-matrix" type="matrix"
+         values="1.0 0.0 0.0 0.0  0.0
+                 1.0 0.0 0.0 0.0  0.0
+                 1.0 0.0 0.0 0.0  0.0
+                 0.0 0.0 0.0 1.0  0.0" />
+    </filter>
+  </defs>
+  <g id="object_shadow">
+    <ellipse
+       style="opacity:1;fill:#000000;fill-opacity:0.5;stroke:none;"
+       cx="13"
+       cy="13"
+       rx="2.5"
+       ry="0.5" />
+    <ellipse
+       cy="13"
+       cx="13"
+       rx="4.25"
+       ry="0.8"
+       style="opacity:1;fill:#000000;fill-opacity:0.18;stroke:none"
+       />
+  </g>
+  <g filter="url(#app-filter-colorize)" id="marker" class="colorable">
+    <path
+       style="fill:#f2f2f2;fill-rule:evenodd;stroke:#cccccc;stroke-width:0.62500715;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 10,2 3,9 3,-10 z"
+       id="path819"
+       />
+  </g>
+</svg>
