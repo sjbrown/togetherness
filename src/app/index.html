@@ -65,7 +65,6 @@
   .shape-item:hover { border-color: var(--muted); }
   .shape-item.selected { border-color: var(--accent); }
   .shape-swatch { width: 11px; height: 11px; border-radius: 2px; flex-shrink: 0; }
-  .shape-swatch.circle { border-radius: 50%; }
   .shape-label { color: var(--text-dim); flex: 1; font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .shape-owner { font-size: 9px; }
   .shape-del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 0 2px; line-height: 1; }
@@ -84,7 +83,6 @@
     position: absolute; border: 2px dashed var(--accent);
     pointer-events: none; opacity: 0.7; display: none;
   }
-  #draw-preview.circle { border-radius: 50%; }
   .event-log { display: flex; flex-direction: column; gap: 3px; max-height: 160px; overflow-y: auto; }
   .log-entry {
     padding: 3px 6px; border-radius: 2px; background: var(--bg); color: var(--text-dim);
@@ -153,8 +151,7 @@
     <svg id="svg-canvas" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
       <defs>
         <pattern id="bg-pattern" x="0" y="0" width="1384" height="998" patternUnits="userSpaceOnUse">
-          <image href="img/bg_slatehex.png" x="0" y="0" width="1384" height="998"/>
-
+          <image href="img/bg_slatehex.png" x="0" y="0" width="1384" height="998" />
         </pattern>
       </defs>
       <g id="background-layer">
@@ -197,7 +194,7 @@ import { WebrtcProvider }           from '/lib/y-webrtc.js';
 import { IndexeddbPersistence }     from '/lib/y-indexeddb.js';
 import {
   CURRENT_SCHEMA,
-  addShape, deleteShape, findShape, selectionGeometry, listShapes, makeDoc,
+  addShape, deleteShape, findShape, selectionGeometry, listShapes, makeDoc, SHAPE_TYPES,
 }                                   from '/shapes.js';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -222,9 +219,12 @@ function addLog(msg, type = '') {
 }
 
 // ── Yjs ──────────────────────────────────────────────────────────────
+// v4 data model: Y.XmlFragment of Y.XmlElement — tree order = z-order
+// Sidecar map: id → { author, type, created } — app metadata that isn't SVG
 const { ydoc, yMeta, yTable, yShapeMeta } = makeDoc();
 
 // ── IndexedDB persistence ─────────────────────────────────────────────
+// Keyed per room so each room has its own persistent store.
 const persistence = new IndexeddbPersistence(`crdt-svg:${roomId}`, ydoc);
 let persistenceReady = false;
 
@@ -232,6 +232,7 @@ persistence.on('synced', () => {
   persistenceReady = true;
   addLog('loaded from indexeddb', 'local');
 
+  // Seed meta if this is a fresh doc
   if (!yMeta.get('docId')) {
     ydoc.transact(() => {
       yMeta.set('docId',         roomId);
@@ -240,7 +241,7 @@ persistence.on('synced', () => {
     });
   }
 
-  renderDocLayer();
+  renderDoc();
 });
 
 const signalingUrl = new URLSearchParams(location.search).get('signaling') || 'ws://localhost:4444';
@@ -254,8 +255,7 @@ function mySelection() {
 }
 function setSelection(shapeId) {
   awareness.setLocalStateField('selection', shapeId ? { shapeId } : null);
-  renderOverlayLayer();
-  renderShapeList();
+  renderPresence();
 }
 
 // Status
@@ -304,14 +304,14 @@ document.getElementById('strokeWidthSlider').addEventListener('input', e => {
   document.getElementById('strokeWidthVal').textContent = strokeWidth;
 });
 
-// Tools
+// Tools — a tool that draws is just a key into SHAPE_TYPES; 'select' isn't.
 const canvasWrap = document.getElementById('canvasWrap');
 function setTool(t) {
   tool = t;
   document.getElementById('toolRect').classList.toggle('active',   t === 'rect');
   document.getElementById('toolCircle').classList.toggle('active', t === 'circle');
   document.getElementById('toolSelect').classList.toggle('active', t === 'select');
-  canvasWrap.style.cursor = t === 'select' ? 'default' : 'crosshair';
+  canvasWrap.style.cursor = (t === 'select') ? 'default' : 'crosshair';
 }
 document.getElementById('toolRect').addEventListener('click',   () => setTool('rect'));
 document.getElementById('toolCircle').addEventListener('click', () => setTool('circle'));
@@ -329,112 +329,93 @@ function getPos(e) {
   return { x: e.clientX - r.left, y: e.clientY - r.top };
 }
 
+// mousedown on the wrap (catches svg and background). Any drawing tool starts
+// a drag; the 'select' tool (not in SHAPE_TYPES) falls through.
 canvasWrap.addEventListener('mousedown', e => {
-  if (tool === 'select' || e.button !== 0) return;
+  if (!SHAPE_TYPES[tool] || e.button !== 0) return;
   drawing   = true;
   drawStart = getPos(e);
-  preview.className = tool === 'circle' ? 'circle' : '';
   preview.style.cssText = `display:block;left:${drawStart.x}px;top:${drawStart.y}px;width:0px;height:0px;`;
   document.getElementById('hint').style.display = 'none';
   e.preventDefault();
 });
 
+// mousemove + mouseup on window so we don't lose the drag if cursor leaves.
+// The preview is always the drag bounding box, whatever the shape type.
 window.addEventListener('mousemove', e => {
   if (!drawing) return;
   const cur = getPos(e);
+  const x = Math.min(drawStart.x, cur.x);
+  const y = Math.min(drawStart.y, cur.y);
   const w = Math.abs(cur.x - drawStart.x);
   const h = Math.abs(cur.y - drawStart.y);
-
-  if (tool === 'circle') {
-    // Keep it square (inscribed circle bounding box), anchored at drag start
-    const d = Math.max(w, h);
-    const x = drawStart.x - (cur.x < drawStart.x ? d - w : 0);
-    const y = drawStart.y - (cur.y < drawStart.y ? d - h : 0);
-    preview.style.left   = (Math.min(drawStart.x, drawStart.x - (cur.x < drawStart.x ? d - w : 0))) + 'px';
-    preview.style.top    = (Math.min(drawStart.y, drawStart.y - (cur.y < drawStart.y ? d - h : 0))) + 'px';
-    // Simpler: just use the larger dimension as diameter, centered on drag midpoint
-    const cx = (drawStart.x + cur.x) / 2;
-    const cy = (drawStart.y + cur.y) / 2;
-    const r  = Math.max(w, h) / 2;
-    preview.style.left   = (cx - r) + 'px';
-    preview.style.top    = (cy - r) + 'px';
-    preview.style.width  = (r * 2) + 'px';
-    preview.style.height = (r * 2) + 'px';
-  } else {
-    const x = Math.min(drawStart.x, cur.x);
-    const y = Math.min(drawStart.y, cur.y);
-    preview.style.left   = x + 'px';
-    preview.style.top    = y + 'px';
-    preview.style.width  = w + 'px';
-    preview.style.height = h + 'px';
-  }
+  preview.style.left   = x + 'px';
+  preview.style.top    = y + 'px';
+  preview.style.width  = w + 'px';
+  preview.style.height = h + 'px';
 });
 
 window.addEventListener('mouseup', e => {
   if (!drawing) return;
   drawing = false;
   preview.style.display = 'none';
+
   const cur = getPos(e);
-  const w = Math.abs(cur.x - drawStart.x);
-  const h = Math.abs(cur.y - drawStart.y);
-  if (Math.max(w, h) < 4) return;
+  const x = Math.round(Math.min(drawStart.x, cur.x));
+  const y = Math.round(Math.min(drawStart.y, cur.y));
+  const w = Math.round(Math.abs(cur.x - drawStart.x));
+  const h = Math.round(Math.abs(cur.y - drawStart.y));
+  if (w < 4 || h < 4) return;
+
+  const def = SHAPE_TYPES[tool];
+  if (!def) return;
 
   const id = uid();
-  const commonAttrs = {
-    id, fill: fillColor, stroke: strokeColor,
-    strokeWidth, opacity, author: myId,
-  };
-
-  if (tool === 'circle') {
-    const cx = Math.round((drawStart.x + cur.x) / 2);
-    const cy = Math.round((drawStart.y + cur.y) / 2);
-    const r  = Math.round(Math.max(w, h) / 2);
-    addShape(ydoc, yTable, yShapeMeta, { ...commonAttrs, cx, cy, r }, 'circle');
-    addLog(`added circle ${id.slice(0,6)} (r=${r})`, 'local');
-  } else {
-    const x = Math.round(Math.min(drawStart.x, cur.x));
-    const y = Math.round(Math.min(drawStart.y, cur.y));
-    addShape(ydoc, yTable, yShapeMeta, {
-      ...commonAttrs,
-      x, y, width: Math.round(w), height: Math.round(h),
-    }, 'rect');
-    addLog(`added rect ${id.slice(0,6)} (${Math.round(w)}×${Math.round(h)})`, 'local');
-  }
+  addShape(ydoc, yTable, yShapeMeta, {
+    id,
+    type: tool,
+    ...def.fromDrag({ x, y, w, h }),
+    fill: fillColor,
+    stroke: strokeColor,
+    'stroke-width': strokeWidth,
+    opacity,
+    author: myId,
+  });
+  addLog(`added ${tool} ${id.slice(0,6)} (${w}×${h})`, 'local');
 });
 
 
 // ── Doc layer — driven by yTable ────────────────────────────────────
+// Generic: the Yjs node's tag IS the SVG tag and its attributes ARE
+// SVG-native, so rendering is just mirroring the CRDT XML into the DOM.
+// Any new shape type renders for free — no per-type branching.
 function renderDocLayer() {
   const layer = svgEl.querySelector('#doc-layer');
   layer.innerHTML = '';
 
   yTable.toArray().forEach(yEl => {
-    const id      = yEl.getAttribute('id');
-    const tagName = yEl.nodeName;                              // 'rect' or 'circle'
-    const el      = document.createElementNS(svgNS, tagName); // don't assume rect
-
-    el.setAttribute('data-yid', id);
+    if (!(yEl instanceof Y.XmlElement)) return;
     const attrs = yEl.getAttributes();
-    for (const k in attrs) {
-      el.setAttribute(k, attrs[k]);
-    }
+    const el    = document.createElementNS(svgNS, yEl.nodeName);
+    for (const k in attrs) el.setAttribute(k, attrs[k]);
+    el.setAttribute('data-yid', attrs.id);
     el.style.cursor = 'pointer';
     el.addEventListener('click', ev => {
       if (tool !== 'select') return;
       ev.stopPropagation();
-      setSelection(id);
+      setSelection(attrs.id);
     });
     layer.appendChild(el);
   });
 
   document.getElementById('shapeCount').textContent = yTable.length;
-  renderShapeList();
-  renderMeta();
 }
 
-// ── Overlay layer — driven by awareness ──────────────────────────────
+// ── Overlay layer — derived from awareness (identity) over doc (geometry) ──
+// Each peer's selection renders as a rect in their color.
+// Own selection: solid border. Remote peers: dashed border + name label.
 function renderOverlayLayer() {
-  const layer  = svgEl.querySelector('#overlay-layer');
+  const layer = svgEl.querySelector('#overlay-layer');
   layer.innerHTML = '';
 
   awareness.getStates().forEach((state, clientId) => {
@@ -443,9 +424,11 @@ function renderOverlayLayer() {
     const isMe  = clientId === awareness.clientID;
     const color = isMe ? '#c8f060' : (state.color || '#888');
 
+    // Geometry comes from the document (works for rect, circle, …)
     const geo = selectionGeometry(yTable, shapeId);
     if (!geo) return;
 
+    // Selection rect
     const rect = document.createElementNS(svgNS, 'rect');
     rect.setAttribute('x',      geo.x);
     rect.setAttribute('y',      geo.y);
@@ -458,10 +441,11 @@ function renderOverlayLayer() {
     rect.setAttribute('rx', 2);
     layer.appendChild(rect);
 
+    // Name label (remote peers only — no need to label yourself)
     if (!isMe) {
-      const name  = state.id?.slice(0, 6) || '?';
-      const lx    = geo.x;
-      const ly    = geo.y - 4;
+      const name = state.id?.slice(0, 6) || '?';
+      const lx   = geo.x;
+      const ly   = geo.y - 4; // just above the rect
 
       const bg = document.createElementNS(svgNS, 'rect');
       bg.setAttribute('x',      lx);
@@ -484,33 +468,59 @@ function renderOverlayLayer() {
   });
 }
 
-function renderAll() {
-  renderDocLayer();
-  renderOverlayLayer();
+// ── Render pipelines ─────────────────────────────────────────────────
+// Two sources of truth, two pipelines:
+//   renderDoc      — driven by yTable (CRDT document state)
+//   renderPresence — driven by awareness (ephemeral, per-session state)
+// The overlay is a derived view of presence OVER doc geometry, so both
+// pipelines refresh it. This is the render fan-out in miniature.
+function renderDoc() {
+  renderDocLayer();        // #doc-layer + shape count — doc only
+  renderShapeList();       // which shapes exist — doc only
+  renderMeta();
+  renderOverlayLayer();    // overlay geometry comes from the doc
+  applySelectionHighlight();
+}
+
+function renderPresence() {
+  renderOverlayLayer();    // overlay identity comes from presence
+  applySelectionHighlight();
+  updatePeerCount();
+}
+
+function updatePeerCount() {
+  let peers = 0;
+  awareness.getStates().forEach((_, cid) => { if (cid !== awareness.clientID) peers++; });
+  document.getElementById('peerCount').textContent = peers;
+}
+
+// Selection styling on existing list rows — cheap presence-driven pass,
+// no rebuild, so it doesn't couple the list's structure to selection.
+function applySelectionHighlight() {
+  const sel = mySelection()?.shapeId;
+  document.querySelectorAll('#shapeList .shape-item').forEach(row => {
+    row.classList.toggle('selected', row.dataset.id === sel);
+  });
 }
 
 function renderShapeList() {
   const list = document.getElementById('shapeList');
   list.innerHTML = '';
   listShapes(yTable, yShapeMeta, { newestFirst: true }).forEach(({ el, attrs, meta }) => {
-    const id      = attrs.id;
-    const tagName = el.nodeName;
+    const id  = attrs.id;
+    const def = SHAPE_TYPES[el.nodeName];
 
     const item = document.createElement('div');
-    const mySel = mySelection();
-    item.className = 'shape-item' + (mySel?.shapeId === id ? ' selected' : '');
+    item.className   = 'shape-item';
+    item.dataset.id  = id;
 
-    const sw  = document.createElement('div');
-    sw.className        = 'shape-swatch' + (tagName === 'circle' ? ' circle' : '');
+    const sw = document.createElement('div');
+    sw.className        = 'shape-swatch';
     sw.style.background = attrs.fill;
 
     const lbl = document.createElement('div');
-    lbl.className = 'shape-label';
-    if (tagName === 'circle') {
-      lbl.textContent = `r=${attrs.r} @ ${attrs.cx},${attrs.cy}`;
-    } else {
-      lbl.textContent = `${attrs.width}×${attrs.height} @ ${attrs.x},${attrs.y}`;
-    }
+    lbl.className   = 'shape-label';
+    lbl.textContent = def ? def.label(attrs) : id.slice(0, 6);
 
     const own = document.createElement('div');
     own.className   = 'shape-owner';
@@ -527,9 +537,10 @@ function renderShapeList() {
     });
 
     item.append(sw, lbl, own, del);
-    item.addEventListener('click', () => { setSelection(id); renderDocLayer(); });
+    item.addEventListener('click', () => setSelection(id));
     list.appendChild(item);
   });
+  applySelectionHighlight();
 }
 
 function renderMeta() {
@@ -542,19 +553,21 @@ function renderMeta() {
   });
 }
 
+// Delete: delegates to shapes.js, then cleans up UI state
 function deleteShapeById(id) {
   deleteShape(ydoc, yTable, yShapeMeta, id);
   if (mySelection()?.shapeId === id) setSelection(null);
   addLog(`deleted ${id.slice(0,6)}`, 'del');
 }
 
+// Single observer on yTable covers all document changes → doc pipeline
 yTable.observe(event => {
   event.changes.added.forEach(item => {
     item.content.getContent().forEach(el => {
       if (el instanceof Y.XmlElement) {
-        const author = yShapeMeta.get(el.getAttribute('id'))?.author;
+        const id     = el.getAttribute('id') || '?';
+        const author = (yShapeMeta.get(id) || {}).author;
         if (author && author !== myId) {
-          const id = el.getAttribute('id') || '?';
           addLog(`remote: added ${id.slice(0,6)} by ${author.slice(0,5)}`, 'remote');
         }
       }
@@ -568,38 +581,33 @@ yTable.observe(event => {
       }
     });
   });
-  renderDocLayer();
-  renderOverlayLayer();
+  renderDoc();
 });
 
-awareness.on('change', () => {
-  let peers = 0;
-  awareness.getStates().forEach((_, cid) => { if (cid !== awareness.clientID) peers++; });
-  document.getElementById('peerCount').textContent = peers;
-  renderOverlayLayer();
-  renderShapeList();
-});
+// Awareness changes → presence pipeline
+awareness.on('change', renderPresence);
 
+// Keyboard
 window.addEventListener('keydown', e => {
   if (e.key === 'r' || e.key === 'R') setTool('rect');
   if (e.key === 'c' || e.key === 'C') setTool('circle');
   if (e.key === 's' || e.key === 'S') setTool('select');
-  if (e.key === 'Escape') { setSelection(null); renderDocLayer(); }
+  if (e.key === 'Escape') setSelection(null);
   if ((e.key === 'Delete' || e.key === 'Backspace') && mySelection()) {
     if (!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) {
       deleteShapeById(mySelection().shapeId);
     }
   }
 });
+
+// Click on empty canvas deselects
 svgEl.addEventListener('click', e => {
-  if (e.target === svgEl || e.target.closest('#doc-layer') === null && e.target !== svgEl) {
-    if (!e.target.closest('[data-yid]')) { setSelection(null); renderDocLayer(); }
-  }
+  if (!e.target.closest('[data-yid]')) setSelection(null);
 });
 
 // Init
-renderDocLayer();
-renderOverlayLayer();
+renderDoc();
+renderPresence();
 addLog(`joined room ${roomId}`, 'local');
 </script>
 </body>
