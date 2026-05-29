@@ -27,7 +27,7 @@
   }
   .room-pill code { color: var(--accent2); font-family: inherit; }
   .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); transition: background 0.4s; }
-  .status-dot.connected { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .status-dot.connected  { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
   .status-dot.connecting { background: #f0c060; animation: pulse 1s infinite; }
   @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.3} }
   .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 11px; color: var(--text-dim); }
@@ -37,6 +37,17 @@
     padding: 14px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; font-size: 11px;
   }
   .sidebar.right { border-right: none; border-left: 1px solid var(--border); }
+  /* Top-level mode switcher (segmented control) */
+  .mode-switch { display: flex; gap: 4px; padding: 3px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+  .mode-btn {
+    flex: 1; padding: 8px 6px; border: none; border-radius: 4px; background: transparent;
+    color: var(--text-dim); font-family: 'Syne', sans-serif; font-weight: 700; font-size: 12px;
+    cursor: pointer; transition: all 0.12s; letter-spacing: 0.03em;
+  }
+  .mode-btn:hover { color: var(--text); }
+  .mode-btn.active { background: var(--accent); color: var(--bg); }
+  .mode-btn.toys.active { background: var(--accent2); }
+  .mode-panel { display: flex; flex-direction: column; gap: 14px; }
   .sec { display: flex; flex-direction: column; gap: 7px; }
   .sec-label { text-transform: uppercase; letter-spacing: 0.12em; font-size: 9px; color: var(--muted); padding-bottom: 4px; border-bottom: 1px solid var(--border); }
   .tool-btn {
@@ -46,6 +57,14 @@
   }
   .tool-btn:hover { background: var(--bg); color: var(--text); border-color: var(--border); }
   .tool-btn.active { background: var(--bg); color: var(--accent); border-color: var(--accent); }
+  /* Toy palette buttons look like tool-btn but never stay "active" — they're actions */
+  .toy-btn {
+    display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 4px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text-dim);
+    font-family: 'DM Mono', monospace; font-size: 11px; cursor: pointer; transition: all 0.12s; text-align: left;
+  }
+  .toy-btn:hover { color: var(--accent2); border-color: var(--accent2); }
+  .toy-btn:active { transform: scale(0.97); }
   .swatches { display: flex; flex-wrap: wrap; gap: 5px; }
   .swatch {
     width: 22px; height: 22px; border-radius: 3px; border: 2px solid transparent;
@@ -57,7 +76,7 @@
   .slider-row label { color: var(--text-dim); display: flex; justify-content: space-between; font-size: 10px; }
   .slider-row label span { color: var(--accent2); }
   input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
-  .shape-list { display: flex; flex-direction: column; gap: 3px; max-height: 280px; overflow-y: auto; }
+  .shape-list { display: flex; flex-direction: column; gap: 3px; max-height: 220px; overflow-y: auto; }
   .shape-item {
     display: flex; align-items: center; gap: 6px; padding: 5px 7px; border-radius: 3px;
     border: 1px solid var(--border); background: var(--bg); cursor: pointer; transition: border-color 0.12s;
@@ -69,6 +88,17 @@
   .shape-owner { font-size: 9px; }
   .shape-del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 0 2px; line-height: 1; }
   .shape-del:hover { color: var(--danger); }
+  .toy-list { display: flex; flex-direction: column; gap: 3px; max-height: 120px; overflow-y: auto; }
+  .toy-item {
+    display: flex; align-items: center; gap: 6px; padding: 5px 7px; border-radius: 3px;
+    border: 1px solid var(--border); background: var(--bg); font-size: 9px; cursor: pointer; transition: border-color 0.12s;
+  }
+  .toy-item:hover { border-color: var(--muted); }
+  .toy-item.selected { border-color: var(--accent2); }
+  .toy-item-color { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .toy-item-label { color: var(--text-dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .toy-del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 0 2px; line-height: 1; }
+  .toy-del:hover { color: var(--danger); }
   .canvas-wrap {
     position: relative; overflow: hidden; background: var(--bg);
     background-image:
@@ -83,14 +113,14 @@
     position: absolute; border: 2px dashed var(--accent);
     pointer-events: none; opacity: 0.7; display: none;
   }
-  .event-log { display: flex; flex-direction: column; gap: 3px; max-height: 160px; overflow-y: auto; }
+  .event-log { display: flex; flex-direction: column; gap: 3px; max-height: 140px; overflow-y: auto; }
   .log-entry {
     padding: 3px 6px; border-radius: 2px; background: var(--bg); color: var(--text-dim);
     font-size: 9px; border-left: 2px solid var(--muted); animation: fadeIn 0.2s ease;
   }
-  .log-entry.local { border-left-color: var(--accent); }
+  .log-entry.local  { border-left-color: var(--accent); }
   .log-entry.remote { border-left-color: var(--accent2); }
-  .log-entry.del { border-left-color: var(--danger); }
+  .log-entry.del    { border-left-color: var(--danger); }
   @keyframes fadeIn { from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none} }
   .hint {
     position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
@@ -99,7 +129,7 @@
   }
   .meta-kv { font-size: 9px; color: var(--text-dim); display: flex; flex-direction: column; gap: 3px; }
   .meta-kv div span:first-child { color: var(--muted); }
-  .meta-kv div span:last-child { color: var(--accent2); }
+  .meta-kv div span:last-child  { color: var(--accent2); }
   ::-webkit-scrollbar { width: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
@@ -120,29 +150,51 @@
   </header>
 
   <aside class="sidebar">
-    <div class="sec">
-      <div class="sec-label">Tool</div>
-      <button class="tool-btn active" id="toolRect">▭ &nbsp;Draw Rect <small style="margin-left:auto;color:var(--muted)">[R]</small></button>
-      <button class="tool-btn" id="toolCircle">◯ &nbsp;Draw Circle <small style="margin-left:auto;color:var(--muted)">[C]</small></button>
-      <button class="tool-btn" id="toolSelect">↖ &nbsp;Select <small style="margin-left:auto;color:var(--muted)">[S]</small></button>
+    <div class="mode-switch">
+      <button class="mode-btn active" id="modeDraw">Draw</button>
+      <button class="mode-btn toys"   id="modeToys">Toys</button>
     </div>
-    <div class="sec">
-      <div class="sec-label">Fill</div>
-      <div class="swatches" id="fillSwatches"></div>
-    </div>
-    <div class="sec">
-      <div class="sec-label">Opacity</div>
-      <div class="slider-row">
-        <label>opacity <span id="opacityVal">0.80</span></label>
-        <input type="range" id="opacitySlider" min="10" max="100" value="80">
+
+    <!-- DRAW MODE -->
+    <div class="mode-panel" id="drawPanel">
+      <div class="sec">
+        <div class="sec-label">Draw Tool</div>
+        <button class="tool-btn active" id="toolRect">▭ &nbsp;Rect <small style="margin-left:auto;color:var(--muted)">[R]</small></button>
+        <button class="tool-btn"        id="toolCircle">◯ &nbsp;Circle <small style="margin-left:auto;color:var(--muted)">[C]</small></button>
+        <button class="tool-btn"        id="toolSelect">↖ &nbsp;Select <small style="margin-left:auto;color:var(--muted)">[S]</small></button>
+      </div>
+      <div class="sec">
+        <div class="sec-label">Fill</div>
+        <div class="swatches" id="fillSwatches"></div>
+      </div>
+      <div class="sec">
+        <div class="sec-label">Opacity</div>
+        <div class="slider-row">
+          <label>opacity <span id="opacityVal">0.80</span></label>
+          <input type="range" id="opacitySlider" min="10" max="100" value="80">
+        </div>
+      </div>
+      <div class="sec">
+        <div class="sec-label">Stroke</div>
+        <div class="swatches" id="strokeSwatches"></div>
+        <div class="slider-row" style="margin-top:5px">
+          <label>width <span id="strokeWidthVal">1</span>px</label>
+          <input type="range" id="strokeWidthSlider" min="0" max="8" value="1">
+        </div>
       </div>
     </div>
-    <div class="sec">
-      <div class="sec-label">Stroke</div>
-      <div class="swatches" id="strokeSwatches"></div>
-      <div class="slider-row" style="margin-top:5px">
-        <label>width <span id="strokeWidthVal">1</span>px</label>
-        <input type="range" id="strokeWidthSlider" min="0" max="8" value="1">
+
+    <!-- TOYS MODE -->
+    <div class="mode-panel" id="toysPanel" style="display:none">
+      <div class="sec">
+        <div class="sec-label">Add Toy</div>
+        <button class="toy-btn" id="addPlayerMarker">▲ &nbsp;Player Marker</button>
+      </div>
+      <div class="sec">
+        <div class="sec-label">Interact</div>
+        <div style="font-size:10px;color:var(--text-dim);line-height:1.5">
+          Click a toy to select it.<br>Press <span style="color:var(--accent2)">Delete</span> to remove.
+        </div>
       </div>
     </div>
   </aside>
@@ -151,23 +203,29 @@
     <svg id="svg-canvas" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
       <defs>
         <pattern id="bg-pattern" x="0" y="0" width="1384" height="998" patternUnits="userSpaceOnUse">
-          <image href="img/bg_slatehex.png" x="0" y="0" width="1384" height="998" />
+          <image href="img/bg_slatehex.png" x="0" y="0" width="1384" height="998"/>
         </pattern>
       </defs>
+      <!-- Layer order: background → toys → drawing → overlay -->
       <g id="background-layer">
         <rect x="0" y="0" width="100%" height="100%" fill="url(#bg-pattern)" pointer-events="none"/>
       </g>
+      <g id="toys-layer"></g>
       <g id="doc-layer"></g>
       <g id="overlay-layer" pointer-events="none"></g>
     </svg>
     <div id="draw-preview"></div>
-    <div class="hint" id="hint">drag to draw · open another tab to sync</div>
+    <div class="hint" id="hint">Draw mode · drag to draw · switch to Toys mode to place markers</div>
   </main>
 
   <aside class="sidebar right">
-    <div class="sec">
-      <div class="sec-label">Shapes (<span id="shapeCount">0</span>)</div>
+    <div class="sec" id="drawListSec">
+      <div class="sec-label">Drawing (<span id="shapeCount">0</span>)</div>
       <div class="shape-list" id="shapeList"></div>
+    </div>
+    <div class="sec" id="toysListSec" style="display:none">
+      <div class="sec-label">Toys (<span id="toyCount">0</span>)</div>
+      <div class="toy-list" id="toyList"></div>
     </div>
     <div class="sec">
       <div class="sec-label">Event Log</div>
@@ -189,426 +247,640 @@
 </script>
 
 <script type="module">
-import * as Y                       from '/lib/yjs.js';
-import { WebrtcProvider }           from '/lib/y-webrtc.js';
-import { IndexeddbPersistence }     from '/lib/y-indexeddb.js';
+import * as Y                       from '/lib/yjs.js'
+import { WebrtcProvider }           from '/lib/y-webrtc.js'
+import { IndexeddbPersistence }     from '/lib/y-indexeddb.js'
 import {
-  CURRENT_SCHEMA,
   addShape, deleteShape, findShape, selectionGeometry, listShapes, makeDoc, SHAPE_TYPES,
-}                                   from '/shapes.js';
+}                                   from '/shapes.js'
+import {
+  addToy, deleteToy, listToys, findToy, getToysLayer, toyGeometry, TOY_TYPES,
+}                                   from '/toys.js'
 
-const uid = () => Math.random().toString(36).slice(2, 9);
+const XLINK_NS = 'http://www.w3.org/1999/xlink'
 
-// Room + identity
-let roomId = location.hash.slice(1);
-if (!roomId) { roomId = uid(); location.hash = roomId; }
-const myId    = uid();
-const COLORS  = ['#c8f060','#60c8f0','#f06090','#f0c060','#a060f0','#60f0c8','#f09060','#e8e8f0'];
-const myColor = COLORS[Math.floor(Math.random() * COLORS.length)];
-document.getElementById('roomLabel').textContent = roomId;
-document.getElementById('myIdLabel').textContent = `me: ${myId}`;
+const CURRENT_SCHEMA = 4
+const uid = () => Math.random().toString(36).slice(2, 9)
 
-// ── Log (defined early — used by persistence.on('synced')) ───────────
+// ── Room + identity ───────────────────────────────────────────────────
+let roomId = location.hash.slice(1)
+if (!roomId) { roomId = uid(); location.hash = roomId }
+const myId    = uid()
+const COLORS  = ['#c8f060','#60c8f0','#f06090','#f0c060','#a060f0','#60f0c8','#f09060','#e8e8f0']
+const myColor = COLORS[Math.floor(Math.random() * COLORS.length)]
+document.getElementById('roomLabel').textContent  = roomId
+document.getElementById('myIdLabel').textContent  = `me: ${myId}`
+
+// ── Logging ───────────────────────────────────────────────────────────
 function addLog(msg, type = '') {
-  const log   = document.getElementById('eventLog');
-  const entry = document.createElement('div');
-  entry.className   = `log-entry ${type}`;
-  entry.textContent = `${new Date().toISOString().slice(11,19)} ${msg}`;
-  log.prepend(entry);
-  while (log.children.length > 40) log.lastChild.remove();
+  const log   = document.getElementById('eventLog')
+  const entry = document.createElement('div')
+  entry.className   = `log-entry ${type}`
+  entry.textContent = `${new Date().toISOString().slice(11,19)} ${msg}`
+  log.prepend(entry)
+  while (log.children.length > 40) log.lastChild.remove()
 }
 
-// ── Yjs ──────────────────────────────────────────────────────────────
-// v4 data model: Y.XmlFragment of Y.XmlElement — tree order = z-order
-// Sidecar map: id → { author, type, created } — app metadata that isn't SVG
-const { ydoc, yMeta, yTable, yShapeMeta } = makeDoc();
+// ── Yjs doc ───────────────────────────────────────────────────────────
+// Drawing layer: Y.XmlFragment of Y.XmlElement (schema v4)
+// Toys layer:    Y.XmlFragment of <g> wrappers, each holding an embedded
+//                <svg> sub-document — same CRDT-as-SVG-tree model, so
+//                internal toy edits merge at the attribute/child level.
+const { ydoc, yMeta, yTable, yShapeMeta } = makeDoc()
+const { yToys, yToyMeta } = getToysLayer(ydoc)
 
-// ── IndexedDB persistence ─────────────────────────────────────────────
-// Keyed per room so each room has its own persistent store.
-const persistence = new IndexeddbPersistence(`crdt-svg:${roomId}`, ydoc);
-let persistenceReady = false;
+// ── Persistence ───────────────────────────────────────────────────────
+const persistence = new IndexeddbPersistence(`crdt-svg:${roomId}`, ydoc)
+let persistenceReady = false
 
 persistence.on('synced', () => {
-  persistenceReady = true;
-  addLog('loaded from indexeddb', 'local');
-
-  // Seed meta if this is a fresh doc
+  persistenceReady = true
+  addLog('loaded from indexeddb', 'local')
   if (!yMeta.get('docId')) {
     ydoc.transact(() => {
-      yMeta.set('docId',         roomId);
-      yMeta.set('created',       new Date().toISOString());
-      yMeta.set('schemaVersion', CURRENT_SCHEMA);
-    });
+      yMeta.set('docId',         roomId)
+      yMeta.set('created',       new Date().toISOString())
+      yMeta.set('schemaVersion', CURRENT_SCHEMA)
+    })
   }
+  renderDoc()
+})
 
-  renderDoc();
-});
+const signalingUrl = new URLSearchParams(location.search).get('signaling') || 'ws://localhost:4444'
+const provider  = new WebrtcProvider(roomId, ydoc, { signaling: [signalingUrl] })
+const awareness = provider.awareness
+awareness.setLocalState({ id: myId, color: myColor, cursor: null, selection: null })
 
-const signalingUrl = new URLSearchParams(location.search).get('signaling') || 'ws://localhost:4444';
-const provider  = new WebrtcProvider(roomId, ydoc, { signaling: [signalingUrl] });
-const awareness = provider.awareness;
-awareness.setLocalState({ id: myId, color: myColor, cursor: null, selection: null });
-
-// ── Awareness helpers ───────────────────────────────────────────────
-function mySelection() {
-  return awareness.getLocalState()?.selection ?? null;
+// ── Awareness helpers ─────────────────────────────────────────────────
+// Selection carries a kind so the overlay and delete logic know whether
+// they're acting on a drawing shape or a toy: { kind: 'shape'|'toy', id }.
+function mySelection() { return awareness.getLocalState()?.selection ?? null }
+function setSelection(kind, id) {
+  awareness.setLocalStateField('selection', (kind && id) ? { kind, id } : null)
+  renderPresence()
 }
-function setSelection(shapeId) {
-  awareness.setLocalStateField('selection', shapeId ? { shapeId } : null);
-  renderPresence();
-}
 
-// Status
-const dot = document.getElementById('statusDot');
-provider.on('synced', () => {
-  dot.className = 'status-dot connected';
-  addLog('synced with peers', 'remote');
-});
+// ── Status ────────────────────────────────────────────────────────────
+const dot = document.getElementById('statusDot')
+provider.on('synced', () => { dot.className = 'status-dot connected'; addLog('synced with peers', 'remote') })
 provider.on('status', ({ connected }) => {
-  dot.className = connected ? 'status-dot connected' : 'status-dot connecting';
-});
+  dot.className = connected ? 'status-dot connected' : 'status-dot connecting'
+})
 
-// UI state
-let tool        = 'rect';
-let fillColor   = COLORS[0];
-let strokeColor = 'none';
-let opacity     = 0.8;
-let strokeWidth = 1;
+// ── UI state ──────────────────────────────────────────────────────────
+// `mode` is the top-level modal switch (private, per-session). `tool` is the
+// active drawing tool, only meaningful in draw mode.
+let mode        = 'draw'   // 'draw' | 'toys'
+let tool        = 'rect'   // 'rect' | 'circle' | 'select'
+let fillColor   = COLORS[0]
+let strokeColor = 'none'
+let opacity     = 0.8
+let strokeWidth = 1
 
 // Swatches
-const STROKE_COLORS = ['none','#0c0c0f','#ffffff','#c8f060','#60c8f0','#f06090'];
+const STROKE_COLORS = ['none','#0c0c0f','#ffffff','#c8f060','#60c8f0','#f06090']
 function buildSwatches(id, colors, initial, cb) {
-  const wrap = document.getElementById(id);
+  const wrap = document.getElementById(id)
   colors.forEach(c => {
-    const el = document.createElement('div');
-    el.className    = 'swatch' + (c === initial ? ' active' : '');
-    el.style.background = c === 'none' ? 'transparent' : c;
-    el.style.border     = c === 'none' ? '2px solid #555' : '2px solid transparent';
+    const el = document.createElement('div')
+    el.className        = 'swatch' + (c === initial ? ' active' : '')
+    el.style.background = c === 'none' ? 'transparent' : c
+    el.style.border     = c === 'none' ? '2px solid #555' : '2px solid transparent'
     el.addEventListener('click', () => {
-      wrap.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
-      el.classList.add('active');
-      cb(c);
-    });
-    wrap.appendChild(el);
-  });
+      wrap.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'))
+      el.classList.add('active')
+      cb(c)
+    })
+    wrap.appendChild(el)
+  })
 }
-buildSwatches('fillSwatches',   COLORS,        fillColor,   v => fillColor   = v);
-buildSwatches('strokeSwatches', STROKE_COLORS, strokeColor, v => strokeColor = v);
+buildSwatches('fillSwatches',   COLORS,        fillColor,   v => fillColor   = v)
+buildSwatches('strokeSwatches', STROKE_COLORS, strokeColor, v => strokeColor = v)
 
 document.getElementById('opacitySlider').addEventListener('input', e => {
-  opacity = e.target.value / 100;
-  document.getElementById('opacityVal').textContent = opacity.toFixed(2);
-});
+  opacity = e.target.value / 100
+  document.getElementById('opacityVal').textContent = opacity.toFixed(2)
+})
 document.getElementById('strokeWidthSlider').addEventListener('input', e => {
-  strokeWidth = +e.target.value;
-  document.getElementById('strokeWidthVal').textContent = strokeWidth;
-});
+  strokeWidth = +e.target.value
+  document.getElementById('strokeWidthVal').textContent = strokeWidth
+})
 
-// Tools — a tool that draws is just a key into SHAPE_TYPES; 'select' isn't.
-const canvasWrap = document.getElementById('canvasWrap');
-function setTool(t) {
-  tool = t;
-  document.getElementById('toolRect').classList.toggle('active',   t === 'rect');
-  document.getElementById('toolCircle').classList.toggle('active', t === 'circle');
-  document.getElementById('toolSelect').classList.toggle('active', t === 'select');
-  canvasWrap.style.cursor = (t === 'select') ? 'default' : 'crosshair';
+// ── Mode + tools ──────────────────────────────────────────────────────
+const canvasWrap = document.getElementById('canvasWrap')
+
+// Top-level modal switch. Governs: which controls show, which layer is
+// interactive (pointer-events), the default cursor, and clears selection
+// because a selection's kind is mode-specific.
+function setMode(m) {
+  mode = m
+  document.getElementById('drawPanel').style.display    = (m === 'draw') ? '' : 'none'
+  document.getElementById('toysPanel').style.display    = (m === 'toys') ? '' : 'none'
+  document.getElementById('drawListSec').style.display  = (m === 'draw') ? '' : 'none'
+  document.getElementById('toysListSec').style.display  = (m === 'toys') ? '' : 'none'
+  document.getElementById('modeDraw').classList.toggle('active', m === 'draw')
+  document.getElementById('modeToys').classList.toggle('active', m === 'toys')
+  // only the active layer receives pointer events
+  svgEl.querySelector('#doc-layer').style.pointerEvents  = (m === 'draw') ? 'auto' : 'none'
+  svgEl.querySelector('#toys-layer').style.pointerEvents = (m === 'toys') ? 'auto' : 'none'
+  canvasWrap.style.cursor = (m === 'draw' && tool !== 'select') ? 'crosshair' : 'default'
+  setSelection(null, null)
 }
-document.getElementById('toolRect').addEventListener('click',   () => setTool('rect'));
-document.getElementById('toolCircle').addEventListener('click', () => setTool('circle'));
-document.getElementById('toolSelect').addEventListener('click', () => setTool('select'));
+document.getElementById('modeDraw').addEventListener('click', () => setMode('draw'))
+document.getElementById('modeToys').addEventListener('click', () => setMode('toys'))
 
-// Drawing
-const svgNS = 'http://www.w3.org/2000/svg';
-const svgEl   = document.getElementById('svg-canvas');
-const preview = document.getElementById('draw-preview');
-let drawing   = false;
-let drawStart = null;
+function setTool(t) {
+  tool = t
+  if (mode !== 'draw') { setMode('draw'); return setTool(t) }  // re-enter once in draw mode
+  document.getElementById('toolRect').classList.toggle('active',   t === 'rect')
+  document.getElementById('toolCircle').classList.toggle('active', t === 'circle')
+  document.getElementById('toolSelect').classList.toggle('active', t === 'select')
+  canvasWrap.style.cursor = (t === 'select') ? 'default' : 'crosshair'
+}
+document.getElementById('toolRect').addEventListener('click',   () => setTool('rect'))
+document.getElementById('toolCircle').addEventListener('click', () => setTool('circle'))
+document.getElementById('toolSelect').addEventListener('click', () => setTool('select'))
+
+// ── Toy placement ─────────────────────────────────────────────────────
+// Places a toy near the center of the visible canvas with a small random
+// offset so multiple placements don't stack. Async: addToy fetches + imports.
+async function placeToy(toyType) {
+  const { width, height } = canvasWrap.getBoundingClientRect()
+  const x = Math.round(width  / 2 + (Math.random() - 0.5) * 120)
+  const y = Math.round(height / 2 + (Math.random() - 0.5) * 120)
+  const id = uid()
+  try {
+    await addToy(ydoc, yToys, yToyMeta, { id, toyType, x, y, color: myColor, author: myId })
+    addLog(`placed ${toyType} ${id.slice(0,6)}`, 'local')
+  } catch (err) {
+    addLog(`failed to place ${toyType}: ${err.message}`, 'del')
+    console.error(err)
+  }
+}
+
+document.getElementById('addPlayerMarker').addEventListener('click', () => placeToy('player_marker'))
+
+// ── Drawing input ─────────────────────────────────────────────────────
+const svgNS = 'http://www.w3.org/2000/svg'
+const svgEl   = document.getElementById('svg-canvas')
+const preview = document.getElementById('draw-preview')
+let drawing   = false
+let drawStart = null
+
+// Toy drag state (toys mode). Movement is applied to the DOM live during the
+// drag and committed to the CRDT once on drop, so dragging produces no ops and
+// no per-frame re-render.
+let drag = null            // { id, start, startX, startY, lastX, lastY, renderedSvg, gEl, moved }
+let suppressDeselect = false
 
 function getPos(e) {
-  const r = canvasWrap.getBoundingClientRect();
-  return { x: e.clientX - r.left, y: e.clientY - r.top };
+  const r = canvasWrap.getBoundingClientRect()
+  return { x: e.clientX - r.left, y: e.clientY - r.top }
 }
 
-// mousedown on the wrap (catches svg and background). Any drawing tool starts
-// a drag; the 'select' tool (not in SHAPE_TYPES) falls through.
-canvasWrap.addEventListener('mousedown', e => {
-  if (!SHAPE_TYPES[tool] || e.button !== 0) return;
-  drawing   = true;
-  drawStart = getPos(e);
-  preview.style.cssText = `display:block;left:${drawStart.x}px;top:${drawStart.y}px;width:0px;height:0px;`;
-  document.getElementById('hint').style.display = 'none';
-  e.preventDefault();
-});
+// Begin dragging a toy: capture the embedded svg's current x/y from the CRDT
+// and the pointer start, then track the live element to move during mousemove.
+function beginToyDrag(id, gEl, ev) {
+  const g = findToy(yToys, id)
+  if (!g) return
+  const svgY = g.toArray().find(e => e instanceof Y.XmlElement && e.nodeName === 'svg')
+  if (!svgY) return
+  const startX = parseFloat(svgY.getAttribute('x'))
+  const startY = parseFloat(svgY.getAttribute('y'))
+  drag = {
+    id, start: getPos(ev), startX, startY, lastX: startX, lastY: startY,
+    renderedSvg: gEl.querySelector('svg'), gEl, moved: false,
+  }
+  gEl.style.cursor = 'grabbing'
+  ev.preventDefault()
+}
 
-// mousemove + mouseup on window so we don't lose the drag if cursor leaves.
-// The preview is always the drag bounding box, whatever the shape type.
+canvasWrap.addEventListener('mousedown', e => {
+  if (mode !== 'draw' || !SHAPE_TYPES[tool] || e.button !== 0) return
+  drawing   = true
+  drawStart = getPos(e)
+  preview.style.cssText = `display:block;left:${drawStart.x}px;top:${drawStart.y}px;width:0px;height:0px;`
+  document.getElementById('hint').style.display = 'none'
+  e.preventDefault()
+})
+
 window.addEventListener('mousemove', e => {
-  if (!drawing) return;
-  const cur = getPos(e);
-  const x = Math.min(drawStart.x, cur.x);
-  const y = Math.min(drawStart.y, cur.y);
-  const w = Math.abs(cur.x - drawStart.x);
-  const h = Math.abs(cur.y - drawStart.y);
-  preview.style.left   = x + 'px';
-  preview.style.top    = y + 'px';
-  preview.style.width  = w + 'px';
-  preview.style.height = h + 'px';
-});
+  // toy drag: move the rendered svg directly, no CRDT write
+  if (drag) {
+    const cur = getPos(e)
+    const nx = Math.round(drag.startX + (cur.x - drag.start.x))
+    const ny = Math.round(drag.startY + (cur.y - drag.start.y))
+    drag.lastX = nx
+    drag.lastY = ny
+    if (Math.abs(cur.x - drag.start.x) > 2 || Math.abs(cur.y - drag.start.y) > 2) drag.moved = true
+    if (drag.renderedSvg) {
+      drag.renderedSvg.setAttribute('x', nx)
+      drag.renderedSvg.setAttribute('y', ny)
+    }
+    renderOverlayLayer()   // keep the selection box on the toy during the drag
+    return
+  }
+  if (!drawing) return
+  const cur = getPos(e)
+  const x = Math.min(drawStart.x, cur.x)
+  const y = Math.min(drawStart.y, cur.y)
+  preview.style.left   = x + 'px'
+  preview.style.top    = y + 'px'
+  preview.style.width  = Math.abs(cur.x - drawStart.x) + 'px'
+  preview.style.height = Math.abs(cur.y - drawStart.y) + 'px'
+})
 
 window.addEventListener('mouseup', e => {
-  if (!drawing) return;
-  drawing = false;
-  preview.style.display = 'none';
-
-  const cur = getPos(e);
-  const x = Math.round(Math.min(drawStart.x, cur.x));
-  const y = Math.round(Math.min(drawStart.y, cur.y));
-  const w = Math.round(Math.abs(cur.x - drawStart.x));
-  const h = Math.round(Math.abs(cur.y - drawStart.y));
-  if (w < 4 || h < 4) return;
-
-  const def = SHAPE_TYPES[tool];
-  if (!def) return;
-
-  const id = uid();
-  addShape(ydoc, yTable, yShapeMeta, {
-    id,
-    type: tool,
-    ...def.fromDrag({ x, y, w, h }),
-    fill: fillColor,
-    stroke: strokeColor,
-    'stroke-width': strokeWidth,
-    opacity,
-    author: myId,
-  });
-  addLog(`added ${tool} ${id.slice(0,6)} (${w}×${h})`, 'local');
-});
-
-
-// ── Doc layer — driven by yTable ────────────────────────────────────
-// Generic: the Yjs node's tag IS the SVG tag and its attributes ARE
-// SVG-native, so rendering is just mirroring the CRDT XML into the DOM.
-// Any new shape type renders for free — no per-type branching.
-function renderDocLayer() {
-  const layer = svgEl.querySelector('#doc-layer');
-  layer.innerHTML = '';
-
-  yTable.toArray().forEach(yEl => {
-    if (!(yEl instanceof Y.XmlElement)) return;
-    const attrs = yEl.getAttributes();
-    const el    = document.createElementNS(svgNS, yEl.nodeName);
-    for (const k in attrs) el.setAttribute(k, attrs[k]);
-    el.setAttribute('data-yid', attrs.id);
-    el.style.cursor = 'pointer';
-    el.addEventListener('click', ev => {
-      if (tool !== 'select') return;
-      ev.stopPropagation();
-      setSelection(attrs.id);
-    });
-    layer.appendChild(el);
-  });
-
-  document.getElementById('shapeCount').textContent = yTable.length;
-}
-
-// ── Overlay layer — derived from awareness (identity) over doc (geometry) ──
-// Each peer's selection renders as a rect in their color.
-// Own selection: solid border. Remote peers: dashed border + name label.
-function renderOverlayLayer() {
-  const layer = svgEl.querySelector('#overlay-layer');
-  layer.innerHTML = '';
-
-  awareness.getStates().forEach((state, clientId) => {
-    if (!state?.selection?.shapeId) return;
-    const { shapeId } = state.selection;
-    const isMe  = clientId === awareness.clientID;
-    const color = isMe ? '#c8f060' : (state.color || '#888');
-
-    // Geometry comes from the document (works for rect, circle, …)
-    const geo = selectionGeometry(yTable, shapeId);
-    if (!geo) return;
-
-    // Selection rect
-    const rect = document.createElementNS(svgNS, 'rect');
-    rect.setAttribute('x',      geo.x);
-    rect.setAttribute('y',      geo.y);
-    rect.setAttribute('width',  geo.width);
-    rect.setAttribute('height', geo.height);
-    rect.setAttribute('fill',         'none');
-    rect.setAttribute('stroke',       color);
-    rect.setAttribute('stroke-width', isMe ? 2 : 1.5);
-    if (!isMe) rect.setAttribute('stroke-dasharray', '4 3');
-    rect.setAttribute('rx', 2);
-    layer.appendChild(rect);
-
-    // Name label (remote peers only — no need to label yourself)
-    if (!isMe) {
-      const name = state.id?.slice(0, 6) || '?';
-      const lx   = geo.x;
-      const ly   = geo.y - 4; // just above the rect
-
-      const bg = document.createElementNS(svgNS, 'rect');
-      bg.setAttribute('x',      lx);
-      bg.setAttribute('y',      ly - 11);
-      bg.setAttribute('width',  name.length * 6.5 + 8);
-      bg.setAttribute('height', 13);
-      bg.setAttribute('fill',   color);
-      bg.setAttribute('rx',     2);
-      layer.appendChild(bg);
-
-      const txt = document.createElementNS(svgNS, 'text');
-      txt.setAttribute('x',           lx + 4);
-      txt.setAttribute('y',           ly - 1);
-      txt.setAttribute('font-size',   9);
-      txt.setAttribute('font-family', 'DM Mono, monospace');
-      txt.setAttribute('fill',        '#0c0c0f');
-      txt.textContent = name;
-      layer.appendChild(txt);
+  // toy drag end: commit the final position to the CRDT once
+  if (drag) {
+    const d = drag
+    drag = null
+    if (d.gEl) d.gEl.style.cursor = 'grab'
+    if (d.moved) {
+      const g = findToy(yToys, d.id)
+      const svgY = g?.toArray().find(el => el instanceof Y.XmlElement && el.nodeName === 'svg')
+      if (svgY) {
+        ydoc.transact(() => {
+          svgY.setAttribute('x', String(d.lastX))
+          svgY.setAttribute('y', String(d.lastY))
+        })
+        addLog(`moved toy ${d.id.slice(0,6)}`, 'local')
+      }
+      suppressDeselect = true   // a click may fire after the drag; don't deselect
     }
-  });
+    return
+  }
+  if (!drawing) return
+  drawing = false
+  preview.style.display = 'none'
+
+  const cur = getPos(e)
+  const x = Math.round(Math.min(drawStart.x, cur.x))
+  const y = Math.round(Math.min(drawStart.y, cur.y))
+  const w = Math.round(Math.abs(cur.x - drawStart.x))
+  const h = Math.round(Math.abs(cur.y - drawStart.y))
+  if (w < 4 || h < 4) return
+
+  const def = SHAPE_TYPES[tool]
+  if (!def) return
+
+  const id = uid()
+  addShape(ydoc, yTable, yShapeMeta, {
+    id, type: tool,
+    ...def.fromDrag({ x, y, w, h }),
+    fill: fillColor, stroke: strokeColor,
+    'stroke-width': strokeWidth, opacity,
+    author: myId,
+  })
+  addLog(`drew ${tool} ${id.slice(0,6)} (${w}×${h})`, 'local')
+})
+
+// ── Renderers ─────────────────────────────────────────────────────────
+// Two pipelines, two sources of truth:
+//   renderDoc      — driven by yTable + yToys (CRDT document state)
+//   renderPresence — driven by awareness (ephemeral, per-session)
+// The overlay is refreshed by both because it projects presence over doc geometry.
+
+// Recursive SVG-aware mirror: Y.XmlElement tree → live SVG DOM.
+// Used by BOTH layers — drawing shapes are just shallow trees, toys are deep.
+// Note: Y.XmlElement.toDOM() builds HTML-namespaced nodes and would not
+// render as SVG, so we mirror with createElementNS ourselves. <script> nodes
+// are never mirrored into the live DOM (behaviour is the sandbox step, later).
+function yXmlToDom(yNode) {
+  if (yNode instanceof Y.XmlText) return document.createTextNode(yNode.toString())
+  if (!(yNode instanceof Y.XmlElement)) return null
+  if (yNode.nodeName === 'script') return null
+
+  const el = document.createElementNS(svgNS, yNode.nodeName)
+  const attrs = yNode.getAttributes()
+  for (const k in attrs) {
+    if (k === 'xlink:href') el.setAttributeNS(XLINK_NS, 'href', attrs[k])
+    else                    el.setAttribute(k, attrs[k])
+  }
+  yNode.toArray().forEach(child => {
+    const dom = yXmlToDom(child)
+    if (dom) el.appendChild(dom)
+  })
+  return el
 }
 
-// ── Render pipelines ─────────────────────────────────────────────────
-// Two sources of truth, two pipelines:
-//   renderDoc      — driven by yTable (CRDT document state)
-//   renderPresence — driven by awareness (ephemeral, per-session state)
-// The overlay is a derived view of presence OVER doc geometry, so both
-// pipelines refresh it. This is the render fan-out in miniature.
-function renderDoc() {
-  renderDocLayer();        // #doc-layer + shape count — doc only
-  renderShapeList();       // which shapes exist — doc only
-  renderMeta();
-  renderOverlayLayer();    // overlay geometry comes from the doc
-  applySelectionHighlight();
+// Drawing layer — mirror each top-level shape; wire selection on click.
+function renderDocLayer() {
+  const layer = svgEl.querySelector('#doc-layer')
+  layer.innerHTML = ''
+  yTable.toArray().forEach(yEl => {
+    if (!(yEl instanceof Y.XmlElement)) return
+    const el = yXmlToDom(yEl)
+    if (!el) return
+    const id = yEl.getAttribute('id')
+    el.setAttribute('data-yid', id)
+    el.style.cursor = 'pointer'
+    el.addEventListener('click', ev => {
+      if (tool !== 'select') return
+      ev.stopPropagation()
+      setSelection('shape', id)
+    })
+    layer.appendChild(el)
+  })
+  document.getElementById('shapeCount').textContent = yTable.length
 }
 
-function renderPresence() {
-  renderOverlayLayer();    // overlay identity comes from presence
-  applySelectionHighlight();
-  updatePeerCount();
+// Toys layer — mirror each <g> wrapper (and its embedded <svg> sub-document).
+// mousedown selects the toy and begins a drag (toys mode only — the layer's
+// pointer-events are gated by setMode). Movement is applied to the DOM live and
+// committed to the CRDT on drop (see the window mouseup handler).
+function renderToysLayer() {
+  const layer = svgEl.querySelector('#toys-layer')
+  layer.innerHTML = ''
+  yToys.toArray().forEach(g => {
+    if (!(g instanceof Y.XmlElement)) return
+    const dom = yXmlToDom(g)
+    if (!dom) return
+    const id = g.getAttribute('data-toy-id')
+    dom.style.cursor = 'grab'
+
+    dom.addEventListener('mousedown', ev => {
+      if (mode !== 'toys' || ev.button !== 0) return
+      ev.stopPropagation()
+      setSelection('toy', id)
+      beginToyDrag(id, dom, ev)
+    })
+
+    // If this toy is mid-drag when an (external) re-render happens, re-apply the
+    // live drag position and re-acquire the element ref so the drag stays smooth.
+    if (drag && drag.id === id) {
+      const svg = dom.querySelector('svg')
+      if (svg) { svg.setAttribute('x', drag.lastX); svg.setAttribute('y', drag.lastY) }
+      drag.renderedSvg = svg
+      drag.gEl = dom
+      dom.style.cursor = 'grabbing'
+    }
+
+    layer.appendChild(dom)
+  })
+  document.getElementById('toyCount').textContent = yToys.length
 }
 
-function updatePeerCount() {
-  let peers = 0;
-  awareness.getStates().forEach((_, cid) => { if (cid !== awareness.clientID) peers++; });
-  document.getElementById('peerCount').textContent = peers;
-}
+// Overlay — selection rects and peer name labels.
+// Geometry comes from the doc; identity comes from awareness.
+// Both pipelines call this because it depends on both sources.
+function renderOverlayLayer() {
+  const layer = svgEl.querySelector('#overlay-layer')
+  layer.innerHTML = ''
+  awareness.getStates().forEach((state, clientId) => {
+    const sel = state?.selection
+    if (!sel?.id) return
+    const isMe  = clientId === awareness.clientID
+    const color = isMe ? '#c8f060' : (state.color || '#888')
+    // resolve geometry from the right layer based on the selection's kind
+    let geo = sel.kind === 'toy'
+      ? toyGeometry(yToys, sel.id)
+      : selectionGeometry(yTable, sel.id)
+    // while the local user is dragging this toy, follow the live position so
+    // the selection box doesn't lag behind the uncommitted move
+    if (geo && isMe && drag && drag.id === sel.id) {
+      const dx = drag.lastX - drag.startX
+      const dy = drag.lastY - drag.startY
+      geo = { ...geo, x: geo.x + dx, y: geo.y + dy }
+    }
+    if (!geo) return
 
-// Selection styling on existing list rows — cheap presence-driven pass,
-// no rebuild, so it doesn't couple the list's structure to selection.
-function applySelectionHighlight() {
-  const sel = mySelection()?.shapeId;
-  document.querySelectorAll('#shapeList .shape-item').forEach(row => {
-    row.classList.toggle('selected', row.dataset.id === sel);
-  });
+    const rect = document.createElementNS(svgNS, 'rect')
+    rect.setAttribute('x',            geo.x)
+    rect.setAttribute('y',            geo.y)
+    rect.setAttribute('width',        geo.width)
+    rect.setAttribute('height',       geo.height)
+    rect.setAttribute('fill',         'none')
+    rect.setAttribute('stroke',       color)
+    rect.setAttribute('stroke-width', isMe ? 2 : 1.5)
+    if (!isMe) rect.setAttribute('stroke-dasharray', '4 3')
+    rect.setAttribute('rx', 2)
+    layer.appendChild(rect)
+
+    if (!isMe) {
+      const name = state.id?.slice(0, 6) || '?'
+      const bg   = document.createElementNS(svgNS, 'rect')
+      bg.setAttribute('x',      geo.x)
+      bg.setAttribute('y',      geo.y - 15)
+      bg.setAttribute('width',  name.length * 6.5 + 8)
+      bg.setAttribute('height', 13)
+      bg.setAttribute('fill',   color)
+      bg.setAttribute('rx',     2)
+      layer.appendChild(bg)
+
+      const txt = document.createElementNS(svgNS, 'text')
+      txt.setAttribute('x',           geo.x + 4)
+      txt.setAttribute('y',           geo.y - 4)
+      txt.setAttribute('font-size',   9)
+      txt.setAttribute('font-family', 'DM Mono, monospace')
+      txt.setAttribute('fill',        '#0c0c0f')
+      txt.textContent = name
+      layer.appendChild(txt)
+    }
+  })
 }
 
 function renderShapeList() {
-  const list = document.getElementById('shapeList');
-  list.innerHTML = '';
+  const list = document.getElementById('shapeList')
+  list.innerHTML = ''
   listShapes(yTable, yShapeMeta, { newestFirst: true }).forEach(({ el, attrs, meta }) => {
-    const id  = attrs.id;
-    const def = SHAPE_TYPES[el.nodeName];
+    const def  = SHAPE_TYPES[el.nodeName]
+    const id   = attrs.id
+    const item = document.createElement('div')
+    item.className  = 'shape-item'
+    item.dataset.id = id
 
-    const item = document.createElement('div');
-    item.className   = 'shape-item';
-    item.dataset.id  = id;
+    const sw  = document.createElement('div')
+    sw.className        = 'shape-swatch'
+    sw.style.background = attrs.fill
 
-    const sw = document.createElement('div');
-    sw.className        = 'shape-swatch';
-    sw.style.background = attrs.fill;
+    const lbl = document.createElement('div')
+    lbl.className   = 'shape-label'
+    lbl.textContent = def ? def.label(attrs) : id.slice(0, 6)
 
-    const lbl = document.createElement('div');
-    lbl.className   = 'shape-label';
-    lbl.textContent = def ? def.label(attrs) : id.slice(0, 6);
+    const own = document.createElement('div')
+    own.className   = 'shape-owner'
+    own.textContent = meta?.author === myId ? 'me' : (meta?.author?.slice(0,5) || '?')
+    own.style.color = meta?.author === myId ? 'var(--accent)' : 'var(--muted)'
 
-    const own = document.createElement('div');
-    own.className   = 'shape-owner';
-    const author = meta?.author;
-    own.textContent = author === myId ? 'me' : (author?.slice(0,5) || '?');
-    own.style.color = author === myId ? 'var(--accent)' : 'var(--muted)';
+    const del = document.createElement('button')
+    del.className   = 'shape-del'
+    del.textContent = '×'
+    del.addEventListener('click', ev => { ev.stopPropagation(); deleteShapeById(id) })
 
-    const del = document.createElement('button');
-    del.className   = 'shape-del';
-    del.textContent = '×';
+    item.append(sw, lbl, own, del)
+    item.addEventListener('click', () => setSelection('shape', id))
+    list.appendChild(item)
+  })
+  applySelectionHighlight()
+}
+
+function renderToyList() {
+  const list = document.getElementById('toyList')
+  list.innerHTML = ''
+  listToys(yToys, yToyMeta).forEach(({ id, toyType, meta }) => {
+    const def  = TOY_TYPES[toyType]
+    const item = document.createElement('div')
+    item.className  = 'toy-item'
+    item.dataset.id = id
+
+    const dot = document.createElement('div')
+    dot.className        = 'toy-item-color'
+    dot.style.background = meta.color || 'var(--muted)'
+
+    const lbl = document.createElement('div')
+    lbl.className   = 'toy-item-label'
+    lbl.textContent = `${def?.label ?? toyType} · ${id.slice(0,6)}`
+
+    const own = document.createElement('div')
+    own.style.color    = meta.author === myId ? 'var(--accent)' : 'var(--muted)'
+    own.style.fontSize = '9px'
+    own.textContent    = meta.author === myId ? 'me' : (meta.author?.slice(0,5) || '?')
+
+    const del = document.createElement('button')
+    del.className   = 'toy-del'
+    del.textContent = '×'
     del.addEventListener('click', ev => {
-      ev.stopPropagation();
-      deleteShapeById(id);
-    });
+      ev.stopPropagation()
+      deleteToyById(id)
+    })
 
-    item.append(sw, lbl, own, del);
-    item.addEventListener('click', () => setSelection(id));
-    list.appendChild(item);
-  });
-  applySelectionHighlight();
+    item.append(dot, lbl, own, del)
+    item.addEventListener('click', () => setSelection('toy', id))
+    list.appendChild(item)
+  })
+  applySelectionHighlight()
 }
 
 function renderMeta() {
-  const el = document.getElementById('docMeta');
-  el.innerHTML = '';
+  const el = document.getElementById('docMeta')
+  el.innerHTML = ''
   yMeta.forEach((v, k) => {
-    const row = document.createElement('div');
-    row.innerHTML = `<span>${k}:</span> <span>${v}</span>`;
-    el.appendChild(row);
-  });
+    const row = document.createElement('div')
+    row.innerHTML = `<span>${k}:</span> <span>${v}</span>`
+    el.appendChild(row)
+  })
 }
 
-// Delete: delegates to shapes.js, then cleans up UI state
-function deleteShapeById(id) {
-  deleteShape(ydoc, yTable, yShapeMeta, id);
-  if (mySelection()?.shapeId === id) setSelection(null);
-  addLog(`deleted ${id.slice(0,6)}`, 'del');
+function applySelectionHighlight() {
+  const sel = mySelection()
+  const shapeId = sel?.kind === 'shape' ? sel.id : null
+  const toyId   = sel?.kind === 'toy'   ? sel.id : null
+  document.querySelectorAll('#shapeList .shape-item').forEach(row => {
+    row.classList.toggle('selected', row.dataset.id === shapeId)
+  })
+  document.querySelectorAll('#toyList .toy-item').forEach(row => {
+    row.classList.toggle('selected', row.dataset.id === toyId)
+  })
 }
 
-// Single observer on yTable covers all document changes → doc pipeline
+function updatePeerCount() {
+  let peers = 0
+  awareness.getStates().forEach((_, cid) => { if (cid !== awareness.clientID) peers++ })
+  document.getElementById('peerCount').textContent = peers
+}
+
+// Doc pipeline — all CRDT document state
+function renderDoc() {
+  renderDocLayer()           // drawing shapes  (XmlFragment → SVG)
+  renderToysLayer()          // placed toys     (Y.Map → SVG)
+  renderShapeList()          // drawing list UI
+  renderToyList()            // toys list UI
+  renderMeta()
+  renderOverlayLayer()       // overlay geometry comes from the doc
+  applySelectionHighlight()
+}
+
+// Presence pipeline — ephemeral awareness state
+function renderPresence() {
+  renderOverlayLayer()       // overlay identity comes from awareness
+  applySelectionHighlight()
+  updatePeerCount()
+}
+
+// ── Observers ─────────────────────────────────────────────────────────
 yTable.observe(event => {
   event.changes.added.forEach(item => {
     item.content.getContent().forEach(el => {
       if (el instanceof Y.XmlElement) {
-        const id     = el.getAttribute('id') || '?';
-        const author = (yShapeMeta.get(id) || {}).author;
-        if (author && author !== myId) {
-          addLog(`remote: added ${id.slice(0,6)} by ${author.slice(0,5)}`, 'remote');
-        }
+        const id     = el.getAttribute('id') || '?'
+        const author = (yShapeMeta.get(id) || {}).author
+        if (author && author !== myId)
+          addLog(`remote: drew ${id.slice(0,6)} by ${author.slice(0,5)}`, 'remote')
       }
-    });
-  });
+    })
+  })
   event.changes.deleted.forEach(item => {
     item.content.getContent().forEach(el => {
-      if (el instanceof Y.XmlElement) {
-        const id = el.getAttribute('id') || '?';
-        addLog(`remote: deleted ${id.slice(0,6)}`, 'del');
-      }
-    });
-  });
-  renderDoc();
-});
+      if (el instanceof Y.XmlElement)
+        addLog(`remote: deleted ${(el.getAttribute('id')||'?').slice(0,6)}`, 'del')
+    })
+  })
+  renderDoc()
+})
 
-// Awareness changes → presence pipeline
-awareness.on('change', renderPresence);
-
-// Keyboard
-window.addEventListener('keydown', e => {
-  if (e.key === 'r' || e.key === 'R') setTool('rect');
-  if (e.key === 'c' || e.key === 'C') setTool('circle');
-  if (e.key === 's' || e.key === 'S') setTool('select');
-  if (e.key === 'Escape') setSelection(null);
-  if ((e.key === 'Delete' || e.key === 'Backspace') && mySelection()) {
-    if (!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) {
-      deleteShapeById(mySelection().shapeId);
+// Toys: observeDeep so internal edits (recolor, flip, contents) re-render,
+// not just placements/removals. The structural event (target === yToys) is
+// where we log remote placements; transaction.local filters out our own ops.
+yToys.observeDeep((events, transaction) => {
+  if (!transaction.local) {
+    for (const event of events) {
+      if (event.target !== yToys) continue
+      event.changes.added.forEach(item => {
+        item.content.getContent().forEach(g => {
+          if (g instanceof Y.XmlElement && g.nodeName === 'g') {
+            const tid = g.getAttribute('data-toy-id') || '?'
+            addLog(`remote: placed ${g.getAttribute('data-toy-type')} ${tid.slice(0,6)}`, 'remote')
+          }
+        })
+      })
+      event.changes.deleted.forEach(() => addLog('remote: removed a toy', 'del'))
     }
   }
-});
+  renderDoc()
+})
 
-// Click on empty canvas deselects
+awareness.on('change', renderPresence)
+
+// ── Keyboard ──────────────────────────────────────────────────────────
+window.addEventListener('keydown', e => {
+  if (['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) return
+  if (e.key === '1') setMode('draw')
+  if (e.key === '2') setMode('toys')
+  if (e.key === 'r' || e.key === 'R') setTool('rect')    // setTool ensures draw mode
+  if (e.key === 'c' || e.key === 'C') setTool('circle')
+  if (e.key === 's' || e.key === 'S') setTool('select')
+  if (e.key === 'Escape') setSelection(null, null)
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    const sel = mySelection()
+    if (sel?.kind === 'shape') deleteShapeById(sel.id)
+    else if (sel?.kind === 'toy') deleteToyById(sel.id)
+  }
+})
+
 svgEl.addEventListener('click', e => {
-  if (!e.target.closest('[data-yid]')) setSelection(null);
-});
+  if (suppressDeselect) { suppressDeselect = false; return }
+  if (!e.target.closest('[data-yid],[data-toy-id]')) setSelection(null, null)
+})
 
-// Init
-renderDoc();
-renderPresence();
-addLog(`joined room ${roomId}`, 'local');
+// ── Helpers ───────────────────────────────────────────────────────────
+function deleteShapeById(id) {
+  deleteShape(ydoc, yTable, yShapeMeta, id)
+  if (mySelection()?.kind === 'shape' && mySelection()?.id === id) setSelection(null, null)
+  addLog(`deleted shape ${id.slice(0,6)}`, 'del')
+}
+
+function deleteToyById(id) {
+  deleteToy(ydoc, yToys, yToyMeta, id)
+  if (mySelection()?.kind === 'toy' && mySelection()?.id === id) setSelection(null, null)
+  addLog(`removed toy ${id.slice(0,6)}`, 'del')
+}
+
+// ── Init ──────────────────────────────────────────────────────────────
+setMode('draw')
+renderDoc()
+renderPresence()
+addLog(`joined room ${roomId}`, 'local')
 </script>
 </body>
 </html>
