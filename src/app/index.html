@@ -189,6 +189,7 @@
       <div class="sec">
         <div class="sec-label">Add Toy</div>
         <button class="toy-btn" id="addPlayerMarker">▲ &nbsp;Player Marker</button>
+        <button class="toy-btn" id="addDiceD6">⚄ &nbsp;D6</button>
       </div>
       <div class="sec">
         <div class="sec-label">Interact</div>
@@ -257,6 +258,8 @@ import {
   addToy, deleteToy, listToys, getToysLayer, findToy, toyGeometry, TOY_TYPES,
 }                                   from '/toys.js'
 
+import { entityGradient }            from '/entity_gradient.js'
+
 const XLINK_NS = 'http://www.w3.org/1999/xlink'
 
 const CURRENT_SCHEMA = 4
@@ -265,11 +268,15 @@ const uid = () => Math.random().toString(36).slice(2, 9)
 // ── Room + identity ───────────────────────────────────────────────────
 let roomId = location.hash.slice(1)
 if (!roomId) { roomId = uid(); location.hash = roomId }
-const myId    = uid()
-const COLORS  = ['#c8f060','#60c8f0','#f06090','#f0c060','#a060f0','#60f0c8','#f09060','#e8e8f0']
-const myColor = COLORS[Math.floor(Math.random() * COLORS.length)]
-document.getElementById('roomLabel').textContent  = roomId
+const myId = uid()
+// Deterministic gradient derived from the player's id.
+// c1  — a single HSL color, used for small indicators (dot, text, border)
+// grad — a CSS linear-gradient string, used for larger elements (SVG defs)
+const myGrad = entityGradient(myId)
+document.getElementById('roomLabel').textContent = roomId
+// Tint the player id label with their own c1
 document.getElementById('myIdLabel').textContent  = `me: ${myId}`
+document.getElementById('myIdLabel').style.color  = myGrad.c1
 
 // ── Logging ───────────────────────────────────────────────────────────
 function addLog(msg, type = '') {
@@ -277,6 +284,7 @@ function addLog(msg, type = '') {
   const entry = document.createElement('div')
   entry.className   = `log-entry ${type}`
   entry.textContent = `${new Date().toISOString().slice(11,19)} ${msg}`
+  if (type === 'local') entry.style.borderLeftColor = myGrad.c1
   log.prepend(entry)
   while (log.children.length > 40) log.lastChild.remove()
 }
@@ -309,7 +317,7 @@ persistence.on('synced', () => {
 const signalingUrl = new URLSearchParams(location.search).get('signaling') || 'ws://localhost:4444'
 const provider  = new WebrtcProvider(roomId, ydoc, { signaling: [signalingUrl] })
 const awareness = provider.awareness
-awareness.setLocalState({ id: myId, color: myColor, cursor: null, selection: null })
+awareness.setLocalState({ id: myId, c1: myGrad.c1, grad: myGrad.grad, cursor: null, selection: null })
 
 // ── Awareness helpers ─────────────────────────────────────────────────
 // Selection carries a kind so the overlay and delete logic know whether
@@ -328,16 +336,15 @@ provider.on('status', ({ connected }) => {
 })
 
 // ── UI state ──────────────────────────────────────────────────────────
-// `mode` is the top-level modal switch (private, per-session). `tool` is the
-// active drawing tool, only meaningful in draw mode.
-let mode        = 'draw'   // 'draw' | 'toys'
-let tool        = 'rect'   // 'rect' | 'circle' | 'select'
-let fillColor   = COLORS[0]
+let mode        = 'draw'
+let tool        = 'rect'
+let fillColor   = '#c8f060'
 let strokeColor = 'none'
 let opacity     = 0.8
 let strokeWidth = 1
 
-// Swatches
+// Drawing fill palette (independent of player color)
+const FILL_COLORS   = ['#c8f060','#60c8f0','#f06090','#f0c060','#a060f0','#60f0c8','#f09060','#e8e8f0']
 const STROKE_COLORS = ['none','#0c0c0f','#ffffff','#c8f060','#60c8f0','#f06090']
 function buildSwatches(id, colors, initial, cb) {
   const wrap = document.getElementById(id)
@@ -354,7 +361,7 @@ function buildSwatches(id, colors, initial, cb) {
     wrap.appendChild(el)
   })
 }
-buildSwatches('fillSwatches',   COLORS,        fillColor,   v => fillColor   = v)
+buildSwatches('fillSwatches',   FILL_COLORS,   fillColor,   v => fillColor   = v)
 buildSwatches('strokeSwatches', STROKE_COLORS, strokeColor, v => strokeColor = v)
 
 document.getElementById('opacitySlider').addEventListener('input', e => {
@@ -410,7 +417,7 @@ async function placeToy(toyType) {
   const y = Math.round(height / 2 + (Math.random() - 0.5) * 120)
   const id = uid()
   try {
-    await addToy(ydoc, yToys, yToyMeta, { id, toyType, x, y, color: myColor, author: myId })
+    await addToy(ydoc, yToys, yToyMeta, { id, toyType, x, y, color: myGrad.c1, author: myId })
     addLog(`placed ${toyType} ${id.slice(0,6)}`, 'local')
   } catch (err) {
     addLog(`failed to place ${toyType}: ${err.message}`, 'del')
@@ -419,11 +426,13 @@ async function placeToy(toyType) {
 }
 
 document.getElementById('addPlayerMarker').addEventListener('click', () => placeToy('player_marker'))
+document.getElementById('addDiceD6').addEventListener('click',       () => placeToy('dice_d6'))
 
 // ── Drawing input ─────────────────────────────────────────────────────
 const svgNS = 'http://www.w3.org/2000/svg'
 const svgEl   = document.getElementById('svg-canvas')
 const preview = document.getElementById('draw-preview')
+preview.style.borderColor = myGrad.c1   // deterministic player color, not fixed --accent
 let drawing   = false
 let drawStart = null
 
@@ -622,22 +631,63 @@ function renderToysLayer() {
 }
 
 // Overlay — selection rects and peer name labels.
-// Geometry comes from the doc; identity comes from awareness.
-// Both pipelines call this because it depends on both sources.
+// For each peer with a selection we inject a <linearGradient> into the SVG
+// <defs> keyed by their id, then stroke the selection rect with url(#...).
+// c1 (solid HSL) is used for small indicators (name label bg, text).
+// grad (as an SVG linearGradient) is used for the selection stroke border.
 function renderOverlayLayer() {
   const layer = svgEl.querySelector('#overlay-layer')
   layer.innerHTML = ''
+
+  // Collect defs we'll need, keyed by peer id
+  const defsEl = svgEl.querySelector('defs') ?? (() => {
+    const d = document.createElementNS(svgNS, 'defs')
+    svgEl.insertBefore(d, svgEl.firstChild)
+    return d
+  })()
+
+  // Remove previously injected peer gradient defs
+  defsEl.querySelectorAll('[data-peer-grad]').forEach(e => e.remove())
+
   awareness.getStates().forEach((state, clientId) => {
     const sel = state?.selection
     if (!sel?.id) return
     const isMe  = clientId === awareness.clientID
-    const color = isMe ? '#c8f060' : (state.color || '#888')
-    // resolve geometry from the right layer based on the selection's kind
+    const peerId = state.id || String(clientId)
+
+    // Resolve this peer's colors — from their awareness state, or fall back to
+    // a freshly computed gradient if they're on an older version of the client.
+    const peerGrad = (state.c1 && state.grad)
+      ? { c1: state.c1, grad: state.grad }
+      : entityGradient(peerId)
+
+    // Inject a <linearGradient> for this peer's selection stroke
+    const gradId = `peer-grad-${peerId.replace(/[^a-z0-9]/gi, '_')}`
+    const lg = document.createElementNS(svgNS, 'linearGradient')
+    lg.setAttribute('id', gradId)
+    lg.setAttribute('data-peer-grad', '1')
+    // Parse angle from the grad string ("linear-gradient(Ndeg, c1, c2)")
+    const angleMatch = peerGrad.grad.match(/(\d+)deg/)
+    const angle = angleMatch ? parseInt(angleMatch[1]) : 90
+    // Convert CSS gradient angle to SVG x1/y1/x2/y2
+    const rad = (angle - 90) * Math.PI / 180
+    lg.setAttribute('x1', (0.5 - 0.5 * Math.cos(rad)).toFixed(3))
+    lg.setAttribute('y1', (0.5 - 0.5 * Math.sin(rad)).toFixed(3))
+    lg.setAttribute('x2', (0.5 + 0.5 * Math.cos(rad)).toFixed(3))
+    lg.setAttribute('y2', (0.5 + 0.5 * Math.sin(rad)).toFixed(3))
+    const colorMatch = peerGrad.grad.match(/hsl\([^)]+\)/g) || []
+    const stops = colorMatch.length >= 2 ? colorMatch : [peerGrad.c1, peerGrad.c1]
+    stops.forEach((color, i) => {
+      const stop = document.createElementNS(svgNS, 'stop')
+      stop.setAttribute('offset', i === 0 ? '0%' : '100%')
+      stop.setAttribute('stop-color', color)
+      lg.appendChild(stop)
+    })
+    defsEl.appendChild(lg)
+
     let geo = sel.kind === 'toy'
       ? toyGeometry(yToys, sel.id)
       : selectionGeometry(yTable, sel.id)
-    // while the local user is dragging this toy, follow the live position so
-    // the selection box doesn't lag behind the uncommitted move
     if (geo && isMe && drag && drag.id === sel.id) {
       const dx = drag.lastX - drag.startX
       const dy = drag.lastY - drag.startY
@@ -645,26 +695,28 @@ function renderOverlayLayer() {
     }
     if (!geo) return
 
+    // Selection rect — gradient stroke
     const rect = document.createElementNS(svgNS, 'rect')
     rect.setAttribute('x',            geo.x)
     rect.setAttribute('y',            geo.y)
     rect.setAttribute('width',        geo.width)
     rect.setAttribute('height',       geo.height)
     rect.setAttribute('fill',         'none')
-    rect.setAttribute('stroke',       color)
-    rect.setAttribute('stroke-width', isMe ? 2 : 1.5)
-    if (!isMe) rect.setAttribute('stroke-dasharray', '4 3')
-    rect.setAttribute('rx', 2)
+    rect.setAttribute('stroke',       `url(#${gradId})`)
+    rect.setAttribute('stroke-width', isMe ? 2.5 : 1.5)
+    if (!isMe) rect.setAttribute('stroke-dasharray', '5 3')
+    rect.setAttribute('rx', 3)
     layer.appendChild(rect)
 
+    // Peer name label — c1 background, dark text (own label not shown)
     if (!isMe) {
-      const name = state.id?.slice(0, 6) || '?'
+      const name = peerId.slice(0, 6)
       const bg   = document.createElementNS(svgNS, 'rect')
       bg.setAttribute('x',      geo.x)
-      bg.setAttribute('y',      geo.y - 15)
+      bg.setAttribute('y',      geo.y - 16)
       bg.setAttribute('width',  name.length * 6.5 + 8)
-      bg.setAttribute('height', 13)
-      bg.setAttribute('fill',   color)
+      bg.setAttribute('height', 14)
+      bg.setAttribute('fill',   peerGrad.c1)
       bg.setAttribute('rx',     2)
       layer.appendChild(bg)
 
@@ -701,7 +753,7 @@ function renderShapeList() {
     const own = document.createElement('div')
     own.className   = 'shape-owner'
     own.textContent = meta?.author === myId ? 'me' : (meta?.author?.slice(0,5) || '?')
-    own.style.color = meta?.author === myId ? 'var(--accent)' : 'var(--muted)'
+    own.style.color = meta?.author === myId ? myGrad.c1 : 'var(--muted)'
 
     const del = document.createElement('button')
     del.className   = 'shape-del'
@@ -725,15 +777,17 @@ function renderToyList() {
     item.dataset.id = id
 
     const dot = document.createElement('div')
-    dot.className        = 'toy-item-color'
-    dot.style.background = meta.color || 'var(--muted)'
+    dot.className = 'toy-item-color'
+    // Use c1 from the author's deterministic gradient for the color dot
+    const authorGrad = meta.author ? entityGradient(meta.author) : null
+    dot.style.background = authorGrad ? authorGrad.c1 : 'var(--muted)'
 
     const lbl = document.createElement('div')
     lbl.className   = 'toy-item-label'
     lbl.textContent = `${def?.label ?? toyType} · ${id.slice(0,6)}`
 
     const own = document.createElement('div')
-    own.style.color    = meta.author === myId ? 'var(--accent)' : 'var(--muted)'
+    own.style.color    = meta.author === myId ? myGrad.c1 : 'var(--muted)'
     own.style.fontSize = '9px'
     own.textContent    = meta.author === myId ? 'me' : (meta.author?.slice(0,5) || '?')
 

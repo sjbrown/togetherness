@@ -3,6 +3,7 @@ import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   getToysLayer, svgTextToYXml, addToy, deleteToy, listToys, findToy, toyGeometry, TOY_TYPES,
+  hslToRgb, colorMatrixValues,
 } from '../../src/app/toys.js'
 
 // ── Fixtures & helpers ──────────────────────────────────────────────────────
@@ -38,12 +39,13 @@ function find(yEl, nodeName) {
   return null
 }
 
-// svgTextToYXml returns a DETACHED tree; reading it throws until integrated.
+// svgTextToYXml returns { ySvg, colorMatrices }; reading ySvg throws until integrated.
 // Integrate into a throwaway doc, then return the readable root.
 function importRoot(svgText, prefix) {
   const ydoc = new Y.Doc()
   const frag = ydoc.getXmlFragment('test')
-  ydoc.transact(() => frag.insert(0, [svgTextToYXml(svgText, prefix)]))
+  const { ySvg } = svgTextToYXml(svgText, prefix)
+  ydoc.transact(() => frag.insert(0, [ySvg]))
   return frag.toArray()[0]
 }
 
@@ -494,5 +496,158 @@ describe('movement', () => {
     expect(svgA.getAttribute('y')).toBe(svgB.getAttribute('y'))
     expect(Buffer.from(Y.encodeStateAsUpdate(p1)).toString('hex'))
       .toBe(Buffer.from(Y.encodeStateAsUpdate(p2)).toString('hex'))
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// hslToRgb
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('hslToRgb', () => {
+  test('pure red hsl(0, 100%, 50%)', () => {
+    const [r, g, b] = hslToRgb(0, 100, 50)
+    expect(r).toBeCloseTo(1, 2); expect(g).toBeCloseTo(0, 2); expect(b).toBeCloseTo(0, 2)
+  })
+  test('pure green hsl(120, 100%, 50%)', () => {
+    const [r, g, b] = hslToRgb(120, 100, 50)
+    expect(r).toBeCloseTo(0, 2); expect(g).toBeCloseTo(1, 2); expect(b).toBeCloseTo(0, 2)
+  })
+  test('pure blue hsl(240, 100%, 50%)', () => {
+    const [r, g, b] = hslToRgb(240, 100, 50)
+    expect(r).toBeCloseTo(0, 2); expect(g).toBeCloseTo(0, 2); expect(b).toBeCloseTo(1, 2)
+  })
+  test('white hsl(0, 0%, 100%)', () => {
+    const [r, g, b] = hslToRgb(0, 0, 100)
+    expect(r).toBeCloseTo(1, 2); expect(g).toBeCloseTo(1, 2); expect(b).toBeCloseTo(1, 2)
+  })
+  test('black hsl(0, 0%, 0%)', () => {
+    const [r, g, b] = hslToRgb(0, 0, 0)
+    expect(r).toBeCloseTo(0, 2); expect(g).toBeCloseTo(0, 2); expect(b).toBeCloseTo(0, 2)
+  })
+  test('output values are in [0, 1]', () => {
+    for (const [h, s, l] of [[30,80,40],[200,60,70],[300,100,20]]) {
+      const [r, g, b] = hslToRgb(h, s, l)
+      for (const v of [r, g, b]) {
+        expect(v).toBeGreaterThanOrEqual(0)
+        expect(v).toBeLessThanOrEqual(1)
+      }
+    }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// colorMatrixValues
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('colorMatrixValues', () => {
+  function parseMatrix(str) { return str.trim().split(/\s+/).map(Number) }
+
+  test('produces a 20-value string', () => {
+    expect(parseMatrix(colorMatrixValues('hsl(0, 100%, 50%)')).length).toBe(20)
+  })
+  test('red hsl(0,100%,50%) → R≈1, G≈0, B≈0', () => {
+    const m = parseMatrix(colorMatrixValues('hsl(0, 100%, 50%)'))
+    expect(m[0]).toBeCloseTo(1, 2); expect(m[5]).toBeCloseTo(0, 2); expect(m[10]).toBeCloseTo(0, 2)
+  })
+  test('blue hsl(240,100%,50%) → R≈0, B≈1', () => {
+    const m = parseMatrix(colorMatrixValues('hsl(240, 100%, 50%)'))
+    expect(m[0]).toBeCloseTo(0, 2); expect(m[10]).toBeCloseTo(1, 2)
+  })
+  test('alpha row is always 0 0 0 1 0', () => {
+    const m = parseMatrix(colorMatrixValues('hsl(120, 80%, 40%)'))
+    expect(m[15]).toBe(0); expect(m[16]).toBe(0); expect(m[17]).toBe(0)
+    expect(m[18]).toBe(1); expect(m[19]).toBe(0)
+  })
+  test('all non-diagonal values in RGB rows are 0', () => {
+    const m = parseMatrix(colorMatrixValues('hsl(200, 60%, 55%)'))
+    for (const i of [1,2,3,4,6,7,8,9,11,12,13,14]) expect(m[i]).toBe(0)
+  })
+  test('very dark color is boosted (sum of RGB ≥ 0.9)', () => {
+    const m = parseMatrix(colorMatrixValues('hsl(0, 0%, 5%)'))
+    expect(m[0] + m[5] + m[10]).toBeGreaterThanOrEqual(0.9)
+  })
+  test('hex #ff0000 → pure red', () => {
+    const m = parseMatrix(colorMatrixValues('#ff0000'))
+    expect(m[0]).toBeCloseTo(1, 2); expect(m[5]).toBeCloseTo(0, 2); expect(m[10]).toBeCloseTo(0, 2)
+  })
+  test('hex #0000ff → pure blue', () => {
+    const m = parseMatrix(colorMatrixValues('#0000ff'))
+    expect(m[0]).toBeCloseTo(0, 2); expect(m[10]).toBeCloseTo(1, 2)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// applyColor (via addToy)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('applyColor (via addToy)', () => {
+  function getMatrixEl(yToys) {
+    function find(el, name) {
+      if (!(el instanceof Y.XmlElement)) return null
+      if (el.nodeName === name) return el
+      for (const c of el.toArray()) { const h = find(c, name); if (h) return h }
+      return null
+    }
+    return find(yToys.toArray()[0], 'feColorMatrix')
+  }
+
+  test('feColorMatrix values are set after placement (red)', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys, yToyMeta } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, yToyMeta, {
+      id: 't1', toyType: 'player_marker', x: 100, y: 100,
+      color: 'hsl(0, 100%, 50%)', author: 'alice',
+    })
+    const m = getMatrixEl(yToys).getAttribute('values').trim().split(/\s+/).map(Number)
+    expect(m[0]).toBeCloseTo(1, 2)
+    expect(m[5]).toBeCloseTo(0, 2)
+    expect(m[10]).toBeCloseTo(0, 2)
+  })
+
+  test('two players get different feColorMatrix values', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys, yToyMeta } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, yToyMeta, { id: 'p1', toyType: 'player_marker', x: 0, y: 0, color: 'hsl(0, 100%, 50%)', author: 'alice' })
+    await addToy(ydoc, yToys, yToyMeta, { id: 'p2', toyType: 'player_marker', x: 0, y: 0, color: 'hsl(240, 100%, 50%)', author: 'bob' })
+
+    function getMatrix(g) {
+      function find(el, name) {
+        if (!(el instanceof Y.XmlElement)) return null
+        if (el.nodeName === name) return el
+        for (const c of el.toArray()) { const h = find(c, name); if (h) return h }
+        return null
+      }
+      return find(g, 'feColorMatrix')
+    }
+    const [g1, g2] = yToys.toArray()
+    const m1 = getMatrix(g1).getAttribute('values').trim().split(/\s+/).map(Number)
+    const m2 = getMatrix(g2).getAttribute('values').trim().split(/\s+/).map(Number)
+    expect(m1[0]).toBeGreaterThan(m1[10])   // red: R > B
+    expect(m2[10]).toBeGreaterThan(m2[0])   // blue: B > R
+  })
+
+  test('color matrix syncs to a peer unchanged', async () => {
+    const p1 = new Y.Doc(); const a = getToysLayer(p1)
+    await addToy(p1, a.yToys, a.yToyMeta, { id: 't', toyType: 'player_marker', x: 0, y: 0, color: 'hsl(120, 80%, 40%)', author: 'alice' })
+    const p2 = new Y.Doc(); const b = getToysLayer(p2)
+    Y.applyUpdate(p2, Y.encodeStateAsUpdate(p1))
+    function getMatrix(yToys) {
+      function find(el, name) {
+        if (!(el instanceof Y.XmlElement)) return null
+        if (el.nodeName === name) return el
+        for (const c of el.toArray()) { const h = find(c, name); if (h) return h }
+        return null
+      }
+      return find(yToys.toArray()[0], 'feColorMatrix')
+    }
+    expect(getMatrix(a.yToys).getAttribute('values')).toBe(getMatrix(b.yToys).getAttribute('values'))
+  })
+
+  test('placement without a color leaves default matrix values', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys, yToyMeta } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, yToyMeta, { id: 't1', toyType: 'player_marker', x: 0, y: 0, color: undefined, author: 'alice' })
+    // default from the TOY_SVG fixture: '1 0 0 0 0  1 0 0 0 0  1 0 0 0 0  0 0 0 1 0'
+    expect(getMatrixEl(yToys).getAttribute('values')).toContain('1 0 0 0 0')
   })
 })

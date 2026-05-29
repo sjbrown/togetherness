@@ -28,11 +28,101 @@ const XLINK_NS = 'http://www.w3.org/1999/xlink'
 // get added here as their behaviour comes online.
 export const TOY_TYPES = {
   player_marker: { file: 'player_marker.svg', label: 'Player Marker', icon: '▲' },
+  dice_d6:       { file: 'dice_d6.svg',       label: 'D6',            icon: '⚄' },
 }
 
 // Display size on the canvas. The toy's own viewBox is preserved, so the
 // content scales to fit (preserveAspectRatio defaults to xMidYMid meet).
 const DISPLAY = 64
+
+// ── Color matrix ──────────────────────────────────────────────────────────────
+// Recolorizes the toy's feColorMatrix filter to tint it with the player's
+// color, matching the technique from togetherness/src/js/utils.js.
+//
+// The feColorMatrix "values" attribute is a 4×5 matrix applied to each pixel:
+//   [R']   [r 0 0 0 0] [R]
+//   [G'] = [g 0 0 0 0] [G]
+//   [B']   [b 0 0 0 0] [B]
+//   [A']   [0 0 0 1 0] [A]
+//
+// A white source pixel (1,1,1) becomes (r,g,b). Grey pixels scale linearly.
+// The player_marker SVG is drawn in near-white (#f2f2f2) so the tint reads cleanly.
+//
+// If the color would be too dark (sum of RGB < 0.9, matching togetherness),
+// we boost it to 50% lightness so the marker stays visible on dark backgrounds.
+
+/**
+ * Convert HSL (degrees, percent, percent) to RGB in [0, 1].
+ * Pure function — no DOM required.
+ */
+export function hslToRgb(h, s, l) {
+  s /= 100; l /= 100
+  const k = n => (n + h / 30) % 12
+  const a = s * Math.min(l, 1 - l)
+  const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)))
+  return [f(0), f(8), f(4)]
+}
+
+/**
+ * Build the 20-value feColorMatrix string that tints any greyscale SVG to `color`.
+ * `color` must be a CSS color string. Accepts hsl(…), #rrggbb, or rgb(…).
+ *
+ * Returns the values string ready for setAttribute('values', …).
+ */
+export function colorMatrixValues(color) {
+  // Parse hsl(H, S%, L%) — our entityGradient always produces this format.
+  const hslMatch = color.match(/hsl\(\s*([\d.]+)[,\s]+([\d.]+)%[,\s]+([\d.]+)%/)
+  let r, g, b
+  if (hslMatch) {
+    ;[r, g, b] = hslToRgb(parseFloat(hslMatch[1]), parseFloat(hslMatch[2]), parseFloat(hslMatch[3]))
+  } else {
+    // Fallback: parse hex #rrggbb or #rgb
+    const hex = color.replace('#', '')
+    const full = hex.length === 3
+      ? hex.split('').map(c => c + c).join('')
+      : hex
+    r = parseInt(full.slice(0,2), 16) / 255
+    g = parseInt(full.slice(2,4), 16) / 255
+    b = parseInt(full.slice(4,6), 16) / 255
+  }
+  // Boost very dark colors to 50% lightness so the marker stays visible
+  if (r + g + b < 0.9) {
+    const max = Math.max(r, g, b), min = Math.min(r, g, b)
+    const hue = max === min ? 0
+      : max === r ? ((g - b) / (max - min) + (g < b ? 6 : 0)) / 6
+      : max === g ? ((b - r) / (max - min) + 2) / 6
+      :             ((r - g) / (max - min) + 4) / 6
+    ;[r, g, b] = hslToRgb(hue * 360, 50, 50)
+  }
+  const f = v => v.toFixed(4)
+  return `${f(r)} 0 0 0 0  ${f(g)} 0 0 0 0  ${f(b)} 0 0 0 0  0 0 0 1 0`
+}
+
+/**
+ * Walk a Y.XmlElement tree and find a node by nodeName.
+ * Returns the first match or null.
+ */
+function findYNode(yEl, nodeName) {
+  if (!(yEl instanceof Y.XmlElement)) return null
+  if (yEl.nodeName === nodeName) return yEl
+  for (const child of yEl.toArray()) {
+    const hit = findYNode(child, nodeName)
+    if (hit) return hit
+  }
+  return null
+}
+
+/**
+ * Apply a player color to all feColorMatrix nodes in the toy's Yjs tree.
+ * Uses the direct refs captured during elementToYXml so no tree-walk
+ * on detached nodes is needed (toArray on detached throws).
+ */
+function applyColor(colorMatrices, color) {
+  const values = colorMatrixValues(color)
+  for (const matrix of colorMatrices) {
+    matrix.setAttribute('values', values)
+  }
+}
 
 // ── Layer accessor ────────────────────────────────────────────────────────────
 export function getToysLayer(ydoc) {
@@ -55,8 +145,15 @@ function rewriteUrlRefs(value, idMap) {
 // - drops <script> (behaviour is handled separately via the sandbox, later)
 // - namespaces every id and every internal reference via idMap, so multiple
 //   placed instances don't collide on ids like #app-filter-colorize
-function elementToYXml(node, idMap) {
+// - if `refs` is provided, pushes direct Y.XmlElement refs for any
+//   feColorMatrix nodes into refs.colorMatrices so callers can setAttribute
+//   immediately without walking the detached tree (which throws on toArray).
+function elementToYXml(node, idMap, refs) {
   const yEl = new Y.XmlElement(node.localName)
+
+  if (refs && node.localName === 'feColorMatrix') {
+    refs.colorMatrices.push(yEl)
+  }
 
   for (const attr of Array.from(node.attributes)) {
     // keep only SVG and xlink attributes
@@ -79,7 +176,7 @@ function elementToYXml(node, idMap) {
     if (child.nodeType === 1) {                                   // ELEMENT_NODE
       if (child.namespaceURI && child.namespaceURI !== SVG_NS) continue
       if (child.localName === 'script') continue
-      children.push(elementToYXml(child, idMap))
+      children.push(elementToYXml(child, idMap, refs))
     } else if (child.nodeType === 3) {                            // TEXT_NODE
       if (child.textContent.trim() !== '') children.push(new Y.XmlText(child.textContent))
     }
@@ -92,6 +189,10 @@ function elementToYXml(node, idMap) {
  * Parse a toy SVG file's text into a detached Y.XmlElement rooted at <svg>,
  * with all internal ids namespaced by `prefix`. Synthesizes a viewBox from
  * width/height if the file lacks one (so display sizing scales the content).
+ *
+ * Returns { ySvg, colorMatrices } where colorMatrices is an array of direct
+ * refs to any feColorMatrix nodes, usable immediately via setAttribute without
+ * needing to walk the detached tree (which throws on toArray).
  */
 export function svgTextToYXml(svgText, prefix) {
   const dom  = new DOMParser().parseFromString(svgText, 'image/svg+xml')
@@ -103,13 +204,14 @@ export function svgTextToYXml(svgText, prefix) {
     if (id) idMap.set(id, prefix + id)
   }
 
-  const ySvg = elementToYXml(root, idMap)
+  const refs = { colorMatrices: [] }
+  const ySvg = elementToYXml(root, idMap, refs)
   if (!root.getAttribute('viewBox')) {
     const w = parseFloat(root.getAttribute('width'))  || 100
     const h = parseFloat(root.getAttribute('height')) || 100
     ySvg.setAttribute('viewBox', `0 0 ${w} ${h}`)
   }
-  return ySvg
+  return { ySvg, colorMatrices: refs.colorMatrices }
 }
 
 // ── Toy operations ────────────────────────────────────────────────────────────
@@ -125,7 +227,13 @@ export async function addToy(ydoc, yToys, yToyMeta, attrs) {
 
   const res = await fetch(`/toy/${def.file}`)
   if (!res.ok) throw new Error(`failed to load ${def.file}: ${res.status}`)
-  const ySvg = svgTextToYXml(await res.text(), `${id}__`)
+  const prefix = `${id}__`
+  const { ySvg, colorMatrices } = svgTextToYXml(await res.text(), prefix)
+
+  // Tint the toy's colorize filter with the player's color before insertion.
+  // The matrix values are set on the direct refs captured during import,
+  // so the color is part of the CRDT state from the moment the toy is placed.
+  if (color) applyColor(colorMatrices, color)
 
   ydoc.transact(() => {
     // size + center the embedded sub-document on (x, y)
