@@ -390,11 +390,19 @@ const App = {
     return { x: geo.x, y: geo.y, width: geo.width, height: geo.height };
   },
   getShapeGeom:    (id) => {
-    //TODO: make this work for toys as well
-    const result = findShape(_yDrawing, id);
-    if (!result) return { x: 0, y: 0 };
-    const attrs = result.el.getAttributes();
-    return { x: +(attrs.x ?? attrs.cx ?? 0), y: +(attrs.y ?? attrs.cy ?? 0) };
+    // Try the drawing layer first, then toys.
+    const yEl = findShape(_yDrawing, id);
+    if (yEl) {
+      const a = yEl.getAttributes();
+      return { x: +(a.x ?? a.cx ?? 0), y: +(a.y ?? a.cy ?? 0) };
+    }
+    const toy = findToy(_yToys, id);
+    if (toy) {
+      // Position is stored on the embedded <svg> child as x/y.
+      const svg = toy.toArray().find(e => e instanceof Y.XmlElement && e.nodeName === 'svg');
+      if (svg) return { x: +svg.getAttribute('x') || 0, y: +svg.getAttribute('y') || 0 };
+    }
+    return { x: 0, y: 0 };
   },
   getShapeList:    () => listShapes(_yDrawing, _yDrawingMeta, { newestFirst: false }).map(({ attrs, meta }) => ({
     id:     attrs.id,
@@ -432,47 +440,47 @@ const App = {
   },
 
   deleteShape: (id) => {
-    const result = findShape(_yDrawing, id);
-    if (!result) return;
-    const snap = result.el.getAttributes();
+    const yEl = findShape(_yDrawing, id);
+    if (!yEl) return;
+    const snap = yEl.getAttributes();
     _undoStack.push({ op: 'del', attrs: snap, meta: _yDrawingMeta.get(id) });
     deleteShape(_ydoc, _yDrawing, _yDrawingMeta, id);
     if (_selectedId === id) App.selectShape(null);
-    addHistory(`deleted ${id.slice(0, 6)}`, { fill: snap.fill, shapeType: result.el.nodeName });
+    addHistory(`deleted ${id.slice(0, 6)}`, { fill: snap.fill, shapeType: yEl.nodeName });
     App.addLog(`deleted ${id.slice(0, 6)}`, 'local');
   },
 
   deleteSelected:   () => { if (_selectedId) App.deleteShape(_selectedId); },
   duplicateSelected: () => {
     if (!_selectedId) return;
-    const result = findShape(_yDrawing, _selectedId);
-    if (!result) return;
-    const attrs = result.el.getAttributes();
-    const def   = SHAPE_TYPES[result.el.nodeName];
+    const yEl = findShape(_yDrawing, _selectedId);
+    if (!yEl) return;
+    const attrs = yEl.getAttributes();
+    const def   = SHAPE_TYPES[yEl.nodeName];
     if (!def) return;
     const offset = { x: +(attrs.x ?? attrs.cx ?? 0) + 22, y: +(attrs.y ?? attrs.cy ?? 0) + 22 };
     const geom   = def.tag === 'rect'
       ? { x: offset.x, y: offset.y, width: +attrs.width, height: +attrs.height }
       : { cx: offset.x, cy: offset.y, r: +attrs.r };
-    App.commitShape({ type: result.el.nodeName, ...geom, fill: attrs.fill, stroke: attrs.stroke, 'stroke-width': attrs['stroke-width'], opacity: attrs.opacity });
+    App.commitShape({ type: yEl.nodeName, ...geom, fill: attrs.fill, stroke: attrs.stroke, 'stroke-width': attrs['stroke-width'], opacity: attrs.opacity });
   },
 
   moveShape: (id, x, y) => {
-    const result = findShape(_yDrawing, id);
-    if (!result) return;
+    const yEl = findShape(_yDrawing, id);
+    if (!yEl) return;
     _ydoc.transact(() => {
-      if (result.el.nodeName === 'rect') {
-        result.el.setAttribute('x', String(Math.round(x)));
-        result.el.setAttribute('y', String(Math.round(y)));
+      if (yEl.nodeName === 'rect') {
+        yEl.setAttribute('x', String(Math.round(x)));
+        yEl.setAttribute('y', String(Math.round(y)));
       } else {
-        result.el.setAttribute('cx', String(Math.round(x)));
-        result.el.setAttribute('cy', String(Math.round(y)));
+        yEl.setAttribute('cx', String(Math.round(x)));
+        yEl.setAttribute('cy', String(Math.round(y)));
       }
     });
     // Live re-render without waiting for observer (smoother drag)
     const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
     if (domEl) {
-      if (result.el.nodeName === 'rect') { domEl.setAttribute('x', Math.round(x)); domEl.setAttribute('y', Math.round(y)); }
+      if (yEl.nodeName === 'rect') { domEl.setAttribute('x', Math.round(x)); domEl.setAttribute('y', Math.round(y)); }
       else { domEl.setAttribute('cx', Math.round(x)); domEl.setAttribute('cy', Math.round(y)); }
     }
     Overlay.render();
@@ -480,9 +488,9 @@ const App = {
 
   bringToFront: () => {
     if (!_selectedId) return;
-    const result = findShape(_yDrawing, _selectedId);
-    if (!result) return;
-    const { el: yEl, index } = result;
+    const yEl = findShape(_yDrawing, _selectedId);
+    if (!yEl) return;
+    const index = _yDrawing.toArray().indexOf(yEl);
     _ydoc.transact(() => {
       _yDrawing.delete(index, 1);
       _yDrawing.insert(_yDrawing.length, [yEl]);
@@ -491,9 +499,9 @@ const App = {
   },
 
   setShapeAttr: (id, key, value) => {
-    const result = findShape(_yDrawing, id);
-    if (!result) return;
-    _ydoc.transact(() => result.el.setAttribute(key, String(value)));
+    const yEl = findShape(_yDrawing, id);
+    if (!yEl) return;
+    _ydoc.transact(() => yEl.setAttribute(key, String(value)));
   },
 
   // ── Tool selection + params (ui.js → app → canvas.js) ─────────────────────
