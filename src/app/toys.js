@@ -1,4 +1,15 @@
 /**
+ * toys.js — toys-layer tool registry
+ *
+ * Authority for which tools exist on the 'toys' layer (player markers, dice)
+ * and what options each exposes. ui.js asks App for this; it never hard-codes
+ * marker/d6.
+ *
+ * Toys are the game-specific objects: tokens players move around the map,
+ * dice they roll. Like tools-shapes.js, this file describes the *palette*;
+ *
+ */
+/**
  * toys.js — CRDT operations for the toys layer
  *
  * Unlike shapes.js, this module is browser-coupled: importing a toy needs
@@ -17,11 +28,16 @@
  *
  * yToyMeta sidecar (Y.Map): id → { author, toyType, color, created }
  */
-
-import * as Y from 'yjs'
+import * as Y from 'yjs';
 
 const SVG_NS   = 'http://www.w3.org/2000/svg'
 const XLINK_NS = 'http://www.w3.org/1999/xlink'
+
+import { swatches, stepper, toggle } from './tools-schema.js';
+
+const svg = (inner) =>
+  `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+
 
 // ── Toy-type registry ─────────────────────────────────────────────────────────
 // Seed of the toy library. Only player_marker is wired up; dice/tokens/trays
@@ -30,6 +46,7 @@ export const TOY_TYPES = {
   player_marker: { file: 'player_marker.svg', label: 'Player Marker', icon: '▲' },
   dice_d6:       { file: 'dice_d6.svg',       label: 'D6',            icon: '⚄' },
 }
+
 
 // Display size on the canvas. The toy's own viewBox is preserved, so the
 // content scales to fit (preserveAspectRatio defaults to xMidYMid meet).
@@ -300,10 +317,39 @@ export function toyGeometry(yToys, id, PAD = 4) {
  */
 export function listToys(yToys, yToyMeta) {
   const results = []
-  yToys.toArray().forEach(g => {
-    if (!(g instanceof Y.XmlElement)) return
-    const id = g.getAttribute('data-toy-id')
-    results.push({ el: g, id, toyType: g.getAttribute('data-toy-type'), meta: yToyMeta.get(id) ?? {} })
+  yToys.toArray().forEach(yEl => {
+    if (!(yEl instanceof Y.XmlElement)) return
+    const id = yEl.getAttribute('data-toy-id')
+    results.push({ el: yEl, id, toyType: yEl.getAttribute('data-toy-type'), meta: yToyMeta.get(id) ?? {} })
   })
   return results
 }
+
+export const TOOLS = [
+  {
+    name:  'marker',
+    label: TOY_TYPES['player_marker'].label,
+    icon: svg(TOY_TYPES['player_marker'].icon),
+    layer: 'toys',
+    defaults: { fill: '#a85e5e', label: '', size: 24 },
+    options: [
+      swatches('fill', 'Token color'),
+      stepper('size', 'Size', { min: 12, max: 64, step: 4 }),
+      toggle('showLabel', 'Show name label'),
+    ],
+  },
+  {
+    name:  'd6',
+    label: TOY_TYPES['dice_d6'].label,
+    icon: svg(TOY_TYPES['dice_d6'].icon),
+    layer: 'toys',
+    defaults: { fill: '#a8905e', faces: 6 },
+    options: [
+      swatches('fill', 'Die color'),
+      stepper('faces', 'Faces', { min: 4, max: 20, step: 2 }),
+      toggle('autoRoll', 'Roll on drop'),
+    ],
+  },
+];
+
+

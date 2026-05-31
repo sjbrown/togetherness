@@ -1,246 +1,141 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CRDT SVG — Collaborative Canvas</title>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>crdt-svg</title>
 <link rel="icon" type="image/svg+xml"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='black'/%3E%3Ctext x='3' y='26' font-size='26' fill='%23fffff0' font-family='serif' letter-spacing='-5'%3ETT%3C/text%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
-<style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  :root {
-    --bg: #0c0c0f; --surface: #13131a; --border: #2a2a38;
-    --accent: #c8f060; --accent2: #60c8f0; --muted: #555570;
-    --text: #e8e8f0; --text-dim: #8888a8; --danger: #f06060;
-  }
-  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; overflow: hidden; }
-  .shell { display: grid; grid-template-rows: 48px 1fr; grid-template-columns: 200px 1fr 200px; height: 100vh; }
-  .topbar {
-    grid-column: 1 / -1; display: flex; align-items: center; padding: 0 20px; gap: 16px;
-    border-bottom: 1px solid var(--border); background: var(--surface);
-  }
-  .logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 15px; color: var(--accent); }
-  .logo span { color: var(--text-dim); font-weight: 400; }
-  .room-pill {
-    display: flex; align-items: center; gap: 8px; background: var(--bg);
-    border: 1px solid var(--border); border-radius: 4px; padding: 4px 10px; font-size: 11px; color: var(--text-dim);
-  }
-  .room-pill code { color: var(--accent2); font-family: inherit; }
-  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); transition: background 0.4s; }
-  .status-dot.connected  { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
-  .status-dot.connecting { background: #f0c060; animation: pulse 1s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.3} }
-  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 11px; color: var(--text-dim); }
-  .topbar-right strong { color: var(--accent); }
-  .sidebar {
-    background: var(--surface); border-right: 1px solid var(--border);
-    padding: 14px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; font-size: 11px;
-  }
-  .sidebar.right { border-right: none; border-left: 1px solid var(--border); }
-  /* Top-level mode switcher (segmented control) */
-  .mode-switch { display: flex; gap: 4px; padding: 3px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
-  .mode-btn {
-    flex: 1; padding: 8px 6px; border: none; border-radius: 4px; background: transparent;
-    color: var(--text-dim); font-family: 'Syne', sans-serif; font-weight: 700; font-size: 12px;
-    cursor: pointer; transition: all 0.12s; letter-spacing: 0.03em;
-  }
-  .mode-btn:hover { color: var(--text); }
-  .mode-btn.active { background: var(--accent); color: var(--bg); }
-  .mode-btn.toys.active { background: var(--accent2); }
-  .mode-panel { display: flex; flex-direction: column; gap: 14px; }
-  .sec { display: flex; flex-direction: column; gap: 7px; }
-  .sec-label { text-transform: uppercase; letter-spacing: 0.12em; font-size: 9px; color: var(--muted); padding-bottom: 4px; border-bottom: 1px solid var(--border); }
-  .tool-btn {
-    display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 4px;
-    border: 1px solid transparent; background: transparent; color: var(--text-dim);
-    font-family: 'DM Mono', monospace; font-size: 11px; cursor: pointer; transition: all 0.12s; text-align: left;
-  }
-  .tool-btn:hover { background: var(--bg); color: var(--text); border-color: var(--border); }
-  .tool-btn.active { background: var(--bg); color: var(--accent); border-color: var(--accent); }
-  /* Toy palette buttons look like tool-btn but never stay "active" — they're actions */
-  .toy-btn {
-    display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 4px;
-    border: 1px solid var(--border); background: var(--bg); color: var(--text-dim);
-    font-family: 'DM Mono', monospace; font-size: 11px; cursor: pointer; transition: all 0.12s; text-align: left;
-  }
-  .toy-btn:hover { color: var(--accent2); border-color: var(--accent2); }
-  .toy-btn:active { transform: scale(0.97); }
-  .swatches { display: flex; flex-wrap: wrap; gap: 5px; }
-  .swatch {
-    width: 22px; height: 22px; border-radius: 3px; border: 2px solid transparent;
-    cursor: pointer; transition: transform 0.1s, border-color 0.12s;
-  }
-  .swatch:hover { transform: scale(1.15); }
-  .swatch.active { border-color: var(--text) !important; }
-  .slider-row { display: flex; flex-direction: column; gap: 3px; }
-  .slider-row label { color: var(--text-dim); display: flex; justify-content: space-between; font-size: 10px; }
-  .slider-row label span { color: var(--accent2); }
-  input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
-  .shape-list { display: flex; flex-direction: column; gap: 3px; max-height: 220px; overflow-y: auto; }
-  .shape-item {
-    display: flex; align-items: center; gap: 6px; padding: 5px 7px; border-radius: 3px;
-    border: 1px solid var(--border); background: var(--bg); cursor: pointer; transition: border-color 0.12s;
-  }
-  .shape-item:hover { border-color: var(--muted); }
-  .shape-item.selected { border-color: var(--accent); }
-  .shape-swatch { width: 11px; height: 11px; border-radius: 2px; flex-shrink: 0; }
-  .shape-label { color: var(--text-dim); flex: 1; font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .shape-owner { font-size: 9px; }
-  .shape-del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 0 2px; line-height: 1; }
-  .shape-del:hover { color: var(--danger); }
-  .toy-list { display: flex; flex-direction: column; gap: 3px; max-height: 120px; overflow-y: auto; }
-  .toy-item {
-    display: flex; align-items: center; gap: 6px; padding: 5px 7px; border-radius: 3px;
-    border: 1px solid var(--border); background: var(--bg); font-size: 9px; cursor: pointer; transition: border-color 0.12s;
-  }
-  .toy-item:hover { border-color: var(--muted); }
-  .toy-item.selected { border-color: var(--accent2); }
-  .toy-item-color { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .toy-item-label { color: var(--text-dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .toy-del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 0 2px; line-height: 1; }
-  .toy-del:hover { color: var(--danger); }
-  .canvas-wrap {
-    position: relative; overflow: hidden; background: var(--bg);
-    background-image:
-      radial-gradient(circle at 50% 50%, #1a1a2e 0%, transparent 70%),
-      linear-gradient(var(--border) 1px, transparent 1px),
-      linear-gradient(90deg, var(--border) 1px, transparent 1px);
-    background-size: 100% 100%, 28px 28px, 28px 28px;
-    cursor: crosshair;
-  }
-  #svg-canvas { width: 100%; height: 100%; display: block; user-select: none; }
-  #draw-preview {
-    position: absolute; border: 2px dashed var(--accent);
-    pointer-events: none; opacity: 0.7; display: none;
-  }
-  .event-log { display: flex; flex-direction: column; gap: 3px; max-height: 140px; overflow-y: auto; }
-  .log-entry {
-    padding: 3px 6px; border-radius: 2px; background: var(--bg); color: var(--text-dim);
-    font-size: 9px; border-left: 2px solid var(--muted); animation: fadeIn 0.2s ease;
-  }
-  .log-entry.local  { border-left-color: var(--accent); }
-  .log-entry.remote { border-left-color: var(--accent2); }
-  .log-entry.del    { border-left-color: var(--danger); }
-  @keyframes fadeIn { from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none} }
-  .hint {
-    position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
-    font-size: 10px; color: var(--muted); pointer-events: none; letter-spacing: 0.04em;
-    background: var(--surface); border: 1px solid var(--border); padding: 4px 12px; border-radius: 20px;
-  }
-  .meta-kv { font-size: 9px; color: var(--text-dim); display: flex; flex-direction: column; gap: 3px; }
-  .meta-kv div span:first-child { color: var(--muted); }
-  .meta-kv div span:last-child  { color: var(--accent2); }
-  ::-webkit-scrollbar { width: 4px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-</style>
+<link rel="stylesheet" href="/ui.css">
 </head>
 <body>
-<div class="shell">
-  <header class="topbar">
-    <div class="logo">crdt<span>/svg</span></div>
-    <div class="room-pill">
-      <div class="status-dot connecting" id="statusDot"></div>
-      room: <code id="roomLabel">—</code>
-    </div>
-    <div class="topbar-right">
-      peers: <strong id="peerCount">0</strong>
-      &nbsp;|&nbsp; <span id="myIdLabel" style="color:var(--muted)">—</span>
-    </div>
-  </header>
 
-  <aside class="sidebar">
-    <div class="mode-switch">
-      <button class="mode-btn active" id="modeDraw">Draw</button>
-      <button class="mode-btn toys"   id="modeToys">Toys</button>
-    </div>
-
-    <!-- DRAW MODE -->
-    <div class="mode-panel" id="drawPanel">
-      <div class="sec">
-        <div class="sec-label">Draw Tool</div>
-        <button class="tool-btn active" id="toolRect">▭ &nbsp;Rect <small style="margin-left:auto;color:var(--muted)">[R]</small></button>
-        <button class="tool-btn"        id="toolCircle">◯ &nbsp;Circle <small style="margin-left:auto;color:var(--muted)">[C]</small></button>
-        <button class="tool-btn"        id="toolSelect">↖ &nbsp;Select <small style="margin-left:auto;color:var(--muted)">[S]</small></button>
-      </div>
-      <div class="sec">
-        <div class="sec-label">Fill</div>
-        <div class="swatches" id="fillSwatches"></div>
-      </div>
-      <div class="sec">
-        <div class="sec-label">Opacity</div>
-        <div class="slider-row">
-          <label>opacity <span id="opacityVal">0.80</span></label>
-          <input type="range" id="opacitySlider" min="10" max="100" value="80">
-        </div>
-      </div>
-      <div class="sec">
-        <div class="sec-label">Stroke</div>
-        <div class="swatches" id="strokeSwatches"></div>
-        <div class="slider-row" style="margin-top:5px">
-          <label>width <span id="strokeWidthVal">1</span>px</label>
-          <input type="range" id="strokeWidthSlider" min="0" max="8" value="1">
-        </div>
-      </div>
-    </div>
-
-    <!-- TOYS MODE -->
-    <div class="mode-panel" id="toysPanel" style="display:none">
-      <div class="sec">
-        <div class="sec-label">Add Toy</div>
-        <button class="toy-btn" id="addPlayerMarker">▲ &nbsp;Player Marker</button>
-        <button class="toy-btn" id="addDiceD6">⚄ &nbsp;D6</button>
-      </div>
-      <div class="sec">
-        <div class="sec-label">Interact</div>
-        <div style="font-size:10px;color:var(--text-dim);line-height:1.5">
-          Click a toy to select it.<br>Press <span style="color:var(--accent2)">Delete</span> to remove.
-        </div>
-      </div>
-    </div>
-  </aside>
-
-  <main class="canvas-wrap" id="canvasWrap">
-    <svg id="svg-canvas" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<!-- ── Canvas stage ──────────────────────────────────────────────────────── -->
+<div id="stage">
+  <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <pattern id="bg-pattern" x="0" y="0" width="1384" height="998" patternUnits="userSpaceOnUse">
           <image href="img/bg_slatehex.png" x="0" y="0" width="1384" height="998"/>
         </pattern>
       </defs>
-      <!-- Layer order: background → toys → drawing → overlay -->
-      <g id="background-layer">
-        <rect x="0" y="0" width="100%" height="100%" fill="url(#bg-pattern)" pointer-events="none"/>
-      </g>
-      <g id="toys-layer"></g>
-      <g id="doc-layer"></g>
-      <g id="overlay-layer" pointer-events="none"></g>
-    </svg>
-    <div id="draw-preview"></div>
-    <div class="hint" id="hint">Draw mode · drag to draw · switch to Toys mode to place markers</div>
-  </main>
-
-  <aside class="sidebar right">
-    <div class="sec" id="drawListSec">
-      <div class="sec-label">Drawing (<span id="shapeCount">0</span>)</div>
-      <div class="shape-list" id="shapeList"></div>
-    </div>
-    <div class="sec" id="toysListSec" style="display:none">
-      <div class="sec-label">Toys (<span id="toyCount">0</span>)</div>
-      <div class="toy-list" id="toyList"></div>
-    </div>
-    <div class="sec">
-      <div class="sec-label">Event Log</div>
-      <div class="event-log" id="eventLog"></div>
-    </div>
-    <div class="sec">
-      <div class="sec-label">Doc Meta</div>
-      <div class="meta-kv" id="docMeta"></div>
-    </div>
-  </aside>
+    <g id="background-layer">
+      <rect x="0" y="0" width="100%" height="100%" fill="url(#bg-pattern)" pointer-events="none"/>
+    </g>
+    <g id="boundaries-positions-layer"></g>
+    <g id="toys-layer"></g>
+    <g id="drawing-layer"></g>
+    <g id="overlay-layer" pointer-events="none"></g>
+  </svg>
+  <div id="draw-preview"></div>
 </div>
 
+<!-- ── Identity bar (slides in when menu / panel active) ──────────────────── -->
+<div id="idbar" aria-hidden="true">
+  <span class="idbar-project">crdt-svg</span>
+  <span class="idbar-sep"></span>
+  <span class="idbar-user">me · ????</span>
+  <span class="idbar-room">#????</span>
+</div>
+
+<!-- ── Toasts ─────────────────────────────────────────────────────────────── -->
+<div id="toasts" aria-live="polite"></div>
+
+<!-- ── Info button (top-right) ────────────────────────────────────────────── -->
+<button id="infoBtn" aria-label="Gestures and help" onclick="UI.openSheet('gestures')">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <circle cx="12" cy="12" r="9"/>
+    <path d="M12 8h.01M11 12h1v4h1"/>
+  </svg>
+</button>
+
+<!-- ── Pill (bottom-centre desktop / bottom-left mobile) ──────────────────── -->
+<div id="pill"></div>
+<div id="toolOpts"></div>
+
+<!-- ── Menu button (bottom-right) ─────────────────────────────────────────── -->
+<button id="menuBtn" aria-label="Menu" onclick="UI.toggleMenu()">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+    <circle cx="12" cy="5"  r="1.2" fill="currentColor" stroke="none"/>
+    <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/>
+    <circle cx="12" cy="19" r="1.2" fill="currentColor" stroke="none"/>
+  </svg>
+</button>
+
+<!-- ── Menu items (fan up from menu button) ───────────────────────────────── -->
+<div id="menuItems">
+  <div class="menu-item" onclick="UI.openSheet('history');UI.closeMenu()">
+    <span class="menu-label">History &amp; Undo</span>
+    <span class="menu-circle">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M9 14L4 9l5-5"/><path d="M4 9h11a6 6 0 0 1 0 12H9"/>
+      </svg>
+    </span>
+  </div>
+  <div class="menu-item" onclick="UI.openSheet('peers');UI.closeMenu()">
+    <span class="menu-label">Peers</span>
+    <span class="menu-circle" style="position:relative">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/>
+        <circle cx="17" cy="9" r="2.5"/><path d="M16 20a5 5 0 0 1 5-5"/>
+      </svg>
+      <span id="offlineDot" style="position:absolute;top:-2px;right:-2px;width:12px;height:12px;border-radius:50%;border:2px solid var(--surface-solid);background:var(--warn);display:none"></span>
+    </span>
+  </div>
+  <div class="menu-item" onclick="UI.openSheet('layers');UI.closeMenu()">
+    <span class="menu-label">Layers</span>
+    <span class="menu-circle">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/><path d="M12 2L2 7l10 5 10-5z"/>
+      </svg>
+    </span>
+  </div>
+  <div class="menu-item" onclick="UI.openSheet('save');UI.closeMenu()">
+    <span class="menu-label">Save / Load</span>
+    <span class="menu-circle">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+        <path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/>
+      </svg>
+    </span>
+  </div>
+</div>
+
+<!-- ── Scrim (mobile bottom-sheet backdrop) ───────────────────────────────── -->
+<div id="scrim"></div>
+
+<!-- ── Side panel (persistent desktop sidebar / full-screen mobile sheet) ─── -->
+<aside id="panel" aria-hidden="true">
+  <div class="grab"></div>
+  <div class="panel-head">
+    <h2 id="panelTitle"></h2>
+    <button class="panel-close" aria-label="Close panel" onclick="UI.closePanel()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6 6l12 12M18 6L6 18"/>
+      </svg>
+    </button>
+  </div>
+  <div id="panelTabs"></div>
+  <div class="panel-body" id="panelBody"></div>
+</aside>
+
+<!-- ── Context popover (long-press on shape) ──────────────────────────────── -->
+<div id="popover"></div>
+
+<!-- ── Status bar (retained from old index.html for debugging) ────────────── -->
+<div id="statusBar" style="position:fixed;top:0;left:50%;transform:translateX(-50%);
+     font-size:11px;color:var(--text-3);pointer-events:none;z-index:100;
+     display:flex;gap:10px;padding:4px 8px">
+  <span id="roomLabel" style="font-family:monospace"></span>
+  <span id="myIdLabel" style="font-family:monospace"></span>
+  <span class="status-dot" id="statusDot" style="width:8px;height:8px;border-radius:50%;
+        background:var(--warn);align-self:center;flex-shrink:0"></span>
+  <span>peers: <span id="peerCount">0</span></span>
+  <span>shapes: <span id="shapeCount">0</span></span>
+  <span>toys: <span id="toyCount">0</span></span>
+</div>
+
+<!-- ── Module imports ─────────────────────────────────────────────────────── -->
 <script type="importmap">
 {
   "imports": {
@@ -250,693 +145,57 @@
 </script>
 
 <script type="module">
-import * as Y                       from '/lib/yjs.js'
-import { WebrtcProvider }           from '/lib/y-webrtc.js'
-import { IndexeddbPersistence }     from '/lib/y-indexeddb.js'
-import {
-  addShape, deleteShape, findShape, selectionGeometry, listShapes, makeDoc, SHAPE_TYPES,
-}                                   from '/shapes.js'
-import {
-  addToy, deleteToy, listToys, getToysLayer, findToy, toyGeometry, TOY_TYPES,
-}                                   from '/toys.js'
+import * as Y                   from '/lib/yjs.js';
+import { WebrtcProvider }       from '/lib/y-webrtc.js';
+import { IndexeddbPersistence } from '/lib/y-indexeddb.js';
+import { boot }                 from '/app.js';
+import * as UI                  from '/ui.js';
+import { App, makeDoc }         from '/app.js';
+import { entityGradient }            from './entity_gradient.js';
 
-import { entityGradient }            from '/entity_gradient.js'
 
-const XLINK_NS = 'http://www.w3.org/1999/xlink'
+// Expose UI and App on window so inline onclick handlers in the HTML can reach them.
+// This is the ONLY global we deliberately leak — everything else stays in modules.
+window.UI  = UI;
+window.App = App;
 
-const CURRENT_SCHEMA = 4
-const uid = () => Math.random().toString(36).slice(2, 9)
+// ── Identity ────────────────────────────────────────────────────────────────
+const uid = () => Math.random().toString(36).slice(2, 9);
+let roomId = location.hash.slice(1);
+if (!roomId) { roomId = uid(); location.hash = roomId; }
+const myId    = uid();
+const myGrad = entityGradient(myId);
 
-// ── Room + identity ───────────────────────────────────────────────────
-let roomId = location.hash.slice(1)
-if (!roomId) { roomId = uid(); location.hash = roomId }
-const myId = uid()
-// Deterministic gradient derived from the player's id.
-// c1  — a single HSL color, used for small indicators (dot, text, border)
-// grad — a CSS linear-gradient string, used for larger elements (SVG defs)
-const myGrad = entityGradient(myId)
-document.getElementById('roomLabel').textContent = roomId
-// Tint the player id label with their own c1
-document.getElementById('myIdLabel').textContent  = `me: ${myId}`
-document.getElementById('myIdLabel').style.color  = myGrad.c1
+document.getElementById('roomLabel').textContent = roomId;
+document.getElementById('myIdLabel').textContent = `me: ${myId.slice(0,6)}`;
 
-// ── Logging ───────────────────────────────────────────────────────────
-function addLog(msg, type = '') {
-  const log   = document.getElementById('eventLog')
-  const entry = document.createElement('div')
-  entry.className   = `log-entry ${type}`
-  entry.textContent = `${new Date().toISOString().slice(11,19)} ${msg}`
-  if (type === 'local') entry.style.borderLeftColor = myGrad.c1
-  log.prepend(entry)
-  while (log.children.length > 40) log.lastChild.remove()
-}
+// ── Yjs ─────────────────────────────────────────────────────────────────────
+export const CURRENT_SCHEMA = 4;
 
-// ── Yjs doc ───────────────────────────────────────────────────────────
-// Drawing layer: Y.XmlFragment of Y.XmlElement (schema v4)
-// Toys layer:    Y.XmlFragment of <g> wrappers, each holding an embedded
-//                <svg> sub-document — same CRDT-as-SVG-tree model, so
-//                internal toy edits merge at the attribute/child level.
-const { ydoc, yMeta, yTable, yShapeMeta } = makeDoc()
-const { yToys, yToyMeta } = getToysLayer(ydoc)
+const { ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta } = makeDoc();
 
-// ── Persistence ───────────────────────────────────────────────────────
-const persistence = new IndexeddbPersistence(`crdt-svg:${roomId}`, ydoc)
-let persistenceReady = false
-
+// ── Persistence ─────────────────────────────────────────────────────────────
+const persistence = new IndexeddbPersistence(`crdt-svg:${roomId}`, ydoc);
 persistence.on('synced', () => {
-  persistenceReady = true
-  addLog('loaded from indexeddb', 'local')
+  App.addLog('loaded from indexeddb', 'local');
   if (!yMeta.get('docId')) {
     ydoc.transact(() => {
-      yMeta.set('docId',         roomId)
-      yMeta.set('created',       new Date().toISOString())
-      yMeta.set('schemaVersion', CURRENT_SCHEMA)
-    })
+      yMeta.set('docId',         roomId);
+      yMeta.set('created',       new Date().toISOString());
+      yMeta.set('schemaVersion', CURRENT_SCHEMA);
+    });
   }
-  renderDoc()
-})
-
-const signalingUrl = new URLSearchParams(location.search).get('signaling') || 'ws://localhost:4444'
-const provider  = new WebrtcProvider(roomId, ydoc, { signaling: [signalingUrl] })
-const awareness = provider.awareness
-awareness.setLocalState({ id: myId, c1: myGrad.c1, grad: myGrad.grad, cursor: null, selection: null })
-
-// ── Awareness helpers ─────────────────────────────────────────────────
-// Selection carries a kind so the overlay and delete logic know whether
-// they're acting on a drawing shape or a toy: { kind: 'shape'|'toy', id }.
-function mySelection() { return awareness.getLocalState()?.selection ?? null }
-function setSelection(kind, id) {
-  awareness.setLocalStateField('selection', (kind && id) ? { kind, id } : null)
-  renderPresence()
-}
-
-// ── Status ────────────────────────────────────────────────────────────
-const dot = document.getElementById('statusDot')
-provider.on('synced', () => { dot.className = 'status-dot connected'; addLog('synced with peers', 'remote') })
-provider.on('status', ({ connected }) => {
-  dot.className = connected ? 'status-dot connected' : 'status-dot connecting'
-})
-
-// ── UI state ──────────────────────────────────────────────────────────
-let mode        = 'draw'
-let tool        = 'rect'
-let fillColor   = '#c8f060'
-let strokeColor = 'none'
-let opacity     = 0.8
-let strokeWidth = 1
-
-// Drawing fill palette (independent of player color)
-const FILL_COLORS   = ['#c8f060','#60c8f0','#f06090','#f0c060','#a060f0','#60f0c8','#f09060','#e8e8f0']
-const STROKE_COLORS = ['none','#0c0c0f','#ffffff','#c8f060','#60c8f0','#f06090']
-function buildSwatches(id, colors, initial, cb) {
-  const wrap = document.getElementById(id)
-  colors.forEach(c => {
-    const el = document.createElement('div')
-    el.className        = 'swatch' + (c === initial ? ' active' : '')
-    el.style.background = c === 'none' ? 'transparent' : c
-    el.style.border     = c === 'none' ? '2px solid #555' : '2px solid transparent'
-    el.addEventListener('click', () => {
-      wrap.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'))
-      el.classList.add('active')
-      cb(c)
-    })
-    wrap.appendChild(el)
-  })
-}
-buildSwatches('fillSwatches',   FILL_COLORS,   fillColor,   v => fillColor   = v)
-buildSwatches('strokeSwatches', STROKE_COLORS, strokeColor, v => strokeColor = v)
-
-document.getElementById('opacitySlider').addEventListener('input', e => {
-  opacity = e.target.value / 100
-  document.getElementById('opacityVal').textContent = opacity.toFixed(2)
-})
-document.getElementById('strokeWidthSlider').addEventListener('input', e => {
-  strokeWidth = +e.target.value
-  document.getElementById('strokeWidthVal').textContent = strokeWidth
-})
-
-// ── Mode + tools ──────────────────────────────────────────────────────
-const canvasWrap = document.getElementById('canvasWrap')
-
-// Top-level modal switch. Governs: which controls show, which layer is
-// interactive (pointer-events), the default cursor, and clears selection
-// because a selection's kind is mode-specific.
-function setMode(m) {
-  mode = m
-  document.getElementById('drawPanel').style.display    = (m === 'draw') ? '' : 'none'
-  document.getElementById('toysPanel').style.display    = (m === 'toys') ? '' : 'none'
-  document.getElementById('drawListSec').style.display  = (m === 'draw') ? '' : 'none'
-  document.getElementById('toysListSec').style.display  = (m === 'toys') ? '' : 'none'
-  document.getElementById('modeDraw').classList.toggle('active', m === 'draw')
-  document.getElementById('modeToys').classList.toggle('active', m === 'toys')
-  // only the active layer receives pointer events
-  svgEl.querySelector('#doc-layer').style.pointerEvents  = (m === 'draw') ? 'auto' : 'none'
-  svgEl.querySelector('#toys-layer').style.pointerEvents = (m === 'toys') ? 'auto' : 'none'
-  canvasWrap.style.cursor = (m === 'draw' && tool !== 'select') ? 'crosshair' : 'default'
-  setSelection(null, null)
-}
-document.getElementById('modeDraw').addEventListener('click', () => setMode('draw'))
-document.getElementById('modeToys').addEventListener('click', () => setMode('toys'))
-
-function setTool(t) {
-  tool = t
-  if (mode !== 'draw') { setMode('draw'); return setTool(t) }  // re-enter once in draw mode
-  document.getElementById('toolRect').classList.toggle('active',   t === 'rect')
-  document.getElementById('toolCircle').classList.toggle('active', t === 'circle')
-  document.getElementById('toolSelect').classList.toggle('active', t === 'select')
-  canvasWrap.style.cursor = (t === 'select') ? 'default' : 'crosshair'
-}
-document.getElementById('toolRect').addEventListener('click',   () => setTool('rect'))
-document.getElementById('toolCircle').addEventListener('click', () => setTool('circle'))
-document.getElementById('toolSelect').addEventListener('click', () => setTool('select'))
-
-// ── Toy placement ─────────────────────────────────────────────────────
-// Places a toy near the center of the visible canvas with a small random
-// offset so multiple placements don't stack. Async: addToy fetches + imports.
-async function placeToy(toyType) {
-  const { width, height } = canvasWrap.getBoundingClientRect()
-  const x = Math.round(width  / 2 + (Math.random() - 0.5) * 120)
-  const y = Math.round(height / 2 + (Math.random() - 0.5) * 120)
-  const id = uid()
-  try {
-    await addToy(ydoc, yToys, yToyMeta, { id, toyType, x, y, color: myGrad.c1, author: myId })
-    addLog(`placed ${toyType} ${id.slice(0,6)}`, 'local')
-  } catch (err) {
-    addLog(`failed to place ${toyType}: ${err.message}`, 'del')
-    console.error(err)
-  }
-}
-
-document.getElementById('addPlayerMarker').addEventListener('click', () => placeToy('player_marker'))
-document.getElementById('addDiceD6').addEventListener('click',       () => placeToy('dice_d6'))
-
-// ── Drawing input ─────────────────────────────────────────────────────
-const svgNS = 'http://www.w3.org/2000/svg'
-const svgEl   = document.getElementById('svg-canvas')
-const preview = document.getElementById('draw-preview')
-preview.style.borderColor = myGrad.c1   // deterministic player color, not fixed --accent
-let drawing   = false
-let drawStart = null
-
-// Toy drag state (toys mode). Movement is applied to the DOM live during the
-// drag and committed to the CRDT once on drop, so dragging produces no ops and
-// no per-frame re-render.
-let drag = null            // { id, start, startX, startY, lastX, lastY, renderedSvg, gEl, moved }
-let suppressDeselect = false
-
-function getPos(e) {
-  const r = canvasWrap.getBoundingClientRect()
-  return { x: e.clientX - r.left, y: e.clientY - r.top }
-}
-
-// Begin dragging a toy: capture the embedded svg's current x/y from the CRDT
-// and the pointer start, then track the live element to move during mousemove.
-function beginToyDrag(id, gEl, ev) {
-  const g = findToy(yToys, id)
-  if (!g) return
-  const svgY = g.toArray().find(e => e instanceof Y.XmlElement && e.nodeName === 'svg')
-  if (!svgY) return
-  const startX = parseFloat(svgY.getAttribute('x'))
-  const startY = parseFloat(svgY.getAttribute('y'))
-  drag = {
-    id, start: getPos(ev), startX, startY, lastX: startX, lastY: startY,
-    renderedSvg: gEl.querySelector('svg'), gEl, moved: false,
-  }
-  gEl.style.cursor = 'grabbing'
-  ev.preventDefault()
-}
-
-canvasWrap.addEventListener('mousedown', e => {
-  if (mode !== 'draw' || !SHAPE_TYPES[tool] || e.button !== 0) return
-  drawing   = true
-  drawStart = getPos(e)
-  preview.style.cssText = `display:block;left:${drawStart.x}px;top:${drawStart.y}px;width:0px;height:0px;`
-  document.getElementById('hint').style.display = 'none'
-  e.preventDefault()
-})
-
-window.addEventListener('mousemove', e => {
-  // toy drag: move the rendered svg directly, no CRDT write
-  if (drag) {
-    const cur = getPos(e)
-    const nx = Math.round(drag.startX + (cur.x - drag.start.x))
-    const ny = Math.round(drag.startY + (cur.y - drag.start.y))
-    drag.lastX = nx
-    drag.lastY = ny
-    if (Math.abs(cur.x - drag.start.x) > 2 || Math.abs(cur.y - drag.start.y) > 2) drag.moved = true
-    if (drag.renderedSvg) {
-      drag.renderedSvg.setAttribute('x', nx)
-      drag.renderedSvg.setAttribute('y', ny)
-    }
-    renderOverlayLayer()   // keep the selection box on the toy during the drag
-    return
-  }
-  if (!drawing) return
-  const cur = getPos(e)
-  const x = Math.min(drawStart.x, cur.x)
-  const y = Math.min(drawStart.y, cur.y)
-  preview.style.left   = x + 'px'
-  preview.style.top    = y + 'px'
-  preview.style.width  = Math.abs(cur.x - drawStart.x) + 'px'
-  preview.style.height = Math.abs(cur.y - drawStart.y) + 'px'
-})
-
-window.addEventListener('mouseup', e => {
-  // toy drag end: commit the final position to the CRDT once
-  if (drag) {
-    const d = drag
-    drag = null
-    if (d.gEl) d.gEl.style.cursor = 'grab'
-    if (d.moved) {
-      const g = findToy(yToys, d.id)
-      const svgY = g?.toArray().find(el => el instanceof Y.XmlElement && el.nodeName === 'svg')
-      if (svgY) {
-        ydoc.transact(() => {
-          svgY.setAttribute('x', String(d.lastX))
-          svgY.setAttribute('y', String(d.lastY))
-        })
-        addLog(`moved toy ${d.id.slice(0,6)}`, 'local')
-      }
-      suppressDeselect = true   // a click may fire after the drag; don't deselect
-    }
-    return
-  }
-  if (!drawing) return
-  drawing = false
-  preview.style.display = 'none'
-
-  const cur = getPos(e)
-  const x = Math.round(Math.min(drawStart.x, cur.x))
-  const y = Math.round(Math.min(drawStart.y, cur.y))
-  const w = Math.round(Math.abs(cur.x - drawStart.x))
-  const h = Math.round(Math.abs(cur.y - drawStart.y))
-  if (w < 4 || h < 4) return
-
-  const def = SHAPE_TYPES[tool]
-  if (!def) return
-
-  const id = uid()
-  addShape(ydoc, yTable, yShapeMeta, {
-    id, type: tool,
-    ...def.fromDrag({ x, y, w, h }),
-    fill: fillColor, stroke: strokeColor,
-    'stroke-width': strokeWidth, opacity,
-    author: myId,
-  })
-  addLog(`drew ${tool} ${id.slice(0,6)} (${w}×${h})`, 'local')
-})
-
-// ── Renderers ─────────────────────────────────────────────────────────
-// Two pipelines, two sources of truth:
-//   renderDoc      — driven by yTable + yToys (CRDT document state)
-//   renderPresence — driven by awareness (ephemeral, per-session)
-// The overlay is refreshed by both because it projects presence over doc geometry.
-
-// Recursive SVG-aware mirror: Y.XmlElement tree → live SVG DOM.
-// Used by BOTH layers — drawing shapes are just shallow trees, toys are deep.
-// Note: Y.XmlElement.toDOM() builds HTML-namespaced nodes and would not
-// render as SVG, so we mirror with createElementNS ourselves. <script> nodes
-// are never mirrored into the live DOM (behaviour is the sandbox step, later).
-function yXmlToDom(yNode) {
-  if (yNode instanceof Y.XmlText) return document.createTextNode(yNode.toString())
-  if (!(yNode instanceof Y.XmlElement)) return null
-  if (yNode.nodeName === 'script') return null
-
-  const el = document.createElementNS(svgNS, yNode.nodeName)
-  const attrs = yNode.getAttributes()
-  for (const k in attrs) {
-    if (k === 'xlink:href') el.setAttributeNS(XLINK_NS, 'href', attrs[k])
-    else                    el.setAttribute(k, attrs[k])
-  }
-  yNode.toArray().forEach(child => {
-    const dom = yXmlToDom(child)
-    if (dom) el.appendChild(dom)
-  })
-  return el
-}
-
-// Drawing layer — mirror each top-level shape; wire selection on click.
-function renderDocLayer() {
-  const layer = svgEl.querySelector('#doc-layer')
-  layer.innerHTML = ''
-  yTable.toArray().forEach(yEl => {
-    if (!(yEl instanceof Y.XmlElement)) return
-    const el = yXmlToDom(yEl)
-    if (!el) return
-    const id = yEl.getAttribute('id')
-    el.setAttribute('data-yid', id)
-    el.style.cursor = 'pointer'
-    el.addEventListener('click', ev => {
-      if (tool !== 'select') return
-      ev.stopPropagation()
-      setSelection('shape', id)
-    })
-    layer.appendChild(el)
-  })
-  document.getElementById('shapeCount').textContent = yTable.length
-}
-
-// Toys layer — mirror each <g> wrapper (and its embedded <svg> sub-document).
-// mousedown selects the toy and begins a drag (toys mode only — the layer's
-// pointer-events are gated by setMode). Movement is applied to the DOM live and
-// committed to the CRDT on drop (see the window mouseup handler).
-function renderToysLayer() {
-  const layer = svgEl.querySelector('#toys-layer')
-  layer.innerHTML = ''
-  yToys.toArray().forEach(g => {
-    if (!(g instanceof Y.XmlElement)) return
-    const dom = yXmlToDom(g)
-    if (!dom) return
-    const id = g.getAttribute('data-toy-id')
-    dom.style.cursor = 'grab'
-
-    dom.addEventListener('mousedown', ev => {
-      if (mode !== 'toys' || ev.button !== 0) return
-      ev.stopPropagation()
-      setSelection('toy', id)
-      beginToyDrag(id, dom, ev)
-    })
-
-    // If this toy is mid-drag when an (external) re-render happens, re-apply the
-    // live drag position and re-acquire the element ref so the drag stays smooth.
-    if (drag && drag.id === id) {
-      const svg = dom.querySelector('svg')
-      if (svg) { svg.setAttribute('x', drag.lastX); svg.setAttribute('y', drag.lastY) }
-      drag.renderedSvg = svg
-      drag.gEl = dom
-      dom.style.cursor = 'grabbing'
-    }
-
-    layer.appendChild(dom)
-  })
-  document.getElementById('toyCount').textContent = yToys.length
-}
-
-// Overlay — selection rects and peer name labels.
-// For each peer with a selection we inject a <linearGradient> into the SVG
-// <defs> keyed by their id, then stroke the selection rect with url(#...).
-// c1 (solid HSL) is used for small indicators (name label bg, text).
-// grad (as an SVG linearGradient) is used for the selection stroke border.
-function renderOverlayLayer() {
-  const layer = svgEl.querySelector('#overlay-layer')
-  layer.innerHTML = ''
-
-  // Collect defs we'll need, keyed by peer id
-  const defsEl = svgEl.querySelector('defs') ?? (() => {
-    const d = document.createElementNS(svgNS, 'defs')
-    svgEl.insertBefore(d, svgEl.firstChild)
-    return d
-  })()
-
-  // Remove previously injected peer gradient defs
-  defsEl.querySelectorAll('[data-peer-grad]').forEach(e => e.remove())
-
-  awareness.getStates().forEach((state, clientId) => {
-    const sel = state?.selection
-    if (!sel?.id) return
-    const isMe  = clientId === awareness.clientID
-    const peerId = state.id || String(clientId)
-
-    // Resolve this peer's colors — from their awareness state, or fall back to
-    // a freshly computed gradient if they're on an older version of the client.
-    const peerGrad = (state.c1 && state.grad)
-      ? { c1: state.c1, grad: state.grad }
-      : entityGradient(peerId)
-
-    // Inject a <linearGradient> for this peer's selection stroke
-    const gradId = `peer-grad-${peerId.replace(/[^a-z0-9]/gi, '_')}`
-    const lg = document.createElementNS(svgNS, 'linearGradient')
-    lg.setAttribute('id', gradId)
-    lg.setAttribute('data-peer-grad', '1')
-    // Parse angle from the grad string ("linear-gradient(Ndeg, c1, c2)")
-    const angleMatch = peerGrad.grad.match(/(\d+)deg/)
-    const angle = angleMatch ? parseInt(angleMatch[1]) : 90
-    // Convert CSS gradient angle to SVG x1/y1/x2/y2
-    const rad = (angle - 90) * Math.PI / 180
-    lg.setAttribute('x1', (0.5 - 0.5 * Math.cos(rad)).toFixed(3))
-    lg.setAttribute('y1', (0.5 - 0.5 * Math.sin(rad)).toFixed(3))
-    lg.setAttribute('x2', (0.5 + 0.5 * Math.cos(rad)).toFixed(3))
-    lg.setAttribute('y2', (0.5 + 0.5 * Math.sin(rad)).toFixed(3))
-    const colorMatch = peerGrad.grad.match(/hsl\([^)]+\)/g) || []
-    const stops = colorMatch.length >= 2 ? colorMatch : [peerGrad.c1, peerGrad.c1]
-    stops.forEach((color, i) => {
-      const stop = document.createElementNS(svgNS, 'stop')
-      stop.setAttribute('offset', i === 0 ? '0%' : '100%')
-      stop.setAttribute('stop-color', color)
-      lg.appendChild(stop)
-    })
-    defsEl.appendChild(lg)
-
-    let geo = sel.kind === 'toy'
-      ? toyGeometry(yToys, sel.id)
-      : selectionGeometry(yTable, sel.id)
-    if (geo && isMe && drag && drag.id === sel.id) {
-      const dx = drag.lastX - drag.startX
-      const dy = drag.lastY - drag.startY
-      geo = { ...geo, x: geo.x + dx, y: geo.y + dy }
-    }
-    if (!geo) return
-
-    // Selection rect — gradient stroke
-    const rect = document.createElementNS(svgNS, 'rect')
-    rect.setAttribute('x',            geo.x)
-    rect.setAttribute('y',            geo.y)
-    rect.setAttribute('width',        geo.width)
-    rect.setAttribute('height',       geo.height)
-    rect.setAttribute('fill',         'none')
-    rect.setAttribute('stroke',       `url(#${gradId})`)
-    rect.setAttribute('stroke-width', isMe ? 2.5 : 1.5)
-    if (!isMe) rect.setAttribute('stroke-dasharray', '5 3')
-    rect.setAttribute('rx', 3)
-    layer.appendChild(rect)
-
-    // Peer name label — c1 background, dark text (own label not shown)
-    if (!isMe) {
-      const name = peerId.slice(0, 6)
-      const bg   = document.createElementNS(svgNS, 'rect')
-      bg.setAttribute('x',      geo.x)
-      bg.setAttribute('y',      geo.y - 16)
-      bg.setAttribute('width',  name.length * 6.5 + 8)
-      bg.setAttribute('height', 14)
-      bg.setAttribute('fill',   peerGrad.c1)
-      bg.setAttribute('rx',     2)
-      layer.appendChild(bg)
-
-      const txt = document.createElementNS(svgNS, 'text')
-      txt.setAttribute('x',           geo.x + 4)
-      txt.setAttribute('y',           geo.y - 4)
-      txt.setAttribute('font-size',   9)
-      txt.setAttribute('font-family', 'DM Mono, monospace')
-      txt.setAttribute('fill',        '#0c0c0f')
-      txt.textContent = name
-      layer.appendChild(txt)
-    }
-  })
-}
-
-function renderShapeList() {
-  const list = document.getElementById('shapeList')
-  list.innerHTML = ''
-  listShapes(yTable, yShapeMeta, { newestFirst: true }).forEach(({ el, attrs, meta }) => {
-    const def  = SHAPE_TYPES[el.nodeName]
-    const id   = attrs.id
-    const item = document.createElement('div')
-    item.className  = 'shape-item'
-    item.dataset.id = id
-
-    const sw  = document.createElement('div')
-    sw.className        = 'shape-swatch'
-    sw.style.background = attrs.fill
-
-    const lbl = document.createElement('div')
-    lbl.className   = 'shape-label'
-    lbl.textContent = def ? def.label(attrs) : id.slice(0, 6)
-
-    const own = document.createElement('div')
-    own.className   = 'shape-owner'
-    own.textContent = meta?.author === myId ? 'me' : (meta?.author?.slice(0,5) || '?')
-    own.style.color = meta?.author === myId ? myGrad.c1 : 'var(--muted)'
-
-    const del = document.createElement('button')
-    del.className   = 'shape-del'
-    del.textContent = '×'
-    del.addEventListener('click', ev => { ev.stopPropagation(); deleteShapeById(id) })
-
-    item.append(sw, lbl, own, del)
-    item.addEventListener('click', () => setSelection('shape', id))
-    list.appendChild(item)
-  })
-  applySelectionHighlight()
-}
-
-function renderToyList() {
-  const list = document.getElementById('toyList')
-  list.innerHTML = ''
-  listToys(yToys, yToyMeta).forEach(({ id, toyType, meta }) => {
-    const def  = TOY_TYPES[toyType]
-    const item = document.createElement('div')
-    item.className  = 'toy-item'
-    item.dataset.id = id
-
-    const dot = document.createElement('div')
-    dot.className = 'toy-item-color'
-    // Use c1 from the author's deterministic gradient for the color dot
-    const authorGrad = meta.author ? entityGradient(meta.author) : null
-    dot.style.background = authorGrad ? authorGrad.c1 : 'var(--muted)'
-
-    const lbl = document.createElement('div')
-    lbl.className   = 'toy-item-label'
-    lbl.textContent = `${def?.label ?? toyType} · ${id.slice(0,6)}`
-
-    const own = document.createElement('div')
-    own.style.color    = meta.author === myId ? myGrad.c1 : 'var(--muted)'
-    own.style.fontSize = '9px'
-    own.textContent    = meta.author === myId ? 'me' : (meta.author?.slice(0,5) || '?')
-
-    const del = document.createElement('button')
-    del.className   = 'toy-del'
-    del.textContent = '×'
-    del.addEventListener('click', ev => {
-      ev.stopPropagation()
-      deleteToyById(id)
-    })
-
-    item.append(dot, lbl, own, del)
-    item.addEventListener('click', () => setSelection('toy', id))
-    list.appendChild(item)
-  })
-  applySelectionHighlight()
-}
-
-function renderMeta() {
-  const el = document.getElementById('docMeta')
-  el.innerHTML = ''
-  yMeta.forEach((v, k) => {
-    const row = document.createElement('div')
-    row.innerHTML = `<span>${k}:</span> <span>${v}</span>`
-    el.appendChild(row)
-  })
-}
-
-function applySelectionHighlight() {
-  const sel = mySelection()
-  const shapeId = sel?.kind === 'shape' ? sel.id : null
-  const toyId   = sel?.kind === 'toy'   ? sel.id : null
-  document.querySelectorAll('#shapeList .shape-item').forEach(row => {
-    row.classList.toggle('selected', row.dataset.id === shapeId)
-  })
-  document.querySelectorAll('#toyList .toy-item').forEach(row => {
-    row.classList.toggle('selected', row.dataset.id === toyId)
-  })
-}
-
-function updatePeerCount() {
-  let peers = 0
-  awareness.getStates().forEach((_, cid) => { if (cid !== awareness.clientID) peers++ })
-  document.getElementById('peerCount').textContent = peers
-}
-
-// Doc pipeline — all CRDT document state
-function renderDoc() {
-  renderDocLayer()           // drawing shapes  (XmlFragment → SVG)
-  renderToysLayer()          // placed toys     (Y.Map → SVG)
-  renderShapeList()          // drawing list UI
-  renderToyList()            // toys list UI
-  renderMeta()
-  renderOverlayLayer()       // overlay geometry comes from the doc
-  applySelectionHighlight()
-}
-
-// Presence pipeline — ephemeral awareness state
-function renderPresence() {
-  renderOverlayLayer()       // overlay identity comes from awareness
-  applySelectionHighlight()
-  updatePeerCount()
-}
-
-// ── Observers ─────────────────────────────────────────────────────────
-yTable.observe(event => {
-  event.changes.added.forEach(item => {
-    item.content.getContent().forEach(el => {
-      if (el instanceof Y.XmlElement) {
-        const id     = el.getAttribute('id') || '?'
-        const author = (yShapeMeta.get(id) || {}).author
-        if (author && author !== myId)
-          addLog(`remote: drew ${id.slice(0,6)} by ${author.slice(0,5)}`, 'remote')
-      }
-    })
-  })
-  event.changes.deleted.forEach(item => {
-    item.content.getContent().forEach(el => {
-      if (el instanceof Y.XmlElement)
-        addLog(`remote: deleted ${(el.getAttribute('id')||'?').slice(0,6)}`, 'del')
-    })
-  })
-  renderDoc()
-})
-
-// Toys: observeDeep so internal edits (recolor, flip, contents) re-render,
-// not just placements/removals. The structural event (target === yToys) is
-// where we log remote placements; transaction.local filters out our own ops.
-yToys.observeDeep((events, transaction) => {
-  if (!transaction.local) {
-    for (const event of events) {
-      if (event.target !== yToys) continue
-      event.changes.added.forEach(item => {
-        item.content.getContent().forEach(g => {
-          if (g instanceof Y.XmlElement && g.nodeName === 'g') {
-            const tid = g.getAttribute('data-toy-id') || '?'
-            addLog(`remote: placed ${g.getAttribute('data-toy-type')} ${tid.slice(0,6)}`, 'remote')
-          }
-        })
-      })
-      event.changes.deleted.forEach(() => addLog('remote: removed a toy', 'del'))
-    }
-  }
-  renderDoc()
-})
-
-awareness.on('change', renderPresence)
-
-// ── Keyboard ──────────────────────────────────────────────────────────
-window.addEventListener('keydown', e => {
-  if (['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) return
-  if (e.key === '1') setMode('draw')
-  if (e.key === '2') setMode('toys')
-  if (e.key === 'r' || e.key === 'R') setTool('rect')    // setTool ensures draw mode
-  if (e.key === 'c' || e.key === 'C') setTool('circle')
-  if (e.key === 's' || e.key === 'S') setTool('select')
-  if (e.key === 'Escape') setSelection(null, null)
-  if (e.key === 'Delete' || e.key === 'Backspace') {
-    const sel = mySelection()
-    if (sel?.kind === 'shape') deleteShapeById(sel.id)
-    else if (sel?.kind === 'toy') deleteToyById(sel.id)
-  }
-})
-
-svgEl.addEventListener('click', e => {
-  if (suppressDeselect) { suppressDeselect = false; return }
-  if (!e.target.closest('[data-yid],[data-toy-id]')) setSelection(null, null)
-})
-
-// ── Helpers ───────────────────────────────────────────────────────────
-function deleteShapeById(id) {
-  deleteShape(ydoc, yTable, yShapeMeta, id)
-  if (mySelection()?.kind === 'shape' && mySelection()?.id === id) setSelection(null, null)
-  addLog(`deleted shape ${id.slice(0,6)}`, 'del')
-}
-
-function deleteToyById(id) {
-  deleteToy(ydoc, yToys, yToyMeta, id)
-  if (mySelection()?.kind === 'toy' && mySelection()?.id === id) setSelection(null, null)
-  addLog(`removed toy ${id.slice(0,6)}`, 'del')
-}
-
-// ── Init ──────────────────────────────────────────────────────────────
-setMode('draw')
-renderDoc()
-renderPresence()
-addLog(`joined room ${roomId}`, 'local')
+});
+
+// ── WebRTC ──────────────────────────────────────────────────────────────────
+const signalingUrl = new URLSearchParams(location.search).get('signaling') || 'ws://localhost:4444';
+const provider     = new WebrtcProvider(roomId, ydoc, { signaling: [signalingUrl] });
+const awareness    = provider.awareness;
+awareness.setLocalState({ id: myId, color: myGrad.c1, cursor: null, selection: null });
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+boot({ ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, awareness, provider, myId, myGrad, roomId });
 </script>
+
 </body>
 </html>

@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>crdt-svg · component stories</title>
+<link rel="stylesheet" href="/ui.css">
+
+<!-- ── Module imports ─────────────────────────────────────────────────────── -->
+<script type="importmap">
+{
+  "imports": {
+    "yjs": "/lib/yjs.js"
+  }
+}
+</script>
+
+<style>
+  /* Stories-only chrome — not part of the app */
+  html, body { overflow: auto; touch-action: auto; height: auto; min-height: 100%; }
+  body { padding: 0 0 80px; }
+  .stories-head {
+    position: sticky; top: 0; z-index: 200;
+    background: var(--surface-solid); border-bottom: 0.5px solid var(--border-2);
+    padding: 14px 20px; display: flex; align-items: center; gap: 14px;
+  }
+  .stories-head h1 {
+    font-family: var(--font-display); font-size: 18px; font-weight: normal;
+    margin: 0; color: var(--text); letter-spacing: .03em;
+  }
+  .stories-head .sub { font-size: 12px; color: var(--text-3); }
+  .stories-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px; padding: 20px; max-width: 1400px; margin: 0 auto;
+  }
+  .story {
+    background: var(--bg) url('/img/bg_slatehex.png') center/cover;
+    border-radius: var(--radius); overflow: hidden;
+    box-shadow: var(--emboss); position: relative; min-height: 160px;
+    display: flex; flex-direction: column;
+  }
+  .story-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--text); background: rgba(0,0,0,0.55); backdrop-filter: blur(8px);
+    padding: 7px 12px; display: flex; align-items: center; gap: 8px;
+  }
+  .story-label .variant { color: var(--primary); font-weight: 500; text-transform: none; letter-spacing: 0; }
+  .story-stage {
+    flex: 1; position: relative; padding: 18px;
+    display: flex; align-items: center; justify-content: center; min-height: 120px;
+  }
+  /* Reset fixed-positioned chrome to static so it lays out inside a story frame */
+  .story-stage #pill,
+  .story-stage .pill-clone,
+  .story-stage .toast,
+  .story-stage .panel-clone,
+  .story-stage .toolopts-clone,
+  .story-stage .popover-clone { position: static !important; transform: none !important; }
+  .story-stage .panel-clone {
+    width: 280px; height: 420px; border-radius: var(--radius);
+    box-shadow: var(--emboss); overflow: hidden; background: var(--surface-solid);
+    display: flex; flex-direction: column;
+  }
+  .story-full { grid-column: 1 / -1; }
+  .toast-stack { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 360px; }
+</style>
+</head>
+<body>
+
+<div class="stories-head">
+  <h1>crdt-svg</h1>
+  <span class="sub">component stories · no CRDT · no network · pure render functions from ui.js</span>
+</div>
+
+<div class="stories-grid" id="grid"></div>
+
+<script type="module">
+import { initIcons, icon } from '/icons.js';
+import * as UI from '/ui.js';
+import { SELECT_TOOL } from '/tools-schema.js';
+import { TOOLS as SHAPE_TOOLS } from '/tools-shapes.js';
+import { TOOLS as TOY_TOOLS } from '/toys.js';
+
+initIcons();
+
+// ── Mock data ────────────────────────────────────────────────────────────────
+const PALETTE = ['#c8941e','#5a7ea8','#8a5ea8','#5ea88a','#a85e5e','#a8905e','#5e8aa8'];
+
+const mockShapes = [
+  { id:'a', type:'rect',   fill:'#c8941e', author:'you'  },
+  { id:'b', type:'circle', fill:'#5a7ea8', author:'Mara' },
+  { id:'c', type:'rect',   fill:'#a85e5e', author:'you'  },
+];
+const mockPeers = [
+  { name:'Mara', color:'#5a7ea8', live:true },
+  { name:'Theo', color:'#a85e5e', live:true },
+  { name:'Jin',  color:'#8a5ea8', live:false },
+];
+const mockHistory = [
+  { label:'added rect a1b2c3',  fill:'#c8941e', shapeType:'rect' },
+  { label:'added circle d4e5',  fill:'#5a7ea8', shapeType:'circle' },
+  { label:'remote: added f6g7 by Mara', fill:'#a85e5e', shapeType:'rect' },
+  { label:'session start' },
+];
+const mockLayers = [
+  { id:'background', label:'Background', iconId:'layer-bg',   count:1 },
+  { id:'drawing',    label:'Drawing',    iconId:'layer-draw', count:3 },
+  { id:'toys',       label:'Toys / UI',  iconId:'layer-ui',   count:0 },
+];
+
+// A fake App sufficient for the pure render functions + tool-opts schema.
+const drawingTools = [SELECT_TOOL, ...SHAPE_TOOLS];
+const toysTools    = [SELECT_TOOL, ...TOY_TOOLS];
+const toolById = Object.fromEntries([SELECT_TOOL, ...SHAPE_TOOLS, ...TOY_TOOLS].map(t => [t.name, t]));
+const toolParams = Object.fromEntries(
+  [SELECT_TOOL, ...SHAPE_TOOLS, ...TOY_TOOLS].map(t => [t.name, { ...(t.defaults ?? {}) }])
+);
+
+window.App = {
+  getPalette: () => PALETTE,
+  getTool: (n) => toolById[n] ?? null,
+  getToolOptions: (n) => toolById[n]?.options ?? [],
+  getToolParams: (n) => toolParams[n] ?? {},
+  setToolParam: (n,k,v) => { (toolParams[n] ??= {})[k] = v; },
+  stepToolParam: (n,k,d,min,max) => { const p=(toolParams[n]??={}); p[k]=Math.max(min,Math.min(max,(+p[k]||0)+d)); },
+  // no-ops for handlers fired from within stories
+  setTool(){}, setFill(){}, selectShape(){}, openSheet(){}, closePanel(){},
+  duplicateSelected(){}, bringToFront(){}, deleteSelected(){}, undo(){},
+  setLayer(){}, setOffline(){}, isOffline(){ return false; }, exportSVG(){}, copyJSON(){}, importFile(){},
+};
+window.UI = UI;  // so inline onclick in rendered markup resolves (no-op visually in stories)
+
+// ── Story harness ────────────────────────────────────────────────────────────
+const grid = document.getElementById('grid');
+
+function story(label, variant, buildEl, { full = false } = {}) {
+  const card = document.createElement('div');
+  card.className = 'story' + (full ? ' story-full' : '');
+  const head = document.createElement('div');
+  head.className = 'story-label';
+  head.innerHTML = `${label}${variant ? ` <span class="variant">${variant}</span>` : ''}`;
+  const stage = document.createElement('div');
+  stage.className = 'story-stage';
+  const content = buildEl();
+  if (typeof content === 'string') stage.innerHTML = content;
+  else stage.appendChild(content);
+  card.append(head, stage);
+  grid.appendChild(card);
+}
+
+// Wrap an HTML string in a positioned-reset container so fixed CSS lays out inline
+function box(className, html) {
+  const d = document.createElement('div');
+  d.className = className;
+  d.innerHTML = html;
+  return d;
+}
+
+// ── PILL stories ──────────────────────────────────────────────────────────────
+story('Pill', 'drawing layer · select active', () =>
+  box('pill-clone', `<div id="pill" style="display:inline-flex">${
+    UI.pillHTML({ selectionActive:false, activeTool:'select', tools:drawingTools, mruTool:null })
+  }</div>`));
+
+story('Pill', 'drawing layer · rect active', () =>
+  box('pill-clone', `<div id="pill" style="display:inline-flex">${
+    UI.pillHTML({ selectionActive:false, activeTool:'rect', tools:drawingTools, mruTool:'rect' })
+  }</div>`));
+
+story('Pill', 'toys layer · marker active', () =>
+  box('pill-clone', `<div id="pill" style="display:inline-flex">${
+    UI.pillHTML({ selectionActive:false, activeTool:'marker', tools:toysTools, mruTool:'marker' })
+  }</div>`));
+
+story('Pill', 'selection action strip', () =>
+  box('pill-clone', `<div id="pill" style="display:inline-flex">${
+    UI.pillHTML({ selectionActive:true, activeTool:'select', tools:drawingTools, mruTool:null })
+  }</div>`));
+
+// ── TOOL OPTIONS stories (schema-driven) ───────────────────────────────────────
+for (const t of [...SHAPE_TOOLS, ...TOY_TOOLS, SELECT_TOOL]) {
+  story('Tool options', t.label, () =>
+    box('toolopts-clone', `<div id="toolOpts" style="display:block;position:static;min-width:240px">${
+      UI.toolOptsHTML({ label:t.label, fields:t.options, values:{...(t.defaults??{})}, palette:PALETTE })
+    }</div>`));
+}
+
+// ── TOASTS ──────────────────────────────────────────────────────────────────
+story('Toasts', 'all kinds', () => {
+  const wrap = document.createElement('div');
+  wrap.className = 'toast-stack';
+  wrap.innerHTML = `
+    <div class="toast"><span class="dot"></span><span>Peer connected · 2 shapes synced</span></div>
+    <div class="toast info"><span class="dot"></span><span>Rectangle selected</span></div>
+    <div class="toast warn"><span class="dot"></span><span>Offline — syncing paused</span></div>`;
+  return wrap;
+});
+
+// ── PANEL bodies (each rendered inside a panel-shaped frame) ────────────────────
+function panelFrame(title, bodyHTML, activeTab) {
+  return box('panel-clone', `
+    <div class="panel-head"><h2>${title}</h2>
+      <button class="panel-close">${icon('close', {size:16})}</button></div>
+    <div id="panelTabs">${UI.panelTabsHTML(activeTab)}</div>
+    <div class="panel-body">${bodyHTML}</div>`);
+}
+
+story('Panel · Tools', 'drawing layer', () =>
+  panelFrame('Properties', UI.toolsBody({
+    layer:'drawing', activeTool:'rect', tools:drawingTools, palette:PALETTE,
+    fill:'#c8941e', shapes:mockShapes, selectedId:'a',
+  }), 'tools'), { full:false });
+
+story('Panel · Tools', 'toys layer', () =>
+  panelFrame('Properties', UI.toolsBody({
+    layer:'toys', activeTool:'marker', tools:toysTools, palette:PALETTE,
+    fill:'#a85e5e', shapes:[], selectedId:null,
+  }), 'tools'));
+
+story('Panel · Layers', 'drawing active', () =>
+  panelFrame('Layers', UI.layersBody({ layers:mockLayers, active:'drawing' }), 'layers'));
+
+story('Panel · Peers', 'two live, one offline', () =>
+  panelFrame('Peers & sharing', UI.peersBody({ peers:mockPeers, offline:false, roomId:'design-room-7f3a' }), 'peers'));
+
+story('Panel · History', 'with swatches', () =>
+  panelFrame('History & undo', UI.histBody(mockHistory), 'history'));
+
+story('Panel · Save', '', () =>
+  panelFrame('Save / load', UI.saveBody(), 'save'));
+
+story('Panel · Gestures', 'reached via ⓘ', () =>
+  panelFrame('Gestures & help', UI.gesturesBody(), null));
+</script>
+</body>
+</html>

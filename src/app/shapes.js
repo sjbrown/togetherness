@@ -7,8 +7,6 @@
 
 import * as Y from 'yjs';
 
-export const CURRENT_SCHEMA = 4;
-
 // ── Shape-type registry ───────────────────────────────────────────────────────
 // One entry per drawable type. Everything that differs between a rect and a
 // circle lives here and nowhere else:
@@ -52,7 +50,7 @@ const PRESENTATION = ['fill', 'stroke', 'stroke-width', 'opacity'];
  *          'stroke-width' | strokeWidth, opacity }
  * `type` defaults to 'rect'. Geometry keys depend on type (see SHAPE_TYPES).
  */
-export function addShape(ydoc, yTable, yShapeMeta, attrs) {
+export function addShape(ydoc, yDrawing, yDrawingMeta, attrs) {
   const type = attrs.type ?? 'rect';
   const def  = SHAPE_TYPES[type];
   if (!def) throw new Error(`unknown shape type: ${type}`);
@@ -72,8 +70,8 @@ export function addShape(ydoc, yTable, yShapeMeta, attrs) {
     for (const k of PRESENTATION) {
       if (presentation[k] != null) el.setAttribute(k, String(presentation[k]));
     }
-    yTable.insert(yTable.length, [el]);
-    yShapeMeta.set(attrs.id, { author: attrs.author, type, created: Date.now() });
+    yDrawing.insert(yDrawing.length, [el]);
+    yDrawingMeta.set(attrs.id, { author: attrs.author, type, created: Date.now() });
   });
   return el;
 }
@@ -81,14 +79,14 @@ export function addShape(ydoc, yTable, yShapeMeta, attrs) {
 /**
  * Delete a shape by id. Returns true if found and deleted.
  */
-export function deleteShape(ydoc, yTable, yShapeMeta, id) {
-  const idx = yTable.toArray().findIndex(
+export function deleteShape(ydoc, yDrawing, yDrawingMeta, id) {
+  const idx = yDrawing.toArray().findIndex(
     e => e instanceof Y.XmlElement && e.getAttribute('id') === id
   );
   if (idx === -1) return false;
   ydoc.transact(() => {
-    yTable.delete(idx, 1);
-    yShapeMeta.delete(id);
+    yDrawing.delete(idx, 1);
+    yDrawingMeta.delete(id);
   });
   return true;
 }
@@ -96,8 +94,8 @@ export function deleteShape(ydoc, yTable, yShapeMeta, id) {
 /**
  * Find a Y.XmlElement by id. Returns null if not found.
  */
-export function findShape(yTable, id) {
-  return yTable.toArray().find(
+export function findShape(yDrawing, id) {
+  return yDrawing.toArray().find(
     e => e instanceof Y.XmlElement && e.getAttribute('id') === id
   ) ?? null;
 }
@@ -107,8 +105,8 @@ export function findShape(yTable, id) {
  * The bounding box is resolved per shape type, so circles work too.
  * All values are Numbers. Returns { x, y, width, height } or null if not found.
  */
-export function selectionGeometry(yTable, shapeId, PAD = 3) {
-  const el = findShape(yTable, shapeId);
+export function selectionGeometry(yDrawing, shapeId, PAD = 3) {
+  const el = findShape(yDrawing, shapeId);
   if (!el) return null;
   const def = SHAPE_TYPES[el.nodeName];
   if (!def) return null;
@@ -125,24 +123,24 @@ export function selectionGeometry(yTable, shapeId, PAD = 3) {
  * Iterate all XmlElement children, optionally newest-first by created timestamp.
  * Returns an array of { el, attrs, meta } plain objects.
  */
-export function listShapes(yTable, yShapeMeta, { newestFirst = false } = {}) {
+export function listShapes(yDrawing, yDrawingMeta, { newestFirst = false } = {}) {
   const results = [];
-  for (let node = yTable.firstChild; node; node = node.nextSibling) {
+  for (let node = yDrawing.firstChild; node; node = node.nextSibling) {
     if (!(node instanceof Y.XmlElement)) continue;
     const attrs = node.getAttributes();
-    const meta  = yShapeMeta.get(attrs.id) ?? {};
+    const meta  = yDrawingMeta.get(attrs.id) ?? {};
     results.push({ el: node, attrs, meta });
   }
   if (newestFirst) results.sort((a, b) => (b.meta.created ?? 0) - (a.meta.created ?? 0));
   return results;
 }
 
-// ── Doc setup ─────────────────────────────────────────────────────────────────
 
-export function makeDoc() {
-  const ydoc       = new Y.Doc();
-  const yMeta      = ydoc.getMap('meta');
-  const yTable     = ydoc.getXmlFragment('shapes');
-  const yShapeMeta = ydoc.getMap('shapeMeta');
-  return { ydoc, yMeta, yTable, yShapeMeta };
+// ── Layer accessor ───────────────────────────────────────────────────────────
+export function getDrawingLayer(ydoc) {
+  return {
+    yDrawing: ydoc.getXmlFragment('shapes'),
+    yDrawingMeta: ydoc.getMap('shapeMeta'),
+  }
 }
+
