@@ -205,7 +205,7 @@ function renderToysLayer() {
   if (!layer) return;
   layer.innerHTML = '';
 
-  listToys(_yToys, _yToysMeta).forEach(({ el: yEl, meta }) => {
+  listToys(_yToys, _yToyMeta).forEach(({ el: yEl, meta }) => {
     const svgEl = yXmlToDom(yEl)
     svgEl.style.cursor = 'grab';
     layer.appendChild(svgEl);
