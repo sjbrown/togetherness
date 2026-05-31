@@ -28,7 +28,6 @@
  *
  * yToyMeta sidecar (Y.Map): id → { author, toyType, color, created }
  */
-
 import * as Y from 'yjs';
 
 const SVG_NS   = 'http://www.w3.org/2000/svg'
@@ -313,6 +312,9 @@ export function toyGeometry(yToys, id, PAD = 4) {
   return { x: x - PAD, y: y - PAD, width: w + PAD * 2, height: h + PAD * 2 }
 }
 
+/**
+ * All placed toys as { el, id, toyType, meta }, in z-order (insertion order).
+ */
 export function listToys(yToys, yToyMeta) {
   const results = []
   yToys.toArray().forEach(yEl => {
@@ -325,7 +327,8 @@ export function listToys(yToys, yToyMeta) {
 
 export const TOOLS = [
   {
-    name:  'marker',
+    name:    'marker',
+    toyType: 'player_marker',
     label: TOY_TYPES['player_marker'].label,
     icon: svg(TOY_TYPES['player_marker'].icon),
     layer: 'toys',
@@ -337,7 +340,8 @@ export const TOOLS = [
     ],
   },
   {
-    name:  'd6',
+    name:    'd6',
+    toyType: 'dice_d6',
     label: TOY_TYPES['dice_d6'].label,
     icon: svg(TOY_TYPES['dice_d6'].icon),
     layer: 'toys',

@@ -282,8 +282,9 @@ function finishDraft(e) {
     }
     App.commitShape({ type:'circle', cx: Math.round(d.ox), cy: Math.round(d.oy), r, ...drawAttrs() });
   } else {
-    // marker / d6 / pen / text: stub — drop a default rect for now
-    App.commitShape({ type:'rect', x: Math.round(d.ox) - 60, y: Math.round(d.oy) - 40, width:120, height:80, ...drawAttrs() });
+    // Toy tools (marker, d6, etc.) and future drawing tools (pen, text):
+    // drop the toy centered on the tap/drag origin.
+    App.commitToy(d.type, Math.round(d.ox), Math.round(d.oy));
   }
 }
 

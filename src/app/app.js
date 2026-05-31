@@ -439,6 +439,21 @@ const App = {
     App.addLog(`added ${attrs.type} ${id.slice(0, 6)}`, 'local');
   },
 
+  commitToy: (toolName, x, y) => {
+    const def = _toolById[toolName];
+    if (!def?.toyType) { UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
+    const id = App.getMyId() + '_' + Math.random().toString(36).slice(2, 7);
+    addToy(_ydoc, _yToys, _yToyMeta, {
+      id, toyType: def.toyType, x, y,
+      color: _myGrad.c1, author: _myId,
+    }).then(() => {
+      App.addLog(`placed ${def.label} ${id.slice(0, 6)}`, 'local');
+    }).catch(err => {
+      UI.toast(`Failed to place ${def.label}`, 'warn');
+      App.addLog(`place failed: ${err.message}`, 'del');
+    });
+  },
+
   deleteShape: (id) => {
     const yEl = findShape(_yDrawing, id);
     if (!yEl) return;
