@@ -28,6 +28,7 @@
  *
  * yToyMeta sidecar (Y.Map): id → { author, toyType, color, created }
  */
+
 import * as Y from 'yjs';
 
 const SVG_NS   = 'http://www.w3.org/2000/svg'
@@ -312,15 +313,12 @@ export function toyGeometry(yToys, id, PAD = 4) {
   return { x: x - PAD, y: y - PAD, width: w + PAD * 2, height: h + PAD * 2 }
 }
 
-/**
- * All placed toys as { el, id, toyType, meta }, in z-order (insertion order).
- */
 export function listToys(yToys, yToyMeta) {
   const results = []
   yToys.toArray().forEach(yEl => {
     if (!(yEl instanceof Y.XmlElement)) return
     const id = yEl.getAttribute('data-toy-id')
-    results.push({ el: yEl, id, toyType: yEl.getAttribute('data-toy-type'), meta: yToyMeta.get(id) ?? {} })
+    results.push({ el: yEl, meta: yToyMeta.get(id) ?? {} })
   })
   return results
 }

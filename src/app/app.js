@@ -38,6 +38,7 @@ import { entityGradient }            from './entity_gradient.js';
 import * as Y from 'yjs';
 
 const svgNS = 'http://www.w3.org/2000/svg'
+const XLINK_NS = 'http://www.w3.org/1999/xlink';
 
 
 // ── Internal app state ────────────────────────────────────────────────────────
@@ -204,10 +205,8 @@ function renderToysLayer() {
   if (!layer) return;
   layer.innerHTML = '';
 
-  listToys(_yToys, _yDrawingMeta).forEach(({ el: yEl, attrs }) => {
+  listToys(_yToys, _yToysMeta).forEach(({ el: yEl, meta }) => {
     const svgEl = yXmlToDom(yEl)
-    const id = attrs.id;
-    svgEl.setAttribute('data-yid', id);
     svgEl.style.cursor = 'grab';
     layer.appendChild(svgEl);
   });
@@ -225,10 +224,10 @@ function renderDrawingLayer() {
   if (!layer) return;
   layer.innerHTML = '';
 
-  listShapes(_yDrawing, _yDrawingMeta, { newestFirst: false }).forEach(({ el: yEl, id, toyType, meta }) => {
+  listShapes(_yDrawing, _yDrawingMeta, { newestFirst: false }).forEach(({ el: yEl, attrs, meta }) => {
     const svgEl = yXmlToDom(yEl)
+    const id = attrs.id;
     svgEl.setAttribute('data-yid', id);
-    svgEl.setAttribute('data-toy-type', toyType);
     svgEl.style.cursor = 'pointer';
     layer.appendChild(svgEl);
   });
@@ -284,7 +283,7 @@ function wireLowLevelEvents() {
 }
 
 // ── CRDT observers ────────────────────────────────────────────────────────────
-function onToysChanged(event, transaction) {
+function onToysChanged(events, transaction) {
   if (!transaction.local) { // filters out our own ops
     for (const event of events) {
       // The structural event (target is yToys) is where we log remote placements
@@ -392,8 +391,9 @@ const App = {
   },
   getShapeGeom:    (id) => {
     //TODO: make this work for toys as well
-    let shapeEl = document.getElementById(id);
-    const attrs = shapeEl.getAttributes();
+    const result = findShape(_yDrawing, id);
+    if (!result) return { x: 0, y: 0 };
+    const attrs = result.el.getAttributes();
     return { x: +(attrs.x ?? attrs.cx ?? 0), y: +(attrs.y ?? attrs.cy ?? 0) };
   },
   getShapeList:    () => listShapes(_yDrawing, _yDrawingMeta, { newestFirst: false }).map(({ attrs, meta }) => ({
@@ -558,7 +558,7 @@ const App = {
     const entry = document.createElement('div')
     entry.className   = `log-entry ${type}`
     entry.textContent = `${new Date().toISOString().slice(11,19)} ${msg}`
-    if (type === 'local') entry.style.borderLeftColor = myGrad.c1
+    if (type === 'local') entry.style.borderLeftColor = _myGrad.c1
     log.prepend(entry)
     while (log.children.length > 40) log.lastChild.remove()
   },
