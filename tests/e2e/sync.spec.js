@@ -24,6 +24,8 @@ test.describe('two-peer sync', () => {
 
     const room = `e2e-test-${Date.now()}`;
     await page1.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
+    await expect(page1.locator('#peerCount')).toHaveText('0', { timeout: 8000 });
+
     await page2.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
 
     // Wait for both peers to see each other
@@ -31,8 +33,11 @@ test.describe('two-peer sync', () => {
     await expect(page2.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
 
     // Draw a rect on page1
-    const canvas = page1.locator('#canvasWrap');
+    const canvas = page1.locator('#canvas');
     const box    = await canvas.boundingBox();
+    await page1.evaluate(() => window.UI.pillTap('rect'));
+    await page1.waitForTimeout(100); // let the UI settle
+
     await page1.mouse.move(box.x + 100, box.y + 100);
     await page1.mouse.down();
     await page1.mouse.move(box.x + 250, box.y + 200);
@@ -60,8 +65,12 @@ test.describe('two-peer sync', () => {
     await expect(page1.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
 
     // Draw on page1
-    const canvas = page1.locator('#canvasWrap');
+    const canvas = page1.locator('#canvas');
     const box    = await canvas.boundingBox();
+
+    await page1.evaluate(() => window.UI.pillTap('rect'));
+    await page1.waitForTimeout(100); // let the UI settle
+
     await page1.mouse.move(box.x + 50, box.y + 50);
     await page1.mouse.down();
     await page1.mouse.move(box.x + 150, box.y + 150);
@@ -69,8 +78,19 @@ test.describe('two-peer sync', () => {
 
     await expect(page2.locator('[data-yid]')).toHaveCount(1, { timeout: 5000 });
 
-    // Delete via sidebar on page1
-    await page1.locator('.shape-del').first().click();
+    // Select the rect by clicking on it
+    await page1.evaluate(() => window.UI.pillTap('select'));
+    await page1.waitForTimeout(100); // let the UI settle
+    await page1.mouse.move(box.x + 60, box.y + 60);
+    await page1.mouse.down();
+    await page1.mouse.up();
+    await page1.waitForTimeout(100); // let the UI settle
+
+    // Call deleteSelected
+    await page1.evaluate(() => window.UI.deleteSelected());
+    await page1.waitForTimeout(100); // let the UI settle
+
+    // Other browser should show no more shape
     await expect(page2.locator('[data-yid]')).toHaveCount(0, { timeout: 5000 });
 
     await browser.close();
