@@ -145,6 +145,7 @@ function onPointerDown(e) {
   if (ToolMode.tool === 'select') {
     if (hitId) {
       ToolMode._gesture = 'move';
+      // TODO: App.getShapeGeom should use e.target rather than hitId
       const geom = App.getShapeGeom(hitId);
       const p = toCanvas(e.clientX, e.clientY);
       ToolMode._moveRef = { id: hitId, dx: p.x - (geom?.x ?? 0), dy: p.y - (geom?.y ?? 0), moved: false };

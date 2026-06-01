@@ -22,10 +22,12 @@
 
 import { initIcons }                              from './icons.js';
 import { SHAPE_TYPES, addShape, deleteShape,
-         findShape, selectionGeometry, listShapes } from './shapes.js';
+         findShape, selectionGeometry, listShapes,
+         getGeom as shapeGeom } from './shapes.js';
 import { TOOLS as TOY_TOOLS,
          TOY_TYPES, addToy, deleteToy,
          findToy, listToys, toyGeometry,
+         getGeom as toyGeom,
        }  from './toys.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
 import { TOOLS as DRAW_TOOLS, LAYER as DRAW_LAYER }  from './tools-shapes.js';
@@ -166,30 +168,6 @@ function renderPresence() {
   updatePeerCount();
 }
 
-// Recursive SVG-aware mirror: Y.XmlElement tree → live SVG DOM.
-// Used by BOTH layers — drawing shapes are just shallow trees, toys are deep.
-// Note: Y.XmlElement.toDOM() builds HTML-namespaced nodes and would not
-// render as SVG, so we mirror with createElementNS ourselves. <script> nodes
-// are never mirrored into the live DOM (behaviour is the sandbox step, later).
-function yXmlToDom(yNode) {
-  if (yNode instanceof Y.XmlText) return document.createTextNode(yNode.toString())
-  if (!(yNode instanceof Y.XmlElement)) return null
-  if (yNode.nodeName === 'script') return null
-
-  const el = document.createElementNS(svgNS, yNode.nodeName)
-  const attrs = yNode.getAttributes()
-  for (const k in attrs) {
-    if (k === 'xlink:href') el.setAttributeNS(XLINK_NS, 'href', attrs[k])
-    else                    el.setAttribute(k, attrs[k])
-  }
-  yNode.toArray().forEach(child => {
-    const dom = yXmlToDom(child)
-    if (dom) el.appendChild(dom)
-  })
-  return el
-}
-
-
 function renderBoundariesPositionsLayer() {
   const layer = _svgEl.querySelector('#boundaries-positions-layer');
   if (!layer) return;
@@ -205,8 +183,7 @@ function renderToysLayer() {
   if (!layer) return;
   layer.innerHTML = '';
 
-  listToys(_yToys, _yToyMeta).forEach(({ el: yEl, meta }) => {
-    const svgEl = yXmlToDom(yEl)
+  listToys(_yToys, _yToyMeta).forEach(({ svgEl }) => {
     svgEl.style.cursor = 'grab';
     layer.appendChild(svgEl);
   });
@@ -224,10 +201,7 @@ function renderDrawingLayer() {
   if (!layer) return;
   layer.innerHTML = '';
 
-  listShapes(_yDrawing, _yDrawingMeta, { newestFirst: false }).forEach(({ el: yEl, attrs, meta }) => {
-    const svgEl = yXmlToDom(yEl)
-    const id = attrs.id;
-    svgEl.setAttribute('data-yid', id);
+  listShapes(_yDrawing, _yDrawingMeta, { newestFirst: false }).forEach(({ svgEl }) => {
     svgEl.style.cursor = 'pointer';
     layer.appendChild(svgEl);
   });
@@ -243,11 +217,13 @@ function renderDrawingList() {
   const list = document.getElementById('shapeList');
   if (!list) return;
   list.innerHTML = '';
-  listShapes(_yDrawing, _yDrawingMeta, { newestFirst: true }).forEach(({ attrs, meta }) => {
-    const id     = attrs.id;
-    const def    = SHAPE_TYPES[meta?.type ?? attrs['data-type']] ?? SHAPE_TYPES.rect;
+  listShapes(_yDrawing, _yDrawingMeta, { newestFirst: true }).forEach(({ svgEl, shapeMeta }) => {
+    const id     = svgEl.getAttribute('data-yid');
+    const attrs  = {};
+    for (const at of svgEl.attributes) attrs[at.name] = at.value;
+    const def    = SHAPE_TYPES[shapeMeta?.type ?? attrs['data-type']] ?? SHAPE_TYPES.rect;
     const item   = document.createElement('div');
-    const author = meta?.author;
+    const author = shapeMeta?.author;
     item.className  = 'shape-item' + (_selectedId === id ? ' selected' : '');
     item.dataset.id = id;
     const sw = document.createElement('div');
@@ -347,8 +323,7 @@ function onPresenceChanged() {
 }
 
 function layerForElement(el) {
-  //TODO
-  return 'drawing';
+  return el?.getAttribute?.('data-layer-type') ?? 'drawing';
 }
 
 // ── App bus — the object passed to all modules ─────────────────────────────────
@@ -359,7 +334,7 @@ const App = {
   getHistory:      () => _historyLog.slice(0, 20),
   getLayers:       () => _layerMeta.map(l => ({
     ...l,
-    count: l.id === DRAW_LAYER ? listShapes(_yDrawing, _yDrawingMeta, {}).length
+    count: l.id === DRAW_LAYER ? _yDrawing.toArray().filter(e => e instanceof Y.XmlElement).length
          : l.id === 'background' ? 1
          : 'TODO',
   })),
@@ -382,33 +357,25 @@ const App = {
   getRoomId:       () => _roomId,
   getSelectedId:   () => _selectedId,
   getShapeBBox:    (id) => {
-    let shapeEl = document.getElementById(id);
-    let geo = layerForElement(shapeEl) === 'toy'
+    const svgEl = _svgEl.querySelector(`[data-yid="${id}"]`);
+    let geo = layerForElement(svgEl) === 'toy'
       ? toyGeometry(_yToys, id)
       : selectionGeometry(_yDrawing, id)
     if (!geo) return null;
     return { x: geo.x, y: geo.y, width: geo.width, height: geo.height };
   },
+  // TODO: getShapeGeom should take an svgEl, not a yid.
   getShapeGeom:    (id) => {
-    // Try the drawing layer first, then toys.
-    const yEl = findShape(_yDrawing, id);
-    if (yEl) {
-      const a = yEl.getAttributes();
-      return { x: +(a.x ?? a.cx ?? 0), y: +(a.y ?? a.cy ?? 0) };
-    }
-    const toy = findToy(_yToys, id);
-    if (toy) {
-      // Position is stored on the embedded <svg> child as x/y.
-      const svg = toy.toArray().find(e => e instanceof Y.XmlElement && e.nodeName === 'svg');
-      if (svg) return { x: +svg.getAttribute('x') || 0, y: +svg.getAttribute('y') || 0 };
-    }
-    return { x: 0, y: 0 };
+    const svgEl = _svgEl.querySelector(`[data-yid="${id}"]`);
+    if (!svgEl) return { x: 0, y: 0 };
+    const geom = layerForElement(svgEl) === 'toy' ? toyGeom(svgEl) : shapeGeom(svgEl);
+    return geom ? { x: geom.x, y: geom.y } : { x: 0, y: 0 };
   },
-  getShapeList:    () => listShapes(_yDrawing, _yDrawingMeta, { newestFirst: false }).map(({ attrs, meta }) => ({
-    id:     attrs.id,
-    type:   meta?.type ?? 'rect',
-    fill:   attrs.fill ?? '#888',
-    author: meta?.author ?? '?',
+  getShapeList:    () => listShapes(_yDrawing, _yDrawingMeta, { newestFirst: false }).map(({ svgEl, shapeMeta }) => ({
+    id:     svgEl.getAttribute('data-yid'),
+    type:   shapeMeta?.type ?? 'rect',
+    fill:   svgEl.getAttribute('fill') ?? '#888',
+    author: shapeMeta?.author ?? '?',
   })),
   getViewScale:    () => Canvas.getView().scale,
   isOffline:       () => _offline,

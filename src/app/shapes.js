@@ -1,11 +1,17 @@
 /**
  * shapes.js — core CRDT operations for crdt-svg
  *
- * Pure functions over Yjs types. No DOM, no browser APIs.
- * Importable by both index.html and test files.
+ * The CRDT operations (addShape, deleteShape, findShape, selectionGeometry,
+ * SHAPE_TYPES) are pure functions over Yjs types — no DOM, importable anywhere.
+ *
+ * The rendering helpers (_toSVGEl, getGeom, listShapes) ARE DOM-coupled: they
+ * mirror Yjs nodes into live SVG elements. They require a DOM (browser or jsdom).
  */
 
 import * as Y from 'yjs';
+
+const SVG_NS   = 'http://www.w3.org/2000/svg';
+const XLINK_NS = 'http://www.w3.org/1999/xlink';
 
 // ── Shape-type registry ───────────────────────────────────────────────────────
 // One entry per drawable type. Everything that differs between a rect and a
@@ -51,6 +57,7 @@ const PRESENTATION = ['fill', 'stroke', 'stroke-width', 'opacity'];
  * `type` defaults to 'rect'. Geometry keys depend on type (see SHAPE_TYPES).
  */
 export function addShape(ydoc, yDrawing, yDrawingMeta, attrs) {
+  // TODO: don't be so permissive.  If caller doesn't provide type, throw error
   const type = attrs.type ?? 'rect';
   const def  = SHAPE_TYPES[type];
   if (!def) throw new Error(`unknown shape type: ${type}`);
@@ -59,6 +66,7 @@ export function addShape(ydoc, yDrawing, yDrawingMeta, attrs) {
   const presentation = {
     fill:           attrs.fill,
     stroke:         attrs.stroke,
+    // TODO: don't be so permissive.  Stick to stroke-width
     'stroke-width': attrs['stroke-width'] ?? attrs.strokeWidth,
     opacity:        attrs.opacity,
   };
@@ -67,6 +75,7 @@ export function addShape(ydoc, yDrawing, yDrawingMeta, attrs) {
   ydoc.transact(() => {
     el.setAttribute('id', String(attrs.id));
     for (const k of def.geomAttrs) el.setAttribute(k, String(attrs[k]));
+    // TODO: don't hoist PRESENTATION to a global var. too DRY. each type should have def.presAttrs
     for (const k of PRESENTATION) {
       if (presentation[k] != null) el.setAttribute(k, String(presentation[k]));
     }
@@ -101,9 +110,54 @@ export function findShape(yDrawing, id) {
 }
 
 /**
- * Geometry for the selection overlay rect, with PAD applied.
- * The bounding box is resolved per shape type, so circles work too.
- * All values are Numbers. Returns { x, y, width, height } or null if not found.
+ * Mirror a Y.XmlElement tree into a live, SVG-namespaced DOM element.
+ * Uses createElementNS (not toDOM/DOMParser) so the SVG namespace and tag-name
+ * case are preserved. <script> nodes are never mirrored.
+ */
+function mirror(yNode) {
+  if (yNode instanceof Y.XmlText) return document.createTextNode(yNode.toString());
+  if (!(yNode instanceof Y.XmlElement)) return null;
+  if (yNode.nodeName === 'script') return null;
+  const el = document.createElementNS(SVG_NS, yNode.nodeName);
+  const attrs = yNode.getAttributes();
+  for (const k in attrs) {
+    if (k === 'xlink:href') el.setAttributeNS(XLINK_NS, 'href', attrs[k]);
+    else                    el.setAttribute(k, attrs[k]);
+  }
+  yNode.toArray().forEach(child => {
+    const dom = mirror(child);
+    if (dom) el.appendChild(dom);
+  });
+  return el;
+}
+
+/**
+ * Render a shape Y.XmlElement to an SVG DOM element, stamped with the handles
+ * app.js needs: data-yid (the shape id) and data-layer-type="drawing".
+ */
+export function _toSVGEl(yEl) {
+  const el = mirror(yEl);
+  if (el && el.setAttribute) {
+    el.setAttribute('data-yid', yEl.getAttribute('id'));
+    el.setAttribute('data-layer-type', 'drawing');
+  }
+  return el;
+}
+
+/**
+ * Bounding box for a rendered shape svgEl, resolved per shape type so circles
+ * work too. Returns { x, y, width, height } (Numbers) or null. No PAD.
+ */
+export function getGeom(svgEl) {
+  const def = SHAPE_TYPES[svgEl?.tagName];
+  if (!def) return null;
+  const a = {};
+  for (const k of def.geomAttrs) a[k] = svgEl.getAttribute(k);
+  return def.bbox(a);
+}
+
+/**
+ * TODO: get rid of this function
  */
 export function selectionGeometry(yDrawing, shapeId, PAD = 3) {
   const el = findShape(yDrawing, shapeId);
@@ -119,24 +173,27 @@ export function selectionGeometry(yDrawing, shapeId, PAD = 3) {
   };
 }
 
+
 /**
  * Iterate all XmlElement children, optionally newest-first by created timestamp.
- * Returns an array of { el, attrs, meta } plain objects.
+ * Returns an array of { svgEl, shapeMeta }; each svgEl is a rendered SVG element
+ * with data-yid + data-layer-type stamped.
  */
 export function listShapes(yDrawing, yDrawingMeta, { newestFirst = false } = {}) {
   const results = [];
   for (let node = yDrawing.firstChild; node; node = node.nextSibling) {
     if (!(node instanceof Y.XmlElement)) continue;
-    const attrs = node.getAttributes();
-    const meta  = yDrawingMeta.get(attrs.id) ?? {};
-    results.push({ el: node, attrs, meta });
+    const id        = node.getAttribute('id');
+    const shapeMeta = yDrawingMeta.get(id) ?? {};
+    results.push({ svgEl: _toSVGEl(node), shapeMeta });
   }
-  if (newestFirst) results.sort((a, b) => (b.meta.created ?? 0) - (a.meta.created ?? 0));
+  if (newestFirst) results.sort((a, b) => (b.shapeMeta.created ?? 0) - (a.shapeMeta.created ?? 0));
   return results;
 }
 
 
 // ── Layer accessor ───────────────────────────────────────────────────────────
+// TODO: cruft
 export function getDrawingLayer(ydoc) {
   return {
     yDrawing: ydoc.getXmlFragment('shapes'),

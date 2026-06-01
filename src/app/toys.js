@@ -12,11 +12,6 @@
 /**
  * toys.js — CRDT operations for the toys layer
  *
- * Unlike shapes.js, this module is browser-coupled: importing a toy needs
- * DOMParser (to parse the SVG file) and addToy needs fetch (to load it).
- * The pure, unit-testable part is svgTextToYXml + the id-rewriting helpers
- * (jsdom provides DOMParser under vitest).
- *
  * Data model — same as the drawing layer: a Y.XmlFragment of Y.XmlElement.
  * The CRDT tree IS the SVG tree, so internal toy edits (recolor, flip,
  * contents) merge at the attribute/child level.
@@ -142,6 +137,7 @@ function applyColor(colorMatrices, color) {
 }
 
 // ── Layer accessor ────────────────────────────────────────────────────────────
+// TODO: cruft
 export function getToysLayer(ydoc) {
   return {
     yToys:    ydoc.getXmlFragment('toys'),
@@ -295,9 +291,24 @@ export function findToy(yToys, id) {
 }
 
 /**
- * Bounding box for a toy's selection overlay, with PAD applied.
- * Read from the embedded <svg>'s x/y/width/height. Returns
- * { x, y, width, height } (Numbers) or null if not found.
+ * Bounding box for a rendered toy svgEl, read from its embedded <svg> child's
+ * x/y/width/height. Returns { x, y, width, height } (Numbers) or null.
+ * No PAD — callers apply padding if they want a selection box.
+ */
+export function getGeom(svgEl) {
+  const svg = svgEl?.tagName === 'svg' ? svgEl : svgEl?.querySelector?.('svg')
+  if (!svg) return null
+  const x = parseFloat(svg.getAttribute('x'))
+  const y = parseFloat(svg.getAttribute('y'))
+  const w = parseFloat(svg.getAttribute('width'))
+  const h = parseFloat(svg.getAttribute('height'))
+  if ([x, y, w, h].some(Number.isNaN)) return null
+  return { x, y, width: w, height: h }
+}
+
+
+/**
+ * TODO: remove this.  PAD should be done by App.
  */
 export function toyGeometry(yToys, id, PAD = 4) {
   const g = findToy(yToys, id)
@@ -313,14 +324,53 @@ export function toyGeometry(yToys, id, PAD = 4) {
 }
 
 /**
- * All placed toys as { el, id, toyType, meta }, in z-order (insertion order).
+ * Mirror a Y.XmlElement tree into a live, SVG-namespaced DOM element.
+ * We can't use Y.XmlElement.toDOM() (HTML namespace, won't render as SVG) nor
+ * toString()+DOMParser (lowercases tag names like feColorMatrix and drops the
+ * xmlns:xlink declaration). The recursive createElementNS walk preserves both.
+ * <script> nodes are never mirrored.
+ */
+function mirror(yNode) {
+  if (yNode instanceof Y.XmlText) return document.createTextNode(yNode.toString())
+  if (!(yNode instanceof Y.XmlElement)) return null
+  if (yNode.nodeName === 'script') return null
+  const el = document.createElementNS(SVG_NS, yNode.nodeName)
+  const attrs = yNode.getAttributes()
+  for (const k in attrs) {
+    if (k === 'xlink:href') el.setAttributeNS(XLINK_NS, 'href', attrs[k])
+    else                    el.setAttribute(k, attrs[k])
+  }
+  yNode.toArray().forEach(child => {
+    const dom = mirror(child)
+    if (dom) el.appendChild(dom)
+  })
+  return el
+}
+
+/**
+ * Render a toy's <g> wrapper to an SVG DOM element, stamped with the handles
+ * app.js needs: data-yid (the toy id) and data-layer-type="toy".
+ */
+export function _toSVGEl(yEl) {
+  const el = mirror(yEl)
+  if (el && el.setAttribute) {
+    el.setAttribute('data-yid', yEl.getAttribute('data-toy-id'))
+    el.setAttribute('data-layer-type', 'toy')
+  }
+  return el
+}
+
+
+/**
+ * All placed toys as { svgEl, meta }, in z-order (insertion order).
+ * Each svgEl is a rendered SVG element with data-yid + data-layer-type stamped.
  */
 export function listToys(yToys, yToyMeta) {
   const results = []
   yToys.toArray().forEach(yEl => {
     if (!(yEl instanceof Y.XmlElement)) return
     const id = yEl.getAttribute('data-toy-id')
-    results.push({ el: yEl, meta: yToyMeta.get(id) ?? {} })
+    results.push({ svgEl: _toSVGEl(yEl), meta: yToyMeta.get(id) ?? {} })
   })
   return results
 }
@@ -330,6 +380,7 @@ export const TOOLS = [
     name:    'marker',
     toyType: 'player_marker',
     label: TOY_TYPES['player_marker'].label,
+    // TODO: doesn't seem to be working - find out why
     icon: svg(TOY_TYPES['player_marker'].icon),
     layer: 'toys',
     defaults: { fill: '#a85e5e', label: '', size: 24 },
@@ -343,6 +394,7 @@ export const TOOLS = [
     name:    'd6',
     toyType: 'dice_d6',
     label: TOY_TYPES['dice_d6'].label,
+    // TODO: doesn't seem to be working - find out why
     icon: svg(TOY_TYPES['dice_d6'].icon),
     layer: 'toys',
     defaults: { fill: '#a8905e', faces: 6 },
