@@ -18,6 +18,8 @@
 <style>
   /* Stories-only chrome — not part of the app */
   html, body { overflow: auto; touch-action: auto; height: auto; min-height: 100%; }
+  /* overscroll-behaviour: initial is necessary otherwise mousewheel can't scroll */
+  html, body { overscroll-behavior: initial; }
   body { padding: 0 0 80px; }
   .stories-head {
     position: sticky; top: 0; z-index: 200;
@@ -229,8 +231,108 @@ story('Panel · History', 'with swatches', () =>
 story('Panel · Save', '', () =>
   panelFrame('Save / load', UI.saveBody(), 'save'));
 
-story('Panel · Gestures', 'reached via ⓘ', () =>
-  panelFrame('Gestures & help', UI.gesturesBody(), null));
+// ── CANVAS SHAPES ────────────────────────────────────────────────────────────
+// These stories render actual SVG shapes via _toSVGEl + the real overlay.js.
+// No CRDT or network: shapes are created directly from attrs.
+// Overlay.init() receives a minimal fake App that answers getShapeBBox,
+// getViewScale, getMyColor, and getMyGradient from local data.
+
+import * as Overlay from '/overlay.js';
+import { getGeom, SHAPE_TYPES } from '/shapes.js';
+import { entityGradient } from '/entity_gradient.js';
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const myGrad = entityGradient('stories-user');
+
+// Build a plain SVG element for a shape (no CRDT needed).
+function shapeEl(type, geom, fill) {
+  const def = SHAPE_TYPES[type];
+  const el  = document.createElementNS(SVG_NS, def.tag);
+  el.setAttribute('fill', fill);
+  el.setAttribute('stroke', 'none');
+  for (const [k, v] of Object.entries(geom)) el.setAttribute(k, String(v));
+  return el;
+}
+
+// Build an SVG stage with a drawing layer, optional overlay layer, and shapes.
+// Returns the SVG element (already has shapes appended).
+function buildStageSVG(shapes) {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 240 160');
+  svg.setAttribute('width',   '240');
+  svg.setAttribute('height',  '160');
+  svg.style.cssText = 'display:block;width:100%;height:100%;';
+
+  const drawing = document.createElementNS(SVG_NS, 'g');
+  drawing.id = 'drawing-layer';
+  const overlayG = document.createElementNS(SVG_NS, 'g');
+  overlayG.id = 'overlay-layer';
+
+  for (const { id, type, geom, fill } of shapes) {
+    const el = shapeEl(type, geom, fill);
+    el.setAttribute('data-yid',        id);
+    el.setAttribute('data-layer-type', 'drawing');
+    drawing.appendChild(el);
+  }
+  svg.append(drawing, overlayG);
+  return svg;
+}
+
+// Create a fake App sufficient for overlay.render().
+function fakeOverlayApp(svgEl) {
+  return {
+    getViewScale:   () => 1,
+    getMyColor:     () => myGrad.c1,
+    getMyGradient:  () => myGrad,
+    getShapeBBox: (id) => {
+      const el = svgEl.querySelector(`[data-yid="${id}"]`);
+      return el ? getGeom(el) : null;
+    },
+  };
+}
+
+// Render a self-contained canvas story.
+function canvasStory(label, variant, shapes, selectionKind, selectedId, remoteColor) {
+  story(label, variant, () => {
+    const svg = buildStageSVG(shapes);
+
+    Overlay.SelectionMode.clear();
+    if (selectedId && selectionKind === 'local') {
+      Overlay.SelectionMode.set(selectedId, { kind: 'local', color: myGrad.c1, grad: myGrad });
+    } else if (selectedId && selectionKind === 'remote') {
+      Overlay.SelectionMode.set(selectedId, { kind: 'remote', peerId: 'Mara', color: remoteColor ?? '#5a7ea8' });
+    }
+
+    Overlay.init(fakeOverlayApp(svg), svg);
+    Overlay.render();
+    return svg;
+  });
+}
+
+// ── Shape stories ─────────────────────────────────────────────────────────────
+const rectGeom   = { x: 40,  y: 50, width: 120, height: 65 };
+const circleGeom = { cx: 160, cy: 80, r: 55 };
+
+canvasStory('Rect',   'unselected',       [{ id:'r1', type:'rect',   geom:rectGeom,   fill:'#c8941e' }], null);
+canvasStory('Rect',   'local selected',   [{ id:'r2', type:'rect',   geom:rectGeom,   fill:'#c8941e' }], 'local',  'r2');
+canvasStory('Rect',   'remote selected',  [{ id:'r3', type:'rect',   geom:rectGeom,   fill:'#c8941e' }], 'remote', 'r3');
+canvasStory('Circle', 'unselected',       [{ id:'c1', type:'circle', geom:circleGeom, fill:'#5a7ea8' }], null);
+canvasStory('Circle', 'local selected',   [{ id:'c2', type:'circle', geom:circleGeom, fill:'#5a7ea8' }], 'local',  'c2');
+canvasStory('Circle', 'remote selected',  [{ id:'c3', type:'circle', geom:circleGeom, fill:'#5a7ea8' }], 'remote', 'c3');
+// Mixed: both local + remote selections active simultaneously.
+story('Mixed', 'rect local · circle remote', () => {
+  const shapes = [
+    { id:'mx1', type:'rect',   geom:{ x:20, y:40, width:90, height:60 }, fill:'#a85e5e' },
+    { id:'mx2', type:'circle', geom:{ cx:175, cy:90, r:50 },             fill:'#5ea88a' },
+  ];
+  const svg = buildStageSVG(shapes);
+  Overlay.SelectionMode.clear();
+  Overlay.SelectionMode.set('mx1', { kind:'local',  color: myGrad.c1,   grad: myGrad });
+  Overlay.SelectionMode.set('mx2', { kind:'remote', peerId:'Mara', color:'#5a7ea8' });
+  Overlay.init(fakeOverlayApp(svg), svg);
+  Overlay.render();
+  return svg;
+});
 </script>
 </body>
 </html>
