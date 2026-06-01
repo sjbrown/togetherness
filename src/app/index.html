@@ -18,6 +18,18 @@
         <pattern id="bg-pattern" x="0" y="0" width="1384" height="998" patternUnits="userSpaceOnUse">
           <image href="img/bg_slatehex.png" x="0" y="0" width="1384" height="998"/>
         </pattern>
+        <linearGradient id="default-local-sel-grad"
+          x1="0.000" y1="0.500"
+          x2="1.000" y2="0.500"
+          ><stop offset="0%" stop-color="hsl(160, 100%, 55%)"></stop ><stop offset="100%" stop-color="hsl(165, 90%, 45%)"></stop ></linearGradient>
+        <linearGradient id="default-remote-sel-grad"
+          x1="0.000" y1="0.500"
+          x2="1.000" y2="0.500"
+          ><stop offset="0%"
+          stop-color="hsl(180, 100%, 55%)"></stop
+          ><stop offset="100%"
+          stop-color="hsl(185, 90%, 45%)"></stop
+        ></linearGradient>
       </defs>
     <g id="background-layer">
       <rect x="0" y="0" width="100%" height="100%" fill="url(#bg-pattern)" pointer-events="none"/>
@@ -191,7 +203,7 @@ persistence.on('synced', () => {
 const signalingUrl = new URLSearchParams(location.search).get('signaling') || 'ws://localhost:4444';
 const provider     = new WebrtcProvider(roomId, ydoc, { signaling: [signalingUrl] });
 const awareness    = provider.awareness;
-awareness.setLocalState({ id: myId, color: myGrad.c1, cursor: null, selection: null });
+awareness.setLocalState({ id: myId, color: myGrad.c1, grad: myGrad, cursor: null, selection: null });
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 boot({ ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, awareness, provider, myId, myGrad, roomId });

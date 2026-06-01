@@ -115,8 +115,8 @@ html, body {
 
 /* SVG class helpers (applied by canvas.js) */
 .shape     { cursor: pointer; }
-.selRing   { fill: none; stroke: var(--info); stroke-width: 2; stroke-dasharray: 6 4; pointer-events: none; }
-.handle    { fill: var(--surface-solid); stroke: var(--info); stroke-width: 1.5; pointer-events: none; }
+.selRing   { pointer-events: none; }
+.handle    { pointer-events: none; }
 .peer-ring { pointer-events: none; }
 
 /* Draw-preview div (used by canvas.js for rubber-band rect) */

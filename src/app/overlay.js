@@ -59,18 +59,21 @@ export function syncFromAwareness(awarenessStates, myClientId) {
   awarenessStates.forEach((state, clientId) => {
     if (clientId === myClientId) return;
     if (!state?.selection?.shapeId) return;
+    const peerId = state.id ?? String(clientId);
+    const grad = state.grad ?? 'default-remote-sel-grad';
     const { shapeId } = state.selection;
     SelectionMode.set(shapeId, {
       kind:   'remote',
-      peerId: state.id   ?? String(clientId),
+      peerId: peerId,
       color:  state.color ?? '#888',
+      grad:   grad,
     });
   });
   render();
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
-const LOCAL_GRAD_ID = 'sel-grad-local';
+const LOCAL_GRAD_ID = 'local-sel-grad';
 
 // Build an SVG <linearGradient> (objectBoundingBox) from an entityGradient.
 // Returns the gradient element, or null if no gradient given. The CSS `grad`
@@ -129,6 +132,25 @@ export function render() {
 }
 
 function renderLocalSelection(geo, entry, scale) {
+console.log(entry)
+  const { x, y, width, height } = geo;
+  const stroke = `url(#${LOCAL_GRAD_ID})`;
+  const ring = el('rect', {
+    x:      x - PAD,
+    y:      y - PAD,
+    width:  width  + PAD * 2,
+    height: height + PAD * 2,
+    rx:     4,
+    fill:           'none',
+    stroke,
+    'stroke-width': 2 / scale,
+    class:          'selRing',
+  });
+  _layerEl.appendChild(ring);
+
+}
+
+function renderLocalResizeSelection(geo, entry, scale) {
   const { x, y, width, height } = geo;
   const stroke = entry.grad ? `url(#${LOCAL_GRAD_ID})` : (entry.color ?? 'var(--info)');
   const ring = el('rect', {
