@@ -41,7 +41,7 @@ export function setLocalSelection(shapeId) {
   for (const [id, entry] of SelectionMode) {
     if (entry.kind === 'local' || entry.kind === 'resize') SelectionMode.delete(id);
   }
-  if (shapeId) SelectionMode.set(shapeId, { kind: 'local', color: App.getMyColor() });
+  if (shapeId) SelectionMode.set(shapeId, { kind: 'local', color: App.getMyColor(), grad: App.getMyGradient() });
   render();
 }
 
@@ -70,11 +70,42 @@ export function syncFromAwareness(awarenessStates, myClientId) {
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
+const LOCAL_GRAD_ID = 'sel-grad-local';
+
+// Build an SVG <linearGradient> (objectBoundingBox) from an entityGradient.
+// Returns the gradient element, or null if no gradient given. The CSS `grad`
+// string can't be used as an SVG stroke, so we mirror its stops + angle here.
+function buildGradientDef(grad, id) {
+  if (!grad) return null;
+  // Map the CSS angle (0°=up, 90°=right) to an objectBoundingBox vector.
+  const rad = (grad.angle - 90) * Math.PI / 180;
+  const lg = el('linearGradient', {
+    id,
+    x1: 0.5 - Math.cos(rad) / 2,
+    y1: 0.5 - Math.sin(rad) / 2,
+    x2: 0.5 + Math.cos(rad) / 2,
+    y2: 0.5 + Math.sin(rad) / 2,
+  });
+  lg.appendChild(el('stop', { offset: '0',  'stop-color': grad.c1 }));
+  lg.appendChild(el('stop', { offset: '1',  'stop-color': grad.c2 }));
+  return lg;
+}
+
 export function render() {
   if (!_layerEl) return;
   _layerEl.innerHTML = '';
 
   const scale = App.getViewScale();
+
+  // Inject the local player's gradient once if any local selection is showing.
+  const localEntry = [...SelectionMode.values()].find(
+    e => (e.kind === 'local' || e.kind === 'resize') && e.grad
+  );
+  if (localEntry) {
+    const defs = el('defs', {});
+    const lg   = buildGradientDef(localEntry.grad, LOCAL_GRAD_ID);
+    if (lg) { defs.appendChild(lg); _layerEl.appendChild(defs); }
+  }
 
   for (const [shapeId, entry] of SelectionMode) {
     if (entry.kind === 'none') continue;
@@ -98,8 +129,8 @@ export function render() {
 }
 
 function renderLocalSelection(geo, entry, scale) {
-  // TODO: render the stroke based on the player gradient
   const { x, y, width, height } = geo;
+  const stroke = entry.grad ? `url(#${LOCAL_GRAD_ID})` : (entry.color ?? 'var(--info)');
   const ring = el('rect', {
     x:      x - PAD,
     y:      y - PAD,
@@ -107,7 +138,7 @@ function renderLocalSelection(geo, entry, scale) {
     height: height + PAD * 2,
     rx:     10,
     fill:           'none',
-    stroke:         entry.color ?? 'var(--info)',
+    stroke,
     'stroke-width': 2 / scale,
     class:          'selRing',
   });

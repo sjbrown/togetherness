@@ -37,9 +37,18 @@ const svg = (inner) =>
 // ── Toy-type registry ─────────────────────────────────────────────────────────
 // Seed of the toy library. Only player_marker is wired up; dice/tokens/trays
 // get added here as their behaviour comes online.
+//   iconSvg — inner SVG markup for the tool button (paths/shapes drawn with
+//             stroke=currentColor via the svg() wrapper). NOT a unicode glyph:
+//             svg('▲') renders nothing because there's no <text> node.
 export const TOY_TYPES = {
-  player_marker: { file: 'player_marker.svg', label: 'Player Marker', icon: '▲' },
-  dice_d6:       { file: 'dice_d6.svg',       label: 'D6',            icon: '⚄' },
+  player_marker: {
+    file: 'player_marker.svg', label: 'Player Marker',
+    iconSvg: '<path d="M12 3l8 16H4z"/><circle cx="12" cy="13" r="2.5"/>',
+  },
+  dice_d6: {
+    file: 'dice_d6.svg', label: 'D6',
+    iconSvg: '<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1.3" fill="currentColor"/><circle cx="15" cy="15" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/>',
+  },
 }
 
 
@@ -133,15 +142,6 @@ function applyColor(colorMatrices, color) {
   const values = colorMatrixValues(color)
   for (const matrix of colorMatrices) {
     matrix.setAttribute('values', values)
-  }
-}
-
-// ── Layer accessor ────────────────────────────────────────────────────────────
-// TODO: cruft
-export function getToysLayer(ydoc) {
-  return {
-    yToys:    ydoc.getXmlFragment('toys'),
-    yToyMeta: ydoc.getMap('toyMeta'),
   }
 }
 
@@ -308,22 +308,6 @@ export function getGeom(svgEl) {
 
 
 /**
- * TODO: remove this.  PAD should be done by App.
- */
-export function toyGeometry(yToys, id, PAD = 4) {
-  const g = findToy(yToys, id)
-  if (!g) return null
-  const svg = g.toArray().find(e => e instanceof Y.XmlElement && e.nodeName === 'svg')
-  if (!svg) return null
-  const x = parseFloat(svg.getAttribute('x'))
-  const y = parseFloat(svg.getAttribute('y'))
-  const w = parseFloat(svg.getAttribute('width'))
-  const h = parseFloat(svg.getAttribute('height'))
-  if ([x, y, w, h].some(Number.isNaN)) return null
-  return { x: x - PAD, y: y - PAD, width: w + PAD * 2, height: h + PAD * 2 }
-}
-
-/**
  * Mirror a Y.XmlElement tree into a live, SVG-namespaced DOM element.
  * We can't use Y.XmlElement.toDOM() (HTML namespace, won't render as SVG) nor
  * toString()+DOMParser (lowercases tag names like feColorMatrix and drops the
@@ -380,8 +364,7 @@ export const TOOLS = [
     name:    'marker',
     toyType: 'player_marker',
     label: TOY_TYPES['player_marker'].label,
-    // TODO: doesn't seem to be working - find out why
-    icon: svg(TOY_TYPES['player_marker'].icon),
+    icon: svg(TOY_TYPES['player_marker'].iconSvg),
     layer: 'toys',
     defaults: { fill: '#a85e5e', label: '', size: 24 },
     options: [
@@ -394,8 +377,7 @@ export const TOOLS = [
     name:    'd6',
     toyType: 'dice_d6',
     label: TOY_TYPES['dice_d6'].label,
-    // TODO: doesn't seem to be working - find out why
-    icon: svg(TOY_TYPES['dice_d6'].icon),
+    icon: svg(TOY_TYPES['dice_d6'].iconSvg),
     layer: 'toys',
     defaults: { fill: '#a8905e', faces: 6 },
     options: [

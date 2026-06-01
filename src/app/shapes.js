@@ -1,8 +1,8 @@
 /**
  * shapes.js — core CRDT operations for crdt-svg
  *
- * The CRDT operations (addShape, deleteShape, findShape, selectionGeometry,
- * SHAPE_TYPES) are pure functions over Yjs types — no DOM, importable anywhere.
+ * The CRDT operations (addShape, deleteShape, findShape, SHAPE_TYPES) are pure
+ * functions over Yjs types — no DOM, importable anywhere.
  *
  * The rendering helpers (_toSVGEl, getGeom, listShapes) ARE DOM-coupled: they
  * mirror Yjs nodes into live SVG elements. They require a DOM (browser or jsdom).
@@ -18,6 +18,7 @@ const XLINK_NS = 'http://www.w3.org/1999/xlink';
 // circle lives here and nowhere else:
 //   tag       — SVG element name (also the Y.XmlElement nodeName)
 //   geomAttrs — which geometry attributes this type stores
+//   presAttrs — which presentation attributes this type stores
 //   fromDrag  — map a drag box {x,y,w,h} → this type's geometry attributes
 //   bbox      — axis-aligned bounding box {x,y,width,height} from stored attrs
 //   label     — short text for the shape-list row
@@ -28,6 +29,7 @@ export const SHAPE_TYPES = {
   rect: {
     tag: 'rect',
     geomAttrs: ['x', 'y', 'width', 'height'],
+    presAttrs: ['fill', 'stroke', 'stroke-width', 'opacity'],
     fromDrag: ({ x, y, w, h }) => ({ x, y, width: w, height: h }),
     bbox: a => ({ x: +a.x, y: +a.y, width: +a.width, height: +a.height }),
     label: a => `${a.width}×${a.height} @ ${a.x},${a.y}`,
@@ -35,6 +37,7 @@ export const SHAPE_TYPES = {
   circle: {
     tag: 'circle',
     geomAttrs: ['cx', 'cy', 'r'],
+    presAttrs: ['fill', 'stroke', 'stroke-width', 'opacity'],
     fromDrag: ({ x, y, w, h }) => ({
       cx: x + Math.round(w / 2),
       cy: y + Math.round(h / 2),
@@ -45,39 +48,26 @@ export const SHAPE_TYPES = {
   },
 };
 
-// Presentation attributes are shared by every shape type.
-const PRESENTATION = ['fill', 'stroke', 'stroke-width', 'opacity'];
-
 // ── Shape operations ──────────────────────────────────────────────────────────
 
 /**
  * Add a shape to the doc.
- * attrs: { id, type?, author, ...geometry, fill, stroke,
- *          'stroke-width' | strokeWidth, opacity }
- * `type` defaults to 'rect'. Geometry keys depend on type (see SHAPE_TYPES).
+ * attrs: { id, type, author, ...geometry, fill, stroke, 'stroke-width', opacity }
+ * `type` is required and must be a key of SHAPE_TYPES. Geometry and presentation
+ * keys are determined by that type's def (see SHAPE_TYPES).
  */
 export function addShape(ydoc, yDrawing, yDrawingMeta, attrs) {
-  // TODO: don't be so permissive.  If caller doesn't provide type, throw error
-  const type = attrs.type ?? 'rect';
-  const def  = SHAPE_TYPES[type];
+  const { type } = attrs;
+  if (!type) throw new Error('addShape: attrs.type is required');
+  const def = SHAPE_TYPES[type];
   if (!def) throw new Error(`unknown shape type: ${type}`);
-
-  // Accept either SVG-native 'stroke-width' or camelCase strokeWidth.
-  const presentation = {
-    fill:           attrs.fill,
-    stroke:         attrs.stroke,
-    // TODO: don't be so permissive.  Stick to stroke-width
-    'stroke-width': attrs['stroke-width'] ?? attrs.strokeWidth,
-    opacity:        attrs.opacity,
-  };
 
   const el = new Y.XmlElement(def.tag);
   ydoc.transact(() => {
     el.setAttribute('id', String(attrs.id));
     for (const k of def.geomAttrs) el.setAttribute(k, String(attrs[k]));
-    // TODO: don't hoist PRESENTATION to a global var. too DRY. each type should have def.presAttrs
-    for (const k of PRESENTATION) {
-      if (presentation[k] != null) el.setAttribute(k, String(presentation[k]));
+    for (const k of def.presAttrs) {
+      if (attrs[k] != null) el.setAttribute(k, String(attrs[k]));
     }
     yDrawing.insert(yDrawing.length, [el]);
     yDrawingMeta.set(attrs.id, { author: attrs.author, type, created: Date.now() });
@@ -157,24 +147,6 @@ export function getGeom(svgEl) {
 }
 
 /**
- * TODO: get rid of this function
- */
-export function selectionGeometry(yDrawing, shapeId, PAD = 3) {
-  const el = findShape(yDrawing, shapeId);
-  if (!el) return null;
-  const def = SHAPE_TYPES[el.nodeName];
-  if (!def) return null;
-  const b = def.bbox(el.getAttributes());
-  return {
-    x:      b.x      - PAD,
-    y:      b.y      - PAD,
-    width:  b.width  + PAD * 2,
-    height: b.height + PAD * 2,
-  };
-}
-
-
-/**
  * Iterate all XmlElement children, optionally newest-first by created timestamp.
  * Returns an array of { svgEl, shapeMeta }; each svgEl is a rendered SVG element
  * with data-yid + data-layer-type stamped.
@@ -189,15 +161,5 @@ export function listShapes(yDrawing, yDrawingMeta, { newestFirst = false } = {})
   }
   if (newestFirst) results.sort((a, b) => (b.shapeMeta.created ?? 0) - (a.shapeMeta.created ?? 0));
   return results;
-}
-
-
-// ── Layer accessor ───────────────────────────────────────────────────────────
-// TODO: cruft
-export function getDrawingLayer(ydoc) {
-  return {
-    yDrawing: ydoc.getXmlFragment('shapes'),
-    yDrawingMeta: ydoc.getMap('shapeMeta'),
-  }
 }
 

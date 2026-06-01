@@ -12,7 +12,7 @@ import * as Y from 'yjs'
 import { describe, test, expect } from 'vitest'
 import {
   addShape, deleteShape, findShape,
-  selectionGeometry, listShapes, CURRENT_SCHEMA, SHAPE_TYPES,
+  getGeom, _toSVGEl, listShapes, CURRENT_SCHEMA, SHAPE_TYPES,
 } from '../../src/app/shapes.js'
 import { makeDoc } from '../../src/app/app.js'
 
@@ -34,8 +34,8 @@ const uid = () => Math.random().toString(36).slice(2, 9)
 function add(doc, overrides = {}) {
   const id = overrides.id ?? uid()
   addShape(doc.ydoc, doc.yDrawing, doc.yDrawingMeta, {
-    id, x: 10, y: 10, width: 100, height: 50,
-    fill: '#c8f060', stroke: 'none', strokeWidth: 0, opacity: 1,
+    id, type: 'rect', x: 10, y: 10, width: 100, height: 50,
+    fill: '#c8f060', stroke: 'none', 'stroke-width': 0, opacity: 1,
     author: 'test-peer',
     ...overrides,
   })
@@ -202,15 +202,18 @@ describe('basic operations', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// selectionGeometry — bounding box and PAD
+// getGeom — raw bounding box from a rendered svgEl (PAD lives in the overlay)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('selectionGeometry', () => {
+describe('getGeom', () => {
+  // Helper: render a shape to its svgEl the same way listShapes does.
+  const elFor = (doc, id) => _toSVGEl(findShape(doc.yDrawing, id))
+
   test('returns numeric values for rect, not string-concatenated', () => {
     const doc = makeDoc()
     add(doc, { id: 'a', x: 20, y: 30, width: 100, height: 50 })
-    const geo = selectionGeometry(doc.yDrawing, 'a', 3)
-    expect(geo).toEqual({ x: 17, y: 27, width: 106, height: 56 })
+    const geo = getGeom(elFor(doc, 'a'))
+    expect(geo).toEqual({ x: 20, y: 30, width: 100, height: 50 })
     expect(typeof geo.x).toBe('number')
     expect(typeof geo.width).toBe('number')
   })
@@ -218,58 +221,35 @@ describe('selectionGeometry', () => {
   test('returns correct bbox for circle', () => {
     const doc = makeDoc()
     add(doc, { id: 'c', type: 'circle', cx: 50, cy: 60, r: 30 })
-    const geo = selectionGeometry(doc.yDrawing, 'c', 0)
+    const geo = getGeom(elFor(doc, 'c'))
     // bbox: x = cx-r, y = cy-r, w = 2r, h = 2r
     expect(geo).toEqual({ x: 20, y: 30, width: 60, height: 60 })
     expect(typeof geo.x).toBe('number')
   })
 
-  test('circle selectionGeometry applies PAD correctly', () => {
-    const doc = makeDoc()
-    add(doc, { id: 'c', type: 'circle', cx: 50, cy: 60, r: 30 })
-    const geo = selectionGeometry(doc.yDrawing, 'c', 3)
-    expect(geo).toEqual({ x: 17, y: 27, width: 66, height: 66 })
-  })
-
-  test('returns null for unknown shapeId', () => {
-    const doc = makeDoc()
-    expect(selectionGeometry(doc.yDrawing, 'nonexistent')).toBeNull()
-  })
-
-  test('rect PAD=0 returns exact shape geometry', () => {
+  test('rect returns exact shape geometry (no padding)', () => {
     const doc = makeDoc()
     add(doc, { id: 'a', x: 5, y: 10, width: 200, height: 80 })
-    const geo = selectionGeometry(doc.yDrawing, 'a', 0)
+    const geo = getGeom(elFor(doc, 'a'))
     expect(geo).toEqual({ x: 5, y: 10, width: 200, height: 80 })
   })
 
-  test('circle PAD=0 returns exact bounding box', () => {
+  test('circle returns exact bounding box (no padding)', () => {
     const doc = makeDoc()
     add(doc, { id: 'c', type: 'circle', cx: 100, cy: 100, r: 40 })
-    const geo = selectionGeometry(doc.yDrawing, 'c', 0)
+    const geo = getGeom(elFor(doc, 'c'))
     expect(geo).toEqual({ x: 60, y: 60, width: 80, height: 80 })
   })
 
   test('returns null for element with unregistered tag', () => {
-    // Bypass addShape to insert an element whose tag isn't in SHAPE_TYPES.
-    const doc = makeDoc()
-    const tri = new Y.XmlElement('triangle')
-    doc.ydoc.transact(() => {
-      tri.setAttribute('id', 't1')
-      doc.yDrawing.insert(doc.yDrawing.length, [tri])
-    })
-    expect(selectionGeometry(doc.yDrawing, 't1')).toBeNull()
+    // An SVG element whose tag isn't in SHAPE_TYPES has no geometry def.
+    const tri = document.createElementNS('http://www.w3.org/2000/svg', 'triangle')
+    expect(getGeom(tri)).toBeNull()
   })
 
-  test('string concat would have produced wrong result for rect (documents the bug)', () => {
-    const doc = makeDoc()
-    add(doc, { id: 'a', x: 20, y: 30, width: 100, height: 50 })
-    const el    = findShape(doc.yDrawing, 'a')
-    const attrs = el.getAttributes()
-    const PAD   = 3
-    // This is what the code did before the fix — string concat
-    expect(attrs.width  + PAD * 2).toBe('1006')
-    expect(attrs.height + PAD * 2).toBe('506')
+  test('returns null for nullish input', () => {
+    expect(getGeom(null)).toBeNull()
+    expect(getGeom(undefined)).toBeNull()
   })
 })
 
@@ -439,6 +419,7 @@ describe('z-order', () => {
       deleteShape(doc.ydoc, doc.yDrawing, doc.yDrawingMeta, 'a')
       addShape(doc.ydoc, doc.yDrawing, doc.yDrawingMeta, {
         ...Object.fromEntries(Object.entries(attrs).map(([k, v]) => [k, isNaN(v) ? v : Number(v)])),
+        type: meta?.type ?? 'rect',
         author: meta?.author ?? 'unknown',
       })
     })

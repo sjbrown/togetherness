@@ -140,13 +140,14 @@ function onPointerDown(e) {
     return;
   }
 
-  const hitId = e.target.dataset?.yid || (e.target.classList?.contains('shape') ? e.target.dataset.id : null);
+  const hitEl = e.target.closest?.('[data-yid]')
+             || (e.target.classList?.contains('shape') ? e.target : null);
+  const hitId = hitEl?.dataset?.yid || hitEl?.dataset?.id || null;
 
   if (ToolMode.tool === 'select') {
     if (hitId) {
       ToolMode._gesture = 'move';
-      // TODO: App.getShapeGeom should use e.target rather than hitId
-      const geom = App.getShapeGeom(hitId);
+      const geom = App.getShapeGeom(hitEl);
       const p = toCanvas(e.clientX, e.clientY);
       ToolMode._moveRef = { id: hitId, dx: p.x - (geom?.x ?? 0), dy: p.y - (geom?.y ?? 0), moved: false };
       App.selectShape(hitId);

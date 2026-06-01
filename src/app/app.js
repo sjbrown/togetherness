@@ -22,11 +22,11 @@
 
 import { initIcons }                              from './icons.js';
 import { SHAPE_TYPES, addShape, deleteShape,
-         findShape, selectionGeometry, listShapes,
+         findShape, listShapes,
          getGeom as shapeGeom } from './shapes.js';
 import { TOOLS as TOY_TOOLS,
          TOY_TYPES, addToy, deleteToy,
-         findToy, listToys, toyGeometry,
+         listToys,
          getGeom as toyGeom,
        }  from './toys.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
@@ -335,10 +335,12 @@ const App = {
   getLayers:       () => _layerMeta.map(l => ({
     ...l,
     count: l.id === DRAW_LAYER ? _yDrawing.toArray().filter(e => e instanceof Y.XmlElement).length
+         : l.id === 'toys'      ? _yToys.toArray().filter(e => e instanceof Y.XmlElement).length
          : l.id === 'background' ? 1
-         : 'TODO',
+         : 0,
   })),
   getMyColor:      () => _myGrad.c1,
+  getMyGradient:   () => _myGrad,
   getMyId:         () => _myId,
   getPalette:      () => PALETTE,
   // ── Tool registry queries ──────────────────────────────────────────────────
@@ -358,15 +360,11 @@ const App = {
   getSelectedId:   () => _selectedId,
   getShapeBBox:    (id) => {
     const svgEl = _svgEl.querySelector(`[data-yid="${id}"]`);
-    let geo = layerForElement(svgEl) === 'toy'
-      ? toyGeometry(_yToys, id)
-      : selectionGeometry(_yDrawing, id)
-    if (!geo) return null;
-    return { x: geo.x, y: geo.y, width: geo.width, height: geo.height };
+    if (!svgEl) return null;
+    // Raw bounding box — the overlay applies its own selection PAD.
+    return layerForElement(svgEl) === 'toy' ? toyGeom(svgEl) : shapeGeom(svgEl);
   },
-  // TODO: getShapeGeom should take an svgEl, not a yid.
-  getShapeGeom:    (id) => {
-    const svgEl = _svgEl.querySelector(`[data-yid="${id}"]`);
+  getShapeGeom:    (svgEl) => {
     if (!svgEl) return { x: 0, y: 0 };
     const geom = layerForElement(svgEl) === 'toy' ? toyGeom(svgEl) : shapeGeom(svgEl);
     return geom ? { x: geom.x, y: geom.y } : { x: 0, y: 0 };
