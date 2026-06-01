@@ -237,9 +237,9 @@ describe('listToys', () => {
     await addToy(ydoc, yToys, yToyMeta, { id: 't2', toyType: 'player_marker', x: 0, y: 0, color: '#222', author: 'bob' })
 
     const toys = listToys(yToys, yToyMeta)
-    expect(toys.map(t => t.id)).toEqual(['t1', 't2'])
-    expect(toys[0].toyType).toBe('player_marker')
-    expect(toys[0].el.nodeName).toBe('g')
+    expect(toys.map(t => t.svgEl.getAttribute('data-yid'))).toEqual(['t1', 't2'])
+    expect(toys[0].svgEl.getAttribute('data-toy-type')).toBe('player_marker')
+    expect(toys[0].svgEl.tagName).toBe('g')
     expect(toys[0].meta.author).toBe('alice')
     expect(toys[1].meta.color).toBe('#222')
   })

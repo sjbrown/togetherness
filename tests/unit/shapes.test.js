@@ -1,9 +1,11 @@
+// @vitest-environment jsdom
 /**
  * shapes.test.js
  * Run with: npx vitest run
  *
  * Tests import directly from shapes.js — the same code path as index.html.
  * Sync is simulated with Y.encodeStateAsUpdate / Y.applyUpdate.
+ * Runs under jsdom because listShapes / _toSVGEl render live SVG DOM.
  */
 
 import * as Y from 'yjs'
@@ -162,7 +164,7 @@ describe('basic operations', () => {
     add(doc, { id: 'bottom' })
     add(doc, { id: 'middle' })
     add(doc, { id: 'top' })
-    const ids = listShapes(doc.yDrawing, doc.yDrawingMeta).map(({ attrs }) => attrs.id)
+    const ids = listShapes(doc.yDrawing, doc.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
     expect(ids).toEqual(['bottom', 'middle', 'top'])
   })
 
@@ -281,7 +283,7 @@ describe('listShapes', () => {
     add(doc, { id: 'a' })
     add(doc, { id: 'b' })
     add(doc, { id: 'c' })
-    const ids = listShapes(doc.yDrawing, doc.yDrawingMeta).map(({ attrs }) => attrs.id)
+    const ids = listShapes(doc.yDrawing, doc.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
     expect(ids).toEqual(['a', 'b', 'c'])
   })
 
@@ -291,11 +293,11 @@ describe('listShapes', () => {
     add(doc, { id: 'c', type: 'circle', cx: 50, cy: 50, r: 20 })
     const shapes = listShapes(doc.yDrawing, doc.yDrawingMeta)
     expect(shapes).toHaveLength(2)
-    expect(shapes[0].attrs.id).toBe('r')
-    expect(shapes[1].attrs.id).toBe('c')
-    // el.nodeName reflects the actual SVG tag
-    expect(shapes[0].el.nodeName).toBe('rect')
-    expect(shapes[1].el.nodeName).toBe('circle')
+    expect(shapes[0].svgEl.getAttribute('data-yid')).toBe('r')
+    expect(shapes[1].svgEl.getAttribute('data-yid')).toBe('c')
+    // tagName reflects the actual SVG tag
+    expect(shapes[0].svgEl.tagName).toBe('rect')
+    expect(shapes[1].svgEl.tagName).toBe('circle')
   })
 
   test('newestFirst sorts by created timestamp', () => {
@@ -308,7 +310,7 @@ describe('listShapes', () => {
     doc.yDrawingMeta.set('mid', { author: 'x', type: 'rect', created: 2000 })
 
     const ids = listShapes(doc.yDrawing, doc.yDrawingMeta, { newestFirst: true })
-      .map(({ attrs }) => attrs.id)
+      .map(({ svgEl }) => svgEl.getAttribute("data-yid"))
     expect(ids).toEqual(['new', 'mid', 'old'])
   })
 
@@ -316,7 +318,8 @@ describe('listShapes', () => {
     const doc = makeDoc()
     add(doc, { id: 'a' })
     const shapes = listShapes(doc.yDrawing, doc.yDrawingMeta)
-    expect(shapes.every(({ el }) => el instanceof Y.XmlElement)).toBe(true)
+    expect(shapes).toHaveLength(1)
+    expect(shapes.every(({ svgEl }) => svgEl && svgEl.nodeType === 1)).toBe(true)
   })
 })
 
@@ -337,8 +340,8 @@ describe('convergence', () => {
     expect(peer1.yDrawing.length).toBe(2)
     expect(peer2.yDrawing.length).toBe(2)
 
-    const ids1 = listShapes(peer1.yDrawing, peer1.yDrawingMeta).map(({ attrs }) => attrs.id).sort()
-    const ids2 = listShapes(peer2.yDrawing, peer2.yDrawingMeta).map(({ attrs }) => attrs.id).sort()
+    const ids1 = listShapes(peer1.yDrawing, peer1.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid")).sort()
+    const ids2 = listShapes(peer2.yDrawing, peer2.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid")).sort()
     expect(ids1).toEqual(ids2)
     expect(ids1).toContain('from-peer1')
     expect(ids1).toContain('from-peer2')
@@ -410,7 +413,7 @@ describe('convergence', () => {
     expect(lengths).toEqual([3, 3, 3])
 
     const idSets = peers.map(p =>
-      listShapes(p.yDrawing, p.yDrawingMeta).map(({ attrs }) => attrs.id).sort().join(',')
+      listShapes(p.yDrawing, p.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid")).sort().join(',')
     )
     expect(idSets[0]).toBe(idSets[1])
     expect(idSets[1]).toBe(idSets[2])
@@ -440,7 +443,7 @@ describe('z-order', () => {
       })
     })
 
-    const ids = listShapes(doc.yDrawing, doc.yDrawingMeta).map(({ attrs }) => attrs.id)
+    const ids = listShapes(doc.yDrawing, doc.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
     expect(ids).toEqual(['b', 'c', 'a'])
   })
 
@@ -452,8 +455,8 @@ describe('z-order', () => {
     add(peer2, { id: 'p2-shape' })
     sync(peer1.ydoc, peer2.ydoc)
 
-    const order1 = listShapes(peer1.yDrawing, peer1.yDrawingMeta).map(({ attrs }) => attrs.id)
-    const order2 = listShapes(peer2.yDrawing, peer2.yDrawingMeta).map(({ attrs }) => attrs.id)
+    const order1 = listShapes(peer1.yDrawing, peer1.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
+    const order2 = listShapes(peer2.yDrawing, peer2.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
     expect(order1).toEqual(order2)
     expect(order1.length).toBe(2)
   })
