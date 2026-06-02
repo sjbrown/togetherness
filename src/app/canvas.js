@@ -103,6 +103,25 @@ function updateCursor() {
   if (_stageEl) _stageEl.dataset.tool = ToolMode.tool;
 }
 
+// ── Layer-aware hit testing ───────────────────────────────────────────────────
+// Maps the active layer id (from App.getActiveLayer) to the data-layer-type
+// value stamped on DOM elements by shapes._toSVGEl / toys._toSVGEl.
+const LAYER_TYPE = {
+  drawing:    'drawing',
+  toys:       'toy',
+  background: 'background',
+};
+
+// Return the [data-yid] element under the pointer that belongs to the active
+// layer, or null if the pointer landed on a different layer or empty canvas.
+function hitForActiveLayer(e) {
+  const activeType = LAYER_TYPE[App.getActiveLayer()];
+  if (!activeType) return null;
+  const el = e.target.closest?.('[data-yid]') ?? null;
+  if (!el) return null;
+  return el.dataset.layerType === activeType ? el : null;
+}
+
 // ── Shape click wiring ────────────────────────────────────────────────────────
 // Called by App after renderDocLayer — attaches click listeners to drawing-layer shapes.
 export function wireShapeClicks(layer) {
@@ -151,9 +170,8 @@ function onPointerDown(e) {
     return;
   }
 
-  const hitEl = e.target.closest?.('[data-yid]')
-             || (e.target.classList?.contains('shape') ? e.target : null);
-  const hitId = hitEl?.dataset?.yid || hitEl?.dataset?.id || null;
+  const hitEl = hitForActiveLayer(e);
+  const hitId = hitEl?.dataset?.yid ?? null;
 
   if (ToolMode.tool === 'select') {
     if (hitId) {

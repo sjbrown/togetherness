@@ -27,7 +27,7 @@ import { SHAPE_TYPES, addShape, deleteShape,
          getAnchor as shapeAnchor,
          applyMove as shapeApplyMove } from './shapes.js';
 import { TOOLS as TOY_TOOLS,
-         TOY_TYPES, addToy, deleteToy,
+         TOY_TYPES, addToy, deleteToy, findToy,
          listToys,
          getGeom as toyGeom,
          getAnchor as toyAnchor,
@@ -191,8 +191,7 @@ function renderToysLayer() {
     layer.appendChild(svgEl);
   });
 
-  //Canvas.wireShapeClicks(layer);
-  wireLowLevelEvents()
+  Canvas.wireShapeClicks(layer);
 
   const countEl = document.getElementById('toyCount');
   if (countEl) countEl.textContent = _yToys.length;
@@ -254,11 +253,6 @@ function updatePeerCount() {
   _awareness.getStates().forEach((_, cid) => { if (cid !== _awareness.clientID) peers++; });
   const el = document.getElementById('peerCount');
   if (el) el.textContent = peers;
-}
-
-function wireLowLevelEvents() {
-  console.log(_activeTool);
-  console.log(App.getActiveLayer());
 }
 
 // ── CRDT observers ────────────────────────────────────────────────────────────
@@ -448,10 +442,36 @@ const App = {
   },
 
   moveShape: (id, x, y) => {
-    const yEl   = findShape(_yDrawing, id);
     const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
-    shapeApplyMove(_ydoc, yEl, domEl, Math.round(x), Math.round(y));
+    if (layerForElement(domEl) === 'toy') {
+      App.moveToy(id, x, y);
+    } else {
+      const yEl = findShape(_yDrawing, id);
+      shapeApplyMove(_ydoc, yEl, domEl, Math.round(x), Math.round(y));
+    }
     Overlay.render();
+  },
+
+  moveToy: (id, x, y) => {
+    const yToy = findToy(_yToys, id);
+    if (!yToy) return;
+    const rx = Math.round(x), ry = Math.round(y);
+    const ySvg = yToy.toArray()[0];
+    const half = Math.round(parseFloat(ySvg?.getAttribute?.('width') ?? 64) / 2);
+    // Anchor for toys is the centre; the embedded <svg> is positioned at centre - half.
+    _ydoc.transact(() => {
+      if (ySvg) {
+        ySvg.setAttribute('x', String(rx - half));
+        ySvg.setAttribute('y', String(ry - half));
+      }
+    });
+    // Live DOM update for smooth drag
+    const domEl  = _svgEl.querySelector(`[data-yid="${id}"]`);
+    const domSvg = domEl?.querySelector?.('svg');
+    if (domSvg) {
+      domSvg.setAttribute('x', rx - half);
+      domSvg.setAttribute('y', ry - half);
+    }
   },
 
   bringToFront: () => {
