@@ -132,7 +132,6 @@ export function render() {
 }
 
 function renderLocalSelection(geo, entry, scale) {
-console.log(entry)
   const { x, y, width, height } = geo;
   const stroke = `url(#${LOCAL_GRAD_ID})`;
   const ring = el('rect', {
