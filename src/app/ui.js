@@ -454,6 +454,21 @@ export function selectLayer(id) {
   }
 }
 
+/**
+ * Called whenever the document changes (shapes, toys, history).
+ * Re-renders whichever panel tab is currently open, so the UI
+ * stays current without the doc layer knowing anything about panels.
+ */
+export function refreshFromDoc() {
+  const body = $('#panelBody');
+  if (!body) return;
+  switch (UIData.panelOpen) {
+    case 'history': body.innerHTML = histBody(App.getHistory()); break;
+    case 'layers':  body.innerHTML = layersBody(gatherLayersData()); break;
+    case 'tools':   body.innerHTML = toolsBody(gatherToolsData()); break;
+  }
+}
+
 export function refreshLayerList() {
   if (UIData.panelOpen !== 'layers') return;
   // Patch only the sel class and meta badge on each item in-place, preserving

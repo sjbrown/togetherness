@@ -137,6 +137,8 @@ export function boot({ ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, awa
   // 6. CRDT observers
   _yToys.observeDeep(onToysChanged); // deep edits possible, so observeDeep
   _yDrawing.observe(onDrawingChanged);
+  _yToys.observe(onDocChanged);
+  _yDrawing.observe(onDocChanged);
   _awareness.on('change', onPresenceChanged);
 
   // 7. Provider status
@@ -285,6 +287,10 @@ function onToysChanged(events, transaction) {
   }
   renderDoc();
 }
+function onDocChanged() {
+  UI.refreshFromDoc();
+}
+
 function onDrawingChanged(event) {
   event.changes.added.forEach(item => {
     item.content.getContent().forEach(yEl => {
@@ -423,6 +429,8 @@ const App = {
       id, toyType: def.toyType, x, y,
       color: _myGrad.c1, author: _myId,
     }).then(() => {
+      _undoStack.push({ op: 'add-toy', id });
+      addHistory(`placed ${def.label} ${id.slice(0, 6)}`, { shapeType: 'toy' });
       App.addLog(`placed ${def.label} ${id.slice(0, 6)}`, 'local');
     }).catch(err => {
       UI.toast(`Failed to place ${def.label}`, 'warn');
@@ -556,6 +564,8 @@ const App = {
       deleteShape(_ydoc, _yDrawing, _yDrawingMeta, op.id);
     } else if (op.op === 'del') {
       addShape(_ydoc, _yDrawing, _yDrawingMeta, { ...op.attrs, ...op.meta, id: op.attrs.id });
+    } else if (op.op === 'add-toy') {
+      deleteToy(_ydoc, _yToys, _yToyMeta, op.id);
     }
     UI.toast('Undone');
   },
