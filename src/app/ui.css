@@ -426,7 +426,7 @@ input[type=range] { width: 100%; accent-color: var(--primary); height: 28px; }
 .shape-item:hover { background: var(--surface-2); }
 .shape-item.sel   { background: var(--info-soft); color: #7fa8d4; }
 .sw-chip { width: 16px; height: 13px; border-radius: 3px; border: 0.5px solid var(--border-2); flex-shrink: 0; }
-.sw-chip.circle { border-radius: 50%; width: 14px; height: 14px; }
+.sw-chip.kind-circle { border-radius: 50%; width: 14px; height: 14px; }
 .meta { color: var(--text-3); font-size: 11px; margin-left: auto; }
 
 /* Peers */

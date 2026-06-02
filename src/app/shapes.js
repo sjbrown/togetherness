@@ -32,7 +32,7 @@ export const SHAPE_TYPES = {
     presAttrs: ['fill', 'stroke', 'stroke-width', 'opacity'],
     fromDrag: ({ x, y, w, h }) => ({ x, y, width: w, height: h }),
     bbox: a => ({ x: +a.x, y: +a.y, width: +a.width, height: +a.height }),
-    label: a => `${a.width}×${a.height} @ ${a.x},${a.y}`,
+    label: a => `rect ${a.width}×${a.height} @ ${a.x},${a.y}`,
   },
   circle: {
     tag: 'circle',
@@ -44,7 +44,7 @@ export const SHAPE_TYPES = {
       r:  Math.round(Math.min(w, h) / 2),
     }),
     bbox: a => ({ x: +a.cx - +a.r, y: +a.cy - +a.r, width: 2 * +a.r, height: 2 * +a.r }),
-    label: a => `r${a.r} @ ${a.cx},${a.cy}`,
+    label: a => `circle r${a.r} @ ${a.cx},${a.cy}`,
   },
 };
 
@@ -204,6 +204,30 @@ export function applyMove(ydoc, yEl, domEl, x, y) {
       domEl.setAttribute('cy', y);
     }
   }
+}
+
+/**
+ * Summarise a rendered shape svgEl as a plain layer-object descriptor.
+ */
+function shapeData(svgEl) {
+  const attrs = {};
+  for (const at of svgEl.attributes) attrs[at.name] = at.value;
+  const type = svgEl.localName;
+  const def  = SHAPE_TYPES[type];
+  return {
+    id:    attrs['data-yid'],
+    label: def ? def.label(attrs) : type,
+    fill:  attrs.fill ?? '#888',
+    kind:  type,
+  };
+}
+
+/**
+ * All shapes as layer-object descriptors, in z-order.
+ * Used by app.js getLayerObjects — keeps shape internals out of the app bus.
+ */
+export function shapesData(yDrawing, yDrawingMeta) {
+  return listShapes(yDrawing, yDrawingMeta).map(({ svgEl }) => shapeData(svgEl));
 }
 
 /**

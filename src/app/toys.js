@@ -370,6 +370,28 @@ export function listToys(yToys, yToyMeta) {
   return results
 }
 
+/**
+ * Summarise a rendered toy svgEl as a plain layer-object descriptor.
+ */
+function toyData(svgEl, yToyMeta) {
+  const id      = svgEl.getAttribute('data-yid')
+  const toyType = svgEl.getAttribute('data-toy-type') ?? yToyMeta?.get(id)?.toyType
+  return {
+    id,
+    label: toyType?.replace(/_/g, ' ') ?? 'toy',
+    fill:  yToyMeta?.get(id)?.color ?? '#888',
+    kind:  toyType ?? 'toy',
+  }
+}
+
+/**
+ * All toys as layer-object descriptors, in z-order.
+ * Used by app.js getLayerObjects — keeps toy internals out of the app bus.
+ */
+export function toysData(yToys, yToyMeta) {
+  return listToys(yToys, yToyMeta).map(({ svgEl }) => toyData(svgEl, yToyMeta))
+}
+
 export const TOOLS = [
   {
     name:    'marker',

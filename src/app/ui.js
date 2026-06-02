@@ -258,11 +258,11 @@ const PANEL_TABS = [
   { id: 'layers',  label: 'Layers',  iconId: 'layers' },
   { id: 'peers',   label: 'Peers',   iconId: 'peers' },
   { id: 'history', label: 'History', iconId: 'history' },
-  { id: 'save',    label: 'Save',    iconId: 'save' },
+  { id: 'save',    label: 'File',    iconId: 'save' },
 ];
 const PANEL_TITLES = {
   tools:'Properties', peers:'Peers & sharing', history:'History & undo',
-  layers:'Layers', save:'Save / load', gestures:'Gestures & help',
+  layers:'Layers', save:'File', gestures:'Gestures & help',
 };
 
 export function panelTabsHTML(activeId) {
@@ -403,7 +403,7 @@ function wireOfflineToggle() {
 export function histBody(history) {
   const rows = history.map((entry, i) => {
     const swatch = entry.fill
-      ? `<span class="sw-chip ${entry.shapeType === 'circle' ? 'circle' : ''}" style="background:${entry.fill};flex-shrink:0"></span>`
+      ? `<span class="sw-chip kind-${entry.shapeType}" style="background:${entry.fill};flex-shrink:0"></span>`
       : `<span class="hist-dot"></span>`;
     return `<div class="hist-item">${swatch}<span style="flex:1">${entry.label}</span>${i === 0 ? '<span class="meta">latest</span>' : ''}</div>`;
   }).join('');
@@ -421,7 +421,7 @@ export function layerObjectListHTML(objects, selectedId) {
   if (!objects?.length)
     return '<div class="layer-obj-empty">No objects</div>';
   return objects.map(o => {
-    const chip = `<span class="sw-chip ${o.kind === 'circle' ? 'circle' : ''}" style="background:${o.fill}"></span>`;
+    const chip = `<span class="sw-chip kind-${o.kind}" style="background:${o.fill}"></span>`;
     const sel  = selectedId === o.id;
     return `<div class="layer-obj-item ${sel ? 'sel' : ''}" data-yid="${o.id}" onclick="App.selectShape('${o.id}')">${chip}<span class="layer-obj-label">${o.label}</span>${sel ? '<span class="meta">selected</span>' : ''}</div>`;
   }).join('');
@@ -494,17 +494,18 @@ export function refreshLayerList() {
 
 export function saveBody() {
   return `
-    <div class="field"><label>Save</label>
-      <button class="action-btn" onclick="App.exportSVG()">${icon('download')} Export as SVG</button>
-      <button class="action-btn" onclick="App.copyJSON()">${icon('copy')} Copy document JSON</button>
+    <div class="field"><label>Export</label>
+      <button class="action-btn" onclick="App.exportSVG()">${icon('download')} Export SVG</button>
     </div>
-    <div class="field"><label>Load</label>
-      <button class="action-btn" onclick="App.importFile()">${icon('upload')} Import SVG or JSON</button>
+    <div class="field"><label>Import</label>
+      <button class="action-btn" onclick="App.importSVG()">${icon('upload')} Import SVG</button>
     </div>
-    <div class="field"><label>Auto-save</label>
-      <div class="row-btn"><div style="font-size:14px">Save to IndexedDB</div>
-        <div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
-    </div>`;
+    <div style="margin-top:8px;font-size:12px;color:var(--text-3);line-height:1.6">
+      <a href="https://developer.mozilla.org/en-US/docs/Web/SVG"
+         target="_blank" rel="noopener"
+         style="color:var(--primary);text-decoration:none;">Why SVG is important ↗</a>
+    </div>
+    `;
 }
 
 export function gesturesBody() {
