@@ -147,9 +147,9 @@ function onPointerDown(e) {
   if (ToolMode.tool === 'select') {
     if (hitId) {
       ToolMode._gesture = 'move';
-      const geom = App.getShapeGeom(hitEl);
+      const anchor = App.getShapeAnchor(hitEl);
       const p = toCanvas(e.clientX, e.clientY);
-      ToolMode._moveRef = { id: hitId, dx: p.x - (geom?.x ?? 0), dy: p.y - (geom?.y ?? 0), moved: false };
+      ToolMode._moveRef = { id: hitId, dx: p.x - anchor.x, dy: p.y - anchor.y, moved: false };
       App.selectShape(hitId);
       ToolMode._pressTimer = setTimeout(() => {
         if (!ToolMode._moveRef?.moved) App.requestContextMenu(e.clientX, e.clientY, hitId);

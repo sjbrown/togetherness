@@ -147,6 +147,66 @@ export function getGeom(svgEl) {
 }
 
 /**
+ * The "anchor" is the canvas-space point that tracks the pointer during a drag:
+ *   rect   → top-left corner  { x, y }
+ *   circle → centre           { x: cx, y: cy }
+ *
+ * canvas.js captures this on pointerdown, computes the pointer-to-anchor offset,
+ * and passes (anchor + offset delta) back to applyMove on every pointermove.
+ * Neither canvas.js nor app.js needs to know which attribute names are involved.
+ */
+export function getAnchor(svgEl) {
+  const tag = svgEl?.tagName;
+  if (tag === 'rect') {
+    return {
+      x: parseFloat(svgEl.getAttribute('x'))  || 0,
+      y: parseFloat(svgEl.getAttribute('y'))  || 0,
+    };
+  }
+  if (tag === 'circle') {
+    return {
+      x: parseFloat(svgEl.getAttribute('cx')) || 0,
+      y: parseFloat(svgEl.getAttribute('cy')) || 0,
+    };
+  }
+  // Fallback: top-left of bounding box
+  const geom = getGeom(svgEl);
+  return geom ? { x: geom.x, y: geom.y } : { x: 0, y: 0 };
+}
+
+/**
+ * Write a move into both the Yjs element and the live DOM element (for smooth
+ * drag feedback), given the new anchor position produced by canvas.js.
+ * All shape-type branching lives here; callers are type-agnostic.
+ *
+ * yEl   — Y.XmlElement (may be null if shape not found; this is a no-op then)
+ * domEl — live SVG DOM element (may be null; DOM update is skipped)
+ * x, y  — new anchor position in canvas-space (integers expected)
+ */
+export function applyMove(ydoc, yEl, domEl, x, y) {
+  if (!yEl) return;
+  const tag = yEl.nodeName;
+  ydoc.transact(() => {
+    if (tag === 'rect') {
+      yEl.setAttribute('x', String(x));
+      yEl.setAttribute('y', String(y));
+    } else if (tag === 'circle') {
+      yEl.setAttribute('cx', String(x));
+      yEl.setAttribute('cy', String(y));
+    }
+  });
+  if (domEl) {
+    if (tag === 'rect') {
+      domEl.setAttribute('x',  x);
+      domEl.setAttribute('y',  y);
+    } else if (tag === 'circle') {
+      domEl.setAttribute('cx', x);
+      domEl.setAttribute('cy', y);
+    }
+  }
+}
+
+/**
  * Iterate all XmlElement children, optionally newest-first by created timestamp.
  * Returns an array of { svgEl, shapeMeta }; each svgEl is a rendered SVG element
  * with data-yid + data-layer-type stamped.

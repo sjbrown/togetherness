@@ -306,6 +306,17 @@ export function getGeom(svgEl) {
   return { x, y, width: w, height: h }
 }
 
+/**
+ * The drag anchor for a toy is its centre point — matching how addToy places
+ * it: x = center - DISPLAY/2, y = center - DISPLAY/2.
+ * Returns { x, y } in canvas-space, or { x: 0, y: 0 } if the geom is unavailable.
+ */
+export function getAnchor(svgEl) {
+  const geom = getGeom(svgEl)
+  if (!geom) return { x: 0, y: 0 }
+  return { x: geom.x + geom.width / 2, y: geom.y + geom.height / 2 }
+}
+
 
 /**
  * Mirror a Y.XmlElement tree into a live, SVG-namespaced DOM element.

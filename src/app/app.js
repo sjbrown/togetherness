@@ -23,11 +23,14 @@
 import { initIcons }                              from './icons.js';
 import { SHAPE_TYPES, addShape, deleteShape,
          findShape, listShapes,
-         getGeom as shapeGeom } from './shapes.js';
+         getGeom as shapeGeom,
+         getAnchor as shapeAnchor,
+         applyMove as shapeApplyMove } from './shapes.js';
 import { TOOLS as TOY_TOOLS,
          TOY_TYPES, addToy, deleteToy,
          listToys,
          getGeom as toyGeom,
+         getAnchor as toyAnchor,
        }  from './toys.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
 import { TOOLS as DRAW_TOOLS, LAYER as DRAW_LAYER }  from './tools-shapes.js';
@@ -364,10 +367,9 @@ const App = {
     // Raw bounding box — the overlay applies its own selection PAD.
     return layerForElement(svgEl) === 'toy' ? toyGeom(svgEl) : shapeGeom(svgEl);
   },
-  getShapeGeom:    (svgEl) => {
+  getShapeAnchor:  (svgEl) => {
     if (!svgEl) return { x: 0, y: 0 };
-    const geom = layerForElement(svgEl) === 'toy' ? toyGeom(svgEl) : shapeGeom(svgEl);
-    return geom ? { x: geom.x, y: geom.y } : { x: 0, y: 0 };
+    return layerForElement(svgEl) === 'toy' ? toyAnchor(svgEl) : shapeAnchor(svgEl);
   },
   getShapeList:    () => listShapes(_yDrawing, _yDrawingMeta, { newestFirst: false }).map(({ svgEl, shapeMeta }) => ({
     id:     svgEl.getAttribute('data-yid'),
@@ -446,23 +448,9 @@ const App = {
   },
 
   moveShape: (id, x, y) => {
-    const yEl = findShape(_yDrawing, id);
-    if (!yEl) return;
-    _ydoc.transact(() => {
-      if (yEl.nodeName === 'rect') {
-        yEl.setAttribute('x', String(Math.round(x)));
-        yEl.setAttribute('y', String(Math.round(y)));
-      } else {
-        yEl.setAttribute('cx', String(Math.round(x)));
-        yEl.setAttribute('cy', String(Math.round(y)));
-      }
-    });
-    // Live re-render without waiting for observer (smoother drag)
+    const yEl   = findShape(_yDrawing, id);
     const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
-    if (domEl) {
-      if (yEl.nodeName === 'rect') { domEl.setAttribute('x', Math.round(x)); domEl.setAttribute('y', Math.round(y)); }
-      else { domEl.setAttribute('cx', Math.round(x)); domEl.setAttribute('cy', Math.round(y)); }
-    }
+    shapeApplyMove(_ydoc, yEl, domEl, Math.round(x), Math.round(y));
     Overlay.render();
   },
 
