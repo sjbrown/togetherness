@@ -365,12 +365,27 @@ const App = {
     if (!svgEl) return { x: 0, y: 0 };
     return layerForElement(svgEl) === 'toy' ? toyAnchor(svgEl) : shapeAnchor(svgEl);
   },
-  getShapeList:    () => listShapes(_yDrawing, _yDrawingMeta, { newestFirst: false }).map(({ svgEl, shapeMeta }) => ({
-    id:     svgEl.getAttribute('data-yid'),
-    type:   shapeMeta?.type ?? 'rect',
-    fill:   svgEl.getAttribute('fill') ?? '#888',
-    author: shapeMeta?.author ?? '?',
-  })),
+  getLayerObjects: (layerId) => {
+    if (layerId === 'drawing') {
+      return listShapes(_yDrawing, _yDrawingMeta, { newestFirst: false }).map(({ svgEl, shapeMeta }) => ({
+        id:     svgEl.getAttribute('data-yid'),
+        label:  shapeMeta?.type ?? 'shape',
+        fill:   svgEl.getAttribute('fill') ?? '#888',
+        author: shapeMeta?.author ?? '?',
+        kind:   shapeMeta?.type ?? 'rect',
+      }));
+    }
+    if (layerId === 'toys') {
+      return listToys(_yToys, _yToyMeta).map(({ svgEl, meta }) => ({
+        id:     svgEl.getAttribute('data-yid'),
+        label:  meta?.toyType?.replace('_', ' ') ?? 'toy',
+        fill:   meta?.color ?? '#888',
+        author: meta?.author ?? '?',
+        kind:   'toy',
+      }));
+    }
+    return [];
+  },
   getViewScale:    () => Canvas.getView().scale,
   isOffline:       () => _offline,
 

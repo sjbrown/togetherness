@@ -469,16 +469,45 @@ input[type=range] { width: 100%; accent-color: var(--primary); height: 28px; }
 .action-btn svg { width: 18px; height: 18px; color: var(--text-2); }
 
 /* Layers */
+.layer-block { margin-bottom: 6px; }
+
 .layer {
   display: flex; align-items: center; gap: 10px; padding: 10px;
-  border-radius: 9px; font-size: 13px; margin-bottom: 6px;
+  border-radius: 9px; font-size: 13px; margin-bottom: 0;
   background: var(--surface-2); box-shadow: var(--emboss);
   cursor: pointer; color: var(--text); border: none; font-family: var(--font-body);
 }
+.layer-block .layer:has(+ .layer-obj-list) { border-radius: 9px 9px 0 0; }
 .layer:active { box-shadow: var(--emboss-inset); }
 .layer.active  { color: var(--primary); box-shadow: var(--emboss-active); }
 .layer svg { width: 18px; height: 18px; flex-shrink: 0; }
 .layer .lmeta { font-size: 11px; color: var(--text-3); margin-left: auto; }
+
+/* Object list beneath the active layer row */
+.layer-obj-list {
+  max-height: calc(4 * 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: rgba(0,0,0,0.22);
+  border: 0.5px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 9px 9px;
+}
+.layer-obj-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 11px 12px; font-size: 13px; color: var(--text-2);
+  cursor: pointer; border-bottom: 0.5px solid var(--border);
+  transition: background .1s;
+  min-height: 40px;
+}
+.layer-obj-item:last-child { border-bottom: none; }
+.layer-obj-item:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+.layer-obj-item.sel  { background: var(--primary-soft); color: var(--primary); }
+.layer-obj-label { flex: 1; text-transform: capitalize; }
+.layer-obj-empty {
+  padding: 10px 12px; font-size: 12px; color: var(--text-3); min-height: 40px;
+  display: flex; align-items: center;
+}
 
 /* ── Context popover ──────────────────────────────────────── */
 #popover {

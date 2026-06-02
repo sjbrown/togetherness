@@ -175,6 +175,7 @@ export function onToolChanged(toolName) {
 export function onSelectionChanged(shapeId, shapeMeta) {
   UIData.selectionActive = !!shapeId;
   renderPill();
+  refreshLayerList();
   if (shapeId && shapeMeta) toast(`${shapeMeta.type ?? 'Shape'} selected`, 'info');
 }
 
@@ -315,15 +316,18 @@ function gatherToolsData() {
     tools:      App.getTools(layer),
     palette:    App.getPalette(),
     fill:       App.getToolParams(UIData.activeTool)?.fill,
-    shapes:     App.getShapeList(),
-    selectedId: App.getSelectedId(),
   };
 }
 function gatherPeersData() {
   return { peers: App.getPeers(), offline: App.isOffline(), roomId: App.getRoomId() };
 }
 function gatherLayersData() {
-  return { layers: App.getLayers(), active: App.getActiveLayer() };
+  const active = App.getActiveLayer();
+  const layers = App.getLayers().map(l => ({
+    ...l,
+    objects: App.getLayerObjects(l.id),
+  }));
+  return { layers, active, selectedId: App.getSelectedId() };
 }
 
 // -- Pure body builders --------------------------------------------------------
@@ -332,18 +336,12 @@ export function toolsBody(data) {
     `<div class="tool ${data.activeTool === t.name ? 'active' : ''}" onclick="App.setTool('${t.name}')">${t.icon}<span>${t.label}</span></div>`;
   const sw = c =>
     `<div class="sw ${data.fill === c ? 'active' : ''}" style="background:${c}" onclick="App.setFill('${c}');UI.openSheet('tools')"></div>`;
-  const list = data.shapes.map(s =>
-    `<div class="shape-item ${data.selectedId === s.id ? 'sel' : ''}" onclick="App.selectShape('${s.id}');UI.closePanel()" ><span class="sw-chip ${s.type === 'circle' ? 'circle' : ''}" style="background:${s.fill}"></span ><span>${s.type} · by ${s.author}</span >${data.selectedId === s.id ? '<span class="meta" >selected</span>' : ''}</div>`
-  ).join('') || '<span class="meta">No shapes yet</span>';
   return `
     <div class="field"><label>Tool · ${data.layer} layer</label>
       <div class="tool-grid">${data.tools.map(toolBtn).join('')}</div>
     </div>
     <div class="field"><label>Fill color</label>
       <div class="swatches">${data.palette.map(sw).join('')}</div>
-    </div>
-    <div class="field"><label>Objects (${data.shapes.length})</label>
-      <div class="shape-list">${list}</div>
     </div>`;
 }
 
@@ -419,20 +417,64 @@ export function histBody(history) {
     </div>`;
 }
 
+export function layerObjectListHTML(objects, selectedId) {
+  if (!objects?.length)
+    return '<div class="layer-obj-empty">No objects</div>';
+  return objects.map(o => {
+    const chip = `<span class="sw-chip ${o.kind === 'circle' ? 'circle' : ''}" style="background:${o.fill}"></span>`;
+    const sel  = selectedId === o.id;
+    return `<div class="layer-obj-item ${sel ? 'sel' : ''}" data-yid="${o.id}" onclick="App.selectShape('${o.id}')">${chip}<span class="layer-obj-label">${o.label}</span>${sel ? '<span class="meta">selected</span>' : ''}</div>`;
+  }).join('');
+}
+
 export function layersBody(data) {
-  const rows = data.layers.map(l =>
-    `<div class="layer ${data.active === l.id ? 'active' : ''}" id="layer-row-${l.id}" onclick="UI.selectLayer('${l.id}')">${icon(l.iconId)} <span>${l.label}</span><span class="lmeta">${l.count} object${l.count !== 1 ? 's' : ''}</span></div>`
-  ).join('');
+  const rows = data.layers.map(l => {
+    const isActive = data.active === l.id;
+    const objList  = isActive
+      ? `<div class="layer-obj-list">${layerObjectListHTML(l.objects ?? [], data.selectedId)}</div>`
+      : '';
+    return `<div class="layer-block">
+      <div class="layer ${isActive ? 'active' : ''}" id="layer-row-${l.id}" onclick="UI.selectLayer('${l.id}')">${icon(l.iconId)} <span>${l.label}</span><span class="lmeta">${l.count} object${l.count !== 1 ? 's' : ''}</span></div>
+      ${objList}
+    </div>`;
+  }).join('');
   return `
     <div class="field"><label>Active layer</label>
       ${rows}
       <div style="font-size:12px;color:var(--text-3);margin-top:10px">New objects are added to the active layer.</div>
     </div>`;
 }
+
 export function selectLayer(id) {
-  document.querySelectorAll('.layer').forEach(el => el.classList.remove('active'));
-  document.getElementById(`layer-row-${id}`)?.classList.add('active');
   App.setLayer(id);
+  // Re-render the whole layers body so collapse/expand updates in place
+  if (UIData.panelOpen === 'layers') {
+    const body = $('#panelBody');
+    if (body) body.innerHTML = layersBody(gatherLayersData());
+  }
+}
+
+export function refreshLayerList() {
+  if (UIData.panelOpen !== 'layers') return;
+  // Patch only the sel class and meta badge on each item in-place, preserving
+  // scroll position. A full innerHTML replace would reset scrollTop to 0.
+  const selectedId = App.getSelectedId();
+  document.querySelectorAll('.layer-obj-item').forEach(el => {
+    const id = el.dataset.yid;
+    if (!id) return;
+    const isSel = id === selectedId;
+    el.classList.toggle('sel', isSel);
+    // Update or remove the meta badge without touching the chip or label
+    let badge = el.querySelector('.meta');
+    if (isSel && !badge) {
+      badge = document.createElement('span');
+      badge.className = 'meta';
+      badge.textContent = 'selected';
+      el.appendChild(badge);
+    } else if (!isSel && badge) {
+      badge.remove();
+    }
+  });
 }
 
 export function saveBody() {

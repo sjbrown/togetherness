@@ -104,10 +104,21 @@ const mockHistory = [
   { label:'remote: added f6g7 by Mara', fill:'#a85e5e', shapeType:'rect' },
   { label:'session start' },
 ];
+const mockObjects = {
+  drawing: [
+    { id:'a', label:'rect',   fill:'#c8941e', author:'you',  kind:'rect'   },
+    { id:'b', label:'circle', fill:'#5a7ea8', author:'Mara', kind:'circle' },
+    { id:'c', label:'rect',   fill:'#a85e5e', author:'you',  kind:'rect'   },
+  ],
+  toys: [
+    { id:'t1', label:'player marker', fill:'#8a5ea8', author:'you',  kind:'toy' },
+  ],
+  background: [],
+};
 const mockLayers = [
-  { id:'background', label:'Background', iconId:'layer-bg',   count:1 },
-  { id:'drawing',    label:'Drawing',    iconId:'layer-draw', count:3 },
-  { id:'toys',       label:'Toys / UI',  iconId:'layer-ui',   count:0 },
+  { id:'background', label:'Background', iconId:'layer-bg',   count:1, objects: mockObjects.background },
+  { id:'drawing',    label:'Drawing',    iconId:'layer-draw', count:3, objects: mockObjects.drawing    },
+  { id:'toys',       label:'Toys / UI',  iconId:'layer-ui',   count:1, objects: mockObjects.toys       },
 ];
 
 // A fake App sufficient for the pure render functions + tool-opts schema.
@@ -220,7 +231,10 @@ story('Panel · Tools', 'toys layer', () =>
   }), 'tools'));
 
 story('Panel · Layers', 'drawing active', () =>
-  panelFrame('Layers', UI.layersBody({ layers:mockLayers, active:'drawing' }), 'layers'));
+  panelFrame('Layers', UI.layersBody({ layers:mockLayers, active:'drawing', selectedId:'b' }), 'layers'));
+
+story('Panel · Layers', 'toys active', () =>
+  panelFrame('Layers', UI.layersBody({ layers:mockLayers, active:'toys', selectedId:'t1' }), 'layers'));
 
 story('Panel · Peers', 'two live, one offline', () =>
   panelFrame('Peers & sharing', UI.peersBody({ peers:mockPeers, offline:false, roomId:'design-room-7f3a' }), 'peers'));
