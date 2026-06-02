@@ -5,6 +5,9 @@
  * Handles all pointer events on #stage.
  * Calls App.* for every action that changes document or selection state.
  *
+ * The view transform (pan + zoom) is applied uniformly to all content layers
+ * and the overlay. canvas.js has no opinion about which layer is "primary".
+ *
  * Depends on: App (bus object). No ui.js imports. No Yjs imports.
  */
 
@@ -33,17 +36,26 @@ export const ToolMode = {
 let App      = null;
 let _view    = { x: 0, y: 0, scale: 1 };  // canvas transform
 let _svgEl   = null;
-let _viewportEl = null;
-let _overlayEl  = null;
 let _stageEl    = null;
+// All layers that move with the view transform, in DOM order.
+// Populated in init(); canvas.js treats them all equally.
+let _transformedLayers = [];
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 export function init(appBus, svgElement) {
-  App     = appBus;
-  _svgEl  = svgElement;
+  App      = appBus;
+  _svgEl   = svgElement;
   _stageEl = document.getElementById('stage');
-  _viewportEl = svgElement.querySelector('#drawing-layer');
-  _overlayEl  = svgElement.querySelector('#overlay-layer');
+
+  // Collect every layer that pans/zooms with the view, in z-order.
+  // New layers in index.html are picked up automatically — no changes here.
+  _transformedLayers = [
+    '#background-layer',
+    '#boundaries-positions-layer',
+    '#toys-layer',
+    '#drawing-layer',
+    '#overlay-layer',
+  ].map(sel => svgElement.querySelector(sel)).filter(Boolean);
 
   _stageEl.addEventListener('pointerdown',  onPointerDown);
   _stageEl.addEventListener('pointermove',  onPointerMove);
@@ -73,9 +85,8 @@ export function resetView() {
 
 function applyViewTransform() {
   const tf = `translate(${_view.x} ${_view.y}) scale(${_view.scale})`;
-  if (_viewportEl) _viewportEl.setAttribute('transform', tf);
-  if (_overlayEl)  _overlayEl.setAttribute('transform', tf);
-  // Sync dot-grid background position
+  for (const layer of _transformedLayers) layer.setAttribute('transform', tf);
+  // Sync dot-grid background position (CSS custom property for the tile pattern)
   document.documentElement.style.setProperty('--bgx', _view.x + 'px');
   document.documentElement.style.setProperty('--bgy', _view.y + 'px');
 }
