@@ -1,17 +1,20 @@
+// @vitest-environment jsdom
 /**
  * shapes.test.js
  * Run with: npx vitest run
  *
  * Tests import directly from shapes.js — the same code path as index.html.
  * Sync is simulated with Y.encodeStateAsUpdate / Y.applyUpdate.
+ * Runs under jsdom because listShapes / _toSVGEl render live SVG DOM.
  */
 
 import * as Y from 'yjs'
 import { describe, test, expect } from 'vitest'
 import {
-  makeDoc, addShape, deleteShape, findShape,
-  selectionGeometry, listShapes, CURRENT_SCHEMA, SHAPE_TYPES,
+  addShape, deleteShape, findShape,
+  getGeom, _toSVGEl, listShapes, CURRENT_SCHEMA, SHAPE_TYPES,
 } from '../../src/app/shapes.js'
+import { makeDoc } from '../../src/app/app.js'
 
 // ── Sync helper ───────────────────────────────────────────────────────────────
 
@@ -30,9 +33,9 @@ const uid = () => Math.random().toString(36).slice(2, 9)
 
 function add(doc, overrides = {}) {
   const id = overrides.id ?? uid()
-  addShape(doc.ydoc, doc.yTable, doc.yShapeMeta, {
-    id, x: 10, y: 10, width: 100, height: 50,
-    fill: '#c8f060', stroke: 'none', strokeWidth: 0, opacity: 1,
+  addShape(doc.ydoc, doc.yDrawing, doc.yDrawingMeta, {
+    id, type: 'rect', x: 10, y: 10, width: 100, height: 50,
+    fill: '#c8f060', stroke: 'none', 'stroke-width': 0, opacity: 1,
     author: 'test-peer',
     ...overrides,
   })
@@ -113,15 +116,15 @@ describe('basic operations', () => {
   test('add a rect', () => {
     const doc = makeDoc()
     add(doc, { id: 'a', fill: 'red' })
-    expect(doc.yTable.length).toBe(1)
-    expect(findShape(doc.yTable, 'a').getAttribute('fill')).toBe('red')
+    expect(doc.yDrawing.length).toBe(1)
+    expect(findShape(doc.yDrawing, 'a').getAttribute('fill')).toBe('red')
   })
 
   test('add a circle', () => {
     const doc = makeDoc()
     add(doc, { id: 'c', type: 'circle', cx: 50, cy: 60, r: 30 })
-    expect(doc.yTable.length).toBe(1)
-    const el = findShape(doc.yTable, 'c')
+    expect(doc.yDrawing.length).toBe(1)
+    const el = findShape(doc.yDrawing, 'c')
     expect(el.getAttribute('cx')).toBe('50')
     expect(el.getAttribute('cy')).toBe('60')
     expect(el.getAttribute('r')).toBe('30')
@@ -134,26 +137,26 @@ describe('basic operations', () => {
     const doc = makeDoc()
     add(doc, { id: 'a' })
     add(doc, { id: 'b' })
-    deleteShape(doc.ydoc, doc.yTable, doc.yShapeMeta, 'a')
-    expect(doc.yTable.length).toBe(1)
-    expect(findShape(doc.yTable, 'b')).not.toBeNull()
-    expect(findShape(doc.yTable, 'a')).toBeNull()
+    deleteShape(doc.ydoc, doc.yDrawing, doc.yDrawingMeta, 'a')
+    expect(doc.yDrawing.length).toBe(1)
+    expect(findShape(doc.yDrawing, 'b')).not.toBeNull()
+    expect(findShape(doc.yDrawing, 'a')).toBeNull()
   })
 
   test('delete also removes sidecar meta', () => {
     const doc = makeDoc()
     add(doc, { id: 'a', author: 'alice' })
-    expect(doc.yShapeMeta.get('a')?.author).toBe('alice')
-    deleteShape(doc.ydoc, doc.yTable, doc.yShapeMeta, 'a')
-    expect(doc.yShapeMeta.get('a')).toBeUndefined()
+    expect(doc.yDrawingMeta.get('a')?.author).toBe('alice')
+    deleteShape(doc.ydoc, doc.yDrawing, doc.yDrawingMeta, 'a')
+    expect(doc.yDrawingMeta.get('a')).toBeUndefined()
   })
 
   test('edit a shape attribute', () => {
     const doc = makeDoc()
     add(doc, { id: 'a', fill: 'red' })
-    const el = findShape(doc.yTable, 'a')
+    const el = findShape(doc.yDrawing, 'a')
     doc.ydoc.transact(() => el.setAttribute('fill', 'blue'))
-    expect(findShape(doc.yTable, 'a').getAttribute('fill')).toBe('blue')
+    expect(findShape(doc.yDrawing, 'a').getAttribute('fill')).toBe('blue')
   })
 
   test('z-order: shapes render in insertion order', () => {
@@ -161,14 +164,14 @@ describe('basic operations', () => {
     add(doc, { id: 'bottom' })
     add(doc, { id: 'middle' })
     add(doc, { id: 'top' })
-    const ids = listShapes(doc.yTable, doc.yShapeMeta).map(({ attrs }) => attrs.id)
+    const ids = listShapes(doc.yDrawing, doc.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
     expect(ids).toEqual(['bottom', 'middle', 'top'])
   })
 
   test('rect attributes are stored as SVG-native names', () => {
     const doc = makeDoc()
     add(doc, { id: 'a', width: 200, height: 80 })
-    const el = findShape(doc.yTable, 'a')
+    const el = findShape(doc.yDrawing, 'a')
     expect(el.getAttribute('width')).toBe('200')
     expect(el.getAttribute('height')).toBe('80')
   })
@@ -176,7 +179,7 @@ describe('basic operations', () => {
   test('circle attributes are stored as SVG-native names', () => {
     const doc = makeDoc()
     add(doc, { id: 'c', type: 'circle', cx: 100, cy: 120, r: 45 })
-    const el = findShape(doc.yTable, 'c')
+    const el = findShape(doc.yDrawing, 'c')
     expect(el.getAttribute('cx')).toBe('100')
     expect(el.getAttribute('cy')).toBe('120')
     expect(el.getAttribute('r')).toBe('45')
@@ -185,7 +188,7 @@ describe('basic operations', () => {
   test('author, type, and created are stored on sidecar', () => {
     const doc = makeDoc()
     add(doc, { id: 'a', author: 'alice' })
-    const meta = doc.yShapeMeta.get('a')
+    const meta = doc.yDrawingMeta.get('a')
     expect(meta?.author).toBe('alice')
     expect(meta?.type).toBe('rect')
     expect(meta?.created).toBeTypeOf('number')
@@ -194,20 +197,23 @@ describe('basic operations', () => {
   test('circle type is stored on sidecar', () => {
     const doc = makeDoc()
     add(doc, { id: 'c', type: 'circle', cx: 50, cy: 50, r: 20 })
-    expect(doc.yShapeMeta.get('c')?.type).toBe('circle')
+    expect(doc.yDrawingMeta.get('c')?.type).toBe('circle')
   })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// selectionGeometry — bounding box and PAD
+// getGeom — raw bounding box from a rendered svgEl (PAD lives in the overlay)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('selectionGeometry', () => {
+describe('getGeom', () => {
+  // Helper: render a shape to its svgEl the same way listShapes does.
+  const elFor = (doc, id) => _toSVGEl(findShape(doc.yDrawing, id))
+
   test('returns numeric values for rect, not string-concatenated', () => {
     const doc = makeDoc()
     add(doc, { id: 'a', x: 20, y: 30, width: 100, height: 50 })
-    const geo = selectionGeometry(doc.yTable, 'a', 3)
-    expect(geo).toEqual({ x: 17, y: 27, width: 106, height: 56 })
+    const geo = getGeom(elFor(doc, 'a'))
+    expect(geo).toEqual({ x: 20, y: 30, width: 100, height: 50 })
     expect(typeof geo.x).toBe('number')
     expect(typeof geo.width).toBe('number')
   })
@@ -215,58 +221,35 @@ describe('selectionGeometry', () => {
   test('returns correct bbox for circle', () => {
     const doc = makeDoc()
     add(doc, { id: 'c', type: 'circle', cx: 50, cy: 60, r: 30 })
-    const geo = selectionGeometry(doc.yTable, 'c', 0)
+    const geo = getGeom(elFor(doc, 'c'))
     // bbox: x = cx-r, y = cy-r, w = 2r, h = 2r
     expect(geo).toEqual({ x: 20, y: 30, width: 60, height: 60 })
     expect(typeof geo.x).toBe('number')
   })
 
-  test('circle selectionGeometry applies PAD correctly', () => {
-    const doc = makeDoc()
-    add(doc, { id: 'c', type: 'circle', cx: 50, cy: 60, r: 30 })
-    const geo = selectionGeometry(doc.yTable, 'c', 3)
-    expect(geo).toEqual({ x: 17, y: 27, width: 66, height: 66 })
-  })
-
-  test('returns null for unknown shapeId', () => {
-    const doc = makeDoc()
-    expect(selectionGeometry(doc.yTable, 'nonexistent')).toBeNull()
-  })
-
-  test('rect PAD=0 returns exact shape geometry', () => {
+  test('rect returns exact shape geometry (no padding)', () => {
     const doc = makeDoc()
     add(doc, { id: 'a', x: 5, y: 10, width: 200, height: 80 })
-    const geo = selectionGeometry(doc.yTable, 'a', 0)
+    const geo = getGeom(elFor(doc, 'a'))
     expect(geo).toEqual({ x: 5, y: 10, width: 200, height: 80 })
   })
 
-  test('circle PAD=0 returns exact bounding box', () => {
+  test('circle returns exact bounding box (no padding)', () => {
     const doc = makeDoc()
     add(doc, { id: 'c', type: 'circle', cx: 100, cy: 100, r: 40 })
-    const geo = selectionGeometry(doc.yTable, 'c', 0)
+    const geo = getGeom(elFor(doc, 'c'))
     expect(geo).toEqual({ x: 60, y: 60, width: 80, height: 80 })
   })
 
   test('returns null for element with unregistered tag', () => {
-    // Bypass addShape to insert an element whose tag isn't in SHAPE_TYPES.
-    const doc = makeDoc()
-    const tri = new Y.XmlElement('triangle')
-    doc.ydoc.transact(() => {
-      tri.setAttribute('id', 't1')
-      doc.yTable.insert(doc.yTable.length, [tri])
-    })
-    expect(selectionGeometry(doc.yTable, 't1')).toBeNull()
+    // An SVG element whose tag isn't in SHAPE_TYPES has no geometry def.
+    const tri = document.createElementNS('http://www.w3.org/2000/svg', 'triangle')
+    expect(getGeom(tri)).toBeNull()
   })
 
-  test('string concat would have produced wrong result for rect (documents the bug)', () => {
-    const doc = makeDoc()
-    add(doc, { id: 'a', x: 20, y: 30, width: 100, height: 50 })
-    const el    = findShape(doc.yTable, 'a')
-    const attrs = el.getAttributes()
-    const PAD   = 3
-    // This is what the code did before the fix — string concat
-    expect(attrs.width  + PAD * 2).toBe('1006')
-    expect(attrs.height + PAD * 2).toBe('506')
+  test('returns null for nullish input', () => {
+    expect(getGeom(null)).toBeNull()
+    expect(getGeom(undefined)).toBeNull()
   })
 })
 
@@ -280,7 +263,7 @@ describe('listShapes', () => {
     add(doc, { id: 'a' })
     add(doc, { id: 'b' })
     add(doc, { id: 'c' })
-    const ids = listShapes(doc.yTable, doc.yShapeMeta).map(({ attrs }) => attrs.id)
+    const ids = listShapes(doc.yDrawing, doc.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
     expect(ids).toEqual(['a', 'b', 'c'])
   })
 
@@ -288,34 +271,35 @@ describe('listShapes', () => {
     const doc = makeDoc()
     add(doc, { id: 'r', type: 'rect' })
     add(doc, { id: 'c', type: 'circle', cx: 50, cy: 50, r: 20 })
-    const shapes = listShapes(doc.yTable, doc.yShapeMeta)
+    const shapes = listShapes(doc.yDrawing, doc.yDrawingMeta)
     expect(shapes).toHaveLength(2)
-    expect(shapes[0].attrs.id).toBe('r')
-    expect(shapes[1].attrs.id).toBe('c')
-    // el.nodeName reflects the actual SVG tag
-    expect(shapes[0].el.nodeName).toBe('rect')
-    expect(shapes[1].el.nodeName).toBe('circle')
+    expect(shapes[0].svgEl.getAttribute('data-yid')).toBe('r')
+    expect(shapes[1].svgEl.getAttribute('data-yid')).toBe('c')
+    // tagName reflects the actual SVG tag
+    expect(shapes[0].svgEl.tagName).toBe('rect')
+    expect(shapes[1].svgEl.tagName).toBe('circle')
   })
 
   test('newestFirst sorts by created timestamp', () => {
     const doc = makeDoc()
     add(doc, { id: 'old' })
-    doc.yShapeMeta.set('old', { author: 'x', type: 'rect', created: 1000 })
+    doc.yDrawingMeta.set('old', { author: 'x', type: 'rect', created: 1000 })
     add(doc, { id: 'new' })
-    doc.yShapeMeta.set('new', { author: 'x', type: 'rect', created: 3000 })
+    doc.yDrawingMeta.set('new', { author: 'x', type: 'rect', created: 3000 })
     add(doc, { id: 'mid' })
-    doc.yShapeMeta.set('mid', { author: 'x', type: 'rect', created: 2000 })
+    doc.yDrawingMeta.set('mid', { author: 'x', type: 'rect', created: 2000 })
 
-    const ids = listShapes(doc.yTable, doc.yShapeMeta, { newestFirst: true })
-      .map(({ attrs }) => attrs.id)
+    const ids = listShapes(doc.yDrawing, doc.yDrawingMeta, { newestFirst: true })
+      .map(({ svgEl }) => svgEl.getAttribute("data-yid"))
     expect(ids).toEqual(['new', 'mid', 'old'])
   })
 
   test('skips non-element nodes', () => {
     const doc = makeDoc()
     add(doc, { id: 'a' })
-    const shapes = listShapes(doc.yTable, doc.yShapeMeta)
-    expect(shapes.every(({ el }) => el instanceof Y.XmlElement)).toBe(true)
+    const shapes = listShapes(doc.yDrawing, doc.yDrawingMeta)
+    expect(shapes).toHaveLength(1)
+    expect(shapes.every(({ svgEl }) => svgEl && svgEl.nodeType === 1)).toBe(true)
   })
 })
 
@@ -333,11 +317,11 @@ describe('convergence', () => {
 
     sync(peer1.ydoc, peer2.ydoc)
 
-    expect(peer1.yTable.length).toBe(2)
-    expect(peer2.yTable.length).toBe(2)
+    expect(peer1.yDrawing.length).toBe(2)
+    expect(peer2.yDrawing.length).toBe(2)
 
-    const ids1 = listShapes(peer1.yTable, peer1.yShapeMeta).map(({ attrs }) => attrs.id).sort()
-    const ids2 = listShapes(peer2.yTable, peer2.yShapeMeta).map(({ attrs }) => attrs.id).sort()
+    const ids1 = listShapes(peer1.yDrawing, peer1.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid")).sort()
+    const ids2 = listShapes(peer2.yDrawing, peer2.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid")).sort()
     expect(ids1).toEqual(ids2)
     expect(ids1).toContain('from-peer1')
     expect(ids1).toContain('from-peer2')
@@ -364,17 +348,17 @@ describe('convergence', () => {
     sync(peer1.ydoc, peer2.ydoc)
 
     // Partition
-    const el1 = findShape(peer1.yTable, 'shared')
-    const el2 = findShape(peer2.yTable, 'shared')
+    const el1 = findShape(peer1.yDrawing, 'shared')
+    const el2 = findShape(peer2.yDrawing, 'shared')
     peer1.ydoc.transact(() => el1.setAttribute('fill', 'blue'))
     peer2.ydoc.transact(() => el2.setAttribute('x', '99'))
 
     sync(peer1.ydoc, peer2.ydoc)
 
-    expect(findShape(peer1.yTable, 'shared').getAttribute('fill')).toBe('blue')
-    expect(findShape(peer1.yTable, 'shared').getAttribute('x')).toBe('99')
-    expect(findShape(peer2.yTable, 'shared').getAttribute('fill')).toBe('blue')
-    expect(findShape(peer2.yTable, 'shared').getAttribute('x')).toBe('99')
+    expect(findShape(peer1.yDrawing, 'shared').getAttribute('fill')).toBe('blue')
+    expect(findShape(peer1.yDrawing, 'shared').getAttribute('x')).toBe('99')
+    expect(findShape(peer2.yDrawing, 'shared').getAttribute('fill')).toBe('blue')
+    expect(findShape(peer2.yDrawing, 'shared').getAttribute('x')).toBe('99')
   })
 
   test('concurrent delete on one peer, edit on other — delete wins', () => {
@@ -384,14 +368,14 @@ describe('convergence', () => {
     const peer2 = makeDoc()
     sync(peer1.ydoc, peer2.ydoc)
 
-    deleteShape(peer1.ydoc, peer1.yTable, peer1.yShapeMeta, 'doomed')
-    const el2 = findShape(peer2.yTable, 'doomed')
+    deleteShape(peer1.ydoc, peer1.yDrawing, peer1.yDrawingMeta, 'doomed')
+    const el2 = findShape(peer2.yDrawing, 'doomed')
     peer2.ydoc.transact(() => el2.setAttribute('fill', 'blue'))
 
     sync(peer1.ydoc, peer2.ydoc)
 
-    expect(peer1.yTable.length).toBe(0)
-    expect(peer2.yTable.length).toBe(0)
+    expect(peer1.yDrawing.length).toBe(0)
+    expect(peer2.yDrawing.length).toBe(0)
   })
 
   test('three-way merge — all peers converge', () => {
@@ -405,11 +389,11 @@ describe('convergence', () => {
     sync(peers[1].ydoc, peers[2].ydoc)
     sync(peers[0].ydoc, peers[2].ydoc)
 
-    const lengths = peers.map(p => p.yTable.length)
+    const lengths = peers.map(p => p.yDrawing.length)
     expect(lengths).toEqual([3, 3, 3])
 
     const idSets = peers.map(p =>
-      listShapes(p.yTable, p.yShapeMeta).map(({ attrs }) => attrs.id).sort().join(',')
+      listShapes(p.yDrawing, p.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid")).sort().join(',')
     )
     expect(idSets[0]).toBe(idSets[1])
     expect(idSets[1]).toBe(idSets[2])
@@ -428,18 +412,19 @@ describe('z-order', () => {
     add(doc, { id: 'c' })
 
     // Bring 'a' to front
-    const old   = findShape(doc.yTable, 'a')
+    const old   = findShape(doc.yDrawing, 'a')
     const attrs = old.getAttributes()
-    const meta  = doc.yShapeMeta.get('a')
+    const meta  = doc.yDrawingMeta.get('a')
     doc.ydoc.transact(() => {
-      deleteShape(doc.ydoc, doc.yTable, doc.yShapeMeta, 'a')
-      addShape(doc.ydoc, doc.yTable, doc.yShapeMeta, {
+      deleteShape(doc.ydoc, doc.yDrawing, doc.yDrawingMeta, 'a')
+      addShape(doc.ydoc, doc.yDrawing, doc.yDrawingMeta, {
         ...Object.fromEntries(Object.entries(attrs).map(([k, v]) => [k, isNaN(v) ? v : Number(v)])),
+        type: meta?.type ?? 'rect',
         author: meta?.author ?? 'unknown',
       })
     })
 
-    const ids = listShapes(doc.yTable, doc.yShapeMeta).map(({ attrs }) => attrs.id)
+    const ids = listShapes(doc.yDrawing, doc.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
     expect(ids).toEqual(['b', 'c', 'a'])
   })
 
@@ -451,8 +436,8 @@ describe('z-order', () => {
     add(peer2, { id: 'p2-shape' })
     sync(peer1.ydoc, peer2.ydoc)
 
-    const order1 = listShapes(peer1.yTable, peer1.yShapeMeta).map(({ attrs }) => attrs.id)
-    const order2 = listShapes(peer2.yTable, peer2.yShapeMeta).map(({ attrs }) => attrs.id)
+    const order1 = listShapes(peer1.yDrawing, peer1.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
+    const order2 = listShapes(peer2.yDrawing, peer2.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
     expect(order1).toEqual(order2)
     expect(order1.length).toBe(2)
   })

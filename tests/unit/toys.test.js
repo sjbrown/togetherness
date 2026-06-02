@@ -2,9 +2,17 @@
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  getToysLayer, svgTextToYXml, addToy, deleteToy, listToys, findToy, toyGeometry, TOY_TYPES,
+  svgTextToYXml, addToy, deleteToy, listToys, findToy, TOY_TYPES,
+  getGeom, _toSVGEl,
   hslToRgb, colorMatrixValues,
 } from '../../src/app/toys.js'
+
+// Local accessor for the toys fragment + meta map. The production code creates
+// these via makeDoc() in app.js; tests just need a thin equivalent.
+const getToysLayer = (ydoc) => ({
+  yToys:    ydoc.getXmlFragment('toys'),
+  yToyMeta: ydoc.getMap('toyMeta'),
+})
 
 // ── Fixtures & helpers ──────────────────────────────────────────────────────
 
@@ -127,19 +135,6 @@ describe('svgTextToYXml', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// getToysLayer
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('getToysLayer', () => {
-  test('returns the toys fragment and meta map for the doc', () => {
-    const ydoc = new Y.Doc()
-    const { yToys, yToyMeta } = getToysLayer(ydoc)
-    expect(yToys).toBe(ydoc.getXmlFragment('toys'))
-    expect(yToyMeta).toBe(ydoc.getMap('toyMeta'))
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
 // addToy / deleteToy / listToys
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -237,9 +232,9 @@ describe('listToys', () => {
     await addToy(ydoc, yToys, yToyMeta, { id: 't2', toyType: 'player_marker', x: 0, y: 0, color: '#222', author: 'bob' })
 
     const toys = listToys(yToys, yToyMeta)
-    expect(toys.map(t => t.id)).toEqual(['t1', 't2'])
-    expect(toys[0].toyType).toBe('player_marker')
-    expect(toys[0].el.nodeName).toBe('g')
+    expect(toys.map(t => t.svgEl.getAttribute('data-yid'))).toEqual(['t1', 't2'])
+    expect(toys[0].svgEl.getAttribute('data-toy-type')).toBe('player_marker')
+    expect(toys[0].svgEl.tagName).toBe('g')
     expect(toys[0].meta.author).toBe('alice')
     expect(toys[1].meta.color).toBe('#222')
   })
@@ -337,41 +332,42 @@ describe('findToy', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// toyGeometry
+// getGeom — raw bbox from a rendered toy svgEl (PAD lives in the overlay)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('toyGeometry', () => {
+describe('getGeom (toys)', () => {
   // addToy places the embedded <svg> at x = cx - DISPLAY/2, y = cy - DISPLAY/2
-  // with width = height = DISPLAY (64). toyGeometry reads those attrs and pads.
+  // with width = height = DISPLAY (64). getGeom reads those attrs off the
+  // rendered svgEl — no padding.
   const DISPLAY = 64
+  const elFor = (yToys, id) => _toSVGEl(findToy(yToys, id))
 
-  test('returns numeric bbox centered on placement point with PAD applied', async () => {
+  test('returns numeric bbox centered on the placement point', async () => {
     const ydoc = new Y.Doc()
     const { yToys, yToyMeta } = getToysLayer(ydoc)
     await addToy(ydoc, yToys, yToyMeta, { id: 't1', toyType: 'player_marker', x: 100, y: 200, author: 'a' })
-    const geo = toyGeometry(yToys, 't1', 4)
-    const svgX = 100 - DISPLAY / 2   // 68
-    const svgY = 200 - DISPLAY / 2   // 168
-    expect(geo).toEqual({ x: svgX - 4, y: svgY - 4, width: DISPLAY + 8, height: DISPLAY + 8 })
+    const geo = getGeom(elFor(yToys, 't1'))
+    expect(geo).toEqual({ x: 100 - DISPLAY / 2, y: 200 - DISPLAY / 2, width: DISPLAY, height: DISPLAY })
     expect(typeof geo.x).toBe('number')
     expect(typeof geo.width).toBe('number')
   })
 
-  test('PAD=0 returns the exact embedded svg bounds', async () => {
+  test('returns the exact embedded svg bounds', async () => {
     const ydoc = new Y.Doc()
     const { yToys, yToyMeta } = getToysLayer(ydoc)
     await addToy(ydoc, yToys, yToyMeta, { id: 't1', toyType: 'player_marker', x: 50, y: 80, author: 'a' })
-    const geo = toyGeometry(yToys, 't1', 0)
+    const geo = getGeom(elFor(yToys, 't1'))
     expect(geo.x).toBe(50 - DISPLAY / 2)
     expect(geo.y).toBe(80 - DISPLAY / 2)
     expect(geo.width).toBe(DISPLAY)
     expect(geo.height).toBe(DISPLAY)
   })
 
-  test('returns null for an unknown toy id', () => {
+  test('returns null for a missing toy / nullish input', () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
-    expect(toyGeometry(yToys, 'nope')).toBeNull()
+    expect(getGeom(elFor(yToys, 'nope'))).toBeNull()
+    expect(getGeom(null)).toBeNull()
   })
 
   test('returns correct geometry after the embedded svg is repositioned', async () => {
@@ -387,7 +383,8 @@ describe('toyGeometry', () => {
       svg.setAttribute('y', '300')
     })
 
-    const geo = toyGeometry(yToys, 't1', 0)
+    // re-render after the mutation
+    const geo = getGeom(elFor(yToys, 't1'))
     expect(geo.x).toBe(200)
     expect(geo.y).toBe(300)
   })
@@ -398,8 +395,8 @@ describe('toyGeometry', () => {
     await addToy(ydoc, yToys, yToyMeta, { id: 'a', toyType: 'player_marker', x: 100, y: 100, author: 'x' })
     await addToy(ydoc, yToys, yToyMeta, { id: 'b', toyType: 'player_marker', x: 400, y: 400, author: 'x' })
 
-    const geoA = toyGeometry(yToys, 'a', 0)
-    const geoB = toyGeometry(yToys, 'b', 0)
+    const geoA = getGeom(elFor(yToys, 'a'))
+    const geoB = getGeom(elFor(yToys, 'b'))
     expect(geoA.x).toBe(100 - DISPLAY / 2)
     expect(geoB.x).toBe(400 - DISPLAY / 2)
     expect(geoA.x).not.toBe(geoB.x)
@@ -439,12 +436,12 @@ describe('movement', () => {
     expect(svg.getAttribute('y')).toBe('250')
   })
 
-  test('toyGeometry reflects the moved position', async () => {
+  test('getGeom reflects the moved position', async () => {
     const ydoc = new Y.Doc()
     const { yToys, yToyMeta } = getToysLayer(ydoc)
     await addToy(ydoc, yToys, yToyMeta, { id: 't', toyType: 'player_marker', x: 100, y: 100, author: 'a' })
     commitMove(ydoc, yToys, 't', 300, 0)
-    const geo = toyGeometry(yToys, 't', 0)
+    const geo = getGeom(_toSVGEl(findToy(yToys, 't')))
     expect(geo).toEqual({ x: 300, y: 0, width: DISPLAY, height: DISPLAY })
   })
 

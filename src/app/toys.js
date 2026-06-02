@@ -1,10 +1,16 @@
 /**
- * toys.js — CRDT operations for the toys layer
+ * toys.js — toys-layer tool registry
  *
- * Unlike shapes.js, this module is browser-coupled: importing a toy needs
- * DOMParser (to parse the SVG file) and addToy needs fetch (to load it).
- * The pure, unit-testable part is svgTextToYXml + the id-rewriting helpers
- * (jsdom provides DOMParser under vitest).
+ * Authority for which tools exist on the 'toys' layer (player markers, dice)
+ * and what options each exposes. ui.js asks App for this; it never hard-codes
+ * marker/d6.
+ *
+ * Toys are the game-specific objects: tokens players move around the map,
+ * dice they roll. Like tools-shapes.js, this file describes the *palette*;
+ *
+ */
+/**
+ * toys.js — CRDT operations for the toys layer
  *
  * Data model — same as the drawing layer: a Y.XmlFragment of Y.XmlElement.
  * The CRDT tree IS the SVG tree, so internal toy edits (recolor, flip,
@@ -17,19 +23,34 @@
  *
  * yToyMeta sidecar (Y.Map): id → { author, toyType, color, created }
  */
-
-import * as Y from 'yjs'
+import * as Y from 'yjs';
 
 const SVG_NS   = 'http://www.w3.org/2000/svg'
 const XLINK_NS = 'http://www.w3.org/1999/xlink'
 
+import { swatches, stepper, toggle } from './tools-schema.js';
+
+const svg = (inner) =>
+  `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+
+
 // ── Toy-type registry ─────────────────────────────────────────────────────────
 // Seed of the toy library. Only player_marker is wired up; dice/tokens/trays
 // get added here as their behaviour comes online.
+//   iconSvg — inner SVG markup for the tool button (paths/shapes drawn with
+//             stroke=currentColor via the svg() wrapper). NOT a unicode glyph:
+//             svg('▲') renders nothing because there's no <text> node.
 export const TOY_TYPES = {
-  player_marker: { file: 'player_marker.svg', label: 'Player Marker', icon: '▲' },
-  dice_d6:       { file: 'dice_d6.svg',       label: 'D6',            icon: '⚄' },
+  player_marker: {
+    file: 'player_marker.svg', label: 'Player Marker',
+    iconSvg: '<path d="M12 3l8 16H4z"/><circle cx="12" cy="13" r="2.5"/>',
+  },
+  dice_d6: {
+    file: 'dice_d6.svg', label: 'D6',
+    iconSvg: '<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1.3" fill="currentColor"/><circle cx="15" cy="15" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/>',
+  },
 }
+
 
 // Display size on the canvas. The toy's own viewBox is preserved, so the
 // content scales to fit (preserveAspectRatio defaults to xMidYMid meet).
@@ -121,14 +142,6 @@ function applyColor(colorMatrices, color) {
   const values = colorMatrixValues(color)
   for (const matrix of colorMatrices) {
     matrix.setAttribute('values', values)
-  }
-}
-
-// ── Layer accessor ────────────────────────────────────────────────────────────
-export function getToysLayer(ydoc) {
-  return {
-    yToys:    ydoc.getXmlFragment('toys'),
-    yToyMeta: ydoc.getMap('toyMeta'),
   }
 }
 
@@ -278,32 +291,112 @@ export function findToy(yToys, id) {
 }
 
 /**
- * Bounding box for a toy's selection overlay, with PAD applied.
- * Read from the embedded <svg>'s x/y/width/height. Returns
- * { x, y, width, height } (Numbers) or null if not found.
+ * Bounding box for a rendered toy svgEl, read from its embedded <svg> child's
+ * x/y/width/height. Returns { x, y, width, height } (Numbers) or null.
+ * No PAD — callers apply padding if they want a selection box.
  */
-export function toyGeometry(yToys, id, PAD = 4) {
-  const g = findToy(yToys, id)
-  if (!g) return null
-  const svg = g.toArray().find(e => e instanceof Y.XmlElement && e.nodeName === 'svg')
+export function getGeom(svgEl) {
+  const svg = svgEl?.tagName === 'svg' ? svgEl : svgEl?.querySelector?.('svg')
   if (!svg) return null
   const x = parseFloat(svg.getAttribute('x'))
   const y = parseFloat(svg.getAttribute('y'))
   const w = parseFloat(svg.getAttribute('width'))
   const h = parseFloat(svg.getAttribute('height'))
   if ([x, y, w, h].some(Number.isNaN)) return null
-  return { x: x - PAD, y: y - PAD, width: w + PAD * 2, height: h + PAD * 2 }
+  return { x, y, width: w, height: h }
 }
 
 /**
- * All placed toys as { el, id, toyType, meta }, in z-order (insertion order).
+ * The drag anchor for a toy is its centre point — matching how addToy places
+ * it: x = center - DISPLAY/2, y = center - DISPLAY/2.
+ * Returns { x, y } in canvas-space, or { x: 0, y: 0 } if the geom is unavailable.
+ */
+export function getAnchor(svgEl) {
+  const geom = getGeom(svgEl)
+  if (!geom) return { x: 0, y: 0 }
+  return { x: geom.x + geom.width / 2, y: geom.y + geom.height / 2 }
+}
+
+
+/**
+ * Mirror a Y.XmlElement tree into a live, SVG-namespaced DOM element.
+ * We can't use Y.XmlElement.toDOM() (HTML namespace, won't render as SVG) nor
+ * toString()+DOMParser (lowercases tag names like feColorMatrix and drops the
+ * xmlns:xlink declaration). The recursive createElementNS walk preserves both.
+ * <script> nodes are never mirrored.
+ */
+function mirror(yNode) {
+  if (yNode instanceof Y.XmlText) return document.createTextNode(yNode.toString())
+  if (!(yNode instanceof Y.XmlElement)) return null
+  if (yNode.nodeName === 'script') return null
+  const el = document.createElementNS(SVG_NS, yNode.nodeName)
+  const attrs = yNode.getAttributes()
+  for (const k in attrs) {
+    if (k === 'xlink:href') el.setAttributeNS(XLINK_NS, 'href', attrs[k])
+    else                    el.setAttribute(k, attrs[k])
+  }
+  yNode.toArray().forEach(child => {
+    const dom = mirror(child)
+    if (dom) el.appendChild(dom)
+  })
+  return el
+}
+
+/**
+ * Render a toy's <g> wrapper to an SVG DOM element, stamped with the handles
+ * app.js needs: data-yid (the toy id) and data-layer-type="toy".
+ */
+export function _toSVGEl(yEl) {
+  const el = mirror(yEl)
+  if (el && el.setAttribute) {
+    el.setAttribute('data-yid', yEl.getAttribute('data-toy-id'))
+    el.setAttribute('data-layer-type', 'toy')
+  }
+  return el
+}
+
+
+/**
+ * All placed toys as { svgEl, meta }, in z-order (insertion order).
+ * Each svgEl is a rendered SVG element with data-yid + data-layer-type stamped.
  */
 export function listToys(yToys, yToyMeta) {
   const results = []
-  yToys.toArray().forEach(g => {
-    if (!(g instanceof Y.XmlElement)) return
-    const id = g.getAttribute('data-toy-id')
-    results.push({ el: g, id, toyType: g.getAttribute('data-toy-type'), meta: yToyMeta.get(id) ?? {} })
+  yToys.toArray().forEach(yEl => {
+    if (!(yEl instanceof Y.XmlElement)) return
+    const id = yEl.getAttribute('data-toy-id')
+    results.push({ svgEl: _toSVGEl(yEl), meta: yToyMeta.get(id) ?? {} })
   })
   return results
 }
+
+export const TOOLS = [
+  {
+    name:    'marker',
+    toyType: 'player_marker',
+    label: TOY_TYPES['player_marker'].label,
+    icon: svg(TOY_TYPES['player_marker'].iconSvg),
+    layer: 'toys',
+    defaults: { fill: '#a85e5e', label: '', size: 24 },
+    options: [
+      swatches('fill', 'Token color'),
+      stepper('size', 'Size', { min: 12, max: 64, step: 4 }),
+      toggle('showLabel', 'Show name label'),
+    ],
+  },
+  {
+    name:    'd6',
+    toyType: 'dice_d6',
+    label: TOY_TYPES['dice_d6'].label,
+    icon: svg(TOY_TYPES['dice_d6'].iconSvg),
+    layer: 'toys',
+    defaults: { fill: '#a8905e', faces: 6 },
+    options: [
+      swatches('fill', 'Die color'),
+      stepper('faces', 'Faces', { min: 4, max: 20, step: 2 }),
+      toggle('autoRoll', 'Roll on drop'),
+    ],
+  },
+];
+
+

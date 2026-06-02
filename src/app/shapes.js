@@ -1,19 +1,24 @@
 /**
  * shapes.js — core CRDT operations for crdt-svg
  *
- * Pure functions over Yjs types. No DOM, no browser APIs.
- * Importable by both index.html and test files.
+ * The CRDT operations (addShape, deleteShape, findShape, SHAPE_TYPES) are pure
+ * functions over Yjs types — no DOM, importable anywhere.
+ *
+ * The rendering helpers (_toSVGEl, getGeom, listShapes) ARE DOM-coupled: they
+ * mirror Yjs nodes into live SVG elements. They require a DOM (browser or jsdom).
  */
 
 import * as Y from 'yjs';
 
-export const CURRENT_SCHEMA = 4;
+const SVG_NS   = 'http://www.w3.org/2000/svg';
+const XLINK_NS = 'http://www.w3.org/1999/xlink';
 
 // ── Shape-type registry ───────────────────────────────────────────────────────
 // One entry per drawable type. Everything that differs between a rect and a
 // circle lives here and nowhere else:
 //   tag       — SVG element name (also the Y.XmlElement nodeName)
 //   geomAttrs — which geometry attributes this type stores
+//   presAttrs — which presentation attributes this type stores
 //   fromDrag  — map a drag box {x,y,w,h} → this type's geometry attributes
 //   bbox      — axis-aligned bounding box {x,y,width,height} from stored attrs
 //   label     — short text for the shape-list row
@@ -24,6 +29,7 @@ export const SHAPE_TYPES = {
   rect: {
     tag: 'rect',
     geomAttrs: ['x', 'y', 'width', 'height'],
+    presAttrs: ['fill', 'stroke', 'stroke-width', 'opacity'],
     fromDrag: ({ x, y, w, h }) => ({ x, y, width: w, height: h }),
     bbox: a => ({ x: +a.x, y: +a.y, width: +a.width, height: +a.height }),
     label: a => `${a.width}×${a.height} @ ${a.x},${a.y}`,
@@ -31,6 +37,7 @@ export const SHAPE_TYPES = {
   circle: {
     tag: 'circle',
     geomAttrs: ['cx', 'cy', 'r'],
+    presAttrs: ['fill', 'stroke', 'stroke-width', 'opacity'],
     fromDrag: ({ x, y, w, h }) => ({
       cx: x + Math.round(w / 2),
       cy: y + Math.round(h / 2),
@@ -41,39 +48,29 @@ export const SHAPE_TYPES = {
   },
 };
 
-// Presentation attributes are shared by every shape type.
-const PRESENTATION = ['fill', 'stroke', 'stroke-width', 'opacity'];
-
 // ── Shape operations ──────────────────────────────────────────────────────────
 
 /**
  * Add a shape to the doc.
- * attrs: { id, type?, author, ...geometry, fill, stroke,
- *          'stroke-width' | strokeWidth, opacity }
- * `type` defaults to 'rect'. Geometry keys depend on type (see SHAPE_TYPES).
+ * attrs: { id, type, author, ...geometry, fill, stroke, 'stroke-width', opacity }
+ * `type` is required and must be a key of SHAPE_TYPES. Geometry and presentation
+ * keys are determined by that type's def (see SHAPE_TYPES).
  */
-export function addShape(ydoc, yTable, yShapeMeta, attrs) {
-  const type = attrs.type ?? 'rect';
-  const def  = SHAPE_TYPES[type];
+export function addShape(ydoc, yDrawing, yDrawingMeta, attrs) {
+  const { type } = attrs;
+  if (!type) throw new Error('addShape: attrs.type is required');
+  const def = SHAPE_TYPES[type];
   if (!def) throw new Error(`unknown shape type: ${type}`);
-
-  // Accept either SVG-native 'stroke-width' or camelCase strokeWidth.
-  const presentation = {
-    fill:           attrs.fill,
-    stroke:         attrs.stroke,
-    'stroke-width': attrs['stroke-width'] ?? attrs.strokeWidth,
-    opacity:        attrs.opacity,
-  };
 
   const el = new Y.XmlElement(def.tag);
   ydoc.transact(() => {
     el.setAttribute('id', String(attrs.id));
     for (const k of def.geomAttrs) el.setAttribute(k, String(attrs[k]));
-    for (const k of PRESENTATION) {
-      if (presentation[k] != null) el.setAttribute(k, String(presentation[k]));
+    for (const k of def.presAttrs) {
+      if (attrs[k] != null) el.setAttribute(k, String(attrs[k]));
     }
-    yTable.insert(yTable.length, [el]);
-    yShapeMeta.set(attrs.id, { author: attrs.author, type, created: Date.now() });
+    yDrawing.insert(yDrawing.length, [el]);
+    yDrawingMeta.set(attrs.id, { author: attrs.author, type, created: Date.now() });
   });
   return el;
 }
@@ -81,14 +78,14 @@ export function addShape(ydoc, yTable, yShapeMeta, attrs) {
 /**
  * Delete a shape by id. Returns true if found and deleted.
  */
-export function deleteShape(ydoc, yTable, yShapeMeta, id) {
-  const idx = yTable.toArray().findIndex(
+export function deleteShape(ydoc, yDrawing, yDrawingMeta, id) {
+  const idx = yDrawing.toArray().findIndex(
     e => e instanceof Y.XmlElement && e.getAttribute('id') === id
   );
   if (idx === -1) return false;
   ydoc.transact(() => {
-    yTable.delete(idx, 1);
-    yShapeMeta.delete(id);
+    yDrawing.delete(idx, 1);
+    yDrawingMeta.delete(id);
   });
   return true;
 }
@@ -96,53 +93,133 @@ export function deleteShape(ydoc, yTable, yShapeMeta, id) {
 /**
  * Find a Y.XmlElement by id. Returns null if not found.
  */
-export function findShape(yTable, id) {
-  return yTable.toArray().find(
+export function findShape(yDrawing, id) {
+  return yDrawing.toArray().find(
     e => e instanceof Y.XmlElement && e.getAttribute('id') === id
   ) ?? null;
 }
 
 /**
- * Geometry for the selection overlay rect, with PAD applied.
- * The bounding box is resolved per shape type, so circles work too.
- * All values are Numbers. Returns { x, y, width, height } or null if not found.
+ * Mirror a Y.XmlElement tree into a live, SVG-namespaced DOM element.
+ * Uses createElementNS (not toDOM/DOMParser) so the SVG namespace and tag-name
+ * case are preserved. <script> nodes are never mirrored.
  */
-export function selectionGeometry(yTable, shapeId, PAD = 3) {
-  const el = findShape(yTable, shapeId);
-  if (!el) return null;
-  const def = SHAPE_TYPES[el.nodeName];
+function mirror(yNode) {
+  if (yNode instanceof Y.XmlText) return document.createTextNode(yNode.toString());
+  if (!(yNode instanceof Y.XmlElement)) return null;
+  if (yNode.nodeName === 'script') return null;
+  const el = document.createElementNS(SVG_NS, yNode.nodeName);
+  const attrs = yNode.getAttributes();
+  for (const k in attrs) {
+    if (k === 'xlink:href') el.setAttributeNS(XLINK_NS, 'href', attrs[k]);
+    else                    el.setAttribute(k, attrs[k]);
+  }
+  yNode.toArray().forEach(child => {
+    const dom = mirror(child);
+    if (dom) el.appendChild(dom);
+  });
+  return el;
+}
+
+/**
+ * Render a shape Y.XmlElement to an SVG DOM element, stamped with the handles
+ * app.js needs: data-yid (the shape id) and data-layer-type="drawing".
+ */
+export function _toSVGEl(yEl) {
+  const el = mirror(yEl);
+  if (el && el.setAttribute) {
+    el.setAttribute('data-yid', yEl.getAttribute('id'));
+    el.setAttribute('data-layer-type', 'drawing');
+  }
+  return el;
+}
+
+/**
+ * Bounding box for a rendered shape svgEl, resolved per shape type so circles
+ * work too. Returns { x, y, width, height } (Numbers) or null. No PAD.
+ */
+export function getGeom(svgEl) {
+  const def = SHAPE_TYPES[svgEl?.tagName];
   if (!def) return null;
-  const b = def.bbox(el.getAttributes());
-  return {
-    x:      b.x      - PAD,
-    y:      b.y      - PAD,
-    width:  b.width  + PAD * 2,
-    height: b.height + PAD * 2,
-  };
+  const a = {};
+  for (const k of def.geomAttrs) a[k] = svgEl.getAttribute(k);
+  return def.bbox(a);
+}
+
+/**
+ * The "anchor" is the canvas-space point that tracks the pointer during a drag:
+ *   rect   → top-left corner  { x, y }
+ *   circle → centre           { x: cx, y: cy }
+ *
+ * canvas.js captures this on pointerdown, computes the pointer-to-anchor offset,
+ * and passes (anchor + offset delta) back to applyMove on every pointermove.
+ * Neither canvas.js nor app.js needs to know which attribute names are involved.
+ */
+export function getAnchor(svgEl) {
+  const tag = svgEl?.tagName;
+  if (tag === 'rect') {
+    return {
+      x: parseFloat(svgEl.getAttribute('x'))  || 0,
+      y: parseFloat(svgEl.getAttribute('y'))  || 0,
+    };
+  }
+  if (tag === 'circle') {
+    return {
+      x: parseFloat(svgEl.getAttribute('cx')) || 0,
+      y: parseFloat(svgEl.getAttribute('cy')) || 0,
+    };
+  }
+  // Fallback: top-left of bounding box
+  const geom = getGeom(svgEl);
+  return geom ? { x: geom.x, y: geom.y } : { x: 0, y: 0 };
+}
+
+/**
+ * Write a move into both the Yjs element and the live DOM element (for smooth
+ * drag feedback), given the new anchor position produced by canvas.js.
+ * All shape-type branching lives here; callers are type-agnostic.
+ *
+ * yEl   — Y.XmlElement (may be null if shape not found; this is a no-op then)
+ * domEl — live SVG DOM element (may be null; DOM update is skipped)
+ * x, y  — new anchor position in canvas-space (integers expected)
+ */
+export function applyMove(ydoc, yEl, domEl, x, y) {
+  if (!yEl) return;
+  const tag = yEl.nodeName;
+  ydoc.transact(() => {
+    if (tag === 'rect') {
+      yEl.setAttribute('x', String(x));
+      yEl.setAttribute('y', String(y));
+    } else if (tag === 'circle') {
+      yEl.setAttribute('cx', String(x));
+      yEl.setAttribute('cy', String(y));
+    }
+  });
+  if (domEl) {
+    if (tag === 'rect') {
+      domEl.setAttribute('x',  x);
+      domEl.setAttribute('y',  y);
+    } else if (tag === 'circle') {
+      domEl.setAttribute('cx', x);
+      domEl.setAttribute('cy', y);
+    }
+  }
 }
 
 /**
  * Iterate all XmlElement children, optionally newest-first by created timestamp.
- * Returns an array of { el, attrs, meta } plain objects.
+ * Returns an array of { svgEl, shapeMeta }; each svgEl is a rendered SVG element
+ * with data-yid + data-layer-type stamped.
  */
-export function listShapes(yTable, yShapeMeta, { newestFirst = false } = {}) {
+export function listShapes(yDrawing, yDrawingMeta, { newestFirst = false } = {}) {
   const results = [];
-  for (let node = yTable.firstChild; node; node = node.nextSibling) {
+  for (let node = yDrawing.firstChild; node; node = node.nextSibling) {
     if (!(node instanceof Y.XmlElement)) continue;
-    const attrs = node.getAttributes();
-    const meta  = yShapeMeta.get(attrs.id) ?? {};
-    results.push({ el: node, attrs, meta });
+    const id        = node.getAttribute('id');
+    const shapeMeta = yDrawingMeta.get(id) ?? {};
+    results.push({ svgEl: _toSVGEl(node), shapeMeta });
   }
-  if (newestFirst) results.sort((a, b) => (b.meta.created ?? 0) - (a.meta.created ?? 0));
+  if (newestFirst) results.sort((a, b) => (b.shapeMeta.created ?? 0) - (a.shapeMeta.created ?? 0));
   return results;
 }
 
-// ── Doc setup ─────────────────────────────────────────────────────────────────
-
-export function makeDoc() {
-  const ydoc       = new Y.Doc();
-  const yMeta      = ydoc.getMap('meta');
-  const yTable     = ydoc.getXmlFragment('shapes');
-  const yShapeMeta = ydoc.getMap('shapeMeta');
-  return { ydoc, yMeta, yTable, yShapeMeta };
-}
