@@ -1,6 +1,6 @@
 # roadmap
 
-Offline-first, local-first collaborative SVG canvas and tabletop tool.  
+Offline-first, local-first collaborative SVG canvas and tabletop tool.
 Legend: `[x]` done · `[~]` partial / placeholder · `[ ]` not started
 
 ---
@@ -13,8 +13,6 @@ Legend: `[x]` done · `[~]` partial / placeholder · `[ ]` not started
 - [x] Generic SVG mirror (`yXmlToDom`) — recursive, namespace-aware, replaces per-type renderers
 - [x] Modal UI — Draw mode vs Toys mode, layer pointer-event gating
 - [x] Selection model carries `{kind, id}` — shape or toy, broadcast via awareness
-- [x] `entityGradient` — deterministic player identity (`c1` + `grad`), replaces random colour pool
-- [x] Dead code removed — `src/core/shapes.js` (schema v3)
 
 ---
 
@@ -83,11 +81,10 @@ Legend: `[x]` done · `[~]` partial / placeholder · `[ ]` not started
 - [x] IndexedDB persistence — per-room, loads before WebRTC sync
 - [x] WebRTC P2P sync via `y-webrtc`
 - [x] Connection status indicator
-- [ ] Save / load
-  - [ ] Export table as SVG — flat rendering of all layers, for sharing / printing
+- [-] Save / load
+  - [x] Export table as SVG — flat rendering of all layers, for sharing / printing
   - [ ] Export table as Yjs binary snapshot (`.crdt`) — full fidelity, re-importable
   - [ ] Import / restore from `.crdt` snapshot
-  - [ ] Export individual toys as SVG with current state baked in
 
 ---
 
@@ -103,7 +100,7 @@ Legend: `[x]` done · `[~]` partial / placeholder · `[ ]` not started
 
 ## Drawing layer (remaining)
 
-- [ ] Move / drag drawing shapes (parallels toy drag)
+- [x] Move / drag drawing shapes (parallels toy drag)
 - [ ] Resize handles for selected shapes
 - [ ] Bring to front / send to back
 - [ ] More shape types — line, polygon, text
@@ -113,8 +110,8 @@ Legend: `[x]` done · `[~]` partial / placeholder · `[ ]` not started
 ## Testing
 
 - [x] `shapes.test.js` — unit tests: CRDT ops, convergence, `selectionGeometry`, z-order
-- [x] `toys.test.js` — unit tests: importer, colour matrix, placement, movement, convergence (57 tests)
-- [ ] Playwright e2e — smoke tests, cross-tab sync
+- [x] `toys.test.js` — unit tests: importer, colour matrix, placement, movement, convergence
+- [x] Playwright e2e — smoke tests, cross-tab sync
 
 ---
 
