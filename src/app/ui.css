@@ -290,12 +290,12 @@ html, body {
 #menuItems {
   position: fixed; z-index: 49;
   right: calc(var(--safe-r) + 14px); bottom: calc(var(--safe-b) + 78px);
-  display: flex; flex-direction: column-reverse; gap: 10px; align-items: flex-end;
+  display: flex; flex-direction: column-reverse; gap: 10px; align-items: stretch;
   pointer-events: none; opacity: 0; transform: translateY(16px);
   transition: opacity .2s, transform .2s;
 }
 #menuItems.open { pointer-events: auto; opacity: 1; transform: translateY(0); }
-.menu-item { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.menu-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; }
 .menu-label {
   font-size: 12px; font-weight: 500; letter-spacing: .02em;
   background: var(--surface); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
