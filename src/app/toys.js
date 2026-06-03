@@ -319,11 +319,42 @@ export function getAnchor(svgEl) {
 
 
 /**
+ * Commit a toy move to the Yjs doc in a single transaction.
+ * Called once on pointerup — never during drag.
+ * (cx, cy) is the centre point; the embedded <svg> is offset by -DISPLAY/2.
+ */
+export function applyMoveCommit(ydoc, yToy, cx, cy) {
+  if (!yToy) return
+  const ySvg = yToy.toArray()[0]
+  if (!ySvg) return
+  const half = Math.round(parseFloat(ySvg.getAttribute('width') ?? String(DISPLAY)) / 2)
+  ydoc.transact(() => {
+    ySvg.setAttribute('x', String(cx - half))
+    ySvg.setAttribute('y', String(cy - half))
+  })
+}
+
+/**
+ * Apply a toy move to a live DOM element only — no Yjs write.
+ * domEl is the rendered <g> wrapper; updates the embedded <svg> x/y directly.
+ * (cx, cy) is the centre anchor point.
+ */
+export function applyMoveDom(domEl, cx, cy) {
+  if (!domEl) return
+  const domSvg = domEl.querySelector?.('svg')
+  if (!domSvg) return
+  const half = Math.round(parseFloat(domSvg.getAttribute('width') ?? String(DISPLAY)) / 2)
+  domSvg.setAttribute('x', cx - half)
+  domSvg.setAttribute('y', cy - half)
+}
+
+
+/**
  * Mirror a Y.XmlElement tree into a live, SVG-namespaced DOM element.
  * We can't use Y.XmlElement.toDOM() (HTML namespace, won't render as SVG) nor
  * toString()+DOMParser (lowercases tag names like feColorMatrix and drops the
  * xmlns:xlink declaration). The recursive createElementNS walk preserves both.
- * <script> nodes are never mirrored.
+ * Script nodes are never mirrored.
  */
 function mirror(yNode) {
   if (yNode instanceof Y.XmlText) return document.createTextNode(yNode.toString())
@@ -344,12 +375,16 @@ function mirror(yNode) {
 
 /**
  * Render a toy's <g> wrapper to an SVG DOM element, stamped with the handles
- * app.js needs: data-yid (the toy id) and data-layer-type="toy".
+ * app.js needs: data-yid (the toy id), data-layer-type="toy", and a plain SVG
+ * id="yid-{id}" so overlay.js <use href="#yid-{id}"> can reference it for
+ * drag-ghost rendering.
  */
 export function _toSVGEl(yEl) {
   const el = mirror(yEl)
   if (el && el.setAttribute) {
-    el.setAttribute('data-yid', yEl.getAttribute('data-toy-id'))
+    const id = yEl.getAttribute('data-toy-id')
+    el.setAttribute('id',              `yid-${id}`)
+    el.setAttribute('data-yid',        id)
     el.setAttribute('data-layer-type', 'toy')
   }
   return el
@@ -368,28 +403,6 @@ export function listToys(yToys, yToyMeta) {
     results.push({ svgEl: _toSVGEl(yEl), meta: yToyMeta.get(id) ?? {} })
   })
   return results
-}
-
-/**
- * Summarise a rendered toy svgEl as a plain layer-object descriptor.
- */
-function toyData(svgEl, yToyMeta) {
-  const id      = svgEl.getAttribute('data-yid')
-  const toyType = svgEl.getAttribute('data-toy-type') ?? yToyMeta?.get(id)?.toyType
-  return {
-    id,
-    label: toyType?.replace(/_/g, ' ') ?? 'toy',
-    fill:  yToyMeta?.get(id)?.color ?? '#888',
-    kind:  toyType ?? 'toy',
-  }
-}
-
-/**
- * All toys as layer-object descriptors, in z-order.
- * Used by app.js getLayerObjects — keeps toy internals out of the app bus.
- */
-export function toysData(yToys, yToyMeta) {
-  return listToys(yToys, yToyMeta).map(({ svgEl }) => toyData(svgEl, yToyMeta))
 }
 
 export const TOOLS = [

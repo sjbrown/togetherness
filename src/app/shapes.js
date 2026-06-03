@@ -32,7 +32,7 @@ export const SHAPE_TYPES = {
     presAttrs: ['fill', 'stroke', 'stroke-width', 'opacity'],
     fromDrag: ({ x, y, w, h }) => ({ x, y, width: w, height: h }),
     bbox: a => ({ x: +a.x, y: +a.y, width: +a.width, height: +a.height }),
-    label: a => `rect ${a.width}×${a.height} @ ${a.x},${a.y}`,
+    label: a => `${a.width}×${a.height} @ ${a.x},${a.y}`,
   },
   circle: {
     tag: 'circle',
@@ -44,7 +44,7 @@ export const SHAPE_TYPES = {
       r:  Math.round(Math.min(w, h) / 2),
     }),
     bbox: a => ({ x: +a.cx - +a.r, y: +a.cy - +a.r, width: 2 * +a.r, height: 2 * +a.r }),
-    label: a => `circle r${a.r} @ ${a.cx},${a.cy}`,
+    label: a => `r${a.r} @ ${a.cx},${a.cy}`,
   },
 };
 
@@ -123,12 +123,16 @@ function mirror(yNode) {
 
 /**
  * Render a shape Y.XmlElement to an SVG DOM element, stamped with the handles
- * app.js needs: data-yid (the shape id) and data-layer-type="drawing".
+ * app.js needs: data-yid (the shape id), data-layer-type="drawing", and a
+ * plain SVG id="yid-{id}" so that overlay.js <use href="#yid-{id}"> can
+ * reference the element for drag-ghost rendering without touching its geometry.
  */
 export function _toSVGEl(yEl) {
   const el = mirror(yEl);
   if (el && el.setAttribute) {
-    el.setAttribute('data-yid', yEl.getAttribute('id'));
+    const id = yEl.getAttribute('id');
+    el.setAttribute('id',              `yid-${id}`);
+    el.setAttribute('data-yid',        id);
     el.setAttribute('data-layer-type', 'drawing');
   }
   return el;
@@ -175,15 +179,15 @@ export function getAnchor(svgEl) {
 }
 
 /**
- * Write a move into both the Yjs element and the live DOM element (for smooth
- * drag feedback), given the new anchor position produced by canvas.js.
+ * Commit a move to the Yjs doc in a single transaction.
+ * Called once on pointerup — never during drag.
  * All shape-type branching lives here; callers are type-agnostic.
  *
- * yEl   — Y.XmlElement (may be null if shape not found; this is a no-op then)
- * domEl — live SVG DOM element (may be null; DOM update is skipped)
- * x, y  — new anchor position in canvas-space (integers expected)
+ * ydoc — Y.Doc
+ * yEl  — Y.XmlElement (no-op if null/missing)
+ * x, y — new anchor position in canvas-space (integers expected)
  */
-export function applyMove(ydoc, yEl, domEl, x, y) {
+export function applyMoveCommit(ydoc, yEl, x, y) {
   if (!yEl) return;
   const tag = yEl.nodeName;
   ydoc.transact(() => {
@@ -195,39 +199,26 @@ export function applyMove(ydoc, yEl, domEl, x, y) {
       yEl.setAttribute('cy', String(y));
     }
   });
-  if (domEl) {
-    if (tag === 'rect') {
-      domEl.setAttribute('x',  x);
-      domEl.setAttribute('y',  y);
-    } else if (tag === 'circle') {
-      domEl.setAttribute('cx', x);
-      domEl.setAttribute('cy', y);
-    }
+}
+
+/**
+ * Apply a move to a live DOM element only — no Yjs write.
+ * Used for direct DOM manipulation outside the drag-ghost path (e.g. snap-back
+ * on cancel when not using <use>-based ghosts). Type-branching lives here.
+ *
+ * domEl — live SVG DOM element (no-op if null)
+ * x, y  — new anchor position in canvas-space
+ */
+export function applyMoveDom(domEl, x, y) {
+  if (!domEl) return;
+  const tag = domEl.tagName;
+  if (tag === 'rect') {
+    domEl.setAttribute('x', x);
+    domEl.setAttribute('y', y);
+  } else if (tag === 'circle') {
+    domEl.setAttribute('cx', x);
+    domEl.setAttribute('cy', y);
   }
-}
-
-/**
- * Summarise a rendered shape svgEl as a plain layer-object descriptor.
- */
-function shapeData(svgEl) {
-  const attrs = {};
-  for (const at of svgEl.attributes) attrs[at.name] = at.value;
-  const type = svgEl.localName;
-  const def  = SHAPE_TYPES[type];
-  return {
-    id:    attrs['data-yid'],
-    label: def ? def.label(attrs) : type,
-    fill:  attrs.fill ?? '#888',
-    kind:  type,
-  };
-}
-
-/**
- * All shapes as layer-object descriptors, in z-order.
- * Used by app.js getLayerObjects — keeps shape internals out of the app bus.
- */
-export function shapesData(yDrawing, yDrawingMeta) {
-  return listShapes(yDrawing, yDrawingMeta).map(({ svgEl }) => shapeData(svgEl));
 }
 
 /**

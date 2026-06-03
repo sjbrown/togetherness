@@ -30,6 +30,7 @@
           ><stop offset="100%"
           stop-color="hsl(185, 90%, 45%)"></stop
         ></linearGradient>
+        <!-- drag-placeholder-filter injected by defs.js via the module script below -->
       </defs>
     <g id="background-layer">
       <rect x="0" y="0" width="100%" height="100%" fill="url(#bg-pattern)" pointer-events="none"/>
@@ -164,6 +165,11 @@ import { boot }                 from '/app.js';
 import * as UI                  from '/ui.js';
 import { App, makeDoc }         from '/app.js';
 import { entityGradient }            from './entity_gradient.js';
+import { dragPlaceholderFilterSVG }  from './defs.js';
+
+// Inject shared SVG defs (filters etc.) into the canvas <defs> element.
+document.querySelector('#canvas defs')
+  .insertAdjacentHTML('beforeend', dragPlaceholderFilterSVG);
 
 
 // Expose UI and App on window so inline onclick handlers in the HTML can reach them.

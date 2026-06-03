@@ -139,7 +139,7 @@ window.App = {
   // no-ops for handlers fired from within stories
   setTool(){}, setFill(){}, selectShape(){}, openSheet(){}, closePanel(){},
   duplicateSelected(){}, bringToFront(){}, deleteSelected(){}, undo(){},
-  setLayer(){}, setOffline(){}, isOffline(){ return false; }, exportSVG(){}, importSVG(){},
+  setLayer(){}, setOffline(){}, isOffline(){ return false; }, exportSVG(){}, copyJSON(){}, importFile(){},
 };
 window.UI = UI;  // so inline onclick in rendered markup resolves (no-op visually in stories)
 
@@ -254,6 +254,7 @@ story('Panel · Save', '', () =>
 import * as Overlay from '/overlay.js';
 import { getGeom, SHAPE_TYPES } from '/shapes.js';
 import { entityGradient } from '/entity_gradient.js';
+import { dragPlaceholderFilterSVG } from '/defs.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const myGrad = entityGradient('stories-user');
@@ -345,6 +346,165 @@ story('Mixed', 'rect local · circle remote', () => {
   Overlay.SelectionMode.set('mx2', { kind:'remote', peerId:'Mara', color:'#5a7ea8' });
   Overlay.init(fakeOverlayApp(svg), svg);
   Overlay.render();
+  return svg;
+});
+
+// ── Drag ghost stories ────────────────────────────────────────────────────────
+// These build a self-contained SVG that demonstrates the <use>-based drag
+// overlay visuals. The native layer element has id="yid-{id}" so the overlay
+// can reference it with <use href="...">.
+
+function buildDragStageSVG(shapes) {
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('viewBox', '0 0 300 200');
+  svg.style.cssText = 'width:300px;height:200px;background:#1a1a2e;border-radius:6px;overflow:visible';
+
+  // defs: local grad + placeholder filter (imported from defs.js — single source of truth)
+  const defs = document.createElementNS(SVGNS, 'defs');
+  defs.innerHTML = `
+    ${dragPlaceholderFilterSVG}
+    <linearGradient id="story-local-grad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="${myGrad.c1}"/>
+      <stop offset="100%" stop-color="${myGrad.c2 ?? myGrad.c1}"/>
+    </linearGradient>`;
+  svg.appendChild(defs);
+
+  // Native layer — shapes with id="yid-{id}"
+  const layer = document.createElementNS(SVGNS, 'g');
+  layer.id = 'story-native-layer';
+  shapes.forEach(s => {
+    const el = document.createElementNS(SVGNS, s.type === 'circle' ? 'circle' : 'rect');
+    el.setAttribute('id',   `yid-${s.id}`);
+    el.setAttribute('fill', s.fill);
+    if (s.type === 'circle') {
+      el.setAttribute('cx', s.geom.cx); el.setAttribute('cy', s.geom.cy); el.setAttribute('r', s.geom.r);
+    } else {
+      el.setAttribute('x', s.geom.x); el.setAttribute('y', s.geom.y);
+      el.setAttribute('width', s.geom.width); el.setAttribute('height', s.geom.height);
+      if (s.geom.rx) el.setAttribute('rx', s.geom.rx);
+    }
+    layer.appendChild(el);
+  });
+  svg.appendChild(layer);
+
+  // Overlay layer
+  const overlay = document.createElementNS(SVGNS, 'g');
+  overlay.id = 'overlay-layer';
+  overlay.setAttribute('pointer-events', 'none');
+  svg.appendChild(overlay);
+
+  return svg;
+}
+
+story('Drag ghost', 'placeholder at committed · ghost at drag pos', () => {
+  const shapes = [{ id:'dg1', type:'rect', geom:{ x:20, y:60, width:90, height:60 }, fill:'#c8941e' }];
+  const svg = buildDragStageSVG(shapes);
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const overlay = svg.querySelector('#overlay-layer');
+
+  // Dim placeholder at committed position
+  const ph = document.createElementNS(SVGNS, 'use');
+  ph.setAttribute('href', '#yid-dg1');
+  ph.setAttribute('filter', 'url(#drag-placeholder-filter)');
+  overlay.appendChild(ph);
+
+  // Flying ghost translated +100,+50
+  const ghost = document.createElementNS(SVGNS, 'use');
+  ghost.setAttribute('href', '#yid-dg1');
+  ghost.setAttribute('transform', 'translate(100, 50)');
+  ghost.setAttribute('opacity', '0.85');
+  overlay.appendChild(ghost);
+
+  // Dashed ring around ghost
+  const ring = document.createElementNS(SVGNS, 'rect');
+  ring.setAttribute('x', 20 + 100 - 6); ring.setAttribute('y', 60 + 50 - 6);
+  ring.setAttribute('width', 90 + 12); ring.setAttribute('height', 60 + 12);
+  ring.setAttribute('rx', 4); ring.setAttribute('fill', 'none');
+  ring.setAttribute('stroke', 'url(#story-local-grad)');
+  ring.setAttribute('stroke-width', 2); ring.setAttribute('stroke-dasharray', '6 3');
+  overlay.appendChild(ring);
+
+  return svg;
+});
+
+story('Drag ghost', 'remote peer dragging · dashed ring + label', () => {
+  const shapes = [{ id:'dg2', type:'rect', geom:{ x:20, y:60, width:90, height:60 }, fill:'#5a7ea8' }];
+  const svg = buildDragStageSVG(shapes);
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const overlay = svg.querySelector('#overlay-layer');
+  const peerColor = '#8a5ea8';
+
+  // Dim placeholder
+  const ph = document.createElementNS(SVGNS, 'use');
+  ph.setAttribute('href', '#yid-dg2');
+  ph.setAttribute('filter', 'url(#drag-placeholder-filter)');
+  overlay.appendChild(ph);
+
+  // Remote ghost at +80, +40
+  const ghost = document.createElementNS(SVGNS, 'use');
+  ghost.setAttribute('href', '#yid-dg2');
+  ghost.setAttribute('transform', 'translate(80, 40)');
+  ghost.setAttribute('opacity', '0.85');
+  overlay.appendChild(ghost);
+
+  // Remote dashed ring
+  const ring = document.createElementNS(SVGNS, 'rect');
+  ring.setAttribute('x', 20 + 80 - 6); ring.setAttribute('y', 60 + 40 - 6);
+  ring.setAttribute('width', 90 + 12); ring.setAttribute('height', 60 + 12);
+  ring.setAttribute('rx', 6); ring.setAttribute('fill', 'none');
+  ring.setAttribute('stroke', peerColor);
+  ring.setAttribute('stroke-width', 1.5); ring.setAttribute('stroke-dasharray', '4 3');
+  overlay.appendChild(ring);
+
+  // Peer label
+  const label = document.createElementNS(SVGNS, 'text');
+  label.setAttribute('x', 20 + 80 - 6 + 4);
+  label.setAttribute('y', 60 + 40 - 6 - 4);
+  label.setAttribute('font-size', 9);
+  label.setAttribute('font-family', 'ui-monospace, Menlo, monospace');
+  label.setAttribute('fill', peerColor);
+  label.textContent = 'Mara';
+  overlay.appendChild(label);
+
+  return svg;
+});
+
+story('Drag ghost', 'local + remote simultaneous', () => {
+  const shapes = [
+    { id:'dg3', type:'rect',   geom:{ x:15,  y:50,  width:80, height:60 }, fill:'#c8941e' },
+    { id:'dg4', type:'circle', geom:{ cx:210, cy:100, r:40 },              fill:'#5a7ea8' },
+  ];
+  const svg = buildDragStageSVG(shapes);
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const overlay = svg.querySelector('#overlay-layer');
+  const peerColor = '#8a5ea8';
+
+  // Local drag: rect (dg3) shifted right
+  const ph3 = document.createElementNS(SVGNS, 'use');
+  ph3.setAttribute('href', '#yid-dg3'); ph3.setAttribute('filter', 'url(#drag-placeholder-filter)');
+  overlay.appendChild(ph3);
+  const g3 = document.createElementNS(SVGNS, 'use');
+  g3.setAttribute('href', '#yid-dg3'); g3.setAttribute('transform', 'translate(60, 20)'); g3.setAttribute('opacity', '0.85');
+  overlay.appendChild(g3);
+  const r3 = document.createElementNS(SVGNS, 'rect');
+  r3.setAttribute('x', 15+60-6); r3.setAttribute('y', 50+20-6); r3.setAttribute('width', 80+12); r3.setAttribute('height', 60+12);
+  r3.setAttribute('rx', 4); r3.setAttribute('fill', 'none'); r3.setAttribute('stroke', 'url(#story-local-grad)'); r3.setAttribute('stroke-width', 2); r3.setAttribute('stroke-dasharray', '6 3');
+  overlay.appendChild(r3);
+
+  // Remote drag: circle (dg4) shifted left
+  const ph4 = document.createElementNS(SVGNS, 'use');
+  ph4.setAttribute('href', '#yid-dg4'); ph4.setAttribute('filter', 'url(#drag-placeholder-filter)');
+  overlay.appendChild(ph4);
+  const g4 = document.createElementNS(SVGNS, 'use');
+  g4.setAttribute('href', '#yid-dg4'); g4.setAttribute('transform', 'translate(-50, -20)'); g4.setAttribute('opacity', '0.85');
+  overlay.appendChild(g4);
+  const r4 = document.createElementNS(SVGNS, 'rect');
+  const bx = 210-40; const by = 100-40;
+  r4.setAttribute('x', bx-50-6); r4.setAttribute('y', by-20-6); r4.setAttribute('width', 80+12); r4.setAttribute('height', 80+12);
+  r4.setAttribute('rx', 6); r4.setAttribute('fill', 'none'); r4.setAttribute('stroke', peerColor); r4.setAttribute('stroke-width', 1.5); r4.setAttribute('stroke-dasharray', '4 3');
+  overlay.appendChild(r4);
+
   return svg;
 });
 </script>

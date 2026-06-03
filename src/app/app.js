@@ -22,15 +22,16 @@
 
 import { initIcons }                              from './icons.js';
 import { SHAPE_TYPES, addShape, deleteShape,
-         findShape, listShapes, shapesData,
+         findShape, listShapes,
          getGeom as shapeGeom,
          getAnchor as shapeAnchor,
-         applyMove as shapeApplyMove } from './shapes.js';
+         applyMoveCommit as shapeApplyMoveCommit } from './shapes.js';
 import { TOOLS as TOY_TOOLS,
          TOY_TYPES, addToy, deleteToy, findToy,
-         listToys, toysData,
+         listToys,
          getGeom as toyGeom,
          getAnchor as toyAnchor,
+         applyMoveCommit as toyApplyMoveCommit,
        }  from './toys.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
 import { TOOLS as DRAW_TOOLS, LAYER as DRAW_LAYER }  from './tools-shapes.js';
@@ -56,6 +57,11 @@ let _activeTool   = 'select';
 let _offline      = false;
 let _undoStack    = [];      // { op:'add'|'del'|'move', ...data }
 let _historyLog   = [];      // { label } — human-readable, newest first
+
+// Active drag — set by App.startDrag, cleared by commitMove / cancelMove.
+// Awareness state: drag: { shapeId, dx, dy }
+// local awareness schema: { id, color, grad, cursor, selection, drag? }
+let _dragState    = null;    // { id, startX, startY } | null
 
 // ── Tool registry ──────────────────────────────────────────────────────────────
 // Built from the layer registries + the universal Select tool.
@@ -135,24 +141,27 @@ export function boot({ ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, awa
   window.addEventListener('keydown', onKeyDown);
 
   // 6. CRDT observers
-  _yToys.observeDeep(onToysChanged); // deep edits possible, so observeDeep
-  _yDrawing.observe(onDrawingChanged);
+  // Both layers use observeDeep so attribute changes (moves via applyMoveCommit)
+  // trigger renderDoc on every client — shallow observe only fires for
+  // insert/delete on the fragment itself, missing setAttribute on children.
+  _yToys.observeDeep(onToysChanged);
+  _yDrawing.observeDeep(onDrawingChanged);
   _yToys.observe(onDocChanged);
   _yDrawing.observe(onDocChanged);
   _awareness.on('change', onPresenceChanged);
 
   // 7. Provider status
   const dot = document.getElementById('statusDot');
-  if (dot) {
-    _provider.on('synced', () => {
-      dot.className = 'status-dot connected';
-      UI.toast('Synced with peers');
-      App.addLog('synced with peers', 'remote');
-    });
-    _provider.on('status', ({ connected }) => {
-      dot.className = connected ? 'status-dot connected' : 'status-dot connecting';
-    });
-  }
+  _provider.on('synced', () => {
+    if (dot) dot.className = 'status-dot connected';
+    UI.toast('Synced with peers');
+    App.addLog('synced with peers', 'remote');
+  });
+  _provider.on('status', ({ connected }) => {
+    if (dot) dot.className = connected ? 'status-dot connected' : 'status-dot connecting';
+    // Cancel any in-progress drag on disconnect — doc stays at committed position.
+    if (!connected && _dragState) App.cancelMove();
+  });
 
   // 8. Initial render
   renderDoc();
@@ -291,32 +300,37 @@ function onDocChanged() {
   UI.refreshFromDoc();
 }
 
-function onDrawingChanged(event) {
-  event.changes.added.forEach(item => {
-    item.content.getContent().forEach(yEl => {
-      if (!yEl.getAttribute) return;
-      const id     = yEl.getAttribute('id') ?? '?';
-      const meta   = _yDrawingMeta.get(id);
-      const author = meta?.author;
-      if (author && author !== _myId) {
-        addHistory(`remote: added ${id.slice(0, 6)} by ${(author ?? '?').slice(0, 5)}`, {
-          fill: yEl.getAttribute('fill'), shapeType: yEl.nodeName,
+function onDrawingChanged(events, transaction) {
+  // Log remote structural changes (add / delete). Attribute changes (moves)
+  // arrive here too via observeDeep but don't need logging — just renderDoc.
+  if (!transaction.local) {
+    for (const event of events) {
+      if (event.target !== _yDrawing) continue; // skip attribute-change events on children
+      event.changes.added.forEach(item => {
+        item.content.getContent().forEach(yEl => {
+          if (!yEl.getAttribute) return;
+          const id     = yEl.getAttribute('id') ?? '?';
+          const meta   = _yDrawingMeta.get(id);
+          const author = meta?.author;
+          if (author && author !== _myId) {
+            addHistory(`remote: added ${id.slice(0, 6)} by ${(author ?? '?').slice(0, 5)}`, {
+              fill: yEl.getAttribute('fill'), shapeType: yEl.nodeName,
+            });
+            App.addLog(`${(author ?? '?').slice(0, 5)} added ${yEl.nodeName}`, 'remote');
+          }
         });
-        let msg = `${(author ?? '?').slice(0, 5)} added ${yEl.nodeName}`;
-        App.addLog(msg, 'remote');
-      }
-    });
-  });
-  event.changes.deleted.forEach(item => {
-    item.content.getContent().forEach(yEl => {
-      if (!yEl.getAttribute) return;
-      addHistory(`remote: deleted ${(yEl.getAttribute('id') ?? '?').slice(0, 6)}`, {
-        fill: yEl.getAttribute('fill'), shapeType: yEl.nodeName,
       });
-      let msg = `remote deleted ${yEl.nodeName}`;
-      App.addLog(msg, 'remote');
-    });
-  });
+      event.changes.deleted.forEach(item => {
+        item.content.getContent().forEach(yEl => {
+          if (!yEl.getAttribute) return;
+          addHistory(`remote: deleted ${(yEl.getAttribute('id') ?? '?').slice(0, 6)}`, {
+            fill: yEl.getAttribute('fill'), shapeType: yEl.nodeName,
+          });
+          App.addLog(`remote deleted ${yEl.nodeName}`, 'del');
+        });
+      });
+    }
+  }
   renderDoc();
 }
 
@@ -372,8 +386,24 @@ const App = {
     return layerForElement(svgEl) === 'toy' ? toyAnchor(svgEl) : shapeAnchor(svgEl);
   },
   getLayerObjects: (layerId) => {
-    if (layerId === 'drawing') return shapesData(_yDrawing, _yDrawingMeta);
-    if (layerId === 'toys')    return toysData(_yToys, _yToyMeta);
+    if (layerId === 'drawing') {
+      return listShapes(_yDrawing, _yDrawingMeta, { newestFirst: false }).map(({ svgEl, shapeMeta }) => ({
+        id:     svgEl.getAttribute('data-yid'),
+        label:  shapeMeta?.type ?? 'shape',
+        fill:   svgEl.getAttribute('fill') ?? '#888',
+        author: shapeMeta?.author ?? '?',
+        kind:   shapeMeta?.type ?? 'rect',
+      }));
+    }
+    if (layerId === 'toys') {
+      return listToys(_yToys, _yToyMeta).map(({ svgEl, meta }) => ({
+        id:     svgEl.getAttribute('data-yid'),
+        label:  meta?.toyType?.replace('_', ' ') ?? 'toy',
+        fill:   meta?.color ?? '#888',
+        author: meta?.author ?? '?',
+        kind:   'toy',
+      }));
+    }
     return [];
   },
   getViewScale:    () => Canvas.getView().scale,
@@ -448,37 +478,62 @@ const App = {
     App.commitShape({ type: yEl.nodeName, ...geom, fill: attrs.fill, stroke: attrs.stroke, 'stroke-width': attrs['stroke-width'], opacity: attrs.opacity });
   },
 
-  moveShape: (id, x, y) => {
+  // ── Drag lifecycle ────────────────────────────────────────────────────────
+  // startDrag   — called once on pointerdown when a move gesture begins
+  // moveShape   — called on every pointermove; updates overlay ghost + awareness
+  // commitMove  — called on pointerup; writes final position to Yjs once
+  // cancelMove  — called on pointercancel or disconnect; reverts with no Yjs write
+
+  startDrag: (id) => {
     const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
-    if (layerForElement(domEl) === 'toy') {
-      App.moveToy(id, x, y);
-    } else {
-      const yEl = findShape(_yDrawing, id);
-      shapeApplyMove(_ydoc, yEl, domEl, Math.round(x), Math.round(y));
-    }
-    Overlay.render();
+    const anchor = layerForElement(domEl) === 'toy'
+      ? toyAnchor(domEl)
+      : shapeAnchor(domEl);
+    _dragState = { id, startX: anchor.x, startY: anchor.y };
+    Overlay.startDragPlaceholder(id);
+    _awareness.setLocalStateField('drag', { shapeId: id, dx: 0, dy: 0 });
   },
 
-  moveToy: (id, x, y) => {
-    const yToy = findToy(_yToys, id);
-    if (!yToy) return;
+  moveShape: (id, x, y) => {
+    if (!_dragState || _dragState.id !== id) return;
     const rx = Math.round(x), ry = Math.round(y);
-    const ySvg = yToy.toArray()[0];
-    const half = Math.round(parseFloat(ySvg?.getAttribute?.('width') ?? 64) / 2);
-    // Anchor for toys is the centre; the embedded <svg> is positioned at centre - half.
-    _ydoc.transact(() => {
-      if (ySvg) {
-        ySvg.setAttribute('x', String(rx - half));
-        ySvg.setAttribute('y', String(ry - half));
-      }
-    });
-    // Live DOM update for smooth drag
-    const domEl  = _svgEl.querySelector(`[data-yid="${id}"]`);
-    const domSvg = domEl?.querySelector?.('svg');
-    if (domSvg) {
-      domSvg.setAttribute('x', rx - half);
-      domSvg.setAttribute('y', ry - half);
+    const dx = rx - _dragState.startX;
+    const dy = ry - _dragState.startY;
+    Overlay.updateLocalDragGhost(id, dx, dy);
+    _awareness.setLocalStateField('drag', { shapeId: id, dx, dy });
+  },
+
+  commitMove: (id, x, y) => {
+    if (!_dragState) return;
+    const rx = Math.round(x), ry = Math.round(y);
+    const fromX = _dragState.startX, fromY = _dragState.startY;
+    const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
+    const isToy = layerForElement(domEl) === 'toy';
+    if (isToy) {
+      toyApplyMoveCommit(_ydoc, findToy(_yToys, id), rx, ry);
+      // onToysChanged (observeDeep) fires synchronously and calls renderDoc().
+    } else {
+      shapeApplyMoveCommit(_ydoc, findShape(_yDrawing, id), rx, ry);
+      // _yDrawing.observe is shallow — attribute changes on children don't
+      // trigger onDrawingChanged, so we must call renderDoc() explicitly here.
+      renderDoc();
     }
+    _undoStack.push({ op: 'move', id, isToy, fromX, fromY, toX: rx, toY: ry });
+    addHistory(`moved ${id.slice(0, 6)} → (${rx}, ${ry})`, {
+      fill: domEl?.getAttribute('fill'),
+      shapeType: isToy ? 'toy' : domEl?.nodeName,
+    });
+    Overlay.endDragPlaceholder(id);
+    _awareness.setLocalStateField('drag', null);
+    _dragState = null;
+  },
+
+  cancelMove: () => {
+    if (!_dragState) return;
+    const id = _dragState.id;
+    Overlay.endDragPlaceholder(id);
+    _awareness.setLocalStateField('drag', null);
+    _dragState = null;
   },
 
   bringToFront: () => {
@@ -546,152 +601,27 @@ const App = {
     if (!op) { UI.toast('Nothing to undo', 'warn'); return; }
     if (op.op === 'add') {
       deleteShape(_ydoc, _yDrawing, _yDrawingMeta, op.id);
+      addHistory(`undid: add ${op.id.slice(0, 6)}`);
     } else if (op.op === 'del') {
       addShape(_ydoc, _yDrawing, _yDrawingMeta, { ...op.attrs, ...op.meta, id: op.attrs.id });
+      addHistory(`undid: delete ${op.attrs.id.slice(0, 6)}`, { fill: op.attrs.fill, shapeType: op.attrs.type });
     } else if (op.op === 'add-toy') {
       deleteToy(_ydoc, _yToys, _yToyMeta, op.id);
+      addHistory(`undid: add toy ${op.id.slice(0, 6)}`, { shapeType: 'toy' });
+    } else if (op.op === 'move') {
+      if (op.isToy) {
+        toyApplyMoveCommit(_ydoc, findToy(_yToys, op.id), op.fromX, op.fromY);
+      } else {
+        shapeApplyMoveCommit(_ydoc, findShape(_yDrawing, op.id), op.fromX, op.fromY);
+        renderDoc();
+      }
+      addHistory(`undid: move ${op.id.slice(0, 6)} → (${op.fromX}, ${op.fromY})`);
     }
     UI.toast('Undone');
   },
-  exportSVG: () => {
-    // Clone the live SVG, strip overlay and UI-only layers, then download.
-    const clone = _svgEl.cloneNode(true);
-    clone.removeAttribute('id');
-    // Remove layers that aren't document content
-    ['#overlay-layer', '#draw-preview'].forEach(sel => {
-      clone.querySelector(sel)?.remove();
-    });
-    // Strip pointer-events and other runtime attrs
-    clone.querySelectorAll('[pointer-events]').forEach(el => el.removeAttribute('pointer-events'));
-    // Embed a viewBox if not already set
-    if (!clone.getAttribute('viewBox')) {
-      const w = _svgEl.clientWidth  || 1384;
-      const h = _svgEl.clientHeight || 998;
-      clone.setAttribute('viewBox', `0 0 ${w} ${h}`);
-    }
-    // Set namespaces (SVG + Inkscape + XLink)
-    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-    clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
-    clone.setAttribute('xmlns:inkscape', 'http://www.inkscape.org/namespaces/inkscape');
-    // Mark toys and drawing layers as Inkscape layers
-    clone.querySelector('#toys-layer')?.setAttribute('inkscape:groupmode', 'layer');
-    clone.querySelector('#drawing-layer')?.setAttribute('inkscape:groupmode', 'layer');
-    // Format filename as tt-{roomId}-YYMMDD.svg
-    const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
-    const blob = new Blob([clone.outerHTML], { type: 'image/svg+xml' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = `tt-${_roomId}-${dateStr}.svg`;
-    a.click();
-    URL.revokeObjectURL(url);
-    UI.toast('SVG exported');
-  },
-  importSVG: () => {
-    const input  = document.createElement('input');
-    input.type   = 'file';
-    input.accept = '.svg,image/svg+xml';
-    input.onchange = async () => {
-      const file = input.files[0];
-      if (!file) return;
-      const text   = await file.text();
-      const parser = new DOMParser();
-      const svgDoc = parser.parseFromString(text, 'image/svg+xml');
-      if (svgDoc.querySelector('parsererror')) {
-        UI.toast('Could not parse SVG', 'warn');
-        return;
-      }
-
-      // ── DOM element → Y.XmlElement tree ────────────────────────────────
-      // Preserves all attributes (including xlink:href as a plain string key,
-      // which mirror() in shapes.js/toys.js re-hydrates via setAttributeNS).
-      function domToY(node) {
-        if (node.nodeType === Node.TEXT_NODE) {
-          const t = node.textContent.trim();
-          return t ? new Y.XmlText(t) : null;
-        }
-        if (node.nodeType !== Node.ELEMENT_NODE) return null;
-        if (node.localName === 'script') return null; // never
-        const yEl = new Y.XmlElement(node.localName);
-        for (const at of node.attributes) yEl.setAttribute(at.name, at.value);
-        const children = [...node.childNodes].map(domToY).filter(Boolean);
-        if (children.length) yEl.insert(0, children);
-        return yEl;
-      }
-
-      // ── Toy contract: <g class="toy" data-toy-id data-toy-type
-      //                     data-yid data-layer-type="toy"> with ≥1 <svg> child
-      function isToyG(el) {
-        return el.localName === 'g' &&
-               el.classList.contains('toy') &&
-               el.getAttribute('data-toy-id') &&
-               el.getAttribute('data-toy-type') &&
-               el.getAttribute('data-yid') &&
-               el.getAttribute('data-layer-type') === 'toy' &&
-               el.querySelector(':scope > svg');
-      }
-
-      // App-internal layers that are never imported into drawing
-      const SKIP_IDS = new Set([
-        'background-layer', 'boundaries-positions-layer', 'overlay-layer',
-      ]);
-
-      const toysLayerEl = svgDoc.querySelector('#toys-layer');
-      const drawLayerEl = svgDoc.querySelector('#drawing-layer');
-      let toyCount = 0, toyErrors = 0, drawCount = 0;
-
-      _ydoc.transact(() => {
-        // ── Toys layer ─────────────────────────────────────────────────
-        if (toysLayerEl) {
-          const invalid = [];
-          for (const child of toysLayerEl.children) {
-            if (isToyG(child)) {
-              const yG = domToY(child);
-              if (yG) { _yToys.insert(_yToys.length, [yG]); toyCount++; }
-            } else {
-              invalid.push(child);
-              toyErrors++;
-            }
-          }
-          if (invalid.length) {
-            let errLayer = _svgEl.querySelector('#errors-layer');
-            if (!errLayer) {
-              errLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-              errLayer.setAttribute('id', 'errors-layer');
-              _svgEl.appendChild(errLayer);
-            }
-            invalid.forEach(el => errLayer.appendChild(document.importNode(el, true)));
-          }
-        }
-
-        // ── Drawing layer ───────────────────────────────────────────────
-        if (drawLayerEl) {
-          for (const child of drawLayerEl.children) {
-            const yEl = domToY(child);
-            if (yEl) { _yDrawing.insert(_yDrawing.length, [yEl]); drawCount++; }
-          }
-        }
-
-        // ── Everything else → drawing layer ────────────────────────────
-        for (const el of svgDoc.documentElement.children) {
-          const id = el.getAttribute('id') ?? '';
-          if (el.localName === 'defs') continue;
-          if (id === 'toys-layer' || id === 'drawing-layer') continue;
-          if (SKIP_IDS.has(id)) continue;
-          const yEl = domToY(el);
-          if (yEl) { _yDrawing.insert(_yDrawing.length, [yEl]); drawCount++; }
-        }
-      });
-
-      const parts = [];
-      if (toyCount)  parts.push(`${toyCount} toy${toyCount === 1 ? '' : 's'}`);
-      if (drawCount) parts.push(`${drawCount} shape${drawCount === 1 ? '' : 's'}`);
-      if (toyErrors) parts.push(`${toyErrors} invalid → errors layer`);
-      if (!parts.length) UI.toast('Nothing importable found', 'warn');
-      else UI.toast(`Imported: ${parts.join(', ')}`);
-    };
-    input.click();
-  },
+  exportSVG: () => UI.toast('SVG export — stub'),
+  copyJSON:  () => UI.toast('JSON copy — stub'),
+  importFile:() => UI.toast('Import — stub'),
 
   addLog: (msg, type='') => {
     const log   = document.getElementById('eventLog')
@@ -709,6 +639,7 @@ const App = {
 function addHistory(label, meta = {}) {
   _historyLog.unshift({ label, ts: Date.now(), fill: meta.fill, shapeType: meta.shapeType });
   if (_historyLog.length > 40) _historyLog.pop();
+  UI.refreshFromDoc();
 }
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────

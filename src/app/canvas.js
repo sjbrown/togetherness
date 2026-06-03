@@ -180,6 +180,7 @@ function onPointerDown(e) {
       const p = toCanvas(e.clientX, e.clientY);
       ToolMode._moveRef = { id: hitId, dx: p.x - anchor.x, dy: p.y - anchor.y, moved: false };
       App.selectShape(hitId);
+      App.startDrag(hitId);
       ToolMode._pressTimer = setTimeout(() => {
         if (!ToolMode._moveRef?.moved) App.requestContextMenu(e.clientX, e.clientY, hitId);
       }, 480);
@@ -259,6 +260,23 @@ function onPointerUp(e) {
   clearTimeout(ToolMode._pressTimer);
   ToolMode._pointers.delete(e.pointerId);
   _preview.hide();
+
+  const isCancelled = e.type === 'pointercancel';
+
+  if (ToolMode._gesture === 'move' && ToolMode._moveRef) {
+    if (ToolMode._moveRef.moved) {
+      if (isCancelled) {
+        App.cancelMove();
+      } else {
+        const ref = ToolMode._moveRef;
+        const p   = toCanvas(e.clientX, e.clientY);
+        App.commitMove(ref.id, p.x - ref.dx, p.y - ref.dy);
+      }
+    } else {
+      // Tap with no movement — still started a drag; cancel it cleanly.
+      App.cancelMove();
+    }
+  }
 
   if (ToolMode._gesture === 'draw' && ToolMode._draft) {
     finishDraft(e);
