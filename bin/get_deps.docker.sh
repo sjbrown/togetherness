@@ -21,7 +21,7 @@ if [ `basename $(pwd)` != "crdt-svg" ]; then
 fi
 
 
-OUT_DIR="./src/app/lib"
+OUT_DIR="./src/lib"
 
 echo " Vendoring dependencies into $OUT_DIR ..."
 echo ""

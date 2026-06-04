@@ -5,7 +5,7 @@
 
 // @vitest-environment jsdom
 import { describe, test, expect } from 'vitest'
-import { layerObjectListHTML, refreshLayerList, UIData, init } from '../../src/app/ui.js'
+import { layerObjectListHTML, refreshLayerList, UIData, init } from '../../src/ui.js'
 
 const mockObjects = [
   { id: 'a', label: 'rect',   fill: '#c8941e', kind: 'rect'   },

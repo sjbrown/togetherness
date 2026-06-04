@@ -7,22 +7,25 @@ services:
       dockerfile: docker/unit.Dockerfile
     volumes:
       - ./tests:/app/tests
+    stop_grace_period: 0s
 
   signaling:
     build:
       context: .
       dockerfile: docker/signaling.Dockerfile
+    stop_grace_period: 0s
 
   app:
     image: python:3.12-slim
     ports:
       - "80:80"
     volumes:
-      - ./src/app:/app/
+      - ./src:/app/
     working_dir: /app
     command: python -m http.server 80
     depends_on:
       - signaling
+    stop_grace_period: 0s
 
 
   # Playwright e2e tests — runs after app + signaling are up
@@ -38,3 +41,4 @@ services:
         condition: service_started
       signaling:
         condition: service_started
+    stop_grace_period: 0s

@@ -46,7 +46,7 @@ crdt-svg/
 │   ├── test.sh                # run all tests
 │   ├── test_unit.docker.sh    # run unit tests in Docker
 │   ├── test_e2e.docker.sh     # run e2e tests in Docker
-│   └── get_deps.sh            # vendor JS deps into src/app/lib/
+│   └── get_deps.sh            # vendor JS deps into src/lib/
 ├── docker/
 │   ├── signaling.Dockerfile   # y-webrtc signaling server
 │   ├── unit.Dockerfile        # vitest unit + integration tests
@@ -73,7 +73,7 @@ crdt-svg/
 
 Using `Y.XmlFragment` means the CRDT structure maps directly onto SVG — the document tree *is* the shared data type, with no translation layer.
 
-## Core API (`src/app/shapes.js`)
+## Core API (`src/shapes.js`)
 
 ```js
 import { makeDoc, addShape, deleteShape, findShape,
@@ -111,7 +111,7 @@ To run your own signaling server (required for sync between devices on different
 docker compose up signaling
 ```
 
-Then update the signaling URL in `src/app/index.html`:
+Then update the signaling URL in `src/index.html`:
 
 ```js
 const provider = new WebrtcProvider(roomId, ydoc, {

@@ -7,11 +7,12 @@ services:
       - "3000:8000"
     volumes:
       # Hot-reload without rebuild — mount src directly
-      - ./src/app:/app/
+      - ./src:/app/
     working_dir: /app
     command: python -m http.server 8000
     depends_on:
       - signaling
+    stop_grace_period: 0s
 
   signaling:
     build:
@@ -22,3 +23,4 @@ services:
     environment:
       - LOG=y-webrtc
     restart: unless-stopped
+    stop_grace_period: 0s

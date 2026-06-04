@@ -17,7 +17,7 @@ export default defineConfig({
       reuseExistingServer: false,
     },
     {
-      command: 'npx serve src/app -l 3000',
+      command: 'npx serve src -l 3000',
       port: 3000,
       reuseExistingServer: false,
     },

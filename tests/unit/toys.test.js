@@ -5,7 +5,7 @@ import {
   svgTextToYXml, addToy, deleteToy, listToys, findToy, TOY_TYPES,
   getGeom, _toSVGEl,
   hslToRgb, colorMatrixValues,
-} from '../../src/app/toys.js'
+} from '../../src/toys.js'
 
 // Local accessor for the toys fragment + meta map. The production code creates
 // these via makeDoc() in app.js; tests just need a thin equivalent.

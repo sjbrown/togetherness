@@ -13,8 +13,8 @@ import { describe, test, expect } from 'vitest'
 import {
   addShape, deleteShape, findShape,
   getGeom, _toSVGEl, listShapes, CURRENT_SCHEMA, SHAPE_TYPES,
-} from '../../src/app/shapes.js'
-import { makeDoc } from '../../src/app/app.js'
+} from '../../src/shapes.js'
+import { makeDoc } from '../../src/app.js'
 
 // ── Sync helper ───────────────────────────────────────────────────────────────
 
