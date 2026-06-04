@@ -1,5 +1,5 @@
 /**
- * shapes.js — core CRDT operations for crdt-svg
+ * core CRDT operations for crdt-svg
  *
  * The CRDT operations (addShape, deleteShape, findShape, SHAPE_TYPES) are pure
  * functions over Yjs types — no DOM, importable anywhere.

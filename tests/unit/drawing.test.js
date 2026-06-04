@@ -3,7 +3,7 @@
  * shapes.test.js
  * Run with: npx vitest run
  *
- * Tests import directly from shapes.js — the same code path as index.html.
+ * Tests import directly from drawing.js — the same code path as index.html.
  * Sync is simulated with Y.encodeStateAsUpdate / Y.applyUpdate.
  * Runs under jsdom because listShapes / _toSVGEl render live SVG DOM.
  */
@@ -13,7 +13,7 @@ import { describe, test, expect } from 'vitest'
 import {
   addShape, deleteShape, findShape,
   getGeom, _toSVGEl, listShapes, CURRENT_SCHEMA, SHAPE_TYPES,
-} from '../../src/shapes.js'
+} from '../../src/drawing.js'
 import { makeDoc } from '../../src/app.js'
 
 // ── Sync helper ───────────────────────────────────────────────────────────────

@@ -1,11 +1,10 @@
 /**
- * tools-shapes.js — drawing-layer tool registry
+ * tools-drawing.js — drawing-layer tool registry
  *
  * Authority for which tools exist on the 'drawing' layer and what options
  * each exposes. ui.js asks App for this; it never hard-codes rect/circle.
  *
- * (Named tools-shapes.js to sit beside shapes.js, which owns the CRDT model.
- *  This file is purely the *tool palette* description — it does not touch Yjs.)
+ * This file is purely the *tool palette* description — it does not touch Yjs.
  */
 
 import { swatches, stepper, range } from './tools-schema.js';

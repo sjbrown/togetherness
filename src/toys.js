@@ -6,7 +6,7 @@
  * marker/d6.
  *
  * Toys are the game-specific objects: tokens players move around the map,
- * dice they roll. Like tools-shapes.js, this file describes the *palette*;
+ * dice they roll.
  *
  */
 /**

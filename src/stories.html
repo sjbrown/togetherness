@@ -80,7 +80,7 @@
 import { initIcons, icon } from '/icons.js';
 import * as UI from '/ui.js';
 import { SELECT_TOOL } from '/tools-schema.js';
-import { TOOLS as SHAPE_TOOLS } from '/tools-shapes.js';
+import { TOOLS as SHAPE_TOOLS } from '/tools-drawing.js';
 import { TOOLS as TOY_TOOLS } from '/toys.js';
 
 initIcons();
@@ -272,7 +272,7 @@ story('Panel · Save', '', () =>
 // getViewScale, getMyColor, and getMyGradient from local data.
 
 import * as Overlay from '/overlay.js';
-import { getGeom, SHAPE_TYPES } from '/shapes.js';
+import { getGeom, SHAPE_TYPES } from '/drawing.js';
 import { entityGradient } from '/entity_gradient.js';
 import { dragPlaceholderFilterSVG } from '/defs.js';
 

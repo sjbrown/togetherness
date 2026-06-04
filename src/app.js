@@ -6,7 +6,7 @@
  *
  * Roles:
  *   - Initialise all modules and inject this bus object as their sole dependency
- *   - Translate canvas events → CRDT writes (via shapes.js)
+ *   - Translate canvas events → CRDT writes
  *   - Translate CRDT/awareness changes → render calls
  *   - Answer read queries from ui.js and overlay.js
  *   - Maintain the undo stack (since it spans canvas + shapes)
@@ -25,7 +25,7 @@ import { SHAPE_TYPES, addShape, deleteShape,
          findShape, listShapes,
          getGeom as shapeGeom,
          getAnchor as shapeAnchor,
-         applyMoveCommit as shapeApplyMoveCommit } from './shapes.js';
+         applyMoveCommit as shapeApplyMoveCommit } from './drawing.js';
 import { TOOLS as TOY_TOOLS,
          TOY_TYPES, addToy, deleteToy, findToy,
          listToys,
@@ -34,7 +34,7 @@ import { TOOLS as TOY_TOOLS,
          applyMoveCommit as toyApplyMoveCommit,
        }  from './toys.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
-import { TOOLS as DRAW_TOOLS, LAYER as DRAW_LAYER }  from './tools-shapes.js';
+import { TOOLS as DRAW_TOOLS, LAYER as DRAW_LAYER }  from './tools-drawing.js';
 import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
 import * as Overlay                               from './overlay.js';

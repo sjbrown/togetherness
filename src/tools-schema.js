@@ -1,7 +1,7 @@
 /**
  * tools-schema.js — the contract between tool registries and the UI
  *
- * A registry (shapes.js, toys.js) exports a TOOLS array. Each entry is a
+ * A registry (drawing.js, toys.js) exports a TOOLS array. Each entry is a
  * ToolDef. ui.js renders these generically — it never hard-codes a tool name
  * beyond 'select', and it never knows what options a given tool has.
  *
