@@ -16,13 +16,11 @@
  *   'locked' — remote peer is actively editing (future: lock icon)
  *
  * Drag ghost system:
- *   Awareness state carries `drag: { shapeId, dx, dy }` where dx/dy is the
- *   offset from the committed position. The native layer element is never
- *   touched during drag; instead overlay renders:
+ *   The native layer element is never touched during drag; but overlay renders:
  *     - a dim <use href="#yid-{id}" filter="url(#drag-placeholder-filter)">
  *       at the committed position (placeholder)
  *     - a ghost <use href="#yid-{id}" transform="translate(dx,dy)"> (flying copy)
- *     - a selection ring translated by (dx, dy) around the ghost
+ *     - a selection ring translated by around the ghost
  */
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -41,7 +39,7 @@ export const SelectionMode = new Map();
 const _dragGhosts = new Map();
 
 // Remote drags — rebuilt from awareness on each syncFromAwareness() call.
-// Map<shapeId, { peerId, dx, dy, color }>
+// Map<shapeId, { peerId, bboxX, bboxY, color }>
 const _remoteDrags = new Map();
 
 let App       = null;
@@ -96,8 +94,8 @@ export function syncFromAwareness(awarenessStates, myClientId) {
       const peerId = state.id ?? String(clientId);
       _remoteDrags.set(state.drag.shapeId, {
         peerId,
-        dx:    state.drag.dx ?? 0,
-        dy:    state.drag.dy ?? 0,
+        bboxX: state.drag.bboxX,
+        bboxY: state.drag.bboxY,
         color: state.color ?? '#888',
       });
     }
@@ -236,19 +234,21 @@ export function render() {
 
   // ── 4. Remote drag ghosts + rings ─────────────────────────────────────────
   for (const [shapeId, drag] of _remoteDrags) {
+    const bbox = App.getShapeBBox(shapeId);
+    if (!bbox) continue;
+    const tdx = drag.bboxX - bbox.x; // relative to current committed
+    const tdy = drag.bboxY - bbox.y;
+
     const ghostEl = el('use', { opacity: '0.85' });
-    ghostEl.setAttribute('href',      `#yid-${shapeId}`);
-    ghostEl.setAttribute('transform', `translate(${drag.dx}, ${drag.dy})`);
+    ghostEl.setAttribute('href', `#yid-${shapeId}`);
+    ghostEl.setAttribute('transform', `translate(${tdx}, ${tdy})`);
     _layerEl.appendChild(ghostEl);
 
-    const bbox = App.getShapeBBox(shapeId);
-    if (bbox) {
-      renderRemoteSelection(
-        { x: bbox.x + drag.dx, y: bbox.y + drag.dy, width: bbox.width, height: bbox.height },
-        { color: drag.color, peerId: drag.peerId },
-        scale,
-      );
-    }
+    renderRemoteSelection(
+      { x: drag.bboxX, y: drag.bboxY, width: bbox.width, height: bbox.height },
+      { color: drag.color, peerId: drag.peerId },
+      scale,
+    );
   }
 
   // ── 5. Local drag ghosts + rings — z-top ──────────────────────────────────

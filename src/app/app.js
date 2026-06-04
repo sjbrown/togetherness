@@ -489,9 +489,13 @@ const App = {
     const anchor = layerForElement(domEl) === 'toy'
       ? toyAnchor(domEl)
       : shapeAnchor(domEl);
-    _dragState = { id, startX: anchor.x, startY: anchor.y };
+    const bbox = App.getShapeBBox(id);
+    _dragState = { id, startX: anchor.x, startY: anchor.y,
+      startBboxX: bbox.x,
+      startBboxY: bbox.y,
+    };
     Overlay.startDragPlaceholder(id);
-    _awareness.setLocalStateField('drag', { shapeId: id, dx: 0, dy: 0 });
+    _awareness.setLocalStateField('drag', { shapeId: id, bboxX: bbox.x, bboxY: bbox.y });
   },
 
   moveShape: (id, x, y) => {
@@ -500,7 +504,11 @@ const App = {
     const dx = rx - _dragState.startX;
     const dy = ry - _dragState.startY;
     Overlay.updateLocalDragGhost(id, dx, dy);
-    _awareness.setLocalStateField('drag', { shapeId: id, dx, dy });
+    _awareness.setLocalStateField('drag', {
+      shapeId: id,
+      bboxX: _dragState.startBboxX + dx,
+      bboxY: _dragState.startBboxY + dy,
+    });
   },
 
   commitMove: (id, x, y) => {
@@ -509,6 +517,12 @@ const App = {
     const fromX = _dragState.startX, fromY = _dragState.startY;
     const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
     const isToy = layerForElement(domEl) === 'toy';
+
+    // Ghost gone before bbox changes — prevents one-frame ghost "jitter"
+    Overlay.endDragPlaceholder(id);
+    _awareness.setLocalStateField('drag', null);
+    _dragState = null;
+
     if (isToy) {
       toyApplyMoveCommit(_ydoc, findToy(_yToys, id), rx, ry);
       // onToysChanged (observeDeep) fires synchronously and calls renderDoc().
@@ -523,9 +537,9 @@ const App = {
       fill: domEl?.getAttribute('fill'),
       shapeType: isToy ? 'toy' : domEl?.nodeName,
     });
-    Overlay.endDragPlaceholder(id);
-    _awareness.setLocalStateField('drag', null);
-    _dragState = null;
+    //Overlay.endDragPlaceholder(id);
+    //_awareness.setLocalStateField('drag', null);
+    //_dragState = null;
   },
 
   cancelMove: () => {
