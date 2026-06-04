@@ -524,3 +524,21 @@ input[type=range] { width: 100%; accent-color: var(--primary); height: 28px; }
 #popover button:hover { background: var(--surface-2); }
 #popover button.danger { color: #b85454; }
 #popover svg { width: 17px; height: 17px; }
+
+.bg-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.bg-preset {
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  cursor: pointer; padding: 6px; border-radius: 8px;
+  background: var(--surface-2); box-shadow: var(--emboss);
+  font-size: 11px; color: var(--text-3);
+  transition: box-shadow .15s, color .15s;
+}
+.bg-preset:hover { box-shadow: var(--emboss-active); color: var(--text); }
+.bg-preset img {
+  width: 100%; aspect-ratio: 4/3; object-fit: cover;
+  border-radius: 5px; display: block;
+}

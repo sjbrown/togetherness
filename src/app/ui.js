@@ -316,6 +316,8 @@ function gatherToolsData() {
     tools:      App.getTools(layer),
     palette:    App.getPalette(),
     fill:       App.getToolParams(UIData.activeTool)?.fill,
+    background: App.getBackground(),
+    defaultBackgrounds: App.getDefaultBackgrounds(),
   };
 }
 function gatherPeersData() {
@@ -331,7 +333,52 @@ function gatherLayersData() {
 }
 
 // -- Pure body builders --------------------------------------------------------
-export function toolsBody(data) {
+function bgToolsBody(data) {
+  const bg = data.background;
+  const presets = data.defaultBackgrounds.map(p => `
+    <div class="bg-preset" onclick="UI.applyBackgroundPreset('${p.url}', ${p.width}, ${p.height})"
+         title="${p.label}">
+      <img src="${p.url}" alt="${p.label}"/>
+      <span>${p.label}</span>
+    </div>`).join('');
+  return `
+    <div class="field">
+      <label>Background image URL</label>
+      <input type="url" class="text-input" id="bgUrlInput"
+        value="${bg.url}"
+        placeholder="https://… or img/bg_slatehex.png"
+        onchange="App.setBackground({url: this.value})"
+        style="width:100%;font-size:12px;font-family:ui-monospace,monospace"/>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <label style="flex:1;font-size:11px;color:var(--text-3)">W
+          <input type="number" class="text-input" id="bgWidthInput"
+            value="${bg.width}"
+            onchange="App.setBackground({width: this.value})"
+            style="width:100%;font-size:12px;font-family:ui-monospace,monospace"/>
+        </label>
+        <label style="flex:1;font-size:11px;color:var(--text-3)">H
+          <input type="number" class="text-input" id="bgHeightInput"
+            value="${bg.height}"
+            onchange="App.setBackground({height: this.value})"
+            style="width:100%;font-size:12px;font-family:ui-monospace,monospace"/>
+        </label>
+      </div>
+    </div>
+    <div class="field">
+      <label>Presets</label>
+      <div class="bg-preset-grid">${presets}</div>
+    </div>`;
+}
+
+export function applyBackgroundPreset(url, width, height) {
+  const el = (id, val) => { const e = document.getElementById(id); if (e) e.value = val; };
+  el('bgUrlInput',    url);
+  el('bgWidthInput',  width);
+  el('bgHeightInput', height);
+  App.setBackground({ url, width, height });
+}
+
+function defaultToolsBody(data) {
   const toolBtn = t =>
     `<div class="tool ${data.activeTool === t.name ? 'active' : ''}" onclick="App.setTool('${t.name}')">${t.icon}<span>${t.label}</span></div>`;
   const sw = c =>
@@ -343,6 +390,16 @@ export function toolsBody(data) {
     <div class="field"><label>Fill color</label>
       <div class="swatches">${data.palette.map(sw).join('')}</div>
     </div>`;
+}
+
+const LAYER_TOOLS_BODY = {
+  background: (data) => bgToolsBody(data),
+  toys:       (data) => defaultToolsBody(data),
+  drawing:    (data) => defaultToolsBody(data),
+};
+export function toolsBody(data) {
+  const render = LAYER_TOOLS_BODY[data.layer] ?? defaultToolsBody;
+  return render(data);
 }
 
 export function peersBody(data) {
@@ -430,11 +487,14 @@ export function layerObjectListHTML(objects, selectedId) {
 export function layersBody(data) {
   const rows = data.layers.map(l => {
     const isActive = data.active === l.id;
-    const objList  = isActive
-      ? `<div class="layer-obj-list">${layerObjectListHTML(l.objects ?? [], data.selectedId)}</div>`
-      : '';
+    let objList = '';
+    if (isActive) {
+      objList = l.id === 'background'
+        ? `<div class="layer-obj-list"><div class="layer-obj-empty"><a href="#" onclick="UI.openSheet('tools');return false" style="color:var(--primary);text-decoration:none">Change background</a></div></div>`
+        : `<div class="layer-obj-list">${layerObjectListHTML(l.objects ?? [], data.selectedId)}</div>`;
+    }
     return `<div class="layer-block">
-      <div class="layer ${isActive ? 'active' : ''}" id="layer-row-${l.id}" onclick="UI.selectLayer('${l.id}')">${icon(l.iconId)} <span>${l.label}</span><span class="lmeta">${l.count} object${l.count !== 1 ? 's' : ''}</span></div>
+      <div class=\"layer ${isActive ? 'active' : ''}\" id=\"layer-row-${l.id}\" onclick=\"UI.selectLayer('${l.id}')\">${icon(l.iconId)} <span>${l.label}</span>${l.id !== 'background' ? `<span class="lmeta">${l.count} object${l.count !== 1 ? 's' : ''}</span>` : ''}</div>
       ${objList}
     </div>`;
   }).join('');

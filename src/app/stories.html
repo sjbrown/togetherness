@@ -88,6 +88,13 @@ initIcons();
 // ── Mock data ────────────────────────────────────────────────────────────────
 const PALETTE = ['#c8941e','#5a7ea8','#8a5ea8','#5ea88a','#a85e5e','#a8905e','#5e8aa8'];
 
+const DEFAULT_BACKGROUNDS = [
+  { label: 'Slate Hex',  url: 'img/bg_slatehex.png',  width: 1384, height: 998 },
+  { label: 'Beige Hex',  url: 'img/bg_beigehex.png',  width: 815,  height: 718 },
+  { label: 'Green Felt', url: 'img/bg_greenfelt.png', width: 800,  height: 600 },
+  { label: 'Iron Grid',  url: 'img/bg_irongrid.png',  width: 438,  height: 285 },
+];
+
 const mockShapes = [
   { id:'a', type:'rect',   fill:'#c8941e', author:'you'  },
   { id:'b', type:'circle', fill:'#5a7ea8', author:'Mara' },
@@ -131,13 +138,15 @@ const toolParams = Object.fromEntries(
 
 window.App = {
   getPalette: () => PALETTE,
+  getBackground: () => ({ url: 'img/bg_slatehex.png', width: 1384, height: 998 }),
+  getDefaultBackgrounds: () => DEFAULT_BACKGROUNDS,
   getTool: (n) => toolById[n] ?? null,
   getToolOptions: (n) => toolById[n]?.options ?? [],
   getToolParams: (n) => toolParams[n] ?? {},
   setToolParam: (n,k,v) => { (toolParams[n] ??= {})[k] = v; },
   stepToolParam: (n,k,d,min,max) => { const p=(toolParams[n]??={}); p[k]=Math.max(min,Math.min(max,(+p[k]||0)+d)); },
   // no-ops for handlers fired from within stories
-  setTool(){}, setFill(){}, selectShape(){}, openSheet(){}, closePanel(){},
+  setTool(){}, setFill(){}, setBackground(){}, selectShape(){}, openSheet(){}, closePanel(){},
   duplicateSelected(){}, bringToFront(){}, deleteSelected(){}, undo(){},
   setLayer(){}, setOffline(){}, isOffline(){ return false; }, exportSVG(){}, copyJSON(){}, importFile(){},
 };
@@ -230,11 +239,22 @@ story('Panel · Tools', 'toys layer', () =>
     fill:'#a85e5e', shapes:[], selectedId:null,
   }), 'tools'));
 
+story('Panel · Tools', 'background layer', () =>
+  panelFrame('Properties', UI.toolsBody({
+    layer:'background', activeTool:'select', tools:[SELECT_TOOL], palette:PALETTE,
+    fill:null, shapes:[], selectedId:null,
+    background: App.getBackground(),
+    defaultBackgrounds: App.getDefaultBackgrounds(),
+  }), 'tools'), { full: true });
+
 story('Panel · Layers', 'drawing active', () =>
   panelFrame('Layers', UI.layersBody({ layers:mockLayers, active:'drawing', selectedId:'b' }), 'layers'));
 
 story('Panel · Layers', 'toys active', () =>
   panelFrame('Layers', UI.layersBody({ layers:mockLayers, active:'toys', selectedId:'t1' }), 'layers'));
+
+story('Panel · Layers', 'background active', () =>
+  panelFrame('Layers', UI.layersBody({ layers:mockLayers, active:'background', selectedId:null }), 'layers'));
 
 story('Panel · Peers', 'two live, one offline', () =>
   panelFrame('Peers & sharing', UI.peersBody({ peers:mockPeers, offline:false, roomId:'design-room-7f3a' }), 'peers'));
