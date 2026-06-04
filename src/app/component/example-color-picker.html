@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ColorPicker Web Component Examples</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f5f5;
+      padding: 2rem;
+      color: #333;
+    }
+    
+    @media (prefers-color-scheme: dark) {
+      body {
+        background: #1a1a1a;
+        color: #e0e0e0;
+      }
+    }
+    
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    
+    h1 {
+      font-size: 28px;
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+    }
+    
+    .subtitle {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 2rem;
+    }
+    
+    @media (prefers-color-scheme: dark) {
+      .subtitle {
+        color: #999;
+      }
+    }
+    
+    .example {
+      background: white;
+      padding: 2rem;
+      border-radius: 12px;
+      margin-bottom: 2rem;
+      border: 1px solid #e0e0e0;
+    }
+    
+    @media (prefers-color-scheme: dark) {
+      .example {
+        background: #222;
+        border-color: #333;
+      }
+    }
+    
+    .example h2 {
+      font-size: 18px;
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+    }
+    
+    .example p {
+      font-size: 13px;
+      line-height: 1.6;
+      margin-bottom: 1.5rem;
+      color: #555;
+    }
+    
+    @media (prefers-color-scheme: dark) {
+      .example p {
+        color: #aaa;
+      }
+    }
+    
+    code {
+      background: #f0f0f0;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+    }
+    
+    @media (prefers-color-scheme: dark) {
+      code {
+        background: #333;
+        color: #e0e0e0;
+      }
+    }
+    
+    .code-block {
+      background: #f0f0f0;
+      padding: 1rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      margin: 1rem 0;
+    }
+    
+    @media (prefers-color-scheme: dark) {
+      .code-block {
+        background: #1a1a1a;
+        border: 1px solid #333;
+      }
+    }
+    
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.5rem;
+      margin: 1.5rem 0;
+    }
+    
+    .grid > div {
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 1rem;
+      background: #fafafa;
+    }
+    
+    @media (prefers-color-scheme: dark) {
+      .grid > div {
+        background: #1a1a1a;
+        border-color: #333;
+      }
+    }
+    
+    .grid h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    
+    .grid p {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 1rem;
+    }
+    
+    @media (prefers-color-scheme: dark) {
+      .grid p {
+        color: #999;
+      }
+    }
+    
+    .output {
+      background: #f9f9f9;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 1rem;
+      font-family: monospace;
+      font-size: 12px;
+      margin-top: 1rem;
+      color: #666;
+    }
+    
+    @media (prefers-color-scheme: dark) {
+      .output {
+        background: #1a1a1a;
+        border-color: #333;
+        color: #999;
+      }
+    }
+    
+    .api {
+      margin-top: 2rem;
+      padding-top: 2rem;
+      border-top: 1px solid #e0e0e0;
+    }
+    
+    @media (prefers-color-scheme: dark) {
+      .api {
+        border-color: #333;
+      }
+    }
+    
+    .api h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    
+    .api-item {
+      margin-bottom: 1rem;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    
+    .api-item strong {
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>ColorPicker</h1>
+    <p class="subtitle">A configurable web component for color selection with optional opacity control</p>
+    
+    <!-- Example 1: Default (with opacity) -->
+    <div class="example">
+      <h2>1. Default Configuration (with opacity)</h2>
+      <p>16 hue columns, 5 rows, 16px cells, opacity enabled.</p>
+      <color-picker id="picker1" allow-opacity="true"></color-picker>
+      <div id="output1" class="output">Click a color to see details here</div>
+    </div>
+    
+    <!-- Example 2: Minimal (no opacity) -->
+    <div class="example">
+      <h2>2. Minimal (no opacity, 8 hues)</h2>
+      <p>A smaller picker: 8 hue columns, 4 rows, 14px cells.</p>
+      <color-picker 
+        id="picker2"
+        allow-opacity="false"
+        hue-columns="8"
+        rows="4"
+        cell-size="14"
+      ></color-picker>
+    </div>
+    
+    <!-- Example 3: Grayscale only -->
+    <div class="example">
+      <h2>3. Grayscale Only (no hues)</h2>
+      <p>0 hue columns, just the grayscale + opacity.</p>
+      <color-picker 
+        id="picker3"
+        allow-opacity="true"
+        hue-columns="0"
+        rows="6"
+        cell-size="18"
+      ></color-picker>
+    </div>
+    
+    <!-- Example 4: Grid comparison -->
+    <div class="example">
+      <h2>4. Size Variations</h2>
+      <div class="grid">
+        <div>
+          <h3>Compact (8 cols)</h3>
+          <p>Quick picking in tight spaces</p>
+          <color-picker 
+            allow-opacity="true"
+            hue-columns="8"
+            rows="4"
+            cell-size="12"
+          ></color-picker>
+        </div>
+        <div>
+          <h3>Standard (16 cols)</h3>
+          <p>Default balanced size</p>
+          <color-picker 
+            allow-opacity="true"
+            hue-columns="16"
+            rows="5"
+            cell-size="16"
+          ></color-picker>
+        </div>
+        <div>
+          <h3>Full Spectrum (32 cols)</h3>
+          <p>Detailed color selection</p>
+          <color-picker 
+            allow-opacity="true"
+            hue-columns="32"
+            rows="5"
+            cell-size="12"
+          ></color-picker>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Example 5: Programmatic access -->
+    <div class="example">
+      <h2>5. Programmatic Access</h2>
+      <p>Get color values from JavaScript.</p>
+      <color-picker id="picker5" allow-opacity="true"></color-picker>
+      <div style="margin-top: 1rem;">
+        <button id="getColorBtn" style="padding: 0.5rem 1rem; border-radius: 6px; border: 0.5px solid #ccc; background: transparent; cursor: pointer; font-size: 13px;">Get Current Color</button>
+      </div>
+      <div id="output5" class="output"></div>
+    </div>
+    
+    <!-- API Reference -->
+    <div class="example api">
+      <h2>API Reference</h2>
+      
+      <h3>Attributes</h3>
+      <div class="api-item">
+        <strong>allow-opacity</strong> (boolean, default: false)<br>
+        Show/hide the opacity picker column.
+      </div>
+      <div class="api-item">
+        <strong>hue-columns</strong> (0-64, default: 16)<br>
+        Number of hue columns. Set to 0 to show only grayscale.
+      </div>
+      <div class="api-item">
+        <strong>rows</strong> (2-6, default: 5)<br>
+        Number of rows, which affects both opacity and hue pickers.
+      </div>
+      <div class="api-item">
+        <strong>cell-size</strong> (number, default: 16)<br>
+        Size of each color cell in pixels.
+      </div>
+      
+      <h3>Methods</h3>
+      <div class="api-item">
+        <strong>getSelectedColor()</strong><br>
+        Returns <code>{h, s, l, a}</code> object
+      </div>
+      <div class="api-item">
+        <strong>getSelectedHex()</strong><br>
+        Returns hex string, e.g. "#ff0000"
+      </div>
+      <div class="api-item">
+        <strong>getSelectedRgba()</strong><br>
+        Returns rgba string, e.g. "rgba(255, 0, 0, 1.00)"
+      </div>
+      
+      <h3>Events</h3>
+      <div class="api-item">
+        <strong>color-picked</strong><br>
+        Fired when a color is clicked. Detail includes:
+        <div class="code-block">
+{
+  h: number,        // Hue (0-360)
+  s: number,        // Saturation (0-100)
+  l: number,        // Lightness (0-100)
+  a: number,        // Opacity (0-100)
+  hex: string,      // e.g. "#ff0000"
+  rgba: string      // e.g. "rgba(255, 0, 0, 1.00)"
+}</div>
+      </div>
+    </div>
+  </div>
+  
+  <script src="color-picker.js"></script>
+  <script>
+    // Example 1: Event handling
+    document.getElementById('picker1').addEventListener('color-picked', (e) => {
+      const { h, s, l, a, hex, rgba } = e.detail;
+      document.getElementById('output1').innerHTML = `
+        <strong>Selected Color:</strong><br>
+        hsl(${Math.round(h)}, ${s}%, ${Math.round(l * 10) / 10}%)<br>
+        Opacity: ${a}%<br>
+        <strong>Hex:</strong> ${hex}<br>
+        <strong>RGBA:</strong> ${rgba}
+      `;
+    });
+    
+    // Example 5: Programmatic access
+    document.getElementById('getColorBtn').addEventListener('click', () => {
+      const picker = document.getElementById('picker5');
+      const color = picker.getSelectedColor();
+      const hex = picker.getSelectedHex();
+      const rgba = picker.getSelectedRgba();
+      
+      document.getElementById('output5').innerHTML = `
+        <strong>Current Selection:</strong><br>
+        HSL: hsl(${Math.round(color.h)}, ${color.s}%, ${Math.round(color.l * 10) / 10}%)<br>
+        Opacity: ${color.a}%<br>
+        Hex: ${hex}<br>
+        RGBA: ${rgba}<br>
+        <div style="display: inline-block; width: 80px; height: 40px; border-radius: 4px; margin-top: 0.5rem; border: 1px solid #ccc; background: ${rgba};"></div>
+      `;
+    });
+  </script>
+</body>
+</html>
