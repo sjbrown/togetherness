@@ -59,7 +59,7 @@ let _ydoc, _yMeta, _yToys, _yToyMeta, _yDrawing, _yDrawingMeta, _awareness, _pro
 let _myId, _myGrad, _roomId;
 let _svgEl;
 let _selectedId   = null;
-let _activeLayer  = 'drawing';
+let _activeLayer  = 'toys';
 let _activeTool   = 'select';
 let _offline      = false;
 let _undoStack    = [];      // { op:'add'|'del'|'move', ...data }
@@ -110,17 +110,11 @@ export function makeDoc() {
   const yDrawing   = ydoc.getXmlFragment('shapes');
   const yDrawingMeta = ydoc.getMap('shapeMeta');
   const yMeta      = ydoc.getMap('meta');
-  // Seed default background if doc is brand new
-  if (!yMeta.get('bg_url')) {
-    yMeta.set('bg_url',    'img/bg_slatehex.png');
-    yMeta.set('bg_width',  1384);
-    yMeta.set('bg_height', 998);
-  }
   return { ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta };
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
-export function boot({ ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, awareness, provider, myId, myGrad, roomId, svgElement }) {
+export function boot({ ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, awareness, provider, myId, myGrad, roomId, svgElement, displayName }) {
   _ydoc       = ydoc;
   _yMeta      = yMeta;
   _yToys      = yToys;
@@ -148,7 +142,7 @@ export function boot({ ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, awa
 
   // 4. UI — needs App; attaches panel/menu/pill listeners
   UI.init(App);
-  UI.setIdentity({ projectName: 'crdt-svg', userId: `me · ${myId.slice(0, 6)}`, roomId });
+  UI.setIdentity({ projectName: 'crdt-svg', userId: `me · ${displayName}`, roomId });
 
   // 5. Keyboard shortcuts
   window.addEventListener('keydown', onKeyDown);
@@ -267,7 +261,7 @@ function renderDrawingList() {
     const del = document.createElement('button');
     del.className   = 'shape-del';
     del.textContent = '×';
-    del.addEventListener('click', ev => { ev.stopPropagation(); App.deleteShape(id); });
+    del.addEventListener('click', ev => { ev.stopPropagation(); App.deleteShape(svgEl); });
     item.append(sw, lbl, own, del);
     item.addEventListener('click', () => App.selectShape(id));
     list.appendChild(item);
@@ -451,18 +445,38 @@ const App = {
     });
   },
 
-  deleteShape: (id) => {
+  deleteShape: (svgEl) => {
+    const id  = svgEl.getAttribute('data-yid');
     const yEl = findShape(_yDrawing, id);
     if (!yEl) return;
     const snap = yEl.getAttributes();
     _undoStack.push({ op: 'del', attrs: snap, meta: _yDrawingMeta.get(id) });
     deleteShape(_ydoc, _yDrawing, _yDrawingMeta, id);
-    if (_selectedId === id) App.selectShape(null);
     addHistory(`deleted ${id.slice(0, 6)}`, { fill: snap.fill, shapeType: yEl.nodeName });
     App.addLog(`deleted ${id.slice(0, 6)}`, 'local');
+    if (id === _selectedId) App.selectShape(null);
+    return true;
   },
 
-  deleteSelected:   () => { if (_selectedId) App.deleteShape(_selectedId); },
+  deleteToy: (svgEl) => {
+    const id  = svgEl.getAttribute('data-yid');
+    const yEl = findToy(_yToys, id);
+    if (!yEl) return;
+    const snap = yEl.getAttributes();
+    _undoStack.push({ op: 'del', attrs: snap, meta: _yToyMeta.get(id) });
+    deleteToy(_ydoc, _yToys, _yToyMeta, id);
+    addHistory(`deleted ${id.slice(0, 6)}`, { });
+    App.addLog(`deleted ${id.slice(0, 6)}`, 'local');
+    return true;
+  },
+
+  deleteSelected:   () => {
+    if (!_selectedId) return;
+    const svgEl = _svgEl.querySelector(`[data-yid="${_selectedId}"]`);
+    if (!svgEl) return;
+    const success = layerForElement(svgEl) === 'toy' ? App.deleteToy(svgEl) : App.deleteShape(svgEl);
+    if (success) App.selectShape(null);
+  },
   duplicateSelected: () => {
     if (!_selectedId) return;
     const yEl = findShape(_yDrawing, _selectedId);
@@ -702,16 +716,28 @@ const App = {
                el.querySelector(':scope > svg');
       }
 
-      // App-internal layers never imported into drawing
-      const SKIP_IDS = new Set([
-        'background-layer', 'boundaries-positions-layer', 'overlay-layer',
-      ]);
-
+      const bgPattern   = svgDoc.querySelector('defs pattern');
       const toysLayerEl = svgDoc.querySelector('#toys-layer');
       const drawLayerEl = svgDoc.querySelector('#drawing-layer');
       let toyCount = 0, toyErrors = 0, drawCount = 0;
 
       _ydoc.transact(() => {
+        // background-layer: extract bg image url/dimensions from the <pattern>
+        // in <defs> and write to yMeta so the background is restored on import.
+        if (bgPattern) {
+          const img = bgPattern.querySelector('image');
+          if (img) {
+            const url = img.getAttribute('href') || img.getAttribute('xlink:href') || '';
+            const w   = Number(bgPattern.getAttribute('width'))  || 0;
+            const h   = Number(bgPattern.getAttribute('height')) || 0;
+            if (url) {
+              _yMeta.set('bg_url',   url);
+              if (w) _yMeta.set('bg_width',  w);
+              if (h) _yMeta.set('bg_height', h);
+            }
+          }
+        }
+
         // Toys layer
         if (toysLayerEl) {
           const invalid = [];
@@ -746,7 +772,11 @@ const App = {
           const id = el.getAttribute('id') ?? '';
           if (el.localName === 'defs') continue;
           if (id === 'toys-layer' || id === 'drawing-layer') continue;
-          if (SKIP_IDS.has(id)) continue;
+          if (id === 'background-layer') continue;
+          // TODO: boundaries-positions import into its own Yjs fragment when implemented
+          if (id === 'boundaries-positions-layer') continue;
+          // overlay-layer is UI-only and is stripped on export
+          if (id === 'overlay-layer') continue;
           const yEl = domToY(el);
           if (yEl) { _yDrawing.insert(_yDrawing.length, [yEl]); drawCount++; }
         }
@@ -802,7 +832,7 @@ function onKeyDown(e) {
   if (e.key === 'c' || e.key === 'C') App.setTool('circle');
   if (e.key === 's' || e.key === 'S') App.setTool('select');
   if (e.key === 'Escape') App.selectShape(null);
-  if ((e.key === 'Delete' || e.key === 'Backspace') && _selectedId) App.deleteSelected();
+  if ((e.key === 'Delete' || e.key === 'Backspace')) App.deleteSelected();
   if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); App.undo(); }
 }
 
@@ -815,10 +845,9 @@ function renderBackgroundLayer() {
   const layer = _svgEl.querySelector('#background-layer');
   if (!layer) return;
   layer.innerHTML = '';
-  const url    = _yMeta.get('bg_url');
-  const width  = _yMeta.get('bg_width');
-  const height = _yMeta.get('bg_height');
-  if (!url) return;
+  const url    = _yMeta.get('bg_url')    || 'img/bg_slatehex.png';
+  const width  = _yMeta.get('bg_width')  || 1384;
+  const height = _yMeta.get('bg_height') || 998;
   const SVGNS = 'http://www.w3.org/2000/svg';
   // Tiling pattern so the image repeats across infinite canvas
   const defs    = _svgEl.querySelector('defs');

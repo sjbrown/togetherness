@@ -1,0 +1,1325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>crdt-svg · Tabletop Tables</title>
+<link rel="icon" type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='black'/%3E%3Ctext x='3' y='26' font-size='26' fill='%23fffff0' font-family='serif' letter-spacing='-5'%3ETT%3C/text%3E%3C/svg%3E">
+<style>
+/* ── Variables (matches ui.css palette) ─────────────────── */
+:root {
+  --bg:            #0d0b13;
+  --surface:       rgba(22, 17, 34, 0.88);
+  --surface-2:     rgba(36, 29, 52, 0.75);
+  --surface-solid: #1a1228;
+  --text:          #ddd0b4;
+  --text-2:        #8a7d68;
+  --text-3:        #4e4438;
+  --border:        rgba(210,185,130,0.13);
+  --border-2:      rgba(210,185,130,0.26);
+  --primary:       #c8941e;
+  --primary-soft:  rgba(200,148,30,0.20);
+  --radius:        14px;
+  --radius-sm:     10px;
+  --emboss:
+    inset 0 2px 0 rgba(210,185,130,0.40),
+    inset 0 -1px 0 rgba(0,0,0,0.55),
+    0 0 0 1px rgba(0,0,0,0.70),
+    0 4px 18px rgba(0,0,0,0.55);
+  --emboss-lg:
+    inset 0 2px 0 rgba(210,185,130,0.40),
+    inset 0 -1px 0 rgba(0,0,0,0.55),
+    0 0 0 1px rgba(0,0,0,0.80),
+    0 12px 40px rgba(0,0,0,0.70);
+  --font-body:    -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-display: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0; padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Layout ──────────────────────────────────────────────── */
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 100vh;
+}
+
+@media (max-width: 768px) {
+  .layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+  }
+}
+
+/* ── Left Panel ──────────────────────────────────────────── */
+.panel {
+  background: var(--surface-solid);
+  border-right: 1px solid var(--border-2);
+  display: flex;
+  flex-direction: column;
+  padding: 32px 24px 40px;
+  gap: 32px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-2) transparent;
+}
+
+@media (max-width: 768px) {
+  .panel {
+    position: static;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border-2);
+    padding: 28px 20px 32px;
+  }
+}
+
+/* ── Wordmark ──────────────────────────────────────────────  */
+.wordmark {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wordmark-title {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: normal;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  margin: 0;
+  line-height: 1;
+}
+
+.wordmark-title span {
+  color: var(--primary);
+}
+
+.wordmark-sub {
+  font-size: 11px;
+  color: var(--text-2);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* ── Section headings ──────────────────────────────────────  */
+.section-label {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin: 0 0 10px;
+  font-family: var(--font-body);
+}
+
+/* ── Profile card ──────────────────────────────────────────  */
+.profile-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: var(--emboss);
+}
+
+.profile-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gradient-swatch {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 2px solid var(--border-2);
+  cursor: pointer;
+  transition: transform 0.15s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+.gradient-swatch:hover { transform: scale(1.08); }
+
+.profile-name-input {
+  flex: 1;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 15px;
+  padding: 6px 10px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.profile-name-input:focus {
+  border-color: var(--primary);
+}
+.profile-name-input::placeholder { color: var(--text-3); font-style: italic; }
+
+/* gradient picker row */
+.gradient-options {
+  display: flex;
+  gap: 8px;
+  overflow: hidden;
+  flex-wrap: nowrap;
+}
+.grad-option {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 26px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.12s, border-color 0.12s;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+.grad-option:hover { transform: scale(1.15); }
+.gradient-options .grad-option { display: block; width: 100%; height: 100%; }
+.grad-option.active { border-color: var(--primary); }
+
+/* ── Tables list ───────────────────────────────────────────  */
+.tables-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tables-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 424px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-2) transparent;
+}
+
+.table-row {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  text-decoration: none;
+  color: inherit;
+}
+.table-row:hover {
+  background: var(--primary-soft);
+  border-color: var(--border-2);
+}
+
+.table-thumb {
+  display: block;
+  width: 150px;
+  height: 100px;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+.table-thumb-placeholder {
+  width: 150px;
+  height: 100px;
+  flex-shrink: 0;
+  background: var(--surface-2);
+}
+.table-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 12px;
+  min-width: 0;
+}
+.table-name {
+  font-size: 13px;
+  color: var(--text);
+  font-family: var(--font-display);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.table-date {
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+.tables-empty {
+  font-size: 12px;
+  color: var(--text-3);
+  font-style: italic;
+  padding: 6px 2px;
+}
+
+/* ── Links footer ──────────────────────────────────────────  */
+.panel-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.footer-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-2);
+  text-decoration: none;
+  padding: 4px 2px;
+  transition: color 0.12s;
+}
+.footer-link:hover { color: var(--primary); }
+.footer-link svg { flex-shrink: 0; opacity: 0.7; }
+
+.footer-tagline {
+  font-size: 10px;
+  color: var(--text-3);
+  line-height: 1.5;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Sampler (right) ───────────────────────────────────────  */
+.sampler {
+  display: flex;
+  flex-direction: column;
+}
+
+.sampler-row {
+  position: relative;
+  flex: 1;
+  min-height: 200px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .sampler-row { min-height: 180px; }
+}
+
+.sampler-scene {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.4s ease;
+}
+.sampler-row:hover .sampler-scene { transform: scale(1.03); }
+
+/* Tint overlay — per-row colour set via --tint CSS var on the div */
+.sampler-row::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--tint);
+  transition: opacity 0.3s;
+  pointer-events: none;
+  z-index: 1;
+}
+.sampler-row:hover::after { opacity: 0.5; }
+
+/* start button */
+.start-btn {
+  pointer-events: none;
+  position: absolute;
+  z-index: 2;
+  background: rgba(14, 10, 22, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(200,148,30,0.55);
+  color: var(--primary);
+  font-family: var(--font-display);
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  padding: 11px 28px;
+  border-radius: 40px;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(210,185,130,0.30),
+    0 0 0 1px rgba(0,0,0,0.6),
+    0 8px 30px rgba(0,0,0,0.6),
+    0 0 20px rgba(200,148,30,0.10);
+  transition: background 0.15s, box-shadow 0.15s, transform 0.12s, color 0.15s;
+  white-space: nowrap;
+}
+.start-btn:hover {
+  background: rgba(200,148,30,0.18);
+  color: #e8b84a;
+  box-shadow:
+    inset 0 1px 0 rgba(210,185,130,0.40),
+    0 0 0 1px rgba(200,148,30,0.45),
+    0 0 24px rgba(200,148,30,0.25),
+    0 8px 30px rgba(0,0,0,0.6);
+  transform: scale(1.04);
+}
+.start-btn:active { transform: scale(0.97); }
+
+/* separator lines between rows */
+.sampler-row + .sampler-row::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: rgba(210,185,130,0.12);
+  z-index: 1;
+}
+
+/* ── Ripple / transition overlay ───────────────────────────  */
+#ripple {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  overflow: hidden;
+}
+#ripple-circle {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--bg);
+  transform: scale(0);
+  transform-origin: center;
+  transition: none;
+  width: 10px;
+  height: 10px;
+}
+
+/* ── Scroll fade-ins ───────────────────────────────────────  */
+.fade-in {
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.45s ease, transform 0.45s ease;
+}
+.fade-in.visible {
+  opacity: 1;
+  transform: none;
+}
+</style>
+</head>
+<body>
+
+<!-- ── Ripple overlay ──────────────────────────────────────── -->
+<div id="ripple"><div id="ripple-circle"></div></div>
+
+<!-- ── Layout ─────────────────────────────────────────────── -->
+<div class="layout">
+
+  <!-- Left panel -->
+  <aside class="panel">
+
+    <div class="wordmark fade-in">
+      <h1 class="wordmark-title">crdt<span>-svg</span></h1>
+      <div class="wordmark-sub">Collaborative Tabletop Tables</div>
+    </div>
+
+    <!-- Profile -->
+    <div class="fade-in" style="transition-delay:0.06s">
+      <p class="section-label">Your Identity</p>
+      <div class="profile-card">
+        <div class="profile-row">
+          <canvas class="gradient-swatch" id="gradientSwatch" width="36" height="36" title="Click to randomize gradient"></canvas>
+          <input class="profile-name-input" id="displayName" type="text" maxlength="32" autocomplete="off">
+        </div>
+        <div class="gradient-options" id="gradientOptions"></div>
+      </div>
+    </div>
+
+    <!-- Previous tables -->
+    <div class="tables-section fade-in" style="transition-delay:0.12s">
+      <p class="section-label">Your Tables</p>
+      <div class="tables-list" id="tablesList">
+        <div class="tables-empty">No previous tables yet.<br>Start one from the right →</div>
+      </div>
+    </div>
+
+    <!-- Footer links -->
+    <div class="panel-footer fade-in" style="transition-delay:0.18s">
+      <a href="https://github.com/sjbrown/crdt-svg" target="_blank" rel="noopener" class="footer-link">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.09.682-.217.682-.482 0-.237-.009-.866-.013-1.7-2.782.603-3.369-1.342-3.369-1.342-.454-1.154-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.268 2.75 1.026A9.578 9.578 0 0 1 12 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.026 2.747-1.026.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.577.688.48C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z"/>
+        </svg>
+        GitHub · sjbrown/crdt-svg
+      </a>
+      <a href="https://github.com/sjbrown/crdt-svg/blob/main/ROADMAP.md" target="_blank" rel="noopener" class="footer-link">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 11l3 3L22 4"/>
+          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+        </svg>
+        Roadmap
+      </a>
+      <p class="footer-tagline">
+        Local-first · Peer-to-peer · No accounts · No tracking · Open source
+      </p>
+    </div>
+
+  </aside>
+
+  <!-- Right sampler -->
+  <main class="sampler" id="sampler">
+
+<!-- ── Row 1: slatehex ──────────────────────────────────────────── -->
+<div class="sampler-row fade-in" style="--tint:rgba(13,11,19,0.45); transition-delay:0.05s"
+     data-bg="slatehex" data-bg-width="1384" data-bg-height="998">
+  <svg class="sampler-scene" xmlns="http://www.w3.org/2000/svg"
+       xmlns:xlink="http://www.w3.org/1999/xlink"
+       viewBox="0 0 600 200" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <pattern id="s0-bg" x="0" y="0" width="1384" height="998" patternUnits="userSpaceOnUse">
+        <image href="img/bg_slatehex.png" x="0" y="0" width="1384" height="998"/>
+      </pattern>
+    </defs>
+    <g id="background-layer">
+      <rect width="100%" height="100%" fill="url(#s0-bg)"/>
+    </g>
+    <g id="boundaries-positions-layer"/>
+    <g id="toys-layer">
+      <g class="toy" data-toy-id="sample-s0d0" data-toy-type="dice_d6"
+         data-yid="sample-s0d0" data-layer-type="toy"
+         transform="rotate(-8,105,100)"
+         style="filter:drop-shadow(0 4px 10px rgba(0,0,0,0.75))">
+        <svg x="73" y="68" width="64" height="64" viewBox="0 0 80 100"
+             xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="s0d0-col"><feColorMatrix type="matrix" values="0.0980 0 0 0 0  0.1176 0 0 0 0  0.4706 0 0 0 0  0 0 0 1 0"/></filter>
+            <linearGradient id="s0d0-lg" x1="0" y1="22.6" x2="0" y2="88.9" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#000" stop-opacity="1"/>
+              <stop offset="1" stop-color="#000" stop-opacity="0.4"/>
+            </linearGradient>
+          </defs>
+          <g filter="url(#s0d0-col)">
+            <path style="fill:#000;fill-opacity:0.5" d="m16.3,45.6 c-1.7,0-5.2,0.07-6.2,0.64 -1.6,0.9-1.73,1.6-1.9,5.0 l-2.88,32.3 c0.03,1.4 6.4,6.3 8.3,6.3 h52 c1.9,0 8.3,-4.9 8.3,-6.3 l-2.88,-32.3 c-0.18,-3.4-0.31,-4.1-1.9,-5.0 -1.05,-0.57-4.55,-0.64-6.23,-0.64 z"/>
+            <path d="m16.3,11.5 c-1.7,0-5.2,0.12-6.2,1.1 -1.6,1.56-1.73,2.79-1.9,8.66 l-2.88,55.7 c0.03,2.39 6.4,10.83 8.3,10.83 h52 c1.9,0 8.3,-8.44 8.3,-10.83 l-2.88,-55.7 c-0.18,-5.87-0.31,-7.1-1.9,-8.66 -1.05,-0.98-4.55,-1.1-6.23,-1.1 z" style="fill:#9b9b9b;stroke:#000;stroke-width:1.31;stroke-linejoin:round"/>
+            <path d="m12,11.7 h55 c1.66,0 2.94,1.34 3,3 l2,59 c0.06,1.66-1.34,3-3,3 h-59 c-1.66,0-3.06,-1.34-3,-3 l2,-59 c0.056,-1.66 1.34,-3 3,-3 z" style="fill:#dedede;stroke:url(#s0d0-lg);stroke-width:1.31;stroke-linejoin:round"/>
+          </g>
+          <text x="24" y="62" style="font-size:50px;font-family:sans-serif;fill:#000">6</text>
+        </svg>
+      </g>
+      <g class="toy" data-toy-id="sample-s0d1" data-toy-type="dice_d6"
+         data-yid="sample-s0d1" data-layer-type="toy"
+         transform="rotate(4,235,100)"
+         style="filter:drop-shadow(0 4px 10px rgba(0,0,0,0.75))">
+        <svg x="203" y="68" width="64" height="64" viewBox="0 0 80 100"
+             xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="s0d1-col"><feColorMatrix type="matrix" values="0.2353 0 0 0 0  0.0784 0 0 0 0  0.6275 0 0 0 0  0 0 0 1 0"/></filter>
+            <linearGradient id="s0d1-lg" x1="0" y1="22.6" x2="0" y2="88.9" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#000" stop-opacity="1"/>
+              <stop offset="1" stop-color="#000" stop-opacity="0.4"/>
+            </linearGradient>
+          </defs>
+          <g filter="url(#s0d1-col)">
+            <path style="fill:#000;fill-opacity:0.5" d="m16.3,45.6 c-1.7,0-5.2,0.07-6.2,0.64 -1.6,0.9-1.73,1.6-1.9,5.0 l-2.88,32.3 c0.03,1.4 6.4,6.3 8.3,6.3 h52 c1.9,0 8.3,-4.9 8.3,-6.3 l-2.88,-32.3 c-0.18,-3.4-0.31,-4.1-1.9,-5.0 -1.05,-0.57-4.55,-0.64-6.23,-0.64 z"/>
+            <path d="m16.3,11.5 c-1.7,0-5.2,0.12-6.2,1.1 -1.6,1.56-1.73,2.79-1.9,8.66 l-2.88,55.7 c0.03,2.39 6.4,10.83 8.3,10.83 h52 c1.9,0 8.3,-8.44 8.3,-10.83 l-2.88,-55.7 c-0.18,-5.87-0.31,-7.1-1.9,-8.66 -1.05,-0.98-4.55,-1.1-6.23,-1.1 z" style="fill:#9b9b9b;stroke:#000;stroke-width:1.31;stroke-linejoin:round"/>
+            <path d="m12,11.7 h55 c1.66,0 2.94,1.34 3,3 l2,59 c0.06,1.66-1.34,3-3,3 h-59 c-1.66,0-3.06,-1.34-3,-3 l2,-59 c0.056,-1.66 1.34,-3 3,-3 z" style="fill:#dedede;stroke:url(#s0d1-lg);stroke-width:1.31;stroke-linejoin:round"/>
+          </g>
+          <text x="24" y="62" style="font-size:50px;font-family:sans-serif;fill:#000">4</text>
+        </svg>
+      </g>
+      <g class="toy" data-toy-id="sample-s0d2" data-toy-type="dice_d6"
+         data-yid="sample-s0d2" data-layer-type="toy"
+         transform="rotate(-3,365,100)"
+         style="filter:drop-shadow(0 4px 10px rgba(0,0,0,0.75))">
+        <svg x="333" y="68" width="64" height="64" viewBox="0 0 80 100"
+             xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="s0d2-col"><feColorMatrix type="matrix" values="0.0392 0 0 0 0  0.0392 0 0 0 0  0.3529 0 0 0 0  0 0 0 1 0"/></filter>
+            <linearGradient id="s0d2-lg" x1="0" y1="22.6" x2="0" y2="88.9" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#000" stop-opacity="1"/>
+              <stop offset="1" stop-color="#000" stop-opacity="0.4"/>
+            </linearGradient>
+          </defs>
+          <g filter="url(#s0d2-col)">
+            <path style="fill:#000;fill-opacity:0.5" d="m16.3,45.6 c-1.7,0-5.2,0.07-6.2,0.64 -1.6,0.9-1.73,1.6-1.9,5.0 l-2.88,32.3 c0.03,1.4 6.4,6.3 8.3,6.3 h52 c1.9,0 8.3,-4.9 8.3,-6.3 l-2.88,-32.3 c-0.18,-3.4-0.31,-4.1-1.9,-5.0 -1.05,-0.57-4.55,-0.64-6.23,-0.64 z"/>
+            <path d="m16.3,11.5 c-1.7,0-5.2,0.12-6.2,1.1 -1.6,1.56-1.73,2.79-1.9,8.66 l-2.88,55.7 c0.03,2.39 6.4,10.83 8.3,10.83 h52 c1.9,0 8.3,-8.44 8.3,-10.83 l-2.88,-55.7 c-0.18,-5.87-0.31,-7.1-1.9,-8.66 -1.05,-0.98-4.55,-1.1-6.23,-1.1 z" style="fill:#9b9b9b;stroke:#000;stroke-width:1.31;stroke-linejoin:round"/>
+            <path d="m12,11.7 h55 c1.66,0 2.94,1.34 3,3 l2,59 c0.06,1.66-1.34,3-3,3 h-59 c-1.66,0-3.06,-1.34-3,-3 l2,-59 c0.056,-1.66 1.34,-3 3,-3 z" style="fill:#dedede;stroke:url(#s0d2-lg);stroke-width:1.31;stroke-linejoin:round"/>
+          </g>
+          <text x="24" y="62" style="font-size:50px;font-family:sans-serif;fill:#000">1</text>
+        </svg>
+      </g>
+      <g class="toy" data-toy-id="sample-s0d3" data-toy-type="dice_d6"
+         data-yid="sample-s0d3" data-layer-type="toy"
+         transform="rotate(9,495,100)"
+         style="filter:drop-shadow(0 4px 10px rgba(0,0,0,0.75))">
+        <svg x="463" y="68" width="64" height="64" viewBox="0 0 80 100"
+             xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="s0d3-col"><feColorMatrix type="matrix" values="0.3529 0 0 0 0  0.1569 0 0 0 0  0.7059 0 0 0 0  0 0 0 1 0"/></filter>
+            <linearGradient id="s0d3-lg" x1="0" y1="22.6" x2="0" y2="88.9" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#000" stop-opacity="1"/>
+              <stop offset="1" stop-color="#000" stop-opacity="0.4"/>
+            </linearGradient>
+          </defs>
+          <g filter="url(#s0d3-col)">
+            <path style="fill:#000;fill-opacity:0.5" d="m16.3,45.6 c-1.7,0-5.2,0.07-6.2,0.64 -1.6,0.9-1.73,1.6-1.9,5.0 l-2.88,32.3 c0.03,1.4 6.4,6.3 8.3,6.3 h52 c1.9,0 8.3,-4.9 8.3,-6.3 l-2.88,-32.3 c-0.18,-3.4-0.31,-4.1-1.9,-5.0 -1.05,-0.57-4.55,-0.64-6.23,-0.64 z"/>
+            <path d="m16.3,11.5 c-1.7,0-5.2,0.12-6.2,1.1 -1.6,1.56-1.73,2.79-1.9,8.66 l-2.88,55.7 c0.03,2.39 6.4,10.83 8.3,10.83 h52 c1.9,0 8.3,-8.44 8.3,-10.83 l-2.88,-55.7 c-0.18,-5.87-0.31,-7.1-1.9,-8.66 -1.05,-0.98-4.55,-1.1-6.23,-1.1 z" style="fill:#9b9b9b;stroke:#000;stroke-width:1.31;stroke-linejoin:round"/>
+            <path d="m12,11.7 h55 c1.66,0 2.94,1.34 3,3 l2,59 c0.06,1.66-1.34,3-3,3 h-59 c-1.66,0-3.06,-1.34-3,-3 l2,-59 c0.056,-1.66 1.34,-3 3,-3 z" style="fill:#dedede;stroke:url(#s0d3-lg);stroke-width:1.31;stroke-linejoin:round"/>
+          </g>
+          <text x="24" y="62" style="font-size:50px;font-family:sans-serif;fill:#000">5</text>
+        </svg>
+      </g>
+    </g>
+    <g id="drawing-layer"/>
+  </svg>
+  <button class="start-btn">Start Here</button>
+</div>
+
+<!-- ── Row 2: beigehex ──────────────────────────────────────────── -->
+<div class="sampler-row fade-in" style="--tint:rgba(30,22,10,0.40); transition-delay:0.12s"
+     data-bg="beigehex" data-bg-width="815" data-bg-height="718">
+  <svg class="sampler-scene" xmlns="http://www.w3.org/2000/svg"
+       xmlns:xlink="http://www.w3.org/1999/xlink"
+       viewBox="0 0 600 200" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <pattern id="s1-bg" x="0" y="0" width="815" height="718" patternUnits="userSpaceOnUse">
+        <image href="img/bg_beigehex.png" x="0" y="0" width="815" height="718"/>
+      </pattern>
+    </defs>
+    <g id="background-layer">
+      <rect width="100%" height="100%" fill="url(#s1-bg)"/>
+    </g>
+    <g id="boundaries-positions-layer"/>
+    <g id="toys-layer">
+      <g class="toy" data-toy-id="sample-s1d0" data-toy-type="dice_d6"
+         data-yid="sample-s1d0" data-layer-type="toy"
+         transform="rotate(-8,105,100)"
+         style="filter:drop-shadow(0 4px 10px rgba(0,0,0,0.75))">
+        <svg x="73" y="68" width="64" height="64" viewBox="0 0 80 100"
+             xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="s1d0-col"><feColorMatrix type="matrix" values="0.9412 0 0 0 0  0.9020 0 0 0 0  0.7843 0 0 0 0  0 0 0 1 0"/></filter>
+            <linearGradient id="s1d0-lg" x1="0" y1="22.6" x2="0" y2="88.9" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#000" stop-opacity="1"/>
+              <stop offset="1" stop-color="#000" stop-opacity="0.4"/>
+            </linearGradient>
+          </defs>
+          <g filter="url(#s1d0-col)">
+            <path style="fill:#000;fill-opacity:0.5" d="m16.3,45.6 c-1.7,0-5.2,0.07-6.2,0.64 -1.6,0.9-1.73,1.6-1.9,5.0 l-2.88,32.3 c0.03,1.4 6.4,6.3 8.3,6.3 h52 c1.9,0 8.3,-4.9 8.3,-6.3 l-2.88,-32.3 c-0.18,-3.4-0.31,-4.1-1.9,-5.0 -1.05,-0.57-4.55,-0.64-6.23,-0.64 z"/>
+            <path d="m16.3,11.5 c-1.7,0-5.2,0.12-6.2,1.1 -1.6,1.56-1.73,2.79-1.9,8.66 l-2.88,55.7 c0.03,2.39 6.4,10.83 8.3,10.83 h52 c1.9,0 8.3,-8.44 8.3,-10.83 l-2.88,-55.7 c-0.18,-5.87-0.31,-7.1-1.9,-8.66 -1.05,-0.98-4.55,-1.1-6.23,-1.1 z" style="fill:#9b9b9b;stroke:#000;stroke-width:1.31;stroke-linejoin:round"/>
+            <path d="m12,11.7 h55 c1.66,0 2.94,1.34 3,3 l2,59 c0.06,1.66-1.34,3-3,3 h-59 c-1.66,0-3.06,-1.34-3,-3 l2,-59 c0.056,-1.66 1.34,-3 3,-3 z" style="fill:#dedede;stroke:url(#s1d0-lg);stroke-width:1.31;stroke-linejoin:round"/>
+          </g>
+          <text x="24" y="62" style="font-size:50px;font-family:sans-serif;fill:#000">3</text>
+        </svg>
+      </g>
+      <g class="toy" data-toy-id="sample-s1d1" data-toy-type="dice_d6"
+         data-yid="sample-s1d1" data-layer-type="toy"
+         transform="rotate(4,235,100)"
+         style="filter:drop-shadow(0 4px 10px rgba(0,0,0,0.75))">
+        <svg x="203" y="68" width="64" height="64" viewBox="0 0 80 100"
+             xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="s1d1-col"><feColorMatrix type="matrix" values="0.9412 0 0 0 0  0.9020 0 0 0 0  0.7843 0 0 0 0  0 0 0 1 0"/></filter>
+            <linearGradient id="s1d1-lg" x1="0" y1="22.6" x2="0" y2="88.9" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#000" stop-opacity="1"/>
+              <stop offset="1" stop-color="#000" stop-opacity="0.4"/>
+            </linearGradient>
+          </defs>
+          <g filter="url(#s1d1-col)">
+            <path style="fill:#000;fill-opacity:0.5" d="m16.3,45.6 c-1.7,0-5.2,0.07-6.2,0.64 -1.6,0.9-1.73,1.6-1.9,5.0 l-2.88,32.3 c0.03,1.4 6.4,6.3 8.3,6.3 h52 c1.9,0 8.3,-4.9 8.3,-6.3 l-2.88,-32.3 c-0.18,-3.4-0.31,-4.1-1.9,-5.0 -1.05,-0.57-4.55,-0.64-6.23,-0.64 z"/>
+            <path d="m16.3,11.5 c-1.7,0-5.2,0.12-6.2,1.1 -1.6,1.56-1.73,2.79-1.9,8.66 l-2.88,55.7 c0.03,2.39 6.4,10.83 8.3,10.83 h52 c1.9,0 8.3,-8.44 8.3,-10.83 l-2.88,-55.7 c-0.18,-5.87-0.31,-7.1-1.9,-8.66 -1.05,-0.98-4.55,-1.1-6.23,-1.1 z" style="fill:#9b9b9b;stroke:#000;stroke-width:1.31;stroke-linejoin:round"/>
+            <path d="m12,11.7 h55 c1.66,0 2.94,1.34 3,3 l2,59 c0.06,1.66-1.34,3-3,3 h-59 c-1.66,0-3.06,-1.34-3,-3 l2,-59 c0.056,-1.66 1.34,-3 3,-3 z" style="fill:#dedede;stroke:url(#s1d1-lg);stroke-width:1.31;stroke-linejoin:round"/>
+          </g>
+          <text x="24" y="62" style="font-size:50px;font-family:sans-serif;fill:#000">6</text>
+        </svg>
+      </g>
+      <g class="toy" data-toy-id="sample-s1d2" data-toy-type="dice_d6"
+         data-yid="sample-s1d2" data-layer-type="toy"
+         transform="rotate(-3,365,100)"
+         style="filter:drop-shadow(0 4px 10px rgba(0,0,0,0.75))">
+        <svg x="333" y="68" width="64" height="64" viewBox="0 0 80 100"
+             xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="s1d2-col"><feColorMatrix type="matrix" values="0.9412 0 0 0 0  0.9020 0 0 0 0  0.7843 0 0 0 0  0 0 0 1 0"/></filter>
+            <linearGradient id="s1d2-lg" x1="0" y1="22.6" x2="0" y2="88.9" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#000" stop-opacity="1"/>
+              <stop offset="1" stop-color="#000" stop-opacity="0.4"/>
+            </linearGradient>
+          </defs>
+          <g filter="url(#s1d2-col)">
+            <path style="fill:#000;fill-opacity:0.5" d="m16.3,45.6 c-1.7,0-5.2,0.07-6.2,0.64 -1.6,0.9-1.73,1.6-1.9,5.0 l-2.88,32.3 c0.03,1.4 6.4,6.3 8.3,6.3 h52 c1.9,0 8.3,-4.9 8.3,-6.3 l-2.88,-32.3 c-0.18,-3.4-0.31,-4.1-1.9,-5.0 -1.05,-0.57-4.55,-0.64-6.23,-0.64 z"/>
+            <path d="m16.3,11.5 c-1.7,0-5.2,0.12-6.2,1.1 -1.6,1.56-1.73,2.79-1.9,8.66 l-2.88,55.7 c0.03,2.39 6.4,10.83 8.3,10.83 h52 c1.9,0 8.3,-8.44 8.3,-10.83 l-2.88,-55.7 c-0.18,-5.87-0.31,-7.1-1.9,-8.66 -1.05,-0.98-4.55,-1.1-6.23,-1.1 z" style="fill:#9b9b9b;stroke:#000;stroke-width:1.31;stroke-linejoin:round"/>
+            <path d="m12,11.7 h55 c1.66,0 2.94,1.34 3,3 l2,59 c0.06,1.66-1.34,3-3,3 h-59 c-1.66,0-3.06,-1.34-3,-3 l2,-59 c0.056,-1.66 1.34,-3 3,-3 z" style="fill:#dedede;stroke:url(#s1d2-lg);stroke-width:1.31;stroke-linejoin:round"/>
+          </g>
+          <text x="24" y="62" style="font-size:50px;font-family:sans-serif;fill:#000">2</text>
+        </svg>
+      </g>
+      <g class="toy" data-toy-id="sample-s1d3" data-toy-type="dice_d6"
+         data-yid="sample-s1d3" data-layer-type="toy"
+         transform="rotate(9,495,100)"
+         style="filter:drop-shadow(0 4px 10px rgba(0,0,0,0.75))">
+        <svg x="463" y="68" width="64" height="64" viewBox="0 0 80 100"
+             xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="s1d3-col"><feColorMatrix type="matrix" values="0.9412 0 0 0 0  0.9020 0 0 0 0  0.7843 0 0 0 0  0 0 0 1 0"/></filter>
+            <linearGradient id="s1d3-lg" x1="0" y1="22.6" x2="0" y2="88.9" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#000" stop-opacity="1"/>
+              <stop offset="1" stop-color="#000" stop-opacity="0.4"/>
+            </linearGradient>
+          </defs>
+          <g filter="url(#s1d3-col)">
+            <path style="fill:#000;fill-opacity:0.5" d="m16.3,45.6 c-1.7,0-5.2,0.07-6.2,0.64 -1.6,0.9-1.73,1.6-1.9,5.0 l-2.88,32.3 c0.03,1.4 6.4,6.3 8.3,6.3 h52 c1.9,0 8.3,-4.9 8.3,-6.3 l-2.88,-32.3 c-0.18,-3.4-0.31,-4.1-1.9,-5.0 -1.05,-0.57-4.55,-0.64-6.23,-0.64 z"/>
+            <path d="m16.3,11.5 c-1.7,0-5.2,0.12-6.2,1.1 -1.6,1.56-1.73,2.79-1.9,8.66 l-2.88,55.7 c0.03,2.39 6.4,10.83 8.3,10.83 h52 c1.9,0 8.3,-8.44 8.3,-10.83 l-2.88,-55.7 c-0.18,-5.87-0.31,-7.1-1.9,-8.66 -1.05,-0.98-4.55,-1.1-6.23,-1.1 z" style="fill:#9b9b9b;stroke:#000;stroke-width:1.31;stroke-linejoin:round"/>
+            <path d="m12,11.7 h55 c1.66,0 2.94,1.34 3,3 l2,59 c0.06,1.66-1.34,3-3,3 h-59 c-1.66,0-3.06,-1.34-3,-3 l2,-59 c0.056,-1.66 1.34,-3 3,-3 z" style="fill:#dedede;stroke:url(#s1d3-lg);stroke-width:1.31;stroke-linejoin:round"/>
+          </g>
+          <text x="24" y="62" style="font-size:50px;font-family:sans-serif;fill:#000">4</text>
+        </svg>
+      </g>
+    </g>
+    <g id="drawing-layer"/>
+  </svg>
+  <button class="start-btn">Start Here</button>
+</div>
+
+<!-- ── Row 3: greenfelt ──────────────────────────────────────────── -->
+<div class="sampler-row fade-in" style="--tint:rgba(8,20,10,0.38); transition-delay:0.19s"
+     data-bg="greenfelt" data-bg-width="800" data-bg-height="600">
+  <svg class="sampler-scene" xmlns="http://www.w3.org/2000/svg"
+       xmlns:xlink="http://www.w3.org/1999/xlink"
+       viewBox="0 0 600 200" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <pattern id="s2-bg" x="0" y="0" width="800" height="600" patternUnits="userSpaceOnUse">
+        <image href="img/bg_greenfelt.png" x="0" y="0" width="800" height="600"/>
+      </pattern>
+    </defs>
+    <g id="background-layer">
+      <rect width="100%" height="100%" fill="url(#s2-bg)"/>
+    </g>
+    <g id="boundaries-positions-layer"/>
+    <g id="toys-layer">
+      <g class="toy" data-toy-id="sample-s2d0" data-toy-type="dice_d6"
+         data-yid="sample-s2d0" data-layer-type="toy"
+         transform="rotate(-8,105,100)"
+         style="filter:drop-shadow(0 4px 10px rgba(0,0,0,0.75))">
+        <svg x="73" y="68" width="64" height="64" viewBox="0 0 80 100"
+             xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="s2d0-col"><feColorMatrix type="matrix" values="0.7451 0 0 0 0  0.0784 0 0 0 0  0.0784 0 0 0 0  0 0 0 1 0"/></filter>
+            <linearGradient id="s2d0-lg" x1="0" y1="22.6" x2="0" y2="88.9" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#000" stop-opacity="1"/>
+              <stop offset="1" stop-color="#000" stop-opacity="0.4"/>
+            </linearGradient>
+          </defs>
+          <g filter="url(#s2d0-col)">
+            <path style="fill:#000;fill-opacity:0.5" d="m16.3,45.6 c-1.7,0-5.2,0.07-6.2,0.64 -1.6,0.9-1.73,1.6-1.9,5.0 l-2.88,32.3 c0.03,1.4 6.4,6.3 8.3,6.3 h52 c1.9,0 8.3,-4.9 8.3,-6.3 l-2.88,-32.3 c-0.18,-3.4-0.31,-4.1-1.9,-5.0 -1.05,-0.57-4.55,-0.64-6.23,-0.64 z"/>
+            <path d="m16.3,11.5 c-1.7,0-5.2,0.12-6.2,1.1 -1.6,1.56-1.73,2.79-1.9,8.66 l-2.88,55.7 c0.03,2.39 6.4,10.83 8.3,10.83 h52 c1.9,0 8.3,-8.44 8.3,-10.83 l-2.88,-55.7 c-0.18,-5.87-0.31,-7.1-1.9,-8.66 -1.05,-0.98-4.55,-1.1-6.23,-1.1 z" style="fill:#9b9b9b;stroke:#000;stroke-width:1.31;stroke-linejoin:round"/>
+            <path d="m12,11.7 h55 c1.66,0 2.94,1.34 3,3 l2,59 c0.06,1.66-1.34,3-3,3 h-59 c-1.66,0-3.06,-1.34-3,-3 l2,-59 c0.056,-1.66 1.34,-3 3,-3 z" style="fill:#dedede;stroke:url(#s2d0-lg);stroke-width:1.31;stroke-linejoin:round"/>
+          </g>
+          <text x="24" y="62" style="font-size:50px;font-family:sans-serif;fill:#000">1</text>
+        </svg>
+      </g>
+      <g class="toy" data-toy-id="sample-s2d1" data-toy-type="dice_d6"
+         data-yid="sample-s2d1" data-layer-type="toy"
+         transform="rotate(4,235,100)"
+         style="filter:drop-shadow(0 4px 10px rgba(0,0,0,0.75))">
+        <svg x="203" y="68" width="64" height="64" viewBox="0 0 80 100"
+             xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="s2d1-col"><feColorMatrix type="matrix" values="0.7451 0 0 0 0  0.0784 0 0 0 0  0.0784 0 0 0 0  0 0 0 1 0"/></filter>
+            <linearGradient id="s2d1-lg" x1="0" y1="22.6" x2="0" y2="88.9" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#000" stop-opacity="1"/>
+              <stop offset="1" stop-color="#000" stop-opacity="0.4"/>
+            </linearGradient>
+          </defs>
+          <g filter="url(#s2d1-col)">
+            <path style="fill:#000;fill-opacity:0.5" d="m16.3,45.6 c-1.7,0-5.2,0.07-6.2,0.64 -1.6,0.9-1.73,1.6-1.9,5.0 l-2.88,32.3 c0.03,1.4 6.4,6.3 8.3,6.3 h52 c1.9,0 8.3,-4.9 8.3,-6.3 l-2.88,-32.3 c-0.18,-3.4-0.31,-4.1-1.9,-5.0 -1.05,-0.57-4.55,-0.64-6.23,-0.64 z"/>
+            <path d="m16.3,11.5 c-1.7,0-5.2,0.12-6.2,1.1 -1.6,1.56-1.73,2.79-1.9,8.66 l-2.88,55.7 c0.03,2.39 6.4,10.83 8.3,10.83 h52 c1.9,0 8.3,-8.44 8.3,-10.83 l-2.88,-55.7 c-0.18,-5.87-0.31,-7.1-1.9,-8.66 -1.05,-0.98-4.55,-1.1-6.23,-1.1 z" style="fill:#9b9b9b;stroke:#000;stroke-width:1.31;stroke-linejoin:round"/>
+            <path d="m12,11.7 h55 c1.66,0 2.94,1.34 3,3 l2,59 c0.06,1.66-1.34,3-3,3 h-59 c-1.66,0-3.06,-1.34-3,-3 l2,-59 c0.056,-1.66 1.34,-3 3,-3 z" style="fill:#dedede;stroke:url(#s2d1-lg);stroke-width:1.31;stroke-linejoin:round"/>
+          </g>
+          <text x="24" y="62" style="font-size:50px;font-family:sans-serif;fill:#000">3</text>
+        </svg>
+      </g>
+      <g class="toy" data-toy-id="sample-s2d2" data-toy-type="dice_d6"
+         data-yid="sample-s2d2" data-layer-type="toy"
+         transform="rotate(-3,365,100)"
+         style="filter:drop-shadow(0 4px 10px rgba(0,0,0,0.75))">
+        <svg x="333" y="68" width="64" height="64" viewBox="0 0 80 100"
+             xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="s2d2-col"><feColorMatrix type="matrix" values="0.7451 0 0 0 0  0.0784 0 0 0 0  0.0784 0 0 0 0  0 0 0 1 0"/></filter>
+            <linearGradient id="s2d2-lg" x1="0" y1="22.6" x2="0" y2="88.9" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#000" stop-opacity="1"/>
+              <stop offset="1" stop-color="#000" stop-opacity="0.4"/>
+            </linearGradient>
+          </defs>
+          <g filter="url(#s2d2-col)">
+            <path style="fill:#000;fill-opacity:0.5" d="m16.3,45.6 c-1.7,0-5.2,0.07-6.2,0.64 -1.6,0.9-1.73,1.6-1.9,5.0 l-2.88,32.3 c0.03,1.4 6.4,6.3 8.3,6.3 h52 c1.9,0 8.3,-4.9 8.3,-6.3 l-2.88,-32.3 c-0.18,-3.4-0.31,-4.1-1.9,-5.0 -1.05,-0.57-4.55,-0.64-6.23,-0.64 z"/>
+            <path d="m16.3,11.5 c-1.7,0-5.2,0.12-6.2,1.1 -1.6,1.56-1.73,2.79-1.9,8.66 l-2.88,55.7 c0.03,2.39 6.4,10.83 8.3,10.83 h52 c1.9,0 8.3,-8.44 8.3,-10.83 l-2.88,-55.7 c-0.18,-5.87-0.31,-7.1-1.9,-8.66 -1.05,-0.98-4.55,-1.1-6.23,-1.1 z" style="fill:#9b9b9b;stroke:#000;stroke-width:1.31;stroke-linejoin:round"/>
+            <path d="m12,11.7 h55 c1.66,0 2.94,1.34 3,3 l2,59 c0.06,1.66-1.34,3-3,3 h-59 c-1.66,0-3.06,-1.34-3,-3 l2,-59 c0.056,-1.66 1.34,-3 3,-3 z" style="fill:#dedede;stroke:url(#s2d2-lg);stroke-width:1.31;stroke-linejoin:round"/>
+          </g>
+          <text x="24" y="62" style="font-size:50px;font-family:sans-serif;fill:#000">5</text>
+        </svg>
+      </g>
+      <g class="toy" data-toy-id="sample-s2d3" data-toy-type="dice_d6"
+         data-yid="sample-s2d3" data-layer-type="toy"
+         transform="rotate(9,495,100)"
+         style="filter:drop-shadow(0 4px 10px rgba(0,0,0,0.75))">
+        <svg x="463" y="68" width="64" height="64" viewBox="0 0 80 100"
+             xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="s2d3-col"><feColorMatrix type="matrix" values="0.7451 0 0 0 0  0.0784 0 0 0 0  0.0784 0 0 0 0  0 0 0 1 0"/></filter>
+            <linearGradient id="s2d3-lg" x1="0" y1="22.6" x2="0" y2="88.9" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#000" stop-opacity="1"/>
+              <stop offset="1" stop-color="#000" stop-opacity="0.4"/>
+            </linearGradient>
+          </defs>
+          <g filter="url(#s2d3-col)">
+            <path style="fill:#000;fill-opacity:0.5" d="m16.3,45.6 c-1.7,0-5.2,0.07-6.2,0.64 -1.6,0.9-1.73,1.6-1.9,5.0 l-2.88,32.3 c0.03,1.4 6.4,6.3 8.3,6.3 h52 c1.9,0 8.3,-4.9 8.3,-6.3 l-2.88,-32.3 c-0.18,-3.4-0.31,-4.1-1.9,-5.0 -1.05,-0.57-4.55,-0.64-6.23,-0.64 z"/>
+            <path d="m16.3,11.5 c-1.7,0-5.2,0.12-6.2,1.1 -1.6,1.56-1.73,2.79-1.9,8.66 l-2.88,55.7 c0.03,2.39 6.4,10.83 8.3,10.83 h52 c1.9,0 8.3,-8.44 8.3,-10.83 l-2.88,-55.7 c-0.18,-5.87-0.31,-7.1-1.9,-8.66 -1.05,-0.98-4.55,-1.1-6.23,-1.1 z" style="fill:#9b9b9b;stroke:#000;stroke-width:1.31;stroke-linejoin:round"/>
+            <path d="m12,11.7 h55 c1.66,0 2.94,1.34 3,3 l2,59 c0.06,1.66-1.34,3-3,3 h-59 c-1.66,0-3.06,-1.34-3,-3 l2,-59 c0.056,-1.66 1.34,-3 3,-3 z" style="fill:#dedede;stroke:url(#s2d3-lg);stroke-width:1.31;stroke-linejoin:round"/>
+          </g>
+          <text x="24" y="62" style="font-size:50px;font-family:sans-serif;fill:#000">2</text>
+        </svg>
+      </g>
+    </g>
+    <g id="drawing-layer"/>
+  </svg>
+  <button class="start-btn">Start Here</button>
+</div>
+
+<!-- ── Row 4: irongrid ──────────────────────────────────────────── -->
+<div class="sampler-row fade-in" style="--tint:rgba(10,12,16,0.50); transition-delay:0.26s"
+     data-bg="irongrid" data-bg-width="438" data-bg-height="285">
+  <svg class="sampler-scene" xmlns="http://www.w3.org/2000/svg"
+       xmlns:xlink="http://www.w3.org/1999/xlink"
+       viewBox="0 0 600 200" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <pattern id="s3-bg" x="0" y="0" width="438" height="285" patternUnits="userSpaceOnUse">
+        <image href="img/bg_irongrid.png" x="0" y="0" width="438" height="285"/>
+      </pattern>
+    </defs>
+    <g id="background-layer">
+      <rect width="100%" height="100%" fill="url(#s3-bg)"/>
+    </g>
+    <g id="boundaries-positions-layer"/>
+    <g id="toys-layer">
+      <g class="toy" data-toy-id="sample-s3d0" data-toy-type="dice_d6"
+         data-yid="sample-s3d0" data-layer-type="toy"
+         transform="rotate(-8,105,100)"
+         style="filter:drop-shadow(0 4px 10px rgba(0,0,0,0.75))">
+        <svg x="73" y="68" width="64" height="64" viewBox="0 0 80 100"
+             xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="s3d0-col"><feColorMatrix type="matrix" values="0.3922 0 0 0 0  0.1176 0 0 0 0  0.6275 0 0 0 0  0 0 0 1 0"/></filter>
+            <linearGradient id="s3d0-lg" x1="0" y1="22.6" x2="0" y2="88.9" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#000" stop-opacity="1"/>
+              <stop offset="1" stop-color="#000" stop-opacity="0.4"/>
+            </linearGradient>
+          </defs>
+          <g filter="url(#s3d0-col)">
+            <path style="fill:#000;fill-opacity:0.5" d="m16.3,45.6 c-1.7,0-5.2,0.07-6.2,0.64 -1.6,0.9-1.73,1.6-1.9,5.0 l-2.88,32.3 c0.03,1.4 6.4,6.3 8.3,6.3 h52 c1.9,0 8.3,-4.9 8.3,-6.3 l-2.88,-32.3 c-0.18,-3.4-0.31,-4.1-1.9,-5.0 -1.05,-0.57-4.55,-0.64-6.23,-0.64 z"/>
+            <path d="m16.3,11.5 c-1.7,0-5.2,0.12-6.2,1.1 -1.6,1.56-1.73,2.79-1.9,8.66 l-2.88,55.7 c0.03,2.39 6.4,10.83 8.3,10.83 h52 c1.9,0 8.3,-8.44 8.3,-10.83 l-2.88,-55.7 c-0.18,-5.87-0.31,-7.1-1.9,-8.66 -1.05,-0.98-4.55,-1.1-6.23,-1.1 z" style="fill:#9b9b9b;stroke:#000;stroke-width:1.31;stroke-linejoin:round"/>
+            <path d="m12,11.7 h55 c1.66,0 2.94,1.34 3,3 l2,59 c0.06,1.66-1.34,3-3,3 h-59 c-1.66,0-3.06,-1.34-3,-3 l2,-59 c0.056,-1.66 1.34,-3 3,-3 z" style="fill:#dedede;stroke:url(#s3d0-lg);stroke-width:1.31;stroke-linejoin:round"/>
+          </g>
+          <text x="24" y="62" style="font-size:50px;font-family:sans-serif;fill:#000">5</text>
+        </svg>
+      </g>
+      <g class="toy" data-toy-id="sample-s3d1" data-toy-type="dice_d6"
+         data-yid="sample-s3d1" data-layer-type="toy"
+         transform="rotate(4,235,100)"
+         style="filter:drop-shadow(0 4px 10px rgba(0,0,0,0.75))">
+        <svg x="203" y="68" width="64" height="64" viewBox="0 0 80 100"
+             xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="s3d1-col"><feColorMatrix type="matrix" values="0.1176 0 0 0 0  0.5098 0 0 0 0  0.2353 0 0 0 0  0 0 0 1 0"/></filter>
+            <linearGradient id="s3d1-lg" x1="0" y1="22.6" x2="0" y2="88.9" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#000" stop-opacity="1"/>
+              <stop offset="1" stop-color="#000" stop-opacity="0.4"/>
+            </linearGradient>
+          </defs>
+          <g filter="url(#s3d1-col)">
+            <path style="fill:#000;fill-opacity:0.5" d="m16.3,45.6 c-1.7,0-5.2,0.07-6.2,0.64 -1.6,0.9-1.73,1.6-1.9,5.0 l-2.88,32.3 c0.03,1.4 6.4,6.3 8.3,6.3 h52 c1.9,0 8.3,-4.9 8.3,-6.3 l-2.88,-32.3 c-0.18,-3.4-0.31,-4.1-1.9,-5.0 -1.05,-0.57-4.55,-0.64-6.23,-0.64 z"/>
+            <path d="m16.3,11.5 c-1.7,0-5.2,0.12-6.2,1.1 -1.6,1.56-1.73,2.79-1.9,8.66 l-2.88,55.7 c0.03,2.39 6.4,10.83 8.3,10.83 h52 c1.9,0 8.3,-8.44 8.3,-10.83 l-2.88,-55.7 c-0.18,-5.87-0.31,-7.1-1.9,-8.66 -1.05,-0.98-4.55,-1.1-6.23,-1.1 z" style="fill:#9b9b9b;stroke:#000;stroke-width:1.31;stroke-linejoin:round"/>
+            <path d="m12,11.7 h55 c1.66,0 2.94,1.34 3,3 l2,59 c0.06,1.66-1.34,3-3,3 h-59 c-1.66,0-3.06,-1.34-3,-3 l2,-59 c0.056,-1.66 1.34,-3 3,-3 z" style="fill:#dedede;stroke:url(#s3d1-lg);stroke-width:1.31;stroke-linejoin:round"/>
+          </g>
+          <text x="24" y="62" style="font-size:50px;font-family:sans-serif;fill:#000">2</text>
+        </svg>
+      </g>
+      <g class="toy" data-toy-id="sample-s3d2" data-toy-type="dice_d6"
+         data-yid="sample-s3d2" data-layer-type="toy"
+         transform="rotate(-3,365,100)"
+         style="filter:drop-shadow(0 4px 10px rgba(0,0,0,0.75))">
+        <svg x="333" y="68" width="64" height="64" viewBox="0 0 80 100"
+             xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="s3d2-col"><feColorMatrix type="matrix" values="0.4314 0 0 0 0  0.2549 0 0 0 0  0.0784 0 0 0 0  0 0 0 1 0"/></filter>
+            <linearGradient id="s3d2-lg" x1="0" y1="22.6" x2="0" y2="88.9" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#000" stop-opacity="1"/>
+              <stop offset="1" stop-color="#000" stop-opacity="0.4"/>
+            </linearGradient>
+          </defs>
+          <g filter="url(#s3d2-col)">
+            <path style="fill:#000;fill-opacity:0.5" d="m16.3,45.6 c-1.7,0-5.2,0.07-6.2,0.64 -1.6,0.9-1.73,1.6-1.9,5.0 l-2.88,32.3 c0.03,1.4 6.4,6.3 8.3,6.3 h52 c1.9,0 8.3,-4.9 8.3,-6.3 l-2.88,-32.3 c-0.18,-3.4-0.31,-4.1-1.9,-5.0 -1.05,-0.57-4.55,-0.64-6.23,-0.64 z"/>
+            <path d="m16.3,11.5 c-1.7,0-5.2,0.12-6.2,1.1 -1.6,1.56-1.73,2.79-1.9,8.66 l-2.88,55.7 c0.03,2.39 6.4,10.83 8.3,10.83 h52 c1.9,0 8.3,-8.44 8.3,-10.83 l-2.88,-55.7 c-0.18,-5.87-0.31,-7.1-1.9,-8.66 -1.05,-0.98-4.55,-1.1-6.23,-1.1 z" style="fill:#9b9b9b;stroke:#000;stroke-width:1.31;stroke-linejoin:round"/>
+            <path d="m12,11.7 h55 c1.66,0 2.94,1.34 3,3 l2,59 c0.06,1.66-1.34,3-3,3 h-59 c-1.66,0-3.06,-1.34-3,-3 l2,-59 c0.056,-1.66 1.34,-3 3,-3 z" style="fill:#dedede;stroke:url(#s3d2-lg);stroke-width:1.31;stroke-linejoin:round"/>
+          </g>
+          <text x="24" y="62" style="font-size:50px;font-family:sans-serif;fill:#000">6</text>
+        </svg>
+      </g>
+      <g class="toy" data-toy-id="sample-s3d3" data-toy-type="dice_d6"
+         data-yid="sample-s3d3" data-layer-type="toy"
+         transform="rotate(9,495,100)"
+         style="filter:drop-shadow(0 4px 10px rgba(0,0,0,0.75))">
+        <svg x="463" y="68" width="64" height="64" viewBox="0 0 80 100"
+             xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="s3d3-col"><feColorMatrix type="matrix" values="0.5098 0 0 0 0  0.5098 0 0 0 0  0.5490 0 0 0 0  0 0 0 1 0"/></filter>
+            <linearGradient id="s3d3-lg" x1="0" y1="22.6" x2="0" y2="88.9" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#000" stop-opacity="1"/>
+              <stop offset="1" stop-color="#000" stop-opacity="0.4"/>
+            </linearGradient>
+          </defs>
+          <g filter="url(#s3d3-col)">
+            <path style="fill:#000;fill-opacity:0.5" d="m16.3,45.6 c-1.7,0-5.2,0.07-6.2,0.64 -1.6,0.9-1.73,1.6-1.9,5.0 l-2.88,32.3 c0.03,1.4 6.4,6.3 8.3,6.3 h52 c1.9,0 8.3,-4.9 8.3,-6.3 l-2.88,-32.3 c-0.18,-3.4-0.31,-4.1-1.9,-5.0 -1.05,-0.57-4.55,-0.64-6.23,-0.64 z"/>
+            <path d="m16.3,11.5 c-1.7,0-5.2,0.12-6.2,1.1 -1.6,1.56-1.73,2.79-1.9,8.66 l-2.88,55.7 c0.03,2.39 6.4,10.83 8.3,10.83 h52 c1.9,0 8.3,-8.44 8.3,-10.83 l-2.88,-55.7 c-0.18,-5.87-0.31,-7.1-1.9,-8.66 -1.05,-0.98-4.55,-1.1-6.23,-1.1 z" style="fill:#9b9b9b;stroke:#000;stroke-width:1.31;stroke-linejoin:round"/>
+            <path d="m12,11.7 h55 c1.66,0 2.94,1.34 3,3 l2,59 c0.06,1.66-1.34,3-3,3 h-59 c-1.66,0-3.06,-1.34-3,-3 l2,-59 c0.056,-1.66 1.34,-3 3,-3 z" style="fill:#dedede;stroke:url(#s3d3-lg);stroke-width:1.31;stroke-linejoin:round"/>
+          </g>
+          <text x="24" y="62" style="font-size:50px;font-family:sans-serif;fill:#000">3</text>
+        </svg>
+      </g>
+    </g>
+    <g id="drawing-layer"/>
+  </svg>
+  <button class="start-btn">Start Here</button>
+</div>
+
+  </main>
+
+</div>
+
+<script type="importmap">
+{ "imports": { "yjs": "/lib/yjs.js" } }
+</script>
+<script type="module">
+import * as Y                   from 'yjs';
+import { IndexeddbPersistence } from '/lib/y-indexeddb.js';
+import { mirrorYNode, buildThumbSVG, THUMB_W, THUMB_H } from './home-utils.js';
+
+import { entityGradient }        from './entity_gradient.js';
+
+function drawGradientSwatch(canvas, gradObj) {
+  const ctx  = canvas.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  grad.addColorStop(0, gradObj.c1);
+  grad.addColorStop(1, gradObj.c2);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.beginPath();
+  ctx.arc(canvas.width/2, canvas.height/2, canvas.width/2, 0, Math.PI*2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+}
+
+// ── Storage ───────────────────────────────────────────────────────────────
+const TABLES_KEY = 'crdt_svg_tables';
+
+function loadTables() {
+  try { return JSON.parse(localStorage.getItem(TABLES_KEY)) || []; } catch { return []; }
+}
+
+// Player identity — same IndexedDB store as index.html reads.
+function openPlayerStore() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('crdt-svg-player', 1);
+    req.onupgradeneeded = e => e.target.result.createObjectStore('identity');
+    req.onsuccess       = e => resolve(e.target.result);
+    req.onerror         = e => reject(e.target.error);
+  });
+}
+async function playerGet(db, key) {
+  return new Promise((res, rej) => {
+    const r = db.transaction('identity', 'readonly').objectStore('identity').get(key);
+    r.onsuccess = () => res(r.result ?? null);
+    r.onerror   = () => rej(r.error);
+  });
+}
+async function playerSet(db, key, value) {
+  return new Promise((res, rej) => {
+    const r = db.transaction('identity', 'readwrite').objectStore('identity').put(value, key);
+    r.onsuccess = () => res();
+    r.onerror   = () => rej(r.error);
+  });
+}
+
+// ── Profile UI ────────────────────────────────────────────────────────────
+const ADJS = ['Wily','Deadly','Gaunt','Sallow','Brazen','Vexed','Hollow','Sullen','Grim','Feral',
+  'Ashen','Dread','Craven','Stout','Wroth','Sunken','Brash','Pallid','Sly','Gnarled',
+  'Bleak','Rusted','Sworn','Cursed','Rabid','Silent','Haunted','Gravel','Ireful','Knave'];
+const NAMES = ['Frodo','Xorn','Marda','Vex','Quill','Thane','Osric','Yeva','Drask','Noor',
+  'Helgen','Zuko','Cavel','Brix','Ilsa','Morwen','Sable','Fenrick','Taza','Gorim',
+  'Ulrik','Pell','Dagna','Wren','Jarrek','Chyst','Odra','Byren','Zasha','Rook'];
+function randomName() {
+  const adj  = ADJS[Math.floor(Math.random() * ADJS.length)];
+  const name = NAMES[Math.floor(Math.random() * NAMES.length)];
+  return `${adj} ${name}`;
+}
+
+
+const displayNameEl = document.getElementById('displayName');
+const swatchEl      = document.getElementById('gradientSwatch');
+const gradOptsEl    = document.getElementById('gradientOptions');
+
+// profile is loaded async; UI is wired up once it resolves.
+let _playerDb = null;
+let _grad     = null;  // full entityGradient() output, stored frozen
+
+function makeLocalId() {
+  const dd    = String(new Date().getDate()).padStart(2, '0');
+  const chars = 'abcdefghijklmnopqrstuvwxyz';
+  const rand  = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  return `tt-p-v1-${dd}-${rand}`;
+}
+
+async function initProfile() {
+  _playerDb = await openPlayerStore();
+
+  let name = await playerGet(_playerDb, 'name');
+  if (!name) {
+    name = randomName();
+    await playerSet(_playerDb, 'name', name);
+  }
+
+  let grad = await playerGet(_playerDb, 'grad');
+  if (!grad || !grad.c1) {
+    // First visit, or upgrading from old { gradSeed } format — compute and freeze.
+    const seed = (typeof grad?.gradSeed === 'string' && grad.gradSeed) ? grad.gradSeed : name;
+    grad = entityGradient(seed);
+    await playerSet(_playerDb, 'grad', grad);
+  }
+  _grad = grad;
+
+  let localId = await playerGet(_playerDb, 'localId');
+  if (!localId) {
+    localId = makeLocalId();
+    await playerSet(_playerDb, 'localId', localId);
+  }
+
+  displayNameEl.value = name;
+  refreshSwatch();
+  renderGradOptions();
+}
+
+function refreshSwatch() {
+  drawGradientSwatch(swatchEl, _grad);
+}
+
+function renderGradOptions() {
+  gradOptsEl.innerHTML = '';
+  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  for (let i = 0; i < 20; i++) {
+    const seed      = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    const presetGrad = entityGradient(seed);
+    const c = document.createElement('canvas');
+    c.className = 'grad-option';
+    c.width = 26; c.height = 26;
+    if (_grad && presetGrad.c1 === _grad.c1 && presetGrad.c2 === _grad.c2) {
+      c.classList.add('active');
+    }
+    drawGradientSwatch(c, presetGrad);
+    c.addEventListener('click', async () => {
+      _grad = presetGrad;
+      document.querySelectorAll('.grad-option').forEach(x => x.classList.remove('active'));
+      c.classList.add('active');
+      await playerSet(_playerDb, 'grad', _grad);
+      refreshSwatch();
+    });
+    gradOptsEl.appendChild(c);
+  }
+}
+
+swatchEl.addEventListener('click', async () => {
+  _grad = entityGradient('rng_' + Math.random().toString(36).slice(2));
+  document.querySelectorAll('.grad-option').forEach(x => x.classList.remove('active'));
+  await playerSet(_playerDb, 'grad', _grad);
+  refreshSwatch();
+});
+
+displayNameEl.addEventListener('input', async () => {
+  const name = displayNameEl.value.trim();
+  if (_playerDb) await playerSet(_playerDb, 'name', name);
+});
+
+initProfile();
+
+// ── Previous tables ───────────────────────────────────────────────────────
+
+async function loadRoomDoc(roomId) {
+  const ydoc = new Y.Doc();
+  await new Promise((resolve, reject) => {
+    const req = indexedDB.open(`crdt-svg:${roomId}`);
+    req.onerror         = () => reject(req.error);
+    req.onupgradeneeded = () => resolve(); // DB doesn't exist yet
+    req.onsuccess       = () => {
+      const db  = req.result;
+      const tx  = db.transaction('updates', 'readonly');
+      const all = tx.objectStore('updates').getAll();
+      all.onsuccess = () => {
+        Y.transact(ydoc, () => {
+          all.result.forEach(u => Y.applyUpdate(ydoc, u));
+        });
+        db.close();
+        resolve();
+      };
+      all.onerror = () => { db.close(); reject(all.error); };
+    };
+  });
+  return ydoc;
+}
+
+async function makeThumbnail(roomId) {
+  try {
+    const ydoc  = await loadRoomDoc(roomId);
+    const yMeta = ydoc.getMap('meta');
+    const yToys = ydoc.getXmlFragment('toys');
+
+    const bgUrl = yMeta.get('bg_url')    || 'img/bg_slatehex.png';
+    const bgW   = yMeta.get('bg_width')  || 1384;
+    const bgH   = yMeta.get('bg_height') || 998;
+
+    // Topmost toy = last in yToys (insertion order = z-order)
+    const all    = yToys.toArray().filter(n => n instanceof Y.XmlElement);
+    const topToy = all.length ? all[all.length - 1] : null;
+    const toyEl  = topToy ? mirrorYNode(Y, topToy) : null;
+
+    ydoc.destroy();
+    return buildThumbSVG(roomId, bgUrl, bgW, bgH, toyEl);
+  } catch (e) {
+    console.warn('crdt-svg: thumbnail failed for', roomId, e);
+    return null;
+  }
+}
+
+function renderTables() {
+  const list = loadTables();
+  const el   = document.getElementById('tablesList');
+  if (!list.length) {
+    el.innerHTML = '<div class="tables-empty">No previous tables yet.<br>Start one from the right →</div>';
+    return;
+  }
+  el.innerHTML = '';
+  list.slice().reverse().forEach(t => {
+    const a = document.createElement('a');
+    a.className = 'table-row';
+    a.href = `index.html#${encodeURIComponent(t.id)}`;
+
+    // Placeholder shown while thumbnail loads async
+    const placeholder = document.createElement('div');
+    placeholder.className = 'table-thumb-placeholder';
+    a.appendChild(placeholder);
+
+    const info = document.createElement('div');
+    info.className = 'table-info';
+
+    const name = document.createElement('span');
+    name.className = 'table-name';
+    name.textContent = t.name || t.id;
+
+    const date = document.createElement('span');
+    date.className = 'table-date';
+    date.textContent = new Date(t.lastVisit).toISOString().slice(0, 10);
+
+    info.append(name, date);
+    a.appendChild(info);
+    el.appendChild(a);
+
+    // Load thumbnail async, swap in when ready
+    makeThumbnail(t.id).then(svg => {
+      if (svg) placeholder.replaceWith(svg);
+    });
+  });
+}
+renderTables();
+
+// On back-navigation (bfcache restore): reset ripple and refresh tables list.
+window.addEventListener('pageshow', () => {
+  const circle = document.getElementById('ripple-circle');
+  circle.style.transition = 'none';
+  circle.style.transform  = 'scale(0)';
+  renderTables();
+});
+
+// ── Seed a new room from a sample SVG into IndexedDB ─────────────────────────
+// Mirrors the importSVG logic in app.js: reads background from defs pattern,
+// toys from #toys-layer, drawing from #drawing-layer, into a fresh Y.Doc,
+// then persists it via IndexeddbPersistence before navigating.
+async function seedRoom(roomId, sampleSvgEl) {
+  const CURRENT_SCHEMA = 4;
+
+  const ydoc         = new Y.Doc();
+  const yMeta        = ydoc.getMap('meta');
+  const yToys        = ydoc.getXmlFragment('toys');
+  const yDrawing     = ydoc.getXmlFragment('shapes');
+
+  // DOM → Y.XmlElement tree (mirrors domToY in app.js importSVG)
+  function domToY(node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const t = node.textContent.trim();
+      return t ? new Y.XmlText(t) : null;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return null;
+    if (node.localName === 'script') return null;
+    const yEl = new Y.XmlElement(node.localName);
+    for (const at of node.attributes) yEl.setAttribute(at.name, at.value);
+    const children = [...node.childNodes].map(domToY).filter(Boolean);
+    if (children.length) yEl.insert(0, children);
+    return yEl;
+  }
+
+  function isToyG(el) {
+    return el.localName === 'g' &&
+           el.classList.contains('toy') &&
+           el.getAttribute('data-toy-id') &&
+           el.getAttribute('data-toy-type') &&
+           el.getAttribute('data-yid') &&
+           el.getAttribute('data-layer-type') === 'toy' &&
+           el.querySelector(':scope > svg');
+  }
+
+  const bgPattern   = sampleSvgEl.querySelector('defs pattern');
+  const toysLayerEl = sampleSvgEl.querySelector('#toys-layer');
+  const drawLayerEl = sampleSvgEl.querySelector('#drawing-layer');
+
+  ydoc.transact(() => {
+    // Background
+    const bgImg = bgPattern?.querySelector('image');
+    const bgUrl = bgImg?.getAttribute('href') || '';
+    const bgW   = Number(bgPattern?.getAttribute('width'))  || 0;
+    const bgH   = Number(bgPattern?.getAttribute('height')) || 0;
+    yMeta.set('docId',         roomId);
+    yMeta.set('created',       new Date().toISOString());
+    yMeta.set('schemaVersion', CURRENT_SCHEMA);
+    yMeta.set('bg_url',        bgUrl);
+    yMeta.set('bg_width',      bgW);
+    yMeta.set('bg_height',     bgH);
+
+    // Toys
+    if (toysLayerEl) {
+      for (const child of toysLayerEl.children) {
+        if (isToyG(child)) {
+          const yG = domToY(child);
+          if (yG) {
+            yG.removeAttribute('transform'); // decorative rotation, not part of doc
+            yToys.insert(yToys.length, [yG]);
+          }
+        }
+      }
+    }
+
+    // Drawing
+    if (drawLayerEl) {
+      for (const child of drawLayerEl.children) {
+        const yEl = domToY(child);
+        if (yEl) yDrawing.insert(yDrawing.length, [yEl]);
+      }
+    }
+  });
+
+  // Persist to IndexedDB and wait for it to flush before navigating.
+  await new Promise((resolve, reject) => {
+    const persistence = new IndexeddbPersistence(`crdt-svg:${roomId}`, ydoc);
+    persistence.on('synced', resolve);
+    persistence.on('error',  reject);
+  });
+}
+
+// ── Wire sampler row clicks to static HTML rows ──────────────────────────────
+document.querySelectorAll('.sampler-row').forEach(el => {
+  el.addEventListener('click', e => {
+    const row = {
+      bg:       el.dataset.bg,
+      bgWidth:  Number(el.dataset.bgWidth),
+      bgHeight: Number(el.dataset.bgHeight),
+    };
+    const svgEl = el.querySelector('svg.sampler-scene');
+    launchRipple(e.clientX, e.clientY, row, svgEl);
+  });
+});
+
+// ── Ripple transition + room seeding ─────────────────────────────────────────
+function launchRipple(cx, cy, row, svgEl) {
+  const circle = document.getElementById('ripple-circle');
+  const maxDist = Math.hypot(
+    Math.max(cx, window.innerWidth  - cx),
+    Math.max(cy, window.innerHeight - cy)
+  );
+  const diameter = maxDist * 2.2;
+  circle.style.transition = 'none';
+  circle.style.width      = diameter + 'px';
+  circle.style.height     = diameter + 'px';
+  circle.style.left       = (cx - diameter/2) + 'px';
+  circle.style.top        = (cy - diameter/2) + 'px';
+  circle.style.transform  = 'scale(0)';
+  circle.getBoundingClientRect();
+  circle.style.transition = 'transform 0.55s cubic-bezier(0.4,0,0.2,1)';
+  circle.style.transform  = 'scale(1)';
+
+  const roomId = generateRoomId();
+  recordTableVisit(roomId, row);
+
+  // Seed the room into IndexedDB, then navigate once done (or after the
+  // ripple animation completes, whichever is later).
+  const seedDone    = seedRoom(roomId, svgEl);
+  const rippleDone  = new Promise(r => setTimeout(r, 520));
+  Promise.all([seedDone, rippleDone]).then(() => {
+    window.location.href = `index.html#${roomId}`;
+  }).catch(err => {
+    console.error('crdt-svg: room seed failed', err);
+    window.location.href = `index.html#${roomId}`;
+  });
+}
+
+function generateRoomId() {
+  const dd    = String(new Date().getDate()).padStart(2, '0');
+  const chars = 'abcdefghijklmnopqrstuvwxyz';
+  const rand  = Array.from({length: 3}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
+  const name  = displayNameEl.value.trim();
+  const slug  = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')   // special chars → hyphen
+    .replace(/^-+|-+$/g, '')        // trim leading/trailing hyphens
+    .slice(0, 10)
+    || 'table';
+  return `${slug}-${dd}${rand}`;
+}
+
+function recordTableVisit(roomId, row) {
+  const tables = loadTables();
+  tables.push({ id: roomId, name: roomId, lastVisit: Date.now() });
+  if (tables.length > 20) tables.splice(0, tables.length - 20);
+  try { localStorage.setItem(TABLES_KEY, JSON.stringify(tables)); } catch {}
+}
+
+// ── Intersection observer for fade-ins ────────────────────────────────────────
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); }
+  });
+}, { threshold: 0.05 });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+
+</body>
+</html>

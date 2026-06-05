@@ -42,7 +42,7 @@
 
 <!-- ── Identity bar (slides in when menu / panel active) ──────────────────── -->
 <div id="idbar" aria-hidden="true">
-  <span class="idbar-project">crdt-svg</span>
+  <a class="idbar-project" href="home.html">crdt-svg</a>
   <span class="idbar-sep"></span>
   <span class="idbar-user">me · ????</span>
   <span class="idbar-room">#????</span>
@@ -174,15 +174,78 @@ document.querySelector('#canvas defs')
 window.UI  = UI;
 window.App = App;
 
-// ── Identity ────────────────────────────────────────────────────────────────
+// ── Player identity store ────────────────────────────────────────────────────
+// Persistent identity lives in IndexedDB 'crdt-svg-player', store 'identity'.
+// Keys:
+//   'name'    — display name string
+//   'grad'    — full entityGradient() output object (stored frozen so gradient
+//               is immune to future changes in entityGradient's algorithm)
+//   'localId' — persistent peer id, format tt-p-v1-DD-XXX
+// home.html writes these via the same store when the profile panel is saved.
+function openPlayerStore() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('crdt-svg-player', 1);
+    req.onupgradeneeded = e => e.target.result.createObjectStore('identity');
+    req.onsuccess       = e => resolve(e.target.result);
+    req.onerror         = e => reject(e.target.error);
+  });
+}
+async function playerGet(db, key) {
+  return new Promise((res, rej) => {
+    const r = db.transaction('identity', 'readonly').objectStore('identity').get(key);
+    r.onsuccess = () => res(r.result ?? null);
+    r.onerror   = () => rej(r.error);
+  });
+}
+async function playerSet(db, key, value) {
+  return new Promise((res, rej) => {
+    const r = db.transaction('identity', 'readwrite').objectStore('identity').put(value, key);
+    r.onsuccess = () => res();
+    r.onerror   = () => rej(r.error);
+  });
+}
+
+function makeLocalId() {
+  const dd   = String(new Date().getDate()).padStart(2, '0');
+  const chars = 'abcdefghijklmnopqrstuvwxyz';
+  const rand  = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  return `tt-p-v1-${dd}-${rand}`;
+}
+
+async function resolveIdentity() {
+  const db = await openPlayerStore();
+
+  let name = await playerGet(db, 'name');
+  if (!name) {
+    name = Math.random().toString(36).slice(2, 9);
+    await playerSet(db, 'name', name);
+  }
+
+  let grad = await playerGet(db, 'grad');
+  if (!grad || !grad.c1) {
+    // First visit
+    grad = entityGradient(name);
+    await playerSet(db, 'grad', grad);
+  }
+
+  let localId = await playerGet(db, 'localId');
+  if (!localId) {
+    localId = makeLocalId();
+    await playerSet(db, 'localId', localId);
+  }
+
+  return { name, grad, localId };
+}
+
+// ── Identity ─────────────────────────────────────────────────────────────────
 const uid = () => Math.random().toString(36).slice(2, 9);
 let roomId = location.hash.slice(1);
 if (!roomId) { roomId = uid(); location.hash = roomId; }
-const myId    = uid();
-const myGrad = entityGradient(myId);
+
+const { name: myDisplayName, grad: myGrad, localId: myId } = await resolveIdentity();
 
 document.getElementById('roomLabel').textContent = roomId;
-document.getElementById('myIdLabel').textContent = `me: ${myId.slice(0,6)}`;
+document.getElementById('myIdLabel').textContent = `me: ${myDisplayName}`;
 
 // ── Yjs ─────────────────────────────────────────────────────────────────────
 export const CURRENT_SCHEMA = 4;
@@ -190,10 +253,27 @@ export const CURRENT_SCHEMA = 4;
 const { ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta } = makeDoc();
 
 // ── Persistence ─────────────────────────────────────────────────────────────
+const TABLES_KEY = 'crdt_svg_tables';
+function touchTableRecord(id) {
+  let tables = [];
+  try { tables = JSON.parse(localStorage.getItem(TABLES_KEY)) || []; } catch {}
+  const existing = tables.findIndex(t => t.id === id);
+  if (existing >= 0) {
+    tables[existing].lastVisit = Date.now();
+  } else {
+    tables.push({ id, name: id, lastVisit: Date.now() });
+    if (tables.length > 20) tables.splice(0, tables.length - 20);
+  }
+  try { localStorage.setItem(TABLES_KEY, JSON.stringify(tables)); } catch {}
+}
+
 const persistence = new IndexeddbPersistence(`crdt-svg:${roomId}`, ydoc);
 persistence.on('synced', () => {
   App.addLog('loaded from indexeddb', 'local');
+  touchTableRecord(roomId);
   if (!yMeta.get('docId')) {
+    // Brand-new room entered directly (not via home.html). Seed doc metadata;
+    // background defaults to slatehex via renderBackgroundLayer() fallback.
     ydoc.transact(() => {
       yMeta.set('docId',         roomId);
       yMeta.set('created',       new Date().toISOString());
@@ -202,14 +282,14 @@ persistence.on('synced', () => {
   }
 });
 
-// ── WebRTC ──────────────────────────────────────────────────────────────────
+// ── WebRTC  ──────────────────────────────────────────────────────────────────
 const signalingUrl = new URLSearchParams(location.search).get('signaling') || 'ws://localhost:4444';
 const provider     = new WebrtcProvider(roomId, ydoc, { signaling: [signalingUrl] });
 const awareness    = provider.awareness;
 awareness.setLocalState({ id: myId, color: myGrad.c1, grad: myGrad, cursor: null, selection: null });
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
-boot({ ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, awareness, provider, myId, myGrad, roomId });
+boot({ ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, awareness, provider, myId, myGrad, roomId, displayName: myDisplayName });
 </script>
 
 </body>

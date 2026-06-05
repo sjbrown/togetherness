@@ -142,7 +142,8 @@ html, body {
   pointer-events: none;
 }
 #idbar.visible { transform: translateY(0); opacity: 1; pointer-events: auto; }
-.idbar-project { font-family: var(--font-display); font-size: 14px; color: var(--text); letter-spacing: .02em; white-space: nowrap; }
+.idbar-project { font-family: var(--font-display); font-size: 14px; color: var(--text); letter-spacing: .02em; white-space: nowrap; text-decoration: none; cursor: pointer; }
+.idbar-project:hover { color: var(--primary); }
 .idbar-user    { font-size: 11px; color: var(--primary); font-weight: 600; white-space: nowrap; }
 .idbar-room    { font-size: 11px; color: var(--text-3); font-family: ui-monospace, Menlo, monospace; white-space: nowrap; margin-left: auto; }
 .idbar-sep     { width: 0.5px; height: 16px; background: var(--border-2); flex-shrink: 0; }
