@@ -28,18 +28,18 @@ const HANDLE_SIZE = 12;  // px in canvas-space
 const PAD = 6;           // selection ring padding
 
 // ── SelectionMode ─────────────────────────────────────────────────────────────
-// Map<shapeId, { kind, peerId?, color? }>
+// Map<elId, { kind, peerId?, color? }>
 // overlay.js is the only writer (via setSelectionKind).
 // App.js reads it to answer queries.
 export const SelectionMode = new Map();
 
 // ── Drag ghost state ──────────────────────────────────────────────────────────
 // Local drags — managed imperatively; elements survive render() calls.
-// Map<shapeId, { placeholderEl, ghostEl, ringEl, dx, dy }>
+// Map<elId, { placeholderEl, ghostEl, ringEl, dx, dy }>
 const _dragGhosts = new Map();
 
 // Remote drags — rebuilt from awareness on each syncFromAwareness() call.
-// Map<shapeId, { peerId, bboxX, bboxY, color }>
+// Map<elId, { peerId, bboxX, bboxY, color }>
 const _remoteDrags = new Map();
 
 let App       = null;
@@ -52,12 +52,12 @@ export function init(appBus, svgElement) {
 }
 
 // ── SelectionMode setters ─────────────────────────────────────────────────────
-export function setLocalSelection(shapeId) {
+export function setLocalSelection(elId) {
   // Clear any previous local selection
   for (const [id, entry] of SelectionMode) {
     if (entry.kind === 'local' || entry.kind === 'resize') SelectionMode.delete(id);
   }
-  if (shapeId) SelectionMode.set(shapeId, { kind: 'local', color: App.getMyColor(), grad: App.getMyGradient() });
+  if (elId) SelectionMode.set(elId, { kind: 'local', color: App.getMyColor(), grad: App.getMyGradient() });
   render();
 }
 
@@ -77,11 +77,11 @@ export function syncFromAwareness(awarenessStates, myClientId) {
     if (clientId === myClientId) return;
 
     // Remote selection ring
-    if (state?.selection?.shapeId) {
+    if (state?.selection?.elId) {
       const peerId = state.id ?? String(clientId);
       const grad = state.grad ?? 'default-remote-sel-grad';
-      const { shapeId } = state.selection;
-      SelectionMode.set(shapeId, {
+      const { elId } = state.selection;
+      SelectionMode.set(elId, {
         kind:   'remote',
         peerId: peerId,
         color:  state.color ?? '#888',
@@ -90,9 +90,9 @@ export function syncFromAwareness(awarenessStates, myClientId) {
     }
 
     // Remote drag ghost
-    if (state?.drag?.shapeId) {
+    if (state?.drag?.elId) {
       const peerId = state.id ?? String(clientId);
-      _remoteDrags.set(state.drag.shapeId, {
+      _remoteDrags.set(state.drag.elId, {
         peerId,
         bboxX: state.drag.bboxX,
         bboxY: state.drag.bboxY,
@@ -107,12 +107,12 @@ export function syncFromAwareness(awarenessStates, myClientId) {
  * Begin a local drag. Creates:
  *   - a dim <use> placeholder at the committed position (z-bottom of overlay)
  *   - a ghost <use> + ring that will be translated by updateLocalDragGhost()
- * No-op if a ghost for this shapeId already exists.
+ * No-op if a ghost for this elId already exists.
  */
-export function startDragPlaceholder(shapeId) {
-  if (!_layerEl || _dragGhosts.has(shapeId)) return;
+export function startDragPlaceholder(elId) {
+  if (!_layerEl || _dragGhosts.has(elId)) return;
 
-  const href = `#yid-${shapeId}`;
+  const href = `#yid-${elId}`;
 
   // Dim copy at committed position — sits below everything in the overlay
   const placeholderEl = el('use', {});
@@ -130,7 +130,7 @@ export function startDragPlaceholder(shapeId) {
     class:  'drag-ring',
   });
 
-  _dragGhosts.set(shapeId, { placeholderEl, ghostEl, ringEl, dx: 0, dy: 0 });
+  _dragGhosts.set(elId, { placeholderEl, ghostEl, ringEl, dx: 0, dy: 0 });
   render();
 }
 
@@ -139,26 +139,26 @@ export function startDragPlaceholder(shapeId) {
  * (dx, dy) is the offset from the committed anchor in canvas-space.
  * Called on every pointermove during a drag.
  */
-export function updateLocalDragGhost(shapeId, dx, dy) {
-  const entry = _dragGhosts.get(shapeId);
+export function updateLocalDragGhost(elId, dx, dy) {
+  const entry = _dragGhosts.get(elId);
   if (!entry || !_layerEl) return;
   entry.dx = dx;
   entry.dy = dy;
   entry.ghostEl.setAttribute('transform', `translate(${dx}, ${dy})`);
-  _updateDragRing(entry, shapeId, App.getViewScale());
+  _updateDragRing(entry, elId, App.getViewScale());
 }
 
 /**
  * End a local drag (commit or cancel). Removes all ghost elements and
  * triggers a render so selection rings reflect the new committed position.
  */
-export function endDragPlaceholder(shapeId) {
-  const entry = _dragGhosts.get(shapeId);
+export function endDragPlaceholder(elId) {
+  const entry = _dragGhosts.get(elId);
   if (!entry) return;
   entry.placeholderEl.remove();
   entry.ghostEl.remove();
   entry.ringEl.remove();
-  _dragGhosts.delete(shapeId);
+  _dragGhosts.delete(elId);
   render();
 }
 
@@ -205,17 +205,17 @@ export function render() {
   for (const entry of _dragGhosts.values()) {
     _layerEl.appendChild(entry.placeholderEl);
   }
-  for (const [shapeId] of _remoteDrags) {
+  for (const [elId] of _remoteDrags) {
     const ph = el('use', {});
-    ph.setAttribute('href',   `#yid-${shapeId}`);
+    ph.setAttribute('href',   `#yid-${elId}`);
     ph.setAttribute('filter', 'url(#drag-placeholder-filter)');
     _layerEl.appendChild(ph);
   }
 
   // ── 3. Selection rings (committed positions) ───────────────────────────────
-  for (const [shapeId, entry] of SelectionMode) {
+  for (const [elId, entry] of SelectionMode) {
     if (entry.kind === 'none') continue;
-    const geo = App.getShapeBBox(shapeId);
+    const geo = App.getDrawingBBox(elId);
     if (!geo) continue;
     switch (entry.kind) {
       case 'local':
@@ -233,14 +233,14 @@ export function render() {
   }
 
   // ── 4. Remote drag ghosts + rings ─────────────────────────────────────────
-  for (const [shapeId, drag] of _remoteDrags) {
-    const bbox = App.getShapeBBox(shapeId);
+  for (const [elId, drag] of _remoteDrags) {
+    const bbox = App.getDrawingBBox(elId);
     if (!bbox) continue;
     const tdx = drag.bboxX - bbox.x; // relative to current committed
     const tdy = drag.bboxY - bbox.y;
 
     const ghostEl = el('use', { opacity: '0.85' });
-    ghostEl.setAttribute('href', `#yid-${shapeId}`);
+    ghostEl.setAttribute('href', `#yid-${elId}`);
     ghostEl.setAttribute('transform', `translate(${tdx}, ${tdy})`);
     _layerEl.appendChild(ghostEl);
 
@@ -252,16 +252,16 @@ export function render() {
   }
 
   // ── 5. Local drag ghosts + rings — z-top ──────────────────────────────────
-  for (const [shapeId, entry] of _dragGhosts) {
+  for (const [elId, entry] of _dragGhosts) {
     _layerEl.appendChild(entry.ghostEl);
     _layerEl.appendChild(entry.ringEl);
-    _updateDragRing(entry, shapeId, scale);
+    _updateDragRing(entry, elId, scale);
   }
 }
 
 // Refresh a local drag ring's geometry from the committed bbox + current dx/dy.
-function _updateDragRing(entry, shapeId, scale) {
-  const bbox = App.getShapeBBox(shapeId);
+function _updateDragRing(entry, elId, scale) {
+  const bbox = App.getDrawingBBox(elId);
   if (!bbox) return;
   const { dx, dy, ringEl } = entry;
   ringEl.setAttribute('x',                  bbox.x + dx - PAD);

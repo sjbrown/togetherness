@@ -106,9 +106,9 @@ const mockPeers = [
   { name:'Jin',  color:'#8a5ea8', live:false },
 ];
 const mockHistory = [
-  { label:'added rect a1b2c3',  fill:'#c8941e', shapeType:'rect' },
-  { label:'added circle d4e5',  fill:'#5a7ea8', shapeType:'circle' },
-  { label:'remote: added f6g7 by Mara', fill:'#a85e5e', shapeType:'rect' },
+  { label:'added rect a1b2c3',  fill:'#c8941e', elType:'rect' },
+  { label:'added circle d4e5',  fill:'#5a7ea8', elType:'circle' },
+  { label:'remote: added f6g7 by Mara', fill:'#a85e5e', elType:'rect' },
   { label:'session start' },
 ];
 const mockObjects = {
@@ -146,7 +146,7 @@ window.App = {
   setToolParam: (n,k,v) => { (toolParams[n] ??= {})[k] = v; },
   stepToolParam: (n,k,d,min,max) => { const p=(toolParams[n]??={}); p[k]=Math.max(min,Math.min(max,(+p[k]||0)+d)); },
   // no-ops for handlers fired from within stories
-  setTool(){}, setFill(){}, setBackground(){}, selectShape(){}, openSheet(){}, closePanel(){},
+  setTool(){}, setFill(){}, setBackground(){}, selectDrawing(){}, openSheet(){}, closePanel(){},
   duplicateSelected(){}, bringToFront(){}, deleteSelected(){}, undo(){},
   setLayer(){}, setOffline(){}, isOffline(){ return false; }, exportSVG(){}, importSVG(){},
 };
@@ -268,7 +268,7 @@ story('Panel · Save', '', () =>
 // ── CANVAS SHAPES ────────────────────────────────────────────────────────────
 // These stories render actual SVG shapes via _toSVGEl + the real overlay.js.
 // No CRDT or network: shapes are created directly from attrs.
-// Overlay.init() receives a minimal fake App that answers getShapeBBox,
+// Overlay.init() receives a minimal fake App that answers getDrawingBBox,
 // getViewScale, getMyColor, and getMyGradient from local data.
 
 import * as Overlay from '/overlay.js';
@@ -319,7 +319,7 @@ function fakeOverlayApp(svgEl) {
     getViewScale:   () => 1,
     getMyColor:     () => myGrad.c1,
     getMyGradient:  () => myGrad,
-    getShapeBBox: (id) => {
+    getDrawingBBox: (id) => {
       const el = svgEl.querySelector(`[data-yid="${id}"]`);
       return el ? getGeom(el) : null;
     },

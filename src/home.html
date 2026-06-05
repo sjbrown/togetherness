@@ -1170,7 +1170,7 @@ async function seedRoom(roomId, sampleSvgEl) {
   const ydoc         = new Y.Doc();
   const yMeta        = ydoc.getMap('meta');
   const yToys        = ydoc.getXmlFragment('toys');
-  const yDrawing     = ydoc.getXmlFragment('shapes');
+  const yDrawing     = ydoc.getXmlFragment('drawing');
 
   // DOM → Y.XmlElement tree (mirrors domToY in app.js importSVG)
   function domToY(node) {

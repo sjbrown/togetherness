@@ -129,12 +129,12 @@ export function wireShapeClicks(layer) {
     el.addEventListener('click', ev => {
       if (ToolMode.tool !== 'select') return;
       ev.stopPropagation();
-      App.selectShape(el.dataset.yid);
+      App.selectDrawing(el.dataset.yid);
     });
   });
   // Click on empty canvas deselects
   layer.addEventListener('click', e => {
-    if (!e.target.closest('[data-yid]')) App.selectShape(null);
+    if (!e.target.closest('[data-yid]')) App.selectDrawing(null);
   });
 }
 
@@ -176,10 +176,10 @@ function onPointerDown(e) {
   if (ToolMode.tool === 'select') {
     if (hitId) {
       ToolMode._gesture = 'move';
-      const anchor = App.getShapeAnchor(hitEl);
+      const anchor = App.getDrawingAnchor(hitEl);
       const p = toCanvas(e.clientX, e.clientY);
       ToolMode._moveRef = { id: hitId, dx: p.x - anchor.x, dy: p.y - anchor.y, moved: false };
-      App.selectShape(hitId);
+      App.selectDrawing(hitId);
       App.startDrag(hitId);
       ToolMode._pressTimer = setTimeout(() => {
         if (!ToolMode._moveRef?.moved) App.requestContextMenu(e.clientX, e.clientY, hitId);
@@ -240,7 +240,7 @@ function onPointerMove(e) {
     const p    = toCanvas(e.clientX, e.clientY);
     ref.moved  = true;
     clearTimeout(ToolMode._pressTimer);
-    App.moveShape(ref.id, p.x - ref.dx, p.y - ref.dy);
+    App.moveDrawing(ref.id, p.x - ref.dx, p.y - ref.dy);
     return;
   }
 
@@ -281,7 +281,7 @@ function onPointerUp(e) {
   if (ToolMode._gesture === 'draw' && ToolMode._draft) {
     finishDraft(e);
   } else if (ToolMode._gesture === 'pan-or-deselect' && ToolMode._moveRef && !ToolMode._moveRef.moved) {
-    App.selectShape(null);
+    App.selectDrawing(null);
   }
 
   if (ToolMode._pointers.size < 2 && ToolMode._gesture === 'pinch') {
@@ -313,10 +313,10 @@ function finishDraft(e) {
     const h = Math.round(Math.abs(p.y - d.oy));
     if (w < 8 || h < 8) {
       // Tap: drop a default rect centered on tap point
-      App.commitShape({ type:'rect', x: Math.round(d.ox) - 60, y: Math.round(d.oy) - 40, width:120, height:80, ...drawAttrs() });
+      App.commitDrawing({ type:'rect', x: Math.round(d.ox) - 60, y: Math.round(d.oy) - 40, width:120, height:80, ...drawAttrs() });
       return;
     }
-    App.commitShape({
+    App.commitDrawing({
       type: 'rect',
       x: Math.round(Math.min(p.x, d.ox)), y: Math.round(Math.min(p.y, d.oy)),
       width: w, height: h,
@@ -326,10 +326,10 @@ function finishDraft(e) {
   } else if (d.type === 'circle') {
     const r = Math.round(Math.hypot(p.x - d.ox, p.y - d.oy));
     if (r < 8) {
-      App.commitShape({ type:'circle', cx: Math.round(d.ox), cy: Math.round(d.oy), r: 46, ...drawAttrs() });
+      App.commitDrawing({ type:'circle', cx: Math.round(d.ox), cy: Math.round(d.oy), r: 46, ...drawAttrs() });
       return;
     }
-    App.commitShape({ type:'circle', cx: Math.round(d.ox), cy: Math.round(d.oy), r, ...drawAttrs() });
+    App.commitDrawing({ type:'circle', cx: Math.round(d.ox), cy: Math.round(d.oy), r, ...drawAttrs() });
   } else {
     // Toy tools (marker, d6, etc.) and future drawing tools (pen, text):
     // drop the toy centered on the tap/drag origin.

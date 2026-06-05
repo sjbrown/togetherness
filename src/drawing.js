@@ -1,10 +1,10 @@
 /**
  * core CRDT operations for crdt-svg
  *
- * The CRDT operations (addShape, deleteShape, findShape, SHAPE_TYPES) are pure
+ * The CRDT operations (addDrawing, deleteDrawing, findDrawing, SHAPE_TYPES) are pure
  * functions over Yjs types — no DOM, importable anywhere.
  *
- * The rendering helpers (_toSVGEl, getGeom, listShapes) ARE DOM-coupled: they
+ * The rendering helpers (_toSVGEl, getGeom, listDrawings) ARE DOM-coupled: they
  * mirror Yjs nodes into live SVG elements. They require a DOM (browser or jsdom).
  */
 
@@ -51,14 +51,14 @@ export const SHAPE_TYPES = {
 // ── Shape operations ──────────────────────────────────────────────────────────
 
 /**
- * Add a shape to the doc.
+ * Add a drawing element to the doc.
  * attrs: { id, type, author, ...geometry, fill, stroke, 'stroke-width', opacity }
  * `type` is required and must be a key of SHAPE_TYPES. Geometry and presentation
  * keys are determined by that type's def (see SHAPE_TYPES).
  */
-export function addShape(ydoc, yDrawing, yDrawingMeta, attrs) {
+export function addDrawing(ydoc, yDrawing, yDrawingMeta, attrs) {
   const { type } = attrs;
-  if (!type) throw new Error('addShape: attrs.type is required');
+  if (!type) throw new Error('addDrawing: attrs.type is required');
   const def = SHAPE_TYPES[type];
   if (!def) throw new Error(`unknown shape type: ${type}`);
 
@@ -76,9 +76,9 @@ export function addShape(ydoc, yDrawing, yDrawingMeta, attrs) {
 }
 
 /**
- * Delete a shape by id. Returns true if found and deleted.
+ * Delete a drawing element by id. Returns true if found and deleted.
  */
-export function deleteShape(ydoc, yDrawing, yDrawingMeta, id) {
+export function deleteDrawing(ydoc, yDrawing, yDrawingMeta, id) {
   const idx = yDrawing.toArray().findIndex(
     e => e instanceof Y.XmlElement && e.getAttribute('id') === id
   );
@@ -93,7 +93,7 @@ export function deleteShape(ydoc, yDrawing, yDrawingMeta, id) {
 /**
  * Find a Y.XmlElement by id. Returns null if not found.
  */
-export function findShape(yDrawing, id) {
+export function findDrawing(yDrawing, id) {
   return yDrawing.toArray().find(
     e => e instanceof Y.XmlElement && e.getAttribute('id') === id
   ) ?? null;
@@ -223,18 +223,18 @@ export function applyMoveDom(domEl, x, y) {
 
 /**
  * Iterate all XmlElement children, optionally newest-first by created timestamp.
- * Returns an array of { svgEl, shapeMeta }; each svgEl is a rendered SVG element
+ * Returns an array of { svgEl, drawingMeta }; each svgEl is a rendered SVG element
  * with data-yid + data-layer-type stamped.
  */
-export function listShapes(yDrawing, yDrawingMeta, { newestFirst = false } = {}) {
+export function listDrawings(yDrawing, yDrawingMeta, { newestFirst = false } = {}) {
   const results = [];
   for (let node = yDrawing.firstChild; node; node = node.nextSibling) {
     if (!(node instanceof Y.XmlElement)) continue;
-    const id        = node.getAttribute('id');
-    const shapeMeta = yDrawingMeta.get(id) ?? {};
-    results.push({ svgEl: _toSVGEl(node), shapeMeta });
+    const id          = node.getAttribute('id');
+    const drawingMeta = yDrawingMeta.get(id) ?? {};
+    results.push({ svgEl: _toSVGEl(node), drawingMeta });
   }
-  if (newestFirst) results.sort((a, b) => (b.shapeMeta.created ?? 0) - (a.shapeMeta.created ?? 0));
+  if (newestFirst) results.sort((a, b) => (b.drawingMeta.created ?? 0) - (a.drawingMeta.created ?? 0));
   return results;
 }
 
@@ -255,9 +255,9 @@ function shapeData(svgEl) {
 }
 
 /**
- * All shapes as layer-object descriptors, in z-order.
- * Used by app.js getLayerObjects — keeps shape internals out of the app bus.
+ * All drawing elements as layer-object descriptors, in z-order.
+ * Used by app.js getLayerObjects — keeps drawing internals out of the app bus.
  */
-export function shapesData(yDrawing, yDrawingMeta) {
-  return listShapes(yDrawing, yDrawingMeta).map(({ svgEl }) => shapeData(svgEl));
+export function drawingsData(yDrawing, yDrawingMeta) {
+  return listDrawings(yDrawing, yDrawingMeta).map(({ svgEl }) => shapeData(svgEl));
 }

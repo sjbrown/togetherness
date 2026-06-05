@@ -9,9 +9,9 @@
  *   - Translate canvas events → CRDT writes
  *   - Translate CRDT/awareness changes → render calls
  *   - Answer read queries from ui.js and overlay.js
- *   - Maintain the undo stack (since it spans canvas + shapes)
+ *   - Maintain the undo stack (since it spans canvas + drawing layer)
  *
- * Import order:  icons → shapes → overlay → canvas → ui → app
+ * Import order:  icons → drawing → overlay → canvas → ui → app
  *
  * Usage in index.html:
  *   <script type="module">
@@ -21,11 +21,11 @@
  */
 
 import { initIcons }                              from './icons.js';
-import { SHAPE_TYPES, addShape, deleteShape,
-         findShape, listShapes, shapesData,
-         getGeom as shapeGeom,
-         getAnchor as shapeAnchor,
-         applyMoveCommit as shapeApplyMoveCommit } from './drawing.js';
+import { SHAPE_TYPES, addDrawing, deleteDrawing,
+         findDrawing, listDrawings, drawingsData,
+         getGeom as drawingGeom,
+         getAnchor as drawingAnchor,
+         applyMoveCommit as drawingApplyMoveCommit } from './drawing.js';
 import { TOOLS as TOY_TOOLS,
          TOY_TYPES, addToy, deleteToy, findToy,
          listToys, toysData,
@@ -66,7 +66,7 @@ let _undoStack    = [];      // { op:'add'|'del'|'move', ...data }
 let _historyLog   = [];      // { label } — human-readable, newest first
 
 // Active drag — set by App.startDrag, cleared by commitMove / cancelMove.
-// Awareness state: drag: { shapeId, dx, dy }
+// Awareness state: drag: { elId, dx, dy }
 // local awareness schema: { id, color, grad, cursor, selection, drag? }
 let _dragState    = null;    // { id, startX, startY } | null
 
@@ -107,8 +107,8 @@ export function makeDoc() {
   const ydoc       = new Y.Doc();
   const yToys      = ydoc.getXmlFragment('toys');
   const yToyMeta   = ydoc.getMap('toyMeta');
-  const yDrawing   = ydoc.getXmlFragment('shapes');
-  const yDrawingMeta = ydoc.getMap('shapeMeta');
+  const yDrawing   = ydoc.getXmlFragment('drawing');
+  const yDrawingMeta = ydoc.getMap('drawingMeta');
   const yMeta      = ydoc.getMap('meta');
   return { ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta };
 }
@@ -223,47 +223,47 @@ function renderDrawingLayer() {
   if (!layer) return;
   layer.innerHTML = '';
 
-  listShapes(_yDrawing, _yDrawingMeta, { newestFirst: false }).forEach(({ svgEl }) => {
+  listDrawings(_yDrawing, _yDrawingMeta, { newestFirst: false }).forEach(({ svgEl }) => {
     svgEl.style.cursor = 'pointer';
     layer.appendChild(svgEl);
   });
 
   Canvas.wireShapeClicks(layer);
 
-  const countEl = document.getElementById('shapeCount');
+  const countEl = document.getElementById('drawingCount');
   if (countEl) countEl.textContent = _yDrawing.length;
   renderDrawingList();
 }
 
 function renderDrawingList() {
-  const list = document.getElementById('shapeList');
+  const list = document.getElementById('drawingList');
   if (!list) return;
   list.innerHTML = '';
-  listShapes(_yDrawing, _yDrawingMeta, { newestFirst: true }).forEach(({ svgEl, shapeMeta }) => {
+  listDrawings(_yDrawing, _yDrawingMeta, { newestFirst: true }).forEach(({ svgEl, drawingMeta }) => {
     const id     = svgEl.getAttribute('data-yid');
     const attrs  = {};
     for (const at of svgEl.attributes) attrs[at.name] = at.value;
-    const def    = SHAPE_TYPES[shapeMeta?.type ?? attrs['data-type']] ?? SHAPE_TYPES.rect;
+    const def    = SHAPE_TYPES[drawingMeta?.type ?? attrs['data-type']] ?? SHAPE_TYPES.rect;
     const item   = document.createElement('div');
-    const author = shapeMeta?.author;
-    item.className  = 'shape-item' + (_selectedId === id ? ' selected' : '');
+    const author = drawingMeta?.author;
+    item.className  = 'drawing-item' + (_selectedId === id ? ' selected' : '');
     item.dataset.id = id;
     const sw = document.createElement('div');
-    sw.className        = 'shape-swatch';
+    sw.className        = 'drawing-swatch';
     sw.style.background = attrs.fill;
     const lbl = document.createElement('div');
-    lbl.className   = 'shape-label';
+    lbl.className   = 'drawing-label';
     lbl.textContent = def.label(attrs);
     const own = document.createElement('div');
-    own.className   = 'shape-owner';
+    own.className   = 'drawing-owner';
     own.textContent = author === _myId ? 'me' : (author?.slice(0, 5) ?? '?');
     own.style.color = author === _myId ? 'var(--primary)' : 'var(--text-3)';
     const del = document.createElement('button');
-    del.className   = 'shape-del';
+    del.className   = 'drawing-del';
     del.textContent = '×';
-    del.addEventListener('click', ev => { ev.stopPropagation(); App.deleteShape(svgEl); });
+    del.addEventListener('click', ev => { ev.stopPropagation(); App.deleteDrawing(svgEl); });
     item.append(sw, lbl, own, del);
-    item.addEventListener('click', () => App.selectShape(id));
+    item.addEventListener('click', () => App.selectDrawing(id));
     list.appendChild(item);
   });
 }
@@ -287,7 +287,7 @@ function onToysChanged(events, transaction) {
             const tid = yEl.getAttribute('data-toy-id') || '?'
             let msg = `remote: placed ${yEl.getAttribute('data-toy-type')} ${tid.slice(0,6)}`;
             App.addLog(msg, 'remote')
-            addHistory(msg, {fill: yEl.getAttribute('fill'), shapeType: yEl.nodeName,})
+            addHistory(msg, {fill: yEl.getAttribute('fill'), elType: yEl.nodeName,})
           }
         })
       })
@@ -296,7 +296,7 @@ function onToysChanged(events, transaction) {
           if (!yEl.getAttribute) return;
           let msg = `remote deleted a toy ${yEl.nodeName}`;
           addHistory(msg, {
-            fill: yEl.getAttribute('fill'), shapeType: yEl.nodeName,
+            fill: yEl.getAttribute('fill'), elType: yEl.nodeName,
           });
           App.addLog(msg, 'del');
         });
@@ -323,7 +323,7 @@ function onDrawingChanged(events, transaction) {
           const author = meta?.author;
           if (author && author !== _myId) {
             addHistory(`remote: added ${id.slice(0, 6)} by ${(author ?? '?').slice(0, 5)}`, {
-              fill: yEl.getAttribute('fill'), shapeType: yEl.nodeName,
+              fill: yEl.getAttribute('fill'), elType: yEl.nodeName,
             });
             App.addLog(`${(author ?? '?').slice(0, 5)} added ${yEl.nodeName}`, 'remote');
           }
@@ -333,7 +333,7 @@ function onDrawingChanged(events, transaction) {
         item.content.getContent().forEach(yEl => {
           if (!yEl.getAttribute) return;
           addHistory(`remote: deleted ${(yEl.getAttribute('id') ?? '?').slice(0, 6)}`, {
-            fill: yEl.getAttribute('fill'), shapeType: yEl.nodeName,
+            fill: yEl.getAttribute('fill'), elType: yEl.nodeName,
           });
           App.addLog(`remote deleted ${yEl.nodeName}`, 'del');
         });
@@ -384,18 +384,18 @@ const App = {
   },
   getRoomId:       () => _roomId,
   getSelectedId:   () => _selectedId,
-  getShapeBBox:    (id) => {
+  getDrawingBBox:  (id) => {
     const svgEl = _svgEl.querySelector(`[data-yid="${id}"]`);
     if (!svgEl) return null;
     // Raw bounding box — the overlay applies its own selection PAD.
-    return layerForElement(svgEl) === 'toy' ? toyGeom(svgEl) : shapeGeom(svgEl);
+    return layerForElement(svgEl) === 'toy' ? toyGeom(svgEl) : drawingGeom(svgEl);
   },
-  getShapeAnchor:  (svgEl) => {
+  getDrawingAnchor: (svgEl) => {
     if (!svgEl) return { x: 0, y: 0 };
-    return layerForElement(svgEl) === 'toy' ? toyAnchor(svgEl) : shapeAnchor(svgEl);
+    return layerForElement(svgEl) === 'toy' ? toyAnchor(svgEl) : drawingAnchor(svgEl);
   },
   getLayerObjects: (layerId) => {
-    if (layerId === 'drawing') return shapesData(_yDrawing, _yDrawingMeta);
+    if (layerId === 'drawing') return drawingsData(_yDrawing, _yDrawingMeta);
     if (layerId === 'toys')    return toysData(_yToys, _yToyMeta);
     return [];
   },
@@ -408,9 +408,9 @@ const App = {
   requestContextMenu: (x, y, id) => UI.showPopover(x, y, id),
 
   // ── Selection ────────────────────────────────────────────────────────────
-  selectShape: (id) => {
+  selectDrawing: (id) => {
     _selectedId = id;
-    _awareness.setLocalStateField('selection', id ? { shapeId: id } : null);
+    _awareness.setLocalStateField('selection', id ? { elId: id } : null);
     Overlay.setLocalSelection(id);
     const meta = id ? _yDrawingMeta.get(id) : null;
     UI.onSelectionChanged(id, meta);
@@ -418,12 +418,12 @@ const App = {
   },
 
   // ── Document mutations ────────────────────────────────────────────────────
-  commitShape: (attrs) => {
+  commitDrawing: (attrs) => {
     const id = App.getMyId() + '_' + Math.random().toString(36).slice(2, 7);
-    addShape(_ydoc, _yDrawing, _yDrawingMeta, { ...attrs, id, author: _myId });
+    addDrawing(_ydoc, _yDrawing, _yDrawingMeta, { ...attrs, id, author: _myId });
     _undoStack.push({ op: 'add', id });
     addHistory(`added ${attrs.type ?? 'rect'} ${id.slice(0, 6)}`, {
-      fill: attrs.fill, shapeType: attrs.type,
+      fill: attrs.fill, elType: attrs.type,
     });
     App.addLog(`added ${attrs.type} ${id.slice(0, 6)}`, 'local');
   },
@@ -437,7 +437,7 @@ const App = {
       color: _myGrad.c1, author: _myId,
     }).then(() => {
       _undoStack.push({ op: 'add-toy', id });
-      addHistory(`placed ${def.label} ${id.slice(0, 6)}`, { shapeType: 'toy' });
+      addHistory(`placed ${def.label} ${id.slice(0, 6)}`, { elType: 'toy' });
       App.addLog(`placed ${def.label} ${id.slice(0, 6)}`, 'local');
     }).catch(err => {
       UI.toast(`Failed to place ${def.label}`, 'warn');
@@ -445,16 +445,16 @@ const App = {
     });
   },
 
-  deleteShape: (svgEl) => {
+  deleteDrawing: (svgEl) => {
     const id  = svgEl.getAttribute('data-yid');
-    const yEl = findShape(_yDrawing, id);
+    const yEl = findDrawing(_yDrawing, id);
     if (!yEl) return;
     const snap = yEl.getAttributes();
     _undoStack.push({ op: 'del', attrs: snap, meta: _yDrawingMeta.get(id) });
-    deleteShape(_ydoc, _yDrawing, _yDrawingMeta, id);
-    addHistory(`deleted ${id.slice(0, 6)}`, { fill: snap.fill, shapeType: yEl.nodeName });
+    deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, id);
+    addHistory(`deleted ${id.slice(0, 6)}`, { fill: snap.fill, elType: yEl.nodeName });
     App.addLog(`deleted ${id.slice(0, 6)}`, 'local');
-    if (id === _selectedId) App.selectShape(null);
+    if (id === _selectedId) App.selectDrawing(null);
     return true;
   },
 
@@ -474,12 +474,12 @@ const App = {
     if (!_selectedId) return;
     const svgEl = _svgEl.querySelector(`[data-yid="${_selectedId}"]`);
     if (!svgEl) return;
-    const success = layerForElement(svgEl) === 'toy' ? App.deleteToy(svgEl) : App.deleteShape(svgEl);
-    if (success) App.selectShape(null);
+    const success = layerForElement(svgEl) === 'toy' ? App.deleteToy(svgEl) : App.deleteDrawing(svgEl);
+    if (success) App.selectDrawing(null);
   },
   duplicateSelected: () => {
     if (!_selectedId) return;
-    const yEl = findShape(_yDrawing, _selectedId);
+    const yEl = findDrawing(_yDrawing, _selectedId);
     if (!yEl) return;
     const attrs = yEl.getAttributes();
     const def   = SHAPE_TYPES[yEl.nodeName];
@@ -488,37 +488,37 @@ const App = {
     const geom   = def.tag === 'rect'
       ? { x: offset.x, y: offset.y, width: +attrs.width, height: +attrs.height }
       : { cx: offset.x, cy: offset.y, r: +attrs.r };
-    App.commitShape({ type: yEl.nodeName, ...geom, fill: attrs.fill, stroke: attrs.stroke, 'stroke-width': attrs['stroke-width'], opacity: attrs.opacity });
+    App.commitDrawing({ type: yEl.nodeName, ...geom, fill: attrs.fill, stroke: attrs.stroke, 'stroke-width': attrs['stroke-width'], opacity: attrs.opacity });
   },
 
   // ── Drag lifecycle ────────────────────────────────────────────────────────
-  // startDrag   — called once on pointerdown when a move gesture begins
-  // moveShape   — called on every pointermove; updates overlay ghost + awareness
-  // commitMove  — called on pointerup; writes final position to Yjs once
-  // cancelMove  — called on pointercancel or disconnect; reverts with no Yjs write
+  // startDrag    — called once on pointerdown when a move gesture begins
+  // moveDrawing  — called on every pointermove; updates overlay ghost + awareness
+  // commitMove   — called on pointerup; writes final position to Yjs once
+  // cancelMove   — called on pointercancel or disconnect; reverts with no Yjs write
 
   startDrag: (id) => {
     const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
     const anchor = layerForElement(domEl) === 'toy'
       ? toyAnchor(domEl)
-      : shapeAnchor(domEl);
-    const bbox = App.getShapeBBox(id);
+      : drawingAnchor(domEl);
+    const bbox = App.getDrawingBBox(id);
     _dragState = { id, startX: anchor.x, startY: anchor.y,
       startBboxX: bbox.x,
       startBboxY: bbox.y,
     };
     Overlay.startDragPlaceholder(id);
-    _awareness.setLocalStateField('drag', { shapeId: id, bboxX: bbox.x, bboxY: bbox.y });
+    _awareness.setLocalStateField('drag', { elId: id, bboxX: bbox.x, bboxY: bbox.y });
   },
 
-  moveShape: (id, x, y) => {
+  moveDrawing: (id, x, y) => {
     if (!_dragState || _dragState.id !== id) return;
     const rx = Math.round(x), ry = Math.round(y);
     const dx = rx - _dragState.startX;
     const dy = ry - _dragState.startY;
     Overlay.updateLocalDragGhost(id, dx, dy);
     _awareness.setLocalStateField('drag', {
-      shapeId: id,
+      elId: id,
       bboxX: _dragState.startBboxX + dx,
       bboxY: _dragState.startBboxY + dy,
     });
@@ -540,7 +540,7 @@ const App = {
       toyApplyMoveCommit(_ydoc, findToy(_yToys, id), rx, ry);
       // onToysChanged (observeDeep) fires synchronously and calls renderDoc().
     } else {
-      shapeApplyMoveCommit(_ydoc, findShape(_yDrawing, id), rx, ry);
+      drawingApplyMoveCommit(_ydoc, findDrawing(_yDrawing, id), rx, ry);
       // _yDrawing.observe is shallow — attribute changes on children don't
       // trigger onDrawingChanged, so we must call renderDoc() explicitly here.
       renderDoc();
@@ -548,7 +548,7 @@ const App = {
     _undoStack.push({ op: 'move', id, isToy, fromX, fromY, toX: rx, toY: ry });
     addHistory(`moved ${id.slice(0, 6)} → (${rx}, ${ry})`, {
       fill: domEl?.getAttribute('fill'),
-      shapeType: isToy ? 'toy' : domEl?.nodeName,
+      elType: isToy ? 'toy' : domEl?.nodeName,
     });
     //Overlay.endDragPlaceholder(id);
     //_awareness.setLocalStateField('drag', null);
@@ -565,7 +565,7 @@ const App = {
 
   bringToFront: () => {
     if (!_selectedId) return;
-    const yEl = findShape(_yDrawing, _selectedId);
+    const yEl = findDrawing(_yDrawing, _selectedId);
     if (!yEl) return;
     const index = _yDrawing.toArray().indexOf(yEl);
     _ydoc.transact(() => {
@@ -575,8 +575,8 @@ const App = {
     addHistory(`brought ${_selectedId.slice(0, 6)} to front`);
   },
 
-  setShapeAttr: (id, key, value) => {
-    const yEl = findShape(_yDrawing, id);
+  setDrawingAttr: (id, key, value) => {
+    const yEl = findDrawing(_yDrawing, id);
     if (!yEl) return;
     _ydoc.transact(() => yEl.setAttribute(key, String(value)));
   },
@@ -591,7 +591,7 @@ const App = {
     // Fill applies to the active tool's params and any current selection.
     const p = _toolParams[_activeTool];
     if (p) p.fill = c;
-    if (_selectedId) App.setShapeAttr(_selectedId, 'fill', c);
+    if (_selectedId) App.setDrawingAttr(_selectedId, 'fill', c);
     Canvas.setParams(_toolParams[_activeTool] ?? {});
   },
   setToolParam: (toolName, key, value) => {
@@ -601,7 +601,7 @@ const App = {
     // Live-apply visual params to a current selection
     if (_selectedId && ['fill', 'strokeW', 'opacity'].includes(key)) {
       const svgKey = key === 'strokeW' ? 'stroke-width' : key;
-      App.setShapeAttr(_selectedId, svgKey, p[key]);
+      App.setDrawingAttr(_selectedId, svgKey, p[key]);
     }
   },
   stepToolParam: (toolName, key, delta, min, max) => {
@@ -611,7 +611,7 @@ const App = {
     if (toolName === _activeTool) Canvas.setParams(p);
     if (_selectedId && ['strokeW', 'opacity'].includes(key)) {
       const svgKey = key === 'strokeW' ? 'stroke-width' : key;
-      App.setShapeAttr(_selectedId, svgKey, p[key]);
+      App.setDrawingAttr(_selectedId, svgKey, p[key]);
     }
   },
 
@@ -627,19 +627,19 @@ const App = {
     const op = _undoStack.pop();
     if (!op) { UI.toast('Nothing to undo', 'warn'); return; }
     if (op.op === 'add') {
-      deleteShape(_ydoc, _yDrawing, _yDrawingMeta, op.id);
+      deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, op.id);
       addHistory(`undid: add ${op.id.slice(0, 6)}`);
     } else if (op.op === 'del') {
-      addShape(_ydoc, _yDrawing, _yDrawingMeta, { ...op.attrs, ...op.meta, id: op.attrs.id });
-      addHistory(`undid: delete ${op.attrs.id.slice(0, 6)}`, { fill: op.attrs.fill, shapeType: op.attrs.type });
+      addDrawing(_ydoc, _yDrawing, _yDrawingMeta, { ...op.attrs, ...op.meta, id: op.attrs.id });
+      addHistory(`undid: delete ${op.attrs.id.slice(0, 6)}`, { fill: op.attrs.fill, elType: op.attrs.type });
     } else if (op.op === 'add-toy') {
       deleteToy(_ydoc, _yToys, _yToyMeta, op.id);
-      addHistory(`undid: add toy ${op.id.slice(0, 6)}`, { shapeType: 'toy' });
+      addHistory(`undid: add toy ${op.id.slice(0, 6)}`, { elType: 'toy' });
     } else if (op.op === 'move') {
       if (op.isToy) {
         toyApplyMoveCommit(_ydoc, findToy(_yToys, op.id), op.fromX, op.fromY);
       } else {
-        shapeApplyMoveCommit(_ydoc, findShape(_yDrawing, op.id), op.fromX, op.fromY);
+        drawingApplyMoveCommit(_ydoc, findDrawing(_yDrawing, op.id), op.fromX, op.fromY);
         renderDoc();
       }
       addHistory(`undid: move ${op.id.slice(0, 6)} → (${op.fromX}, ${op.fromY})`);
@@ -820,7 +820,7 @@ const App = {
 
 // ── History log ───────────────────────────────────────────────────────────────
 function addHistory(label, meta = {}) {
-  _historyLog.unshift({ label, ts: Date.now(), fill: meta.fill, shapeType: meta.shapeType });
+  _historyLog.unshift({ label, ts: Date.now(), fill: meta.fill, elType: meta.elType });
   if (_historyLog.length > 40) _historyLog.pop();
   UI.refreshFromDoc();
 }
@@ -831,7 +831,7 @@ function onKeyDown(e) {
   if (e.key === 'r' || e.key === 'R') App.setTool('rect');
   if (e.key === 'c' || e.key === 'C') App.setTool('circle');
   if (e.key === 's' || e.key === 'S') App.setTool('select');
-  if (e.key === 'Escape') App.selectShape(null);
+  if (e.key === 'Escape') App.selectDrawing(null);
   if ((e.key === 'Delete' || e.key === 'Backspace')) App.deleteSelected();
   if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); App.undo(); }
 }

@@ -172,11 +172,11 @@ export function onToolChanged(toolName) {
     toast(`${def?.label ?? toolName} tool`, 'info');
   }
 }
-export function onSelectionChanged(shapeId, shapeMeta) {
-  UIData.selectionActive = !!shapeId;
+export function onSelectionChanged(elId, drawingMeta) {
+  UIData.selectionActive = !!elId;
   renderPill();
   refreshLayerList();
-  if (shapeId && shapeMeta) toast(`${shapeMeta.type ?? 'Shape'} selected`, 'info');
+  if (elId && drawingMeta) toast(`${drawingMeta.type ?? 'Shape'} selected`, 'info');
 }
 
 // ==============================================================================
@@ -460,7 +460,7 @@ function wireOfflineToggle() {
 export function histBody(history) {
   const rows = history.map((entry, i) => {
     const swatch = entry.fill
-      ? `<span class="sw-chip kind-${entry.shapeType}" style="background:${entry.fill};flex-shrink:0"></span>`
+      ? `<span class="sw-chip kind-${entry.elType}" style="background:${entry.fill};flex-shrink:0"></span>`
       : `<span class="hist-dot"></span>`;
     return `<div class="hist-item">${swatch}<span style="flex:1">${entry.label}</span>${i === 0 ? '<span class="meta">latest</span>' : ''}</div>`;
   }).join('');
@@ -480,7 +480,7 @@ export function layerObjectListHTML(objects, selectedId) {
   return objects.map(o => {
     const chip = `<span class="sw-chip kind-${o.kind}" style="background:${o.fill}"></span>`;
     const sel  = selectedId === o.id;
-    return `<div class="layer-obj-item ${sel ? 'sel' : ''}" data-yid="${o.id}" onclick="App.selectShape('${o.id}')">${chip}<span class="layer-obj-label">${o.label}</span>${sel ? '<span class="meta">selected</span>' : ''}</div>`;
+    return `<div class="layer-obj-item ${sel ? 'sel' : ''}" data-yid="${o.id}" onclick="App.selectDrawing('${o.id}')">${chip}<span class="layer-obj-label">${o.label}</span>${sel ? '<span class="meta">selected</span>' : ''}</div>`;
   }).join('');
 }
 
@@ -588,7 +588,7 @@ export function gesturesBody() {
 // ==============================================================================
 //  CONTEXT POPOVER
 // ==============================================================================
-export function showPopover(x, y, shapeId) {
+export function showPopover(x, y, elId) {
   const pop = $('#popover');
   if (!pop) return;
   pop.innerHTML = `
