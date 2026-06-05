@@ -238,3 +238,26 @@ export function listShapes(yDrawing, yDrawingMeta, { newestFirst = false } = {})
   return results;
 }
 
+/**
+ * Summarise a rendered shape svgEl as a plain layer-object descriptor.
+ */
+function shapeData(svgEl) {
+  const attrs = {};
+  for (const at of svgEl.attributes) attrs[at.name] = at.value;
+  const type = svgEl.localName;
+  const def  = SHAPE_TYPES[type];
+  return {
+    id:    attrs['data-yid'],
+    label: def ? def.label(attrs) : type,
+    fill:  attrs.fill ?? '#888',
+    kind:  type,
+  };
+}
+
+/**
+ * All shapes as layer-object descriptors, in z-order.
+ * Used by app.js getLayerObjects — keeps shape internals out of the app bus.
+ */
+export function shapesData(yDrawing, yDrawingMeta) {
+  return listShapes(yDrawing, yDrawingMeta).map(({ svgEl }) => shapeData(svgEl));
+}
