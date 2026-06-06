@@ -146,7 +146,7 @@ window.App = {
   setToolParam: (n,k,v) => { (toolParams[n] ??= {})[k] = v; },
   stepToolParam: (n,k,d,min,max) => { const p=(toolParams[n]??={}); p[k]=Math.max(min,Math.min(max,(+p[k]||0)+d)); },
   // no-ops for handlers fired from within stories
-  setTool(){}, setFill(){}, setBackground(){}, selectDrawing(){}, openSheet(){}, closePanel(){},
+  setTool(){}, setFill(){}, setBackground(){}, select(){}, openSheet(){}, closePanel(){},
   duplicateSelected(){}, bringToFront(){}, deleteSelected(){}, undo(){},
   setLayer(){}, setOffline(){}, isOffline(){ return false; }, exportSVG(){}, importSVG(){},
 };
@@ -268,7 +268,7 @@ story('Panel · Save', '', () =>
 // ── CANVAS SHAPES ────────────────────────────────────────────────────────────
 // These stories render actual SVG shapes via _toSVGEl + the real overlay.js.
 // No CRDT or network: shapes are created directly from attrs.
-// Overlay.init() receives a minimal fake App that answers getDrawingBBox,
+// Overlay.init() receives a minimal fake App that answers getBBox,
 // getViewScale, getMyColor, and getMyGradient from local data.
 
 import * as Overlay from '/overlay.js';
@@ -319,7 +319,7 @@ function fakeOverlayApp(svgEl) {
     getViewScale:   () => 1,
     getMyColor:     () => myGrad.c1,
     getMyGradient:  () => myGrad,
-    getDrawingBBox: (id) => {
+    getBBox: (id) => {
       const el = svgEl.querySelector(`[data-yid="${id}"]`);
       return el ? getGeom(el) : null;
     },

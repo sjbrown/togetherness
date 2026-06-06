@@ -480,7 +480,7 @@ export function layerObjectListHTML(objects, selectedId) {
   return objects.map(o => {
     const chip = `<span class="sw-chip kind-${o.kind}" style="background:${o.fill}"></span>`;
     const sel  = selectedId === o.id;
-    return `<div class="layer-obj-item ${sel ? 'sel' : ''}" data-yid="${o.id}" onclick="App.selectDrawing('${o.id}')">${chip}<span class="layer-obj-label">${o.label}</span>${sel ? '<span class="meta">selected</span>' : ''}</div>`;
+    return `<div class="layer-obj-item ${sel ? 'sel' : ''}" data-yid="${o.id}" onclick="App.select('${o.id}')">${chip}<span class="layer-obj-label">${o.label}</span>${sel ? '<span class="meta">selected</span>' : ''}</div>`;
   }).join('');
 }
 

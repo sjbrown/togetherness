@@ -215,7 +215,6 @@ function renderToysLayer() {
 
   const countEl = document.getElementById('toyCount');
   if (countEl) countEl.textContent = _yToys.length;
-  renderDrawingList();
 }
 
 function renderDrawingLayer() {
@@ -261,9 +260,9 @@ function renderDrawingList() {
     const del = document.createElement('button');
     del.className   = 'drawing-del';
     del.textContent = '×';
-    del.addEventListener('click', ev => { ev.stopPropagation(); App.deleteDrawing(svgEl); });
+    del.addEventListener('click', ev => { ev.stopPropagation(); App.deleteElement(svgEl); });
     item.append(sw, lbl, own, del);
-    item.addEventListener('click', () => App.selectDrawing(id));
+    item.addEventListener('click', () => App.select(id));
     list.appendChild(item);
   });
 }
@@ -352,6 +351,14 @@ function layerForElement(el) {
   return el?.getAttribute?.('data-layer-type') ?? 'drawing';
 }
 
+// Return the sidecar meta object for any element id, regardless of layer.
+function metaFor(id) {
+  const svgEl = _svgEl?.querySelector?.(`[data-yid="${id}"]`);
+  return layerForElement(svgEl) === 'toy'
+    ? _yToyMeta.get(id)
+    : _yDrawingMeta.get(id);
+}
+
 // ── App bus — the object passed to all modules ─────────────────────────────────
 // Alphabetical within each group for easy scanning.
 const App = {
@@ -384,13 +391,13 @@ const App = {
   },
   getRoomId:       () => _roomId,
   getSelectedId:   () => _selectedId,
-  getDrawingBBox:  (id) => {
+  getBBox:  (id) => {
     const svgEl = _svgEl.querySelector(`[data-yid="${id}"]`);
     if (!svgEl) return null;
     // Raw bounding box — the overlay applies its own selection PAD.
     return layerForElement(svgEl) === 'toy' ? toyGeom(svgEl) : drawingGeom(svgEl);
   },
-  getDrawingAnchor: (svgEl) => {
+  getAnchor: (svgEl) => {
     if (!svgEl) return { x: 0, y: 0 };
     return layerForElement(svgEl) === 'toy' ? toyAnchor(svgEl) : drawingAnchor(svgEl);
   },
@@ -408,12 +415,11 @@ const App = {
   requestContextMenu: (x, y, id) => UI.showPopover(x, y, id),
 
   // ── Selection ────────────────────────────────────────────────────────────
-  selectDrawing: (id) => {
+  select: (id) => {
     _selectedId = id;
     _awareness.setLocalStateField('selection', id ? { elId: id } : null);
     Overlay.setLocalSelection(id);
-    const meta = id ? _yDrawingMeta.get(id) : null;
-    UI.onSelectionChanged(id, meta);
+    UI.onSelectionChanged(id, id ? metaFor(id) : null);
     renderDrawingList();
   },
 
@@ -445,37 +451,33 @@ const App = {
     });
   },
 
-  deleteDrawing: (svgEl) => {
-    const id  = svgEl.getAttribute('data-yid');
-    const yEl = findDrawing(_yDrawing, id);
-    if (!yEl) return;
-    const snap = yEl.getAttributes();
-    _undoStack.push({ op: 'del', attrs: snap, meta: _yDrawingMeta.get(id) });
-    deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, id);
-    addHistory(`deleted ${id.slice(0, 6)}`, { fill: snap.fill, elType: yEl.nodeName });
+  deleteElement: (svgEl) => {
+    const id    = svgEl.getAttribute('data-yid');
+    const isToy = layerForElement(svgEl) === 'toy';
+    if (isToy) {
+      const yEl = findToy(_yToys, id);
+      if (!yEl) return;
+      const snap = yEl.getAttributes();
+      _undoStack.push({ op: 'del', attrs: snap, meta: _yToyMeta.get(id) });
+      deleteToy(_ydoc, _yToys, _yToyMeta, id);
+      addHistory(`deleted ${id.slice(0, 6)}`, { elType: 'toy' });
+    } else {
+      const yEl = findDrawing(_yDrawing, id);
+      if (!yEl) return;
+      const snap = yEl.getAttributes();
+      _undoStack.push({ op: 'del', attrs: snap, meta: _yDrawingMeta.get(id) });
+      deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, id);
+      addHistory(`deleted ${id.slice(0, 6)}`, { fill: snap.fill, elType: yEl.nodeName });
+    }
     App.addLog(`deleted ${id.slice(0, 6)}`, 'local');
-    if (id === _selectedId) App.selectDrawing(null);
+    if (id === _selectedId) App.select(null);
     return true;
   },
 
-  deleteToy: (svgEl) => {
-    const id  = svgEl.getAttribute('data-yid');
-    const yEl = findToy(_yToys, id);
-    if (!yEl) return;
-    const snap = yEl.getAttributes();
-    _undoStack.push({ op: 'del', attrs: snap, meta: _yToyMeta.get(id) });
-    deleteToy(_ydoc, _yToys, _yToyMeta, id);
-    addHistory(`deleted ${id.slice(0, 6)}`, { });
-    App.addLog(`deleted ${id.slice(0, 6)}`, 'local');
-    return true;
-  },
-
-  deleteSelected:   () => {
+  deleteSelected: () => {
     if (!_selectedId) return;
     const svgEl = _svgEl.querySelector(`[data-yid="${_selectedId}"]`);
-    if (!svgEl) return;
-    const success = layerForElement(svgEl) === 'toy' ? App.deleteToy(svgEl) : App.deleteDrawing(svgEl);
-    if (success) App.selectDrawing(null);
+    if (svgEl) App.deleteElement(svgEl);
   },
   duplicateSelected: () => {
     if (!_selectedId) return;
@@ -492,17 +494,15 @@ const App = {
   },
 
   // ── Drag lifecycle ────────────────────────────────────────────────────────
-  // startDrag    — called once on pointerdown when a move gesture begins
-  // moveDrawing  — called on every pointermove; updates overlay ghost + awareness
-  // commitMove   — called on pointerup; writes final position to Yjs once
-  // cancelMove   — called on pointercancel or disconnect; reverts with no Yjs write
+  // startDrag   — called once on pointerdown when a move gesture begins
+  // move        — called on every pointermove; updates overlay ghost + awareness
+  // commitMove  — called on pointerup; writes final position to Yjs once
+  // cancelMove  — called on pointercancel or disconnect; reverts with no Yjs write
 
   startDrag: (id) => {
     const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
-    const anchor = layerForElement(domEl) === 'toy'
-      ? toyAnchor(domEl)
-      : drawingAnchor(domEl);
-    const bbox = App.getDrawingBBox(id);
+    const anchor = App.getAnchor(domEl);
+    const bbox = App.getBBox(id);
     _dragState = { id, startX: anchor.x, startY: anchor.y,
       startBboxX: bbox.x,
       startBboxY: bbox.y,
@@ -511,7 +511,7 @@ const App = {
     _awareness.setLocalStateField('drag', { elId: id, bboxX: bbox.x, bboxY: bbox.y });
   },
 
-  moveDrawing: (id, x, y) => {
+  move: (id, x, y) => {
     if (!_dragState || _dragState.id !== id) return;
     const rx = Math.round(x), ry = Math.round(y);
     const dx = rx - _dragState.startX;
@@ -831,7 +831,7 @@ function onKeyDown(e) {
   if (e.key === 'r' || e.key === 'R') App.setTool('rect');
   if (e.key === 'c' || e.key === 'C') App.setTool('circle');
   if (e.key === 's' || e.key === 'S') App.setTool('select');
-  if (e.key === 'Escape') App.selectDrawing(null);
+  if (e.key === 'Escape') App.select(null);
   if ((e.key === 'Delete' || e.key === 'Backspace')) App.deleteSelected();
   if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); App.undo(); }
 }

@@ -129,12 +129,12 @@ export function wireShapeClicks(layer) {
     el.addEventListener('click', ev => {
       if (ToolMode.tool !== 'select') return;
       ev.stopPropagation();
-      App.selectDrawing(el.dataset.yid);
+      App.select(el.dataset.yid);
     });
   });
   // Click on empty canvas deselects
   layer.addEventListener('click', e => {
-    if (!e.target.closest('[data-yid]')) App.selectDrawing(null);
+    if (!e.target.closest('[data-yid]')) App.select(null);
   });
 }
 
@@ -176,10 +176,10 @@ function onPointerDown(e) {
   if (ToolMode.tool === 'select') {
     if (hitId) {
       ToolMode._gesture = 'move';
-      const anchor = App.getDrawingAnchor(hitEl);
+      const anchor = App.getAnchor(hitEl);
       const p = toCanvas(e.clientX, e.clientY);
       ToolMode._moveRef = { id: hitId, dx: p.x - anchor.x, dy: p.y - anchor.y, moved: false };
-      App.selectDrawing(hitId);
+      App.select(hitId);
       App.startDrag(hitId);
       ToolMode._pressTimer = setTimeout(() => {
         if (!ToolMode._moveRef?.moved) App.requestContextMenu(e.clientX, e.clientY, hitId);
@@ -240,7 +240,7 @@ function onPointerMove(e) {
     const p    = toCanvas(e.clientX, e.clientY);
     ref.moved  = true;
     clearTimeout(ToolMode._pressTimer);
-    App.moveDrawing(ref.id, p.x - ref.dx, p.y - ref.dy);
+    App.move(ref.id, p.x - ref.dx, p.y - ref.dy);
     return;
   }
 
@@ -281,7 +281,7 @@ function onPointerUp(e) {
   if (ToolMode._gesture === 'draw' && ToolMode._draft) {
     finishDraft(e);
   } else if (ToolMode._gesture === 'pan-or-deselect' && ToolMode._moveRef && !ToolMode._moveRef.moved) {
-    App.selectDrawing(null);
+    App.select(null);
   }
 
   if (ToolMode._pointers.size < 2 && ToolMode._gesture === 'pinch') {

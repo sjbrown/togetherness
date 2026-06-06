@@ -215,7 +215,7 @@ export function render() {
   // ── 3. Selection rings (committed positions) ───────────────────────────────
   for (const [elId, entry] of SelectionMode) {
     if (entry.kind === 'none') continue;
-    const geo = App.getDrawingBBox(elId);
+    const geo = App.getBBox(elId);
     if (!geo) continue;
     switch (entry.kind) {
       case 'local':
@@ -234,7 +234,7 @@ export function render() {
 
   // ── 4. Remote drag ghosts + rings ─────────────────────────────────────────
   for (const [elId, drag] of _remoteDrags) {
-    const bbox = App.getDrawingBBox(elId);
+    const bbox = App.getBBox(elId);
     if (!bbox) continue;
     const tdx = drag.bboxX - bbox.x; // relative to current committed
     const tdy = drag.bboxY - bbox.y;
@@ -261,7 +261,7 @@ export function render() {
 
 // Refresh a local drag ring's geometry from the committed bbox + current dx/dy.
 function _updateDragRing(entry, elId, scale) {
-  const bbox = App.getDrawingBBox(elId);
+  const bbox = App.getBBox(elId);
   if (!bbox) return;
   const { dx, dy, ringEl } = entry;
   ringEl.setAttribute('x',                  bbox.x + dx - PAD);
