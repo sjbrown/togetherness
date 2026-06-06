@@ -62,7 +62,7 @@ let _selectedId   = null;
 let _activeLayer  = 'toys';
 let _activeTool   = 'select';
 let _offline      = false;
-let _undoStack    = [];      // { op:'add'|'del'|'move', ...data }
+let _undoStack    = [];      // { op:'add'|'del'|'move', layer:'drawing'|'toy', id, ... }
 let _historyLog   = [];      // { label } — human-readable, newest first
 
 // Active drag — set by App.startDrag, cleared by commitMove / cancelMove.
@@ -427,7 +427,7 @@ const App = {
   commitDrawing: (attrs) => {
     const id = App.getMyId() + '_' + Math.random().toString(36).slice(2, 7);
     addDrawing(_ydoc, _yDrawing, _yDrawingMeta, { ...attrs, id, author: _myId });
-    _undoStack.push({ op: 'add', id });
+    _undoStack.push({ op: 'add', layer: 'drawing', id });
     addHistory(`added ${attrs.type ?? 'rect'} ${id.slice(0, 6)}`, {
       fill: attrs.fill, elType: attrs.type,
     });
@@ -442,7 +442,7 @@ const App = {
       id, toyType: def.toyType, x, y,
       color: _myGrad.c1, author: _myId,
     }).then(() => {
-      _undoStack.push({ op: 'add-toy', id });
+      _undoStack.push({ op: 'add', layer: 'toy', id });
       addHistory(`placed ${def.label} ${id.slice(0, 6)}`, { elType: 'toy' });
       App.addLog(`placed ${def.label} ${id.slice(0, 6)}`, 'local');
     }).catch(err => {
@@ -458,14 +458,14 @@ const App = {
       const yEl = findToy(_yToys, id);
       if (!yEl) return;
       const snap = yEl.getAttributes();
-      _undoStack.push({ op: 'del', attrs: snap, meta: _yToyMeta.get(id) });
+      _undoStack.push({ op: 'del', layer: 'toy', attrs: snap, meta: _yToyMeta.get(id) });
       deleteToy(_ydoc, _yToys, _yToyMeta, id);
       addHistory(`deleted ${id.slice(0, 6)}`, { elType: 'toy' });
     } else {
       const yEl = findDrawing(_yDrawing, id);
       if (!yEl) return;
       const snap = yEl.getAttributes();
-      _undoStack.push({ op: 'del', attrs: snap, meta: _yDrawingMeta.get(id) });
+      _undoStack.push({ op: 'del', layer: 'drawing', attrs: snap, meta: _yDrawingMeta.get(id) });
       deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, id);
       addHistory(`deleted ${id.slice(0, 6)}`, { fill: snap.fill, elType: yEl.nodeName });
     }
@@ -529,14 +529,14 @@ const App = {
     const rx = Math.round(x), ry = Math.round(y);
     const fromX = _dragState.startX, fromY = _dragState.startY;
     const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
-    const isToy = layerForElement(domEl) === 'toy';
+    const layer = layerForElement(domEl) === 'toy' ? 'toy' : 'drawing';
 
     // Ghost gone before bbox changes — prevents one-frame ghost "jitter"
     Overlay.endDragPlaceholder(id);
     _awareness.setLocalStateField('drag', null);
     _dragState = null;
 
-    if (isToy) {
+    if (layer === 'toy') {
       toyApplyMoveCommit(_ydoc, findToy(_yToys, id), rx, ry);
       // onToysChanged (observeDeep) fires synchronously and calls renderDoc().
     } else {
@@ -545,14 +545,11 @@ const App = {
       // trigger onDrawingChanged, so we must call renderDoc() explicitly here.
       renderDoc();
     }
-    _undoStack.push({ op: 'move', id, isToy, fromX, fromY, toX: rx, toY: ry });
+    _undoStack.push({ op: 'move', layer, id, fromX, fromY, toX: rx, toY: ry });
     addHistory(`moved ${id.slice(0, 6)} → (${rx}, ${ry})`, {
       fill: domEl?.getAttribute('fill'),
-      elType: isToy ? 'toy' : domEl?.nodeName,
+      elType: layer === 'toy' ? 'toy' : domEl?.nodeName,
     });
-    //Overlay.endDragPlaceholder(id);
-    //_awareness.setLocalStateField('drag', null);
-    //_dragState = null;
   },
 
   cancelMove: () => {
@@ -627,16 +624,25 @@ const App = {
     const op = _undoStack.pop();
     if (!op) { UI.toast('Nothing to undo', 'warn'); return; }
     if (op.op === 'add') {
-      deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, op.id);
-      addHistory(`undid: add ${op.id.slice(0, 6)}`);
+      if (op.layer === 'toy') {
+        deleteToy(_ydoc, _yToys, _yToyMeta, op.id);
+        addHistory(`undid: add toy ${op.id.slice(0, 6)}`, { elType: 'toy' });
+      } else {
+        deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, op.id);
+        addHistory(`undid: add ${op.id.slice(0, 6)}`);
+      }
     } else if (op.op === 'del') {
-      addDrawing(_ydoc, _yDrawing, _yDrawingMeta, { ...op.attrs, ...op.meta, id: op.attrs.id });
-      addHistory(`undid: delete ${op.attrs.id.slice(0, 6)}`, { fill: op.attrs.fill, elType: op.attrs.type });
-    } else if (op.op === 'add-toy') {
-      deleteToy(_ydoc, _yToys, _yToyMeta, op.id);
-      addHistory(`undid: add toy ${op.id.slice(0, 6)}`, { elType: 'toy' });
+      if (op.layer === 'toy') {
+        // Toy undo-delete is not yet implemented — toys require an async fetch
+        // to rebuild the Yjs tree. Skip silently for now (tracked for #7 follow-up).
+        UI.toast('Cannot undo toy delete', 'warn');
+        return;
+      } else {
+        addDrawing(_ydoc, _yDrawing, _yDrawingMeta, { ...op.attrs, ...op.meta, id: op.attrs.id });
+        addHistory(`undid: delete ${op.attrs.id.slice(0, 6)}`, { fill: op.attrs.fill, elType: op.attrs.type });
+      }
     } else if (op.op === 'move') {
-      if (op.isToy) {
+      if (op.layer === 'toy') {
         toyApplyMoveCommit(_ydoc, findToy(_yToys, op.id), op.fromX, op.fromY);
       } else {
         drawingApplyMoveCommit(_ydoc, findDrawing(_yDrawing, op.id), op.fromX, op.fromY);
