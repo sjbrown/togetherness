@@ -564,8 +564,8 @@ const App = {
 
     // App-level concerns: undo, history, logs, UI selection
     _undoStack.push({ op: 'add', layer: 'boundaries-positions', bounPosType: 'pos-set', id: result.id });
-    addHistory(`added ${result.genType} snap grid ${result.name}`, { elType: 'boundaries-positions' });
-    App.addLog(`added ${result.genType} snap grid ${result.name}`, 'local');
+    addHistory(`added ${result.genType} pos-set  ${result.name}`, { elType: 'boundaries-positions' });
+    App.addLog(`added ${result.genType} pos-set  ${result.name}`, 'local');
     App.select(result.id);
   },
 
@@ -689,7 +689,7 @@ const App = {
       _undoStack.push({ op: 'del', layer: 'boundaries-positions', bounPosType,
         attrs: { ...gAttrs, d: pathD }, meta: _yBounPosMeta.get(id) });
       bounPosDeleteEl(_ydoc, _yBounPos, _yBounPosMeta, id);
-      addHistory(`deleted ${bounPosType === 'pos-set' ? 'snap grid' : 'boundary'} ${id.slice(0, 12)}`,
+      addHistory(`deleted ${bounPosType} ${id.slice(0, 12)}`,
         { elType: 'boundaries-positions' });
     } else {
       const yEl = findDrawing(_yDrawing, id);
@@ -902,7 +902,7 @@ const App = {
         addHistory(`undid: add toy ${op.id.slice(0, 6)}`, { elType: 'toy' });
       } else if (op.layer === 'boundaries-positions') {
         bounPosDeleteEl(_ydoc, _yBounPos, _yBounPosMeta, op.id);
-        addHistory(`undid: add ${op.bounPosType === 'pos-set' ? 'snap grid' : 'boundary'} ${op.id.slice(0, 12)}`);
+        addHistory(`undid: add ${op.bounPosType} ${op.id.slice(0, 12)}`);
       } else {
         deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, op.id);
         addHistory(`undid: add ${op.id.slice(0, 6)}`);
@@ -924,7 +924,7 @@ const App = {
             id: op.attrs.id, name: op.attrs.name ?? op.attrs.id,
             snapRadius, genType, genParam, x, y, w, h, circles, author: op.meta?.author,
           });
-          addHistory(`undid: delete snap grid ${op.attrs.id.slice(0, 12)}`);
+          addHistory(`undid: delete pos-set ${op.attrs.id.slice(0, 12)}`);
         } else {
           addBoundary(_ydoc, _yBounPos, _yBounPosMeta, {
             id: op.attrs.id, name: op.attrs.name ?? op.attrs.id,
