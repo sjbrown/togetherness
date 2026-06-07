@@ -48,9 +48,13 @@ export const ICON_DEFS = {
   'doubletap':'<path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="4"/>',
 
   // Layers icons
-  'layer-bg':  '<rect x="3" y="3" width="18" height="18" rx="2"/>',
-  'layer-draw':'<path d="M4 20l4-1 9-9-3-3-9 9z"/><path d="M14 7l3 3"/>',
-  'layer-toys':  '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+  'layer-bg':       '<rect x="3" y="3" width="18" height="18" rx="2"/>',
+  'layer-draw':     '<path d="M4 20l4-1 9-9-3-3-9 9z"/><path d="M14 7l3 3"/>',
+  'layer-toys':     '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+  'layer-bounpos':  '<rect x="3" y="3" width="18" height="18" rx="0" stroke-dasharray="4 2"/><text x="17" y="9" font-size="7" font-family="monospace" fill="currentColor" stroke="none">B</text>',
+  'eye':     '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  'eye-off': '<path d="M17.94 17.94A10.1 10.1 0 0 1 12 20c-6 0-10-8-10-8a17.5 17.5 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.77 9.77 0 0 1 12 4c6 0 10 8 10 8a17.4 17.4 0 0 1-2.44 3.45"/><line x1="2" y1="2" x2="22" y2="22"/>',
+  'edit-tab': '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
 };
 
 const SVGNS = 'http://www.w3.org/2000/svg';

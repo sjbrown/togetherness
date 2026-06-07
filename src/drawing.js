@@ -261,3 +261,40 @@ function shapeData(svgEl) {
 export function drawingsData(yDrawing, yDrawingMeta) {
   return listDrawings(yDrawing, yDrawingMeta).map(({ svgEl }) => shapeData(svgEl));
 }
+
+// ── Edit schema ───────────────────────────────────────────────────────────────
+
+/**
+ * Return the edit schema for a rendered drawing element.
+ * Values are read from the live DOM attributes (which mirror Yjs).
+ * Geometry attrs (x, y, width, height, etc.) are intentionally excluded —
+ * those are manipulated via mouse interactions, not the Edit panel.
+ */
+export function getEditSchema(svgEl) {
+  return {
+    fill:           svgEl.getAttribute('fill')         ?? 'none',
+    stroke:         svgEl.getAttribute('stroke')       ?? 'none',
+    'stroke-width': svgEl.getAttribute('stroke-width') ?? '1',
+    opacity:        svgEl.getAttribute('opacity')      ?? '1',
+    types: {
+      fill:           'color-hslo',
+      stroke:         'color-hslo',
+      'stroke-width': { type: 'number', min: 0, step: 0.5 },
+      opacity:        { type: 'number', min: 0, max: 1, step: 0.05 },
+    },
+  };
+}
+
+/**
+ * Apply an editData object to a drawing Yjs element.
+ * Only keys present in editData are written; unknown keys are ignored.
+ * Called by App.commitEdit — never called directly from the UI.
+ */
+export function edit(ydoc, yEl, editData) {
+  if (!yEl) return;
+  ydoc.transact(() => {
+    for (const [k, v] of Object.entries(editData)) {
+      yEl.setAttribute(k, String(v));
+    }
+  });
+}

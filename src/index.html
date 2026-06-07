@@ -74,6 +74,23 @@
 
 <!-- ── Menu items (fan up from menu button) ───────────────────────────────── -->
 <div id="menuItems">
+  <div class="menu-item" onclick="UI.openSheet('edit');UI.closeMenu()">
+    <span class="menu-label">Edit</span>
+    <span class="menu-circle">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+      </svg>
+    </span>
+  </div>
+  <div class="menu-item" onclick="UI.openSheet('tools');UI.closeMenu()">
+    <span class="menu-label">Tools</span>
+    <span class="menu-circle">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4" y="6" width="16" height="12" rx="2"/>
+      </svg>
+    </span>
+  </div>
   <div class="menu-item" onclick="UI.openSheet('history');UI.closeMenu()">
     <span class="menu-label">History &amp; Undo</span>
     <span class="menu-circle">
@@ -250,7 +267,7 @@ document.getElementById('myIdLabel').textContent = `me: ${myDisplayName}`;
 // ── Yjs ─────────────────────────────────────────────────────────────────────
 export const CURRENT_SCHEMA = 4;
 
-const { ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta } = makeDoc();
+const { ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, yBounPos, yBounPosMeta } = makeDoc();
 
 // ── Persistence ─────────────────────────────────────────────────────────────
 const TABLES_KEY = 'crdt_svg_tables';
@@ -289,7 +306,7 @@ const awareness    = provider.awareness;
 awareness.setLocalState({ id: myId, color: myGrad.c1, grad: myGrad, cursor: null, selection: null });
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
-boot({ ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, awareness, provider, myId, myGrad, roomId, displayName: myDisplayName });
+boot({ ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, yBounPos, yBounPosMeta, awareness, provider, myId, myGrad, roomId, displayName: myDisplayName });
 </script>
 
 </body>

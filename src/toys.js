@@ -456,4 +456,62 @@ export const TOOLS = [
   },
 ];
 
+/**
+ * Set (or clear) the CSS class list on the toy's Yjs <g> element.
+ *
+ * Persisted as a `class` attribute on the outer <g> so that mirror() copies
+ * it to the DOM on the next render.  This is how toys are linked to Boundaries
+ * and Positions zones: a toy whose class list contains a boundary's name is
+ * constrained to move only within boundaries of that name.
+ *
+ * @param {string} classValue  Space-separated class names, or '' to clear.
+ */
+// ── Edit schema ───────────────────────────────────────────────────────────────
 
+/**
+ * Recursively collect all Y.XmlElement nodes with a given nodeName
+ * from a placed (attached) toy tree.  Safe to call on attached nodes only —
+ * toArray() throws on detached fragments.
+ */
+function findAllYNodes(yEl, nodeName, results = []) {
+  if (!(yEl instanceof Y.XmlElement)) return results;
+  if (yEl.nodeName === nodeName) results.push(yEl);
+  for (const child of yEl.toArray()) findAllYNodes(child, nodeName, results);
+  return results;
+}
+
+/**
+ * Return the edit schema for a rendered toy element.
+ * Color is read from the `data-toy-color` attribute stamped by
+ * app.js renderToysLayer at render time — no meta sidecar needed here.
+ */
+export function getEditSchema(svgEl) {
+  return {
+    color: svgEl.dataset.toyColor ?? '#888',
+    types: {
+      color: 'color-hsl',   // hsl only — toy opacity is not user-editable
+    },
+  };
+}
+
+/**
+ * Apply an editData object to a placed toy.
+ * Currently only `color` is editable: all feColorMatrix nodes in the toy's
+ * Yjs tree are updated, and yToyMeta is updated to persist the new color.
+ * Called by App.commitEdit — never called directly from the UI.
+ */
+export function edit(ydoc, yToy, yToyMeta, editData) {
+  if (!yToy) return;
+  const { color } = editData;
+  if (color === undefined) return;
+  const colorMatrices = findAllYNodes(yToy, 'feColorMatrix');
+  const values = colorMatrixValues(color);
+  const id = yToy.getAttribute('data-toy-id');
+  ydoc.transact(() => {
+    for (const m of colorMatrices) m.setAttribute('values', values);
+    if (id) {
+      const meta = yToyMeta.get(id) ?? {};
+      yToyMeta.set(id, { ...meta, color });
+    }
+  });
+}

@@ -34,7 +34,6 @@ export const UIData = {
 
 let App = null;
 const $ = s => document.querySelector(s);
-const PANEL_W = 300;
 
 // -- Init ----------------------------------------------------------------------
 export function init(appBus) {
@@ -176,12 +175,90 @@ export function onSelectionChanged(elId, drawingMeta) {
   UIData.selectionActive = !!elId;
   renderPill();
   refreshLayerList();
+  // Keep the Edit panel live — re-render it whenever the selection changes.
+  if (UIData.panelOpen === 'edit') {
+    const body = $('#panelBody');
+    if (body) body.innerHTML = editBody(gatherEditData());
+  }
   if (elId && drawingMeta) toast(`${drawingMeta.type ?? 'Shape'} selected`, 'info');
 }
 
 // ==============================================================================
-//  TOOL OPTIONS (generic, schema-driven)
+//  EDIT PANEL — live, schema-driven view of the selected element's attributes
 // ==============================================================================
+
+function gatherEditData() {
+  const element = App.getElementEditSchema?.() ?? null;
+  return {
+    element,
+    palette:    App.getPalette(),
+    toyClasses: element?.ltype === 'boundaries-positions'
+                  ? (App.getToyClasses?.() ?? [])
+                  : null,
+  };
+}
+
+/**
+ * Render one field from the edit schema.
+ * `typeSpec` is either a string shorthand ('string', 'color-hslo', 'color-hsl')
+ * or an object { type:'number', min?, max?, step? }.
+ * The generated onchange/onclick calls App.commitEdit with a single-key object.
+ */
+function renderEditField(key, value, typeSpec, id, palette) {
+  const label = `<label>${key}</label>`;
+
+  if (typeSpec === 'color-hslo' || typeSpec === 'color-hsl') {
+    // color-hslo allows 'none'; color-hsl is fully opaque (no transparency).
+    const colors  = typeSpec === 'color-hslo' ? ['none', ...palette] : palette;
+    const swatches = colors.map(c => {
+      const isNone = c === 'none';
+      return `<div class="sw ${value === c ? 'active' : ''}"
+        style="background:${isNone ? 'transparent' : c};${isNone ? 'border:1.5px dashed var(--border-2);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-3)' : ''}"
+        onclick="App.commitEdit('${id}',{'${key}':'${c}'})"
+        title="${c}">${isNone ? '∅' : ''}</div>`;
+    }).join('');
+    return `<div class="field">${label}<div class="swatches">${swatches}</div></div>`;
+  }
+
+  if (typeSpec === 'string') {
+    const safe = String(value ?? '').replace(/"/g, '&quot;');
+    return `<div class="field">${label}<input type="text" value="${safe}"
+      style="width:100%;font-size:13px;padding:5px 8px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;box-sizing:border-box;font-family:ui-monospace,monospace"
+      onchange="App.commitEdit('${id}',{'${key}':this.value})"/></div>`;
+  }
+
+  if (typeof typeSpec === 'object' && typeSpec.type === 'number') {
+    const { min, max, step = 1 } = typeSpec;
+    return `<div class="field">${label}<input type="number" value="${value ?? 0}"
+      ${min !== undefined ? `min="${min}"` : ''}
+      ${max !== undefined ? `max="${max}"` : ''}
+      step="${step}"
+      style="width:100%;font-size:13px;padding:5px 8px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;text-align:right;box-sizing:border-box"
+      onchange="App.commitEdit('${id}',{'${key}':Number(this.value)})"/></div>`;
+  }
+
+  return ''; // unknown type — omit field
+}
+
+export function editBody(data) {
+  if (!data.element) {
+    return `<div style="text-align:center;padding:48px 20px 0;color:var(--text-3)">
+      <div style="font-size:28px;margin-bottom:14px;opacity:.35">✦</div>
+      <div style="font-size:14px;line-height:1.6">Select an object<br>to edit its properties</div>
+    </div>`;
+  }
+  const { ltype, id, types, ...values } = data.element;
+  const header = `<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px">${ltype.replace('boundaries-positions','boundary')} · <span style="font-family:ui-monospace,monospace;font-weight:normal">${id.slice(0,16)}</span></div>`;
+  const fields  = Object.entries(types)
+    .map(([key, typeSpec]) => renderEditField(key, values[key], typeSpec, id, data.palette))
+    .join('');
+  const help = ltype === 'boundaries-positions'
+    ? bounPosHelpHTML(data.toyClasses ?? [])
+    : '';
+  return header + fields + help;
+}
+
+
 
 /**
  * toolOptsHTML(data) -- PURE.
@@ -253,7 +330,10 @@ export function refreshToolOpts() {
 // ==============================================================================
 //  PANEL
 // ==============================================================================
+const PANEL_W = 340;
+
 const PANEL_TABS = [
+  { id: 'edit',    label: 'Edit',    iconId: 'edit-tab' },
   { id: 'tools',   label: 'Tools',   iconId: 'rect' },
   { id: 'layers',  label: 'Layers',  iconId: 'layers' },
   { id: 'peers',   label: 'Peers',   iconId: 'peers' },
@@ -261,7 +341,7 @@ const PANEL_TABS = [
   { id: 'save',    label: 'Save',    iconId: 'save' },
 ];
 const PANEL_TITLES = {
-  tools:'Properties', peers:'Peers & sharing', history:'History & undo',
+  edit: 'Edit', tools:'Properties', peers:'Peers & sharing', history:'History & undo',
   layers:'Layers', save:'File', gestures:'Gestures & help',
 };
 
@@ -287,6 +367,7 @@ export function openSheet(which) {
   const body = $('#panelBody');
   if (body) {
     body.innerHTML = ({
+      edit:     () => editBody(gatherEditData()),
       tools:    () => toolsBody(gatherToolsData()),
       peers:    () => peersBody(gatherPeersData()),
       history:  () => histBody(App.getHistory()),
@@ -310,6 +391,7 @@ export function closePanel() {
 // -- Data gatherers (impure) ---------------------------------------------------
 function gatherToolsData() {
   const layer = App.getActiveLayer();
+  const isBounPos = layer === 'boundaries-positions';
   return {
     layer,
     activeTool: UIData.activeTool,
@@ -318,6 +400,8 @@ function gatherToolsData() {
     fill:       App.getToolParams(UIData.activeTool)?.fill,
     background: App.getBackground(),
     defaultBackgrounds: App.getDefaultBackgrounds(),
+    selectedBoundary: isBounPos ? App.getSelectedBounPos?.() : null,
+    toyClasses:       isBounPos ? (App.getToyClasses?.() ?? []) : null,
   };
 }
 function gatherPeersData() {
@@ -392,10 +476,67 @@ function defaultToolsBody(data) {
     </div>`;
 }
 
+/**
+ * Shared "How boundaries work" help block — rendered in both the Tools panel
+ * (bounPosToolsBody) and the Edit panel (editBody for boundary elements).
+ * `toyClasses` is the live list returned by App.getToyClasses().
+ */
+function bounPosHelpHTML(toyClasses) {
+  const classSection = toyClasses.length > 0
+    ? `<div style="margin-top:8px">
+        <div style="font-size:11px;font-weight:600;color:var(--text-2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Toy classes in this document</div>
+        <ul style="margin:0;padding-left:18px;font-size:12px;font-family:ui-monospace,monospace;color:var(--text-2);line-height:1.9">
+          ${toyClasses.map(c => `<li>${c}</li>`).join('')}
+        </ul>
+        <div style="font-size:11px;color:var(--text-3);margin-top:6px">Name a boundary after one of these classes to activate the constraint for toys that carry it.</div>
+      </div>`
+    : `<div style="margin-top:8px;font-size:12px;color:var(--text-3);font-style:italic">No class names found on toys yet. Add CSS classes to a toy's &lt;g&gt; or inner &lt;svg&gt; to enable boundary constraints.</div>`;
+
+  return `<div class="field" style="margin-top:12px">
+    <label>How boundaries work</label>
+    <div style="font-size:12px;color:var(--text-2);line-height:1.7">
+      Draw a boundary region, then give it a name. Any toy whose
+      <code style="font-size:11px;background:var(--surface-2);padding:1px 4px;border-radius:3px">&lt;g&gt;</code>
+      or inner
+      <code style="font-size:11px;background:var(--surface-2);padding:1px 4px;border-radius:3px">&lt;svg&gt;</code>
+      carries that name as a CSS class will be constrained to move
+      only within boundaries of that name — jumping freely between
+      multiple regions that share the class, but unable to leave them all.
+    </div>
+    ${classSection}
+    <div style="font-size:11px;color:var(--text-3);margin-top:10px">Toggle layer visibility with the eye icon in the Layers panel.</div>
+  </div>`;
+}
+
+function bounPosToolsBody(data) {
+  const toolBtn = t =>
+    `<div class="tool ${data.activeTool === t.name ? 'active' : ''}" onclick="App.setTool('${t.name}')">${t.icon}<span>${t.label}</span></div>`;
+
+  const nameField = data.selectedBoundary
+    ? `<div class="field">
+        <label>Boundary name</label>
+        <input type="text" class="text-input"
+          value="${data.selectedBoundary.name}"
+          placeholder="boundary name"
+          onchange="App.renameBounPos('${data.selectedBoundary.id}', this.value)"
+          style="width:100%;font-size:13px;font-family:ui-monospace,monospace"/>
+        <div style="font-size:11px;color:var(--text-3);margin-top:4px">ID: ${data.selectedBoundary.id}</div>
+      </div>`
+    : '';
+
+  return `
+    <div class="field"><label>Tool · Boundaries and Positions</label>
+      <div class="tool-grid">${data.tools.map(toolBtn).join('')}</div>
+    </div>
+    ${nameField}
+    ${bounPosHelpHTML(data.toyClasses ?? [])}`;
+}
+
 const LAYER_TOOLS_BODY = {
-  background: (data) => bgToolsBody(data),
-  toys:       (data) => defaultToolsBody(data),
-  drawing:    (data) => defaultToolsBody(data),
+  background:             (data) => bgToolsBody(data),
+  'boundaries-positions': (data) => bounPosToolsBody(data),
+  toys:                   (data) => defaultToolsBody(data),
+  drawing:                (data) => defaultToolsBody(data),
 };
 export function toolsBody(data) {
   const render = LAYER_TOOLS_BODY[data.layer] ?? defaultToolsBody;
@@ -493,8 +634,13 @@ export function layersBody(data) {
         ? `<div class="layer-obj-list"><div class="layer-obj-empty"><a href="#" onclick="UI.openSheet('tools');return false" style="color:var(--primary);text-decoration:none">Change background</a></div></div>`
         : `<div class="layer-obj-list">${layerObjectListHTML(l.objects ?? [], data.selectedId)}</div>`;
     }
+    const visBtn = `<button class="layer-vis-btn" title="${l.visible ? 'Hide layer' : 'Show layer'}"
+         onclick="UI.toggleLayerVisibility('${l.id}');event.stopPropagation()"
+         style="background:none;border:none;cursor:pointer;padding:2px 4px;color:${l.visible ? 'var(--primary)' : 'var(--text-3)'}">
+         ${icon(l.visible ? 'eye' : 'eye-off')}
+       </button>`;
     return `<div class="layer-block">
-      <div class=\"layer ${isActive ? 'active' : ''}\" id=\"layer-row-${l.id}\" onclick=\"UI.selectLayer('${l.id}')\">${icon(l.iconId)} <span>${l.label}</span>${l.id !== 'background' ? `<span class="lmeta">${l.count} object${l.count !== 1 ? 's' : ''}</span>` : ''}</div>
+      <div class=\"layer ${isActive ? 'active' : ''}\" id=\"layer-row-${l.id}\" onclick=\"UI.selectLayer('${l.id}')\">${icon(l.iconId)} <span>${l.label}</span><span class="lmeta">${l.id !== 'background' ? `${l.count} object${l.count !== 1 ? 's' : ''}` : ''}</span>${visBtn}</div>
       ${objList}
     </div>`;
   }).join('');
@@ -503,6 +649,11 @@ export function layersBody(data) {
       ${rows}
       <div style="font-size:12px;color:var(--text-3);margin-top:10px">New objects are added to the active layer.</div>
     </div>`;
+}
+
+export function toggleLayerVisibility(id) {
+  const layer = App.getLayers().find(l => l.id === id);
+  App.setLayerVisible(id, !(layer?.visible ?? false));
 }
 
 export function selectLayer(id) {
@@ -523,7 +674,8 @@ export function refreshFromDoc() {
   const body = $('#panelBody');
   if (!body) return;
   switch (UIData.panelOpen) {
-    case 'history': body.innerHTML = histBody(App.getHistory()); break;
+    case 'edit':    body.innerHTML = editBody(gatherEditData());   break;
+    case 'history': body.innerHTML = histBody(App.getHistory());   break;
     case 'layers':  body.innerHTML = layersBody(gatherLayersData()); break;
     case 'tools':   body.innerHTML = toolsBody(gatherToolsData()); break;
   }

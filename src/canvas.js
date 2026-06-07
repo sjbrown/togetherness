@@ -107,9 +107,10 @@ function updateCursor() {
 // Maps the active layer id (from App.getActiveLayer) to the data-layer-type
 // value stamped on DOM elements by shapes._toSVGEl / toys._toSVGEl.
 const LAYER_TYPE = {
-  drawing:    'drawing',
-  toys:       'toy',
-  background: 'background',
+  drawing:               'drawing',
+  toys:                  'toy',
+  background:            'background',
+  'boundaries-positions': 'boundaries-positions',
 };
 
 // Return the [data-yid] element under the pointer that belongs to the active
@@ -218,7 +219,7 @@ function onPointerMove(e) {
   if (ToolMode._gesture === 'draw' && ToolMode._draft) {
     const p = toCanvas(e.clientX, e.clientY);
     const d = ToolMode._draft;
-    if (d.type === 'rect') {
+    if (d.type === 'rect' || d.type === 'boundary') {
       const x = Math.min(p.x, d.ox), y = Math.min(p.y, d.oy);
       const w = Math.abs(p.x - d.ox), h = Math.abs(p.y - d.oy);
       // Show rubber-band preview as a fixed div (simpler than an SVG draft element)
@@ -322,6 +323,18 @@ function finishDraft(e) {
       width: w, height: h,
       rx: ToolMode.params.cornerR ?? 8,
       ...drawAttrs(),
+    });
+  } else if (d.type === 'boundary') {
+    const w = Math.round(Math.abs(p.x - d.ox));
+    const h = Math.round(Math.abs(p.y - d.oy));
+    if (w < 8 || h < 8) {
+      // Tap: drop a default boundary centered on tap point
+      App.commitBounPos({ x: Math.round(d.ox) - 150, y: Math.round(d.oy) - 100, w: 300, h: 200 });
+      return;
+    }
+    App.commitBounPos({
+      x: Math.round(Math.min(p.x, d.ox)), y: Math.round(Math.min(p.y, d.oy)),
+      w, h,
     });
   } else if (d.type === 'circle') {
     const r = Math.round(Math.hypot(p.x - d.ox, p.y - d.oy));
