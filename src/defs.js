@@ -19,6 +19,8 @@
  * being dragged. Applied via <use href="#yid-{id}" filter="url(#...)"> in the
  * overlay layer — the native layer element is never touched.
  */
+export const DRAG_PLACEHOLDER_FILTER_ID = 'drag-placeholder-filter';
+
 export const dragPlaceholderFilterSVG = `\
 <filter id="drag-placeholder-filter" color-interpolation-filters="sRGB">
   <!-- Branch 1: desaturated fill at reduced opacity -->
@@ -41,3 +43,15 @@ export const dragPlaceholderFilterSVG = `\
 `;
 
 
+
+export const SNAP_POINT_GRADIENT_ID = 'snap-point-gradient';
+
+/**
+ * Radial gradient for position-set snap point circles.
+ * Centre: white 22% opacity. Edge: white 6% opacity.
+ * Inject into the canvas <defs> at boot alongside the drag filter.
+ */
+export const snapPointGradientSVG = `<radialGradient id="${SNAP_POINT_GRADIENT_ID}" cx="50%" cy="50%" r="50%" gradientUnits="objectBoundingBox">
+  <stop offset="0%"   stop-color="white" stop-opacity="0.22"/>
+  <stop offset="100%" stop-color="white" stop-opacity="0.06"/>
+</radialGradient>`;

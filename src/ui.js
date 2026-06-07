@@ -400,7 +400,7 @@ function gatherToolsData() {
     fill:       App.getToolParams(UIData.activeTool)?.fill,
     background: App.getBackground(),
     defaultBackgrounds: App.getDefaultBackgrounds(),
-    selectedBoundary: isBounPos ? App.getSelectedBounPos?.() : null,
+    selectedBounPos: isBounPos ? App.getSelectedBounPos?.() : null,
     toyClasses:       isBounPos ? (App.getToyClasses?.() ?? []) : null,
   };
 }
@@ -512,15 +512,15 @@ function bounPosToolsBody(data) {
   const toolBtn = t =>
     `<div class="tool ${data.activeTool === t.name ? 'active' : ''}" onclick="App.setTool('${t.name}')">${t.icon}<span>${t.label}</span></div>`;
 
-  const nameField = data.selectedBoundary
+  const nameField = data.selectedBounPos
     ? `<div class="field">
         <label>Boundary name</label>
         <input type="text" class="text-input"
-          value="${data.selectedBoundary.name}"
+          value="${data.selectedBounPos.name}"
           placeholder="boundary name"
-          onchange="App.renameBounPos('${data.selectedBoundary.id}', this.value)"
+          onchange="App.renameBounPos('${data.selectedBounPos.id}', this.value)"
           style="width:100%;font-size:13px;font-family:ui-monospace,monospace"/>
-        <div style="font-size:11px;color:var(--text-3);margin-top:4px">ID: ${data.selectedBoundary.id}</div>
+        <div style="font-size:11px;color:var(--text-3);margin-top:4px">ID: ${data.selectedBounPos.id}</div>
       </div>`
     : '';
 

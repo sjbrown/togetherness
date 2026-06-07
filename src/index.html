@@ -179,11 +179,13 @@ import { boot }                 from '/app.js';
 import * as UI                  from '/ui.js';
 import { App, makeDoc }         from '/app.js';
 import { entityGradient }            from './entity_gradient.js';
-import { dragPlaceholderFilterSVG }  from './defs.js';
+import { dragPlaceholderFilterSVG, snapPointGradientSVG }  from './defs.js';
 
 // Inject shared SVG defs (filters etc.) into the canvas <defs> element.
 document.querySelector('#canvas defs')
   .insertAdjacentHTML('beforeend', dragPlaceholderFilterSVG);
+document.querySelector('#canvas defs')
+  .insertAdjacentHTML('beforeend', snapPointGradientSVG);
 
 
 // Expose UI and App on window so inline onclick handlers in the HTML can reach them.

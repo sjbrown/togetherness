@@ -40,15 +40,24 @@ import { TOOLS as TOY_TOOLS,
 import { SELECT_TOOL }                            from './tools-schema.js';
 import { TOOLS as DRAW_TOOLS, LAYER as DRAW_LAYER }  from './tools-drawing.js';
 import { TOOLS as BOUNPOS_TOOLS, LAYER as BOUNPOS_LAYER } from './tools-boun_pos.js';
-import { newBounPosId, rectToPath, pathToRect,
-         addBounPos, deleteBounPos, findBounPos, renameBounPos,
-         listBounPos, bounPosData,
-         getGeom as bounPosGeom,
-         getAnchor as bounPosAnchor,
+import { newBoundaryId, newPositionSetId, rectToPath, pathToRect,
+         addBoundary, addPositionSet, createPositionSetElement,
+         findEl          as bounPosFindEl,
+         deleteEl        as bounPosDeleteEl,
+         renameBounPos,
          applyMoveCommit as bounPosApplyMoveCommit,
-         setBounPosRect,
-         getEditSchema as bounPosGetEditSchema,
-         edit as bounPosEdit } from './boun_pos.js';
+         renderLayer     as bounPosRenderLayer,
+         layerData       as bounPosLayerData,
+         metaFor         as bounPosMetaFor,
+         getGeom         as bounPosGeom,
+         getAnchor       as bounPosAnchor,
+         getEditSchema   as bounPosGetEditSchema,
+         edit            as bounPosEdit,
+         computeBoundaryRects,
+         computePositionSnapPoints,
+         computeMaxSnapRadius,
+         gridFillExtent,
+       } from './boun_pos.js';
 import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
 import * as Overlay                               from './overlay.js';
@@ -93,7 +102,8 @@ let _historyLog   = [];      // { label } — human-readable, newest first
 // Awareness state: drag: { elId, dx, dy }
 // local awareness schema: { id, color, grad, cursor, selection, drag? }
 let _dragState    = null;    // { id, startX, startY, startBboxX, startBboxY,
-                              //   boundsRects: [{x,y,w,h}]|null, lastValidX, lastValidY } | null
+                              //   boundsRects: [{x,y,w,h}]|null, lastValidX, lastValidY,
+                              //   snapPoints: [{cx,cy,snapRadius}] } | null
 
 // ── Tool registry ──────────────────────────────────────────────────────────────
 // Built from the layer registries + the universal Select tool.
@@ -213,39 +223,28 @@ export function boot({ ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, yBo
 
 // ── Render pipelines ──────────────────────────────────────────────────────────
 /**
- * Compute drag-context boundary rects for a toy about to be dragged.
- *
- * Reads the class lists of the toy's wrapper <g> and its inner <svg>, then
- * returns a rect for every boundary in the Boundaries and Positions layer
- * whose name appears in those class lists.  Returns null when the toy has no
- * class-based boundary membership (unconstrained drag).
+ * Extract toy class names from the toy's wrapper <g> and inner <svg>.
+ * Returns a Set (empty if the toy has no classes).
  */
-function computeToyBoundsRects(domEl, anchor) {
-  const toyClasses = new Set([
+function getToyClasses(domEl) {
+  return new Set([
     ...domEl.classList,
     ...(domEl.querySelector('svg')?.classList ?? []),
   ]);
-  if (toyClasses.size === 0) return null;
+}
 
-  const rects = [];
-  for (const node of _yBounPos.toArray()) {
-    if (!(node instanceof Y.XmlElement)) continue;
-    const name = node.getAttribute('name');
-    if (!name || !toyClasses.has(name)) continue;
-    const d = node.getAttribute('d');
-    if (!d) continue;
-    const { x, y, w, h } = pathToRect(d);
-    rects.push({ x, y, w, h });
+/**
+ * Find the nearest snap point within its snap radius.
+ * Returns {cx, cy} or null if nothing is within reach.
+ * Uses squared-distance comparison to avoid sqrt.
+ */
+function findNearestSnap(x, y, snapPoints) {
+  let best = null, bestD2 = Infinity;
+  for (const { cx, cy, snapRadius } of snapPoints) {
+    const d2 = (x - cx) ** 2 + (y - cy) ** 2;
+    if (d2 < snapRadius ** 2 && d2 < bestD2) { best = { cx, cy }; bestD2 = d2; }
   }
-  if (rects.length === 0) return null;
-
-  // If the toy is already outside every matched boundary when the drag starts,
-  // treat it as context-free so it can move without restriction.
-  const startsInside = rects.some(
-    r => anchor.x >= r.x && anchor.x <= r.x + r.w &&
-         anchor.y >= r.y && anchor.y <= r.y + r.h
-  );
-  return startsInside ? rects : null;
+  return best;
 }
 
 function renderDoc() {
@@ -278,10 +277,7 @@ function applyLayerVisibility() {
 function renderBounPosLayer() {
   const layer = _svgEl.querySelector('#boundaries-positions-layer');
   if (!layer) return;
-  layer.innerHTML = '';
-  listBounPos(_yBounPos, _yBounPosMeta).forEach(({ svgEl }) => {
-    layer.appendChild(svgEl);
-  });
+  bounPosRenderLayer(_yBounPos, _yBounPosMeta, layer);
   Canvas.wireShapeClicks(layer);
 }
 
@@ -462,7 +458,7 @@ function metaFor(id) {
   const svgEl = _svgEl?.querySelector?.(`[data-yid="${id}"]`);
   const ltype = layerForElement(svgEl);
   if (ltype === 'toy')      return _yToyMeta.get(id);
-  if (ltype === 'boundaries-positions') return _yBounPosMeta.get(id);
+  if (ltype === 'boundaries-positions') return bounPosMetaFor(_yBounPosMeta, id);
   return _yDrawingMeta.get(id);
 }
 
@@ -477,7 +473,7 @@ const App = {
     visible: _layerVisibility[l.id] ?? true,
     count: l.id === DRAW_LAYER             ? _yDrawing.toArray().filter(e => e instanceof Y.XmlElement).length
          : l.id === 'toys'                 ? _yToys.toArray().filter(e => e instanceof Y.XmlElement).length
-         : l.id === 'boundaries-positions' ? _yBounPos.toArray().filter(e => e instanceof Y.XmlElement).length
+         : l.id === 'boundaries-positions' ? bounPosLayerData(_yBounPos, _yBounPosMeta).length
          : l.id === 'background'           ? 1
          : 0,
   })),
@@ -518,7 +514,7 @@ const App = {
   getLayerObjects: (layerId) => {
     if (layerId === 'drawing')              return drawingsData(_yDrawing, _yDrawingMeta);
     if (layerId === 'toys')                 return toysData(_yToys, _yToyMeta);
-    if (layerId === 'boundaries-positions') return bounPosData(_yBounPos, _yBounPosMeta);
+    if (layerId === 'boundaries-positions') return bounPosLayerData(_yBounPos, _yBounPosMeta);
     return [];
   },
   getViewScale:    () => Canvas.getView().scale,
@@ -533,6 +529,7 @@ const App = {
   select: (id) => {
     _selectedId = id;
     _awareness.setLocalStateField('selection', id ? { elId: id } : null);
+    Canvas.setTool('select');
     Overlay.setLocalSelection(id);
     UI.onSelectionChanged(id, id ? metaFor(id) : null);
     renderDrawingList();
@@ -549,20 +546,34 @@ const App = {
     App.addLog(`added ${attrs.type} ${id.slice(0, 6)}`, 'local');
   },
 
-  commitBounPos: ({ x, y, w, h }) => {
-    const { id, name } = newBounPosId();
-    addBounPos(_ydoc, _yBounPos, _yBounPosMeta, { id, name, x, y, w, h, author: _myId });
-    _undoStack.push({ op: 'add', layer: 'boundaries-positions', id });
+  commitBoundary: ({ x, y, w, h }) => {
+    const { id, name } = newBoundaryId();
+    addBoundary(_ydoc, _yBounPos, _yBounPosMeta, { id, name, x, y, w, h, author: _myId });
+    _undoStack.push({ op: 'add', layer: 'boundaries-positions', bounPosType: 'boundary', id });
     addHistory(`added boundary ${name}`, { elType: 'boundaries-positions' });
     App.addLog(`added boundary ${name}`, 'local');
     App.select(id);
   },
 
+  commitPositionSet: ({ x, y, w, h, toolName }) => {
+    const params = App.getToolParams(toolName);
+    const result = addPositionSet(_ydoc, _yBounPos, _yBounPosMeta,
+      { x, y, w, h, toolName, toolParams: params, author: _myId });
+
+    if (!result) return;  // extent too small
+
+    // App-level concerns: undo, history, logs, UI selection
+    _undoStack.push({ op: 'add', layer: 'boundaries-positions', bounPosType: 'pos-set', id: result.id });
+    addHistory(`added ${result.genType} snap grid ${result.name}`, { elType: 'boundaries-positions' });
+    App.addLog(`added ${result.genType} snap grid ${result.name}`, 'local');
+    App.select(result.id);
+  },
+
   renameBounPos: (id, newName) => {
-    const yEl = findBounPos(_yBounPos, id);
+    const yEl = bounPosFindEl(_yBounPos, id);
     if (!yEl) return;
     renameBounPos(_ydoc, yEl, _yBounPosMeta, id, newName);
-    // observeDeep triggers renderBoundariesPositionsLayer; also refresh any open panel.
+    // observeDeep triggers renderBounPosLayer; also refresh any open panel.
     UI.refreshFromDoc();
   },
 
@@ -588,7 +599,7 @@ const App = {
     if (!_selectedId) return null;
     const svgEl = _svgEl?.querySelector(`[data-yid="${_selectedId}"]`);
     if (layerForElement(svgEl) !== 'boundaries-positions') return null;
-    const yEl = findBounPos(_yBounPos, _selectedId);
+    const yEl = bounPosFindEl(_yBounPos, _selectedId);
     const name = yEl?.getAttribute('name') ?? _selectedId;
     return { id: _selectedId, name };
   },
@@ -633,7 +644,7 @@ const App = {
     } else if (ltype === 'toy') {
       toyEdit(_ydoc, findToy(_yToys, id), _yToyMeta, editData);
     } else if (ltype === 'boundaries-positions') {
-      bounPosEdit(_ydoc, findBounPos(_yBounPos, id), _yBounPosMeta, editData);
+      bounPosEdit(_ydoc, bounPosFindEl(_yBounPos, id), _yBounPosMeta, editData);
     }
     // observeDeep fires synchronously → renderDoc() already ran.
     // Refresh the Edit panel body to show the updated values.
@@ -668,12 +679,18 @@ const App = {
       deleteToy(_ydoc, _yToys, _yToyMeta, id);
       addHistory(`deleted ${id.slice(0, 6)}`, { elType: 'toy' });
     } else if (ltype === 'boundaries-positions') {
-      const yEl = findBounPos(_yBounPos, id);
+      const yEl = bounPosFindEl(_yBounPos, id);
       if (!yEl) return;
-      const snap = yEl.getAttributes();
-      _undoStack.push({ op: 'del', layer: 'boundaries-positions', attrs: snap, meta: _yBounPosMeta.get(id) });
-      deleteBounPos(_ydoc, _yBounPos, _yBounPosMeta, id);
-      addHistory(`deleted boundary ${id.slice(0, 12)}`, { elType: 'boundaries-positions' });
+      const bounPosType = yEl.getAttribute('data-bounpos-type') ?? 'boundary';
+      const gAttrs  = yEl.getAttributes();
+      // Store the <path> child's d separately (needed for undo reconstruction)
+      const yPath   = yEl.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'path');
+      const pathD   = yPath?.getAttribute('d') ?? '';
+      _undoStack.push({ op: 'del', layer: 'boundaries-positions', bounPosType,
+        attrs: { ...gAttrs, d: pathD }, meta: _yBounPosMeta.get(id) });
+      bounPosDeleteEl(_ydoc, _yBounPos, _yBounPosMeta, id);
+      addHistory(`deleted ${bounPosType === 'pos-set' ? 'snap grid' : 'boundary'} ${id.slice(0, 12)}`,
+        { elType: 'boundaries-positions' });
     } else {
       const yEl = findDrawing(_yDrawing, id);
       if (!yEl) return;
@@ -717,13 +734,16 @@ const App = {
     const anchor = App.getAnchor(domEl);
     const bbox = App.getBBox(id);
     const isToy = layerForElement(domEl) === 'toy';
-    const boundsRects = isToy ? computeToyBoundsRects(domEl, anchor) : null;
+    const toyClasses  = isToy ? getToyClasses(domEl) : new Set();
+    const boundsRects = isToy ? computeBoundaryRects(_yBounPos, toyClasses, anchor) : null;
+    const snapPoints  = isToy ? computePositionSnapPoints(_yBounPos, toyClasses) : [];
     _dragState = { id, startX: anchor.x, startY: anchor.y,
       startBboxX: bbox.x,
       startBboxY: bbox.y,
       boundsRects,
       lastValidX: anchor.x,
       lastValidY: anchor.y,
+      snapPoints,
     };
     Overlay.startDragPlaceholder(id);
     _awareness.setLocalStateField('drag', { elId: id, bboxX: bbox.x, bboxY: bbox.y });
@@ -731,18 +751,30 @@ const App = {
 
   move: (id, x, y) => {
     if (!_dragState || _dragState.id !== id) return;
-    const rx = Math.round(x), ry = Math.round(y);
+    let rx = Math.round(x), ry = Math.round(y);
 
     // Boundary constraint: if this toy belongs to boundary zones (via class
     // names), only allow positions that fall inside at least one of them.
-    // When the pointer is outside all context rects the ghost stays put and
-    // awareness is not updated — the toy simply can't go there.
     if (_dragState.boundsRects !== null) {
       const inBounds = _dragState.boundsRects.some(
         r => rx >= r.x && rx <= r.x + r.w && ry >= r.y && ry <= r.y + r.h
       );
       if (!inBounds) return;
     }
+
+    // Snap-to-position: pull ghost to the nearest snap point if within radius.
+    // Reject the snap if the snap point itself is outside the boundary zone.
+    if (_dragState.snapPoints.length > 0) {
+      const snapped = findNearestSnap(rx, ry, _dragState.snapPoints);
+      if (snapped) {
+        const snapOk = !_dragState.boundsRects || _dragState.boundsRects.some(
+          r => snapped.cx >= r.x && snapped.cx <= r.x + r.w &&
+               snapped.cy >= r.y && snapped.cy <= r.y + r.h
+        );
+        if (snapOk) { rx = snapped.cx; ry = snapped.cy; }
+      }
+    }
+
     _dragState.lastValidX = rx;
     _dragState.lastValidY = ry;
 
@@ -760,9 +792,10 @@ const App = {
     if (!_dragState) return;
     const fromX      = _dragState.startX;
     const fromY      = _dragState.startY;
-    // If the drag was boundary-constrained, the raw pointer position may be
-    // outside the allowed zone — use the last position accepted by move().
-    const constrained = _dragState.boundsRects !== null;
+    // If the drag was boundary-constrained or snap-enabled, the raw pointer
+    // position may differ from the validated position — use the last position
+    // accepted by move().
+    const constrained = _dragState.boundsRects !== null || _dragState.snapPoints.length > 0;
     const rx = constrained ? _dragState.lastValidX : Math.round(x);
     const ry = constrained ? _dragState.lastValidY : Math.round(y);
     const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
@@ -777,7 +810,7 @@ const App = {
       toyApplyMoveCommit(_ydoc, findToy(_yToys, id), rx, ry);
       // onToysChanged (observeDeep) fires synchronously and calls renderDoc().
     } else if (ltype === 'boundaries-positions') {
-      bounPosApplyMoveCommit(_ydoc, findBounPos(_yBounPos, id), rx, ry);
+      bounPosApplyMoveCommit(_ydoc, bounPosFindEl(_yBounPos, id), rx, ry);
       // observeDeep on _yBounPos fires and calls renderDoc() via onBounPosChanged.
     } else {
       drawingApplyMoveCommit(_ydoc, findDrawing(_yDrawing, id), rx, ry);
@@ -868,8 +901,8 @@ const App = {
         deleteToy(_ydoc, _yToys, _yToyMeta, op.id);
         addHistory(`undid: add toy ${op.id.slice(0, 6)}`, { elType: 'toy' });
       } else if (op.layer === 'boundaries-positions') {
-        deleteBounPos(_ydoc, _yBounPos, _yBounPosMeta, op.id);
-        addHistory(`undid: add boundary ${op.id.slice(0, 12)}`);
+        bounPosDeleteEl(_ydoc, _yBounPos, _yBounPosMeta, op.id);
+        addHistory(`undid: add ${op.bounPosType === 'pos-set' ? 'snap grid' : 'boundary'} ${op.id.slice(0, 12)}`);
       } else {
         deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, op.id);
         addHistory(`undid: add ${op.id.slice(0, 6)}`);
@@ -882,11 +915,23 @@ const App = {
         return;
       } else if (op.layer === 'boundaries-positions') {
         const { x, y, w, h } = pathToRect(op.attrs.d ?? 'M0,0 L100,0 L100,100 L0,100 Z');
-        addBounPos(_ydoc, _yBounPos, _yBounPosMeta, {
-          id: op.attrs.id, name: op.attrs.name ?? op.attrs.id,
-          x, y, w, h, author: op.meta?.author,
-        });
-        addHistory(`undid: delete boundary ${op.attrs.id.slice(0, 12)}`);
+        if (op.bounPosType === 'pos-set') {
+          const genType  = op.attrs['data-gen-type']  ?? 'square';
+          const genParam = Number(op.attrs['data-gen-param'] ?? 80);
+          const snapRadius = Number(op.attrs['snap-radius'] ?? 30);
+          const circles = gridFillExtent(x, y, w, h, genType, genParam);
+          createPositionSetElement(_ydoc, _yBounPos, _yBounPosMeta, {
+            id: op.attrs.id, name: op.attrs.name ?? op.attrs.id,
+            snapRadius, genType, genParam, x, y, w, h, circles, author: op.meta?.author,
+          });
+          addHistory(`undid: delete snap grid ${op.attrs.id.slice(0, 12)}`);
+        } else {
+          addBoundary(_ydoc, _yBounPos, _yBounPosMeta, {
+            id: op.attrs.id, name: op.attrs.name ?? op.attrs.id,
+            x, y, w, h, author: op.meta?.author,
+          });
+          addHistory(`undid: delete boundary ${op.attrs.id.slice(0, 12)}`);
+        }
       } else {
         addDrawing(_ydoc, _yDrawing, _yDrawingMeta, { ...op.attrs, ...op.meta, id: op.attrs.id });
         addHistory(`undid: delete ${op.attrs.id.slice(0, 6)}`, { fill: op.attrs.fill, elType: op.attrs.type });
@@ -895,7 +940,7 @@ const App = {
       if (op.layer === 'toy') {
         toyApplyMoveCommit(_ydoc, findToy(_yToys, op.id), op.fromX, op.fromY);
       } else if (op.layer === 'boundaries-positions') {
-        bounPosApplyMoveCommit(_ydoc, findBounPos(_yBounPos, op.id), op.fromX, op.fromY);
+        bounPosApplyMoveCommit(_ydoc, bounPosFindEl(_yBounPos, op.id), op.fromX, op.fromY);
         // observeDeep fires and calls renderDoc()
       } else {
         drawingApplyMoveCommit(_ydoc, findDrawing(_yDrawing, op.id), op.fromX, op.fromY);

@@ -219,7 +219,7 @@ function onPointerMove(e) {
   if (ToolMode._gesture === 'draw' && ToolMode._draft) {
     const p = toCanvas(e.clientX, e.clientY);
     const d = ToolMode._draft;
-    if (d.type === 'rect' || d.type === 'boundary') {
+    if (d.type === 'rect' || d.type === 'boundary' || d.type === 'pos-grid-sq' || d.type === 'pos-grid-hex') {
       const x = Math.min(p.x, d.ox), y = Math.min(p.y, d.oy);
       const w = Math.abs(p.x - d.ox), h = Math.abs(p.y - d.oy);
       // Show rubber-band preview as a fixed div (simpler than an SVG draft element)
@@ -329,12 +329,21 @@ function finishDraft(e) {
     const h = Math.round(Math.abs(p.y - d.oy));
     if (w < 8 || h < 8) {
       // Tap: drop a default boundary centered on tap point
-      App.commitBounPos({ x: Math.round(d.ox) - 150, y: Math.round(d.oy) - 100, w: 300, h: 200 });
+      App.commitBoundary({ x: Math.round(d.ox) - 150, y: Math.round(d.oy) - 100, w: 300, h: 200 });
       return;
     }
-    App.commitBounPos({
+    App.commitBoundary({
       x: Math.round(Math.min(p.x, d.ox)), y: Math.round(Math.min(p.y, d.oy)),
       w, h,
+    });
+  } else if (d.type === 'pos-grid-sq' || d.type === 'pos-grid-hex') {
+    const w = Math.round(Math.abs(p.x - d.ox));
+    const h = Math.round(Math.abs(p.y - d.oy));
+    if (w < 8 || h < 8) return;        // too small to generate a grid
+    App.commitPositionSet({
+      x: Math.round(Math.min(p.x, d.ox)),
+      y: Math.round(Math.min(p.y, d.oy)),
+      w, h, toolName: d.type,
     });
   } else if (d.type === 'circle') {
     const r = Math.round(Math.hypot(p.x - d.ox, p.y - d.oy));
