@@ -1,5 +1,5 @@
 /**
- * canvas.js — crdt-svg canvas interaction
+ * canvas.js — togetherness canvas interaction
  *
  * Owns ToolMode: which tool is active and what draw parameters are set.
  * Handles all pointer events on #stage.

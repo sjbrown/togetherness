@@ -1,5 +1,5 @@
 /**
- * overlay.js — crdt-svg overlay renderer
+ * overlay.js — togetherness overlay renderer
  *
  * Owns SelectionMode: the per-shape decoration map.
  * Renders into #overlay-layer SVG group.

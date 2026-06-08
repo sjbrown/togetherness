@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>crdt-svg · Tabletop Tables</title>
+<title>Togetherness Table</title>
 <link rel="icon" type="image/svg+xml"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='black'/%3E%3Ctext x='3' y='26' font-size='26' fill='%23fffff0' font-family='serif' letter-spacing='-5'%3ETT%3C/text%3E%3C/svg%3E">
 <style>
@@ -459,13 +459,13 @@ body {
 
     <!-- Footer links -->
     <div class="panel-footer fade-in" style="transition-delay:0.18s">
-      <a href="https://github.com/sjbrown/crdt-svg" target="_blank" rel="noopener" class="footer-link">
+      <a href="https://github.com/sjbrown/togetherness" target="_blank" rel="noopener" class="footer-link">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
           <path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.09.682-.217.682-.482 0-.237-.009-.866-.013-1.7-2.782.603-3.369-1.342-3.369-1.342-.454-1.154-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.268 2.75 1.026A9.578 9.578 0 0 1 12 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.026 2.747-1.026.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.577.688.48C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z"/>
         </svg>
-        GitHub · sjbrown/crdt-svg
+        GitHub · sjbrown/togetherness
       </a>
-      <a href="https://github.com/sjbrown/crdt-svg/blob/main/ROADMAP.md" target="_blank" rel="noopener" class="footer-link">
+      <a href="https://github.com/sjbrown/togetherness/blob/main/ROADMAP.md" target="_blank" rel="noopener" class="footer-link">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M9 11l3 3L22 4"/>
           <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
@@ -942,7 +942,7 @@ function loadTables() {
 // Player identity — same IndexedDB store as index.html reads.
 function openPlayerStore() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('crdt-svg-player', 1);
+    const req = indexedDB.open('tt-player', 1);
     req.onupgradeneeded = e => e.target.result.createObjectStore('identity');
     req.onsuccess       = e => resolve(e.target.result);
     req.onerror         = e => reject(e.target.error);
@@ -1068,7 +1068,7 @@ initProfile();
 async function loadRoomDoc(roomId) {
   const ydoc = new Y.Doc();
   await new Promise((resolve, reject) => {
-    const req = indexedDB.open(`crdt-svg:${roomId}`);
+    const req = indexedDB.open(`tt:${roomId}`);
     req.onerror         = () => reject(req.error);
     req.onupgradeneeded = () => resolve(); // DB doesn't exist yet
     req.onsuccess       = () => {
@@ -1106,7 +1106,7 @@ async function makeThumbnail(roomId) {
     ydoc.destroy();
     return buildThumbSVG(roomId, bgUrl, bgW, bgH, toyEl);
   } catch (e) {
-    console.warn('crdt-svg: thumbnail failed for', roomId, e);
+    console.warn('togetherness: thumbnail failed for', roomId, e);
     return null;
   }
 }
@@ -1238,7 +1238,7 @@ async function seedRoom(roomId, sampleSvgEl) {
 
   // Persist to IndexedDB and wait for it to flush before navigating.
   await new Promise((resolve, reject) => {
-    const persistence = new IndexeddbPersistence(`crdt-svg:${roomId}`, ydoc);
+    const persistence = new IndexeddbPersistence(`tt:${roomId}`, ydoc);
     persistence.on('synced', resolve);
     persistence.on('error',  reject);
   });
@@ -1285,7 +1285,7 @@ function launchRipple(cx, cy, row, svgEl) {
   Promise.all([seedDone, rippleDone]).then(() => {
     window.location.href = `index.html#${roomId}`;
   }).catch(err => {
-    console.error('crdt-svg: room seed failed', err);
+    console.error('togetherness: room seed failed', err);
     window.location.href = `index.html#${roomId}`;
   });
 }

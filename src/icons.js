@@ -1,5 +1,5 @@
 /**
- * icons.js — crdt-svg icon registry
+ * icons.js — togetherness icon registry
  *
  * All SVG icons defined once here as <symbol> elements, stamped into a
  * hidden <svg><defs> block at boot. Consume with useIcon(id) anywhere.

@@ -1,4 +1,4 @@
-name: crdt-svg-test
+name: togetherness-test
 
 services:
   unit:

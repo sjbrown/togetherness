@@ -4,7 +4,7 @@
 
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>crdt-svg</title>
+<title>Togetherness Table</title>
 <link rel="icon" type="image/svg+xml"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='black'/%3E%3Ctext x='3' y='26' font-size='26' fill='%23fffff0' font-family='serif' letter-spacing='-5'%3ETT%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/ui.css">
@@ -42,7 +42,7 @@
 
 <!-- ── Identity bar (slides in when menu / panel active) ──────────────────── -->
 <div id="idbar" aria-hidden="true">
-  <a class="idbar-project" href="home.html">crdt-svg</a>
+  <a class="idbar-project" href="home.html">Togetherness Table</a>
   <span class="idbar-sep"></span>
   <span class="idbar-user">me · ????</span>
   <span class="idbar-room">#????</span>
@@ -194,7 +194,7 @@ window.UI  = UI;
 window.App = App;
 
 // ── Player identity store ────────────────────────────────────────────────────
-// Persistent identity lives in IndexedDB 'crdt-svg-player', store 'identity'.
+// Persistent identity lives in IndexedDB 'tt-player', store 'identity'.
 // Keys:
 //   'name'    — display name string
 //   'grad'    — full entityGradient() output object (stored frozen so gradient
@@ -203,7 +203,7 @@ window.App = App;
 // home.html writes these via the same store when the profile panel is saved.
 function openPlayerStore() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('crdt-svg-player', 1);
+    const req = indexedDB.open('tt-player', 1);
     req.onupgradeneeded = e => e.target.result.createObjectStore('identity');
     req.onsuccess       = e => resolve(e.target.result);
     req.onerror         = e => reject(e.target.error);
@@ -286,7 +286,7 @@ function touchTableRecord(id) {
   try { localStorage.setItem(TABLES_KEY, JSON.stringify(tables)); } catch {}
 }
 
-const persistence = new IndexeddbPersistence(`crdt-svg:${roomId}`, ydoc);
+const persistence = new IndexeddbPersistence(`tt:${roomId}`, ydoc);
 persistence.on('synced', () => {
   App.addLog('loaded from indexeddb', 'local');
   touchTableRecord(roomId);

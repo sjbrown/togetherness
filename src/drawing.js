@@ -1,5 +1,5 @@
 /**
- * core CRDT operations for crdt-svg
+ * core CRDT operations for togetherness
  *
  * The CRDT operations (addDrawing, deleteDrawing, findDrawing, SHAPE_TYPES) are pure
  * functions over Yjs types — no DOM, importable anywhere.

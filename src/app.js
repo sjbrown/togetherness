@@ -1,5 +1,5 @@
 /**
- * app.js — crdt-svg application bus
+ * app.js — togetherness application bus
  *
  * The only module that imports from all others. Owns no mode directly;
  * instead it wires the four layers together through a narrow, typed interface.
@@ -185,7 +185,7 @@ export function boot({ ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, yBo
 
   // 4. UI — needs App; attaches panel/menu/pill listeners
   UI.init(App);
-  UI.setIdentity({ projectName: 'crdt-svg', userId: `me · ${displayName}`, roomId });
+  UI.setIdentity({ projectName: 'togetherness', userId: `me · ${displayName}`, roomId });
 
   // 5. Keyboard shortcuts
   window.addEventListener('keydown', onKeyDown);

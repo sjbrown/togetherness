@@ -1,5 +1,5 @@
 /**
- * ui.js — crdt-svg UI chrome
+ * ui.js — togetherness UI chrome
  *
  * Renders the chrome: pill, panel, toasts, idbar, popover, menu.
  * Reads ToolMode / SelectionMode only through the App bus.
@@ -27,7 +27,7 @@ export const UIData = {
   panelOpen:       null,
   menuOpen:        false,
   toolOptsOpen:    false,
-  projectName: 'crdt-svg',
+  projectName: 'togetherness',
   userId:      'anon-????',
   roomId:      '????',
 };
