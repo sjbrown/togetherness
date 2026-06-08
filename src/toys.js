@@ -28,7 +28,7 @@ import * as Y from 'yjs';
 const SVG_NS   = 'http://www.w3.org/2000/svg'
 const XLINK_NS = 'http://www.w3.org/1999/xlink'
 
-import { swatches, stepper, toggle } from './tools-schema.js';
+import { swatches, number, bool } from './tools-schema.js';
 
 const svg = (inner) =>
   `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
@@ -437,8 +437,8 @@ export const TOOLS = [
     defaults: { fill: '#a85e5e', label: '', size: 24 },
     options: [
       swatches('fill', 'Token color'),
-      stepper('size', 'Size', { min: 12, max: 64, step: 4 }),
-      toggle('showLabel', 'Show name label'),
+      number('size', 'Size', { min: 12, max: 64, step: 4 }),
+      bool('showLabel', 'Show name label'),
     ],
   },
   {
@@ -450,23 +450,13 @@ export const TOOLS = [
     defaults: { fill: '#a8905e', faces: 6 },
     options: [
       swatches('fill', 'Die color'),
-      stepper('faces', 'Faces', { min: 4, max: 20, step: 2 }),
-      toggle('autoRoll', 'Roll on drop'),
+      number('faces', 'Faces', { min: 4, max: 20, step: 2 }),
+      bool('autoRoll', 'Roll on drop'),
     ],
   },
 ];
 
-/**
- * Set (or clear) the CSS class list on the toy's Yjs <g> element.
- *
- * Persisted as a `class` attribute on the outer <g> so that mirror() copies
- * it to the DOM on the next render.  This is how toys are linked to Boundaries
- * and Positions zones: a toy whose class list contains a boundary's name is
- * constrained to move only within boundaries of that name.
- *
- * @param {string} classValue  Space-separated class names, or '' to clear.
- */
-// ── Edit schema ───────────────────────────────────────────────────────────────
+// ── ttState / ttStateSchema ───────────────────────────────────────────────────
 
 /**
  * Recursively collect all Y.XmlElement nodes with a given nodeName
@@ -481,17 +471,59 @@ function findAllYNodes(yEl, nodeName, results = []) {
 }
 
 /**
- * Return the edit schema for a rendered toy element.
+ * Return the ttStateSchema for a rendered toy element.
  * Color is read from the `data-toy-color` attribute stamped by
  * app.js renderToysLayer at render time — no meta sidecar needed here.
  */
-export function getEditSchema(svgEl) {
+export function getTtStateSchema(svgEl) {
   return {
     color: svgEl.dataset.toyColor ?? '#888',
     types: {
       color: 'color-hsl',   // hsl only — toy opacity is not user-editable
     },
   };
+}
+
+/**
+ * Snapshot the full serialisable state of a placed toy Y.XmlElement (<g>).
+ * Captures the position from the inner <svg> child. Author/created are omitted;
+ * those are provenance, not element state.
+ */
+export function getTtState(yToy) {
+  if (!yToy) return null;
+  const id      = yToy.getAttribute('data-toy-id');
+  const toyType = yToy.getAttribute('data-toy-type');
+  const ySvg    = yToy.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'svg');
+  const x       = ySvg ? Number(ySvg.getAttribute('x') ?? 0) : 0;
+  const y       = ySvg ? Number(ySvg.getAttribute('y') ?? 0) : 0;
+  const size    = ySvg ? Number(ySvg.getAttribute('width') ?? DISPLAY) : DISPLAY;
+  // Center point (matches getAnchor convention)
+  const cx = x + size / 2;
+  const cy = y + size / 2;
+  return { id, toyType, cx, cy };
+}
+
+/**
+ * Write a ttState snapshot back into the Yjs toys fragment.
+ * Async — must fetch the toy SVG file to reconstruct the full tree.
+ * Used by undo/redo to restore deleted toys.
+ */
+export async function applyTtState(ydoc, yToys, yToyMeta, state) {
+  if (!state?.id || !state?.toyType) return;
+  const existing = findToy(yToys, state.id);
+  if (existing) {
+    // Only update position if toy already exists.
+    applyMoveCommit(ydoc, existing, state.cx, state.cy);
+  } else {
+    await addToy(ydoc, yToys, yToyMeta, {
+      id:      state.id,
+      toyType: state.toyType,
+      x:       state.cx,
+      y:       state.cy,
+      color:   state.color ?? '#888',
+      author:  undefined,
+    });
+  }
 }
 
 /**

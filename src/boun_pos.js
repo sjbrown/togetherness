@@ -495,9 +495,9 @@ export function getAnchor(svgEl) {
   return geom ? { x: geom.x, y: geom.y } : { x: 0, y: 0 };
 }
 
-// ── Edit schema ───────────────────────────────────────────────────────────────
+// ── ttState / ttStateSchema ───────────────────────────────────────────────────
 
-export function getEditSchema(svgEl) {
+export function getTtStateSchema(svgEl) {
   const type = svgEl?.dataset?.bounposType ?? svgEl?.getAttribute?.('data-bounpos-type') ?? 'boundary';
   const name = svgEl?.getAttribute?.('name') ?? '';
   if (type === 'pos-set') {
@@ -510,7 +510,7 @@ export function getEditSchema(svgEl) {
       'snap-radius': snapRadius,
       types: {
         name:          'string',
-        'snap-radius': { type: 'number', min: 1, max: maxR, step: 1 },
+        'snap-radius': { kind: 'number', min: 1, max: maxR, step: 1 },
       },
     };
   }
@@ -518,6 +518,62 @@ export function getEditSchema(svgEl) {
     name,
     types: { name: 'string' },
   };
+}
+
+/**
+ * Snapshot the full serialisable state of a bounPos Y.XmlElement (<g>).
+ * Extracts geometry from the child <path> d attribute, so no DOM is needed.
+ * Author/created are omitted — those are provenance, not element state.
+ */
+export function getTtState(yEl) {
+  if (!yEl) return null;
+  const id          = yEl.getAttribute('id');
+  const bounPosType = yEl.getAttribute('data-bounpos-type') ?? 'boundary';
+  const name        = yEl.getAttribute('name') ?? id;
+  const yPath       = yChildByTag(yEl, 'path');
+  const d           = yPath?.getAttribute('d') ?? 'M0,0 L100,0 L100,100 L0,100 Z';
+  const { x, y, w, h } = pathToRect(d);
+  const state = { id, bounPosType, name, x, y, w, h };
+  if (bounPosType === 'pos-set') {
+    state.snapRadius = Number(yEl.getAttribute('data-snap-radius') ?? 30);
+    state.genType    = yEl.getAttribute('data-gen-type')  ?? 'square';
+    state.genParam   = Number(yEl.getAttribute('data-gen-param') ?? 80);
+  }
+  return state;
+}
+
+/**
+ * Write a ttState snapshot back into the Yjs bounPos fragment.
+ * Used by undo/redo to reconstruct deleted boundaries and position sets.
+ */
+export function applyTtState(ydoc, yBounPos, yBounPosMeta, state) {
+  if (!state?.id || !state?.bounPosType) return;
+  if (state.bounPosType === 'pos-set') {
+    const circles = gridFillExtent(state.x, state.y, state.w, state.h, state.genType, state.genParam);
+    createPositionSetElement(ydoc, yBounPos, yBounPosMeta, {
+      id:          state.id,
+      name:        state.name,
+      snapRadius:  state.snapRadius ?? 30,
+      genType:     state.genType,
+      genParam:    state.genParam,
+      x:           state.x,
+      y:           state.y,
+      w:           state.w,
+      h:           state.h,
+      circles,
+      author:      undefined,
+    });
+  } else {
+    addBoundary(ydoc, yBounPos, yBounPosMeta, {
+      id:     state.id,
+      name:   state.name,
+      x:      state.x,
+      y:      state.y,
+      w:      state.w,
+      h:      state.h,
+      author: undefined,
+    });
+  }
 }
 
 /**

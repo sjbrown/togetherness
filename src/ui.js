@@ -178,7 +178,7 @@ export function onSelectionChanged(elId, drawingMeta) {
   // Keep the Edit panel live — re-render it whenever the selection changes.
   if (UIData.panelOpen === 'edit') {
     const body = $('#panelBody');
-    if (body) body.innerHTML = editBody(gatherEditData());
+    if (body) body.innerHTML = editBody(gatherTtStateData());
   }
   if (elId && drawingMeta) toast(`${drawingMeta.type ?? 'Shape'} selected`, 'info');
 }
@@ -187,8 +187,8 @@ export function onSelectionChanged(elId, drawingMeta) {
 //  EDIT PANEL — live, schema-driven view of the selected element's attributes
 // ==============================================================================
 
-function gatherEditData() {
-  const element = App.getElementEditSchema?.() ?? null;
+function gatherTtStateData() {
+  const element = App.getElementTtStateSchema?.() ?? null;
   return {
     element,
     palette:    App.getPalette(),
@@ -199,45 +199,107 @@ function gatherEditData() {
 }
 
 /**
- * Render one field from the edit schema.
- * `typeSpec` is either a string shorthand ('string', 'color-hslo', 'color-hsl')
- * or an object { type:'number', min?, max?, step? }.
- * The generated onchange/onclick calls App.commitEdit with a single-key object.
+ * renderSchemaField — unified field renderer for both the Edit panel and
+ * the Tool Options popover.
+ *
+ * Two calling modes:
+ *   Edit panel:   renderSchemaField(key, value, typeSpec, { mode:'edit', id, palette })
+ *   Tool options: renderSchemaField(key, value, typeSpec, { mode:'tool', toolName, palette })
+ *
+ * typeSpec canonical values (from tools-schema.js):
+ *   'string'                              → text input
+ *   'color-hslo' | 'color-hsl'           → color picker swatches
+ *   'bool'                               → checkbox
+ *   { kind:'number', min?, max?, step? } → range slider (both min+max) or number input
+ *   { kind:'swatches' }                  → color picker swatches (tool-opts variant)
  */
-function renderEditField(key, value, typeSpec, id, palette) {
-  const label = `<label>${key}</label>`;
+function renderSchemaField(key, value, typeSpec, ctx) {
+  const { mode, palette } = ctx;
 
-  if (typeSpec === 'color-hslo' || typeSpec === 'color-hsl') {
-    // color-hslo allows 'none'; color-hsl is fully opaque (no transparency).
-    const colors  = typeSpec === 'color-hslo' ? ['none', ...palette] : palette;
-    const swatches = colors.map(c => {
-      const isNone = c === 'none';
-      return `<div class="sw ${value === c ? 'active' : ''}"
-        style="background:${isNone ? 'transparent' : c};${isNone ? 'border:1.5px dashed var(--border-2);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-3)' : ''}"
-        onclick="App.commitEdit('${id}',{'${key}':'${c}'})"
-        title="${c}">${isNone ? '∅' : ''}</div>`;
-    }).join('');
-    return `<div class="field">${label}<div class="swatches">${swatches}</div></div>`;
+  // ── color picker (both edit panel and tool opts) ──────────────────────────
+  if (typeSpec === 'color-hslo' || typeSpec === 'color-hsl' ||
+      (typeof typeSpec === 'object' && typeSpec.kind === 'swatches')) {
+    const allowNone = typeSpec === 'color-hslo';
+    const colors    = allowNone ? ['none', ...palette] : palette;
+    if (mode === 'edit') {
+      const id = ctx.id;
+      const swatchDivs = colors.map(c => {
+        const isNone = c === 'none';
+        return `<div class="sw ${value === c ? 'active' : ''}"
+          style="background:${isNone ? 'transparent' : c};${isNone ? 'border:1.5px dashed var(--border-2);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-3)' : ''}"
+          onclick="App.commitEdit('${id}',{'${key}':'${c}'})"
+          title="${c}">${isNone ? '∅' : ''}</div>`;
+      }).join('');
+      return `<div class="field"><label>${key}</label><div class="swatches">${swatchDivs}</div></div>`;
+    } else {
+      const toolName = ctx.toolName;
+      const sw = colors.slice(0, 6).map(c =>
+        `<div class="mini-sw ${value === c ? 'active' : ''}" style="background:${c}"
+          onclick="App.setToolParam('${toolName}','${key}','${c}');UI.refreshToolOpts()"></div>`
+      ).join('');
+      return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><div class="mini-swatches">${sw}</div></div>`;
+    }
   }
 
+  // ── string → text input ───────────────────────────────────────────────────
   if (typeSpec === 'string') {
     const safe = String(value ?? '').replace(/"/g, '&quot;');
-    return `<div class="field">${label}<input type="text" value="${safe}"
-      style="width:100%;font-size:13px;padding:5px 8px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;box-sizing:border-box;font-family:ui-monospace,monospace"
-      onchange="App.commitEdit('${id}',{'${key}':this.value})"/></div>`;
+    if (mode === 'edit') {
+      return `<div class="field"><label>${key}</label><input type="text" value="${safe}"
+        style="width:100%;font-size:13px;padding:5px 8px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;box-sizing:border-box;font-family:ui-monospace,monospace"
+        onchange="App.commitEdit('${ctx.id}',{'${key}':this.value})"/></div>`;
+    } else {
+      return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><input type="text" value="${safe}"
+        style="font-size:13px;padding:4px 6px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;width:120px"
+        onchange="App.setToolParam('${ctx.toolName}','${key}',this.value)"/></div>`;
+    }
   }
 
-  if (typeof typeSpec === 'object' && typeSpec.type === 'number') {
+  // ── bool → checkbox ───────────────────────────────────────────────────────
+  if (typeSpec === 'bool') {
+    const checked = !!value;
+    if (mode === 'edit') {
+      return `<div class="field"><label>${key}</label><input type="checkbox" ${checked ? 'checked' : ''}
+        style="width:18px;height:18px;cursor:pointer;accent-color:var(--accent)"
+        onchange="App.commitEdit('${ctx.id}',{'${key}':this.checked})"/></div>`;
+    } else {
+      return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><input type="checkbox" ${checked ? 'checked' : ''}
+        style="width:18px;height:18px;cursor:pointer;accent-color:var(--accent)"
+        onchange="App.setToolParam('${ctx.toolName}','${key}',this.checked)"/></div>`;
+    }
+  }
+
+  // ── number (with both min+max → range, otherwise → number input) ──────────
+  if (typeof typeSpec === 'object' && typeSpec.kind === 'number') {
     const { min, max, step = 1 } = typeSpec;
-    return `<div class="field">${label}<input type="number" value="${value ?? 0}"
-      ${min !== undefined ? `min="${min}"` : ''}
-      ${max !== undefined ? `max="${max}"` : ''}
-      step="${step}"
-      style="width:100%;font-size:13px;padding:5px 8px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;text-align:right;box-sizing:border-box"
-      onchange="App.commitEdit('${id}',{'${key}':Number(this.value)})"/></div>`;
+    const hasRange = min !== undefined && max !== undefined;
+    if (mode === 'edit') {
+      const id = ctx.id;
+      if (hasRange) {
+        return `<div class="field"><label>${key}</label><input type="range" value="${value ?? min}"
+          min="${min}" max="${max}" step="${step}"
+          style="width:100%;accent-color:var(--accent)"
+          oninput="App.commitEdit('${id}',{'${key}':Number(this.value)})"/></div>`;
+      }
+      return `<div class="field"><label>${key}</label><input type="number" value="${value ?? 0}"
+        ${min !== undefined ? `min="${min}"` : ''} step="${step}"
+        style="width:100%;font-size:13px;padding:5px 8px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;text-align:right;box-sizing:border-box"
+        onchange="App.commitEdit('${id}',{'${key}':Number(this.value)})"/></div>`;
+    } else {
+      const toolName = ctx.toolName;
+      if (hasRange) {
+        return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><input type="range" min="${min}" max="${max}" step="${step}" value="${value ?? min}"
+          style="accent-color:var(--accent)"
+          oninput="App.setToolParam('${toolName}','${key}',Number(this.value));UI.refreshToolOpts()"></div>`;
+      }
+      return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><input type="number" value="${value ?? 0}"
+        ${min !== undefined ? `min="${min}"` : ''} step="${step}"
+        style="font-size:13px;padding:4px 6px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;text-align:right;width:80px"
+        onchange="App.setToolParam('${toolName}','${key}',Number(this.value));UI.refreshToolOpts()"></div>`;
+    }
   }
 
-  return ''; // unknown type — omit field
+  return ''; // unknown typeSpec — omit field
 }
 
 export function editBody(data) {
@@ -250,15 +312,13 @@ export function editBody(data) {
   const { ltype, id, types, ...values } = data.element;
   const header = `<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px">${ltype.replace('boundaries-positions','boundary')} · <span style="font-family:ui-monospace,monospace;font-weight:normal">${id.slice(0,16)}</span></div>`;
   const fields  = Object.entries(types)
-    .map(([key, typeSpec]) => renderEditField(key, values[key], typeSpec, id, data.palette))
+    .map(([key, typeSpec]) => renderSchemaField(key, values[key], typeSpec, { mode: 'edit', id, palette: data.palette }))
     .join('');
   const help = ltype === 'boundaries-positions'
     ? bounPosHelpHTML(data.toyClasses ?? [])
     : '';
   return header + fields + help;
 }
-
-
 
 /**
  * toolOptsHTML(data) -- PURE.
@@ -268,32 +328,12 @@ export function toolOptsHTML(data) {
   if (!data.fields?.length) {
     return `<h3>${data.label} options</h3><div class="opt-row">No options.</div>`;
   }
-  const rows = data.fields.map(f => optionFieldHTML(f, data.values[f.key], data.palette)).join('');
+  const rows = data.fields.map(f =>
+    renderSchemaField(f.key, data.values[f.key], f.kind === 'swatches' ? f : f,
+      { mode: 'tool', toolName: data.toolName ?? data.label, label: f.label, palette: data.palette })
+  ).join('');
   return `<h3>${data.label} options</h3>${rows}`;
 }
-function optionFieldHTML(field, value, palette) {
-  const target = "UI.currentToolOpts";
-  switch (field.kind) {
-    case 'swatches': {
-      const sw = (palette || []).slice(0, 6).map(c =>
-        `<div class="mini-sw ${value === c ? 'active' : ''}" style="background:${c}" onclick="App.setToolParam(${target},'${field.key}','${c}');UI.refreshToolOpts()"></div>`
-      ).join('');
-      return `<div class="opt-row"><span class="opt-label">${field.label}</span><div class="mini-swatches">${sw}</div></div>`;
-    }
-    case 'stepper':
-      return `<div class="opt-row"><span class="opt-label">${field.label}</span><div class="stepper"><div class="step-btn" onclick="App.stepToolParam(${target},'${field.key}',${-field.step},${field.min},${field.max});UI.refreshToolOpts()">-</div><span class="step-val">${num(value)}</span><div class="step-btn" onclick="App.stepToolParam(${target},'${field.key}',${field.step},${field.min},${field.max});UI.refreshToolOpts()">+</div></div></div>`;
-    case 'range': {
-      const pct = field.max <= 1;
-      const v = pct ? Math.round((value ?? 1) * 100) : (value ?? field.min);
-      return `<div class="opt-row"><span class="opt-label">${field.label}</span><input type="range" min="${field.min}" max="${field.max}" value="${v}" oninput="App.setToolParam(${target},'${field.key}',${pct ? 'this.value/100' : 'this.value'})"></div>`;
-    }
-    case 'toggle':
-      return `<div class="opt-row"><span class="opt-label">${field.label}</span><div class="toggle ${value ? 'on' : ''}" onclick="this.classList.toggle('on');App.setToolParam(${target},'${field.key}',this.classList.contains('on'))"></div></div>`;
-    default:
-      return '';
-  }
-}
-function num(v) { return v == null ? 0 : (Math.round(v * 100) / 100); }
 
 export let currentToolOpts = null;
 
@@ -305,10 +345,11 @@ export function showToolOpts(toolName) {
   const def = App.getTool(toolName);
   to.style.display = 'block';
   to.innerHTML = toolOptsHTML({
-    label:   def?.label ?? toolName,
-    fields:  App.getToolOptions(toolName),
-    values:  App.getToolParams(toolName),
-    palette: App.getPalette(),
+    label:    def?.label ?? toolName,
+    toolName: toolName,
+    fields:   App.getToolOptions(toolName),
+    values:   App.getToolParams(toolName),
+    palette:  App.getPalette(),
   });
   const pr  = pill.getBoundingClientRect();
   const toR = to.getBoundingClientRect();
@@ -367,7 +408,7 @@ export function openSheet(which) {
   const body = $('#panelBody');
   if (body) {
     body.innerHTML = ({
-      edit:     () => editBody(gatherEditData()),
+      edit:     () => editBody(gatherTtStateData()),
       tools:    () => toolsBody(gatherToolsData()),
       peers:    () => peersBody(gatherPeersData()),
       history:  () => histBody(App.getHistory()),
@@ -674,7 +715,7 @@ export function refreshFromDoc() {
   const body = $('#panelBody');
   if (!body) return;
   switch (UIData.panelOpen) {
-    case 'edit':    body.innerHTML = editBody(gatherEditData());   break;
+    case 'edit':    body.innerHTML = editBody(gatherTtStateData());   break;
     case 'history': body.innerHTML = histBody(App.getHistory());   break;
     case 'layers':  body.innerHTML = layersBody(gatherLayersData()); break;
     case 'tools':   body.innerHTML = toolsBody(gatherToolsData()); break;

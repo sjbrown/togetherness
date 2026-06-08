@@ -262,15 +262,18 @@ export function drawingsData(yDrawing, yDrawingMeta) {
   return listDrawings(yDrawing, yDrawingMeta).map(({ svgEl }) => shapeData(svgEl));
 }
 
-// ── Edit schema ───────────────────────────────────────────────────────────────
+// ── ttState / ttStateSchema ───────────────────────────────────────────────────
 
 /**
- * Return the edit schema for a rendered drawing element.
- * Values are read from the live DOM attributes (which mirror Yjs).
- * Geometry attrs (x, y, width, height, etc.) are intentionally excluded —
- * those are manipulated via mouse interactions, not the Edit panel.
+ * Return the ttStateSchema for any drawing element.
+ * Presentation fields only — geometry is manipulated via mouse, not the Edit panel.
+ * Also used to populate the Tool panel for new-element defaults.
+ *
+ * types values use the canonical field kinds from tools-schema.js:
+ *   'color-hslo' | 'color-hsl' | 'string' | 'bool'
+ *   | { kind:'number', min?, max?, step? }
  */
-export function getEditSchema(svgEl) {
+export function getTtStateSchema(svgEl) {
   return {
     fill:           svgEl.getAttribute('fill')         ?? 'none',
     stroke:         svgEl.getAttribute('stroke')       ?? 'none',
@@ -279,10 +282,51 @@ export function getEditSchema(svgEl) {
     types: {
       fill:           'color-hslo',
       stroke:         'color-hslo',
-      'stroke-width': { type: 'number', min: 0, step: 0.5 },
-      opacity:        { type: 'number', min: 0, max: 1, step: 0.05 },
+      'stroke-width': { kind: 'number', min: 0, step: 0.5 },
+      opacity:        { kind: 'number', min: 0, max: 1, step: 0.05 },
     },
   };
+}
+
+/**
+ * Snapshot the full serialisable state of a drawing Y.XmlElement.
+ * Includes both geometry and presentation — everything needed to reconstruct
+ * the element (e.g. for undo/redo or compact save). Author/created are omitted;
+ * those are provenance, not element state.
+ */
+export function getTtState(yEl) {
+  if (!yEl) return null;
+  const attrs = yEl.getAttributes();
+  const type  = yEl.nodeName;  // 'rect' | 'circle'
+  const def   = SHAPE_TYPES[type];
+  const state = { id: attrs.id, type };
+  if (def) {
+    for (const k of [...def.geomAttrs, ...def.presAttrs]) {
+      if (attrs[k] != null) state[k] = attrs[k];
+    }
+  }
+  return state;
+}
+
+/**
+ * Write a ttState snapshot back into the Yjs drawing fragment.
+ * Creates the element if it doesn't exist; updates it if it does.
+ * Used by undo/redo to reconstruct deleted elements.
+ */
+export function applyTtState(ydoc, yDrawing, yDrawingMeta, state) {
+  if (!state?.id || !state?.type) return;
+  const existing = findDrawing(yDrawing, state.id);
+  if (existing) {
+    // Update in place — only write keys present in the state snapshot.
+    ydoc.transact(() => {
+      for (const [k, v] of Object.entries(state)) {
+        if (k === 'id' || k === 'type') continue;
+        existing.setAttribute(k, String(v));
+      }
+    });
+  } else {
+    addDrawing(ydoc, yDrawing, yDrawingMeta, state);
+  }
 }
 
 /**

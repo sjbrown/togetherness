@@ -26,7 +26,9 @@ import { SHAPE_TYPES, addDrawing, deleteDrawing,
          getGeom as drawingGeom,
          getAnchor as drawingAnchor,
          applyMoveCommit as drawingApplyMoveCommit,
-         getEditSchema as drawingGetEditSchema,
+         getTtStateSchema as drawingGetTtStateSchema,
+         getTtState as drawingGetTtState,
+         applyTtState as drawingApplyTtState,
          edit as drawingEdit } from './drawing.js';
 import { TOOLS as TOY_TOOLS,
          TOY_TYPES, addToy, deleteToy, findToy,
@@ -34,7 +36,9 @@ import { TOOLS as TOY_TOOLS,
          getGeom as toyGeom,
          getAnchor as toyAnchor,
          applyMoveCommit as toyApplyMoveCommit,
-         getEditSchema as toyGetEditSchema,
+         getTtStateSchema as toyGetTtStateSchema,
+         getTtState as toyGetTtState,
+         applyTtState as toyApplyTtState,
          edit as toyEdit,
        }  from './toys.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
@@ -51,7 +55,9 @@ import { newBoundaryId, newPositionSetId, rectToPath, pathToRect,
          metaFor         as bounPosMetaFor,
          getGeom         as bounPosGeom,
          getAnchor       as bounPosAnchor,
-         getEditSchema   as bounPosGetEditSchema,
+         getTtStateSchema as bounPosGetTtStateSchema,
+         getTtState       as bounPosGetTtState,
+         applyTtState     as bounPosApplyTtState,
          edit            as bounPosEdit,
          computeBoundaryRects,
          computePositionSnapPoints,
@@ -291,7 +297,7 @@ function renderToysLayer() {
   layer.innerHTML = '';
 
   listToys(_yToys, _yToyMeta).forEach(({ svgEl, meta }) => {
-    // Stamp color so toys.getEditSchema(svgEl) can read it without meta access.
+    // Stamp color so toys.getTtStateSchema(svgEl) can read it without meta access.
     if (meta?.color) svgEl.dataset.toyColor = meta.color;
     svgEl.style.cursor = 'grab';
     layer.appendChild(svgEl);
@@ -605,24 +611,24 @@ const App = {
   },
 
   /**
-   * Return the edit schema for the currently selected element, decorated
+   * Return the ttStateSchema for the currently selected element, decorated
    * with `ltype` and `id`.  Returns null when nothing is selected.
    *
-   * Delegates to the layer-scoped module's getEditSchema(svgEl) so that
+   * Delegates to the layer-scoped module's getTtStateSchema(svgEl) so that
    * app.js stays ignorant of per-type field definitions.
    */
-  getElementEditSchema: () => {
+  getElementTtStateSchema: () => {
     if (!_selectedId) return null;
     const svgEl = _svgEl?.querySelector(`[data-yid="${_selectedId}"]`);
     if (!svgEl) return null;
     const ltype = layerForElement(svgEl);
     let schema;
     if (ltype === 'drawing') {
-      schema = drawingGetEditSchema(svgEl);
+      schema = drawingGetTtStateSchema(svgEl);
     } else if (ltype === 'toy') {
-      schema = toyGetEditSchema(svgEl);
+      schema = toyGetTtStateSchema(svgEl);
     } else if (ltype === 'boundaries-positions') {
-      schema = bounPosGetEditSchema(svgEl);
+      schema = bounPosGetTtStateSchema(svgEl);
     } else {
       return null;
     }
@@ -674,30 +680,25 @@ const App = {
     if (ltype === 'toy') {
       const yEl = findToy(_yToys, id);
       if (!yEl) return;
-      const snap = yEl.getAttributes();
-      _undoStack.push({ op: 'del', layer: 'toy', attrs: snap, meta: _yToyMeta.get(id) });
+      const state = toyGetTtState(yEl);
+      _undoStack.push({ op: 'del', layer: 'toy', state });
       deleteToy(_ydoc, _yToys, _yToyMeta, id);
       addHistory(`deleted ${id.slice(0, 6)}`, { elType: 'toy' });
     } else if (ltype === 'boundaries-positions') {
       const yEl = bounPosFindEl(_yBounPos, id);
       if (!yEl) return;
-      const bounPosType = yEl.getAttribute('data-bounpos-type') ?? 'boundary';
-      const gAttrs  = yEl.getAttributes();
-      // Store the <path> child's d separately (needed for undo reconstruction)
-      const yPath   = yEl.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'path');
-      const pathD   = yPath?.getAttribute('d') ?? '';
-      _undoStack.push({ op: 'del', layer: 'boundaries-positions', bounPosType,
-        attrs: { ...gAttrs, d: pathD }, meta: _yBounPosMeta.get(id) });
+      const state = bounPosGetTtState(yEl);
+      _undoStack.push({ op: 'del', layer: 'boundaries-positions', state });
       bounPosDeleteEl(_ydoc, _yBounPos, _yBounPosMeta, id);
-      addHistory(`deleted ${bounPosType} ${id.slice(0, 12)}`,
+      addHistory(`deleted ${state.bounPosType} ${id.slice(0, 12)}`,
         { elType: 'boundaries-positions' });
     } else {
       const yEl = findDrawing(_yDrawing, id);
       if (!yEl) return;
-      const snap = yEl.getAttributes();
-      _undoStack.push({ op: 'del', layer: 'drawing', attrs: snap, meta: _yDrawingMeta.get(id) });
+      const state = drawingGetTtState(yEl);
+      _undoStack.push({ op: 'del', layer: 'drawing', state });
       deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, id);
-      addHistory(`deleted ${id.slice(0, 6)}`, { fill: snap.fill, elType: yEl.nodeName });
+      addHistory(`deleted ${id.slice(0, 6)}`, { fill: state?.fill, elType: yEl.nodeName });
     }
     App.addLog(`deleted ${id.slice(0, 6)}`, 'local');
     if (id === _selectedId) App.select(null);
@@ -909,32 +910,20 @@ const App = {
       }
     } else if (op.op === 'del') {
       if (op.layer === 'toy') {
-        // Toy undo-delete is not yet implemented — toys require an async fetch
-        // to rebuild the Yjs tree. Skip silently for now (tracked for #7 follow-up).
-        UI.toast('Cannot undo toy delete', 'warn');
-        return;
+        toyApplyTtState(_ydoc, _yToys, _yToyMeta, op.state).then(() => {
+          addHistory(`undid: delete toy ${op.state.id.slice(0, 6)}`, { elType: 'toy' });
+          UI.toast('Undone');
+        }).catch(err => {
+          UI.toast('Cannot undo toy delete', 'warn');
+          App.addLog(`undo toy delete failed: ${err.message}`, 'del');
+        });
+        return; // async — toast fired inside .then()
       } else if (op.layer === 'boundaries-positions') {
-        const { x, y, w, h } = pathToRect(op.attrs.d ?? 'M0,0 L100,0 L100,100 L0,100 Z');
-        if (op.bounPosType === 'pos-set') {
-          const genType  = op.attrs['data-gen-type']  ?? 'square';
-          const genParam = Number(op.attrs['data-gen-param'] ?? 80);
-          const snapRadius = Number(op.attrs['snap-radius'] ?? 30);
-          const circles = gridFillExtent(x, y, w, h, genType, genParam);
-          createPositionSetElement(_ydoc, _yBounPos, _yBounPosMeta, {
-            id: op.attrs.id, name: op.attrs.name ?? op.attrs.id,
-            snapRadius, genType, genParam, x, y, w, h, circles, author: op.meta?.author,
-          });
-          addHistory(`undid: delete pos-set ${op.attrs.id.slice(0, 12)}`);
-        } else {
-          addBoundary(_ydoc, _yBounPos, _yBounPosMeta, {
-            id: op.attrs.id, name: op.attrs.name ?? op.attrs.id,
-            x, y, w, h, author: op.meta?.author,
-          });
-          addHistory(`undid: delete boundary ${op.attrs.id.slice(0, 12)}`);
-        }
+        bounPosApplyTtState(_ydoc, _yBounPos, _yBounPosMeta, op.state);
+        addHistory(`undid: delete ${op.state.bounPosType} ${op.state.id.slice(0, 12)}`);
       } else {
-        addDrawing(_ydoc, _yDrawing, _yDrawingMeta, { ...op.attrs, ...op.meta, id: op.attrs.id });
-        addHistory(`undid: delete ${op.attrs.id.slice(0, 6)}`, { fill: op.attrs.fill, elType: op.attrs.type });
+        drawingApplyTtState(_ydoc, _yDrawing, _yDrawingMeta, op.state);
+        addHistory(`undid: delete ${op.state.id.slice(0, 6)}`, { fill: op.state.fill, elType: op.state.type });
       }
     } else if (op.op === 'move') {
       if (op.layer === 'toy') {

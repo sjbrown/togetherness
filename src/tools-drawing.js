@@ -1,44 +1,39 @@
 /**
  * tools-drawing.js — drawing-layer tool registry
  *
- * Authority for which tools exist on the 'drawing' layer and what options
- * each exposes. ui.js asks App for this; it never hard-codes rect/circle.
- *
- * This file is purely the *tool palette* description — it does not touch Yjs.
+ * Authority for which tools exist on the 'drawing' layer (rect, circle) and
+ * what options each exposes. ui.js asks App for this; it never hard-codes
+ * shape names.
  */
 
-import { swatches, stepper, range } from './tools-schema.js';
-
-const svg = (inner) =>
-  `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+import { swatches, number } from './tools-schema.js';
 
 export const LAYER = 'drawing';
 
 export const TOOLS = [
   {
-    name:  'rect',
-    label: 'Rect',
-    layer: LAYER,
-    icon:  svg('<rect x="4" y="6" width="16" height="12" rx="2"/>'),
-    // Default params live here too — App seeds ToolMode from these.
+    name:    'rect',
+    label:   'Rect',
+    layer:   LAYER,
+    icon:    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>',
     defaults: { fill: '#c8941e', cornerR: 8, strokeW: 1.5, opacity: 0.8 },
     options: [
       swatches('fill', 'Fill'),
-      stepper('cornerR', 'Corner radius', { min: 0,   max: 40, step: 2 }),
-      stepper('strokeW', 'Stroke width',  { min: 0.5, max: 8,  step: 0.5 }),
-      range('opacity', 'Opacity', { min: 10, max: 100 }),
+      number('cornerR', 'Corner radius', { min: 0,   max: 40, step: 2 }),
+      number('strokeW', 'Stroke width',  { min: 0.5, max: 8,  step: 0.5 }),
+      number('opacity', 'Opacity',       { min: 0,   max: 1,  step: 0.05 }),
     ],
   },
   {
-    name:  'circle',
-    label: 'Circle',
-    layer: LAYER,
-    icon:  svg('<circle cx="12" cy="12" r="8"/>'),
+    name:    'circle',
+    label:   'Circle',
+    layer:   LAYER,
+    icon:    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/></svg>',
     defaults: { fill: '#5a7ea8', strokeW: 1.5, opacity: 0.8 },
     options: [
       swatches('fill', 'Fill'),
-      stepper('strokeW', 'Stroke width', { min: 0.5, max: 8, step: 0.5 }),
-      range('opacity', 'Opacity', { min: 10, max: 100 }),
+      number('strokeW', 'Stroke width', { min: 0.5, max: 8,  step: 0.5 }),
+      number('opacity', 'Opacity',      { min: 0,   max: 1,  step: 0.05 }),
     ],
   },
 ];

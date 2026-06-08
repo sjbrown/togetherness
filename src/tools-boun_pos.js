@@ -10,7 +10,7 @@
  * on d.type in finishDraft.
  */
 
-import { stepper } from './tools-schema.js';
+import { number } from './tools-schema.js';
 
 export const LAYER = 'boundaries-positions';
 
@@ -33,8 +33,8 @@ export const TOOLS = [
     icon:     svg('<rect x="3" y="3" width="18" height="18" rx="0"/><circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none"/><circle cx="16" cy="8" r="1.5" fill="currentColor" stroke="none"/><circle cx="8" cy="16" r="1.5" fill="currentColor" stroke="none"/><circle cx="16" cy="16" r="1.5" fill="currentColor" stroke="none"/>'),
     defaults: { spacing: 80, 'snap-radius': 30 },
     options:  [
-      stepper('spacing',     'Grid spacing', { min: 20, max: 200, step: 4 }),
-      stepper('snap-radius', 'Snap radius',  { min: 5,  max: 100, step: 1 }),
+      number('spacing',     'Grid spacing', { min: 20, max: 200, step: 4 }),
+      number('snap-radius', 'Snap radius',  { min: 5,  max: 100, step: 1 }),
     ],
   },
   {
@@ -44,8 +44,8 @@ export const TOOLS = [
     icon:     svg('<polygon points="12,3 20,7.5 20,16.5 12,21 4,16.5 4,7.5" stroke-dasharray="3 1"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/>'),
     defaults: { 'hex-size': 40, 'snap-radius': 30 },
     options:  [
-      stepper('hex-size',    'Hex size',    { min: 15, max: 100, step: 5 }),
-      stepper('snap-radius', 'Snap radius', { min: 5,  max: 100, step: 1 }),
+      number('hex-size',    'Hex size',    { min: 15, max: 100, step: 5 }),
+      number('snap-radius', 'Snap radius', { min: 5,  max: 100, step: 1 }),
     ],
   },
 ];
