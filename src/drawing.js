@@ -323,11 +323,13 @@ export function getTtStateSchema(svgElOrType) {
   const { schema } = def;
   const reverseMap = Object.fromEntries(Object.entries(def.attrMap ?? {}).map(([k, v]) => [v, k]));
   if (!svgElOrType || typeof svgElOrType === 'string') {
-    return { label: schema.label, ...schema.values, types: schema.types };
+    const { id: _id, type: _type, ...rest } = schema.values;
+    return { label: schema.label, ...rest, types: schema.types };
   }
   // Element present — read current values from DOM, mapping SVG attr names back to schema keys.
   const values = {};
   for (const k of Object.keys(schema.types)) {
+    if (k === 'id' || k === 'type') continue;  // internal — never in the returned value bag
     const svgAttr = (def.attrMap ?? {})[k] ?? k;
     values[k] = svgElOrType.getAttribute(svgAttr) ?? schema.values[k];
   }

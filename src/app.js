@@ -649,7 +649,7 @@ const App = {
     } else {
       return null;
     }
-    return { ltype, id: _selectedId, ...schema };
+    return { ltype, ...schema, id: _selectedId };
   },
 
   /**
