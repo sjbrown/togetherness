@@ -433,8 +433,8 @@ body {
   <aside class="panel">
 
     <div class="wordmark fade-in">
-      <h1 class="wordmark-title">crdt<span>-svg</span></h1>
-      <div class="wordmark-sub">Collaborative Tabletop Tables</div>
+      <h1 class="wordmark-title">Togetherness Table</span></h1>
+      <div class="wordmark-sub">Collaborative Tabletop Games</div>
     </div>
 
     <!-- Profile -->
@@ -933,7 +933,7 @@ function drawGradientSwatch(canvas, gradObj) {
 }
 
 // ── Storage ───────────────────────────────────────────────────────────────
-const TABLES_KEY = 'crdt_svg_tables';
+const TABLES_KEY = 'tt_tables';
 
 function loadTables() {
   try { return JSON.parse(localStorage.getItem(TABLES_KEY)) || []; } catch { return []; }

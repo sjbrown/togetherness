@@ -272,7 +272,7 @@ export const CURRENT_SCHEMA = 4;
 const { ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, yBounPos, yBounPosMeta } = makeDoc();
 
 // ── Persistence ─────────────────────────────────────────────────────────────
-const TABLES_KEY = 'crdt_svg_tables';
+const TABLES_KEY = 'tt_tables';
 function touchTableRecord(id) {
   let tables = [];
   try { tables = JSON.parse(localStorage.getItem(TABLES_KEY)) || []; } catch {}
