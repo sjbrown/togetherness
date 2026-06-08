@@ -1,0 +1,783 @@
+<html>
+<head>
+<title>Deckahedron</title>
+<meta charset="utf-8">
+
+<!--
+ The SVG viewport is the scrolling / panning / zooming area, so
+ prevent touch events from zooming into the page
+ ( from https://www.html5rocks.com/en/mobile/touchandmouse/ )
+-->
+<meta name="viewport" content="width=device-width,user-scalable=no">
+
+<script src="./js/base32.js"></script>
+<script src="./js/svg.js"></script>
+<script src="index.js"></script>
+<script src="./js/utils.js"></script>
+
+<!-- polyfill Promises for Internet Explorer -->
+<script src="https://cdn.jsdelivr.net/npm/promise-polyfill@8/dist/polyfill.min.js"></script>
+
+<link href="fonts/URWBookman-DemiItalic.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="fonts/URWBookman-Demi.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="fonts/URWBookman-LightItalic.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+<link href="fonts/URWBookman-Light.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+
+<style>
+.chooser-btn-outline:hover {
+  stroke: gold;
+  stroke-width: 10;
+}
+body {
+  background-image: url(../svg/viewport_background.svg);
+  background-size: 100% 100%;
+}
+@font-face {
+  font-family: 'URW Bookman';
+  src: url('fonts/URWBookman-Light.woff2') format('woff2');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'URW Bookman';
+  src: url('fonts/URWBookman-LightItalic.woff2') format('woff2');
+  font-weight: 300;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'URW Bookman';
+  src: url('fonts/URWBookman-Demi.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'URW Bookman';
+  src: url('fonts/URWBookman-DemiItalic.woff2') format('woff2');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+text {
+  font-family: 'URW Bookman', serif;
+  font-weight: 300;    /* or 700 */
+  font-style: italic;  /* or normal */
+}
+
+svg text {
+  font-family: 'URW Bookman';
+}
+
+svg tspan {
+  font-family: 'URW Bookman';
+}
+
+.hotkey {
+  text-decoration: underline;
+  font-weight: bold;
+}
+
+.select-card {
+  margin-right: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.select-card.is-selected {
+  outline: 2px solid gold;
+  outline-offset: 1px;
+}
+
+.deckahedron-count circle {
+  fill: white;
+  fill-opacity: 0.8;
+  stroke: black;
+  stroke-width: 1;
+}
+.deckahedron-count.is-low circle {
+  fill: red;
+  fill-opacity: 1;
+  stroke-width: 3;
+}
+
+</style>
+
+<link rel="stylesheet" href="./bulma.css">
+<link rel="stylesheet" type="text/css" href="animate.css">
+
+<!-- Bulma overrides -->
+<style>
+/* MUST go AFTER Bulma import */
+@media screen and (max-width: 900px) {
+  .modal-card {
+    height: 60vh;
+    background-image: url(../svg/viewport_background.svg);
+  }
+}
+:root {
+  /* Optional global background & text */
+  --background-color: 30, 40%, 10%;   /* very dark brownish-green */
+  --text-color:       120, 10%, 95%;  /* off-white for readability */
+
+  /* Primary (forest green) */
+  --bulma-primary:       120, 40%, 20%;
+  --bulma-primary-invert: hsl(0, 100%, 95%);
+
+  /* Link (mossy green) */
+  --bulma-link:          120, 30%, 30%;
+
+  /* Info (pine) */
+  --bulma-info:          120, 35%, 25%;
+
+  /* Success (olive) */
+  --bulma-success:       80, 30%, 40%;
+
+  /* Warning (walnut brown) */
+  --bulma-warning:       30, 40%, 25%;
+
+  /* Danger (rusty brown) */
+  --bulma-danger:        10, 60%, 35%;
+}
+.modal-card-head {
+  background-color: var(--bulma-primary);
+  color: var(--bulma-primary-invert);
+  background-image: url(../svg/viewport_background.svg);
+}
+.modal-card-foot {
+  background-color: var(--bulma-primary);
+  color: var(--bulma-primary-invert);
+  background-image: url(../svg/viewport_background.svg);
+}
+.modal-card-title {
+  font-family: 'URW Bookman';
+  font-weight: 300;
+  background-color: var(--bulma-primary);
+  color: var(--bulma-primary-invert);
+}
+.modal-card-body {
+  background-color: var(--bulma-primary);
+  color: var(--bulma-primary-invert);
+  background-image: url(../svg/viewport_background.svg);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  background-position: center center;
+}
+.modal-card-body h1 {
+  background-color: var(--bulma-primary);
+  color: var(--bulma-primary-invert);
+}
+.modal-card-body button {
+  color: white !important;
+  background: none;
+  font-weight: bold;
+  border: white solid var(--bulma-button-border-width) !important;
+  font-family: 'URW Bookman';
+  font-weight: 700;
+}
+.modal-card-body button:hover {
+  border: gold solid var(--bulma-button-border-width) !important;
+}
+.modal .closeButton {
+  height: 2.25rem;
+  width: 2.25rem;
+  min-height: 2.25rem;
+  min-width: 2.25rem;
+}
+</style>
+
+</head><body>
+<script>
+var table_border_rect
+var svg_table
+var table_lines
+var layer_objects
+var layer_ui
+var viewport
+var origViewportSize = [800,1200]
+
+function createLayer(id) {
+  layer = svg_table.group()
+  layer.attr({
+    id: id,
+  })
+  layer.addClass('layer')
+  layer.addClass(id)
+  return layer
+}
+
+function table_change_background(url) {
+  fetch(url)
+  .then(response => response.text())
+  .then(svgText => {
+    // Parse the SVG string
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgText, 'image/svg+xml');
+    const svgTag = doc.querySelector('svg');
+    innerSvg = SVG(svgTag)
+
+    const width = innerSvg.width() || 100;
+    const height = innerSvg.height() || 100;
+
+    const pattern = svg_table.defs().pattern(width, height, function(add) {
+      add.image(url).size(width, height);
+    });
+
+    bgRect = SVG(byId('svg_table_bg_rect'))
+    bgRect.fill(pattern)
+  });
+}
+
+
+function initSvgTable() {
+  // Create a fresh <svg> and append it into the viewport
+  svg_table = SVG()
+    .addTo(viewport)
+    .size(origViewportSize[0], origViewportSize[1])
+    .id('svg_table')
+  injectURWBookmanCSS(svg_table.node)
+
+  bgRect = svg_table.rect(origViewportSize[0], origViewportSize[1])
+    .id('svg_table_bg_rect')
+  table_change_background('../svg/bg_hexagons.svg')
+
+  layer_objects = createLayer('layer_objects')
+  layer_ui = createLayer('layer_ui')
+}
+
+function initViewport() {
+  viewport = SVG()
+    .addTo('#gamearea')
+    .size('100vw', '100vh')
+  viewport.attr({
+    id: 'svg_viewport',
+    overflow: 'scroll',
+    width: qs('body').clientWidth,
+    viewBox: `0 0 ${origViewportSize[0]} ${origViewportSize[1]}`,
+  })
+  viewport.css('overflow', 'scroll')
+  viewport.css('background-image', 'url(../svg/viewport_background.svg)')
+  viewport.css('background-size', '100% 100%')
+  viewport.css('background-position', 'center center')
+  viewport.css('background-repeat', 'no-repeat')
+
+  table_border_rect = viewport.rect()
+  table_border_rect.attr({
+     x: -1,
+     y: -1,
+     rx: 0,
+     ry: 0,
+     width: origViewportSize[0] + 2,
+     height: origViewportSize[1] + 2,
+     fill: 'none',
+     stroke: 'black',
+     'stroke-width': 10,
+     'stroke-opacity': 0.2,
+  })
+}
+
+function initSVGJS() {
+  // Override the id-generating function of the svg.js library
+  SVG.eid = (name) => {
+    return name + '_' + base32.short_id()
+  }
+}
+
+function initHUDMenus() {
+  function expandMenusOnWidescreens() {
+    if ( qs('body').clientWidth > 1200 ) {
+      qs('#collapsetoggle-right').checked = true
+    }
+  }
+  expandMenusOnWidescreens()
+}
+
+async function initTableLines() {
+  table_lines = await import_foreign_svg('lines.svg')
+  injectURWBookmanCSS(table_lines.node)
+  table_lines.cx(svg_table.cx())
+  table_lines.cy(svg_table.cy())
+  table_lines.node.querySelectorAll('g .centermarker').forEach((el, idx) => {
+    el.style.opacity = '0'
+  })
+  svg_table.add(table_lines)
+}
+
+async function initAsyncObjects() {
+  //split this out into its own function so that the fetches are ordered
+  await initTableLines()
+  results.init(svg_table)
+  await deckahedron.init(svg_table)
+  flipArea.init(svg_table)
+  discard.init(svg_table)
+  exhaustion.init(svg_table)
+  suit_chooser.init(svg_table)
+  revealArea.init(svg_table)
+}
+
+function injectURWBookmanCSS(svgEl) {
+  const css = `
+    @font-face {
+      font-family: 'URW Bookman';
+      src: url('fonts/URWBookman-Light.woff2') format('woff2');
+      font-weight: 300;
+      font-style: normal;
+    }
+    @font-face {
+      font-family: 'URW Bookman';
+      src: url('fonts/URWBookman-LightItalic.woff2') format('woff2');
+      font-weight: 300;
+      font-style: italic;
+    }
+    @font-face {
+      font-family: 'URW Bookman';
+      src: url('fonts/URWBookman-Demi.woff2') format('woff2');
+      font-weight: 700;
+      font-style: normal;
+    }
+    @font-face {
+      font-family: 'URW Bookman';
+      src: url('fonts/URWBookman-DemiItalic.woff2') format('woff2');
+      font-weight: 700;
+      font-style: italic;
+    }
+
+    text {
+      font-family: 'URW Bookman', serif;
+    }
+  `;
+
+  const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+  style.setAttribute('type', 'text/css');
+  style.textContent = css;
+
+  // Insert the style as the first child of the SVG root
+  svgEl.insertBefore(style, svgEl.firstChild);
+}
+
+
+SVG.on(document, 'DOMContentLoaded', () => {
+  initSVGJS()
+
+  initHUDMenus()
+
+  initViewport()
+
+  initSvgTable()
+
+  initAsyncObjects()
+
+  window.addEventListener("resize", viewportToGameArea)
+})
+
+
+function viewportToGameArea() {
+  let g = byId('gamearea')
+  viewport.width(g.clientWidth)
+  viewport.height(g.clientHeight)
+}
+
+function isFirefox() {
+  console.log(navigator.userAgent.toLowerCase())
+  return navigator.userAgent.toLowerCase().includes('firefox');
+}
+
+function getFirefoxDownloadLink() {
+  const ua = navigator.userAgent || navigator.vendor || window.opera;
+  if (/android/i.test(ua)) {
+    return 'https://play.google.com/store/apps/details?id=org.mozilla.firefox';
+  }
+  if (/iPad|iPhone|iPod/.test(ua) && !window.MSStream) {
+    return 'https://apps.apple.com/app/id989804926';
+  }
+  return 'https://www.mozilla.org/firefox/new/';
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  if (!isFirefox()) {
+    const modal = document.getElementById('browserModal');
+    const link = document.getElementById('firefoxLink');
+    link.href = getFirefoxDownloadLink();
+    modal.classList.add('is-active');
+  }
+});
+
+</script>
+
+<!-- ==================================================================== -->
+<style>
+#gamearea {
+  max-width: 100%;
+  min-width: 80%;
+  min-height: 60%;
+  background-color: #efe;
+}
+
+</style>
+
+  <div id="gamearea" contextmenu="gamemenu">
+  <svg width="0" height="0">
+  <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
+    <feColorMatrix id="recolorize-filter-matrix" type="matrix"
+       values="0.9 0.0 0.0 0.0  0.0
+               0.9 0.0 0.0 0.0  0.0
+               0.9 0.0 0.0 0.0  0.0
+               0.0 0.0 0.0 1.0  0.0" />
+  </filter>
+  </svg>
+  </div>
+<!-- ==================================================================== -->
+<!-- ==================================================================== -->
+
+<!-- ==================================================================== -->
+<style>
+.hud_overlay {
+  pointer-events: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  height: auto;
+}
+
+.hudmenu {
+  pointer-events: auto;
+  position: fixed;
+  display: flex;
+  gap: 0.5rem;
+  flex-direction: column-reverse;
+}
+
+.hudmenu-left {
+  bottom: 1rem;
+  left: 1rem;
+}
+
+.hudmenu-right {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  height: auto;
+  justify-content: center;
+}
+
+.hudmenu .collapsegroup {
+  display: flex;
+  flex-direction: column;
+}
+
+#hud_overlay_top {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: auto;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+}
+
+.hudmenu-top {
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+}
+
+.hudmenu .btn {
+  padding: 0.75rem;
+  border-radius: 50%;
+  background: #333;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+
+.hudmenu-right {
+  left: auto;
+  right: 0;
+}
+
+#hud_overlay_left {
+    justify-content: flex-end;
+  }
+#hud_overlay_right {
+    justify-content: flex-end;
+  }
+
+.hudmenu .collapsegroup {
+  display: none;
+  flex-direction: column;
+}
+
+.hudmenu input[type="checkbox"]:checked ~ .collapsegroup {
+    display: flex;
+    max-height: auto;
+}
+
+.hudmenu input[type="checkbox"]:checked + label .collapsed {
+  display: none;
+}
+
+.hudmenu input[type="checkbox"]:not(:checked) + label .expanded {
+  display: none;
+}
+
+.hudmenu input[type="checkbox"]:not(:checked) + label .collapsed {
+  display: inline;
+}
+
+.hudmenu input[type="checkbox"]:checked + label .expanded {
+  display: inline;
+}
+
+.hudmenu .btn {
+  min-width: 7em;
+  min-height: 7em;
+  padding: 1em;
+  font-size: 8pt;
+  border-radius: 10px;
+  background-color: #030303;
+  opacity: 80%;
+}
+.hudmenu .btn:hover {
+  background-color: #000000;
+  opacity: 100%;
+  color: #ffffff;
+}
+.hudmenu .btn:focus {
+  background-color: #a0a0a0;
+}
+.hudmenu button[accessKey]::first-letter {
+  text-decoration: underline;
+}
+@media only screen and (max-height: 600px) {
+  .hudmenu .btn {
+    min-height: 3em;
+  }
+}
+
+</style>
+<script>
+// Do not scroll when swiping around on a menu
+window.addEventListener('load', () => {
+  document.querySelectorAll('.hudmenu').forEach(el => {
+    el.addEventListener('scroll', (evt) => {
+      evt.preventDefault()
+      evt.stopPropagation()
+    })
+    el.addEventListener('touchmove', (evt) => {
+      evt.preventDefault()
+      evt.stopPropagation()
+    })
+  })
+})
+</script>
+
+<!-- HUD RIGHT ========================================================= -->
+
+<div class="hud_overlay" id="hud_overlay_right">
+<section class="hudmenu hudmenu-right">
+  <!-- CSS/HTML hack to save the collapse / expand state in an invisible checkbox -->
+  <input type="checkbox" id="collapsetoggle-right" style="display: none" />
+  <label class="hamburger" for="collapsetoggle-right">
+    <div class="btn">
+      <img class="collapsed" src="../img/ellipsis.svg" height="32" />
+      <img class="expanded" src="../img/collapse.svg" height="32" />
+    </div>
+  </label>
+
+  <div class="collapsegroup" >
+
+    <button id="blessing_button" class="btn btn-small" title="Add Blessing Card"
+      onclick="blessingDeck.draw()"
+      >
+      + Blessing
+    </button>
+
+    <button id="wound_button" class="btn btn-small" title="Add Wound Card"
+      onclick="woundDeck.draw()"
+      >
+      + Wound
+    </button>
+
+    <button id="help_button" class="btn btn-small" title="Help/About this project"
+            onclick="qs('#modal_help').classList.add('is-active')"
+      >
+      Help / About
+    </button>
+
+  </div>
+
+</section>
+</div>
+<!-- END HUD RIGHT ====================================================== -->
+
+
+  <div class="modal" id="modal_help">
+    <div class="modal-background"></div>
+    <div class="modal-card">
+      <header class="modal-card-head">
+        <p class="modal-card-title">Help / About</p>
+        <button class="delete closeButton" aria-label="close"
+            onclick="qs('#modal_help').classList.remove('is-active')"
+          ></button>
+      </header>
+      <section class="modal-card-body">
+        <div class="content">
+<h1>About the Deckahedron App</h1>
+<p>
+This app provides a digital version of the <b>Deckahedron</b>, a custom 20-card deck used in the tabletop RPG <i><a href="https://1kfa.com">A Thousand Faces of Adventure</a></i>.
+</p>
+<p>
+Each square card has four suits, one per edge:
+</p>
+<ol>
+  <li>Anvil</li>
+  <li>Blades</li>
+  <li>Crown</li>
+  <li>Dragon</li>
+</ol>
+
+<p>
+When a card is <i>flipped</i>, it shows a result beneath each suit symbol.
+These results represent degrees of success:
+</p>
+<ol>
+  <li>Shadow</li>
+  <li>Diminished Success</li>
+  <li>Success</li>
+  <li>Double Success</li>
+</ol>
+<p>
+Some flips also show a <i>secondary result</i>, such as an XP symbol or a critical hit icon.
+</p>
+<h1>Flipping for Results</h1>
+<p>
+Usually, a single card is flipped to resolve an action.
+However, you can also flip <i>with advantage</i> or <i>with disadvantage</i>:
+</p>
+<ul>
+  <li><b>Advantage</b>: Flip 2–3 cards and use the <b>best</b> result.</li>
+  <li><b>Disadvantage</b>: Flip 2–3 cards and take the <b>worst</b> result.</li>
+</ul>
+<p>
+Once resolved, the flipped cards should be moved to the <i>Discard Pile</i>.
+</p>
+<h1>Revealing for Damage</h1>
+<p>
+When a character takes damage, reveal cards and move them into the
+<i>Exhaustion Pile</i> to track stamina loss.
+</p>
+<p>
+For example, if a PC takes <b>3 damage</b>, reveal cards one at a time until
+<b>3 stamina symbols</b> have appeared. Then move all revealed cards into the
+<i>Exhaustion Pile</i>.
+</p>
+<h1>Managing the Deck</h1>
+<p>
+You may reshuffle the Discard Pile into the Deckahedron at any time.
+</p>
+<p>
+When a PC recovers stamina, you may move cards from the Exhaustion Pile back into the Discard Pile.
+</p>
+<h1>Using the App</h1>
+<ul>
+  <li>Click on the Deckahedron to **Flip** cards into the play area</li>
+  <li> Click on the Deckahedron to **Reveal** cards to exhaust</li>
+  <li> Click on cards in the **Discard** or **Exhaustion** areas to move them</li>
+</ul>
+<p>
+This app helps streamline flips, tracks zones visually, and ensures that the Deckahedron stays fast, fair, and fun.
+</p>
+<h1>Why A Thousand Faces of Adventure</h1>
+<p>
+A Thousand Faces of Adventure is not just a game -- it's a narrative engine that
+combines the deep storytelling of tabletop RPGs with the accessible mechanics of
+modern board games . Designed for gamers and storytellers of all stripes, this
+system helps you:
+<ol>
+  <li>Craft immersive, improvisational stories with your friends</li>
+  <li>Level up characters by stepping through the classic Hero's Journey</li>
+  <li>Use a streamlined 20-card deck to handle all outcomes—no math, no dice</li>
+  <li>Remove barriers to entry: no massive rulebooks, just intuitive flips and narrative stakes</li>
+</ol>
+<p>
+Whether you’re introducing board gamers to role-playing, or RPG veterans to board game structure, this system bridges both worlds in a way that’s elegant, engaging, and endlessly replayable.
+</p>
+<h1>Ready to Embark?</h1>
+<p>
+Thanks for choosing the Deckahedron app. Load your deck, flip your fate, and step into the story. May your flips bring bold triumphs—and thrilling challenges.
+</p>
+        </div>
+        <footer class="modal-card-foot">
+        <div class="buttons is-multiline">
+          <button class="button modal_button_template is-fullwidth is-outlined"
+                  onclick="qs('#modal_help').classList.remove('is-active')"
+            >Close</button>
+        </div>
+        </footer>
+      </section>
+    </div>
+  </div>
+
+
+  <div class="modal" id="modal_template">
+    <div class="modal-background"></div>
+    <div class="modal-card">
+      <header class="modal-card-head">
+        <p class="modal-card-title">Template Title</p>
+        <button class="delete closeButton" aria-label="close"></button>
+      </header>
+      <section class="modal-card-body">
+        <div class="buttons is-multiline">
+          <button class="button modal_button_template is-fullwidth is-outlined">Option 1</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="modal" id="error_modal">
+    <div class="modal-background"></div>
+    <div class="modal-card">
+      <header class="modal-card-head">
+        <p class="modal-card-title">Error</p>
+        <button class="delete closeButton"
+          aria-label="close"
+          onclick="this.closest('#error_modal').classList.remove('is-active')"
+          ></button>
+      </header>
+      <section class="modal-card-body">
+        <p class="msg has-text-warning mb-3">Message here...</p>
+        <div class="buttons is-multiline">
+          <button class="button modal_button_template is-large is-fullwidth"
+            onclick="this.closest('#error_modal').classList.remove('is-active')"
+            >OK</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="browserModal" class="modal">
+    <div class="modal-background"></div>
+    <div class="modal-card">
+      <header class="modal-card-head">
+        <p class="modal-card-title">Incompatible Browser!</p>
+      </header>
+      <section class="modal-card-body">
+        This app works in a browser that implements the SVG standard.
+        Currently the only browser that does this is <b>Firefox</b>.
+        To continue, download and install Firefox.
+       <p>Support for other browsers will arrive pending crowdfunding</p>
+      </section>
+      <footer class="modal-card-foot">
+        <a id="firefoxLink" class="button is-primary" target="_blank">Get Firefox</a>
+      </footer>
+    </div>
+  </div>
+
+</body>
+</html>
+
