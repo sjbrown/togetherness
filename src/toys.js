@@ -28,7 +28,7 @@ import * as Y from 'yjs';
 const SVG_NS   = 'http://www.w3.org/2000/svg'
 const XLINK_NS = 'http://www.w3.org/1999/xlink'
 
-import { swatches, number, bool } from './tools-schema.js';
+import { number, bool } from './tools-schema.js';
 
 const svg = (inner) =>
   `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
@@ -436,7 +436,7 @@ export const TOOLS = [
     layer: 'toys',
     defaults: { fill: '#a85e5e', label: '', size: 24 },
     options: [
-      swatches('fill', 'Token color'),
+      { kind: 'color-hsl', key: 'fill', label: 'Token color', show: ['add', 'edit', 'addQuick'] },
       number('size', 'Size', { min: 12, max: 64, step: 4 }),
       bool('showLabel', 'Show name label'),
     ],
@@ -449,7 +449,7 @@ export const TOOLS = [
     layer: 'toys',
     defaults: { fill: '#a8905e', faces: 6 },
     options: [
-      swatches('fill', 'Die color'),
+      { kind: 'color-hsl', key: 'fill', label: 'Die color', show: ['add', 'edit', 'addQuick'] },
       number('faces', 'Faces', { min: 4, max: 20, step: 2 }),
       bool('autoRoll', 'Roll on drop'),
     ],

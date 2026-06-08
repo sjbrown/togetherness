@@ -232,7 +232,7 @@ function renderSchemaField(key, value, typeSpec, ctx) {
   }
 
   // ── color picker ──────────────────────────────────────────────────────────
-  if (kind === 'swatches' || kind === 'color-hslo' || kind === 'color-hsl') {
+  if (kind === 'color-hslo' || kind === 'color-hsl') {
     const allowNone = kind === 'color-hslo';
     const colors    = allowNone ? ['none', ...palette] : palette;
     if (mode === 'edit') {
