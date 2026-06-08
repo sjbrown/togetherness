@@ -141,7 +141,14 @@ window.App = {
   getBackground: () => ({ url: 'img/bg_slatehex.png', width: 1384, height: 998 }),
   getDefaultBackgrounds: () => DEFAULT_BACKGROUNDS,
   getTool: (n) => toolById[n] ?? null,
-  getToolOptions: (n) => toolById[n]?.options ?? [],
+  getToolSchema: (n) => {
+    const def = toolById[n];
+    if (!def) return { types: {}, values: {} };
+    // For tools with a schema (from options + defaults)
+    const types  = Object.fromEntries((def.options ?? []).map(f => [f.key, f]));
+    const values = def.defaults ?? toolParams[n] ?? {};
+    return { label: def.label, types, values };
+  },
   getToolParams: (n) => toolParams[n] ?? {},
   setToolParam: (n,k,v) => { (toolParams[n] ??= {})[k] = v; },
   stepToolParam: (n,k,d,min,max) => { const p=(toolParams[n]??={}); p[k]=Math.max(min,Math.min(max,(+p[k]||0)+d)); },
@@ -201,9 +208,10 @@ story('Pill', 'selection action strip', () =>
 
 // ── TOOL OPTIONS stories (schema-driven) ───────────────────────────────────────
 for (const t of [...SHAPE_TOOLS, ...TOY_TOOLS, SELECT_TOOL]) {
+  const schema = App.getToolSchema(t.name);
   story('Tool options', t.label, () =>
     box('toolopts-clone', `<div id="toolOpts" style="display:block;position:static;min-width:240px">${
-      UI.toolOptsHTML({ label:t.label, fields:t.options, values:{...(t.defaults??{})}, palette:PALETTE })
+      UI.toolOptsHTML({ label: t.label, toolName: t.name, schema, values: toolParams[t.name] ?? {}, palette: PALETTE })
     }</div>`));
 }
 
@@ -230,19 +238,22 @@ function panelFrame(title, bodyHTML, activeTab) {
 story('Panel · Tools', 'drawing layer', () =>
   panelFrame('Properties', UI.toolsBody({
     layer:'drawing', activeTool:'rect', tools:drawingTools, palette:PALETTE,
-    fill:'#c8941e', shapes:mockShapes, selectedId:'a',
+    activeToolSchema: App.getToolSchema('rect'),
+    activeToolParams: toolParams['rect'] ?? {},
   }), 'tools'), { full:false });
 
 story('Panel · Tools', 'toys layer', () =>
   panelFrame('Properties', UI.toolsBody({
     layer:'toys', activeTool:'marker', tools:toysTools, palette:PALETTE,
-    fill:'#a85e5e', shapes:[], selectedId:null,
+    activeToolSchema: App.getToolSchema('marker'),
+    activeToolParams: toolParams['marker'] ?? {},
   }), 'tools'));
 
 story('Panel · Tools', 'background layer', () =>
   panelFrame('Properties', UI.toolsBody({
     layer:'background', activeTool:'select', tools:[SELECT_TOOL], palette:PALETTE,
-    fill:null, shapes:[], selectedId:null,
+    activeToolSchema: App.getToolSchema('select'),
+    activeToolParams: toolParams['select'] ?? {},
     background: App.getBackground(),
     defaultBackgrounds: App.getDefaultBackgrounds(),
   }), 'tools'), { full: true });
@@ -272,17 +283,20 @@ story('Panel · Save', '', () =>
 // getViewScale, getMyColor, and getMyGradient from local data.
 
 import * as Overlay from '/overlay.js';
-import { getGeom, SHAPE_TYPES } from '/drawing.js';
+import { getGeom } from '/drawing.js';
 import { entityGradient } from '/entity_gradient.js';
 import { dragPlaceholderFilterSVG } from '/defs.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const myGrad = entityGradient('stories-user');
 
+// Minimal tag map for building plain SVG elements in stories (no CRDT needed).
+const SHAPE_TAG = { rect: 'rect', circle: 'circle' };
+
 // Build a plain SVG element for a shape (no CRDT needed).
 function shapeEl(type, geom, fill) {
-  const def = SHAPE_TYPES[type];
-  const el  = document.createElementNS(SVG_NS, def.tag);
+  const tag = SHAPE_TAG[type] ?? type;
+  const el  = document.createElementNS(SVG_NS, tag);
   el.setAttribute('fill', fill);
   el.setAttribute('stroke', 'none');
   for (const [k, v] of Object.entries(geom)) el.setAttribute(k, String(v));

@@ -21,7 +21,7 @@
  */
 
 import { initIcons }                              from './icons.js';
-import { SHAPE_TYPES, addDrawing, deleteDrawing,
+import { addDrawing, deleteDrawing,
          findDrawing, listDrawings, drawingsData,
          getGeom as drawingGeom,
          getAnchor as drawingAnchor,
@@ -140,8 +140,12 @@ function buildToolRegistry() {
   // toys layer
   TOY_TOOLS.forEach(register);
   _toolsByLayer['toys'] = [SELECT_TOOL, ...TOY_TOOLS];
-  // drawing layer
-  DRAW_TOOLS.forEach(register);
+  // drawing layer — seed params from SHAPE_TYPES schema defaults
+  DRAW_TOOLS.forEach(def => {
+    _toolById[def.name] = def;
+    const schema = drawingGetTtStateSchema(def.name);
+    _toolParams[def.name] = { ...schema };
+  });
   _toolsByLayer[DRAW_LAYER] = [SELECT_TOOL, ...DRAW_TOOLS];
 }
 
@@ -334,7 +338,7 @@ function renderDrawingList() {
     const id     = svgEl.getAttribute('data-yid');
     const attrs  = {};
     for (const at of svgEl.attributes) attrs[at.name] = at.value;
-    const def    = SHAPE_TYPES[drawingMeta?.type ?? attrs['data-type']] ?? SHAPE_TYPES.rect;
+    const def    = drawingGetTtStateSchema(drawingMeta?.type ?? svgEl.getAttribute('data-type') ?? 'rect');
     const item   = document.createElement('div');
     const author = drawingMeta?.author;
     item.className  = 'drawing-item' + (_selectedId === id ? ' selected' : '');
@@ -344,7 +348,7 @@ function renderDrawingList() {
     sw.style.background = attrs.fill;
     const lbl = document.createElement('div');
     lbl.className   = 'drawing-label';
-    lbl.textContent = def.label(attrs);
+    lbl.textContent = def.label;
     const own = document.createElement('div');
     own.className   = 'drawing-owner';
     own.textContent = author === _myId ? 'me' : (author?.slice(0, 5) ?? '?');
@@ -492,6 +496,19 @@ const App = {
   getTool:         (name)  => _toolById[name] ?? null,
   getToolOptions:  (name)  => _toolById[name]?.options ?? [],
   getToolParams:   (name)  => _toolParams[name] ?? {},
+  // Returns the full ttStateSchema for a tool — for drawing tools this comes from
+  // SHAPE_TYPES[name].schema; for other tools it falls back to a minimal schema
+  // built from the tool def's options array.
+  getToolSchema:   (name)  => {
+    const schema = drawingGetTtStateSchema(name);
+    if (schema && schema.types) return schema;          // drawing tool with SHAPE_TYPES entry
+    const def = _toolById[name];
+    if (!def) return { types: {}, values: {} };
+    // Non-drawing tools: build a schema from options + defaults
+    const types  = Object.fromEntries((def.options ?? []).map(f => [f.key, f]));
+    const values = def.defaults ?? _toolParams[name] ?? {};
+    return { label: def.label, types, values };
+  },
   getPeers:        () => {
     const out = [];
     _awareness.getStates().forEach((state, cid) => {
@@ -715,13 +732,12 @@ const App = {
     const yEl = findDrawing(_yDrawing, _selectedId);
     if (!yEl) return;
     const attrs = yEl.getAttributes();
-    const def   = SHAPE_TYPES[yEl.nodeName];
-    if (!def) return;
+    const type  = yEl.nodeName;
     const offset = { x: +(attrs.x ?? attrs.cx ?? 0) + 22, y: +(attrs.y ?? attrs.cy ?? 0) + 22 };
-    const geom   = def.tag === 'rect'
+    const geom   = type === 'rect'
       ? { x: offset.x, y: offset.y, width: +attrs.width, height: +attrs.height }
       : { cx: offset.x, cy: offset.y, r: +attrs.r };
-    App.commitDrawing({ type: yEl.nodeName, ...geom, fill: attrs.fill, stroke: attrs.stroke, 'stroke-width': attrs['stroke-width'], opacity: attrs.opacity });
+    App.commitDrawing({ ...attrs, ...geom, type, id: undefined, author: undefined });
   },
 
   // ── Drag lifecycle ────────────────────────────────────────────────────────
@@ -870,9 +886,8 @@ const App = {
     p[key] = (typeof value === 'string' && value !== '' && !isNaN(value)) ? +value : value;
     if (toolName === _activeTool) Canvas.setParams(p);
     // Live-apply visual params to a current selection
-    if (_selectedId && ['fill', 'strokeW', 'opacity'].includes(key)) {
-      const svgKey = key === 'strokeW' ? 'stroke-width' : key;
-      App.setDrawingAttr(_selectedId, svgKey, p[key]);
+    if (_selectedId && ['fill', 'stroke-width', 'opacity'].includes(key)) {
+      App.setDrawingAttr(_selectedId, key, p[key]);
     }
   },
   stepToolParam: (toolName, key, delta, min, max) => {
@@ -880,9 +895,8 @@ const App = {
     const next = +( (p[key] ?? 0) + delta ).toFixed(2);
     p[key] = Math.max(min, Math.min(max, next));
     if (toolName === _activeTool) Canvas.setParams(p);
-    if (_selectedId && ['strokeW', 'opacity'].includes(key)) {
-      const svgKey = key === 'strokeW' ? 'stroke-width' : key;
-      App.setDrawingAttr(_selectedId, svgKey, p[key]);
+    if (_selectedId && ['stroke-width', 'opacity'].includes(key)) {
+      App.setDrawingAttr(_selectedId, key, p[key]);
     }
   },
 

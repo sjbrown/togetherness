@@ -13,38 +13,76 @@ import * as Y from 'yjs';
 const SVG_NS   = 'http://www.w3.org/2000/svg';
 const XLINK_NS = 'http://www.w3.org/1999/xlink';
 
+// ── BBox helpers (private) ────────────────────────────────────────────────────
+function rectGetBBox(a)   { return { x: +a.x,         y: +a.y,         width: +a.width,  height: +a.height }; }
+function circleGetBBox(a) { return { x: +a.cx - +a.r, y: +a.cy - +a.r, width: 2 * +a.r, height: 2 * +a.r }; }
+
 // ── Shape-type registry ───────────────────────────────────────────────────────
-// One entry per drawable type. Everything that differs between a rect and a
-// circle lives here and nowhere else:
-//   tag       — SVG element name (also the Y.XmlElement nodeName)
-//   geomAttrs — which geometry attributes this type stores
-//   presAttrs — which presentation attributes this type stores
-//   fromDrag  — map a drag box {x,y,w,h} → this type's geometry attributes
-//   bbox      — axis-aligned bounding box {x,y,width,height} from stored attrs
-//   label     — short text for the shape-list row
+// Each entry has:
+//   tag     — SVG element name (also the Y.XmlElement nodeName)
+//   label   — fn(attrs) → short text for the shape-list row
+//   getBBox — fn(attrs) → {x,y,width,height}
+//   schema  — full ttStateSchema for this type; values are defaults,
+//             types entries carry `show` arrays to control which UI surfaces
+//             render each field:
+//               show absent / []          — never shown (geometry, internal ids)
+//               show includes 'add'       — Tools panel
+//               show includes 'edit'      — Edit panel
+//               show includes 'addQuick'  — toolOpts popup
 //
-// A tool name in index.html is just a key into this table, so adding a shape
-// type == adding one entry here (plus a button). No branching elsewhere.
+// Adding a shape type = adding one entry here (plus a button). No branching elsewhere.
 export const SHAPE_TYPES = {
   rect: {
-    tag: 'rect',
-    geomAttrs: ['x', 'y', 'width', 'height'],
-    presAttrs: ['fill', 'stroke', 'stroke-width', 'opacity'],
-    fromDrag: ({ x, y, w, h }) => ({ x, y, width: w, height: h }),
-    bbox: a => ({ x: +a.x, y: +a.y, width: +a.width, height: +a.height }),
-    label: a => `${a.width}×${a.height} @ ${a.x},${a.y}`,
+    tag:    'rect',
+    label:  a => `${a.width}×${a.height} @ ${a.x},${a.y}`,
+    getBBox: rectGetBBox,
+    // attrMap: schema key → actual SVG attribute name (where they differ)
+    attrMap: { 'corner-r': 'rx' },
+    schema: {
+      label: 'Rectangle',
+      values: {
+        id: '', type: 'rect',
+        x: 0, y: 0, width: 120, height: 80,
+        fill: '#c8941e', stroke: 'none', 'stroke-width': 1.5, opacity: 0.8, 'corner-r': 8,
+      },
+      types: {
+        id:             { show: [] },
+        type:           { show: [] },
+        x:              { show: [] },
+        y:              { show: [] },
+        width:          { show: [] },
+        height:         { show: [] },
+        fill:           { kind: 'swatches',                            show: ['add', 'edit', 'addQuick'] },
+        stroke:         { kind: 'color-hslo',                          show: ['edit'] },
+        'stroke-width': { kind: 'number', min: 0, step: 0.5,          show: ['edit'] },
+        opacity:        { kind: 'number', min: 0, max: 1, step: 0.05, show: ['edit'] },
+        'corner-r':     { kind: 'number', min: 0, max: 40, step: 2,   show: ['edit'] },
+      },
+    },
   },
   circle: {
-    tag: 'circle',
-    geomAttrs: ['cx', 'cy', 'r'],
-    presAttrs: ['fill', 'stroke', 'stroke-width', 'opacity'],
-    fromDrag: ({ x, y, w, h }) => ({
-      cx: x + Math.round(w / 2),
-      cy: y + Math.round(h / 2),
-      r:  Math.round(Math.min(w, h) / 2),
-    }),
-    bbox: a => ({ x: +a.cx - +a.r, y: +a.cy - +a.r, width: 2 * +a.r, height: 2 * +a.r }),
-    label: a => `r${a.r} @ ${a.cx},${a.cy}`,
+    tag:    'circle',
+    label:  a => `r${a.r} @ ${a.cx},${a.cy}`,
+    getBBox: circleGetBBox,
+    schema: {
+      label: 'Circle',
+      values: {
+        id: '', type: 'circle',
+        cx: 0, cy: 0, r: 46,
+        fill: '#5a7ea8', stroke: 'none', 'stroke-width': 1.5, opacity: 0.8,
+      },
+      types: {
+        id:             { show: [] },
+        type:           { show: [] },
+        cx:             { show: [] },
+        cy:             { show: [] },
+        r:              { show: [] },
+        fill:           { kind: 'swatches',                            show: ['add', 'edit', 'addQuick'] },
+        stroke:         { kind: 'color-hslo',                          show: ['edit'] },
+        'stroke-width': { kind: 'number', min: 0, step: 0.5,          show: ['edit'] },
+        opacity:        { kind: 'number', min: 0, max: 1, step: 0.05, show: ['edit'] },
+      },
+    },
   },
 };
 
@@ -52,9 +90,9 @@ export const SHAPE_TYPES = {
 
 /**
  * Add a drawing element to the doc.
- * attrs: { id, type, author, ...geometry, fill, stroke, 'stroke-width', opacity }
- * `type` is required and must be a key of SHAPE_TYPES. Geometry and presentation
- * keys are determined by that type's def (see SHAPE_TYPES).
+ * attrs: { id, type, author, ...all schema keys }
+ * `type` is required and must be a key of SHAPE_TYPES. All writable keys are
+ * determined by the type's schema (everything except id/type/author).
  */
 export function addDrawing(ydoc, yDrawing, yDrawingMeta, attrs) {
   const { type } = attrs;
@@ -63,11 +101,14 @@ export function addDrawing(ydoc, yDrawing, yDrawingMeta, attrs) {
   if (!def) throw new Error(`unknown shape type: ${type}`);
 
   const el = new Y.XmlElement(def.tag);
+  const defaults = def.schema.values;
+  const attrMap  = def.attrMap ?? {};
   ydoc.transact(() => {
     el.setAttribute('id', String(attrs.id));
-    for (const k of def.geomAttrs) el.setAttribute(k, String(attrs[k]));
-    for (const k of def.presAttrs) {
-      if (attrs[k] != null) el.setAttribute(k, String(attrs[k]));
+    for (const k of Object.keys(def.schema.types)) {
+      if (k === 'id' || k === 'type') continue;
+      const v = attrs[k] ?? defaults[k];
+      if (v != null) el.setAttribute(attrMap[k] ?? k, String(v));
     }
     yDrawing.insert(yDrawing.length, [el]);
     yDrawingMeta.set(attrs.id, { author: attrs.author, type, created: Date.now() });
@@ -146,8 +187,8 @@ export function getGeom(svgEl) {
   const def = SHAPE_TYPES[svgEl?.tagName];
   if (!def) return null;
   const a = {};
-  for (const k of def.geomAttrs) a[k] = svgEl.getAttribute(k);
-  return def.bbox(a);
+  for (const k of Object.keys(def.schema.types)) a[k] = svgEl.getAttribute(k);
+  return def.getBBox(a);
 }
 
 /**
@@ -265,45 +306,52 @@ export function drawingsData(yDrawing, yDrawingMeta) {
 // ── ttState / ttStateSchema ───────────────────────────────────────────────────
 
 /**
- * Return the ttStateSchema for any drawing element.
- * Presentation fields only — geometry is manipulated via mouse, not the Edit panel.
- * Also used to populate the Tool panel for new-element defaults.
+ * Return the ttStateSchema for a drawing element (or defaults if no element given).
+ * When called with an svgEl, values are read from live DOM attributes.
+ * When called without an argument (or with a type string), returns schema defaults.
  *
- * types values use the canonical field kinds from tools-schema.js:
- *   'color-hslo' | 'color-hsl' | 'string' | 'bool'
- *   | { kind:'number', min?, max?, step? }
+ * The `types` object carries `show` arrays so each UI surface knows which fields
+ * to render:
+ *   show includes 'add'       → Tools panel
+ *   show includes 'edit'      → Edit panel
+ *   show includes 'addQuick'  → toolOpts popup
+ *   show: []                  → not rendered anywhere (internal/geometry)
  */
-export function getTtStateSchema(svgEl) {
-  return {
-    fill:           svgEl.getAttribute('fill')         ?? 'none',
-    stroke:         svgEl.getAttribute('stroke')       ?? 'none',
-    'stroke-width': svgEl.getAttribute('stroke-width') ?? '1',
-    opacity:        svgEl.getAttribute('opacity')      ?? '1',
-    types: {
-      fill:           'color-hslo',
-      stroke:         'color-hslo',
-      'stroke-width': { kind: 'number', min: 0, step: 0.5 },
-      opacity:        { kind: 'number', min: 0, max: 1, step: 0.05 },
-    },
-  };
+export function getTtStateSchema(svgElOrType) {
+  const type = typeof svgElOrType === 'string'
+    ? svgElOrType
+    : (svgElOrType?.getAttribute?.('data-type') ?? svgElOrType?.tagName ?? 'rect');
+  const def = SHAPE_TYPES[type] ?? SHAPE_TYPES.rect;
+  const { schema } = def;
+  const reverseMap = Object.fromEntries(Object.entries(def.attrMap ?? {}).map(([k, v]) => [v, k]));
+  if (!svgElOrType || typeof svgElOrType === 'string') {
+    return { label: schema.label, ...schema.values, types: schema.types };
+  }
+  // Element present — read current values from DOM, mapping SVG attr names back to schema keys.
+  const values = {};
+  for (const k of Object.keys(schema.types)) {
+    const svgAttr = (def.attrMap ?? {})[k] ?? k;
+    values[k] = svgElOrType.getAttribute(svgAttr) ?? schema.values[k];
+  }
+  return { label: schema.label, ...values, types: schema.types };
 }
 
 /**
  * Snapshot the full serialisable state of a drawing Y.XmlElement.
- * Includes both geometry and presentation — everything needed to reconstruct
- * the element (e.g. for undo/redo or compact save). Author/created are omitted;
- * those are provenance, not element state.
+ * Reads all schema keys from Yjs attributes (mapping SVG attr names to schema keys).
  */
 export function getTtState(yEl) {
   if (!yEl) return null;
-  const attrs = yEl.getAttributes();
-  const type  = yEl.nodeName;  // 'rect' | 'circle'
-  const def   = SHAPE_TYPES[type];
-  const state = { id: attrs.id, type };
-  if (def) {
-    for (const k of [...def.geomAttrs, ...def.presAttrs]) {
-      if (attrs[k] != null) state[k] = attrs[k];
-    }
+  const type = yEl.nodeName;
+  const def  = SHAPE_TYPES[type];
+  if (!def) return null;
+  const attrs     = yEl.getAttributes();
+  const reverseMap = Object.fromEntries(Object.entries(def.attrMap ?? {}).map(([k, v]) => [v, k]));
+  const state = { type };
+  for (const k of Object.keys(def.schema.types)) {
+    const svgAttr = (def.attrMap ?? {})[k] ?? k;
+    if (attrs[svgAttr] != null) state[k] = attrs[svgAttr];
+    else if (attrs[k]   != null) state[k] = attrs[k];
   }
   return state;
 }
@@ -311,13 +359,11 @@ export function getTtState(yEl) {
 /**
  * Write a ttState snapshot back into the Yjs drawing fragment.
  * Creates the element if it doesn't exist; updates it if it does.
- * Used by undo/redo to reconstruct deleted elements.
  */
 export function applyTtState(ydoc, yDrawing, yDrawingMeta, state) {
   if (!state?.id || !state?.type) return;
   const existing = findDrawing(yDrawing, state.id);
   if (existing) {
-    // Update in place — only write keys present in the state snapshot.
     ydoc.transact(() => {
       for (const [k, v] of Object.entries(state)) {
         if (k === 'id' || k === 'type') continue;
