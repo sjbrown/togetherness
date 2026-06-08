@@ -43,7 +43,7 @@ export const SHAPE_TYPES = {
       values: {
         id: '', type: 'rect',
         x: 0, y: 0, width: 120, height: 80,
-        fill: '#c8941e', stroke: 'none', 'stroke-width': 1.5, opacity: 0.8, 'corner-r': 8,
+        fill: '#c8941e', stroke: 'none', 'stroke-width': 1.5, 'corner-r': 8,
       },
       types: {
         id:             { show: [] },
@@ -55,7 +55,6 @@ export const SHAPE_TYPES = {
         fill:           { kind: 'color-hsl',                            show: ['add', 'edit', 'addQuick'] },
         stroke:         { kind: 'color-hslo',                          show: ['edit'] },
         'stroke-width': { kind: 'number', min: 0, step: 0.5,          show: ['edit'] },
-        opacity:        { kind: 'number', min: 0, max: 1, step: 0.05, show: ['edit'] },
         'corner-r':     { kind: 'number', min: 0, max: 40, step: 2,   show: ['edit'] },
       },
     },
@@ -69,7 +68,7 @@ export const SHAPE_TYPES = {
       values: {
         id: '', type: 'circle',
         cx: 0, cy: 0, r: 46,
-        fill: '#5a7ea8', stroke: 'none', 'stroke-width': 1.5, opacity: 0.8,
+        fill: '#5a7ea8', stroke: 'none', 'stroke-width': 1.5,
       },
       types: {
         id:             { show: [] },
@@ -80,7 +79,6 @@ export const SHAPE_TYPES = {
         fill:           { kind: 'color-hsl',                            show: ['add', 'edit', 'addQuick'] },
         stroke:         { kind: 'color-hslo',                          show: ['edit'] },
         'stroke-width': { kind: 'number', min: 0, step: 0.5,          show: ['edit'] },
-        opacity:        { kind: 'number', min: 0, max: 1, step: 0.05, show: ['edit'] },
       },
     },
   },

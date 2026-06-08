@@ -886,7 +886,7 @@ const App = {
     p[key] = (typeof value === 'string' && value !== '' && !isNaN(value)) ? +value : value;
     if (toolName === _activeTool) Canvas.setParams(p);
     // Live-apply visual params to a current selection
-    if (_selectedId && ['fill', 'stroke-width', 'opacity'].includes(key)) {
+    if (_selectedId && ['fill', 'stroke-width'].includes(key)) {
       App.setDrawingAttr(_selectedId, key, p[key]);
     }
   },
@@ -895,7 +895,7 @@ const App = {
     const next = +( (p[key] ?? 0) + delta ).toFixed(2);
     p[key] = Math.max(min, Math.min(max, next));
     if (toolName === _activeTool) Canvas.setParams(p);
-    if (_selectedId && ['stroke-width', 'opacity'].includes(key)) {
+    if (_selectedId && ['stroke-width'].includes(key)) {
       App.setDrawingAttr(_selectedId, key, p[key]);
     }
   },
