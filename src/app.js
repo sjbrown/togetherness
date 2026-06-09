@@ -57,7 +57,7 @@ import { newBoundaryId, newPositionSetId, rectToPath, pathToRect,
          getTtStateSchema as bounPosGetTtStateSchema,
          getTtState       as bounPosGetTtState,
          applyTtState     as bounPosApplyTtState,
-         edit            as bounPosEdit,
+         editBounPos      as bounPosEdit,
          computeBoundaryRects,
          computePositionSnapPoints,
          computeMaxSnapRadius,
@@ -651,7 +651,7 @@ const App = {
     } else if (ltype === 'toy') {
       toyEdit(_ydoc, findToy(_yToys, id), _yToyMeta, editData);
     } else if (ltype === 'boundaries-positions') {
-      bounPosEdit(_ydoc, bounPosFindEl(_yBounPos, id), _yBounPosMeta, editData);
+      bounPosEdit({id, ...editData}, _ydoc, _yBounPos, _yBounPosMeta);
     }
     // observeDeep fires synchronously → renderDoc() already ran.
     // Refresh the Edit panel body to show the updated values.

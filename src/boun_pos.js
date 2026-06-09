@@ -253,7 +253,7 @@ export function addPositionSet(ydoc, yBounPos, yBounPosMeta,
     : (toolParams['spacing'] ?? 80);
 
   // Compute snapRadius clamped to max
-  const rawRadius = toolParams['snap-radius'] ?? 30;
+  const rawRadius = toolParams['snapRadius'] ?? 30;
   const snapRadius = Math.min(rawRadius, computeMaxSnapRadius(genType, genParam));
 
   // Generate grid circles
@@ -489,11 +489,11 @@ export function getTtStateSchema(svgElOrType) {
       label: 'Position Set',
       type,
       name,
-      'snap-radius': snapRadius,
+      snapRadius: snapRadius,
       types: {
         type:           { show: [] },
         name:           { kind: 'string', show: ['add', 'edit'] },
-        'snap-radius':  { kind: 'number', min: 1, max: maxR, step: 1, show: ['edit'] },
+        snapRadius:  { kind: 'number', min: 1, max: maxR, step: 1, show: ['edit'] },
       },
     };
   }
@@ -534,45 +534,8 @@ export function getTtState(yEl) {
   return state;
 }
 
-/**
- * Write a ttState snapshot back into the Yjs bounPos fragment.
- * Used by undo/redo to reconstruct deleted boundaries and position sets.
- */
-export function applyTtState(ydoc, yBounPos, yBounPosMeta, state) {
-  if (!state?.id || !state?.bounPosType) return;
-  const existing = findEl(yBounPos, state.id);
 
-  if (existing) {
-    // Update in place — only write keys present in the state snapshot.
-    const type = existing.getAttribute('data-bounpos-type') ?? 'boundary';
-    ydoc.transact(() => {
-      if (state.name !== undefined) {
-        existing.setAttribute('name', String(state.name));
-        const yText = yChildByTag(existing, 'text');
-        if (yText) setYTextContent(ydoc, yText, String(state.name));
-        const meta = yBounPosMeta.get(state.id) ?? {};
-        yBounPosMeta.set(state.id, { ...meta, name: state.name });
-      }
-      if (state.snapRadius !== undefined && type === 'pos-set') {
-        const genType  = existing.getAttribute('data-gen-type')  ?? 'square';
-        const genParam = Number(existing.getAttribute('data-gen-param') ?? 80);
-        const maxR     = computeMaxSnapRadius(genType, genParam);
-        const r        = Math.round(Math.min(Math.max(1, Number(state.snapRadius)), maxR));
-        existing.setAttribute('data-snap-radius', String(r));
-        for (const child of existing.toArray()) {
-          if (child instanceof Y.XmlElement && child.nodeName === 'circle') {
-            child.setAttribute('r', String(r));
-          }
-        }
-      }
-    });
-    if (state.x !== undefined) {
-      applyMoveCommit(ydoc, existing, state.x, state.y);
-    }
-    return;
-  }
-
-  // Create — element does not yet exist (undo of a delete).
+function createBounPos(state, ydoc, yBounPos, yBounPosMeta) {
   if (state.bounPosType === 'pos-set') {
     const circles = gridFillExtent(state.x, state.y, state.w, state.h, state.genType, state.genParam);
     createPositionSetElement(ydoc, yBounPos, yBounPosMeta, {
@@ -602,38 +565,59 @@ export function applyTtState(ydoc, yBounPos, yBounPosMeta, state) {
 }
 
 /**
- * Apply editData to any element in this layer.
- * Dispatches on data-bounpos-type internally.
+ * Write a ttState snapshot back into the Yjs bounPos fragment.
+ * Used by undo/redo to reconstruct deleted boundaries and position sets.
  */
-export function edit(ydoc, yEl, yBounPosMeta, editData) {
-  if (!yEl) return;
-  const type = yEl.getAttribute('data-bounpos-type') ?? 'boundary';
-  const id   = yEl.getAttribute('id');
-  const { name, 'snap-radius': snapRadius } = editData;
+export function applyTtState(ydoc, yBounPos, yBounPosMeta, state) {
+  if (!state?.bounPosType) {
+    console.error('invalid bounPos state')
+    return;
+  }
+  if (!state?.id) {
+    createBounPos(state, ydoc, yBounPos, yBounPosMeta);
+  } else {
+    editBounPos(state, ydoc, yBounPos, yBounPosMeta);
+  }
+}
 
+export function editBounPos(state, ydoc, yBounPos, yBounPosMeta) {
+  // Note 'state' might be partial - only update attrs that are present
+  const existing = findEl(yBounPos, state.id);
+  if (!existing) {
+    console.error('bounPos state id not found')
+    return
+  }
+
+  // Update in place — only write keys present in the state snapshot.
+  const type = existing.getAttribute('data-bounpos-type');
   ydoc.transact(() => {
-    if (name !== undefined) {
-      yEl.setAttribute('name', String(name));
-      const yText = yChildByTag(yEl, 'text');
-      if (yText) setYTextContent(ydoc, yText, String(name));
-      if (id) {
-        const meta = yBounPosMeta.get(id) ?? {};
-        yBounPosMeta.set(id, { ...meta, name });
-      }
+    if (state.name !== undefined) {
+      existing.setAttribute('name', String(state.name));
+      const yText = yChildByTag(existing, 'text');
+      if (yText) setYTextContent(ydoc, yText, String(state.name));
+      const meta = yBounPosMeta.get(state.id) ?? {};
+      yBounPosMeta.set(state.id, { ...meta, name: state.name });
     }
-    if (snapRadius !== undefined && type === 'pos-set') {
-      const genType  = yEl.getAttribute('data-gen-type')  ?? 'square';
-      const genParam = Number(yEl.getAttribute('data-gen-param') ?? 80);
+    if (state.snapRadius !== undefined && type === 'pos-set') {
+      const genType  = existing.getAttribute('data-gen-type')  ?? 'square';
+      const genParam = Number(existing.getAttribute('data-gen-param') ?? 80);
       const maxR     = computeMaxSnapRadius(genType, genParam);
-      const r        = Math.round(Math.min(Math.max(1, Number(snapRadius)), maxR));
-      yEl.setAttribute('data-snap-radius', String(r));
-      for (const child of yEl.toArray()) {
+      const r        = Math.round(Math.min(Math.max(1, Number(state.snapRadius)), maxR));
+      existing.setAttribute('data-snap-radius', String(r));
+      for (const child of existing.toArray()) {
         if (child instanceof Y.XmlElement && child.nodeName === 'circle') {
           child.setAttribute('r', String(r));
         }
       }
     }
   });
+  if (state.x !== undefined) {
+    applyMoveCommit(ydoc, existing, state.x, state.y);
+  }
+}
+
+export function edit(id, editData, ydoc, yBounPos, yBounPosMeta) {
+  return editBounPos({id, ...editData}, ydoc, yBounPos, yBounPosMeta);
 }
 
 // ── Drag context helpers ──────────────────────────────────────────────────────
@@ -690,3 +674,18 @@ export function computePositionSnapPoints(yBounPos, toyClasses) {
   }
   return points;
 }
+
+/*
+export const layerAPI = {
+  add: addBounPos,
+  del: deleteEl,
+  find: findEl,
+  list: () => {console.error('not implemented')},
+  edit: edit,
+  geomFor: getGeom,
+  anchorFor: getAnchor,
+  ttStateFor: getTtState,
+  ttStateSchemaForType: getTtStateSchema
+  getData: 
+}
+*/
