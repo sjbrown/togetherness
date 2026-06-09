@@ -18,6 +18,36 @@
 
 import { icon } from './icons.js';
 
+// ── Icon loading ──────────────────────────────────────────────────────────────
+// Tools with an `iconUrl` have their SVG fetched once and cached here.
+// Callers get the cached markup synchronously; on the first call the fetch is
+// fired and the next render (triggered by the normal observe cycle) picks it up.
+const _iconCache = new Map(); // url → svg markup string | 'pending' | 'error'
+
+function iconFor(toolDef) {
+  if (toolDef.icon) return toolDef.icon;
+  if (!toolDef.iconUrl) return _letterIcon(toolDef.label);
+  const cached = _iconCache.get(toolDef.iconUrl);
+  if (cached && cached !== 'pending') return cached;
+  if (!cached) {
+    _iconCache.set(toolDef.iconUrl, 'pending');
+    fetch(toolDef.iconUrl)
+      .then(r => r.ok ? r.text() : Promise.reject(r.status))
+      .then(svg => {
+        _iconCache.set(toolDef.iconUrl, svg.trim());
+        // Trigger a re-render so the fetched icon appears.
+        UI.refreshFromDoc?.();
+      })
+      .catch(() => _iconCache.set(toolDef.iconUrl, 'error'));
+  }
+  return _letterIcon(toolDef.label);
+}
+
+function _letterIcon(label) {
+  const letter = (label ?? '?')[0].toUpperCase();
+  return `<svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><title>${label}</title><text x="11" y="16" text-anchor="middle" font-size="14" font-family="ui-sans-serif,sans-serif" fill="currentColor">${letter}</text></svg>`;
+}
+
 // -- UIData --------------------------------------------------------------------
 // Pure presentation state for the chrome. ui.js is the only writer.
 export const UIData = {
@@ -132,7 +162,7 @@ export function pillHTML(data) {
 }
 function toolIco(toolDef, activeTool) {
   const cls = activeTool === toolDef.name ? 'active' : '';
-  return `<button class="ico ${cls}" aria-label="${toolDef.label}" title="${toolDef.label}" onclick="UI.pillTap('${toolDef.name}')">${toolDef.icon}<span class="active-dot"></span></button>`;
+  return `<button class="ico ${cls}" aria-label="${toolDef.label}" title="${toolDef.label}" onclick="UI.pillTap('${toolDef.name}')">${iconFor(toolDef)}<span class="active-dot"></span></button>`;
 }
 function icoBtn(iconSvg, label, onclick, cls = '') {
   return `<button class="ico ${cls}" aria-label="${label}" title="${label}" onclick="${onclick}">${iconSvg}<span class="active-dot"></span></button>`;
@@ -521,7 +551,7 @@ export function applyBackgroundPreset(url, width, height) {
 
 function defaultToolsBody(data) {
   const toolBtn = t =>
-    `<div class="tool ${data.activeTool === t.name ? 'active' : ''}" onclick="App.setTool('${t.name}')">${t.icon}<span>${t.label}</span></div>`;
+    `<div class="tool ${data.activeTool === t.name ? 'active' : ''}" onclick="App.setTool('${t.name}')">${iconFor(t)}<span>${t.label}</span></div>`;
   const toolSchema = data.activeToolSchema ?? {};
   const types      = toolSchema.types ?? {};
   const values     = data.activeToolParams ?? toolSchema.values ?? {};
