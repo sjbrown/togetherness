@@ -238,19 +238,6 @@ export function createPositionSetElement(ydoc, yBounPos, yBounPosMeta,
   return yG;
 }
 
-export function updatePositionSetSnapRadius(ydoc, yGEl, newRadius) {
-  if (!yGEl) return;
-  const r = Math.round(newRadius);
-  ydoc.transact(() => {
-    yGEl.setAttribute('data-snap-radius', String(r));
-    for (const child of yGEl.toArray()) {
-      if (child instanceof Y.XmlElement && child.nodeName === 'circle') {
-        child.setAttribute('r', String(r));
-      }
-    }
-  });
-}
-
 /**
  * Create a new position set from draw parameters.
  * Computes genType, genParam, snapRadius, and grid circles; calls createPositionSetElement.
@@ -302,20 +289,6 @@ export function deleteEl(ydoc, yBounPos, yBounPosMeta, id) {
 }
 
 /**
- * Rename any element (boundary or pos-set). Updates the <g> name attribute,
- * the Y.XmlText in the <text> child, and the meta sidecar — all in one transaction.
- */
-export function renameBounPos(ydoc, yEl, yBounPosMeta, id, newName) {
-  if (!yEl) return;
-  const yText = yChildByTag(yEl, 'text');
-  ydoc.transact(() => {
-    yEl.setAttribute('name', newName);
-    if (yText) setYTextContent(ydoc, yText, newName);
-    const meta = yBounPosMeta.get(id) ?? {};
-    yBounPosMeta.set(id, { ...meta, name: newName });
-  });
-}
-
 /**
  * Commit a move. Translates <path> d, <text> x/y, and (for pos-sets) all
  * <circle> cx/cy — all in one transaction.
@@ -548,20 +521,53 @@ export function getTtState(yEl) {
  */
 export function applyTtState(ydoc, yBounPos, yBounPosMeta, state) {
   if (!state?.id || !state?.bounPosType) return;
+  const existing = findEl(yBounPos, state.id);
+
+  if (existing) {
+    // Update in place — only write keys present in the state snapshot.
+    const type = existing.getAttribute('data-bounpos-type') ?? 'boundary';
+    ydoc.transact(() => {
+      if (state.name !== undefined) {
+        existing.setAttribute('name', String(state.name));
+        const yText = yChildByTag(existing, 'text');
+        if (yText) setYTextContent(ydoc, yText, String(state.name));
+        const meta = yBounPosMeta.get(state.id) ?? {};
+        yBounPosMeta.set(state.id, { ...meta, name: state.name });
+      }
+      if (state.snapRadius !== undefined && type === 'pos-set') {
+        const genType  = existing.getAttribute('data-gen-type')  ?? 'square';
+        const genParam = Number(existing.getAttribute('data-gen-param') ?? 80);
+        const maxR     = computeMaxSnapRadius(genType, genParam);
+        const r        = Math.round(Math.min(Math.max(1, Number(state.snapRadius)), maxR));
+        existing.setAttribute('data-snap-radius', String(r));
+        for (const child of existing.toArray()) {
+          if (child instanceof Y.XmlElement && child.nodeName === 'circle') {
+            child.setAttribute('r', String(r));
+          }
+        }
+      }
+    });
+    if (state.x !== undefined) {
+      applyMoveCommit(ydoc, existing, state.x, state.y);
+    }
+    return;
+  }
+
+  // Create — element does not yet exist (undo of a delete).
   if (state.bounPosType === 'pos-set') {
     const circles = gridFillExtent(state.x, state.y, state.w, state.h, state.genType, state.genParam);
     createPositionSetElement(ydoc, yBounPos, yBounPosMeta, {
-      id:          state.id,
-      name:        state.name,
-      snapRadius:  state.snapRadius ?? 30,
-      genType:     state.genType,
-      genParam:    state.genParam,
-      x:           state.x,
-      y:           state.y,
-      w:           state.w,
-      h:           state.h,
+      id:         state.id,
+      name:       state.name,
+      snapRadius: state.snapRadius ?? 30,
+      genType:    state.genType,
+      genParam:   state.genParam,
+      x:          state.x,
+      y:          state.y,
+      w:          state.w,
+      h:          state.h,
       circles,
-      author:      undefined,
+      author:     undefined,
     });
   } else {
     addBoundary(ydoc, yBounPos, yBounPosMeta, {

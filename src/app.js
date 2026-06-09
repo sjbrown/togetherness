@@ -48,7 +48,6 @@ import { newBoundaryId, newPositionSetId, rectToPath, pathToRect,
          addBoundary, addPositionSet, createPositionSetElement,
          findEl          as bounPosFindEl,
          deleteEl        as bounPosDeleteEl,
-         renameBounPos,
          applyMoveCommit as bounPosApplyMoveCommit,
          renderLayer     as bounPosRenderLayer,
          layerData       as bounPosLayerData,
@@ -593,10 +592,7 @@ const App = {
   },
 
   renameBounPos: (id, newName) => {
-    const yEl = bounPosFindEl(_yBounPos, id);
-    if (!yEl) return;
-    renameBounPos(_ydoc, yEl, _yBounPosMeta, id, newName);
-    // observeDeep triggers renderBounPosLayer; also refresh any open panel.
+    bounPosApplyTtState(_ydoc, _yBounPos, _yBounPosMeta, { id, bounPosType: bounPosFindEl(_yBounPos, id)?.getAttribute('data-bounpos-type') ?? 'boundary', name: newName });
     UI.refreshFromDoc();
   },
 
