@@ -447,19 +447,18 @@ export function closePanel() {
 // -- Data gatherers (impure) ---------------------------------------------------
 function gatherToolsData() {
   const layer = App.getActiveLayer();
-  const isBounPos = layer === 'boundaries-positions';
   const activeTool = UIData.activeTool;
   return {
     layer,
     activeTool,
-    tools:              App.getTools(layer),
-    palette:            App.getPalette(),
-    activeToolSchema:   App.getToolSchema(activeTool),
-    activeToolParams:   App.getToolParams(activeTool),
-    background:         App.getBackground(),
-    defaultBackgrounds: App.getDefaultBackgrounds(),
-    selectedBounPos:    isBounPos ? App.getSelectedBounPos?.() : null,
-    toyClasses:         isBounPos ? (App.getToyClasses?.() ?? []) : null,
+    tools:               App.getTools(layer),
+    palette:             App.getPalette(),
+    activeToolSchema:    App.getToolSchema(activeTool),
+    activeToolParams:    App.getToolParams(activeTool),
+    activeElementSchema: App.getElementTtStateSchema?.() ?? null,
+    background:          App.getBackground(),
+    defaultBackgrounds:  App.getDefaultBackgrounds(),
+    toyClasses:          layer === 'boundaries-positions' ? (App.getToyClasses?.() ?? []) : null,
   };
 }
 function gatherPeersData() {
@@ -523,23 +522,41 @@ export function applyBackgroundPreset(url, width, height) {
 function defaultToolsBody(data) {
   const toolBtn = t =>
     `<div class="tool ${data.activeTool === t.name ? 'active' : ''}" onclick="App.setTool('${t.name}')">${t.icon}<span>${t.label}</span></div>`;
-  const schema  = data.activeToolSchema ?? {};
-  const types   = schema.types  ?? {};
-  const values  = data.activeToolParams ?? schema.values ?? {};
+  const toolSchema = data.activeToolSchema ?? {};
+  const types      = toolSchema.types ?? {};
+  const values     = data.activeToolParams ?? toolSchema.values ?? {};
+
+  // 'add'-surface fields from the active tool schema (e.g. fill colour)
   const addFields = Object.entries(types)
     .map(([key, typeSpec]) => renderSchemaField(key, values[key], typeSpec,
         { mode: 'add', toolName: data.activeTool, label: key, palette: data.palette }))
     .join('');
+
+  // 'edit'-surface fields from the currently selected element
+  // (bounPos name, snap-radius, etc.) wired to App.commitEdit
+  const elSchema   = data.activeElementSchema;
+  const elTypes    = elSchema?.types ?? {};
+  const editFields = Object.entries(elTypes)
+    .map(([key, typeSpec]) => renderSchemaField(key, elSchema[key], typeSpec,
+        { mode: 'edit', id: elSchema?.id, palette: data.palette }))
+    .join('');
+
+  // Help block — appended when the active tool schema identifies a bounPos type
+  const schemaType = toolSchema.type;
+  const helpHTML   = (schemaType === 'boundary' || schemaType === 'pos-set')
+    ? bounPosHelpHTML(data.toyClasses ?? [])
+    : '';
+
   return `
     <div class="field"><label>Tool · ${data.layer} layer</label>
       <div class="tool-grid">${data.tools.map(toolBtn).join('')}</div>
     </div>
-    ${addFields}`;
+    ${addFields}${editFields}${helpHTML}`;
 }
 
 /**
- * Shared "How boundaries work" help block — rendered in both the Tools panel
- * (bounPosToolsBody) and the Edit panel (editBody for boundary elements).
+ * "How boundaries work" help block — appended by defaultToolsBody when
+ * the active tool schema has type 'boundary' or 'pos-set'.
  * `toyClasses` is the live list returned by App.getToyClasses().
  */
 function bounPosHelpHTML(toyClasses) {
@@ -569,39 +586,9 @@ function bounPosHelpHTML(toyClasses) {
   </div>`;
 }
 
-function bounPosToolsBody(data) {
-  const toolBtn = t =>
-    `<div class="tool ${data.activeTool === t.name ? 'active' : ''}" onclick="App.setTool('${t.name}')">${t.icon}<span>${t.label}</span></div>`;
-
-  const nameField = data.selectedBounPos
-    ? `<div class="field">
-        <label>Boundary name</label>
-        <input type="text" class="text-input"
-          value="${data.selectedBounPos.name}"
-          placeholder="boundary name"
-          onchange="App.renameBounPos('${data.selectedBounPos.id}', this.value)"
-          style="width:100%;font-size:13px;font-family:ui-monospace,monospace"/>
-        <div style="font-size:11px;color:var(--text-3);margin-top:4px">ID: ${data.selectedBounPos.id}</div>
-      </div>`
-    : '';
-
-  return `
-    <div class="field"><label>Tool · Boundaries and Positions</label>
-      <div class="tool-grid">${data.tools.map(toolBtn).join('')}</div>
-    </div>
-    ${nameField}
-    ${bounPosHelpHTML(data.toyClasses ?? [])}`;
-}
-
-const LAYER_TOOLS_BODY = {
-  background:             (data) => bgToolsBody(data),
-  'boundaries-positions': (data) => bounPosToolsBody(data),
-  toys:                   (data) => defaultToolsBody(data),
-  drawing:                (data) => defaultToolsBody(data),
-};
 export function toolsBody(data) {
-  const render = LAYER_TOOLS_BODY[data.layer] ?? defaultToolsBody;
-  return render(data);
+  if (data.layer === 'background') return bgToolsBody(data);
+  return defaultToolsBody(data);
 }
 
 export function peersBody(data) {

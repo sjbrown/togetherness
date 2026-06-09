@@ -470,26 +470,45 @@ export function getAnchor(svgEl) {
 
 // ── ttState / ttStateSchema ───────────────────────────────────────────────────
 
-export function getTtStateSchema(svgEl) {
-  const type = svgEl?.dataset?.bounposType ?? svgEl?.getAttribute?.('data-bounpos-type') ?? 'boundary';
-  const name = svgEl?.getAttribute?.('name') ?? '';
+export function getTtStateSchema(svgElOrType) {
+  const type = typeof svgElOrType === 'string'
+    ? svgElOrType
+    : (svgElOrType?.getAttribute?.('data-bounpos-type') ?? 'boundary');
+
   if (type === 'pos-set') {
-    const snapRadius = Number(svgEl.getAttribute('data-snap-radius') ?? 30);
-    const genType    = svgEl.getAttribute('data-gen-type')  ?? 'square';
-    const genParam   = Number(svgEl.getAttribute('data-gen-param') ?? 80);
-    const maxR       = Math.floor(computeMaxSnapRadius(genType, genParam));
+    const snapRadius = typeof svgElOrType === 'string' ? 30
+      : Number(svgElOrType?.getAttribute('data-snap-radius') ?? 30);
+    const genType  = typeof svgElOrType === 'string' ? 'square'
+      : (svgElOrType?.getAttribute('data-gen-type') ?? 'square');
+    const genParam = typeof svgElOrType === 'string' ? 80
+      : Number(svgElOrType?.getAttribute('data-gen-param') ?? 80);
+    const maxR = Math.floor(computeMaxSnapRadius(genType, genParam));
+    const name = typeof svgElOrType === 'string' ? ''
+      : (svgElOrType?.getAttribute('name') ?? '');
     return {
+      label: 'Position Set',
+      type,
       name,
       'snap-radius': snapRadius,
       types: {
-        name:          'string',
-        'snap-radius': { kind: 'number', min: 1, max: maxR, step: 1 },
+        type:           { show: [] },
+        name:           { kind: 'string', show: ['add', 'edit'] },
+        'snap-radius':  { kind: 'number', min: 1, max: maxR, step: 1, show: ['edit'] },
       },
     };
   }
+
+  // boundary
+  const name = typeof svgElOrType === 'string' ? ''
+    : (svgElOrType?.getAttribute('name') ?? '');
   return {
+    label: 'Boundary',
+    type,
     name,
-    types: { name: 'string' },
+    types: {
+      type: { show: [] },
+      name: { kind: 'string', show: ['add', 'edit'] },
+    },
   };
 }
 

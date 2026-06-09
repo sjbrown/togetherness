@@ -499,11 +499,13 @@ const App = {
   // SHAPE_TYPES[name].schema; for other tools it falls back to a minimal schema
   // built from the tool def's options array.
   getToolSchema:   (name)  => {
-    const schema = drawingGetTtStateSchema(name);
-    if (schema && schema.types) return schema;          // drawing tool with SHAPE_TYPES entry
+    const drawSchema = drawingGetTtStateSchema(name);
+    if (drawSchema?.types) return drawSchema;        // drawing tool with SHAPE_TYPES entry
+    // bounPos tools map to a bounpos-type string
+    const bounPosTypeMap = { 'boundary': 'boundary', 'pos-grid-sq': 'pos-set', 'pos-grid-hex': 'pos-set' };
+    if (bounPosTypeMap[name]) return bounPosGetTtStateSchema(bounPosTypeMap[name]);
     const def = _toolById[name];
     if (!def) return { types: {}, values: {} };
-    // Non-drawing tools: build a schema from options + defaults
     const types  = Object.fromEntries((def.options ?? []).map(f => [f.key, f]));
     const values = def.defaults ?? _toolParams[name] ?? {};
     return { label: def.label, types, values };
@@ -591,11 +593,6 @@ const App = {
     App.select(result.id);
   },
 
-  renameBounPos: (id, newName) => {
-    bounPosApplyTtState(_ydoc, _yBounPos, _yBounPosMeta, { id, bounPosType: bounPosFindEl(_yBounPos, id)?.getAttribute('data-bounpos-type') ?? 'boundary', name: newName });
-    UI.refreshFromDoc();
-  },
-
   setLayerVisible: (id, visible) => {
     _layerVisibility[id] = visible;
     applyLayerVisibility();
@@ -612,15 +609,6 @@ const App = {
       g.querySelector('svg')?.classList.forEach(c => classes.add(c));
     });
     return [...classes].sort();
-  },
-
-  getSelectedBounPos: () => {
-    if (!_selectedId) return null;
-    const svgEl = _svgEl?.querySelector(`[data-yid="${_selectedId}"]`);
-    if (layerForElement(svgEl) !== 'boundaries-positions') return null;
-    const yEl = bounPosFindEl(_yBounPos, _selectedId);
-    const name = yEl?.getAttribute('name') ?? _selectedId;
-    return { id: _selectedId, name };
   },
 
   /**
