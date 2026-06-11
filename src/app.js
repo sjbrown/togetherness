@@ -43,9 +43,9 @@ import { TOOLS as TOY_TOOLS,
          edit as toyEdit,
        }  from './toys.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
-import { TOOLS as BOUNPOS_TOOLS, LAYER as BOUNPOS_LAYER } from './tools-boun_pos.js';
-import { newBoundaryId, newPositionSetId, rectToPath, pathToRect,
-         addBoundary, addPositionSet, createPositionSetElement,
+import { BOUNPOS_TYPES, LAYER as BOUNPOS_LAYER,
+         addPositionSet, createPositionSetElement,
+         rectToPath, pathToRect,
          findEl          as bounPosFindEl,
          deleteEl        as bounPosDeleteEl,
          applyMoveCommit as bounPosApplyMoveCommit,
@@ -134,8 +134,18 @@ function buildToolRegistry() {
   // background layer: select only
   _toolsByLayer['background'] = [SELECT_TOOL];
   // boundaries-positions layer
-  BOUNPOS_TOOLS.forEach(register);
-  _toolsByLayer[BOUNPOS_LAYER] = [SELECT_TOOL, ...BOUNPOS_TOOLS];
+  // boundaries-positions layer — tool defs derived from BOUNPOS_TYPES
+  const bounPosTools = Object.entries(BOUNPOS_TYPES).map(([name, def]) => ({
+    name,
+    label:   def.label,
+    layer:   BOUNPOS_LAYER,
+    iconUrl: def.iconUrl,
+  }));
+  bounPosTools.forEach(def => {
+    _toolById[def.name] = def;
+    _toolParams[def.name] = { ...BOUNPOS_TYPES[def.name].schema.values };
+  });
+  _toolsByLayer[BOUNPOS_LAYER] = [SELECT_TOOL, ...bounPosTools];
   // toys layer
   TOY_TOOLS.forEach(register);
   _toolsByLayer['toys'] = [SELECT_TOOL, ...TOY_TOOLS];
@@ -506,10 +516,8 @@ const App = {
   // built from the tool def's options array.
   getToolSchema:   (name)  => {
     const drawSchema = drawingGetTtStateSchema(name);
-    if (drawSchema?.types) return drawSchema;        // drawing tool with SHAPE_TYPES entry
-    // bounPos tools map to a bounpos-type string
-    const bounPosTypeMap = { 'boundary': 'boundary', 'pos-grid-sq': 'pos-set', 'pos-grid-hex': 'pos-set' };
-    if (bounPosTypeMap[name]) return bounPosGetTtStateSchema(bounPosTypeMap[name]);
+    if (drawSchema?.types) return drawSchema;
+    if (BOUNPOS_TYPES[name]) return BOUNPOS_TYPES[name].schema;
     const def = _toolById[name];
     if (!def) return { types: {}, values: {} };
     const types  = Object.fromEntries((def.options ?? []).map(f => [f.key, f]));
@@ -576,28 +584,34 @@ const App = {
     App.addLog(`added ${attrs.type} ${id.slice(0, 6)}`, 'local');
   },
 
-  commitBoundary: ({ x, y, w, h }) => {
-    const { id, name } = newBoundaryId();
-    addBoundary(_ydoc, _yBounPos, _yBounPosMeta, { id, name, x, y, w, h, author: _myId });
-    _undoStack.push({ op: 'add', layer: 'boundaries-positions', bounPosType: 'boundary', id });
-    addHistory(`added boundary ${name}`, { elType: 'boundaries-positions' });
-    App.addLog(`added boundary ${name}`, 'local');
+  commitBounPos: ({ toolName, x, y, w, h }) => {
+    const def = BOUNPOS_TYPES[toolName];
+    if (!def) return;
+    const { id, name } = def.newId();
+    if (def.genType === null) {
+      // boundary
+      def.create(_ydoc, _yBounPos, _yBounPosMeta, { id, name, x, y, w, h, author: _myId });
+    } else {
+      // pos-set
+      const params   = App.getToolParams(toolName);
+      const genType  = def.genType;
+      const genParam = genType === 'hex' ? (params['hex-size'] ?? 40) : (params['spacing'] ?? 80);
+      const rawRadius  = params['snapRadius'] ?? 30;
+      const snapRadius = Math.min(rawRadius, computeMaxSnapRadius(genType, genParam));
+      const circles    = gridFillExtent(x, y, w, h, genType, genParam);
+      if (circles.length === 0) return;
+      def.create(_ydoc, _yBounPos, _yBounPosMeta,
+        { id, name, snapRadius, genType, genParam, x, y, w, h, circles, author: _myId });
+    }
+    _undoStack.push({ op: 'add', layer: 'boundaries-positions', bounPosType: def.bounPosType, id });
+    addHistory(`added ${def.label} ${name}`, { elType: 'boundaries-positions' });
+    App.addLog(`added ${def.label} ${name}`, 'local');
     App.select(id);
   },
 
-  commitPositionSet: ({ x, y, w, h, toolName }) => {
-    const params = App.getToolParams(toolName);
-    const result = addPositionSet(_ydoc, _yBounPos, _yBounPosMeta,
-      { x, y, w, h, toolName, toolParams: params, author: _myId });
-
-    if (!result) return;  // extent too small
-
-    // App-level concerns: undo, history, logs, UI selection
-    _undoStack.push({ op: 'add', layer: 'boundaries-positions', bounPosType: 'pos-set', id: result.id });
-    addHistory(`added ${result.genType} pos-set  ${result.name}`, { elType: 'boundaries-positions' });
-    App.addLog(`added ${result.genType} pos-set  ${result.name}`, 'local');
-    App.select(result.id);
-  },
+  // Legacy aliases kept for e2e tests and canvas.js call sites
+  commitBoundary:    (geom)   => App.commitBounPos({ toolName: 'boundary',    ...geom }),
+  commitPositionSet: ({ toolName, ...geom }) => App.commitBounPos({ toolName, ...geom }),
 
   setLayerVisible: (id, visible) => {
     _layerVisibility[id] = visible;

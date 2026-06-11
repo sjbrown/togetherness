@@ -26,6 +26,7 @@
 import * as Y from 'yjs';
 import { SNAP_POINT_GRADIENT_ID } from './defs.js';
 
+export const LAYER = 'boundaries-positions';
 const SVG_NS   = 'http://www.w3.org/2000/svg';
 const ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
@@ -156,48 +157,150 @@ function setYTextContent(ydoc, yEl, newText) {
 
 // ── CRDT operations — boundaries ─────────────────────────────────────────────
 
-export function addBoundary(ydoc, yBounPos, yBounPosMeta, { id, name, x, y, w, h, author }) {
-  const d  = rectToPath(x, y, w, h);
-  const tx = x + w;          // text x: upper-right corner of boundary
-  const ty = y - 5;          // text y: just above the line
+// ── Type registry ─────────────────────────────────────────────────────────────
+// One entry per tool name. Everything that differs between a boundary, a square
+// grid, and a hex grid lives here.
+//
+// Fields:
+//   bounPosType  — the data-bounpos-type value written to Yjs ('boundary'|'pos-set')
+//   label        — human label for the schema / layer panel
+//   iconUrl      — path to the tool icon SVG (fetched by ui.js iconFor())
+//   newId()      — returns { id, name } for a fresh element
+//   genType      — 'square'|'hex'|null (null for boundaries)
+//   schema       — ttStateSchema shape: { label, values, types }
+//   create(ydoc, yBounPos, yBounPosMeta, params) — CRDT write
+//   toSVGEl(yG)  — Yjs node → live DOM element
+//
+// app.js builds the tool registry from Object.entries(BOUNPOS_TYPES).
+export const BOUNPOS_TYPES = {
+  boundary: {
+    bounPosType: 'boundary',
+    label:       'Boundary',
+    iconUrl:     'boun_pos/boundary.svg',
+    newId:       newBoundaryId,
+    genType:     null,
+    schema: {
+      label:  'Boundary',
+      values: { type: 'boundary', name: '' },
+      types: {
+        type: { show: [] },
+        name: { kind: 'string', show: ['add', 'edit'] },
+      },
+    },
+    create(ydoc, yBounPos, yBounPosMeta, { id, name, x, y, w, h, author }) {
+      const d  = rectToPath(x, y, w, h);
+      const tx = x + w;
+      const ty = y - 5;
+      const yG = new Y.XmlElement('g');
+      const yPath = new Y.XmlElement('path');
+      const yText = new Y.XmlElement('text');
+      ydoc.transact(() => {
+        yG.setAttribute('id',                id);
+        yG.setAttribute('name',              name);
+        yG.setAttribute('data-bounpos-type', 'boundary');
+        yPath.setAttribute('d',            d);
+        yPath.setAttribute('fill',         'none');
+        yPath.setAttribute('stroke',       'white');
+        yPath.setAttribute('stroke-width', '2');
+        yText.setAttribute('x',           String(tx));
+        yText.setAttribute('y',           String(ty));
+        yText.setAttribute('text-anchor', 'end');
+        yText.setAttribute('font-family', 'ui-monospace, monospace');
+        yText.setAttribute('font-size',   '12');
+        yText.setAttribute('fill',        'white');
+        yText.insert(0, [new Y.XmlText(name)]);
+        yG.insert(0, [yPath, yText]);
+        yBounPos.insert(yBounPos.length, [yG]);
+        yBounPosMeta.set(id, { author, name, type: 'boundary', created: Date.now() });
+      });
+      return yG;
+    },
+    toSVGEl(yG) {
+      const id   = yG.getAttribute('id')   ?? '';
+      const name = yG.getAttribute('name') ?? id;
+      const g = document.createElementNS(SVG_NS, 'g');
+      g.setAttribute('id',               `yid-${id}`);
+      g.setAttribute('data-yid',         id);
+      g.setAttribute('data-layer-type',  'boundaries-positions');
+      g.setAttribute('data-bounpos-type','boundary');
+      g.setAttribute('name',             name);
+      for (const child of yG.toArray()) {
+        if (!(child instanceof Y.XmlElement)) continue;
+        if (child.nodeName === 'path') {
+          const path = document.createElementNS(SVG_NS, 'path');
+          path.setAttribute('d',            child.getAttribute('d') ?? '');
+          path.setAttribute('fill',         'none');
+          path.setAttribute('stroke',       'white');
+          path.setAttribute('stroke-width', '2');
+          g.appendChild(path);
+        } else if (child.nodeName === 'text') {
+          const text = document.createElementNS(SVG_NS, 'text');
+          text.setAttribute('x',                  child.getAttribute('x') ?? '0');
+          text.setAttribute('y',                  child.getAttribute('y') ?? '0');
+          text.setAttribute('text-anchor',        child.getAttribute('text-anchor') ?? 'end');
+          text.setAttribute('font-family',        child.getAttribute('font-family') ?? 'ui-monospace, monospace');
+          text.setAttribute('font-size',          child.getAttribute('font-size') ?? '12');
+          text.setAttribute('fill',               child.getAttribute('fill') ?? 'white');
+          text.setAttribute('data-boundary-name', name);
+          text.textContent = yTextContent(child) || name;
+          g.appendChild(text);
+        }
+      }
+      return g;
+    },
+  },
 
-  const yG    = new Y.XmlElement('g');
-  const yPath = new Y.XmlElement('path');
-  const yText = new Y.XmlElement('text');
+  'pos-grid-sq': {
+    bounPosType: 'pos-set',
+    label:       'Square Grid',
+    iconUrl:     'boun_pos/pos-grid-sq.svg',
+    newId:       newPositionSetId,
+    genType:     'square',
+    schema: {
+      label:  'Square Grid',
+      values: { type: 'pos-set', name: '', snapRadius: 30, spacing: 80 },
+      types: {
+        type:       { show: [] },
+        name:       { kind: 'string', show: ['add', 'edit'] },
+        snapRadius: { kind: 'number', min: 1, max: 40, step: 1, show: ['edit'] },
+        spacing:    { kind: 'number', min: 20, max: 200, step: 4, show: ['addQuick'] },
+      },
+    },
+    create(ydoc, yBounPos, yBounPosMeta, params) {
+      return _createPositionSet(ydoc, yBounPos, yBounPosMeta, params);
+    },
+    toSVGEl(yG) { return _positionSetToSVGEl(yG); },
+  },
 
-  ydoc.transact(() => {
-    yG.setAttribute('id',               id);
-    yG.setAttribute('name',             name);
-    yG.setAttribute('data-bounpos-type', 'boundary');
+  'pos-grid-hex': {
+    bounPosType: 'pos-set',
+    label:       'Hex Grid',
+    iconUrl:     'boun_pos/pos-grid-hex.svg',
+    newId:       newPositionSetId,
+    genType:     'hex',
+    schema: {
+      label:  'Hex Grid',
+      values: { type: 'pos-set', name: '', snapRadius: 30, 'hex-size': 40 },
+      types: {
+        type:        { show: [] },
+        name:        { kind: 'string', show: ['add', 'edit'] },
+        snapRadius:  { kind: 'number', min: 1, max: 35, step: 1, show: ['edit'] },
+        'hex-size':  { kind: 'number', min: 15, max: 100, step: 5, show: ['addQuick'] },
+      },
+    },
+    create(ydoc, yBounPos, yBounPosMeta, params) {
+      return _createPositionSet(ydoc, yBounPos, yBounPosMeta, params);
+    },
+    toSVGEl(yG) { return _positionSetToSVGEl(yG); },
+  },
+};
 
-    yPath.setAttribute('d',            d);
-    yPath.setAttribute('fill',         'none');
-    yPath.setAttribute('stroke',       'white');
-    yPath.setAttribute('stroke-width', '2');
-
-    yText.setAttribute('x',           String(tx));
-    yText.setAttribute('y',           String(ty));
-    yText.setAttribute('text-anchor', 'end');
-    yText.setAttribute('font-family', 'ui-monospace, monospace');
-    yText.setAttribute('font-size',   '12');
-    yText.setAttribute('fill',        'white');
-    yText.insert(0, [new Y.XmlText(name)]);
-
-    yG.insert(0, [yPath, yText]);
-    yBounPos.insert(yBounPos.length, [yG]);
-    yBounPosMeta.set(id, { author, name, type: 'boundary', created: Date.now() });
-  });
-  return yG;
-}
-
-// ── CRDT operations — position sets ──────────────────────────────────────────
-
-export function createPositionSetElement(ydoc, yBounPos, yBounPosMeta,
+// Helper used by both pos-set variants.
+function _createPositionSet(ydoc, yBounPos, yBounPosMeta,
   { id, name, snapRadius, genType, genParam, x, y, w, h, circles, author }) {
   const d  = rectToPath(x, y, w, h);
   const tx = x + w;
   const ty = y - 5;
-
   const yG       = new Y.XmlElement('g');
   const yPath    = new Y.XmlElement('path');
   const yText    = new Y.XmlElement('text');
@@ -208,7 +311,6 @@ export function createPositionSetElement(ydoc, yBounPos, yBounPosMeta,
     c.setAttribute('r',  String(Math.round(snapRadius)));
     return c;
   });
-
   ydoc.transact(() => {
     yG.setAttribute('id',               id);
     yG.setAttribute('name',             name);
@@ -216,13 +318,11 @@ export function createPositionSetElement(ydoc, yBounPos, yBounPosMeta,
     yG.setAttribute('data-snap-radius',  String(Math.round(snapRadius)));
     yG.setAttribute('data-gen-type',    genType);
     yG.setAttribute('data-gen-param',   String(Math.round(genParam)));
-
     yPath.setAttribute('d',                d);
     yPath.setAttribute('fill',             'none');
     yPath.setAttribute('stroke',           'rgba(255,255,255,0.5)');
     yPath.setAttribute('stroke-dasharray', '4 2');
     yPath.setAttribute('stroke-width',     '1');
-
     yText.setAttribute('x',           String(tx));
     yText.setAttribute('y',           String(ty));
     yText.setAttribute('text-anchor', 'end');
@@ -230,7 +330,6 @@ export function createPositionSetElement(ydoc, yBounPos, yBounPosMeta,
     yText.setAttribute('font-size',   '12');
     yText.setAttribute('fill',        'rgba(255,255,255,0.7)');
     yText.insert(0, [new Y.XmlText(name)]);
-
     yG.insert(0, [yPath, yText, ...yCircles]);
     yBounPos.insert(yBounPos.length, [yG]);
     yBounPosMeta.set(id, { author, name, type: 'pos-set', snapRadius, genType, genParam, created: Date.now() });
@@ -238,146 +337,21 @@ export function createPositionSetElement(ydoc, yBounPos, yBounPosMeta,
   return yG;
 }
 
-/**
- * Create a new position set from draw parameters.
- * Computes genType, genParam, snapRadius, and grid circles; calls createPositionSetElement.
- * Returns { id, name, genType } or null if extent too small.
- * Call this from app.js commit handler; app handles undo/history/logs/selection.
- */
-export function addPositionSet(ydoc, yBounPos, yBounPosMeta,
-  { x, y, w, h, toolName, toolParams, author }) {
-  // Derive genType and genParam from toolName + toolParams
-  const genType = toolName === 'pos-grid-hex' ? 'hex' : 'square';
-  const genParam = genType === 'hex'
-    ? (toolParams['hex-size'] ?? 40)
-    : (toolParams['spacing'] ?? 80);
-
-  // Compute snapRadius clamped to max
-  const rawRadius = toolParams['snapRadius'] ?? 30;
-  const snapRadius = Math.min(rawRadius, computeMaxSnapRadius(genType, genParam));
-
-  // Generate grid circles
-  const circles = gridFillExtent(x, y, w, h, genType, genParam);
-  if (circles.length === 0) return null;  // extent too small
-
-  // Create position set with all computed values
-  const { id, name } = newPositionSetId();
-  createPositionSetElement(ydoc, yBounPos, yBounPosMeta,
-    { id, name, snapRadius, genType, genParam, x, y, w, h, circles, author });
-
-  return { id, name, genType };
-}
-
-// ── Unified CRDT operations ───────────────────────────────────────────────────
-
-export function findEl(yBounPos, id) {
-  return yBounPos.toArray().find(
-    e => e instanceof Y.XmlElement && e.getAttribute('id') === id
-  ) ?? null;
-}
-
-export function deleteEl(ydoc, yBounPos, yBounPosMeta, id) {
-  const idx = yBounPos.toArray().findIndex(
-    e => e instanceof Y.XmlElement && e.getAttribute('id') === id
-  );
-  if (idx === -1) return false;
-  ydoc.transact(() => {
-    yBounPos.delete(idx, 1);
-    yBounPosMeta.delete(id);
-  });
-  return true;
-}
-
-/**
-/**
- * Commit a move. Translates <path> d, <text> x/y, and (for pos-sets) all
- * <circle> cx/cy — all in one transaction.
- * x, y = new top-left corner of the element's bounding rect.
- */
-export function applyMoveCommit(ydoc, yEl, x, y) {
-  if (!yEl) return;
-  const type  = yEl.getAttribute('data-bounpos-type') ?? 'boundary';
-  const yPath = yChildByTag(yEl, 'path');
-  const yText = yChildByTag(yEl, 'text');
-  if (!yPath) return;
-
-  const { x: oldX, y: oldY, w, h } = pathToRect(
-    yPath.getAttribute('d') ?? 'M0,0 L0,0 L0,0 L0,0 Z'
-  );
-  const dx = x - oldX;
-  const dy = y - oldY;
-
-  ydoc.transact(() => {
-    yPath.setAttribute('d', rectToPath(x, y, w, h));
-    if (yText) {
-      yText.setAttribute('x', String(x + w));
-      yText.setAttribute('y', String(y - 5));
-    }
-    if (type === 'pos-set') {
-      for (const child of yEl.toArray()) {
-        if (!(child instanceof Y.XmlElement) || child.nodeName !== 'circle') continue;
-        child.setAttribute('cx', String(Math.round(Number(child.getAttribute('cx') ?? 0) + dx)));
-        child.setAttribute('cy', String(Math.round(Number(child.getAttribute('cy') ?? 0) + dy)));
-      }
-    }
-  });
-}
-
-// ── DOM rendering ─────────────────────────────────────────────────────────────
-
-function _boundaryToSVGEl(yG) {
-  const id   = yG.getAttribute('id')   ?? '';
-  const name = yG.getAttribute('name') ?? id;
-
-  const g = document.createElementNS(SVG_NS, 'g');
-  g.setAttribute('id',               `yid-${id}`);
-  g.setAttribute('data-yid',         id);
-  g.setAttribute('data-layer-type',  'boundaries-positions');
-  g.setAttribute('data-bounpos-type','boundary');
-  g.setAttribute('name',             name);
-
-  for (const child of yG.toArray()) {
-    if (!(child instanceof Y.XmlElement)) continue;
-    if (child.nodeName === 'path') {
-      const path = document.createElementNS(SVG_NS, 'path');
-      path.setAttribute('d',            child.getAttribute('d') ?? '');
-      path.setAttribute('fill',         'none');
-      path.setAttribute('stroke',       'white');
-      path.setAttribute('stroke-width', '2');
-      g.appendChild(path);
-    } else if (child.nodeName === 'text') {
-      const text = document.createElementNS(SVG_NS, 'text');
-      text.setAttribute('x',                  child.getAttribute('x') ?? '0');
-      text.setAttribute('y',                  child.getAttribute('y') ?? '0');
-      text.setAttribute('text-anchor',        child.getAttribute('text-anchor') ?? 'end');
-      text.setAttribute('font-family',        child.getAttribute('font-family') ?? 'ui-monospace, monospace');
-      text.setAttribute('font-size',          child.getAttribute('font-size') ?? '12');
-      text.setAttribute('fill',              child.getAttribute('fill') ?? 'white');
-      text.setAttribute('data-boundary-name', name);
-      text.textContent = yTextContent(child) || name;
-      g.appendChild(text);
-    }
-  }
-  return g;
-}
-
 function _positionSetToSVGEl(yG) {
-  const id      = yG.getAttribute('id')          ?? '';
-  const name    = yG.getAttribute('name')         ?? id;
+  const id      = yG.getAttribute('id')               ?? '';
+  const name    = yG.getAttribute('name')              ?? id;
   const snapR   = yG.getAttribute('data-snap-radius')  ?? '30';
-  const genType = yG.getAttribute('data-gen-type') ?? 'square';
-  const genParam = yG.getAttribute('data-gen-param') ?? '80';
-
+  const genType = yG.getAttribute('data-gen-type')     ?? 'square';
+  const genParam = yG.getAttribute('data-gen-param')   ?? '80';
   const g = document.createElementNS(SVG_NS, 'g');
   g.setAttribute('id',               `yid-${id}`);
   g.setAttribute('data-yid',         id);
   g.setAttribute('data-layer-type',  'boundaries-positions');
   g.setAttribute('data-bounpos-type','pos-set');
   g.setAttribute('name',             name);
-  g.setAttribute('data-snap-radius',      snapR);
+  g.setAttribute('data-snap-radius', snapR);
   g.setAttribute('data-gen-type',    genType);
   g.setAttribute('data-gen-param',   genParam);
-
   for (const child of yG.toArray()) {
     if (!(child instanceof Y.XmlElement)) continue;
     if (child.nodeName === 'path') {
@@ -410,12 +384,92 @@ function _positionSetToSVGEl(yG) {
   return g;
 }
 
-function _toSVGEl(yG) {
-  const type = yG.getAttribute('data-bounpos-type');
-  return type === 'pos-set' ? _positionSetToSVGEl(yG) : _boundaryToSVGEl(yG);
+// ── Elevated layer API ────────────────────────────────────────────────────────
+
+/**
+ * Convenience wrappers — kept for call sites that name a specific type.
+ * Internally both delegate to BOUNPOS_TYPES[toolName].create().
+ */
+export function addBoundary(ydoc, yBounPos, yBounPosMeta, params) {
+  return BOUNPOS_TYPES.boundary.create(ydoc, yBounPos, yBounPosMeta, params);
 }
 
-// ── Elevated layer API ────────────────────────────────────────────────────────
+export function createPositionSetElement(ydoc, yBounPos, yBounPosMeta, params) {
+  return _createPositionSet(ydoc, yBounPos, yBounPosMeta, params);
+}
+
+export function addPositionSet(ydoc, yBounPos, yBounPosMeta,
+  { x, y, w, h, toolName, toolParams, author }) {
+  const def      = BOUNPOS_TYPES[toolName];
+  if (!def) return null;
+  const genType  = def.genType;
+  const genParam = genType === 'hex'
+    ? (toolParams['hex-size'] ?? 40)
+    : (toolParams['spacing']  ?? 80);
+  const rawRadius  = toolParams['snapRadius'] ?? 30;
+  const snapRadius = Math.min(rawRadius, computeMaxSnapRadius(genType, genParam));
+  const circles    = gridFillExtent(x, y, w, h, genType, genParam);
+  if (circles.length === 0) return null;
+  const { id, name } = def.newId();
+  def.create(ydoc, yBounPos, yBounPosMeta,
+    { id, name, snapRadius, genType, genParam, x, y, w, h, circles, author });
+  return { id, name, genType };
+}
+
+function _toSVGEl(yG) {
+  const bounPosType = yG.getAttribute('data-bounpos-type') ?? 'boundary';
+  const def = Object.values(BOUNPOS_TYPES).find(d => d.bounPosType === bounPosType && d.genType === (yG.getAttribute('data-gen-type') ?? null))
+    ?? Object.values(BOUNPOS_TYPES).find(d => d.bounPosType === bounPosType)
+    ?? BOUNPOS_TYPES.boundary;
+  return def.toSVGEl(yG);
+}
+
+export function findEl(yBounPos, id) {
+  return yBounPos.toArray().find(
+    e => e instanceof Y.XmlElement && e.getAttribute('id') === id
+  ) ?? null;
+}
+
+export function deleteEl(ydoc, yBounPos, yBounPosMeta, id) {
+  const idx = yBounPos.toArray().findIndex(
+    e => e instanceof Y.XmlElement && e.getAttribute('id') === id
+  );
+  if (idx === -1) return false;
+  ydoc.transact(() => {
+    yBounPos.delete(idx, 1);
+    yBounPosMeta.delete(id);
+  });
+  return true;
+}
+
+export function applyMoveCommit(ydoc, yEl, x, y) {
+  if (!yEl) return;
+  const type  = yEl.getAttribute('data-bounpos-type') ?? 'boundary';
+  const yPath = yChildByTag(yEl, 'path');
+  const yText = yChildByTag(yEl, 'text');
+  if (!yPath) return;
+
+  const { x: oldX, y: oldY, w, h } = pathToRect(
+    yPath.getAttribute('d') ?? 'M0,0 L0,0 L0,0 L0,0 Z'
+  );
+  const dx = x - oldX;
+  const dy = y - oldY;
+
+  ydoc.transact(() => {
+    yPath.setAttribute('d', rectToPath(x, y, w, h));
+    if (yText) {
+      yText.setAttribute('x', String(x + w));
+      yText.setAttribute('y', String(y - 5));
+    }
+    if (type === 'pos-set') {
+      for (const child of yEl.toArray()) {
+        if (!(child instanceof Y.XmlElement) || child.nodeName !== 'circle') continue;
+        child.setAttribute('cx', String(Math.round(Number(child.getAttribute('cx') ?? 0) + dx)));
+        child.setAttribute('cy', String(Math.round(Number(child.getAttribute('cy') ?? 0) + dy)));
+      }
+    }
+  });
+}
 
 /**
  * Render the entire Boundaries and Positions layer into layerEl.
@@ -471,45 +525,55 @@ export function getAnchor(svgEl) {
 // ── ttState / ttStateSchema ───────────────────────────────────────────────────
 
 export function getTtStateSchema(svgElOrType) {
-  const type = typeof svgElOrType === 'string'
-    ? svgElOrType
-    : (svgElOrType?.getAttribute?.('data-bounpos-type') ?? 'boundary');
+  // Resolve to a BOUNPOS_TYPES key.
+  // Accepts: tool name ('boundary','pos-grid-sq','pos-grid-hex'),
+  //          bounPosType string ('boundary','pos-set'), or a DOM element.
+  let toolName;
+  if (typeof svgElOrType === 'string') {
+    // Direct tool name lookup first
+    if (BOUNPOS_TYPES[svgElOrType]) {
+      toolName = svgElOrType;
+    } else {
+      // bounPosType string — pick first matching tool entry
+      toolName = Object.keys(BOUNPOS_TYPES)
+        .find(k => BOUNPOS_TYPES[k].bounPosType === svgElOrType) ?? 'boundary';
+    }
+  } else {
+    const bounPosType = svgElOrType?.getAttribute?.('data-bounpos-type') ?? 'boundary';
+    const genType     = svgElOrType?.getAttribute?.('data-gen-type') ?? null;
+    toolName = Object.keys(BOUNPOS_TYPES).find(k => {
+      const d = BOUNPOS_TYPES[k];
+      return d.bounPosType === bounPosType && (genType ? d.genType === genType : d.genType === null || d.genType === 'square');
+    }) ?? 'boundary';
+  }
 
-  if (type === 'pos-set') {
-    const snapRadius = typeof svgElOrType === 'string' ? 30
-      : Number(svgElOrType?.getAttribute('data-snap-radius') ?? 30);
-    const genType  = typeof svgElOrType === 'string' ? 'square'
-      : (svgElOrType?.getAttribute('data-gen-type') ?? 'square');
-    const genParam = typeof svgElOrType === 'string' ? 80
-      : Number(svgElOrType?.getAttribute('data-gen-param') ?? 80);
-    const maxR = Math.floor(computeMaxSnapRadius(genType, genParam));
-    const name = typeof svgElOrType === 'string' ? ''
-      : (svgElOrType?.getAttribute('name') ?? '');
+  const def    = BOUNPOS_TYPES[toolName];
+  const schema = def.schema;
+
+  if (!svgElOrType || typeof svgElOrType === 'string') {
+    return { label: schema.label, ...schema.values, types: schema.types };
+  }
+
+  // Element present — read current values.
+  const bounPosType = svgElOrType.getAttribute('data-bounpos-type') ?? 'boundary';
+  const name        = svgElOrType.getAttribute('name') ?? '';
+  if (bounPosType === 'pos-set') {
+    const genType   = svgElOrType.getAttribute('data-gen-type')  ?? 'square';
+    const genParam  = Number(svgElOrType.getAttribute('data-gen-param') ?? 80);
+    const maxR      = Math.floor(computeMaxSnapRadius(genType, genParam));
+    const snapRadius = Number(svgElOrType.getAttribute('data-snap-radius') ?? 30);
     return {
-      label: 'Position Set',
-      type,
+      label: schema.label,
+      type: 'pos-set',
       name,
-      snapRadius: snapRadius,
+      snapRadius,
       types: {
-        type:           { show: [] },
-        name:           { kind: 'string', show: ['add', 'edit'] },
-        snapRadius:  { kind: 'number', min: 1, max: maxR, step: 1, show: ['edit'] },
+        ...schema.types,
+        snapRadius: { ...schema.types.snapRadius, max: maxR },
       },
     };
   }
-
-  // boundary
-  const name = typeof svgElOrType === 'string' ? ''
-    : (svgElOrType?.getAttribute('name') ?? '');
-  return {
-    label: 'Boundary',
-    type,
-    name,
-    types: {
-      type: { show: [] },
-      name: { kind: 'string', show: ['add', 'edit'] },
-    },
-  };
+  return { label: schema.label, type: 'boundary', name, types: schema.types };
 }
 
 /**
@@ -686,7 +750,6 @@ export const layerAPI = {
   anchorFor: getAnchor,
   ttStateFor: getTtState,
   ttStateSchemaForType: getTtStateSchema
-  toSVG:,
-  fromSVG:,
+  getData: 
 }
 */
