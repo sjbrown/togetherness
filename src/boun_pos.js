@@ -686,6 +686,7 @@ export const layerAPI = {
   anchorFor: getAnchor,
   ttStateFor: getTtState,
   ttStateSchemaForType: getTtStateSchema
-  getData: 
+  toSVG:,
+  fromSVG:,
 }
 */

@@ -145,9 +145,9 @@ window.App = {
   getDefaultBackgrounds: () => DEFAULT_BACKGROUNDS,
   getTool: (n) => toolById[n] ?? null,
   getToolSchema: (n) => {
+    if (SHAPE_TYPES[n]) return SHAPE_TYPES[n].schema;
     const def = toolById[n];
     if (!def) return { types: {}, values: {} };
-    // For tools with a schema (from options + defaults)
     const types  = Object.fromEntries((def.options ?? []).map(f => [f.key, f]));
     const values = def.defaults ?? toolParams[n] ?? {};
     return { label: def.label, types, values };
