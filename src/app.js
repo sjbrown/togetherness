@@ -21,7 +21,8 @@
  */
 
 import { initIcons }                              from './icons.js';
-import { addDrawing, deleteDrawing,
+import { SHAPE_TYPES, LAYER as DRAW_LAYER,
+         addDrawing, deleteDrawing,
          findDrawing, listDrawings, drawingsData,
          getGeom as drawingGeom,
          getAnchor as drawingAnchor,
@@ -42,7 +43,6 @@ import { TOOLS as TOY_TOOLS,
          edit as toyEdit,
        }  from './toys.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
-import { TOOLS as DRAW_TOOLS, LAYER as DRAW_LAYER }  from './tools-drawing.js';
 import { TOOLS as BOUNPOS_TOOLS, LAYER as BOUNPOS_LAYER } from './tools-boun_pos.js';
 import { newBoundaryId, newPositionSetId, rectToPath, pathToRect,
          addBoundary, addPositionSet, createPositionSetElement,
@@ -139,13 +139,19 @@ function buildToolRegistry() {
   // toys layer
   TOY_TOOLS.forEach(register);
   _toolsByLayer['toys'] = [SELECT_TOOL, ...TOY_TOOLS];
-  // drawing layer — seed params from SHAPE_TYPES schema defaults
-  DRAW_TOOLS.forEach(def => {
+  // drawing layer — tool defs derived from SHAPE_TYPES; params seeded from schema defaults
+  const drawTools = Object.entries(SHAPE_TYPES).map(([name, def]) => ({
+    name,
+    label:   def.schema.label,
+    layer:   DRAW_LAYER,
+    iconUrl: def.iconUrl,
+  }));
+  drawTools.forEach(def => {
     _toolById[def.name] = def;
     const schema = drawingGetTtStateSchema(def.name);
     _toolParams[def.name] = { ...schema };
   });
-  _toolsByLayer[DRAW_LAYER] = [SELECT_TOOL, ...DRAW_TOOLS];
+  _toolsByLayer[DRAW_LAYER] = [SELECT_TOOL, ...drawTools];
 }
 
 // Presentation palette — matches ui.css --primary accent family

@@ -31,11 +31,14 @@ function circleGetBBox(a) { return { x: +a.cx - +a.r, y: +a.cy - +a.r, width: 2 
 //               show includes 'addQuick'  — toolOpts popup
 //
 // Adding a shape type = adding one entry here (plus a button). No branching elsewhere.
+export const LAYER = 'drawing';
+
 export const SHAPE_TYPES = {
   rect: {
-    tag:    'rect',
-    label:  a => `${a.width}×${a.height} @ ${a.x},${a.y}`,
+    tag:     'rect',
+    label:   a => `${a.width}×${a.height} @ ${a.x},${a.y}`,
     getBBox: rectGetBBox,
+    iconUrl: 'drawing/rect.svg',
     // attrMap: schema key → actual SVG attribute name (where they differ)
     attrMap: { 'corner-r': 'rx' },
     schema: {
@@ -60,9 +63,10 @@ export const SHAPE_TYPES = {
     },
   },
   circle: {
-    tag:    'circle',
-    label:  a => `r${a.r} @ ${a.cx},${a.cy}`,
+    tag:     'circle',
+    label:   a => `r${a.r} @ ${a.cx},${a.cy}`,
     getBBox: circleGetBBox,
+    iconUrl: 'drawing/circle.svg',
     schema: {
       label: 'Circle',
       values: {

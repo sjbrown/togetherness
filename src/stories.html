@@ -80,7 +80,7 @@
 import { initIcons, icon } from '/icons.js';
 import * as UI from '/ui.js';
 import { SELECT_TOOL } from '/tools-schema.js';
-import { TOOLS as SHAPE_TOOLS } from '/tools-drawing.js';
+import { SHAPE_TYPES, LAYER as DRAW_LAYER } from '/drawing.js';
 import { TOOLS as TOY_TOOLS } from '/toys.js';
 
 initIcons();
@@ -129,6 +129,9 @@ const mockLayers = [
 ];
 
 // A fake App sufficient for the pure render functions + tool-opts schema.
+const SHAPE_TOOLS  = Object.entries(SHAPE_TYPES).map(([name, def]) => ({
+  name, label: def.schema.label, layer: DRAW_LAYER, iconUrl: def.iconUrl,
+}));
 const drawingTools = [SELECT_TOOL, ...SHAPE_TOOLS];
 const toysTools    = [SELECT_TOOL, ...TOY_TOOLS];
 const toolById = Object.fromEntries([SELECT_TOOL, ...SHAPE_TOOLS, ...TOY_TOOLS].map(t => [t.name, t]));

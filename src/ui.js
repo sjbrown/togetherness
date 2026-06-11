@@ -35,7 +35,8 @@ function iconFor(toolDef) {
       .then(r => r.ok ? r.text() : Promise.reject(r.status))
       .then(svg => {
         _iconCache.set(toolDef.iconUrl, svg.trim());
-        // Trigger a re-render so the fetched icon appears.
+        // Re-render pill and open panel so the fetched icon replaces the letter.
+        renderPill();
         UI.refreshFromDoc?.();
       })
       .catch(() => _iconCache.set(toolDef.iconUrl, 'error'));
@@ -45,7 +46,7 @@ function iconFor(toolDef) {
 
 function _letterIcon(label) {
   const letter = (label ?? '?')[0].toUpperCase();
-  return `<svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><title>${label}</title><text x="11" y="16" text-anchor="middle" font-size="14" font-family="ui-sans-serif,sans-serif" fill="currentColor">${letter}</text></svg>`;
+  return `<svg class="tt-icon-letter" width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><title>${label}</title><text x="11" y="16" text-anchor="middle" font-size="14" font-family="ui-sans-serif,sans-serif" fill="currentColor">${letter}</text></svg>`;
 }
 
 // -- UIData --------------------------------------------------------------------
