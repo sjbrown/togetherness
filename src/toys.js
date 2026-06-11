@@ -30,15 +30,13 @@ const XLINK_NS = 'http://www.w3.org/1999/xlink'
 
 import { number, bool } from './tools-schema.js';
 
-const svg = (inner) =>
-  `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
 
 
 // ── Toy-type registry ─────────────────────────────────────────────────────────
 // Seed of the toy library. Only player_marker is wired up; dice/tokens/trays
 // get added here as their behaviour comes online.
 //   iconSvg — inner SVG markup for the tool button (paths/shapes drawn with
-//             stroke=currentColor via the svg() wrapper). NOT a unicode glyph:
+//             stroke=currentColor). NOT a unicode glyph:
 //             svg('▲') renders nothing because there's no <text> node.
 export const TOY_TYPES = {
   player_marker: {
@@ -431,9 +429,9 @@ export const TOOLS = [
   {
     name:    'marker',
     toyType: 'player_marker',
-    label: TOY_TYPES['player_marker'].label,
-    icon: svg(TOY_TYPES['player_marker'].iconSvg),
-    layer: 'toys',
+    label:   TOY_TYPES['player_marker'].label,
+    iconUrl: 'toy/player_marker.svg',
+    layer:   'toys',
     defaults: { fill: '#a85e5e', label: '', size: 24 },
     options: [
       { kind: 'color-hsl', key: 'fill', label: 'Token color', show: ['add', 'edit', 'addQuick'] },
@@ -444,9 +442,9 @@ export const TOOLS = [
   {
     name:    'd6',
     toyType: 'dice_d6',
-    label: TOY_TYPES['dice_d6'].label,
-    icon: svg(TOY_TYPES['dice_d6'].iconSvg),
-    layer: 'toys',
+    label:   TOY_TYPES['dice_d6'].label,
+    iconUrl: 'toy/dice_d6.svg',
+    layer:   'toys',
     defaults: { fill: '#a8905e', faces: 6 },
     options: [
       { kind: 'color-hsl', key: 'fill', label: 'Die color', show: ['add', 'edit', 'addQuick'] },
