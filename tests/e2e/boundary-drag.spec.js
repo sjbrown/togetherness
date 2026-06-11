@@ -57,7 +57,7 @@ test.describe('boundary-constrained toy dragging', () => {
 
     const bAId = await page.evaluate(() => window.App.getSelectedId());
     expect(bAId).toBeTruthy();
-    await page.evaluate((id) => window.App.renameBounPos(id, 'toy'), bAId);
+    await page.evaluate((id) => window.App.commitEdit(id, { name: 'toy' }), bAId);
 
     // ── Create boundary B ─────────────────────────────────────────────────────
     await page.evaluate((b) => window.App.commitBoundary(b), bB);
@@ -65,7 +65,7 @@ test.describe('boundary-constrained toy dragging', () => {
 
     const bBId = await page.evaluate(() => window.App.getSelectedId());
     expect(bBId).toBeTruthy();
-    await page.evaluate((id) => window.App.renameBounPos(id, 'toy'), bBId);
+    await page.evaluate((id) => window.App.commitEdit(id, { name: 'toy' }), bBId);
 
     // ── Sanity checks: both boundaries in DOM with correct geometry + name ────
     const boundarySanity = await page.evaluate((ids) => {
