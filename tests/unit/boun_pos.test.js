@@ -16,13 +16,13 @@ import {
   // Grid math
   generateSquareGrid, generateHexGrid, gridFillExtent, computeMaxSnapRadius,
   // CRDT
-  addBoundary, addPositionSet, createPositionSetElement, findEl, deleteEl, renameBounPos, applyMoveCommit,
+  addBoundary, addPositionSet, createPositionSetElement, findEl, deleteEl, editBounPos, applyMoveCommit,
   // Layer API
   renderLayer, layerData,
   // Geometry queries
   getGeom, getAnchor,
   // Edit schema
-  getEditSchema, edit,
+  getTtStateSchema, edit,
   // Drag context
   computeBoundaryRects, computePositionSnapPoints,
 } from '../../src/boun_pos.js';
@@ -220,12 +220,12 @@ describe('deleteEl', () => {
   });
 });
 
-describe('renameBounPos', () => {
+describe('editBounPos rename', () => {
   test('updates name attribute and meta', () => {
     const layer = makeLayer();
     const { id } = addB(layer);
     const yEl = findEl(layer.yBounPos, id);
-    renameBounPos(layer.ydoc, yEl, layer.yBounPosMeta, id, 'forest');
+    editBounPos({ id, name: 'forest' }, layer.ydoc, layer.yBounPos, layer.yBounPosMeta);
     expect(yEl.getAttribute('name')).toBe('forest');
     expect(layer.yBounPosMeta.get(id).name).toBe('forest');
   });
@@ -334,7 +334,7 @@ describe('computePositionSnapPoints', () => {
     const { id, circles } = addPS(layer, { x: 0, y: 0, w: 400, h: 400, genType: 'square', genParam: 100 });
     // Set name to known value
     const yEl = findEl(layer.yBounPos, id);
-    renameBounPos(layer.ydoc, yEl, layer.yBounPosMeta, id, 'forest');
+    editBounPos({ id, name: 'forest' }, layer.ydoc, layer.yBounPos, layer.yBounPosMeta);
     const pts = computePositionSnapPoints(layer.yBounPos, new Set(['forest']));
     expect(pts.length).toBe(circles.length);
     pts.forEach(p => {
@@ -355,17 +355,16 @@ describe('computePositionSnapPoints', () => {
 
 // ── Edit schema ───────────────────────────────────────────────────────────────
 
-describe('getEditSchema via rendered DOM', () => {
-  test('boundary schema has name:string type', () => {
+describe('getTtStateSchema via rendered DOM', () => {
+  test('boundary schema has name field with string kind', () => {
     const layer = makeLayer();
     const { id } = addB(layer, { x: 0, y: 0, w: 200, h: 100 });
-    // Render to DOM
     const div = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     div.setAttribute('data-bounpos-type', 'boundary');
     div.setAttribute('name', 'dungeon');
-    const schema = getEditSchema(div);
+    const schema = getTtStateSchema(div);
     expect(schema.name).toBe('dungeon');
-    expect(schema.types.name).toBe('string');
+    expect(schema.types.name.kind).toBe('string');
     expect(schema.types['snap-radius']).toBeUndefined();
   });
 
@@ -376,9 +375,10 @@ describe('getEditSchema via rendered DOM', () => {
     div.setAttribute('data-snap-radius', '25');
     div.setAttribute('data-gen-type', 'square');
     div.setAttribute('data-gen-param', '80');
-    const schema = getEditSchema(div);
-    expect(schema['snap-radius']).toBe(25);
-    expect(schema.types['snap-radius'].type).toBe('number');
-    expect(schema.types['snap-radius'].max).toBe(40); // 80/2
+    const schema = getTtStateSchema(div);
+    expect(schema.type).toBe('pos-set');
+    expect(schema.snapRadius).toBe(25);
+    expect(schema.types.snapRadius.kind).toBe('number');
+    expect(schema.types.snapRadius.max).toBe(40); // floor(80/2)
   });
 });
