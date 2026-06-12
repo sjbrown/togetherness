@@ -17,7 +17,7 @@
  */
 
 import { icon } from './icons.js';
-import '../component/color-picker.js';
+import './component/color-picker.js';
 
 // ── Icon loading ──────────────────────────────────────────────────────────────
 // Tools with an `iconUrl` have their SVG fetched once and cached here.
