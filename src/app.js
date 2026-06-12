@@ -866,42 +866,19 @@ const App = {
     addHistory(`brought ${_selectedId.slice(0, 6)} to front`);
   },
 
-  setDrawingAttr: (id, key, value) => {
-    const yEl = findDrawing(_yDrawing, id);
-    if (!yEl) return;
-    _ydoc.transact(() => yEl.setAttribute(key, String(value)));
-  },
-
   // ── Tool selection + params (ui.js → app → canvas.js) ─────────────────────
+  // setToolParam affects only _toolParams (defaults for the *next* object to
+  // be added) — it never mutates the document or the current selection.
+  // Live-editing an existing object goes through the Edit panel → commitEdit.
   setTool: (name) => {
     _activeTool = name;
     Canvas.setTool(name, _toolParams[name] ?? {});
     UI.onToolChanged(name);
   },
-  setFill: (c) => {
-    // Fill applies to the active tool's params and any current selection.
-    const p = _toolParams[_activeTool];
-    if (p) p.fill = c;
-    if (_selectedId) App.setDrawingAttr(_selectedId, 'fill', c);
-    Canvas.setParams(_toolParams[_activeTool] ?? {});
-  },
   setToolParam: (toolName, key, value) => {
     const p = _toolParams[toolName] ?? (_toolParams[toolName] = {});
     p[key] = (typeof value === 'string' && value !== '' && !isNaN(value)) ? +value : value;
     if (toolName === _activeTool) Canvas.setParams(p);
-    // Live-apply visual params to a current selection
-    if (_selectedId && ['fill', 'stroke-width'].includes(key)) {
-      App.setDrawingAttr(_selectedId, key, p[key]);
-    }
-  },
-  stepToolParam: (toolName, key, delta, min, max) => {
-    const p = _toolParams[toolName] ?? (_toolParams[toolName] = {});
-    const next = +( (p[key] ?? 0) + delta ).toFixed(2);
-    p[key] = Math.max(min, Math.min(max, next));
-    if (toolName === _activeTool) Canvas.setParams(p);
-    if (_selectedId && ['stroke-width'].includes(key)) {
-      App.setDrawingAttr(_selectedId, key, p[key]);
-    }
   },
 
   // ── Misc ─────────────────────────────────────────────────────────────────

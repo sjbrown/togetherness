@@ -323,9 +323,16 @@ export function getTtStateSchema(svgElOrType) {
   const type = typeof svgElOrType === 'string'
     ? svgElOrType
     : (svgElOrType?.getAttribute?.('data-type') ?? svgElOrType?.tagName ?? 'rect');
-  const def = SHAPE_TYPES[type] ?? SHAPE_TYPES.rect;
-  const { schema } = def;
-  const reverseMap = Object.fromEntries(Object.entries(def.attrMap ?? {}).map(([k, v]) => [v, k]));
+  const def = SHAPE_TYPES[type];
+  if (!def) {
+    // Unknown type (e.g. 'select', a toy/bounPos tool name) — not a drawing
+    // type, so this module has no schema to offer. Let the caller fall
+    // back to its own tool registry.
+    if (typeof svgElOrType === 'string' || !svgElOrType) return null;
+  }
+  const shapeDef = def ?? SHAPE_TYPES.rect;
+  const { schema } = shapeDef;
+  const reverseMap = Object.fromEntries(Object.entries(shapeDef.attrMap ?? {}).map(([k, v]) => [v, k]));
   if (!svgElOrType || typeof svgElOrType === 'string') {
     const { id: _id, type: _type, ...rest } = schema.values;
     return { label: schema.label, ...rest, types: schema.types };
@@ -334,7 +341,7 @@ export function getTtStateSchema(svgElOrType) {
   const values = {};
   for (const k of Object.keys(schema.types)) {
     if (k === 'id' || k === 'type') continue;  // internal — never in the returned value bag
-    const svgAttr = (def.attrMap ?? {})[k] ?? k;
+    const svgAttr = (shapeDef.attrMap ?? {})[k] ?? k;
     values[k] = svgElOrType.getAttribute(svgAttr) ?? schema.values[k];
   }
   return { label: schema.label, ...values, types: schema.types };

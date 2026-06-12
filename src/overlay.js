@@ -61,10 +61,6 @@ export function setLocalSelection(elId) {
   render();
 }
 
-export function clearLocalSelection() {
-  setLocalSelection(null);
-}
-
 // Called by App when awareness changes — rebuilds remote selection + drag entries
 export function syncFromAwareness(awarenessStates, myClientId) {
   // Remove stale remote entries
