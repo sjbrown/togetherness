@@ -17,6 +17,7 @@
  */
 
 import { icon } from './icons.js';
+import '../component/color-picker.js';
 
 // ── Icon loading ──────────────────────────────────────────────────────────────
 // Tools with an `iconUrl` have their SVG fetched once and cached here.
@@ -213,7 +214,7 @@ export function onSelectionChanged(elId, drawingMeta) {
   // Keep the Edit panel live — re-render it whenever the selection changes.
   if (UIData.panelOpen === 'edit') {
     const body = $('#panelBody');
-    if (body) body.innerHTML = editBody(gatherTtStateData());
+    if (body) { body.innerHTML = editBody(gatherTtStateData()); wireColorPickers(body); }
   }
   if (elId && drawingMeta) toast(`${drawingMeta.type ?? 'Shape'} selected`, 'info');
 }
@@ -268,25 +269,27 @@ function renderSchemaField(key, value, typeSpec, ctx) {
 
   // ── color picker ──────────────────────────────────────────────────────────
   if (kind === 'color-hslo' || kind === 'color-hsl') {
-    const allowNone = kind === 'color-hslo';
-    const colors    = allowNone ? ['none', ...palette] : palette;
+    const allowNone  = kind === 'color-hslo';
+    const isNone     = value === 'none';
+    const initial    = isNone ? '' : (value ?? '');
+    const pickerId   = `cp-${Math.random().toString(36).slice(2, 9)}`;
+    const noneBtn    = allowNone
+      ? `<button type="button" class="cp-none ${isNone ? 'active' : ''}" data-cp-none="${pickerId}" title="No fill">∅ None</button>`
+      : '';
+    const picker     = `<color-picker id="${pickerId}" class="cp-field" allow-opacity="${allowNone}" hue-columns="12" rows="4" cell-size="14"${initial ? ` initial-color="${initial}"` : ''}></color-picker>`;
+
     if (mode === 'edit') {
       const id = ctx.id;
-      const swatchDivs = colors.map(c => {
-        const isNone = c === 'none';
-        return `<div class="sw ${value === c ? 'active' : ''}"
-          style="background:${isNone ? 'transparent' : c};${isNone ? 'border:1.5px dashed var(--border-2);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-3)' : ''}"
-          onclick="App.commitEdit('${id}',{'${key}':'${c}'})"
-          title="${c}">${isNone ? '∅' : ''}</div>`;
-      }).join('');
-      return `<div class="field"><label>${key}</label><div class="swatches">${swatchDivs}</div></div>`;
+      return `<div class="field" data-cp-wire data-cp-mode="edit" data-cp-target="${id}" data-cp-key="${key}" data-cp-opacity="${allowNone}">
+        <label>${key}</label>
+        <div class="cp-row">${picker}${noneBtn}</div>
+      </div>`;
     } else {
       const toolName = ctx.toolName;
-      const sw = colors.slice(0, 6).map(c =>
-        `<div class="mini-sw ${value === c ? 'active' : ''}" style="background:${c}"
-          onclick="App.setToolParam('${toolName}','${key}','${c}');UI.refreshToolOpts()"></div>`
-      ).join('');
-      return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><div class="mini-swatches">${sw}</div></div>`;
+      return `<div class="opt-row cp-opt-row" data-cp-wire data-cp-mode="${mode}" data-cp-target="${toolName}" data-cp-key="${key}" data-cp-opacity="${allowNone}">
+        <span class="opt-label">${ctx.label ?? key}</span>
+        <div class="cp-row">${picker}${noneBtn}</div>
+      </div>`;
     }
   }
 
@@ -349,6 +352,42 @@ function renderSchemaField(key, value, typeSpec, ctx) {
   return ''; // unknown kind — omit field
 }
 
+// ── color-picker wiring (impure) ───────────────────────────────────────────
+// renderSchemaField emits <color-picker> elements with no event listeners
+// (it's a pure string renderer). After any innerHTML assignment that may
+// contain `[data-cp-wire]` fields, call wireColorPickers(container) to attach
+// 'color-picked' listeners and the optional "None" toggle button.
+export function wireColorPickers(container) {
+  if (!container) return;
+  container.querySelectorAll('[data-cp-wire]').forEach(field => {
+    const mode    = field.dataset.cpMode;   // 'edit' | 'add' | 'addQuick'
+    const target  = field.dataset.cpTarget; // element id (edit) or tool name (add/addQuick)
+    const key     = field.dataset.cpKey;
+    const hasOpacity = field.dataset.cpOpacity === 'true';
+    const picker  = field.querySelector('color-picker');
+    const noneBtn = field.querySelector('[data-cp-none]');
+
+    const applyColor = (value) => {
+      if (mode === 'edit') {
+        App.commitEdit(target, { [key]: value });
+      } else {
+        App.setToolParam(target, key, value);
+        refreshToolOpts();
+      }
+    };
+
+    picker?.addEventListener('color-picked', (e) => {
+      noneBtn?.classList.remove('active');
+      applyColor(hasOpacity ? e.detail.hex8 : e.detail.hex);
+    });
+
+    noneBtn?.addEventListener('click', () => {
+      noneBtn.classList.add('active');
+      applyColor('none');
+    });
+  });
+}
+
 export function editBody(data) {
   if (!data.element) {
     return `<div style="text-align:center;padding:48px 20px 0;color:var(--text-3)">
@@ -401,6 +440,7 @@ export function showToolOpts(toolName) {
     values:   App.getToolParams(toolName),
     palette:  App.getPalette(),
   });
+  wireColorPickers(to);
   const pr  = pill.getBoundingClientRect();
   const toR = to.getBoundingClientRect();
   let left = pr.left + pr.width / 2 - toR.width / 2;
@@ -466,6 +506,7 @@ export function openSheet(which) {
       save:     () => saveBody(),
       gestures: () => gesturesBody(),
     }[which] ?? (() => ''))();
+    wireColorPickers(body);
   }
   if (which === 'peers') wireOfflineToggle();
   updateInfoBar();
@@ -747,10 +788,10 @@ export function refreshFromDoc() {
   const body = $('#panelBody');
   if (!body) return;
   switch (UIData.panelOpen) {
-    case 'edit':    body.innerHTML = editBody(gatherTtStateData());   break;
+    case 'edit':    body.innerHTML = editBody(gatherTtStateData());   wireColorPickers(body); break;
     case 'history': body.innerHTML = histBody(App.getHistory());   break;
     case 'layers':  body.innerHTML = layersBody(gatherLayersData()); break;
-    case 'tools':   body.innerHTML = toolsBody(gatherToolsData()); break;
+    case 'tools':   body.innerHTML = toolsBody(gatherToolsData()); wireColorPickers(body); break;
   }
 }
 

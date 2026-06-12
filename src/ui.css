@@ -75,6 +75,11 @@
   /* Typography */
   --font-body:    -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   --font-display: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+
+  /* Aliases consumed by <color-picker> (component/color-picker.js) */
+  --color-border-tertiary:  var(--border);
+  --color-border-secondary: var(--border-2);
+  --color-text-primary:     var(--text);
 }
 
 /* ── Reset & base ─────────────────────────────────────────── */
@@ -261,9 +266,16 @@ html, body {
 .opt-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .opt-row:last-child { margin-bottom: 0; }
 .opt-label { color: var(--text-3); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
-.mini-swatches { display: flex; gap: 7px; }
-.mini-sw { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
-.mini-sw.active { border-color: var(--text); box-shadow: 0 0 0 1px rgba(0,0,0,0.8); }
+.cp-row { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+.cp-opt-row { display: block; margin-bottom: 14px; }
+.cp-opt-row:last-child { margin-bottom: 0; }
+.cp-opt-row .opt-label { display: block; margin-bottom: 6px; }
+.cp-none {
+  height: 28px; padding: 0 10px; border-radius: 6px; border: 0.5px solid var(--border-2);
+  background: var(--surface-2); color: var(--text-3); font-size: 12px; cursor: pointer;
+  display: flex; align-items: center; gap: 4px; font-family: var(--font-body);
+}
+.cp-none.active { color: var(--text); border-color: var(--text-2); box-shadow: 0 0 0 1px rgba(0,0,0,0.8); }
 .stepper { display: flex; align-items: center; gap: 6px; }
 .step-btn {
   width: 30px; height: 30px; border-radius: 50%; border: none;
@@ -412,10 +424,6 @@ html, body {
 .tool:active { box-shadow: var(--emboss-inset); }
 .tool.active  { color: var(--primary); box-shadow: var(--emboss-active); }
 .tool svg { width: 22px; height: 22px; }
-
-.swatches { display: flex; gap: 9px; flex-wrap: wrap; }
-.sw { width: 32px; height: 32px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
-.sw.active { border-color: var(--text-2); box-shadow: 0 0 0 1px rgba(0,0,0,0.8); }
 
 input[type=range] { width: 100%; accent-color: var(--primary); height: 28px; }
 

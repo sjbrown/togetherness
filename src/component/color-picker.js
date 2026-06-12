@@ -31,7 +31,7 @@ class ColorPicker extends HTMLElement {
   }
   
   static get observedAttributes() {
-    return ['allow-opacity', 'hue-columns', 'rows', 'cell-size'];
+    return ['allow-opacity', 'hue-columns', 'rows', 'cell-size', 'initial-color'];
   }
   
   // ============================================================================
@@ -81,6 +81,20 @@ class ColorPicker extends HTMLElement {
   set cellSize(val) {
     this.setAttribute('cell-size', Math.max(4, val));
   }
+
+  /**
+   * Initial/current color, settable as a hex string (e.g. "#ff0000" or
+   * "#ff0000cc"), an hsla()/rgba() string, or "none" (ignored — leaves the
+   * current selection unchanged). Reflects into the swatch and selected
+   * grid cell on render.
+   */
+  get initialColor() {
+    return this.getAttribute('initial-color');
+  }
+  set initialColor(val) {
+    if (val == null) this.removeAttribute('initial-color');
+    else this.setAttribute('initial-color', val);
+  }
   
   /**
    * Get the currently selected color object
@@ -95,6 +109,16 @@ class ColorPicker extends HTMLElement {
   getSelectedHex() {
     const { h, s, l } = this.selectedColor;
     return this.hslToHex(h, s, l);
+  }
+  
+  /**
+   * Get the currently selected color as an 8-digit hex string including
+   * alpha (e.g. "#ff0000cc"). Alpha (0-100) is scaled to 0-255.
+   */
+  getSelectedHex8() {
+    const { h, s, l, a } = this.selectedColor;
+    const alphaHex = Math.round((a / 100) * 255).toString(16).padStart(2, '0');
+    return this.hslToHex(h, s, l) + alphaHex;
   }
   
   /**
@@ -128,6 +152,9 @@ class ColorPicker extends HTMLElement {
     const numCols = this.hueColumns;
     const cellSize = this.cellSize;
     const allowOpacity = this.allowOpacity;
+
+    const parsed = this.parseColorString(this.initialColor);
+    if (parsed) this.selectedColor = parsed;
     
     // Generate luminance values for rows
     const lumStart = 85;
@@ -138,8 +165,9 @@ class ColorPicker extends HTMLElement {
     const opacities = allowOpacity ? 
       this.generateSequence(100, 10, numRows) : [];
     
-    // Calculate dimensions
-    const swatchSize = 80;
+    // Calculate dimensions — the swatch is square and matches the grid's
+    // total height (rows * cellSize) so it visually aligns with the grid.
+    const swatchSize = numRows * cellSize;
     const opacityColWidth = cellSize;
     const gridWidth = (numCols > 0 ? numCols + 1 : 0) * cellSize; // +1 for grayscale
     const totalWidth = (allowOpacity ? opacityColWidth : 0) + swatchSize + gridWidth + 
@@ -412,6 +440,7 @@ class ColorPicker extends HTMLElement {
         l: Math.round(l * 10) / 10,
         a,
         hex: this.hslToHex(h, s, l),
+        hex8: this.getSelectedHex8(),
         rgba: this.getSelectedRgba()
       },
       bubbles: true,
@@ -435,6 +464,74 @@ class ColorPicker extends HTMLElement {
     return sequence;
   }
   
+  /**
+   * Parse a color string into {h, s, l, a} (a in 0-100).
+   * Accepts: "#rgb", "#rrggbb", "#rrggbbaa", "hsl(...)", "hsla(...)",
+   * "rgb(...)", "rgba(...)". Returns null for "none", empty, or
+   * unrecognized input (leaving the current selection unchanged).
+   */
+  parseColorString(str) {
+    if (!str || str === 'none') return null;
+    str = str.trim();
+
+    if (str[0] === '#') {
+      let hex = str.slice(1);
+      if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+      if (hex.length !== 6 && hex.length !== 8) return null;
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      const a = hex.length === 8 ? Math.round((parseInt(hex.slice(6, 8), 16) / 255) * 100) : 100;
+      if ([r, g, b].some(Number.isNaN)) return null;
+      const { h, s, l } = this.rgbToHsl(r, g, b);
+      return { h, s, l, a };
+    }
+
+    const hslMatch = str.match(/^hsla?\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%(?:\s*,\s*([\d.]+))?\s*\)$/i);
+    if (hslMatch) {
+      const [, h, s, l, a] = hslMatch;
+      return {
+        h: parseFloat(h),
+        s: parseFloat(s),
+        l: parseFloat(l),
+        a: a !== undefined ? Math.round(parseFloat(a) * 100) : 100,
+      };
+    }
+
+    const rgbMatch = str.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/i);
+    if (rgbMatch) {
+      const [, r, g, b, a] = rgbMatch;
+      const { h, s, l } = this.rgbToHsl(parseFloat(r), parseFloat(g), parseFloat(b));
+      return { h, s, l, a: a !== undefined ? Math.round(parseFloat(a) * 100) : 100 };
+    }
+
+    return null;
+  }
+
+  /**
+   * Convert RGB (0-255) to {h, s, l} (h: 0-360, s/l: 0-100)
+   */
+  rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s;
+    const l = (max + min) / 2;
+    const d = max - min;
+    if (d === 0) {
+      h = 0; s = 0;
+    } else {
+      s = d / (1 - Math.abs(2 * l - 1));
+      switch (max) {
+        case r: h = ((g - b) / d) % 6; break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
+      }
+      h *= 60;
+      if (h < 0) h += 360;
+    }
+    return { h, s: s * 100, l: l * 100 };
+  }
+
   /**
    * Convert HSL to hex
    */
