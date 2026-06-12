@@ -154,9 +154,8 @@ window.App = {
   },
   getToolParams: (n) => toolParams[n] ?? {},
   setToolParam: (n,k,v) => { (toolParams[n] ??= {})[k] = v; },
-  stepToolParam: (n,k,d,min,max) => { const p=(toolParams[n]??={}); p[k]=Math.max(min,Math.min(max,(+p[k]||0)+d)); },
   // no-ops for handlers fired from within stories
-  setTool(){}, setFill(){}, setBackground(){}, select(){}, openSheet(){}, closePanel(){},
+  setTool(){}, setBackground(){}, select(){}, openSheet(){}, closePanel(){},
   duplicateSelected(){}, bringToFront(){}, deleteSelected(){}, undo(){},
   setLayer(){}, setOffline(){}, isOffline(){ return false; }, exportSVG(){}, importSVG(){},
 };

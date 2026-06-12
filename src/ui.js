@@ -197,6 +197,10 @@ export function onToolChanged(toolName) {
   else if (prev && prev !== 'select') UIData.mruTool = prev;
   hideToolOpts();
   renderPill();
+  if (UIData.panelOpen === 'tools') {
+    const body = $('#panelBody');
+    if (body) body.innerHTML = toolsBody(gatherToolsData());
+  }
   if (toolName !== 'select') {
     const def = App.getTool(toolName);
     toast(`${def?.label ?? toolName} tool`, 'info');
@@ -486,7 +490,6 @@ function gatherToolsData() {
     palette:             App.getPalette(),
     activeToolSchema:    App.getToolSchema(activeTool),
     activeToolParams:    App.getToolParams(activeTool),
-    activeElementSchema: App.getElementTtStateSchema?.() ?? null,
     background:          App.getBackground(),
     defaultBackgrounds:  App.getDefaultBackgrounds(),
     toyClasses:          layer === 'boundaries-positions' ? (App.getToyClasses?.() ?? []) : null,
@@ -563,15 +566,6 @@ function defaultToolsBody(data) {
         { mode: 'add', toolName: data.activeTool, label: key, palette: data.palette }))
     .join('');
 
-  // 'edit'-surface fields from the currently selected element
-  // (bounPos name, snap-radius, etc.) wired to App.commitEdit
-  const elSchema   = data.activeElementSchema;
-  const elTypes    = elSchema?.types ?? {};
-  const editFields = Object.entries(elTypes)
-    .map(([key, typeSpec]) => renderSchemaField(key, elSchema[key], typeSpec,
-        { mode: 'edit', id: elSchema?.id, palette: data.palette }))
-    .join('');
-
   // Help block — appended when the active tool schema identifies a bounPos type
   const schemaType = toolSchema.type;
   const helpHTML   = (schemaType === 'boundary' || schemaType === 'pos-set')
@@ -582,7 +576,7 @@ function defaultToolsBody(data) {
     <div class="field"><label>Tool · ${data.layer} layer</label>
       <div class="tool-grid">${data.tools.map(toolBtn).join('')}</div>
     </div>
-    ${addFields}${editFields}${helpHTML}`;
+    ${addFields}${helpHTML}`;
 }
 
 /**
