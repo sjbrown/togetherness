@@ -543,3 +543,12 @@ input[type=range] { width: 100%; accent-color: var(--primary); height: 28px; }
   width: 100%; aspect-ratio: 4/3; object-fit: cover;
   border-radius: 5px; display: block;
 }
+
+/* ── Tool icon loading state ─────────────────────────────────────────────── */
+@keyframes tt-icon-pulse {
+  0%, 100% { opacity: 0.9; }
+  50%       { opacity: 0.25; }
+}
+svg.tt-icon-letter {
+  animation: tt-icon-pulse 1.2s ease-in-out infinite;
+}

@@ -21,12 +21,15 @@
  */
 
 import { initIcons }                              from './icons.js';
-import { SHAPE_TYPES, addDrawing, deleteDrawing,
+import { SHAPE_TYPES, LAYER as DRAW_LAYER,
+         addDrawing, deleteDrawing,
          findDrawing, listDrawings, drawingsData,
          getGeom as drawingGeom,
          getAnchor as drawingAnchor,
          applyMoveCommit as drawingApplyMoveCommit,
-         getEditSchema as drawingGetEditSchema,
+         getTtStateSchema as drawingGetTtStateSchema,
+         getTtState as drawingGetTtState,
+         applyTtState as drawingApplyTtState,
          edit as drawingEdit } from './drawing.js';
 import { TOOLS as TOY_TOOLS,
          TOY_TYPES, addToy, deleteToy, findToy,
@@ -34,25 +37,27 @@ import { TOOLS as TOY_TOOLS,
          getGeom as toyGeom,
          getAnchor as toyAnchor,
          applyMoveCommit as toyApplyMoveCommit,
-         getEditSchema as toyGetEditSchema,
+         getTtStateSchema as toyGetTtStateSchema,
+         getTtState as toyGetTtState,
+         applyTtState as toyApplyTtState,
          edit as toyEdit,
        }  from './toys.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
-import { TOOLS as DRAW_TOOLS, LAYER as DRAW_LAYER }  from './tools-drawing.js';
-import { TOOLS as BOUNPOS_TOOLS, LAYER as BOUNPOS_LAYER } from './tools-boun_pos.js';
-import { newBoundaryId, newPositionSetId, rectToPath, pathToRect,
-         addBoundary, addPositionSet, createPositionSetElement,
+import { BOUNPOS_TYPES, LAYER as BOUNPOS_LAYER,
+         addPositionSet, createPositionSetElement,
+         rectToPath, pathToRect,
          findEl          as bounPosFindEl,
          deleteEl        as bounPosDeleteEl,
-         renameBounPos,
          applyMoveCommit as bounPosApplyMoveCommit,
          renderLayer     as bounPosRenderLayer,
          layerData       as bounPosLayerData,
          metaFor         as bounPosMetaFor,
          getGeom         as bounPosGeom,
          getAnchor       as bounPosAnchor,
-         getEditSchema   as bounPosGetEditSchema,
-         edit            as bounPosEdit,
+         getTtStateSchema as bounPosGetTtStateSchema,
+         getTtState       as bounPosGetTtState,
+         applyTtState     as bounPosApplyTtState,
+         editBounPos      as bounPosEdit,
          computeBoundaryRects,
          computePositionSnapPoints,
          computeMaxSnapRadius,
@@ -129,14 +134,34 @@ function buildToolRegistry() {
   // background layer: select only
   _toolsByLayer['background'] = [SELECT_TOOL];
   // boundaries-positions layer
-  BOUNPOS_TOOLS.forEach(register);
-  _toolsByLayer[BOUNPOS_LAYER] = [SELECT_TOOL, ...BOUNPOS_TOOLS];
+  // boundaries-positions layer — tool defs derived from BOUNPOS_TYPES
+  const bounPosTools = Object.entries(BOUNPOS_TYPES).map(([name, def]) => ({
+    name,
+    label:   def.label,
+    layer:   BOUNPOS_LAYER,
+    iconUrl: def.iconUrl,
+  }));
+  bounPosTools.forEach(def => {
+    _toolById[def.name] = def;
+    _toolParams[def.name] = { ...BOUNPOS_TYPES[def.name].schema.values };
+  });
+  _toolsByLayer[BOUNPOS_LAYER] = [SELECT_TOOL, ...bounPosTools];
   // toys layer
   TOY_TOOLS.forEach(register);
   _toolsByLayer['toys'] = [SELECT_TOOL, ...TOY_TOOLS];
-  // drawing layer
-  DRAW_TOOLS.forEach(register);
-  _toolsByLayer[DRAW_LAYER] = [SELECT_TOOL, ...DRAW_TOOLS];
+  // drawing layer — tool defs derived from SHAPE_TYPES; params seeded from schema defaults
+  const drawTools = Object.entries(SHAPE_TYPES).map(([name, def]) => ({
+    name,
+    label:   def.schema.label,
+    layer:   DRAW_LAYER,
+    iconUrl: def.iconUrl,
+  }));
+  drawTools.forEach(def => {
+    _toolById[def.name] = def;
+    const schema = drawingGetTtStateSchema(def.name);
+    _toolParams[def.name] = { ...schema };
+  });
+  _toolsByLayer[DRAW_LAYER] = [SELECT_TOOL, ...drawTools];
 }
 
 // Presentation palette — matches ui.css --primary accent family
@@ -291,7 +316,7 @@ function renderToysLayer() {
   layer.innerHTML = '';
 
   listToys(_yToys, _yToyMeta).forEach(({ svgEl, meta }) => {
-    // Stamp color so toys.getEditSchema(svgEl) can read it without meta access.
+    // Stamp color so toys.getTtStateSchema(svgEl) can read it without meta access.
     if (meta?.color) svgEl.dataset.toyColor = meta.color;
     svgEl.style.cursor = 'grab';
     layer.appendChild(svgEl);
@@ -328,7 +353,7 @@ function renderDrawingList() {
     const id     = svgEl.getAttribute('data-yid');
     const attrs  = {};
     for (const at of svgEl.attributes) attrs[at.name] = at.value;
-    const def    = SHAPE_TYPES[drawingMeta?.type ?? attrs['data-type']] ?? SHAPE_TYPES.rect;
+    const def    = drawingGetTtStateSchema(drawingMeta?.type ?? svgEl.getAttribute('data-type') ?? 'rect');
     const item   = document.createElement('div');
     const author = drawingMeta?.author;
     item.className  = 'drawing-item' + (_selectedId === id ? ' selected' : '');
@@ -338,7 +363,7 @@ function renderDrawingList() {
     sw.style.background = attrs.fill;
     const lbl = document.createElement('div');
     lbl.className   = 'drawing-label';
-    lbl.textContent = def.label(attrs);
+    lbl.textContent = def.label;
     const own = document.createElement('div');
     own.className   = 'drawing-owner';
     own.textContent = author === _myId ? 'me' : (author?.slice(0, 5) ?? '?');
@@ -486,6 +511,19 @@ const App = {
   getTool:         (name)  => _toolById[name] ?? null,
   getToolOptions:  (name)  => _toolById[name]?.options ?? [],
   getToolParams:   (name)  => _toolParams[name] ?? {},
+  // Returns the full ttStateSchema for a tool — for drawing tools this comes from
+  // SHAPE_TYPES[name].schema; for other tools it falls back to a minimal schema
+  // built from the tool def's options array.
+  getToolSchema:   (name)  => {
+    const drawSchema = drawingGetTtStateSchema(name);
+    if (drawSchema?.types) return drawSchema;
+    if (BOUNPOS_TYPES[name]) return BOUNPOS_TYPES[name].schema;
+    const def = _toolById[name];
+    if (!def) return { types: {}, values: {} };
+    const types  = Object.fromEntries((def.options ?? []).map(f => [f.key, f]));
+    const values = def.defaults ?? _toolParams[name] ?? {};
+    return { label: def.label, types, values };
+  },
   getPeers:        () => {
     const out = [];
     _awareness.getStates().forEach((state, cid) => {
@@ -546,36 +584,34 @@ const App = {
     App.addLog(`added ${attrs.type} ${id.slice(0, 6)}`, 'local');
   },
 
-  commitBoundary: ({ x, y, w, h }) => {
-    const { id, name } = newBoundaryId();
-    addBoundary(_ydoc, _yBounPos, _yBounPosMeta, { id, name, x, y, w, h, author: _myId });
-    _undoStack.push({ op: 'add', layer: 'boundaries-positions', bounPosType: 'boundary', id });
-    addHistory(`added boundary ${name}`, { elType: 'boundaries-positions' });
-    App.addLog(`added boundary ${name}`, 'local');
+  commitBounPos: ({ toolName, x, y, w, h }) => {
+    const def = BOUNPOS_TYPES[toolName];
+    if (!def) return;
+    const { id, name } = def.newId();
+    if (def.genType === null) {
+      // boundary
+      def.create(_ydoc, _yBounPos, _yBounPosMeta, { id, name, x, y, w, h, author: _myId });
+    } else {
+      // pos-set
+      const params   = App.getToolParams(toolName);
+      const genType  = def.genType;
+      const genParam = genType === 'hex' ? (params['hex-size'] ?? 40) : (params['spacing'] ?? 80);
+      const rawRadius  = params['snapRadius'] ?? 30;
+      const snapRadius = Math.min(rawRadius, computeMaxSnapRadius(genType, genParam));
+      const circles    = gridFillExtent(x, y, w, h, genType, genParam);
+      if (circles.length === 0) return;
+      def.create(_ydoc, _yBounPos, _yBounPosMeta,
+        { id, name, snapRadius, genType, genParam, x, y, w, h, circles, author: _myId });
+    }
+    _undoStack.push({ op: 'add', layer: 'boundaries-positions', bounPosType: def.bounPosType, id });
+    addHistory(`added ${def.label} ${name}`, { elType: 'boundaries-positions' });
+    App.addLog(`added ${def.label} ${name}`, 'local');
     App.select(id);
   },
 
-  commitPositionSet: ({ x, y, w, h, toolName }) => {
-    const params = App.getToolParams(toolName);
-    const result = addPositionSet(_ydoc, _yBounPos, _yBounPosMeta,
-      { x, y, w, h, toolName, toolParams: params, author: _myId });
-
-    if (!result) return;  // extent too small
-
-    // App-level concerns: undo, history, logs, UI selection
-    _undoStack.push({ op: 'add', layer: 'boundaries-positions', bounPosType: 'pos-set', id: result.id });
-    addHistory(`added ${result.genType} pos-set  ${result.name}`, { elType: 'boundaries-positions' });
-    App.addLog(`added ${result.genType} pos-set  ${result.name}`, 'local');
-    App.select(result.id);
-  },
-
-  renameBounPos: (id, newName) => {
-    const yEl = bounPosFindEl(_yBounPos, id);
-    if (!yEl) return;
-    renameBounPos(_ydoc, yEl, _yBounPosMeta, id, newName);
-    // observeDeep triggers renderBounPosLayer; also refresh any open panel.
-    UI.refreshFromDoc();
-  },
+  // Legacy aliases kept for e2e tests and canvas.js call sites
+  commitBoundary:    (geom)   => App.commitBounPos({ toolName: 'boundary',    ...geom }),
+  commitPositionSet: ({ toolName, ...geom }) => App.commitBounPos({ toolName, ...geom }),
 
   setLayerVisible: (id, visible) => {
     _layerVisibility[id] = visible;
@@ -595,38 +631,29 @@ const App = {
     return [...classes].sort();
   },
 
-  getSelectedBounPos: () => {
-    if (!_selectedId) return null;
-    const svgEl = _svgEl?.querySelector(`[data-yid="${_selectedId}"]`);
-    if (layerForElement(svgEl) !== 'boundaries-positions') return null;
-    const yEl = bounPosFindEl(_yBounPos, _selectedId);
-    const name = yEl?.getAttribute('name') ?? _selectedId;
-    return { id: _selectedId, name };
-  },
-
   /**
-   * Return the edit schema for the currently selected element, decorated
+   * Return the ttStateSchema for the currently selected element, decorated
    * with `ltype` and `id`.  Returns null when nothing is selected.
    *
-   * Delegates to the layer-scoped module's getEditSchema(svgEl) so that
+   * Delegates to the layer-scoped module's getTtStateSchema(svgEl) so that
    * app.js stays ignorant of per-type field definitions.
    */
-  getElementEditSchema: () => {
+  getElementTtStateSchema: () => {
     if (!_selectedId) return null;
     const svgEl = _svgEl?.querySelector(`[data-yid="${_selectedId}"]`);
     if (!svgEl) return null;
     const ltype = layerForElement(svgEl);
     let schema;
     if (ltype === 'drawing') {
-      schema = drawingGetEditSchema(svgEl);
+      schema = drawingGetTtStateSchema(svgEl);
     } else if (ltype === 'toy') {
-      schema = toyGetEditSchema(svgEl);
+      schema = toyGetTtStateSchema(svgEl);
     } else if (ltype === 'boundaries-positions') {
-      schema = bounPosGetEditSchema(svgEl);
+      schema = bounPosGetTtStateSchema(svgEl);
     } else {
       return null;
     }
-    return { ltype, id: _selectedId, ...schema };
+    return { ltype, ...schema, id: _selectedId };
   },
 
   /**
@@ -644,7 +671,7 @@ const App = {
     } else if (ltype === 'toy') {
       toyEdit(_ydoc, findToy(_yToys, id), _yToyMeta, editData);
     } else if (ltype === 'boundaries-positions') {
-      bounPosEdit(_ydoc, bounPosFindEl(_yBounPos, id), _yBounPosMeta, editData);
+      bounPosEdit({id, ...editData}, _ydoc, _yBounPos, _yBounPosMeta);
     }
     // observeDeep fires synchronously → renderDoc() already ran.
     // Refresh the Edit panel body to show the updated values.
@@ -674,30 +701,25 @@ const App = {
     if (ltype === 'toy') {
       const yEl = findToy(_yToys, id);
       if (!yEl) return;
-      const snap = yEl.getAttributes();
-      _undoStack.push({ op: 'del', layer: 'toy', attrs: snap, meta: _yToyMeta.get(id) });
+      const state = toyGetTtState(yEl);
+      _undoStack.push({ op: 'del', layer: 'toy', state });
       deleteToy(_ydoc, _yToys, _yToyMeta, id);
       addHistory(`deleted ${id.slice(0, 6)}`, { elType: 'toy' });
     } else if (ltype === 'boundaries-positions') {
       const yEl = bounPosFindEl(_yBounPos, id);
       if (!yEl) return;
-      const bounPosType = yEl.getAttribute('data-bounpos-type') ?? 'boundary';
-      const gAttrs  = yEl.getAttributes();
-      // Store the <path> child's d separately (needed for undo reconstruction)
-      const yPath   = yEl.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'path');
-      const pathD   = yPath?.getAttribute('d') ?? '';
-      _undoStack.push({ op: 'del', layer: 'boundaries-positions', bounPosType,
-        attrs: { ...gAttrs, d: pathD }, meta: _yBounPosMeta.get(id) });
+      const state = bounPosGetTtState(yEl);
+      _undoStack.push({ op: 'del', layer: 'boundaries-positions', state });
       bounPosDeleteEl(_ydoc, _yBounPos, _yBounPosMeta, id);
-      addHistory(`deleted ${bounPosType} ${id.slice(0, 12)}`,
+      addHistory(`deleted ${state.bounPosType} ${id.slice(0, 12)}`,
         { elType: 'boundaries-positions' });
     } else {
       const yEl = findDrawing(_yDrawing, id);
       if (!yEl) return;
-      const snap = yEl.getAttributes();
-      _undoStack.push({ op: 'del', layer: 'drawing', attrs: snap, meta: _yDrawingMeta.get(id) });
+      const state = drawingGetTtState(yEl);
+      _undoStack.push({ op: 'del', layer: 'drawing', state });
       deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, id);
-      addHistory(`deleted ${id.slice(0, 6)}`, { fill: snap.fill, elType: yEl.nodeName });
+      addHistory(`deleted ${id.slice(0, 6)}`, { fill: state?.fill, elType: yEl.nodeName });
     }
     App.addLog(`deleted ${id.slice(0, 6)}`, 'local');
     if (id === _selectedId) App.select(null);
@@ -714,13 +736,12 @@ const App = {
     const yEl = findDrawing(_yDrawing, _selectedId);
     if (!yEl) return;
     const attrs = yEl.getAttributes();
-    const def   = SHAPE_TYPES[yEl.nodeName];
-    if (!def) return;
+    const type  = yEl.nodeName;
     const offset = { x: +(attrs.x ?? attrs.cx ?? 0) + 22, y: +(attrs.y ?? attrs.cy ?? 0) + 22 };
-    const geom   = def.tag === 'rect'
+    const geom   = type === 'rect'
       ? { x: offset.x, y: offset.y, width: +attrs.width, height: +attrs.height }
       : { cx: offset.x, cy: offset.y, r: +attrs.r };
-    App.commitDrawing({ type: yEl.nodeName, ...geom, fill: attrs.fill, stroke: attrs.stroke, 'stroke-width': attrs['stroke-width'], opacity: attrs.opacity });
+    App.commitDrawing({ ...attrs, ...geom, type, id: undefined, author: undefined });
   },
 
   // ── Drag lifecycle ────────────────────────────────────────────────────────
@@ -869,9 +890,8 @@ const App = {
     p[key] = (typeof value === 'string' && value !== '' && !isNaN(value)) ? +value : value;
     if (toolName === _activeTool) Canvas.setParams(p);
     // Live-apply visual params to a current selection
-    if (_selectedId && ['fill', 'strokeW', 'opacity'].includes(key)) {
-      const svgKey = key === 'strokeW' ? 'stroke-width' : key;
-      App.setDrawingAttr(_selectedId, svgKey, p[key]);
+    if (_selectedId && ['fill', 'stroke-width'].includes(key)) {
+      App.setDrawingAttr(_selectedId, key, p[key]);
     }
   },
   stepToolParam: (toolName, key, delta, min, max) => {
@@ -879,9 +899,8 @@ const App = {
     const next = +( (p[key] ?? 0) + delta ).toFixed(2);
     p[key] = Math.max(min, Math.min(max, next));
     if (toolName === _activeTool) Canvas.setParams(p);
-    if (_selectedId && ['strokeW', 'opacity'].includes(key)) {
-      const svgKey = key === 'strokeW' ? 'stroke-width' : key;
-      App.setDrawingAttr(_selectedId, svgKey, p[key]);
+    if (_selectedId && ['stroke-width'].includes(key)) {
+      App.setDrawingAttr(_selectedId, key, p[key]);
     }
   },
 
@@ -909,32 +928,20 @@ const App = {
       }
     } else if (op.op === 'del') {
       if (op.layer === 'toy') {
-        // Toy undo-delete is not yet implemented — toys require an async fetch
-        // to rebuild the Yjs tree. Skip silently for now (tracked for #7 follow-up).
-        UI.toast('Cannot undo toy delete', 'warn');
-        return;
+        toyApplyTtState(_ydoc, _yToys, _yToyMeta, op.state).then(() => {
+          addHistory(`undid: delete toy ${op.state.id.slice(0, 6)}`, { elType: 'toy' });
+          UI.toast('Undone');
+        }).catch(err => {
+          UI.toast('Cannot undo toy delete', 'warn');
+          App.addLog(`undo toy delete failed: ${err.message}`, 'del');
+        });
+        return; // async — toast fired inside .then()
       } else if (op.layer === 'boundaries-positions') {
-        const { x, y, w, h } = pathToRect(op.attrs.d ?? 'M0,0 L100,0 L100,100 L0,100 Z');
-        if (op.bounPosType === 'pos-set') {
-          const genType  = op.attrs['data-gen-type']  ?? 'square';
-          const genParam = Number(op.attrs['data-gen-param'] ?? 80);
-          const snapRadius = Number(op.attrs['snap-radius'] ?? 30);
-          const circles = gridFillExtent(x, y, w, h, genType, genParam);
-          createPositionSetElement(_ydoc, _yBounPos, _yBounPosMeta, {
-            id: op.attrs.id, name: op.attrs.name ?? op.attrs.id,
-            snapRadius, genType, genParam, x, y, w, h, circles, author: op.meta?.author,
-          });
-          addHistory(`undid: delete pos-set ${op.attrs.id.slice(0, 12)}`);
-        } else {
-          addBoundary(_ydoc, _yBounPos, _yBounPosMeta, {
-            id: op.attrs.id, name: op.attrs.name ?? op.attrs.id,
-            x, y, w, h, author: op.meta?.author,
-          });
-          addHistory(`undid: delete boundary ${op.attrs.id.slice(0, 12)}`);
-        }
+        bounPosApplyTtState(_ydoc, _yBounPos, _yBounPosMeta, op.state);
+        addHistory(`undid: delete ${op.state.bounPosType} ${op.state.id.slice(0, 12)}`);
       } else {
-        addDrawing(_ydoc, _yDrawing, _yDrawingMeta, { ...op.attrs, ...op.meta, id: op.attrs.id });
-        addHistory(`undid: delete ${op.attrs.id.slice(0, 6)}`, { fill: op.attrs.fill, elType: op.attrs.type });
+        drawingApplyTtState(_ydoc, _yDrawing, _yDrawingMeta, op.state);
+        addHistory(`undid: delete ${op.state.id.slice(0, 6)}`, { fill: op.state.fill, elType: op.state.type });
       }
     } else if (op.op === 'move') {
       if (op.layer === 'toy') {

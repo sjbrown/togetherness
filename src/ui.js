@@ -9,14 +9,45 @@
  *      data as an argument and never reach into module globals. The exported
  *      wrappers (openSheet etc.) gather data from App and call the pure fn.
  *   2. ui.js knows exactly ONE tool by name: 'select'. Every other tool comes
- *      from a registry via App.getTools(layer) / App.getToolOptions(tool).
- *   3. Tool-options are rendered generically from a declarative field schema
- *      (see tools-schema.js). ui.js does not know what 'cornerR' means.
+ *      from a registry via App.getTools(layer) / App.getToolSchema(tool).
+ *   3. Tool-options are rendered generically from ttStateSchema (see drawing.js
+ *      SHAPE_TYPES). ui.js does not know what 'corner-r' means.
  *
  * Depends on: icons.js (icon()), ui.css, App (bus). No Yjs, no pointer events.
  */
 
 import { icon } from './icons.js';
+
+// ── Icon loading ──────────────────────────────────────────────────────────────
+// Tools with an `iconUrl` have their SVG fetched once and cached here.
+// Callers get the cached markup synchronously; on the first call the fetch is
+// fired and the next render (triggered by the normal observe cycle) picks it up.
+const _iconCache = new Map(); // url → svg markup string | 'pending' | 'error'
+
+function iconFor(toolDef) {
+  if (toolDef.icon) return toolDef.icon;
+  if (!toolDef.iconUrl) return _letterIcon(toolDef.label);
+  const cached = _iconCache.get(toolDef.iconUrl);
+  if (cached && cached !== 'pending') return cached;
+  if (!cached) {
+    _iconCache.set(toolDef.iconUrl, 'pending');
+    fetch(toolDef.iconUrl)
+      .then(r => r.ok ? r.text() : Promise.reject(r.status))
+      .then(svg => {
+        _iconCache.set(toolDef.iconUrl, svg.trim());
+        // Re-render pill and open panel so the fetched icon replaces the letter.
+        renderPill();
+        UI.refreshFromDoc?.();
+      })
+      .catch(() => _iconCache.set(toolDef.iconUrl, 'error'));
+  }
+  return _letterIcon(toolDef.label);
+}
+
+function _letterIcon(label) {
+  const letter = (label ?? '?')[0].toUpperCase();
+  return `<svg class="tt-icon-letter" width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><title>${label}</title><text x="11" y="16" text-anchor="middle" font-size="14" font-family="ui-sans-serif,sans-serif" fill="currentColor">${letter}</text></svg>`;
+}
 
 // -- UIData --------------------------------------------------------------------
 // Pure presentation state for the chrome. ui.js is the only writer.
@@ -132,7 +163,7 @@ export function pillHTML(data) {
 }
 function toolIco(toolDef, activeTool) {
   const cls = activeTool === toolDef.name ? 'active' : '';
-  return `<button class="ico ${cls}" aria-label="${toolDef.label}" title="${toolDef.label}" onclick="UI.pillTap('${toolDef.name}')">${toolDef.icon}<span class="active-dot"></span></button>`;
+  return `<button class="ico ${cls}" aria-label="${toolDef.label}" title="${toolDef.label}" onclick="UI.pillTap('${toolDef.name}')">${iconFor(toolDef)}<span class="active-dot"></span></button>`;
 }
 function icoBtn(iconSvg, label, onclick, cls = '') {
   return `<button class="ico ${cls}" aria-label="${label}" title="${label}" onclick="${onclick}">${iconSvg}<span class="active-dot"></span></button>`;
@@ -178,7 +209,7 @@ export function onSelectionChanged(elId, drawingMeta) {
   // Keep the Edit panel live — re-render it whenever the selection changes.
   if (UIData.panelOpen === 'edit') {
     const body = $('#panelBody');
-    if (body) body.innerHTML = editBody(gatherEditData());
+    if (body) body.innerHTML = editBody(gatherTtStateData());
   }
   if (elId && drawingMeta) toast(`${drawingMeta.type ?? 'Shape'} selected`, 'info');
 }
@@ -187,8 +218,8 @@ export function onSelectionChanged(elId, drawingMeta) {
 //  EDIT PANEL — live, schema-driven view of the selected element's attributes
 // ==============================================================================
 
-function gatherEditData() {
-  const element = App.getElementEditSchema?.() ?? null;
+function gatherTtStateData() {
+  const element = App.getElementTtStateSchema?.() ?? null;
   return {
     element,
     palette:    App.getPalette(),
@@ -199,45 +230,119 @@ function gatherEditData() {
 }
 
 /**
- * Render one field from the edit schema.
- * `typeSpec` is either a string shorthand ('string', 'color-hslo', 'color-hsl')
- * or an object { type:'number', min?, max?, step? }.
- * The generated onchange/onclick calls App.commitEdit with a single-key object.
+/**
+ * renderSchemaField — unified field renderer for Edit panel, Tools panel, and toolOpts popup.
+ *
+ * ctx must include:
+ *   mode     — 'edit' | 'add' | 'addQuick'
+ *   palette  — color array
+ *   id       — (edit mode) element id for App.commitEdit calls
+ *   toolName — (add/addQuick mode) tool name for App.setToolParam calls
+ *   label    — (add/addQuick mode) human label for the field
+ *
+ * typeSpec is a types entry from a ttStateSchema:
+ *   { kind, show, min?, max?, step? }
+ *
+ * show filtering:
+ *   'addQuick' surface — only rendered if show explicitly includes 'addQuick'
+ *   'edit'/'add'       — rendered if show is absent/undefined, OR includes the surface token
+ *   show: []           — never rendered anywhere (geometry, internal ids)
  */
-function renderEditField(key, value, typeSpec, id, palette) {
-  const label = `<label>${key}</label>`;
+function renderSchemaField(key, value, typeSpec, ctx) {
+  const { mode, palette } = ctx;
+  const spec = typeof typeSpec === 'string' ? { kind: typeSpec } : (typeSpec ?? {});
+  const show = spec.show;
+  const kind = spec.kind;
 
-  if (typeSpec === 'color-hslo' || typeSpec === 'color-hsl') {
-    // color-hslo allows 'none'; color-hsl is fully opaque (no transparency).
-    const colors  = typeSpec === 'color-hslo' ? ['none', ...palette] : palette;
-    const swatches = colors.map(c => {
-      const isNone = c === 'none';
-      return `<div class="sw ${value === c ? 'active' : ''}"
-        style="background:${isNone ? 'transparent' : c};${isNone ? 'border:1.5px dashed var(--border-2);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-3)' : ''}"
-        onclick="App.commitEdit('${id}',{'${key}':'${c}'})"
-        title="${c}">${isNone ? '∅' : ''}</div>`;
-    }).join('');
-    return `<div class="field">${label}<div class="swatches">${swatches}</div></div>`;
+  // ── show filtering ─────────────────────────────────────────────────────────
+  if (mode === 'addQuick') {
+    if (!Array.isArray(show) || !show.includes('addQuick')) return '';
+  } else {
+    if (Array.isArray(show) && show.length === 0) return '';
+    if (Array.isArray(show) && !show.includes(mode)) return '';
   }
 
-  if (typeSpec === 'string') {
+  // ── color picker ──────────────────────────────────────────────────────────
+  if (kind === 'color-hslo' || kind === 'color-hsl') {
+    const allowNone = kind === 'color-hslo';
+    const colors    = allowNone ? ['none', ...palette] : palette;
+    if (mode === 'edit') {
+      const id = ctx.id;
+      const swatchDivs = colors.map(c => {
+        const isNone = c === 'none';
+        return `<div class="sw ${value === c ? 'active' : ''}"
+          style="background:${isNone ? 'transparent' : c};${isNone ? 'border:1.5px dashed var(--border-2);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-3)' : ''}"
+          onclick="App.commitEdit('${id}',{'${key}':'${c}'})"
+          title="${c}">${isNone ? '∅' : ''}</div>`;
+      }).join('');
+      return `<div class="field"><label>${key}</label><div class="swatches">${swatchDivs}</div></div>`;
+    } else {
+      const toolName = ctx.toolName;
+      const sw = colors.slice(0, 6).map(c =>
+        `<div class="mini-sw ${value === c ? 'active' : ''}" style="background:${c}"
+          onclick="App.setToolParam('${toolName}','${key}','${c}');UI.refreshToolOpts()"></div>`
+      ).join('');
+      return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><div class="mini-swatches">${sw}</div></div>`;
+    }
+  }
+
+  // ── string → text input ───────────────────────────────────────────────────
+  if (kind === 'string') {
     const safe = String(value ?? '').replace(/"/g, '&quot;');
-    return `<div class="field">${label}<input type="text" value="${safe}"
-      style="width:100%;font-size:13px;padding:5px 8px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;box-sizing:border-box;font-family:ui-monospace,monospace"
-      onchange="App.commitEdit('${id}',{'${key}':this.value})"/></div>`;
+    if (mode === 'edit') {
+      return `<div class="field"><label>${key}</label><input type="text" value="${safe}"
+        style="width:100%;font-size:13px;padding:5px 8px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;box-sizing:border-box;font-family:ui-monospace,monospace"
+        onchange="App.commitEdit('${ctx.id}',{'${key}':this.value})"/></div>`;
+    } else {
+      return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><input type="text" value="${safe}"
+        style="font-size:13px;padding:4px 6px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;width:120px"
+        onchange="App.setToolParam('${ctx.toolName}','${key}',this.value)"/></div>`;
+    }
   }
 
-  if (typeof typeSpec === 'object' && typeSpec.type === 'number') {
-    const { min, max, step = 1 } = typeSpec;
-    return `<div class="field">${label}<input type="number" value="${value ?? 0}"
-      ${min !== undefined ? `min="${min}"` : ''}
-      ${max !== undefined ? `max="${max}"` : ''}
-      step="${step}"
-      style="width:100%;font-size:13px;padding:5px 8px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;text-align:right;box-sizing:border-box"
-      onchange="App.commitEdit('${id}',{'${key}':Number(this.value)})"/></div>`;
+  // ── bool → checkbox ───────────────────────────────────────────────────────
+  if (kind === 'bool') {
+    const checked = !!value;
+    if (mode === 'edit') {
+      return `<div class="field"><label>${key}</label><input type="checkbox" ${checked ? 'checked' : ''}
+        style="width:18px;height:18px;cursor:pointer;accent-color:var(--accent)"
+        onchange="App.commitEdit('${ctx.id}',{'${key}':this.checked})"/></div>`;
+    } else {
+      return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><input type="checkbox" ${checked ? 'checked' : ''}
+        style="width:18px;height:18px;cursor:pointer;accent-color:var(--accent)"
+        onchange="App.setToolParam('${ctx.toolName}','${key}',this.checked)"/></div>`;
+    }
   }
 
-  return ''; // unknown type — omit field
+  // ── number (both min+max → range, otherwise → number input) ──────────────
+  if (kind === 'number') {
+    const { min, max, step = 1 } = spec;
+    const hasRange = min !== undefined && max !== undefined;
+    if (mode === 'edit') {
+      if (hasRange) {
+        return `<div class="field"><label>${key}</label><input type="range" value="${value ?? min}"
+          min="${min}" max="${max}" step="${step}"
+          style="width:100%;accent-color:var(--accent)"
+          oninput="App.commitEdit('${ctx.id}',{'${key}':Number(this.value)})"/></div>`;
+      }
+      return `<div class="field"><label>${key}</label><input type="number" value="${value ?? 0}"
+        ${min !== undefined ? `min="${min}"` : ''} step="${step}"
+        style="width:100%;font-size:13px;padding:5px 8px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;text-align:right;box-sizing:border-box"
+        onchange="App.commitEdit('${ctx.id}',{'${key}':Number(this.value)})"/></div>`;
+    } else {
+      if (hasRange) {
+        return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><input type="range" min="${min}" max="${max}" step="${step}" value="${value ?? min}"
+          style="accent-color:var(--accent)"
+          oninput="App.setToolParam('${ctx.toolName}','${key}',Number(this.value));UI.refreshToolOpts()"></div>`;
+      }
+      return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><input type="number" value="${value ?? 0}"
+        ${min !== undefined ? `min="${min}"` : ''} step="${step}"
+        style="font-size:13px;padding:4px 6px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;text-align:right;width:80px"
+        onchange="App.setToolParam('${ctx.toolName}','${key}',Number(this.value));UI.refreshToolOpts()"></div>`;
+    }
+  }
+
+  return ''; // unknown kind — omit field
 }
 
 export function editBody(data) {
@@ -247,10 +352,10 @@ export function editBody(data) {
       <div style="font-size:14px;line-height:1.6">Select an object<br>to edit its properties</div>
     </div>`;
   }
-  const { ltype, id, types, ...values } = data.element;
+  const { ltype, id, types, label, ...values } = data.element;
   const header = `<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px">${ltype.replace('boundaries-positions','boundary')} · <span style="font-family:ui-monospace,monospace;font-weight:normal">${id.slice(0,16)}</span></div>`;
   const fields  = Object.entries(types)
-    .map(([key, typeSpec]) => renderEditField(key, values[key], typeSpec, id, data.palette))
+    .map(([key, typeSpec]) => renderSchemaField(key, values[key], typeSpec, { mode: 'edit', id, palette: data.palette }))
     .join('');
   const help = ltype === 'boundaries-positions'
     ? bounPosHelpHTML(data.toyClasses ?? [])
@@ -258,42 +363,23 @@ export function editBody(data) {
   return header + fields + help;
 }
 
-
-
 /**
  * toolOptsHTML(data) -- PURE.
- *   data = { label, fields:OptionField[], values:{}, palette:[] }
+ *   data = { label, toolName, schema:{types,values}, palette:[] }
+ *   Renders only fields with show includes 'addQuick'.
  */
 export function toolOptsHTML(data) {
-  if (!data.fields?.length) {
-    return `<h3>${data.label} options</h3><div class="opt-row">No options.</div>`;
-  }
-  const rows = data.fields.map(f => optionFieldHTML(f, data.values[f.key], data.palette)).join('');
-  return `<h3>${data.label} options</h3>${rows}`;
+  const schema = data.schema ?? {};
+  const types  = schema.types ?? {};
+  const values = data.values ?? schema.values ?? {};
+  const rows = Object.entries(types)
+    .map(([key, typeSpec]) => renderSchemaField(key, values[key], typeSpec,
+        { mode: 'addQuick', toolName: data.toolName ?? data.label, label: key, palette: data.palette }))
+    .join('');
+  return rows
+    ? `<h3>${data.label} options</h3>${rows}`
+    : `<h3>${data.label} options</h3><div class="opt-row">No quick options.</div>`;
 }
-function optionFieldHTML(field, value, palette) {
-  const target = "UI.currentToolOpts";
-  switch (field.kind) {
-    case 'swatches': {
-      const sw = (palette || []).slice(0, 6).map(c =>
-        `<div class="mini-sw ${value === c ? 'active' : ''}" style="background:${c}" onclick="App.setToolParam(${target},'${field.key}','${c}');UI.refreshToolOpts()"></div>`
-      ).join('');
-      return `<div class="opt-row"><span class="opt-label">${field.label}</span><div class="mini-swatches">${sw}</div></div>`;
-    }
-    case 'stepper':
-      return `<div class="opt-row"><span class="opt-label">${field.label}</span><div class="stepper"><div class="step-btn" onclick="App.stepToolParam(${target},'${field.key}',${-field.step},${field.min},${field.max});UI.refreshToolOpts()">-</div><span class="step-val">${num(value)}</span><div class="step-btn" onclick="App.stepToolParam(${target},'${field.key}',${field.step},${field.min},${field.max});UI.refreshToolOpts()">+</div></div></div>`;
-    case 'range': {
-      const pct = field.max <= 1;
-      const v = pct ? Math.round((value ?? 1) * 100) : (value ?? field.min);
-      return `<div class="opt-row"><span class="opt-label">${field.label}</span><input type="range" min="${field.min}" max="${field.max}" value="${v}" oninput="App.setToolParam(${target},'${field.key}',${pct ? 'this.value/100' : 'this.value'})"></div>`;
-    }
-    case 'toggle':
-      return `<div class="opt-row"><span class="opt-label">${field.label}</span><div class="toggle ${value ? 'on' : ''}" onclick="this.classList.toggle('on');App.setToolParam(${target},'${field.key}',this.classList.contains('on'))"></div></div>`;
-    default:
-      return '';
-  }
-}
-function num(v) { return v == null ? 0 : (Math.round(v * 100) / 100); }
 
 export let currentToolOpts = null;
 
@@ -305,10 +391,11 @@ export function showToolOpts(toolName) {
   const def = App.getTool(toolName);
   to.style.display = 'block';
   to.innerHTML = toolOptsHTML({
-    label:   def?.label ?? toolName,
-    fields:  App.getToolOptions(toolName),
-    values:  App.getToolParams(toolName),
-    palette: App.getPalette(),
+    label:    def?.label ?? toolName,
+    toolName: toolName,
+    schema:   App.getToolSchema(toolName),
+    values:   App.getToolParams(toolName),
+    palette:  App.getPalette(),
   });
   const pr  = pill.getBoundingClientRect();
   const toR = to.getBoundingClientRect();
@@ -367,7 +454,7 @@ export function openSheet(which) {
   const body = $('#panelBody');
   if (body) {
     body.innerHTML = ({
-      edit:     () => editBody(gatherEditData()),
+      edit:     () => editBody(gatherTtStateData()),
       tools:    () => toolsBody(gatherToolsData()),
       peers:    () => peersBody(gatherPeersData()),
       history:  () => histBody(App.getHistory()),
@@ -391,17 +478,18 @@ export function closePanel() {
 // -- Data gatherers (impure) ---------------------------------------------------
 function gatherToolsData() {
   const layer = App.getActiveLayer();
-  const isBounPos = layer === 'boundaries-positions';
+  const activeTool = UIData.activeTool;
   return {
     layer,
-    activeTool: UIData.activeTool,
-    tools:      App.getTools(layer),
-    palette:    App.getPalette(),
-    fill:       App.getToolParams(UIData.activeTool)?.fill,
-    background: App.getBackground(),
-    defaultBackgrounds: App.getDefaultBackgrounds(),
-    selectedBounPos: isBounPos ? App.getSelectedBounPos?.() : null,
-    toyClasses:       isBounPos ? (App.getToyClasses?.() ?? []) : null,
+    activeTool,
+    tools:               App.getTools(layer),
+    palette:             App.getPalette(),
+    activeToolSchema:    App.getToolSchema(activeTool),
+    activeToolParams:    App.getToolParams(activeTool),
+    activeElementSchema: App.getElementTtStateSchema?.() ?? null,
+    background:          App.getBackground(),
+    defaultBackgrounds:  App.getDefaultBackgrounds(),
+    toyClasses:          layer === 'boundaries-positions' ? (App.getToyClasses?.() ?? []) : null,
   };
 }
 function gatherPeersData() {
@@ -464,21 +552,42 @@ export function applyBackgroundPreset(url, width, height) {
 
 function defaultToolsBody(data) {
   const toolBtn = t =>
-    `<div class="tool ${data.activeTool === t.name ? 'active' : ''}" onclick="App.setTool('${t.name}')">${t.icon}<span>${t.label}</span></div>`;
-  const sw = c =>
-    `<div class="sw ${data.fill === c ? 'active' : ''}" style="background:${c}" onclick="App.setFill('${c}');UI.openSheet('tools')"></div>`;
+    `<div class="tool ${data.activeTool === t.name ? 'active' : ''}" onclick="App.setTool('${t.name}')">${iconFor(t)}<span>${t.label}</span></div>`;
+  const toolSchema = data.activeToolSchema ?? {};
+  const types      = toolSchema.types ?? {};
+  const values     = data.activeToolParams ?? toolSchema.values ?? {};
+
+  // 'add'-surface fields from the active tool schema (e.g. fill colour)
+  const addFields = Object.entries(types)
+    .map(([key, typeSpec]) => renderSchemaField(key, values[key], typeSpec,
+        { mode: 'add', toolName: data.activeTool, label: key, palette: data.palette }))
+    .join('');
+
+  // 'edit'-surface fields from the currently selected element
+  // (bounPos name, snap-radius, etc.) wired to App.commitEdit
+  const elSchema   = data.activeElementSchema;
+  const elTypes    = elSchema?.types ?? {};
+  const editFields = Object.entries(elTypes)
+    .map(([key, typeSpec]) => renderSchemaField(key, elSchema[key], typeSpec,
+        { mode: 'edit', id: elSchema?.id, palette: data.palette }))
+    .join('');
+
+  // Help block — appended when the active tool schema identifies a bounPos type
+  const schemaType = toolSchema.type;
+  const helpHTML   = (schemaType === 'boundary' || schemaType === 'pos-set')
+    ? bounPosHelpHTML(data.toyClasses ?? [])
+    : '';
+
   return `
     <div class="field"><label>Tool · ${data.layer} layer</label>
       <div class="tool-grid">${data.tools.map(toolBtn).join('')}</div>
     </div>
-    <div class="field"><label>Fill color</label>
-      <div class="swatches">${data.palette.map(sw).join('')}</div>
-    </div>`;
+    ${addFields}${editFields}${helpHTML}`;
 }
 
 /**
- * Shared "How boundaries work" help block — rendered in both the Tools panel
- * (bounPosToolsBody) and the Edit panel (editBody for boundary elements).
+ * "How boundaries work" help block — appended by defaultToolsBody when
+ * the active tool schema has type 'boundary' or 'pos-set'.
  * `toyClasses` is the live list returned by App.getToyClasses().
  */
 function bounPosHelpHTML(toyClasses) {
@@ -508,39 +617,9 @@ function bounPosHelpHTML(toyClasses) {
   </div>`;
 }
 
-function bounPosToolsBody(data) {
-  const toolBtn = t =>
-    `<div class="tool ${data.activeTool === t.name ? 'active' : ''}" onclick="App.setTool('${t.name}')">${t.icon}<span>${t.label}</span></div>`;
-
-  const nameField = data.selectedBounPos
-    ? `<div class="field">
-        <label>Boundary name</label>
-        <input type="text" class="text-input"
-          value="${data.selectedBounPos.name}"
-          placeholder="boundary name"
-          onchange="App.renameBounPos('${data.selectedBounPos.id}', this.value)"
-          style="width:100%;font-size:13px;font-family:ui-monospace,monospace"/>
-        <div style="font-size:11px;color:var(--text-3);margin-top:4px">ID: ${data.selectedBounPos.id}</div>
-      </div>`
-    : '';
-
-  return `
-    <div class="field"><label>Tool · Boundaries and Positions</label>
-      <div class="tool-grid">${data.tools.map(toolBtn).join('')}</div>
-    </div>
-    ${nameField}
-    ${bounPosHelpHTML(data.toyClasses ?? [])}`;
-}
-
-const LAYER_TOOLS_BODY = {
-  background:             (data) => bgToolsBody(data),
-  'boundaries-positions': (data) => bounPosToolsBody(data),
-  toys:                   (data) => defaultToolsBody(data),
-  drawing:                (data) => defaultToolsBody(data),
-};
 export function toolsBody(data) {
-  const render = LAYER_TOOLS_BODY[data.layer] ?? defaultToolsBody;
-  return render(data);
+  if (data.layer === 'background') return bgToolsBody(data);
+  return defaultToolsBody(data);
 }
 
 export function peersBody(data) {
@@ -674,7 +753,7 @@ export function refreshFromDoc() {
   const body = $('#panelBody');
   if (!body) return;
   switch (UIData.panelOpen) {
-    case 'edit':    body.innerHTML = editBody(gatherEditData());   break;
+    case 'edit':    body.innerHTML = editBody(gatherTtStateData());   break;
     case 'history': body.innerHTML = histBody(App.getHistory());   break;
     case 'layers':  body.innerHTML = layersBody(gatherLayersData()); break;
     case 'tools':   body.innerHTML = toolsBody(gatherToolsData()); break;

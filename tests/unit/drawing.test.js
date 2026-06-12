@@ -53,45 +53,22 @@ describe('SHAPE_TYPES registry', () => {
       const def = SHAPE_TYPES[type]
       expect(def).toBeDefined()
       expect(typeof def.tag).toBe('string')
-      expect(Array.isArray(def.geomAttrs)).toBe(true)
-      expect(typeof def.fromDrag).toBe('function')
-      expect(typeof def.bbox).toBe('function')
+      expect(typeof def.getBBox).toBe('function')
       expect(typeof def.label).toBe('function')
+      expect(def.schema).toBeDefined()
+      expect(def.schema.values).toBeDefined()
+      expect(def.schema.types).toBeDefined()
     }
   })
 
-  test('rect fromDrag maps drag box to x/y/width/height', () => {
-    const geom = SHAPE_TYPES.rect.fromDrag({ x: 10, y: 20, w: 100, h: 50 })
-    expect(geom).toEqual({ x: 10, y: 20, width: 100, height: 50 })
-  })
-
-  test('circle fromDrag inscribes circle in drag box', () => {
-    const geom = SHAPE_TYPES.circle.fromDrag({ x: 0, y: 0, w: 100, h: 60 })
-    expect(geom.cx).toBe(50)           // centered horizontally
-    expect(geom.cy).toBe(30)           // centered vertically
-    expect(geom.r).toBe(30)            // inscribed: min(100, 60) / 2
-    // circle stays within the drag box
-    expect(geom.cx - geom.r).toBeGreaterThanOrEqual(0)
-    expect(geom.cx + geom.r).toBeLessThanOrEqual(100)
-    expect(geom.cy - geom.r).toBeGreaterThanOrEqual(0)
-    expect(geom.cy + geom.r).toBeLessThanOrEqual(60)
-  })
-
-  test('circle fromDrag with square drag box produces expected radius', () => {
-    const geom = SHAPE_TYPES.circle.fromDrag({ x: 5, y: 5, w: 80, h: 80 })
-    expect(geom.r).toBe(40)
-    expect(geom.cx).toBe(45)
-    expect(geom.cy).toBe(45)
-  })
-
-  test('rect bbox returns x/y/width/height from stored attributes', () => {
-    const b = SHAPE_TYPES.rect.bbox({ x: '10', y: '20', width: '100', height: '50' })
+  test('rect getBBox returns x/y/width/height from stored attributes', () => {
+    const b = SHAPE_TYPES.rect.getBBox({ x: '10', y: '20', width: '100', height: '50' })
     expect(b).toEqual({ x: 10, y: 20, width: 100, height: 50 })
     expect(typeof b.x).toBe('number')
   })
 
-  test('circle bbox derives bounding box from cx/cy/r', () => {
-    const b = SHAPE_TYPES.circle.bbox({ cx: '50', cy: '60', r: '30' })
+  test('circle getBBox derives bounding box from cx/cy/r', () => {
+    const b = SHAPE_TYPES.circle.getBBox({ cx: '50', cy: '60', r: '30' })
     expect(b).toEqual({ x: 20, y: 30, width: 60, height: 60 })
     expect(typeof b.x).toBe('number')
   })

@@ -18,7 +18,7 @@ const SVGNS = 'http://www.w3.org/2000/svg';
 // entry (passed in by App) — canvas.js does not know what keys mean.
 export const ToolMode = {
   tool:    'select',
-  params:  {},        // { fill, strokeW, opacity, cornerR, ... } — opaque to canvas
+  params:  {},        // { fill, stroke, stroke-width, corner-r, ... } — opaque to canvas
   // Internal draw state — not published
   _drawing:  false,
   _draft:    null,
@@ -321,7 +321,7 @@ function finishDraft(e) {
       type: 'rect',
       x: Math.round(Math.min(p.x, d.ox)), y: Math.round(Math.min(p.y, d.oy)),
       width: w, height: h,
-      rx: ToolMode.params.cornerR ?? 8,
+      'corner-r': ToolMode.params['corner-r'] ?? 8,
       ...drawAttrs(),
     });
   } else if (d.type === 'boundary') {
@@ -362,10 +362,9 @@ function finishDraft(e) {
 function drawAttrs() {
   const p = ToolMode.params || {};
   return {
-    fill:           p.fill ?? '#c8941e',
-    stroke:         'none',
-    'stroke-width': p.strokeW ?? 1.5,
-    opacity:        p.opacity ?? 0.8,
+    fill:           p.fill           ?? '#c8941e',
+    stroke:         p.stroke         ?? 'none',
+    'stroke-width': p['stroke-width'] ?? 1.5,
   };
 }
 

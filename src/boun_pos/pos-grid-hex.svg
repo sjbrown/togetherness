@@ -1,0 +1,5 @@
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <title>Hex Grid</title>
+  <polygon points="12,3 20,7.5 20,16.5 12,21 4,16.5 4,7.5" stroke-dasharray="3 1"/>
+  <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+</svg>

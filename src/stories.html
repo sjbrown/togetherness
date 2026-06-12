@@ -80,7 +80,7 @@
 import { initIcons, icon } from '/icons.js';
 import * as UI from '/ui.js';
 import { SELECT_TOOL } from '/tools-schema.js';
-import { TOOLS as SHAPE_TOOLS } from '/tools-drawing.js';
+import { SHAPE_TYPES, LAYER as DRAW_LAYER } from '/drawing.js';
 import { TOOLS as TOY_TOOLS } from '/toys.js';
 
 initIcons();
@@ -129,6 +129,9 @@ const mockLayers = [
 ];
 
 // A fake App sufficient for the pure render functions + tool-opts schema.
+const SHAPE_TOOLS  = Object.entries(SHAPE_TYPES).map(([name, def]) => ({
+  name, label: def.schema.label, layer: DRAW_LAYER, iconUrl: def.iconUrl,
+}));
 const drawingTools = [SELECT_TOOL, ...SHAPE_TOOLS];
 const toysTools    = [SELECT_TOOL, ...TOY_TOOLS];
 const toolById = Object.fromEntries([SELECT_TOOL, ...SHAPE_TOOLS, ...TOY_TOOLS].map(t => [t.name, t]));
@@ -141,7 +144,14 @@ window.App = {
   getBackground: () => ({ url: 'img/bg_slatehex.png', width: 1384, height: 998 }),
   getDefaultBackgrounds: () => DEFAULT_BACKGROUNDS,
   getTool: (n) => toolById[n] ?? null,
-  getToolOptions: (n) => toolById[n]?.options ?? [],
+  getToolSchema: (n) => {
+    if (SHAPE_TYPES[n]) return SHAPE_TYPES[n].schema;
+    const def = toolById[n];
+    if (!def) return { types: {}, values: {} };
+    const types  = Object.fromEntries((def.options ?? []).map(f => [f.key, f]));
+    const values = def.defaults ?? toolParams[n] ?? {};
+    return { label: def.label, types, values };
+  },
   getToolParams: (n) => toolParams[n] ?? {},
   setToolParam: (n,k,v) => { (toolParams[n] ??= {})[k] = v; },
   stepToolParam: (n,k,d,min,max) => { const p=(toolParams[n]??={}); p[k]=Math.max(min,Math.min(max,(+p[k]||0)+d)); },
@@ -201,9 +211,10 @@ story('Pill', 'selection action strip', () =>
 
 // ── TOOL OPTIONS stories (schema-driven) ───────────────────────────────────────
 for (const t of [...SHAPE_TOOLS, ...TOY_TOOLS, SELECT_TOOL]) {
+  const schema = App.getToolSchema(t.name);
   story('Tool options', t.label, () =>
     box('toolopts-clone', `<div id="toolOpts" style="display:block;position:static;min-width:240px">${
-      UI.toolOptsHTML({ label:t.label, fields:t.options, values:{...(t.defaults??{})}, palette:PALETTE })
+      UI.toolOptsHTML({ label: t.label, toolName: t.name, schema, values: toolParams[t.name] ?? {}, palette: PALETTE })
     }</div>`));
 }
 
@@ -230,19 +241,22 @@ function panelFrame(title, bodyHTML, activeTab) {
 story('Panel · Tools', 'drawing layer', () =>
   panelFrame('Properties', UI.toolsBody({
     layer:'drawing', activeTool:'rect', tools:drawingTools, palette:PALETTE,
-    fill:'#c8941e', shapes:mockShapes, selectedId:'a',
+    activeToolSchema: App.getToolSchema('rect'),
+    activeToolParams: toolParams['rect'] ?? {},
   }), 'tools'), { full:false });
 
 story('Panel · Tools', 'toys layer', () =>
   panelFrame('Properties', UI.toolsBody({
     layer:'toys', activeTool:'marker', tools:toysTools, palette:PALETTE,
-    fill:'#a85e5e', shapes:[], selectedId:null,
+    activeToolSchema: App.getToolSchema('marker'),
+    activeToolParams: toolParams['marker'] ?? {},
   }), 'tools'));
 
 story('Panel · Tools', 'background layer', () =>
   panelFrame('Properties', UI.toolsBody({
     layer:'background', activeTool:'select', tools:[SELECT_TOOL], palette:PALETTE,
-    fill:null, shapes:[], selectedId:null,
+    activeToolSchema: App.getToolSchema('select'),
+    activeToolParams: toolParams['select'] ?? {},
     background: App.getBackground(),
     defaultBackgrounds: App.getDefaultBackgrounds(),
   }), 'tools'), { full: true });
@@ -272,17 +286,20 @@ story('Panel · Save', '', () =>
 // getViewScale, getMyColor, and getMyGradient from local data.
 
 import * as Overlay from '/overlay.js';
-import { getGeom, SHAPE_TYPES } from '/drawing.js';
+import { getGeom } from '/drawing.js';
 import { entityGradient } from '/entity_gradient.js';
 import { dragPlaceholderFilterSVG } from '/defs.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const myGrad = entityGradient('stories-user');
 
+// Minimal tag map for building plain SVG elements in stories (no CRDT needed).
+const SHAPE_TAG = { rect: 'rect', circle: 'circle' };
+
 // Build a plain SVG element for a shape (no CRDT needed).
 function shapeEl(type, geom, fill) {
-  const def = SHAPE_TYPES[type];
-  const el  = document.createElementNS(SVG_NS, def.tag);
+  const tag = SHAPE_TAG[type] ?? type;
+  const el  = document.createElementNS(SVG_NS, tag);
   el.setAttribute('fill', fill);
   el.setAttribute('stroke', 'none');
   for (const [k, v] of Object.entries(geom)) el.setAttribute(k, String(v));
