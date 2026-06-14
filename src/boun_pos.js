@@ -28,24 +28,24 @@ import { SNAP_POINT_GRADIENT_ID } from './defs.js';
 
 export const LAYER = 'boundaries-positions';
 const SVG_NS   = 'http://www.w3.org/2000/svg';
-const ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
+const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789';
 
 // ── ID helpers ────────────────────────────────────────────────────────────────
 
-function randomSlug(len = 5) {
+function randomSlug(len = 3) {
   return Array.from({ length: len }, () =>
     ID_CHARS[Math.floor(Math.random() * ID_CHARS.length)]
   ).join('');
 }
 
 export function newBoundaryId() {
-  const name = randomSlug();
-  return { id: `tt-b-v1-${name}`, name };
+  const slug = randomSlug();
+  return { id: `tt-b-v1-${slug}`, 'toy' };
 }
 
 export function newPositionSetId() {
-  const name = randomSlug();
-  return { id: `tt-ps-v1-${name}`, name };
+  const slug = randomSlug();
+  return { id: `tt-ps-v1-${slug}`, 'toy' };
 }
 
 // ── Geometry helpers ──────────────────────────────────────────────────────────
