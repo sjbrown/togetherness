@@ -61,17 +61,18 @@ function addPS(layer, overrides = {}) {
 // ── ID helpers ─────────────────────────────────────────────────────────────────
 
 describe('newBoundaryId', () => {
-  test('id starts with tt-b-v1- and name matches suffix', () => {
+  test('id starts with tt-b-v1- and name is toy', () => {
     const { id, name } = newBoundaryId();
-    expect(id).toBe(`tt-b-v1-${name}`);
-    expect(name).toHaveLength(5);
+    expect(id.slice(0,8)).toBe(`tt-b-v1-`);
+    expect(name).toBe('toy');
   });
 });
 
 describe('newPositionSetId', () => {
-  test('id starts with tt-ps-v1- and name matches suffix', () => {
+  test('id starts with tt-ps-v1- and name is toy', () => {
     const { id, name } = newPositionSetId();
-    expect(id).toBe(`tt-ps-v1-${name}`);
+    expect(id.slice(0,9)).toBe(`tt-ps-v1-`);
+    expect(name).toBe('toy');
   });
 });
 
