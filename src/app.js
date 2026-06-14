@@ -2,7 +2,7 @@
  * app.js — togetherness application bus
  *
  * The only module that imports from all others. Owns no mode directly;
- * instead it wires the four layers together through a narrow, typed interface.
+ * instead it wires the layers together through a narrow, typed interface.
  *
  * Roles:
  *   - Initialise all modules and inject this bus object as their sole dependency
@@ -164,9 +164,6 @@ function buildToolRegistry() {
   _toolsByLayer[DRAW_LAYER] = [SELECT_TOOL, ...drawTools];
 }
 
-// Presentation palette — matches ui.css --primary accent family
-const PALETTE = ['#c8941e','#5a7ea8','#8a5ea8','#5ea88a','#a85e5e','#a8905e','#5e8aa8'];
-
 export function makeDoc() {
   const ydoc          = new Y.Doc();
   const yToys         = ydoc.getXmlFragment('toys');
@@ -210,7 +207,7 @@ export function boot({ ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, yBo
 
   // 4. UI — needs App; attaches panel/menu/pill listeners
   UI.init(App);
-  UI.setIdentity({ projectName: 'togetherness', userId: `me · ${displayName}`, roomId });
+  UI.setIdentity({ projectName: 'togetherness', userId: displayName, roomId });
 
   // 5. Keyboard shortcuts
   window.addEventListener('keydown', onKeyDown);
@@ -386,6 +383,26 @@ function updatePeerCount() {
 }
 
 // ── CRDT observers ────────────────────────────────────────────────────────────
+function onDocChanged() {
+  UI.refreshFromDoc();
+}
+
+function onBounPosChanged(events, transaction) {
+  if (!transaction.local) {
+    for (const event of events) {
+      if (event.target !== _yBounPos) continue;
+      event.changes.added.forEach(item => {
+        item.content.getContent().forEach(yEl => {
+          if (!(yEl instanceof Y.XmlElement)) return;
+          const id = yEl.getAttribute('id') ?? '?';
+          App.addLog(`remote: added boundary ${id.slice(0, 12)}`, 'remote');
+        });
+      });
+    }
+  }
+  renderDoc();
+}
+
 function onToysChanged(events, transaction) {
   if (!transaction.local) { // filters out our own ops
     for (const event of events) {
@@ -415,26 +432,6 @@ function onToysChanged(events, transaction) {
   }
   renderDoc();
 }
-function onDocChanged() {
-  UI.refreshFromDoc();
-}
-
-function onBounPosChanged(events, transaction) {
-  if (!transaction.local) {
-    for (const event of events) {
-      if (event.target !== _yBounPos) continue;
-      event.changes.added.forEach(item => {
-        item.content.getContent().forEach(yEl => {
-          if (!(yEl instanceof Y.XmlElement)) return;
-          const id = yEl.getAttribute('id') ?? '?';
-          App.addLog(`remote: added boundary ${id.slice(0, 12)}`, 'remote');
-        });
-      });
-    }
-  }
-  renderDoc();
-}
-
 function onDrawingChanged(events, transaction) {
   // Log remote structural changes (add / delete). Attribute changes (moves)
   // arrive here too via observeDeep but don't need logging — just renderDoc.
@@ -505,7 +502,6 @@ const App = {
   getMyColor:      () => _myGrad.c1,
   getMyGradient:   () => _myGrad,
   getMyId:         () => _myId,
-  getPalette:      () => PALETTE,
   // ── Tool registry queries ──────────────────────────────────────────────────
   getTools:        (layer) => _toolsByLayer[layer] ?? [SELECT_TOOL],
   getTool:         (name)  => _toolById[name] ?? null,

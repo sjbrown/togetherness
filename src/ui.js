@@ -227,7 +227,6 @@ function gatherTtStateData() {
   const element = App.getElementTtStateSchema?.() ?? null;
   return {
     element,
-    palette:    App.getPalette(),
     toyClasses: element?.ltype === 'boundaries-positions'
                   ? (App.getToyClasses?.() ?? [])
                   : null,
@@ -240,7 +239,6 @@ function gatherTtStateData() {
  *
  * ctx must include:
  *   mode     — 'edit' | 'add' | 'addQuick'
- *   palette  — color array
  *   id       — (edit mode) element id for App.commitEdit calls
  *   toolName — (add/addQuick mode) tool name for App.setToolParam calls
  *   label    — (add/addQuick mode) human label for the field
@@ -254,7 +252,7 @@ function gatherTtStateData() {
  *   show: []           — never rendered anywhere (geometry, internal ids)
  */
 function renderSchemaField(key, value, typeSpec, ctx) {
-  const { mode, palette } = ctx;
+  const { mode } = ctx;
   const spec = typeof typeSpec === 'string' ? { kind: typeSpec } : (typeSpec ?? {});
   const show = spec.show;
   const kind = spec.kind;
@@ -398,7 +396,7 @@ export function editBody(data) {
   const { ltype, id, types, label, ...values } = data.element;
   const header = `<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px">${ltype.replace('boundaries-positions','boundary')} · <span style="font-family:ui-monospace,monospace;font-weight:normal">${id.slice(0,16)}</span></div>`;
   const fields  = Object.entries(types)
-    .map(([key, typeSpec]) => renderSchemaField(key, values[key], typeSpec, { mode: 'edit', id, palette: data.palette }))
+    .map(([key, typeSpec]) => renderSchemaField(key, values[key], typeSpec, { mode: 'edit', id }))
     .join('');
   const help = ltype === 'boundaries-positions'
     ? bounPosHelpHTML(data.toyClasses ?? [])
@@ -408,7 +406,7 @@ export function editBody(data) {
 
 /**
  * toolOptsHTML(data) -- PURE.
- *   data = { label, toolName, schema:{types,values}, palette:[] }
+ *   data = { label, toolName, schema:{types,values} }
  *   Renders only fields with show includes 'addQuick'.
  */
 export function toolOptsHTML(data) {
@@ -417,7 +415,7 @@ export function toolOptsHTML(data) {
   const values = data.values ?? schema.values ?? {};
   const rows = Object.entries(types)
     .map(([key, typeSpec]) => renderSchemaField(key, values[key], typeSpec,
-        { mode: 'addQuick', toolName: data.toolName ?? data.label, label: key, palette: data.palette }))
+        { mode: 'addQuick', toolName: data.toolName ?? data.label, label: key }))
     .join('');
   return rows
     ? `<h3>${data.label} options</h3>${rows}`
@@ -438,7 +436,6 @@ export function showToolOpts(toolName) {
     toolName: toolName,
     schema:   App.getToolSchema(toolName),
     values:   App.getToolParams(toolName),
-    palette:  App.getPalette(),
   });
   wireColorPickers(to);
   const pr  = pill.getBoundingClientRect();
@@ -469,10 +466,10 @@ const PANEL_TABS = [
   { id: 'layers',  label: 'Layers',  iconId: 'layers' },
   { id: 'peers',   label: 'Peers',   iconId: 'peers' },
   { id: 'history', label: 'History', iconId: 'history' },
-  { id: 'save',    label: 'Save',    iconId: 'save' },
+  { id: 'save',    label: 'File',    iconId: 'save' },
 ];
 const PANEL_TITLES = {
-  edit: 'Edit', tools:'Properties', peers:'Peers & sharing', history:'History & undo',
+  edit: 'Edit', tools:'Tools', peers:'Peers & sharing', history:'History & undo',
   layers:'Layers', save:'File', gestures:'Gestures & help',
 };
 
@@ -528,12 +525,11 @@ function gatherToolsData() {
     layer,
     activeTool,
     tools:               App.getTools(layer),
-    palette:             App.getPalette(),
     activeToolSchema:    App.getToolSchema(activeTool),
     activeToolParams:    App.getToolParams(activeTool),
     background:          App.getBackground(),
     defaultBackgrounds:  App.getDefaultBackgrounds(),
-    toyClasses:          layer === 'boundaries-positions' ? (App.getToyClasses?.() ?? []) : null,
+    toyClasses:          App.getToyClasses(),
   };
 }
 function gatherPeersData() {
@@ -604,7 +600,7 @@ function defaultToolsBody(data) {
   // 'add'-surface fields from the active tool schema (e.g. fill colour)
   const addFields = Object.entries(types)
     .map(([key, typeSpec]) => renderSchemaField(key, values[key], typeSpec,
-        { mode: 'add', toolName: data.activeTool, label: key, palette: data.palette }))
+        { mode: 'add', toolName: data.activeTool, label: key }))
     .join('');
 
   // Help block — appended when the active tool schema identifies a bounPos type
