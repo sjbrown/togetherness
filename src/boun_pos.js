@@ -40,12 +40,12 @@ function randomSlug(len = 3) {
 
 export function newBoundaryId() {
   const slug = randomSlug();
-  return { id: `tt-b-v1-${slug}`, 'toy' };
+  return { id: `tt-b-v1-${slug}`, name: 'toy' };
 }
 
 export function newPositionSetId() {
   const slug = randomSlug();
-  return { id: `tt-ps-v1-${slug}`, 'toy' };
+  return { id: `tt-ps-v1-${slug}`, name: 'toy' };
 }
 
 // ── Geometry helpers ──────────────────────────────────────────────────────────
