@@ -108,9 +108,9 @@ function updateCursor() {
 // value stamped on DOM elements by shapes._toSVGEl / toys._toSVGEl.
 const LAYER_TYPE = {
   drawing:               'drawing',
-  toys:                  'toy',
+  toys:                  'toys',
   background:            'background',
-  'boundaries-positions': 'boundaries-positions',
+  'boundaries-positions': 'boun_pos',
 };
 
 // Return the [data-yid] element under the pointer that belongs to the active

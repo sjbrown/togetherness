@@ -13,7 +13,7 @@ function makeToyGEl({ x = 10, y = 20, w = 64, h = 80, withTransform = false } = 
   g.setAttribute('data-toy-id',     'test-toy')
   g.setAttribute('data-toy-type',   'dice_d6')
   g.setAttribute('data-yid',        'test-toy')
-  g.setAttribute('data-module', 'toy')
+  g.setAttribute('data-module', 'toys')
   if (withTransform) g.setAttribute('transform', 'rotate(-8,105,100)')
   const inner = document.createElementNS(SVG_NS, 'svg')
   inner.setAttribute('x',      x)

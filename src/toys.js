@@ -373,7 +373,7 @@ function mirror(yNode) {
 
 /**
  * Render a toy's <g> wrapper to an SVG DOM element, stamped with the handles
- * app.js needs: data-yid (the toy id), data-module="toy", and a plain SVG
+ * app.js needs: data-yid (the toy id), data-module="toys", and a plain SVG
  * id="yid-{id}" so overlay.js <use href="#yid-{id}"> can reference it for
  * drag-ghost rendering.
  */
@@ -383,7 +383,7 @@ export function _toSVGEl(yEl) {
     const id = yEl.getAttribute('data-toy-id')
     el.setAttribute('id',              `yid-${id}`)
     el.setAttribute('data-yid',        id)
-    el.setAttribute('data-module', 'toy')
+    el.setAttribute('data-module', 'toys')
   }
   return el
 }
