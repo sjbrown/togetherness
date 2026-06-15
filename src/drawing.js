@@ -166,7 +166,7 @@ function mirror(yNode) {
 
 /**
  * Render a shape Y.XmlElement to an SVG DOM element, stamped with the handles
- * app.js needs: data-yid (the shape id), data-layer-type="drawing", and a
+ * app.js needs: data-yid (the shape id), data-module="drawing", and a
  * plain SVG id="yid-{id}" so that overlay.js <use href="#yid-{id}"> can
  * reference the element for drag-ghost rendering without touching its geometry.
  */
@@ -176,7 +176,7 @@ export function _toSVGEl(yEl) {
     const id = yEl.getAttribute('id');
     el.setAttribute('id',              `yid-${id}`);
     el.setAttribute('data-yid',        id);
-    el.setAttribute('data-layer-type', 'drawing');
+    el.setAttribute('data-module', 'drawing');
   }
   return el;
 }
@@ -267,7 +267,7 @@ export function applyMoveDom(domEl, x, y) {
 /**
  * Iterate all XmlElement children, optionally newest-first by created timestamp.
  * Returns an array of { svgEl, drawingMeta }; each svgEl is a rendered SVG element
- * with data-yid + data-layer-type stamped.
+ * with data-yid + data-module stamped.
  */
 export function listDrawings(yDrawing, yDrawingMeta, { newestFirst = false } = {}) {
   const results = [];

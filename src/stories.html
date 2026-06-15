@@ -322,7 +322,7 @@ function buildStageSVG(shapes) {
   for (const { id, type, geom, fill } of shapes) {
     const el = shapeEl(type, geom, fill);
     el.setAttribute('data-yid',        id);
-    el.setAttribute('data-layer-type', 'drawing');
+    el.setAttribute('data-module', 'drawing');
     drawing.appendChild(el);
   }
   svg.append(drawing, overlayG);

@@ -471,16 +471,16 @@ function onPresenceChanged() {
   UI.updatePeersPanel();  // live-update peer list if panel is open
 }
 
-function layerForElement(el) {
-  return el?.getAttribute?.('data-layer-type') ?? 'drawing';
+function moduleForElement(el) {
+  return el?.getAttribute?.('data-module') ?? 'drawing';
 }
 
 // Return the sidecar meta object for any element id, regardless of layer.
 function metaFor(id) {
   const svgEl = _svgEl?.querySelector?.(`[data-yid="${id}"]`);
-  const ltype = layerForElement(svgEl);
-  if (ltype === 'toy')      return _yToyMeta.get(id);
-  if (ltype === 'boundaries-positions') return bounPosMetaFor(_yBounPosMeta, id);
+  const mtype = moduleForElement(svgEl);
+  if (mtype === 'toy')      return _yToyMeta.get(id);
+  if (mtype === 'boundaries-positions') return bounPosMetaFor(_yBounPosMeta, id);
   return _yDrawingMeta.get(id);
 }
 
@@ -533,16 +533,16 @@ const App = {
   getBBox:  (id) => {
     const svgEl = _svgEl.querySelector(`[data-yid="${id}"]`);
     if (!svgEl) return null;
-    const ltype = layerForElement(svgEl);
-    if (ltype === 'toy')      return toyGeom(svgEl);
-    if (ltype === 'boundaries-positions') return bounPosGeom(svgEl);
+    const mtype = moduleForElement(svgEl);
+    if (mtype === 'toy')      return toyGeom(svgEl);
+    if (mtype === 'boundaries-positions') return bounPosGeom(svgEl);
     return drawingGeom(svgEl);
   },
   getAnchor: (svgEl) => {
     if (!svgEl) return { x: 0, y: 0 };
-    const ltype = layerForElement(svgEl);
-    if (ltype === 'toy')      return toyAnchor(svgEl);
-    if (ltype === 'boundaries-positions') return bounPosAnchor(svgEl);
+    const mtype = moduleForElement(svgEl);
+    if (mtype === 'toy')      return toyAnchor(svgEl);
+    if (mtype === 'boundaries-positions') return bounPosAnchor(svgEl);
     return drawingAnchor(svgEl);
   },
   getLayerObjects: (layerId) => {
@@ -620,7 +620,7 @@ const App = {
   // Boundaries and Positions tools panel to suggest linkable class names.
   getToyClasses: () => {
     const classes = new Set();
-    _svgEl?.querySelectorAll('[data-layer-type="toy"]').forEach(g => {
+    _svgEl?.querySelectorAll('[data-module="toy"]').forEach(g => {
       g.classList.forEach(c => classes.add(c));
       g.querySelector('svg')?.classList.forEach(c => classes.add(c));
     });
@@ -638,18 +638,18 @@ const App = {
     if (!_selectedId) return null;
     const svgEl = _svgEl?.querySelector(`[data-yid="${_selectedId}"]`);
     if (!svgEl) return null;
-    const ltype = layerForElement(svgEl);
+    const mtype = moduleForElement(svgEl);
     let schema;
-    if (ltype === 'drawing') {
+    if (mtype === 'drawing') {
       schema = drawingGetTtStateSchema(svgEl);
-    } else if (ltype === 'toy') {
+    } else if (mtype === 'toy') {
       schema = toyGetTtStateSchema(svgEl);
-    } else if (ltype === 'boundaries-positions') {
+    } else if (mtype === 'boundaries-positions') {
       schema = bounPosGetTtStateSchema(svgEl);
     } else {
       return null;
     }
-    return { ltype, ...schema, id: _selectedId };
+    return { ltype: mtype, ...schema, id: _selectedId };
   },
 
   /**
@@ -661,12 +661,12 @@ const App = {
   commitEdit: (id, editData) => {
     const svgEl = _svgEl?.querySelector(`[data-yid="${id}"]`);
     if (!svgEl) return;
-    const ltype = layerForElement(svgEl);
-    if (ltype === 'drawing') {
+    const mtype = moduleForElement(svgEl);
+    if (mtype === 'drawing') {
       drawingEdit(_ydoc, findDrawing(_yDrawing, id), editData);
-    } else if (ltype === 'toy') {
+    } else if (mtype === 'toy') {
       toyEdit(_ydoc, findToy(_yToys, id), _yToyMeta, editData);
-    } else if (ltype === 'boundaries-positions') {
+    } else if (mtype === 'boundaries-positions') {
       bounPosEdit({id, ...editData}, _ydoc, _yBounPos, _yBounPosMeta);
     }
     // observeDeep fires synchronously → renderDoc() already ran.
@@ -693,15 +693,15 @@ const App = {
 
   deleteElement: (svgEl) => {
     const id    = svgEl.getAttribute('data-yid');
-    const ltype = layerForElement(svgEl);
-    if (ltype === 'toy') {
+    const mtype = moduleForElement(svgEl);
+    if (mtype === 'toy') {
       const yEl = findToy(_yToys, id);
       if (!yEl) return;
       const state = toyGetTtState(yEl);
       _undoStack.push({ op: 'del', layer: 'toy', state });
       deleteToy(_ydoc, _yToys, _yToyMeta, id);
       addHistory(`deleted ${id.slice(0, 6)}`, { elType: 'toy' });
-    } else if (ltype === 'boundaries-positions') {
+    } else if (mtype === 'boundaries-positions') {
       const yEl = bounPosFindEl(_yBounPos, id);
       if (!yEl) return;
       const state = bounPosGetTtState(yEl);
@@ -750,7 +750,7 @@ const App = {
     const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
     const anchor = App.getAnchor(domEl);
     const bbox = App.getBBox(id);
-    const isToy = layerForElement(domEl) === 'toy';
+    const isToy = moduleForElement(domEl) === 'toy';
     const toyClasses  = isToy ? getToyClasses(domEl) : new Set();
     const boundsRects = isToy ? computeBoundaryRects(_yBounPos, toyClasses, anchor) : null;
     const snapPoints  = isToy ? computePositionSnapPoints(_yBounPos, toyClasses) : [];
@@ -816,17 +816,17 @@ const App = {
     const rx = constrained ? _dragState.lastValidX : Math.round(x);
     const ry = constrained ? _dragState.lastValidY : Math.round(y);
     const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
-    const ltype = layerForElement(domEl);
+    const mtype = moduleForElement(domEl);
 
     // Ghost gone before bbox changes — prevents one-frame ghost "jitter"
     Overlay.endDragPlaceholder(id);
     _awareness.setLocalStateField('drag', null);
     _dragState = null;
 
-    if (ltype === 'toy') {
+    if (mtype === 'toy') {
       toyApplyMoveCommit(_ydoc, findToy(_yToys, id), rx, ry);
       // onToysChanged (observeDeep) fires synchronously and calls renderDoc().
-    } else if (ltype === 'boundaries-positions') {
+    } else if (mtype === 'boundaries-positions') {
       bounPosApplyMoveCommit(_ydoc, bounPosFindEl(_yBounPos, id), rx, ry);
       // observeDeep on _yBounPos fires and calls renderDoc() via onBounPosChanged.
     } else {
@@ -835,10 +835,10 @@ const App = {
       // trigger onDrawingChanged, so we must call renderDoc() explicitly here.
       renderDoc();
     }
-    _undoStack.push({ op: 'move', layer: ltype, id, fromX, fromY, toX: rx, toY: ry });
+    _undoStack.push({ op: 'move', layer: mtype, id, fromX, fromY, toX: rx, toY: ry });
     addHistory(`moved ${id.slice(0, 6)} → (${rx}, ${ry})`, {
       fill: domEl?.getAttribute('fill'),
-      elType: ltype,
+      elType: mtype,
     });
   },
 
@@ -989,14 +989,14 @@ const App = {
       }
 
       // Toy contract: <g class="toy" data-toy-id data-toy-type
-      //                  data-yid data-layer-type="toy"> with ≥1 <svg> child
+      //                  data-yid data-module="toy"> with ≥1 <svg> child
       function isToyG(el) {
         return el.localName === 'g' &&
                el.classList.contains('toy') &&
                el.getAttribute('data-toy-id') &&
                el.getAttribute('data-toy-type') &&
                el.getAttribute('data-yid') &&
-               el.getAttribute('data-layer-type') === 'toy' &&
+               el.getAttribute('data-module') === 'toy' &&
                el.querySelector(':scope > svg');
       }
 
