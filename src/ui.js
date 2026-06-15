@@ -227,7 +227,7 @@ function gatherTtStateData() {
   const element = App.getElementTtStateSchema?.() ?? null;
   return {
     element,
-    toyClasses: element?.ltype === 'boundaries-positions'
+    toyClasses: element?.ltype === 'boun_pos'
                   ? (App.getToyClasses?.() ?? [])
                   : null,
   };
@@ -394,11 +394,11 @@ export function editBody(data) {
     </div>`;
   }
   const { ltype, id, types, label, ...values } = data.element;
-  const header = `<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px">${ltype.replace('boundaries-positions','boundary')} · <span style="font-family:ui-monospace,monospace;font-weight:normal">${id.slice(0,16)}</span></div>`;
+  const header = `<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px">${ltype.replace('boun_pos','boundary')} · <span style="font-family:ui-monospace,monospace;font-weight:normal">${id.slice(0,16)}</span></div>`;
   const fields  = Object.entries(types)
     .map(([key, typeSpec]) => renderSchemaField(key, values[key], typeSpec, { mode: 'edit', id }))
     .join('');
-  const help = ltype === 'boundaries-positions'
+  const help = ltype === 'boun_pos'
     ? bounPosHelpHTML(data.toyClasses ?? [])
     : '';
   return header + fields + help;

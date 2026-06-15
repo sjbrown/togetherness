@@ -104,13 +104,13 @@ function updateCursor() {
 }
 
 // ── Layer-aware hit testing ───────────────────────────────────────────────────
-// Maps the active layer id (from App.getActiveLayer) to the data-layer-type
+// Maps the active layer id (from App.getActiveLayer) to the data-module
 // value stamped on DOM elements by shapes._toSVGEl / toys._toSVGEl.
 const LAYER_TYPE = {
   drawing:               'drawing',
-  toys:                  'toy',
+  toys:                  'toys',
   background:            'background',
-  'boundaries-positions': 'boundaries-positions',
+  'boundaries-positions': 'boun_pos',
 };
 
 // Return the [data-yid] element under the pointer that belongs to the active
@@ -120,7 +120,7 @@ function hitForActiveLayer(e) {
   if (!activeType) return null;
   const el = e.target.closest?.('[data-yid]') ?? null;
   if (!el) return null;
-  return el.dataset.layerType === activeType ? el : null;
+  return el.dataset.module === activeType ? el : null;
 }
 
 // ── Shape click wiring ────────────────────────────────────────────────────────

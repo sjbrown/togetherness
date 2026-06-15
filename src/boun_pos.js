@@ -221,7 +221,7 @@ export const BOUNPOS_TYPES = {
       const g = document.createElementNS(SVG_NS, 'g');
       g.setAttribute('id',               `yid-${id}`);
       g.setAttribute('data-yid',         id);
-      g.setAttribute('data-layer-type',  'boundaries-positions');
+      g.setAttribute('data-module',      'boun_pos');
       g.setAttribute('data-bounpos-type','boundary');
       g.setAttribute('name',             name);
       for (const child of yG.toArray()) {
@@ -346,7 +346,7 @@ function _positionSetToSVGEl(yG) {
   const g = document.createElementNS(SVG_NS, 'g');
   g.setAttribute('id',               `yid-${id}`);
   g.setAttribute('data-yid',         id);
-  g.setAttribute('data-layer-type',  'boundaries-positions');
+  g.setAttribute('data-module',      'boun_pos');
   g.setAttribute('data-bounpos-type','pos-set');
   g.setAttribute('name',             name);
   g.setAttribute('data-snap-radius', snapR);
