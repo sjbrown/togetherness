@@ -100,7 +100,7 @@ let _selectedId   = null;
 let _activeLayer  = 'toys';
 let _activeTool   = 'select';
 let _offline      = false;
-let _undoStack    = [];      // { op:'add'|'del'|'move', layer:'drawing'|'toys', id, ... }
+let _undoStack    = [];      // { op:'add'|'del'|'move', module:'drawing'|'toys'|'boun_pos', id, ... }
 let _historyLog   = [];      // { label } — human-readable, newest first
 
 // Active drag — set by App.startDrag, cleared by commitMove / cancelMove.
@@ -573,7 +573,7 @@ const App = {
   commitDrawing: (attrs) => {
     const id = App.getMyId() + '_' + Math.random().toString(36).slice(2, 7);
     addDrawing(_ydoc, _yDrawing, _yDrawingMeta, { ...attrs, id, author: _myId });
-    _undoStack.push({ op: 'add', layer: 'drawing', id });
+    _undoStack.push({ op: 'add', module: 'drawing', id });
     addHistory(`added ${attrs.type ?? 'rect'} ${id.slice(0, 6)}`, {
       fill: attrs.fill, elType: attrs.type,
     });
@@ -599,7 +599,7 @@ const App = {
       def.create(_ydoc, _yBounPos, _yBounPosMeta,
         { id, name, snapRadius, genType, genParam, x, y, w, h, circles, author: _myId });
     }
-    _undoStack.push({ op: 'add', layer: 'boun_pos', bounPosType: def.bounPosType, id });
+    _undoStack.push({ op: 'add', module: 'boun_pos', bounPosType: def.bounPosType, id });
     addHistory(`added ${def.label} ${name}`, { elType: 'boundaries-positions' });
     App.addLog(`added ${def.label} ${name}`, 'local');
     App.select(id);
@@ -682,7 +682,7 @@ const App = {
       id, toyType: def.toyType, x, y,
       color: _myGrad.c1, author: _myId,
     }).then(() => {
-      _undoStack.push({ op: 'add', layer: 'toys', id });
+      _undoStack.push({ op: 'add', module: 'toys', id });
       addHistory(`placed ${def.label} ${id.slice(0, 6)}`, { elType: 'toy' });
       App.addLog(`placed ${def.label} ${id.slice(0, 6)}`, 'local');
     }).catch(err => {
@@ -698,14 +698,14 @@ const App = {
       const yEl = findToy(_yToys, id);
       if (!yEl) return;
       const state = toyGetTtState(yEl);
-      _undoStack.push({ op: 'del', layer: 'toys', state });
+      _undoStack.push({ op: 'del', module: 'toys', state });
       deleteToy(_ydoc, _yToys, _yToyMeta, id);
       addHistory(`deleted ${id.slice(0, 6)}`, { elType: 'toy' });
     } else if (mtype === 'boun_pos') {
       const yEl = bounPosFindEl(_yBounPos, id);
       if (!yEl) return;
       const state = bounPosGetTtState(yEl);
-      _undoStack.push({ op: 'del', layer: 'boun_pos', state });
+      _undoStack.push({ op: 'del', module: 'boun_pos', state });
       bounPosDeleteEl(_ydoc, _yBounPos, _yBounPosMeta, id);
       addHistory(`deleted ${state.bounPosType} ${id.slice(0, 12)}`,
         { elType: 'boundaries-positions' });
@@ -713,7 +713,7 @@ const App = {
       const yEl = findDrawing(_yDrawing, id);
       if (!yEl) return;
       const state = drawingGetTtState(yEl);
-      _undoStack.push({ op: 'del', layer: 'drawing', state });
+      _undoStack.push({ op: 'del', module: 'drawing', state });
       deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, id);
       addHistory(`deleted ${id.slice(0, 6)}`, { fill: state?.fill, elType: yEl.nodeName });
     }
@@ -835,7 +835,7 @@ const App = {
       // trigger onDrawingChanged, so we must call renderDoc() explicitly here.
       renderDoc();
     }
-    _undoStack.push({ op: 'move', layer: mtype, id, fromX, fromY, toX: rx, toY: ry });
+    _undoStack.push({ op: 'move', module: mtype, id, fromX, fromY, toX: rx, toY: ry });
     addHistory(`moved ${id.slice(0, 6)} → (${rx}, ${ry})`, {
       fill: domEl?.getAttribute('fill'),
       elType: mtype,
@@ -889,10 +889,10 @@ const App = {
     const op = _undoStack.pop();
     if (!op) { UI.toast('Nothing to undo', 'warn'); return; }
     if (op.op === 'add') {
-      if (op.layer === 'toys') {
+      if (op.module === 'toys') {
         deleteToy(_ydoc, _yToys, _yToyMeta, op.id);
         addHistory(`undid: add toy ${op.id.slice(0, 6)}`, { elType: 'toy' });
-      } else if (op.layer === 'boun_pos') {
+      } else if (op.module === 'boun_pos') {
         bounPosDeleteEl(_ydoc, _yBounPos, _yBounPosMeta, op.id);
         addHistory(`undid: add ${op.bounPosType} ${op.id.slice(0, 12)}`);
       } else {
@@ -900,7 +900,7 @@ const App = {
         addHistory(`undid: add ${op.id.slice(0, 6)}`);
       }
     } else if (op.op === 'del') {
-      if (op.layer === 'toys') {
+      if (op.module === 'toys') {
         toyApplyTtState(_ydoc, _yToys, _yToyMeta, op.state).then(() => {
           addHistory(`undid: delete toy ${op.state.id.slice(0, 6)}`, { elType: 'toy' });
           UI.toast('Undone');
@@ -909,7 +909,7 @@ const App = {
           App.addLog(`undo toy delete failed: ${err.message}`, 'del');
         });
         return; // async — toast fired inside .then()
-      } else if (op.layer === 'boun_pos') {
+      } else if (op.module === 'boun_pos') {
         bounPosApplyTtState(_ydoc, _yBounPos, _yBounPosMeta, op.state);
         addHistory(`undid: delete ${op.state.bounPosType} ${op.state.id.slice(0, 12)}`);
       } else {
@@ -917,9 +917,9 @@ const App = {
         addHistory(`undid: delete ${op.state.id.slice(0, 6)}`, { fill: op.state.fill, elType: op.state.type });
       }
     } else if (op.op === 'move') {
-      if (op.layer === 'toys') {
+      if (op.module === 'toys') {
         toyApplyMoveCommit(_ydoc, findToy(_yToys, op.id), op.fromX, op.fromY);
-      } else if (op.layer === 'boun_pos') {
+      } else if (op.module === 'boun_pos') {
         bounPosApplyMoveCommit(_ydoc, bounPosFindEl(_yBounPos, op.id), op.fromX, op.fromY);
         // observeDeep fires and calls renderDoc()
       } else {
