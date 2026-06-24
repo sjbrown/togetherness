@@ -106,6 +106,7 @@ let _historyLog   = [];      // { label } — human-readable, newest first
 // Active drag — set by App.startDrag, cleared by commitMove / cancelMove.
 // Awareness state: drag: { elId, dx, dy }
 // local awareness schema: { id, color, grad, cursor, selection, drag? }
+// selection: { elIds: string[] } | null  — always an array; never { elId }
 let _dragState    = null;    // { id, startX, startY, startBboxX, startBboxY,
                               //   boundsRects: [{x,y,w,h}]|null, lastValidX, lastValidY,
                               //   snapPoints: [{cx,cy,snapRadius}] } | null
@@ -562,7 +563,7 @@ const App = {
   // ── Selection ────────────────────────────────────────────────────────────
   select: (id) => {
     _selectedId = id;
-    _awareness.setLocalStateField('selection', id ? { elId: id } : null);
+    _awareness.setLocalStateField('selection', id ? { elIds: [id] } : null);
     Canvas.setTool('select');
     Overlay.setLocalSelection(id);
     UI.onSelectionChanged(id, id ? metaFor(id) : null);

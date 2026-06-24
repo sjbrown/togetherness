@@ -15,6 +15,11 @@
  *   'resize' — local + drag handles at edges (future)
  *   'locked' — remote peer is actively editing (future: lock icon)
  *
+ * Awareness selection schema: { elIds: string[] } | null
+ *   Always an array. Single selection: elIds.length === 1.
+ *   Multi-selection (rubber-band candidates or committed group): elIds.length > 1.
+ *   Never the old { elId: string } shape.
+ *
  * Drag ghost system:
  *   The native layer element is never touched during drag; but overlay renders:
  *     - a dim <use href="#yid-{id}" filter="url(#drag-placeholder-filter)">
@@ -72,17 +77,18 @@ export function syncFromAwareness(awarenessStates, myClientId) {
   awarenessStates.forEach((state, clientId) => {
     if (clientId === myClientId) return;
 
-    // Remote selection ring
-    if (state?.selection?.elId) {
+    // Remote selection rings — one per id in elIds
+    if (Array.isArray(state?.selection?.elIds) && state.selection.elIds.length) {
       const peerId = state.id ?? String(clientId);
       const grad = state.grad ?? 'default-remote-sel-grad';
-      const { elId } = state.selection;
-      SelectionMode.set(elId, {
-        kind:   'remote',
-        peerId: peerId,
-        color:  state.color ?? '#888',
-        grad:   grad,
-      });
+      for (const elId of state.selection.elIds) {
+        SelectionMode.set(elId, {
+          kind:   'remote',
+          peerId: peerId,
+          color:  state.color ?? '#888',
+          grad:   grad,
+        });
+      }
     }
 
     // Remote drag ghost
