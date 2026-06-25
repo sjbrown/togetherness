@@ -96,9 +96,15 @@ const _layerVisibility = {
 };
 let _myId, _myGrad, _roomId;
 let _svgEl;
-let _selectedId   = null;
-let _selectedIds  = new Set();   // multi-selection: populated only when N > 1
+let _selectedIds  = new Set();   // SSOT: N=0 nothing, N=1 single, N>1 multi
 let _activeLayer  = 'toys';
+
+// Returns the single selected id, or null if zero or more than one are selected.
+// Internal use only — callers that need to work on a single element must check
+// this returns non-null before proceeding; the bus only exposes getSelectedIds().
+function _singleSelectedId() {
+  return _selectedIds.size === 1 ? [..._selectedIds][0] : null;
+}
 let _activeTool   = 'select';
 let _offline      = false;
 let _undoStack    = [];      // { op:'add'|'del'|'move', module:'drawing'|'toys'|'boun_pos', id, ... }
@@ -356,7 +362,7 @@ function renderDrawingList() {
     const def    = drawingGetTtStateSchema(drawingMeta?.type ?? svgEl.getAttribute('data-type') ?? 'rect');
     const item   = document.createElement('div');
     const author = drawingMeta?.author;
-    item.className  = 'drawing-item' + (_selectedId === id ? ' selected' : '');
+    item.className  = 'drawing-item' + (_selectedIds.has(id) ? ' selected' : '');
     item.dataset.id = id;
     const sw = document.createElement('div');
     sw.className        = 'drawing-swatch';
@@ -532,7 +538,6 @@ const App = {
     return out;
   },
   getRoomId:       () => _roomId,
-  getSelectedId:   () => _selectedId,
   getSelectedIds:  () => [..._selectedIds],
   getBBox:  (id) => {
     const svgEl = _svgEl.querySelector(`[data-yid="${id}"]`);
@@ -590,16 +595,14 @@ const App = {
   // ── Tool mutations (canvas.js calls back into ui.js via these) ────────────
   onToolChanged:          (t)   => UI.onToolChanged(t),
   onViewReset:            ()    => UI.toast('View reset'),
-  onMultiSelectionChanged:(ids) => UI.onMultiSelectionChanged(ids),
   requestContextMenu: (x, y, id) => UI.showPopover(x, y, id),
 
   // ── Selection ────────────────────────────────────────────────────────────
   select: (id) => {
-    _selectedId  = id;
-    _selectedIds = new Set();
+    _selectedIds = id ? new Set([id]) : new Set();
     _awareness.setLocalStateField('selection', id ? { elIds: [id] } : null);
     Overlay.setLocalSelection(id);
-    UI.onSelectionChanged(id, id ? metaFor(id) : null);
+    UI.onSelectionChanged(_selectedIds);
     renderDrawingList();
   },
 
@@ -610,11 +613,10 @@ const App = {
     } else if (ids.length === 1) {
       App.select(ids[0]);
     } else {
-      _selectedId  = null;
       _selectedIds = new Set(ids);
       _awareness.setLocalStateField('selection', { elIds: ids });
       Overlay.setLocalSelections(ids);
-      UI.onMultiSelectionChanged(ids);
+      UI.onSelectionChanged(_selectedIds);
       renderDrawingList();
     }
   },
@@ -655,7 +657,7 @@ const App = {
     }
     _selectedIds = new Set();
     Overlay.clearHoverCandidates();
-    UI.onMultiSelectionChanged([]);
+    UI.onSelectionChanged(_selectedIds);
   },
 
   duplicateMultiSelected: () => {
@@ -682,7 +684,7 @@ const App = {
       App.addLog(`duplicated ${entries.length} objects`, 'local');
     }
     _selectedIds = new Set();
-    UI.onMultiSelectionChanged([]);
+    UI.onSelectionChanged(_selectedIds);
   },
 
   // ── Document mutations ────────────────────────────────────────────────────
@@ -751,8 +753,9 @@ const App = {
    * app.js stays ignorant of per-type field definitions.
    */
   getElementTtStateSchema: () => {
-    if (!_selectedId) return null;
-    const svgEl = _svgEl?.querySelector(`[data-yid="${_selectedId}"]`);
+    const id = _singleSelectedId();
+    if (!id) return null;
+    const svgEl = _svgEl?.querySelector(`[data-yid="${id}"]`);
     if (!svgEl) return null;
     const mtype = moduleForElement(svgEl);
     let schema;
@@ -765,7 +768,7 @@ const App = {
     } else {
       return null;
     }
-    return { ltype: mtype, ...schema, id: _selectedId };
+    return { ltype: mtype, ...schema, id };
   },
 
   /**
@@ -834,22 +837,37 @@ const App = {
       addHistory(`deleted ${id.slice(0, 6)}`, { fill: state?.fill, elType: yEl.nodeName });
     }
     App.addLog(`deleted ${id.slice(0, 6)}`, 'local');
-    if (id === _selectedId) App.select(null);
     if (_selectedIds.has(id)) {
       _selectedIds.delete(id);
-      if (_selectedIds.size === 0) UI.onMultiSelectionChanged([]);
+      Overlay.setLocalSelections([..._selectedIds]);
+      UI.onSelectionChanged(_selectedIds);
+      renderDrawingList();
     }
     return true;
   },
 
   deleteSelected: () => {
-    if (!_selectedId) return;
-    const svgEl = _svgEl.querySelector(`[data-yid="${_selectedId}"]`);
+    const id = _singleSelectedId();
+    if (!id) {
+      if (_selectedIds.size > 1) {
+        UI.toast('Use Delete N for multi-selection', 'warn');
+        console.error('deleteSelected called with multi-selection; use deleteMultiSelected');
+      }
+      return;
+    }
+    const svgEl = _svgEl.querySelector(`[data-yid="${id}"]`);
     if (svgEl) App.deleteElement(svgEl);
   },
   duplicateSelected: () => {
-    if (!_selectedId) return;
-    const yEl = findDrawing(_yDrawing, _selectedId);
+    const id = _singleSelectedId();
+    if (!id) {
+      if (_selectedIds.size > 1) {
+        UI.toast('Use Duplicate N for multi-selection', 'warn');
+        console.error('duplicateSelected called with multi-selection; use duplicateMultiSelected');
+      }
+      return;
+    }
+    const yEl = findDrawing(_yDrawing, id);
     if (!yEl) return;
     const attrs = yEl.getAttributes();
     const type  = yEl.nodeName;
@@ -971,15 +989,19 @@ const App = {
   },
 
   bringToFront: () => {
-    if (!_selectedId) return;
-    const yEl = findDrawing(_yDrawing, _selectedId);
+    const id = _singleSelectedId();
+    if (!id) {
+      if (_selectedIds.size > 1) console.error('bringToFront called with multi-selection; not yet supported');
+      return;
+    }
+    const yEl = findDrawing(_yDrawing, id);
     if (!yEl) return;
     const index = _yDrawing.toArray().indexOf(yEl);
     _ydoc.transact(() => {
       _yDrawing.delete(index, 1);
       _yDrawing.insert(_yDrawing.length, [yEl]);
     });
-    addHistory(`brought ${_selectedId.slice(0, 6)} to front`);
+    addHistory(`brought ${id.slice(0, 6)} to front`);
   },
 
   // ── Tool selection + params (ui.js → app → canvas.js) ─────────────────────

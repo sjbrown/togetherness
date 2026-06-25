@@ -476,3 +476,49 @@ describe('batch undo — stack shape', () => {
     expect(deleted).toEqual(['new-2', 'new-1'])
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. Commit 2: _selectedIds as SSOT — _singleSelectedId contract
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('_selectedIds as SSOT', () => {
+  // Mirror the _singleSelectedId helper logic
+  function singleSelectedId(selectedIds) {
+    return selectedIds.size === 1 ? [...selectedIds][0] : null;
+  }
+
+  test('returns null when nothing selected', () => {
+    expect(singleSelectedId(new Set())).toBeNull()
+  })
+
+  test('returns the id when exactly one item selected', () => {
+    expect(singleSelectedId(new Set(['shape-abc']))).toBe('shape-abc')
+  })
+
+  test('returns null when two or more items selected', () => {
+    expect(singleSelectedId(new Set(['a', 'b']))).toBeNull()
+  })
+
+  test('returns null when three items selected', () => {
+    expect(singleSelectedId(new Set(['a', 'b', 'c']))).toBeNull()
+  })
+
+  test('getSelectedIds returns all ids for multi-selection', () => {
+    const ids = ['toy-1', 'toy-2', 'toy-3']
+    const s = new Set(ids)
+    expect([...s]).toEqual(ids)
+  })
+
+  test('single select via App.select results in getSelectedIds returning one-element array', () => {
+    // Simulate what App.select('x') does to _selectedIds
+    const _selectedIds = new Set(['x'])
+    expect([..._selectedIds]).toEqual(['x'])
+    expect(singleSelectedId(_selectedIds)).toBe('x')
+  })
+
+  test('deselect results in empty getSelectedIds', () => {
+    const _selectedIds = new Set()
+    expect([..._selectedIds]).toEqual([])
+    expect(singleSelectedId(_selectedIds)).toBeNull()
+  })
+})

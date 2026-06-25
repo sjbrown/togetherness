@@ -218,10 +218,12 @@ export function onToolChanged(toolName) {
     toast(`${def?.label ?? toolName} tool`, 'info');
   }
 }
-export function onSelectionChanged(elId, drawingMeta) {
-  UIData.selectionActive      = !!elId;
-  UIData.multiSelectionActive = false;
-  UIData.selectedCount        = 0;
+export function onSelectionChanged(selectedIds) {
+  const ids    = selectedIds instanceof Set ? selectedIds : new Set(selectedIds ?? []);
+  const n      = ids.size;
+  UIData.selectionActive      = n === 1;
+  UIData.multiSelectionActive = n > 1;
+  UIData.selectedCount        = n;
   renderPill();
   refreshLayerList();
   // Keep the Edit panel live — re-render it whenever the selection changes.
@@ -229,15 +231,6 @@ export function onSelectionChanged(elId, drawingMeta) {
     const body = $('#panelBody');
     if (body) { body.innerHTML = editBody(gatherTtStateData()); wireColorPickers(body); }
   }
-  if (elId && drawingMeta) toast(`${drawingMeta.type ?? 'Shape'} selected`, 'info');
-}
-
-export function onMultiSelectionChanged(ids) {
-  UIData.selectionActive      = false;
-  UIData.multiSelectionActive = ids.length > 0;
-  UIData.selectedCount        = ids.length;
-  renderPill();
-  refreshLayerList();
 }
 
 // ==============================================================================

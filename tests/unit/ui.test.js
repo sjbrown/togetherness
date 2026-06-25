@@ -281,14 +281,34 @@ describe('refreshLayerList — multi-selection', () => {
   })
 })
 
-describe('onMultiSelectionChanged resets multi state', () => {
-  test('calling onMultiSelectionChanged([]) clears multiSelectionActive', () => {
-    import('../../src/ui.js').then(({ onMultiSelectionChanged, UIData }) => {
+describe('onSelectionChanged handles all selection states', () => {
+  test('empty Set clears all selection flags', () => {
+    import('../../src/ui.js').then(({ onSelectionChanged, UIData }) => {
       UIData.multiSelectionActive = true
+      UIData.selectionActive = true
       UIData.selectedCount = 3
-      onMultiSelectionChanged([])
+      onSelectionChanged(new Set())
       expect(UIData.multiSelectionActive).toBe(false)
+      expect(UIData.selectionActive).toBe(false)
       expect(UIData.selectedCount).toBe(0)
+    })
+  })
+
+  test('Set of size 1 sets selectionActive, not multiSelectionActive', () => {
+    import('../../src/ui.js').then(({ onSelectionChanged, UIData }) => {
+      onSelectionChanged(new Set(['shape-abc']))
+      expect(UIData.selectionActive).toBe(true)
+      expect(UIData.multiSelectionActive).toBe(false)
+      expect(UIData.selectedCount).toBe(1)
+    })
+  })
+
+  test('Set of size > 1 sets multiSelectionActive, not selectionActive', () => {
+    import('../../src/ui.js').then(({ onSelectionChanged, UIData }) => {
+      onSelectionChanged(new Set(['a', 'b', 'c']))
+      expect(UIData.selectionActive).toBe(false)
+      expect(UIData.multiSelectionActive).toBe(true)
+      expect(UIData.selectedCount).toBe(3)
     })
   })
 })
