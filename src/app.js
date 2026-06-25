@@ -202,6 +202,7 @@ export function boot({ ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, yBo
 
   // 2. Overlay — needs App + SVG element
   Overlay.init(App, _svgEl);
+  Overlay.setLocalGradient(_myGrad);
 
   // 3. Canvas — needs App + SVG element; attaches pointer listeners
   Canvas.init(App, _svgEl);
@@ -552,6 +553,35 @@ const App = {
     if (layerId === 'boundaries-positions') return bounPosLayerData(_yBounPos, _yBounPosMeta);
     return [];
   },
+  // Return ids of objects on the active layer whose bbox is fully inside rect.
+  // rect is canvas-space { x, y, width, height }.
+  // Also updates overlay candidate rings as a side effect.
+  getBoxCandidates: (rect) => {
+    const objects = App.getLayerObjects(_activeLayer);
+    const ids = objects
+      .map(obj => ({ id: obj.id, bbox: App.getBBox(obj.id) }))
+      .filter(({ bbox }) => {
+        if (!bbox) return false;
+        return (
+          bbox.x >= rect.x &&
+          bbox.y >= rect.y &&
+          bbox.x + bbox.width  <= rect.x + rect.width &&
+          bbox.y + bbox.height <= rect.y + rect.height
+        );
+      })
+      .map(({ id }) => id);
+    Overlay.setHoverCandidates(ids);
+    return ids;
+  },
+  // Broadcast the current rubber-band candidate set via awareness.
+  broadcastCandidates: (ids) => {
+    _awareness.setLocalStateField('selection', ids.length ? { elIds: ids } : null);
+  },
+  // Clear rubber-band candidates from overlay and awareness (commit or cancel).
+  clearBoxCandidates: () => {
+    Overlay.clearHoverCandidates();
+    _awareness.setLocalStateField('selection', null);
+  },
   getViewScale:    () => Canvas.getView().scale,
   isOffline:       () => _offline,
 
@@ -564,7 +594,6 @@ const App = {
   select: (id) => {
     _selectedId = id;
     _awareness.setLocalStateField('selection', id ? { elIds: [id] } : null);
-    Canvas.setTool('select');
     Overlay.setLocalSelection(id);
     UI.onSelectionChanged(id, id ? metaFor(id) : null);
     renderDrawingList();
@@ -875,7 +904,9 @@ const App = {
   setToolParam: (toolName, key, value) => {
     const p = _toolParams[toolName] ?? (_toolParams[toolName] = {});
     p[key] = (typeof value === 'string' && value !== '' && !isNaN(value)) ? +value : value;
-    if (toolName === _activeTool) Canvas.setParams(p);
+    if (toolName === _activeTool) {
+      Canvas.setParams(p);
+    }
   },
 
   // ── Misc ─────────────────────────────────────────────────────────────────

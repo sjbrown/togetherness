@@ -298,14 +298,13 @@ function onPointerMove(e) {
       const sh = Math.abs(ddy);
       _selectPreview.show(sx, sy, sw, sh);
 
-      // Canvas-space box for candidate testing (commits 3+)
-      // const cx = Math.min(...) / _view.scale - _view.x / _view.scale; // future
-      App.getBoxCandidates?.({
+      const candidates = App.getBoxCandidates({
         x:      (Math.min(e.clientX, ref.sx) - _view.x) / _view.scale,
         y:      (Math.min(e.clientY, ref.sy) - _view.y) / _view.scale,
         width:  sw / _view.scale,
         height: sh / _view.scale,
       });
+      App.broadcastCandidates(candidates);
     }
   }
 }
@@ -341,9 +340,11 @@ function onPointerUp(e) {
   } else if (ToolMode._gesture === 'box-select' && ToolMode._moveRef) {
     if (isCancelled || !ToolMode._moveRef.moved) {
       // Tap (no drag) in multi mode: deselect
+      App.clearBoxCandidates();
       App.select(null);
     } else {
       const ref = ToolMode._moveRef;
+      App.clearBoxCandidates();
       App.commitMultiSelect?.({
         x:      (Math.min(e.clientX, ref.sx) - _view.x) / _view.scale,
         y:      (Math.min(e.clientY, ref.sy) - _view.y) / _view.scale,

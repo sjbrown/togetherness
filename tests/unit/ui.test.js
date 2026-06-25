@@ -74,3 +74,88 @@ describe('refreshLayerList', () => {
     document.body.removeChild(body)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pill buttons: double-click → Tools panel; select tool quick opts
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { pillHTML, toolOptsHTML } from '../../src/ui.js'
+import { SELECT_TOOL } from '../../src/tools-schema.js'
+
+const MOCK_TOOLS = [SELECT_TOOL]
+
+describe('pillHTML — double-click opens Tools panel', () => {
+  test('tool buttons carry ondblclick calling UI.openSheet("tools")', () => {
+    const html = pillHTML({ selectionActive: false, activeTool: 'select', tools: MOCK_TOOLS })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const btns = div.querySelectorAll('button.ico')
+    expect(btns.length).toBeGreaterThan(0)
+    for (const btn of btns) {
+      expect(btn.getAttribute('ondblclick')).toContain("UI.openSheet('tools')")
+    }
+  })
+
+  test('selection-active pill buttons also carry ondblclick', () => {
+    const html = pillHTML({ selectionActive: true, activeTool: 'select', tools: MOCK_TOOLS })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const btns = div.querySelectorAll('button.ico')
+    expect(btns.length).toBeGreaterThan(0)
+    for (const btn of btns) {
+      expect(btn.getAttribute('ondblclick')).toContain("UI.openSheet('tools')")
+    }
+  })
+
+  test('single-click is guarded against double-click (event.detail<2 check)', () => {
+    const html = pillHTML({ selectionActive: false, activeTool: 'select', tools: MOCK_TOOLS })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const btn = div.querySelector('button.ico')
+    // The onclick handler should only fire pillTap when event.detail < 2
+    expect(btn.getAttribute('onclick')).toMatch(/event\.detail\s*<\s*2/)
+  })
+})
+
+
+describe('SELECT_TOOL multi option — show surfaces', () => {
+  test('multi option has show containing "addQuick"', () => {
+    const multiOpt = SELECT_TOOL.options.find(o => o.key === 'multi')
+    expect(multiOpt).toBeDefined()
+    expect(multiOpt.show).toContain('addQuick')
+  })
+
+  test('multi option has show containing "add"', () => {
+    const multiOpt = SELECT_TOOL.options.find(o => o.key === 'multi')
+    expect(multiOpt.show).toContain('add')
+  })
+
+  test('toolOptsHTML renders multi checkbox for select tool', () => {
+    const schema = {
+      types:  { multi: { kind: 'bool', show: ['add', 'addQuick'] } },
+      values: { multi: false },
+    }
+    const html = toolOptsHTML({ label: 'Select', toolName: 'select', schema, values: { multi: false } })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const checkbox = div.querySelector('input[type="checkbox"]')
+    expect(checkbox).not.toBeNull()
+  })
+
+  test('snap option without addQuick is not rendered in toolOpts popover', () => {
+    const schema = {
+      types:  {
+        snap:  { kind: 'bool' },                                    // no show → not addQuick
+        multi: { kind: 'bool', show: ['add', 'addQuick'] },
+      },
+      values: { snap: false, multi: false },
+    }
+    const html = toolOptsHTML({ label: 'Select', toolName: 'select', schema, values: { snap: false, multi: false } })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const checkboxes = div.querySelectorAll('input[type="checkbox"]')
+    // Only multi should appear, not snap
+    expect(checkboxes).toHaveLength(1)
+  })
+})
+

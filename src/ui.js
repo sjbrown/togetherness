@@ -164,10 +164,10 @@ export function pillHTML(data) {
 }
 function toolIco(toolDef, activeTool) {
   const cls = activeTool === toolDef.name ? 'active' : '';
-  return `<button class="ico ${cls}" aria-label="${toolDef.label}" title="${toolDef.label}" onclick="UI.pillTap('${toolDef.name}')">${iconFor(toolDef)}<span class="active-dot"></span></button>`;
+  return `<button class="ico ${cls}" aria-label="${toolDef.label}" title="${toolDef.label}" onclick="if(event.detail<2)UI.pillTap('${toolDef.name}')" ondblclick="UI.openSheet('tools')">${iconFor(toolDef)}<span class="active-dot"></span></button>`;
 }
 function icoBtn(iconSvg, label, onclick, cls = '') {
-  return `<button class="ico ${cls}" aria-label="${label}" title="${label}" onclick="${onclick}">${iconSvg}<span class="active-dot"></span></button>`;
+  return `<button class="ico ${cls}" aria-label="${label}" title="${label}" onclick="if(event.detail<2){${onclick}}" ondblclick="UI.openSheet('tools')">${iconSvg}<span class="active-dot"></span></button>`;
 }
 const ICON_ACTIONS = {
   trash:  icon('trash'), copy: icon('copy'), swatch: icon('swatch'), front: icon('front'),
@@ -313,9 +313,9 @@ function renderSchemaField(key, value, typeSpec, ctx) {
         style="width:18px;height:18px;cursor:pointer;accent-color:var(--accent)"
         onchange="App.commitEdit('${ctx.id}',{'${key}':this.checked})"/></div>`;
     } else {
-      return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><input type="checkbox" ${checked ? 'checked' : ''}
+      return `<div class="opt-row"><label style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px;cursor:pointer"><span class="opt-label">${ctx.label ?? key}</span><input type="checkbox" ${checked ? 'checked' : ''}
         style="width:18px;height:18px;cursor:pointer;accent-color:var(--accent)"
-        onchange="App.setToolParam('${ctx.toolName}','${key}',this.checked)"/></div>`;
+        onchange="App.setToolParam('${ctx.toolName}','${key}',this.checked)"/></label></div>`;
     }
   }
 

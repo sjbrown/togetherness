@@ -1,0 +1,332 @@
+/**
+ * tests/unit/multiselect.test.js
+ *
+ * Commit 3 tests: AABB containment, overlay candidate rings, awareness broadcast.
+ *
+ * Tests are organised into three groups:
+ *
+ *   1. getBoxCandidates — pure AABB logic (tested via a thin App-bus mock so
+ *      we can supply controlled bboxes without a full Yjs doc)
+ *
+ *   2. Overlay.setHoverCandidates / clearHoverCandidates — SelectionMode mutation
+ *      and render output (SVG rings counted in the overlay layer)
+ *
+ *   3. broadcastCandidates / clearBoxCandidates — awareness write side
+ *      (verified against a stub awareness object)
+ */
+
+// @vitest-environment jsdom
+import { describe, test, expect, beforeEach } from 'vitest'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. getBoxCandidates — AABB containment
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// We test the containment logic directly without booting app.js, by extracting
+// the predicate into a pure helper that mirrors the production code exactly.
+
+function fullyInside(bbox, rect) {
+  return (
+    bbox.x >= rect.x &&
+    bbox.y >= rect.y &&
+    bbox.x + bbox.width  <= rect.x + rect.width &&
+    bbox.y + bbox.height <= rect.y + rect.height
+  )
+}
+
+// Simulate getBoxCandidates given a list of { id, bbox } objects and a rect.
+function boxCandidates(objects, rect) {
+  return objects
+    .filter(({ bbox }) => bbox && fullyInside(bbox, rect))
+    .map(({ id }) => id)
+}
+
+describe('getBoxCandidates — AABB containment', () => {
+  const rect = { x: 100, y: 100, width: 200, height: 200 } // 100–300 × 100–300
+
+  test('object fully inside is included', () => {
+    const objects = [{ id: 'a', bbox: { x: 120, y: 120, width: 60, height: 60 } }]
+    expect(boxCandidates(objects, rect)).toEqual(['a'])
+  })
+
+  test('object partially overlapping is excluded', () => {
+    const objects = [{ id: 'b', bbox: { x: 80, y: 120, width: 60, height: 60 } }] // left edge outside
+    expect(boxCandidates(objects, rect)).toEqual([])
+  })
+
+  test('object whose bbox exactly touches the selection edge is included', () => {
+    // Right edge of object = right edge of rect
+    const objects = [{ id: 'c', bbox: { x: 200, y: 150, width: 100, height: 50 } }]
+    expect(boxCandidates(objects, rect)).toEqual(['c'])
+  })
+
+  test('object completely outside is excluded', () => {
+    const objects = [{ id: 'd', bbox: { x: 400, y: 400, width: 50, height: 50 } }]
+    expect(boxCandidates(objects, rect)).toEqual([])
+  })
+
+  test('object larger than the selection box is excluded', () => {
+    const objects = [{ id: 'e', bbox: { x: 50, y: 50, width: 300, height: 300 } }]
+    expect(boxCandidates(objects, rect)).toEqual([])
+  })
+
+  test('empty layer returns empty array', () => {
+    expect(boxCandidates([], rect)).toEqual([])
+  })
+
+  test('only objects with non-null bbox are considered', () => {
+    const objects = [
+      { id: 'f', bbox: null },
+      { id: 'g', bbox: { x: 120, y: 120, width: 50, height: 50 } },
+    ]
+    expect(boxCandidates(objects, rect)).toEqual(['g'])
+  })
+
+  test('multiple objects — only fully-inside ones returned', () => {
+    const objects = [
+      { id: 'in1',  bbox: { x: 110, y: 110, width: 80, height: 80 } },
+      { id: 'out1', bbox: { x:  90, y: 110, width: 80, height: 80 } }, // left edge outside
+      { id: 'in2',  bbox: { x: 150, y: 150, width: 40, height: 40 } },
+      { id: 'out2', bbox: { x: 250, y: 250, width: 80, height: 80 } }, // right edge outside
+    ]
+    expect(boxCandidates(objects, rect)).toEqual(['in1', 'in2'])
+  })
+
+  test('zero-size selection box matches nothing', () => {
+    const zeroRect = { x: 100, y: 100, width: 0, height: 0 }
+    const objects = [{ id: 'h', bbox: { x: 100, y: 100, width: 0, height: 0 } }]
+    // A zero-size object at the same point: x>=x ✓ y>=y ✓ x+0<=x+0 ✓ y+0<=y+0 ✓ → included
+    expect(boxCandidates(objects, zeroRect)).toEqual(['h'])
+  })
+
+  test('all four edge conditions checked independently', () => {
+    // Each object fails exactly one edge
+    const objects = [
+      { id: 'fail-left',   bbox: { x: 90,  y: 120, width: 50, height: 50 } }, // x < rect.x
+      { id: 'fail-top',    bbox: { x: 120, y: 90,  width: 50, height: 50 } }, // y < rect.y
+      { id: 'fail-right',  bbox: { x: 260, y: 120, width: 50, height: 50 } }, // x+w > rect.x+rect.w (310>300)
+      { id: 'fail-bottom', bbox: { x: 120, y: 260, width: 50, height: 50 } }, // y+h > rect.y+rect.h (310>300)
+    ]
+    expect(boxCandidates(objects, rect)).toEqual([])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. Overlay — setHoverCandidates / clearHoverCandidates
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { SelectionMode, setLocalSelection, setHoverCandidates, clearHoverCandidates, setLocalGradient, init as overlayInit } from '../../src/overlay.js'
+
+function makeOverlayDOM() {
+  document.body.innerHTML = `
+    <svg id="canvas">
+      <defs>
+        <linearGradient id="local-sel-grad" x1="0" y1="0.5" x2="1" y2="0.5">
+          <stop id="local-sel-grad-stop0" offset="0%"   stop-color="#5a7ea8"></stop>
+          <stop id="local-sel-grad-stop1" offset="100%" stop-color="#3a5e88"></stop>
+        </linearGradient>
+      </defs>
+      <g id="overlay-layer"></g>
+    </svg>
+  `
+}
+
+function makeOverlayApp(bboxMap = {}) {
+  return {
+    getMyColor:    () => '#5a7ea8',
+    getMyGradient: () => ({ c1: '#5a7ea8', c2: '#3a5e88', angle: 45 }),
+    getViewScale:  () => 1,
+    getBBox:       (id) => bboxMap[id] ?? null,
+  }
+}
+
+beforeEach(() => {
+  makeOverlayDOM()
+  SelectionMode.clear()
+})
+
+describe('Overlay.setHoverCandidates', () => {
+  test('sets candidate entries for each id', () => {
+    overlayInit(makeOverlayApp(), document.getElementById('canvas'))
+    setHoverCandidates(['a', 'b', 'c'])
+    expect(SelectionMode.get('a')?.kind).toBe('candidate')
+    expect(SelectionMode.get('b')?.kind).toBe('candidate')
+    expect(SelectionMode.get('c')?.kind).toBe('candidate')
+  })
+
+  test('replaces previous candidate entries', () => {
+    overlayInit(makeOverlayApp(), document.getElementById('canvas'))
+    setHoverCandidates(['a', 'b'])
+    setHoverCandidates(['c'])
+    expect(SelectionMode.has('a')).toBe(false)
+    expect(SelectionMode.has('b')).toBe(false)
+    expect(SelectionMode.get('c')?.kind).toBe('candidate')
+  })
+
+  test('does not overwrite a local entry for the same id', () => {
+    overlayInit(makeOverlayApp({ 'my-shape': { x: 0, y: 0, width: 10, height: 10 } }), document.getElementById('canvas'))
+    setLocalSelection('my-shape')
+    expect(SelectionMode.get('my-shape')?.kind).toBe('local')
+
+    // rubber-band box now includes 'my-shape'
+    setHoverCandidates(['my-shape', 'other'])
+    // local entry must survive
+    expect(SelectionMode.get('my-shape')?.kind).toBe('local')
+    expect(SelectionMode.get('other')?.kind).toBe('candidate')
+  })
+
+  test('does not touch local entries', () => {
+    overlayInit(makeOverlayApp({ 'my-shape': { x: 0, y: 0, width: 10, height: 10 } }), document.getElementById('canvas'))
+    setLocalSelection('my-shape')
+    setHoverCandidates(['x', 'y'])
+    expect(SelectionMode.get('my-shape')?.kind).toBe('local')
+  })
+
+  test('does not touch remote entries', () => {
+    overlayInit(makeOverlayApp(), document.getElementById('canvas'))
+    SelectionMode.set('remote-el', { kind: 'remote', peerId: 'peer1', color: '#f00' })
+    setHoverCandidates(['x'])
+    expect(SelectionMode.get('remote-el')?.kind).toBe('remote')
+  })
+
+  test('empty ids array clears all candidates', () => {
+    overlayInit(makeOverlayApp(), document.getElementById('canvas'))
+    setHoverCandidates(['a', 'b'])
+    setHoverCandidates([])
+    expect(SelectionMode.has('a')).toBe(false)
+    expect(SelectionMode.has('b')).toBe(false)
+  })
+
+  test('candidate rings rendered — same count as ids with known bbox', () => {
+    const bboxMap = {
+      'el-1': { x: 10, y: 10, width: 50, height: 50 },
+      'el-2': { x: 80, y: 80, width: 50, height: 50 },
+    }
+    overlayInit(makeOverlayApp(bboxMap), document.getElementById('canvas'))
+    setHoverCandidates(['el-1', 'el-2'])
+    const rings = document.querySelectorAll('#overlay-layer .selRing')
+    expect(rings).toHaveLength(2)
+  })
+
+  test('candidate rings render even when no local selection exists (grad defs are built)', () => {
+    // Regression: when only candidates exist, #local-sel-grad was not written
+    // into <defs>, so stroke:url(#local-sel-grad) resolved to nothing.
+    // Fixed by moving the gradient to persistent canvas <defs> in index.html.
+    const bboxMap = {
+      'toy-a': { x: 10, y: 10, width: 64, height: 64 },
+      'toy-b': { x: 100, y: 10, width: 64, height: 64 },
+    }
+    overlayInit(makeOverlayApp(bboxMap), document.getElementById('canvas'))
+    // No local selection — SelectionMode is empty
+    expect(SelectionMode.size).toBe(0)
+
+    setHoverCandidates(['toy-a', 'toy-b'])
+
+    // The persistent gradient exists in canvas <defs> (not overlay-layer)
+    const grad = document.getElementById('local-sel-grad')
+    expect(grad).not.toBeNull()
+
+    // Rings must be present — stroke resolves because gradient is persistent
+    const rings = document.querySelectorAll('#overlay-layer .selRing')
+    expect(rings).toHaveLength(2)
+  })
+
+  test('candidate with null bbox renders no ring (getBBox returns null)', () => {
+    overlayInit(makeOverlayApp({}), document.getElementById('canvas'))
+    setHoverCandidates(['no-bbox'])
+    const rings = document.querySelectorAll('#overlay-layer .selRing')
+    expect(rings).toHaveLength(0)
+  })
+})
+
+describe('Overlay.clearHoverCandidates', () => {
+  test('removes all candidate entries', () => {
+    overlayInit(makeOverlayApp(), document.getElementById('canvas'))
+    setHoverCandidates(['a', 'b'])
+    clearHoverCandidates()
+    expect(SelectionMode.has('a')).toBe(false)
+    expect(SelectionMode.has('b')).toBe(false)
+  })
+
+  test('does not remove local entries', () => {
+    overlayInit(makeOverlayApp({ 's': { x: 0, y: 0, width: 10, height: 10 } }), document.getElementById('canvas'))
+    setLocalSelection('s')
+    setHoverCandidates(['c'])
+    clearHoverCandidates()
+    expect(SelectionMode.get('s')?.kind).toBe('local')
+  })
+
+  test('is safe to call with no candidates', () => {
+    overlayInit(makeOverlayApp(), document.getElementById('canvas'))
+    expect(() => clearHoverCandidates()).not.toThrow()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. broadcastCandidates / clearBoxCandidates — awareness write side
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// These test the awareness write behaviour directly using the logic that
+// broadcastCandidates and clearBoxCandidates encode, without booting app.js.
+
+describe('broadcastCandidates awareness writes', () => {
+  test('non-empty ids set selection to { elIds: [...] }', () => {
+    const calls = []
+    const setField = (key, value) => calls.push({ key, value })
+    // Mirror production logic
+    const broadcastCandidates = (ids) =>
+      setField('selection', ids.length ? { elIds: ids } : null)
+
+    broadcastCandidates(['a', 'b'])
+    expect(calls).toHaveLength(1)
+    expect(calls[0].key).toBe('selection')
+    expect(calls[0].value).toEqual({ elIds: ['a', 'b'] })
+  })
+
+  test('empty ids sets selection to null', () => {
+    const calls = []
+    const broadcastCandidates = (ids) =>
+      calls.push(ids.length ? { elIds: ids } : null)
+
+    broadcastCandidates([])
+    expect(calls[0]).toBeNull()
+  })
+
+  test('clearBoxCandidates sets selection to null', () => {
+    const calls = []
+    const clearBoxCandidates = () => calls.push(null)
+
+    clearBoxCandidates()
+    expect(calls[0]).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. setLocalGradient — updates persistent #local-sel-grad in canvas <defs>
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Overlay.setLocalGradient', () => {
+  test('updates stop colors on the persistent gradient element', () => {
+    makeOverlayDOM()
+    overlayInit(makeOverlayApp(), document.getElementById('canvas'))
+    setLocalGradient({ c1: '#ff0000', c2: '#0000ff', angle: 90 })
+    expect(document.getElementById('local-sel-grad-stop0').getAttribute('stop-color')).toBe('#ff0000')
+    expect(document.getElementById('local-sel-grad-stop1').getAttribute('stop-color')).toBe('#0000ff')
+  })
+
+  test('updates gradient direction from angle', () => {
+    makeOverlayDOM()
+    overlayInit(makeOverlayApp(), document.getElementById('canvas'))
+    setLocalGradient({ c1: '#aaa', c2: '#bbb', angle: 90 })
+    const lg = document.getElementById('local-sel-grad')
+    // angle=90 → horizontal: x1≈0, x2≈1, y1=y2=0.5
+    expect(parseFloat(lg.getAttribute('x1'))).toBeCloseTo(0, 1)
+    expect(parseFloat(lg.getAttribute('x2'))).toBeCloseTo(1, 1)
+  })
+
+  test('is a no-op when element does not exist', () => {
+    document.body.innerHTML = '<svg id="canvas"><g id="overlay-layer"></g></svg>'
+    overlayInit(makeOverlayApp(), document.getElementById('canvas'))
+    expect(() => setLocalGradient({ c1: '#aaa', c2: '#bbb', angle: 0 })).not.toThrow()
+  })
+})

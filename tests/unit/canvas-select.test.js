@@ -57,8 +57,10 @@ function makeApp(overrides = {}) {
     move:              () => {},
     onViewReset:       () => {},
     requestContextMenu: () => {},
-    getBoxCandidates:  () => [],
-    commitMultiSelect: () => {},
+    getBoxCandidates:   () => [],
+    broadcastCandidates: () => {},
+    clearBoxCandidates: () => {},
+    commitMultiSelect:  () => {},
     ...overrides,
   }
 }
@@ -261,3 +263,61 @@ describe('pan-or-deselect regression', () => {
     expect(stage.classList.contains('dragging')).toBe(false)
   })
 })
+
+// ── Regression: App.select must not reset ToolMode.params ─────────────────────
+// Bug: App.select previously called Canvas.setTool('select') which overwrote
+// ToolMode.params with _toolParams['select'] (which has multi:false by default),
+// dropping the multi:true state set by the UI checkbox.
+describe('App.select does not clobber ToolMode.params', () => {
+  test('params.multi remains true after an object is tapped in multi mode', () => {
+    init(makeApp(), document.getElementById('canvas'))
+    setTool('select', { multi: true })
+
+    // Confirm we start in multi mode
+    expect(ToolMode.params.multi).toBe(true)
+    expect(document.getElementById('stage').dataset.selectMode).toBe('multi')
+
+    // Simulate what App.select does to ToolMode via setParams — it must NOT call setTool
+    // The test verifies the invariant: setParams does not change params.multi
+    setParams({ multi: true })  // re-applying same params (as a noop)
+    expect(ToolMode.params.multi).toBe(true)
+
+    // After setParams with a fresh object that still has multi:true, mode is preserved
+    expect(document.getElementById('stage').dataset.selectMode).toBe('multi')
+  })
+
+  test('box-select gesture fires on empty-canvas drag even after tapping an object', () => {
+    // This catches the exact regression: click toy → App.select resets multi →
+    // next empty-canvas drag goes to pan-or-deselect instead of box-select.
+    //
+    // We simulate it by: set multi:true, do a 'move' gesture (toy tap), verify
+    // that the next pointerdown on empty canvas still gives 'box-select'.
+    init(makeApp(), document.getElementById('canvas'))
+    setTool('select', { multi: true })
+
+    const stage = document.getElementById('stage')
+
+    // First: tap an object (gesture = move, then resolved to no-op)
+    const layer = document.getElementById('drawing-layer')
+    const el = document.createElement('rect')
+    el.setAttribute('data-yid', 'obj-1')
+    el.setAttribute('data-module', 'drawing')
+    layer.appendChild(el)
+
+    const downOnObj = makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el })
+    stage.dispatchEvent(downOnObj)
+    const upOnObj = makePointerEvent('pointerup', { clientX: 100, clientY: 100 })
+    stage.dispatchEvent(upOnObj)
+
+    // At this point App.select(hitId) would have been called. In the buggy version
+    // that called Canvas.setTool('select', {}) which set multi:false.
+    // Verify multi is still true:
+    expect(ToolMode.params.multi).toBe(true)
+
+    // Now try an empty-canvas drag — must give box-select, not pan-or-deselect
+    const downEmpty = makePointerEvent('pointerdown', { clientX: 200, clientY: 200 })
+    stage.dispatchEvent(downEmpty)
+    expect(ToolMode._gesture).toBe('box-select')
+  })
+})
+
