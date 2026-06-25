@@ -522,3 +522,61 @@ describe('_selectedIds as SSOT', () => {
     expect(singleSelectedId(_selectedIds)).toBeNull()
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. toggleSelection logic
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('toggleSelection logic', () => {
+  // Mirror the toggleSelection logic from app.js
+  function toggle(selectedIds, id) {
+    const next = new Set(selectedIds)
+    if (next.has(id)) {
+      next.delete(id)
+    } else {
+      next.add(id)
+    }
+    return next
+  }
+
+  test('adds an id not in the selection', () => {
+    const result = toggle(new Set(['a']), 'b')
+    expect(result.has('a')).toBe(true)
+    expect(result.has('b')).toBe(true)
+  })
+
+  test('removes an id that is in the selection', () => {
+    const result = toggle(new Set(['a', 'b']), 'b')
+    expect(result.has('b')).toBe(false)
+    expect(result.has('a')).toBe(true)
+  })
+
+  test('toggling the only selected id results in empty set', () => {
+    const result = toggle(new Set(['a']), 'a')
+    expect(result.size).toBe(0)
+  })
+
+  test('toggling on empty set adds the id', () => {
+    const result = toggle(new Set(), 'x')
+    expect([...result]).toEqual(['x'])
+  })
+
+  test('size 1 after toggle: collapses to single-select mode', () => {
+    // If we remove one from a pair, result.size === 1 → single-select
+    const result = toggle(new Set(['a', 'b']), 'b')
+    expect(result.size).toBe(1)
+    const singleId = result.size === 1 ? [...result][0] : null
+    expect(singleId).toBe('a')
+  })
+
+  test('shift-clicking an already-selected item deselects it (round-trip)', () => {
+    let sel = new Set(['a', 'b', 'c'])
+    sel = toggle(sel, 'b')
+    expect(sel.has('b')).toBe(false)
+    expect(sel.size).toBe(2)
+    // shift-click b again to re-add
+    sel = toggle(sel, 'b')
+    expect(sel.has('b')).toBe(true)
+    expect(sel.size).toBe(3)
+  })
+})

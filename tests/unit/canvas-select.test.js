@@ -61,6 +61,7 @@ function makeApp(overrides = {}) {
     broadcastCandidates: () => {},
     clearBoxCandidates: () => {},
     commitMultiSelect:  () => {},
+    toggleSelection:    () => {},
     ...overrides,
   }
 }
@@ -68,11 +69,12 @@ function makeApp(overrides = {}) {
 // ── Pointer event factory ─────────────────────────────────────────────────────
 
 let _pointerId = 0
-function makePointerEvent(type, { clientX = 100, clientY = 100, target } = {}) {
+function makePointerEvent(type, { clientX = 100, clientY = 100, target, shiftKey = false } = {}) {
   const stage = document.getElementById('stage')
   const ev = new PointerEvent(type, {
     bubbles: true, cancelable: true,
     clientX, clientY,
+    shiftKey,
     pointerId: type === 'pointerdown' ? ++_pointerId : _pointerId,
   })
   // canvas.js calls e.target.closest — patch target
@@ -134,6 +136,28 @@ describe('updateCursor — data-select-mode attribute', () => {
     setTool('select', { multi: true })
     setParams({ multi: false })
     expect(document.getElementById('stage').dataset.selectMode).toBe('pan')
+  })
+
+  test('shift keydown overrides pan mode to multi cursor', () => {
+    init(makeApp(), document.getElementById('canvas'))
+    setTool('select', { multi: false })
+    expect(document.getElementById('stage').dataset.selectMode).toBe('pan')
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { shiftKey: true }))
+    expect(document.getElementById('stage').dataset.selectMode).toBe('multi')
+
+    window.dispatchEvent(new KeyboardEvent('keyup', { shiftKey: false }))
+    expect(document.getElementById('stage').dataset.selectMode).toBe('pan')
+  })
+
+  test('shift keydown has no effect when multi is already on', () => {
+    init(makeApp(), document.getElementById('canvas'))
+    setTool('select', { multi: true })
+    window.dispatchEvent(new KeyboardEvent('keydown', { shiftKey: true }))
+    expect(document.getElementById('stage').dataset.selectMode).toBe('multi')
+    window.dispatchEvent(new KeyboardEvent('keyup', { shiftKey: false }))
+    // multi param still true, so stays multi
+    expect(document.getElementById('stage').dataset.selectMode).toBe('multi')
   })
 })
 
@@ -214,9 +238,39 @@ describe('box-select drag calls commitMultiSelect', () => {
     expect(rect).toHaveProperty('y')
     expect(rect).toHaveProperty('width')
     expect(rect).toHaveProperty('height')
+    expect(rect).toHaveProperty('additive')
     // At scale=1 and view=(0,0): width = |200-100| / 1 = 100
     expect(rect.width).toBeCloseTo(100)
     expect(rect.height).toBeCloseTo(100)
+    // Non-shift drag is not additive
+    expect(rect.additive).toBe(false)
+  })
+
+  test('shift-drag passes additive:true to commitMultiSelect', () => {
+    const committed = []
+    const app = makeApp({ commitMultiSelect: (rect) => committed.push(rect) })
+    init(app, document.getElementById('canvas'))
+    setTool('select', { multi: false }) // shift alone should trigger box-select
+
+    const stage = document.getElementById('stage')
+    // shift held during pointerdown on empty canvas
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, shiftKey: true }))
+    expect(ToolMode._gesture).toBe('box-select')
+
+    stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 200, clientY: 200 }))
+
+    expect(committed).toHaveLength(1)
+    expect(committed[0].additive).toBe(true)
+  })
+
+  test('shift on empty canvas triggers box-select even when multi toggle is off', () => {
+    init(makeApp(), document.getElementById('canvas'))
+    setTool('select', { multi: false })
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 50, clientY: 50, shiftKey: true }))
+    expect(ToolMode._gesture).toBe('box-select')
   })
 
   test('select-preview div is shown during drag and hidden on pointerup', () => {
@@ -321,3 +375,59 @@ describe('App.select does not clobber ToolMode.params', () => {
   })
 })
 
+
+// ── Shift-click: no drag gesture started, toggleSelection called on pointerup ──
+
+describe('shift-click does not start a move gesture', () => {
+  test('shift-pointerdown on an object sets shift-tap gesture, not move', () => {
+    init(makeApp(), document.getElementById('canvas'))
+    setTool('select', { multi: false })
+
+    const layer = document.getElementById('drawing-layer')
+    const el = document.createElement('rect')
+    el.setAttribute('data-yid', 'shape-shift')
+    el.setAttribute('data-module', 'drawing')
+    layer.appendChild(el)
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { target: el, shiftKey: true }))
+
+    expect(ToolMode._gesture).toBe('shift-tap')
+    expect(ToolMode._moveRef.id).toBe('shape-shift')
+  })
+
+  test('shift-tap pointerup calls App.toggleSelection with the hit id', () => {
+    const toggled = []
+    const app = makeApp({ toggleSelection: (id) => toggled.push(id) })
+    init(app, document.getElementById('canvas'))
+    setTool('select', { multi: false })
+
+    const layer = document.getElementById('drawing-layer')
+    const el = document.createElement('rect')
+    el.setAttribute('data-yid', 'shape-shift')
+    el.setAttribute('data-module', 'drawing')
+    layer.appendChild(el)
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { target: el, shiftKey: true }))
+    stage.dispatchEvent(makePointerEvent('pointerup'))
+
+    expect(toggled).toEqual(['shape-shift'])
+  })
+
+  test('normal pointerdown on an object still starts move gesture', () => {
+    init(makeApp(), document.getElementById('canvas'))
+    setTool('select', { multi: false })
+
+    const layer = document.getElementById('drawing-layer')
+    const el = document.createElement('rect')
+    el.setAttribute('data-yid', 'shape-normal')
+    el.setAttribute('data-module', 'drawing')
+    layer.appendChild(el)
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { target: el }))
+
+    expect(ToolMode._gesture).toBe('move')
+  })
+})

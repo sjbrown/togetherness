@@ -606,8 +606,34 @@ const App = {
     renderDrawingList();
   },
 
-  commitMultiSelect: (rect) => {
-    const ids = App.getBoxCandidates(rect);
+  // Toggle a single id in/out of the current selection.
+  // If the result is N===0: deselect. N===1: single-select. N>1: multi-select.
+  // Collapses back to single-select mode (full pill) when size drops to 1.
+  toggleSelection: (id) => {
+    if (_selectedIds.has(id)) {
+      _selectedIds.delete(id);
+    } else {
+      _selectedIds.add(id);
+    }
+    const ids = [..._selectedIds];
+    _awareness.setLocalStateField('selection', ids.length ? { elIds: ids } : null);
+    if (_selectedIds.size <= 1) {
+      // Use setLocalSelection so the single-element ring path is used,
+      // keeping overlay state consistent with the single-select flow.
+      Overlay.setLocalSelection(ids[0] ?? null);
+    } else {
+      Overlay.setLocalSelections(ids);
+    }
+    UI.onSelectionChanged(_selectedIds);
+    renderDrawingList();
+  },
+
+  commitMultiSelect: ({ x, y, width, height, additive = false } = {}) => {
+    const newIds = App.getBoxCandidates({ x, y, width, height });
+    // additive: union with existing selection; otherwise replace
+    const ids = additive
+      ? [...new Set([..._selectedIds, ...newIds])]
+      : newIds;
     if (ids.length === 0) {
       App.select(null);
     } else if (ids.length === 1) {
