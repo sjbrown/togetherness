@@ -562,7 +562,7 @@ function gatherLayersData() {
     ...l,
     objects: App.getLayerObjects(l.id),
   }));
-  return { layers, active, selectedId: App.getSelectedId() };
+  return { layers, active, selectedIds: new Set(App.getSelectedIds()) };
 }
 
 // -- Pure body builders --------------------------------------------------------
@@ -746,12 +746,12 @@ export function histBody(history) {
     </div>`;
 }
 
-export function layerObjectListHTML(objects, selectedId) {
+export function layerObjectListHTML(objects, selectedIds) {
   if (!objects?.length)
     return '<div class="layer-obj-empty">No objects</div>';
   return objects.map(o => {
     const chip = `<span class="sw-chip kind-${o.kind}" style="background:${o.fill}"></span>`;
-    const sel  = selectedId === o.id;
+    const sel  = selectedIds instanceof Set ? selectedIds.has(o.id) : selectedIds === o.id;
     return `<div class="layer-obj-item ${sel ? 'sel' : ''}" data-yid="${o.id}" onclick="App.select('${o.id}')">${chip}<span class="layer-obj-label">${o.label}</span>${sel ? '<span class="meta">selected</span>' : ''}</div>`;
   }).join('');
 }
@@ -763,7 +763,7 @@ export function layersBody(data) {
     if (isActive) {
       objList = l.id === 'background'
         ? `<div class="layer-obj-list"><div class="layer-obj-empty"><a href="#" onclick="UI.openSheet('tools');return false" style="color:var(--primary);text-decoration:none">Change background</a></div></div>`
-        : `<div class="layer-obj-list">${layerObjectListHTML(l.objects ?? [], data.selectedId)}</div>`;
+        : `<div class="layer-obj-list">${layerObjectListHTML(l.objects ?? [], data.selectedIds)}</div>`;
     }
     const visBtn = `<button class="layer-vis-btn" title="${l.visible ? 'Hide layer' : 'Show layer'}"
          onclick="UI.toggleLayerVisibility('${l.id}');event.stopPropagation()"
@@ -816,11 +816,11 @@ export function refreshLayerList() {
   if (UIData.panelOpen !== 'layers') return;
   // Patch only the sel class and meta badge on each item in-place, preserving
   // scroll position. A full innerHTML replace would reset scrollTop to 0.
-  const selectedId = App.getSelectedId();
+  const selectedIds = new Set(App.getSelectedIds());
   document.querySelectorAll('.layer-obj-item').forEach(el => {
     const id = el.dataset.yid;
     if (!id) return;
-    const isSel = id === selectedId;
+    const isSel = selectedIds.has(id);
     el.classList.toggle('sel', isSel);
     // Update or remove the meta badge without touching the chip or label
     let badge = el.querySelector('.meta');

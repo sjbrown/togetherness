@@ -14,7 +14,7 @@ const mockObjects = [
 
 describe('layerObjectListHTML', () => {
   test('each item carries data-yid matching its object id', () => {
-    const html = layerObjectListHTML(mockObjects, null)
+    const html = layerObjectListHTML(mockObjects, new Set())
     const div  = document.createElement('div')
     div.innerHTML = html
     const items = div.querySelectorAll('.layer-obj-item')
@@ -24,7 +24,7 @@ describe('layerObjectListHTML', () => {
   })
 
   test('selected item gets .sel class and a .meta badge; others do not', () => {
-    const html = layerObjectListHTML(mockObjects, 'b')
+    const html = layerObjectListHTML(mockObjects, new Set(['b']))
     const div  = document.createElement('div')
     div.innerHTML = html
     const [itemA, itemB] = div.querySelectorAll('.layer-obj-item')
@@ -32,6 +32,15 @@ describe('layerObjectListHTML', () => {
     expect(itemA.querySelector('.meta')).toBeNull()
     expect(itemB.classList.contains('sel')).toBe(true)
     expect(itemB.querySelector('.meta')).not.toBeNull()
+  })
+
+  test('multiple selected items all get .sel class', () => {
+    const html = layerObjectListHTML(mockObjects, new Set(['a', 'b']))
+    const div  = document.createElement('div')
+    div.innerHTML = html
+    const [itemA, itemB] = div.querySelectorAll('.layer-obj-item')
+    expect(itemA.classList.contains('sel')).toBe(true)
+    expect(itemB.classList.contains('sel')).toBe(true)
   })
 })
 
@@ -54,7 +63,7 @@ describe('refreshLayerList', () => {
     const listEl = body.querySelector('.layer-obj-list')
 
     init({
-      getSelectedId:  () => 'a',
+      getSelectedIds: () => ['a'],
       getTools:       () => [],
       getActiveLayer: () => 'drawing',
     })
@@ -209,5 +218,77 @@ describe('pillHTML — multi-selection (N > 1)', () => {
     expect(btns.length).toBeGreaterThan(0)
     // Select tool icon present
     expect(btns[0].getAttribute('aria-label')).toBe('Select')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Commit 1: Escape clears multi-selection; refreshLayerList highlights all ids
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('refreshLayerList — multi-selection', () => {
+  test('highlights all ids in a multi-selection', () => {
+    const body = document.createElement('div')
+    body.id = 'panelBody'
+    body.innerHTML = `
+      <div class="layer-obj-list">
+        <div class="layer-obj-item" data-yid="a"><span class="layer-obj-label">A</span></div>
+        <div class="layer-obj-item" data-yid="b"><span class="layer-obj-label">B</span></div>
+        <div class="layer-obj-item" data-yid="c"><span class="layer-obj-label">C</span></div>
+      </div>`
+    document.body.appendChild(body)
+
+    init({
+      getSelectedIds: () => ['a', 'c'],
+      getTools:       () => [],
+      getActiveLayer: () => 'drawing',
+    })
+    UIData.panelOpen = 'layers'
+
+    refreshLayerList()
+
+    expect(body.querySelector('[data-yid="a"]').classList.contains('sel')).toBe(true)
+    expect(body.querySelector('[data-yid="b"]').classList.contains('sel')).toBe(false)
+    expect(body.querySelector('[data-yid="c"]').classList.contains('sel')).toBe(true)
+
+    document.body.removeChild(body)
+  })
+
+  test('highlights nothing when selection is empty', () => {
+    const body = document.createElement('div')
+    body.id = 'panelBody'
+    body.innerHTML = `
+      <div class="layer-obj-list">
+        <div class="layer-obj-item sel" data-yid="a">
+          <span class="layer-obj-label">A</span>
+          <span class="meta">selected</span>
+        </div>
+      </div>`
+    document.body.appendChild(body)
+
+    init({
+      getSelectedIds: () => [],
+      getTools:       () => [],
+      getActiveLayer: () => 'drawing',
+    })
+    UIData.panelOpen = 'layers'
+
+    refreshLayerList()
+
+    expect(body.querySelector('[data-yid="a"]').classList.contains('sel')).toBe(false)
+    expect(body.querySelector('[data-yid="a"] .meta')).toBeNull()
+
+    document.body.removeChild(body)
+  })
+})
+
+describe('onMultiSelectionChanged resets multi state', () => {
+  test('calling onMultiSelectionChanged([]) clears multiSelectionActive', () => {
+    import('../../src/ui.js').then(({ onMultiSelectionChanged, UIData }) => {
+      UIData.multiSelectionActive = true
+      UIData.selectedCount = 3
+      onMultiSelectionChanged([])
+      expect(UIData.multiSelectionActive).toBe(false)
+      expect(UIData.selectedCount).toBe(0)
+    })
   })
 })
