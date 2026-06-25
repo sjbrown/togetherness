@@ -75,6 +75,7 @@ export function setTool(name, params = {}) {
 }
 export function setParams(params) {
   ToolMode.params = { ...params };
+  updateCursor();
 }
 export function getView() { return { ..._view }; }
 
@@ -100,7 +101,13 @@ function toCanvas(clientX, clientY) {
 
 // ── Cursor ────────────────────────────────────────────────────────────────────
 function updateCursor() {
-  if (_stageEl) _stageEl.dataset.tool = ToolMode.tool;
+  if (!_stageEl) return;
+  _stageEl.dataset.tool = ToolMode.tool;
+  if (ToolMode.tool === 'select') {
+    _stageEl.dataset.selectMode = ToolMode.params.multi ? 'multi' : 'pan';
+  } else {
+    delete _stageEl.dataset.selectMode;
+  }
 }
 
 // ── Layer-aware hit testing ───────────────────────────────────────────────────
@@ -153,6 +160,24 @@ const _preview = {
   },
 };
 
+// ── Select preview (rubber-band div for multi-select box) ─────────────────────
+const _selectPreview = {
+  el: null,
+  _get() {
+    if (!this.el || !this.el.isConnected) this.el = document.getElementById('select-preview');
+    return this.el;
+  },
+  show(x, y, w, h) {
+    const el = this._get();
+    if (!el) return;
+    el.style.cssText = `display:block;left:${x}px;top:${y}px;width:${w}px;height:${h}px;`;
+  },
+  hide() {
+    const el = this._get();
+    if (el) el.style.display = 'none';
+  },
+};
+
 // ── Pointer handling ──────────────────────────────────────────────────────────
 function onPointerDown(e) {
   // Let ui.js know to close dropdowns — it listens on document capture
@@ -186,7 +211,11 @@ function onPointerDown(e) {
         if (!ToolMode._moveRef?.moved) App.requestContextMenu(e.clientX, e.clientY, hitId);
       }, 480);
     } else {
-      ToolMode._gesture = 'pan-or-deselect';
+      if (ToolMode.params.multi) {
+        ToolMode._gesture = 'box-select';
+      } else {
+        ToolMode._gesture = 'pan-or-deselect';
+      }
       ToolMode._startView = { ..._view };
       ToolMode._moveRef   = { sx: e.clientX, sy: e.clientY, moved: false };
     }
@@ -250,9 +279,33 @@ function onPointerMove(e) {
     const ddx = e.clientX - ref.sx, ddy = e.clientY - ref.sy;
     if (Math.abs(ddx) > 4 || Math.abs(ddy) > 4) {
       ref.moved   = true;
+      _stageEl.classList.add('dragging');
       _view.x = ToolMode._startView.x + ddx;
       _view.y = ToolMode._startView.y + ddy;
       applyViewTransform();
+    }
+  }
+
+  if (ToolMode._gesture === 'box-select' && ToolMode._moveRef) {
+    const ref = ToolMode._moveRef;
+    const ddx = e.clientX - ref.sx, ddy = e.clientY - ref.sy;
+    if (Math.abs(ddx) > 2 || Math.abs(ddy) > 2) {
+      ref.moved = true;
+      const stageRect = _stageEl.getBoundingClientRect();
+      const sx = Math.min(e.clientX, ref.sx) - stageRect.left;
+      const sy = Math.min(e.clientY, ref.sy) - stageRect.top;
+      const sw = Math.abs(ddx);
+      const sh = Math.abs(ddy);
+      _selectPreview.show(sx, sy, sw, sh);
+
+      // Canvas-space box for candidate testing (commits 3+)
+      // const cx = Math.min(...) / _view.scale - _view.x / _view.scale; // future
+      App.getBoxCandidates?.({
+        x:      (Math.min(e.clientX, ref.sx) - _view.x) / _view.scale,
+        y:      (Math.min(e.clientY, ref.sy) - _view.y) / _view.scale,
+        width:  sw / _view.scale,
+        height: sh / _view.scale,
+      });
     }
   }
 }
@@ -261,6 +314,8 @@ function onPointerUp(e) {
   clearTimeout(ToolMode._pressTimer);
   ToolMode._pointers.delete(e.pointerId);
   _preview.hide();
+  _selectPreview.hide();
+  _stageEl.classList.remove('dragging');
 
   const isCancelled = e.type === 'pointercancel';
 
@@ -283,6 +338,19 @@ function onPointerUp(e) {
     finishDraft(e);
   } else if (ToolMode._gesture === 'pan-or-deselect' && ToolMode._moveRef && !ToolMode._moveRef.moved) {
     App.select(null);
+  } else if (ToolMode._gesture === 'box-select' && ToolMode._moveRef) {
+    if (isCancelled || !ToolMode._moveRef.moved) {
+      // Tap (no drag) in multi mode: deselect
+      App.select(null);
+    } else {
+      const ref = ToolMode._moveRef;
+      App.commitMultiSelect?.({
+        x:      (Math.min(e.clientX, ref.sx) - _view.x) / _view.scale,
+        y:      (Math.min(e.clientY, ref.sy) - _view.y) / _view.scale,
+        width:  Math.abs(e.clientX - ref.sx) / _view.scale,
+        height: Math.abs(e.clientY - ref.sy) / _view.scale,
+      });
+    }
   }
 
   if (ToolMode._pointers.size < 2 && ToolMode._gesture === 'pinch') {
