@@ -159,3 +159,55 @@ describe('SELECT_TOOL multi option — show surfaces', () => {
   })
 })
 
+
+describe('pillHTML — multi-selection (N > 1)', () => {
+  test('multiSelectionActive renders Delete N and Duplicate N buttons', () => {
+    const html = pillHTML({
+      selectionActive: false, multiSelectionActive: true, selectedCount: 3,
+      activeTool: 'select', tools: MOCK_TOOLS,
+    })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const btns = [...div.querySelectorAll('button.ico')]
+    expect(btns.length).toBe(2)
+    expect(btns[0].getAttribute('aria-label')).toMatch(/delete.*3/i)
+    expect(btns[1].getAttribute('aria-label')).toMatch(/duplicate.*3/i)
+  })
+
+  test('multiSelectionActive takes priority over selectionActive', () => {
+    const html = pillHTML({
+      selectionActive: true, multiSelectionActive: true, selectedCount: 2,
+      activeTool: 'select', tools: MOCK_TOOLS,
+    })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const btns = [...div.querySelectorAll('button.ico')]
+    // Should show N=2 buttons, not the 4-button single-selection set
+    expect(btns.length).toBe(2)
+    expect(btns[0].getAttribute('aria-label')).toMatch(/2/)
+  })
+
+  test('multiSelectionActive false with selectionActive shows normal 4-button set', () => {
+    const html = pillHTML({
+      selectionActive: true, multiSelectionActive: false, selectedCount: 0,
+      activeTool: 'select', tools: MOCK_TOOLS,
+    })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const btns = [...div.querySelectorAll('button.ico')]
+    expect(btns.length).toBe(4)
+  })
+
+  test('neither active shows tool buttons', () => {
+    const html = pillHTML({
+      selectionActive: false, multiSelectionActive: false, selectedCount: 0,
+      activeTool: 'select', tools: MOCK_TOOLS,
+    })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const btns = [...div.querySelectorAll('button.ico')]
+    expect(btns.length).toBeGreaterThan(0)
+    // Select tool icon present
+    expect(btns[0].getAttribute('aria-label')).toBe('Select')
+  })
+})

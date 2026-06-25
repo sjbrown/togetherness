@@ -85,7 +85,23 @@ export function setHoverCandidates(ids) {
   render();
 }
 
-// Clear all candidate entries (called on box-select cancel or commit).
+// Set a committed multi-selection: clears all local/candidate/resize entries
+// and sets 'local' for each id in the array.
+export function setLocalSelections(ids) {
+  for (const [id, entry] of SelectionMode) {
+    if (entry.kind === 'local' || entry.kind === 'resize' || entry.kind === 'candidate') {
+      SelectionMode.delete(id);
+    }
+  }
+  const color = App.getMyColor();
+  const grad  = App.getMyGradient();
+  for (const id of ids) {
+    SelectionMode.set(id, { kind: 'local', color, grad });
+  }
+  render();
+}
+
+// Clear all rubber-band candidate entries (called on box-select cancel or commit).
 export function clearHoverCandidates() {
   for (const [id, entry] of SelectionMode) {
     if (entry.kind === 'candidate') SelectionMode.delete(id);

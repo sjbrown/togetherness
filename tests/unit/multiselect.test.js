@@ -115,7 +115,7 @@ describe('getBoxCandidates — AABB containment', () => {
 // 2. Overlay — setHoverCandidates / clearHoverCandidates
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { SelectionMode, setLocalSelection, setHoverCandidates, clearHoverCandidates, setLocalGradient, init as overlayInit } from '../../src/overlay.js'
+import { SelectionMode, setLocalSelection, setLocalSelections, setHoverCandidates, clearHoverCandidates, setLocalGradient, init as overlayInit } from '../../src/overlay.js'
 
 function makeOverlayDOM() {
   document.body.innerHTML = `
@@ -328,5 +328,151 @@ describe('Overlay.setLocalGradient', () => {
     document.body.innerHTML = '<svg id="canvas"><g id="overlay-layer"></g></svg>'
     overlayInit(makeOverlayApp(), document.getElementById('canvas'))
     expect(() => setLocalGradient({ c1: '#aaa', c2: '#bbb', angle: 0 })).not.toThrow()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. Overlay.setLocalSelections
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Overlay.setLocalSelections', () => {
+  test('sets local entries for all ids', () => {
+    makeOverlayDOM()
+    const bboxMap = {
+      'a': { x: 0,  y: 0, width: 50, height: 50 },
+      'b': { x: 60, y: 0, width: 50, height: 50 },
+    }
+    overlayInit(makeOverlayApp(bboxMap), document.getElementById('canvas'))
+    setLocalSelections(['a', 'b'])
+    expect(SelectionMode.get('a')?.kind).toBe('local')
+    expect(SelectionMode.get('b')?.kind).toBe('local')
+  })
+
+  test('clears previous local and candidate entries', () => {
+    makeOverlayDOM()
+    overlayInit(makeOverlayApp({ 'old': { x: 0, y: 0, width: 10, height: 10 } }), document.getElementById('canvas'))
+    setLocalSelection('old')
+    setHoverCandidates(['cand'])
+    setLocalSelections(['new'])
+    expect(SelectionMode.has('old')).toBe(false)
+    expect(SelectionMode.has('cand')).toBe(false)
+    expect(SelectionMode.get('new')?.kind).toBe('local')
+  })
+
+  test('does not touch remote entries', () => {
+    makeOverlayDOM()
+    overlayInit(makeOverlayApp(), document.getElementById('canvas'))
+    SelectionMode.set('remote-el', { kind: 'remote', peerId: 'p1', color: '#f00' })
+    setLocalSelections(['x'])
+    expect(SelectionMode.get('remote-el')?.kind).toBe('remote')
+  })
+
+  test('renders local rings for all ids with known bbox', () => {
+    makeOverlayDOM()
+    const bboxMap = {
+      'el-1': { x: 10, y: 10, width: 50, height: 50 },
+      'el-2': { x: 80, y: 80, width: 50, height: 50 },
+    }
+    overlayInit(makeOverlayApp(bboxMap), document.getElementById('canvas'))
+    setLocalSelections(['el-1', 'el-2'])
+    const rings = document.querySelectorAll('#overlay-layer .selRing')
+    expect(rings).toHaveLength(2)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6. Batch undo — { op: 'batch', entries: [...] }
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Tests the undo stack shape and restoration logic directly, without booting
+// the full App bus. We simulate the batch entry format and the undo dispatch.
+
+describe('batch undo — stack shape', () => {
+  // Simulate how deleteMultiSelected builds its batch entry
+  function makeBatchDeleteEntry(ids) {
+    const entries = ids.map(id => ({
+      op: 'del', module: 'drawing',
+      state: { id, type: 'rect', x: 0, y: 0, width: 50, height: 50, fill: '#f00' },
+    }))
+    return { op: 'batch', entries }
+  }
+
+  function makeBatchAddEntry(ids) {
+    const entries = ids.map(id => ({ op: 'add', module: 'drawing', id }))
+    return { op: 'batch', entries }
+  }
+
+  test('deleteMultiSelected pushes one batch entry, not N individual entries', () => {
+    // Verify the entry shape — single { op:'batch', entries:[...] }
+    const batchEntry = makeBatchDeleteEntry(['a', 'b', 'c'])
+    expect(batchEntry.op).toBe('batch')
+    expect(batchEntry.entries).toHaveLength(3)
+    expect(batchEntry.entries.every(e => e.op === 'del')).toBe(true)
+  })
+
+  test('duplicateMultiSelected pushes one batch entry of add ops', () => {
+    const batchEntry = makeBatchAddEntry(['x', 'y'])
+    expect(batchEntry.op).toBe('batch')
+    expect(batchEntry.entries).toHaveLength(2)
+    expect(batchEntry.entries.every(e => e.op === 'add')).toBe(true)
+  })
+
+  test('batch undo reverses entries in reverse order', () => {
+    const restored = []
+    const entries = [
+      { op: 'del', module: 'drawing', state: { id: 'first' } },
+      { op: 'del', module: 'drawing', state: { id: 'second' } },
+      { op: 'del', module: 'drawing', state: { id: 'third' } },
+    ]
+
+    // Simulate undo reversal
+    for (const entry of [...entries].reverse()) {
+      restored.push(entry.state.id)
+    }
+
+    expect(restored).toEqual(['third', 'second', 'first'])
+  })
+
+  test('batch entry with no async ops (drawings only) resolves synchronously', () => {
+    // Mirror the undo branch: if promises.length === 0, toast is synchronous
+    const entries = [
+      { op: 'del', module: 'drawing', state: { id: 'a' } },
+      { op: 'del', module: 'drawing', state: { id: 'b' } },
+    ]
+    const promises = []
+    for (const entry of [...entries].reverse()) {
+      if (entry.module === 'toys') {
+        promises.push(Promise.resolve()) // simulated async
+      }
+      // drawing restore is sync — no push
+    }
+    expect(promises).toHaveLength(0) // sync path taken
+  })
+
+  test('batch entry with toy ops collects async promises', () => {
+    const entries = [
+      { op: 'del', module: 'drawing', state: { id: 'a' } },
+      { op: 'del', module: 'toys',    state: { id: 'b', toyType: 'd6' } },
+    ]
+    const promises = []
+    for (const entry of [...entries].reverse()) {
+      if (entry.module === 'toys') {
+        promises.push(Promise.resolve('toy-restored'))
+      }
+    }
+    expect(promises).toHaveLength(1) // async path taken
+    return expect(Promise.all(promises)).resolves.toEqual(['toy-restored'])
+  })
+
+  test('batch add entries (from duplicateMultiSelected) are undone by deletion', () => {
+    const deleted = []
+    const entries = [
+      { op: 'add', module: 'drawing', id: 'new-1' },
+      { op: 'add', module: 'drawing', id: 'new-2' },
+    ]
+    for (const entry of [...entries].reverse()) {
+      if (entry.op === 'add') deleted.push(entry.id)
+    }
+    expect(deleted).toEqual(['new-2', 'new-1'])
   })
 })

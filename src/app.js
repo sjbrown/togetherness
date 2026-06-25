@@ -97,6 +97,7 @@ const _layerVisibility = {
 let _myId, _myGrad, _roomId;
 let _svgEl;
 let _selectedId   = null;
+let _selectedIds  = new Set();   // multi-selection: populated only when N > 1
 let _activeLayer  = 'toys';
 let _activeTool   = 'select';
 let _offline      = false;
@@ -532,6 +533,7 @@ const App = {
   },
   getRoomId:       () => _roomId,
   getSelectedId:   () => _selectedId,
+  getSelectedIds:  () => [..._selectedIds],
   getBBox:  (id) => {
     const svgEl = _svgEl.querySelector(`[data-yid="${id}"]`);
     if (!svgEl) return null;
@@ -586,17 +588,101 @@ const App = {
   isOffline:       () => _offline,
 
   // ── Tool mutations (canvas.js calls back into ui.js via these) ────────────
-  onToolChanged:   (t)  => UI.onToolChanged(t),
-  onViewReset:     ()   => UI.toast('View reset'),
+  onToolChanged:          (t)   => UI.onToolChanged(t),
+  onViewReset:            ()    => UI.toast('View reset'),
+  onMultiSelectionChanged:(ids) => UI.onMultiSelectionChanged(ids),
   requestContextMenu: (x, y, id) => UI.showPopover(x, y, id),
 
   // ── Selection ────────────────────────────────────────────────────────────
   select: (id) => {
-    _selectedId = id;
+    _selectedId  = id;
+    _selectedIds = new Set();
     _awareness.setLocalStateField('selection', id ? { elIds: [id] } : null);
     Overlay.setLocalSelection(id);
     UI.onSelectionChanged(id, id ? metaFor(id) : null);
     renderDrawingList();
+  },
+
+  commitMultiSelect: (rect) => {
+    const ids = App.getBoxCandidates(rect);
+    if (ids.length === 0) {
+      App.select(null);
+    } else if (ids.length === 1) {
+      App.select(ids[0]);
+    } else {
+      _selectedId  = null;
+      _selectedIds = new Set(ids);
+      _awareness.setLocalStateField('selection', { elIds: ids });
+      Overlay.setLocalSelections(ids);
+      UI.onMultiSelectionChanged(ids);
+      renderDrawingList();
+    }
+  },
+
+  deleteMultiSelected: () => {
+    if (_selectedIds.size === 0) return;
+    const ids     = [..._selectedIds];
+    const entries = [];
+    _ydoc.transact(() => {
+      for (const id of ids) {
+        const svgEl = _svgEl.querySelector(`[data-yid="${id}"]`);
+        if (!svgEl) continue;
+        const mtype = moduleForElement(svgEl);
+        let entry = null;
+        if (mtype === 'toys') {
+          const yEl = findToy(_yToys, id);
+          if (!yEl) continue;
+          entry = { op: 'del', module: 'toys', state: toyGetTtState(yEl) };
+          deleteToy(_ydoc, _yToys, _yToyMeta, id);
+        } else if (mtype === 'boun_pos') {
+          const yEl = bounPosFindEl(_yBounPos, id);
+          if (!yEl) continue;
+          entry = { op: 'del', module: 'boun_pos', state: bounPosGetTtState(yEl) };
+          bounPosDeleteEl(_ydoc, _yBounPos, _yBounPosMeta, id);
+        } else {
+          const yEl = findDrawing(_yDrawing, id);
+          if (!yEl) continue;
+          entry = { op: 'del', module: 'drawing', state: drawingGetTtState(yEl) };
+          deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, id);
+        }
+        if (entry) entries.push(entry);
+      }
+    });
+    if (entries.length > 0) {
+      _undoStack.push({ op: 'batch', entries });
+      addHistory(`deleted ${entries.length} objects`);
+      App.addLog(`deleted ${entries.length} objects`, 'local');
+    }
+    _selectedIds = new Set();
+    Overlay.clearHoverCandidates();
+    UI.onMultiSelectionChanged([]);
+  },
+
+  duplicateMultiSelected: () => {
+    if (_selectedIds.size === 0) return;
+    const ids     = [..._selectedIds];
+    const entries = [];
+    for (const id of ids) {
+      const yEl = findDrawing(_yDrawing, id);
+      if (!yEl) continue;
+      const attrs = yEl.getAttributes();
+      const type  = yEl.nodeName;
+      const newId = App.getMyId() + '_' + Math.random().toString(36).slice(2, 7);
+      const offset = { x: +(attrs.x ?? attrs.cx ?? 0) + 22, y: +(attrs.y ?? attrs.cy ?? 0) + 22 };
+      const geom   = type === 'rect'
+        ? { x: offset.x, y: offset.y, width: +attrs.width, height: +attrs.height }
+        : { cx: offset.x, cy: offset.y, r: +attrs.r };
+      addDrawing(_ydoc, _yDrawing, _yDrawingMeta,
+        { ...attrs, ...geom, type, id: newId, author: _myId });
+      entries.push({ op: 'add', module: 'drawing', id: newId });
+    }
+    if (entries.length > 0) {
+      _undoStack.push({ op: 'batch', entries });
+      addHistory(`duplicated ${entries.length} objects`);
+      App.addLog(`duplicated ${entries.length} objects`, 'local');
+    }
+    _selectedIds = new Set();
+    UI.onMultiSelectionChanged([]);
   },
 
   // ── Document mutations ────────────────────────────────────────────────────
@@ -749,6 +835,10 @@ const App = {
     }
     App.addLog(`deleted ${id.slice(0, 6)}`, 'local');
     if (id === _selectedId) App.select(null);
+    if (_selectedIds.has(id)) {
+      _selectedIds.delete(id);
+      if (_selectedIds.size === 0) UI.onMultiSelectionChanged([]);
+    }
     return true;
   },
 
@@ -948,6 +1038,44 @@ const App = {
         drawingApplyTtState(_ydoc, _yDrawing, _yDrawingMeta, op.state);
         addHistory(`undid: delete ${op.state.id.slice(0, 6)}`, { fill: op.state.fill, elType: op.state.type });
       }
+    } else if (op.op === 'batch') {
+      // Restore all entries in reverse order. Toy restores are async; collect
+      // their promises and wait for all before toasting.
+      const promises = [];
+      for (const entry of [...op.entries].reverse()) {
+        if (entry.op === 'add') {
+          if (entry.module === 'toys') {
+            deleteToy(_ydoc, _yToys, _yToyMeta, entry.id);
+          } else if (entry.module === 'boun_pos') {
+            bounPosDeleteEl(_ydoc, _yBounPos, _yBounPosMeta, entry.id);
+          } else {
+            deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, entry.id);
+          }
+        } else if (entry.op === 'del') {
+          if (entry.module === 'toys') {
+            promises.push(
+              toyApplyTtState(_ydoc, _yToys, _yToyMeta, entry.state).catch(err => {
+                App.addLog(`batch undo toy restore failed: ${err.message}`, 'del');
+                throw err;
+              })
+            );
+          } else if (entry.module === 'boun_pos') {
+            bounPosApplyTtState(_ydoc, _yBounPos, _yBounPosMeta, entry.state);
+          } else {
+            drawingApplyTtState(_ydoc, _yDrawing, _yDrawingMeta, entry.state);
+          }
+        }
+      }
+      if (promises.length > 0) {
+        Promise.all(promises)
+          .then(() => {
+            addHistory(`undid: batch (${op.entries.length} ops)`);
+            UI.toast('Undone');
+          })
+          .catch(() => UI.toast('Some items could not be restored', 'warn'));
+        return; // async — toast fired inside .then()
+      }
+      addHistory(`undid: batch (${op.entries.length} ops)`);
     } else if (op.op === 'move') {
       if (op.module === 'toys') {
         toyApplyMoveCommit(_ydoc, findToy(_yToys, op.id), op.fromX, op.fromY);

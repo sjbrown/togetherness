@@ -53,12 +53,14 @@ function _letterIcon(label) {
 // -- UIData --------------------------------------------------------------------
 // Pure presentation state for the chrome. ui.js is the only writer.
 export const UIData = {
-  activeTool:      'select',
-  mruTool:         null,
-  selectionActive: false,
-  panelOpen:       null,
-  menuOpen:        false,
-  toolOptsOpen:    false,
+  activeTool:           'select',
+  mruTool:              null,
+  selectionActive:      false,
+  multiSelectionActive: false,
+  selectedCount:        0,
+  panelOpen:            null,
+  menuOpen:             false,
+  toolOptsOpen:         false,
   projectName: 'togetherness',
   userId:      'anon-????',
   roomId:      '????',
@@ -141,9 +143,16 @@ export function closeMenu() {
 
 /**
  * pillHTML(data) -- PURE.
- *   data = { selectionActive, activeTool, tools:ToolDef[], mruTool }
+ *   data = { selectionActive, multiSelectionActive, selectedCount, activeTool, tools:ToolDef[], mruTool }
  */
 export function pillHTML(data) {
+  if (data.multiSelectionActive) {
+    const n = data.selectedCount;
+    return [
+      icoBtn(ICON_ACTIONS.trash, `Delete ${n}`, "UI.deleteSelected()", 'danger'),
+      icoBtn(ICON_ACTIONS.copy,  `Duplicate ${n}`, "UI.duplicateSelected()"),
+    ].join('');
+  }
   if (data.selectionActive) {
     return [
       icoBtn(ICON_ACTIONS.trash,  'Delete',        "UI.deleteSelected()", 'danger'),
@@ -177,10 +186,12 @@ export function renderPill() {
   const pill = $('#pill');
   if (!pill) return;
   pill.innerHTML = pillHTML({
-    selectionActive: UIData.selectionActive,
-    activeTool:      UIData.activeTool,
-    tools:           App.getTools(App.getActiveLayer()),
-    mruTool:         UIData.mruTool,
+    selectionActive:      UIData.selectionActive,
+    multiSelectionActive: UIData.multiSelectionActive,
+    selectedCount:        UIData.selectedCount,
+    activeTool:           UIData.activeTool,
+    tools:                App.getTools(App.getActiveLayer()),
+    mruTool:              UIData.mruTool,
   });
 }
 export function pillTap(toolName) {
@@ -208,7 +219,9 @@ export function onToolChanged(toolName) {
   }
 }
 export function onSelectionChanged(elId, drawingMeta) {
-  UIData.selectionActive = !!elId;
+  UIData.selectionActive      = !!elId;
+  UIData.multiSelectionActive = false;
+  UIData.selectedCount        = 0;
   renderPill();
   refreshLayerList();
   // Keep the Edit panel live — re-render it whenever the selection changes.
@@ -217,6 +230,14 @@ export function onSelectionChanged(elId, drawingMeta) {
     if (body) { body.innerHTML = editBody(gatherTtStateData()); wireColorPickers(body); }
   }
   if (elId && drawingMeta) toast(`${drawingMeta.type ?? 'Shape'} selected`, 'info');
+}
+
+export function onMultiSelectionChanged(ids) {
+  UIData.selectionActive      = false;
+  UIData.multiSelectionActive = ids.length > 0;
+  UIData.selectedCount        = ids.length;
+  renderPill();
+  refreshLayerList();
 }
 
 // ==============================================================================
@@ -869,8 +890,14 @@ export function hidePopover() {
 }
 
 // -- Action forwarding ---------------------------------------------------------
-export function deleteSelected()    { App.deleteSelected(); }
-export function duplicateSelected() { App.duplicateSelected(); }
+export function deleteSelected()    {
+  if (UIData.multiSelectionActive) App.deleteMultiSelected();
+  else App.deleteSelected();
+}
+export function duplicateSelected() {
+  if (UIData.multiSelectionActive) App.duplicateMultiSelected();
+  else App.duplicateSelected();
+}
 export function bringToFront()      { App.bringToFront(); }
 
 // -- Helpers -------------------------------------------------------------------
