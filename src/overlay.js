@@ -19,7 +19,6 @@
  * Awareness selection schema: { elIds: string[] } | null
  *   Always an array. Single selection: elIds.length === 1.
  *   Multi-selection (rubber-band candidates or committed group): elIds.length > 1.
- *   Never the old { elId: string } shape.
  *
  * Drag ghost system:
  *   The native layer element is never touched during drag; but overlay renders:

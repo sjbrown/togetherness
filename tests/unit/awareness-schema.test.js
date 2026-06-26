@@ -1,13 +1,11 @@
 /**
  * tests/unit/awareness-schema.test.js
  *
- * Tests for the awareness selection schema migration:
- *   { elId: string } → { elIds: string[] }
+ * Tests for the awareness selection schema: { elIds: string[] } | null
  *
- * These are pure unit tests against y-protocols/awareness directly —
- * no WebSocket server, no WebRTC, no DOM. They verify:
- *   - the schema shape App.select() must write
- *   - the schema shape overlay.js syncFromAwareness() must read
+ * The selection field in awareness always uses an array of ids, never a bare
+ * string. These tests verify the shape that App.select() must write and the
+ * shape that overlay.js syncFromAwareness() must read.
  *
  * They do NOT test cross-client propagation (that's sync.integration.test.js).
  */
@@ -99,9 +97,9 @@ describe('awareness selection schema — read side (overlay syncFromAwareness lo
     expect(extractRemoteSelections(state)).toEqual([])
   })
 
-  test('old elId schema (guard): not mistakenly read as elIds', () => {
-    // If old-schema state somehow arrives, extractRemoteSelections must not
-    // return it — Array.isArray(undefined) is false, so it's safely ignored.
+  test('a bare elId string (not wrapped in elIds array) is ignored', () => {
+    // The schema requires elIds: string[]. A bare elId field on its own
+    // is not a valid selection payload and must produce no rings.
     const state = { selection: { elId: 'shape-old' }, color: '#888' }
     expect(extractRemoteSelections(state)).toEqual([])
   })

@@ -229,7 +229,7 @@ function onPointerDown(e) {
       ToolMode._gesture = 'move';
       const anchor = App.getAnchor(hitEl);
       const p = toCanvas(e.clientX, e.clientY);
-      // If the hit element is part of a multi-selection, start a group drag
+      // If the hit element is part of a multi-selection, start a multi-element drag
       if (App.getSelectedIds().length > 1 && App.getSelectedIds().includes(hitId)) {
         ToolMode._gesture = 'multi-move';
         ToolMode._moveRef = { sx: e.clientX, sy: e.clientY, moved: false };

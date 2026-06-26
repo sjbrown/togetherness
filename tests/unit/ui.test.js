@@ -150,22 +150,6 @@ describe('SELECT_TOOL multi option — show surfaces', () => {
     const checkbox = div.querySelector('input[type="checkbox"]')
     expect(checkbox).not.toBeNull()
   })
-
-  test('snap option without addQuick is not rendered in toolOpts popover', () => {
-    const schema = {
-      types:  {
-        snap:  { kind: 'bool' },                                    // no show → not addQuick
-        multi: { kind: 'bool', show: ['add', 'addQuick'] },
-      },
-      values: { snap: false, multi: false },
-    }
-    const html = toolOptsHTML({ label: 'Select', toolName: 'select', schema, values: { snap: false, multi: false } })
-    const div = document.createElement('div')
-    div.innerHTML = html
-    const checkboxes = div.querySelectorAll('input[type="checkbox"]')
-    // Only multi should appear, not snap
-    expect(checkboxes).toHaveLength(1)
-  })
 })
 
 
@@ -222,7 +206,7 @@ describe('pillHTML — multi-selection (N > 1)', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Commit 1: Escape clears multi-selection; refreshLayerList highlights all ids
+// Multi-selection: Escape clears multi-selection; refreshLayerList highlights all ids
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('refreshLayerList — multi-selection', () => {

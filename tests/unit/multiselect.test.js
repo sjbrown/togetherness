@@ -1,18 +1,16 @@
 /**
  * tests/unit/multiselect.test.js
  *
- * Commit 3 tests: AABB containment, overlay candidate rings, awareness broadcast.
- *
- * Tests are organised into three groups:
- *
- *   1. getBoxCandidates — pure AABB logic (tested via a thin App-bus mock so
- *      we can supply controlled bboxes without a full Yjs doc)
- *
- *   2. Overlay.setHoverCandidates / clearHoverCandidates — SelectionMode mutation
- *      and render output (SVG rings counted in the overlay layer)
- *
- *   3. broadcastCandidates / clearBoxCandidates — awareness write side
- *      (verified against a stub awareness object)
+ * Unit tests for the multi-select feature:
+ *   1. getBoxCandidates — AABB containment logic
+ *   2. Overlay candidate rings (setHoverCandidates / clearHoverCandidates)
+ *   3. Awareness broadcast (broadcastCandidates / clearBoxCandidates)
+ *   4. setLocalGradient — updates persistent #local-sel-grad in canvas <defs>
+ *   5. Overlay.setLocalSelections — committed multi-selection rings
+ *   6. Batch undo — { op: 'batch', entries: [...] } stack shape
+ *   7. _selectedIds as SSOT — _singleSelectedId contract
+ *   8. toggleSelection logic
+ *   9. Multi-drag anchor element constraint logic
  */
 
 // @vitest-environment jsdom
@@ -478,7 +476,7 @@ describe('batch undo — stack shape', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 7. Commit 2: _selectedIds as SSOT — _singleSelectedId contract
+// 7. _selectedIds as SSOT — _singleSelectedId contract
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('_selectedIds as SSOT', () => {

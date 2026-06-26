@@ -1,17 +1,15 @@
 /**
  * tests/unit/canvas-select.test.js
  *
- * Unit tests for the Select tool two-mode behaviour added in commit 2:
- *   - updateCursor sets data-tool and data-select-mode correctly
- *   - setParams triggers a cursor update
- *   - onPointerDown routes to 'box-select' when params.multi is true
- *   - onPointerDown routes to 'pan-or-deselect' when params.multi is false
- *   - onPointerUp in box-select with no movement calls App.select(null)
- *   - onPointerUp in box-select with movement calls App.commitMultiSelect
- *   - pan-or-deselect still works (regression)
+ * Unit tests for the Select tool's two interaction modes:
+ *   - Pan mode (default): empty-canvas drag pans the view
+ *   - Multi-select mode: empty-canvas drag draws a rubber-band selection box
  *
- * canvas.js depends on a DOM (#stage, #draw-preview, #select-preview) and an
- * App bus. We supply minimal stubs for both.
+ * Also covers:
+ *   - Cursor updates via data-select-mode attribute and shift-key tracking
+ *   - Shift-click routing (toggle selection via pointer events, not click events)
+ *   - Multi-element drag gesture routing
+ *   - Regression: App.select() must not clobber ToolMode.params
  */
 
 // @vitest-environment jsdom
