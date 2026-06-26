@@ -55,7 +55,7 @@ test.describe('boundary-constrained toy dragging', () => {
     await page.evaluate((b) => window.App.commitBoundary(b), bA);
     await page.waitForTimeout(100);
 
-    const bAId = await page.evaluate(() => window.App.getSelectedId());
+    const bAId = await page.evaluate(() => window.App.getSelectedIds()[0]);
     expect(bAId).toBeTruthy();
     await page.evaluate((id) => window.App.commitEdit(id, { name: 'toy' }), bAId);
 
@@ -63,7 +63,7 @@ test.describe('boundary-constrained toy dragging', () => {
     await page.evaluate((b) => window.App.commitBoundary(b), bB);
     await page.waitForTimeout(100);
 
-    const bBId = await page.evaluate(() => window.App.getSelectedId());
+    const bBId = await page.evaluate(() => window.App.getSelectedIds()[0]);
     expect(bBId).toBeTruthy();
     await page.evaluate((id) => window.App.commitEdit(id, { name: 'toy' }), bBId);
 
