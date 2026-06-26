@@ -40,7 +40,6 @@ export const SELECT_TOOL = {
   layer: '*',
   icon:  '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3l15 9-6 1.5L11 20z"/></svg>',
   options: [
-    bool('snap',  'Snap to grid'),
-    bool('multi', 'Multi-select'),
+    { kind: 'bool', key: 'multi', label: 'Multi-select', show: ['add', 'addQuick'] },
   ],
 };

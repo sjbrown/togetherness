@@ -96,8 +96,15 @@ const _layerVisibility = {
 };
 let _myId, _myGrad, _roomId;
 let _svgEl;
-let _selectedId   = null;
+let _selectedIds  = new Set();   // SSOT: N=0 nothing, N=1 single, N>1 multi
 let _activeLayer  = 'toys';
+
+// Returns the single selected id, or null if zero or more than one are selected.
+// Internal use only — callers that need to work on a single element must check
+// this returns non-null before proceeding; the bus only exposes getSelectedIds().
+function _singleSelectedId() {
+  return _selectedIds.size === 1 ? [..._selectedIds][0] : null;
+}
 let _activeTool   = 'select';
 let _offline      = false;
 let _undoStack    = [];      // { op:'add'|'del'|'move', module:'drawing'|'toys'|'boun_pos', id, ... }
@@ -106,9 +113,17 @@ let _historyLog   = [];      // { label } — human-readable, newest first
 // Active drag — set by App.startDrag, cleared by commitMove / cancelMove.
 // Awareness state: drag: { elId, dx, dy }
 // local awareness schema: { id, color, grad, cursor, selection, drag? }
+// selection: { elIds: string[] } | null  — always an array; never { elId }
 let _dragState    = null;    // { id, startX, startY, startBboxX, startBboxY,
                               //   boundsRects: [{x,y,w,h}]|null, lastValidX, lastValidY,
                               //   snapPoints: [{cx,cy,snapRadius}] } | null
+
+// Active multi-element drag — set by App.startMultiDrag, cleared by commitMultiMove / cancelMultiMove.
+// Awareness: multidrag: { elIds: [...], offsets: [{bboxX, bboxY}] }
+// No boundary/snap constraints — those are per-toy and don't compose cleanly for a group.
+let _multiDragState = null;  // { elements: [{ id, mtype, anchorX, anchorY, bboxX, bboxY }],
+                             //   leaderEl, boundsRects, snapPoints,
+                             //   lastValidDx, lastValidDy } | null
 
 // ── Tool registry ──────────────────────────────────────────────────────────────
 // Built from the layer registries + the universal Select tool.
@@ -201,6 +216,7 @@ export function boot({ ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, yBo
 
   // 2. Overlay — needs App + SVG element
   Overlay.init(App, _svgEl);
+  Overlay.setLocalGradient(_myGrad);
 
   // 3. Canvas — needs App + SVG element; attaches pointer listeners
   Canvas.init(App, _svgEl);
@@ -236,6 +252,7 @@ export function boot({ ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, yBo
     if (dot) dot.className = connected ? 'status-dot connected' : 'status-dot connecting';
     // Cancel any in-progress drag on disconnect — doc stays at committed position.
     if (!connected && _dragState) App.cancelMove();
+    if (!connected && _multiDragState) App.cancelMultiMove();
   });
 
   // 8. Initial render
@@ -353,7 +370,7 @@ function renderDrawingList() {
     const def    = drawingGetTtStateSchema(drawingMeta?.type ?? svgEl.getAttribute('data-type') ?? 'rect');
     const item   = document.createElement('div');
     const author = drawingMeta?.author;
-    item.className  = 'drawing-item' + (_selectedId === id ? ' selected' : '');
+    item.className  = 'drawing-item' + (_selectedIds.has(id) ? ' selected' : '');
     item.dataset.id = id;
     const sw = document.createElement('div');
     sw.className        = 'drawing-swatch';
@@ -529,7 +546,7 @@ const App = {
     return out;
   },
   getRoomId:       () => _roomId,
-  getSelectedId:   () => _selectedId,
+  getSelectedIds:  () => [..._selectedIds],
   getBBox:  (id) => {
     const svgEl = _svgEl.querySelector(`[data-yid="${id}"]`);
     if (!svgEl) return null;
@@ -551,22 +568,157 @@ const App = {
     if (layerId === 'boundaries-positions') return bounPosLayerData(_yBounPos, _yBounPosMeta);
     return [];
   },
+  // Return ids of objects on the active layer whose bbox is fully inside rect.
+  // rect is canvas-space { x, y, width, height }.
+  // Also updates overlay candidate rings as a side effect.
+  getBoxCandidates: (rect) => {
+    const objects = App.getLayerObjects(_activeLayer);
+    const ids = objects
+      .map(obj => ({ id: obj.id, bbox: App.getBBox(obj.id) }))
+      .filter(({ bbox }) => {
+        if (!bbox) return false;
+        return (
+          bbox.x >= rect.x &&
+          bbox.y >= rect.y &&
+          bbox.x + bbox.width  <= rect.x + rect.width &&
+          bbox.y + bbox.height <= rect.y + rect.height
+        );
+      })
+      .map(({ id }) => id);
+    Overlay.setHoverCandidates(ids);
+    return ids;
+  },
+  // Broadcast the current rubber-band candidate set via awareness.
+  broadcastCandidates: (ids) => {
+    _awareness.setLocalStateField('selection', ids.length ? { elIds: ids } : null);
+  },
+  // Clear rubber-band candidates from overlay and awareness (commit or cancel).
+  clearBoxCandidates: () => {
+    Overlay.clearHoverCandidates();
+    _awareness.setLocalStateField('selection', null);
+  },
   getViewScale:    () => Canvas.getView().scale,
   isOffline:       () => _offline,
 
   // ── Tool mutations (canvas.js calls back into ui.js via these) ────────────
-  onToolChanged:   (t)  => UI.onToolChanged(t),
-  onViewReset:     ()   => UI.toast('View reset'),
+  onToolChanged:          (t)   => UI.onToolChanged(t),
+  onViewReset:            ()    => UI.toast('View reset'),
   requestContextMenu: (x, y, id) => UI.showPopover(x, y, id),
 
   // ── Selection ────────────────────────────────────────────────────────────
   select: (id) => {
-    _selectedId = id;
-    _awareness.setLocalStateField('selection', id ? { elId: id } : null);
-    Canvas.setTool('select');
+    _selectedIds = id ? new Set([id]) : new Set();
+    _awareness.setLocalStateField('selection', id ? { elIds: [id] } : null);
     Overlay.setLocalSelection(id);
-    UI.onSelectionChanged(id, id ? metaFor(id) : null);
+    UI.onSelectionChanged(_selectedIds);
     renderDrawingList();
+  },
+
+  // Toggle a single id in/out of the current selection.
+  // If the result is N===0: deselect. N===1: single-select. N>1: multi-select.
+  // Collapses back to single-select mode (full pill) when size drops to 1.
+  toggleSelection: (id) => {
+    if (_selectedIds.has(id)) {
+      _selectedIds.delete(id);
+    } else {
+      _selectedIds.add(id);
+    }
+    const ids = [..._selectedIds];
+    _awareness.setLocalStateField('selection', ids.length ? { elIds: ids } : null);
+    if (_selectedIds.size <= 1) {
+      // Use setLocalSelection so the single-element ring path is used,
+      // keeping overlay state consistent with the single-select flow.
+      Overlay.setLocalSelection(ids[0] ?? null);
+    } else {
+      Overlay.setLocalSelections(ids);
+    }
+    UI.onSelectionChanged(_selectedIds);
+    renderDrawingList();
+  },
+
+  commitMultiSelect: ({ x, y, width, height, additive = false } = {}) => {
+    const newIds = App.getBoxCandidates({ x, y, width, height });
+    // additive: union with existing selection; otherwise replace
+    const ids = additive
+      ? [...new Set([..._selectedIds, ...newIds])]
+      : newIds;
+    if (ids.length === 0) {
+      App.select(null);
+    } else if (ids.length === 1) {
+      App.select(ids[0]);
+    } else {
+      _selectedIds = new Set(ids);
+      _awareness.setLocalStateField('selection', { elIds: ids });
+      Overlay.setLocalSelections(ids);
+      UI.onSelectionChanged(_selectedIds);
+      renderDrawingList();
+    }
+  },
+
+  deleteMultiSelected: () => {
+    if (_selectedIds.size === 0) return;
+    const ids     = [..._selectedIds];
+    const entries = [];
+    _ydoc.transact(() => {
+      for (const id of ids) {
+        const svgEl = _svgEl.querySelector(`[data-yid="${id}"]`);
+        if (!svgEl) continue;
+        const mtype = moduleForElement(svgEl);
+        let entry = null;
+        if (mtype === 'toys') {
+          const yEl = findToy(_yToys, id);
+          if (!yEl) continue;
+          entry = { op: 'del', module: 'toys', state: toyGetTtState(yEl) };
+          deleteToy(_ydoc, _yToys, _yToyMeta, id);
+        } else if (mtype === 'boun_pos') {
+          const yEl = bounPosFindEl(_yBounPos, id);
+          if (!yEl) continue;
+          entry = { op: 'del', module: 'boun_pos', state: bounPosGetTtState(yEl) };
+          bounPosDeleteEl(_ydoc, _yBounPos, _yBounPosMeta, id);
+        } else {
+          const yEl = findDrawing(_yDrawing, id);
+          if (!yEl) continue;
+          entry = { op: 'del', module: 'drawing', state: drawingGetTtState(yEl) };
+          deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, id);
+        }
+        if (entry) entries.push(entry);
+      }
+    });
+    if (entries.length > 0) {
+      _undoStack.push({ op: 'batch', entries });
+      addHistory(`deleted ${entries.length} objects`);
+      App.addLog(`deleted ${entries.length} objects`, 'local');
+    }
+    _selectedIds = new Set();
+    Overlay.clearHoverCandidates();
+    UI.onSelectionChanged(_selectedIds);
+  },
+
+  duplicateMultiSelected: () => {
+    if (_selectedIds.size === 0) return;
+    const ids     = [..._selectedIds];
+    const entries = [];
+    for (const id of ids) {
+      const yEl = findDrawing(_yDrawing, id);
+      if (!yEl) continue;
+      const attrs = yEl.getAttributes();
+      const type  = yEl.nodeName;
+      const newId = App.getMyId() + '_' + Math.random().toString(36).slice(2, 7);
+      const offset = { x: +(attrs.x ?? attrs.cx ?? 0) + 22, y: +(attrs.y ?? attrs.cy ?? 0) + 22 };
+      const geom   = type === 'rect'
+        ? { x: offset.x, y: offset.y, width: +attrs.width, height: +attrs.height }
+        : { cx: offset.x, cy: offset.y, r: +attrs.r };
+      addDrawing(_ydoc, _yDrawing, _yDrawingMeta,
+        { ...attrs, ...geom, type, id: newId, author: _myId });
+      entries.push({ op: 'add', module: 'drawing', id: newId });
+    }
+    if (entries.length > 0) {
+      _undoStack.push({ op: 'batch', entries });
+      addHistory(`duplicated ${entries.length} objects`);
+      App.addLog(`duplicated ${entries.length} objects`, 'local');
+    }
+    _selectedIds = new Set();
+    UI.onSelectionChanged(_selectedIds);
   },
 
   // ── Document mutations ────────────────────────────────────────────────────
@@ -635,8 +787,9 @@ const App = {
    * app.js stays ignorant of per-type field definitions.
    */
   getElementTtStateSchema: () => {
-    if (!_selectedId) return null;
-    const svgEl = _svgEl?.querySelector(`[data-yid="${_selectedId}"]`);
+    const id = _singleSelectedId();
+    if (!id) return null;
+    const svgEl = _svgEl?.querySelector(`[data-yid="${id}"]`);
     if (!svgEl) return null;
     const mtype = moduleForElement(svgEl);
     let schema;
@@ -649,7 +802,7 @@ const App = {
     } else {
       return null;
     }
-    return { ltype: mtype, ...schema, id: _selectedId };
+    return { ltype: mtype, ...schema, id };
   },
 
   /**
@@ -718,18 +871,37 @@ const App = {
       addHistory(`deleted ${id.slice(0, 6)}`, { fill: state?.fill, elType: yEl.nodeName });
     }
     App.addLog(`deleted ${id.slice(0, 6)}`, 'local');
-    if (id === _selectedId) App.select(null);
+    if (_selectedIds.has(id)) {
+      _selectedIds.delete(id);
+      Overlay.setLocalSelections([..._selectedIds]);
+      UI.onSelectionChanged(_selectedIds);
+      renderDrawingList();
+    }
     return true;
   },
 
   deleteSelected: () => {
-    if (!_selectedId) return;
-    const svgEl = _svgEl.querySelector(`[data-yid="${_selectedId}"]`);
+    const id = _singleSelectedId();
+    if (!id) {
+      if (_selectedIds.size > 1) {
+        UI.toast('Use Delete N for multi-selection', 'warn');
+        console.error('deleteSelected called with multi-selection; use deleteMultiSelected');
+      }
+      return;
+    }
+    const svgEl = _svgEl.querySelector(`[data-yid="${id}"]`);
     if (svgEl) App.deleteElement(svgEl);
   },
   duplicateSelected: () => {
-    if (!_selectedId) return;
-    const yEl = findDrawing(_yDrawing, _selectedId);
+    const id = _singleSelectedId();
+    if (!id) {
+      if (_selectedIds.size > 1) {
+        UI.toast('Use Duplicate N for multi-selection', 'warn');
+        console.error('duplicateSelected called with multi-selection; use duplicateMultiSelected');
+      }
+      return;
+    }
+    const yEl = findDrawing(_yDrawing, id);
     if (!yEl) return;
     const attrs = yEl.getAttributes();
     const type  = yEl.nodeName;
@@ -850,16 +1022,152 @@ const App = {
     _dragState = null;
   },
 
+  // ── Multi-element drag lifecycle ──────────────────────────────────────────
+  // startMultiDrag  — called once on pointerdown with the canvas-space origin
+  // moveMulti       — called on every pointermove with (ddx, ddy) offset from start
+  // commitMultiMove — called on pointerup; writes all positions in one transaction
+  // cancelMultiMove — called on pointercancel; reverts all ghosts, no Yjs write
+
+  startMultiDrag: (originCanvas) => {
+    const elements = [..._selectedIds].map(id => {
+      const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
+      if (!domEl) return null;
+      const anchor = App.getAnchor(domEl);
+      const bbox   = App.getBBox(id);
+      const mtype  = moduleForElement(domEl);
+      return { id, mtype, anchorX: anchor.x, anchorY: anchor.y, bboxX: bbox.x, bboxY: bbox.y };
+    }).filter(Boolean);
+
+    // The anchor element is the one the pointer is over — its center drives
+    // boundary / snap constraints. The group translates by the same (dx, dy)
+    // that keeps the anchor element valid.
+    // originCanvas.leaderId is set by canvas.js from the hitId at pointerdown.
+    const leaderId  = originCanvas.leaderId;
+    const leaderEl  = elements.find(e => e.id === leaderId) ?? elements[0];
+    const anchorDom = _svgEl.querySelector(`[data-yid="${leaderEl.id}"]`);
+    const isToy     = leaderEl.mtype === 'toys';
+    const toyClasses   = isToy ? getToyClasses(anchorDom) : new Set();
+    const boundsRects  = isToy ? computeBoundaryRects(_yBounPos, toyClasses, { x: leaderEl.anchorX, y: leaderEl.anchorY }) : null;
+    const snapPoints   = isToy ? computePositionSnapPoints(_yBounPos, toyClasses) : [];
+
+    _multiDragState = {
+      elements,
+      leaderEl,
+      boundsRects,
+      snapPoints,
+      lastValidDx: 0,
+      lastValidDy: 0,
+    };
+
+    for (const el of elements) Overlay.startDragPlaceholder(el.id);
+
+    _awareness.setLocalStateField('multidrag', {
+      elIds:   elements.map(e => e.id),
+      offsets: elements.map(e => ({ bboxX: e.bboxX, bboxY: e.bboxY })),
+    });
+  },
+
+  moveMulti: (ddx, ddy) => {
+    if (!_multiDragState) return;
+    const { elements, leaderEl, boundsRects, snapPoints } = _multiDragState;
+
+    // Compute the candidate anchor position and apply constraints
+    let rx = Math.round(leaderEl.anchorX + ddx);
+    let ry = Math.round(leaderEl.anchorY + ddy);
+
+    if (boundsRects !== null) {
+      const inBounds = boundsRects.some(
+        r => rx >= r.x && rx <= r.x + r.w && ry >= r.y && ry <= r.y + r.h
+      );
+      if (!inBounds) return;
+    }
+
+    if (snapPoints.length > 0) {
+      const snapped = findNearestSnap(rx, ry, snapPoints);
+      if (snapped) {
+        const snapOk = !boundsRects || boundsRects.some(
+          r => snapped.cx >= r.x && snapped.cx <= r.x + r.w &&
+               snapped.cy >= r.y && snapped.cy <= r.y + r.h
+        );
+        if (snapOk) { rx = snapped.cx; ry = snapped.cy; }
+      }
+    }
+
+    // Derive actual (dx, dy) from the constrained anchor position
+    const cdx = rx - leaderEl.anchorX;
+    const cdy = ry - leaderEl.anchorY;
+    _multiDragState.lastValidDx = cdx;
+    _multiDragState.lastValidDy = cdy;
+
+    for (const el of elements) {
+      Overlay.updateLocalDragGhost(el.id, cdx, cdy);
+    }
+    _awareness.setLocalStateField('multidrag', {
+      elIds:   elements.map(e => e.id),
+      offsets: elements.map(e => ({ bboxX: e.bboxX + cdx, bboxY: e.bboxY + cdy })),
+    });
+  },
+
+  commitMultiMove: (ddx, ddy) => {
+    if (!_multiDragState) return;
+    const { elements, boundsRects, snapPoints, lastValidDx, lastValidDy } = _multiDragState;
+    const entries = [];
+
+    for (const el of elements) Overlay.endDragPlaceholder(el.id);
+    _awareness.setLocalStateField('multidrag', null);
+
+    // Use the last constrained (dx, dy) from moveMulti, falling back to
+    // the raw offset only if no pointermove fired (immediate pointerup).
+    const constrained = boundsRects !== null || snapPoints.length > 0;
+    const fdx = constrained ? lastValidDx : Math.round(ddx);
+    const fdy = constrained ? lastValidDy : Math.round(ddy);
+
+    _ydoc.transact(() => {
+      for (const el of elements) {
+        const rx = Math.round(el.anchorX + fdx);
+        const ry = Math.round(el.anchorY + fdy);
+        if (el.mtype === 'toys') {
+          toyApplyMoveCommit(_ydoc, findToy(_yToys, el.id), rx, ry);
+        } else if (el.mtype === 'boun_pos') {
+          bounPosApplyMoveCommit(_ydoc, bounPosFindEl(_yBounPos, el.id), rx, ry);
+        } else {
+          drawingApplyMoveCommit(_ydoc, findDrawing(_yDrawing, el.id), rx, ry);
+        }
+        entries.push({ op: 'move', module: el.mtype, id: el.id,
+          fromX: el.anchorX, fromY: el.anchorY,
+          toX: rx, toY: ry });
+      }
+    });
+
+    if (elements.some(e => e.mtype === 'drawing')) renderDoc();
+
+    _undoStack.push({ op: 'batch', entries });
+    addHistory(`moved ${elements.length} objects`);
+    App.addLog(`moved ${elements.length} objects`, 'local');
+    _multiDragState = null;
+  },
+
+  cancelMultiMove: () => {
+    if (!_multiDragState) return;
+    for (const el of _multiDragState.elements) Overlay.endDragPlaceholder(el.id);
+    _awareness.setLocalStateField('multidrag', null);
+    _multiDragState = null;
+  },
+
   bringToFront: () => {
-    if (!_selectedId) return;
-    const yEl = findDrawing(_yDrawing, _selectedId);
+    const id = _singleSelectedId();
+    if (!id) {
+      if (_selectedIds.size > 1) console.error('bringToFront called with multi-selection; not yet supported');
+      return;
+    }
+    const yEl = findDrawing(_yDrawing, id);
     if (!yEl) return;
     const index = _yDrawing.toArray().indexOf(yEl);
     _ydoc.transact(() => {
       _yDrawing.delete(index, 1);
       _yDrawing.insert(_yDrawing.length, [yEl]);
     });
-    addHistory(`brought ${_selectedId.slice(0, 6)} to front`);
+    addHistory(`brought ${id.slice(0, 6)} to front`);
   },
 
   // ── Tool selection + params (ui.js → app → canvas.js) ─────────────────────
@@ -874,7 +1182,9 @@ const App = {
   setToolParam: (toolName, key, value) => {
     const p = _toolParams[toolName] ?? (_toolParams[toolName] = {});
     p[key] = (typeof value === 'string' && value !== '' && !isNaN(value)) ? +value : value;
-    if (toolName === _activeTool) Canvas.setParams(p);
+    if (toolName === _activeTool) {
+      Canvas.setParams(p);
+    }
   },
 
   // ── Misc ─────────────────────────────────────────────────────────────────
@@ -916,6 +1226,44 @@ const App = {
         drawingApplyTtState(_ydoc, _yDrawing, _yDrawingMeta, op.state);
         addHistory(`undid: delete ${op.state.id.slice(0, 6)}`, { fill: op.state.fill, elType: op.state.type });
       }
+    } else if (op.op === 'batch') {
+      // Restore all entries in reverse order. Toy restores are async; collect
+      // their promises and wait for all before toasting.
+      const promises = [];
+      for (const entry of [...op.entries].reverse()) {
+        if (entry.op === 'add') {
+          if (entry.module === 'toys') {
+            deleteToy(_ydoc, _yToys, _yToyMeta, entry.id);
+          } else if (entry.module === 'boun_pos') {
+            bounPosDeleteEl(_ydoc, _yBounPos, _yBounPosMeta, entry.id);
+          } else {
+            deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, entry.id);
+          }
+        } else if (entry.op === 'del') {
+          if (entry.module === 'toys') {
+            promises.push(
+              toyApplyTtState(_ydoc, _yToys, _yToyMeta, entry.state).catch(err => {
+                App.addLog(`batch undo toy restore failed: ${err.message}`, 'del');
+                throw err;
+              })
+            );
+          } else if (entry.module === 'boun_pos') {
+            bounPosApplyTtState(_ydoc, _yBounPos, _yBounPosMeta, entry.state);
+          } else {
+            drawingApplyTtState(_ydoc, _yDrawing, _yDrawingMeta, entry.state);
+          }
+        }
+      }
+      if (promises.length > 0) {
+        Promise.all(promises)
+          .then(() => {
+            addHistory(`undid: batch (${op.entries.length} ops)`);
+            UI.toast('Undone');
+          })
+          .catch(() => UI.toast('Some items could not be restored', 'warn'));
+        return; // async — toast fired inside .then()
+      }
+      addHistory(`undid: batch (${op.entries.length} ops)`);
     } else if (op.op === 'move') {
       if (op.module === 'toys') {
         toyApplyMoveCommit(_ydoc, findToy(_yToys, op.id), op.fromX, op.fromY);

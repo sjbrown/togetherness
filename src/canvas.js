@@ -63,6 +63,10 @@ export function init(appBus, svgElement) {
   _stageEl.addEventListener('pointercancel',onPointerUp);
   _stageEl.addEventListener('wheel', onWheel, { passive: false });
 
+  // Track shift key for cursor updates — shift implies box-select mode
+  window.addEventListener('keydown', onShiftKey);
+  window.addEventListener('keyup',   onShiftKey);
+
   applyViewTransform();
   updateCursor();
 }
@@ -75,6 +79,7 @@ export function setTool(name, params = {}) {
 }
 export function setParams(params) {
   ToolMode.params = { ...params };
+  updateCursor();
 }
 export function getView() { return { ..._view }; }
 
@@ -99,8 +104,23 @@ function toCanvas(clientX, clientY) {
 }
 
 // ── Cursor ────────────────────────────────────────────────────────────────────
+let _shiftHeld = false;
+
 function updateCursor() {
-  if (_stageEl) _stageEl.dataset.tool = ToolMode.tool;
+  if (!_stageEl) return;
+  _stageEl.dataset.tool = ToolMode.tool;
+  if (ToolMode.tool === 'select') {
+    _stageEl.dataset.selectMode = (ToolMode.params.multi || _shiftHeld) ? 'multi' : 'pan';
+  } else {
+    delete _stageEl.dataset.selectMode;
+  }
+}
+
+function onShiftKey(e) {
+  const held = e.shiftKey;
+  if (held === _shiftHeld) return;
+  _shiftHeld = held;
+  updateCursor();
 }
 
 // ── Layer-aware hit testing ───────────────────────────────────────────────────
@@ -125,6 +145,9 @@ function hitForActiveLayer(e) {
 
 // ── Shape click wiring ────────────────────────────────────────────────────────
 // Called by App after renderDocLayer — attaches click listeners to drawing-layer shapes.
+// Note: shift-click is handled entirely via pointer events (onPointerDown/Up) because
+// setPointerCapture routes the click event to _stage rather than the child element,
+// so a shift-click listener here would never fire on toys or shapes.
 export function wireShapeClicks(layer) {
   layer.querySelectorAll('[data-yid]').forEach(el => {
     el.addEventListener('click', ev => {
@@ -153,6 +176,24 @@ const _preview = {
   },
 };
 
+// ── Select preview (rubber-band div for multi-select box) ─────────────────────
+const _selectPreview = {
+  el: null,
+  _get() {
+    if (!this.el || !this.el.isConnected) this.el = document.getElementById('select-preview');
+    return this.el;
+  },
+  show(x, y, w, h) {
+    const el = this._get();
+    if (!el) return;
+    el.style.cssText = `display:block;left:${x}px;top:${y}px;width:${w}px;height:${h}px;`;
+  },
+  hide() {
+    const el = this._get();
+    if (el) el.style.display = 'none';
+  },
+};
+
 // ── Pointer handling ──────────────────────────────────────────────────────────
 function onPointerDown(e) {
   // Let ui.js know to close dropdowns — it listens on document capture
@@ -176,9 +217,25 @@ function onPointerDown(e) {
 
   if (ToolMode.tool === 'select') {
     if (hitId) {
+      if (e.shiftKey) {
+        // Shift-click: toggle selection membership.
+        // Handled entirely in the pointer-event chain — don't rely on the
+        // click event, which fires on _stage (the capture target) rather than
+        // on the original child element, so wireShapeClicks never sees it.
+        ToolMode._gesture = 'shift-tap';
+        ToolMode._moveRef = { id: hitId, sx: e.clientX, sy: e.clientY, moved: false };
+        return;
+      }
       ToolMode._gesture = 'move';
       const anchor = App.getAnchor(hitEl);
       const p = toCanvas(e.clientX, e.clientY);
+      // If the hit element is part of a multi-selection, start a multi-element drag
+      if (App.getSelectedIds().length > 1 && App.getSelectedIds().includes(hitId)) {
+        ToolMode._gesture = 'multi-move';
+        ToolMode._moveRef = { sx: e.clientX, sy: e.clientY, moved: false };
+        App.startMultiDrag({ ...toCanvas(e.clientX, e.clientY), leaderId: hitId });
+        return;
+      }
       ToolMode._moveRef = { id: hitId, dx: p.x - anchor.x, dy: p.y - anchor.y, moved: false };
       App.select(hitId);
       App.startDrag(hitId);
@@ -186,9 +243,15 @@ function onPointerDown(e) {
         if (!ToolMode._moveRef?.moved) App.requestContextMenu(e.clientX, e.clientY, hitId);
       }, 480);
     } else {
-      ToolMode._gesture = 'pan-or-deselect';
+      // Empty canvas: shift OR multi-toggle → box-select; otherwise pan
+      if (ToolMode.params.multi || e.shiftKey) {
+        ToolMode._gesture = 'box-select';
+        ToolMode._moveRef = { sx: e.clientX, sy: e.clientY, moved: false, additive: e.shiftKey };
+      } else {
+        ToolMode._gesture = 'pan-or-deselect';
+        ToolMode._moveRef = { sx: e.clientX, sy: e.clientY, moved: false };
+      }
       ToolMode._startView = { ..._view };
-      ToolMode._moveRef   = { sx: e.clientX, sy: e.clientY, moved: false };
     }
   } else {
     // Draw mode
@@ -245,14 +308,47 @@ function onPointerMove(e) {
     return;
   }
 
+  if (ToolMode._gesture === 'multi-move' && ToolMode._moveRef) {
+    const ref = ToolMode._moveRef;
+    const ddx = (e.clientX - ref.sx) / _view.scale;
+    const ddy = (e.clientY - ref.sy) / _view.scale;
+    ref.moved = true;
+    clearTimeout(ToolMode._pressTimer);
+    App.moveMulti(ddx, ddy);
+    return;
+  }
+
   if (ToolMode._gesture === 'pan-or-deselect' && ToolMode._moveRef) {
     const ref = ToolMode._moveRef;
     const ddx = e.clientX - ref.sx, ddy = e.clientY - ref.sy;
     if (Math.abs(ddx) > 4 || Math.abs(ddy) > 4) {
       ref.moved   = true;
+      _stageEl.classList.add('dragging');
       _view.x = ToolMode._startView.x + ddx;
       _view.y = ToolMode._startView.y + ddy;
       applyViewTransform();
+    }
+  }
+
+  if (ToolMode._gesture === 'box-select' && ToolMode._moveRef) {
+    const ref = ToolMode._moveRef;
+    const ddx = e.clientX - ref.sx, ddy = e.clientY - ref.sy;
+    if (Math.abs(ddx) > 2 || Math.abs(ddy) > 2) {
+      ref.moved = true;
+      const stageRect = _stageEl.getBoundingClientRect();
+      const sx = Math.min(e.clientX, ref.sx) - stageRect.left;
+      const sy = Math.min(e.clientY, ref.sy) - stageRect.top;
+      const sw = Math.abs(ddx);
+      const sh = Math.abs(ddy);
+      _selectPreview.show(sx, sy, sw, sh);
+
+      const candidates = App.getBoxCandidates({
+        x:      (Math.min(e.clientX, ref.sx) - _view.x) / _view.scale,
+        y:      (Math.min(e.clientY, ref.sy) - _view.y) / _view.scale,
+        width:  sw / _view.scale,
+        height: sh / _view.scale,
+      });
+      App.broadcastCandidates(candidates);
     }
   }
 }
@@ -261,6 +357,8 @@ function onPointerUp(e) {
   clearTimeout(ToolMode._pressTimer);
   ToolMode._pointers.delete(e.pointerId);
   _preview.hide();
+  _selectPreview.hide();
+  _stageEl.classList.remove('dragging');
 
   const isCancelled = e.type === 'pointercancel';
 
@@ -279,10 +377,47 @@ function onPointerUp(e) {
     }
   }
 
+  if (ToolMode._gesture === 'multi-move' && ToolMode._moveRef) {
+    if (ToolMode._moveRef.moved) {
+      if (isCancelled) {
+        App.cancelMultiMove();
+      } else {
+        const ref = ToolMode._moveRef;
+        const ddx = (e.clientX - ref.sx) / _view.scale;
+        const ddy = (e.clientY - ref.sy) / _view.scale;
+        App.commitMultiMove(ddx, ddy);
+      }
+    } else {
+      App.cancelMultiMove();
+    }
+  }
+
   if (ToolMode._gesture === 'draw' && ToolMode._draft) {
     finishDraft(e);
   } else if (ToolMode._gesture === 'pan-or-deselect' && ToolMode._moveRef && !ToolMode._moveRef.moved) {
     App.select(null);
+  } else if (ToolMode._gesture === 'shift-tap' && ToolMode._moveRef) {
+    // Pointer capture means click fires on _stage, not on the child element —
+    // wireShapeClicks never sees it. So we handle toggleSelection here directly.
+    if (!ToolMode._moveRef.moved) {
+      App.toggleSelection(ToolMode._moveRef.id);
+    }
+  } else if (ToolMode._gesture === 'box-select' && ToolMode._moveRef) {
+    const ref = ToolMode._moveRef;
+    if (isCancelled || !ref.moved) {
+      // Tap (no drag): shift-tap on canvas clears selection; plain tap also clears
+      App.clearBoxCandidates();
+      App.select(null);
+    } else {
+      App.clearBoxCandidates();
+      App.commitMultiSelect?.({
+        x:        (Math.min(e.clientX, ref.sx) - _view.x) / _view.scale,
+        y:        (Math.min(e.clientY, ref.sy) - _view.y) / _view.scale,
+        width:    Math.abs(e.clientX - ref.sx) / _view.scale,
+        height:   Math.abs(e.clientY - ref.sy) / _view.scale,
+        additive: ref.additive ?? false,
+      });
+    }
   }
 
   if (ToolMode._pointers.size < 2 && ToolMode._gesture === 'pinch') {

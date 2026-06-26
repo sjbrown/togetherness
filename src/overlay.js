@@ -9,11 +9,16 @@
  * Depends on: App (bus). No ui.js imports. No canvas.js imports.
  *
  * SelectionMode kinds:
- *   'none'   — no decoration
- *   'local'  — solid border + resize handles (your selection)
- *   'remote' — dashed border + peer name label (awareness)
- *   'resize' — local + drag handles at edges (future)
- *   'locked' — remote peer is actively editing (future: lock icon)
+ *   'none'      — no decoration
+ *   'local'     — solid gradient ring (your committed selection)
+ *   'candidate' — same visual as 'local'; live rubber-band candidates (cleared on commit/cancel)
+ *   'remote'    — dashed border + peer name label (awareness)
+ *   'resize'    — local + drag handles at edges (future)
+ *   'locked'    — remote peer is actively editing (future: lock icon)
+ *
+ * Awareness selection schema: { elIds: string[] } | null
+ *   Always an array. Single selection: elIds.length === 1.
+ *   Multi-selection (rubber-band candidates or committed group): elIds.length > 1.
  *
  * Drag ghost system:
  *   The native layer element is never touched during drag; but overlay renders:
@@ -61,6 +66,48 @@ export function setLocalSelection(elId) {
   render();
 }
 
+// Set live rubber-band candidates. Replaces any existing candidate entries;
+// does not touch 'local', 'remote', 'locked', or 'resize' entries.
+// If an id already has a 'local' entry (committed single selection), it is
+// left as-is — the local ring takes precedence over the candidate ring.
+export function setHoverCandidates(ids) {
+  for (const [id, entry] of SelectionMode) {
+    if (entry.kind === 'candidate') SelectionMode.delete(id);
+  }
+  const color = App.getMyColor();
+  const grad  = App.getMyGradient();
+  for (const id of ids) {
+    const existing = SelectionMode.get(id);
+    if (existing && (existing.kind === 'local' || existing.kind === 'resize')) continue;
+    SelectionMode.set(id, { kind: 'candidate', color, grad });
+  }
+  render();
+}
+
+// Set a committed multi-selection: clears all local/candidate/resize entries
+// and sets 'local' for each id in the array.
+export function setLocalSelections(ids) {
+  for (const [id, entry] of SelectionMode) {
+    if (entry.kind === 'local' || entry.kind === 'resize' || entry.kind === 'candidate') {
+      SelectionMode.delete(id);
+    }
+  }
+  const color = App.getMyColor();
+  const grad  = App.getMyGradient();
+  for (const id of ids) {
+    SelectionMode.set(id, { kind: 'local', color, grad });
+  }
+  render();
+}
+
+// Clear all rubber-band candidate entries (called on box-select cancel or commit).
+export function clearHoverCandidates() {
+  for (const [id, entry] of SelectionMode) {
+    if (entry.kind === 'candidate') SelectionMode.delete(id);
+  }
+  render();
+}
+
 // Called by App when awareness changes — rebuilds remote selection + drag entries
 export function syncFromAwareness(awarenessStates, myClientId) {
   // Remove stale remote entries
@@ -72,20 +119,21 @@ export function syncFromAwareness(awarenessStates, myClientId) {
   awarenessStates.forEach((state, clientId) => {
     if (clientId === myClientId) return;
 
-    // Remote selection ring
-    if (state?.selection?.elId) {
+    // Remote selection rings — one per id in elIds
+    if (Array.isArray(state?.selection?.elIds) && state.selection.elIds.length) {
       const peerId = state.id ?? String(clientId);
       const grad = state.grad ?? 'default-remote-sel-grad';
-      const { elId } = state.selection;
-      SelectionMode.set(elId, {
-        kind:   'remote',
-        peerId: peerId,
-        color:  state.color ?? '#888',
-        grad:   grad,
-      });
+      for (const elId of state.selection.elIds) {
+        SelectionMode.set(elId, {
+          kind:   'remote',
+          peerId: peerId,
+          color:  state.color ?? '#888',
+          grad:   grad,
+        });
+      }
     }
 
-    // Remote drag ghost
+    // Remote single drag ghost
     if (state?.drag?.elId) {
       const peerId = state.id ?? String(clientId);
       _remoteDrags.set(state.drag.elId, {
@@ -93,6 +141,21 @@ export function syncFromAwareness(awarenessStates, myClientId) {
         bboxX: state.drag.bboxX,
         bboxY: state.drag.bboxY,
         color: state.color ?? '#888',
+      });
+    }
+
+    // Remote multi drag ghosts — one entry per element
+    if (Array.isArray(state?.multidrag?.elIds) && state.multidrag.elIds.length) {
+      const peerId = state.id ?? String(clientId);
+      state.multidrag.elIds.forEach((elId, i) => {
+        const offset = state.multidrag.offsets?.[i];
+        if (!offset) return;
+        _remoteDrags.set(elId, {
+          peerId,
+          bboxX: offset.bboxX,
+          bboxY: offset.bboxY,
+          color: state.color ?? '#888',
+        });
       });
     }
   });
@@ -161,23 +224,26 @@ export function endDragPlaceholder(elId) {
 // ── Render ────────────────────────────────────────────────────────────────────
 const LOCAL_GRAD_ID = 'local-sel-grad';
 
-// Build an SVG <linearGradient> (objectBoundingBox) from an entityGradient.
-// Returns the gradient element, or null if no gradient given. The CSS `grad`
-// string can't be used as an SVG stroke, so we mirror its stops + angle here.
-function buildGradientDef(grad, id) {
-  if (!grad) return null;
-  // Map the CSS angle (0°=up, 90°=right) to an objectBoundingBox vector.
+/**
+ * Update the persistent #local-sel-grad element in the SVG <defs> to reflect
+ * the player's current gradient. Called once at boot and again if the player
+ * changes their colour. The element lives in the main canvas <defs> (not inside
+ * #overlay-layer) so it survives the innerHTML wipe on every render().
+ */
+export function setLocalGradient(grad) {
+  if (!grad) return;
+  // Gradient direction: map CSS angle (0°=up, 90°=right) to SVG objectBoundingBox
   const rad = (grad.angle - 90) * Math.PI / 180;
-  const lg = el('linearGradient', {
-    id,
-    x1: 0.5 - Math.cos(rad) / 2,
-    y1: 0.5 - Math.sin(rad) / 2,
-    x2: 0.5 + Math.cos(rad) / 2,
-    y2: 0.5 + Math.sin(rad) / 2,
-  });
-  lg.appendChild(el('stop', { offset: '0',  'stop-color': grad.c1 }));
-  lg.appendChild(el('stop', { offset: '1',  'stop-color': grad.c2 }));
-  return lg;
+  const lg = document.getElementById(LOCAL_GRAD_ID);
+  if (!lg) return;
+  lg.setAttribute('x1', 0.5 - Math.cos(rad) / 2);
+  lg.setAttribute('y1', 0.5 - Math.sin(rad) / 2);
+  lg.setAttribute('x2', 0.5 + Math.cos(rad) / 2);
+  lg.setAttribute('y2', 0.5 + Math.sin(rad) / 2);
+  const stop0 = document.getElementById(`${LOCAL_GRAD_ID}-stop0`);
+  const stop1 = document.getElementById(`${LOCAL_GRAD_ID}-stop1`);
+  if (stop0) stop0.setAttribute('stop-color', grad.c1);
+  if (stop1) stop1.setAttribute('stop-color', grad.c2);
 }
 
 export function render() {
@@ -186,18 +252,7 @@ export function render() {
 
   const scale = App.getViewScale();
 
-  // ── 1. Local grad defs (needed by selection rings and local drag ring) ─────
-  const localGradEntry = [...SelectionMode.values()].find(
-    e => (e.kind === 'local' || e.kind === 'resize') && e.grad
-  );
-  const localGrad = localGradEntry?.grad ?? (_dragGhosts.size > 0 ? App.getMyGradient() : null);
-  if (localGrad) {
-    const defs = el('defs', {});
-    const lg   = buildGradientDef(localGrad, LOCAL_GRAD_ID);
-    if (lg) { defs.appendChild(lg); _layerEl.appendChild(defs); }
-  }
-
-  // ── 2. Dim placeholders — z-bottom (local then remote) ────────────────────
+  // ── 1. Dim placeholders — z-bottom (local then remote) ────────────────────
   for (const entry of _dragGhosts.values()) {
     _layerEl.appendChild(entry.placeholderEl);
   }
@@ -208,13 +263,14 @@ export function render() {
     _layerEl.appendChild(ph);
   }
 
-  // ── 3. Selection rings (committed positions) ───────────────────────────────
+  // ── 2. Selection rings (committed positions) ───────────────────────────────
   for (const [elId, entry] of SelectionMode) {
     if (entry.kind === 'none') continue;
     const geo = App.getBBox(elId);
     if (!geo) continue;
     switch (entry.kind) {
       case 'local':
+      case 'candidate':
         renderLocalSelection(geo, entry, scale);
         break;
       case 'remote':
@@ -228,7 +284,7 @@ export function render() {
     }
   }
 
-  // ── 4. Remote drag ghosts + rings ─────────────────────────────────────────
+  // ── 3. Remote drag ghosts + rings ─────────────────────────────────────────
   for (const [elId, drag] of _remoteDrags) {
     const bbox = App.getBBox(elId);
     if (!bbox) continue;
@@ -247,7 +303,7 @@ export function render() {
     );
   }
 
-  // ── 5. Local drag ghosts + rings — z-top ──────────────────────────────────
+  // ── 4. Local drag ghosts + rings — z-top ──────────────────────────────────
   for (const [elId, entry] of _dragGhosts) {
     _layerEl.appendChild(entry.ghostEl);
     _layerEl.appendChild(entry.ringEl);

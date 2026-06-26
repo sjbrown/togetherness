@@ -53,12 +53,14 @@ function _letterIcon(label) {
 // -- UIData --------------------------------------------------------------------
 // Pure presentation state for the chrome. ui.js is the only writer.
 export const UIData = {
-  activeTool:      'select',
-  mruTool:         null,
-  selectionActive: false,
-  panelOpen:       null,
-  menuOpen:        false,
-  toolOptsOpen:    false,
+  activeTool:           'select',
+  mruTool:              null,
+  selectionActive:      false,
+  multiSelectionActive: false,
+  selectedCount:        0,
+  panelOpen:            null,
+  menuOpen:             false,
+  toolOptsOpen:         false,
   projectName: 'togetherness',
   userId:      'anon-????',
   roomId:      '????',
@@ -141,9 +143,16 @@ export function closeMenu() {
 
 /**
  * pillHTML(data) -- PURE.
- *   data = { selectionActive, activeTool, tools:ToolDef[], mruTool }
+ *   data = { selectionActive, multiSelectionActive, selectedCount, activeTool, tools:ToolDef[], mruTool }
  */
 export function pillHTML(data) {
+  if (data.multiSelectionActive) {
+    const n = data.selectedCount;
+    return [
+      icoBtn(ICON_ACTIONS.trash, `Delete ${n}`, "UI.deleteSelected()", 'danger'),
+      icoBtn(ICON_ACTIONS.copy,  `Duplicate ${n}`, "UI.duplicateSelected()"),
+    ].join('');
+  }
   if (data.selectionActive) {
     return [
       icoBtn(ICON_ACTIONS.trash,  'Delete',        "UI.deleteSelected()", 'danger'),
@@ -164,10 +173,10 @@ export function pillHTML(data) {
 }
 function toolIco(toolDef, activeTool) {
   const cls = activeTool === toolDef.name ? 'active' : '';
-  return `<button class="ico ${cls}" aria-label="${toolDef.label}" title="${toolDef.label}" onclick="UI.pillTap('${toolDef.name}')">${iconFor(toolDef)}<span class="active-dot"></span></button>`;
+  return `<button class="ico ${cls}" aria-label="${toolDef.label}" title="${toolDef.label}" onclick="if(event.detail<2)UI.pillTap('${toolDef.name}')" ondblclick="UI.openSheet('tools')">${iconFor(toolDef)}<span class="active-dot"></span></button>`;
 }
 function icoBtn(iconSvg, label, onclick, cls = '') {
-  return `<button class="ico ${cls}" aria-label="${label}" title="${label}" onclick="${onclick}">${iconSvg}<span class="active-dot"></span></button>`;
+  return `<button class="ico ${cls}" aria-label="${label}" title="${label}" onclick="if(event.detail<2){${onclick}}" ondblclick="UI.openSheet('tools')">${iconSvg}<span class="active-dot"></span></button>`;
 }
 const ICON_ACTIONS = {
   trash:  icon('trash'), copy: icon('copy'), swatch: icon('swatch'), front: icon('front'),
@@ -177,10 +186,12 @@ export function renderPill() {
   const pill = $('#pill');
   if (!pill) return;
   pill.innerHTML = pillHTML({
-    selectionActive: UIData.selectionActive,
-    activeTool:      UIData.activeTool,
-    tools:           App.getTools(App.getActiveLayer()),
-    mruTool:         UIData.mruTool,
+    selectionActive:      UIData.selectionActive,
+    multiSelectionActive: UIData.multiSelectionActive,
+    selectedCount:        UIData.selectedCount,
+    activeTool:           UIData.activeTool,
+    tools:                App.getTools(App.getActiveLayer()),
+    mruTool:              UIData.mruTool,
   });
 }
 export function pillTap(toolName) {
@@ -207,8 +218,12 @@ export function onToolChanged(toolName) {
     toast(`${def?.label ?? toolName} tool`, 'info');
   }
 }
-export function onSelectionChanged(elId, drawingMeta) {
-  UIData.selectionActive = !!elId;
+export function onSelectionChanged(selectedIds) {
+  const ids    = selectedIds instanceof Set ? selectedIds : new Set(selectedIds ?? []);
+  const n      = ids.size;
+  UIData.selectionActive      = n === 1;
+  UIData.multiSelectionActive = n > 1;
+  UIData.selectedCount        = n;
   renderPill();
   refreshLayerList();
   // Keep the Edit panel live — re-render it whenever the selection changes.
@@ -216,7 +231,6 @@ export function onSelectionChanged(elId, drawingMeta) {
     const body = $('#panelBody');
     if (body) { body.innerHTML = editBody(gatherTtStateData()); wireColorPickers(body); }
   }
-  if (elId && drawingMeta) toast(`${drawingMeta.type ?? 'Shape'} selected`, 'info');
 }
 
 // ==============================================================================
@@ -313,9 +327,9 @@ function renderSchemaField(key, value, typeSpec, ctx) {
         style="width:18px;height:18px;cursor:pointer;accent-color:var(--accent)"
         onchange="App.commitEdit('${ctx.id}',{'${key}':this.checked})"/></div>`;
     } else {
-      return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><input type="checkbox" ${checked ? 'checked' : ''}
+      return `<div class="opt-row"><label style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px;cursor:pointer"><span class="opt-label">${ctx.label ?? key}</span><input type="checkbox" ${checked ? 'checked' : ''}
         style="width:18px;height:18px;cursor:pointer;accent-color:var(--accent)"
-        onchange="App.setToolParam('${ctx.toolName}','${key}',this.checked)"/></div>`;
+        onchange="App.setToolParam('${ctx.toolName}','${key}',this.checked)"/></label></div>`;
     }
   }
 
@@ -541,7 +555,7 @@ function gatherLayersData() {
     ...l,
     objects: App.getLayerObjects(l.id),
   }));
-  return { layers, active, selectedId: App.getSelectedId() };
+  return { layers, active, selectedIds: new Set(App.getSelectedIds()) };
 }
 
 // -- Pure body builders --------------------------------------------------------
@@ -725,12 +739,12 @@ export function histBody(history) {
     </div>`;
 }
 
-export function layerObjectListHTML(objects, selectedId) {
+export function layerObjectListHTML(objects, selectedIds) {
   if (!objects?.length)
     return '<div class="layer-obj-empty">No objects</div>';
   return objects.map(o => {
     const chip = `<span class="sw-chip kind-${o.kind}" style="background:${o.fill}"></span>`;
-    const sel  = selectedId === o.id;
+    const sel  = selectedIds instanceof Set ? selectedIds.has(o.id) : selectedIds === o.id;
     return `<div class="layer-obj-item ${sel ? 'sel' : ''}" data-yid="${o.id}" onclick="App.select('${o.id}')">${chip}<span class="layer-obj-label">${o.label}</span>${sel ? '<span class="meta">selected</span>' : ''}</div>`;
   }).join('');
 }
@@ -742,7 +756,7 @@ export function layersBody(data) {
     if (isActive) {
       objList = l.id === 'background'
         ? `<div class="layer-obj-list"><div class="layer-obj-empty"><a href="#" onclick="UI.openSheet('tools');return false" style="color:var(--primary);text-decoration:none">Change background</a></div></div>`
-        : `<div class="layer-obj-list">${layerObjectListHTML(l.objects ?? [], data.selectedId)}</div>`;
+        : `<div class="layer-obj-list">${layerObjectListHTML(l.objects ?? [], data.selectedIds)}</div>`;
     }
     const visBtn = `<button class="layer-vis-btn" title="${l.visible ? 'Hide layer' : 'Show layer'}"
          onclick="UI.toggleLayerVisibility('${l.id}');event.stopPropagation()"
@@ -795,11 +809,11 @@ export function refreshLayerList() {
   if (UIData.panelOpen !== 'layers') return;
   // Patch only the sel class and meta badge on each item in-place, preserving
   // scroll position. A full innerHTML replace would reset scrollTop to 0.
-  const selectedId = App.getSelectedId();
+  const selectedIds = new Set(App.getSelectedIds());
   document.querySelectorAll('.layer-obj-item').forEach(el => {
     const id = el.dataset.yid;
     if (!id) return;
-    const isSel = id === selectedId;
+    const isSel = selectedIds.has(id);
     el.classList.toggle('sel', isSel);
     // Update or remove the meta badge without touching the chip or label
     let badge = el.querySelector('.meta');
@@ -869,8 +883,14 @@ export function hidePopover() {
 }
 
 // -- Action forwarding ---------------------------------------------------------
-export function deleteSelected()    { App.deleteSelected(); }
-export function duplicateSelected() { App.duplicateSelected(); }
+export function deleteSelected()    {
+  if (UIData.multiSelectionActive) App.deleteMultiSelected();
+  else App.deleteSelected();
+}
+export function duplicateSelected() {
+  if (UIData.multiSelectionActive) App.duplicateMultiSelected();
+  else App.duplicateSelected();
+}
 export function bringToFront()      { App.bringToFront(); }
 
 // -- Helpers -------------------------------------------------------------------

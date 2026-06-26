@@ -208,11 +208,19 @@ html, body {
 #infoBtn svg    { width: 18px; height: 18px; }
 
 /* ── Tool-mode cursor hints (applied to #stage by canvas.js) */
-#stage[data-tool="select"]  { cursor: default; }
+#stage[data-tool="select"]                           { cursor: default; }
+#stage[data-tool="select"][data-select-mode="pan"]   { cursor: grab; }
+#stage[data-tool="select"][data-select-mode="pan"].dragging { cursor: grabbing; }
+#stage[data-tool="select"][data-select-mode="multi"] { cursor: crosshair; }
 #stage[data-tool="rect"]    { cursor: crosshair; }
 #stage[data-tool="circle"]  { cursor: crosshair; }
 #stage[data-tool="pen"]     { cursor: crosshair; }
 #stage[data-tool="text"]    { cursor: text; }
+
+#select-preview {
+  display: none; position: absolute; pointer-events: none; z-index: 2;
+  border: 1.5px dashed var(--info); background: var(--info-soft);
+}
 
 /* ── Pill ─────────────────────────────────────────────────── */
 #pill {
