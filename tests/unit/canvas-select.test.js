@@ -50,6 +50,7 @@ function makeApp(overrides = {}) {
     getMyColor:        () => '#aaa',
     getMyGradient:     () => ({ c1: '#aaa', c2: '#bbb', angle: 0 }),
     getViewScale:      () => 1,
+    getSelectedIds:    () => [],
     select:            () => {},
     startDrag:         () => {},
     cancelMove:        () => {},
@@ -62,6 +63,10 @@ function makeApp(overrides = {}) {
     clearBoxCandidates: () => {},
     commitMultiSelect:  () => {},
     toggleSelection:    () => {},
+    startMultiDrag:     () => {},
+    moveMulti:          () => {},
+    commitMultiMove:    () => {},
+    cancelMultiMove:    () => {},
     ...overrides,
   }
 }
@@ -429,5 +434,131 @@ describe('shift-click does not start a move gesture', () => {
     stage.dispatchEvent(makePointerEvent('pointerdown', { target: el }))
 
     expect(ToolMode._gesture).toBe('move')
+  })
+})
+
+// ── Multi-move gesture ─────────────────────────────────────────────────────────
+
+describe('multi-move gesture', () => {
+  test('pointerdown on a selected element in a multi-selection starts multi-move', () => {
+    const multiDragStarted = []
+    const app = makeApp({
+      getSelectedIds: () => ['shape-a', 'shape-b'],
+      startMultiDrag: (origin) => multiDragStarted.push(origin),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', { multi: false })
+
+    const layer = document.getElementById('drawing-layer')
+    const el = document.createElement('rect')
+    el.setAttribute('data-yid', 'shape-a')
+    el.setAttribute('data-module', 'drawing')
+    layer.appendChild(el)
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { target: el }))
+
+    expect(ToolMode._gesture).toBe('multi-move')
+    expect(multiDragStarted).toHaveLength(1)
+    // leaderId must identify which element was under the pointer
+    expect(multiDragStarted[0].leaderId).toBe('shape-a')
+  })
+
+  test('pointerdown on an element NOT in the multi-selection starts single move', () => {
+    const app = makeApp({
+      getSelectedIds: () => ['shape-a', 'shape-b'],
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const layer = document.getElementById('drawing-layer')
+    const el = document.createElement('rect')
+    el.setAttribute('data-yid', 'shape-c')  // not in selection
+    el.setAttribute('data-module', 'drawing')
+    layer.appendChild(el)
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { target: el }))
+
+    expect(ToolMode._gesture).toBe('move')
+  })
+
+  test('pointermove in multi-move calls App.moveMulti with canvas-space offsets', () => {
+    const moves = []
+    const app = makeApp({
+      getSelectedIds: () => ['shape-a', 'shape-b'],
+      startMultiDrag: () => {},
+      moveMulti: (ddx, ddy) => moves.push({ ddx, ddy }),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const layer = document.getElementById('drawing-layer')
+    const el = document.createElement('rect')
+    el.setAttribute('data-yid', 'shape-a')
+    el.setAttribute('data-module', 'drawing')
+    layer.appendChild(el)
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el }))
+    stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 150, clientY: 130 }))
+
+    expect(moves).toHaveLength(1)
+    // At scale=1: ddx = (150-100)/1 = 50, ddy = (130-100)/1 = 30
+    expect(moves[0].ddx).toBeCloseTo(50)
+    expect(moves[0].ddy).toBeCloseTo(30)
+  })
+
+  test('pointerup in multi-move calls App.commitMultiMove', () => {
+    const committed = []
+    const app = makeApp({
+      getSelectedIds: () => ['shape-a', 'shape-b'],
+      startMultiDrag: () => {},
+      moveMulti: () => {},
+      commitMultiMove: (ddx, ddy) => committed.push({ ddx, ddy }),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const layer = document.getElementById('drawing-layer')
+    const el = document.createElement('rect')
+    el.setAttribute('data-yid', 'shape-a')
+    el.setAttribute('data-module', 'drawing')
+    layer.appendChild(el)
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el }))
+    stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 200, clientY: 200 }))
+
+    expect(committed).toHaveLength(1)
+    expect(committed[0].ddx).toBeCloseTo(100)
+    expect(committed[0].ddy).toBeCloseTo(100)
+  })
+
+  test('pointerup with no movement calls cancelMultiMove not commitMultiMove', () => {
+    const cancelled = []
+    const committed = []
+    const app = makeApp({
+      getSelectedIds: () => ['shape-a', 'shape-b'],
+      startMultiDrag: () => {},
+      cancelMultiMove: () => cancelled.push(true),
+      commitMultiMove: () => committed.push(true),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const layer = document.getElementById('drawing-layer')
+    const el = document.createElement('rect')
+    el.setAttribute('data-yid', 'shape-a')
+    el.setAttribute('data-module', 'drawing')
+    layer.appendChild(el)
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 100, clientY: 100 }))
+
+    expect(cancelled).toHaveLength(1)
+    expect(committed).toHaveLength(0)
   })
 })

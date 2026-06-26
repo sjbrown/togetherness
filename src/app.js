@@ -118,6 +118,13 @@ let _dragState    = null;    // { id, startX, startY, startBboxX, startBboxY,
                               //   boundsRects: [{x,y,w,h}]|null, lastValidX, lastValidY,
                               //   snapPoints: [{cx,cy,snapRadius}] } | null
 
+// Active multi-element drag — set by App.startMultiDrag, cleared by commitMultiMove / cancelMultiMove.
+// Awareness: multidrag: { elIds: [...], offsets: [{bboxX, bboxY}] }
+// No boundary/snap constraints — those are per-toy and don't compose cleanly for a group.
+let _multiDragState = null;  // { elements: [{ id, mtype, anchorX, anchorY, bboxX, bboxY }],
+                             //   leaderEl, boundsRects, snapPoints,
+                             //   lastValidDx, lastValidDy } | null
+
 // ── Tool registry ──────────────────────────────────────────────────────────────
 // Built from the layer registries + the universal Select tool.
 // _toolsByLayer: layer → ToolDef[] (Select first)
@@ -245,6 +252,7 @@ export function boot({ ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, yBo
     if (dot) dot.className = connected ? 'status-dot connected' : 'status-dot connecting';
     // Cancel any in-progress drag on disconnect — doc stays at committed position.
     if (!connected && _dragState) App.cancelMove();
+    if (!connected && _multiDragState) App.cancelMultiMove();
   });
 
   // 8. Initial render
@@ -1012,6 +1020,138 @@ const App = {
     Overlay.endDragPlaceholder(id);
     _awareness.setLocalStateField('drag', null);
     _dragState = null;
+  },
+
+  // ── Multi-element drag lifecycle ──────────────────────────────────────────
+  // startMultiDrag  — called once on pointerdown with the canvas-space origin
+  // moveMulti       — called on every pointermove with (ddx, ddy) offset from start
+  // commitMultiMove — called on pointerup; writes all positions in one transaction
+  // cancelMultiMove — called on pointercancel; reverts all ghosts, no Yjs write
+
+  startMultiDrag: (originCanvas) => {
+    const elements = [..._selectedIds].map(id => {
+      const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
+      if (!domEl) return null;
+      const anchor = App.getAnchor(domEl);
+      const bbox   = App.getBBox(id);
+      const mtype  = moduleForElement(domEl);
+      return { id, mtype, anchorX: anchor.x, anchorY: anchor.y, bboxX: bbox.x, bboxY: bbox.y };
+    }).filter(Boolean);
+
+    // The anchor element is the one the pointer is over — its center drives
+    // boundary / snap constraints. The group translates by the same (dx, dy)
+    // that keeps the anchor element valid.
+    // originCanvas.leaderId is set by canvas.js from the hitId at pointerdown.
+    const leaderId  = originCanvas.leaderId;
+    const leaderEl  = elements.find(e => e.id === leaderId) ?? elements[0];
+    const anchorDom = _svgEl.querySelector(`[data-yid="${leaderEl.id}"]`);
+    const isToy     = leaderEl.mtype === 'toys';
+    const toyClasses   = isToy ? getToyClasses(anchorDom) : new Set();
+    const boundsRects  = isToy ? computeBoundaryRects(_yBounPos, toyClasses, { x: leaderEl.anchorX, y: leaderEl.anchorY }) : null;
+    const snapPoints   = isToy ? computePositionSnapPoints(_yBounPos, toyClasses) : [];
+
+    _multiDragState = {
+      elements,
+      leaderEl,
+      boundsRects,
+      snapPoints,
+      lastValidDx: 0,
+      lastValidDy: 0,
+    };
+
+    for (const el of elements) Overlay.startDragPlaceholder(el.id);
+
+    _awareness.setLocalStateField('multidrag', {
+      elIds:   elements.map(e => e.id),
+      offsets: elements.map(e => ({ bboxX: e.bboxX, bboxY: e.bboxY })),
+    });
+  },
+
+  moveMulti: (ddx, ddy) => {
+    if (!_multiDragState) return;
+    const { elements, leaderEl, boundsRects, snapPoints } = _multiDragState;
+
+    // Compute the candidate anchor position and apply constraints
+    let rx = Math.round(leaderEl.anchorX + ddx);
+    let ry = Math.round(leaderEl.anchorY + ddy);
+
+    if (boundsRects !== null) {
+      const inBounds = boundsRects.some(
+        r => rx >= r.x && rx <= r.x + r.w && ry >= r.y && ry <= r.y + r.h
+      );
+      if (!inBounds) return;
+    }
+
+    if (snapPoints.length > 0) {
+      const snapped = findNearestSnap(rx, ry, snapPoints);
+      if (snapped) {
+        const snapOk = !boundsRects || boundsRects.some(
+          r => snapped.cx >= r.x && snapped.cx <= r.x + r.w &&
+               snapped.cy >= r.y && snapped.cy <= r.y + r.h
+        );
+        if (snapOk) { rx = snapped.cx; ry = snapped.cy; }
+      }
+    }
+
+    // Derive actual (dx, dy) from the constrained anchor position
+    const cdx = rx - leaderEl.anchorX;
+    const cdy = ry - leaderEl.anchorY;
+    _multiDragState.lastValidDx = cdx;
+    _multiDragState.lastValidDy = cdy;
+
+    for (const el of elements) {
+      Overlay.updateLocalDragGhost(el.id, cdx, cdy);
+    }
+    _awareness.setLocalStateField('multidrag', {
+      elIds:   elements.map(e => e.id),
+      offsets: elements.map(e => ({ bboxX: e.bboxX + cdx, bboxY: e.bboxY + cdy })),
+    });
+  },
+
+  commitMultiMove: (ddx, ddy) => {
+    if (!_multiDragState) return;
+    const { elements, boundsRects, snapPoints, lastValidDx, lastValidDy } = _multiDragState;
+    const entries = [];
+
+    for (const el of elements) Overlay.endDragPlaceholder(el.id);
+    _awareness.setLocalStateField('multidrag', null);
+
+    // Use the last constrained (dx, dy) from moveMulti, falling back to
+    // the raw offset only if no pointermove fired (immediate pointerup).
+    const constrained = boundsRects !== null || snapPoints.length > 0;
+    const fdx = constrained ? lastValidDx : Math.round(ddx);
+    const fdy = constrained ? lastValidDy : Math.round(ddy);
+
+    _ydoc.transact(() => {
+      for (const el of elements) {
+        const rx = Math.round(el.anchorX + fdx);
+        const ry = Math.round(el.anchorY + fdy);
+        if (el.mtype === 'toys') {
+          toyApplyMoveCommit(_ydoc, findToy(_yToys, el.id), rx, ry);
+        } else if (el.mtype === 'boun_pos') {
+          bounPosApplyMoveCommit(_ydoc, bounPosFindEl(_yBounPos, el.id), rx, ry);
+        } else {
+          drawingApplyMoveCommit(_ydoc, findDrawing(_yDrawing, el.id), rx, ry);
+        }
+        entries.push({ op: 'move', module: el.mtype, id: el.id,
+          fromX: el.anchorX, fromY: el.anchorY,
+          toX: rx, toY: ry });
+      }
+    });
+
+    if (elements.some(e => e.mtype === 'drawing')) renderDoc();
+
+    _undoStack.push({ op: 'batch', entries });
+    addHistory(`moved ${elements.length} objects`);
+    App.addLog(`moved ${elements.length} objects`, 'local');
+    _multiDragState = null;
+  },
+
+  cancelMultiMove: () => {
+    if (!_multiDragState) return;
+    for (const el of _multiDragState.elements) Overlay.endDragPlaceholder(el.id);
+    _awareness.setLocalStateField('multidrag', null);
+    _multiDragState = null;
   },
 
   bringToFront: () => {

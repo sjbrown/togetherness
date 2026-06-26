@@ -134,7 +134,7 @@ export function syncFromAwareness(awarenessStates, myClientId) {
       }
     }
 
-    // Remote drag ghost
+    // Remote single drag ghost
     if (state?.drag?.elId) {
       const peerId = state.id ?? String(clientId);
       _remoteDrags.set(state.drag.elId, {
@@ -142,6 +142,21 @@ export function syncFromAwareness(awarenessStates, myClientId) {
         bboxX: state.drag.bboxX,
         bboxY: state.drag.bboxY,
         color: state.color ?? '#888',
+      });
+    }
+
+    // Remote multi drag ghosts — one entry per element
+    if (Array.isArray(state?.multidrag?.elIds) && state.multidrag.elIds.length) {
+      const peerId = state.id ?? String(clientId);
+      state.multidrag.elIds.forEach((elId, i) => {
+        const offset = state.multidrag.offsets?.[i];
+        if (!offset) return;
+        _remoteDrags.set(elId, {
+          peerId,
+          bboxX: offset.bboxX,
+          bboxY: offset.bboxY,
+          color: state.color ?? '#888',
+        });
       });
     }
   });

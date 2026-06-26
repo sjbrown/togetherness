@@ -229,6 +229,13 @@ function onPointerDown(e) {
       ToolMode._gesture = 'move';
       const anchor = App.getAnchor(hitEl);
       const p = toCanvas(e.clientX, e.clientY);
+      // If the hit element is part of a multi-selection, start a group drag
+      if (App.getSelectedIds().length > 1 && App.getSelectedIds().includes(hitId)) {
+        ToolMode._gesture = 'multi-move';
+        ToolMode._moveRef = { sx: e.clientX, sy: e.clientY, moved: false };
+        App.startMultiDrag({ ...toCanvas(e.clientX, e.clientY), leaderId: hitId });
+        return;
+      }
       ToolMode._moveRef = { id: hitId, dx: p.x - anchor.x, dy: p.y - anchor.y, moved: false };
       App.select(hitId);
       App.startDrag(hitId);
@@ -301,6 +308,16 @@ function onPointerMove(e) {
     return;
   }
 
+  if (ToolMode._gesture === 'multi-move' && ToolMode._moveRef) {
+    const ref = ToolMode._moveRef;
+    const ddx = (e.clientX - ref.sx) / _view.scale;
+    const ddy = (e.clientY - ref.sy) / _view.scale;
+    ref.moved = true;
+    clearTimeout(ToolMode._pressTimer);
+    App.moveMulti(ddx, ddy);
+    return;
+  }
+
   if (ToolMode._gesture === 'pan-or-deselect' && ToolMode._moveRef) {
     const ref = ToolMode._moveRef;
     const ddx = e.clientX - ref.sx, ddy = e.clientY - ref.sy;
@@ -357,6 +374,21 @@ function onPointerUp(e) {
     } else {
       // Tap with no movement — still started a drag; cancel it cleanly.
       App.cancelMove();
+    }
+  }
+
+  if (ToolMode._gesture === 'multi-move' && ToolMode._moveRef) {
+    if (ToolMode._moveRef.moved) {
+      if (isCancelled) {
+        App.cancelMultiMove();
+      } else {
+        const ref = ToolMode._moveRef;
+        const ddx = (e.clientX - ref.sx) / _view.scale;
+        const ddy = (e.clientY - ref.sy) / _view.scale;
+        App.commitMultiMove(ddx, ddy);
+      }
+    } else {
+      App.cancelMultiMove();
     }
   }
 

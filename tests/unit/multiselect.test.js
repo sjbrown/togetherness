@@ -580,3 +580,96 @@ describe('toggleSelection logic', () => {
     expect(sel.size).toBe(3)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9. Multi-drag anchor constraint logic
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('multi-drag anchor element constraint', () => {
+  // Mirror the constraint logic from moveMulti
+  function applyConstraints(anchorX, anchorY, ddx, ddy, boundsRects, snapPoints) {
+    let rx = Math.round(anchorX + ddx)
+    let ry = Math.round(anchorY + ddy)
+
+    if (boundsRects !== null) {
+      const inBounds = boundsRects.some(
+        r => rx >= r.x && rx <= r.x + r.w && ry >= r.y && ry <= r.y + r.h
+      )
+      if (!inBounds) return null // rejected
+    }
+
+    if (snapPoints.length > 0) {
+      let best = null, bestD2 = Infinity
+      for (const { cx, cy, snapRadius } of snapPoints) {
+        const d2 = (rx - cx) ** 2 + (ry - cy) ** 2
+        if (d2 < snapRadius ** 2 && d2 < bestD2) { best = { cx, cy }; bestD2 = d2 }
+      }
+      if (best) { rx = best.cx; ry = best.cy }
+    }
+
+    return { cdx: rx - anchorX, cdy: ry - anchorY }
+  }
+
+  test('move within bounds is accepted and returns (ddx, ddy)', () => {
+    const result = applyConstraints(
+      100, 100,     // anchor start
+      20, 10,       // desired offset
+      [{ x: 0, y: 0, w: 200, h: 200 }], // bounds
+      []
+    )
+    expect(result).not.toBeNull()
+    expect(result.cdx).toBe(20)
+    expect(result.cdy).toBe(10)
+  })
+
+  test('move outside bounds is rejected (returns null)', () => {
+    const result = applyConstraints(
+      100, 100,
+      200, 0,  // would put anchor at x=300, outside w=200
+      [{ x: 0, y: 0, w: 200, h: 200 }],
+      []
+    )
+    expect(result).toBeNull()
+  })
+
+  test('move near a snap point snaps the anchor', () => {
+    const result = applyConstraints(
+      100, 100,
+      8, 3,  // puts anchor at (108, 103), snap at (110, 100) within radius 15
+      null,
+      [{ cx: 110, cy: 100, snapRadius: 15 }]
+    )
+    expect(result).not.toBeNull()
+    // Snapped: cdx = 110-100 = 10, cdy = 100-100 = 0
+    expect(result.cdx).toBe(10)
+    expect(result.cdy).toBe(0)
+  })
+
+  test('snap outside bounds is rejected when both constraints present', () => {
+    // Snap point at (250, 100) is outside bounds [0..200]
+    const result = applyConstraints(
+      100, 100,
+      145, 0,  // puts anchor at (245, 100), within snap radius of (250, 100)
+      [{ x: 0, y: 0, w: 200, h: 200 }],
+      [{ cx: 250, cy: 100, snapRadius: 20 }]
+    )
+    // Anchor (245) is outside bounds → rejected before snap check
+    expect(result).toBeNull()
+  })
+
+  test('the constrained (dx, dy) is applied uniformly to all elements', () => {
+    const elements = [
+      { anchorX: 100, anchorY: 100 },
+      { anchorX: 200, anchorY: 150 },
+      { anchorX: 50,  anchorY: 80  },
+    ]
+    const { cdx, cdy } = applyConstraints(100, 100, 20, 10, null, [])
+    const newPositions = elements.map(e => ({
+      x: Math.round(e.anchorX + cdx),
+      y: Math.round(e.anchorY + cdy),
+    }))
+    expect(newPositions[0]).toEqual({ x: 120, y: 110 })
+    expect(newPositions[1]).toEqual({ x: 220, y: 160 })
+    expect(newPositions[2]).toEqual({ x: 70,  y: 90  })
+  })
+})
