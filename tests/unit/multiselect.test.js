@@ -6,7 +6,7 @@
  *   2. Overlay candidate rings (setHoverCandidates / clearHoverCandidates)
  *   3. Awareness broadcast (broadcastCandidates / clearBoxCandidates)
  *   4. setLocalGradient — updates persistent #local-sel-grad in canvas <defs>
- *   5. Overlay.setLocalSelections — committed multi-selection rings
+ *   5. Overlay.localSelectionChanged — unified committed selection update
  *   6. Batch undo — { op: 'batch', entries: [...] } stack shape
  *   7. _selectedIds as SSOT — _singleSelectedId contract
  *   8. toggleSelection logic
@@ -113,7 +113,7 @@ describe('getBoxCandidates — AABB containment', () => {
 // 2. Overlay — setHoverCandidates / clearHoverCandidates
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { SelectionMode, setLocalSelection, setLocalSelections, setHoverCandidates, clearHoverCandidates, setLocalGradient, init as overlayInit } from '../../src/overlay.js'
+import { SelectionMode, localSelectionChanged, setHoverCandidates, clearHoverCandidates, setLocalGradient, init as overlayInit } from '../../src/overlay.js'
 
 function makeOverlayDOM() {
   document.body.innerHTML = `
@@ -163,7 +163,7 @@ describe('Overlay.setHoverCandidates', () => {
 
   test('does not overwrite a local entry for the same id', () => {
     overlayInit(makeOverlayApp({ 'my-shape': { x: 0, y: 0, width: 10, height: 10 } }), document.getElementById('canvas'))
-    setLocalSelection('my-shape')
+    localSelectionChanged(new Set(['my-shape']))
     expect(SelectionMode.get('my-shape')?.kind).toBe('local')
 
     // rubber-band box now includes 'my-shape'
@@ -175,7 +175,7 @@ describe('Overlay.setHoverCandidates', () => {
 
   test('does not touch local entries', () => {
     overlayInit(makeOverlayApp({ 'my-shape': { x: 0, y: 0, width: 10, height: 10 } }), document.getElementById('canvas'))
-    setLocalSelection('my-shape')
+    localSelectionChanged(new Set(['my-shape']))
     setHoverCandidates(['x', 'y'])
     expect(SelectionMode.get('my-shape')?.kind).toBe('local')
   })
@@ -248,7 +248,7 @@ describe('Overlay.clearHoverCandidates', () => {
 
   test('does not remove local entries', () => {
     overlayInit(makeOverlayApp({ 's': { x: 0, y: 0, width: 10, height: 10 } }), document.getElementById('canvas'))
-    setLocalSelection('s')
+    localSelectionChanged(new Set(['s']))
     setHoverCandidates(['c'])
     clearHoverCandidates()
     expect(SelectionMode.get('s')?.kind).toBe('local')
@@ -330,49 +330,66 @@ describe('Overlay.setLocalGradient', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 5. Overlay.setLocalSelections
+// 5. Overlay.localSelectionChanged — unified committed selection update
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('Overlay.setLocalSelections', () => {
-  test('sets local entries for all ids', () => {
+describe('Overlay.localSelectionChanged', () => {
+  test('empty Set clears all local entries (deselect)', () => {
+    makeOverlayDOM()
+    overlayInit(makeOverlayApp({ 'a': { x: 0, y: 0, width: 50, height: 50 } }), document.getElementById('canvas'))
+    localSelectionChanged(new Set(['a']))
+    localSelectionChanged(new Set())
+    expect(SelectionMode.has('a')).toBe(false)
+    expect(SelectionMode.size).toBe(0)
+  })
+
+  test('Set of size 1 sets a single local entry', () => {
+    makeOverlayDOM()
+    overlayInit(makeOverlayApp({ 'a': { x: 0, y: 0, width: 50, height: 50 } }), document.getElementById('canvas'))
+    localSelectionChanged(new Set(['a']))
+    expect(SelectionMode.get('a')?.kind).toBe('local')
+    expect(SelectionMode.size).toBe(1)
+  })
+
+  test('Set of size N sets N local entries', () => {
     makeOverlayDOM()
     const bboxMap = {
       'a': { x: 0,  y: 0, width: 50, height: 50 },
       'b': { x: 60, y: 0, width: 50, height: 50 },
+      'c': { x: 120, y: 0, width: 50, height: 50 },
     }
     overlayInit(makeOverlayApp(bboxMap), document.getElementById('canvas'))
-    setLocalSelections(['a', 'b'])
+    localSelectionChanged(new Set(['a', 'b', 'c']))
     expect(SelectionMode.get('a')?.kind).toBe('local')
     expect(SelectionMode.get('b')?.kind).toBe('local')
+    expect(SelectionMode.get('c')?.kind).toBe('local')
   })
 
-  test('clears previous local and candidate entries', () => {
+  test('also clears candidate entries from a prior rubber-band', () => {
     makeOverlayDOM()
-    overlayInit(makeOverlayApp({ 'old': { x: 0, y: 0, width: 10, height: 10 } }), document.getElementById('canvas'))
-    setLocalSelection('old')
-    setHoverCandidates(['cand'])
-    setLocalSelections(['new'])
-    expect(SelectionMode.has('old')).toBe(false)
-    expect(SelectionMode.has('cand')).toBe(false)
-    expect(SelectionMode.get('new')?.kind).toBe('local')
+    overlayInit(makeOverlayApp({ 'x': { x: 0, y: 0, width: 50, height: 50 } }), document.getElementById('canvas'))
+    setHoverCandidates(['x'])
+    expect(SelectionMode.get('x')?.kind).toBe('candidate')
+    localSelectionChanged(new Set())
+    expect(SelectionMode.has('x')).toBe(false)
   })
 
   test('does not touch remote entries', () => {
     makeOverlayDOM()
     overlayInit(makeOverlayApp(), document.getElementById('canvas'))
     SelectionMode.set('remote-el', { kind: 'remote', peerId: 'p1', color: '#f00' })
-    setLocalSelections(['x'])
+    localSelectionChanged(new Set(['a']))
     expect(SelectionMode.get('remote-el')?.kind).toBe('remote')
   })
 
-  test('renders local rings for all ids with known bbox', () => {
+  test('renders rings for each id with a known bbox', () => {
     makeOverlayDOM()
     const bboxMap = {
       'el-1': { x: 10, y: 10, width: 50, height: 50 },
       'el-2': { x: 80, y: 80, width: 50, height: 50 },
     }
     overlayInit(makeOverlayApp(bboxMap), document.getElementById('canvas'))
-    setLocalSelections(['el-1', 'el-2'])
+    localSelectionChanged(new Set(['el-1', 'el-2']))
     const rings = document.querySelectorAll('#overlay-layer .selRing')
     expect(rings).toHaveLength(2)
   })

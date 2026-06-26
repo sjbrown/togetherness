@@ -609,7 +609,7 @@ const App = {
   select: (id) => {
     _selectedIds = id ? new Set([id]) : new Set();
     _awareness.setLocalStateField('selection', id ? { elIds: [id] } : null);
-    Overlay.setLocalSelection(id);
+    Overlay.localSelectionChanged(_selectedIds);
     UI.onSelectionChanged(_selectedIds);
     renderDrawingList();
   },
@@ -625,13 +625,7 @@ const App = {
     }
     const ids = [..._selectedIds];
     _awareness.setLocalStateField('selection', ids.length ? { elIds: ids } : null);
-    if (_selectedIds.size <= 1) {
-      // Use setLocalSelection so the single-element ring path is used,
-      // keeping overlay state consistent with the single-select flow.
-      Overlay.setLocalSelection(ids[0] ?? null);
-    } else {
-      Overlay.setLocalSelections(ids);
-    }
+    Overlay.localSelectionChanged(_selectedIds);
     UI.onSelectionChanged(_selectedIds);
     renderDrawingList();
   },
@@ -649,7 +643,7 @@ const App = {
     } else {
       _selectedIds = new Set(ids);
       _awareness.setLocalStateField('selection', { elIds: ids });
-      Overlay.setLocalSelections(ids);
+      Overlay.localSelectionChanged(_selectedIds);
       UI.onSelectionChanged(_selectedIds);
       renderDrawingList();
     }
@@ -873,7 +867,7 @@ const App = {
     App.addLog(`deleted ${id.slice(0, 6)}`, 'local');
     if (_selectedIds.has(id)) {
       _selectedIds.delete(id);
-      Overlay.setLocalSelections([..._selectedIds]);
+      Overlay.localSelectionChanged(_selectedIds);
       UI.onSelectionChanged(_selectedIds);
       renderDrawingList();
     }

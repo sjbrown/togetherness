@@ -57,12 +57,23 @@ export function init(appBus, svgElement) {
 }
 
 // ── SelectionMode setters ─────────────────────────────────────────────────────
-export function setLocalSelection(elId) {
-  // Clear any previous local selection
+/**
+ * Called by App whenever _selectedIds changes.
+ * Clears all previous local/candidate/resize entries and sets 'local' for
+ * each id in the Set. Works for N=0 (deselect), N=1, and N>1 uniformly —
+ * the caller passes _selectedIds and Overlay decides how to render it.
+ */
+export function localSelectionChanged(selectedIds) {
   for (const [id, entry] of SelectionMode) {
-    if (entry.kind === 'local' || entry.kind === 'resize') SelectionMode.delete(id);
+    if (entry.kind === 'local' || entry.kind === 'resize' || entry.kind === 'candidate') {
+      SelectionMode.delete(id);
+    }
   }
-  if (elId) SelectionMode.set(elId, { kind: 'local', color: App.getMyColor(), grad: App.getMyGradient() });
+  const color = App.getMyColor();
+  const grad  = App.getMyGradient();
+  for (const id of selectedIds) {
+    SelectionMode.set(id, { kind: 'local', color, grad });
+  }
   render();
 }
 
@@ -80,22 +91,6 @@ export function setHoverCandidates(ids) {
     const existing = SelectionMode.get(id);
     if (existing && (existing.kind === 'local' || existing.kind === 'resize')) continue;
     SelectionMode.set(id, { kind: 'candidate', color, grad });
-  }
-  render();
-}
-
-// Set a committed multi-selection: clears all local/candidate/resize entries
-// and sets 'local' for each id in the array.
-export function setLocalSelections(ids) {
-  for (const [id, entry] of SelectionMode) {
-    if (entry.kind === 'local' || entry.kind === 'resize' || entry.kind === 'candidate') {
-      SelectionMode.delete(id);
-    }
-  }
-  const color = App.getMyColor();
-  const grad  = App.getMyGradient();
-  for (const id of ids) {
-    SelectionMode.set(id, { kind: 'local', color, grad });
   }
   render();
 }
