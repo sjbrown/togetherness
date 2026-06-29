@@ -746,7 +746,9 @@ export function histBody(history) {
 export function layerObjectListHTML(objects, selectedIds) {
   if (!objects?.length)
     return '<div class="layer-obj-empty">No objects</div>';
-  return objects.map(o => {
+  // Reverse so the topmost-rendered element (last in z-order) appears first
+  // users think of "higher" as visually on top
+  return [...objects].reverse().map(o => {
     const chip = `<span class="sw-chip kind-${o.kind}" style="background:${o.fill}"></span>`;
     const sel  = selectedIds instanceof Set ? selectedIds.has(o.id) : selectedIds === o.id;
     return `<div class="layer-obj-item ${sel ? 'sel' : ''}" data-yid="${o.id}" onclick="App.select('${o.id}')">${chip}<span class="layer-obj-label">${o.label}</span>${sel ? '<span class="meta">selected</span>' : ''}</div>`;
@@ -754,7 +756,9 @@ export function layerObjectListHTML(objects, selectedIds) {
 }
 
 export function layersBody(data) {
-  const rows = data.layers.map(l => {
+  // Reverse so layers are shown top-to-bottom in intuitive visual order:
+  // Drawing (highest) first, Background last -- intuitive for users
+  const rows = [...data.layers].reverse().map(l => {
     const isActive = data.active === l.id;
     let objList = '';
     if (isActive) {

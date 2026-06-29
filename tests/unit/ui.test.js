@@ -13,21 +13,23 @@ const mockObjects = [
 ]
 
 describe('layerObjectListHTML', () => {
-  test('each item carries data-yid matching its object id', () => {
+  test('each item carries data-yid matching its object id, displayed topmost-first', () => {
     const html = layerObjectListHTML(mockObjects, new Set())
     const div  = document.createElement('div')
     div.innerHTML = html
     const items = div.querySelectorAll('.layer-obj-item')
     expect(items).toHaveLength(2)
-    expect(items[0].dataset.yid).toBe('a')
-    expect(items[1].dataset.yid).toBe('b')
+    // mockObjects is [a, b] in z-order (a below b); display reverses so b is first
+    expect(items[0].dataset.yid).toBe('b')
+    expect(items[1].dataset.yid).toBe('a')
   })
 
   test('selected item gets .sel class and a .meta badge; others do not', () => {
     const html = layerObjectListHTML(mockObjects, new Set(['b']))
     const div  = document.createElement('div')
     div.innerHTML = html
-    const [itemA, itemB] = div.querySelectorAll('.layer-obj-item')
+    // After reversal: index 0 = b (selected), index 1 = a (not selected)
+    const [itemB, itemA] = div.querySelectorAll('.layer-obj-item')
     expect(itemA.classList.contains('sel')).toBe(false)
     expect(itemA.querySelector('.meta')).toBeNull()
     expect(itemB.classList.contains('sel')).toBe(true)
@@ -38,7 +40,7 @@ describe('layerObjectListHTML', () => {
     const html = layerObjectListHTML(mockObjects, new Set(['a', 'b']))
     const div  = document.createElement('div')
     div.innerHTML = html
-    const [itemA, itemB] = div.querySelectorAll('.layer-obj-item')
+    const [itemB, itemA] = div.querySelectorAll('.layer-obj-item')
     expect(itemA.classList.contains('sel')).toBe(true)
     expect(itemB.classList.contains('sel')).toBe(true)
   })
