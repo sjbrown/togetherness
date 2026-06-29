@@ -158,7 +158,6 @@ export function pillHTML(data) {
       icoBtn(ICON_ACTIONS.trash,  'Delete',        "UI.deleteSelected()", 'danger'),
       icoBtn(ICON_ACTIONS.copy,   'Duplicate',      "UI.duplicateSelected()"),
       icoBtn(ICON_ACTIONS.swatch, 'Color',          "UI.openSheet('tools')"),
-      icoBtn(ICON_ACTIONS.front,  'Bring to front', "UI.bringToFront()"),
     ].join('');
   }
   const select = data.tools.find(t => t.name === 'select');
@@ -179,7 +178,7 @@ function icoBtn(iconSvg, label, onclick, cls = '') {
   return `<button class="ico ${cls}" aria-label="${label}" title="${label}" onclick="if(event.detail<2){${onclick}}" ondblclick="UI.openSheet('tools')">${iconSvg}<span class="active-dot"></span></button>`;
 }
 const ICON_ACTIONS = {
-  trash:  icon('trash'), copy: icon('copy'), swatch: icon('swatch'), front: icon('front'),
+  trash:  icon('trash'), copy: icon('copy'), swatch: icon('swatch'),
 };
 
 export function renderPill() {
@@ -874,7 +873,6 @@ export function showPopover(x, y, elId) {
   if (!pop) return;
   pop.innerHTML = `
     <button onclick="App.duplicateSelected();UI.hidePopover()">${icon('copy')} Duplicate</button>
-    <button onclick="App.bringToFront();UI.hidePopover()">${icon('front')} Bring to front</button>
     <button onclick="UI.openSheet('tools');UI.hidePopover()">${icon('swatch')} Properties</button>
     <button class="danger" onclick="App.deleteSelected();UI.hidePopover()">${icon('trash')} Delete</button>`;
   pop.style.display = 'flex';
@@ -896,7 +894,6 @@ export function duplicateSelected() {
   if (UIData.multiSelectionActive) App.duplicateMultiSelected();
   else App.duplicateSelected();
 }
-export function bringToFront()      { App.bringToFront(); }
 
 // -- Helpers -------------------------------------------------------------------
 function fakeQR() {
