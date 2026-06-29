@@ -385,6 +385,7 @@ export function wireColorPickers(container) {
       } else {
         App.setToolParam(target, key, value);
         refreshToolOpts();
+        refreshToolsPanel();
       }
     };
 
@@ -467,6 +468,10 @@ export function hideToolOpts() {
 }
 export function refreshToolOpts() {
   if (UIData.toolOptsOpen && currentToolOpts) showToolOpts(currentToolOpts);
+}
+
+export function refreshToolsPanel() {
+  if (UIData.panelOpen === 'tools') openSheet('tools');
 }
 
 // ==============================================================================

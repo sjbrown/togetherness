@@ -5,6 +5,7 @@ import {
   svgTextToYXml, addToy, deleteToy, listToys, findToy, TOY_TYPES,
   getGeom, _toSVGEl,
   hslToRgb, colorMatrixValues,
+  _clearSvgTextCache,
 } from '../../src/toys.js'
 
 // Local accessor for the toys fragment + meta map. The production code creates
@@ -64,6 +65,7 @@ function sync(a, b) {
 
 // addToy fetches the toy file; stub it to return our fixture.
 beforeEach(() => {
+  _clearSvgTextCache()
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, text: async () => TOY_SVG })))
 })
 afterEach(() => { vi.unstubAllGlobals() })
