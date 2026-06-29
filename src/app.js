@@ -82,7 +82,7 @@ const DEFAULT_BACKGROUNDS = [
 
 
 // ── Internal app state ────────────────────────────────────────────────────────
-let _ydoc, _yMeta, _yToys, _yDrawing, _yDrawingMeta,
+let _ydoc, _yMeta, _yToys, _yDrawing,
     _yBounPos,
     _awareness, _provider;
 
@@ -182,19 +182,17 @@ export function makeDoc() {
   const ydoc          = new Y.Doc();
   const yToys         = ydoc.getXmlFragment('toys');
   const yDrawing      = ydoc.getXmlFragment('drawing');
-  const yDrawingMeta  = ydoc.getMap('drawingMeta');
   const yBounPos      = ydoc.getXmlFragment('boundaries');
   const yMeta         = ydoc.getMap('meta');
-  return { ydoc, yMeta, yToys, yDrawing, yDrawingMeta, yBounPos };
+  return { ydoc, yMeta, yToys, yDrawing, yBounPos };
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
-export function boot({ ydoc, yMeta, yToys, yDrawing, yDrawingMeta, yBounPos, awareness, provider, myId, myGrad, roomId, svgElement, displayName }) {
+export function boot({ ydoc, yMeta, yToys, yDrawing, yBounPos, awareness, provider, myId, myGrad, roomId, svgElement, displayName }) {
   _ydoc           = ydoc;
   _yMeta          = yMeta;
   _yToys          = yToys;
   _yDrawing       = yDrawing;
-  _yDrawingMeta   = yDrawingMeta;
   _yBounPos       = yBounPos;
   _awareness  = awareness;
   _provider   = provider;
@@ -340,7 +338,7 @@ function renderDrawingLayer() {
   if (!layer) return;
   layer.innerHTML = '';
 
-  listDrawings(_yDrawing, _yDrawingMeta, { newestFirst: false }).forEach(({ svgEl }) => {
+  listDrawings(_yDrawing).forEach(({ svgEl }) => {
     svgEl.style.cursor = 'pointer';
     layer.appendChild(svgEl);
   });
@@ -356,30 +354,25 @@ function renderDrawingList() {
   const list = document.getElementById('drawingList');
   if (!list) return;
   list.innerHTML = '';
-  listDrawings(_yDrawing, _yDrawingMeta, { newestFirst: true }).forEach(({ svgEl, drawingMeta }) => {
-    const id     = svgEl.getAttribute('data-yid');
-    const attrs  = {};
+  listDrawings(_yDrawing).forEach(({ svgEl }) => {
+    const id = svgEl.getAttribute('data-yid');
+    const attrs = {};
     for (const at of svgEl.attributes) attrs[at.name] = at.value;
-    const def    = drawingGetTtStateSchema(drawingMeta?.type ?? svgEl.getAttribute('data-type') ?? 'rect');
-    const item   = document.createElement('div');
-    const author = drawingMeta?.author;
-    item.className  = 'drawing-item' + (_selectedIds.has(id) ? ' selected' : '');
+    const def = drawingGetTtStateSchema(svgEl.getAttribute('data-type') ?? svgEl.tagName);
+    const item = document.createElement('div');
+    item.className = 'drawing-item' + (_selectedIds.has(id) ? ' selected' : '');
     item.dataset.id = id;
     const sw = document.createElement('div');
-    sw.className        = 'drawing-swatch';
+    sw.className = 'drawing-swatch';
     sw.style.background = attrs.fill;
     const lbl = document.createElement('div');
-    lbl.className   = 'drawing-label';
+    lbl.className = 'drawing-label';
     lbl.textContent = def.label;
-    const own = document.createElement('div');
-    own.className   = 'drawing-owner';
-    own.textContent = author === _myId ? 'me' : (author?.slice(0, 5) ?? '?');
-    own.style.color = author === _myId ? 'var(--primary)' : 'var(--text-3)';
     const del = document.createElement('button');
-    del.className   = 'drawing-del';
+    del.className = 'drawing-del';
     del.textContent = '×';
     del.addEventListener('click', ev => { ev.stopPropagation(); App.deleteElement(svgEl); });
-    item.append(sw, lbl, own, del);
+    item.append(sw, lbl, del);
     item.addEventListener('click', () => App.select(id));
     list.appendChild(item);
   });
@@ -452,14 +445,10 @@ function onDrawingChanged(events, transaction) {
         item.content.getContent().forEach(yEl => {
           if (!yEl.getAttribute) return;
           const id     = yEl.getAttribute('id') ?? '?';
-          const meta   = _yDrawingMeta.get(id);
-          const author = meta?.author;
-          if (author && author !== _myId) {
-            addHistory(`remote: added ${id.slice(0, 6)} by ${(author ?? '?').slice(0, 5)}`, {
-              fill: yEl.getAttribute('fill'), elType: yEl.nodeName,
-            });
-            App.addLog(`${(author ?? '?').slice(0, 5)} added ${yEl.nodeName}`, 'remote');
-          }
+          addHistory(`remote: added ${id.slice(0, 9)}`, {
+            fill: yEl.getAttribute('fill'), elType: yEl.nodeName,
+          });
+          App.addLog(`added ${yEl.nodeName}`, 'remote');
         });
       });
       event.changes.deleted.forEach(item => {
@@ -547,7 +536,7 @@ const App = {
     return drawingAnchor(svgEl);
   },
   getLayerObjects: (layerId) => {
-    if (layerId === 'drawing')              return drawingsData(_yDrawing, _yDrawingMeta);
+    if (layerId === 'drawing')              return drawingsData(_yDrawing);
     if (layerId === 'toys')                 return toysData(_yToys);
     if (layerId === 'boundaries-positions') return bounPosLayerData(_yBounPos);
     return [];
@@ -657,7 +646,7 @@ const App = {
           const yEl = findDrawing(_yDrawing, id);
           if (!yEl) continue;
           entry = { op: 'del', module: 'drawing', state: drawingGetTtState(yEl) };
-          deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, id);
+          deleteDrawing(_ydoc, _yDrawing, id);
         }
         if (entry) entries.push(entry);
       }
@@ -686,8 +675,8 @@ const App = {
       const geom   = type === 'rect'
         ? { x: offset.x, y: offset.y, width: +attrs.width, height: +attrs.height }
         : { cx: offset.x, cy: offset.y, r: +attrs.r };
-      addDrawing(_ydoc, _yDrawing, _yDrawingMeta,
-        { ...attrs, ...geom, type, id: newId, author: _myId });
+      addDrawing(_ydoc, _yDrawing,
+        { ...attrs, ...geom, type, id: newId });
       entries.push({ op: 'add', module: 'drawing', id: newId });
     }
     if (entries.length > 0) {
@@ -702,7 +691,7 @@ const App = {
   // ── Document mutations ────────────────────────────────────────────────────
   commitDrawing: (attrs) => {
     const id = App.getMyId() + '_' + Math.random().toString(36).slice(2, 7);
-    addDrawing(_ydoc, _yDrawing, _yDrawingMeta, { ...attrs, id, author: _myId });
+    addDrawing(_ydoc, _yDrawing, { ...attrs, id });
     _undoStack.push({ op: 'add', module: 'drawing', id });
     addHistory(`added ${attrs.type ?? 'rect'} ${id.slice(0, 6)}`, {
       fill: attrs.fill, elType: attrs.type,
@@ -845,7 +834,7 @@ const App = {
       if (!yEl) return;
       const state = drawingGetTtState(yEl);
       _undoStack.push({ op: 'del', module: 'drawing', state });
-      deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, id);
+      deleteDrawing(_ydoc, _yDrawing, id);
       addHistory(`deleted ${id.slice(0, 6)}`, { fill: state?.fill, elType: yEl.nodeName });
     }
     App.addLog(`deleted ${id.slice(0, 6)}`, 'local');
@@ -1168,7 +1157,7 @@ const App = {
         bounPosDeleteEl(_ydoc, _yBounPos, op.id);
         addHistory(`undid: add ${op.bounPosType} ${op.id.slice(0, 12)}`);
       } else {
-        deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, op.id);
+        deleteDrawing(_ydoc, _yDrawing, op.id);
         addHistory(`undid: add ${op.id.slice(0, 6)}`);
       }
     } else if (op.op === 'del') {
@@ -1185,7 +1174,7 @@ const App = {
         bounPosApplyTtState(_ydoc, _yBounPos, op.state);
         addHistory(`undid: delete ${op.state.bounPosType} ${op.state.id.slice(0, 12)}`);
       } else {
-        drawingApplyTtState(_ydoc, _yDrawing, _yDrawingMeta, op.state);
+        drawingApplyTtState(_ydoc, _yDrawing, op.state);
         addHistory(`undid: delete ${op.state.id.slice(0, 6)}`, { fill: op.state.fill, elType: op.state.type });
       }
     } else if (op.op === 'batch') {
@@ -1199,7 +1188,7 @@ const App = {
           } else if (entry.module === 'boun_pos') {
             bounPosDeleteEl(_ydoc, _yBounPos, entry.id);
           } else {
-            deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, entry.id);
+            deleteDrawing(_ydoc, _yDrawing, entry.id);
           }
         } else if (entry.op === 'del') {
           if (entry.module === 'toys') {
@@ -1212,7 +1201,7 @@ const App = {
           } else if (entry.module === 'boun_pos') {
             bounPosApplyTtState(_ydoc, _yBounPos, entry.state);
           } else {
-            drawingApplyTtState(_ydoc, _yDrawing, _yDrawingMeta, entry.state);
+            drawingApplyTtState(_ydoc, _yDrawing, entry.state);
           }
         }
       }
