@@ -180,7 +180,7 @@ describe('pillHTML — multi-selection (N > 1)', () => {
     expect(btns[0].getAttribute('aria-label')).toMatch(/2/)
   })
 
-  test('multiSelectionActive false with selectionActive shows normal 4-button set', () => {
+  test('multiSelectionActive false with selectionActive shows normal 3-button set', () => {
     const html = pillHTML({
       selectionActive: true, multiSelectionActive: false, selectedCount: 0,
       activeTool: 'select', tools: MOCK_TOOLS,
@@ -188,7 +188,7 @@ describe('pillHTML — multi-selection (N > 1)', () => {
     const div = document.createElement('div')
     div.innerHTML = html
     const btns = [...div.querySelectorAll('button.ico')]
-    expect(btns.length).toBe(4)
+    expect(btns.length).toBe(3)
   })
 
   test('neither active shows tool buttons', () => {
