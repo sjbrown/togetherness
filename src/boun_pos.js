@@ -168,7 +168,7 @@ function setYTextContent(ydoc, yEl, newText) {
 //   newId()      — returns { id, name } for a fresh element
 //   genType      — 'square'|'hex'|null (null for boundaries)
 //   schema       — ttStateSchema shape: { label, values, types }
-//   create(ydoc, yBounPos, yBounPosMeta, params) — CRDT write
+//   create(ydoc, yBounPos, params) — CRDT write
 //   toSVGEl(yG)  — Yjs node → live DOM element
 //
 // app.js builds the tool registry from Object.entries(BOUNPOS_TYPES).
@@ -187,7 +187,7 @@ export const BOUNPOS_TYPES = {
         name: { kind: 'string', show: ['add', 'edit'] },
       },
     },
-    create(ydoc, yBounPos, yBounPosMeta, { id, name, x, y, w, h, author }) {
+    create(ydoc, yBounPos, { id, name, x, y, w, h }) {
       const d  = rectToPath(x, y, w, h);
       const tx = x + w;
       const ty = y - 5;
@@ -211,7 +211,6 @@ export const BOUNPOS_TYPES = {
         yText.insert(0, [new Y.XmlText(name)]);
         yG.insert(0, [yPath, yText]);
         yBounPos.insert(yBounPos.length, [yG]);
-        yBounPosMeta.set(id, { author, name, type: 'boundary', created: Date.now() });
       });
       return yG;
     },
@@ -266,8 +265,8 @@ export const BOUNPOS_TYPES = {
         spacing:    { kind: 'number', min: 20, max: 200, step: 4, show: ['addQuick'] },
       },
     },
-    create(ydoc, yBounPos, yBounPosMeta, params) {
-      return _createPositionSet(ydoc, yBounPos, yBounPosMeta, params);
+    create(ydoc, yBounPos, params) {
+      return _createPositionSet(ydoc, yBounPos, params);
     },
     toSVGEl(yG) { return _positionSetToSVGEl(yG); },
   },
@@ -288,16 +287,16 @@ export const BOUNPOS_TYPES = {
         'hex-size':  { kind: 'number', min: 15, max: 100, step: 5, show: ['addQuick'] },
       },
     },
-    create(ydoc, yBounPos, yBounPosMeta, params) {
-      return _createPositionSet(ydoc, yBounPos, yBounPosMeta, params);
+    create(ydoc, yBounPos, params) {
+      return _createPositionSet(ydoc, yBounPos, params);
     },
     toSVGEl(yG) { return _positionSetToSVGEl(yG); },
   },
 };
 
 // Helper used by both pos-set variants.
-function _createPositionSet(ydoc, yBounPos, yBounPosMeta,
-  { id, name, snapRadius, genType, genParam, x, y, w, h, circles, author }) {
+function _createPositionSet(ydoc, yBounPos,
+  { id, name, snapRadius, genType, genParam, x, y, w, h, circles }) {
   const d  = rectToPath(x, y, w, h);
   const tx = x + w;
   const ty = y - 5;
@@ -332,7 +331,6 @@ function _createPositionSet(ydoc, yBounPos, yBounPosMeta,
     yText.insert(0, [new Y.XmlText(name)]);
     yG.insert(0, [yPath, yText, ...yCircles]);
     yBounPos.insert(yBounPos.length, [yG]);
-    yBounPosMeta.set(id, { author, name, type: 'pos-set', snapRadius, genType, genParam, created: Date.now() });
   });
   return yG;
 }
@@ -390,16 +388,16 @@ function _positionSetToSVGEl(yG) {
  * Convenience wrappers — kept for call sites that name a specific type.
  * Internally both delegate to BOUNPOS_TYPES[toolName].create().
  */
-export function addBoundary(ydoc, yBounPos, yBounPosMeta, params) {
-  return BOUNPOS_TYPES.boundary.create(ydoc, yBounPos, yBounPosMeta, params);
+export function addBoundary(ydoc, yBounPos, params) {
+  return BOUNPOS_TYPES.boundary.create(ydoc, yBounPos, params);
 }
 
-export function createPositionSetElement(ydoc, yBounPos, yBounPosMeta, params) {
-  return _createPositionSet(ydoc, yBounPos, yBounPosMeta, params);
+export function createPositionSetElement(ydoc, yBounPos, params) {
+  return _createPositionSet(ydoc, yBounPos, params);
 }
 
-export function addPositionSet(ydoc, yBounPos, yBounPosMeta,
-  { x, y, w, h, toolName, toolParams, author }) {
+export function addPositionSet(ydoc, yBounPos,
+  { x, y, w, h, toolName, toolParams }) {
   const def      = BOUNPOS_TYPES[toolName];
   if (!def) return null;
   const genType  = def.genType;
@@ -411,8 +409,8 @@ export function addPositionSet(ydoc, yBounPos, yBounPosMeta,
   const circles    = gridFillExtent(x, y, w, h, genType, genParam);
   if (circles.length === 0) return null;
   const { id, name } = def.newId();
-  def.create(ydoc, yBounPos, yBounPosMeta,
-    { id, name, snapRadius, genType, genParam, x, y, w, h, circles, author });
+  def.create(ydoc, yBounPos,
+    { id, name, snapRadius, genType, genParam, x, y, w, h, circles });
   return { id, name, genType };
 }
 
@@ -430,14 +428,13 @@ export function findEl(yBounPos, id) {
   ) ?? null;
 }
 
-export function deleteEl(ydoc, yBounPos, yBounPosMeta, id) {
+export function deleteEl(ydoc, yBounPos, id) {
   const idx = yBounPos.toArray().findIndex(
     e => e instanceof Y.XmlElement && e.getAttribute('id') === id
   );
   if (idx === -1) return false;
   ydoc.transact(() => {
     yBounPos.delete(idx, 1);
-    yBounPosMeta.delete(id);
   });
   return true;
 }
@@ -475,7 +472,7 @@ export function applyMoveCommit(ydoc, yEl, x, y) {
  * Render the entire Boundaries and Positions layer into layerEl.
  * app.js calls this; it never iterates yBounPos directly.
  */
-export function renderLayer(yBounPos, yBounPosMeta, layerEl) {
+export function renderLayer(yBounPos, layerEl) {
   layerEl.innerHTML = '';
   for (const node of yBounPos.toArray()) {
     if (!(node instanceof Y.XmlElement)) continue;
@@ -487,7 +484,7 @@ export function renderLayer(yBounPos, yBounPosMeta, layerEl) {
 /**
  * All elements as layer-object descriptors for the layers panel.
  */
-export function layerData(yBounPos, yBounPosMeta) {
+export function layerData(yBounPos) {
   const results = [];
   for (const node of yBounPos.toArray()) {
     if (!(node instanceof Y.XmlElement)) continue;
@@ -499,9 +496,7 @@ export function layerData(yBounPos, yBounPosMeta) {
   return results;
 }
 
-export function metaFor(yBounPosMeta, id) {
-  return yBounPosMeta.get(id) ?? null;
-}
+// metaFor removed — all state lives on the <g> attributes in the Yjs tree.
 
 // ── Geometry queries ──────────────────────────────────────────────────────────
 
@@ -599,10 +594,10 @@ export function getTtState(yEl) {
 }
 
 
-function createBounPos(state, ydoc, yBounPos, yBounPosMeta) {
+function createBounPos(state, ydoc, yBounPos) {
   if (state.bounPosType === 'pos-set') {
     const circles = gridFillExtent(state.x, state.y, state.w, state.h, state.genType, state.genParam);
-    createPositionSetElement(ydoc, yBounPos, yBounPosMeta, {
+    createPositionSetElement(ydoc, yBounPos, {
       id:         state.id,
       name:       state.name,
       snapRadius: state.snapRadius ?? 30,
@@ -613,17 +608,15 @@ function createBounPos(state, ydoc, yBounPos, yBounPosMeta) {
       w:          state.w,
       h:          state.h,
       circles,
-      author:     undefined,
     });
   } else {
-    addBoundary(ydoc, yBounPos, yBounPosMeta, {
+    addBoundary(ydoc, yBounPos, {
       id:     state.id,
       name:   state.name,
       x:      state.x,
       y:      state.y,
       w:      state.w,
       h:      state.h,
-      author: undefined,
     });
   }
 }
@@ -632,19 +625,19 @@ function createBounPos(state, ydoc, yBounPos, yBounPosMeta) {
  * Write a ttState snapshot back into the Yjs bounPos fragment.
  * Used by undo/redo to reconstruct deleted boundaries and position sets.
  */
-export function applyTtState(ydoc, yBounPos, yBounPosMeta, state) {
+export function applyTtState(ydoc, yBounPos, state) {
   if (!state?.bounPosType) {
     console.error('invalid bounPos state')
     return;
   }
   if (!state?.id) {
-    createBounPos(state, ydoc, yBounPos, yBounPosMeta);
+    createBounPos(state, ydoc, yBounPos);
   } else {
-    editBounPos(state, ydoc, yBounPos, yBounPosMeta);
+    editBounPos(state, ydoc, yBounPos);
   }
 }
 
-export function editBounPos(state, ydoc, yBounPos, yBounPosMeta) {
+export function editBounPos(state, ydoc, yBounPos) {
   // Note 'state' might be partial - only update attrs that are present
   const existing = findEl(yBounPos, state.id);
   if (!existing) {
@@ -659,8 +652,6 @@ export function editBounPos(state, ydoc, yBounPos, yBounPosMeta) {
       existing.setAttribute('name', String(state.name));
       const yText = yChildByTag(existing, 'text');
       if (yText) setYTextContent(ydoc, yText, String(state.name));
-      const meta = yBounPosMeta.get(state.id) ?? {};
-      yBounPosMeta.set(state.id, { ...meta, name: state.name });
     }
     if (state.snapRadius !== undefined && type === 'pos-set') {
       const genType  = existing.getAttribute('data-gen-type')  ?? 'square';
@@ -680,8 +671,8 @@ export function editBounPos(state, ydoc, yBounPos, yBounPosMeta) {
   }
 }
 
-export function edit(id, editData, ydoc, yBounPos, yBounPosMeta) {
-  return editBounPos({id, ...editData}, ydoc, yBounPos, yBounPosMeta);
+export function edit(id, editData, ydoc, yBounPos) {
+  return editBounPos({id, ...editData}, ydoc, yBounPos);
 }
 
 // ── Drag context helpers ──────────────────────────────────────────────────────
