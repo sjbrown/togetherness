@@ -827,7 +827,7 @@ const App = {
     const id = App.getMyId() + '_' + Math.random().toString(36).slice(2, 7);
     addToy(_ydoc, _yToys, _yToyMeta, {
       id, toyType: def.toyType, x, y,
-      color: _myGrad.c1, author: _myId,
+      color: _toolParams[toolName]?.fill ?? _myGrad.c1, author: _myId,
     }).then(() => {
       _undoStack.push({ op: 'add', module: 'toys', id });
       addHistory(`placed ${def.label} ${id.slice(0, 6)}`, { elType: 'toy' });

@@ -227,19 +227,23 @@ export function svgTextToYXml(svgText, prefix) {
 
 // ── Toy operations ────────────────────────────────────────────────────────────
 
+// Cache of raw SVG text keyed by toy type. Populated on first fetch; subsequent
+// placements of the same toy type skip the network round-trip and re-parse
+// locally (cheap) instead of re-fetching (potentially slow / rate-limited).
+const _svgTextCache = new Map()  // toyType → svgText string
+
+/** Clear the SVG template cache. Intended for tests only. */
+export function _clearSvgTextCache() { _svgTextCache.clear() }
+
 /**
- * Place a toy on the table. Async: fetches the toy file and imports it.
+ * Place a toy on the table synchronously from already-fetched SVG text.
+ * The cache must be warm for this toyType — call addToy() if unsure.
  * attrs: { id, toyType, x, y, color, author }  (x,y is the center point)
  */
-export async function addToy(ydoc, yToys, yToyMeta, attrs) {
+export function addToySync(ydoc, yToys, yToyMeta, attrs, svgText) {
   const { id, toyType, x, y, color, author } = attrs
-  const def = TOY_TYPES[toyType]
-  if (!def) throw new Error(`unknown toy type: ${toyType}`)
-
-  const res = await fetch(`/toy/${def.file}`)
-  if (!res.ok) throw new Error(`failed to load ${def.file}: ${res.status}`)
   const prefix = `${id}__`
-  const { ySvg, colorMatrices } = svgTextToYXml(await res.text(), prefix)
+  const { ySvg, colorMatrices } = svgTextToYXml(svgText, prefix)
 
   // Tint the toy's colorize filter with the player's color before insertion.
   // The matrix values are set on the direct refs captured during import,
@@ -262,6 +266,27 @@ export async function addToy(ydoc, yToys, yToyMeta, attrs) {
     yToys.insert(yToys.length, [g])
     yToyMeta.set(id, { author, toyType, color, created: Date.now() })
   })
+}
+
+/**
+ * Place a toy on the table. Fetches the toy's SVG file on first use and
+ * caches it; subsequent placements of the same toy type are cache hits and
+ * skip the network round-trip.
+ * attrs: { id, toyType, x, y, color, author }  (x,y is the center point)
+ */
+export async function addToy(ydoc, yToys, yToyMeta, attrs) {
+  const { toyType } = attrs
+  const def = TOY_TYPES[toyType]
+  if (!def) throw new Error(`unknown toy type: ${toyType}`)
+
+  let svgText = _svgTextCache.get(toyType)
+  if (!svgText) {
+    const res = await fetch(`/toy/${def.file}`)
+    if (!res.ok) throw new Error(`failed to load ${def.file}: ${res.status}`)
+    svgText = await res.text()
+    _svgTextCache.set(toyType, svgText)
+  }
+  addToySync(ydoc, yToys, yToyMeta, attrs, svgText)
 }
 
 /**
@@ -445,11 +470,9 @@ export const TOOLS = [
     label:   TOY_TYPES['dice_d6'].label,
     iconUrl: 'toy/dice_d6.svg',
     layer:   'toys',
-    defaults: { fill: '#a8905e', faces: 6 },
+    defaults: { fill: '#a8905e' },
     options: [
       { kind: 'color-hsl', key: 'fill', label: 'Die color', show: ['add', 'edit', 'addQuick'] },
-      number('faces', 'Faces', { min: 4, max: 20, step: 2 }),
-      bool('autoRoll', 'Roll on drop'),
     ],
   },
 ];
