@@ -1132,22 +1132,6 @@ const App = {
     _multiDragState = null;
   },
 
-  bringToFront: () => {
-    const id = _singleSelectedId();
-    if (!id) {
-      if (_selectedIds.size > 1) console.error('bringToFront called with multi-selection; not yet supported');
-      return;
-    }
-    const yEl = findDrawing(_yDrawing, id);
-    if (!yEl) return;
-    const index = _yDrawing.toArray().indexOf(yEl);
-    _ydoc.transact(() => {
-      _yDrawing.delete(index, 1);
-      _yDrawing.insert(_yDrawing.length, [yEl]);
-    });
-    addHistory(`brought ${id.slice(0, 6)} to front`);
-  },
-
   // ── Tool selection + params (ui.js → app → canvas.js) ─────────────────────
   // setToolParam affects only _toolParams (defaults for the *next* object to
   // be added) — it never mutates the document or the current selection.

@@ -382,7 +382,7 @@ describe('convergence', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('z-order', () => {
-  test('bring to front: delete + re-append moves shape to top', () => {
+  test('delete + re-append moves an element to the end of the fragment', () => {
     const doc = makeDoc()
     add(doc, { id: 'a' })
     add(doc, { id: 'b' })
