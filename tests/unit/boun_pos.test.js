@@ -32,13 +32,13 @@ import { makeDoc } from '../../src/app.js';
 
 function makeLayer() {
   const doc = makeDoc();
-  return { ydoc: doc.ydoc, yBounPos: doc.yBounPos, yBounPosMeta: doc.yBounPosMeta };
+  return { ydoc: doc.ydoc, yBounPos: doc.yBounPos };
 }
 
 function addB(layer, overrides = {}) {
   const { id, name } = newBoundaryId();
-  addBoundary(layer.ydoc, layer.yBounPos, layer.yBounPosMeta, {
-    id, name, x: 100, y: 100, w: 200, h: 150, author: 'test',
+  addBoundary(layer.ydoc, layer.yBounPos, {
+    id, name, x: 100, y: 100, w: 200, h: 150,
     ...overrides,
   });
   return { id, name };
@@ -51,8 +51,8 @@ function addPS(layer, overrides = {}) {
   const genType  = overrides.genType  ?? 'square';
   const genParam = overrides.genParam ?? 80;
   const circles = gridFillExtent(x, y, w, h, genType, genParam);
-  createPositionSetElement(layer.ydoc, layer.yBounPos, layer.yBounPosMeta, {
-    id, name, snapRadius: 30, genType, genParam, x, y, w, h, circles, author: 'test',
+  createPositionSetElement(layer.ydoc, layer.yBounPos, {
+    id, name, snapRadius: 30, genType, genParam, x, y, w, h, circles,
     ...overrides, id, name,
   });
   return { id, name, circles };
@@ -174,12 +174,12 @@ describe('addBoundary / findEl', () => {
     expect(children.map(c => c.nodeName)).toEqual(expect.arrayContaining(['path', 'text']));
   });
 
-  test('meta is written', () => {
+  test('attributes are written to the <g> wrapper', () => {
     const layer = makeLayer();
     const { id, name } = addB(layer);
-    const meta = layer.yBounPosMeta.get(id);
-    expect(meta.name).toBe(name);
-    expect(meta.type).toBe('boundary');
+    const yEl = findEl(layer.yBounPos, id);
+    expect(yEl.getAttribute('name')).toBe(name);
+    expect(yEl.getAttribute('data-bounpos-type')).toBe('boundary');
   });
 });
 
@@ -211,13 +211,13 @@ describe('deleteEl', () => {
     const layer = makeLayer();
     const { id } = addB(layer);
     expect(findEl(layer.yBounPos, id)).not.toBeNull();
-    deleteEl(layer.ydoc, layer.yBounPos, layer.yBounPosMeta, id);
+    deleteEl(layer.ydoc, layer.yBounPos, id);
     expect(findEl(layer.yBounPos, id)).toBeNull();
   });
 
   test('returns false for missing id', () => {
     const layer = makeLayer();
-    expect(deleteEl(layer.ydoc, layer.yBounPos, layer.yBounPosMeta, 'nope')).toBe(false);
+    expect(deleteEl(layer.ydoc, layer.yBounPos, 'nope')).toBe(false);
   });
 });
 
@@ -226,9 +226,9 @@ describe('editBounPos rename', () => {
     const layer = makeLayer();
     const { id } = addB(layer);
     const yEl = findEl(layer.yBounPos, id);
-    editBounPos({ id, name: 'forest' }, layer.ydoc, layer.yBounPos, layer.yBounPosMeta);
+    editBounPos({ id, name: 'forest' }, layer.ydoc, layer.yBounPos);
     expect(yEl.getAttribute('name')).toBe('forest');
-    expect(layer.yBounPosMeta.get(id).name).toBe('forest');
+    expect(findEl(layer.yBounPos, id).getAttribute('name')).toBe('forest');
   });
 });
 
@@ -279,16 +279,16 @@ describe('computeBoundaryRects', () => {
   test('returns null when no boundary name matches', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    addBoundary(layer.ydoc, layer.yBounPos, layer.yBounPosMeta,
-      { id, name: 'forest', x: 0, y: 0, w: 300, h: 300, author: 'test' });
+    addBoundary(layer.ydoc, layer.yBounPos,
+      { id, name: 'forest', x: 0, y: 0, w: 300, h: 300 });
     expect(computeBoundaryRects(layer.yBounPos, new Set(['dungeon']), { x: 50, y: 50 })).toBeNull();
   });
 
   test('returns rects when class matches and toy starts inside', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    addBoundary(layer.ydoc, layer.yBounPos, layer.yBounPosMeta,
-      { id, name: 'forest', x: 0, y: 0, w: 300, h: 300, author: 'test' });
+    addBoundary(layer.ydoc, layer.yBounPos,
+      { id, name: 'forest', x: 0, y: 0, w: 300, h: 300 });
     const rects = computeBoundaryRects(layer.yBounPos, new Set(['forest']), { x: 50, y: 50 });
     expect(rects).not.toBeNull();
     expect(rects).toHaveLength(1);
@@ -298,8 +298,8 @@ describe('computeBoundaryRects', () => {
   test('returns null when toy starts outside matched boundary', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    addBoundary(layer.ydoc, layer.yBounPos, layer.yBounPosMeta,
-      { id, name: 'forest', x: 0, y: 0, w: 100, h: 100, author: 'test' });
+    addBoundary(layer.ydoc, layer.yBounPos,
+      { id, name: 'forest', x: 0, y: 0, w: 100, h: 100 });
     // anchor is outside the boundary
     const rects = computeBoundaryRects(layer.yBounPos, new Set(['forest']), { x: 200, y: 200 });
     expect(rects).toBeNull();
@@ -335,7 +335,7 @@ describe('computePositionSnapPoints', () => {
     const { id, circles } = addPS(layer, { x: 0, y: 0, w: 400, h: 400, genType: 'square', genParam: 100 });
     // Set name to known value
     const yEl = findEl(layer.yBounPos, id);
-    editBounPos({ id, name: 'forest' }, layer.ydoc, layer.yBounPos, layer.yBounPosMeta);
+    editBounPos({ id, name: 'forest' }, layer.ydoc, layer.yBounPos);
     const pts = computePositionSnapPoints(layer.yBounPos, new Set(['forest']));
     expect(pts.length).toBe(circles.length);
     pts.forEach(p => {
@@ -348,8 +348,8 @@ describe('computePositionSnapPoints', () => {
   test('boundary elements are ignored', () => {
     const layer = makeLayer();
     const { id: bid } = newBoundaryId();
-    addBoundary(layer.ydoc, layer.yBounPos, layer.yBounPosMeta,
-      { id: bid, name: 'forest', x: 0, y: 0, w: 300, h: 300, author: 'test' });
+    addBoundary(layer.ydoc, layer.yBounPos,
+      { id: bid, name: 'forest', x: 0, y: 0, w: 300, h: 300 });
     expect(computePositionSnapPoints(layer.yBounPos, new Set(['forest']))).toHaveLength(0);
   });
 });

@@ -51,7 +51,6 @@ import { BOUNPOS_TYPES, LAYER as BOUNPOS_LAYER,
          applyMoveCommit as bounPosApplyMoveCommit,
          renderLayer     as bounPosRenderLayer,
          layerData       as bounPosLayerData,
-         metaFor         as bounPosMetaFor,
          getGeom         as bounPosGeom,
          getAnchor       as bounPosAnchor,
          getTtStateSchema as bounPosGetTtStateSchema,
@@ -84,7 +83,7 @@ const DEFAULT_BACKGROUNDS = [
 
 // ── Internal app state ────────────────────────────────────────────────────────
 let _ydoc, _yMeta, _yToys, _yDrawing, _yDrawingMeta,
-    _yBounPos, _yBounPosMeta,
+    _yBounPos,
     _awareness, _provider;
 
 // Per-layer visibility (local state, not synced).
@@ -185,20 +184,18 @@ export function makeDoc() {
   const yDrawing      = ydoc.getXmlFragment('drawing');
   const yDrawingMeta  = ydoc.getMap('drawingMeta');
   const yBounPos      = ydoc.getXmlFragment('boundaries');
-  const yBounPosMeta  = ydoc.getMap('boundaryMeta');
   const yMeta         = ydoc.getMap('meta');
-  return { ydoc, yMeta, yToys, yDrawing, yDrawingMeta, yBounPos, yBounPosMeta };
+  return { ydoc, yMeta, yToys, yDrawing, yDrawingMeta, yBounPos };
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
-export function boot({ ydoc, yMeta, yToys, yDrawing, yDrawingMeta, yBounPos, yBounPosMeta, awareness, provider, myId, myGrad, roomId, svgElement, displayName }) {
+export function boot({ ydoc, yMeta, yToys, yDrawing, yDrawingMeta, yBounPos, awareness, provider, myId, myGrad, roomId, svgElement, displayName }) {
   _ydoc           = ydoc;
   _yMeta          = yMeta;
   _yToys          = yToys;
   _yDrawing       = yDrawing;
   _yDrawingMeta   = yDrawingMeta;
   _yBounPos       = yBounPos;
-  _yBounPosMeta   = yBounPosMeta;
   _awareness  = awareness;
   _provider   = provider;
   _myId       = myId;
@@ -314,7 +311,7 @@ function applyLayerVisibility() {
 function renderBounPosLayer() {
   const layer = _svgEl.querySelector('#boundaries-positions-layer');
   if (!layer) return;
-  bounPosRenderLayer(_yBounPos, _yBounPosMeta, layer);
+  bounPosRenderLayer(_yBounPos, layer);
   Canvas.wireShapeClicks(layer);
 }
 
@@ -488,14 +485,6 @@ function moduleForElement(el) {
   return el?.getAttribute?.('data-module') ?? null;
 }
 
-// Return the sidecar meta object for any element id, regardless of layer.
-function metaFor(id) {
-  const svgEl = _svgEl?.querySelector?.(`[data-yid="${id}"]`);
-  const mtype = moduleForElement(svgEl);
-  if (mtype === 'boun_pos') return bounPosMetaFor(_yBounPosMeta, id);
-  return _yDrawingMeta.get(id);
-}
-
 // ── App bus — the object passed to all modules ─────────────────────────────────
 // Alphabetical within each group for easy scanning.
 const App = {
@@ -507,7 +496,7 @@ const App = {
     visible: _layerVisibility[l.id] ?? true,
     count: l.id === DRAW_LAYER             ? _yDrawing.toArray().filter(e => e instanceof Y.XmlElement).length
          : l.id === 'toys'                 ? _yToys.toArray().filter(e => e instanceof Y.XmlElement).length
-         : l.id === 'boundaries-positions' ? bounPosLayerData(_yBounPos, _yBounPosMeta).length
+         : l.id === 'boundaries-positions' ? bounPosLayerData(_yBounPos).length
          : l.id === 'background'           ? 1
          : 0,
   })),
@@ -560,7 +549,7 @@ const App = {
   getLayerObjects: (layerId) => {
     if (layerId === 'drawing')              return drawingsData(_yDrawing, _yDrawingMeta);
     if (layerId === 'toys')                 return toysData(_yToys);
-    if (layerId === 'boundaries-positions') return bounPosLayerData(_yBounPos, _yBounPosMeta);
+    if (layerId === 'boundaries-positions') return bounPosLayerData(_yBounPos);
     return [];
   },
   // Return ids of objects on the active layer whose bbox is fully inside rect.
@@ -663,7 +652,7 @@ const App = {
           const yEl = bounPosFindEl(_yBounPos, id);
           if (!yEl) continue;
           entry = { op: 'del', module: 'boun_pos', state: bounPosGetTtState(yEl) };
-          bounPosDeleteEl(_ydoc, _yBounPos, _yBounPosMeta, id);
+          bounPosDeleteEl(_ydoc, _yBounPos, id);
         } else {
           const yEl = findDrawing(_yDrawing, id);
           if (!yEl) continue;
@@ -727,7 +716,7 @@ const App = {
     const { id, name } = def.newId();
     if (def.genType === null) {
       // boundary
-      def.create(_ydoc, _yBounPos, _yBounPosMeta, { id, name, x, y, w, h, author: _myId });
+      def.create(_ydoc, _yBounPos, { id, name, x, y, w, h });
     } else {
       // pos-set
       const params   = App.getToolParams(toolName);
@@ -737,8 +726,8 @@ const App = {
       const snapRadius = Math.min(rawRadius, computeMaxSnapRadius(genType, genParam));
       const circles    = gridFillExtent(x, y, w, h, genType, genParam);
       if (circles.length === 0) return;
-      def.create(_ydoc, _yBounPos, _yBounPosMeta,
-        { id, name, snapRadius, genType, genParam, x, y, w, h, circles, author: _myId });
+      def.create(_ydoc, _yBounPos,
+        { id, name, snapRadius, genType, genParam, x, y, w, h, circles });
     }
     _undoStack.push({ op: 'add', module: 'boun_pos', bounPosType: def.bounPosType, id });
     addHistory(`added ${def.label} ${name}`, { elType: 'boundaries-positions' });
@@ -809,7 +798,7 @@ const App = {
     } else if (mtype === 'toys') {
       toyEdit(_ydoc, findToy(_yToys, id), editData);
     } else if (mtype === 'boun_pos') {
-      bounPosEdit({id, ...editData}, _ydoc, _yBounPos, _yBounPosMeta);
+      bounPosEdit({id, ...editData}, _ydoc, _yBounPos);
     }
     // observeDeep fires synchronously → renderDoc() already ran.
     // Refresh the Edit panel body to show the updated values.
@@ -848,7 +837,7 @@ const App = {
       if (!yEl) return;
       const state = bounPosGetTtState(yEl);
       _undoStack.push({ op: 'del', module: 'boun_pos', state });
-      bounPosDeleteEl(_ydoc, _yBounPos, _yBounPosMeta, id);
+      bounPosDeleteEl(_ydoc, _yBounPos, id);
       addHistory(`deleted ${state.bounPosType} ${id.slice(0, 12)}`,
         { elType: 'boundaries-positions' });
     } else {
@@ -1192,7 +1181,7 @@ const App = {
         deleteToy(_ydoc, _yToys, op.id);
         addHistory(`undid: add toy ${op.id.slice(0, 6)}`, { elType: 'toy' });
       } else if (op.module === 'boun_pos') {
-        bounPosDeleteEl(_ydoc, _yBounPos, _yBounPosMeta, op.id);
+        bounPosDeleteEl(_ydoc, _yBounPos, op.id);
         addHistory(`undid: add ${op.bounPosType} ${op.id.slice(0, 12)}`);
       } else {
         deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, op.id);
@@ -1209,7 +1198,7 @@ const App = {
         });
         return; // async — toast fired inside .then()
       } else if (op.module === 'boun_pos') {
-        bounPosApplyTtState(_ydoc, _yBounPos, _yBounPosMeta, op.state);
+        bounPosApplyTtState(_ydoc, _yBounPos, op.state);
         addHistory(`undid: delete ${op.state.bounPosType} ${op.state.id.slice(0, 12)}`);
       } else {
         drawingApplyTtState(_ydoc, _yDrawing, _yDrawingMeta, op.state);
@@ -1224,7 +1213,7 @@ const App = {
           if (entry.module === 'toys') {
             deleteToy(_ydoc, _yToys, entry.id);
           } else if (entry.module === 'boun_pos') {
-            bounPosDeleteEl(_ydoc, _yBounPos, _yBounPosMeta, entry.id);
+            bounPosDeleteEl(_ydoc, _yBounPos, entry.id);
           } else {
             deleteDrawing(_ydoc, _yDrawing, _yDrawingMeta, entry.id);
           }
@@ -1237,7 +1226,7 @@ const App = {
               })
             );
           } else if (entry.module === 'boun_pos') {
-            bounPosApplyTtState(_ydoc, _yBounPos, _yBounPosMeta, entry.state);
+            bounPosApplyTtState(_ydoc, _yBounPos, entry.state);
           } else {
             drawingApplyTtState(_ydoc, _yDrawing, _yDrawingMeta, entry.state);
           }
