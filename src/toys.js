@@ -17,11 +17,9 @@
  * contents) merge at the attribute/child level.
  *
  *   yToys (XmlFragment)
- *     └─ <g class="toy" data-toy-id data-toy-type>   ← placement + app metadata
- *          └─ <svg x y width height viewBox>          ← the live toy sub-document
+ *     └─ <g class="toy" data-toy-id data-toy-type data-color>  ← placement + state
+ *          └─ <svg x y width height viewBox>                   ← the live toy sub-document
  *               └─ ...toy content (defs, paths, tspans, ...)
- *
- * yToyMeta sidecar (Y.Map): id → { author, toyType, color, created }
  */
 import * as Y from 'yjs';
 
@@ -240,8 +238,8 @@ export function _clearSvgTextCache() { _svgTextCache.clear() }
  * The cache must be warm for this toyType — call addToy() if unsure.
  * attrs: { id, toyType, x, y, color, author }  (x,y is the center point)
  */
-export function addToySync(ydoc, yToys, yToyMeta, attrs, svgText) {
-  const { id, toyType, x, y, color, author } = attrs
+export function addToySync(ydoc, yToys, attrs, svgText) {
+  const { id, toyType, x, y, color } = attrs
   const prefix = `${id}__`
   const { ySvg, colorMatrices } = svgTextToYXml(svgText, prefix)
 
@@ -261,10 +259,10 @@ export function addToySync(ydoc, yToys, yToyMeta, attrs, svgText) {
     g.setAttribute('class',         'toy')
     g.setAttribute('data-toy-id',   id)
     g.setAttribute('data-toy-type', toyType)
+    g.setAttribute('data-color',    color ?? '#888')
     g.insert(0, [ySvg])
 
     yToys.insert(yToys.length, [g])
-    yToyMeta.set(id, { author, toyType, color, created: Date.now() })
   })
 }
 
@@ -272,9 +270,9 @@ export function addToySync(ydoc, yToys, yToyMeta, attrs, svgText) {
  * Place a toy on the table. Fetches the toy's SVG file on first use and
  * caches it; subsequent placements of the same toy type are cache hits and
  * skip the network round-trip.
- * attrs: { id, toyType, x, y, color, author }  (x,y is the center point)
+ * attrs: { id, toyType, x, y, color }  (x,y is the center point)
  */
-export async function addToy(ydoc, yToys, yToyMeta, attrs) {
+export async function addToy(ydoc, yToys, attrs) {
   const { toyType } = attrs
   const def = TOY_TYPES[toyType]
   if (!def) throw new Error(`unknown toy type: ${toyType}`)
@@ -286,20 +284,19 @@ export async function addToy(ydoc, yToys, yToyMeta, attrs) {
     svgText = await res.text()
     _svgTextCache.set(toyType, svgText)
   }
-  addToySync(ydoc, yToys, yToyMeta, attrs, svgText)
+  addToySync(ydoc, yToys, attrs, svgText)
 }
 
 /**
  * Remove a toy by id. Returns true if found.
  */
-export function deleteToy(ydoc, yToys, yToyMeta, id) {
+export function deleteToy(ydoc, yToys, id) {
   const idx = yToys.toArray().findIndex(
     g => g instanceof Y.XmlElement && g.getAttribute('data-toy-id') === id
   )
   if (idx === -1) return false
   ydoc.transact(() => {
     yToys.delete(idx, 1)
-    yToyMeta.delete(id)
   })
   return true
 }
@@ -418,12 +415,11 @@ export function _toSVGEl(yEl) {
  * All placed toys as { svgEl, meta }, in z-order (insertion order).
  * Each svgEl is a rendered SVG element with data-yid + data-module stamped.
  */
-export function listToys(yToys, yToyMeta) {
+export function listToys(yToys) {
   const results = []
   yToys.toArray().forEach(yEl => {
     if (!(yEl instanceof Y.XmlElement)) return
-    const id = yEl.getAttribute('data-toy-id')
-    results.push({ svgEl: _toSVGEl(yEl), meta: yToyMeta.get(id) ?? {} })
+    results.push({ svgEl: _toSVGEl(yEl) })
   })
   return results
 }
@@ -431,14 +427,15 @@ export function listToys(yToys, yToyMeta) {
 /**
  * Summarise a rendered toy svgEl as a plain layer-object descriptor.
  */
-function toyData(svgEl, yToyMeta) {
+function toyData(svgEl) {
   const id      = svgEl.getAttribute('data-yid')
-  const toyType = svgEl.getAttribute('data-toy-type') ?? yToyMeta?.get(id)?.toyType
+  const toyType = svgEl.getAttribute('data-toy-type') ?? 'toy'
+  const color   = svgEl.getAttribute('data-color') ?? '#888'
   return {
     id,
-    label: toyType?.replace(/_/g, ' ') ?? 'toy',
-    fill:  yToyMeta?.get(id)?.color ?? '#888',
-    kind:  toyType ?? 'toy',
+    label: toyType.replace(/_/g, ' '),
+    fill:  color,
+    kind:  toyType,
   }
 }
 
@@ -446,8 +443,8 @@ function toyData(svgEl, yToyMeta) {
  * All toys as layer-object descriptors, in z-order.
  * Used by app.js getLayerObjects — keeps toy internals out of the app bus.
  */
-export function toysData(yToys, yToyMeta) {
-  return listToys(yToys, yToyMeta).map(({ svgEl }) => toyData(svgEl, yToyMeta))
+export function toysData(yToys) {
+  return listToys(yToys).map(({ svgEl }) => toyData(svgEl))
 }
 
 export const TOOLS = [
@@ -493,12 +490,12 @@ function findAllYNodes(yEl, nodeName, results = []) {
 
 /**
  * Return the ttStateSchema for a rendered toy element.
- * Color is read from the `data-toy-color` attribute stamped by
- * app.js renderToysLayer at render time — no meta sidecar needed here.
+ * Color is read from the data-color attribute on the <g> wrapper, which is
+ * part of the Yjs tree and always in sync with the CRDT state.
  */
 export function getTtStateSchema(svgEl) {
   return {
-    color: svgEl.dataset.toyColor ?? '#888',
+    color: svgEl.getAttribute('data-color') ?? '#888',
     types: {
       color: 'color-hsl',   // hsl only — toy opacity is not user-editable
     },
@@ -514,6 +511,7 @@ export function getTtState(yToy) {
   if (!yToy) return null;
   const id      = yToy.getAttribute('data-toy-id');
   const toyType = yToy.getAttribute('data-toy-type');
+  const color   = yToy.getAttribute('data-color') ?? '#888';
   const ySvg    = yToy.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'svg');
   const x       = ySvg ? Number(ySvg.getAttribute('x') ?? 0) : 0;
   const y       = ySvg ? Number(ySvg.getAttribute('y') ?? 0) : 0;
@@ -521,7 +519,7 @@ export function getTtState(yToy) {
   // Center point (matches getAnchor convention)
   const cx = x + size / 2;
   const cy = y + size / 2;
-  return { id, toyType, cx, cy };
+  return { id, toyType, color, cx, cy };
 }
 
 /**
@@ -529,20 +527,19 @@ export function getTtState(yToy) {
  * Async — must fetch the toy SVG file to reconstruct the full tree.
  * Used by undo/redo to restore deleted toys.
  */
-export async function applyTtState(ydoc, yToys, yToyMeta, state) {
+export async function applyTtState(ydoc, yToys, state) {
   if (!state?.id || !state?.toyType) return;
   const existing = findToy(yToys, state.id);
   if (existing) {
     // Only update position if toy already exists.
     applyMoveCommit(ydoc, existing, state.cx, state.cy);
   } else {
-    await addToy(ydoc, yToys, yToyMeta, {
+    await addToy(ydoc, yToys, {
       id:      state.id,
       toyType: state.toyType,
       x:       state.cx,
       y:       state.cy,
       color:   state.color ?? '#888',
-      author:  undefined,
     });
   }
 }
@@ -550,21 +547,17 @@ export async function applyTtState(ydoc, yToys, yToyMeta, state) {
 /**
  * Apply an editData object to a placed toy.
  * Currently only `color` is editable: all feColorMatrix nodes in the toy's
- * Yjs tree are updated, and yToyMeta is updated to persist the new color.
+ * Yjs tree are updated and data-color on the <g> wrapper is kept in sync.
  * Called by App.commitEdit — never called directly from the UI.
  */
-export function edit(ydoc, yToy, yToyMeta, editData) {
+export function edit(ydoc, yToy, editData) {
   if (!yToy) return;
   const { color } = editData;
   if (color === undefined) return;
   const colorMatrices = findAllYNodes(yToy, 'feColorMatrix');
   const values = colorMatrixValues(color);
-  const id = yToy.getAttribute('data-toy-id');
   ydoc.transact(() => {
     for (const m of colorMatrices) m.setAttribute('values', values);
-    if (id) {
-      const meta = yToyMeta.get(id) ?? {};
-      yToyMeta.set(id, { ...meta, color });
-    }
+    yToy.setAttribute('data-color', color);
   });
 }

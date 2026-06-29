@@ -11,8 +11,7 @@ import {
 // Local accessor for the toys fragment + meta map. The production code creates
 // these via makeDoc() in app.js; tests just need a thin equivalent.
 const getToysLayer = (ydoc) => ({
-  yToys:    ydoc.getXmlFragment('toys'),
-  yToyMeta: ydoc.getMap('toyMeta'),
+  yToys: ydoc.getXmlFragment('toys'),
 })
 
 // ── Fixtures & helpers ──────────────────────────────────────────────────────
@@ -143,8 +142,8 @@ describe('svgTextToYXml', () => {
 describe('addToy', () => {
   test('places a <g> wrapper carrying placement + app metadata', async () => {
     const ydoc = new Y.Doc()
-    const { yToys, yToyMeta } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, yToyMeta, { id: 't1', toyType: 'player_marker', x: 100, y: 200, color: '#abc', author: 'alice' })
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 100, y: 200, color: '#abc' })
 
     expect(yToys.length).toBe(1)
     const g = yToys.toArray()[0]
@@ -152,12 +151,13 @@ describe('addToy', () => {
     expect(g.getAttribute('class')).toBe('toy')
     expect(g.getAttribute('data-toy-id')).toBe('t1')
     expect(g.getAttribute('data-toy-type')).toBe('player_marker')
+    expect(g.getAttribute('data-color')).toBe('#abc')
   })
 
   test('embeds an <svg> sub-document sized and centered on (x, y)', async () => {
     const ydoc = new Y.Doc()
-    const { yToys, yToyMeta } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, yToyMeta, { id: 't1', toyType: 'player_marker', x: 100, y: 200, color: '#abc', author: 'alice' })
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 100, y: 200, color: '#abc' })
 
     const svg = find(yToys.toArray()[0], 'svg')
     expect(svg).toBeTruthy()
@@ -167,30 +167,37 @@ describe('addToy', () => {
     expect(svg.getAttribute('y')).toBe('168')  // 200 - 64/2
   })
 
-  test('records author/type/color/created on the sidecar', async () => {
+  test('records data-toy-type and data-color on the <g> wrapper', async () => {
     const ydoc = new Y.Doc()
-    const { yToys, yToyMeta } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, yToyMeta, { id: 't1', toyType: 'player_marker', x: 0, y: 0, color: '#abc', author: 'alice' })
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0, color: 'hsl(200, 80%, 50%)' })
 
-    const meta = yToyMeta.get('t1')
-    expect(meta.author).toBe('alice')
-    expect(meta.toyType).toBe('player_marker')
-    expect(meta.color).toBe('#abc')
-    expect(meta.created).toBeTypeOf('number')
+    const g = yToys.toArray()[0]
+    expect(g.getAttribute('data-toy-type')).toBe('player_marker')
+    expect(g.getAttribute('data-color')).toBe('hsl(200, 80%, 50%)')
+  })
+
+  test('getTtState captures color from the <g> data-color attribute', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0, color: 'hsl(200, 80%, 50%)' })
+    const { getTtState } = await import('../../src/toys.js')
+    const state = getTtState(yToys.toArray()[0])
+    expect(state.color).toBe('hsl(200, 80%, 50%)')
   })
 
   test('ids inside the embedded toy are namespaced by instance id', async () => {
     const ydoc = new Y.Doc()
-    const { yToys, yToyMeta } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, yToyMeta, { id: 't1', toyType: 'player_marker', x: 0, y: 0, color: '#abc', author: 'alice' })
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0, color: '#abc' })
     expect(find(yToys.toArray()[0], 'circle').getAttribute('id')).toBe('t1__token_front')
   })
 
   test('throws on unknown toy type and writes nothing', async () => {
     const ydoc = new Y.Doc()
-    const { yToys, yToyMeta } = getToysLayer(ydoc)
+    const { yToys } = getToysLayer(ydoc)
     await expect(
-      addToy(ydoc, yToys, yToyMeta, { id: 'x', toyType: 'nope', x: 0, y: 0, author: 'a' })
+      addToy(ydoc, yToys, { id: 'x', toyType: 'nope', x: 0, y: 0 })
     ).rejects.toThrow(/unknown toy type/)
     expect(yToys.length).toBe(0)
   })
@@ -198,47 +205,46 @@ describe('addToy', () => {
   test('throws when the toy file cannot be loaded', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 })))
     const ydoc = new Y.Doc()
-    const { yToys, yToyMeta } = getToysLayer(ydoc)
+    const { yToys } = getToysLayer(ydoc)
     await expect(
-      addToy(ydoc, yToys, yToyMeta, { id: 'x', toyType: 'player_marker', x: 0, y: 0, author: 'a' })
+      addToy(ydoc, yToys, { id: 'x', toyType: 'player_marker', x: 0, y: 0 })
     ).rejects.toThrow(/failed to load/)
     expect(yToys.length).toBe(0)
   })
 })
 
 describe('deleteToy', () => {
-  test('removes the toy and its sidecar meta', async () => {
+  test('removes the toy <g> from the fragment', async () => {
     const ydoc = new Y.Doc()
-    const { yToys, yToyMeta } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, yToyMeta, { id: 't1', toyType: 'player_marker', x: 0, y: 0, author: 'a' })
-    await addToy(ydoc, yToys, yToyMeta, { id: 't2', toyType: 'player_marker', x: 0, y: 0, author: 'a' })
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+    await addToy(ydoc, yToys, { id: 't2', toyType: 'player_marker', x: 0, y: 0 })
 
-    expect(deleteToy(ydoc, yToys, yToyMeta, 't1')).toBe(true)
+    expect(deleteToy(ydoc, yToys, 't1')).toBe(true)
     expect(yToys.length).toBe(1)
-    expect(yToyMeta.get('t1')).toBeUndefined()
     expect(yToys.toArray()[0].getAttribute('data-toy-id')).toBe('t2')
   })
 
   test('returns false for an unknown id', () => {
     const ydoc = new Y.Doc()
-    const { yToys, yToyMeta } = getToysLayer(ydoc)
-    expect(deleteToy(ydoc, yToys, yToyMeta, 'nope')).toBe(false)
+    const { yToys } = getToysLayer(ydoc)
+    expect(deleteToy(ydoc, yToys, 'nope')).toBe(false)
   })
 })
 
 describe('listToys', () => {
   test('returns placed toys in z-order with element, type, and meta', async () => {
     const ydoc = new Y.Doc()
-    const { yToys, yToyMeta } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, yToyMeta, { id: 't1', toyType: 'player_marker', x: 0, y: 0, color: '#111', author: 'alice' })
-    await addToy(ydoc, yToys, yToyMeta, { id: 't2', toyType: 'player_marker', x: 0, y: 0, color: '#222', author: 'bob' })
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0, color: '#111' })
+    await addToy(ydoc, yToys, { id: 't2', toyType: 'player_marker', x: 0, y: 0, color: '#222' })
 
-    const toys = listToys(yToys, yToyMeta)
+    const toys = listToys(yToys)
     expect(toys.map(t => t.svgEl.getAttribute('data-yid'))).toEqual(['t1', 't2'])
     expect(toys[0].svgEl.getAttribute('data-toy-type')).toBe('player_marker')
     expect(toys[0].svgEl.tagName).toBe('g')
-    expect(toys[0].meta.author).toBe('alice')
-    expect(toys[1].meta.color).toBe('#222')
+    expect(toys[0].svgEl.getAttribute('data-color')).toBe('#111')
+    expect(toys[1].svgEl.getAttribute('data-color')).toBe('#222')
   })
 })
 
@@ -251,8 +257,8 @@ describe('convergence', () => {
     const p1 = new Y.Doc(); const t1 = getToysLayer(p1)
     const p2 = new Y.Doc(); const t2 = getToysLayer(p2)
 
-    await addToy(p1, t1.yToys, t1.yToyMeta, { id: 'a', toyType: 'player_marker', x: 0, y: 0, author: 'p1' })
-    await addToy(p2, t2.yToys, t2.yToyMeta, { id: 'b', toyType: 'player_marker', x: 0, y: 0, author: 'p2' })
+    await addToy(p1, t1.yToys, { id: 'a', toyType: 'player_marker', x: 0, y: 0 })
+    await addToy(p2, t2.yToys, { id: 'b', toyType: 'player_marker', x: 0, y: 0 })
 
     sync(p1, p2)
 
@@ -266,7 +272,7 @@ describe('convergence', () => {
 
   test('concurrent edits to different parts of one toy merge (not last-write-wins)', async () => {
     const p1 = new Y.Doc(); const t1 = getToysLayer(p1)
-    await addToy(p1, t1.yToys, t1.yToyMeta, { id: 'shared', toyType: 'player_marker', x: 0, y: 0, author: 'p1' })
+    await addToy(p1, t1.yToys, { id: 'shared', toyType: 'player_marker', x: 0, y: 0 })
 
     const p2 = new Y.Doc(); const t2 = getToysLayer(p2)
     sync(p1, p2)
@@ -286,8 +292,8 @@ describe('convergence', () => {
   test('both peers converge to byte-identical state', async () => {
     const p1 = new Y.Doc(); const t1 = getToysLayer(p1)
     const p2 = new Y.Doc(); const t2 = getToysLayer(p2)
-    await addToy(p1, t1.yToys, t1.yToyMeta, { id: 'a', toyType: 'player_marker', x: 0, y: 0, author: 'p1' })
-    await addToy(p2, t2.yToys, t2.yToyMeta, { id: 'b', toyType: 'player_marker', x: 0, y: 0, author: 'p2' })
+    await addToy(p1, t1.yToys, { id: 'a', toyType: 'player_marker', x: 0, y: 0 })
+    await addToy(p2, t2.yToys, { id: 'b', toyType: 'player_marker', x: 0, y: 0 })
     sync(p1, p2)
     const s1 = Buffer.from(Y.encodeStateAsUpdate(p1)).toString('hex')
     const s2 = Buffer.from(Y.encodeStateAsUpdate(p2)).toString('hex')
@@ -302,8 +308,8 @@ describe('convergence', () => {
 describe('findToy', () => {
   test('returns the <g> wrapper for a known id', async () => {
     const ydoc = new Y.Doc()
-    const { yToys, yToyMeta } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, yToyMeta, { id: 't1', toyType: 'player_marker', x: 0, y: 0, author: 'a' })
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
     const g = findToy(yToys, 't1')
     expect(g).not.toBeNull()
     expect(g.nodeName).toBe('g')
@@ -324,10 +330,10 @@ describe('findToy', () => {
 
   test('finds the correct toy among several', async () => {
     const ydoc = new Y.Doc()
-    const { yToys, yToyMeta } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, yToyMeta, { id: 'a', toyType: 'player_marker', x: 0, y: 0, author: 'x' })
-    await addToy(ydoc, yToys, yToyMeta, { id: 'b', toyType: 'player_marker', x: 0, y: 0, author: 'x' })
-    await addToy(ydoc, yToys, yToyMeta, { id: 'c', toyType: 'player_marker', x: 0, y: 0, author: 'x' })
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'a', toyType: 'player_marker', x: 0, y: 0 })
+    await addToy(ydoc, yToys, { id: 'b', toyType: 'player_marker', x: 0, y: 0 })
+    await addToy(ydoc, yToys, { id: 'c', toyType: 'player_marker', x: 0, y: 0 })
     expect(findToy(yToys, 'b').getAttribute('data-toy-id')).toBe('b')
     expect(findToy(yToys, 'c').getAttribute('data-toy-id')).toBe('c')
   })
@@ -346,8 +352,8 @@ describe('getGeom (toys)', () => {
 
   test('returns numeric bbox centered on the placement point', async () => {
     const ydoc = new Y.Doc()
-    const { yToys, yToyMeta } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, yToyMeta, { id: 't1', toyType: 'player_marker', x: 100, y: 200, author: 'a' })
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 100, y: 200 })
     const geo = getGeom(elFor(yToys, 't1'))
     expect(geo).toEqual({ x: 100 - DISPLAY / 2, y: 200 - DISPLAY / 2, width: DISPLAY, height: DISPLAY })
     expect(typeof geo.x).toBe('number')
@@ -356,8 +362,8 @@ describe('getGeom (toys)', () => {
 
   test('returns the exact embedded svg bounds', async () => {
     const ydoc = new Y.Doc()
-    const { yToys, yToyMeta } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, yToyMeta, { id: 't1', toyType: 'player_marker', x: 50, y: 80, author: 'a' })
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 50, y: 80 })
     const geo = getGeom(elFor(yToys, 't1'))
     expect(geo.x).toBe(50 - DISPLAY / 2)
     expect(geo.y).toBe(80 - DISPLAY / 2)
@@ -374,8 +380,8 @@ describe('getGeom (toys)', () => {
 
   test('returns correct geometry after the embedded svg is repositioned', async () => {
     const ydoc = new Y.Doc()
-    const { yToys, yToyMeta } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, yToyMeta, { id: 't1', toyType: 'player_marker', x: 100, y: 100, author: 'a' })
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 100, y: 100 })
 
     // simulate a drag: mutate the embedded svg's x and y directly in the CRDT
     const g   = findToy(yToys, 't1')
@@ -393,9 +399,9 @@ describe('getGeom (toys)', () => {
 
   test('geometry from two instances does not bleed between them', async () => {
     const ydoc = new Y.Doc()
-    const { yToys, yToyMeta } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, yToyMeta, { id: 'a', toyType: 'player_marker', x: 100, y: 100, author: 'x' })
-    await addToy(ydoc, yToys, yToyMeta, { id: 'b', toyType: 'player_marker', x: 400, y: 400, author: 'x' })
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'a', toyType: 'player_marker', x: 100, y: 100 })
+    await addToy(ydoc, yToys, { id: 'b', toyType: 'player_marker', x: 400, y: 400 })
 
     const geoA = getGeom(elFor(yToys, 'a'))
     const geoB = getGeom(elFor(yToys, 'b'))
@@ -428,8 +434,8 @@ describe('movement', () => {
 
   test('committing a move updates the embedded svg position', async () => {
     const ydoc = new Y.Doc()
-    const { yToys, yToyMeta } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, yToyMeta, { id: 't', toyType: 'player_marker', x: 100, y: 100, author: 'a' })
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't', toyType: 'player_marker', x: 100, y: 100 })
     expect(embeddedSvg(yToys, 't').getAttribute('x')).toBe(String(100 - DISPLAY / 2))
 
     commitMove(ydoc, yToys, 't', 200, 250)
@@ -440,8 +446,8 @@ describe('movement', () => {
 
   test('getGeom reflects the moved position', async () => {
     const ydoc = new Y.Doc()
-    const { yToys, yToyMeta } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, yToyMeta, { id: 't', toyType: 'player_marker', x: 100, y: 100, author: 'a' })
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't', toyType: 'player_marker', x: 100, y: 100 })
     commitMove(ydoc, yToys, 't', 300, 0)
     const geo = getGeom(_toSVGEl(findToy(yToys, 't')))
     expect(geo).toEqual({ x: 300, y: 0, width: DISPLAY, height: DISPLAY })
@@ -449,7 +455,7 @@ describe('movement', () => {
 
   test('a move syncs to a peer', async () => {
     const p1 = new Y.Doc(); const a = getToysLayer(p1)
-    await addToy(p1, a.yToys, a.yToyMeta, { id: 't', toyType: 'player_marker', x: 0, y: 0, author: 'p1' })
+    await addToy(p1, a.yToys, { id: 't', toyType: 'player_marker', x: 0, y: 0 })
     const p2 = new Y.Doc(); const b = getToysLayer(p2)
     sync(p1, p2)
 
@@ -463,7 +469,7 @@ describe('movement', () => {
 
   test('concurrent move and recolor on the same toy both survive', async () => {
     const p1 = new Y.Doc(); const a = getToysLayer(p1)
-    await addToy(p1, a.yToys, a.yToyMeta, { id: 't', toyType: 'player_marker', x: 0, y: 0, author: 'p1' })
+    await addToy(p1, a.yToys, { id: 't', toyType: 'player_marker', x: 0, y: 0 })
     const p2 = new Y.Doc(); const b = getToysLayer(p2)
     sync(p1, p2)
 
@@ -481,7 +487,7 @@ describe('movement', () => {
 
   test('concurrent moves converge identically on both peers', async () => {
     const p1 = new Y.Doc(); const a = getToysLayer(p1)
-    await addToy(p1, a.yToys, a.yToyMeta, { id: 't', toyType: 'player_marker', x: 0, y: 0, author: 'p1' })
+    await addToy(p1, a.yToys, { id: 't', toyType: 'player_marker', x: 0, y: 0 })
     const p2 = new Y.Doc(); const b = getToysLayer(p2)
     sync(p1, p2)
 
@@ -592,10 +598,10 @@ describe('applyColor (via addToy)', () => {
 
   test('feColorMatrix values are set after placement (red)', async () => {
     const ydoc = new Y.Doc()
-    const { yToys, yToyMeta } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, yToyMeta, {
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, {
       id: 't1', toyType: 'player_marker', x: 100, y: 100,
-      color: 'hsl(0, 100%, 50%)', author: 'alice',
+      color: 'hsl(0, 100%, 50%)',
     })
     const m = getMatrixEl(yToys).getAttribute('values').trim().split(/\s+/).map(Number)
     expect(m[0]).toBeCloseTo(1, 2)
@@ -605,9 +611,9 @@ describe('applyColor (via addToy)', () => {
 
   test('two players get different feColorMatrix values', async () => {
     const ydoc = new Y.Doc()
-    const { yToys, yToyMeta } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, yToyMeta, { id: 'p1', toyType: 'player_marker', x: 0, y: 0, color: 'hsl(0, 100%, 50%)', author: 'alice' })
-    await addToy(ydoc, yToys, yToyMeta, { id: 'p2', toyType: 'player_marker', x: 0, y: 0, color: 'hsl(240, 100%, 50%)', author: 'bob' })
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'p1', toyType: 'player_marker', x: 0, y: 0, color: 'hsl(0, 100%, 50%)' })
+    await addToy(ydoc, yToys, { id: 'p2', toyType: 'player_marker', x: 0, y: 0, color: 'hsl(240, 100%, 50%)' })
 
     function getMatrix(g) {
       function find(el, name) {
@@ -627,7 +633,7 @@ describe('applyColor (via addToy)', () => {
 
   test('color matrix syncs to a peer unchanged', async () => {
     const p1 = new Y.Doc(); const a = getToysLayer(p1)
-    await addToy(p1, a.yToys, a.yToyMeta, { id: 't', toyType: 'player_marker', x: 0, y: 0, color: 'hsl(120, 80%, 40%)', author: 'alice' })
+    await addToy(p1, a.yToys, { id: 't', toyType: 'player_marker', x: 0, y: 0, color: 'hsl(120, 80%, 40%)' })
     const p2 = new Y.Doc(); const b = getToysLayer(p2)
     Y.applyUpdate(p2, Y.encodeStateAsUpdate(p1))
     function getMatrix(yToys) {
@@ -644,8 +650,8 @@ describe('applyColor (via addToy)', () => {
 
   test('placement without a color leaves default matrix values', async () => {
     const ydoc = new Y.Doc()
-    const { yToys, yToyMeta } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, yToyMeta, { id: 't1', toyType: 'player_marker', x: 0, y: 0, color: undefined, author: 'alice' })
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0, color: undefined })
     // default from the TOY_SVG fixture: '1 0 0 0 0  1 0 0 0 0  1 0 0 0 0  0 0 0 1 0'
     expect(getMatrixEl(yToys).getAttribute('values')).toContain('1 0 0 0 0')
   })

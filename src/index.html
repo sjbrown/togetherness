@@ -278,7 +278,7 @@ document.getElementById('myIdLabel').textContent = `me: ${myDisplayName}`;
 // ── Yjs ─────────────────────────────────────────────────────────────────────
 export const CURRENT_SCHEMA = 4;
 
-const { ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, yBounPos, yBounPosMeta } = makeDoc();
+const { ydoc, yMeta, yToys, yDrawing, yDrawingMeta, yBounPos, yBounPosMeta } = makeDoc();
 
 // ── Persistence ─────────────────────────────────────────────────────────────
 const TABLES_KEY = 'tt_tables';
@@ -317,7 +317,7 @@ const awareness    = provider.awareness;
 awareness.setLocalState({ id: myId, color: myGrad.c1, grad: myGrad, cursor: null, selection: null });
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
-boot({ ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, yBounPos, yBounPosMeta, awareness, provider, myId, myGrad, roomId, displayName: myDisplayName });
+boot({ ydoc, yMeta, yToys, yDrawing, yDrawingMeta, yBounPos, yBounPosMeta, awareness, provider, myId, myGrad, roomId, displayName: myDisplayName });
 </script>
 
 </body>
