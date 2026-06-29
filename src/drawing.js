@@ -92,11 +92,11 @@ export const SHAPE_TYPES = {
 
 /**
  * Add a drawing element to the doc.
- * attrs: { id, type, author, ...all schema keys }
+ * attrs: { id, type, ...all schema keys }
  * `type` is required and must be a key of SHAPE_TYPES. All writable keys are
- * determined by the type's schema (everything except id/type/author).
+ * determined by the type's schema (everything except id/type).
  */
-export function addDrawing(ydoc, yDrawing, yDrawingMeta, attrs) {
+export function addDrawing(ydoc, yDrawing, attrs) {
   const { type } = attrs;
   if (!type) throw new Error('addDrawing: attrs.type is required');
   const def = SHAPE_TYPES[type];
@@ -113,7 +113,6 @@ export function addDrawing(ydoc, yDrawing, yDrawingMeta, attrs) {
       if (v != null) el.setAttribute(attrMap[k] ?? k, String(v));
     }
     yDrawing.insert(yDrawing.length, [el]);
-    yDrawingMeta.set(attrs.id, { author: attrs.author, type, created: Date.now() });
   });
   return el;
 }
@@ -121,14 +120,13 @@ export function addDrawing(ydoc, yDrawing, yDrawingMeta, attrs) {
 /**
  * Delete a drawing element by id. Returns true if found and deleted.
  */
-export function deleteDrawing(ydoc, yDrawing, yDrawingMeta, id) {
+export function deleteDrawing(ydoc, yDrawing, id) {
   const idx = yDrawing.toArray().findIndex(
     e => e instanceof Y.XmlElement && e.getAttribute('id') === id
   );
   if (idx === -1) return false;
   ydoc.transact(() => {
     yDrawing.delete(idx, 1);
-    yDrawingMeta.delete(id);
   });
   return true;
 }
@@ -265,19 +263,16 @@ export function applyMoveDom(domEl, x, y) {
 }
 
 /**
- * Iterate all XmlElement children, optionally newest-first by created timestamp.
- * Returns an array of { svgEl, drawingMeta }; each svgEl is a rendered SVG element
+ * Iterate all XmlElement children in z-order (bottom to top).
+ * Returns an array of { svgEl }; each svgEl is a rendered SVG element
  * with data-yid + data-module stamped.
  */
-export function listDrawings(yDrawing, yDrawingMeta, { newestFirst = false } = {}) {
+export function listDrawings(yDrawing) {
   const results = [];
   for (let node = yDrawing.firstChild; node; node = node.nextSibling) {
     if (!(node instanceof Y.XmlElement)) continue;
-    const id          = node.getAttribute('id');
-    const drawingMeta = yDrawingMeta.get(id) ?? {};
-    results.push({ svgEl: _toSVGEl(node), drawingMeta });
+    results.push({ svgEl: _toSVGEl(node) });
   }
-  if (newestFirst) results.sort((a, b) => (b.drawingMeta.created ?? 0) - (a.drawingMeta.created ?? 0));
   return results;
 }
 
@@ -301,8 +296,8 @@ function shapeData(svgEl) {
  * All drawing elements as layer-object descriptors, in z-order.
  * Used by app.js getLayerObjects — keeps drawing internals out of the app bus.
  */
-export function drawingsData(yDrawing, yDrawingMeta) {
-  return listDrawings(yDrawing, yDrawingMeta).map(({ svgEl }) => shapeData(svgEl));
+export function drawingsData(yDrawing) {
+  return listDrawings(yDrawing).map(({ svgEl }) => shapeData(svgEl));
 }
 
 // ── ttState / ttStateSchema ───────────────────────────────────────────────────
@@ -371,7 +366,7 @@ export function getTtState(yEl) {
  * Write a ttState snapshot back into the Yjs drawing fragment.
  * Creates the element if it doesn't exist; updates it if it does.
  */
-export function applyTtState(ydoc, yDrawing, yDrawingMeta, state) {
+export function applyTtState(ydoc, yDrawing, state) {
   if (!state?.id || !state?.type) return;
   const existing = findDrawing(yDrawing, state.id);
   if (existing) {
@@ -382,7 +377,7 @@ export function applyTtState(ydoc, yDrawing, yDrawingMeta, state) {
       }
     });
   } else {
-    addDrawing(ydoc, yDrawing, yDrawingMeta, state);
+    addDrawing(ydoc, yDrawing, state);
   }
 }
 

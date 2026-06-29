@@ -33,10 +33,9 @@ const uid = () => Math.random().toString(36).slice(2, 9)
 
 function add(doc, overrides = {}) {
   const id = overrides.id ?? uid()
-  addDrawing(doc.ydoc, doc.yDrawing, doc.yDrawingMeta, {
+  addDrawing(doc.ydoc, doc.yDrawing, {
     id, type: 'rect', x: 10, y: 10, width: 100, height: 50,
     fill: '#c8f060', stroke: 'none', 'stroke-width': 0, opacity: 1,
-    author: 'test-peer',
     ...overrides,
   })
   return id
@@ -114,18 +113,18 @@ describe('basic operations', () => {
     const doc = makeDoc()
     add(doc, { id: 'a' })
     add(doc, { id: 'b' })
-    deleteDrawing(doc.ydoc, doc.yDrawing, doc.yDrawingMeta, 'a')
+    deleteDrawing(doc.ydoc, doc.yDrawing, 'a')
     expect(doc.yDrawing.length).toBe(1)
     expect(findDrawing(doc.yDrawing, 'b')).not.toBeNull()
     expect(findDrawing(doc.yDrawing, 'a')).toBeNull()
   })
 
-  test('delete also removes sidecar meta', () => {
+  test('delete removes the element from the fragment', () => {
     const doc = makeDoc()
-    add(doc, { id: 'a', author: 'alice' })
-    expect(doc.yDrawingMeta.get('a')?.author).toBe('alice')
-    deleteDrawing(doc.ydoc, doc.yDrawing, doc.yDrawingMeta, 'a')
-    expect(doc.yDrawingMeta.get('a')).toBeUndefined()
+    add(doc, { id: 'a' })
+    expect(findDrawing(doc.yDrawing, 'a')).not.toBeNull()
+    deleteDrawing(doc.ydoc, doc.yDrawing, 'a')
+    expect(findDrawing(doc.yDrawing, 'a')).toBeNull()
   })
 
   test('edit a shape attribute', () => {
@@ -141,7 +140,7 @@ describe('basic operations', () => {
     add(doc, { id: 'bottom' })
     add(doc, { id: 'middle' })
     add(doc, { id: 'top' })
-    const ids = listDrawings(doc.yDrawing, doc.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
+    const ids = listDrawings(doc.yDrawing).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
     expect(ids).toEqual(['bottom', 'middle', 'top'])
   })
 
@@ -162,19 +161,18 @@ describe('basic operations', () => {
     expect(el.getAttribute('r')).toBe('45')
   })
 
-  test('author, type, and created are stored on sidecar', () => {
+  test('element tag and id are set correctly', () => {
     const doc = makeDoc()
-    add(doc, { id: 'a', author: 'alice' })
-    const meta = doc.yDrawingMeta.get('a')
-    expect(meta?.author).toBe('alice')
-    expect(meta?.type).toBe('rect')
-    expect(meta?.created).toBeTypeOf('number')
+    add(doc, { id: 'a' })
+    const yEl = findDrawing(doc.yDrawing, 'a')
+    expect(yEl.nodeName).toBe('rect')
+    expect(yEl.getAttribute('id')).toBe('a')
   })
 
-  test('circle type is stored on sidecar', () => {
+  test('circle element has correct tag', () => {
     const doc = makeDoc()
     add(doc, { id: 'c', type: 'circle', cx: 50, cy: 50, r: 20 })
-    expect(doc.yDrawingMeta.get('c')?.type).toBe('circle')
+    expect(findDrawing(doc.yDrawing, 'c').nodeName).toBe('circle')
   })
 })
 
@@ -240,7 +238,7 @@ describe('listDrawings', () => {
     add(doc, { id: 'a' })
     add(doc, { id: 'b' })
     add(doc, { id: 'c' })
-    const ids = listDrawings(doc.yDrawing, doc.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
+    const ids = listDrawings(doc.yDrawing).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
     expect(ids).toEqual(['a', 'b', 'c'])
   })
 
@@ -248,7 +246,7 @@ describe('listDrawings', () => {
     const doc = makeDoc()
     add(doc, { id: 'r', type: 'rect' })
     add(doc, { id: 'c', type: 'circle', cx: 50, cy: 50, r: 20 })
-    const shapes = listDrawings(doc.yDrawing, doc.yDrawingMeta)
+    const shapes = listDrawings(doc.yDrawing)
     expect(shapes).toHaveLength(2)
     expect(shapes[0].svgEl.getAttribute('data-yid')).toBe('r')
     expect(shapes[1].svgEl.getAttribute('data-yid')).toBe('c')
@@ -257,24 +255,10 @@ describe('listDrawings', () => {
     expect(shapes[1].svgEl.tagName).toBe('circle')
   })
 
-  test('newestFirst sorts by created timestamp', () => {
-    const doc = makeDoc()
-    add(doc, { id: 'old' })
-    doc.yDrawingMeta.set('old', { author: 'x', type: 'rect', created: 1000 })
-    add(doc, { id: 'new' })
-    doc.yDrawingMeta.set('new', { author: 'x', type: 'rect', created: 3000 })
-    add(doc, { id: 'mid' })
-    doc.yDrawingMeta.set('mid', { author: 'x', type: 'rect', created: 2000 })
-
-    const ids = listDrawings(doc.yDrawing, doc.yDrawingMeta, { newestFirst: true })
-      .map(({ svgEl }) => svgEl.getAttribute("data-yid"))
-    expect(ids).toEqual(['new', 'mid', 'old'])
-  })
-
   test('skips non-element nodes', () => {
     const doc = makeDoc()
     add(doc, { id: 'a' })
-    const shapes = listDrawings(doc.yDrawing, doc.yDrawingMeta)
+    const shapes = listDrawings(doc.yDrawing)
     expect(shapes).toHaveLength(1)
     expect(shapes.every(({ svgEl }) => svgEl && svgEl.nodeType === 1)).toBe(true)
   })
@@ -289,16 +273,16 @@ describe('convergence', () => {
     const peer1 = makeDoc()
     const peer2 = makeDoc()
 
-    add(peer1, { id: 'from-peer1', author: 'peer1' })
-    add(peer2, { id: 'from-peer2', author: 'peer2' })
+    add(peer1, { id: 'from-peer1' })
+    add(peer2, { id: 'from-peer2' })
 
     sync(peer1.ydoc, peer2.ydoc)
 
     expect(peer1.yDrawing.length).toBe(2)
     expect(peer2.yDrawing.length).toBe(2)
 
-    const ids1 = listDrawings(peer1.yDrawing, peer1.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid")).sort()
-    const ids2 = listDrawings(peer2.yDrawing, peer2.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid")).sort()
+    const ids1 = listDrawings(peer1.yDrawing).map(({ svgEl }) => svgEl.getAttribute("data-yid")).sort()
+    const ids2 = listDrawings(peer2.yDrawing).map(({ svgEl }) => svgEl.getAttribute("data-yid")).sort()
     expect(ids1).toEqual(ids2)
     expect(ids1).toContain('from-peer1')
     expect(ids1).toContain('from-peer2')
@@ -345,7 +329,7 @@ describe('convergence', () => {
     const peer2 = makeDoc()
     sync(peer1.ydoc, peer2.ydoc)
 
-    deleteDrawing(peer1.ydoc, peer1.yDrawing, peer1.yDrawingMeta, 'doomed')
+    deleteDrawing(peer1.ydoc, peer1.yDrawing, 'doomed')
     const el2 = findDrawing(peer2.yDrawing, 'doomed')
     peer2.ydoc.transact(() => el2.setAttribute('fill', 'blue'))
 
@@ -370,7 +354,7 @@ describe('convergence', () => {
     expect(lengths).toEqual([3, 3, 3])
 
     const idSets = peers.map(p =>
-      listDrawings(p.yDrawing, p.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid")).sort().join(',')
+      listDrawings(p.yDrawing).map(({ svgEl }) => svgEl.getAttribute("data-yid")).sort().join(',')
     )
     expect(idSets[0]).toBe(idSets[1])
     expect(idSets[1]).toBe(idSets[2])
@@ -391,17 +375,15 @@ describe('z-order', () => {
     // Bring 'a' to front
     const old   = findDrawing(doc.yDrawing, 'a')
     const attrs = old.getAttributes()
-    const meta  = doc.yDrawingMeta.get('a')
     doc.ydoc.transact(() => {
-      deleteDrawing(doc.ydoc, doc.yDrawing, doc.yDrawingMeta, 'a')
-      addDrawing(doc.ydoc, doc.yDrawing, doc.yDrawingMeta, {
+      deleteDrawing(doc.ydoc, doc.yDrawing, 'a')
+      addDrawing(doc.ydoc, doc.yDrawing, {
         ...Object.fromEntries(Object.entries(attrs).map(([k, v]) => [k, isNaN(v) ? v : Number(v)])),
-        type: meta?.type ?? 'rect',
-        author: meta?.author ?? 'unknown',
+        type: old.nodeName,
       })
     })
 
-    const ids = listDrawings(doc.yDrawing, doc.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
+    const ids = listDrawings(doc.yDrawing).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
     expect(ids).toEqual(['b', 'c', 'a'])
   })
 
@@ -413,8 +395,8 @@ describe('z-order', () => {
     add(peer2, { id: 'p2-shape' })
     sync(peer1.ydoc, peer2.ydoc)
 
-    const order1 = listDrawings(peer1.yDrawing, peer1.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
-    const order2 = listDrawings(peer2.yDrawing, peer2.yDrawingMeta).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
+    const order1 = listDrawings(peer1.yDrawing).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
+    const order2 = listDrawings(peer2.yDrawing).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
     expect(order1).toEqual(order2)
     expect(order1.length).toBe(2)
   })
