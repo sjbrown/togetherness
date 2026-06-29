@@ -83,7 +83,7 @@ const DEFAULT_BACKGROUNDS = [
 
 
 // ── Internal app state ────────────────────────────────────────────────────────
-let _ydoc, _yMeta, _yToys, _yToyMeta, _yDrawing, _yDrawingMeta,
+let _ydoc, _yMeta, _yToys, _yDrawing, _yDrawingMeta,
     _yBounPos, _yBounPosMeta,
     _awareness, _provider;
 
@@ -182,21 +182,19 @@ function buildToolRegistry() {
 export function makeDoc() {
   const ydoc          = new Y.Doc();
   const yToys         = ydoc.getXmlFragment('toys');
-  const yToyMeta      = ydoc.getMap('toyMeta');
   const yDrawing      = ydoc.getXmlFragment('drawing');
   const yDrawingMeta  = ydoc.getMap('drawingMeta');
   const yBounPos      = ydoc.getXmlFragment('boundaries');
   const yBounPosMeta  = ydoc.getMap('boundaryMeta');
   const yMeta         = ydoc.getMap('meta');
-  return { ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, yBounPos, yBounPosMeta };
+  return { ydoc, yMeta, yToys, yDrawing, yDrawingMeta, yBounPos, yBounPosMeta };
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
-export function boot({ ydoc, yMeta, yToys, yToyMeta, yDrawing, yDrawingMeta, yBounPos, yBounPosMeta, awareness, provider, myId, myGrad, roomId, svgElement, displayName }) {
+export function boot({ ydoc, yMeta, yToys, yDrawing, yDrawingMeta, yBounPos, yBounPosMeta, awareness, provider, myId, myGrad, roomId, svgElement, displayName }) {
   _ydoc           = ydoc;
   _yMeta          = yMeta;
   _yToys          = yToys;
-  _yToyMeta       = yToyMeta;
   _yDrawing       = yDrawing;
   _yDrawingMeta   = yDrawingMeta;
   _yBounPos       = yBounPos;
@@ -329,9 +327,7 @@ function renderToysLayer() {
   if (!layer) return;
   layer.innerHTML = '';
 
-  listToys(_yToys, _yToyMeta).forEach(({ svgEl, meta }) => {
-    // Stamp color so toys.getTtStateSchema(svgEl) can read it without meta access.
-    if (meta?.color) svgEl.dataset.toyColor = meta.color;
+  listToys(_yToys).forEach(({ svgEl }) => {
     svgEl.style.cursor = 'grab';
     layer.appendChild(svgEl);
   });
@@ -496,7 +492,6 @@ function moduleForElement(el) {
 function metaFor(id) {
   const svgEl = _svgEl?.querySelector?.(`[data-yid="${id}"]`);
   const mtype = moduleForElement(svgEl);
-  if (mtype === 'toys')      return _yToyMeta.get(id);
   if (mtype === 'boun_pos') return bounPosMetaFor(_yBounPosMeta, id);
   return _yDrawingMeta.get(id);
 }
@@ -564,7 +559,7 @@ const App = {
   },
   getLayerObjects: (layerId) => {
     if (layerId === 'drawing')              return drawingsData(_yDrawing, _yDrawingMeta);
-    if (layerId === 'toys')                 return toysData(_yToys, _yToyMeta);
+    if (layerId === 'toys')                 return toysData(_yToys);
     if (layerId === 'boundaries-positions') return bounPosLayerData(_yBounPos, _yBounPosMeta);
     return [];
   },
@@ -663,7 +658,7 @@ const App = {
           const yEl = findToy(_yToys, id);
           if (!yEl) continue;
           entry = { op: 'del', module: 'toys', state: toyGetTtState(yEl) };
-          deleteToy(_ydoc, _yToys, _yToyMeta, id);
+          deleteToy(_ydoc, _yToys, id);
         } else if (mtype === 'boun_pos') {
           const yEl = bounPosFindEl(_yBounPos, id);
           if (!yEl) continue;
@@ -812,7 +807,7 @@ const App = {
     if (mtype === 'drawing') {
       drawingEdit(_ydoc, findDrawing(_yDrawing, id), editData);
     } else if (mtype === 'toys') {
-      toyEdit(_ydoc, findToy(_yToys, id), _yToyMeta, editData);
+      toyEdit(_ydoc, findToy(_yToys, id), editData);
     } else if (mtype === 'boun_pos') {
       bounPosEdit({id, ...editData}, _ydoc, _yBounPos, _yBounPosMeta);
     }
@@ -825,9 +820,9 @@ const App = {
     const def = _toolById[toolName];
     if (!def?.toyType) { UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
     const id = App.getMyId() + '_' + Math.random().toString(36).slice(2, 7);
-    addToy(_ydoc, _yToys, _yToyMeta, {
+    addToy(_ydoc, _yToys, {
       id, toyType: def.toyType, x, y,
-      color: _toolParams[toolName]?.fill ?? _myGrad.c1, author: _myId,
+      color: _toolParams[toolName]?.fill ?? _myGrad.c1,
     }).then(() => {
       _undoStack.push({ op: 'add', module: 'toys', id });
       addHistory(`placed ${def.label} ${id.slice(0, 6)}`, { elType: 'toy' });
@@ -846,7 +841,7 @@ const App = {
       if (!yEl) return;
       const state = toyGetTtState(yEl);
       _undoStack.push({ op: 'del', module: 'toys', state });
-      deleteToy(_ydoc, _yToys, _yToyMeta, id);
+      deleteToy(_ydoc, _yToys, id);
       addHistory(`deleted ${id.slice(0, 6)}`, { elType: 'toy' });
     } else if (mtype === 'boun_pos') {
       const yEl = bounPosFindEl(_yBounPos, id);
@@ -1194,7 +1189,7 @@ const App = {
     if (!op) { UI.toast('Nothing to undo', 'warn'); return; }
     if (op.op === 'add') {
       if (op.module === 'toys') {
-        deleteToy(_ydoc, _yToys, _yToyMeta, op.id);
+        deleteToy(_ydoc, _yToys, op.id);
         addHistory(`undid: add toy ${op.id.slice(0, 6)}`, { elType: 'toy' });
       } else if (op.module === 'boun_pos') {
         bounPosDeleteEl(_ydoc, _yBounPos, _yBounPosMeta, op.id);
@@ -1205,7 +1200,7 @@ const App = {
       }
     } else if (op.op === 'del') {
       if (op.module === 'toys') {
-        toyApplyTtState(_ydoc, _yToys, _yToyMeta, op.state).then(() => {
+        toyApplyTtState(_ydoc, _yToys, op.state).then(() => {
           addHistory(`undid: delete toy ${op.state.id.slice(0, 6)}`, { elType: 'toy' });
           UI.toast('Undone');
         }).catch(err => {
@@ -1227,7 +1222,7 @@ const App = {
       for (const entry of [...op.entries].reverse()) {
         if (entry.op === 'add') {
           if (entry.module === 'toys') {
-            deleteToy(_ydoc, _yToys, _yToyMeta, entry.id);
+            deleteToy(_ydoc, _yToys, entry.id);
           } else if (entry.module === 'boun_pos') {
             bounPosDeleteEl(_ydoc, _yBounPos, _yBounPosMeta, entry.id);
           } else {
@@ -1236,7 +1231,7 @@ const App = {
         } else if (entry.op === 'del') {
           if (entry.module === 'toys') {
             promises.push(
-              toyApplyTtState(_ydoc, _yToys, _yToyMeta, entry.state).catch(err => {
+              toyApplyTtState(_ydoc, _yToys, entry.state).catch(err => {
                 App.addLog(`batch undo toy restore failed: ${err.message}`, 'del');
                 throw err;
               })
