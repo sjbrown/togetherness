@@ -470,7 +470,6 @@ export function applyMoveCommit(ydoc, yEl, x, y) {
 
 /**
  * Render the entire Boundaries and Positions layer into layerEl.
- * app.js calls this; it never iterates yBounPos directly.
  */
 export function renderLayer(yBounPos, layerEl) {
   layerEl.innerHTML = '';

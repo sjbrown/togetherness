@@ -412,7 +412,7 @@ export function _toSVGEl(yEl) {
 
 
 /**
- * All placed toys as { svgEl, meta }, in z-order (insertion order).
+ * All placed toys as { svgEl }
  * Each svgEl is a rendered SVG element with data-yid + data-module stamped.
  */
 export function listToys(yToys) {

@@ -30,7 +30,7 @@ function circleGetBBox(a) { return { x: +a.cx - +a.r, y: +a.cy - +a.r, width: 2 
 //               show includes 'edit'      — Edit panel
 //               show includes 'addQuick'  — toolOpts popup
 //
-// Adding a shape type = adding one entry here (plus a button). No branching elsewhere.
+// Adding a shape type = adding one entry here (plus a button).
 export const LAYER = 'drawing';
 
 export const SHAPE_TYPES = {
@@ -221,7 +221,7 @@ export function getAnchor(svgEl) {
 
 /**
  * Commit a move to the Yjs doc in a single transaction.
- * Called once on pointerup — never during drag.
+ * Called once on pointerup.
  * All shape-type branching lives here; callers are type-agnostic.
  *
  * ydoc — Y.Doc
@@ -335,7 +335,7 @@ export function getTtStateSchema(svgElOrType) {
   // Element present — read current values from DOM, mapping SVG attr names back to schema keys.
   const values = {};
   for (const k of Object.keys(schema.types)) {
-    if (k === 'id' || k === 'type') continue;  // internal — never in the returned value bag
+    if (k === 'id' || k === 'type') continue;  // internal
     const svgAttr = (shapeDef.attrMap ?? {})[k] ?? k;
     values[k] = svgElOrType.getAttribute(svgAttr) ?? schema.values[k];
   }
@@ -384,7 +384,7 @@ export function applyTtState(ydoc, yDrawing, state) {
 /**
  * Apply an editData object to a drawing Yjs element.
  * Only keys present in editData are written; unknown keys are ignored.
- * Called by App.commitEdit — never called directly from the UI.
+ * Called by App.commitEdit
  */
 export function edit(ydoc, yEl, editData) {
   if (!yEl) return;
