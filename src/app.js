@@ -1,8 +1,8 @@
 /**
  * app.js — togetherness application bus
  *
- * The only module that imports from all others. Owns no mode directly;
- * instead it wires the layers together through a narrow, typed interface.
+ * The only module that imports from all others.
+ * It wires the layers together through a narrow, typed interface.
  *
  * Roles:
  *   - Initialise all modules and inject this bus object as their sole dependency
@@ -10,8 +10,6 @@
  *   - Translate CRDT/awareness changes → render calls
  *   - Answer read queries from ui.js and overlay.js
  *   - Maintain the undo stack (since it spans canvas + drawing layer)
- *
- * Import order:  icons → drawing → overlay → canvas → ui → app
  *
  * Usage in index.html:
  *   <script type="module">
@@ -99,8 +97,8 @@ let _selectedIds  = new Set();   // SSOT: N=0 nothing, N=1 single, N>1 multi
 let _activeLayer  = 'toys';
 
 // Returns the single selected id, or null if zero or more than one are selected.
-// Internal use only — callers that need to work on a single element must check
-// this returns non-null before proceeding; the bus only exposes getSelectedIds().
+// Callers that need to work on a single element must check
+// this returns non-null before proceeding
 function _singleSelectedId() {
   return _selectedIds.size === 1 ? [..._selectedIds][0] : null;
 }
@@ -112,12 +110,13 @@ let _historyLog   = [];      // { label } — human-readable, newest first
 // Active drag — set by App.startDrag, cleared by commitMove / cancelMove.
 // Awareness state: drag: { elId, dx, dy }
 // local awareness schema: { id, color, grad, cursor, selection, drag? }
-// selection: { elIds: string[] } | null  — always an array; never { elId }
+// selection: { elIds: string[] } | null
 let _dragState    = null;    // { id, startX, startY, startBboxX, startBboxY,
                               //   boundsRects: [{x,y,w,h}]|null, lastValidX, lastValidY,
                               //   snapPoints: [{cx,cy,snapRadius}] } | null
 
-// Active multi-element drag — set by App.startMultiDrag, cleared by commitMultiMove / cancelMultiMove.
+// Active multi-element drag — set by App.startMultiDrag,
+// cleared by commitMultiMove / cancelMultiMove.
 // Awareness: multidrag: { elIds: [...], offsets: [{bboxX, bboxY}] }
 // No boundary/snap constraints — those are per-toy and don't compose cleanly for a group.
 let _multiDragState = null;  // { elements: [{ id, mtype, anchorX, anchorY, bboxX, bboxY }],
@@ -145,10 +144,7 @@ function buildToolRegistry() {
     _toolParams[def.name] = { ...(def.defaults ?? {}) };
   };
   register(SELECT_TOOL);
-  // background layer: select only
   _toolsByLayer['background'] = [SELECT_TOOL];
-  // boundaries-positions layer
-  // boundaries-positions layer — tool defs derived from BOUNPOS_TYPES
   const bounPosTools = Object.entries(BOUNPOS_TYPES).map(([name, def]) => ({
     name,
     label:   def.label,
@@ -160,10 +156,8 @@ function buildToolRegistry() {
     _toolParams[def.name] = { ...BOUNPOS_TYPES[def.name].schema.values };
   });
   _toolsByLayer[BOUNPOS_LAYER] = [SELECT_TOOL, ...bounPosTools];
-  // toys layer
   TOY_TOOLS.forEach(register);
   _toolsByLayer['toys'] = [SELECT_TOOL, ...TOY_TOOLS];
-  // drawing layer — tool defs derived from SHAPE_TYPES; params seeded from schema defaults
   const drawTools = Object.entries(SHAPE_TYPES).map(([name, def]) => ({
     name,
     label:   def.schema.label,
@@ -201,27 +195,27 @@ export function boot({ ydoc, yMeta, yToys, yDrawing, yBounPos, awareness, provid
   _roomId     = roomId;
   _svgEl      = svgElement ?? document.querySelector('#stage svg') ?? document.getElementById('canvas');
 
-  // 1. Icons — stamp symbols into DOM before anyone builds HTML
+  // Icons — stamp symbols into DOM before anyone builds HTML
   initIcons();
 
-  // 1b. Tool registry — assemble layer tool palettes from registries
+  // Tool registry — assemble layer tool palettes from registries
   buildToolRegistry();
 
-  // 2. Overlay — needs App + SVG element
+  // Overlay — needs App + SVG element
   Overlay.init(App, _svgEl);
   Overlay.setLocalGradient(_myGrad);
 
-  // 3. Canvas — needs App + SVG element; attaches pointer listeners
+  // Canvas — needs App + SVG element; attaches pointer listeners
   Canvas.init(App, _svgEl);
 
-  // 4. UI — needs App; attaches panel/menu/pill listeners
+  // UI — needs App; attaches panel/menu/pill listeners
   UI.init(App);
   UI.setIdentity({ projectName: 'togetherness', userId: displayName, roomId });
 
-  // 5. Keyboard shortcuts
+  // Keyboard shortcuts
   window.addEventListener('keydown', onKeyDown);
 
-  // 6. CRDT observers
+  // CRDT observers
   // Both layers use observeDeep so attribute changes (moves via applyMoveCommit)
   // trigger renderDoc on every client — shallow observe only fires for
   // insert/delete on the fragment itself, missing setAttribute on children.
@@ -234,7 +228,7 @@ export function boot({ ydoc, yMeta, yToys, yDrawing, yBounPos, awareness, provid
   _yMeta.observe(onMetaChanged);
   _awareness.on('change', onPresenceChanged);
 
-  // 7. Provider status
+  // Provider status
   const dot = document.getElementById('statusDot');
   _provider.on('synced', () => {
     if (dot) dot.className = 'status-dot connected';
@@ -248,7 +242,7 @@ export function boot({ ydoc, yMeta, yToys, yDrawing, yBounPos, awareness, provid
     if (!connected && _multiDragState) App.cancelMultiMove();
   });
 
-  // 8. Initial render
+  // Initial render
   renderDoc();
   renderPresence();
 }
@@ -467,15 +461,14 @@ function onDrawingChanged(events, transaction) {
 
 function onPresenceChanged() {
   renderPresence();
-  UI.updatePeersPanel();  // live-update peer list if panel is open
+  UI.updatePeersPanel();
 }
 
 function moduleForElement(el) {
   return el?.getAttribute?.('data-module') ?? null;
 }
 
-// ── App bus — the object passed to all modules ─────────────────────────────────
-// Alphabetical within each group for easy scanning.
+// ── App bus — the object passed to all modules ───────────────────────────────
 const App = {
   // ── Queries (ui.js, overlay.js read these) ─────────────────────────────────
   getActiveLayer:  () => _activeLayer,
