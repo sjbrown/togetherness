@@ -439,6 +439,10 @@ export function deleteEl(ydoc, yBounPos, id) {
   return true;
 }
 
+// Canonical LayerAPI aliases — find/delete are the names every layer agrees
+// on. findEl/deleteEl stay exported as-is for existing call sites/tests.
+export const find = findEl;
+
 export function applyMoveCommit(ydoc, yEl, x, y) {
   if (!yEl) return;
   const type  = yEl.getAttribute('data-bounpos-type') ?? 'boundary';
@@ -674,6 +678,38 @@ export function edit(id, editData, ydoc, yBounPos) {
   return editBounPos({id, ...editData}, ydoc, yBounPos);
 }
 
+/**
+ * Canonical LayerAPI edit signature: edit(ydoc, yEl, editData).
+ * Unlike editBounPos (which looks up the element by id from the fragment),
+ * this takes the already-found Y.XmlElement directly — matching drawing.edit
+ * and toys.edit. Internally rebuilds the state object editBounPos expects.
+ */
+export function editEl(ydoc, yEl, editData) {
+  if (!yEl) return;
+  const id   = yEl.getAttribute('id');
+  const type = yEl.getAttribute('data-bounpos-type') ?? 'boundary';
+  const yPath = yChildByTag(yEl, 'path');
+  const yText = yChildByTag(yEl, 'text');
+  ydoc.transact(() => {
+    if (editData.name !== undefined) {
+      yEl.setAttribute('name', String(editData.name));
+      if (yText) setYTextContent(ydoc, yText, String(editData.name));
+    }
+    if (editData.snapRadius !== undefined && type === 'pos-set') {
+      const genType  = yEl.getAttribute('data-gen-type')  ?? 'square';
+      const genParam = Number(yEl.getAttribute('data-gen-param') ?? 80);
+      const maxR     = computeMaxSnapRadius(genType, genParam);
+      const r        = Math.round(Math.min(Math.max(1, Number(editData.snapRadius)), maxR));
+      yEl.setAttribute('data-snap-radius', String(r));
+      for (const child of yEl.toArray()) {
+        if (child instanceof Y.XmlElement && child.nodeName === 'circle') {
+          child.setAttribute('r', String(r));
+        }
+      }
+    }
+  });
+}
+
 // ── Drag context helpers ──────────────────────────────────────────────────────
 
 /**
@@ -729,17 +765,22 @@ export function computePositionSnapPoints(yBounPos, toyClasses) {
   return points;
 }
 
-/*
-export const layerAPI = {
-  add: addBounPos,
-  del: deleteEl,
-  find: findEl,
-  list: () => {console.error('not implemented')},
-  edit: edit,
-  geomFor: getGeom,
-  anchorFor: getAnchor,
-  ttStateFor: getTtState,
-  ttStateSchemaForType: getTtStateSchema
-  getData: 
+/**
+ * makeLayerAPI — returns the canonical LayerAPI for the Boundaries and
+ * Positions layer, closing over (ydoc, yBounPos) so app.js can dispatch
+ * by layer type without re-passing the fragment on every call.
+ */
+export function makeLayerAPI(ydoc, yBounPos) {
+  return {
+    find:             (id)               => findEl(yBounPos, id),
+    delete:           (id)               => deleteEl(ydoc, yBounPos, id),
+    getGeom,
+    getAnchor,
+    getTtState,
+    getTtStateSchema,
+    applyMoveCommit:  (yEl, x, y)        => applyMoveCommit(ydoc, yEl, x, y),
+    applyTtState:     (state)            => applyTtState(ydoc, yBounPos, state),
+    edit:             (yEl, editData)    => editEl(ydoc, yEl, editData),
+    listData:         ()                 => layerData(yBounPos),
+  };
 }
-*/

@@ -19,42 +19,15 @@
  */
 
 import { initIcons }                              from './icons.js';
-import { SHAPE_TYPES, LAYER as DRAW_LAYER,
-         addDrawing, deleteDrawing,
-         findDrawing, listDrawings, drawingsData,
-         getGeom as drawingGeom,
-         getAnchor as drawingAnchor,
-         applyMoveCommit as drawingApplyMoveCommit,
-         getTtStateSchema as drawingGetTtStateSchema,
-         getTtState as drawingGetTtState,
-         applyTtState as drawingApplyTtState,
-         edit as drawingEdit } from './drawing.js';
-import { TOOLS as TOY_TOOLS,
-         TOY_TYPES, addToy, deleteToy, findToy,
-         listToys, toysData,
-         getGeom as toyGeom,
-         getAnchor as toyAnchor,
-         applyMoveCommit as toyApplyMoveCommit,
-         getTtStateSchema as toyGetTtStateSchema,
-         getTtState as toyGetTtState,
-         applyTtState as toyApplyTtState,
-         edit as toyEdit,
-       }  from './toys.js';
+import * as Drawing                               from './drawing.js';
+import * as Toys                                  from './toys.js';
+import * as BounPos                               from './boun_pos.js';
+import { SHAPE_TYPES, LAYER as DRAW_LAYER }        from './drawing.js';
+import { TOOLS as TOY_TOOLS, TOY_TYPES, addToy }   from './toys.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
 import { BOUNPOS_TYPES, LAYER as BOUNPOS_LAYER,
          addPositionSet, createPositionSetElement,
          rectToPath, pathToRect,
-         findEl          as bounPosFindEl,
-         deleteEl        as bounPosDeleteEl,
-         applyMoveCommit as bounPosApplyMoveCommit,
-         renderLayer     as bounPosRenderLayer,
-         layerData       as bounPosLayerData,
-         getGeom         as bounPosGeom,
-         getAnchor       as bounPosAnchor,
-         getTtStateSchema as bounPosGetTtStateSchema,
-         getTtState       as bounPosGetTtState,
-         applyTtState     as bounPosApplyTtState,
-         editBounPos      as bounPosEdit,
          computeBoundaryRects,
          computePositionSnapPoints,
          computeMaxSnapRadius,
@@ -83,6 +56,13 @@ const DEFAULT_BACKGROUNDS = [
 let _ydoc, _yMeta, _yToys, _yDrawing,
     _yBounPos,
     _awareness, _provider;
+
+// Layers — the canonical LayerAPI dispatch table, built once at boot() once
+// the Yjs fragments exist. Maps the data-module value stamped on each
+// rendered SVG element ('drawing'|'toys'|'boun_pos') to that layer's API:
+// find/delete/getGeom/getAnchor/applyMoveCommit/getTtState/getTtStateSchema/
+// applyTtState/edit/listData. See moduleForElement() for the lookup key.
+let _Layers = {};
 
 // Per-layer visibility (local state, not synced).
 const _layerVisibility = {
@@ -166,7 +146,7 @@ function buildToolRegistry() {
   }));
   drawTools.forEach(def => {
     _toolById[def.name] = def;
-    const schema = drawingGetTtStateSchema(def.name);
+    const schema = Drawing.getTtStateSchema(def.name);
     _toolParams[def.name] = { ...schema };
   });
   _toolsByLayer[DRAW_LAYER] = [SELECT_TOOL, ...drawTools];
@@ -194,6 +174,14 @@ export function boot({ ydoc, yMeta, yToys, yDrawing, yBounPos, awareness, provid
   _myGrad    = myGrad;
   _roomId     = roomId;
   _svgEl      = svgElement ?? document.querySelector('#stage svg') ?? document.getElementById('canvas');
+
+  // Layers — the canonical LayerAPI dispatch table, keyed by the data-module
+  // value app.js stamps on rendered SVG elements.
+  _Layers = {
+    'drawing':  Drawing.makeLayerAPI(_ydoc, _yDrawing),
+    'toys':     Toys.makeLayerAPI(_ydoc, _yToys),
+    'boun_pos': BounPos.makeLayerAPI(_ydoc, _yBounPos),
+  };
 
   // Icons — stamp symbols into DOM before anyone builds HTML
   initIcons();
@@ -303,7 +291,7 @@ function applyLayerVisibility() {
 function renderBounPosLayer() {
   const layer = _svgEl.querySelector('#boundaries-positions-layer');
   if (!layer) return;
-  bounPosRenderLayer(_yBounPos, layer);
+  BounPos.renderLayer(_yBounPos, layer);
   Canvas.wireShapeClicks(layer);
 }
 
@@ -316,7 +304,7 @@ function renderToysLayer() {
   if (!layer) return;
   layer.innerHTML = '';
 
-  listToys(_yToys).forEach(({ svgEl }) => {
+  Toys.listToys(_yToys).forEach(({ svgEl }) => {
     svgEl.style.cursor = 'grab';
     layer.appendChild(svgEl);
   });
@@ -332,7 +320,7 @@ function renderDrawingLayer() {
   if (!layer) return;
   layer.innerHTML = '';
 
-  listDrawings(_yDrawing).forEach(({ svgEl }) => {
+  Drawing.listDrawings(_yDrawing).forEach(({ svgEl }) => {
     svgEl.style.cursor = 'pointer';
     layer.appendChild(svgEl);
   });
@@ -348,11 +336,11 @@ function renderDrawingList() {
   const list = document.getElementById('drawingList');
   if (!list) return;
   list.innerHTML = '';
-  listDrawings(_yDrawing).forEach(({ svgEl }) => {
+  Drawing.listDrawings(_yDrawing).forEach(({ svgEl }) => {
     const id = svgEl.getAttribute('data-yid');
     const attrs = {};
     for (const at of svgEl.attributes) attrs[at.name] = at.value;
-    const def = drawingGetTtStateSchema(svgEl.getAttribute('data-type') ?? svgEl.tagName);
+    const def = Drawing.getTtStateSchema(svgEl.getAttribute('data-type') ?? svgEl.tagName);
     const item = document.createElement('div');
     item.className = 'drawing-item' + (_selectedIds.has(id) ? ' selected' : '');
     item.dataset.id = id;
@@ -464,6 +452,15 @@ function onPresenceChanged() {
   UI.updatePeersPanel();
 }
 
+// Maps the panel layer id (as used in _layerMeta / getActiveLayer) to the
+// data-module value stamped on rendered SVG elements and used as the key
+// into _Layers. 'background' has no LayerAPI — it's not a CRDT layer.
+const LAYER_ID_TO_MODULE = {
+  'drawing':               'drawing',
+  'toys':                  'toys',
+  'boundaries-positions':  'boun_pos',
+};
+
 function moduleForElement(el) {
   return el?.getAttribute?.('data-module') ?? null;
 }
@@ -476,11 +473,7 @@ const App = {
   getLayers:       () => _layerMeta.map(l => ({
     ...l,
     visible: _layerVisibility[l.id] ?? true,
-    count: l.id === DRAW_LAYER             ? _yDrawing.toArray().filter(e => e instanceof Y.XmlElement).length
-         : l.id === 'toys'                 ? _yToys.toArray().filter(e => e instanceof Y.XmlElement).length
-         : l.id === 'boundaries-positions' ? bounPosLayerData(_yBounPos).length
-         : l.id === 'background'           ? 1
-         : 0,
+    count: l.id === 'background' ? 1 : (_Layers[LAYER_ID_TO_MODULE[l.id]]?.listData().length ?? 0),
   })),
   getMyColor:      () => _myGrad.c1,
   getMyGradient:   () => _myGrad,
@@ -494,7 +487,7 @@ const App = {
   // SHAPE_TYPES[name].schema; for other tools it falls back to a minimal schema
   // built from the tool def's options array.
   getToolSchema:   (name)  => {
-    const drawSchema = drawingGetTtStateSchema(name);
+    const drawSchema = Drawing.getTtStateSchema(name);
     if (drawSchema?.types) return drawSchema;
     if (BOUNPOS_TYPES[name]) return BOUNPOS_TYPES[name].schema;
     const def = _toolById[name];
@@ -517,23 +510,14 @@ const App = {
     const svgEl = _svgEl.querySelector(`[data-yid="${id}"]`);
     if (!svgEl) return null;
     const mtype = moduleForElement(svgEl);
-    if (mtype === 'toys')      return toyGeom(svgEl);
-    if (mtype === 'boun_pos') return bounPosGeom(svgEl);
-    return drawingGeom(svgEl);
+    return _Layers[mtype]?.getGeom(svgEl) ?? null;
   },
   getAnchor: (svgEl) => {
     if (!svgEl) return { x: 0, y: 0 };
     const mtype = moduleForElement(svgEl);
-    if (mtype === 'toys')      return toyAnchor(svgEl);
-    if (mtype === 'boun_pos') return bounPosAnchor(svgEl);
-    return drawingAnchor(svgEl);
+    return _Layers[mtype]?.getAnchor(svgEl) ?? { x: 0, y: 0 };
   },
-  getLayerObjects: (layerId) => {
-    if (layerId === 'drawing')              return drawingsData(_yDrawing);
-    if (layerId === 'toys')                 return toysData(_yToys);
-    if (layerId === 'boundaries-positions') return bounPosLayerData(_yBounPos);
-    return [];
-  },
+  getLayerObjects: (layerId) => _Layers[LAYER_ID_TO_MODULE[layerId]]?.listData() ?? [],
   // Return ids of objects on the active layer whose bbox is fully inside rect.
   // rect is canvas-space { x, y, width, height }.
   // Also updates overlay candidate rings as a side effect.
@@ -624,24 +608,13 @@ const App = {
         const svgEl = _svgEl.querySelector(`[data-yid="${id}"]`);
         if (!svgEl) continue;
         const mtype = moduleForElement(svgEl);
-        let entry = null;
-        if (mtype === 'toys') {
-          const yEl = findToy(_yToys, id);
-          if (!yEl) continue;
-          entry = { op: 'del', module: 'toys', state: toyGetTtState(yEl) };
-          deleteToy(_ydoc, _yToys, id);
-        } else if (mtype === 'boun_pos') {
-          const yEl = bounPosFindEl(_yBounPos, id);
-          if (!yEl) continue;
-          entry = { op: 'del', module: 'boun_pos', state: bounPosGetTtState(yEl) };
-          bounPosDeleteEl(_ydoc, _yBounPos, id);
-        } else {
-          const yEl = findDrawing(_yDrawing, id);
-          if (!yEl) continue;
-          entry = { op: 'del', module: 'drawing', state: drawingGetTtState(yEl) };
-          deleteDrawing(_ydoc, _yDrawing, id);
-        }
-        if (entry) entries.push(entry);
+        const L = _Layers[mtype];
+        if (!L) continue;
+        const yEl = L.find(id);
+        if (!yEl) continue;
+        const entry = { op: 'del', module: mtype, state: L.getTtState(yEl) };
+        L.delete(id);
+        entries.push(entry);
       }
     });
     if (entries.length > 0) {
@@ -659,7 +632,7 @@ const App = {
     const ids     = [..._selectedIds];
     const entries = [];
     for (const id of ids) {
-      const yEl = findDrawing(_yDrawing, id);
+      const yEl = Drawing.findDrawing(_yDrawing, id);
       if (!yEl) continue;
       const attrs = yEl.getAttributes();
       const type  = yEl.nodeName;
@@ -668,7 +641,7 @@ const App = {
       const geom   = type === 'rect'
         ? { x: offset.x, y: offset.y, width: +attrs.width, height: +attrs.height }
         : { cx: offset.x, cy: offset.y, r: +attrs.r };
-      addDrawing(_ydoc, _yDrawing,
+      Drawing.addDrawing(_ydoc, _yDrawing,
         { ...attrs, ...geom, type, id: newId });
       entries.push({ op: 'add', module: 'drawing', id: newId });
     }
@@ -684,7 +657,7 @@ const App = {
   // ── Document mutations ────────────────────────────────────────────────────
   commitDrawing: (attrs) => {
     const id = App.getMyId() + '_' + Math.random().toString(36).slice(2, 7);
-    addDrawing(_ydoc, _yDrawing, { ...attrs, id });
+    Drawing.addDrawing(_ydoc, _yDrawing, { ...attrs, id });
     _undoStack.push({ op: 'add', module: 'drawing', id });
     addHistory(`added ${attrs.type ?? 'rect'} ${id.slice(0, 6)}`, {
       fill: attrs.fill, elType: attrs.type,
@@ -743,7 +716,7 @@ const App = {
    * Return the ttStateSchema for the currently selected element, decorated
    * with `ltype` and `id`.  Returns null when nothing is selected.
    *
-   * Delegates to the layer-scoped module's getTtStateSchema(svgEl) so that
+   * Delegates to the layer-scoped LayerAPI's getTtStateSchema(svgEl) so that
    * app.js stays ignorant of per-type field definitions.
    */
   getElementTtStateSchema: () => {
@@ -752,22 +725,15 @@ const App = {
     const svgEl = _svgEl?.querySelector(`[data-yid="${id}"]`);
     if (!svgEl) return null;
     const mtype = moduleForElement(svgEl);
-    let schema;
-    if (mtype === 'drawing') {
-      schema = drawingGetTtStateSchema(svgEl);
-    } else if (mtype === 'toys') {
-      schema = toyGetTtStateSchema(svgEl);
-    } else if (mtype === 'boun_pos') {
-      schema = bounPosGetTtStateSchema(svgEl);
-    } else {
-      return null;
-    }
+    const L = _Layers[mtype];
+    if (!L) return null;
+    const schema = L.getTtStateSchema(svgEl);
     return { ltype: mtype, ...schema, id };
   },
 
   /**
    * Apply a partial editData object to the selected element.
-   * Dispatches to the appropriate module's edit() function, which handles
+   * Dispatches to the appropriate layer's edit() function, which handles
    * the Yjs transaction.  App.commitEdit is the single entry point that
    * the Edit panel UI calls for all element mutations.
    */
@@ -775,13 +741,8 @@ const App = {
     const svgEl = _svgEl?.querySelector(`[data-yid="${id}"]`);
     if (!svgEl) return;
     const mtype = moduleForElement(svgEl);
-    if (mtype === 'drawing') {
-      drawingEdit(_ydoc, findDrawing(_yDrawing, id), editData);
-    } else if (mtype === 'toys') {
-      toyEdit(_ydoc, findToy(_yToys, id), editData);
-    } else if (mtype === 'boun_pos') {
-      bounPosEdit({id, ...editData}, _ydoc, _yBounPos);
-    }
+    const L = _Layers[mtype];
+    if (L) L.edit(L.find(id), editData);
     // observeDeep fires synchronously → renderDoc() already ran.
     // Refresh the Edit panel body to show the updated values.
     UI.refreshFromDoc();
@@ -807,27 +768,19 @@ const App = {
   deleteElement: (svgEl) => {
     const id    = svgEl.getAttribute('data-yid');
     const mtype = moduleForElement(svgEl);
+    const L = _Layers[mtype];
+    if (!L) return false;
+    const yEl = L.find(id);
+    if (!yEl) return false;
+    const state = L.getTtState(yEl);
+    _undoStack.push({ op: 'del', module: mtype, state });
+    L.delete(id);
     if (mtype === 'toys') {
-      const yEl = findToy(_yToys, id);
-      if (!yEl) return;
-      const state = toyGetTtState(yEl);
-      _undoStack.push({ op: 'del', module: 'toys', state });
-      deleteToy(_ydoc, _yToys, id);
       addHistory(`deleted ${id.slice(0, 6)}`, { elType: 'toy' });
     } else if (mtype === 'boun_pos') {
-      const yEl = bounPosFindEl(_yBounPos, id);
-      if (!yEl) return;
-      const state = bounPosGetTtState(yEl);
-      _undoStack.push({ op: 'del', module: 'boun_pos', state });
-      bounPosDeleteEl(_ydoc, _yBounPos, id);
       addHistory(`deleted ${state.bounPosType} ${id.slice(0, 12)}`,
         { elType: 'boundaries-positions' });
     } else {
-      const yEl = findDrawing(_yDrawing, id);
-      if (!yEl) return;
-      const state = drawingGetTtState(yEl);
-      _undoStack.push({ op: 'del', module: 'drawing', state });
-      deleteDrawing(_ydoc, _yDrawing, id);
       addHistory(`deleted ${id.slice(0, 6)}`, { fill: state?.fill, elType: yEl.nodeName });
     }
     App.addLog(`deleted ${id.slice(0, 6)}`, 'local');
@@ -861,7 +814,7 @@ const App = {
       }
       return;
     }
-    const yEl = findDrawing(_yDrawing, id);
+    const yEl = Drawing.findDrawing(_yDrawing, id);
     if (!yEl) return;
     const attrs = yEl.getAttributes();
     const type  = yEl.nodeName;
@@ -955,17 +908,12 @@ const App = {
     _awareness.setLocalStateField('drag', null);
     _dragState = null;
 
-    if (mtype === 'toys') {
-      toyApplyMoveCommit(_ydoc, findToy(_yToys, id), rx, ry);
-      // onToysChanged (observeDeep) fires synchronously and calls renderDoc().
-    } else if (mtype === 'boun_pos') {
-      bounPosApplyMoveCommit(_ydoc, bounPosFindEl(_yBounPos, id), rx, ry);
-      // observeDeep on _yBounPos fires and calls renderDoc() via onBounPosChanged.
-    } else {
-      drawingApplyMoveCommit(_ydoc, findDrawing(_yDrawing, id), rx, ry);
-      // _yDrawing.observe is shallow — attribute changes on children don't
-      // trigger onDrawingChanged, so we must call renderDoc() explicitly here.
-      renderDoc();
+    if (_Layers[mtype]) {
+      _Layers[mtype].applyMoveCommit(_Layers[mtype].find(id), rx, ry);
+      // toys/boun_pos: observeDeep fires synchronously and calls renderDoc().
+      // drawing: _yDrawing.observe is shallow — attribute changes on children
+      // don't trigger onDrawingChanged, so we call renderDoc() explicitly.
+      if (mtype === 'drawing') renderDoc();
     }
     _undoStack.push({ op: 'move', module: mtype, id, fromX, fromY, toX: rx, toY: ry });
     addHistory(`moved ${id.slice(0, 6)} → (${rx}, ${ry})`, {
@@ -1086,13 +1034,8 @@ const App = {
       for (const el of elements) {
         const rx = Math.round(el.anchorX + fdx);
         const ry = Math.round(el.anchorY + fdy);
-        if (el.mtype === 'toys') {
-          toyApplyMoveCommit(_ydoc, findToy(_yToys, el.id), rx, ry);
-        } else if (el.mtype === 'boun_pos') {
-          bounPosApplyMoveCommit(_ydoc, bounPosFindEl(_yBounPos, el.id), rx, ry);
-        } else {
-          drawingApplyMoveCommit(_ydoc, findDrawing(_yDrawing, el.id), rx, ry);
-        }
+        const L = _Layers[el.mtype];
+        if (L) L.applyMoveCommit(L.find(el.id), rx, ry);
         entries.push({ op: 'move', module: el.mtype, id: el.id,
           fromX: el.anchorX, fromY: el.anchorY,
           toX: rx, toY: ry });
@@ -1143,58 +1086,46 @@ const App = {
     const op = _undoStack.pop();
     if (!op) { UI.toast('Nothing to undo', 'warn'); return; }
     if (op.op === 'add') {
+      _Layers[op.module]?.delete(op.id);
       if (op.module === 'toys') {
-        deleteToy(_ydoc, _yToys, op.id);
         addHistory(`undid: add toy ${op.id.slice(0, 6)}`, { elType: 'toy' });
       } else if (op.module === 'boun_pos') {
-        bounPosDeleteEl(_ydoc, _yBounPos, op.id);
         addHistory(`undid: add ${op.bounPosType} ${op.id.slice(0, 12)}`);
       } else {
-        deleteDrawing(_ydoc, _yDrawing, op.id);
         addHistory(`undid: add ${op.id.slice(0, 6)}`);
       }
     } else if (op.op === 'del') {
-      if (op.module === 'toys') {
-        toyApplyTtState(_ydoc, _yToys, op.state).then(() => {
+      const L = _Layers[op.module];
+      Promise.resolve(L?.applyTtState(op.state)).then(() => {
+        if (op.module === 'toys') {
           addHistory(`undid: delete toy ${op.state.id.slice(0, 6)}`, { elType: 'toy' });
-          UI.toast('Undone');
-        }).catch(err => {
-          UI.toast('Cannot undo toy delete', 'warn');
-          App.addLog(`undo toy delete failed: ${err.message}`, 'del');
-        });
-        return; // async — toast fired inside .then()
-      } else if (op.module === 'boun_pos') {
-        bounPosApplyTtState(_ydoc, _yBounPos, op.state);
-        addHistory(`undid: delete ${op.state.bounPosType} ${op.state.id.slice(0, 12)}`);
-      } else {
-        drawingApplyTtState(_ydoc, _yDrawing, op.state);
-        addHistory(`undid: delete ${op.state.id.slice(0, 6)}`, { fill: op.state.fill, elType: op.state.type });
-      }
+        } else if (op.module === 'boun_pos') {
+          addHistory(`undid: delete ${op.state.bounPosType} ${op.state.id.slice(0, 12)}`);
+        } else {
+          addHistory(`undid: delete ${op.state.id.slice(0, 6)}`, { fill: op.state.fill, elType: op.state.type });
+        }
+        UI.toast('Undone');
+      }).catch(err => {
+        UI.toast('Cannot undo delete', 'warn');
+        App.addLog(`undo delete failed: ${err.message}`, 'del');
+      });
+      return; // async — toast fired inside .then()
     } else if (op.op === 'batch') {
-      // Restore all entries in reverse order. Toy restores are async; collect
+      // Restore all entries in reverse order. Async restores (toys) collect
       // their promises and wait for all before toasting.
       const promises = [];
       for (const entry of [...op.entries].reverse()) {
+        const L = _Layers[entry.module];
+        if (!L) continue;
         if (entry.op === 'add') {
-          if (entry.module === 'toys') {
-            deleteToy(_ydoc, _yToys, entry.id);
-          } else if (entry.module === 'boun_pos') {
-            bounPosDeleteEl(_ydoc, _yBounPos, entry.id);
-          } else {
-            deleteDrawing(_ydoc, _yDrawing, entry.id);
-          }
+          L.delete(entry.id);
         } else if (entry.op === 'del') {
-          if (entry.module === 'toys') {
-            promises.push(
-              toyApplyTtState(_ydoc, _yToys, entry.state).catch(err => {
-                App.addLog(`batch undo toy restore failed: ${err.message}`, 'del');
-                throw err;
-              })
-            );
-          } else if (entry.module === 'boun_pos') {
-            bounPosApplyTtState(_ydoc, _yBounPos, entry.state);
-          } else {
-            drawingApplyTtState(_ydoc, _yDrawing, entry.state);
+          const result = L.applyTtState(entry.state);
+          if (result instanceof Promise) {
+            promises.push(result.catch(err => {
+              App.addLog(`batch undo restore failed: ${err.message}`, 'del');
+              throw err;
+            }));
           }
         }
       }
@@ -1209,14 +1140,12 @@ const App = {
       }
       addHistory(`undid: batch (${op.entries.length} ops)`);
     } else if (op.op === 'move') {
-      if (op.module === 'toys') {
-        toyApplyMoveCommit(_ydoc, findToy(_yToys, op.id), op.fromX, op.fromY);
-      } else if (op.module === 'boun_pos') {
-        bounPosApplyMoveCommit(_ydoc, bounPosFindEl(_yBounPos, op.id), op.fromX, op.fromY);
-        // observeDeep fires and calls renderDoc()
-      } else {
-        drawingApplyMoveCommit(_ydoc, findDrawing(_yDrawing, op.id), op.fromX, op.fromY);
-        renderDoc();
+      const L = _Layers[op.module];
+      if (L) {
+        L.applyMoveCommit(L.find(op.id), op.fromX, op.fromY);
+        // toys/boun_pos: observeDeep fires and calls renderDoc().
+        // drawing: shallow observe — call renderDoc() explicitly.
+        if (op.module === 'drawing') renderDoc();
       }
       addHistory(`undid: move ${op.id.slice(0, 6)} → (${op.fromX}, ${op.fromY})`);
     }

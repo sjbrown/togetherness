@@ -394,3 +394,23 @@ export function edit(ydoc, yEl, editData) {
     }
   });
 }
+
+/**
+ * makeLayerAPI — returns the canonical LayerAPI for the drawing layer,
+ * closing over (ydoc, yDrawing) so app.js can dispatch by layer type
+ * without re-passing the fragment on every call.
+ */
+export function makeLayerAPI(ydoc, yDrawing) {
+  return {
+    find:            (id)            => findDrawing(yDrawing, id),
+    delete:          (id)            => deleteDrawing(ydoc, yDrawing, id),
+    getGeom,
+    getAnchor,
+    getTtState,
+    getTtStateSchema,
+    applyMoveCommit: (yEl, x, y)     => applyMoveCommit(ydoc, yEl, x, y),
+    applyTtState:    (state)         => applyTtState(ydoc, yDrawing, state),
+    edit:            (yEl, editData) => edit(ydoc, yEl, editData),
+    listData:        ()              => drawingsData(yDrawing),
+  };
+}

@@ -561,3 +561,28 @@ export function edit(ydoc, yToy, editData) {
     yToy.setAttribute('data-color', color);
   });
 }
+
+/**
+ * makeLayerAPI — returns the canonical LayerAPI for the toys layer, closing
+ * over (ydoc, yToys) so app.js can dispatch by layer type without
+ * re-passing the fragment on every call.
+ *
+ * Note: applyTtState (and transitively the add-path inside it) is async,
+ * matching addToy's network fetch for the toy's SVG template on first use.
+ * Callers already handle this — see App.undo / deleteMultiSelected, which
+ * detect a Promise return and chain .then()/.catch().
+ */
+export function makeLayerAPI(ydoc, yToys) {
+  return {
+    find:            (id)            => findToy(yToys, id),
+    delete:          (id)            => deleteToy(ydoc, yToys, id),
+    getGeom,
+    getAnchor,
+    getTtState,
+    getTtStateSchema,
+    applyMoveCommit: (yEl, x, y)     => applyMoveCommit(ydoc, yEl, x, y),
+    applyTtState:    (state)         => applyTtState(ydoc, yToys, state),  // async
+    edit:            (yEl, editData) => edit(ydoc, yEl, editData),
+    listData:        ()              => toysData(yToys),
+  };
+}
