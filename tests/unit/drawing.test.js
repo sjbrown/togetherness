@@ -140,7 +140,7 @@ describe('basic operations', () => {
     add(doc, { id: 'bottom' })
     add(doc, { id: 'middle' })
     add(doc, { id: 'top' })
-    const ids = listDrawings(doc.yDrawing).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
+    const ids = listDrawings(doc.yDrawing).map(svgEl => svgEl.getAttribute("data-yid"))
     expect(ids).toEqual(['bottom', 'middle', 'top'])
   })
 
@@ -238,7 +238,7 @@ describe('listDrawings', () => {
     add(doc, { id: 'a' })
     add(doc, { id: 'b' })
     add(doc, { id: 'c' })
-    const ids = listDrawings(doc.yDrawing).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
+    const ids = listDrawings(doc.yDrawing).map(svgEl => svgEl.getAttribute("data-yid"))
     expect(ids).toEqual(['a', 'b', 'c'])
   })
 
@@ -248,11 +248,11 @@ describe('listDrawings', () => {
     add(doc, { id: 'c', type: 'circle', cx: 50, cy: 50, r: 20 })
     const shapes = listDrawings(doc.yDrawing)
     expect(shapes).toHaveLength(2)
-    expect(shapes[0].svgEl.getAttribute('data-yid')).toBe('r')
-    expect(shapes[1].svgEl.getAttribute('data-yid')).toBe('c')
+    expect(shapes[0].getAttribute('data-yid')).toBe('r')
+    expect(shapes[1].getAttribute('data-yid')).toBe('c')
     // tagName reflects the actual SVG tag
-    expect(shapes[0].svgEl.tagName).toBe('rect')
-    expect(shapes[1].svgEl.tagName).toBe('circle')
+    expect(shapes[0].tagName).toBe('rect')
+    expect(shapes[1].tagName).toBe('circle')
   })
 
   test('skips non-element nodes', () => {
@@ -260,7 +260,7 @@ describe('listDrawings', () => {
     add(doc, { id: 'a' })
     const shapes = listDrawings(doc.yDrawing)
     expect(shapes).toHaveLength(1)
-    expect(shapes.every(({ svgEl }) => svgEl && svgEl.nodeType === 1)).toBe(true)
+    expect(shapes.every(svgEl => svgEl && svgEl.nodeType === 1)).toBe(true)
   })
 })
 
@@ -281,8 +281,8 @@ describe('convergence', () => {
     expect(peer1.yDrawing.length).toBe(2)
     expect(peer2.yDrawing.length).toBe(2)
 
-    const ids1 = listDrawings(peer1.yDrawing).map(({ svgEl }) => svgEl.getAttribute("data-yid")).sort()
-    const ids2 = listDrawings(peer2.yDrawing).map(({ svgEl }) => svgEl.getAttribute("data-yid")).sort()
+    const ids1 = listDrawings(peer1.yDrawing).map(svgEl => svgEl.getAttribute("data-yid")).sort()
+    const ids2 = listDrawings(peer2.yDrawing).map(svgEl => svgEl.getAttribute("data-yid")).sort()
     expect(ids1).toEqual(ids2)
     expect(ids1).toContain('from-peer1')
     expect(ids1).toContain('from-peer2')
@@ -354,7 +354,7 @@ describe('convergence', () => {
     expect(lengths).toEqual([3, 3, 3])
 
     const idSets = peers.map(p =>
-      listDrawings(p.yDrawing).map(({ svgEl }) => svgEl.getAttribute("data-yid")).sort().join(',')
+      listDrawings(p.yDrawing).map(svgEl => svgEl.getAttribute("data-yid")).sort().join(',')
     )
     expect(idSets[0]).toBe(idSets[1])
     expect(idSets[1]).toBe(idSets[2])
@@ -383,7 +383,7 @@ describe('z-order', () => {
       })
     })
 
-    const ids = listDrawings(doc.yDrawing).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
+    const ids = listDrawings(doc.yDrawing).map(svgEl => svgEl.getAttribute("data-yid"))
     expect(ids).toEqual(['b', 'c', 'a'])
   })
 
@@ -395,8 +395,8 @@ describe('z-order', () => {
     add(peer2, { id: 'p2-shape' })
     sync(peer1.ydoc, peer2.ydoc)
 
-    const order1 = listDrawings(peer1.yDrawing).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
-    const order2 = listDrawings(peer2.yDrawing).map(({ svgEl }) => svgEl.getAttribute("data-yid"))
+    const order1 = listDrawings(peer1.yDrawing).map(svgEl => svgEl.getAttribute("data-yid"))
+    const order2 = listDrawings(peer2.yDrawing).map(svgEl => svgEl.getAttribute("data-yid"))
     expect(order1).toEqual(order2)
     expect(order1.length).toBe(2)
   })

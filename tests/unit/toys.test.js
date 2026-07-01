@@ -240,11 +240,11 @@ describe('listToys', () => {
     await addToy(ydoc, yToys, { id: 't2', toyType: 'player_marker', x: 0, y: 0, color: '#222' })
 
     const toys = listToys(yToys)
-    expect(toys.map(t => t.svgEl.getAttribute('data-yid'))).toEqual(['t1', 't2'])
-    expect(toys[0].svgEl.getAttribute('data-toy-type')).toBe('player_marker')
-    expect(toys[0].svgEl.tagName).toBe('g')
-    expect(toys[0].svgEl.getAttribute('data-color')).toBe('#111')
-    expect(toys[1].svgEl.getAttribute('data-color')).toBe('#222')
+    expect(toys.map(svgEl => svgEl.getAttribute('data-yid'))).toEqual(['t1', 't2'])
+    expect(toys[0].getAttribute('data-toy-type')).toBe('player_marker')
+    expect(toys[0].tagName).toBe('g')
+    expect(toys[0].getAttribute('data-color')).toBe('#111')
+    expect(toys[1].getAttribute('data-color')).toBe('#222')
   })
 })
 
