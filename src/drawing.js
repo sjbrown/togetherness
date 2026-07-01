@@ -31,7 +31,6 @@ function circleGetBBox(a) { return { x: +a.cx - +a.r, y: +a.cy - +a.r, width: 2 
 //               show includes 'addQuick'  — toolOpts popup
 //
 // Adding a shape type = adding one entry here (plus a button).
-export const LAYER = 'drawing';
 
 export const SHAPE_TYPES = {
   rect: {
@@ -264,14 +263,14 @@ export function applyMoveDom(domEl, x, y) {
 
 /**
  * Iterate all XmlElement children in z-order (bottom to top).
- * Returns an array of { svgEl }; each svgEl is a rendered SVG element
- * with data-yid + data-module stamped.
+ * Returns an array of rendered SVG elements, each stamped with
+ * data-yid + data-module.
  */
 export function listDrawings(yDrawing) {
   const results = [];
   for (let node = yDrawing.firstChild; node; node = node.nextSibling) {
     if (!(node instanceof Y.XmlElement)) continue;
-    results.push({ svgEl: _toSVGEl(node) });
+    results.push(_toSVGEl(node));
   }
   return results;
 }
@@ -297,7 +296,7 @@ function shapeData(svgEl) {
  * Used by app.js getLayerObjects — keeps drawing internals out of the app bus.
  */
 export function drawingsData(yDrawing) {
-  return listDrawings(yDrawing).map(({ svgEl }) => shapeData(svgEl));
+  return listDrawings(yDrawing).map(shapeData);
 }
 
 // ── ttState / ttStateSchema ───────────────────────────────────────────────────
@@ -396,6 +395,18 @@ export function edit(ydoc, yEl, editData) {
 }
 
 /**
+ * Render the drawing layer: clear layerEl, then mirror every drawing element
+ * as a live SVG node with the layer's interaction cursor applied.
+ */
+export function render(yDrawing, layerEl) {
+  layerEl.innerHTML = '';
+  listDrawings(yDrawing).forEach(svgEl => {
+    svgEl.style.cursor = 'pointer';
+    layerEl.appendChild(svgEl);
+  });
+}
+
+/**
  * makeLayerAPI — returns the canonical LayerAPI for the drawing layer,
  * closing over (ydoc, yDrawing) so app.js can dispatch by layer type
  * without re-passing the fragment on every call.
@@ -412,5 +423,6 @@ export function makeLayerAPI(ydoc, yDrawing) {
     applyTtState:    (state)         => applyTtState(ydoc, yDrawing, state),
     edit:            (yEl, editData) => edit(ydoc, yEl, editData),
     listData:        ()              => drawingsData(yDrawing),
+    render:          (layerEl)       => render(yDrawing, layerEl),
   };
 }

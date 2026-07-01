@@ -22,10 +22,10 @@ import { initIcons }                              from './icons.js';
 import * as Drawing                               from './drawing.js';
 import * as Toys                                  from './toys.js';
 import * as BounPos                               from './boun_pos.js';
-import { SHAPE_TYPES, LAYER as DRAW_LAYER }        from './drawing.js';
+import { SHAPE_TYPES }                            from './drawing.js';
 import { TOOLS as TOY_TOOLS, TOY_TYPES, addToy }   from './toys.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
-import { BOUNPOS_TYPES, LAYER as BOUNPOS_LAYER,
+import { BOUNPOS_TYPES,
          addPositionSet, createPositionSetElement,
          rectToPath, pathToRect,
          computeBoundaryRects,
@@ -115,7 +115,7 @@ const _layerMeta = [
   { id: 'background',            label: 'Background',             iconId: 'layer-bg' },
   { id: 'boundaries-positions',  label: 'Boundaries and Positions', iconId: 'layer-bounpos' },
   { id: 'toys',                  label: 'Toys',                   iconId: 'layer-toys' },
-  { id: DRAW_LAYER,              label: 'Drawing',                iconId: 'layer-draw' },
+  { id: 'drawing',               label: 'Drawing',                iconId: 'layer-draw' },
 ];
 
 function buildToolRegistry() {
@@ -128,20 +128,20 @@ function buildToolRegistry() {
   const bounPosTools = Object.entries(BOUNPOS_TYPES).map(([name, def]) => ({
     name,
     label:   def.label,
-    layer:   BOUNPOS_LAYER,
+    layer:   'boundaries-positions',
     iconUrl: def.iconUrl,
   }));
   bounPosTools.forEach(def => {
     _toolById[def.name] = def;
     _toolParams[def.name] = { ...BOUNPOS_TYPES[def.name].schema.values };
   });
-  _toolsByLayer[BOUNPOS_LAYER] = [SELECT_TOOL, ...bounPosTools];
+  _toolsByLayer['boundaries-positions'] = [SELECT_TOOL, ...bounPosTools];
   TOY_TOOLS.forEach(register);
   _toolsByLayer['toys'] = [SELECT_TOOL, ...TOY_TOOLS];
   const drawTools = Object.entries(SHAPE_TYPES).map(([name, def]) => ({
     name,
     label:   def.schema.label,
-    layer:   DRAW_LAYER,
+    layer:   'drawing',
     iconUrl: def.iconUrl,
   }));
   drawTools.forEach(def => {
@@ -149,7 +149,7 @@ function buildToolRegistry() {
     const schema = Drawing.getTtStateSchema(def.name);
     _toolParams[def.name] = { ...schema };
   });
-  _toolsByLayer[DRAW_LAYER] = [SELECT_TOOL, ...drawTools];
+  _toolsByLayer['drawing'] = [SELECT_TOOL, ...drawTools];
 }
 
 export function makeDoc() {
@@ -204,9 +204,8 @@ export function boot({ ydoc, yMeta, yToys, yDrawing, yBounPos, awareness, provid
   window.addEventListener('keydown', onKeyDown);
 
   // CRDT observers
-  // Both layers use observeDeep so attribute changes (moves via applyMoveCommit)
-  // trigger renderDoc on every client — shallow observe only fires for
-  // insert/delete on the fragment itself, missing setAttribute on children.
+  // Layers use observeDeep so attribute changes trigger renderDoc on
+  // every client
   _yToys.observeDeep(onToysChanged);
   _yDrawing.observeDeep(onDrawingChanged);
   _yBounPos.observeDeep(onBounPosChanged);
@@ -290,8 +289,8 @@ function applyLayerVisibility() {
 
 function renderBounPosLayer() {
   const layer = _svgEl.querySelector('#boundaries-positions-layer');
-  if (!layer) return;
-  BounPos.renderLayer(_yBounPos, layer);
+  if (!layer) throw new Error("renderBounPosLayer: '#boundaries-positions-layer' not found in SVG document — malformed template?");
+  _Layers.boun_pos.render(layer);
   Canvas.wireShapeClicks(layer);
 }
 
@@ -301,63 +300,16 @@ function renderBounPosLayer() {
 // committed to the CRDT on drop (see the window mouseup handler).
 function renderToysLayer() {
   const layer = _svgEl.querySelector('#toys-layer');
-  if (!layer) return;
-  layer.innerHTML = '';
-
-  Toys.listToys(_yToys).forEach(({ svgEl }) => {
-    svgEl.style.cursor = 'grab';
-    layer.appendChild(svgEl);
-  });
-
+  if (!layer) throw new Error("renderToysLayer: '#toys-layer' not found in SVG document — malformed template?");
+  _Layers.toys.render(layer);
   Canvas.wireShapeClicks(layer);
-
-  const countEl = document.getElementById('toyCount');
-  if (countEl) countEl.textContent = _yToys.length;
 }
 
 function renderDrawingLayer() {
   const layer = _svgEl.querySelector('#drawing-layer');
-  if (!layer) return;
-  layer.innerHTML = '';
-
-  Drawing.listDrawings(_yDrawing).forEach(({ svgEl }) => {
-    svgEl.style.cursor = 'pointer';
-    layer.appendChild(svgEl);
-  });
-
+  if (!layer) throw new Error("renderDrawingLayer: '#drawing-layer' not found in SVG document — malformed template?");
+  _Layers.drawing.render(layer);
   Canvas.wireShapeClicks(layer);
-
-  const countEl = document.getElementById('drawingCount');
-  if (countEl) countEl.textContent = _yDrawing.length;
-  renderDrawingList();
-}
-
-function renderDrawingList() {
-  const list = document.getElementById('drawingList');
-  if (!list) return;
-  list.innerHTML = '';
-  Drawing.listDrawings(_yDrawing).forEach(({ svgEl }) => {
-    const id = svgEl.getAttribute('data-yid');
-    const attrs = {};
-    for (const at of svgEl.attributes) attrs[at.name] = at.value;
-    const def = Drawing.getTtStateSchema(svgEl.getAttribute('data-type') ?? svgEl.tagName);
-    const item = document.createElement('div');
-    item.className = 'drawing-item' + (_selectedIds.has(id) ? ' selected' : '');
-    item.dataset.id = id;
-    const sw = document.createElement('div');
-    sw.className = 'drawing-swatch';
-    sw.style.background = attrs.fill;
-    const lbl = document.createElement('div');
-    lbl.className = 'drawing-label';
-    lbl.textContent = def.label;
-    const del = document.createElement('button');
-    del.className = 'drawing-del';
-    del.textContent = '×';
-    del.addEventListener('click', ev => { ev.stopPropagation(); App.deleteElement(svgEl); });
-    item.append(sw, lbl, del);
-    item.addEventListener('click', () => App.select(id));
-    list.appendChild(item);
-  });
 }
 
 function updatePeerCount() {
@@ -454,7 +406,7 @@ function onPresenceChanged() {
 
 // Maps the panel layer id (as used in _layerMeta / getActiveLayer) to the
 // data-module value stamped on rendered SVG elements and used as the key
-// into _Layers. 'background' has no LayerAPI — it's not a CRDT layer.
+// into _Layers. 'background' has no LayerAPI
 const LAYER_ID_TO_MODULE = {
   'drawing':               'drawing',
   'toys':                  'toys',
@@ -561,7 +513,6 @@ const App = {
     _awareness.setLocalStateField('selection', id ? { elIds: [id] } : null);
     Overlay.localSelectionChanged(_selectedIds);
     UI.onSelectionChanged(_selectedIds);
-    renderDrawingList();
   },
 
   // Toggle a single id in/out of the current selection.
@@ -577,7 +528,6 @@ const App = {
     _awareness.setLocalStateField('selection', ids.length ? { elIds: ids } : null);
     Overlay.localSelectionChanged(_selectedIds);
     UI.onSelectionChanged(_selectedIds);
-    renderDrawingList();
   },
 
   commitMultiSelect: ({ x, y, width, height, additive = false } = {}) => {
@@ -595,7 +545,6 @@ const App = {
       _awareness.setLocalStateField('selection', { elIds: ids });
       Overlay.localSelectionChanged(_selectedIds);
       UI.onSelectionChanged(_selectedIds);
-      renderDrawingList();
     }
   },
 
@@ -743,7 +692,7 @@ const App = {
     const mtype = moduleForElement(svgEl);
     const L = _Layers[mtype];
     if (L) L.edit(L.find(id), editData);
-    // observeDeep fires synchronously → renderDoc() already ran.
+    // observeDeep fires synchronously
     // Refresh the Edit panel body to show the updated values.
     UI.refreshFromDoc();
   },
@@ -775,20 +724,12 @@ const App = {
     const state = L.getTtState(yEl);
     _undoStack.push({ op: 'del', module: mtype, state });
     L.delete(id);
-    if (mtype === 'toys') {
-      addHistory(`deleted ${id.slice(0, 6)}`, { elType: 'toy' });
-    } else if (mtype === 'boun_pos') {
-      addHistory(`deleted ${state.bounPosType} ${id.slice(0, 12)}`,
-        { elType: 'boundaries-positions' });
-    } else {
-      addHistory(`deleted ${id.slice(0, 6)}`, { fill: state?.fill, elType: yEl.nodeName });
-    }
+    addHistory(`deleted ${mtype}:${id.slice(0, 6)}`);
     App.addLog(`deleted ${id.slice(0, 6)}`, 'local');
     if (_selectedIds.has(id)) {
       _selectedIds.delete(id);
       Overlay.localSelectionChanged(_selectedIds);
       UI.onSelectionChanged(_selectedIds);
-      renderDrawingList();
     }
     return true;
   },
@@ -910,10 +851,7 @@ const App = {
 
     if (_Layers[mtype]) {
       _Layers[mtype].applyMoveCommit(_Layers[mtype].find(id), rx, ry);
-      // toys/boun_pos: observeDeep fires synchronously and calls renderDoc().
-      // drawing: _yDrawing.observe is shallow — attribute changes on children
-      // don't trigger onDrawingChanged, so we call renderDoc() explicitly.
-      if (mtype === 'drawing') renderDoc();
+      // observeDeep fires on all layers and calls renderDoc()
     }
     _undoStack.push({ op: 'move', module: mtype, id, fromX, fromY, toX: rx, toY: ry });
     addHistory(`moved ${id.slice(0, 6)} → (${rx}, ${ry})`, {
@@ -1042,7 +980,7 @@ const App = {
       }
     });
 
-    if (elements.some(e => e.mtype === 'drawing')) renderDoc();
+    // observeDeep on all layers and calls renderDoc()
 
     _undoStack.push({ op: 'batch', entries });
     addHistory(`moved ${elements.length} objects`);
@@ -1087,23 +1025,11 @@ const App = {
     if (!op) { UI.toast('Nothing to undo', 'warn'); return; }
     if (op.op === 'add') {
       _Layers[op.module]?.delete(op.id);
-      if (op.module === 'toys') {
-        addHistory(`undid: add toy ${op.id.slice(0, 6)}`, { elType: 'toy' });
-      } else if (op.module === 'boun_pos') {
-        addHistory(`undid: add ${op.bounPosType} ${op.id.slice(0, 12)}`);
-      } else {
-        addHistory(`undid: add ${op.id.slice(0, 6)}`);
-      }
+      addHistory(`undid: add ${op.module}:${op.id.slice(0, 6)}`);
     } else if (op.op === 'del') {
       const L = _Layers[op.module];
       Promise.resolve(L?.applyTtState(op.state)).then(() => {
-        if (op.module === 'toys') {
-          addHistory(`undid: delete toy ${op.state.id.slice(0, 6)}`, { elType: 'toy' });
-        } else if (op.module === 'boun_pos') {
-          addHistory(`undid: delete ${op.state.bounPosType} ${op.state.id.slice(0, 12)}`);
-        } else {
-          addHistory(`undid: delete ${op.state.id.slice(0, 6)}`, { fill: op.state.fill, elType: op.state.type });
-        }
+        addHistory(`undid: delete ${op.module}:${op.state.id.slice(0, 6)}`);
         UI.toast('Undone');
       }).catch(err => {
         UI.toast('Cannot undo delete', 'warn');
@@ -1143,9 +1069,7 @@ const App = {
       const L = _Layers[op.module];
       if (L) {
         L.applyMoveCommit(L.find(op.id), op.fromX, op.fromY);
-        // toys/boun_pos: observeDeep fires and calls renderDoc().
-        // drawing: shallow observe — call renderDoc() explicitly.
-        if (op.module === 'drawing') renderDoc();
+        // observeDeep on all layers and calls renderDoc().
       }
       addHistory(`undid: move ${op.id.slice(0, 6)} → (${op.fromX}, ${op.fromY})`);
     }
@@ -1348,7 +1272,7 @@ function onMetaChanged() {
 
 function renderBackgroundLayer() {
   const layer = _svgEl.querySelector('#background-layer');
-  if (!layer) return;
+  if (!layer) throw new Error("renderBackgroundLayer: '#background-layer' not found in SVG document — malformed template?");
   layer.innerHTML = '';
   const url    = _yMeta.get('bg_url')    || 'img/bg_slatehex.png';
   const width  = _yMeta.get('bg_width')  || 1384;

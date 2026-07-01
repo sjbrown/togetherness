@@ -412,14 +412,14 @@ export function _toSVGEl(yEl) {
 
 
 /**
- * All placed toys as { svgEl }
- * Each svgEl is a rendered SVG element with data-yid + data-module stamped.
+ * All placed toys, in z-order. Each entry is a rendered SVG element
+ * stamped with data-yid + data-module.
  */
 export function listToys(yToys) {
   const results = []
   yToys.toArray().forEach(yEl => {
     if (!(yEl instanceof Y.XmlElement)) return
-    results.push({ svgEl: _toSVGEl(yEl) })
+    results.push(_toSVGEl(yEl))
   })
   return results
 }
@@ -444,7 +444,7 @@ function toyData(svgEl) {
  * Used by app.js getLayerObjects — keeps toy internals out of the app bus.
  */
 export function toysData(yToys) {
-  return listToys(yToys).map(({ svgEl }) => toyData(svgEl))
+  return listToys(yToys).map(toyData)
 }
 
 export const TOOLS = [
@@ -563,6 +563,18 @@ export function edit(ydoc, yToy, editData) {
 }
 
 /**
+ * Render the toys layer: clear layerEl, then mirror every placed toy as a
+ * live SVG node with the layer's interaction cursor applied.
+ */
+export function render(yToys, layerEl) {
+  layerEl.innerHTML = '';
+  listToys(yToys).forEach(svgEl => {
+    svgEl.style.cursor = 'grab';
+    layerEl.appendChild(svgEl);
+  });
+}
+
+/**
  * makeLayerAPI — returns the canonical LayerAPI for the toys layer, closing
  * over (ydoc, yToys) so app.js can dispatch by layer type without
  * re-passing the fragment on every call.
@@ -584,5 +596,6 @@ export function makeLayerAPI(ydoc, yToys) {
     applyTtState:    (state)         => applyTtState(ydoc, yToys, state),  // async
     edit:            (yEl, editData) => edit(ydoc, yEl, editData),
     listData:        ()              => toysData(yToys),
+    render:          (layerEl)       => render(yToys, layerEl),
   };
 }

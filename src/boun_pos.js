@@ -26,7 +26,6 @@
 import * as Y from 'yjs';
 import { SNAP_POINT_GRADIENT_ID } from './defs.js';
 
-export const LAYER = 'boundaries-positions';
 const SVG_NS   = 'http://www.w3.org/2000/svg';
 const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789';
 
@@ -475,7 +474,7 @@ export function applyMoveCommit(ydoc, yEl, x, y) {
 /**
  * Render the entire Boundaries and Positions layer into layerEl.
  */
-export function renderLayer(yBounPos, layerEl) {
+export function render(yBounPos, layerEl) {
   layerEl.innerHTML = '';
   for (const node of yBounPos.toArray()) {
     if (!(node instanceof Y.XmlElement)) continue;
@@ -483,6 +482,10 @@ export function renderLayer(yBounPos, layerEl) {
     if (svgEl) layerEl.appendChild(svgEl);
   }
 }
+
+// Back-compat alias — renderLayer was the original name before render()
+// became the canonical LayerAPI method name shared with drawing/toys.
+export const renderLayer = render;
 
 /**
  * All elements as layer-object descriptors for the layers panel.
@@ -782,5 +785,6 @@ export function makeLayerAPI(ydoc, yBounPos) {
     applyTtState:     (state)            => applyTtState(ydoc, yBounPos, state),
     edit:             (yEl, editData)    => editEl(ydoc, yEl, editData),
     listData:         ()                 => layerData(yBounPos),
+    render:           (layerEl)          => render(yBounPos, layerEl),
   };
 }
