@@ -1053,6 +1053,8 @@ const App = {
               throw err;
             }));
           }
+        } else if (entry.op === 'move') {
+          L.applyMoveCommit(L.find(entry.id), entry.fromX, entry.fromY);
         }
       }
       if (promises.length > 0) {

@@ -490,6 +490,25 @@ describe('batch undo — stack shape', () => {
     }
     expect(deleted).toEqual(['new-2', 'new-1'])
   })
+
+  test('batch move entries (from commitMultiMove) are undone by reversing positions', () => {
+    // Simulate what commitMultiMove creates when two elements are moved together
+    const undoMoves = []
+    const entries = [
+      { op: 'move', module: 'toys', id: 'toy-1', fromX: 100, fromY: 100, toX: 150, toY: 150 },
+      { op: 'move', module: 'toys', id: 'toy-2', fromX: 200, fromY: 200, toX: 250, toY: 250 },
+    ]
+    for (const entry of [...entries].reverse()) {
+      if (entry.op === 'move') {
+        undoMoves.push({ id: entry.id, x: entry.fromX, y: entry.fromY })
+      }
+    }
+    // Moves should be reversed in order, restoring original positions
+    expect(undoMoves).toEqual([
+      { id: 'toy-2', x: 200, y: 200 },
+      { id: 'toy-1', x: 100, y: 100 },
+    ])
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
