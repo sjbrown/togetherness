@@ -509,6 +509,7 @@ const App = {
 
   // ── Selection ────────────────────────────────────────────────────────────
   select: (id) => {
+    App.setTool('select');
     _selectedIds = id ? new Set([id]) : new Set();
     _awareness.setLocalStateField('selection', id ? { elIds: [id] } : null);
     Overlay.localSelectionChanged(_selectedIds);
