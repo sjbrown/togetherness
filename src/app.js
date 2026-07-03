@@ -114,6 +114,12 @@ function _broadcastPendingRequests() {
 // independently recomputes the same facts from the same shared awareness
 // state and the same REQUEST_WINDOW_MS deadline (see soft-lock.js).
 const SOFT_LOCK_TICK_MS = 250;
+
+// Minimum gap between claim-refresh broadcasts during a single drag
+// gesture (App.move). Well under REQUEST_WINDOW_MS (3s), so a long drag
+// always has a fresh-enough claim by the time any request's window could
+// elapse, without broadcasting on every pointermove.
+const CLAIM_REFRESH_THROTTLE_MS = 1000;
 let _softLockTickHandle = null;
 
 function _softLockTick() {
@@ -648,6 +654,21 @@ const App = {
     _broadcastPendingRequests();
   },
 
+  // Refresh this client's claim timestamp for a single already-held elId,
+  // without touching the rest of the current multi-selection. select()
+  // already refreshes a claim for free whenever it runs — but a plain
+  // click on an element that's already part of a multi-selection never
+  // reaches select() at all (see canvas.js: it goes straight to
+  // startMultiDrag, since collapsing the whole group down to just the
+  // clicked element would be wrong). This is the equivalent "I'm touching
+  // this, defend it" signal for that path — call it the moment the user
+  // makes contact with a multi-selected element, tap or drag alike.
+  reassertClaim: (id) => {
+    if (!_selectedIds.has(id)) return; // only meaningful for something I already hold
+    _selectionClaimedAt[id] = Date.now();
+    _broadcastSelection();
+  },
+
   select: (id) => {
     App.setTool('select');
     if (id && App.isHeldByOther(id)) {
@@ -987,6 +1008,20 @@ const App = {
   move: (id, x, y) => {
     if (!_dragState || _dragState.id !== id) return;
     let rx = Math.round(x), ry = Math.round(y);
+
+    // Throttled claim refresh: a drag that runs long enough to cross the
+    // 3s request window should defend itself, the same way clicking a
+    // multi-selected element does (App.reassertClaim) — actively dragging
+    // something is at least as strong a signal of "I'm using this" as a
+    // click. select()/startDrag already stamp a fresh claim at the start
+    // of the gesture, so this only matters for drags that outlast that —
+    // throttled to avoid broadcasting on every pointermove, which can fire
+    // far more often than any request-arbitration decision needs.
+    const now = Date.now();
+    if (now - (_dragState.lastClaimRefresh ?? 0) >= CLAIM_REFRESH_THROTTLE_MS) {
+      _dragState.lastClaimRefresh = now;
+      App.reassertClaim(id);
+    }
 
     // Boundary constraint: if this toy belongs to boundary zones (via class
     // names), only allow positions that fall inside at least one of them.

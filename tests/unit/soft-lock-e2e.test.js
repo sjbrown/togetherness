@@ -257,3 +257,151 @@ describe('soft-lock e2e — oscillation regression (real trace, real tick)', () 
   })
 })
 
+describe('soft-lock e2e — multi-select claim defense regression (real trace)', () => {
+  // Reproduces a real live bug: A holds two dice in a multi-selection. B
+  // requests one of them. A clicks that die to defend it — but since it's
+  // already part of a multi-selection, the click goes through
+  // App.startMultiDrag (canvas.js), never App.select(), which is the only
+  // other place a claim gets refreshed. Without the App.reassertClaim wiring
+  // added for this fix, A's claim on that die silently never refreshes, and
+  // B's request succeeds despite A visibly clicking to keep it.
+  function makeBobRequester(bobAwareness) {
+    const bobDoc = new Y.Doc()
+    const bobAw  = new awarenessProtocol.Awareness(bobDoc)
+    bobAw.setLocalState({ id: 'bob', color: '#00f', grad: null, cursor: null, selection: null })
+    return {
+      request(elId) {
+        bobAw.setLocalStateField('pendingRequests', { [elId]: Date.now() })
+        const update = awarenessProtocol.encodeAwarenessUpdate(bobAw, [bobAw.clientID])
+        awarenessProtocol.applyAwarenessUpdate(bobAwareness, update, 'network')
+      },
+    }
+  }
+
+  test('clicking a multi-selected die to defend it prevents a pending request from succeeding', async () => {
+    vi.useFakeTimers()
+    try {
+      const { App, awareness, ydoc, yToys } = await bootPeerB()
+      await addToy(ydoc, yToys, { id: 'die-2', toyType: 'player_marker', x: 50, y: 0, color: '#abc' })
+
+      // A selects two dice via a real multi-select.
+      App.select('die-1')
+      App.toggleSelection('die-2')
+      expect(App.getSelectedIds().sort()).toEqual(['die-1', 'die-2'])
+
+      // Small gap so Bob's request timestamp is distinctly later than A's
+      // original claim — real wall-clock execution always guarantees this;
+      // under fake timers, two Date.now() calls with nothing but
+      // synchronous code between them return the identical frozen value.
+      await vi.advanceTimersByTimeAsync(10)
+
+      const bob = makeBobRequester(awareness)
+      bob.request('die-1')
+
+      // A moment later, A clicks die-1 (already part of A's multi-selection)
+      // to defend it — the real gesture is canvas.js's multi-move branch,
+      // which calls exactly this.
+      await vi.advanceTimersByTimeAsync(500)
+      App.reassertClaim('die-1')
+
+      // Advance well past Bob's original request window.
+      await vi.advanceTimersByTimeAsync(4000)
+
+      // A must still hold both dice — the defend gesture worked.
+      expect(App.getSelectedIds().sort()).toEqual(['die-1', 'die-2'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('control: WITHOUT the defend click, the same request succeeds (proves the test is meaningful)', async () => {
+    vi.useFakeTimers()
+    try {
+      const { App, awareness, ydoc, yToys } = await bootPeerB()
+      await addToy(ydoc, yToys, { id: 'die-2', toyType: 'player_marker', x: 50, y: 0, color: '#abc' })
+
+      App.select('die-1')
+      App.toggleSelection('die-2')
+
+      await vi.advanceTimersByTimeAsync(10)
+
+      const bob = makeBobRequester(awareness)
+      bob.request('die-1')
+
+      // No reassertClaim this time — A never defends it.
+      await vi.advanceTimersByTimeAsync(4500)
+
+      expect(App.getSelectedIds()).toEqual(['die-2']) // die-1 lost to Bob
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('soft-lock e2e — long single-element drag claim refresh', () => {
+  // Complements the multi-select fix above: a drag long enough to outlast
+  // the 3s request window should keep defending itself via App.move's
+  // throttled reassertClaim call, the same way an active multi-select drag
+  // does. select()/startDrag already stamp a fresh claim at gesture start,
+  // so both tests below start Bob's request shortly AFTER that — the thing
+  // under test is specifically whether ongoing move() calls keep the claim
+  // fresh past that point, not the initial claim itself.
+  function makeBobRequester(bobAwareness) {
+    const bobDoc = new Y.Doc()
+    const bobAw  = new awarenessProtocol.Awareness(bobDoc)
+    bobAw.setLocalState({ id: 'bob', color: '#00f', grad: null, cursor: null, selection: null })
+    return {
+      request(elId) {
+        bobAw.setLocalStateField('pendingRequests', { [elId]: Date.now() })
+        const update = awarenessProtocol.encodeAwarenessUpdate(bobAw, [bobAw.clientID])
+        awarenessProtocol.applyAwarenessUpdate(bobAwareness, update, 'network')
+      },
+    }
+  }
+
+  test('periodic move() calls during a genuinely ongoing drag keep defending it', async () => {
+    vi.useFakeTimers()
+    try {
+      const { App, awareness } = await bootPeerB()
+      App.select('die-1')
+      App.startDrag('die-1')
+
+      await vi.advanceTimersByTimeAsync(10)
+      makeBobRequester(awareness).request('die-1')
+
+      // A real, ongoing drag: move() keeps firing, spaced past the
+      // throttle interval, well past Bob's original 3s window.
+      for (let i = 0; i < 5; i++) {
+        await vi.advanceTimersByTimeAsync(1100) // > CLAIM_REFRESH_THROTTLE_MS
+        App.move('die-1', i, i)
+      }
+
+      expect(App.getSelectedIds()).toEqual(['die-1']) // still holding — defended
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('control: no further move() calls after the request arrives — the claim goes stale and is lost', async () => {
+    // Isolates the mechanism: same starting claim, same request timing —
+    // the only difference is whether move() ever fires again afterward.
+    vi.useFakeTimers()
+    try {
+      const { App, awareness } = await bootPeerB()
+      App.select('die-1')
+      App.startDrag('die-1')
+
+      await vi.advanceTimersByTimeAsync(10)
+      makeBobRequester(awareness).request('die-1')
+
+      // No more move() calls — the drag is nominally still "active"
+      // (commitMove/cancelMove never ran) but nothing refreshes the claim.
+      await vi.advanceTimersByTimeAsync(5500)
+
+      expect(App.getSelectedIds()).toEqual([]) // lost to Bob
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+

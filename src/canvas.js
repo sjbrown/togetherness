@@ -233,6 +233,12 @@ function onPointerDown(e) {
       if (App.getSelectedIds().length > 1 && App.getSelectedIds().includes(hitId)) {
         ToolMode._gesture = 'multi-move';
         ToolMode._moveRef = { sx: e.clientX, sy: e.clientY, moved: false };
+        // Defend this element the moment it's touched — tap or drag alike.
+        // startMultiDrag never goes through select(), which is the only
+        // other place a claim gets refreshed, so without this a
+        // multi-selected element's claim silently goes stale the instant
+        // it's added to a group, even while actively being clicked/dragged.
+        App.reassertClaim(hitId);
         App.startMultiDrag({ ...toCanvas(e.clientX, e.clientY), leaderId: hitId });
         return;
       }
