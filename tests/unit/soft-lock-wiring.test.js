@@ -70,19 +70,19 @@ describe('select() branch logic (mirrors app.js App.select)', () => {
   })
 
   test('clicking an element held by another peer requests it, does not select', () => {
-    aliceAw.setLocalStateField('selection', { elIds: ['goblin-1'] })
+    aliceAw.setLocalStateField('selection', { 'goblin-1': 0 })
     const decision = decideSelect('goblin-1', baileyAw, [aliceAw])
     expect(decision).toEqual({ action: 'request', reassert: false })
   })
 
   test('clicking my own held-and-uncontested element selects normally, no reassertion', () => {
-    baileyAw.setLocalStateField('selection', { elIds: ['goblin-1'] })
+    baileyAw.setLocalStateField('selection', { 'goblin-1': 0 })
     const decision = decideSelect('goblin-1', baileyAw, [aliceAw])
     expect(decision).toEqual({ action: 'select', reassert: false })
   })
 
   test('re-clicking my own held element while contested triggers reassertion', () => {
-    baileyAw.setLocalStateField('selection', { elIds: ['goblin-1'] })
+    baileyAw.setLocalStateField('selection', { 'goblin-1': 0 })
     aliceAw.setLocalStateField('pendingRequests', { 'goblin-1': 1000 }) // Alice acquiring
     const decision = decideSelect('goblin-1', baileyAw, [aliceAw])
     expect(decision).toEqual({ action: 'select', reassert: true })
@@ -122,13 +122,13 @@ describe('toggleSelection() branch logic (mirrors app.js App.toggleSelection)', 
   })
 
   test('shift-clicking an element held by another peer requests it, does not add', () => {
-    aliceAw.setLocalStateField('selection', { elIds: ['goblin-1'] })
+    aliceAw.setLocalStateField('selection', { 'goblin-1': 0 })
     const decision = decideToggle('goblin-1', new Set(), baileyAw, [aliceAw])
     expect(decision).toEqual({ action: 'request' })
   })
 
   test('shift-clicking two held elements in sequence requests both independently', () => {
-    aliceAw.setLocalStateField('selection', { elIds: ['g1', 'g2', 'g3'] })
+    aliceAw.setLocalStateField('selection', { 'g1': 0, 'g2': 0, 'g3': 0 })
     const d1 = decideToggle('g1', new Set(), baileyAw, [aliceAw])
     const d2 = decideToggle('g2', new Set(), baileyAw, [aliceAw])
     expect(d1).toEqual({ action: 'request' })
@@ -155,13 +155,13 @@ describe('getBoxCandidates() filtering (mirrors app.js App.getBoxCandidates)', (
   }
 
   test('box-select excludes elements held by another peer', () => {
-    aliceAw.setLocalStateField('selection', { elIds: ['g2'] })
+    aliceAw.setLocalStateField('selection', { 'g2': 0 })
     const result = filterHeldByOther(['g1', 'g2', 'g3'], baileyAw, [aliceAw])
     expect(result).toEqual(['g1', 'g3'])
   })
 
   test('box-select includes elements I already hold myself', () => {
-    baileyAw.setLocalStateField('selection', { elIds: ['g2'] })
+    baileyAw.setLocalStateField('selection', { 'g2': 0 })
     const result = filterHeldByOther(['g1', 'g2', 'g3'], baileyAw, [aliceAw])
     expect(result).toEqual(['g1', 'g2', 'g3'])
   })
@@ -169,7 +169,7 @@ describe('getBoxCandidates() filtering (mirrors app.js App.getBoxCandidates)', (
   test('box-select never invokes a request — held elements are just dropped, not queued', () => {
     // No pendingRequests field should ever be relevant here; the filter
     // step has no side effect and reads no acquisition state at all.
-    aliceAw.setLocalStateField('selection', { elIds: ['g1'] })
+    aliceAw.setLocalStateField('selection', { 'g1': 0 })
     const result = filterHeldByOther(['g1'], baileyAw, [aliceAw])
     expect(result).toEqual([])
     expect(baileyAw.getLocalState()?.pendingRequests).toBeUndefined()

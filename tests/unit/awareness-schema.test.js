@@ -1,11 +1,17 @@
 /**
  * tests/unit/awareness-schema.test.js
  *
- * Tests for the awareness selection schema: { elIds: string[] } | null
+ * Tests for the awareness selection schema: { [elId: string]: number } | null
  *
- * The selection field in awareness always uses an array of ids, never a bare
- * string. These tests verify the shape that App.select() must write and the
- * shape that overlay.js syncFromAwareness() must read.
+ * Keys are the held elIds; values are per-elId claim timestamps (see
+ * soft-lock.js). There is no separate ids array — membership is exactly
+ * Object.keys(selection). An earlier version of this schema was
+ * { elIds: string[] }; a claimedAt map was added alongside it for the
+ * soft-lock feature, then the array was dropped entirely once it became
+ * clear it was always redundant with Object.keys(claimedAt).
+ *
+ * These tests verify the shape that App.select() must write and the shape
+ * that overlay.js syncFromAwareness() must read.
  *
  * They do NOT test cross-client propagation (that's sync.integration.test.js).
  */
@@ -17,27 +23,30 @@ import { describe, test, expect } from 'vitest'
 // ── Schema shape (what app.js writes) ────────────────────────────────────────
 
 describe('awareness selection schema — write side', () => {
-  test('single-element selection uses elIds array, not elId string', () => {
+  test('single-element selection uses a flat {elId: ts} map, not an elIds array', () => {
     const doc = new Y.Doc()
     const aw  = new awarenessProtocol.Awareness(doc)
 
-    aw.setLocalStateField('selection', { elIds: ['toy-abc'] })
+    aw.setLocalStateField('selection', { 'toy-abc': 12345 })
 
     const state = aw.getLocalState()
-    expect(state.selection.elIds).toEqual(['toy-abc'])
+    expect(state.selection).toEqual({ 'toy-abc': 12345 })
+    expect(state.selection.elIds).toBeUndefined()
     expect(state.selection.elId).toBeUndefined()
+    expect(Object.keys(state.selection)).toEqual(['toy-abc'])
 
     doc.destroy()
   })
 
-  test('multi-element selection carries all ids', () => {
+  test('multi-element selection carries a claim timestamp per id', () => {
     const doc = new Y.Doc()
     const aw  = new awarenessProtocol.Awareness(doc)
-    const ids = ['toy-aaa', 'toy-bbb', 'toy-ccc']
+    const claims = { 'toy-aaa': 1000, 'toy-bbb': 2000, 'toy-ccc': 3000 }
 
-    aw.setLocalStateField('selection', { elIds: ids })
+    aw.setLocalStateField('selection', claims)
 
-    expect(aw.getLocalState().selection.elIds).toEqual(ids)
+    expect(aw.getLocalState().selection).toEqual(claims)
+    expect(Object.keys(aw.getLocalState().selection)).toEqual(['toy-aaa', 'toy-bbb', 'toy-ccc'])
 
     doc.destroy()
   })
@@ -46,7 +55,7 @@ describe('awareness selection schema — write side', () => {
     const doc = new Y.Doc()
     const aw  = new awarenessProtocol.Awareness(doc)
 
-    aw.setLocalStateField('selection', { elIds: ['toy-abc'] })
+    aw.setLocalStateField('selection', { 'toy-abc': 500 })
     aw.setLocalStateField('selection', null)
 
     expect(aw.getLocalState().selection).toBeNull()
@@ -54,14 +63,16 @@ describe('awareness selection schema — write side', () => {
     doc.destroy()
   })
 
-  test('empty elIds array is a valid cleared-candidate state', () => {
+  test('an empty object is a valid (if unusual) cleared-candidate state', () => {
+    // App.js always broadcasts null rather than {} when nothing is
+    // selected (see _broadcastSelection), but readers should treat an
+    // empty object the same as null — zero keys, zero holdings, either way.
     const doc = new Y.Doc()
     const aw  = new awarenessProtocol.Awareness(doc)
 
-    aw.setLocalStateField('selection', { elIds: [] })
+    aw.setLocalStateField('selection', {})
 
-    const state = aw.getLocalState()
-    expect(state.selection.elIds).toEqual([])
+    expect(Object.keys(aw.getLocalState().selection)).toEqual([])
 
     doc.destroy()
   })
@@ -73,17 +84,17 @@ describe('awareness selection schema — read side (overlay syncFromAwareness lo
   // Mirrors the exact read logic in overlay.js syncFromAwareness so we can
   // assert on it without booting the full app.
   function extractRemoteSelections(state) {
-    if (!Array.isArray(state?.selection?.elIds) || !state.selection.elIds.length) return []
-    return state.selection.elIds
+    if (!state?.selection || typeof state.selection !== 'object') return []
+    return Object.keys(state.selection)
   }
 
   test('single remote selection: one id returned', () => {
-    const state = { selection: { elIds: ['shape-xyz'] }, color: '#f00' }
+    const state = { selection: { 'shape-xyz': 1000 }, color: '#f00' }
     expect(extractRemoteSelections(state)).toEqual(['shape-xyz'])
   })
 
   test('multi remote selection: all ids returned', () => {
-    const state = { selection: { elIds: ['a', 'b', 'c'] }, color: '#0f0' }
+    const state = { selection: { a: 1, b: 2, c: 3 }, color: '#0f0' }
     expect(extractRemoteSelections(state)).toEqual(['a', 'b', 'c'])
   })
 
@@ -97,15 +108,21 @@ describe('awareness selection schema — read side (overlay syncFromAwareness lo
     expect(extractRemoteSelections(state)).toEqual([])
   })
 
-  test('a bare elId string (not wrapped in elIds array) is ignored', () => {
-    // The schema requires elIds: string[]. A bare elId field on its own
-    // is not a valid selection payload and must produce no rings.
-    const state = { selection: { elId: 'shape-old' }, color: '#888' }
+  test('empty selection object: no rings rendered', () => {
+    const state = { selection: {}, color: '#888' }
     expect(extractRemoteSelections(state)).toEqual([])
   })
 
-  test('empty elIds: no rings rendered', () => {
-    const state = { selection: { elIds: [] }, color: '#888' }
-    expect(extractRemoteSelections(state)).toEqual([])
+  test('a legacy elIds-array-shaped payload (old schema) is not misread as ids', () => {
+    // Defends against a stale/mixed-version peer sending the old shape —
+    // Object.keys({ elIds: [...] }) would be ['elIds'], a single bogus
+    // "id" — worth an explicit test since this is exactly the kind of
+    // schema-migration edge case that's easy to get wrong silently.
+    const state = { selection: { elIds: ['shape-old'] }, color: '#888' }
+    expect(extractRemoteSelections(state)).toEqual(['elIds']) // documents actual (bogus) behavior
+    // This elId ('elIds') simply won't match any real element's data-yid,
+    // so App.getBBox returns null and rendering silently skips it — a
+    // stale/mixed-version peer degrades harmlessly rather than crashing,
+    // but is not expected in a single-deployed-version app.
   })
 })

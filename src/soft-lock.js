@@ -8,22 +8,31 @@
  * reduce accidental concurrent-peer collisions ("the bathroom case") —
  * not to prevent malicious ones.
  *
- * Awareness schema addition, sibling to the existing `selection` field:
+ * Awareness schema:
  *
- *   pendingRequests: null | { [elId: string]: number }   // elId -> ts (ms)
+ *   selection: { [elId: string]: number } | null
+ *   pendingRequests: { [elId]: number } | null
  *
- * Interpretation, per (clientId, elId) pair — derived structurally, never
- * stored explicitly:
- *   - retention   (holder re-asserting): elId is a key in that client's own
- *     `pendingRequests` AND appears in that client's own `selection.elIds`.
- *   - acquisition (someone else requesting): elId is a key in that client's
- *     own `pendingRequests` but does NOT appear in that client's own `selection.elIds`.
+ * `selection[elId]` is this client's own timestamp for "when did I most
+ * recently claim elId" — set whenever elId enters this client's own
+ * selection (initial select, a tick's promotion, or a deliberate re-click
+ * of an already-held element, which naturally refreshes it — no separate
+ * "reassert" bookkeeping needed). Membership (which elIds I hold) and claim
+ * recency (since when) are the same piece of data now, not two — an
+ * earlier design carried a separate `elIds` array alongside `claimedAt`,
+ * but the array was always redundant with Object.keys(claimedAt), so it
+ * was dropped. This also removes the redundancy's failure mode: nothing
+ * can hold a stale elId in one field while the other has already moved on.
+ *
+ * `pendingRequests[elId]` exists ONLY while a client is actively trying to
+ * acquire an elId it does not yet hold — deleted the moment that bid is
+ * resolved, win or lose. It is never a retention signal, and deliberately
+ * has the same {elId: number} shape as `selection` for consistency.
  *
  * All functions here are pure: given a snapshot (a Map<clientId, state>, as
  * returned by awareness.getStates()), they compute derived facts with no
  * side effects, no timers, no writes. The imperative tick/promotion logic
- * that *acts* on these facts (mutating local awareness state) lives in the
- * App layer, not here.
+ * that *acts* on these facts lives in the App layer, not here.
  */
 
 export const REQUEST_WINDOW_MS = 3000;
@@ -33,11 +42,12 @@ export const REQUEST_WINDOW_MS = 3000;
 // ── Basic element-ownership queries ─────────────────────────────────────────
 
 /**
- * The clientId currently holding `elId` in its committed `selection.elIds`,
- * or null if nobody holds it. Assumes at most one holder at a time (the
- * invariant this whole protocol exists to make usually-true, not guaranteed —
- * if two clients somehow both list elId, the first one encountered wins;
- * callers should not rely on this for anything beyond advisory UI).
+ * The clientId currently holding `elId` in its committed `selection`, or
+ * null if nobody holds it. Assumes at most one holder at a time (the
+ * invariant this whole protocol exists to make usually-true, not guaranteed
+ * — if two clients somehow both list elId, the first one encountered wins
+ * — callers needing to detect that specific case should use
+ * getOtherHoldersOf instead).
  *
  * @param {string} elId
  * @param {Map<number, object>} awarenessStates
@@ -47,7 +57,7 @@ export function getHolderClientId(elId, awarenessStates) {
   let holder = null;
   awarenessStates.forEach((state, clientId) => {
     if (holder !== null) return;
-    if (Array.isArray(state?.selection?.elIds) && state.selection.elIds.includes(elId)) {
+    if (state?.selection && elId in state.selection) {
       holder = clientId;
     }
   });
@@ -56,9 +66,6 @@ export function getHolderClientId(elId, awarenessStates) {
 
 /**
  * True if `elId` is currently held by some client other than `myClientId`.
- * Used by gesture-wiring code (Commit 2) to decide whether a rubber-band
- * sweep should silently exclude an element, or whether a click should be
- * treated as a request instead of a plain select.
  *
  * @param {string} elId
  * @param {Map<number, object>} awarenessStates
@@ -70,50 +77,75 @@ export function isElementHeldByOther(elId, awarenessStates, myClientId) {
   return holder !== null && holder !== myClientId;
 }
 
-// ── Request classification ──────────────────────────────────────────────────
-
 /**
- * Classify every pendingRequests entry across all awareness states that
- * targets `elId`, splitting into retainers (the holder re-asserting it)
- * and acquirers (other clients requesting it).
+ * Every clientId (excluding myClientId) whose own committed selection
+ * currently contains elId. Unlike getHolderClientId (which assumes at most
+ * one true holder and returns the first one found), this deliberately does
+ * NOT assume single-holder — it's used specifically to detect the case
+ * where that invariant has (temporarily or buggily) broken and more than
+ * one client currently believes it holds the same element.
  *
  * @param {string} elId
  * @param {Map<number, object>} awarenessStates
- * @returns {{ retainers: RequestEntry[], acquirers: RequestEntry[] }}
+ * @param {number} myClientId
+ * @returns {number[]}
  */
-export function collectRequestsForElement(elId, awarenessStates) {
-  const retainers = [];
-  const acquirers = [];
-
+export function getOtherHoldersOf(elId, awarenessStates, myClientId) {
+  const others = [];
   awarenessStates.forEach((state, clientId) => {
-    const ts = state?.pendingRequests?.[elId];
-    if (typeof ts !== 'number') return;
-
-    const isHeldByThisClient = Array.isArray(state?.selection?.elIds) && state.selection.elIds.includes(elId);
-    if (isHeldByThisClient) {
-      retainers.push({ clientId, ts });
-    } else {
-      acquirers.push({ clientId, ts });
+    if (clientId === myClientId) return;
+    if (state?.selection && elId in state.selection) {
+      others.push(clientId);
     }
   });
+  return others;
+}
 
-  return { retainers, acquirers };
+/**
+ * `clientId`'s own claim timestamp for elId — how recently they last
+ * claimed it in their own selection. 0 if they don't currently hold it, or
+ * hold it but never stamped a claim (shouldn't happen for a real holder,
+ * treated safely as "no claim" rather than throwing).
+ *
+ * @param {string} elId
+ * @param {Map<number, object>} awarenessStates
+ * @param {number} clientId
+ * @returns {number}
+ */
+export function getClaimTimestamp(elId, awarenessStates, clientId) {
+  return awarenessStates.get(clientId)?.selection?.[elId] ?? 0;
+}
+
+// ── Request queries ──────────────────────────────────────────────────────────
+
+/**
+ * Every outstanding acquisition bid for elId, across all clients.
+ * pendingRequests entries are always acquisition bids by construction — see
+ * file header — so no held-by-same-client disambiguation is needed here.
+ *
+ * @param {string} elId
+ * @param {Map<number, object>} awarenessStates
+ * @returns {RequestEntry[]}
+ */
+export function getAcquirersOf(elId, awarenessStates) {
+  const acquirers = [];
+  awarenessStates.forEach((state, clientId) => {
+    const ts = state?.pendingRequests?.[elId];
+    if (typeof ts === 'number') acquirers.push({ clientId, ts });
+  });
+  return acquirers;
 }
 
 /**
  * True if `elId` currently has any outstanding acquisition request — i.e.
- * should render as the contested/'requested' ring. A lone retention entry
- * with no acquirer is not itself contested (it can only exist transiently,
- * for one tick, immediately after an acquirer's own request has already
- * been cleared elsewhere).
+ * should render as the contested/'requested' ring.
  *
  * @param {string} elId
  * @param {Map<number, object>} awarenessStates
  * @returns {boolean}
  */
 export function isElementContested(elId, awarenessStates) {
-  const { acquirers } = collectRequestsForElement(elId, awarenessStates);
-  return acquirers.length > 0;
+  return getAcquirersOf(elId, awarenessStates).length > 0;
 }
 
 /**
@@ -126,55 +158,52 @@ export function isElementContested(elId, awarenessStates) {
  */
 export function getAllContestedElementIds(awarenessStates) {
   const contested = new Set();
-  // An elId is contested iff some client's pendingRequests entry for it
-  // names an elId that client does NOT hold (i.e. an acquisition, not a
-  // retention).
   awarenessStates.forEach((state) => {
     if (!state?.pendingRequests) return;
     for (const elId of Object.keys(state.pendingRequests)) {
-      const heldByThisClient = Array.isArray(state?.selection?.elIds) && state.selection.elIds.includes(elId);
-      if (!heldByThisClient) contested.add(elId);
+      contested.add(elId);
     }
   });
   return contested;
 }
 
-// ── Winner resolution (tie-break rule) ──────────────────────────────────────
+// ── Winner resolution ────────────────────────────────────────────────────────
 
 /**
- * Given the retainers/acquirers for one element, decide the winning
- * acquirer per the agreed tie-break rule:
+ * Decide the winning acquirer for elId, if any:
  *
- *   1. Among acquirers, the earliest ts wins (first request observed);
- *      exact ts ties broken by lowest clientId, for determinism.
- *   2. If any retainer's ts is >= that winning acquirer's ts, the holder's
- *      retention rebuts it — the holder keeps the element (return null).
- *   3. If there are no acquirers at all, return null (nothing to resolve).
+ *   1. Among outstanding acquirers, the earliest request ts wins; exact ts
+ *      ties broken by lowest clientId, for determinism.
+ *   2. If elId currently has a holder, and that holder's OWN claim
+ *      timestamp (selection[elId] — refreshed by a deliberate
+ *      re-click, i.e. the "bathroom" defense gesture) is at least as recent
+ *      as the winning acquirer's request, the holder's claim rebuts it.
+ *   3. If there are no acquirers at all, return null.
  *
- * This function does not consult wall-clock time or the 3s window — callers
- * decide when to invoke it, typically once
- * `isRequestWindowElapsed(winner, now)` is true for a tentative winner.
+ * Does not consult wall-clock time or the 3s window — callers decide when
+ * to invoke it, typically once isRequestWindowElapsed(winner, now) is true.
  *
  * @param {string} elId
  * @param {Map<number, object>} awarenessStates
- * @returns {RequestEntry | null} the winning acquirer, or null if the
- *   holder's retention defeats every acquirer (or there were none).
+ * @returns {RequestEntry | null}
  */
 export function resolveElementWinner(elId, awarenessStates) {
-  const { retainers, acquirers } = collectRequestsForElement(elId, awarenessStates);
+  const acquirers = getAcquirersOf(elId, awarenessStates);
   if (acquirers.length === 0) return null;
 
   const winner = [...acquirers].sort((a, b) => a.ts - b.ts || a.clientId - b.clientId)[0];
 
-  const rebuttedBy = retainers.some((r) => r.ts >= winner.ts);
-  if (rebuttedBy) return null;
+  const holderId = getHolderClientId(elId, awarenessStates);
+  if (holderId !== null) {
+    const holderClaimTs = getClaimTimestamp(elId, awarenessStates, holderId);
+    if (holderClaimTs >= winner.ts) return null;
+  }
 
   return winner;
 }
 
 /**
  * Has this acquirer's 3s request window elapsed as of `now`?
- * Pure wrapper around REQUEST_WINDOW_MS so callers don't hardcode it.
  *
  * @param {RequestEntry} acquirer
  * @param {number} now
@@ -188,35 +217,42 @@ export function isRequestWindowElapsed(acquirer, now) {
 
 /**
  * Pure decision function for one client's periodic soft-lock tick. Given a
- * full awareness snapshot (including this client's own broadcast state —
- * exactly what `awareness.getStates()` returns) and the current time,
- * decides what this client's own state should become. Performs no writes;
- * the caller (App's tick loop) applies the returned diff to local state and
- * re-broadcasts.
+ * full awareness snapshot (including this client's own broadcast state)
+ * and the current time, decides what this client's own state should
+ * become. Performs no writes; the caller (App's tick loop) applies the
+ * returned diff to local state and re-broadcasts.
  *
- * This function embodies both halves of the protocol, evaluated
- * independently and locally, per the design: nobody sends "promoted" or
- * "rejected" messages — every client just recomputes the same facts from
- * the same shared awareness state and shared REQUEST_WINDOW_MS deadline.
- *
- *   - Acquirer side: for each of my own `pendingRequests` entries that
- *     targets an elId I do not currently hold (an acquisition, not a
- *     retention), once its window has elapsed: if I'm the resolved winner,
- *     I should acquire it; otherwise (rebutted, or lost a tie-break to
- *     another acquirer) I should drop my own request for it.
- *   - Holder side: for each elId I currently hold, if resolution finds a
- *     winning acquirer whose window has elapsed, I should release it.
+ *   - Acquirer side: for each of my own pendingRequests entries whose
+ *     window has elapsed, if I'm the resolved winner I should acquire it;
+ *     otherwise (rebutted, or lost a tie-break to another acquirer) I
+ *     should drop my own request for it.
+ *   - Holder side: for each elId I currently hold —
+ *       (a) if resolution finds a winning acquirer whose window has
+ *           elapsed, release it (the common case);
+ *       (b) otherwise, as a fallback: if some OTHER client's own selection
+ *           also currently contains this elId (a durable conflict, which
+ *           can arise even when (a) finds no acquirer — a successful
+ *           acquirer's own pendingRequests entry is deleted immediately
+ *           upon promotion, so by the time my tick runs there may be
+ *           nothing left in pendingRequests to resolve against), compare
+ *           claim timestamps directly via selection[elId]: whoever
+ *           claimed it more recently keeps it. A client that never
+ *           explicitly (re-)claimed it has no entry, treated as 0, and
+ *           always loses to a client with an actual claim. Genuine ties
+ *           (including 0-vs-0 — e.g. two clients simultaneously
+ *           plain-selecting a previously free element) fall back to a
+ *           deterministic clientId comparison.
  *
  * @param {{ myClientId: number, awarenessStates: Map<number, object>, now: number }} args
  * @returns {{
- *   elIdsToAcquire: string[],      // add to my own selection; my request is satisfied
- *   elIdsToDropRequest: string[],  // remove from my own pendingRequests; I lost
- *   elIdsToRelease: string[],      // remove from my own selection; someone else won it
+ *   elIdsToAcquire: string[],
+ *   elIdsToDropRequest: string[],
+ *   elIdsToRelease: string[],
  * }}
  */
 export function computeTickActions({ myClientId, awarenessStates, now }) {
   const myState = awarenessStates.get(myClientId) ?? {};
-  const mySelectedIds = new Set(myState.selection?.elIds ?? []);
+  const mySelectedIds = new Set(Object.keys(myState.selection ?? {}));
   const myPendingRequests = myState.pendingRequests ?? {};
 
   const elIdsToAcquire = [];
@@ -225,7 +261,6 @@ export function computeTickActions({ myClientId, awarenessStates, now }) {
 
   // Acquirer side.
   for (const [elId, ts] of Object.entries(myPendingRequests)) {
-    if (mySelectedIds.has(elId)) continue; // a retention entry, not mine to resolve here
     if (!isRequestWindowElapsed({ ts }, now)) continue;
     const winner = resolveElementWinner(elId, awarenessStates);
     if (winner && winner.clientId === myClientId) {
@@ -239,6 +274,20 @@ export function computeTickActions({ myClientId, awarenessStates, now }) {
   for (const elId of mySelectedIds) {
     const winner = resolveElementWinner(elId, awarenessStates);
     if (winner && isRequestWindowElapsed(winner, now)) {
+      elIdsToRelease.push(elId);
+      continue;
+    }
+    const otherHolders = getOtherHoldersOf(elId, awarenessStates, myClientId);
+    if (otherHolders.length === 0) continue;
+
+    const myClaimTs = getClaimTimestamp(elId, awarenessStates, myClientId);
+    const otherClaimTs = Math.max(
+      0,
+      ...otherHolders.map((id) => getClaimTimestamp(elId, awarenessStates, id)),
+    );
+    if (otherClaimTs > myClaimTs) {
+      elIdsToRelease.push(elId);
+    } else if (otherClaimTs === myClaimTs && Math.min(myClientId, ...otherHolders) !== myClientId) {
       elIdsToRelease.push(elId);
     }
   }

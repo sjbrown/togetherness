@@ -123,6 +123,8 @@ html, body {
 .selRing   { pointer-events: none; }
 .handle    { pointer-events: none; }
 .peer-ring { pointer-events: none; }
+.requestedRing { pointer-events: none; }
+.remote-sel     { pointer-events: none; }
 
 /* Draw-preview div (used by canvas.js for rubber-band rect) */
 #draw-preview {

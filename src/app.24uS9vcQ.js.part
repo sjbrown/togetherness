@@ -37,7 +37,7 @@ import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
 import * as Overlay                               from './overlay.js';
 import { entityGradient }            from './entity_gradient.js';
-import { isElementHeldByOther, computeTickActions } from './soft-lock.js';
+import { isElementHeldByOther, isElementContested, computeTickActions } from './soft-lock.js';
 
 
 import * as Y from 'yjs';
@@ -77,29 +77,11 @@ let _svgEl;
 let _selectedIds  = new Set();   // SSOT: N=0 nothing, N=1 single, N>1 multi
 let _activeLayer  = 'toys';
 
-// Claim timestamps for this client's own selection, keyed by elId — kept in
-// sync with _selectedIds at every mutation site (never allowed to diverge:
-// an elId enters/leaves both together). This IS the local mirror of the
-// awareness `selection` field directly — see soft-lock.js: selection's
-// wire shape is now { [elId]: timestamp }, the same as pendingRequests,
-// since a separate elIds array would always be redundant with
-// Object.keys(claimedAt).
-//   { [elId: string]: number }  // elId -> claim/reclaim timestamp (ms)
-let _selectionClaimedAt = {};
-
-// Broadcast the current _selectionClaimedAt as this client's awareness
-// `selection` field. Centralized so every call site broadcasts the same
-// shape consistently.
-function _broadcastSelection() {
-  const keys = Object.keys(_selectionClaimedAt);
-  _awareness.setLocalStateField('selection', keys.length ? { ..._selectionClaimedAt } : null);
-}
-
-// Soft-lock request state — this client's own outstanding acquisition bids,
-// keyed by elId. Exists ONLY while actively trying to acquire an elId not
-// yet in _selectedIds; deleted the moment that bid resolves, win or lose.
-// See soft-lock.js for why this is never reused as a retention signal.
-//   { [elId: string]: number }  // elId -> request timestamp (ms)
+// Soft-lock request state — this client's own outstanding requests, keyed
+// by elId. Mirrors _selectedIds as the local SSOT for this client's half of
+// the awareness `pendingRequests` field; see soft-lock.js for the
+// acquisition-vs-retention interpretation of each entry once broadcast.
+//   { [elId: string]: number }  // elId -> request/reassertion timestamp (ms)
 let _pendingRequests = {};
 
 // Broadcast the current _pendingRequests as this client's awareness
@@ -127,31 +109,20 @@ function _softLockTick() {
 
   for (const elId of elIdsToAcquire) {
     _selectedIds.add(elId);
-    _selectionClaimedAt[elId] = Date.now(); // the promotion moment IS the claim
-    delete _pendingRequests[elId];          // bid resolved — won
+    delete _pendingRequests[elId];
   }
   for (const elId of elIdsToDropRequest) {
-    delete _pendingRequests[elId];          // bid resolved — lost
+    delete _pendingRequests[elId];
   }
   for (const elId of elIdsToRelease) {
     _selectedIds.delete(elId);
-    delete _selectionClaimedAt[elId];
-    delete _pendingRequests[elId]; // defensive; shouldn't normally exist for a held elId
+    delete _pendingRequests[elId]; // drop any retention entry for what I just lost
   }
 
-  // Local SelectionMode cleanup MUST happen before the awareness broadcast:
-  // setLocalStateField fires 'change' synchronously, which can trigger
-  // syncFromAwareness (via onPresenceChanged) before this function returns.
-  // If a stale 'local' entry for a just-released elId is still present at
-  // that moment, syncFromAwareness's local-takes-precedence guard (see
-  // overlay.js) will skip assigning 'remote' to it — and nothing
-  // afterward re-triggers that decision, leaving the elId with no
-  // SelectionMode entry at all until an unrelated awareness event happens
-  // to occur. Cleaning up first ensures syncFromAwareness always sees
-  // accurate, already-current local state if it runs mid-broadcast.
-  Overlay.localSelectionChanged(_selectedIds);
-  _broadcastSelection();
+  const ids = [..._selectedIds];
+  _awareness.setLocalStateField('selection', ids.length ? { elIds: ids } : null);
   _broadcastPendingRequests();
+  Overlay.localSelectionChanged(_selectedIds);
   UI.onSelectionChanged(_selectedIds);
 }
 
@@ -169,7 +140,7 @@ let _historyLog   = [];      // { label } — human-readable, newest first
 // Active drag — set by App.startDrag, cleared by commitMove / cancelMove.
 // Awareness state: drag: { elId, dx, dy }
 // local awareness schema: { id, color, grad, cursor, selection, drag? }
-// selection: { [elId: string]: number } | null  // elId -> claim timestamp (ms)
+// selection: { elIds: string[] } | null
 let _dragState    = null;    // { id, startX, startY, startBboxX, startBboxY,
                               //   boundsRects: [{x,y,w,h}]|null, lastValidX, lastValidY,
                               //   snapPoints: [{cx,cy,snapRadius}] } | null
@@ -495,31 +466,19 @@ function onPresenceChanged(changes, origin) {
 // received. Logs only the soft-lock-relevant fields, not cursor/color/grad
 // noise. Filter devtools console by "[awareness" to isolate this. Safe to
 // remove once the render-blackout bug is found.
-//
-// Each call to console.log() takes a single pre-stringified string, not an
-// object — devtools renders object/array arguments as collapsed, clickable
-// trees, which makes copy/paste tedious (expand-everything-by-hand). A
-// plain string argument prints flat with nothing to expand, so the whole
-// line (or whole batch, joined with \n) can be selected and pasted in one
-// go.
 function logAwarenessChange({ added, updated, removed }, origin) {
   const direction = origin === 'local' ? 'SEND' : 'RECV';
-  const ts = new Date().toISOString().slice(11, 23); // HH:MM:SS.mmm, for ordering when pasted
-  const lines = [];
-
   for (const clientId of removed) {
-    lines.push(`[awareness ${direction} ${ts}] client=${clientId} removed`);
+    console.debug(`[awareness ${direction}]`, `client=${clientId}`, '(removed)');
   }
   for (const clientId of [...added, ...updated]) {
     const state = _awareness.getStates().get(clientId);
-    const payload = JSON.stringify({
-      selection:       state?.selection ?? null,
-      pendingRequests: state?.pendingRequests ?? null,
-      drag:            state?.drag ?? null,
+    console.debug(`[awareness ${direction}]`, `client=${clientId}`, {
+      selection:       state?.selection,
+      pendingRequests: state?.pendingRequests,
+      drag:            state?.drag,
     });
-    lines.push(`[awareness ${direction} ${ts}] client=${clientId} ${payload}`);
   }
-  if (lines.length) console.log(lines.join('\n'));
 }
 
 // Maps the panel layer id (as used in _layerMeta / getActiveLayer) to the
@@ -614,9 +573,7 @@ const App = {
   },
   // Broadcast the current rubber-band candidate set via awareness.
   broadcastCandidates: (ids) => {
-    const claimedAt = {};
-    for (const id of ids) claimedAt[id] = Date.now();
-    _awareness.setLocalStateField('selection', ids.length ? claimedAt : null);
+    _awareness.setLocalStateField('selection', ids.length ? { elIds: ids } : null);
   },
   // Clear rubber-band candidates from overlay and awareness (commit or cancel).
   clearBoxCandidates: () => {
@@ -648,34 +605,38 @@ const App = {
     _broadcastPendingRequests();
   },
 
+  // Holder-side rebuttal: refresh (or create) this client's own retention
+  // entry for an element it already holds. Unlike requestElement, this
+  // always overwrites — every reassertion should push the deadline out.
+  // Only meaningful when called on an id already in this client's own
+  // selection; callers are expected to have checked that first.
+  reassertRetention: (id) => {
+    _pendingRequests[id] = Date.now();
+    _broadcastPendingRequests();
+  },
+
   select: (id) => {
     App.setTool('select');
     if (id && App.isHeldByOther(id)) {
       // Plain click on a held element is a request, not a selection change.
       // Per protocol this gesture is exclusive (single-select semantics),
       // so any selection I currently hold is cleared while the request is
-      // pending — broadcasts null, same as having nothing selected.
+      // pending — the same shape as the payloads discussed: elIds: [].
       _selectedIds = new Set();
-      _selectionClaimedAt = {};
-      // Local cleanup before broadcast — see the comment in _softLockTick
-      // for why the order matters (setLocalStateField can synchronously
-      // trigger syncFromAwareness before this function returns).
+      _awareness.setLocalStateField('selection', null);
       Overlay.localSelectionChanged(_selectedIds);
-      _broadcastSelection();
       UI.onSelectionChanged(_selectedIds);
       App.requestElement(id);
       return;
     }
     _selectedIds = id ? new Set([id]) : new Set();
-    // Unconditionally (re-)stamp a fresh claim for id, whether it was
-    // already mine or newly selected. This is what makes re-clicking your
-    // own held element the "bathroom" rebuttal gesture — no separate
-    // reassert call needed, since selecting always refreshes the claim.
-    // Harmless when id isn't contested; nothing consults the timestamp
-    // unless there's an actual conflict.
-    _selectionClaimedAt = id ? { [id]: Date.now() } : {};
+    _awareness.setLocalStateField('selection', id ? { elIds: [id] } : null);
+    // Re-clicking my own held element while someone else has requested it
+    // is the "bathroom" rebuttal gesture — refresh my retention.
+    if (id && isElementContested(id, _awareness.getStates())) {
+      App.reassertRetention(id);
+    }
     Overlay.localSelectionChanged(_selectedIds);
-    _broadcastSelection();
     UI.onSelectionChanged(_selectedIds);
   },
 
@@ -693,18 +654,15 @@ const App = {
   toggleSelection: (id) => {
     if (_selectedIds.has(id)) {
       _selectedIds.delete(id);
-      delete _selectionClaimedAt[id];
     } else if (App.isHeldByOther(id)) {
       App.requestElement(id);
       return; // request queued; local _selectedIds/elIds untouched
     } else {
       _selectedIds.add(id);
-      _selectionClaimedAt[id] = Date.now();
     }
-    // Local cleanup before broadcast — see the comment in _softLockTick for
-    // why the order matters.
+    const ids = [..._selectedIds];
+    _awareness.setLocalStateField('selection', ids.length ? { elIds: ids } : null);
     Overlay.localSelectionChanged(_selectedIds);
-    _broadcastSelection();
     UI.onSelectionChanged(_selectedIds);
   },
 
@@ -720,13 +678,8 @@ const App = {
       App.select(ids[0]);
     } else {
       _selectedIds = new Set(ids);
-      // Preserve existing claim timestamps for ids already held (e.g. the
-      // additive case); stamp a fresh claim only for newly-added ones.
-      const freshClaimedAt = {};
-      for (const id of ids) freshClaimedAt[id] = _selectionClaimedAt[id] ?? Date.now();
-      _selectionClaimedAt = freshClaimedAt;
+      _awareness.setLocalStateField('selection', { elIds: ids });
       Overlay.localSelectionChanged(_selectedIds);
-      _broadcastSelection();
       UI.onSelectionChanged(_selectedIds);
     }
   },
@@ -755,7 +708,6 @@ const App = {
       App.addLog(`deleted ${entries.length} objects`, 'local');
     }
     _selectedIds = new Set();
-    _selectionClaimedAt = {};
     Overlay.clearHoverCandidates();
     UI.onSelectionChanged(_selectedIds);
   },
@@ -784,7 +736,6 @@ const App = {
       App.addLog(`duplicated ${entries.length} objects`, 'local');
     }
     _selectedIds = new Set();
-    _selectionClaimedAt = {};
     UI.onSelectionChanged(_selectedIds);
   },
 
@@ -913,7 +864,6 @@ const App = {
     App.addLog(`deleted ${id.slice(0, 6)}`, 'local');
     if (_selectedIds.has(id)) {
       _selectedIds.delete(id);
-      delete _selectionClaimedAt[id];
       Overlay.localSelectionChanged(_selectedIds);
       UI.onSelectionChanged(_selectedIds);
     }

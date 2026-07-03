@@ -268,23 +268,27 @@ describe('Overlay.clearHoverCandidates', () => {
 // broadcastCandidates and clearBoxCandidates encode, without booting app.js.
 
 describe('broadcastCandidates awareness writes', () => {
-  test('non-empty ids set selection to { elIds: [...] }', () => {
+  test('non-empty ids set selection to a flat { [elId]: claimTimestamp } map', () => {
     const calls = []
     const setField = (key, value) => calls.push({ key, value })
-    // Mirror production logic
-    const broadcastCandidates = (ids) =>
-      setField('selection', ids.length ? { elIds: ids } : null)
+    // Mirror production logic (see app.js's broadcastCandidates)
+    const broadcastCandidates = (ids) => {
+      const claimedAt = {}
+      for (const id of ids) claimedAt[id] = 12345 // fixed stand-in for Date.now()
+      setField('selection', ids.length ? claimedAt : null)
+    }
 
     broadcastCandidates(['a', 'b'])
     expect(calls).toHaveLength(1)
     expect(calls[0].key).toBe('selection')
-    expect(calls[0].value).toEqual({ elIds: ['a', 'b'] })
+    expect(calls[0].value).toEqual({ a: 12345, b: 12345 })
+    expect(Object.keys(calls[0].value)).toEqual(['a', 'b'])
   })
 
   test('empty ids sets selection to null', () => {
     const calls = []
     const broadcastCandidates = (ids) =>
-      calls.push(ids.length ? { elIds: ids } : null)
+      calls.push(ids.length ? { a: 1 } : null)
 
     broadcastCandidates([])
     expect(calls[0]).toBeNull()

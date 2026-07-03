@@ -238,7 +238,15 @@ function onPointerDown(e) {
       }
       ToolMode._moveRef = { id: hitId, dx: p.x - anchor.x, dy: p.y - anchor.y, moved: false };
       App.select(hitId);
-      App.startDrag(hitId);
+      // select() may have bailed into a soft-lock request instead of
+      // actually selecting hitId (held by another peer) — in that case
+      // there's nothing local to drag, and starting a drag ghost anyway
+      // would broadcast a bogus `drag` awareness field for an element we
+      // don't hold, and its z-top ghost/ring would visually occlude the
+      // request indicator.
+      if (App.getSelectedIds().includes(hitId)) {
+        App.startDrag(hitId);
+      }
       ToolMode._pressTimer = setTimeout(() => {
         if (!ToolMode._moveRef?.moved) App.requestContextMenu(e.clientX, e.clientY, hitId);
       }, 480);
