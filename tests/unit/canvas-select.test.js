@@ -463,31 +463,11 @@ describe('multi-move gesture', () => {
     expect(multiDragStarted[0].leaderId).toBe('shape-a')
   })
 
-  test('pointerdown on a multi-selected element calls App.reassertClaim with that element specifically', () => {
-    // Regression: starting a multi-drag never goes through select(), the
-    // only other place a soft-lock claim gets refreshed — so without this,
-    // touching (tapping or dragging) a multi-selected element silently
-    // never defends it, even while the user is actively interacting with
-    // it. Targeted at the specific hit element, not the whole group.
-    const reasserted = []
-    const app = makeApp({
-      getSelectedIds: () => ['shape-a', 'shape-b'],
-      reassertClaim: (id) => reasserted.push(id),
-    })
-    init(app, document.getElementById('canvas'))
-    setTool('select', { multi: false })
-
-    const layer = document.getElementById('drawing-layer')
-    const el = document.createElement('rect')
-    el.setAttribute('data-yid', 'shape-a')
-    el.setAttribute('data-module', 'drawing')
-    layer.appendChild(el)
-
-    const stage = document.getElementById('stage')
-    stage.dispatchEvent(makePointerEvent('pointerdown', { target: el }))
-
-    expect(reasserted).toEqual(['shape-a'])
-  })
+  // Note: multi-drag claim defense (defending every element in the group,
+  // not just the clicked one) now lives entirely inside App.startMultiDrag
+  // itself, precisely so canvas.js doesn't need a separate call here that
+  // could be forgotten by a future caller — see app.js and
+  // soft-lock-e2e.test.js for that coverage.
 
   test('pointerdown on an element NOT in the multi-selection starts single move', () => {
     const app = makeApp({

@@ -405,3 +405,103 @@ describe('soft-lock e2e — long single-element drag claim refresh', () => {
   })
 })
 
+describe('soft-lock e2e — multi-drag defends the whole group, not just the leader', () => {
+  // Reproduces a real live bug: A selects two dice, B requests die-1, A
+  // starts dragging the group with die-2 as the leader (the one under the
+  // pointer). Only the leader's claim was ever refreshed (via the old
+  // standalone canvas.js call) — die-1, dragged right along with it, was
+  // never touched, so B's request succeeded despite die-1 actively moving
+  // as part of an ongoing drag.
+  function makeRequester(targetAwareness) {
+    const doc = new Y.Doc()
+    const aw  = new awarenessProtocol.Awareness(doc)
+    aw.setLocalState({ id: 'bob', color: '#00f', grad: null, cursor: null, selection: null })
+    return {
+      request(elId) {
+        aw.setLocalStateField('pendingRequests', { [elId]: Date.now() })
+        const update = awarenessProtocol.encodeAwarenessUpdate(aw, [aw.clientID])
+        awarenessProtocol.applyAwarenessUpdate(targetAwareness, update, 'network')
+      },
+    }
+  }
+
+  test('starting a group drag defends every element in the group, not just the leader', async () => {
+    vi.useFakeTimers()
+    try {
+      const { App, awareness, ydoc, yToys } = await bootPeerB()
+      await addToy(ydoc, yToys, { id: 'die-2', toyType: 'player_marker', x: 50, y: 0, color: '#abc' })
+
+      App.select('die-1')
+      App.toggleSelection('die-2')
+      await vi.advanceTimersByTimeAsync(10)
+
+      makeRequester(awareness).request('die-1')
+      await vi.advanceTimersByTimeAsync(500)
+
+      // A drags the group with die-2 (NOT the requested die) as the leader
+      // — exactly the reported scenario.
+      App.startMultiDrag({ x: 0, y: 0, leaderId: 'die-2' })
+
+      await vi.advanceTimersByTimeAsync(4000)
+
+      // die-1 must still be held — the group drag defended it even though
+      // it wasn't the element under the pointer.
+      expect(App.getSelectedIds().sort()).toEqual(['die-1', 'die-2'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('control: a group drag whose leader is the SAME element being requested still defends it (sanity)', async () => {
+    vi.useFakeTimers()
+    try {
+      const { App, awareness, ydoc, yToys } = await bootPeerB()
+      await addToy(ydoc, yToys, { id: 'die-2', toyType: 'player_marker', x: 50, y: 0, color: '#abc' })
+
+      App.select('die-1')
+      App.toggleSelection('die-2')
+      await vi.advanceTimersByTimeAsync(10)
+
+      makeRequester(awareness).request('die-1')
+      await vi.advanceTimersByTimeAsync(500)
+
+      App.startMultiDrag({ x: 0, y: 0, leaderId: 'die-1' })
+
+      await vi.advanceTimersByTimeAsync(4000)
+
+      expect(App.getSelectedIds().sort()).toEqual(['die-1', 'die-2'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('a long group drag keeps defending via moveMulti\'s throttled refresh, not just at drag start', async () => {
+    vi.useFakeTimers()
+    try {
+      const { App, awareness, ydoc, yToys } = await bootPeerB()
+      await addToy(ydoc, yToys, { id: 'die-2', toyType: 'player_marker', x: 50, y: 0, color: '#abc' })
+
+      App.select('die-1')
+      App.toggleSelection('die-2')
+      await vi.advanceTimersByTimeAsync(10)
+
+      App.startMultiDrag({ x: 0, y: 0, leaderId: 'die-2' })
+
+      // Request arrives well after the drag's initial claim refresh.
+      await vi.advanceTimersByTimeAsync(2000)
+      makeRequester(awareness).request('die-1')
+
+      // Ongoing drag: moveMulti keeps firing, spaced past the throttle,
+      // well past the request's own 3s window.
+      for (let i = 0; i < 5; i++) {
+        await vi.advanceTimersByTimeAsync(1100)
+        App.moveMulti(i, i)
+      }
+
+      expect(App.getSelectedIds().sort()).toEqual(['die-1', 'die-2'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+

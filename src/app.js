@@ -487,21 +487,22 @@ function onDrawingChanged(events, transaction) {
   renderDoc();
 }
 
+// Diagnostic awareness logging — opt-in via ?debug=1 in the URL, off by
+// default. One instrumentation point covers both directions: every LOCAL
+// setLocalStateField() call and every REMOTE applyAwarenessUpdate() fire
+// the same 'change' event — origin is 'local' for our own writes, and
+// whatever the transport passed (e.g. a WebRTC room object) for updates we
+// received. Logs only the soft-lock-relevant fields, not cursor/color/grad
+// noise. Filter devtools console by "[awareness" to isolate this.
+const DEBUG_AWARENESS = typeof location !== 'undefined'
+  && new URLSearchParams(location.search).get('debug') === '1';
+
 function onPresenceChanged(changes, origin) {
-  logAwarenessChange(changes, origin);
+  if (DEBUG_AWARENESS) logAwarenessChange(changes, origin);
   renderPresence();
   UI.updatePeersPanel();
 }
 
-// Temporary diagnostic logging for debugging the soft-lock render-blackout
-// issue. One instrumentation point covers both directions: every LOCAL
-// setLocalStateField() call and every REMOTE applyAwarenessUpdate() fire
-// this same 'change' event — origin is 'local' for our own writes, and
-// whatever the transport passed (e.g. a WebRTC room object) for updates we
-// received. Logs only the soft-lock-relevant fields, not cursor/color/grad
-// noise. Filter devtools console by "[awareness" to isolate this. Safe to
-// remove once the render-blackout bug is found.
-//
 // Each call to console.log() takes a single pre-stringified string, not an
 // object — devtools renders object/array arguments as collapsed, clickable
 // trees, which makes copy/paste tedious (expand-everything-by-hand). A
@@ -1134,6 +1135,15 @@ const App = {
 
     for (const el of elements) Overlay.startDragPlaceholder(el.id);
 
+    // Defend every element in the group, not just the one under the
+    // pointer — a group drag actively moves all of them together, so all
+    // of them are being "used" and should all be defended. Centralized
+    // here (rather than left to the caller) so this can't be forgotten:
+    // any future caller of startMultiDrag gets correct behavior for free.
+    const claimNow = Date.now();
+    for (const el of elements) _selectionClaimedAt[el.id] = claimNow;
+    _broadcastSelection();
+
     _awareness.setLocalStateField('multidrag', {
       elIds:   elements.map(e => e.id),
       offsets: elements.map(e => ({ bboxX: e.bboxX, bboxY: e.bboxY })),
@@ -1143,6 +1153,17 @@ const App = {
   moveMulti: (ddx, ddy) => {
     if (!_multiDragState) return;
     const { elements, leaderEl, boundsRects, snapPoints } = _multiDragState;
+
+    // Throttled claim refresh for the whole group — same reasoning as
+    // App.move's single-element version: a drag long enough to outlast the
+    // 3s request window should keep defending itself, without broadcasting
+    // on every pointermove.
+    const now = Date.now();
+    if (now - (_multiDragState.lastClaimRefresh ?? 0) >= CLAIM_REFRESH_THROTTLE_MS) {
+      _multiDragState.lastClaimRefresh = now;
+      for (const el of elements) _selectionClaimedAt[el.id] = now;
+      _broadcastSelection();
+    }
 
     // Compute the candidate anchor position and apply constraints
     let rx = Math.round(leaderEl.anchorX + ddx);
