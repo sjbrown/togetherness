@@ -40,6 +40,7 @@ import {
   getAllContestedElementIds,
   resolveElementWinner,
   isRequestWindowElapsed,
+  computeTickActions,
 } from '../../src/soft-lock.js'
 
 // Build a plain Map<clientId, state> — the same shape awareness.getStates()
@@ -54,29 +55,29 @@ function statesMap(entries) {
 describe('getHolderClientId / isElementHeldByOther', () => {
   test('returns the clientId holding elId', () => {
     const states = statesMap([
-      [1, { elIds: ['goblin-1'] }],
-      [2, { elIds: [] }],
+      [1, { selection: { elIds: ['goblin-1'] } }],
+      [2, { selection: { elIds: [] } }],
     ])
     expect(getHolderClientId('goblin-1', states)).toBe(1)
   })
 
   test('returns null when nobody holds elId', () => {
-    const states = statesMap([[1, { elIds: [] }], [2, { elIds: ['other'] }]])
+    const states = statesMap([[1, { selection: { elIds: [] } }], [2, { selection: { elIds: ['other'] } }]])
     expect(getHolderClientId('goblin-1', states)).toBeNull()
   })
 
   test('isElementHeldByOther is true when a different client holds it', () => {
-    const states = statesMap([[1, { elIds: ['goblin-1'] }]])
+    const states = statesMap([[1, { selection: { elIds: ['goblin-1'] } }]])
     expect(isElementHeldByOther('goblin-1', states, 2)).toBe(true)
   })
 
   test('isElementHeldByOther is false when I am the holder', () => {
-    const states = statesMap([[1, { elIds: ['goblin-1'] }]])
+    const states = statesMap([[1, { selection: { elIds: ['goblin-1'] } }]])
     expect(isElementHeldByOther('goblin-1', states, 1)).toBe(false)
   })
 
   test('isElementHeldByOther is false when unheld', () => {
-    const states = statesMap([[1, { elIds: [] }]])
+    const states = statesMap([[1, { selection: { elIds: [] } }]])
     expect(isElementHeldByOther('goblin-1', states, 2)).toBe(false)
   })
 })
@@ -86,7 +87,7 @@ describe('getHolderClientId / isElementHeldByOther', () => {
 describe('collectRequestsForElement', () => {
   test('classifies a holder pendingRequests entry as a retainer', () => {
     const states = statesMap([
-      [1, { elIds: ['goblin-1'], pendingRequests: { 'goblin-1': 2500 } }],
+      [1, { selection: { elIds: ['goblin-1'] }, pendingRequests: { 'goblin-1': 2500 } }],
     ])
     const { retainers, acquirers } = collectRequestsForElement('goblin-1', states)
     expect(retainers).toEqual([{ clientId: 1, ts: 2500 }])
@@ -95,7 +96,7 @@ describe('collectRequestsForElement', () => {
 
   test('classifies a non-holder pendingRequests entry as an acquirer', () => {
     const states = statesMap([
-      [2, { elIds: [], pendingRequests: { 'goblin-1': 1000 } }],
+      [2, { selection: { elIds: [] }, pendingRequests: { 'goblin-1': 1000 } }],
     ])
     const { retainers, acquirers } = collectRequestsForElement('goblin-1', states)
     expect(acquirers).toEqual([{ clientId: 2, ts: 1000 }])
@@ -104,7 +105,7 @@ describe('collectRequestsForElement', () => {
 
   test('ignores pendingRequests entries for other elIds', () => {
     const states = statesMap([
-      [2, { elIds: [], pendingRequests: { 'goblin-2': 1000 } }],
+      [2, { selection: { elIds: [] }, pendingRequests: { 'goblin-2': 1000 } }],
     ])
     const { retainers, acquirers } = collectRequestsForElement('goblin-1', states)
     expect(retainers).toEqual([])
@@ -113,7 +114,7 @@ describe('collectRequestsForElement', () => {
 
   test('handles null pendingRequests and missing selection gracefully', () => {
     const states = statesMap([
-      [1, { elIds: ['goblin-1'], pendingRequests: null }],
+      [1, { selection: { elIds: ['goblin-1'] }, pendingRequests: null }],
       [2, {}],
     ])
     const { retainers, acquirers } = collectRequestsForElement('goblin-1', states)
@@ -127,36 +128,36 @@ describe('collectRequestsForElement', () => {
 describe('isElementContested / getAllContestedElementIds', () => {
   test('contested when there is an outstanding acquirer', () => {
     const states = statesMap([
-      [1, { elIds: ['goblin-1'] }],
-      [2, { elIds: [], pendingRequests: { 'goblin-1': 1000 } }],
+      [1, { selection: { elIds: ['goblin-1'] } }],
+      [2, { selection: { elIds: [] }, pendingRequests: { 'goblin-1': 1000 } }],
     ])
     expect(isElementContested('goblin-1', states)).toBe(true)
   })
 
   test('not contested when only a retainer exists with no acquirer', () => {
     const states = statesMap([
-      [1, { elIds: ['goblin-1'], pendingRequests: { 'goblin-1': 2500 } }],
+      [1, { selection: { elIds: ['goblin-1'] }, pendingRequests: { 'goblin-1': 2500 } }],
     ])
     expect(isElementContested('goblin-1', states)).toBe(false)
   })
 
   test('not contested when nobody has requested it', () => {
-    const states = statesMap([[1, { elIds: ['goblin-1'] }]])
+    const states = statesMap([[1, { selection: { elIds: ['goblin-1'] } }]])
     expect(isElementContested('goblin-1', states)).toBe(false)
   })
 
   test('getAllContestedElementIds sweeps every acquisition across all clients', () => {
     const states = statesMap([
-      [1, { elIds: ['g1', 'g2'] }],
-      [2, { elIds: [], pendingRequests: { g1: 1000 } }],
-      [3, { elIds: [], pendingRequests: { g2: 1200 } }],
+      [1, { selection: { elIds: ['g1', 'g2'] } }],
+      [2, { selection: { elIds: [] }, pendingRequests: { g1: 1000 } }],
+      [3, { selection: { elIds: [] }, pendingRequests: { g2: 1200 } }],
     ])
     expect(getAllContestedElementIds(states)).toEqual(new Set(['g1', 'g2']))
   })
 
   test('getAllContestedElementIds excludes retention-only entries', () => {
     const states = statesMap([
-      [1, { elIds: ['g1'], pendingRequests: { g1: 500 } }],
+      [1, { selection: { elIds: ['g1'] }, pendingRequests: { g1: 500 } }],
     ])
     expect(getAllContestedElementIds(states)).toEqual(new Set())
   })
@@ -166,48 +167,48 @@ describe('isElementContested / getAllContestedElementIds', () => {
 
 describe('resolveElementWinner', () => {
   test('returns null when there are no acquirers', () => {
-    const states = statesMap([[1, { elIds: ['goblin-1'] }]])
+    const states = statesMap([[1, { selection: { elIds: ['goblin-1'] } }]])
     expect(resolveElementWinner('goblin-1', states)).toBeNull()
   })
 
   test('acquirer wins when uncontested by any retention', () => {
     const states = statesMap([
-      [1, { elIds: ['goblin-1'] }],
-      [2, { elIds: [], pendingRequests: { 'goblin-1': 5000 } }],
+      [1, { selection: { elIds: ['goblin-1'] } }],
+      [2, { selection: { elIds: [] }, pendingRequests: { 'goblin-1': 5000 } }],
     ])
     expect(resolveElementWinner('goblin-1', states)).toEqual({ clientId: 2, ts: 5000 })
   })
 
   test('retention with ts >= acquirer ts rebuts the acquirer', () => {
     const states = statesMap([
-      [1, { elIds: ['goblin-1'], pendingRequests: { 'goblin-1': 3500 } }],
-      [2, { elIds: [], pendingRequests: { 'goblin-1': 1000 } }],
+      [1, { selection: { elIds: ['goblin-1'] }, pendingRequests: { 'goblin-1': 3500 } }],
+      [2, { selection: { elIds: [] }, pendingRequests: { 'goblin-1': 1000 } }],
     ])
     expect(resolveElementWinner('goblin-1', states)).toBeNull()
   })
 
   test('retention with ts < acquirer ts does NOT rebut (stale retention)', () => {
     const states = statesMap([
-      [1, { elIds: ['goblin-1'], pendingRequests: { 'goblin-1': 500 } }],
-      [2, { elIds: [], pendingRequests: { 'goblin-1': 1000 } }],
+      [1, { selection: { elIds: ['goblin-1'] }, pendingRequests: { 'goblin-1': 500 } }],
+      [2, { selection: { elIds: [] }, pendingRequests: { 'goblin-1': 1000 } }],
     ])
     expect(resolveElementWinner('goblin-1', states)).toEqual({ clientId: 2, ts: 1000 })
   })
 
   test('earliest acquirer wins among multiple acquirers', () => {
     const states = statesMap([
-      [1, { elIds: ['goblin-1'] }],
-      [2, { elIds: [], pendingRequests: { 'goblin-1': 2000 } }],
-      [3, { elIds: [], pendingRequests: { 'goblin-1': 1000 } }],
+      [1, { selection: { elIds: ['goblin-1'] } }],
+      [2, { selection: { elIds: [] }, pendingRequests: { 'goblin-1': 2000 } }],
+      [3, { selection: { elIds: [] }, pendingRequests: { 'goblin-1': 1000 } }],
     ])
     expect(resolveElementWinner('goblin-1', states)).toEqual({ clientId: 3, ts: 1000 })
   })
 
   test('exact ts tie between acquirers broken by lowest clientId', () => {
     const states = statesMap([
-      [1, { elIds: ['goblin-1'] }],
-      [5, { elIds: [], pendingRequests: { 'goblin-1': 1000 } }],
-      [3, { elIds: [], pendingRequests: { 'goblin-1': 1000 } }],
+      [1, { selection: { elIds: ['goblin-1'] } }],
+      [5, { selection: { elIds: [] }, pendingRequests: { 'goblin-1': 1000 } }],
+      [3, { selection: { elIds: [] }, pendingRequests: { 'goblin-1': 1000 } }],
     ])
     expect(resolveElementWinner('goblin-1', states)).toEqual({ clientId: 3, ts: 1000 })
   })
@@ -237,15 +238,15 @@ describe('Scenario 6a — clean handoff (uncontested)', () => {
   test('Alice holds, Bailey requests, nobody rebuts, Bailey wins at t=8000', () => {
     // t=0 — Alice holds goblin-1, nothing contested yet.
     let states = statesMap([
-      [1 /* Alice  */, { elIds: ['goblin-1'], pendingRequests: null }],
-      [2 /* Bailey */, { elIds: [], pendingRequests: null }],
+      [1 /* Alice  */, { selection: { elIds: ['goblin-1'] }, pendingRequests: null }],
+      [2 /* Bailey */, { selection: { elIds: [] }, pendingRequests: null }],
     ])
     expect(isElementContested('goblin-1', states)).toBe(false)
 
     // t=5000 — Bailey shift-clicks goblin-1; it becomes an acquisition.
     states = statesMap([
-      [1, { elIds: ['goblin-1'], pendingRequests: null }],
-      [2, { elIds: [], pendingRequests: { 'goblin-1': 5000 } }],
+      [1, { selection: { elIds: ['goblin-1'] }, pendingRequests: null }],
+      [2, { selection: { elIds: [] }, pendingRequests: { 'goblin-1': 5000 } }],
     ])
     expect(isElementContested('goblin-1', states)).toBe(true)
     expect(resolveElementWinner('goblin-1', states)).toEqual({ clientId: 2, ts: 5000 })
@@ -264,21 +265,21 @@ describe('Scenario 6b — aborted handoff (holder rebuts before deadline)', () =
   test('Alice re-asserts dragon-mini before t=4000, defeating Bailey\'s request', () => {
     // t=0 — Alice holds dragon-mini.
     let states = statesMap([
-      [1, { elIds: ['dragon-mini'], pendingRequests: null }],
+      [1, { selection: { elIds: ['dragon-mini'] }, pendingRequests: null }],
     ])
 
     // t=1000 — Bailey shift-clicks it.
     states = statesMap([
-      [1, { elIds: ['dragon-mini'], pendingRequests: null }],
-      [2, { elIds: [], pendingRequests: { 'dragon-mini': 1000 } }],
+      [1, { selection: { elIds: ['dragon-mini'] }, pendingRequests: null }],
+      [2, { selection: { elIds: [] }, pendingRequests: { 'dragon-mini': 1000 } }],
     ])
     expect(isElementContested('dragon-mini', states)).toBe(true)
 
     // t=2500 — Alice re-clicks her own held element: targeted retention,
     // not a blanket "any activity" signal — only dragon-mini is defended.
     states = statesMap([
-      [1, { elIds: ['dragon-mini'], pendingRequests: { 'dragon-mini': 2500 } }],
-      [2, { elIds: [], pendingRequests: { 'dragon-mini': 1000 } }],
+      [1, { selection: { elIds: ['dragon-mini'] }, pendingRequests: { 'dragon-mini': 2500 } }],
+      [2, { selection: { elIds: [] }, pendingRequests: { 'dragon-mini': 1000 } }],
     ])
     expect(isElementContested('dragon-mini', states)).toBe(true) // still shows as requested…
 
@@ -297,13 +298,13 @@ describe('Scenario 6c — partial transfer out of a multi-selection', () => {
   test('Cass requests only goblin-2 out of Alice\'s 3-element group; siblings untouched', () => {
     // t=0 — Alice holds a 3-element group.
     let states = statesMap([
-      [1, { elIds: ['goblin-1', 'goblin-2', 'goblin-3'], pendingRequests: null }],
+      [1, { selection: { elIds: ['goblin-1', 'goblin-2', 'goblin-3'] }, pendingRequests: null }],
     ])
 
     // t=1000 — Cass shift-clicks only goblin-2.
     states = statesMap([
-      [1, { elIds: ['goblin-1', 'goblin-2', 'goblin-3'], pendingRequests: null }],
-      [3, { elIds: [], pendingRequests: { 'goblin-2': 1000 } }],
+      [1, { selection: { elIds: ['goblin-1', 'goblin-2', 'goblin-3'] }, pendingRequests: null }],
+      [3, { selection: { elIds: [] }, pendingRequests: { 'goblin-2': 1000 } }],
     ])
 
     // Only goblin-2 is contested; siblings are structurally untouched.
@@ -327,15 +328,15 @@ describe('Scenario 6d — two simultaneous requesters on two different elements'
   test('Alice defends g1 but not g2; Bailey loses g1, Cass wins g2', () => {
     // t=0 — Alice holds three goblins.
     let states = statesMap([
-      [1, { elIds: ['g1', 'g2', 'g3'], pendingRequests: null }],
+      [1, { selection: { elIds: ['g1', 'g2', 'g3'] }, pendingRequests: null }],
     ])
 
     // t=1000 — Bailey requests g1.
     // t=1200 — Cass requests g2.
     states = statesMap([
-      [1, { elIds: ['g1', 'g2', 'g3'], pendingRequests: null }],
-      [2 /* Bailey */, { elIds: [], pendingRequests: { g1: 1000 } }],
-      [3 /* Cass   */, { elIds: [], pendingRequests: { g2: 1200 } }],
+      [1, { selection: { elIds: ['g1', 'g2', 'g3'] }, pendingRequests: null }],
+      [2 /* Bailey */, { selection: { elIds: [] }, pendingRequests: { g1: 1000 } }],
+      [3 /* Cass   */, { selection: { elIds: [] }, pendingRequests: { g2: 1200 } }],
     ])
     expect(isElementContested('g1', states)).toBe(true)
     expect(isElementContested('g2', states)).toBe(true)
@@ -347,9 +348,9 @@ describe('Scenario 6d — two simultaneous requesters on two different elements'
     // while a second, independent request against a different element is
     // still in flight).
     states = statesMap([
-      [1, { elIds: ['g1', 'g2', 'g3'], pendingRequests: { g1: 3500 } }],
-      [2, { elIds: [], pendingRequests: { g1: 1000 } }],
-      [3, { elIds: [], pendingRequests: { g2: 1200 } }],
+      [1, { selection: { elIds: ['g1', 'g2', 'g3'] }, pendingRequests: { g1: 3500 } }],
+      [2, { selection: { elIds: [] }, pendingRequests: { g1: 1000 } }],
+      [3, { selection: { elIds: [] }, pendingRequests: { g2: 1200 } }],
     ])
 
     // g1: Alice's retention (3500) postdates Bailey's request (1000) → rebutted.
@@ -361,5 +362,130 @@ describe('Scenario 6d — two simultaneous requesters on two different elements'
     // t=4200 — Cass's deadline passes, promotion occurs.
     const cassWinner = resolveElementWinner('g2', states)
     expect(isRequestWindowElapsed(cassWinner, 4200)).toBe(true)
+  })
+})
+
+// ── 7. computeTickActions — the imperative tick's decision function ─────────
+//
+// Re-verifies the same four scenarios end-to-end through the actual state
+// machine app.js's tick loop calls, plus a few edge cases specific to the
+// tick itself (idempotence, retention entries being left alone, no-op ticks).
+
+describe('computeTickActions', () => {
+  test('no-op tick: nothing pending, nothing held, nothing to do', () => {
+    const states = statesMap([[1, { selection: null, pendingRequests: null }]])
+    const result = computeTickActions({ myClientId: 1, awarenessStates: states, now: 0 })
+    expect(result).toEqual({ elIdsToAcquire: [], elIdsToDropRequest: [], elIdsToRelease: [] })
+  })
+
+  test('acquirer tick before window elapsed: no action yet', () => {
+    const states = statesMap([
+      [1, { selection: { elIds: ['goblin-1'] } }],
+      [2, { selection: null, pendingRequests: { 'goblin-1': 5000 } }],
+    ])
+    const result = computeTickActions({ myClientId: 2, awarenessStates: states, now: 6000 })
+    expect(result.elIdsToAcquire).toEqual([])
+  })
+
+  test('scenario 6a from Bailey\'s tick: promotes at t=8000', () => {
+    const states = statesMap([
+      [1, { selection: { elIds: ['goblin-1'] } }],
+      [2, { selection: null, pendingRequests: { 'goblin-1': 5000 } }],
+    ])
+    const result = computeTickActions({ myClientId: 2, awarenessStates: states, now: 8000 })
+    expect(result).toEqual({ elIdsToAcquire: ['goblin-1'], elIdsToDropRequest: [], elIdsToRelease: [] })
+  })
+
+  test('scenario 6a from Alice\'s tick: releases at t=8000, symmetric with Bailey\'s', () => {
+    const states = statesMap([
+      [1, { selection: { elIds: ['goblin-1'] } }],
+      [2, { selection: null, pendingRequests: { 'goblin-1': 5000 } }],
+    ])
+    const result = computeTickActions({ myClientId: 1, awarenessStates: states, now: 8000 })
+    expect(result).toEqual({ elIdsToAcquire: [], elIdsToDropRequest: [], elIdsToRelease: ['goblin-1'] })
+  })
+
+  test('scenario 6b from Bailey\'s tick: rebutted request is dropped, not acquired', () => {
+    const states = statesMap([
+      [1, { selection: { elIds: ['dragon-mini'] }, pendingRequests: { 'dragon-mini': 2500 } }],
+      [2, { selection: null, pendingRequests: { 'dragon-mini': 1000 } }],
+    ])
+    const result = computeTickActions({ myClientId: 2, awarenessStates: states, now: 4000 })
+    expect(result).toEqual({ elIdsToAcquire: [], elIdsToDropRequest: ['dragon-mini'], elIdsToRelease: [] })
+  })
+
+  test('scenario 6b from Alice\'s tick: rebutted successfully, keeps holding, nothing released', () => {
+    const states = statesMap([
+      [1, { selection: { elIds: ['dragon-mini'] }, pendingRequests: { 'dragon-mini': 2500 } }],
+      [2, { selection: null, pendingRequests: { 'dragon-mini': 1000 } }],
+    ])
+    const result = computeTickActions({ myClientId: 1, awarenessStates: states, now: 4000 })
+    expect(result).toEqual({ elIdsToAcquire: [], elIdsToDropRequest: [], elIdsToRelease: [] })
+  })
+
+  test('a client\'s own retention entry (elId in its own selection) is never treated as an acquisition', () => {
+    // Alice holds goblin-1 and has a pendingRequests entry for it (retention).
+    // Her own tick must not try to "acquire" what she already holds.
+    const states = statesMap([
+      [1, { selection: { elIds: ['goblin-1'] }, pendingRequests: { 'goblin-1': 100 } }],
+    ])
+    const result = computeTickActions({ myClientId: 1, awarenessStates: states, now: 999999 })
+    expect(result.elIdsToAcquire).toEqual([])
+    expect(result.elIdsToRelease).toEqual([]) // no acquirer at all, so nothing to release either
+  })
+
+  test('scenario 6c from Cass\'s tick: partial transfer acquires only the requested elId', () => {
+    const states = statesMap([
+      [1, { selection: { elIds: ['goblin-1', 'goblin-2', 'goblin-3'] } }],
+      [3, { selection: null, pendingRequests: { 'goblin-2': 1000 } }],
+    ])
+    const result = computeTickActions({ myClientId: 3, awarenessStates: states, now: 4000 })
+    expect(result).toEqual({ elIdsToAcquire: ['goblin-2'], elIdsToDropRequest: [], elIdsToRelease: [] })
+  })
+
+  test('scenario 6c from Alice\'s tick: releases only goblin-2, siblings untouched', () => {
+    const states = statesMap([
+      [1, { selection: { elIds: ['goblin-1', 'goblin-2', 'goblin-3'] } }],
+      [3, { selection: null, pendingRequests: { 'goblin-2': 1000 } }],
+    ])
+    const result = computeTickActions({ myClientId: 1, awarenessStates: states, now: 4000 })
+    expect(result.elIdsToRelease).toEqual(['goblin-2'])
+  })
+
+  test('scenario 6d from Alice\'s tick: releases g2 (undefended) but keeps g1 (defended)', () => {
+    const states = statesMap([
+      [1, { selection: { elIds: ['g1', 'g2', 'g3'] }, pendingRequests: { g1: 3500 } }],
+      [2, { selection: null, pendingRequests: { g1: 1000 } }],
+      [3, { selection: null, pendingRequests: { g2: 1200 } }],
+    ])
+    const result = computeTickActions({ myClientId: 1, awarenessStates: states, now: 4200 })
+    expect(result.elIdsToRelease).toEqual(['g2'])
+  })
+
+  test('scenario 6d from Bailey\'s tick: g1 request is dropped (rebutted)', () => {
+    const states = statesMap([
+      [1, { selection: { elIds: ['g1', 'g2', 'g3'] }, pendingRequests: { g1: 3500 } }],
+      [2, { selection: null, pendingRequests: { g1: 1000 } }],
+      [3, { selection: null, pendingRequests: { g2: 1200 } }],
+    ])
+    const result = computeTickActions({ myClientId: 2, awarenessStates: states, now: 4200 })
+    expect(result.elIdsToDropRequest).toEqual(['g1'])
+    expect(result.elIdsToAcquire).toEqual([])
+  })
+
+  test('scenario 6d from Cass\'s tick: g2 is acquired', () => {
+    const states = statesMap([
+      [1, { selection: { elIds: ['g1', 'g2', 'g3'] }, pendingRequests: { g1: 3500 } }],
+      [2, { selection: null, pendingRequests: { g1: 1000 } }],
+      [3, { selection: null, pendingRequests: { g2: 1200 } }],
+    ])
+    const result = computeTickActions({ myClientId: 3, awarenessStates: states, now: 4200 })
+    expect(result.elIdsToAcquire).toEqual(['g2'])
+  })
+
+  test('missing local state (client never broadcast anything) ticks as a safe no-op', () => {
+    const states = statesMap([])
+    const result = computeTickActions({ myClientId: 99, awarenessStates: states, now: 0 })
+    expect(result).toEqual({ elIdsToAcquire: [], elIdsToDropRequest: [], elIdsToRelease: [] })
   })
 })

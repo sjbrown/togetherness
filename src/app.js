@@ -37,6 +37,7 @@ import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
 import * as Overlay                               from './overlay.js';
 import { entityGradient }            from './entity_gradient.js';
+import { isElementHeldByOther, isElementContested, computeTickActions } from './soft-lock.js';
 
 
 import * as Y from 'yjs';
@@ -75,6 +76,55 @@ let _myId, _myGrad, _roomId;
 let _svgEl;
 let _selectedIds  = new Set();   // SSOT: N=0 nothing, N=1 single, N>1 multi
 let _activeLayer  = 'toys';
+
+// Soft-lock request state — this client's own outstanding requests, keyed
+// by elId. Mirrors _selectedIds as the local SSOT for this client's half of
+// the awareness `pendingRequests` field; see soft-lock.js for the
+// acquisition-vs-retention interpretation of each entry once broadcast.
+//   { [elId: string]: number }  // elId -> request/reassertion timestamp (ms)
+let _pendingRequests = {};
+
+// Broadcast the current _pendingRequests as this client's awareness
+// `pendingRequests` field. Sibling to how `selection` is broadcast.
+function _broadcastPendingRequests() {
+  const keys = Object.keys(_pendingRequests);
+  _awareness.setLocalStateField('pendingRequests', keys.length ? { ..._pendingRequests } : null);
+}
+
+// Soft-lock tick — periodically evaluates computeTickActions() and applies
+// the result. Nothing is coordinated between clients; each client's tick
+// independently recomputes the same facts from the same shared awareness
+// state and the same REQUEST_WINDOW_MS deadline (see soft-lock.js).
+const SOFT_LOCK_TICK_MS = 250;
+let _softLockTickHandle = null;
+
+function _softLockTick() {
+  const { elIdsToAcquire, elIdsToDropRequest, elIdsToRelease } = computeTickActions({
+    myClientId:      _awareness.clientID,
+    awarenessStates: _awareness.getStates(),
+    now:             Date.now(),
+  });
+
+  if (!elIdsToAcquire.length && !elIdsToDropRequest.length && !elIdsToRelease.length) return;
+
+  for (const elId of elIdsToAcquire) {
+    _selectedIds.add(elId);
+    delete _pendingRequests[elId];
+  }
+  for (const elId of elIdsToDropRequest) {
+    delete _pendingRequests[elId];
+  }
+  for (const elId of elIdsToRelease) {
+    _selectedIds.delete(elId);
+    delete _pendingRequests[elId]; // drop any retention entry for what I just lost
+  }
+
+  const ids = [..._selectedIds];
+  _awareness.setLocalStateField('selection', ids.length ? { elIds: ids } : null);
+  _broadcastPendingRequests();
+  Overlay.localSelectionChanged(_selectedIds);
+  UI.onSelectionChanged(_selectedIds);
+}
 
 // Returns the single selected id, or null if zero or more than one are selected.
 // Callers that need to work on a single element must check
@@ -232,6 +282,9 @@ export function boot({ ydoc, yMeta, yToys, yDrawing, yBounPos, awareness, provid
   // Initial render
   renderDoc();
   renderPresence();
+
+  // Soft-lock tick — see soft-lock.js / computeTickActions.
+  _softLockTickHandle = setInterval(_softLockTick, SOFT_LOCK_TICK_MS);
 }
 
 // ── Render pipelines ──────────────────────────────────────────────────────────
@@ -486,6 +539,10 @@ const App = {
           bbox.y + bbox.height <= rect.y + rect.height
         );
       })
+      // Rubber-band box-select can never invoke a soft-lock request — held
+      // elements are silently excluded, as if they weren't swept at all.
+      // (Shift-click is the only gesture that can invoke a request.)
+      .filter(({ id }) => !App.isHeldByOther(id))
       .map(({ id }) => id);
     Overlay.setHoverCandidates(ids);
     return ids;
@@ -508,10 +565,53 @@ const App = {
   requestContextMenu: (x, y, id) => UI.showPopover(x, y, id),
 
   // ── Selection ────────────────────────────────────────────────────────────
+
+  // True if elId is currently held by some other peer's committed selection.
+  // Thin wrapper over soft-lock.js so callers here don't reach into
+  // _awareness directly.
+  isHeldByOther: (id) => isElementHeldByOther(id, _awareness.getStates(), _awareness.clientID),
+
+  // Advisory soft-lock request: write/refresh this client's own acquisition
+  // entry for `id`. Per protocol, an acquirer's request is write-once — a
+  // client cannot cancel or re-issue its own pending request once sent, so
+  // this is a no-op if one is already outstanding for this id.
+  requestElement: (id) => {
+    if (_pendingRequests[id] != null) return;
+    _pendingRequests[id] = Date.now();
+    _broadcastPendingRequests();
+  },
+
+  // Holder-side rebuttal: refresh (or create) this client's own retention
+  // entry for an element it already holds. Unlike requestElement, this
+  // always overwrites — every reassertion should push the deadline out.
+  // Only meaningful when called on an id already in this client's own
+  // selection; callers are expected to have checked that first.
+  reassertRetention: (id) => {
+    _pendingRequests[id] = Date.now();
+    _broadcastPendingRequests();
+  },
+
   select: (id) => {
     App.setTool('select');
+    if (id && App.isHeldByOther(id)) {
+      // Plain click on a held element is a request, not a selection change.
+      // Per protocol this gesture is exclusive (single-select semantics),
+      // so any selection I currently hold is cleared while the request is
+      // pending — the same shape as the payloads discussed: elIds: [].
+      _selectedIds = new Set();
+      _awareness.setLocalStateField('selection', null);
+      Overlay.localSelectionChanged(_selectedIds);
+      UI.onSelectionChanged(_selectedIds);
+      App.requestElement(id);
+      return;
+    }
     _selectedIds = id ? new Set([id]) : new Set();
     _awareness.setLocalStateField('selection', id ? { elIds: [id] } : null);
+    // Re-clicking my own held element while someone else has requested it
+    // is the "bathroom" rebuttal gesture — refresh my retention.
+    if (id && isElementContested(id, _awareness.getStates())) {
+      App.reassertRetention(id);
+    }
     Overlay.localSelectionChanged(_selectedIds);
     UI.onSelectionChanged(_selectedIds);
   },
@@ -519,9 +619,20 @@ const App = {
   // Toggle a single id in/out of the current selection.
   // If the result is N===0: deselect. N===1: single-select. N>1: multi-select.
   // Collapses back to single-select mode (full pill) when size drops to 1.
+  //
+  // Shift-click is the one gesture that can invoke a soft-lock request:
+  // shift-clicking an element held by someone else queues a request for it
+  // (App.requestElement), independent of and alongside whatever else is
+  // already in this client's own selection or other pending requests.
+  // Shift-clicking an element I already own is unaffected — it's still a
+  // plain deselect toggle, and is a no-op with respect to pendingRequests
+  // (an id I own was never in my own pendingRequests to begin with).
   toggleSelection: (id) => {
     if (_selectedIds.has(id)) {
       _selectedIds.delete(id);
+    } else if (App.isHeldByOther(id)) {
+      App.requestElement(id);
+      return; // request queued; local _selectedIds/elIds untouched
     } else {
       _selectedIds.add(id);
     }
