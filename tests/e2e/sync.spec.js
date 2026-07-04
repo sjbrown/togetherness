@@ -95,10 +95,10 @@ test.describe('two-peer sync', () => {
       page1.locator('#overlay-layer .selRing')
     ).toHaveCount(1, { timeout: 3000 });
 
-    // page2 should show a remote selection ring (dashed, no class,
-    // identified by stroke-dasharray attribute)
+    // page2 should show a remote selection ring — the dashed ring is now
+    // wrapped in <g class="remote-sel"> (added during soft-lock work).
     await expect(
-      page2.locator('#overlay-layer rect[stroke-dasharray]')
+      page2.locator('#overlay-layer .remote-sel')
     ).toHaveCount(1, { timeout: 3000 });
 
     await browser.close();

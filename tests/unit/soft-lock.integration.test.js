@@ -1,23 +1,20 @@
 /**
- * tests/unit/soft-lock-e2e.test.js
+ * tests/unit/soft-lock.integration.test.js
  *
- * Real end-to-end reproduction of the soft-lock "click a held element"
- * flow, booting the ACTUAL App bus (src/app.js) — not a mirror or a hand
- * -copied re-implementation — the way index.html really does:
+ * Integration tests for the soft-lock ("bathroom handoff") protocol: a
+ * single real App instance, real Yjs docs, real y-protocols Awareness
+ * instances, and real DOM — the layer between pure unit tests (soft-lock.test.js)
+ * and full two-browser Playwright specs (tests/e2e/soft-lock.spec.js).
  *
- *   awareness.setLocalState({ id, color, grad, cursor: null, selection: null })
- *   boot({ ydoc, yMeta, yToys, yDrawing, yBounPos, awareness, ... })
+ * Named *.integration.test.js to match sync.integration.test.js, and to
+ * distinguish from the (now-deleted) soft-lock-wiring.test.js (which tested
+ * mirrored re-implementations of app.js logic, not the real thing) and from
+ * the Playwright e2e specs in tests/e2e/. The earlier name soft-lock-e2e.test.js
+ * caused a real mis-filing incident when Playwright tried to run it.
  *
- * This exists because soft-lock-wiring.test.js (Commit 2) and
- * soft-lock-visual.test.js (Commit 4) both mirror app.js's/overlay.js's
- * logic in hand-written pure functions, which cannot catch a bug where the
- * *real* code diverges from the mirror. This file calls the real
- * `App.select()` and asserts on the real rendered DOM.
- *
- * ui.js and canvas.js are mocked out (this is not an input-gesture test —
- * canvas-select.test.js covers gesture-to-App-call wiring separately); only
- * app.js, overlay.js, soft-lock.js, toys.js, and real y-protocols Awareness
- * are live.
+ * ui.js and canvas.js are mocked (this is not a gesture test — canvas-select.test.js
+ * covers gesture-to-App-call wiring separately); only app.js, overlay.js,
+ * soft-lock.js, toys.js, and real y-protocols Awareness are live.
  */
 
 // @vitest-environment jsdom
@@ -505,3 +502,35 @@ describe('soft-lock e2e — multi-drag defends the whole group, not just the lea
   })
 })
 
+describe('soft-lock integration — getBoxCandidates excludes peer-held elements', () => {
+  // Replaces the deleted soft-lock-wiring.test.js coverage of box-select
+  // filtering. That file tested a *mirror* of App.getBoxCandidates's filter
+  // step, not the real function. This test exercises the real App.getBoxCandidates
+  // so that a future change to the filter's call site (not just the
+  // isElementHeldByOther helper it delegates to) is actually covered.
+  test('a peer-held toy is silently excluded from the box-select result, no request queued', async () => {
+    const { App, awareness } = await bootPeerB()
+
+    // Alice holds die-1 (the toy placed by bootPeerB at center x=0, y=0).
+    simulateRemoteSelection(awareness, 'die-1')
+    expect(App.isHeldByOther('die-1')).toBe(true) // sanity
+
+    // A rect that fully encloses the toy (DISPLAY=64, placed at x-32, y-32).
+    const result = App.getBoxCandidates({ x: -40, y: -40, width: 200, height: 200 })
+
+    // die-1 must be excluded — held-by-other elements are silently dropped.
+    expect(result).not.toContain('die-1')
+
+    // No request was queued — box-select never invokes the soft-lock
+    // request path, only shift-click does.
+    expect(awareness.getLocalState()?.pendingRequests).toBeFalsy()
+  })
+
+  test('a toy I already hold myself is included in the box-select result', async () => {
+    const { App } = await bootPeerB()
+
+    App.select('die-1') // I hold it
+    const result = App.getBoxCandidates({ x: -40, y: -40, width: 200, height: 200 })
+    expect(result).toContain('die-1')
+  })
+})
