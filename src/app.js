@@ -710,6 +710,13 @@ const App = {
       return;
     }
     if (id) {
+      // select() is exclusive (single-select): replace the whole selection
+      // with just this one id. _claim() adds without clearing, so we must
+      // clear first. This also correctly handles re-clicking your own held
+      // element as the "bathroom" rebuttal gesture — the fresh timestamp
+      // from _claim() is what matters, and clearing then re-adding is
+      // identical in effect to an upsert.
+      _myClaims = {};
       _claim([id]);
     } else {
       _clearClaims();
