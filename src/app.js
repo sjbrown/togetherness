@@ -620,15 +620,18 @@ const App = {
     return ids;
   },
   // Broadcast the current rubber-band candidate set via awareness.
+  // Uses its own `candidates` awareness field, separate from `selection`,
+  // so that committed holdings are never clobbered during a sweep — the
+  // bug being fixed: if a pending request matured while a sweep was in
+  // progress, resolveElementWinner saw no holder in `selection` and handed
+  // the element to the requester despite it being actively held.
   broadcastCandidates: (ids) => {
-    const claimedAt = {};
-    for (const id of ids) claimedAt[id] = Date.now();
-    _awareness.setLocalStateField('selection', ids.length ? claimedAt : null);
+    _awareness.setLocalStateField('candidates', ids.length ? ids : null);
   },
   // Clear rubber-band candidates from overlay and awareness (commit or cancel).
   clearBoxCandidates: () => {
     Overlay.clearHoverCandidates();
-    _awareness.setLocalStateField('selection', null);
+    _awareness.setLocalStateField('candidates', null);
   },
   getViewScale:    () => Canvas.getView().scale,
   isOffline:       () => _offline,

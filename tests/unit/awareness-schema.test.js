@@ -126,3 +126,62 @@ describe('awareness selection schema — read side (overlay syncFromAwareness lo
     // but is not expected in a single-deployed-version app.
   })
 })
+
+// ── Candidates field — structurally separate from selection ───────────────────
+
+describe('awareness schema: candidates field is separate from selection', () => {
+  test('a client can have both selection and candidates simultaneously', () => {
+    const doc = new Y.Doc()
+    const aw  = new awarenessProtocol.Awareness(doc)
+
+    // Committed holdings in selection...
+    aw.setLocalStateField('selection', { 'toy-held': 12345 })
+    // ...and a concurrent rubber-band sweep in candidates.
+    aw.setLocalStateField('candidates', ['toy-a', 'toy-b'])
+
+    const state = aw.getLocalState()
+    expect(Object.keys(state.selection)).toEqual(['toy-held'])
+    expect(state.candidates).toEqual(['toy-a', 'toy-b'])
+    // The two fields are independent — candidates never affected selection.
+    expect(state.selection['toy-a']).toBeUndefined()
+
+    doc.destroy()
+  })
+
+  test('clearing candidates does not touch selection', () => {
+    const doc = new Y.Doc()
+    const aw  = new awarenessProtocol.Awareness(doc)
+
+    aw.setLocalStateField('selection', { 'toy-held': 12345 })
+    aw.setLocalStateField('candidates', ['toy-a', 'toy-b'])
+    aw.setLocalStateField('candidates', null)
+
+    const state = aw.getLocalState()
+    expect(state.candidates).toBeNull()
+    expect(Object.keys(state.selection)).toEqual(['toy-held'])
+
+    doc.destroy()
+  })
+
+  test('the old design would have wiped selection when candidates were cleared — documents the bug being fixed', () => {
+    // Under the old broadcastCandidates, ids were stamped into `selection`
+    // with Date.now() timestamps, then clearBoxCandidates set `selection`
+    // to null. This test shows what that looked like, and why it was wrong:
+    // a committed holding was silently wiped by an unrelated sweep-clear.
+    const doc = new Y.Doc()
+    const aw  = new awarenessProtocol.Awareness(doc)
+
+    aw.setLocalStateField('selection', { 'toy-held': 12345 }) // committed
+    aw.setLocalStateField('selection', { 'toy-a': Date.now(), 'toy-b': Date.now() }) // old broadcastCandidates
+    // At this point, 'toy-held' is gone from the broadcast — the commitment
+    // was silently erased by the sweep. Any concurrent request on 'toy-held'
+    // would have resolved with no holder during the sweep.
+
+    aw.setLocalStateField('selection', null) // old clearBoxCandidates
+    expect(aw.getLocalState().selection).toBeNull()
+    // 'toy-held' is permanently lost from the broadcast even though the user
+    // never deselected it. The fix: candidates gets its own field.
+
+    doc.destroy()
+  })
+})

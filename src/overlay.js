@@ -24,8 +24,15 @@
  * Awareness selection schema: { [elId: string]: number } | null
  *   Keys are the held elIds; values are per-elId claim timestamps (see
  *   soft-lock.js). Single selection: one key. Multi-selection (rubber-band
- *   candidates or committed group): multiple keys. No separate ids array —
+ *   committed group): multiple keys. No separate ids array —
  *   membership is exactly Object.keys(selection).
+ *
+ * Awareness candidates field: string[] | null
+ *   The ids currently under a rubber-band sweep, broadcast separately from
+ *   `selection` so that committed holdings are never clobbered mid-sweep.
+ *   Remote peers' candidate sweeps are not currently rendered (there is no
+ *   visual for "someone else is sweeping over these"), but the field is
+ *   wire-present so it can be added without a schema change.
  *
  * Drag ghost system:
  *   The native layer element is never touched during drag; but overlay renders:
