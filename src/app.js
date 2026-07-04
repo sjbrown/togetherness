@@ -74,25 +74,62 @@ const _layerVisibility = {
 };
 let _myId, _myGrad, _roomId;
 let _svgEl;
-let _selectedIds  = new Set();   // SSOT: N=0 nothing, N=1 single, N>1 multi
+// _myClaims is the single local SSOT for this client's committed selection.
+//   { [elId: string]: number }   elId -> claim timestamp (ms)
+//
+// Membership (which elIds I hold) and recency (since when) are one thing,
+// not two. Object.keys(_myClaims) is always the held-id set; there is no
+// separate _selectedIds Set. The old design kept both, hand-synced at nine
+// mutation sites — three of the live bugs that session were precisely those
+// two representations drifting apart.
+//
+// All writes go through the three helpers below, each of which ends in
+// Overlay.localSelectionChanged + _broadcastSelection + UI.onSelectionChanged,
+// so forgetting to broadcast is structurally impossible.
+let _myClaims = {};
 let _activeLayer  = 'toys';
 
-// Claim timestamps for this client's own selection, keyed by elId — kept in
-// sync with _selectedIds at every mutation site (never allowed to diverge:
-// an elId enters/leaves both together). This IS the local mirror of the
-// awareness `selection` field directly — see soft-lock.js: selection's
-// wire shape is now { [elId]: timestamp }, the same as pendingRequests,
-// since a separate elIds array would always be redundant with
-// Object.keys(claimedAt).
-//   { [elId: string]: number }  // elId -> claim/reclaim timestamp (ms)
-let _selectionClaimedAt = {};
+// ── Three mutation helpers — the only paths that write _myClaims ─────────────
 
-// Broadcast the current _selectionClaimedAt as this client's awareness
-// `selection` field. Centralized so every call site broadcasts the same
-// shape consistently.
+// Add elIds to the committed selection, stamping a fresh claim timestamp.
+// Idempotent: re-claiming an already-held id just refreshes its timestamp.
+function _claim(ids, ts = Date.now()) {
+  for (const id of ids) _myClaims[id] = ts;
+  _afterClaimsChanged();
+}
+
+// Remove specific elIds from the committed selection.
+function _unclaim(ids) {
+  for (const id of ids) delete _myClaims[id];
+  _afterClaimsChanged();
+}
+
+// Clear the committed selection entirely.
+function _clearClaims() {
+  _myClaims = {};
+  _afterClaimsChanged();
+}
+
+// Called by every mutation helper after _myClaims has been updated.
+// Order matters: local SelectionMode must be updated BEFORE broadcasting,
+// because setLocalStateField fires 'change' synchronously, which can trigger
+// syncFromAwareness before this function returns. If a stale 'local' entry
+// for a just-released elId is still present at that moment, overlay's
+// local-takes-precedence guard will skip assigning 'remote' to it — and
+// nothing afterward re-triggers that decision, leaving the elId with no
+// SelectionMode entry at all. See overlay.js for the guard.
+function _afterClaimsChanged() {
+  const claimedSet = new Set(Object.keys(_myClaims));
+  Overlay.localSelectionChanged(claimedSet);
+  _broadcastSelection();
+  UI.onSelectionChanged(claimedSet);
+}
+
+// Broadcast the current _myClaims as this client's awareness `selection`
+// field. Centralized so every call site broadcasts the same shape consistently.
 function _broadcastSelection() {
-  const keys = Object.keys(_selectionClaimedAt);
-  _awareness.setLocalStateField('selection', keys.length ? { ..._selectionClaimedAt } : null);
+  const keys = Object.keys(_myClaims);
+  _awareness.setLocalStateField('selection', keys.length ? { ..._myClaims } : null);
 }
 
 // Soft-lock request state — this client's own outstanding acquisition bids,
@@ -132,40 +169,29 @@ function _softLockTick() {
   if (!elIdsToAcquire.length && !elIdsToDropRequest.length && !elIdsToRelease.length) return;
 
   for (const elId of elIdsToAcquire) {
-    _selectedIds.add(elId);
-    _selectionClaimedAt[elId] = Date.now(); // the promotion moment IS the claim
+    _myClaims[elId] = Date.now();           // promotion moment IS the claim
     delete _pendingRequests[elId];          // bid resolved — won
   }
   for (const elId of elIdsToDropRequest) {
     delete _pendingRequests[elId];          // bid resolved — lost
   }
   for (const elId of elIdsToRelease) {
-    _selectedIds.delete(elId);
-    delete _selectionClaimedAt[elId];
+    delete _myClaims[elId];
     delete _pendingRequests[elId]; // defensive; shouldn't normally exist for a held elId
   }
 
-  // Local SelectionMode cleanup MUST happen before the awareness broadcast:
-  // setLocalStateField fires 'change' synchronously, which can trigger
-  // syncFromAwareness (via onPresenceChanged) before this function returns.
-  // If a stale 'local' entry for a just-released elId is still present at
-  // that moment, syncFromAwareness's local-takes-precedence guard (see
-  // overlay.js) will skip assigning 'remote' to it — and nothing
-  // afterward re-triggers that decision, leaving the elId with no
-  // SelectionMode entry at all until an unrelated awareness event happens
-  // to occur. Cleaning up first ensures syncFromAwareness always sees
-  // accurate, already-current local state if it runs mid-broadcast.
-  Overlay.localSelectionChanged(_selectedIds);
-  _broadcastSelection();
+  // _afterClaimsChanged handles localSelectionChanged + broadcast + UI notify
+  // with the correct pre-broadcast ordering (see comment on _afterClaimsChanged).
+  _afterClaimsChanged();
   _broadcastPendingRequests();
-  UI.onSelectionChanged(_selectedIds);
 }
 
 // Returns the single selected id, or null if zero or more than one are selected.
 // Callers that need to work on a single element must check
 // this returns non-null before proceeding
 function _singleSelectedId() {
-  return _selectedIds.size === 1 ? [..._selectedIds][0] : null;
+  const ids = Object.keys(_myClaims);
+  return ids.length === 1 ? ids[0] : null;
 }
 let _activeTool   = 'select';
 let _offline      = false;
@@ -582,7 +608,7 @@ const App = {
     return out;
   },
   getRoomId:       () => _roomId,
-  getSelectedIds:  () => [..._selectedIds],
+  getSelectedIds:  () => Object.keys(_myClaims),
   getBBox:  (id) => {
     const svgEl = _svgEl.querySelector(`[data-yid="${id}"]`);
     if (!svgEl) return null;
@@ -668,9 +694,8 @@ const App = {
   // this, defend it" signal for that path — call it the moment the user
   // makes contact with a multi-selected element, tap or drag alike.
   reassertClaim: (id) => {
-    if (!_selectedIds.has(id)) return; // only meaningful for something I already hold
-    _selectionClaimedAt[id] = Date.now();
-    _broadcastSelection();
+    if (!(id in _myClaims)) return; // only meaningful for something I already hold
+    _claim([id]);
   },
 
   select: (id) => {
@@ -680,28 +705,15 @@ const App = {
       // Per protocol this gesture is exclusive (single-select semantics),
       // so any selection I currently hold is cleared while the request is
       // pending — broadcasts null, same as having nothing selected.
-      _selectedIds = new Set();
-      _selectionClaimedAt = {};
-      // Local cleanup before broadcast — see the comment in _softLockTick
-      // for why the order matters (setLocalStateField can synchronously
-      // trigger syncFromAwareness before this function returns).
-      Overlay.localSelectionChanged(_selectedIds);
-      _broadcastSelection();
-      UI.onSelectionChanged(_selectedIds);
+      _clearClaims();
       App.requestElement(id);
       return;
     }
-    _selectedIds = id ? new Set([id]) : new Set();
-    // Unconditionally (re-)stamp a fresh claim for id, whether it was
-    // already mine or newly selected. This is what makes re-clicking your
-    // own held element the "bathroom" rebuttal gesture — no separate
-    // reassert call needed, since selecting always refreshes the claim.
-    // Harmless when id isn't contested; nothing consults the timestamp
-    // unless there's an actual conflict.
-    _selectionClaimedAt = id ? { [id]: Date.now() } : {};
-    Overlay.localSelectionChanged(_selectedIds);
-    _broadcastSelection();
-    UI.onSelectionChanged(_selectedIds);
+    if (id) {
+      _claim([id]);
+    } else {
+      _clearClaims();
+    }
   },
 
   // Toggle a single id in/out of the current selection.
@@ -716,49 +728,44 @@ const App = {
   // plain deselect toggle, and is a no-op with respect to pendingRequests
   // (an id I own was never in my own pendingRequests to begin with).
   toggleSelection: (id) => {
-    if (_selectedIds.has(id)) {
-      _selectedIds.delete(id);
-      delete _selectionClaimedAt[id];
+    if (id in _myClaims) {
+      _unclaim([id]);
     } else if (App.isHeldByOther(id)) {
       App.requestElement(id);
-      return; // request queued; local _selectedIds/elIds untouched
+      return; // request queued; _myClaims untouched
     } else {
-      _selectedIds.add(id);
-      _selectionClaimedAt[id] = Date.now();
+      _claim([id]);
     }
-    // Local cleanup before broadcast — see the comment in _softLockTick for
-    // why the order matters.
-    Overlay.localSelectionChanged(_selectedIds);
-    _broadcastSelection();
-    UI.onSelectionChanged(_selectedIds);
   },
 
   commitMultiSelect: ({ x, y, width, height, additive = false } = {}) => {
     const newIds = App.getBoxCandidates({ x, y, width, height });
     // additive: union with existing selection; otherwise replace
     const ids = additive
-      ? [...new Set([..._selectedIds, ...newIds])]
+      ? [...new Set([...Object.keys(_myClaims), ...newIds])]
       : newIds;
     if (ids.length === 0) {
       App.select(null);
     } else if (ids.length === 1) {
       App.select(ids[0]);
     } else {
-      _selectedIds = new Set(ids);
-      // Preserve existing claim timestamps for ids already held (e.g. the
-      // additive case); stamp a fresh claim only for newly-added ones.
-      const freshClaimedAt = {};
-      for (const id of ids) freshClaimedAt[id] = _selectionClaimedAt[id] ?? Date.now();
-      _selectionClaimedAt = freshClaimedAt;
-      Overlay.localSelectionChanged(_selectedIds);
-      _broadcastSelection();
-      UI.onSelectionChanged(_selectedIds);
+      // Preserve existing claim timestamps for already-held ids (additive
+      // case); stamp a fresh claim only for newly-added ones.
+      const ts = Date.now();
+      for (const id of ids) {
+        if (!(id in _myClaims)) _myClaims[id] = ts;
+      }
+      // Drop any ids no longer in the new set (non-additive replace).
+      for (const id of Object.keys(_myClaims)) {
+        if (!ids.includes(id)) delete _myClaims[id];
+      }
+      _afterClaimsChanged();
     }
   },
 
   deleteMultiSelected: () => {
-    if (_selectedIds.size === 0) return;
-    const ids     = [..._selectedIds];
+    const ids = Object.keys(_myClaims);
+    if (ids.length === 0) return;
     const entries = [];
     _ydoc.transact(() => {
       for (const id of ids) {
@@ -779,15 +786,13 @@ const App = {
       addHistory(`deleted ${entries.length} objects`);
       App.addLog(`deleted ${entries.length} objects`, 'local');
     }
-    _selectedIds = new Set();
-    _selectionClaimedAt = {};
+    _clearClaims();
     Overlay.clearHoverCandidates();
-    UI.onSelectionChanged(_selectedIds);
   },
 
   duplicateMultiSelected: () => {
-    if (_selectedIds.size === 0) return;
-    const ids     = [..._selectedIds];
+    const ids = Object.keys(_myClaims);
+    if (ids.length === 0) return;
     const entries = [];
     for (const id of ids) {
       const yEl = Drawing.findDrawing(_yDrawing, id);
@@ -808,9 +813,7 @@ const App = {
       addHistory(`duplicated ${entries.length} objects`);
       App.addLog(`duplicated ${entries.length} objects`, 'local');
     }
-    _selectedIds = new Set();
-    _selectionClaimedAt = {};
-    UI.onSelectionChanged(_selectedIds);
+    _clearClaims();
   },
 
   // ── Document mutations ────────────────────────────────────────────────────
@@ -936,11 +939,8 @@ const App = {
     L.delete(id);
     addHistory(`deleted ${mtype}:${id.slice(0, 6)}`);
     App.addLog(`deleted ${id.slice(0, 6)}`, 'local');
-    if (_selectedIds.has(id)) {
-      _selectedIds.delete(id);
-      delete _selectionClaimedAt[id];
-      Overlay.localSelectionChanged(_selectedIds);
-      UI.onSelectionChanged(_selectedIds);
+    if (id in _myClaims) {
+      _unclaim([id]);
     }
     return true;
   },
@@ -948,7 +948,7 @@ const App = {
   deleteSelected: () => {
     const id = _singleSelectedId();
     if (!id) {
-      if (_selectedIds.size > 1) {
+      if (Object.keys(_myClaims).length > 1) {
         UI.toast('Use Delete N for multi-selection', 'warn');
         console.error('deleteSelected called with multi-selection; use deleteMultiSelected');
       }
@@ -960,7 +960,7 @@ const App = {
   duplicateSelected: () => {
     const id = _singleSelectedId();
     if (!id) {
-      if (_selectedIds.size > 1) {
+      if (Object.keys(_myClaims).length > 1) {
         UI.toast('Use Duplicate N for multi-selection', 'warn');
         console.error('duplicateSelected called with multi-selection; use duplicateMultiSelected');
       }
@@ -1106,7 +1106,7 @@ const App = {
   // cancelMultiMove — called on pointercancel; reverts all ghosts, no Yjs write
 
   startMultiDrag: (originCanvas) => {
-    const elements = [..._selectedIds].map(id => {
+    const elements = Object.keys(_myClaims).map(id => {
       const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
       if (!domEl) return null;
       const anchor = App.getAnchor(domEl);
@@ -1144,7 +1144,7 @@ const App = {
     // here (rather than left to the caller) so this can't be forgotten:
     // any future caller of startMultiDrag gets correct behavior for free.
     const claimNow = Date.now();
-    for (const el of elements) _selectionClaimedAt[el.id] = claimNow;
+    for (const el of elements) _myClaims[el.id] = claimNow;
     _broadcastSelection();
 
     _awareness.setLocalStateField('multidrag', {
@@ -1164,7 +1164,7 @@ const App = {
     const now = Date.now();
     if (now - (_multiDragState.lastClaimRefresh ?? 0) >= CLAIM_REFRESH_THROTTLE_MS) {
       _multiDragState.lastClaimRefresh = now;
-      for (const el of elements) _selectionClaimedAt[el.id] = now;
+      for (const el of elements) _myClaims[el.id] = now;
       _broadcastSelection();
     }
 
