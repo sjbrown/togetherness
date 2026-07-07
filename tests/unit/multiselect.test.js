@@ -268,34 +268,39 @@ describe('Overlay.clearHoverCandidates', () => {
 // broadcastCandidates and clearBoxCandidates encode, without booting app.js.
 
 describe('broadcastCandidates awareness writes', () => {
-  test('non-empty ids set selection to { elIds: [...] }', () => {
+  test('non-empty ids broadcast a candidates array, leaving selection untouched', () => {
     const calls = []
     const setField = (key, value) => calls.push({ key, value })
-    // Mirror production logic
+    // Mirror production logic (see app.js's broadcastCandidates).
+    // Key change vs the old design: ids go to `candidates`, NOT `selection`,
+    // so committed holdings are never clobbered mid-sweep.
     const broadcastCandidates = (ids) =>
-      setField('selection', ids.length ? { elIds: ids } : null)
+      setField('candidates', ids.length ? ids : null)
 
     broadcastCandidates(['a', 'b'])
     expect(calls).toHaveLength(1)
-    expect(calls[0].key).toBe('selection')
-    expect(calls[0].value).toEqual({ elIds: ['a', 'b'] })
+    expect(calls[0].key).toBe('candidates')
+    expect(calls[0].value).toEqual(['a', 'b'])
+    // The selection field must never be touched by this path.
+    expect(calls.some(c => c.key === 'selection')).toBe(false)
   })
 
-  test('empty ids sets selection to null', () => {
+  test('empty ids sets candidates to null', () => {
     const calls = []
     const broadcastCandidates = (ids) =>
-      calls.push(ids.length ? { elIds: ids } : null)
+      calls.push({ key: 'candidates', value: ids.length ? ids : null })
 
     broadcastCandidates([])
-    expect(calls[0]).toBeNull()
+    expect(calls[0].value).toBeNull()
   })
 
-  test('clearBoxCandidates sets selection to null', () => {
+  test('clearBoxCandidates sets candidates to null, not selection', () => {
     const calls = []
-    const clearBoxCandidates = () => calls.push(null)
+    const clearBoxCandidates = () => calls.push({ key: 'candidates', value: null })
 
     clearBoxCandidates()
-    expect(calls[0]).toBeNull()
+    expect(calls[0]).toEqual({ key: 'candidates', value: null })
+    expect(calls.some(c => c.key === 'selection')).toBe(false)
   })
 })
 

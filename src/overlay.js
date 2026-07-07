@@ -16,9 +16,23 @@
  *   'resize'    — local + drag handles at edges (future)
  *   'locked'    — remote peer is actively editing (future: lock icon)
  *
- * Awareness selection schema: { elIds: string[] } | null
- *   Always an array. Single selection: elIds.length === 1.
- *   Multi-selection (rubber-band candidates or committed group): elIds.length > 1.
+ * Requested/contested indicator (soft-lock.js): a separate, independent
+ * decoration — not a SelectionMode kind — drawn on any element with an
+ * outstanding acquisition request, regardless of its SelectionMode kind (or
+ * lack of one). See _contestedIds / renderRequestedIndicator.
+ *
+ * Awareness selection schema: { [elId: string]: number } | null
+ *   Keys are the held elIds; values are per-elId claim timestamps (see
+ *   soft-lock.js). Single selection: one key. Multi-selection (rubber-band
+ *   committed group): multiple keys. No separate ids array —
+ *   membership is exactly Object.keys(selection).
+ *
+ * Awareness candidates field: string[] | null
+ *   The ids currently under a rubber-band sweep, broadcast separately from
+ *   `selection` so that committed holdings are never clobbered mid-sweep.
+ *   Remote peers' candidate sweeps are not currently rendered (there is no
+ *   visual for "someone else is sweeping over these"), but the field is
+ *   wire-present so it can be added without a schema change.
  *
  * Drag ghost system:
  *   The native layer element is never touched during drag; but overlay renders:
@@ -28,9 +42,12 @@
  *     - a selection ring translated by around the ghost
  */
 
+import { getAllContestedElementIds } from './soft-lock.js';
+
 const SVGNS = 'http://www.w3.org/2000/svg';
 const HANDLE_SIZE = 12;  // px in canvas-space
 const PAD = 6;           // selection ring padding
+const REQUESTED_PAD = PAD + 6; // extra clearance so the requested ring sits outside the selection ring
 
 // ── SelectionMode ─────────────────────────────────────────────────────────────
 // Map<elId, { kind, peerId?, color? }>
@@ -46,6 +63,14 @@ const _dragGhosts = new Map();
 // Remote drags — rebuilt from awareness on each syncFromAwareness() call.
 // Map<elId, { peerId, bboxX, bboxY, color }>
 const _remoteDrags = new Map();
+
+// Soft-lock "requested" indicator — elIds with an outstanding acquisition
+// request (src/soft-lock.js's isElementContested), rebuilt on each
+// syncFromAwareness() call. Deliberately independent of SelectionMode: an
+// element can be contested regardless of whether it's 'local', 'remote', or
+// unselected from this client's point of view, so it's rendered as its own
+// decoration layer rather than another mutually-exclusive `kind`.
+let _contestedIds = new Set();
 
 let App       = null;
 let _layerEl  = null;   // #overlay-layer <g>
@@ -114,11 +139,24 @@ export function syncFromAwareness(awarenessStates, myClientId) {
   awarenessStates.forEach((state, clientId) => {
     if (clientId === myClientId) return;
 
-    // Remote selection rings — one per id in elIds
-    if (Array.isArray(state?.selection?.elIds) && state.selection.elIds.length) {
+    // Remote selection rings — one per key in the selection map
+    // (selection: { [elId]: claimTimestamp } | null — see soft-lock.js).
+    if (state?.selection && typeof state.selection === 'object') {
+      const elIds = Object.keys(state.selection);
+      if (elIds.length === 0) return;
       const peerId = state.id ?? String(clientId);
       const grad = state.grad ?? 'default-remote-sel-grad';
-      for (const elId of state.selection.elIds) {
+      for (const elId of elIds) {
+        // Local selection always takes precedence over a remote peer's
+        // claim to the same elId — mirrors the same rule setHoverCandidates
+        // already applies for candidate-vs-local. Without this, a remote
+        // peer's broadcast can silently clobber my own 'local' entry with
+        // 'remote' any time both sides briefly, even legitimately, claim
+        // the same elId at once (e.g. mid soft-lock handoff) — I'd see the
+        // other peer's ring instead of my own, even though my own
+        // selection data still says I hold it.
+        const existing = SelectionMode.get(elId);
+        if (existing && (existing.kind === 'local' || existing.kind === 'resize')) continue;
         SelectionMode.set(elId, {
           kind:   'remote',
           peerId: peerId,
@@ -154,6 +192,7 @@ export function syncFromAwareness(awarenessStates, myClientId) {
       });
     }
   });
+  _contestedIds = getAllContestedElementIds(awarenessStates);
   render();
 }
 
@@ -279,6 +318,16 @@ export function render() {
     }
   }
 
+  // ── 2b. Requested/contested indicator — independent of SelectionMode kind ──
+  // Drawn regardless of whether the element is 'local', 'remote', or has no
+  // SelectionMode entry at all — contestedness is orthogonal to who (if
+  // anyone) currently holds it from this client's point of view.
+  for (const elId of _contestedIds) {
+    const geo = App.getBBox(elId);
+    if (!geo) continue;
+    renderRequestedIndicator(geo, scale);
+  }
+
   // ── 3. Remote drag ghosts + rings ─────────────────────────────────────────
   for (const [elId, drag] of _remoteDrags) {
     const bbox = App.getBBox(elId);
@@ -375,6 +424,8 @@ function renderLocalResizeSelection(geo, entry, scale) {
 
 function renderRemoteSelection(geo, entry, scale) {
   const { x, y, width, height } = geo;
+  const group = el('g', { class: 'remote-sel' });
+
   const ring = el('rect', {
     x:      x - PAD,
     y:      y - PAD,
@@ -386,7 +437,7 @@ function renderRemoteSelection(geo, entry, scale) {
     'stroke-width': 1.5 / scale,
     'stroke-dasharray': `${4 / scale} ${3 / scale}`,
   });
-  _layerEl.appendChild(ring);
+  group.appendChild(ring);
 
   // Peer name label above the ring
   const name = (entry.peerId ?? '?').slice(0, 6);
@@ -396,7 +447,7 @@ function renderRemoteSelection(geo, entry, scale) {
   const bgW  = name.length * 6.5 / scale + 8 / scale;
   const bgH  = 13 / scale;
 
-  _layerEl.appendChild(el('rect', {
+  group.appendChild(el('rect', {
     x: lx, y: ly - bgH,
     width: bgW, height: bgH,
     fill: entry.color, rx: 2 / scale,
@@ -409,7 +460,37 @@ function renderRemoteSelection(geo, entry, scale) {
   txt.setAttribute('font-family', 'ui-monospace, Menlo, monospace');
   txt.setAttribute('fill',        '#0c0c0f');
   txt.textContent = name;
-  _layerEl.appendChild(txt);
+  group.appendChild(txt);
+
+  _layerEl.appendChild(group);
+}
+
+// Contested/"requested" indicator — a pulsing warm-colored outer ring drawn
+// around whatever else is being rendered for this element (local/remote
+// selection ring, or nothing at all). Deliberately visually distinct from
+// both the local (gradient) and remote (peer-colored dashed) rings so it
+// reads as "someone wants this" rather than "someone has this".
+function renderRequestedIndicator(geo, scale) {
+  const { x, y, width, height } = geo;
+  const ring = el('rect', {
+    x:      x - REQUESTED_PAD,
+    y:      y - REQUESTED_PAD,
+    width:  width  + REQUESTED_PAD * 2,
+    height: height + REQUESTED_PAD * 2,
+    rx:     8,
+    fill:               'none',
+    stroke:             'var(--warn)',
+    'stroke-width':     2 / scale,
+    'stroke-dasharray': `${3 / scale} ${3 / scale}`,
+    class:              'requestedRing',
+  });
+  const anim = document.createElementNS(SVGNS, 'animate');
+  anim.setAttribute('attributeName', 'opacity');
+  anim.setAttribute('values',        '1;0.35;1');
+  anim.setAttribute('dur',           '1.2s');
+  anim.setAttribute('repeatCount',   'indefinite');
+  ring.appendChild(anim);
+  _layerEl.appendChild(ring);
 }
 
 function renderResizeHandles(geo, scale) {

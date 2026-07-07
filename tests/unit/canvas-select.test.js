@@ -62,6 +62,7 @@ function makeApp(overrides = {}) {
     commitMultiSelect:  () => {},
     toggleSelection:    () => {},
     startMultiDrag:     () => {},
+    reassertClaim:      () => {},
     moveMulti:          () => {},
     commitMultiMove:    () => {},
     cancelMultiMove:    () => {},
@@ -461,6 +462,12 @@ describe('multi-move gesture', () => {
     // leaderId must identify which element was under the pointer
     expect(multiDragStarted[0].leaderId).toBe('shape-a')
   })
+
+  // Note: multi-drag claim defense (defending every element in the group,
+  // not just the clicked one) now lives entirely inside App.startMultiDrag
+  // itself, precisely so canvas.js doesn't need a separate call here that
+  // could be forgotten by a future caller — see app.js and
+  // soft-lock-e2e.test.js for that coverage.
 
   test('pointerdown on an element NOT in the multi-selection starts single move', () => {
     const app = makeApp({
