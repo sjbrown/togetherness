@@ -592,7 +592,12 @@ const App = {
     const out = [];
     _awareness.getStates().forEach((state, cid) => {
       if (cid === _awareness.clientID) return;
-      out.push({ name: state.id?.slice(0, 8) ?? String(cid), color: state.color ?? '#888', live: true });
+      out.push({
+        name:   state.id?.slice(0, 8) ?? String(cid),
+        color:  state.color ?? '#888',
+        gradId: state.grad ? Overlay.peerGradId(cid) : null,
+        live:   true,
+      });
     });
     return out;
   },
