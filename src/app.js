@@ -1313,12 +1313,30 @@ const App = {
     UI.toast('Undone');
   },
   exportSVG: () => {
-    // Clone the live SVG, strip overlay and UI-only layers, then download.
+    // Clone the live SVG for the skeleton (defs, background, boundaries —
+    // none of these can contain scripts), strip overlay and UI-only layers,
+    // then download. #toys-layer and #drawing-layer are rebuilt from the Yjs
+    // fragments themselves rather than kept from the clone: the live DOM is a
+    // mirror that never renders <script> nodes (so nothing executes), so a
+    // DOM clone would silently export toys with their scripts stripped. The
+    // Yjs tree is the canonical document — export should be honest about that.
     const clone = _svgEl.cloneNode(true);
     clone.removeAttribute('id');
     ['#overlay-layer', '#draw-preview'].forEach(sel => {
       clone.querySelector(sel)?.remove();
     });
+
+    const toysLayerEl = clone.querySelector('#toys-layer');
+    if (toysLayerEl) {
+      toysLayerEl.innerHTML = '';
+      Toys.listToys(_yToys, { includeScripts: true }).forEach(el => toysLayerEl.appendChild(el));
+    }
+    const drawLayerEl = clone.querySelector('#drawing-layer');
+    if (drawLayerEl) {
+      drawLayerEl.innerHTML = '';
+      Drawing.listDrawings(_yDrawing, { includeScripts: true }).forEach(el => drawLayerEl.appendChild(el));
+    }
+
     clone.querySelectorAll('[pointer-events]').forEach(el => el.removeAttribute('pointer-events'));
     if (!clone.getAttribute('viewBox')) {
       const w = _svgEl.clientWidth  || 1384;
@@ -1355,14 +1373,15 @@ const App = {
         return;
       }
 
-      // DOM element → Y.XmlElement tree (recursive)
+      // DOM element → Y.XmlElement tree (recursive). <script> nodes are
+      // preserved as inert document citizens — mirror() never renders them,
+      // so nothing executes; they just round-trip through the Yjs tree.
       function domToY(node) {
-        if (node.nodeType === Node.TEXT_NODE) {
+        if (node.nodeType === Node.TEXT_NODE || node.nodeType === Node.CDATA_SECTION_NODE) {
           const t = node.textContent.trim();
           return t ? new Y.XmlText(t) : null;
         }
         if (node.nodeType !== Node.ELEMENT_NODE) return null;
-        if (node.localName === 'script') return null;
         const yEl = new Y.XmlElement(node.localName);
         for (const at of node.attributes) yEl.setAttribute(at.name, at.value);
         const children = [...node.childNodes].map(domToY).filter(Boolean);

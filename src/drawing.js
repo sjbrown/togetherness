@@ -142,12 +142,13 @@ export function findDrawing(yDrawing, id) {
 /**
  * Mirror a Y.XmlElement tree into a live, SVG-namespaced DOM element.
  * Uses createElementNS (not toDOM/DOMParser) so the SVG namespace and tag-name
- * case are preserved. <script> nodes are never mirrored.
+ * case are preserved. <script> nodes are never mirrored for live rendering —
+ * pass { includeScripts: true } only for export.
  */
-function mirror(yNode) {
+function mirror(yNode, opts = {}) {
   if (yNode instanceof Y.XmlText) return document.createTextNode(yNode.toString());
   if (!(yNode instanceof Y.XmlElement)) return null;
-  if (yNode.nodeName === 'script') return null;
+  if (yNode.nodeName === 'script' && !opts.includeScripts) return null;
   const el = document.createElementNS(SVG_NS, yNode.nodeName);
   const attrs = yNode.getAttributes();
   for (const k in attrs) {
@@ -155,7 +156,7 @@ function mirror(yNode) {
     else                    el.setAttribute(k, attrs[k]);
   }
   yNode.toArray().forEach(child => {
-    const dom = mirror(child);
+    const dom = mirror(child, opts);
     if (dom) el.appendChild(dom);
   });
   return el;
@@ -167,8 +168,8 @@ function mirror(yNode) {
  * plain SVG id="yid-{id}" so that overlay.js <use href="#yid-{id}"> can
  * reference the element for drag-ghost rendering without touching its geometry.
  */
-export function _toSVGEl(yEl) {
-  const el = mirror(yEl);
+export function _toSVGEl(yEl, opts = {}) {
+  const el = mirror(yEl, opts);
   if (el && el.setAttribute) {
     const id = yEl.getAttribute('id');
     el.setAttribute('id',              `yid-${id}`);
@@ -266,11 +267,11 @@ export function applyMoveDom(domEl, x, y) {
  * Returns an array of rendered SVG elements, each stamped with
  * data-yid + data-module.
  */
-export function listDrawings(yDrawing) {
+export function listDrawings(yDrawing, opts = {}) {
   const results = [];
   for (let node = yDrawing.firstChild; node; node = node.nextSibling) {
     if (!(node instanceof Y.XmlElement)) continue;
-    results.push(_toSVGEl(node));
+    results.push(_toSVGEl(node, opts));
   }
   return results;
 }
