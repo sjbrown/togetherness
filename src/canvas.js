@@ -233,8 +233,6 @@ function onPointerDown(e) {
       if (App.getSelectedIds().length > 1 && App.getSelectedIds().includes(hitId)) {
         ToolMode._gesture = 'multi-move';
         ToolMode._moveRef = { sx: e.clientX, sy: e.clientY, moved: false };
-        // startMultiDrag defends every element in the group itself (not
-        // just the clicked one) — see app.js.
         App.startMultiDrag({ ...toCanvas(e.clientX, e.clientY), leaderId: hitId });
         return;
       }

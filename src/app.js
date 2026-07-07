@@ -42,6 +42,10 @@ import { isElementHeldByOther, computeTickActions } from './soft-lock.js';
 
 import * as Y from 'yjs';
 
+// Diagnostic logging — opt-in via ?debug=1 in the URL
+const DEBUG = typeof location !== 'undefined'
+  && new URLSearchParams(location.search).get('debug') === '1';
+
 const svgNS = 'http://www.w3.org/2000/svg'
 const XLINK_NS = 'http://www.w3.org/1999/xlink';
 
@@ -74,22 +78,20 @@ const _layerVisibility = {
 };
 let _myId, _myGrad, _roomId;
 let _svgEl;
+let _activeLayer  = 'toys';
+
 // _myClaims is the single local SSOT for this client's committed selection.
 //   { [elId: string]: number }   elId -> claim timestamp (ms)
 //
-// Membership (which elIds I hold) and recency (since when) are one thing,
-// not two. Object.keys(_myClaims) is always the held-id set; there is no
-// separate _selectedIds Set. The old design kept both, hand-synced at nine
-// mutation sites — three of the live bugs that session were precisely those
-// two representations drifting apart.
+// Membership (which elIds I hold) and recency (since when) together.
+// Invariant: Object.keys(_myClaims) is always the held-id set
 //
-// All writes go through the three helpers below, each of which ends in
+// All writes go through the helpers below, each of which ends in
 // Overlay.localSelectionChanged + _broadcastSelection + UI.onSelectionChanged,
 // so forgetting to broadcast is structurally impossible.
 let _myClaims = {};
-let _activeLayer  = 'toys';
 
-// ── Three mutation helpers — the only paths that write _myClaims ─────────────
+// ── Selection mutation helpers —
 
 // Add elIds to the committed selection, stamping a fresh claim timestamp.
 // Idempotent: re-claiming an already-held id just refreshes its timestamp.
@@ -134,8 +136,7 @@ function _broadcastSelection() {
 
 // Soft-lock request state — this client's own outstanding acquisition bids,
 // keyed by elId. Exists ONLY while actively trying to acquire an elId not
-// yet in _selectedIds; deleted the moment that bid resolves, win or lose.
-// See soft-lock.js for why this is never reused as a retention signal.
+// yet in _myClaims; deleted the moment that bid resolves, win or lose.
 //   { [elId: string]: number }  // elId -> request timestamp (ms)
 let _pendingRequests = {};
 
@@ -156,7 +157,7 @@ const SOFT_LOCK_TICK_MS = 250;
 // gesture (App.move). Well under REQUEST_WINDOW_MS (3s), so a long drag
 // always has a fresh-enough claim by the time any request's window could
 // elapse, without broadcasting on every pointermove.
-const CLAIM_REFRESH_THROTTLE_MS = 1000;
+const CLAIM_REFRESH_THROTTLE_MS = 500;
 let _softLockTickHandle = null;
 
 function _softLockTick() {
@@ -513,29 +514,14 @@ function onDrawingChanged(events, transaction) {
   renderDoc();
 }
 
-// Diagnostic awareness logging — opt-in via ?debug=1 in the URL, off by
-// default. One instrumentation point covers both directions: every LOCAL
-// setLocalStateField() call and every REMOTE applyAwarenessUpdate() fire
-// the same 'change' event — origin is 'local' for our own writes, and
-// whatever the transport passed (e.g. a WebRTC room object) for updates we
-// received. Logs only the soft-lock-relevant fields, not cursor/color/grad
-// noise. Filter devtools console by "[awareness" to isolate this.
-const DEBUG_AWARENESS = typeof location !== 'undefined'
-  && new URLSearchParams(location.search).get('debug') === '1';
-
 function onPresenceChanged(changes, origin) {
-  if (DEBUG_AWARENESS) logAwarenessChange(changes, origin);
+  logAwarenessChange(changes, origin);
   renderPresence();
   UI.updatePeersPanel();
 }
 
-// Each call to console.log() takes a single pre-stringified string, not an
-// object — devtools renders object/array arguments as collapsed, clickable
-// trees, which makes copy/paste tedious (expand-everything-by-hand). A
-// plain string argument prints flat with nothing to expand, so the whole
-// line (or whole batch, joined with \n) can be selected and pasted in one
-// go.
 function logAwarenessChange({ added, updated, removed }, origin) {
+  if (!DEBUG) return;
   const direction = origin === 'local' ? 'SEND' : 'RECV';
   const ts = new Date().toISOString().slice(11, 23); // HH:MM:SS.mmm, for ordering when pasted
   const lines = [];
@@ -545,6 +531,9 @@ function logAwarenessChange({ added, updated, removed }, origin) {
   }
   for (const clientId of [...added, ...updated]) {
     const state = _awareness.getStates().get(clientId);
+    // makes a single pre-stringified string, not an object
+    // devtools renders object/array arguments as collapsed, clickable
+    // trees, which makes copy/paste tedious (must expand-everything-by-hand).
     const payload = JSON.stringify({
       selection:       state?.selection ?? null,
       pendingRequests: state?.pendingRequests ?? null,
@@ -639,7 +628,7 @@ const App = {
       })
       // Rubber-band box-select can never invoke a soft-lock request — held
       // elements are silently excluded, as if they weren't swept at all.
-      // (Shift-click is the only gesture that can invoke a request.)
+      // (Shift-click is the only gesture that can request additions.)
       .filter(({ id }) => !App.isHeldByOther(id))
       .map(({ id }) => id);
     Overlay.setHoverCandidates(ids);
@@ -685,37 +674,26 @@ const App = {
   },
 
   // Refresh this client's claim timestamp for a single already-held elId,
-  // without touching the rest of the current multi-selection. select()
-  // already refreshes a claim for free whenever it runs — but a plain
-  // click on an element that's already part of a multi-selection never
-  // reaches select() at all (see canvas.js: it goes straight to
-  // startMultiDrag, since collapsing the whole group down to just the
-  // clicked element would be wrong). This is the equivalent "I'm touching
-  // this, defend it" signal for that path — call it the moment the user
-  // makes contact with a multi-selected element, tap or drag alike.
+  // without touching the rest of the current multi-selection.
   reassertClaim: (id) => {
-    if (!(id in _myClaims)) return; // only meaningful for something I already hold
+    if (!(id in _myClaims)) return; // only meaningful if I already hold it
     _claim([id]);
   },
 
   select: (id) => {
     App.setTool('select');
     if (id && App.isHeldByOther(id)) {
-      // Plain click on a held element is a request, not a selection change.
-      // Per protocol this gesture is exclusive (single-select semantics),
-      // so any selection I currently hold is cleared while the request is
-      // pending — broadcasts null, same as having nothing selected.
+      // Plain click on a held-by-other element is a request.
+      // Shift wasn't held, so any selection I currently hold is cleared
       _clearClaims();
       App.requestElement(id);
       return;
     }
     if (id) {
       // select() is exclusive (single-select): replace the whole selection
-      // with just this one id. _claim() adds without clearing, so we must
-      // clear first. This also correctly handles re-clicking your own held
-      // element as the "bathroom" rebuttal gesture — the fresh timestamp
-      // from _claim() is what matters, and clearing then re-adding is
-      // identical in effect to an upsert.
+      // with just this one id.
+      // This also handles re-clicking a held-by-self element as rebuttal
+      // gesture -- it gets a fresh timestamp from _claim()
       _myClaims = {};
       _claim([id]);
     } else {
@@ -725,15 +703,13 @@ const App = {
 
   // Toggle a single id in/out of the current selection.
   // If the result is N===0: deselect. N===1: single-select. N>1: multi-select.
-  // Collapses back to single-select mode (full pill) when size drops to 1.
+  // Collapses back to single-select mode when size drops to 1.
   //
-  // Shift-click is the one gesture that can invoke a soft-lock request:
-  // shift-clicking an element held by someone else queues a request for it
+  // shift-clicking a held-by-other element queues a request for it
   // (App.requestElement), independent of and alongside whatever else is
-  // already in this client's own selection or other pending requests.
-  // Shift-clicking an element I already own is unaffected — it's still a
-  // plain deselect toggle, and is a no-op with respect to pendingRequests
-  // (an id I own was never in my own pendingRequests to begin with).
+  // already held-by-self or other pending requests.
+  // Shift-clicking a held-by-self element is still a plain deselect toggle,
+  // and is a no-op with respect to pendingRequests
   toggleSelection: (id) => {
     if (id in _myClaims) {
       _unclaim([id]);
@@ -756,8 +732,8 @@ const App = {
     } else if (ids.length === 1) {
       App.select(ids[0]);
     } else {
-      // Preserve existing claim timestamps for already-held ids (additive
-      // case); stamp a fresh claim only for newly-added ones.
+      // Preserve existing claim timestamps for any already-held.
+      // Timestamp a fresh claim only for newly-added ones.
       const ts = Date.now();
       for (const id of ids) {
         if (!(id in _myClaims)) _myClaims[id] = ts;
@@ -991,7 +967,7 @@ const App = {
   // cancelMove  — called on pointercancel or disconnect; reverts with no Yjs write
 
   startDrag: (id) => {
-    // Defense in depth: nothing should be dragging an element it doesn't
+    // Defense in depth: client should not be drag an element it doesn't
     // hold — the primary guard is in canvas.js (only calls startDrag when
     // select() actually succeeded), but a stray caller reaching this
     // directly should silently no-op rather than broadcast a bogus `drag`
@@ -1146,10 +1122,7 @@ const App = {
     for (const el of elements) Overlay.startDragPlaceholder(el.id);
 
     // Defend every element in the group, not just the one under the
-    // pointer — a group drag actively moves all of them together, so all
-    // of them are being "used" and should all be defended. Centralized
-    // here (rather than left to the caller) so this can't be forgotten:
-    // any future caller of startMultiDrag gets correct behavior for free.
+    // pointer.  All of them are being "used".
     const claimNow = Date.now();
     for (const el of elements) _myClaims[el.id] = claimNow;
     _broadcastSelection();
@@ -1164,10 +1137,9 @@ const App = {
     if (!_multiDragState) return;
     const { elements, leaderEl, boundsRects, snapPoints } = _multiDragState;
 
-    // Throttled claim refresh for the whole group — same reasoning as
-    // App.move's single-element version: a drag long enough to outlast the
-    // 3s request window should keep defending itself, without broadcasting
-    // on every pointermove.
+    // Throttled claim refresh for the whole group
+    // A drag long enough to outlast the 3s request window should keep
+    // defending itself, without broadcasting on every pointermove.
     const now = Date.now();
     if (now - (_multiDragState.lastClaimRefresh ?? 0) >= CLAIM_REFRESH_THROTTLE_MS) {
       _multiDragState.lastClaimRefresh = now;

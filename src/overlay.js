@@ -17,7 +17,7 @@
  *   'locked'    — remote peer is actively editing (future: lock icon)
  *
  * Requested/contested indicator (soft-lock.js): a separate, independent
- * decoration — not a SelectionMode kind — drawn around any element with an
+ * decoration — not a SelectionMode kind — drawn on any element with an
  * outstanding acquisition request, regardless of its SelectionMode kind (or
  * lack of one). See _contestedIds / renderRequestedIndicator.
  *
@@ -153,7 +153,7 @@ export function syncFromAwareness(awarenessStates, myClientId) {
         // peer's broadcast can silently clobber my own 'local' entry with
         // 'remote' any time both sides briefly, even legitimately, claim
         // the same elId at once (e.g. mid soft-lock handoff) — I'd see the
-        // other peer's dashed ring instead of my own, even though my own
+        // other peer's ring instead of my own, even though my own
         // selection data still says I hold it.
         const existing = SelectionMode.get(elId);
         if (existing && (existing.kind === 'local' || existing.kind === 'resize')) continue;
