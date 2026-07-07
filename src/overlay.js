@@ -34,6 +34,14 @@
  *   visual for "someone else is sweeping over these"), but the field is
  *   wire-present so it can be added without a schema change.
  *
+ * Peer gradients: awareness `grad` field, { c1, c2, angle, ... } from
+ *   entity_gradient.js. Each peer's full gradient (not just their solid
+ *   `color`) is mirrored into its own <linearGradient id="peer-sel-grad-{clientId}">,
+ *   a sibling of #local-sel-grad in the canvas <defs>. Remote selection
+ *   rings reference it via url(#peer-sel-grad-{clientId}) instead of a flat
+ *   fill, falling back to solid `color` only if a peer hasn't broadcast a
+ *   grad. See _ensurePeerGradient / _prunePeerGradients.
+ *
  * Drag ghost system:
  *   The native layer element is never touched during drag; but overlay renders:
  *     - a dim <use href="#yid-{id}" filter="url(#drag-placeholder-filter)">
@@ -61,8 +69,75 @@ export const SelectionMode = new Map();
 const _dragGhosts = new Map();
 
 // Remote drags — rebuilt from awareness on each syncFromAwareness() call.
-// Map<elId, { peerId, bboxX, bboxY, color }>
+// Map<elId, { peerId, bboxX, bboxY, color, gradId }>
 const _remoteDrags = new Map();
+
+// ── Peer gradient registry ───────────────────────────────────────────────────
+// Each peer broadcasts their full gradient (awareness `grad`, from
+// entityGradient()), not just a solid `color`. Every peer's gradient gets its
+// own persistent <linearGradient> living as a sibling of #local-sel-grad in
+// the canvas <defs>, keyed by awareness clientId — stable for that peer's
+// session and safe to drop straight into a url(#...) reference. Rebuilt
+// (created/updated/pruned) on each syncFromAwareness() call.
+const PEER_GRAD_PREFIX = 'peer-sel-grad-';
+let _defsEl = null;             // cached <defs> element, resolved lazily
+const _peerGradIds = new Set(); // clientIds with a live <linearGradient> in the DOM
+
+export function peerGradId(clientId) {
+  return `${PEER_GRAD_PREFIX}${clientId}`;
+}
+
+function _getDefsEl() {
+  if (_defsEl && _defsEl.isConnected) return _defsEl;
+  const lg = document.getElementById(LOCAL_GRAD_ID);
+  _defsEl = lg ? lg.parentNode : null;
+  return _defsEl;
+}
+
+// Create (or update) the sibling <linearGradient> for one peer's clientId,
+// mirroring the angle math in setLocalGradient. Returns the element id to
+// reference in url(#...), or null if grad is missing/malformed — callers
+// fall back to a solid color in that case.
+function _ensurePeerGradient(clientId, grad) {
+  if (!grad || typeof grad !== 'object' || !grad.c1) return null;
+  const defs = _getDefsEl();
+  if (!defs) return null;
+  const id = peerGradId(clientId);
+  let lg = document.getElementById(id);
+  if (!lg) {
+    lg = document.createElementNS(SVGNS, 'linearGradient');
+    lg.setAttribute('id', id);
+    const stop0 = document.createElementNS(SVGNS, 'stop');
+    stop0.setAttribute('id', `${id}-stop0`);
+    const stop1 = document.createElementNS(SVGNS, 'stop');
+    stop1.setAttribute('id', `${id}-stop1`);
+    lg.appendChild(stop0);
+    lg.appendChild(stop1);
+    defs.appendChild(lg);
+  }
+  const rad = ((grad.angle ?? 90) - 90) * Math.PI / 180;
+  lg.setAttribute('x1', 0.5 - Math.cos(rad) / 2);
+  lg.setAttribute('y1', 0.5 - Math.sin(rad) / 2);
+  lg.setAttribute('x2', 0.5 + Math.cos(rad) / 2);
+  lg.setAttribute('y2', 0.5 + Math.sin(rad) / 2);
+  const stop0 = document.getElementById(`${id}-stop0`);
+  const stop1 = document.getElementById(`${id}-stop1`);
+  if (stop0) { stop0.setAttribute('offset', '0%');   stop0.setAttribute('stop-color', grad.c1); }
+  if (stop1) { stop1.setAttribute('offset', '100%'); stop1.setAttribute('stop-color', grad.c2 ?? grad.c1); }
+  _peerGradIds.add(clientId);
+  return id;
+}
+
+// Drop <linearGradient> defs for peers no longer present in awareness —
+// keeps stale defs from accumulating across a long session as people come
+// and go.
+function _prunePeerGradients(liveClientIds) {
+  for (const clientId of _peerGradIds) {
+    if (liveClientIds.has(clientId)) continue;
+    document.getElementById(peerGradId(clientId))?.remove();
+    _peerGradIds.delete(clientId);
+  }
+}
 
 // Soft-lock "requested" indicator — elIds with an outstanding acquisition
 // request (src/soft-lock.js's isElementContested), rebuilt on each
@@ -136,16 +211,19 @@ export function syncFromAwareness(awarenessStates, myClientId) {
   }
   _remoteDrags.clear();
 
+  const liveClientIds = new Set();
+
   awarenessStates.forEach((state, clientId) => {
     if (clientId === myClientId) return;
+    liveClientIds.add(clientId);
+
+    const peerId = state?.id ?? String(clientId);
+    const gradId = _ensurePeerGradient(clientId, state?.grad);
 
     // Remote selection rings — one per key in the selection map
     // (selection: { [elId]: claimTimestamp } | null — see soft-lock.js).
     if (state?.selection && typeof state.selection === 'object') {
       const elIds = Object.keys(state.selection);
-      if (elIds.length === 0) return;
-      const peerId = state.id ?? String(clientId);
-      const grad = state.grad ?? 'default-remote-sel-grad';
       for (const elId of elIds) {
         // Local selection always takes precedence over a remote peer's
         // claim to the same elId — mirrors the same rule setHoverCandidates
@@ -159,27 +237,26 @@ export function syncFromAwareness(awarenessStates, myClientId) {
         if (existing && (existing.kind === 'local' || existing.kind === 'resize')) continue;
         SelectionMode.set(elId, {
           kind:   'remote',
-          peerId: peerId,
+          peerId,
           color:  state.color ?? '#888',
-          grad:   grad,
+          gradId,
         });
       }
     }
 
     // Remote single drag ghost
     if (state?.drag?.elId) {
-      const peerId = state.id ?? String(clientId);
       _remoteDrags.set(state.drag.elId, {
         peerId,
         bboxX: state.drag.bboxX,
         bboxY: state.drag.bboxY,
         color: state.color ?? '#888',
+        gradId,
       });
     }
 
     // Remote multi drag ghosts — one entry per element
     if (Array.isArray(state?.multidrag?.elIds) && state.multidrag.elIds.length) {
-      const peerId = state.id ?? String(clientId);
       state.multidrag.elIds.forEach((elId, i) => {
         const offset = state.multidrag.offsets?.[i];
         if (!offset) return;
@@ -188,10 +265,12 @@ export function syncFromAwareness(awarenessStates, myClientId) {
           bboxX: offset.bboxX,
           bboxY: offset.bboxY,
           color: state.color ?? '#888',
+          gradId,
         });
       });
     }
   });
+  _prunePeerGradients(liveClientIds);
   _contestedIds = getAllContestedElementIds(awarenessStates);
   render();
 }
@@ -342,7 +421,7 @@ export function render() {
 
     renderRemoteSelection(
       { x: drag.bboxX, y: drag.bboxY, width: bbox.width, height: bbox.height },
-      { color: drag.color, peerId: drag.peerId },
+      { color: drag.color, gradId: drag.gradId, peerId: drag.peerId },
       scale,
     );
   }
@@ -426,6 +505,10 @@ function renderRemoteSelection(geo, entry, scale) {
   const { x, y, width, height } = geo;
   const group = el('g', { class: 'remote-sel' });
 
+  // Ring strokes with the peer's own gradient (per-clientId <linearGradient>
+  // in <defs>, kept current by _ensurePeerGradient) when one is available;
+  // solid color is only a fallback for peers who haven't broadcast a grad.
+  const stroke = entry.gradId ? `url(#${entry.gradId})` : (entry.color ?? '#888');
   const ring = el('rect', {
     x:      x - PAD,
     y:      y - PAD,
@@ -433,7 +516,7 @@ function renderRemoteSelection(geo, entry, scale) {
     height: height + PAD * 2,
     rx:     6,
     fill:           'none',
-    stroke:         entry.color,
+    stroke,
     'stroke-width': 1.5 / scale,
     'stroke-dasharray': `${4 / scale} ${3 / scale}`,
   });

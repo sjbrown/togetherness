@@ -450,7 +450,7 @@ input[type=range] { width: 100%; accent-color: var(--primary); height: 28px; }
 
 /* Peers */
 .peer-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 0.5px solid var(--border); }
-.avatar { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; flex-shrink: 0; }
+.avatar { width: 32px; height: 32px; flex-shrink: 0; }
 .pulse {
   width: 8px; height: 8px; border-radius: 50%; background: var(--primary); margin-left: auto; flex-shrink: 0;
   box-shadow: 0 0 6px var(--primary); animation: pulseGlow 2s ease-in-out infinite;

@@ -133,10 +133,40 @@ const mockShapes = [
   { id:'c', type:'rect',   fill:'#a85e5e', author:'you'  },
 ];
 const mockPeers = [
-  { name:'Mara', color:'#5a7ea8', live:true },
-  { name:'Theo', color:'#a85e5e', live:true },
-  { name:'Jin',  color:'#8a5ea8', live:false },
+  { clientId: 9001, name:'Mara', color:'#5a7ea8', live:true },
+  { clientId: 9002, name:'Theo', color:'#a85e5e', live:true },
+  { clientId: 9003, name:'Jin',  color:'#8a5ea8', live:false },
 ];
+
+// mockPeers' avatars use the same gradient-fill technique the real Peers
+// panel does (ui.js's avatarSVG + overlay.js's peer-sel-grad registry):
+// fill="url(#peer-sel-grad-{clientId})" pointing at a persistent per-peer
+// <linearGradient>. Stories are self-contained (no live awareness), so build
+// that one small defs shim here — same trick the local-sel-grad shim further
+// down this file uses for "me". Angle-to-xy conversion mirrors overlay.js's
+// _ensurePeerGradient exactly, since these are static demo defs, not a live
+// awareness-driven registry.
+{
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const defsShim = document.createElementNS(svgNS, 'svg');
+  defsShim.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
+  const defsEl = document.createElementNS(svgNS, 'defs');
+  for (const p of mockPeers) {
+    const g   = entityGradient(p.name);
+    const rad = (g.angle - 90) * Math.PI / 180;
+    const lg  = document.createElementNS(svgNS, 'linearGradient');
+    lg.setAttribute('id', Overlay.peerGradId(p.clientId));
+    lg.setAttribute('x1', 0.5 - Math.cos(rad) / 2);
+    lg.setAttribute('y1', 0.5 - Math.sin(rad) / 2);
+    lg.setAttribute('x2', 0.5 + Math.cos(rad) / 2);
+    lg.setAttribute('y2', 0.5 + Math.sin(rad) / 2);
+    lg.innerHTML = `<stop offset="0%" stop-color="${g.c1}"></stop><stop offset="100%" stop-color="${g.c2}"></stop>`;
+    defsEl.appendChild(lg);
+    p.gradId = Overlay.peerGradId(p.clientId);
+  }
+  defsShim.appendChild(defsEl);
+  document.body.appendChild(defsShim);
+}
 const mockHistory = [
   { label:'added rect a1b2c3',  fill:'#c8941e', elType:'rect' },
   { label:'added circle d4e5',  fill:'#5a7ea8', elType:'circle' },
