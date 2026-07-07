@@ -34,14 +34,6 @@
  *   visual for "someone else is sweeping over these"), but the field is
  *   wire-present so it can be added without a schema change.
  *
- * Peer gradients: awareness `grad` field, { c1, c2, angle, ... } from
- *   entity_gradient.js. Each peer's full gradient (not just their solid
- *   `color`) is mirrored into its own <linearGradient id="peer-sel-grad-{clientId}">,
- *   a sibling of #local-sel-grad in the canvas <defs>. Remote selection
- *   rings reference it via url(#peer-sel-grad-{clientId}) instead of a flat
- *   fill, falling back to solid `color` only if a peer hasn't broadcast a
- *   grad. See _ensurePeerGradient / _prunePeerGradients.
- *
  * Drag ghost system:
  *   The native layer element is never touched during drag; but overlay renders:
  *     - a dim <use href="#yid-{id}" filter="url(#drag-placeholder-filter)">
@@ -73,12 +65,10 @@ const _dragGhosts = new Map();
 const _remoteDrags = new Map();
 
 // ── Peer gradient registry ───────────────────────────────────────────────────
-// Each peer broadcasts their full gradient (awareness `grad`, from
-// entityGradient()), not just a solid `color`. Every peer's gradient gets its
-// own persistent <linearGradient> living as a sibling of #local-sel-grad in
-// the canvas <defs>, keyed by awareness clientId — stable for that peer's
-// session and safe to drop straight into a url(#...) reference. Rebuilt
-// (created/updated/pruned) on each syncFromAwareness() call.
+// Each peer broadcasts a color gradient
+// Every peer's gradient gets its own persistent <linearGradient> as a sibling
+// of #local-sel-grad in the canvas <defs>
+// Rebuilt (created/updated/pruned) on each syncFromAwareness() call.
 const PEER_GRAD_PREFIX = 'peer-sel-grad-';
 let _defsEl = null;             // cached <defs> element, resolved lazily
 const _peerGradIds = new Set(); // clientIds with a live <linearGradient> in the DOM
@@ -140,8 +130,8 @@ function _prunePeerGradients(liveClientIds) {
 }
 
 // Soft-lock "requested" indicator — elIds with an outstanding acquisition
-// request (src/soft-lock.js's isElementContested), rebuilt on each
-// syncFromAwareness() call. Deliberately independent of SelectionMode: an
+// request rebuilt on each syncFromAwareness() call.
+// Deliberately independent of SelectionMode: an
 // element can be contested regardless of whether it's 'local', 'remote', or
 // unselected from this client's point of view, so it's rendered as its own
 // decoration layer rather than another mutually-exclusive `kind`.
@@ -161,7 +151,7 @@ export function init(appBus, svgElement) {
  * Called by App whenever _selectedIds changes.
  * Clears all previous local/candidate/resize entries and sets 'local' for
  * each id in the Set. Works for N=0 (deselect), N=1, and N>1 uniformly —
- * the caller passes _selectedIds and Overlay decides how to render it.
+ * the caller passes selectedIds and Overlay decides how to render it.
  */
 export function localSelectionChanged(selectedIds) {
   for (const [id, entry] of SelectionMode) {
@@ -340,7 +330,7 @@ const LOCAL_GRAD_ID = 'local-sel-grad';
 /**
  * Update the persistent #local-sel-grad element in the SVG <defs> to reflect
  * the player's current gradient. Called once at boot and again if the player
- * changes their colour. The element lives in the main canvas <defs> (not inside
+ * changes their color. The element lives in the main canvas <defs> (not inside
  * #overlay-layer) so it survives the innerHTML wipe on every render().
  */
 export function setLocalGradient(grad) {
