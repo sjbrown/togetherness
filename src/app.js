@@ -21,6 +21,7 @@
 import { initIcons }                              from './icons.js';
 import * as Drawing                               from './drawing.js';
 import * as Toys                                  from './toys.js';
+import * as Storage                               from './storage.js';
 import * as BounPos                               from './boun_pos.js';
 import { SHAPE_TYPES }                            from './drawing.js';
 import { TOOLS as TOY_TOOLS, TOY_TYPES, addToy }   from './toys.js';
@@ -1313,13 +1314,7 @@ const App = {
     UI.toast('Undone');
   },
   exportSVG: () => {
-    // Clone the live SVG, strip overlay and UI-only layers, then download.
-    const clone = _svgEl.cloneNode(true);
-    clone.removeAttribute('id');
-    ['#overlay-layer', '#draw-preview'].forEach(sel => {
-      clone.querySelector(sel)?.remove();
-    });
-    clone.querySelectorAll('[pointer-events]').forEach(el => el.removeAttribute('pointer-events'));
+    const clone = Storage.buildExportSvg(_svgEl, { yToys: _yToys, yDrawing: _yDrawing });
     if (!clone.getAttribute('viewBox')) {
       const w = _svgEl.clientWidth  || 1384;
       const h = _svgEl.clientHeight || 998;
@@ -1355,103 +1350,27 @@ const App = {
         return;
       }
 
-      // DOM element → Y.XmlElement tree (recursive)
-      function domToY(node) {
-        if (node.nodeType === Node.TEXT_NODE) {
-          const t = node.textContent.trim();
-          return t ? new Y.XmlText(t) : null;
-        }
-        if (node.nodeType !== Node.ELEMENT_NODE) return null;
-        if (node.localName === 'script') return null;
-        const yEl = new Y.XmlElement(node.localName);
-        for (const at of node.attributes) yEl.setAttribute(at.name, at.value);
-        const children = [...node.childNodes].map(domToY).filter(Boolean);
-        if (children.length) yEl.insert(0, children);
-        return yEl;
-      }
-
-      // Toy contract: <g class="toy" data-toy-id data-toy-type
-      //                  data-yid data-module="toys"> with ≥1 <svg> child
-      function isToyG(el) {
-        return el.localName === 'g' &&
-               el.classList.contains('toy') &&
-               el.getAttribute('data-toy-id') &&
-               el.getAttribute('data-toy-type') &&
-               el.getAttribute('data-yid') &&
-               el.getAttribute('data-module') === 'toys' &&
-               el.querySelector(':scope > svg');
-      }
-
-      const bgPattern   = svgDoc.querySelector('defs pattern');
-      const toysLayerEl = svgDoc.querySelector('#toys-layer');
-      const drawLayerEl = svgDoc.querySelector('#drawing-layer');
-      let toyCount = 0, toyErrors = 0, drawCount = 0;
-
+      let result;
       _ydoc.transact(() => {
-        // background-layer: extract bg image url/dimensions from the <pattern>
-        // in <defs> and write to yMeta so the background is restored on import.
-        if (bgPattern) {
-          const img = bgPattern.querySelector('image');
-          if (img) {
-            const url = img.getAttribute('href') || img.getAttribute('xlink:href') || '';
-            const w   = Number(bgPattern.getAttribute('width'))  || 0;
-            const h   = Number(bgPattern.getAttribute('height')) || 0;
-            if (url) {
-              _yMeta.set('bg_url',   url);
-              if (w) _yMeta.set('bg_width',  w);
-              if (h) _yMeta.set('bg_height', h);
-            }
-          }
-        }
-
-        // Toys layer
-        if (toysLayerEl) {
-          const invalid = [];
-          for (const child of toysLayerEl.children) {
-            if (isToyG(child)) {
-              const yG = domToY(child);
-              if (yG) { _yToys.insert(_yToys.length, [yG]); toyCount++; }
-            } else {
-              invalid.push(child);
-              toyErrors++;
-            }
-          }
-          if (invalid.length) {
-            let errLayer = _svgEl.querySelector('#errors-layer');
-            if (!errLayer) {
-              errLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-              errLayer.setAttribute('id', 'errors-layer');
-              _svgEl.appendChild(errLayer);
-            }
-            invalid.forEach(el => errLayer.appendChild(document.importNode(el, true)));
-          }
-        }
-        // Drawing layer
-        if (drawLayerEl) {
-          for (const child of drawLayerEl.children) {
-            const yEl = domToY(child);
-            if (yEl) { _yDrawing.insert(_yDrawing.length, [yEl]); drawCount++; }
-          }
-        }
-        // Everything else → drawing layer
-        for (const el of svgDoc.documentElement.children) {
-          const id = el.getAttribute('id') ?? '';
-          if (el.localName === 'defs') continue;
-          if (id === 'toys-layer' || id === 'drawing-layer') continue;
-          if (id === 'background-layer') continue;
-          // TODO: boundaries-positions import into its own Yjs fragment when implemented
-          if (id === 'boundaries-positions-layer') continue;
-          // overlay-layer is UI-only and is stripped on export
-          if (id === 'overlay-layer') continue;
-          const yEl = domToY(el);
-          if (yEl) { _yDrawing.insert(_yDrawing.length, [yEl]); drawCount++; }
-        }
+        result = Storage.populateFromSvgDoc(svgDoc.documentElement,
+          { yMeta: _yMeta, yToys: _yToys, yDrawing: _yDrawing });
       });
+      const { toyCount, drawCount, invalidToyEls } = result;
+
+      if (invalidToyEls.length) {
+        let errLayer = _svgEl.querySelector('#errors-layer');
+        if (!errLayer) {
+          errLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          errLayer.setAttribute('id', 'errors-layer');
+          _svgEl.appendChild(errLayer);
+        }
+        invalidToyEls.forEach(el => errLayer.appendChild(document.importNode(el, true)));
+      }
 
       const parts = [];
       if (toyCount)  parts.push(`${toyCount} toy${toyCount === 1 ? '' : 's'}`);
       if (drawCount) parts.push(`${drawCount} shape${drawCount === 1 ? '' : 's'}`);
-      if (toyErrors) parts.push(`${toyErrors} invalid → errors layer`);
+      if (invalidToyEls.length) parts.push(`${invalidToyEls.length} invalid → errors layer`);
       if (!parts.length) UI.toast('Nothing importable found', 'warn');
       else UI.toast(`Imported: ${parts.join(', ')}`);
     };

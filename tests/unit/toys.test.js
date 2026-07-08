@@ -27,7 +27,8 @@ const TOY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
     <linearGradient id="grad"><stop offset="0"/></linearGradient>
   </defs>
   <sodipodi:namedview id="namedview1" inkscape:zoom="4"/>
-  <script type="text/javascript"><![CDATA[ var token_solidcolor = { menu: {} } ]]></script>
+  <script type="text/javascript" src="js/dice_utils.js" data-namespace="dice" id="script_dice_utils"/>
+  <script type="text/javascript" data-namespace="token_solidcolor" id="script_token_solidcolor"><![CDATA[ var token_solidcolor = { menu: {} } ]]></script>
   <g id="layer1" filter="url(#app-filter-colorize)" inkscape:label="strip-me" class="colorable">
     <circle id="token_front" r="34" cx="40" cy="45" style="fill:url(#grad);filter:url(#app-filter-colorize)"/>
     <text id="label"><tspan id="ts">5</tspan></text>
@@ -45,6 +46,15 @@ function find(yEl, nodeName) {
     }
   }
   return null
+}
+
+// All descendants (or self) whose nodeName matches.
+function findAll(yEl, nodeName, out = []) {
+  if (yEl.nodeName === nodeName) out.push(yEl)
+  for (const c of yEl.toArray()) {
+    if (c instanceof Y.XmlElement) findAll(c, nodeName, out)
+  }
+  return out
 }
 
 // svgTextToYXml returns { ySvg, colorMatrices }; reading ySvg throws until integrated.
@@ -97,8 +107,23 @@ describe('svgTextToYXml', () => {
     expect(find(importRoot(TOY_SVG, 'P__'), 'use').getAttribute('xlink:href')).toBe('#P__token_front')
   })
 
-  test('drops <script> elements', () => {
-    expect(find(importRoot(TOY_SVG, 'P__'), 'script')).toBeNull()
+  test('preserves <script> elements, their attrs, and CDATA text', () => {
+    const scripts = findAll(importRoot(TOY_SVG, 'P__'), 'script')
+    expect(scripts.length).toBe(2)
+
+    const srcScript = scripts.find(s => s.getAttribute('src'))
+    expect(srcScript.getAttribute('src')).toBe('js/dice_utils.js')
+    expect(srcScript.getAttribute('data-namespace')).toBe('dice')
+
+    const inlineScript = scripts.find(s => s.getAttribute('data-namespace') === 'token_solidcolor')
+    expect(inlineScript.toArray()[0].toString()).toContain('token_solidcolor')
+  })
+
+  test('namespaces script ids like any other id', () => {
+    const scripts = findAll(importRoot(TOY_SVG, 'P__'), 'script')
+    expect(scripts.map(s => s.getAttribute('id'))).toEqual(
+      expect.arrayContaining(['P__script_dice_utils', 'P__script_token_solidcolor'])
+    )
   })
 
   test('drops foreign-namespace elements (sodipodi/inkscape)', () => {
@@ -245,6 +270,28 @@ describe('listToys', () => {
     expect(toys[0].tagName).toBe('g')
     expect(toys[0].getAttribute('data-color')).toBe('#111')
     expect(toys[1].getAttribute('data-color')).toBe('#222')
+  })
+
+  test('rendered DOM never contains <script>, even though the Yjs tree does', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+
+    // The Yjs tree carries the script...
+    expect(findAll(findToy(yToys, 't1'), 'script').length).toBe(2)
+    // ...but the mirrored DOM used for on-screen rendering never does.
+    const [toyEl] = listToys(yToys)
+    expect(toyEl.querySelector('script')).toBeNull()
+  })
+
+  test('{ includeScripts: true } mirrors scripts too — for export only', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+
+    const [toyEl] = listToys(yToys, { includeScripts: true })
+    const scripts = toyEl.querySelectorAll('script')
+    expect(scripts.length).toBe(2)
   })
 })
 

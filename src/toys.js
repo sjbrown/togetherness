@@ -151,7 +151,10 @@ function rewriteUrlRefs(value, idMap) {
 
 // Recursively convert an SVG DOM element into a detached Y.XmlElement tree.
 // - drops foreign-namespace elements/attrs (inkscape, sodipodi, dc, rdf, cc)
-// - drops <script> (behaviour is handled separately via the sandbox, later)
+// - preserves <script> nodes (and their data-namespace/id/src attrs, and any
+//   CDATA/text body) as inert document citizens — they are part of the
+//   canonical Yjs/SVG tree but are never mirrored into the live DOM, so
+//   nothing executes. Activation is a later phase.
 // - namespaces every id and every internal reference via idMap, so multiple
 //   placed instances don't collide on ids like #app-filter-colorize
 // - if `refs` is provided, pushes direct Y.XmlElement refs for any
@@ -184,9 +187,8 @@ function elementToYXml(node, idMap, refs) {
   for (const child of Array.from(node.childNodes)) {
     if (child.nodeType === 1) {                                   // ELEMENT_NODE
       if (child.namespaceURI && child.namespaceURI !== SVG_NS) continue
-      if (child.localName === 'script') continue
       children.push(elementToYXml(child, idMap, refs))
-    } else if (child.nodeType === 3) {                            // TEXT_NODE
+    } else if (child.nodeType === 3 || child.nodeType === 4) {     // TEXT_NODE / CDATA_SECTION_NODE
       if (child.textContent.trim() !== '') children.push(new Y.XmlText(child.textContent))
     }
   }
@@ -374,12 +376,14 @@ export function applyMoveDom(domEl, cx, cy) {
  * We can't use Y.XmlElement.toDOM() (HTML namespace, won't render as SVG) nor
  * toString()+DOMParser (lowercases tag names like feColorMatrix and drops the
  * xmlns:xlink declaration). The recursive createElementNS walk preserves both.
- * Script nodes are never mirrored.
+ * Script nodes are never mirrored for live rendering — pass
+ * { includeScripts: true } only for export, where nothing executes either
+ * (it's a detached document being serialized, not attached to the page).
  */
-function mirror(yNode) {
+function mirror(yNode, opts = {}) {
   if (yNode instanceof Y.XmlText) return document.createTextNode(yNode.toString())
   if (!(yNode instanceof Y.XmlElement)) return null
-  if (yNode.nodeName === 'script') return null
+  if (yNode.nodeName === 'script' && !opts.includeScripts) return null
   const el = document.createElementNS(SVG_NS, yNode.nodeName)
   const attrs = yNode.getAttributes()
   for (const k in attrs) {
@@ -387,7 +391,7 @@ function mirror(yNode) {
     else                    el.setAttribute(k, attrs[k])
   }
   yNode.toArray().forEach(child => {
-    const dom = mirror(child)
+    const dom = mirror(child, opts)
     if (dom) el.appendChild(dom)
   })
   return el
@@ -399,8 +403,8 @@ function mirror(yNode) {
  * id="yid-{id}" so overlay.js <use href="#yid-{id}"> can reference it for
  * drag-ghost rendering.
  */
-export function _toSVGEl(yEl) {
-  const el = mirror(yEl)
+export function _toSVGEl(yEl, opts = {}) {
+  const el = mirror(yEl, opts)
   if (el && el.setAttribute) {
     const id = yEl.getAttribute('data-toy-id')
     el.setAttribute('id',              `yid-${id}`)
@@ -414,12 +418,14 @@ export function _toSVGEl(yEl) {
 /**
  * All placed toys, in z-order. Each entry is a rendered SVG element
  * stamped with data-yid + data-module.
+ * Pass { includeScripts: true } to also mirror <script> nodes — for export
+ * only; normal rendering always omits them so nothing executes.
  */
-export function listToys(yToys) {
+export function listToys(yToys, opts = {}) {
   const results = []
   yToys.toArray().forEach(yEl => {
     if (!(yEl instanceof Y.XmlElement)) return
-    results.push(_toSVGEl(yEl))
+    results.push(_toSVGEl(yEl, opts))
   })
   return results
 }
