@@ -268,7 +268,12 @@ export function commitEnvelope(ydoc, toyEl, records, opts = {}) {
     }
   }, 'envelope')
 
-  for (const record of violations) {
+  // Reverse order: each record's oldValue/nextSibling is only correct
+  // relative to the state right before that mutation happened. Reverting
+  // forward would, e.g., leave an attribute at an intermediate value instead
+  // of the pre-envelope one, or hand insertBefore a nextSibling reference
+  // that a later (but earlier-reverted) record already detached.
+  for (const record of [...violations].reverse()) {
     console.warn('[envelope] reverting out-of-scope mutation from toy handler', record)
     revertRecord(record)
   }

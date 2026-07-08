@@ -355,6 +355,59 @@ describe('commitEnvelope — scope enforcement (3.4)', () => {
     // Still reverted even though it threw.
     expect(toy2El.getAttribute('data-color')).toBe('#111')
   })
+
+  test('multiple out-of-scope attribute mutations revert to the pre-envelope value, not an intermediate one', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await placeToy(ydoc, yToys, 't1')
+    await placeToy(ydoc, yToys, 't2', '#222')
+    const layerEl = renderLayer(yToys)
+    const toy1El  = layerEl.querySelector('[data-yid="t1"]')
+    const toy2El  = layerEl.querySelector('[data-yid="t2"]')
+
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const records = await runInEnvelope(toy1El, () => {
+      toy2El.setAttribute('data-color', '#aaa') // #222 -> #aaa
+      toy2El.setAttribute('data-color', '#bbb') // #aaa -> #bbb
+    })
+    commitEnvelope(ydoc, toy1El, records)
+
+    // Reverting in record order (forward) would apply oldValue '#222' then
+    // '#aaa', landing on the intermediate value. Correct rollback undoes
+    // the most recent mutation first.
+    expect(toy2El.getAttribute('data-color')).toBe('#222')
+    expect(findToy(yToys, 't2').getAttribute('data-color')).toBe('#222')
+  })
+
+  test('out-of-scope childList add-then-remove-sibling reverts without throwing', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await placeToy(ydoc, yToys, 't1')
+    await placeToy(ydoc, yToys, 't2')
+    const layerEl  = renderLayer(yToys)
+    const toy1El   = layerEl.querySelector('[data-yid="t1"]')
+    const toy2El   = layerEl.querySelector('[data-yid="t2"]')
+    const group2El = toy2El.querySelector('g.colorable')
+    const useEl    = group2El.querySelector('use') // last child, currently
+
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const beforeNames = Array.from(group2El.children).map(c => c.localName)
+
+    const records = await runInEnvelope(toy1El, () => {
+      const marker = document.createElementNS(SVG_NS, 'rect')
+      group2El.insertBefore(marker, useEl) // add, anchored before <use>
+      group2El.removeChild(useEl)          // then remove that same <use>
+    })
+
+    expect(() => commitEnvelope(ydoc, toy1El, records)).not.toThrow()
+
+    // Fully reverted: back to the original children, in the original order.
+    const afterNames = Array.from(group2El.children).map(c => c.localName)
+    expect(afterNames).toEqual(beforeNames)
+    expect(findToy(yToys, 't2').getAttribute('data-color')).toBe('#111')
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
