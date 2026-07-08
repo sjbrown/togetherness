@@ -18,7 +18,10 @@ const getToysLayer = (ydoc) => ({ yToys: ydoc.getXmlFragment('toys') })
 
 // Same fixture as toys.test.js: a group with a circle, a text>tspan, and a
 // <use> — enough surface for attribute, characterData, and structural
-// (childList) mutations.
+// (childList) mutations. Also carries a <script> as the first child of the
+// manipulated group: mirror() never renders <script> into the live DOM
+// (toys.js), so it's a Y child with no DOM counterpart — exactly the case
+// that trips up naive DOM-position-based index math in applyChildListRecord.
 const TOY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
      xmlns:xlink="http://www.w3.org/1999/xlink"
@@ -28,6 +31,7 @@ const TOY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
     <linearGradient id="grad"><stop offset="0"/></linearGradient>
   </defs>
   <g id="layer1" filter="url(#app-filter-colorize)" class="colorable">
+    <script type="text/javascript" data-namespace="token_solidcolor" id="script_token_solidcolor"><![CDATA[ var token_solidcolor = { menu: {} } ]]></script>
     <circle id="token_front" r="34" cx="40" cy="45" style="fill:url(#grad);filter:url(#app-filter-colorize)"/>
     <text id="label"><tspan id="ts">5</tspan></text>
     <use id="ref" xlink:href="#token_front"/>
@@ -35,8 +39,11 @@ const TOY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 </svg>`
 
 // Render yToys into a fresh (detached is fine) toys-layer <g> and return it.
+// id="toys-layer" matches production (storage.js queries by this id), and
+// is what runInEnvelope's closest('#toys-layer') looks for.
 function renderLayer(yToys) {
   const layerEl = document.createElementNS(SVG_NS, 'g')
+  layerEl.id = 'toys-layer'
   Toys.render(yToys, layerEl)
   return layerEl
 }
@@ -121,6 +128,58 @@ describe('runInEnvelope — raw capture (3.1)', () => {
 
     const records = await runInEnvelope(toyEl, () => {})
     expect(records).toEqual([])
+  })
+
+  test('a toy nested several levels below #toys-layer is still fully scoped (closest(), not parentNode)', async () => {
+    // Simulates the Phase 5 case: a die contained inside a tray, so toyEl
+    // is not a direct child of #toys-layer.
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await placeToy(ydoc, yToys, 't1')
+    const layerEl = renderLayer(yToys)
+    const toyEl   = layerEl.querySelector('[data-yid="t1"]')
+
+    // Detach toyEl and re-nest it a few levels deep under the same layer.
+    toyEl.remove()
+    const trayEl = document.createElementNS(SVG_NS, 'g')
+    const innerEl = document.createElementNS(SVG_NS, 'g')
+    innerEl.appendChild(toyEl)
+    trayEl.appendChild(innerEl)
+    layerEl.appendChild(trayEl)
+
+    // A mutation on toyEl itself is still captured...
+    const records = await runInEnvelope(toyEl, () => {
+      toyEl.setAttribute('data-color', '#0f0')
+    })
+    expect(records.some(r => r.type === 'attributes' && r.target === toyEl)).toBe(true)
+
+    // ...and a sibling toy placed directly on the layer is still visible
+    // for scope enforcement, even though toyEl's own parent is `innerEl`,
+    // not #toys-layer. (Appended directly rather than via Toys.render,
+    // which would wipe the manually-nested tray structure above.)
+    await placeToy(ydoc, yToys, 't2')
+    const toy2El = Toys.listToys(yToys).find(el => el.getAttribute('data-yid') === 't2')
+    layerEl.appendChild(toy2El)
+    const records2 = await runInEnvelope(toyEl, () => {
+      toy2El.setAttribute('data-color', '#bad')
+    })
+    expect(records2.some(r => r.target === toy2El)).toBe(true)
+  })
+
+  test('falls back to observing toyEl itself when there is no #toys-layer ancestor', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await placeToy(ydoc, yToys, 't1')
+    // A detached, un-parented layer <g> with no id — as if constructed by
+    // hand in a unit test rather than by the real render pipeline.
+    const bareLayerEl = document.createElementNS(SVG_NS, 'g')
+    Toys.render(yToys, bareLayerEl)
+    const toyEl = bareLayerEl.querySelector('[data-yid="t1"]')
+
+    const records = await runInEnvelope(toyEl, () => {
+      toyEl.setAttribute('data-color', '#0f0')
+    })
+    expect(records.some(r => r.type === 'attributes' && r.target === toyEl)).toBe(true)
   })
 })
 
@@ -224,7 +283,7 @@ describe('commitEnvelope — structural translation (3.3)', () => {
     expect(circles.some(c => c.getAttribute('cx') === '10')).toBe(true)
   })
 
-  test('child inserted in the middle (insertBefore) lands at the matching Y index', async () => {
+  test('child inserted in the middle (insertBefore) lands at the matching Y index, correctly accounting for the unmirrored <script>', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     await placeToy(ydoc, yToys, 't1')
@@ -242,7 +301,34 @@ describe('commitEnvelope — structural translation (3.3)', () => {
 
     const yGroup = yNodeFor(groupEl)
     const names  = yGroup.toArray().map(n => n.nodeName)
-    expect(names).toEqual(['circle', 'rect', 'text', 'use'])
+    // 'script' is a real Y child (index 0) but was never mirrored into the
+    // DOM, so it has no DOM sibling to insertBefore against — the correct
+    // Y-array position for 'rect' is still right before 'text', at index 2.
+    expect(names).toEqual(['script', 'circle', 'rect', 'text', 'use'])
+  })
+
+  test('child inserted before the first mirrored sibling still lands after a leading unmirrored <script>', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await placeToy(ydoc, yToys, 't1')
+    const layerEl  = renderLayer(yToys)
+    const toyEl    = layerEl.querySelector('[data-yid="t1"]')
+    const groupEl  = toyEl.querySelector('g.colorable')
+    const circleEl = groupEl.querySelector('circle') // first *mirrored* DOM child
+
+    const records = await runInEnvelope(toyEl, () => {
+      const marker = document.createElementNS(SVG_NS, 'rect')
+      marker.setAttribute('data-marker', 'front')
+      groupEl.insertBefore(marker, circleEl) // no DOM sibling before this point
+    })
+    commitEnvelope(ydoc, toyEl, records)
+
+    const yGroup = yNodeFor(groupEl)
+    const names  = yGroup.toArray().map(n => n.nodeName)
+    // Counting only mirrored DOM siblings before the insertion point would
+    // see none and (wrongly) insert at Y-index 0 — ahead of 'script'.
+    // The correct position is Y-index 1: after the script, before circle.
+    expect(names).toEqual(['script', 'rect', 'circle', 'text', 'use'])
   })
 
   test('handler-created grandchildren are registered and individually addressable', async () => {
@@ -283,7 +369,7 @@ describe('commitEnvelope — structural translation (3.3)', () => {
     commitEnvelope(ydoc, toyEl, records)
 
     const yGroup = yNodeFor(groupEl)
-    expect(yGroup.toArray().map(n => n.nodeName)).toEqual(['text', 'use'])
+    expect(yGroup.toArray().map(n => n.nodeName)).toEqual(['script', 'text', 'use'])
   })
 })
 
