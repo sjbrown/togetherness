@@ -917,6 +917,7 @@ body {
 import * as Y                   from 'yjs';
 import { IndexeddbPersistence } from '/lib/y-indexeddb.js';
 import { mirrorYNode, buildThumbSVG, THUMB_W, THUMB_H } from './home-utils.js';
+import { populateFromSvgDoc }   from './storage.js';
 
 import { entityGradient }        from './entity_gradient.js';
 
@@ -1161,9 +1162,9 @@ window.addEventListener('pageshow', () => {
 });
 
 // ── Seed a new room from a sample SVG into IndexedDB ─────────────────────────
-// Mirrors the importSVG logic in app.js: reads background from defs pattern,
-// toys from #toys-layer, drawing from #drawing-layer, into a fresh Y.Doc,
-// then persists it via IndexeddbPersistence before navigating.
+// Uses the shared storage.js import machinery (also used by app.js's
+// importSVG) to read background/toys/drawing from a sampler template into a
+// fresh Y.Doc, then persists it via IndexeddbPersistence before navigating.
 async function seedRoom(roomId, sampleSvgEl) {
   const CURRENT_SCHEMA = 4;
 
@@ -1172,68 +1173,13 @@ async function seedRoom(roomId, sampleSvgEl) {
   const yToys        = ydoc.getXmlFragment('toys');
   const yDrawing     = ydoc.getXmlFragment('drawing');
 
-  // DOM → Y.XmlElement tree (mirrors domToY in app.js importSVG)
-  function domToY(node) {
-    if (node.nodeType === Node.TEXT_NODE) {
-      const t = node.textContent.trim();
-      return t ? new Y.XmlText(t) : null;
-    }
-    if (node.nodeType !== Node.ELEMENT_NODE) return null;
-    if (node.localName === 'script') return null;
-    const yEl = new Y.XmlElement(node.localName);
-    for (const at of node.attributes) yEl.setAttribute(at.name, at.value);
-    const children = [...node.childNodes].map(domToY).filter(Boolean);
-    if (children.length) yEl.insert(0, children);
-    return yEl;
-  }
-
-  function isToyG(el) {
-    return el.localName === 'g' &&
-           el.classList.contains('toy') &&
-           el.getAttribute('data-toy-id') &&
-           el.getAttribute('data-toy-type') &&
-           el.getAttribute('data-yid') &&
-           el.getAttribute('data-module') === 'toys' &&
-           el.querySelector(':scope > svg');
-  }
-
-  const bgPattern   = sampleSvgEl.querySelector('defs pattern');
-  const toysLayerEl = sampleSvgEl.querySelector('#toys-layer');
-  const drawLayerEl = sampleSvgEl.querySelector('#drawing-layer');
-
   ydoc.transact(() => {
-    // Background
-    const bgImg = bgPattern?.querySelector('image');
-    const bgUrl = bgImg?.getAttribute('href') || '';
-    const bgW   = Number(bgPattern?.getAttribute('width'))  || 0;
-    const bgH   = Number(bgPattern?.getAttribute('height')) || 0;
     yMeta.set('docId',         roomId);
     yMeta.set('created',       new Date().toISOString());
     yMeta.set('schemaVersion', CURRENT_SCHEMA);
-    yMeta.set('bg_url',        bgUrl);
-    yMeta.set('bg_width',      bgW);
-    yMeta.set('bg_height',     bgH);
-
-    // Toys
-    if (toysLayerEl) {
-      for (const child of toysLayerEl.children) {
-        if (isToyG(child)) {
-          const yG = domToY(child);
-          if (yG) {
-            yG.removeAttribute('transform'); // decorative rotation, not part of doc
-            yToys.insert(yToys.length, [yG]);
-          }
-        }
-      }
-    }
-
-    // Drawing
-    if (drawLayerEl) {
-      for (const child of drawLayerEl.children) {
-        const yEl = domToY(child);
-        if (yEl) yDrawing.insert(yDrawing.length, [yEl]);
-      }
-    }
+    // Sampler templates carry a decorative rotation on each toy <g> for
+    // homepage visual flair — not part of the canonical seeded document.
+    populateFromSvgDoc(sampleSvgEl, { yMeta, yToys, yDrawing }, { stripToyDecorative: true });
   });
 
   // Persist to IndexedDB and wait for it to flush before navigating.
