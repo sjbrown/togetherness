@@ -372,6 +372,26 @@ export function applyMoveDom(domEl, cx, cy) {
 
 
 /**
+ * yNode ↔ DOM registry.
+ * Populated during mirror() so app code can resolve a rendered DOM node
+ * (e.g. a deep <tspan> the user clicked) back to the Y.XmlElement/Y.XmlText
+ * that produced it. Rebuilt naturally on every render, since mirror() runs
+ * on every render. WeakMap keys are DOM nodes, so entries for discarded
+ * elements are garbage-collected automatically — no manual eviction needed.
+ */
+let _yNodeByDom = new WeakMap()
+
+/** Look up the Y.XmlElement/Y.XmlText that a rendered DOM node mirrors, or undefined. */
+export function yNodeFor(domNode) {
+  return _yNodeByDom.get(domNode)
+}
+
+/** Reset the yNode↔DOM registry. Intended for test isolation only. */
+export function clearYNodeMap() {
+  _yNodeByDom = new WeakMap()
+}
+
+/**
  * Mirror a Y.XmlElement tree into a live, SVG-namespaced DOM element.
  * We can't use Y.XmlElement.toDOM() (HTML namespace, won't render as SVG) nor
  * toString()+DOMParser (lowercases tag names like feColorMatrix and drops the
@@ -381,10 +401,15 @@ export function applyMoveDom(domEl, cx, cy) {
  * (it's a detached document being serialized, not attached to the page).
  */
 function mirror(yNode, opts = {}) {
-  if (yNode instanceof Y.XmlText) return document.createTextNode(yNode.toString())
+  if (yNode instanceof Y.XmlText) {
+    const textNode = document.createTextNode(yNode.toString())
+    _yNodeByDom.set(textNode, yNode)
+    return textNode
+  }
   if (!(yNode instanceof Y.XmlElement)) return null
   if (yNode.nodeName === 'script' && !opts.includeScripts) return null
   const el = document.createElementNS(SVG_NS, yNode.nodeName)
+  _yNodeByDom.set(el, yNode)
   const attrs = yNode.getAttributes()
   for (const k in attrs) {
     if (k === 'xlink:href') el.setAttributeNS(XLINK_NS, 'href', attrs[k])

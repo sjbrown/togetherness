@@ -6,6 +6,7 @@ import {
   getGeom, _toSVGEl,
   hslToRgb, colorMatrixValues,
   _clearSvgTextCache,
+  yNodeFor, clearYNodeMap,
 } from '../../src/toys.js'
 
 // Local accessor for the toys fragment + meta map. The production code creates
@@ -75,6 +76,7 @@ function sync(a, b) {
 // addToy fetches the toy file; stub it to return our fixture.
 beforeEach(() => {
   _clearSvgTextCache()
+  clearYNodeMap()
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, text: async () => TOY_SVG })))
 })
 afterEach(() => { vi.unstubAllGlobals() })
@@ -292,6 +294,73 @@ describe('listToys', () => {
     const [toyEl] = listToys(yToys, { includeScripts: true })
     const scripts = toyEl.querySelectorAll('script')
     expect(scripts.length).toBe(2)
+  })
+})
+
+describe('yNodeFor / clearYNodeMap', () => {
+  test('resolves a deep rendered DOM element back to its Y.XmlElement', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+
+    const [toyEl] = listToys(yToys)
+    const tspanDom = toyEl.querySelector('tspan')
+    expect(tspanDom).toBeTruthy()
+
+    const yTspan = yNodeFor(tspanDom)
+    expect(yTspan).toBeInstanceOf(Y.XmlElement)
+    expect(yTspan.nodeName).toBe('tspan')
+    // Same node found by walking the Yjs tree directly for the same id.
+    expect(yTspan.getAttribute('id')).toBe('t1__ts')
+    expect(yTspan).toBe(find(findToy(yToys, 't1'), 'tspan'))
+  })
+
+  test('resolves the mirrored text node inside a tspan back to its Y.XmlText', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+
+    const [toyEl] = listToys(yToys)
+    const textDom = toyEl.querySelector('tspan').firstChild
+    expect(textDom.nodeType).toBe(Node.TEXT_NODE)
+
+    const yText = yNodeFor(textDom)
+    expect(yText).toBeInstanceOf(Y.XmlText)
+    expect(yText.toString()).toBe('5')
+  })
+
+  test('returns undefined for a DOM node that was never mirrored', () => {
+    const orphan = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    expect(yNodeFor(orphan)).toBeUndefined()
+  })
+
+  test('clearYNodeMap() drops prior entries', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+
+    const [toyEl] = listToys(yToys)
+    const tspanDom = toyEl.querySelector('tspan')
+    expect(yNodeFor(tspanDom)).toBeTruthy()
+
+    clearYNodeMap()
+    expect(yNodeFor(tspanDom)).toBeUndefined()
+  })
+
+  test('re-rendering repopulates the map for the new DOM nodes', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+
+    const [firstRender] = listToys(yToys)
+    const [secondRender] = listToys(yToys)
+    const firstTspan  = firstRender.querySelector('tspan')
+    const secondTspan = secondRender.querySelector('tspan')
+
+    expect(firstTspan).not.toBe(secondTspan)
+    expect(yNodeFor(firstTspan)).toBeTruthy()
+    expect(yNodeFor(secondTspan)).toBeTruthy()
+    expect(yNodeFor(firstTspan)).toBe(yNodeFor(secondTspan)) // same underlying Y.XmlElement
   })
 })
 
