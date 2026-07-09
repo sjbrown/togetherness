@@ -1,75 +1,67 @@
-
-function randDiceString(min, max) {
-  // get a random integer in the range, inclusive.
-  // randInt(1,6) might return 1,2,3,4,5,6
-  min = Math.ceil(min)
-  max = Math.floor(max)
-  return '' + (Math.floor(Math.random() * (max - min + 1)) + min)
-}
-
+/**
+ * dice_utils.js — shared helper namespace for die toy types.
+ *
+ */
 var dice = {
-  turn_handler: function(elem, maxFace, valueTspan) {
-    var tspan = valueTspan || elem.querySelector('tspan')
-    var origNum = parseInt(tspan.textContent)
-    console.log("turn handler", elem.id, maxFace, "was", origNum)
-    elem.classList.add('animating-turn')
-    tspan.textContent = (origNum % maxFace) + 1
+  turn_handler: function (elem, maxFace, valueTspan) {
+    const tspan = valueTspan || elem.querySelector('tspan')
+    const current = parseInt(tspan.textContent, 10) || 0
+    const value = (current % maxFace) + 1
+    tspan.textContent = String(value)
+    return value
   },
 
-  roll_handler: function(elem, maxFace, valueTspan) {
-    //console.log('roll handle!', elem)
-    var tspan = valueTspan || elem.querySelector('tspan')
-    ui.do_animate(elem, {animation: 'rollOut'})
-    tspan.textContent = randDiceString(1,maxFace)
+  roll_handler: function (elem, maxFace, valueTspan) {
+    const tspan = valueTspan || elem.querySelector('tspan')
+    const value = _randInt(1, maxFace)
+    tspan.textContent = String(value)
+    return value
   },
 
-  multiface_roll_handler: function(elem) {
-    let faceEls = elem.querySelectorAll('g.face')
-    let faceArray = []
-    faceEls.forEach((gEl) => {
-      gEl.setAttribute('display', 'none')
-      faceArray.push(gEl)
-    })
-    ui.do_animate(elem, {animation: 'rollOut'})
-    let activeFace = faceArray[ randInt(1,faceEls.length) - 1 ]
-    if (activeFace !== null) {
-       activeFace.removeAttribute('display')
-    }
+
+  // For dice rendered as a stack of <g class="face"> elements (one drawn
+  // face per side, toggled via display)
+  multiface_roll_handler: function (elem) {
+    const faces = Array.from(elem.querySelectorAll('g.face'))
+    if (!faces.length) return null
+    faces.forEach(g => g.setAttribute('display', 'none'))
+    const activeFace = faces[_randInt(1, faces.length) - 1]
+    activeFace.removeAttribute('display')
+    return faces.indexOf(activeFace) + 1
   },
 
-  multiface_turn_handler: function(elem) {
-    let activeFace = elem.querySelector('g.face:not([display=none])')
-    let nextFace = activeFace.nextElementSibling
-    if (nextFace === null) {
-      nextFace = activeFace.parentElement.querySelector('g.face')
-    }
+  multiface_turn_handler: function (elem) {
+    const faces      = Array.from(elem.querySelectorAll('g.face'))
+    const activeFace = faces.find(g => g.getAttribute('display') !== 'none')
+    if (!activeFace) return null
+    const nextFace = faces[(faces.indexOf(activeFace) + 1) % faces.length]
     activeFace.setAttribute('display', 'none')
     nextFace.removeAttribute('display')
-    elem.classList.add('animating-turn')
+    return faces.indexOf(nextFace) + 1
   },
 
-  getValue(elem) {
+  getValue: function (elem) {
+    // elem is expected to contain exactly one <svg> of its own
+    const ownSvg = elem.tagName?.toLowerCase() === 'svg' ? elem : elem.querySelector('svg')
     let sum = 0
-    elem.querySelectorAll('tspan').forEach((t) => {
-      if (t.closest('svg').id !== elem.id) {
-        // it's buried multiple levels deep in sub-SVGs
-        // so skip it lest it be double-counted
-        return
-      }
-      c = t.textContent.trim()
-      num = parseInt(c)
-      if (!isNaN(num)) {
-        sum += num
-      }
-      // FATE dice are +, _, and -
-      if (c == '+') {
-        sum += 1
-      }
-      if (c == '-') {
-        sum -= 1
-      }
+    elem.querySelectorAll('tspan').forEach(t => {
+      // skipped so they're not double-counted once by their own getValue()
+      // call and again by the container's.
+      if (t.closest('svg') !== ownSvg) return
+      const c   = t.textContent.trim()
+      const num = parseInt(c, 10)
+      if (!isNaN(num)) sum += num
+      // FATE dice faces ('+' / '-') add/subtract 1.
+      if (c === '+') sum += 1
+      if (c === '-') sum -= 1
     })
     return sum
   },
+
 }
 
+function _randInt(min, max) {
+  min = Math.ceil(min)
+  max = Math.floor(max)
+  return Math.floor(Math.random() * (max - min + 1)) + min
+}
