@@ -27,6 +27,7 @@ const SVG_NS   = 'http://www.w3.org/2000/svg'
 const XLINK_NS = 'http://www.w3.org/1999/xlink'
 
 import { number, bool } from './tools-schema.js';
+import { activateToyScripts, isToyTypeActivated } from './toy-scripts.js';
 
 
 
@@ -607,6 +608,14 @@ export function edit(ydoc, yToy, editData) {
 /**
  * Render the toys layer: clear layerEl, then mirror every placed toy as a
  * live SVG node with the layer's interaction cursor applied.
+ *
+ * Also triggers script activation (Phase 4.1) for any placed toy type seen
+ * for the first time — covers both "first placed" (this render follows an
+ * addToy insert) and "first rendered after load/import" (this render is the
+ * initial renderDoc() after a document loads). activateToyScripts() is a
+ * no-op for already-activated types, so calling it on every render for
+ * every instance is cheap and correct rather than something this function
+ * needs to gate itself.
  */
 export function render(yToys, layerEl) {
   layerEl.innerHTML = '';
@@ -614,6 +623,22 @@ export function render(yToys, layerEl) {
     svgEl.style.cursor = 'grab';
     layerEl.appendChild(svgEl);
   });
+  activatePlacedToyScripts(yToys);
+}
+
+// Fire-and-forget: script activation is async (it may fetch an external
+// namespace file), but render() itself must stay synchronous — toy behaviour
+// wiring is a later phase, so nothing here needs to block on activation
+// completing before the toy is visible on the table.
+function activatePlacedToyScripts(yToys) {
+  yToys.toArray().forEach(yEl => {
+    if (!(yEl instanceof Y.XmlElement)) return
+    const toyType = yEl.getAttribute('data-toy-type')
+    if (!toyType || isToyTypeActivated(toyType)) return
+    activateToyScripts(yEl, toyType).catch(err => {
+      console.error(`[toys] script activation failed for toy type "${toyType}"`, err)
+    })
+  })
 }
 
 /**
