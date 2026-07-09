@@ -111,9 +111,33 @@ describe('activateToyScripts — extraction & evaluation', () => {
     expect(getNamespacesForType('die_a')).toEqual(['helperNs'])
     expect(getNamespacesForType('die_b')).toEqual(['helperNs'])
   })
-})
+  test('a concurrent caller awaiting the same toyType gets the real completion, not just "started"', async () => {
+    // Regression: activateToyScripts used to mark a toyType activated
+    // *before* awaiting its fetch, so a second caller mid-flight would see
+    // isToyTypeActivated()===false but a naive re-check-and-return would
+    // resolve before the actual work (fetch+eval) finished. Two concurrent
+    // callers must now share the same Promise and both see real completion.
+    let resolveFetch
+    const fetchGate = new Promise(r => { resolveFetch = r })
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      await fetchGate
+      return { ok: true, text: async () => 'globalThis.__raceNs = { ready: true }' }
+    }))
 
-// ── integration: through toys.js's real placement + render path ────────────
+    const scripts = [{ namespace: 'raceNs', src: 'js/race.js' }]
+    const { g } = makeAttachedToy({ toyType: 'racer', scripts })
+
+    const first  = activateToyScripts(g, 'racer')  // starts the fetch, doesn't await it here
+    const second = activateToyScripts(g, 'racer')  // concurrent call, before the fetch resolves
+    expect(second).toBe(first) // same Promise, not a fresh no-op
+
+    resolveFetch()
+    await second
+
+    expect(globalThis.__raceNs).toEqual({ ready: true })
+    expect(isToyTypeActivated('racer')).toBe(true)
+  })
+})
 
 const D6_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="80" height="100" id="d6_die" class="d6_die dice">

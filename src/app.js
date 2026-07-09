@@ -24,8 +24,10 @@ import * as Toys                                  from './toys.js';
 import * as Storage                               from './storage.js';
 import * as BounPos                               from './boun_pos.js';
 import { SHAPE_TYPES }                            from './drawing.js';
-import { TOOLS as TOY_TOOLS, TOY_TYPES, addToy }   from './toys.js';
+import { TOOLS as TOY_TOOLS, TOY_TYPES, addToy, findToy } from './toys.js';
 import { getMenuActions, invokeMenuAction }        from './toy-menu.js';
+import { activateToyScripts }                      from './toy-scripts.js';
+import { initializeToy }                           from './toy-lifecycle.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
 import { BOUNPOS_TYPES,
          addPositionSet, createPositionSetElement,
@@ -935,6 +937,17 @@ const App = {
     UI.refreshFromDoc();
   },
 
+  /**
+   * Place a toy on the table, then run its namespace(s)' initialize(elem)
+   * lifecycle hook exactly once, at this genuine placement moment (never
+   * on load/import or remote sync — see toy-lifecycle.js). addToySync's
+   * Yjs insert fires renderDoc()/render() synchronously, which already
+   * kicks off script activation fire-and-forget — awaiting
+   * activateToyScripts() again here is safe (idempotent, shares the same
+   * in-flight Promise) and is what guarantees the toy's namespace is
+   * actually ready, not just "already started", before initialize() reads
+   * it off window[namespace].
+   */
   commitToy: (toolName, x, y) => {
     const def = _toolById[toolName];
     if (!def?.toyType) { UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
@@ -942,10 +955,18 @@ const App = {
     addToy(_ydoc, _yToys, {
       id, toyType: def.toyType, x, y,
       color: _toolParams[toolName]?.fill ?? _myGrad.c1,
-    }).then(() => {
+    }).then(async () => {
       _undoStack.push({ op: 'add', module: 'toys', id });
       addHistory(`placed ${def.label} ${id.slice(0, 6)}`, { elType: 'toy' });
       App.addLog(`placed ${def.label} ${id.slice(0, 6)}`, 'local');
+
+      const yEl = findToy(_yToys, id);
+      if (yEl) await activateToyScripts(yEl, def.toyType);
+      const svgEl   = _svgEl?.querySelector(`[data-yid="${id}"]`);
+      const layerEl = _svgEl?.querySelector('#toys-layer');
+      if (svgEl && layerEl) {
+        await initializeToy(_ydoc, _yToys, layerEl, svgEl, def.toyType);
+      }
     }).catch(err => {
       UI.toast(`Failed to place ${def.label}`, 'warn');
       App.addLog(`place failed: ${err.message}`, 'del');

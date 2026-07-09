@@ -36,13 +36,15 @@ import * as Y from 'yjs'
 // window-global side effect, so activating a toy type twice in one session
 // is meaningless work, not a correctness issue to guard per Y.Doc.
 
-const _activatedTypes   = new Set()   // toyType -> already evaluated
-const _seenUrls         = new Set()   // resolved script URL -> already fetched+evaluated
-const _namespacesByType = new Map()   // toyType -> string[] (data-namespace values, in script order)
+const _activatedTypes     = new Set()   // toyType -> settled (activation finished)
+const _activationPromises = new Map()   // toyType -> in-flight/settled activation Promise
+const _seenUrls           = new Set()   // resolved script URL -> already fetched+evaluated
+const _namespacesByType   = new Map()   // toyType -> string[] (data-namespace values, in script order)
 
 /** Test-only: reset all module-level activation state. */
 export function _resetToyScriptState() {
   _activatedTypes.clear()
+  _activationPromises.clear()
   _seenUrls.clear()
   _namespacesByType.clear()
 }
@@ -109,21 +111,30 @@ async function activateScript(yScript, toyType) {
 
 /**
  * Extract and evaluate every <script> node in a placed toy's Yjs tree, once
- * per toy type. Safe to call for every rendered instance — a no-op once the
- * type has already been activated this session.
+ * per toy type. Safe to call for every rendered instance, and safe to call
+ * concurrently — every caller for the same toyType gets back the *same*
+ * Promise, so whichever call started the work, a later caller that needs
+ * to know activation has actually finished (not just started) can await
+ * this return value rather than relying on isToyTypeActivated(), which
+ * only reflects a settled Promise. (This matters for Phase 4.5's
+ * initialize() hook: toys.js's render() kicks activation off
+ * fire-and-forget, but app.js's placement flow needs to await the real
+ * completion before it can look up a namespace's initialize function.)
  *
  * yToyEl is the toy's <g> wrapper (or any attached node in its tree);
- * toyType is the value of its data-toy-type attribute. Fire-and-forget from
- * the caller's perspective — this returns a Promise so callers that care
- * about completion (tests, future menu-wiring) can await it, but toys.js's
- * synchronous render() does not.
+ * toyType is the value of its data-toy-type attribute.
  */
-export async function activateToyScripts(yToyEl, toyType) {
-  if (!toyType || _activatedTypes.has(toyType)) return
-  // Marked before awaiting anything: two toys of the same type placed or
-  // rendered within the same tick must not both start activation.
-  _activatedTypes.add(toyType)
-  for (const yScript of findScriptNodes(yToyEl)) {
-    await activateScript(yScript, toyType)
-  }
+export function activateToyScripts(yToyEl, toyType) {
+  if (!toyType) return Promise.resolve()
+  const existing = _activationPromises.get(toyType)
+  if (existing) return existing
+
+  const promise = (async () => {
+    for (const yScript of findScriptNodes(yToyEl)) {
+      await activateScript(yScript, toyType)
+    }
+    _activatedTypes.add(toyType)
+  })()
+  _activationPromises.set(toyType, promise)
+  return promise
 }
