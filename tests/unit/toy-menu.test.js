@@ -134,7 +134,10 @@ describe('invokeMenuAction', () => {
     const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
 
     await invokeMenuAction(ydoc, yToys, layerEl, toyEl, 'widgetNs', 'Bump')
-    const toyElAfter1 = layerEl.querySelector('[data-yid="t1"]') // render() replaced the node
+    // invokeMenuAction doesn't re-render (see envelope.js), so this is
+    // still the same live node — re-querying just confirms callers can
+    // safely do so rather than needing to hold onto the original element.
+    const toyElAfter1 = layerEl.querySelector('[data-yid="t1"]')
     await invokeMenuAction(ydoc, yToys, layerEl, toyElAfter1, 'widgetNs', 'Bump')
 
     expect(layerEl.querySelector('#t1__tspan_count').textContent).toBe('2')

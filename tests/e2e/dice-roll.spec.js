@@ -77,6 +77,48 @@ test.describe('two-peer dice roll sync', () => {
     await browser.close();
   });
 
+  test('a die stays clickable after an action (regression: click wiring)', async () => {
+    const browser = await chromium.launch();
+    const ctx1    = await browser.newContext();
+    const page1   = await ctx1.newPage();
+
+    const room = `e2e-dice-clickable-${Date.now()}`;
+    await page1.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
+    await expect(page1.locator('#peerCount')).toHaveText('0', { timeout: 8000 });
+
+    const canvas = page1.locator('#canvas');
+    const box    = await canvas.boundingBox();
+    await page1.evaluate(() => window.UI.pillTap('d6'));
+    await page1.waitForTimeout(100);
+    await page1.mouse.move(box.x + 100, box.y + 100);
+    await page1.mouse.down();
+    await page1.mouse.up();
+    await expect(page1.locator('[data-yid]')).toHaveCount(1, { timeout: 5000 });
+
+    // Select, open the Edit panel, and roll — this is the path that used
+    // to leave the layer's click handlers unwired (see envelope.js).
+    await page1.evaluate(() => window.UI.pillTap('select'));
+    await page1.waitForTimeout(100);
+    await page1.mouse.move(box.x + 100, box.y + 100);
+    await page1.mouse.down();
+    await page1.mouse.up();
+    await page1.waitForTimeout(100);
+    await page1.evaluate(() => window.UI.openSheet('edit'));
+    await page1.locator('.toy-action-btn', { hasText: 'Roll' }).click();
+    await page1.waitForTimeout(100);
+
+    // Deselect, then click the die again. If the layer's click handlers
+    // survived the roll, this re-selects it and its actions reappear.
+    await page1.mouse.click(box.x + 400, box.y + 400);
+    await page1.waitForTimeout(100);
+    await page1.mouse.move(box.x + 100, box.y + 100);
+    await page1.mouse.down();
+    await page1.mouse.up();
+    await expect(page1.locator('.toy-action-btn', { hasText: 'Roll' })).toBeVisible({ timeout: 3000 });
+
+    await browser.close();
+  });
+
   test('Turn Up deterministically advances the face and syncs', async () => {
     const browser = await chromium.launch();
     const ctx1    = await browser.newContext();
