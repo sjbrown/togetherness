@@ -243,6 +243,9 @@ function gatherTtStateData() {
     toyClasses: element?.ltype === 'boun_pos'
                   ? (App.getToyClasses?.() ?? [])
                   : null,
+    toyMenuActions: element?.ltype === 'toys'
+                  ? (App.getToyMenuActions?.() ?? [])
+                  : [],
   };
 }
 
@@ -412,10 +415,27 @@ export function editBody(data) {
   const fields  = Object.entries(types)
     .map(([key, typeSpec]) => renderSchemaField(key, values[key], typeSpec, { mode: 'edit', id }))
     .join('');
+  const actions = ltype === 'toys' ? toyActionsHTML(id, data.toyMenuActions) : '';
   const help = ltype === 'boun_pos'
     ? bounPosHelpHTML(data.toyClasses ?? [])
     : '';
-  return header + fields + help;
+  return header + fields + actions + help;
+}
+
+/**
+ * toyActionsHTML — renders a toy's currently-applicable menu actions
+ * (App.getToyMenuActions) as buttons in the Edit panel. Each button calls
+ * back into App.invokeToyMenuAction(id, namespace, key) — the same
+ * (namespace, key) pair the action was reported under, so app.js can look
+ * the live handler back up off window[namespace].menu[key] at click time
+ * rather than this HTML string carrying a function reference.
+ */
+function toyActionsHTML(id, actions) {
+  if (!actions?.length) return '';
+  const buttons = actions.map(a => `<button type="button" class="toy-action-btn"
+      onclick="App.invokeToyMenuAction('${id}','${a.namespace}','${a.key}')">${a.label}</button>`
+  ).join('');
+  return `<div class="toy-actions" style="display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 4px">${buttons}</div>`;
 }
 
 /**

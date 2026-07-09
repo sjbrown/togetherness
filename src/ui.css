@@ -286,6 +286,13 @@ html, body {
   display: flex; align-items: center; gap: 4px; font-family: var(--font-body);
 }
 .cp-none.active { color: var(--text); border-color: var(--text-2); box-shadow: 0 0 0 1px rgba(0,0,0,0.8); }
+.toy-actions { }
+.toy-action-btn {
+  height: 30px; padding: 0 12px; border-radius: 6px; border: 0.5px solid var(--border-2);
+  background: var(--surface-2); color: var(--text); font-size: 12px; font-weight: 500;
+  cursor: pointer; box-shadow: var(--emboss); font-family: var(--font-body);
+}
+.toy-action-btn:active { box-shadow: var(--emboss-inset); }
 .stepper { display: flex; align-items: center; gap: 6px; }
 .step-btn {
   width: 30px; height: 30px; border-radius: 50%; border: none;

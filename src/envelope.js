@@ -15,11 +15,16 @@
  *
  *   const records = await runInEnvelope(toyEl, () => handler.run(toyEl))
  *   commitEnvelope(ydoc, toyEl, records)
- *   Toys.render(yToys, layerEl)   // correctness by construction — see 3.6
  *
  * or, as one call:
  *
  *   await runToyHandler(ydoc, yToys, layerEl, toyEl, () => handler.run(toyEl))
+ *
+ * Neither form re-renders. In the app, rendering is the Yjs observer's job
+ * — it already runs synchronously inside commitEnvelope's transaction and
+ * rewires click handling that a bare re-render here would miss (see the
+ * note above runToyHandler). Callers with no such observer can render
+ * explicitly via renderAfterCommit.
  *
  * Benefits to this design:
    - a MutationObserver is transparent (handler code is unmodified, ordinary
@@ -53,12 +58,10 @@ const MUTATION_OPTS = {
 
 // ── raw mutation capture ──────────────────────────────────────────────
 
-// Tracks whether any envelope is currently open. This is a building block
-// for the app.js-side render policy (Phase 4): while an async handler's
-// envelope is open, remote-origin renders should be deferred rather than
-// tearing the DOM mid-handler. Wiring that deferral into app.js's
-// onToysChanged observer is out of scope for this commit — isEnvelopeOpen()
-// just gives that future code something to check.
+// Tracks whether any envelope is currently open. Not yet consumed anywhere:
+// the intent is for app.js's toys-layer observer to defer a remote-origin
+// render while a local async handler's envelope is still open, rather than
+// tearing the DOM out from under it mid-handler. TODO: wire that check in.
 let _openCount = 0
 export function isEnvelopeOpen() {
   return _openCount > 0
@@ -306,14 +309,25 @@ export function commitEnvelope(ydoc, toyEl, records, opts = {}) {
 }
 
 // ── post-commit render policy ─────────────────────────────────────────
+//
+// commitEnvelope's ydoc.transact(...) fires every observer registered on
+// yToys — including the app's own toys-layer observer — synchronously,
+// before transact() returns. In the app, that observer already rebuilds
+// the layer *and* rewires click handling for the new elements. A second,
+// bare rebuild here would run after that one, replacing its output with
+// elements nothing has attached listeners to — the toy would go dead to
+// clicks until some unrelated change happened to re-render it again.
+//
+// So runToyHandler does not render on its own: rendering is owned by
+// whatever is watching the Yjs doc. A caller with no such observer
+// (a standalone script, a test) can still render explicitly — that's
+// what renderAfterCommit is for — but it's opt-in, not automatic.
 
 /**
- * Re-render the toys layer from Yjs after an envelope commit. We don't try
- * to preserve whatever DOM state the handler's mutations left behind (e.g.
- * mid-flight animations) — correctness by construction, from the canonical
- * Yjs tree, wins over preserving transient DOM state. Incremental patching
- * (skip re-render when nothing actually changed, or when the transaction's
- * origin is 'envelope' and this client made it) is backlogged as perf work.
+ * Re-render the toys layer from Yjs. Exposed for callers with no Yjs
+ * observer of their own driving renders (tests, standalone scripts) — the
+ * live app relies on its own toys-layer observer instead; see the note
+ * above runToyHandler.
  */
 export function renderAfterCommit(yToys, layerEl) {
   renderToysLayer(yToys, layerEl)
@@ -322,13 +336,13 @@ export function renderAfterCommit(yToys, layerEl) {
 // ── convenience: the whole pipeline in one call ─────────────────────────────
 
 /**
- * Run a toy handler under the envelope, translate its mutations into Yjs,
- * and re-render the toys layer from the resulting Yjs state. This is the
- * shape Phase 4 (script activation) will call for every handler invocation.
+ * Run a toy handler under the envelope and translate its mutations into a
+ * single Yjs transaction. Does not render — see the note above
+ * renderAfterCommit for why. layerEl is accepted (rather than dropped from
+ * the signature) so callers already holding it don't need a separate
+ * import just to pass it elsewhere; it's currently unused here.
  */
 export async function runToyHandler(ydoc, yToys, layerEl, toyEl, fn, opts = {}) {
   const records = await runInEnvelope(toyEl, fn)
-  const result  = commitEnvelope(ydoc, toyEl, records, opts)
-  renderAfterCommit(yToys, layerEl)
-  return result
+  return commitEnvelope(ydoc, toyEl, records, opts)
 }

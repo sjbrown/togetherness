@@ -24,7 +24,8 @@ import * as Toys                                  from './toys.js';
 import * as Storage                               from './storage.js';
 import * as BounPos                               from './boun_pos.js';
 import { SHAPE_TYPES }                            from './drawing.js';
-import { TOOLS as TOY_TOOLS, TOY_TYPES, addToy }   from './toys.js';
+import { TOOLS as TOY_TOOLS, TOY_TYPES, addToy, findToy,
+         getMenuActions, invokeMenuAction, activateToyScripts, initializeToy } from './toys.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
 import { BOUNPOS_TYPES,
          addPositionSet, createPositionSetElement,
@@ -883,6 +884,41 @@ const App = {
   },
 
   /**
+   * The selected toy's currently-applicable menu actions, as plain data for
+   * the Edit panel to render as buttons — see toys.js's getMenuActions.
+   * [] for non-toy selections, multi-selections, or nothing selected.
+   */
+  getToyMenuActions: () => {
+    const id = _singleSelectedId();
+    if (!id) return [];
+    const svgEl = _svgEl?.querySelector(`[data-yid="${id}"]`);
+    if (!svgEl || moduleForElement(svgEl) !== 'toys') return [];
+    return getMenuActions(svgEl);
+  },
+
+  /**
+   * Invoke one of a toy's menu actions by (namespace, key) — the
+   * identifiers App.getToyMenuActions() handed back to the UI. Runs the
+   * handler inside an envelope (envelope.js) and commits its DOM mutations
+   * to Yjs as a single transaction. _yToys.observeDeep already re-renders
+   * the toys layer once that commit lands; refreshFromDoc() here just keeps
+   * the Edit panel's own action list (labels, applicable filtering) current
+   * too, the same way commitEdit refreshes it after a field edit.
+   */
+  invokeToyMenuAction: (id, namespace, key) => {
+    const svgEl = _svgEl?.querySelector(`[data-yid="${id}"]`);
+    if (!svgEl) return;
+    const layerEl = _svgEl?.querySelector('#toys-layer');
+    if (!layerEl) return;
+    invokeMenuAction(_ydoc, _yToys, layerEl, svgEl, namespace, key)
+      .then(() => UI.refreshFromDoc())
+      .catch(err => {
+        UI.toast(`Action failed: ${err.message}`, 'warn');
+        App.addLog(`toy action failed: ${err.message}`, 'del');
+      });
+  },
+
+  /**
    * Apply a partial editData object to the selected element.
    * Dispatches to the appropriate layer's edit() function, which handles
    * the Yjs transaction.  App.commitEdit is the single entry point that
@@ -899,6 +935,14 @@ const App = {
     UI.refreshFromDoc();
   },
 
+  /**
+   * Place a toy on the table, then run its namespace(s)' initialize(elem)
+   * hook exactly once, at this genuine placement moment — never on
+   * load/import or remote sync. Awaiting activateToyScripts() here (it's
+   * idempotent, shares the in-flight Promise from render()'s own
+   * fire-and-forget call) guarantees the namespace is actually ready
+   * before initialize() reads it off window[namespace].
+   */
   commitToy: (toolName, x, y) => {
     const def = _toolById[toolName];
     if (!def?.toyType) { UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
@@ -906,10 +950,18 @@ const App = {
     addToy(_ydoc, _yToys, {
       id, toyType: def.toyType, x, y,
       color: _toolParams[toolName]?.fill ?? _myGrad.c1,
-    }).then(() => {
+    }).then(async () => {
       _undoStack.push({ op: 'add', module: 'toys', id });
       addHistory(`placed ${def.label} ${id.slice(0, 6)}`, { elType: 'toy' });
       App.addLog(`placed ${def.label} ${id.slice(0, 6)}`, 'local');
+
+      const yEl = findToy(_yToys, id);
+      if (yEl) await activateToyScripts(yEl, def.toyType);
+      const svgEl   = _svgEl?.querySelector(`[data-yid="${id}"]`);
+      const layerEl = _svgEl?.querySelector('#toys-layer');
+      if (svgEl && layerEl) {
+        await initializeToy(_ydoc, _yToys, layerEl, svgEl, def.toyType);
+      }
     }).catch(err => {
       UI.toast(`Failed to place ${def.label}`, 'warn');
       App.addLog(`place failed: ${err.message}`, 'del');

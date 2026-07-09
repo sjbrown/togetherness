@@ -63,7 +63,7 @@ async function placeToy(ydoc, yToys, id, color = '#111') {
 // 3.1 — raw mutation capture
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('runInEnvelope — raw capture (3.1)', () => {
+describe('runInEnvelope — raw capture', () => {
   test('attribute mutation produces an attributes record', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
@@ -131,8 +131,8 @@ describe('runInEnvelope — raw capture (3.1)', () => {
   })
 
   test('a toy nested several levels below #toys-layer is still fully scoped (closest(), not parentNode)', async () => {
-    // Simulates the Phase 5 case: a die contained inside a tray, so toyEl
-    // is not a direct child of #toys-layer.
+    // e.g. a die contained inside a tray, so toyEl is not a direct child
+    // of #toys-layer.
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     await placeToy(ydoc, yToys, 't1')
@@ -187,7 +187,7 @@ describe('runInEnvelope — raw capture (3.1)', () => {
 // 3.2 — translation: attributes & characterData
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('commitEnvelope — attribute & characterData translation (3.2)', () => {
+describe('commitEnvelope — attribute & characterData translation', () => {
   test('attribute mutation updates the Yjs tree and survives a re-render', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
@@ -250,7 +250,7 @@ describe('commitEnvelope — attribute & characterData translation (3.2)', () =>
 // 3.3 — translation: structural (childList)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('commitEnvelope — structural translation (3.3)', () => {
+describe('commitEnvelope — structural translation', () => {
   test('appended child (createElementNS + appendChild) appears in yTree at the end', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
@@ -377,7 +377,7 @@ describe('commitEnvelope — structural translation (3.3)', () => {
 // 3.4 — scope enforcement
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('commitEnvelope — scope enforcement (3.4)', () => {
+describe('commitEnvelope — scope enforcement', () => {
   test('a handler touching another toy is reverted and warned, not applied', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
@@ -500,7 +500,7 @@ describe('commitEnvelope — scope enforcement (3.4)', () => {
 // 3.5 — async contract
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('runInEnvelope — async contract (3.5)', () => {
+describe('runInEnvelope — async contract', () => {
   test('a mutation made after an await is still captured', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
@@ -543,7 +543,7 @@ describe('runInEnvelope — async contract (3.5)', () => {
 // 3.6 — post-commit render policy
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('renderAfterCommit / runToyHandler — post-commit render (3.6)', () => {
+describe('renderAfterCommit / runToyHandler — post-commit render', () => {
   test('renderAfterCommit rebuilds the layer from Yjs — stale DOM state is not preserved', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
@@ -565,7 +565,7 @@ describe('renderAfterCommit / runToyHandler — post-commit render (3.6)', () =>
     expect(rebuiltToyEl.getAttribute('data-color')).toBe('#0f0')
   })
 
-  test('runToyHandler runs the full pipeline: capture → commit → render', async () => {
+  test('runToyHandler runs the pipeline: capture → commit — and does not render', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     await placeToy(ydoc, yToys, 't1')
@@ -582,10 +582,20 @@ describe('renderAfterCommit / runToyHandler — post-commit render (3.6)', () =>
     expect(result.applied).toBe(1)
     expect(result.violations).toEqual([])
 
-    const newToyEl = layerEl.querySelector('[data-yid="t1"]')
-    const added = Array.from(newToyEl.querySelectorAll('circle')).find(
+    // The mutation is visible because the handler mutated live DOM
+    // directly (that's the whole premise of the envelope) — not because
+    // runToyHandler re-rendered anything.
+    const added = Array.from(toyEl.querySelectorAll('circle')).find(
       c => c.getAttribute('data-added') === 'yes'
     )
     expect(added).toBeTruthy()
+
+    // Regression guard: runToyHandler must not rebuild the layer. A
+    // production caller's own Yjs observer already renders (correctly,
+    // with click handling wired) inside commitEnvelope's transaction; a
+    // second bare render here would silently replace that output with
+    // elements nothing has attached listeners to. See envelope.js's note
+    // above runToyHandler.
+    expect(layerEl.querySelector('[data-yid="t1"]')).toBe(toyEl)
   })
 })

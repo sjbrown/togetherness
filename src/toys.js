@@ -1,16 +1,6 @@
 /**
- * toys.js — toys-layer tool registry
- *
- * Authority for which tools exist on the 'toys' layer (player markers, dice)
- * and what options each exposes. ui.js asks App for this; it never hard-codes
- * marker/d6.
- *
- * Toys are the game-specific objects: tokens players move around the map,
- * dice they roll.
- *
- */
-/**
- * toys.js — CRDT operations for the toys layer
+ * toys.js — the toys layer: tool registry, CRDT operations, and the toy
+ * behaviour contract (script activation, menu actions, lifecycle hooks).
  *
  * Data model — same as the drawing layer: a Y.XmlFragment of Y.XmlElement.
  * The CRDT tree IS the SVG tree, so internal toy edits (recolor, flip,
@@ -19,7 +9,13 @@
  *   yToys (XmlFragment)
  *     └─ <g class="toy" data-toy-id data-toy-type data-color>  ← placement + state
  *          └─ <svg x y width height viewBox>                   ← the live toy sub-document
- *               └─ ...toy content (defs, paths, tspans, ...)
+ *               └─ ...toy content (defs, paths, tspans, <script>, ...)
+ *
+ * A toy's <script> nodes are part of that canonical tree (preserved through
+ * import/export) but are never mirrored into live DOM — see mirror() below.
+ * Activating them (running the code, wiring up menu actions and lifecycle
+ * hooks) is a separate step, in the "Toy behaviour contract" section near
+ * the bottom of this file.
  */
 import * as Y from 'yjs';
 
@@ -27,7 +23,12 @@ const SVG_NS   = 'http://www.w3.org/2000/svg'
 const XLINK_NS = 'http://www.w3.org/1999/xlink'
 
 import { number, bool } from './tools-schema.js';
+import { runToyHandler } from './envelope.js';
 
+// NOTE: envelope.js imports render()/yNodeFor()/registerYNode() from this
+// file, so this is an intentional cycle — safe because neither side uses
+// the other's bindings until a function runs later, well after both
+// modules have finished loading.
 
 
 // ── Toy-type registry ─────────────────────────────────────────────────────────
@@ -151,15 +152,12 @@ function rewriteUrlRefs(value, idMap) {
 
 // Recursively convert an SVG DOM element into a detached Y.XmlElement tree.
 // - drops foreign-namespace elements/attrs (inkscape, sodipodi, dc, rdf, cc)
-// - preserves <script> nodes (and their data-namespace/id/src attrs, and any
-//   CDATA/text body) as inert document citizens — they are part of the
-//   canonical Yjs/SVG tree but are never mirrored into the live DOM, so
-//   nothing executes. Activation is a later phase.
-// - namespaces every id and every internal reference via idMap, so multiple
-//   placed instances don't collide on ids like #app-filter-colorize
-// - if `refs` is provided, pushes direct Y.XmlElement refs for any
-//   feColorMatrix nodes into refs.colorMatrices so callers can setAttribute
-//   immediately without walking the detached tree (which throws on toArray).
+// - preserves <script> nodes as inert document citizens (see module header)
+// - namespaces every id and internal reference via idMap, so placed
+//   instances don't collide on ids like #app-filter-colorize
+// - if `refs` is given, collects direct refs to any feColorMatrix nodes
+//   into refs.colorMatrices, since a detached tree can't be walked later
+//   (toArray() throws until the tree is attached to a doc)
 function elementToYXml(node, idMap, refs) {
   const yEl = new Y.XmlElement(node.localName)
 
@@ -433,11 +431,31 @@ function mirror(yNode, opts = {}) {
   return el
 }
 
+// ── scoped id lookup for toy handler code ($) ───────────────────────────────
+//
+// Ids are namespaced per instance (see elementToYXml) so placed toys never
+// collide, but that means a bare selector like '#pie4' — the natural way
+// to write toy handler code — won't match. rootEl.$(selector) rewrites
+// every #token in the selector to the instance's namespaced id first, then
+// queries from the toy's root <g>. A handler holding a nested element can
+// reach it via elem.closest('[data-toy-id]').$(...).
+const ID_TOKEN_RE = /#([\w-]+)/g
+
+function rewriteSelector(selector, toyId) {
+  const prefix = `${toyId}__`
+  return selector.replace(ID_TOKEN_RE, (_, token) => `#${prefix}${token}`)
+}
+
+function attachScopedLookup(rootEl, toyId) {
+  rootEl.$ = selector => rootEl.querySelector(rewriteSelector(selector, toyId))
+  return rootEl
+}
+
 /**
  * Render a toy's <g> wrapper to an SVG DOM element, stamped with the handles
- * app.js needs: data-yid (the toy id), data-module="toys", and a plain SVG
+ * app.js needs: data-yid (the toy id), data-module="toys", a plain SVG
  * id="yid-{id}" so overlay.js <use href="#yid-{id}"> can reference it for
- * drag-ghost rendering.
+ * drag-ghost rendering, and `.$()` for toy-scoped id lookups (see above).
  */
 export function _toSVGEl(yEl, opts = {}) {
   const el = mirror(yEl, opts)
@@ -446,6 +464,7 @@ export function _toSVGEl(yEl, opts = {}) {
     el.setAttribute('id',              `yid-${id}`)
     el.setAttribute('data-yid',        id)
     el.setAttribute('data-module', 'toys')
+    attachScopedLookup(el, id)
   }
   return el
 }
@@ -604,9 +623,207 @@ export function edit(ydoc, yToy, editData) {
   });
 }
 
+// ── Toy behaviour contract ──────────────────────────────────────────────────
+//
+// A toy's <script> nodes (preserved in the Yjs tree, never mirrored — see
+// module header) define behaviour: menu actions and lifecycle hooks, as a
+// named object on globalThis. This section is that contract's three parts:
+// activation (run the scripts), menu (surface + invoke actions), and
+// lifecycle (run initialize() once per placed instance).
+//
+// Example, what a toy's own <script> looks like:
+//
+//   var d6 = {
+//     menu: {
+//       'Roll': {
+//         eventName: 'die_roll',
+//         applicable: (dieNode) => true,
+//         handler: function (evt) { return dice.roll_handler(this, 6) },
+//       },
+//     },
+//     initialize: function (elem, prototype) { ... },
+//   }
+
+// ── activation ───────────────────────────────────────────────────────────
+
+// Module-level and page-lifetime: namespaces are a window-global side
+// effect, so activating a toy type twice in one session is meaningless
+// work, not a correctness issue to guard per Y.Doc.
+const _activatedTypes     = new Set()   // toyType -> settled (activation finished)
+const _activationPromises = new Map()   // toyType -> in-flight/settled activation Promise
+const _seenScriptUrls     = new Set()   // resolved script URL -> already fetched+evaluated
+const _namespacesByType   = new Map()   // toyType -> string[] (data-namespace values, in script order)
+
+/** Test-only: reset all module-level activation state. */
+export function _resetToyScriptState() {
+  _activatedTypes.clear()
+  _activationPromises.clear()
+  _seenScriptUrls.clear()
+  _namespacesByType.clear()
+}
+
+/** Namespaces registered by a toy type's scripts, or [] if not yet activated. */
+export function getNamespacesForType(toyType) {
+  return _namespacesByType.get(toyType) ?? []
+}
+
+/** Whether a toy type's scripts have already been evaluated this session. */
+export function isToyTypeActivated(toyType) {
+  return _activatedTypes.has(toyType)
+}
+
+function findScriptNodes(yEl, results = []) {
+  if (!(yEl instanceof Y.XmlElement)) return results
+  if (yEl.nodeName === 'script') results.push(yEl)
+  for (const child of yEl.toArray()) findScriptNodes(child, results)
+  return results
+}
+
+function inlineScriptText(yScript) {
+  return yScript.toArray()
+    .filter(c => c instanceof Y.XmlText)
+    .map(c => c.toString())
+    .join('')
+}
+
+function recordNamespace(toyType, namespace) {
+  if (!namespace) return
+  const list = _namespacesByType.get(toyType) ?? []
+  if (!list.includes(namespace)) list.push(namespace)
+  _namespacesByType.set(toyType, list)
+}
+
+// Indirect eval, so top-level `var` lands on globalThis like a real
+// <script> tag would — a direct eval() call runs in this module's scope.
+function evalGlobal(code) {
+  ;(0, eval)(code)
+}
+
+async function activateScript(yScript, toyType) {
+  recordNamespace(toyType, yScript.getAttribute('data-namespace'))
+
+  const src = yScript.getAttribute('src')
+  if (src) {
+    const url = `/toy/${src}`
+    if (_seenScriptUrls.has(url)) return
+    _seenScriptUrls.add(url)
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`failed to load toy script ${url}: ${res.status}`)
+    evalGlobal(await res.text())
+  } else {
+    const code = inlineScriptText(yScript)
+    if (code.trim()) evalGlobal(code)
+  }
+}
+
 /**
- * Render the toys layer: clear layerEl, then mirror every placed toy as a
- * live SVG node with the layer's interaction cursor applied.
+ * Extract and evaluate every <script> node in a placed toy's Yjs tree, once
+ * per toy type. Safe to call for every rendered instance and concurrently —
+ * every caller for the same toyType shares one Promise, so a caller that
+ * needs real completion (not just "started") can await this return value
+ * rather than trusting isToyTypeActivated(), which only reflects a settled
+ * Promise.
+ */
+export function activateToyScripts(yToyEl, toyType) {
+  if (!toyType) return Promise.resolve()
+  const existing = _activationPromises.get(toyType)
+  if (existing) return existing
+
+  const promise = (async () => {
+    for (const yScript of findScriptNodes(yToyEl)) {
+      await activateScript(yScript, toyType)
+    }
+    _activatedTypes.add(toyType)
+  })()
+  _activationPromises.set(toyType, promise)
+  return promise
+}
+
+// ── menu ─────────────────────────────────────────────────────────────────
+
+function namespacesFor(toyType) {
+  return getNamespacesForType(toyType)
+    .map(name => ({ name, ns: globalThis[name] }))
+    .filter(({ ns }) => ns && typeof ns === 'object' && ns.menu)
+}
+
+/**
+ * A toy's currently-applicable menu actions, as plain data:
+ *   { namespace, key, eventName, label }[]
+ * applicable(svgEl) is evaluated now — entries that fail it are omitted
+ * entirely. label resolves uiLabel (string or function(svgEl)), falling
+ * back to the menu key.
+ */
+export function getMenuActions(svgEl) {
+  const toyType = svgEl?.getAttribute?.('data-toy-type')
+  if (!toyType) return []
+  const actions = []
+  for (const { name, ns } of namespacesFor(toyType)) {
+    for (const [key, entry] of Object.entries(ns.menu)) {
+      if (typeof entry.applicable === 'function' && !entry.applicable(svgEl)) continue
+      const label = typeof entry.uiLabel === 'function' ? entry.uiLabel(svgEl)
+                  : (entry.uiLabel ?? key)
+      actions.push({ namespace: name, key, eventName: entry.eventName, label })
+    }
+  }
+  return actions
+}
+
+/**
+ * Invoke a toy's menu action by (namespace, key) — the identifiers
+ * getMenuActions() handed back. Re-validates applicable() first (UI state
+ * may be stale — another peer's move could land between render and click).
+ * Runs the handler inside an envelope and commits its DOM mutations to
+ * Yjs as one transaction.
+ */
+export async function invokeMenuAction(ydoc, yToys, layerEl, svgEl, namespace, key, evt) {
+  const ns    = globalThis[namespace]
+  const entry = ns?.menu?.[key]
+  if (!entry || typeof entry.handler !== 'function') {
+    throw new Error(`[toys] no such menu action: ${namespace}.${key}`)
+  }
+  if (typeof entry.applicable === 'function' && !entry.applicable(svgEl)) {
+    throw new Error(`[toys] menu action not applicable: ${namespace}.${key}`)
+  }
+  return runToyHandler(ydoc, yToys, layerEl, svgEl, () => entry.handler.call(svgEl, evt))
+}
+
+// ── lifecycle ────────────────────────────────────────────────────────────
+
+/**
+ * Run every activated namespace's initialize(elem), if present, for a
+ * freshly placed toy instance — inside an envelope, so any mutations it
+ * makes commit to Yjs like any other handler. Runs once per instance, at
+ * genuine placement only: never on load/import or remote sync, since those
+ * toys already went through initialize() once, in whichever session first
+ * placed them. Callers are responsible for only calling this at placement
+ * and for having already awaited activateToyScripts() — this function has
+ * no per-instance guard of its own.
+ *
+ * archive2025's initialize(elem, prototype) took a second argument copying
+ * config from a reference node, feeding a config-dialog flow master
+ * doesn't have (a placed toy's initial state comes from its ttState options
+ * instead). `prototype` is deliberately never passed — a namespace's own
+ * initialize() just receives undefined for it, which is the same guard
+ * archive2025 authors already needed for a prototype-less call.
+ */
+export async function initializeToy(ydoc, yToys, layerEl, svgEl, toyType) {
+  const initializers = getNamespacesForType(toyType)
+    .map(name => globalThis[name])
+    .filter(ns => ns && typeof ns.initialize === 'function')
+  if (!initializers.length) return
+
+  await runToyHandler(ydoc, yToys, layerEl, svgEl, () => {
+    initializers.forEach(ns => ns.initialize(svgEl))
+  })
+}
+
+/**
+ * Render the toys layer: clear layerEl, mirror every placed toy, then
+ * kick off script activation (fire-and-forget — render() must stay
+ * synchronous) for any toy type seen for the first time. activateToyScripts
+ * is a no-op for already-activated types, so calling it per-instance on
+ * every render is cheap and correct rather than needing its own gate here.
  */
 export function render(yToys, layerEl) {
   layerEl.innerHTML = '';
@@ -614,6 +831,14 @@ export function render(yToys, layerEl) {
     svgEl.style.cursor = 'grab';
     layerEl.appendChild(svgEl);
   });
+  yToys.toArray().forEach(yEl => {
+    if (!(yEl instanceof Y.XmlElement)) return
+    const toyType = yEl.getAttribute('data-toy-type')
+    if (!toyType || isToyTypeActivated(toyType)) return
+    activateToyScripts(yEl, toyType).catch(err => {
+      console.error(`[toys] script activation failed for toy type "${toyType}"`, err)
+    })
+  })
 }
 
 /**
