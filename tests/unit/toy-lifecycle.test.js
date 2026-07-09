@@ -5,9 +5,8 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as Toys from '../../src/toys.js'
-import { addToy, findToy, clearYNodeMap, _clearSvgTextCache } from '../../src/toys.js'
-import { _resetToyScriptState, activateToyScripts } from '../../src/toy-scripts.js'
-import { initializeToy } from '../../src/toy-lifecycle.js'
+import { addToy, findToy, clearYNodeMap, _clearSvgTextCache,
+         _resetToyScriptState, activateToyScripts, initializeToy } from '../../src/toys.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 const getToysLayer = (ydoc) => ({ yToys: ydoc.getXmlFragment('toys') })

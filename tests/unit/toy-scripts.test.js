@@ -6,8 +6,6 @@ import {
   getNamespacesForType,
   isToyTypeActivated,
   _resetToyScriptState,
-} from '../../src/toy-scripts.js'
-import {
   addToy, render, _clearSvgTextCache, clearYNodeMap,
 } from '../../src/toys.js'
 
@@ -171,20 +169,6 @@ describe('toys.js render() — script activation on placement', () => {
     delete globalThis.__d6ActivationCount
     delete globalThis.__diceActivationCount
     vi.stubGlobal('fetch', stubToyFetch())
-  })
-
-  test('placing a d6 defines window.d6 and window.dice', async () => {
-    const ydoc  = new Y.Doc()
-    const yToys = ydoc.getXmlFragment('toys')
-    const layer = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    render(yToys, layer)
-    await new Promise(r => setTimeout(r, 0)) // flush the fire-and-forget activation
-
-    expect(globalThis.d6).toEqual({ menu: {} })
-    expect(globalThis.dice).toBeDefined()
-    expect(getNamespacesForType('dice_d6')).toEqual(['dice', 'd6'])
   })
 
   test('placing a second d6 does not re-evaluate scripts', async () => {

@@ -58,12 +58,10 @@ const MUTATION_OPTS = {
 
 // ── raw mutation capture ──────────────────────────────────────────────
 
-// Tracks whether any envelope is currently open. This is a building block
-// for the app.js-side render policy (Phase 4): while an async handler's
-// envelope is open, remote-origin renders should be deferred rather than
-// tearing the DOM mid-handler. Wiring that deferral into app.js's
-// onToysChanged observer is out of scope for this commit — isEnvelopeOpen()
-// just gives that future code something to check.
+// Tracks whether any envelope is currently open. Not yet consumed anywhere:
+// the intent is for app.js's toys-layer observer to defer a remote-origin
+// render while a local async handler's envelope is still open, rather than
+// tearing the DOM out from under it mid-handler. TODO: wire that check in.
 let _openCount = 0
 export function isEnvelopeOpen() {
   return _openCount > 0

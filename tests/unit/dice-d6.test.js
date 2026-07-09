@@ -5,9 +5,9 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as Toys from '../../src/toys.js'
-import { addToy, findToy, clearYNodeMap, _clearSvgTextCache } from '../../src/toys.js'
-import { _resetToyScriptState } from '../../src/toy-scripts.js'
-import { getMenuActions, invokeMenuAction } from '../../src/toy-menu.js'
+import { addToy, findToy, clearYNodeMap, _clearSvgTextCache,
+         _resetToyScriptState, getMenuActions, invokeMenuAction,
+         getNamespacesForType } from '../../src/toys.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
@@ -61,6 +61,7 @@ describe('dice_utils.js + d6 — script activation', () => {
     expect(typeof globalThis.dice.roll_handler).toBe('function')
     expect(typeof globalThis.dice.turn_handler).toBe('function')
     expect(typeof globalThis.d6.menu).toBe('object')
+    expect(getNamespacesForType('dice_d6')).toEqual(['dice', 'd6'])
   })
 })
 
@@ -196,7 +197,7 @@ describe('dice_utils.js — getValue', () => {
   })
 })
 
-describe('d6 menu — via toy-menu.js', () => {
+describe('d6 menu', () => {
   test('menu exposes Roll and Turn Up, both applicable', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)

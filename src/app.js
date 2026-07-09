@@ -24,10 +24,8 @@ import * as Toys                                  from './toys.js';
 import * as Storage                               from './storage.js';
 import * as BounPos                               from './boun_pos.js';
 import { SHAPE_TYPES }                            from './drawing.js';
-import { TOOLS as TOY_TOOLS, TOY_TYPES, addToy, findToy } from './toys.js';
-import { getMenuActions, invokeMenuAction }        from './toy-menu.js';
-import { activateToyScripts }                      from './toy-scripts.js';
-import { initializeToy }                           from './toy-lifecycle.js';
+import { TOOLS as TOY_TOOLS, TOY_TYPES, addToy, findToy,
+         getMenuActions, invokeMenuAction, activateToyScripts, initializeToy } from './toys.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
 import { BOUNPOS_TYPES,
          addPositionSet, createPositionSetElement,
@@ -887,7 +885,7 @@ const App = {
 
   /**
    * The selected toy's currently-applicable menu actions, as plain data for
-   * the Edit panel to render as buttons — see toy-menu.js's getMenuActions.
+   * the Edit panel to render as buttons — see toys.js's getMenuActions.
    * [] for non-toy selections, multi-selections, or nothing selected.
    */
   getToyMenuActions: () => {
@@ -939,14 +937,11 @@ const App = {
 
   /**
    * Place a toy on the table, then run its namespace(s)' initialize(elem)
-   * lifecycle hook exactly once, at this genuine placement moment (never
-   * on load/import or remote sync — see toy-lifecycle.js). addToySync's
-   * Yjs insert fires renderDoc()/render() synchronously, which already
-   * kicks off script activation fire-and-forget — awaiting
-   * activateToyScripts() again here is safe (idempotent, shares the same
-   * in-flight Promise) and is what guarantees the toy's namespace is
-   * actually ready, not just "already started", before initialize() reads
-   * it off window[namespace].
+   * hook exactly once, at this genuine placement moment — never on
+   * load/import or remote sync. Awaiting activateToyScripts() here (it's
+   * idempotent, shares the in-flight Promise from render()'s own
+   * fire-and-forget call) guarantees the namespace is actually ready
+   * before initialize() reads it off window[namespace].
    */
   commitToy: (toolName, x, y) => {
     const def = _toolById[toolName];

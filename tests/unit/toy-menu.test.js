@@ -2,15 +2,14 @@
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as Toys from '../../src/toys.js'
-import { addToy, findToy, clearYNodeMap, _clearSvgTextCache } from '../../src/toys.js'
-import { _resetToyScriptState } from '../../src/toy-scripts.js'
-import { getMenuActions, invokeMenuAction } from '../../src/toy-menu.js'
+import { addToy, findToy, clearYNodeMap, _clearSvgTextCache,
+         _resetToyScriptState, getMenuActions, invokeMenuAction } from '../../src/toys.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 const getToysLayer = (ydoc) => ({ yToys: ydoc.getXmlFragment('toys') })
 
 // A toy with a real menu: one always-applicable action that mutates the DOM
-// (via .$() — Phase 4.2's scoped lookup, exactly how a ported handler would
+// (via .$(), the scoped id lookup — exactly how a ported handler would
 // reach its own ids), one that's never applicable, and one whose uiLabel is
 // computed from live toy state.
 const TOY_SVG = `<?xml version="1.0" encoding="UTF-8"?>

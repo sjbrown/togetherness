@@ -1,11 +1,11 @@
 /**
  * tests/e2e/dice-roll.spec.js
  *
- * Phase 4.4's vertical-slice e2e: roll a d6 via its menu on one peer and
- * confirm the new face syncs to a second peer over WebRTC. Complements
- * tests/unit/dice-d6.test.js's CRDT-layer version of the same check by
- * exercising the real UI path: place tool → drop on canvas → select →
- * open Edit panel → click the toy's own menu action button.
+ * Roll a d6 via its menu on one peer and confirm the new face syncs to a
+ * second peer over WebRTC. Complements tests/unit/dice-d6.test.js's
+ * CRDT-layer version of the same check by exercising the real UI path:
+ * place tool → drop on canvas → select → open Edit panel → click the
+ * toy's own menu action button.
  *
  * Run via:  bin/test.sh --e2e
  * or:       docker compose -f docker-compose.test.yml run --rm e2e
@@ -150,7 +150,7 @@ test.describe('two-peer dice roll sync', () => {
 
     // Ships at "6" -> Turn Up wraps deterministically to "1". The button's
     // visible label is its resolved uiLabel ("Turn to 1"), not the literal
-    // menu key — see toy-menu.js's getMenuActions().
+    // menu key — see toys.js's getMenuActions().
     await page1.locator('.toy-action-btn', { hasText: 'Turn to' }).click();
     await expect(page1.locator('[id$="__tspan_die_value"]')).toHaveText('1', { timeout: 3000 });
     await expect(page2.locator('[id$="__tspan_die_value"]')).toHaveText('1', { timeout: 5000 });
