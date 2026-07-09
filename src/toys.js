@@ -434,11 +434,48 @@ function mirror(yNode, opts = {}) {
   return el
 }
 
+// ── scoped id lookup for toy handler code ($) ───────────────────────────────
+//
+// svgTextToYXml namespaces every id in a toy's SVG source with `${toyId}__`
+// on import (see elementToYXml above), so a placed toy's ids never collide
+// with another instance of the same type. That means handler code ported
+// from archive2025-style bare-id selectors (e.g. `#pie4`) would silently
+// miss in master — the real id is `${toyId}__pie4`.
+//
+// `.$()` is the porting contract for that gap: it rewrites every `#token`
+// found in a selector string to the toy instance's namespaced id, then
+// queries from the toy's root <g>. Ported handler code keeps using the
+// bare ids it was written against; only the toy contract needs to know
+// about prefixing.
+//
+// Every `#token` is rewritten, not just a single leading one, so compound
+// selectors mixing an id with class/descendant syntax (e.g. the tray toys'
+// `#pie4 .label`) resolve correctly too.
+//
+// Deliberately only attached to the toy's root <g> (not every element in
+// its subtree): a handler holding a nested element (e.g. a tray's inner
+// container) reaches it via `elem.closest('[data-toy-id]').$(...)` — the
+// same ancestor lookup envelope.js already uses for scope enforcement.
+// `.$()` always searches the whole toy instance from that root, regardless
+// of which element it's called on, matching how ids are scoped (per
+// instance, not per sub-element).
+const ID_TOKEN_RE = /#([\w-]+)/g
+
+function rewriteSelector(selector, toyId) {
+  const prefix = `${toyId}__`
+  return selector.replace(ID_TOKEN_RE, (_, token) => `#${prefix}${token}`)
+}
+
+function attachScopedLookup(rootEl, toyId) {
+  rootEl.$ = selector => rootEl.querySelector(rewriteSelector(selector, toyId))
+  return rootEl
+}
+
 /**
  * Render a toy's <g> wrapper to an SVG DOM element, stamped with the handles
- * app.js needs: data-yid (the toy id), data-module="toys", and a plain SVG
+ * app.js needs: data-yid (the toy id), data-module="toys", a plain SVG
  * id="yid-{id}" so overlay.js <use href="#yid-{id}"> can reference it for
- * drag-ghost rendering.
+ * drag-ghost rendering, and `.$()` for toy-scoped id lookups (see above).
  */
 export function _toSVGEl(yEl, opts = {}) {
   const el = mirror(yEl, opts)
@@ -447,6 +484,7 @@ export function _toSVGEl(yEl, opts = {}) {
     el.setAttribute('id',              `yid-${id}`)
     el.setAttribute('data-yid',        id)
     el.setAttribute('data-module', 'toys')
+    attachScopedLookup(el, id)
   }
   return el
 }

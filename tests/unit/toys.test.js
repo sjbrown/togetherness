@@ -297,6 +297,65 @@ describe('listToys', () => {
   })
 })
 
+describe('scoped lookup ($)', () => {
+  test('rewrites a bare #id to the toy-instance-namespaced id and finds it', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+
+    const toyEl = _toSVGEl(findToy(yToys, 't1'))
+    const found = toyEl.$('#token_front')
+    expect(found).not.toBeNull()
+    expect(found.getAttribute('id')).toBe('t1__token_front')
+  })
+
+  test('rewrites every #token in a compound selector, leaving classes alone', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+
+    const toyEl = _toSVGEl(findToy(yToys, 't1'))
+    const found = toyEl.$('#label #ts')
+    expect(found).not.toBeNull()
+    expect(found.getAttribute('id')).toBe('t1__ts')
+  })
+
+  test('returns null when the rewritten id has no match, same as querySelector', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+
+    const toyEl = _toSVGEl(findToy(yToys, 't1'))
+    expect(toyEl.$('#does_not_exist')).toBeNull()
+  })
+
+  test('two instances of the same type resolve to their own ids, not the other\u2019s', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'a', toyType: 'player_marker', x: 0, y: 0 })
+    await addToy(ydoc, yToys, { id: 'b', toyType: 'player_marker', x: 0, y: 0 })
+
+    const elA = _toSVGEl(findToy(yToys, 'a'))
+    const elB = _toSVGEl(findToy(yToys, 'b'))
+    expect(elA.$('#token_front').getAttribute('id')).toBe('a__token_front')
+    expect(elB.$('#token_front').getAttribute('id')).toBe('b__token_front')
+  })
+
+  test('.$() is only on the toy root; a nested element reaches it via closest()', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+
+    const toyEl = _toSVGEl(findToy(yToys, 't1'))
+    const nested = toyEl.querySelector('#t1__ts')
+    expect(nested.$).toBeUndefined()
+
+    const root = nested.closest('[data-toy-id]')
+    expect(root).toBe(toyEl)
+    expect(root.$('#token_front').getAttribute('id')).toBe('t1__token_front')
+  })
+})
+
 describe('yNodeFor / clearYNodeMap', () => {
   test('resolves a deep rendered DOM element back to its Y.XmlElement', async () => {
     const ydoc = new Y.Doc()
