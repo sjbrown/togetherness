@@ -392,6 +392,17 @@ export function clearYNodeMap() {
 }
 
 /**
+ * Register a DOM node ↔ Y node mapping directly. Used by envelope.js when
+ * translating handler-created DOM nodes (via storage.js's domToY) into the
+ * Yjs tree — those nodes never pass through mirror(), so nothing else would
+ * add them to the registry, and later mutations on them (e.g. a follow-up
+ * setAttribute) would be unresolvable without this.
+ */
+export function registerYNode(domNode, yNode) {
+  _yNodeByDom.set(domNode, yNode)
+}
+
+/**
  * Mirror a Y.XmlElement tree into a live, SVG-namespaced DOM element.
  * We can't use Y.XmlElement.toDOM() (HTML namespace, won't render as SVG) nor
  * toString()+DOMParser (lowercases tag names like feColorMatrix and drops the
