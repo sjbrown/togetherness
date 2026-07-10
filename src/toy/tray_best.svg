@@ -152,7 +152,7 @@ var tray_best = {
   </svg>
   <g id="contents_group" class="contents_group">
   </g>
-  <svg id="result_container"
+  <svg class="result_container"
   x="0" y="75%"
   width="95%" height="50"
   viewBox="0 0 100 50" preserveAspectRatio="xMaxYMin meet" >

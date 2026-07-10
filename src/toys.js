@@ -46,6 +46,10 @@ export const TOY_TYPES = {
     file: 'dice_d6.svg', label: 'D6',
     iconSvg: '<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1.3" fill="currentColor"/><circle cx="15" cy="15" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/>',
   },
+  tray_sum: {
+    file: 'tray_sum.svg', label: 'Sum Tray',
+    iconSvg: '<rect x="3" y="5" width="18" height="14" rx="1.5"/><line x1="3" y1="15" x2="21" y2="15"/>',
+  },
 }
 
 
@@ -533,6 +537,17 @@ export const TOOLS = [
       { kind: 'color-hsl', key: 'fill', label: 'Die color', show: ['add', 'edit', 'addQuick'] },
     ],
   },
+  {
+    name:    'tray_sum',
+    toyType: 'tray_sum',
+    label:   TOY_TYPES['tray_sum'].label,
+    iconUrl: 'toy/tray_sum.svg',
+    layer:   'toys',
+    defaults: { fill: '#5e7ea8' },
+    options: [
+      { kind: 'color-hsl', key: 'fill', label: 'Tray color', show: ['add', 'edit', 'addQuick'] },
+    ],
+  },
 ];
 
 // ── ttState / ttStateSchema ───────────────────────────────────────────────────
@@ -666,6 +681,15 @@ export function _resetToyScriptState() {
 export function getNamespacesForType(toyType) {
   return _namespacesByType.get(toyType) ?? []
 }
+
+// Bridged onto globalThis (not just exported) because toy behaviour scripts
+// run via indirect eval into global scope (see evalGlobal below) and can't
+// import this module's bindings. Generic containers — tray.js's
+// evaluate_sub_element is the first user — use this to resolve a contained
+// toy's own value: look up its declared namespaces by data-toy-type, then
+// ask each for getValue(). Set once, at module load; same lifetime as the
+// activation state above.
+globalThis.getNamespacesForType = getNamespacesForType
 
 /** Whether a toy type's scripts have already been evaluated this session. */
 export function isToyTypeActivated(toyType) {
