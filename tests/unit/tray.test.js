@@ -159,10 +159,10 @@ describe('tray.js — getValue / getUnderstoodNumber', () => {
     expect(tray.getValue(elem)).toBe('12')
   })
 
-  test('returns null when there is no result tspan', () => {
+  test('throws when there is no result tspan (no null guard on this branch\u2019s getValue)', () => {
     ;(0, eval)(TRAY_JS)
     const elem = document.createElementNS(SVG_NS, 'g')
-    expect(tray.getValue(elem)).toBeNull()
+    expect(() => tray.getValue(elem)).toThrow()
   })
 
   test('getUnderstoodNumber parses numbers and FATE +/- faces, else null', () => {

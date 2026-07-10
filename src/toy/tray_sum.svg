@@ -47,6 +47,7 @@ var tray_sum = {
         return tray.roll_handler(this, evt)
       },
     },
+  },
 
 }
 
