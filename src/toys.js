@@ -292,27 +292,145 @@ export async function addToy(ydoc, yToys, attrs) {
 }
 
 /**
- * Remove a toy by id. Returns true if found.
+ * Whether a Y.XmlElement is a placed toy's wrapper — a <g class="toy"
+ * data-toy-id data-toy-type> — the same shape at every nesting depth,
+ * whether at the top of the toys layer or inside a tray's .contents_group.
+ */
+function isToyG(yEl) {
+  if (!(yEl instanceof Y.XmlElement) || yEl.nodeName !== 'g') return false
+  return (yEl.getAttribute('class') || '').split(/\s+/).includes('toy')
+}
+
+/**
+ * A placed toy's .contents_group Y.XmlElement (the tray-type-specific
+ * container nested toys live in — see reparentToy below), or null if
+ * toyG isn't a tray (no such container in its own SVG markup).
+ */
+function findContentsGroupYEl(toyG) {
+  const svg = toyG.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'svg')
+  if (!svg) return null
+  return svg.toArray().find(c =>
+    c instanceof Y.XmlElement && c.nodeName === 'g' &&
+    (c.getAttribute('class') || '').split(/\s+/).includes('contents_group')
+  ) ?? null
+}
+
+/**
+ * Locate a placed toy anywhere in the toys tree — at the top level of
+ * yToys, or nested arbitrarily deep inside other toys' .contents_group
+ * containers — returning { yEl, parent, index } (parent is whichever
+ * Y.XmlFragment/Y.XmlElement directly holds it, index is its position
+ * there) so callers can both read and splice it out. Returns null if no
+ * toy with this id exists anywhere in the tree.
+ */
+function findToyLocation(container, id) {
+  const children = container.toArray()
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]
+    if (!isToyG(child)) continue
+    if (child.getAttribute('data-toy-id') === id) return { yEl: child, parent: container, index: i }
+    const contentsGroup = findContentsGroupYEl(child)
+    if (contentsGroup) {
+      const found = findToyLocation(contentsGroup, id)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+/**
+ * Whether toyG is targetId itself, or has targetId anywhere among its own
+ * (arbitrarily nested) contained toys — the cycle check reparentToy needs
+ * before moving toyG into what might be one of its own descendants.
+ */
+function toyContains(toyG, targetId) {
+  if (toyG.getAttribute('data-toy-id') === targetId) return true
+  const contentsGroup = findContentsGroupYEl(toyG)
+  if (!contentsGroup) return false
+  return contentsGroup.toArray().some(child => isToyG(child) && toyContains(child, targetId))
+}
+
+/**
+ * Remove a toy by id — searches the whole toys tree, including nested
+ * inside trays. Returns true if found.
  */
 export function deleteToy(ydoc, yToys, id) {
-  const idx = yToys.toArray().findIndex(
-    g => g instanceof Y.XmlElement && g.getAttribute('data-toy-id') === id
-  )
-  if (idx === -1) return false
+  const location = findToyLocation(yToys, id)
+  if (!location) return false
   ydoc.transact(() => {
-    yToys.delete(idx, 1)
+    location.parent.delete(location.index, 1)
   })
   return true
 }
 
 /**
- * Find a toy's <g> wrapper by id. Returns null if not found.
+ * Find a toy's <g> wrapper by id — searches the whole toys tree, including
+ * nested inside trays. Returns null if not found.
  */
 export function findToy(yToys, id) {
-  return yToys.toArray().find(
-    g => g instanceof Y.XmlElement && g.getAttribute('data-toy-id') === id
-  ) ?? null
+  return findToyLocation(yToys, id)?.yEl ?? null
 }
+
+/**
+ * Move a placed toy to a new position in the containment tree: either into
+ * a tray's .contents_group (targetTrayId given), or back to the top level
+ * of the toys layer (targetTrayId null/undefined). This is a structural
+ * Yjs operation, not a DOM one — the caller (app.js's drag-end handling,
+ * phase 5.3) is responsible for deciding *whether* to reparent (geometry
+ * hit-testing against placed trays); this function only performs the move
+ * once that decision is made.
+ *
+ * Implementation: yEl.clone() deep-copies the toy's entire subtree (its
+ * embedded <svg>, every attribute, every descendant — including its own
+ * .contents_group if it's itself a tray, so moving a tray moves everything
+ * inside it too) as fresh, detached Yjs items, then the original is
+ * deleted and the clone is inserted at the destination — all in one
+ * transaction. Known trade-off: this destroys CRDT identity for the moved
+ * subtree. A concurrent remote edit targeting the old items (e.g. another
+ * peer rolling a die at the exact moment it's dragged into a tray) is lost
+ * — it was mutating Yjs items that get deleted here, not the fresh clone.
+ * Accepted for tabletop semantics: reparenting is a rare, deliberate
+ * placement action, not a hot path needing fine-grained merge.
+ *
+ * Throws (loud failure, not a silent no-op) if: id doesn't exist anywhere
+ * in the tree; targetTrayId doesn't exist; targetTrayId has no
+ * .contents_group (i.e. isn't a tray-shaped toy); or targetTrayId is id
+ * itself or one of id's own (possibly nested) contained toys — moving a
+ * toy into its own descendant would disconnect that subtree from the doc
+ * entirely, so this is refused rather than silently losing data.
+ *
+ * Returns the newly-inserted (cloned) Y.XmlElement.
+ */
+export function reparentToy(ydoc, yToys, id, targetTrayId) {
+  const location = findToyLocation(yToys, id)
+  if (!location) throw new Error(`[toys] reparentToy: toy not found: ${id}`)
+  const { yEl, parent, index } = location
+
+  let targetFragment
+  if (targetTrayId == null) {
+    targetFragment = yToys
+  } else {
+    if (toyContains(yEl, targetTrayId)) {
+      throw new Error(`[toys] reparentToy: cannot move ${id} into itself or one of its own contained toys (${targetTrayId})`)
+    }
+    const targetLocation = findToyLocation(yToys, targetTrayId)
+    if (!targetLocation) throw new Error(`[toys] reparentToy: target tray not found: ${targetTrayId}`)
+    const contentsGroup = findContentsGroupYEl(targetLocation.yEl)
+    if (!contentsGroup) throw new Error(`[toys] reparentToy: target ${targetTrayId} has no .contents_group (not a tray?)`)
+    targetFragment = contentsGroup
+  }
+
+  let movedEl
+  ydoc.transact(() => {
+    const clone = yEl.clone()
+    parent.delete(index, 1)
+    targetFragment.insert(targetFragment.length, [clone])
+    movedEl = clone
+  })
+  return movedEl
+}
+
+
 
 /**
  * Bounding box for a rendered toy svgEl, read from its embedded <svg> child's
