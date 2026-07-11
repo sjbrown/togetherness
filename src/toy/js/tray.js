@@ -17,13 +17,10 @@ var tray = {
 
   /**
    * A contained toy's numeric contribution to a sum/tally:
-   *  - a nested tray reports its own displayed value (getValue), parsed
-   *    the same FATE-aware way;
+   *  - a nested tray reports its own displayed value (getValue)
    *  - otherwise, ask the toy's own namespace for a value via getValue();
    *  - failing that, fall back to the first ("topmost") numeric tspan
-   *    found directly on the toy's own embedded <svg> — the same
-   *    convention dice_utils.getValue uses, so an un-namespaced toy with
-   *    a bare numeric tspan still contributes correctly.
+   *    found directly on the toy's own embedded <svg>
    * Unrecognized/non-numeric content contributes 0, never NaN.
    */
   get_numeric_value: function(elem) {
@@ -54,22 +51,43 @@ var tray = {
   },
 
   getUnderstoodNumber: function(val) {
-    //FATE / FUDGE dice have "-" and "+" which mean -1 and +1
     const num = parseFloat(val)
     if (!isNaN(num)) {
       return num
     }
+    //FATE / FUDGE dice have "-" and "+" which mean -1 and +1
     if (val === '+') return 1
     if (val === '-') return -1
     return null
   },
 
+  /**
+   * Find the nearest descendant of elem matching `selector`, without
+   * crossing into a nested toy's own subtree
+   *
+   * Note: a plain `elem.querySelector('.result_container * .tspan_result')`
+   * would happily fall through to a sub-tray's result -- bad.
+   *
+   * Note 2: A CSS-only equivalent (`:not(:scope .toy .tspan_result)`)
+   * was tried, but turned out unreliable - maybe a browser bug? TODO: Revisit
+   * in the future.
+   */
+  _findOwn: function(elem, selector) {
+    for (const child of elem.children) {
+      if (child.matches(selector)) return child
+      if (child.classList.contains('toy')) continue // a nested toy's own subtree — not elem's
+      const found = tray._findOwn(child, selector)
+      if (found) return found
+    }
+    return null
+  },
+
   getValue: function(elem) {
-    // This selector guards against accidentally grabbing a sub-tray's result
-    // Only useful if this elem has a typo, but typos sometimes happen...
-    const tspan = elem.querySelector(
-      ':scope .result_container .tspan_result:not(:scope .toy .tspan_result)'
-    )
+    const container = tray._findOwn(elem, '.result_container')
+    const tspan = container && container.querySelector('.tspan_result')
+    if (!tspan) {
+      throw new Error('[tray] getValue: no .result_container .tspan_result')
+    }
     return tspan.textContent.trim()
   },
 
@@ -78,6 +96,7 @@ var tray = {
    * Resolve a contained toy's own value via its declared namespace(s)'
    * getValue(), using the same toyType -> namespace-list registry toys.js
    * already builds during script activation (bridged onto globalThis)
+   *
    * Returns null if subElem's toy type
    * has no getValue-providing namespace, so callers can fall back to a
    * generic scan.
@@ -91,6 +110,28 @@ var tray = {
       if (ns && typeof ns.getValue === 'function') retval = ns.getValue(subElem)
     })
     return retval
+  },
+
+  /**
+   * Roll every contained toy that has 'die_roll'
+   *
+   * Called directly so it's *inside* the tray's own menu-action envelope
+   * so each die's own DOM mutation is captured by that same envelope
+   */
+  roll_all: function(elem) {
+    tray.visit_contents_group(elem, (child) => {
+      const toyType = child.getAttribute && child.getAttribute('data-toy-type')
+      if (!toyType || typeof globalThis.getNamespacesForType !== 'function') return
+      globalThis.getNamespacesForType(toyType).forEach((name) => {
+        const ns = globalThis[name]
+        if (!ns || !ns.menu) return
+        for (const entry of Object.values(ns.menu)) {
+          if (entry.eventName !== 'die_roll' || typeof entry.handler !== 'function') continue
+          if (typeof entry.applicable === 'function' && !entry.applicable(child)) continue
+          entry.handler.call(child)
+        }
+      })
+    })
   },
 
 

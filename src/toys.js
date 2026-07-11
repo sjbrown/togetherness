@@ -734,9 +734,6 @@ export const TOOLS = [
     iconUrl: 'toy/tray_sum.svg',
     layer:   'toys',
     defaults: { fill: '#5e7ea8' },
-    options: [
-      { kind: 'color-hsl', key: 'fill', label: 'Tray color', show: ['add', 'edit', 'addQuick'] },
-    ],
   },
 ];
 
@@ -757,12 +754,17 @@ function findAllYNodes(yEl, nodeName, results = []) {
 /**
  * Return the ttStateSchema for a rendered toy element.
  * Color is read from the data-color attribute on the <g> wrapper, which is
- * part of the Yjs tree and always in sync with the CRDT state.
+ * part of the Yjs tree and always in sync with the CRDT state. Omitted from
+ * `types` for tray_sum — trays aren't user-colorable (see the TOOLS
+ * registry, which likewise has no color option for tray_sum's add/addQuick
+ * panels) — so the value is still returned as data, just not exposed as an
+ * editable field.
  */
 export function getTtStateSchema(svgEl) {
+  const toyType = svgEl.getAttribute('data-toy-type')
   return {
     color: svgEl.getAttribute('data-color') ?? '#888',
-    types: {
+    types: toyType === 'tray_sum' ? {} : {
       color: 'color-hsl',   // hsl only — toy opacity is not user-editable
     },
   };
@@ -887,10 +889,23 @@ export function isToyTypeActivated(toyType) {
   return _activatedTypes.has(toyType)
 }
 
-function findScriptNodes(yEl, results = []) {
+/**
+ * Walk yEl's subtree collecting <script> nodes — but never descending into
+ * a *nested* toy's own subtree (isRoot guards the very first call, which
+ * is always itself a toy's own <g>, so its own immediate content is still
+ * walked). Without this, activating a toy whose first-ever activation
+ * happens to occur while another toy is already nested inside it (e.g.
+ * .contents_group state synced from a peer, present from the very first
+ * render) would walk into the nested toy's own <script> tags too and
+ * misattribute them to the outer toy's toyType — see activateAllToyScripts,
+ * which is what actually gets the nested toy's own scripts activated
+ * separately, under its own toyType.
+ */
+function findScriptNodes(yEl, results = [], isRoot = true) {
   if (!(yEl instanceof Y.XmlElement)) return results
-  if (yEl.nodeName === 'script') results.push(yEl)
-  for (const child of yEl.toArray()) findScriptNodes(child, results)
+  if (yEl.nodeName === 'script') { results.push(yEl); return results }
+  if (!isRoot && isToyG(yEl)) return results
+  for (const child of yEl.toArray()) findScriptNodes(child, results, false)
   return results
 }
 
@@ -1082,6 +1097,12 @@ export async function runContentsChangeHandler(ydoc, yToys, layerEl, svgEl, toyT
  * synchronous) for any toy type seen for the first time. activateToyScripts
  * is a no-op for already-activated types, so calling it per-instance on
  * every render is cheap and correct rather than needing its own gate here.
+ * Walks the *whole* toys tree, not just top-level entries — a toy nested
+ * inside a tray's .contents_group (e.g. present from the very first render,
+ * synced from a peer) needs its own toyType activated too, on its own <g>,
+ * now that findScriptNodes stops at nested-toy boundaries rather than
+ * misattributing a nested toy's scripts to whichever toy happens to
+ * activate first.
  */
 export function render(yToys, layerEl) {
   layerEl.innerHTML = '';
@@ -1089,14 +1110,29 @@ export function render(yToys, layerEl) {
     svgEl.style.cursor = 'grab';
     layerEl.appendChild(svgEl);
   });
-  yToys.toArray().forEach(yEl => {
+  activateAllToyScripts(yToys);
+}
+
+/**
+ * Recursively activate every distinct toyType found anywhere in the toys
+ * tree — top-level and nested at any depth — each on its own <g>, so
+ * findScriptNodes only ever walks that specific toy's own immediate
+ * content (see its doc comment for why nesting boundaries matter here).
+ */
+function activateAllToyScripts(yToys) {
+  function walk(yEl) {
     if (!(yEl instanceof Y.XmlElement)) return
-    const toyType = yEl.getAttribute('data-toy-type')
-    if (!toyType || isToyTypeActivated(toyType)) return
-    activateToyScripts(yEl, toyType).catch(err => {
-      console.error(`[toys] script activation failed for toy type "${toyType}"`, err)
-    })
-  })
+    if (isToyG(yEl)) {
+      const toyType = yEl.getAttribute('data-toy-type')
+      if (toyType && !isToyTypeActivated(toyType)) {
+        activateToyScripts(yEl, toyType).catch(err => {
+          console.error(`[toys] script activation failed for toy type "${toyType}"`, err)
+        })
+      }
+    }
+    yEl.toArray().forEach(walk)
+  }
+  yToys.toArray().forEach(walk)
 }
 
 /**

@@ -2,8 +2,8 @@
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  svgTextToYXml, addToy, deleteToy, listToys, findToy, TOY_TYPES,
-  getGeom, _toSVGEl,
+  svgTextToYXml, addToy, deleteToy, listToys, findToy, TOY_TYPES, TOOLS,
+  getGeom, _toSVGEl, getTtStateSchema,
   hslToRgb, colorMatrixValues,
   _clearSvgTextCache,
   yNodeFor, clearYNodeMap,
@@ -833,5 +833,33 @@ describe('applyColor (via addToy)', () => {
     await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0, color: undefined })
     // default from the TOY_SVG fixture: '1 0 0 0 0  1 0 0 0 0  1 0 0 0 0  0 0 0 1 0'
     expect(getMatrixEl(yToys).getAttribute('values')).toContain('1 0 0 0 0')
+  })
+})
+
+describe('tray_sum has no color tool option', () => {
+  test('TOOLS.tray_sum has no color-hsl option, unlike marker/d6', () => {
+    const trayTool = TOOLS.find(t => t.toyType === 'tray_sum')
+    const d6Tool    = TOOLS.find(t => t.toyType === 'dice_d6')
+    const markerTool = TOOLS.find(t => t.toyType === 'player_marker')
+
+    expect((trayTool.options ?? []).some(o => o.kind === 'color-hsl')).toBe(false)
+    expect(d6Tool.options.some(o => o.kind === 'color-hsl')).toBe(true)
+    expect(markerTool.options.some(o => o.kind === 'color-hsl')).toBe(true)
+  })
+
+  test('getTtStateSchema omits color from types for a placed tray_sum, but still includes it for other toys', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#5e7ea8' })
+    await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#a8905e' })
+
+    const traySchema = getTtStateSchema(_toSVGEl(findToy(yToys, 'tray1')))
+    const dieSchema   = getTtStateSchema(_toSVGEl(findToy(yToys, 'die1')))
+
+    expect(traySchema.types).not.toHaveProperty('color')
+    expect(dieSchema.types).toHaveProperty('color', 'color-hsl')
+    // the color value itself is still present as data either way — just not
+    // exposed as an editable field for trays.
+    expect(traySchema.color).toBe('#5e7ea8')
   })
 })

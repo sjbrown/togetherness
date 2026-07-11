@@ -4,8 +4,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 // @vitest-environment jsdom
-import { describe, test, expect } from 'vitest'
-import { layerObjectListHTML, refreshLayerList, UIData, init } from '../../src/ui.js'
+import { describe, test, expect, vi } from 'vitest'
+import { layerObjectListHTML, refreshLayerList, UIData, init, toast } from '../../src/ui.js'
 
 const mockObjects = [
   { id: 'a', label: 'rect',   fill: '#c8941e', kind: 'rect'   },
@@ -296,5 +296,40 @@ describe('onSelectionChanged handles all selection states', () => {
       expect(UIData.multiSelectionActive).toBe(true)
       expect(UIData.selectedCount).toBe(3)
     })
+  })
+})
+
+describe('toast — warn/error toasts are mirrored to console.warn', () => {
+  test('kind "warn" logs the exact message to console.warn, copy-pastable', () => {
+    document.body.innerHTML = '<div id="toasts"></div>'
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    toast('Action failed: tray.roll_handler is not a function', 'warn')
+    expect(warnSpy).toHaveBeenCalledWith('[toast] Action failed: tray.roll_handler is not a function')
+    warnSpy.mockRestore()
+  })
+
+  test('kind "error" (forward-compatible, even though nothing uses it yet) also logs', () => {
+    document.body.innerHTML = '<div id="toasts"></div>'
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    toast('Something broke', 'error')
+    expect(warnSpy).toHaveBeenCalledWith('[toast] Something broke')
+    warnSpy.mockRestore()
+  })
+
+  test('plain info toasts (no kind, or kind "info") do NOT spam the console', () => {
+    document.body.innerHTML = '<div id="toasts"></div>'
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    toast('View reset')
+    toast('Synced with peers', 'info')
+    expect(warnSpy).not.toHaveBeenCalled()
+    warnSpy.mockRestore()
+  })
+
+  test('still logs even when the #toasts box is missing from the DOM (e.g. panel not mounted yet)', () => {
+    document.body.innerHTML = '' // no #toasts
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(() => toast('Could not move into tray: no .contents_group', 'warn')).not.toThrow()
+    expect(warnSpy).toHaveBeenCalledWith('[toast] Could not move into tray: no .contents_group')
+    warnSpy.mockRestore()
   })
 })

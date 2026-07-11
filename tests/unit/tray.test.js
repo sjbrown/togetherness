@@ -77,6 +77,50 @@ describe('tray.js + tray_sum — script activation', () => {
     expect(getNamespacesForType('tray_sum')).toEqual(['tray', 'tray_sum'])
   })
 
+  test('activating a tray whose very first render already has a toy nested inside it does not leak the nested toy\u2019s namespaces onto the tray\u2019s own type (regression: this is exactly what a page load of a synced doc looks like \u2014 the tray and its contents all arrive, and get mirrored, in one shot)', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    // Build the doc "off camera" — as if this were state already synced
+    // from a peer before this client ever renders anything.
+    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    Toys.reparentToy(ydoc, yToys, 'die1', 'tray1')
+
+    // Now this client renders for the very first time — tray1 already has
+    // die1 nested, before 'tray_sum' has ever been activated.
+    const layerEl = renderLayer(yToys)
+    await new Promise(r => setTimeout(r, 0))
+
+    expect(getNamespacesForType('tray_sum')).toEqual(['tray', 'tray_sum'])
+    expect(getNamespacesForType('dice_d6')).toEqual(['dice', 'd6'])
+
+    const trayEl = layerEl.querySelector('[data-yid="tray1"]')
+    const actionKeys = Toys.getMenuActions(trayEl).map(a => a.key)
+    expect(actionKeys).toEqual(['Roll All']) // not also 'Roll' / 'Turn Up'
+  })
+
+  test('the nested toy\u2019s own namespace still gets activated (not skipped entirely) even though it\u2019s never a top-level entry', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    Toys.reparentToy(ydoc, yToys, 'die1', 'tray1')
+
+    const layerEl = renderLayer(yToys)
+    await new Promise(r => setTimeout(r, 0))
+
+    expect(typeof globalThis.dice.roll_handler).toBe('function')
+    expect(typeof globalThis.d6.menu['Roll'].handler).toBe('function')
+    // and Roll All can actually find and roll it, proving the die's own
+    // menu action is really live, not just present as dead data
+    const trayEl = layerEl.querySelector('[data-yid="tray1"]')
+    const dieEl  = layerEl.querySelector('[data-toy-id="die1"]')
+    globalThis.tray.roll_all(trayEl)
+    const rolled = Number(dieEl.querySelector('tspan').textContent)
+    expect(rolled).toBeGreaterThanOrEqual(1)
+    expect(rolled).toBeLessThanOrEqual(6)
+  })
+
   test('tray_sum is placeable via TOY_TYPES / TOOLS, matching the d6 registry pattern', () => {
     expect(Toys.TOY_TYPES.tray_sum).toEqual({
       file: 'tray_sum.svg', label: 'Sum Tray',
@@ -241,6 +285,103 @@ describe('tray.js — get_numeric_value', () => {
   })
 })
 
+describe('tray.js — roll_all', () => {
+  test('invokes each contained toy\u2019s own eventName:\u2019die_roll\u2019 menu action', () => {
+    ;(0, eval)(TRAY_JS)
+    const rolled = []
+    globalThis.getNamespacesForType = (toyType) => (toyType === 'dice_d6' ? ['fake_dice'] : [])
+    globalThis.fake_dice = {
+      menu: {
+        'Roll': {
+          eventName: 'die_roll',
+          handler: function() { rolled.push(this) },
+        },
+      },
+    }
+
+    const trayElem = document.createElementNS(SVG_NS, 'g')
+    const group = document.createElementNS(SVG_NS, 'g')
+    group.classList.add('contents_group')
+    trayElem.appendChild(group)
+    const die = document.createElementNS(SVG_NS, 'g')
+    die.classList.add('toy')
+    die.setAttribute('data-toy-type', 'dice_d6')
+    group.appendChild(die)
+
+    tray.roll_all(trayElem)
+
+    expect(rolled).toEqual([die])
+  })
+
+  test('skips a contained toy with no die_roll action (e.g. a nested tray) without throwing', () => {
+    ;(0, eval)(TRAY_JS)
+    globalThis.getNamespacesForType = () => ['tray_sum'] // tray_sum has no menu action tagged die_roll
+    globalThis.tray_sum = { menu: { 'Roll All': { eventName: 'tray_roll', handler: () => {} } } }
+
+    const trayElem = document.createElementNS(SVG_NS, 'g')
+    const group = document.createElementNS(SVG_NS, 'g')
+    group.classList.add('contents_group')
+    trayElem.appendChild(group)
+    const nestedTray = document.createElementNS(SVG_NS, 'g')
+    nestedTray.classList.add('toy')
+    nestedTray.setAttribute('data-toy-type', 'tray_sum')
+    group.appendChild(nestedTray)
+
+    expect(() => tray.roll_all(trayElem)).not.toThrow()
+  })
+
+  test('honors applicable(), skipping a die_roll action that declares itself inapplicable', () => {
+    ;(0, eval)(TRAY_JS)
+    let called = false
+    globalThis.getNamespacesForType = () => ['fake_dice']
+    globalThis.fake_dice = {
+      menu: {
+        'Roll': {
+          eventName: 'die_roll',
+          applicable: () => false,
+          handler: function() { called = true },
+        },
+      },
+    }
+    const trayElem = document.createElementNS(SVG_NS, 'g')
+    const group = document.createElementNS(SVG_NS, 'g')
+    group.classList.add('contents_group')
+    trayElem.appendChild(group)
+    const die = document.createElementNS(SVG_NS, 'g')
+    die.classList.add('toy')
+    die.setAttribute('data-toy-type', 'dice_d6')
+    group.appendChild(die)
+
+    tray.roll_all(trayElem)
+
+    expect(called).toBe(false)
+  })
+
+  test('rolls every contained die, not just the first', () => {
+    ;(0, eval)(TRAY_JS)
+    const rolled = []
+    globalThis.getNamespacesForType = () => ['fake_dice']
+    globalThis.fake_dice = {
+      menu: { 'Roll': { eventName: 'die_roll', handler: function() { rolled.push(this) } } },
+    }
+    const trayElem = document.createElementNS(SVG_NS, 'g')
+    const group = document.createElementNS(SVG_NS, 'g')
+    group.classList.add('contents_group')
+    trayElem.appendChild(group)
+    const dice = [1, 2, 3].map(() => {
+      const die = document.createElementNS(SVG_NS, 'g')
+      die.classList.add('toy')
+      die.setAttribute('data-toy-type', 'dice_d6')
+      group.appendChild(die)
+      return die
+    })
+
+    tray.roll_all(trayElem)
+
+    expect(rolled).toEqual(dice)
+  })
+})
+
 describe('tray_sum — contents_change_handler', () => {
   test('sums every contained die\u2019s value and writes it to the result tspan', async () => {
     const ydoc = new Y.Doc()
@@ -276,5 +417,94 @@ describe('tray_sum — contents_change_handler', () => {
     globalThis.tray_sum.contents_change_handler(toyEl)
 
     expect(toyEl.querySelector('.tspan_result').textContent).toBe('0')
+  })
+
+  test('writes to its OWN result tspan, never a nested sub-tray\u2019s — regardless of document order (regression: contents_change_handler used to use a plain, unscoped .tspan_result selector, which matches .contents_group before .result_container in the markup and so silently overwrote a nested tray\u2019s own result instead of its own)', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    const { toyEl: outerEl } = await placeAndActivate(ydoc, yToys, 'tray_sum', 'outer')
+
+    // Hand-build a nested sub-tray directly inside outer's contents_group,
+    // with the SAME shape a real placed tray_sum has: its own
+    // .result_container > .tspan_result, already showing a value, as if it
+    // were dropped in with a pre-existing sum (e.g. reparentToy moving a
+    // tray that already had contents summed).
+    const group = outerEl.querySelector('.contents_group')
+    const nestedTray = document.createElementNS(SVG_NS, 'g')
+    nestedTray.classList.add('toy')
+    nestedTray.setAttribute('data-toy-type', 'tray_sum')
+    const nestedSvg = document.createElementNS(SVG_NS, 'svg')
+    nestedSvg.classList.add('tray_sum', 'tray')
+    const nestedResultContainer = document.createElementNS(SVG_NS, 'svg')
+    nestedResultContainer.classList.add('result_container')
+    const nestedTspan = document.createElementNS(SVG_NS, 'tspan')
+    nestedTspan.classList.add('tspan_result')
+    nestedTspan.textContent = '5' // the nested tray's own, already-computed sum
+    nestedResultContainer.appendChild(nestedTspan)
+    nestedSvg.appendChild(nestedResultContainer)
+    nestedTray.appendChild(nestedSvg)
+    group.appendChild(nestedTray)
+
+    globalThis.tray_sum.contents_change_handler(outerEl)
+
+    // outer's own result reflects the nested tray's contribution (5) —
+    // read via the real tray.getValue(), so this assertion exercises the
+    // same boundary-safe lookup contents_change_handler itself uses.
+    expect(globalThis.tray.getValue(outerEl)).toBe('5')
+    // ...and the nested tray's OWN tspan is untouched, still showing its
+    // own original value — proving the write landed on outer's own result,
+    // not the nested tray's.
+    expect(nestedTspan.textContent).toBe('5')
+  })
+})
+
+describe('tray_sum — "Roll All" menu action, end to end', () => {
+  test('clicking Roll All rolls the contained die and the sum reflects its new value', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    Toys.reparentToy(ydoc, yToys, 'die1', 'tray1')
+
+    const layerEl = renderLayer(yToys)
+    await new Promise(r => setTimeout(r, 0))
+
+    const trayEl = layerEl.querySelector('[data-yid="tray1"]')
+    const dieEl  = layerEl.querySelector('[data-toy-id="die1"]')
+
+    // "Roll All" is a real menu action — go through the same
+    // getMenuActions/invokeMenuAction path app.js uses for any menu click,
+    // not a direct globalThis.tray_sum call, so this exercises the actual
+    // wiring (including the applicable() check and the envelope commit).
+    const actions = Toys.getMenuActions(trayEl)
+    const rollAll = actions.find(a => a.key === 'Roll All')
+    expect(rollAll).toBeTruthy()
+
+    await Toys.invokeMenuAction(ydoc, yToys, layerEl, trayEl, rollAll.namespace, rollAll.key)
+
+    const dieValue = Number(dieEl.querySelector('tspan').textContent)
+    expect(dieValue).toBeGreaterThanOrEqual(1)
+    expect(dieValue).toBeLessThanOrEqual(6)
+
+    // the roll committed to Yjs (not just the live DOM) — recompute the
+    // tray's sum from the post-commit state and confirm it matches.
+    globalThis.tray_sum.contents_change_handler(trayEl)
+    expect(globalThis.tray.getValue(trayEl)).toBe(String(dieValue))
+  })
+
+  test('Roll All on an empty tray does nothing and does not throw', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    const layerEl = renderLayer(yToys)
+    await new Promise(r => setTimeout(r, 0))
+    const trayEl = layerEl.querySelector('[data-yid="tray1"]')
+
+    const actions = Toys.getMenuActions(trayEl)
+    const rollAll = actions.find(a => a.key === 'Roll All')
+
+    await expect(
+      Toys.invokeMenuAction(ydoc, yToys, layerEl, trayEl, rollAll.namespace, rollAll.key)
+    ).resolves.not.toThrow()
   })
 })

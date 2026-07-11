@@ -48,6 +48,19 @@ function renderLayer(yToys) {
   return layerEl
 }
 
+// A plain `.querySelector('.tspan_result')` can shadow-match a *nested*
+// sub-tray's own result (it sits inside .contents_group, which comes
+// before .result_container in the markup — same reason tray.js's own
+// getValue() needs the boundary-respecting tray._findOwn lookup, not a
+// plain selector). Assertions in this file read a tray's own displayed
+// sum via that same real helper, so a bug in production can't accidentally
+// be masked by an equally-unsafe test assertion reading the wrong (but
+// coincidentally similar-looking) element.
+function ownResult(trayEl) {
+  const container = globalThis.tray._findOwn(trayEl, '.result_container')
+  return container && container.querySelector('.tspan_result')
+}
+
 function stubToyFetch() {
   return vi.fn(async (url) => {
     if (url === '/toy/tray_sum.svg')     return { ok: true, text: async () => TRAY_SUM_SVG }
@@ -152,7 +165,7 @@ describe('findAncestorTrayIds', () => {
     const { toyEl } = { toyEl: renderLayer(yToys).querySelector('[data-yid="tray1"]') }
     await new Promise(r => setTimeout(r, 0))
 
-    const tspanResult = toyEl.querySelector('.tspan_result')
+    const tspanResult = ownResult(toyEl)
     const yTspanText = Toys.yNodeFor(tspanResult.firstChild) ?? Toys.yNodeFor(tspanResult)
     expect(findAncestorTrayIds(yTspanText)).toEqual([])
   })
@@ -180,7 +193,7 @@ describe('the full cascade — die-in-tray roll updates the sum exactly once', (
     await new Promise(r => setTimeout(r, 0)) // flush the cascade's async dispatch
 
     const trayEl = layerEl.querySelector('[data-yid="tray1"]')
-    expect(trayEl.querySelector('.tspan_result').textContent).toBe(String(rolledValue))
+    expect(ownResult(trayEl).textContent).toBe(String(rolledValue))
     expect(dispatchLog).toEqual(['tray1']) // exactly once
   })
 
@@ -221,13 +234,13 @@ describe('the full cascade — die-in-tray roll updates the sum exactly once', (
     })
     await new Promise(r => setTimeout(r, 0))
     const trayEl1 = layerEl.querySelector('[data-yid="tray1"]')
-    expect(trayEl1.querySelector('.tspan_result').textContent).not.toBe('0')
+    expect(ownResult(trayEl1).textContent).not.toBe('0')
 
     reparentToy(ydoc, yToys, 'die1', null) // pull it back out to the top level
     await new Promise(r => setTimeout(r, 0))
 
     const trayEl2 = layerEl.querySelector('[data-yid="tray1"]')
-    expect(trayEl2.querySelector('.tspan_result').textContent).toBe('0')
+    expect(ownResult(trayEl2).textContent).toBe('0')
   })
 
   test('a die inside a doubly-nested tray updates both trays, inner before outer, each exactly once', async () => {
@@ -257,8 +270,52 @@ describe('the full cascade — die-in-tray roll updates the sum exactly once', (
 
     const outerEl = layerEl.querySelector('[data-yid="outer"]') // top-level, data-yid is fine
     const innerEl = layerEl.querySelector('[data-toy-id="inner"]') // nested — see above
-    expect(innerEl.querySelector('.tspan_result').textContent).toBe(String(rolledValue))
+    expect(ownResult(innerEl).textContent).toBe(String(rolledValue))
     // outer's own sum = the inner tray's displayed value (its only content)
-    expect(outerEl.querySelector('.tspan_result').textContent).toBe(String(rolledValue))
+    expect(ownResult(outerEl).textContent).toBe(String(rolledValue))
+  })
+
+  test('dropping a whole tray (already summing to 5) into a tray already summing to 3 updates the target to 8', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await place(ydoc, yToys, 'tray_sum', 'trayA')
+    await place(ydoc, yToys, 'dice_d6',  'dieA')
+    await place(ydoc, yToys, 'tray_sum', 'trayB')
+    await place(ydoc, yToys, 'dice_d6',  'dieB')
+
+    const layerEl = renderLayer(yToys)
+    await new Promise(r => setTimeout(r, 0))
+    wireCascade(ydoc, yToys, layerEl)
+
+    // Set up trayA = 3, trayB = 5, each from its own single die — each tray
+    // is a separate, independent top-level tray at this point.
+    reparentToy(ydoc, yToys, 'dieA', 'trayA')
+    await new Promise(r => setTimeout(r, 0))
+    const dieAEl = layerEl.querySelector('[data-toy-id="dieA"]')
+    await runToyHandler(ydoc, yToys, layerEl, dieAEl, () => {
+      dieAEl.querySelector('tspan').textContent = '3'
+    })
+    await new Promise(r => setTimeout(r, 0))
+
+    reparentToy(ydoc, yToys, 'dieB', 'trayB')
+    await new Promise(r => setTimeout(r, 0))
+    const dieBEl = layerEl.querySelector('[data-toy-id="dieB"]')
+    await runToyHandler(ydoc, yToys, layerEl, dieBEl, () => {
+      dieBEl.querySelector('tspan').textContent = '5'
+    })
+    await new Promise(r => setTimeout(r, 0))
+
+    expect(ownResult(layerEl.querySelector('[data-yid="trayA"]')).textContent).toBe('3')
+    expect(ownResult(layerEl.querySelector('[data-yid="trayB"]')).textContent).toBe('5')
+
+    // Now drop trayB (as a whole, with its die and its own displayed sum)
+    // into trayA — this is a single reparentToy call, exactly what
+    // app.js's commitMove issues when a tray is dragged onto another tray.
+    reparentToy(ydoc, yToys, 'trayB', 'trayA')
+    await new Promise(r => setTimeout(r, 0))
+    await new Promise(r => setTimeout(r, 0))
+    await new Promise(r => setTimeout(r, 0))
+
+    expect(ownResult(layerEl.querySelector('[data-yid="trayA"]')).textContent).toBe('8')
   })
 })

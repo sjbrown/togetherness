@@ -35,7 +35,10 @@ var tray_sum = {
     tray.visit_contents_group(elem, (child) => {
       sum += tray.get_numeric_value(child)
     })
-    const tspan = elem.querySelector('.tspan_result')
+    // tray._findOwn is boundary-safe. A plain '.tspan_result' selector
+    // would erroneously match nested elements' results
+    const container = tray._findOwn(elem, '.result_container')
+    const tspan = container && container.querySelector('.tspan_result')
     if (tspan) tspan.textContent = String(sum)
   },
 
@@ -44,7 +47,7 @@ var tray_sum = {
       eventName: 'tray_roll',
       applicable: (node) => { return true },
       handler: function(evt) {
-        return tray.roll_handler(this, evt)
+        return tray.roll_all(this)
       },
     },
   },

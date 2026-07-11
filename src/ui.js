@@ -87,6 +87,11 @@ export function init(appBus) {
 
 // -- Toasts --------------------------------------------------------------------
 export function toast(msg, kind = '') {
+  // Mirrored to the console for anything warning/error-level, so the exact
+  // text is copy-pastable (e.g. into a bug report) — toasts self-dismiss
+  // after 3s and only keep the last 3, so this is often the only place the
+  // message survives.
+  if (kind === 'warn' || kind === 'error') console.warn(`[toast] ${msg}`);
   const box = $('#toasts');
   if (!box) return;
   const t = document.createElement('div');
