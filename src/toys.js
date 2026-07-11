@@ -1007,6 +1007,49 @@ export async function initializeToy(ydoc, yToys, layerEl, svgEl, toyType) {
 }
 
 /**
+ * Every tray id whose .contents_group contains yNode (or yNode itself, if
+ * yNode IS a .contents_group) — ordered innermost to outermost
+ * (From Yjs tree's .parent chain, not the DOM).
+ *
+ * Used to find which tray(s), if any, need their contents_change_handler
+ * re-run after a local change
+ */
+export function findAncestorTrayIds(yNode) {
+  const ids = []
+  let node = yNode
+  while (node) {
+    const isContentsGroup = node instanceof Y.XmlElement && node.nodeName === 'g' &&
+      (node.getAttribute('class') || '').split(/\s+/).includes('contents_group')
+    if (isContentsGroup) {
+      const trayG = node.parent?.parent // contents_group -> tray's own <svg> -> tray's <g>
+      const trayId = trayG instanceof Y.XmlElement ? trayG.getAttribute('data-toy-id') : null
+      if (trayId) ids.push(trayId)
+    }
+    node = node.parent
+  }
+  return ids
+}
+
+/**
+ * Run every activated namespace's contents_change_handler(elem), if
+ * present, for toyType — inside an envelope, so a recomputed result
+ * (e.g. a tray's sum) commits back to Yjs like any other handler mutation,
+ * and syncs to peers.
+ *
+ * No-op if toyType has no contents_change_handler-providing namespace.
+ */
+export async function runContentsChangeHandler(ydoc, yToys, layerEl, svgEl, toyType) {
+  const handlers = getNamespacesForType(toyType)
+    .map(name => globalThis[name])
+    .filter(ns => ns && typeof ns.contents_change_handler === 'function')
+  if (!handlers.length) return
+
+  await runToyHandler(ydoc, yToys, layerEl, svgEl, () => {
+    handlers.forEach(ns => ns.contents_change_handler(svgEl))
+  })
+}
+
+/**
  * Render the toys layer: clear layerEl, mirror every placed toy, then
  * kick off script activation (fire-and-forget — render() must stay
  * synchronous) for any toy type seen for the first time. activateToyScripts
