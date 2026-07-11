@@ -459,6 +459,52 @@ export function getAnchor(svgEl) {
   return { x: geom.x + geom.width / 2, y: geom.y + geom.height / 2 }
 }
 
+function rectsOverlap(a, b) {
+  return a.x < b.x + b.width && a.x + a.width > b.x &&
+         a.y < b.y + b.height && a.y + a.height > b.y
+}
+
+/**
+ * Hit-test a toy's drop position against every other placed top-level tray
+ * currently rendered in layerEl (the toys layer's DOM group), returning the
+ * id of the first one whose geometry overlaps the dragged toy's would-be
+ * bounding box — or null if none does. (rx, ry) is the drop centre point,
+ * matching the anchor convention getAnchor/applyMoveCommit already use.
+ *
+ * Only top-level toys are considered, both as the dragged element and as
+ * candidate trays. This isn't a simplification of convenience: only
+ * top-level toys carry data-yid (see _toSVGEl — only listToys()'s top-level
+ * walk stamps it, nested toys don't), and this hit test is entirely
+ * DOM/data-yid driven, so a nested tray couldn't be found here even if the
+ * loop tried. A nested toy also has no data-yid to drag by in the first
+ * place — closing that is a separate, larger interactivity gap (see the
+ * phase 5.2 notes), not something this function works around.
+ *
+ * A tray is recognized the same way tray.js's own get_numeric_value does:
+ * its embedded <svg> (a direct child of the <g data-yid> wrapper) carries
+ * class 'tray'.
+ */
+export function findDropTargetTray(layerEl, draggedId, rx, ry) {
+  if (!layerEl) return null
+  const draggedEl = layerEl.querySelector(`:scope > [data-yid="${draggedId}"]`)
+  const draggedGeom = getGeom(draggedEl)
+  if (!draggedGeom) return null
+  const draggedRect = {
+    x: rx - draggedGeom.width / 2, y: ry - draggedGeom.height / 2,
+    width: draggedGeom.width, height: draggedGeom.height,
+  }
+
+  for (const el of layerEl.querySelectorAll(':scope > [data-yid]')) {
+    const trayId = el.getAttribute('data-yid')
+    if (trayId === draggedId) continue
+    const ownSvg = el.querySelector(':scope > svg')
+    if (!ownSvg?.classList.contains('tray')) continue
+    const trayGeom = getGeom(el)
+    if (trayGeom && rectsOverlap(draggedRect, trayGeom)) return trayId
+  }
+  return null
+}
+
 
 /**
  * Commit a toy move to the Yjs doc in a single transaction.

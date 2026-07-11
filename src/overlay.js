@@ -21,6 +21,10 @@
  * outstanding acquisition request, regardless of its SelectionMode kind (or
  * lack of one). See _contestedIds / renderRequestedIndicator.
  *
+ * Drop-target hover indicator (phase 5.3): another independent decoration,
+ * driven by App.move() during a toy drag, not by SelectionMode or
+ * awareness. See _dropTargetTrayId / setDropTargetHover.
+ *
  * Awareness selection schema: { [elId: string]: number } | null
  *   Keys are the held elIds; values are per-elId claim timestamps (see
  *   soft-lock.js). Single selection: one key. Multi-selection (rubber-band
@@ -324,6 +328,26 @@ export function endDragPlaceholder(elId) {
   render();
 }
 
+// ── Drop-target hover (drag machinery, phase 5.3) ───────────────────────────
+// The tray id currently under a toy being dragged, or null. Set by
+// App.move() on every pointermove while dragging a toy (re-hit-tested each
+// time against the drop position, not the raw pointer); cleared on
+// commit/cancel. A single id, not a set — at most one tray can be the live
+// drop target at once.
+let _dropTargetTrayId = null;
+
+/**
+ * Called by App while dragging a toy, with the id of the tray currently
+ * under the drop position (from Toys.findDropTargetTray), or null. No-ops
+ * (skips the render() call) when the id hasn't changed, since this fires on
+ * every pointermove.
+ */
+export function setDropTargetHover(trayId) {
+  if (_dropTargetTrayId === trayId) return;
+  _dropTargetTrayId = trayId;
+  render();
+}
+
 // ── Render ────────────────────────────────────────────────────────────────────
 const LOCAL_GRAD_ID = 'local-sel-grad';
 
@@ -414,6 +438,16 @@ export function render() {
       { color: drag.color, gradId: drag.gradId, peerId: drag.peerId },
       scale,
     );
+  }
+
+  // ── 3b. Drop-target hover — amber highlight on the tray under the drop
+  // point, same color family as the requested/contested indicator (see
+  // renderRequestedIndicator) but solid/soft-filled rather than pulsing —
+  // a continuously-live drag affordance shouldn't compete for attention the
+  // way an occasional contested-element alert should.
+  if (_dropTargetTrayId) {
+    const geo = App.getBBox(_dropTargetTrayId);
+    if (geo) renderDropTargetHover(geo, scale);
   }
 
   // ── 4. Local drag ghosts + rings — z-top ──────────────────────────────────
@@ -563,6 +597,22 @@ function renderRequestedIndicator(geo, scale) {
   anim.setAttribute('dur',           '1.2s');
   anim.setAttribute('repeatCount',   'indefinite');
   ring.appendChild(anim);
+  _layerEl.appendChild(ring);
+}
+
+function renderDropTargetHover(geo, scale) {
+  const { x, y, width, height } = geo;
+  const ring = el('rect', {
+    x:      x - PAD,
+    y:      y - PAD,
+    width:  width  + PAD * 2,
+    height: height + PAD * 2,
+    rx:     6,
+    fill:               'var(--warn-soft)',
+    stroke:             'var(--warn)',
+    'stroke-width':     2.5 / scale,
+    class:              'dropTargetRing',
+  });
   _layerEl.appendChild(ring);
 }
 

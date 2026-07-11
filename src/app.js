@@ -25,7 +25,8 @@ import * as Storage                               from './storage.js';
 import * as BounPos                               from './boun_pos.js';
 import { SHAPE_TYPES }                            from './drawing.js';
 import { TOOLS as TOY_TOOLS, TOY_TYPES, addToy, findToy,
-         getMenuActions, invokeMenuAction, activateToyScripts, initializeToy } from './toys.js';
+         getMenuActions, invokeMenuAction, activateToyScripts, initializeToy,
+         findDropTargetTray, reparentToy } from './toys.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
 import { BOUNPOS_TYPES,
          addPositionSet, createPositionSetElement,
@@ -1101,6 +1102,16 @@ const App = {
       bboxX: _dragState.startBboxX + dx,
       bboxY: _dragState.startBboxY + dy,
     });
+
+    // Live drop-target affordance: re-hit-test on every move against the
+    // *drop* position (rx, ry — already boundary/snap-validated above), not
+    // the raw pointer, so the highlighted tray always matches what
+    // commitMove would actually reparent into.
+    const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
+    if (moduleForElement(domEl) === 'toys') {
+      const toysLayerEl = _svgEl.querySelector('#toys-layer');
+      Overlay.setDropTargetHover(findDropTargetTray(toysLayerEl, id, rx, ry));
+    }
   },
 
   commitMove: (id, x, y) => {
@@ -1116,10 +1127,40 @@ const App = {
     const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
     const mtype = moduleForElement(domEl);
 
+    // Same hit-test move() used for the live hover highlight, run once more
+    // against the final drop position
+    const dropTrayId = mtype === 'toys'
+      ? findDropTargetTray(_svgEl.querySelector('#toys-layer'), id, rx, ry)
+      : null;
+
     // Ghost gone before bbox changes — prevents one-frame ghost "jitter"
     Overlay.endDragPlaceholder(id);
+    Overlay.setDropTargetHover(null);
     _awareness.setLocalStateField('drag', null);
     _dragState = null;
+
+    if (dropTrayId) {
+      try {
+        reparentToy(_ydoc, _yToys, id, dropTrayId);
+      } catch (err) {
+        // findDropTargetTray only checks for class 'tray' on the toy's own
+        // embedded <svg> — reparentToy's own stricter check (a real
+        // .contents_group) is the actual authority, so a malformed tray
+        // asset can still reach here and throw. Surface it rather than
+        // leaving the pointerup handler to crash silently mid-drag.
+        UI.toast(`Could not move into tray: ${err.message}`, 'warn');
+        return;
+      }
+      // observeDeep fires and calls renderDoc() — same as the ordinary
+      // move-commit path below.
+      //
+      // TODO: Not pushed to _undoStack: reparenting isn't undoable yet
+      addHistory(`moved ${id.slice(0, 6)} into a tray`, {
+        fill: domEl?.getAttribute('fill'),
+        elType: mtype,
+      });
+      return;
+    }
 
     if (_Layers[mtype]) {
       _Layers[mtype].applyMoveCommit(_Layers[mtype].find(id), rx, ry);
@@ -1136,6 +1177,7 @@ const App = {
     if (!_dragState) return;
     const id = _dragState.id;
     Overlay.endDragPlaceholder(id);
+    Overlay.setDropTargetHover(null);
     _awareness.setLocalStateField('drag', null);
     _dragState = null;
   },
