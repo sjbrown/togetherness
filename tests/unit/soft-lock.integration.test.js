@@ -515,8 +515,9 @@ describe('soft-lock integration — getBoxCandidates excludes peer-held elements
     simulateRemoteSelection(awareness, 'die-1')
     expect(App.isHeldByOther('die-1')).toBe(true) // sanity
 
-    // A rect that fully encloses the toy (DISPLAY=64, placed at x-32, y-32).
-    const result = App.getBoxCandidates({ x: -40, y: -40, width: 200, height: 200 })
+    // A rect that fully encloses the toy (die-1 is player_marker, native
+    // 80x100, placed at (0,0), so it spans x:[-40,40], y:[-50,50]).
+    const result = App.getBoxCandidates({ x: -50, y: -60, width: 200, height: 200 })
 
     // die-1 must be excluded — held-by-other elements are silently dropped.
     expect(result).not.toContain('die-1')
@@ -530,7 +531,9 @@ describe('soft-lock integration — getBoxCandidates excludes peer-held elements
     const { App } = await bootPeerB()
 
     App.select('die-1') // I hold it
-    const result = App.getBoxCandidates({ x: -40, y: -40, width: 200, height: 200 })
+    // die-1 (player_marker, native 80x100) placed at (0,0) spans x:[-40,40], y:[-50,50] —
+    // this box must fully enclose that, not the old forced-64x64 footprint.
+    const result = App.getBoxCandidates({ x: -50, y: -60, width: 200, height: 200 })
     expect(result).toContain('die-1')
   })
 })

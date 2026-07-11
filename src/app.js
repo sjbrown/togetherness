@@ -1196,8 +1196,9 @@ const App = {
     _dragState = null;
 
     if (dropTrayId) {
+      let movedEl;
       try {
-        reparentToy(_ydoc, _yToys, id, dropTrayId);
+        movedEl = reparentToy(_ydoc, _yToys, id, dropTrayId);
       } catch (err) {
         // findDropTargetTray only checks for class 'tray' on the toy's own
         // embedded <svg> — reparentToy's own stricter check (a real
@@ -1207,6 +1208,26 @@ const App = {
         UI.toast(`Could not move into tray: ${err.message}`, 'warn');
         return;
       }
+
+      // Reposition into the tray's own local coordinate space — matching
+      // archive2025's push_to_parent, which rebased a dropped element's
+      // position the same way: newLocalX = childTableX - newParentTableX
+      // (childTableX here being oldParentX + childOldLocalX for a toy
+      // nested more than one level deep; a toy dragged loose on the table
+      // has no parent offset, so it's just the drop point itself). Using
+      // the actual drop position — already known to be geometrically
+      // inside the tray, since that's how dropTrayId was found — means
+      // the toy lands exactly where the user dropped it, converted into
+      // the tray's frame, rather than some synthetic slot. This assumes a
+      // 1:1 ratio between the tray's own viewBox and its rendered
+      // width/height (true for tray_sum; a tray type authored with a
+      // different ratio would need an extra scale factor here).
+      const trayEl = _svgEl.querySelector(`[data-yid="${dropTrayId}"]`);
+      const trayGeom = trayEl && Toys.getGeom(trayEl);
+      if (trayGeom) {
+        Toys.applyMoveCommit(_ydoc, movedEl, rx - trayGeom.x, ry - trayGeom.y);
+      }
+
       // observeDeep fires and calls renderDoc() — same as the ordinary
       // move-commit path below.
       //

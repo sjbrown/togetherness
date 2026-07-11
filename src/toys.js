@@ -53,9 +53,22 @@ export const TOY_TYPES = {
 }
 
 
-// Display size on the canvas. The toy's own viewBox is preserved, so the
-// content scales to fit (preserveAspectRatio defaults to xMidYMid meet).
-const DISPLAY = 64
+// Each toy keeps its own native width/height, exactly as authored in its
+// SVG file (a die stays die-sized, a tray stays tray-sized) — this used to
+// be forced to one fixed 64×64 square (DISPLAY) for every toy type
+// regardless of the file's own size, which is why tray_sum (authored
+// 200×150) rendered letterboxed down to a fraction of its real footprint.
+// archive2025's add_object had the right idea: don't normalize size at
+// all, just clamp against a pathologically tiny or huge asset.
+const MIN_TOY_SIZE      = 30
+const MAX_TOY_SIZE      = 420
+const FALLBACK_TOY_SIZE = 64  // used when a dimension is missing/unparseable entirely, not as a normalization target
+
+function clampToySize(value) {
+  const num = parseFloat(value)
+  if (!Number.isFinite(num) || num < MIN_TOY_SIZE || num > MAX_TOY_SIZE) return FALLBACK_TOY_SIZE
+  return num
+}
 
 // ── Color matrix ──────────────────────────────────────────────────────────────
 // Recolorizes the toy's feColorMatrix filter to tint it with the player's
@@ -203,9 +216,15 @@ function elementToYXml(node, idMap, refs) {
  * with all internal ids namespaced by `prefix`. Synthesizes a viewBox from
  * width/height if the file lacks one (so display sizing scales the content).
  *
- * Returns { ySvg, colorMatrices } where colorMatrices is an array of direct
- * refs to any feColorMatrix nodes, usable immediately via setAttribute without
- * needing to walk the detached tree (which throws on toArray).
+ * Returns { ySvg, colorMatrices, width, height }. colorMatrices is an array
+ * of direct refs to any feColorMatrix nodes, usable immediately via
+ * setAttribute without needing to walk the detached tree (which throws on
+ * toArray). width/height are the file's own native size, read as plain
+ * numbers from the *live DOM* root before conversion — for the same reason:
+ * ySvg.getAttribute('width') would silently return nothing until ySvg is
+ * attached to a Y.Doc (see the "Yjs node attachment" pitfall), so callers
+ * needing the native size right after this call (addToySync does) must get
+ * it from here rather than reading it back off ySvg themselves.
  */
 export function svgTextToYXml(svgText, prefix) {
   const dom  = new DOMParser().parseFromString(svgText, 'image/svg+xml')
@@ -219,12 +238,12 @@ export function svgTextToYXml(svgText, prefix) {
 
   const refs = { colorMatrices: [] }
   const ySvg = elementToYXml(root, idMap, refs)
+  const width  = parseFloat(root.getAttribute('width'))  || 100
+  const height = parseFloat(root.getAttribute('height')) || 100
   if (!root.getAttribute('viewBox')) {
-    const w = parseFloat(root.getAttribute('width'))  || 100
-    const h = parseFloat(root.getAttribute('height')) || 100
-    ySvg.setAttribute('viewBox', `0 0 ${w} ${h}`)
+    ySvg.setAttribute('viewBox', `0 0 ${width} ${height}`)
   }
-  return { ySvg, colorMatrices: refs.colorMatrices }
+  return { ySvg, colorMatrices: refs.colorMatrices, width, height }
 }
 
 // ── Toy operations ────────────────────────────────────────────────────────────
@@ -245,7 +264,7 @@ export function _clearSvgTextCache() { _svgTextCache.clear() }
 export function addToySync(ydoc, yToys, attrs, svgText) {
   const { id, toyType, x, y, color } = attrs
   const prefix = `${id}__`
-  const { ySvg, colorMatrices } = svgTextToYXml(svgText, prefix)
+  const { ySvg, colorMatrices, width: nativeWidth, height: nativeHeight } = svgTextToYXml(svgText, prefix)
 
   // Tint the toy's colorize filter with the player's color before insertion.
   // The matrix values are set on the direct refs captured during import,
@@ -253,11 +272,15 @@ export function addToySync(ydoc, yToys, attrs, svgText) {
   if (color) applyColor(colorMatrices, color)
 
   ydoc.transact(() => {
-    // size + center the embedded sub-document on (x, y)
-    ySvg.setAttribute('x',      String(x - DISPLAY / 2))
-    ySvg.setAttribute('y',      String(y - DISPLAY / 2))
-    ySvg.setAttribute('width',  String(DISPLAY))
-    ySvg.setAttribute('height', String(DISPLAY))
+    // size + center the embedded sub-document on (x, y) — each toy type
+    // keeps its own native footprint from the SVG file (see clampToySize),
+    // not a single forced size.
+    const width  = clampToySize(nativeWidth)
+    const height = clampToySize(nativeHeight)
+    ySvg.setAttribute('x',      String(x - width / 2))
+    ySvg.setAttribute('y',      String(y - height / 2))
+    ySvg.setAttribute('width',  String(width))
+    ySvg.setAttribute('height', String(height))
 
     const g = new Y.XmlElement('g')
     g.setAttribute('class',         'toy')
@@ -450,7 +473,7 @@ export function getGeom(svgEl) {
 
 /**
  * The drag anchor for a toy is its centre point — matching how addToy places
- * it: x = center - DISPLAY/2, y = center - DISPLAY/2.
+ * it: x = center - width/2, y = center - height/2 (the toy's own native size).
  * Returns { x, y } in canvas-space, or { x: 0, y: 0 } if the geom is unavailable.
  */
 export function getAnchor(svgEl) {
@@ -509,16 +532,18 @@ export function findDropTargetTray(layerEl, draggedId, rx, ry) {
 /**
  * Commit a toy move to the Yjs doc in a single transaction.
  * Called once on pointerup — never during drag.
- * (cx, cy) is the centre point; the embedded <svg> is offset by -DISPLAY/2.
+ * (cx, cy) is the centre point; the embedded <svg> is offset by
+ * (-width/2, -height/2) using the toy's own (possibly non-square) size.
  */
 export function applyMoveCommit(ydoc, yToy, cx, cy) {
   if (!yToy) return
   const ySvg = yToy.toArray()[0]
   if (!ySvg) return
-  const half = Math.round(parseFloat(ySvg.getAttribute('width') ?? String(DISPLAY)) / 2)
+  const halfW = Math.round(parseFloat(ySvg.getAttribute('width')  ?? String(FALLBACK_TOY_SIZE)) / 2)
+  const halfH = Math.round(parseFloat(ySvg.getAttribute('height') ?? String(FALLBACK_TOY_SIZE)) / 2)
   ydoc.transact(() => {
-    ySvg.setAttribute('x', String(cx - half))
-    ySvg.setAttribute('y', String(cy - half))
+    ySvg.setAttribute('x', String(cx - halfW))
+    ySvg.setAttribute('y', String(cy - halfH))
   })
 }
 
@@ -531,9 +556,10 @@ export function applyMoveDom(domEl, cx, cy) {
   if (!domEl) return
   const domSvg = domEl.querySelector?.('svg')
   if (!domSvg) return
-  const half = Math.round(parseFloat(domSvg.getAttribute('width') ?? String(DISPLAY)) / 2)
-  domSvg.setAttribute('x', cx - half)
-  domSvg.setAttribute('y', cy - half)
+  const halfW = Math.round(parseFloat(domSvg.getAttribute('width')  ?? String(FALLBACK_TOY_SIZE)) / 2)
+  const halfH = Math.round(parseFloat(domSvg.getAttribute('height') ?? String(FALLBACK_TOY_SIZE)) / 2)
+  domSvg.setAttribute('x', cx - halfW)
+  domSvg.setAttribute('y', cy - halfH)
 }
 
 
@@ -755,10 +781,11 @@ export function getTtState(yToy) {
   const ySvg    = yToy.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'svg');
   const x       = ySvg ? Number(ySvg.getAttribute('x') ?? 0) : 0;
   const y       = ySvg ? Number(ySvg.getAttribute('y') ?? 0) : 0;
-  const size    = ySvg ? Number(ySvg.getAttribute('width') ?? DISPLAY) : DISPLAY;
+  const width   = ySvg ? Number(ySvg.getAttribute('width')  ?? FALLBACK_TOY_SIZE) : FALLBACK_TOY_SIZE;
+  const height  = ySvg ? Number(ySvg.getAttribute('height') ?? FALLBACK_TOY_SIZE) : FALLBACK_TOY_SIZE;
   // Center point (matches getAnchor convention)
-  const cx = x + size / 2;
-  const cy = y + size / 2;
+  const cx = x + width / 2;
+  const cy = y + height / 2;
   return { id, toyType, color, cx, cy };
 }
 
