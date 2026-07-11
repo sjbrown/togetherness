@@ -18,12 +18,11 @@
  *
  * Requested/contested indicator (soft-lock.js): a separate, independent
  * decoration — not a SelectionMode kind — drawn on any element with an
- * outstanding acquisition request, regardless of its SelectionMode kind (or
- * lack of one). See _contestedIds / renderRequestedIndicator.
+ * outstanding acquisition request
  *
- * Drop-target hover indicator (phase 5.3): another independent decoration,
+ * Drop-target hover indicator: another independent decoration,
  * driven by App.move() during a toy drag, not by SelectionMode or
- * awareness. See _dropTargetTrayId / setDropTargetHover.
+ * awareness.
  *
  * Awareness selection schema: { [elId: string]: number } | null
  *   Keys are the held elIds; values are per-elId claim timestamps (see
@@ -328,19 +327,17 @@ export function endDragPlaceholder(elId) {
   render();
 }
 
-// ── Drop-target hover (drag machinery, phase 5.3) ───────────────────────────
+// ── Drop-target hover
 // The tray id currently under a toy being dragged, or null. Set by
 // App.move() on every pointermove while dragging a toy (re-hit-tested each
 // time against the drop position, not the raw pointer); cleared on
-// commit/cancel. A single id, not a set — at most one tray can be the live
-// drop target at once.
+// commit/cancel. A single id — at most one tray can be the live drop target
 let _dropTargetTrayId = null;
 
 /**
  * Called by App while dragging a toy, with the id of the tray currently
- * under the drop position (from Toys.findDropTargetTray), or null. No-ops
- * (skips the render() call) when the id hasn't changed, since this fires on
- * every pointermove.
+ * under the drop position, or null. No-ops (skips the render() call)
+ * when the id hasn't changed, since this fires on every pointermove.
  */
 export function setDropTargetHover(trayId) {
   if (_dropTargetTrayId === trayId) return;
@@ -440,11 +437,7 @@ export function render() {
     );
   }
 
-  // ── 3b. Drop-target hover — amber highlight on the tray under the drop
-  // point, same color family as the requested/contested indicator (see
-  // renderRequestedIndicator) but solid/soft-filled rather than pulsing —
-  // a continuously-live drag affordance shouldn't compete for attention the
-  // way an occasional contested-element alert should.
+  // ── Drop-target hover — highlight on the tray under the drop point
   if (_dropTargetTrayId) {
     const geo = App.getBBox(_dropTargetTrayId);
     if (geo) renderDropTargetHover(geo, scale);
