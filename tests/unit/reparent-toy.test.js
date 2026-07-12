@@ -212,7 +212,7 @@ describe('reparentToy — validation and loud failures', () => {
     const { yToys } = getToysLayer(ydoc)
     placeDie(ydoc, yToys, 'die1')
     placeDie(ydoc, yToys, 'die2')
-    expect(() => reparentToy(ydoc, yToys, 'die1', 'die2')).toThrow(/not a tray/)
+    expect(() => reparentToy(ydoc, yToys, 'die1', 'die2')).toThrow(/no \.contents_group/)
   })
 
   test('throws when moving a toy into itself', () => {
