@@ -47,7 +47,7 @@ function makeDocSvg({ toysInner = '', drawingInner = '', extra = '' } = {}) {
   </svg>`)
 }
 
-const VALID_TOY_G = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6" data-yid="t1" data-module="toys">
+const VALID_TOY_G = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6" data-id="t1" data-module="toys">
     <svg x="0" y="0" width="64" height="64" viewBox="0 0 80 100"><circle r="5"/></svg>
   </g>`
 
@@ -111,11 +111,11 @@ describe('isToyG', () => {
   })
 
   test.each([
-    ['missing class="toy"',      `<g data-toy-id="t1" data-toy-type="x" data-yid="t1" data-module="toys"><svg/></g>`],
-    ['missing data-toy-id',      `<g class="toy" data-toy-type="x" data-yid="t1" data-module="toys"><svg/></g>`],
-    ['missing data-module',      `<g class="toy" data-toy-id="t1" data-toy-type="x" data-yid="t1"><svg/></g>`],
-    ['no <svg> child',           `<g class="toy" data-toy-id="t1" data-toy-type="x" data-yid="t1" data-module="toys"></g>`],
-    ['wrong tag entirely',       `<rect class="toy" data-toy-id="t1" data-toy-type="x" data-yid="t1" data-module="toys"/>`],
+    ['missing class="toy"',      `<g data-toy-id="t1" data-toy-type="x" data-id="t1" data-module="toys"><svg/></g>`],
+    ['missing data-toy-id',      `<g class="toy" data-toy-type="x" data-id="t1" data-module="toys"><svg/></g>`],
+    ['missing data-module',      `<g class="toy" data-toy-id="t1" data-toy-type="x" data-id="t1"><svg/></g>`],
+    ['no <svg> child',           `<g class="toy" data-toy-id="t1" data-toy-type="x" data-id="t1" data-module="toys"></g>`],
+    ['wrong tag entirely',       `<rect class="toy" data-toy-id="t1" data-toy-type="x" data-id="t1" data-module="toys"/>`],
   ])('rejects: %s', (_label, svg) => {
     expect(isToyG(parseSvg(svg))).toBeFalsy()
   })
@@ -198,7 +198,7 @@ describe('populateFromSvgDoc', () => {
 
   test('preserves <script> nodes inside imported toys end-to-end', () => {
     const { yMeta, yToys, yDrawing } = freshLayers()
-    const toyWithScript = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6" data-yid="t1" data-module="toys">
+    const toyWithScript = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6" data-id="t1" data-module="toys">
         <svg x="0" y="0" width="64" height="64" viewBox="0 0 80 100">
           <script type="text/javascript" data-namespace="d6"><![CDATA[ var d6 = 1 ]]></script>
         </svg>
@@ -209,7 +209,7 @@ describe('populateFromSvgDoc', () => {
   })
 
   describe('opts.stripToyDecorative', () => {
-    const rotatedToy = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6" data-yid="t1"
+    const rotatedToy = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6" data-id="t1"
         data-module="toys" transform="rotate(-8,105,100)"><svg/></g>`
 
     test('off by default — transform is preserved', () => {

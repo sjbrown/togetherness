@@ -98,8 +98,8 @@ function wireCascade(ydoc, yToys, layerEl, { onDispatch } = {}) {
     dispatching = true
     ;(async () => {
       for (const trayId of trayIds) {
-        // data-toy-id, not data-yid — see app.js's dispatchContentsChangeCascade
-        // for why: a nested tray never gets data-yid stamped.
+        // data-toy-id, not data-id — see app.js's dispatchContentsChangeCascade
+        // for why: a nested tray never gets data-id stamped.
         const trayEl = layerEl.querySelector(`[data-toy-id="${trayId}"]`)
         const yTray  = findToy(yToys, trayId)
         if (!trayEl || !yTray) continue
@@ -162,7 +162,7 @@ describe('findAncestorTrayIds', () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     await place(ydoc, yToys, 'tray_sum', 'tray1')
-    const { toyEl } = { toyEl: renderLayer(yToys).querySelector('[data-yid="tray1"]') }
+    const { toyEl } = { toyEl: renderLayer(yToys).querySelector('[data-id="tray1"]') }
     await new Promise(r => setTimeout(r, 0))
 
     const tspanResult = ownResult(toyEl)
@@ -192,7 +192,7 @@ describe('the full cascade — die-in-tray roll updates the sum exactly once', (
     })
     await new Promise(r => setTimeout(r, 0)) // flush the cascade's async dispatch
 
-    const trayEl = layerEl.querySelector('[data-yid="tray1"]')
+    const trayEl = layerEl.querySelector('[data-id="tray1"]')
     expect(ownResult(trayEl).textContent).toBe(String(rolledValue))
     expect(dispatchLog).toEqual(['tray1']) // exactly once
   })
@@ -233,13 +233,13 @@ describe('the full cascade — die-in-tray roll updates the sum exactly once', (
       globalThis.dice.roll_handler(dieEl, 6)
     })
     await new Promise(r => setTimeout(r, 0))
-    const trayEl1 = layerEl.querySelector('[data-yid="tray1"]')
+    const trayEl1 = layerEl.querySelector('[data-id="tray1"]')
     expect(ownResult(trayEl1).textContent).not.toBe('0')
 
     reparentToy(ydoc, yToys, 'die1', null) // pull it back out to the top level
     await new Promise(r => setTimeout(r, 0))
 
-    const trayEl2 = layerEl.querySelector('[data-yid="tray1"]')
+    const trayEl2 = layerEl.querySelector('[data-id="tray1"]')
     expect(ownResult(trayEl2).textContent).toBe('0')
   })
 
@@ -268,7 +268,7 @@ describe('the full cascade — die-in-tray roll updates the sum exactly once', (
 
     expect(dispatchLog).toEqual(['inner', 'outer']) // innermost first, each exactly once
 
-    const outerEl = layerEl.querySelector('[data-yid="outer"]') // top-level, data-yid is fine
+    const outerEl = layerEl.querySelector('[data-id="outer"]') // top-level, data-id is fine
     const innerEl = layerEl.querySelector('[data-toy-id="inner"]') // nested — see above
     expect(ownResult(innerEl).textContent).toBe(String(rolledValue))
     // outer's own sum = the inner tray's displayed value (its only content)
@@ -305,8 +305,8 @@ describe('the full cascade — die-in-tray roll updates the sum exactly once', (
     })
     await new Promise(r => setTimeout(r, 0))
 
-    expect(ownResult(layerEl.querySelector('[data-yid="trayA"]')).textContent).toBe('3')
-    expect(ownResult(layerEl.querySelector('[data-yid="trayB"]')).textContent).toBe('5')
+    expect(ownResult(layerEl.querySelector('[data-id="trayA"]')).textContent).toBe('3')
+    expect(ownResult(layerEl.querySelector('[data-id="trayB"]')).textContent).toBe('5')
 
     // Now drop trayB (as a whole, with its die and its own displayed sum)
     // into trayA — this is a single reparentToy call, exactly what
@@ -316,6 +316,6 @@ describe('the full cascade — die-in-tray roll updates the sum exactly once', (
     await new Promise(r => setTimeout(r, 0))
     await new Promise(r => setTimeout(r, 0))
 
-    expect(ownResult(layerEl.querySelector('[data-yid="trayA"]')).textContent).toBe('8')
+    expect(ownResult(layerEl.querySelector('[data-id="trayA"]')).textContent).toBe('8')
   })
 })

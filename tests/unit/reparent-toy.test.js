@@ -280,7 +280,7 @@ describe('deleteToy / findToy — now search nested toys too', () => {
     placeDie(ydoc, yToys, 'die1')
     reparentToy(ydoc, yToys, 'die1', 'tray1')
 
-    const ids = listToys(yToys).map(el => el.getAttribute('data-yid'))
+    const ids = listToys(yToys).map(el => el.getAttribute('data-id'))
     expect(ids).toEqual(['tray1'])
   })
 
@@ -296,7 +296,7 @@ describe('deleteToy / findToy — now search nested toys too', () => {
 
     // Only the tray is a top-level layer child...
     expect(layerEl.children.length).toBe(1)
-    expect(layerEl.querySelector('[data-yid="tray1"]')).not.toBeNull()
+    expect(layerEl.querySelector('[data-id="tray1"]')).not.toBeNull()
     // ...but the die is still findable in the DOM, nested inside it, via
     // mirror()'s ordinary recursive walk (no special-casing needed there).
     const dieInDom = layerEl.querySelector('.contents_group [data-toy-id="die1"]')

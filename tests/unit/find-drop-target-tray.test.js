@@ -138,7 +138,7 @@ describe('findDropTargetTray — drop inside/outside boundaries', () => {
 // rendered geometry rather than assuming the fixture's raw width/height,
 // since addToySync overwrites width/height to DISPLAY on import.
 function readTrayGeom(layerEl, id) {
-  const el = layerEl.querySelector(`[data-yid="${id}"] svg`)
+  const el = layerEl.querySelector(`[data-id="${id}"] svg`)
   return {
     x: parseFloat(el.getAttribute('x')),
     y: parseFloat(el.getAttribute('y')),

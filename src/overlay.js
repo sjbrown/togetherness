@@ -39,9 +39,9 @@
  *
  * Drag ghost system:
  *   The native layer element is never touched during drag; but overlay renders:
- *     - a dim <use href="#yid-{id}" filter="url(#drag-placeholder-filter)">
+ *     - a dim <use href="#{id}" filter="url(#drag-placeholder-filter)">
  *       at the committed position (placeholder)
- *     - a ghost <use href="#yid-{id}" transform="translate(dx,dy)"> (flying copy)
+ *     - a ghost <use href="#{id}" transform="translate(dx,dy)"> (flying copy)
  *     - a selection ring translated by around the ghost
  */
 
@@ -277,7 +277,7 @@ export function syncFromAwareness(awarenessStates, myClientId) {
 export function startDragPlaceholder(elId) {
   if (!_layerEl || _dragGhosts.has(elId)) return;
 
-  const href = `#yid-${elId}`;
+  const href = `#${elId}`;
 
   // Dim copy at committed position — sits below everything in the overlay
   const placeholderEl = el('use', {});
@@ -382,7 +382,7 @@ export function render() {
   }
   for (const [elId] of _remoteDrags) {
     const ph = el('use', {});
-    ph.setAttribute('href',   `#yid-${elId}`);
+    ph.setAttribute('href',   `#${elId}`);
     ph.setAttribute('filter', 'url(#drag-placeholder-filter)');
     _layerEl.appendChild(ph);
   }
@@ -426,7 +426,7 @@ export function render() {
     const tdy = drag.bboxY - bbox.y;
 
     const ghostEl = el('use', { opacity: '0.85' });
-    ghostEl.setAttribute('href', `#yid-${elId}`);
+    ghostEl.setAttribute('href', `#${elId}`);
     ghostEl.setAttribute('transform', `translate(${tdx}, ${tdy})`);
     _layerEl.appendChild(ghostEl);
 

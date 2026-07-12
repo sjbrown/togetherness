@@ -13,15 +13,15 @@ const mockObjects = [
 ]
 
 describe('layerObjectListHTML', () => {
-  test('each item carries data-yid matching its object id, displayed topmost-first', () => {
+  test('each item carries data-id matching its object id, displayed topmost-first', () => {
     const html = layerObjectListHTML(mockObjects, new Set())
     const div  = document.createElement('div')
     div.innerHTML = html
     const items = div.querySelectorAll('.layer-obj-item')
     expect(items).toHaveLength(2)
     // mockObjects is [a, b] in z-order (a below b); display reverses so b is first
-    expect(items[0].dataset.yid).toBe('b')
-    expect(items[1].dataset.yid).toBe('a')
+    expect(items[0].dataset.id).toBe('b')
+    expect(items[1].dataset.id).toBe('a')
   })
 
   test('selected item gets .sel class and a .meta badge; others do not', () => {
@@ -52,10 +52,10 @@ describe('refreshLayerList', () => {
     body.id = 'panelBody'
     body.innerHTML = `
       <div class="layer-obj-list">
-        <div class="layer-obj-item" data-yid="a">
+        <div class="layer-obj-item" data-id="a">
           <span class="layer-obj-label">rect</span>
         </div>
-        <div class="layer-obj-item sel" data-yid="b">
+        <div class="layer-obj-item sel" data-id="b">
           <span class="layer-obj-label">circle</span>
           <span class="meta">selected</span>
         </div>
@@ -75,8 +75,8 @@ describe('refreshLayerList', () => {
 
     expect(body.querySelector('.layer-obj-list')).toBe(listEl)
 
-    const itemA = body.querySelector('[data-yid="a"]')
-    const itemB = body.querySelector('[data-yid="b"]')
+    const itemA = body.querySelector('[data-id="a"]')
+    const itemB = body.querySelector('[data-id="b"]')
     expect(itemA.classList.contains('sel')).toBe(true)
     expect(itemA.querySelector('.meta')).not.toBeNull()
     expect(itemB.classList.contains('sel')).toBe(false)
@@ -217,9 +217,9 @@ describe('refreshLayerList — multi-selection', () => {
     body.id = 'panelBody'
     body.innerHTML = `
       <div class="layer-obj-list">
-        <div class="layer-obj-item" data-yid="a"><span class="layer-obj-label">A</span></div>
-        <div class="layer-obj-item" data-yid="b"><span class="layer-obj-label">B</span></div>
-        <div class="layer-obj-item" data-yid="c"><span class="layer-obj-label">C</span></div>
+        <div class="layer-obj-item" data-id="a"><span class="layer-obj-label">A</span></div>
+        <div class="layer-obj-item" data-id="b"><span class="layer-obj-label">B</span></div>
+        <div class="layer-obj-item" data-id="c"><span class="layer-obj-label">C</span></div>
       </div>`
     document.body.appendChild(body)
 
@@ -232,9 +232,9 @@ describe('refreshLayerList — multi-selection', () => {
 
     refreshLayerList()
 
-    expect(body.querySelector('[data-yid="a"]').classList.contains('sel')).toBe(true)
-    expect(body.querySelector('[data-yid="b"]').classList.contains('sel')).toBe(false)
-    expect(body.querySelector('[data-yid="c"]').classList.contains('sel')).toBe(true)
+    expect(body.querySelector('[data-id="a"]').classList.contains('sel')).toBe(true)
+    expect(body.querySelector('[data-id="b"]').classList.contains('sel')).toBe(false)
+    expect(body.querySelector('[data-id="c"]').classList.contains('sel')).toBe(true)
 
     document.body.removeChild(body)
   })
@@ -244,7 +244,7 @@ describe('refreshLayerList — multi-selection', () => {
     body.id = 'panelBody'
     body.innerHTML = `
       <div class="layer-obj-list">
-        <div class="layer-obj-item sel" data-yid="a">
+        <div class="layer-obj-item sel" data-id="a">
           <span class="layer-obj-label">A</span>
           <span class="meta">selected</span>
         </div>
@@ -260,8 +260,8 @@ describe('refreshLayerList — multi-selection', () => {
 
     refreshLayerList()
 
-    expect(body.querySelector('[data-yid="a"]').classList.contains('sel')).toBe(false)
-    expect(body.querySelector('[data-yid="a"] .meta')).toBeNull()
+    expect(body.querySelector('[data-id="a"]').classList.contains('sel')).toBe(false)
+    expect(body.querySelector('[data-id="a"] .meta')).toBeNull()
 
     document.body.removeChild(body)
   })

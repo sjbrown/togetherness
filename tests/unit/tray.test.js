@@ -42,7 +42,7 @@ async function placeAndActivate(ydoc, yToys, toyType, id) {
   await addToy(ydoc, yToys, { id, toyType, x: 0, y: 0, color: '#fff' })
   const layerEl = renderLayer(yToys)
   await new Promise(r => setTimeout(r, 0)) // flush render()'s fire-and-forget script activation
-  return { layerEl, toyEl: layerEl.querySelector(`[data-yid="${id}"]`) }
+  return { layerEl, toyEl: layerEl.querySelector(`[data-id="${id}"]`) }
 }
 
 beforeEach(() => {
@@ -94,7 +94,7 @@ describe('tray.js + tray_sum — script activation', () => {
     expect(getNamespacesForType('tray_sum')).toEqual(['tray', 'tray_sum'])
     expect(getNamespacesForType('dice_d6')).toEqual(['dice', 'd6'])
 
-    const trayEl = layerEl.querySelector('[data-yid="tray1"]')
+    const trayEl = layerEl.querySelector('[data-id="tray1"]')
     const actionKeys = Toys.getMenuActions(trayEl).map(a => a.key)
     expect(actionKeys).toEqual(['Roll All']) // not also 'Roll' / 'Turn Up'
   })
@@ -113,7 +113,7 @@ describe('tray.js + tray_sum — script activation', () => {
     expect(typeof globalThis.d6.menu['Roll'].handler).toBe('function')
     // and Roll All can actually find and roll it, proving the die's own
     // menu action is really live, not just present as dead data
-    const trayEl = layerEl.querySelector('[data-yid="tray1"]')
+    const trayEl = layerEl.querySelector('[data-id="tray1"]')
     const dieEl  = layerEl.querySelector('[data-toy-id="die1"]')
     globalThis.tray.roll_all(trayEl)
     const rolled = Number(dieEl.querySelector('tspan').textContent)
@@ -469,7 +469,7 @@ describe('tray_sum — "Roll All" menu action, end to end', () => {
     const layerEl = renderLayer(yToys)
     await new Promise(r => setTimeout(r, 0))
 
-    const trayEl = layerEl.querySelector('[data-yid="tray1"]')
+    const trayEl = layerEl.querySelector('[data-id="tray1"]')
     const dieEl  = layerEl.querySelector('[data-toy-id="die1"]')
 
     // "Roll All" is a real menu action — go through the same
@@ -498,7 +498,7 @@ describe('tray_sum — "Roll All" menu action, end to end', () => {
     await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
     const layerEl = renderLayer(yToys)
     await new Promise(r => setTimeout(r, 0))
-    const trayEl = layerEl.querySelector('[data-yid="tray1"]')
+    const trayEl = layerEl.querySelector('[data-id="tray1"]')
 
     const actions = Toys.getMenuActions(trayEl)
     const rollAll = actions.find(a => a.key === 'Roll All')

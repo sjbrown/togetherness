@@ -55,7 +55,7 @@ async function placeAndActivate(ydoc, yToys, id) {
   const layerEl = renderLayer(yToys)
   const yEl = findToy(yToys, id)
   await activateToyScripts(yEl, 'player_marker') // await real completion, not just "started"
-  return { layerEl, toyEl: layerEl.querySelector(`[data-yid="${id}"]`) }
+  return { layerEl, toyEl: layerEl.querySelector(`[data-id="${id}"]`) }
 }
 
 beforeEach(() => {

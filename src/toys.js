@@ -479,14 +479,14 @@ function rectsOverlap(a, b) {
  *
  *  - (rx, ry) is the drop centre point
  *
- * TODO: Only top-level toys are considered, due to data-yid constraints
+ * TODO: Only top-level toys are considered, due to data-id constraints
  *
  * TODO: trays are recognized by class-contains-tray.  Expand this to
  *       generic containers - anything that has .contents_group
  */
 export function findDropTargetTray(layerEl, draggedId, rx, ry) {
   if (!layerEl) return null
-  const draggedEl = layerEl.querySelector(`:scope > [data-yid="${draggedId}"]`)
+  const draggedEl = layerEl.querySelector(`:scope > [data-id="${draggedId}"]`)
   const draggedGeom = getGeom(draggedEl)
   if (!draggedGeom) return null
   const draggedRect = {
@@ -494,8 +494,8 @@ export function findDropTargetTray(layerEl, draggedId, rx, ry) {
     width: draggedGeom.width, height: draggedGeom.height,
   }
 
-  for (const el of layerEl.querySelectorAll(':scope > [data-yid]')) {
-    const trayId = el.getAttribute('data-yid')
+  for (const el of layerEl.querySelectorAll(':scope > [data-id]')) {
+    const trayId = el.getAttribute('data-id')
     if (trayId === draggedId) continue
     const ownSvg = el.querySelector(':scope > svg')
     if (!ownSvg?.classList.contains('tray')) continue
@@ -624,16 +624,16 @@ function attachScopedLookup(rootEl, toyId) {
 
 /**
  * Render a toy's <g> wrapper to an SVG DOM element, stamped with the handles
- * app.js needs: data-yid (the toy id), data-module="toys", a plain SVG
- * id="yid-{id}" so overlay.js <use href="#yid-{id}"> can reference it for
+ * app.js needs: data-id (the toy id), data-module="toys", a plain SVG
+ * id="{id}" so overlay.js <use href="#{id}"> can reference it for
  * drag-ghost rendering, and `.$()` for toy-scoped id lookups (see above).
  */
 export function _toSVGEl(yEl, opts = {}) {
   const el = mirror(yEl, opts)
   if (el && el.setAttribute) {
     const id = yEl.getAttribute('data-toy-id')
-    el.setAttribute('id',              `yid-${id}`)
-    el.setAttribute('data-yid',        id)
+    el.setAttribute('id',              id)
+    el.setAttribute('data-id',         id)
     el.setAttribute('data-module', 'toys')
     attachScopedLookup(el, id)
   }
@@ -643,7 +643,7 @@ export function _toSVGEl(yEl, opts = {}) {
 
 /**
  * All placed toys, in z-order. Each entry is a rendered SVG element
- * stamped with data-yid + data-module.
+ * stamped with data-id + data-module.
  * Pass { includeScripts: true } to also mirror <script> nodes — for export
  * only; normal rendering always omits them so nothing executes.
  */
@@ -660,7 +660,7 @@ export function listToys(yToys, opts = {}) {
  * Summarise a rendered toy svgEl as a plain layer-object descriptor.
  */
 function toyData(svgEl) {
-  const id      = svgEl.getAttribute('data-yid')
+  const id      = svgEl.getAttribute('data-id')
   const toyType = svgEl.getAttribute('data-toy-type') ?? 'toy'
   const color   = svgEl.getAttribute('data-color') ?? '#888'
   return {

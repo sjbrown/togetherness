@@ -57,12 +57,12 @@ test.describe('multi-select', () => {
     await page.waitForTimeout(200);
 
     // Confirm 3 rects in DOM
-    await expect(page.locator('#drawing-layer [data-yid]')).toHaveCount(3, { timeout: 3000 });
+    await expect(page.locator('#drawing-layer [data-id]')).toHaveCount(3, { timeout: 3000 });
 
     // Grab ids in document order
     const [idA, idB, idC] = await page.evaluate(() =>
-      [...document.querySelectorAll('#drawing-layer [data-yid]')]
-        .map(el => el.getAttribute('data-yid'))
+      [...document.querySelectorAll('#drawing-layer [data-id]')]
+        .map(el => el.getAttribute('data-id'))
     );
     expect(idA).toBeTruthy();
     expect(idB).toBeTruthy();
@@ -201,7 +201,7 @@ test.describe('multi-select', () => {
     // Read committed positions from the DOM
     const positions = await page.evaluate(({ idA, idB, idC }) => {
       function rectPos(id) {
-        const el = document.querySelector(`[data-yid="${id}"]`);
+        const el = document.querySelector(`[data-id="${id}"]`);
         if (!el) return null;
         return {
           x: parseFloat(el.getAttribute('x') ?? el.querySelector('rect')?.getAttribute('x') ?? 'NaN'),

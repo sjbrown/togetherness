@@ -34,7 +34,7 @@ export function domToY(node) {
 }
 
 /**
- * Toy contract: <g class="toy" data-toy-id data-toy-type data-yid
+ * Toy contract: <g class="toy" data-toy-id data-toy-type data-id
  * data-module="toys"> with ≥1 <svg> child. Anything else found directly
  * inside #toys-layer is invalid and reported back to the caller.
  */
@@ -43,7 +43,7 @@ export function isToyG(el) {
          el.classList.contains('toy') &&
          el.getAttribute('data-toy-id') &&
          el.getAttribute('data-toy-type') &&
-         el.getAttribute('data-yid') &&
+         el.getAttribute('data-id') &&
          el.getAttribute('data-module') === 'toys' &&
          el.querySelector(':scope > svg');
 }

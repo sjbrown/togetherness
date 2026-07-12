@@ -39,7 +39,7 @@ async function placeAndActivate(ydoc, yToys, id) {
   await addToy(ydoc, yToys, { id, toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
   const layerEl = renderLayer(yToys)
   await new Promise(r => setTimeout(r, 0)) // flush render()'s fire-and-forget script activation
-  return { layerEl, toyEl: layerEl.querySelector(`[data-yid="${id}"]`) }
+  return { layerEl, toyEl: layerEl.querySelector(`[data-id="${id}"]`) }
 }
 
 beforeEach(() => {
