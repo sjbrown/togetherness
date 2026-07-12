@@ -151,3 +151,5 @@ in passing.
 ### 12. User changing of trays' labels
 
 ### 13. "Fix"ing or "Opening" of trays so that contents can be pulled out
+
+### 14. separate the concerns of the yid and a Togetherness-centric "tt id"

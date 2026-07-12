@@ -336,8 +336,8 @@ let _dropTargetTrayId = null;
 
 /**
  * Called by App while dragging a toy, with the id of the tray currently
- * under the drop position, or null. No-ops (skips the render() call)
- * when the id hasn't changed, since this fires on every pointermove.
+ * under the drop position, or null. Short circuits when the id is unchanged,
+ * since this fires on every pointermove.
  */
 export function setDropTargetHover(trayId) {
   if (_dropTargetTrayId === trayId) return;

@@ -53,16 +53,9 @@ export const TOY_TYPES = {
 }
 
 
-// Each toy keeps its own native width/height, exactly as authored in its
-// SVG file (a die stays die-sized, a tray stays tray-sized) — this used to
-// be forced to one fixed 64×64 square (DISPLAY) for every toy type
-// regardless of the file's own size, which is why tray_sum (authored
-// 200×150) rendered letterboxed down to a fraction of its real footprint.
-// archive2025's add_object had the right idea: don't normalize size at
-// all, just clamp against a pathologically tiny or huge asset.
 const MIN_TOY_SIZE      = 30
 const MAX_TOY_SIZE      = 420
-const FALLBACK_TOY_SIZE = 64  // used when a dimension is missing/unparseable entirely, not as a normalization target
+const FALLBACK_TOY_SIZE = 64  // used when a dimension is missing/unparseable
 
 function clampToySize(value) {
   const num = parseFloat(value)
@@ -213,18 +206,9 @@ function elementToYXml(node, idMap, refs) {
 
 /**
  * Parse a toy SVG file's text into a detached Y.XmlElement rooted at <svg>,
- * with all internal ids namespaced by `prefix`. Synthesizes a viewBox from
- * width/height if the file lacks one (so display sizing scales the content).
+ * with all internal ids namespaced by `prefix`.
  *
- * Returns { ySvg, colorMatrices, width, height }. colorMatrices is an array
- * of direct refs to any feColorMatrix nodes, usable immediately via
- * setAttribute without needing to walk the detached tree (which throws on
- * toArray). width/height are the file's own native size, read as plain
- * numbers from the *live DOM* root before conversion — for the same reason:
- * ySvg.getAttribute('width') would silently return nothing until ySvg is
- * attached to a Y.Doc (see the "Yjs node attachment" pitfall), so callers
- * needing the native size right after this call (addToySync does) must get
- * it from here rather than reading it back off ySvg themselves.
+ * Returns { ySvg, colorMatrices, width, height }
  */
 export function svgTextToYXml(svgText, prefix) {
   const dom  = new DOMParser().parseFromString(svgText, 'image/svg+xml')
@@ -240,6 +224,8 @@ export function svgTextToYXml(svgText, prefix) {
   const ySvg = elementToYXml(root, idMap, refs)
   const width  = parseFloat(root.getAttribute('width'))  || 100
   const height = parseFloat(root.getAttribute('height')) || 100
+  // Synthesize a viewBox from width/height if the file
+  // lacks one (so display sizing scales the content).
   if (!root.getAttribute('viewBox')) {
     ySvg.setAttribute('viewBox', `0 0 ${width} ${height}`)
   }
@@ -272,9 +258,6 @@ export function addToySync(ydoc, yToys, attrs, svgText) {
   if (color) applyColor(colorMatrices, color)
 
   ydoc.transact(() => {
-    // size + center the embedded sub-document on (x, y) — each toy type
-    // keeps its own native footprint from the SVG file (see clampToySize),
-    // not a single forced size.
     const width  = clampToySize(nativeWidth)
     const height = clampToySize(nativeHeight)
     ySvg.setAttribute('x',      String(x - width / 2))
@@ -315,20 +298,14 @@ export async function addToy(ydoc, yToys, attrs) {
 }
 
 /**
- * Whether a Y.XmlElement is a placed toy's wrapper — a <g class="toy"
- * data-toy-id data-toy-type> — the same shape at every nesting depth,
- * whether at the top of the toys layer or inside a tray's .contents_group.
+ * Whether a Y.XmlElement is a toy's wrapper:
+    <g class="toy" data-toy-id data-toy-type>
  */
 function isToyG(yEl) {
   if (!(yEl instanceof Y.XmlElement) || yEl.nodeName !== 'g') return false
   return (yEl.getAttribute('class') || '').split(/\s+/).includes('toy')
 }
 
-/**
- * A placed toy's .contents_group Y.XmlElement (the tray-type-specific
- * container nested toys live in — see reparentToy below), or null if
- * toyG isn't a tray (no such container in its own SVG markup).
- */
 function findContentsGroupYEl(toyG) {
   const svg = toyG.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'svg')
   if (!svg) return null
@@ -339,19 +316,23 @@ function findContentsGroupYEl(toyG) {
 }
 
 /**
- * Locate a placed toy anywhere in the toys tree — at the top level of
+ * Locate a toy anywhere in the toys tree — at the top level of
  * yToys, or nested arbitrarily deep inside other toys' .contents_group
- * containers — returning { yEl, parent, index } (parent is whichever
- * Y.XmlFragment/Y.XmlElement directly holds it, index is its position
- * there) so callers can both read and splice it out. Returns null if no
- * toy with this id exists anywhere in the tree.
+ * containers
+ * Returns { yEl, parent, index }
+ *   parent - whichever Y.XmlFragment/Y.XmlElement directly holds it
+ *   index  - its position there
+ * So callers can both read and splice it out.
+ * Returns null if no toy with this id exists anywhere in the tree.
  */
 function findToyLocation(container, id) {
   const children = container.toArray()
   for (let i = 0; i < children.length; i++) {
     const child = children[i]
     if (!isToyG(child)) continue
-    if (child.getAttribute('data-toy-id') === id) return { yEl: child, parent: container, index: i }
+    if (child.getAttribute('data-toy-id') === id) {
+      return { yEl: child, parent: container, index: i }
+    }
     const contentsGroup = findContentsGroupYEl(child)
     if (contentsGroup) {
       const found = findToyLocation(contentsGroup, id)
@@ -363,8 +344,7 @@ function findToyLocation(container, id) {
 
 /**
  * Whether toyG is targetId itself, or has targetId anywhere among its own
- * (arbitrarily nested) contained toys — the cycle check reparentToy needs
- * before moving toyG into what might be one of its own descendants.
+ * (arbitrarily nested) contained toys
  */
 function toyContains(toyG, targetId) {
   if (toyG.getAttribute('data-toy-id') === targetId) return true
@@ -375,7 +355,6 @@ function toyContains(toyG, targetId) {
 
 /**
  * Remove a toy by id — searches the whole toys tree, including nested
- * inside trays. Returns true if found.
  */
 export function deleteToy(ydoc, yToys, id) {
   const location = findToyLocation(yToys, id)
@@ -395,32 +374,15 @@ export function findToy(yToys, id) {
 }
 
 /**
- * Move a placed toy to a new position in the containment tree: either into
+ * Move a toy to a new position in the containment tree: either into
  * a tray's .contents_group (targetTrayId given), or back to the top level
- * of the toys layer (targetTrayId null/undefined). This is a structural
- * Yjs operation, not a DOM one — the caller (app.js's drag-end handling,
- * phase 5.3) is responsible for deciding *whether* to reparent (geometry
- * hit-testing against placed trays); this function only performs the move
- * once that decision is made.
+ * of the toys layer (targetTrayId null/undefined).
+ * This is a structural Yjs operation, not a DOM one
  *
- * Implementation: yEl.clone() deep-copies the toy's entire subtree (its
- * embedded <svg>, every attribute, every descendant — including its own
- * .contents_group if it's itself a tray, so moving a tray moves everything
- * inside it too) as fresh, detached Yjs items, then the original is
- * deleted and the clone is inserted at the destination — all in one
- * transaction. Known trade-off: this destroys CRDT identity for the moved
- * subtree. A concurrent remote edit targeting the old items (e.g. another
- * peer rolling a die at the exact moment it's dragged into a tray) is lost
- * — it was mutating Yjs items that get deleted here, not the fresh clone.
- * Accepted for tabletop semantics: reparenting is a rare, deliberate
- * placement action, not a hot path needing fine-grained merge.
- *
- * Throws (loud failure, not a silent no-op) if: id doesn't exist anywhere
- * in the tree; targetTrayId doesn't exist; targetTrayId has no
- * .contents_group (i.e. isn't a tray-shaped toy); or targetTrayId is id
- * itself or one of id's own (possibly nested) contained toys — moving a
- * toy into its own descendant would disconnect that subtree from the doc
- * entirely, so this is refused rather than silently losing data.
+ * We accept that peers doing a concurrent remote edit targeting the old
+ * items will be lost
+ *  - We should have had a soft-lock in the first place
+ *  - Reparenting is rare and deliberate
  *
  * Returns the newly-inserted (cloned) Y.XmlElement.
  */
@@ -429,6 +391,15 @@ export function reparentToy(ydoc, yToys, id, targetTrayId) {
   if (!location) throw new Error(`[toys] reparentToy: toy not found: ${id}`)
   const { yEl, parent, index } = location
 
+  /*
+  * Throws if:
+  *  - id doesn't exist anywhere in the tree
+  *  - targetTrayId doesn't exist
+  *  - targetTrayId has no .contents_group
+  *  - targetTrayId is id itself or one of id's own descendant toys
+  *    - moving a toy into its own descendant would disconnect that subtree
+  *      from the doc entirely, so this is refused
+  */
   let targetFragment
   if (targetTrayId == null) {
     targetFragment = yToys
@@ -437,12 +408,26 @@ export function reparentToy(ydoc, yToys, id, targetTrayId) {
       throw new Error(`[toys] reparentToy: cannot move ${id} into itself or one of its own contained toys (${targetTrayId})`)
     }
     const targetLocation = findToyLocation(yToys, targetTrayId)
-    if (!targetLocation) throw new Error(`[toys] reparentToy: target tray not found: ${targetTrayId}`)
+    if (!targetLocation) {
+      throw new Error(`[toys] reparentToy: target tray not found: ${targetTrayId}`)
+    }
     const contentsGroup = findContentsGroupYEl(targetLocation.yEl)
-    if (!contentsGroup) throw new Error(`[toys] reparentToy: target ${targetTrayId} has no .contents_group (not a tray?)`)
+    if (!contentsGroup) {
+      throw new Error(`[toys] reparentToy: target ${targetTrayId} has no .contents_group`)
+    }
     targetFragment = contentsGroup
   }
 
+  /*
+  *  YJS-TRANSACTION-OPENED
+  *  - yEl.clone() to deep-copy
+  *  - Entire subtree is now fresh, detached Yjs items
+  *  - Delete original
+  *  - CRDT identity is destroyed for the moved subtree.
+  *  - Clone inserted at destination
+  * YJS-TRANSACTION-CLOSED
+  *
+  */
   let movedEl
   ydoc.transact(() => {
     const clone = yEl.clone()
@@ -488,24 +473,16 @@ function rectsOverlap(a, b) {
 }
 
 /**
- * Hit-test a toy's drop position against every other placed top-level tray
- * currently rendered in layerEl (the toys layer's DOM group), returning the
- * id of the first one whose geometry overlaps the dragged toy's would-be
- * bounding box — or null if none does. (rx, ry) is the drop centre point,
- * matching the anchor convention getAnchor/applyMoveCommit already use.
+ * Hit-test a toy's drop position against every top-level tray
+ * Returns id of the first tray whose geometry overlaps the dragged
+ * toy's would-be bounding box — or null if none does.
  *
- * Only top-level toys are considered, both as the dragged element and as
- * candidate trays. This isn't a simplification of convenience: only
- * top-level toys carry data-yid (see _toSVGEl — only listToys()'s top-level
- * walk stamps it, nested toys don't), and this hit test is entirely
- * DOM/data-yid driven, so a nested tray couldn't be found here even if the
- * loop tried. A nested toy also has no data-yid to drag by in the first
- * place — closing that is a separate, larger interactivity gap (see the
- * phase 5.2 notes), not something this function works around.
+ *  - (rx, ry) is the drop centre point
  *
- * A tray is recognized the same way tray.js's own get_numeric_value does:
- * its embedded <svg> (a direct child of the <g data-yid> wrapper) carries
- * class 'tray'.
+ * TODO: Only top-level toys are considered, due to data-yid constraints
+ *
+ * TODO: trays are recognized by class-contains-tray.  Expand this to
+ *       generic containers - anything that has .contents_group
  */
 export function findDropTargetTray(layerEl, draggedId, rx, ry) {
   if (!layerEl) return null
@@ -532,13 +509,13 @@ export function findDropTargetTray(layerEl, draggedId, rx, ry) {
 /**
  * Commit a toy move to the Yjs doc in a single transaction.
  * Called once on pointerup — never during drag.
- * (cx, cy) is the centre point; the embedded <svg> is offset by
- * (-width/2, -height/2) using the toy's own (possibly non-square) size.
  */
 export function applyMoveCommit(ydoc, yToy, cx, cy) {
   if (!yToy) return
   const ySvg = yToy.toArray()[0]
   if (!ySvg) return
+  // (cx, cy) is the centre point; the embedded <svg> is offset by
+  // (-width/2, -height/2) using the toy's own w & h
   const halfW = Math.round(parseFloat(ySvg.getAttribute('width')  ?? String(FALLBACK_TOY_SIZE)) / 2)
   const halfH = Math.round(parseFloat(ySvg.getAttribute('height') ?? String(FALLBACK_TOY_SIZE)) / 2)
   ydoc.transact(() => {
@@ -754,11 +731,10 @@ function findAllYNodes(yEl, nodeName, results = []) {
 /**
  * Return the ttStateSchema for a rendered toy element.
  * Color is read from the data-color attribute on the <g> wrapper, which is
- * part of the Yjs tree and always in sync with the CRDT state. Omitted from
- * `types` for tray_sum — trays aren't user-colorable (see the TOOLS
- * registry, which likewise has no color option for tray_sum's add/addQuick
- * panels) — so the value is still returned as data, just not exposed as an
- * editable field.
+ * part of the Yjs tree and always in sync with the CRDT state.
+ *
+ * TODO: rather than excluding tray_sum, this should instead toys that are
+ *       colorable
  */
 export function getTtStateSchema(svgEl) {
   const toyType = svgEl.getAttribute('data-toy-type')
@@ -771,7 +747,7 @@ export function getTtStateSchema(svgEl) {
 }
 
 /**
- * Snapshot the full serialisable state of a placed toy Y.XmlElement (<g>).
+ * Snapshot the full serialisable state of a toy Y.XmlElement (<g>).
  * Captures the position from the inner <svg> child. Author/created are omitted;
  * those are provenance, not element state.
  */
@@ -814,7 +790,7 @@ export async function applyTtState(ydoc, yToys, state) {
 }
 
 /**
- * Apply an editData object to a placed toy.
+ * Apply an editData object to a toy.
  * Currently only `color` is editable: all feColorMatrix nodes in the toy's
  * Yjs tree are updated and data-color on the <g> wrapper is kept in sync.
  * Called by App.commitEdit — never called directly from the UI.
@@ -875,13 +851,13 @@ export function getNamespacesForType(toyType) {
   return _namespacesByType.get(toyType) ?? []
 }
 
-// Bridged onto globalThis (not just exported) because toy behaviour scripts
+// Bridged onto globalThis because toy behaviour scripts
 // run via indirect eval into global scope (see evalGlobal below) and can't
-// import this module's bindings. Generic containers — tray.js's
-// evaluate_sub_element is the first user — use this to resolve a contained
+// import this module's bindings.
+// Generic containers use this to resolve a contained
 // toy's own value: look up its declared namespaces by data-toy-type, then
-// ask each for getValue(). Set once, at module load; same lifetime as the
-// activation state above.
+// ask each for getValue().
+// TODO: consider globalThis.getNamespacesForEl which takes a dom element
 globalThis.getNamespacesForType = getNamespacesForType
 
 /** Whether a toy type's scripts have already been evaluated this session. */
@@ -890,16 +866,8 @@ export function isToyTypeActivated(toyType) {
 }
 
 /**
- * Walk yEl's subtree collecting <script> nodes — but never descending into
- * a *nested* toy's own subtree (isRoot guards the very first call, which
- * is always itself a toy's own <g>, so its own immediate content is still
- * walked). Without this, activating a toy whose first-ever activation
- * happens to occur while another toy is already nested inside it (e.g.
- * .contents_group state synced from a peer, present from the very first
- * render) would walk into the nested toy's own <script> tags too and
- * misattribute them to the outer toy's toyType — see activateAllToyScripts,
- * which is what actually gets the nested toy's own scripts activated
- * separately, under its own toyType.
+ * Walk yEl's subtree collecting <script> nodes
+ *  - isRoot guards against descending into a *nested* toy's subtree
  */
 function findScriptNodes(yEl, results = [], isRoot = true) {
   if (!(yEl instanceof Y.XmlElement)) return results
@@ -947,7 +915,7 @@ async function activateScript(yScript, toyType) {
 }
 
 /**
- * Extract and evaluate every <script> node in a placed toy's Yjs tree, once
+ * Extract and evaluate every <script> node in a toy's Yjs tree, once
  * per toy type. Safe to call for every rendered instance and concurrently —
  * every caller for the same toyType shares one Promise, so a caller that
  * needs real completion (not just "started") can await this return value
@@ -1032,7 +1000,7 @@ export async function invokeMenuAction(ydoc, yToys, layerEl, svgEl, namespace, k
  *
  * archive2025's initialize(elem, prototype) took a second argument copying
  * config from a reference node, feeding a config-dialog flow master
- * doesn't have (a placed toy's initial state comes from its ttState options
+ * doesn't have (a toy's initial state comes from its ttState options
  * instead). `prototype` is deliberately never passed — a namespace's own
  * initialize() just receives undefined for it, which is the same guard
  * archive2025 authors already needed for a prototype-less call.
@@ -1049,12 +1017,11 @@ export async function initializeToy(ydoc, yToys, layerEl, svgEl, toyType) {
 }
 
 /**
- * Every tray id whose .contents_group contains yNode (or yNode itself, if
- * yNode IS a .contents_group) — ordered innermost to outermost
- * (From Yjs tree's .parent chain, not the DOM).
+ * Every tray id ancestor of yNode
+ * (or yNode itself, if yNode IS a .contents_group), ordered innermost
+ * to outermost (From Yjs tree's .parent chain, not the DOM).
  *
- * Used to find which tray(s), if any, need their contents_change_handler
- * re-run after a local change
+ * Used to percolate up contents_change_handler runs after a local change
  */
 export function findAncestorTrayIds(yNode) {
   const ids = []
@@ -1092,17 +1059,8 @@ export async function runContentsChangeHandler(ydoc, yToys, layerEl, svgEl, toyT
 }
 
 /**
- * Render the toys layer: clear layerEl, mirror every placed toy, then
- * kick off script activation (fire-and-forget — render() must stay
- * synchronous) for any toy type seen for the first time. activateToyScripts
- * is a no-op for already-activated types, so calling it per-instance on
- * every render is cheap and correct rather than needing its own gate here.
- * Walks the *whole* toys tree, not just top-level entries — a toy nested
- * inside a tray's .contents_group (e.g. present from the very first render,
- * synced from a peer) needs its own toyType activated too, on its own <g>,
- * now that findScriptNodes stops at nested-toy boundaries rather than
- * misattributing a nested toy's scripts to whichever toy happens to
- * activate first.
+ * Render the toys layer: clear layerEl, mirror every toy, then
+ * kick off script activation
  */
 export function render(yToys, layerEl) {
   layerEl.innerHTML = '';
@@ -1110,14 +1068,16 @@ export function render(yToys, layerEl) {
     svgEl.style.cursor = 'grab';
     layerEl.appendChild(svgEl);
   });
+  // (fire-and-forget — render() must stay synchronous)
   activateAllToyScripts(yToys);
 }
 
 /**
  * Recursively activate every distinct toyType found anywhere in the toys
- * tree — top-level and nested at any depth — each on its own <g>, so
- * findScriptNodes only ever walks that specific toy's own immediate
- * content (see its doc comment for why nesting boundaries matter here).
+ * tree (top-level and nested) each on its own <g>, so findScriptNodes
+ * only ever walks that specific toy's own immediate content
+ *
+ * Guards against re-activating already-seen toys
  */
 function activateAllToyScripts(yToys) {
   function walk(yEl) {

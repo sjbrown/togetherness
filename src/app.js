@@ -1200,11 +1200,8 @@ const App = {
       try {
         movedEl = reparentToy(_ydoc, _yToys, id, dropTrayId);
       } catch (err) {
-        // findDropTargetTray only checks for class 'tray' on the toy's own
-        // embedded <svg> — reparentToy's own stricter check (a real
-        // .contents_group) is the actual authority, so a malformed tray
-        // asset can still reach here and throw. Surface it rather than
-        // leaving the pointerup handler to crash silently mid-drag.
+        // a malformed tray asset can reach here and throw.
+        // Surface it, else the pointerup handler may crash silently mid-drag.
         UI.toast(`Could not move into tray: ${err.message}`, 'warn');
         return;
       }
