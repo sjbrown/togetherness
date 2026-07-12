@@ -46,12 +46,22 @@ export const TOY_TYPES = {
     file: 'dice_d6.svg', label: 'D6',
     iconSvg: '<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1.3" fill="currentColor"/><circle cx="15" cy="15" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/>',
   },
+  tray_sum: {
+    file: 'tray_sum.svg', label: 'Sum Tray',
+    iconSvg: '<rect x="3" y="5" width="18" height="14" rx="1.5"/><line x1="3" y1="15" x2="21" y2="15"/>',
+  },
 }
 
 
-// Display size on the canvas. The toy's own viewBox is preserved, so the
-// content scales to fit (preserveAspectRatio defaults to xMidYMid meet).
-const DISPLAY = 64
+const MIN_TOY_SIZE      = 30
+const MAX_TOY_SIZE      = 420
+const FALLBACK_TOY_SIZE = 64  // used when a dimension is missing/unparseable
+
+function clampToySize(value) {
+  const num = parseFloat(value)
+  if (!Number.isFinite(num) || num < MIN_TOY_SIZE || num > MAX_TOY_SIZE) return FALLBACK_TOY_SIZE
+  return num
+}
 
 // ── Color matrix ──────────────────────────────────────────────────────────────
 // Recolorizes the toy's feColorMatrix filter to tint it with the player's
@@ -196,12 +206,9 @@ function elementToYXml(node, idMap, refs) {
 
 /**
  * Parse a toy SVG file's text into a detached Y.XmlElement rooted at <svg>,
- * with all internal ids namespaced by `prefix`. Synthesizes a viewBox from
- * width/height if the file lacks one (so display sizing scales the content).
+ * with all internal ids namespaced by `prefix`.
  *
- * Returns { ySvg, colorMatrices } where colorMatrices is an array of direct
- * refs to any feColorMatrix nodes, usable immediately via setAttribute without
- * needing to walk the detached tree (which throws on toArray).
+ * Returns { ySvg, colorMatrices, width, height }
  */
 export function svgTextToYXml(svgText, prefix) {
   const dom  = new DOMParser().parseFromString(svgText, 'image/svg+xml')
@@ -215,12 +222,14 @@ export function svgTextToYXml(svgText, prefix) {
 
   const refs = { colorMatrices: [] }
   const ySvg = elementToYXml(root, idMap, refs)
+  const width  = parseFloat(root.getAttribute('width'))  || 100
+  const height = parseFloat(root.getAttribute('height')) || 100
+  // Synthesize a viewBox from width/height if the file
+  // lacks one (so display sizing scales the content).
   if (!root.getAttribute('viewBox')) {
-    const w = parseFloat(root.getAttribute('width'))  || 100
-    const h = parseFloat(root.getAttribute('height')) || 100
-    ySvg.setAttribute('viewBox', `0 0 ${w} ${h}`)
+    ySvg.setAttribute('viewBox', `0 0 ${width} ${height}`)
   }
-  return { ySvg, colorMatrices: refs.colorMatrices }
+  return { ySvg, colorMatrices: refs.colorMatrices, width, height }
 }
 
 // ── Toy operations ────────────────────────────────────────────────────────────
@@ -241,7 +250,7 @@ export function _clearSvgTextCache() { _svgTextCache.clear() }
 export function addToySync(ydoc, yToys, attrs, svgText) {
   const { id, toyType, x, y, color } = attrs
   const prefix = `${id}__`
-  const { ySvg, colorMatrices } = svgTextToYXml(svgText, prefix)
+  const { ySvg, colorMatrices, width: nativeWidth, height: nativeHeight } = svgTextToYXml(svgText, prefix)
 
   // Tint the toy's colorize filter with the player's color before insertion.
   // The matrix values are set on the direct refs captured during import,
@@ -249,11 +258,12 @@ export function addToySync(ydoc, yToys, attrs, svgText) {
   if (color) applyColor(colorMatrices, color)
 
   ydoc.transact(() => {
-    // size + center the embedded sub-document on (x, y)
-    ySvg.setAttribute('x',      String(x - DISPLAY / 2))
-    ySvg.setAttribute('y',      String(y - DISPLAY / 2))
-    ySvg.setAttribute('width',  String(DISPLAY))
-    ySvg.setAttribute('height', String(DISPLAY))
+    const width  = clampToySize(nativeWidth)
+    const height = clampToySize(nativeHeight)
+    ySvg.setAttribute('x',      String(x - width / 2))
+    ySvg.setAttribute('y',      String(y - height / 2))
+    ySvg.setAttribute('width',  String(width))
+    ySvg.setAttribute('height', String(height))
 
     const g = new Y.XmlElement('g')
     g.setAttribute('class',         'toy')
@@ -288,27 +298,147 @@ export async function addToy(ydoc, yToys, attrs) {
 }
 
 /**
- * Remove a toy by id. Returns true if found.
+ * Whether a Y.XmlElement is a toy's wrapper:
+    <g class="toy" data-toy-id data-toy-type>
+ */
+function isToyG(yEl) {
+  if (!(yEl instanceof Y.XmlElement) || yEl.nodeName !== 'g') return false
+  return (yEl.getAttribute('class') || '').split(/\s+/).includes('toy')
+}
+
+function findContentsGroupYEl(toyG) {
+  const svg = toyG.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'svg')
+  if (!svg) return null
+  return svg.toArray().find(c =>
+    c instanceof Y.XmlElement && c.nodeName === 'g' &&
+    (c.getAttribute('class') || '').split(/\s+/).includes('contents_group')
+  ) ?? null
+}
+
+/**
+ * Locate a toy anywhere in the toys tree — at the top level of
+ * yToys, or nested arbitrarily deep inside other toys' .contents_group
+ * containers
+ * Returns { yEl, parent, index }
+ *   parent - whichever Y.XmlFragment/Y.XmlElement directly holds it
+ *   index  - its position there
+ * So callers can both read and splice it out.
+ * Returns null if no toy with this id exists anywhere in the tree.
+ */
+function findToyLocation(container, id) {
+  const children = container.toArray()
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]
+    if (!isToyG(child)) continue
+    if (child.getAttribute('data-toy-id') === id) {
+      return { yEl: child, parent: container, index: i }
+    }
+    const contentsGroup = findContentsGroupYEl(child)
+    if (contentsGroup) {
+      const found = findToyLocation(contentsGroup, id)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+/**
+ * Whether toyG is targetId itself, or has targetId anywhere among its own
+ * (arbitrarily nested) contained toys
+ */
+function toyContains(toyG, targetId) {
+  if (toyG.getAttribute('data-toy-id') === targetId) return true
+  const contentsGroup = findContentsGroupYEl(toyG)
+  if (!contentsGroup) return false
+  return contentsGroup.toArray().some(child => isToyG(child) && toyContains(child, targetId))
+}
+
+/**
+ * Remove a toy by id — searches the whole toys tree, including nested
  */
 export function deleteToy(ydoc, yToys, id) {
-  const idx = yToys.toArray().findIndex(
-    g => g instanceof Y.XmlElement && g.getAttribute('data-toy-id') === id
-  )
-  if (idx === -1) return false
+  const location = findToyLocation(yToys, id)
+  if (!location) return false
   ydoc.transact(() => {
-    yToys.delete(idx, 1)
+    location.parent.delete(location.index, 1)
   })
   return true
 }
 
 /**
- * Find a toy's <g> wrapper by id. Returns null if not found.
+ * Find a toy's <g> wrapper by id — searches the whole toys tree, including
+ * nested inside trays. Returns null if not found.
  */
 export function findToy(yToys, id) {
-  return yToys.toArray().find(
-    g => g instanceof Y.XmlElement && g.getAttribute('data-toy-id') === id
-  ) ?? null
+  return findToyLocation(yToys, id)?.yEl ?? null
 }
+
+/**
+ * Move a toy to a new position in the containment tree: either into
+ * a tray's .contents_group (targetTrayId given), or back to the top level
+ * of the toys layer (targetTrayId null/undefined).
+ * This is a structural Yjs operation, not a DOM one
+ *
+ * We accept that peers doing a concurrent remote edit targeting the old
+ * items will be lost
+ *  - We should have had a soft-lock in the first place
+ *  - Reparenting is rare and deliberate
+ *
+ * Returns the newly-inserted (cloned) Y.XmlElement.
+ */
+export function reparentToy(ydoc, yToys, id, targetTrayId) {
+  const location = findToyLocation(yToys, id)
+  if (!location) throw new Error(`[toys] reparentToy: toy not found: ${id}`)
+  const { yEl, parent, index } = location
+
+  /*
+  * Throws if:
+  *  - id doesn't exist anywhere in the tree
+  *  - targetTrayId doesn't exist
+  *  - targetTrayId has no .contents_group
+  *  - targetTrayId is id itself or one of id's own descendant toys
+  *    - moving a toy into its own descendant would disconnect that subtree
+  *      from the doc entirely, so this is refused
+  */
+  let targetFragment
+  if (targetTrayId == null) {
+    targetFragment = yToys
+  } else {
+    if (toyContains(yEl, targetTrayId)) {
+      throw new Error(`[toys] reparentToy: cannot move ${id} into itself or one of its own contained toys (${targetTrayId})`)
+    }
+    const targetLocation = findToyLocation(yToys, targetTrayId)
+    if (!targetLocation) {
+      throw new Error(`[toys] reparentToy: target tray not found: ${targetTrayId}`)
+    }
+    const contentsGroup = findContentsGroupYEl(targetLocation.yEl)
+    if (!contentsGroup) {
+      throw new Error(`[toys] reparentToy: target ${targetTrayId} has no .contents_group`)
+    }
+    targetFragment = contentsGroup
+  }
+
+  /*
+  *  YJS-TRANSACTION-OPENED
+  *  - yEl.clone() to deep-copy
+  *  - Entire subtree is now fresh, detached Yjs items
+  *  - Delete original
+  *  - CRDT identity is destroyed for the moved subtree.
+  *  - Clone inserted at destination
+  * YJS-TRANSACTION-CLOSED
+  *
+  */
+  let movedEl
+  ydoc.transact(() => {
+    const clone = yEl.clone()
+    parent.delete(index, 1)
+    targetFragment.insert(targetFragment.length, [clone])
+    movedEl = clone
+  })
+  return movedEl
+}
+
+
 
 /**
  * Bounding box for a rendered toy svgEl, read from its embedded <svg> child's
@@ -328,7 +458,7 @@ export function getGeom(svgEl) {
 
 /**
  * The drag anchor for a toy is its centre point — matching how addToy places
- * it: x = center - DISPLAY/2, y = center - DISPLAY/2.
+ * it: x = center - width/2, y = center - height/2 (the toy's own native size).
  * Returns { x, y } in canvas-space, or { x: 0, y: 0 } if the geom is unavailable.
  */
 export function getAnchor(svgEl) {
@@ -337,20 +467,60 @@ export function getAnchor(svgEl) {
   return { x: geom.x + geom.width / 2, y: geom.y + geom.height / 2 }
 }
 
+function rectsOverlap(a, b) {
+  return a.x < b.x + b.width && a.x + a.width > b.x &&
+         a.y < b.y + b.height && a.y + a.height > b.y
+}
+
+/**
+ * Hit-test a toy's drop position against every top-level tray
+ * Returns id of the first tray whose geometry overlaps the dragged
+ * toy's would-be bounding box — or null if none does.
+ *
+ *  - (rx, ry) is the drop centre point
+ *
+ * TODO: Only top-level toys are considered, due to data-yid constraints
+ *
+ * TODO: trays are recognized by class-contains-tray.  Expand this to
+ *       generic containers - anything that has .contents_group
+ */
+export function findDropTargetTray(layerEl, draggedId, rx, ry) {
+  if (!layerEl) return null
+  const draggedEl = layerEl.querySelector(`:scope > [data-yid="${draggedId}"]`)
+  const draggedGeom = getGeom(draggedEl)
+  if (!draggedGeom) return null
+  const draggedRect = {
+    x: rx - draggedGeom.width / 2, y: ry - draggedGeom.height / 2,
+    width: draggedGeom.width, height: draggedGeom.height,
+  }
+
+  for (const el of layerEl.querySelectorAll(':scope > [data-yid]')) {
+    const trayId = el.getAttribute('data-yid')
+    if (trayId === draggedId) continue
+    const ownSvg = el.querySelector(':scope > svg')
+    if (!ownSvg?.classList.contains('tray')) continue
+    const trayGeom = getGeom(el)
+    if (trayGeom && rectsOverlap(draggedRect, trayGeom)) return trayId
+  }
+  return null
+}
+
 
 /**
  * Commit a toy move to the Yjs doc in a single transaction.
  * Called once on pointerup — never during drag.
- * (cx, cy) is the centre point; the embedded <svg> is offset by -DISPLAY/2.
  */
 export function applyMoveCommit(ydoc, yToy, cx, cy) {
   if (!yToy) return
   const ySvg = yToy.toArray()[0]
   if (!ySvg) return
-  const half = Math.round(parseFloat(ySvg.getAttribute('width') ?? String(DISPLAY)) / 2)
+  // (cx, cy) is the centre point; the embedded <svg> is offset by
+  // (-width/2, -height/2) using the toy's own w & h
+  const halfW = Math.round(parseFloat(ySvg.getAttribute('width')  ?? String(FALLBACK_TOY_SIZE)) / 2)
+  const halfH = Math.round(parseFloat(ySvg.getAttribute('height') ?? String(FALLBACK_TOY_SIZE)) / 2)
   ydoc.transact(() => {
-    ySvg.setAttribute('x', String(cx - half))
-    ySvg.setAttribute('y', String(cy - half))
+    ySvg.setAttribute('x', String(cx - halfW))
+    ySvg.setAttribute('y', String(cy - halfH))
   })
 }
 
@@ -363,9 +533,10 @@ export function applyMoveDom(domEl, cx, cy) {
   if (!domEl) return
   const domSvg = domEl.querySelector?.('svg')
   if (!domSvg) return
-  const half = Math.round(parseFloat(domSvg.getAttribute('width') ?? String(DISPLAY)) / 2)
-  domSvg.setAttribute('x', cx - half)
-  domSvg.setAttribute('y', cy - half)
+  const halfW = Math.round(parseFloat(domSvg.getAttribute('width')  ?? String(FALLBACK_TOY_SIZE)) / 2)
+  const halfH = Math.round(parseFloat(domSvg.getAttribute('height') ?? String(FALLBACK_TOY_SIZE)) / 2)
+  domSvg.setAttribute('x', cx - halfW)
+  domSvg.setAttribute('y', cy - halfH)
 }
 
 
@@ -533,6 +704,14 @@ export const TOOLS = [
       { kind: 'color-hsl', key: 'fill', label: 'Die color', show: ['add', 'edit', 'addQuick'] },
     ],
   },
+  {
+    name:    'tray_sum',
+    toyType: 'tray_sum',
+    label:   TOY_TYPES['tray_sum'].label,
+    iconUrl: 'toy/tray_sum.svg',
+    layer:   'toys',
+    defaults: { fill: '#5e7ea8' },
+  },
 ];
 
 // ── ttState / ttStateSchema ───────────────────────────────────────────────────
@@ -553,18 +732,22 @@ function findAllYNodes(yEl, nodeName, results = []) {
  * Return the ttStateSchema for a rendered toy element.
  * Color is read from the data-color attribute on the <g> wrapper, which is
  * part of the Yjs tree and always in sync with the CRDT state.
+ *
+ * TODO: rather than excluding tray_sum, this should instead toys that are
+ *       colorable
  */
 export function getTtStateSchema(svgEl) {
+  const toyType = svgEl.getAttribute('data-toy-type')
   return {
     color: svgEl.getAttribute('data-color') ?? '#888',
-    types: {
+    types: toyType === 'tray_sum' ? {} : {
       color: 'color-hsl',   // hsl only — toy opacity is not user-editable
     },
   };
 }
 
 /**
- * Snapshot the full serialisable state of a placed toy Y.XmlElement (<g>).
+ * Snapshot the full serialisable state of a toy Y.XmlElement (<g>).
  * Captures the position from the inner <svg> child. Author/created are omitted;
  * those are provenance, not element state.
  */
@@ -576,10 +759,11 @@ export function getTtState(yToy) {
   const ySvg    = yToy.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'svg');
   const x       = ySvg ? Number(ySvg.getAttribute('x') ?? 0) : 0;
   const y       = ySvg ? Number(ySvg.getAttribute('y') ?? 0) : 0;
-  const size    = ySvg ? Number(ySvg.getAttribute('width') ?? DISPLAY) : DISPLAY;
+  const width   = ySvg ? Number(ySvg.getAttribute('width')  ?? FALLBACK_TOY_SIZE) : FALLBACK_TOY_SIZE;
+  const height  = ySvg ? Number(ySvg.getAttribute('height') ?? FALLBACK_TOY_SIZE) : FALLBACK_TOY_SIZE;
   // Center point (matches getAnchor convention)
-  const cx = x + size / 2;
-  const cy = y + size / 2;
+  const cx = x + width / 2;
+  const cy = y + height / 2;
   return { id, toyType, color, cx, cy };
 }
 
@@ -606,7 +790,7 @@ export async function applyTtState(ydoc, yToys, state) {
 }
 
 /**
- * Apply an editData object to a placed toy.
+ * Apply an editData object to a toy.
  * Currently only `color` is editable: all feColorMatrix nodes in the toy's
  * Yjs tree are updated and data-color on the <g> wrapper is kept in sync.
  * Called by App.commitEdit — never called directly from the UI.
@@ -667,15 +851,29 @@ export function getNamespacesForType(toyType) {
   return _namespacesByType.get(toyType) ?? []
 }
 
+// Bridged onto globalThis because toy behaviour scripts
+// run via indirect eval into global scope (see evalGlobal below) and can't
+// import this module's bindings.
+// Generic containers use this to resolve a contained
+// toy's own value: look up its declared namespaces by data-toy-type, then
+// ask each for getValue().
+// TODO: consider globalThis.getNamespacesForEl which takes a dom element
+globalThis.getNamespacesForType = getNamespacesForType
+
 /** Whether a toy type's scripts have already been evaluated this session. */
 export function isToyTypeActivated(toyType) {
   return _activatedTypes.has(toyType)
 }
 
-function findScriptNodes(yEl, results = []) {
+/**
+ * Walk yEl's subtree collecting <script> nodes
+ *  - isRoot guards against descending into a *nested* toy's subtree
+ */
+function findScriptNodes(yEl, results = [], isRoot = true) {
   if (!(yEl instanceof Y.XmlElement)) return results
-  if (yEl.nodeName === 'script') results.push(yEl)
-  for (const child of yEl.toArray()) findScriptNodes(child, results)
+  if (yEl.nodeName === 'script') { results.push(yEl); return results }
+  if (!isRoot && isToyG(yEl)) return results
+  for (const child of yEl.toArray()) findScriptNodes(child, results, false)
   return results
 }
 
@@ -717,7 +915,7 @@ async function activateScript(yScript, toyType) {
 }
 
 /**
- * Extract and evaluate every <script> node in a placed toy's Yjs tree, once
+ * Extract and evaluate every <script> node in a toy's Yjs tree, once
  * per toy type. Safe to call for every rendered instance and concurrently —
  * every caller for the same toyType shares one Promise, so a caller that
  * needs real completion (not just "started") can await this return value
@@ -802,7 +1000,7 @@ export async function invokeMenuAction(ydoc, yToys, layerEl, svgEl, namespace, k
  *
  * archive2025's initialize(elem, prototype) took a second argument copying
  * config from a reference node, feeding a config-dialog flow master
- * doesn't have (a placed toy's initial state comes from its ttState options
+ * doesn't have (a toy's initial state comes from its ttState options
  * instead). `prototype` is deliberately never passed — a namespace's own
  * initialize() just receives undefined for it, which is the same guard
  * archive2025 authors already needed for a prototype-less call.
@@ -819,11 +1017,50 @@ export async function initializeToy(ydoc, yToys, layerEl, svgEl, toyType) {
 }
 
 /**
- * Render the toys layer: clear layerEl, mirror every placed toy, then
- * kick off script activation (fire-and-forget — render() must stay
- * synchronous) for any toy type seen for the first time. activateToyScripts
- * is a no-op for already-activated types, so calling it per-instance on
- * every render is cheap and correct rather than needing its own gate here.
+ * Every tray id ancestor of yNode
+ * (or yNode itself, if yNode IS a .contents_group), ordered innermost
+ * to outermost (From Yjs tree's .parent chain, not the DOM).
+ *
+ * Used to percolate up contents_change_handler runs after a local change
+ */
+export function findAncestorTrayIds(yNode) {
+  const ids = []
+  let node = yNode
+  while (node) {
+    const isContentsGroup = node instanceof Y.XmlElement && node.nodeName === 'g' &&
+      (node.getAttribute('class') || '').split(/\s+/).includes('contents_group')
+    if (isContentsGroup) {
+      const trayG = node.parent?.parent // contents_group -> tray's own <svg> -> tray's <g>
+      const trayId = trayG instanceof Y.XmlElement ? trayG.getAttribute('data-toy-id') : null
+      if (trayId) ids.push(trayId)
+    }
+    node = node.parent
+  }
+  return ids
+}
+
+/**
+ * Run every activated namespace's contents_change_handler(elem), if
+ * present, for toyType — inside an envelope, so a recomputed result
+ * (e.g. a tray's sum) commits back to Yjs like any other handler mutation,
+ * and syncs to peers.
+ *
+ * No-op if toyType has no contents_change_handler-providing namespace.
+ */
+export async function runContentsChangeHandler(ydoc, yToys, layerEl, svgEl, toyType) {
+  const handlers = getNamespacesForType(toyType)
+    .map(name => globalThis[name])
+    .filter(ns => ns && typeof ns.contents_change_handler === 'function')
+  if (!handlers.length) return
+
+  await runToyHandler(ydoc, yToys, layerEl, svgEl, () => {
+    handlers.forEach(ns => ns.contents_change_handler(svgEl))
+  })
+}
+
+/**
+ * Render the toys layer: clear layerEl, mirror every toy, then
+ * kick off script activation
  */
 export function render(yToys, layerEl) {
   layerEl.innerHTML = '';
@@ -831,14 +1068,31 @@ export function render(yToys, layerEl) {
     svgEl.style.cursor = 'grab';
     layerEl.appendChild(svgEl);
   });
-  yToys.toArray().forEach(yEl => {
+  // (fire-and-forget — render() must stay synchronous)
+  activateAllToyScripts(yToys);
+}
+
+/**
+ * Recursively activate every distinct toyType found anywhere in the toys
+ * tree (top-level and nested) each on its own <g>, so findScriptNodes
+ * only ever walks that specific toy's own immediate content
+ *
+ * Guards against re-activating already-seen toys
+ */
+function activateAllToyScripts(yToys) {
+  function walk(yEl) {
     if (!(yEl instanceof Y.XmlElement)) return
-    const toyType = yEl.getAttribute('data-toy-type')
-    if (!toyType || isToyTypeActivated(toyType)) return
-    activateToyScripts(yEl, toyType).catch(err => {
-      console.error(`[toys] script activation failed for toy type "${toyType}"`, err)
-    })
-  })
+    if (isToyG(yEl)) {
+      const toyType = yEl.getAttribute('data-toy-type')
+      if (toyType && !isToyTypeActivated(toyType)) {
+        activateToyScripts(yEl, toyType).catch(err => {
+          console.error(`[toys] script activation failed for toy type "${toyType}"`, err)
+        })
+      }
+    }
+    yEl.toArray().forEach(walk)
+  }
+  yToys.toArray().forEach(walk)
 }
 
 /**

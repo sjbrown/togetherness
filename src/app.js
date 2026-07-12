@@ -25,7 +25,9 @@ import * as Storage                               from './storage.js';
 import * as BounPos                               from './boun_pos.js';
 import { SHAPE_TYPES }                            from './drawing.js';
 import { TOOLS as TOY_TOOLS, TOY_TYPES, addToy, findToy,
-         getMenuActions, invokeMenuAction, activateToyScripts, initializeToy } from './toys.js';
+         getMenuActions, invokeMenuAction, activateToyScripts, initializeToy,
+         findDropTargetTray, reparentToy,
+         findAncestorTrayIds, runContentsChangeHandler } from './toys.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
 import { BOUNPOS_TYPES,
          addPositionSet, createPositionSetElement,
@@ -457,6 +459,12 @@ function onBounPosChanged(events, transaction) {
   renderDoc();
 }
 
+// Reentrancy guard for dispatchContentsChangeCascade, below. Committing a
+// tray's recomputed result _is_ a local Yjs transaction, which synchronously
+// re-fires this very observer before the original call even returns.
+// Using this flag avoids re-dispatching the parent's recompute redundantly.
+let _dispatchingContentsChange = false;
+
 function onToysChanged(events, transaction) {
   if (!transaction.local) { // filters out our own ops
     for (const event of events) {
@@ -484,7 +492,56 @@ function onToysChanged(events, transaction) {
       });
     }
   }
+  // renderDoc() runs *before* the dispatchContentsChangeCascade below.
+  // contents_change_handler reads the *DOM*, so the toys layer must
+  // already reflect this transaction's just-committed change (eg a mutation
+  // to a die inside .contents_group after a reparentToy)
+  // before the handler runs
   renderDoc();
+  if (transaction.local && !_dispatchingContentsChange) {
+    // Derived contents_change: local change touched inside a
+    // tray's .contents_group -- recompute that tray's own derived display.
+    // Remote-origin changes are deliberately excluded: the *originator*
+    // computes and the result syncs as data, so every peer applies the same
+    // recompute logic exactly once rather than each peer re-deriving it
+    // independently from a synced change
+    // (which could disagree if handler code ever differs between clients)
+    dispatchContentsChangeCascade(events);
+  }
+}
+
+// Local transaction touched something inside a tray's .contents_group?
+// Recompute every affected tray's own contents_change_handler, innermost
+// first, so outer trays have a chance to read inner tray's results
+// Computed as one upfront pass over *this* transaction's events, so a 
+// single die roll inside a doubly-nested tray still resolves in *one* dispatch.
+function dispatchContentsChangeCascade(events) {
+  const depthById = new Map(); // trayId → nesting depth; deeper = recompute first
+  for (const event of events) {
+    const chain = findAncestorTrayIds(event.target); // innermost first
+    chain.forEach((trayId, i) => {
+      const depth = chain.length - i;
+      if (depth > (depthById.get(trayId) ?? -1)) depthById.set(trayId, depth);
+    });
+  }
+  if (!depthById.size) return;
+
+  const trayIds = [...depthById.keys()].sort((a, b) => depthById.get(b) - depthById.get(a));
+  const layerEl = _svgEl.querySelector('#toys-layer');
+
+  _dispatchingContentsChange = true;
+  (async () => {
+    for (const trayId of trayIds) {
+      const trayEl = layerEl?.querySelector(`[data-toy-id="${trayId}"]`);
+      const yTray  = findToy(_yToys, trayId);
+      if (!trayEl || !yTray) continue; // e.g. the tray itself was deleted in the same transaction
+      await runContentsChangeHandler(_ydoc, _yToys, layerEl, trayEl, yTray.getAttribute('data-toy-type'));
+    }
+  })().catch(err => {
+    console.error('[app] contents_change_handler dispatch failed', err);
+  }).finally(() => {
+    _dispatchingContentsChange = false;
+  });
 }
 function onDrawingChanged(events, transaction) {
   // Log remote structural changes (add / delete). Attribute changes (moves)
@@ -1101,6 +1158,16 @@ const App = {
       bboxX: _dragState.startBboxX + dx,
       bboxY: _dragState.startBboxY + dy,
     });
+
+    // Live drop-target affordance: re-hit-test on every move against the
+    // *drop* position (rx, ry — already boundary/snap-validated above), not
+    // the raw pointer, so the highlighted tray always matches what
+    // commitMove would actually reparent into.
+    const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
+    if (moduleForElement(domEl) === 'toys') {
+      const toysLayerEl = _svgEl.querySelector('#toys-layer');
+      Overlay.setDropTargetHover(findDropTargetTray(toysLayerEl, id, rx, ry));
+    }
   },
 
   commitMove: (id, x, y) => {
@@ -1116,10 +1183,46 @@ const App = {
     const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
     const mtype = moduleForElement(domEl);
 
+    // Same hit-test move() used for the live hover highlight, run once more
+    // against the final drop position
+    const dropTrayId = mtype === 'toys'
+      ? findDropTargetTray(_svgEl.querySelector('#toys-layer'), id, rx, ry)
+      : null;
+
     // Ghost gone before bbox changes — prevents one-frame ghost "jitter"
     Overlay.endDragPlaceholder(id);
+    Overlay.setDropTargetHover(null);
     _awareness.setLocalStateField('drag', null);
     _dragState = null;
+
+    if (dropTrayId) {
+      let movedEl;
+      try {
+        movedEl = reparentToy(_ydoc, _yToys, id, dropTrayId);
+      } catch (err) {
+        // a malformed tray asset can reach here and throw.
+        // Surface it, else the pointerup handler may crash silently mid-drag.
+        UI.toast(`Could not move into tray: ${err.message}`, 'warn');
+        return;
+      }
+
+      // Reposition into the tray's own local coordinate space
+      const trayEl = _svgEl.querySelector(`[data-yid="${dropTrayId}"]`);
+      const trayGeom = trayEl && Toys.getGeom(trayEl);
+      if (trayGeom) {
+        Toys.applyMoveCommit(_ydoc, movedEl, rx - trayGeom.x, ry - trayGeom.y);
+      }
+
+      // observeDeep fires and calls renderDoc() — same as the ordinary
+      // move-commit path below.
+      //
+      // TODO: Not pushed to _undoStack: reparenting isn't undoable yet
+      addHistory(`moved ${id.slice(0, 6)} into a tray`, {
+        fill: domEl?.getAttribute('fill'),
+        elType: mtype,
+      });
+      return;
+    }
 
     if (_Layers[mtype]) {
       _Layers[mtype].applyMoveCommit(_Layers[mtype].find(id), rx, ry);
@@ -1136,6 +1239,7 @@ const App = {
     if (!_dragState) return;
     const id = _dragState.id;
     Overlay.endDragPlaceholder(id);
+    Overlay.setDropTargetHover(null);
     _awareness.setLocalStateField('drag', null);
     _dragState = null;
   },

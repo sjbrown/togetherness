@@ -2,8 +2,8 @@
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  svgTextToYXml, addToy, deleteToy, listToys, findToy, TOY_TYPES,
-  getGeom, _toSVGEl,
+  svgTextToYXml, addToy, deleteToy, listToys, findToy, TOY_TYPES, TOOLS,
+  getGeom, _toSVGEl, getTtStateSchema,
   hslToRgb, colorMatrixValues,
   _clearSvgTextCache,
   yNodeFor, clearYNodeMap,
@@ -181,17 +181,17 @@ describe('addToy', () => {
     expect(g.getAttribute('data-color')).toBe('#abc')
   })
 
-  test('embeds an <svg> sub-document sized and centered on (x, y)', async () => {
+  test('embeds an <svg> sub-document sized and centered on (x, y), using the file\u2019s own native size (TOY_SVG is 80\u00d7100)', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 100, y: 200, color: '#abc' })
 
     const svg = find(yToys.toArray()[0], 'svg')
     expect(svg).toBeTruthy()
-    expect(svg.getAttribute('width')).toBe('64')
-    expect(svg.getAttribute('height')).toBe('64')
-    expect(svg.getAttribute('x')).toBe('68')   // 100 - 64/2
-    expect(svg.getAttribute('y')).toBe('168')  // 200 - 64/2
+    expect(svg.getAttribute('width')).toBe('80')
+    expect(svg.getAttribute('height')).toBe('100')
+    expect(svg.getAttribute('x')).toBe('60')   // 100 - 80/2
+    expect(svg.getAttribute('y')).toBe('150')  // 200 - 100/2
   })
 
   test('records data-toy-type and data-color on the <g> wrapper', async () => {
@@ -519,10 +519,12 @@ describe('findToy', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('getGeom (toys)', () => {
-  // addToy places the embedded <svg> at x = cx - DISPLAY/2, y = cy - DISPLAY/2
-  // with width = height = DISPLAY (64). getGeom reads those attrs off the
-  // rendered svgEl — no padding.
-  const DISPLAY = 64
+  // addToy places the embedded <svg> at x = cx - width/2, y = cy - height/2,
+  // using the toy's own native size — TOY_SVG (see top of file) is 80x100,
+  // not square, so width/height are tracked separately here on purpose.
+  // getGeom reads those attrs off the rendered svgEl — no padding.
+  const TOY_WIDTH  = 80
+  const TOY_HEIGHT = 100
   const elFor = (yToys, id) => _toSVGEl(findToy(yToys, id))
 
   test('returns numeric bbox centered on the placement point', async () => {
@@ -530,7 +532,7 @@ describe('getGeom (toys)', () => {
     const { yToys } = getToysLayer(ydoc)
     await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 100, y: 200 })
     const geo = getGeom(elFor(yToys, 't1'))
-    expect(geo).toEqual({ x: 100 - DISPLAY / 2, y: 200 - DISPLAY / 2, width: DISPLAY, height: DISPLAY })
+    expect(geo).toEqual({ x: 100 - TOY_WIDTH / 2, y: 200 - TOY_HEIGHT / 2, width: TOY_WIDTH, height: TOY_HEIGHT })
     expect(typeof geo.x).toBe('number')
     expect(typeof geo.width).toBe('number')
   })
@@ -540,10 +542,10 @@ describe('getGeom (toys)', () => {
     const { yToys } = getToysLayer(ydoc)
     await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 50, y: 80 })
     const geo = getGeom(elFor(yToys, 't1'))
-    expect(geo.x).toBe(50 - DISPLAY / 2)
-    expect(geo.y).toBe(80 - DISPLAY / 2)
-    expect(geo.width).toBe(DISPLAY)
-    expect(geo.height).toBe(DISPLAY)
+    expect(geo.x).toBe(50 - TOY_WIDTH / 2)
+    expect(geo.y).toBe(80 - TOY_HEIGHT / 2)
+    expect(geo.width).toBe(TOY_WIDTH)
+    expect(geo.height).toBe(TOY_HEIGHT)
   })
 
   test('returns null for a missing toy / nullish input', () => {
@@ -580,8 +582,8 @@ describe('getGeom (toys)', () => {
 
     const geoA = getGeom(elFor(yToys, 'a'))
     const geoB = getGeom(elFor(yToys, 'b'))
-    expect(geoA.x).toBe(100 - DISPLAY / 2)
-    expect(geoB.x).toBe(400 - DISPLAY / 2)
+    expect(geoA.x).toBe(100 - TOY_WIDTH / 2)
+    expect(geoB.x).toBe(400 - TOY_WIDTH / 2)
     expect(geoA.x).not.toBe(geoB.x)
   })
 })
@@ -605,13 +607,15 @@ function embeddedSvg(yToys, id) {
 }
 
 describe('movement', () => {
-  const DISPLAY = 64
+  // TOY_SVG (top of file) is 80x100 — addToy places it at x = cx - 40, y = cy - 50.
+  const TOY_WIDTH  = 80
+  const TOY_HEIGHT = 100
 
   test('committing a move updates the embedded svg position', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     await addToy(ydoc, yToys, { id: 't', toyType: 'player_marker', x: 100, y: 100 })
-    expect(embeddedSvg(yToys, 't').getAttribute('x')).toBe(String(100 - DISPLAY / 2))
+    expect(embeddedSvg(yToys, 't').getAttribute('x')).toBe(String(100 - TOY_WIDTH / 2))
 
     commitMove(ydoc, yToys, 't', 200, 250)
     const svg = embeddedSvg(yToys, 't')
@@ -625,7 +629,7 @@ describe('movement', () => {
     await addToy(ydoc, yToys, { id: 't', toyType: 'player_marker', x: 100, y: 100 })
     commitMove(ydoc, yToys, 't', 300, 0)
     const geo = getGeom(_toSVGEl(findToy(yToys, 't')))
-    expect(geo).toEqual({ x: 300, y: 0, width: DISPLAY, height: DISPLAY })
+    expect(geo).toEqual({ x: 300, y: 0, width: TOY_WIDTH, height: TOY_HEIGHT })
   })
 
   test('a move syncs to a peer', async () => {
@@ -829,5 +833,33 @@ describe('applyColor (via addToy)', () => {
     await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0, color: undefined })
     // default from the TOY_SVG fixture: '1 0 0 0 0  1 0 0 0 0  1 0 0 0 0  0 0 0 1 0'
     expect(getMatrixEl(yToys).getAttribute('values')).toContain('1 0 0 0 0')
+  })
+})
+
+describe('tray_sum has no color tool option', () => {
+  test('TOOLS.tray_sum has no color-hsl option, unlike marker/d6', () => {
+    const trayTool = TOOLS.find(t => t.toyType === 'tray_sum')
+    const d6Tool    = TOOLS.find(t => t.toyType === 'dice_d6')
+    const markerTool = TOOLS.find(t => t.toyType === 'player_marker')
+
+    expect((trayTool.options ?? []).some(o => o.kind === 'color-hsl')).toBe(false)
+    expect(d6Tool.options.some(o => o.kind === 'color-hsl')).toBe(true)
+    expect(markerTool.options.some(o => o.kind === 'color-hsl')).toBe(true)
+  })
+
+  test('getTtStateSchema omits color from types for a placed tray_sum, but still includes it for other toys', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#5e7ea8' })
+    await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#a8905e' })
+
+    const traySchema = getTtStateSchema(_toSVGEl(findToy(yToys, 'tray1')))
+    const dieSchema   = getTtStateSchema(_toSVGEl(findToy(yToys, 'die1')))
+
+    expect(traySchema.types).not.toHaveProperty('color')
+    expect(dieSchema.types).toHaveProperty('color', 'color-hsl')
+    // the color value itself is still present as data either way — just not
+    // exposed as an editable field for trays.
+    expect(traySchema.color).toBe('#5e7ea8')
   })
 })
