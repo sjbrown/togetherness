@@ -153,3 +153,14 @@ in passing.
 ### 13. "Fix"ing or "Opening" of trays so that contents can be pulled out
 
 ### 14. separate the concerns of the yid and a Togetherness-centric "tt id"
+
+### 15. Tray end-to-end (Playwright) test:
+
+Two browsers, drag die into tray, Roll All, both peers converge
+
+### 16. TOYS.md — the authoring contract
+
+The DOM users will see in an exported file, the menu/initialize/getValue
+entry points, the sync-handler rule, the selector guideline, helper
+namespaces. This doc is also the seed spec for the future in-browser
+toy editor.
