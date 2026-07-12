@@ -24,7 +24,7 @@ import * as Toys                                  from './toys.js';
 import * as Storage                               from './storage.js';
 import * as BounPos                               from './boun_pos.js';
 import { SHAPE_TYPES }                            from './drawing.js';
-import { TOOLS as TOY_TOOLS, TOY_TYPES, addToy, findToy,
+import { TOOLS as TOY_TOOLS, TOY_TYPES, addToy, findToy, newToyId,
          getMenuActions, invokeMenuAction, activateToyScripts, initializeToy,
          findDropTargetTray, reparentToy,
          findAncestorTrayIds, runContentsChangeHandler } from './toys.js';
@@ -1003,7 +1003,7 @@ const App = {
   commitToy: (toolName, x, y) => {
     const def = _toolById[toolName];
     if (!def?.toyType) { UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
-    const id = App.getMyId() + '_' + Math.random().toString(36).slice(2, 7);
+    const id = newToyId();
     addToy(_ydoc, _yToys, {
       id, toyType: def.toyType, x, y,
       color: _toolParams[toolName]?.fill ?? _myGrad.c1,
