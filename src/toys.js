@@ -16,11 +16,14 @@
  * Activating them (running the code, wiring up menu actions and lifecycle
  * hooks) is a separate step, in the "Toy behaviour contract" section near
  * the bottom of this file.
+ *
+ * ID format: tt-t-v1-XXXXX
  */
 import * as Y from 'yjs';
 
 const SVG_NS   = 'http://www.w3.org/2000/svg'
 const XLINK_NS = 'http://www.w3.org/1999/xlink'
+const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789'
 
 import { number, bool } from './tools-schema.js';
 import { runToyHandler } from './envelope.js';
@@ -30,6 +33,23 @@ import { runToyHandler } from './envelope.js';
 // the other's bindings until a function runs later, well after both
 // modules have finished loading.
 
+// ── ID helpers ────────────────────────────────────────────────────────────────
+
+function randomSlug(len = 5) {
+  return Array.from({ length: len }, () =>
+    ID_CHARS[Math.floor(Math.random() * ID_CHARS.length)]
+  ).join('')
+}
+
+/**
+ * A toy id an author or anyone reading an exported file can recognize at a
+ * glance: tt (Togetherness Table) — t (toy, as opposed to a future d/b for
+ * drawing/boun_pos) — v1 (so the scheme itself can version) — a random slug.
+ * Toy authors never generate these themselves; they're assigned at placement.
+ */
+export function newToyId() {
+  return `tt-t-v1-${randomSlug()}`
+}
 
 // ── Toy-type registry ─────────────────────────────────────────────────────────
 // Seed of the toy library. Only player_marker is wired up; dice/tokens/trays
