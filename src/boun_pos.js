@@ -217,8 +217,8 @@ export const BOUNPOS_TYPES = {
       const id   = yG.getAttribute('id')   ?? '';
       const name = yG.getAttribute('name') ?? id;
       const g = document.createElementNS(SVG_NS, 'g');
-      g.setAttribute('id',               `yid-${id}`);
-      g.setAttribute('data-yid',         id);
+      g.setAttribute('id',               id);
+      g.setAttribute('data-id',          id);
       g.setAttribute('data-module',      'boun_pos');
       g.setAttribute('data-bounpos-type','boundary');
       g.setAttribute('name',             name);
@@ -341,8 +341,8 @@ function _positionSetToSVGEl(yG) {
   const genType = yG.getAttribute('data-gen-type')     ?? 'square';
   const genParam = yG.getAttribute('data-gen-param')   ?? '80';
   const g = document.createElementNS(SVG_NS, 'g');
-  g.setAttribute('id',               `yid-${id}`);
-  g.setAttribute('data-yid',         id);
+  g.setAttribute('id',               id);
+  g.setAttribute('data-id',          id);
   g.setAttribute('data-module',      'boun_pos');
   g.setAttribute('data-bounpos-type','pos-set');
   g.setAttribute('name',             name);

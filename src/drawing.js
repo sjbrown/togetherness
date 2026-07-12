@@ -164,16 +164,16 @@ function mirror(yNode, opts = {}) {
 
 /**
  * Render a shape Y.XmlElement to an SVG DOM element, stamped with the handles
- * app.js needs: data-yid (the shape id), data-module="drawing", and a
- * plain SVG id="yid-{id}" so that overlay.js <use href="#yid-{id}"> can
+ * app.js needs: data-id (the shape id), data-module="drawing", and a
+ * plain SVG id="{id}" so that overlay.js <use href="#{id}"> can
  * reference the element for drag-ghost rendering without touching its geometry.
  */
 export function _toSVGEl(yEl, opts = {}) {
   const el = mirror(yEl, opts);
   if (el && el.setAttribute) {
     const id = yEl.getAttribute('id');
-    el.setAttribute('id',              `yid-${id}`);
-    el.setAttribute('data-yid',        id);
+    el.setAttribute('id',              id);
+    el.setAttribute('data-id',         id);
     el.setAttribute('data-module', 'drawing');
   }
   return el;
@@ -265,7 +265,7 @@ export function applyMoveDom(domEl, x, y) {
 /**
  * Iterate all XmlElement children in z-order (bottom to top).
  * Returns an array of rendered SVG elements, each stamped with
- * data-yid + data-module.
+ * data-id + data-module.
  */
 export function listDrawings(yDrawing, opts = {}) {
   const results = [];
@@ -285,7 +285,7 @@ function shapeData(svgEl) {
   const type = svgEl.localName;
   const def  = SHAPE_TYPES[type];
   return {
-    id:    attrs['data-yid'],
+    id:    attrs['data-id'],
     label: def ? def.label(attrs) : type,
     fill:  attrs.fill ?? '#888',
     kind:  type,

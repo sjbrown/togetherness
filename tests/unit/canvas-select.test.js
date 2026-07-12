@@ -192,7 +192,7 @@ describe('onPointerDown gesture routing', () => {
     // Fabricate an element that looks like a selectable object
     const layer = document.getElementById('drawing-layer')
     const el = document.createElement('rect')
-    el.setAttribute('data-yid', 'shape-abc')
+    el.setAttribute('data-id', 'shape-abc')
     el.setAttribute('data-module', 'drawing')
     layer.appendChild(el)
 
@@ -358,7 +358,7 @@ describe('App.select does not clobber ToolMode.params', () => {
     // First: tap an object (gesture = move, then resolved to no-op)
     const layer = document.getElementById('drawing-layer')
     const el = document.createElement('rect')
-    el.setAttribute('data-yid', 'obj-1')
+    el.setAttribute('data-id', 'obj-1')
     el.setAttribute('data-module', 'drawing')
     layer.appendChild(el)
 
@@ -389,7 +389,7 @@ describe('shift-click does not start a move gesture', () => {
 
     const layer = document.getElementById('drawing-layer')
     const el = document.createElement('rect')
-    el.setAttribute('data-yid', 'shape-shift')
+    el.setAttribute('data-id', 'shape-shift')
     el.setAttribute('data-module', 'drawing')
     layer.appendChild(el)
 
@@ -408,7 +408,7 @@ describe('shift-click does not start a move gesture', () => {
 
     const layer = document.getElementById('drawing-layer')
     const el = document.createElement('rect')
-    el.setAttribute('data-yid', 'shape-shift')
+    el.setAttribute('data-id', 'shape-shift')
     el.setAttribute('data-module', 'drawing')
     layer.appendChild(el)
 
@@ -425,7 +425,7 @@ describe('shift-click does not start a move gesture', () => {
 
     const layer = document.getElementById('drawing-layer')
     const el = document.createElement('rect')
-    el.setAttribute('data-yid', 'shape-normal')
+    el.setAttribute('data-id', 'shape-normal')
     el.setAttribute('data-module', 'drawing')
     layer.appendChild(el)
 
@@ -450,7 +450,7 @@ describe('multi-move gesture', () => {
 
     const layer = document.getElementById('drawing-layer')
     const el = document.createElement('rect')
-    el.setAttribute('data-yid', 'shape-a')
+    el.setAttribute('data-id', 'shape-a')
     el.setAttribute('data-module', 'drawing')
     layer.appendChild(el)
 
@@ -478,7 +478,7 @@ describe('multi-move gesture', () => {
 
     const layer = document.getElementById('drawing-layer')
     const el = document.createElement('rect')
-    el.setAttribute('data-yid', 'shape-c')  // not in selection
+    el.setAttribute('data-id', 'shape-c')  // not in selection
     el.setAttribute('data-module', 'drawing')
     layer.appendChild(el)
 
@@ -500,7 +500,7 @@ describe('multi-move gesture', () => {
 
     const layer = document.getElementById('drawing-layer')
     const el = document.createElement('rect')
-    el.setAttribute('data-yid', 'shape-a')
+    el.setAttribute('data-id', 'shape-a')
     el.setAttribute('data-module', 'drawing')
     layer.appendChild(el)
 
@@ -527,7 +527,7 @@ describe('multi-move gesture', () => {
 
     const layer = document.getElementById('drawing-layer')
     const el = document.createElement('rect')
-    el.setAttribute('data-yid', 'shape-a')
+    el.setAttribute('data-id', 'shape-a')
     el.setAttribute('data-module', 'drawing')
     layer.appendChild(el)
 
@@ -555,7 +555,7 @@ describe('multi-move gesture', () => {
 
     const layer = document.getElementById('drawing-layer')
     const el = document.createElement('rect')
-    el.setAttribute('data-yid', 'shape-a')
+    el.setAttribute('data-id', 'shape-a')
     el.setAttribute('data-module', 'drawing')
     layer.appendChild(el)
 

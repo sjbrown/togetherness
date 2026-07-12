@@ -69,7 +69,7 @@ describe('runInEnvelope — raw capture', () => {
     const { yToys } = getToysLayer(ydoc)
     await placeToy(ydoc, yToys, 't1')
     const layerEl = renderLayer(yToys)
-    const toyEl   = layerEl.querySelector('[data-yid="t1"]')
+    const toyEl   = layerEl.querySelector('[data-id="t1"]')
 
     const records = await runInEnvelope(toyEl, () => {
       toyEl.setAttribute('data-color', '#f00')
@@ -87,7 +87,7 @@ describe('runInEnvelope — raw capture', () => {
     const { yToys } = getToysLayer(ydoc)
     await placeToy(ydoc, yToys, 't1')
     const layerEl  = renderLayer(yToys)
-    const toyEl    = layerEl.querySelector('[data-yid="t1"]')
+    const toyEl    = layerEl.querySelector('[data-id="t1"]')
     const groupEl  = toyEl.querySelector('g.colorable')
     const circle   = document.createElementNS(SVG_NS, 'circle')
 
@@ -106,7 +106,7 @@ describe('runInEnvelope — raw capture', () => {
     const { yToys } = getToysLayer(ydoc)
     await placeToy(ydoc, yToys, 't1')
     const layerEl  = renderLayer(yToys)
-    const toyEl    = layerEl.querySelector('[data-yid="t1"]')
+    const toyEl    = layerEl.querySelector('[data-id="t1"]')
     const textNode = toyEl.querySelector('tspan').firstChild
 
     const records = await runInEnvelope(toyEl, () => {
@@ -124,7 +124,7 @@ describe('runInEnvelope — raw capture', () => {
     const { yToys } = getToysLayer(ydoc)
     await placeToy(ydoc, yToys, 't1')
     const layerEl = renderLayer(yToys)
-    const toyEl   = layerEl.querySelector('[data-yid="t1"]')
+    const toyEl   = layerEl.querySelector('[data-id="t1"]')
 
     const records = await runInEnvelope(toyEl, () => {})
     expect(records).toEqual([])
@@ -137,7 +137,7 @@ describe('runInEnvelope — raw capture', () => {
     const { yToys } = getToysLayer(ydoc)
     await placeToy(ydoc, yToys, 't1')
     const layerEl = renderLayer(yToys)
-    const toyEl   = layerEl.querySelector('[data-yid="t1"]')
+    const toyEl   = layerEl.querySelector('[data-id="t1"]')
 
     // Detach toyEl and re-nest it a few levels deep under the same layer.
     toyEl.remove()
@@ -158,7 +158,7 @@ describe('runInEnvelope — raw capture', () => {
     // not #toys-layer. (Appended directly rather than via Toys.render,
     // which would wipe the manually-nested tray structure above.)
     await placeToy(ydoc, yToys, 't2')
-    const toy2El = Toys.listToys(yToys).find(el => el.getAttribute('data-yid') === 't2')
+    const toy2El = Toys.listToys(yToys).find(el => el.getAttribute('data-id') === 't2')
     layerEl.appendChild(toy2El)
     const records2 = await runInEnvelope(toyEl, () => {
       toy2El.setAttribute('data-color', '#bad')
@@ -174,7 +174,7 @@ describe('runInEnvelope — raw capture', () => {
     // hand in a unit test rather than by the real render pipeline.
     const bareLayerEl = document.createElementNS(SVG_NS, 'g')
     Toys.render(yToys, bareLayerEl)
-    const toyEl = bareLayerEl.querySelector('[data-yid="t1"]')
+    const toyEl = bareLayerEl.querySelector('[data-id="t1"]')
 
     const records = await runInEnvelope(toyEl, () => {
       toyEl.setAttribute('data-color', '#0f0')
@@ -193,7 +193,7 @@ describe('commitEnvelope — attribute & characterData translation', () => {
     const { yToys } = getToysLayer(ydoc)
     await placeToy(ydoc, yToys, 't1')
     const layerEl = renderLayer(yToys)
-    const toyEl   = layerEl.querySelector('[data-yid="t1"]')
+    const toyEl   = layerEl.querySelector('[data-id="t1"]')
 
     const records = await runInEnvelope(toyEl, () => {
       toyEl.setAttribute('data-color', '#0f0')
@@ -203,7 +203,7 @@ describe('commitEnvelope — attribute & characterData translation', () => {
     expect(findToy(yToys, 't1').getAttribute('data-color')).toBe('#0f0')
 
     const newLayerEl = renderLayer(yToys)
-    const newToyEl    = newLayerEl.querySelector('[data-yid="t1"]')
+    const newToyEl    = newLayerEl.querySelector('[data-id="t1"]')
     expect(newToyEl.getAttribute('data-color')).toBe('#0f0')
   })
 
@@ -212,7 +212,7 @@ describe('commitEnvelope — attribute & characterData translation', () => {
     const { yToys } = getToysLayer(ydoc)
     await placeToy(ydoc, yToys, 't1')
     const layerEl = renderLayer(yToys)
-    const toyEl   = layerEl.querySelector('[data-yid="t1"]')
+    const toyEl   = layerEl.querySelector('[data-id="t1"]')
     const useEl   = toyEl.querySelector('use')
 
     const records = await runInEnvelope(toyEl, () => {
@@ -229,7 +229,7 @@ describe('commitEnvelope — attribute & characterData translation', () => {
     const { yToys } = getToysLayer(ydoc)
     await placeToy(ydoc, yToys, 't1')
     const layerEl  = renderLayer(yToys)
-    const toyEl    = layerEl.querySelector('[data-yid="t1"]')
+    const toyEl    = layerEl.querySelector('[data-id="t1"]')
     const textNode = toyEl.querySelector('tspan').firstChild
 
     const records = await runInEnvelope(toyEl, () => {
@@ -241,7 +241,7 @@ describe('commitEnvelope — attribute & characterData translation', () => {
     expect(yText.toString()).toBe('42')
 
     const newLayerEl = renderLayer(yToys)
-    const newToyEl    = newLayerEl.querySelector('[data-yid="t1"]')
+    const newToyEl    = newLayerEl.querySelector('[data-id="t1"]')
     expect(newToyEl.querySelector('tspan').textContent).toBe('42')
   })
 })
@@ -256,7 +256,7 @@ describe('commitEnvelope — structural translation', () => {
     const { yToys } = getToysLayer(ydoc)
     await placeToy(ydoc, yToys, 't1')
     const layerEl = renderLayer(yToys)
-    const toyEl   = layerEl.querySelector('[data-yid="t1"]')
+    const toyEl   = layerEl.querySelector('[data-id="t1"]')
     const groupEl = toyEl.querySelector('g.colorable')
     const yGroupBefore = yNodeFor(groupEl)
     const before = yGroupBefore.toArray().length
@@ -278,7 +278,7 @@ describe('commitEnvelope — structural translation', () => {
 
     // Re-render and confirm it shows up in the DOM too.
     const newLayerEl = renderLayer(yToys)
-    const newToyEl    = newLayerEl.querySelector('[data-yid="t1"]')
+    const newToyEl    = newLayerEl.querySelector('[data-id="t1"]')
     const circles     = Array.from(newToyEl.querySelectorAll('circle'))
     expect(circles.some(c => c.getAttribute('cx') === '10')).toBe(true)
   })
@@ -288,7 +288,7 @@ describe('commitEnvelope — structural translation', () => {
     const { yToys } = getToysLayer(ydoc)
     await placeToy(ydoc, yToys, 't1')
     const layerEl = renderLayer(yToys)
-    const toyEl   = layerEl.querySelector('[data-yid="t1"]')
+    const toyEl   = layerEl.querySelector('[data-id="t1"]')
     const groupEl = toyEl.querySelector('g.colorable')
     const textEl  = groupEl.querySelector('text') // circle, text, use — insert before text
 
@@ -312,7 +312,7 @@ describe('commitEnvelope — structural translation', () => {
     const { yToys } = getToysLayer(ydoc)
     await placeToy(ydoc, yToys, 't1')
     const layerEl  = renderLayer(yToys)
-    const toyEl    = layerEl.querySelector('[data-yid="t1"]')
+    const toyEl    = layerEl.querySelector('[data-id="t1"]')
     const groupEl  = toyEl.querySelector('g.colorable')
     const circleEl = groupEl.querySelector('circle') // first *mirrored* DOM child
 
@@ -336,7 +336,7 @@ describe('commitEnvelope — structural translation', () => {
     const { yToys } = getToysLayer(ydoc)
     await placeToy(ydoc, yToys, 't1')
     const layerEl = renderLayer(yToys)
-    const toyEl   = layerEl.querySelector('[data-yid="t1"]')
+    const toyEl   = layerEl.querySelector('[data-id="t1"]')
     const groupEl = toyEl.querySelector('g.colorable')
 
     let innerCircle
@@ -359,7 +359,7 @@ describe('commitEnvelope — structural translation', () => {
     const { yToys } = getToysLayer(ydoc)
     await placeToy(ydoc, yToys, 't1')
     const layerEl  = renderLayer(yToys)
-    const toyEl    = layerEl.querySelector('[data-yid="t1"]')
+    const toyEl    = layerEl.querySelector('[data-id="t1"]')
     const groupEl  = toyEl.querySelector('g.colorable')
     const circleEl = groupEl.querySelector('circle')
 
@@ -384,8 +384,8 @@ describe('commitEnvelope — scope enforcement', () => {
     await placeToy(ydoc, yToys, 't1')
     await placeToy(ydoc, yToys, 't2', '#222')
     const layerEl = renderLayer(yToys)
-    const toy1El  = layerEl.querySelector('[data-yid="t1"]')
-    const toy2El  = layerEl.querySelector('[data-yid="t2"]')
+    const toy1El  = layerEl.querySelector('[data-id="t1"]')
+    const toy2El  = layerEl.querySelector('[data-id="t2"]')
 
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
@@ -411,7 +411,7 @@ describe('commitEnvelope — scope enforcement', () => {
     await placeToy(ydoc, yToys, 't1')
     await placeToy(ydoc, yToys, 't2')
     const layerEl = renderLayer(yToys)
-    const toy1El  = layerEl.querySelector('[data-yid="t1"]')
+    const toy1El  = layerEl.querySelector('[data-id="t1"]')
 
     const records = await runInEnvelope(toy1El, () => {
       toy1El.setAttribute('data-color', '#0f0')
@@ -429,8 +429,8 @@ describe('commitEnvelope — scope enforcement', () => {
     await placeToy(ydoc, yToys, 't1')
     await placeToy(ydoc, yToys, 't2')
     const layerEl = renderLayer(yToys)
-    const toy1El  = layerEl.querySelector('[data-yid="t1"]')
-    const toy2El  = layerEl.querySelector('[data-yid="t2"]')
+    const toy1El  = layerEl.querySelector('[data-id="t1"]')
+    const toy2El  = layerEl.querySelector('[data-id="t2"]')
 
     vi.spyOn(console, 'warn').mockImplementation(() => {})
 
@@ -448,8 +448,8 @@ describe('commitEnvelope — scope enforcement', () => {
     await placeToy(ydoc, yToys, 't1')
     await placeToy(ydoc, yToys, 't2', '#222')
     const layerEl = renderLayer(yToys)
-    const toy1El  = layerEl.querySelector('[data-yid="t1"]')
-    const toy2El  = layerEl.querySelector('[data-yid="t2"]')
+    const toy1El  = layerEl.querySelector('[data-id="t1"]')
+    const toy2El  = layerEl.querySelector('[data-id="t2"]')
 
     vi.spyOn(console, 'warn').mockImplementation(() => {})
 
@@ -472,8 +472,8 @@ describe('commitEnvelope — scope enforcement', () => {
     await placeToy(ydoc, yToys, 't1')
     await placeToy(ydoc, yToys, 't2')
     const layerEl  = renderLayer(yToys)
-    const toy1El   = layerEl.querySelector('[data-yid="t1"]')
-    const toy2El   = layerEl.querySelector('[data-yid="t2"]')
+    const toy1El   = layerEl.querySelector('[data-id="t1"]')
+    const toy2El   = layerEl.querySelector('[data-id="t2"]')
     const group2El = toy2El.querySelector('g.colorable')
     const useEl    = group2El.querySelector('use') // last child, currently
 
@@ -506,7 +506,7 @@ describe('runInEnvelope — async contract', () => {
     const { yToys } = getToysLayer(ydoc)
     await placeToy(ydoc, yToys, 't1')
     const layerEl = renderLayer(yToys)
-    const toyEl   = layerEl.querySelector('[data-yid="t1"]')
+    const toyEl   = layerEl.querySelector('[data-id="t1"]')
 
     const records = await runInEnvelope(toyEl, async () => {
       toyEl.setAttribute('data-color', '#111') // will be a no-op record (same value) — fine
@@ -526,7 +526,7 @@ describe('runInEnvelope — async contract', () => {
     const { yToys } = getToysLayer(ydoc)
     await placeToy(ydoc, yToys, 't1')
     const layerEl = renderLayer(yToys)
-    const toyEl   = layerEl.querySelector('[data-yid="t1"]')
+    const toyEl   = layerEl.querySelector('[data-id="t1"]')
 
     expect(isEnvelopeOpen()).toBe(false)
     let openDuringHandler = false
@@ -549,7 +549,7 @@ describe('renderAfterCommit / runToyHandler — post-commit render', () => {
     const { yToys } = getToysLayer(ydoc)
     await placeToy(ydoc, yToys, 't1')
     const layerEl = renderLayer(yToys)
-    const toyEl   = layerEl.querySelector('[data-yid="t1"]')
+    const toyEl   = layerEl.querySelector('[data-id="t1"]')
 
     const records = await runInEnvelope(toyEl, () => {
       toyEl.setAttribute('data-color', '#0f0')
@@ -560,7 +560,7 @@ describe('renderAfterCommit / runToyHandler — post-commit render', () => {
 
     // The layer was rebuilt: the toy element is a brand-new node, not the
     // one the handler mutated in place.
-    const rebuiltToyEl = layerEl.querySelector('[data-yid="t1"]')
+    const rebuiltToyEl = layerEl.querySelector('[data-id="t1"]')
     expect(rebuiltToyEl).not.toBe(toyEl)
     expect(rebuiltToyEl.getAttribute('data-color')).toBe('#0f0')
   })
@@ -570,7 +570,7 @@ describe('renderAfterCommit / runToyHandler — post-commit render', () => {
     const { yToys } = getToysLayer(ydoc)
     await placeToy(ydoc, yToys, 't1')
     const layerEl = renderLayer(yToys)
-    const toyEl   = layerEl.querySelector('[data-yid="t1"]')
+    const toyEl   = layerEl.querySelector('[data-id="t1"]')
     const groupEl = toyEl.querySelector('g.colorable')
 
     const result = await runToyHandler(ydoc, yToys, layerEl, toyEl, () => {
@@ -596,6 +596,6 @@ describe('renderAfterCommit / runToyHandler — post-commit render', () => {
     // second bare render here would silently replace that output with
     // elements nothing has attached listeners to. See envelope.js's note
     // above runToyHandler.
-    expect(layerEl.querySelector('[data-yid="t1"]')).toBe(toyEl)
+    expect(layerEl.querySelector('[data-id="t1"]')).toBe(toyEl)
   })
 })

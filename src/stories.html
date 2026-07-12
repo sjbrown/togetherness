@@ -425,7 +425,7 @@ function buildStageSVG(shapes) {
 
   for (const { id, type, geom, fill } of shapes) {
     const el = shapeEl(type, geom, fill);
-    el.setAttribute('data-yid',        id);
+    el.setAttribute('data-id',         id);
     el.setAttribute('data-module', 'drawing');
     drawing.appendChild(el);
   }
@@ -440,7 +440,7 @@ function fakeOverlayApp(svgEl) {
     getMyColor:     () => myGrad.c1,
     getMyGradient:  () => myGrad,
     getBBox: (id) => {
-      const el = svgEl.querySelector(`[data-yid="${id}"]`);
+      const el = svgEl.querySelector(`[data-id="${id}"]`);
       return el ? getGeom(el) : null;
     },
   };
@@ -492,7 +492,7 @@ story('Mixed', 'rect local · circle remote', () => {
 
 // ── Drag ghost stories ────────────────────────────────────────────────────────
 // These build a self-contained SVG that demonstrates the <use>-based drag
-// overlay visuals. The native layer element has id="yid-{id}" so the overlay
+// overlay visuals. The native layer element has id="{id}" so the overlay
 // can reference it with <use href="...">.
 
 function buildDragStageSVG(shapes) {
@@ -511,12 +511,12 @@ function buildDragStageSVG(shapes) {
     </linearGradient>`;
   svg.appendChild(defs);
 
-  // Native layer — shapes with id="yid-{id}"
+  // Native layer — shapes with id="{id}"
   const layer = document.createElementNS(SVGNS, 'g');
   layer.id = 'story-native-layer';
   shapes.forEach(s => {
     const el = document.createElementNS(SVGNS, s.type === 'circle' ? 'circle' : 'rect');
-    el.setAttribute('id',   `yid-${s.id}`);
+    el.setAttribute('id',   s.id);
     el.setAttribute('fill', s.fill);
     if (s.type === 'circle') {
       el.setAttribute('cx', s.geom.cx); el.setAttribute('cy', s.geom.cy); el.setAttribute('r', s.geom.r);
@@ -547,13 +547,13 @@ story('Drag ghost', 'placeholder at committed · ghost at drag pos', () => {
 
   // Dim placeholder at committed position
   const ph = document.createElementNS(SVGNS, 'use');
-  ph.setAttribute('href', '#yid-dg1');
+  ph.setAttribute('href', '#dg1');
   ph.setAttribute('filter', 'url(#drag-placeholder-filter)');
   overlay.appendChild(ph);
 
   // Flying ghost translated +100,+50
   const ghost = document.createElementNS(SVGNS, 'use');
-  ghost.setAttribute('href', '#yid-dg1');
+  ghost.setAttribute('href', '#dg1');
   ghost.setAttribute('transform', 'translate(100, 50)');
   ghost.setAttribute('opacity', '0.85');
   overlay.appendChild(ghost);
@@ -579,13 +579,13 @@ story('Drag ghost', 'remote peer dragging · dashed ring + label', () => {
 
   // Dim placeholder
   const ph = document.createElementNS(SVGNS, 'use');
-  ph.setAttribute('href', '#yid-dg2');
+  ph.setAttribute('href', '#dg2');
   ph.setAttribute('filter', 'url(#drag-placeholder-filter)');
   overlay.appendChild(ph);
 
   // Remote ghost at +80, +40
   const ghost = document.createElementNS(SVGNS, 'use');
-  ghost.setAttribute('href', '#yid-dg2');
+  ghost.setAttribute('href', '#dg2');
   ghost.setAttribute('transform', 'translate(80, 40)');
   ghost.setAttribute('opacity', '0.85');
   overlay.appendChild(ghost);
@@ -624,10 +624,10 @@ story('Drag ghost', 'local + remote simultaneous', () => {
 
   // Local drag: rect (dg3) shifted right
   const ph3 = document.createElementNS(SVGNS, 'use');
-  ph3.setAttribute('href', '#yid-dg3'); ph3.setAttribute('filter', 'url(#drag-placeholder-filter)');
+  ph3.setAttribute('href', '#dg3'); ph3.setAttribute('filter', 'url(#drag-placeholder-filter)');
   overlay.appendChild(ph3);
   const g3 = document.createElementNS(SVGNS, 'use');
-  g3.setAttribute('href', '#yid-dg3'); g3.setAttribute('transform', 'translate(60, 20)'); g3.setAttribute('opacity', '0.85');
+  g3.setAttribute('href', '#dg3'); g3.setAttribute('transform', 'translate(60, 20)'); g3.setAttribute('opacity', '0.85');
   overlay.appendChild(g3);
   const r3 = document.createElementNS(SVGNS, 'rect');
   r3.setAttribute('x', 15+60-6); r3.setAttribute('y', 50+20-6); r3.setAttribute('width', 80+12); r3.setAttribute('height', 60+12);
@@ -636,10 +636,10 @@ story('Drag ghost', 'local + remote simultaneous', () => {
 
   // Remote drag: circle (dg4) shifted left
   const ph4 = document.createElementNS(SVGNS, 'use');
-  ph4.setAttribute('href', '#yid-dg4'); ph4.setAttribute('filter', 'url(#drag-placeholder-filter)');
+  ph4.setAttribute('href', '#dg4'); ph4.setAttribute('filter', 'url(#drag-placeholder-filter)');
   overlay.appendChild(ph4);
   const g4 = document.createElementNS(SVGNS, 'use');
-  g4.setAttribute('href', '#yid-dg4'); g4.setAttribute('transform', 'translate(-50, -20)'); g4.setAttribute('opacity', '0.85');
+  g4.setAttribute('href', '#dg4'); g4.setAttribute('transform', 'translate(-50, -20)'); g4.setAttribute('opacity', '0.85');
   overlay.appendChild(g4);
   const r4 = document.createElementNS(SVGNS, 'rect');
   const bx = 210-40; const by = 100-40;

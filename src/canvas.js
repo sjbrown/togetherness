@@ -133,12 +133,12 @@ const LAYER_TYPE = {
   'boundaries-positions': 'boun_pos',
 };
 
-// Return the [data-yid] element under the pointer that belongs to the active
+// Return the [data-id] element under the pointer that belongs to the active
 // layer, or null if the pointer landed on a different layer or empty canvas.
 function hitForActiveLayer(e) {
   const activeType = LAYER_TYPE[App.getActiveLayer()];
   if (!activeType) return null;
-  const el = e.target.closest?.('[data-yid]') ?? null;
+  const el = e.target.closest?.('[data-id]') ?? null;
   if (!el) return null;
   return el.dataset.module === activeType ? el : null;
 }
@@ -149,16 +149,16 @@ function hitForActiveLayer(e) {
 // setPointerCapture routes the click event to _stage rather than the child element,
 // so a shift-click listener here would never fire on toys or shapes.
 export function wireShapeClicks(layer) {
-  layer.querySelectorAll('[data-yid]').forEach(el => {
+  layer.querySelectorAll('[data-id]').forEach(el => {
     el.addEventListener('click', ev => {
       if (ToolMode.tool !== 'select') return;
       ev.stopPropagation();
-      App.select(el.dataset.yid);
+      App.select(el.dataset.id);
     });
   });
   // Click on empty canvas deselects
   layer.addEventListener('click', e => {
-    if (!e.target.closest('[data-yid]')) App.select(null);
+    if (!e.target.closest('[data-id]')) App.select(null);
   });
 }
 
@@ -213,7 +213,7 @@ function onPointerDown(e) {
   }
 
   const hitEl = hitForActiveLayer(e);
-  const hitId = hitEl?.dataset?.yid ?? null;
+  const hitId = hitEl?.dataset?.id ?? null;
 
   if (ToolMode.tool === 'select') {
     if (hitId) {

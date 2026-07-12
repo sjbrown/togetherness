@@ -53,28 +53,28 @@ async function twoPeers(browser, roomPrefix) {
   return { page1, page2 };
 }
 
-// Place a d6 on `page` at canvas-relative (x, y); returns its data-yid.
+// Place a d6 on `page` at canvas-relative (x, y); returns its data-id.
 async function placeToy(page, x, y) {
-  const before = await page.locator('[data-yid]').count();
+  const before = await page.locator('[data-id]').count();
   const box = await page.locator('#canvas').boundingBox();
   await page.evaluate(() => window.UI.pillTap('d6'));
   await page.waitForTimeout(100);
   await page.mouse.move(box.x + x, box.y + y);
   await page.mouse.down();
   await page.mouse.up();
-  await expect(page.locator('[data-yid]')).toHaveCount(before + 1, { timeout: 5000 });
-  const ids = await page.locator('[data-yid]').evaluateAll(
-    els => els.map(el => el.dataset.yid));
+  await expect(page.locator('[data-id]')).toHaveCount(before + 1, { timeout: 5000 });
+  const ids = await page.locator('[data-id]').evaluateAll(
+    els => els.map(el => el.dataset.id));
   return ids[ids.length - 1];
 }
 
-// Click the center of the element with `yid` on `page`, in select mode.
-// (Located by data-yid rather than remembered coordinates, so it works on
+// Click the center of the element with `id` on `page`, in select mode.
+// (Located by data-id rather than remembered coordinates, so it works on
 // whichever page regardless of where the toy was originally placed.)
-async function clickToy(page, yid, { shift = false } = {}) {
+async function clickToy(page, id, { shift = false } = {}) {
   await page.evaluate(() => window.UI.pillTap('select'));
   await page.waitForTimeout(100);
-  const box = await page.locator(`[data-yid="${yid}"]`).boundingBox();
+  const box = await page.locator(`[data-id="${id}"]`).boundingBox();
   if (shift) await page.keyboard.down('Shift');
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
@@ -93,13 +93,13 @@ test.describe('soft-lock: two-peer element requests', () => {
     const browser = await chromium.launch();
     const { page1, page2 } = await twoPeers(browser, 'e2e-softlock-req');
 
-    const yid = await placeToy(page1, 120, 120);
-    await expect(page2.locator('[data-yid]')).toHaveCount(1, { timeout: 5000 });
+    const id = await placeToy(page1, 120, 120);
+    await expect(page2.locator('[data-id]')).toHaveCount(1, { timeout: 5000 });
 
-    await clickToy(page1, yid);                     // A holds it
+    await clickToy(page1, id);                     // A holds it
     await expect(page1.locator('#overlay-layer .selRing')).toHaveCount(1, { timeout: 3000 });
 
-    await clickToy(page2, yid);                     // B requests it
+    await clickToy(page2, id);                     // B requests it
 
     // Amber ring appears on the requester's own page (no round-trip needed)
     // and on the holder's page (after propagation).
@@ -116,11 +116,11 @@ test.describe('soft-lock: two-peer element requests', () => {
     const browser = await chromium.launch();
     const { page1, page2 } = await twoPeers(browser, 'e2e-softlock-handoff');
 
-    const yid = await placeToy(page1, 120, 120);
-    await expect(page2.locator('[data-yid]')).toHaveCount(1, { timeout: 5000 });
+    const id = await placeToy(page1, 120, 120);
+    await expect(page2.locator('[data-id]')).toHaveCount(1, { timeout: 5000 });
 
-    await clickToy(page1, yid);                     // A holds
-    await clickToy(page2, yid);                     // B requests, A stays away
+    await clickToy(page1, id);                     // A holds
+    await clickToy(page2, id);                     // B requests, A stays away
 
     // After the window elapses: B holds it locally...
     await expect(page2.locator('#overlay-layer .selRing')).toHaveCount(1, { timeout: 6000 });
@@ -138,14 +138,14 @@ test.describe('soft-lock: two-peer element requests', () => {
     const browser = await chromium.launch();
     const { page1, page2 } = await twoPeers(browser, 'e2e-softlock-abort');
 
-    const yid = await placeToy(page1, 120, 120);
-    await expect(page2.locator('[data-yid]')).toHaveCount(1, { timeout: 5000 });
+    const id = await placeToy(page1, 120, 120);
+    await expect(page2.locator('[data-id]')).toHaveCount(1, { timeout: 5000 });
 
-    await clickToy(page1, yid);                     // A holds
-    await clickToy(page2, yid);                     // B requests
+    await clickToy(page1, id);                     // A holds
+    await clickToy(page2, id);                     // B requests
     await expect(page1.locator('#overlay-layer .requestedRing')).toHaveCount(1, { timeout: 2000 });
 
-    await clickToy(page1, yid);                     // A defends (the "bathroom" rebuttal)
+    await clickToy(page1, id);                     // A defends (the "bathroom" rebuttal)
 
     // The requested ring clears on both pages once B's client observes the
     // rebuttal and drops its own request...
@@ -168,18 +168,18 @@ test.describe('soft-lock: two-peer element requests', () => {
     const browser = await chromium.launch();
     const { page1, page2 } = await twoPeers(browser, 'e2e-softlock-group');
 
-    const yid1 = await placeToy(page1, 120, 120);
-    const yid2 = await placeToy(page1, 260, 120);
-    await expect(page2.locator('[data-yid]')).toHaveCount(2, { timeout: 5000 });
+    const id1 = await placeToy(page1, 120, 120);
+    const id2 = await placeToy(page1, 260, 120);
+    await expect(page2.locator('[data-id]')).toHaveCount(2, { timeout: 5000 });
 
-    await clickToy(page1, yid1);                    // A selects die 1...
-    await clickToy(page1, yid2, { shift: true });   // ...and shift-adds die 2
+    await clickToy(page1, id1);                    // A selects die 1...
+    await clickToy(page1, id2, { shift: true });   // ...and shift-adds die 2
     await expect(page1.locator('#overlay-layer .selRing')).toHaveCount(2, { timeout: 3000 });
 
-    await clickToy(page2, yid1);                    // B requests die 1
+    await clickToy(page2, id1);                    // B requests die 1
 
     // A drags the group by die 2 (leader ≠ requested element).
-    const box2 = await page1.locator(`[data-yid="${yid2}"]`).boundingBox();
+    const box2 = await page1.locator(`[data-id="${id2}"]`).boundingBox();
     await page1.mouse.move(box2.x + box2.width / 2, box2.y + box2.height / 2);
     await page1.mouse.down();
     await page1.mouse.move(box2.x + 60, box2.y + 60, { steps: 8 });
@@ -199,11 +199,11 @@ test.describe('soft-lock: two-peer element requests', () => {
     const browser = await chromium.launch();
     const { page1, page2 } = await twoPeers(browser, 'e2e-softlock-sweep');
 
-    const yid1 = await placeToy(page1, 120, 120);
-    const yid2 = await placeToy(page1, 260, 120);
-    await expect(page2.locator('[data-yid]')).toHaveCount(2, { timeout: 5000 });
+    const id1 = await placeToy(page1, 120, 120);
+    const id2 = await placeToy(page1, 260, 120);
+    await expect(page2.locator('[data-id]')).toHaveCount(2, { timeout: 5000 });
 
-    await clickToy(page2, yid1);                    // B holds toy 1
+    await clickToy(page2, id1);                    // B holds toy 1
     await expect(page1.locator('#overlay-layer .remote-sel')).toHaveCount(1, { timeout: 3000 });
 
     // A rubber-bands over both toys (shift-drag from empty canvas corner).

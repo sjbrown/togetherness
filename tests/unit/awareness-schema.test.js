@@ -120,7 +120,7 @@ describe('awareness selection schema — read side (overlay syncFromAwareness lo
     // schema-migration edge case that's easy to get wrong silently.
     const state = { selection: { elIds: ['shape-old'] }, color: '#888' }
     expect(extractRemoteSelections(state)).toEqual(['elIds']) // documents actual (bogus) behavior
-    // This elId ('elIds') simply won't match any real element's data-yid,
+    // This elId ('elIds') simply won't match any real element's data-id,
     // so App.getBBox returns null and rendering silently skips it — a
     // stale/mixed-version peer degrades harmlessly rather than crashing,
     // but is not expected in a single-deployed-version app.

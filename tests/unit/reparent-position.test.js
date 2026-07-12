@@ -53,7 +53,7 @@ function dropIntoTray(ydoc, yToys, layerEl, draggedId, dropX, dropY) {
   const dropTrayId = findDropTargetTray(layerEl, draggedId, dropX, dropY)
   if (!dropTrayId) return null
   const movedEl = reparentToy(ydoc, yToys, draggedId, dropTrayId)
-  const trayEl  = layerEl.querySelector(`[data-yid="${dropTrayId}"]`)
+  const trayEl  = layerEl.querySelector(`[data-id="${dropTrayId}"]`)
   const trayGeom = trayEl && getGeom(trayEl)
   if (trayGeom) applyMoveCommit(ydoc, movedEl, dropX - trayGeom.x, dropY - trayGeom.y)
   return { dropTrayId, movedEl, trayGeom }
@@ -79,7 +79,7 @@ describe('drop-position rebase — real tray_sum + dice_d6 assets', () => {
     await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 300, y: 300, color: '#fff' })
 
     const layerEl = renderLayer(yToys)
-    const trayGeom = getGeom(layerEl.querySelector('[data-yid="tray1"]'))
+    const trayGeom = getGeom(layerEl.querySelector('[data-id="tray1"]'))
     expect(trayGeom.width).toBe(220)
     expect(trayGeom.height).toBe(130)
   })
@@ -90,7 +90,7 @@ describe('drop-position rebase — real tray_sum + dice_d6 assets', () => {
     await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 100, y: 100, color: '#fff' })
 
     const layerEl = renderLayer(yToys)
-    const dieGeom = getGeom(layerEl.querySelector('[data-yid="die1"]'))
+    const dieGeom = getGeom(layerEl.querySelector('[data-id="die1"]'))
     expect(dieGeom.width).toBe(80)
     expect(dieGeom.height).toBe(100)
   })

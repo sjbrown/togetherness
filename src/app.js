@@ -663,7 +663,7 @@ const App = {
   getRoomId:       () => _roomId,
   getSelectedIds:  () => Object.keys(_myClaims),
   getBBox:  (id) => {
-    const svgEl = _svgEl.querySelector(`[data-yid="${id}"]`);
+    const svgEl = _svgEl.querySelector(`[data-id="${id}"]`);
     if (!svgEl) return null;
     const mtype = moduleForElement(svgEl);
     return _Layers[mtype]?.getGeom(svgEl) ?? null;
@@ -816,7 +816,7 @@ const App = {
     const entries = [];
     _ydoc.transact(() => {
       for (const id of ids) {
-        const svgEl = _svgEl.querySelector(`[data-yid="${id}"]`);
+        const svgEl = _svgEl.querySelector(`[data-id="${id}"]`);
         if (!svgEl) continue;
         const mtype = moduleForElement(svgEl);
         const L = _Layers[mtype];
@@ -931,7 +931,7 @@ const App = {
   getElementTtStateSchema: () => {
     const id = _singleSelectedId();
     if (!id) return null;
-    const svgEl = _svgEl?.querySelector(`[data-yid="${id}"]`);
+    const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
     if (!svgEl) return null;
     const mtype = moduleForElement(svgEl);
     const L = _Layers[mtype];
@@ -948,7 +948,7 @@ const App = {
   getToyMenuActions: () => {
     const id = _singleSelectedId();
     if (!id) return [];
-    const svgEl = _svgEl?.querySelector(`[data-yid="${id}"]`);
+    const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
     if (!svgEl || moduleForElement(svgEl) !== 'toys') return [];
     return getMenuActions(svgEl);
   },
@@ -963,7 +963,7 @@ const App = {
    * too, the same way commitEdit refreshes it after a field edit.
    */
   invokeToyMenuAction: (id, namespace, key) => {
-    const svgEl = _svgEl?.querySelector(`[data-yid="${id}"]`);
+    const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
     if (!svgEl) return;
     const layerEl = _svgEl?.querySelector('#toys-layer');
     if (!layerEl) return;
@@ -982,7 +982,7 @@ const App = {
    * the Edit panel UI calls for all element mutations.
    */
   commitEdit: (id, editData) => {
-    const svgEl = _svgEl?.querySelector(`[data-yid="${id}"]`);
+    const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
     if (!svgEl) return;
     const mtype = moduleForElement(svgEl);
     const L = _Layers[mtype];
@@ -1014,7 +1014,7 @@ const App = {
 
       const yEl = findToy(_yToys, id);
       if (yEl) await activateToyScripts(yEl, def.toyType);
-      const svgEl   = _svgEl?.querySelector(`[data-yid="${id}"]`);
+      const svgEl   = _svgEl?.querySelector(`[data-id="${id}"]`);
       const layerEl = _svgEl?.querySelector('#toys-layer');
       if (svgEl && layerEl) {
         await initializeToy(_ydoc, _yToys, layerEl, svgEl, def.toyType);
@@ -1026,7 +1026,7 @@ const App = {
   },
 
   deleteElement: (svgEl) => {
-    const id    = svgEl.getAttribute('data-yid');
+    const id    = svgEl.getAttribute('data-id');
     const mtype = moduleForElement(svgEl);
     const L = _Layers[mtype];
     if (!L) return false;
@@ -1052,7 +1052,7 @@ const App = {
       }
       return;
     }
-    const svgEl = _svgEl.querySelector(`[data-yid="${id}"]`);
+    const svgEl = _svgEl.querySelector(`[data-id="${id}"]`);
     if (svgEl) App.deleteElement(svgEl);
   },
   duplicateSelected: () => {
@@ -1088,7 +1088,7 @@ const App = {
     // directly should silently no-op rather than broadcast a bogus `drag`
     // awareness field for someone else's element.
     if (App.isHeldByOther(id)) return;
-    const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
+    const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
     const anchor = App.getAnchor(domEl);
     const bbox = App.getBBox(id);
     const isToy = moduleForElement(domEl) === 'toys';
@@ -1163,7 +1163,7 @@ const App = {
     // *drop* position (rx, ry — already boundary/snap-validated above), not
     // the raw pointer, so the highlighted tray always matches what
     // commitMove would actually reparent into.
-    const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
+    const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
     if (moduleForElement(domEl) === 'toys') {
       const toysLayerEl = _svgEl.querySelector('#toys-layer');
       Overlay.setDropTargetHover(findDropTargetTray(toysLayerEl, id, rx, ry));
@@ -1180,7 +1180,7 @@ const App = {
     const constrained = _dragState.boundsRects !== null || _dragState.snapPoints.length > 0;
     const rx = constrained ? _dragState.lastValidX : Math.round(x);
     const ry = constrained ? _dragState.lastValidY : Math.round(y);
-    const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
+    const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
     const mtype = moduleForElement(domEl);
 
     // Same hit-test move() used for the live hover highlight, run once more
@@ -1207,7 +1207,7 @@ const App = {
       }
 
       // Reposition into the tray's own local coordinate space
-      const trayEl = _svgEl.querySelector(`[data-yid="${dropTrayId}"]`);
+      const trayEl = _svgEl.querySelector(`[data-id="${dropTrayId}"]`);
       const trayGeom = trayEl && Toys.getGeom(trayEl);
       if (trayGeom) {
         Toys.applyMoveCommit(_ydoc, movedEl, rx - trayGeom.x, ry - trayGeom.y);
@@ -1252,7 +1252,7 @@ const App = {
 
   startMultiDrag: (originCanvas) => {
     const elements = Object.keys(_myClaims).map(id => {
-      const domEl = _svgEl.querySelector(`[data-yid="${id}"]`);
+      const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
       if (!domEl) return null;
       const anchor = App.getAnchor(domEl);
       const bbox   = App.getBBox(id);
@@ -1266,7 +1266,7 @@ const App = {
     // originCanvas.leaderId is set by canvas.js from the hitId at pointerdown.
     const leaderId  = originCanvas.leaderId;
     const leaderEl  = elements.find(e => e.id === leaderId) ?? elements[0];
-    const anchorDom = _svgEl.querySelector(`[data-yid="${leaderEl.id}"]`);
+    const anchorDom = _svgEl.querySelector(`[data-id="${leaderEl.id}"]`);
     const isToy     = leaderEl.mtype === 'toys';
     const toyClasses   = isToy ? getToyClasses(anchorDom) : new Set();
     const boundsRects  = isToy ? computeBoundaryRects(_yBounPos, toyClasses, { x: leaderEl.anchorX, y: leaderEl.anchorY }) : null;

@@ -784,7 +784,7 @@ export function layerObjectListHTML(objects, selectedIds) {
   return [...objects].reverse().map(o => {
     const chip = `<span class="sw-chip kind-${o.kind}" style="background:${o.fill}"></span>`;
     const sel  = selectedIds instanceof Set ? selectedIds.has(o.id) : selectedIds === o.id;
-    return `<div class="layer-obj-item ${sel ? 'sel' : ''}" data-yid="${o.id}" onclick="App.select('${o.id}')">${chip}<span class="layer-obj-label">${o.label}</span>${sel ? '<span class="meta">selected</span>' : ''}</div>`;
+    return `<div class="layer-obj-item ${sel ? 'sel' : ''}" data-id="${o.id}" onclick="App.select('${o.id}')">${chip}<span class="layer-obj-label">${o.label}</span>${sel ? '<span class="meta">selected</span>' : ''}</div>`;
   }).join('');
 }
 
@@ -852,7 +852,7 @@ export function refreshLayerList() {
   // scroll position. A full innerHTML replace would reset scrollTop to 0.
   const selectedIds = new Set(App.getSelectedIds());
   document.querySelectorAll('.layer-obj-item').forEach(el => {
-    const id = el.dataset.yid;
+    const id = el.dataset.id;
     if (!id) return;
     const isSel = selectedIds.has(id);
     el.classList.toggle('sel', isSel);
