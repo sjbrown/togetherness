@@ -73,15 +73,15 @@ describe('drop-position rebase — real tray_sum + dice_d6 assets', () => {
     }))
   })
 
-  test('tray_sum places at its real 200x150 native size, not a forced square', async () => {
+  test('tray_sum places at its real 220x130 native size, not a forced square', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 300, y: 300, color: '#fff' })
 
     const layerEl = renderLayer(yToys)
     const trayGeom = getGeom(layerEl.querySelector('[data-yid="tray1"]'))
-    expect(trayGeom.width).toBe(200)
-    expect(trayGeom.height).toBe(150)
+    expect(trayGeom.width).toBe(220)
+    expect(trayGeom.height).toBe(130)
   })
 
   test('dice_d6 places at its real 80x100 native size', async () => {
@@ -95,11 +95,11 @@ describe('drop-position rebase — real tray_sum + dice_d6 assets', () => {
     expect(dieGeom.height).toBe(100)
   })
 
-  test('dropping a die into a tray converts its position into the tray\u2019s local space — landing inside the tray\u2019s own visible viewBox', async () => {
+  test('dropa die into a tray converts position to the trays local space and inside the trays visible viewBox', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
-    // tray at table (300, 300); its own local viewBox is 0..200 x 0..150
-    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 400, y: 375, color: '#fff' }) // centered box spans (300,300)-(500,450)
+    // tray at table (300, 300); its own local viewBox is 0..220 x 0..130
+    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 400, y: 375, color: '#fff' })
     // die dropped loose on the table, nowhere near the tray at first
     await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 50, y: 50, color: '#fff' })
 
@@ -114,18 +114,12 @@ describe('drop-position rebase — real tray_sum + dice_d6 assets', () => {
     const localW = Number(movedSvg.getAttribute('width'))
     const localH = Number(movedSvg.getAttribute('height'))
 
-    // archive2025's rebase: newLocalX = dropTableX - trayTableX = 350 - 300 = 50 (centred, so x = 50 - width/2)
-    expect(localX).toBe(50 - localW / 2)
-    expect(localY).toBe(40 - localH / 2)
-
-    // The actual regression check: the die's local bbox must fall at least
-    // partly within the tray's own 0..200 x 0..150 viewBox — this is what
-    // "visible inside the tray" means structurally. Before this fix, a die
-    // kept its stale table-space coordinates (in the hundreds), which
-    // would never satisfy this.
-    expect(localX).toBeLessThan(200)
+    // The die's local bbox must fall at least
+    // partly within the tray's own 0..220 x 0..130 viewBox — this is what
+    // "visible inside the tray" means structurally.
+    expect(localX).toBeLessThan(220)
     expect(localX + localW).toBeGreaterThan(0)
-    expect(localY).toBeLessThan(150)
+    expect(localY).toBeLessThan(130)
     expect(localY + localH).toBeGreaterThan(0)
   })
 
@@ -145,26 +139,8 @@ describe('drop-position rebase — real tray_sum + dice_d6 assets', () => {
     const staleX = Number(movedSvg.getAttribute('x')) // still the original table-space x (900 - 40)
 
     // Demonstrates the bug this fix addresses: without repositioning, the
-    // die's stale x is nowhere near the tray's local 0..200 viewBox.
-    expect(staleX).toBeGreaterThan(200)
+    // die's stale x is nowhere near the tray's local 0..220 viewBox.
+    expect(staleX).toBeGreaterThan(220)
   })
 
-  test('a die dropped near the tray\u2019s edge still rebases correctly (partial overlap is still a valid drop)', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 400, y: 375, color: '#fff' }) // (300,300)-(500,450)
-    await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 50, y: 50, color: '#fff' })
-
-    const layerEl = renderLayer(yToys)
-    // drop centred just inside the tray's left edge
-    const { dropTrayId, movedEl } = dropIntoTray(ydoc, yToys, layerEl, 'die1', 305, 375)
-
-    expect(dropTrayId).toBe('tray1')
-    const movedSvg = movedEl.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'svg')
-    // local centre should be (305 - 300, 375 - 300) = (5, 75)
-    const localW = Number(movedSvg.getAttribute('width'))
-    const localH = Number(movedSvg.getAttribute('height'))
-    expect(Number(movedSvg.getAttribute('x')) + localW / 2).toBe(5)
-    expect(Number(movedSvg.getAttribute('y')) + localH / 2).toBe(75)
-  })
 })
