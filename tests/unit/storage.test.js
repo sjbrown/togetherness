@@ -47,7 +47,7 @@ function makeDocSvg({ toysInner = '', drawingInner = '', extra = '' } = {}) {
   </svg>`)
 }
 
-const VALID_TOY_G = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6" data-id="t1" data-module="toys">
+const VALID_TOY_G = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6">
     <svg x="0" y="0" width="64" height="64" viewBox="0 0 80 100"><circle r="5"/></svg>
   </g>`
 
@@ -106,16 +106,23 @@ describe('domToY', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('isToyG', () => {
-  test('accepts a well-formed toy <g>', () => {
+  test('accepts a well-formed, hand-authored toy <g> — no rendering attrs required', () => {
     expect(isToyG(parseSvg(VALID_TOY_G))).toBeTruthy()
   })
 
+  test('also accepts a toy carrying rendering-only attrs (e.g. a re-imported export)', () => {
+    const g = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6" data-id="t1" data-module="toys" id="t1">
+        <svg/>
+      </g>`
+    expect(isToyG(parseSvg(g))).toBeTruthy()
+  })
+
   test.each([
-    ['missing class="toy"',      `<g data-toy-id="t1" data-toy-type="x" data-id="t1" data-module="toys"><svg/></g>`],
-    ['missing data-toy-id',      `<g class="toy" data-toy-type="x" data-id="t1" data-module="toys"><svg/></g>`],
-    ['missing data-module',      `<g class="toy" data-toy-id="t1" data-toy-type="x" data-id="t1"><svg/></g>`],
-    ['no <svg> child',           `<g class="toy" data-toy-id="t1" data-toy-type="x" data-id="t1" data-module="toys"></g>`],
-    ['wrong tag entirely',       `<rect class="toy" data-toy-id="t1" data-toy-type="x" data-id="t1" data-module="toys"/>`],
+    ['missing class="toy"',      `<g data-toy-id="t1" data-toy-type="x"><svg/></g>`],
+    ['missing data-toy-id',      `<g class="toy" data-toy-type="x"><svg/></g>`],
+    ['missing data-toy-type',    `<g class="toy" data-toy-id="t1"><svg/></g>`],
+    ['no <svg> child',           `<g class="toy" data-toy-id="t1" data-toy-type="x"></g>`],
+    ['wrong tag entirely',       `<rect class="toy" data-toy-id="t1" data-toy-type="x"/>`],
   ])('rejects: %s', (_label, svg) => {
     expect(isToyG(parseSvg(svg))).toBeFalsy()
   })
@@ -198,7 +205,7 @@ describe('populateFromSvgDoc', () => {
 
   test('preserves <script> nodes inside imported toys end-to-end', () => {
     const { yMeta, yToys, yDrawing } = freshLayers()
-    const toyWithScript = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6" data-id="t1" data-module="toys">
+    const toyWithScript = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6">
         <svg x="0" y="0" width="64" height="64" viewBox="0 0 80 100">
           <script type="text/javascript" data-namespace="d6"><![CDATA[ var d6 = 1 ]]></script>
         </svg>
@@ -209,8 +216,8 @@ describe('populateFromSvgDoc', () => {
   })
 
   describe('opts.stripToyDecorative', () => {
-    const rotatedToy = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6" data-id="t1"
-        data-module="toys" transform="rotate(-8,105,100)"><svg/></g>`
+    const rotatedToy = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6"
+        transform="rotate(-8,105,100)"><svg/></g>`
 
     test('off by default — transform is preserved', () => {
       const { yMeta, yToys, yDrawing } = freshLayers()
