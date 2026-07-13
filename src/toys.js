@@ -733,6 +733,9 @@ export const TOOLS = [
     iconUrl: 'toy/tray_sum.svg',
     layer:   'toys',
     defaults: { fill: '#5e7ea8' },
+    options: [
+      { kind: 'color-hsl', key: 'fill', label: 'Tray color', show: ['add', 'edit', 'addQuick'] },
+    ],
   },
 ];
 
@@ -742,28 +745,68 @@ export const TOOLS = [
  * Recursively collect all Y.XmlElement nodes with a given nodeName
  * from a placed (attached) toy tree.  Safe to call on attached nodes only —
  * toArray() throws on detached fragments.
+ *
+ * isRoot is true only for the initial call — every recursive call passes
+ * false. So the *first* toy wrapper visited (the root itself, e.g. a
+ * tray's own <g class="toy">) is exempt, but the next one found anywhere
+ * below it (e.g. a die placed inside) trips the isRoot===false && isToyG
+ * check and returns immediately, before its own children are ever visited.
+ * That's what keeps a tray's own feColorMatrix search from reaching into
+ * a die's feColorMatrix — the walk stops one level above it, at the die's
+ * own <g class="toy"> boundary. Same boundary findScriptNodes respects.
  */
-function findAllYNodes(yEl, nodeName, results = []) {
+function findAllYNodes(yEl, nodeName, results = [], isRoot = true) {
   if (!(yEl instanceof Y.XmlElement)) return results;
   if (yEl.nodeName === nodeName) results.push(yEl);
-  for (const child of yEl.toArray()) findAllYNodes(child, nodeName, results);
+  if (!isRoot && isToyG(yEl)) return results;
+  for (const child of yEl.toArray()) findAllYNodes(child, nodeName, results, false);
   return results;
+}
+
+/**
+ * Whether svgEl's own toy has any feColorMatrix nodes of its own to
+ * recolor — data-driven, so every colorable toy (any tray type, dice,
+ * markers, anything future) picks this up for free, rather than
+ * hardcoding toy-type names. Deliberately boundary-safe (via
+ * findAllYNodes's isRoot guard): a tray with a colorable die placed
+ * inside it is not itself considered colorable on that basis alone.
+ */
+function isColorable(svgEl) {
+  const yToy = yNodeFor(svgEl)
+  if (!yToy) return false
+  return findAllYNodes(yToy, 'feColorMatrix').length > 0
+}
+
+/**
+ * Find elem's own '.tspan_name' element — boundary-safe, so a container
+ * toy with no name of its own never surfaces a nested toy's name
+ * instead. Same convention as tray.js's own _findOwn in src/toy/js/tray.js
+ * (kept independent rather than shared: one is DOM-side app code, the
+ * other DOM-side toy-behaviour code, and they run in different contexts).
+ */
+function findOwnNameEl(elem) {
+  for (const child of elem.children) {
+    if (child.classList.contains('tspan_name')) return child
+    if (child.classList.contains('toy')) continue // a nested toy's own subtree — not elem's
+    const found = findOwnNameEl(child)
+    if (found) return found
+  }
+  return null
 }
 
 /**
  * Return the ttStateSchema for a rendered toy element.
  * Color is read from the data-color attribute on the <g> wrapper, which is
  * part of the Yjs tree and always in sync with the CRDT state.
- *
- * TODO: rather than excluding tray_sum, this should instead toys that are
- *       colorable
  */
 export function getTtStateSchema(svgEl) {
-  const toyType = svgEl.getAttribute('data-toy-type')
+  const nameEl = findOwnNameEl(svgEl)
   return {
     color: svgEl.getAttribute('data-color') ?? '#888',
-    types: toyType === 'tray_sum' ? {} : {
-      color: 'color-hsl',   // hsl only — toy opacity is not user-editable
+    ...(nameEl ? { name: nameEl.textContent ?? '' } : {}),
+    types: {
+      ...(isColorable(svgEl) ? { color: 'color-hsl' } : {}),   // hsl only — toy opacity is not user-editable
+      ...(nameEl ? { name: { kind: 'string', show: ['edit'] } } : {}),
     },
   };
 }
@@ -812,20 +855,51 @@ export async function applyTtState(ydoc, yToys, state) {
 }
 
 /**
- * Apply an editData object to a toy.
- * Currently only `color` is editable: all feColorMatrix nodes in the toy's
- * Yjs tree are updated and data-color on the <g> wrapper is kept in sync.
- * Called by App.commitEdit — never called directly from the UI.
+ * Find yEl's own '.tspan_name' node — boundary-safe (via findAllYNodes's
+ * isRoot guard), so a tray containing another tray never finds the
+ * nested tray's name instead of its own.
+ */
+function findOwnNameYNode(yToy) {
+  return findAllYNodes(yToy, 'tspan').find(t =>
+    (t.getAttribute('class') || '').split(/\s+/).includes('tspan_name')
+  ) ?? null;
+}
+
+/** Overwrite yEl's Y.XmlText content in place, creating one if absent. */
+function setYTextContent(yEl, newText) {
+  const existing = yEl?.toArray().find(n => n instanceof Y.XmlText);
+  if (existing) {
+    existing.delete(0, existing.length);
+    existing.insert(0, newText);
+  } else if (yEl) {
+    yEl.insert(yEl.length, [new Y.XmlText(newText)]);
+  }
+}
+
+/**
+ * Apply an editData object to a toy. Called by App.commitEdit — never
+ * called directly from the UI.
+ *   color — all of the toy's own feColorMatrix nodes are updated (boundary-
+ *           safe: never reaches into a nested toy's colorable parts) and
+ *           data-color on the <g> wrapper is kept in sync.
+ *   name  — the toy's own '.tspan_name' text is overwritten (boundary-safe
+ *           the same way — a tray inside a tray keeps its own name).
  */
 export function edit(ydoc, yToy, editData) {
   if (!yToy) return;
-  const { color } = editData;
-  if (color === undefined) return;
-  const colorMatrices = findAllYNodes(yToy, 'feColorMatrix');
-  const values = colorMatrixValues(color);
+  const { color, name } = editData;
+  if (color === undefined && name === undefined) return;
   ydoc.transact(() => {
-    for (const m of colorMatrices) m.setAttribute('values', values);
-    yToy.setAttribute('data-color', color);
+    if (color !== undefined) {
+      const colorMatrices = findAllYNodes(yToy, 'feColorMatrix');
+      const values = colorMatrixValues(color);
+      for (const m of colorMatrices) m.setAttribute('values', values);
+      yToy.setAttribute('data-color', color);
+    }
+    if (name !== undefined) {
+      const nameNode = findOwnNameYNode(yToy);
+      if (nameNode) setYTextContent(nameNode, String(name));
+    }
   });
 }
 

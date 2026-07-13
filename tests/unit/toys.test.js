@@ -1,14 +1,28 @@
 // @vitest-environment jsdom
+import * as fs from 'fs'
+import * as path from 'path'
+import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   svgTextToYXml, addToy, deleteToy, listToys, findToy, TOY_TYPES, TOOLS,
-  getGeom, _toSVGEl, getTtStateSchema,
+  getGeom, _toSVGEl, getTtStateSchema, edit, reparentToy,
   hslToRgb, colorMatrixValues,
-  _clearSvgTextCache,
+  _clearSvgTextCache, _resetToyScriptState,
   yNodeFor, clearYNodeMap,
   newToyId,
 } from '../../src/toys.js'
+
+const __dir   = path.dirname(fileURLToPath(import.meta.url))
+const TOY_DIR = path.resolve(__dir, '../../src/toy')
+
+// Real assets — needed for the name/color tests below, which depend on
+// tray_sum's actual .name_container/.tspan_name and .colorable structure
+// (the generic TOY_SVG fixture above has neither).
+const TRAY_SUM_SVG  = fs.readFileSync(path.join(TOY_DIR, 'tray_sum.svg'), 'utf8')
+const TRAY_JS        = fs.readFileSync(path.join(TOY_DIR, 'js/tray.js'), 'utf8')
+const D6_SVG         = fs.readFileSync(path.join(TOY_DIR, 'dice_d6.svg'), 'utf8')
+const DICE_UTILS_JS  = fs.readFileSync(path.join(TOY_DIR, 'js/dice_utils.js'), 'utf8')
 
 // Local accessor for the toys fragment + meta map. The production code creates
 // these via makeDoc() in app.js; tests just need a thin equivalent.
@@ -850,30 +864,86 @@ describe('applyColor (via addToy)', () => {
   })
 })
 
-describe('tray_sum has no color tool option', () => {
-  test('TOOLS.tray_sum has no color-hsl option, unlike marker/d6', () => {
-    const trayTool = TOOLS.find(t => t.toyType === 'tray_sum')
-    const d6Tool    = TOOLS.find(t => t.toyType === 'dice_d6')
+// ─────────────────────────────────────────────────────────────────────────────
+// tray_sum: color option + editable name — real tray_sum/dice_d6 assets
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// The generic TOY_SVG fixture above has a feColorMatrix but no
+// .name_container/.tspan_name, so it can't exercise the name field — and
+// since color eligibility is now data-driven (isColorable, keyed off actual
+// feColorMatrix presence) rather than a toyType string check, these tests
+// need the real assets to mean anything.
+describe('tray_sum: color option + editable name (real assets)', () => {
+  beforeEach(() => {
+    _resetToyScriptState()
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (url === '/toy/tray_sum.svg')     return { ok: true, text: async () => TRAY_SUM_SVG }
+      if (url === '/toy/js/tray.js')       return { ok: true, text: async () => TRAY_JS }
+      if (url === '/toy/dice_d6.svg')      return { ok: true, text: async () => D6_SVG }
+      if (url === '/toy/js/dice_utils.js') return { ok: true, text: async () => DICE_UTILS_JS }
+      throw new Error(`unexpected fetch: ${url}`)
+    }))
+  })
+
+  test('TOOLS.tray_sum now has a color-hsl option, same as marker/d6', () => {
+    const trayTool   = TOOLS.find(t => t.toyType === 'tray_sum')
+    const d6Tool      = TOOLS.find(t => t.toyType === 'dice_d6')
     const markerTool = TOOLS.find(t => t.toyType === 'player_marker')
 
-    expect((trayTool.options ?? []).some(o => o.kind === 'color-hsl')).toBe(false)
+    expect(trayTool.options.some(o => o.kind === 'color-hsl')).toBe(true)
     expect(d6Tool.options.some(o => o.kind === 'color-hsl')).toBe(true)
     expect(markerTool.options.some(o => o.kind === 'color-hsl')).toBe(true)
   })
 
-  test('getTtStateSchema omits color from types for a placed tray_sum, but still includes it for other toys', async () => {
+  test('getTtStateSchema includes color for a placed tray_sum — data-driven on its own feColorMatrix, not its toyType', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#5e7ea8' })
-    await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#a8905e' })
+
+    const traySchema = getTtStateSchema(_toSVGEl(findToy(yToys, 'tray1')))
+    expect(traySchema.types).toHaveProperty('color', 'color-hsl')
+    expect(traySchema.color).toBe('#5e7ea8')
+  })
+
+  test('getTtStateSchema includes an editable name for tray_sum (has a .tspan_name) but not for dice_d6 (no name)', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'die1',  toyType: 'dice_d6',  x: 0, y: 0, color: '#fff' })
 
     const traySchema = getTtStateSchema(_toSVGEl(findToy(yToys, 'tray1')))
     const dieSchema   = getTtStateSchema(_toSVGEl(findToy(yToys, 'die1')))
 
-    expect(traySchema.types).not.toHaveProperty('color')
-    expect(dieSchema.types).toHaveProperty('color', 'color-hsl')
-    // the color value itself is still present as data either way — just not
-    // exposed as an editable field for trays.
-    expect(traySchema.color).toBe('#5e7ea8')
+    expect(traySchema.types).toHaveProperty('name', { kind: 'string', show: ['edit'] })
+    expect(traySchema.name).toBe('sum') // tray_sum.svg's default tspan_name text
+    expect(dieSchema.types).not.toHaveProperty('name')
+  })
+
+  test('edit() writes a new name into a tray_sum\'s own .tspan_name', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+
+    edit(ydoc, findToy(yToys, 'tray1'), { name: 'loot' })
+
+    const traySchema = getTtStateSchema(_toSVGEl(findToy(yToys, 'tray1')))
+    expect(traySchema.name).toBe('loot')
+  })
+
+  test('editing a tray\'s color/name never reaches a die nested inside it (boundary-safe)', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 300, y: 300, color: '#5e7ea8' })
+    await addToy(ydoc, yToys, { id: 'die1',  toyType: 'dice_d6',  x: 300, y: 300, color: '#a8905e' })
+
+    reparentToy(ydoc, yToys, 'die1', 'tray1') // die1 now lives in tray1's contents_group — a pure Yjs-tree move, no render needed
+
+    const dieBefore = getTtStateSchema(_toSVGEl(findToy(yToys, 'die1')))
+
+    edit(ydoc, findToy(yToys, 'tray1'), { color: 'hsl(0, 100%, 50%)', name: 'loot' })
+
+    const dieAfter = getTtStateSchema(_toSVGEl(findToy(yToys, 'die1')))
+    expect(dieAfter.color).toBe(dieBefore.color) // untouched by the tray's recolor
+    expect(dieAfter.types).not.toHaveProperty('name') // dice never had a name field to begin with
   })
 })

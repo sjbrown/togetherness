@@ -90,9 +90,9 @@ var tray_sum = {
        id="shadow_1" />
   </svg>
 
-  <svg id="label_container" x="0" y="0" >
+  <svg id="name_container" x="0" y="0" >
     <text
-       id="text_label"
+       id="text_name"
        x="110.36244"
        y="115.27139"
        style="font-style:normal;font-weight:normal;
@@ -107,8 +107,8 @@ var tray_sum = {
          text-align:center;text-anchor:middle;
          font-family:sans-serif;
          fill:#000000"
-         id="tspan_label"
-         class="tspan_label"
+         id="tspan_name"
+         class="tspan_name"
          >sum</tspan></text>
     <path
        style="fill:none;stroke:#ffffff;stroke-width:0.533442;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"
