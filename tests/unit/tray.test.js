@@ -114,7 +114,7 @@ describe('tray.js + tray_sum — script activation', () => {
     // and Roll All can actually find and roll it, proving the die's own
     // menu action is really live, not just present as dead data
     const trayEl = layerEl.querySelector('[data-id="tray1"]')
-    const dieEl  = layerEl.querySelector('[data-toy-id="die1"]')
+    const dieEl  = layerEl.querySelector('[data-id="die1"]')
     globalThis.tray.roll_all(trayEl)
     const rolled = Number(dieEl.querySelector('tspan').textContent)
     expect(rolled).toBeGreaterThanOrEqual(1)
@@ -470,7 +470,7 @@ describe('tray_sum — "Roll All" menu action, end to end', () => {
     await new Promise(r => setTimeout(r, 0))
 
     const trayEl = layerEl.querySelector('[data-id="tray1"]')
-    const dieEl  = layerEl.querySelector('[data-toy-id="die1"]')
+    const dieEl  = layerEl.querySelector('[data-id="die1"]')
 
     // "Roll All" is a real menu action — go through the same
     // getMenuActions/invokeMenuAction path app.js uses for any menu click,

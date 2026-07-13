@@ -7,6 +7,7 @@ import {
   hslToRgb, colorMatrixValues,
   _clearSvgTextCache,
   yNodeFor, clearYNodeMap,
+  newToyId,
 } from '../../src/toys.js'
 
 // Local accessor for the toys fragment + meta map. The production code creates
@@ -80,6 +81,19 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, text: async () => TOY_SVG })))
 })
 afterEach(() => { vi.unstubAllGlobals() })
+
+// ── ID helpers ─────────────────────────────────────────────────────────────────
+
+describe('newToyId', () => {
+  test('id starts with tt-t-v1-', () => {
+    expect(newToyId().slice(0, 8)).toBe('tt-t-v1-')
+  })
+
+  test('successive calls produce distinct ids', () => {
+    const ids = new Set(Array.from({ length: 50 }, () => newToyId()))
+    expect(ids.size).toBe(50)
+  })
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // svgTextToYXml — the SVG importer (the real new machinery)

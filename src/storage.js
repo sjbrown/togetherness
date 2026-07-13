@@ -34,17 +34,23 @@ export function domToY(node) {
 }
 
 /**
- * Toy contract: <g class="toy" data-toy-id data-toy-type data-id
- * data-module="toys"> with ≥1 <svg> child. Anything else found directly
- * inside #toys-layer is invalid and reported back to the caller.
+ * Toy contract: <g class="toy" data-toy-id data-toy-type> with ≥1 <svg>
+ * child. Anything else found directly inside #toys-layer is invalid and
+ * reported back to the caller.
+ *
+ * data-id, id=, data-module, and .$() are never read here and never
+ * required — they're rendering/dispatch conveniences recomputed fresh by
+ * the renderer at every depth, every time (see toys.js's _toSVGEl), not
+ * part of the on-disk contract. Requiring them on import would make a
+ * hand-authored SVG file invalid unless the author also added attributes
+ * that exist solely to help this app's current rendering code find nodes
+ * quickly.
  */
 export function isToyG(el) {
   return el.localName === 'g' &&
          el.classList.contains('toy') &&
          el.getAttribute('data-toy-id') &&
          el.getAttribute('data-toy-type') &&
-         el.getAttribute('data-id') &&
-         el.getAttribute('data-module') === 'toys' &&
          el.querySelector(':scope > svg');
 }
 

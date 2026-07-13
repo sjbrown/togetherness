@@ -98,9 +98,7 @@ function wireCascade(ydoc, yToys, layerEl, { onDispatch } = {}) {
     dispatching = true
     ;(async () => {
       for (const trayId of trayIds) {
-        // data-toy-id, not data-id — see app.js's dispatchContentsChangeCascade
-        // for why: a nested tray never gets data-id stamped.
-        const trayEl = layerEl.querySelector(`[data-toy-id="${trayId}"]`)
+        const trayEl = layerEl.querySelector(`[data-id="${trayId}"]`)
         const yTray  = findToy(yToys, trayId)
         if (!trayEl || !yTray) continue
         onDispatch?.(trayId)
@@ -185,7 +183,7 @@ describe('the full cascade — die-in-tray roll updates the sum exactly once', (
     const dispatchLog = []
     wireCascade(ydoc, yToys, layerEl, { onDispatch: (id) => dispatchLog.push(id) })
 
-    const dieEl = layerEl.querySelector('[data-toy-id="die1"]')
+    const dieEl = layerEl.querySelector('[data-id="die1"]')
     let rolledValue
     await runToyHandler(ydoc, yToys, layerEl, dieEl, () => {
       rolledValue = globalThis.dice.roll_handler(dieEl, 6)
@@ -207,7 +205,7 @@ describe('the full cascade — die-in-tray roll updates the sum exactly once', (
     const dispatchLog = []
     wireCascade(ydoc, yToys, layerEl, { onDispatch: (id) => dispatchLog.push(id) })
 
-    const dieEl = layerEl.querySelector('[data-toy-id="die1"]')
+    const dieEl = layerEl.querySelector('[data-id="die1"]')
     await runToyHandler(ydoc, yToys, layerEl, dieEl, () => {
       globalThis.dice.roll_handler(dieEl, 6)
     })
@@ -228,7 +226,7 @@ describe('the full cascade — die-in-tray roll updates the sum exactly once', (
     wireCascade(ydoc, yToys, layerEl)
 
     // seed a nonzero sum first, so 0 afterward is a meaningful assertion
-    const dieEl = layerEl.querySelector('[data-toy-id="die1"]')
+    const dieEl = layerEl.querySelector('[data-id="die1"]')
     await runToyHandler(ydoc, yToys, layerEl, dieEl, () => {
       globalThis.dice.roll_handler(dieEl, 6)
     })
@@ -258,7 +256,7 @@ describe('the full cascade — die-in-tray roll updates the sum exactly once', (
     const dispatchLog = []
     wireCascade(ydoc, yToys, layerEl, { onDispatch: (id) => dispatchLog.push(id) })
 
-    const dieEl = layerEl.querySelector('[data-toy-id="die1"]')
+    const dieEl = layerEl.querySelector('[data-id="die1"]')
     let rolledValue
     await runToyHandler(ydoc, yToys, layerEl, dieEl, () => {
       rolledValue = globalThis.dice.roll_handler(dieEl, 6)
@@ -268,8 +266,8 @@ describe('the full cascade — die-in-tray roll updates the sum exactly once', (
 
     expect(dispatchLog).toEqual(['inner', 'outer']) // innermost first, each exactly once
 
-    const outerEl = layerEl.querySelector('[data-id="outer"]') // top-level, data-id is fine
-    const innerEl = layerEl.querySelector('[data-toy-id="inner"]') // nested — see above
+    const outerEl = layerEl.querySelector('[data-id="outer"]')
+    const innerEl = layerEl.querySelector('[data-id="inner"]') // nested — data-id works at any depth now
     expect(ownResult(innerEl).textContent).toBe(String(rolledValue))
     // outer's own sum = the inner tray's displayed value (its only content)
     expect(ownResult(outerEl).textContent).toBe(String(rolledValue))
@@ -291,7 +289,7 @@ describe('the full cascade — die-in-tray roll updates the sum exactly once', (
     // is a separate, independent top-level tray at this point.
     reparentToy(ydoc, yToys, 'dieA', 'trayA')
     await new Promise(r => setTimeout(r, 0))
-    const dieAEl = layerEl.querySelector('[data-toy-id="dieA"]')
+    const dieAEl = layerEl.querySelector('[data-id="dieA"]')
     await runToyHandler(ydoc, yToys, layerEl, dieAEl, () => {
       dieAEl.querySelector('tspan').textContent = '3'
     })
@@ -299,7 +297,7 @@ describe('the full cascade — die-in-tray roll updates the sum exactly once', (
 
     reparentToy(ydoc, yToys, 'dieB', 'trayB')
     await new Promise(r => setTimeout(r, 0))
-    const dieBEl = layerEl.querySelector('[data-toy-id="dieB"]')
+    const dieBEl = layerEl.querySelector('[data-id="dieB"]')
     await runToyHandler(ydoc, yToys, layerEl, dieBEl, () => {
       dieBEl.querySelector('tspan').textContent = '5'
     })

@@ -16,11 +16,14 @@
  * Activating them (running the code, wiring up menu actions and lifecycle
  * hooks) is a separate step, in the "Toy behaviour contract" section near
  * the bottom of this file.
+ *
+ * ID format: tt-t-v1-XXXXX
  */
 import * as Y from 'yjs';
 
 const SVG_NS   = 'http://www.w3.org/2000/svg'
 const XLINK_NS = 'http://www.w3.org/1999/xlink'
+const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789'
 
 import { number, bool } from './tools-schema.js';
 import { runToyHandler } from './envelope.js';
@@ -30,6 +33,23 @@ import { runToyHandler } from './envelope.js';
 // the other's bindings until a function runs later, well after both
 // modules have finished loading.
 
+// ── ID helpers ────────────────────────────────────────────────────────────────
+
+function randomSlug(len = 5) {
+  return Array.from({ length: len }, () =>
+    ID_CHARS[Math.floor(Math.random() * ID_CHARS.length)]
+  ).join('')
+}
+
+/**
+ * A toy id an author or anyone reading an exported file can recognize at a
+ * glance: tt (Togetherness Table) — t (toy, as opposed to a future d/b for
+ * drawing/boun_pos) — v1 (so the scheme itself can version) — a random slug.
+ * Toy authors never generate these themselves; they're assigned at placement.
+ */
+export function newToyId() {
+  return `tt-t-v1-${randomSlug()}`
+}
 
 // ── Toy-type registry ─────────────────────────────────────────────────────────
 // Seed of the toy library. Only player_marker is wired up; dice/tokens/trays
@@ -479,7 +499,8 @@ function rectsOverlap(a, b) {
  *
  *  - (rx, ry) is the drop centre point
  *
- * TODO: Only top-level toys are considered, due to data-id constraints
+ * Only top-level toys/trays are considered — nested toys (e.g. a tray
+ * inside a tray) are deliberately out of scope.
  *
  * TODO: trays are recognized by class-contains-tray.  Expand this to
  *       generic containers - anything that has .contents_group
@@ -595,6 +616,8 @@ function mirror(yNode, opts = {}) {
     if (k === 'xlink:href') el.setAttributeNS(XLINK_NS, 'href', attrs[k])
     else                    el.setAttribute(k, attrs[k])
   }
+  // Every toy wrapper (including nested) gets the rendering handles stamped
+  if (isToyG(yNode)) stampToyHandles(el, yNode)
   yNode.toArray().forEach(child => {
     const dom = mirror(child, opts)
     if (dom) el.appendChild(dom)
@@ -623,21 +646,20 @@ function attachScopedLookup(rootEl, toyId) {
 }
 
 /**
- * Render a toy's <g> wrapper to an SVG DOM element, stamped with the handles
- * app.js needs: data-id (the toy id), data-module="toys", a plain SVG
- * id="{id}" so overlay.js <use href="#{id}"> can reference it for
- * drag-ghost rendering, and `.$()` for toy-scoped id lookups (see above).
+ * Stamp the rendering handles app.js needs onto a mirrored toy <g>
+ * Called by mirror() for every toy wrapper it encounters, at any nesting
+ * depth — not just the top level.
  */
+function stampToyHandles(el, yNode) {
+  const id = yNode.getAttribute('data-toy-id')
+  el.setAttribute('id',              id)
+  el.setAttribute('data-id',         id)
+  el.setAttribute('data-module', 'toys')
+  attachScopedLookup(el, id)
+}
+
 export function _toSVGEl(yEl, opts = {}) {
-  const el = mirror(yEl, opts)
-  if (el && el.setAttribute) {
-    const id = yEl.getAttribute('data-toy-id')
-    el.setAttribute('id',              id)
-    el.setAttribute('data-id',         id)
-    el.setAttribute('data-module', 'toys')
-    attachScopedLookup(el, id)
-  }
-  return el
+  return mirror(yEl, opts)
 }
 
 
