@@ -499,7 +499,8 @@ function rectsOverlap(a, b) {
  *
  *  - (rx, ry) is the drop centre point
  *
- * TODO: Only top-level toys are considered, due to data-id constraints
+ * Only top-level toys/trays are considered — nested toys (e.g. a tray
+ * inside a tray) are deliberately out of scope.
  *
  * TODO: trays are recognized by class-contains-tray.  Expand this to
  *       generic containers - anything that has .contents_group
@@ -615,6 +616,8 @@ function mirror(yNode, opts = {}) {
     if (k === 'xlink:href') el.setAttributeNS(XLINK_NS, 'href', attrs[k])
     else                    el.setAttribute(k, attrs[k])
   }
+  // Every toy wrapper (including nested) gets the rendering handles stamped
+  if (isToyG(yNode)) stampToyHandles(el, yNode)
   yNode.toArray().forEach(child => {
     const dom = mirror(child, opts)
     if (dom) el.appendChild(dom)
@@ -643,21 +646,20 @@ function attachScopedLookup(rootEl, toyId) {
 }
 
 /**
- * Render a toy's <g> wrapper to an SVG DOM element, stamped with the handles
- * app.js needs: data-id (the toy id), data-module="toys", a plain SVG
- * id="{id}" so overlay.js <use href="#{id}"> can reference it for
- * drag-ghost rendering, and `.$()` for toy-scoped id lookups (see above).
+ * Stamp the rendering handles app.js needs onto a mirrored toy <g>
+ * Called by mirror() for every toy wrapper it encounters, at any nesting
+ * depth — not just the top level.
  */
+function stampToyHandles(el, yNode) {
+  const id = yNode.getAttribute('data-toy-id')
+  el.setAttribute('id',              id)
+  el.setAttribute('data-id',         id)
+  el.setAttribute('data-module', 'toys')
+  attachScopedLookup(el, id)
+}
+
 export function _toSVGEl(yEl, opts = {}) {
-  const el = mirror(yEl, opts)
-  if (el && el.setAttribute) {
-    const id = yEl.getAttribute('data-toy-id')
-    el.setAttribute('id',              id)
-    el.setAttribute('data-id',         id)
-    el.setAttribute('data-module', 'toys')
-    attachScopedLookup(el, id)
-  }
-  return el
+  return mirror(yEl, opts)
 }
 
 

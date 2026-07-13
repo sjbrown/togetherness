@@ -532,7 +532,7 @@ function dispatchContentsChangeCascade(events) {
   _dispatchingContentsChange = true;
   (async () => {
     for (const trayId of trayIds) {
-      const trayEl = layerEl?.querySelector(`[data-toy-id="${trayId}"]`);
+      const trayEl = layerEl?.querySelector(`[data-id="${trayId}"]`);
       const yTray  = findToy(_yToys, trayId);
       if (!trayEl || !yTray) continue; // e.g. the tray itself was deleted in the same transaction
       await runContentsChangeHandler(_ydoc, _yToys, layerEl, trayEl, yTray.getAttribute('data-toy-type'));

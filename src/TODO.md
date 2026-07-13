@@ -4,85 +4,13 @@ Known gaps in the toys/trays system, logged here so they don't get lost.
 Grouped by kind: identity & addressing, interaction gaps, observability,
 open design questions, process/docs.
 
-## Identity & addressing
-
-### 1. Toy identity contract: id scheme, the `data-yid` rename, `isToyG()` scope
-
-Merges what were two separate entries (nested-toy addressing, and
-`yid`/`tt id` naming) — they turned out to be the same root cause: a
-render-time convenience attribute had been promoted into the on-disk
-storage contract.
-
-**The rename.** `data-yid` and `id="yid-{id}"` never held information
-independent of `data-toy-id` — `_toSVGEl` always set them to the same
-value, verbatim. They're not a second identity, just a bare copy of the
-first one under a name that references Yjs for no reason (nothing about
-addressing a rendered DOM node is Yjs-specific). Renamed:
-
-- `data-yid` → `data-id`
-- `id="yid-{id}"` → `id="{id}"` (bare — no wrapper prefix needed once toy
-  ids have their own distinctive scheme, below; an internal toy id like
-  `pie4` is always namespaced `${toyId}__pie4` before it reaches the DOM,
-  so a bare `id="{id}"` on the toy's own root `<g>` can't collide with it)
-- Same rename applies in `drawing.js` and `boun_pos.js`, which stamp
-  `data-yid` for the identical reason (fast DOM addressing, not identity).
-  `data-module` has the same problem one level up — see below — so it's
-  folded into this same pass rather than left as a loose end.
-
-**The id scheme.** `data-toy-id` values get a real format instead of
-`{playerId}_{random36}`: `tt-t-v1-<random>` — `tt` (Togetherness Table,
-matching the existing `tt_player` localStorage key convention), `t` for
-toy (leaves room for `tt-d-v1-…` / `tt-b-v1-…` if drawing/boun_pos ever
-want the same treatment), `v1` so the scheme itself can version. Toy
-authors never generate these — they're assigned at placement — but a toy
-author or anyone reading an exported file can now tell what an id is for
-at a glance, and the format survives export/reimport as plain, tool-legible
-XML attribute data. This is also the answer to "does the app have identity
-independent of Yjs": yes — `data-toy-id` never touched Yjs's own internal
-`(clientID, clock)` item addressing, and didn't need this rename to be
-correct, only to stop implying a relationship to Yjs it never had.
-
-**`isToyG()` update, and why `data-module` joins the rename.**
-`storage.js`'s import gate currently requires `data-yid` *and*
-`data-module="toys"` to recognize a `<g>` as a toy — both are pure
-rendering/dispatch conveniences (`data-module` only ever feeds
-`app.js`'s `moduleForElement()` lookup, and is always re-derivable from
-which top-level layer fragment — `yToys` vs `yDrawing` vs `yBounPos` —
-transitively contains the node). Requiring either on import means a
-hand-authored SVG file — the artifact the whole toy-author story is built
-around — is invalid unless the author also adds attributes that exist
-solely to help *this app's current rendering code* find nodes quickly.
-New `isToyG()`:
-
-```js
-export function isToyG(el) {
-  return el.localName === 'g' && el.classList.contains('toy') &&
-         el.getAttribute('data-toy-id') && el.getAttribute('data-toy-type') &&
-         el.querySelector(':scope > svg')
-}
-```
-
-`data-id`, `id=`, `data-module`, and `.$()` are never read on import and
-never required — they're recomputed fresh by the renderer, at every
-depth, every time.
-
-**The actual bug this fixes.** Give the stamping step (currently
-`_toSVGEl`, only called by `listToys()`'s top-level walk) a recursive
-mode so every nested toy — arbitrarily deep inside trays-in-trays — gets
-`data-id`/`id=`/`data-module`/`.$()` too, not just top-level placements.
-That's what makes a toy nested in a tray independently selectable,
-draggable back out, and reachable by `invokeMenuAction`'s normal routing
-— all of which currently silently fail for anything not at the top level.
-
-See TOYS.md for the authoring-facing version of this contract.
-
 ## Interaction gaps
 
-### 2. "Fix"ing or "Opening" of trays so that contents can be pulled out
+### 1. "Fix"ing or "Opening" of trays so that contents can be pulled out
+
+### 2. Resizing of trays
 
 ### 3. User changing of trays' labels
-
-### 4. Resizing of trays
 
 ### 5. Reparenting is not undoable
 
@@ -140,13 +68,10 @@ handler like "Roll All" should log once for the whole action or once per
 contained toy it actually rolled is a real design choice — worth deciding
 deliberately rather than defaulting to one or the other.
 
-## Open design questions
+### 8. Updating a toy's js script doesn't fix already-placed instances of that toy
 
-### 8. Fixing a toy's script doesn't fix already-placed instances of that toy
-
-**What you're likely hitting with "Action failed: tray.roll_handler is not
-a function":** a toy's behaviour scripts aren't fetched fresh each time
-they run. `addToySync` reads the SVG file once, at placement time, and
+A toy's behaviour scripts aren't fetched fresh each time they run.
+`addToySync` reads the SVG file once, at placement time, and
 embeds its `<script>` contents as literal data inside that specific toy's
 own Yjs subtree. `activateToyScripts` later evaluates whatever text is
 *sitting in the Yjs document* for that instance, not the current file on
@@ -166,6 +91,14 @@ that specific toy instance exists.
    anything the document had previously.
  * First load from IndexedDb: similarly use toys/ scripts to clobber
    old scripts
+
+**Must also fix home.html's sampler-seeding path**, which hits a sharper
+version of the same root cause: missing scripts entirely, not just stale
+ones.
+Whatever "always re-fetch canonical scripts from
+toys/" mechanism this item lands on for the general case should cover
+this path too, so a sampler-seeded room's toys get real scripts embedded
+the same as a live-placed one, not zero.
 
 ## Process / docs
 

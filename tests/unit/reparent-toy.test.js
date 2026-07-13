@@ -298,8 +298,29 @@ describe('deleteToy / findToy — now search nested toys too', () => {
     expect(layerEl.children.length).toBe(1)
     expect(layerEl.querySelector('[data-id="tray1"]')).not.toBeNull()
     // ...but the die is still findable in the DOM, nested inside it, via
-    // mirror()'s ordinary recursive walk (no special-casing needed there).
-    const dieInDom = layerEl.querySelector('.contents_group [data-toy-id="die1"]')
+    // mirror()'s recursive walk — every toy wrapper gets data-id stamped
+    // at placement, not just the top-level one (see toys.js's mirror()/
+    // stampToyHandles()), so a plain [data-id] selector reaches it too.
+    const dieInDom = layerEl.querySelector('.contents_group [data-id="die1"]')
     expect(dieInDom).not.toBeNull()
+  })
+
+  test('a nested toy gets every rendering handle a top-level toy gets: data-id, id=, data-module, .$()', () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    placeTray(ydoc, yToys, 'tray1')
+    placeDie(ydoc, yToys, 'die1')
+    reparentToy(ydoc, yToys, 'die1', 'tray1')
+
+    const layerEl = document.createElementNS(SVG_NS, 'g')
+    render(yToys, layerEl)
+
+    const dieInDom = layerEl.querySelector('.contents_group [data-id="die1"]')
+    expect(dieInDom.getAttribute('id')).toBe('die1')
+    expect(dieInDom.getAttribute('data-module')).toBe('toys')
+    expect(typeof dieInDom.$).toBe('function')
+    // .$() is scoped to the die's own id, not the tray's — it should
+    // rewrite a bare #token to die1's own namespaced id, not tray1's.
+    expect(dieInDom.$('#tspan_value')).toBe(dieInDom.querySelector('#die1__tspan_value'))
   })
 })
