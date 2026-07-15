@@ -1213,6 +1213,11 @@ const App = {
         Toys.applyMoveCommit(_ydoc, movedEl, rx - trayGeom.x, ry - trayGeom.y);
       }
 
+      // A toy landing inside a tray leaves it: selection doesn't carry
+      // through a reparent, mirroring archive2025's own drop-into-tray
+      // behavior.
+      _clearClaims();
+
       // observeDeep fires and calls renderDoc() — same as the ordinary
       // move-commit path below.
       //

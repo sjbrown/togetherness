@@ -6,11 +6,7 @@ open design questions, process/docs.
 
 ## Interaction gaps
 
-### 1. "Fix"ing or "Opening" of trays so that contents can be pulled out
-
 ### 2. Resizing of trays
-
-### 3. User changing of trays' labels
 
 ### 5. Reparenting is not undoable
 
@@ -38,6 +34,28 @@ invisible in practice, with no way to see or drag it back into view.
 falls within the tray's rect, not on any overlap. Once fixed,
 `findDropTargetTray` no longer needs the dragged toy's own geometry —
 only its center — simplifying the function. 
+
+### 10. Multi-select drop into a tray doesn't reparent anything
+
+**Where:** `app.js` — `commitMultiMove` (the pointerup handler for a
+dragged multi-selection) only ever calls `applyMoveCommit` on each
+selected element with the shared group delta. Unlike single-toy drag
+(`commitMove`), it never calls `findDropTargetTray`/`reparentToy` for any
+element in the group — dragging a multi-selection on top of a tray just
+moves everything as a rigid group across the open table, tray or no tray.
+
+**Fix shape:** for each dragged element, run the same drop-target check
+`commitMove` does against its own final position (not the group's shared
+anchor), and reparent the ones that land inside a tray while leaving the
+rest on the table.
+
+**Known follow-on risk once this lands:** a multi-drop that reparents
+several toys into the same tray in one gesture can place more than one of
+them at overlapping or out-of-viewBox local positions — the same
+invisible-placement risk item 6 already describes for a single toy, just
+easier to trigger with several toys landing at once. Worth a dedicated
+look once the reparenting itself exists; not blocking landing the
+reparenting first.
 
 **Test note:** the overlap-vs-center-point policy is currently asserted
 in two places — `find-drop-target-tray.test.js`'s "partial overlap still
