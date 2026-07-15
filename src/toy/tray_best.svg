@@ -132,9 +132,9 @@ var tray_best = {
        height="140"
     />
   </svg>
-  <svg id="label_container" x="10" y="0" >
+  <svg id="name_container" x="10" y="0" >
     <text
-       id="text_label"
+       id="text_name"
        y="30"
        x="0"
        style="font-style:normal;font-weight:normal;
@@ -146,8 +146,8 @@ var tray_best = {
          style="font-style:normal;font-variant:normal;font-weight:normal;
          font-family:SubotypeSteady;
          fill:#000080"
-         id="tspan_label"
-         class="tspan_label"
+         id="tspan_name"
+         class="tspan_name"
          >Label</tspan></text>
   </svg>
   <g id="contents_group" class="contents_group">

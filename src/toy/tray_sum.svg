@@ -57,6 +57,16 @@ var tray_sum = {
 
     ]]></script>
 
+  <!-- Full coverage, invisible hit-testing floor for the whole tray.
+       Nested toys (.contents_group .toy) are excluded from native
+       hit-testing via ui.css, so a click over one falls through to
+       whatever is actually painted underneath at that point. The
+       tray's visible background art does not quite reach the tray's
+       own edges (a small margin), so this rect provides an exact,
+       deliberate hit target across the tray's full bounds instead,
+       decoupled from whatever the background art happens to paint. -->
+  <rect class="hit_plate" x="0" y="0" width="100%" height="100%" fill="transparent" />
+
   <svg id="resizable_bg"
     x="0" y="0" width="220" height="130"
     viewBox="0 0 220 130"
@@ -90,9 +100,9 @@ var tray_sum = {
        id="shadow_1" />
   </svg>
 
-  <svg id="label_container" x="0" y="0" >
+  <svg id="name_container" x="0" y="0" >
     <text
-       id="text_label"
+       id="text_name"
        x="110.36244"
        y="115.27139"
        style="font-style:normal;font-weight:normal;
@@ -107,8 +117,8 @@ var tray_sum = {
          text-align:center;text-anchor:middle;
          font-family:sans-serif;
          fill:#000000"
-         id="tspan_label"
-         class="tspan_label"
+         id="tspan_name"
+         class="tspan_name"
          >sum</tspan></text>
     <path
        style="fill:none;stroke:#ffffff;stroke-width:0.533442;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"

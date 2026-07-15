@@ -126,6 +126,22 @@ html, body {
 .requestedRing { pointer-events: none; }
 .remote-sel     { pointer-events: none; }
 
+/* A toy nested inside a tray is excluded from native hit-testing, so a
+ * click over it lands on whatever's actually painted underneath — the
+ * tray's own background — instead of the nested toy itself. Descendant
+ * selector + inheritance means this holds at any nesting depth (a tray
+ * inside a tray inside a tray) with no extra rule needed. */
+.contents_group .toy { pointer-events: none; }
+
+/* .hit_plate (in every tray_*.svg) is a full-coverage, invisible rect
+ * providing an exact hit-testing floor for the whole tray, decoupled from
+ * whatever the tray's background art happens to visibly paint (which
+ * doesn't quite reach the tray's own edges — see each tray SVG's own
+ * comment on it). fill="transparent" alone isn't hit-testable under the
+ * default visiblePainted behavior; pointer-events: fill makes it
+ * hit-testable by its geometry regardless of paint. */
+.hit_plate { pointer-events: fill; }
+
 /* Draw-preview div (used by canvas.js for rubber-band rect) */
 #draw-preview {
   display: none; position: absolute; pointer-events: none; z-index: 2;
