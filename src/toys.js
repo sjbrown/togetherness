@@ -518,12 +518,23 @@ export function findDropTargetTray(layerEl, draggedId, rx, ry) {
   for (const el of layerEl.querySelectorAll(':scope > [data-id]')) {
     const trayId = el.getAttribute('data-id')
     if (trayId === draggedId) continue
-    const ownSvg = el.querySelector(':scope > svg')
-    if (!ownSvg?.classList.contains('tray')) continue
+    if (!isTrayEl(el)) continue
     const trayGeom = getGeom(el)
     if (trayGeom && rectsOverlap(draggedRect, trayGeom)) return trayId
   }
   return null
+}
+
+/**
+ * Whether a rendered toy <g data-id> wrapper is a tray — i.e. its own
+ * embedded <svg> carries the `tray` class, the same convention every
+ * tray_*.svg asset ships with. Shared by findDropTargetTray (drop-target
+ * hit-testing) and the resize gesture (resize is tray-only for now — see
+ * src/TODO.md item 2).
+ */
+export function isTrayEl(domEl) {
+  const ownSvg = domEl?.querySelector?.(':scope > svg')
+  return !!ownSvg?.classList.contains('tray')
 }
 
 
@@ -558,6 +569,106 @@ export function applyMoveDom(domEl, cx, cy) {
   const halfH = Math.round(parseFloat(domSvg.getAttribute('height') ?? String(FALLBACK_TOY_SIZE)) / 2)
   domSvg.setAttribute('x', cx - halfW)
   domSvg.setAttribute('y', cy - halfH)
+}
+
+// Resize corner indices — shared with overlay.js's corner-handle geometry
+// (Overlay.resizeCorners returns points in this same order) so canvas.js's
+// hit-test result can be passed straight through to computeResizeRect
+// without any translation.
+export const RESIZE_CORNER_TL = 0
+export const RESIZE_CORNER_TR = 1
+export const RESIZE_CORNER_BL = 2
+export const RESIZE_CORNER_BR = 3
+
+const MIN_RESIZE_SIZE = MIN_TOY_SIZE // never let a drag shrink a toy below the same floor import clamping uses
+const MAX_RESIZE_SIZE = 4000         // generous sanity cap; not the same as MAX_TOY_SIZE (that one's only an import-clamp fallback)
+
+function clampResizeDim(value) {
+  return Math.min(MAX_RESIZE_SIZE, Math.max(MIN_RESIZE_SIZE, Math.round(value)))
+}
+
+/**
+ * Pure geometry for a corner-drag resize: given the toy's rect at drag
+ * start and the corner being dragged, compute the new { x, y, width,
+ * height } for the current pointer position (px, py), keeping the corner
+ * OPPOSITE the dragged one fixed in place. Clamps width/height to
+ * MIN_RESIZE_SIZE (never lets the dragged corner cross the fixed one) —
+ * the fixed corner itself never moves.
+ *
+ * No side effects — callers (App.resize/commitResize) apply the result.
+ */
+export function computeResizeRect(startRect, corner, px, py) {
+  const { x, y, width, height } = startRect
+  const left = x, top = y, right = x + width, bottom = y + height
+
+  switch (corner) {
+    case RESIZE_CORNER_TL: {
+      const newLeft = Math.min(px, right - MIN_RESIZE_SIZE)
+      const newTop  = Math.min(py, bottom - MIN_RESIZE_SIZE)
+      return { x: newLeft, y: newTop, width: right - newLeft, height: bottom - newTop }
+    }
+    case RESIZE_CORNER_TR: {
+      const newTop = Math.min(py, bottom - MIN_RESIZE_SIZE)
+      return { x: left, y: newTop, width: Math.max(px - left, MIN_RESIZE_SIZE), height: bottom - newTop }
+    }
+    case RESIZE_CORNER_BL: {
+      const newLeft = Math.min(px, right - MIN_RESIZE_SIZE)
+      return { x: newLeft, y: top, width: right - newLeft, height: Math.max(py - top, MIN_RESIZE_SIZE) }
+    }
+    case RESIZE_CORNER_BR:
+    default: {
+      return { x: left, y: top, width: Math.max(px - left, MIN_RESIZE_SIZE), height: Math.max(py - top, MIN_RESIZE_SIZE) }
+    }
+  }
+}
+
+/**
+ * Find a toy's #resizable_bg nested <svg> Y node, if it has one — a direct
+ * child of the toy's own root <svg>, matching the convention every
+ * tray_*.svg asset ships with (root <svg> + nested <svg id="resizable_bg">
+ * with matching width/height/viewBox). Returns null for toy types that
+ * don't have one (resize only ever touches it when present).
+ *
+ * toyId is required because svgTextToYXml namespaces every id in the
+ * source file by `${toyId}__` on import (so two placed instances of the
+ * same toy type never collide) — the literal string "resizable_bg" is
+ * never actually the id in the Yjs tree; `${toyId}__resizable_bg` is.
+ */
+function findResizableBgYEl(ySvg, toyId) {
+  const prefixedId = `${toyId}__resizable_bg`
+  return ySvg.toArray().find(c =>
+    c instanceof Y.XmlElement && c.nodeName === 'svg' && c.getAttribute('id') === prefixedId
+  ) ?? null
+}
+
+/**
+ * Commit a toy resize to the Yjs doc in a single transaction. Called once
+ * on pointerup — never during drag (see overlay.js's resize ghost for the
+ * live preview). (x, y) is the new top-left; (width, height) the new
+ * native size — both in canvas-space, already computed by
+ * computeResizeRect. Mirrors archive2025's tray.resize_handler: updates
+ * the toy's own root <svg> width/height/viewBox, and its #resizable_bg
+ * child's width/height/viewBox in step, when present.
+ */
+export function applyResizeCommit(ydoc, yToy, x, y, width, height) {
+  if (!yToy) return
+  const ySvg = yToy.toArray()[0]
+  if (!ySvg) return
+  const w = clampResizeDim(width)
+  const h = clampResizeDim(height)
+  ydoc.transact(() => {
+    ySvg.setAttribute('x', String(Math.round(x)))
+    ySvg.setAttribute('y', String(Math.round(y)))
+    ySvg.setAttribute('width',  String(w))
+    ySvg.setAttribute('height', String(h))
+    ySvg.setAttribute('viewBox', `0 0 ${w} ${h}`)
+    const bg = findResizableBgYEl(ySvg, yToy.getAttribute('data-toy-id'))
+    if (bg) {
+      bg.setAttribute('width',  String(w))
+      bg.setAttribute('height', String(h))
+      //bg.setAttribute('viewBox', `0 0 ${w} ${h}`)
+    }
+  })
 }
 
 

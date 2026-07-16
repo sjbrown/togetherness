@@ -127,6 +127,16 @@ function _clearClaims() {
 function _afterClaimsChanged() {
   const claimedSet = new Set(Object.keys(_myClaims));
   Overlay.localSelectionChanged(claimedSet);
+  // Resize mode only makes sense while its own id is the sole selection —
+  // Checked here rather than at each individual call site so this
+  // invariant can't be forgotten.
+  if (_resizeModeId && !(claimedSet.size === 1 && claimedSet.has(_resizeModeId))) {
+    _exitResizeModeInternal();
+  } else if (_resizeModeId) {
+    // Still valid — reassert the 'resize' kind, since localSelectionChanged
+    // just reset every claimed id back to 'local'.
+    Overlay.setResizeMode(_resizeModeId);
+  }
   _broadcastSelection();
   UI.onSelectionChanged(claimedSet);
 }
@@ -136,6 +146,27 @@ function _afterClaimsChanged() {
 function _broadcastSelection() {
   const keys = Object.keys(_myClaims);
   _awareness.setLocalStateField('selection', keys.length ? { ..._myClaims } : null);
+}
+
+// ── Resize mode ─────────────────────────────────────────────────────────────
+// A per-client UI mode, orthogonal to _myClaims.
+// Entered by clicking an already-sole-selected tray a second time
+// A single elId or null — resize only one object at a time.
+// Broadcast via the awareness `mode` field: 'sel-resize'
+let _resizeModeId = null;
+
+function _broadcastMode() {
+  _awareness.setLocalStateField('mode', _resizeModeId ? 'sel-resize' : null);
+}
+
+// Shared by the public exitResizeMode() and _afterClaimsChanged's own
+// invalidation check above — avoids exitResizeMode() re-deriving a claimedSet
+// it already has, and keeps both paths' ordering (Overlay first, then
+// broadcast) identical.
+function _exitResizeModeInternal() {
+  _resizeModeId = null;
+  Overlay.setResizeMode(null);
+  _broadcastMode();
 }
 
 // Soft-lock request state — this client's own outstanding acquisition bids,
@@ -200,7 +231,7 @@ function _singleSelectedId() {
 }
 let _activeTool   = 'select';
 let _offline      = false;
-let _undoStack    = [];      // { op:'add'|'del'|'move', module:'drawing'|'toys'|'boun_pos', id, ... }
+let _undoStack    = [];      // { op:'add'|'del'|'move'|'resize', module:'drawing'|'toys'|'boun_pos', id, ... }
 let _historyLog   = [];      // { label } — human-readable, newest first
 
 // Active drag — set by App.startDrag, cleared by commitMove / cancelMove.
@@ -219,7 +250,12 @@ let _multiDragState = null;  // { elements: [{ id, mtype, anchorX, anchorY, bbox
                              //   leaderEl, boundsRects, snapPoints,
                              //   lastValidDx, lastValidDy } | null
 
-// ── Tool registry ──────────────────────────────────────────────────────────────
+// Active corner-drag resize
+// Only reachable while _resizeModeId === id and only ever for a tray.
+let _resizeState = null;    // { id, corner, startRect: {x,y,width,height},
+                            //   lastRect: {x,y,width,height} } | null
+
+// ── Tool registry ───────────────────────────────────────────────────────────
 // Built from the layer registries + the universal Select tool.
 // _toolsByLayer: layer → ToolDef[] (Select first)
 // _toolById:     name  → ToolDef
@@ -1249,6 +1285,75 @@ const App = {
     _dragState = null;
   },
 
+  // ── Resize mode + resize gesture ──────────────────────────────────────────
+  // enterResizeMode / exitResizeMode / getResizeModeId
+  // click-to-select, click-again-to-resize toggle
+  // getResizeCorner   — hit-test a canvas-space point against id's corner
+  //                     handles; used by canvas.js on pointerdown to decide
+  //                     whether a click on an already-resize-mode tray
+  //                     starts a resize gesture or falls through.
+  // lifecycle: startResize/resize/commitResize/cancelResize
+
+  // Only a tray that is already the client's own exclusive single selection
+  // can enter resize mode — silently a no-op otherwise
+  enterResizeMode: (id) => {
+    if (Object.keys(_myClaims).length !== 1 || !(id in _myClaims)) return;
+    const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
+    if (moduleForElement(domEl) !== 'toys' || !Toys.isTrayEl(domEl)) return;
+    _resizeModeId = id;
+    Overlay.setResizeMode(id);
+    _broadcastMode();
+  },
+
+  exitResizeMode: () => {
+    if (!_resizeModeId) return;
+    _exitResizeModeInternal();
+  },
+
+  getResizeModeId: () => _resizeModeId,
+
+  getResizeCorner: (id, cx, cy) => {
+    if (_resizeModeId !== id) return null;
+    return Overlay.hitTestResizeCorner(App.getBBox(id), cx, cy, App.getViewScale());
+  },
+
+  startResize: (id, corner) => {
+    if (_resizeModeId !== id || App.isHeldByOther(id)) return;
+    const bbox = App.getBBox(id);
+    if (!bbox) return;
+    _resizeState = { id, corner, startRect: { ...bbox }, lastRect: { ...bbox } };
+    Overlay.startResizeGhost(id);
+  },
+
+  // Called on every pointermove during a resize drag; (px, py) is the raw
+  // canvas-space pointer position — computeResizeRect does the corner math.
+  resize: (id, corner, px, py) => {
+    if (!_resizeState || _resizeState.id !== id) return;
+    const rect = Toys.computeResizeRect(_resizeState.startRect, corner, px, py);
+    _resizeState.lastRect = rect;
+    Overlay.updateResizeGhost(id, rect.x, rect.y, rect.width, rect.height);
+  },
+
+  commitResize: (id, corner, px, py) => {
+    if (!_resizeState || _resizeState.id !== id) return;
+    const fromRect = _resizeState.startRect;
+    const toRect   = Toys.computeResizeRect(_resizeState.startRect, corner, px, py);
+    Overlay.endResizeGhost(id);
+    _resizeState = null;
+
+    const yToy = findToy(_yToys, id);
+    Toys.applyResizeCommit(_ydoc, yToy, toRect.x, toRect.y, toRect.width, toRect.height);
+    // observeDeep fires and calls renderDoc()
+    _undoStack.push({ op: 'resize', module: 'toys', id, from: fromRect, to: toRect });
+    addHistory(`resized ${id.slice(0, 6)}`, { elType: 'toys' });
+  },
+
+  cancelResize: () => {
+    if (!_resizeState) return;
+    Overlay.endResizeGhost(_resizeState.id);
+    _resizeState = null;
+  },
+
   // ── Multi-element drag lifecycle ──────────────────────────────────────────
   // startMultiDrag  — called once on pointerdown with the canvas-space origin
   // moveMulti       — called on every pointermove with (ddx, ddy) offset from start
@@ -1471,6 +1576,10 @@ const App = {
         // observeDeep on all layers and calls renderDoc().
       }
       addHistory(`undid: move ${op.id.slice(0, 6)} → (${op.fromX}, ${op.fromY})`);
+    } else if (op.op === 'resize') {
+      Toys.applyResizeCommit(_ydoc, findToy(_yToys, op.id), op.from.x, op.from.y, op.from.width, op.from.height);
+      // observeDeep on all layers and calls renderDoc().
+      addHistory(`undid: resize ${op.id.slice(0, 6)}`);
     }
     UI.toast('Undone');
   },

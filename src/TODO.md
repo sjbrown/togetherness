@@ -6,7 +6,6 @@ open design questions, process/docs.
 
 ## Interaction gaps
 
-### 2. Resizing of trays
 
 ### 5. Reparenting is not undoable
 

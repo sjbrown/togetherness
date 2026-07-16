@@ -216,6 +216,23 @@ function onPointerDown(e) {
   const hitId = hitEl?.dataset?.id ?? null;
 
   if (ToolMode.tool === 'select') {
+    // Resize mode: the corner handles are drawn just outside the tray's
+    // own hit-testable bounds (overlay PAD — see overlay.js), so a click on
+    // one of them often lands on nothing hitForActiveLayer() can see
+    // Check the pointer position against the resize-mode tray's corners FIRST,
+    // independent of hitId, before falling through to ordinary hit-testing.
+    const resizeId = App.getResizeModeId();
+    if (resizeId) {
+      const rp = toCanvas(e.clientX, e.clientY);
+      const corner = App.getResizeCorner(resizeId, rp.x, rp.y);
+      if (corner != null) {
+        ToolMode._gesture = 'resize';
+        ToolMode._moveRef = { id: resizeId, corner, moved: false };
+        App.startResize(resizeId, corner);
+        return;
+      }
+    }
+
     if (hitId) {
       if (e.shiftKey) {
         // Shift-click: toggle selection membership.
@@ -226,9 +243,20 @@ function onPointerDown(e) {
         ToolMode._moveRef = { id: hitId, sx: e.clientX, sy: e.clientY, moved: false };
         return;
       }
+      const p = toCanvas(e.clientX, e.clientY);
+
+      // A click that reaches here landed on hitId's own body, not a
+      // handle — if hitId is the tray currently in resize mode, that's a
+      // deliberate "click off the handles" and exits resize mode before
+      // falling through.
+      // This click must NOT also count as the reclick that toggles resize
+      // mode back on (see wasReclick below) — otherwise a tap on the body
+      // would exit and immediately re-enter resize mode in one gesture.
+      const wasInResizeMode = resizeId === hitId;
+      if (wasInResizeMode) App.exitResizeMode();
+
       ToolMode._gesture = 'move';
       const anchor = App.getAnchor(hitEl);
-      const p = toCanvas(e.clientX, e.clientY);
       // If the hit element is part of a multi-selection, start a multi-element drag
       if (App.getSelectedIds().length > 1 && App.getSelectedIds().includes(hitId)) {
         ToolMode._gesture = 'multi-move';
@@ -236,7 +264,13 @@ function onPointerDown(e) {
         App.startMultiDrag({ ...toCanvas(e.clientX, e.clientY), leaderId: hitId });
         return;
       }
-      ToolMode._moveRef = { id: hitId, dx: p.x - anchor.x, dy: p.y - anchor.y, moved: false };
+      // A plain (non-shift) click that lands on the element already the
+      // client's own sole selection is a reclick — a tap (no movement) on
+      // pointerup toggles resize mode instead of just re-affirming the
+      // selection. A drag still wins if the pointer actually moves.
+      const wasSoleSelected = !wasInResizeMode &&
+        App.getSelectedIds().length === 1 && App.getSelectedIds()[0] === hitId;
+      ToolMode._moveRef = { id: hitId, dx: p.x - anchor.x, dy: p.y - anchor.y, moved: false, wasReclick: wasSoleSelected };
       App.select(hitId);
       // select() may have bailed into a soft-lock request instead of
       // actually selecting hitId (held by another peer) — in that case
@@ -316,6 +350,14 @@ function onPointerMove(e) {
     return;
   }
 
+  if (ToolMode._gesture === 'resize' && ToolMode._moveRef) {
+    const ref = ToolMode._moveRef;
+    const p   = toCanvas(e.clientX, e.clientY);
+    ref.moved = true;
+    App.resize(ref.id, ref.corner, p.x, p.y);
+    return;
+  }
+
   if (ToolMode._gesture === 'multi-move' && ToolMode._moveRef) {
     const ref = ToolMode._moveRef;
     const ddx = (e.clientX - ref.sx) / _view.scale;
@@ -382,6 +424,22 @@ function onPointerUp(e) {
     } else {
       // Tap with no movement — still started a drag; cancel it cleanly.
       App.cancelMove();
+      // ...and if this tap landed on an element that was ALREADY the sole
+      // selection, it's a deliberate second click — toggle the next mode
+      // in the cycle
+      if (!isCancelled && ToolMode._moveRef.wasReclick) {
+        App.enterResizeMode(ToolMode._moveRef.id);
+      }
+    }
+  }
+
+  if (ToolMode._gesture === 'resize' && ToolMode._moveRef) {
+    if (isCancelled || !ToolMode._moveRef.moved) {
+      App.cancelResize();
+    } else {
+      const ref = ToolMode._moveRef;
+      const p   = toCanvas(e.clientX, e.clientY);
+      App.commitResize(ref.id, ref.corner, p.x, p.y);
     }
   }
 
