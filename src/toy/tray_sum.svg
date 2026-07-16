@@ -69,7 +69,7 @@ var tray_sum = {
   <svg id="resizable_bg"
     x="0" y="0" width="220" height="130"
     preserveAspectRatio="none"
-    viewBox="0 0 220 130"
+    viewBox="2 3.7 218 121"
     class="droptarget"
   >
     <rect
@@ -83,7 +83,7 @@ var tray_sum = {
       <rect
          id="rect_contents"
          fill="#d7d7d7"
-         style="stroke:#3b3b3b;stroke-width:3.20064;stroke-linecap:square"
+         style="stroke:#3b3b3b;stroke-width:3.2;stroke-linecap:square"
          x="3.6" y="11.38" width="213.4" height="106.7"
          rx="10" ry="10" />
     </g>
