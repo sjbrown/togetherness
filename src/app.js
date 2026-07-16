@@ -24,7 +24,7 @@ import * as Toys                                  from './toys.js';
 import * as Storage                               from './storage.js';
 import * as BounPos                               from './boun_pos.js';
 import { SHAPE_TYPES }                            from './drawing.js';
-import { TOOLS as TOY_TOOLS, TOY_TYPES, addToy, findToy, newToyId,
+import { TOOLS as TOY_TOOLS, addToy, findToy, newToyId,
          getMenuActions, invokeMenuAction, activateToyScripts, initializeToy,
          findDropTargetTray, reparentToy,
          findAncestorTrayIds, runContentsChangeHandler } from './toys.js';

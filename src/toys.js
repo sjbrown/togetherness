@@ -6,16 +6,18 @@
  * The CRDT tree IS the SVG tree, so internal toy edits (recolor, flip,
  * contents) merge at the attribute/child level.
  *
- *   yToys (XmlFragment)
- *     └─ <g class="toy" data-toy-id data-toy-type data-color>  ← placement + state
- *          └─ <svg x y width height viewBox>                   ← the live toy sub-document
- *               └─ ...toy content (defs, paths, tspans, <script>, ...)
+ * yToys (XmlFragment)
+ *  └─ <g class="toy" data-toy-id data-toy-type data-color>  ← placement + state
+ *      └─ <svg x y width height viewBox>                    ← the live toy sub-document
+ *          └─ ...toy content (defs, paths, tspans, <script>, ...)
+ *      (optional)
+ *          └─ ...class="contents_group"
+ *            └─ ...toy content (dragged in sub-toys)
  *
  * A toy's <script> nodes are part of that canonical tree (preserved through
  * import/export) but are never mirrored into live DOM — see mirror() below.
  * Activating them (running the code, wiring up menu actions and lifecycle
- * hooks) is a separate step, in the "Toy behaviour contract" section near
- * the bottom of this file.
+ * hooks) is a separate step, in the "Toy behaviour contract" section
  *
  * ID format: tt-t-v1-XXXXX
  */
@@ -41,37 +43,10 @@ function randomSlug(len = 5) {
   ).join('')
 }
 
-/**
- * A toy id an author or anyone reading an exported file can recognize at a
- * glance: tt (Togetherness Table) — t (toy, as opposed to a future d/b for
- * drawing/boun_pos) — v1 (so the scheme itself can version) — a random slug.
- * Toy authors never generate these themselves; they're assigned at placement.
- */
 export function newToyId() {
+  // tt (Togetherness Table) - t (toy) - v1 (version) - random slug
   return `tt-t-v1-${randomSlug()}`
 }
-
-// ── Toy-type registry ─────────────────────────────────────────────────────────
-// Seed of the toy library. Only player_marker is wired up; dice/tokens/trays
-// get added here as their behaviour comes online.
-//   iconSvg — inner SVG markup for the tool button (paths/shapes drawn with
-//             stroke=currentColor). NOT a unicode glyph:
-//             svg('▲') renders nothing because there's no <text> node.
-export const TOY_TYPES = {
-  player_marker: {
-    file: 'player_marker.svg', label: 'Player Marker',
-    iconSvg: '<path d="M12 3l8 16H4z"/><circle cx="12" cy="13" r="2.5"/>',
-  },
-  dice_d6: {
-    file: 'dice_d6.svg', label: 'D6',
-    iconSvg: '<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1.3" fill="currentColor"/><circle cx="15" cy="15" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/>',
-  },
-  tray_sum: {
-    file: 'tray_sum.svg', label: 'Sum Tray',
-    iconSvg: '<rect x="3" y="5" width="18" height="14" rx="1.5"/><line x1="3" y1="15" x2="21" y2="15"/>',
-  },
-}
-
 
 const MIN_TOY_SIZE      = 30
 const MAX_TOY_SIZE      = 420
@@ -84,8 +59,7 @@ function clampToySize(value) {
 }
 
 // ── Color matrix ──────────────────────────────────────────────────────────────
-// Recolorizes the toy's feColorMatrix filter to tint it with the player's
-// color, matching the technique from togetherness/src/js/utils.js.
+// Recolorizes the toy's feColorMatrix filter to tint it with a new color
 //
 // The feColorMatrix "values" attribute is a 4×5 matrix applied to each pixel:
 //   [R']   [r 0 0 0 0] [R]
@@ -94,14 +68,12 @@ function clampToySize(value) {
 //   [A']   [0 0 0 1 0] [A]
 //
 // A white source pixel (1,1,1) becomes (r,g,b). Grey pixels scale linearly.
-// The player_marker SVG is drawn in near-white (#f2f2f2) so the tint reads cleanly.
 //
-// If the color would be too dark (sum of RGB < 0.9, matching togetherness),
-// we boost it to 50% lightness so the marker stays visible on dark backgrounds.
+// If the color would be too dark (sum of RGB < 0.9), we boost it to 50%
+// lightness so the black text stays visible.
 
 /**
  * Convert HSL (degrees, percent, percent) to RGB in [0, 1].
- * Pure function — no DOM required.
  */
 export function hslToRgb(h, s, l) {
   s /= 100; l /= 100
@@ -112,10 +84,8 @@ export function hslToRgb(h, s, l) {
 }
 
 /**
- * Build the 20-value feColorMatrix string that tints any greyscale SVG to `color`.
+ * Build the 20-value feColorMatrix string that tints any grays SVG to `color`.
  * `color` must be a CSS color string. Accepts hsl(…), #rrggbb, or rgb(…).
- *
- * Returns the values string ready for setAttribute('values', …).
  */
 export function colorMatrixValues(color) {
   // Parse hsl(H, S%, L%) — our entityGradient always produces this format.
@@ -161,9 +131,7 @@ function findYNode(yEl, nodeName) {
 }
 
 /**
- * Apply a player color to all feColorMatrix nodes in the toy's Yjs tree.
- * Uses the direct refs captured during elementToYXml so no tree-walk
- * on detached nodes is needed (toArray on detached throws).
+ * Apply a color to all feColorMatrix nodes in the toy's Yjs tree.
  */
 function applyColor(colorMatrices, color) {
   const values = colorMatrixValues(color)
@@ -182,7 +150,7 @@ function rewriteUrlRefs(value, idMap) {
 
 // Recursively convert an SVG DOM element into a detached Y.XmlElement tree.
 // - drops foreign-namespace elements/attrs (inkscape, sodipodi, dc, rdf, cc)
-// - preserves <script> nodes as inert document citizens (see module header)
+// - preserves <script> nodes as inert document citizens
 // - namespaces every id and internal reference via idMap, so placed
 //   instances don't collide on ids like #app-filter-colorize
 // - if `refs` is given, collects direct refs to any feColorMatrix nodes
@@ -265,14 +233,14 @@ export function _clearSvgTextCache() { _svgTextCache.clear() }
 /**
  * Place a toy on the table synchronously from already-fetched SVG text.
  * The cache must be warm for this toyType — call addToy() if unsure.
- * attrs: { id, toyType, x, y, color, author }  (x,y is the center point)
+ * attrs: { id, toyType, x, y, color }  (x,y is the center point)
  */
 export function addToySync(ydoc, yToys, attrs, svgText) {
   const { id, toyType, x, y, color } = attrs
   const prefix = `${id}__`
   const { ySvg, colorMatrices, width: nativeWidth, height: nativeHeight } = svgTextToYXml(svgText, prefix)
 
-  // Tint the toy's colorize filter with the player's color before insertion.
+  // Tint the toy's colorize filter with the color before insertion.
   // The matrix values are set on the direct refs captured during import,
   // so the color is part of the CRDT state from the moment the toy is placed.
   if (color) applyColor(colorMatrices, color)
@@ -298,17 +266,15 @@ export function addToySync(ydoc, yToys, attrs, svgText) {
 
 /**
  * Place a toy on the table. Fetches the toy's SVG file on first use and
- * caches it; subsequent placements of the same toy type are cache hits and
- * skip the network round-trip.
+ * caches it; subsequent placements of the same toy type are cache hits
  * attrs: { id, toyType, x, y, color }  (x,y is the center point)
  */
 export async function addToy(ydoc, yToys, attrs) {
   const { toyType } = attrs
-  const def = TOY_TYPES[toyType]
-  if (!def) throw new Error(`unknown toy type: ${toyType}`)
-
   let svgText = _svgTextCache.get(toyType)
   if (!svgText) {
+    const def = TOY_TYPES[toyType]
+    if (!def) throw new Error(`unknown toy type: ${toyType}`)
     const res = await fetch(`/toy/${def.file}`)
     if (!res.ok) throw new Error(`failed to load ${def.file}: ${res.status}`)
     svgText = await res.text()
@@ -816,10 +782,11 @@ export const TOOLS = [
   {
     name:    'marker',
     toyType: 'player_marker',
-    label:   TOY_TYPES['player_marker'].label,
+    file: 'player_marker.svg',
+    label: 'Player Marker',
     iconUrl: 'toy/player_marker.svg',
     layer:   'toys',
-    defaults: { fill: '#a85e5e', label: '', size: 24 },
+    defaults: { label: '', size: 24 },
     options: [
       { kind: 'color-hsl', key: 'fill', label: 'Token color', show: ['add', 'edit', 'addQuick'] },
       number('size', 'Size', { min: 12, max: 64, step: 4 }),
@@ -829,10 +796,11 @@ export const TOOLS = [
   {
     name:    'd6',
     toyType: 'dice_d6',
-    label:   TOY_TYPES['dice_d6'].label,
+    file: 'dice_d6.svg',
+    label: 'D6',
     iconUrl: 'toy/dice_d6.svg',
     layer:   'toys',
-    defaults: { fill: '#a8905e' },
+    defaults: { fill: '#f8f8e5' },
     options: [
       { kind: 'color-hsl', key: 'fill', label: 'Die color', show: ['add', 'edit', 'addQuick'] },
     ],
@@ -840,15 +808,21 @@ export const TOOLS = [
   {
     name:    'tray_sum',
     toyType: 'tray_sum',
-    label:   TOY_TYPES['tray_sum'].label,
+    file: 'tray_sum.svg',
+    label: 'Sum Tray',
     iconUrl: 'toy/tray_sum.svg',
     layer:   'toys',
-    defaults: { fill: '#5e7ea8' },
+    defaults: { fill: '#fefed8' },
     options: [
       { kind: 'color-hsl', key: 'fill', label: 'Tray color', show: ['add', 'edit', 'addQuick'] },
     ],
   },
 ];
+export const TOY_TYPES = {
+  player_marker: TOOLS[0],
+  dice_d6: TOOLS[1],
+  tray_sum: TOOLS[2],
+}
 
 // ── ttState / ttStateSchema ───────────────────────────────────────────────────
 
