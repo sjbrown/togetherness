@@ -69,8 +69,8 @@ var tray_sum = {
 
   <svg id="resizable_bg"
     x="0" y="0" width="220" height="130"
-    viewBox="0 0 220 130"
     preserveAspectRatio="none"
+    viewBox="0 0 220 130"
     class="droptarget"
   >
     <rect
@@ -83,7 +83,7 @@ var tray_sum = {
     <g id="group-monochrome-1" class="colorable" filter="url(#app-filter-colorize)">
     <rect
        id="rect_contents"
-       fill="#b7b7b7"
+       fill="#d7d7d7"
        style="stroke:#3b3b3b;stroke-width:3.20064;stroke-linecap:square"
        x="3.6003199" y="11.38277" width="213.4" height="106.7"
        rx="10" ry="10" />
@@ -92,10 +92,18 @@ var tray_sum = {
        style="color:#000;fill:#000;fill-opacity:0.5;stroke-width:4;stroke-linecap:square;"
        d="m 14.271917,12.485103 c -5.0516119,0 -9.0726609,4.021045 -9.0726609,9.072657 v 2.133764 c 0,-5.051616 4.021049,-9.072661 9.0726609,-9.072661 H 206.31057 c 5.05163,0 9.06641,4.021045 9.06641,9.072661 V 21.55776 c 0,-5.051612 -4.01478,-9.072657 -9.06641,-9.072657 z"
        id="shadow_1" />
-  </svg>
-
-  <svg id="name_container" x="0" y="0" >
-    <text
+    <path
+       style="fill:none;stroke:#fff;stroke-width:0.533442;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:0.8"
+       d="m 5.3101849,15.889532 c 2.641714,-3.33713 4.6590452,-3.871886 6.7829661,-4.419111 2.922428,-0.752956 9.773661,-0.610072 9.773661,-0.610072"
+       id="shine_1"
+       />
+    <path
+       style="fill:none;stroke:#fff;stroke-width:0.426751;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:0.8"
+       d="m 214.00522,114.38501 c 0.58279,-0.2563 2.89579,-3.45668 2.86975,-6.07213"
+       id="shine_2"
+       />
+    <svg class="name_container" x="0" y="0" >
+      <text
        id="text_name"
        x="110.36244"
        y="115.27139"
@@ -114,28 +122,21 @@ var tray_sum = {
          id="tspan_name"
          class="tspan_name"
          >sum</tspan></text>
-    <path
-       style="fill:none;stroke:#fff;stroke-width:0.533442;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"
-       d="m 5.3101849,15.889532 c 2.641714,-3.33713 4.6590452,-3.871886 6.7829661,-4.419111 2.922428,-0.752956 9.773661,-0.610072 9.773661,-0.610072"
-       id="shine_1"
-       />
-    <path
-       style="fill:none;stroke:#fff;stroke-width:0.426751;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"
-       d="m 214.00522,114.38501 c 0.58279,-0.2563 2.89579,-3.45668 2.86975,-6.07213"
-       id="shine_2"
-       />
+    </svg>
   </svg>
+
 
   <g id="contents_group" class="contents_group">
   </g>
 
   <svg class="result_container"
   viewBox="0 0 220 130"
-  preserveAspectRatio="xMaxYMin slice" >
+  preserveAspectRatio="xMidYMin slice"
+  >
    <g id="group-monochrome-2" class="colorable" filter="url(#app-filter-colorize)">
     <rect
        id="rect_result"
-       fill="#a3a3a3"
+       fill="#e3e3e3"
        style="stroke:#4d4d4d;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:1"
        x="99" y="5" width="25" height="25"
        rx="10"
@@ -172,7 +173,7 @@ var tray_sum = {
        id="shine_3"
        style="fill:none;
        stroke:#fff;stroke-width:0.53;stroke-linecap:round;stroke-linejoin:round;
-       stroke-opacity:1
+       stroke-opacity:0.8
        "
        d="m 98.76566,10.451271 c 0.8407,-1.2163424 1.42749,-2.227745 3.21826,-3.4940918 1.8167,-1.2846768 2.92248,-1.8679303 4.64307,-2.0646748"
        />
