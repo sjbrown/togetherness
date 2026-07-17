@@ -829,35 +829,6 @@ export const TOY_TYPES = {
 // ── ttState / ttStateSchema ───────────────────────────────────────────────────
 
 /**
- * Recursively collect all Y.XmlElement nodes with a given nodeName
- * from a placed (attached) toy tree.  Safe to call on attached nodes only —
- * toArray() throws on detached fragments.
- *
- * isRoot is true only for the initial call — every recursive call passes
- * false. So the *first* toy wrapper visited (the root itself, e.g. a
- * tray's own <g class="toy">) is exempt, but the next one found anywhere
- * below it (e.g. a die placed inside) trips the isRoot===false && isToyG
- * check and returns immediately, before its own children are ever visited.
- * That's what keeps a tray's own feColorMatrix search from reaching into
- * a die's feColorMatrix — the walk stops one level above it, at the die's
- * own <g class="toy"> boundary. Same boundary findScriptNodes respects.
- *
- * feColorMatrix nodes don't carry an id-prefixed class of their own (only
- * their parent <filter> does, via tt_color_filter — see isColorable), so
- * this nodeName-based, boundary-guarded walk is what edit() still uses to
- * retint every one of them in place. Everything else that used to lean on
- * this function (isColorable, findOwnNameYNode) now matches directly on an
- * id-prefixed class via yClassSelector instead.
- */
-function findAllYNodes(yEl, nodeName, results = [], isRoot = true) {
-  if (!(yEl instanceof Y.XmlElement)) return results;
-  if (yEl.nodeName === nodeName) results.push(yEl);
-  if (!isRoot && isToyG(yEl)) return results;
-  for (const child of yEl.toArray()) findAllYNodes(child, nodeName, results, false);
-  return results;
-}
-
-/**
  * Return the ttStateSchema for a rendered toy element.
  * Color is read from the data-color attribute on the <g> wrapper, which is
  * part of the Yjs tree and always in sync with the CRDT state.
@@ -925,15 +896,6 @@ export async function applyTtState(ydoc, yToys, state) {
   }
 }
 
-/**
- * Find yEl's own '.tspan_name' node — boundary-safe via id-prefix matching,
- * don't accidentally match a contents_group-contained toy.
- */
-function findOwnNameYNode(yToy) {
-  const toyId = yToy.getAttribute('data-toy-id')
-  if (!toyId) return null
-  return yClassSelector(yToy, `${toyId}__tspan_name`)[0] ?? null
-}
 
 /** Overwrite yEl's Y.XmlText content in place, creating one if absent. */
 function setYTextContent(yEl, newText) {
@@ -949,19 +911,32 @@ function setYTextContent(yEl, newText) {
 /**
  * Apply an editData object to a toy. Called by App.commitEdit — never
  * called directly from the UI.
- *   color — all of the toy's own feColorMatrix nodes are updated (boundary-
- *           safe: never reaches into a nested toy's colorable parts) and
+ *   color — all of the toy's own feColorMatrix nodes are updated and
  *           data-color on the <g> wrapper is kept in sync.
  *   name  — the toy's own '.tspan_name' text is overwritten (boundary-safe
  *           the same way — a tray inside a tray keeps its own name).
  */
 export function edit(ydoc, yToy, editData) {
   if (!yToy) return;
+  const toyId = yToy.getAttribute('data-toy-id')
+  if (!toyId) return;
   const { color, name } = editData;
   if (color === undefined && name === undefined) return;
+
+  function findOwnColorMatrixYNodes() {
+    const yFilters = yClassSelector(yToy, `${toyId}__tt_color_filter`)
+    return yFilters.flatMap(f =>
+      f.toArray().filter(c => c instanceof Y.XmlElement && c.nodeName === 'feColorMatrix')
+    )
+  }
+
+  function findOwnNameYNode() {
+    return yClassSelector(yToy, `${toyId}__tspan_name`)[0] ?? null
+  }
+
   ydoc.transact(() => {
     if (color !== undefined) {
-      const colorMatrices = findAllYNodes(yToy, 'feColorMatrix');
+      const colorMatrices = findOwnColorMatrixYNodes(yToy);
       const values = colorMatrixValues(color);
       for (const m of colorMatrices) m.setAttribute('values', values);
       yToy.setAttribute('data-color', color);
