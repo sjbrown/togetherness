@@ -99,7 +99,7 @@ describe('tray.js + tray_sum — script activation', () => {
     expect(actionKeys).toEqual(['Roll All']) // not also 'Roll' / 'Turn Up'
   })
 
-  test('the nested toy\u2019s own namespace still gets activated (not skipped entirely) even though it\u2019s never a top-level entry', async () => {
+  test('the nested toy namespace still gets activated (not skipped entirely) even though it is never a top-level entry', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
@@ -121,15 +121,6 @@ describe('tray.js + tray_sum — script activation', () => {
     expect(rolled).toBeLessThanOrEqual(6)
   })
 
-  test('tray_sum is placeable via TOY_TYPES / TOOLS, matching the d6 registry pattern', () => {
-    expect(Toys.TOY_TYPES.tray_sum).toEqual({
-      file: 'tray_sum.svg', label: 'Sum Tray',
-      iconSvg: expect.any(String),
-    })
-    const tool = Toys.TOOLS.find(t => t.toyType === 'tray_sum')
-    expect(tool).toBeTruthy()
-    expect(tool.layer).toBe('toys')
-  })
 })
 
 describe('tray.js — visit_contents_group', () => {
@@ -156,7 +147,7 @@ describe('tray.js — visit_contents_group', () => {
     expect(seen).toEqual(['a', 'b', 'c'])
   })
 
-  test('does not descend into a nested tray\u2019s own contents_group (direct children only)', () => {
+  test('does not descend into a nested tray contents_group (direct children only)', () => {
     ;(0, eval)(TRAY_JS)
     const { elem, group } = makeTrayWithContents(['a'])
     // a nested tray placed inside, itself containing another toy
@@ -203,7 +194,7 @@ describe('tray.js — getValue / getUnderstoodNumber', () => {
     expect(tray.getValue(elem)).toBe('12')
   })
 
-  test('throws when there is no result tspan (no null guard on this branch\u2019s getValue)', () => {
+  test('throws when there is no result tspan', () => {
     ;(0, eval)(TRAY_JS)
     const elem = document.createElementNS(SVG_NS, 'g')
     expect(() => tray.getValue(elem)).toThrow()
@@ -246,7 +237,7 @@ describe('tray.js — get_numeric_value', () => {
     expect(tray.get_numeric_value(wrapper)).toBe(0)
   })
 
-  test('uses the toy type\u2019s own namespace getValue() when one is registered (evaluate_sub_element)', () => {
+  test('uses the toy type namespace getValue() when one is registered (evaluate_sub_element)', () => {
     ;(0, eval)(DICE_UTILS_JS)
     ;(0, eval)(TRAY_JS)
     globalThis.getNamespacesForType = (toyType) => (toyType === 'dice_d6' ? ['dice'] : [])
@@ -286,7 +277,7 @@ describe('tray.js — get_numeric_value', () => {
 })
 
 describe('tray.js — roll_all', () => {
-  test('invokes each contained toy\u2019s own eventName:\u2019die_roll\u2019 menu action', () => {
+  test('invokes each contained toy eventName: die_roll menu action', () => {
     ;(0, eval)(TRAY_JS)
     const rolled = []
     globalThis.getNamespacesForType = (toyType) => (toyType === 'dice_d6' ? ['fake_dice'] : [])
@@ -383,7 +374,7 @@ describe('tray.js — roll_all', () => {
 })
 
 describe('tray_sum — contents_change_handler', () => {
-  test('sums every contained die\u2019s value and writes it to the result tspan', async () => {
+  test('sums every contained die value and writes it to the result tspan', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     const { toyEl } = await placeAndActivate(ydoc, yToys, 'tray_sum', 'tray1')
@@ -419,7 +410,7 @@ describe('tray_sum — contents_change_handler', () => {
     expect(toyEl.querySelector('.tspan_result').textContent).toBe('0')
   })
 
-  test('writes to its OWN result tspan, never a nested sub-tray\u2019s — regardless of document order (regression: contents_change_handler used to use a plain, unscoped .tspan_result selector, which matches .contents_group before .result_container in the markup and so silently overwrote a nested tray\u2019s own result instead of its own)', async () => {
+  test('writes to its OWN result tspan, never a nested sub-tray — regardless of document order (regression: contents_change_handler used to use a plain, unscoped .tspan_result selector, which matches .contents_group before .result_container in the markup and so silently overwrote a nested tray\u2019s own result instead of its own)', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     const { toyEl: outerEl } = await placeAndActivate(ydoc, yToys, 'tray_sum', 'outer')

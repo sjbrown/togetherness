@@ -428,8 +428,7 @@ export function reparentToy(ydoc, yToys, id, targetTrayId) {
 
 /**
  * Bounding box for a rendered toy svgEl, read from its embedded <svg> child's
- * x/y/width/height. Returns { x, y, width, height } (Numbers) or null.
- * No PAD — callers apply padding if they want a selection box.
+ * x/y/width/height. Returns { x, y, width, height } or null.
  */
 export function getGeom(svgEl) {
   const svg = svgEl?.tagName === 'svg' ? svgEl : svgEl?.querySelector?.('svg')
@@ -445,7 +444,7 @@ export function getGeom(svgEl) {
 /**
  * The drag anchor for a toy is its centre point — matching how addToy places
  * it: x = center - width/2, y = center - height/2 (the toy's own native size).
- * Returns { x, y } in canvas-space, or { x: 0, y: 0 } if the geom is unavailable.
+ * Returns { x, y } in canvas-space, or { x: 0, y: 0 } if geom is unavailable.
  */
 export function getAnchor(svgEl) {
   const geom = getGeom(svgEl)
@@ -467,6 +466,8 @@ function rectsOverlap(a, b) {
  *
  * Only top-level toys/trays are considered — nested toys (e.g. a tray
  * inside a tray) are deliberately out of scope.
+ *
+ * TODO: use toy center point, not overlap test
  *
  * TODO: trays are recognized by class-contains-tray.  Expand this to
  *       generic containers - anything that has .contents_group
@@ -492,11 +493,8 @@ export function findDropTargetTray(layerEl, draggedId, rx, ry) {
 }
 
 /**
- * Whether a rendered toy <g data-id> wrapper is a tray — i.e. its own
- * embedded <svg> carries the `tray` class, the same convention every
- * tray_*.svg asset ships with. Shared by findDropTargetTray (drop-target
- * hit-testing) and the resize gesture (resize is tray-only for now — see
- * src/TODO.md item 2).
+ * Whether a rendered toy <g data-id> wrapper is a tray -- i.e. its own
+ * embedded <svg> carries the `tray` class.
  */
 export function isTrayEl(domEl) {
   const ownSvg = domEl?.querySelector?.(':scope > svg')
@@ -506,7 +504,6 @@ export function isTrayEl(domEl) {
 
 /**
  * Commit a toy move to the Yjs doc in a single transaction.
- * Called once on pointerup — never during drag.
  */
 export function applyMoveCommit(ydoc, yToy, cx, cy) {
   if (!yToy) return
@@ -546,8 +543,8 @@ export const RESIZE_CORNER_TR = 1
 export const RESIZE_CORNER_BL = 2
 export const RESIZE_CORNER_BR = 3
 
-const MIN_RESIZE_SIZE = MIN_TOY_SIZE // never let a drag shrink a toy below the same floor import clamping uses
-const MAX_RESIZE_SIZE = 4000         // generous sanity cap; not the same as MAX_TOY_SIZE (that one's only an import-clamp fallback)
+const MIN_RESIZE_SIZE = MIN_TOY_SIZE // never let a drag shrink a toy below this
+const MAX_RESIZE_SIZE = 4000         // generous sanity cap
 
 function clampResizeDim(value) {
   return Math.min(MAX_RESIZE_SIZE, Math.max(MIN_RESIZE_SIZE, Math.round(value)))
@@ -560,8 +557,6 @@ function clampResizeDim(value) {
  * OPPOSITE the dragged one fixed in place. Clamps width/height to
  * MIN_RESIZE_SIZE (never lets the dragged corner cross the fixed one) —
  * the fixed corner itself never moves.
- *
- * No side effects — callers (App.resize/commitResize) apply the result.
  */
 export function computeResizeRect(startRect, corner, px, py) {
   const { x, y, width, height } = startRect
@@ -589,16 +584,14 @@ export function computeResizeRect(startRect, corner, px, py) {
 }
 
 /**
- * Find a toy's #resizable_bg nested <svg> Y node, if it has one — a direct
- * child of the toy's own root <svg>, matching the convention every
- * tray_*.svg asset ships with (root <svg> + nested <svg id="resizable_bg">
- * with matching width/height/viewBox). Returns null for toy types that
- * don't have one (resize only ever touches it when present).
+ * Find a toy's #resizable_bg nested <svg> Y node, if it has one
+ * Returns null for toy types that don't have one
+ * (resize only ever touches it when present).
  *
- * toyId is required because svgTextToYXml namespaces every id in the
- * source file by `${toyId}__` on import (so two placed instances of the
- * same toy type never collide) — the literal string "resizable_bg" is
- * never actually the id in the Yjs tree; `${toyId}__resizable_bg` is.
+ * svgTextToYXml namespaces every id in the source file by `${toyId}__` on
+ * import (so two placed instances of the * same toy type never collide) -- the
+ * literal string "resizable_bg" is never actually the id in the Yjs tree;
+ * They all get transformed into `${toyId}__resizable_bg`.
  */
 function findResizableBgYEl(ySvg, toyId) {
   const prefixedId = `${toyId}__resizable_bg`
@@ -608,13 +601,10 @@ function findResizableBgYEl(ySvg, toyId) {
 }
 
 /**
- * Commit a toy resize to the Yjs doc in a single transaction. Called once
- * on pointerup — never during drag (see overlay.js's resize ghost for the
- * live preview). (x, y) is the new top-left; (width, height) the new
+ * Commit a toy resize to the Yjs doc in a single transaction.
+ * (x, y) is the new top-left; (width, height) the new
  * native size — both in canvas-space, already computed by
- * computeResizeRect. Mirrors archive2025's tray.resize_handler: updates
- * the toy's own root <svg> width/height/viewBox, and its #resizable_bg
- * child's width/height/viewBox in step, when present.
+ * computeResizeRect.
  */
 export function applyResizeCommit(ydoc, yToy, x, y, width, height) {
   if (!yToy) return
@@ -630,9 +620,9 @@ export function applyResizeCommit(ydoc, yToy, x, y, width, height) {
     ySvg.setAttribute('viewBox', `0 0 ${w} ${h}`)
     const bg = findResizableBgYEl(ySvg, yToy.getAttribute('data-toy-id'))
     if (bg) {
+      // purposefully avoid changing the bg viewBox
       bg.setAttribute('width',  String(w))
       bg.setAttribute('height', String(h))
-      //bg.setAttribute('viewBox', `0 0 ${w} ${h}`)
     }
   })
 }

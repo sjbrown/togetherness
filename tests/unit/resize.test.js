@@ -120,7 +120,7 @@ describe('applyResizeCommit', () => {
     expect(svg.getAttribute('viewBox')).toBe('0 0 300 220')
   })
 
-  test('mirrors the new size onto #resizable_bg, matching every tray asset\u2019s convention', () => {
+  test('mirrors the new size onto #resizable_bg, matching tray convention', () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     place(ydoc, yToys, 'tray1', 'tray_fixture', TRAY_SVG, 100, 100)
@@ -131,7 +131,7 @@ describe('applyResizeCommit', () => {
     const bg = layerEl.querySelector('[data-id="tray1"] [id="tray1__resizable_bg"]')
     expect(bg.getAttribute('width')).toBe('300')
     expect(bg.getAttribute('height')).toBe('220')
-    expect(bg.getAttribute('viewBox')).toBe('0 0 300 220')
+    expect(bg.getAttribute('viewBox')).toBe('0 0 200 150')
   })
 
   test('clamps below the minimum toy size rather than writing a degenerate rect', () => {
