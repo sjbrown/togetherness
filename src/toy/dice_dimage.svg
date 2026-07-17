@@ -11,7 +11,7 @@
    version="1.1"
    >
   <defs id="defs4">
-    <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
+    <filter class="tt_color_filter" id="app-filter-colorize" color-interpolation-filters="sRGB" >
       <feColorMatrix id="recolorize-filter-matrix" type="matrix"
          values="1.0 0.0 0.0 0.0  0.0
                  1.0 0.0 0.0 0.0  0.0
@@ -107,7 +107,7 @@ var dimage = {
     id="path_shadow"
     class="object_shadow"
   />
-  <g filter="url(#app-filter-colorize)" id="layer1" >
+  <g class="tt_colored" filter="url(#app-filter-colorize)" id="layer1" >
       <path
         id="path_sides"
         d="m 16.266526,11.455671 c -1.68432,-0.0021 -5.18571,0.117211 -6.23438,1.101563 -1.5957502,1.559372 -1.7272502,2.789824 -1.9062502,8.658203 l -2.88281,55.732422 c 0.0306,2.390289 6.4061402,10.828125 8.3222602,10.828125 h 51.97266 c 1.91612,0 8.29167,-8.437836 8.32227,-10.828125 l -2.88282,-55.732422 c -0.179,-5.868379 -0.3105,-7.098831 -1.90625,-8.658203 -1.04867,-0.984352 -4.55005,-1.103663 -6.23437,-1.101563 z"

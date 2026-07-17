@@ -55,7 +55,7 @@
          offset="1"
          id="stop829" />
     </linearGradient>
-    <filter
+    <filter class="tt_color_filter"
        id="app-filter-colorize"
        style="color-interpolation-filters:sRGB">
       <feColorMatrix
@@ -163,7 +163,7 @@ var dn = {
      sodipodi:nodetypes="cccczc" />
   <g
      id="group-monochrome-1"
-     class="draggable"
+     class="draggable tt_colored"
      filter="url(#app-filter-colorize)">
     <path
        inkscape:connector-curvature="0"

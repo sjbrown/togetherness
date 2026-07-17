@@ -10,11 +10,12 @@
  *
  * SelectionMode kinds:
  *   'none'      — no decoration
- *   'local'     — solid gradient ring (your committed selection)
- *   'candidate' — same visual as 'local'; live rubber-band candidates (cleared on commit/cancel)
+ *   'local'     — solid gradient ring
+ *   'candidate' — same visual as 'local'; live rubber-band candidates
+ *                 (cleared on commit/cancel)
  *   'remote'    — dashed border + peer name label (awareness)
- *   'resize'    — local + drag handles at edges (future)
- *   'locked'    — remote peer is actively editing (future: lock icon)
+ *   'resize'    — local selection ring + 4 corner drag handles
+ *   'locked'    — remote peer is actively editing
  *
  * Requested/contested indicator (soft-lock.js): a separate, independent
  * decoration — not a SelectionMode kind — drawn on any element with an
@@ -37,20 +38,66 @@
  *   visual for "someone else is sweeping over these"), but the field is
  *   wire-present so it can be added without a schema change.
  *
+ * Awareness mode field: 'sel-resize' | null
+ *   Set by App.enterResizeMode/exitResizeMode. Purely advisory to peers
+ *   (rendering doesn't currently distinguish it on remote rings) — the
+ *   local effect is entirely driven by SelectionMode's 'resize' kind
+ *   instead, set directly via Overlay.setResizeMode().
+ *
  * Drag ghost system:
  *   The native layer element is never touched during drag; but overlay renders:
  *     - a dim <use href="#{id}" filter="url(#drag-placeholder-filter)">
  *       at the committed position (placeholder)
  *     - a ghost <use href="#{id}" transform="translate(dx,dy)"> (flying copy)
  *     - a selection ring translated by around the ghost
+ *
+ * Resize ghost system:
+ *   Same placeholder-plus-live-preview shape as the drag ghost
  */
 
 import { getAllContestedElementIds } from './soft-lock.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const HANDLE_SIZE = 12;  // px in canvas-space
-const PAD = 6;           // selection ring padding
+export const PAD = 6;           // selection ring padding
 const REQUESTED_PAD = PAD + 6; // extra clearance so the requested ring sits outside the selection ring
+const HANDLE_HIT_PAD = 6; // extra px (canvas-space, pre-scale) added to the handle's own hit box — easier to grab than its drawn size alone
+
+/**
+ * The four resize corner points for a geo rect (already padded out to the
+ * selection ring, same as renderLocalResizeSelection draws), in a fixed
+ * order — [TL, TR, BL, BR] — matching toys.js's RESIZE_CORNER_* constants,
+ * so a hit-test result can be passed straight through to
+ * Toys.computeResizeRect with no translation.
+ */
+export function resizeCorners(geo) {
+  const { x, y, width, height } = geo;
+  return [
+    { x: x - PAD,          y: y - PAD },           // TL
+    { x: x + width + PAD,  y: y - PAD },            // TR
+    { x: x - PAD,          y: y + height + PAD },   // BL
+    { x: x + width + PAD,  y: y + height + PAD },   // BR
+  ];
+}
+
+/**
+ * Which resize corner (if any) canvas-space point (px, py) is within
+ * grabbing distance of, for a toy with bounding box geo. Returns a
+ * RESIZE_CORNER_* index (0-3) or null. scale is the current view scale —
+ * the hit box is defined in screen-space (HANDLE_SIZE/2 + HANDLE_HIT_PAD
+ * px) and converted to canvas-space so grabbing feels consistent at any
+ * zoom level.
+ */
+export function hitTestResizeCorner(geo, px, py, scale) {
+  if (!geo) return null;
+  const radius = (HANDLE_SIZE / 2 + HANDLE_HIT_PAD) / scale;
+  const corners = resizeCorners(geo);
+  for (let i = 0; i < corners.length; i++) {
+    const { x: hx, y: hy } = corners[i];
+    if (Math.abs(px - hx) <= radius && Math.abs(py - hy) <= radius) return i;
+  }
+  return null;
+}
 
 // ── SelectionMode ─────────────────────────────────────────────────────────────
 // Map<elId, { kind, peerId?, color? }>
@@ -142,10 +189,12 @@ let _contestedIds = new Set();
 
 let App       = null;
 let _layerEl  = null;   // #overlay-layer <g>
+let _svgEl    = null;   // root <svg> — used to look up live toy DOM nodes for resize ghost cloning
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 export function init(appBus, svgElement) {
   App      = appBus;
+  _svgEl   = svgElement;
   _layerEl = svgElement.querySelector('#overlay-layer') || svgElement.querySelector('#overlay');
 }
 
@@ -166,6 +215,25 @@ export function localSelectionChanged(selectedIds) {
   const grad  = App.getMyGradient();
   for (const id of selectedIds) {
     SelectionMode.set(id, { kind: 'local', color, grad });
+  }
+  render();
+}
+
+// Demotes any existing
+// 'resize' entry back to 'local' first (there is ever at most one — resize
+// mode requires an exclusive single selection — but this stays defensive
+// rather than assuming), then promotes elId's own entry to 'resize' if it
+// currently has one and it's 'local' (i.e. really is the sole selection —
+// a stale/mismatched elId is silently a no-op, matching localSelectionChanged's
+// no-throw style elsewhere in this file).
+// Pass elId=null to exit resize mode entirely (leaves everything 'local').
+export function setResizeMode(elId) {
+  for (const [id, entry] of SelectionMode) {
+    if (entry.kind === 'resize') SelectionMode.set(id, { ...entry, kind: 'local' });
+  }
+  if (elId) {
+    const entry = SelectionMode.get(elId);
+    if (entry && entry.kind === 'local') SelectionMode.set(elId, { ...entry, kind: 'resize' });
   }
   render();
 }
@@ -327,6 +395,94 @@ export function endDragPlaceholder(elId) {
   render();
 }
 
+// ── Resize ghosts ────────────────────────────────────────────────────────────
+// Local corner-drag resize — same rationale as the drag ghost above: the
+// real toy element can be wiped out mid-gesture by renderToysLayer()'s full
+// innerHTML rebuild (fired by ANY peer's Yjs transaction, not just this
+// client's own), so the live preview lives on a detached clone that
+// survives render() calls, not the real element. A <use> placeholder alone
+// (as the move-ghost uses) can't show the resize itself — <use>'s
+// width/height override only applies when the referenced element is an
+// <svg> or <symbol>, and the href here targets the toy's outer <g>
+// wrapper — so instead the ghost is a real cloned copy of the toy's DOM,
+// with its own embedded <svg> directly
+// mutated to the current preview size on every updateResizeGhost() call.
+// Map<elId, { placeholderEl, ghostEl, ringEl }>
+const _resizeGhosts = new Map();
+
+/**
+ * Begin a local resize. Creates a dim placeholder at the toy's committed
+ * geometry (mirrors startDragPlaceholder) and a live clone of the toy's
+ * current DOM to preview into. No-op if a ghost for this elId already
+ * exists, or if the element can't be found/cloned.
+ */
+export function startResizeGhost(elId) {
+  if (!_layerEl || _resizeGhosts.has(elId)) return;
+  const liveEl = _svgEl?.querySelector(`[data-id="${elId}"]`);
+  if (!liveEl) return;
+
+  const placeholderEl = el('use', {});
+  placeholderEl.setAttribute('href', `#${elId}`);
+  placeholderEl.setAttribute('filter', 'url(#drag-placeholder-filter)');
+
+  const ghostEl = liveEl.cloneNode(true);
+  ghostEl.removeAttribute('id');
+  ghostEl.setAttribute('opacity', '0.85');
+
+  const ringEl = el('rect', { fill: 'none', class: 'selRing' });
+
+  _resizeGhosts.set(elId, { placeholderEl, ghostEl, ringEl });
+  render();
+}
+
+/**
+ * Update the local resize ghost to (x, y, width, height) — canvas-space,
+ * already computed by Toys.computeResizeRect. Mutates the clone's own
+ * root <svg> and all child elements marked with wh_follow_resize class
+ * directly — this is DOM-only, never touches Yjs (see toys.js's
+ * applyResizeCommit for the commit path).
+ */
+export function updateResizeGhost(elId, x, y, width, height) {
+  const entry = _resizeGhosts.get(elId);
+  if (!entry) return;
+  const ghostSvg = entry.ghostEl.querySelector?.('svg');
+  if (ghostSvg) {
+    ghostSvg.setAttribute('x', x);
+    ghostSvg.setAttribute('y', y);
+    ghostSvg.setAttribute('width', width);
+    ghostSvg.setAttribute('height', height);
+    ghostSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    // Update all elements marked with wh_follow_resize class
+    for (const el of ghostSvg.querySelectorAll(`.${elId}__wh_follow_resize`)) {
+      el.setAttribute('width', width);
+      el.setAttribute('height', height);
+    }
+  }
+  const scale = App.getViewScale();
+  entry.ringEl.setAttribute('x',                x - PAD);
+  entry.ringEl.setAttribute('y',                y - PAD);
+  entry.ringEl.setAttribute('width',            width  + PAD * 2);
+  entry.ringEl.setAttribute('height',           height + PAD * 2);
+  entry.ringEl.setAttribute('rx',               10);
+  entry.ringEl.setAttribute('stroke',           `url(#${LOCAL_GRAD_ID})`);
+  entry.ringEl.setAttribute('stroke-width',     2 / scale);
+}
+
+/**
+ * End a local resize (commit or cancel). Removes the ghost/placeholder/ring
+ * and triggers a render so the (now-committed, or reverted) real element's
+ * own selection ring takes over.
+ */
+export function endResizeGhost(elId) {
+  const entry = _resizeGhosts.get(elId);
+  if (!entry) return;
+  entry.placeholderEl.remove();
+  entry.ghostEl.remove();
+  entry.ringEl.remove();
+  _resizeGhosts.delete(elId);
+  render();
+}
+
 // ── Drop-target hover
 // The tray id currently under a toy being dragged, or null. Set by
 // App.move() on every pointermove while dragging a toy (re-hit-tested each
@@ -380,6 +536,9 @@ export function render() {
   for (const entry of _dragGhosts.values()) {
     _layerEl.appendChild(entry.placeholderEl);
   }
+  for (const entry of _resizeGhosts.values()) {
+    _layerEl.appendChild(entry.placeholderEl);
+  }
   for (const [elId] of _remoteDrags) {
     const ph = el('use', {});
     ph.setAttribute('href',   `#${elId}`);
@@ -387,7 +546,7 @@ export function render() {
     _layerEl.appendChild(ph);
   }
 
-  // ── 2. Selection rings (committed positions) ───────────────────────────────
+  // ── Selection rings  ───────────────────────────────
   for (const [elId, entry] of SelectionMode) {
     if (entry.kind === 'none') continue;
     const geo = App.getBBox(elId);
@@ -402,13 +561,12 @@ export function render() {
         renderRemoteSelection(geo, entry, scale);
         break;
       case 'resize':
-        renderLocalSelection(geo, entry, scale);
-        renderResizeHandles(geo, scale);
+        renderLocalResizeSelection(geo, entry, scale);
         break;
     }
   }
 
-  // ── 2b. Requested/contested indicator — independent of SelectionMode kind ──
+  // ── Requested/contested indicator — independent of SelectionMode kind ──
   // Drawn regardless of whether the element is 'local', 'remote', or has no
   // SelectionMode entry at all — contestedness is orthogonal to who (if
   // anyone) currently holds it from this client's point of view.
@@ -418,7 +576,7 @@ export function render() {
     renderRequestedIndicator(geo, scale);
   }
 
-  // ── 3. Remote drag ghosts + rings ─────────────────────────────────────────
+  // ── Remote drag ghosts + rings ─────────────────────────────────────────
   for (const [elId, drag] of _remoteDrags) {
     const bbox = App.getBBox(elId);
     if (!bbox) continue;
@@ -443,11 +601,17 @@ export function render() {
     if (geo) renderDropTargetHover(geo, scale);
   }
 
-  // ── 4. Local drag ghosts + rings — z-top ──────────────────────────────────
+  // ── Local drag ghosts + rings — z-top ──────────────────────────────────
   for (const [elId, entry] of _dragGhosts) {
     _layerEl.appendChild(entry.ghostEl);
     _layerEl.appendChild(entry.ringEl);
     _updateDragRing(entry, elId, scale);
+  }
+
+  // ── Local resize ghosts + rings — z-top ────────────────────────────────
+  for (const entry of _resizeGhosts.values()) {
+    _layerEl.appendChild(entry.ghostEl);
+    _layerEl.appendChild(entry.ringEl);
   }
 }
 
@@ -501,18 +665,16 @@ function renderLocalResizeSelection(geo, entry, scale) {
   });
   _layerEl.appendChild(ring);
 
-  // Corner handles
+  // Corner handles — decorated corners only (no edge midpoints); geometry
+  // shared with the hit-test via resizeCorners() so the drawn handle and
+  // the grabbable area always agree.
   const hw = HANDLE_SIZE / scale;
-  const corners = [
-    [x - PAD,          y - PAD],
-    [x + width + PAD,  y - PAD],
-    [x - PAD,          y + height + PAD],
-    [x + width + PAD,  y + height + PAD],
-  ];
-  for (const [hx, hy] of corners) {
+  for (const { x: hx, y: hy } of resizeCorners(geo)) {
     _layerEl.appendChild(el('rect', {
       x: hx - hw / 2, y: hy - hw / 2,
       width: hw, height: hw, rx: 3 / scale,
+      fill: 'var(--surface-solid)', stroke: 'var(--info)',
+      'stroke-width': 1.5 / scale,
       class: 'handle',
     }));
   }
@@ -609,27 +771,7 @@ function renderDropTargetHover(geo, scale) {
   _layerEl.appendChild(ring);
 }
 
-function renderResizeHandles(geo, scale) {
-  const { x, y, width, height } = geo;
-  const hw = HANDLE_SIZE / scale;
-  // Edge midpoints in addition to corners
-  const pts = [
-    [x + width / 2,  y - PAD],           // top
-    [x + width / 2,  y + height + PAD],  // bottom
-    [x - PAD,         y + height / 2],   // left
-    [x + width + PAD, y + height / 2],   // right
-  ];
-  for (const [hx, hy] of pts) {
-    _layerEl.appendChild(el('rect', {
-      x: hx - hw / 2, y: hy - hw / 2,
-      width: hw, height: hw, rx: 2 / scale,
-      fill: 'var(--surface-solid)', stroke: 'var(--info)',
-      'stroke-width': 1.5 / scale,
-    }));
-  }
-}
-
-// ── SVG element factory ───────────────────────────────────────────────────────
+// ── SVG element factory ─────────────────────────────────────────────────────
 function el(tag, attrs) {
   const node = document.createElementNS(SVGNS, tag);
   for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);

@@ -15,7 +15,7 @@
    sodipodi:docname="dice_spiral.svg"
    inkscape:version="0.92.5 (2060ec1f9f, 2020-04-08)">
   <defs id="defs1">
-    <filter
+    <filter class="tt_color_filter"
        id="app-filter-colorize"
        style="color-interpolation-filters:sRGB">
       <feColorMatrix
@@ -125,7 +125,7 @@ var dice_spiral = {
      inkscape:label="#patha1" />
   <g
      id="group-monochrome-1"
-     class="draggable"
+     class="draggable tt_colored"
      filter="url(#app-filter-colorize)">
     <path
        inkscape:connector-curvature="0"

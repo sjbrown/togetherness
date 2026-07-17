@@ -8,7 +8,7 @@
    viewBox="0 0 200 150"
    >
   <defs id="defs_tray_sorter">
-    <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
+    <filter class="tt_color_filter" id="app-filter-colorize" color-interpolation-filters="sRGB" >
       <feColorMatrix id="recolorize-filter-matrix" type="matrix"
          values="1.0 0.0 0.0 0.0  0.0
                  1.0 0.0 0.0 0.0  0.0
@@ -77,11 +77,10 @@ var tray_sorter = {
     src="js/tray.js"
     data-namespace="tray"
     id="script_tray" />
-  <svg id="resizable_bg"
+  <svg class="wh_follow_resize"
     x="0" y="0" width="200" height="150"
     viewBox="0 0 200 150"
     preserveAspectRatio="none"
-    class="droptarget"
   >
     <rect
        id="shadow_rect"
@@ -98,7 +97,7 @@ var tray_sorter = {
        width="190"
        height="140"
     />
-    <g id="group-monochrome-1" class="colorable" filter="url(#app-filter-colorize)">
+    <g id="group-monochrome-1" class="colorable tt_colored" filter="url(#app-filter-colorize)">
       <rect
          id="stroke_rect"
          fill-opacity="0"

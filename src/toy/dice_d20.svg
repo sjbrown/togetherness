@@ -54,7 +54,7 @@
          offset="1"
          id="stop829" />
     </linearGradient>
-    <filter
+    <filter class="tt_color_filter"
        id="app-filter-colorize"
        style="color-interpolation-filters:sRGB">
       <feColorMatrix
@@ -132,7 +132,7 @@ var d20 = {
      inkscape:connector-curvature="0" />
   <g
      id="group-monochrome-1"
-     class="draggable"
+     class="draggable tt_colored"
      filter="url(#app-filter-colorize)">
     <path
        style="fill:#c8c8c8;fill-opacity:1;stroke:none;stroke-width:1.30999994;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.53475934"

@@ -66,7 +66,7 @@
          offset="1"
          id="stop1474" />
     </linearGradient>
-    <filter
+    <filter class="tt_color_filter"
        id="app-filter-colorize"
        color-interpolation-filters="sRGB">
       <feColorMatrix
@@ -149,7 +149,7 @@ var sw_boost = {
     ]]></script>
   <g
      id="group-monochrome-1"
-     class="draggable"
+     class="draggable tt_colored"
      filter="url(#app-filter-colorize)">
     <g
        id="g_die">

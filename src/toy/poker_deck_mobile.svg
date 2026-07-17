@@ -17,7 +17,7 @@
    inkscape:version="0.92.3 (2405546, 2018-03-11)"
    sodipodi:docname="poker_deck_mobile.svg">
   <defs id="defs2" >
-    <filter
+    <filter class="tt_color_filter"
        id="app-filter-colorize"
        color-interpolation-filters="sRGB">
       <feColorMatrix
@@ -305,7 +305,7 @@ poker_deck_mobile_card = {
        y="0"
        rx="10"
        ry="10" />
-    <g class="card_back_inner_colorized" filter="url(#app-filter-colorize)">
+    <g class="card_back_inner_colorized tt_colored" filter="url(#app-filter-colorize)">
       <rect
          style="opacity:1;
          fill:#a0a0a0;fill-opacity:1;

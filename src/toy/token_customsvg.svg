@@ -10,7 +10,7 @@
    version="1.1"
    >
   <defs id="defs4">
-    <filter
+    <filter class="tt_color_filter"
        id="app-filter-colorize"
        color-interpolation-filters="sRGB">
       <feColorMatrix

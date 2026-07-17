@@ -6,16 +6,18 @@
  * The CRDT tree IS the SVG tree, so internal toy edits (recolor, flip,
  * contents) merge at the attribute/child level.
  *
- *   yToys (XmlFragment)
- *     └─ <g class="toy" data-toy-id data-toy-type data-color>  ← placement + state
- *          └─ <svg x y width height viewBox>                   ← the live toy sub-document
- *               └─ ...toy content (defs, paths, tspans, <script>, ...)
+ * yToys (XmlFragment)
+ *  └─ <g class="toy" data-toy-id data-toy-type data-color>  ← placement + state
+ *      └─ <svg x y width height viewBox>                    ← the live toy sub-document
+ *          └─ ...toy content (defs, paths, tspans, <script>, ...)
+ *      (optional)
+ *          └─ ...class="contents_group"
+ *            └─ ...toy content (dragged in sub-toys)
  *
  * A toy's <script> nodes are part of that canonical tree (preserved through
  * import/export) but are never mirrored into live DOM — see mirror() below.
  * Activating them (running the code, wiring up menu actions and lifecycle
- * hooks) is a separate step, in the "Toy behaviour contract" section near
- * the bottom of this file.
+ * hooks) is a separate step, in the "Toy behaviour contract" section
  *
  * ID format: tt-t-v1-XXXXX
  */
@@ -41,37 +43,10 @@ function randomSlug(len = 5) {
   ).join('')
 }
 
-/**
- * A toy id an author or anyone reading an exported file can recognize at a
- * glance: tt (Togetherness Table) — t (toy, as opposed to a future d/b for
- * drawing/boun_pos) — v1 (so the scheme itself can version) — a random slug.
- * Toy authors never generate these themselves; they're assigned at placement.
- */
 export function newToyId() {
+  // tt (Togetherness Table) - t (toy) - v1 (version) - random slug
   return `tt-t-v1-${randomSlug()}`
 }
-
-// ── Toy-type registry ─────────────────────────────────────────────────────────
-// Seed of the toy library. Only player_marker is wired up; dice/tokens/trays
-// get added here as their behaviour comes online.
-//   iconSvg — inner SVG markup for the tool button (paths/shapes drawn with
-//             stroke=currentColor). NOT a unicode glyph:
-//             svg('▲') renders nothing because there's no <text> node.
-export const TOY_TYPES = {
-  player_marker: {
-    file: 'player_marker.svg', label: 'Player Marker',
-    iconSvg: '<path d="M12 3l8 16H4z"/><circle cx="12" cy="13" r="2.5"/>',
-  },
-  dice_d6: {
-    file: 'dice_d6.svg', label: 'D6',
-    iconSvg: '<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1.3" fill="currentColor"/><circle cx="15" cy="15" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/>',
-  },
-  tray_sum: {
-    file: 'tray_sum.svg', label: 'Sum Tray',
-    iconSvg: '<rect x="3" y="5" width="18" height="14" rx="1.5"/><line x1="3" y1="15" x2="21" y2="15"/>',
-  },
-}
-
 
 const MIN_TOY_SIZE      = 30
 const MAX_TOY_SIZE      = 420
@@ -84,8 +59,7 @@ function clampToySize(value) {
 }
 
 // ── Color matrix ──────────────────────────────────────────────────────────────
-// Recolorizes the toy's feColorMatrix filter to tint it with the player's
-// color, matching the technique from togetherness/src/js/utils.js.
+// Recolorizes the toy's feColorMatrix filter to tint it with a new color
 //
 // The feColorMatrix "values" attribute is a 4×5 matrix applied to each pixel:
 //   [R']   [r 0 0 0 0] [R]
@@ -94,14 +68,12 @@ function clampToySize(value) {
 //   [A']   [0 0 0 1 0] [A]
 //
 // A white source pixel (1,1,1) becomes (r,g,b). Grey pixels scale linearly.
-// The player_marker SVG is drawn in near-white (#f2f2f2) so the tint reads cleanly.
 //
-// If the color would be too dark (sum of RGB < 0.9, matching togetherness),
-// we boost it to 50% lightness so the marker stays visible on dark backgrounds.
+// If the color would be too dark (sum of RGB < 0.9), we boost it to 50%
+// lightness so the black text stays visible.
 
 /**
  * Convert HSL (degrees, percent, percent) to RGB in [0, 1].
- * Pure function — no DOM required.
  */
 export function hslToRgb(h, s, l) {
   s /= 100; l /= 100
@@ -112,10 +84,8 @@ export function hslToRgb(h, s, l) {
 }
 
 /**
- * Build the 20-value feColorMatrix string that tints any greyscale SVG to `color`.
+ * Build the 20-value feColorMatrix string that tints any grays SVG to `color`.
  * `color` must be a CSS color string. Accepts hsl(…), #rrggbb, or rgb(…).
- *
- * Returns the values string ready for setAttribute('values', …).
  */
 export function colorMatrixValues(color) {
   // Parse hsl(H, S%, L%) — our entityGradient always produces this format.
@@ -147,23 +117,7 @@ export function colorMatrixValues(color) {
 }
 
 /**
- * Walk a Y.XmlElement tree and find a node by nodeName.
- * Returns the first match or null.
- */
-function findYNode(yEl, nodeName) {
-  if (!(yEl instanceof Y.XmlElement)) return null
-  if (yEl.nodeName === nodeName) return yEl
-  for (const child of yEl.toArray()) {
-    const hit = findYNode(child, nodeName)
-    if (hit) return hit
-  }
-  return null
-}
-
-/**
- * Apply a player color to all feColorMatrix nodes in the toy's Yjs tree.
- * Uses the direct refs captured during elementToYXml so no tree-walk
- * on detached nodes is needed (toArray on detached throws).
+ * Apply a color to all feColorMatrix nodes in the toy's Yjs tree.
  */
 function applyColor(colorMatrices, color) {
   const values = colorMatrixValues(color)
@@ -182,13 +136,13 @@ function rewriteUrlRefs(value, idMap) {
 
 // Recursively convert an SVG DOM element into a detached Y.XmlElement tree.
 // - drops foreign-namespace elements/attrs (inkscape, sodipodi, dc, rdf, cc)
-// - preserves <script> nodes as inert document citizens (see module header)
+// - preserves <script> nodes as inert document citizens
 // - namespaces every id and internal reference via idMap, so placed
 //   instances don't collide on ids like #app-filter-colorize
 // - if `refs` is given, collects direct refs to any feColorMatrix nodes
 //   into refs.colorMatrices, since a detached tree can't be walked later
 //   (toArray() throws until the tree is attached to a doc)
-function elementToYXml(node, idMap, refs) {
+function elementToYXml(node, idMap, classAddMap, refs) {
   const yEl = new Y.XmlElement(node.localName)
 
   if (refs && node.localName === 'feColorMatrix') {
@@ -205,6 +159,16 @@ function elementToYXml(node, idMap, refs) {
     } else if (attr.localName === 'href' && value.startsWith('#')) {
       const ref = value.slice(1)
       if (idMap.has(ref)) value = '#' + idMap.get(ref)
+    } else if (attr.localName === 'class') {
+      // Add prefixed versions of special classnames alongside the originals.
+      const classes = value.split(/\s+/).filter(Boolean)
+      const allClasses = [...classes]
+      for (const cls of classes) {
+        if (classAddMap.has(cls)) {
+          allClasses.push(classAddMap.get(cls))
+        }
+      }
+      value = allClasses.join(' ')
     } else {
       value = rewriteUrlRefs(value, idMap)
     }
@@ -215,7 +179,7 @@ function elementToYXml(node, idMap, refs) {
   for (const child of Array.from(node.childNodes)) {
     if (child.nodeType === 1) {                                   // ELEMENT_NODE
       if (child.namespaceURI && child.namespaceURI !== SVG_NS) continue
-      children.push(elementToYXml(child, idMap, refs))
+      children.push(elementToYXml(child, idMap, classAddMap, refs))
     } else if (child.nodeType === 3 || child.nodeType === 4) {     // TEXT_NODE / CDATA_SECTION_NODE
       if (child.textContent.trim() !== '') children.push(new Y.XmlText(child.textContent))
     }
@@ -225,8 +189,7 @@ function elementToYXml(node, idMap, refs) {
 }
 
 /**
- * Parse a toy SVG file's text into a detached Y.XmlElement rooted at <svg>,
- * with all internal ids namespaced by `prefix`.
+ * Parse a toy SVG file's text into a detached Y.XmlElement rooted at <svg>
  *
  * Returns { ySvg, colorMatrices, width, height }
  */
@@ -234,14 +197,23 @@ export function svgTextToYXml(svgText, prefix) {
   const dom  = new DOMParser().parseFromString(svgText, 'image/svg+xml')
   const root = dom.documentElement
 
+  // idMap is { 'foo': 'tt-t-v1-12a34__foo', 'bar': 'tt-t-v1-12a34__bar'}
   const idMap = new Map()
   for (const el of [root, ...root.querySelectorAll('[id]')]) {
     const id = el.getAttribute('id')
     if (id) idMap.set(id, prefix + id)
   }
 
+  const classAddMap = new Map([
+    ['contents_group', prefix + 'contents_group'],
+    ['wh_follow_resize', prefix + 'wh_follow_resize'],
+    ['tt_colored', prefix + 'tt_colored'],
+    ['tt_color_filter', prefix + 'tt_color_filter'],
+    ['tspan_name', prefix + 'tspan_name'],
+  ])
+
   const refs = { colorMatrices: [] }
-  const ySvg = elementToYXml(root, idMap, refs)
+  const ySvg = elementToYXml(root, idMap, classAddMap, refs)
   const width  = parseFloat(root.getAttribute('width'))  || 100
   const height = parseFloat(root.getAttribute('height')) || 100
   // Synthesize a viewBox from width/height if the file
@@ -265,14 +237,14 @@ export function _clearSvgTextCache() { _svgTextCache.clear() }
 /**
  * Place a toy on the table synchronously from already-fetched SVG text.
  * The cache must be warm for this toyType — call addToy() if unsure.
- * attrs: { id, toyType, x, y, color, author }  (x,y is the center point)
+ * attrs: { id, toyType, x, y, color }  (x,y is the center point)
  */
 export function addToySync(ydoc, yToys, attrs, svgText) {
   const { id, toyType, x, y, color } = attrs
   const prefix = `${id}__`
   const { ySvg, colorMatrices, width: nativeWidth, height: nativeHeight } = svgTextToYXml(svgText, prefix)
 
-  // Tint the toy's colorize filter with the player's color before insertion.
+  // Tint the toy's colorize filter with the color before insertion.
   // The matrix values are set on the direct refs captured during import,
   // so the color is part of the CRDT state from the moment the toy is placed.
   if (color) applyColor(colorMatrices, color)
@@ -298,17 +270,15 @@ export function addToySync(ydoc, yToys, attrs, svgText) {
 
 /**
  * Place a toy on the table. Fetches the toy's SVG file on first use and
- * caches it; subsequent placements of the same toy type are cache hits and
- * skip the network round-trip.
+ * caches it; subsequent placements of the same toy type are cache hits
  * attrs: { id, toyType, x, y, color }  (x,y is the center point)
  */
 export async function addToy(ydoc, yToys, attrs) {
   const { toyType } = attrs
-  const def = TOY_TYPES[toyType]
-  if (!def) throw new Error(`unknown toy type: ${toyType}`)
-
   let svgText = _svgTextCache.get(toyType)
   if (!svgText) {
+    const def = TOY_TYPES[toyType]
+    if (!def) throw new Error(`unknown toy type: ${toyType}`)
     const res = await fetch(`/toy/${def.file}`)
     if (!res.ok) throw new Error(`failed to load ${def.file}: ${res.status}`)
     svgText = await res.text()
@@ -326,58 +296,80 @@ function isToyG(yEl) {
   return (yEl.getAttribute('class') || '').split(/\s+/).includes('toy')
 }
 
-function findContentsGroupYEl(toyG) {
-  const svg = toyG.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'svg')
-  if (!svg) return null
-  return svg.toArray().find(c =>
-    c instanceof Y.XmlElement && c.nodeName === 'g' &&
-    (c.getAttribute('class') || '').split(/\s+/).includes('contents_group')
-  ) ?? null
-}
 
 /**
- * Locate a toy anywhere in the toys tree — at the top level of
- * yToys, or nested arbitrarily deep inside other toys' .contents_group
- * containers
- * Returns { yEl, parent, index }
- *   parent - whichever Y.XmlFragment/Y.XmlElement directly holds it
- *   index  - its position there
- * So callers can both read and splice it out.
- * Returns null if no toy with this id exists anywhere in the tree.
+ * Find all Y.XmlElement descendants of `yEl` that carry the
+ * `className`
+ *
+ * Returns an array (possibly empty), in depth-first document order.
  */
-function findToyLocation(container, id) {
-  const children = container.toArray()
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i]
-    if (!isToyG(child)) continue
-    if (child.getAttribute('data-toy-id') === id) {
-      return { yEl: child, parent: container, index: i }
-    }
-    const contentsGroup = findContentsGroupYEl(child)
-    if (contentsGroup) {
-      const found = findToyLocation(contentsGroup, id)
-      if (found) return found
+function yClassSelector(yEl, className) {
+  const matching = []
+  const walk = (_yEl) => {
+    for (const child of _yEl.toArray()) {
+      if (!(child instanceof Y.XmlElement)) continue
+      const classes = (child.getAttribute('class') || '').split(/\s+/).filter(Boolean)
+      if (classes.includes(className)) matching.push(child)
+      walk(child)
     }
   }
-  return null
+  walk(yEl)
+  return matching
 }
 
 /**
- * Whether toyG is targetId itself, or has targetId anywhere among its own
- * (arbitrarily nested) contained toys
+ *   '#foo'              → { attr: 'id', value: 'foo' }
+ *   '[data-foo="bar"]'  → { attr: 'data-foo', value: 'bar' }
  */
-function toyContains(toyG, targetId) {
-  if (toyG.getAttribute('data-toy-id') === targetId) return true
-  const contentsGroup = findContentsGroupYEl(toyG)
-  if (!contentsGroup) return false
-  return contentsGroup.toArray().some(child => isToyG(child) && toyContains(child, targetId))
+function parseYSelector(selector) {
+  let m
+  if ((m = selector.match(/^#(.+)$/))) return { attr: 'id', value: m[1] }
+  if ((m = selector.match(/^\[([\w:-]+)="([^"]*)"\]$/))) return { attr: m[1], value: m[2] }
+  throw new Error(`[toys] yExactSelector: unsupported selector: ${selector}`)
 }
+
+/**
+ * Walk yEl (itself, then its descendants, depth-first) for the first
+ * Y.XmlElement matching `selector`
+ *  - id selector ('#foo')
+ *  - exact-attribute selector ('[data-foo="bar"]')
+ *
+ * Returns:
+ * posContext is false (default)
+ *  - the matching Y.XmlElement (or null)
+ * posContext is true
+ *  - { yEl, parent, index } (or null)
+ */
+function yExactSelector(yEl, selector, posContext = false) {
+  const { attr, value } = parseYSelector(selector)
+  const matches = (el) => el instanceof Y.XmlElement && el.getAttribute(attr) === value
+
+  if (matches(yEl)) {
+    return posContext ? { yEl, parent: null, index: -1 } : yEl
+  }
+
+  const walk = (container) => {
+    const children = container.toArray()
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i]
+      if (!(child instanceof Y.XmlElement)) continue
+      if (matches(child)) {
+        return posContext ? { yEl: child, parent: container, index: i } : child
+      }
+      const found = walk(child)
+      if (found) return found
+    }
+    return null
+  }
+  return walk(yEl)
+}
+
 
 /**
  * Remove a toy by id — searches the whole toys tree, including nested
  */
 export function deleteToy(ydoc, yToys, id) {
-  const location = findToyLocation(yToys, id)
+  const location = yExactSelector(yToys, `[data-toy-id="${id}"]`, true)
   if (!location) return false
   ydoc.transact(() => {
     location.parent.delete(location.index, 1)
@@ -390,7 +382,7 @@ export function deleteToy(ydoc, yToys, id) {
  * nested inside trays. Returns null if not found.
  */
 export function findToy(yToys, id) {
-  return findToyLocation(yToys, id)?.yEl ?? null
+  return yExactSelector(yToys, `[data-toy-id="${id}"]`)
 }
 
 /**
@@ -407,7 +399,7 @@ export function findToy(yToys, id) {
  * Returns the newly-inserted (cloned) Y.XmlElement.
  */
 export function reparentToy(ydoc, yToys, id, targetTrayId) {
-  const location = findToyLocation(yToys, id)
+  const location = yExactSelector(yToys, `[data-toy-id="${id}"]`, true)
   if (!location) throw new Error(`[toys] reparentToy: toy not found: ${id}`)
   const { yEl, parent, index } = location
 
@@ -424,14 +416,17 @@ export function reparentToy(ydoc, yToys, id, targetTrayId) {
   if (targetTrayId == null) {
     targetFragment = yToys
   } else {
-    if (toyContains(yEl, targetTrayId)) {
+    const found = !!yExactSelector(yEl, `[data-toy-id="${targetTrayId}"]`)
+    if (found) {
       throw new Error(`[toys] reparentToy: cannot move ${id} into itself or one of its own contained toys (${targetTrayId})`)
     }
-    const targetLocation = findToyLocation(yToys, targetTrayId)
+    const targetLocation = yExactSelector(yToys, `[data-toy-id="${targetTrayId}"]`, true)
     if (!targetLocation) {
       throw new Error(`[toys] reparentToy: target tray not found: ${targetTrayId}`)
     }
-    const contentsGroup = findContentsGroupYEl(targetLocation.yEl)
+    const contentsGroup = yClassSelector(
+      targetLocation.yEl, `${targetTrayId}__contents_group`
+    )[0] ?? null
     if (!contentsGroup) {
       throw new Error(`[toys] reparentToy: target ${targetTrayId} has no .contents_group`)
     }
@@ -462,8 +457,7 @@ export function reparentToy(ydoc, yToys, id, targetTrayId) {
 
 /**
  * Bounding box for a rendered toy svgEl, read from its embedded <svg> child's
- * x/y/width/height. Returns { x, y, width, height } (Numbers) or null.
- * No PAD — callers apply padding if they want a selection box.
+ * x/y/width/height. Returns { x, y, width, height } or null.
  */
 export function getGeom(svgEl) {
   const svg = svgEl?.tagName === 'svg' ? svgEl : svgEl?.querySelector?.('svg')
@@ -479,7 +473,7 @@ export function getGeom(svgEl) {
 /**
  * The drag anchor for a toy is its centre point — matching how addToy places
  * it: x = center - width/2, y = center - height/2 (the toy's own native size).
- * Returns { x, y } in canvas-space, or { x: 0, y: 0 } if the geom is unavailable.
+ * Returns { x, y } in canvas-space, or { x: 0, y: 0 } if geom is unavailable.
  */
 export function getAnchor(svgEl) {
   const geom = getGeom(svgEl)
@@ -502,6 +496,8 @@ function rectsOverlap(a, b) {
  * Only top-level toys/trays are considered — nested toys (e.g. a tray
  * inside a tray) are deliberately out of scope.
  *
+ * TODO: use toy center point, not overlap test
+ *
  * TODO: trays are recognized by class-contains-tray.  Expand this to
  *       generic containers - anything that has .contents_group
  */
@@ -518,18 +514,25 @@ export function findDropTargetTray(layerEl, draggedId, rx, ry) {
   for (const el of layerEl.querySelectorAll(':scope > [data-id]')) {
     const trayId = el.getAttribute('data-id')
     if (trayId === draggedId) continue
-    const ownSvg = el.querySelector(':scope > svg')
-    if (!ownSvg?.classList.contains('tray')) continue
+    if (!isTrayEl(el)) continue
     const trayGeom = getGeom(el)
     if (trayGeom && rectsOverlap(draggedRect, trayGeom)) return trayId
   }
   return null
 }
 
+/**
+ * Whether a rendered toy <g data-id> wrapper is a tray -- i.e. its own
+ * embedded <svg> carries the `tray` class.
+ */
+export function isTrayEl(domEl) {
+  const ownSvg = domEl?.querySelector?.(':scope > svg')
+  return !!ownSvg?.classList.contains('tray')
+}
+
 
 /**
  * Commit a toy move to the Yjs doc in a single transaction.
- * Called once on pointerup — never during drag.
  */
 export function applyMoveCommit(ydoc, yToy, cx, cy) {
   if (!yToy) return
@@ -558,6 +561,82 @@ export function applyMoveDom(domEl, cx, cy) {
   const halfH = Math.round(parseFloat(domSvg.getAttribute('height') ?? String(FALLBACK_TOY_SIZE)) / 2)
   domSvg.setAttribute('x', cx - halfW)
   domSvg.setAttribute('y', cy - halfH)
+}
+
+// Resize corner indices — shared with overlay.js's corner-handle geometry
+// (Overlay.resizeCorners returns points in this same order) so canvas.js's
+// hit-test result can be passed straight through to computeResizeRect
+// without any translation.
+export const RESIZE_CORNER_TL = 0
+export const RESIZE_CORNER_TR = 1
+export const RESIZE_CORNER_BL = 2
+export const RESIZE_CORNER_BR = 3
+
+const MIN_RESIZE_SIZE = MIN_TOY_SIZE // never let a drag shrink a toy below this
+const MAX_RESIZE_SIZE = 4000         // generous sanity cap
+
+function clampResizeDim(value) {
+  return Math.min(MAX_RESIZE_SIZE, Math.max(MIN_RESIZE_SIZE, Math.round(value)))
+}
+
+/**
+ * Pure geometry for a corner-drag resize: given the toy's rect at drag
+ * start and the corner being dragged, compute the new { x, y, width,
+ * height } for the current pointer position (px, py), keeping the corner
+ * OPPOSITE the dragged one fixed in place. Clamps width/height to
+ * MIN_RESIZE_SIZE (never lets the dragged corner cross the fixed one) —
+ * the fixed corner itself never moves.
+ */
+export function computeResizeRect(startRect, corner, px, py) {
+  const { x, y, width, height } = startRect
+  const left = x, top = y, right = x + width, bottom = y + height
+
+  switch (corner) {
+    case RESIZE_CORNER_TL: {
+      const newLeft = Math.min(px, right - MIN_RESIZE_SIZE)
+      const newTop  = Math.min(py, bottom - MIN_RESIZE_SIZE)
+      return { x: newLeft, y: newTop, width: right - newLeft, height: bottom - newTop }
+    }
+    case RESIZE_CORNER_TR: {
+      const newTop = Math.min(py, bottom - MIN_RESIZE_SIZE)
+      return { x: left, y: newTop, width: Math.max(px - left, MIN_RESIZE_SIZE), height: bottom - newTop }
+    }
+    case RESIZE_CORNER_BL: {
+      const newLeft = Math.min(px, right - MIN_RESIZE_SIZE)
+      return { x: newLeft, y: top, width: right - newLeft, height: Math.max(py - top, MIN_RESIZE_SIZE) }
+    }
+    case RESIZE_CORNER_BR:
+    default: {
+      return { x: left, y: top, width: Math.max(px - left, MIN_RESIZE_SIZE), height: Math.max(py - top, MIN_RESIZE_SIZE) }
+    }
+  }
+}
+
+/**
+ * Commit a toy resize to the Yjs doc in a single transaction.
+ * (x, y) is the new top-left; (width, height) the new
+ * native size — both in canvas-space, already computed by
+ * computeResizeRect.
+ */
+export function applyResizeCommit(ydoc, yToy, x, y, width, height) {
+  if (!yToy) return
+  const ySvg = yToy.toArray()[0]
+  if (!ySvg) return
+  const toyId = yToy.getAttribute('data-toy-id')
+  if (!toyId) return
+  const w = clampResizeDim(width)
+  const h = clampResizeDim(height)
+  ydoc.transact(() => {
+    ySvg.setAttribute('x', String(Math.round(x)))
+    ySvg.setAttribute('y', String(Math.round(y)))
+    ySvg.setAttribute('width',  String(w))
+    ySvg.setAttribute('height', String(h))
+    ySvg.setAttribute('viewBox', `0 0 ${w} ${h}`)
+    for (const el of yClassSelector(ySvg, `${toyId}__wh_follow_resize`)) {
+      el.setAttribute('width',  String(w))
+      el.setAttribute('height', String(h))
+    }
+  })
 }
 
 
@@ -705,10 +784,11 @@ export const TOOLS = [
   {
     name:    'marker',
     toyType: 'player_marker',
-    label:   TOY_TYPES['player_marker'].label,
+    file: 'player_marker.svg',
+    label: 'Player Marker',
     iconUrl: 'toy/player_marker.svg',
     layer:   'toys',
-    defaults: { fill: '#a85e5e', label: '', size: 24 },
+    defaults: { label: '', size: 24 },
     options: [
       { kind: 'color-hsl', key: 'fill', label: 'Token color', show: ['add', 'edit', 'addQuick'] },
       number('size', 'Size', { min: 12, max: 64, step: 4 }),
@@ -718,10 +798,11 @@ export const TOOLS = [
   {
     name:    'd6',
     toyType: 'dice_d6',
-    label:   TOY_TYPES['dice_d6'].label,
+    file: 'dice_d6.svg',
+    label: 'D6',
     iconUrl: 'toy/dice_d6.svg',
     layer:   'toys',
-    defaults: { fill: '#a8905e' },
+    defaults: { fill: '#f8f8e5' },
     options: [
       { kind: 'color-hsl', key: 'fill', label: 'Die color', show: ['add', 'edit', 'addQuick'] },
     ],
@@ -729,70 +810,23 @@ export const TOOLS = [
   {
     name:    'tray_sum',
     toyType: 'tray_sum',
-    label:   TOY_TYPES['tray_sum'].label,
+    file: 'tray_sum.svg',
+    label: 'Sum Tray',
     iconUrl: 'toy/tray_sum.svg',
     layer:   'toys',
-    defaults: { fill: '#5e7ea8' },
+    defaults: { fill: '#fefed8' },
     options: [
       { kind: 'color-hsl', key: 'fill', label: 'Tray color', show: ['add', 'edit', 'addQuick'] },
     ],
   },
 ];
+export const TOY_TYPES = {
+  player_marker: TOOLS[0],
+  dice_d6: TOOLS[1],
+  tray_sum: TOOLS[2],
+}
 
 // ── ttState / ttStateSchema ───────────────────────────────────────────────────
-
-/**
- * Recursively collect all Y.XmlElement nodes with a given nodeName
- * from a placed (attached) toy tree.  Safe to call on attached nodes only —
- * toArray() throws on detached fragments.
- *
- * isRoot is true only for the initial call — every recursive call passes
- * false. So the *first* toy wrapper visited (the root itself, e.g. a
- * tray's own <g class="toy">) is exempt, but the next one found anywhere
- * below it (e.g. a die placed inside) trips the isRoot===false && isToyG
- * check and returns immediately, before its own children are ever visited.
- * That's what keeps a tray's own feColorMatrix search from reaching into
- * a die's feColorMatrix — the walk stops one level above it, at the die's
- * own <g class="toy"> boundary. Same boundary findScriptNodes respects.
- */
-function findAllYNodes(yEl, nodeName, results = [], isRoot = true) {
-  if (!(yEl instanceof Y.XmlElement)) return results;
-  if (yEl.nodeName === nodeName) results.push(yEl);
-  if (!isRoot && isToyG(yEl)) return results;
-  for (const child of yEl.toArray()) findAllYNodes(child, nodeName, results, false);
-  return results;
-}
-
-/**
- * Whether svgEl's own toy has any feColorMatrix nodes of its own to
- * recolor — data-driven, so every colorable toy (any tray type, dice,
- * markers, anything future) picks this up for free, rather than
- * hardcoding toy-type names. Deliberately boundary-safe (via
- * findAllYNodes's isRoot guard): a tray with a colorable die placed
- * inside it is not itself considered colorable on that basis alone.
- */
-function isColorable(svgEl) {
-  const yToy = yNodeFor(svgEl)
-  if (!yToy) return false
-  return findAllYNodes(yToy, 'feColorMatrix').length > 0
-}
-
-/**
- * Find elem's own '.tspan_name' element — boundary-safe, so a container
- * toy with no name of its own never surfaces a nested toy's name
- * instead. Same convention as tray.js's own _findOwn in src/toy/js/tray.js
- * (kept independent rather than shared: one is DOM-side app code, the
- * other DOM-side toy-behaviour code, and they run in different contexts).
- */
-function findOwnNameEl(elem) {
-  for (const child of elem.children) {
-    if (child.classList.contains('tspan_name')) return child
-    if (child.classList.contains('toy')) continue // a nested toy's own subtree — not elem's
-    const found = findOwnNameEl(child)
-    if (found) return found
-  }
-  return null
-}
 
 /**
  * Return the ttStateSchema for a rendered toy element.
@@ -800,7 +834,15 @@ function findOwnNameEl(elem) {
  * part of the Yjs tree and always in sync with the CRDT state.
  */
 export function getTtStateSchema(svgEl) {
-  const nameEl = findOwnNameEl(svgEl)
+  const toyId = svgEl.getAttribute?.('data-toy-id')
+  if (!toyId) return null
+  // Find elem's own '.tspan_name' element — boundary-safe via id-prefix
+  // matching, don't accidentally match a contents_group-contained toy.
+  const nameEl = svgEl.querySelector(`.${toyId}__tspan_name`)
+  function isColorable() {
+    return svgEl.querySelector(`.${toyId}__tt_color_filter`) !== null
+  }
+
   return {
     color: svgEl.getAttribute('data-color') ?? '#888',
     ...(nameEl ? { name: nameEl.textContent ?? '' } : {}),
@@ -854,16 +896,6 @@ export async function applyTtState(ydoc, yToys, state) {
   }
 }
 
-/**
- * Find yEl's own '.tspan_name' node — boundary-safe (via findAllYNodes's
- * isRoot guard), so a tray containing another tray never finds the
- * nested tray's name instead of its own.
- */
-function findOwnNameYNode(yToy) {
-  return findAllYNodes(yToy, 'tspan').find(t =>
-    (t.getAttribute('class') || '').split(/\s+/).includes('tspan_name')
-  ) ?? null;
-}
 
 /** Overwrite yEl's Y.XmlText content in place, creating one if absent. */
 function setYTextContent(yEl, newText) {
@@ -879,19 +911,32 @@ function setYTextContent(yEl, newText) {
 /**
  * Apply an editData object to a toy. Called by App.commitEdit — never
  * called directly from the UI.
- *   color — all of the toy's own feColorMatrix nodes are updated (boundary-
- *           safe: never reaches into a nested toy's colorable parts) and
+ *   color — all of the toy's own feColorMatrix nodes are updated and
  *           data-color on the <g> wrapper is kept in sync.
  *   name  — the toy's own '.tspan_name' text is overwritten (boundary-safe
  *           the same way — a tray inside a tray keeps its own name).
  */
 export function edit(ydoc, yToy, editData) {
   if (!yToy) return;
+  const toyId = yToy.getAttribute('data-toy-id')
+  if (!toyId) return;
   const { color, name } = editData;
   if (color === undefined && name === undefined) return;
+
+  function findOwnColorMatrixYNodes() {
+    const yFilters = yClassSelector(yToy, `${toyId}__tt_color_filter`)
+    return yFilters.flatMap(f =>
+      f.toArray().filter(c => c instanceof Y.XmlElement && c.nodeName === 'feColorMatrix')
+    )
+  }
+
+  function findOwnNameYNode() {
+    return yClassSelector(yToy, `${toyId}__tspan_name`)[0] ?? null
+  }
+
   ydoc.transact(() => {
     if (color !== undefined) {
-      const colorMatrices = findAllYNodes(yToy, 'feColorMatrix');
+      const colorMatrices = findOwnColorMatrixYNodes(yToy);
       const values = colorMatrixValues(color);
       for (const m of colorMatrices) m.setAttribute('values', values);
       yToy.setAttribute('data-color', color);

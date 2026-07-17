@@ -10,11 +10,11 @@
    version="1.1"
    >
   <defs id="defs_tray_sum">
-    <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
+    <filter class="tt_color_filter" id="app-filter-colorize" color-interpolation-filters="sRGB" >
       <feColorMatrix id="recolorize-filter-matrix" type="matrix"
          values="1.0 0.0 0.0 0.0  0.0
-                 2.0 0.0 0.0 0.0  0.0
-                 2.0 0.0 0.0 0.0  0.0
+                 1.0 0.0 0.0 0.0  0.0
+                 1.0 0.0 0.0 0.0  0.0
                  0.0 0.0 0.0 1.0  0.0" />
     </filter>
   </defs>
@@ -56,99 +56,87 @@ var tray_sum = {
 }
 
     ]]></script>
-
-  <!-- Full coverage, invisible hit-testing floor for the whole tray.
+  <!-- Invisible hit-testing floor for the whole tray.
        Nested toys (.contents_group .toy) are excluded from native
        hit-testing via ui.css, so a click over one falls through to
        whatever is actually painted underneath at that point. The
        tray's visible background art does not quite reach the tray's
-       own edges (a small margin), so this rect provides an exact,
+       own edges, so this rect provides an exact,
        deliberate hit target across the tray's full bounds instead,
        decoupled from whatever the background art happens to paint. -->
   <rect class="hit_plate" x="0" y="0" width="100%" height="100%" fill="transparent" />
 
-  <svg id="resizable_bg"
+  <svg class="wh_follow_resize"
     x="0" y="0" width="220" height="130"
-    viewBox="0 0 220 130"
     preserveAspectRatio="none"
-    class="droptarget"
+    viewBox="2 3.7 218 121"
   >
     <rect
        id="shadow_rect"
        fill="#000"
        opacity="0.4"
-       x="3.6003199" y="14.609982"
-       width="213.3763"
-       height="106.68814"
        style="stroke:none"
-       rx="10.668814"
-       ry="10.668814" />
-    <g id="group-monochrome-1" class="colorable" filter="url(#app-filter-colorize)">
-    <rect
-       id="rect_contents"
-       fill="#b7b7b7"
-       x="3.6003199" y="11.38277"
-       style="stroke:#3b3b3b;stroke-width:3.20064;stroke-linecap:square"
-       width="213.3763"
-       height="106.68814"
-       rx="10.668814"
-       ry="10.668814" />
-   </g>
+       x="3.6" y="14.6" width="213.4" height="106.69"
+       rx="10" ry="10" />
+    <g id="group-monochrome-1" class="colorable tt_colored" filter="url(#app-filter-colorize)">
+      <rect
+         id="rect_contents"
+         fill="#d7d7d7"
+         style="stroke:#3b3b3b;stroke-width:3.2;stroke-linecap:square"
+         x="3.6" y="11.38" width="213.4" height="106.7"
+         rx="10" ry="10" />
+    </g>
     <path
-       style="color:#000000;fill:#000000;fill-opacity:0.49;stroke-width:4.03231;stroke-linecap:square;"
+       style="color:#000;fill:#000;fill-opacity:0.5;stroke-width:4;stroke-linecap:square;"
        d="m 14.271917,12.485103 c -5.0516119,0 -9.0726609,4.021045 -9.0726609,9.072657 v 2.133764 c 0,-5.051616 4.021049,-9.072661 9.0726609,-9.072661 H 206.31057 c 5.05163,0 9.06641,4.021045 9.06641,9.072661 V 21.55776 c 0,-5.051612 -4.01478,-9.072657 -9.06641,-9.072657 z"
        id="shadow_1" />
-  </svg>
-
-  <svg id="name_container" x="0" y="0" >
-    <text
-       id="text_name"
-       x="110.36244"
-       y="115.27139"
-       style="font-style:normal;font-weight:normal;
-       font-size:5px;line-height:1.25;font-family:sans-serif;
-       text-align:center; text-anchor:middle;
-       letter-spacing:0px;word-spacing:0px;
-       fill:#000000;fill-opacity:1;
-       "
-       xml:space="preserve"><tspan
-         style="font-style:normal;font-variant:normal;font-weight:normal;
-         font-size:5px;
-         text-align:center;text-anchor:middle;
-         font-family:sans-serif;
-         fill:#000000"
-         id="tspan_name"
-         class="tspan_name"
-         >sum</tspan></text>
     <path
-       style="fill:none;stroke:#ffffff;stroke-width:0.533442;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"
-       d="m 5.3101849,15.889532 c 2.641714,-3.33713 4.6590452,-3.871886 6.7829661,-4.419111 2.922428,-0.752956 9.773661,-0.610072 9.773661,-0.610072"
-       id="shine_1"
-       />
+       style="fill:none;stroke:#ffffff;stroke-width:0.533442;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:0.8"
+       d="m 4.9050539,15.484402 c 2.641714,-3.33713 4.6590452,-3.871886 6.7829671,-4.419111 2.922428,-0.752956 9.773661,-0.610072 9.773661,-0.610072"
+       id="shine_1" />
     <path
-       style="fill:none;stroke:#ffffff;stroke-width:0.426751;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"
+       style="fill:none;stroke:#fff;stroke-width:0.426751;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:0.8"
        d="m 214.00522,114.38501 c 0.58279,-0.2563 2.89579,-3.45668 2.86975,-6.07213"
        id="shine_2"
        />
+    <svg class="name_container" x="0" y="0">
+      <text
+       class="text_name"
+       x="110.36244"
+       y="115.27139"
+       style="font-style:normal;font-weight:normal;
+       font-size:6.7px;line-height:1.25;font-family:sans-serif;
+       text-align:center;text-anchor:middle;
+       letter-spacing:0px;word-spacing:0px;
+       fill:#000;fill-opacity:1"
+       xml:space="preserve"><tspan
+         style="font-style:normal;font-variant:normal;font-weight:normal;
+         font-size:6.7px;
+         text-align:center;text-anchor:middle;
+         font-family:sans-serif;
+         fill:#000"
+         class="tspan_name"
+         >sum</tspan></text>
+    </svg>
   </svg>
 
-  <g id="contents_group" class="contents_group">
+
+  <g id="contents_group" class="contents_group" >
   </g>
 
-  <svg class="result_container"
 
-  viewBox="0 0 220 150" preserveAspectRatio="xMaxYMin slice" >
-   <g id="group-monochrome-2" class="colorable" filter="url(#app-filter-colorize)">
+  <svg class="result_container"
+  viewBox="0 0 220 130"
+  preserveAspectRatio="xMidYMin slice"
+  >
+   <g id="group-monochrome-2" class="colorable tt_colored" filter="url(#app-filter-colorize)">
     <rect
        id="rect_result"
-       fill="#b3b3b3"
-       style="stroke:#4d4d4d;stroke-width:2.6672;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:1"
-       width="24.900843"
-       height="24.900843"
-       x="98.838028"
-       y="5.3336"
-       rx="10.668814"
-       ry="10.668814" />
+       fill="#e3e3e3"
+       style="stroke:#4d4d4d;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:1"
+       x="99" y="5" width="25" height="25"
+       rx="10"
+       ry="10" />
    </g>
     <text
        id="text_result"
@@ -158,32 +146,31 @@ var tray_sum = {
        font-size:14px;line-height:1.25;font-family:sans-serif;
        text-align:center; text-anchor:middle;
        letter-spacing:0px;word-spacing:0px;
-       fill:#000000;fill-opacity:1;
-       "
+       fill:#000;fill-opacity:1"
        x="111"
        y="22.663212"
-     ><tspan
+       ><tspan
          id="tspan_result"
          class="tspan_result"
          style="font-family:sans-serif;fill:#000;
          text-align:center;text-anchor:middle;
          "
          >0</tspan
-    ></text>
+       ></text>
     <path
        id="shadow_2"
-       style="color:#000000;fill:#000000;fill-opacity:0.52;
-       stroke-width:4.0;stroke-linecap:round;stroke-linejoin:round;
+       style="color:#000;fill:#000;fill-opacity:0.52;
+       stroke-width:4;stroke-linecap:round;stroke-linejoin:round;
        "
-       d="m 108.50338,6.3237442 c -5.19476,0 -9.33104,4.1383668 -9.33104,9.3331318 v 0.735561 c 0,-5.194761 4.13628,-9.3331274 9.33104,-9.3331274 h 3.56947 c 5.19477,0 9.33105,4.1383664 9.33105,9.3331274 v -0.735561 c 0,-5.194765 -4.13628,-9.3331318 -9.33105,-9.3331318 z M 96.500965,19.224259 v 0.735565 c 0,6.626256 5.376165,12.002415 12.002415,12.002415 h 3.56947 c 6.62626,0 12.00241,-5.376159 12.00241,-12.002415 v -0.735565 c 0,6.626255 -5.37615,12.002418 -12.00241,12.002418 h -3.56947 c -6.62625,0 -12.002415,-5.376163 -12.002415,-12.002418 z"
+       d="m 109.71456,5.9314276 c -5.19683,0 -9.58325,4.1383644 -9.58325,9.3331294 v 0.735561 c 0,-5.194761 4.38642,-9.333125 9.58325,-9.333125 h 3.57089 c 5.19684,0 9.50043,4.138364 9.50043,9.333125 v -0.735561 c 0,-5.194765 -4.30359,-9.3331294 -9.50043,-9.3331294 z M 97.707351,18.83194 v 0.735565 c 0,6.626256 5.378309,12.002415 12.007209,12.002415 h 3.57089 c 6.62891,0 12.0072,-5.376159 12.0072,-12.002415 V 18.83194 c 0,6.626255 -5.37829,12.002418 -12.0072,12.002418 h -3.57089 c -6.6289,0 -12.007209,-5.376163 -12.007209,-12.002418 z"
        />
     <path
        id="shine_3"
        style="fill:none;
-       stroke:#ffffff;stroke-width:0.53;stroke-linecap:round;stroke-linejoin:round;
-       stroke-opacity:1
+       stroke:#fff;stroke-width:0.53;stroke-linecap:round;stroke-linejoin:round;
+       stroke-opacity:0.8
        "
-       d="m 98.76566,10.451271 c 0.8407,-1.2163424 1.42749,-2.227745 3.21826,-3.4940918 1.8167,-1.2846768 2.92248,-1.8679303 4.64307,-2.0646748"
+       d="M 99.552558,10.451271 C 100.0477,9.3229369 101.44876,7.6358012 102.39808,6.9571792 103.7115,6.0182838 104.9064,5.0892489 106.62699,4.8925044"
        />
   </svg>
 </svg>

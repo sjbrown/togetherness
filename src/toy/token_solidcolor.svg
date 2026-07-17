@@ -12,7 +12,7 @@
    version="1.1"
    inkscape:version="0.92.3 (2405546, 2018-03-11)">
   <defs id="defs4">
-    <filter
+    <filter class="tt_color_filter"
        id="app-filter-colorize"
        color-interpolation-filters="sRGB">
       <feColorMatrix
@@ -55,7 +55,7 @@ var token_solidcolor = {
     cy="52"
     style="fill:#000000;fill-opacity:0.50;"
   />
-  <g
+  <g class="tt_colored"
      filter="url(#app-filter-colorize)"
      id="layer1">
   <circle

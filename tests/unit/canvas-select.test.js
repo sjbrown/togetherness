@@ -14,7 +14,7 @@
 
 // @vitest-environment jsdom
 import { describe, test, expect, beforeEach } from 'vitest'
-import { init, setTool, setParams, ToolMode } from '../../src/canvas.js'
+import { init, setTool, setParams, resetView, ToolMode } from '../../src/canvas.js'
 
 // ── DOM setup ────────────────────────────────────────────────────────────────
 
@@ -66,6 +66,14 @@ function makeApp(overrides = {}) {
     moveMulti:          () => {},
     commitMultiMove:    () => {},
     cancelMultiMove:    () => {},
+    getResizeModeId:    () => null,
+    getResizeCorner:    () => null,
+    enterResizeMode:    () => {},
+    exitResizeMode:     () => {},
+    startResize:        () => {},
+    resize:             () => {},
+    commitResize:       () => {},
+    cancelResize:       () => {},
     ...overrides,
   }
 }
@@ -90,6 +98,7 @@ function makePointerEvent(type, { clientX = 100, clientY = 100, target, shiftKey
 
 beforeEach(() => {
   makeDOM()
+  resetView()
   _pointerId = 0
   // Reset ToolMode internal state between tests
   ToolMode._pointers.clear()
@@ -565,5 +574,190 @@ describe('multi-move gesture', () => {
 
     expect(cancelled).toHaveLength(1)
     expect(committed).toHaveLength(0)
+  })
+})
+
+// ── Resize mode: reclick toggle + corner-drag gesture ──────────────────────────
+
+function makeHitEl(id, module = 'drawing') {
+  const layer = document.getElementById(`${module}-layer`)
+  const el = document.createElement('rect')
+  el.setAttribute('data-id', id)
+  el.setAttribute('data-module', module)
+  layer.appendChild(el)
+  return el
+}
+
+describe('resize mode — reclick-to-toggle', () => {
+  test('a plain tap (no movement) on the already-sole-selected element calls App.enterResizeMode', () => {
+    const entered = []
+    const app = makeApp({
+      getSelectedIds: () => ['shape-a'],
+      enterResizeMode: (id) => entered.push(id),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+    const el = makeHitEl('shape-a')
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 100, clientY: 100 }))
+
+    expect(entered).toEqual(['shape-a'])
+  })
+
+  test('a drag (movement) on the already-sole-selected element does NOT enter resize mode', () => {
+    const entered = []
+    const committed = []
+    const app = makeApp({
+      getSelectedIds: () => ['shape-a'],
+      enterResizeMode: (id) => entered.push(id),
+      commitMove: (...args) => committed.push(args),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+    const el = makeHitEl('shape-a')
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el }))
+    stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 140, clientY: 140 }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 140, clientY: 140 }))
+
+    expect(entered).toEqual([])
+    expect(committed).toHaveLength(1)
+  })
+
+  test('a tap on an element that was NOT already the sole selection does not enter resize mode', () => {
+    const entered = []
+    const app = makeApp({
+      getSelectedIds: () => [], // nothing selected yet — this click is the first select
+      enterResizeMode: (id) => entered.push(id),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+    const el = makeHitEl('shape-a')
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 100, clientY: 100 }))
+
+    expect(entered).toEqual([])
+  })
+})
+
+describe('resize mode — corner-drag gesture', () => {
+  test('pointerdown on a corner handle of the resize-mode element starts a resize gesture', () => {
+    const started = []
+    const app = makeApp({
+      getResizeModeId: () => 'tray-1',
+      getResizeCorner: () => 3, // BR
+      startResize: (id, corner) => started.push([id, corner]),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+    // No fabricated hit element needed — the corner check runs before
+    // ordinary hit-testing and doesn't require hitId to be set.
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250 }))
+
+    expect(ToolMode._gesture).toBe('resize')
+    expect(started).toEqual([['tray-1', 3]])
+  })
+
+  test('pointermove during a resize gesture calls App.resize with the corner and canvas-space point', () => {
+    const resized = []
+    const app = makeApp({
+      getResizeModeId: () => 'tray-1',
+      getResizeCorner: () => 3,
+      resize: (id, corner, x, y) => resized.push([id, corner, x, y]),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250 }))
+    stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 340, clientY: 260 }))
+
+    expect(resized).toEqual([['tray-1', 3, 340, 260]])
+  })
+
+  test('pointerup after a resize drag calls App.commitResize', () => {
+    const committed = []
+    const app = makeApp({
+      getResizeModeId: () => 'tray-1',
+      getResizeCorner: () => 3,
+      commitResize: (id, corner, x, y) => committed.push([id, corner, x, y]),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250 }))
+    stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 340, clientY: 260 }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 340, clientY: 260 }))
+
+    expect(committed).toEqual([['tray-1', 3, 340, 260]])
+  })
+
+  test('pointerup with no movement cancels the resize instead of committing', () => {
+    const committed = []
+    const cancelled = []
+    const app = makeApp({
+      getResizeModeId: () => 'tray-1',
+      getResizeCorner: () => 3,
+      commitResize: () => committed.push(true),
+      cancelResize:  () => cancelled.push(true),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250 }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 300, clientY: 250 }))
+
+    expect(cancelled).toHaveLength(1)
+    expect(committed).toHaveLength(0)
+  })
+
+  test('a click on the resize-mode element\u2019s body (off any corner) exits resize mode and falls through to a normal move', () => {
+    const exited = []
+    const app = makeApp({
+      getSelectedIds: () => ['tray-1'],
+      getResizeModeId: () => 'tray-1',
+      getResizeCorner: () => null, // not near any corner
+      exitResizeMode: () => exited.push(true),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+    const el = makeHitEl('tray-1')
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el }))
+
+    expect(exited).toEqual([true])
+    expect(ToolMode._gesture).toBe('move')
+  })
+
+  test('exiting resize mode via a body click does not also immediately re-enter it on pointerup', () => {
+    const exited  = []
+    const entered = []
+    const app = makeApp({
+      getSelectedIds: () => ['tray-1'],
+      getResizeModeId: () => 'tray-1',
+      getResizeCorner: () => null,
+      exitResizeMode:  () => exited.push(true),
+      enterResizeMode: (id) => entered.push(id),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+    const el = makeHitEl('tray-1')
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 100, clientY: 100 }))
+
+    expect(exited).toEqual([true])
+    expect(entered).toEqual([])
   })
 })
