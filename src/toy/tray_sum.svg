@@ -10,7 +10,7 @@
    version="1.1"
    >
   <defs id="defs_tray_sum">
-    <filter id="app-filter-colorize" color-interpolation-filters="sRGB" >
+    <filter class="tt_color_filter" id="app-filter-colorize" color-interpolation-filters="sRGB" >
       <feColorMatrix id="recolorize-filter-matrix" type="matrix"
          values="1.0 0.0 0.0 0.0  0.0
                  1.0 0.0 0.0 0.0  0.0
@@ -66,7 +66,7 @@ var tray_sum = {
        decoupled from whatever the background art happens to paint. -->
   <rect class="hit_plate" x="0" y="0" width="100%" height="100%" fill="transparent" />
 
-  <svg id="resizable_bg" class="wh_follow_resize"
+  <svg class="wh_follow_resize"
     x="0" y="0" width="220" height="130"
     preserveAspectRatio="none"
     viewBox="2 3.7 218 121"
@@ -78,7 +78,7 @@ var tray_sum = {
        style="stroke:none"
        x="3.6" y="14.6" width="213.4" height="106.69"
        rx="10" ry="10" />
-    <g id="group-monochrome-1" class="colorable" filter="url(#app-filter-colorize)">
+    <g id="group-monochrome-1" class="colorable tt_colored" filter="url(#app-filter-colorize)">
       <rect
          id="rect_contents"
          fill="#d7d7d7"
@@ -129,7 +129,7 @@ var tray_sum = {
   viewBox="0 0 220 130"
   preserveAspectRatio="xMidYMin slice"
   >
-   <g id="group-monochrome-2" class="colorable" filter="url(#app-filter-colorize)">
+   <g id="group-monochrome-2" class="colorable tt_colored" filter="url(#app-filter-colorize)">
     <rect
        id="rect_result"
        fill="#e3e3e3"

@@ -35,7 +35,7 @@
      inkscape:current-layer="d4 die" />
   <defs
      id="defs1">
-    <filter
+    <filter class="tt_color_filter"
        id="app-filter-colorize"
        color-interpolation-filters="sRGB">
       <feColorMatrix
@@ -95,7 +95,7 @@ var d4 = {
     ]]></script>
   <g
      id="group-monochrome-1"
-     class="draggable"
+     class="draggable tt_colored"
      filter="url(#app-filter-colorize)">
     <ellipse
        ry="15.54886"

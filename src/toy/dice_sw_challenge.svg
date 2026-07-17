@@ -12,7 +12,7 @@
    inkscape:version="0.92.3 (2405546, 2018-03-11)"
    >
   <defs id="defs1">
-    <filter
+    <filter class="tt_color_filter"
        id="app-filter-colorize"
        style="color-interpolation-filters:sRGB">
       <feColorMatrix
@@ -116,7 +116,7 @@ var sw_challenge = {
      inkscape:label="#patha1" />
   <g
      id="group-monochrome-1"
-     class="draggable"
+     class="draggable tt_colored"
      filter="url(#app-filter-colorize)">
     <path
        inkscape:connector-curvature="0"

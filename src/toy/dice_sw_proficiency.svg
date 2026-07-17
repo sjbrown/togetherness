@@ -16,7 +16,7 @@
    sodipodi:docname="dice_sw_proficiency.svg">
   <defs
      id="defs1">
-    <filter
+    <filter class="tt_color_filter"
        id="app-filter-colorize"
        style="color-interpolation-filters:sRGB">
       <feColorMatrix
@@ -121,7 +121,7 @@ var sw_proficiency = {
      inkscape:label="#patha1" />
   <g
      id="group-monochrome-1"
-     class="draggable"
+     class="draggable tt_colored"
      filter="url(#app-filter-colorize)">
     <path
        inkscape:connector-curvature="0"

@@ -41,7 +41,7 @@
      inkscape:snap-nodes="false" />
   <defs
      id="defs1">
-    <filter
+    <filter class="tt_color_filter"
        id="app-filter-colorize"
        color-interpolation-filters="sRGB">
       <feColorMatrix
@@ -112,7 +112,7 @@ var sw_difficulty = {
     ]]></script>
   <g
      id="group-monochrome-1"
-     class="draggable"
+     class="draggable tt_colored"
      filter="url(#app-filter-colorize)">
     <ellipse
        ry="28.365911"
