@@ -455,7 +455,6 @@ export function updateResizeGhost(elId, x, y, width, height) {
     if (bg) {
       bg.setAttribute('width', width);
       bg.setAttribute('height', height);
-      bg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     }
   }
   const scale = App.getViewScale();
