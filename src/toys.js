@@ -223,6 +223,7 @@ export function svgTextToYXml(svgText, prefix) {
     ['wh_follow_resize', prefix + 'wh_follow_resize'],
     ['tt_colored', prefix + 'tt_colored'],
     ['tt_color_filter', prefix + 'tt_color_filter'],
+    ['tspan_name', prefix + 'tspan_name'],
   ])
 
   const refs = { colorMatrices: [] }
