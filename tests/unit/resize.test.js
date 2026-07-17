@@ -4,6 +4,7 @@ import { describe, test, expect, beforeEach } from 'vitest'
 import {
   addToySync, render, findToy, isTrayEl, computeResizeRect, applyResizeCommit,
   RESIZE_CORNER_TL, RESIZE_CORNER_TR, RESIZE_CORNER_BL, RESIZE_CORNER_BR,
+  reparentToy,
   _clearSvgTextCache, clearYNodeMap,
 } from '../../src/toys.js'
 import { resizeCorners, hitTestResizeCorner, PAD } from '../../src/overlay.js'
@@ -199,5 +200,71 @@ describe('overlay.js — resizeCorners / hitTestResizeCorner', () => {
     expect(hitTestResizeCorner(geo, nearCorner.x, nearCorner.y, 1)).toBe(RESIZE_CORNER_BR)
     // ...but at scale=4 the same 5 CANVAS-space px is 20 SCREEN px away — outside it.
     expect(hitTestResizeCorner(geo, nearCorner.x, nearCorner.y, 4)).toBeNull()
+  })
+})
+
+describe('applyResizeCommit — nested-toy isolation (ownYClassSelector)', () => {
+  // Regression coverage for the id-prefix-matching rewrite of
+  // findWhFollowResizeYEls/findContentsGroupYEl: resizing a tray must only
+  // ever touch that tray's OWN wh_follow_resize elements, never a nested
+  // tray's — no matter how deep the nesting goes. A one-level, unprefixed
+  // class scan would get this right for depth 1 by accident (nested toys
+  // live inside .contents_group, one level further in than a bare scan
+  // reaches) but wrong at depth 2+, which is what these tests pin down.
+
+  test('resizing an outer tray does not touch a directly-nested inner tray\u2019s own wh_follow_resize element', () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    place(ydoc, yToys, 'outer', 'tray_fixture', TRAY_SVG, 100, 100)
+    place(ydoc, yToys, 'inner', 'tray_fixture', TRAY_SVG, 100, 100)
+    reparentToy(ydoc, yToys, 'inner', 'outer')
+
+    applyResizeCommit(ydoc, findToy(yToys, 'outer'), 40, 50, 300, 220)
+
+    const layerEl = renderLayer(yToys)
+    const outerBg = layerEl.querySelector('[data-id="outer"] .outer__wh_follow_resize')
+    const innerBg = layerEl.querySelector('[data-id="inner"] .inner__wh_follow_resize')
+    expect(outerBg.getAttribute('width')).toBe('300')
+    expect(outerBg.getAttribute('height')).toBe('220')
+    // The inner tray was never resized — still its native 200x150 size.
+    expect(innerBg.getAttribute('width')).toBe('200')
+    expect(innerBg.getAttribute('height')).toBe('150')
+  })
+
+  test('resizing an outer tray does not touch a doubly-nested (tray-in-tray-in-tray) wh_follow_resize element', () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    place(ydoc, yToys, 'outer', 'tray_fixture', TRAY_SVG, 100, 100)
+    place(ydoc, yToys, 'mid', 'tray_fixture', TRAY_SVG, 100, 100)
+    place(ydoc, yToys, 'inner', 'tray_fixture', TRAY_SVG, 100, 100)
+    reparentToy(ydoc, yToys, 'mid', 'outer')
+    reparentToy(ydoc, yToys, 'inner', 'mid')
+
+    applyResizeCommit(ydoc, findToy(yToys, 'outer'), 0, 0, 400, 400)
+
+    const layerEl = renderLayer(yToys)
+    const midBg   = layerEl.querySelector('[data-id="mid"] .mid__wh_follow_resize')
+    const innerBg = layerEl.querySelector('[data-id="inner"] .inner__wh_follow_resize')
+    // Neither the mid nor the doubly-nested inner tray were touched —
+    // a naive full recursive walk matching the BARE "wh_follow_resize"
+    // class (rather than the id-prefixed one) would have caught both.
+    expect(midBg.getAttribute('width')).toBe('200')
+    expect(innerBg.getAttribute('width')).toBe('200')
+  })
+
+  test('resizing the innermost tray of a nest only touches its own element, not its ancestors\u2019', () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    place(ydoc, yToys, 'outer', 'tray_fixture', TRAY_SVG, 100, 100)
+    place(ydoc, yToys, 'inner', 'tray_fixture', TRAY_SVG, 100, 100)
+    reparentToy(ydoc, yToys, 'inner', 'outer')
+
+    applyResizeCommit(ydoc, findToy(yToys, 'inner'), 0, 0, 90, 90)
+
+    const layerEl = renderLayer(yToys)
+    const outerBg = layerEl.querySelector('[data-id="outer"] .outer__wh_follow_resize')
+    const innerBg = layerEl.querySelector('[data-id="inner"] .inner__wh_follow_resize')
+    expect(innerBg.getAttribute('width')).toBe('90')
+    expect(outerBg.getAttribute('width')).toBe('200') // untouched
   })
 })

@@ -221,6 +221,8 @@ export function svgTextToYXml(svgText, prefix) {
   const classAddMap = new Map([
     ['contents_group', prefix + 'contents_group'],
     ['wh_follow_resize', prefix + 'wh_follow_resize'],
+    ['tt_colored', prefix + 'tt_colored'],
+    ['tt_color_filter', prefix + 'tt_color_filter'],
   ])
 
   const refs = { colorMatrices: [] }
@@ -307,14 +309,27 @@ function isToyG(yEl) {
   return (yEl.getAttribute('class') || '').split(/\s+/).includes('toy')
 }
 
-function findContentsGroupYEl(toyG) {
-  const svg = toyG.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'svg')
-  if (!svg) return null
-  return svg.toArray().find(c =>
-    c instanceof Y.XmlElement && c.nodeName === 'g' &&
-    (c.getAttribute('class') || '').split(/\s+/).includes('contents_group')
-  ) ?? null
+
+/**
+ * Find all Y.XmlElement descendants of `yEl` that carry the
+ * `className`
+ *
+ * Returns an array (possibly empty), in depth-first document order.
+ */
+function yClassSelector(yEl, className) {
+  const matching = []
+  const walk = (_yEl) => {
+    for (const child of _yEl.toArray()) {
+      if (!(child instanceof Y.XmlElement)) continue
+      const classes = (child.getAttribute('class') || '').split(/\s+/).filter(Boolean)
+      if (classes.includes(className)) matching.push(child)
+      walk(child)
+    }
+  }
+  walk(yEl)
+  return matching
 }
+
 
 /**
  * Locate a toy anywhere in the toys tree — at the top level of
@@ -334,10 +349,13 @@ function findToyLocation(container, id) {
     if (child.getAttribute('data-toy-id') === id) {
       return { yEl: child, parent: container, index: i }
     }
-    const contentsGroup = findContentsGroupYEl(child)
-    if (contentsGroup) {
-      const found = findToyLocation(contentsGroup, id)
-      if (found) return found
+    const cId = child.getAttribute('data-toy-id')
+    if (cId) {
+      const contentsGroup = yClassSelector(child, `${cId}__contents_group`)[0] ?? null
+      if (contentsGroup) {
+        const found = findToyLocation(contentsGroup, id)
+        if (found) return found
+      }
     }
   }
   return null
@@ -348,8 +366,12 @@ function findToyLocation(container, id) {
  * (arbitrarily nested) contained toys
  */
 function toyContains(toyG, targetId) {
-  if (toyG.getAttribute('data-toy-id') === targetId) return true
-  const contentsGroup = findContentsGroupYEl(toyG)
+  const toyId = toyG.getAttribute('data-toy-id')
+  if (!toyId) {
+    return false
+  }
+  if (toyId === targetId) return true
+  const contentsGroup = yClassSelector(toyG, `${toyId}__contents_group`)[0] ?? null
   if (!contentsGroup) return false
   return contentsGroup.toArray().some(child => isToyG(child) && toyContains(child, targetId))
 }
@@ -412,7 +434,9 @@ export function reparentToy(ydoc, yToys, id, targetTrayId) {
     if (!targetLocation) {
       throw new Error(`[toys] reparentToy: target tray not found: ${targetTrayId}`)
     }
-    const contentsGroup = findContentsGroupYEl(targetLocation.yEl)
+    const contentsGroup = yClassSelector(
+      targetLocation.yEl, `${targetTrayId}__contents_group`
+    )[0] ?? null
     if (!contentsGroup) {
       throw new Error(`[toys] reparentToy: target ${targetTrayId} has no .contents_group`)
     }
@@ -599,28 +623,6 @@ export function computeResizeRect(startRect, corner, px, py) {
 }
 
 /**
- * Find all Y.XmlElement children of ySvg that have the wh_follow_resize class.
- *
- * Returns an array (possibly empty) — resize updates all matching elements.
- */
-function findWhFollowResizeYEls(ySvg) {
-  const matching = []
-  // TODO: this only goes one level deep. Happily, it avoids anything 
-  // inside contents_group, but it won't find any wh_follow_resize 2+ levels
-  // deep.
-  // It should instead find all of the toy's *own* wh_follow_resize elements
-  // like a selector matching `.{id}__wh_follow_resize` elements
-  for (const child of ySvg.toArray()) {
-    if (!(child instanceof Y.XmlElement)) continue
-    const classes = (child.getAttribute('class') || '').split(/\s+/).filter(Boolean)
-    if (classes.includes('wh_follow_resize')) {
-      matching.push(child)
-    }
-  }
-  return matching
-}
-
-/**
  * Commit a toy resize to the Yjs doc in a single transaction.
  * (x, y) is the new top-left; (width, height) the new
  * native size — both in canvas-space, already computed by
@@ -630,6 +632,8 @@ export function applyResizeCommit(ydoc, yToy, x, y, width, height) {
   if (!yToy) return
   const ySvg = yToy.toArray()[0]
   if (!ySvg) return
+  const toyId = yToy.getAttribute('data-toy-id')
+  if (!toyId) return
   const w = clampResizeDim(width)
   const h = clampResizeDim(height)
   ydoc.transact(() => {
@@ -638,8 +642,7 @@ export function applyResizeCommit(ydoc, yToy, x, y, width, height) {
     ySvg.setAttribute('width',  String(w))
     ySvg.setAttribute('height', String(h))
     ySvg.setAttribute('viewBox', `0 0 ${w} ${h}`)
-    // Update all elements marked with wh_follow_resize class
-    for (const el of findWhFollowResizeYEls(ySvg)) {
+    for (const el of yClassSelector(ySvg, `${toyId}__wh_follow_resize`)) {
       el.setAttribute('width',  String(w))
       el.setAttribute('height', String(h))
     }
