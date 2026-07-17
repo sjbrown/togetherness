@@ -61,7 +61,6 @@ var tray_tabulate = {
     x="0" y="0" width="500" height="150"
     viewBox="0 0 500 150"
     preserveAspectRatio="none"
-    class="droptarget"
   >
     <rect
        id="shadow_rect"

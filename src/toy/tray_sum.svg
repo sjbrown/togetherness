@@ -70,7 +70,6 @@ var tray_sum = {
     x="0" y="0" width="220" height="130"
     preserveAspectRatio="none"
     viewBox="2 3.7 218 121"
-    class="droptarget"
   >
     <rect
        id="shadow_rect"

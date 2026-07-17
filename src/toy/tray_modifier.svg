@@ -79,7 +79,6 @@ var tray_modifier = {
     x="0" y="0" width="200" height="150"
     viewBox="0 0 200 150"
     preserveAspectRatio="none"
-    class="droptarget"
   >
     <rect
        id="shadow_rect"
