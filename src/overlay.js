@@ -405,7 +405,7 @@ export function endDragPlaceholder(elId) {
 // width/height override only applies when the referenced element is an
 // <svg> or <symbol>, and the href here targets the toy's outer <g>
 // wrapper — so instead the ghost is a real cloned copy of the toy's DOM,
-// with its own embedded <svg> (and #resizable_bg, when present) directly
+// with its own embedded <svg> directly
 // mutated to the current preview size on every updateResizeGhost() call.
 // Map<elId, { placeholderEl, ghostEl, ringEl }>
 const _resizeGhosts = new Map();

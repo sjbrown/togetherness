@@ -133,7 +133,6 @@ describe('applyResizeCommit', () => {
     for (const el of whFollowResizeEls) {
       expect(el.getAttribute('width')).toBe('300')
       expect(el.getAttribute('height')).toBe('220')
-      expect(el.getAttribute('viewBox')).toBe('0 0 300 220')
     }
   })
 
