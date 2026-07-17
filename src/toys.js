@@ -599,20 +599,25 @@ export function computeResizeRect(startRect, corner, px, py) {
 }
 
 /**
- * Find a toy's #resizable_bg nested <svg> Y node, if it has one
- * Returns null for toy types that don't have one
- * (resize only ever touches it when present).
+ * Find all Y.XmlElement children of ySvg that have the wh_follow_resize class.
  *
- * svgTextToYXml namespaces every id in the source file by `${toyId}__` on
- * import (so two placed instances of the * same toy type never collide) -- the
- * literal string "resizable_bg" is never actually the id in the Yjs tree;
- * They all get transformed into `${toyId}__resizable_bg`.
+ * Returns an array (possibly empty) — resize updates all matching elements.
  */
-function findResizableBgYEl(ySvg, toyId) {
-  const prefixedId = `${toyId}__resizable_bg`
-  return ySvg.toArray().find(c =>
-    c instanceof Y.XmlElement && c.nodeName === 'svg' && c.getAttribute('id') === prefixedId
-  ) ?? null
+function findWhFollowResizeYEls(ySvg) {
+  const matching = []
+  // TODO: this only goes one level deep. Happily, it avoids anything 
+  // inside contents_group, but it won't find any wh_follow_resize 2+ levels
+  // deep.
+  // It should instead find all of the toy's *own* wh_follow_resize elements
+  // like a selector matching `.{id}__wh_follow_resize` elements
+  for (const child of ySvg.toArray()) {
+    if (!(child instanceof Y.XmlElement)) continue
+    const classes = (child.getAttribute('class') || '').split(/\s+/).filter(Boolean)
+    if (classes.includes('wh_follow_resize')) {
+      matching.push(child)
+    }
+  }
+  return matching
 }
 
 /**
@@ -633,11 +638,10 @@ export function applyResizeCommit(ydoc, yToy, x, y, width, height) {
     ySvg.setAttribute('width',  String(w))
     ySvg.setAttribute('height', String(h))
     ySvg.setAttribute('viewBox', `0 0 ${w} ${h}`)
-    const bg = findResizableBgYEl(ySvg, yToy.getAttribute('data-toy-id'))
-    if (bg) {
-      // purposefully avoid changing the bg viewBox
-      bg.setAttribute('width',  String(w))
-      bg.setAttribute('height', String(h))
+    // Update all elements marked with wh_follow_resize class
+    for (const el of findWhFollowResizeYEls(ySvg)) {
+      el.setAttribute('width',  String(w))
+      el.setAttribute('height', String(h))
     }
   })
 }

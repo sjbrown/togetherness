@@ -438,8 +438,9 @@ export function startResizeGhost(elId) {
 /**
  * Update the local resize ghost to (x, y, width, height) — canvas-space,
  * already computed by Toys.computeResizeRect. Mutates the clone's own
- * root <svg> and #resizable_bg (when present) directly — this is DOM-only,
- * never touches Yjs (see toys.js's applyResizeCommit for the commit path).
+ * root <svg> and all child elements marked with wh_follow_resize class
+ * directly — this is DOM-only, never touches Yjs (see toys.js's
+ * applyResizeCommit for the commit path).
  */
 export function updateResizeGhost(elId, x, y, width, height) {
   const entry = _resizeGhosts.get(elId);
@@ -451,10 +452,10 @@ export function updateResizeGhost(elId, x, y, width, height) {
     ghostSvg.setAttribute('width', width);
     ghostSvg.setAttribute('height', height);
     ghostSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    const bg = ghostSvg.querySelector(`[id="${elId}__resizable_bg"]`);
-    if (bg) {
-      bg.setAttribute('width', width);
-      bg.setAttribute('height', height);
+    // Update all elements marked with wh_follow_resize class
+    for (const el of ghostSvg.querySelectorAll(`.${elId}__wh_follow_resize`)) {
+      el.setAttribute('width', width);
+      el.setAttribute('height', height);
     }
   }
   const scale = App.getViewScale();
