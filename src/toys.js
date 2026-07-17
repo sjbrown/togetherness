@@ -117,20 +117,6 @@ export function colorMatrixValues(color) {
 }
 
 /**
- * Walk a Y.XmlElement tree and find a node by nodeName.
- * Returns the first match or null.
- */
-function findYNode(yEl, nodeName) {
-  if (!(yEl instanceof Y.XmlElement)) return null
-  if (yEl.nodeName === nodeName) return yEl
-  for (const child of yEl.toArray()) {
-    const hit = findYNode(child, nodeName)
-    if (hit) return hit
-  }
-  return null
-}
-
-/**
  * Apply a color to all feColorMatrix nodes in the toy's Yjs tree.
  */
 function applyColor(colorMatrices, color) {
@@ -331,57 +317,59 @@ function yClassSelector(yEl, className) {
   return matching
 }
 
+/**
+ *   '#foo'              → { attr: 'id', value: 'foo' }
+ *   '[data-foo="bar"]'  → { attr: 'data-foo', value: 'bar' }
+ */
+function parseYSelector(selector) {
+  let m
+  if ((m = selector.match(/^#(.+)$/))) return { attr: 'id', value: m[1] }
+  if ((m = selector.match(/^\[([\w:-]+)="([^"]*)"\]$/))) return { attr: m[1], value: m[2] }
+  throw new Error(`[toys] yExactSelector: unsupported selector: ${selector}`)
+}
 
 /**
- * Locate a toy anywhere in the toys tree — at the top level of
- * yToys, or nested arbitrarily deep inside other toys' .contents_group
- * containers
- * Returns { yEl, parent, index }
- *   parent - whichever Y.XmlFragment/Y.XmlElement directly holds it
- *   index  - its position there
- * So callers can both read and splice it out.
- * Returns null if no toy with this id exists anywhere in the tree.
+ * Walk yEl (itself, then its descendants, depth-first) for the first
+ * Y.XmlElement matching `selector`
+ *  - id selector ('#foo')
+ *  - exact-attribute selector ('[data-foo="bar"]')
+ *
+ * Returns:
+ * posContext is false (default)
+ *  - the matching Y.XmlElement (or null)
+ * posContext is true
+ *  - { yEl, parent, index } (or null)
  */
-function findToyLocation(container, id) {
-  const children = container.toArray()
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i]
-    if (!isToyG(child)) continue
-    if (child.getAttribute('data-toy-id') === id) {
-      return { yEl: child, parent: container, index: i }
-    }
-    const cId = child.getAttribute('data-toy-id')
-    if (cId) {
-      const contentsGroup = yClassSelector(child, `${cId}__contents_group`)[0] ?? null
-      if (contentsGroup) {
-        const found = findToyLocation(contentsGroup, id)
-        if (found) return found
+function yExactSelector(yEl, selector, posContext = false) {
+  const { attr, value } = parseYSelector(selector)
+  const matches = (el) => el instanceof Y.XmlElement && el.getAttribute(attr) === value
+
+  if (matches(yEl)) {
+    return posContext ? { yEl, parent: null, index: -1 } : yEl
+  }
+
+  const walk = (container) => {
+    const children = container.toArray()
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i]
+      if (!(child instanceof Y.XmlElement)) continue
+      if (matches(child)) {
+        return posContext ? { yEl: child, parent: container, index: i } : child
       }
+      const found = walk(child)
+      if (found) return found
     }
+    return null
   }
-  return null
+  return walk(yEl)
 }
 
-/**
- * Whether toyG is targetId itself, or has targetId anywhere among its own
- * (arbitrarily nested) contained toys
- */
-function toyContains(toyG, targetId) {
-  const toyId = toyG.getAttribute('data-toy-id')
-  if (!toyId) {
-    return false
-  }
-  if (toyId === targetId) return true
-  const contentsGroup = yClassSelector(toyG, `${toyId}__contents_group`)[0] ?? null
-  if (!contentsGroup) return false
-  return contentsGroup.toArray().some(child => isToyG(child) && toyContains(child, targetId))
-}
 
 /**
  * Remove a toy by id — searches the whole toys tree, including nested
  */
 export function deleteToy(ydoc, yToys, id) {
-  const location = findToyLocation(yToys, id)
+  const location = yExactSelector(yToys, `[data-toy-id="${id}"]`, true)
   if (!location) return false
   ydoc.transact(() => {
     location.parent.delete(location.index, 1)
@@ -394,7 +382,7 @@ export function deleteToy(ydoc, yToys, id) {
  * nested inside trays. Returns null if not found.
  */
 export function findToy(yToys, id) {
-  return findToyLocation(yToys, id)?.yEl ?? null
+  return yExactSelector(yToys, `[data-toy-id="${id}"]`)
 }
 
 /**
@@ -411,7 +399,7 @@ export function findToy(yToys, id) {
  * Returns the newly-inserted (cloned) Y.XmlElement.
  */
 export function reparentToy(ydoc, yToys, id, targetTrayId) {
-  const location = findToyLocation(yToys, id)
+  const location = yExactSelector(yToys, `[data-toy-id="${id}"]`, true)
   if (!location) throw new Error(`[toys] reparentToy: toy not found: ${id}`)
   const { yEl, parent, index } = location
 
@@ -428,10 +416,11 @@ export function reparentToy(ydoc, yToys, id, targetTrayId) {
   if (targetTrayId == null) {
     targetFragment = yToys
   } else {
-    if (toyContains(yEl, targetTrayId)) {
+    const found = !!yExactSelector(yEl, `[data-toy-id="${targetTrayId}"]`)
+    if (found) {
       throw new Error(`[toys] reparentToy: cannot move ${id} into itself or one of its own contained toys (${targetTrayId})`)
     }
-    const targetLocation = findToyLocation(yToys, targetTrayId)
+    const targetLocation = yExactSelector(yToys, `[data-toy-id="${targetTrayId}"]`, true)
     if (!targetLocation) {
       throw new Error(`[toys] reparentToy: target tray not found: ${targetTrayId}`)
     }
@@ -852,6 +841,13 @@ export const TOY_TYPES = {
  * That's what keeps a tray's own feColorMatrix search from reaching into
  * a die's feColorMatrix — the walk stops one level above it, at the die's
  * own <g class="toy"> boundary. Same boundary findScriptNodes respects.
+ *
+ * feColorMatrix nodes don't carry an id-prefixed class of their own (only
+ * their parent <filter> does, via tt_color_filter — see isColorable), so
+ * this nodeName-based, boundary-guarded walk is what edit() still uses to
+ * retint every one of them in place. Everything else that used to lean on
+ * this function (isColorable, findOwnNameYNode) now matches directly on an
+ * id-prefixed class via yClassSelector instead.
  */
 function findAllYNodes(yEl, nodeName, results = [], isRoot = true) {
   if (!(yEl instanceof Y.XmlElement)) return results;
@@ -862,43 +858,20 @@ function findAllYNodes(yEl, nodeName, results = [], isRoot = true) {
 }
 
 /**
- * Whether svgEl's own toy has any feColorMatrix nodes of its own to
- * recolor — data-driven, so every colorable toy (any tray type, dice,
- * markers, anything future) picks this up for free, rather than
- * hardcoding toy-type names. Deliberately boundary-safe (via
- * findAllYNodes's isRoot guard): a tray with a colorable die placed
- * inside it is not itself considered colorable on that basis alone.
- */
-function isColorable(svgEl) {
-  const yToy = yNodeFor(svgEl)
-  if (!yToy) return false
-  return findAllYNodes(yToy, 'feColorMatrix').length > 0
-}
-
-/**
- * Find elem's own '.tspan_name' element — boundary-safe, so a container
- * toy with no name of its own never surfaces a nested toy's name
- * instead. Same convention as tray.js's own _findOwn in src/toy/js/tray.js
- * (kept independent rather than shared: one is DOM-side app code, the
- * other DOM-side toy-behaviour code, and they run in different contexts).
- */
-function findOwnNameEl(elem) {
-  for (const child of elem.children) {
-    if (child.classList.contains('tspan_name')) return child
-    if (child.classList.contains('toy')) continue // a nested toy's own subtree — not elem's
-    const found = findOwnNameEl(child)
-    if (found) return found
-  }
-  return null
-}
-
-/**
  * Return the ttStateSchema for a rendered toy element.
  * Color is read from the data-color attribute on the <g> wrapper, which is
  * part of the Yjs tree and always in sync with the CRDT state.
  */
 export function getTtStateSchema(svgEl) {
-  const nameEl = findOwnNameEl(svgEl)
+  const toyId = svgEl.getAttribute?.('data-toy-id')
+  if (!toyId) return null
+  // Find elem's own '.tspan_name' element — boundary-safe via id-prefix
+  // matching, don't accidentally match a contents_group-contained toy.
+  const nameEl = svgEl.querySelector(`.${toyId}__tspan_name`)
+  function isColorable() {
+    return svgEl.querySelector(`.${toyId}__tt_color_filter`) !== null
+  }
+
   return {
     color: svgEl.getAttribute('data-color') ?? '#888',
     ...(nameEl ? { name: nameEl.textContent ?? '' } : {}),
@@ -953,14 +926,13 @@ export async function applyTtState(ydoc, yToys, state) {
 }
 
 /**
- * Find yEl's own '.tspan_name' node — boundary-safe (via findAllYNodes's
- * isRoot guard), so a tray containing another tray never finds the
- * nested tray's name instead of its own.
+ * Find yEl's own '.tspan_name' node — boundary-safe via id-prefix matching,
+ * don't accidentally match a contents_group-contained toy.
  */
 function findOwnNameYNode(yToy) {
-  return findAllYNodes(yToy, 'tspan').find(t =>
-    (t.getAttribute('class') || '').split(/\s+/).includes('tspan_name')
-  ) ?? null;
+  const toyId = yToy.getAttribute('data-toy-id')
+  if (!toyId) return null
+  return yClassSelector(yToy, `${toyId}__tspan_name`)[0] ?? null
 }
 
 /** Overwrite yEl's Y.XmlText content in place, creating one if absent. */

@@ -946,4 +946,29 @@ describe('tray_sum: color option + editable name (real assets)', () => {
     expect(dieAfter.color).toBe(dieBefore.color) // untouched by the tray's recolor
     expect(dieAfter.types).not.toHaveProperty('name') // dice never had a name field to begin with
   })
+
+  test('editing an outer tray\'s color/name never reaches a tray nested inside it (id-prefix isolation, not just structural nesting)', async () => {
+    // A tray-in-tray is the sharper case than die-in-tray above: the inner
+    // toy ALSO carries its own .tt_color_filter and .tspan_name, so this
+    // proves isColorable/findOwnNameEl are matching on the OUTER tray's own
+    // id-prefixed class (${outerToyId}__tt_color_filter etc.) and not just
+    // finding "a" tt_color_filter/tspan_name anywhere in the subtree.
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'outer', toyType: 'tray_sum', x: 0, y: 0, color: '#5e7ea8' })
+    await addToy(ydoc, yToys, { id: 'inner', toyType: 'tray_sum', x: 0, y: 0, color: '#a8905e' })
+    edit(ydoc, findToy(yToys, 'inner'), { name: 'inner-loot' })
+    reparentToy(ydoc, yToys, 'inner', 'outer')
+
+    const innerBefore = getTtStateSchema(_toSVGEl(findToy(yToys, 'inner')))
+    expect(innerBefore.name).toBe('inner-loot')
+
+    edit(ydoc, findToy(yToys, 'outer'), { color: 'hsl(0, 100%, 50%)', name: 'outer-loot' })
+
+    const outerAfter = getTtStateSchema(_toSVGEl(findToy(yToys, 'outer')))
+    const innerAfter = getTtStateSchema(_toSVGEl(findToy(yToys, 'inner')))
+    expect(outerAfter.name).toBe('outer-loot')       // outer got its own edit
+    expect(innerAfter.name).toBe('inner-loot')       // inner's own name untouched
+    expect(innerAfter.color).toBe(innerBefore.color) // inner's own color untouched
+  })
 })
