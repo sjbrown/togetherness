@@ -12,11 +12,11 @@ const SVG_NS = 'http://www.w3.org/2000/svg'
 const getToysLayer = (ydoc) => ({ yToys: ydoc.getXmlFragment('toys') })
 
 // A tray fixture matching every real tray_*.svg asset's convention: root
-// <svg class="... tray"> + a nested <svg id="resizable_bg"> with matching
+// <svg class="... tray"> + a nested <svg class="wh_follow_resize"> with matching
 // width/height/viewBox (see src/toy/tray_sum.svg and siblings).
 const TRAY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="150" id="tray_fixture" class="tray_fixture tray">
-  <svg id="resizable_bg" x="0" y="0" width="200" height="150" viewBox="0 0 200 150">
+  <svg id="resizable_bg" class="wh_follow_resize" x="0" y="0" width="200" height="150" viewBox="0 0 200 150">
     <rect id="bg_rect" width="200" height="150" />
   </svg>
   <g id="contents_group" class="contents_group"></g>
@@ -120,7 +120,7 @@ describe('applyResizeCommit', () => {
     expect(svg.getAttribute('viewBox')).toBe('0 0 300 220')
   })
 
-  test('mirrors the new size onto #resizable_bg, matching tray convention', () => {
+  test('mirrors the new size onto all elements with wh_follow_resize class', () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     place(ydoc, yToys, 'tray1', 'tray_fixture', TRAY_SVG, 100, 100)
@@ -128,10 +128,13 @@ describe('applyResizeCommit', () => {
     applyResizeCommit(ydoc, findToy(yToys, 'tray1'), 40, 50, 300, 220)
 
     const layerEl = renderLayer(yToys)
-    const bg = layerEl.querySelector('[data-id="tray1"] [id="tray1__resizable_bg"]')
-    expect(bg.getAttribute('width')).toBe('300')
-    expect(bg.getAttribute('height')).toBe('220')
-    expect(bg.getAttribute('viewBox')).toBe('0 0 200 150')
+    const whFollowResizeEls = layerEl.querySelectorAll('[data-id="tray1"] .wh_follow_resize')
+    expect(whFollowResizeEls.length).toBeGreaterThan(0)
+    for (const el of whFollowResizeEls) {
+      expect(el.getAttribute('width')).toBe('300')
+      expect(el.getAttribute('height')).toBe('220')
+      expect(el.getAttribute('viewBox')).toBe('0 0 300 220')
+    }
   })
 
   test('clamps below the minimum toy size rather than writing a degenerate rect', () => {

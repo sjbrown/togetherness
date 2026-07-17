@@ -156,7 +156,7 @@ function rewriteUrlRefs(value, idMap) {
 // - if `refs` is given, collects direct refs to any feColorMatrix nodes
 //   into refs.colorMatrices, since a detached tree can't be walked later
 //   (toArray() throws until the tree is attached to a doc)
-function elementToYXml(node, idMap, refs) {
+function elementToYXml(node, idMap, classAddMap, refs) {
   const yEl = new Y.XmlElement(node.localName)
 
   if (refs && node.localName === 'feColorMatrix') {
@@ -173,6 +173,16 @@ function elementToYXml(node, idMap, refs) {
     } else if (attr.localName === 'href' && value.startsWith('#')) {
       const ref = value.slice(1)
       if (idMap.has(ref)) value = '#' + idMap.get(ref)
+    } else if (attr.localName === 'class') {
+      // Add prefixed versions of special classnames alongside the originals.
+      const classes = value.split(/\s+/).filter(Boolean)
+      const allClasses = [...classes]
+      for (const cls of classes) {
+        if (classAddMap.has(cls)) {
+          allClasses.push(classAddMap.get(cls))
+        }
+      }
+      value = allClasses.join(' ')
     } else {
       value = rewriteUrlRefs(value, idMap)
     }
@@ -183,7 +193,7 @@ function elementToYXml(node, idMap, refs) {
   for (const child of Array.from(node.childNodes)) {
     if (child.nodeType === 1) {                                   // ELEMENT_NODE
       if (child.namespaceURI && child.namespaceURI !== SVG_NS) continue
-      children.push(elementToYXml(child, idMap, refs))
+      children.push(elementToYXml(child, idMap, classAddMap, refs))
     } else if (child.nodeType === 3 || child.nodeType === 4) {     // TEXT_NODE / CDATA_SECTION_NODE
       if (child.textContent.trim() !== '') children.push(new Y.XmlText(child.textContent))
     }
@@ -193,8 +203,7 @@ function elementToYXml(node, idMap, refs) {
 }
 
 /**
- * Parse a toy SVG file's text into a detached Y.XmlElement rooted at <svg>,
- * with all internal ids namespaced by `prefix`.
+ * Parse a toy SVG file's text into a detached Y.XmlElement rooted at <svg>
  *
  * Returns { ySvg, colorMatrices, width, height }
  */
@@ -202,14 +211,20 @@ export function svgTextToYXml(svgText, prefix) {
   const dom  = new DOMParser().parseFromString(svgText, 'image/svg+xml')
   const root = dom.documentElement
 
+  // idMap is { 'foo': 'tt-t-v1-12a34__foo', 'bar': 'tt-t-v1-12a34__bar'}
   const idMap = new Map()
   for (const el of [root, ...root.querySelectorAll('[id]')]) {
     const id = el.getAttribute('id')
     if (id) idMap.set(id, prefix + id)
   }
 
+  const classAddMap = new Map([
+    ['contents_group', prefix + 'contents_group'],
+    ['wh_follow_resize', prefix + 'wh_follow_resize'],
+  ])
+
   const refs = { colorMatrices: [] }
-  const ySvg = elementToYXml(root, idMap, refs)
+  const ySvg = elementToYXml(root, idMap, classAddMap, refs)
   const width  = parseFloat(root.getAttribute('width'))  || 100
   const height = parseFloat(root.getAttribute('height')) || 100
   // Synthesize a viewBox from width/height if the file
