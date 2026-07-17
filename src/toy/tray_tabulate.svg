@@ -57,7 +57,7 @@ var tray_tabulate = {
     src="js/tray.js"
     data-namespace="tray"
     id="script_tray" />
-  <svg id="resizable_bg"
+  <svg id="resizable_bg" class="wh_follow_resize"
     x="0" y="0" width="500" height="150"
     viewBox="0 0 500 150"
     preserveAspectRatio="none"

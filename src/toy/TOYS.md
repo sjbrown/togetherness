@@ -208,6 +208,52 @@ has the helpers you'll want for this: `visit_contents_group`,
 `get_numeric_value`, `getValue`, `getUnderstoodNumber`. Read it before
 writing a new container type from scratch.
 
+## Resizing: the `wh_follow_resize` class
+
+Some toys support interactive resizing via corner-drag. When a toy is
+resized, the platform updates the toy's own root `<svg>` width/height/viewBox
+to match the new dimensions.
+
+If your toy has internal elements whose width/height should scale *directly*
+(via width/height attribute mutation) rather than via CSS transform, mark them
+with `class="wh_follow_resize"`. Any element with this class will have its
+width and height attributes updated in lockstep with the toy's own dimensions
+during a resize.
+
+```xml
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="130"
+     class="tray" viewBox="0 0 220 130">
+
+  <!-- This inner SVG will be NOT be w/h resized it simply scales -->
+  <svg
+       x="0" y="0" width="220" height="50" viewBox="0 0 220 130"
+       preserveAspectRatio="none">
+    <rect x="10" y="10", width="200" height="30" fill="#f0f0ff" stroke="blue"/>
+  </svg>
+
+  <!-- This inner SVG will be resized along with the toy -->
+  <svg class="wh_follow_resize"
+       x="0" y="0" width="220" height="50" viewBox="0 0 220 130"
+       preserveAspectRatio="none">
+    <rect x="10" y="10", width="200" height="30" fill="#fff0f0" stroke="red"/>
+  </svg>
+
+  <!-- This rect will NOT be w/h resized -->
+    <rect x="10" y="60", width="200" height="30" fill="#f0f0ff" stroke="blue"/>
+
+  <!-- This rect will resize along with the toy -->
+    <rect class="wh_follow_resize"
+          x="10" y="60", width="200" height="30" fill="#fff0f0" stroke="red"/>
+
+  <g class="contents_group"></g>
+</svg>
+```
+
+This is useful for background layers, frames, or other structural elements that
+should scale proportionally with the toy. The class makes the intent explicit
+and allows the platform to genericize the resize logic across any toy type, not
+just hardcoded special cases.
+
 ## What you don't need to think about
 
 Sync, persistence, undo, and multiplayer are all handled beneath the
