@@ -40,6 +40,7 @@ import { BOUNPOS_TYPES,
 import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
 import * as Overlay                               from './overlay.js';
+import * as UndoRedo                              from './undo_redo.js';
 import { entityGradient }            from './entity_gradient.js';
 import { isElementHeldByOther, computeTickActions } from './soft-lock.js';
 
@@ -231,7 +232,6 @@ function _singleSelectedId() {
 }
 let _activeTool   = 'select';
 let _offline      = false;
-let _undoStack    = [];      // { op:'add'|'del'|'move'|'resize', module:'drawing'|'toys'|'boun_pos', id, ... }
 let _historyLog   = [];      // { label } — human-readable, newest first
 
 // Active drag — set by App.startDrag, cleared by commitMove / cancelMove.
@@ -367,6 +367,18 @@ export function boot({ ydoc, yMeta, yToys, yDrawing, yBounPos, awareness, provid
   _yMeta.observe(onMetaChanged);
   _awareness.on('change', onPresenceChanged);
 
+  // Undo/redo — one UndoManager over the three element fragments.
+  UndoRedo.init({
+    ydoc:   _ydoc,
+    scopes: [_yToys, _yDrawing, _yBounPos],
+    onApply: (kind, label) => {
+      const verb = kind === 'undo' ? 'undid' : 'redid';
+      addHistory(label ? `${verb}: ${label}` : `${verb} a change`);
+      UI.toast(kind === 'undo' ? 'Undone' : 'Redone');
+    },
+    onEmpty: (kind) => UI.toast(`Nothing to ${kind}`, 'warn'),
+  });
+
   // Provider status
   const dot = document.getElementById('statusDot');
   _provider.on('synced', () => {
@@ -496,9 +508,10 @@ function onBounPosChanged(events, transaction) {
 }
 
 // Reentrancy guard for dispatchContentsChangeCascade, below. Committing a
-// tray's recomputed result _is_ a local Yjs transaction, which synchronously
-// re-fires this very observer before the original call even returns.
-// Using this flag avoids re-dispatching the parent's recompute redundantly.
+// tray's recomputed result _is_ a local Yjs transaction that re-fires this
+// very observer
+// It's protecting against re-triggering another cascade
+// dispatch for a change that IS itself a cascade result.
 let _dispatchingContentsChange = false;
 
 function onToysChanged(events, transaction) {
@@ -849,7 +862,8 @@ const App = {
   deleteMultiSelected: () => {
     const ids = Object.keys(_myClaims);
     if (ids.length === 0) return;
-    const entries = [];
+    let deleted = 0;
+    UndoRedo.tag(`deleted ${ids.length} objects`);
     _ydoc.transact(() => {
       for (const id of ids) {
         const svgEl = _svgEl.querySelector(`[data-id="${id}"]`);
@@ -859,15 +873,13 @@ const App = {
         if (!L) continue;
         const yEl = L.find(id);
         if (!yEl) continue;
-        const entry = { op: 'del', module: mtype, state: L.getTtState(yEl) };
         L.delete(id);
-        entries.push(entry);
+        deleted++;
       }
     });
-    if (entries.length > 0) {
-      _undoStack.push({ op: 'batch', entries });
-      addHistory(`deleted ${entries.length} objects`);
-      App.addLog(`deleted ${entries.length} objects`, 'local');
+    if (deleted > 0) {
+      addHistory(`deleted ${deleted} objects`);
+      App.addLog(`deleted ${deleted} objects`, 'local');
     }
     _clearClaims();
     Overlay.clearHoverCandidates();
@@ -876,25 +888,28 @@ const App = {
   duplicateMultiSelected: () => {
     const ids = Object.keys(_myClaims);
     if (ids.length === 0) return;
-    const entries = [];
-    for (const id of ids) {
-      const yEl = Drawing.findDrawing(_yDrawing, id);
-      if (!yEl) continue;
-      const attrs = yEl.getAttributes();
-      const type  = yEl.nodeName;
-      const newId = App.getMyId() + '_' + Math.random().toString(36).slice(2, 7);
-      const offset = { x: +(attrs.x ?? attrs.cx ?? 0) + 22, y: +(attrs.y ?? attrs.cy ?? 0) + 22 };
-      const geom   = type === 'rect'
-        ? { x: offset.x, y: offset.y, width: +attrs.width, height: +attrs.height }
-        : { cx: offset.x, cy: offset.y, r: +attrs.r };
-      Drawing.addDrawing(_ydoc, _yDrawing,
-        { ...attrs, ...geom, type, id: newId });
-      entries.push({ op: 'add', module: 'drawing', id: newId });
-    }
-    if (entries.length > 0) {
-      _undoStack.push({ op: 'batch', entries });
-      addHistory(`duplicated ${entries.length} objects`);
-      App.addLog(`duplicated ${entries.length} objects`, 'local');
+    let added = 0;
+    // The inner addDrawing transactions collapse into this outer one.
+    UndoRedo.tag(`duplicated ${ids.length} objects`);
+    _ydoc.transact(() => {
+      for (const id of ids) {
+        const yEl = Drawing.findDrawing(_yDrawing, id);
+        if (!yEl) continue;
+        const attrs = yEl.getAttributes();
+        const type  = yEl.nodeName;
+        const newId = App.getMyId() + '_' + Math.random().toString(36).slice(2, 7);
+        const offset = { x: +(attrs.x ?? attrs.cx ?? 0) + 22, y: +(attrs.y ?? attrs.cy ?? 0) + 22 };
+        const geom   = type === 'rect'
+          ? { x: offset.x, y: offset.y, width: +attrs.width, height: +attrs.height }
+          : { cx: offset.x, cy: offset.y, r: +attrs.r };
+        Drawing.addDrawing(_ydoc, _yDrawing,
+          { ...attrs, ...geom, type, id: newId });
+        added++;
+      }
+    });
+    if (added > 0) {
+      addHistory(`duplicated ${added} objects`);
+      App.addLog(`duplicated ${added} objects`, 'local');
     }
     _clearClaims();
   },
@@ -902,8 +917,8 @@ const App = {
   // ── Document mutations ────────────────────────────────────────────────────
   commitDrawing: (attrs) => {
     const id = App.getMyId() + '_' + Math.random().toString(36).slice(2, 7);
+    UndoRedo.tag(`add ${attrs.type ?? 'rect'} ${id.slice(0, 6)}`);
     Drawing.addDrawing(_ydoc, _yDrawing, { ...attrs, id });
-    _undoStack.push({ op: 'add', module: 'drawing', id });
     addHistory(`added ${attrs.type ?? 'rect'} ${id.slice(0, 6)}`, {
       fill: attrs.fill, elType: attrs.type,
     });
@@ -916,6 +931,7 @@ const App = {
     const { id, name } = def.newId();
     if (def.genType === null) {
       // boundary
+      UndoRedo.tag(`add ${def.label} ${name}`);
       def.create(_ydoc, _yBounPos, { id, name, x, y, w, h });
     } else {
       // pos-set
@@ -925,11 +941,11 @@ const App = {
       const rawRadius  = params['snapRadius'] ?? 30;
       const snapRadius = Math.min(rawRadius, computeMaxSnapRadius(genType, genParam));
       const circles    = gridFillExtent(x, y, w, h, genType, genParam);
-      if (circles.length === 0) return;
+      if (circles.length === 0) return;   // nothing tagged yet — no dangling label
+      UndoRedo.tag(`add ${def.label} ${name}`);
       def.create(_ydoc, _yBounPos,
         { id, name, snapRadius, genType, genParam, x, y, w, h, circles });
     }
-    _undoStack.push({ op: 'add', module: 'boun_pos', bounPosType: def.bounPosType, id });
     addHistory(`added ${def.label} ${name}`, { elType: 'boundaries-positions' });
     App.addLog(`added ${def.label} ${name}`, 'local');
     App.select(id);
@@ -1040,11 +1056,14 @@ const App = {
     const def = _toolById[toolName];
     if (!def?.toyType) { UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
     const id = newToyId();
+    // Tag before addToy's placement transaction runs. The later
+    // initializeToy() commits under LIFECYCLE_ORIGIN (untracked), so the
+    // placement is a single undo step even for toys that initialize state.
+    UndoRedo.tag(`place ${def.label} ${id.slice(0, 6)}`);
     addToy(_ydoc, _yToys, {
       id, toyType: def.toyType, x, y,
       color: _toolParams[toolName]?.fill ?? _myGrad.c1,
     }).then(async () => {
-      _undoStack.push({ op: 'add', module: 'toys', id });
       addHistory(`placed ${def.label} ${id.slice(0, 6)}`, { elType: 'toy' });
       App.addLog(`placed ${def.label} ${id.slice(0, 6)}`, 'local');
 
@@ -1068,8 +1087,7 @@ const App = {
     if (!L) return false;
     const yEl = L.find(id);
     if (!yEl) return false;
-    const state = L.getTtState(yEl);
-    _undoStack.push({ op: 'del', module: mtype, state });
+    UndoRedo.tag(`delete ${mtype}:${id.slice(0, 6)}`);
     L.delete(id);
     addHistory(`deleted ${mtype}:${id.slice(0, 6)}`);
     App.addLog(`deleted ${id.slice(0, 6)}`, 'local');
@@ -1208,8 +1226,6 @@ const App = {
 
   commitMove: (id, x, y) => {
     if (!_dragState) return;
-    const fromX      = _dragState.startX;
-    const fromY      = _dragState.startY;
     // If the drag was boundary-constrained or snap-enabled, the raw pointer
     // position may differ from the validated position — use the last position
     // accepted by move().
@@ -1232,21 +1248,26 @@ const App = {
     _dragState = null;
 
     if (dropTrayId) {
-      let movedEl;
+      // Drop into a tray = reparent + reposition into the tray
+      // Wrap both in one transaction so it's a single, atomic undo
+      // step: the inner reparentToy/applyMoveCommit transactions collapse
+      // into this outer one
+      // The tray's own recompute cascade runs afterwards.
+      UndoRedo.tag(`move ${id.slice(0, 6)} into a tray`);
       try {
-        movedEl = reparentToy(_ydoc, _yToys, id, dropTrayId);
+        _ydoc.transact(() => {
+          const movedEl = reparentToy(_ydoc, _yToys, id, dropTrayId);
+          const trayEl = _svgEl.querySelector(`[data-id="${dropTrayId}"]`);
+          const trayGeom = trayEl && Toys.getGeom(trayEl);
+          if (trayGeom) {
+            Toys.applyMoveCommit(_ydoc, movedEl, rx - trayGeom.x, ry - trayGeom.y);
+          }
+        });
       } catch (err) {
         // a malformed tray asset can reach here and throw.
         // Surface it, else the pointerup handler may crash silently mid-drag.
         UI.toast(`Could not move into tray: ${err.message}`, 'warn');
         return;
-      }
-
-      // Reposition into the tray's own local coordinate space
-      const trayEl = _svgEl.querySelector(`[data-id="${dropTrayId}"]`);
-      const trayGeom = trayEl && Toys.getGeom(trayEl);
-      if (trayGeom) {
-        Toys.applyMoveCommit(_ydoc, movedEl, rx - trayGeom.x, ry - trayGeom.y);
       }
 
       // A toy landing inside a tray leaves it: selection doesn't carry
@@ -1256,8 +1277,6 @@ const App = {
 
       // observeDeep fires and calls renderDoc() — same as the ordinary
       // move-commit path below.
-      //
-      // TODO: Not pushed to _undoStack: reparenting isn't undoable yet
       addHistory(`moved ${id.slice(0, 6)} into a tray`, {
         fill: domEl?.getAttribute('fill'),
         elType: mtype,
@@ -1265,11 +1284,11 @@ const App = {
       return;
     }
 
+    UndoRedo.tag(`move ${id.slice(0, 6)} → (${rx}, ${ry})`);
     if (_Layers[mtype]) {
       _Layers[mtype].applyMoveCommit(_Layers[mtype].find(id), rx, ry);
       // observeDeep fires on all layers and calls renderDoc()
     }
-    _undoStack.push({ op: 'move', module: mtype, id, fromX, fromY, toX: rx, toY: ry });
     addHistory(`moved ${id.slice(0, 6)} → (${rx}, ${ry})`, {
       fill: domEl?.getAttribute('fill'),
       elType: mtype,
@@ -1336,15 +1355,14 @@ const App = {
 
   commitResize: (id, corner, px, py) => {
     if (!_resizeState || _resizeState.id !== id) return;
-    const fromRect = _resizeState.startRect;
     const toRect   = Toys.computeResizeRect(_resizeState.startRect, corner, px, py);
     Overlay.endResizeGhost(id);
     _resizeState = null;
 
     const yToy = findToy(_yToys, id);
+    UndoRedo.tag(`resize ${id.slice(0, 6)}`);
     Toys.applyResizeCommit(_ydoc, yToy, toRect.x, toRect.y, toRect.width, toRect.height);
     // observeDeep fires and calls renderDoc()
-    _undoStack.push({ op: 'resize', module: 'toys', id, from: fromRect, to: toRect });
     addHistory(`resized ${id.slice(0, 6)}`, { elType: 'toys' });
   },
 
@@ -1459,7 +1477,6 @@ const App = {
   commitMultiMove: (ddx, ddy) => {
     if (!_multiDragState) return;
     const { elements, boundsRects, snapPoints, lastValidDx, lastValidDy } = _multiDragState;
-    const entries = [];
 
     for (const el of elements) Overlay.endDragPlaceholder(el.id);
     _awareness.setLocalStateField('multidrag', null);
@@ -1470,21 +1487,19 @@ const App = {
     const fdx = constrained ? lastValidDx : Math.round(ddx);
     const fdy = constrained ? lastValidDy : Math.round(ddy);
 
+    // One transaction → one undo step for the whole group move
+    UndoRedo.tag(`move ${elements.length} objects`);
     _ydoc.transact(() => {
       for (const el of elements) {
         const rx = Math.round(el.anchorX + fdx);
         const ry = Math.round(el.anchorY + fdy);
         const L = _Layers[el.mtype];
         if (L) L.applyMoveCommit(L.find(el.id), rx, ry);
-        entries.push({ op: 'move', module: el.mtype, id: el.id,
-          fromX: el.anchorX, fromY: el.anchorY,
-          toX: rx, toY: ry });
       }
     });
 
     // observeDeep on all layers and calls renderDoc()
 
-    _undoStack.push({ op: 'batch', entries });
     addHistory(`moved ${elements.length} objects`);
     App.addLog(`moved ${elements.length} objects`, 'local');
     _multiDragState = null;
@@ -1522,67 +1537,12 @@ const App = {
     UI.toast(`Layer: ${id}`);
   },
   setOffline: (v)   => { _offline = v; },
-  undo: () => {
-    const op = _undoStack.pop();
-    if (!op) { UI.toast('Nothing to undo', 'warn'); return; }
-    if (op.op === 'add') {
-      _Layers[op.module]?.delete(op.id);
-      addHistory(`undid: add ${op.module}:${op.id.slice(0, 6)}`);
-    } else if (op.op === 'del') {
-      const L = _Layers[op.module];
-      Promise.resolve(L?.applyTtState(op.state)).then(() => {
-        addHistory(`undid: delete ${op.module}:${op.state.id.slice(0, 6)}`);
-        UI.toast('Undone');
-      }).catch(err => {
-        UI.toast('Cannot undo delete', 'warn');
-        App.addLog(`undo delete failed: ${err.message}`, 'del');
-      });
-      return; // async — toast fired inside .then()
-    } else if (op.op === 'batch') {
-      // Restore all entries in reverse order. Async restores (toys) collect
-      // their promises and wait for all before toasting.
-      const promises = [];
-      for (const entry of [...op.entries].reverse()) {
-        const L = _Layers[entry.module];
-        if (!L) continue;
-        if (entry.op === 'add') {
-          L.delete(entry.id);
-        } else if (entry.op === 'del') {
-          const result = L.applyTtState(entry.state);
-          if (result instanceof Promise) {
-            promises.push(result.catch(err => {
-              App.addLog(`batch undo restore failed: ${err.message}`, 'del');
-              throw err;
-            }));
-          }
-        } else if (entry.op === 'move') {
-          L.applyMoveCommit(L.find(entry.id), entry.fromX, entry.fromY);
-        }
-      }
-      if (promises.length > 0) {
-        Promise.all(promises)
-          .then(() => {
-            addHistory(`undid: batch (${op.entries.length} ops)`);
-            UI.toast('Undone');
-          })
-          .catch(() => UI.toast('Some items could not be restored', 'warn'));
-        return; // async — toast fired inside .then()
-      }
-      addHistory(`undid: batch (${op.entries.length} ops)`);
-    } else if (op.op === 'move') {
-      const L = _Layers[op.module];
-      if (L) {
-        L.applyMoveCommit(L.find(op.id), op.fromX, op.fromY);
-        // observeDeep on all layers and calls renderDoc().
-      }
-      addHistory(`undid: move ${op.id.slice(0, 6)} → (${op.fromX}, ${op.fromY})`);
-    } else if (op.op === 'resize') {
-      Toys.applyResizeCommit(_ydoc, findToy(_yToys, op.id), op.from.x, op.from.y, op.from.width, op.from.height);
-      // observeDeep on all layers and calls renderDoc().
-      addHistory(`undid: resize ${op.id.slice(0, 6)}`);
-    }
-    UI.toast('Undone');
-  },
+  // Undo/redo delegate to undo_redo.js (Y.UndoManager). History-log and
+  // toast side effects are wired via the onApply/onEmpty callbacks in boot().
+  undo: () => UndoRedo.undo(),
+  redo: () => UndoRedo.redo(),
+  canUndo: () => UndoRedo.canUndo(),
+  canRedo: () => UndoRedo.canRedo(),
   exportSVG: () => {
     const clone = Storage.buildExportSvg(_svgEl, { yToys: _yToys, yDrawing: _yDrawing });
     if (!clone.getAttribute('viewBox')) {
@@ -1688,6 +1648,8 @@ function onKeyDown(e) {
   if (e.key === 's' || e.key === 'S') App.setTool('select');
   if (e.key === 'Escape') App.select(null);
   if ((e.key === 'Delete' || e.key === 'Backspace')) App.deleteSelected();
+  if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey) && e.shiftKey) { e.preventDefault(); App.redo(); return; }
+  if ((e.key === 'y' || e.key === 'Y') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); App.redo(); return; }
   if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); App.undo(); }
 }
 

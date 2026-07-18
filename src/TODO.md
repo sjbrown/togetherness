@@ -7,17 +7,32 @@ open design questions, process/docs.
 ## Interaction gaps
 
 
-### 5. Reparenting is not undoable
+### 5. Undo / Redo missing features
 
-**Where:** `app.js` — `App.undo()` only has `'add'`/`'del'`/`'move'`/`'batch'`
-branches. `commitMove()`'s reparent path deliberately does not push
-anything to `_undoStack`, rather than push a `'reparent'` entry
-`App.undo()` wouldn't know how to reverse.
+**Flagged follow-ups (out of scope here):**
+ * **Undoing peers' actions.** Only your own actions (origin `null` /
+   `ENVELOPE_ORIGIN`) are tracked; remote ops arrive under the provider's
+   origin and are untracked. Undoing a peer's move is a wanted capability
+   for a trust-based togetherness table, but gated on an audit trail +
+   loud, visible undo — see item 7. Wire remote origins into
+   `trackedOrigins` only alongside that.
+ * **Redo labels are generic.** Forward actions carry a label
+   (`UndoRedo.tag`); inverse (redo) items don't, so redo reports "redid a
+   change". Fine for now; richer labels can ride along with item 7.
+ * **`initialize()` that writes to the doc.** Committed under the untracked
+   `LIFECYCLE_ORIGIN`, so it never lands as its own undo step — correct for
+   common toys (dice/trays don't define `initialize`). Redo of a placement
+   re-inserts the toy from Yjs and does NOT re-run `initialize`; for toys
+   whose initial state comes only from `initialize` (e.g. image_object),
+   confirm redo restores that state or fold initial state into the
+   placement transaction.
 
-**Fix shape:** add a `'reparent'` undo branch — needs to snapshot enough to
-reconstruct the pre-move state (source parent, index, and probably the
-pre-move subtree, since `reparentToy` clones and the old items are gone).
+### 5.a. Dead code
 
+**Dead-for-undo exports.** `getTtState`/`applyTtState` in `toys.js` are
+no longer used by the undo path. Left in place (still exported via the
+LayerAPI); remove or repurpose in a separate pass if nothing else needs
+them.
 
 ### 10. Multi-select drop into a tray doesn't reparent anything
 
@@ -28,23 +43,18 @@ selected element with the shared group delta. Unlike single-toy drag
 element in the group — dragging a multi-selection on top of a tray just
 moves everything as a rigid group across the open table, tray or no tray.
 
-**Fix shape:** for each dragged element, run the same drop-target check
+**Fix shape:**
+
+Idea one: for each dragged element, run the same drop-target check
 `commitMove` does against its own final position (not the group's shared
 anchor), and reparent the ones that land inside a tray while leaving the
 rest on the table.
 
-**Known follow-on risk once this lands:** a multi-drop that reparents
-several toys into the same tray in one gesture can place more than one of
-them at overlapping or out-of-viewBox local positions — the same
-invisible-placement risk item 6 already describes for a single toy, just
-easier to trigger with several toys landing at once. Worth a dedicated
-look once the reparenting itself exists; not blocking landing the
-reparenting first.
+Idea two: just drop every dragged element into the tray, as long as both
+the "leader" element gets dropped in the tray.
 
-**Test note:** the overlap-vs-center-point policy is currently asserted
-in two places — `find-drop-target-tray.test.js`'s "partial overlap still
-counts" and `reparent-position.test.js`'s "dropped near the edge" — both
-need updating together when this lands;
+
+
 
 ## Observability
 
@@ -107,3 +117,77 @@ the same as a live-placed one, not zero.
 ### 9. Tray end-to-end (Playwright) test
 
 Two browsers, drag die into tray, Roll All, both peers converge.
+
+
+## Correctness
+
+### 11. Concurrent derived-writes to the same tray can garble instead of merge
+
+Two peers drop different dice into the same empty tray at roughly the same
+time. Both dice always land in the tray correctly — concurrent inserts into
+a Yjs sequence never overwrite each other. The tray's *derived* display
+(e.g. `tray_sum`'s running total) is a different story: each peer's own
+local reparent triggers its own local `contents_change_handler` cascade
+(gated on `transaction.local` — a peer never recomputes in reaction to a
+remote change, only its own), and that handler writes its result via
+`tspan.textContent = ...`. Confirmed via a live jsdom `MutationObserver`,
+that produces a `childList` mutation (remove old text node, insert new),
+which the envelope mirrors as: delete the tspan's existing `Y.XmlText`
+child, insert a brand-new one. That makes the displayed sum a Yjs
+*sequence*, not a genuine last-write-wins register — so two peers'
+causally-concurrent derived-writes are two concurrent
+(delete-old/insert-new) ops on the same shared tspan, and the exact
+mechanism that keeps both dice safe (concurrent inserts always survive)
+is what keeps *both peers' computed values* as sibling text nodes here.
+Renders as their concatenation. Every replica converges to the identical
+final state — Yjs's convergence guarantee holds — but the value is
+nonsense.
+
+What decides the outcome isn't whether a peer computed the right total;
+it's whether that peer's derived-write is causally *after* every other
+derived-write it needs to supersede. A peer can sum its own local
+`contents_group` correctly (both dice already present) and still corrupt
+the tray, if its write hasn't yet incorporated another peer's
+already-committed write.
+
+**Reproduced and specified in `tests/unit/concurrent-derived-write.test.js`**
+— three scenarios, verified against two real `Y.Doc` replicas synced via
+`Y.applyUpdate`/`Y.encodeStateAsUpdate`:
+ * `scenario A` — fully concurrent, neither peer has heard from the other.
+   Garbles (2 sibling text nodes).
+ * `scenario B` (control) — B fully incorporates A's derived-write before
+   B's own cascade runs. Clean, correct — demonstrates the mechanism
+   works fine when writes are causally ordered, not concurrent.
+ * `scenario C` — the sharp case: B's local view already has both dice and
+   computes the *correct* sum, but its write is still causally concurrent
+   with A's already-committed write. Still garbles.
+
+These tests currently **warn instead of fail** (`warnIfNotClean(...)`,
+console.warn, no `expect()` on the semantic value) — the bug is real and
+tracked but not yet fixed, and hard-failing the suite for a known,
+accepted gap isn't useful. The structural facts that must never regress
+*are* hard-asserted: both dice always land in the tray, every replica
+converges to the identical final state, and the corruption reproduces
+reliably as exactly two sibling text nodes.
+
+**Fix shape:** 
+
+*Idea one:* represent the derived value as a genuine last-write-wins
+register instead of DOM `textContent`/childList — e.g. `setAttribute` on
+the tspan (or a dedicated key on a `Y.Map`), which Yjs resolves as a true
+LWW register for concurrent writes to the same key, rather than a
+sequence where concurrent inserts both survive. This is a generic fix,
+not a `tray_sum`-specific one: any `contents_change_handler` that writes
+its result via `textContent` hits the same failure mode.
+
+*Idea two:* restrict the contract for users to only support syncronous
+functions, and wrap the envelope mutation inside the same transaction as
+the originating Yjs transaction
+
+*Idea three*: Broaden the scope of any user function result to the entire
+tree of any toy touched by the user's funciton.
+
+**Promotion path once fixed:** flip `warnIfNotClean(...)` calls in the
+test file to real `expect(...)` assertions on the correct sum — that's
+the intended way these tests graduate from documentation to regression
+coverage.
