@@ -266,6 +266,21 @@ body {
   color: var(--text-3);
 }
 
+.table-delete {
+  align-self: flex-end;
+  font-size: 11px;
+  color: var(--text-3);
+  background: none;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.table-delete:hover {
+  color: var(--danger);
+}
+
 .tables-empty {
   font-size: 12px;
   color: var(--text-3);
@@ -581,6 +596,7 @@ import { populateFromSvgDoc }   from './storage.js';
 import * as Toys                from './toys.js';
 
 import { entityGradient }        from './entity_gradient.js';
+import { getIdentity, setName, setGrad } from './user.js';
 
 function drawGradientSwatch(canvas, gradObj) {
   const ctx  = canvas.getContext('2d');
@@ -601,82 +617,31 @@ function loadTables() {
   try { return JSON.parse(localStorage.getItem(TABLES_KEY)) || []; } catch { return []; }
 }
 
-// Player identity — same IndexedDB store as index.html reads.
-function openPlayerStore() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('tt-player', 1);
-    req.onupgradeneeded = e => e.target.result.createObjectStore('identity');
-    req.onsuccess       = e => resolve(e.target.result);
-    req.onerror         = e => reject(e.target.error);
-  });
+function saveTables(tables) {
+  try { localStorage.setItem(TABLES_KEY, JSON.stringify(tables)); } catch {}
 }
-async function playerGet(db, key) {
-  return new Promise((res, rej) => {
-    const r = db.transaction('identity', 'readonly').objectStore('identity').get(key);
-    r.onsuccess = () => res(r.result ?? null);
-    r.onerror   = () => rej(r.error);
-  });
-}
-async function playerSet(db, key, value) {
-  return new Promise((res, rej) => {
-    const r = db.transaction('identity', 'readwrite').objectStore('identity').put(value, key);
-    r.onsuccess = () => res();
-    r.onerror   = () => rej(r.error);
-  });
+
+// Removes a table from the tt_tables list (home.html's "recent tables" index)
+// and deletes its Yjs IndexedDB database. Does not touch other peers' copies
+// of the room — this only forgets it locally.
+function deleteTable(roomId) {
+  saveTables(loadTables().filter(t => t.id !== roomId));
+  indexedDB.deleteDatabase(`tt:${roomId}`);
 }
 
 // ── Profile UI ────────────────────────────────────────────────────────────
-const ADJS = ['Wily','Deadly','Gaunt','Sallow','Brazen','Vexed','Hollow','Sullen','Grim','Feral',
-  'Ashen','Dread','Craven','Stout','Wroth','Sunken','Brash','Pallid','Sly','Gnarled',
-  'Bleak','Rusted','Sworn','Cursed','Rabid','Silent','Haunted','Gravel','Ireful','Knave'];
-const NAMES = ['Frodo','Xorn','Marda','Vex','Quill','Thane','Osric','Yeva','Drask','Noor',
-  'Helgen','Zuko','Cavel','Brix','Ilsa','Morwen','Sable','Fenrick','Taza','Gorim',
-  'Ulrik','Pell','Dagna','Wren','Jarrek','Chyst','Odra','Byren','Zasha','Rook'];
-function randomName() {
-  const adj  = ADJS[Math.floor(Math.random() * ADJS.length)];
-  const name = NAMES[Math.floor(Math.random() * NAMES.length)];
-  return `${adj} ${name}`;
-}
-
+// Player identity lives in localStorage, key 'tt_player' (see user.js).
+// index.html reads from the same store on boot.
 
 const displayNameEl = document.getElementById('displayName');
 const swatchEl      = document.getElementById('gradientSwatch');
 const gradOptsEl    = document.getElementById('gradientOptions');
 
-// profile is loaded async; UI is wired up once it resolves.
-let _playerDb = null;
-let _grad     = null;  // full entityGradient() output, stored frozen
+let _grad = null;  // full entityGradient() output, stored frozen
 
-function makeLocalId() {
-  const dd    = String(new Date().getDate()).padStart(2, '0');
-  const chars = 'abcdefghijklmnopqrstuvwxyz';
-  const rand  = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-  return `tt-p-v1-${dd}-${rand}`;
-}
-
-async function initProfile() {
-  _playerDb = await openPlayerStore();
-
-  let name = await playerGet(_playerDb, 'name');
-  if (!name) {
-    name = randomName();
-    await playerSet(_playerDb, 'name', name);
-  }
-
-  let grad = await playerGet(_playerDb, 'grad');
-  if (!grad || !grad.c1) {
-    // First visit, or upgrading from old { gradSeed } format — compute and freeze.
-    const seed = (typeof grad?.gradSeed === 'string' && grad.gradSeed) ? grad.gradSeed : name;
-    grad = entityGradient(seed);
-    await playerSet(_playerDb, 'grad', grad);
-  }
+function initProfile() {
+  const { name, grad } = getIdentity();
   _grad = grad;
-
-  let localId = await playerGet(_playerDb, 'localId');
-  if (!localId) {
-    localId = makeLocalId();
-    await playerSet(_playerDb, 'localId', localId);
-  }
 
   displayNameEl.value = name;
   refreshSwatch();
@@ -700,27 +665,26 @@ function renderGradOptions() {
       c.classList.add('active');
     }
     drawGradientSwatch(c, presetGrad);
-    c.addEventListener('click', async () => {
+    c.addEventListener('click', () => {
       _grad = presetGrad;
       document.querySelectorAll('.grad-option').forEach(x => x.classList.remove('active'));
       c.classList.add('active');
-      await playerSet(_playerDb, 'grad', _grad);
+      setGrad(_grad);
       refreshSwatch();
     });
     gradOptsEl.appendChild(c);
   }
 }
 
-swatchEl.addEventListener('click', async () => {
+swatchEl.addEventListener('click', () => {
   _grad = entityGradient('rng_' + Math.random().toString(36).slice(2));
   document.querySelectorAll('.grad-option').forEach(x => x.classList.remove('active'));
-  await playerSet(_playerDb, 'grad', _grad);
+  setGrad(_grad);
   refreshSwatch();
 });
 
-displayNameEl.addEventListener('input', async () => {
-  const name = displayNameEl.value.trim();
-  if (_playerDb) await playerSet(_playerDb, 'name', name);
+displayNameEl.addEventListener('input', () => {
+  setName(displayNameEl.value.trim());
 });
 
 initProfile();
@@ -802,7 +766,21 @@ function renderTables() {
     date.className = 'table-date';
     date.textContent = new Date(t.lastVisit).toISOString().slice(0, 10);
 
-    info.append(name, date);
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'table-delete';
+    del.textContent = 'Delete';
+    del.addEventListener('click', (e) => {
+      // Row is an <a>; stop the click from also navigating to the table.
+      e.preventDefault();
+      e.stopPropagation();
+      if (confirm(`Delete "${t.name || t.id}"? This can't be undone.`)) {
+        deleteTable(t.id);
+        renderTables();
+      }
+    });
+
+    info.append(name, date, del);
     a.appendChild(info);
     el.appendChild(a);
 

@@ -173,7 +173,7 @@ import { IndexeddbPersistence } from '/lib/y-indexeddb.js';
 import { boot }                 from '/app.js';
 import * as UI                  from '/ui.js';
 import { App, makeDoc }         from '/app.js';
-import { entityGradient }            from './entity_gradient.js';
+import { getIdentity }               from './user.js';
 import { dragPlaceholderFilterSVG, snapPointGradientSVG }  from './defs.js';
 
 // Inject shared SVG defs (filters etc.) into the canvas <defs> element.
@@ -188,75 +188,14 @@ document.querySelector('#canvas defs')
 window.UI  = UI;
 window.App = App;
 
-// ── Player identity store ────────────────────────────────────────────────────
-// Persistent identity lives in IndexedDB 'tt-player', store 'identity'.
-// Keys:
-//   'name'    — display name string
-//   'grad'    — full entityGradient() output object (stored frozen so gradient
-//               is immune to future changes in entityGradient's algorithm)
-//   'localId' — persistent peer id, format tt-p-v1-DD-XXX
-// home.html writes these via the same store when the profile panel is saved.
-function openPlayerStore() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('tt-player', 1);
-    req.onupgradeneeded = e => e.target.result.createObjectStore('identity');
-    req.onsuccess       = e => resolve(e.target.result);
-    req.onerror         = e => reject(e.target.error);
-  });
-}
-async function playerGet(db, key) {
-  return new Promise((res, rej) => {
-    const r = db.transaction('identity', 'readonly').objectStore('identity').get(key);
-    r.onsuccess = () => res(r.result ?? null);
-    r.onerror   = () => rej(r.error);
-  });
-}
-async function playerSet(db, key, value) {
-  return new Promise((res, rej) => {
-    const r = db.transaction('identity', 'readwrite').objectStore('identity').put(value, key);
-    r.onsuccess = () => res();
-    r.onerror   = () => rej(r.error);
-  });
-}
-
-function makeLocalId() {
-  const dd   = String(new Date().getDate()).padStart(2, '0');
-  const chars = 'abcdefghijklmnopqrstuvwxyz';
-  const rand  = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-  return `tt-p-v1-${dd}-${rand}`;
-}
-
-async function resolveIdentity() {
-  const db = await openPlayerStore();
-
-  let name = await playerGet(db, 'name');
-  if (!name) {
-    name = Math.random().toString(36).slice(2, 9);
-    await playerSet(db, 'name', name);
-  }
-
-  let grad = await playerGet(db, 'grad');
-  if (!grad || !grad.c1) {
-    // First visit
-    grad = entityGradient(name);
-    await playerSet(db, 'grad', grad);
-  }
-
-  let localId = await playerGet(db, 'localId');
-  if (!localId) {
-    localId = makeLocalId();
-    await playerSet(db, 'localId', localId);
-  }
-
-  return { name, grad, localId };
-}
-
 // ── Identity ─────────────────────────────────────────────────────────────────
+// Persistent identity lives in localStorage, key 'tt_player' (see user.js).
+// home.html writes to the same store when the profile panel is edited.
 const uid = () => Math.random().toString(36).slice(2, 9);
 let roomId = location.hash.slice(1);
 if (!roomId) { roomId = uid(); location.hash = roomId; }
 
-const { name: myDisplayName, grad: myGrad, localId: myId } = await resolveIdentity();
+const { name: myDisplayName, grad: myGrad, localId: myId } = getIdentity();
 
 document.getElementById('roomLabel').textContent = roomId;
 document.getElementById('myIdLabel').textContent = `me: ${myDisplayName}`;
