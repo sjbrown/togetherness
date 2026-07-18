@@ -567,10 +567,10 @@ export function applyMoveDom(domEl, cx, cy) {
 // (Overlay.resizeCorners returns points in this same order) so canvas.js's
 // hit-test result can be passed straight through to computeResizeRect
 // without any translation.
-export const RESIZE_CORNER_TL = 0
-export const RESIZE_CORNER_TR = 1
-export const RESIZE_CORNER_BL = 2
-export const RESIZE_CORNER_BR = 3
+export const RESIZE_CORNER_NW = 0
+export const RESIZE_CORNER_NE = 1
+export const RESIZE_CORNER_SE = 2
+export const RESIZE_CORNER_SW = 3
 
 const MIN_RESIZE_SIZE = MIN_TOY_SIZE // never let a drag shrink a toy below this
 const MAX_RESIZE_SIZE = 4000         // generous sanity cap
@@ -592,20 +592,20 @@ export function computeResizeRect(startRect, corner, px, py) {
   const left = x, top = y, right = x + width, bottom = y + height
 
   switch (corner) {
-    case RESIZE_CORNER_TL: {
+    case RESIZE_CORNER_NW: {
       const newLeft = Math.min(px, right - MIN_RESIZE_SIZE)
       const newTop  = Math.min(py, bottom - MIN_RESIZE_SIZE)
       return { x: newLeft, y: newTop, width: right - newLeft, height: bottom - newTop }
     }
-    case RESIZE_CORNER_TR: {
+    case RESIZE_CORNER_NE: {
       const newTop = Math.min(py, bottom - MIN_RESIZE_SIZE)
       return { x: left, y: newTop, width: Math.max(px - left, MIN_RESIZE_SIZE), height: bottom - newTop }
     }
-    case RESIZE_CORNER_BL: {
+    case RESIZE_CORNER_SW: {
       const newLeft = Math.min(px, right - MIN_RESIZE_SIZE)
       return { x: newLeft, y: top, width: right - newLeft, height: Math.max(py - top, MIN_RESIZE_SIZE) }
     }
-    case RESIZE_CORNER_BR:
+    case RESIZE_CORNER_SE:
     default: {
       return { x: left, y: top, width: Math.max(px - left, MIN_RESIZE_SIZE), height: Math.max(py - top, MIN_RESIZE_SIZE) }
     }
