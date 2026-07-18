@@ -650,7 +650,7 @@ describe('resize mode — corner-drag gesture', () => {
     const started = []
     const app = makeApp({
       getResizeModeId: () => 'tray-1',
-      getResizeCorner: () => 3, // BR
+      getResizeCorner: () => 3, // SE
       startResize: (id, corner) => started.push([id, corner]),
     })
     init(app, document.getElementById('canvas'))

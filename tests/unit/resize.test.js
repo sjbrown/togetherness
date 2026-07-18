@@ -3,7 +3,7 @@ import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
   addToySync, render, findToy, isTrayEl, computeResizeRect, applyResizeCommit,
-  RESIZE_CORNER_TL, RESIZE_CORNER_TR, RESIZE_CORNER_BL, RESIZE_CORNER_BR,
+  RESIZE_CORNER_NW, RESIZE_CORNER_NE, RESIZE_CORNER_SW, RESIZE_CORNER_SE,
   reparentToy,
   _clearSvgTextCache, clearYNodeMap,
 } from '../../src/toys.js'
@@ -68,27 +68,27 @@ describe('computeResizeRect — corner-drag geometry', () => {
   const startRect = { x: 100, y: 100, width: 200, height: 150 } // right=300, bottom=250
 
   test('BR drag: top-left corner (100,100) stays fixed, size follows the pointer', () => {
-    const rect = computeResizeRect(startRect, RESIZE_CORNER_BR, 340, 260)
+    const rect = computeResizeRect(startRect, RESIZE_CORNER_SE, 340, 260)
     expect(rect).toEqual({ x: 100, y: 100, width: 240, height: 160 })
   })
 
   test('TL drag: bottom-right corner (300,250) stays fixed', () => {
-    const rect = computeResizeRect(startRect, RESIZE_CORNER_TL, 80, 90)
+    const rect = computeResizeRect(startRect, RESIZE_CORNER_NW, 80, 90)
     expect(rect).toEqual({ x: 80, y: 90, width: 220, height: 160 })
   })
 
   test('TR drag: bottom-left corner (100,250) stays fixed — x never moves, only width/y/height', () => {
-    const rect = computeResizeRect(startRect, RESIZE_CORNER_TR, 360, 80)
+    const rect = computeResizeRect(startRect, RESIZE_CORNER_NE, 360, 80)
     expect(rect).toEqual({ x: 100, y: 80, width: 260, height: 170 })
   })
 
-  test('BL drag: top-right corner (300,100) stays fixed — y never moves, only x/width/height', () => {
-    const rect = computeResizeRect(startRect, RESIZE_CORNER_BL, 60, 300)
+  test('SW drag: top-right corner (300,100) stays fixed — y never moves, only x/width/height', () => {
+    const rect = computeResizeRect(startRect, RESIZE_CORNER_SW, 60, 300)
     expect(rect).toEqual({ x: 60, y: 100, width: 240, height: 200 })
   })
 
   test('BR drag past the fixed corner clamps to the minimum size, never inverts', () => {
-    const rect = computeResizeRect(startRect, RESIZE_CORNER_BR, 50, 50)
+    const rect = computeResizeRect(startRect, RESIZE_CORNER_SE, 50, 50)
     expect(rect.x).toBe(100)
     expect(rect.y).toBe(100)
     expect(rect.width).toBeGreaterThanOrEqual(30) // MIN_TOY_SIZE
@@ -96,7 +96,7 @@ describe('computeResizeRect — corner-drag geometry', () => {
   })
 
   test('TL drag past the fixed corner clamps to the minimum size, fixed corner (300,250) never moves', () => {
-    const rect = computeResizeRect(startRect, RESIZE_CORNER_TL, 500, 500)
+    const rect = computeResizeRect(startRect, RESIZE_CORNER_NW, 500, 500)
     expect(rect.x + rect.width).toBe(300)
     expect(rect.y + rect.height).toBe(250)
     expect(rect.width).toBeGreaterThanOrEqual(30)
@@ -169,20 +169,20 @@ describe('applyResizeCommit', () => {
 describe('overlay.js — resizeCorners / hitTestResizeCorner', () => {
   const geo = { x: 100, y: 100, width: 200, height: 150 }
 
-  test('resizeCorners returns [TL, TR, BL, BR] padded out by PAD', () => {
+  test('resizeCorners returns nw->sw padded out by PAD', () => {
     const corners = resizeCorners(geo)
     expect(corners).toEqual([
       { x: 100 - PAD,       y: 100 - PAD },
       { x: 300 + PAD,       y: 100 - PAD },
-      { x: 100 - PAD,       y: 250 + PAD },
       { x: 300 + PAD,       y: 250 + PAD },
+      { x: 100 - PAD,       y: 250 + PAD },
     ])
   })
 
   test('hitTestResizeCorner finds the nearest corner within its hit radius', () => {
     const corners = resizeCorners(geo)
-    expect(hitTestResizeCorner(geo, corners[RESIZE_CORNER_TL].x, corners[RESIZE_CORNER_TL].y, 1)).toBe(RESIZE_CORNER_TL)
-    expect(hitTestResizeCorner(geo, corners[RESIZE_CORNER_BR].x, corners[RESIZE_CORNER_BR].y, 1)).toBe(RESIZE_CORNER_BR)
+    expect(hitTestResizeCorner(geo, corners[RESIZE_CORNER_NW].x, corners[RESIZE_CORNER_NW].y, 1)).toBe(RESIZE_CORNER_NW)
+    expect(hitTestResizeCorner(geo, corners[RESIZE_CORNER_SE].x, corners[RESIZE_CORNER_SE].y, 1)).toBe(RESIZE_CORNER_SE)
   })
 
   test('hitTestResizeCorner returns null for a point in the middle of the tray', () => {
@@ -195,9 +195,9 @@ describe('overlay.js — resizeCorners / hitTestResizeCorner', () => {
 
   test('hit radius scales down (screen-space stays constant) as the view zooms in', () => {
     const corners = resizeCorners(geo)
-    const nearCorner = { x: corners[RESIZE_CORNER_BR].x + 5, y: corners[RESIZE_CORNER_BR].y }
+    const nearCorner = { x: corners[RESIZE_CORNER_SE].x + 5, y: corners[RESIZE_CORNER_SE].y }
     // At scale=1 a 5px canvas-space offset is within the default hit radius...
-    expect(hitTestResizeCorner(geo, nearCorner.x, nearCorner.y, 1)).toBe(RESIZE_CORNER_BR)
+    expect(hitTestResizeCorner(geo, nearCorner.x, nearCorner.y, 1)).toBe(RESIZE_CORNER_SE)
     // ...but at scale=4 the same 5 CANVAS-space px is 20 SCREEN px away — outside it.
     expect(hitTestResizeCorner(geo, nearCorner.x, nearCorner.y, 4)).toBeNull()
   })
