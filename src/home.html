@@ -266,6 +266,21 @@ body {
   color: var(--text-3);
 }
 
+.table-delete {
+  align-self: flex-end;
+  font-size: 11px;
+  color: var(--text-3);
+  background: none;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.table-delete:hover {
+  color: var(--danger);
+}
+
 .tables-empty {
   font-size: 12px;
   color: var(--text-3);
@@ -602,6 +617,18 @@ function loadTables() {
   try { return JSON.parse(localStorage.getItem(TABLES_KEY)) || []; } catch { return []; }
 }
 
+function saveTables(tables) {
+  try { localStorage.setItem(TABLES_KEY, JSON.stringify(tables)); } catch {}
+}
+
+// Removes a table from the tt_tables list (home.html's "recent tables" index)
+// and deletes its Yjs IndexedDB database. Does not touch other peers' copies
+// of the room — this only forgets it locally.
+function deleteTable(roomId) {
+  saveTables(loadTables().filter(t => t.id !== roomId));
+  indexedDB.deleteDatabase(`tt:${roomId}`);
+}
+
 // ── Profile UI ────────────────────────────────────────────────────────────
 // Player identity lives in localStorage, key 'tt_player' (see user.js).
 // index.html reads from the same store on boot.
@@ -739,7 +766,21 @@ function renderTables() {
     date.className = 'table-date';
     date.textContent = new Date(t.lastVisit).toISOString().slice(0, 10);
 
-    info.append(name, date);
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'table-delete';
+    del.textContent = 'Delete';
+    del.addEventListener('click', (e) => {
+      // Row is an <a>; stop the click from also navigating to the table.
+      e.preventDefault();
+      e.stopPropagation();
+      if (confirm(`Delete "${t.name || t.id}"? This can't be undone.`)) {
+        deleteTable(t.id);
+        renderTables();
+      }
+    });
+
+    info.append(name, date, del);
     a.appendChild(info);
     el.appendChild(a);
 
