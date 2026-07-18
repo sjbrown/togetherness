@@ -66,17 +66,17 @@ const HANDLE_HIT_PAD = 6; // extra px (canvas-space, pre-scale) added to the han
 /**
  * The four resize corner points for a geo rect (already padded out to the
  * selection ring, same as renderLocalResizeSelection draws), in a fixed
- * order — [TL, TR, BL, BR] — matching toys.js's RESIZE_CORNER_* constants,
+ * order — [NW, NE, SE, SW] — matching toys.js's RESIZE_CORNER_* constants,
  * so a hit-test result can be passed straight through to
  * Toys.computeResizeRect with no translation.
  */
 export function resizeCorners(geo) {
   const { x, y, width, height } = geo;
   return [
-    { x: x - PAD,          y: y - PAD },           // TL
-    { x: x + width + PAD,  y: y - PAD },            // TR
-    { x: x - PAD,          y: y + height + PAD },   // BL
-    { x: x + width + PAD,  y: y + height + PAD },   // BR
+    { x: x - PAD,          y: y - PAD },          //NW
+    { x: x + width + PAD,  y: y - PAD },          //NE
+    { x: x + width + PAD,  y: y + height + PAD }, //SE
+    { x: x - PAD,          y: y + height + PAD }, //SW
   ];
 }
 
@@ -89,6 +89,7 @@ export function resizeCorners(geo) {
  * zoom level.
  */
 export function hitTestResizeCorner(geo, px, py, scale) {
+  // TODO: this function is dumb.  The browser should be doing the hit-testing
   if (!geo) return null;
   const radius = (HANDLE_SIZE / 2 + HANDLE_HIT_PAD) / scale;
   const corners = resizeCorners(geo);
@@ -665,17 +666,21 @@ function renderLocalResizeSelection(geo, entry, scale) {
   });
   _layerEl.appendChild(ring);
 
-  // Corner handles — decorated corners only (no edge midpoints); geometry
-  // shared with the hit-test via resizeCorners() so the drawn handle and
-  // the grabbable area always agree.
-  const hw = HANDLE_SIZE / scale;
-  for (const { x: hx, y: hy } of resizeCorners(geo)) {
+  // Build corner handles
+  const side_len = HANDLE_SIZE / scale;
+  const corners = ['nw', 'ne', 'se', 'sw'];
+  for (let i = 0; i < resizeCorners(geo).length; i++) {
+    const { x: hx, y: hy } = resizeCorners(geo)[i];
     _layerEl.appendChild(el('rect', {
-      x: hx - hw / 2, y: hy - hw / 2,
-      width: hw, height: hw, rx: 3 / scale,
+      x: hx - side_len / 2,
+      y: hy - side_len / 2,
+      width: side_len,
+      height: side_len,
+      rx: 3 / scale,
       fill: 'var(--surface-solid)', stroke: 'var(--info)',
       'stroke-width': 1.5 / scale,
       class: 'handle',
+      'data-corner': corners[i],
     }));
   }
 }

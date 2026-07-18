@@ -121,10 +121,14 @@ html, body {
 /* SVG class helpers (applied by canvas.js) */
 .shape     { cursor: pointer; }
 .selRing   { pointer-events: none; }
-.handle    { pointer-events: none; }
 .peer-ring { pointer-events: none; }
 .requestedRing { pointer-events: none; }
 .remote-sel     { pointer-events: none; }
+.handle    { pointer-events: auto; }
+.handle[data-corner="nw"] { cursor: nw-resize; }
+.handle[data-corner="ne"] { cursor: ne-resize; }
+.handle[data-corner="sw"] { cursor: sw-resize; }
+.handle[data-corner="se"] { cursor: se-resize; }
 
 /* A toy nested inside a tray is excluded from native hit-testing, so a
  * click over it lands on whatever's actually painted underneath — the
@@ -135,12 +139,10 @@ html, body {
 
 /* .hit_plate (in every tray_*.svg) is a full-coverage, invisible rect
  * providing an exact hit-testing floor for the whole tray, decoupled from
- * whatever the tray's background art happens to visibly paint (which
- * doesn't quite reach the tray's own edges — see each tray SVG's own
- * comment on it). fill="transparent" alone isn't hit-testable under the
- * default visiblePainted behavior; pointer-events: fill makes it
- * hit-testable by its geometry regardless of paint. */
+ * whatever the tray's background art happens to visibly paint
+ */
 .hit_plate { pointer-events: fill; }
+.contents_group .hit_plate { pointer-events: none; }
 
 /* Draw-preview div (used by canvas.js for rubber-band rect) */
 #draw-preview {
