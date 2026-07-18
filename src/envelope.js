@@ -39,6 +39,28 @@ import { domToY } from './storage.js'
 
 const XLINK_NS = 'http://www.w3.org/1999/xlink'
 
+// ── Yjs transaction origins ──────────────────────────────────
+//
+// Every envelope commit tags its Yjs transaction with an origin so the
+// UndoManager can decide what belongs on the undo stack.
+//
+//   ENVELOPE_ORIGIN — a toy handler ran: a die's Roll, a tray's Roll All.
+//
+//   DERIVED_ORIGIN — a tray recomputed its own displayed result from its
+//     contents (contents_change_handler). This is derived state, always
+//     recomputable from the authoritative contents, so it must NEVER be its
+//     own undo step. Undoing the change that triggered it re-derives the
+//     result, so tracking this origin would only add spurious no-op
+//     stack entries. We deliberately do NOT track it.
+//
+//   LIFECYCLE_ORIGIN — a toy's one-time initialize() side effects at
+//     placement. If the placement is undone the whole toy is removed, so
+//     these writes never need an independent undo step either. Untracked.
+//
+export const ENVELOPE_ORIGIN  = 'envelope'
+export const DERIVED_ORIGIN   = 'toy-derived'
+export const LIFECYCLE_ORIGIN = 'toy-lifecycle'
+
 // Diagnostic strictness — opt-in via ?debug=1 in the URL, same convention as
 // app.js. A function (not a cached const) so tests can toggle it per-case
 // via history.pushState, and callers can override via opts.debug.
@@ -263,16 +285,14 @@ function applyRecord(record) {
 
 /**
  * Translate a MutationRecord[] (as produced by runInEnvelope) into a single
- * Yjs transaction tagged with origin 'envelope'. Records whose target falls
+ * Yjs transaction tagged with an origin. Records whose target falls
  * outside toyEl's own subtree are never translated — they're reverted on
  * the DOM (using the record's old value) and logged loudly instead, treating
- * a toy mutating another toy as a bug, for now (may be considered valid in
- * the future)
+ * a toy mutating another toy as a bug, for now (will be valid in the future)
  *
  * Pass { debug: true } (or run with ?debug=1 in the URL) to also throw once
  * any out-of-scope mutations were found, after all of them have been
- * reverted — useful during toy-script development, too disruptive for
- * normal play.
+ * reverted — useful during toy-script development.
  *
  * Returns { applied, violations } — violations is the list of reverted
  * out-of-scope records, for callers that want to surface something to the
@@ -280,6 +300,7 @@ function applyRecord(record) {
  */
 export function commitEnvelope(ydoc, toyEl, records, opts = {}) {
   const debug      = opts.debug ?? urlDebugFlag()
+  const origin     = opts.origin ?? ENVELOPE_ORIGIN
   const violations = []
 
   ydoc.transact(() => {
@@ -290,7 +311,7 @@ export function commitEnvelope(ydoc, toyEl, records, opts = {}) {
       }
       applyRecord(record)
     }
-  }, 'envelope')
+  }, origin)
 
   // Reverse order: each record's oldValue/nextSibling is only correct
   // relative to the state right before that mutation happened. Reverting

@@ -28,7 +28,7 @@ const XLINK_NS = 'http://www.w3.org/1999/xlink'
 const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789'
 
 import { number, bool } from './tools-schema.js';
-import { runToyHandler } from './envelope.js';
+import { runToyHandler, DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js';
 
 // NOTE: envelope.js imports render()/yNodeFor()/registerYNode() from this
 // file, so this is an intentional cycle — safe because neither side uses
@@ -1148,7 +1148,7 @@ export async function initializeToy(ydoc, yToys, layerEl, svgEl, toyType) {
 
   await runToyHandler(ydoc, yToys, layerEl, svgEl, () => {
     initializers.forEach(ns => ns.initialize(svgEl))
-  })
+  }, { origin: LIFECYCLE_ORIGIN })
 }
 
 /**
@@ -1180,6 +1180,11 @@ export function findAncestorTrayIds(yNode) {
  * (e.g. a tray's sum) commits back to Yjs like any other handler mutation,
  * and syncs to peers.
  *
+ * Committed under DERIVED_ORIGIN: the result is derived state, always
+ * recomputable from the tray's contents, so it stays off the undo stack
+ * (see undo_redo.js). Undoing the change that triggered the recompute
+ * re-derives the result on its own.
+ *
  * No-op if toyType has no contents_change_handler-providing namespace.
  */
 export async function runContentsChangeHandler(ydoc, yToys, layerEl, svgEl, toyType) {
@@ -1190,7 +1195,7 @@ export async function runContentsChangeHandler(ydoc, yToys, layerEl, svgEl, toyT
 
   await runToyHandler(ydoc, yToys, layerEl, svgEl, () => {
     handlers.forEach(ns => ns.contents_change_handler(svgEl))
-  })
+  }, { origin: DERIVED_ORIGIN })
 }
 
 /**
