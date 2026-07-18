@@ -210,6 +210,7 @@ export function svgTextToYXml(svgText, prefix) {
     ['tt_colored', prefix + 'tt_colored'],
     ['tt_color_filter', prefix + 'tt_color_filter'],
     ['tspan_name', prefix + 'tspan_name'],
+    ['hit_plate', prefix + 'hit_plate'],
   ])
 
   const refs = { colorMatrices: [] }
@@ -481,22 +482,20 @@ export function getAnchor(svgEl) {
   return { x: geom.x + geom.width / 2, y: geom.y + geom.height / 2 }
 }
 
-function rectsOverlap(a, b) {
-  return a.x < b.x + b.width && a.x + a.width > b.x &&
-         a.y < b.y + b.height && a.y + a.height > b.y
+function pointInRect(x, y, rect) {
+  return x >= rect.x && x <= rect.x + rect.width &&
+         y >= rect.y && y <= rect.y + rect.height
 }
 
 /**
- * Hit-test a toy's drop position against every top-level tray
- * Returns id of the first tray whose geometry overlaps the dragged
- * toy's would-be bounding box — or null if none does.
+ * Hit-test a toy's drop position against every top-level tray.
+ * Returns the id of the first tray whose bounds contain the dragged
+ * toy's centre point — or null if none does.
  *
  *  - (rx, ry) is the drop centre point
  *
  * Only top-level toys/trays are considered — nested toys (e.g. a tray
  * inside a tray) are deliberately out of scope.
- *
- * TODO: use toy center point, not overlap test
  *
  * TODO: trays are recognized by class-contains-tray.  Expand this to
  *       generic containers - anything that has .contents_group
@@ -504,19 +503,14 @@ function rectsOverlap(a, b) {
 export function findDropTargetTray(layerEl, draggedId, rx, ry) {
   if (!layerEl) return null
   const draggedEl = layerEl.querySelector(`:scope > [data-id="${draggedId}"]`)
-  const draggedGeom = getGeom(draggedEl)
-  if (!draggedGeom) return null
-  const draggedRect = {
-    x: rx - draggedGeom.width / 2, y: ry - draggedGeom.height / 2,
-    width: draggedGeom.width, height: draggedGeom.height,
-  }
+  if (!draggedEl) return null
 
   for (const el of layerEl.querySelectorAll(':scope > [data-id]')) {
     const trayId = el.getAttribute('data-id')
     if (trayId === draggedId) continue
     if (!isTrayEl(el)) continue
     const trayGeom = getGeom(el)
-    if (trayGeom && rectsOverlap(draggedRect, trayGeom)) return trayId
+    if (trayGeom && pointInRect(rx, ry, trayGeom)) return trayId
   }
   return null
 }

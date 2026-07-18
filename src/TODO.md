@@ -18,21 +18,6 @@ anything to `_undoStack`, rather than push a `'reparent'` entry
 reconstruct the pre-move state (source parent, index, and probably the
 pre-move subtree, since `reparentToy` clones and the old items are gone).
 
-### 6. Drop-target hit-testing uses overlap, not the dragged toy's center point
-
-**Where:** `toys.js` — `findDropTargetTray` accepts any rectangle overlap
-between the dragged toy and a tray, not just the drop point landing inside
-the tray. This allows a drop whose *center* is up to half the dragged
-toy's width outside the tray's bounds. The subsequent local-space rebase
-(`commitMove` in `app.js`) can then place the toy at a negative or
-out-of-viewBox local position — nested `<svg>` clips by default, so the
-toy becomes both selectable-in-theory (once item 1's fix lands) and
-invisible in practice, with no way to see or drag it back into view.
-
-**Fix shape:** accept the drop only when the dragged toy's *center point*
-falls within the tray's rect, not on any overlap. Once fixed,
-`findDropTargetTray` no longer needs the dragged toy's own geometry —
-only its center — simplifying the function. 
 
 ### 10. Multi-select drop into a tray doesn't reparent anything
 
