@@ -7,17 +7,32 @@ open design questions, process/docs.
 ## Interaction gaps
 
 
-### 5. Reparenting is not undoable
+### 5. Undo / Redo missing features
 
-**Where:** `app.js` — `App.undo()` only has `'add'`/`'del'`/`'move'`/`'batch'`
-branches. `commitMove()`'s reparent path deliberately does not push
-anything to `_undoStack`, rather than push a `'reparent'` entry
-`App.undo()` wouldn't know how to reverse.
+**Flagged follow-ups (out of scope here):**
+ * **Undoing peers' actions.** Only your own actions (origin `null` /
+   `ENVELOPE_ORIGIN`) are tracked; remote ops arrive under the provider's
+   origin and are untracked. Undoing a peer's move is a wanted capability
+   for a trust-based togetherness table, but gated on an audit trail +
+   loud, visible undo — see item 7. Wire remote origins into
+   `trackedOrigins` only alongside that.
+ * **Redo labels are generic.** Forward actions carry a label
+   (`UndoRedo.tag`); inverse (redo) items don't, so redo reports "redid a
+   change". Fine for now; richer labels can ride along with item 7.
+ * **`initialize()` that writes to the doc.** Committed under the untracked
+   `LIFECYCLE_ORIGIN`, so it never lands as its own undo step — correct for
+   common toys (dice/trays don't define `initialize`). Redo of a placement
+   re-inserts the toy from Yjs and does NOT re-run `initialize`; for toys
+   whose initial state comes only from `initialize` (e.g. image_object),
+   confirm redo restores that state or fold initial state into the
+   placement transaction.
 
-**Fix shape:** add a `'reparent'` undo branch — needs to snapshot enough to
-reconstruct the pre-move state (source parent, index, and probably the
-pre-move subtree, since `reparentToy` clones and the old items are gone).
+### 5.a. Dead code
 
+**Dead-for-undo exports.** `getTtState`/`applyTtState` in `toys.js` are
+no longer used by the undo path. Left in place (still exported via the
+LayerAPI); remove or repurpose in a separate pass if nothing else needs
+them.
 
 ### 10. Multi-select drop into a tray doesn't reparent anything
 
@@ -45,6 +60,13 @@ reparenting first.
 in two places — `find-drop-target-tray.test.js`'s "partial overlap still
 counts" and `reparent-position.test.js`'s "dropped near the edge" — both
 need updating together when this lands;
+
+**Undo note (post item 5):** `commitMultiMove` already commits the whole
+group in one `ydoc.transact` tagged via `UndoRedo.tag`. When this item
+adds per-element reparents, do them *inside that same transaction* — the
+`reparentToy` calls will collapse into it, so the entire mixed
+move+reparent gesture stays a single, atomic undo step with no extra
+undo-side code.
 
 ## Observability
 
