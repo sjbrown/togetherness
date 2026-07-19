@@ -1176,14 +1176,9 @@ export function findAncestorTrayIds(yNode) {
 
 /**
  * Run every activated namespace's contents_change_handler(elem), if
- * present, for toyType — inside an envelope, so a recomputed result
- * (e.g. a tray's sum) commits back to Yjs like any other handler mutation,
- * and syncs to peers.
+ * present, for toyType — inside an envelope
  *
- * Committed under DERIVED_ORIGIN: the result is derived state, always
- * recomputable from the tray's contents, so it stays off the undo stack
- * (see undo_redo.js). Undoing the change that triggered the recompute
- * re-derives the result on its own.
+ * Committed under DERIVED_ORIGIN
  *
  * No-op if toyType has no contents_change_handler-providing namespace.
  */

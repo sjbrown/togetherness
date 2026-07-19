@@ -46,12 +46,8 @@ const XLINK_NS = 'http://www.w3.org/1999/xlink'
 //
 //   ENVELOPE_ORIGIN — a toy handler ran: a die's Roll, a tray's Roll All.
 //
-//   DERIVED_ORIGIN — a tray recomputed its own displayed result from its
-//     contents (contents_change_handler). This is derived state, always
-//     recomputable from the authoritative contents, so it must NEVER be its
-//     own undo step. Undoing the change that triggered it re-derives the
-//     result, so tracking this origin would only add spurious no-op
-//     stack entries. We deliberately do NOT track it.
+//   DERIVED_ORIGIN — a tray recomputed its own elements due to something
+//     in its contents_group changing.
 //
 //   LIFECYCLE_ORIGIN — a toy's one-time initialize() side effects at
 //     placement. If the placement is undone the whole toy is removed, so
