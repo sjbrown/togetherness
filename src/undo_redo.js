@@ -18,12 +18,11 @@
  * tracked — rolls are genuine document changes the user should be able to
  * take back.
  *
- * Deliberately NOT tracked: DERIVED_ORIGIN (a tray recomputing its own sum
- * from its contents) and LIFECYCLE_ORIGIN (a toy's one-time initialize).
+ * Deliberately NOT tracked:
+ *  - DERIVED_ORIGIN (a tray recomputing due to contents changes)
+ *  - LIFECYCLE_ORIGIN (a toy's one-time initialize)
  * Those are downstream of a tracked action, never independent user intent —
- * see the origin constants in envelope.js. Keeping them off the stack is
- * what makes "drop a die into a tray, then undo" a single clean step
- * instead of also having to undo the sum-recompute it triggered.
+ * see the origin constants in envelope.js.
  *
  * TODO:
  * Remote peers' operations arrive under their provider's own origin (not

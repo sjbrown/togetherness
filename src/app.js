@@ -551,10 +551,7 @@ function onToysChanged(events, transaction) {
     // Derived contents_change: local change touched inside a
     // tray's .contents_group -- recompute that tray's own derived display.
     // Remote-origin changes are deliberately excluded: the *originator*
-    // computes and the result syncs as data, so every peer applies the same
-    // recompute logic exactly once rather than each peer re-deriving it
-    // independently from a synced change
-    // (which could disagree if handler code ever differs between clients)
+    // computes and the result syncs as data
     dispatchContentsChangeCascade(events);
   }
 }
