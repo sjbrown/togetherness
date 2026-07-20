@@ -98,9 +98,12 @@ export function isEnvelopeOpen() {
  * the async contract lives here: if fn() returns a Promise, it's awaited
  * before the observer is disconnected, so mutations made after later
  * `await`s inside the handler are still captured. Records are accumulated
- * via the observer callback (not just takeRecords()) because a pending
- * microtask callback would otherwise silently drain the queue between
- * awaits.
+ * via the observer callback (not just takeRecords()), otherwise a pending
+ * microtask callback would silently drain the queue between awaits.
+ *
+ * TODO: Let's walk that back. I've decided async "user" code is a bad idea.
+ *       Disallow async code in fn.
+ *
  */
 export async function runInEnvelope(toyEl, fn) {
   // scopeEl falls back to toyEl's parent, then toyEl itself, to support
