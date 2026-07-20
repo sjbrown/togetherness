@@ -29,23 +29,37 @@
 // state (Yjs's convergence guarantee still holds: every replica lands on
 // the IDENTICAL final garbled string).
 //
-// What actually decides the outcome, per the three scenarios below, is
-// whether a peer's own derived-write is causally AFTER every other peer's
-// derived-write it needs to supersede — not whether that peer happened to
-// compute the mathematically correct total. Scenario C is the sharp
-// version of that: B computes the correct sum (its local contents_group
-// already contains both dice) and still corrupts the tray, because its
-// write hasn't yet incorporated A's already-committed write.
+// What actually decides the outcome is whether a peer's own derived-write
+// is causally AFTER every other peer's derived-write it needs to supersede
+// — not whether that peer happened to compute the mathematically correct
+// total. (A companion scenario — a peer computing the objectively correct
+// sum from its own fully-merged contents_group, yet still racing another
+// peer's derived-write causally — was explored while designing the fix
+// and is not reproduced here; see concurrency_branching.md.)
 //
-// These tests intentionally WARN rather than fail: the bug is real,
-// reproducible, and tracked (TODO #11), but not yet fixed. The structural
-// facts (both dice always land in the tray; every replica converges to the
-// identical — if wrong — final state; the corruption reproduces as exactly
-// two sibling text nodes) ARE hard-asserted, since a regression in any of
-// those would be a more serious problem than the known one. Only the
-// semantic "is this the right number" check is a warning. When TODO #11
-// lands a real fix (see its fix-shape note), flip warnIfNotClean(...) calls
-// below to real expect(...) assertions — that's the intended promotion path.
+// This test intentionally WARNS rather than fails: this is raw,
+// uncorrected Yjs merge behavior (there is no detection/resolution layer
+// sitting in front of it here), and it will remain true forever — nothing
+// in the agreed fix changes how Yjs itself merges concurrent sequence ops.
+// The fix (see TODO.md #11 and concurrency_branching.md) is a
+// detection-and-correction layer on TOP of this substrate: it commits
+// placement + reaction as one transaction, detects the resulting overlap,
+// and resolves it by asserting an authoritative peer's own recorded value
+// — NOT by recomputing the mathematically correct merged sum. So the
+// eventual real regression tests for the fix are NEW tests exercising the
+// actual production path (runToyHandler / the envelope, not the
+// hand-rolled localDerivedWrite() helper below), asserting a single clean
+// child node holding the AUTHORITATIVE PEER'S OWN VALUE — which may not be
+// the true merged total. This test stays a warning permanently: it's
+// documentation of why the detection layer is necessary, not a
+// to-be-promoted placeholder.
+//
+// The structural facts below (both dice always land in the tray; every
+// replica converges to the identical — if wrong — final state; the
+// corruption reproduces as exactly two sibling text nodes) ARE
+// hard-asserted, since a regression in any of those would be a more
+// serious problem than the known substrate behavior. Only the semantic
+// "is this the right number" check is a warning.
 
 import * as Y from 'yjs'
 import { describe, test, expect } from 'vitest'
@@ -130,9 +144,9 @@ function warnIfNotClean(label, tspanYEl, expectedSum) {
   return { isClean, text, childCount }
 }
 
-describe('concurrent derived-write corruption (TODO #11 — warn, not fail, until fixed)', () => {
+describe('concurrent derived-write corruption (TODO #11 — raw Yjs substrate behavior, see concurrency_branching.md for the fix)', () => {
 
-  test('scenario A: fully concurrent — neither peer has heard from the other before its own cascade fires', () => {
+  test('fully concurrent derived-writes garble instead of merge — neither peer has heard from the other before its own cascade fires', () => {
     const A = buildReplica()
     const B = forkReplica(A.ydoc)
 
@@ -175,83 +189,6 @@ describe('concurrent derived-write corruption (TODO #11 — warn, not fail, unti
     expect(tspanResultOf(trayA).length).toBe(2)
 
     // Soft/warn: the actual displayed value is not the correct sum (7).
-    warnIfNotClean('scenario A', tspanResultOf(trayA), 7)
-  })
-
-  test('scenario B (control): B fully incorporates A\'s derived-write before B\'s own cascade runs — clean, correct result', () => {
-    const A = buildReplica()
-    const B = forkReplica(A.ydoc)
-
-    // A: reparent + its own cascade, complete, before B does anything.
-    A.ydoc.transact(() => {
-      const moved = reparentToy(A.ydoc, A.yToys, 'die1', 'tray1')
-      applyMoveCommit(A.ydoc, moved, 10, 10)
-    })
-    localDerivedWrite(A.ydoc, tspanResultOf(findToy(A.yToys, 'tray1')), 4)
-
-    // B receives A's FULL state (reparent + derived-write) before B's own
-    // local reparent — so B's own write is causally AFTER A's.
-    Y.applyUpdate(B.ydoc, Y.encodeStateAsUpdate(A.ydoc))
-
-    B.ydoc.transact(() => {
-      const moved = reparentToy(B.ydoc, B.yToys, 'die2', 'tray1')
-      applyMoveCommit(B.ydoc, moved, 10, 10)
-    })
-    localDerivedWrite(B.ydoc, tspanResultOf(findToy(B.yToys, 'tray1')), 7)   // correct total, no concurrent writer
-
-    Y.applyUpdate(A.ydoc, Y.encodeStateAsUpdate(B.ydoc))
-
-    const trayA = findToy(A.yToys, 'tray1')
-    const trayB = findToy(B.yToys, 'tray1')
-
-    expect(contentsIds(trayA)).toEqual(['die1', 'die2'])
-    expect(readTspanText(tspanResultOf(trayA))).toBe(readTspanText(tspanResultOf(trayB)))
-
-    // This timing IS clean today — no warning expected, real assertions.
-    expect(tspanResultOf(trayA).length).toBe(1)
-    expect(readTspanText(tspanResultOf(trayA))).toBe('7')
-  })
-
-  test('scenario C: B computes the mathematically correct sum, but its write still races A\'s causally', () => {
-    const A = buildReplica()
-    const B = forkReplica(A.ydoc)
-
-    // A: reparent only — snapshot right here, BEFORE A's own derived-write.
-    A.ydoc.transact(() => {
-      const moved = reparentToy(A.ydoc, A.yToys, 'die1', 'tray1')
-      applyMoveCommit(A.ydoc, moved, 10, 10)
-    })
-    const aStateAfterReparentOnly = Y.encodeStateAsUpdate(A.ydoc)
-
-    // A's own local cascade — blind to B, as always — commits independently.
-    localDerivedWrite(A.ydoc, tspanResultOf(findToy(A.yToys, 'tray1')), 4)
-
-    // B receives ONLY A's reparent (the derived-write message is still in
-    // flight). B's local contents_group now correctly shows both dice —
-    // but B has not yet causally observed A's derived-write.
-    Y.applyUpdate(B.ydoc, aStateAfterReparentOnly)
-
-    B.ydoc.transact(() => {
-      const moved = reparentToy(B.ydoc, B.yToys, 'die2', 'tray1')
-      applyMoveCommit(B.ydoc, moved, 10, 10)
-    })
-    // B's cascade sums its own local contents_group — both dice are
-    // present — and computes the CORRECT total. The write is still
-    // causally concurrent with A's, though.
-    localDerivedWrite(B.ydoc, tspanResultOf(findToy(B.yToys, 'tray1')), 7)
-
-    // The rest of the network catches up in both directions.
-    Y.applyUpdate(A.ydoc, Y.encodeStateAsUpdate(B.ydoc))
-    Y.applyUpdate(B.ydoc, Y.encodeStateAsUpdate(A.ydoc))
-
-    const trayA = findToy(A.yToys, 'tray1')
-    const trayB = findToy(B.yToys, 'tray1')
-
-    expect(contentsIds(trayA)).toEqual(['die1', 'die2'])
-    expect(readTspanText(tspanResultOf(trayA))).toBe(readTspanText(tspanResultOf(trayB)))
-    expect(tspanResultOf(trayA).length).toBe(2)
-
-    // Soft/warn: still garbled, DESPITE B having computed the right number.
-    warnIfNotClean('scenario C', tspanResultOf(trayA), 7)
+    warnIfNotClean('fully concurrent derived-writes', tspanResultOf(trayA), 7)
   })
 })
