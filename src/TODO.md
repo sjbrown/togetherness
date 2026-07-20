@@ -221,9 +221,26 @@ a silently-dropped resize loser is acceptable and gets no toast.
    transaction consistently.
 
 **Implementation order (fork primitive first):**
- 1. Prototype **"fork a live `Y.Doc` at a causal fork point into a new
-    IndexedDB table"** in isolation (vitest, no UI, no comparator needed).
-    Everything hangs off this.
+ 1. Prototype the fork primitive as a **"Duplicate (Fork)" button on each
+    row in `home.html`'s table list**, next to the existing per-row
+    `Delete` button. Self-contained, no live room / no comparator / no
+    detection logic needed — a nice isolated first commit.
+      - `home.html` already has everything this needs: `loadRoomDoc(roomId)`
+        loads a table's persisted doc from IndexedDB via `Y.applyUpdate`
+        replay; `deleteTable`/`TABLES_KEY`/`saveTables` show the
+        registry-entry pattern to mirror; `renderTables()` shows the
+        per-row-button wiring to copy (see its `del` button).
+      - Handler shape: `loadRoomDoc(t.id)` → `Y.encodeStateAsUpdate(ydoc)` →
+        open a **new** `tt:${newRoomId}` IndexedDB database and write that
+        update as its seed → append a new `tt_tables` entry (new id, a
+        name like `"${t.name} (fork)"`, `lastVisit: Date.now()`) →
+        `renderTables()` to show the new row immediately.
+      - This exercises the exact copy-a-doc-into-a-new-IndexedDB-table
+        mechanics the branch escalation path (step 6) needs, decoupled
+        from causal-fork-point selection (here: fork the *whole* doc, not
+        mid-transaction) and from any live-room wiring. Land it, then
+        extend it later to fork from a specific causal point mid-session
+        rather than only from home.html's already-at-rest tables.
  2. One-transaction placement+reaction commit; confirm nested
     `ydoc.transact` collapse for that case.
  3. `joinSequence` `Y.Array` + comparator.
@@ -231,7 +248,9 @@ a silently-dropped resize loser is acceptable and gets no toast.
     `onToysChanged` / `dispatchContentsChangeCascade`; mind the
     `_dispatchingContentsChange` reentrancy guard).
  5. Fast-path in-place resolution (winner-assertion) + quiet log line.
- 6. Branch escalation predicate + fork wiring + Acknowledge dialog UX.
+ 6. Branch escalation predicate + fork wiring (reusing step 1's copy
+    mechanics, triggered from a live room instead of home.html) +
+    Acknowledge dialog UX.
 
 **Promotion path once fixed:** flip `warnIfNotClean(...)` calls in the
 test file to real `expect(...)` assertions — for the fast-path case, on

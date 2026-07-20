@@ -245,10 +245,18 @@ So a branch is: a **new `roomId`**, a **new `tt:`-keyed IndexedDB doc** seeded
 from the loser's forked state, and a `tt_tables` registry entry with the
 shown name. No new persistence machinery.
 
-The hard, isolated primitive to prototype first is **"fork a live `Y.Doc` at a
-causal fork point into a new IndexedDB-backed table."** It is testable in
-vitest with no UI and no comparator decisions settled. Everything else hangs
-off it.
+The first, self-contained implementation step is a **"Duplicate (Fork)"
+button on each row of `home.html`'s table list**, alongside the existing
+`Delete` button. It reuses `loadRoomDoc(roomId)` (already loads a table's
+persisted doc from IndexedDB) to read the source doc, `Y.encodeStateAsUpdate`
+to snapshot it, writes that as the seed of a new `tt:${newRoomId}` IndexedDB
+database, and appends a `tt_tables` registry entry. This exercises the
+copy-a-doc-into-a-new-table mechanics that branch escalation needs later,
+fully decoupled from causal-fork-point selection (this prototype forks the
+whole at-rest doc, not a specific point mid-transaction) and from any live-room
+wiring — a clean, isolated first commit. The later, harder version — forking
+from a specific causal point in a *live* room, mid-session, at the moment a
+conflict is detected — extends this same primitive rather than replacing it.
 
 ---
 
