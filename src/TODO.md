@@ -151,24 +151,11 @@ the tray, if its write hasn't yet incorporated another peer's
 already-committed write.
 
 **Reproduced and specified in `tests/unit/concurrent-derived-write.test.js`**
-— three scenarios, verified against two real `Y.Doc` replicas synced via
-`Y.applyUpdate`/`Y.encodeStateAsUpdate`:
- * `scenario A` — fully concurrent, neither peer has heard from the other.
-   Garbles (2 sibling text nodes).
- * `scenario B` (control) — B fully incorporates A's derived-write before
-   B's own cascade runs. Clean, correct — demonstrates the mechanism
-   works fine when writes are causally ordered, not concurrent.
- * `scenario C` — the sharp case: B's local view already has both dice and
-   computes the *correct* sum, but its write is still causally concurrent
-   with A's already-committed write. Still garbles.
-
-These tests currently **warn instead of fail** (`warnIfNotClean(...)`,
-console.warn, no `expect()` on the semantic value) — the bug is real and
-tracked but not yet fixed, and hard-failing the suite for a known,
-accepted gap isn't useful. The structural facts that must never regress
-*are* hard-asserted: both dice always land in the tray, every replica
-converges to the identical final state, and the corruption reproduces
-reliably as exactly two sibling text nodes.
+— verified against two real `Y.Doc` replicas synced via
+`Y.applyUpdate`/`Y.encodeStateAsUpdate`: neither peer has heard from the
+other before its own cascade fires; both compute a locally-correct value
+against their own partial view, and the concurrent derived-writes garble
+into 2 sibling text nodes rather than merging.
 
 **Agreed design: branch on unresolvable conflict.**
 Full design record in `concurrency_branching.md`. Summary:
@@ -177,10 +164,7 @@ The garble above is one symptom of a general problem: user-authored
 handler code is arbitrary and synchronous-but-otherwise-unrestricted (it
 may `random()`, restructure subtrees, touch sibling toys), so two
 concurrent runs can produce states Yjs cannot merge sensibly, and
-recompute-on-conflict is unsafe (non-idempotent handlers). The earlier
-LWW-register idea (setAttribute / `Y.Map` key) fixes the *garble* for the
-pure-aggregate case but not the general unmergeable-divergence case, so it
-becomes only the fast-path in-place resolution, not the whole answer.
+recompute-on-conflict is unsafe (non-idempotent handlers).
 
 Resolution model:
  * **Placement + synchronous reaction commit as ONE atomic transaction**
@@ -193,9 +177,9 @@ Resolution model:
    `MutationRecord[]`) resolve by asserting the winner's values. No branch,
    no dialog. Quiet activity-log line only.
  * **Branch escalation:** non-trivial divergence (in-place assertion can't
-   yield a coherent state, or a wide causal gap — the network-partition
-   case) forks the loser's *full divergent `Y.Doc`* into a new
-   IndexedDB-backed branch table (`tt:`-keyed, new `roomId`, `tt_tables`
+   yield a coherent state, or a wide causal gap — the prolonged
+   network-partition case) forks the loser's *full divergent `Y.Doc`* into
+   a new IndexedDB-backed branch table (`tt:`-keyed, new `roomId`, `tt_tables`
    entry) and shows a blocking **Acknowledge dialog** — NOT a toast.
    Dialog offers: join the authoritative table (branch preserved,
    reopenable from `home.html`) or keep working on the branch. No replay of
@@ -207,6 +191,7 @@ Resolution model:
    `clientID` tie-break. Do NOT prune on awareness disconnect — a
    partitioned peer must stay arbitrable; that's why authority lives in the
    doc, not ephemeral awareness.
+   When a new branch is created, then a new `joinSequence` is created.
 
 Standard TT ops (move/resize) and pure inserts stay out of this entirely:
 they're either non-overlapping or Yjs-auto-resolvable (attribute LWW), and
@@ -252,8 +237,12 @@ a silently-dropped resize loser is acceptable and gets no toast.
     mechanics, triggered from a live room instead of home.html) +
     Acknowledge dialog UX.
 
-**Promotion path once fixed:** flip `warnIfNotClean(...)` calls in the
-test file to real `expect(...)` assertions — for the fast-path case, on
-the correct resolved value; for the branch case, assert the authoritative
-table holds the winner's state and a branch table was created. That
-graduates these tests from documentation to regression coverage.
+**Test coverage once fixed:** `concurrent-derived-write.test.js`'s
+remaining test stays a warning permanently (see above) — it's substrate
+documentation, not a placeholder to flip. Real regression coverage for the
+fix is new tests, written as each implementation step lands, exercising the
+actual production path: for the fast-path case, `expect()` a single clean
+child node holding the authoritative peer's own recorded value (not
+necessarily the mathematically-merged total); for the branch-escalation
+case, `expect()` that the authoritative table holds the winner's state and
+that a branch table was created holding the loser's.
