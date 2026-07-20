@@ -170,24 +170,71 @@ accepted gap isn't useful. The structural facts that must never regress
 converges to the identical final state, and the corruption reproduces
 reliably as exactly two sibling text nodes.
 
-**Fix shape:** 
+**Agreed design: branch on unresolvable conflict.**
+Full design record in `concurrency_branching.md`. Summary:
 
-*Idea one:* represent the derived value as a genuine last-write-wins
-register instead of DOM `textContent`/childList — e.g. `setAttribute` on
-the tspan (or a dedicated key on a `Y.Map`), which Yjs resolves as a true
-LWW register for concurrent writes to the same key, rather than a
-sequence where concurrent inserts both survive. This is a generic fix,
-not a `tray_sum`-specific one: any `contents_change_handler` that writes
-its result via `textContent` hits the same failure mode.
+The garble above is one symptom of a general problem: user-authored
+handler code is arbitrary and synchronous-but-otherwise-unrestricted (it
+may `random()`, restructure subtrees, touch sibling toys), so two
+concurrent runs can produce states Yjs cannot merge sensibly, and
+recompute-on-conflict is unsafe (non-idempotent handlers). The earlier
+LWW-register idea (setAttribute / `Y.Map` key) fixes the *garble* for the
+pure-aggregate case but not the general unmergeable-divergence case, so it
+becomes only the fast-path in-place resolution, not the whole answer.
 
-*Idea two:* restrict the contract for users to only support syncronous
-functions, and wrap the envelope mutation inside the same transaction as
-the originating Yjs transaction
+Resolution model:
+ * **Placement + synchronous reaction commit as ONE atomic transaction**
+   (they are two today — reaction fires in a microtask after the
+   placement's observer returns). This removes the "die inserted but its
+   reaction lost → stale slot, uncounted die" intermediate: the unit now
+   wins or loses whole. Load-bearing; only sound because handlers are sync.
+ * **Fast path (in place):** trivially-overlapping conflicts (detected via
+   node-level touched-set intersection from `runInEnvelope`'s
+   `MutationRecord[]`) resolve by asserting the winner's values. No branch,
+   no dialog. Quiet activity-log line only.
+ * **Branch escalation:** non-trivial divergence (in-place assertion can't
+   yield a coherent state, or a wide causal gap — the network-partition
+   case) forks the loser's *full divergent `Y.Doc`* into a new
+   IndexedDB-backed branch table (`tt:`-keyed, new `roomId`, `tt_tables`
+   entry) and shows a blocking **Acknowledge dialog** — NOT a toast.
+   Dialog offers: join the authoritative table (branch preserved,
+   reopenable from `home.html`) or keep working on the branch. No replay of
+   the loser's actions onto the authoritative table; humans re-coordinate
+   by human means.
+ * **Authority = join order.** A never-pruned, append-only `Y.Array`
+   (`joinSequence`) in the doc; each client appends its `clientID` once.
+   Earlier index wins; concurrent joins degrade automatically to Yjs's
+   `clientID` tie-break. Do NOT prune on awareness disconnect — a
+   partitioned peer must stay arbitrable; that's why authority lives in the
+   doc, not ephemeral awareness.
 
-*Idea three*: Broaden the scope of any user function result to the entire
-tree of any toy touched by the user's funciton.
+Standard TT ops (move/resize) and pure inserts stay out of this entirely:
+they're either non-overlapping or Yjs-auto-resolvable (attribute LWW), and
+a silently-dropped resize loser is acceptable and gets no toast.
+
+**Depends on / connects to:**
+ * The Acknowledge dialog + activity-log entries are the "loud, visible"
+   surface item 7 needs and item 5's peer-undo is gated on. Build the
+   audit-log side of this and item 7 together.
+ * One-transaction commit interacts with item 5's `initialize()` /
+   placement-folding note — fold initial state into the placement
+   transaction consistently.
+
+**Implementation order (fork primitive first):**
+ 1. Prototype **"fork a live `Y.Doc` at a causal fork point into a new
+    IndexedDB table"** in isolation (vitest, no UI, no comparator needed).
+    Everything hangs off this.
+ 2. One-transaction placement+reaction commit; confirm nested
+    `ydoc.transact` collapse for that case.
+ 3. `joinSequence` `Y.Array` + comparator.
+ 4. Touched-set construction + post-merge overlap scan (hook relative to
+    `onToysChanged` / `dispatchContentsChangeCascade`; mind the
+    `_dispatchingContentsChange` reentrancy guard).
+ 5. Fast-path in-place resolution (winner-assertion) + quiet log line.
+ 6. Branch escalation predicate + fork wiring + Acknowledge dialog UX.
 
 **Promotion path once fixed:** flip `warnIfNotClean(...)` calls in the
-test file to real `expect(...)` assertions on the correct sum — that's
-the intended way these tests graduate from documentation to regression
-coverage.
+test file to real `expect(...)` assertions — for the fast-path case, on
+the correct resolved value; for the branch case, assert the authoritative
+table holds the winner's state and a branch table was created. That
+graduates these tests from documentation to regression coverage.
