@@ -55,6 +55,7 @@ const svgNS = 'http://www.w3.org/2000/svg'
 const XLINK_NS = 'http://www.w3.org/1999/xlink';
 
 const DEFAULT_BACKGROUNDS = [
+  { label: 'Default',   url: 'img/bg_default.png',  width: 120, height: 120 },
   { label: 'Slate Hex',   url: 'img/bg_slatehex.png',  width: 1384, height: 998 },
   { label: 'Beige Hex',   url: 'img/bg_beigehex.png',  width: 815,  height: 718 },
   { label: 'Green Felt',  url: 'img/bg_greenfelt.png', width: 800,  height: 600 },
@@ -1543,8 +1544,8 @@ const App = {
   exportSVG: () => {
     const clone = Storage.buildExportSvg(_svgEl, { yToys: _yToys, yDrawing: _yDrawing });
     if (!clone.getAttribute('viewBox')) {
-      const w = _svgEl.clientWidth  || 1384;
-      const h = _svgEl.clientHeight || 998;
+      const w = _svgEl.clientWidth  || 120;
+      const h = _svgEl.clientHeight || 120;
       clone.setAttribute('viewBox', `0 0 ${w} ${h}`);
     }
     clone.setAttribute('xmlns',          'http://www.w3.org/2000/svg');
@@ -1618,8 +1619,8 @@ const App = {
   getDefaultBackgrounds: () => DEFAULT_BACKGROUNDS,
   getBackground:   () => ({
     url:    _yMeta.get('bg_url')    ?? '',
-    width:  _yMeta.get('bg_width')  ?? 1384,
-    height: _yMeta.get('bg_height') ?? 998,
+    width:  _yMeta.get('bg_width')  ?? 120,
+    height: _yMeta.get('bg_height') ?? 120,
   }),
   setBackground:   (attrs) => {
     _ydoc.transact(() => {
@@ -1659,9 +1660,9 @@ function renderBackgroundLayer() {
   const layer = _svgEl.querySelector('#background-layer');
   if (!layer) throw new Error("renderBackgroundLayer: '#background-layer' not found in SVG document — malformed template?");
   layer.innerHTML = '';
-  const url    = _yMeta.get('bg_url')    || 'img/bg_slatehex.png';
-  const width  = _yMeta.get('bg_width')  || 1384;
-  const height = _yMeta.get('bg_height') || 998;
+  const url    = _yMeta.get('bg_url')    || 'img/bg_default.png';
+  const width  = _yMeta.get('bg_width')  || 120;
+  const height = _yMeta.get('bg_height') || 120;
   const SVGNS = 'http://www.w3.org/2000/svg';
   // Tiling pattern so the image repeats across infinite canvas
   const defs    = _svgEl.querySelector('defs');

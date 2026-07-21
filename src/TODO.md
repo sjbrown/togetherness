@@ -151,43 +151,98 @@ the tray, if its write hasn't yet incorporated another peer's
 already-committed write.
 
 **Reproduced and specified in `tests/unit/concurrent-derived-write.test.js`**
-— three scenarios, verified against two real `Y.Doc` replicas synced via
-`Y.applyUpdate`/`Y.encodeStateAsUpdate`:
- * `scenario A` — fully concurrent, neither peer has heard from the other.
-   Garbles (2 sibling text nodes).
- * `scenario B` (control) — B fully incorporates A's derived-write before
-   B's own cascade runs. Clean, correct — demonstrates the mechanism
-   works fine when writes are causally ordered, not concurrent.
- * `scenario C` — the sharp case: B's local view already has both dice and
-   computes the *correct* sum, but its write is still causally concurrent
-   with A's already-committed write. Still garbles.
+— verified against two real `Y.Doc` replicas synced via
+`Y.applyUpdate`/`Y.encodeStateAsUpdate`: neither peer has heard from the
+other before its own cascade fires; both compute a locally-correct value
+against their own partial view, and the concurrent derived-writes garble
+into 2 sibling text nodes rather than merging.
 
-These tests currently **warn instead of fail** (`warnIfNotClean(...)`,
-console.warn, no `expect()` on the semantic value) — the bug is real and
-tracked but not yet fixed, and hard-failing the suite for a known,
-accepted gap isn't useful. The structural facts that must never regress
-*are* hard-asserted: both dice always land in the tray, every replica
-converges to the identical final state, and the corruption reproduces
-reliably as exactly two sibling text nodes.
+**Agreed design: branch on unresolvable conflict.**
+Full design record in `concurrency_branching.md`. Summary:
 
-**Fix shape:** 
+The garble above is one symptom of a general problem: user-authored
+handler code is arbitrary and synchronous-but-otherwise-unrestricted (it
+may `random()`, restructure subtrees, touch sibling toys), so two
+concurrent runs can produce states Yjs cannot merge sensibly, and
+recompute-on-conflict is unsafe (non-idempotent handlers).
 
-*Idea one:* represent the derived value as a genuine last-write-wins
-register instead of DOM `textContent`/childList — e.g. `setAttribute` on
-the tspan (or a dedicated key on a `Y.Map`), which Yjs resolves as a true
-LWW register for concurrent writes to the same key, rather than a
-sequence where concurrent inserts both survive. This is a generic fix,
-not a `tray_sum`-specific one: any `contents_change_handler` that writes
-its result via `textContent` hits the same failure mode.
+Resolution model:
+ * **Placement + synchronous reaction commit as ONE atomic transaction**
+   (they are two today — reaction fires in a microtask after the
+   placement's observer returns). This removes the "die inserted but its
+   reaction lost → stale slot, uncounted die" intermediate: the unit now
+   wins or loses whole. Load-bearing; only sound because handlers are sync.
+ * **Fast path (in place):** trivially-overlapping conflicts (detected via
+   node-level touched-set intersection from `runInEnvelope`'s
+   `MutationRecord[]`) resolve by asserting the winner's values. No branch,
+   no dialog. Quiet activity-log line only.
+ * **Branch escalation:** non-trivial divergence (in-place assertion can't
+   yield a coherent state, or a wide causal gap — the prolonged
+   network-partition case) forks the loser's *full divergent `Y.Doc`* into
+   a new IndexedDB-backed branch table (`tt:`-keyed, new `roomId`, `tt_tables`
+   entry) and shows a blocking **Acknowledge dialog** — NOT a toast.
+   Dialog offers: join the authoritative table (branch preserved,
+   reopenable from `home.html`) or keep working on the branch. No replay of
+   the loser's actions onto the authoritative table; humans re-coordinate
+   by human means.
+ * **Authority = join order.** A never-pruned, append-only `Y.Array`
+   (`joinSequence`) in the doc; each client appends its `clientID` once.
+   Earlier index wins; concurrent joins degrade automatically to Yjs's
+   `clientID` tie-break. Do NOT prune on awareness disconnect — a
+   partitioned peer must stay arbitrable; that's why authority lives in the
+   doc, not ephemeral awareness.
+   When a new branch is created, then a new `joinSequence` is created.
 
-*Idea two:* restrict the contract for users to only support syncronous
-functions, and wrap the envelope mutation inside the same transaction as
-the originating Yjs transaction
+Standard TT ops (move/resize) and pure inserts stay out of this entirely:
+they're either non-overlapping or Yjs-auto-resolvable (attribute LWW), and
+a silently-dropped resize loser is acceptable and gets no toast.
 
-*Idea three*: Broaden the scope of any user function result to the entire
-tree of any toy touched by the user's funciton.
+**Depends on / connects to:**
+ * The Acknowledge dialog + activity-log entries are the "loud, visible"
+   surface item 7 needs and item 5's peer-undo is gated on. Build the
+   audit-log side of this and item 7 together.
+ * One-transaction commit interacts with item 5's `initialize()` /
+   placement-folding note — fold initial state into the placement
+   transaction consistently.
 
-**Promotion path once fixed:** flip `warnIfNotClean(...)` calls in the
-test file to real `expect(...)` assertions on the correct sum — that's
-the intended way these tests graduate from documentation to regression
-coverage.
+**Implementation order (fork primitive first):**
+ 1. Prototype the fork primitive as a **"Duplicate (Fork)" button on each
+    row in `home.html`'s table list**, next to the existing per-row
+    `Delete` button. Self-contained, no live room / no comparator / no
+    detection logic needed — a nice isolated first commit.
+      - `home.html` already has everything this needs: `loadRoomDoc(roomId)`
+        loads a table's persisted doc from IndexedDB via `Y.applyUpdate`
+        replay; `deleteTable`/`TABLES_KEY`/`saveTables` show the
+        registry-entry pattern to mirror; `renderTables()` shows the
+        per-row-button wiring to copy (see its `del` button).
+      - Handler shape: `loadRoomDoc(t.id)` → `Y.encodeStateAsUpdate(ydoc)` →
+        open a **new** `tt:${newRoomId}` IndexedDB database and write that
+        update as its seed → append a new `tt_tables` entry (new id, a
+        name like `"${t.name} (fork)"`, `lastVisit: Date.now()`) →
+        `renderTables()` to show the new row immediately.
+      - This exercises the exact copy-a-doc-into-a-new-IndexedDB-table
+        mechanics the branch escalation path (step 6) needs, decoupled
+        from causal-fork-point selection (here: fork the *whole* doc, not
+        mid-transaction) and from any live-room wiring. Land it, then
+        extend it later to fork from a specific causal point mid-session
+        rather than only from home.html's already-at-rest tables.
+ 2. One-transaction placement+reaction commit; confirm nested
+    `ydoc.transact` collapse for that case.
+ 3. `joinSequence` `Y.Array` + comparator.
+ 4. Touched-set construction + post-merge overlap scan (hook relative to
+    `onToysChanged` / `dispatchContentsChangeCascade`; mind the
+    `_dispatchingContentsChange` reentrancy guard).
+ 5. Fast-path in-place resolution (winner-assertion) + quiet log line.
+ 6. Branch escalation predicate + fork wiring (reusing step 1's copy
+    mechanics, triggered from a live room instead of home.html) +
+    Acknowledge dialog UX.
+
+**Test coverage once fixed:** `concurrent-derived-write.test.js`'s
+remaining test stays a warning permanently (see above) — it's substrate
+documentation, not a placeholder to flip. Real regression coverage for the
+fix is new tests, written as each implementation step lands, exercising the
+actual production path: for the fast-path case, `expect()` a single clean
+child node holding the authoritative peer's own recorded value (not
+necessarily the mathematically-merged total); for the branch-escalation
+case, `expect()` that the authoritative table holds the winner's state and
+that a branch table was created holding the loser's.

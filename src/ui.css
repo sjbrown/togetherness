@@ -95,8 +95,6 @@ html, body {
 #stage {
   position: fixed; inset: 0;
   right: var(--panel-w);
-  /*background: var(--bg) url('/img/bg_slatehex.png') center center / cover;
-  */
   transition: right .3s cubic-bezier(.2,.9,.3,1);
 }
 /* Subtle dark tint over the hex image so dot grid and vignette read */
