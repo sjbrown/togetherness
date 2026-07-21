@@ -266,8 +266,13 @@ body {
   color: var(--text-3);
 }
 
-.table-delete {
+.table-actions {
+  display: flex;
   align-self: flex-end;
+  gap: 12px;
+}
+
+.table-delete {
   font-size: 11px;
   color: var(--text-3);
   background: none;
@@ -279,6 +284,25 @@ body {
 }
 .table-delete:hover {
   color: var(--danger);
+}
+
+.table-fork {
+  font-size: 11px;
+  color: var(--text-3);
+  background: none;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.table-fork:hover {
+  color: var(--primary);
+}
+.table-fork:disabled {
+  cursor: default;
+  text-decoration: none;
+  opacity: 0.6;
 }
 
 .tables-empty {
@@ -586,17 +610,17 @@ body {
 </div>
 
 <script type="importmap">
-{ "imports": { "yjs": "/lib/yjs.js" } }
+{ "imports": { "yjs": "/lib/yjs.js", "y-indexeddb": "/lib/y-indexeddb.js" } }
 </script>
 <script type="module">
 import * as Y                   from 'yjs';
-import { IndexeddbPersistence } from '/lib/y-indexeddb.js';
 import { mirrorYNode, buildThumbSVG, THUMB_W, THUMB_H } from './home-utils.js';
 import { populateFromSvgDoc }   from './storage.js';
 import * as Toys                from './toys.js';
 
 import { entityGradient }        from './entity_gradient.js';
 import { getIdentity, setName, setGrad } from './user.js';
+import { tablesAPI as tables } from './tables.js';
 
 function drawGradientSwatch(canvas, gradObj) {
   const ctx  = canvas.getContext('2d');
@@ -608,25 +632,6 @@ function drawGradientSwatch(canvas, gradObj) {
   ctx.arc(canvas.width/2, canvas.height/2, canvas.width/2, 0, Math.PI*2);
   ctx.fillStyle = grad;
   ctx.fill();
-}
-
-// ── Storage ───────────────────────────────────────────────────────────────
-const TABLES_KEY = 'tt_tables';
-
-function loadTables() {
-  try { return JSON.parse(localStorage.getItem(TABLES_KEY)) || []; } catch { return []; }
-}
-
-function saveTables(tables) {
-  try { localStorage.setItem(TABLES_KEY, JSON.stringify(tables)); } catch {}
-}
-
-// Removes a table from the tt_tables list (home.html's "recent tables" index)
-// and deletes its Yjs IndexedDB database. Does not touch other peers' copies
-// of the room — this only forgets it locally.
-function deleteTable(roomId) {
-  saveTables(loadTables().filter(t => t.id !== roomId));
-  indexedDB.deleteDatabase(`tt:${roomId}`);
 }
 
 // ── Profile UI ────────────────────────────────────────────────────────────
@@ -691,32 +696,9 @@ initProfile();
 
 // ── Previous tables ───────────────────────────────────────────────────────
 
-async function loadRoomDoc(roomId) {
-  const ydoc = new Y.Doc();
-  await new Promise((resolve, reject) => {
-    const req = indexedDB.open(`tt:${roomId}`);
-    req.onerror         = () => reject(req.error);
-    req.onupgradeneeded = () => resolve(); // DB doesn't exist yet
-    req.onsuccess       = () => {
-      const db  = req.result;
-      const tx  = db.transaction('updates', 'readonly');
-      const all = tx.objectStore('updates').getAll();
-      all.onsuccess = () => {
-        Y.transact(ydoc, () => {
-          all.result.forEach(u => Y.applyUpdate(ydoc, u));
-        });
-        db.close();
-        resolve();
-      };
-      all.onerror = () => { db.close(); reject(all.error); };
-    };
-  });
-  return ydoc;
-}
-
-async function makeThumbnail(roomId) {
+async function makeThumbnail(tableId) {
   try {
-    const ydoc  = await loadRoomDoc(roomId);
+    const ydoc  = await tables.loadTableDoc(tableId);
     const yMeta = ydoc.getMap('meta');
     const yToys = ydoc.getXmlFragment('toys');
 
@@ -728,17 +710,19 @@ async function makeThumbnail(roomId) {
     const all    = yToys.toArray().filter(n => n instanceof Y.XmlElement);
     const topToy = all.length ? all[all.length - 1] : null;
     const toyEl  = topToy ? mirrorYNode(Y, topToy) : null;
+    toyEl.firstChild.setAttribute('width', '100');
+    toyEl.firstChild.setAttribute('height', '100');
 
     ydoc.destroy();
-    return buildThumbSVG(roomId, bgUrl, bgW, bgH, toyEl);
+    return buildThumbSVG(tableId, bgUrl, bgW, bgH, toyEl);
   } catch (e) {
-    console.warn('togetherness: thumbnail failed for', roomId, e);
+    console.warn('togetherness: thumbnail failed for', tableId, e);
     return null;
   }
 }
 
 function renderTables() {
-  const list = loadTables();
+  const list = tables.loadTables();
   const el   = document.getElementById('tablesList');
   if (!list.length) {
     el.innerHTML = '<div class="tables-empty">No previous tables yet.<br>Start one from the right →</div>';
@@ -775,12 +759,41 @@ function renderTables() {
       e.preventDefault();
       e.stopPropagation();
       if (confirm(`Delete "${t.name || t.id}"? This can't be undone.`)) {
-        deleteTable(t.id);
+        tables.deleteTable(t.id);
         renderTables();
       }
     });
 
-    info.append(name, date, del);
+    const fork = document.createElement('button');
+    fork.type = 'button';
+    fork.className = 'table-fork';
+    fork.textContent = 'Duplicate (Fork)';
+    fork.addEventListener('click', async (e) => {
+      // Row is an <a>; stop the click from also navigating to the table.
+      e.preventDefault();
+      e.stopPropagation();
+      fork.disabled = true;
+      fork.textContent = 'Forking…';
+      try {
+        const forkTail = '-' + tables.randSlug()
+        const forkedId = tables.generateTableId(t.name || t.id) + forkTail;
+        const forkedName = t.name ? t.name + forkTail : forkedId;
+        await tables.forkTable(t.id, forkedId);
+        tables.touchTableRecord(forkedId, { name: forkedName });
+        renderTables();
+      } catch (err) {
+        console.error('togetherness: fork failed for', t.id, err);
+        fork.disabled = false;
+        fork.textContent = 'Duplicate (Fork)';
+        alert('Fork failed — see console for details.');
+      }
+    });
+
+    const actions = document.createElement('div');
+    actions.className = 'table-actions';
+    actions.append(fork, del);
+
+    info.append(name, date, actions);
     a.appendChild(info);
     el.appendChild(a);
 
@@ -850,11 +863,12 @@ const samplerDiceReady = renderSamplerDice().catch(err => {
   console.error('togetherness: sampler dice render failed', err);
 });
 
-// ── Seed a new room from a sample SVG into IndexedDB ─────────────────────────
+// ── Seed a new table from a sample SVG into IndexedDB ────────────────────────
 // Uses the shared storage.js import machinery (also used by app.js's
 // importSVG) to read background/toys/drawing from a sampler template into a
-// fresh Y.Doc, then persists it via IndexeddbPersistence before navigating.
-async function seedRoom(roomId, sampleSvgEl) {
+// fresh Y.Doc, then persists it via tables.js's openTablePersistence before
+// navigating.
+async function seedTable(tableId, sampleSvgEl) {
   const CURRENT_SCHEMA = 4;
 
   // Guard against a click landing before the sampler dice finish rendering
@@ -867,7 +881,7 @@ async function seedRoom(roomId, sampleSvgEl) {
   const yDrawing     = ydoc.getXmlFragment('drawing');
 
   ydoc.transact(() => {
-    yMeta.set('docId',         roomId);
+    yMeta.set('docId',         tableId);
     yMeta.set('created',       new Date().toISOString());
     yMeta.set('schemaVersion', CURRENT_SCHEMA);
     // Sampler templates carry a decorative rotation on each toy <g> for
@@ -877,7 +891,7 @@ async function seedRoom(roomId, sampleSvgEl) {
 
   // Persist to IndexedDB and wait for it to flush before navigating.
   await new Promise((resolve, reject) => {
-    const persistence = new IndexeddbPersistence(`tt:${roomId}`, ydoc);
+    const persistence = openTablePersistence(tableId, ydoc);
     persistence.on('synced', resolve);
     persistence.on('error',  reject);
   });
@@ -886,18 +900,13 @@ async function seedRoom(roomId, sampleSvgEl) {
 // ── Wire sampler row clicks to static HTML rows ──────────────────────────────
 document.querySelectorAll('.sampler-row').forEach(el => {
   el.addEventListener('click', e => {
-    const row = {
-      bg:       el.dataset.bg,
-      bgWidth:  Number(el.dataset.bgWidth),
-      bgHeight: Number(el.dataset.bgHeight),
-    };
     const svgEl = el.querySelector('svg.sampler-scene');
-    launchRipple(e.clientX, e.clientY, row, svgEl);
+    launchRipple(e.clientX, e.clientY, svgEl);
   });
 });
 
-// ── Ripple transition + room seeding ─────────────────────────────────────────
-function launchRipple(cx, cy, row, svgEl) {
+// ── Ripple transition + table seeding ─────────────────────────────────────────
+function launchRipple(cx, cy, svgEl) {
   const circle = document.getElementById('ripple-circle');
   const maxDist = Math.hypot(
     Math.max(cx, window.innerWidth  - cx),
@@ -914,40 +923,19 @@ function launchRipple(cx, cy, row, svgEl) {
   circle.style.transition = 'transform 0.55s cubic-bezier(0.4,0,0.2,1)';
   circle.style.transform  = 'scale(1)';
 
-  const roomId = generateRoomId();
-  recordTableVisit(roomId, row);
+  const tableId = tables.generateTableId(displayNameEl.value.trim());
+  tables.touchTableRecord(tableId);
 
-  // Seed the room into IndexedDB, then navigate once done (or after the
+  // Seed the table into IndexedDB, then navigate once done (or after the
   // ripple animation completes, whichever is later).
-  const seedDone    = seedRoom(roomId, svgEl);
+  const seedDone    = seedTable(tableId, svgEl);
   const rippleDone  = new Promise(r => setTimeout(r, 520));
   Promise.all([seedDone, rippleDone]).then(() => {
-    window.location.href = `index.html#${roomId}`;
+    window.location.href = `index.html#${tableId}`;
   }).catch(err => {
-    console.error('togetherness: room seed failed', err);
-    window.location.href = `index.html#${roomId}`;
+    console.error('togetherness: table seed failed', err);
+    window.location.href = `index.html#${tableId}`;
   });
-}
-
-function generateRoomId() {
-  const dd    = String(new Date().getDate()).padStart(2, '0');
-  const chars = 'abcdefghijklmnopqrstuvwxyz';
-  const rand  = Array.from({length: 3}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
-  const name  = displayNameEl.value.trim();
-  const slug  = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')   // special chars → hyphen
-    .replace(/^-+|-+$/g, '')        // trim leading/trailing hyphens
-    .slice(0, 10)
-    || 'table';
-  return `${slug}-${dd}${rand}`;
-}
-
-function recordTableVisit(roomId, row) {
-  const tables = loadTables();
-  tables.push({ id: roomId, name: roomId, lastVisit: Date.now() });
-  if (tables.length > 20) tables.splice(0, tables.length - 20);
-  try { localStorage.setItem(TABLES_KEY, JSON.stringify(tables)); } catch {}
 }
 
 // ── Intersection observer for fade-ins ────────────────────────────────────────
