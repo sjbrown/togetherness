@@ -18,11 +18,19 @@
  * tracked — rolls are genuine document changes the user should be able to
  * take back.
  *
- * Deliberately NOT tracked:
+ * Deliberately NOT tracked as their OWN undo step:
  *  - DERIVED_ORIGIN (a tray recomputing due to contents changes)
  *  - LIFECYCLE_ORIGIN (a toy's one-time initialize)
  * Those are downstream of a tracked action, never independent user intent —
  * see the origin constants in envelope.js.
+ *
+ * Note: "not tracked" is about a *standalone* derived transaction (a roll's
+ * reaction, observer-driven). When a reaction is folded into its triggering
+ * placement — the drop-into-tray path commits reparent + move + the tray's
+ * recompute as ONE transaction (see concurrency_branching.md / TODO #11) —
+ * that transaction's origin is the placement's (null), so the reaction rides
+ * the placement's tracked undo step and reverses with it. A nested
+ * transaction's own origin (DERIVED here) is ignored; the outermost wins.
  *
  * TODO:
  * Remote peers' operations arrive under their provider's own origin (not
@@ -33,8 +41,10 @@
  *
  * One logical action must be one Yjs transaction to be one undo step.
  * Nested ydoc.transact() calls collapse into the outermost transaction, so
- * a multi-part action (e.g. reparentToy + applyMoveCommit for a drop) is
- * made atomic simply by wrapping both in one transact in app.js.
+ * a multi-part action (e.g. reparentToy + applyMoveCommit for a drop, plus
+ * the tray's synchronous contents_change reaction) is made atomic simply by
+ * wrapping all of it in one transact in app.js — the drop and the sum it
+ * produces undo together as a single step.
  *
  */
 

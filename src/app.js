@@ -26,8 +26,8 @@ import * as BounPos                               from './boun_pos.js';
 import { SHAPE_TYPES }                            from './drawing.js';
 import { TOOLS as TOY_TOOLS, addToy, findToy, newToyId,
          getMenuActions, invokeMenuAction, activateToyScripts, initializeToy,
-         findDropTargetTray, reparentToy,
-         findAncestorTrayIds, runContentsChangeHandler } from './toys.js';
+         findDropTargetTray, reparentToy } from './toys.js';
+import { DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
 import { BOUNPOS_TYPES,
          addPositionSet, createPositionSetElement,
@@ -508,11 +508,16 @@ function onBounPosChanged(events, transaction) {
   renderDoc();
 }
 
-// Reentrancy guard for dispatchContentsChangeCascade, below. Committing a
-// tray's recomputed result _is_ a local Yjs transaction that re-fires this
-// very observer
-// It's protecting against re-triggering another cascade
-// dispatch for a change that IS itself a cascade result.
+// Suppresses the observer-driven cascade in onToysChanged while a cascade is
+// already being handled for the current change. Two cases set it:
+//  - dispatchContentsChangeCascade wraps its synchronous run in it (belt to
+//    the origin check's braces: the DERIVED commits it makes land in their
+//    own transactions, caught by the origin check in onToysChanged).
+//  - commitMove's drop-into-tray path folds the reaction into the placement
+//    transaction itself, and sets this so the observer for that transaction
+//    (origin null, so the origin check wouldn't catch it) doesn't recompute
+//    the same tray a redundant — and, for non-idempotent handlers, wrong —
+//    second time.
 let _dispatchingContentsChange = false;
 
 function onToysChanged(events, transaction) {
@@ -548,47 +553,57 @@ function onToysChanged(events, transaction) {
   // to a die inside .contents_group after a reparentToy)
   // before the handler runs
   renderDoc();
-  if (transaction.local && !_dispatchingContentsChange) {
-    // Derived contents_change: local change touched inside a
-    // tray's .contents_group -- recompute that tray's own derived display.
-    // Remote-origin changes are deliberately excluded: the *originator*
-    // computes and the result syncs as data
+  // Derived contents_change: a local change touched inside a tray's
+  // .contents_group -- recompute that tray's own derived display.
+  //
+  // Skipped for:
+  //  - remote-origin changes: the *originator* computes; the result syncs
+  //    as data (a peer never recomputes in reaction to a remote change).
+  //  - DERIVED/LIFECYCLE origins: these ARE cascade output (or a toy's
+  //    one-time initialize), never independent intent, so they must not
+  //    trigger another cascade. Gating on origin (not just the
+  //    _dispatchingContentsChange flag) keeps this correct now that the
+  //    cascade runs synchronously: a DERIVED commit made from an observer
+  //    lands in its own transaction whose observer fires AFTER the flag has
+  //    already been cleared, so the flag alone would no longer catch it.
+  //  - _dispatchingContentsChange: the drop-into-tray path (commitMove)
+  //    folds its own reaction into the placement transaction and sets this
+  //    flag so the observer doesn't recompute it a second time.
+  const isCascadeResult =
+    transaction.origin === DERIVED_ORIGIN || transaction.origin === LIFECYCLE_ORIGIN;
+  if (transaction.local && !isCascadeResult && !_dispatchingContentsChange) {
     dispatchContentsChangeCascade(events);
   }
 }
 
-// Local transaction touched something inside a tray's .contents_group?
-// Recompute every affected tray's own contents_change_handler, innermost
-// first, so outer trays have a chance to read inner tray's results
-// Computed as one upfront pass over *this* transaction's events, so a 
-// single die roll inside a doubly-nested tray still resolves in *one* dispatch.
+// Local transaction (not itself a cascade result) touched something inside a
+// tray's .contents_group? Recompute every affected tray's own
+// contents_change_handler, innermost first, so outer trays read their inner
+// trays' fresh results. Computed as one upfront pass over *this* transaction's
+// events, so a single die roll inside a doubly-nested tray resolves in one go.
+//
+// This runs *synchronously* now (concurrency_branching.md / TODO #11). When
+// the triggering change was itself committed inside an open transaction (the
+// drop-into-tray path folds its reaction in directly and never reaches here),
+// a synchronous cascade would fold in. Reached from the observer — after the
+// triggering transaction has closed — each handler is its own DERIVED
+// transaction, exactly as before, just without the microtask hop. The
+// _dispatchingContentsChange flag still guards the folded-drop case, whose
+// observer would otherwise recompute the tray a redundant second time; the
+// origin check in onToysChanged handles the DERIVED commits this makes.
 function dispatchContentsChangeCascade(events) {
-  const depthById = new Map(); // trayId → nesting depth; deeper = recompute first
-  for (const event of events) {
-    const chain = findAncestorTrayIds(event.target); // innermost first
-    chain.forEach((trayId, i) => {
-      const depth = chain.length - i;
-      if (depth > (depthById.get(trayId) ?? -1)) depthById.set(trayId, depth);
-    });
-  }
-  if (!depthById.size) return;
+  const trayIds = Toys.affectedTrayIdsInnerFirst(events.map(e => e.target));
+  if (!trayIds.length) return;
 
-  const trayIds = [...depthById.keys()].sort((a, b) => depthById.get(b) - depthById.get(a));
   const layerEl = _svgEl.querySelector('#toys-layer');
-
   _dispatchingContentsChange = true;
-  (async () => {
-    for (const trayId of trayIds) {
-      const trayEl = layerEl?.querySelector(`[data-id="${trayId}"]`);
-      const yTray  = findToy(_yToys, trayId);
-      if (!trayEl || !yTray) continue; // e.g. the tray itself was deleted in the same transaction
-      await runContentsChangeHandler(_ydoc, _yToys, layerEl, trayEl, yTray.getAttribute('data-toy-type'));
-    }
-  })().catch(err => {
+  try {
+    Toys.runContentsChangeCascadeSync(_ydoc, _yToys, layerEl, trayIds);
+  } catch (err) {
     console.error('[app] contents_change_handler dispatch failed', err);
-  }).finally(() => {
+  } finally {
     _dispatchingContentsChange = false;
-  });
+  }
 }
 function onDrawingChanged(events, transaction) {
   // Log remote structural changes (add / delete). Attribute changes (moves)
@@ -1246,26 +1261,42 @@ const App = {
     _dragState = null;
 
     if (dropTrayId) {
-      // Drop into a tray = reparent + reposition into the tray
-      // Wrap both in one transaction so it's a single, atomic undo
-      // step: the inner reparentToy/applyMoveCommit transactions collapse
-      // into this outer one
-      // The tray's own recompute cascade runs afterwards.
+      // Drop into a tray = reparent + reposition into the tray, plus the
+      // tray's own contents_change_handler reaction — ALL in one transaction
+      // (concurrency_branching.md / TODO #11). The inner reparentToy /
+      // applyMoveCommit transactions collapse into this outer one, and so do
+      // the reaction's DERIVED commits, so the placement and its reaction
+      // commit as one atomic unit: one undo step, and one thing to arbitrate
+      // or fork on conflict, with no "die inserted but its reaction lost"
+      // intermediate. _dispatchingContentsChange stops the observer from
+      // recomputing this tray a redundant second time after the txn closes.
       UndoRedo.tag(`move ${id.slice(0, 6)} into a tray`);
+      _dispatchingContentsChange = true;
       try {
-        _ydoc.transact(() => {
+        _ydoc.transact((tr) => {
           const movedEl = reparentToy(_ydoc, _yToys, id, dropTrayId);
           const trayEl = _svgEl.querySelector(`[data-id="${dropTrayId}"]`);
           const trayGeom = trayEl && Toys.getGeom(trayEl);
           if (trayGeom) {
             Toys.applyMoveCommit(_ydoc, movedEl, rx - trayGeom.x, ry - trayGeom.y);
           }
+          // Affected trays from THIS transaction's own change set,
+          // snapshotted before the cascade so its writes don't feed back.
+          // reparent's insert/delete land on pre-existing container nodes
+          // (the tray's contents_group, the source fragment) — exactly what
+          // tr.changed exposes here, enough for findAncestorTrayIds to
+          // resolve every affected tray, nested ones included.
+          const layerEl = _svgEl.querySelector('#toys-layer');
+          const trayIds = Toys.affectedTrayIdsInnerFirst([...tr.changed.keys()]);
+          Toys.runContentsChangeCascadeSync(_ydoc, _yToys, layerEl, trayIds);
         });
       } catch (err) {
         // a malformed tray asset can reach here and throw.
         // Surface it, else the pointerup handler may crash silently mid-drag.
         UI.toast(`Could not move into tray: ${err.message}`, 'warn');
         return;
+      } finally {
+        _dispatchingContentsChange = false;
       }
 
       // A toy landing inside a tray leaves it: selection doesn't carry

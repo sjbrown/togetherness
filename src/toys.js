@@ -28,7 +28,7 @@ const XLINK_NS = 'http://www.w3.org/1999/xlink'
 const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789'
 
 import { number, bool } from './tools-schema.js';
-import { runToyHandler, DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js';
+import { runToyHandler, runToyHandlerSync, DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js';
 
 // NOTE: envelope.js imports render()/yNodeFor()/registerYNode() from this
 // file, so this is an intentional cycle — safe because neither side uses
@@ -1191,6 +1191,68 @@ export async function runContentsChangeHandler(ydoc, yToys, layerEl, svgEl, toyT
   await runToyHandler(ydoc, yToys, layerEl, svgEl, () => {
     handlers.forEach(ns => ns.contents_change_handler(svgEl))
   }, { origin: DERIVED_ORIGIN })
+}
+
+/**
+ * Synchronous sibling of runContentsChangeHandler. Same effect — run
+ * toyType's contents_change_handler(s) under an envelope, committed under
+ * DERIVED_ORIGIN — but on the current tick, so when called from inside an
+ * open ydoc.transact its commit folds into that transaction rather than
+ * landing a microtask later in its own (see concurrency_branching.md /
+ * TODO #11). No-op if toyType has no contents_change_handler namespace.
+ */
+export function runContentsChangeHandlerSync(ydoc, yToys, layerEl, svgEl, toyType) {
+  const handlers = getNamespacesForType(toyType)
+    .map(name => globalThis[name])
+    .filter(ns => ns && typeof ns.contents_change_handler === 'function')
+  if (!handlers.length) return
+
+  runToyHandlerSync(ydoc, yToys, layerEl, svgEl, () => {
+    handlers.forEach(ns => ns.contents_change_handler(svgEl))
+  }, { origin: DERIVED_ORIGIN })
+}
+
+/**
+ * Given the Y nodes a transaction touched, return the ids of every tray
+ * whose contents changed, ordered innermost-first (deeper trays recompute
+ * before their ancestors, so an outer tray reads its inner tray's fresh
+ * result). This is the same depth computation app.js's observer does over
+ * its `events`, but sourced from any array of changed Y nodes — e.g.
+ * `[...transaction.changed.keys()]`, available *inside* the triggering
+ * transaction — so the cascade can run there and fold in. A single changed
+ * node already yields its whole ancestor-tray chain via findAncestorTrayIds,
+ * so a drop into a nested tray resolves both trays from one entry.
+ */
+export function affectedTrayIdsInnerFirst(changedYNodes) {
+  const depthById = new Map()
+  for (const node of changedYNodes) {
+    const chain = findAncestorTrayIds(node) // innermost first
+    chain.forEach((trayId, i) => {
+      const depth = chain.length - i
+      if (depth > (depthById.get(trayId) ?? -1)) depthById.set(trayId, depth)
+    })
+  }
+  return [...depthById.keys()].sort((a, b) => depthById.get(b) - depthById.get(a))
+}
+
+/**
+ * Run the contents_change_handler cascade synchronously for `trayIds`
+ * (innermost-first — see affectedTrayIdsInnerFirst). Re-renders layerEl
+ * before each tray so an outer tray reads the inner tray's just-committed
+ * result. Each handler commits under DERIVED_ORIGIN; when this runs inside an
+ * open transaction those commits collapse into it, making a placement and
+ * its reaction one atomic transaction (concurrency_branching.md / TODO #11).
+ * When run from an observer (no open transaction), each is its own DERIVED
+ * transaction instead — same end state, just not folded.
+ */
+export function runContentsChangeCascadeSync(ydoc, yToys, layerEl, trayIds) {
+  for (const trayId of trayIds) {
+    render(yToys, layerEl)
+    const trayEl = layerEl.querySelector(`[data-id="${trayId}"]`)
+    const yTray  = findToy(yToys, trayId)
+    if (!trayEl || !yTray) continue // e.g. the tray itself was deleted in the same transaction
+    runContentsChangeHandlerSync(ydoc, yToys, layerEl, trayEl, yTray.getAttribute('data-toy-type'))
+  }
 }
 
 /**
