@@ -213,7 +213,6 @@ persistence.on('synced', () => {
   tables.touchTableRecord(roomId);
   if (!yMeta.get('docId')) {
     // Brand-new room entered directly (not via home.html). Seed doc metadata;
-    // background defaults to slatehex via renderBackgroundLayer() fallback.
     ydoc.transact(() => {
       yMeta.set('docId',         roomId);
       yMeta.set('created',       new Date().toISOString());

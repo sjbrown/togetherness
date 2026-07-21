@@ -702,9 +702,9 @@ async function makeThumbnail(tableId) {
     const yMeta = ydoc.getMap('meta');
     const yToys = ydoc.getXmlFragment('toys');
 
-    const bgUrl = yMeta.get('bg_url')    || 'img/bg_slatehex.png';
-    const bgW   = yMeta.get('bg_width')  || 1384;
-    const bgH   = yMeta.get('bg_height') || 998;
+    const bgUrl = yMeta.get('bg_url')    || 'img/bg_default.png';
+    const bgW   = yMeta.get('bg_width')  || 120;
+    const bgH   = yMeta.get('bg_height') || 120;
 
     // Topmost toy = last in yToys (insertion order = z-order)
     const all    = yToys.toArray().filter(n => n instanceof Y.XmlElement);
@@ -891,7 +891,7 @@ async function seedTable(tableId, sampleSvgEl) {
 
   // Persist to IndexedDB and wait for it to flush before navigating.
   await new Promise((resolve, reject) => {
-    const persistence = openTablePersistence(tableId, ydoc);
+    const persistence = tables.openTablePersistence(tableId, ydoc);
     persistence.on('synced', resolve);
     persistence.on('error',  reject);
   });
