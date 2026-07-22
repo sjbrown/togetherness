@@ -18,6 +18,7 @@
  */
 import * as Y                   from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
+import { resetJoinSequenceToSelf } from './authority.js';
 
 const TABLES_KEY  = 'tt_tables';
 const MAX_TABLES  = 20;
@@ -114,11 +115,23 @@ async function loadTableDoc(tableId) {
  * callers register the new entry themselves via touchTableRecord (naming
  * it is a caller decision, e.g. "<original name> (fork)").
  *
+ * forkingUserId (the forking player's persistent user.js localId) is
+ * required: the branch's joinSequence is reset to contain ONLY this id,
+ * rather than carrying over the source table's whole roster. See
+ * authority.js's resetJoinSequenceToSelf and concurrency_branching.md,
+ * "The branch (fork) operation" — without this, every player who was ever
+ * on the source table would outrank the forking user on their own new
+ * branch, despite never having seen it.
+ *
  * This forks a whole at-rest table.
  * TODO: support forking a *live* table's doc at a specific causal point,
  *       (extend this primitive)
  */
-async function forkTable(sourceTableId, forkedTableId) {
+async function forkTable(sourceTableId, forkedTableId, forkingUserId) {
+  if (!forkingUserId) {
+    throw new Error('forkTable: forkingUserId is required (the branch\'s joinSequence must reset to the forking user — see authority.js)');
+  }
+
   const sourceDoc = await loadTableDoc(sourceTableId);
   const update    = Y.encodeStateAsUpdate(sourceDoc);
   sourceDoc.destroy();
@@ -127,6 +140,7 @@ async function forkTable(sourceTableId, forkedTableId) {
   // uses
   const forkDoc = new Y.Doc();
   Y.applyUpdate(forkDoc, update);
+  resetJoinSequenceToSelf(forkDoc, forkDoc.getArray('joinSequence'), forkingUserId);
   await new Promise((resolve, reject) => {
     const persistence = openTablePersistence(forkedTableId, forkDoc);
     persistence.on('synced', resolve);

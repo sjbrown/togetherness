@@ -65,7 +65,7 @@ const DEFAULT_BACKGROUNDS = [
 
 // ── Internal app state ────────────────────────────────────────────────────────
 let _ydoc, _yMeta, _yToys, _yDrawing,
-    _yBounPos,
+    _yBounPos, _yJoinSequence,
     _awareness, _provider;
 
 // Layers — the canonical LayerAPI dispatch table, built once at boot() once
@@ -306,21 +306,23 @@ function buildToolRegistry() {
 }
 
 export function makeDoc() {
-  const ydoc          = new Y.Doc();
-  const yToys         = ydoc.getXmlFragment('toys');
-  const yDrawing      = ydoc.getXmlFragment('drawing');
-  const yBounPos      = ydoc.getXmlFragment('boundaries');
-  const yMeta         = ydoc.getMap('meta');
-  return { ydoc, yMeta, yToys, yDrawing, yBounPos };
+  const ydoc           = new Y.Doc();
+  const yToys          = ydoc.getXmlFragment('toys');
+  const yDrawing       = ydoc.getXmlFragment('drawing');
+  const yBounPos       = ydoc.getXmlFragment('boundaries');
+  const yMeta          = ydoc.getMap('meta');
+  const yJoinSequence  = ydoc.getArray('joinSequence');
+  return { ydoc, yMeta, yToys, yDrawing, yBounPos, yJoinSequence };
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
-export function boot({ ydoc, yMeta, yToys, yDrawing, yBounPos, awareness, provider, myId, myGrad, roomId, svgElement, displayName }) {
+export function boot({ ydoc, yMeta, yToys, yDrawing, yBounPos, yJoinSequence, awareness, provider, myId, myGrad, roomId, svgElement, displayName }) {
   _ydoc           = ydoc;
   _yMeta          = yMeta;
   _yToys          = yToys;
   _yDrawing       = yDrawing;
   _yBounPos       = yBounPos;
+  _yJoinSequence  = yJoinSequence;
   _awareness  = awareness;
   _provider   = provider;
   _myId       = myId;

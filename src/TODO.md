@@ -208,7 +208,19 @@ a silently-dropped resize loser is acceptable and gets no toast.
 **Implementation order (fork primitive first):**
  1. ✅ **Done.** implement a **"Duplicate (Fork)" button**
  2. ✅ **Done.** One-transaction commit for any code authored by a user.
- 3. `joinSequence` `Y.Array` + comparator.
+ 3. ✅ **Done.** `joinSequence` `Y.Array` + comparator — `authority.js`
+    (`ensureJoined`, `compareAuthority`, `isAuthoritative`,
+    `resetJoinSequenceToSelf`). Keyed on `user.js`'s persistent `localId`,
+    not `ydoc.clientID` (which is a fresh random number every session and
+    would silently reshuffle authority on reload). `ensureJoined` is called
+    from `index.html` after IndexedDB sync lands, so a returning peer sees
+    its own earlier entry before deciding whether to append. Forking
+    (`tables.js`'s `forkTable`, used by home.html's "Duplicate (Fork)"
+    button) now requires a `forkingUserId` and resets the branch's
+    `joinSequence` to that id alone via `resetJoinSequenceToSelf` —
+    otherwise every player who was ever on the source table would carry
+    over and outrank the forking user on their own new branch. Not yet
+    consulted by any conflict-resolution logic; that's step 4/5.
  4. Touched-set construction + post-merge overlap scan (hook relative to
     `onToysChanged` / `dispatchContentsChangeCascade`; mind the
     `_dispatchingContentsChange` reentrancy guard).

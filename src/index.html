@@ -176,6 +176,7 @@ import { App, makeDoc }         from '/app.js';
 import { getIdentity }               from './user.js';
 import { dragPlaceholderFilterSVG, snapPointGradientSVG }  from './defs.js';
 import { tablesAPI as tables } from './tables.js';
+import { ensureJoined }        from './authority.js';
 
 // Inject shared SVG defs (filters etc.) into the canvas <defs> element.
 document.querySelector('#canvas defs')
@@ -204,7 +205,7 @@ document.getElementById('myIdLabel').textContent = `me: ${myDisplayName}`;
 // ── Yjs ─────────────────────────────────────────────────────────────────────
 export const CURRENT_SCHEMA = 4;
 
-const { ydoc, yMeta, yToys, yDrawing, yBounPos } = makeDoc();
+const { ydoc, yMeta, yToys, yDrawing, yBounPos, yJoinSequence } = makeDoc();
 
 // ── Persistence ─────────────────────────────────────────────────────────────
 const persistence = tables.openTablePersistence(roomId, ydoc);
@@ -219,6 +220,12 @@ persistence.on('synced', () => {
       yMeta.set('schemaVersion', CURRENT_SCHEMA);
     });
   }
+  // Join the authority ordering only after the local IndexedDB replay has
+  // landed — ensureJoined's guard needs to see this table's *existing*
+  // joinSequence (a returning peer's own earlier entry) before deciding
+  // whether to append, so a reload doesn't bump a peer to the back of the
+  // line.
+  ensureJoined(ydoc, yJoinSequence, myId);
 });
 
 // ── WebRTC  ──────────────────────────────────────────────────────────────────
@@ -228,7 +235,7 @@ const awareness    = provider.awareness;
 awareness.setLocalState({ id: myId, color: myGrad.c1, grad: myGrad, cursor: null, selection: null });
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
-boot({ ydoc, yMeta, yToys, yDrawing, yBounPos, awareness, provider, myId, myGrad, roomId, displayName: myDisplayName });
+boot({ ydoc, yMeta, yToys, yDrawing, yBounPos, yJoinSequence, awareness, provider, myId, myGrad, roomId, displayName: myDisplayName });
 </script>
 
 </body>

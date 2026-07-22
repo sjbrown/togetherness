@@ -778,7 +778,8 @@ function renderTables() {
         const forkTail = '-' + tables.randSlug()
         const forkedId = tables.generateTableId(t.name || t.id) + forkTail;
         const forkedName = t.name ? t.name + forkTail : forkedId;
-        await tables.forkTable(t.id, forkedId);
+        const { localId: forkingUserId } = getIdentity();
+        await tables.forkTable(t.id, forkedId, forkingUserId);
         tables.touchTableRecord(forkedId, { name: forkedName });
         renderTables();
       } catch (err) {

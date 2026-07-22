@@ -199,8 +199,11 @@ explicitly owner-free table. To minimize surprise, authority follows **join
 order**:
 
 - A dedicated `Y.Array` — `joinSequence` — lives in the document. On startup,
-  each client appends its `clientID` **once** (guarded: only if not already
-  present).
+  each client appends its persistent id **once** (guarded: only if not
+  already present). This is `user.js`'s `localId` (`tt-p-v1-DD-XXX`), not
+  `ydoc.clientID` — `clientID` is a fresh random number every session and
+  would silently reshuffle authority on every reload; `localId` survives
+  reloads and reconnects, which "Pruning: no" below requires.
 - Because it is a `Y.Array`, its insertion order *is* the join order:
   CRDT-ordered, causally consistent, identical on every peer, and it survives
   partitions.
@@ -209,6 +212,27 @@ order**:
   before seeing each other), the `Y.Array` insertion order degrades
   automatically to Yjs's own `clientID` tie-break — deterministic, and in a
   case where no human could perceive a "first" anyway.
+- **Implemented in `authority.js`:** `ensureJoined` (the guarded append,
+  called from `index.html` after IndexedDB sync lands, so a returning peer
+  sees its own earlier entry before deciding whether to append),
+  `compareAuthority` / `isAuthoritative` (the comparator), and
+  `resetJoinSequenceToSelf` (used by forking — see below). Not yet consulted
+  by any conflict-resolution logic; that's step 4/5.
+
+### Forking clears `joinSequence` down to the forking user alone
+
+A fork copies the whole source document via `Y.encodeStateAsUpdate` —
+including `joinSequence`, and thus every player who was ever on the source
+table. Left as copied, that would make those other players outrank the
+forking user on their own brand-new branch (they joined the *source* table
+earlier), even though they've never seen this branch and may not know it
+exists. So `forkTable` (`tables.js`) requires a `forkingUserId` and calls
+`resetJoinSequenceToSelf` on the forked doc before persisting it: the new
+branch's `joinSequence` ends up containing only the forking user, who is
+therefore its sole — and automatically authoritative — member. This isn't
+"start a fresh empty `joinSequence`": an empty array would leave the forking
+user themselves unrecorded, sorting last against nobody. It's the same array,
+reset to exactly one entry.
 
 ### Pruning: no
 
