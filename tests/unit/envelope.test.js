@@ -7,7 +7,8 @@ import {
 } from '../../src/toys.js'
 import {
   runInEnvelope, commitEnvelope, renderAfterCommit, runToyHandler,
-  isEnvelopeOpen,
+  runInEnvelopeSync, runToyHandlerSync, isEnvelopeOpen,
+  DERIVED_ORIGIN,
 } from '../../src/envelope.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -536,6 +537,92 @@ describe('runInEnvelope — async contract', () => {
     })
     expect(openDuringHandler).toBe(true)
     expect(isEnvelopeOpen()).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3.5b — synchronous envelope (TODO #11 / concurrency_branching.md): the
+// no-microtask path that lets a reaction fold into its triggering transaction.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('runInEnvelopeSync / runToyHandlerSync — synchronous contract', () => {
+  test('captures a synchronous mutation and returns records with no Promise', () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    // placeToy is async only because addToy fetches; do it eagerly here.
+    return placeToy(ydoc, yToys, 't1').then(() => {
+      const layerEl = renderLayer(yToys)
+      const toyEl   = layerEl.querySelector('[data-id="t1"]')
+
+      const records = runInEnvelopeSync(toyEl, () => {
+        toyEl.setAttribute('data-color', '#222')
+      })
+      // A plain array, synchronously — not a thenable.
+      expect(Array.isArray(records)).toBe(true)
+      expect(records.some(r => r.type === 'attributes')).toBe(true)
+
+      commitEnvelope(ydoc, toyEl, records)
+      expect(findToy(yToys, 't1').getAttribute('data-color')).toBe('#222')
+    })
+  })
+
+  test('throws (loud) if the handler is async, rather than silently dropping its late mutations', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await placeToy(ydoc, yToys, 't1')
+    const layerEl = renderLayer(yToys)
+    const toyEl   = layerEl.querySelector('[data-id="t1"]')
+
+    expect(() => runInEnvelopeSync(toyEl, async () => {})).toThrow(/synchronous handlers only/)
+    // Envelope bookkeeping must not leak on the throw path.
+    expect(isEnvelopeOpen()).toBe(false)
+  })
+
+  test('runToyHandlerSync commits under the given origin, in one transaction, no await', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await placeToy(ydoc, yToys, 't1')
+    const layerEl = renderLayer(yToys)
+    const toyEl   = layerEl.querySelector('[data-id="t1"]')
+
+    const origins = []
+    ydoc.on('afterTransaction', (tr) => origins.push(tr.origin))
+
+    const result = runToyHandlerSync(ydoc, yToys, layerEl, toyEl, () => {
+      toyEl.setAttribute('data-color', '#0ff')
+    }, { origin: DERIVED_ORIGIN })
+
+    expect(result.applied).toBe(1)
+    expect(findToy(yToys, 't1').getAttribute('data-color')).toBe('#0ff')
+    expect(origins).toContain(DERIVED_ORIGIN)
+  })
+
+  test('called inside an open transaction, its commit FOLDS in (nested collapse → one update)', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await placeToy(ydoc, yToys, 't1')
+    const layerEl = renderLayer(yToys)
+    const toyEl   = layerEl.querySelector('[data-id="t1"]')
+
+    let updates = 0
+    const onUpdate = () => { updates++ }
+    ydoc.on('update', onUpdate)
+    try {
+      ydoc.transact(() => {
+        // an outer write…
+        toyEl.setAttribute('data-color', '#111')
+        const outerRecords = runInEnvelopeSync(toyEl, () => {})
+        commitEnvelope(ydoc, toyEl, outerRecords)
+        // …plus a nested sync handler commit, all one transaction
+        runToyHandlerSync(ydoc, yToys, layerEl, toyEl, () => {
+          toyEl.setAttribute('data-color', '#222')
+        }, { origin: DERIVED_ORIGIN })
+      })
+    } finally {
+      ydoc.off('update', onUpdate)
+    }
+    expect(updates).toBe(1)
+    expect(findToy(yToys, 't1').getAttribute('data-color')).toBe('#222')
   })
 })
 

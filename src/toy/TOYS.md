@@ -180,9 +180,12 @@ directly, but two rules follow from it:
   (a tray rolling every die inside it), do it by *calling that toy's own
   menu handler* on it, the way `tray.roll_all` does — not by reaching in
   and mutating it directly.
-- **If your handler is async, return a Promise.** Handlers may do
-  `async` work, but the platform needs to know when you're done so it
-  can capture every mutation, including ones made after an `await`.
+- **Write synchronous handlers.** `menu` handlers, `initialize`, and
+  `contents_change_handler` all run and commit within a single tick — no
+  `await`, no `Promise`, no `setTimeout`. This is what lets your handler's
+  mutations and any tray reaction they trigger land as one atomic,
+  undo-together unit. An async handler is rejected outright rather than
+  silently losing whatever it does after its first `await`.
 
 ## Containment: your toy might not be top-level
 

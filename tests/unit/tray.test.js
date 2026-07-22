@@ -499,3 +499,106 @@ describe('tray_sum — "Roll All" menu action, end to end', () => {
     ).resolves.not.toThrow()
   })
 })
+
+describe('tray_sum — "Roll" / "Roll All" via invokeMenuActionSync — folded reaction', () => {
+  test('a lone die\'s own Roll folds its containing tray\'s recompute into the same transaction', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    Toys.reparentToy(ydoc, yToys, 'die1', 'tray1')
+
+    const layerEl = renderLayer(yToys)
+    await new Promise(r => setTimeout(r, 0))
+    const dieEl = layerEl.querySelector('[data-id="die1"]')
+
+    const dieActions = Toys.getMenuActions(dieEl)
+    const roll = dieActions.find(a => a.eventName === 'die_roll')
+    expect(roll).toBeTruthy()
+
+    let updates = 0
+    const onUpdate = () => { updates++ }
+    ydoc.on('update', onUpdate)
+    Toys.invokeMenuActionSync(ydoc, yToys, layerEl, dieEl, roll.namespace, roll.key)
+    ydoc.off('update', onUpdate)
+
+    // one transaction for the roll AND the tray's recompute together
+    expect(updates).toBe(1)
+
+    const dieValue = Number(dieEl.querySelector('tspan').textContent)
+    const trayEl = layerEl.querySelector('[data-id="tray1"]')
+    // no manual contents_change_handler call needed — the sum is already
+    // current, straight off Yjs, unlike the async invokeMenuAction path
+    // above which requires a separate recompute call.
+    expect(globalThis.tray.getValue(trayEl)).toBe(String(dieValue))
+  })
+
+  test('Roll All folds every rolled die plus the tray\'s own sum into one transaction', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'dieA', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'dieB', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    Toys.reparentToy(ydoc, yToys, 'dieA', 'tray1')
+    Toys.reparentToy(ydoc, yToys, 'dieB', 'tray1')
+
+    const layerEl = renderLayer(yToys)
+    await new Promise(r => setTimeout(r, 0))
+    const trayEl = layerEl.querySelector('[data-id="tray1"]')
+
+    const actions = Toys.getMenuActions(trayEl)
+    const rollAll = actions.find(a => a.key === 'Roll All')
+
+    let updates = 0
+    const onUpdate = () => { updates++ }
+    ydoc.on('update', onUpdate)
+    Toys.invokeMenuActionSync(ydoc, yToys, layerEl, trayEl, rollAll.namespace, rollAll.key)
+    ydoc.off('update', onUpdate)
+
+    expect(updates).toBe(1) // both dice + the sum, one atomic transaction
+
+    const dieA = Number(layerEl.querySelector('[data-id="dieA"]').querySelector('tspan').textContent)
+    const dieB = Number(layerEl.querySelector('[data-id="dieB"]').querySelector('tspan').textContent)
+    // trayEl was captured before the call; runContentsChangeCascadeSync
+    // rebuilds layerEl's DOM, so re-query for the tray's post-recompute
+    // element rather than reading the now-detached original reference.
+    const trayElAfter = layerEl.querySelector('[data-id="tray1"]')
+    expect(globalThis.tray.getValue(trayElAfter)).toBe(String(dieA + dieB))
+  })
+
+  test('a single Roll All is a single undo step, reverting both the die and the sum together', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    Toys.reparentToy(ydoc, yToys, 'die1', 'tray1')
+
+    let layerEl = renderLayer(yToys)
+    await new Promise(r => setTimeout(r, 0))
+    const originalFace = layerEl.querySelector('[data-id="die1"]').querySelector('tspan').textContent
+    // The manual reparentToy() above ran with no cascade wired (this test,
+    // unlike production, doesn't wire an observer) — so the tray's sum
+    // tspan is still at its as-placed default, not yet reflecting die1.
+    // That uncomputed value, not the die's face, is undo's correct target.
+    const originalSum = globalThis.tray.getValue(layerEl.querySelector('[data-id="tray1"]'))
+
+    const um = new Y.UndoManager(yToys, { trackedOrigins: new Set([null]), captureTimeout: 0 })
+
+    const trayEl  = layerEl.querySelector('[data-id="tray1"]')
+    const actions = Toys.getMenuActions(trayEl)
+    const rollAll = actions.find(a => a.key === 'Roll All')
+    Toys.invokeMenuActionSync(ydoc, yToys, layerEl, trayEl, rollAll.namespace, rollAll.key)
+
+    expect(um.undoStack.length).toBe(1) // roll + recompute, ONE undo step
+
+    um.undo()
+    layerEl = renderLayer(yToys) // this harness has no observer driving renders; re-render by hand
+
+    const revertedFace = layerEl.querySelector('[data-id="die1"]').querySelector('tspan').textContent
+    expect(revertedFace).toBe(originalFace) // die's face reverted...
+    // ...and the tray's own sum reverted to its OWN prior value in the
+    // SAME undo step (not left holding the rolled-to sum, and not
+    // recomputed fresh against the reverted face either — genuinely undone).
+    expect(globalThis.tray.getValue(layerEl.querySelector('[data-id="tray1"]'))).toBe(originalSum)
+  })
+})

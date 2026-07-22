@@ -18,11 +18,25 @@
  * tracked — rolls are genuine document changes the user should be able to
  * take back.
  *
- * Deliberately NOT tracked:
+ * Deliberately NOT tracked as their OWN undo step:
  *  - DERIVED_ORIGIN (a tray recomputing due to contents changes)
  *  - LIFECYCLE_ORIGIN (a toy's one-time initialize)
  * Those are downstream of a tracked action, never independent user intent —
  * see the origin constants in envelope.js.
+ *
+ * Note: "not tracked" is about a *standalone* derived transaction (reached
+ * from the observer, after its triggering transaction has already closed).
+ * When a reaction is folded into its triggering action instead — a drop
+ * into a tray, a die's Roll, a tray's Roll All, a toy's placement-time
+ * initialize() — the whole thing (the action's own commit plus whatever
+ * reaction it triggers) is one transaction. Each of those folded callsites
+ * opens its outer transact with no explicit origin, so the merged
+ * transaction's origin is null regardless of what origin the inner,
+ * now-nested commit would have used standalone (ENVELOPE_ORIGIN for a menu
+ * action, LIFECYCLE_ORIGIN for initialize) — a nested transact's origin
+ * argument is only honored on the call that actually opens the transaction;
+ * every nested call just reuses it. null is tracked, so the reaction still
+ * rides the action's undo step and reverses with it either way.
  *
  * TODO:
  * Remote peers' operations arrive under their provider's own origin (not
@@ -33,8 +47,10 @@
  *
  * One logical action must be one Yjs transaction to be one undo step.
  * Nested ydoc.transact() calls collapse into the outermost transaction, so
- * a multi-part action (e.g. reparentToy + applyMoveCommit for a drop) is
- * made atomic simply by wrapping both in one transact in app.js.
+ * a multi-part action (e.g. reparentToy + applyMoveCommit for a drop, plus
+ * the tray's synchronous contents_change reaction) is made atomic simply by
+ * wrapping all of it in one transact in app.js — the drop and the sum it
+ * produces undo together as a single step.
  *
  */
 

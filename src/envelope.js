@@ -124,6 +124,42 @@ export async function runInEnvelope(toyEl, fn) {
   return records
 }
 
+/**
+ * Synchronous sibling of runInEnvelope: run fn() while watching the toys
+ * layer, then return the raw MutationRecord[] with no Promise in between.
+ *
+ * runInEnvelope is async only so it can await an async handler; but its body
+ * already runs synchronously for a synchronous fn (the records are gathered
+ * before it returns), so the only thing the async wrapper adds for a sync
+ * handler is a microtask before the caller sees the records. That microtask
+ * is exactly what breaks nested-transaction collapse: a reaction committed a
+ * microtask later lands in its OWN Yjs transaction rather than folding into
+ * the one that triggered it. This variant keeps everything on the current
+ * tick so commitEnvelope's transact can nest into an already-open one.
+ *
+ * Synchronous handlers only: if fn returns a thenable we throw rather than
+ * silently drop the mutations it would make after its first await — a loud
+ * failure, not a silent fallback.
+ */
+export function runInEnvelopeSync(toyEl, fn) {
+  const scopeEl = toyEl.closest?.('#toys-layer') ?? toyEl.parentNode ?? toyEl
+  const records = []
+  const observer = new MutationObserver(muts => records.push(...muts))
+  observer.observe(scopeEl, MUTATION_OPTS)
+  _openCount++
+  try {
+    const result = fn()
+    if (result && typeof result.then === 'function') {
+      throw new Error('[envelope] runInEnvelopeSync: handler returned a Promise; synchronous handlers only')
+    }
+  } finally {
+    records.push(...observer.takeRecords())
+    observer.disconnect()
+    _openCount--
+  }
+  return records
+}
+
 // ── scope enforcement ─────────────────────────────────────────────────
 
 function isInScope(toyEl, node) {
@@ -364,5 +400,19 @@ export function renderAfterCommit(yToys, layerEl) {
  */
 export async function runToyHandler(ydoc, yToys, layerEl, toyEl, fn, opts = {}) {
   const records = await runInEnvelope(toyEl, fn)
+  return commitEnvelope(ydoc, toyEl, records, opts)
+}
+
+/**
+ * Synchronous sibling of runToyHandler. Same contract, no Promise: run a
+ * synchronous handler under the envelope and commit its mutations in one
+ * transaction, all on the current tick. commitEnvelope is already
+ * synchronous — the only async link was runInEnvelope, replaced here by
+ * runInEnvelopeSync — so when this is called from inside an already-open
+ * ydoc.transact, its commit nests and collapses into that transaction.
+ * Throws if fn is async.
+ */
+export function runToyHandlerSync(ydoc, yToys, layerEl, toyEl, fn, opts = {}) {
+  const records = runInEnvelopeSync(toyEl, fn)
   return commitEnvelope(ydoc, toyEl, records, opts)
 }
