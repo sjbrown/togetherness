@@ -312,20 +312,22 @@ not trapped, the network is optional" goals.
 
 Architecture already cooperates:
 
-- Rooms persist via `IndexeddbPersistence(`tt:${roomId}`, ydoc)`.
+- Rooms persist via `IndexeddbPersistence(tableId, ydoc)` — the table id
+  itself is already `tt-`-prefixed, so it's used directly as the database
+  name (no separate namespacing scheme).
 - `home.html` lists tables from the `localStorage` `tt_tables` registry
   (`touchTableRecord`).
 - `makeDoc()` is the single doc-construction seam.
 
-So a branch is: a **new `roomId`**, a **new `tt:`-keyed IndexedDB doc** seeded
-from the loser's forked state, and a `tt_tables` registry entry with the
-shown name. No new persistence machinery.
+So a branch is: a **new `roomId`**, a **new `tt-`-prefixed IndexedDB doc**
+seeded from the loser's forked state, and a `tt_tables` registry entry with
+the shown name. No new persistence machinery.
 
 The first, self-contained implementation step is a **"Duplicate (Fork)"
 button on each row of `home.html`'s table list**, alongside the existing
 `Delete` button. It reuses `loadRoomDoc(roomId)` (already loads a table's
 persisted doc from IndexedDB) to read the source doc, `Y.encodeStateAsUpdate`
-to snapshot it, writes that as the seed of a new `tt:${newRoomId}` IndexedDB
+to snapshot it, writes that as the seed of a new `tt-`-prefixed IndexedDB
 database, and appends a `tt_tables` registry entry. This exercises the
 copy-a-doc-into-a-new-table mechanics that branch escalation needs later,
 fully decoupled from causal-fork-point selection (this prototype forks the

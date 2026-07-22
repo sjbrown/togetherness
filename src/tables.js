@@ -8,8 +8,9 @@
  *     what a Togetherness document even is;
  *   - the 'tt_tables' localStorage registry (recently-visited tables: id,
  *     name, lastVisit) that home.html lists and index.html keeps current;
- *   - the per-table IndexedDB database ('tt:<tableId>') holding the
- *     table's actual Yjs document updates, via y-indexeddb.
+ *   - the per-table IndexedDB database (named by the table id itself,
+ *     already `tt-`-prefixed — see generateTableId) holding the table's
+ *     actual Yjs document updates, via y-indexeddb.
  *
  * Shared by home.html (creating / listing / deleting / forking tables) and
  * index.html (loading / persisting the live table a player is at). Every
@@ -70,11 +71,10 @@ function initTableDoc(ydoc, tableId) {
 }
 
 // ── IndexedDB database naming ───────────────────────────────────────────
-
-/** The y-indexeddb database name for a given table id. */
-function tableDbName(tableId) {
-  return `tt:${tableId}`;
-}
+//
+// No separate namespacing helper here — a table id already carries the
+// `tt-` prefix (see generateTableId), so it's used directly as the
+// IndexedDB database name.
 
 /**
  * Open (or create) a table's IndexedDB persistence for a live Y.Doc. This
@@ -82,7 +82,7 @@ function tableDbName(tableId) {
  * for a one-shot read of an at-rest table, use loadTableDoc() instead.
  */
 function openTablePersistence(tableId, ydoc) {
-  return new IndexeddbPersistence(tableDbName(tableId), ydoc);
+  return new IndexeddbPersistence(tableId, ydoc);
 }
 
 /**
@@ -165,7 +165,7 @@ function touchTableRecord(tableId, { name } = {}) {
  */
 function deleteTable(tableId) {
   saveTables(loadTables().filter(t => t.id !== tableId));
-  indexedDB.deleteDatabase(tableDbName(tableId));
+  indexedDB.deleteDatabase(tableId);
 }
 
 // ── Table document access ───────────────────────────────────────────────
@@ -180,7 +180,7 @@ function deleteTable(tableId) {
 async function loadTableDoc(tableId) {
   const ydoc = makeDoc();
   await new Promise((resolve, reject) => {
-    const req = indexedDB.open(tableDbName(tableId));
+    const req = indexedDB.open(tableId);
     req.onerror         = () => reject(req.error);
     req.onupgradeneeded = () => resolve(); // database doesn't exist yet
     req.onsuccess       = () => {
@@ -260,7 +260,6 @@ function randSlug() {
 export const tablesAPI = {
   makeDoc,
   initTableDoc,
-  tableDbName,
   openTablePersistence,
   openTablePersistenceSynced,
   getYDoc,

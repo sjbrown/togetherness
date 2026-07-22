@@ -1609,23 +1609,13 @@ const App = {
   canUndo: () => UndoRedo.canUndo(),
   canRedo: () => UndoRedo.canRedo(),
   exportSVG: () => {
-    const clone = Storage.buildExportSvg(_svgEl, { yToys: _yToys, yDrawing: _yDrawing });
-    if (!clone.getAttribute('viewBox')) {
-      const w = _svgEl.clientWidth  || 120;
-      const h = _svgEl.clientHeight || 120;
-      clone.setAttribute('viewBox', `0 0 ${w} ${h}`);
-    }
-    clone.setAttribute('xmlns',          'http://www.w3.org/2000/svg');
-    clone.setAttribute('xmlns:xlink',    'http://www.w3.org/1999/xlink');
-    clone.setAttribute('xmlns:inkscape', 'http://www.inkscape.org/namespaces/inkscape');
-    clone.querySelector('#toys-layer')?.setAttribute('inkscape:groupmode', 'layer');
-    clone.querySelector('#drawing-layer')?.setAttribute('inkscape:groupmode', 'layer');
+    const clone = Storage.buildExportSvg(_svgEl, _ydoc);
     const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
     const blob = new Blob([clone.outerHTML], { type: 'image/svg+xml' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = `tt-${_tableId}-${dateStr}.svg`;
+    a.download = `${_tableId}-${dateStr}.svg`;
     a.click();
     URL.revokeObjectURL(url);
     UI.toast('SVG exported');
@@ -1647,8 +1637,7 @@ const App = {
 
       let result;
       _ydoc.transact(() => {
-        result = Storage.populateFromSvgDoc(svgDoc.documentElement,
-          { yMeta: _yMeta, yToys: _yToys, yDrawing: _yDrawing });
+        result = Storage.populateFromSvgDoc(svgDoc.documentElement, _ydoc);
       });
       const { toyCount, drawCount, invalidToyEls } = result;
 

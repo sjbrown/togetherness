@@ -179,7 +179,7 @@ Resolution model:
  * **Branch escalation:** non-trivial divergence (in-place assertion can't
    yield a coherent state, or a wide causal gap — the prolonged
    network-partition case) forks the loser's *full divergent `Y.Doc`* into
-   a new IndexedDB-backed branch table (`tt:`-keyed, new `roomId`, `tt_tables`
+   a new IndexedDB-backed branch table (`tt-`-prefixed id, new `roomId`, `tt_tables`
    entry) and shows a blocking **Acknowledge dialog** — NOT a toast.
    Dialog offers: join the authoritative table (branch preserved,
    reopenable from `home.html`) or keep working on the branch. No replay of

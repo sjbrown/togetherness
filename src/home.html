@@ -877,15 +877,11 @@ async function seedTable(tableId, sampleSvgEl) {
   // (single network fetch, so this resolves almost immediately in practice).
   await samplerDiceReady;
 
-  const ydoc     = await tables.getYDoc(tableId);
-  const yMeta    = ydoc.getMap('meta');
-  const yToys    = ydoc.getXmlFragment('toys');
-  const yDrawing = ydoc.getXmlFragment('drawing');
-
+  const ydoc = await tables.getYDoc(tableId);
   ydoc.transact(() => {
     // Sampler templates carry a decorative rotation on each toy <g> for
     // homepage visual flair — not part of the canonical seeded document.
-    populateFromSvgDoc(sampleSvgEl, { yMeta, yToys, yDrawing }, { stripToyDecorative: true });
+    populateFromSvgDoc(sampleSvgEl, ydoc, { stripToyDecorative: true });
   });
 
   // ensure the doc is synced to Indexeddb before we navigate away
