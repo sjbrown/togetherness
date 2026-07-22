@@ -25,7 +25,8 @@ const D6_SVG         = fs.readFileSync(path.join(TOY_DIR, 'dice_d6.svg'), 'utf8'
 const DICE_UTILS_JS  = fs.readFileSync(path.join(TOY_DIR, 'js/dice_utils.js'), 'utf8')
 
 // Local accessor for the toys fragment + meta map. The production code creates
-// these via makeDoc() in app.js; tests just need a thin equivalent.
+// these via ydoc.get*() directly (see tables.js's makeDoc); tests just need a
+// thin equivalent.
 const getToysLayer = (ydoc) => ({
   yToys: ydoc.getXmlFragment('toys'),
 })

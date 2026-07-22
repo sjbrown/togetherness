@@ -27,7 +27,8 @@ import { SHAPE_TYPES }                            from './drawing.js';
 import { TOOLS as TOY_TOOLS, addToy, findToy, newToyId,
          getMenuActions, activateToyScripts,
          findDropTargetTray, reparentToy } from './toys.js';
-import { DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js';
+import { DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js'
+import { getReactionLog, scanForConflicts } from './conflict.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
 import { BOUNPOS_TYPES,
          addPositionSet, createPositionSetElement,
@@ -65,7 +66,7 @@ const DEFAULT_BACKGROUNDS = [
 
 // ── Internal app state ────────────────────────────────────────────────────────
 let _ydoc, _yMeta, _yToys, _yDrawing,
-    _yBounPos, _yJoinSequence,
+    _yBounPos, _yJoinSequence, _yReactionLog,
     _awareness, _provider;
 
 // Layers — the canonical LayerAPI dispatch table, built once at boot() once
@@ -82,7 +83,7 @@ const _layerVisibility = {
   'toys':                 true,
   'drawing':              true,
 };
-let _myId, _myGrad, _roomId;
+let _myId, _myGrad, _tableId;
 let _svgEl;
 let _activeLayer  = 'toys';
 
@@ -305,29 +306,20 @@ function buildToolRegistry() {
   _toolsByLayer['drawing'] = [SELECT_TOOL, ...drawTools];
 }
 
-export function makeDoc() {
-  const ydoc           = new Y.Doc();
-  const yToys          = ydoc.getXmlFragment('toys');
-  const yDrawing       = ydoc.getXmlFragment('drawing');
-  const yBounPos       = ydoc.getXmlFragment('boundaries');
-  const yMeta          = ydoc.getMap('meta');
-  const yJoinSequence  = ydoc.getArray('joinSequence');
-  return { ydoc, yMeta, yToys, yDrawing, yBounPos, yJoinSequence };
-}
-
 // ── Boot ──────────────────────────────────────────────────────────────────────
-export function boot({ ydoc, yMeta, yToys, yDrawing, yBounPos, yJoinSequence, awareness, provider, myId, myGrad, roomId, svgElement, displayName }) {
+export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, svgElement, displayName }) {
   _ydoc           = ydoc;
-  _yMeta          = yMeta;
-  _yToys          = yToys;
-  _yDrawing       = yDrawing;
-  _yBounPos       = yBounPos;
-  _yJoinSequence  = yJoinSequence;
+  _yMeta          = ydoc.getMap('meta');
+  _yToys          = ydoc.getXmlFragment('toys');
+  _yDrawing       = ydoc.getXmlFragment('drawing');
+  _yBounPos       = ydoc.getXmlFragment('boundaries');
+  _yJoinSequence  = ydoc.getArray('joinSequence');
+  _yReactionLog   = getReactionLog(ydoc);
   _awareness  = awareness;
   _provider   = provider;
   _myId       = myId;
   _myGrad    = myGrad;
-  _roomId     = roomId;
+  _tableId    = tableId;
   _svgEl      = svgElement ?? document.querySelector('#stage svg') ?? document.getElementById('canvas');
 
   // Layers — the canonical LayerAPI dispatch table, keyed by the data-module
@@ -353,7 +345,10 @@ export function boot({ ydoc, yMeta, yToys, yDrawing, yBounPos, yJoinSequence, aw
 
   // UI — needs App; attaches panel/menu/pill listeners
   UI.init(App);
-  UI.setIdentity({ projectName: 'togetherness', userId: displayName, roomId });
+  // ui.js's UIData/getStatusData still key this as `roomId` — that's its
+  // own public data shape, unchanged here; only app.js's own vocabulary is
+  // "table" now.
+  UI.setIdentity({ projectName: 'togetherness', userId: displayName, roomId: tableId });
 
   // Keyboard shortcuts
   window.addEventListener('keydown', onKeyDown);
@@ -367,6 +362,7 @@ export function boot({ ydoc, yMeta, yToys, yDrawing, yBounPos, yJoinSequence, aw
   _yToys.observe(onDocChanged);
   _yDrawing.observe(onDocChanged);
   _yBounPos.observe(onDocChanged);
+  _yReactionLog.observe(onReactionLogChanged);
   _yMeta.observe(onMetaChanged);
   _awareness.on('change', onPresenceChanged);
 
@@ -608,6 +604,41 @@ function dispatchContentsChangeCascade(events) {
     _dispatchingContentsChange = false;
   }
 }
+
+// Post-merge overlap scan (TODO #11 step 4): _yReactionLog gains a new
+// entry every time a qualifying envelope commits — ours (this transaction)
+// or a remote peer's (once their commit syncs in). Either way this
+// observer fires, so it's the one place that sees every reaction bundle
+// as it lands, local or remote. For each newly-added bundle, scan the
+// rest of the log for a different, causally-concurrent author whose
+// touched-set overlaps — exactly the situation the derived-write garbling
+// bug comes from.
+//
+// Detection only, for now: a hit is logged (console + activity log), not
+// acted on. Deliberately does NOT set/consult _dispatchingContentsChange —
+// this observer only reads _yReactionLog and yToys' own state to log a
+// message; it makes no Yjs writes of its own, so it can't re-trigger
+// onToysChanged's cascade dispatch or race that flag. Resolving a detected
+// conflict (fast-path in-place assertion, or branch escalation) is TODO
+// #11 steps 5/6 — this only reports that one was found.
+function onReactionLogChanged(event, transaction) {
+  const added = [];
+  event.changes.added.forEach(item => {
+    item.content.getContent().forEach(bundle => added.push(bundle));
+  });
+  if (!added.length) return;
+
+  const all = _yReactionLog.toArray();
+  for (const bundle of added) {
+    const conflicts = scanForConflicts(all, bundle);
+    for (const other of conflicts) {
+      const msg = `conflict detected: ${bundle.touched.length + other.touched.length} touched node(s) written concurrently by peers ${bundle.clientID} and ${other.clientID}`;
+      console.warn('[conflict]', msg, { bundle, other });
+      App.addLog(msg, 'remote');
+    }
+  }
+}
+
 function onDrawingChanged(events, transaction) {
   // Log remote structural changes (add / delete). Attribute changes (moves)
   // arrive here too via observeDeep but don't need logging — just renderDoc.
@@ -725,7 +756,7 @@ const App = {
     });
     return out;
   },
-  getRoomId:       () => _roomId,
+  getTableId:      () => _tableId,
   getSelectedIds:  () => Object.keys(_myClaims),
   getBBox:  (id) => {
     const svgEl = _svgEl.querySelector(`[data-id="${id}"]`);
@@ -1594,7 +1625,7 @@ const App = {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = `tt-${_roomId}-${dateStr}.svg`;
+    a.download = `tt-${_tableId}-${dateStr}.svg`;
     a.click();
     URL.revokeObjectURL(url);
     UI.toast('SVG exported');

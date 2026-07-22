@@ -14,7 +14,8 @@ import {
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
 // Local accessor for the toys fragment — production code creates this via
-// makeDoc() in app.js; tests just need a thin equivalent.
+// ydoc.get*() directly (see tables.js's makeDoc); tests just need a thin
+// equivalent.
 const getToysLayer = (ydoc) => ({ yToys: ydoc.getXmlFragment('toys') })
 
 // Same fixture as toys.test.js: a group with a circle, a text>tspan, and a

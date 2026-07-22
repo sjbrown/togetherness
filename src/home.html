@@ -866,36 +866,30 @@ const samplerDiceReady = renderSamplerDice().catch(err => {
 
 // ── Seed a new table from a sample SVG into IndexedDB ────────────────────────
 // Uses the shared storage.js import machinery (also used by app.js's
-// importSVG) to read background/toys/drawing from a sampler template into a
-// fresh Y.Doc, then persists it via tables.js's openTablePersistence before
-// navigating.
+// importSVG) to read background/toys/drawing from a sampler template into
+// the live doc tables.js's getYDoc() hands back — the same doc-construction
+// + persistence path index.html uses to open this table later. getYDoc
+// stamps docId/created/schemaVersion itself, since this is a brand-new
+// table id with nothing yet in IndexedDB; nothing here needs to check for
+// that.
 async function seedTable(tableId, sampleSvgEl) {
-  const CURRENT_SCHEMA = 4;
-
   // Guard against a click landing before the sampler dice finish rendering
   // (single network fetch, so this resolves almost immediately in practice).
   await samplerDiceReady;
 
-  const ydoc         = new Y.Doc();
-  const yMeta        = ydoc.getMap('meta');
-  const yToys        = ydoc.getXmlFragment('toys');
-  const yDrawing     = ydoc.getXmlFragment('drawing');
+  const ydoc     = await tables.getYDoc(tableId);
+  const yMeta    = ydoc.getMap('meta');
+  const yToys    = ydoc.getXmlFragment('toys');
+  const yDrawing = ydoc.getXmlFragment('drawing');
 
   ydoc.transact(() => {
-    yMeta.set('docId',         tableId);
-    yMeta.set('created',       new Date().toISOString());
-    yMeta.set('schemaVersion', CURRENT_SCHEMA);
     // Sampler templates carry a decorative rotation on each toy <g> for
     // homepage visual flair — not part of the canonical seeded document.
     populateFromSvgDoc(sampleSvgEl, { yMeta, yToys, yDrawing }, { stripToyDecorative: true });
   });
 
-  // Persist to IndexedDB and wait for it to flush before navigating.
-  await new Promise((resolve, reject) => {
-    const persistence = tables.openTablePersistence(tableId, ydoc);
-    persistence.on('synced', resolve);
-    persistence.on('error',  reject);
-  });
+  // ensure the doc is synced to Indexeddb before we navigate away
+  await tables.openTablePersistenceSynced(tableId, ydoc);
 }
 
 // ── Wire sampler row clicks to static HTML rows ──────────────────────────────

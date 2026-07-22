@@ -1,8 +1,11 @@
 /**
- * tables.js — table registry + per-table Yjs document persistence.
+ * tables.js — table registry + per-table Yjs document construction and
+ * persistence.
  *
- * Owns the two pieces of local, this-device-only state that let someone
- * come back to a table across sessions:
+ * Owns three things:
+ *   - document construction (makeDoc) — every fresh Y.Doc in the app,
+ *     table or scratch, is built here, so there's one place that knows
+ *     what a Togetherness document even is;
  *   - the 'tt_tables' localStorage registry (recently-visited tables: id,
  *     name, lastVisit) that home.html lists and index.html keeps current;
  *   - the per-table IndexedDB database ('tt:<tableId>') holding the
@@ -23,6 +26,49 @@ import { resetJoinSequenceToSelf } from './authority.js';
 const TABLES_KEY  = 'tt_tables';
 const MAX_TABLES  = 20;
 
+// Table document schema version. Private to this module — home.html and
+// index.html both used to keep their own copy and stamp it into yMeta by
+// hand; initTableDoc() (below) is now the one place that does it, so
+// there's nothing left for a caller to import this for.
+const CURRENT_SCHEMA = 4;
+
+// ── Document construction ───────────────────────────────────────────────
+
+/**
+ * Create a fresh Yjs document. Every shared type it will ever hold —
+ * yMeta (ydoc.getMap('meta')), yToys (ydoc.getXmlFragment('toys')),
+ * yDrawing (ydoc.getXmlFragment('drawing')), yBounPos
+ * (ydoc.getXmlFragment('boundaries')), yJoinSequence
+ * (ydoc.getArray('joinSequence')), yReactionLog (see conflict.js's
+ * getReactionLog) — is obtained lazily and idempotently straight off the
+ * returned ydoc via its own get*() methods, wherever it's needed.
+ * ydoc.get*(name) always returns the SAME shared instance regardless of
+ * who asks or when, so there's nothing makeDoc() itself needs to touch or
+ * hand back beyond the doc.
+ */
+function makeDoc() {
+  return new Y.Doc();
+}
+
+/**
+ * Stamp a table document's identity into yMeta: docId, created timestamp,
+ * and the current schema version. Called from getYDoc() (below) whenever
+ * a synced doc turns out to have no docId yet — a brand-new table, either
+ * home.html seeding one for the first time or index.html entered directly
+ * by hash with nothing seeded. Exported too, for the rare caller that
+ * builds a doc without going through getYDoc (forkTable resets an
+ * existing docId's joinSequence rather than reinitializing identity, so
+ * it doesn't need this).
+ */
+function initTableDoc(ydoc, tableId) {
+  const yMeta = ydoc.getMap('meta');
+  ydoc.transact(() => {
+    yMeta.set('docId',         tableId);
+    yMeta.set('created',       new Date().toISOString());
+    yMeta.set('schemaVersion', CURRENT_SCHEMA);
+  });
+}
+
 // ── IndexedDB database naming ───────────────────────────────────────────
 
 /** The y-indexeddb database name for a given table id. */
@@ -37,6 +83,51 @@ function tableDbName(tableId) {
  */
 function openTablePersistence(tableId, ydoc) {
   return new IndexeddbPersistence(tableDbName(tableId), ydoc);
+}
+
+/**
+ * Same as openTablePersistence, but awaits the initial sync before
+ * resolving — the `persistence.on('synced', resolve)` /
+ * `persistence.on('error', reject)` wrapper that forkTable (below),
+ * home.html's table-seeding, and (in spirit) index.html's own boot
+ * sequence all need: "persist this doc, then don't proceed until it's
+ * actually flushed." Callers that just want "persist and move on" (a
+ * fresh doc with nothing else to do afterward) can await this and ignore
+ * the return value; callers that also want to keep listening for further
+ * 'synced' events across the page's lifetime still get the
+ * IndexeddbPersistence instance back.
+ */
+async function openTablePersistenceSynced(tableId, ydoc) {
+  const persistence = openTablePersistence(tableId, ydoc);
+  await new Promise((resolve, reject) => {
+    persistence.on('synced', resolve);
+    persistence.on('error',  reject);
+  });
+  return persistence;
+}
+
+/**
+ * Get a table's live Y.Doc: a fresh doc (makeDoc()) wired to this table's
+ * IndexedDB persistence, awaited until the initial replay has landed — a
+ * live, ongoing session (further local changes persist automatically),
+ * unlike loadTableDoc()'s one-shot read into a doc nothing keeps syncing.
+ * This is the doc-construction half of what index.html needs to boot a
+ * live table; WebRTC (a separate concern — connecting to OTHER peers, not
+ * this device's own persisted copy) is wired up by the caller afterward.
+ *
+ * If the synced doc turns out to have no docId yet (a brand-new table —
+ * either home.html's seedTable populating one for the first time, or
+ * index.html entered directly by hash with nothing seeded), stamps it via
+ * initTableDoc() before returning. Callers never need to check this
+ * themselves.
+ */
+async function getYDoc(tableId) {
+  const ydoc = makeDoc();
+  await openTablePersistenceSynced(tableId, ydoc);
+  if (!ydoc.getMap('meta').get('docId')) {
+    initTableDoc(ydoc, tableId);
+  }
+  return ydoc;
 }
 
 // ── 'tt_tables' registry (recently-visited tables) ──────────────────────
@@ -87,7 +178,7 @@ function deleteTable(tableId) {
  * table's database doesn't exist yet.
  */
 async function loadTableDoc(tableId) {
-  const ydoc = new Y.Doc();
+  const ydoc = makeDoc();
   await new Promise((resolve, reject) => {
     const req = indexedDB.open(tableDbName(tableId));
     req.onerror         = () => reject(req.error);
@@ -136,16 +227,12 @@ async function forkTable(sourceTableId, forkedTableId, forkingUserId) {
   const update    = Y.encodeStateAsUpdate(sourceDoc);
   sourceDoc.destroy();
 
-  // Write the copy via openTablePersistence — the same path a live table
-  // uses
-  const forkDoc = new Y.Doc();
+  // Write the copy via openTablePersistenceSynced — the same path a live
+  // table uses
+  const forkDoc = makeDoc();
   Y.applyUpdate(forkDoc, update);
   resetJoinSequenceToSelf(forkDoc, forkDoc.getArray('joinSequence'), forkingUserId);
-  await new Promise((resolve, reject) => {
-    const persistence = openTablePersistence(forkedTableId, forkDoc);
-    persistence.on('synced', resolve);
-    persistence.on('error',  reject);
-  });
+  await openTablePersistenceSynced(forkedTableId, forkDoc);
   forkDoc.destroy();
 }
 
@@ -171,8 +258,12 @@ function randSlug() {
 }
 
 export const tablesAPI = {
+  makeDoc,
+  initTableDoc,
   tableDbName,
   openTablePersistence,
+  openTablePersistenceSynced,
+  getYDoc,
   loadTables,
   saveTables,
   touchTableRecord,

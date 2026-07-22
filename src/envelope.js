@@ -36,26 +36,19 @@
 import * as Y from 'yjs'
 import { yNodeFor, registerYNode, render as renderToysLayer } from './toys.js'
 import { domToY } from './storage.js'
+import { ENVELOPE_ORIGIN, DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './origins.js'
+import { touchedSetFromRecords, recordReactionBundle } from './conflict.js'
 
 const XLINK_NS = 'http://www.w3.org/1999/xlink'
 
 // ── Yjs transaction origins ──────────────────────────────────
 //
 // Every envelope commit tags its Yjs transaction with an origin so the
-// UndoManager can decide what belongs on the undo stack.
-//
-//   ENVELOPE_ORIGIN — a toy handler ran: a die's Roll, a tray's Roll All.
-//
-//   DERIVED_ORIGIN — a tray recomputed its own elements due to something
-//     in its contents_group changing.
-//
-//   LIFECYCLE_ORIGIN — a toy's one-time initialize() side effects at
-//     placement. If the placement is undone the whole toy is removed, so
-//     these writes never need an independent undo step either. Untracked.
-//
-export const ENVELOPE_ORIGIN  = 'envelope'
-export const DERIVED_ORIGIN   = 'toy-derived'
-export const LIFECYCLE_ORIGIN = 'toy-lifecycle'
+// UndoManager can decide what belongs on the undo stack, and conflict.js
+// can decide whether to record a touched-set bundle. See origins.js for
+// what each one means; re-exported here since most callers already import
+// DERIVED_ORIGIN / LIFECYCLE_ORIGIN from this module.
+export { ENVELOPE_ORIGIN, DERIVED_ORIGIN, LIFECYCLE_ORIGIN }
 
 // Diagnostic strictness — opt-in via ?debug=1 in the URL, same convention as
 // app.js. A function (not a cached const) so tests can toggle it per-case
@@ -329,23 +322,35 @@ function applyRecord(record) {
  * any out-of-scope mutations were found, after all of them have been
  * reverted — useful during toy-script development.
  *
- * Returns { applied, violations } — violations is the list of reverted
- * out-of-scope records, for callers that want to surface something to the
- * user beyond the console warning.
+ * For qualifying origins (ENVELOPE_ORIGIN, DERIVED_ORIGIN), also builds
+ * this commit's touched-set from the in-scope records and records it as a
+ * reaction bundle (see conflict.js) — inside this same transaction, so the
+ * bundle is atomic with the reaction it describes.
+ *
+ * Returns { applied, violations, bundle } — violations is the list of
+ * reverted out-of-scope records, for callers that want to surface
+ * something to the user beyond the console warning; bundle is the
+ * recorded reaction bundle, or null if this origin doesn't qualify (or
+ * nothing in-scope was actually touched).
  */
 export function commitEnvelope(ydoc, toyEl, records, opts = {}) {
   const debug      = opts.debug ?? urlDebugFlag()
   const origin     = opts.origin ?? ENVELOPE_ORIGIN
   const violations = []
+  const inScope    = []
+  let bundle       = null
 
-  ydoc.transact(() => {
+  ydoc.transact((tr) => {
     for (const record of records) {
       if (!isInScope(toyEl, record.target)) {
         violations.push(record)
         continue
       }
       applyRecord(record)
+      inScope.push(record)
     }
+    const touched = touchedSetFromRecords(inScope)
+    bundle = recordReactionBundle(ydoc, tr, origin, touched)
   }, origin)
 
   // Reverse order: each record's oldValue/nextSibling is only correct
@@ -361,7 +366,7 @@ export function commitEnvelope(ydoc, toyEl, records, opts = {}) {
     throw new Error(`[envelope] ${violations.length} out-of-scope mutation(s) from toy handler`)
   }
 
-  return { applied: records.length - violations.length, violations }
+  return { applied: records.length - violations.length, violations, bundle }
 }
 
 // ── post-commit render policy ─────────────────────────────────────────

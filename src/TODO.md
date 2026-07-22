@@ -221,9 +221,27 @@ a silently-dropped resize loser is acceptable and gets no toast.
     otherwise every player who was ever on the source table would carry
     over and outrank the forking user on their own new branch. Not yet
     consulted by any conflict-resolution logic; that's step 4/5.
- 4. Touched-set construction + post-merge overlap scan (hook relative to
-    `onToysChanged` / `dispatchContentsChangeCascade`; mind the
-    `_dispatchingContentsChange` reentrancy guard).
+ 4. ✅ **Done.** Touched-set construction + post-merge overlap scan —
+    `conflict.js` (`touchedSetFromRecords`, `recordReactionBundle`,
+    `areConcurrent`, `touchedSetsOverlap`, `scanForConflicts`) plus a small
+    `origins.js` split-out (avoids an envelope.js↔conflict.js import
+    cycle). `commitEnvelope` (envelope.js) now builds the touched-set from
+    its in-scope records and records a reaction bundle — `{clientID,
+    clock, beforeState, touched, origin, ts}` — into a new synced
+    `reactionLog` `Y.Array`, inside the SAME transaction as the reaction
+    itself (atomic, same reasoning as step 2). Only ENVELOPE_ORIGIN and
+    DERIVED_ORIGIN commits qualify; LIFECYCLE_ORIGIN is skipped (a fresh
+    placement's own subtree can't overlap anything). Node identity for the
+    touched-set is each Yjs node's own backing Item id ({client, clock} —
+    the same mechanism Yjs's `createRelativePosition` uses internally),
+    stable across replicas once synced. `app.js` observes `_yReactionLog`
+    (`onReactionLogChanged`) and runs `scanForConflicts` against every
+    newly-added bundle — local or remote — logging a hit via
+    `App.addLog`/`console.warn`. Verified end-to-end against two real
+    synced `Y.Doc` replicas reproducing the canonical race (same result
+    slot → flagged; different result slots → not flagged) in
+    `tests/unit/conflict.test.js`. Detection only — no resolution yet;
+    that's step 5.
  5. Fast-path in-place resolution (winner-assertion) + quiet log line.
  6. Branch escalation predicate + fork wiring (reusing step 1's copy
     mechanics, triggered from a live room instead of home.html) +

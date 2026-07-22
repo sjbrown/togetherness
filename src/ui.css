@@ -168,7 +168,7 @@ html, body {
 .idbar-project { font-family: var(--font-display); font-size: 14px; color: var(--text); letter-spacing: .02em; white-space: nowrap; text-decoration: none; cursor: pointer; }
 .idbar-project:hover { color: var(--primary); }
 .idbar-user    { font-size: 11px; color: var(--primary); font-weight: 600; white-space: nowrap; }
-.idbar-room    { font-size: 11px; color: var(--text-3); font-family: ui-monospace, Menlo, monospace; white-space: nowrap; margin-left: auto; }
+.idbar-table   { font-size: 11px; color: var(--text-3); font-family: ui-monospace, Menlo, monospace; white-space: nowrap; margin-left: auto; }
 .idbar-sep     { width: 0.5px; height: 16px; background: var(--border-2); flex-shrink: 0; }
 
 /* Desktop: small card, top-left, slides in from left */
@@ -185,7 +185,7 @@ html, body {
   }
   #idbar.visible { transform: translateX(0); }
   .idbar-sep     { width: 100%; height: 0.5px; margin: 2px 0; }
-  .idbar-room    { margin-left: 0; }
+  .idbar-table   { margin-left: 0; }
 }
 
 /* ── Toasts ───────────────────────────────────────────────── */

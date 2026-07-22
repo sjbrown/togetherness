@@ -186,6 +186,53 @@ slot they both wrote, not for sharing a container. Inferring "touched a node ⇒
 touched its descendants" would produce false positives on exactly the
 independent-drop case that must stay conflict-free.
 
+### Implemented in `conflict.js` (+ a `origins.js` split-out)
+
+- **Node identity:** each Yjs node's own backing Item id (`{client, clock}`)
+  — the same mechanism Yjs's own `createRelativePosition` uses internally.
+  Stable across replicas once synced, so a touched-set built on one peer can
+  be compared against one built on another without any app-level id scheme.
+  `touchedSetFromRecords(records)` walks the in-scope records exactly as
+  described above and returns a `Map<idKeyString, {client, clock}>`.
+- **The bundle:** `commitEnvelope` (`envelope.js`) calls
+  `recordReactionBundle(ydoc, tr, origin, touched)` from *inside* the same
+  `ydoc.transact(...)` that applied the reaction's records — atomic with the
+  reaction, per "Preliminary: placement + reaction in ONE transaction"
+  above. A bundle is `{clientID, clock, beforeState, touched, origin, ts}`:
+  `clientID`/`clock` are this commit's own causal stamp (`clock` read via
+  `Y.getState(ydoc.store, ydoc.clientID)` right after the reaction's ops
+  landed, since `Transaction.afterState` isn't populated yet inside an open
+  transact() call); `beforeState` (`tr.beforeState`, a full state vector) is
+  the causal-knowledge boundary this commit started from. Only
+  `ENVELOPE_ORIGIN` and `DERIVED_ORIGIN` commits qualify — `LIFECYCLE_ORIGIN`
+  is skipped, since a placement's one-time `initialize()` only ever touches
+  a freshly-created toy's own fresh subtree, which nothing else has seen yet
+  and so can never overlap with another peer's concurrent touched-set.
+  Bundles live in a new synced `reactionLog` `Y.Array` (`getReactionLog`).
+- **Concurrency test:** two bundles are concurrent
+  (`areConcurrent(a, b)`) if they have different authors and neither's
+  `beforeState` covers the other's `{clientID, clock}` stamp — i.e. neither
+  peer had integrated the other's commit when its own began. Combined with
+  `touchedSetsOverlap` (set intersection on the touched-set keys),
+  `scanForConflicts(reactionLogEntries, newBundle)` returns every existing
+  bundle that conflicts with a newly-added one.
+- **The scan hook:** `app.js` observes the synced `reactionLog` directly
+  (`onReactionLogChanged`, wired in `boot()` alongside the other CRDT
+  observers) rather than hooking `onToysChanged` /
+  `dispatchContentsChangeCascade` as originally sketched — every commit that
+  qualifies (local or remote) always appends to `reactionLog`, so watching
+  that array directly sees exactly the events that matter, with no need to
+  duplicate origin-filtering logic that already lives in `conflict.js`. It
+  makes no Yjs writes of its own (detection only, for now), so it doesn't
+  need to consult or set `_dispatchingContentsChange` at all.
+- **Status: detection only.** A hit is logged (`console.warn` +
+  `App.addLog`); nothing is resolved yet. Fast-path in-place resolution and
+  branch escalation are steps 5/6.
+- **Verified end-to-end** in `tests/unit/conflict.test.js`, including two
+  real synced `Y.Doc` replicas driven through the actual production
+  `commitEnvelope` path (not hand-built bundles): two peers writing the same
+  result slot are flagged; two peers writing different slots are not.
+
 ---
 
 ## Authority ordering (who wins)

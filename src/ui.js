@@ -576,7 +576,7 @@ function gatherToolsData() {
   };
 }
 function gatherPeersData() {
-  return { peers: App.getPeers(), offline: App.isOffline(), roomId: App.getRoomId() };
+  return { peers: App.getPeers(), offline: App.isOffline(), roomId: App.getTableId() };
 }
 function gatherLayersData() {
   const active = App.getActiveLayer();
