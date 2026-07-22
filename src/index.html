@@ -42,7 +42,7 @@
   <a class="idbar-project" href="home.html">Togetherness Table</a>
   <span class="idbar-sep"></span>
   <span class="idbar-user">me · ????</span>
-  <span class="idbar-room">#????</span>
+  <span class="idbar-table">#????</span>
 </div>
 
 <!-- ── Toasts ─────────────────────────────────────────────────────────────── -->
@@ -175,7 +175,6 @@ import * as UI                  from '/ui.js';
 import { getIdentity }               from './user.js';
 import { dragPlaceholderFilterSVG, snapPointGradientSVG }  from './defs.js';
 import { tablesAPI as tables } from './tables.js';
-import { ensureJoined }        from './authority.js';
 
 // Inject shared SVG defs (filters etc.) into the canvas <defs> element.
 document.querySelector('#canvas defs')
@@ -215,7 +214,7 @@ tables.touchTableRecord(tableId);
 // joinSequence (a returning peer's own earlier entry) before deciding
 // whether to append, so a reload doesn't bump a peer to the back of the
 // line.
-ensureJoined(ydoc, ydoc.getArray('joinSequence'), myId);
+tables.ensureJoined(ydoc, myId);
 
 // ── WebRTC  ─────────────────────────────────────────────────────────────────
 const signalingUrl = new URLSearchParams(location.search).get('signaling') || 'ws://localhost:4444';

@@ -66,7 +66,7 @@ const DEFAULT_BACKGROUNDS = [
 
 // ── Internal app state ────────────────────────────────────────────────────────
 let _ydoc, _yMeta, _yToys, _yDrawing,
-    _yBounPos, _yJoinSequence, _yReactionLog,
+    _yBounPos, _yReactionLog,
     _awareness, _provider;
 
 // Layers — the canonical LayerAPI dispatch table, built once at boot() once
@@ -313,7 +313,6 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, svgElem
   _yToys          = ydoc.getXmlFragment('toys');
   _yDrawing       = ydoc.getXmlFragment('drawing');
   _yBounPos       = ydoc.getXmlFragment('boundaries');
-  _yJoinSequence  = ydoc.getArray('joinSequence');
   _yReactionLog   = getReactionLog(ydoc);
   _awareness  = awareness;
   _provider   = provider;

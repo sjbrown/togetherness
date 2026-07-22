@@ -259,12 +259,16 @@ order**:
   before seeing each other), the `Y.Array` insertion order degrades
   automatically to Yjs's own `clientID` tie-break — deterministic, and in a
   case where no human could perceive a "first" anyway.
-- **Implemented in `authority.js`:** `ensureJoined` (the guarded append,
-  called from `index.html` after IndexedDB sync lands, so a returning peer
-  sees its own earlier entry before deciding whether to append),
-  `compareAuthority` / `isAuthoritative` (the comparator), and
-  `resetJoinSequenceToSelf` (used by forking — see below). Not yet consulted
-  by any conflict-resolution logic; that's step 4/5.
+- **Implemented in `tables.js`** (originally its own `authority.js` module;
+  folded in since `joinSequence` is a property of the table document, same
+  as `yMeta` or `yToys`): `ensureJoined` (the guarded append, called from
+  `index.html` after IndexedDB sync lands, so a returning peer sees its own
+  earlier entry before deciding whether to append), `compareAuthority` /
+  `isAuthoritative` (the comparator), and `resetJoinSequenceToSelf` (private
+  — used internally by `forkTable`, see below). The `Y.Array` itself is
+  fully encapsulated: nothing outside `tables.js` ever calls
+  `ydoc.getArray('joinSequence')` directly. Not yet consulted by any
+  conflict-resolution logic; that's step 4/5.
 
 ### Forking clears `joinSequence` down to the forking user alone
 
