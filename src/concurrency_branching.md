@@ -108,23 +108,28 @@ detects overlap; the state-vector gap is how the branch path sizes divergence.
 
 ---
 
-## Preliminary: placement + reaction in ONE transaction
+## Preliminary: placement + reaction in ONE transaction — done
 
-Today a placement (e.g. dropping a die into a tray — a CRDT-safe sequence
-insert) and its triggered reaction (the tray's `contents_change_handler`
-output) commit as **two** transactions: the reaction fires in a microtask
-after the placement's observer returns.
+Previously, a placement (e.g. dropping a die into a tray — a CRDT-safe
+sequence insert) and its triggered reaction (the tray's
+`contents_change_handler` output) committed as **two** transactions: the
+reaction fired in a microtask after the placement's observer returned.
 
-**We change this so the placement and its synchronous reaction commit as a
-single atomic transaction.** This is load-bearing for the whole design:
+**The placement and its synchronous reaction now commit as a single atomic
+transaction**, at every callsite that runs possibly-user-written handler
+code — a drop into a tray, a die's own `Roll`, a tray's `Roll All`, and a
+toy's placement-time `initialize()`. This was load-bearing for the rest of
+this design:
 
 - It removes the "die is inserted but its reaction lost, leaving the slot
   stale and the die uncounted" intermediate state. The placement and its
   reaction now win or lose *together*, as one unit.
 - It makes "the loser's divergent state" a well-defined, atomic thing to fork.
 
-This is only sound because handlers are synchronous (our one regulation). An
-async handler could not be folded into the triggering transaction.
+This was only sound because handlers are synchronous (our one regulation) —
+`envelope.js`'s synchronous envelope path (`runInEnvelopeSync` /
+`runToyHandlerSync`) throws rather than silently drop mutations from an
+async handler, so that regulation is enforced, not just assumed.
 
 Note this supersedes an earlier framing where "placements are never discard
 candidates." Under one-transaction commit, a placement whose reaction loses is
@@ -296,6 +301,3 @@ nodes.
 - Where the post-merge scan hooks in relative to `onToysChanged` /
   `dispatchContentsChangeCascade`, and its reentrancy interaction with the
   existing `_dispatchingContentsChange` guard.
-- One-transaction commit: folding the synchronous reaction into the triggering
-  transaction, and confirming nested `ydoc.transact` collapse behaves as
-  expected for the placement+reaction case.

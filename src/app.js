@@ -25,7 +25,7 @@ import * as Storage                               from './storage.js';
 import * as BounPos                               from './boun_pos.js';
 import { SHAPE_TYPES }                            from './drawing.js';
 import { TOOLS as TOY_TOOLS, addToy, findToy, newToyId,
-         getMenuActions, invokeMenuAction, activateToyScripts, initializeToy,
+         getMenuActions, activateToyScripts,
          findDropTargetTray, reparentToy } from './toys.js';
 import { DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
@@ -582,15 +582,16 @@ function onToysChanged(events, transaction) {
 // trays' fresh results. Computed as one upfront pass over *this* transaction's
 // events, so a single die roll inside a doubly-nested tray resolves in one go.
 //
-// This runs *synchronously* now (concurrency_branching.md / TODO #11). When
-// the triggering change was itself committed inside an open transaction (the
-// drop-into-tray path folds its reaction in directly and never reaches here),
-// a synchronous cascade would fold in. Reached from the observer — after the
-// triggering transaction has closed — each handler is its own DERIVED
-// transaction, exactly as before, just without the microtask hop. The
-// _dispatchingContentsChange flag still guards the folded-drop case, whose
-// observer would otherwise recompute the tray a redundant second time; the
-// origin check in onToysChanged handles the DERIVED commits this makes.
+// This runs synchronously, with no microtask hop, which matters when this
+// is reached from *inside* an open transaction (a caller that folds its own
+// commit and its reaction together, mid-transact) — then the cascade's
+// commits fold in too. Reached instead from the observer, after the
+// triggering transaction has already closed (the common case: a remote
+// change, or any local change nothing folded ahead of time), each handler
+// commits as its own DERIVED transaction. The _dispatchingContentsChange
+// flag guards a folded caller's own transaction from being recomputed a
+// redundant second time once its observer fires; the origin check in
+// onToysChanged handles the DERIVED commits this function itself makes.
 function dispatchContentsChangeCascade(events) {
   const trayIds = Toys.affectedTrayIdsInnerFirst(events.map(e => e.target));
   if (!trayIds.length) return;
@@ -1021,23 +1022,25 @@ const App = {
   /**
    * Invoke one of a toy's menu actions by (namespace, key) — the
    * identifiers App.getToyMenuActions() handed back to the UI. Runs the
-   * handler inside an envelope (envelope.js) and commits its DOM mutations
-   * to Yjs as a single transaction. _yToys.observeDeep already re-renders
-   * the toys layer once that commit lands; refreshFromDoc() here just keeps
-   * the Edit panel's own action list (labels, applicable filtering) current
-   * too, the same way commitEdit refreshes it after a field edit.
+   * handler inside an envelope (envelope.js) and commits its DOM mutations,
+   * plus any tray reaction it triggers, to Yjs as a single transaction.
+   * _yToys.observeDeep already re-renders the toys layer once that commit
+   * lands; refreshFromDoc() here just keeps the Edit panel's own action
+   * list (labels, applicable filtering) current too, the same way
+   * commitEdit refreshes it after a field edit.
    */
   invokeToyMenuAction: (id, namespace, key) => {
     const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
     if (!svgEl) return;
     const layerEl = _svgEl?.querySelector('#toys-layer');
     if (!layerEl) return;
-    invokeMenuAction(_ydoc, _yToys, layerEl, svgEl, namespace, key)
-      .then(() => UI.refreshFromDoc())
-      .catch(err => {
-        UI.toast(`Action failed: ${err.message}`, 'warn');
-        App.addLog(`toy action failed: ${err.message}`, 'del');
-      });
+    try {
+      Toys.invokeMenuActionSync(_ydoc, _yToys, layerEl, svgEl, namespace, key);
+      UI.refreshFromDoc();
+    } catch (err) {
+      UI.toast(`Action failed: ${err.message}`, 'warn');
+      App.addLog(`toy action failed: ${err.message}`, 'del');
+    }
   },
 
   /**
@@ -1070,7 +1073,7 @@ const App = {
     if (!def?.toyType) { UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
     const id = newToyId();
     // Tag before addToy's placement transaction runs. The later
-    // initializeToy() commits under LIFECYCLE_ORIGIN (untracked), so the
+    // initializeToySync() commits under LIFECYCLE_ORIGIN (untracked), so the
     // placement is a single undo step even for toys that initialize state.
     UndoRedo.tag(`place ${def.label} ${id.slice(0, 6)}`);
     addToy(_ydoc, _yToys, {
@@ -1085,7 +1088,7 @@ const App = {
       const svgEl   = _svgEl?.querySelector(`[data-id="${id}"]`);
       const layerEl = _svgEl?.querySelector('#toys-layer');
       if (svgEl && layerEl) {
-        await initializeToy(_ydoc, _yToys, layerEl, svgEl, def.toyType);
+        Toys.initializeToySync(_ydoc, _yToys, layerEl, svgEl, def.toyType);
       }
     }).catch(err => {
       UI.toast(`Failed to place ${def.label}`, 'warn');
@@ -1262,14 +1265,14 @@ const App = {
 
     if (dropTrayId) {
       // Drop into a tray = reparent + reposition into the tray, plus the
-      // tray's own contents_change_handler reaction — ALL in one transaction
-      // (concurrency_branching.md / TODO #11). The inner reparentToy /
-      // applyMoveCommit transactions collapse into this outer one, and so do
-      // the reaction's DERIVED commits, so the placement and its reaction
-      // commit as one atomic unit: one undo step, and one thing to arbitrate
-      // or fork on conflict, with no "die inserted but its reaction lost"
-      // intermediate. _dispatchingContentsChange stops the observer from
-      // recomputing this tray a redundant second time after the txn closes.
+      // tray's own contents_change_handler reaction — ALL in one transaction.
+      // The inner reparentToy / applyMoveCommit transactions collapse into
+      // this outer one, and so do the reaction's DERIVED commits, so the
+      // placement and its reaction commit as one atomic unit: one undo step,
+      // and one thing to arbitrate or fork on conflict, with no "die
+      // inserted but its reaction lost" intermediate. _dispatchingContentsChange
+      // stops the observer from recomputing this tray a redundant second
+      // time after the txn closes.
       UndoRedo.tag(`move ${id.slice(0, 6)} into a tray`);
       _dispatchingContentsChange = true;
       try {

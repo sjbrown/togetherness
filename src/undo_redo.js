@@ -24,13 +24,19 @@
  * Those are downstream of a tracked action, never independent user intent —
  * see the origin constants in envelope.js.
  *
- * Note: "not tracked" is about a *standalone* derived transaction (a roll's
- * reaction, observer-driven). When a reaction is folded into its triggering
- * placement — the drop-into-tray path commits reparent + move + the tray's
- * recompute as ONE transaction (see concurrency_branching.md / TODO #11) —
- * that transaction's origin is the placement's (null), so the reaction rides
- * the placement's tracked undo step and reverses with it. A nested
- * transaction's own origin (DERIVED here) is ignored; the outermost wins.
+ * Note: "not tracked" is about a *standalone* derived transaction (reached
+ * from the observer, after its triggering transaction has already closed).
+ * When a reaction is folded into its triggering action instead — a drop
+ * into a tray, a die's Roll, a tray's Roll All, a toy's placement-time
+ * initialize() — the whole thing (the action's own commit plus whatever
+ * reaction it triggers) is one transaction. Each of those folded callsites
+ * opens its outer transact with no explicit origin, so the merged
+ * transaction's origin is null regardless of what origin the inner,
+ * now-nested commit would have used standalone (ENVELOPE_ORIGIN for a menu
+ * action, LIFECYCLE_ORIGIN for initialize) — a nested transact's origin
+ * argument is only honored on the call that actually opens the transaction;
+ * every nested call just reuses it. null is tracked, so the reaction still
+ * rides the action's undo step and reverses with it either way.
  *
  * TODO:
  * Remote peers' operations arrive under their provider's own origin (not

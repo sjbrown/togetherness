@@ -206,28 +206,39 @@ a silently-dropped resize loser is acceptable and gets no toast.
    transaction consistently.
 
 **Implementation order (fork primitive first):**
- 1. Prototype the fork primitive as a **"Duplicate (Fork)" button on each
-    row in `home.html`'s table list**, next to the existing per-row
-    `Delete` button. Self-contained, no live room / no comparator / no
-    detection logic needed — a nice isolated first commit.
-      - `home.html` already has everything this needs: `loadRoomDoc(roomId)`
-        loads a table's persisted doc from IndexedDB via `Y.applyUpdate`
-        replay; `deleteTable`/`TABLES_KEY`/`saveTables` show the
-        registry-entry pattern to mirror; `renderTables()` shows the
-        per-row-button wiring to copy (see its `del` button).
-      - Handler shape: `loadRoomDoc(t.id)` → `Y.encodeStateAsUpdate(ydoc)` →
-        open a **new** `tt:${newRoomId}` IndexedDB database and write that
-        update as its seed → append a new `tt_tables` entry (new id, a
-        name like `"${t.name} (fork)"`, `lastVisit: Date.now()`) →
-        `renderTables()` to show the new row immediately.
-      - This exercises the exact copy-a-doc-into-a-new-IndexedDB-table
-        mechanics the branch escalation path (step 6) needs, decoupled
-        from causal-fork-point selection (here: fork the *whole* doc, not
-        mid-transaction) and from any live-room wiring. Land it, then
-        extend it later to fork from a specific causal point mid-session
-        rather than only from home.html's already-at-rest tables.
- 2. One-transaction placement+reaction commit; confirm nested
-    `ydoc.transact` collapse for that case.
+ 1. ✅ **Done.** Prototype the fork primitive as a **"Duplicate (Fork)"
+    button on each row in `home.html`'s table list**, next to the existing
+    per-row `Delete` button.
+ 2. ✅ **Done.** One-transaction placement+reaction commit — and, once the
+    synchronous envelope path existed, extended to every callsite that runs
+    possibly-user-written handler code, not just the drop-into-tray case:
+      - `envelope.js`: `runInEnvelopeSync` / `runToyHandlerSync` — the
+        no-microtask sibling of `runInEnvelope` / `runToyHandler`. Throws if
+        the handler returns a Promise (async handler code is disallowed, as
+        already noted in `runInEnvelope`'s own doc comment).
+      - `toys.js`: `affectedTrayIdsInnerFirst` (reads `transaction.changed`
+        from inside an open transaction) and `runContentsChangeCascadeSync`
+        (innermost-first recompute) are the shared primitives every folded
+        callsite uses. Sync siblings added for each handler entry point:
+        `runContentsChangeHandlerSync`, `invokeMenuActionSync` (covers a
+        die's own `Roll` and a tray's `Roll All` — `roll_all` calls each
+        die's handler directly and synchronously within the one envelope),
+        `initializeToySync`.
+      - `app.js`: `commitMove`'s drop-into-tray branch, `invokeToyMenuAction`,
+        and `commitToy`'s placement-time `initialize()` call all now go
+        through the sync + fold path. The async originals
+        (`runContentsChangeHandler`, `invokeMenuAction`, `initializeToy`)
+        stay in `toys.js`/`envelope.js` for now — still exercised directly
+        by their own unit tests — but no production caller uses them.
+      - The observer-driven cascade (`onToysChanged` →
+        `dispatchContentsChangeCascade`, reached for e.g. a remote reparent
+        that lands outside any already-open transaction) also now runs
+        synchronously via the same shared primitives — no behavior change
+        there, just no microtask hop, and the guard against re-triggering
+        is origin-based (`DERIVED_ORIGIN`/`LIFECYCLE_ORIGIN`) rather than
+        relying solely on the reentrancy flag, since a folded transaction's
+        DERIVED commits fire their own observer callback after the flag
+        that gated the original dispatch has already cleared.
  3. `joinSequence` `Y.Array` + comparator.
  4. Touched-set construction + post-merge overlap scan (hook relative to
     `onToysChanged` / `dispatchContentsChangeCascade`; mind the

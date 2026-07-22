@@ -1121,6 +1121,34 @@ export async function invokeMenuAction(ydoc, yToys, layerEl, svgEl, namespace, k
   return runToyHandler(ydoc, yToys, layerEl, svgEl, () => entry.handler.call(svgEl, evt))
 }
 
+/**
+ * Synchronous sibling of invokeMenuAction. Same validation and effect, but
+ * on the current tick, and with any tray reaction the handler triggers
+ * folded into the SAME transaction as the handler's own commit — one
+ * transaction, one undo step, no window where the action landed but its
+ * reaction hadn't yet. A tray's "Roll All" is the case that most needs
+ * this: it calls each contained die's own handler directly and
+ * synchronously (see tray.js's roll_all), all within this one envelope, so
+ * every die's new face and the tray's resulting sum land together.
+ */
+export function invokeMenuActionSync(ydoc, yToys, layerEl, svgEl, namespace, key, evt) {
+  const ns    = globalThis[namespace]
+  const entry = ns?.menu?.[key]
+  if (!entry || typeof entry.handler !== 'function') {
+    throw new Error(`[toys] no such menu action: ${namespace}.${key}`)
+  }
+  if (typeof entry.applicable === 'function' && !entry.applicable(svgEl)) {
+    throw new Error(`[toys] menu action not applicable: ${namespace}.${key}`)
+  }
+  let result
+  ydoc.transact((tr) => {
+    result = runToyHandlerSync(ydoc, yToys, layerEl, svgEl, () => entry.handler.call(svgEl, evt))
+    const trayIds = affectedTrayIdsInnerFirst([...tr.changed.keys()])
+    runContentsChangeCascadeSync(ydoc, yToys, layerEl, trayIds)
+  })
+  return result
+}
+
 // ── lifecycle ────────────────────────────────────────────────────────────
 
 /**
@@ -1149,6 +1177,31 @@ export async function initializeToy(ydoc, yToys, layerEl, svgEl, toyType) {
   await runToyHandler(ydoc, yToys, layerEl, svgEl, () => {
     initializers.forEach(ns => ns.initialize(svgEl))
   }, { origin: LIFECYCLE_ORIGIN })
+}
+
+/**
+ * Synchronous sibling of initializeToy. Same effect, same one-time-at-
+ * placement contract, but on the current tick and with any tray reaction
+ * folded into the same transaction as the initialize() commit — matters
+ * because a handler is free to reach outside its own toy (a die's
+ * initialize() could, in principle, land inside an already-existing tray
+ * if one placed it there directly). Ordinarily there's nothing to fold: a
+ * freshly placed toy starts outside every tray, so affectedTrayIdsInnerFirst
+ * comes back empty and the cascade step is a no-op.
+ */
+export function initializeToySync(ydoc, yToys, layerEl, svgEl, toyType) {
+  const initializers = getNamespacesForType(toyType)
+    .map(name => globalThis[name])
+    .filter(ns => ns && typeof ns.initialize === 'function')
+  if (!initializers.length) return
+
+  ydoc.transact((tr) => {
+    runToyHandlerSync(ydoc, yToys, layerEl, svgEl, () => {
+      initializers.forEach(ns => ns.initialize(svgEl))
+    }, { origin: LIFECYCLE_ORIGIN })
+    const trayIds = affectedTrayIdsInnerFirst([...tr.changed.keys()])
+    runContentsChangeCascadeSync(ydoc, yToys, layerEl, trayIds)
+  })
 }
 
 /**
@@ -1198,8 +1251,8 @@ export async function runContentsChangeHandler(ydoc, yToys, layerEl, svgEl, toyT
  * toyType's contents_change_handler(s) under an envelope, committed under
  * DERIVED_ORIGIN — but on the current tick, so when called from inside an
  * open ydoc.transact its commit folds into that transaction rather than
- * landing a microtask later in its own (see concurrency_branching.md /
- * TODO #11). No-op if toyType has no contents_change_handler namespace.
+ * landing a microtask later in its own. No-op if toyType has no
+ * contents_change_handler namespace.
  */
 export function runContentsChangeHandlerSync(ydoc, yToys, layerEl, svgEl, toyType) {
   const handlers = getNamespacesForType(toyType)
@@ -1241,9 +1294,9 @@ export function affectedTrayIdsInnerFirst(changedYNodes) {
  * before each tray so an outer tray reads the inner tray's just-committed
  * result. Each handler commits under DERIVED_ORIGIN; when this runs inside an
  * open transaction those commits collapse into it, making a placement and
- * its reaction one atomic transaction (concurrency_branching.md / TODO #11).
- * When run from an observer (no open transaction), each is its own DERIVED
- * transaction instead — same end state, just not folded.
+ * its reaction one atomic transaction. When run from an observer (no open
+ * transaction), each is its own DERIVED transaction instead — same end
+ * state, just not folded.
  */
 export function runContentsChangeCascadeSync(ydoc, yToys, layerEl, trayIds) {
   for (const trayId of trayIds) {
