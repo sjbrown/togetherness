@@ -206,39 +206,8 @@ a silently-dropped resize loser is acceptable and gets no toast.
    transaction consistently.
 
 **Implementation order (fork primitive first):**
- 1. ✅ **Done.** Prototype the fork primitive as a **"Duplicate (Fork)"
-    button on each row in `home.html`'s table list**, next to the existing
-    per-row `Delete` button.
- 2. ✅ **Done.** One-transaction placement+reaction commit — and, once the
-    synchronous envelope path existed, extended to every callsite that runs
-    possibly-user-written handler code, not just the drop-into-tray case:
-      - `envelope.js`: `runInEnvelopeSync` / `runToyHandlerSync` — the
-        no-microtask sibling of `runInEnvelope` / `runToyHandler`. Throws if
-        the handler returns a Promise (async handler code is disallowed, as
-        already noted in `runInEnvelope`'s own doc comment).
-      - `toys.js`: `affectedTrayIdsInnerFirst` (reads `transaction.changed`
-        from inside an open transaction) and `runContentsChangeCascadeSync`
-        (innermost-first recompute) are the shared primitives every folded
-        callsite uses. Sync siblings added for each handler entry point:
-        `runContentsChangeHandlerSync`, `invokeMenuActionSync` (covers a
-        die's own `Roll` and a tray's `Roll All` — `roll_all` calls each
-        die's handler directly and synchronously within the one envelope),
-        `initializeToySync`.
-      - `app.js`: `commitMove`'s drop-into-tray branch, `invokeToyMenuAction`,
-        and `commitToy`'s placement-time `initialize()` call all now go
-        through the sync + fold path. The async originals
-        (`runContentsChangeHandler`, `invokeMenuAction`, `initializeToy`)
-        stay in `toys.js`/`envelope.js` for now — still exercised directly
-        by their own unit tests — but no production caller uses them.
-      - The observer-driven cascade (`onToysChanged` →
-        `dispatchContentsChangeCascade`, reached for e.g. a remote reparent
-        that lands outside any already-open transaction) also now runs
-        synchronously via the same shared primitives — no behavior change
-        there, just no microtask hop, and the guard against re-triggering
-        is origin-based (`DERIVED_ORIGIN`/`LIFECYCLE_ORIGIN`) rather than
-        relying solely on the reentrancy flag, since a folded transaction's
-        DERIVED commits fire their own observer callback after the flag
-        that gated the original dispatch has already cleared.
+ 1. ✅ **Done.** implement a **"Duplicate (Fork)" button**
+ 2. ✅ **Done.** One-transaction commit for any code authored by a user.
  3. `joinSequence` `Y.Array` + comparator.
  4. Touched-set construction + post-merge overlap scan (hook relative to
     `onToysChanged` / `dispatchContentsChangeCascade`; mind the
