@@ -137,6 +137,29 @@ branched *with* its reaction — the unit is the transaction, not the individual
 op. Pure inserts with no reaction (or a no-op/side-effect-only reaction) still
 never cause a conflict, because they touch fresh nodes and overlap nothing.
 
+**Mechanism, since the whole-layer envelope rework (see TOYS.md, "The
+envelope: what your handler can and can't do"):** the one-transaction
+guarantee no longer relies on nested `ydoc.transact()` collapse alone. A
+gesture (`invokeMenuActionSync`, `initializeToySync`) runs entirely against
+the live DOM first — the handler, then every `contents_change_handler` it
+triggers, however many rounds, each round's own new mutations checked for
+further contents-group membership (`toys.js`'s
+`runContentsChangeCascadeInto`) — accumulating one combined
+`MutationRecord[]` with no re-rendering anywhere in that process, since
+nothing in it depends on Yjs at all. Only then is everything translated
+into Yjs in one `commitEnvelope` call. Each affected tray's
+`contents_change_handler` runs at most once per gesture (a "seen" set); a
+handler whose own output would require re-running an already-seen tray — a
+genuine write-back cycle between trays, not just nesting — is logged
+loudly (`console.error`) and skipped, never looped. `commitMove`'s
+drop-into-tray path and the observer-driven fallback
+(`dispatchContentsChangeCascade`, for raw Yjs writes with no self-cascade of
+their own: undo/redo, import) are a different case — no DOM records to work
+from — and still use the original Yjs-tree-walking mechanism
+(`findAncestorTrayIds`, `affectedTrayIdsInnerFirst`,
+`runContentsChangeCascadeSync`), nested-transact-collapsed exactly as
+before.
+
 ---
 
 ## Two transaction classes
@@ -375,6 +398,3 @@ nodes.
 - Fork primitive: how to snapshot/copy a `Y.Doc` at a causal point into a new
   IndexedDB table, cleanly detaching from the room's provider.
 - Dialog UX copy and the branch-naming scheme.
-- Where the post-merge scan hooks in relative to `onToysChanged` /
-  `dispatchContentsChangeCascade`, and its reentrancy interaction with the
-  existing `_dispatchingContentsChange` guard.

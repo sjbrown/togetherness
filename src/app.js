@@ -506,15 +506,22 @@ function onBounPosChanged(events, transaction) {
 }
 
 // Suppresses the observer-driven cascade in onToysChanged while a cascade is
-// already being handled for the current change. Two cases set it:
+// already being handled for the current change. Three cases set it, all for
+// the same underlying reason: a folded action's own outer transact() has no
+// explicit origin, so it commits under null (see undo_redo.js's
+// "Atomicity" note) — the same origin as an ordinary, uncascaded structural
+// write — meaning the origin check below can't distinguish "already
+// cascaded" from "needs cascading" for any of them:
 //  - dispatchContentsChangeCascade wraps its synchronous run in it (belt to
 //    the origin check's braces: the DERIVED commits it makes land in their
 //    own transactions, caught by the origin check in onToysChanged).
 //  - commitMove's drop-into-tray path folds the reaction into the placement
-//    transaction itself, and sets this so the observer for that transaction
-//    (origin null, so the origin check wouldn't catch it) doesn't recompute
-//    the same tray a redundant — and, for non-idempotent handlers, wrong —
-//    second time.
+//    transaction itself.
+//  - invokeToyMenuAction and commitToy: toys.js's invokeMenuActionSync /
+//    initializeToySync already run their own complete
+//    contents_change_handler cascade (against the live DOM, before ever
+//    touching Yjs — see toys.js's runContentsChangeCascadeInto) before
+//    committing, so the observer must not recompute the same trays again.
 let _dispatchingContentsChange = false;
 
 function onToysChanged(events, transaction) {
@@ -1066,12 +1073,22 @@ const App = {
     if (!svgEl) return;
     const layerEl = _svgEl?.querySelector('#toys-layer');
     if (!layerEl) return;
+    // invokeMenuActionSync already runs its own complete contents_change_handler
+    // cascade (toys.js's runContentsChangeCascadeInto) before it ever commits —
+    // the whole thing (handler + cascade) lands as one transaction, under an
+    // effectively-null origin (see undo_redo.js's "Atomicity" note), so
+    // onToysChanged's origin check alone wouldn't recognize it as
+    // already-cascaded. Same guard commitMove's drop-into-tray path already
+    // uses, for the same reason.
+    _dispatchingContentsChange = true;
     try {
       Toys.invokeMenuActionSync(_ydoc, _yToys, layerEl, svgEl, namespace, key);
       UI.refreshFromDoc();
     } catch (err) {
       UI.toast(`Action failed: ${err.message}`, 'warn');
       App.addLog(`toy action failed: ${err.message}`, 'del');
+    } finally {
+      _dispatchingContentsChange = false;
     }
   },
 
@@ -1104,9 +1121,13 @@ const App = {
     const def = _toolById[toolName];
     if (!def?.toyType) { UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
     const id = newToyId();
-    // Tag before addToy's placement transaction runs. The later
-    // initializeToySync() commits under LIFECYCLE_ORIGIN (untracked), so the
-    // placement is a single undo step even for toys that initialize state.
+    // Tag before addToy's placement transaction runs. initializeToySync()'s
+    // own outer transact() has no explicit origin, so the merged
+    // handler-plus-cascade transaction commits under null (same as every
+    // other folded call site — see undo_redo.js's "Atomicity" note), a
+    // SEPARATE transaction from addToy's own placement — meaning this label
+    // is consumed by the placement, and initializeToySync's own commit (if
+    // any) rides in as its own, unlabeled undo step.
     UndoRedo.tag(`place ${def.label} ${id.slice(0, 6)}`);
     addToy(_ydoc, _yToys, {
       id, toyType: def.toyType, x, y,
@@ -1120,7 +1141,14 @@ const App = {
       const svgEl   = _svgEl?.querySelector(`[data-id="${id}"]`);
       const layerEl = _svgEl?.querySelector('#toys-layer');
       if (svgEl && layerEl) {
-        Toys.initializeToySync(_ydoc, _yToys, layerEl, svgEl, def.toyType);
+        // Same guard as invokeToyMenuAction, same reason: initializeToySync
+        // already ran its own complete cascade before committing.
+        _dispatchingContentsChange = true;
+        try {
+          Toys.initializeToySync(_ydoc, _yToys, layerEl, svgEl, def.toyType);
+        } finally {
+          _dispatchingContentsChange = false;
+        }
       }
     }).catch(err => {
       UI.toast(`Failed to place ${def.label}`, 'warn');

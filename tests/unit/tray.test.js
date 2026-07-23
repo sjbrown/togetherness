@@ -602,3 +602,163 @@ describe('tray_sum — "Roll" / "Roll All" via invokeMenuActionSync — folded r
     expect(globalThis.tray.getValue(layerEl.querySelector('[data-id="tray1"]'))).toBe(originalSum)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The gesture-triggered cascade (invokeMenuActionSync's DOM-based
+// runContentsChangeCascadeInto): run-once-per-tray, nested trays, and a
+// handler that reaches a tray that ISN'T an ancestor of the original change.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('invokeMenuActionSync — the DOM-based cascade itself', () => {
+  test('a doubly-nested tray: rolling the innermost die updates both sums, inner then outer, in ONE transaction', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'outer', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'inner', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'die1',  toyType: 'dice_d6',  x: 0, y: 0, color: '#fff' })
+    Toys.reparentToy(ydoc, yToys, 'inner', 'outer')
+    Toys.reparentToy(ydoc, yToys, 'die1', 'inner')
+
+    const layerEl = renderLayer(yToys)
+    await new Promise(r => setTimeout(r, 0))
+    const dieEl = layerEl.querySelector('[data-id="die1"]')
+
+    const roll = Toys.getMenuActions(dieEl).find(a => a.eventName === 'die_roll')
+
+    let updates = 0
+    ydoc.on('update', () => { updates++ })
+    Toys.invokeMenuActionSync(ydoc, yToys, layerEl, dieEl, roll.namespace, roll.key)
+
+    expect(updates).toBe(1) // die's roll + both trays' recompute, one transaction
+
+    const dieValue = Number(layerEl.querySelector('[data-id="die1"]').querySelector('tspan').textContent)
+    const innerEl = layerEl.querySelector('[data-id="inner"]')
+    const outerEl = layerEl.querySelector('[data-id="outer"]')
+    expect(globalThis.tray.getValue(innerEl)).toBe(String(dieValue))
+    expect(globalThis.tray.getValue(outerEl)).toBe(String(dieValue)) // outer's only content is inner
+  })
+
+  test('a handler that touches TWO unrelated (non-nested) trays cascades both', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'trayA', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'trayB', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'dieA', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'dieB', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    Toys.reparentToy(ydoc, yToys, 'dieA', 'trayA')
+    Toys.reparentToy(ydoc, yToys, 'dieB', 'trayB')
+
+    const layerEl = renderLayer(yToys)
+    await new Promise(r => setTimeout(r, 0))
+
+    // A synthetic "roll both" menu action, installed directly on the real
+    // d6 namespace (where the actual Roll action lives — dice_utils.js's
+    // "dice" namespace is shared utility functions with no menu of its
+    // own), that rolls dieA AND reaches over and rolls dieB too — touching
+    // two SEPARATE, non-nested trays' contents_groups in one handler.
+    // Exercises affectedTrayIdsFromRecords across two disjoint chains, not
+    // just one.
+    const dieAEl = layerEl.querySelector('[data-id="dieA"]')
+    const dieBEl = layerEl.querySelector('[data-id="dieB"]')
+    globalThis.d6.menu.__rollBoth = {
+      eventName: 'roll_both_test',
+      applicable: () => true,
+      handler: function() {
+        globalThis.dice.roll_handler(dieAEl, 6)
+        globalThis.dice.roll_handler(dieBEl, 6)
+      },
+    }
+
+    let updates = 0
+    ydoc.on('update', () => { updates++ })
+    Toys.invokeMenuActionSync(ydoc, yToys, layerEl, dieAEl, 'd6', '__rollBoth')
+
+    expect(updates).toBe(1)
+    const dieAValue = Number(layerEl.querySelector('[data-id="dieA"]').querySelector('tspan').textContent)
+    const dieBValue = Number(layerEl.querySelector('[data-id="dieB"]').querySelector('tspan').textContent)
+    expect(globalThis.tray.getValue(layerEl.querySelector('[data-id="trayA"]'))).toBe(String(dieAValue))
+    expect(globalThis.tray.getValue(layerEl.querySelector('[data-id="trayB"]'))).toBe(String(dieBValue))
+  })
+
+  test('a genuine cross-tray cycle runs each tray at most once, logs the conflict, and does not hang', async () => {
+    // Reuses the player_marker / dice_d6 toyType slots (addToy requires a
+    // registered TOY_TYPES entry) with entirely custom fetch-stubbed SVG +
+    // script content — same technique as toy-menu.test.js's widget_root.
+    const LOOP_A_SVG = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" id="loop_a" class="toy">
+  <script type="text/javascript" data-namespace="loop_a" id="script_loop_a"><![CDATA[
+    var loop_a = {
+      menu: {
+        'Trigger': {
+          eventName: 'loop_trigger',
+          applicable: () => true,
+          handler: function() {
+            const groupB = document.querySelector('[data-toy-type="dice_d6"] .contents_group')
+            if (groupB) groupB.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'rect'))
+          },
+        },
+      },
+      contents_change_handler: function(elem) {
+        elem.setAttribute('data-a-recomputed', String(Number(elem.getAttribute('data-a-recomputed') || 0) + 1))
+        const groupB = document.querySelector('[data-toy-type="dice_d6"] .contents_group')
+        if (groupB) groupB.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'rect'))
+      },
+    }
+  ]]></script>
+  <g class="contents_group"></g>
+</svg>`
+    const LOOP_B_SVG = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" id="loop_b" class="toy">
+  <script type="text/javascript" data-namespace="loop_b" id="script_loop_b"><![CDATA[
+    var loop_b = {
+      contents_change_handler: function(elem) {
+        elem.setAttribute('data-b-recomputed', String(Number(elem.getAttribute('data-b-recomputed') || 0) + 1))
+        const groupA = document.querySelector('[data-toy-type="player_marker"] .contents_group')
+        if (groupA) groupA.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'circle'))
+      },
+    }
+  ]]></script>
+  <g class="contents_group"></g>
+</svg>`
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (url === '/toy/player_marker.svg') return { ok: true, text: async () => LOOP_A_SVG }
+      if (url === '/toy/dice_d6.svg')       return { ok: true, text: async () => LOOP_B_SVG }
+      throw new Error(`unexpected fetch: ${url}`)
+    }))
+
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'loopA', toyType: 'player_marker', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'loopB', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    const layerEl = renderLayer(yToys)
+    // The handler scripts above use document.querySelector to reach across
+    // toys (same as production code now legitimately can) — that only
+    // finds anything if the layer is actually attached to the page, unlike
+    // this file's other tests, whose detached layerEl is fine since they
+    // never need document-wide lookups.
+    document.body.appendChild(layerEl)
+    await new Promise(r => setTimeout(r, 0))
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const loopAEl = layerEl.querySelector('[data-id="loopA"]')
+
+    let updates = 0
+    ydoc.on('update', () => { updates++ })
+    expect(() => {
+      Toys.invokeMenuActionSync(ydoc, yToys, layerEl, loopAEl, 'loop_a', 'Trigger')
+    }).not.toThrow()
+
+    expect(updates).toBe(1) // still one atomic transaction, cycle and all
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('loopB'))
+
+    const loopBEl = layerEl.querySelector('[data-id="loopB"]')
+    // Each ran its own contents_change_handler exactly once, never twice —
+    // elem in contents_change_handler(elem) is the tray's own top-level
+    // wrapper (matching tray_sum's real contract), not its contents_group.
+    expect(loopAEl.getAttribute('data-a-recomputed')).toBe('1')
+    expect(loopBEl.getAttribute('data-b-recomputed')).toBe('1')
+
+    errorSpy.mockRestore()
+    layerEl.remove()
+  })
+})
