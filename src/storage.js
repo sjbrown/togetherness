@@ -1,11 +1,7 @@
 /**
  * storage.js — SVG document import/export: DOM ⇄ Yjs.
  *
- * Shared by app.js (importing into / exporting out of a live room's
- * document) and home.html (seeding a new room's Yjs doc from a static
- * sampler template). Every function here takes its Yjs structures and DOM
- * elements as explicit parameters rather than closing over App's private
- * state, so this module works headless (no live room, no UI) and is
+ * This module works headless (no live room, no UI) and is
  * unit-testable on its own.
  */
 import * as Y        from 'yjs';
@@ -40,11 +36,8 @@ export function domToY(node) {
  *
  * data-id, id=, data-module, and .$() are never read here and never
  * required — they're rendering/dispatch conveniences recomputed fresh by
- * the renderer at every depth, every time (see toys.js's _toSVGEl), not
- * part of the on-disk contract. Requiring them on import would make a
- * hand-authored SVG file invalid unless the author also added attributes
- * that exist solely to help this app's current rendering code find nodes
- * quickly.
+ * the renderer at every depth, every time, not
+ * part of the on-disk contract.
  */
 export function isToyG(el) {
   return el.localName === 'g' &&
@@ -68,8 +61,7 @@ export function isToyG(el) {
  *
  * Returns { toyCount, drawCount, invalidToyEls }. invalidToyEls are DOM
  * elements found directly inside #toys-layer that don't satisfy isToyG();
- * the caller decides what to do with them (app.js surfaces them in an
- * errors layer and a toast, home.html's fixed templates never produce any).
+ * the caller decides what to do with them
  */
 export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
   const yMeta    = ydoc.getMap('meta');
@@ -146,8 +138,7 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
  * rebuilds #toys-layer and #drawing-layer directly from the Yjs fragments:
  * the live DOM is a mirror that never renders <script> nodes (so nothing
  * executes), so a DOM clone alone would silently export toys with their
- * scripts stripped. The Yjs tree is the canonical document — export should
- * be honest about that.
+ * scripts stripped.
  *
  * Also stamps the attributes an exported file needs to stand alone as a
  * real, re-importable, Inkscape-friendly SVG document: a viewBox (falling

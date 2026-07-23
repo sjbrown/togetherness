@@ -194,10 +194,6 @@ const { name: myDisplayName, grad: myGrad, localId: myId } = getIdentity();
 document.getElementById('myIdLabel').textContent = `me: ${myDisplayName}`;
 
 // ── Table  ──────────────────────────────────────────────────────────────────
-// getYDoc() opens this table's IndexedDB persistence, awaits the initial
-// replay, and stamps fresh identity (docId/created/schemaVersion) into
-// yMeta if this table turns out to be brand new — nothing else here needs
-// to check for that.
 let tableId = location.hash.slice(1);
 if (!tableId) {
   tableId = tables.generateTableId(myDisplayName);
@@ -211,9 +207,7 @@ tables.touchTableRecord(tableId);
 
 // Join the authority ordering only now that the local IndexedDB replay has
 // landed — ensureJoined's guard needs to see this table's *existing*
-// joinSequence (a returning peer's own earlier entry) before deciding
-// whether to append, so a reload doesn't bump a peer to the back of the
-// line.
+// joinSequence
 tables.ensureJoined(ydoc, myId);
 
 // ── WebRTC  ─────────────────────────────────────────────────────────────────

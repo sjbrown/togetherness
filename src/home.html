@@ -865,13 +865,8 @@ const samplerDiceReady = renderSamplerDice().catch(err => {
 });
 
 // ── Seed a new table from a sample SVG into IndexedDB ────────────────────────
-// Uses the shared storage.js import machinery (also used by app.js's
-// importSVG) to read background/toys/drawing from a sampler template into
-// the live doc tables.js's getYDoc() hands back — the same doc-construction
-// + persistence path index.html uses to open this table later. getYDoc
-// stamps docId/created/schemaVersion itself, since this is a brand-new
-// table id with nothing yet in IndexedDB; nothing here needs to check for
-// that.
+// Uses storage.js import machinery to read svg contents from a sampler
+// template into the live doc getYDoc() hands back
 async function seedTable(tableId, sampleSvgEl) {
   // Guard against a click landing before the sampler dice finish rendering
   // (single network fetch, so this resolves almost immediately in practice).

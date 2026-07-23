@@ -137,17 +137,15 @@ branched *with* its reaction — the unit is the transaction, not the individual
 op. Pure inserts with no reaction (or a no-op/side-effect-only reaction) still
 never cause a conflict, because they touch fresh nodes and overlap nothing.
 
-**Mechanism, since the whole-layer envelope rework (see TOYS.md, "The
-envelope: what your handler can and can't do"):** the one-transaction
-guarantee no longer relies on nested `ydoc.transact()` collapse alone. A
-gesture (`invokeMenuActionSync`, `initializeToySync`) runs entirely against
+**Mechanism:**
+A gesture (`invokeMenuActionSync`, `initializeToySync`) runs entirely against
 the live DOM first — the handler, then every `contents_change_handler` it
-triggers, however many rounds, each round's own new mutations checked for
-further contents-group membership (`toys.js`'s
-`runContentsChangeCascadeInto`) — accumulating one combined
-`MutationRecord[]` with no re-rendering anywhere in that process, since
-nothing in it depends on Yjs at all. Only then is everything translated
-into Yjs in one `commitEnvelope` call. Each affected tray's
+triggers, cascading in rounds from the deepest element upward.
+Each round's own new mutations checked for further contents-group membership,
+accumulating one combined `MutationRecord[]` with no re-rendering anywhere
+in that process, since nothing in it depends on Yjs at all.
+Only then is everything translated into Yjs in one `commitEnvelope` call.
+Each affected tray's
 `contents_change_handler` runs at most once per gesture (a "seen" set); a
 handler whose own output would require re-running an already-seen tray — a
 genuine write-back cycle between trays, not just nesting — is logged
@@ -282,9 +280,7 @@ order**:
   before seeing each other), the `Y.Array` insertion order degrades
   automatically to Yjs's own `clientID` tie-break — deterministic, and in a
   case where no human could perceive a "first" anyway.
-- **Implemented in `tables.js`** (originally its own `authority.js` module;
-  folded in since `joinSequence` is a property of the table document, same
-  as `yMeta` or `yToys`): `ensureJoined` (the guarded append, called from
+- **Implemented in `tables.js`**: `ensureJoined` (the guarded append, called from
   `index.html` after IndexedDB sync lands, so a returning peer sees its own
   earlier entry before deciding whether to append), `compareAuthority` /
   `isAuthoritative` (the comparator), and `resetJoinSequenceToSelf` (private
@@ -339,14 +335,12 @@ not trapped, the network is optional" goals.
 
 Architecture already cooperates:
 
-- Rooms persist via `IndexeddbPersistence(tableId, ydoc)` — the table id
-  itself is already `tt-`-prefixed, so it's used directly as the database
-  name (no separate namespacing scheme).
+- Rooms persist via `IndexeddbPersistence(tableId, ydoc)`
 - `home.html` lists tables from the `localStorage` `tt_tables` registry
   (`touchTableRecord`).
 - `makeDoc()` is the single doc-construction seam.
 
-So a branch is: a **new `roomId`**, a **new `tt-`-prefixed IndexedDB doc**
+So a branch is: a **new `${tableId}` IndexedDB doc**
 seeded from the loser's forked state, and a `tt_tables` registry entry with
 the shown name. No new persistence machinery.
 
@@ -354,7 +348,7 @@ The first, self-contained implementation step is a **"Duplicate (Fork)"
 button on each row of `home.html`'s table list**, alongside the existing
 `Delete` button. It reuses `loadRoomDoc(roomId)` (already loads a table's
 persisted doc from IndexedDB) to read the source doc, `Y.encodeStateAsUpdate`
-to snapshot it, writes that as the seed of a new `tt-`-prefixed IndexedDB
+to snapshot it, writes that as the seed of a new `${tableId}` IndexedDB
 database, and appends a `tt_tables` registry entry. This exercises the
 copy-a-doc-into-a-new-table mechanics that branch escalation needs later,
 fully decoupled from causal-fork-point selection (this prototype forks the

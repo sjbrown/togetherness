@@ -6,11 +6,7 @@
  * so {plain JavaScript + the DOM} is the clear winner.
  *
  * Toy behaviour scripts (dice, trays, tokens, ...) run against the
- * mirrored (live) DOM of the whole toys layer — not just their own toy.
- * There's no per-toy sandboxing: a tray's "Roll All" reaching into each
- * contained die, or any handler reading a sibling's displayed value, is
- * just DOM access like any other. See TOYS.md, "The envelope: what your
- * handler can and can't do".
+ * mirrored (live) DOM of the whole toys layer.
  *
  * But the Yjs tree, not the DOM, is the canonical document, so how do we
  * square this? Answer: runInEnvelope lets a handler mutate the DOM as if
@@ -49,8 +45,8 @@ const XLINK_NS = 'http://www.w3.org/1999/xlink'
 //
 // Every envelope commit tags its Yjs transaction with an origin so the
 // UndoManager can decide what belongs on the undo stack, and conflict.js
-// can decide whether to record a touched-set bundle. See origins.js for
-// what each one means; re-exported here since most callers already import
+// can decide whether to record a touched-set bundle.
+// TODO: Re-exported here since most callers already import
 // DERIVED_ORIGIN / LIFECYCLE_ORIGIN from this module.
 export { ENVELOPE_ORIGIN, DERIVED_ORIGIN, LIFECYCLE_ORIGIN }
 
@@ -81,8 +77,6 @@ export function isEnvelopeOpen() {
  * Observes the enclosing #toys-layer element — found via closest() from
  * toyEl, so a handler reaching anywhere else in the layer (a die grabbing
  * a sibling die, a tray reaching into a contained toy) is still captured.
- * toyEl itself is only used to locate that ancestor; the envelope's
- * coverage is the whole layer, not toyEl's own subtree.
  *
  * Async note:
  * the async contract lives here: if fn() returns a Promise, it's awaited
@@ -254,9 +248,8 @@ function applyChildListRecord(record) {
   // one go lands them in the right order even though each yInsertIndex call
   // depends on the previous addition already being registered.
   // registerTree runs AFTER insertion: a still-detached Y.XmlElement's
-  // toArray() silently returns empty (see toys.js notes on detached
-  // fragments), so walking its children for registration only works once
-  // it's actually attached to the doc.
+  // toArray() silently returns empty, so walking its children for 
+  // registration only works once it's actually attached to the doc.
   for (const domNode of record.addedNodes) {
     const yNode = domToY(domNode)
     if (!yNode) continue
@@ -278,18 +271,11 @@ function applyRecord(record) {
 
 /**
  * Translate a MutationRecord[] (as produced by runInEnvelope) into a single
- * Yjs transaction tagged with an origin. Every record is translated —
- * there's no scope check and nothing gets reverted; a handler reaching
- * anywhere in the toys layer is applied exactly like a handler that only
- * touched its own toy. See TOYS.md, "The envelope: what your handler can
- * and can't do".
+ * Yjs transaction tagged with an origin.
  *
  * Also builds this commit's touched-set from the records and records it as
- * a bundle (see conflict.js) — inside this same transaction, so the bundle
- * is atomic with the commit it describes. Every origin qualifies now
- * (ENVELOPE_ORIGIN, DERIVED_ORIGIN, LIFECYCLE_ORIGIN alike) — nothing about
- * *how* a handler got invoked makes its writes structurally safe from
- * concurrent collision with another peer's.
+ * a bundle — inside this same transaction, so the bundle
+ * is atomic with the commit it describes.
  *
  * Returns { applied, bundle } — applied is the record count; bundle is the
  * recorded bundle, or null if nothing was actually touched.
@@ -336,12 +322,12 @@ export function renderAfterCommit(yToys, layerEl) {
 
 /**
  * Run a toy handler under the envelope and translate its mutations into a
- * single Yjs transaction. Does not render — see the note above
- * renderAfterCommit for why. layerEl is accepted (rather than dropped from
- * the signature) so callers already holding it don't need a separate
- * import just to pass it elsewhere; it's currently unused here. toyEl is
- * still needed here (unlike commitEnvelope) — runInEnvelope uses it to
- * locate the enclosing #toys-layer to observe.
+ * single Yjs transaction. Does not render.
+ * layerEl is accepted so callers already holding it don't need a separate
+ * import just to pass it elsewhere; it's currently unused here.
+ *
+ * TODO: handlers are enforced synchronus, so not sure why this function
+ *       is still here...
  */
 export async function runToyHandler(ydoc, yToys, layerEl, toyEl, fn, opts = {}) {
   const records = await runInEnvelope(toyEl, fn)

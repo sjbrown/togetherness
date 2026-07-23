@@ -211,14 +211,8 @@ a silently-dropped resize loser is acceptable and gets no toast.
  3. ✅ **Done.** `joinSequence` `Y.Array` + comparator — implemented in
     `tables.js` (`ensureJoined`, `compareAuthority`, `isAuthoritative`;
     `resetJoinSequenceToSelf` stays private, used only by `forkTable`).
-    Originally its own `authority.js` module; folded into `tables.js` since
-    `joinSequence` is a property of the table document, same as `yMeta` or
-    `yToys` — and unlike those, the `Y.Array` itself is now fully
-    encapsulated: nothing outside `tables.js` ever calls
-    `ydoc.getArray('joinSequence')` directly, only the exported functions.
-    Keyed on `user.js`'s persistent `localId`, not `ydoc.clientID` (which
-    is a fresh random number every session and would silently reshuffle
-    authority on reload). `ensureJoined` is called from `index.html` after
+    Keyed on `user.js`'s persistent `localId`.
+    `ensureJoined` is called from `index.html` after
     IndexedDB sync lands, so a returning peer sees its own earlier entry
     before deciding whether to append. Forking (`tables.js`'s `forkTable`,
     used by home.html's "Duplicate (Fork)" button) now requires a

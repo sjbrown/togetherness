@@ -1134,30 +1134,22 @@ export async function invokeMenuAction(ydoc, yToys, layerEl, svgEl, namespace, k
 
 // ── gesture-triggered cascade (DOM-only, no Yjs until the final commit) ────
 //
-// invokeMenuActionSync / initializeToySync use these. Unlike
-// affectedTrayIdsInnerFirst / runContentsChangeCascadeSync (below, in the
-// "lifecycle" section) — which walk the Yjs tree and re-render before each
-// step, for the *observer-driven fallback* cascade (raw Yjs writes with no
-// self-cascade of their own: undo/redo, import, commitMove's drop-into-tray
-// path) — these walk the live DOM directly and never re-render, because a
-// gesture's own handler and everything it cascades into all mutate the same
-// live DOM in place; nothing here is ever stale relative to Yjs, because
-// nothing here depends on Yjs at all until the one commitEnvelope call at
-// the very end.
+// invokeMenuActionSync / initializeToySync use these.
+//
+// These walk the live DOM directly and never re-render, because a gesture's
+// handler and everything it cascades into mutate the same live DOM in place
+//
+// nothing here is ever stale relative to Yjs, because nothing here depends on
+// Yjs at all until the one commitEnvelope call at the very end.
 
 /**
- * The IMMEDIATE (innermost) contents_group-owning tray id for a DOM node —
- * or the node itself, if it IS a .contents_group — or null. Deliberately
- * stops at the first match rather than walking the whole ancestor chain
- * (contrast findAncestorTrayIds, the Yjs-tree equivalent used by the
- * observer-driven fallback cascade, which returns the whole chain at once):
- * runContentsChangeCascadeInto (below) discovers FURTHER ancestors on its
- * own, one hop at a time, from each round's own fresh output. Returning the
- * whole chain upfront would mark an outer tray a "candidate" before its
- * inner dependency has actually produced anything to read yet — which,
- * once the inner tray's own recompute later (correctly) surfaces that same
- * outer tray again as a NEW candidate, looks identical to a genuine
- * write-back cycle and gets misreported as one.
+ * The IMMEDIATE (innermost) contents_group-owning toy id for a DOM node —
+ * or the node itself, if it IS a .contents_group — or null.
+ *
+ * Deliberately
+ * stops at the first match rather than walking the whole ancestor chain.
+ * so that first match can react to any changes and then further ancestors
+ * will get a chance to react to THOSE changes.
  */
 function immediateContainingTrayId(node) {
   let el = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement
@@ -1174,13 +1166,7 @@ function immediateContainingTrayId(node) {
 
 /**
  * Every tray immediately affected by a MutationRecord[], in first-seen
- * order, deduplicated. Only record.target is consulted, not
- * addedNodes/removedNodes — a childList record's target is the
- * (still-attached) container whose children changed, which already
- * identifies "this tray's contents changed" whether a child was added,
- * removed, or (for an attribute/characterData record) itself mutated. A
- * removed node's own DOM chain is unreliable once detached, so nothing is
- * gained by also walking removedNodes individually.
+ * order, deduplicated.
  */
 function affectedTrayIdsFromRecords(records) {
   const ids = []
@@ -1193,26 +1179,19 @@ function affectedTrayIdsFromRecords(records) {
 }
 
 /**
- * Run the contents_change_handler cascade entirely against the live DOM,
- * appending every record it produces into allRecords (mutated in place —
+ * Run the contents_change_handler cascade against the live DOM,
+ * appending every record it produces into allRecords.
+ *
+ * (allRecords is mutated in place —
  * the caller feeds this to ONE final commitEnvelope call, so the gesture
  * and its whole cascade land as a single Yjs transaction, single undo
- * step, single touched-set/bundle). No re-rendering: nothing here touches
- * Yjs, so the DOM is already current for every step.
+ * step, single touched-set/bundle).
  *
  * Each round resolves only the IMMEDIATE containing tray for whatever
- * changed in the round before it (see immediateContainingTrayId) — an
- * outer tray only becomes a candidate once its inner dependency's own
- * recompute actually produces something to read, not preemptively from the
- * original change's full ancestor chain. This is what makes "inner runs,
- * then outer reads inner's fresh result" fall out naturally from plain
- * iteration, with no explicit depth bookkeeping needed.
+ * changed in the round before it
  *
- * Each tray's handler still runs AT MOST ONCE per gesture (a "seen" set).
- * If a later round's own output would require re-running an already-seen
- * tray — e.g. two trays whose handlers write into each other's
- * contents_group — that's a genuine cycle: logged loudly (console.error)
- * and skipped, never looped or silently re-run.
+ * Each tray's handler runs AT MOST ONCE per gesture.
+ * If a cycle is detected, we log loudly (console.error) and skip
  */
 function runContentsChangeCascadeInto(allRecords, layerEl) {
   const seen = new Set()
@@ -1250,26 +1229,16 @@ function runContentsChangeCascadeInto(allRecords, layerEl) {
  * on the current tick, and with any tray reaction the handler triggers
  * folded into the SAME transaction as the handler's own commit — one
  * transaction, one undo step, no window where the action landed but its
- * reaction hadn't yet. A tray's "Roll All" is the case that most needs
- * this: it calls each contained die's own handler directly and
- * synchronously (see tray.js's roll_all), all within this one envelope, so
- * every die's new face and the tray's resulting sum land together.
+ * reaction hadn't yet.
  *
  * The handler's own records and the whole contents_change_handler cascade
- * they trigger (runContentsChangeCascadeInto, below) are gathered entirely
- * against the live DOM — no Yjs, no re-rendering, since nothing here reads
- * anything but the DOM the handler itself just mutated — then translated
- * into Yjs in ONE commitEnvelope call at the end. See TOYS.md, "The
- * envelope: what your handler can and can't do".
+ * they trigger are gathered entirely against the live DOM then translated
+ * into Yjs in ONE commitEnvelope call at the end.
  *
- * Still wrapped in an outer, unlabeled ydoc.transact(): commitEnvelope's
+ * Note: Wrapped in an outer, unlabeled ydoc.transact(): commitEnvelope's
  * own nested transact() call has its origin argument ignored (Yjs only
  * honors the outermost call's origin), so the merged transaction commits
- * under null regardless of the ENVELOPE_ORIGIN passed below — same
- * undo-tracking behavior as before this rework (see undo_redo.js's
- * "Atomicity" section). The origin passed to commitEnvelope still labels
- * the recorded bundle correctly, since conflict.js's bundle uses that
- * parameter, not the transaction's actual (collapsed) origin.
+ * under null regardless of the ENVELOPE_ORIGIN passed below
  */
 export function invokeMenuActionSync(ydoc, yToys, layerEl, svgEl, namespace, key, evt) {
   const ns    = globalThis[namespace]
@@ -1294,19 +1263,11 @@ export function invokeMenuActionSync(ydoc, yToys, layerEl, svgEl, namespace, key
 /**
  * Run every activated namespace's initialize(elem), if present, for a
  * freshly placed toy instance — inside an envelope, so any mutations it
- * makes commit to Yjs like any other handler. Runs once per instance, at
- * genuine placement only: never on load/import or remote sync, since those
- * toys already went through initialize() once, in whichever session first
- * placed them. Callers are responsible for only calling this at placement
- * and for having already awaited activateToyScripts() — this function has
- * no per-instance guard of its own.
+ * makes commit to Yjs like any other handler.
  *
- * archive2025's initialize(elem, prototype) took a second argument copying
- * config from a reference node, feeding a config-dialog flow master
- * doesn't have (a toy's initial state comes from its ttState options
- * instead). `prototype` is deliberately never passed — a namespace's own
- * initialize() just receives undefined for it, which is the same guard
- * archive2025 authors already needed for a prototype-less call.
+ * Runs once per instance, at placement only.
+ *
+ * Callers are responsible for only calling this at placement
  */
 export async function initializeToy(ydoc, yToys, layerEl, svgEl, toyType) {
   const initializers = getNamespacesForType(toyType)
@@ -1320,15 +1281,12 @@ export async function initializeToy(ydoc, yToys, layerEl, svgEl, toyType) {
 }
 
 /**
- * Synchronous sibling of initializeToy. Same effect, same one-time-at-
- * placement contract, but on the current tick, with any tray reaction
- * folded into the same transaction the same way invokeMenuActionSync does
- * (DOM-only cascade, one deferred commitEnvelope call) — matters because a
- * handler is free to reach anywhere in the toys layer (a die's
- * initialize() could, in principle, land inside an already-existing tray
- * if one placed it there directly). Ordinarily there's nothing to fold: a
- * freshly placed toy starts outside every tray, so the cascade's seed
- * comes back empty and the whole step is a no-op.
+ * Synchronous sibling of initializeToy.
+ * Same effect, same one-time-at-placement contract, but on the current
+ * tick, with any tray reaction folded into the same transaction
+ *
+ * Ordinarily there's nothing to fold. But initialize() has the freedom
+ * to mutate anything in toys-layer.
  */
 export function initializeToySync(ydoc, yToys, layerEl, svgEl, toyType) {
   const initializers = getNamespacesForType(toyType)
