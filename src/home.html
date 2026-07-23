@@ -778,7 +778,8 @@ function renderTables() {
         const forkTail = '-' + tables.randSlug()
         const forkedId = tables.generateTableId(t.name || t.id) + forkTail;
         const forkedName = t.name ? t.name + forkTail : forkedId;
-        await tables.forkTable(t.id, forkedId);
+        const { localId: forkingUserId } = getIdentity();
+        await tables.forkTable(t.id, forkedId, forkingUserId);
         tables.touchTableRecord(forkedId, { name: forkedName });
         renderTables();
       } catch (err) {
@@ -864,37 +865,22 @@ const samplerDiceReady = renderSamplerDice().catch(err => {
 });
 
 // ── Seed a new table from a sample SVG into IndexedDB ────────────────────────
-// Uses the shared storage.js import machinery (also used by app.js's
-// importSVG) to read background/toys/drawing from a sampler template into a
-// fresh Y.Doc, then persists it via tables.js's openTablePersistence before
-// navigating.
+// Uses storage.js import machinery to read svg contents from a sampler
+// template into the live doc getYDoc() hands back
 async function seedTable(tableId, sampleSvgEl) {
-  const CURRENT_SCHEMA = 4;
-
   // Guard against a click landing before the sampler dice finish rendering
   // (single network fetch, so this resolves almost immediately in practice).
   await samplerDiceReady;
 
-  const ydoc         = new Y.Doc();
-  const yMeta        = ydoc.getMap('meta');
-  const yToys        = ydoc.getXmlFragment('toys');
-  const yDrawing     = ydoc.getXmlFragment('drawing');
-
+  const ydoc = await tables.getYDoc(tableId);
   ydoc.transact(() => {
-    yMeta.set('docId',         tableId);
-    yMeta.set('created',       new Date().toISOString());
-    yMeta.set('schemaVersion', CURRENT_SCHEMA);
     // Sampler templates carry a decorative rotation on each toy <g> for
     // homepage visual flair — not part of the canonical seeded document.
-    populateFromSvgDoc(sampleSvgEl, { yMeta, yToys, yDrawing }, { stripToyDecorative: true });
+    populateFromSvgDoc(sampleSvgEl, ydoc, { stripToyDecorative: true });
   });
 
-  // Persist to IndexedDB and wait for it to flush before navigating.
-  await new Promise((resolve, reject) => {
-    const persistence = tables.openTablePersistence(tableId, ydoc);
-    persistence.on('synced', resolve);
-    persistence.on('error',  reject);
-  });
+  // ensure the doc is synced to Indexeddb before we navigate away
+  await tables.openTablePersistenceSynced(tableId, ydoc);
 }
 
 // ── Wire sampler row clicks to static HTML rows ──────────────────────────────

@@ -26,13 +26,14 @@ import {
   // Drag context
   computeBoundaryRects, computePositionSnapPoints,
 } from '../../src/boun_pos.js';
-import { makeDoc } from '../../src/app.js';
+import { tablesAPI } from '../../src/tables.js';
+const { makeDoc } = tablesAPI;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeLayer() {
-  const doc = makeDoc();
-  return { ydoc: doc.ydoc, yBounPos: doc.yBounPos };
+  const ydoc = makeDoc();
+  return { ydoc, yBounPos: ydoc.getXmlFragment('boundaries') };
 }
 
 function addB(layer, overrides = {}) {

@@ -144,73 +144,73 @@ function freshLayers() {
 
 describe('populateFromSvgDoc', () => {
   test('extracts background url and dimensions from the defs pattern', () => {
-    const { yMeta, yToys, yDrawing } = freshLayers()
-    populateFromSvgDoc(makeDocSvg(), { yMeta, yToys, yDrawing })
+    const { ydoc, yMeta } = freshLayers()
+    populateFromSvgDoc(makeDocSvg(), ydoc)
     expect(yMeta.get('bg_url')).toBe('img/bg_greenfelt.png')
     expect(yMeta.get('bg_width')).toBe(800)
     expect(yMeta.get('bg_height')).toBe(600)
   })
 
   test('does not set bg_url when there is no pattern image', () => {
-    const { yMeta, yToys, yDrawing } = freshLayers()
+    const { ydoc, yMeta } = freshLayers()
     const svg = parseSvg(`<svg xmlns="http://www.w3.org/2000/svg">
       <g id="toys-layer"></g><g id="drawing-layer"></g></svg>`)
-    populateFromSvgDoc(svg, { yMeta, yToys, yDrawing })
+    populateFromSvgDoc(svg, ydoc)
     expect(yMeta.get('bg_url')).toBeUndefined()
   })
 
   test('imports valid toys and counts them', () => {
-    const { yMeta, yToys, yDrawing } = freshLayers()
+    const { ydoc, yToys } = freshLayers()
     const { toyCount } = populateFromSvgDoc(
-      makeDocSvg({ toysInner: VALID_TOY_G }), { yMeta, yToys, yDrawing })
+      makeDocSvg({ toysInner: VALID_TOY_G }), ydoc)
     expect(toyCount).toBe(1)
     expect(yToys.toArray().length).toBe(1)
     expect(yToys.toArray()[0].getAttribute('data-toy-id')).toBe('t1')
   })
 
   test('collects invalid toys-layer children without importing them', () => {
-    const { yMeta, yToys, yDrawing } = freshLayers()
+    const { ydoc } = freshLayers()
     const badG = `<g class="not-a-toy"><rect/></g>`
     const { toyCount, invalidToyEls } = populateFromSvgDoc(
-      makeDocSvg({ toysInner: VALID_TOY_G + badG }), { yMeta, yToys, yDrawing })
+      makeDocSvg({ toysInner: VALID_TOY_G + badG }), ydoc)
     expect(toyCount).toBe(1)
     expect(invalidToyEls.length).toBe(1)
     expect(invalidToyEls[0].getAttribute('class')).toBe('not-a-toy')
   })
 
   test('imports drawing-layer children and counts them', () => {
-    const { yMeta, yToys, yDrawing } = freshLayers()
+    const { ydoc, yDrawing } = freshLayers()
     const { drawCount } = populateFromSvgDoc(
       makeDocSvg({ drawingInner: `<rect id="r1" x="0" y="0" width="10" height="10"/>` }),
-      { yMeta, yToys, yDrawing })
+      ydoc)
     expect(drawCount).toBe(1)
     expect(yDrawing.toArray()[0].nodeName).toBe('rect')
   })
 
   test('sweeps unrecognized top-level elements into the drawing layer', () => {
-    const { yMeta, yToys, yDrawing } = freshLayers()
+    const { ydoc, yDrawing } = freshLayers()
     const { drawCount } = populateFromSvgDoc(
-      makeDocSvg({ extra: `<circle id="stray" r="5"/>` }), { yMeta, yToys, yDrawing })
+      makeDocSvg({ extra: `<circle id="stray" r="5"/>` }), ydoc)
     expect(drawCount).toBe(1)
     expect(yDrawing.toArray()[0].nodeName).toBe('circle')
   })
 
   test('does not double-import known layers via the fallback sweep', () => {
-    const { yMeta, yToys, yDrawing } = freshLayers()
+    const { ydoc } = freshLayers()
     const { drawCount, toyCount } = populateFromSvgDoc(
-      makeDocSvg({ toysInner: VALID_TOY_G, drawingInner: `<rect/>` }), { yMeta, yToys, yDrawing })
+      makeDocSvg({ toysInner: VALID_TOY_G, drawingInner: `<rect/>` }), ydoc)
     expect(toyCount).toBe(1)
     expect(drawCount).toBe(1) // only the <rect>, not toys/drawing/background/boundaries-positions layers again
   })
 
   test('preserves <script> nodes inside imported toys end-to-end', () => {
-    const { yMeta, yToys, yDrawing } = freshLayers()
+    const { ydoc, yToys } = freshLayers()
     const toyWithScript = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6">
         <svg x="0" y="0" width="64" height="64" viewBox="0 0 80 100">
           <script type="text/javascript" data-namespace="d6"><![CDATA[ var d6 = 1 ]]></script>
         </svg>
       </g>`
-    populateFromSvgDoc(makeDocSvg({ toysInner: toyWithScript }), { yMeta, yToys, yDrawing })
+    populateFromSvgDoc(makeDocSvg({ toysInner: toyWithScript }), ydoc)
     const svgNode = yToys.toArray()[0].toArray()[0]
     expect(svgNode.toArray().some(c => c.nodeName === 'script')).toBe(true)
   })
@@ -220,14 +220,14 @@ describe('populateFromSvgDoc', () => {
         transform="rotate(-8,105,100)"><svg/></g>`
 
     test('off by default — transform is preserved', () => {
-      const { yMeta, yToys, yDrawing } = freshLayers()
-      populateFromSvgDoc(makeDocSvg({ toysInner: rotatedToy }), { yMeta, yToys, yDrawing })
+      const { ydoc, yToys } = freshLayers()
+      populateFromSvgDoc(makeDocSvg({ toysInner: rotatedToy }), ydoc)
       expect(yToys.toArray()[0].getAttribute('transform')).toBe('rotate(-8,105,100)')
     })
 
     test('when true, strips the transform before insertion', () => {
-      const { yMeta, yToys, yDrawing } = freshLayers()
-      populateFromSvgDoc(makeDocSvg({ toysInner: rotatedToy }), { yMeta, yToys, yDrawing },
+      const { ydoc, yToys } = freshLayers()
+      populateFromSvgDoc(makeDocSvg({ toysInner: rotatedToy }), ydoc,
         { stripToyDecorative: true })
       expect(yToys.toArray()[0].getAttribute('transform')).toBeUndefined()
     })
@@ -258,45 +258,39 @@ describe('buildExportSvg', () => {
 
   test('removes the overlay layer', () => {
     const ydoc = new Y.Doc()
-    const yToys = ydoc.getXmlFragment('toys')
-    const yDrawing = ydoc.getXmlFragment('drawing')
-    const clone = buildExportSvg(liveCanvasSvg(), { yToys, yDrawing })
+    const clone = buildExportSvg(liveCanvasSvg(), ydoc)
     expect(clone.querySelector('#overlay-layer')).toBeNull()
   })
 
   test('strips pointer-events attributes throughout', () => {
     const ydoc = new Y.Doc()
-    const yToys = ydoc.getXmlFragment('toys')
-    const yDrawing = ydoc.getXmlFragment('drawing')
-    const clone = buildExportSvg(liveCanvasSvg(), { yToys, yDrawing })
+    const clone = buildExportSvg(liveCanvasSvg(), ydoc)
     expect(clone.querySelectorAll('[pointer-events]').length).toBe(0)
   })
 
   test('does not mutate the live element passed in', () => {
     const live = liveCanvasSvg()
     const ydoc = new Y.Doc()
-    buildExportSvg(live, { yToys: ydoc.getXmlFragment('toys'), yDrawing: ydoc.getXmlFragment('drawing') })
+    buildExportSvg(live, ydoc)
     expect(live.querySelector('#overlay-layer')).not.toBeNull()
   })
 
   test('rebuilds #toys-layer from the Yjs fragment, scripts included', async () => {
     const ydoc = new Y.Doc()
     const yToys = ydoc.getXmlFragment('toys')
-    const yDrawing = ydoc.getXmlFragment('drawing')
     await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
 
-    const clone = buildExportSvg(liveCanvasSvg(), { yToys, yDrawing })
+    const clone = buildExportSvg(liveCanvasSvg(), ydoc)
     const scripts = clone.querySelector('#toys-layer').querySelectorAll('script')
     expect(scripts.length).toBe(2)
   })
 
   test('rebuilds #drawing-layer from the Yjs fragment', () => {
     const ydoc = new Y.Doc()
-    const yToys = ydoc.getXmlFragment('toys')
     const yDrawing = ydoc.getXmlFragment('drawing')
     addDrawing(ydoc, yDrawing, { id: 'r1', type: 'rect', x: 1, y: 2, width: 3, height: 4 })
 
-    const clone = buildExportSvg(liveCanvasSvg(), { yToys, yDrawing })
+    const clone = buildExportSvg(liveCanvasSvg(), ydoc)
     expect(clone.querySelector('#drawing-layer rect')).not.toBeNull()
   })
 })

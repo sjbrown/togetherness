@@ -1,11 +1,7 @@
 /**
  * storage.js — SVG document import/export: DOM ⇄ Yjs.
  *
- * Shared by app.js (importing into / exporting out of a live room's
- * document) and home.html (seeding a new room's Yjs doc from a static
- * sampler template). Every function here takes its Yjs structures and DOM
- * elements as explicit parameters rather than closing over App's private
- * state, so this module works headless (no live room, no UI) and is
+ * This module works headless (no live room, no UI) and is
  * unit-testable on its own.
  */
 import * as Y        from 'yjs';
@@ -40,11 +36,8 @@ export function domToY(node) {
  *
  * data-id, id=, data-module, and .$() are never read here and never
  * required — they're rendering/dispatch conveniences recomputed fresh by
- * the renderer at every depth, every time (see toys.js's _toSVGEl), not
- * part of the on-disk contract. Requiring them on import would make a
- * hand-authored SVG file invalid unless the author also added attributes
- * that exist solely to help this app's current rendering code find nodes
- * quickly.
+ * the renderer at every depth, every time, not
+ * part of the on-disk contract.
  */
 export function isToyG(el) {
   return el.localName === 'g' &&
@@ -55,10 +48,11 @@ export function isToyG(el) {
 }
 
 /**
- * Populate { yMeta, yToys, yDrawing } from a source <svg> root element —
- * background pattern, #toys-layer, #drawing-layer, and (as a fallback) any
- * other top-level elements not belonging to a known layer. Caller is
- * responsible for wrapping this in a ydoc.transact() if atomicity matters.
+ * Populate a Yjs document (yMeta/yToys/yDrawing, all obtained directly off
+ * ydoc) from a source <svg> root element — background pattern, #toys-layer,
+ * #drawing-layer, and (as a fallback) any other top-level elements not
+ * belonging to a known layer. Caller is responsible for wrapping this in a
+ * ydoc.transact() if atomicity matters.
  *
  * opts.stripToyDecorative — drop each toy <g>'s `transform` attribute before
  * insertion. home.html's sampler templates carry a decorative rotation
@@ -67,10 +61,13 @@ export function isToyG(el) {
  *
  * Returns { toyCount, drawCount, invalidToyEls }. invalidToyEls are DOM
  * elements found directly inside #toys-layer that don't satisfy isToyG();
- * the caller decides what to do with them (app.js surfaces them in an
- * errors layer and a toast, home.html's fixed templates never produce any).
+ * the caller decides what to do with them
  */
-export function populateFromSvgDoc(svgRootEl, { yMeta, yToys, yDrawing }, opts = {}) {
+export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
+  const yMeta    = ydoc.getMap('meta');
+  const yToys    = ydoc.getXmlFragment('toys');
+  const yDrawing = ydoc.getXmlFragment('drawing');
+
   const bgPattern   = svgRootEl.querySelector('defs pattern');
   const toysLayerEl = svgRootEl.querySelector('#toys-layer');
   const drawLayerEl = svgRootEl.querySelector('#drawing-layer');
@@ -135,15 +132,25 @@ export function populateFromSvgDoc(svgRootEl, { yMeta, yToys, yDrawing }, opts =
 
 /**
  * Build an export-ready SVG DOM tree from the live canvas element plus the
- * canonical Yjs fragments. Clones the live element for the skeleton (defs,
- * background, boundaries — none of these can carry scripts) and strips
- * overlay/UI-only bits, but rebuilds #toys-layer and #drawing-layer
- * directly from the Yjs fragments: the live DOM is a mirror that never
- * renders <script> nodes (so nothing executes), so a DOM clone alone would
- * silently export toys with their scripts stripped. The Yjs tree is the
- * canonical document — export should be honest about that.
+ * canonical Yjs document (yToys/yDrawing, obtained directly off ydoc).
+ * Clones the live element for the skeleton (defs, background, boundaries —
+ * none of these can carry scripts) and strips overlay/UI-only bits, but
+ * rebuilds #toys-layer and #drawing-layer directly from the Yjs fragments:
+ * the live DOM is a mirror that never renders <script> nodes (so nothing
+ * executes), so a DOM clone alone would silently export toys with their
+ * scripts stripped.
+ *
+ * Also stamps the attributes an exported file needs to stand alone as a
+ * real, re-importable, Inkscape-friendly SVG document: a viewBox (falling
+ * back to the live element's rendered size if it doesn't already have
+ * one), the xmlns/xmlns:xlink/xmlns:inkscape namespace declarations a
+ * cloned fragment doesn't carry on its own, and `inkscape:groupmode="layer"`
+ * on the toy/drawing layers so Inkscape treats them as real layers.
  */
-export function buildExportSvg(liveSvgEl, { yToys, yDrawing }) {
+export function buildExportSvg(liveSvgEl, ydoc) {
+  const yToys    = ydoc.getXmlFragment('toys');
+  const yDrawing = ydoc.getXmlFragment('drawing');
+
   const clone = liveSvgEl.cloneNode(true);
   clone.removeAttribute('id');
   ['#overlay-layer', '#draw-preview'].forEach(sel => {
@@ -154,13 +161,25 @@ export function buildExportSvg(liveSvgEl, { yToys, yDrawing }) {
   if (toysLayerEl) {
     toysLayerEl.innerHTML = '';
     Toys.listToys(yToys, { includeScripts: true }).forEach(el => toysLayerEl.appendChild(el));
+    toysLayerEl.setAttribute('inkscape:groupmode', 'layer');
   }
   const drawLayerEl = clone.querySelector('#drawing-layer');
   if (drawLayerEl) {
     drawLayerEl.innerHTML = '';
     Drawing.listDrawings(yDrawing, { includeScripts: true }).forEach(el => drawLayerEl.appendChild(el));
+    drawLayerEl.setAttribute('inkscape:groupmode', 'layer');
   }
 
   clone.querySelectorAll('[pointer-events]').forEach(el => el.removeAttribute('pointer-events'));
+
+  if (!clone.getAttribute('viewBox')) {
+    const w = liveSvgEl.clientWidth  || 120;
+    const h = liveSvgEl.clientHeight || 120;
+    clone.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  }
+  clone.setAttribute('xmlns',          'http://www.w3.org/2000/svg');
+  clone.setAttribute('xmlns:xlink',    'http://www.w3.org/1999/xlink');
+  clone.setAttribute('xmlns:inkscape', 'http://www.inkscape.org/namespaces/inkscape');
+
   return clone;
 }

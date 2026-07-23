@@ -179,7 +179,7 @@ Resolution model:
  * **Branch escalation:** non-trivial divergence (in-place assertion can't
    yield a coherent state, or a wide causal gap — the prolonged
    network-partition case) forks the loser's *full divergent `Y.Doc`* into
-   a new IndexedDB-backed branch table (`tt:`-keyed, new `roomId`, `tt_tables`
+   a new IndexedDB-backed branch table (`tt-`-prefixed id, new `roomId`, `tt_tables`
    entry) and shows a blocking **Acknowledge dialog** — NOT a toast.
    Dialog offers: join the authoritative table (branch preserved,
    reopenable from `home.html`) or keep working on the branch. No replay of
@@ -208,10 +208,41 @@ a silently-dropped resize loser is acceptable and gets no toast.
 **Implementation order (fork primitive first):**
  1. ✅ **Done.** implement a **"Duplicate (Fork)" button**
  2. ✅ **Done.** One-transaction commit for any code authored by a user.
- 3. `joinSequence` `Y.Array` + comparator.
- 4. Touched-set construction + post-merge overlap scan (hook relative to
-    `onToysChanged` / `dispatchContentsChangeCascade`; mind the
-    `_dispatchingContentsChange` reentrancy guard).
+ 3. ✅ **Done.** `joinSequence` `Y.Array` + comparator — implemented in
+    `tables.js` (`ensureJoined`, `compareAuthority`, `isAuthoritative`;
+    `resetJoinSequenceToSelf` stays private, used only by `forkTable`).
+    Keyed on `user.js`'s persistent `localId`.
+    `ensureJoined` is called from `index.html` after
+    IndexedDB sync lands, so a returning peer sees its own earlier entry
+    before deciding whether to append. Forking (`tables.js`'s `forkTable`,
+    used by home.html's "Duplicate (Fork)" button) now requires a
+    `forkingUserId` and resets the branch's `joinSequence` to that id alone
+    via `resetJoinSequenceToSelf` — otherwise every player who was ever on
+    the source table would carry over and outrank the forking user on
+    their own new branch. Not yet consulted by any conflict-resolution
+    logic; that's step 4/5.
+ 4. ✅ **Done.** Touched-set construction + post-merge overlap scan —
+    `conflict.js` (`touchedSetFromRecords`, `recordReactionBundle`,
+    `areConcurrent`, `touchedSetsOverlap`, `scanForConflicts`) plus a small
+    `origins.js` split-out (avoids an envelope.js↔conflict.js import
+    cycle). `commitEnvelope` (envelope.js) now builds the touched-set from
+    its records and records a bundle — `{clientID, clock, beforeState,
+    touched, origin, ts}` — into a new synced `reactionLog` `Y.Array`,
+    inside the SAME transaction as the commit itself (atomic, same
+    reasoning as step 2). Every origin qualifies — ENVELOPE_ORIGIN,
+    DERIVED_ORIGIN, and LIFECYCLE_ORIGIN alike (see the whole-layer
+    envelope rework in TOYS.md/envelope.js: nothing about how a handler got
+    invoked makes its writes structurally immune to concurrent collision).
+    Node identity for the touched-set is each Yjs node's own backing Item
+    id ({client, clock} — the same mechanism Yjs's `createRelativePosition`
+    uses internally), stable across replicas once synced. `app.js` observes
+    `_yReactionLog` (`onReactionLogChanged`) and runs `scanForConflicts`
+    against every newly-added bundle — local or remote — logging a hit via
+    `App.addLog`/`console.warn`. Verified end-to-end against two real
+    synced `Y.Doc` replicas reproducing the canonical race (same result
+    slot → flagged; different result slots → not flagged) in
+    `tests/unit/conflict.test.js`. Detection only — no resolution yet;
+    that's step 5.
  5. Fast-path in-place resolution (winner-assertion) + quiet log line.
  6. Branch escalation predicate + fork wiring (reusing step 1's copy
     mechanics, triggered from a live room instead of home.html) +

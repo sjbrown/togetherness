@@ -1,0 +1,314 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   width="220"
+   height="130"
+   viewBox="0 0 220 130"
+   id="bag"
+   class="bag"
+   version="1.1"
+   >
+  <defs id="defs_bag">
+    <linearGradient
+       id="linearGradient101650">
+      <stop
+         style="stop-color:#000000;stop-opacity:0;"
+         offset="0"
+         id="stop101646" />
+      <stop
+         style="stop-color:#000000;stop-opacity:1;"
+         offset="1"
+         id="stop101648" />
+    </linearGradient>
+    <linearGradient
+       id="linearGradient87246">
+      <stop
+         style="stop-color:#ffffff;stop-opacity:1;"
+         offset="0"
+         id="stop87242" />
+      <stop
+         style="stop-color:#ffffff;stop-opacity:0;"
+         offset="1"
+         id="stop87244" />
+    </linearGradient>
+    <linearGradient
+       id="linearGradient60894">
+      <stop
+         style="stop-color:#787878;stop-opacity:1;"
+         offset="0"
+         id="stop60890" />
+      <stop
+         style="stop-color:#3e3e3e;stop-opacity:1;"
+         offset="1"
+         id="stop60892" />
+    </linearGradient>
+    <linearGradient
+       id="linearGradient49498">
+      <stop
+         style="stop-color:#626262;stop-opacity:1;"
+         offset="0"
+         id="stop49494" />
+      <stop
+         style="stop-color:#cccccc;stop-opacity:0.09561406;"
+         offset="1"
+         id="stop49496" />
+    </linearGradient>
+    <linearGradient
+       id="linearGradient21174">
+      <stop
+         style="stop-color:#000000;stop-opacity:1;"
+         offset="0"
+         id="stop21170" />
+      <stop
+         style="stop-color:#181818;stop-opacity:1;"
+         offset="0.82457083"
+         id="stop41926" />
+      <stop
+         style="stop-color:#2b2b2b;stop-opacity:1;"
+         offset="1"
+         id="stop21172" />
+    </linearGradient>
+    <linearGradient
+       id="linearGradient11728">
+      <stop
+         style="stop-color:#000000;stop-opacity:1;"
+         offset="0"
+         id="stop11724" />
+      <stop
+         style="stop-color:#8b8b8b;stop-opacity:1;"
+         offset="1"
+         id="stop11726" />
+    </linearGradient>
+    <!--
+      bag_icon — a decorative accent on top of rect_contents (below), not
+      itself responsible for covering the toy. Rendered via marker-start
+      on a zero-length path (see the #bag_anchor path below). markerUnits
+      is userSpaceOnUse rather than the SVG default (strokeWidth) so its
+      rendered size is an explicit, unambiguous markerWidth/markerHeight —
+      not something that could accidentally start tracking a stroke-width
+      value someone sets later.
+
+      Sized as a fraction of rect_contents' real height (106.7, copied
+      from tray_sum.svg) rather than an independently-guessed number:
+      markerHeight = 106.7 * 0.4 ≈ 43, markerWidth keeps the artwork's own
+      aspect ratio (19.043247 / 25.120527 ≈ 0.758). Positioned at
+      rect_contents' horizontal center, near its top edge (the marker's
+      own refX/refY anchor near the top of its artwork, like a bag's
+      neck) — see the #bag_anchor path's d attribute.
+    -->
+    <marker
+       id="bag_icon"
+       markerUnits="userSpaceOnUse"
+       markerWidth="32.6"
+       markerHeight="43"
+       refX="-0.51131719"
+       refY="4.7284288"
+       orient="auto"
+       viewBox="0 0 25.285857 25.285857"
+       preserveAspectRatio="xMidYMid meet"
+       >
+      <g id="g_bag">
+        <ellipse
+           style="fill:#000000;fill-opacity:0.427726;stroke:none;stroke-width:0.590925;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
+           id="path101342"
+           cx="14.409167"
+           cy="21.181854"
+           rx="12.322562"
+           ry="8.8221397" />
+        <circle
+           style="fill:url(#linearGradient60896);fill-opacity:1;stroke:url(#linearGradient11730);stroke-width:1.1;stroke-dasharray:none;paint-order:stroke fill markers"
+           id="path11645"
+           cx="14.409167"
+           cy="14.409164"
+           r="13.859164" />
+        <circle
+           style="fill:url(#radialGradient21176);fill-opacity:1;stroke:url(#linearGradient49500);stroke-width:1;stroke-dasharray:none;paint-order:stroke fill markers"
+           id="circle11699"
+           cx="14.409167"
+           cy="14.409164"
+           r="9.4266262" />
+        <ellipse
+           style="fill:none;fill-opacity:1;stroke:url(#linearGradient87248);stroke-width:0.468465;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
+           id="path87240"
+           cx="14.409167"
+           cy="15.89019"
+           rx="10.268847"
+           ry="11.729376" />
+        <circle
+           style="fill:none;fill-opacity:1;stroke:url(#linearGradient101566);stroke-width:0.532763;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
+           id="ellipse101564"
+           cx="14.5"
+           cy="13.240055"
+           r="12" />
+      </g>
+    </marker>
+    <linearGradient
+       xlink:href="#linearGradient11728"
+       id="linearGradient11730"
+       x1="126.26675"
+       y1="116.38761"
+       x2="126.26675"
+       y2="93.988335"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="translate(-112.21034,-90.522263)" />
+    <radialGradient
+       xlink:href="#linearGradient21174"
+       id="radialGradient21176"
+       cx="126.61951"
+       cy="103.49127"
+       fx="126.61951"
+       fy="103.49127"
+       r="9.4266262"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="matrix(0.87066376,0,0,1,-95.833849,-90.522263)" />
+    <linearGradient
+       xlink:href="#linearGradient49498"
+       id="linearGradient49500"
+       x1="126.25869"
+       y1="93.833717"
+       x2="126.25869"
+       y2="112.78059"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="translate(-112.21034,-90.522263)" />
+    <linearGradient
+       xlink:href="#linearGradient60894"
+       id="linearGradient60896"
+       x1="124.58331"
+       y1="105.76905"
+       x2="124.58331"
+       y2="117.31888"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="translate(-112.21034,-90.522263)" />
+    <linearGradient
+       xlink:href="#linearGradient87246"
+       id="linearGradient87248"
+       x1="127.17322"
+       y1="91.851143"
+       x2="127.17322"
+       y2="96.78344"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="matrix(0.8766596,0,0,1.0013461,-96.59304,-90.848179)" />
+    <linearGradient
+       xlink:href="#linearGradient101650"
+       id="linearGradient101566"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="matrix(1.0488533,0,0,1.082466,-147.21445,-103.19929)"
+       x1="154.03436"
+       y1="115.18021"
+       x2="154.03436"
+       y2="123.02574" />
+  </defs>
+
+  <script
+     type="text/javascript"
+     src="js/tray.js"
+     data-namespace="tray"
+     id="script_tray" />
+  <script
+     type="text/javascript"
+     data-namespace="bag"
+     id="script_bag"><![CDATA[
+
+var bag = {
+
+  menu: {
+    'Roll All': {
+      eventName: 'tray_roll',
+      applicable: (node) => { return true },
+      handler: function(evt) {
+        return tray.roll_all(this)
+      },
+    },
+    'Take': {
+      eventName: 'bag_take',
+      applicable: (node) => { return bag._contents(node).length > 0 },
+      handler: function(evt) {
+        bag._take(this)
+      },
+    },
+  },
+
+  // Direct .toy children of elem's own contents_group, as an array.
+  _contents: function(elem) {
+    const items = []
+    tray.visit_contents_group(elem, (child) => items.push(child))
+    return items
+  },
+
+  // Pick one contained toy at random and move it out to the top level of
+  // the toys layer, translating its position from bag-relative to
+  // canvas-absolute (the same translation applyMoveCommit does in
+  // reverse when something is dropped INTO a tray) so it lands near the
+  // bag rather than wherever its old tray-relative x/y happens to land
+  // at the top level.
+  //
+  // The move itself is a plain DOM appendChild. The envelope watches the
+  // whole #toys-layer, not just this toy's own subtree, so a childList
+  // mutation that moves a node from our contents_group up to the layer
+  // is captured and translated into a Yjs reparent like any other
+  // handler mutation -- see TOYS.md, "The envelope".
+  _take: function(elem) {
+    const items = bag._contents(elem)
+    if (!items.length) return
+    const chosen = items[Math.floor(Math.random() * items.length)]
+
+    const ownSvg = elem.querySelector(':scope > svg')
+    const bagX = parseFloat(ownSvg && ownSvg.getAttribute('x')) || 0
+    const bagY = parseFloat(ownSvg && ownSvg.getAttribute('y')) || 0
+
+    const chosenSvg = chosen.querySelector(':scope > svg')
+    if (chosenSvg) {
+      const relX = parseFloat(chosenSvg.getAttribute('x')) || 0
+      const relY = parseFloat(chosenSvg.getAttribute('y')) || 0
+      chosenSvg.setAttribute('x', String(bagX + relX))
+      chosenSvg.setAttribute('y', String(bagY + relY))
+    }
+
+    const toysLayer = elem.closest('#toys-layer')
+    if (!toysLayer) throw new Error('[bag] take: no #toys-layer ancestor found')
+    toysLayer.appendChild(chosen)
+  },
+
+}
+
+    ]]></script>
+
+  <!-- Invisible hit-testing floor for the whole bag, same pattern as
+       tray_*.svg — contained toys are pointer-events:none, so a click
+       anywhere over the bag (including over the closed body or straight
+       through to a gap where contents show) hits this instead. -->
+  <rect class="hit_plate" x="0" y="0" width="100%" height="100%" fill="transparent" />
+
+  <g class="contents_group"></g>
+
+  <!-- The closed-bag body — geometry and style copied verbatim from
+       tray_sum.svg's rect_contents, deliberately NOT wrapped in
+       wh_follow_resize (contrast tray_sum, where the equivalent rect
+       DOES scale with the toy). That's the whole mechanism: because this
+       rect's x/y/width/height stay literally fixed while the toy's own
+       viewBox is rewritten to exactly match width/height on every resize
+       (1 user-unit == 1 rendered pixel, always — see applyResizeCommit
+       in toys.js), this rect's on-screen size never changes as the toy
+       is resized. At the toy's default/minimum size it covers (near)
+       the whole toy, hiding contents_group beneath it (closed bag);
+       resized larger, it covers proportionally less, revealing
+       contents_group around it (open bag). Last in document order so it
+       paints OVER contents_group. -->
+  <rect
+     id="rect_contents"
+     fill="#d7d7d7"
+     style="stroke:#3b3b3b;stroke-width:3.2;stroke-linecap:square"
+     x="3.6" y="11.38" width="213.4" height="106.7"
+     rx="10" ry="10" />
+
+  <!-- The bag_icon glyph, decorating the closed body above. A
+       zero-length path — markers only render on path/line/polyline/
+       polygon, never on rect/circle/ellipse, so this can't be a <rect>
+       the way the original sketch had it, and the "M x,y" moveto alone
+       isn't enough to establish a marker vertex either (Chromium; needs
+       an explicit, even zero-length, drawn segment) — hence "L x,y" to
+       the same point. -->
+  <path id="bag_anchor" d="M 110.3,24 L 110.3,24" fill="none" stroke="none" marker-start="url(#bag_icon)" />
+
+</svg>

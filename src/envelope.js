@@ -6,7 +6,7 @@
  * so {plain JavaScript + the DOM} is the clear winner.
  *
  * Toy behaviour scripts (dice, trays, tokens, ...) run against the
- * mirrored (live) DOM of their toy.
+ * mirrored (live) DOM of the whole toys layer.
  *
  * But the Yjs tree, not the DOM, is the canonical document, so how do we
  * square this? Answer: runInEnvelope lets a handler mutate the DOM as if
@@ -14,7 +14,7 @@
  * transaction:
  *
  *   const records = await runInEnvelope(toyEl, () => handler.run(toyEl))
- *   commitEnvelope(ydoc, toyEl, records)
+ *   commitEnvelope(ydoc, records)
  *
  * or, as one call:
  *
@@ -36,34 +36,19 @@
 import * as Y from 'yjs'
 import { yNodeFor, registerYNode, render as renderToysLayer } from './toys.js'
 import { domToY } from './storage.js'
+import { ENVELOPE_ORIGIN, DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './origins.js'
+import { touchedSetFromRecords, recordReactionBundle } from './conflict.js'
 
 const XLINK_NS = 'http://www.w3.org/1999/xlink'
 
 // ── Yjs transaction origins ──────────────────────────────────
 //
 // Every envelope commit tags its Yjs transaction with an origin so the
-// UndoManager can decide what belongs on the undo stack.
-//
-//   ENVELOPE_ORIGIN — a toy handler ran: a die's Roll, a tray's Roll All.
-//
-//   DERIVED_ORIGIN — a tray recomputed its own elements due to something
-//     in its contents_group changing.
-//
-//   LIFECYCLE_ORIGIN — a toy's one-time initialize() side effects at
-//     placement. If the placement is undone the whole toy is removed, so
-//     these writes never need an independent undo step either. Untracked.
-//
-export const ENVELOPE_ORIGIN  = 'envelope'
-export const DERIVED_ORIGIN   = 'toy-derived'
-export const LIFECYCLE_ORIGIN = 'toy-lifecycle'
-
-// Diagnostic strictness — opt-in via ?debug=1 in the URL, same convention as
-// app.js. A function (not a cached const) so tests can toggle it per-case
-// via history.pushState, and callers can override via opts.debug.
-function urlDebugFlag() {
-  return typeof location !== 'undefined'
-    && new URLSearchParams(location.search).get('debug') === '1'
-}
+// UndoManager can decide what belongs on the undo stack, and conflict.js
+// can decide whether to record a touched-set bundle.
+// TODO: Re-exported here since most callers already import
+// DERIVED_ORIGIN / LIFECYCLE_ORIGIN from this module.
+export { ENVELOPE_ORIGIN, DERIVED_ORIGIN, LIFECYCLE_ORIGIN }
 
 const MUTATION_OPTS = {
   attributes:            true,
@@ -89,10 +74,9 @@ export function isEnvelopeOpen() {
  * Run fn() while watching the toys layer for DOM mutations, then return the
  * raw MutationRecord[] produced. No Yjs translation happens here.
  *
- * Observes the enclosing #toys-layer element — found via closest(),
- * so that a * handler reaching outside its own toy,
- * e.g. a dice grabbing a sibling dice, or reaching up and out of its'
- * containing tray, is still captured for scope enforcement in commitEnvelope.
+ * Observes the enclosing #toys-layer element — found via closest() from
+ * toyEl, so a handler reaching anywhere else in the layer (a die grabbing
+ * a sibling die, a tray reaching into a contained toy) is still captured.
  *
  * Async note:
  * the async contract lives here: if fn() returns a Promise, it's awaited
@@ -158,38 +142,6 @@ export function runInEnvelopeSync(toyEl, fn) {
     _openCount--
   }
   return records
-}
-
-// ── scope enforcement ─────────────────────────────────────────────────
-
-function isInScope(toyEl, node) {
-  return node === toyEl || toyEl.contains(node)
-}
-
-function revertAttributeRecord(record) {
-  const { target, attributeName, attributeNamespace, oldValue } = record
-  if (attributeNamespace) {
-    if (oldValue === null) target.removeAttributeNS(attributeNamespace, attributeName)
-    else                    target.setAttributeNS(attributeNamespace, attributeName, oldValue)
-  } else {
-    if (oldValue === null) target.removeAttribute(attributeName)
-    else                    target.setAttribute(attributeName, oldValue)
-  }
-}
-
-function revertCharacterDataRecord(record) {
-  record.target.data = record.oldValue ?? ''
-}
-
-function revertChildListRecord(record) {
-  record.addedNodes.forEach(n => { n.parentNode?.removeChild(n) })
-  record.removedNodes.forEach(n => { record.target.insertBefore(n, record.nextSibling) })
-}
-
-function revertRecord(record) {
-  if      (record.type === 'attributes')    revertAttributeRecord(record)
-  else if (record.type === 'characterData') revertCharacterDataRecord(record)
-  else if (record.type === 'childList')     revertChildListRecord(record)
 }
 
 // ── translation, easy cases ───────────────────────────────────────────
@@ -296,9 +248,8 @@ function applyChildListRecord(record) {
   // one go lands them in the right order even though each yInsertIndex call
   // depends on the previous addition already being registered.
   // registerTree runs AFTER insertion: a still-detached Y.XmlElement's
-  // toArray() silently returns empty (see toys.js notes on detached
-  // fragments), so walking its children for registration only works once
-  // it's actually attached to the doc.
+  // toArray() silently returns empty, so walking its children for 
+  // registration only works once it's actually attached to the doc.
   for (const domNode of record.addedNodes) {
     const yNode = domToY(domNode)
     if (!yNode) continue
@@ -320,48 +271,26 @@ function applyRecord(record) {
 
 /**
  * Translate a MutationRecord[] (as produced by runInEnvelope) into a single
- * Yjs transaction tagged with an origin. Records whose target falls
- * outside toyEl's own subtree are never translated — they're reverted on
- * the DOM (using the record's old value) and logged loudly instead, treating
- * a toy mutating another toy as a bug, for now (will be valid in the future)
+ * Yjs transaction tagged with an origin.
  *
- * Pass { debug: true } (or run with ?debug=1 in the URL) to also throw once
- * any out-of-scope mutations were found, after all of them have been
- * reverted — useful during toy-script development.
+ * Also builds this commit's touched-set from the records and records it as
+ * a bundle — inside this same transaction, so the bundle
+ * is atomic with the commit it describes.
  *
- * Returns { applied, violations } — violations is the list of reverted
- * out-of-scope records, for callers that want to surface something to the
- * user beyond the console warning.
+ * Returns { applied, bundle } — applied is the record count; bundle is the
+ * recorded bundle, or null if nothing was actually touched.
  */
-export function commitEnvelope(ydoc, toyEl, records, opts = {}) {
-  const debug      = opts.debug ?? urlDebugFlag()
-  const origin     = opts.origin ?? ENVELOPE_ORIGIN
-  const violations = []
+export function commitEnvelope(ydoc, records, opts = {}) {
+  const origin = opts.origin ?? ENVELOPE_ORIGIN
+  let bundle   = null
 
-  ydoc.transact(() => {
-    for (const record of records) {
-      if (!isInScope(toyEl, record.target)) {
-        violations.push(record)
-        continue
-      }
-      applyRecord(record)
-    }
+  ydoc.transact((tr) => {
+    for (const record of records) applyRecord(record)
+    const touched = touchedSetFromRecords(records)
+    bundle = recordReactionBundle(ydoc, tr, origin, touched)
   }, origin)
 
-  // Reverse order: each record's oldValue/nextSibling is only correct
-  // relative to the state right before that mutation happened. Reverting
-  // forward would, e.g., leave an attribute at an intermediate value instead
-  // of the pre-envelope one, or hand insertBefore a nextSibling reference
-  // that a later (but earlier-reverted) record already detached.
-  for (const record of [...violations].reverse()) {
-    console.warn('[envelope] reverting out-of-scope mutation from toy handler', record)
-    revertRecord(record)
-  }
-  if (debug && violations.length) {
-    throw new Error(`[envelope] ${violations.length} out-of-scope mutation(s) from toy handler`)
-  }
-
-  return { applied: records.length - violations.length, violations }
+  return { applied: records.length, bundle }
 }
 
 // ── post-commit render policy ─────────────────────────────────────────
@@ -393,14 +322,16 @@ export function renderAfterCommit(yToys, layerEl) {
 
 /**
  * Run a toy handler under the envelope and translate its mutations into a
- * single Yjs transaction. Does not render — see the note above
- * renderAfterCommit for why. layerEl is accepted (rather than dropped from
- * the signature) so callers already holding it don't need a separate
+ * single Yjs transaction. Does not render.
+ * layerEl is accepted so callers already holding it don't need a separate
  * import just to pass it elsewhere; it's currently unused here.
+ *
+ * TODO: handlers are enforced synchronus, so not sure why this function
+ *       is still here...
  */
 export async function runToyHandler(ydoc, yToys, layerEl, toyEl, fn, opts = {}) {
   const records = await runInEnvelope(toyEl, fn)
-  return commitEnvelope(ydoc, toyEl, records, opts)
+  return commitEnvelope(ydoc, records, opts)
 }
 
 /**
@@ -414,5 +345,5 @@ export async function runToyHandler(ydoc, yToys, layerEl, toyEl, fn, opts = {}) 
  */
 export function runToyHandlerSync(ydoc, yToys, layerEl, toyEl, fn, opts = {}) {
   const records = runInEnvelopeSync(toyEl, fn)
-  return commitEnvelope(ydoc, toyEl, records, opts)
+  return commitEnvelope(ydoc, records, opts)
 }

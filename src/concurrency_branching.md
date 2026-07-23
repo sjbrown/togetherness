@@ -137,6 +137,27 @@ branched *with* its reaction — the unit is the transaction, not the individual
 op. Pure inserts with no reaction (or a no-op/side-effect-only reaction) still
 never cause a conflict, because they touch fresh nodes and overlap nothing.
 
+**Mechanism:**
+A gesture (`invokeMenuActionSync`, `initializeToySync`) runs entirely against
+the live DOM first — the handler, then every `contents_change_handler` it
+triggers, cascading in rounds from the deepest element upward.
+Each round's own new mutations checked for further contents-group membership,
+accumulating one combined `MutationRecord[]` with no re-rendering anywhere
+in that process, since nothing in it depends on Yjs at all.
+Only then is everything translated into Yjs in one `commitEnvelope` call.
+Each affected tray's
+`contents_change_handler` runs at most once per gesture (a "seen" set); a
+handler whose own output would require re-running an already-seen tray — a
+genuine write-back cycle between trays, not just nesting — is logged
+loudly (`console.error`) and skipped, never looped. `commitMove`'s
+drop-into-tray path and the observer-driven fallback
+(`dispatchContentsChangeCascade`, for raw Yjs writes with no self-cascade of
+their own: undo/redo, import) are a different case — no DOM records to work
+from — and still use the original Yjs-tree-walking mechanism
+(`findAncestorTrayIds`, `affectedTrayIdsInnerFirst`,
+`runContentsChangeCascadeSync`), nested-transact-collapsed exactly as
+before.
+
 ---
 
 ## Two transaction classes
@@ -152,10 +173,10 @@ This clarifies which transactions can ever need bespoke resolution:
    unremarkable.
 
 2. **Envelope-opening ops with non-trivial `MutationRecord` content** —
-   `contents_change_handler` reactions, `Roll All`, and any menu handler that
-   reads-and-rewrites existing nodes. These are the transactions that can
-   produce unmergeable divergence and thus may require the fast path or a
-   branch.
+   `contents_change_handler` reactions, `Roll All`, a toy's placement-time
+   `initialize()`, and any menu handler that reads-and-rewrites existing
+   nodes. These are the transactions that can produce unmergeable
+   divergence and thus may require the fast path or a branch.
 
 The dividing line is **whether the transaction ran arbitrary envelope-wrapped
 code that rewrote existing state**, not which hook fired it and not merely
@@ -186,6 +207,53 @@ slot they both wrote, not for sharing a container. Inferring "touched a node ⇒
 touched its descendants" would produce false positives on exactly the
 independent-drop case that must stay conflict-free.
 
+### Implemented in `conflict.js` (+ a `origins.js` split-out)
+
+- **Node identity:** each Yjs node's own backing Item id (`{client, clock}`)
+  — the same mechanism Yjs's own `createRelativePosition` uses internally.
+  Stable across replicas once synced, so a touched-set built on one peer can
+  be compared against one built on another without any app-level id scheme.
+  `touchedSetFromRecords(records)` walks the in-scope records exactly as
+  described above and returns a `Map<idKeyString, {client, clock}>`.
+- **The bundle:** `commitEnvelope` (`envelope.js`) calls
+  `recordReactionBundle(ydoc, tr, origin, touched)` from *inside* the same
+  `ydoc.transact(...)` that applied the reaction's records — atomic with the
+  reaction, per "Preliminary: placement + reaction in ONE transaction"
+  above. A bundle is `{clientID, clock, beforeState, touched, origin, ts}`:
+  `clientID`/`clock` are this commit's own causal stamp (`clock` read via
+  `Y.getState(ydoc.store, ydoc.clientID)` right after the reaction's ops
+  landed, since `Transaction.afterState` isn't populated yet inside an open
+  transact() call); `beforeState` (`tr.beforeState`, a full state vector) is
+  the causal-knowledge boundary this commit started from. Only
+  `ENVELOPE_ORIGIN` and `DERIVED_ORIGIN` commits qualify — `LIFECYCLE_ORIGIN`
+  is skipped, since a placement's one-time `initialize()` only ever touches
+  a freshly-created toy's own fresh subtree, which nothing else has seen yet
+  and so can never overlap with another peer's concurrent touched-set.
+  Bundles live in a new synced `reactionLog` `Y.Array` (`getReactionLog`).
+- **Concurrency test:** two bundles are concurrent
+  (`areConcurrent(a, b)`) if they have different authors and neither's
+  `beforeState` covers the other's `{clientID, clock}` stamp — i.e. neither
+  peer had integrated the other's commit when its own began. Combined with
+  `touchedSetsOverlap` (set intersection on the touched-set keys),
+  `scanForConflicts(reactionLogEntries, newBundle)` returns every existing
+  bundle that conflicts with a newly-added one.
+- **The scan hook:** `app.js` observes the synced `reactionLog` directly
+  (`onReactionLogChanged`, wired in `boot()` alongside the other CRDT
+  observers) rather than hooking `onToysChanged` /
+  `dispatchContentsChangeCascade` as originally sketched — every commit that
+  qualifies (local or remote) always appends to `reactionLog`, so watching
+  that array directly sees exactly the events that matter, with no need to
+  duplicate origin-filtering logic that already lives in `conflict.js`. It
+  makes no Yjs writes of its own (detection only, for now), so it doesn't
+  need to consult or set `_dispatchingContentsChange` at all.
+- **Status: detection only.** A hit is logged (`console.warn` +
+  `App.addLog`); nothing is resolved yet. Fast-path in-place resolution and
+  branch escalation are steps 5/6.
+- **Verified end-to-end** in `tests/unit/conflict.test.js`, including two
+  real synced `Y.Doc` replicas driven through the actual production
+  `commitEnvelope` path (not hand-built bundles): two peers writing the same
+  result slot are flagged; two peers writing different slots are not.
+
 ---
 
 ## Authority ordering (who wins)
@@ -199,8 +267,11 @@ explicitly owner-free table. To minimize surprise, authority follows **join
 order**:
 
 - A dedicated `Y.Array` — `joinSequence` — lives in the document. On startup,
-  each client appends its `clientID` **once** (guarded: only if not already
-  present).
+  each client appends its persistent id **once** (guarded: only if not
+  already present). This is `user.js`'s `localId` (`tt-p-v1-DD-XXX`), not
+  `ydoc.clientID` — `clientID` is a fresh random number every session and
+  would silently reshuffle authority on every reload; `localId` survives
+  reloads and reconnects, which "Pruning: no" below requires.
 - Because it is a `Y.Array`, its insertion order *is* the join order:
   CRDT-ordered, causally consistent, identical on every peer, and it survives
   partitions.
@@ -209,6 +280,29 @@ order**:
   before seeing each other), the `Y.Array` insertion order degrades
   automatically to Yjs's own `clientID` tie-break — deterministic, and in a
   case where no human could perceive a "first" anyway.
+- **Implemented in `tables.js`**: `ensureJoined` (the guarded append, called from
+  `index.html` after IndexedDB sync lands, so a returning peer sees its own
+  earlier entry before deciding whether to append), `compareAuthority` /
+  `isAuthoritative` (the comparator), and `resetJoinSequenceToSelf` (private
+  — used internally by `forkTable`, see below). The `Y.Array` itself is
+  fully encapsulated: nothing outside `tables.js` ever calls
+  `ydoc.getArray('joinSequence')` directly. Not yet consulted by any
+  conflict-resolution logic; that's step 4/5.
+
+### Forking clears `joinSequence` down to the forking user alone
+
+A fork copies the whole source document via `Y.encodeStateAsUpdate` —
+including `joinSequence`, and thus every player who was ever on the source
+table. Left as copied, that would make those other players outrank the
+forking user on their own brand-new branch (they joined the *source* table
+earlier), even though they've never seen this branch and may not know it
+exists. So `forkTable` (`tables.js`) requires a `forkingUserId` and calls
+`resetJoinSequenceToSelf` on the forked doc before persisting it: the new
+branch's `joinSequence` ends up containing only the forking user, who is
+therefore its sole — and automatically authoritative — member. This isn't
+"start a fresh empty `joinSequence`": an empty array would leave the forking
+user themselves unrecorded, sorting last against nobody. It's the same array,
+reset to exactly one entry.
 
 ### Pruning: no
 
@@ -241,20 +335,20 @@ not trapped, the network is optional" goals.
 
 Architecture already cooperates:
 
-- Rooms persist via `IndexeddbPersistence(`tt:${roomId}`, ydoc)`.
+- Rooms persist via `IndexeddbPersistence(tableId, ydoc)`
 - `home.html` lists tables from the `localStorage` `tt_tables` registry
   (`touchTableRecord`).
 - `makeDoc()` is the single doc-construction seam.
 
-So a branch is: a **new `roomId`**, a **new `tt:`-keyed IndexedDB doc** seeded
-from the loser's forked state, and a `tt_tables` registry entry with the
-shown name. No new persistence machinery.
+So a branch is: a **new `${tableId}` IndexedDB doc**
+seeded from the loser's forked state, and a `tt_tables` registry entry with
+the shown name. No new persistence machinery.
 
 The first, self-contained implementation step is a **"Duplicate (Fork)"
 button on each row of `home.html`'s table list**, alongside the existing
 `Delete` button. It reuses `loadRoomDoc(roomId)` (already loads a table's
 persisted doc from IndexedDB) to read the source doc, `Y.encodeStateAsUpdate`
-to snapshot it, writes that as the seed of a new `tt:${newRoomId}` IndexedDB
+to snapshot it, writes that as the seed of a new `${tableId}` IndexedDB
 database, and appends a `tt_tables` registry entry. This exercises the
 copy-a-doc-into-a-new-table mechanics that branch escalation needs later,
 fully decoupled from causal-fork-point selection (this prototype forks the
@@ -298,6 +392,3 @@ nodes.
 - Fork primitive: how to snapshot/copy a `Y.Doc` at a causal point into a new
   IndexedDB table, cleanly detaching from the room's provider.
 - Dialog UX copy and the branch-naming scheme.
-- Where the post-merge scan hooks in relative to `onToysChanged` /
-  `dispatchContentsChangeCascade`, and its reentrancy interaction with the
-  existing `_dispatchingContentsChange` guard.

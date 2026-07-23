@@ -14,13 +14,21 @@ import {
   addDrawing, deleteDrawing, findDrawing,
   getGeom, _toSVGEl, listDrawings, CURRENT_SCHEMA, SHAPE_TYPES,
 } from '../../src/drawing.js'
-import { makeDoc } from '../../src/app.js'
+import { tablesAPI } from '../../src/tables.js'
 
 // ── Sync helper ───────────────────────────────────────────────────────────────
 
 function sync(docA, docB) {
   Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB))
   Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA))
+}
+
+// makeDoc() (tables.js) returns a bare Y.Doc now — everything below this
+// file was written against the old {ydoc, yDrawing} shape, so wrap it once
+// here rather than touching every call site.
+function makeDoc() {
+  const ydoc = tablesAPI.makeDoc()
+  return { ydoc, yDrawing: ydoc.getXmlFragment('drawing') }
 }
 
 // ── Shape factory ─────────────────────────────────────────────────────────────

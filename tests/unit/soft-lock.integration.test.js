@@ -88,8 +88,10 @@ afterEach(() => {
 // returns { App, ydoc, yToys, awareness }.
 async function bootPeerB() {
   const svgEl = makeCanvasDOM()
-  const { boot, makeDoc, App } = await import('../../src/app.js')
-  const { ydoc, yMeta, yToys, yDrawing, yBounPos } = makeDoc()
+  const { boot, App } = await import('../../src/app.js')
+  const { tablesAPI } = await import('../../src/tables.js')
+  const ydoc  = tablesAPI.makeDoc()
+  const yToys = ydoc.getXmlFragment('toys')
   const awareness = new awarenessProtocol.Awareness(ydoc)
   const myGrad = { c1: '#0f0', c2: '#0a0', angle: 45 }
 
@@ -97,9 +99,9 @@ async function bootPeerB() {
   awareness.setLocalState({ id: 'bailey', color: myGrad.c1, grad: myGrad, cursor: null, selection: null })
 
   boot({
-    ydoc, yMeta, yToys, yDrawing, yBounPos,
+    ydoc,
     awareness, provider: { on: vi.fn() },
-    myId: 'bailey', myGrad, roomId: 'test-room',
+    myId: 'bailey', myGrad, tableId: 'test-room',
     svgElement: svgEl, displayName: 'Bailey',
   })
 

@@ -1,20 +1,14 @@
 /**
- * tables.js — table registry + per-table Yjs document persistence.
+ * tables.js — table registry + per-table Yjs document construction,
+ * persistence, and deterministic conflict-arbitration ordering.
  *
- * Owns the two pieces of local, this-device-only state that let someone
- * come back to a table across sessions:
- *   - the 'tt_tables' localStorage registry (recently-visited tables: id,
- *     name, lastVisit) that home.html lists and index.html keeps current;
- *   - the per-table IndexedDB database ('tt:<tableId>') holding the
- *     table's actual Yjs document updates, via y-indexeddb.
+ * Owns four things:
+ *   - document construction (makeDoc)
+ *   - the 'tt_tables' localStorage registry
+ *   - the per-table IndexedDB database
+ *   - `joinSequence`: the append-only Y.Array recording each peer's join
+ *     order, which decides authority
  *
- * Shared by home.html (creating / listing / deleting / forking tables) and
- * index.html (loading / persisting the live table a player is at). Every
- * function takes its table id / Y.Doc as an explicit parameter rather than
- * closing over page-specific state, so this works from either entry point
- * — and later, from *inside* a live table, for TODO #11's branch
- * escalation (see concurrency_branching.md), which needs to fork a live
- * table's doc from app.js, not just an at-rest one from home.html.
  */
 import * as Y                   from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
@@ -22,20 +16,134 @@ import { IndexeddbPersistence } from 'y-indexeddb';
 const TABLES_KEY  = 'tt_tables';
 const MAX_TABLES  = 20;
 
-// ── IndexedDB database naming ───────────────────────────────────────────
+const CURRENT_SCHEMA = 4;
 
-/** The y-indexeddb database name for a given table id. */
-function tableDbName(tableId) {
-  return `tt:${tableId}`;
+// ── Document construction ───────────────────────────────────────────────
+
+/**
+ * Create a fresh Yjs document.
+ */
+function makeDoc() {
+  return new Y.Doc();
+}
+
+function initTableDoc(ydoc, tableId) {
+  const yMeta = ydoc.getMap('meta');
+  ydoc.transact(() => {
+    yMeta.set('docId',         tableId);
+    yMeta.set('created',       new Date().toISOString());
+    yMeta.set('schemaVersion', CURRENT_SCHEMA);
+  });
+}
+
+// ── Join sequence (authority ordering) ──────────────────────────────────
+//
+// `joinSequence` is an append-only Y.Array living in the document,
+// recording each peer's persistent id in join order.
+//
+// Because it's a Y.Array, insertion order is CRDT-ordered and identical on
+// every peer. Two peers appending concurrently degrade automatically to
+// Yjs's own tie-break mechanism.
+
+const JOIN_SEQUENCE_KEY = 'joinSequence';
+
+function getJoinSequence(ydoc) {
+  return ydoc.getArray(JOIN_SEQUENCE_KEY);
 }
 
 /**
- * Open (or create) a table's IndexedDB persistence for a live Y.Doc. This
- * is a live, syncing session (y-indexeddb keeps writing as ydoc changes) —
- * for a one-shot read of an at-rest table, use loadTableDoc() instead.
+ * Append myId to this table's join sequence, only if not already
+ * present. Safe to call every session.
+ */
+function ensureJoined(ydoc, myId) {
+  const yJoinSequence = getJoinSequence(ydoc);
+  if (yJoinSequence.toArray().includes(myId)) return;
+  ydoc.transact(() => {
+    // Re-check inside the transaction in case something else already
+    // appended this id while this call was in flight (e.g. a duplicate
+    // ensureJoined call from a second boot path). Concurrent joins from
+    // *other* peers are a different id and never collide with this guard.
+    if (yJoinSequence.toArray().includes(myId)) return;
+    yJoinSequence.push([myId]);
+  });
+}
+
+/**
+ * Compare two peer ids by join order.
+ *
+ * Returns
+ *  -1 if idA is authoritative over idB
+ *  0 if the ids are equal.
+ *  1 if idB is authoritative over idA
+ *
+ * An id missing from joinSequence entirely sorts last
+ */
+function compareAuthority(ydoc, idA, idB) {
+  if (idA === idB) return 0;
+  const seq = getJoinSequence(ydoc).toArray();
+  const iA = seq.indexOf(idA);
+  const iB = seq.indexOf(idB);
+  if (iA === -1 && iB === -1) return 0;
+  if (iA === -1) return 1;
+  if (iB === -1) return -1;
+  return iA - iB;
+}
+
+/**
+ * True if idA is authoritative over idB (idA joined joinSequence earlier).
+ */
+function isAuthoritative(ydoc, idA, idB) {
+  return compareAuthority(ydoc, idA, idB) < 0;
+}
+
+/**
+ * Reset ydoc's joinSequence to contain ONLY soleId.
+ * Used when forking a table
+ */
+function resetJoinSequenceToSelf(ydoc, soleId) {
+  const yJoinSequence = getJoinSequence(ydoc);
+  ydoc.transact(() => {
+    if (yJoinSequence.length > 0) yJoinSequence.delete(0, yJoinSequence.length);
+    yJoinSequence.push([soleId]);
+  });
+}
+
+// ── IndexedDB database naming ───────────────────────────────────────────
+
+/**
+ * Open (or create) a table's IndexedDB persistence for a live Y.Doc.
  */
 function openTablePersistence(tableId, ydoc) {
-  return new IndexeddbPersistence(tableDbName(tableId), ydoc);
+  return new IndexeddbPersistence(tableId, ydoc);
+}
+
+/**
+ * Same as openTablePersistence, but awaits the initial sync before
+ * resolving
+ */
+async function openTablePersistenceSynced(tableId, ydoc) {
+  const persistence = openTablePersistence(tableId, ydoc);
+  await new Promise((resolve, reject) => {
+    persistence.on('synced', resolve);
+    persistence.on('error',  reject);
+  });
+  return persistence;
+}
+
+/**
+ * Get a table's live Y.Doc: a fresh doc (makeDoc()) wired to this table's
+ * IndexedDB persistence, awaited until the initial replay has landed
+ *
+ * If the synced doc turns out to have no docId yet, stamps it via
+ * initTableDoc() before returning. Callers never need to check themselves
+ */
+async function getYDoc(tableId) {
+  const ydoc = makeDoc();
+  await openTablePersistenceSynced(tableId, ydoc);
+  if (!ydoc.getMap('meta').get('docId')) {
+    initTableDoc(ydoc, tableId);
+  }
+  return ydoc;
 }
 
 // ── 'tt_tables' registry (recently-visited tables) ──────────────────────
@@ -67,28 +175,26 @@ function touchTableRecord(tableId, { name } = {}) {
 }
 
 /**
- * Remove a table from the registry and delete its IndexedDB database.
- * Does not touch other peers' copies of the table — this only forgets it
- * on this device.
+ * Remove a table from the local registry and delete its IndexedDB database.
  */
 function deleteTable(tableId) {
   saveTables(loadTables().filter(t => t.id !== tableId));
-  indexedDB.deleteDatabase(tableDbName(tableId));
+  indexedDB.deleteDatabase(tableId);
 }
 
 // ── Table document access ───────────────────────────────────────────────
 
 /**
  * Load a table's persisted Yjs document into a fresh, detached Y.Doc by
- * replaying its IndexedDB update log directly (not via
- * IndexeddbPersistence/openTablePersistence — this is a one-shot read, not
- * a live-syncing session). Returns a Y.Doc with no updates applied if the
- * table's database doesn't exist yet.
+ * replaying its IndexedDB update log directly
+ *
+ * Returns a Y.Doc with no updates applied if the table's database
+ * doesn't exist yet.
  */
 async function loadTableDoc(tableId) {
-  const ydoc = new Y.Doc();
+  const ydoc = makeDoc();
   await new Promise((resolve, reject) => {
-    const req = indexedDB.open(tableDbName(tableId));
+    const req = indexedDB.open(tableId);
     req.onerror         = () => reject(req.error);
     req.onupgradeneeded = () => resolve(); // database doesn't exist yet
     req.onsuccess       = () => {
@@ -110,28 +216,32 @@ async function loadTableDoc(tableId) {
 
 /**
  * Fork a table: copy its persisted Yjs state into a brand-new IndexedDB
- * database under forkedTableId. Does NOT touch the 'tt_tables' registry —
- * callers register the new entry themselves via touchTableRecord (naming
- * it is a caller decision, e.g. "<original name> (fork)").
+ * database under forkedTableId.
+ *
+ * Does NOT touch the 'tt_tables' registry -- callers register the new
+ * entry themselves via touchTableRecord (naming it as they desire)
+ *
+ * forkingUserId required for a fresh joinSequence
  *
  * This forks a whole at-rest table.
  * TODO: support forking a *live* table's doc at a specific causal point,
  *       (extend this primitive)
  */
-async function forkTable(sourceTableId, forkedTableId) {
+async function forkTable(sourceTableId, forkedTableId, forkingUserId) {
+  if (!forkingUserId) {
+    throw new Error('forkTable: forkingUserId is required (the branch\'s joinSequence must reset to the forking user)');
+  }
+
   const sourceDoc = await loadTableDoc(sourceTableId);
   const update    = Y.encodeStateAsUpdate(sourceDoc);
   sourceDoc.destroy();
 
-  // Write the copy via openTablePersistence — the same path a live table
-  // uses
-  const forkDoc = new Y.Doc();
+  // Write the copy via openTablePersistenceSynced — the same path a live
+  // table uses
+  const forkDoc = makeDoc();
   Y.applyUpdate(forkDoc, update);
-  await new Promise((resolve, reject) => {
-    const persistence = openTablePersistence(forkedTableId, forkDoc);
-    persistence.on('synced', resolve);
-    persistence.on('error',  reject);
-  });
+  resetJoinSequenceToSelf(forkDoc, forkingUserId);
+  await openTablePersistenceSynced(forkedTableId, forkDoc);
   forkDoc.destroy();
 }
 
@@ -157,8 +267,13 @@ function randSlug() {
 }
 
 export const tablesAPI = {
-  tableDbName,
-  openTablePersistence,
+  makeDoc,
+  initTableDoc,
+  ensureJoined,
+  isAuthoritative,
+  resetJoinSequenceToSelf,
+  openTablePersistenceSynced,
+  getYDoc,
   loadTables,
   saveTables,
   touchTableRecord,
@@ -167,4 +282,5 @@ export const tablesAPI = {
   forkTable,
   generateTableId,
   randSlug,
+  compareAuthority,
 };

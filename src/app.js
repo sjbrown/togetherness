@@ -27,7 +27,8 @@ import { SHAPE_TYPES }                            from './drawing.js';
 import { TOOLS as TOY_TOOLS, addToy, findToy, newToyId,
          getMenuActions, activateToyScripts,
          findDropTargetTray, reparentToy } from './toys.js';
-import { DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js';
+import { DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js'
+import { getReactionLog, scanForConflicts } from './conflict.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
 import { BOUNPOS_TYPES,
          addPositionSet, createPositionSetElement,
@@ -65,7 +66,7 @@ const DEFAULT_BACKGROUNDS = [
 
 // ── Internal app state ────────────────────────────────────────────────────────
 let _ydoc, _yMeta, _yToys, _yDrawing,
-    _yBounPos,
+    _yBounPos, _yReactionLog,
     _awareness, _provider;
 
 // Layers — the canonical LayerAPI dispatch table, built once at boot() once
@@ -82,7 +83,7 @@ const _layerVisibility = {
   'toys':                 true,
   'drawing':              true,
 };
-let _myId, _myGrad, _roomId;
+let _myId, _myGrad, _tableId;
 let _svgEl;
 let _activeLayer  = 'toys';
 
@@ -305,27 +306,19 @@ function buildToolRegistry() {
   _toolsByLayer['drawing'] = [SELECT_TOOL, ...drawTools];
 }
 
-export function makeDoc() {
-  const ydoc          = new Y.Doc();
-  const yToys         = ydoc.getXmlFragment('toys');
-  const yDrawing      = ydoc.getXmlFragment('drawing');
-  const yBounPos      = ydoc.getXmlFragment('boundaries');
-  const yMeta         = ydoc.getMap('meta');
-  return { ydoc, yMeta, yToys, yDrawing, yBounPos };
-}
-
 // ── Boot ──────────────────────────────────────────────────────────────────────
-export function boot({ ydoc, yMeta, yToys, yDrawing, yBounPos, awareness, provider, myId, myGrad, roomId, svgElement, displayName }) {
+export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, svgElement, displayName }) {
   _ydoc           = ydoc;
-  _yMeta          = yMeta;
-  _yToys          = yToys;
-  _yDrawing       = yDrawing;
-  _yBounPos       = yBounPos;
+  _yMeta          = ydoc.getMap('meta');
+  _yToys          = ydoc.getXmlFragment('toys');
+  _yDrawing       = ydoc.getXmlFragment('drawing');
+  _yBounPos       = ydoc.getXmlFragment('boundaries');
+  _yReactionLog   = getReactionLog(ydoc);
   _awareness  = awareness;
   _provider   = provider;
   _myId       = myId;
   _myGrad    = myGrad;
-  _roomId     = roomId;
+  _tableId    = tableId;
   _svgEl      = svgElement ?? document.querySelector('#stage svg') ?? document.getElementById('canvas');
 
   // Layers — the canonical LayerAPI dispatch table, keyed by the data-module
@@ -351,7 +344,7 @@ export function boot({ ydoc, yMeta, yToys, yDrawing, yBounPos, awareness, provid
 
   // UI — needs App; attaches panel/menu/pill listeners
   UI.init(App);
-  UI.setIdentity({ projectName: 'togetherness', userId: displayName, roomId });
+  UI.setIdentity({ projectName: 'togetherness', userId: displayName, tableId: tableId });
 
   // Keyboard shortcuts
   window.addEventListener('keydown', onKeyDown);
@@ -365,6 +358,7 @@ export function boot({ ydoc, yMeta, yToys, yDrawing, yBounPos, awareness, provid
   _yToys.observe(onDocChanged);
   _yDrawing.observe(onDocChanged);
   _yBounPos.observe(onDocChanged);
+  _yReactionLog.observe(onReactionLogChanged);
   _yMeta.observe(onMetaChanged);
   _awareness.on('change', onPresenceChanged);
 
@@ -509,15 +503,7 @@ function onBounPosChanged(events, transaction) {
 }
 
 // Suppresses the observer-driven cascade in onToysChanged while a cascade is
-// already being handled for the current change. Two cases set it:
-//  - dispatchContentsChangeCascade wraps its synchronous run in it (belt to
-//    the origin check's braces: the DERIVED commits it makes land in their
-//    own transactions, caught by the origin check in onToysChanged).
-//  - commitMove's drop-into-tray path folds the reaction into the placement
-//    transaction itself, and sets this so the observer for that transaction
-//    (origin null, so the origin check wouldn't catch it) doesn't recompute
-//    the same tray a redundant — and, for non-idempotent handlers, wrong —
-//    second time.
+// already being handled for the current change.
 let _dispatchingContentsChange = false;
 
 function onToysChanged(events, transaction) {
@@ -606,6 +592,35 @@ function dispatchContentsChangeCascade(events) {
     _dispatchingContentsChange = false;
   }
 }
+
+// Post-merge overlap scan.
+// _yReactionLog gains a new entry every time a qualifying envelope commits
+// whether ours (this transaction) or a remote peer's.
+// Then this observer fires, scanning the rest of the log for any bundles with:
+//  - causally-concurrent author
+//  - touched-set overlaps
+//
+// TODO: Detection only, for now: a hit is just logged (console + activity log)
+//       Need to resolve a detected conflict
+//        ((fast-path in-place assertion, or branch escalation)
+function onReactionLogChanged(event, transaction) {
+  const added = [];
+  event.changes.added.forEach(item => {
+    item.content.getContent().forEach(bundle => added.push(bundle));
+  });
+  if (!added.length) return;
+
+  const all = _yReactionLog.toArray();
+  for (const bundle of added) {
+    const conflicts = scanForConflicts(all, bundle);
+    for (const other of conflicts) {
+      const msg = `conflict detected: ${bundle.touched.length + other.touched.length} touched node(s) written concurrently by peers ${bundle.clientID} and ${other.clientID}`;
+      console.warn('[conflict]', msg, { bundle, other });
+      App.addLog(msg, 'remote');
+    }
+  }
+}
+
 function onDrawingChanged(events, transaction) {
   // Log remote structural changes (add / delete). Attribute changes (moves)
   // arrive here too via observeDeep but don't need logging — just renderDoc.
@@ -723,7 +738,7 @@ const App = {
     });
     return out;
   },
-  getRoomId:       () => _roomId,
+  getTableId:      () => _tableId,
   getSelectedIds:  () => Object.keys(_myClaims),
   getBBox:  (id) => {
     const svgEl = _svgEl.querySelector(`[data-id="${id}"]`);
@@ -1020,26 +1035,29 @@ const App = {
   },
 
   /**
-   * Invoke one of a toy's menu actions by (namespace, key) — the
-   * identifiers App.getToyMenuActions() handed back to the UI. Runs the
-   * handler inside an envelope (envelope.js) and commits its DOM mutations,
-   * plus any tray reaction it triggers, to Yjs as a single transaction.
-   * _yToys.observeDeep already re-renders the toys layer once that commit
-   * lands; refreshFromDoc() here just keeps the Edit panel's own action
-   * list (labels, applicable filtering) current too, the same way
-   * commitEdit refreshes it after a field edit.
+   * Invoke one of a toy's menu actions by (namespace, key)
+   * Runs the handler inside an envelope and commits its DOM mutations,
+   * plus any triggered reactions, to Yjs as a single transaction.
    */
   invokeToyMenuAction: (id, namespace, key) => {
     const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
     if (!svgEl) return;
     const layerEl = _svgEl?.querySelector('#toys-layer');
     if (!layerEl) return;
+    // invokeMenuActionSync runs a complete contents_change_handler cascade
+    // so guard with _dispatchingContentsChange
+    _dispatchingContentsChange = true;
     try {
       Toys.invokeMenuActionSync(_ydoc, _yToys, layerEl, svgEl, namespace, key);
+      // _yToys.observeDeep already re-renders the toys layer once that commit
+      // lands; refreshFromDoc() here just keeps the Edit panel's own action
+      // list current too
       UI.refreshFromDoc();
     } catch (err) {
       UI.toast(`Action failed: ${err.message}`, 'warn');
       App.addLog(`toy action failed: ${err.message}`, 'del');
+    } finally {
+      _dispatchingContentsChange = false;
     }
   },
 
@@ -1062,19 +1080,17 @@ const App = {
 
   /**
    * Place a toy on the table, then run its namespace(s)' initialize(elem)
-   * hook exactly once, at this genuine placement moment — never on
-   * load/import or remote sync. Awaiting activateToyScripts() here (it's
-   * idempotent, shares the in-flight Promise from render()'s own
-   * fire-and-forget call) guarantees the namespace is actually ready
-   * before initialize() reads it off window[namespace].
+   * hook exactly once
    */
   commitToy: (toolName, x, y) => {
     const def = _toolById[toolName];
     if (!def?.toyType) { UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
     const id = newToyId();
-    // Tag before addToy's placement transaction runs. The later
-    // initializeToySync() commits under LIFECYCLE_ORIGIN (untracked), so the
-    // placement is a single undo step even for toys that initialize state.
+    // Tag before addToy's placement transaction runs.
+    // Later, initializeToySync()'s runs with its own outer transact()
+    // that has no explicit origin, so its merged handler-plus-cascade
+    // transaction commits under null, a SEPARATE transaction from
+    // addToy's placement
     UndoRedo.tag(`place ${def.label} ${id.slice(0, 6)}`);
     addToy(_ydoc, _yToys, {
       id, toyType: def.toyType, x, y,
@@ -1084,11 +1100,20 @@ const App = {
       App.addLog(`placed ${def.label} ${id.slice(0, 6)}`, 'local');
 
       const yEl = findToy(_yToys, id);
+      // Awaiting activateToyScripts() here guarantees the namespace is actually
+      // ready before initialize() reads it off window[namespace].
       if (yEl) await activateToyScripts(yEl, def.toyType);
       const svgEl   = _svgEl?.querySelector(`[data-id="${id}"]`);
       const layerEl = _svgEl?.querySelector('#toys-layer');
       if (svgEl && layerEl) {
-        Toys.initializeToySync(_ydoc, _yToys, layerEl, svgEl, def.toyType);
+        // Same guard as invokeToyMenuAction, same reason: initializeToySync
+        // already ran its own complete cascade before committing.
+        _dispatchingContentsChange = true;
+        try {
+          Toys.initializeToySync(_ydoc, _yToys, layerEl, svgEl, def.toyType);
+        } finally {
+          _dispatchingContentsChange = false;
+        }
       }
     }).catch(err => {
       UI.toast(`Failed to place ${def.label}`, 'warn');
@@ -1576,23 +1601,13 @@ const App = {
   canUndo: () => UndoRedo.canUndo(),
   canRedo: () => UndoRedo.canRedo(),
   exportSVG: () => {
-    const clone = Storage.buildExportSvg(_svgEl, { yToys: _yToys, yDrawing: _yDrawing });
-    if (!clone.getAttribute('viewBox')) {
-      const w = _svgEl.clientWidth  || 120;
-      const h = _svgEl.clientHeight || 120;
-      clone.setAttribute('viewBox', `0 0 ${w} ${h}`);
-    }
-    clone.setAttribute('xmlns',          'http://www.w3.org/2000/svg');
-    clone.setAttribute('xmlns:xlink',    'http://www.w3.org/1999/xlink');
-    clone.setAttribute('xmlns:inkscape', 'http://www.inkscape.org/namespaces/inkscape');
-    clone.querySelector('#toys-layer')?.setAttribute('inkscape:groupmode', 'layer');
-    clone.querySelector('#drawing-layer')?.setAttribute('inkscape:groupmode', 'layer');
+    const clone = Storage.buildExportSvg(_svgEl, _ydoc);
     const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
     const blob = new Blob([clone.outerHTML], { type: 'image/svg+xml' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = `tt-${_roomId}-${dateStr}.svg`;
+    a.download = `${_tableId}-${dateStr}.svg`;
     a.click();
     URL.revokeObjectURL(url);
     UI.toast('SVG exported');
@@ -1614,8 +1629,7 @@ const App = {
 
       let result;
       _ydoc.transact(() => {
-        result = Storage.populateFromSvgDoc(svgDoc.documentElement,
-          { yMeta: _yMeta, yToys: _yToys, yDrawing: _yDrawing });
+        result = Storage.populateFromSvgDoc(svgDoc.documentElement, _ydoc);
       });
       const { toyCount, drawCount, invalidToyEls } = result;
 

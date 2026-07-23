@@ -42,7 +42,7 @@
   <a class="idbar-project" href="home.html">Togetherness Table</a>
   <span class="idbar-sep"></span>
   <span class="idbar-user">me · ????</span>
-  <span class="idbar-room">#????</span>
+  <span class="idbar-table">#????</span>
 </div>
 
 <!-- ── Toasts ─────────────────────────────────────────────────────────────── -->
@@ -150,7 +150,7 @@
 <div id="statusBar" style="position:fixed;top:0;left:50%;transform:translateX(-50%);
      font-size:11px;color:var(--text-3);pointer-events:none;z-index:100;
      display:flex;gap:10px;padding:4px 8px">
-  <span id="roomLabel" style="font-family:monospace"></span>
+  <span id="tableLabel" style="font-family:monospace"></span>
   <span id="myIdLabel" style="font-family:monospace"></span>
   <span class="status-dot" id="statusDot" style="width:8px;height:8px;border-radius:50%;
         background:var(--warn);align-self:center;flex-shrink:0"></span>
@@ -170,9 +170,8 @@
 <script type="module">
 import * as Y                   from '/lib/yjs.js';
 import { WebrtcProvider }       from '/lib/y-webrtc.js';
-import { boot }                 from '/app.js';
+import { boot, App }            from '/app.js';
 import * as UI                  from '/ui.js';
-import { App, makeDoc }         from '/app.js';
 import { getIdentity }               from './user.js';
 import { dragPlaceholderFilterSVG, snapPointGradientSVG }  from './defs.js';
 import { tablesAPI as tables } from './tables.js';
@@ -189,46 +188,36 @@ document.querySelector('#canvas defs')
 window.UI  = UI;
 window.App = App;
 
-// ── Identity ─────────────────────────────────────────────────────────────────
-// Persistent identity lives in localStorage, key 'tt_player' (see user.js).
-// home.html writes to the same store when the profile panel is edited.
-const uid = () => Math.random().toString(36).slice(2, 9);
-let roomId = location.hash.slice(1);
-if (!roomId) { roomId = uid(); location.hash = roomId; }
-
+// ── Identity ────────────────────────────────────────────────────────────────
+// Persistent identity lives in localStorage
 const { name: myDisplayName, grad: myGrad, localId: myId } = getIdentity();
-
-document.getElementById('roomLabel').textContent = roomId;
 document.getElementById('myIdLabel').textContent = `me: ${myDisplayName}`;
 
-// ── Yjs ─────────────────────────────────────────────────────────────────────
-export const CURRENT_SCHEMA = 4;
+// ── Table  ──────────────────────────────────────────────────────────────────
+let tableId = location.hash.slice(1);
+if (!tableId) {
+  tableId = tables.generateTableId(myDisplayName);
+  location.hash = tableId;
+}
+document.getElementById('tableLabel').textContent = tableId;
 
-const { ydoc, yMeta, yToys, yDrawing, yBounPos } = makeDoc();
+const ydoc  = await tables.getYDoc(tableId);
+App.addLog('loaded from indexeddb', 'local');
+tables.touchTableRecord(tableId);
 
-// ── Persistence ─────────────────────────────────────────────────────────────
-const persistence = tables.openTablePersistence(roomId, ydoc);
-persistence.on('synced', () => {
-  App.addLog('loaded from indexeddb', 'local');
-  tables.touchTableRecord(roomId);
-  if (!yMeta.get('docId')) {
-    // Brand-new room entered directly (not via home.html). Seed doc metadata;
-    ydoc.transact(() => {
-      yMeta.set('docId',         roomId);
-      yMeta.set('created',       new Date().toISOString());
-      yMeta.set('schemaVersion', CURRENT_SCHEMA);
-    });
-  }
-});
+// Join the authority ordering only now that the local IndexedDB replay has
+// landed — ensureJoined's guard needs to see this table's *existing*
+// joinSequence
+tables.ensureJoined(ydoc, myId);
 
-// ── WebRTC  ──────────────────────────────────────────────────────────────────
+// ── WebRTC  ─────────────────────────────────────────────────────────────────
 const signalingUrl = new URLSearchParams(location.search).get('signaling') || 'ws://localhost:4444';
-const provider     = new WebrtcProvider(roomId, ydoc, { signaling: [signalingUrl] });
+const provider     = new WebrtcProvider(tableId, ydoc, { signaling: [signalingUrl] });
 const awareness    = provider.awareness;
 awareness.setLocalState({ id: myId, color: myGrad.c1, grad: myGrad, cursor: null, selection: null });
 
-// ── Boot ─────────────────────────────────────────────────────────────────────
-boot({ ydoc, yMeta, yToys, yDrawing, yBounPos, awareness, provider, myId, myGrad, roomId, displayName: myDisplayName });
+// ── Boot ────────────────────────────────────────────────────────────────────
+boot({ ydoc, awareness, provider, myId, myGrad, tableId, displayName: myDisplayName });
 </script>
 
 </body>

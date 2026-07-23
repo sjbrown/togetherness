@@ -28,7 +28,7 @@ const XLINK_NS = 'http://www.w3.org/1999/xlink'
 const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789'
 
 import { number, bool } from './tools-schema.js';
-import { runToyHandler, runToyHandlerSync, DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js';
+import { runToyHandler, runToyHandlerSync, runInEnvelopeSync, commitEnvelope, ENVELOPE_ORIGIN, DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js';
 
 // NOTE: envelope.js imports render()/yNodeFor()/registerYNode() from this
 // file, so this is an intentional cycle — safe because neither side uses
@@ -813,11 +813,22 @@ export const TOOLS = [
       { kind: 'color-hsl', key: 'fill', label: 'Tray color', show: ['add', 'edit', 'addQuick'] },
     ],
   },
+  {
+    name:    'bag',
+    toyType: 'bag',
+    file: 'bag.svg',
+    label: 'Bag',
+    iconUrl: 'toy/bag.svg',
+    layer:   'toys',
+    defaults: {},
+    options: [],
+  },
 ];
 export const TOY_TYPES = {
   player_marker: TOOLS[0],
   dice_d6: TOOLS[1],
   tray_sum: TOOLS[2],
+  bag: TOOLS[3],
 }
 
 // ── ttState / ttStateSchema ───────────────────────────────────────────────────
@@ -1121,15 +1132,113 @@ export async function invokeMenuAction(ydoc, yToys, layerEl, svgEl, namespace, k
   return runToyHandler(ydoc, yToys, layerEl, svgEl, () => entry.handler.call(svgEl, evt))
 }
 
+// ── gesture-triggered cascade (DOM-only, no Yjs until the final commit) ────
+//
+// invokeMenuActionSync / initializeToySync use these.
+//
+// These walk the live DOM directly and never re-render, because a gesture's
+// handler and everything it cascades into mutate the same live DOM in place
+//
+// nothing here is ever stale relative to Yjs, because nothing here depends on
+// Yjs at all until the one commitEnvelope call at the very end.
+
+/**
+ * The IMMEDIATE (innermost) contents_group-owning toy id for a DOM node —
+ * or the node itself, if it IS a .contents_group — or null.
+ *
+ * Deliberately
+ * stops at the first match rather than walking the whole ancestor chain.
+ * so that first match can react to any changes and then further ancestors
+ * will get a chance to react to THOSE changes.
+ */
+function immediateContainingTrayId(node) {
+  let el = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement
+  while (el) {
+    if (el.classList?.contains('contents_group')) {
+      // contents_group -> tray's own <svg> -> tray's <g data-id>
+      const trayG = el.parentElement?.parentElement
+      return trayG?.getAttribute?.('data-id') ?? null
+    }
+    el = el.parentElement
+  }
+  return null
+}
+
+/**
+ * Every tray immediately affected by a MutationRecord[], in first-seen
+ * order, deduplicated.
+ */
+function affectedTrayIdsFromRecords(records) {
+  const ids = []
+  const seenThisRound = new Set()
+  for (const record of records) {
+    const id = immediateContainingTrayId(record.target)
+    if (id && !seenThisRound.has(id)) { seenThisRound.add(id); ids.push(id) }
+  }
+  return ids
+}
+
+/**
+ * Run the contents_change_handler cascade against the live DOM,
+ * appending every record it produces into allRecords.
+ *
+ * (allRecords is mutated in place —
+ * the caller feeds this to ONE final commitEnvelope call, so the gesture
+ * and its whole cascade land as a single Yjs transaction, single undo
+ * step, single touched-set/bundle).
+ *
+ * Each round resolves only the IMMEDIATE containing tray for whatever
+ * changed in the round before it
+ *
+ * Each tray's handler runs AT MOST ONCE per gesture.
+ * If a cycle is detected, we log loudly (console.error) and skip
+ */
+function runContentsChangeCascadeInto(allRecords, layerEl) {
+  const seen = new Set()
+  let toCheck = allRecords
+  while (toCheck.length) {
+    const candidateIds = affectedTrayIdsFromRecords(toCheck)
+    const freshIds  = candidateIds.filter(id => !seen.has(id))
+    const repeatIds = candidateIds.filter(id => seen.has(id))
+    if (repeatIds.length) {
+      console.error(`[toys] contents_change_handler would need to re-run this gesture for: ${repeatIds.join(', ')} — skipped (runs at most once per gesture)`)
+    }
+    if (!freshIds.length) break
+
+    const stepRecords = []
+    for (const trayId of freshIds) {
+      seen.add(trayId)
+      const trayEl = layerEl.querySelector(`[data-id="${trayId}"]`)
+      if (!trayEl) continue // e.g. the tray itself was deleted mid-cascade
+      const handlers = getNamespacesForType(trayEl.getAttribute('data-toy-type'))
+        .map(name => globalThis[name])
+        .filter(ns => ns && typeof ns.contents_change_handler === 'function')
+      if (!handlers.length) continue
+      const records = runInEnvelopeSync(trayEl, () => {
+        handlers.forEach(ns => ns.contents_change_handler(trayEl))
+      })
+      stepRecords.push(...records)
+    }
+    allRecords.push(...stepRecords)
+    toCheck = stepRecords
+  }
+}
+
 /**
  * Synchronous sibling of invokeMenuAction. Same validation and effect, but
  * on the current tick, and with any tray reaction the handler triggers
  * folded into the SAME transaction as the handler's own commit — one
  * transaction, one undo step, no window where the action landed but its
- * reaction hadn't yet. A tray's "Roll All" is the case that most needs
- * this: it calls each contained die's own handler directly and
- * synchronously (see tray.js's roll_all), all within this one envelope, so
- * every die's new face and the tray's resulting sum land together.
+ * reaction hadn't yet.
+ *
+ * The handler's own records and the whole contents_change_handler cascade
+ * they trigger are gathered entirely against the live DOM then translated
+ * into Yjs in ONE commitEnvelope call at the end.
+ *
+ * Note: Wrapped in an outer, unlabeled ydoc.transact(): commitEnvelope's
+ * own nested transact() call has its origin argument ignored (Yjs only
+ * honors the outermost call's origin), so the merged transaction commits
+ * under null regardless of the ENVELOPE_ORIGIN passed below
  */
 export function invokeMenuActionSync(ydoc, yToys, layerEl, svgEl, namespace, key, evt) {
   const ns    = globalThis[namespace]
@@ -1141,10 +1250,10 @@ export function invokeMenuActionSync(ydoc, yToys, layerEl, svgEl, namespace, key
     throw new Error(`[toys] menu action not applicable: ${namespace}.${key}`)
   }
   let result
-  ydoc.transact((tr) => {
-    result = runToyHandlerSync(ydoc, yToys, layerEl, svgEl, () => entry.handler.call(svgEl, evt))
-    const trayIds = affectedTrayIdsInnerFirst([...tr.changed.keys()])
-    runContentsChangeCascadeSync(ydoc, yToys, layerEl, trayIds)
+  ydoc.transact(() => {
+    const allRecords = runInEnvelopeSync(svgEl, () => entry.handler.call(svgEl, evt))
+    runContentsChangeCascadeInto(allRecords, layerEl)
+    result = commitEnvelope(ydoc, allRecords, { origin: ENVELOPE_ORIGIN })
   })
   return result
 }
@@ -1154,19 +1263,11 @@ export function invokeMenuActionSync(ydoc, yToys, layerEl, svgEl, namespace, key
 /**
  * Run every activated namespace's initialize(elem), if present, for a
  * freshly placed toy instance — inside an envelope, so any mutations it
- * makes commit to Yjs like any other handler. Runs once per instance, at
- * genuine placement only: never on load/import or remote sync, since those
- * toys already went through initialize() once, in whichever session first
- * placed them. Callers are responsible for only calling this at placement
- * and for having already awaited activateToyScripts() — this function has
- * no per-instance guard of its own.
+ * makes commit to Yjs like any other handler.
  *
- * archive2025's initialize(elem, prototype) took a second argument copying
- * config from a reference node, feeding a config-dialog flow master
- * doesn't have (a toy's initial state comes from its ttState options
- * instead). `prototype` is deliberately never passed — a namespace's own
- * initialize() just receives undefined for it, which is the same guard
- * archive2025 authors already needed for a prototype-less call.
+ * Runs once per instance, at placement only.
+ *
+ * Callers are responsible for only calling this at placement
  */
 export async function initializeToy(ydoc, yToys, layerEl, svgEl, toyType) {
   const initializers = getNamespacesForType(toyType)
@@ -1180,14 +1281,12 @@ export async function initializeToy(ydoc, yToys, layerEl, svgEl, toyType) {
 }
 
 /**
- * Synchronous sibling of initializeToy. Same effect, same one-time-at-
- * placement contract, but on the current tick and with any tray reaction
- * folded into the same transaction as the initialize() commit — matters
- * because a handler is free to reach outside its own toy (a die's
- * initialize() could, in principle, land inside an already-existing tray
- * if one placed it there directly). Ordinarily there's nothing to fold: a
- * freshly placed toy starts outside every tray, so affectedTrayIdsInnerFirst
- * comes back empty and the cascade step is a no-op.
+ * Synchronous sibling of initializeToy.
+ * Same effect, same one-time-at-placement contract, but on the current
+ * tick, with any tray reaction folded into the same transaction
+ *
+ * Ordinarily there's nothing to fold. But initialize() has the freedom
+ * to mutate anything in toys-layer.
  */
 export function initializeToySync(ydoc, yToys, layerEl, svgEl, toyType) {
   const initializers = getNamespacesForType(toyType)
@@ -1195,12 +1294,12 @@ export function initializeToySync(ydoc, yToys, layerEl, svgEl, toyType) {
     .filter(ns => ns && typeof ns.initialize === 'function')
   if (!initializers.length) return
 
-  ydoc.transact((tr) => {
-    runToyHandlerSync(ydoc, yToys, layerEl, svgEl, () => {
+  ydoc.transact(() => {
+    const allRecords = runInEnvelopeSync(svgEl, () => {
       initializers.forEach(ns => ns.initialize(svgEl))
-    }, { origin: LIFECYCLE_ORIGIN })
-    const trayIds = affectedTrayIdsInnerFirst([...tr.changed.keys()])
-    runContentsChangeCascadeSync(ydoc, yToys, layerEl, trayIds)
+    })
+    runContentsChangeCascadeInto(allRecords, layerEl)
+    commitEnvelope(ydoc, allRecords, { origin: LIFECYCLE_ORIGIN })
   })
 }
 
@@ -1313,6 +1412,7 @@ export function runContentsChangeCascadeSync(ydoc, yToys, layerEl, trayIds) {
  * kick off script activation
  */
 export function render(yToys, layerEl) {
+  registerYNode(layerEl, yToys);
   layerEl.innerHTML = '';
   listToys(yToys).forEach(svgEl => {
     svgEl.style.cursor = 'grab';
