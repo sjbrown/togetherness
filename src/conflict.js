@@ -2,10 +2,13 @@
  * conflict.js — touched-set construction + concurrent-reaction overlap
  * detection (TODO #11, step 4).
  *
- * Every commitEnvelope() call for a qualifying origin (see
- * QUALIFYING_ORIGINS) records a "reaction bundle" describing what it just
- * touched and when, into a synced `reactionLog` Y.Array. Any peer can then
- * scan that log — after its own commit, or after a remote update
+ * Every commitEnvelope() call records a "reaction bundle" describing what
+ * it just touched and when, into a synced `reactionLog` Y.Array — every
+ * origin alike (ENVELOPE_ORIGIN, DERIVED_ORIGIN, LIFECYCLE_ORIGIN): since
+ * the whole-layer envelope rework (see TOYS.md), nothing about *how* a
+ * handler got invoked makes its writes structurally immune to colliding
+ * with a concurrent peer's, so nothing is excluded from tracking. Any peer
+ * can then scan that log — after its own commit, or after a remote update
  * integrates — for other bundles whose touched-set overlaps AND which are
  * causally concurrent with the new one: the exact situation
  * concurrency_branching.md's garbling bug comes from (two peers each
@@ -23,17 +26,8 @@
 
 import * as Y from 'yjs'
 import { yNodeFor } from './toys.js'
-import { ENVELOPE_ORIGIN, DERIVED_ORIGIN } from './origins.js'
 
 export const REACTION_LOG_KEY = 'reactionLog'
-
-// Origins whose commits can produce unmergeable divergence, and therefore
-// get bundled + overlap-scanned. LIFECYCLE_ORIGIN is deliberately excluded
-// — see origins.js and concurrency_branching.md, "Two transaction
-// classes": a placement's one-time initialize() only ever touches a
-// freshly-created toy's own fresh subtree, which nothing else has seen yet
-// and so can never overlap with another peer's concurrent touched-set.
-const QUALIFYING_ORIGINS = new Set([ENVELOPE_ORIGIN, DERIVED_ORIGIN])
 
 /** The shared, synced reaction-bundle log for a document. */
 export function getReactionLog(ydoc) {
@@ -57,11 +51,9 @@ function idKey({ client, clock }) {
 
 /**
  * Build the touched-node-set for a committed envelope, from the raw
- * MutationRecord[] that were actually applied (callers should exclude
- * reverted out-of-scope records first). Must be called AFTER the records
- * have been applied to the Yjs doc — a freshly-inserted node has no
- * backing Item, and therefore no stable id, until its insert op has
- * actually landed.
+ * MutationRecord[] it produced. Must be called AFTER the records have been
+ * applied to the Yjs doc — a freshly-inserted node has no backing Item,
+ * and therefore no stable id, until its insert op has actually landed.
  *
  * Granularity is node-level: each record's target, plus every added/
  * removed node, contributes at most one entry. No ancestor/descendant
@@ -89,11 +81,10 @@ export function touchedSetFromRecords(records) {
 }
 
 /**
- * Record a reaction bundle for a just-committed envelope, if its origin
- * qualifies. Call from INSIDE the same ydoc.transact(...) that applied the
- * reaction's records, so the bundle commits atomically with the reaction
- * it describes — consistent with "placement + reaction as one atomic
- * transaction" (concurrency_branching.md).
+ * Record a bundle for a just-committed envelope. Call from INSIDE the same
+ * ydoc.transact(...) that applied the commit's records, so the bundle
+ * commits atomically with the commit it describes — consistent with
+ * "placement + reaction as one atomic transaction" (concurrency_branching.md).
  *
  * The causal stamp is {clientID, clock}:
  *   - clientID is this peer's own ydoc.clientID. Every op in a
@@ -112,12 +103,10 @@ export function touchedSetFromRecords(records) {
  * causal-knowledge boundary every other bundle's concurrency is judged
  * against (see areConcurrent).
  *
- * No-op (returns null) if the origin doesn't qualify, or if the
- * touched-set is empty (e.g. a handler whose every mutation was an
- * out-of-scope violation, fully reverted — nothing left to log).
+ * No-op (returns null) if the touched-set is empty — nothing was actually
+ * touched, so there's nothing to log.
  */
 export function recordReactionBundle(ydoc, tr, origin, touched) {
-  if (!QUALIFYING_ORIGINS.has(origin)) return null
   if (touched.size === 0) return null
 
   const bundle = {

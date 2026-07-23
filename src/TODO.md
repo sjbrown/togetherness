@@ -232,17 +232,18 @@ a silently-dropped resize loser is acceptable and gets no toast.
     `areConcurrent`, `touchedSetsOverlap`, `scanForConflicts`) plus a small
     `origins.js` split-out (avoids an envelope.js↔conflict.js import
     cycle). `commitEnvelope` (envelope.js) now builds the touched-set from
-    its in-scope records and records a reaction bundle — `{clientID,
-    clock, beforeState, touched, origin, ts}` — into a new synced
-    `reactionLog` `Y.Array`, inside the SAME transaction as the reaction
-    itself (atomic, same reasoning as step 2). Only ENVELOPE_ORIGIN and
-    DERIVED_ORIGIN commits qualify; LIFECYCLE_ORIGIN is skipped (a fresh
-    placement's own subtree can't overlap anything). Node identity for the
-    touched-set is each Yjs node's own backing Item id ({client, clock} —
-    the same mechanism Yjs's `createRelativePosition` uses internally),
-    stable across replicas once synced. `app.js` observes `_yReactionLog`
-    (`onReactionLogChanged`) and runs `scanForConflicts` against every
-    newly-added bundle — local or remote — logging a hit via
+    its records and records a bundle — `{clientID, clock, beforeState,
+    touched, origin, ts}` — into a new synced `reactionLog` `Y.Array`,
+    inside the SAME transaction as the commit itself (atomic, same
+    reasoning as step 2). Every origin qualifies — ENVELOPE_ORIGIN,
+    DERIVED_ORIGIN, and LIFECYCLE_ORIGIN alike (see the whole-layer
+    envelope rework in TOYS.md/envelope.js: nothing about how a handler got
+    invoked makes its writes structurally immune to concurrent collision).
+    Node identity for the touched-set is each Yjs node's own backing Item
+    id ({client, clock} — the same mechanism Yjs's `createRelativePosition`
+    uses internally), stable across replicas once synced. `app.js` observes
+    `_yReactionLog` (`onReactionLogChanged`) and runs `scanForConflicts`
+    against every newly-added bundle — local or remote — logging a hit via
     `App.addLog`/`console.warn`. Verified end-to-end against two real
     synced `Y.Doc` replicas reproducing the canonical race (same result
     slot → flagged; different result slots → not flagged) in

@@ -152,10 +152,10 @@ This clarifies which transactions can ever need bespoke resolution:
    unremarkable.
 
 2. **Envelope-opening ops with non-trivial `MutationRecord` content** —
-   `contents_change_handler` reactions, `Roll All`, and any menu handler that
-   reads-and-rewrites existing nodes. These are the transactions that can
-   produce unmergeable divergence and thus may require the fast path or a
-   branch.
+   `contents_change_handler` reactions, `Roll All`, a toy's placement-time
+   `initialize()`, and any menu handler that reads-and-rewrites existing
+   nodes. These are the transactions that can produce unmergeable
+   divergence and thus may require the fast path or a branch.
 
 The dividing line is **whether the transaction ran arbitrary envelope-wrapped
 code that rewrote existing state**, not which hook fired it and not merely

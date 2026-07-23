@@ -99,15 +99,16 @@ describe('recordReactionBundle', () => {
     expect(bundle.origin).toBe(DERIVED_ORIGIN)
   })
 
-  test('does NOT record a bundle for LIFECYCLE_ORIGIN', () => {
+  test('pushes a bundle for LIFECYCLE_ORIGIN too — nothing structurally exempts it', () => {
     const { ydoc, groupDom } = makeAttachedTree()
     let bundle
     ydoc.transact((tr) => {
       const touched = touchedSetFromRecords([fakeChildListRecord(groupDom)])
       bundle = recordReactionBundle(ydoc, tr, LIFECYCLE_ORIGIN, touched)
     }, LIFECYCLE_ORIGIN)
-    expect(bundle).toBeNull()
-    expect(getReactionLog(ydoc).toArray()).toEqual([])
+    expect(bundle).not.toBeNull()
+    expect(bundle.origin).toBe(LIFECYCLE_ORIGIN)
+    expect(getReactionLog(ydoc).toArray()).toEqual([bundle])
   })
 
   test('does NOT record a bundle when the touched-set is empty', () => {
