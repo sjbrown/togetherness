@@ -50,7 +50,7 @@ function _letterIcon(label) {
   return `<svg class="tt-icon-letter" width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><title>${label}</title><text x="11" y="16" text-anchor="middle" font-size="14" font-family="ui-sans-serif,sans-serif" fill="currentColor">${letter}</text></svg>`;
 }
 
-// -- UIData --------------------------------------------------------------------
+// -- UIData ------------------------------------------------------------------
 // Pure presentation state for the chrome. ui.js is the only writer.
 export const UIData = {
   activeTool:           'select',
@@ -69,7 +69,7 @@ export const UIData = {
 let App = null;
 const $ = s => document.querySelector(s);
 
-// -- Init ----------------------------------------------------------------------
+// -- Init --------------------------------------------------------------------
 export function init(appBus) {
   App = appBus;
   $('#scrim')?.addEventListener('click', closePanel);
@@ -108,11 +108,11 @@ function dismissToast(t) {
   setTimeout(() => t.remove(), 200);
 }
 
-// -- Identity bar --------------------------------------------------------------
-export function setIdentity({ projectName, userId, roomId }) {
+// -- Identity bar ------------------------------------------------------------
+export function setIdentity({ projectName, userId, tableId }) {
   if (projectName) UIData.projectName = projectName;
   if (userId)      UIData.userId      = userId;
-  if (roomId)      UIData.roomId      = roomId;
+  if (tableId)     UIData.roomId      = tableId;
   const el = $('#idbar');
   if (!el) return;
   el.querySelector('.idbar-project').textContent = UIData.projectName;
@@ -127,7 +127,7 @@ export function updateInfoBar() {
   el.setAttribute('aria-hidden', show ? 'false' : 'true');
 }
 
-// -- Menu ----------------------------------------------------------------------
+// -- Menu --------------------------------------------------------------------
 export function toggleMenu() {
   UIData.menuOpen = !UIData.menuOpen;
   $('#menuBtn')?.classList.toggle('open', UIData.menuOpen);

@@ -813,11 +813,22 @@ export const TOOLS = [
       { kind: 'color-hsl', key: 'fill', label: 'Tray color', show: ['add', 'edit', 'addQuick'] },
     ],
   },
+  {
+    name:    'bag',
+    toyType: 'bag',
+    file: 'bag.svg',
+    label: 'Bag',
+    iconUrl: 'toy/bag.svg',
+    layer:   'toys',
+    defaults: {},
+    options: [],
+  },
 ];
 export const TOY_TYPES = {
   player_marker: TOOLS[0],
   dice_d6: TOOLS[1],
   tray_sum: TOOLS[2],
+  bag: TOOLS[3],
 }
 
 // ── ttState / ttStateSchema ───────────────────────────────────────────────────
@@ -1443,6 +1454,7 @@ export function runContentsChangeCascadeSync(ydoc, yToys, layerEl, trayIds) {
  * kick off script activation
  */
 export function render(yToys, layerEl) {
+  registerYNode(layerEl, yToys);
   layerEl.innerHTML = '';
   listToys(yToys).forEach(svgEl => {
     svgEl.style.cursor = 'grab';

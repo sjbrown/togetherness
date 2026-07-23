@@ -344,10 +344,7 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, svgElem
 
   // UI — needs App; attaches panel/menu/pill listeners
   UI.init(App);
-  // ui.js's UIData/getStatusData still key this as `roomId` — that's its
-  // own public data shape, unchanged here; only app.js's own vocabulary is
-  // "table" now.
-  UI.setIdentity({ projectName: 'togetherness', userId: displayName, roomId: tableId });
+  UI.setIdentity({ projectName: 'togetherness', userId: displayName, tableId: tableId });
 
   // Keyboard shortcuts
   window.addEventListener('keydown', onKeyDown);
@@ -506,22 +503,7 @@ function onBounPosChanged(events, transaction) {
 }
 
 // Suppresses the observer-driven cascade in onToysChanged while a cascade is
-// already being handled for the current change. Three cases set it, all for
-// the same underlying reason: a folded action's own outer transact() has no
-// explicit origin, so it commits under null (see undo_redo.js's
-// "Atomicity" note) — the same origin as an ordinary, uncascaded structural
-// write — meaning the origin check below can't distinguish "already
-// cascaded" from "needs cascading" for any of them:
-//  - dispatchContentsChangeCascade wraps its synchronous run in it (belt to
-//    the origin check's braces: the DERIVED commits it makes land in their
-//    own transactions, caught by the origin check in onToysChanged).
-//  - commitMove's drop-into-tray path folds the reaction into the placement
-//    transaction itself.
-//  - invokeToyMenuAction and commitToy: toys.js's invokeMenuActionSync /
-//    initializeToySync already run their own complete
-//    contents_change_handler cascade (against the live DOM, before ever
-//    touching Yjs — see toys.js's runContentsChangeCascadeInto) before
-//    committing, so the observer must not recompute the same trays again.
+// already being handled for the current change.
 let _dispatchingContentsChange = false;
 
 function onToysChanged(events, transaction) {
@@ -611,22 +593,16 @@ function dispatchContentsChangeCascade(events) {
   }
 }
 
-// Post-merge overlap scan (TODO #11 step 4): _yReactionLog gains a new
-// entry every time a qualifying envelope commits — ours (this transaction)
-// or a remote peer's (once their commit syncs in). Either way this
-// observer fires, so it's the one place that sees every reaction bundle
-// as it lands, local or remote. For each newly-added bundle, scan the
-// rest of the log for a different, causally-concurrent author whose
-// touched-set overlaps — exactly the situation the derived-write garbling
-// bug comes from.
+// Post-merge overlap scan.
+// _yReactionLog gains a new entry every time a qualifying envelope commits
+// whether ours (this transaction) or a remote peer's.
+// Then this observer fires, scanning the rest of the log for any bundles with:
+//  - causally-concurrent author
+//  - touched-set overlaps
 //
-// Detection only, for now: a hit is logged (console + activity log), not
-// acted on. Deliberately does NOT set/consult _dispatchingContentsChange —
-// this observer only reads _yReactionLog and yToys' own state to log a
-// message; it makes no Yjs writes of its own, so it can't re-trigger
-// onToysChanged's cascade dispatch or race that flag. Resolving a detected
-// conflict (fast-path in-place assertion, or branch escalation) is TODO
-// #11 steps 5/6 — this only reports that one was found.
+// TODO: Detection only, for now: a hit is just logged (console + activity log)
+//       Need to resolve a detected conflict
+//        ((fast-path in-place assertion, or branch escalation)
 function onReactionLogChanged(event, transaction) {
   const added = [];
   event.changes.added.forEach(item => {
@@ -1059,30 +1035,23 @@ const App = {
   },
 
   /**
-   * Invoke one of a toy's menu actions by (namespace, key) — the
-   * identifiers App.getToyMenuActions() handed back to the UI. Runs the
-   * handler inside an envelope (envelope.js) and commits its DOM mutations,
-   * plus any tray reaction it triggers, to Yjs as a single transaction.
-   * _yToys.observeDeep already re-renders the toys layer once that commit
-   * lands; refreshFromDoc() here just keeps the Edit panel's own action
-   * list (labels, applicable filtering) current too, the same way
-   * commitEdit refreshes it after a field edit.
+   * Invoke one of a toy's menu actions by (namespace, key)
+   * Runs the handler inside an envelope and commits its DOM mutations,
+   * plus any triggered reactions, to Yjs as a single transaction.
    */
   invokeToyMenuAction: (id, namespace, key) => {
     const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
     if (!svgEl) return;
     const layerEl = _svgEl?.querySelector('#toys-layer');
     if (!layerEl) return;
-    // invokeMenuActionSync already runs its own complete contents_change_handler
-    // cascade (toys.js's runContentsChangeCascadeInto) before it ever commits —
-    // the whole thing (handler + cascade) lands as one transaction, under an
-    // effectively-null origin (see undo_redo.js's "Atomicity" note), so
-    // onToysChanged's origin check alone wouldn't recognize it as
-    // already-cascaded. Same guard commitMove's drop-into-tray path already
-    // uses, for the same reason.
+    // invokeMenuActionSync runs a complete contents_change_handler cascade
+    // so guard with _dispatchingContentsChange
     _dispatchingContentsChange = true;
     try {
       Toys.invokeMenuActionSync(_ydoc, _yToys, layerEl, svgEl, namespace, key);
+      // _yToys.observeDeep already re-renders the toys layer once that commit
+      // lands; refreshFromDoc() here just keeps the Edit panel's own action
+      // list current too
       UI.refreshFromDoc();
     } catch (err) {
       UI.toast(`Action failed: ${err.message}`, 'warn');
@@ -1111,23 +1080,17 @@ const App = {
 
   /**
    * Place a toy on the table, then run its namespace(s)' initialize(elem)
-   * hook exactly once, at this genuine placement moment — never on
-   * load/import or remote sync. Awaiting activateToyScripts() here (it's
-   * idempotent, shares the in-flight Promise from render()'s own
-   * fire-and-forget call) guarantees the namespace is actually ready
-   * before initialize() reads it off window[namespace].
+   * hook exactly once
    */
   commitToy: (toolName, x, y) => {
     const def = _toolById[toolName];
     if (!def?.toyType) { UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
     const id = newToyId();
-    // Tag before addToy's placement transaction runs. initializeToySync()'s
-    // own outer transact() has no explicit origin, so the merged
-    // handler-plus-cascade transaction commits under null (same as every
-    // other folded call site — see undo_redo.js's "Atomicity" note), a
-    // SEPARATE transaction from addToy's own placement — meaning this label
-    // is consumed by the placement, and initializeToySync's own commit (if
-    // any) rides in as its own, unlabeled undo step.
+    // Tag before addToy's placement transaction runs.
+    // Later, initializeToySync()'s runs with its own outer transact()
+    // that has no explicit origin, so its merged handler-plus-cascade
+    // transaction commits under null, a SEPARATE transaction from
+    // addToy's placement
     UndoRedo.tag(`place ${def.label} ${id.slice(0, 6)}`);
     addToy(_ydoc, _yToys, {
       id, toyType: def.toyType, x, y,
@@ -1137,6 +1100,8 @@ const App = {
       App.addLog(`placed ${def.label} ${id.slice(0, 6)}`, 'local');
 
       const yEl = findToy(_yToys, id);
+      // Awaiting activateToyScripts() here guarantees the namespace is actually
+      // ready before initialize() reads it off window[namespace].
       if (yEl) await activateToyScripts(yEl, def.toyType);
       const svgEl   = _svgEl?.querySelector(`[data-id="${id}"]`);
       const layerEl = _svgEl?.querySelector('#toys-layer');
