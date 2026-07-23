@@ -282,4 +282,5 @@ export const tablesAPI = {
   forkTable,
   generateTableId,
   randSlug,
+  compareAuthority,
 };
