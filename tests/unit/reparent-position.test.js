@@ -13,7 +13,7 @@
  * (untestable directly — see the project's existing convention of not
  * unit-testing app.js). dropIntoTray() below is a literal, minimal
  * reimplementation of exactly what commitMove does for the reparent
- * branch: findDropTargetTray → reparentToy → getGeom the tray →
+ * branch: findDropTarget → reparentToy → getGeom the tray →
  * applyMoveCommit the moved toy at (dropX - trayGeom.x, dropY - trayGeom.y).
  * Same approach as wireCascade() in contents-change-cascade.test.js.
  */
@@ -25,7 +25,7 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import {
-  addToy, addToySync, render, findDropTargetTray, reparentToy, getGeom, applyMoveCommit,
+  addToy, addToySync, render, findDropTarget, reparentToy, getGeom, applyMoveCommit,
   _clearSvgTextCache, clearYNodeMap, _resetToyScriptState,
 } from '../../src/toys.js'
 
@@ -50,7 +50,7 @@ function renderLayer(yToys) {
 // Literal reimplementation of app.js commitMove's reparent branch — see
 // module doc above.
 function dropIntoTray(ydoc, yToys, layerEl, draggedId, dropX, dropY) {
-  const dropTrayId = findDropTargetTray(layerEl, draggedId, dropX, dropY)
+  const dropTrayId = findDropTarget(layerEl, draggedId, dropX, dropY)
   if (!dropTrayId) return null
   const movedEl = reparentToy(ydoc, yToys, draggedId, dropTrayId)
   const trayEl  = layerEl.querySelector(`[data-id="${dropTrayId}"]`)
@@ -132,7 +132,7 @@ describe('drop-position rebase — real tray_sum + dice_d6 assets', () => {
     await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 900, y: 900, color: '#fff' })
 
     const layerEl = renderLayer(yToys)
-    const dropTrayId = findDropTargetTray(layerEl, 'die1', 350, 340)
+    const dropTrayId = findDropTarget(layerEl, 'die1', 350, 340)
     const movedEl = reparentToy(ydoc, yToys, 'die1', dropTrayId) // reparent only, no rebase
 
     const movedSvg = movedEl.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'svg')
