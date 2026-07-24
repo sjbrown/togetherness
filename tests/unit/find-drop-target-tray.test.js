@@ -2,21 +2,19 @@
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
-  addToySync, render, findDropTargetTray, _clearSvgTextCache, clearYNodeMap,
+  addToySync, render, findDropTarget, _clearSvgTextCache, clearYNodeMap,
 } from '../../src/toys.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 const getToysLayer = (ydoc) => ({ yToys: ydoc.getXmlFragment('toys') })
 
-// A 200x150 tray at (0,0)-(200,150) in table space, class 'tray' on its own
-// embedded <svg> — the same convention tray.js's get_numeric_value uses.
+// A 200x150 container at (0,0)-(200,150) in table space with a .contents_group.
 const TRAY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="150" id="tray_fixture" class="tray_fixture tray">
   <g id="contents_group" class="contents_group"></g>
 </svg>`
 
-// A non-tray toy of the same footprint, to prove class 'tray' really is
-// what gates candidacy, not just "any other toy is a valid target".
+// A non-container toy (no .contents_group) — valid drop target requires .contents_group.
 const NON_TRAY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="150" id="board_fixture" class="board_fixture">
 </svg>`
@@ -45,7 +43,7 @@ beforeEach(() => {
   clearYNodeMap()
 })
 
-describe('findDropTargetTray — drop inside/outside boundaries', () => {
+describe('findDropTarget — drop inside/outside boundaries', () => {
   test('a drop centre inside a tray\u2019s bounds returns that tray\u2019s id', () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
@@ -54,7 +52,7 @@ describe('findDropTargetTray — drop inside/outside boundaries', () => {
     const layerEl = renderLayer(yToys)
 
     // drop die1 right at the tray's own centre
-    const found = findDropTargetTray(layerEl, 'die1', 300, 300)
+    const found = findDropTarget(layerEl, 'die1', 300, 300)
     expect(found).toBe('tray1')
   })
 
@@ -65,7 +63,7 @@ describe('findDropTargetTray — drop inside/outside boundaries', () => {
     place(ydoc, yToys, 'die1',  'die_fixture',  DIE_SVG,  100, 100)
     const layerEl = renderLayer(yToys)
 
-    const found = findDropTargetTray(layerEl, 'die1', 5000, 5000)
+    const found = findDropTarget(layerEl, 'die1', 5000, 5000)
     expect(found).toBeNull()
   })
 
@@ -81,7 +79,7 @@ describe('findDropTargetTray — drop inside/outside boundaries', () => {
     // bbox actually sits outside the tray. Should still count as an overlap.
     const trayGeom = readTrayGeom(layerEl, 'tray1')
     const justInsideLeftEdge = { x: trayGeom.x + 2, y: trayGeom.y + trayGeom.height / 2 }
-    const found = findDropTargetTray(layerEl, 'die1', justInsideLeftEdge.x, justInsideLeftEdge.y)
+    const found = findDropTarget(layerEl, 'die1', justInsideLeftEdge.x, justInsideLeftEdge.y)
     expect(found).toBe('tray1')
   })
 
@@ -92,18 +90,18 @@ describe('findDropTargetTray — drop inside/outside boundaries', () => {
     const layerEl = renderLayer(yToys)
 
     // "drag" tray1 and drop it centred on its own current position
-    const found = findDropTargetTray(layerEl, 'tray1', 300, 300)
+    const found = findDropTarget(layerEl, 'tray1', 300, 300)
     expect(found).toBeNull()
   })
 
-  test('a non-tray toy (no class "tray" on its own embedded <svg>) is never a valid target', () => {
+  test('a non-container toy (no .contents_group) is never a valid target', () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     place(ydoc, yToys, 'board1', 'board_fixture', NON_TRAY_SVG, 300, 300)
     place(ydoc, yToys, 'die1',   'die_fixture',   DIE_SVG,      100, 100)
     const layerEl = renderLayer(yToys)
 
-    const found = findDropTargetTray(layerEl, 'die1', 300, 300)
+    const found = findDropTarget(layerEl, 'die1', 300, 300)
     expect(found).toBeNull()
   })
 
@@ -115,7 +113,7 @@ describe('findDropTargetTray — drop inside/outside boundaries', () => {
     place(ydoc, yToys, 'die1',  'die_fixture',  DIE_SVG,  100, 100)
     const layerEl = renderLayer(yToys)
 
-    const found = findDropTargetTray(layerEl, 'die1', 310, 300)
+    const found = findDropTarget(layerEl, 'die1', 310, 300)
     expect(['tray1', 'tray2']).toContain(found)
   })
 
@@ -125,12 +123,12 @@ describe('findDropTargetTray — drop inside/outside boundaries', () => {
     place(ydoc, yToys, 'tray1', 'tray_fixture', TRAY_SVG, 300, 300)
     const layerEl = renderLayer(yToys)
 
-    expect(() => findDropTargetTray(layerEl, 'ghost-id', 300, 300)).not.toThrow()
-    expect(findDropTargetTray(layerEl, 'ghost-id', 300, 300)).toBeNull()
+    expect(() => findDropTarget(layerEl, 'ghost-id', 300, 300)).not.toThrow()
+    expect(findDropTarget(layerEl, 'ghost-id', 300, 300)).toBeNull()
   })
 
   test('returns null (rather than throwing) when layerEl is null', () => {
-    expect(findDropTargetTray(null, 'die1', 300, 300)).toBeNull()
+    expect(findDropTarget(null, 'die1', 300, 300)).toBeNull()
   })
 })
 

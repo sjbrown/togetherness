@@ -2,7 +2,7 @@
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
-  addToySync, render, findToy, isTrayEl, computeResizeRect, applyResizeCommit,
+  addToySync, render, findToy, computeResizeRect, applyResizeCommit,
   RESIZE_CORNER_NW, RESIZE_CORNER_NE, RESIZE_CORNER_SW, RESIZE_CORNER_SE,
   reparentToy,
   _clearSvgTextCache, clearYNodeMap,
@@ -40,28 +40,6 @@ function renderLayer(yToys) {
 beforeEach(() => {
   _clearSvgTextCache()
   clearYNodeMap()
-})
-
-describe('isTrayEl', () => {
-  test('true for a rendered toy whose own embedded <svg> carries the tray class', () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    place(ydoc, yToys, 'tray1', 'tray_fixture', TRAY_SVG, 100, 100)
-    const layerEl = renderLayer(yToys)
-    expect(isTrayEl(layerEl.querySelector('[data-id="tray1"]'))).toBe(true)
-  })
-
-  test('false for a toy without the tray class', () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    place(ydoc, yToys, 'board1', 'board_fixture', NON_TRAY_SVG, 100, 100)
-    const layerEl = renderLayer(yToys)
-    expect(isTrayEl(layerEl.querySelector('[data-id="board1"]'))).toBe(false)
-  })
-
-  test('false for null/missing element (never throws)', () => {
-    expect(isTrayEl(null)).toBe(false)
-  })
 })
 
 describe('computeResizeRect — corner-drag geometry', () => {

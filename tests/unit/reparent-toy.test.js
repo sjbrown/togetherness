@@ -200,11 +200,11 @@ describe('reparentToy — validation and loud failures', () => {
     expect(() => reparentToy(ydoc, yToys, 'nope', 'tray1')).toThrow(/not found/)
   })
 
-  test('throws when the target tray id does not exist', () => {
+  test('throws when the target container id does not exist', () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     placeDie(ydoc, yToys, 'die1')
-    expect(() => reparentToy(ydoc, yToys, 'die1', 'nope')).toThrow(/target tray not found/)
+    expect(() => reparentToy(ydoc, yToys, 'die1', 'nope')).toThrow(/target not found/)
   })
 
   test('throws when the target has no .contents_group (isn\u2019t tray-shaped)', () => {
