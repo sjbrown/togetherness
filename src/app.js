@@ -1370,12 +1370,13 @@ const App = {
   //                     starts a resize gesture or falls through.
   // lifecycle: startResize/resize/commitResize/cancelResize
 
-  // Only a tray that is already the client's own exclusive single selection
-  // can enter resize mode — silently a no-op otherwise
   enterResizeMode: (id) => {
+    // Only a toy that is already the client's own exclusive single selection
+    // can enter resize mode — silently a no-op otherwise
     if (Object.keys(_myClaims).length !== 1 || !(id in _myClaims)) return;
     const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
-    if (moduleForElement(domEl) !== 'toys' || !Toys.isTrayEl(domEl)) return;
+    const toyModes = Toys.selectModes(domEl)
+    if (moduleForElement(domEl) !== 'toys' || !toyModes.includes('resize')) return;
     _resizeModeId = id;
     Overlay.setResizeMode(id);
     _broadcastMode();

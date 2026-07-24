@@ -6,7 +6,7 @@
    height="130"
    viewBox="0 0 220 130"
    id="tray_sum"
-   class="tray_sum tray"
+   class="tray_sum tray tt-mode-resize tt-mode-rummage"
    version="1.1"
    >
   <defs id="defs_tray_sum">

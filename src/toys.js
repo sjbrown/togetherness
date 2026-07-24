@@ -524,6 +524,18 @@ export function isTrayEl(domEl) {
   return !!ownSvg?.classList.contains('tray')
 }
 
+export function selectModes(domEl) {
+  const ownSvg = domEl?.querySelector?.(':scope > svg')
+  let modes = []
+  if (!!ownSvg?.classList.contains('tt-mode-resize')) {
+    modes.push('resize')
+  }
+  if (!!ownSvg?.classList.contains('tt-mode-rummage')) {
+    modes.push('rummage')
+  }
+  return modes
+}
+
 
 /**
  * Commit a toy move to the Yjs doc in a single transaction.
@@ -820,8 +832,10 @@ export const TOOLS = [
     label: 'Bag',
     iconUrl: 'toy/bag.svg',
     layer:   'toys',
-    defaults: {},
-    options: [],
+    defaults: { fill: '#311' },
+    options: [
+      { kind: 'color-hsl', key: 'fill', label: 'Bag color', show: ['add', 'edit', 'addQuick'] },
+    ],
   },
 ];
 export const TOY_TYPES = {
