@@ -485,20 +485,21 @@ export function endResizeGhost(elId) {
 }
 
 // ── Drop-target hover
-// The tray id currently under a toy being dragged, or null. Set by
+// The el id currently under a toy being dragged, or null. Set by
 // App.move() on every pointermove while dragging a toy (re-hit-tested each
 // time against the drop position, not the raw pointer); cleared on
-// commit/cancel. A single id — at most one tray can be the live drop target
-let _dropTargetTrayId = null;
+// commit/cancel. A single id — at most one el can be the live drop target
+let _dropTargetId = null;
 
 /**
- * Called by App while dragging a toy, with the id of the tray currently
- * under the drop position, or null. Short circuits when the id is unchanged,
+ * Called by App while dragging a toy, with the id of a .contents_group-having
+ * element currently under the drop position, or null.
+ * Short circuits when the id is unchanged,
  * since this fires on every pointermove.
  */
-export function setDropTargetHover(trayId) {
-  if (_dropTargetTrayId === trayId) return;
-  _dropTargetTrayId = trayId;
+export function setDropTargetHover(containerElId) {
+  if (_dropTargetId === containerElId) return;
+  _dropTargetId = containerElId;
   render();
 }
 
@@ -596,9 +597,9 @@ export function render() {
     );
   }
 
-  // ── Drop-target hover — highlight on the tray under the drop point
-  if (_dropTargetTrayId) {
-    const geo = App.getBBox(_dropTargetTrayId);
+  // ── Drop-target hover — highlight on the el under the drop point
+  if (_dropTargetId) {
+    const geo = App.getBBox(_dropTargetId);
     if (geo) renderDropTargetHover(geo, scale);
   }
 

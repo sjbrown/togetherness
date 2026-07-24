@@ -388,18 +388,18 @@ export function findToy(yToys, id) {
 
 /**
  * Move a toy to a new position in the containment tree: either into
- * a tray's .contents_group (targetTrayId given), or back to the top level
- * of the toys layer (targetTrayId null/undefined).
+ * a .contents_group, or back to the top level
+ * of the toys layer (containerElId null/undefined).
  * This is a structural Yjs operation, not a DOM one
  *
  * We accept that peers doing a concurrent remote edit targeting the old
- * items will be lost
+ * items will be in conflict
  *  - We should have had a soft-lock in the first place
  *  - Reparenting is rare and deliberate
  *
  * Returns the newly-inserted (cloned) Y.XmlElement.
  */
-export function reparentToy(ydoc, yToys, id, targetTrayId) {
+export function reparentToy(ydoc, yToys, id, containerElId) {
   const location = yExactSelector(yToys, `[data-toy-id="${id}"]`, true)
   if (!location) throw new Error(`[toys] reparentToy: toy not found: ${id}`)
   const { yEl, parent, index } = location
@@ -407,29 +407,29 @@ export function reparentToy(ydoc, yToys, id, targetTrayId) {
   /*
   * Throws if:
   *  - id doesn't exist anywhere in the tree
-  *  - targetTrayId doesn't exist
-  *  - targetTrayId has no .contents_group
-  *  - targetTrayId is id itself or one of id's own descendant toys
+  *  - containerElId doesn't exist
+  *  - containerElId has no .contents_group
+  *  - containerElId is id itself or one of id's own descendant toys
   *    - moving a toy into its own descendant would disconnect that subtree
   *      from the doc entirely, so this is refused
   */
   let targetFragment
-  if (targetTrayId == null) {
+  if (containerElId == null) {
     targetFragment = yToys
   } else {
-    const found = !!yExactSelector(yEl, `[data-toy-id="${targetTrayId}"]`)
+    const found = !!yExactSelector(yEl, `[data-toy-id="${containerElId}"]`)
     if (found) {
-      throw new Error(`[toys] reparentToy: cannot move ${id} into itself or one of its own contained toys (${targetTrayId})`)
+      throw new Error(`[toys] reparentToy: cannot move ${id} into itself or one of its own contained toys (${containerElId})`)
     }
-    const targetLocation = yExactSelector(yToys, `[data-toy-id="${targetTrayId}"]`, true)
+    const targetLocation = yExactSelector(yToys, `[data-toy-id="${containerElId}"]`, true)
     if (!targetLocation) {
-      throw new Error(`[toys] reparentToy: target tray not found: ${targetTrayId}`)
+      throw new Error(`[toys] reparentToy: target not found: ${containerElId}`)
     }
     const contentsGroup = yClassSelector(
-      targetLocation.yEl, `${targetTrayId}__contents_group`
+      targetLocation.yEl, `${containerElId}__contents_group`
     )[0] ?? null
     if (!contentsGroup) {
-      throw new Error(`[toys] reparentToy: target ${targetTrayId} has no .contents_group`)
+      throw new Error(`[toys] reparentToy: target ${containerElId} has no .contents_group`)
     }
     targetFragment = contentsGroup
   }
@@ -488,40 +488,39 @@ function pointInRect(x, y, rect) {
 }
 
 /**
- * Hit-test a toy's drop position against every top-level tray.
- * Returns the id of the first tray whose bounds contain the dragged
- * toy's centre point — or null if none does.
+ * Hit-test a toy's drop position against every top-level
+ * .contents_group-having element.
+ * 
+ * Returns the id of the first such element whose bounds contain the
+ * dragged toy's centre point — or null if none does.
  *
  *  - (rx, ry) is the drop centre point
  *
- * Only top-level toys/trays are considered — nested toys (e.g. a tray
+ * Only top-level toys are considered — nested toys (e.g. a tray
  * inside a tray) are deliberately out of scope.
  *
- * TODO: trays are recognized by class-contains-tray.  Expand this to
- *       generic containers - anything that has .contents_group
  */
-export function findDropTargetTray(layerEl, draggedId, rx, ry) {
+export function findDropTarget(layerEl, draggedId, rx, ry) {
   if (!layerEl) return null
   const draggedEl = layerEl.querySelector(`:scope > [data-id="${draggedId}"]`)
   if (!draggedEl) return null
 
   for (const el of layerEl.querySelectorAll(':scope > [data-id]')) {
-    const trayId = el.getAttribute('data-id')
-    if (trayId === draggedId) continue
-    if (!isTrayEl(el)) continue
-    const trayGeom = getGeom(el)
-    if (trayGeom && pointInRect(rx, ry, trayGeom)) return trayId
+    const targetId = el.getAttribute('data-id')
+    // Don't match the element itself
+    if (targetId === draggedId) continue
+    // Only consider .contents_group-having elements
+    console.log(targetId, getContentsGroup(el))
+    if (!getContentsGroup(el)) continue
+
+    const targetGeom = getGeom(el)
+    if (targetGeom && pointInRect(rx, ry, targetGeom)) return targetId
   }
   return null
 }
 
-/**
- * Whether a rendered toy <g data-id> wrapper is a tray -- i.e. its own
- * embedded <svg> carries the `tray` class.
- */
-export function isTrayEl(domEl) {
-  const ownSvg = domEl?.querySelector?.(':scope > svg')
-  return !!ownSvg?.classList.contains('tray')
+export function getContentsGroup(domEl) {
+  return domEl.querySelector(`.${domEl.id}__contents_group`)
 }
 
 export function selectModes(domEl) {
@@ -1411,13 +1410,13 @@ export function affectedTrayIdsInnerFirst(changedYNodes) {
  * transaction), each is its own DERIVED transaction instead — same end
  * state, just not folded.
  */
-export function runContentsChangeCascadeSync(ydoc, yToys, layerEl, trayIds) {
-  for (const trayId of trayIds) {
+export function runContentsChangeCascadeSync(ydoc, yToys, layerEl, containerIds) {
+  for (const containerId of containerIds) {
     render(yToys, layerEl)
-    const trayEl = layerEl.querySelector(`[data-id="${trayId}"]`)
-    const yTray  = findToy(yToys, trayId)
-    if (!trayEl || !yTray) continue // e.g. the tray itself was deleted in the same transaction
-    runContentsChangeHandlerSync(ydoc, yToys, layerEl, trayEl, yTray.getAttribute('data-toy-type'))
+    const containerEl = layerEl.querySelector(`[data-id="${containerId}"]`)
+    const ycontainer  = findToy(yToys, containerId)
+    if (!containerEl || !ycontainer) continue // e.g. the container itself was deleted in the same transaction
+    runContentsChangeHandlerSync(ydoc, yToys, layerEl, containerEl, ycontainer.getAttribute('data-toy-type'))
   }
 }
 

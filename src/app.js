@@ -26,7 +26,7 @@ import * as BounPos                               from './boun_pos.js';
 import { SHAPE_TYPES }                            from './drawing.js';
 import { TOOLS as TOY_TOOLS, addToy, findToy, newToyId,
          getMenuActions, activateToyScripts,
-         findDropTargetTray, reparentToy } from './toys.js';
+         findDropTarget, reparentToy } from './toys.js';
 import { DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js'
 import { getReactionLog, scanForConflicts } from './conflict.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
@@ -1261,7 +1261,9 @@ const App = {
     const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
     if (moduleForElement(domEl) === 'toys') {
       const toysLayerEl = _svgEl.querySelector('#toys-layer');
-      Overlay.setDropTargetHover(findDropTargetTray(toysLayerEl, id, rx, ry));
+      const dt = findDropTarget(toysLayerEl, id, rx, ry)
+      console.log(dt)
+      Overlay.setDropTargetHover(dt)
     }
   },
 
@@ -1279,7 +1281,7 @@ const App = {
     // Same hit-test move() used for the live hover highlight, run once more
     // against the final drop position
     const dropTrayId = mtype === 'toys'
-      ? findDropTargetTray(_svgEl.querySelector('#toys-layer'), id, rx, ry)
+      ? findDropTarget(_svgEl.querySelector('#toys-layer'), id, rx, ry)
       : null;
 
     // Ghost gone before bbox changes — prevents one-frame ghost "jitter"
