@@ -87,24 +87,52 @@ divergent region. This unification is the main reason to prefer branching over
 discard-with-toast: one mechanism covers both, and no user work is ever
 destroyed.
 
-### Fast path vs. branch escalation
+### No fast path — every detected conflict escalates
 
-Branching is heavyweight (a new table, a blocking dialog). We do **not** want a
-two-second WiFi hiccup to spray a room with branches and train people to
-dismiss the dialog unread. So:
+An earlier version of this design had a "fast path": trivially-overlapping
+conflicts (e.g. two reactions that both wrote one aggregate result slot)
+would be resolved in place by asserting the winner's recorded values across
+the touched set, no branch, no dialog — on the theory that small,
+localized divergence didn't warrant the weight of a full branch.
 
-- **Fast path (in place):** trivially-overlapping conflicts — e.g. two
-  reactions that both wrote one aggregate result slot, small divergence — are
-  resolved in place by asserting the winner's recorded values across the
-  touched set. No branch, no dialog. (A quiet activity-log line is fine.)
-- **Branch escalation:** only genuinely non-trivial divergence — where
-  in-place assertion cannot produce a coherent state, or the divergent region
-  is large (the partition case) — escalates to a full branch + Acknowledge
-  dialog.
+**Rejected.** Working through what "safe to assert in place" would actually
+require exposed two problems, not one implementation detail:
 
-The exact predicate separating "fast path" from "escalate" is an open
-implementation detail (see TODO). The touched-set scan is how the fast path
-detects overlap; the state-vector gap is how the branch path sizes divergence.
+- **Asserting only the winner's touched-set** produces a state neither peer
+  ever had: e.g. an aggregate slot recomputed as if the loser's die were
+  never dropped, while the die itself (a CRDT-safe insert, never in
+  question) is still physically sitting in the tray. Confidently wrong is
+  worse than visibly stuck.
+- **Asserting across the union of both touched-sets** avoids that
+  incoherence but is just branch escalation's "discard the loser's
+  contribution" outcome, minus the thing that makes discarding
+  acceptable — the loser gets a say. A quiet log line is the wrong weight
+  for silently dropping real work; a peer who put five minutes into a
+  network-partitioned edit deserves the Acknowledge dialog and the
+  preserved, reopenable branch, not a toast they'll never see.
+
+The only case where in-place assertion is actually *lossless* — not just
+convenient — is when the two touched-sets are **exactly equal**: neither
+side has any node the other lacks, so nothing is discarded by favoring
+either one. But touched-sets include every node a commit's `MutationRecord[]`
+touched, including each side's own freshly-inserted content — and every
+toy handler that exists (`tray_sum`, `dice_d6`, `bag`) writes its result via
+`tspan.textContent = X`, which always creates a *new* text node with a
+fresh, per-commit-unique item id. Two concurrent recomputes of the same
+slot therefore never produce equal touched-sets — each side's own new text
+node is always in its own set and never the other's. The "equal touched
+sets" condition that would make in-place assertion safe essentially never
+occurs for real toy code, and would fire for at most a rarely-taken edge
+case, at the cost of real complexity (resolving a touched-set key back to
+a live Yjs node, mapping each bundle's ephemeral `clientID` to its
+author's persistent identity for the authority comparison). Not worth
+building for a case that's mostly theoretical.
+
+So: **every conflict `scanForConflicts` detects escalates to a branch.**
+There is exactly one resolution mechanism, not two, which also removes an
+entire axis of "did we pick the right threshold" risk. The touched-set scan
+is how a conflict is detected; the branch operation (below) is what happens
+once one is.
 
 ---
 
@@ -176,7 +204,7 @@ This clarifies which transactions can ever need bespoke resolution:
    `contents_change_handler` reactions, `Roll All`, a toy's placement-time
    `initialize()`, and any menu handler that reads-and-rewrites existing
    nodes. These are the transactions that can produce unmergeable
-   divergence and thus may require the fast path or a branch.
+   divergence and thus may require branch escalation.
 
 The dividing line is **whether the transaction ran arbitrary envelope-wrapped
 code that rewrote existing state**, not which hook fired it and not merely
@@ -185,7 +213,7 @@ but is a CRDT-safe insert).
 
 ---
 
-## Touched-sets (conflict detection for the fast path)
+## Touched-sets (conflict detection)
 
 A reaction bundle records the set of Yjs nodes it touched, built from the raw
 `MutationRecord[]` that `runInEnvelope` already returns:
@@ -367,28 +395,34 @@ simultaneously.
 - With **one-transaction commit**: A commits {insert die1 + reaction
   slot=sum(die1)} atomically; B commits {insert die2 + reaction
   slot=sum(die2)} atomically. The two reactions overlap on the shared result
-  slot.
-- **Fast path** (small divergence): authority (say A, earlier in
-  `joinSequence`) wins in place. The end state on the authoritative table is
-  A's whole unit; B's whole unit (die2 *and* its reaction) is what diverges.
+  slot — both wrote a fresh text node into the same `tspan`, so `tspan`'s
+  own item-id is in both bundles' touched-sets.
+- `scanForConflicts` flags the pair (concurrent, overlapping touched-sets).
+  Authority (say A, earlier in `joinSequence`) wins: **B's whole document,
+  as of B's own current state, forks to a new branch table**, and B gets
+  the Acknowledge dialog. A's table is untouched — nothing to repair there,
+  since A's own commit was never in question, only synced-against B's.
 - Because die2's insert and its reaction were one unit, there is no
-  stale-slot-with-uncounted-die intermediate to repair. This is the key payoff
-  of one-transaction commit.
-- If divergence were non-trivial (or this were a long partition), B's
-  divergent document forks to a branch table and B gets the Acknowledge
-  dialog.
-
-Note the earlier "reassert the winner's recorded values across the touched
-set" idea is the *fast-path* in-place resolution. The branch path does not
-need it — it forks the whole divergent doc rather than repairing individual
-nodes.
+  stale-slot-with-uncounted-die intermediate on either side to repair. This
+  is the key payoff of one-transaction commit, independent of whether
+  resolution is in-place or a branch.
+- On B's new branch, die2 is present and correctly counted (it's B's own
+  divergent document, unedited) — B loses shared-table membership going
+  forward, not the die.
 
 ---
 
 ## Open implementation questions (tracked in TODO)
 
-- Exact predicate: fast-path-in-place vs. escalate-to-branch (divergence size
-  threshold; what "coherent in-place result" means for opaque handlers).
-- Fork primitive: how to snapshot/copy a `Y.Doc` at a causal point into a new
-  IndexedDB table, cleanly detaching from the room's provider.
+- How to snapshot/copy a *live* `Y.Doc` (not an at-rest one loaded fresh
+  from IndexedDB) at the moment a conflict is detected into a new
+  IndexedDB table, cleanly detaching it from the room's WebRTC provider so
+  the branch doesn't keep syncing with the table it just diverged from.
+- Mapping a bundle's `clientID` (ephemeral, Yjs-assigned) to its author's
+  persistent `localId` (what `joinSequence`/`isAuthoritative` actually key
+  on) — needed to know who's authoritative in a detected pair at all.
 - Dialog UX copy and the branch-naming scheme.
+- Whether "join the authoritative table" should attempt anything beyond a
+  plain navigate to `tableId` (e.g. surfacing a diff/summary of what the
+  branch has that the authoritative table doesn't) or leave that entirely
+  to the branch being reopenable from `home.html`.

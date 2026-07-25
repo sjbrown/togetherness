@@ -29,10 +29,11 @@ open design questions, process/docs.
 
 ### 5.a. Dead code
 
-**Dead-for-undo exports.** `getTtState`/`applyTtState` in `toys.js` are
-no longer used by the undo path. Left in place (still exported via the
-LayerAPI); remove or repurpose in a separate pass if nothing else needs
-them.
+✅ **`applyTtState` removed** from `toys.js` (and its `LayerAPI` entry) —
+confirmed no caller anywhere (undo/redo, UI, tests). `getTtState` stays: it
+has its own live test and no confirmed-dead status the way `applyTtState`
+had. `drawing.js`/`boun_pos.js` still have their own `applyTtState` —
+out of scope here, not surveyed.
 
 ### 10. Multi-select drop into a tray doesn't reparent anything
 
@@ -172,19 +173,21 @@ Resolution model:
    placement's observer returns). This removes the "die inserted but its
    reaction lost → stale slot, uncounted die" intermediate: the unit now
    wins or loses whole. Load-bearing; only sound because handlers are sync.
- * **Fast path (in place):** trivially-overlapping conflicts (detected via
+ * **Every detected conflict escalates to a branch.** No in-place fast
+   path — see concurrency_branching.md, "No fast path — every detected
+   conflict escalates", for why that idea was designed and then rejected:
+   asserting only the winner's touched-set produces a state neither peer
+   ever had (a recomputed aggregate as if the loser's still-present insert
+   didn't exist); asserting the union just discards the loser's
+   contribution without the loser getting a say. Detection is via
    node-level touched-set intersection from `runInEnvelope`'s
-   `MutationRecord[]`) resolve by asserting the winner's values. No branch,
-   no dialog. Quiet activity-log line only.
- * **Branch escalation:** non-trivial divergence (in-place assertion can't
-   yield a coherent state, or a wide causal gap — the prolonged
-   network-partition case) forks the loser's *full divergent `Y.Doc`* into
-   a new IndexedDB-backed branch table (`tt-`-prefixed id, new `roomId`, `tt_tables`
-   entry) and shows a blocking **Acknowledge dialog** — NOT a toast.
-   Dialog offers: join the authoritative table (branch preserved,
-   reopenable from `home.html`) or keep working on the branch. No replay of
-   the loser's actions onto the authoritative table; humans re-coordinate
-   by human means.
+   `MutationRecord[]` (`conflict.js`); the loser's *full divergent `Y.Doc`*
+   forks into a new IndexedDB-backed branch table (`tt-`-prefixed id, new
+   `roomId`, `tt_tables` entry) and they get a blocking **Acknowledge
+   dialog** — NOT a toast. Dialog offers: join the authoritative table
+   (branch preserved, reopenable from `home.html`) or keep working on the
+   branch. No replay of the loser's actions onto the authoritative table;
+   humans re-coordinate by human means.
  * **Authority = join order.** A never-pruned, append-only `Y.Array`
    (`joinSequence`) in the doc; each client appends its `clientID` once.
    Earlier index wins; concurrent joins degrade automatically to Yjs's
@@ -243,17 +246,33 @@ a silently-dropped resize loser is acceptable and gets no toast.
     slot → flagged; different result slots → not flagged) in
     `tests/unit/conflict.test.js`. Detection only — no resolution yet;
     that's step 5.
- 5. Fast-path in-place resolution (winner-assertion) + quiet log line.
- 6. Branch escalation predicate + fork wiring (reusing step 1's copy
-    mechanics, triggered from a live room instead of home.html) +
-    Acknowledge dialog UX.
+ 5. ✅ **Decided: skipped.** A "fast path" (in-place winner-assertion for
+    trivially-overlapping conflicts, no branch/dialog) was designed, then
+    rejected before implementation — see concurrency_branching.md, "No
+    fast path — every detected conflict escalates". Two problems: asserting
+    only the winner's touched-set produces a state neither peer ever had
+    (an aggregate recomputed as if the loser's still-present insert didn't
+    exist); asserting the union just does branch escalation's job without
+    branch escalation's actual safeguard (the loser gets no say, no
+    Acknowledge dialog, for what might be real, effortful work). The one
+    case where in-place assertion is genuinely lossless — exactly equal
+    touched-sets — turns out to structurally never occur for any real toy
+    (`tray_sum`/`dice_d6`/`bag` all write via `tspan.textContent = X`,
+    which always creates a fresh, per-commit-unique text node, so two
+    concurrent recomputes of the same slot never have equal touched-sets).
+    Not worth the added machinery (touched-set-key → live-node resolution,
+    `clientID` → persistent-identity mapping) for a case that's mostly
+    theoretical. Every detected conflict now escalates to step 6.
+ 6. Branch escalation: fork wiring (reusing step 1's copy mechanics,
+    triggered from a live room instead of home.html, snapshotting the
+    *live* doc rather than one freshly loaded from IndexedDB) + resolving
+    a bundle's `clientID` to its author's persistent identity (needed to
+    call `isAuthoritative` on a detected pair at all) + Acknowledge dialog
+    UX + `tt_tables` entry for the branch.
 
 **Test coverage once fixed:** `concurrent-derived-write.test.js`'s
 remaining test stays a warning permanently (see above) — it's substrate
 documentation, not a placeholder to flip. Real regression coverage for the
 fix is new tests, written as each implementation step lands, exercising the
-actual production path: for the fast-path case, `expect()` a single clean
-child node holding the authoritative peer's own recorded value (not
-necessarily the mathematically-merged total); for the branch-escalation
-case, `expect()` that the authoritative table holds the winner's state and
-that a branch table was created holding the loser's.
+actual production path: `expect()` that the authoritative table holds the
+winner's state and that a branch table was created holding the loser's.

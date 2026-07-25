@@ -26,7 +26,7 @@ import * as BounPos                               from './boun_pos.js';
 import { SHAPE_TYPES }                            from './drawing.js';
 import { TOOLS as TOY_TOOLS, addToy, findToy, newToyId,
          getMenuActions, activateToyScripts,
-         findDropTarget, reparentToy } from './toys.js';
+         findDropTarget } from './toys.js';
 import { DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js'
 import { getReactionLog, scanForConflicts } from './conflict.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
@@ -73,7 +73,9 @@ let _ydoc, _yMeta, _yToys, _yDrawing,
 // the Yjs fragments exist. Maps the data-module value stamped on each
 // rendered SVG element ('drawing'|'toys'|'boun_pos') to that layer's API:
 // find/delete/getGeom/getAnchor/applyMoveCommit/getTtState/getTtStateSchema/
-// applyTtState/edit/listData. See moduleForElement() for the lookup key.
+// edit/listData, plus applyTtState on drawing/boun_pos (toys.js's own
+// applyTtState was dead code — removed). See moduleForElement() for the
+// lookup key.
 let _Layers = {};
 
 // Per-layer visibility (local state, not synced).
@@ -286,6 +288,7 @@ function buildToolRegistry() {
     iconUrl: def.iconUrl,
   }));
   bounPosTools.forEach(def => {
+    console.log(def)
     _toolById[def.name] = def;
     _toolParams[def.name] = { ...BOUNPOS_TYPES[def.name].schema.values };
   });
@@ -1083,6 +1086,8 @@ const App = {
    * hook exactly once
    */
   commitToy: (toolName, x, y) => {
+    console.log(toolName)
+    console.log(_toolById[toolName])
     const def = _toolById[toolName];
     if (!def?.toyType) { UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
     const id = newToyId();
@@ -1099,10 +1104,9 @@ const App = {
       addHistory(`placed ${def.label} ${id.slice(0, 6)}`, { elType: 'toy' });
       App.addLog(`placed ${def.label} ${id.slice(0, 6)}`, 'local');
 
-      const yEl = findToy(_yToys, id);
       // Awaiting activateToyScripts() here guarantees the namespace is actually
       // ready before initialize() reads it off window[namespace].
-      if (yEl) await activateToyScripts(yEl, def.toyType);
+      await activateToyScripts(_ydoc, def.toyType);
       const svgEl   = _svgEl?.querySelector(`[data-id="${id}"]`);
       const layerEl = _svgEl?.querySelector('#toys-layer');
       if (svgEl && layerEl) {
@@ -1292,33 +1296,33 @@ const App = {
 
     if (dropTrayId) {
       // Drop into a tray = reparent + reposition into the tray, plus the
-      // tray's own contents_change_handler reaction — ALL in one transaction.
-      // The inner reparentToy / applyMoveCommit transactions collapse into
-      // this outer one, and so do the reaction's DERIVED commits, so the
-      // placement and its reaction commit as one atomic unit: one undo step,
-      // and one thing to arbitrate or fork on conflict, with no "die
-      // inserted but its reaction lost" intermediate. _dispatchingContentsChange
-      // stops the observer from recomputing this tray a redundant second
-      // time after the txn closes.
+      // tray's own contents_change_handler reaction — ALL in one
+      // transaction, via the same DOM-based gesture machinery toy handlers
+      // use (Toys.runGestureSync): reparent and reposition are plain DOM
+      // mutations captured by one envelope, the cascade runs against that
+      // same live DOM with no re-rendering, and everything translates into
+      // Yjs in one commitEnvelope call. One undo step, one thing to
+      // arbitrate or fork on conflict, no "die inserted but its reaction
+      // lost" intermediate.
       UndoRedo.tag(`move ${id.slice(0, 6)} into a tray`);
+      // Same guard as invokeToyMenuAction/commitToy, same reason:
+      // runGestureSync already runs its own complete cascade before
+      // committing (folds under an unlabeled transact, effectively null
+      // origin — see undo_redo.js's "Atomicity" note), so the observer
+      // must not recompute the same trays again.
       _dispatchingContentsChange = true;
       try {
-        _ydoc.transact((tr) => {
-          const movedEl = reparentToy(_ydoc, _yToys, id, dropTrayId);
-          const trayEl = _svgEl.querySelector(`[data-id="${dropTrayId}"]`);
-          const trayGeom = trayEl && Toys.getGeom(trayEl);
-          if (trayGeom) {
-            Toys.applyMoveCommit(_ydoc, movedEl, rx - trayGeom.x, ry - trayGeom.y);
-          }
-          // Affected trays from THIS transaction's own change set,
-          // snapshotted before the cascade so its writes don't feed back.
-          // reparent's insert/delete land on pre-existing container nodes
-          // (the tray's contents_group, the source fragment) — exactly what
-          // tr.changed exposes here, enough for findAncestorTrayIds to
-          // resolve every affected tray, nested ones included.
-          const layerEl = _svgEl.querySelector('#toys-layer');
-          const trayIds = Toys.affectedTrayIdsInnerFirst([...tr.changed.keys()]);
-          Toys.runContentsChangeCascadeSync(_ydoc, _yToys, layerEl, trayIds);
+        const layerEl = _svgEl.querySelector('#toys-layer');
+        _ydoc.transact(() => {
+          Toys.runGestureSync(_ydoc, layerEl, () => {
+            Toys.reparentToyDom(layerEl, id, dropTrayId);
+            const movedEl  = layerEl.querySelector(`[data-id="${id}"]`);
+            const trayEl   = layerEl.querySelector(`[data-id="${dropTrayId}"]`);
+            const trayGeom = trayEl && Toys.getGeom(trayEl);
+            if (trayGeom) {
+              Toys.applyMoveDom(movedEl, rx - trayGeom.x, ry - trayGeom.y);
+            }
+          }, { origin: DERIVED_ORIGIN });
         });
       } catch (err) {
         // a malformed tray asset can reach here and throw.

@@ -10,7 +10,7 @@ import {
   hslToRgb, colorMatrixValues,
   _clearSvgTextCache, _resetToyScriptState,
   yNodeFor, clearYNodeMap,
-  newToyId,
+  newToyId, _getScriptsFragment,
 } from '../../src/toys.js'
 
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
@@ -138,23 +138,21 @@ describe('svgTextToYXml', () => {
     expect(find(importRoot(TOY_SVG, 'P__'), 'use').getAttribute('xlink:href')).toBe('#P__token_front')
   })
 
-  test('preserves <script> elements, their attrs, and CDATA text', () => {
-    const scripts = findAll(importRoot(TOY_SVG, 'P__'), 'script')
+  test('extracts <script> elements as data, never into the Yjs tree', () => {
+    const { scripts } = svgTextToYXml(TOY_SVG, 'P__')
     expect(scripts.length).toBe(2)
 
-    const srcScript = scripts.find(s => s.getAttribute('src'))
-    expect(srcScript.getAttribute('src')).toBe('js/dice_utils.js')
-    expect(srcScript.getAttribute('data-namespace')).toBe('dice')
+    const srcScript = scripts.find(s => s.src)
+    expect(srcScript.src).toBe('js/dice_utils.js')
+    expect(srcScript.namespace).toBe('dice')
+    expect(srcScript.code).toBe('')
 
-    const inlineScript = scripts.find(s => s.getAttribute('data-namespace') === 'token_solidcolor')
-    expect(inlineScript.toArray()[0].toString()).toContain('token_solidcolor')
-  })
+    const inlineScript = scripts.find(s => s.namespace === 'token_solidcolor')
+    expect(inlineScript.code).toContain('token_solidcolor')
 
-  test('namespaces script ids like any other id', () => {
-    const scripts = findAll(importRoot(TOY_SVG, 'P__'), 'script')
-    expect(scripts.map(s => s.getAttribute('id'))).toEqual(
-      expect.arrayContaining(['P__script_dice_utils', 'P__script_token_solidcolor'])
-    )
+    // Never in the Yjs tree itself, live or at rest — see toys.js,
+    // "Script hoisting".
+    expect(findAll(importRoot(TOY_SVG, 'P__'), 'script').length).toBe(0)
   })
 
   test('drops foreign-namespace elements (sodipodi/inkscape)', () => {
@@ -303,27 +301,20 @@ describe('listToys', () => {
     expect(toys[1].getAttribute('data-color')).toBe('#222')
   })
 
-  test('rendered DOM never contains <script>, even though the Yjs tree does', async () => {
+  test('scripts are never in a toy\'s own Yjs subtree or the rendered DOM — hoisted to the document instead', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
 
-    // The Yjs tree carries the script...
-    expect(findAll(findToy(yToys, 't1'), 'script').length).toBe(2)
-    // ...but the mirrored DOM used for on-screen rendering never does.
+    // Not in the toy's own Yjs subtree...
+    expect(findAll(findToy(yToys, 't1'), 'script').length).toBe(0)
+    // ...not in the mirrored DOM used for on-screen rendering...
     const [toyEl] = listToys(yToys)
     expect(toyEl.querySelector('script')).toBeNull()
+    // ...hoisted into the document's own scripts fragment instead.
+    expect(_getScriptsFragment(ydoc).toArray().length).toBe(1) // just the inline 'd6'
   })
 
-  test('{ includeScripts: true } mirrors scripts too — for export only', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
-
-    const [toyEl] = listToys(yToys, { includeScripts: true })
-    const scripts = toyEl.querySelectorAll('script')
-    expect(scripts.length).toBe(2)
-  })
 })
 
 describe('scoped lookup ($)', () => {

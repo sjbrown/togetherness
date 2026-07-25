@@ -6,32 +6,29 @@ import {
   getNamespacesForType,
   isToyTypeActivated,
   _resetToyScriptState,
+  _getScriptsFragment,
   addToy, render, _clearSvgTextCache, clearYNodeMap,
 } from '../../src/toys.js'
 
-// ── low-level fixture: a detached toy tree built by hand, attached to a doc ──
-
-function makeAttachedToy({ id = 't1', toyType = 'widget', scripts = [] } = {}) {
-  const ydoc = new Y.Doc()
-  const frag = ydoc.getXmlFragment('toys')
-  const g = new Y.XmlElement('g')
-  g.setAttribute('class', 'toy')
-  g.setAttribute('data-toy-id', id)
-  g.setAttribute('data-toy-type', toyType)
-
-  const svg = new Y.XmlElement('svg')
-  const scriptEls = scripts.map(s => {
-    const script = new Y.XmlElement('script')
-    if (s.namespace) script.setAttribute('data-namespace', s.namespace)
-    if (s.src)       script.setAttribute('src', s.src)
-    if (s.inline)    script.insert(0, [new Y.XmlText(s.inline)])
-    return script
+// ── low-level fixture: a "foreign" toyType's scripts, hoisted by hand ──────
+//
+// Scripts hoisted into the document are how a toyType with no local
+// TOY_TYPES entry (a different deployment's custom toy, or one since
+// removed/renamed here) recovers its behavior — see toys.js, "Script
+// hoisting". Seeding the scripts fragment directly here simulates "this
+// namespace was already hoisted by whichever session first placed an
+// instance of it" without needing a real toyType/file on disk.
+function seedForeignScripts(ydoc, toyType, scripts) {
+  const yScripts = _getScriptsFragment(ydoc)
+  ydoc.transact(() => {
+    for (const { namespace, inline } of scripts) {
+      const el = new Y.XmlElement('script')
+      el.setAttribute('data-namespace', namespace)
+      el.setAttribute('data-toy-type', toyType)
+      el.insert(0, [new Y.XmlText(inline)])
+      yScripts.insert(yScripts.length, [el])
+    }
   })
-  if (scriptEls.length) svg.insert(0, scriptEls)
-  g.insert(0, [svg])
-
-  ydoc.transact(() => frag.insert(0, [g]))
-  return { ydoc, frag, g }
 }
 
 beforeEach(() => {
@@ -41,99 +38,71 @@ beforeEach(() => {
   delete globalThis.__helperNs
 })
 
-describe('activateToyScripts — extraction & evaluation', () => {
-  test('evaluates an inline CDATA script, defining a global namespace', async () => {
-    const { g } = makeAttachedToy({
-      toyType: 'widget',
-      scripts: [{ namespace: 'widgetNs', inline: 'globalThis.__widgetNs = { hi: true }' }],
-    })
-    await activateToyScripts(g, 'widget')
+describe('activateToyScripts — a foreign toyType (no local file), via the hoisted registry', () => {
+  test('evaluates an inline script, defining a global namespace', async () => {
+    const ydoc = new Y.Doc()
+    seedForeignScripts(ydoc, 'widget', [
+      { namespace: 'widgetNs', inline: 'globalThis.__widgetNs = { hi: true }' },
+    ])
+    await activateToyScripts(ydoc, 'widget')
     expect(globalThis.__widgetNs).toEqual({ hi: true })
   })
 
   test('records data-namespace values per toy type, in script order', async () => {
-    const { g } = makeAttachedToy({
-      toyType: 'widget',
-      scripts: [
-        { namespace: 'helperNs', inline: 'globalThis.__evalCount = (globalThis.__evalCount||0)+1' },
-        { namespace: 'widgetNs', inline: 'globalThis.__widgetNs = 1' },
-      ],
-    })
-    await activateToyScripts(g, 'widget')
+    const ydoc = new Y.Doc()
+    seedForeignScripts(ydoc, 'widget', [
+      { namespace: 'helperNs', inline: 'globalThis.__evalCount = (globalThis.__evalCount||0)+1' },
+      { namespace: 'widgetNs', inline: 'globalThis.__widgetNs = 1' },
+    ])
+    await activateToyScripts(ydoc, 'widget')
     expect(getNamespacesForType('widget')).toEqual(['helperNs', 'widgetNs'])
   })
 
   test('marks the toy type activated after running', async () => {
-    const { g } = makeAttachedToy({ toyType: 'widget', scripts: [{ inline: '1' }] })
+    const ydoc = new Y.Doc()
+    seedForeignScripts(ydoc, 'widget', [{ namespace: 'widgetNs', inline: '1' }])
     expect(isToyTypeActivated('widget')).toBe(false)
-    await activateToyScripts(g, 'widget')
+    await activateToyScripts(ydoc, 'widget')
     expect(isToyTypeActivated('widget')).toBe(true)
   })
 
-  test('a second instance of the same toy type does not re-evaluate', async () => {
-    const script = { namespace: 'widgetNs', inline: 'globalThis.__evalCount = (globalThis.__evalCount||0)+1' }
-    const first  = makeAttachedToy({ id: 'a', toyType: 'widget', scripts: [script] })
-    const second = makeAttachedToy({ id: 'b', toyType: 'widget', scripts: [script] })
-
-    await activateToyScripts(first.g, 'widget')
-    await activateToyScripts(second.g, 'widget')
-
+  test('a second call for the same toy type does not re-evaluate', async () => {
+    const ydoc = new Y.Doc()
+    seedForeignScripts(ydoc, 'widget', [
+      { namespace: 'widgetNs', inline: 'globalThis.__evalCount = (globalThis.__evalCount||0)+1' },
+    ])
+    await activateToyScripts(ydoc, 'widget')
+    await activateToyScripts(ydoc, 'widget')
     expect(globalThis.__evalCount).toBe(1)
   })
 
-  test('a toy type with no scripts is a harmless no-op', async () => {
-    const { g } = makeAttachedToy({ toyType: 'plain', scripts: [] })
-    await expect(activateToyScripts(g, 'plain')).resolves.toBeUndefined()
+  test('a toy type with no hoisted scripts at all is a harmless no-op', async () => {
+    const ydoc = new Y.Doc()
+    await expect(activateToyScripts(ydoc, 'plain')).resolves.toBeUndefined()
     expect(isToyTypeActivated('plain')).toBe(true)
   })
 
-  test('external <script src> is fetched once and deduped by resolved URL', async () => {
-    const fetchMock = vi.fn(async (url) => {
-      expect(url).toBe('/toy/js/helper.js')
-      return { ok: true, text: async () => 'globalThis.__helperNs = { loaded: true }' }
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    const scripts = [{ namespace: 'helperNs', src: 'js/helper.js' }]
-    // Two different toy types sharing the same external helper file —
-    // the URL-level dedup means the second type's src script still gets
-    // its namespace recorded, but the file is fetched only once.
-    const a = makeAttachedToy({ toyType: 'die_a', scripts })
-    const b = makeAttachedToy({ toyType: 'die_b', scripts })
-
-    await activateToyScripts(a.g, 'die_a')
-    await activateToyScripts(b.g, 'die_b')
-
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(globalThis.__helperNs).toEqual({ loaded: true })
-    expect(getNamespacesForType('die_a')).toEqual(['helperNs'])
-    expect(getNamespacesForType('die_b')).toEqual(['helperNs'])
-  })
-  test('a concurrent caller awaiting the same toyType gets the real completion, not just "started"', async () => {
+  test('a concurrent second caller for the same toyType gets the real completion, not just "started"', async () => {
     // Regression: activateToyScripts used to mark a toyType activated
-    // *before* awaiting its fetch, so a second caller mid-flight would see
+    // *before* awaiting its work, so a second caller mid-flight would see
     // isToyTypeActivated()===false but a naive re-check-and-return would
     // resolve before the actual work (fetch+eval) finished. Two concurrent
-    // callers must now share the same Promise and both see real completion.
-    let resolveFetch
-    const fetchGate = new Promise(r => { resolveFetch = r })
-    vi.stubGlobal('fetch', vi.fn(async (url) => {
-      await fetchGate
-      return { ok: true, text: async () => 'globalThis.__raceNs = { ready: true }' }
-    }))
+    // callers must share the same Promise and both see real completion —
+    // true regardless of whether the underlying work is synchronous data
+    // (this test) or a slow fetch (the registered-toyType path below),
+    // since the Promise is cached before activateToyScripts ever returns.
+    const ydoc = new Y.Doc()
+    seedForeignScripts(ydoc, 'widget', [
+      { namespace: 'widgetNs', inline: 'globalThis.__widgetNs = { ready: true }' },
+    ])
 
-    const scripts = [{ namespace: 'raceNs', src: 'js/race.js' }]
-    const { g } = makeAttachedToy({ toyType: 'racer', scripts })
-
-    const first  = activateToyScripts(g, 'racer')  // starts the fetch, doesn't await it here
-    const second = activateToyScripts(g, 'racer')  // concurrent call, before the fetch resolves
+    const first  = activateToyScripts(ydoc, 'widget')
+    const second = activateToyScripts(ydoc, 'widget') // concurrent call, same tick
     expect(second).toBe(first) // same Promise, not a fresh no-op
 
-    resolveFetch()
     await second
-
-    expect(globalThis.__raceNs).toEqual({ ready: true })
-    expect(isToyTypeActivated('racer')).toBe(true)
+    expect(globalThis.__widgetNs).toEqual({ ready: true })
+    expect(isToyTypeActivated('widget')).toBe(true)
   })
 })
 
@@ -160,7 +129,7 @@ function stubToyFetch() {
   })
 }
 
-describe('toys.js render() — script activation on placement', () => {
+describe('activateToyScripts — a registered toyType (real file), fetched fresh', () => {
   beforeEach(() => {
     _clearSvgTextCache()
     clearYNodeMap()
@@ -192,5 +161,27 @@ describe('toys.js render() — script activation on placement', () => {
     // dice_d6.svg fetch itself is separately deduped by addToy's own cache.
     const scriptFetches = fetchMock.mock.calls.filter(([u]) => u === '/toy/js/dice_utils.js')
     expect(scriptFetches).toHaveLength(1)
+  })
+
+  test('a fresh session (cold _svgTextCache) re-fetches the template to activate an already-placed toy', async () => {
+    // render()'s activateAllToyScripts path (not addToy's own placement
+    // fetch) — the case of opening a table that already has toys in it.
+    const ydoc  = new Y.Doc()
+    const yToys = ydoc.getXmlFragment('toys')
+    const layer = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+
+    // Build the toy directly (bypassing addToy) so nothing has warmed the
+    // svg text cache — mirrors a page load syncing in pre-existing state.
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    _clearSvgTextCache()
+    _resetToyScriptState()
+    delete globalThis.d6
+    delete globalThis.dice
+
+    render(yToys, layer)
+    await new Promise(r => setTimeout(r, 0))
+
+    expect(globalThis.d6).toBeDefined()
+    expect(globalThis.dice).toBeDefined()
   })
 })

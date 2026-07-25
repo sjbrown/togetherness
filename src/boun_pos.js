@@ -98,6 +98,28 @@ export function generateHexGrid(origin, rows, cols, hexSize) {
 }
 
 /**
+ * Flat-top hex grid (redblobgames.com standard).
+ *   colSpacing = hexSize * 1.5
+ *   rowSpacing = hexSize * √3
+ *   odd columns offset by hexSize * √3/2
+ */
+export function generateFlatHexGrid(origin, rows, cols, hexSize) {
+  const colSp       = hexSize * 1.5;
+  const rowSp       = hexSize * Math.sqrt(3);
+  const oddOffset   = rowSp / 2;
+  const points = [];
+  for (let col = 0; col < cols; col++) {
+    for (let row = 0; row < rows; row++) {
+      points.push({
+        cx: origin.x + col * colSp,
+        cy: origin.y + row * rowSp + (col % 2) * oddOffset,
+      });
+    }
+  }
+  return points;
+}
+
+/**
  * Fill an extent rect with snap points for genType / genParam.
  * Returns [{cx,cy}] clipped to the extent.
  */
@@ -110,6 +132,15 @@ export function gridFillExtent(x, y, w, h, genType, genParam) {
     const cols    = Math.ceil(w / colSp) + 2;
     const rows    = Math.ceil(h / rowSp) + 2;
     return generateHexGrid({ x, y }, rows, cols, hexSize)
+      .filter(p => p.cx >= x && p.cx <= x + w && p.cy >= y && p.cy <= y + h);
+  }
+  if (genType === 'flat-hex') {
+    const hexSize = param;
+    const colSp   = hexSize * 1.5;
+    const rowSp   = hexSize * Math.sqrt(3);
+    const cols    = Math.ceil(w / colSp) + 2;
+    const rows    = Math.ceil(h / rowSp) + 2;
+    return generateFlatHexGrid({ x, y }, rows, cols, hexSize)
       .filter(p => p.cx >= x && p.cx <= x + w && p.cy >= y && p.cy <= y + h);
   }
   // square
@@ -127,7 +158,7 @@ export function gridFillExtent(x, y, w, h, genType, genParam) {
  */
 export function computeMaxSnapRadius(genType, genParam) {
   const param = Number(genParam);
-  if (genType === 'hex') return (param * Math.sqrt(3)) / 2;
+  if (genType === 'hex' || genType === 'flat-hex') return (param * Math.sqrt(3)) / 2;
   return param / 2;
 }
 
@@ -272,12 +303,34 @@ export const BOUNPOS_TYPES = {
 
   'pos-grid-hex': {
     bounPosType: 'pos-set',
-    label:       'Hex Grid',
+    label:       'Point Top Hex Grid',
     iconUrl:     'boun_pos/pos-grid-hex.svg',
     newId:       newPositionSetId,
     genType:     'hex',
     schema: {
-      label:  'Hex Grid',
+      label:  'Point Top Hex Grid',
+      values: { type: 'pos-set', name: '', snapRadius: 30, 'hex-size': 40 },
+      types: {
+        type:        { show: [] },
+        name:        { kind: 'string', show: ['add', 'edit'] },
+        snapRadius:  { kind: 'number', min: 1, max: 35, step: 1, show: ['edit'] },
+        'hex-size':  { kind: 'number', min: 15, max: 100, step: 5, show: ['addQuick'] },
+      },
+    },
+    create(ydoc, yBounPos, params) {
+      return _createPositionSet(ydoc, yBounPos, params);
+    },
+    toSVGEl(yG) { return _positionSetToSVGEl(yG); },
+  },
+
+  'pos-grid-flat-hex': {
+    bounPosType: 'pos-set',
+    label:       'Flat Top Hex Grid',
+    iconUrl:     'boun_pos/pos-grid-hex.svg',
+    newId:       newPositionSetId,
+    genType:     'flat-hex',
+    schema: {
+      label:  'Flat Top Hex Grid',
       values: { type: 'pos-set', name: '', snapRadius: 30, 'hex-size': 40 },
       types: {
         type:        { show: [] },
@@ -293,7 +346,7 @@ export const BOUNPOS_TYPES = {
   },
 };
 
-// Helper used by both pos-set variants.
+// Helper used by all pos-set variants.
 function _createPositionSet(ydoc, yBounPos,
   { id, name, snapRadius, genType, genParam, x, y, w, h, circles }) {
   const d  = rectToPath(x, y, w, h);
@@ -415,8 +468,10 @@ export function addPositionSet(ydoc, yBounPos,
 
 function _toSVGEl(yG) {
   const bounPosType = yG.getAttribute('data-bounpos-type') ?? 'boundary';
-  const def = Object.values(BOUNPOS_TYPES).find(d => d.bounPosType === bounPosType && d.genType === (yG.getAttribute('data-gen-type') ?? null))
-    ?? Object.values(BOUNPOS_TYPES).find(d => d.bounPosType === bounPosType)
+  const genType     = yG.getAttribute('data-gen-type') ?? null;
+  const def = Object.values(BOUNPOS_TYPES).find(d =>
+    d.bounPosType === bounPosType && d.genType === genType
+  ) ?? Object.values(BOUNPOS_TYPES).find(d => d.bounPosType === bounPosType)
     ?? BOUNPOS_TYPES.boundary;
   return def.toSVGEl(yG);
 }
@@ -525,44 +580,44 @@ export function getAnchor(svgEl) {
 
 // ── ttState / ttStateSchema ───────────────────────────────────────────────────
 
-export function getTtStateSchema(svgElOrType) {
-  // Resolve to a BOUNPOS_TYPES key.
-  // Accepts: tool name ('boundary','pos-grid-sq','pos-grid-hex'),
-  //          bounPosType string ('boundary','pos-set'), or a DOM element.
-  let toolName;
+function _resolveBounPosToolName(svgElOrType) {
   if (typeof svgElOrType === 'string') {
     // Direct tool name lookup first
-    if (BOUNPOS_TYPES[svgElOrType]) {
-      toolName = svgElOrType;
-    } else {
-      // bounPosType string — pick first matching tool entry
-      toolName = Object.keys(BOUNPOS_TYPES)
-        .find(k => BOUNPOS_TYPES[k].bounPosType === svgElOrType) ?? 'boundary';
-    }
-  } else {
-    const bounPosType = svgElOrType?.getAttribute?.('data-bounpos-type') ?? 'boundary';
-    const genType     = svgElOrType?.getAttribute?.('data-gen-type') ?? null;
-    toolName = Object.keys(BOUNPOS_TYPES).find(k => {
-      const d = BOUNPOS_TYPES[k];
-      return d.bounPosType === bounPosType && (genType ? d.genType === genType : d.genType === null || d.genType === 'square');
-    }) ?? 'boundary';
+    if (BOUNPOS_TYPES[svgElOrType]) return svgElOrType;
+    // bounPosType string — pick first matching tool entry
+    return Object.keys(BOUNPOS_TYPES)
+      .find(k => BOUNPOS_TYPES[k].bounPosType === svgElOrType)
+      ?? 'boundary';
   }
 
-  const def    = BOUNPOS_TYPES[toolName];
-  const schema = def.schema;
+  const bounPosType = svgElOrType?.getAttribute?.('data-bounpos-type') ?? 'boundary';
+  const genType     = svgElOrType?.getAttribute?.('data-gen-type') ?? null;
+
+  return Object.keys(BOUNPOS_TYPES).find(k => {
+    const d = BOUNPOS_TYPES[k];
+    return d.bounPosType === bounPosType &&
+      (genType ? d.genType === genType : d.genType === null || d.genType === 'square');
+  }) ?? 'boundary';
+}
+
+export function getTtStateSchema(svgElOrType) {
+  const toolName = _resolveBounPosToolName(svgElOrType);
+  const def      = BOUNPOS_TYPES[toolName];
+  const schema   = def.schema;
 
   if (!svgElOrType || typeof svgElOrType === 'string') {
     return { label: schema.label, ...schema.values, types: schema.types };
   }
 
-  // Element present — read current values.
   const bounPosType = svgElOrType.getAttribute('data-bounpos-type') ?? 'boundary';
   const name        = svgElOrType.getAttribute('name') ?? '';
+
   if (bounPosType === 'pos-set') {
-    const genType   = svgElOrType.getAttribute('data-gen-type')  ?? 'square';
-    const genParam  = Number(svgElOrType.getAttribute('data-gen-param') ?? 80);
-    const maxR      = Math.floor(computeMaxSnapRadius(genType, genParam));
+    const genType    = svgElOrType.getAttribute('data-gen-type') ?? 'square';
+    const genParam   = Number(svgElOrType.getAttribute('data-gen-param') ?? 80);
+    const maxR       = Math.floor(computeMaxSnapRadius(genType, genParam));
     const snapRadius = Number(svgElOrType.getAttribute('data-snap-radius') ?? 30);
+
     return {
       label: schema.label,
       type: 'pos-set',
@@ -574,6 +629,7 @@ export function getTtStateSchema(svgElOrType) {
       },
     };
   }
+
   return { label: schema.label, type: 'boundary', name, types: schema.types };
 }
 

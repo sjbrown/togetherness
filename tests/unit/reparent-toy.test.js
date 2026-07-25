@@ -1,326 +1,182 @@
 // @vitest-environment jsdom
+import * as fs from 'fs'
+import * as path from 'path'
+import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
-import { describe, test, expect, beforeEach } from 'vitest'
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import * as Toys from '../../src/toys.js'
 import {
-  addToySync, findToy, deleteToy, reparentToy, listToys, render, _clearSvgTextCache, clearYNodeMap,
+  addToy, findToy, clearYNodeMap, _clearSvgTextCache, yNodeFor,
+  reparentToy, reparentToyDom, render,
 } from '../../src/toys.js'
 
-const SVG_NS = 'http://www.w3.org/2000/svg'
+const SVG_NS  = 'http://www.w3.org/2000/svg'
+const __dir   = path.dirname(fileURLToPath(import.meta.url))
+const TOY_DIR = path.resolve(__dir, '../../src/toy')
+
+// Real production assets, same convention as tray.test.js/dice-d6.test.js.
+const PLAYER_MARKER_SVG = fs.readFileSync(path.join(TOY_DIR, 'player_marker.svg'), 'utf8')
+const TRAY_SUM_SVG      = fs.readFileSync(path.join(TOY_DIR, 'tray_sum.svg'), 'utf8')
+const TRAY_JS           = fs.readFileSync(path.join(TOY_DIR, 'js/tray.js'), 'utf8')
+
 const getToysLayer = (ydoc) => ({ yToys: ydoc.getXmlFragment('toys') })
 
-// Minimal tray-shaped fixture: has its own .contents_group, so it's a valid
-// reparentToy target. toyType is arbitrary — reparentToy only cares about
-// tree shape (a .contents_group inside the toy's embedded <svg>), not the
-// TOY_TYPES registry.
-const TRAY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="200" height="150" id="tray_fixture" class="tray_fixture tray">
-  <g id="contents_group" class="contents_group"></g>
-  <text id="result"><tspan id="tspan_result" class="tspan_result">0</tspan></text>
-</svg>`
-
-// Minimal non-tray fixture (no .contents_group) — a valid toy to move, and
-// an invalid reparentToy *target* (used to test the "not a tray" error).
-const DIE_SVG = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="80" height="100" id="die_fixture" class="die_fixture">
-  <text id="text_value"><tspan id="tspan_value">6</tspan></text>
-</svg>`
-
-function placeTray(ydoc, yToys, id) {
-  addToySync(ydoc, yToys, { id, toyType: 'tray_fixture', x: 0, y: 0, color: '#fff' }, TRAY_SVG)
-}
-function placeDie(ydoc, yToys, id) {
-  addToySync(ydoc, yToys, { id, toyType: 'die_fixture', x: 0, y: 0, color: '#fff' }, DIE_SVG)
-}
-
-// True if a toy with this id is a direct child of container (a
-// Y.XmlFragment/Y.XmlElement), without descending into nested trays.
-function isDirectChild(container, id) {
-  return container.toArray().some(
-    c => c instanceof Y.XmlElement && c.getAttribute('data-toy-id') === id
-  )
-}
-
-function contentsGroupOf(yToys, trayId) {
-  const tray = findToy(yToys, trayId)
-  const svg = tray.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'svg')
-  return svg.toArray().find(
-    c => c instanceof Y.XmlElement && (c.getAttribute('class') || '').split(/\s+/).includes('contents_group')
-  )
+function renderLayer(yToys) {
+  const layerEl = document.createElementNS(SVG_NS, 'g')
+  layerEl.id = 'toys-layer'
+  render(yToys, layerEl)
+  return layerEl
 }
 
 beforeEach(() => {
   _clearSvgTextCache()
   clearYNodeMap()
+  vi.stubGlobal('fetch', vi.fn(async (url) => {
+    if (url === '/toy/player_marker.svg') return { ok: true, text: async () => PLAYER_MARKER_SVG }
+    if (url === '/toy/tray_sum.svg')      return { ok: true, text: async () => TRAY_SUM_SVG }
+    if (url === '/toy/js/tray.js')        return { ok: true, text: async () => TRAY_JS }
+    throw new Error(`unexpected fetch: ${url}`)
+  }))
 })
+afterEach(() => { vi.unstubAllGlobals() })
 
-describe('reparentToy — top level into a tray', () => {
-  test('moves a top-level toy into a tray\u2019s .contents_group', () => {
+describe('reparentToyDom — validation', () => {
+  test('throws if the toy itself is not found', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
-    placeTray(ydoc, yToys, 'tray1')
-    placeDie(ydoc, yToys, 'die1')
-    expect(isDirectChild(yToys, 'die1')).toBe(true)
-
-    reparentToy(ydoc, yToys, 'die1', 'tray1')
-
-    expect(isDirectChild(yToys, 'die1')).toBe(false) // no longer at top level
-    expect(isDirectChild(contentsGroupOf(yToys, 'tray1'), 'die1')).toBe(true)
-    expect(findToy(yToys, 'die1')).not.toBeNull() // deep lookup still finds it
-    expect(isDirectChild(yToys, 'tray1')).toBe(true) // the tray itself untouched
+    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    const layerEl = renderLayer(yToys)
+    expect(() => reparentToyDom(layerEl, 'nope', 'tray1')).toThrow(/toy not found/)
   })
 
-  test('preserves the moved toy\u2019s live state — not reset to a fresh template', () => {
+  test('throws if the target container is not found', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
-    placeTray(ydoc, yToys, 'tray1')
-    placeDie(ydoc, yToys, 'die1')
-
-    // mutate the die's face value before moving it, the way rolling would
-    const die = findToy(yToys, 'die1')
-    const tspan = die.toArray()
-      .find(c => c instanceof Y.XmlElement && c.nodeName === 'svg')
-      .toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'text')
-      .toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'tspan')
-    tspan.insert(0, [new Y.XmlText('4')])
-
-    reparentToy(ydoc, yToys, 'die1', 'tray1')
-
-    const moved = findToy(yToys, 'die1')
-    const movedText = moved.toArray()
-      .find(c => c instanceof Y.XmlElement && c.nodeName === 'svg')
-      .toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'text')
-      .toString()
-    expect(movedText).toContain('4')
+    await addToy(ydoc, yToys, { id: 'die1', toyType: 'player_marker', x: 0, y: 0, color: '#fff' })
+    const layerEl = renderLayer(yToys)
+    expect(() => reparentToyDom(layerEl, 'die1', 'nope')).toThrow(/target not found/)
   })
 
-  test('the moved toy has fresh CRDT identity (a clone, not the original item)', () => {
+  test('throws if the target has no .contents_group', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
-    placeTray(ydoc, yToys, 'tray1')
-    placeDie(ydoc, yToys, 'die1')
-    const original = findToy(yToys, 'die1')
-
-    const moved = reparentToy(ydoc, yToys, 'die1', 'tray1')
-
-    expect(moved).not.toBe(original)
-    expect(moved.getAttribute('data-toy-id')).toBe('die1')
+    await addToy(ydoc, yToys, { id: 'a', toyType: 'player_marker', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'b', toyType: 'player_marker', x: 0, y: 0, color: '#fff' })
+    const layerEl = renderLayer(yToys)
+    expect(() => reparentToyDom(layerEl, 'a', 'b')).toThrow(/no \.contents_group/)
   })
 
-  test('the destination survives a full Yjs sync to another peer', () => {
-    const ydocA = new Y.Doc()
-    const { yToys: yToysA } = getToysLayer(ydocA)
-    placeTray(ydocA, yToysA, 'tray1')
-    placeDie(ydocA, yToysA, 'die1')
-    reparentToy(ydocA, yToysA, 'die1', 'tray1')
+  test('refuses to move a toy into itself', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    const layerEl = renderLayer(yToys)
+    expect(() => reparentToyDom(layerEl, 'tray1', 'tray1')).toThrow(/cannot move .* into itself/)
+  })
 
-    const ydocB = new Y.Doc()
-    const { yToys: yToysB } = getToysLayer(ydocB)
-    Y.applyUpdate(ydocB, Y.encodeStateAsUpdate(ydocA))
-
-    expect(isDirectChild(yToysB, 'die1')).toBe(false)
-    expect(isDirectChild(contentsGroupOf(yToysB, 'tray1'), 'die1')).toBe(true)
+  test('refuses to move a toy into its own contained toy (would disconnect the subtree)', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'outer', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'inner', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    const layerEl = renderLayer(yToys)
+    reparentToyDom(layerEl, 'inner', 'outer') // inner now lives inside outer
+    expect(() => reparentToyDom(layerEl, 'outer', 'inner')).toThrow(/cannot move .* into itself or one of its own contained toys/)
   })
 })
 
-describe('reparentToy — back to the top level', () => {
-  test('moves a nested toy back out to the top level when targetTrayId is null', () => {
+describe('reparentToyDom — the move itself', () => {
+  test('moves the toy element into the target\'s contents_group (DOM)', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
-    placeTray(ydoc, yToys, 'tray1')
-    placeDie(ydoc, yToys, 'die1')
-    reparentToy(ydoc, yToys, 'die1', 'tray1')
-    expect(isDirectChild(yToys, 'die1')).toBe(false)
+    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'die1', toyType: 'player_marker', x: 0, y: 0, color: '#fff' })
+    const layerEl = renderLayer(yToys)
 
-    reparentToy(ydoc, yToys, 'die1', null)
+    const dieEl  = layerEl.querySelector('[data-id="die1"]')
+    const trayEl = layerEl.querySelector('[data-id="tray1"]')
 
-    expect(isDirectChild(yToys, 'die1')).toBe(true)
-    expect(isDirectChild(contentsGroupOf(yToys, 'tray1'), 'die1')).toBe(false)
+    const returned = reparentToyDom(layerEl, 'die1', 'tray1')
+
+    expect(returned).toBe(dieEl) // same DOM node, relocated — not a clone
+    expect(Toys.getContentsGroup(trayEl).contains(dieEl)).toBe(true)
+    expect(layerEl.querySelector(':scope > [data-id="die1"]')).toBeNull() // no longer top-level
   })
 
-  test('targetTrayId undefined behaves the same as null', () => {
+  test('moves back to top level when containerElId is null', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
-    placeTray(ydoc, yToys, 'tray1')
-    placeDie(ydoc, yToys, 'die1')
-    reparentToy(ydoc, yToys, 'die1', 'tray1')
+    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'die1', toyType: 'player_marker', x: 0, y: 0, color: '#fff' })
+    const layerEl = renderLayer(yToys)
+    reparentToyDom(layerEl, 'die1', 'tray1')
 
-    reparentToy(ydoc, yToys, 'die1', undefined)
+    reparentToyDom(layerEl, 'die1', null)
 
-    expect(isDirectChild(yToys, 'die1')).toBe(true)
-  })
-})
-
-describe('reparentToy — nested trays', () => {
-  test('moving a toy into a tray that is itself nested inside another tray', () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    placeTray(ydoc, yToys, 'outer')
-    placeTray(ydoc, yToys, 'inner')
-    placeDie(ydoc, yToys, 'die1')
-
-    reparentToy(ydoc, yToys, 'inner', 'outer') // tray-in-tray
-    reparentToy(ydoc, yToys, 'die1', 'inner')  // die into the nested tray
-
-    const outerContents = contentsGroupOf(yToys, 'outer')
-    expect(isDirectChild(outerContents, 'inner')).toBe(true)
-    expect(isDirectChild(outerContents, 'die1')).toBe(false) // die is deeper, not here directly
-
-    const innerLocation = findToy(yToys, 'inner')
-    const innerContents = innerLocation.toArray()
-      .find(c => c instanceof Y.XmlElement && c.nodeName === 'svg')
-      .toArray().find(c => c instanceof Y.XmlElement && (c.getAttribute('class') || '').includes('contents_group'))
-    expect(isDirectChild(innerContents, 'die1')).toBe(true)
-
-    expect(findToy(yToys, 'die1')).not.toBeNull() // deep lookup finds it 2 levels down
-  })
-
-  test('moving an entire tray (with contents) moves everything inside it too', () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    placeTray(ydoc, yToys, 'outer')
-    placeTray(ydoc, yToys, 'inner')
-    placeDie(ydoc, yToys, 'die1')
-    reparentToy(ydoc, yToys, 'die1', 'inner') // die inside inner, both still top-level so far
-
-    reparentToy(ydoc, yToys, 'inner', 'outer') // move inner (carrying die1) into outer
-
-    const outerContents = contentsGroupOf(yToys, 'outer')
-    expect(isDirectChild(outerContents, 'inner')).toBe(true)
-    // die1 moved along with inner, as part of the same cloned subtree
-    expect(findToy(yToys, 'die1')).not.toBeNull()
-    expect(isDirectChild(yToys, 'die1')).toBe(false)
+    expect(layerEl.querySelector(':scope > [data-id="die1"]')).not.toBeNull()
   })
 })
 
-describe('reparentToy — validation and loud failures', () => {
-  test('throws when the toy id does not exist anywhere', () => {
+describe('reparentToy — the convenience wrapper (self-contained: render, envelope, commit)', () => {
+  test('commits the move to Yjs and returns the toy\'s new Yjs node', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
-    placeTray(ydoc, yToys, 'tray1')
-    expect(() => reparentToy(ydoc, yToys, 'nope', 'tray1')).toThrow(/not found/)
+    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'die1', toyType: 'player_marker', x: 0, y: 0, color: '#fff' })
+
+    const movedYEl = reparentToy(ydoc, yToys, 'die1', 'tray1')
+
+    expect(movedYEl).not.toBeNull()
+    expect(movedYEl.getAttribute('data-toy-id')).toBe('die1')
+    // Re-rendering from the now-committed Yjs state reflects the move.
+    const layerEl = renderLayer(yToys)
+    const trayEl  = layerEl.querySelector('[data-id="tray1"]')
+    const dieEl   = layerEl.querySelector('[data-id="die1"]')
+    expect(Toys.getContentsGroup(trayEl).contains(dieEl)).toBe(true)
   })
 
-  test('throws when the target container id does not exist', () => {
+  test('preserves all content across the move, including nested structure', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
-    placeDie(ydoc, yToys, 'die1')
-    expect(() => reparentToy(ydoc, yToys, 'die1', 'nope')).toThrow(/target not found/)
+    await addToy(ydoc, yToys, { id: 'outer', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'die1', toyType: 'player_marker', x: 0, y: 0, color: '#123456' })
+
+    reparentToy(ydoc, yToys, 'die1', 'outer')
+
+    const movedYEl = findToy(yToys, 'die1')
+    expect(movedYEl.getAttribute('data-color')).toBe('#123456')
+    // The toy's own inner <svg> (and everything under it) survived intact.
+    expect(movedYEl.toArray().some(c => c.nodeName === 'svg')).toBe(true)
   })
 
-  test('throws when the target has no .contents_group (isn\u2019t tray-shaped)', () => {
+  test('the moved toy gets a fresh Yjs identity (not preserved across the move)', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
-    placeDie(ydoc, yToys, 'die1')
-    placeDie(ydoc, yToys, 'die2')
-    expect(() => reparentToy(ydoc, yToys, 'die1', 'die2')).toThrow(/no \.contents_group/)
+    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'die1', toyType: 'player_marker', x: 0, y: 0, color: '#fff' })
+
+    const before = findToy(yToys, 'die1')
+    const after  = reparentToy(ydoc, yToys, 'die1', 'tray1')
+
+    expect(after).not.toBe(before) // fresh Y.XmlElement, same as the old clone-based implementation
+    expect(after.getAttribute('data-toy-id')).toBe('die1') // but the same logical toy
   })
 
-  test('throws when moving a toy into itself', () => {
+  test('a doubly-nested move (tray into tray) resolves both levels of containment', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
-    placeTray(ydoc, yToys, 'tray1')
-    expect(() => reparentToy(ydoc, yToys, 'tray1', 'tray1')).toThrow(/itself/)
-  })
+    await addToy(ydoc, yToys, { id: 'outer', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'inner', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'die1',  toyType: 'player_marker', x: 0, y: 0, color: '#fff' })
 
-  test('throws when moving a tray into its own (nested) descendant', () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    placeTray(ydoc, yToys, 'outer')
-    placeTray(ydoc, yToys, 'inner')
-    reparentToy(ydoc, yToys, 'inner', 'outer') // inner now lives inside outer
+    reparentToy(ydoc, yToys, 'inner', 'outer')
+    reparentToy(ydoc, yToys, 'die1', 'inner')
 
-    expect(() => reparentToy(ydoc, yToys, 'outer', 'inner')).toThrow(/itself|descendant|contained/)
-  })
-
-  test('a failed reparentToy call does not mutate the tree', () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    placeTray(ydoc, yToys, 'tray1')
-    placeDie(ydoc, yToys, 'die1')
-
-    expect(() => reparentToy(ydoc, yToys, 'die1', 'nope')).toThrow()
-
-    expect(isDirectChild(yToys, 'die1')).toBe(true) // still exactly where it was
-    expect(isDirectChild(yToys, 'tray1')).toBe(true)
-  })
-})
-
-describe('deleteToy / findToy — now search nested toys too', () => {
-  test('findToy locates a toy nested inside a tray', () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    placeTray(ydoc, yToys, 'tray1')
-    placeDie(ydoc, yToys, 'die1')
-    reparentToy(ydoc, yToys, 'die1', 'tray1')
-
-    const found = findToy(yToys, 'die1')
-    expect(found).not.toBeNull()
-    expect(found.getAttribute('data-toy-id')).toBe('die1')
-  })
-
-  test('deleteToy removes a toy nested inside a tray', () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    placeTray(ydoc, yToys, 'tray1')
-    placeDie(ydoc, yToys, 'die1')
-    reparentToy(ydoc, yToys, 'die1', 'tray1')
-
-    const deleted = deleteToy(ydoc, yToys, 'die1')
-
-    expect(deleted).toBe(true)
-    expect(findToy(yToys, 'die1')).toBeNull()
-    expect(isDirectChild(contentsGroupOf(yToys, 'tray1'), 'die1')).toBe(false)
-    expect(isDirectChild(yToys, 'tray1')).toBe(true) // the tray itself untouched
-  })
-
-  test('listToys still only lists top-level toys (nested toys render via mirror() recursion, not a second top-level entry)', () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    placeTray(ydoc, yToys, 'tray1')
-    placeDie(ydoc, yToys, 'die1')
-    reparentToy(ydoc, yToys, 'die1', 'tray1')
-
-    const ids = listToys(yToys).map(el => el.getAttribute('data-id'))
-    expect(ids).toEqual(['tray1'])
-  })
-
-  test('render() mirrors the nested toy into the DOM inside the tray\u2019s .contents_group', () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    placeTray(ydoc, yToys, 'tray1')
-    placeDie(ydoc, yToys, 'die1')
-    reparentToy(ydoc, yToys, 'die1', 'tray1')
-
-    const layerEl = document.createElementNS(SVG_NS, 'g')
-    render(yToys, layerEl)
-
-    // Only the tray is a top-level layer child...
-    expect(layerEl.children.length).toBe(1)
-    expect(layerEl.querySelector('[data-id="tray1"]')).not.toBeNull()
-    // ...but the die is still findable in the DOM, nested inside it, via
-    // mirror()'s recursive walk — every toy wrapper gets data-id stamped
-    // at placement, not just the top-level one (see toys.js's mirror()/
-    // stampToyHandles()), so a plain [data-id] selector reaches it too.
-    const dieInDom = layerEl.querySelector('.contents_group [data-id="die1"]')
-    expect(dieInDom).not.toBeNull()
-  })
-
-  test('a nested toy gets every rendering handle a top-level toy gets: data-id, id=, data-module, .$()', () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    placeTray(ydoc, yToys, 'tray1')
-    placeDie(ydoc, yToys, 'die1')
-    reparentToy(ydoc, yToys, 'die1', 'tray1')
-
-    const layerEl = document.createElementNS(SVG_NS, 'g')
-    render(yToys, layerEl)
-
-    const dieInDom = layerEl.querySelector('.contents_group [data-id="die1"]')
-    expect(dieInDom.getAttribute('id')).toBe('die1')
-    expect(dieInDom.getAttribute('data-module')).toBe('toys')
-    expect(typeof dieInDom.$).toBe('function')
-    // .$() is scoped to the die's own id, not the tray's — it should
-    // rewrite a bare #token to die1's own namespaced id, not tray1's.
-    expect(dieInDom.$('#tspan_value')).toBe(dieInDom.querySelector('#die1__tspan_value'))
+    const layerEl  = renderLayer(yToys)
+    const outerEl  = layerEl.querySelector('[data-id="outer"]')
+    const innerEl  = layerEl.querySelector('[data-id="inner"]')
+    const dieEl    = layerEl.querySelector('[data-id="die1"]')
+    expect(Toys.getContentsGroup(outerEl).contains(innerEl)).toBe(true)
+    expect(Toys.getContentsGroup(innerEl).contains(dieEl)).toBe(true)
   })
 })
