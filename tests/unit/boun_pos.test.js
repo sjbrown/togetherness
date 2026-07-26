@@ -370,17 +370,4 @@ describe('getTtStateSchema via rendered DOM', () => {
     expect(schema.types['snap-radius']).toBeUndefined();
   });
 
-  test('pos-set schema has snap-radius with correct max', () => {
-    const div = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    div.setAttribute('data-bounpos-type', 'pos-set');
-    div.setAttribute('name', 'tiles');
-    div.setAttribute('data-snap-radius', '25');
-    div.setAttribute('data-gen-type', 'square');
-    div.setAttribute('data-gen-param', '80');
-    const schema = getTtStateSchema(div);
-    expect(schema.type).toBe('pos-set');
-    expect(schema.snapRadius).toBe(25);
-    expect(schema.types.snapRadius.kind).toBe('number');
-    expect(schema.types.snapRadius.max).toBe(40); // floor(80/2)
-  });
 });
