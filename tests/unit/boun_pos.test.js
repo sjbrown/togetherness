@@ -50,10 +50,11 @@ function addPS(layer, overrides = {}) {
   const x = overrides.x ?? 0, y = overrides.y ?? 0;
   const w = overrides.w ?? 400, h = overrides.h ?? 300;
   const genType  = overrides.genType  ?? 'square';
-  const genParam = overrides.genParam ?? 80;
-  const circles = gridFillExtent(x, y, w, h, genType, genParam);
+  const xSpacing = overrides.xSpacing ?? 80;
+  const ySpacing = overrides.ySpacing ?? 80;
+  const circles = gridFillExtent(x, y, w, h, genType, xSpacing, ySpacing);
   createPositionSetElement(layer.ydoc, layer.yBounPos, {
-    id, name, snapRadius: 30, genType, genParam, x, y, w, h, circles,
+    id, name, snapRadius: 30, genType, xSpacing, ySpacing, x, y, w, h, circles,
     ...overrides, id, name,
   });
   return { id, name, circles };
@@ -93,8 +94,8 @@ describe('rectToPath / pathToRect', () => {
 // ── Grid math ─────────────────────────────────────────────────────────────────
 
 describe('generateSquareGrid', () => {
-  test('3×3 grid at origin with spacing 50', () => {
-    const pts = generateSquareGrid({ x: 0, y: 0 }, 3, 3, 50);
+  test('3×3 grid at origin with xSpacing 50 and ySpacing 50', () => {
+    const pts = generateSquareGrid({ x: 0, y: 0 }, 3, 3, 50, 50);
     expect(pts).toHaveLength(9);
     expect(pts[0]).toEqual({ cx: 0, cy: 0 });
     expect(pts[1]).toEqual({ cx: 50, cy: 0 });
@@ -105,39 +106,45 @@ describe('generateSquareGrid', () => {
 
 describe('generateHexGrid', () => {
   test('produces correct column spacing for pointy-top hex', () => {
-    const pts = generateHexGrid({ x: 0, y: 0 }, 1, 3, 40);
-    const colSp = 40 * Math.sqrt(3);
+    const xSpacing = 40 * Math.sqrt(3);
+    const ySpacing = 40 * 1.5;
+    const pts = generateHexGrid({ x: 0, y: 0 }, 1, 3, xSpacing, ySpacing);
     expect(pts[0].cx).toBeCloseTo(0);
-    expect(pts[1].cx).toBeCloseTo(colSp);
-    expect(pts[2].cx).toBeCloseTo(colSp * 2);
+    expect(pts[1].cx).toBeCloseTo(xSpacing);
+    expect(pts[2].cx).toBeCloseTo(xSpacing * 2);
   });
 
   test('odd rows are offset by half column spacing', () => {
-    const pts = generateHexGrid({ x: 0, y: 0 }, 3, 2, 40);
-    const colSp   = 40 * Math.sqrt(3);
-    const rowSp   = 40 * 1.5;
+    const xSpacing = 40 * Math.sqrt(3);
+    const ySpacing = 40 * 1.5;
+    const pts = generateHexGrid({ x: 0, y: 0 }, 3, 2, xSpacing, ySpacing);
     // row 0, col 0
     expect(pts[0]).toMatchObject({ cx: 0, cy: 0 });
-    // row 1, col 0 — offset by colSp/2
-    const row1Start = pts.find(p => Math.abs(p.cy - rowSp) < 0.01);
-    expect(row1Start.cx).toBeCloseTo(colSp / 2);
+    // row 1, col 0 — offset by xSpacing/2
+    const row1Start = pts.find(p => Math.abs(p.cy - ySpacing) < 0.01);
+    expect(row1Start.cx).toBeCloseTo(xSpacing / 2);
   });
 });
 
 describe('computeMaxSnapRadius', () => {
-  test('square: half the spacing', () => {
-    expect(computeMaxSnapRadius('square', 80)).toBe(40);
+  test('square: half the min spacing', () => {
+    expect(computeMaxSnapRadius('square', 80, 80)).toBe(40);
   });
 
-  test('hex: hexSize * √3/2', () => {
-    expect(computeMaxSnapRadius('hex', 40)).toBeCloseTo(40 * Math.sqrt(3) / 2);
+  test('hex: computes nearest center distance for pointy-top hex', () => {
+    const xSpacing = 40 * Math.sqrt(3);
+    const ySpacing = 40 * 1.5;
+    const maxR = computeMaxSnapRadius('hex', xSpacing, ySpacing);
+    // For pointy-top hex: nearest = min(xSpacing, sqrt((xSpacing/2)^2 + ySpacing^2))
+    const expected = Math.min(xSpacing, Math.sqrt((xSpacing / 2) ** 2 + ySpacing ** 2)) / 2;
+    expect(maxR).toBeCloseTo(expected);
   });
 });
 
 describe('gridFillExtent', () => {
   test('square grid fits expected number of points', () => {
-    // 200×200 extent, spacing 50 → 5 per axis = 25 points (0,50,100,150,200)
-    const pts = gridFillExtent(0, 0, 200, 200, 'square', 50);
+    // 200×200 extent, xSpacing 50, ySpacing 50 → 5 per axis = 25 points (0,50,100,150,200)
+    const pts = gridFillExtent(0, 0, 200, 200, 'square', 50, 50);
     expect(pts.length).toBeGreaterThan(0);
     pts.forEach(p => {
       expect(p.cx).toBeGreaterThanOrEqual(0);
@@ -148,8 +155,8 @@ describe('gridFillExtent', () => {
   });
 
   test('extent smaller than spacing produces only the corner point', () => {
-    // spacing=80 > extent=10×10; only the origin corner (0,0) falls within
-    const pts = gridFillExtent(0, 0, 10, 10, 'square', 80);
+    // xSpacing=80, ySpacing=80 > extent=10×10; only the origin corner (0,0) falls within
+    const pts = gridFillExtent(0, 0, 10, 10, 'square', 80, 80);
     expect(pts).toHaveLength(1);
     expect(pts[0]).toEqual({ cx: 0, cy: 0 });
   });
@@ -196,7 +203,7 @@ describe('addPositionSet / findEl', () => {
 
   test('pos-set has <path>, <text>, and <circle> children', () => {
     const layer = makeLayer();
-    addPS(layer, { x: 0, y: 0, w: 400, h: 300, genType: 'square', genParam: 80 });
+    addPS(layer, { x: 0, y: 0, w: 400, h: 300, genType: 'square', xSpacing: 80, ySpacing: 80 });
     const yEl = findEl(layer.yBounPos, layer.yBounPos.toArray()[0].getAttribute('id'));
     const tags = yEl.toArray()
       .filter(c => c instanceof Y.XmlElement)
@@ -252,7 +259,7 @@ describe('applyMoveCommit', () => {
 
   test('pos-set: translates circles', () => {
     const layer = makeLayer();
-    addPS(layer, { x: 0, y: 0, w: 200, h: 200, genType: 'square', genParam: 100 });
+    addPS(layer, { x: 0, y: 0, w: 200, h: 200, genType: 'square', xSpacing: 100, ySpacing: 100 });
     const yEl = findEl(layer.yBounPos, layer.yBounPos.toArray()[0].getAttribute('id'));
     const circlesBefore = yEl.toArray()
       .filter(c => c instanceof Y.XmlElement && c.nodeName === 'circle')
@@ -308,7 +315,7 @@ describe('computeBoundaryRects', () => {
 
   test('pos-set elements are ignored', () => {
     const layer = makeLayer();
-    addPS(layer, { x: 0, y: 0, w: 400, h: 300, genType: 'square', genParam: 80 });
+    addPS(layer, { x: 0, y: 0, w: 400, h: 300, genType: 'square', xSpacing: 80, ySpacing: 80 });
     // Override the name to match
     const yEl = layer.yBounPos.toArray()[0];
     layer.ydoc.transact(() => yEl.setAttribute('name', 'dungeon'));
@@ -321,19 +328,19 @@ describe('computeBoundaryRects', () => {
 describe('computePositionSnapPoints', () => {
   test('returns empty array when toy has no classes', () => {
     const layer = makeLayer();
-    addPS(layer, { x: 0, y: 0, w: 400, h: 300, genType: 'square', genParam: 80 });
+    addPS(layer, { x: 0, y: 0, w: 400, h: 300, genType: 'square', xSpacing: 80, ySpacing: 80 });
     expect(computePositionSnapPoints(layer.yBounPos, new Set())).toHaveLength(0);
   });
 
   test('returns empty array when pos-set name does not match', () => {
     const layer = makeLayer();
-    addPS(layer, { x: 0, y: 0, w: 400, h: 300, genType: 'square', genParam: 80 });
+    addPS(layer, { x: 0, y: 0, w: 400, h: 300, genType: 'square', xSpacing: 80, ySpacing: 80 });
     expect(computePositionSnapPoints(layer.yBounPos, new Set(['dungeon']))).toHaveLength(0);
   });
 
   test('returns snap points for class-matched pos-sets', () => {
     const layer = makeLayer();
-    const { id, circles } = addPS(layer, { x: 0, y: 0, w: 400, h: 400, genType: 'square', genParam: 100 });
+    const { id, circles } = addPS(layer, { x: 0, y: 0, w: 400, h: 400, genType: 'square', xSpacing: 100, ySpacing: 100 });
     // Set name to known value
     const yEl = findEl(layer.yBounPos, id);
     editBounPos({ id, name: 'forest' }, layer.ydoc, layer.yBounPos);
