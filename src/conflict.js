@@ -83,9 +83,23 @@ export function touchedSetFromRecords(records) {
  * began.  Represents causal-knowledge boundary every other
  * bundle's concurrency is judged against.
  *
+ * authorId is the committing peer's own persistent user.js localId — NOT
+ * the same thing as clientID (Yjs's own ephemeral, per-session numeric
+ * id). Authority ordering (tables.js's isAuthoritative/joinSequence) is
+ * keyed on localId, so a bundle needs to self-report it directly: there's
+ * no separate lookup structure anywhere that maps one to the other, and
+ * deliberately so — a peer's clientID is only ever meaningful to that
+ * peer's own live session, while the bundle itself is synced data other
+ * peers need to resolve the author of long after that session (or that
+ * peer) may be gone. Self-describing avoids needing a second structure to
+ * keep reachable and in sync with the bundle it describes. May be
+ * undefined for callers that don't have an identity to hand (tests,
+ * mainly) — comparison code should treat a missing authorId as unable to
+ * resolve authority, not crash.
+ *
  * No-op (returns null) if the touched-set is empty.
  */
-export function recordReactionBundle(ydoc, tr, origin, touched) {
+export function recordReactionBundle(ydoc, tr, origin, touched, authorId) {
   if (touched.size === 0) return null
 
   const bundle = {
@@ -94,6 +108,7 @@ export function recordReactionBundle(ydoc, tr, origin, touched) {
     beforeState: Object.fromEntries(tr.beforeState),
     touched:     [...touched.keys()],
     origin,
+    authorId,
     ts:          Date.now(),
   }
   getReactionLog(ydoc).push([bundle])

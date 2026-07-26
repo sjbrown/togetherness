@@ -485,13 +485,13 @@ export function deleteToyDom(layerEl, id) {
  * removes inside an envelope, commits. Same external contract the old
  * pure-Yjs deleteToy had.
  */
-export function deleteToy(ydoc, yToys, id) {
+export function deleteToy(ydoc, yToys, id, authorId) {
   const layerEl = document.createElementNS(SVG_NS, 'g')
   render(yToys, layerEl)
   let found = false
   const records = runInEnvelopeSync(layerEl, () => { found = deleteToyDom(layerEl, id) })
   if (!found) return false
-  commitEnvelope(ydoc, records)
+  commitEnvelope(ydoc, records, { authorId })
   return true
 }
 
@@ -570,13 +570,13 @@ export function reparentToyDom(layerEl, id, containerElId) {
  * location (findToy(yToys, id)) — same external contract the old
  * pure-Yjs reparentToy had, so existing callers don't need to change.
  */
-export function reparentToy(ydoc, yToys, id, containerElId) {
+export function reparentToy(ydoc, yToys, id, containerElId, authorId) {
   const layerEl = document.createElementNS(SVG_NS, 'g')
   render(yToys, layerEl)
   const records = runInEnvelopeSync(layerEl, () => {
     reparentToyDom(layerEl, id, containerElId)
   })
-  commitEnvelope(ydoc, records)
+  commitEnvelope(ydoc, records, { authorId })
   return findToy(yToys, id)
 }
 
@@ -1052,7 +1052,7 @@ export function editDom(toyEl, editData) {
  * layer from the current Yjs state, edits inside an envelope, commits.
  * Same external contract the old pure-Yjs edit had.
  */
-export function edit(ydoc, yToy, editData) {
+export function edit(ydoc, yToy, editData, authorId) {
   if (!yToy) return
   const toyId = yToy.getAttribute('data-toy-id')
   if (!toyId) return
@@ -1061,7 +1061,7 @@ export function edit(ydoc, yToy, editData) {
   render(yToys, layerEl)
   const toyEl = layerEl.querySelector(`[data-id="${toyId}"]`)
   const records = runInEnvelopeSync(layerEl, () => editDom(toyEl, editData))
-  commitEnvelope(ydoc, records)
+  commitEnvelope(ydoc, records, { authorId })
 }
 
 // ── Toy behaviour contract ──────────────────────────────────────────────────
@@ -1388,7 +1388,7 @@ export function runGestureSync(ydoc, layerEl, fn, opts = {}) {
  * honors the outermost call's origin), so the merged transaction commits
  * under null regardless of the ENVELOPE_ORIGIN passed below
  */
-export function invokeMenuActionSync(ydoc, yToys, layerEl, svgEl, namespace, key, evt) {
+export function invokeMenuActionSync(ydoc, yToys, layerEl, svgEl, namespace, key, evt, authorId) {
   const ns    = globalThis[namespace]
   const entry = ns?.menu?.[key]
   if (!entry || typeof entry.handler !== 'function') {
@@ -1399,7 +1399,7 @@ export function invokeMenuActionSync(ydoc, yToys, layerEl, svgEl, namespace, key
   }
   let result
   ydoc.transact(() => {
-    result = runGestureSync(ydoc, layerEl, () => entry.handler.call(svgEl, evt), { origin: ENVELOPE_ORIGIN })
+    result = runGestureSync(ydoc, layerEl, () => entry.handler.call(svgEl, evt), { origin: ENVELOPE_ORIGIN, authorId })
   })
   return result
 }
@@ -1434,7 +1434,7 @@ export async function initializeToy(ydoc, yToys, layerEl, svgEl, toyType) {
  * Ordinarily there's nothing to fold. But initialize() has the freedom
  * to mutate anything in toys-layer.
  */
-export function initializeToySync(ydoc, yToys, layerEl, svgEl, toyType) {
+export function initializeToySync(ydoc, yToys, layerEl, svgEl, toyType, authorId) {
   const initializers = getNamespacesForType(toyType)
     .map(name => globalThis[name])
     .filter(ns => ns && typeof ns.initialize === 'function')
@@ -1443,7 +1443,7 @@ export function initializeToySync(ydoc, yToys, layerEl, svgEl, toyType) {
   ydoc.transact(() => {
     runGestureSync(ydoc, layerEl, () => {
       initializers.forEach(ns => ns.initialize(svgEl))
-    }, { origin: LIFECYCLE_ORIGIN })
+    }, { origin: LIFECYCLE_ORIGIN, authorId })
   })
 }
 
@@ -1478,7 +1478,7 @@ export function findAncestorContainerIds(yNode) {
  *
  * No-op if toyType has no contents_change_handler-providing namespace.
  */
-export async function runContentsChangeHandler(ydoc, yToys, layerEl, svgEl, toyType) {
+export async function runContentsChangeHandler(ydoc, yToys, layerEl, svgEl, toyType, authorId) {
   const handlers = getNamespacesForType(toyType)
     .map(name => globalThis[name])
     .filter(ns => ns && typeof ns.contents_change_handler === 'function')
@@ -1486,7 +1486,7 @@ export async function runContentsChangeHandler(ydoc, yToys, layerEl, svgEl, toyT
 
   await runToyHandler(ydoc, yToys, layerEl, svgEl, () => {
     handlers.forEach(ns => ns.contents_change_handler(svgEl))
-  }, { origin: DERIVED_ORIGIN })
+  }, { origin: DERIVED_ORIGIN, authorId })
 }
 
 /**
@@ -1497,7 +1497,7 @@ export async function runContentsChangeHandler(ydoc, yToys, layerEl, svgEl, toyT
  * landing a microtask later in its own. No-op if toyType has no
  * contents_change_handler namespace.
  */
-export function runContentsChangeHandlerSync(ydoc, yToys, layerEl, svgEl, toyType) {
+export function runContentsChangeHandlerSync(ydoc, yToys, layerEl, svgEl, toyType, authorId) {
   const handlers = getNamespacesForType(toyType)
     .map(name => globalThis[name])
     .filter(ns => ns && typeof ns.contents_change_handler === 'function')
@@ -1505,7 +1505,7 @@ export function runContentsChangeHandlerSync(ydoc, yToys, layerEl, svgEl, toyTyp
 
   runToyHandlerSync(ydoc, yToys, layerEl, svgEl, () => {
     handlers.forEach(ns => ns.contents_change_handler(svgEl))
-  }, { origin: DERIVED_ORIGIN })
+  }, { origin: DERIVED_ORIGIN, authorId })
 }
 
 /**
@@ -1543,13 +1543,13 @@ export function affectedContainerIdsInnerFirst(changedYNodes) {
  * transaction), each is its own DERIVED transaction instead — same end
  * state, just not folded.
  */
-export function runContentsChangeCascadeSync(ydoc, yToys, layerEl, containerIds) {
+export function runContentsChangeCascadeSync(ydoc, yToys, layerEl, containerIds, authorId) {
   for (const containerId of containerIds) {
     render(yToys, layerEl)
     const containerEl = layerEl.querySelector(`[data-id="${containerId}"]`)
     const ycontainer  = findToy(yToys, containerId)
     if (!containerEl || !ycontainer) continue // e.g. the container itself was deleted in the same transaction
-    runContentsChangeHandlerSync(ydoc, yToys, layerEl, containerEl, ycontainer.getAttribute('data-toy-type'))
+    runContentsChangeHandlerSync(ydoc, yToys, layerEl, containerEl, ycontainer.getAttribute('data-toy-type'), authorId)
   }
 }
 
@@ -1594,16 +1594,22 @@ function activateAllToyScripts(ydoc, yToys) {
  * over (ydoc, yToys) so app.js can dispatch by layer type without
  * re-passing the fragment on every call.
  */
-export function makeLayerAPI(ydoc, yToys) {
+/**
+ * makeLayerAPI — returns the canonical LayerAPI for the toys layer, closing
+ * over (ydoc, yToys, myId) so app.js can dispatch by layer type without
+ * re-passing the fragment (or this peer's own identity, for conflict
+ * bundle attribution) on every call.
+ */
+export function makeLayerAPI(ydoc, yToys, myId) {
   return {
     find:            (id)            => findToy(yToys, id),
-    delete:          (id)            => deleteToy(ydoc, yToys, id),
+    delete:          (id)            => deleteToy(ydoc, yToys, id, myId),
     getGeom,
     getAnchor,
     getTtState,
     getTtStateSchema,
     applyMoveCommit: (yEl, x, y)     => applyMoveCommit(ydoc, yEl, x, y),
-    edit:            (yEl, editData) => edit(ydoc, yEl, editData),
+    edit:            (yEl, editData) => edit(ydoc, yEl, editData, myId),
     listData:        ()              => toysData(yToys),
     render:          (layerEl)       => render(yToys, layerEl),
   };

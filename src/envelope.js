@@ -275,7 +275,11 @@ function applyRecord(record) {
  *
  * Also builds this commit's touched-set from the records and records it as
  * a bundle — inside this same transaction, so the bundle
- * is atomic with the commit it describes.
+ * is atomic with the commit it describes. opts.authorId (the committing
+ * peer's own persistent user.js localId — see conflict.js's
+ * recordReactionBundle) is stamped onto that bundle; callers that have an
+ * identity to hand should pass it, since it's what lets any peer resolve
+ * this bundle's author for authority ordering later.
  *
  * Returns { applied, bundle } — applied is the record count; bundle is the
  * recorded bundle, or null if nothing was actually touched.
@@ -287,7 +291,7 @@ export function commitEnvelope(ydoc, records, opts = {}) {
   ydoc.transact((tr) => {
     for (const record of records) applyRecord(record)
     const touched = touchedSetFromRecords(records)
-    bundle = recordReactionBundle(ydoc, tr, origin, touched)
+    bundle = recordReactionBundle(ydoc, tr, origin, touched, opts.authorId)
   }, origin)
 
   return { applied: records.length, bundle }

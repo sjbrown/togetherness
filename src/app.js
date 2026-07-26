@@ -327,7 +327,7 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, svgElem
   // value app.js stamps on rendered SVG elements.
   _Layers = {
     'drawing':  Drawing.makeLayerAPI(_ydoc, _yDrawing),
-    'toys':     Toys.makeLayerAPI(_ydoc, _yToys),
+    'toys':     Toys.makeLayerAPI(_ydoc, _yToys, _myId),
     'boun_pos': BounPos.makeLayerAPI(_ydoc, _yBounPos),
   };
 
@@ -588,7 +588,7 @@ function dispatchContentsChangeCascade(events) {
   const layerEl = _svgEl.querySelector('#toys-layer');
   _dispatchingContentsChange = true;
   try {
-    Toys.runContentsChangeCascadeSync(_ydoc, _yToys, layerEl, containerIds);
+    Toys.runContentsChangeCascadeSync(_ydoc, _yToys, layerEl, containerIds, _myId);
   } catch (err) {
     console.error('[app] contents_change_handler dispatch failed', err);
   } finally {
@@ -1051,7 +1051,7 @@ const App = {
     // so guard with _dispatchingContentsChange
     _dispatchingContentsChange = true;
     try {
-      Toys.invokeMenuActionSync(_ydoc, _yToys, layerEl, svgEl, namespace, key);
+      Toys.invokeMenuActionSync(_ydoc, _yToys, layerEl, svgEl, namespace, key, undefined, _myId);
       // _yToys.observeDeep already re-renders the toys layer once that commit
       // lands; refreshFromDoc() here just keeps the Edit panel's own action
       // list current too
@@ -1112,7 +1112,7 @@ const App = {
         // already ran its own complete cascade before committing.
         _dispatchingContentsChange = true;
         try {
-          Toys.initializeToySync(_ydoc, _yToys, layerEl, svgEl, def.toyType);
+          Toys.initializeToySync(_ydoc, _yToys, layerEl, svgEl, def.toyType, _myId);
         } finally {
           _dispatchingContentsChange = false;
         }
@@ -1319,7 +1319,7 @@ const App = {
             if (containerGeom) {
               Toys.applyMoveDom(movedEl, rx - containerGeom.x, ry - containerGeom.y);
             }
-          }, { origin: DERIVED_ORIGIN });
+          }, { origin: DERIVED_ORIGIN, authorId: _myId });
         });
       } catch (err) {
         // a malformed container asset can reach here and throw.

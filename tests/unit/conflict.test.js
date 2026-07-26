@@ -88,6 +88,29 @@ describe('recordReactionBundle', () => {
     expect(getReactionLog(ydoc).toArray()).toEqual([bundle])
   })
 
+  test('stores authorId on the bundle — self-describing, not a separate lookup', () => {
+    const { ydoc, groupDom } = makeAttachedTree()
+    let bundle
+    ydoc.transact((tr) => {
+      const touched = touchedSetFromRecords([fakeChildListRecord(groupDom)])
+      bundle = recordReactionBundle(ydoc, tr, ENVELOPE_ORIGIN, touched, 'tt-p-v1-01-aaa')
+    }, ENVELOPE_ORIGIN)
+
+    expect(bundle.authorId).toBe('tt-p-v1-01-aaa')
+    expect(getReactionLog(ydoc).toArray()[0].authorId).toBe('tt-p-v1-01-aaa')
+  })
+
+  test('authorId is undefined, not a crash, when the caller has none to give', () => {
+    const { ydoc, groupDom } = makeAttachedTree()
+    let bundle
+    ydoc.transact((tr) => {
+      const touched = touchedSetFromRecords([fakeChildListRecord(groupDom)])
+      bundle = recordReactionBundle(ydoc, tr, ENVELOPE_ORIGIN, touched)
+    }, ENVELOPE_ORIGIN)
+
+    expect(bundle.authorId).toBeUndefined()
+  })
+
   test('pushes a bundle for DERIVED_ORIGIN too', () => {
     const { ydoc, groupDom } = makeAttachedTree()
     let bundle

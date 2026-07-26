@@ -650,4 +650,18 @@ describe('renderAfterCommit / runToyHandler — post-commit render', () => {
     // above runToyHandler.
     expect(layerEl.querySelector('[data-id="t1"]')).toBe(toyEl)
   })
+
+  test('opts.authorId flows through commitEnvelope to the recorded bundle', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await placeToy(ydoc, yToys, 't1')
+    const layerEl = renderLayer(yToys)
+    const toyEl   = layerEl.querySelector('[data-id="t1"]')
+
+    const result = await runToyHandler(ydoc, yToys, layerEl, toyEl, () => {
+      toyEl.setAttribute('data-color', '#0f0')
+    }, { authorId: 'tt-p-v1-01-aaa' })
+
+    expect(result.bundle.authorId).toBe('tt-p-v1-01-aaa')
+  })
 })
