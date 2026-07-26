@@ -162,6 +162,20 @@ export function computeMaxSnapRadius(genType, genParam) {
   return param / 2;
 }
 
+function clamp(n, min, max) {
+  return Math.min(max, Math.max(min, n));
+}
+
+function snapRadiusLevelToRadius(level, maxRadius) {
+  const pct = clamp(Number(level ?? 2), 1, 4) / 4;
+  return Math.round(maxRadius * pct);
+}
+
+function snapRadiusRadiusToLevel(radius, maxRadius) {
+  if (!maxRadius || maxRadius <= 0) return 2;
+  return clamp(Math.round((Number(radius ?? 0) / maxRadius) * 4), 1, 4);
+}
+
 // ── Internal child-element helpers ────────────────────────────────────────────
 
 function yChildByTag(yEl, tag) {
@@ -287,12 +301,12 @@ export const BOUNPOS_TYPES = {
     genType:     'square',
     schema: {
       label:  'Square Grid',
-      values: { type: 'pos-set', name: '', snapRadius: 30, spacing: 80 },
+      values: { type: 'pos-set', name: '', snapRadius: 2, spacing: 80 },
       types: {
         type:       { show: [] },
         name:       { kind: 'string', show: ['add', 'edit'] },
-        snapRadius: { kind: 'number', min: 1, max: 40, step: 1, show: ['edit'] },
-        spacing:    { kind: 'number', min: 20, max: 200, step: 4, show: ['addQuick'] },
+        snapRadius: { kind: 'number', min: 1, max: 4, step: 1, show: ['edit'] },
+        spacing:    { kind: 'number', min: 20, max: 200, step: 4, show: ['addQuick', 'edit'] },
       },
     },
     create(ydoc, yBounPos, params) {
@@ -309,11 +323,11 @@ export const BOUNPOS_TYPES = {
     genType:     'hex',
     schema: {
       label:  'Point Top Hex Grid',
-      values: { type: 'pos-set', name: '', snapRadius: 30, 'hex-size': 40 },
+      values: { type: 'pos-set', name: '', snapRadius: 2, 'hex-size': 40 },
       types: {
         type:        { show: [] },
         name:        { kind: 'string', show: ['add', 'edit'] },
-        snapRadius:  { kind: 'number', min: 1, max: 35, step: 1, show: ['edit'] },
+        snapRadius:  { kind: 'number', min: 1, max: 4, step: 1, show: ['edit'] },
         'hex-size':  { kind: 'number', min: 15, max: 100, step: 5, show: ['addQuick'] },
       },
     },
@@ -331,11 +345,11 @@ export const BOUNPOS_TYPES = {
     genType:     'flat-hex',
     schema: {
       label:  'Flat Top Hex Grid',
-      values: { type: 'pos-set', name: '', snapRadius: 30, 'hex-size': 40 },
+      values: { type: 'pos-set', name: '', snapRadius: 2, 'hex-size': 40 },
       types: {
         type:        { show: [] },
         name:        { kind: 'string', show: ['add', 'edit'] },
-        snapRadius:  { kind: 'number', min: 1, max: 35, step: 1, show: ['edit'] },
+        snapRadius:  { kind: 'number', min: 1, max: 4, step: 1, show: ['edit'] },
         'hex-size':  { kind: 'number', min: 15, max: 100, step: 5, show: ['addQuick'] },
       },
     },
@@ -453,11 +467,14 @@ export function addPositionSet(ydoc, yBounPos,
   const def      = BOUNPOS_TYPES[toolName];
   if (!def) return null;
   const genType  = def.genType;
-  const genParam = genType === 'hex'
+  const genParam = (genType === 'hex' || genType === 'flat-hex')
     ? (toolParams['hex-size'] ?? 40)
     : (toolParams['spacing']  ?? 80);
-  const rawRadius  = toolParams['snapRadius'] ?? 30;
-  const snapRadius = Math.min(rawRadius, computeMaxSnapRadius(genType, genParam));
+
+  const snapRadiusLevel = clamp(Number(toolParams['snapRadius'] ?? 2), 1, 4);
+  const maxSnapRadius   = computeMaxSnapRadius(genType, genParam);
+  const snapRadius      = snapRadiusLevelToRadius(snapRadiusLevel, maxSnapRadius);
+
   const circles    = gridFillExtent(x, y, w, h, genType, genParam);
   if (circles.length === 0) return null;
   const { id, name } = def.newId();
@@ -613,23 +630,26 @@ export function getTtStateSchema(svgElOrType) {
   const name        = svgElOrType.getAttribute('name') ?? '';
 
   if (bounPosType === 'pos-set') {
+
     const genType    = svgElOrType.getAttribute('data-gen-type') ?? 'square';
     const genParam   = Number(svgElOrType.getAttribute('data-gen-param') ?? 80);
     const maxR       = Math.floor(computeMaxSnapRadius(genType, genParam));
     const snapRadius = Number(svgElOrType.getAttribute('data-snap-radius') ?? 30);
+    const snapLevel  = snapRadiusRadiusToLevel(snapRadius, maxR);
 
     return {
       label: schema.label,
       type: 'pos-set',
       name,
-      snapRadius,
+      snapRadius: snapLevel,
       types: {
         ...schema.types,
-        snapRadius: { ...schema.types.snapRadius, max: maxR },
+        snapRadius: { ...schema.types.snapRadius, max: 4 },
       },
     };
   }
 
+  // else, it's a boundary
   return { label: schema.label, type: 'boundary', name, types: schema.types };
 }
 
@@ -647,11 +667,17 @@ export function getTtState(yEl) {
   const d           = yPath?.getAttribute('d') ?? 'M0,0 L100,0 L100,100 L0,100 Z';
   const { x, y, w, h } = pathToRect(d);
   const state = { id, bounPosType, name, x, y, w, h };
+
   if (bounPosType === 'pos-set') {
-    state.snapRadius = Number(yEl.getAttribute('data-snap-radius') ?? 30);
-    state.genType    = yEl.getAttribute('data-gen-type')  ?? 'square';
-    state.genParam   = Number(yEl.getAttribute('data-gen-param') ?? 80);
+    const genType  = yEl.getAttribute('data-gen-type')  ?? 'square';
+    const genParam = Number(yEl.getAttribute('data-gen-param') ?? 80);
+    const maxR     = computeMaxSnapRadius(genType, genParam);
+    const snapR    = Number(yEl.getAttribute('data-snap-radius') ?? 30);
+    state.snapRadius = snapRadiusRadiusToLevel(snapR, maxR);
+    state.genType    = genType;
+    state.genParam   = genParam;
   }
+
   return state;
 }
 
@@ -659,10 +685,13 @@ export function getTtState(yEl) {
 function createBounPos(state, ydoc, yBounPos) {
   if (state.bounPosType === 'pos-set') {
     const circles = gridFillExtent(state.x, state.y, state.w, state.h, state.genType, state.genParam);
+    const maxR = computeMaxSnapRadius(state.genType, state.genParam);
+    const snapRadius = snapRadiusLevelToRadius(state.snapRadius ?? 2, maxR);
+
     createPositionSetElement(ydoc, yBounPos, {
       id:         state.id,
       name:       state.name,
-      snapRadius: state.snapRadius ?? 30,
+      snapRadius,
       genType:    state.genType,
       genParam:   state.genParam,
       x:          state.x,
@@ -719,7 +748,8 @@ export function editBounPos(state, ydoc, yBounPos) {
       const genType  = existing.getAttribute('data-gen-type')  ?? 'square';
       const genParam = Number(existing.getAttribute('data-gen-param') ?? 80);
       const maxR     = computeMaxSnapRadius(genType, genParam);
-      const r        = Math.round(Math.min(Math.max(1, Number(state.snapRadius)), maxR));
+      const r        = snapRadiusLevelToRadius(state.snapRadius, maxR);
+
       existing.setAttribute('data-snap-radius', String(r));
       for (const child of existing.toArray()) {
         if (child instanceof Y.XmlElement && child.nodeName === 'circle') {
@@ -758,7 +788,8 @@ export function editEl(ydoc, yEl, editData) {
       const genType  = yEl.getAttribute('data-gen-type')  ?? 'square';
       const genParam = Number(yEl.getAttribute('data-gen-param') ?? 80);
       const maxR     = computeMaxSnapRadius(genType, genParam);
-      const r        = Math.round(Math.min(Math.max(1, Number(editData.snapRadius)), maxR));
+      const r        = snapRadiusLevelToRadius(editData.snapRadius, maxR);
+
       yEl.setAttribute('data-snap-radius', String(r));
       for (const child of yEl.toArray()) {
         if (child instanceof Y.XmlElement && child.nodeName === 'circle') {
