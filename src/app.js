@@ -288,7 +288,6 @@ function buildToolRegistry() {
     iconUrl: def.iconUrl,
   }));
   bounPosTools.forEach(def => {
-    console.log(def)
     _toolById[def.name] = def;
     _toolParams[def.name] = { ...BOUNPOS_TYPES[def.name].schema.values };
   });
@@ -1087,8 +1086,6 @@ const App = {
    * hook exactly once
    */
   commitToy: (toolName, x, y) => {
-    console.log(toolName)
-    console.log(_toolById[toolName])
     const def = _toolById[toolName];
     if (!def?.toyType) { UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
     const id = newToyId();
@@ -1267,7 +1264,6 @@ const App = {
     if (moduleForElement(domEl) === 'toys') {
       const toysLayerEl = _svgEl.querySelector('#toys-layer');
       const dt = findDropTarget(toysLayerEl, id, rx, ry)
-      console.log(dt)
       Overlay.setDropTargetHover(dt)
     }
   },
