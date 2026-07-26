@@ -60,16 +60,66 @@ export function pathToRect(d) {
   return { x, y, w: x2 - x, h: y2 - y };
 }
 
-// ── Grid math (pure — no Yjs, fully testable) ─────────────────────────────────
+export function toolParamsToCreateParams(genType, toolParams, {x, y, w, h}) {
+  let xSpacing;
+  let ySpacing;
+  if (genType.search('hex') > -1) {
+    xSpacing = toolParams['xSpacing'] ?? 40
+    ySpacing = toolParams['ySpacing'] ?? 40
+  } else {
+    // Allow the 'spacing' parameter in the quickOptions
+    xSpacing = toolParams['spacing'] ?? toolParams['xSpacing'] ?? 80
+    ySpacing = toolParams['spacing'] ?? toolParams['ySpacing'] ?? 80
+  }
+  const sLevel = toolParams['snapRadius'] ?? 2;
+  const snapRadius = snapRadiusLevelToRadius(sLevel, genType, xSpacing, ySpacing)
+  const circles    = gridFillExtent(x, y, w, h, genType, xSpacing, ySpacing)
+  return { snapRadius, xSpacing, ySpacing, circles }
+}
 
-/**
- * Square grid: uniform x/y spacing.
- */
-export function generateSquareGrid(origin, rows, cols, spacing) {
+function rebuildPositionSetGrid(ydoc, yEl, { genType, xSpacing, ySpacing, snapRadiusLevel }) {
+  const yPath = yChildByTag(yEl, 'path');
+  if (!yPath) return;
+
+  const { x, y, w, h } = pathToRect(yPath.getAttribute('d') ?? 'M0,0 L100,0 L100,100 L0,100 Z');
+  const circles = gridFillExtent(x, y, w, h, genType, xSpacing, ySpacing);
+  const r = snapRadiusLevelToRadius(snapRadiusLevel ?? 2, genType, xSpacing, ySpacing);
+
+  ydoc.transact(() => {
+    yEl.setAttribute('data-gen-type',      genType);
+    yEl.setAttribute('data-gen-x-spacing', String(Math.round(xSpacing)));
+    yEl.setAttribute('data-gen-y-spacing', String(Math.round(ySpacing)));
+    yEl.setAttribute('data-snap-radius',   String(Math.round(r)));
+
+    const children = yEl.toArray();
+    for (let i = children.length - 1; i >= 0; i--) {
+      const child = children[i];
+      if (child instanceof Y.XmlElement && child.nodeName === 'circle') {
+        yEl.delete(i, 1);
+      }
+    }
+
+    const yCircles = circles.map(({ cx, cy }) => {
+      const c = new Y.XmlElement('circle');
+      c.setAttribute('cx', String(Math.round(cx)));
+      c.setAttribute('cy', String(Math.round(cy)));
+      c.setAttribute('r',  String(Math.round(r)));
+      return c;
+    });
+    yEl.insert(yEl.length, yCircles);
+  });
+}
+
+// ── Grid math (pure — no Yjs, fully testable) ─────────────────────────────
+
+export function generateSquareGrid(origin, rows, cols, xSpacing, ySpacing = xSpacing) {
   const points = [];
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
-      points.push({ cx: origin.x + col * spacing, cy: origin.y + row * spacing });
+      points.push({
+        cx: origin.x + col * xSpacing,
+        cy: origin.y + row * ySpacing,
+      });
     }
   }
   return points;
@@ -77,20 +127,15 @@ export function generateSquareGrid(origin, rows, cols, spacing) {
 
 /**
  * Pointy-top hex grid (redblobgames.com standard).
- *   colSpacing = hexSize * √3
- *   rowSpacing = hexSize * 1.5
- *   odd rows offset by hexSize * √3/2
  */
-export function generateHexGrid(origin, rows, cols, hexSize) {
-  const colSp       = hexSize * Math.sqrt(3);
-  const rowSp       = hexSize * 1.5;
-  const oddOffset   = colSp / 2;
+export function generateHexGrid(origin, rows, cols, xSpacing, ySpacing) {
+  const oddOffset = xSpacing / 2;
   const points = [];
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
       points.push({
-        cx: origin.x + col * colSp + (row % 2) * oddOffset,
-        cy: origin.y + row * rowSp,
+        cx: origin.x + col * xSpacing + (row % 2) * oddOffset,
+        cy: origin.y + row * ySpacing,
       });
     }
   }
@@ -99,9 +144,6 @@ export function generateHexGrid(origin, rows, cols, hexSize) {
 
 /**
  * Flat-top hex grid (redblobgames.com standard).
- *   colSpacing = hexSize * 1.5
- *   rowSpacing = hexSize * √3
- *   odd columns offset by hexSize * √3/2
  */
 export function generateFlatHexGrid(origin, rows, cols, hexSize) {
   const colSp       = hexSize * 1.5;
@@ -119,35 +161,53 @@ export function generateFlatHexGrid(origin, rows, cols, hexSize) {
   return points;
 }
 
+function gridSpacingFromInput(genType, input = {}) {
+  if (input.xSpacing !== undefined || input.ySpacing !== undefined) {
+    const xSpacing = Number(input.xSpacing ?? input.ySpacing ?? input.spacing ?? input['hex-size'] ?? 80);
+    const ySpacing = Number(input.ySpacing ?? input.xSpacing ?? input.spacing ?? input['hex-size'] ?? xSpacing);
+    return { xSpacing, ySpacing };
+  }
+
+  const legacy = Number(input.spacing ?? input['hex-size'] ?? input.genParam ?? 80);
+  if (genType === 'hex') {
+    // Pointy-top:
+    // *   colSpacing = hexSize * √3
+    // *   rowSpacing = hexSize * 1.5
+    // *   odd rows offset by hexSize * √3/2
+    return { xSpacing: legacy * Math.sqrt(3), ySpacing: legacy * 1.5 };
+  }
+  if (genType === 'flat-hex') {
+    // Flat-top:
+    // *   colSpacing = hexSize * 1.5
+    // *   rowSpacing = hexSize * √3
+    // *   odd columns offset by hexSize * √3/2
+    return { xSpacing: legacy * 1.5, ySpacing: legacy * Math.sqrt(3) };
+  }
+  return { xSpacing: legacy, ySpacing: legacy };
+}
+
 /**
  * Fill an extent rect with snap points for genType / genParam.
  * Returns [{cx,cy}] clipped to the extent.
  */
-export function gridFillExtent(x, y, w, h, genType, genParam) {
-  const param = Number(genParam);
+export function gridFillExtent(x, y, w, h, genType, xSpacing, ySpacing) {
   if (genType === 'hex') {
-    const hexSize = param;
-    const colSp   = hexSize * Math.sqrt(3);
-    const rowSp   = hexSize * 1.5;
-    const cols    = Math.ceil(w / colSp) + 2;
-    const rows    = Math.ceil(h / rowSp) + 2;
-    return generateHexGrid({ x, y }, rows, cols, hexSize)
+    const cols = Math.ceil(w / xSpacing) + 2;
+    const rows = Math.ceil(h / ySpacing) + 2;
+    return generateHexGrid({ x, y }, rows, cols, xSpacing, ySpacing)
       .filter(p => p.cx >= x && p.cx <= x + w && p.cy >= y && p.cy <= y + h);
   }
+
   if (genType === 'flat-hex') {
-    const hexSize = param;
-    const colSp   = hexSize * 1.5;
-    const rowSp   = hexSize * Math.sqrt(3);
-    const cols    = Math.ceil(w / colSp) + 2;
-    const rows    = Math.ceil(h / rowSp) + 2;
-    return generateFlatHexGrid({ x, y }, rows, cols, hexSize)
+    const cols = Math.ceil(w / xSpacing) + 2;
+    const rows = Math.ceil(h / ySpacing) + 2;
+    return generateFlatHexGrid({ x, y }, rows, cols, xSpacing, ySpacing)
       .filter(p => p.cx >= x && p.cx <= x + w && p.cy >= y && p.cy <= y + h);
   }
-  // square
-  const spacing = param;
-  const cols    = Math.ceil(w / spacing) + 1;
-  const rows    = Math.ceil(h / spacing) + 1;
-  return generateSquareGrid({ x, y }, rows, cols, spacing)
+
+  const cols = Math.ceil(w / xSpacing) + 1;
+  const rows = Math.ceil(h / ySpacing) + 1;
+  return generateSquareGrid({ x, y }, rows, cols, xSpacing, ySpacing)
     .filter(p => p.cx >= x && p.cx <= x + w && p.cy >= y && p.cy <= y + h);
 }
 
@@ -156,24 +216,47 @@ export function gridFillExtent(x, y, w, h, genType, genParam) {
  *   square: spacing / 2
  *   hex:    hexSize * √3/2  (= inradius / short radius)
  */
-export function computeMaxSnapRadius(genType, genParam) {
-  const param = Number(genParam);
-  if (genType === 'hex' || genType === 'flat-hex') return (param * Math.sqrt(3)) / 2;
-  return param / 2;
+export function computeMaxSnapRadius(genType, xSpacing, ySpacing) {
+  const x = Number(xSpacing);
+  const y = Number(ySpacing);
+
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x <= 0 || y <= 0) return 0;
+
+  if (genType === 'hex') {
+    const nearest = Math.min(x, Math.sqrt((x / 2) ** 2 + y ** 2));
+    return nearest / 2;
+  }
+
+  if (genType === 'flat-hex') {
+    const nearest = Math.min(x, y, Math.sqrt(x ** 2 + (y / 2) ** 2));
+    return nearest / 2;
+  }
+
+  return Math.min(x, y) / 2;
 }
 
 function clamp(n, min, max) {
   return Math.min(max, Math.max(min, n));
 }
 
-function snapRadiusLevelToRadius(level, maxRadius) {
-  const pct = clamp(Number(level ?? 2), 1, 4) / 4;
-  return Math.round(maxRadius * pct);
+function snapRadiusLevelToRadius(level, genType, xSpacing, ySpacing) {
+  const maxR = computeMaxSnapRadius(genType, xSpacing, ySpacing);
+  const pct  = clamp(Number(level ?? 2), 1, 4) / 4;
+  return Math.round(maxR * pct);
 }
 
-function snapRadiusRadiusToLevel(radius, maxRadius) {
-  if (!maxRadius || maxRadius <= 0) return 2;
-  return clamp(Math.round((Number(radius ?? 0) / maxRadius) * 4), 1, 4);
+function snapRadiusStateToRadius(value, genType, xSpacing, ySpacing) {
+  const maxR = computeMaxSnapRadius(genType, xSpacing, ySpacing);
+  const n = Number(value ?? 0);
+  if (!Number.isFinite(maxR) || maxR <= 0) return 0;
+  if (n <= 4) return snapRadiusLevelToRadius(n, genType, xSpacing, ySpacing);
+  return Math.round(Math.min(n, maxR));
+}
+
+function snapRadiusRadiusToLevel(radius, genType, xSpacing, ySpacing) {
+  const maxR = computeMaxSnapRadius(genType, xSpacing, ySpacing);
+  if (!Number.isFinite(maxR) || maxR <= 0) return 2;
+  return clamp(Math.round((Number(radius ?? 0) / maxR) * 4), 1, 4);
 }
 
 // ── Internal child-element helpers ────────────────────────────────────────────
@@ -301,12 +384,14 @@ export const BOUNPOS_TYPES = {
     genType:     'square',
     schema: {
       label:  'Square Grid',
-      values: { type: 'pos-set', name: '', snapRadius: 2, spacing: 80 },
+      values: { type: 'pos-set', name: '', snapRadius: 2, spacing: 80, xSpacing: 80, ySpacing: 80 },
       types: {
         type:       { show: [] },
         name:       { kind: 'string', show: ['add', 'edit'] },
         snapRadius: { kind: 'number', min: 1, max: 4, step: 1, show: ['edit'] },
-        spacing:    { kind: 'number', min: 20, max: 200, step: 4, show: ['addQuick', 'edit'] },
+        spacing:    { kind: 'number', min: 20, max: 200, step: 4, show: ['addQuick'] },
+        xSpacing:   { kind: 'number', min: 30, max: 200, step: 5, show: ['edit'] },
+        ySpacing:   { kind: 'number', min: 30, max: 200, step: 5, show: ['edit'] },
       },
     },
     create(ydoc, yBounPos, params) {
@@ -323,12 +408,13 @@ export const BOUNPOS_TYPES = {
     genType:     'hex',
     schema: {
       label:  'Point Top Hex Grid',
-      values: { type: 'pos-set', name: '', snapRadius: 2, 'hex-size': 40 },
+      values: { type: 'pos-set', name: '', snapRadius: 2, xSpacing: 70, ySpacing: 60 },
       types: {
-        type:        { show: [] },
-        name:        { kind: 'string', show: ['add', 'edit'] },
-        snapRadius:  { kind: 'number', min: 1, max: 4, step: 1, show: ['edit'] },
-        'hex-size':  { kind: 'number', min: 15, max: 100, step: 5, show: ['addQuick'] },
+        type:       { show: [] },
+        name:       { kind: 'string', show: ['add', 'edit'] },
+        snapRadius: { kind: 'number', min: 1, max: 4, step: 1, show: ['edit'] },
+        xSpacing:   { kind: 'number', min: 30, max: 200, step: 5, show: ['edit'] },
+        ySpacing:   { kind: 'number', min: 30, max: 200, step: 5, show: ['edit'] },
       },
     },
     create(ydoc, yBounPos, params) {
@@ -336,7 +422,7 @@ export const BOUNPOS_TYPES = {
     },
     toSVGEl(yG) { return _positionSetToSVGEl(yG); },
   },
-
+  
   'pos-grid-flat-hex': {
     bounPosType: 'pos-set',
     label:       'Flat Top Hex Grid',
@@ -345,12 +431,13 @@ export const BOUNPOS_TYPES = {
     genType:     'flat-hex',
     schema: {
       label:  'Flat Top Hex Grid',
-      values: { type: 'pos-set', name: '', snapRadius: 2, 'hex-size': 40 },
+      values: { type: 'pos-set', name: '', snapRadius: 2, xSpacing: 60, ySpacing: 70 },
       types: {
-        type:        { show: [] },
-        name:        { kind: 'string', show: ['add', 'edit'] },
-        snapRadius:  { kind: 'number', min: 1, max: 4, step: 1, show: ['edit'] },
-        'hex-size':  { kind: 'number', min: 15, max: 100, step: 5, show: ['addQuick'] },
+        type:       { show: [] },
+        name:       { kind: 'string', show: ['add', 'edit'] },
+        snapRadius: { kind: 'number', min: 1, max: 4, step: 1, show: ['edit'] },
+        xSpacing:   { kind: 'number', min: 30, max: 200, step: 5, show: ['edit'] },
+        ySpacing:   { kind: 'number', min: 30, max: 200, step: 5, show: ['edit'] },
       },
     },
     create(ydoc, yBounPos, params) {
@@ -362,7 +449,7 @@ export const BOUNPOS_TYPES = {
 
 // Helper used by all pos-set variants.
 function _createPositionSet(ydoc, yBounPos,
-  { id, name, snapRadius, genType, genParam, x, y, w, h, circles }) {
+  { id, name, snapRadius, genType, xSpacing, ySpacing, x, y, w, h, circles }) {
   const d  = rectToPath(x, y, w, h);
   const tx = x + w;
   const ty = y - 5;
@@ -376,13 +463,15 @@ function _createPositionSet(ydoc, yBounPos,
     c.setAttribute('r',  String(Math.round(snapRadius)));
     return c;
   });
+
   ydoc.transact(() => {
     yG.setAttribute('id',               id);
     yG.setAttribute('name',             name);
     yG.setAttribute('data-bounpos-type', 'pos-set');
     yG.setAttribute('data-snap-radius',  String(Math.round(snapRadius)));
-    yG.setAttribute('data-gen-type',    genType);
-    yG.setAttribute('data-gen-param',   String(Math.round(genParam)));
+    yG.setAttribute('data-gen-type',     genType);
+    yG.setAttribute('data-gen-x-spacing', String(Math.round(xSpacing)));
+    yG.setAttribute('data-gen-y-spacing', String(Math.round(ySpacing)));
     yPath.setAttribute('d',                d);
     yPath.setAttribute('fill',             'none');
     yPath.setAttribute('stroke',           'rgba(255,255,255,0.5)');
@@ -403,19 +492,26 @@ function _createPositionSet(ydoc, yBounPos,
 
 function _positionSetToSVGEl(yG) {
   const id      = yG.getAttribute('id')               ?? '';
-  const name    = yG.getAttribute('name')              ?? id;
+  const name    = yG.getAttribute('name')             ?? id;
   const snapR   = yG.getAttribute('data-snap-radius')  ?? '30';
   const genType = yG.getAttribute('data-gen-type')     ?? 'square';
-  const genParam = yG.getAttribute('data-gen-param')   ?? '80';
+  const { xSpacing, ySpacing } = gridSpacingFromInput(genType, {
+    xSpacing: yG.getAttribute('data-gen-x-spacing'),
+    ySpacing: yG.getAttribute('data-gen-y-spacing'),
+    genParam: yG.getAttribute('data-gen-param'),
+  });
+
   const g = document.createElementNS(SVG_NS, 'g');
-  g.setAttribute('id',               id);
-  g.setAttribute('data-id',          id);
-  g.setAttribute('data-module',      'boun_pos');
-  g.setAttribute('data-bounpos-type','pos-set');
-  g.setAttribute('name',             name);
-  g.setAttribute('data-snap-radius', snapR);
-  g.setAttribute('data-gen-type',    genType);
-  g.setAttribute('data-gen-param',   genParam);
+  g.setAttribute('id',                id);
+  g.setAttribute('data-id',           id);
+  g.setAttribute('data-module',       'boun_pos');
+  g.setAttribute('data-bounpos-type',  'pos-set');
+  g.setAttribute('name',              name);
+  g.setAttribute('data-snap-radius',  snapR);
+  g.setAttribute('data-gen-type',     genType);
+  g.setAttribute('data-gen-x-spacing', String(xSpacing));
+  g.setAttribute('data-gen-y-spacing', String(ySpacing));
+
   for (const child of yG.toArray()) {
     if (!(child instanceof Y.XmlElement)) continue;
     if (child.nodeName === 'path') {
@@ -464,22 +560,18 @@ export function createPositionSetElement(ydoc, yBounPos, params) {
 
 export function addPositionSet(ydoc, yBounPos,
   { x, y, w, h, toolName, toolParams }) {
-  const def      = BOUNPOS_TYPES[toolName];
+  const def = BOUNPOS_TYPES[toolName];
   if (!def) return null;
-  const genType  = def.genType;
-  const genParam = (genType === 'hex' || genType === 'flat-hex')
-    ? (toolParams['hex-size'] ?? 40)
-    : (toolParams['spacing']  ?? 80);
 
-  const snapRadiusLevel = clamp(Number(toolParams['snapRadius'] ?? 2), 1, 4);
-  const maxSnapRadius   = computeMaxSnapRadius(genType, genParam);
-  const snapRadius      = snapRadiusLevelToRadius(snapRadiusLevel, maxSnapRadius);
+  const genType = def.genType;
+  const { xSpacing, ySpacing } = gridSpacingFromInput(genType, toolParams);
+  const snapRadius = snapRadiusStateToRadius(toolParams.snapRadius ?? 10, genType, xSpacing, ySpacing);
+  const circles = gridFillExtent(x, y, w, h, genType, xSpacing, ySpacing);
 
-  const circles    = gridFillExtent(x, y, w, h, genType, genParam);
   if (circles.length === 0) return null;
   const { id, name } = def.newId();
   def.create(ydoc, yBounPos,
-    { id, name, snapRadius, genType, genParam, x, y, w, h, circles });
+    { id, name, snapRadius, genType, xSpacing, ySpacing, x, y, w, h, circles });
   return { id, name, genType };
 }
 
@@ -618,9 +710,29 @@ function _resolveBounPosToolName(svgElOrType) {
 }
 
 export function getTtStateSchema(svgElOrType) {
-  const toolName = _resolveBounPosToolName(svgElOrType);
-  const def      = BOUNPOS_TYPES[toolName];
-  const schema   = def.schema;
+  // Resolve to a BOUNPOS_TYPES key.
+  // Accepts: tool name ('boundary','pos-grid-sq','pos-grid-hex','pos-grid-flat-hex'),
+  //          bounPosType string ('boundary','pos-set'), or a DOM element.
+  let toolName;
+  if (typeof svgElOrType === 'string') {
+    if (BOUNPOS_TYPES[svgElOrType]) {
+      toolName = svgElOrType;
+    } else {
+      toolName = Object.keys(BOUNPOS_TYPES)
+        .find(k => BOUNPOS_TYPES[k].bounPosType === svgElOrType) ?? 'boundary';
+    }
+  } else {
+    const bounPosType = svgElOrType?.getAttribute?.('data-bounpos-type') ?? 'boundary';
+    const genType     = svgElOrType?.getAttribute?.('data-gen-type') ?? null;
+    toolName = Object.keys(BOUNPOS_TYPES).find(k => {
+      const d = BOUNPOS_TYPES[k];
+      return d.bounPosType === bounPosType &&
+        (genType ? d.genType === genType : d.genType === null || d.genType === 'square');
+    }) ?? 'boundary';
+  }
+
+  const def    = BOUNPOS_TYPES[toolName];
+  const schema = def.schema;
 
   if (!svgElOrType || typeof svgElOrType === 'string') {
     return { label: schema.label, ...schema.values, types: schema.types };
@@ -630,28 +742,33 @@ export function getTtStateSchema(svgElOrType) {
   const name        = svgElOrType.getAttribute('name') ?? '';
 
   if (bounPosType === 'pos-set') {
-
-    const genType    = svgElOrType.getAttribute('data-gen-type') ?? 'square';
-    const genParam   = Number(svgElOrType.getAttribute('data-gen-param') ?? 80);
-    const maxR       = Math.floor(computeMaxSnapRadius(genType, genParam));
-    const snapRadius = Number(svgElOrType.getAttribute('data-snap-radius') ?? 30);
-    const snapLevel  = snapRadiusRadiusToLevel(snapRadius, maxR);
+    const genType = svgElOrType.getAttribute('data-gen-type') ?? 'square';
+    const { xSpacing, ySpacing } = gridSpacingFromInput(genType, {
+      xSpacing: svgElOrType.getAttribute('data-gen-x-spacing'),
+      ySpacing: svgElOrType.getAttribute('data-gen-y-spacing'),
+      genParam: svgElOrType.getAttribute('data-gen-param'),
+    });
+    const snapRadius = snapRadiusRadiusToLevel(
+      svgElOrType.getAttribute('data-snap-radius') ?? 30,
+      genType,
+      xSpacing,
+      ySpacing
+    );
 
     return {
       label: schema.label,
       type: 'pos-set',
       name,
-      snapRadius: snapLevel,
-      types: {
-        ...schema.types,
-        snapRadius: { ...schema.types.snapRadius, max: 4 },
-      },
+      xSpacing,
+      ySpacing,
+      snapRadius,
+      types: schema.types,
     };
   }
 
-  // else, it's a boundary
   return { label: schema.label, type: 'boundary', name, types: schema.types };
 }
+
 
 /**
  * Snapshot the full serialisable state of a bounPos Y.XmlElement (<g>).
@@ -669,31 +786,39 @@ export function getTtState(yEl) {
   const state = { id, bounPosType, name, x, y, w, h };
 
   if (bounPosType === 'pos-set') {
-    const genType  = yEl.getAttribute('data-gen-type')  ?? 'square';
-    const genParam = Number(yEl.getAttribute('data-gen-param') ?? 80);
-    const maxR     = computeMaxSnapRadius(genType, genParam);
-    const snapR    = Number(yEl.getAttribute('data-snap-radius') ?? 30);
-    state.snapRadius = snapRadiusRadiusToLevel(snapR, maxR);
+    const genType = yEl.getAttribute('data-gen-type') ?? 'square';
+    const { xSpacing, ySpacing } = gridSpacingFromInput(genType, {
+      xSpacing: yEl.getAttribute('data-gen-x-spacing'),
+      ySpacing: yEl.getAttribute('data-gen-y-spacing'),
+      genParam: yEl.getAttribute('data-gen-param'),
+    });
+
     state.genType    = genType;
-    state.genParam   = genParam;
+    state.xSpacing   = xSpacing;
+    state.ySpacing   = ySpacing;
+    state.snapRadius = snapRadiusRadiusToLevel(
+      yEl.getAttribute('data-snap-radius') ?? 30,
+      genType,
+      xSpacing,
+      ySpacing
+    );
   }
 
   return state;
 }
 
-
 function createBounPos(state, ydoc, yBounPos) {
   if (state.bounPosType === 'pos-set') {
-    const circles = gridFillExtent(state.x, state.y, state.w, state.h, state.genType, state.genParam);
-    const maxR = computeMaxSnapRadius(state.genType, state.genParam);
-    const snapRadius = snapRadiusLevelToRadius(state.snapRadius ?? 2, maxR);
+    const { xSpacing, ySpacing } = gridSpacingFromInput(state.genType, state);
+    const circles = gridFillExtent(state.x, state.y, state.w, state.h, state.genType, xSpacing, ySpacing);
 
     createPositionSetElement(ydoc, yBounPos, {
       id:         state.id,
       name:       state.name,
-      snapRadius,
+      snapRadius: snapRadiusStateToRadius(state.snapRadius ?? 10, state.genType, xSpacing, ySpacing),
       genType:    state.genType,
-      genParam:   state.genParam,
+      xSpacing,
+      ySpacing,
       x:          state.x,
       y:          state.y,
       w:          state.w,
@@ -744,20 +869,34 @@ export function editBounPos(state, ydoc, yBounPos) {
       const yText = yChildByTag(existing, 'text');
       if (yText) setYTextContent(ydoc, yText, String(state.name));
     }
-    if (state.snapRadius !== undefined && type === 'pos-set') {
-      const genType  = existing.getAttribute('data-gen-type')  ?? 'square';
-      const genParam = Number(existing.getAttribute('data-gen-param') ?? 80);
-      const maxR     = computeMaxSnapRadius(genType, genParam);
-      const r        = snapRadiusLevelToRadius(state.snapRadius, maxR);
-
-      existing.setAttribute('data-snap-radius', String(r));
-      for (const child of existing.toArray()) {
-        if (child instanceof Y.XmlElement && child.nodeName === 'circle') {
-          child.setAttribute('r', String(r));
-        }
-      }
-    }
   });
+
+  if (type === 'pos-set' && (
+    state.snapRadius !== undefined ||
+    state.xSpacing !== undefined ||
+    state.ySpacing !== undefined ||
+    state.genType !== undefined
+  )) {
+    const genType = state.genType ?? existing.getAttribute('data-gen-type') ?? 'square';
+    const { xSpacing, ySpacing } = gridSpacingFromInput(genType, {
+      xSpacing: state.xSpacing ?? existing.getAttribute('data-gen-x-spacing'),
+      ySpacing: state.ySpacing ?? existing.getAttribute('data-gen-y-spacing'),
+      genParam: existing.getAttribute('data-gen-param'),
+    });
+
+    rebuildPositionSetGrid(ydoc, existing, {
+      genType,
+      xSpacing,
+      ySpacing,
+      snapRadiusLevel: state.snapRadius ?? snapRadiusRadiusToLevel(
+        Number(existing.getAttribute('data-snap-radius') ?? 30),
+        genType,
+        xSpacing,
+        ySpacing
+      ),
+    });
+  }
+
   if (state.x !== undefined) {
     applyMoveCommit(ydoc, existing, state.x, state.y);
   }
@@ -775,31 +914,42 @@ export function edit(id, editData, ydoc, yBounPos) {
  */
 export function editEl(ydoc, yEl, editData) {
   if (!yEl) return;
-  const id   = yEl.getAttribute('id');
   const type = yEl.getAttribute('data-bounpos-type') ?? 'boundary';
-  const yPath = yChildByTag(yEl, 'path');
   const yText = yChildByTag(yEl, 'text');
+
   ydoc.transact(() => {
     if (editData.name !== undefined) {
       yEl.setAttribute('name', String(editData.name));
       if (yText) setYTextContent(ydoc, yText, String(editData.name));
     }
-    if (editData.snapRadius !== undefined && type === 'pos-set') {
-      const genType  = yEl.getAttribute('data-gen-type')  ?? 'square';
-      const genParam = Number(yEl.getAttribute('data-gen-param') ?? 80);
-      const maxR     = computeMaxSnapRadius(genType, genParam);
-      const r        = snapRadiusLevelToRadius(editData.snapRadius, maxR);
-
-      yEl.setAttribute('data-snap-radius', String(r));
-      for (const child of yEl.toArray()) {
-        if (child instanceof Y.XmlElement && child.nodeName === 'circle') {
-          child.setAttribute('r', String(r));
-        }
-      }
-    }
   });
-}
 
+  if (type === 'pos-set' && (
+    editData.snapRadius !== undefined ||
+    editData.xSpacing !== undefined ||
+    editData.ySpacing !== undefined ||
+    editData.genType !== undefined
+  )) {
+    const genType = editData.genType ?? yEl.getAttribute('data-gen-type') ?? 'square';
+    const { xSpacing, ySpacing } = gridSpacingFromInput(genType, {
+      xSpacing: editData.xSpacing ?? yEl.getAttribute('data-gen-x-spacing'),
+      ySpacing: editData.ySpacing ?? yEl.getAttribute('data-gen-y-spacing'),
+      genParam: yEl.getAttribute('data-gen-param'),
+    });
+
+    rebuildPositionSetGrid(ydoc, yEl, {
+      genType,
+      xSpacing,
+      ySpacing,
+      snapRadiusLevel: editData.snapRadius ?? snapRadiusRadiusToLevel(
+        Number(yEl.getAttribute('data-snap-radius') ?? 30),
+        genType,
+        xSpacing,
+        ySpacing
+      ),
+    });
+  }
+}
 // ── Drag context helpers ──────────────────────────────────────────────────────
 
 /**

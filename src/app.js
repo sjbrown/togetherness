@@ -968,15 +968,19 @@ const App = {
     } else {
       // pos-set
       const params   = App.getToolParams(toolName);
+      console.log(params)
       const genType  = def.genType;
-      const genParam = genType === 'hex' ? (params['hex-size'] ?? 40) : (params['spacing'] ?? 80);
-      const rawRadius  = params['snapRadius'] ?? 30;
-      const snapRadius = Math.min(rawRadius, computeMaxSnapRadius(genType, genParam));
-      const circles    = gridFillExtent(x, y, w, h, genType, genParam);
-      if (circles.length === 0) return;   // nothing tagged yet — no dangling label
+      const createParams = BounPos.toolParamsToCreateParams(genType, params, {x, y, w, h});
+      if (createParams.circles.length === 0) return;
       UndoRedo.tag(`add ${def.label} ${name}`);
       def.create(_ydoc, _yBounPos,
-        { id, name, snapRadius, genType, genParam, x, y, w, h, circles });
+        {
+          id, name, snapRadius: createParams.snapRadius, genType,
+          xSpacing: createParams.xSpacing, ySpacing: createParams.ySpacing,
+          x, y, w, h,
+          circles: createParams.circles,
+        }
+      );
     }
     addHistory(`added ${def.label} ${name}`, { elType: 'boundaries-positions' });
     App.addLog(`added ${def.label} ${name}`, 'local');
