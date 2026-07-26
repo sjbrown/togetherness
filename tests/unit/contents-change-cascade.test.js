@@ -2,10 +2,10 @@
  * tests/unit/contents-change-cascade.test.js
  *
  * Phase 5.4 — derived contents_change: a local transaction that touches
- * something inside a tray's .contents_group (a die rolling, a toy being
- * reparented in/out) recomputes that tray's contents_change_handler.
+ * something inside a container's .contents_group (a die rolling, a toy
+ * being reparented in/out) recomputes that container's contents_change_handler.
  *
- * toys.js exports the primitives (findAncestorTrayIds, runContentsChangeHandler);
+ * toys.js exports the primitives (findAncestorContainerIds, runContentsChangeHandler);
  * the actual dispatch + cascade guard live in app.js's onToysChanged, which
  * has no unit-test coverage of its own (app.js is exercised via Playwright
  * e2e, not vitest — see the project's existing convention). wireCascade()
@@ -24,7 +24,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as Toys from '../../src/toys.js'
 import {
   addToy, reparentToy, findToy, render,
-  findAncestorTrayIds, runContentsChangeHandler,
+  findAncestorContainerIds, runContentsChangeHandler,
   clearYNodeMap, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { runToyHandler } from '../../src/envelope.js'
@@ -86,7 +86,7 @@ function wireCascade(ydoc, yToys, layerEl, { onDispatch } = {}) {
     render(yToys, layerEl) // must happen before dispatch — see app.js's onToysChanged
     const depthById = new Map()
     for (const event of events) {
-      const chain = findAncestorTrayIds(event.target)
+      const chain = findAncestorContainerIds(event.target)
       chain.forEach((trayId, i) => {
         const depth = chain.length - i
         if (depth > (depthById.get(trayId) ?? -1)) depthById.set(trayId, depth)
@@ -119,7 +119,7 @@ beforeEach(() => {
 })
 afterEach(() => { vi.unstubAllGlobals() })
 
-describe('findAncestorTrayIds', () => {
+describe('findAncestorContainerIds', () => {
   test('a die inside a tray resolves to that tray\u2019s id', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
@@ -128,7 +128,7 @@ describe('findAncestorTrayIds', () => {
     reparentToy(ydoc, yToys, 'die1', 'tray1')
 
     const dieY = findToy(yToys, 'die1')
-    expect(findAncestorTrayIds(dieY)).toEqual(['tray1'])
+    expect(findAncestorContainerIds(dieY)).toEqual(['tray1'])
   })
 
   test('a top-level die (not in any tray) resolves to no trays', async () => {
@@ -137,7 +137,7 @@ describe('findAncestorTrayIds', () => {
     await place(ydoc, yToys, 'dice_d6', 'die1')
 
     const dieY = findToy(yToys, 'die1')
-    expect(findAncestorTrayIds(dieY)).toEqual([])
+    expect(findAncestorContainerIds(dieY)).toEqual([])
   })
 
   test('a die in a doubly-nested tray resolves both, innermost first', async () => {
@@ -150,7 +150,7 @@ describe('findAncestorTrayIds', () => {
     reparentToy(ydoc, yToys, 'die1', 'inner')
 
     const dieY = findToy(yToys, 'die1')
-    expect(findAncestorTrayIds(dieY)).toEqual(['inner', 'outer'])
+    expect(findAncestorContainerIds(dieY)).toEqual(['inner', 'outer'])
   })
 
   test('a tray\u2019s own result_container is a sibling of .contents_group, not inside it', async () => {
@@ -165,7 +165,7 @@ describe('findAncestorTrayIds', () => {
 
     const tspanResult = ownResult(toyEl)
     const yTspanText = Toys.yNodeFor(tspanResult.firstChild) ?? Toys.yNodeFor(tspanResult)
-    expect(findAncestorTrayIds(yTspanText)).toEqual([])
+    expect(findAncestorContainerIds(yTspanText)).toEqual([])
   })
 })
 

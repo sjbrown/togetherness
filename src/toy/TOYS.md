@@ -183,7 +183,7 @@ directly, but two rules follow from it:
 - **Write synchronous handlers.** `menu` handlers, `initialize`, and
   `contents_change_handler` all run and commit within a single tick — no
   `await`, no `Promise`, no `setTimeout`. This is what lets your handler's
-  mutations and any tray reaction they trigger land as one atomic,
+  mutations and any container reaction they trigger land as one atomic,
   undo-together unit. An async handler is rejected outright rather than
   silently losing whatever it does after its first `await`.
 

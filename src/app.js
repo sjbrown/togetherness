@@ -155,7 +155,7 @@ function _broadcastSelection() {
 
 // ── Resize mode ─────────────────────────────────────────────────────────────
 // A per-client UI mode, orthogonal to _myClaims.
-// Entered by clicking an already-sole-selected tray a second time
+// Entered by clicking an already-sole-selected container a second time
 // A single elId or null — resize only one object at a time.
 // Broadcast via the awareness `mode` field: 'sel-resize'
 let _resizeModeId = null;
@@ -255,7 +255,7 @@ let _multiDragState = null;  // { elements: [{ id, mtype, anchorX, anchorY, bbox
                              //   lastValidDx, lastValidDy } | null
 
 // Active corner-drag resize
-// Only reachable while _resizeModeId === id and only ever for a tray.
+// Only reachable while _resizeModeId === id and only ever for a container.
 let _resizeState = null;    // { id, corner, startRect: {x,y,width,height},
                             //   lastRect: {x,y,width,height} } | null
 
@@ -542,8 +542,8 @@ function onToysChanged(events, transaction) {
   // to a die inside .contents_group after a reparentToy)
   // before the handler runs
   renderDoc();
-  // Derived contents_change: a local change touched inside a tray's
-  // .contents_group -- recompute that tray's own derived display.
+  // Derived contents_change: a local change touched inside a container's
+  // .contents_group -- recompute that container's own derived display.
   //
   // Skipped for:
   //  - remote-origin changes: the *originator* computes; the result syncs
@@ -555,7 +555,7 @@ function onToysChanged(events, transaction) {
   //    cascade runs synchronously: a DERIVED commit made from an observer
   //    lands in its own transaction whose observer fires AFTER the flag has
   //    already been cleared, so the flag alone would no longer catch it.
-  //  - _dispatchingContentsChange: the drop-into-tray path (commitMove)
+  //  - _dispatchingContentsChange: the drop-into-container path (commitMove)
   //    folds its own reaction into the placement transaction and sets this
   //    flag so the observer doesn't recompute it a second time.
   const isCascadeResult =
@@ -566,10 +566,11 @@ function onToysChanged(events, transaction) {
 }
 
 // Local transaction (not itself a cascade result) touched something inside a
-// tray's .contents_group? Recompute every affected tray's own
-// contents_change_handler, innermost first, so outer trays read their inner
-// trays' fresh results. Computed as one upfront pass over *this* transaction's
-// events, so a single die roll inside a doubly-nested tray resolves in one go.
+// container's .contents_group? Recompute every affected container's own
+// contents_change_handler, innermost first, so outer containers read their
+// inner containers' fresh results. Computed as one upfront pass over *this*
+// transaction's events, so a single die roll inside a doubly-nested
+// container resolves in one go.
 //
 // This runs synchronously, with no microtask hop, which matters when this
 // is reached from *inside* an open transaction (a caller that folds its own
@@ -582,13 +583,13 @@ function onToysChanged(events, transaction) {
 // redundant second time once its observer fires; the origin check in
 // onToysChanged handles the DERIVED commits this function itself makes.
 function dispatchContentsChangeCascade(events) {
-  const trayIds = Toys.affectedTrayIdsInnerFirst(events.map(e => e.target));
-  if (!trayIds.length) return;
+  const containerIds = Toys.affectedContainerIdsInnerFirst(events.map(e => e.target));
+  if (!containerIds.length) return;
 
   const layerEl = _svgEl.querySelector('#toys-layer');
   _dispatchingContentsChange = true;
   try {
-    Toys.runContentsChangeCascadeSync(_ydoc, _yToys, layerEl, trayIds);
+    Toys.runContentsChangeCascadeSync(_ydoc, _yToys, layerEl, containerIds);
   } catch (err) {
     console.error('[app] contents_change_handler dispatch failed', err);
   } finally {
@@ -1260,7 +1261,7 @@ const App = {
 
     // Live drop-target affordance: re-hit-test on every move against the
     // *drop* position (rx, ry — already boundary/snap-validated above), not
-    // the raw pointer, so the highlighted tray always matches what
+    // the raw pointer, so the highlighted container always matches what
     // commitMove would actually reparent into.
     const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
     if (moduleForElement(domEl) === 'toys') {
@@ -1284,7 +1285,7 @@ const App = {
 
     // Same hit-test move() used for the live hover highlight, run once more
     // against the final drop position
-    const dropTrayId = mtype === 'toys'
+    const dropContainerId = mtype === 'toys'
       ? findDropTarget(_svgEl.querySelector('#toys-layer'), id, rx, ry)
       : null;
 
@@ -1294,9 +1295,9 @@ const App = {
     _awareness.setLocalStateField('drag', null);
     _dragState = null;
 
-    if (dropTrayId) {
-      // Drop into a tray = reparent + reposition into the tray, plus the
-      // tray's own contents_change_handler reaction — ALL in one
+    if (dropContainerId) {
+      // Drop into a container = reparent + reposition into it, plus its
+      // own contents_change_handler reaction — ALL in one
       // transaction, via the same DOM-based gesture machinery toy handlers
       // use (Toys.runGestureSync): reparent and reposition are plain DOM
       // mutations captured by one envelope, the cascade runs against that
@@ -1304,43 +1305,43 @@ const App = {
       // Yjs in one commitEnvelope call. One undo step, one thing to
       // arbitrate or fork on conflict, no "die inserted but its reaction
       // lost" intermediate.
-      UndoRedo.tag(`move ${id.slice(0, 6)} into a tray`);
+      UndoRedo.tag(`move ${id.slice(0, 6)} into a container`);
       // Same guard as invokeToyMenuAction/commitToy, same reason:
       // runGestureSync already runs its own complete cascade before
       // committing (folds under an unlabeled transact, effectively null
       // origin — see undo_redo.js's "Atomicity" note), so the observer
-      // must not recompute the same trays again.
+      // must not recompute the same containers again.
       _dispatchingContentsChange = true;
       try {
         const layerEl = _svgEl.querySelector('#toys-layer');
         _ydoc.transact(() => {
           Toys.runGestureSync(_ydoc, layerEl, () => {
-            Toys.reparentToyDom(layerEl, id, dropTrayId);
-            const movedEl  = layerEl.querySelector(`[data-id="${id}"]`);
-            const trayEl   = layerEl.querySelector(`[data-id="${dropTrayId}"]`);
-            const trayGeom = trayEl && Toys.getGeom(trayEl);
-            if (trayGeom) {
-              Toys.applyMoveDom(movedEl, rx - trayGeom.x, ry - trayGeom.y);
+            Toys.reparentToyDom(layerEl, id, dropContainerId);
+            const movedEl      = layerEl.querySelector(`[data-id="${id}"]`);
+            const containerEl  = layerEl.querySelector(`[data-id="${dropContainerId}"]`);
+            const containerGeom = containerEl && Toys.getGeom(containerEl);
+            if (containerGeom) {
+              Toys.applyMoveDom(movedEl, rx - containerGeom.x, ry - containerGeom.y);
             }
           }, { origin: DERIVED_ORIGIN });
         });
       } catch (err) {
-        // a malformed tray asset can reach here and throw.
+        // a malformed container asset can reach here and throw.
         // Surface it, else the pointerup handler may crash silently mid-drag.
-        UI.toast(`Could not move into tray: ${err.message}`, 'warn');
+        UI.toast(`Could not move into container: ${err.message}`, 'warn');
         return;
       } finally {
         _dispatchingContentsChange = false;
       }
 
-      // A toy landing inside a tray leaves it: selection doesn't carry
-      // through a reparent, mirroring archive2025's own drop-into-tray
+      // A toy landing inside a container leaves it: selection doesn't carry
+      // through a reparent, mirroring archive2025's own drop-into-container
       // behavior.
       _clearClaims();
 
       // observeDeep fires and calls renderDoc() — same as the ordinary
       // move-commit path below.
-      addHistory(`moved ${id.slice(0, 6)} into a tray`, {
+      addHistory(`moved ${id.slice(0, 6)} into a container`, {
         fill: domEl?.getAttribute('fill'),
         elType: mtype,
       });
@@ -1372,7 +1373,7 @@ const App = {
   // click-to-select, click-again-to-resize toggle
   // getResizeCorner   — hit-test a canvas-space point against id's corner
   //                     handles; used by canvas.js on pointerdown to decide
-  //                     whether a click on an already-resize-mode tray
+  //                     whether a click on an already-resize-mode container
   //                     starts a resize gesture or falls through.
   // lifecycle: startResize/resize/commitResize/cancelResize
 

@@ -13,7 +13,7 @@
  * the project's convention that app.js integration is e2e, not vitest).
  * placeInTrayAtomic() below is a faithful, literal re-implementation of
  * exactly what commitMove's drop branch now does — reparent + move +
- * affectedTrayIdsInnerFirst([...tr.changed.keys()]) + runContentsChangeCascadeSync,
+ * affectedContainerIdsInnerFirst([...tr.changed.keys()]) + runContentsChangeCascadeSync,
  * all inside one ydoc.transact — built from the same exported toys.js
  * primitives, mirroring contents-change-cascade.test.js's wireCascade approach.
  *
@@ -30,7 +30,7 @@ import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   addToy, reparentToy, applyMoveCommit, getGeom, findToy, render,
-  affectedTrayIdsInnerFirst, runContentsChangeCascadeSync,
+  affectedContainerIdsInnerFirst, runContentsChangeCascadeSync,
   clearYNodeMap, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { runToyHandler, ENVELOPE_ORIGIN } from '../../src/envelope.js'
@@ -101,8 +101,8 @@ function placeInTrayAtomic(ydoc, yToys, layerEl, dieId, trayId, dropX = 10, drop
       const trayEl   = layerEl.querySelector(`[data-id="${trayId}"]`)
       const trayGeom = trayEl && getGeom(trayEl)
       if (trayGeom) applyMoveCommit(ydoc, movedEl, dropX - trayGeom.x, dropY - trayGeom.y)
-      const trayIds = affectedTrayIdsInnerFirst([...tr.changed.keys()])
-      runContentsChangeCascadeSync(ydoc, yToys, layerEl, trayIds)
+      const containerIds = affectedContainerIdsInnerFirst([...tr.changed.keys()])
+      runContentsChangeCascadeSync(ydoc, yToys, layerEl, containerIds)
     })
   } finally {
     ydoc.off('update', onUpdate)

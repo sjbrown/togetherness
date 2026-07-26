@@ -457,20 +457,47 @@ function yExactSelector(yEl, selector, posContext = false) {
 
 
 /**
- * Remove a toy by id — searches the whole toys tree, including nested
+ * Remove a toy element from the DOM by id — searches the whole toys tree,
+ * including nested. A DOM operation, like every other structural toy
+ * mutation now. Call from inside runInEnvelope(Sync); this function
+ * doesn't open its own envelope, so it composes with whatever else the
+ * caller wants folded into the same transaction (a batch delete — see
+ * app.js's deleteMultiSelected, which already wraps its own calls in one
+ * outer ydoc.transact()). Returns true if found and removed, false
+ * otherwise.
+ *
+ * Deliberately does NOT run the contents_change_handler cascade itself
+ * (unlike reparentToyDom's callers) — matching the old pure-Yjs
+ * deleteToy's behavior, a delete relies on the observer-driven fallback
+ * cascade to recompute any container a removed toy was sitting in.
+ */
+export function deleteToyDom(layerEl, id) {
+  const el = layerEl.querySelector(`[data-id="${id}"]`)
+  if (!el) return false
+  el.remove()
+  return true
+}
+
+/**
+ * Convenience wrapper over deleteToyDom for callers (mainly tests, and the
+ * shared LayerAPI) that just want "delete this toy" as one self-contained
+ * atomic action. Renders a scratch layer from the current Yjs state,
+ * removes inside an envelope, commits. Same external contract the old
+ * pure-Yjs deleteToy had.
  */
 export function deleteToy(ydoc, yToys, id) {
-  const location = yExactSelector(yToys, `[data-toy-id="${id}"]`, true)
-  if (!location) return false
-  ydoc.transact(() => {
-    location.parent.delete(location.index, 1)
-  })
+  const layerEl = document.createElementNS(SVG_NS, 'g')
+  render(yToys, layerEl)
+  let found = false
+  const records = runInEnvelopeSync(layerEl, () => { found = deleteToyDom(layerEl, id) })
+  if (!found) return false
+  commitEnvelope(ydoc, records)
   return true
 }
 
 /**
  * Find a toy's <g> wrapper by id — searches the whole toys tree, including
- * nested inside trays. Returns null if not found.
+ * nested inside containers. Returns null if not found.
  */
 export function findToy(yToys, id) {
   return yExactSelector(yToys, `[data-toy-id="${id}"]`)
@@ -485,8 +512,8 @@ export function findToy(yToys, id) {
  * pure Yjs write. Call from inside runInEnvelope(Sync); this function
  * doesn't open its own envelope, so it composes with whatever else the
  * caller wants folded into the same transaction (a reposition, a
- * contents_change_handler cascade — see commitMove's drop-into-tray path
- * in app.js). envelope.js's MutationObserver captures the move as
+ * contents_change_handler cascade — see commitMove's drop-into-container
+ * path in app.js). envelope.js's MutationObserver captures the move as
  * ordinary childList records (removed from the old parent, added to the
  * new); commitEnvelope translates it into Yjs the same way it translates
  * any other structural mutation — no special-casing needed here at all,
@@ -595,8 +622,8 @@ function pointInRect(x, y, rect) {
  *
  *  - (rx, ry) is the drop centre point
  *
- * Only top-level toys are considered — nested toys (e.g. a tray
- * inside a tray) are deliberately out of scope.
+ * Only top-level toys are considered — nested toys (e.g. a tray inside a
+ * bag) are deliberately out of scope.
  *
  */
 export function findDropTarget(layerEl, draggedId, rx, ry) {
@@ -989,64 +1016,63 @@ export function getTtState(yToy) {
 }
 
 
-/** Overwrite yEl's Y.XmlText content in place, creating one if absent. */
-function setYTextContent(yEl, newText) {
-  const existing = yEl?.toArray().find(n => n instanceof Y.XmlText);
-  if (existing) {
-    existing.delete(0, existing.length);
-    existing.insert(0, newText);
-  } else if (yEl) {
-    yEl.insert(yEl.length, [new Y.XmlText(newText)]);
+/**
+ * Edit a toy's own color and/or name — a DOM operation, like every other
+ * content-mutating toy operation now. Call from inside runInEnvelope(Sync);
+ * this function doesn't open its own envelope.
+ *   color — every one of the toy's own feColorMatrix nodes is updated and
+ *           data-color on the toy's own wrapper is kept in sync.
+ *   name  — the toy's own .tspan_name text is overwritten (boundary-safe
+ *           the same way — a container inside a container keeps its own name).
+ */
+export function editDom(toyEl, editData) {
+  if (!toyEl) return
+  const toyId = toyEl.getAttribute('data-id')
+  if (!toyId) return
+  const { color, name } = editData
+  if (color === undefined && name === undefined) return
+
+  if (color !== undefined) {
+    const values = colorMatrixValues(color)
+    toyEl.querySelectorAll(`.${toyId}__tt_color_filter`).forEach(filterEl => {
+      filterEl.querySelectorAll(':scope > feColorMatrix').forEach(m => m.setAttribute('values', values))
+    })
+    toyEl.setAttribute('data-color', color)
+  }
+  if (name !== undefined) {
+    const nameEl = toyEl.querySelector(`.${toyId}__tspan_name`)
+    if (nameEl) nameEl.textContent = String(name)
   }
 }
 
 /**
- * Apply an editData object to a toy. Called by App.commitEdit — never
- * called directly from the UI.
- *   color — all of the toy's own feColorMatrix nodes are updated and
- *           data-color on the <g> wrapper is kept in sync.
- *   name  — the toy's own '.tspan_name' text is overwritten (boundary-safe
- *           the same way — a tray inside a tray keeps its own name).
+ * Convenience wrapper over editDom for callers (mainly tests, and the
+ * shared LayerAPI's Yjs-node-based contract) that just want to edit a toy
+ * given its Yjs node rather than a live DOM element. Renders a scratch
+ * layer from the current Yjs state, edits inside an envelope, commits.
+ * Same external contract the old pure-Yjs edit had.
  */
 export function edit(ydoc, yToy, editData) {
-  if (!yToy) return;
+  if (!yToy) return
   const toyId = yToy.getAttribute('data-toy-id')
-  if (!toyId) return;
-  const { color, name } = editData;
-  if (color === undefined && name === undefined) return;
-
-  function findOwnColorMatrixYNodes() {
-    const yFilters = yClassSelector(yToy, `${toyId}__tt_color_filter`)
-    return yFilters.flatMap(f =>
-      f.toArray().filter(c => c instanceof Y.XmlElement && c.nodeName === 'feColorMatrix')
-    )
-  }
-
-  function findOwnNameYNode() {
-    return yClassSelector(yToy, `${toyId}__tspan_name`)[0] ?? null
-  }
-
-  ydoc.transact(() => {
-    if (color !== undefined) {
-      const colorMatrices = findOwnColorMatrixYNodes(yToy);
-      const values = colorMatrixValues(color);
-      for (const m of colorMatrices) m.setAttribute('values', values);
-      yToy.setAttribute('data-color', color);
-    }
-    if (name !== undefined) {
-      const nameNode = findOwnNameYNode(yToy);
-      if (nameNode) setYTextContent(nameNode, String(name));
-    }
-  });
+  if (!toyId) return
+  const yToys   = ydoc.getXmlFragment('toys')
+  const layerEl = document.createElementNS(SVG_NS, 'g')
+  render(yToys, layerEl)
+  const toyEl = layerEl.querySelector(`[data-id="${toyId}"]`)
+  const records = runInEnvelopeSync(layerEl, () => editDom(toyEl, editData))
+  commitEnvelope(ydoc, records)
 }
 
 // ── Toy behaviour contract ──────────────────────────────────────────────────
 //
-// A toy's <script> nodes (preserved in the Yjs tree, never mirrored — see
-// module header) define behaviour: menu actions and lifecycle hooks, as a
-// named object on globalThis. This section is that contract's three parts:
-// activation (run the scripts), menu (surface + invoke actions), and
-// lifecycle (run initialize() once per placed instance).
+// A toy's <script> tags (hoisted out to the document's own `scripts`
+// fragment, or fetched fresh off disk — see "Script hoisting" above; never
+// part of the toy's own subtree) define behaviour: menu actions and
+// lifecycle hooks, as a named object on globalThis. This section is that
+// contract's three parts: activation (run the scripts), menu (surface +
+// invoke actions), and lifecycle (run initialize() once per placed
+// instance).
 //
 // Example, what a toy's own <script> looks like:
 //
@@ -1252,13 +1278,13 @@ export async function invokeMenuAction(ydoc, yToys, layerEl, svgEl, namespace, k
  * so that first match can react to any changes and then further ancestors
  * will get a chance to react to THOSE changes.
  */
-function immediateContainingTrayId(node) {
+function immediateContainingId(node) {
   let el = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement
   while (el) {
     if (el.classList?.contains('contents_group')) {
-      // contents_group -> tray's own <svg> -> tray's <g data-id>
-      const trayG = el.parentElement?.parentElement
-      return trayG?.getAttribute?.('data-id') ?? null
+      // contents_group -> container's own <svg> -> container's <g data-id>
+      const containerG = el.parentElement?.parentElement
+      return containerG?.getAttribute?.('data-id') ?? null
     }
     el = el.parentElement
   }
@@ -1266,14 +1292,14 @@ function immediateContainingTrayId(node) {
 }
 
 /**
- * Every tray immediately affected by a MutationRecord[], in first-seen
- * order, deduplicated.
+ * Every container immediately affected by a MutationRecord[], in
+ * first-seen order, deduplicated.
  */
-function affectedTrayIdsFromRecords(records) {
+function affectedContainerIdsFromRecords(records) {
   const ids = []
   const seenThisRound = new Set()
   for (const record of records) {
-    const id = immediateContainingTrayId(record.target)
+    const id = immediateContainingId(record.target)
     if (id && !seenThisRound.has(id)) { seenThisRound.add(id); ids.push(id) }
   }
   return ids
@@ -1288,17 +1314,17 @@ function affectedTrayIdsFromRecords(records) {
  * and its whole cascade land as a single Yjs transaction, single undo
  * step, single touched-set/bundle).
  *
- * Each round resolves only the IMMEDIATE containing tray for whatever
+ * Each round resolves only the IMMEDIATE containing container for whatever
  * changed in the round before it
  *
- * Each tray's handler runs AT MOST ONCE per gesture.
+ * Each container's handler runs AT MOST ONCE per gesture.
  * If a cycle is detected, we log loudly (console.error) and skip
  */
 function runContentsChangeCascadeInto(allRecords, layerEl) {
   const seen = new Set()
   let toCheck = allRecords
   while (toCheck.length) {
-    const candidateIds = affectedTrayIdsFromRecords(toCheck)
+    const candidateIds = affectedContainerIdsFromRecords(toCheck)
     const freshIds  = candidateIds.filter(id => !seen.has(id))
     const repeatIds = candidateIds.filter(id => seen.has(id))
     if (repeatIds.length) {
@@ -1307,16 +1333,16 @@ function runContentsChangeCascadeInto(allRecords, layerEl) {
     if (!freshIds.length) break
 
     const stepRecords = []
-    for (const trayId of freshIds) {
-      seen.add(trayId)
-      const trayEl = layerEl.querySelector(`[data-id="${trayId}"]`)
-      if (!trayEl) continue // e.g. the tray itself was deleted mid-cascade
-      const handlers = getNamespacesForType(trayEl.getAttribute('data-toy-type'))
+    for (const containerId of freshIds) {
+      seen.add(containerId)
+      const containerEl = layerEl.querySelector(`[data-id="${containerId}"]`)
+      if (!containerEl) continue // e.g. the container itself was deleted mid-cascade
+      const handlers = getNamespacesForType(containerEl.getAttribute('data-toy-type'))
         .map(name => globalThis[name])
         .filter(ns => ns && typeof ns.contents_change_handler === 'function')
       if (!handlers.length) continue
-      const records = runInEnvelopeSync(trayEl, () => {
-        handlers.forEach(ns => ns.contents_change_handler(trayEl))
+      const records = runInEnvelopeSync(containerEl, () => {
+        handlers.forEach(ns => ns.contents_change_handler(containerEl))
       })
       stepRecords.push(...records)
     }
@@ -1352,7 +1378,7 @@ export function runGestureSync(ydoc, layerEl, fn, opts = {}) {
 
 /**
  * Synchronous sibling of invokeMenuAction. Same validation and effect, but
- * on the current tick, and with any tray reaction the handler triggers
+ * on the current tick, and with any container reaction the handler triggers
  * folded into the SAME transaction as the handler's own commit — one
  * transaction, one undo step, no window where the action landed but its
  * reaction hadn't yet.
@@ -1403,7 +1429,7 @@ export async function initializeToy(ydoc, yToys, layerEl, svgEl, toyType) {
 /**
  * Synchronous sibling of initializeToy.
  * Same effect, same one-time-at-placement contract, but on the current
- * tick, with any tray reaction folded into the same transaction
+ * tick, with any container reaction folded into the same transaction
  *
  * Ordinarily there's nothing to fold. But initialize() has the freedom
  * to mutate anything in toys-layer.
@@ -1422,22 +1448,22 @@ export function initializeToySync(ydoc, yToys, layerEl, svgEl, toyType) {
 }
 
 /**
- * Every tray id ancestor of yNode
+ * Every container id ancestor of yNode
  * (or yNode itself, if yNode IS a .contents_group), ordered innermost
  * to outermost (From Yjs tree's .parent chain, not the DOM).
  *
  * Used to percolate up contents_change_handler runs after a local change
  */
-export function findAncestorTrayIds(yNode) {
+export function findAncestorContainerIds(yNode) {
   const ids = []
   let node = yNode
   while (node) {
     const isContentsGroup = node instanceof Y.XmlElement && node.nodeName === 'g' &&
       (node.getAttribute('class') || '').split(/\s+/).includes('contents_group')
     if (isContentsGroup) {
-      const trayG = node.parent?.parent // contents_group -> tray's own <svg> -> tray's <g>
-      const trayId = trayG instanceof Y.XmlElement ? trayG.getAttribute('data-toy-id') : null
-      if (trayId) ids.push(trayId)
+      const containerG = node.parent?.parent // contents_group -> container's own <svg> -> container's <g>
+      const containerId = containerG instanceof Y.XmlElement ? containerG.getAttribute('data-toy-id') : null
+      if (containerId) ids.push(containerId)
     }
     node = node.parent
   }
@@ -1483,33 +1509,35 @@ export function runContentsChangeHandlerSync(ydoc, yToys, layerEl, svgEl, toyTyp
 }
 
 /**
- * Given the Y nodes a transaction touched, return the ids of every tray
- * whose contents changed, ordered innermost-first (deeper trays recompute
- * before their ancestors, so an outer tray reads its inner tray's fresh
- * result). This is the same depth computation app.js's observer does over
- * its `events`, but sourced from any array of changed Y nodes — e.g.
- * `[...transaction.changed.keys()]`, available *inside* the triggering
- * transaction — so the cascade can run there and fold in. A single changed
- * node already yields its whole ancestor-tray chain via findAncestorTrayIds,
- * so a drop into a nested tray resolves both trays from one entry.
+ * Given the Y nodes a transaction touched, return the ids of every
+ * container whose contents changed, ordered innermost-first (deeper
+ * containers recompute before their ancestors, so an outer container reads
+ * its inner container's fresh result). This is the same depth computation
+ * app.js's observer does over its `events`, but sourced from any array of
+ * changed Y nodes — e.g. `[...transaction.changed.keys()]`, available
+ * *inside* the triggering transaction — so the cascade can run there and
+ * fold in. A single changed node already yields its whole ancestor-
+ * container chain via findAncestorContainerIds, so a drop into a nested
+ * container resolves both containers from one entry.
  */
-export function affectedTrayIdsInnerFirst(changedYNodes) {
+export function affectedContainerIdsInnerFirst(changedYNodes) {
   const depthById = new Map()
   for (const node of changedYNodes) {
-    const chain = findAncestorTrayIds(node) // innermost first
-    chain.forEach((trayId, i) => {
+    const chain = findAncestorContainerIds(node) // innermost first
+    chain.forEach((containerId, i) => {
       const depth = chain.length - i
-      if (depth > (depthById.get(trayId) ?? -1)) depthById.set(trayId, depth)
+      if (depth > (depthById.get(containerId) ?? -1)) depthById.set(containerId, depth)
     })
   }
   return [...depthById.keys()].sort((a, b) => depthById.get(b) - depthById.get(a))
 }
 
 /**
- * Run the contents_change_handler cascade synchronously for `trayIds`
- * (innermost-first — see affectedTrayIdsInnerFirst). Re-renders layerEl
- * before each tray so an outer tray reads the inner tray's just-committed
- * result. Each handler commits under DERIVED_ORIGIN; when this runs inside an
+ * Run the contents_change_handler cascade synchronously for `containerIds`
+ * (innermost-first — see affectedContainerIdsInnerFirst). Re-renders
+ * layerEl before each container so an outer container reads the inner
+ * container's just-committed result. Each handler commits under
+ * DERIVED_ORIGIN; when this runs inside an
  * open transaction those commits collapse into it, making a placement and
  * its reaction one atomic transaction. When run from an observer (no open
  * transaction), each is its own DERIVED transaction instead — same end

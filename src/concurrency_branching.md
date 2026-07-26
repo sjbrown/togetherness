@@ -175,10 +175,10 @@ in that process, since nothing in it depends on Yjs at all.
 Only then is everything translated into Yjs in one `commitEnvelope` call.
 Each affected tray's
 `contents_change_handler` runs at most once per gesture (a "seen" set); a
-handler whose own output would require re-running an already-seen tray — a
-genuine write-back cycle between trays, not just nesting — is logged
-loudly (`console.error`) and skipped, never looped. `commitMove`'s
-drop-into-tray path and the observer-driven fallback
+handler whose own output would require re-running an already-seen
+container — a genuine write-back cycle between containers, not just
+nesting — is logged loudly (`console.error`) and skipped, never looped.
+`commitMove`'s drop-into-container path and the observer-driven fallback
 (`dispatchContentsChangeCascade`, for raw Yjs writes with no self-cascade of
 their own: undo/redo, import) are a different case — no DOM records to work
 from — and still use the original Yjs-tree-walking mechanism
