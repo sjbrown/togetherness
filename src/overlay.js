@@ -708,7 +708,7 @@ function renderRemoteSelection(geo, entry, scale) {
   group.appendChild(ring);
 
   // Peer name label above the ring
-  const name = (entry.peerId ?? '?').slice(0, 6);
+  const name = (entry.peerId ?? '?').slice(8);
   const lx   = x - PAD;
   const ly   = y - PAD - 4 / scale;
   const fs   = 9 / scale;

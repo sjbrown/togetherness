@@ -390,8 +390,8 @@ export const BOUNPOS_TYPES = {
         name:       { kind: 'string', show: ['add', 'edit'] },
         snapRadius: { kind: 'number', min: 1, max: 4, step: 1, show: ['edit'] },
         spacing:    { kind: 'number', min: 20, max: 200, step: 4, show: ['addQuick'] },
-        xSpacing:   { kind: 'number', min: 30, max: 200, step: 5, show: ['edit'] },
-        ySpacing:   { kind: 'number', min: 30, max: 200, step: 5, show: ['edit'] },
+        xSpacing:   { kind: 'number', min: 30, max: 200, step: 1, show: ['edit'] },
+        ySpacing:   { kind: 'number', min: 30, max: 200, step: 1, show: ['edit'] },
       },
     },
     create(ydoc, yBounPos, params) {
@@ -413,8 +413,8 @@ export const BOUNPOS_TYPES = {
         type:       { show: [] },
         name:       { kind: 'string', show: ['add', 'edit'] },
         snapRadius: { kind: 'number', min: 1, max: 4, step: 1, show: ['edit'] },
-        xSpacing:   { kind: 'number', min: 30, max: 200, step: 5, show: ['edit'] },
-        ySpacing:   { kind: 'number', min: 30, max: 200, step: 5, show: ['edit'] },
+        xSpacing:   { kind: 'number', min: 30, max: 200, step: 1, show: ['edit'] },
+        ySpacing:   { kind: 'number', min: 30, max: 200, step: 1, show: ['edit'] },
       },
     },
     create(ydoc, yBounPos, params) {
@@ -436,8 +436,8 @@ export const BOUNPOS_TYPES = {
         type:       { show: [] },
         name:       { kind: 'string', show: ['add', 'edit'] },
         snapRadius: { kind: 'number', min: 1, max: 4, step: 1, show: ['edit'] },
-        xSpacing:   { kind: 'number', min: 30, max: 200, step: 5, show: ['edit'] },
-        ySpacing:   { kind: 'number', min: 30, max: 200, step: 5, show: ['edit'] },
+        xSpacing:   { kind: 'number', min: 30, max: 200, step: 1, show: ['edit'] },
+        ySpacing:   { kind: 'number', min: 30, max: 200, step: 1, show: ['edit'] },
       },
     },
     create(ydoc, yBounPos, params) {

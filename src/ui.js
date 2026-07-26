@@ -726,7 +726,8 @@ export function peersBody(data) {
 }
 function avatarSVG(p) {
   const fill = p.gradId ? `url(#${p.gradId})` : p.color;
-  const initial = p.name[0].toUpperCase();
+  const nametokens = p.name.split('-')
+  const initial = nametokens[nametokens.length -1][0].toUpperCase();
   return `<svg class="avatar" viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
     <circle cx="16" cy="16" r="16" fill="${fill}"></circle>
     <text x="16" y="21" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">${initial}</text>
@@ -736,7 +737,7 @@ function peerRowsHTML(peers) {
   if (!peers.length)
     return '<div style="font-size:13px;color:var(--text-3);padding:8px 0">No other peers connected</div>';
   return peers.map(p =>
-    `<div class="peer-row">${avatarSVG(p)}<div><div style="font-size:14px">${p.name}</div><div style="font-size:12px;color:var(--text-3)">${p.live ? 'editing now' : 'offline'}</div></div>${p.live ? '<span class="pulse"></span>' : ''}</div>`
+    `<div class="peer-row">${avatarSVG(p)}<div><div style="font-size:14px">${p.name.slice(8)}</div><div style="font-size:12px;color:var(--text-3)">${p.live ? 'editing now' : 'offline'}</div></div>${p.live ? '<span class="pulse"></span>' : ''}</div>`
   ).join('');
 }
 export function updatePeersPanel() {
