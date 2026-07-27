@@ -42,28 +42,63 @@ function idKey({ client, clock }) {
   return `${client}:${clock}`
 }
 
+// A touched node's own human-readable identity, for inspection/debugging
+// only — never used to resolve or compare items (the Map's own key,
+// "client:clock", is the only thing anything resolves an item by). A
+// toy's own data-id if it has one, else the plain DOM id, else just the
+// nodeName (a die's own <g> has a data-id; a bare tspan/text node inside
+// it usually doesn't, so it falls through to "tspan"/"#text" — good
+// enough for now, revisit if that's ever not enough to tell touched
+// entries apart at a glance).
+function domIdFor(node) {
+  if (node?.nodeType === Node.ELEMENT_NODE) {
+    return node.getAttribute('data-id') || node.getAttribute('id') || node.nodeName
+  }
+  return node?.nodeName ?? null
+}
+
 /**
- * Build the touched-node-set for a committed envelope, from the raw
+ * Build the touched-node map for a committed envelope, from the raw
  * MutationRecord[] it produced. Must be called AFTER the records have been
- * applied to the Yjs doc — a freshly-inserted node has no backing Item,
+ * applied to the Yjs doc — a freshly-inserted node has no backing Item
  * until its insert op has actually landed.
  *
- * Granularity is node-level: each record's target, plus every added/
- * removed node, contributes at most one entry.
+ * Returns a Map<idKeyString, {domId, mutation}> — a small, purpose-built
+ * distillation of MutationRecord, not another ad-hoc reimplementation of
+ * it scattered across call sites: everything that needs "just the
+ * touched ids" can still do `.keys()`; everything that needs to know
+ * whether something was added, removed, or merely touched can filter on
+ * `.mutation` right here, in one place a developer can actually inspect,
+ * instead of that distinction disappearing into a bare id set.
  *
- * Returns a Map<idKeyString, {client, clock}>
+ * `mutation` is `'added'`/`'removed'` for a node appearing in a record's
+ * addedNodes/removedNodes, or the record's own MutationRecord.type
+ * (`'attributes'`/`'characterData'`/`'childList'`) for record.target
+ * itself.
+ *
+ * Records are processed in order, each entry OVERWRITING any earlier one
+ * for the same item — the final mutation for a given item is whatever
+ * actually happened to it LAST within this commit. This is what makes a
+ * reparent (removed from its old parent, added to its new one, same
+ * commit) correctly end up tagged 'added', not 'removed': the node didn't
+ * vanish, it moved. Conversely, a node that's genuinely gone by the end
+ * of the commit (deleted, or moved away with nothing put back) keeps its
+ * `'removed'` tag — that's the signal `escalation.js` needs to tell "this
+ * commit's content is fully accounted for by its own records" from "this
+ * commit removed something a snapshot needs to cover."
  */
 export function touchedSetFromRecords(records) {
   const touched = new Map()
-  const add = (node) => {
+  const set = (node, mutation) => {
     const yNode = yNodeFor(node)
     const id = itemId(yNode)
-    if (id) touched.set(idKey(id), id)
+    if (!id) return
+    touched.set(idKey(id), { domId: domIdFor(node), mutation })
   }
   for (const record of records) {
-    add(record.target)
-    record.addedNodes?.forEach(add)
-    record.removedNodes?.forEach(add)
+    set(record.target, record.type)
+    record.addedNodes?.forEach(n => set(n, 'added'))
+    record.removedNodes?.forEach(n => set(n, 'removed'))
   }
   return touched
 }
@@ -106,7 +141,7 @@ export function recordReactionBundle(ydoc, tr, origin, touched, authorId) {
     clientID:    ydoc.clientID,
     clock:       Y.getState(ydoc.store, ydoc.clientID),
     beforeState: Object.fromEntries(tr.beforeState),
-    touched:     [...touched.keys()],
+    touched:     Object.fromEntries(touched),
     origin,
     authorId,
     ts:          Date.now(),
@@ -144,8 +179,7 @@ export function areConcurrent(a, b) {
  * True if two bundles' touched-sets share at least one node.
  */
 export function touchedSetsOverlap(a, b) {
-  const bSet = new Set(b.touched)
-  return a.touched.some(k => bSet.has(k))
+  return Object.keys(a.touched).some(k => k in b.touched)
 }
 
 /**

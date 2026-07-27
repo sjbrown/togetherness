@@ -126,14 +126,28 @@ function restoreFromSnapshot(ydoc, bundle) {
 }
 
 /**
- * Revert a losing bundle: delete every item in its touched-set that the
- * bundle's OWN commit actually created (item.id.client === bundle.clientID)
- * from wherever it currently lives, THEN restore any pre-existing content
- * that same commit removed, if a matching snapshot is still available (see
- * restoreFromSnapshot above). Pre-existing nodes the bundle merely
- * touched — read, or wrote an attribute on, without removing — are left
- * alone throughout: see the module doc comment for why that's the correct
- * scope, not a gap.
+ * Revert a losing bundle: delete every item this bundle's own commit
+ * actually ADDED (its `touched` entry's own `mutation === 'added'` — see
+ * conflict.js's touchedSetFromRecords) from wherever it currently lives,
+ * THEN restore any pre-existing content that same commit removed
+ * (`mutation === 'removed'`), if a matching snapshot is still available
+ * (see restoreFromSnapshot above). Pre-existing nodes the bundle merely
+ * touched — read, or wrote an attribute on, without adding or removing —
+ * are left alone throughout: see the module doc comment for why that's
+ * the correct scope, not a gap.
+ *
+ * `mutation` is checked, not `item.id.client === bundle.clientID` (an
+ * earlier version of this function used that instead) — the two aren't
+ * the same question. clientID only tells you the item was created by
+ * this PEER, at some point, ever; mutation tells you it was created by
+ * THIS COMMIT specifically. A peer's own touched-set can legitimately
+ * reference an item they created in some earlier, unrelated commit —
+ * touched only because this commit happened to read or write an
+ * attribute on it — and the clientID check would have wrongly deleted
+ * that too. touchedSetFromRecords's own "last mutation wins" ordering is
+ * what makes checking `mutation` here correct: a reparent's node ends up
+ * tagged 'added' even though the SAME commit also removed a stale
+ * reference to it, because 'added' is genuinely what happened to it last.
  *
  * Must be called from inside a ydoc.transact() — this performs raw
  * structural deletes/inserts directly, not an envelope-captured DOM
@@ -148,10 +162,10 @@ function restoreFromSnapshot(ydoc, bundle) {
  * restoreFromSnapshot's doc comment for the honest limit here.
  */
 export function revertBundle(ydoc, bundle) {
-  for (const key of bundle.touched) {
+  for (const [key, { mutation }] of Object.entries(bundle.touched)) {
+    if (mutation !== 'added') continue
     const yNode = resolveItemKey(ydoc, key)
     if (!yNode) continue
-    if (yNode._item.id.client !== bundle.clientID) continue
     const parent = yNode.parent
     if (!parent || typeof parent.toArray !== 'function') continue
     const idx = parent.toArray().indexOf(yNode)

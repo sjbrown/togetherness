@@ -279,7 +279,24 @@ independent-drop case that must stay conflict-free.
   Stable across replicas once synced, so a touched-set built on one peer can
   be compared against one built on another without any app-level id scheme.
   `touchedSetFromRecords(records)` walks the in-scope records exactly as
-  described above and returns a `Map<idKeyString, {client, clock}>`.
+  described above and returns a `Map<idKeyString, {domId, mutation}>` — a
+  small, purpose-built distillation of `MutationRecord`, not a bare id set:
+  `mutation` is `'added'`/`'removed'` for a node in a record's
+  addedNodes/removedNodes, or the record's own `MutationRecord.type`
+  (`'attributes'`/`'characterData'`/`'childList'`) for `record.target`
+  itself; `domId` is the touched node's own `data-id` (falling back to a
+  plain DOM `id`, falling back to `nodeName`) — for inspection/debugging
+  only, never for identity (the Map's own key is the only thing anything
+  resolves an item by). Records are processed in order, each entry
+  overwriting any earlier one for the same item, so the *final* mutation
+  reflects whatever actually happened to that item last within the commit —
+  this is what makes a reparent (removed from its old parent, added to its
+  new one, same commit) correctly end up tagged `'added'`, not `'removed'`:
+  the node didn't vanish, it moved. `escalation.js`'s `revertBundle` keys
+  its delete/restore split directly off this: `mutation === 'added'` →
+  delete (this bundle's own insertion); anything still `'removed'` by the
+  end of the commit → needs a snapshot to recover, the actual signal for
+  whether a conflict is fully resolvable in place or needs to escalate.
 - **The bundle:** `commitEnvelope` (`envelope.js`) calls
   `recordReactionBundle(ydoc, tr, origin, touched, authorId)` from *inside*
   the same `ydoc.transact(...)` that applied the reaction's records — atomic
@@ -290,16 +307,17 @@ independent-drop case that must stay conflict-free.
   after the reaction's ops landed, since `Transaction.afterState` isn't
   populated yet inside an open transact() call); `beforeState`
   (`tr.beforeState`, a full state vector) is the causal-knowledge boundary
-  this commit started from; `authorId` is the committing peer's own
-  persistent `user.js` `localId` — self-reported at commit time rather than
-  looked up in a separate structure, since a bundle needs to be resolvable
-  by peers who may never see the authoring peer's own local state (see
-  "Authority ordering" for why this matters). Every qualifying origin
-  (`ENVELOPE_ORIGIN`, `DERIVED_ORIGIN`, `LIFECYCLE_ORIGIN` alike) is
-  bundled — nothing about *how* a handler got invoked makes its writes
-  structurally immune to concurrent collision with another peer's, so
-  nothing is excluded. Bundles live in a new synced `reactionLog` `Y.Array`
-  (`getReactionLog`).
+  this commit started from; `touched` is `touchedSetFromRecords`'s Map,
+  serialized as a plain object (`Object.fromEntries`) for storage; `authorId`
+  is the committing peer's own persistent `user.js` `localId` — self-reported
+  at commit time rather than looked up in a separate structure, since a
+  bundle needs to be resolvable by peers who may never see the authoring
+  peer's own local state (see "Authority ordering" for why this matters).
+  Every qualifying origin (`ENVELOPE_ORIGIN`, `DERIVED_ORIGIN`,
+  `LIFECYCLE_ORIGIN` alike) is bundled — nothing about *how* a handler got
+  invoked makes its writes structurally immune to concurrent collision with
+  another peer's, so nothing is excluded. Bundles live in a new synced
+  `reactionLog` `Y.Array` (`getReactionLog`).
 - **Concurrency test:** two bundles are concurrent
   (`areConcurrent(a, b)`) if they have different authors and neither's
   `beforeState` covers the other's `{clientID, clock}` stamp — i.e. neither
