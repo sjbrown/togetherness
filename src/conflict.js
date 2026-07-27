@@ -11,10 +11,6 @@
  * integrates — for other bundles whose touched-set overlaps AND which are
  * causally concurrent with the new one
  *
- * TODO: Detection only. What to DO about a detected conflict (fast-path
- * in-place resolution vs. branch escalation) is TODO #11 steps 5/6 — not
- * decided here.
- *
  */
 
 import * as Y from 'yjs'
