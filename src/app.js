@@ -521,7 +521,7 @@ function onToysChanged(events, transaction) {
         item.content.getContent().forEach(yEl => {
           if (yEl instanceof Y.XmlElement && yEl.nodeName === 'g') {
             const tid = yEl.getAttribute('data-toy-id') || '?'
-            let msg = `remote: placed ${yEl.getAttribute('data-toy-type')} ${tid.slice(0,6)}`;
+            let msg = `remote: placed ${yEl.getAttribute('data-toy-type')} ${tid.slice(8)}`;
             App.addLog(msg, 'remote')
             addHistory(msg, {fill: yEl.getAttribute('fill'), elType: yEl.nodeName,})
           }
@@ -1177,8 +1177,8 @@ const App = {
       id, toyType: def.toyType, x, y,
       color: _toolParams[toolName]?.fill ?? _myGrad.c1,
     }).then(async () => {
-      addHistory(`placed ${def.label} ${id.slice(0, 6)}`, { elType: 'toy' });
-      App.addLog(`placed ${def.label} ${id.slice(0, 6)}`, 'local');
+      addHistory(`placed ${def.label} ${id.slice(8)}`, { elType: 'toy' });
+      App.addLog(`placed ${def.label} ${id.slice(8)}`, 'local');
 
       // Awaiting activateToyScripts() here guarantees the namespace is actually
       // ready before initialize() reads it off window[namespace].
