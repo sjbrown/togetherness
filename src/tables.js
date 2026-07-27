@@ -248,14 +248,12 @@ async function forkTable(sourceTableId, forkedTableId, forkingUserId) {
   forkDoc.destroy();
 }
 
-// ── Live-doc forking (TODO #11, branch escalation) ──────────────────────
+// ── Live-doc forking ──────────────────────
 //
 // forkTable (above) forks an AT-REST table, reloaded fresh from
 // IndexedDB — the right primitive for home.html's "Duplicate" button, but
 // not for branch escalation, which needs to fork a *live*, in-memory doc
-// at the moment a conflict is detected, mid-session. forkLiveDoc is that:
-// simpler than forkTable, not harder — no loadTableDoc step at all, since
-// the source doc is already in memory.
+// at the moment a conflict is detected, mid-session. forkLiveDoc is that.
 
 /**
  * Deterministically derive a table id from a Y.Doc's current content —
@@ -291,16 +289,12 @@ async function generateForkTableId(ydoc) {
  * (generateForkTableId). Returns the new table's id.
  *
  * The content hash is computed from liveDoc BEFORE anything below mutates
- * a copy of it — forkingUserId differs per peer, so hashing AFTER
- * resetJoinSequenceToSelf would make the id peer-specific too, defeating
- * the entire point (two peers with identical divergent content need the
- * identical id).
+ * a copy of it — hashing AFTER resetJoinSequenceToSelf would make the table
+ * id peer-specific, defeating the point
  *
- * Idempotent in practice, not just in principle: if this is called twice
- * for the same content (this peer redundantly reprocessing, or two of
- * this peer's own tabs both forking), both calls compute the same
- * forkedTableId, and openTablePersistenceSynced syncing into an
- * already-seeded table converges rather than duplicating anything.
+ * Idempotent: if this is called twice for the same content, both calls
+ * compute the same forkedTableId, and openTablePersistenceSynced syncing
+ * into an already-seeded table converges rather than duplicating anything.
  *
  * Does NOT touch the 'tt_tables' registry — same convention as forkTable;
  * callers register the entry themselves via touchTableRecord.
@@ -318,6 +312,8 @@ async function forkLiveDoc(liveDoc, forkingUserId) {
 
   const forkDoc = makeDoc();
   Y.applyUpdate(forkDoc, update);
+  // resetJoinSequenceToSelf must go *after* generateForkTableId, or else Bob
+  // and Clyde won't get the same id, and won't be able to join each other.
   resetJoinSequenceToSelf(forkDoc, forkingUserId);
   await openTablePersistenceSynced(forkedTableId, forkDoc);
   forkDoc.destroy();

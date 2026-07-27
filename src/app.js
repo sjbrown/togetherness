@@ -71,12 +71,8 @@ let _ydoc, _yMeta, _yToys, _yDrawing,
     _awareness, _provider;
 
 // Layers — the canonical LayerAPI dispatch table, built once at boot() once
-// the Yjs fragments exist. Maps the data-module value stamped on each
-// rendered SVG element ('drawing'|'toys'|'boun_pos') to that layer's API:
-// find/delete/getGeom/getAnchor/applyMoveCommit/getTtState/getTtStateSchema/
-// edit/listData, plus applyTtState on drawing/boun_pos (toys.js's own
-// applyTtState was dead code — removed). See moduleForElement() for the
-// lookup key.
+// the Yjs fragments exist.
+// Maps the data-module value stamped on each rendered layer to its' API:
 let _Layers = {};
 
 // Per-layer visibility (local state, not synced).
@@ -90,15 +86,12 @@ let _myId, _myGrad, _tableId;
 let _svgEl;
 let _activeLayer  = 'toys';
 
-// _myClaims is the single local SSOT for this client's committed selection.
-//   { [elId: string]: number }   elId -> claim timestamp (ms)
+// _myClaims is the local single-source-of-truth for this client's
+// committed selection.
+//   { [elId: string]: number }   element Id -> claim timestamp (ms)
 //
 // Membership (which elIds I hold) and recency (since when) together.
 // Invariant: Object.keys(_myClaims) is always the held-id set
-//
-// All writes go through the helpers below, each of which ends in
-// Overlay.localSelectionChanged + _broadcastSelection + UI.onSelectionChanged,
-// so forgetting to broadcast is structurally impossible.
 let _myClaims = {};
 
 // ── Selection mutation helpers —
@@ -459,10 +452,6 @@ function renderBounPosLayer() {
   Canvas.wireShapeClicks(layer);
 }
 
-// Toys layer — mirror each <g> wrapper (and its embedded <svg> sub-document).
-// mousedown selects the toy and begins a drag (toys mode only — the layer's
-// pointer-events are gated by setMode). Movement is applied to the DOM live and
-// committed to the CRDT on drop (see the window mouseup handler).
 function renderToysLayer() {
   const layer = _svgEl.querySelector('#toys-layer');
   if (!layer) throw new Error("renderToysLayer: '#toys-layer' not found in SVG document — malformed template?");
@@ -568,12 +557,11 @@ function onToysChanged(events, transaction) {
     }
   }
 
-  // renderDoc() runs *before* the dispatchContentsChangeCascade below.
+  // renderDoc() must run *before* the dispatchContentsChangeCascade below.
   // contents_change_handler reads the *DOM*, so the toys layer must
-  // already reflect this transaction's just-committed change (eg a mutation
-  // to a die inside .contents_group after a reparentToy)
-  // before the handler runs
+  // already reflect this transaction's changes before the handler runs
   renderDoc();
+
   // Derived contents_change: a local change touched inside a container's
   // .contents_group -- recompute that container's own derived display.
   //
@@ -583,10 +571,10 @@ function onToysChanged(events, transaction) {
   //  - DERIVED/LIFECYCLE origins: these ARE cascade output (or a toy's
   //    one-time initialize), never independent intent, so they must not
   //    trigger another cascade. Gating on origin (not just the
-  //    _dispatchingContentsChange flag) keeps this correct now that the
+  //    _dispatchingContentsChange flag) keeps this correct seeing as the
   //    cascade runs synchronously: a DERIVED commit made from an observer
   //    lands in its own transaction whose observer fires AFTER the flag has
-  //    already been cleared, so the flag alone would no longer catch it.
+  //    already been cleared, so the flag alone would not catch it.
   //  - _dispatchingContentsChange: the drop-into-container path (commitMove)
   //    folds its own reaction into the placement transaction and sets this
   //    flag so the observer doesn't recompute it a second time.
@@ -599,10 +587,9 @@ function onToysChanged(events, transaction) {
 
 // Local transaction (not itself a cascade result) touched something inside a
 // container's .contents_group? Recompute every affected container's own
-// contents_change_handler, innermost first, so outer containers read their
-// inner containers' fresh results. Computed as one upfront pass over *this*
-// transaction's events, so a single die roll inside a doubly-nested
-// container resolves in one go.
+// contents_change_handler.
+// Computed as one upfront pass over *this* transaction's events, so a
+// single die roll inside a doubly-nested container resolves in one go.
 //
 // This runs synchronously, with no microtask hop, which matters when this
 // is reached from *inside* an open transaction (a caller that folds its own
@@ -610,11 +597,13 @@ function onToysChanged(events, transaction) {
 // commits fold in too. Reached instead from the observer, after the
 // triggering transaction has already closed (the common case: a remote
 // change, or any local change nothing folded ahead of time), each handler
-// commits as its own DERIVED transaction. The _dispatchingContentsChange
+// commits as its own DERIVED transaction.
+// The _dispatchingContentsChange
 // flag guards a folded caller's own transaction from being recomputed a
 // redundant second time once its observer fires; the origin check in
 // onToysChanged handles the DERIVED commits this function itself makes.
 function dispatchContentsChangeCascade(events) {
+  //innermost first, so outer containers read inner containers' fresh results.
   const containerIds = Toys.affectedContainerIdsInnerFirst(events.map(e => e.target));
   if (!containerIds.length) return;
 
@@ -637,21 +626,10 @@ function dispatchContentsChangeCascade(events) {
 //  - touched-set overlaps
 //
 // Every peer that sees a conflicting pair resolves it the same way,
-// independently — not just the loser, not just whoever detects it first.
+// independently.
 // resolveConflictWinner/revertBundle are pure functions of synced data, so
-// every peer computes the identical outcome and revertBundle is idempotent
-// (see escalation.js), so redundant calls from multiple peers (or from the
-// same peer re-scanning later) are safe.
-//
-// No _dispatchingContentsChange guard here, deliberately: unlike
-// invokeMenuActionSync/commitMove, revertBundle runs no cascade of its own
-// — it's a raw structural Yjs write, the same category as undo/redo or
-// import. onToysChanged's own fallback (dedupToys, then the
-// observer-driven contents_change_handler cascade) is what SHOULD run
-// after it: dedupToys in particular matters here, since restoration is
-// exactly the kind of insert that can produce the "Making inserts
-// idempotent" duplicate race (concurrency_branching.md) this fallback
-// exists to clean up.
+// every peer computes the identical outcome and revertBundle is idempotent.
+// So redundant calls from multiple peers are safe.
 function onReactionLogChanged(event, transaction) {
   const added = [];
   event.changes.added.forEach(item => {
