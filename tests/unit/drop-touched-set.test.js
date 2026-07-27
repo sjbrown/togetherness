@@ -82,13 +82,13 @@ describe('drop-into-container touched-set completeness', () => {
     const dieElAfterMove = Toys.getContentsGroup(trayEl).querySelector('[data-id="die1"]')
     expect(dieElAfterMove).not.toBeNull()
     const dieItemKey = itemKeyFor(dieElAfterMove)
-    expect(bundle.touched).toContain(dieItemKey)
+    expect(dieItemKey in bundle.touched).toBe(true)
 
     // The shared container's contents_group item must ALSO be in the
     // touched-set — this is the actual overlap point two concurrent
     // droppers' bundles would share.
     const contentsGroupKey = itemKeyFor(Toys.getContentsGroup(trayEl))
-    expect(bundle.touched).toContain(contentsGroupKey)
+    expect(contentsGroupKey in bundle.touched).toBe(true)
   })
 
   test('two peers concurrently dropping DIFFERENT dice into the SAME tray: bundles overlap on the container, not on either die', async () => {
@@ -130,14 +130,14 @@ describe('drop-into-container touched-set completeness', () => {
     // specifically distinguish shared (container) from unique (own die)
     // touched items, not just wholesale-discard everything the bundle
     // touched.
-    const set1 = new Set(bundle1.touched)
-    const set2 = new Set(bundle2.touched)
+    const set1 = new Set(Object.keys(bundle1.touched))
+    const set2 = new Set(Object.keys(bundle2.touched))
     const intersection = [...set1].filter(k => set2.has(k))
     // Only the shared container's own items (the group + its <svg> wrapper
     // + the recomputed tspan's parent, etc. — whatever's structurally
     // common) should intersect; each die's own subtree items must not.
     for (const key of intersection) {
-      expect(bundle1.touched.includes(key) && bundle2.touched.includes(key)).toBe(true)
+      expect(key in bundle1.touched && key in bundle2.touched).toBe(true)
     }
     // Concretely: each bundle's die-only items outnumber the intersection,
     // proving there ARE unique, non-overlapping "outside" elements in each

@@ -668,7 +668,7 @@ function onReactionLogChanged(event, transaction) {
   for (const bundle of added) {
     const conflicts = scanForConflicts(all, bundle);
     for (const other of conflicts) {
-      const msg = `conflict detected: ${bundle.touched.length + other.touched.length} touched node(s) written concurrently by peers ${bundle.clientID} and ${other.clientID}`;
+      const msg = `conflict detected: ${Object.keys(bundle.touched).length + Object.keys(other.touched).length} touched node(s) written concurrently by peers ${bundle.clientID} and ${other.clientID}`;
       console.warn('[conflict]', msg, { bundle, other });
       App.addLog(msg, 'remote');
 

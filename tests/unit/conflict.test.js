@@ -42,13 +42,13 @@ function fakeChildListRecord(target, { added = [], removed = [] } = {}) {
 }
 
 describe('touchedSetFromRecords', () => {
-  test('includes the target of each record', () => {
-    const { tspanDom, tspanY } = makeAttachedTree()
+  test('includes the target of each record, tagged with the record\'s own mutation type', () => {
+    const { tspanDom } = makeAttachedTree()
     const records = [fakeChildListRecord(tspanDom)]
     const touched = touchedSetFromRecords(records)
     expect(touched.size).toBe(1)
-    const [id] = touched.values()
-    expect(id).toEqual({ client: tspanY._item.id.client, clock: tspanY._item.id.clock })
+    const [entry] = touched.values()
+    expect(entry).toEqual({ domId: 'tspan', mutation: 'childList' }) // tspan has no data-id/id, falls back to nodeName
   })
 
   test('includes addedNodes and removedNodes, not just target', () => {
@@ -65,11 +65,64 @@ describe('touchedSetFromRecords', () => {
     expect(touched.size).toBe(0)
   })
 
-  test('the same node appearing in multiple records dedupes to one entry', () => {
+  test('the same node appearing in multiple records dedupes to one entry, keeping the LAST mutation, not the first', () => {
     const { tspanDom } = makeAttachedTree()
-    const records = [fakeChildListRecord(tspanDom), fakeChildListRecord(tspanDom)]
+    const records = [
+      fakeChildListRecord(tspanDom, { removed: [] }), // first record: tagged 'childList' (its own type)
+      fakeChildListRecord(tspanDom, { removed: [] }),
+    ]
+    // Manually vary the type to make the overwrite observable.
+    records[0].type = 'attributes'
+    records[1].type = 'childList'
     const touched = touchedSetFromRecords(records)
     expect(touched.size).toBe(1)
+    const [entry] = touched.values()
+    expect(entry.mutation).toBe('childList') // the second (last) record's type won
+  })
+
+  test('a reparent — removed from its old parent, added to its new one, same commit — ends up tagged \'added\', not \'removed\'', () => {
+    const { tspanDom: dieDom } = makeAttachedTree() // reuse as a stand-in "moved node"
+    const oldParent = document.createElementNS(SVG_NS, 'g')
+    const newParent = document.createElementNS(SVG_NS, 'g')
+    const records = [
+      fakeChildListRecord(oldParent, { removed: [dieDom] }), // removed from old parent (chronologically first)
+      fakeChildListRecord(newParent, { added: [dieDom] }),   // added to new parent (chronologically second)
+    ]
+    const touched = touchedSetFromRecords(records)
+    const dieKey = [...touched.entries()].find(([, v]) => v.domId === 'tspan')?.[0]
+    expect(touched.get(dieKey).mutation).toBe('added') // NOT 'removed' — it moved, it didn't vanish
+  })
+
+  test('domId falls back through data-id -> id -> nodeName', () => {
+    clearYNodeMap()
+    const ydoc = new Y.Doc()
+    const yToys = ydoc.getXmlFragment('toys')
+    const yEl = new Y.XmlElement('g')
+    ydoc.transact(() => { yToys.insert(0, [yEl]) })
+
+    const elWithDataId = document.createElementNS(SVG_NS, 'g')
+    elWithDataId.setAttribute('data-id', 'tt-t-v1-abc')
+    elWithDataId.setAttribute('id', 'should-be-ignored')
+    registerYNode(elWithDataId, yEl)
+    let touched = touchedSetFromRecords([fakeChildListRecord(elWithDataId)])
+    expect([...touched.values()][0].domId).toBe('tt-t-v1-abc')
+
+    clearYNodeMap()
+    const yEl2 = new Y.XmlElement('g')
+    ydoc.transact(() => { yToys.insert(1, [yEl2]) })
+    const elWithPlainId = document.createElementNS(SVG_NS, 'g')
+    elWithPlainId.setAttribute('id', 'plain-id')
+    registerYNode(elWithPlainId, yEl2)
+    touched = touchedSetFromRecords([fakeChildListRecord(elWithPlainId)])
+    expect([...touched.values()][0].domId).toBe('plain-id')
+
+    clearYNodeMap()
+    const yEl3 = new Y.XmlElement('circle')
+    ydoc.transact(() => { yToys.insert(2, [yEl3]) })
+    const elWithNeither = document.createElementNS(SVG_NS, 'circle')
+    registerYNode(elWithNeither, yEl3)
+    touched = touchedSetFromRecords([fakeChildListRecord(elWithNeither)])
+    expect([...touched.values()][0].domId).toBe('circle')
   })
 })
 
@@ -158,8 +211,16 @@ describe('recordReactionBundle', () => {
 // rather than round-tripping through real Y.Docs — the causal-stamp algebra
 // is pure data, and this makes the four canonical cases easy to state.
 
+// touched is accepted here as a plain array of keys (['x', 'y']) for
+// terseness — these tests exercise pure key-overlap/concurrency algebra,
+// not domId/mutation content, so the values wrapped around each key are
+// synthetic placeholders, not meaningful fixture data. Production's real
+// shape is `{key: {domId, mutation}}` — see conflict.js's
+// touchedSetFromRecords, and touchedSetFromRecords's own describe block
+// above, which builds it for real from actual records.
 function bundle({ clientID, clock, beforeState = {}, touched }) {
-  return { clientID, clock, beforeState, touched, origin: ENVELOPE_ORIGIN, ts: 0 }
+  const touchedObj = Object.fromEntries(touched.map(k => [k, { domId: k, mutation: 'added' }]))
+  return { clientID, clock, beforeState, touched: touchedObj, origin: ENVELOPE_ORIGIN, ts: 0 }
 }
 
 describe('areConcurrent', () => {

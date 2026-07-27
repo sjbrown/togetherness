@@ -7,8 +7,19 @@ import { recordRevertSnapshot, getRevertSnapshots, snapshotYNode } from '../../s
 
 const { ensureJoined } = tablesAPI
 
-function bundle({ clientID, clock, authorId, touched }) {
-  return { clientID, clock, authorId, touched, beforeState: {}, origin: 'envelope', ts: 0 }
+// touched accepts plain keys (shorthand for mutation: 'added' — the common
+// case: "this bundle created this item") or [key, mutation] tuples where a
+// test needs to distinguish "created by this bundle" from "pre-existing,
+// merely touched" — revertBundle's deletion step now keys specifically off
+// mutation === 'added', not mere presence, so tests exercising that
+// distinction need to state it explicitly. Production's real shape is
+// `{key: {domId, mutation}}` — see conflict.js's touchedSetFromRecords.
+function bundle({ clientID, clock, authorId, touched = [] }) {
+  const touchedObj = Object.fromEntries(touched.map(entry => {
+    const [key, mutation] = Array.isArray(entry) ? entry : [entry, 'added']
+    return [key, { domId: key, mutation }]
+  }))
+  return { clientID, clock, authorId, touched: touchedObj, beforeState: {}, origin: 'envelope', ts: 0 }
 }
 
 describe('resolveConflictWinner', () => {
@@ -107,7 +118,7 @@ describe('revertBundle — deleting the loser\'s own insertions', () => {
 
     const loserBundle = bundle({
       clientID: ydocB.clientID, clock: child._item.id.clock, authorId: 'peer-B',
-      touched: [containerKey, childKey],
+      touched: [[containerKey, 'childList'], [childKey, 'added']],
     })
     ydocA.transact(() => revertBundle(ydocA, loserBundle))
 
@@ -140,11 +151,11 @@ describe('revertBundle — deleting the loser\'s own insertions', () => {
     const trayKey = `${tray._item.id.client}:${tray._item.id.clock}`
     const bundleA = bundle({
       clientID: ydocA.clientID, clock: dieA._item.id.clock, authorId: 'peer-A',
-      touched: [trayKey, `${ydocA.clientID}:${dieA._item.id.clock}`],
+      touched: [[trayKey, 'childList'], [`${ydocA.clientID}:${dieA._item.id.clock}`, 'added']],
     })
     const bundleB = bundle({
       clientID: ydocB.clientID, clock: dieB._item.id.clock, authorId: 'peer-B',
-      touched: [trayKey, `${ydocB.clientID}:${dieB._item.id.clock}`],
+      touched: [[trayKey, 'childList'], [`${ydocB.clientID}:${dieB._item.id.clock}`, 'added']],
     })
 
     const { winner, loser } = resolveConflictWinner(ydocA, bundleA, bundleB)
@@ -183,6 +194,32 @@ describe('revertBundle — deleting the loser\'s own insertions', () => {
     const ydoc = new Y.Doc()
     const fakeBundle = bundle({ clientID: ydoc.clientID, clock: 0, authorId: 'peer-B', touched: ['999999:0'] })
     expect(() => { ydoc.transact(() => revertBundle(ydoc, fakeBundle)) }).not.toThrow()
+  })
+
+  test('a real correctness fix: an item the SAME peer created in an earlier, unrelated commit is NOT deleted just because clientID matches — only mutation === \'added\' counts', () => {
+    const ydoc = new Y.Doc()
+    const yToys = ydoc.getXmlFragment('toys')
+
+    // Peer's own EARLIER, unrelated commit: creates oldItem.
+    const oldItem = new Y.XmlElement('g')
+    ydoc.transact(() => { yToys.insert(0, [oldItem]) })
+    const oldItemKey = `${oldItem._item.id.client}:${oldItem._item.id.clock}`
+
+    // THIS bundle's own commit only reads/touches oldItem's attribute —
+    // never creates or removes it — so its own touched entry for
+    // oldItemKey should be 'attributes', not 'added', even though
+    // oldItem's own item.id.client happens to equal this bundle's
+    // clientID (same peer, different commit). The old (pre-fix) check —
+    // item.id.client === bundle.clientID — couldn't tell these apart and
+    // would have wrongly deleted oldItem here.
+    const loserBundle = bundle({
+      clientID: ydoc.clientID, clock: 999, authorId: 'peer-B',
+      touched: [[oldItemKey, 'attributes']],
+    })
+    ydoc.transact(() => revertBundle(ydoc, loserBundle))
+
+    expect(yToys.toArray()).toContain(oldItem)
+    expect(yToys.toArray().length).toBe(1)
   })
 })
 
