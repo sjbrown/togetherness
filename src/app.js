@@ -29,6 +29,7 @@ import { TOOLS as TOY_TOOLS, addToy, findToy, newToyId,
          findDropTarget } from './toys.js';
 import { DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js'
 import { getReactionLog, scanForConflicts } from './conflict.js';
+import { resolveConflictWinner, revertBundle } from './escalation.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
 import { BOUNPOS_TYPES,
          addPositionSet, createPositionSetElement,
@@ -496,7 +497,7 @@ function onBounPosChanged(events, transaction) {
         item.content.getContent().forEach(yEl => {
           if (!(yEl instanceof Y.XmlElement)) return;
           const id = yEl.getAttribute('id') ?? '?';
-          App.addLog(`remote: added boundary ${id}`, 'remote');
+          App.addLog(`remote: added boundary ${id.slice(0, 12)}`, 'remote');
         });
       });
     }
@@ -507,6 +508,9 @@ function onBounPosChanged(events, transaction) {
 // Suppresses the observer-driven cascade in onToysChanged while a cascade is
 // already being handled for the current change.
 let _dispatchingContentsChange = false;
+// Guards dedupToys's own cleanup transaction below from re-triggering
+// itself when onToysChanged fires again for that transaction.
+let _dedupingToys = false;
 
 function onToysChanged(events, transaction) {
   if (!transaction.local) { // filters out our own ops
@@ -517,7 +521,7 @@ function onToysChanged(events, transaction) {
         item.content.getContent().forEach(yEl => {
           if (yEl instanceof Y.XmlElement && yEl.nodeName === 'g') {
             const tid = yEl.getAttribute('data-toy-id') || '?'
-            let msg = `remote: placed ${yEl.getAttribute('data-toy-type')} ${tid}`;
+            let msg = `remote: placed ${yEl.getAttribute('data-toy-type')} ${tid.slice(0,6)}`;
             App.addLog(msg, 'remote')
             addHistory(msg, {fill: yEl.getAttribute('fill'), elType: yEl.nodeName,})
           }
@@ -535,6 +539,35 @@ function onToysChanged(events, transaction) {
       });
     }
   }
+  // Duplicate data-toy-id defense — see toys.js's dedupToys doc comment
+  // for why this can happen at all even though nothing here is "wrong":
+  // concurrent reparents of the same toy to different destinations, or
+  // concurrent, unsynced escalation.js restorations of the same removed
+  // toy, both produce two legitimate Yjs inserts that nothing rejects —
+  // scanForConflicts never sees it either, since there's no overlapping
+  // touched node, just a duplicated logical identity in two disjoint
+  // locations. Checked before rendering/cascading below, so those reflect
+  // the corrected structure rather than a known-transient duplicate. Runs
+  // on every structural change, local or remote, since either can
+  // introduce one. Guarded against its own re-entrant transaction the
+  // same way the cascade further down guards itself.
+  const hasStructuralChange = events.some(e =>
+    (e.changes?.added?.size || 0) + (e.changes?.deleted?.size || 0) > 0
+  );
+  if (hasStructuralChange && !_dedupingToys) {
+    _dedupingToys = true;
+    try {
+      let deduped = [];
+      _ydoc.transact(() => { deduped = Toys.dedupToys(_ydoc, _yToys); });
+      if (deduped.length) {
+        UI.toast(`Resolved a duplicate toy`, 'error');
+        App.addLog(`deduplicated ${deduped.join(', ')}`, 'del');
+      }
+    } finally {
+      _dedupingToys = false;
+    }
+  }
+
   // renderDoc() runs *before* the dispatchContentsChangeCascade below.
   // contents_change_handler reads the *DOM*, so the toys layer must
   // already reflect this transaction's just-committed change (eg a mutation
@@ -603,9 +636,22 @@ function dispatchContentsChangeCascade(events) {
 //  - causally-concurrent author
 //  - touched-set overlaps
 //
-// TODO: Detection only, for now: a hit is just logged (console + activity log)
-//       Need to resolve a detected conflict
-//        ((fast-path in-place assertion, or branch escalation)
+// Every peer that sees a conflicting pair resolves it the same way,
+// independently — not just the loser, not just whoever detects it first.
+// resolveConflictWinner/revertBundle are pure functions of synced data, so
+// every peer computes the identical outcome and revertBundle is idempotent
+// (see escalation.js), so redundant calls from multiple peers (or from the
+// same peer re-scanning later) are safe.
+//
+// No _dispatchingContentsChange guard here, deliberately: unlike
+// invokeMenuActionSync/commitMove, revertBundle runs no cascade of its own
+// — it's a raw structural Yjs write, the same category as undo/redo or
+// import. onToysChanged's own fallback (dedupToys, then the
+// observer-driven contents_change_handler cascade) is what SHOULD run
+// after it: dedupToys in particular matters here, since restoration is
+// exactly the kind of insert that can produce the "Making inserts
+// idempotent" duplicate race (concurrency_branching.md) this fallback
+// exists to clean up.
 function onReactionLogChanged(event, transaction) {
   const added = [];
   event.changes.added.forEach(item => {
@@ -614,12 +660,40 @@ function onReactionLogChanged(event, transaction) {
   if (!added.length) return;
 
   const all = _yReactionLog.toArray();
+  // A pair where BOTH sides happen to be newly-added in this same observer
+  // call gets found from both directions (scanForConflicts(all, bundle)
+  // finds `other`; scanForConflicts(all, other) later finds `bundle` right
+  // back) — resolve each distinct loser at most once per call.
+  const resolvedThisPass = new Set();
   for (const bundle of added) {
     const conflicts = scanForConflicts(all, bundle);
     for (const other of conflicts) {
       const msg = `conflict detected: ${bundle.touched.length + other.touched.length} touched node(s) written concurrently by peers ${bundle.clientID} and ${other.clientID}`;
       console.warn('[conflict]', msg, { bundle, other });
       App.addLog(msg, 'remote');
+
+      const resolution = resolveConflictWinner(_ydoc, bundle, other);
+      if (!resolution) {
+        // Missing or duplicate authorId — can't resolve who wins. Stays
+        // detected-but-unresolved; see conflict.js's recordReactionBundle
+        // and escalation.js's resolveConflictWinner for when this happens.
+        continue;
+      }
+      const { loser } = resolution;
+      const loserKey = `${loser.clientID}:${loser.clock}`;
+      if (resolvedThisPass.has(loserKey)) continue;
+      resolvedThisPass.add(loserKey);
+
+      _ydoc.transact(() => { revertBundle(_ydoc, loser); });
+
+      const iAmTheLoser = loser.authorId === _myId;
+      UI.toast(
+        iAmTheLoser
+          ? 'A concurrent change conflicted with yours — yours was reverted'
+          : 'Resolved a conflict between two players',
+        'error'
+      );
+      App.addLog(`reverted conflicting commit from ${loser.authorId ?? loser.clientID}`, 'del');
     }
   }
 }
@@ -634,7 +708,7 @@ function onDrawingChanged(events, transaction) {
         item.content.getContent().forEach(yEl => {
           if (!yEl.getAttribute) return;
           const id     = yEl.getAttribute('id') ?? '?';
-          addHistory(`remote: added ${id}`, {
+          addHistory(`remote: added ${id.slice(0, 9)}`, {
             fill: yEl.getAttribute('fill'), elType: yEl.nodeName,
           });
           App.addLog(`added ${yEl.nodeName}`, 'remote');
@@ -643,7 +717,7 @@ function onDrawingChanged(events, transaction) {
       event.changes.deleted.forEach(item => {
         item.content.getContent().forEach(yEl => {
           if (!yEl.getAttribute) return;
-          addHistory(`remote: deleted ${(yEl.getAttribute('id') ?? '?')}`, {
+          addHistory(`remote: deleted ${(yEl.getAttribute('id') ?? '?').slice(0, 6)}`, {
             fill: yEl.getAttribute('fill'), elType: yEl.nodeName,
           });
           App.addLog(`remote deleted ${yEl.nodeName}`, 'del');
@@ -733,7 +807,7 @@ const App = {
     _awareness.getStates().forEach((state, cid) => {
       if (cid === _awareness.clientID) return;
       out.push({
-        name:   state.id ?? String(cid),
+        name:   state.id?.slice(0, 8) ?? String(cid),
         color:  state.color ?? '#888',
         gradId: state.grad ? Overlay.peerGradId(cid) : null,
         live:   true,
@@ -949,12 +1023,12 @@ const App = {
   // ── Document mutations ────────────────────────────────────────────────────
   commitDrawing: (attrs) => {
     const id = App.getMyId() + '_' + Math.random().toString(36).slice(2, 7);
-    UndoRedo.tag(`add ${attrs.type ?? 'rect'} ${id}`);
+    UndoRedo.tag(`add ${attrs.type ?? 'rect'} ${id.slice(0, 6)}`);
     Drawing.addDrawing(_ydoc, _yDrawing, { ...attrs, id });
-    addHistory(`added ${attrs.type ?? 'rect'} ${id}`, {
+    addHistory(`added ${attrs.type ?? 'rect'} ${id.slice(0, 6)}`, {
       fill: attrs.fill, elType: attrs.type,
     });
-    App.addLog(`added ${attrs.type} ${id}`, 'local');
+    App.addLog(`added ${attrs.type} ${id.slice(0, 6)}`, 'local');
   },
 
   commitBounPos: ({ toolName, x, y, w, h }) => {
@@ -1098,13 +1172,13 @@ const App = {
     // that has no explicit origin, so its merged handler-plus-cascade
     // transaction commits under null, a SEPARATE transaction from
     // addToy's placement
-    UndoRedo.tag(`place ${def.label} ${id.slice(8)}`);
+    UndoRedo.tag(`place ${def.label} ${id.slice(0, 6)}`);
     addToy(_ydoc, _yToys, {
       id, toyType: def.toyType, x, y,
       color: _toolParams[toolName]?.fill ?? _myGrad.c1,
     }).then(async () => {
-      addHistory(`placed ${def.label} ${id.slice(8)}`, { elType: 'toy' });
-      App.addLog(`placed ${def.label} ${id.slice(8)}`, 'local');
+      addHistory(`placed ${def.label} ${id.slice(0, 6)}`, { elType: 'toy' });
+      App.addLog(`placed ${def.label} ${id.slice(0, 6)}`, 'local');
 
       // Awaiting activateToyScripts() here guarantees the namespace is actually
       // ready before initialize() reads it off window[namespace].
@@ -1134,10 +1208,10 @@ const App = {
     if (!L) return false;
     const yEl = L.find(id);
     if (!yEl) return false;
-    UndoRedo.tag(`delete ${id}`);
+    UndoRedo.tag(`delete ${mtype}:${id.slice(0, 6)}`);
     L.delete(id);
-    addHistory(`deleted ${id}`);
-    App.addLog(`deleted ${id}`, 'local');
+    addHistory(`deleted ${mtype}:${id.slice(0, 6)}`);
+    App.addLog(`deleted ${id.slice(0, 6)}`, 'local');
     if (id in _myClaims) {
       _unclaim([id]);
     }
@@ -1305,7 +1379,7 @@ const App = {
       // Yjs in one commitEnvelope call. One undo step, one thing to
       // arbitrate or fork on conflict, no "die inserted but its reaction
       // lost" intermediate.
-      UndoRedo.tag(`move ${id.slice(8)} into a container`);
+      UndoRedo.tag(`move ${id.slice(0, 6)} into a container`);
       // Same guard as invokeToyMenuAction/commitToy, same reason:
       // runGestureSync already runs its own complete cascade before
       // committing (folds under an unlabeled transact, effectively null
@@ -1341,19 +1415,19 @@ const App = {
 
       // observeDeep fires and calls renderDoc() — same as the ordinary
       // move-commit path below.
-      addHistory(`moved ${id.slice(8)} into a container`, {
+      addHistory(`moved ${id.slice(0, 6)} into a container`, {
         fill: domEl?.getAttribute('fill'),
         elType: mtype,
       });
       return;
     }
 
-    UndoRedo.tag(`move ${id.slice(8)} → (${rx}, ${ry})`);
+    UndoRedo.tag(`move ${id.slice(0, 6)} → (${rx}, ${ry})`);
     if (_Layers[mtype]) {
       _Layers[mtype].applyMoveCommit(_Layers[mtype].find(id), rx, ry);
       // observeDeep fires on all layers and calls renderDoc()
     }
-    addHistory(`moved ${id.slice(8)} → (${rx}, ${ry})`, {
+    addHistory(`moved ${id.slice(0, 6)} → (${rx}, ${ry})`, {
       fill: domEl?.getAttribute('fill'),
       elType: mtype,
     });
@@ -1425,10 +1499,10 @@ const App = {
     _resizeState = null;
 
     const yToy = findToy(_yToys, id);
-    UndoRedo.tag(`resize ${id.slice(8)}`);
+    UndoRedo.tag(`resize ${id.slice(0, 6)}`);
     Toys.applyResizeCommit(_ydoc, yToy, toRect.x, toRect.y, toRect.width, toRect.height);
     // observeDeep fires and calls renderDoc()
-    addHistory(`resized ${id.slice(8)}`, { elType: 'toys' });
+    addHistory(`resized ${id.slice(0, 6)}`, { elType: 'toys' });
   },
 
   cancelResize: () => {

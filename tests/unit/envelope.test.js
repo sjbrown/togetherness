@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+import * as fs from 'fs'
+import * as path from 'path'
+import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as Toys from '../../src/toys.js'
@@ -10,6 +13,10 @@ import {
   runInEnvelopeSync, runToyHandlerSync, isEnvelopeOpen,
   DERIVED_ORIGIN,
 } from '../../src/envelope.js'
+import { getRevertSnapshots } from '../../src/snapshot.js'
+
+const __dir   = path.dirname(fileURLToPath(import.meta.url))
+const TOY_DIR = path.resolve(__dir, '../../src/toy')
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
@@ -663,5 +670,143 @@ describe('renderAfterCommit / runToyHandler — post-commit render', () => {
     }, { authorId: 'tt-p-v1-01-aaa' })
 
     expect(result.bundle.authorId).toBe('tt-p-v1-01-aaa')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// commitEnvelope — revert-snapshot capture (TODO #11, step 2 of the
+// revert design: capture a removed pre-existing node's content BEFORE
+// deleting it, so a later revert can restore it — see snapshot.js).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('commitEnvelope — revert-snapshot capture', () => {
+  test('a reparent (remove from old parent, add to new parent, same commit) snapshots the pre-move content', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await placeToy(ydoc, yToys, 't1', '#e33')
+    await placeToy(ydoc, yToys, 'container1')
+    const layerEl = renderLayer(yToys)
+    const toyEl       = layerEl.querySelector('[data-id="t1"]')
+    const containerEl = layerEl.querySelector('[data-id="container1"]')
+
+    const records = await runInEnvelope(layerEl, () => {
+      containerEl.appendChild(toyEl) // removed from layerEl, added to containerEl — one commit
+    })
+    const { bundle } = commitEnvelope(ydoc, records, { authorId: 'tt-p-v1-01-bob' })
+
+    const stored = getRevertSnapshots(ydoc).get('tt-p-v1-01-bob')
+    expect(stored).toBeTruthy()
+    expect(stored.bundleStamp).toEqual({ clientID: bundle.clientID, clock: bundle.clock })
+    expect(stored.parentKey).toBeNull() // layerEl mirrors yToys, a root fragment
+    expect(stored.content.nodeName).toBe('g')
+    expect(stored.content.attributes['data-color']).toBe('#e33') // the PRE-move content
+  })
+
+  test('a plain delete (removeChild, no re-add) also snapshots — same mechanism, no special-casing', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await placeToy(ydoc, yToys, 't1', '#123456')
+    const layerEl = renderLayer(yToys)
+    const toyEl   = layerEl.querySelector('[data-id="t1"]')
+
+    const records = await runInEnvelope(layerEl, () => { toyEl.remove() })
+    commitEnvelope(ydoc, records, { authorId: 'tt-p-v1-01-carol' })
+
+    const stored = getRevertSnapshots(ydoc).get('tt-p-v1-01-carol')
+    expect(stored).toBeTruthy()
+    expect(stored.content.attributes['data-color']).toBe('#123456')
+  })
+
+  test('an attribute-only commit captures no snapshot at all', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await placeToy(ydoc, yToys, 't1')
+    const layerEl = renderLayer(yToys)
+    const toyEl   = layerEl.querySelector('[data-id="t1"]')
+
+    const records = await runInEnvelope(layerEl, () => { toyEl.setAttribute('data-color', '#0f0') })
+    commitEnvelope(ydoc, records, { authorId: 'tt-p-v1-01-dave' })
+
+    expect(getRevertSnapshots(ydoc).has('tt-p-v1-01-dave')).toBe(false)
+  })
+
+  test('no authorId given — no snapshot recorded, even though a removal happened', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await placeToy(ydoc, yToys, 't1')
+    const layerEl = renderLayer(yToys)
+    const toyEl   = layerEl.querySelector('[data-id="t1"]')
+
+    const records = await runInEnvelope(layerEl, () => { toyEl.remove() })
+    commitEnvelope(ydoc, records) // no opts at all
+
+    expect(getRevertSnapshots(ydoc).size).toBe(0)
+  })
+
+  test('two removals of pre-existing nodes in one commit: the LAST one wins the slot', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await placeToy(ydoc, yToys, 'first', '#111111')
+    await placeToy(ydoc, yToys, 'second', '#222222')
+    const layerEl = renderLayer(yToys)
+    const firstEl  = layerEl.querySelector('[data-id="first"]')
+    const secondEl = layerEl.querySelector('[data-id="second"]')
+
+    const records = await runInEnvelope(layerEl, () => {
+      firstEl.remove()
+      secondEl.remove()
+    })
+    commitEnvelope(ydoc, records, { authorId: 'tt-p-v1-01-erin' })
+
+    const stored = getRevertSnapshots(ydoc).get('tt-p-v1-01-erin')
+    expect(stored.content.attributes['data-color']).toBe('#222222') // "second", processed last
+  })
+
+  test('a real drop-into-container gesture (reparent + reposition, commitMove\'s exact shape) snapshots the PRE-drop x/y, not the post-drop position', async () => {
+    const TRAY_SUM_SVG = fs.readFileSync(path.join(TOY_DIR, 'tray_sum.svg'), 'utf8')
+    const TRAY_JS       = fs.readFileSync(path.join(TOY_DIR, 'js/tray.js'), 'utf8')
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (url === '/toy/tray_sum.svg') return { ok: true, text: async () => TRAY_SUM_SVG }
+      if (url === '/toy/js/tray.js')   return { ok: true, text: async () => TRAY_JS }
+      if (url === '/toy/player_marker.svg') return { ok: true, text: async () => TOY_SVG }
+      throw new Error(`unexpected fetch: ${url}`)
+    }))
+
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 200, y: 200, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'die1', toyType: 'player_marker', x: 10, y: 15, color: '#e33' })
+
+    const layerEl = renderLayer(yToys)
+    await new Promise(r => setTimeout(r, 0)) // let script activation settle, matching production
+
+    const dieEl = layerEl.querySelector('[data-id="die1"]')
+    const preDropSvg = dieEl.querySelector('svg')
+    const preDropX = preDropSvg.getAttribute('x')
+    const preDropY = preDropSvg.getAttribute('y')
+    // Sanity: these really are the pre-drop values, not both coincidentally 0.
+    expect(preDropX).not.toBe('999')
+
+    // The EXACT sequence commitMove's drop-into-container branch uses:
+    // reparentToyDom, then applyMoveDom — both inside ONE envelope, DOM
+    // mutations happening in this order, before any Yjs translation runs.
+    const records = await runInEnvelope(layerEl, () => {
+      Toys.reparentToyDom(layerEl, 'die1', 'tray1')
+      const movedEl = layerEl.querySelector('[data-id="die1"]')
+      Toys.applyMoveDom(movedEl, 999, 999) // moved to a deliberately obvious new position
+    })
+    commitEnvelope(ydoc, records, { origin: DERIVED_ORIGIN, authorId: 'tt-p-v1-01-bob' })
+
+    // The live DOM now shows the NEW position (999ish, minus half-width/height).
+    const postDropSvg = layerEl.querySelector('[data-id="die1"] svg')
+    expect(postDropSvg.getAttribute('x')).not.toBe(preDropX)
+
+    // But the snapshot — captured from the Yjs tree at the moment of the
+    // FIRST record (the removal), before this commit has touched Yjs at
+    // all — holds the ORIGINAL pre-drop position, not the new one.
+    const stored = getRevertSnapshots(ydoc).get('tt-p-v1-01-bob')
+    const snapshottedSvg = stored.content.children.find(c => c.nodeName === 'svg')
+    expect(snapshottedSvg.attributes.x).toBe(preDropX)
+    expect(snapshottedSvg.attributes.y).toBe(preDropY)
   })
 })

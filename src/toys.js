@@ -387,6 +387,92 @@ function isToyG(yEl) {
   return (yEl.getAttribute('class') || '').split(/\s+/).includes('toy')
 }
 
+// ── duplicate data-toy-id defense ───────────────────────────────────────
+//
+// data-toy-id is meant to be unique across the whole document — every
+// other piece of toy-identity logic (findToy, deleteToy, the whole
+// envelope/bundle/revert machinery) assumes exactly one live occurrence.
+// But nothing in Yjs itself enforces that, and ordinary concurrent
+// operations can violate it with no error anywhere: two peers concurrently
+// reparenting the SAME toy to two different destinations both survive
+// (each is a legitimate insert; Yjs never rejects one in favor of the
+// other) — same for two peers independently restoring the same
+// escalation.js revert before either's snapshot-eviction has synced to
+// the other. See concurrency_branching.md for both scenarios worked
+// through in full. dedupToys (below) is the cleanup: not prevention (nothing
+// can prevent it — any "check then insert" is racy across unsynced peers by
+// construction) but deterministic, coordinator-free convergence once both
+// copies exist.
+
+/**
+ * Walk the whole toys tree — top-level and nested, inside any container's
+ * own contents_group — and group every toy element by its data-toy-id.
+ * A legitimate id appears in exactly one group of size 1; this returns
+ * every group, so the caller can find the ones that don't.
+ */
+function listToyOccurrencesById(yToys) {
+  const byToyId = new Map()
+  function walk(yEl) {
+    if (!(yEl instanceof Y.XmlElement)) return
+    if (isToyG(yEl)) {
+      const toyId = yEl.getAttribute('data-toy-id')
+      if (toyId) {
+        if (!byToyId.has(toyId)) byToyId.set(toyId, [])
+        byToyId.get(toyId).push(yEl)
+      }
+    }
+    yEl.toArray().forEach(walk)
+  }
+  yToys.toArray().forEach(walk)
+  return byToyId
+}
+
+/**
+ * Deterministic survivor among duplicate occurrences of the same
+ * data-toy-id: smallest {client,clock} own item-id wins. Arbitrary as a
+ * choice, but every peer computes it from the same synced item ids, so
+ * everyone converges on the identical survivor independently — no
+ * coordination, no communication, same principle as authority ordering
+ * elsewhere in this design, just keyed on the items themselves rather
+ * than on joinSequence (there's no "who's more authoritative" question
+ * here — both occurrences are equally legitimate, cleanup just needs
+ * everyone to agree on which one to keep).
+ */
+function pickSurvivor(occurrences) {
+  return occurrences.reduce((best, yEl) => {
+    const a = best._item.id, b = yEl._item.id
+    if (a.client !== b.client) return a.client < b.client ? best : yEl
+    return a.clock < b.clock ? best : yEl
+  })
+}
+
+/**
+ * Delete every occurrence of a duplicated data-toy-id except the
+ * deterministic survivor (pickSurvivor). Must be called from inside a
+ * ydoc.transact() — this performs raw structural deletes directly, the
+ * same reasoning as escalation.js's revertBundle: there's no live DOM to
+ * mirror a remote peer's duplicate against in general.
+ *
+ * Returns the list of duplicated toy ids found and cleaned up (empty if
+ * none), for logging/toast purposes.
+ */
+export function dedupToys(ydoc, yToys) {
+  const deduped = []
+  for (const [toyId, occurrences] of listToyOccurrencesById(yToys)) {
+    if (occurrences.length < 2) continue
+    const survivor = pickSurvivor(occurrences)
+    for (const yEl of occurrences) {
+      if (yEl === survivor) continue
+      const parent = yEl.parent
+      if (!parent || typeof parent.toArray !== 'function') continue
+      const idx = parent.toArray().indexOf(yEl)
+      if (idx !== -1) parent.delete(idx, 1)
+    }
+    deduped.push(toyId)
+  }
+  return deduped
+}
+
 
 /**
  * Find all Y.XmlElement descendants of `yEl` that carry the
