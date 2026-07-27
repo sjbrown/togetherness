@@ -3,15 +3,22 @@
  * detected a conflict. Deliberately a separate module from conflict.js,
  * which is detection only by its own explicit design (see conflict.js's
  * module doc comment) — this is the resolution half: deciding who wins,
- * and reverting the loser's own contribution out of the shared document.
+ * reverting the loser's own contribution out of the shared document, and
+ * (not yet built beyond the predicate itself) forking whatever that
+ * revert can't recover.
  *
- * Two pieces:
+ * Three pieces:
  *   - resolveConflictWinner — authority ordering for a detected pair,
  *     using each bundle's self-reported authorId (see conflict.js's
  *     recordReactionBundle) against tables.js's joinSequence.
  *   - revertBundle — delete the loser's own structural insertions, AND
  *     restore any pre-existing content the loser's own commit removed, if
  *     a matching revert snapshot (snapshot.js) is still available.
+ *   - needsEscalation — whether revertBundle, run against a given losing
+ *     bundle, would leave content unrecovered (a removal with no matching
+ *     snapshot) and so needs branch escalation on top. Pure detection —
+ *     doesn't fork anything itself; see its own doc comment for why only
+ *     the losing peer's own client can meaningfully act on a true result.
  *
  * revertBundle's insertion-delete half is idempotent by construction —
  * deleting an already-deleted Yjs item is a safe no-op, so every peer that
@@ -73,19 +80,35 @@ function resolveItemKey(ydoc, key) {
 }
 
 /**
+ * Whether authorId's one revert-snapshot slot actually protects THIS exact
+ * bundle ({clientID, clock} match), not a stale leftover from some other,
+ * unrelated later commit by the same peer that simply hasn't been evicted
+ * yet. Shared by restoreFromSnapshot and needsEscalation — the two places
+ * that need the identical answer to "is a snapshot genuinely available for
+ * this bundle," so they can't drift apart from each other over time.
+ */
+function hasMatchingSnapshot(ydoc, bundle) {
+  const stored = getRevertSnapshots(ydoc).get(bundle.authorId)
+  return !!(stored
+    && stored.bundleStamp?.clientID === bundle.clientID
+    && stored.bundleStamp?.clock === bundle.clock)
+}
+
+/**
  * Restore a losing bundle's own removed pre-existing content, if a
  * matching revert snapshot is available (snapshot.js) — the earlier
  * "clone-before-delete" capture in envelope.js's commitEnvelope. Called
  * from revertBundle; not exported on its own.
  *
- * "Matching" means the snapshot's own bundleStamp equals this bundle's
- * exact {clientID, clock} — since the one-slot-per-authorId rule means an
- * unrelated LATER commit by the same peer could have evicted the snapshot
- * that actually protected THIS commit, leaving a stale snapshot (or none)
- * in that peer's slot. A mismatch means restoration genuinely isn't
+ * A mismatch (see hasMatchingSnapshot) means restoration genuinely isn't
  * available for this bundle, not an error — see snapshot.js's "(revertable
  * commit buffer size) = (number of peers)" rule; this is that rule's cost,
- * paid honestly rather than papered over.
+ * paid honestly rather than papered over. It's also exactly the condition
+ * needsEscalation (below) checks for — the two must be called in that
+ * order (needsEscalation first) if a caller wants both answers, since this
+ * function CONSUMES the snapshot on success, and asking needsEscalation
+ * afterward would see "no snapshot" and wrongly report true even though
+ * restoration just succeeded.
  *
  * Consumes the snapshot on success (deletes it from the slot, in the same
  * transaction as the restoring insert) so a second call for the same
@@ -103,10 +126,9 @@ function resolveItemKey(ydoc, key) {
  * doesn't exist here. Worth knowing, not currently solved.
  */
 function restoreFromSnapshot(ydoc, bundle) {
+  if (!hasMatchingSnapshot(ydoc, bundle)) return
   const snapshots = getRevertSnapshots(ydoc)
   const stored = snapshots.get(bundle.authorId)
-  if (!stored) return
-  if (stored.bundleStamp?.clientID !== bundle.clientID || stored.bundleStamp?.clock !== bundle.clock) return
 
   const restoredNode = restoreYNodeFromSnapshot(stored.content)
   if (!restoredNode) return
@@ -123,6 +145,37 @@ function restoreFromSnapshot(ydoc, bundle) {
   const index = Math.max(0, Math.min(stored.index, currentLength))
   parent.insert(index, [restoredNode])
   snapshots.delete(bundle.authorId) // consume — see doc comment above
+}
+
+/**
+ * Whether a losing bundle needs branch escalation — i.e. whether
+ * revertBundle, run against it right now, would leave content
+ * unrecovered. True exactly when BOTH:
+ *   - the bundle's own touched-set still has at least one entry whose
+ *     final `mutation` is `'removed'` (conflict.js's touchedSetFromRecords
+ *     — a commit that reparented something ends up `'added'`, not
+ *     `'removed'`, so an ordinary reparent conflict never trips this; only
+ *     a commit that genuinely removed something and never got it back
+ *     within its own records does), AND
+ *   - no snapshot is available to recover that removal (hasMatchingSnapshot).
+ *
+ * A bundle that never removed anything needs no escalation regardless —
+ * revertBundle's delete-the-insertions half is always complete on its own
+ * for that case, nothing was ever at risk of going unrecovered.
+ *
+ * Must be called BEFORE revertBundle for the same bundle, not after — see
+ * restoreFromSnapshot's doc comment for why calling it afterward can give
+ * a false positive (the snapshot legitimately consumed by a successful
+ * restore looks identical, from here, to one that was never there).
+ *
+ * Pure — makes no Yjs writes, decides nothing about who forks or when.
+ * That's the caller's job (only the loser's own peer can meaningfully
+ * fork; see the module doc comment).
+ */
+export function needsEscalation(ydoc, bundle) {
+  const hasUnrecoveredRemoval = Object.values(bundle.touched).some(({ mutation }) => mutation === 'removed')
+  if (!hasUnrecoveredRemoval) return false
+  return !hasMatchingSnapshot(ydoc, bundle)
 }
 
 /**

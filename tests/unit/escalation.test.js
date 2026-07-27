@@ -2,7 +2,7 @@
 import * as Y from 'yjs'
 import { describe, test, expect } from 'vitest'
 import { tablesAPI } from '../../src/tables.js'
-import { resolveConflictWinner, revertBundle } from '../../src/escalation.js'
+import { resolveConflictWinner, revertBundle, needsEscalation } from '../../src/escalation.js'
 import { recordRevertSnapshot, getRevertSnapshots, snapshotYNode } from '../../src/snapshot.js'
 
 const { ensureJoined } = tablesAPI
@@ -390,5 +390,79 @@ describe('revertBundle — restoring the loser\'s removed pre-existing content',
     // Two distinct items, not one — the known limitation, made concrete.
     expect(yToysA.toArray().length).toBe(2)
     expect(yToysB.toArray().length).toBe(2)
+  })
+})
+
+describe('needsEscalation', () => {
+  test('false when the bundle never removed anything at all — nothing was ever at risk', () => {
+    const ydoc = new Y.Doc()
+    const b = bundle({ clientID: 1, clock: 1, authorId: 'peer-B', touched: [['tray-key', 'childList'], ['die-key', 'added']] })
+    expect(needsEscalation(ydoc, b)).toBe(false)
+  })
+
+  test('false when a removal exists but a matching snapshot covers it — fully recoverable in place', () => {
+    const ydoc = new Y.Doc()
+    ydoc.transact(() => recordRevertSnapshot(ydoc, 'peer-B', { clientID: 1, clock: 1 }, {
+      parentKey: null, index: 0, content: { nodeName: 'g', attributes: {}, children: [] },
+    }))
+    const b = bundle({ clientID: 1, clock: 1, authorId: 'peer-B', touched: [['die-key', 'removed']] })
+    expect(needsEscalation(ydoc, b)).toBe(false)
+  })
+
+  test('true when a removal exists and there is no snapshot at all', () => {
+    const ydoc = new Y.Doc()
+    const b = bundle({ clientID: 1, clock: 1, authorId: 'peer-B', touched: [['die-key', 'removed']] })
+    expect(needsEscalation(ydoc, b)).toBe(true)
+  })
+
+  test('true when a removal exists and the only snapshot on file is stale (protects a different commit)', () => {
+    const ydoc = new Y.Doc()
+    ydoc.transact(() => recordRevertSnapshot(ydoc, 'peer-B', { clientID: 1, clock: 999 }, { // different clock
+      parentKey: null, index: 0, content: { nodeName: 'g', attributes: {}, children: [] },
+    }))
+    const b = bundle({ clientID: 1, clock: 1, authorId: 'peer-B', touched: [['die-key', 'removed']] })
+    expect(needsEscalation(ydoc, b)).toBe(true)
+  })
+
+  test('true when at least ONE entry among several is an unrecovered removal, even if others were added', () => {
+    const ydoc = new Y.Doc()
+    const b = bundle({
+      clientID: 1, clock: 1, authorId: 'peer-B',
+      touched: [['tray-key', 'childList'], ['new-die-key', 'added'], ['other-die-key', 'removed']],
+    })
+    expect(needsEscalation(ydoc, b)).toBe(true)
+  })
+
+  test('a reparent — removed then re-added in the same commit — needs no escalation, matching conflict.js\'s "last mutation wins"', () => {
+    // The exact case conflict.js's touchedSetFromRecords is designed to
+    // get right: a moved node's final tag is 'added', never 'removed',
+    // so needsEscalation correctly sees nothing to escalate — an ordinary
+    // reparent conflict is always fully handled by revertBundle's delete
+    // half alone, never needs a branch.
+    const ydoc = new Y.Doc()
+    const b = bundle({ clientID: 1, clock: 1, authorId: 'peer-B', touched: [['die-key', 'added']] })
+    expect(needsEscalation(ydoc, b)).toBe(false)
+  })
+
+  test('GOTCHA, demonstrated not just documented: calling AFTER revertBundle already consumed a valid snapshot gives a false positive', () => {
+    const ydoc = new Y.Doc()
+    const yToys = ydoc.getXmlFragment('toys')
+    const bundleStamp = { clientID: 1, clock: 1 }
+    ydoc.transact(() => recordRevertSnapshot(ydoc, 'peer-B', bundleStamp, {
+      parentKey: null, index: 0, content: { nodeName: 'g', attributes: {}, children: [] },
+    }))
+    const b = bundle({ clientID: 1, clock: 1, authorId: 'peer-B', touched: [['die-key', 'removed']] })
+
+    expect(needsEscalation(ydoc, b)).toBe(false) // correct: called first, snapshot still there
+
+    ydoc.transact(() => revertBundle(ydoc, b)) // restores successfully, consumes the snapshot
+
+    // Same bundle, same question, asked too late — the snapshot that WAS
+    // there (and WAS used) is gone now because it was consumed, not
+    // because restoration failed. This is exactly why needsEscalation's
+    // own doc comment insists on "before revertBundle, not after."
+    expect(needsEscalation(ydoc, b)).toBe(true)
+    // But the content is actually fine — restoration already succeeded.
+    expect(yToys.toArray().length).toBe(1)
   })
 })

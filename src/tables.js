@@ -2,12 +2,15 @@
  * tables.js — table registry + per-table Yjs document construction,
  * persistence, and deterministic conflict-arbitration ordering.
  *
- * Owns four things:
+ * Owns five things:
  *   - document construction (makeDoc)
  *   - the 'tt_tables' localStorage registry
  *   - the per-table IndexedDB database
  *   - `joinSequence`: the append-only Y.Array recording each peer's join
  *     order, which decides authority
+ *   - forking a table, either at-rest (forkTable) or live, mid-session,
+ *     content-hash-named (forkLiveDoc) — see the "Live-doc forking"
+ *     section below
  *
  */
 import * as Y                   from 'yjs';
@@ -245,6 +248,83 @@ async function forkTable(sourceTableId, forkedTableId, forkingUserId) {
   forkDoc.destroy();
 }
 
+// ── Live-doc forking (TODO #11, branch escalation) ──────────────────────
+//
+// forkTable (above) forks an AT-REST table, reloaded fresh from
+// IndexedDB — the right primitive for home.html's "Duplicate" button, but
+// not for branch escalation, which needs to fork a *live*, in-memory doc
+// at the moment a conflict is detected, mid-session. forkLiveDoc is that:
+// simpler than forkTable, not harder — no loadTableDoc step at all, since
+// the source doc is already in memory.
+
+/**
+ * Deterministically derive a table id from a Y.Doc's current content —
+ * not a random slug (generateTableId) — because branch escalation can
+ * require *multiple peers, independently, with no coordination* to land
+ * on the identical branch table id. Concretely: if Bob and Clyde stayed
+ * synced with EACH OTHER through a partition that excluded Alice, their
+ * divergent state is byte-identical by the time either of them forks —
+ * verified empirically (see the "content-hash naming" discussion this
+ * came from): Y.encodeStateAsUpdate is deterministic given identical
+ * final CRDT state, regardless of the sync path/order/batching that
+ * produced it. Hashing that content is what lets their independent,
+ * uncoordinated forks converge on the same table id without either of
+ * them knowing the other forked anything.
+ *
+ * SHA-256 via the standard Web Crypto API (available in every browser
+ * this project targets, and in this project's own jsdom-based test
+ * environment) — not a hand-rolled hash. Truncated to 12 hex chars: not
+ * cryptographic collision-resistance territory, just a short, readable,
+ * deterministic table-id suffix.
+ */
+async function generateForkTableId(ydoc) {
+  const bytes  = Y.encodeStateAsUpdate(ydoc);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const hex    = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+  return `tt-F-v1-${hex.slice(0, 12)}`;
+}
+
+/**
+ * Fork a LIVE Y.Doc — already in memory, actively synced/edited, unlike
+ * forkTable's at-rest reload — into a brand-new IndexedDB database, named
+ * deterministically from the doc's own current content
+ * (generateForkTableId). Returns the new table's id.
+ *
+ * The content hash is computed from liveDoc BEFORE anything below mutates
+ * a copy of it — forkingUserId differs per peer, so hashing AFTER
+ * resetJoinSequenceToSelf would make the id peer-specific too, defeating
+ * the entire point (two peers with identical divergent content need the
+ * identical id).
+ *
+ * Idempotent in practice, not just in principle: if this is called twice
+ * for the same content (this peer redundantly reprocessing, or two of
+ * this peer's own tabs both forking), both calls compute the same
+ * forkedTableId, and openTablePersistenceSynced syncing into an
+ * already-seeded table converges rather than duplicating anything.
+ *
+ * Does NOT touch the 'tt_tables' registry — same convention as forkTable;
+ * callers register the entry themselves via touchTableRecord.
+ *
+ * forkingUserId required for a fresh joinSequence — same reasoning as
+ * forkTable.
+ */
+async function forkLiveDoc(liveDoc, forkingUserId) {
+  if (!forkingUserId) {
+    throw new Error('forkLiveDoc: forkingUserId is required (the branch\'s joinSequence must reset to the forking user)');
+  }
+
+  const forkedTableId = await generateForkTableId(liveDoc);
+  const update         = Y.encodeStateAsUpdate(liveDoc);
+
+  const forkDoc = makeDoc();
+  Y.applyUpdate(forkDoc, update);
+  resetJoinSequenceToSelf(forkDoc, forkingUserId);
+  await openTablePersistenceSynced(forkedTableId, forkDoc);
+  forkDoc.destroy();
+
+  return forkedTableId;
+}
+
 /**
  * Generate a fresh table id
  */
@@ -280,6 +360,8 @@ export const tablesAPI = {
   deleteTable,
   loadTableDoc,
   forkTable,
+  generateForkTableId,
+  forkLiveDoc,
   generateTableId,
   randSlug,
   compareAuthority,

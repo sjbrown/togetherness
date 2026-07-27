@@ -1,18 +1,5 @@
 # Concurrency & Branching
 
-Design record for TODO #11 ("Correctness"): what happens when two peers act
-simultaneously and their handler code (user-authored, arbitrary) produces
-states that Yjs cannot merge into a single sensible result.
-
-Status: **detection, in-place resolution (revert + restore), duplicate-id
-cleanup, and wiring resolution into the live observer are all implemented
-and tested (or, for the observer wiring itself, verified by the pure
-functions it calls — see below). True branch escalation, for what
-in-place resolution can't recover, is not built.** See "Open
-implementation questions" at the end for the precise remaining list.
-
----
-
 ## The problem
 
 A `toy` may carry arbitrary user-authored JavaScript in a
@@ -72,16 +59,14 @@ handler is not a safe do-over.
 
 ---
 
-## The model: revert in place; branch when that isn't enough
+## The model: Revert 1 Gesture, Else Branch
 
 When two peers' transactions conflict in a way Yjs cannot auto-resolve into a
 sensible single state, we pick an **authoritative** side deterministically
-(see "Authority ordering"). What happens to the losing side is now a
-two-tier answer, not the single "always branch" answer this document
-originally specified — the second tier (in-place revert) was designed and
-built *after* the first tier's "fast path" was explicitly rejected (see
-below), and is a genuinely different, more surgical mechanism, not a
-resurrection of the rejected idea:
+(see "Authority ordering"). What happens to the losing side is a
+two-tier answer:
+ * A surgical revert of one (1) conflicting gesture
+ * A branch escalation otherwise
 
 - **In-place revert (implemented — `escalation.js`).** The loser's own
   structural insertions are deleted from wherever they currently live;
@@ -109,96 +94,33 @@ recovered *how automatically*. Neither tier is a per-conflict judgment
 call the code makes situationally; which one applies falls out
 mechanically from whether a matching snapshot exists.
 
-### The rejected fast path, and what was built instead
-
-An earlier version of this design had a "fast path": trivially-overlapping
-conflicts (e.g. two reactions that both wrote one aggregate result slot)
-would be resolved in place by asserting the winner's recorded values across
-the touched set, no branch, no dialog — on the theory that small,
-localized divergence didn't warrant the weight of a full branch.
-
-**That specific idea was rejected.** Working through what "safe to assert in
-place" would actually require exposed two problems, not one implementation
-detail:
-
-- **Asserting only the winner's touched-set** produces a state neither peer
-  ever had: e.g. an aggregate slot recomputed as if the loser's die were
-  never dropped, while the die itself (a CRDT-safe insert, never in
-  question) is still physically sitting in the tray. Confidently wrong is
-  worse than visibly stuck.
-- **Asserting across the union of both touched-sets** avoids that
-  incoherence but is just branch escalation's "discard the loser's
-  contribution" outcome, minus the thing that makes discarding
-  acceptable — the loser gets a say. A quiet log line is the wrong weight
-  for silently dropping real work.
-
-The condition that would have made in-place assertion safe — the two
-touched-sets being **exactly equal** — turns out to essentially never occur
-for real toy code (every handler writes its result via
-`tspan.textContent = X`, which always creates a fresh, per-commit-unique
-text node, so two concurrent recomputes of the same slot never produce
-equal touched-sets). That's what actually killed the idea: not that
-in-place resolution is unsafe in general, but that *this particular
-condition for it* was almost never true.
-
-**What was built instead (`escalation.js` + `snapshot.js`) is not that
-idea, corrected — it's a different mechanism that was never subject to
-either objection above:**
-
-- It doesn't assert a *value* across a touched-set at all. It deletes
-  exactly the loser's own newly-created items (`item.id.client ===
-  bundle.clientID`, checked per item — never a pre-existing node the
-  bundle merely touched) and, separately, restores exactly what that same
-  commit *removed*, from a snapshot captured at commit time. Nothing here
-  is "assert the winner's version" — it's "undo the loser's insert,
-  undo the loser's delete," each independently, using the loser's own
-  actual prior content, not a value inferred from the winner's.
-- That's why it doesn't produce a state neither peer had: restoring
-  die2 to its pre-drop position and content is *literally* a state Bob's
-  own client had one moment earlier — not fabricated, not inferred.
-- It doesn't silently discard real work either — see "The model" above:
-  the loser gets a red toast, and — this is the actual boundary that
-  replaces "touched-sets exactly equal" — the mechanism only ever
-  recovers what it has a snapshot for. Divergence too large or too old to
-  have a matching snapshot doesn't get silently asserted away; it falls
-  through to branch escalation instead, where the loser gets the
-  Acknowledge dialog and their whole document preserved.
-
-So the "one resolution mechanism, not two" framing this document used to
-have is gone, but not because the reasoning that produced it was wrong —
-the *specific* fast path it ruled out really was unsafe, for the reasons
-above. What replaced it is a genuinely different pair of mechanisms, sized
-to what's actually recoverable, that never falls into either trap.
-
----
-
-## Preliminary: placement + reaction in ONE transaction — done
+## Atomicity: gesture + reaction in ONE transaction
 
 Previously, a placement (e.g. dropping a die into a tray — a CRDT-safe
-sequence insert) and its triggered reaction (the tray's
+sequence insert) and its triggered reaction (the container's
 `contents_change_handler` output) committed as **two** transactions: the
 reaction fired in a microtask after the placement's observer returned.
 
 **The placement and its synchronous reaction now commit as a single atomic
 transaction**, at every callsite that runs possibly-user-written handler
-code — a drop into a tray, a die's own `Roll`, a tray's `Roll All`, and a
-toy's placement-time `initialize()`. This was load-bearing for the rest of
-this design:
+code:
+ * a drop into a tray
+ * a die's own `Roll`
+ * a tray's `Roll All`
+ * a toy's placement-time `initialize()`
 
 - It removes the "die is inserted but its reaction lost, leaving the slot
   stale and the die uncounted" intermediate state. The placement and its
   reaction now win or lose *together*, as one unit.
 - It makes "the loser's divergent state" a well-defined, atomic thing to fork.
 
-This was only sound because handlers are synchronous (our one regulation) —
-`envelope.js`'s synchronous envelope path (`runInEnvelopeSync` /
-`runToyHandlerSync`) throws rather than silently drop mutations from an
-async handler, so that regulation is enforced, not just assumed.
+This was only sound because handlers are synchronous. We impose this
+regulation on toy code that ships with TT and declare it in the developer docs.
+Note: `envelope.js`'s synchronous envelope path (`runInEnvelopeSync` /
+`runToyHandlerSync`) throws loudly on an async handler, enforcing
+the regulation.
 
-Note this supersedes an earlier framing where "placements are never discard
-candidates." Under one-transaction commit, a placement whose reaction loses is
-branched *with* its reaction — the unit is the transaction, not the individual
-op. Pure inserts with no reaction (or a no-op/side-effect-only reaction) still
+Pure inserts with no reaction (or a no-op/side-effect-only reaction) still
 never cause a conflict, because they touch fresh nodes and overlap nothing.
 
 **Mechanism:**
@@ -280,14 +202,12 @@ independent-drop case that must stay conflict-free.
   be compared against one built on another without any app-level id scheme.
   `touchedSetFromRecords(records)` walks the in-scope records exactly as
   described above and returns a `Map<idKeyString, {domId, mutation}>` — a
-  small, purpose-built distillation of `MutationRecord`, not a bare id set:
+  small, purpose-built distillation of `MutationRecord`:
   `mutation` is `'added'`/`'removed'` for a node in a record's
   addedNodes/removedNodes, or the record's own `MutationRecord.type`
   (`'attributes'`/`'characterData'`/`'childList'`) for `record.target`
-  itself; `domId` is the touched node's own `data-id` (falling back to a
-  plain DOM `id`, falling back to `nodeName`) — for inspection/debugging
-  only, never for identity (the Map's own key is the only thing anything
-  resolves an item by). Records are processed in order, each entry
+  itself; `domId` is the touched node's own identifier.
+  Records are processed in order, each entry
   overwriting any earlier one for the same item, so the *final* mutation
   reflects whatever actually happened to that item last within the commit —
   this is what makes a reparent (removed from its old parent, added to its
@@ -327,10 +247,9 @@ independent-drop case that must stay conflict-free.
   bundle that conflicts with a newly-added one.
 - **The scan hook:** `app.js` observes the synced `reactionLog` directly
   (`onReactionLogChanged`, wired in `boot()` alongside the other CRDT
-  observers) rather than hooking `onToysChanged` /
-  `dispatchContentsChangeCascade` as originally sketched — every commit that
+  observers) — every commit that
   qualifies (local or remote) always appends to `reactionLog`, so watching
-  that array directly sees exactly the events that matter, with no need to
+  that array reveals exactly the events that matter, with no need to
   duplicate origin-filtering logic that already lives in `conflict.js`.
 - **Status: detection is wired; resolution is not — this is the actual
   remaining gap, not a rounding error.** `onReactionLogChanged` currently
@@ -339,10 +258,6 @@ independent-drop case that must stay conflict-free.
   are tested, and work correctly when called directly — but nothing in
   `app.js` calls them yet. A real conflict today is detected and logged,
   not resolved. See "Open implementation questions."
-- **Verified end-to-end** in `tests/unit/conflict.test.js`, including two
-  real synced `Y.Doc` replicas driven through the actual production
-  `commitEnvelope` path (not hand-built bundles): two peers writing the same
-  result slot are flagged; two peers writing different slots are not.
 
 ---
 
@@ -386,8 +301,8 @@ order**:
 A fork copies the whole source document via `Y.encodeStateAsUpdate` —
 including `joinSequence`, and thus every player who was ever on the source
 table. Left as copied, that would make those other players outrank the
-forking user on their own brand-new branch (they joined the *source* table
-earlier), even though they've never seen this branch and may not know it
+forking user on their own brand-new branch.
+even though they've never seen this branch and may not know it
 exists. So `forkTable` (`tables.js`) requires a `forkingUserId` and calls
 `resetJoinSequenceToSelf` on the forked doc before persisting it: the new
 branch's `joinSequence` ends up containing only the forking user, who is
@@ -396,24 +311,23 @@ therefore its sole — and automatically authoritative — member. This isn't
 user themselves unrecorded, sorting last against nobody. It's the same array,
 reset to exactly one entry.
 
+TODO: reason about what happens if Bob and Clyde both fork the same table
+since Alice lost her network connection.  Any automatic conflict resolution
+should be equally fair.
+
 ### Pruning: no
 
 `joinSequence` is **append-only and never pruned.** In particular, do NOT
 prune on awareness disconnect. A peer that partitions (tab open, network
 dropped — same `Y.Doc`, same `clientID`) must remain arbitrable when it
-reconnects, which requires its `joinSequence` entry to still exist. Awareness
-is ephemeral and evaporates on disconnect — that is exactly why authority must
-live in the *document*, not in awareness. The growth cost is a few integers per
-lifetime join, negligible against the SVG document.
+reconnects.
 
 ### Why not awareness / join-time
 
 Awareness (`provider.awareness`) is ephemeral, LWW, not causally ordered
-against document ops, and torn down on disconnect. It is fine for presence
-(cursors, colors) but unsound as a conflict arbiter: two peers can hold
-disagreeing awareness snapshots at the conflict moment (→ divergent winner
-selection), and a partitioned peer's awareness is already gone when you need
-it. Self-reported wall-clock join *times* additionally suffer clock skew.
+against document ops, and torn down on disconnect.
+It's unsound as a conflict arbiter: two peers can hold
+disagreeing awareness snapshots at the conflict moment.
 `joinSequence` avoids all of this by living in the CRDT.
 
 ---
@@ -422,14 +336,15 @@ it. Self-reported wall-clock join *times* additionally suffer clock skew.
 
 Reached only when in-place revert can't fully recover the loser's
 contribution (see "The model" above). The loser is shown a blocking
-**Acknowledge dialog** telling them:
+**Acknowledge dialog**:
 
 1. State got out of sync with the other players.
 2. The name of their branched-off table.
-3. A choice: **join the authoritative table** (their branch is preserved and
-   findable in `home.html`, but they resume on the shared table), or **keep
-   working on the branch** (they continue solo/however they like, fully
-   sync-capable, on the forked table).
+3. A choice to make:
+  * **join the authoritative table** (their branch is preserved and
+    findable in `home.html`, but they resume on the shared table)
+  * **keep working on the branch** (they continue solo/however they
+    like, fully sync-capable, on the forked table).
 
 The same mechanism scales from a small unrecoverable divergence to an
 hour-long network partition — a partition is just a conflict with a wide
@@ -454,19 +369,6 @@ Architecture already cooperates:
 So a branch is: a **new `${tableId}` IndexedDB doc**
 seeded from the loser's forked state, and a `tt_tables` registry entry with
 the shown name. No new persistence machinery.
-
-The first, self-contained implementation step is a **"Duplicate (Fork)"
-button on each row of `home.html`'s table list**, alongside the existing
-`Delete` button. It reuses `loadRoomDoc(roomId)` (already loads a table's
-persisted doc from IndexedDB) to read the source doc, `Y.encodeStateAsUpdate`
-to snapshot it, writes that as the seed of a new `${tableId}` IndexedDB
-database, and appends a `tt_tables` registry entry. This exercises the
-copy-a-doc-into-a-new-table mechanics that branch escalation needs later,
-fully decoupled from causal-fork-point selection (this prototype forks the
-whole at-rest doc, not a specific point mid-transaction) and from any live-room
-wiring — a clean, isolated first commit. The later, harder version — forking
-from a specific causal point in a *live* room, mid-session, at the moment a
-conflict is detected — extends this same primitive rather than replacing it.
 
 ---
 
@@ -603,45 +505,3 @@ distinction matters below.)
   its place. This is exactly the case that needs branch escalation
   instead, not something the current mechanism silently gets wrong.
 
----
-
-## Open implementation questions (tracked in TODO)
-
-**Done, no longer open:**
-- ~~Mapping a bundle's `clientID` to its author's persistent identity~~ —
-  bundles self-report `authorId` at commit time (`envelope.js`'s
-  `opts.authorId`); no separate lookup structure needed.
-- ~~In-place resolution mechanism~~ — `escalation.js`'s
-  `resolveConflictWinner`/`revertBundle`, `snapshot.js`'s capture/restore.
-  Tested against the canonical two-peer race end to end, including the
-  restored die landing at its original position.
-- ~~Duplicate-`data-toy-id` cleanup~~ — `toys.js`'s `dedupToys`, wired into
-  `onToysChanged`. Needed because resolution's own restoration step, and
-  ordinary concurrent reparenting, can both legitimately produce two
-  inserts of the same logical toy — see "Making inserts idempotent" above.
-
-**Still open:**
-- ~~Wiring `resolveConflictWinner`/`revertBundle` into `onReactionLogChanged`
-  itself~~ ✅ **Done.** Every peer that finds a conflict now resolves it —
-  see `TODO.md`'s item 11, step 7's "Still open" note for the exact
-  mechanism and why it deliberately has no `_dispatchingContentsChange`
-  guard (unlike the gesture-triggered paths, `revertBundle` runs no
-  cascade of its own, so the normal fallback should run after it, not be
-  suppressed).
-- **The branch escalation fallback itself** — nothing built yet for the
-  case `revertBundle`'s restoration can't cover (see "The model" and the
-  worked example's last bullet). Needs: how to snapshot/copy a *live*
-  `Y.Doc` (not an at-rest one loaded fresh from IndexedDB) at the moment
-  a conflict is detected into a new IndexedDB table, cleanly detaching it
-  from the room's WebRTC provider so the branch doesn't keep syncing with
-  the table it just diverged from.
-- **The predicate for which tier applies.** Falls out mechanically today
-  (snapshot present and `bundleStamp`-matching → in-place; absent or
-  mismatched → should escalate) but nothing currently *acts* on the
-  "should escalate" case at all — right now `revertBundle` just silently
-  doesn't restore, with no branch triggered to catch what it couldn't.
-- Dialog UX copy and the branch-naming scheme.
-- Whether "join the authoritative table" should attempt anything beyond a
-  plain navigate to `tableId` (e.g. surfacing a diff/summary of what the
-  branch has that the authoritative table doesn't) or leave that entirely
-  to the branch being reopenable from `home.html`.
