@@ -249,28 +249,27 @@ Full design record in `concurrency_branching.md`.
    (`resolveConflictWinner`, `revertBundle`, `scanForConflicts`) are each
    already tested in isolation.
 
-**Still open, after steps 7/8:**
- * **Step 6 itself** (branch escalation), now specifically for whatever
-   step 7 can't recover. **The fork primitive is done** —
-   `tables.js`'s `forkLiveDoc`/`generateForkTableId`: simpler than the
-   existing `forkTable`, not harder (no `loadTableDoc` step, since the
-   source doc is already live in memory), named deterministically from
-   content (SHA-256 of `Y.encodeStateAsUpdate`, truncated) rather than
-   randomly, so that Bob and Clyde (see concurrency_branching.md, "Making
-   inserts idempotent") can each fork independently, no coordination, and
-   land on the identical branch table id — verified empirically first that
-   `Y.encodeStateAsUpdate` is genuinely byte-deterministic for two peers
-   with identical merged content regardless of sync order. Untested
-   end-to-end (jsdom has no `indexedDB`, and `fake-indexeddb` is a
-   dependency this project has already, deliberately, deferred — same
-   gap `forkTable` has always had); `generateForkTableId` itself is pure
+**Step 6 (branch escalation) is now fully done, end to end:**
+ * **The fork primitive** — `tables.js`'s `forkLiveDoc`/`generateForkTableId`:
+   simpler than the existing `forkTable`, not harder (no `loadTableDoc`
+   step, since the source doc is already live in memory), named
+   deterministically from content (SHA-256 of `Y.encodeStateAsUpdate`,
+   truncated) rather than randomly, so that Bob and Clyde (see
+   concurrency_branching.md, "Making inserts idempotent") can each fork
+   independently, no coordination, and land on the identical branch table
+   id — verified empirically first that `Y.encodeStateAsUpdate` is
+   genuinely byte-deterministic for two peers with identical merged
+   content regardless of sync order.
+
+   Untested end-to-end (jsdom has no `indexedDB`, and `fake-indexeddb`
+   is a dependency this project has
+   already, deliberately, deferred); `generateForkTableId` itself is pure
    and fully tested, including the race scenario directly.
 
- * ~~The wiring itself~~ ✅ **Done.**
-   `onReactionLogChanged` now calls `needsEscalation(_ydoc, loser)`
-   *before* `revertBundle` (per its own ordering requirement — see
-   step 7's note above), and starts `tables.forkLiveDoc(_ydoc, _myId)`
-   —- not awaited yet, just started, so its internal synchronous
+ * **The wiring** — `onReactionLogChanged` calls `needsEscalation(_ydoc,
+   loser)` *before* `revertBundle` (per its own ordering requirement —
+   see step 7's note above), and starts `tables.forkLiveDoc(_ydoc,
+   _myId)` — not awaited yet, just started, so its internal synchronous
    `Y.encodeStateAsUpdate` call captures the pre-revert state before
    `revertBundle`'s delete runs right after — but only when
    `loser.authorId === _myId`: only the losing peer's own client can
@@ -278,20 +277,35 @@ Full design record in `concurrency_branching.md`.
    ever be findable from `home.html`. Every other peer (winner, third
    parties, even Bob-not-Clyde in the multi-peer partition scenario) just
    reverts and moves on, exactly as before. On successful fork:
-   `touchTableRecord` registers it, then a placeholder function shows a
-   toast (real Acknowledge dialog is the next item, not built yet). On
-   fork failure: caught, logged, error toast — doesn't leave the peer with
-   no feedback at all. **Not covered by a vitest test**, same reasoning as
-   the original wiring: `onReactionLogChanged` is module-private in
-   `app.js`, e2e-only by this project's existing convention; every
-   function it calls is tested in isolation.
- * The Acknowledge dialog itself — no significant blocking modal exists in
-   this codebase yet; this is new UI work, styled to match the aside
-   panel. Currently a toast-based placeholder
-   (`showBranchAcknowledgement`) stands in for it.
- * Hard-reload navigation for "keep working on the branch" — confirmed
-   this needs an actual reload, not a `location.hash` change alone (no
-   existing hash-change-triggered reload path in `index.html`).
+   `touchTableRecord` registers it, then `UI.showBranchDialog` shows the
+   Acknowledge dialog. On fork failure: caught, logged, error toast —
+   doesn't leave the peer with no feedback at all. **Not covered by a
+   vitest test**, same reasoning as the original wiring:
+   `onReactionLogChanged` is module-private in `app.js`, e2e-only by this
+   project's existing convention; every function it calls is tested in
+   isolation.
+ * **The Acknowledge dialog** — `ui.js`'s `showBranchDialog`/
+   `branchDialogJoin`/`branchDialogKeepWorking`, new markup in
+   `index.html` (`#branchDialogScrim`/`#branchDialog`), new CSS in
+   `ui.css` matching `#panel`'s visual language (`--surface-solid`,
+   `--emboss-lg`, `--radius`, `--font-display` header) but as a true
+   centered modal on every viewport, not the mobile-only `#scrim`/`#panel`
+   bottom sheet. No dismiss-by-clicking-the-scrim or Escape handling —
+   deliberate: this is a real choice to make, not a notice to swat away.
+   "Join the shared table" just closes the dialog (the current session
+   never left the authoritative table — the fork happened in the
+   background, onto a separate table). "Keep working on my branch" sets
+   `location.hash` to the branch's id and calls `location.reload()` —
+   confirmed a hash-only change doesn't itself trigger loading a
+   different table's document (`index.html`'s boot sequence only ever
+   reads `location.hash` once, at initial load), so an explicit reload is
+   required. Tested in `tests/unit/ui.test.js`, including the
+   pending-table state correctly clearing on dismiss (so a stray later
+   call to "keep working" doesn't act on a table the user already
+   declined) — found and fixed a real test-isolation bug along the way:
+   the pending-table variable is module-level state that persists across
+   tests in the same file, which one test's assumption of a fresh start
+   didn't account for.
  * ~~The predicate for which tier applies.~~ ✅ **Done.**
    `conflict.js`'s `touched` gained real structure to make this exact,
    rather than another ad-hoc flag: each entry is now `{domId, mutation}`,
@@ -308,8 +322,8 @@ Full design record in `concurrency_branching.md`.
    a false positive for a case that actually already succeeded (this
    ordering trap is demonstrated directly in
    `tests/unit/escalation.test.js`, not just written down). Pure — makes
-   no Yjs writes, decides nothing about who forks; that's still open
-   below. **This also surfaced a real, independent correctness fix**:
+   no Yjs writes, decides nothing about who forks; that's the wiring's job
+   . **This also surfaced a real, independent correctness fix**:
    `revertBundle`'s deletion step used to key off `item.id.client ===
    bundle.clientID`, which only tells you a peer created an item *ever* —
    not that *this commit* did. A peer's touched-set can legitimately
@@ -318,6 +332,4 @@ Full design record in `concurrency_branching.md`.
    Switched to `mutation === 'added'`, which asks the right question —
    regression test in `escalation.test.js` demonstrates the old check
    getting this wrong.
- * Nothing yet *acts* on a `needsEscalation` true result — no fork
-   primitive, no wiring, no dialog. All still ahead.
 

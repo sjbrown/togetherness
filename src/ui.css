@@ -208,8 +208,63 @@ html, body {
 .toast .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--primary); }
 .toast.info { color: #7fa8d4; } .toast.info .dot { background: var(--info); }
 .toast.warn { color: #d4a060; } .toast.warn .dot { background: var(--warn); }
+.toast.error { color: #d47070; } .toast.error .dot { background: var(--danger); }
 @keyframes toastIn  { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes toastOut { to   { opacity: 0; transform: translateY(-6px); } }
+
+/* ── Branch Acknowledge dialog — true blocking modal, every viewport
+   (unlike #scrim/#panel, which are a mobile-only bottom sheet). Same
+   surface/emboss/radius/typography language as #panel throughout, just
+   centered instead of docked. ────────────────────────────────────── */
+.dialog-scrim {
+  position: fixed; inset: 0; z-index: 90;
+  background: rgba(4,3,8,0.72);
+  opacity: 0; visibility: hidden;
+  transition: opacity .2s, visibility .2s;
+}
+.dialog-scrim.open { opacity: 1; visibility: visible; }
+.dialog {
+  position: fixed; z-index: 91;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%) scale(0.96);
+  width: min(380px, calc(100vw - 32px));
+  max-height: calc(100dvh - var(--safe-t) - var(--safe-b) - 32px);
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--surface-solid);
+  border-radius: var(--radius);
+  box-shadow: var(--emboss-lg);
+  opacity: 0; visibility: hidden;
+  transition: opacity .2s, visibility .2s, transform .2s cubic-bezier(.2,.9,.3,1);
+}
+.dialog.open { opacity: 1; visibility: visible; transform: translate(-50%, -50%) scale(1); }
+.dialog-head {
+  padding: 16px 18px 12px; border-bottom: 0.5px solid var(--border-2);
+  background: rgba(0,0,0,0.15); flex-shrink: 0;
+}
+.dialog-head h2 {
+  font-family: var(--font-display); font-size: 16px; font-weight: normal; letter-spacing: .04em;
+  margin: 0; color: var(--text);
+}
+.dialog-body {
+  padding: 16px 18px; overflow-y: auto; flex: 1;
+  font-size: 13px; line-height: 1.55; color: var(--text-2);
+}
+.dialog-body strong { color: var(--text); font-weight: 600; }
+.dialog-body p { margin: 0 0 10px; }
+.dialog-body p:last-child { margin-bottom: 0; }
+.dialog-actions {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 14px 18px; border-top: 0.5px solid var(--border-2);
+  background: rgba(0,0,0,0.15); flex-shrink: 0;
+}
+.dialog-btn {
+  width: 100%; padding: 11px 14px; border: none; border-radius: var(--radius-sm);
+  background: var(--surface-2); box-shadow: var(--emboss);
+  color: var(--text); font-family: var(--font-body); font-size: 13px; font-weight: 500;
+  cursor: pointer;
+}
+.dialog-btn:active { box-shadow: var(--emboss-inset); }
+.dialog-btn-primary { background: var(--primary-soft); color: var(--primary); }
 
 /* ── Info button (top-right, always visible) ──────────────── */
 #infoBtn {

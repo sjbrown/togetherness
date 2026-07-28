@@ -560,6 +560,59 @@ export function closePanel() {
   updateInfoBar();
 }
 
+// -- Branch Acknowledge dialog ---------------------------------------------
+// Blocking (every viewport, unlike the mobile-only #scrim/#panel sheet) —
+// shown when TODO #11's branch escalation forks a peer's own divergent
+// content into a new table because in-place revert couldn't fully recover
+// it (see app.js's onReactionLogChanged / escalation.js's needsEscalation).
+// A real choice, not a dismissible notice: "join the shared table" just
+// closes this (the peer's current session never left it — the fork
+// happened in the background, onto a separate table); "keep working on my
+// branch" hard-reloads onto the forked table, since a hash-only change to
+// the current page doesn't itself trigger re-loading a different table's
+// document (see index.html's own boot sequence, which only ever reads
+// location.hash once, at load).
+let _pendingBranchTableId = null;
+
+export function showBranchDialog(forkedTableId) {
+  _pendingBranchTableId = forkedTableId;
+  const body = $('#branchDialogBody');
+  if (body) {
+    body.innerHTML = `
+      <p>Your table drifted out of sync with the other players while you
+      were apart, and some of what you did while apart couldn't be
+      automatically merged back in.</p>
+      <p>Nothing was lost — it's saved in a new table:
+      <strong>${forkedTableId}</strong>, findable any time from the table
+      list.</p>
+    `;
+  }
+  $('#branchDialogScrim')?.classList.add('open');
+  $('#branchDialogScrim')?.setAttribute('aria-hidden', 'false');
+  $('#branchDialog')?.classList.add('open');
+  $('#branchDialog')?.setAttribute('aria-hidden', 'false');
+}
+
+function closeBranchDialog() {
+  _pendingBranchTableId = null;
+  $('#branchDialogScrim')?.classList.remove('open');
+  $('#branchDialogScrim')?.setAttribute('aria-hidden', 'true');
+  $('#branchDialog')?.classList.remove('open');
+  $('#branchDialog')?.setAttribute('aria-hidden', 'true');
+}
+
+export function branchDialogJoin() {
+  // The current session is already on the shared (authoritative) table —
+  // forking never navigated anyone anywhere. Nothing to do but dismiss.
+  closeBranchDialog();
+}
+
+export function branchDialogKeepWorking() {
+  if (!_pendingBranchTableId) return;
+  location.hash = _pendingBranchTableId;
+  location.reload();
+}
+
 // -- Data gatherers (impure) ---------------------------------------------------
 function gatherToolsData() {
   const layer = App.getActiveLayer();
@@ -726,9 +779,7 @@ export function peersBody(data) {
 }
 function avatarSVG(p) {
   const fill = p.gradId ? `url(#${p.gradId})` : p.color;
-  const nametokens = p.name.split('-')
-  const namepart = nametokens[nametokens.length -1] + 'u' // in case it's empty
-  const initial = namepart[0].toUpperCase();
+  const initial = p.name[0].toUpperCase();
   return `<svg class="avatar" viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
     <circle cx="16" cy="16" r="16" fill="${fill}"></circle>
     <text x="16" y="21" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">${initial}</text>
@@ -738,7 +789,7 @@ function peerRowsHTML(peers) {
   if (!peers.length)
     return '<div style="font-size:13px;color:var(--text-3);padding:8px 0">No other peers connected</div>';
   return peers.map(p =>
-    `<div class="peer-row">${avatarSVG(p)}<div><div style="font-size:14px">${p.name.slice(8)}</div><div style="font-size:12px;color:var(--text-3)">${p.live ? 'editing now' : 'offline'}</div></div>${p.live ? '<span class="pulse"></span>' : ''}</div>`
+    `<div class="peer-row">${avatarSVG(p)}<div><div style="font-size:14px">${p.name}</div><div style="font-size:12px;color:var(--text-3)">${p.live ? 'editing now' : 'offline'}</div></div>${p.live ? '<span class="pulse"></span>' : ''}</div>`
   ).join('');
 }
 export function updatePeersPanel() {

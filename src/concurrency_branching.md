@@ -77,7 +77,7 @@ two-tier answer:
   "Worked example") entirely on the shared table — no branch, no dialog.
   The loser gets a **red toast**, not silence: visible, but not blocking,
   and not offering a choice.
-- **Branch escalation (not yet built).** For whatever in-place revert
+- **Branch escalation** For whatever in-place revert
   can't fully recover — a stale/evicted snapshot (the loser made a second
   qualifying commit before their first was resolved; only the most recent
   is kept, see "Making inserts idempotent" and `snapshot.js`'s

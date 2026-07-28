@@ -4,8 +4,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 // @vitest-environment jsdom
-import { describe, test, expect, vi } from 'vitest'
-import { layerObjectListHTML, refreshLayerList, UIData, init, toast } from '../../src/ui.js'
+import { describe, test, expect, vi, beforeEach } from 'vitest'
+import { layerObjectListHTML, refreshLayerList, UIData, init, toast, showBranchDialog, branchDialogJoin, branchDialogKeepWorking } from '../../src/ui.js'
 
 const mockObjects = [
   { id: 'a', label: 'rect',   fill: '#c8941e', kind: 'rect'   },
@@ -308,7 +308,7 @@ describe('toast — warn/error toasts are mirrored to console.warn', () => {
     warnSpy.mockRestore()
   })
 
-  test('kind "error" (forward-compatible, even though nothing uses it yet) also logs', () => {
+  test('kind "error" logs too — used throughout TODO #11\'s conflict resolution (dedupToys, onReactionLogChanged)', () => {
     document.body.innerHTML = '<div id="toasts"></div>'
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     toast('Something broke', 'error')
@@ -331,5 +331,101 @@ describe('toast — warn/error toasts are mirrored to console.warn', () => {
     expect(() => toast('Could not move into tray: no .contents_group', 'warn')).not.toThrow()
     expect(warnSpy).toHaveBeenCalledWith('[toast] Could not move into tray: no .contents_group')
     warnSpy.mockRestore()
+  })
+})
+
+// The skeleton showBranchDialog/branchDialogJoin/branchDialogKeepWorking
+// expect to find and populate — mirrors index.html's actual markup.
+function mountBranchDialogSkeleton() {
+  document.body.innerHTML = `
+    <div id="branchDialogScrim" aria-hidden="true"></div>
+    <div id="branchDialog" aria-hidden="true">
+      <div id="branchDialogBody"></div>
+    </div>
+  `
+}
+
+// jsdom's location.reload isn't configurable (spyOn/defineProperty both
+// fail to redefine it) — stub the whole object instead, with just enough
+// surface (a mutable hash, a mock reload) for these tests.
+function stubLocation() {
+  const reload = vi.fn()
+  let hash = ''
+  vi.stubGlobal('location', {
+    get hash() { return hash },
+    set hash(v) { hash = v },
+    reload,
+  })
+  return { reload, getHash: () => hash }
+}
+
+describe('showBranchDialog / branchDialogJoin / branchDialogKeepWorking', () => {
+  // _pendingBranchTableId is module-level state, persisting across tests
+  // in this file (ES modules are shared, not reloaded per test) —
+  // branchDialogJoin's own reset is the cheapest way to guarantee a clean
+  // baseline regardless of what an earlier test in this block left behind.
+  beforeEach(() => {
+    mountBranchDialogSkeleton()
+    branchDialogJoin()
+  })
+
+  test('showBranchDialog opens both the scrim and the dialog, and names the branch table', () => {
+    mountBranchDialogSkeleton()
+    showBranchDialog('tt-F-v1-abc123def456')
+
+    expect(document.querySelector('#branchDialogScrim').classList.contains('open')).toBe(true)
+    expect(document.querySelector('#branchDialogScrim').getAttribute('aria-hidden')).toBe('false')
+    expect(document.querySelector('#branchDialog').classList.contains('open')).toBe(true)
+    expect(document.querySelector('#branchDialog').getAttribute('aria-hidden')).toBe('false')
+    expect(document.querySelector('#branchDialogBody').textContent).toContain('tt-F-v1-abc123def456')
+  })
+
+  test('branchDialogJoin closes the dialog and does NOT navigate anywhere', () => {
+    mountBranchDialogSkeleton()
+    showBranchDialog('tt-F-v1-abc123def456')
+    const { reload, getHash } = stubLocation()
+
+    branchDialogJoin()
+
+    expect(document.querySelector('#branchDialogScrim').classList.contains('open')).toBe(false)
+    expect(document.querySelector('#branchDialogScrim').getAttribute('aria-hidden')).toBe('true')
+    expect(document.querySelector('#branchDialog').classList.contains('open')).toBe(false)
+    expect(document.querySelector('#branchDialog').getAttribute('aria-hidden')).toBe('true')
+    expect(reload).not.toHaveBeenCalled()
+    expect(getHash()).toBe('') // never left the shared table
+    vi.unstubAllGlobals()
+  })
+
+  test('branchDialogKeepWorking sets the hash to the branch table and reloads', () => {
+    mountBranchDialogSkeleton()
+    showBranchDialog('tt-F-v1-abc123def456')
+    const { reload, getHash } = stubLocation()
+
+    branchDialogKeepWorking()
+
+    expect(getHash()).toBe('tt-F-v1-abc123def456')
+    expect(reload).toHaveBeenCalledOnce()
+    vi.unstubAllGlobals()
+  })
+
+  test('branchDialogKeepWorking is a no-op if no dialog was ever shown (no pending table)', () => {
+    mountBranchDialogSkeleton()
+    const { reload } = stubLocation()
+
+    branchDialogKeepWorking() // never called showBranchDialog first
+
+    expect(reload).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  test('branchDialogKeepWorking only acts on the table it was shown for, not a later, different one, once already consumed', () => {
+    mountBranchDialogSkeleton()
+    showBranchDialog('tt-F-v1-first000000')
+    branchDialogJoin() // dismiss without keeping — clears the pending table
+
+    const { reload } = stubLocation()
+    branchDialogKeepWorking() // nothing pending anymore
+    expect(reload).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
   })
 })
