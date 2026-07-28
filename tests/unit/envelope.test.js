@@ -13,7 +13,7 @@ import {
   runInEnvelopeSync, runToyHandlerSync, isEnvelopeOpen,
   DERIVED_ORIGIN,
 } from '../../src/envelope.js'
-import { getRevertSnapshots } from '../../src/snapshot.js'
+import { getRevertSnapshots, setRevertsEnabled } from '../../src/snapshot.js'
 
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
 const TOY_DIR = path.resolve(__dir, '../../src/toy')
@@ -674,12 +674,13 @@ describe('renderAfterCommit / runToyHandler — post-commit render', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// commitEnvelope — revert-snapshot capture (TODO #11, step 2 of the
-// revert design: capture a removed pre-existing node's content BEFORE
+// commitEnvelope — revert-snapshot capture
+// capture a removed pre-existing node's content BEFORE
 // deleting it, so a later revert can restore it — see snapshot.js).
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('commitEnvelope — revert-snapshot capture', () => {
+  beforeEach(() => setRevertsEnabled(true))
   test('a reparent (remove from old parent, add to new parent, same commit) snapshots the pre-move content', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)

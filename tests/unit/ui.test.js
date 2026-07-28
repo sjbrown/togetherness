@@ -5,7 +5,7 @@
 
 // @vitest-environment jsdom
 import { describe, test, expect, vi, beforeEach } from 'vitest'
-import { layerObjectListHTML, refreshLayerList, UIData, init, toast, showBranchDialog, branchDialogJoin, branchDialogKeepWorking } from '../../src/ui.js'
+import { layerObjectListHTML, refreshLayerList, UIData, init, toast, showBranchDialog, branchDialogJoin, branchDialogKeepWorking, peersBody, openSheet, closePanel, restorePanelState } from '../../src/ui.js'
 
 const mockObjects = [
   { id: 'a', label: 'rect',   fill: '#c8941e', kind: 'rect'   },
@@ -427,5 +427,145 @@ describe('showBranchDialog / branchDialogJoin / branchDialogKeepWorking', () => 
     branchDialogKeepWorking() // nothing pending anymore
     expect(reload).not.toHaveBeenCalled()
     vi.unstubAllGlobals()
+  })
+})
+
+describe('peersBody — Offline mode / Enable Reverts toggles', () => {
+  const baseData = { peers: [], offline: false, revertsEnabled: true, roomId: 'tt-T-v1-test' }
+
+  test('offline toggle reflects data.offline: off', () => {
+    const div = document.createElement('div')
+    div.innerHTML = peersBody(baseData)
+    expect(div.querySelector('#offToggle').classList.contains('on')).toBe(false)
+  })
+
+  test('offline toggle reflects data.offline: on', () => {
+    const div = document.createElement('div')
+    div.innerHTML = peersBody({ ...baseData, offline: true })
+    expect(div.querySelector('#offToggle').classList.contains('on')).toBe(true)
+  })
+
+  test('reverts toggle reflects data.revertsEnabled: on (the default)', () => {
+    const div = document.createElement('div')
+    div.innerHTML = peersBody(baseData)
+    expect(div.querySelector('#revertsToggle').classList.contains('on')).toBe(true)
+  })
+
+  test('reverts toggle reflects data.revertsEnabled: off', () => {
+    const div = document.createElement('div')
+    div.innerHTML = peersBody({ ...baseData, revertsEnabled: false })
+    expect(div.querySelector('#revertsToggle').classList.contains('on')).toBe(false)
+  })
+
+  test('both toggles are independent — one being on does not force the other', () => {
+    const div = document.createElement('div')
+    div.innerHTML = peersBody({ ...baseData, offline: true, revertsEnabled: false })
+    expect(div.querySelector('#offToggle').classList.contains('on')).toBe(true)
+    expect(div.querySelector('#revertsToggle').classList.contains('on')).toBe(false)
+  })
+})
+
+describe('panel open/tab persistence (tt_panel_state)', () => {
+  const mockApp = {
+    getPeers: () => [],
+    isOffline: () => false,
+    isRevertsEnabled: () => true,
+    getTableId: () => 'tt-T-v1-test',
+    getHistory: () => [],
+  }
+
+  function mountPanelSkeleton() {
+    // Deliberately no #pill/#idbar — renderPill()/updateInfoBar() both
+    // no-op without them (optional-chained lookups), so init() doesn't
+    // need a wider mock than this test actually exercises.
+    document.body.innerHTML = `
+      <div id="scrim"></div>
+      <aside id="panel" aria-hidden="true">
+        <h2 id="panelTitle"></h2>
+        <div id="panelTabs"></div>
+        <div id="panelBody"></div>
+      </aside>
+    `
+    localStorage.clear()
+    init(mockApp)
+  }
+
+  test('openSheet persists {open: true, tab} to localStorage', () => {
+    mountPanelSkeleton()
+    openSheet('peers')
+    expect(JSON.parse(localStorage.getItem('tt_panel_state'))).toEqual({ open: true, tab: 'peers' })
+  })
+
+  test('closePanel persists {open: false}, still remembering the tab that was open', () => {
+    mountPanelSkeleton()
+    openSheet('history')
+    closePanel()
+    expect(JSON.parse(localStorage.getItem('tt_panel_state'))).toEqual({ open: false, tab: 'history' })
+  })
+
+  test('restorePanelState reopens the panel to the persisted tab', () => {
+    mountPanelSkeleton()
+    localStorage.setItem('tt_panel_state', JSON.stringify({ open: true, tab: 'peers' }))
+
+    restorePanelState()
+
+    expect(document.querySelector('#panel').classList.contains('open')).toBe(true)
+    expect(document.querySelector('#panelTitle').textContent).toBe('Peers & sharing')
+  })
+
+  test('restorePanelState does nothing when the persisted state was closed', () => {
+    mountPanelSkeleton()
+    localStorage.setItem('tt_panel_state', JSON.stringify({ open: false, tab: 'peers' }))
+
+    restorePanelState()
+
+    expect(document.querySelector('#panel').classList.contains('open')).toBe(false)
+  })
+
+  test('restorePanelState does nothing when nothing was ever persisted', () => {
+    mountPanelSkeleton()
+    // localStorage already cleared by mountPanelSkeleton
+    expect(() => restorePanelState()).not.toThrow()
+    expect(document.querySelector('#panel').classList.contains('open')).toBe(false)
+  })
+
+  test('restorePanelState ignores a corrupt/stale tab id rather than opening to nothing', () => {
+    mountPanelSkeleton()
+    localStorage.setItem('tt_panel_state', JSON.stringify({ open: true, tab: 'no-longer-a-real-tab' }))
+
+    expect(() => restorePanelState()).not.toThrow()
+    expect(document.querySelector('#panel').classList.contains('open')).toBe(false)
+  })
+
+  test('restorePanelState tolerates genuinely malformed JSON in localStorage', () => {
+    mountPanelSkeleton()
+    localStorage.setItem('tt_panel_state', '{not valid json')
+
+    expect(() => restorePanelState()).not.toThrow()
+    expect(document.querySelector('#panel').classList.contains('open')).toBe(false)
+  })
+
+  test('end-to-end: open, reload (simulated by a fresh restorePanelState call), lands back on the same tab', () => {
+    mountPanelSkeleton()
+    openSheet('save')
+
+    // Simulate a reload: fresh DOM, same localStorage.
+    mountPanelSkeleton_KeepStorage()
+    restorePanelState()
+
+    expect(document.querySelector('#panel').classList.contains('open')).toBe(true)
+    expect(document.querySelector('#panelTitle').textContent).toBe('File')
+
+    function mountPanelSkeleton_KeepStorage() {
+      document.body.innerHTML = `
+        <div id="scrim"></div>
+        <aside id="panel" aria-hidden="true">
+          <h2 id="panelTitle"></h2>
+          <div id="panelTabs"></div>
+          <div id="panelBody"></div>
+        </aside>
+      `
+      init(mockApp) // NOT clearing localStorage — that's the point
+    }
   })
 })

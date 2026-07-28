@@ -8,6 +8,7 @@ import { addToy, clearYNodeMap, _clearSvgTextCache, findToy } from '../../src/to
 import {
   snapshotYNode, restoreYNodeFromSnapshot, captureRevertSnapshot,
   getRevertSnapshots, recordRevertSnapshot,
+  isRevertsEnabled, setRevertsEnabled,
 } from '../../src/snapshot.js'
 
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
@@ -48,6 +49,7 @@ function attach(yNode) {
 }
 
 describe('snapshotYNode / restoreYNodeFromSnapshot — round-trip fidelity', () => {
+  beforeEach(() => setRevertsEnabled(true))
   test('a simple element with attributes, no children', () => {
     const original = attach(new Y.XmlElement('g'))
     original.setAttribute('class', 'toy')
@@ -129,6 +131,7 @@ describe('snapshotYNode / restoreYNodeFromSnapshot — round-trip fidelity', () 
 })
 
 describe('captureRevertSnapshot', () => {
+  beforeEach(() => setRevertsEnabled(true))
   test('parentKey is null when the parent is a root fragment (top-level toy)', () => {
     const ydoc = new Y.Doc()
     const yToys = ydoc.getXmlFragment('toys')
@@ -179,6 +182,7 @@ describe('captureRevertSnapshot', () => {
 })
 
 describe('getRevertSnapshots / recordRevertSnapshot', () => {
+  beforeEach(() => setRevertsEnabled(true))
   test('writes to the slot keyed by authorId', () => {
     const ydoc = new Y.Doc()
     const bundleStamp = { clientID: 123, clock: 5 }
@@ -238,4 +242,44 @@ describe('getRevertSnapshots / recordRevertSnapshot', () => {
 
     expect(getRevertSnapshots(ydocB).get('tt-p-v1-01-bob').content.attributes.id).toBe('x')
   })
+})
+
+describe('isRevertsEnabled / setRevertsEnabled — the experimental kill switch', () => {
+  // _revertsEnabled is module-level state, persisting across tests in this
+  // file — reset to the default after each test so this describe block
+  // doesn't leak a disabled state into whatever runs next.
+  beforeEach(() => setRevertsEnabled(true))
+  afterEach(() => setRevertsEnabled(true))
+
+  test('defaults to enabled — matches this mechanism\'s existing, already-shipped behavior', () => {
+    expect(isRevertsEnabled()).toBe(true)
+  })
+
+  test('getRevertSnapshots returns a real, synced map when enabled', () => {
+    const ydoc = new Y.Doc()
+    const snapshots = getRevertSnapshots(ydoc)
+    ydoc.transact(() => recordRevertSnapshot(ydoc, 'tt-p-v1-01-bob', { clientID: 1, clock: 1 }, {
+      parentKey: null, index: 0, content: { nodeName: 'g', attributes: {}, children: [] },
+    }))
+    expect(snapshots.get('tt-p-v1-01-bob')).toBeTruthy()
+
+    // And it's the real, synced ydoc map — visible from a second replica.
+    const ydocB = new Y.Doc()
+    Y.applyUpdate(ydocB, Y.encodeStateAsUpdate(ydoc))
+    expect(getRevertSnapshots(ydocB).get('tt-p-v1-01-bob')).toBeTruthy()
+  })
+
+  test('getRevertSnapshots returns an empty, throwaway map when disabled', () => {
+    const ydoc = new Y.Doc()
+    ydoc.transact(() => recordRevertSnapshot(ydoc, 'tt-p-v1-01-bob', { clientID: 1, clock: 1 }, {
+      parentKey: null, index: 0, content: { nodeName: 'g', attributes: {}, children: [] },
+    }))
+    expect(getRevertSnapshots(ydoc).size).toBe(1) // present while enabled
+
+    setRevertsEnabled(false)
+
+    expect(getRevertSnapshots(ydoc).size).toBe(0) // hidden while disabled — even though it's still really there
+    expect(getRevertSnapshots(ydoc).get('tt-p-v1-01-bob')).toBeUndefined()
+  })
+
 })

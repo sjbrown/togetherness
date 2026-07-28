@@ -20,8 +20,21 @@ import * as Y from 'yjs'
 
 export const REVERT_SNAPSHOTS_KEY = 'revertSnapshots'
 
-/** The shared, synced revert-snapshot map for a document. */
+let _revertsEnabled = false
+
+export function setRevertsEnabled(enabled) {
+  _revertsEnabled = !!enabled
+}
+
+export function isRevertsEnabled() {
+  return _revertsEnabled
+}
+
+/**
+ * The shared, synced revert-snapshot map for a document
+ */
 export function getRevertSnapshots(ydoc) {
+  if (!_revertsEnabled) return new Map()
   return ydoc.getMap(REVERT_SNAPSHOTS_KEY)
 }
 

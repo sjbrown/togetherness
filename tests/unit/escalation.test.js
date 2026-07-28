@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import * as Y from 'yjs'
-import { describe, test, expect } from 'vitest'
+import { describe, test, expect, afterEach, beforeEach } from 'vitest'
 import { tablesAPI } from '../../src/tables.js'
 import { resolveConflictWinner, revertBundle, needsEscalation } from '../../src/escalation.js'
-import { recordRevertSnapshot, getRevertSnapshots, snapshotYNode } from '../../src/snapshot.js'
+import { recordRevertSnapshot, getRevertSnapshots, snapshotYNode, setRevertsEnabled } from '../../src/snapshot.js'
 
 const { ensureJoined } = tablesAPI
 
@@ -23,6 +23,8 @@ function bundle({ clientID, clock, authorId, touched = [] }) {
 }
 
 describe('resolveConflictWinner', () => {
+  beforeEach(() => setRevertsEnabled(true))
+
   test('picks the earlier joiner as winner', () => {
     const ydoc = new Y.Doc()
     ensureJoined(ydoc, 'peer-A')
@@ -73,6 +75,7 @@ describe('resolveConflictWinner', () => {
 })
 
 describe('revertBundle — deleting the loser\'s own insertions', () => {
+  beforeEach(() => setRevertsEnabled(true))
   test('deletes an item the bundle\'s own commit created', () => {
     const ydoc = new Y.Doc()
     const yToys = ydoc.getXmlFragment('toys')
@@ -224,6 +227,7 @@ describe('revertBundle — deleting the loser\'s own insertions', () => {
 })
 
 describe('revertBundle — restoring the loser\'s removed pre-existing content', () => {
+  beforeEach(() => setRevertsEnabled(true))
   test('restores content from a matching snapshot, at the recorded parent and index', () => {
     const ydoc = new Y.Doc()
     const yToys = ydoc.getXmlFragment('toys')
@@ -394,6 +398,7 @@ describe('revertBundle — restoring the loser\'s removed pre-existing content',
 })
 
 describe('needsEscalation', () => {
+  beforeEach(() => setRevertsEnabled(true))
   test('false when the bundle never removed anything at all — nothing was ever at risk', () => {
     const ydoc = new Y.Doc()
     const b = bundle({ clientID: 1, clock: 1, authorId: 'peer-B', touched: [['tray-key', 'childList'], ['die-key', 'added']] })
@@ -465,4 +470,52 @@ describe('needsEscalation', () => {
     // But the content is actually fine — restoration already succeeded.
     expect(yToys.toArray().length).toBe(1)
   })
+})
+
+describe('the reverts kill switch, exercised through the actual escalation/revert flow', () => {
+  beforeEach(() => setRevertsEnabled(true))
+  afterEach(() => setRevertsEnabled(true)) // don't leak into other tests
+
+  test('disabled: a removal with an available snapshot is no longer restored, and needsEscalation flips to true', () => {
+    const ydoc = new Y.Doc()
+    const yToys = ydoc.getXmlFragment('toys')
+    const bundleStamp = { clientID: ydoc.clientID, clock: 100 }
+    ydoc.transact(() => {
+      recordRevertSnapshot(ydoc, 'peer-B', bundleStamp, {
+        parentKey: null, index: 0, content: { nodeName: 'g', attributes: { id: 'die2' }, children: [] },
+      })
+    })
+    const loserBundle = bundle({ clientID: ydoc.clientID, clock: 100, authorId: 'peer-B', touched: [['die-key', 'removed']] })
+
+    // While enabled (default): fully recoverable, no escalation needed.
+    expect(needsEscalation(ydoc, loserBundle)).toBe(false)
+
+    setRevertsEnabled(false)
+
+    // Same bundle, same snapshot genuinely still sitting there — but with
+    // reverts off, getRevertSnapshots hides it, so escalation is now
+    // correctly required instead of silently under-recovering.
+    expect(needsEscalation(ydoc, loserBundle)).toBe(true)
+
+    ydoc.transact(() => revertBundle(ydoc, loserBundle))
+    expect(yToys.toArray().length).toBe(0) // nothing restored while disabled
+  })
+
+  test('disabled: revertBundle still deletes the loser\'s own insertions — the toggle only affects restoration, not deletion', () => {
+    const ydoc = new Y.Doc()
+    const yToys = ydoc.getXmlFragment('toys')
+    const container = new Y.XmlElement('g')
+    ydoc.transact(() => { yToys.insert(0, [container]) })
+    const child = new Y.XmlElement('die')
+    ydoc.transact(() => { container.insert(0, [child]) })
+    const key = `${child._item.id.client}:${child._item.id.clock}`
+
+    setRevertsEnabled(false)
+
+    const loserBundle = bundle({ clientID: child._item.id.client, clock: child._item.id.clock, authorId: 'peer-B', touched: [[key, 'added']] })
+    ydoc.transact(() => revertBundle(ydoc, loserBundle))
+
+    expect(container.toArray().length).toBe(0) // still deleted — unaffected by the toggle
+  })
+
 })

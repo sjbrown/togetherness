@@ -32,6 +32,7 @@ vi.mock('../../src/ui.js', () => ({
   showPopover:        vi.fn(),
   toast:              vi.fn(),
   updatePeersPanel:   vi.fn(),
+  restorePanelState:  vi.fn(),
 }))
 
 vi.mock('../../src/canvas.js', () => ({

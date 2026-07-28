@@ -30,6 +30,7 @@ import { TOOLS as TOY_TOOLS, addToy, findToy, newToyId,
 import { DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js'
 import { getReactionLog, scanForConflicts } from './conflict.js';
 import { resolveConflictWinner, revertBundle, needsEscalation } from './escalation.js';
+import { isRevertsEnabled, setRevertsEnabled } from './snapshot.js';
 import { tablesAPI as tables } from './tables.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
 import { BOUNPOS_TYPES,
@@ -396,6 +397,10 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, svgElem
   renderDoc();
   renderPresence();
 
+  // Reopen the panel wherever it was left
+  // Must go after the render above: tabs read live doc-derived data
+  UI.restorePanelState();
+
   // Soft-lock tick — see soft-lock.js / computeTickActions.
   _softLockTickHandle = setInterval(_softLockTick, SOFT_LOCK_TICK_MS);
 }
@@ -754,7 +759,7 @@ function onDrawingChanged(events, transaction) {
         item.content.getContent().forEach(yEl => {
           if (!yEl.getAttribute) return;
           const id     = yEl.getAttribute('id') ?? '?';
-          addHistory(`remote: added ${id.slice(0, 9)}`, {
+          addHistory(`remote: added ${id}`, {
             fill: yEl.getAttribute('fill'), elType: yEl.nodeName,
           });
           App.addLog(`added ${yEl.nodeName}`, 'remote');
@@ -763,7 +768,7 @@ function onDrawingChanged(events, transaction) {
       event.changes.deleted.forEach(item => {
         item.content.getContent().forEach(yEl => {
           if (!yEl.getAttribute) return;
-          addHistory(`remote: deleted ${(yEl.getAttribute('id') ?? '?').slice(0, 6)}`, {
+          addHistory(`remote: deleted ${(yEl.getAttribute('id') ?? '?')}`, {
             fill: yEl.getAttribute('fill'), elType: yEl.nodeName,
           });
           App.addLog(`remote deleted ${yEl.nodeName}`, 'del');
@@ -853,7 +858,7 @@ const App = {
     _awareness.getStates().forEach((state, cid) => {
       if (cid === _awareness.clientID) return;
       out.push({
-        name:   state.id?.slice(0, 8) ?? String(cid),
+        name:   state.id ?? String(cid),
         color:  state.color ?? '#888',
         gradId: state.grad ? Overlay.peerGradId(cid) : null,
         live:   true,
@@ -915,6 +920,7 @@ const App = {
   },
   getViewScale:    () => Canvas.getView().scale,
   isOffline:       () => _offline,
+  isRevertsEnabled: () => isRevertsEnabled(),
 
   // ── Tool mutations (canvas.js calls back into ui.js via these) ────────────
   onToolChanged:          (t)   => UI.onToolChanged(t),
@@ -1069,12 +1075,12 @@ const App = {
   // ── Document mutations ────────────────────────────────────────────────────
   commitDrawing: (attrs) => {
     const id = App.getMyId() + '_' + Math.random().toString(36).slice(2, 7);
-    UndoRedo.tag(`add ${attrs.type ?? 'rect'} ${id.slice(0, 6)}`);
+    UndoRedo.tag(`add ${attrs.type ?? 'rect'} ${id}`);
     Drawing.addDrawing(_ydoc, _yDrawing, { ...attrs, id });
-    addHistory(`added ${attrs.type ?? 'rect'} ${id.slice(0, 6)}`, {
+    addHistory(`added ${attrs.type ?? 'rect'} ${id}`, {
       fill: attrs.fill, elType: attrs.type,
     });
-    App.addLog(`added ${attrs.type} ${id.slice(0, 6)}`, 'local');
+    App.addLog(`added ${attrs.type} ${id}`, 'local');
   },
 
   commitBounPos: ({ toolName, x, y, w, h }) => {
@@ -1218,13 +1224,13 @@ const App = {
     // that has no explicit origin, so its merged handler-plus-cascade
     // transaction commits under null, a SEPARATE transaction from
     // addToy's placement
-    UndoRedo.tag(`place ${def.label} ${id.slice(0, 6)}`);
+    UndoRedo.tag(`place ${def.label} ${id}`);
     addToy(_ydoc, _yToys, {
       id, toyType: def.toyType, x, y,
       color: _toolParams[toolName]?.fill ?? _myGrad.c1,
     }).then(async () => {
-      addHistory(`placed ${def.label} ${id.slice(0, 6)}`, { elType: 'toy' });
-      App.addLog(`placed ${def.label} ${id.slice(0, 6)}`, 'local');
+      addHistory(`placed ${def.label} ${id}`, { elType: 'toy' });
+      App.addLog(`placed ${def.label} ${id}`, 'local');
 
       // Awaiting activateToyScripts() here guarantees the namespace is actually
       // ready before initialize() reads it off window[namespace].
@@ -1254,10 +1260,10 @@ const App = {
     if (!L) return false;
     const yEl = L.find(id);
     if (!yEl) return false;
-    UndoRedo.tag(`delete ${mtype}:${id.slice(0, 6)}`);
+    UndoRedo.tag(`delete ${mtype}:${id}`);
     L.delete(id);
-    addHistory(`deleted ${mtype}:${id.slice(0, 6)}`);
-    App.addLog(`deleted ${id.slice(0, 6)}`, 'local');
+    addHistory(`deleted ${mtype}:${id}`);
+    App.addLog(`deleted ${id}`, 'local');
     if (id in _myClaims) {
       _unclaim([id]);
     }
@@ -1425,7 +1431,7 @@ const App = {
       // Yjs in one commitEnvelope call. One undo step, one thing to
       // arbitrate or fork on conflict, no "die inserted but its reaction
       // lost" intermediate.
-      UndoRedo.tag(`move ${id.slice(0, 6)} into a container`);
+      UndoRedo.tag(`move ${id} into a container`);
       // Same guard as invokeToyMenuAction/commitToy, same reason:
       // runGestureSync already runs its own complete cascade before
       // committing (folds under an unlabeled transact, effectively null
@@ -1461,19 +1467,19 @@ const App = {
 
       // observeDeep fires and calls renderDoc() — same as the ordinary
       // move-commit path below.
-      addHistory(`moved ${id.slice(0, 6)} into a container`, {
+      addHistory(`moved ${id} into a container`, {
         fill: domEl?.getAttribute('fill'),
         elType: mtype,
       });
       return;
     }
 
-    UndoRedo.tag(`move ${id.slice(0, 6)} → (${rx}, ${ry})`);
+    UndoRedo.tag(`move ${id} → (${rx}, ${ry})`);
     if (_Layers[mtype]) {
       _Layers[mtype].applyMoveCommit(_Layers[mtype].find(id), rx, ry);
       // observeDeep fires on all layers and calls renderDoc()
     }
-    addHistory(`moved ${id.slice(0, 6)} → (${rx}, ${ry})`, {
+    addHistory(`moved ${id} → (${rx}, ${ry})`, {
       fill: domEl?.getAttribute('fill'),
       elType: mtype,
     });
@@ -1545,10 +1551,10 @@ const App = {
     _resizeState = null;
 
     const yToy = findToy(_yToys, id);
-    UndoRedo.tag(`resize ${id.slice(0, 6)}`);
+    UndoRedo.tag(`resize ${id}`);
     Toys.applyResizeCommit(_ydoc, yToy, toRect.x, toRect.y, toRect.width, toRect.height);
     // observeDeep fires and calls renderDoc()
-    addHistory(`resized ${id.slice(0, 6)}`, { elType: 'toys' });
+    addHistory(`resized ${id}`, { elType: 'toys' });
   },
 
   cancelResize: () => {
@@ -1721,7 +1727,13 @@ const App = {
     App.setTool('select');
     UI.toast(`Layer: ${id}`);
   },
-  setOffline: (v)   => { _offline = v; },
+  setOffline: (v)   => {
+    _offline = v;
+    if (v) _provider?.disconnect();
+    else   _provider?.connect();
+  },
+  // Experimental kill switch - see snapshot.js
+  setRevertsEnabled: (v) => setRevertsEnabled(v),
   // Undo/redo delegate to undo_redo.js (Y.UndoManager). History-log and
   // toast side effects are wired via the onApply/onEmpty callbacks in boot().
   undo: () => UndoRedo.undo(),
