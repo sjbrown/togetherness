@@ -1,26 +1,19 @@
 /**
- * snapshot.js — TODO #11: capturing a Yjs node's full content before it's
+ * snapshot.js — capturing a Yjs node's full content before it's
  * deleted, so a peer who later discovers a revert should have preserved it
- * (rather than just discarding it) can reconstruct the content. Not the
- * original CRDT identity — nothing here, or anywhere else in this project,
- * ever preserves identity across a delete-and-recreate (a move, an import,
- * a revert are all the same in that respect) — but the actual content,
- * from data that reached every peer, rather than DOM or MutationRecord
- * content that never crosses the wire at all (see concurrency_branching.md
- * for why that's not just inconvenient but structurally impossible).
+ * (rather than just discarding it) can reconstruct the content.
+ *
+ * Not the original CRDT identity — but the actual content,
+ * from data that reached every peer.
  *
  * Two halves:
  *   - snapshotYNode / restoreYNodeFromSnapshot — a lossless, recursive,
  *     plain-JS <-> Yjs mirror. The inverse of storage.js's domToY, just
- *     operating on live Yjs directly instead of DOM — there's no DOM
- *     involved in capturing OR restoring here at all.
+ *     operating on live Yjs directly instead of DOM
  *   - getRevertSnapshots / captureRevertSnapshot / recordRevertSnapshot —
- *     the synced, bounded (one slot per authorId — the "(revertable
- *     commit buffer size) = number of peers" rule) storage for these
- *     snapshots. Writing a peer's second qualifying commit evicts their
- *     first slot's contents; that's deliberate, not a bug to fix later —
- *     it's what keeps the buffer's size bounded by peer count rather than
- *     by how much anyone's done.
+ *     the synced storage for these snapshots.
+ *     Bounded size: one-slot-per-author.
+ *     Writing a peer's second qualifying commit evicts their earlier one.
  */
 
 import * as Y from 'yjs'
@@ -46,8 +39,7 @@ function itemKey(yNode) {
 /**
  * Recursively mirror a live Y.XmlElement/Y.XmlText into a plain,
  * JSON-serializable JS object — content only, no identity (item ids are
- * never part of the snapshot; restoring always creates fresh items, the
- * same as every other reconstruction in this project).
+ * never part of the snapshot; restoring always creates fresh items)
  */
 export function snapshotYNode(yNode) {
   if (yNode instanceof Y.XmlText) {
@@ -63,9 +55,7 @@ export function snapshotYNode(yNode) {
 
 /**
  * The inverse of snapshotYNode: build a fresh, detached Y.XmlElement/
- * Y.XmlText tree from a snapshot object. Caller inserts the result
- * wherever it belongs — this function doesn't touch the doc, matching
- * storage.js's domToY (which also just returns a detached tree).
+ * Y.XmlText tree from a snapshot object.
  */
 export function restoreYNodeFromSnapshot(snapshot) {
   if (!snapshot) return null
@@ -83,17 +73,11 @@ export function restoreYNodeFromSnapshot(snapshot) {
 
 /**
  * Capture everything needed to later restore yNode, given its current
- * parent. Call BEFORE the caller deletes yNode from that parent — this is
- * the same clone-before-delete ordering already verified (empirically —
- * see envelope.js) for script preservation: capturing after delete would
- * find nothing, since this project's docs use Yjs's default gc:true,
- * which strips a deleted item's content synchronously, in the same
- * transaction that deleted it.
+ * parent. Call BEFORE the caller deletes yNode from that parent.
+ * Capturing after delete would find nothing, due to Yjs's default gc:true,
  *
- * index is yNode's current position among parent's children — best
- * effort: by the time a restore actually happens, other siblings may have
- * come and gone, so a consumer should clamp it to parent's current length
- * rather than trust it exactly.
+ * index is yNode's current position among parent's children
+ * (best effort -- siblings may have come and gone in the meantime)
  */
 export function captureRevertSnapshot(yNode, parent) {
   return {
@@ -104,13 +88,13 @@ export function captureRevertSnapshot(yNode, parent) {
 }
 
 /**
- * Record (or overwrite) the one revert-snapshot slot for authorId.
- * bundleStamp ({clientID, clock} — the same causal stamp
- * recordReactionBundle puts on the bundle this snapshot protects) lets a
- * later consumer (escalation.js's revertBundle) confirm a stored snapshot
- * actually matches the specific commit being reverted, rather than being
- * a stale leftover from some other, unrelated later commit by the same
- * peer that simply hasn't been evicted by a third commit yet.
+ * Record (or overwrite) the revert-snapshot slot for authorId.
+ *
+ * bundleStamp {clientID, clock} lets a later consumer confirm a
+ * stored snapshot matches the specific commit being reverted,
+ * rather than being a stale leftover from some other, unrelated
+ * later commit by the same* peer that simply hasn't been evicted
+ * by a third commit yet.
  */
 export function recordRevertSnapshot(ydoc, authorId, bundleStamp, snapshot) {
   if (!authorId) return

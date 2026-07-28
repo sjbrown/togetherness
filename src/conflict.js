@@ -38,16 +38,13 @@ function idKey({ client, clock }) {
   return `${client}:${clock}`
 }
 
-// A touched node's own human-readable identity, for inspection/debugging
-// only — never used to resolve or compare items (the Map's own key,
-// "client:clock", is the only thing anything resolves an item by). A
-// toy's own data-id if it has one, else the plain DOM id, else just the
-// nodeName (a die's own <g> has a data-id; a bare tspan/text node inside
-// it usually doesn't, so it falls through to "tspan"/"#text" — good
-// enough for now, revisit if that's ever not enough to tell touched
-// entries apart at a glance).
+// A touched node's own human-readable identity.
+// Mostly for inspection/debugging only
 function domIdFor(node) {
   if (node?.nodeType === Node.ELEMENT_NODE) {
+    // fall all the way back to nodeName -- good enough for now, but
+    // TODO: protect against this situation in the future - when nodes
+    // enter the app, a useful, correct id should be asserted / guaranteed
     return node.getAttribute('data-id') || node.getAttribute('id') || node.nodeName
   }
   return node?.nodeName ?? null
@@ -56,32 +53,27 @@ function domIdFor(node) {
 /**
  * Build the touched-node map for a committed envelope, from the raw
  * MutationRecord[] it produced. Must be called AFTER the records have been
- * applied to the Yjs doc — a freshly-inserted node has no backing Item
- * until its insert op has actually landed.
+ * applied to the Yjs doc
  *
- * Returns a Map<idKeyString, {domId, mutation}> — a small, purpose-built
- * distillation of MutationRecord, not another ad-hoc reimplementation of
- * it scattered across call sites: everything that needs "just the
- * touched ids" can still do `.keys()`; everything that needs to know
- * whether something was added, removed, or merely touched can filter on
- * `.mutation` right here, in one place a developer can actually inspect,
- * instead of that distinction disappearing into a bare id set.
+ * Returns
+ * {
+ *   '123.1': {domId: 'foo-bar', mutation: 'childList'},
+ *   '234.1': {domId: 'bar-baz', mutation: 'added'},
+ *   ...
+ * }
+ * Map<idKeyString, {domId, mutation}> — a small, purpose-built
+ * distillation of MutationRecord
+ * (handy for a developer to inspect and debug)
  *
- * `mutation` is `'added'`/`'removed'` for a node appearing in a record's
- * addedNodes/removedNodes, or the record's own MutationRecord.type
- * (`'attributes'`/`'characterData'`/`'childList'`) for record.target
- * itself.
+ * `mutation` is:
+ *  - the record's own MutationRecord.type ('childList', 'attributes', etc)
+ *  - 'added' - a node appearing in MutationRecord's addedNodes
+ *  - 'removed' - a node appearing in MutationRecord's removedNodes
  *
  * Records are processed in order, each entry OVERWRITING any earlier one
- * for the same item — the final mutation for a given item is whatever
- * actually happened to it LAST within this commit. This is what makes a
- * reparent (removed from its old parent, added to its new one, same
- * commit) correctly end up tagged 'added', not 'removed': the node didn't
- * vanish, it moved. Conversely, a node that's genuinely gone by the end
- * of the commit (deleted, or moved away with nothing put back) keeps its
- * `'removed'` tag — that's the signal `escalation.js` needs to tell "this
- * commit's content is fully accounted for by its own records" from "this
- * commit removed something a snapshot needs to cover."
+ * for the same item — the final mutation wins for a given item.
+ * Thus a reparented node (removed from its old parent, added to its new
+ * one) ends up tagged 'added', not 'removed'
  */
 export function touchedSetFromRecords(records) {
   const touched = new Map()
@@ -100,9 +92,9 @@ export function touchedSetFromRecords(records) {
 }
 
 /**
- * Record a bundle for a just-committed envelope. Call from INSIDE the same
- * ydoc.transact(...) that applied the commit, so the bundle
- * commits atomically with the changes it describes.
+ * Record a bundle for a just-committed envelope.
+ * Call from INSIDE the same ydoc.transact(...) that applied the
+ * commit, so the bundle commits atomically with the changes it describes.
  *
  * The causal stamp is {clientID, clock}:
  *   - clientID is this peer's own ydoc.clientID.
@@ -114,19 +106,14 @@ export function touchedSetFromRecords(records) {
  * began.  Represents causal-knowledge boundary every other
  * bundle's concurrency is judged against.
  *
- * authorId is the committing peer's own persistent user.js localId — NOT
- * the same thing as clientID (Yjs's own ephemeral, per-session numeric
- * id). Authority ordering (tables.js's isAuthoritative/joinSequence) is
- * keyed on localId, so a bundle needs to self-report it directly: there's
- * no separate lookup structure anywhere that maps one to the other, and
- * deliberately so — a peer's clientID is only ever meaningful to that
- * peer's own live session, while the bundle itself is synced data other
- * peers need to resolve the author of long after that session (or that
- * peer) may be gone. Self-describing avoids needing a second structure to
- * keep reachable and in sync with the bundle it describes. May be
- * undefined for callers that don't have an identity to hand (tests,
- * mainly) — comparison code should treat a missing authorId as unable to
- * resolve authority, not crash.
+ * authorId is the committing peer's own persistent user.js localId.
+ * (NOT Yjs's clientID which is ephemeral, per-session)
+ * Authority ordering (tables.js's isAuthoritative/joinSequence) is
+ * keyed on localId, so a bundle needs to report it.
+ *
+ * authorId may be undefined for callers that don't have an identity
+ * (tests, mainly). Comparison code should treat a missing authorId as
+ * unable to resolve authority, not crash.
  *
  * No-op (returns null) if the touched-set is empty.
  */
@@ -182,8 +169,6 @@ export function touchedSetsOverlap(a, b) {
  * Scan a reaction log for existing bundles that conflict with newBundle: a
  * different causally-concurrent author whose touched-set overlaps.
  * Returns the list of conflicting bundles (empty if none).
- *
- * Callers decide what (if anything) to do with the result.
  */
 export function scanForConflicts(reactionLogEntries, newBundle) {
   return reactionLogEntries.filter(other =>
