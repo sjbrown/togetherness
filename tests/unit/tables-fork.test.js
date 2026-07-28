@@ -1,7 +1,9 @@
 // Tests for tables.js's live-doc forking (TODO #11, branch escalation).
 //
-// Scoped deliberately: generateForkTableId is pure (no IndexedDB at all)
-// and fully tested here. forkLiveDoc's own validation (throws without a
+// Scoped deliberately: generateForkTableId is pure (no IndexedDB at all,
+// takes update bytes directly rather than a live doc — see its own doc
+// comment for why that's a correctness fix, not a style choice) and fully
+// tested here. forkLiveDoc's own validation (throws without a
 // forkingUserId) is tested too, since that check runs before anything
 // touches persistence. forkLiveDoc's actual end-to-end behavior — does it
 // really write a working table via openTablePersistenceSynced — is NOT
@@ -20,15 +22,16 @@ const { generateForkTableId, forkLiveDoc } = tablesAPI
 describe('generateForkTableId', () => {
   test('matches the expected id shape', async () => {
     const ydoc = new Y.Doc()
-    const id = await generateForkTableId(ydoc)
+    const id = await generateForkTableId(Y.encodeStateAsUpdate(ydoc))
     expect(id).toMatch(/^tt-F-v1-[0-9a-f]{12}$/)
   })
 
-  test('is deterministic — the same doc hashed twice gives the same id', async () => {
+  test('is deterministic — the same bytes hashed twice give the same id', async () => {
     const ydoc = new Y.Doc()
     ydoc.getXmlFragment('toys').insert(0, [new Y.XmlElement('g')])
-    const id1 = await generateForkTableId(ydoc)
-    const id2 = await generateForkTableId(ydoc)
+    const update = Y.encodeStateAsUpdate(ydoc)
+    const id1 = await generateForkTableId(update)
+    const id2 = await generateForkTableId(update)
     expect(id1).toBe(id2)
   })
 
@@ -38,8 +41,8 @@ describe('generateForkTableId', () => {
     const ydocB = new Y.Doc()
     ydocB.getXmlFragment('toys').insert(0, [new Y.XmlElement('circle')])
 
-    const idA = await generateForkTableId(ydocA)
-    const idB = await generateForkTableId(ydocB)
+    const idA = await generateForkTableId(Y.encodeStateAsUpdate(ydocA))
+    const idB = await generateForkTableId(Y.encodeStateAsUpdate(ydocB))
     expect(idA).not.toBe(idB)
   })
 
@@ -64,9 +67,30 @@ describe('generateForkTableId', () => {
     const clydeDoc = new Y.Doc()
     Y.applyUpdate(clydeDoc, Y.encodeStateAsUpdate(bobDoc))
 
-    const bobId   = await generateForkTableId(bobDoc)
-    const clydeId = await generateForkTableId(clydeDoc)
+    const bobId   = await generateForkTableId(Y.encodeStateAsUpdate(bobDoc))
+    const clydeId = await generateForkTableId(Y.encodeStateAsUpdate(clydeDoc))
     expect(bobId).toBe(clydeId)
+  })
+
+  test('takes bytes directly, not a live doc — so a caller captures exactly one snapshot no matter what happens to the doc afterward', async () => {
+    // The actual bug this signature prevents: if this took a ydoc and
+    // encoded internally, the id computed here could silently diverge
+    // from bytes a caller encodes separately after this resolves (its
+    // only await), since anything could mutate the doc in that gap. Bytes
+    // in means there's only ever one snapshot in play, by construction.
+    const ydoc = new Y.Doc()
+    const yToys = ydoc.getXmlFragment('toys')
+    yToys.insert(0, [new Y.XmlElement('g')])
+    const capturedUpdate = Y.encodeStateAsUpdate(ydoc)
+
+    const idPromise = generateForkTableId(capturedUpdate) // await pending...
+    yToys.insert(1, [new Y.XmlElement('circle')]) // ...doc mutates in the gap...
+    const id = await idPromise
+
+    // ...but the id still reflects the ORIGINAL captured bytes, not
+    // whatever the doc looks like now.
+    const idFromOriginalBytesAgain = await generateForkTableId(capturedUpdate)
+    expect(id).toBe(idFromOriginalBytesAgain)
   })
 })
 

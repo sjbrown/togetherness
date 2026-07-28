@@ -29,7 +29,8 @@ import { TOOLS as TOY_TOOLS, addToy, findToy, newToyId,
          findDropTarget } from './toys.js';
 import { DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js'
 import { getReactionLog, scanForConflicts } from './conflict.js';
-import { resolveConflictWinner, revertBundle } from './escalation.js';
+import { resolveConflictWinner, revertBundle, needsEscalation } from './escalation.js';
+import { tablesAPI as tables } from './tables.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
 import { BOUNPOS_TYPES,
          addPositionSet, createPositionSetElement,
@@ -561,7 +562,6 @@ function onToysChanged(events, transaction) {
   // contents_change_handler reads the *DOM*, so the toys layer must
   // already reflect this transaction's changes before the handler runs
   renderDoc();
-
   // Derived contents_change: a local change touched inside a container's
   // .contents_group -- recompute that container's own derived display.
   //
@@ -597,8 +597,7 @@ function onToysChanged(events, transaction) {
 // commits fold in too. Reached instead from the observer, after the
 // triggering transaction has already closed (the common case: a remote
 // change, or any local change nothing folded ahead of time), each handler
-// commits as its own DERIVED transaction.
-// The _dispatchingContentsChange
+// commits as its own DERIVED transaction. The _dispatchingContentsChange
 // flag guards a folded caller's own transaction from being recomputed a
 // redundant second time once its observer fires; the origin check in
 // onToysChanged handles the DERIVED commits this function itself makes.
@@ -616,6 +615,17 @@ function dispatchContentsChangeCascade(events) {
   } finally {
     _dispatchingContentsChange = false;
   }
+}
+
+// PLACEHOLDER — TODO #11 step 5 (not yet built): the blocking Acknowledge
+// dialog, to be styled to match the aside panel, offering "join the
+// authoritative table" vs "keep working on the branch" (the latter needs
+// step 6's hard-reload navigation, also not yet built). For now, just a
+// toast + log, so the wiring that calls this (onReactionLogChanged, below)
+// is exercisable without the real UI existing yet.
+function showBranchAcknowledgement(forkedTableId) {
+  UI.toast(`Your changes were preserved in a new table: ${forkedTableId}`, 'error');
+  App.addLog(`forked to ${forkedTableId} (Acknowledge dialog not yet built — see TODO #11 step 5)`, 'del');
 }
 
 // Post-merge overlap scan.
@@ -662,16 +672,51 @@ function onReactionLogChanged(event, transaction) {
       if (resolvedThisPass.has(loserKey)) continue;
       resolvedThisPass.add(loserKey);
 
+      // needsEscalation must be checked BEFORE revertBundle runs, not
+      // after — its own doc comment explains why: revertBundle's
+      // restoration consumes the matching snapshot on success, so asking
+      // afterward would see "no snapshot" and report a false positive for
+      // a case that actually already succeeded.
+      const escalationNeeded = needsEscalation(_ydoc, loser);
+      const iAmTheLoser = loser.authorId === _myId;
+
+      // Only the losing peer's OWN client can meaningfully fork: a branch
+      // has to land in ITS OWN IndexedDB to ever be findable from
+      // home.html — a fork Alice performed on Bob's behalf would sit in
+      // Alice's own storage, useless to Bob (see concurrency_branching.md,
+      // "Making inserts idempotent" and the fork-ownership discussion this
+      // grew out of). Every OTHER peer, including third parties who
+      // aren't Bob and aren't the winner, still just reverts and moves on.
+      //
+      // Started here, before revertBundle, not awaited yet: forkLiveDoc's
+      // own first action is a synchronous Y.encodeStateAsUpdate(_ydoc)
+      // call, so starting it now — before revertBundle's delete touches
+      // _ydoc — captures the pre-revert state as a real, frozen snapshot,
+      // the same reasoning as forkLiveDoc's own doc comment, just applied
+      // at this call site.
+      const forkPromise = (escalationNeeded && iAmTheLoser)
+        ? tables.forkLiveDoc(_ydoc, _myId)
+        : null;
+
       _ydoc.transact(() => { revertBundle(_ydoc, loser); });
 
-      const iAmTheLoser = loser.authorId === _myId;
-      UI.toast(
-        iAmTheLoser
-          ? 'A concurrent change conflicted with yours — yours was reverted'
-          : 'Resolved a conflict between two players',
-        'error'
-      );
-      App.addLog(`reverted conflicting commit from ${loser.authorId ?? loser.clientID}`, 'del');
+      if (forkPromise) {
+        forkPromise.then(forkedTableId => {
+          tables.touchTableRecord(forkedTableId, { name: `Branch from ${_tableId}` });
+          showBranchAcknowledgement(forkedTableId);
+        }).catch(err => {
+          console.error('[escalation] fork failed', err);
+          UI.toast('Could not preserve your changes — see console', 'error');
+        });
+      } else {
+        UI.toast(
+          iAmTheLoser
+            ? 'A concurrent change conflicted with yours — yours was reverted'
+            : 'Resolved a conflict between two players',
+          'error'
+        );
+        App.addLog(`reverted conflicting commit from ${loser.authorId ?? loser.clientID}`, 'del');
+      }
     }
   }
 }

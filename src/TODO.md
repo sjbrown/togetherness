@@ -228,6 +228,27 @@ Full design record in `concurrency_branching.md`.
     violation. Runs on every structural change, local or remote. Red
     toast on an actual dedup.
 
+**Wiring, done**
+ * `resolveConflictWinner`/`revertBundle` are now called from
+   `onReactionLogChanged` itself. Every peer that scans a
+   newly-added bundle and finds a conflict calls
+   `resolveConflictWinner`, then `revertBundle(ydoc, loser)` inside its own
+   `ydoc.transact()`, then a red toast (personalized if the local peer is
+   the loser) + activity log. Deliberately no
+   `_dispatchingContentsChange` guard around the revert transact — unlike
+   `invokeMenuActionSync`/`commitMove`, `revertBundle` runs no cascade of
+   its own, so `onToysChanged`'s normal fallback (dedup, then the
+   observer-driven `contents_change_handler` cascade) is exactly what
+   should run afterward, the same as for any other raw structural write
+   (undo/redo, import). Guards instead against a same-pass double-count:
+   a pair where both sides are newly-added in one observer call is found
+   from both directions, deduped locally to resolve each distinct loser
+   once. **Not covered by a vitest test** — `onReactionLogChanged` is
+   module-private in `app.js`, which stays e2e-only by this project's
+   existing convention (see item 9); the functions it calls
+   (`resolveConflictWinner`, `revertBundle`, `scanForConflicts`) are each
+   already tested in isolation.
+
 **Still open, after steps 7/8:**
  * **Step 6 itself** (branch escalation), now specifically for whatever
    step 7 can't recover. **The fork primitive is done** —
@@ -241,12 +262,36 @@ Full design record in `concurrency_branching.md`.
    `Y.encodeStateAsUpdate` is genuinely byte-deterministic for two peers
    with identical merged content regardless of sync order. Untested
    end-to-end (jsdom has no `indexedDB`, and `fake-indexeddb` is a
-   dependency this project has already, deliberately, deferred — same gap
-   `forkTable` has always had); `generateForkTableId` itself is pure and
-   fully tested. **Still open within step 6**: the wiring (gated per-peer
-   — only the loser's own client forks, never a peer forking on someone
-   else's behalf), the Acknowledge dialog, and hard-reload navigation for
-   "keep working on the branch."
+   dependency this project has already, deliberately, deferred — same
+   gap `forkTable` has always had); `generateForkTableId` itself is pure
+   and fully tested, including the race scenario directly.
+
+ * ~~The wiring itself~~ ✅ **Done.**
+   `onReactionLogChanged` now calls `needsEscalation(_ydoc, loser)`
+   *before* `revertBundle` (per its own ordering requirement — see
+   step 7's note above), and starts `tables.forkLiveDoc(_ydoc, _myId)`
+   —- not awaited yet, just started, so its internal synchronous
+   `Y.encodeStateAsUpdate` call captures the pre-revert state before
+   `revertBundle`'s delete runs right after — but only when
+   `loser.authorId === _myId`: only the losing peer's own client can
+   meaningfully fork, since a branch has to land in *its own* IndexedDB to
+   ever be findable from `home.html`. Every other peer (winner, third
+   parties, even Bob-not-Clyde in the multi-peer partition scenario) just
+   reverts and moves on, exactly as before. On successful fork:
+   `touchTableRecord` registers it, then a placeholder function shows a
+   toast (real Acknowledge dialog is the next item, not built yet). On
+   fork failure: caught, logged, error toast — doesn't leave the peer with
+   no feedback at all. **Not covered by a vitest test**, same reasoning as
+   the original wiring: `onReactionLogChanged` is module-private in
+   `app.js`, e2e-only by this project's existing convention; every
+   function it calls is tested in isolation.
+ * The Acknowledge dialog itself — no significant blocking modal exists in
+   this codebase yet; this is new UI work, styled to match the aside
+   panel. Currently a toast-based placeholder
+   (`showBranchAcknowledgement`) stands in for it.
+ * Hard-reload navigation for "keep working on the branch" — confirmed
+   this needs an actual reload, not a `location.hash` change alone (no
+   existing hash-change-triggered reload path in `index.html`).
  * ~~The predicate for which tier applies.~~ ✅ **Done.**
    `conflict.js`'s `touched` gained real structure to make this exact,
    rather than another ad-hoc flag: each entry is now `{domId, mutation}`,
