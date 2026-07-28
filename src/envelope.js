@@ -38,6 +38,7 @@ import { yNodeFor, registerYNode, render as renderToysLayer } from './toys.js'
 import { domToY } from './storage.js'
 import { ENVELOPE_ORIGIN, DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './origins.js'
 import { touchedSetFromRecords, recordReactionBundle } from './conflict.js'
+import { captureRevertSnapshot, recordRevertSnapshot } from './snapshot.js'
 
 const XLINK_NS = 'http://www.w3.org/1999/xlink'
 
@@ -231,7 +232,7 @@ function yInsertIndex(yParent, domNode) {
   return yParent.length
 }
 
-function applyChildListRecord(record) {
+function applyChildListRecord(record, snapshots) {
   const yParent = yNodeFor(record.target)
   if (!yParent) return false
 
@@ -240,6 +241,16 @@ function applyChildListRecord(record) {
   for (const domNode of record.removedNodes) {
     const yNode = yNodeFor(domNode)
     if (!yNode) continue
+    // Capture BEFORE delete — this project's docs use Yjs's default
+    // gc:true, which strips a deleted item's content synchronously, in
+    // this same transaction, so capturing after would find nothing (see
+    // snapshot.js). Every removal of a pre-existing node gets captured,
+    // even one that's about to be re-added elsewhere in this same commit
+    // (a reparent) — that's not wasted, it's exactly the case this
+    // exists for: the pre-move snapshot IS what a later revert needs to
+    // restore. "Last one wins" if a single commit removes more than one
+    // pre-existing node — see snapshot.js's one-slot-per-peer rule.
+    snapshots.push(captureRevertSnapshot(yNode, yParent))
     const idx = yParent.toArray().indexOf(yNode)
     if (idx !== -1) yParent.delete(idx, 1)
   }
@@ -260,10 +271,10 @@ function applyChildListRecord(record) {
   return true
 }
 
-function applyRecord(record) {
+function applyRecord(record, snapshots) {
   if      (record.type === 'attributes')    return applyAttributeRecord(record)
   else if (record.type === 'characterData') return applyCharacterDataRecord(record)
-  else if (record.type === 'childList')     return applyChildListRecord(record)
+  else if (record.type === 'childList')     return applyChildListRecord(record, snapshots)
   return false
 }
 
@@ -275,19 +286,42 @@ function applyRecord(record) {
  *
  * Also builds this commit's touched-set from the records and records it as
  * a bundle — inside this same transaction, so the bundle
- * is atomic with the commit it describes.
+ * is atomic with the commit it describes. opts.authorId (the committing
+ * peer's own persistent user.js localId — see conflict.js's
+ * recordReactionBundle) is stamped onto that bundle; callers that have an
+ * identity to hand should pass it, since it's what lets any peer resolve
+ * this bundle's author for authority ordering later.
+ *
+ * Also captures, before deleting it, the full content of any pre-existing
+ * node this commit removes — a reparent's "remove from the old parent"
+ * half, a delete, anything a childList record's removedNodes touches —
+ * and records the most recent such capture into opts.authorId's one
+ * revert-snapshot slot (see snapshot.js). This is what lets a later
+ * revert (escalation.js) restore a losing commit's own removed content,
+ * not just delete its insertions.
  *
  * Returns { applied, bundle } — applied is the record count; bundle is the
  * recorded bundle, or null if nothing was actually touched.
  */
 export function commitEnvelope(ydoc, records, opts = {}) {
-  const origin = opts.origin ?? ENVELOPE_ORIGIN
-  let bundle   = null
+  const origin    = opts.origin ?? ENVELOPE_ORIGIN
+  const snapshots = []
+  let bundle      = null
 
   ydoc.transact((tr) => {
-    for (const record of records) applyRecord(record)
+    for (const record of records) applyRecord(record, snapshots)
     const touched = touchedSetFromRecords(records)
-    bundle = recordReactionBundle(ydoc, tr, origin, touched)
+    bundle = recordReactionBundle(ydoc, tr, origin, touched, opts.authorId)
+    // The most recently removed pre-existing node this commit touched —
+    // "last one wins" within a single commit, matching snapshot.js's
+    // one-slot-per-peer rule across commits. Recording is keyed to this
+    // exact bundle ({clientID, clock}), so a stale snapshot from some
+    // later, unrelated commit is always distinguishable from the one
+    // that actually protects a given revert.
+    if (bundle && snapshots.length) {
+      const latest = snapshots[snapshots.length - 1]
+      recordRevertSnapshot(ydoc, opts.authorId, { clientID: bundle.clientID, clock: bundle.clock }, latest)
+    }
   }, origin)
 
   return { applied: records.length, bundle }

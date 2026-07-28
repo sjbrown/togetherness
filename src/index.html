@@ -143,6 +143,21 @@
   <div class="panel-body" id="panelBody"></div>
 </aside>
 
+<!-- ── Branch Acknowledge dialog (blocking — true modal, not the mobile-only
+     #scrim/#panel sheet above) ─────────────────────────────────────────── -->
+<div id="branchDialogScrim" class="dialog-scrim" aria-hidden="true"></div>
+<div id="branchDialog" class="dialog" role="alertdialog" aria-modal="true"
+     aria-labelledby="branchDialogTitle" aria-hidden="true">
+  <div class="dialog-head">
+    <h2 id="branchDialogTitle">Out of sync</h2>
+  </div>
+  <div class="dialog-body" id="branchDialogBody"></div>
+  <div class="dialog-actions">
+    <button class="dialog-btn" onclick="UI.branchDialogKeepWorking()">Keep working on my branch</button>
+    <button class="dialog-btn dialog-btn-primary" onclick="UI.branchDialogJoin()">Join the shared table</button>
+  </div>
+</div>
+
 <!-- ── Context popover (long-press on shape) ──────────────────────────────── -->
 <div id="popover"></div>
 

@@ -4,8 +4,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 // @vitest-environment jsdom
-import { describe, test, expect, vi } from 'vitest'
-import { layerObjectListHTML, refreshLayerList, UIData, init, toast } from '../../src/ui.js'
+import { describe, test, expect, vi, beforeEach } from 'vitest'
+import { layerObjectListHTML, refreshLayerList, UIData, init, toast, showBranchDialog, branchDialogJoin, branchDialogKeepWorking, peersBody, openSheet, closePanel, restorePanelState } from '../../src/ui.js'
 
 const mockObjects = [
   { id: 'a', label: 'rect',   fill: '#c8941e', kind: 'rect'   },
@@ -308,7 +308,7 @@ describe('toast — warn/error toasts are mirrored to console.warn', () => {
     warnSpy.mockRestore()
   })
 
-  test('kind "error" (forward-compatible, even though nothing uses it yet) also logs', () => {
+  test('kind "error" logs too — used throughout TODO #11\'s conflict resolution (dedupToys, onReactionLogChanged)', () => {
     document.body.innerHTML = '<div id="toasts"></div>'
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     toast('Something broke', 'error')
@@ -331,5 +331,241 @@ describe('toast — warn/error toasts are mirrored to console.warn', () => {
     expect(() => toast('Could not move into tray: no .contents_group', 'warn')).not.toThrow()
     expect(warnSpy).toHaveBeenCalledWith('[toast] Could not move into tray: no .contents_group')
     warnSpy.mockRestore()
+  })
+})
+
+// The skeleton showBranchDialog/branchDialogJoin/branchDialogKeepWorking
+// expect to find and populate — mirrors index.html's actual markup.
+function mountBranchDialogSkeleton() {
+  document.body.innerHTML = `
+    <div id="branchDialogScrim" aria-hidden="true"></div>
+    <div id="branchDialog" aria-hidden="true">
+      <div id="branchDialogBody"></div>
+    </div>
+  `
+}
+
+// jsdom's location.reload isn't configurable (spyOn/defineProperty both
+// fail to redefine it) — stub the whole object instead, with just enough
+// surface (a mutable hash, a mock reload) for these tests.
+function stubLocation() {
+  const reload = vi.fn()
+  let hash = ''
+  vi.stubGlobal('location', {
+    get hash() { return hash },
+    set hash(v) { hash = v },
+    reload,
+  })
+  return { reload, getHash: () => hash }
+}
+
+describe('showBranchDialog / branchDialogJoin / branchDialogKeepWorking', () => {
+  // _pendingBranchTableId is module-level state, persisting across tests
+  // in this file (ES modules are shared, not reloaded per test) —
+  // branchDialogJoin's own reset is the cheapest way to guarantee a clean
+  // baseline regardless of what an earlier test in this block left behind.
+  beforeEach(() => {
+    mountBranchDialogSkeleton()
+    branchDialogJoin()
+  })
+
+  test('showBranchDialog opens both the scrim and the dialog, and names the branch table', () => {
+    mountBranchDialogSkeleton()
+    showBranchDialog('tt-F-v1-abc123def456')
+
+    expect(document.querySelector('#branchDialogScrim').classList.contains('open')).toBe(true)
+    expect(document.querySelector('#branchDialogScrim').getAttribute('aria-hidden')).toBe('false')
+    expect(document.querySelector('#branchDialog').classList.contains('open')).toBe(true)
+    expect(document.querySelector('#branchDialog').getAttribute('aria-hidden')).toBe('false')
+    expect(document.querySelector('#branchDialogBody').textContent).toContain('tt-F-v1-abc123def456')
+  })
+
+  test('branchDialogJoin closes the dialog and does NOT navigate anywhere', () => {
+    mountBranchDialogSkeleton()
+    showBranchDialog('tt-F-v1-abc123def456')
+    const { reload, getHash } = stubLocation()
+
+    branchDialogJoin()
+
+    expect(document.querySelector('#branchDialogScrim').classList.contains('open')).toBe(false)
+    expect(document.querySelector('#branchDialogScrim').getAttribute('aria-hidden')).toBe('true')
+    expect(document.querySelector('#branchDialog').classList.contains('open')).toBe(false)
+    expect(document.querySelector('#branchDialog').getAttribute('aria-hidden')).toBe('true')
+    expect(reload).not.toHaveBeenCalled()
+    expect(getHash()).toBe('') // never left the shared table
+    vi.unstubAllGlobals()
+  })
+
+  test('branchDialogKeepWorking sets the hash to the branch table and reloads', () => {
+    mountBranchDialogSkeleton()
+    showBranchDialog('tt-F-v1-abc123def456')
+    const { reload, getHash } = stubLocation()
+
+    branchDialogKeepWorking()
+
+    expect(getHash()).toBe('tt-F-v1-abc123def456')
+    expect(reload).toHaveBeenCalledOnce()
+    vi.unstubAllGlobals()
+  })
+
+  test('branchDialogKeepWorking is a no-op if no dialog was ever shown (no pending table)', () => {
+    mountBranchDialogSkeleton()
+    const { reload } = stubLocation()
+
+    branchDialogKeepWorking() // never called showBranchDialog first
+
+    expect(reload).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  test('branchDialogKeepWorking only acts on the table it was shown for, not a later, different one, once already consumed', () => {
+    mountBranchDialogSkeleton()
+    showBranchDialog('tt-F-v1-first000000')
+    branchDialogJoin() // dismiss without keeping — clears the pending table
+
+    const { reload } = stubLocation()
+    branchDialogKeepWorking() // nothing pending anymore
+    expect(reload).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+})
+
+describe('peersBody — Offline mode / Enable Reverts toggles', () => {
+  const baseData = { peers: [], offline: false, revertsEnabled: true, roomId: 'tt-T-v1-test' }
+
+  test('offline toggle reflects data.offline: off', () => {
+    const div = document.createElement('div')
+    div.innerHTML = peersBody(baseData)
+    expect(div.querySelector('#offToggle').classList.contains('on')).toBe(false)
+  })
+
+  test('offline toggle reflects data.offline: on', () => {
+    const div = document.createElement('div')
+    div.innerHTML = peersBody({ ...baseData, offline: true })
+    expect(div.querySelector('#offToggle').classList.contains('on')).toBe(true)
+  })
+
+  test('reverts toggle reflects data.revertsEnabled: on (the default)', () => {
+    const div = document.createElement('div')
+    div.innerHTML = peersBody(baseData)
+    expect(div.querySelector('#revertsToggle').classList.contains('on')).toBe(true)
+  })
+
+  test('reverts toggle reflects data.revertsEnabled: off', () => {
+    const div = document.createElement('div')
+    div.innerHTML = peersBody({ ...baseData, revertsEnabled: false })
+    expect(div.querySelector('#revertsToggle').classList.contains('on')).toBe(false)
+  })
+
+  test('both toggles are independent — one being on does not force the other', () => {
+    const div = document.createElement('div')
+    div.innerHTML = peersBody({ ...baseData, offline: true, revertsEnabled: false })
+    expect(div.querySelector('#offToggle').classList.contains('on')).toBe(true)
+    expect(div.querySelector('#revertsToggle').classList.contains('on')).toBe(false)
+  })
+})
+
+describe('panel open/tab persistence (tt_panel_state)', () => {
+  const mockApp = {
+    getPeers: () => [],
+    isOffline: () => false,
+    isRevertsEnabled: () => true,
+    getTableId: () => 'tt-T-v1-test',
+    getHistory: () => [],
+  }
+
+  function mountPanelSkeleton() {
+    // Deliberately no #pill/#idbar — renderPill()/updateInfoBar() both
+    // no-op without them (optional-chained lookups), so init() doesn't
+    // need a wider mock than this test actually exercises.
+    document.body.innerHTML = `
+      <div id="scrim"></div>
+      <aside id="panel" aria-hidden="true">
+        <h2 id="panelTitle"></h2>
+        <div id="panelTabs"></div>
+        <div id="panelBody"></div>
+      </aside>
+    `
+    localStorage.clear()
+    init(mockApp)
+  }
+
+  test('openSheet persists {open: true, tab} to localStorage', () => {
+    mountPanelSkeleton()
+    openSheet('peers')
+    expect(JSON.parse(localStorage.getItem('tt_panel_state'))).toEqual({ open: true, tab: 'peers' })
+  })
+
+  test('closePanel persists {open: false}, still remembering the tab that was open', () => {
+    mountPanelSkeleton()
+    openSheet('history')
+    closePanel()
+    expect(JSON.parse(localStorage.getItem('tt_panel_state'))).toEqual({ open: false, tab: 'history' })
+  })
+
+  test('restorePanelState reopens the panel to the persisted tab', () => {
+    mountPanelSkeleton()
+    localStorage.setItem('tt_panel_state', JSON.stringify({ open: true, tab: 'peers' }))
+
+    restorePanelState()
+
+    expect(document.querySelector('#panel').classList.contains('open')).toBe(true)
+    expect(document.querySelector('#panelTitle').textContent).toBe('Peers & sharing')
+  })
+
+  test('restorePanelState does nothing when the persisted state was closed', () => {
+    mountPanelSkeleton()
+    localStorage.setItem('tt_panel_state', JSON.stringify({ open: false, tab: 'peers' }))
+
+    restorePanelState()
+
+    expect(document.querySelector('#panel').classList.contains('open')).toBe(false)
+  })
+
+  test('restorePanelState does nothing when nothing was ever persisted', () => {
+    mountPanelSkeleton()
+    // localStorage already cleared by mountPanelSkeleton
+    expect(() => restorePanelState()).not.toThrow()
+    expect(document.querySelector('#panel').classList.contains('open')).toBe(false)
+  })
+
+  test('restorePanelState ignores a corrupt/stale tab id rather than opening to nothing', () => {
+    mountPanelSkeleton()
+    localStorage.setItem('tt_panel_state', JSON.stringify({ open: true, tab: 'no-longer-a-real-tab' }))
+
+    expect(() => restorePanelState()).not.toThrow()
+    expect(document.querySelector('#panel').classList.contains('open')).toBe(false)
+  })
+
+  test('restorePanelState tolerates genuinely malformed JSON in localStorage', () => {
+    mountPanelSkeleton()
+    localStorage.setItem('tt_panel_state', '{not valid json')
+
+    expect(() => restorePanelState()).not.toThrow()
+    expect(document.querySelector('#panel').classList.contains('open')).toBe(false)
+  })
+
+  test('end-to-end: open, reload (simulated by a fresh restorePanelState call), lands back on the same tab', () => {
+    mountPanelSkeleton()
+    openSheet('save')
+
+    // Simulate a reload: fresh DOM, same localStorage.
+    mountPanelSkeleton_KeepStorage()
+    restorePanelState()
+
+    expect(document.querySelector('#panel').classList.contains('open')).toBe(true)
+    expect(document.querySelector('#panelTitle').textContent).toBe('File')
+
+    function mountPanelSkeleton_KeepStorage() {
+      document.body.innerHTML = `
+        <div id="scrim"></div>
+        <aside id="panel" aria-hidden="true">
+          <h2 id="panelTitle"></h2>
+          <div id="panelTabs"></div>
+          <div id="panelBody"></div>
+        </aside>
+      `
+      init(mockApp) // NOT clearing localStorage — that's the point
+    }
   })
 })

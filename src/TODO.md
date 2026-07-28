@@ -27,12 +27,6 @@ open design questions, process/docs.
    confirm redo restores that state or fold initial state into the
    placement transaction.
 
-### 5.a. Dead code
-
-**Dead-for-undo exports.** `getTtState`/`applyTtState` in `toys.js` are
-no longer used by the undo path. Left in place (still exported via the
-LayerAPI); remove or repurpose in a separate pass if nothing else needs
-them.
 
 ### 10. Multi-select drop into a tray doesn't reparent anything
 
@@ -45,15 +39,8 @@ moves everything as a rigid group across the open table, tray or no tray.
 
 **Fix shape:**
 
-Idea one: for each dragged element, run the same drop-target check
-`commitMove` does against its own final position (not the group's shared
-anchor), and reparent the ones that land inside a tray while leaving the
-rest on the table.
-
-Idea two: just drop every dragged element into the tray, as long as both
+Just drop every dragged element into the tray, as long as
 the "leader" element gets dropped in the tray.
-
-
 
 
 ## Observability
@@ -82,41 +69,52 @@ deliberately rather than defaulting to one or the other.
 
 ### 8. Updating a toy's js script doesn't fix already-placed instances of that toy
 
-A toy's behaviour scripts aren't fetched fresh each time they run.
-`addToySync` reads the SVG file once, at placement time, and
-embeds its `<script>` contents as literal data inside that specific toy's
-own Yjs subtree. `activateToyScripts` later evaluates whatever text is
-*sitting in the Yjs document* for that instance, not the current file on
-disk. So a tray placed before a script fix has the old, broken code
-permanently baked into its own persisted Yjs data — and keeps throwing on
-every "Roll All" forever, even after the fix ships, even after a page
-reload, because nothing goes back and re-embeds the corrected script into
-data that already exists. A *new* tray placed after the fix is fine.
+**Partially resolved by script hoisting (see `toys.js`, "Script hoisting")
+— the remaining gap is narrower than originally scoped, not gone.**
 
-**Where this bites, concretely:** this is a local-first app with
-persistence — a tray placed during any earlier session is still sitting
-in that persisted document with the old script baked in, for as long as
-that specific toy instance exists.
+Now, scripts split into two kinds with different freshness properties:
+ * **`src`-referenced scripts** (`dice_utils.js`, `tray.js`) are never
+   embedded at all — fetched fresh off disk every session,
+   `activateToyScripts` always runs whatever's currently on disk. Fixing a
+   bug in one of these files now *does* retroactively fix every
+   already-placed instance, including ones from before the fix, with no
+   further work needed.
+ * **Inline scripts** (a toy type's own behavior-defining code with no
+   `src` file — `d6`'s menu/`initialize`, `tray`'s
+   `contents_change_handler`, any hand-authored/imported custom toy) are
+   still hoisted once, into the document's own `scripts` fragment, at
+   first placement — and stay exactly as captured from then on. A fix to
+   one of these still doesn't reach already-placed instances or
+   already-hoisted document state, for the same fundamental reason as
+   before: nothing re-hoists.
 
-**Fix shape**
- * Importing SVGs: grab the latest script from toys/ and replace
-   anything the document had previously.
- * First load from IndexedDb: similarly use toys/ scripts to clobber
-   old scripts
+So the gap that remains is: specifically the inline
+half of a toy's behavior — for the built-in toy types, that's `d6`'s own
+`Roll`/`initialize` and `tray`'s own `contents_change_handler`, the parts
+most likely to actually need a fix.
 
-**Must also fix home.html's sampler-seeding path**, which hits a sharper
-version of the same root cause: missing scripts entirely, not just stale
-ones.
-Whatever "always re-fetch canonical scripts from
-toys/" mechanism this item lands on for the general case should cover
-this path too, so a sampler-seeded room's toys get real scripts embedded
-the same as a live-placed one, not zero.
+**Fix shape:** on network load of a toy .svg, or file load of an exported
+table .svg , or the clicking of a yet-to-be-built "Refresh" button in the
+"Tools" tab, re-hoist each known toy type's current inline script
+over whatever's in the document's `scripts` fragment — the same
+`hoistInlineScripts` call `addToySync` already makes at placement time,
+just re-run against already-hoisted state rather than gated on "only if
+not already present."
 
 ## Process / docs
 
 ### 9. Tray end-to-end (Playwright) test
 
 Two browsers, drag die into tray, Roll All, both peers converge.
+
+Now that `onReactionLogChanged` actually resolves conflicts (item 11, step
+7's wiring), this should also cover the conflict path directly: two
+browsers each drag a different die into the same empty tray at roughly the
+same time, and both peers converge on one die staying (the authoritative
+one, per `joinSequence`) and the other's browser showing the red toast —
+the one thing this project's vitest suite structurally can't verify, since
+`onReactionLogChanged` is module-private in `app.js` and this project's
+whole test-writing convention keeps `app.js` itself e2e-only.
 
 
 ## Correctness
@@ -158,44 +156,7 @@ against their own partial view, and the concurrent derived-writes garble
 into 2 sibling text nodes rather than merging.
 
 **Agreed design: branch on unresolvable conflict.**
-Full design record in `concurrency_branching.md`. Summary:
-
-The garble above is one symptom of a general problem: user-authored
-handler code is arbitrary and synchronous-but-otherwise-unrestricted (it
-may `random()`, restructure subtrees, touch sibling toys), so two
-concurrent runs can produce states Yjs cannot merge sensibly, and
-recompute-on-conflict is unsafe (non-idempotent handlers).
-
-Resolution model:
- * **Placement + synchronous reaction commit as ONE atomic transaction**
-   (they are two today — reaction fires in a microtask after the
-   placement's observer returns). This removes the "die inserted but its
-   reaction lost → stale slot, uncounted die" intermediate: the unit now
-   wins or loses whole. Load-bearing; only sound because handlers are sync.
- * **Fast path (in place):** trivially-overlapping conflicts (detected via
-   node-level touched-set intersection from `runInEnvelope`'s
-   `MutationRecord[]`) resolve by asserting the winner's values. No branch,
-   no dialog. Quiet activity-log line only.
- * **Branch escalation:** non-trivial divergence (in-place assertion can't
-   yield a coherent state, or a wide causal gap — the prolonged
-   network-partition case) forks the loser's *full divergent `Y.Doc`* into
-   a new IndexedDB-backed branch table (`tt-`-prefixed id, new `roomId`, `tt_tables`
-   entry) and shows a blocking **Acknowledge dialog** — NOT a toast.
-   Dialog offers: join the authoritative table (branch preserved,
-   reopenable from `home.html`) or keep working on the branch. No replay of
-   the loser's actions onto the authoritative table; humans re-coordinate
-   by human means.
- * **Authority = join order.** A never-pruned, append-only `Y.Array`
-   (`joinSequence`) in the doc; each client appends its `clientID` once.
-   Earlier index wins; concurrent joins degrade automatically to Yjs's
-   `clientID` tie-break. Do NOT prune on awareness disconnect — a
-   partitioned peer must stay arbitrable; that's why authority lives in the
-   doc, not ephemeral awareness.
-   When a new branch is created, then a new `joinSequence` is created.
-
-Standard TT ops (move/resize) and pure inserts stay out of this entirely:
-they're either non-overlapping or Yjs-auto-resolvable (attribute LWW), and
-a silently-dropped resize loser is acceptable and gets no toast.
+Full design record in `concurrency_branching.md`.
 
 **Depends on / connects to:**
  * The Acknowledge dialog + activity-log entries are the "loud, visible"
@@ -206,54 +167,169 @@ a silently-dropped resize loser is acceptable and gets no toast.
    transaction consistently.
 
 **Implementation order (fork primitive first):**
- 1. ✅ **Done.** implement a **"Duplicate (Fork)" button**
- 2. ✅ **Done.** One-transaction commit for any code authored by a user.
- 3. ✅ **Done.** `joinSequence` `Y.Array` + comparator — implemented in
-    `tables.js` (`ensureJoined`, `compareAuthority`, `isAuthoritative`;
-    `resetJoinSequenceToSelf` stays private, used only by `forkTable`).
-    Keyed on `user.js`'s persistent `localId`.
-    `ensureJoined` is called from `index.html` after
-    IndexedDB sync lands, so a returning peer sees its own earlier entry
-    before deciding whether to append. Forking (`tables.js`'s `forkTable`,
-    used by home.html's "Duplicate (Fork)" button) now requires a
-    `forkingUserId` and resets the branch's `joinSequence` to that id alone
-    via `resetJoinSequenceToSelf` — otherwise every player who was ever on
-    the source table would carry over and outrank the forking user on
-    their own new branch. Not yet consulted by any conflict-resolution
-    logic; that's step 4/5.
- 4. ✅ **Done.** Touched-set construction + post-merge overlap scan —
-    `conflict.js` (`touchedSetFromRecords`, `recordReactionBundle`,
-    `areConcurrent`, `touchedSetsOverlap`, `scanForConflicts`) plus a small
-    `origins.js` split-out (avoids an envelope.js↔conflict.js import
-    cycle). `commitEnvelope` (envelope.js) now builds the touched-set from
-    its records and records a bundle — `{clientID, clock, beforeState,
-    touched, origin, ts}` — into a new synced `reactionLog` `Y.Array`,
-    inside the SAME transaction as the commit itself (atomic, same
-    reasoning as step 2). Every origin qualifies — ENVELOPE_ORIGIN,
-    DERIVED_ORIGIN, and LIFECYCLE_ORIGIN alike (see the whole-layer
-    envelope rework in TOYS.md/envelope.js: nothing about how a handler got
-    invoked makes its writes structurally immune to concurrent collision).
-    Node identity for the touched-set is each Yjs node's own backing Item
-    id ({client, clock} — the same mechanism Yjs's `createRelativePosition`
-    uses internally), stable across replicas once synced. `app.js` observes
-    `_yReactionLog` (`onReactionLogChanged`) and runs `scanForConflicts`
-    against every newly-added bundle — local or remote — logging a hit via
-    `App.addLog`/`console.warn`. Verified end-to-end against two real
-    synced `Y.Doc` replicas reproducing the canonical race (same result
-    slot → flagged; different result slots → not flagged) in
-    `tests/unit/conflict.test.js`. Detection only — no resolution yet;
-    that's step 5.
- 5. Fast-path in-place resolution (winner-assertion) + quiet log line.
- 6. Branch escalation predicate + fork wiring (reusing step 1's copy
-    mechanics, triggered from a live room instead of home.html) +
-    Acknowledge dialog UX.
+ 6. Branch escalation: fork wiring (reusing table fork's copy mechanics,
+    triggered from a live table instead of home.html, snapshotting the
+    *live* doc rather than one freshly loaded from IndexedDB) +
+    Acknowledge dialog UX + `tt_tables` entry for the branch.
+    Narrower in scope than originally written here: only reached for
+    whatever step 7 can't recover
+ 7. ✅ **Done.** In-place revert with restoration —
+    `escalation.js` (`resolveConflictWinner`, `revertBundle`) +
+    `snapshot.js` (`snapshotYNode`/`restoreYNodeFromSnapshot`,
+    `captureRevertSnapshot`/`recordRevertSnapshot`). `resolveConflictWinner`
+    resolves a detected pair's authority using each bundle's self-reported
+    `authorId` (new bundle field — see below) against `isAuthoritative`.
+    `revertBundle` deletes every item in the loser's touched-set that the
+    loser's own commit actually created (`item.id.client ===
+    bundle.clientID` — never a pre-existing node the bundle merely
+    touched), then restores whatever pre-existing content that commit
+    *removed*, if a matching snapshot is available. The snapshot itself:
+    `envelope.js`'s `commitEnvelope` now captures a removed pre-existing
+    node's full content (clone-before-delete — verified empirically that
+    capturing after delete finds nothing, since this project's `gc:true`
+    docs strip deleted content synchronously) into the committing peer's
+    one `revertSnapshots` slot, consumed (evicted) on successful
+    restoration so sequential reprocessing doesn't duplicate. Verified
+    end-to-end against the canonical two-peer race, including the
+    restored die landing at its original position with its original
+    content — not the state at time of revert.
 
-**Test coverage once fixed:** `concurrent-derived-write.test.js`'s
-remaining test stays a warning permanently (see above) — it's substrate
-documentation, not a placeholder to flip. Real regression coverage for the
-fix is new tests, written as each implementation step lands, exercising the
-actual production path: for the fast-path case, `expect()` a single clean
-child node holding the authoritative peer's own recorded value (not
-necessarily the mathematically-merged total); for the branch-escalation
-case, `expect()` that the authoritative table holds the winner's state and
-that a branch table was created holding the loser's.
+    **Bundles gained `authorId`** (`envelope.js`'s `opts.authorId` →
+    `conflict.js`'s `recordReactionBundle`): the committing peer's own
+    persistent `user.js` `localId`, self-reported at commit time rather
+    than looked up in a separate structure — a bundle needs to be
+    resolvable by peers who may never see the authoring peer's own local
+    state. Threaded through every production call site.
+
+    **Known, documented gap, not silent:** `revertBundle` doesn't undo a
+    losing bundle's own *deletions* if no snapshot survives to cover them
+    (evicted by a later commit, or genuinely never captured because
+    nothing has captured deletions outside the envelope's own removal
+    path). And restoration itself isn't automatically idempotent across
+    *concurrent* peers the way deletion is — see step 8.
+
+    **Wired into `onReactionLogChanged`** — see the "Still open" entry
+    below for the exact wiring shape and what it deliberately does and
+    doesn't guard against.
+ 8. ✅ **Done.** Duplicate-insert idempotence — `toys.js`'s `dedupToys`,
+    wired into `onToysChanged`. Restoring is an insert, and Yjs never
+    deduplicates inserts by content, so two peers independently restoring
+    the same snapshot (or independently reparenting the same toy to two
+    different destinations, no revert involved at all) can each produce a
+    permanent, distinct copy — see concurrency_branching.md, "Making
+    inserts idempotent", for both scenarios sequenced with the actual
+    transmissions. Not preventable (any "check then insert" is racy
+    across unsynced peers by construction); detected and cleaned up after
+    the fact instead — every `data-toy-id` with more than one live
+    occurrence anywhere in the tree collapses to a deterministic survivor
+    (smallest `{client,clock}` item-id), independent of
+    `resolveConflictWinner`/authority entirely, since there's no
+    "conflict" here for authority to adjudicate, just an invariant
+    violation. Runs on every structural change, local or remote. Red
+    toast on an actual dedup.
+
+**Wiring, done**
+ * `resolveConflictWinner`/`revertBundle` are now called from
+   `onReactionLogChanged` itself. Every peer that scans a
+   newly-added bundle and finds a conflict calls
+   `resolveConflictWinner`, then `revertBundle(ydoc, loser)` inside its own
+   `ydoc.transact()`, then a red toast (personalized if the local peer is
+   the loser) + activity log. Deliberately no
+   `_dispatchingContentsChange` guard around the revert transact — unlike
+   `invokeMenuActionSync`/`commitMove`, `revertBundle` runs no cascade of
+   its own, so `onToysChanged`'s normal fallback (dedup, then the
+   observer-driven `contents_change_handler` cascade) is exactly what
+   should run afterward, the same as for any other raw structural write
+   (undo/redo, import). Guards instead against a same-pass double-count:
+   a pair where both sides are newly-added in one observer call is found
+   from both directions, deduped locally to resolve each distinct loser
+   once. **Not covered by a vitest test** — `onReactionLogChanged` is
+   module-private in `app.js`, which stays e2e-only by this project's
+   existing convention (see item 9); the functions it calls
+   (`resolveConflictWinner`, `revertBundle`, `scanForConflicts`) are each
+   already tested in isolation.
+
+**Step 6 (branch escalation) is now fully done, end to end:**
+ * **The fork primitive** — `tables.js`'s `forkLiveDoc`/`generateForkTableId`:
+   simpler than the existing `forkTable`, not harder (no `loadTableDoc`
+   step, since the source doc is already live in memory), named
+   deterministically from content (SHA-256 of `Y.encodeStateAsUpdate`,
+   truncated) rather than randomly, so that Bob and Clyde (see
+   concurrency_branching.md, "Making inserts idempotent") can each fork
+   independently, no coordination, and land on the identical branch table
+   id — verified empirically first that `Y.encodeStateAsUpdate` is
+   genuinely byte-deterministic for two peers with identical merged
+   content regardless of sync order.
+
+   Untested end-to-end (jsdom has no `indexedDB`, and `fake-indexeddb`
+   is a dependency this project has
+   already, deliberately, deferred); `generateForkTableId` itself is pure
+   and fully tested, including the race scenario directly.
+
+ * **The wiring** — `onReactionLogChanged` calls `needsEscalation(_ydoc,
+   loser)` *before* `revertBundle` (per its own ordering requirement —
+   see step 7's note above), and starts `tables.forkLiveDoc(_ydoc,
+   _myId)` — not awaited yet, just started, so its internal synchronous
+   `Y.encodeStateAsUpdate` call captures the pre-revert state before
+   `revertBundle`'s delete runs right after — but only when
+   `loser.authorId === _myId`: only the losing peer's own client can
+   meaningfully fork, since a branch has to land in *its own* IndexedDB to
+   ever be findable from `home.html`. Every other peer (winner, third
+   parties, even Bob-not-Clyde in the multi-peer partition scenario) just
+   reverts and moves on, exactly as before. On successful fork:
+   `touchTableRecord` registers it, then `UI.showBranchDialog` shows the
+   Acknowledge dialog. On fork failure: caught, logged, error toast —
+   doesn't leave the peer with no feedback at all. **Not covered by a
+   vitest test**, same reasoning as the original wiring:
+   `onReactionLogChanged` is module-private in `app.js`, e2e-only by this
+   project's existing convention; every function it calls is tested in
+   isolation.
+ * **The Acknowledge dialog** — `ui.js`'s `showBranchDialog`/
+   `branchDialogJoin`/`branchDialogKeepWorking`, new markup in
+   `index.html` (`#branchDialogScrim`/`#branchDialog`), new CSS in
+   `ui.css` matching `#panel`'s visual language (`--surface-solid`,
+   `--emboss-lg`, `--radius`, `--font-display` header) but as a true
+   centered modal on every viewport, not the mobile-only `#scrim`/`#panel`
+   bottom sheet. No dismiss-by-clicking-the-scrim or Escape handling —
+   deliberate: this is a real choice to make, not a notice to swat away.
+   "Join the shared table" just closes the dialog (the current session
+   never left the authoritative table — the fork happened in the
+   background, onto a separate table). "Keep working on my branch" sets
+   `location.hash` to the branch's id and calls `location.reload()` —
+   confirmed a hash-only change doesn't itself trigger loading a
+   different table's document (`index.html`'s boot sequence only ever
+   reads `location.hash` once, at initial load), so an explicit reload is
+   required. Tested in `tests/unit/ui.test.js`, including the
+   pending-table state correctly clearing on dismiss (so a stray later
+   call to "keep working" doesn't act on a table the user already
+   declined) — found and fixed a real test-isolation bug along the way:
+   the pending-table variable is module-level state that persists across
+   tests in the same file, which one test's assumption of a fresh start
+   didn't account for.
+ * ~~The predicate for which tier applies.~~ ✅ **Done.**
+   `conflict.js`'s `touched` gained real structure to make this exact,
+   rather than another ad-hoc flag: each entry is now `{domId, mutation}`,
+   with `mutation` the record's own type (`'attributes'`/`'characterData'`/
+   `'childList'`) for `record.target`, or `'added'`/`'removed'` for a node
+   in `addedNodes`/`removedNodes` — overwritten in record order, so a
+   reparent's node correctly ends up `'added'`, not `'removed'` (it moved,
+   it didn't vanish). `escalation.js`'s `needsEscalation(ydoc, bundle)`:
+   true iff the bundle has an unrecovered `'removed'` entry (no matching
+   snapshot) — false for a bundle that never removed anything, false when
+   a snapshot covers it, true otherwise. Must be called *before*
+   `revertBundle` for the same bundle, not after — restoring consumes the
+   snapshot on success, so asking afterward sees "no snapshot" and reports
+   a false positive for a case that actually already succeeded (this
+   ordering trap is demonstrated directly in
+   `tests/unit/escalation.test.js`, not just written down). Pure — makes
+   no Yjs writes, decides nothing about who forks; that's the wiring's job
+   . **This also surfaced a real, independent correctness fix**:
+   `revertBundle`'s deletion step used to key off `item.id.client ===
+   bundle.clientID`, which only tells you a peer created an item *ever* —
+   not that *this commit* did. A peer's touched-set can legitimately
+   reference something they made in an earlier, unrelated commit, merely
+   attribute-touched here; the old check would have deleted that too.
+   Switched to `mutation === 'added'`, which asks the right question —
+   regression test in `escalation.test.js` demonstrates the old check
+   getting this wrong.
+

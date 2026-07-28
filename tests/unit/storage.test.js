@@ -2,7 +2,7 @@
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { domToY, isToyG, populateFromSvgDoc, buildExportSvg } from '../../src/storage.js'
-import { addToy, findToy, _clearSvgTextCache } from '../../src/toys.js'
+import { addToy, findToy, _clearSvgTextCache, _getScriptsFragment } from '../../src/toys.js'
 import { addDrawing } from '../../src/drawing.js'
 
 // ── Fixtures & helpers ──────────────────────────────────────────────────────
@@ -203,7 +203,7 @@ describe('populateFromSvgDoc', () => {
     expect(drawCount).toBe(1) // only the <rect>, not toys/drawing/background/boundaries-positions layers again
   })
 
-  test('preserves <script> nodes inside imported toys end-to-end', () => {
+  test('hoists a script from an imported toy into the scripts fragment, stripped from the toy itself', () => {
     const { ydoc, yToys } = freshLayers()
     const toyWithScript = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6">
         <svg x="0" y="0" width="64" height="64" viewBox="0 0 80 100">
@@ -212,7 +212,14 @@ describe('populateFromSvgDoc', () => {
       </g>`
     populateFromSvgDoc(makeDocSvg({ toysInner: toyWithScript }), ydoc)
     const svgNode = yToys.toArray()[0].toArray()[0]
-    expect(svgNode.toArray().some(c => c.nodeName === 'script')).toBe(true)
+    // Never in the toy's own subtree, live or at rest.
+    expect(svgNode.toArray().some(c => c.nodeName === 'script')).toBe(false)
+    // Hoisted into the document's scripts fragment instead.
+    const scripts = _getScriptsFragment(ydoc).toArray()
+    expect(scripts.length).toBe(1)
+    expect(scripts[0].getAttribute('data-namespace')).toBe('d6')
+    expect(scripts[0].getAttribute('data-toy-type')).toBe('dice_d6')
+    expect(scripts[0].toArray()[0].toString()).toBe(' var d6 = 1 ')
   })
 
   describe('opts.stripToyDecorative', () => {
@@ -275,14 +282,18 @@ describe('buildExportSvg', () => {
     expect(live.querySelector('#overlay-layer')).not.toBeNull()
   })
 
-  test('rebuilds #toys-layer from the Yjs fragment, scripts included', async () => {
+  test('writes hoisted scripts once at document root, not per-toy', async () => {
     const ydoc = new Y.Doc()
     const yToys = ydoc.getXmlFragment('toys')
     await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
 
     const clone = buildExportSvg(liveCanvasSvg(), ydoc)
-    const scripts = clone.querySelector('#toys-layer').querySelectorAll('script')
-    expect(scripts.length).toBe(2)
+    // Only the inline script (data-namespace="d6") gets hoisted/exported —
+    // the src-referenced one (dice_utils.js) is never persisted at all.
+    const scripts = clone.querySelectorAll(':scope > script')
+    expect(scripts.length).toBe(1)
+    expect(scripts[0].getAttribute('data-namespace')).toBe('d6')
+    expect(clone.querySelector('#toys-layer script')).toBeNull()
   })
 
   test('rebuilds #drawing-layer from the Yjs fragment', () => {

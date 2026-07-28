@@ -10,7 +10,7 @@ import {
   hslToRgb, colorMatrixValues,
   _clearSvgTextCache, _resetToyScriptState,
   yNodeFor, clearYNodeMap,
-  newToyId,
+  newToyId, _getScriptsFragment, dedupToys,
 } from '../../src/toys.js'
 
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
@@ -138,23 +138,21 @@ describe('svgTextToYXml', () => {
     expect(find(importRoot(TOY_SVG, 'P__'), 'use').getAttribute('xlink:href')).toBe('#P__token_front')
   })
 
-  test('preserves <script> elements, their attrs, and CDATA text', () => {
-    const scripts = findAll(importRoot(TOY_SVG, 'P__'), 'script')
+  test('extracts <script> elements as data, never into the Yjs tree', () => {
+    const { scripts } = svgTextToYXml(TOY_SVG, 'P__')
     expect(scripts.length).toBe(2)
 
-    const srcScript = scripts.find(s => s.getAttribute('src'))
-    expect(srcScript.getAttribute('src')).toBe('js/dice_utils.js')
-    expect(srcScript.getAttribute('data-namespace')).toBe('dice')
+    const srcScript = scripts.find(s => s.src)
+    expect(srcScript.src).toBe('js/dice_utils.js')
+    expect(srcScript.namespace).toBe('dice')
+    expect(srcScript.code).toBe('')
 
-    const inlineScript = scripts.find(s => s.getAttribute('data-namespace') === 'token_solidcolor')
-    expect(inlineScript.toArray()[0].toString()).toContain('token_solidcolor')
-  })
+    const inlineScript = scripts.find(s => s.namespace === 'token_solidcolor')
+    expect(inlineScript.code).toContain('token_solidcolor')
 
-  test('namespaces script ids like any other id', () => {
-    const scripts = findAll(importRoot(TOY_SVG, 'P__'), 'script')
-    expect(scripts.map(s => s.getAttribute('id'))).toEqual(
-      expect.arrayContaining(['P__script_dice_utils', 'P__script_token_solidcolor'])
-    )
+    // Never in the Yjs tree itself, live or at rest — see toys.js,
+    // "Script hoisting".
+    expect(findAll(importRoot(TOY_SVG, 'P__'), 'script').length).toBe(0)
   })
 
   test('drops foreign-namespace elements (sodipodi/inkscape)', () => {
@@ -303,27 +301,20 @@ describe('listToys', () => {
     expect(toys[1].getAttribute('data-color')).toBe('#222')
   })
 
-  test('rendered DOM never contains <script>, even though the Yjs tree does', async () => {
+  test('scripts are never in a toy\'s own Yjs subtree or the rendered DOM — hoisted to the document instead', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
 
-    // The Yjs tree carries the script...
-    expect(findAll(findToy(yToys, 't1'), 'script').length).toBe(2)
-    // ...but the mirrored DOM used for on-screen rendering never does.
+    // Not in the toy's own Yjs subtree...
+    expect(findAll(findToy(yToys, 't1'), 'script').length).toBe(0)
+    // ...not in the mirrored DOM used for on-screen rendering...
     const [toyEl] = listToys(yToys)
     expect(toyEl.querySelector('script')).toBeNull()
+    // ...hoisted into the document's own scripts fragment instead.
+    expect(_getScriptsFragment(ydoc).toArray().length).toBe(1) // just the inline 'd6'
   })
 
-  test('{ includeScripts: true } mirrors scripts too — for export only', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
-
-    const [toyEl] = listToys(yToys, { includeScripts: true })
-    const scripts = toyEl.querySelectorAll('script')
-    expect(scripts.length).toBe(2)
-  })
 })
 
 describe('scoped lookup ($)', () => {
@@ -971,5 +962,169 @@ describe('tray_sum: color option + editable name (real assets)', () => {
     expect(outerAfter.name).toBe('outer-loot')       // outer got its own edit
     expect(innerAfter.name).toBe('inner-loot')       // inner's own name untouched
     expect(innerAfter.color).toBe(innerBefore.color) // inner's own color untouched
+  })
+})
+
+describe('dedupToys', () => {
+  test('no duplicates — no-op, returns an empty list', async () => {
+    const ydoc = new Y.Doc()
+    const yToys = ydoc.getXmlFragment('toys')
+    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0, color: '#fff' })
+
+    let deduped
+    ydoc.transact(() => { deduped = dedupToys(ydoc, yToys) })
+
+    expect(deduped).toEqual([])
+    expect(yToys.toArray().length).toBe(1)
+  })
+
+  test('two top-level occurrences of the same data-toy-id: one survives, the other is removed', () => {
+    const ydoc = new Y.Doc()
+    const yToys = ydoc.getXmlFragment('toys')
+    const a = new Y.XmlElement('g')
+    a.setAttribute('class', 'toy')
+    a.setAttribute('data-toy-id', 'die2')
+    a.setAttribute('data-toy-type', 'player_marker')
+    const b = new Y.XmlElement('g')
+    b.setAttribute('class', 'toy')
+    b.setAttribute('data-toy-id', 'die2') // SAME id
+    b.setAttribute('data-toy-type', 'player_marker')
+    ydoc.transact(() => { yToys.insert(0, [a, b]) })
+
+    let deduped
+    ydoc.transact(() => { deduped = dedupToys(ydoc, yToys) })
+
+    expect(deduped).toEqual(['die2'])
+    expect(yToys.toArray().length).toBe(1)
+    expect(yToys.toArray()[0].getAttribute('data-toy-id')).toBe('die2')
+  })
+
+  test('the survivor is determined by item identity, not array/insertion position', () => {
+    const ydoc = new Y.Doc()
+    const yToys = ydoc.getXmlFragment('toys')
+    const mk = () => {
+      const el = new Y.XmlElement('g')
+      el.setAttribute('class', 'toy'); el.setAttribute('data-toy-id', 'die2'); el.setAttribute('data-toy-type', 'x')
+      return el
+    }
+    // Created in this order, so their clocks are strictly increasing:
+    // first has the smallest clock, third the largest.
+    let first, second, third
+    ydoc.transact(() => {
+      first  = mk(); yToys.insert(0, [first])
+      second = mk(); yToys.insert(0, [second]) // inserted BEFORE first in the array
+      third  = mk(); yToys.insert(1, [third])  // inserted in the MIDDLE
+    })
+    // Array order is now [second, third, first] — deliberately NOT
+    // creation order — to confirm the survivor is chosen by identity
+    // (smallest clock — "first"), not by array position.
+    expect(yToys.toArray()).toEqual([second, third, first])
+
+    ydoc.transact(() => { dedupToys(ydoc, yToys) })
+
+    expect(yToys.toArray().length).toBe(1)
+    expect(yToys.toArray()[0]).toBe(first) // smallest clock, regardless of where it sat in the array
+  })
+
+  test('multiple different duplicated ids in one pass are all cleaned up independently', () => {
+    const ydoc = new Y.Doc()
+    const yToys = ydoc.getXmlFragment('toys')
+    const mk = (id) => {
+      const el = new Y.XmlElement('g')
+      el.setAttribute('class', 'toy'); el.setAttribute('data-toy-id', id); el.setAttribute('data-toy-type', 'x')
+      return el
+    }
+    ydoc.transact(() => {
+      yToys.insert(0, [mk('die1'), mk('die1'), mk('die2'), mk('die2'), mk('die3')]) // die3 unique
+    })
+
+    let deduped
+    ydoc.transact(() => { deduped = dedupToys(ydoc, yToys) })
+
+    expect(new Set(deduped)).toEqual(new Set(['die1', 'die2']))
+    expect(yToys.toArray().length).toBe(3) // one die1, one die2, one die3
+    const ids = yToys.toArray().map(el => el.getAttribute('data-toy-id'))
+    expect(new Set(ids)).toEqual(new Set(['die1', 'die2', 'die3']))
+  })
+
+  test('Scenario A shape: two independently-restored copies (same content, different item ids, both top-level) collapse to one', () => {
+    // Mirrors escalation.js's revertBundle race: two peers both restore
+    // die2 from the identical snapshot value before either's eviction
+    // synced to the other.
+    const ydoc = new Y.Doc()
+    const yToys = ydoc.getXmlFragment('toys')
+    const restoredByBob = new Y.XmlElement('g')
+    restoredByBob.setAttribute('class', 'toy')
+    restoredByBob.setAttribute('data-toy-id', 'die2')
+    restoredByBob.setAttribute('data-toy-type', 'player_marker')
+    restoredByBob.setAttribute('x', '340')
+    const restoredByClyde = new Y.XmlElement('g')
+    restoredByClyde.setAttribute('class', 'toy')
+    restoredByClyde.setAttribute('data-toy-id', 'die2')
+    restoredByClyde.setAttribute('data-toy-type', 'player_marker')
+    restoredByClyde.setAttribute('x', '340') // identical content — same source snapshot
+    ydoc.transact(() => { yToys.insert(0, [restoredByBob, restoredByClyde]) })
+
+    let deduped
+    ydoc.transact(() => { deduped = dedupToys(ydoc, yToys) })
+
+    expect(deduped).toEqual(['die2'])
+    expect(yToys.toArray().length).toBe(1)
+    expect(yToys.toArray()[0].getAttribute('x')).toBe('340')
+  })
+
+  test('Scenario B shape: the same original toy reparented by two peers into DIFFERENT (nested) containers collapses to one, wherever it ended up', async () => {
+    // The file's global beforeEach stubs fetch to always return the
+    // generic TOY_SVG fixture regardless of URL — override it here with
+    // the real tray_sum.svg (already loaded at file scope) so these toys
+    // actually get a contents_group.
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (url === '/toy/tray_sum.svg') return { ok: true, text: async () => TRAY_SUM_SVG }
+      if (url === '/toy/js/tray.js')   return { ok: true, text: async () => TRAY_JS }
+      throw new Error(`unexpected fetch: ${url}`)
+    }))
+
+    const ydoc = new Y.Doc()
+    const yToys = ydoc.getXmlFragment('toys')
+    await addToy(ydoc, yToys, { id: 'trayA', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, yToys, { id: 'trayB', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    const contentsA = findToy(yToys, 'trayA').toArray()[0].toArray().find(c => c.nodeName === 'g' && (c.getAttribute('class') || '').includes('contents_group'))
+    const contentsB = findToy(yToys, 'trayB').toArray()[0].toArray().find(c => c.nodeName === 'g' && (c.getAttribute('class') || '').includes('contents_group'))
+    expect(contentsA).toBeTruthy()
+    expect(contentsB).toBeTruthy()
+
+    // Alice's copy landed in trayA, Bob's in trayB — same data-toy-id,
+    // both real inserts, both survive the merge (see escalation reasoning
+    // in the module doc comment: neither delete "wins" over the other's
+    // insert, and no bundle-touched-set ever overlaps between them, so
+    // scanForConflicts alone would never catch this).
+    const dieInA = new Y.XmlElement('g')
+    dieInA.setAttribute('class', 'toy'); dieInA.setAttribute('data-toy-id', 'die3'); dieInA.setAttribute('data-toy-type', 'player_marker')
+    const dieInB = new Y.XmlElement('g')
+    dieInB.setAttribute('class', 'toy'); dieInB.setAttribute('data-toy-id', 'die3'); dieInB.setAttribute('data-toy-type', 'player_marker')
+    ydoc.transact(() => {
+      contentsA.insert(0, [dieInA])
+      contentsB.insert(0, [dieInB])
+    })
+
+    let deduped
+    ydoc.transact(() => { deduped = dedupToys(ydoc, yToys) })
+
+    expect(deduped).toEqual(['die3'])
+    // Exactly one die3 survives, in WHICHEVER container the deterministic
+    // rule picked — the point is there's only one, not which tray it's in.
+    const totalDie3Count = contentsA.toArray().length + contentsB.toArray().length
+    expect(totalDie3Count).toBe(1)
+  })
+
+  test('a toy with no duplicate is left completely untouched', async () => {
+    const ydoc = new Y.Doc()
+    const yToys = ydoc.getXmlFragment('toys')
+    await addToy(ydoc, yToys, { id: 'solo', toyType: 'player_marker', x: 5, y: 5, color: '#abc' })
+    const before = findToy(yToys, 'solo')
+
+    ydoc.transact(() => { dedupToys(ydoc, yToys) })
+
+    expect(findToy(yToys, 'solo')).toBe(before)
   })
 })

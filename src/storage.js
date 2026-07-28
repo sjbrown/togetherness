@@ -87,10 +87,36 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
     if (h) yMeta.set('bg_height', h);
   }
 
+  // Document-root scripts — our own export format (buildExportSvg): one
+  // <script> per hoisted namespace, sitting at document root, not inside
+  // any toy. Restore into the doc's own `scripts` fragment. Handled before
+  // the toys/drawing loops below so the later "everything else" fallback
+  // never sees these and doesn't mistake them for an unrecognized drawing
+  // shape.
+  for (const el of svgRootEl.querySelectorAll(':scope > script')) {
+    const namespace = el.getAttribute('data-namespace');
+    if (!namespace) continue;
+    Toys.hoistInlineScripts(ydoc, el.getAttribute('data-toy-type'),
+      [{ namespace, src: null, code: el.textContent }]);
+  }
+
   // Toys layer
   if (toysLayerEl) {
     for (const child of toysLayerEl.children) {
       if (isToyG(child)) {
+        // A toy's own embedded <script>(s) — not our export format (those
+        // are hoisted to document root above), but still possible from a
+        // hand-crafted custom toy SVG, or a file saved before hoisting
+        // existed. Hoist into the scripts fragment the same as at
+        // placement time (see toys.js's addToySync), then strip before
+        // domToY: a toy's Yjs subtree never carries a <script> of its own,
+        // live or at rest — see toys.js, "Script hoisting".
+        const toyType  = child.getAttribute('data-toy-type');
+        const innerSvg = child.querySelector(':scope > svg');
+        if (innerSvg) {
+          Toys.hoistInlineScripts(ydoc, toyType, Toys.extractScripts(innerSvg));
+          innerSvg.querySelectorAll(':scope > script').forEach(s => s.remove());
+        }
         const yG = domToY(child);
         if (yG) {
           if (opts.stripToyDecorative) yG.removeAttribute('transform');
@@ -115,6 +141,7 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
   for (const el of svgRootEl.children) {
     const id = el.getAttribute('id') ?? '';
     if (el.localName === 'defs') continue;
+    if (el.localName === 'script') continue; // handled above
     if (id === 'toys-layer' || id === 'drawing-layer') continue;
     if (id === 'background-layer') continue;
     // TODO: boundaries-positions import into its own Yjs fragment when implemented
@@ -132,13 +159,16 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
 
 /**
  * Build an export-ready SVG DOM tree from the live canvas element plus the
- * canonical Yjs document (yToys/yDrawing, obtained directly off ydoc).
- * Clones the live element for the skeleton (defs, background, boundaries —
- * none of these can carry scripts) and strips overlay/UI-only bits, but
- * rebuilds #toys-layer and #drawing-layer directly from the Yjs fragments:
- * the live DOM is a mirror that never renders <script> nodes (so nothing
- * executes), so a DOM clone alone would silently export toys with their
- * scripts stripped.
+ * canonical Yjs document (yToys/yDrawing/yScripts, obtained directly off
+ * ydoc). Clones the live element for the skeleton (defs, background,
+ * boundaries) and strips overlay/UI-only bits, but rebuilds #toys-layer and
+ * #drawing-layer directly from the Yjs fragments, and appends one
+ * consolidated <script> per hoisted namespace at document root — see
+ * toys.js, "Script hoisting": a toy's own Yjs subtree never carries a
+ * <script> at all anymore (hoisted to the document's own `scripts`
+ * fragment at placement time), so there's nothing to lose by cloning the
+ * live DOM for everything else; scripts just need their own explicit pass
+ * since they don't live in any per-toy subtree to clone from.
  *
  * Also stamps the attributes an exported file needs to stand alone as a
  * real, re-importable, Inkscape-friendly SVG document: a viewBox (falling
@@ -150,6 +180,7 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
 export function buildExportSvg(liveSvgEl, ydoc) {
   const yToys    = ydoc.getXmlFragment('toys');
   const yDrawing = ydoc.getXmlFragment('drawing');
+  const yScripts = ydoc.getXmlFragment('scripts');
 
   const clone = liveSvgEl.cloneNode(true);
   clone.removeAttribute('id');
@@ -160,15 +191,36 @@ export function buildExportSvg(liveSvgEl, ydoc) {
   const toysLayerEl = clone.querySelector('#toys-layer');
   if (toysLayerEl) {
     toysLayerEl.innerHTML = '';
-    Toys.listToys(yToys, { includeScripts: true }).forEach(el => toysLayerEl.appendChild(el));
+    Toys.listToys(yToys).forEach(el => toysLayerEl.appendChild(el));
     toysLayerEl.setAttribute('inkscape:groupmode', 'layer');
   }
   const drawLayerEl = clone.querySelector('#drawing-layer');
   if (drawLayerEl) {
     drawLayerEl.innerHTML = '';
-    Drawing.listDrawings(yDrawing, { includeScripts: true }).forEach(el => drawLayerEl.appendChild(el));
+    Drawing.listDrawings(yDrawing).forEach(el => drawLayerEl.appendChild(el));
     drawLayerEl.setAttribute('inkscape:groupmode', 'layer');
   }
+
+  // One consolidated <script> per namespace at document root — never one
+  // copy re-embedded inside every toy instance. Only the doc's own hoisted
+  // (inline, foreign-toyType) scripts are written; src-referenced ones
+  // (dice_utils.js etc.) are deliberately never baked in — reopening an
+  // export assumes the same source tree that would be needed to run the
+  // app around it in the first place, so there's nothing to preserve them
+  // against. See toys.js, "Script hoisting".
+  yScripts.toArray().forEach(yScript => {
+    const scriptEl = document.createElementNS('http://www.w3.org/2000/svg', 'script');
+    scriptEl.setAttribute('type', 'text/javascript');
+    const namespace = yScript.getAttribute('data-namespace');
+    const toyType   = yScript.getAttribute('data-toy-type');
+    if (namespace) scriptEl.setAttribute('data-namespace', namespace);
+    if (toyType)   scriptEl.setAttribute('data-toy-type', toyType);
+    scriptEl.textContent = yScript.toArray()
+      .filter(c => typeof c.toString === 'function')
+      .map(c => c.toString())
+      .join('');
+    clone.appendChild(scriptEl);
+  });
 
   clone.querySelectorAll('[pointer-events]').forEach(el => el.removeAttribute('pointer-events'));
 

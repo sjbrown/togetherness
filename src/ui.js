@@ -516,6 +516,35 @@ const PANEL_TITLES = {
   layers:'Layers', save:'File', gestures:'Gestures & help',
 };
 
+// -- Panel open/tab persistence ------------------------------------------------
+const PANEL_STATE_KEY = 'tt_panel_state';
+
+function savePanelState(open, tab) {
+  try {
+    localStorage.setItem(PANEL_STATE_KEY, JSON.stringify({ open, tab }));
+  } catch {} // private browsing / quota — losing this preference is fine
+}
+
+function loadPanelState() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PANEL_STATE_KEY));
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed;
+  } catch {
+    return null; // absent, or corrupt/stale from an older version — start fresh
+  }
+}
+
+/**
+ * Reopen the panel to wherever it was left, if anywhere
+ */
+export function restorePanelState() {
+  const state = loadPanelState();
+  if (!state?.open) return;
+  if (!(state.tab in PANEL_TITLES)) return; // stale/corrupt tab id — don't open to nothing
+  openSheet(state.tab);
+}
+
 export function panelTabsHTML(activeId) {
   return `<div class="panel-tabs">${
     PANEL_TABS.map(t =>
@@ -525,6 +554,7 @@ export function panelTabsHTML(activeId) {
 }
 
 export function openSheet(which) {
+  savePanelState(true, which);
   UIData.panelOpen = which;
   const desktop = window.innerWidth >= 760;
   if (desktop) document.documentElement.style.setProperty('--panel-w', PANEL_W + 'px');
@@ -548,16 +578,70 @@ export function openSheet(which) {
     }[which] ?? (() => ''))();
     wireColorPickers(body);
   }
-  if (which === 'peers') wireOfflineToggle();
+  if (which === 'peers') wirePeersToggles();
   updateInfoBar();
 }
 export function closePanel() {
+  savePanelState(false, UIData.panelOpen); // remember the tab even though now closed
   UIData.panelOpen = null;
   $('#panel')?.classList.remove('open');
   $('#panel')?.setAttribute('aria-hidden', 'true');
   $('#scrim')?.classList.remove('open');
   document.documentElement.style.setProperty('--panel-w', '0px');
   updateInfoBar();
+}
+
+// -- Branch Acknowledge dialog ---------------------------------------------
+// Blocking (every viewport, unlike the mobile-only #scrim/#panel sheet) —
+// shown when TODO #11's branch escalation forks a peer's own divergent
+// content into a new table because in-place revert couldn't fully recover
+// it (see app.js's onReactionLogChanged / escalation.js's needsEscalation).
+// A real choice, not a dismissible notice: "join the shared table" just
+// closes this (the peer's current session never left it — the fork
+// happened in the background, onto a separate table); "keep working on my
+// branch" hard-reloads onto the forked table, since a hash-only change to
+// the current page doesn't itself trigger re-loading a different table's
+// document (see index.html's own boot sequence, which only ever reads
+// location.hash once, at load).
+let _pendingBranchTableId = null;
+
+export function showBranchDialog(forkedTableId) {
+  _pendingBranchTableId = forkedTableId;
+  const body = $('#branchDialogBody');
+  if (body) {
+    body.innerHTML = `
+      <p>Your table drifted out of sync with the other players while you
+      were apart, and some of what you did while apart couldn't be
+      automatically merged back in.</p>
+      <p>Nothing was lost — it's saved in a new table:
+      <strong>${forkedTableId}</strong>, findable any time from the table
+      list.</p>
+    `;
+  }
+  $('#branchDialogScrim')?.classList.add('open');
+  $('#branchDialogScrim')?.setAttribute('aria-hidden', 'false');
+  $('#branchDialog')?.classList.add('open');
+  $('#branchDialog')?.setAttribute('aria-hidden', 'false');
+}
+
+function closeBranchDialog() {
+  _pendingBranchTableId = null;
+  $('#branchDialogScrim')?.classList.remove('open');
+  $('#branchDialogScrim')?.setAttribute('aria-hidden', 'true');
+  $('#branchDialog')?.classList.remove('open');
+  $('#branchDialog')?.setAttribute('aria-hidden', 'true');
+}
+
+export function branchDialogJoin() {
+  // The current session is already on the shared (authoritative) table —
+  // forking never navigated anyone anywhere. Nothing to do but dismiss.
+  closeBranchDialog();
+}
+
+export function branchDialogKeepWorking() {
+  if (!_pendingBranchTableId) return;
+  location.hash = _pendingBranchTableId;
+  location.reload();
 }
 
 // -- Data gatherers (impure) ---------------------------------------------------
@@ -576,7 +660,12 @@ function gatherToolsData() {
   };
 }
 function gatherPeersData() {
-  return { peers: App.getPeers(), offline: App.isOffline(), roomId: App.getTableId() };
+  return {
+    peers: App.getPeers(),
+    offline: App.isOffline(),
+    revertsEnabled: App.isRevertsEnabled(),
+    roomId: App.getTableId(),
+  };
 }
 function gatherLayersData() {
   const active = App.getActiveLayer();
@@ -708,6 +797,11 @@ export function peersBody(data) {
            <div style="font-size:12px;color:var(--text-3)">Queue changes, sync on reconnect</div></div>
       <div class="toggle ${data.offline ? 'on' : ''}" id="offToggle"></div>
     </div>
+    <div class="row-btn" style="border-bottom:0.5px solid var(--border)">
+      <div><div style="font-size:14px;font-weight:500">Enable Reverts (experimental)</div>
+           <div style="font-size:12px;color:var(--text-3)">Auto-restore your own conflicting changes when overruled</div></div>
+      <div class="toggle ${data.revertsEnabled ? 'on' : ''}" id="revertsToggle"></div>
+    </div>
     <div class="field" style="margin-top:18px"><label>Invite nearby</label>
       <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:4px">
         ${fakeQR()}
@@ -747,16 +841,25 @@ export function updatePeersPanel() {
   if (countEl) countEl.textContent = peers.filter(p => p.live).length;
   rowsEl.innerHTML = peerRowsHTML(peers);
 }
-function wireOfflineToggle() {
-  const t = $('#offToggle');
-  if (!t) return;
-  t.addEventListener('click', () => {
-    App.setOffline(!App.isOffline());
-    t.classList.toggle('on', App.isOffline());
-    const dot = document.getElementById('offlineDot');
-    if (dot) dot.style.display = App.isOffline() ? 'block' : 'none';
-    toast(App.isOffline() ? 'Offline — syncing paused' : 'Back online', App.isOffline() ? 'warn' : '');
-  });
+function wirePeersToggles() {
+  const off = $('#offToggle');
+  if (off) {
+    off.addEventListener('click', () => {
+      App.setOffline(!App.isOffline());
+      off.classList.toggle('on', App.isOffline());
+      const dot = document.getElementById('offlineDot');
+      if (dot) dot.style.display = App.isOffline() ? 'block' : 'none';
+      toast(App.isOffline() ? 'Offline — syncing paused' : 'Back online', App.isOffline() ? 'warn' : '');
+    });
+  }
+  const reverts = $('#revertsToggle');
+  if (reverts) {
+    reverts.addEventListener('click', () => {
+      App.setRevertsEnabled(!App.isRevertsEnabled());
+      reverts.classList.toggle('on', App.isRevertsEnabled());
+      toast(App.isRevertsEnabled() ? 'Reverts enabled' : 'Reverts disabled — unrecoverable conflicts branch instead of restoring', 'info');
+    });
+  }
 }
 
 export function histBody(history) {
