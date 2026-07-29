@@ -176,7 +176,7 @@ var bag = {
 
   contents_change_handler: function(elem) {
     let sum = 0
-    tray.visit_tt_contents(elem, (child) => {
+    tray.visit_contents(elem, (child) => {
       sum += 1
     })
     // tray._findOwn is boundary-safe. A plain '.tspan_result' selector
@@ -188,7 +188,7 @@ var bag = {
 
   _contents: function(elem) {
     const items = []
-    tray.visit_tt_contents(elem, (child) => items.push(child))
+    tray.visit_contents(elem, (child) => items.push(child))
     return items
   },
 
