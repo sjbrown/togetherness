@@ -140,15 +140,24 @@ function rewriteUrlRefs(value, idMap) {
 //   subtree; see "Script hoisting" below for where they actually go
 // - namespaces every id and internal reference via idMap, so placed
 //   instances don't collide on ids like #app-filter-colorize
-// - if `refs` is given, collects direct refs to any feColorMatrix nodes
-//   into refs.colorMatrices, since a detached tree can't be walked later
+// - `accum.colorMatricies` collects direct refs to any feColorMatrix nodes
+//   into accum.colorMatrices, since a detached tree can't be walked later
 //   (toArray() throws until the tree is attached to a doc)
-function elementToYXml(node, idMap, classAddMap, refs) {
+function elementToYXml(node, prefix, idMap, classAddMap, accum) {
   const yEl = new Y.XmlElement(node.localName)
 
-  if (refs && node.localName === 'feColorMatrix') {
-    refs.colorMatrices.push(yEl)
+  if (accum && node.localName === 'feColorMatrix') {
+    accum.colorMatrices.push(yEl)
   }
+
+  let elementId = node.getAttribute('id')
+  if (!elementId) {
+    elementId = prefix + accum.sequenceNumber++
+  } else {
+    elementId = idMap.get(elementId)
+  }
+  yEl.setAttribute('id', elementId)
+  yEl.setAttribute('data-id', elementId)
 
   for (const attr of Array.from(node.attributes)) {
     // keep only SVG and xlink attributes
@@ -156,7 +165,8 @@ function elementToYXml(node, idMap, classAddMap, refs) {
 
     let value = attr.value
     if (attr.localName === 'id') {
-      value = idMap.get(value) ?? value
+      // Already handled above
+      continue
     } else if (attr.localName === 'href' && value.startsWith('#')) {
       const ref = value.slice(1)
       if (idMap.has(ref)) value = '#' + idMap.get(ref)
@@ -181,7 +191,7 @@ function elementToYXml(node, idMap, classAddMap, refs) {
     if (child.nodeType === 1) {                                   // ELEMENT_NODE
       if (child.namespaceURI && child.namespaceURI !== SVG_NS) continue
       if (child.localName === 'script') continue                  // hoisted, not embedded
-      children.push(elementToYXml(child, idMap, classAddMap, refs))
+      children.push(elementToYXml(child, prefix, idMap, classAddMap, accum))
     } else if (child.nodeType === 3 || child.nodeType === 4) {     // TEXT_NODE / CDATA_SECTION_NODE
       if (child.textContent.trim() !== '') children.push(new Y.XmlText(child.textContent))
     }
@@ -293,8 +303,8 @@ export function svgTextToYXml(svgText, prefix) {
     ['hit_plate', prefix + 'hit_plate'],
   ])
 
-  const refs = { colorMatrices: [] }
-  const ySvg = elementToYXml(root, idMap, classAddMap, refs)
+  const accum = { colorMatrices: [], sequenceNumber: 0 }
+  const ySvg = elementToYXml(root, prefix, idMap, classAddMap, accum)
   const width  = parseFloat(root.getAttribute('width'))  || 100
   const height = parseFloat(root.getAttribute('height')) || 100
   // Synthesize a viewBox from width/height if the file
@@ -303,7 +313,7 @@ export function svgTextToYXml(svgText, prefix) {
     ySvg.setAttribute('viewBox', `0 0 ${width} ${height}`)
   }
   const scripts = extractScripts(root)
-  return { ySvg, colorMatrices: refs.colorMatrices, width, height, scripts }
+  return { ySvg, colorMatrices: accum.colorMatrices, width, height, scripts }
 }
 
 // ── Toy operations ────────────────────────────────────────────────────────────
