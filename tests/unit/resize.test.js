@@ -13,11 +13,11 @@ const SVG_NS = 'http://www.w3.org/2000/svg'
 const getToysLayer = (ydoc) => ({ yToys: ydoc.getXmlFragment('toys') })
 
 // A tray fixture matching every real tray_*.svg asset's convention: root
-// <svg class="... tray"> + a nested <svg class="wh_follow_resize"> with matching
+// <svg class="... tray"> + a nested <svg class="tt_wh_follow_resize"> with matching
 // width/height/viewBox (see src/toy/tray_sum.svg and siblings).
 const TRAY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="150" id="tray_fixture" class="tray_fixture tray">
-  <svg id="resizable_bg" class="wh_follow_resize" x="0" y="0" width="200" height="150" viewBox="0 0 200 150">
+  <svg id="resizable_bg" class="tt_wh_follow_resize" x="0" y="0" width="200" height="150" viewBox="0 0 200 150">
     <rect id="bg_rect" width="200" height="150" />
   </svg>
   <g id="tt_contents" class="tt_contents"></g>
@@ -99,7 +99,7 @@ describe('applyResizeCommit', () => {
     expect(svg.getAttribute('viewBox')).toBe('0 0 300 220')
   })
 
-  test('mirrors the new size onto all elements with wh_follow_resize class', () => {
+  test('mirrors the new size onto all elements with tt_wh_follow_resize class', () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     place(ydoc, yToys, 'tray1', 'tray_fixture', TRAY_SVG, 100, 100)
@@ -107,7 +107,7 @@ describe('applyResizeCommit', () => {
     applyResizeCommit(ydoc, findToy(yToys, 'tray1'), 40, 50, 300, 220)
 
     const layerEl = renderLayer(yToys)
-    const whFollowResizeEls = layerEl.querySelectorAll('[data-id="tray1"] .wh_follow_resize')
+    const whFollowResizeEls = layerEl.querySelectorAll('[data-id="tray1"] .tt_wh_follow_resize')
     expect(whFollowResizeEls.length).toBeGreaterThan(0)
     for (const el of whFollowResizeEls) {
       expect(el.getAttribute('width')).toBe('300')
@@ -184,13 +184,13 @@ describe('overlay.js — resizeCorners / hitTestResizeCorner', () => {
 describe('applyResizeCommit — nested-toy isolation (ownYClassSelector)', () => {
   // Regression coverage for the id-prefix-matching rewrite of
   // findWhFollowResizeYEls/findContentsGroupYEl: resizing a tray must only
-  // ever touch that tray's OWN wh_follow_resize elements, never a nested
+  // ever touch that tray's OWN tt_wh_follow_resize elements, never a nested
   // tray's — no matter how deep the nesting goes. A one-level, unprefixed
   // class scan would get this right for depth 1 by accident (nested toys
   // live inside .tt_contents, one level further in than a bare scan
   // reaches) but wrong at depth 2+, which is what these tests pin down.
 
-  test('resizing an outer tray does not touch a directly-nested inner tray\u2019s own wh_follow_resize element', () => {
+  test('resizing an outer tray does not touch a directly-nested inner tray\u2019s own tt_wh_follow_resize element', () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     place(ydoc, yToys, 'outer', 'tray_fixture', TRAY_SVG, 100, 100)
@@ -200,8 +200,8 @@ describe('applyResizeCommit — nested-toy isolation (ownYClassSelector)', () =>
     applyResizeCommit(ydoc, findToy(yToys, 'outer'), 40, 50, 300, 220)
 
     const layerEl = renderLayer(yToys)
-    const outerBg = layerEl.querySelector('[data-id="outer"] .outer__wh_follow_resize')
-    const innerBg = layerEl.querySelector('[data-id="inner"] .inner__wh_follow_resize')
+    const outerBg = layerEl.querySelector('[data-id="outer"] .outer__tt_wh_follow_resize')
+    const innerBg = layerEl.querySelector('[data-id="inner"] .inner__tt_wh_follow_resize')
     expect(outerBg.getAttribute('width')).toBe('300')
     expect(outerBg.getAttribute('height')).toBe('220')
     // The inner tray was never resized — still its native 200x150 size.
@@ -209,7 +209,7 @@ describe('applyResizeCommit — nested-toy isolation (ownYClassSelector)', () =>
     expect(innerBg.getAttribute('height')).toBe('150')
   })
 
-  test('resizing an outer tray does not touch a doubly-nested (tray-in-tray-in-tray) wh_follow_resize element', () => {
+  test('resizing an outer tray does not touch a doubly-nested (tray-in-tray-in-tray) tt_wh_follow_resize element', () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     place(ydoc, yToys, 'outer', 'tray_fixture', TRAY_SVG, 100, 100)
@@ -221,10 +221,10 @@ describe('applyResizeCommit — nested-toy isolation (ownYClassSelector)', () =>
     applyResizeCommit(ydoc, findToy(yToys, 'outer'), 0, 0, 400, 400)
 
     const layerEl = renderLayer(yToys)
-    const midBg   = layerEl.querySelector('[data-id="mid"] .mid__wh_follow_resize')
-    const innerBg = layerEl.querySelector('[data-id="inner"] .inner__wh_follow_resize')
+    const midBg   = layerEl.querySelector('[data-id="mid"] .mid__tt_wh_follow_resize')
+    const innerBg = layerEl.querySelector('[data-id="inner"] .inner__tt_wh_follow_resize')
     // Neither the mid nor the doubly-nested inner tray were touched —
-    // a naive full recursive walk matching the BARE "wh_follow_resize"
+    // a naive full recursive walk matching the BARE "tt_wh_follow_resize"
     // class (rather than the id-prefixed one) would have caught both.
     expect(midBg.getAttribute('width')).toBe('200')
     expect(innerBg.getAttribute('width')).toBe('200')
@@ -240,8 +240,8 @@ describe('applyResizeCommit — nested-toy isolation (ownYClassSelector)', () =>
     applyResizeCommit(ydoc, findToy(yToys, 'inner'), 0, 0, 90, 90)
 
     const layerEl = renderLayer(yToys)
-    const outerBg = layerEl.querySelector('[data-id="outer"] .outer__wh_follow_resize')
-    const innerBg = layerEl.querySelector('[data-id="inner"] .inner__wh_follow_resize')
+    const outerBg = layerEl.querySelector('[data-id="outer"] .outer__tt_wh_follow_resize')
+    const innerBg = layerEl.querySelector('[data-id="inner"] .inner__tt_wh_follow_resize')
     expect(innerBg.getAttribute('width')).toBe('90')
     expect(outerBg.getAttribute('width')).toBe('200') // untouched
   })
