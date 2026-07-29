@@ -23,7 +23,6 @@ import * as Drawing                               from './drawing.js';
 import * as Toys                                  from './toys.js';
 import * as Storage                               from './storage.js';
 import * as BounPos                               from './boun_pos.js';
-import { SHAPE_TYPES }                            from './drawing.js';
 import { TOOLS as TOY_TOOLS, addToy, findToy, newToyId,
          getMenuActions, activateToyScripts,
          findDropTarget } from './toys.js';
@@ -33,14 +32,6 @@ import { resolveConflictWinner, revertBundle, needsEscalation } from './escalati
 import { isRevertsEnabled, setRevertsEnabled } from './snapshot.js';
 import { tablesAPI as tables } from './tables.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
-import { BOUNPOS_TYPES,
-         addPositionSet, createPositionSetElement,
-         rectToPath, pathToRect,
-         computeBoundaryRects,
-         computePositionSnapPoints,
-         computeMaxSnapRadius,
-         gridFillExtent,
-       } from './boun_pos.js';
 import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
 import * as Overlay                               from './overlay.js';
@@ -284,7 +275,7 @@ function buildToolRegistry() {
   };
   register(SELECT_TOOL);
   _toolsByLayer['background'] = [SELECT_TOOL];
-  const bounPosTools = Object.entries(BOUNPOS_TYPES).map(([name, def]) => ({
+  const bounPosTools = Object.entries(BounPos.BOUNPOS_TYPES).map(([name, def]) => ({
     name,
     label:   def.label,
     layer:   'boundaries-positions',
@@ -292,12 +283,12 @@ function buildToolRegistry() {
   }));
   bounPosTools.forEach(def => {
     _toolById[def.name] = def;
-    _toolParams[def.name] = { ...BOUNPOS_TYPES[def.name].schema.values };
+    _toolParams[def.name] = { ...BounPos.BOUNPOS_TYPES[def.name].schema.values };
   });
   _toolsByLayer['boundaries-positions'] = [SELECT_TOOL, ...bounPosTools];
   TOY_TOOLS.forEach(register);
   _toolsByLayer['toys'] = [SELECT_TOOL, ...TOY_TOOLS];
-  const drawTools = Object.entries(SHAPE_TYPES).map(([name, def]) => ({
+  const drawTools = Object.entries(Drawing.SHAPE_TYPES).map(([name, def]) => ({
     name,
     label:   def.schema.label,
     layer:   'drawing',
@@ -846,7 +837,7 @@ const App = {
   getToolSchema:   (name)  => {
     const drawSchema = Drawing.getTtStateSchema(name);
     if (drawSchema?.types) return drawSchema;
-    if (BOUNPOS_TYPES[name]) return BOUNPOS_TYPES[name].schema;
+    if (BounPos.BOUNPOS_TYPES[name]) return BounPos.BOUNPOS_TYPES[name].schema;
     const def = _toolById[name];
     if (!def) return { types: {}, values: {} };
     const types  = Object.fromEntries((def.options ?? []).map(f => [f.key, f]));
@@ -1084,7 +1075,7 @@ const App = {
   },
 
   commitBounPos: ({ toolName, x, y, w, h }) => {
-    const def = BOUNPOS_TYPES[toolName];
+    const def = BounPos.BOUNPOS_TYPES[toolName];
     if (!def) return;
     const { id, name } = def.newId();
     if (def.genType === null) {
@@ -1320,8 +1311,8 @@ const App = {
     const bbox = App.getBBox(id);
     const isToy = moduleForElement(domEl) === 'toys';
     const toyClasses  = isToy ? getToyClasses(domEl) : new Set();
-    const boundsRects = isToy ? computeBoundaryRects(_yBounPos, toyClasses, anchor) : null;
-    const snapPoints  = isToy ? computePositionSnapPoints(_yBounPos, toyClasses) : [];
+    const boundsRects = isToy ? BounPos.computeBoundaryRects(_yBounPos, toyClasses, anchor) : null;
+    const snapPoints  = isToy ? BounPos.computePositionSnapPoints(_yBounPos, toyClasses) : [];
     _dragState = { id, startX: anchor.x, startY: anchor.y,
       startBboxX: bbox.x,
       startBboxY: bbox.y,
@@ -1588,8 +1579,8 @@ const App = {
     const anchorDom = _svgEl.querySelector(`[data-id="${leaderEl.id}"]`);
     const isToy     = leaderEl.mtype === 'toys';
     const toyClasses   = isToy ? getToyClasses(anchorDom) : new Set();
-    const boundsRects  = isToy ? computeBoundaryRects(_yBounPos, toyClasses, { x: leaderEl.anchorX, y: leaderEl.anchorY }) : null;
-    const snapPoints   = isToy ? computePositionSnapPoints(_yBounPos, toyClasses) : [];
+    const boundsRects  = isToy ? BounPos.computeBoundaryRects(_yBounPos, toyClasses, { x: leaderEl.anchorX, y: leaderEl.anchorY }) : null;
+    const snapPoints   = isToy ? BounPos.computePositionSnapPoints(_yBounPos, toyClasses) : [];
 
     _multiDragState = {
       elements,
