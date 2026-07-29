@@ -968,7 +968,7 @@ describe('tray_sum: color option + editable name (real assets)', () => {
     await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 300, y: 300, color: '#5e7ea8' })
     await addToy(ydoc, yToys, { id: 'die1',  toyType: 'dice_d6',  x: 300, y: 300, color: '#a8905e' })
 
-    reparentToy(ydoc, yToys, 'die1', 'tray1') // die1 now lives in tray1's contents_group — a pure Yjs-tree move, no render needed
+    reparentToy(ydoc, yToys, 'die1', 'tray1') // die1 now lives in tray1's tt_contents — a pure Yjs-tree move, no render needed
 
     const dieBefore = getTtStateSchema(_toSVGEl(findToy(yToys, 'die1')))
 
@@ -1117,7 +1117,7 @@ describe('dedupToys', () => {
     // The file's global beforeEach stubs fetch to always return the
     // generic TOY_SVG fixture regardless of URL — override it here with
     // the real tray_sum.svg (already loaded at file scope) so these toys
-    // actually get a contents_group.
+    // actually get a tt_contents.
     vi.stubGlobal('fetch', vi.fn(async (url) => {
       if (url === '/toy/tray_sum.svg') return { ok: true, text: async () => TRAY_SUM_SVG }
       if (url === '/toy/js/tray.js')   return { ok: true, text: async () => TRAY_JS }
@@ -1128,8 +1128,8 @@ describe('dedupToys', () => {
     const yToys = ydoc.getXmlFragment('toys')
     await addToy(ydoc, yToys, { id: 'trayA', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
     await addToy(ydoc, yToys, { id: 'trayB', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    const contentsA = findToy(yToys, 'trayA').toArray()[0].toArray().find(c => c.nodeName === 'g' && (c.getAttribute('class') || '').includes('contents_group'))
-    const contentsB = findToy(yToys, 'trayB').toArray()[0].toArray().find(c => c.nodeName === 'g' && (c.getAttribute('class') || '').includes('contents_group'))
+    const contentsA = findToy(yToys, 'trayA').toArray()[0].toArray().find(c => c.nodeName === 'g' && (c.getAttribute('class') || '').includes('tt_contents'))
+    const contentsB = findToy(yToys, 'trayB').toArray()[0].toArray().find(c => c.nodeName === 'g' && (c.getAttribute('class') || '').includes('tt_contents'))
     expect(contentsA).toBeTruthy()
     expect(contentsB).toBeTruthy()
 

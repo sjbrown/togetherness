@@ -176,7 +176,7 @@ var bag = {
 
   contents_change_handler: function(elem) {
     let sum = 0
-    tray.visit_contents_group(elem, (child) => {
+    tray.visit_contents(elem, (child) => {
       sum += 1
     })
     // tray._findOwn is boundary-safe. A plain '.tspan_result' selector
@@ -188,7 +188,7 @@ var bag = {
 
   _contents: function(elem) {
     const items = []
-    tray.visit_contents_group(elem, (child) => items.push(child))
+    tray.visit_contents(elem, (child) => items.push(child))
     return items
   },
 
@@ -218,21 +218,21 @@ var bag = {
 
     ]]></script>
 
-  <rect class="hit_plate" x="0" y="0" width="100%" height="100%" fill="transparent" />
+  <rect class="tt_hit_plate" x="0" y="0" width="100%" height="100%" fill="transparent" />
 
 
   <g class="colorable tt_colored"
      transform="scale(0.66) translate(28 28)"
      filter="url(#app-filter-colorize)">
     <rect
-     class="wh_follow_resize"
+     class="tt_wh_follow_resize"
      fill="#d7d7d7"
      style="stroke:#3b3b3b;stroke-width:2;opacity:0.5"
      x="0" y="0" width="140" height="140"
      rx="4" ry="4" />
   </g>
 
-  <g class="contents_group"></g>
+  <g class="tt_contents"></g>
 
   <svg class="cover_illustration"
        viewBox="0 0 32 32"
@@ -297,7 +297,7 @@ var bag = {
          text-align:center;text-anchor:middle;
          font-family:sans-serif;
          fill:#000"
-         class="tspan_name"
+         class="tt_name"
          >bag</tspan></text>
      </g>
     </svg>

@@ -33,7 +33,7 @@
 // whether a peer's own derived-write is causally AFTER every other peer's
 // derived-write it needs to supersede — not whether that peer happened to
 // compute the mathematically correct total. Scenario C is the sharp
-// version of that: B computes the correct sum (its local contents_group
+// version of that: B computes the correct sum (its local tt_contents
 // already contains both dice) and still corrupts the tray, because its
 // write hasn't yet incorporated A's already-committed write.
 //
@@ -53,7 +53,7 @@ import { addToySync, findToy, reparentToy, applyMoveCommit } from '../../src/toy
 
 const TRAY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="150" id="tray_fixture" class="tray_fixture tray">
-  <g id="contents_group" class="contents_group"></g>
+  <g id="tt_contents" class="tt_contents"></g>
   <text id="result"><tspan id="tspan_result" class="tspan_result">0</tspan></text>
 </svg>`
 
@@ -65,7 +65,7 @@ const DIE_SVG = (face) => `<?xml version="1.0" encoding="UTF-8"?>
 function contentsGroupOf(yTray) {
   const svg = yTray.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'svg')
   return svg.toArray().find(c => c instanceof Y.XmlElement &&
-    (c.getAttribute('class') || '').split(/\s+/).includes('contents_group'))
+    (c.getAttribute('class') || '').split(/\s+/).includes('tt_contents'))
 }
 function tspanResultOf(yTray) {
   const svg = yTray.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'svg')
@@ -227,7 +227,7 @@ describe('concurrent derived-write corruption (TODO #11 — warn, not fail, unti
     localDerivedWrite(A.ydoc, tspanResultOf(findToy(A.yToys, 'tray1')), 4)
 
     // B receives ONLY A's reparent (the derived-write message is still in
-    // flight). B's local contents_group now correctly shows both dice —
+    // flight). B's local tt_contents now correctly shows both dice —
     // but B has not yet causally observed A's derived-write.
     Y.applyUpdate(B.ydoc, aStateAfterReparentOnly)
 
@@ -235,7 +235,7 @@ describe('concurrent derived-write corruption (TODO #11 — warn, not fail, unti
       const moved = reparentToy(B.ydoc, B.yToys, 'die2', 'tray1')
       applyMoveCommit(B.ydoc, moved, 10, 10)
     })
-    // B's cascade sums its own local contents_group — both dice are
+    // B's cascade sums its own local tt_contents — both dice are
     // present — and computes the CORRECT total. The write is still
     // causally concurrent with A's, though.
     localDerivedWrite(B.ydoc, tspanResultOf(findToy(B.yToys, 'tray1')), 7)

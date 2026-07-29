@@ -30,7 +30,7 @@ var tray_best = {
     let sign = howMany / Math.abs(howMany) // -1 or +1
     let tally = []
 
-    tray.visit_contents_group(elem, (s) => {
+    tray.visit_contents(elem, (s) => {
       tally.sort((a,b) => (a-b))
       let tempNum = tray.get_numeric_value(s)
       if (tempNum !== undefined) {
@@ -149,7 +149,7 @@ var tray_best = {
          class="tspan_name"
          >Label</tspan></text>
   </svg>
-  <g id="contents_group" class="contents_group">
+  <g id="tt_contents" class="tt_contents">
   </g>
   <svg class="result_container"
   x="0" y="75%"

@@ -66,7 +66,7 @@ entire public contract. Recognized members:
 - **`getValue(elem)`** — return this toy's value as a string, if it has
   one worth reporting to a container (see "Containment", below).
 - **`contents_change_handler(elem)`** — called automatically whenever
-  something inside this toy's `.contents_group` changes, if your toy is a
+  something inside this toy's `.tt_contents` changes, if your toy is a
   container (see "Containment").
 
 All are optional. A toy with none of them just sits on the table as
@@ -198,7 +198,7 @@ reach for `document.body` or assume a fixed DOM depth.
 If you're building a *container* — something other toys can be dropped
 into — the contract is:
 
-- Your SVG has a `<g class="contents_group">`, the standard drop zone.
+- Your SVG has a `<g class="tt_contents">`, the standard drop zone.
 - `contents_change_handler(elem)` is called automatically whenever
   anything inside that group changes (a contained die was rolled, a toy
   was dropped in or dragged out). Recompute whatever you display from
@@ -207,7 +207,7 @@ into — the contract is:
   return your own displayed value as a string.
 
 `tray.js` (loaded by every tray-shaped toy via `data-namespace="tray"`)
-has the helpers you'll want for this: `visit_contents_group`,
+has the helpers you'll want for this: `visit_contents`,
 `get_numeric_value`, `getValue`, `getUnderstoodNumber`. Read it before
 writing a new container type from scratch.
 
@@ -248,7 +248,7 @@ during a resize.
     <rect class="wh_follow_resize"
           x="10" y="60", width="200" height="30" fill="#fff0f0" stroke="red"/>
 
-  <g class="contents_group"></g>
+  <g class="tt_contents"></g>
 </svg>
 ```
 

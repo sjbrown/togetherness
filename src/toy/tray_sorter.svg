@@ -25,7 +25,7 @@ var tray_sorter = {
   contents_change_handler: function(elem) {
     // console.log('contents_change_handler ', elem.id)
     let tally = []
-    tray.visit_contents_group(elem, (s) => {
+    tray.visit_contents(elem, (s) => {
       let tempNum = 0
       s.querySelectorAll('tspan').forEach((t) => {
         if (t.closest('svg').id !== s.id) {
@@ -140,7 +140,7 @@ var tray_sorter = {
          class="tspan_name"
          >Label</tspan></text>
   </svg>
-  <g id="contents_group" class="contents_group">
+  <g id="tt_contents" class="tt_contents">
   </g>
   <svg class="result_container"
   x="0" y="75%"

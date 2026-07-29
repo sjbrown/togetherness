@@ -10,7 +10,7 @@
  *   ENVELOPE_ORIGIN — a toy handler ran: a die's Roll, a tray's Roll All.
  *
  *   DERIVED_ORIGIN — a tray recomputed its own elements due to something
- *     in its contents_group changing.
+ *     in its tt_contents changing.
  *
  *   LIFECYCLE_ORIGIN — a toy's one-time initialize() side effects at
  *     placement. Untracked for undo (if the placement is undone the whole

@@ -133,14 +133,14 @@ html, body {
  * tray's own background — instead of the nested toy itself. Descendant
  * selector + inheritance means this holds at any nesting depth (a tray
  * inside a tray inside a tray) with no extra rule needed. */
-.contents_group .toy { pointer-events: none; }
+.tt_contents .toy { pointer-events: none; }
 
-/* .hit_plate (in every tray_*.svg) is a full-coverage, invisible rect
+/* .tt_hit_plate (in every tray_*.svg) is a full-coverage, invisible rect
  * providing an exact hit-testing floor for the whole tray, decoupled from
  * whatever the tray's background art happens to visibly paint
  */
-.hit_plate { pointer-events: fill; }
-.contents_group .hit_plate { pointer-events: none; }
+.tt_hit_plate { pointer-events: fill; }
+.tt_contents .tt_hit_plate { pointer-events: none; }
 
 /* Draw-preview div (used by canvas.js for rubber-band rect) */
 #draw-preview {

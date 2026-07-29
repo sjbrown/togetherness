@@ -577,11 +577,11 @@ function onToysChanged(events, transaction) {
   // renderDoc() runs *before* the dispatchContentsChangeCascade below.
   // contents_change_handler reads the *DOM*, so the toys layer must
   // already reflect this transaction's just-committed change (eg a mutation
-  // to a die inside .contents_group after a reparentToy)
+  // to a die inside .tt_contents after a reparentToy)
   // before the handler runs
   renderDoc();
   // Derived contents_change: a local change touched inside a container's
-  // .contents_group -- recompute that container's own derived display.
+  // .tt_contents -- recompute that container's own derived display.
   //
   // Skipped for:
   //  - remote-origin changes: the *originator* computes; the result syncs
@@ -604,7 +604,7 @@ function onToysChanged(events, transaction) {
 }
 
 // Local transaction (not itself a cascade result) touched something inside a
-// container's .contents_group? Recompute every affected container's own
+// container's .tt_contents? Recompute every affected container's own
 // contents_change_handler, innermost first, so outer containers read their
 // inner containers' fresh results. Computed as one upfront pass over *this*
 // transaction's events, so a single die roll inside a doubly-nested

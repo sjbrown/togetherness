@@ -8,13 +8,13 @@ import {
 const SVG_NS = 'http://www.w3.org/2000/svg'
 const getToysLayer = (ydoc) => ({ yToys: ydoc.getXmlFragment('toys') })
 
-// A 200x150 container at (0,0)-(200,150) in table space with a .contents_group.
+// A 200x150 container at (0,0)-(200,150) in table space with a .tt_contents.
 const TRAY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="150" id="tray_fixture" class="tray_fixture tray">
-  <g id="contents_group" class="contents_group"></g>
+  <g id="tt_contents" class="tt_contents"></g>
 </svg>`
 
-// A non-container toy (no .contents_group) — valid drop target requires .contents_group.
+// A non-container toy (no .tt_contents) — valid drop target requires .tt_contents.
 const NON_TRAY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="150" id="board_fixture" class="board_fixture">
 </svg>`
@@ -94,7 +94,7 @@ describe('findDropTarget — drop inside/outside boundaries', () => {
     expect(found).toBeNull()
   })
 
-  test('a non-container toy (no .contents_group) is never a valid target', () => {
+  test('a non-container toy (no .tt_contents) is never a valid target', () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     place(ydoc, yToys, 'board1', 'board_fixture', NON_TRAY_SVG, 300, 300)

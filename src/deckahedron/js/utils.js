@@ -75,7 +75,7 @@ function lock_selection(evt, elem) {
   target_svg = SVG.adopt(target)
   target_svg.removeClass('draggable-group')
 
-  cGroup = target.querySelector('.contents_group')
+  cGroup = target.querySelector('.tt_contents')
   if (cGroup) {
     cGroup.classList.add('drag-open')
   }
@@ -87,7 +87,7 @@ function lock_selection(evt, elem) {
 function unlock_selection(selBox) {
   // console.log("unlock_selection (box)", selBox)
   ui.getSelectBoxSelectedElements(selBox).forEach(el => {
-    cGroup = el.querySelector('.contents_group')
+    cGroup = el.querySelector('.tt_contents')
     if (cGroup) {
       cGroup.classList.remove('drag-open')
     }

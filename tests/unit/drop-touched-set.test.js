@@ -84,7 +84,7 @@ describe('drop-into-container touched-set completeness', () => {
     const dieItemKey = itemKeyFor(dieElAfterMove)
     expect(dieItemKey in bundle.touched).toBe(true)
 
-    // The shared container's contents_group item must ALSO be in the
+    // The shared container's tt_contents item must ALSO be in the
     // touched-set — this is the actual overlap point two concurrent
     // droppers' bundles would share.
     const contentsGroupKey = itemKeyFor(Toys.getContentsGroup(trayEl))

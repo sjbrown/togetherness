@@ -144,7 +144,7 @@ nonsense.
 What decides the outcome isn't whether a peer computed the right total;
 it's whether that peer's derived-write is causally *after* every other
 derived-write it needs to supersede. A peer can sum its own local
-`contents_group` correctly (both dice already present) and still corrupt
+`tt_contents` correctly (both dice already present) and still corrupt
 the tray, if its write hasn't yet incorporated another peer's
 already-committed write.
 

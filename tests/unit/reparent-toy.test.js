@@ -57,13 +57,13 @@ describe('reparentToyDom — validation', () => {
     expect(() => reparentToyDom(layerEl, 'die1', 'nope')).toThrow(/target not found/)
   })
 
-  test('throws if the target has no .contents_group', async () => {
+  test('throws if the target has no .tt_contents', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     await addToy(ydoc, yToys, { id: 'a', toyType: 'player_marker', x: 0, y: 0, color: '#fff' })
     await addToy(ydoc, yToys, { id: 'b', toyType: 'player_marker', x: 0, y: 0, color: '#fff' })
     const layerEl = renderLayer(yToys)
-    expect(() => reparentToyDom(layerEl, 'a', 'b')).toThrow(/no \.contents_group/)
+    expect(() => reparentToyDom(layerEl, 'a', 'b')).toThrow(/no \.tt_contents/)
   })
 
   test('refuses to move a toy into itself', async () => {
@@ -86,7 +86,7 @@ describe('reparentToyDom — validation', () => {
 })
 
 describe('reparentToyDom — the move itself', () => {
-  test('moves the toy element into the target\'s contents_group (DOM)', async () => {
+  test('moves the toy element into the target\'s tt_contents (DOM)', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
