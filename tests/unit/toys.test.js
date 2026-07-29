@@ -187,6 +187,46 @@ describe('svgTextToYXml', () => {
     expect(find(a, 'g').getAttribute('filter')).toBe('url(#A__app-filter-colorize)')
     expect(find(b, 'g').getAttribute('filter')).toBe('url(#B__app-filter-colorize)')
   })
+
+  test('assigns IDs to elements that lack them', () => {
+    const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" id="root">
+  <defs>
+    <filter id="filter1">
+      <feColorMatrix type="matrix"/>
+    </filter>
+  </defs>
+  <g id="has-id">
+    <circle r="10"/>
+    <rect width="20" height="20"/>
+    <text>No ID</text>
+  </g>
+  <g>
+    <ellipse cx="50" cy="50" rx="10" ry="5"/>
+  </g>
+</svg>`
+    const root = importRoot(svg, 'P__')
+    const gs = findAll(root, 'g')
+    const circles = findAll(root, 'circle')
+    const rects = findAll(root, 'rect')
+    const texts = findAll(root, 'text')
+    const ellipses = findAll(root, 'ellipse')
+
+    // Elements that had IDs should be prefixed
+    expect(find(root, 'filter').getAttribute('id')).toMatch(/^P__filter1/)
+    expect(gs[0].getAttribute('id')).toMatch(/^P__has-id/)
+
+    // Elements that lacked IDs should now have generated ones
+    expect(circles[0].getAttribute('id')).toMatch(/^P__\d+$/)
+    expect(rects[0].getAttribute('id')).toMatch(/^P__\d+$/)
+    expect(texts[0].getAttribute('id')).toMatch(/^P__\d+$/)
+    expect(ellipses[0].getAttribute('id')).toMatch(/^P__\d+$/)
+    expect(gs[1].getAttribute('id')).toMatch(/^P__\d+$/)
+
+    // All generated IDs should be unique
+    const allIds = [circles, rects, texts, ellipses, [gs[1]]].flat().map(el => el.getAttribute('id'))
+    expect(new Set(allIds).size).toBe(allIds.length)
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -265,3 +265,8 @@ operation, never worry about what happens if two peers act at once — the
 platform resolves that. If your handler runs, its effect will sync to
 every peer and survive a reload, with no code from you beyond the DOM
 mutation itself.
+
+## Don't alter element IDs
+
+Everything will break in weird unexpected ways if you alter or delete
+element ids.
