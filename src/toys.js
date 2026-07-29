@@ -157,7 +157,6 @@ function elementToYXml(node, prefix, idMap, classAddMap, accum) {
     elementId = idMap.get(elementId)
   }
   yEl.setAttribute('id', elementId)
-  yEl.setAttribute('data-id', elementId)
 
   for (const attr of Array.from(node.attributes)) {
     // keep only SVG and xlink attributes
