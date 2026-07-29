@@ -71,7 +71,7 @@ describe('tray.js + tray_sum — script activation', () => {
     const { yToys } = getToysLayer(ydoc)
     await placeAndActivate(ydoc, yToys, 'tray_sum', 't1')
 
-    expect(typeof globalThis.tray.visit_tt_contents).toBe('function')
+    expect(typeof globalThis.tray.visit_contents).toBe('function')
     expect(typeof globalThis.tray.getValue).toBe('function')
     expect(typeof globalThis.tray.get_numeric_value).toBe('function')
     expect(typeof globalThis.tray_sum.contents_change_handler).toBe('function')
@@ -124,7 +124,7 @@ describe('tray.js + tray_sum — script activation', () => {
 
 })
 
-describe('tray.js — visit_tt_contents', () => {
+describe('tray.js — visit_contents', () => {
   function makeTrayWithContents(childIds) {
     const elem  = document.createElementNS(SVG_NS, 'g')
     const group = document.createElementNS(SVG_NS, 'g')
@@ -144,7 +144,7 @@ describe('tray.js — visit_tt_contents', () => {
     ;(0, eval)(TRAY_JS)
     const { elem, children } = makeTrayWithContents(['a', 'b', 'c'])
     const seen = []
-    tray.visit_tt_contents(elem, (child) => seen.push(child.getAttribute('data-toy-id')))
+    tray.visit_contents(elem, (child) => seen.push(child.getAttribute('data-toy-id')))
     expect(seen).toEqual(['a', 'b', 'c'])
   })
 
@@ -165,14 +165,14 @@ describe('tray.js — visit_tt_contents', () => {
     group.appendChild(nestedTray)
 
     const seen = []
-    tray.visit_tt_contents(elem, (child) => seen.push(child.getAttribute('data-toy-id')))
+    tray.visit_contents(elem, (child) => seen.push(child.getAttribute('data-toy-id')))
     expect(seen).toEqual(['a', 'nested-tray']) // 'buried' excluded
   })
 
   test('is a no-op (never throws) when elem has no .tt_contents', () => {
     ;(0, eval)(TRAY_JS)
     const elem = document.createElementNS(SVG_NS, 'g')
-    expect(() => tray.visit_tt_contents(elem, () => { throw new Error('should not be called') })).not.toThrow()
+    expect(() => tray.visit_contents(elem, () => { throw new Error('should not be called') })).not.toThrow()
   })
 })
 
