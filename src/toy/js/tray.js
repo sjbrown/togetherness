@@ -6,11 +6,11 @@ var tray = {
 
   /**
    * Call visitFn(childToyEl) for every toy currently placed in elem's
-   * contents_group — the direct `.toy` children (each a <g class="toy">
+   * tt_contents — the direct `.toy` children (each a <g class="toy">
    * wrapper, matching the shape of a top-level placed toy).
    */
-  visit_contents_group: function(elem, visitFn) {
-    const group = elem.querySelector('.contents_group')
+  visit_contents: function(elem, visitFn) {
+    const group = elem.querySelector('.tt_contents')
     if (!group) return
     group.querySelectorAll(':scope > .toy').forEach(visitFn)
   },
@@ -119,7 +119,7 @@ var tray = {
    * so each die's own DOM mutation is captured by that same envelope
    */
   roll_all: function(elem) {
-    tray.visit_contents_group(elem, (child) => {
+    tray.visit_contents(elem, (child) => {
       const toyType = child.getAttribute && child.getAttribute('data-toy-type')
       if (!toyType || typeof globalThis.getNamespacesForType !== 'function') return
       globalThis.getNamespacesForType(toyType).forEach((name) => {

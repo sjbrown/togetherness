@@ -2,7 +2,7 @@
  * tests/unit/contents-change-cascade.test.js
  *
  * Phase 5.4 — derived contents_change: a local transaction that touches
- * something inside a container's .contents_group (a die rolling, a toy
+ * something inside a container's .tt_contents (a die rolling, a toy
  * being reparented in/out) recomputes that container's contents_change_handler.
  *
  * toys.js exports the primitives (findAncestorContainerIds, runContentsChangeHandler);
@@ -49,7 +49,7 @@ function renderLayer(yToys) {
 }
 
 // A plain `.querySelector('.tspan_result')` can shadow-match a *nested*
-// sub-tray's own result (it sits inside .contents_group, which comes
+// sub-tray's own result (it sits inside .tt_contents, which comes
 // before .result_container in the markup — same reason tray.js's own
 // getValue() needs the boundary-respecting tray._findOwn lookup, not a
 // plain selector). Assertions in this file read a tray's own displayed
@@ -153,7 +153,7 @@ describe('findAncestorContainerIds', () => {
     expect(findAncestorContainerIds(dieY)).toEqual(['inner', 'outer'])
   })
 
-  test('a tray\u2019s own result_container is a sibling of .contents_group, not inside it', async () => {
+  test('a tray\u2019s own result_container is a sibling of .tt_contents, not inside it', async () => {
     // Sanity check on the structural self-termination property the
     // cascade guard relies on: recomputing tray1's own display must never
     // itself resolve back to tray1.

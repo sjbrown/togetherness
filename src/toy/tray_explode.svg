@@ -49,7 +49,7 @@ var tray_explode = {
       }
     }
 
-    tray.visit_contents_group(elem, (s) => {
+    tray.visit_contents(elem, (s) => {
       sum += explode_it(s)
     })
 
@@ -160,7 +160,7 @@ var tray_explode = {
          class="tspan_name"
          >Label</tspan></text>
   </svg>
-  <g id="contents_group" class="contents_group">
+  <g id="tt_contents" class="tt_contents">
   </g>
   <svg class="result_container"
   x="0" y="75%"

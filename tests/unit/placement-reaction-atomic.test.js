@@ -72,7 +72,7 @@ async function place(ydoc, yToys, toyType, id) {
 // a garbled (multi-sibling-text-node) result is visible as length > 1.
 function tspanResultOf(yTray) {
   const svg = yTray.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'svg')
-  // .result_container's tspan — the tray's OWN, a sibling of contents_group.
+  // .result_container's tspan — the tray's OWN, a sibling of tt_contents.
   // Walk for the <text class="result_container"> then its <tspan>.
   const stack = [...svg.toArray()]
   while (stack.length) {
@@ -81,7 +81,7 @@ function tspanResultOf(yTray) {
     const cls = (n.getAttribute('class') || '')
     if (n.nodeName === 'tspan' && cls.split(/\s+/).includes('tspan_result')) return n
     // don't descend into nested toys' own subtrees
-    if (cls.split(/\s+/).includes('contents_group')) continue
+    if (cls.split(/\s+/).includes('tt_contents')) continue
     stack.unshift(...n.toArray())
   }
   return null
@@ -182,7 +182,7 @@ describe('placement + reaction commit as ONE atomic transaction', () => {
     const trayAfter = findToy(yToys, 'tray1')
     const contentsAfter = trayAfter.toArray()
       .find(c => c instanceof Y.XmlElement && c.nodeName === 'svg')
-      .toArray().find(c => (c.getAttribute?.('class') || '').split(/\s+/).includes('contents_group'))
+      .toArray().find(c => (c.getAttribute?.('class') || '').split(/\s+/).includes('tt_contents'))
     expect(contentsAfter.length).toBe(1)                    // die is in the tray
     expect(readTspan(tspanResultOf(trayAfter))).toBe('4')   // sum reflects it
 
@@ -193,7 +193,7 @@ describe('placement + reaction commit as ONE atomic transaction', () => {
     const trayUndone = findToy(yToys, 'tray1')
     const contentsUndone = trayUndone.toArray()
       .find(c => c instanceof Y.XmlElement && c.nodeName === 'svg')
-      .toArray().find(c => (c.getAttribute?.('class') || '').split(/\s+/).includes('contents_group'))
+      .toArray().find(c => (c.getAttribute?.('class') || '').split(/\s+/).includes('tt_contents'))
     expect(contentsUndone.length).toBe(0)                   // die removed from tray
     expect(readTspan(tspanResultOf(trayUndone))).toBe('0')  // sum reverted, in the SAME step
     expect(findToy(yToys, 'die1')).toBeTruthy()             // die restored to top level

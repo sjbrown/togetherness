@@ -71,7 +71,7 @@ describe('tray.js + tray_sum — script activation', () => {
     const { yToys } = getToysLayer(ydoc)
     await placeAndActivate(ydoc, yToys, 'tray_sum', 't1')
 
-    expect(typeof globalThis.tray.visit_contents_group).toBe('function')
+    expect(typeof globalThis.tray.visit_tt_contents).toBe('function')
     expect(typeof globalThis.tray.getValue).toBe('function')
     expect(typeof globalThis.tray.get_numeric_value).toBe('function')
     expect(typeof globalThis.tray_sum.contents_change_handler).toBe('function')
@@ -124,11 +124,11 @@ describe('tray.js + tray_sum — script activation', () => {
 
 })
 
-describe('tray.js — visit_contents_group', () => {
+describe('tray.js — visit_tt_contents', () => {
   function makeTrayWithContents(childIds) {
     const elem  = document.createElementNS(SVG_NS, 'g')
     const group = document.createElementNS(SVG_NS, 'g')
-    group.classList.add('contents_group')
+    group.classList.add('tt_contents')
     elem.appendChild(group)
     const children = childIds.map(id => {
       const child = document.createElementNS(SVG_NS, 'g')
@@ -140,15 +140,15 @@ describe('tray.js — visit_contents_group', () => {
     return { elem, group, children }
   }
 
-  test('visits each direct .toy child of .contents_group, in order', () => {
+  test('visits each direct .toy child of .tt_contents, in order', () => {
     ;(0, eval)(TRAY_JS)
     const { elem, children } = makeTrayWithContents(['a', 'b', 'c'])
     const seen = []
-    tray.visit_contents_group(elem, (child) => seen.push(child.getAttribute('data-toy-id')))
+    tray.visit_tt_contents(elem, (child) => seen.push(child.getAttribute('data-toy-id')))
     expect(seen).toEqual(['a', 'b', 'c'])
   })
 
-  test('does not descend into a nested tray contents_group (direct children only)', () => {
+  test('does not descend into a nested tray tt_contents (direct children only)', () => {
     ;(0, eval)(TRAY_JS)
     const { elem, group } = makeTrayWithContents(['a'])
     // a nested tray placed inside, itself containing another toy
@@ -156,7 +156,7 @@ describe('tray.js — visit_contents_group', () => {
     nestedTray.classList.add('toy')
     nestedTray.setAttribute('data-toy-id', 'nested-tray')
     const nestedGroup = document.createElementNS(SVG_NS, 'g')
-    nestedGroup.classList.add('contents_group')
+    nestedGroup.classList.add('tt_contents')
     const buried = document.createElementNS(SVG_NS, 'g')
     buried.classList.add('toy')
     buried.setAttribute('data-toy-id', 'buried')
@@ -165,14 +165,14 @@ describe('tray.js — visit_contents_group', () => {
     group.appendChild(nestedTray)
 
     const seen = []
-    tray.visit_contents_group(elem, (child) => seen.push(child.getAttribute('data-toy-id')))
+    tray.visit_tt_contents(elem, (child) => seen.push(child.getAttribute('data-toy-id')))
     expect(seen).toEqual(['a', 'nested-tray']) // 'buried' excluded
   })
 
-  test('is a no-op (never throws) when elem has no .contents_group', () => {
+  test('is a no-op (never throws) when elem has no .tt_contents', () => {
     ;(0, eval)(TRAY_JS)
     const elem = document.createElementNS(SVG_NS, 'g')
-    expect(() => tray.visit_contents_group(elem, () => { throw new Error('should not be called') })).not.toThrow()
+    expect(() => tray.visit_tt_contents(elem, () => { throw new Error('should not be called') })).not.toThrow()
   })
 })
 
@@ -293,7 +293,7 @@ describe('tray.js — roll_all', () => {
 
     const trayElem = document.createElementNS(SVG_NS, 'g')
     const group = document.createElementNS(SVG_NS, 'g')
-    group.classList.add('contents_group')
+    group.classList.add('tt_contents')
     trayElem.appendChild(group)
     const die = document.createElementNS(SVG_NS, 'g')
     die.classList.add('toy')
@@ -312,7 +312,7 @@ describe('tray.js — roll_all', () => {
 
     const trayElem = document.createElementNS(SVG_NS, 'g')
     const group = document.createElementNS(SVG_NS, 'g')
-    group.classList.add('contents_group')
+    group.classList.add('tt_contents')
     trayElem.appendChild(group)
     const nestedTray = document.createElementNS(SVG_NS, 'g')
     nestedTray.classList.add('toy')
@@ -337,7 +337,7 @@ describe('tray.js — roll_all', () => {
     }
     const trayElem = document.createElementNS(SVG_NS, 'g')
     const group = document.createElementNS(SVG_NS, 'g')
-    group.classList.add('contents_group')
+    group.classList.add('tt_contents')
     trayElem.appendChild(group)
     const die = document.createElementNS(SVG_NS, 'g')
     die.classList.add('toy')
@@ -358,7 +358,7 @@ describe('tray.js — roll_all', () => {
     }
     const trayElem = document.createElementNS(SVG_NS, 'g')
     const group = document.createElementNS(SVG_NS, 'g')
-    group.classList.add('contents_group')
+    group.classList.add('tt_contents')
     trayElem.appendChild(group)
     const dice = [1, 2, 3].map(() => {
       const die = document.createElementNS(SVG_NS, 'g')
@@ -381,9 +381,9 @@ describe('tray_sum — contents_change_handler', () => {
     const { toyEl } = await placeAndActivate(ydoc, yToys, 'tray_sum', 'tray1')
 
     // Hand-build two dice-shaped children directly inside the rendered
-    // tray's contents_group (phase 5.2's reparentToy op is what will do
+    // tray's tt_contents (phase 5.2's reparentToy op is what will do
     // this for real — this test exercises the handler in isolation).
-    const group = toyEl.querySelector('.contents_group')
+    const group = toyEl.querySelector('.tt_contents')
     ;[5, 2].forEach((value, i) => {
       const child = document.createElementNS(SVG_NS, 'g')
       child.classList.add('toy')
@@ -411,17 +411,17 @@ describe('tray_sum — contents_change_handler', () => {
     expect(toyEl.querySelector('.tspan_result').textContent).toBe('0')
   })
 
-  test('writes to its OWN result tspan, never a nested sub-tray — regardless of document order (regression: contents_change_handler used to use a plain, unscoped .tspan_result selector, which matches .contents_group before .result_container in the markup and so silently overwrote a nested tray\u2019s own result instead of its own)', async () => {
+  test('writes to its OWN result tspan, never a nested sub-tray — regardless of document order (regression: contents_change_handler used to use a plain, unscoped .tspan_result selector, which matches .tt_contents before .result_container in the markup and so silently overwrote a nested tray\u2019s own result instead of its own)', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     const { toyEl: outerEl } = await placeAndActivate(ydoc, yToys, 'tray_sum', 'outer')
 
-    // Hand-build a nested sub-tray directly inside outer's contents_group,
+    // Hand-build a nested sub-tray directly inside outer's tt_contents,
     // with the SAME shape a real placed tray_sum has: its own
     // .result_container > .tspan_result, already showing a value, as if it
     // were dropped in with a pre-existing sum (e.g. reparentToy moving a
     // tray that already had contents summed).
-    const group = outerEl.querySelector('.contents_group')
+    const group = outerEl.querySelector('.tt_contents')
     const nestedTray = document.createElementNS(SVG_NS, 'g')
     nestedTray.classList.add('toy')
     nestedTray.setAttribute('data-toy-type', 'tray_sum')
@@ -678,7 +678,7 @@ describe('invokeMenuActionSync — the DOM-based cascade itself', () => {
     // d6 namespace (where the actual Roll action lives — dice_utils.js's
     // "dice" namespace is shared utility functions with no menu of its
     // own), that rolls dieA AND reaches over and rolls dieB too — touching
-    // two SEPARATE, non-nested trays' contents_groups in one handler.
+    // two SEPARATE, non-nested trays' tt_contentss in one handler.
     // Exercises affectedTrayIdsFromRecords across two disjoint chains, not
     // just one.
     const dieAEl = layerEl.querySelector('[data-id="dieA"]')
@@ -716,19 +716,19 @@ describe('invokeMenuActionSync — the DOM-based cascade itself', () => {
           eventName: 'loop_trigger',
           applicable: () => true,
           handler: function() {
-            const groupB = document.querySelector('[data-toy-type="dice_d6"] .contents_group')
+            const groupB = document.querySelector('[data-toy-type="dice_d6"] .tt_contents')
             if (groupB) groupB.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'rect'))
           },
         },
       },
       contents_change_handler: function(elem) {
         elem.setAttribute('data-a-recomputed', String(Number(elem.getAttribute('data-a-recomputed') || 0) + 1))
-        const groupB = document.querySelector('[data-toy-type="dice_d6"] .contents_group')
+        const groupB = document.querySelector('[data-toy-type="dice_d6"] .tt_contents')
         if (groupB) groupB.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'rect'))
       },
     }
   ]]></script>
-  <g class="contents_group"></g>
+  <g class="tt_contents"></g>
 </svg>`
     const LOOP_B_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" id="loop_b" class="toy">
@@ -736,12 +736,12 @@ describe('invokeMenuActionSync — the DOM-based cascade itself', () => {
     var loop_b = {
       contents_change_handler: function(elem) {
         elem.setAttribute('data-b-recomputed', String(Number(elem.getAttribute('data-b-recomputed') || 0) + 1))
-        const groupA = document.querySelector('[data-toy-type="player_marker"] .contents_group')
+        const groupA = document.querySelector('[data-toy-type="player_marker"] .tt_contents')
         if (groupA) groupA.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'circle'))
       },
     }
   ]]></script>
-  <g class="contents_group"></g>
+  <g class="tt_contents"></g>
 </svg>`
     vi.stubGlobal('fetch', vi.fn(async (url) => {
       if (url === '/toy/player_marker.svg') return { ok: true, text: async () => LOOP_A_SVG }
@@ -777,7 +777,7 @@ describe('invokeMenuActionSync — the DOM-based cascade itself', () => {
     const loopBEl = layerEl.querySelector('[data-id="loopB"]')
     // Each ran its own contents_change_handler exactly once, never twice —
     // elem in contents_change_handler(elem) is the tray's own top-level
-    // wrapper (matching tray_sum's real contract), not its contents_group.
+    // wrapper (matching tray_sum's real contract), not its tt_contents.
     expect(loopAEl.getAttribute('data-a-recomputed')).toBe('1')
     expect(loopBEl.getAttribute('data-b-recomputed')).toBe('1')
 

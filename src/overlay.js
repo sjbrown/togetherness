@@ -439,7 +439,7 @@ export function startResizeGhost(elId) {
 /**
  * Update the local resize ghost to (x, y, width, height) — canvas-space,
  * already computed by Toys.computeResizeRect. Mutates the clone's own
- * root <svg> and all child elements marked with wh_follow_resize class
+ * root <svg> and all child elements marked with tt_wh_follow_resize class
  * directly — this is DOM-only, never touches Yjs (see toys.js's
  * applyResizeCommit for the commit path).
  */
@@ -453,8 +453,8 @@ export function updateResizeGhost(elId, x, y, width, height) {
     ghostSvg.setAttribute('width', width);
     ghostSvg.setAttribute('height', height);
     ghostSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    // Update all elements marked with wh_follow_resize class
-    for (const el of ghostSvg.querySelectorAll(`.${elId}__wh_follow_resize`)) {
+    // Update all elements marked with tt_wh_follow_resize class
+    for (const el of ghostSvg.querySelectorAll(`.${elId}__tt_wh_follow_resize`)) {
       el.setAttribute('width', width);
       el.setAttribute('height', height);
     }
@@ -492,7 +492,7 @@ export function endResizeGhost(elId) {
 let _dropTargetId = null;
 
 /**
- * Called by App while dragging a toy, with the id of a .contents_group-having
+ * Called by App while dragging a toy, with the id of a .tt_contents-having
  * element currently under the drop position, or null.
  * Short circuits when the id is unchanged,
  * since this fires on every pointermove.

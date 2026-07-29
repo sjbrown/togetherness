@@ -27,7 +27,7 @@ var tray_count = {
     let count = 0
     condition_tspan = elem.querySelector(`#${elem.id} > svg .tspan_rule_num`)
     let gate = parseInt(condition_tspan.textContent)
-    tray.visit_contents_group(elem, (s) => {
+    tray.visit_contents(elem, (s) => {
       let tempNum = tray.get_numeric_value(s)
       count = count + (tempNum >= gate ? 1 : 0)
     })
@@ -137,7 +137,7 @@ var tray_count = {
          class="tspan_name"
          >Label</tspan></text>
   </svg>
-  <g id="contents_group" class="contents_group">
+  <g id="tt_contents" class="tt_contents">
   </g>
   <svg class="result_container"
   x="0" y="75%"

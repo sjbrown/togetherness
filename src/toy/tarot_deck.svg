@@ -176,7 +176,7 @@ var tarot_deck = {
     local_doc = SVG.adopt(elem)
     deck = local_doc.group()
     deck.addClass('deck')
-    deck.addClass('contents_group')
+    deck.addClass('tt_contents')
     deck_id = 'deck_' + base32.short_id()
     deck.id(deck_id)
     local_doc.add(deck)
@@ -195,7 +195,7 @@ var tarot_deck = {
   },
 
   reshuffle_handler: function(elem) {
-    let cg = elem.querySelector('.contents_group')
+    let cg = elem.querySelector('.tt_contents')
     cardArray = []
     sDeck = SVG.adopt(cg)
     elem.querySelectorAll(

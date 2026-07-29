@@ -392,12 +392,12 @@ ordinary drag-and-drop with no revert involved at all.
    `commitEnvelope`: snapshots die2's pre-drop content into **Bob's own**
    `revertSnapshots['bob']` slot, deletes it from top-level, inserts a
    fresh copy into Tray1 (new item, Bob's clientID), recomputes Tray1's
-   sum. Records `bundle_bob` (`touched` = [Tray1's contents_group, Tray1's
+   sum. Records `bundle_bob` (`touched` = [Tray1's tt_contents, Tray1's
    tspan, die2's fresh nodes]). → **transmits** the whole transaction +
    bundle + snapshot to whoever's connected.
 2. **Alice**, concurrently, unsynced from Bob, drags die1 into the *same*
    Tray1. Same mechanism — her own snapshot slot, her own bundle
-   (`bundle_alice`, `touched` overlapping Tray1's contents_group/tspan
+   (`bundle_alice`, `touched` overlapping Tray1's tt_contents/tspan
    with Bob's). → **transmits**.
 3. **Clyde** was offline for 1–2, comes online, receives both `bundle_bob`
    and `bundle_alice` close together. His `onReactionLogChanged` fires,
@@ -475,7 +475,7 @@ distinction matters below.)
   tray + reaction slot=sum(die1)} atomically; B's does the same for die2.
   The two reactions overlap on the shared result slot — both wrote a fresh
   text node into the same `tspan`, so `tspan`'s own item-id (and the
-  tray's `contents_group` item-id, both pre-existing, shared) end up in
+  tray's `tt_contents` item-id, both pre-existing, shared) end up in
   both bundles' touched-sets.
 - `scanForConflicts` flags the pair (concurrent, overlapping touched-sets).
   Authority (say A, earlier in `joinSequence`) wins.

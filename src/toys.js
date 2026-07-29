@@ -11,7 +11,7 @@
  *      └─ <svg x y width height viewBox>                    ← the live toy sub-document
  *          └─ ...toy content (defs, paths, tspans, <script>, ...)
  *      (optional)
- *          └─ ...class="contents_group"
+ *          └─ ...class="tt_contents"
  *            └─ ...toy content (dragged in sub-toys)
  *
  * A toy's <script> nodes are part of that canonical tree (preserved through
@@ -294,12 +294,12 @@ export function svgTextToYXml(svgText, prefix) {
   }
 
   const classAddMap = new Map([
-    ['contents_group', prefix + 'contents_group'],
-    ['wh_follow_resize', prefix + 'wh_follow_resize'],
+    ['tt_contents', prefix + 'tt_contents'],
+    ['tt_wh_follow_resize', prefix + 'tt_wh_follow_resize'],
     ['tt_colored', prefix + 'tt_colored'],
     ['tt_color_filter', prefix + 'tt_color_filter'],
-    ['tspan_name', prefix + 'tspan_name'],
-    ['hit_plate', prefix + 'hit_plate'],
+    ['tt_name', prefix + 'tt_name'],
+    ['tt_hit_plate', prefix + 'tt_hit_plate'],
   ])
 
   const accum = { colorMatrices: [], sequenceNumber: 0 }
@@ -415,7 +415,7 @@ function isToyG(yEl) {
 
 /**
  * Walk the whole toys tree — top-level and nested, inside any container's
- * own contents_group — and group every toy element by its data-toy-id.
+ * own tt_contents — and group every toy element by its data-toy-id.
  * A legitimate id appears in exactly one group of size 1; this returns
  * every group, so the caller can find the ones that don't.
  */
@@ -600,7 +600,7 @@ export function findToy(yToys, id) {
 
 /**
  * Move a toy to a new position in the containment tree: either into a
- * .contents_group, or back to the top level of the toys layer
+ * .tt_contents, or back to the top level of the toys layer
  * (containerElId null/undefined).
  *
  * A DOM operation, like every other structural toy mutation now — NOT a
@@ -625,7 +625,7 @@ export function findToy(yToys, id) {
  * Throws if:
  *  - id's own element isn't found in layerEl
  *  - containerElId is given but not found in layerEl
- *  - containerElId's own element has no .contents_group
+ *  - containerElId's own element has no .tt_contents
  *  - containerElId is id itself, or one of id's own contained toys
  *    (moving a toy into its own descendant would disconnect that subtree
  *    from the document entirely, so this is refused)
@@ -647,7 +647,7 @@ export function reparentToyDom(layerEl, id, containerElId) {
     }
     const contentsGroup = getContentsGroup(targetEl)
     if (!contentsGroup) {
-      throw new Error(`[toys] reparentToy: target ${containerElId} has no .contents_group`)
+      throw new Error(`[toys] reparentToy: target ${containerElId} has no .tt_contents`)
     }
     targetGroup = contentsGroup
   }
@@ -710,7 +710,7 @@ function pointInRect(x, y, rect) {
 
 /**
  * Hit-test a toy's drop position against every top-level
- * .contents_group-having element.
+ * .tt_contents-having element.
  * 
  * Returns the id of the first such element whose bounds contain the
  * dragged toy's centre point — or null if none does.
@@ -730,7 +730,7 @@ export function findDropTarget(layerEl, draggedId, rx, ry) {
     const targetId = el.getAttribute('data-id')
     // Don't match the element itself
     if (targetId === draggedId) continue
-    // Only consider .contents_group-having elements
+    // Only consider .tt_contents-having elements
     if (!getContentsGroup(el)) continue
 
     const targetGeom = getGeom(el)
@@ -740,7 +740,7 @@ export function findDropTarget(layerEl, draggedId, rx, ry) {
 }
 
 export function getContentsGroup(domEl) {
-  return domEl.querySelector(`.${domEl.id}__contents_group`)
+  return domEl.querySelector(`.${domEl.id}__tt_contents`)
 }
 
 export function selectModes(domEl) {
@@ -857,7 +857,7 @@ export function applyResizeCommit(ydoc, yToy, x, y, width, height) {
     ySvg.setAttribute('width',  String(w))
     ySvg.setAttribute('height', String(h))
     ySvg.setAttribute('viewBox', `0 0 ${w} ${h}`)
-    for (const el of yClassSelector(ySvg, `${toyId}__wh_follow_resize`)) {
+    for (const el of yClassSelector(ySvg, `${toyId}__tt_wh_follow_resize`)) {
       el.setAttribute('width',  String(w))
       el.setAttribute('height', String(h))
     }
@@ -1072,9 +1072,9 @@ export const TOY_TYPES = {
 export function getTtStateSchema(svgEl) {
   const toyId = svgEl.getAttribute?.('data-toy-id')
   if (!toyId) return null
-  // Find elem's own '.tspan_name' element — boundary-safe via id-prefix
-  // matching, don't accidentally match a contents_group-contained toy.
-  const nameEl = svgEl.querySelector(`.${toyId}__tspan_name`)
+  // Find elem's own '.tt_name' element — boundary-safe via id-prefix
+  // matching, don't accidentally match a tt_contents-contained toy.
+  const nameEl = svgEl.querySelector(`.${toyId}__tt_name`)
   function isColorable() {
     return svgEl.querySelector(`.${toyId}__tt_color_filter`) !== null
   }
@@ -1117,7 +1117,7 @@ export function getTtState(yToy) {
  * this function doesn't open its own envelope.
  *   color — every one of the toy's own feColorMatrix nodes is updated and
  *           data-color on the toy's own wrapper is kept in sync.
- *   name  — the toy's own .tspan_name text is overwritten (boundary-safe
+ *   name  — the toy's own .tt_name text is overwritten (boundary-safe
  *           the same way — a container inside a container keeps its own name).
  */
 export function editDom(toyEl, editData) {
@@ -1135,7 +1135,7 @@ export function editDom(toyEl, editData) {
     toyEl.setAttribute('data-color', color)
   }
   if (name !== undefined) {
-    const nameEl = toyEl.querySelector(`.${toyId}__tspan_name`)
+    const nameEl = toyEl.querySelector(`.${toyId}__tt_name`)
     if (nameEl) nameEl.textContent = String(name)
   }
 }
@@ -1365,8 +1365,8 @@ export async function invokeMenuAction(ydoc, yToys, layerEl, svgEl, namespace, k
 // Yjs at all until the one commitEnvelope call at the very end.
 
 /**
- * The IMMEDIATE (innermost) contents_group-owning toy id for a DOM node —
- * or the node itself, if it IS a .contents_group — or null.
+ * The IMMEDIATE (innermost) tt_contents-owning toy id for a DOM node —
+ * or the node itself, if it IS a .tt_contents — or null.
  *
  * Deliberately
  * stops at the first match rather than walking the whole ancestor chain.
@@ -1376,8 +1376,8 @@ export async function invokeMenuAction(ydoc, yToys, layerEl, svgEl, namespace, k
 function immediateContainingId(node) {
   let el = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement
   while (el) {
-    if (el.classList?.contains('contents_group')) {
-      // contents_group -> container's own <svg> -> container's <g data-id>
+    if (el.classList?.contains('tt_contents')) {
+      // tt_contents -> container's own <svg> -> container's <g data-id>
       const containerG = el.parentElement?.parentElement
       return containerG?.getAttribute?.('data-id') ?? null
     }
@@ -1544,7 +1544,7 @@ export function initializeToySync(ydoc, yToys, layerEl, svgEl, toyType, authorId
 
 /**
  * Every container id ancestor of yNode
- * (or yNode itself, if yNode IS a .contents_group), ordered innermost
+ * (or yNode itself, if yNode IS a .tt_contents), ordered innermost
  * to outermost (From Yjs tree's .parent chain, not the DOM).
  *
  * Used to percolate up contents_change_handler runs after a local change
@@ -1554,9 +1554,9 @@ export function findAncestorContainerIds(yNode) {
   let node = yNode
   while (node) {
     const isContentsGroup = node instanceof Y.XmlElement && node.nodeName === 'g' &&
-      (node.getAttribute('class') || '').split(/\s+/).includes('contents_group')
+      (node.getAttribute('class') || '').split(/\s+/).includes('tt_contents')
     if (isContentsGroup) {
-      const containerG = node.parent?.parent // contents_group -> container's own <svg> -> container's <g>
+      const containerG = node.parent?.parent // tt_contents -> container's own <svg> -> container's <g>
       const containerId = containerG instanceof Y.XmlElement ? containerG.getAttribute('data-toy-id') : null
       if (containerId) ids.push(containerId)
     }

@@ -20,7 +20,7 @@ const TRAY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
   <svg id="resizable_bg" class="wh_follow_resize" x="0" y="0" width="200" height="150" viewBox="0 0 200 150">
     <rect id="bg_rect" width="200" height="150" />
   </svg>
-  <g id="contents_group" class="contents_group"></g>
+  <g id="tt_contents" class="tt_contents"></g>
 </svg>`
 
 const NON_TRAY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
@@ -187,7 +187,7 @@ describe('applyResizeCommit — nested-toy isolation (ownYClassSelector)', () =>
   // ever touch that tray's OWN wh_follow_resize elements, never a nested
   // tray's — no matter how deep the nesting goes. A one-level, unprefixed
   // class scan would get this right for depth 1 by accident (nested toys
-  // live inside .contents_group, one level further in than a bare scan
+  // live inside .tt_contents, one level further in than a bare scan
   // reaches) but wrong at depth 2+, which is what these tests pin down.
 
   test('resizing an outer tray does not touch a directly-nested inner tray\u2019s own wh_follow_resize element', () => {

@@ -328,8 +328,8 @@ describe('toast — warn/error toasts are mirrored to console.warn', () => {
   test('still logs even when the #toasts box is missing from the DOM (e.g. panel not mounted yet)', () => {
     document.body.innerHTML = '' // no #toasts
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(() => toast('Could not move into tray: no .contents_group', 'warn')).not.toThrow()
-    expect(warnSpy).toHaveBeenCalledWith('[toast] Could not move into tray: no .contents_group')
+    expect(() => toast('Could not move into tray: no .tt_contents', 'warn')).not.toThrow()
+    expect(warnSpy).toHaveBeenCalledWith('[toast] Could not move into tray: no .tt_contents')
     warnSpy.mockRestore()
   })
 })

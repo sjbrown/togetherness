@@ -140,7 +140,7 @@ var poker_deck_mobile = {
     local_doc = SVG.adopt(elem)
     deck = local_doc.group()
     deck.addClass('deck')
-    deck.addClass('contents_group')
+    deck.addClass('tt_contents')
     deck.id = 'deck_' + base32.short_id()
     local_doc.add(deck)
 
@@ -158,7 +158,7 @@ var poker_deck_mobile = {
   },
 
   reshuffle_handler: function(elem) {
-    let cg = elem.querySelector('.contents_group')
+    let cg = elem.querySelector('.tt_contents')
     cardArray = []
     sDeck = SVG.adopt(cg)
     elem.querySelectorAll(

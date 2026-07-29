@@ -8,9 +8,9 @@ function pile_offset(index) {
 }
 
 var card_deck = {
-  visit_contents_group(elem, visitFn) {
+  visit_contents(elem, visitFn) {
     let containedSVGs = elem.querySelectorAll(
-      `#${elem.id} > .contents_group > svg`
+      `#${elem.id} > .tt_contents > svg`
     )
     containedSVGs.forEach(visitFn)
   },
@@ -46,7 +46,7 @@ var card_deck = {
     }
 
     let drop = SVG.adopt(dropElem)
-    let contentsGroup = elem.querySelector(`#${elem.id} > .contents_group`)
+    let contentsGroup = elem.querySelector(`#${elem.id} > .tt_contents`)
 
     evt.detail.draggedSVGs.forEach(draggedEl => {
       let dragged = SVG.adopt(draggedEl)

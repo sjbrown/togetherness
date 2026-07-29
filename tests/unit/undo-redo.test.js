@@ -18,7 +18,7 @@ import { addToySync, findToy, reparentToy } from '../../src/toys.js'
 
 const TRAY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="150" id="tray_fixture" class="tray_fixture tray">
-  <g id="contents_group" class="contents_group"></g>
+  <g id="tt_contents" class="tt_contents"></g>
   <text id="result"><tspan id="tspan_result" class="tspan_result">0</tspan></text>
 </svg>`
 
@@ -36,11 +36,11 @@ const placeDie = (ydoc, yToys, id) =>
 const isDirectChild = (container, id) =>
   container.toArray().some(c => c instanceof Y.XmlElement && c.getAttribute('data-toy-id') === id)
 
-// Locate the tray's .contents_group Y node.
+// Locate the tray's .tt_contents Y node.
 function contentsGroupOf(yTray) {
   const svg = yTray.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'svg')
   return svg.toArray().find(
-    c => c instanceof Y.XmlElement && (c.getAttribute('class') || '').split(/\s+/).includes('contents_group')
+    c => c instanceof Y.XmlElement && (c.getAttribute('class') || '').split(/\s+/).includes('tt_contents')
   )
 }
 
