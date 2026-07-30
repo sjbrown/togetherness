@@ -89,11 +89,6 @@ C, when the toys layer stops writing Yjs content at all.
 
 * Delete `src/concurrency_branching.md`.
 * Add `src/CONCURRENCY_AND_BRANCHING.md`.
-* Rewrite `src/TODO.md`: item 11's problem statement stays (it is a good
-  statement of a real bug), everything under "Implementation order" and
-  "Wiring, done" goes, replaced by a pointer to the new doc and to this
-  plan. Item 5's undo notes get rewritten against §8. Items 7, 8, 9, 10
-  are untouched — they are orthogonal and still correct.
 
 ---
 
@@ -101,12 +96,14 @@ C, when the toys layer stops writing Yjs content at all.
 
 Every commit here is pure, unit-testable, and imported by nothing yet.
 
-### B1. `src/node_ids.js` — identity
+### B1. `src/toys.js`, `src/storage.js` — identity
 
-* `ensureIds(rootEl)` — assign `data-id` to every element in a subtree
-  that lacks one; never rewrite an existing one. Idempotent.
-* `nodeRef(node)` → `{id}` for elements, `{parentId, index}` for text.
-* `resolveRef(ref, rootEl)` → node or null.
+* Refactor `src/toys.js` elementToYXml and `src/storage.js` domToY
+  functions to invoke a new function in toys.js, parseForeignNode.
+  parseForeignNode's job is to enforce invariants on toy nodes, using
+  classAddMap, idMap, and enforcing the `data-id` invariant.
+* toys.js gets `nodeRef(node)` → `{id}` for elements, `{parentId, index}` for text.
+* toys.js gets `resolveRef(ref, rootEl)` → node or null.
 
 Tests: idempotence, text addressing, resolution failure on a missing
 ancestor, and the round trip `resolveRef(nodeRef(n)) === n` over a
@@ -117,7 +114,7 @@ Note the existing `#77` "Ensure ids exist" work and `svgTextToYXml`'s
 instance, so a good deal of this exists in effect and this commit is partly
 consolidation.
 
-### B2. `src/mutation_wire.js` — serialization
+### B2. `src/op_wire_mutation.js` — serialization
 
 * `serialize(records)` → `WireMutation[]` (§4). Faithful 1:1. No move
   inference, no coalescing.
@@ -144,7 +141,7 @@ detached but intact — so it is readable, unlike the old
 the content synchronously. This is strictly easier than what we were doing
 before, which is a good sign.
 
-### B3. `src/oplog.js` — the DAG
+### B3. `src/op_dag.js` — the DAG
 
 No DOM. Pure graph and storage.
 
@@ -183,7 +180,7 @@ reintroducing the design §6.5 rejected.
 
 Reuse `tables.js`'s `compareAuthority` rather than reimplementing ordering.
 
-### B4. `src/checkpoint.js` — subtree ops
+### B4. `src/op_checkpoint.js` — subtree ops
 
 * `checkpointOp(layerEl, {authorId})` → an Operation whose mutations
   reconstruct `layerEl`'s current contents into an empty layer.
@@ -194,6 +191,8 @@ Tests: round trip a populated layer through checkpoint-and-project;
 project twice and assert idempotence (§9.12); project a branch and its
 sibling from a shared LCA checkpoint and assert they differ in exactly the
 expected way.
+
+*Shandy:* can this leverage the rendered DOM?
 
 ---
 
@@ -216,11 +215,11 @@ Also in this commit: delete the async variants (`runInEnvelope`,
 `runToyHandler`) per §3.1 and the two TODOs already sitting in that file
 asking for it. `runInEnvelopeSync`/`runGestureSync` are the whole surface.
 
-The head lives in `src/head.js` — localStorage, keyed by table id (§3.3).
+The head lives in `src/op_head.js` — localStorage, keyed by table id (§3.3).
 
 ### C2. Replay
 
-`src/replay.js`: apply an incoming operation to the live DOM with capture
+`src/op_replay.js`: apply an incoming operation to the live DOM with capture
 suppressed (§4.2), advance the head. Classify arrivals as
 subsequent/concurrent/conflicting; for now, concurrent-and-nonconflicting
 applies and takes both tips as `parents` on the next local op.
@@ -367,6 +366,6 @@ after is genuinely independently landable.
 * Cherry-picking splitter operations onto the leader (§10).
 * N-way partition (§10).
 * Undoing peers' operations — now tractable, still gated on the audit
-  trail (`TODO.md` item 7).
+  trail
 * `fake-indexeddb` as a test dependency. Still deferred, and Phase B's
   purity means less of the new code needs it than the old code did.
