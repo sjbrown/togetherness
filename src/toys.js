@@ -532,6 +532,89 @@ export function addToySync(ydoc, yToys, attrs, svgText) {
 }
 
 /**
+ * Parse a toy SVG template into a detached DOM <svg>, namespaced per
+ * instance the same way svgTextToYXml does.
+ *
+ * Returns { svgEl, colorMatrices, width, height, scripts }.
+ */
+export function svgTextToDom(svgText, prefix) {
+  const dom  = new DOMParser().parseFromString(svgText, 'image/svg+xml')
+  const root = dom.documentElement
+
+  const idMap = new Map()
+  for (const el of [root, ...root.querySelectorAll('[id]')]) {
+    const id = el.getAttribute('id')
+    if (id) idMap.set(id, prefix + id)
+  }
+
+  const classAddMap = new Map([
+    ['tt_contents',          prefix + 'tt_contents'],
+    ['tt_wh_follow_resize',  prefix + 'tt_wh_follow_resize'],
+    ['tt_colored',           prefix + 'tt_colored'],
+    ['tt_color_filter',      prefix + 'tt_color_filter'],
+    ['tt_name',              prefix + 'tt_name'],
+    ['tt_hit_plate',         prefix + 'tt_hit_plate'],
+  ])
+
+  const scripts = extractScripts(root)
+  const ctx = { prefix, idMap, classAddMap, accum: { sequenceNumber: 0 } }
+  const svgEl = normalizeForeignToySubtree(root, ctx)
+
+  const width  = parseFloat(root.getAttribute('width'))  || 100
+  const height = parseFloat(root.getAttribute('height')) || 100
+  if (!svgEl.getAttribute('viewBox')) svgEl.setAttribute('viewBox', `0 0 ${width} ${height}`)
+
+  const colorMatrices = [...svgEl.querySelectorAll('feColorMatrix')]
+  return { svgEl, colorMatrices, width, height, scripts }
+}
+
+/**
+ * Build a toy's rendered <g> wrapper, ready to insert into the layer.
+ * attrs: { id, toyType, x, y, color } — x,y is the centre point.
+ */
+export function buildToyDom(attrs, svgText) {
+  const { id, toyType, x, y, color } = attrs
+  const { svgEl, colorMatrices, width: nativeWidth, height: nativeHeight, scripts } =
+    svgTextToDom(svgText, `${id}__`)
+
+  if (color) {
+    const values = colorMatrixValues(color)
+    for (const m of colorMatrices) m.setAttribute('values', values)
+  }
+
+  const width  = clampToySize(nativeWidth)
+  const height = clampToySize(nativeHeight)
+  svgEl.setAttribute('x',      String(x - width / 2))
+  svgEl.setAttribute('y',      String(y - height / 2))
+  svgEl.setAttribute('width',  String(width))
+  svgEl.setAttribute('height', String(height))
+
+  const g = document.createElementNS(SVG_NS, 'g')
+  g.setAttribute('class',         'toy')
+  g.setAttribute('data-toy-id',   id)
+  g.setAttribute('data-toy-type', toyType)
+  g.setAttribute('data-color',    color ?? '#888')
+  g.setAttribute('data-id',       id)
+  g.setAttribute('id',            id)
+  g.setAttribute('data-module',   'toys')
+  g.appendChild(svgEl)
+  attachScopedLookup(g, id)
+
+  return { toyEl: g, scripts }
+}
+
+/**
+ * Place a toy into the live layer. Hoists the template's inline scripts
+ * into ydoc, then appends the wrapper. Call from inside runInEnvelopeSync.
+ */
+export function addToyDom(ydoc, layerEl, attrs, svgText) {
+  const { toyEl, scripts } = buildToyDom(attrs, svgText)
+  hoistInlineScripts(ydoc, attrs.toyType, scripts)
+  layerEl.appendChild(toyEl)
+  return toyEl
+}
+
+/**
  * Fetch a toyType's SVG template text, using/warming _svgTextCache.
  * Throws if toyType isn't registered in TOY_TYPES or the fetch fails.
  */
@@ -949,6 +1032,31 @@ export function applyResizeCommit(ydoc, yToy, x, y, width, height) {
 
 
 /**
+ * Apply a resize to a live DOM element only — no Yjs write.
+ * domEl is the rendered <g> wrapper.
+ */
+export function applyResizeDom(domEl, x, y, width, height) {
+  if (!domEl) return
+  const domSvg = domEl.querySelector?.('svg')
+  if (!domSvg) return
+  const toyId = domEl.getAttribute('data-id')
+  const w = clampResizeDim(width)
+  const h = clampResizeDim(height)
+
+  domSvg.setAttribute('x', String(Math.round(x)))
+  domSvg.setAttribute('y', String(Math.round(y)))
+  domSvg.setAttribute('width',  String(w))
+  domSvg.setAttribute('height', String(h))
+  domSvg.setAttribute('viewBox', `0 0 ${w} ${h}`)
+
+  if (!toyId) return
+  for (const el of domSvg.querySelectorAll(`.${toyId}__tt_wh_follow_resize`)) {
+    el.setAttribute('width',  String(w))
+    el.setAttribute('height', String(h))
+  }
+}
+
+/**
  * yNode ↔ DOM registry.
  * Populated during mirror() so app code can resolve a rendered DOM node
  * (e.g. a deep <tspan> the user clicked) back to the Y.XmlElement/Y.XmlText
@@ -1084,6 +1192,34 @@ function toyData(svgEl) {
  */
 export function toysData(yToys) {
   return listToys(yToys).map(toyData)
+}
+
+/** A toy's rendered <g> wrapper, by toy id. Top level only, like findToy. */
+export function findToyDom(layerEl, id) {
+  return layerEl?.querySelector(`:scope > [data-toy-id="${id}"]`) ?? null
+}
+
+/** Every top-level toy wrapper in z-order. */
+export function listToysDom(layerEl) {
+  return layerEl ? [...layerEl.querySelectorAll(':scope > [data-toy-id]')] : []
+}
+
+export function toysDataDom(layerEl) {
+  return listToysDom(layerEl).map(toyData)
+}
+
+/** getTtState against the rendered DOM rather than the Yjs tree. */
+export function getTtStateDom(toyEl) {
+  if (!toyEl) return null
+  const id      = toyEl.getAttribute('data-toy-id')
+  const toyType = toyEl.getAttribute('data-toy-type')
+  const color   = toyEl.getAttribute('data-color') ?? '#888'
+  const svgEl   = toyEl.querySelector(':scope > svg')
+  const x       = svgEl ? Number(svgEl.getAttribute('x') ?? 0) : 0
+  const y       = svgEl ? Number(svgEl.getAttribute('y') ?? 0) : 0
+  const width   = svgEl ? Number(svgEl.getAttribute('width')  ?? FALLBACK_TOY_SIZE) : FALLBACK_TOY_SIZE
+  const height  = svgEl ? Number(svgEl.getAttribute('height') ?? FALLBACK_TOY_SIZE) : FALLBACK_TOY_SIZE
+  return { id, toyType, color, cx: x + width / 2, cy: y + height / 2 }
 }
 
 export const TOOLS = [
