@@ -316,7 +316,7 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, svgElem
   // value app.js stamps on rendered SVG elements.
   _Layers = {
     'drawing':  Drawing.makeLayerAPI(_ydoc, _yDrawing),
-    'toys':     Toys.makeLayerAPI(_ydoc, _yToys, _myId),
+    'toys':     Toys.makeLayerAPI(_ydoc, () => _svgEl.querySelector('#toys-layer'), _myId),
     'boun_pos': BounPos.makeLayerAPI(_ydoc, _yBounPos),
   };
 
@@ -1377,9 +1377,9 @@ const App = {
     Overlay.endResizeGhost(id);
     _resizeState = null;
 
-    const yToy = findToy(_yToys, id);
+    const toyEl = _Layers.toys.find(id);
     UndoRedo.tag(`resize ${id}`);
-    Toys.applyResizeCommit(_ydoc, yToy, toRect.x, toRect.y, toRect.width, toRect.height);
+    _Layers.toys.applyResize(toyEl, toRect.x, toRect.y, toRect.width, toRect.height);
     // observeDeep fires and calls renderDoc()
     addHistory(`resized ${id}`, { elType: 'toys' });
   },

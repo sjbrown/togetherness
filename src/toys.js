@@ -1852,21 +1852,28 @@ function activateAllToyScripts(ydoc, yToys) {
 }
 
 /**
- * makeLayerAPI — returns the canonical LayerAPI for the toys layer, closing
- * over (ydoc, yToys, myId) so app.js can dispatch by layer type without
- * re-passing the fragment (or this peer's own identity) on every call.
+ * makeLayerAPI — the canonical LayerAPI for the toys layer.
+ *
+ * getLayerEl returns the live #toys-layer. Everything here reads and
+ * writes that DOM; writes run inside runGestureSync so the envelope
+ * captures them. The contract app.js relies on is that whatever find()
+ * returns is what the other methods accept — here, a rendered <g>.
  */
-export function makeLayerAPI(ydoc, yToys, myId) {
+export function makeLayerAPI(ydoc, getLayerEl, myId) {
+  const layer = () => (typeof getLayerEl === 'function' ? getLayerEl() : getLayerEl)
+  const gesture = (name, fn) => runGestureSync(ydoc, layer(), fn, { gesture: name, authorId: myId })
+
   return {
-    find:            (id)            => findToy(yToys, id),
-    delete:          (id)            => deleteToy(ydoc, yToys, id, myId),
+    find:            (id)            => findToyDom(layer(), id),
+    delete:          (id)            => gesture('delete', () => deleteToyDom(layer(), id)),
     getGeom,
     getAnchor,
-    getTtState,
+    getTtState:      getTtStateDom,
     getTtStateSchema,
-    applyMoveCommit: (yEl, x, y)     => applyMoveCommit(ydoc, yEl, x, y),
-    edit:            (yEl, editData) => edit(ydoc, yEl, editData, myId),
-    listData:        ()              => toysData(yToys),
-    render:          (layerEl)       => render(yToys, layerEl),
+    applyMoveCommit: (el, x, y)      => gesture('move',   () => applyMoveDom(el, x, y)),
+    applyResize:     (el, x, y, w, h) => gesture('resize', () => applyResizeDom(el, x, y, w, h)),
+    edit:            (el, editData)  => gesture('edit',   () => editDom(el, editData)),
+    listData:        ()              => toysDataDom(layer()),
+    render:          (layerEl)       => render(ydoc.getXmlFragment('toys'), layerEl),
   };
 }
