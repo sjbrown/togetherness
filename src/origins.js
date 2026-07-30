@@ -12,5 +12,6 @@
  *     placement. Untracked for undo (if the placement is undone the whole
  *     toy is removed, so these writes never need an independent undo step).
  */
+export const DERIVED_ORIGIN  = 'derived'
 export const ENVELOPE_ORIGIN  = 'envelope'
 export const LIFECYCLE_ORIGIN = 'toy-lifecycle'

@@ -1,15 +1,21 @@
 # Revision plan: toys layer → operation log
 
-Against `master` @ `d0465d9`. Read `CONCURRENCY_AND_BRANCHING.md` first;
+Read `CONCURRENCY_AND_BRANCHING.md` first;
 this is the execution sequence for it.
 
 Working branch: `oplog`.
 
-Three phases. Phase A is destruction and can land immediately. Phase B is
-pure, testable, and lands without changing any behaviour — the new
+Three phases. Phase A is destruction. Phase B is pure, testable, and
+lands without changing any behaviour — the new
 machinery sits beside the old until Phase C swaps the pipeline in one
 commit. Phase C is where the app is briefly at risk, so it is ordered to
 keep that window as short as possible.
+
+Never add code comments that reference the plan or .md docs.
+Never add code comments that reference the current state.
+Code comments should be brief or absent. When present, they should just
+elucidate the how and why of the local code and it's immediate concerns
+(callers, callees, variables, control flow).
 
 Tests green at every commit. Full suite once per turn, before presenting.
 
@@ -18,6 +24,8 @@ Tests green at every commit. Full suite once per turn, before presenting.
 ## Phase A — teardown
 
 ### A1. Delete conflict/escalation/snapshot tests
+
+**Done**
 
 Delete: `conflict.test.js`, `escalation.test.js`, `snapshot.test.js`,
 `concurrent-derived-write.test.js`, `drop-touched-set.test.js`.
@@ -316,9 +324,9 @@ currently not true.
   `gesture: 'undo'` name.
 * Drawing/boundaries: `UndoRedo` keeps its `Y.UndoManager` over those two
   fragments only.
-* Retire `LIFECYCLE_ORIGIN` and `origins.js` here — with undo no longer
-  driven by transaction origins for toys, the constant has no remaining
-  consumer.
+* Retire `LIFECYCLE_ORIGIN`, `DERIVED_ORIGIN` and `origins.js` here —
+  with undo no longer driven by transaction origins for toys, the constant
+  has no remaining consumer.
 
 `undo-redo.test.js` needs real rewriting rather than trimming; it is
 currently entirely about `UndoManager` semantics.

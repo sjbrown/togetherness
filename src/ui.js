@@ -594,16 +594,18 @@ export function closePanel() {
 // -- Branch Acknowledge dialog ---------------------------------------------
 // Blocking (every viewport, unlike the mobile-only #scrim/#panel sheet) —
 // shown when a peer's own divergent content gets forked into a new table
-// because in-place conflict recovery couldn't fully restore it. Currently
+// because in-place conflict recovery couldn't fully restore it.
+//
+// TODO: Currently
 // unwired pending the concurrency redesign (see CONCURRENCY_AND_BRANCHING.md
 // §6); kept ready for that trigger to call back into.
+//
 // A real choice, not a dismissible notice: "join the shared table" just
 // closes this (the peer's current session never left it — the fork
 // happened in the background, onto a separate table); "keep working on my
 // branch" hard-reloads onto the forked table, since a hash-only change to
 // the current page doesn't itself trigger re-loading a different table's
-// document (see index.html's own boot sequence, which only ever reads
-// location.hash once, at load).
+// document
 let _pendingBranchTableId = null;
 
 export function showBranchDialog(forkedTableId) {

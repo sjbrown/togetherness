@@ -10,7 +10,7 @@ fi
 # sensible way to route one set of args to both vitest and playwright.
 # To narrow a run, call the specific wrapper, which forwards args:
 #   bin/test_unit.docker.sh tests/unit/toys.test.js
-#   bin/test_e2e.docker.sh  tests/e2e/concurrent-tray-drop.spec.js
+#   bin/test_e2e.docker.sh  tests/e2e/multiselect.spec.js
 if [ "$#" -gt 0 ]; then
   echo "bin/test.sh takes no arguments (it runs the full suite)."
   echo ""

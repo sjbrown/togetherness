@@ -553,20 +553,15 @@ function onToysChanged(events, transaction) {
 // Local transaction (not itself a cascade result) touched something inside a
 // container's .tt_contents? Recompute every affected container's own
 // contents_change_handler, innermost first, so outer containers read their
-// inner containers' fresh results. Computed as one upfront pass over *this*
-// transaction's events, so a single die roll inside a doubly-nested
-// container resolves in one go.
+// inner containers' fresh results.
 //
 // This runs synchronously, with no microtask hop, which matters when this
 // is reached from *inside* an open transaction (a caller that folds its own
 // commit and its reaction together, mid-transact) — then the cascade's
-// commits fold in too. Reached instead from the observer, after the
-// triggering transaction has already closed (the common case: a remote
-// change, or any local change nothing folded ahead of time), each handler
-// commits as its own DERIVED transaction. The _dispatchingContentsChange
-// flag guards a folded caller's own transaction from being recomputed a
-// redundant second time once its observer fires; the origin check in
-// onToysChanged handles the DERIVED commits this function itself makes.
+// commits fold in too.
+//
+// The _dispatchingContentsChange flag guards a folded caller's own transaction
+// from being recomputed a redundant second time once its observer fires
 function dispatchContentsChangeCascade(events) {
   const containerIds = Toys.affectedContainerIdsInnerFirst(events.map(e => e.target));
   if (!containerIds.length) return;

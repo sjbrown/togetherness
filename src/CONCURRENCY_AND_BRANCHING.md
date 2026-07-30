@@ -423,7 +423,7 @@ choose to keep working.
 
 The new table's `joinSequence` is therefore **not** reset to the forking
 user. It is reset to **every author with a contribution on the splitter
-branch, ordered by their earliest contribution to it.**
+branch, ordered by their position in the original joinSequence**
 
 Splitter contributions are the operations reachable from the splitter tip
 but *not* from the LCA. The LCA's own author is shared ancestry and does
@@ -433,75 +433,25 @@ sorting them last — which is right, they arrived last).
 
 **Ordering: inherited.** The branch contributions determine the *set*. The
 parent table's `joinSequence` determines the *order* — filter it down to
-the contributing subset, preserving relative position. Nothing else is
-consulted.
-
-This is deliberately not "ordered by earliest contribution to the branch,"
-which was the first formulation and is worse in three ways:
-
-* Contribution order is only meaningful where the contributions are
-  *causally* ordered. Where two authors diverged from the LCA
-  independently and synced with each other only afterwards, their earliest
-  contributions are concurrent, and ordering them means reaching for the
-  deterministic op-id tiebreak — deriving authority from a total order that
-  invariant 11 says is for display only. Inheriting the order needs no
-  exception to any invariant.
-
-* It depends on the operation DAG's internal structure, which means the
-  open questions in §10 — text-node addressing, operation coalescing,
-  checkpoint policy — could all shift a forked table's seniority as a side
-  effect of unrelated work. Set membership is stable under all of them.
-  This is the strongest argument and the least obvious one.
-
-* It quietly redefines what `joinSequence` *means* at a fork, from join
-  order to contribution order. The whole semantic of the structure is
-  seniority; a fork should narrow the membership, not reinterpret the
-  ordering.
-
-What it costs: if Clyde founds the branch and Bob — senior at the parent
-table — joins it afterwards, Bob hosts the branch Clyde started. Accepted.
-Bob and Clyde already had a seniority relationship and preserving it is
-less surprising to them than reshuffling it, and the difference only
-cashes out if there is a *further* divergence on the branch, since all
-`joinSequence` decides is who wins the next tie.
+the contributing subset, preserving relative position.
 
 **Authors absent from the parent `joinSequence`** sort last, in op-id order
 among themselves. This is reachable in practice — at a fork of a fork, the
 branch's `joinSequence` was reset while op-log ancestry from before that
 reset survives, so an ancestral author can be in the log and not in the
-sequence. The rule is not new: it is the same "missing id sorts last"
-convention `compareAuthority` already implements. Note that this does not
-eliminate the op-id tiebreak so much as relegate it to a degenerate case,
-off the main path.
+sequence.
 
 **Inherited arbitrariness is still arbitrary.** If two peers joined the
 parent table concurrently, their relative order there was settled by Yjs's
-own tie-break, and the fork carries that forward. This is arbitrariness we
-already accepted upstream rather than new arbitrariness introduced here.
+own tie-break, and the fork carries that forward.
 
 **Why this is load-bearing and not cosmetic.** `generateForkTableId` names
 the branch by hashing its content, precisely so that Bob and Clyde forking
-independently, with no coordination, land on the same table. Resetting
-`joinSequence` to the forking user broke that: the id was peer-independent
-(hashed before the reset) but the *content* was not, so Bob's and Clyde's
-fork documents differed, and merging them left seniority at the branch to
-Yjs's clientID tie-break on two concurrent `push` operations. Computing
-the sequence from shared branch data instead makes the two fork documents
-byte-identical. The hash now describes what it names, and convergence is
-a no-op rather than a merge.
+independently, with no coordination, land on the same table.
 
 Which also means the reset must now happen **before** the hash, reversing
 the current ordering constraint and the comment that explains it.
 
-**Consequences to hold onto:**
-
-* Everything in a forked document must be computed from data both peers
-  already share. `joinSequence` was the last peer-dependent input, so the
-  synthesized checkpoint operation (§7.1) must be too: author it to
-  `joinSequence[0]` — the first splitter contributor, now well defined —
-  and derive its op id from content rather than randomly. No circularity:
-  the sequence is computed from the real splitter operations, then the
-  checkpoint is authored from the result.
 * `resetJoinSequenceToSelf(ydoc, soleId)` generalizes to
   `resetJoinSequence(ydoc, orderedIds)`. `forkTable` — home.html's
   "Duplicate" button, forking an at-rest table with no branch to compute
@@ -666,33 +616,69 @@ Known-unresolved, listed so nobody thinks they're resolved.
   exact within an operation and only as stable as the parent's child list
   across operations. Most likely thing to force a distilled op format.
 
+  *Shandy:* there must be an obvious, if coarse, way to handle this. We don't
+  need to worry about CRDT style elegance.  Most text presented in the toys
+  layer is a simple label or a numerical displayed value. Save any
+  optimization or handling-of-fiddly-cases to later.
+
 * **Log growth and checkpoint policy** (§7.1). The primitive is specified;
   when to write one, and whether old operations are ever dropped from the
   `Y.Map` (and what that does to a peer returning from a long offline
   stretch with ops parented to a discarded ancestor), is not.
 
+  *Shandy:* transitions from/to home.html are an obvious checkpoint trigger.
+  Also, switching away from the Toys layer in the UI is a good chance.
+  Beyond that, I think a user control in ui.js (Peers tab) that lets users
+  select auto-checkpointing between 1-10 minute frequencies.
+
+<!--
 * **SVG's non-local semantics.** `<use>` references, `<defs>`
   dependencies, `xlink:href` targets. Removing a node can break something
   that references it, and no `MutationRecord` reports that. We may need to
   declare a constrained SVG subset rather than "all of SVG."
+
+  *Shandy:* Yes, this is something that the user will be constrained from.
+  Skip this until a distant-future user-facing documentation step
+-->
 
 * **Multi-node conflict granularity** (§6.1). "Conflicting" is currently
   "these branches touched overlapping nodes in incompatible ways." Where
   exactly the line falls — is concurrent `fill` and concurrent `x` on the
   same rect a conflict? — is a policy we will get wrong at least once.
 
+  *Shandy:* we should start coarse and refine it in subsequent optimization
+  steps. So let's just start with ANY object ids shared in two concurrent
+  commits implies conflict.  This may actually last for a long time, as
+  user actions are slow (turn taking is the dominant mode of play) and the
+  soft-lock feature defends against many (but not all) such conflicts.
+
+<!--
 * **Cherry-picking.** Adopting the leader branch currently abandons the
   splitter's work to history. Selectively replaying individual splitter
   operations onto the leader is the obvious want and is not designed.
+
+  *Shandy:* Cherry-picking is not a needed or suitable feature for this
+  software.  Skip it.
+-->
 
 * **Multi-peer partition.** Three-way divergence, where the DAG has three
   tips and pairwise conflict labels do not compose into a single answer.
   Two-way is specified; N-way is not. Note that §6.5 handles N *authors*
   on a two-tip divergence fine — it is N *tips* that is open.
 
+  *Shandy:* I suspect that if we don't get too fiddly in our implementation,
+  this will fall out naturally.  But let's defer until our above design
+  is validated (no sense working on N-way if we can't get 2-way working)
+
+<!--
 * **Fork of a fork.** Inherited ordering (§6.5) composes cleanly — each
   fork narrows the membership and preserves relative order, so seniority
   chains back to the original table rather than being reshuffled at every
   branch. The loose end is the op log's pre-reset ancestry: authors in the
   log but not in the current `joinSequence` hit the sort-last fallback, and
   nobody has checked how deep that can get after several forks.
+
+  *Shandy:* exceedingly rare, and fine.  joinSequence's order is an ergonomic
+  convenience.  What's load-bearing is that *some* order can be
+  deterministically computed.
+-->

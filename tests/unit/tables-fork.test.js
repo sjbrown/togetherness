@@ -1,4 +1,4 @@
-// Tests for tables.js's live-doc forking (TODO #11, branch escalation).
+// Tests for tables.js's live-doc forking
 //
 // Scoped deliberately: generateForkTableId is pure (no IndexedDB at all,
 // takes update bytes directly rather than a live doc — see its own doc

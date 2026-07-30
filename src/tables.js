@@ -251,21 +251,14 @@ async function forkTable(sourceTableId, forkedTableId, forkingUserId) {
 // ── Live-doc forking ──────────────────────
 //
 // forkTable (above) forks an AT-REST table, reloaded fresh from
-// IndexedDB — the right primitive for home.html's "Duplicate" button, but
-// not for branch escalation, which needs to fork a *live*, in-memory doc
-// at the moment a conflict is detected, mid-session. forkLiveDoc is that.
+// IndexedDB — for home.html's "Duplicate" button
 
 /**
- * Deterministically derive a table id from a Yjs update's content — not a
- * random slug (generateTableId) — because branch escalation can require
- * *multiple peers, independently, with no coordination* to land on the
- * identical branch table id. Concretely: if Bob and Clyde stayed synced
- * with EACH OTHER through a partition that excluded Alice, their
- * divergent state is byte-identical by the time either of them forks —
- * verified empirically (see the "content-hash naming" discussion this
- * came from): Y.encodeStateAsUpdate is deterministic given identical
- * final CRDT state, regardless of the sync path/order/batching that
- * produced it. Hashing that content is what lets their independent,
+ * Deterministically derive a table id
+ * Necessary for *multiple peers, independently, with no coordination*
+ * to land on the identical branch table id.
+ *
+ * Hashing content is what lets Bob & Clyde have their independent,
  * uncoordinated forks converge on the same table id without either of
  * them knowing the other forked anything.
  *
