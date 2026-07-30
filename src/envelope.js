@@ -39,6 +39,9 @@
 import * as Y from 'yjs'
 import { yNodeFor, registerYNode, render as renderToysLayer } from './toys.js'
 import { domToY } from './storage.js'
+import { serialize as serializeRecords } from './op_wire_mutation.js'
+import { appendOp } from './op_dag.js'
+import { isReplaying } from './op_replay.js'
 import { ENVELOPE_ORIGIN, LIFECYCLE_ORIGIN } from './origins.js'
 
 const XLINK_NS = 'http://www.w3.org/1999/xlink'
@@ -75,6 +78,15 @@ const MUTATION_OPTS = {
  * failure, not a silent fallback.
  */
 export function runInEnvelopeSync(toyEl, fn) {
+  // Applying a peer's operation mutates our DOM too; capturing that would
+  // make two peers generate operations at each other forever.
+  if (isReplaying()) {
+    const result = fn()
+    if (result && typeof result.then === 'function') {
+      throw new Error('[envelope] runInEnvelopeSync: handler returned a Promise; synchronous handlers only')
+    }
+    return []
+  }
   // scopeEl falls back to toyEl's parent, then toyEl itself, to support
   // e.g. a detached toy in a unit test
   const scopeEl = toyEl.closest?.('#toys-layer') ?? toyEl.parentNode ?? toyEl
@@ -233,6 +245,34 @@ export function commitEnvelope(ydoc, records, opts = {}) {
 
   return { applied: records.length }
 }
+
+/**
+ * Turn a captured batch into an operation and append it to the log.
+ * parents is the head this gesture was made against; the caller advances
+ * its own head to the returned op's id.
+ *
+ * Returns null for an empty batch — a gesture that changed nothing is not
+ * an operation.
+ */
+export function commitGesture(ydoc, records, { gesture = 'gesture', authorId = null, parents = [], id, ts } = {}) {
+  const mutations = serializeRecords(records)
+  if (!mutations.length) return null
+
+  const op = {
+    id: id ?? mintOpId(),
+    parents: parents.filter(p => p != null),
+    authorId,
+    gesture,
+    mutations,
+    ts: ts ?? Date.now(),
+  }
+  appendOp(ydoc, op)
+  return op
+}
+
+let _opCounter = 0
+const mintOpId = () =>
+  `tt-op-${Date.now().toString(36)}-${(_opCounter++).toString(36)}-${Math.random().toString(36).slice(2, 7)}`
 
 // ── post-commit render policy ─────────────────────────────────────────
 //
