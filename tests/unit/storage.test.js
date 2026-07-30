@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { domToY, isToyG, populateFromSvgDoc, buildExportSvg } from '../../src/storage.js'
+import { domToY, populateFromSvgDoc, buildExportSvg } from '../../src/storage.js'
 import { addToy, findToy, _clearSvgTextCache, _getScriptsFragment } from '../../src/toys.js'
 import { addDrawing } from '../../src/drawing.js'
 
@@ -101,32 +101,10 @@ describe('domToY', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────────────────────
-// isToyG
-// ─────────────────────────────────────────────────────────────────────────────
+// isForeignToyG / parseForeignToy now live entirely in toys.js — see
+// tests/unit/node-identity.test.js. storage.js no longer knows the toy
+// contract, so it has nothing of its own to test here.
 
-describe('isToyG', () => {
-  test('accepts a well-formed, hand-authored toy <g> — no rendering attrs required', () => {
-    expect(isToyG(parseSvg(VALID_TOY_G))).toBeTruthy()
-  })
-
-  test('also accepts a toy carrying rendering-only attrs (e.g. a re-imported export)', () => {
-    const g = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6" data-id="t1" data-module="toys" id="t1">
-        <svg/>
-      </g>`
-    expect(isToyG(parseSvg(g))).toBeTruthy()
-  })
-
-  test.each([
-    ['missing class="toy"',      `<g data-toy-id="t1" data-toy-type="x"><svg/></g>`],
-    ['missing data-toy-id',      `<g class="toy" data-toy-type="x"><svg/></g>`],
-    ['missing data-toy-type',    `<g class="toy" data-toy-id="t1"><svg/></g>`],
-    ['no <svg> child',           `<g class="toy" data-toy-id="t1" data-toy-type="x"></g>`],
-    ['wrong tag entirely',       `<rect class="toy" data-toy-id="t1" data-toy-type="x"/>`],
-  ])('rejects: %s', (_label, svg) => {
-    expect(isToyG(parseSvg(svg))).toBeFalsy()
-  })
-})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // populateFromSvgDoc

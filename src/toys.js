@@ -134,12 +134,213 @@ function rewriteUrlRefs(value, idMap) {
     idMap.has(id) ? `url(#${idMap.get(id)})` : m)
 }
 
+const EMPTY_MAP = new Map()
+
+/**
+ * Normalise one element arriving from outside the document (a toy template,
+ * an imported .svg) into the attribute list it should carry inside it.
+ *
+ * ctx.idMap namespaces ids and the internal references that point at them;
+ * ctx.classAddMap adds prefixed aliases alongside the tt_* classes;
+ * ctx.prefix + ctx.accum.sequenceNumber mints identifiers for elements that
+ * arrive without one. Returns [name, value] pairs, id first, so a caller can
+ * apply them to a Y.XmlElement or a DOM node.
+ *
+ * Every element leaves here with a data-id. It is seeded from the element's
+ * own id on first import and never rewritten afterwards, so later edits to
+ * id (which belongs to the user) leave identity alone.
+ */
+export function parseForeignNode(node, ctx = {}) {
+  const {
+    prefix      = '',
+    idMap       = EMPTY_MAP,
+    classAddMap = EMPTY_MAP,
+    accum,
+    mintId      = true,
+    keepForeign = false,
+  } = ctx
+
+  const mint = () => prefix + (accum ? accum.sequenceNumber++ : '')
+
+  let elementId = node.getAttribute('id')
+  if (elementId) elementId = idMap.get(elementId) ?? elementId
+  else if (mintId) elementId = mint()
+
+  const dataId = node.getAttribute('data-id') || elementId || mint()
+
+  const attrs = []
+  if (elementId) attrs.push(['id', elementId])
+
+  for (const attr of Array.from(node.attributes)) {
+    if (!keepForeign && attr.namespaceURI && attr.namespaceURI !== XLINK_NS) continue
+
+    const name = attr.localName
+    if (name === 'id' || name === 'data-id') continue
+
+    let value = attr.value
+    if (name === 'href' && value.startsWith('#')) {
+      const ref = value.slice(1)
+      if (idMap.has(ref)) value = '#' + idMap.get(ref)
+    } else if (name === 'class') {
+      const classes = value.split(/\s+/).filter(Boolean)
+      const allClasses = [...classes]
+      for (const cls of classes) {
+        if (classAddMap.has(cls)) allClasses.push(classAddMap.get(cls))
+      }
+      value = allClasses.join(' ')
+    } else {
+      value = rewriteUrlRefs(value, idMap)
+    }
+    attrs.push([attr.name, value])
+  }
+
+  attrs.push(['data-id', dataId])
+  return attrs
+}
+
+/**
+ * Recursively normalise an already-placed toy <g> arriving from outside
+ * the document — loaded back in from a previously exported .svg — into a
+ * fresh DOM subtree that satisfies the data-id invariant. Never mutates
+ * el; the caller is free to read scripts off the original afterwards.
+ *
+ * Unlike svgTextToYXml (which places a *fresh* toy from its template and
+ * namespaces every id against a fresh instance prefix), a reimported toy
+ * already carries whatever namespacing it was placed with — so this
+ * leaves idMap/classAddMap empty by default and mintId off.
+ * parseForeignNode's data-id fallback still fires per element, which only
+ * matters for a hand-crafted or pre-B1 file that never carried one.
+ *
+ * <script> children are always dropped — never part of a toy's own Yjs
+ * subtree, live or at rest (see "Script hoisting"). Hoisting them into the
+ * document is the caller's job, via extractScripts + hoistInlineScripts,
+ * before or after calling this; order doesn't matter since el is untouched.
+ */
+export function normalizeForeignToySubtree(el, ctx) {
+  // A fresh accum per top-level call keeps minted data-ids unique within
+  // one import without the caller having to thread a counter through.
+  // Recursive calls pass ctx explicitly and reuse it, so the counter is
+  // shared across the whole subtree rather than reset at every node.
+  const cx = ctx ?? {
+    prefix:      `tt-t-${Math.random().toString(36).slice(2, 7)}__`,
+    accum:       { sequenceNumber: 0 },
+    mintId:      false,
+    keepForeign: true,
+  }
+
+  const out = document.createElementNS(SVG_NS, el.localName)
+  for (const [name, value] of parseForeignNode(el, cx)) {
+    if (name === 'xlink:href') out.setAttributeNS(XLINK_NS, 'href', value)
+    else                       out.setAttribute(name, value)
+  }
+  for (const child of Array.from(el.childNodes)) {
+    if (child.nodeType === 1) {
+      if (child.localName === 'script') continue
+      out.appendChild(normalizeForeignToySubtree(child, cx))
+    } else if (child.nodeType === 3 || child.nodeType === 4) {
+      if (child.textContent.trim() !== '') out.appendChild(document.createTextNode(child.textContent))
+    }
+  }
+  return out
+}
+
+/**
+ * Toy contract for a DOM element arriving from outside the document (an
+ * imported .svg's toys-layer child): <g class="toy" data-toy-id
+ * data-toy-type> with ≥1 <svg> child. Anything else found directly inside
+ * #toys-layer is invalid.
+ *
+ * data-id, id=, data-module, and .$() are never checked here and never
+ * required — they're rendering/dispatch conveniences recomputed fresh by
+ * the renderer at every depth, every time, not part of the on-disk
+ * contract.
+ */
+export function isForeignToyG(el) {
+  return el.localName === 'g' &&
+         el.classList.contains('toy') &&
+         el.getAttribute('data-toy-id') &&
+         el.getAttribute('data-toy-type') &&
+         el.querySelector(':scope > svg')
+}
+
+/**
+ * The whole toy-import contract for one #toys-layer child, in one call —
+ * this is the only thing a caller outside toys.js needs to know about a
+ * reimported toy.
+ *
+ * Returns { parsedNode, scripts }. parsedNode is null when el doesn't
+ * satisfy the toy contract (isForeignToyG) — the caller's only signal for
+ * "not a toy", nothing else about the contract leaks out. On success,
+ * parsedNode is el's subtree normalised for the data-id invariant
+ * (normalizeForeignToySubtree) with any embedded <script>s already
+ * stripped, and those scripts have already been hoisted into ydoc's own
+ * scripts fragment — same as at placement time (addToySync) — since
+ * hoisting needs data-toy-type, which is exactly the kind of toy-contract
+ * detail a caller storing/exporting documents shouldn't have to read.
+ * scripts is returned too, for a caller that wants to know what was found
+ * without re-deriving it.
+ */
+export function parseForeignToy(ydoc, el) {
+  if (!isForeignToyG(el)) return { parsedNode: null, scripts: [] }
+
+  const innerSvg = el.querySelector(':scope > svg')
+  const scripts  = innerSvg ? extractScripts(innerSvg) : []
+  if (scripts.length) hoistInlineScripts(ydoc, el.getAttribute('data-toy-type'), scripts)
+
+  return { parsedNode: normalizeForeignToySubtree(el), scripts }
+}
+
+/**
+ * Address a node so a peer can find the same one in its own tree.
+ *
+ * An element answers with its data-id. A text node cannot carry one, so it
+ * answers with its parent's data-id and its position among that parent's
+ * childNodes. Returns null for anything unaddressable — a text node whose
+ * parent has no data-id, an element that was never stamped.
+ */
+export function nodeRef(node) {
+  if (!node) return null
+  if (node.nodeType === 1) {
+    const id = node.getAttribute('data-id')
+    return id ? { id } : null
+  }
+  if (node.nodeType === 3 || node.nodeType === 4) {
+    const parent = node.parentNode
+    if (!parent || parent.nodeType !== 1) return null
+    const parentId = parent.getAttribute('data-id')
+    if (!parentId) return null
+    return { parentId, index: Array.prototype.indexOf.call(parent.childNodes, node) }
+  }
+  return null
+}
+
+/**
+ * Inverse of nodeRef, resolved against rootEl (which may itself be the
+ * addressed element). Returns null when the ref names something absent —
+ * the caller decides whether that is fatal.
+ */
+export function resolveRef(ref, rootEl) {
+  if (!ref || !rootEl) return null
+  const findById = (id) =>
+    (rootEl.getAttribute?.('data-id') === id)
+      ? rootEl
+      : rootEl.querySelector(`[data-id="${id}"]`)
+
+  if (ref.id !== undefined) return findById(ref.id)
+
+  if (ref.parentId !== undefined) {
+    const parent = findById(ref.parentId)
+    if (!parent) return null
+    const child = parent.childNodes[ref.index]
+    return (child && (child.nodeType === 3 || child.nodeType === 4)) ? child : null
+  }
+  return null
+}
+
 // Recursively convert an SVG DOM element into a detached Y.XmlElement tree.
 // - drops foreign-namespace elements/attrs (inkscape, sodipodi, dc, rdf, cc)
 // - drops <script> nodes entirely — they never live in a toy's own
 //   subtree; see "Script hoisting" below for where they actually go
-// - namespaces every id and internal reference via idMap, so placed
-//   instances don't collide on ids like #app-filter-colorize
 // - `accum.colorMatricies` collects direct refs to any feColorMatrix nodes
 //   into accum.colorMatrices, since a detached tree can't be walked later
 //   (toArray() throws until the tree is attached to a doc)
@@ -150,39 +351,8 @@ function elementToYXml(node, prefix, idMap, classAddMap, accum) {
     accum.colorMatrices.push(yEl)
   }
 
-  let elementId = node.getAttribute('id')
-  if (!elementId) {
-    elementId = prefix + accum.sequenceNumber++
-  } else {
-    elementId = idMap.get(elementId)
-  }
-  yEl.setAttribute('id', elementId)
-
-  for (const attr of Array.from(node.attributes)) {
-    // keep only SVG and xlink attributes
-    if (attr.namespaceURI && attr.namespaceURI !== XLINK_NS) continue
-
-    let value = attr.value
-    if (attr.localName === 'id') {
-      // Already handled above
-      continue
-    } else if (attr.localName === 'href' && value.startsWith('#')) {
-      const ref = value.slice(1)
-      if (idMap.has(ref)) value = '#' + idMap.get(ref)
-    } else if (attr.localName === 'class') {
-      // Add prefixed versions of special classnames alongside the originals.
-      const classes = value.split(/\s+/).filter(Boolean)
-      const allClasses = [...classes]
-      for (const cls of classes) {
-        if (classAddMap.has(cls)) {
-          allClasses.push(classAddMap.get(cls))
-        }
-      }
-      value = allClasses.join(' ')
-    } else {
-      value = rewriteUrlRefs(value, idMap)
-    }
-    yEl.setAttribute(attr.name, value)
+  for (const [name, value] of parseForeignNode(node, { prefix, idMap, classAddMap, accum })) {
+    yEl.setAttribute(name, value)
   }
 
   const children = []

@@ -30,24 +30,6 @@ export function domToY(node) {
 }
 
 /**
- * Toy contract: <g class="toy" data-toy-id data-toy-type> with ≥1 <svg>
- * child. Anything else found directly inside #toys-layer is invalid and
- * reported back to the caller.
- *
- * data-id, id=, data-module, and .$() are never read here and never
- * required — they're rendering/dispatch conveniences recomputed fresh by
- * the renderer at every depth, every time, not
- * part of the on-disk contract.
- */
-export function isToyG(el) {
-  return el.localName === 'g' &&
-         el.classList.contains('toy') &&
-         el.getAttribute('data-toy-id') &&
-         el.getAttribute('data-toy-type') &&
-         el.querySelector(':scope > svg');
-}
-
-/**
  * Populate a Yjs document (yMeta/yToys/yDrawing, all obtained directly off
  * ydoc) from a source <svg> root element — background pattern, #toys-layer,
  * #drawing-layer, and (as a fallback) any other top-level elements not
@@ -60,8 +42,8 @@ export function isToyG(el) {
  * part of the canonical document a seeded room should start with.
  *
  * Returns { toyCount, drawCount, invalidToyEls }. invalidToyEls are DOM
- * elements found directly inside #toys-layer that don't satisfy isToyG();
- * the caller decides what to do with them
+ * elements found directly inside #toys-layer that Toys.parseForeignToy
+ * doesn't recognise as a toy; the caller decides what to do with them.
  */
 export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
   const yMeta    = ydoc.getMap('meta');
@@ -103,29 +85,16 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
   // Toys layer
   if (toysLayerEl) {
     for (const child of toysLayerEl.children) {
-      if (isToyG(child)) {
-        // A toy's own embedded <script>(s) — not our export format (those
-        // are hoisted to document root above), but still possible from a
-        // hand-crafted custom toy SVG, or a file saved before hoisting
-        // existed. Hoist into the scripts fragment the same as at
-        // placement time (see toys.js's addToySync), then strip before
-        // domToY: a toy's Yjs subtree never carries a <script> of its own,
-        // live or at rest — see toys.js, "Script hoisting".
-        const toyType  = child.getAttribute('data-toy-type');
-        const innerSvg = child.querySelector(':scope > svg');
-        if (innerSvg) {
-          Toys.hoistInlineScripts(ydoc, toyType, Toys.extractScripts(innerSvg));
-          innerSvg.querySelectorAll(':scope > script').forEach(s => s.remove());
-        }
-        const yG = domToY(child);
-        if (yG) {
-          if (opts.stripToyDecorative) yG.removeAttribute('transform');
-          yToys.insert(yToys.length, [yG]);
-          toyCount++;
-        }
-      } else {
+      const { parsedNode } = Toys.parseForeignToy(ydoc, child);
+      if (!parsedNode) {
         invalidToyEls.push(child);
+        continue;
       }
+
+      if (opts.stripToyDecorative) parsedNode.removeAttribute('transform');
+
+      const yG = domToY(parsedNode);
+      if (yG) { yToys.insert(yToys.length, [yG]); toyCount++; }
     }
   }
 

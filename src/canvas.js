@@ -138,7 +138,7 @@ const LAYER_TYPE = {
 function hitForActiveLayer(e) {
   const activeType = LAYER_TYPE[App.getActiveLayer()];
   if (!activeType) return null;
-  const el = e.target.closest?.('[data-id]') ?? null;
+  const el = e.target.closest?.('[data-module]') ?? null;
   if (!el) return null;
   return el.dataset.module === activeType ? el : null;
 }
@@ -149,7 +149,7 @@ function hitForActiveLayer(e) {
 // setPointerCapture routes the click event to _stage rather than the child element,
 // so a shift-click listener here would never fire on toys or shapes.
 export function wireShapeClicks(layer) {
-  layer.querySelectorAll('[data-id]').forEach(el => {
+  layer.querySelectorAll('[data-module]').forEach(el => {
     el.addEventListener('click', ev => {
       if (ToolMode.tool !== 'select') return;
       ev.stopPropagation();
@@ -158,7 +158,7 @@ export function wireShapeClicks(layer) {
   });
   // Click on empty canvas deselects
   layer.addEventListener('click', e => {
-    if (!e.target.closest('[data-id]')) App.select(null);
+    if (!e.target.closest('[data-module]')) App.select(null);
   });
 }
 

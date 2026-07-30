@@ -15,6 +15,7 @@
  */
 import * as Y                   from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
+import { compareAuthority as compareAuthorityIn } from './op_dag.js';
 
 const TABLES_KEY  = 'tt_tables';
 const MAX_TABLES  = 20;
@@ -82,14 +83,7 @@ function ensureJoined(ydoc, myId) {
  * An id missing from joinSequence entirely sorts last
  */
 function compareAuthority(ydoc, idA, idB) {
-  if (idA === idB) return 0;
-  const seq = getJoinSequence(ydoc).toArray();
-  const iA = seq.indexOf(idA);
-  const iB = seq.indexOf(idB);
-  if (iA === -1 && iB === -1) return 0;
-  if (iA === -1) return 1;
-  if (iB === -1) return -1;
-  return iA - iB;
+  return compareAuthorityIn(getJoinSequence(ydoc).toArray(), idA, idB);
 }
 
 /**
