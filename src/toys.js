@@ -28,7 +28,7 @@ const XLINK_NS = 'http://www.w3.org/1999/xlink'
 const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789'
 
 import { number, bool } from './tools-schema.js';
-import { runToyHandler, runToyHandlerSync, runInEnvelopeSync, commitEnvelope, ENVELOPE_ORIGIN, DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js';
+import { runToyHandlerSync, runInEnvelopeSync, commitEnvelope, ENVELOPE_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js';
 
 // NOTE: envelope.js imports render()/yNodeFor()/registerYNode() from this
 // file, so this is an intentional cycle — safe because neither side uses
@@ -396,93 +396,6 @@ function isToyG(yEl) {
   return (yEl.getAttribute('class') || '').split(/\s+/).includes('toy')
 }
 
-// ── duplicate data-toy-id defense ───────────────────────────────────────
-//
-// data-toy-id is meant to be unique across the whole document — every
-// other piece of toy-identity logic (findToy, deleteToy, the whole
-// envelope/bundle/revert machinery) assumes exactly one live occurrence.
-// But nothing in Yjs itself enforces that, and ordinary concurrent
-// operations can violate it with no error anywhere: two peers concurrently
-// reparenting the SAME toy to two different destinations both survive
-// (each is a legitimate insert; Yjs never rejects one in favor of the
-// other) — same for two peers independently restoring the same
-// escalation.js revert before either's snapshot-eviction has synced to
-// the other. See concurrency_branching.md for both scenarios worked
-// through in full. dedupToys (below) is the cleanup: not prevention (nothing
-// can prevent it — any "check then insert" is racy across unsynced peers by
-// construction) but deterministic, coordinator-free convergence once both
-// copies exist.
-
-/**
- * Walk the whole toys tree — top-level and nested, inside any container's
- * own tt_contents — and group every toy element by its data-toy-id.
- * A legitimate id appears in exactly one group of size 1; this returns
- * every group, so the caller can find the ones that don't.
- */
-function listToyOccurrencesById(yToys) {
-  const byToyId = new Map()
-  function walk(yEl) {
-    if (!(yEl instanceof Y.XmlElement)) return
-    if (isToyG(yEl)) {
-      const toyId = yEl.getAttribute('data-toy-id')
-      if (toyId) {
-        if (!byToyId.has(toyId)) byToyId.set(toyId, [])
-        byToyId.get(toyId).push(yEl)
-      }
-    }
-    yEl.toArray().forEach(walk)
-  }
-  yToys.toArray().forEach(walk)
-  return byToyId
-}
-
-/**
- * Deterministic survivor among duplicate occurrences of the same
- * data-toy-id: smallest {client,clock} own item-id wins. Arbitrary as a
- * choice, but every peer computes it from the same synced item ids, so
- * everyone converges on the identical survivor independently — no
- * coordination, no communication, same principle as authority ordering
- * elsewhere in this design, just keyed on the items themselves rather
- * than on joinSequence (there's no "who's more authoritative" question
- * here — both occurrences are equally legitimate, cleanup just needs
- * everyone to agree on which one to keep).
- */
-function pickSurvivor(occurrences) {
-  return occurrences.reduce((best, yEl) => {
-    const a = best._item.id, b = yEl._item.id
-    if (a.client !== b.client) return a.client < b.client ? best : yEl
-    return a.clock < b.clock ? best : yEl
-  })
-}
-
-/**
- * Delete every occurrence of a duplicated data-toy-id except the
- * deterministic survivor (pickSurvivor). Must be called from inside a
- * ydoc.transact() — this performs raw structural deletes directly, the
- * same reasoning as escalation.js's revertBundle: there's no live DOM to
- * mirror a remote peer's duplicate against in general.
- *
- * Returns the list of duplicated toy ids found and cleaned up (empty if
- * none), for logging/toast purposes.
- */
-export function dedupToys(ydoc, yToys) {
-  const deduped = []
-  for (const [toyId, occurrences] of listToyOccurrencesById(yToys)) {
-    if (occurrences.length < 2) continue
-    const survivor = pickSurvivor(occurrences)
-    for (const yEl of occurrences) {
-      if (yEl === survivor) continue
-      const parent = yEl.parent
-      if (!parent || typeof parent.toArray !== 'function') continue
-      const idx = parent.toArray().indexOf(yEl)
-      if (idx !== -1) parent.delete(idx, 1)
-    }
-    deduped.push(toyId)
-  }
-  return deduped
-}
-
-
 /**
  * Find all Y.XmlElement descendants of `yEl` that carry the
  * `className`
@@ -554,7 +467,7 @@ function yExactSelector(yEl, selector, posContext = false) {
 /**
  * Remove a toy element from the DOM by id — searches the whole toys tree,
  * including nested. A DOM operation, like every other structural toy
- * mutation now. Call from inside runInEnvelope(Sync); this function
+ * mutation now. Call from inside runInEnvelopeSync; this function
  * doesn't open its own envelope, so it composes with whatever else the
  * caller wants folded into the same transaction (a batch delete — see
  * app.js's deleteMultiSelected, which already wraps its own calls in one
@@ -604,7 +517,7 @@ export function findToy(yToys, id) {
  * (containerElId null/undefined).
  *
  * A DOM operation, like every other structural toy mutation now — NOT a
- * pure Yjs write. Call from inside runInEnvelope(Sync); this function
+ * pure Yjs write. Call from inside runInEnvelopeSync; this function
  * doesn't open its own envelope, so it composes with whatever else the
  * caller wants folded into the same transaction (a reposition, a
  * contents_change_handler cascade — see commitMove's drop-into-container
@@ -1113,7 +1026,7 @@ export function getTtState(yToy) {
 
 /**
  * Edit a toy's own color and/or name — a DOM operation, like every other
- * content-mutating toy operation now. Call from inside runInEnvelope(Sync);
+ * content-mutating toy operation now. Call from inside runInEnvelopeSync;
  * this function doesn't open its own envelope.
  *   color — every one of the toy's own feColorMatrix nodes is updated and
  *           data-color on the toy's own wrapper is kept in sync.
@@ -1335,25 +1248,6 @@ export function getMenuActions(svgEl) {
   return actions
 }
 
-/**
- * Invoke a toy's menu action by (namespace, key) — the identifiers
- * getMenuActions() handed back. Re-validates applicable() first (UI state
- * may be stale — another peer's move could land between render and click).
- * Runs the handler inside an envelope and commits its DOM mutations to
- * Yjs as one transaction.
- */
-export async function invokeMenuAction(ydoc, yToys, layerEl, svgEl, namespace, key, evt) {
-  const ns    = globalThis[namespace]
-  const entry = ns?.menu?.[key]
-  if (!entry || typeof entry.handler !== 'function') {
-    throw new Error(`[toys] no such menu action: ${namespace}.${key}`)
-  }
-  if (typeof entry.applicable === 'function' && !entry.applicable(svgEl)) {
-    throw new Error(`[toys] menu action not applicable: ${namespace}.${key}`)
-  }
-  return runToyHandler(ydoc, yToys, layerEl, svgEl, () => entry.handler.call(svgEl, evt))
-}
-
 // ── gesture-triggered cascade (DOM-only, no Yjs until the final commit) ────
 //
 // invokeMenuActionSync / initializeToySync use these.
@@ -1407,7 +1301,7 @@ function affectedContainerIdsFromRecords(records) {
  * (allRecords is mutated in place —
  * the caller feeds this to ONE final commitEnvelope call, so the gesture
  * and its whole cascade land as a single Yjs transaction, single undo
- * step, single touched-set/bundle).
+ * step).
  *
  * Each round resolves only the IMMEDIATE containing container for whatever
  * changed in the round before it
@@ -1472,11 +1366,13 @@ export function runGestureSync(ydoc, layerEl, fn, opts = {}) {
 }
 
 /**
- * Synchronous sibling of invokeMenuAction. Same validation and effect, but
- * on the current tick, and with any container reaction the handler triggers
- * folded into the SAME transaction as the handler's own commit — one
- * transaction, one undo step, no window where the action landed but its
- * reaction hadn't yet.
+ * Invoke a toy's menu action by (namespace, key) — the identifiers
+ * getMenuActions() handed back. Re-validates applicable() first (UI state
+ * may be stale — another peer's move could land between render and click).
+ * Runs the handler inside an envelope, on the current tick, with any
+ * container reaction the handler triggers folded into the SAME transaction
+ * as the handler's own commit — one transaction, one undo step, no window
+ * where the action landed but its reaction hadn't yet.
  *
  * Note: Wrapped in an outer, unlabeled ydoc.transact(): commitEnvelope's
  * own nested transact() call has its origin argument ignored (Yjs only
@@ -1503,28 +1399,11 @@ export function invokeMenuActionSync(ydoc, yToys, layerEl, svgEl, namespace, key
 
 /**
  * Run every activated namespace's initialize(elem), if present, for a
- * freshly placed toy instance — inside an envelope, so any mutations it
- * makes commit to Yjs like any other handler.
+ * freshly placed toy instance — inside an envelope, on the current tick,
+ * with any container reaction folded into the same transaction.
  *
- * Runs once per instance, at placement only.
- *
- * Callers are responsible for only calling this at placement
- */
-export async function initializeToy(ydoc, yToys, layerEl, svgEl, toyType) {
-  const initializers = getNamespacesForType(toyType)
-    .map(name => globalThis[name])
-    .filter(ns => ns && typeof ns.initialize === 'function')
-  if (!initializers.length) return
-
-  await runToyHandler(ydoc, yToys, layerEl, svgEl, () => {
-    initializers.forEach(ns => ns.initialize(svgEl))
-  }, { origin: LIFECYCLE_ORIGIN })
-}
-
-/**
- * Synchronous sibling of initializeToy.
- * Same effect, same one-time-at-placement contract, but on the current
- * tick, with any container reaction folded into the same transaction
+ * Runs once per instance, at placement only. Callers are responsible for
+ * only calling this at placement.
  *
  * Ordinarily there's nothing to fold. But initialize() has the freedom
  * to mutate anything in toys-layer.
@@ -1567,30 +1446,13 @@ export function findAncestorContainerIds(yNode) {
 
 /**
  * Run every activated namespace's contents_change_handler(elem), if
- * present, for toyType — inside an envelope
+ * present, for toyType — inside an envelope, on the current tick, so when
+ * called from inside an open ydoc.transact its commit folds into that
+ * transaction rather than landing a microtask later in its own.
  *
- * Committed under DERIVED_ORIGIN
+ * Committed under ENVELOPE_ORIGIN.
  *
  * No-op if toyType has no contents_change_handler-providing namespace.
- */
-export async function runContentsChangeHandler(ydoc, yToys, layerEl, svgEl, toyType, authorId) {
-  const handlers = getNamespacesForType(toyType)
-    .map(name => globalThis[name])
-    .filter(ns => ns && typeof ns.contents_change_handler === 'function')
-  if (!handlers.length) return
-
-  await runToyHandler(ydoc, yToys, layerEl, svgEl, () => {
-    handlers.forEach(ns => ns.contents_change_handler(svgEl))
-  }, { origin: DERIVED_ORIGIN, authorId })
-}
-
-/**
- * Synchronous sibling of runContentsChangeHandler. Same effect — run
- * toyType's contents_change_handler(s) under an envelope, committed under
- * DERIVED_ORIGIN — but on the current tick, so when called from inside an
- * open ydoc.transact its commit folds into that transaction rather than
- * landing a microtask later in its own. No-op if toyType has no
- * contents_change_handler namespace.
  */
 export function runContentsChangeHandlerSync(ydoc, yToys, layerEl, svgEl, toyType, authorId) {
   const handlers = getNamespacesForType(toyType)
@@ -1600,7 +1462,7 @@ export function runContentsChangeHandlerSync(ydoc, yToys, layerEl, svgEl, toyTyp
 
   runToyHandlerSync(ydoc, yToys, layerEl, svgEl, () => {
     handlers.forEach(ns => ns.contents_change_handler(svgEl))
-  }, { origin: DERIVED_ORIGIN, authorId })
+  }, { origin: ENVELOPE_ORIGIN, authorId })
 }
 
 /**
@@ -1632,11 +1494,10 @@ export function affectedContainerIdsInnerFirst(changedYNodes) {
  * (innermost-first — see affectedContainerIdsInnerFirst). Re-renders
  * layerEl before each container so an outer container reads the inner
  * container's just-committed result. Each handler commits under
- * DERIVED_ORIGIN; when this runs inside an
- * open transaction those commits collapse into it, making a placement and
- * its reaction one atomic transaction. When run from an observer (no open
- * transaction), each is its own DERIVED transaction instead — same end
- * state, just not folded.
+ * ENVELOPE_ORIGIN; when this runs inside an open transaction those commits
+ * collapse into it, making a placement and its reaction one atomic
+ * transaction. When run from an observer (no open transaction), each is
+ * its own transaction instead — same end state, just not folded.
  */
 export function runContentsChangeCascadeSync(ydoc, yToys, layerEl, containerIds, authorId) {
   for (const containerId of containerIds) {
@@ -1686,14 +1547,8 @@ function activateAllToyScripts(ydoc, yToys) {
 
 /**
  * makeLayerAPI — returns the canonical LayerAPI for the toys layer, closing
- * over (ydoc, yToys) so app.js can dispatch by layer type without
- * re-passing the fragment on every call.
- */
-/**
- * makeLayerAPI — returns the canonical LayerAPI for the toys layer, closing
  * over (ydoc, yToys, myId) so app.js can dispatch by layer type without
- * re-passing the fragment (or this peer's own identity, for conflict
- * bundle attribution) on every call.
+ * re-passing the fragment (or this peer's own identity) on every call.
  */
 export function makeLayerAPI(ydoc, yToys, myId) {
   return {

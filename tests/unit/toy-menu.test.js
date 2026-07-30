@@ -3,7 +3,7 @@ import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as Toys from '../../src/toys.js'
 import { addToy, findToy, clearYNodeMap, _clearSvgTextCache,
-         _resetToyScriptState, getMenuActions, invokeMenuAction } from '../../src/toys.js'
+         _resetToyScriptState, getMenuActions, invokeMenuActionSync } from '../../src/toys.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 const getToysLayer = (ydoc) => ({ yToys: ydoc.getXmlFragment('toys') })
@@ -106,16 +106,16 @@ describe('getMenuActions', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// invokeMenuAction — running a handler through the envelope and into Yjs
+// invokeMenuActionSync — running a handler through the envelope and into Yjs
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('invokeMenuAction', () => {
+describe('invokeMenuActionSync', () => {
   test('runs the handler inside an envelope; the mutation syncs to Yjs', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
 
-    await invokeMenuAction(ydoc, yToys, layerEl, toyEl, 'widgetNs', 'Bump')
+    invokeMenuActionSync(ydoc, yToys, layerEl, toyEl, 'widgetNs', 'Bump')
 
     // DOM re-rendered from the committed Yjs state...
     const domTspan = layerEl.querySelector('#t1__tspan_count')
@@ -132,12 +132,12 @@ describe('invokeMenuAction', () => {
     const { yToys } = getToysLayer(ydoc)
     const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
 
-    await invokeMenuAction(ydoc, yToys, layerEl, toyEl, 'widgetNs', 'Bump')
-    // invokeMenuAction doesn't re-render (see envelope.js), so this is
+    invokeMenuActionSync(ydoc, yToys, layerEl, toyEl, 'widgetNs', 'Bump')
+    // invokeMenuActionSync doesn't re-render (see envelope.js), so this is
     // still the same live node — re-querying just confirms callers can
     // safely do so rather than needing to hold onto the original element.
     const toyElAfter1 = layerEl.querySelector('[data-id="t1"]')
-    await invokeMenuAction(ydoc, yToys, layerEl, toyElAfter1, 'widgetNs', 'Bump')
+    invokeMenuActionSync(ydoc, yToys, layerEl, toyElAfter1, 'widgetNs', 'Bump')
 
     expect(layerEl.querySelector('#t1__tspan_count').textContent).toBe('2')
   })
@@ -147,9 +147,9 @@ describe('invokeMenuAction', () => {
     const { yToys } = getToysLayer(ydoc)
     const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
 
-    await expect(
-      invokeMenuAction(ydoc, yToys, layerEl, toyEl, 'widgetNs', 'Hidden')
-    ).rejects.toThrow(/not applicable/)
+    expect(() =>
+      invokeMenuActionSync(ydoc, yToys, layerEl, toyEl, 'widgetNs', 'Hidden')
+    ).toThrow(/not applicable/)
     expect(layerEl.querySelector('#t1__tspan_count').textContent).toBe('0')
   })
 
@@ -158,12 +158,12 @@ describe('invokeMenuAction', () => {
     const { yToys } = getToysLayer(ydoc)
     const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
 
-    await expect(
-      invokeMenuAction(ydoc, yToys, layerEl, toyEl, 'nopeNs', 'Bump')
-    ).rejects.toThrow(/no such menu action/)
-    await expect(
-      invokeMenuAction(ydoc, yToys, layerEl, toyEl, 'widgetNs', 'Nope')
-    ).rejects.toThrow(/no such menu action/)
+    expect(() =>
+      invokeMenuActionSync(ydoc, yToys, layerEl, toyEl, 'nopeNs', 'Bump')
+    ).toThrow(/no such menu action/)
+    expect(() =>
+      invokeMenuActionSync(ydoc, yToys, layerEl, toyEl, 'widgetNs', 'Nope')
+    ).toThrow(/no such menu action/)
   })
 })
 

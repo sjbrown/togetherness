@@ -1,7 +1,4 @@
 // @vitest-environment jsdom
-import * as fs from 'fs'
-import * as path from 'path'
-import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as Toys from '../../src/toys.js'
@@ -9,14 +6,10 @@ import {
   addToy, findToy, yNodeFor, clearYNodeMap, _clearSvgTextCache,
 } from '../../src/toys.js'
 import {
-  runInEnvelope, commitEnvelope, renderAfterCommit, runToyHandler,
-  runInEnvelopeSync, runToyHandlerSync, isEnvelopeOpen,
-  DERIVED_ORIGIN,
+  commitEnvelope, renderAfterCommit,
+  runInEnvelopeSync, runToyHandlerSync,
+  ENVELOPE_ORIGIN,
 } from '../../src/envelope.js'
-import { getRevertSnapshots, setRevertsEnabled } from '../../src/snapshot.js'
-
-const __dir   = path.dirname(fileURLToPath(import.meta.url))
-const TOY_DIR = path.resolve(__dir, '../../src/toy')
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
@@ -57,7 +50,7 @@ function injectUnmirroredScript(groupEl) {
 
 // Render yToys into a fresh (detached is fine) toys-layer <g> and return it.
 // id="toys-layer" matches production (storage.js queries by this id), and
-// is what runInEnvelope's closest('#toys-layer') looks for.
+// is what runInEnvelopeSync's closest('#toys-layer') looks for.
 function renderLayer(yToys) {
   const layerEl = document.createElementNS(SVG_NS, 'g')
   layerEl.id = 'toys-layer'
@@ -80,7 +73,7 @@ async function placeToy(ydoc, yToys, id, color = '#111') {
 // 3.1 — raw mutation capture
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('runInEnvelope — raw capture', () => {
+describe('runInEnvelopeSync — raw capture', () => {
   test('attribute mutation produces an attributes record', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
@@ -88,7 +81,7 @@ describe('runInEnvelope — raw capture', () => {
     const layerEl = renderLayer(yToys)
     const toyEl   = layerEl.querySelector('[data-id="t1"]')
 
-    const records = await runInEnvelope(toyEl, () => {
+    const records = runInEnvelopeSync(toyEl, () => {
       toyEl.setAttribute('data-color', '#f00')
     })
 
@@ -108,7 +101,7 @@ describe('runInEnvelope — raw capture', () => {
     const groupEl  = toyEl.querySelector('g.colorable')
     const circle   = document.createElementNS(SVG_NS, 'circle')
 
-    const records = await runInEnvelope(toyEl, () => {
+    const records = runInEnvelopeSync(toyEl, () => {
       groupEl.appendChild(circle)
     })
 
@@ -126,7 +119,7 @@ describe('runInEnvelope — raw capture', () => {
     const toyEl    = layerEl.querySelector('[data-id="t1"]')
     const textNode = toyEl.querySelector('tspan').firstChild
 
-    const records = await runInEnvelope(toyEl, () => {
+    const records = runInEnvelopeSync(toyEl, () => {
       textNode.data = '9'
     })
 
@@ -143,7 +136,7 @@ describe('runInEnvelope — raw capture', () => {
     const layerEl = renderLayer(yToys)
     const toyEl   = layerEl.querySelector('[data-id="t1"]')
 
-    const records = await runInEnvelope(toyEl, () => {})
+    const records = runInEnvelopeSync(toyEl, () => {})
     expect(records).toEqual([])
   })
 
@@ -165,7 +158,7 @@ describe('runInEnvelope — raw capture', () => {
     layerEl.appendChild(trayEl)
 
     // A mutation on toyEl itself is still captured...
-    const records = await runInEnvelope(toyEl, () => {
+    const records = runInEnvelopeSync(toyEl, () => {
       toyEl.setAttribute('data-color', '#0f0')
     })
     expect(records.some(r => r.type === 'attributes' && r.target === toyEl)).toBe(true)
@@ -179,7 +172,7 @@ describe('runInEnvelope — raw capture', () => {
     await placeToy(ydoc, yToys, 't2')
     const toy2El = Toys.listToys(yToys).find(el => el.getAttribute('data-id') === 't2')
     layerEl.appendChild(toy2El)
-    const records2 = await runInEnvelope(toyEl, () => {
+    const records2 = runInEnvelopeSync(toyEl, () => {
       toy2El.setAttribute('data-color', '#bad')
     })
     expect(records2.some(r => r.target === toy2El)).toBe(true)
@@ -195,7 +188,7 @@ describe('runInEnvelope — raw capture', () => {
     Toys.render(yToys, bareLayerEl)
     const toyEl = bareLayerEl.querySelector('[data-id="t1"]')
 
-    const records = await runInEnvelope(toyEl, () => {
+    const records = runInEnvelopeSync(toyEl, () => {
       toyEl.setAttribute('data-color', '#0f0')
     })
     expect(records.some(r => r.type === 'attributes' && r.target === toyEl)).toBe(true)
@@ -214,7 +207,7 @@ describe('commitEnvelope — attribute & characterData translation', () => {
     const layerEl = renderLayer(yToys)
     const toyEl   = layerEl.querySelector('[data-id="t1"]')
 
-    const records = await runInEnvelope(toyEl, () => {
+    const records = runInEnvelopeSync(toyEl, () => {
       toyEl.setAttribute('data-color', '#0f0')
     })
     commitEnvelope(ydoc, records)
@@ -234,7 +227,7 @@ describe('commitEnvelope — attribute & characterData translation', () => {
     const toyEl   = layerEl.querySelector('[data-id="t1"]')
     const useEl   = toyEl.querySelector('use')
 
-    const records = await runInEnvelope(toyEl, () => {
+    const records = runInEnvelopeSync(toyEl, () => {
       useEl.removeAttributeNS('http://www.w3.org/1999/xlink', 'href')
     })
     commitEnvelope(ydoc, records)
@@ -251,7 +244,7 @@ describe('commitEnvelope — attribute & characterData translation', () => {
     const toyEl    = layerEl.querySelector('[data-id="t1"]')
     const textNode = toyEl.querySelector('tspan').firstChild
 
-    const records = await runInEnvelope(toyEl, () => {
+    const records = runInEnvelopeSync(toyEl, () => {
       textNode.data = '42'
     })
     const yText = yNodeFor(textNode)
@@ -280,7 +273,7 @@ describe('commitEnvelope — structural translation', () => {
     const yGroupBefore = yNodeFor(groupEl)
     const before = yGroupBefore.toArray().length
 
-    const records = await runInEnvelope(toyEl, () => {
+    const records = runInEnvelopeSync(toyEl, () => {
       const circle = document.createElementNS(SVG_NS, 'circle')
       circle.setAttribute('cx', '10')
       circle.setAttribute('cy', '10')
@@ -320,7 +313,7 @@ describe('commitEnvelope — structural translation', () => {
     const yGroup = yNodeFor(groupEl)
     ydoc.transact(() => { yGroup.insert(0, [new Y.XmlElement('metadata')]) })
 
-    const records = await runInEnvelope(toyEl, () => {
+    const records = runInEnvelopeSync(toyEl, () => {
       const marker = document.createElementNS(SVG_NS, 'rect')
       marker.setAttribute('data-marker', 'mid')
       groupEl.insertBefore(marker, textEl)
@@ -348,7 +341,7 @@ describe('commitEnvelope — structural translation', () => {
     const yGroup = yNodeFor(groupEl)
     ydoc.transact(() => { yGroup.insert(0, [new Y.XmlElement('metadata')]) })
 
-    const records = await runInEnvelope(toyEl, () => {
+    const records = runInEnvelopeSync(toyEl, () => {
       const marker = document.createElementNS(SVG_NS, 'rect')
       marker.setAttribute('data-marker', 'front')
       groupEl.insertBefore(marker, circleEl) // no DOM sibling before this point
@@ -371,7 +364,7 @@ describe('commitEnvelope — structural translation', () => {
     const groupEl = toyEl.querySelector('g.colorable')
 
     let innerCircle
-    const records = await runInEnvelope(toyEl, () => {
+    const records = runInEnvelopeSync(toyEl, () => {
       const g = document.createElementNS(SVG_NS, 'g')
       innerCircle = document.createElementNS(SVG_NS, 'circle')
       innerCircle.setAttribute('r', '2')
@@ -394,7 +387,7 @@ describe('commitEnvelope — structural translation', () => {
     const groupEl  = toyEl.querySelector('g.colorable')
     const circleEl = groupEl.querySelector('circle')
 
-    const records = await runInEnvelope(toyEl, () => {
+    const records = runInEnvelopeSync(toyEl, () => {
       groupEl.removeChild(circleEl)
     })
     commitEnvelope(ydoc, records)
@@ -418,7 +411,7 @@ describe('commitEnvelope — whole-layer envelope, no reverting', () => {
     const toy1El  = layerEl.querySelector('[data-id="t1"]')
     const toy2El  = layerEl.querySelector('[data-id="t2"]')
 
-    const records = await runInEnvelope(toy1El, () => {
+    const records = runInEnvelopeSync(toy1El, () => {
       toy2El.setAttribute('data-color', '#bad')
     })
     const { applied } = commitEnvelope(ydoc, records)
@@ -439,7 +432,7 @@ describe('commitEnvelope — whole-layer envelope, no reverting', () => {
     const layerEl = renderLayer(yToys)
     const toy1El  = layerEl.querySelector('[data-id="t1"]')
 
-    const records = await runInEnvelope(toy1El, () => {
+    const records = runInEnvelopeSync(toy1El, () => {
       toy1El.setAttribute('data-color', '#0f0')
     })
     const { applied } = commitEnvelope(ydoc, records)
@@ -459,7 +452,7 @@ describe('commitEnvelope — whole-layer envelope, no reverting', () => {
     const group2El = toy2El.querySelector('g.colorable')
     const useEl    = group2El.querySelector('use')
 
-    const records = await runInEnvelope(toy1El, () => {
+    const records = runInEnvelopeSync(toy1El, () => {
       group2El.removeChild(useEl)
     })
     commitEnvelope(ydoc, records)
@@ -470,51 +463,7 @@ describe('commitEnvelope — whole-layer envelope, no reverting', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3.5 — async contract
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('runInEnvelope — async contract', () => {
-  test('a mutation made after an await is still captured', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await placeToy(ydoc, yToys, 't1')
-    const layerEl = renderLayer(yToys)
-    const toyEl   = layerEl.querySelector('[data-id="t1"]')
-
-    const records = await runInEnvelope(toyEl, async () => {
-      toyEl.setAttribute('data-color', '#111') // will be a no-op record (same value) — fine
-      await Promise.resolve()
-      await new Promise(resolve => setTimeout(resolve, 0))
-      toyEl.setAttribute('data-color', '#222') // the late one
-    })
-
-    const last = records[records.length - 1]
-    expect(last.type).toBe('attributes')
-    commitEnvelope(ydoc, records)
-    expect(findToy(yToys, 't1').getAttribute('data-color')).toBe('#222')
-  })
-
-  test('isEnvelopeOpen() is true only while the envelope is running', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await placeToy(ydoc, yToys, 't1')
-    const layerEl = renderLayer(yToys)
-    const toyEl   = layerEl.querySelector('[data-id="t1"]')
-
-    expect(isEnvelopeOpen()).toBe(false)
-    let openDuringHandler = false
-    await runInEnvelope(toyEl, async () => {
-      openDuringHandler = isEnvelopeOpen()
-      await new Promise(resolve => setTimeout(resolve, 0))
-    })
-    expect(openDuringHandler).toBe(true)
-    expect(isEnvelopeOpen()).toBe(false)
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 3.5b — synchronous envelope (TODO #11 / concurrency_branching.md): the
-// no-microtask path that lets a reaction fold into its triggering transaction.
+// 3.5 — synchronous contract
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('runInEnvelopeSync / runToyHandlerSync — synchronous contract', () => {
@@ -546,8 +495,6 @@ describe('runInEnvelopeSync / runToyHandlerSync — synchronous contract', () =>
     const toyEl   = layerEl.querySelector('[data-id="t1"]')
 
     expect(() => runInEnvelopeSync(toyEl, async () => {})).toThrow(/synchronous handlers only/)
-    // Envelope bookkeeping must not leak on the throw path.
-    expect(isEnvelopeOpen()).toBe(false)
   })
 
   test('runToyHandlerSync commits under the given origin, in one transaction, no await', async () => {
@@ -562,11 +509,11 @@ describe('runInEnvelopeSync / runToyHandlerSync — synchronous contract', () =>
 
     const result = runToyHandlerSync(ydoc, yToys, layerEl, toyEl, () => {
       toyEl.setAttribute('data-color', '#0ff')
-    }, { origin: DERIVED_ORIGIN })
+    }, { origin: ENVELOPE_ORIGIN })
 
     expect(result.applied).toBe(1)
     expect(findToy(yToys, 't1').getAttribute('data-color')).toBe('#0ff')
-    expect(origins).toContain(DERIVED_ORIGIN)
+    expect(origins).toContain(ENVELOPE_ORIGIN)
   })
 
   test('called inside an open transaction, its commit FOLDS in (nested collapse → one update)', async () => {
@@ -588,7 +535,7 @@ describe('runInEnvelopeSync / runToyHandlerSync — synchronous contract', () =>
         // …plus a nested sync handler commit, all one transaction
         runToyHandlerSync(ydoc, yToys, layerEl, toyEl, () => {
           toyEl.setAttribute('data-color', '#222')
-        }, { origin: DERIVED_ORIGIN })
+        }, { origin: ENVELOPE_ORIGIN })
       })
     } finally {
       ydoc.off('update', onUpdate)
@@ -602,7 +549,7 @@ describe('runInEnvelopeSync / runToyHandlerSync — synchronous contract', () =>
 // 3.6 — post-commit render policy
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('renderAfterCommit / runToyHandler — post-commit render', () => {
+describe('renderAfterCommit / runToyHandlerSync — post-commit render', () => {
   test('renderAfterCommit rebuilds the layer from Yjs — stale DOM state is not preserved', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
@@ -610,7 +557,7 @@ describe('renderAfterCommit / runToyHandler — post-commit render', () => {
     const layerEl = renderLayer(yToys)
     const toyEl   = layerEl.querySelector('[data-id="t1"]')
 
-    const records = await runInEnvelope(toyEl, () => {
+    const records = runInEnvelopeSync(toyEl, () => {
       toyEl.setAttribute('data-color', '#0f0')
     })
     commitEnvelope(ydoc, records)
@@ -624,7 +571,7 @@ describe('renderAfterCommit / runToyHandler — post-commit render', () => {
     expect(rebuiltToyEl.getAttribute('data-color')).toBe('#0f0')
   })
 
-  test('runToyHandler runs the pipeline: capture → commit — and does not render', async () => {
+  test('runToyHandlerSync runs the pipeline: capture → commit — and does not render', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     await placeToy(ydoc, yToys, 't1')
@@ -632,182 +579,29 @@ describe('renderAfterCommit / runToyHandler — post-commit render', () => {
     const toyEl   = layerEl.querySelector('[data-id="t1"]')
     const groupEl = toyEl.querySelector('g.colorable')
 
-    const result = await runToyHandler(ydoc, yToys, layerEl, toyEl, () => {
+    const result = runToyHandlerSync(ydoc, yToys, layerEl, toyEl, () => {
       const circle = document.createElementNS(SVG_NS, 'circle')
       circle.setAttribute('data-added', 'yes')
       groupEl.appendChild(circle)
     })
 
     expect(result.applied).toBe(1)
-    expect(result.bundle).toBeTruthy()
 
     // The mutation is visible because the handler mutated live DOM
     // directly (that's the whole premise of the envelope) — not because
-    // runToyHandler re-rendered anything.
+    // runToyHandlerSync re-rendered anything.
     const added = Array.from(toyEl.querySelectorAll('circle')).find(
       c => c.getAttribute('data-added') === 'yes'
     )
     expect(added).toBeTruthy()
 
-    // Regression guard: runToyHandler must not rebuild the layer. A
+    // Regression guard: runToyHandlerSync must not rebuild the layer. A
     // production caller's own Yjs observer already renders (correctly,
     // with click handling wired) inside commitEnvelope's transaction; a
     // second bare render here would silently replace that output with
     // elements nothing has attached listeners to. See envelope.js's note
-    // above runToyHandler.
+    // above runToyHandlerSync.
     expect(layerEl.querySelector('[data-id="t1"]')).toBe(toyEl)
   })
-
-  test('opts.authorId flows through commitEnvelope to the recorded bundle', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await placeToy(ydoc, yToys, 't1')
-    const layerEl = renderLayer(yToys)
-    const toyEl   = layerEl.querySelector('[data-id="t1"]')
-
-    const result = await runToyHandler(ydoc, yToys, layerEl, toyEl, () => {
-      toyEl.setAttribute('data-color', '#0f0')
-    }, { authorId: 'tt-p-v1-01-aaa' })
-
-    expect(result.bundle.authorId).toBe('tt-p-v1-01-aaa')
-  })
 })
 
-// ─────────────────────────────────────────────────────────────────────────────
-// commitEnvelope — revert-snapshot capture
-// capture a removed pre-existing node's content BEFORE
-// deleting it, so a later revert can restore it — see snapshot.js).
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('commitEnvelope — revert-snapshot capture', () => {
-  beforeEach(() => setRevertsEnabled(true))
-  test('a reparent (remove from old parent, add to new parent, same commit) snapshots the pre-move content', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await placeToy(ydoc, yToys, 't1', '#e33')
-    await placeToy(ydoc, yToys, 'container1')
-    const layerEl = renderLayer(yToys)
-    const toyEl       = layerEl.querySelector('[data-id="t1"]')
-    const containerEl = layerEl.querySelector('[data-id="container1"]')
-
-    const records = await runInEnvelope(layerEl, () => {
-      containerEl.appendChild(toyEl) // removed from layerEl, added to containerEl — one commit
-    })
-    const { bundle } = commitEnvelope(ydoc, records, { authorId: 'tt-p-v1-01-bob' })
-
-    const stored = getRevertSnapshots(ydoc).get('tt-p-v1-01-bob')
-    expect(stored).toBeTruthy()
-    expect(stored.bundleStamp).toEqual({ clientID: bundle.clientID, clock: bundle.clock })
-    expect(stored.parentKey).toBeNull() // layerEl mirrors yToys, a root fragment
-    expect(stored.content.nodeName).toBe('g')
-    expect(stored.content.attributes['data-color']).toBe('#e33') // the PRE-move content
-  })
-
-  test('a plain delete (removeChild, no re-add) also snapshots — same mechanism, no special-casing', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await placeToy(ydoc, yToys, 't1', '#123456')
-    const layerEl = renderLayer(yToys)
-    const toyEl   = layerEl.querySelector('[data-id="t1"]')
-
-    const records = await runInEnvelope(layerEl, () => { toyEl.remove() })
-    commitEnvelope(ydoc, records, { authorId: 'tt-p-v1-01-carol' })
-
-    const stored = getRevertSnapshots(ydoc).get('tt-p-v1-01-carol')
-    expect(stored).toBeTruthy()
-    expect(stored.content.attributes['data-color']).toBe('#123456')
-  })
-
-  test('an attribute-only commit captures no snapshot at all', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await placeToy(ydoc, yToys, 't1')
-    const layerEl = renderLayer(yToys)
-    const toyEl   = layerEl.querySelector('[data-id="t1"]')
-
-    const records = await runInEnvelope(layerEl, () => { toyEl.setAttribute('data-color', '#0f0') })
-    commitEnvelope(ydoc, records, { authorId: 'tt-p-v1-01-dave' })
-
-    expect(getRevertSnapshots(ydoc).has('tt-p-v1-01-dave')).toBe(false)
-  })
-
-  test('no authorId given — no snapshot recorded, even though a removal happened', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await placeToy(ydoc, yToys, 't1')
-    const layerEl = renderLayer(yToys)
-    const toyEl   = layerEl.querySelector('[data-id="t1"]')
-
-    const records = await runInEnvelope(layerEl, () => { toyEl.remove() })
-    commitEnvelope(ydoc, records) // no opts at all
-
-    expect(getRevertSnapshots(ydoc).size).toBe(0)
-  })
-
-  test('two removals of pre-existing nodes in one commit: the LAST one wins the slot', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await placeToy(ydoc, yToys, 'first', '#111111')
-    await placeToy(ydoc, yToys, 'second', '#222222')
-    const layerEl = renderLayer(yToys)
-    const firstEl  = layerEl.querySelector('[data-id="first"]')
-    const secondEl = layerEl.querySelector('[data-id="second"]')
-
-    const records = await runInEnvelope(layerEl, () => {
-      firstEl.remove()
-      secondEl.remove()
-    })
-    commitEnvelope(ydoc, records, { authorId: 'tt-p-v1-01-erin' })
-
-    const stored = getRevertSnapshots(ydoc).get('tt-p-v1-01-erin')
-    expect(stored.content.attributes['data-color']).toBe('#222222') // "second", processed last
-  })
-
-  test('a real drop-into-container gesture (reparent + reposition, commitMove\'s exact shape) snapshots the PRE-drop x/y, not the post-drop position', async () => {
-    const TRAY_SUM_SVG = fs.readFileSync(path.join(TOY_DIR, 'tray_sum.svg'), 'utf8')
-    const TRAY_JS       = fs.readFileSync(path.join(TOY_DIR, 'js/tray.js'), 'utf8')
-    vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/tray_sum.svg') return { ok: true, text: async () => TRAY_SUM_SVG }
-      if (url === '/toy/js/tray.js')   return { ok: true, text: async () => TRAY_JS }
-      if (url === '/toy/player_marker.svg') return { ok: true, text: async () => TOY_SVG }
-      throw new Error(`unexpected fetch: ${url}`)
-    }))
-
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 200, y: 200, color: '#fff' })
-    await addToy(ydoc, yToys, { id: 'die1', toyType: 'player_marker', x: 10, y: 15, color: '#e33' })
-
-    const layerEl = renderLayer(yToys)
-    await new Promise(r => setTimeout(r, 0)) // let script activation settle, matching production
-
-    const dieEl = layerEl.querySelector('[data-id="die1"]')
-    const preDropSvg = dieEl.querySelector('svg')
-    const preDropX = preDropSvg.getAttribute('x')
-    const preDropY = preDropSvg.getAttribute('y')
-    // Sanity: these really are the pre-drop values, not both coincidentally 0.
-    expect(preDropX).not.toBe('999')
-
-    // The EXACT sequence commitMove's drop-into-container branch uses:
-    // reparentToyDom, then applyMoveDom — both inside ONE envelope, DOM
-    // mutations happening in this order, before any Yjs translation runs.
-    const records = await runInEnvelope(layerEl, () => {
-      Toys.reparentToyDom(layerEl, 'die1', 'tray1')
-      const movedEl = layerEl.querySelector('[data-id="die1"]')
-      Toys.applyMoveDom(movedEl, 999, 999) // moved to a deliberately obvious new position
-    })
-    commitEnvelope(ydoc, records, { origin: DERIVED_ORIGIN, authorId: 'tt-p-v1-01-bob' })
-
-    // The live DOM now shows the NEW position (999ish, minus half-width/height).
-    const postDropSvg = layerEl.querySelector('[data-id="die1"] svg')
-    expect(postDropSvg.getAttribute('x')).not.toBe(preDropX)
-
-    // But the snapshot — captured from the Yjs tree at the moment of the
-    // FIRST record (the removal), before this commit has touched Yjs at
-    // all — holds the ORIGINAL pre-drop position, not the new one.
-    const stored = getRevertSnapshots(ydoc).get('tt-p-v1-01-bob')
-    const snapshottedSvg = stored.content.children.find(c => c.nodeName === 'svg')
-    expect(snapshottedSvg.attributes.x).toBe(preDropX)
-    expect(snapshottedSvg.attributes.y).toBe(preDropY)
-  })
-})

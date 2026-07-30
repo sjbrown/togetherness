@@ -1,18 +1,18 @@
 /**
  * tests/unit/contents-change-cascade.test.js
  *
- * Phase 5.4 — derived contents_change: a local transaction that touches
- * something inside a container's .tt_contents (a die rolling, a toy
- * being reparented in/out) recomputes that container's contents_change_handler.
+ * Derived contents_change: a local transaction that touches something
+ * inside a container's .tt_contents (a die rolling, a toy being reparented
+ * in/out) recomputes that container's contents_change_handler.
  *
- * toys.js exports the primitives (findAncestorContainerIds, runContentsChangeHandler);
- * the actual dispatch + cascade guard live in app.js's onToysChanged, which
- * has no unit-test coverage of its own (app.js is exercised via Playwright
- * e2e, not vitest — see the project's existing convention). wireCascade()
- * below is a small, deliberately literal re-implementation of that
- * dispatch logic, built from the same exported primitives, so these tests
- * exercise the real integration surface rather than only the pieces in
- * isolation.
+ * toys.js exports the primitive tested here (findAncestorContainerIds) —
+ * chain resolution from a changed Y node up to its enclosing container(s).
+ * The actual dispatch + cascade (app.js's onToysChanged calling
+ * runContentsChangeCascadeSync) runs synchronously and is exercised as part
+ * of the real integration surface in tray.test.js's "the DOM-based cascade
+ * itself" tests and in placement-reaction-atomic.test.js; app.js itself has
+ * no unit-test coverage of its own (exercised via Playwright e2e, not
+ * vitest — see the project's existing convention).
  */
 
 // @vitest-environment jsdom
@@ -24,10 +24,9 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as Toys from '../../src/toys.js'
 import {
   addToy, reparentToy, findToy, render,
-  findAncestorContainerIds, runContentsChangeHandler,
+  findAncestorContainerIds,
   clearYNodeMap, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
-import { runToyHandler } from '../../src/envelope.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
@@ -73,39 +72,6 @@ function stubToyFetch() {
 
 async function place(ydoc, yToys, toyType, id) {
   await addToy(ydoc, yToys, { id, toyType, x: 0, y: 0, color: '#fff' })
-}
-
-// A minimal, literal re-implementation of app.js's onToysChanged dispatch
-// (see the module doc above) — built from the same exported toys.js
-// primitives the real integration uses, including the reentrancy guard.
-function wireCascade(ydoc, yToys, layerEl, { onDispatch } = {}) {
-  let dispatching = false
-
-  yToys.observeDeep((events, transaction) => {
-    if (!transaction.local || dispatching) return
-    render(yToys, layerEl) // must happen before dispatch — see app.js's onToysChanged
-    const depthById = new Map()
-    for (const event of events) {
-      const chain = findAncestorContainerIds(event.target)
-      chain.forEach((trayId, i) => {
-        const depth = chain.length - i
-        if (depth > (depthById.get(trayId) ?? -1)) depthById.set(trayId, depth)
-      })
-    }
-    if (!depthById.size) return
-    const trayIds = [...depthById.keys()].sort((a, b) => depthById.get(b) - depthById.get(a))
-
-    dispatching = true
-    ;(async () => {
-      for (const trayId of trayIds) {
-        const trayEl = layerEl.querySelector(`[data-id="${trayId}"]`)
-        const yTray  = findToy(yToys, trayId)
-        if (!trayEl || !yTray) continue
-        onDispatch?.(trayId)
-        await runContentsChangeHandler(ydoc, yToys, layerEl, trayEl, yTray.getAttribute('data-toy-type'))
-      }
-    })().finally(() => { dispatching = false })
-  })
 }
 
 beforeEach(() => {
@@ -166,154 +132,5 @@ describe('findAncestorContainerIds', () => {
     const tspanResult = ownResult(toyEl)
     const yTspanText = Toys.yNodeFor(tspanResult.firstChild) ?? Toys.yNodeFor(tspanResult)
     expect(findAncestorContainerIds(yTspanText)).toEqual([])
-  })
-})
-
-describe('the full cascade — die-in-tray roll updates the sum exactly once', () => {
-  test('rolling a die inside a tray updates the tray\u2019s sum tspan to match', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await place(ydoc, yToys, 'tray_sum', 'tray1')
-    await place(ydoc, yToys, 'dice_d6', 'die1')
-    reparentToy(ydoc, yToys, 'die1', 'tray1')
-
-    const layerEl = renderLayer(yToys)
-    await new Promise(r => setTimeout(r, 0)) // flush script activation
-
-    const dispatchLog = []
-    wireCascade(ydoc, yToys, layerEl, { onDispatch: (id) => dispatchLog.push(id) })
-
-    const dieEl = layerEl.querySelector('[data-id="die1"]')
-    let rolledValue
-    await runToyHandler(ydoc, yToys, layerEl, dieEl, () => {
-      rolledValue = globalThis.dice.roll_handler(dieEl, 6)
-    })
-    await new Promise(r => setTimeout(r, 0)) // flush the cascade's async dispatch
-
-    const trayEl = layerEl.querySelector('[data-id="tray1"]')
-    expect(ownResult(trayEl).textContent).toBe(String(rolledValue))
-    expect(dispatchLog).toEqual(['tray1']) // exactly once
-  })
-
-  test('rolling a die that is NOT in any tray triggers no dispatch at all', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await place(ydoc, yToys, 'dice_d6', 'die1')
-    const layerEl = renderLayer(yToys)
-    await new Promise(r => setTimeout(r, 0))
-
-    const dispatchLog = []
-    wireCascade(ydoc, yToys, layerEl, { onDispatch: (id) => dispatchLog.push(id) })
-
-    const dieEl = layerEl.querySelector('[data-id="die1"]')
-    await runToyHandler(ydoc, yToys, layerEl, dieEl, () => {
-      globalThis.dice.roll_handler(dieEl, 6)
-    })
-    await new Promise(r => setTimeout(r, 0))
-
-    expect(dispatchLog).toEqual([])
-  })
-
-  test('an empty tray recomputes to 0 when its one die is removed (reparented back out)', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await place(ydoc, yToys, 'tray_sum', 'tray1')
-    await place(ydoc, yToys, 'dice_d6', 'die1')
-    reparentToy(ydoc, yToys, 'die1', 'tray1')
-
-    const layerEl = renderLayer(yToys)
-    await new Promise(r => setTimeout(r, 0))
-    wireCascade(ydoc, yToys, layerEl)
-
-    // seed a nonzero sum first, so 0 afterward is a meaningful assertion
-    const dieEl = layerEl.querySelector('[data-id="die1"]')
-    await runToyHandler(ydoc, yToys, layerEl, dieEl, () => {
-      globalThis.dice.roll_handler(dieEl, 6)
-    })
-    await new Promise(r => setTimeout(r, 0))
-    const trayEl1 = layerEl.querySelector('[data-id="tray1"]')
-    expect(ownResult(trayEl1).textContent).not.toBe('0')
-
-    reparentToy(ydoc, yToys, 'die1', null) // pull it back out to the top level
-    await new Promise(r => setTimeout(r, 0))
-
-    const trayEl2 = layerEl.querySelector('[data-id="tray1"]')
-    expect(ownResult(trayEl2).textContent).toBe('0')
-  })
-
-  test('a die inside a doubly-nested tray updates both trays, inner before outer, each exactly once', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await place(ydoc, yToys, 'tray_sum', 'outer')
-    await place(ydoc, yToys, 'tray_sum', 'inner')
-    await place(ydoc, yToys, 'dice_d6', 'die1')
-    reparentToy(ydoc, yToys, 'inner', 'outer')
-    reparentToy(ydoc, yToys, 'die1', 'inner')
-
-    const layerEl = renderLayer(yToys)
-    await new Promise(r => setTimeout(r, 0))
-
-    const dispatchLog = []
-    wireCascade(ydoc, yToys, layerEl, { onDispatch: (id) => dispatchLog.push(id) })
-
-    const dieEl = layerEl.querySelector('[data-id="die1"]')
-    let rolledValue
-    await runToyHandler(ydoc, yToys, layerEl, dieEl, () => {
-      rolledValue = globalThis.dice.roll_handler(dieEl, 6)
-    })
-    await new Promise(r => setTimeout(r, 0))
-    await new Promise(r => setTimeout(r, 0)) // second tick: inner's commit re-fires the observer for outer
-
-    expect(dispatchLog).toEqual(['inner', 'outer']) // innermost first, each exactly once
-
-    const outerEl = layerEl.querySelector('[data-id="outer"]')
-    const innerEl = layerEl.querySelector('[data-id="inner"]') // nested — data-id works at any depth now
-    expect(ownResult(innerEl).textContent).toBe(String(rolledValue))
-    // outer's own sum = the inner tray's displayed value (its only content)
-    expect(ownResult(outerEl).textContent).toBe(String(rolledValue))
-  })
-
-  test('dropping a whole tray (already summing to 5) into a tray already summing to 3 updates the target to 8', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await place(ydoc, yToys, 'tray_sum', 'trayA')
-    await place(ydoc, yToys, 'dice_d6',  'dieA')
-    await place(ydoc, yToys, 'tray_sum', 'trayB')
-    await place(ydoc, yToys, 'dice_d6',  'dieB')
-
-    const layerEl = renderLayer(yToys)
-    await new Promise(r => setTimeout(r, 0))
-    wireCascade(ydoc, yToys, layerEl)
-
-    // Set up trayA = 3, trayB = 5, each from its own single die — each tray
-    // is a separate, independent top-level tray at this point.
-    reparentToy(ydoc, yToys, 'dieA', 'trayA')
-    await new Promise(r => setTimeout(r, 0))
-    const dieAEl = layerEl.querySelector('[data-id="dieA"]')
-    await runToyHandler(ydoc, yToys, layerEl, dieAEl, () => {
-      dieAEl.querySelector('tspan').textContent = '3'
-    })
-    await new Promise(r => setTimeout(r, 0))
-
-    reparentToy(ydoc, yToys, 'dieB', 'trayB')
-    await new Promise(r => setTimeout(r, 0))
-    const dieBEl = layerEl.querySelector('[data-id="dieB"]')
-    await runToyHandler(ydoc, yToys, layerEl, dieBEl, () => {
-      dieBEl.querySelector('tspan').textContent = '5'
-    })
-    await new Promise(r => setTimeout(r, 0))
-
-    expect(ownResult(layerEl.querySelector('[data-id="trayA"]')).textContent).toBe('3')
-    expect(ownResult(layerEl.querySelector('[data-id="trayB"]')).textContent).toBe('5')
-
-    // Now drop trayB (as a whole, with its die and its own displayed sum)
-    // into trayA — this is a single reparentToy call, exactly what
-    // app.js's commitMove issues when a tray is dragged onto another tray.
-    reparentToy(ydoc, yToys, 'trayB', 'trayA')
-    await new Promise(r => setTimeout(r, 0))
-    await new Promise(r => setTimeout(r, 0))
-    await new Promise(r => setTimeout(r, 0))
-
-    expect(ownResult(layerEl.querySelector('[data-id="trayA"]')).textContent).toBe('8')
   })
 })

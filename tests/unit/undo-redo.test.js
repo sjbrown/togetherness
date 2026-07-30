@@ -6,14 +6,14 @@
 // app.js uses it: tag a label, run the action's transaction, then undo/redo.
 // The transaction origins here match what app.js / envelope.js actually use:
 //   - null            → structural writes (add/move/delete/reparent)
-//   - ENVELOPE_ORIGIN → a user-intent toy handler (a die roll)         [tracked]
-//   - DERIVED_ORIGIN  → a tray recomputing its sum                     [untracked]
+//   - ENVELOPE_ORIGIN → a user-intent toy handler (a die roll), or a tray
+//                        recomputing its sum in reaction to it            [tracked]
 //   - LIFECYCLE_ORIGIN→ a toy's placement-time initialize()            [untracked]
 
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import * as UndoRedo from '../../src/undo_redo.js'
-import { ENVELOPE_ORIGIN, DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from '../../src/envelope.js'
+import { ENVELOPE_ORIGIN, LIFECYCLE_ORIGIN } from '../../src/envelope.js'
 import { addToySync, findToy, reparentToy } from '../../src/toys.js'
 
 const TRAY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
@@ -138,7 +138,7 @@ describe('undo_redo — rolls are undoable', () => {
     placeDie(ydoc, yToys, 'die1')
     UndoRedo.clear()   // isolate: forget the placement, keep only the roll
 
-    // A roll commits under ENVELOPE_ORIGIN, like invokeMenuAction → commitEnvelope.
+    // A roll commits under ENVELOPE_ORIGIN, like invokeMenuActionSync → commitEnvelope.
     // (The real handler rewrites the tspan text; a tracked attribute write
     // exercises the same origin-tracking path this test cares about.)
     UndoRedo.tag('roll die1')
@@ -151,8 +151,8 @@ describe('undo_redo — rolls are undoable', () => {
   })
 })
 
-describe('undo_redo — derived and lifecycle writes stay off the stack', () => {
-  test('DERIVED_ORIGIN (tray sum recompute) is never its own undo step', () => {
+describe('undo_redo — lifecycle writes stay off the stack', () => {
+  test('a derived write (tray sum recompute, ENVELOPE_ORIGIN) is tracked like any other envelope commit', () => {
     const { ydoc, yToys } = freshDoc()
     placeTray(ydoc, yToys, 'tray1')
     UndoRedo.clear()   // isolate from the placement
@@ -162,14 +162,19 @@ describe('undo_redo — derived and lifecycle writes stay off the stack', () => 
     ydoc.transact(() => { findToy(yToys, 'tray1').setAttribute('x', '50') })
     expect(UndoRedo.canUndo()).toBe(true)
 
-    // A derived recompute (untracked) must NOT push a new step.
-    ydoc.transact(() => { findToy(yToys, 'tray1').setAttribute('data-derived', 'yes') }, DERIVED_ORIGIN)
+    // A derived recompute reached from the observer (not folded into its
+    // triggering transaction) commits under ENVELOPE_ORIGIN like any other
+    // envelope commit — it is not a separate class of thing, so it pushes
+    // its own tracked step rather than riding on the move above.
+    UndoRedo.tag('tray1 recomputed its sum')
+    ydoc.transact(() => { findToy(yToys, 'tray1').setAttribute('data-derived', 'yes') }, ENVELOPE_ORIGIN)
 
-    // Undo skips the derived write entirely and reverses the tracked move;
-    // exactly one tracked step existed, so nothing is left to undo after.
+    UndoRedo.undo()
+    expect(findToy(yToys, 'tray1').getAttribute('data-derived') ?? null).toBeNull()
+    expect(findToy(yToys, 'tray1').getAttribute('x')).toBe('50') // the move is still there
+
     UndoRedo.undo()
     expect(findToy(yToys, 'tray1').getAttribute('x')).not.toBe('50')
-    expect(UndoRedo.canUndo()).toBe(false)
   })
 
   test('LIFECYCLE_ORIGIN (initialize) is not tracked', () => {

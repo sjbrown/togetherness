@@ -26,11 +26,7 @@ import * as BounPos                               from './boun_pos.js';
 import { TOOLS as TOY_TOOLS, addToy, findToy, newToyId,
          getMenuActions, activateToyScripts,
          findDropTarget } from './toys.js';
-import { DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js'
-import { getReactionLog, scanForConflicts } from './conflict.js';
-import { resolveConflictWinner, revertBundle, needsEscalation } from './escalation.js';
-import { isRevertsEnabled, setRevertsEnabled } from './snapshot.js';
-import { tablesAPI as tables } from './tables.js';
+import { ENVELOPE_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js'
 import { SELECT_TOOL }                            from './tools-schema.js';
 import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
@@ -60,7 +56,7 @@ const DEFAULT_BACKGROUNDS = [
 
 // ── Internal app state ────────────────────────────────────────────────────────
 let _ydoc, _yMeta, _yToys, _yDrawing,
-    _yBounPos, _yReactionLog,
+    _yBounPos,
     _awareness, _provider;
 
 // Layers — the canonical LayerAPI dispatch table, built once at boot() once
@@ -309,7 +305,6 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, svgElem
   _yToys          = ydoc.getXmlFragment('toys');
   _yDrawing       = ydoc.getXmlFragment('drawing');
   _yBounPos       = ydoc.getXmlFragment('boundaries');
-  _yReactionLog   = getReactionLog(ydoc);
   _awareness  = awareness;
   _provider   = provider;
   _myId       = myId;
@@ -354,7 +349,6 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, svgElem
   _yToys.observe(onDocChanged);
   _yDrawing.observe(onDocChanged);
   _yBounPos.observe(onDocChanged);
-  _yReactionLog.observe(onReactionLogChanged);
   _yMeta.observe(onMetaChanged);
   _awareness.on('change', onPresenceChanged);
 
@@ -505,9 +499,6 @@ function onBounPosChanged(events, transaction) {
 // Suppresses the observer-driven cascade in onToysChanged while a cascade is
 // already being handled for the current change.
 let _dispatchingContentsChange = false;
-// Guards dedupToys's own cleanup transaction below from re-triggering
-// itself when onToysChanged fires again for that transaction.
-let _dedupingToys = false;
 
 function onToysChanged(events, transaction) {
   if (!transaction.local) { // filters out our own ops
@@ -536,35 +527,6 @@ function onToysChanged(events, transaction) {
       });
     }
   }
-  // Duplicate data-toy-id defense — see toys.js's dedupToys doc comment
-  // for why this can happen at all even though nothing here is "wrong":
-  // concurrent reparents of the same toy to different destinations, or
-  // concurrent, unsynced escalation.js restorations of the same removed
-  // toy, both produce two legitimate Yjs inserts that nothing rejects —
-  // scanForConflicts never sees it either, since there's no overlapping
-  // touched node, just a duplicated logical identity in two disjoint
-  // locations. Checked before rendering/cascading below, so those reflect
-  // the corrected structure rather than a known-transient duplicate. Runs
-  // on every structural change, local or remote, since either can
-  // introduce one. Guarded against its own re-entrant transaction the
-  // same way the cascade further down guards itself.
-  const hasStructuralChange = events.some(e =>
-    (e.changes?.added?.size || 0) + (e.changes?.deleted?.size || 0) > 0
-  );
-  if (hasStructuralChange && !_dedupingToys) {
-    _dedupingToys = true;
-    try {
-      let deduped = [];
-      _ydoc.transact(() => { deduped = Toys.dedupToys(_ydoc, _yToys); });
-      if (deduped.length) {
-        UI.toast(`Resolved a duplicate toy`, 'error');
-        App.addLog(`deduplicated ${deduped.join(', ')}`, 'del');
-      }
-    } finally {
-      _dedupingToys = false;
-    }
-  }
-
   // renderDoc() runs *before* the dispatchContentsChangeCascade below.
   // contents_change_handler reads the *DOM*, so the toys layer must
   // already reflect this transaction's just-committed change (eg a mutation
@@ -577,18 +539,12 @@ function onToysChanged(events, transaction) {
   // Skipped for:
   //  - remote-origin changes: the *originator* computes; the result syncs
   //    as data (a peer never recomputes in reaction to a remote change).
-  //  - DERIVED/LIFECYCLE origins: these ARE cascade output (or a toy's
-  //    one-time initialize), never independent intent, so they must not
-  //    trigger another cascade. Gating on origin (not just the
-  //    _dispatchingContentsChange flag) keeps this correct now that the
-  //    cascade runs synchronously: a DERIVED commit made from an observer
-  //    lands in its own transaction whose observer fires AFTER the flag has
-  //    already been cleared, so the flag alone would no longer catch it.
+  //  - LIFECYCLE_ORIGIN: a toy's one-time initialize() side effects, never
+  //    independent intent, so it must not trigger another cascade.
   //  - _dispatchingContentsChange: the drop-into-container path (commitMove)
   //    folds its own reaction into the placement transaction and sets this
   //    flag so the observer doesn't recompute it a second time.
-  const isCascadeResult =
-    transaction.origin === DERIVED_ORIGIN || transaction.origin === LIFECYCLE_ORIGIN;
+  const isCascadeResult = transaction.origin === LIFECYCLE_ORIGIN;
   if (transaction.local && !isCascadeResult && !_dispatchingContentsChange) {
     dispatchContentsChangeCascade(events);
   }
@@ -623,120 +579,6 @@ function dispatchContentsChangeCascade(events) {
     console.error('[app] contents_change_handler dispatch failed', err);
   } finally {
     _dispatchingContentsChange = false;
-  }
-}
-
-// TODO #11 step 6: the blocking Acknowledge dialog (UI.showBranchDialog,
-// ui.js — styled to match the aside panel, per the design discussion this
-// grew out of). Shown to the losing peer's own client after a successful
-// fork (onReactionLogChanged, below) — everyone else just sees the
-// ordinary revert toast.
-function showBranchAcknowledgement(forkedTableId) {
-  UI.showBranchDialog(forkedTableId);
-  App.addLog(`forked to ${forkedTableId}`, 'del');
-}
-
-// Post-merge overlap scan.
-// _yReactionLog gains a new entry every time a qualifying envelope commits
-// whether ours (this transaction) or a remote peer's.
-// Then this observer fires, scanning the rest of the log for any bundles with:
-//  - causally-concurrent author
-//  - touched-set overlaps
-//
-// Every peer that sees a conflicting pair resolves it the same way,
-// independently — not just the loser, not just whoever detects it first.
-// resolveConflictWinner/revertBundle are pure functions of synced data, so
-// every peer computes the identical outcome and revertBundle is idempotent
-// (see escalation.js), so redundant calls from multiple peers (or from the
-// same peer re-scanning later) are safe.
-//
-// No _dispatchingContentsChange guard here, deliberately: unlike
-// invokeMenuActionSync/commitMove, revertBundle runs no cascade of its own
-// — it's a raw structural Yjs write, the same category as undo/redo or
-// import. onToysChanged's own fallback (dedupToys, then the
-// observer-driven contents_change_handler cascade) is what SHOULD run
-// after it: dedupToys in particular matters here, since restoration is
-// exactly the kind of insert that can produce the "Making inserts
-// idempotent" duplicate race (concurrency_branching.md) this fallback
-// exists to clean up.
-function onReactionLogChanged(event, transaction) {
-  const added = [];
-  event.changes.added.forEach(item => {
-    item.content.getContent().forEach(bundle => added.push(bundle));
-  });
-  if (!added.length) return;
-
-  const all = _yReactionLog.toArray();
-  // A pair where BOTH sides happen to be newly-added in this same observer
-  // call gets found from both directions (scanForConflicts(all, bundle)
-  // finds `other`; scanForConflicts(all, other) later finds `bundle` right
-  // back) — resolve each distinct loser at most once per call.
-  const resolvedThisPass = new Set();
-  for (const bundle of added) {
-    const conflicts = scanForConflicts(all, bundle);
-    for (const other of conflicts) {
-      const msg = `conflict detected: ${Object.keys(bundle.touched).length + Object.keys(other.touched).length} touched node(s) written concurrently by peers ${bundle.clientID} and ${other.clientID}`;
-      console.warn('[conflict]', msg, { bundle, other });
-      App.addLog(msg, 'remote');
-
-      const resolution = resolveConflictWinner(_ydoc, bundle, other);
-      if (!resolution) {
-        // Missing or duplicate authorId — can't resolve who wins. Stays
-        // detected-but-unresolved; see conflict.js's recordReactionBundle
-        // and escalation.js's resolveConflictWinner for when this happens.
-        continue;
-      }
-      const { loser } = resolution;
-      const loserKey = `${loser.clientID}:${loser.clock}`;
-      if (resolvedThisPass.has(loserKey)) continue;
-      resolvedThisPass.add(loserKey);
-
-      // needsEscalation must be checked BEFORE revertBundle runs, not
-      // after — its own doc comment explains why: revertBundle's
-      // restoration consumes the matching snapshot on success, so asking
-      // afterward would see "no snapshot" and report a false positive for
-      // a case that actually already succeeded.
-      const escalationNeeded = needsEscalation(_ydoc, loser);
-      const iAmTheLoser = loser.authorId === _myId;
-
-      // Only the losing peer's OWN client can meaningfully fork: a branch
-      // has to land in ITS OWN IndexedDB to ever be findable from
-      // home.html — a fork Alice performed on Bob's behalf would sit in
-      // Alice's own storage, useless to Bob (see concurrency_branching.md,
-      // "Making inserts idempotent" and the fork-ownership discussion this
-      // grew out of). Every OTHER peer, including third parties who
-      // aren't Bob and aren't the winner, still just reverts and moves on.
-      //
-      // Started here, before revertBundle, not awaited yet: forkLiveDoc's
-      // own first action is a synchronous Y.encodeStateAsUpdate(_ydoc)
-      // call, so starting it now — before revertBundle's delete touches
-      // _ydoc — captures the pre-revert state as a real, frozen snapshot,
-      // the same reasoning as forkLiveDoc's own doc comment, just applied
-      // at this call site.
-      const forkPromise = (escalationNeeded && iAmTheLoser)
-        ? tables.forkLiveDoc(_ydoc, _myId)
-        : null;
-
-      _ydoc.transact(() => { revertBundle(_ydoc, loser); });
-
-      if (forkPromise) {
-        forkPromise.then(forkedTableId => {
-          tables.touchTableRecord(forkedTableId, { name: `Branch from ${_tableId}` });
-          showBranchAcknowledgement(forkedTableId);
-        }).catch(err => {
-          console.error('[escalation] fork failed', err);
-          UI.toast('Could not preserve your changes — see console', 'error');
-        });
-      } else {
-        UI.toast(
-          iAmTheLoser
-            ? 'A concurrent change conflicted with yours — yours was reverted'
-            : 'Resolved a conflict between two players',
-          'error'
-        );
-        App.addLog(`reverted conflicting commit from ${loser.authorId ?? loser.clientID}`, 'del');
-      }
-    }
   }
 }
 
@@ -911,7 +753,6 @@ const App = {
   },
   getViewScale:    () => Canvas.getView().scale,
   isOffline:       () => _offline,
-  isRevertsEnabled: () => isRevertsEnabled(),
 
   // ── Tool mutations (canvas.js calls back into ui.js via these) ────────────
   onToolChanged:          (t)   => UI.onToolChanged(t),
@@ -1440,7 +1281,7 @@ const App = {
             if (containerGeom) {
               Toys.applyMoveDom(movedEl, rx - containerGeom.x, ry - containerGeom.y);
             }
-          }, { origin: DERIVED_ORIGIN, authorId: _myId });
+          }, { origin: ENVELOPE_ORIGIN, authorId: _myId });
         });
       } catch (err) {
         // a malformed container asset can reach here and throw.
@@ -1723,8 +1564,6 @@ const App = {
     if (v) _provider?.disconnect();
     else   _provider?.connect();
   },
-  // Experimental kill switch - see snapshot.js
-  setRevertsEnabled: (v) => setRevertsEnabled(v),
   // Undo/redo delegate to undo_redo.js (Y.UndoManager). History-log and
   // toast side effects are wired via the onApply/onEmpty callbacks in boot().
   undo: () => UndoRedo.undo(),

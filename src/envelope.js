@@ -9,21 +9,21 @@
  * mirrored (live) DOM of the whole toys layer.
  *
  * But the Yjs tree, not the DOM, is the canonical document, so how do we
- * square this? Answer: runInEnvelope lets a handler mutate the DOM as if
- * it owned it, then translates whatever it did back into a single Yjs
+ * square this? Answer: runInEnvelopeSync lets a handler mutate the DOM as
+ * if it owned it, then translates whatever it did back into a single Yjs
  * transaction:
  *
- *   const records = await runInEnvelope(toyEl, () => handler.run(toyEl))
+ *   const records = runInEnvelopeSync(toyEl, () => handler.run(toyEl))
  *   commitEnvelope(ydoc, records)
  *
  * or, as one call:
  *
- *   await runToyHandler(ydoc, yToys, layerEl, toyEl, () => handler.run(toyEl))
+ *   runToyHandlerSync(ydoc, yToys, layerEl, toyEl, () => handler.run(toyEl))
  *
  * Neither form re-renders. In the app, rendering is the Yjs observer's job
  * — it already runs synchronously inside commitEnvelope's transaction and
  * rewires click handling that a bare re-render here would miss (see the
- * note above runToyHandler). Callers with no such observer can render
+ * note above runToyHandlerSync). Callers with no such observer can render
  * explicitly via renderAfterCommit.
  *
  * Benefits to this design:
@@ -31,25 +31,25 @@
      DOM code),
    - gets geometry right for free (getBBox etc. all keep working)
    - doesn't need escape-proofing like a proxy wrapper
+ *
+ * Handlers are synchronous only — no await, no setTimeout, no fetch, no
+ * promise. runInEnvelopeSync throws if a handler returns a thenable.
  */
 
 import * as Y from 'yjs'
 import { yNodeFor, registerYNode, render as renderToysLayer } from './toys.js'
 import { domToY } from './storage.js'
-import { ENVELOPE_ORIGIN, DERIVED_ORIGIN, LIFECYCLE_ORIGIN } from './origins.js'
-import { touchedSetFromRecords, recordReactionBundle } from './conflict.js'
-import { captureRevertSnapshot, recordRevertSnapshot } from './snapshot.js'
+import { ENVELOPE_ORIGIN, LIFECYCLE_ORIGIN } from './origins.js'
 
 const XLINK_NS = 'http://www.w3.org/1999/xlink'
 
 // ── Yjs transaction origins ──────────────────────────────────
 //
 // Every envelope commit tags its Yjs transaction with an origin so the
-// UndoManager can decide what belongs on the undo stack, and conflict.js
-// can decide whether to record a touched-set bundle.
-// TODO: Re-exported here since most callers already import
-// DERIVED_ORIGIN / LIFECYCLE_ORIGIN from this module.
-export { ENVELOPE_ORIGIN, DERIVED_ORIGIN, LIFECYCLE_ORIGIN }
+// UndoManager can decide what belongs on the undo stack.
+// Re-exported here since most callers already import LIFECYCLE_ORIGIN from
+// this module.
+export { ENVELOPE_ORIGIN, LIFECYCLE_ORIGIN }
 
 const MUTATION_OPTS = {
   attributes:            true,
@@ -62,15 +62,6 @@ const MUTATION_OPTS = {
 
 // ── raw mutation capture ──────────────────────────────────────────────
 
-// Tracks whether any envelope is currently open. Not yet consumed anywhere:
-// the intent is for app.js's toys-layer observer to defer a remote-origin
-// render while a local async handler's envelope is still open, rather than
-// tearing the DOM out from under it mid-handler. TODO: wire that check in.
-let _openCount = 0
-export function isEnvelopeOpen() {
-  return _openCount > 0
-}
-
 /**
  * Run fn() while watching the toys layer for DOM mutations, then return the
  * raw MutationRecord[] produced. No Yjs translation happens here.
@@ -79,59 +70,17 @@ export function isEnvelopeOpen() {
  * toyEl, so a handler reaching anywhere else in the layer (a die grabbing
  * a sibling die, a tray reaching into a contained toy) is still captured.
  *
- * Async note:
- * the async contract lives here: if fn() returns a Promise, it's awaited
- * before the observer is disconnected, so mutations made after later
- * `await`s inside the handler are still captured. Records are accumulated
- * via the observer callback (not just takeRecords()), otherwise a pending
- * microtask callback would silently drain the queue between awaits.
- *
- * TODO: Let's walk that back. I've decided async "user" code is a bad idea.
- *       Disallow async code in fn.
- *
+ * Synchronous handlers only: if fn returns a thenable we throw rather than
+ * silently drop the mutations it would make after its first await — a loud
+ * failure, not a silent fallback.
  */
-export async function runInEnvelope(toyEl, fn) {
+export function runInEnvelopeSync(toyEl, fn) {
   // scopeEl falls back to toyEl's parent, then toyEl itself, to support
   // e.g. a detached toy in a unit test
   const scopeEl = toyEl.closest?.('#toys-layer') ?? toyEl.parentNode ?? toyEl
   const records = []
   const observer = new MutationObserver(muts => records.push(...muts))
   observer.observe(scopeEl, MUTATION_OPTS)
-  _openCount++
-  try {
-    const result = fn()
-    if (result && typeof result.then === 'function') await result
-  } finally {
-    records.push(...observer.takeRecords())
-    observer.disconnect()
-    _openCount--
-  }
-  return records
-}
-
-/**
- * Synchronous sibling of runInEnvelope: run fn() while watching the toys
- * layer, then return the raw MutationRecord[] with no Promise in between.
- *
- * runInEnvelope is async only so it can await an async handler; but its body
- * already runs synchronously for a synchronous fn (the records are gathered
- * before it returns), so the only thing the async wrapper adds for a sync
- * handler is a microtask before the caller sees the records. That microtask
- * is exactly what breaks nested-transaction collapse: a reaction committed a
- * microtask later lands in its OWN Yjs transaction rather than folding into
- * the one that triggered it. This variant keeps everything on the current
- * tick so commitEnvelope's transact can nest into an already-open one.
- *
- * Synchronous handlers only: if fn returns a thenable we throw rather than
- * silently drop the mutations it would make after its first await — a loud
- * failure, not a silent fallback.
- */
-export function runInEnvelopeSync(toyEl, fn) {
-  const scopeEl = toyEl.closest?.('#toys-layer') ?? toyEl.parentNode ?? toyEl
-  const records = []
-  const observer = new MutationObserver(muts => records.push(...muts))
-  observer.observe(scopeEl, MUTATION_OPTS)
-  _openCount++
   try {
     const result = fn()
     if (result && typeof result.then === 'function') {
@@ -140,7 +89,6 @@ export function runInEnvelopeSync(toyEl, fn) {
   } finally {
     records.push(...observer.takeRecords())
     observer.disconnect()
-    _openCount--
   }
   return records
 }
@@ -232,7 +180,7 @@ function yInsertIndex(yParent, domNode) {
   return yParent.length
 }
 
-function applyChildListRecord(record, snapshots) {
+function applyChildListRecord(record) {
   const yParent = yNodeFor(record.target)
   if (!yParent) return false
 
@@ -241,16 +189,6 @@ function applyChildListRecord(record, snapshots) {
   for (const domNode of record.removedNodes) {
     const yNode = yNodeFor(domNode)
     if (!yNode) continue
-    // Capture BEFORE delete — this project's docs use Yjs's default
-    // gc:true, which strips a deleted item's content synchronously, in
-    // this same transaction, so capturing after would find nothing (see
-    // snapshot.js). Every removal of a pre-existing node gets captured,
-    // even one that's about to be re-added elsewhere in this same commit
-    // (a reparent) — that's not wasted, it's exactly the case this
-    // exists for: the pre-move snapshot IS what a later revert needs to
-    // restore. "Last one wins" if a single commit removes more than one
-    // pre-existing node — see snapshot.js's one-slot-per-peer rule.
-    snapshots.push(captureRevertSnapshot(yNode, yParent))
     const idx = yParent.toArray().indexOf(yNode)
     if (idx !== -1) yParent.delete(idx, 1)
   }
@@ -271,60 +209,29 @@ function applyChildListRecord(record, snapshots) {
   return true
 }
 
-function applyRecord(record, snapshots) {
+function applyRecord(record) {
   if      (record.type === 'attributes')    return applyAttributeRecord(record)
   else if (record.type === 'characterData') return applyCharacterDataRecord(record)
-  else if (record.type === 'childList')     return applyChildListRecord(record, snapshots)
+  else if (record.type === 'childList')     return applyChildListRecord(record)
   return false
 }
 
 // ── commit ───────────────────────────────────────────────────────────────
 
 /**
- * Translate a MutationRecord[] (as produced by runInEnvelope) into a single
- * Yjs transaction tagged with an origin.
+ * Translate a MutationRecord[] (as produced by runInEnvelopeSync) into a
+ * single Yjs transaction tagged with an origin.
  *
- * Also builds this commit's touched-set from the records and records it as
- * a bundle — inside this same transaction, so the bundle
- * is atomic with the commit it describes. opts.authorId (the committing
- * peer's own persistent user.js localId — see conflict.js's
- * recordReactionBundle) is stamped onto that bundle; callers that have an
- * identity to hand should pass it, since it's what lets any peer resolve
- * this bundle's author for authority ordering later.
- *
- * Also captures, before deleting it, the full content of any pre-existing
- * node this commit removes — a reparent's "remove from the old parent"
- * half, a delete, anything a childList record's removedNodes touches —
- * and records the most recent such capture into opts.authorId's one
- * revert-snapshot slot (see snapshot.js). This is what lets a later
- * revert (escalation.js) restore a losing commit's own removed content,
- * not just delete its insertions.
- *
- * Returns { applied, bundle } — applied is the record count; bundle is the
- * recorded bundle, or null if nothing was actually touched.
+ * Returns { applied } — applied is the record count.
  */
 export function commitEnvelope(ydoc, records, opts = {}) {
-  const origin    = opts.origin ?? ENVELOPE_ORIGIN
-  const snapshots = []
-  let bundle      = null
+  const origin = opts.origin ?? ENVELOPE_ORIGIN
 
-  ydoc.transact((tr) => {
-    for (const record of records) applyRecord(record, snapshots)
-    const touched = touchedSetFromRecords(records)
-    bundle = recordReactionBundle(ydoc, tr, origin, touched, opts.authorId)
-    // The most recently removed pre-existing node this commit touched —
-    // "last one wins" within a single commit, matching snapshot.js's
-    // one-slot-per-peer rule across commits. Recording is keyed to this
-    // exact bundle ({clientID, clock}), so a stale snapshot from some
-    // later, unrelated commit is always distinguishable from the one
-    // that actually protects a given revert.
-    if (bundle && snapshots.length) {
-      const latest = snapshots[snapshots.length - 1]
-      recordRevertSnapshot(ydoc, opts.authorId, { clientID: bundle.clientID, clock: bundle.clock }, latest)
-    }
+  ydoc.transact(() => {
+    for (const record of records) applyRecord(record)
   }, origin)
 
-  return { applied: records.length, bundle }
+  return { applied: records.length }
 }
 
 // ── post-commit render policy ─────────────────────────────────────────
@@ -337,7 +244,7 @@ export function commitEnvelope(ydoc, records, opts = {}) {
 // elements nothing has attached listeners to — the toy would go dead to
 // clicks until some unrelated change happened to re-render it again.
 //
-// So runToyHandler does not render on its own: rendering is owned by
+// So runToyHandlerSync does not render on its own: rendering is owned by
 // whatever is watching the Yjs doc. A caller with no such observer
 // (a standalone script, a test) can still render explicitly — that's
 // what renderAfterCommit is for — but it's opt-in, not automatic.
@@ -346,7 +253,7 @@ export function commitEnvelope(ydoc, records, opts = {}) {
  * Re-render the toys layer from Yjs. Exposed for callers with no Yjs
  * observer of their own driving renders (tests, standalone scripts) — the
  * live app relies on its own toys-layer observer instead; see the note
- * above runToyHandler.
+ * above runToyHandlerSync.
  */
 export function renderAfterCommit(yToys, layerEl) {
   renderToysLayer(yToys, layerEl)
@@ -355,27 +262,14 @@ export function renderAfterCommit(yToys, layerEl) {
 // ── convenience: the whole pipeline in one call ─────────────────────────────
 
 /**
- * Run a toy handler under the envelope and translate its mutations into a
- * single Yjs transaction. Does not render.
- * layerEl is accepted so callers already holding it don't need a separate
- * import just to pass it elsewhere; it's currently unused here.
- *
- * TODO: handlers are enforced synchronus, so not sure why this function
- *       is still here...
- */
-export async function runToyHandler(ydoc, yToys, layerEl, toyEl, fn, opts = {}) {
-  const records = await runInEnvelope(toyEl, fn)
-  return commitEnvelope(ydoc, records, opts)
-}
-
-/**
- * Synchronous sibling of runToyHandler. Same contract, no Promise: run a
- * synchronous handler under the envelope and commit its mutations in one
- * transaction, all on the current tick. commitEnvelope is already
- * synchronous — the only async link was runInEnvelope, replaced here by
- * runInEnvelopeSync — so when this is called from inside an already-open
+ * Run a synchronous toy handler under the envelope and commit its
+ * mutations in one transaction, all on the current tick. commitEnvelope is
+ * already synchronous, so when this is called from inside an already-open
  * ydoc.transact, its commit nests and collapses into that transaction.
  * Throws if fn is async.
+ *
+ * layerEl is accepted so callers already holding it don't need a separate
+ * import just to pass it elsewhere; it's currently unused here.
  */
 export function runToyHandlerSync(ydoc, yToys, layerEl, toyEl, fn, opts = {}) {
   const records = runInEnvelopeSync(toyEl, fn)

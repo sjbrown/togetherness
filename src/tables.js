@@ -272,9 +272,8 @@ async function forkTable(sourceTableId, forkedTableId, forkingUserId) {
  * Takes the update BYTES directly, not a ydoc.
  * Because: crypto.subtle.digest is async, so if this took a live doc
  * and called Y.encodeStateAsUpdate internally, anything mutating that doc
- * during the await (revertBundle, running synchronously right after this
- * in the real call chain) would make the hash reflect one state while a
- * caller's own separate encode of "the same" doc reflects another — silently
+ * during the await would make the hash reflect one state while a caller's
+ * own separate encode of "the same" doc reflects another — silently
  * mismatched. Forcing the caller to capture the update once and hand it in
  * means there's only ever one snapshot in play, no matter what.
  *

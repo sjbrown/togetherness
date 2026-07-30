@@ -6,7 +6,7 @@ import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as Toys from '../../src/toys.js'
 import { addToy, findToy, clearYNodeMap, _clearSvgTextCache,
-         _resetToyScriptState, getMenuActions, invokeMenuAction,
+         _resetToyScriptState, getMenuActions, invokeMenuActionSync,
          getNamespacesForType } from '../../src/toys.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
@@ -223,7 +223,7 @@ describe('full vertical slice — roll via menu \u2192 tspan changes \u2192 enve
     const { yToys } = getToysLayer(ydoc)
     const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
 
-    await invokeMenuAction(ydoc, yToys, layerEl, toyEl, 'd6', 'Turn Up')
+    invokeMenuActionSync(ydoc, yToys, layerEl, toyEl, 'd6', 'Turn Up')
 
     expect(layerEl.querySelector('#t1__tspan_die_value').textContent).toBe('1')
 
@@ -236,7 +236,7 @@ describe('full vertical slice — roll via menu \u2192 tspan changes \u2192 enve
     const { yToys } = getToysLayer(ydoc)
     const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
 
-    await invokeMenuAction(ydoc, yToys, layerEl, toyEl, 'd6', 'Roll')
+    invokeMenuActionSync(ydoc, yToys, layerEl, toyEl, 'd6', 'Roll')
 
     const domValue = layerEl.querySelector('#t1__tspan_die_value').textContent
     expect(Number(domValue)).toBeGreaterThanOrEqual(1)
@@ -251,7 +251,7 @@ describe('full vertical slice — roll via menu \u2192 tspan changes \u2192 enve
     const ydocA = new Y.Doc()
     const { yToys: yToysA } = getToysLayer(ydocA)
     const { layerEl: layerA, toyEl: toyA } = await placeAndActivate(ydocA, yToysA, 't1')
-    await invokeMenuAction(ydocA, yToysA, layerA, toyA, 'd6', 'Turn Up')
+    invokeMenuActionSync(ydocA, yToysA, layerA, toyA, 'd6', 'Turn Up')
     expect(layerA.querySelector('#t1__tspan_die_value').textContent).toBe('1')
 
     // Peer B: a completely separate Y.Doc that only ever receives A's full

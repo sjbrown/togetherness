@@ -7,7 +7,6 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as Toys from '../../src/toys.js'
 import { addToy, clearYNodeMap, _clearSvgTextCache,
          _resetToyScriptState, getNamespacesForType } from '../../src/toys.js'
-import { getReactionLog } from '../../src/conflict.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
@@ -465,14 +464,14 @@ describe('tray_sum — "Roll All" menu action, end to end', () => {
     const dieEl  = layerEl.querySelector('[data-id="die1"]')
 
     // "Roll All" is a real menu action — go through the same
-    // getMenuActions/invokeMenuAction path app.js uses for any menu click,
-    // not a direct globalThis.tray_sum call, so this exercises the actual
-    // wiring (including the applicable() check and the envelope commit).
+    // getMenuActions/invokeMenuActionSync path app.js uses for any menu
+    // click, not a direct globalThis.tray_sum call, so this exercises the
+    // actual wiring (including the applicable() check and the envelope commit).
     const actions = Toys.getMenuActions(trayEl)
     const rollAll = actions.find(a => a.key === 'Roll All')
     expect(rollAll).toBeTruthy()
 
-    await Toys.invokeMenuAction(ydoc, yToys, layerEl, trayEl, rollAll.namespace, rollAll.key)
+    Toys.invokeMenuActionSync(ydoc, yToys, layerEl, trayEl, rollAll.namespace, rollAll.key)
 
     const dieValue = Number(dieEl.querySelector('tspan').textContent)
     expect(dieValue).toBeGreaterThanOrEqual(1)
@@ -495,35 +494,13 @@ describe('tray_sum — "Roll All" menu action, end to end', () => {
     const actions = Toys.getMenuActions(trayEl)
     const rollAll = actions.find(a => a.key === 'Roll All')
 
-    await expect(
-      Toys.invokeMenuAction(ydoc, yToys, layerEl, trayEl, rollAll.namespace, rollAll.key)
-    ).resolves.not.toThrow()
+    expect(() =>
+      Toys.invokeMenuActionSync(ydoc, yToys, layerEl, trayEl, rollAll.namespace, rollAll.key)
+    ).not.toThrow()
   })
 })
 
 describe('tray_sum — "Roll" / "Roll All" via invokeMenuActionSync — folded reaction', () => {
-  test('the authorId param reaches the recorded bundle through the full production call chain', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    Toys.reparentToy(ydoc, yToys, 'die1', 'tray1')
-
-    const layerEl = renderLayer(yToys)
-    await new Promise(r => setTimeout(r, 0))
-    const dieEl = layerEl.querySelector('[data-id="die1"]')
-    const roll  = Toys.getMenuActions(dieEl).find(a => a.eventName === 'die_roll')
-
-    Toys.invokeMenuActionSync(ydoc, yToys, layerEl, dieEl, roll.namespace, roll.key, undefined, 'tt-p-v1-01-aaa')
-
-    // The setup's own reparentToy call above also records a bundle (no
-    // authorId given there) — check the roll's own bundle specifically,
-    // not array length.
-    const bundles = getReactionLog(ydoc).toArray()
-    const rollBundle = bundles[bundles.length - 1]
-    expect(rollBundle.authorId).toBe('tt-p-v1-01-aaa')
-  })
-
   test('a lone die\'s own Roll folds its containing tray\'s recompute into the same transaction', async () => {
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
@@ -550,9 +527,9 @@ describe('tray_sum — "Roll" / "Roll All" via invokeMenuActionSync — folded r
 
     const dieValue = Number(dieEl.querySelector('tspan').textContent)
     const trayEl = layerEl.querySelector('[data-id="tray1"]')
-    // no manual contents_change_handler call needed — the sum is already
-    // current, straight off Yjs, unlike the async invokeMenuAction path
-    // above which requires a separate recompute call.
+    // no manual contents_change_handler call needed — invokeMenuActionSync
+    // folds the tray's own recompute into the roll's transaction, so the
+    // sum is already current, straight off Yjs.
     expect(globalThis.tray.getValue(trayEl)).toBe(String(dieValue))
   })
 

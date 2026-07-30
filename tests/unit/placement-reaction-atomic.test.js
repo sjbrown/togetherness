@@ -1,13 +1,12 @@
 /**
  * tests/unit/placement-reaction-atomic.test.js
  *
- * TODO #11 step 2 (concurrency_branching.md, "Preliminary: placement +
- * reaction in ONE transaction"): a drop into a tray and the tray's triggered
- * contents_change_handler reaction commit as a SINGLE atomic Yjs transaction,
- * rather than the reaction landing a microtask later in its own. That is what
- * makes "the loser's divergent state" a well-defined, atomic thing to
- * arbitrate/fork, and removes the "die inserted but its reaction lost →
- * stale slot, uncounted die" intermediate.
+ * A drop into a tray and the tray's triggered contents_change_handler
+ * reaction commit as a SINGLE atomic Yjs transaction, rather than the
+ * reaction landing a microtask later in its own. That is what makes "the
+ * loser's divergent state" a well-defined, atomic thing to arbitrate/fork,
+ * and removes the "die inserted but its reaction lost → stale slot,
+ * uncounted die" intermediate.
  *
  * app.js's commitMove is the production caller (unit-tested via Playwright per
  * the project's convention that app.js integration is e2e, not vitest).
@@ -17,9 +16,7 @@
  * all inside one ydoc.transact — built from the same exported toys.js
  * primitives, mirroring contents-change-cascade.test.js's wireCascade approach.
  *
- * Contrast with concurrent-derived-write.test.js, which documents the
- * two-transaction substrate bug this step is a foundation for fixing: here we
- * assert the single-transaction PROPERTY the production path now has.
+ * This test asserts the single-transaction PROPERTY the production path has.
  */
 
 // @vitest-environment jsdom
@@ -33,7 +30,7 @@ import {
   affectedContainerIdsInnerFirst, runContentsChangeCascadeSync,
   clearYNodeMap, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
-import { runToyHandler, ENVELOPE_ORIGIN } from '../../src/envelope.js'
+import { runToyHandlerSync, ENVELOPE_ORIGIN } from '../../src/envelope.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
@@ -67,9 +64,9 @@ async function place(ydoc, yToys, toyType, id) {
   await addToy(ydoc, yToys, { id, toyType, x: 0, y: 0, color: '#fff' })
 }
 
-// Read a tray's own displayed result straight from Yjs — the canonical state
-// that syncs to peers. Mirrors concurrent-derived-write.test.js's readers so
-// a garbled (multi-sibling-text-node) result is visible as length > 1.
+// Read a tray's own displayed result straight from Yjs — the canonical
+// state that syncs to peers, so a garbled (multi-sibling-text-node)
+// result is visible as length > 1.
 function tspanResultOf(yTray) {
   const svg = yTray.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'svg')
   // .result_container's tspan — the tray's OWN, a sibling of tt_contents.
@@ -114,7 +111,7 @@ function placeInTrayAtomic(ydoc, yToys, layerEl, dieId, trayId, dropX = 10, drop
 // sum is deterministic. Mirrors the "drop whole tray" cascade test's approach.
 async function setDieFace(ydoc, yToys, layerEl, dieId, value) {
   const dieEl = layerEl.querySelector(`[data-id="${dieId}"]`)
-  await runToyHandler(ydoc, yToys, layerEl, dieEl, () => {
+  runToyHandlerSync(ydoc, yToys, layerEl, dieEl, () => {
     dieEl.querySelector('tspan').textContent = String(value)
   }, { origin: ENVELOPE_ORIGIN })
 }
@@ -158,7 +155,7 @@ describe('placement + reaction commit as ONE atomic transaction', () => {
     placeInTrayAtomic(ydoc, yToys, layerEl, 'die1', 'tray1')
 
     const yTspan = tspanResultOf(findToy(yToys, 'tray1'))
-    expect(yTspan.length).toBe(1)          // no garble (cf. concurrent-derived-write)
+    expect(yTspan.length).toBe(1)          // no garble — a single clean text node
     expect(readTspan(yTspan)).toBe('5')
   })
 

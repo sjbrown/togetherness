@@ -6,7 +6,7 @@ import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as Toys from '../../src/toys.js'
 import { addToy, findToy, clearYNodeMap, _clearSvgTextCache,
-         _resetToyScriptState, activateToyScripts, initializeToy } from '../../src/toys.js'
+         _resetToyScriptState, activateToyScripts, initializeToySync } from '../../src/toys.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 const getToysLayer = (ydoc) => ({ yToys: ydoc.getXmlFragment('toys') })
@@ -66,14 +66,14 @@ beforeEach(() => {
 })
 afterEach(() => { vi.unstubAllGlobals() })
 
-describe('initializeToy', () => {
+describe('initializeToySync', () => {
   test('calls initialize(elem) with no prototype, and the mutation commits to Yjs', async () => {
     vi.stubGlobal('fetch', stubFetch(TOY_SVG))
     const ydoc = new Y.Doc()
     const { yToys } = getToysLayer(ydoc)
     const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
 
-    await initializeToy(ydoc, yToys, layerEl, toyEl, 'player_marker')
+    initializeToySync(ydoc, yToys, layerEl, toyEl, 'player_marker')
 
     expect(layerEl.querySelector('#t1__status_tspan').textContent).toBe('initialized')
     expect(globalThis.widgetNs.initializeCallCount).toBe(1)
@@ -88,7 +88,7 @@ describe('initializeToy', () => {
     const { yToys } = getToysLayer(ydoc)
     const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
 
-    await initializeToy(ydoc, yToys, layerEl, toyEl, 'player_marker')
+    initializeToySync(ydoc, yToys, layerEl, toyEl, 'player_marker')
 
     // If a prototype had been passed, widgetNs.initialize would have
     // written 'from-prototype' instead.
@@ -101,7 +101,7 @@ describe('initializeToy', () => {
     const { yToys } = getToysLayer(ydoc)
     const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
 
-    await expect(initializeToy(ydoc, yToys, layerEl, toyEl, 'player_marker')).resolves.toBeUndefined()
+    expect(initializeToySync(ydoc, yToys, layerEl, toyEl, 'player_marker')).toBeUndefined()
     expect(layerEl.querySelector('#t1__status_tspan').textContent).toBe('unset')
   })
 
@@ -122,7 +122,7 @@ describe('initializeToy', () => {
     const { yToys } = getToysLayer(ydoc)
     const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
 
-    await initializeToy(ydoc, yToys, layerEl, toyEl, 'player_marker')
+    initializeToySync(ydoc, yToys, layerEl, toyEl, 'player_marker')
 
     expect(layerEl.querySelector('#t1__a_tspan').textContent).toBe('a-done')
     expect(layerEl.querySelector('#t1__b_tspan').textContent).toBe('b-done')
@@ -141,7 +141,7 @@ describe('initializeToy', () => {
     const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
 
     const before = layerEl.querySelector('#t1__tspan_die_value').textContent
-    await expect(initializeToy(ydoc, yToys, layerEl, toyEl, 'player_marker')).resolves.toBeUndefined()
+    expect(initializeToySync(ydoc, yToys, layerEl, toyEl, 'player_marker')).toBeUndefined()
     expect(layerEl.querySelector('#t1__tspan_die_value').textContent).toBe(before)
   })
 })

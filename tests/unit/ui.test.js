@@ -308,7 +308,7 @@ describe('toast — warn/error toasts are mirrored to console.warn', () => {
     warnSpy.mockRestore()
   })
 
-  test('kind "error" logs too — used throughout TODO #11\'s conflict resolution (dedupToys, onReactionLogChanged)', () => {
+  test('kind "error" logs too — used for surfacing failures generally', () => {
     document.body.innerHTML = '<div id="toasts"></div>'
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     toast('Something broke', 'error')
@@ -430,8 +430,8 @@ describe('showBranchDialog / branchDialogJoin / branchDialogKeepWorking', () => 
   })
 })
 
-describe('peersBody — Offline mode / Enable Reverts toggles', () => {
-  const baseData = { peers: [], offline: false, revertsEnabled: true, roomId: 'tt-T-v1-test' }
+describe('peersBody — Offline mode toggle', () => {
+  const baseData = { peers: [], offline: false, roomId: 'tt-T-v1-test' }
 
   test('offline toggle reflects data.offline: off', () => {
     const div = document.createElement('div')
@@ -444,32 +444,12 @@ describe('peersBody — Offline mode / Enable Reverts toggles', () => {
     div.innerHTML = peersBody({ ...baseData, offline: true })
     expect(div.querySelector('#offToggle').classList.contains('on')).toBe(true)
   })
-
-  test('reverts toggle reflects data.revertsEnabled: on (the default)', () => {
-    const div = document.createElement('div')
-    div.innerHTML = peersBody(baseData)
-    expect(div.querySelector('#revertsToggle').classList.contains('on')).toBe(true)
-  })
-
-  test('reverts toggle reflects data.revertsEnabled: off', () => {
-    const div = document.createElement('div')
-    div.innerHTML = peersBody({ ...baseData, revertsEnabled: false })
-    expect(div.querySelector('#revertsToggle').classList.contains('on')).toBe(false)
-  })
-
-  test('both toggles are independent — one being on does not force the other', () => {
-    const div = document.createElement('div')
-    div.innerHTML = peersBody({ ...baseData, offline: true, revertsEnabled: false })
-    expect(div.querySelector('#offToggle').classList.contains('on')).toBe(true)
-    expect(div.querySelector('#revertsToggle').classList.contains('on')).toBe(false)
-  })
 })
 
 describe('panel open/tab persistence (tt_panel_state)', () => {
   const mockApp = {
     getPeers: () => [],
     isOffline: () => false,
-    isRevertsEnabled: () => true,
     getTableId: () => 'tt-T-v1-test',
     getHistory: () => [],
   }

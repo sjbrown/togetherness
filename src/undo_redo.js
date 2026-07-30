@@ -14,14 +14,13 @@
  *
  * trackedOrigins decides. app.js's structural writes (add / move / delete /
  * resize / reparent) transact with a null origin; a user-intent toy handler
- * (a die's Roll, a tray's Roll All) commits under ENVELOPE_ORIGIN. Both are
- * tracked — rolls are genuine document changes the user should be able to
- * take back.
+ * (a die's Roll, a tray's Roll All) or a tray recomputing due to contents
+ * changes both commit under ENVELOPE_ORIGIN. All are tracked — a derived
+ * write is not a separate class of thing from the action that caused it.
  *
- * Deliberately NOT tracked as their OWN undo step:
- *  - DERIVED_ORIGIN (a tray recomputing due to contents changes)
+ * Deliberately NOT tracked as its own undo step:
  *  - LIFECYCLE_ORIGIN (a toy's one-time initialize)
- * Those are downstream of a tracked action, never independent user intent —
+ * That is downstream of a tracked action, never independent user intent —
  * see the origin constants in envelope.js.
  *
  * Note: "not tracked" is about a *standalone* derived transaction (reached

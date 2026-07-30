@@ -47,8 +47,8 @@ describe('generateForkTableId', () => {
   })
 
   test('the actual scenario: two peers who fully synced with EACH OTHER (but diverged from a third) converge on the identical id, with no coordination', async () => {
-    // Mirrors concurrency_branching.md's "Making inserts idempotent"
-    // scenario: Bob and Clyde stayed synced with each other through a
+    // Mirrors the "Making inserts idempotent" scenario discussed in
+    // CONCURRENCY_AND_BRANCHING.md: Bob and Clyde stayed synced with each other through a
     // partition that excluded Alice. By the time either forks, their
     // divergent state is content-identical — verified this converges to
     // identical BYTES (not just equivalent content) before ever writing
