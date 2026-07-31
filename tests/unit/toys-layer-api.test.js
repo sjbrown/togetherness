@@ -14,7 +14,7 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  makeLayerAPI, addToy, render, findToy, getTtState,
+  makeLayerAPI, projectLayer, placeToy, addToy, render, findToy, getTtState,
   clearYNodeMap, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { getOps } from '../../src/op_dag.js'
@@ -225,5 +225,115 @@ describe('gestures also land in the operation log', () => {
     L.delete('die1')
     const op = getOps(ydoc).get(getHead(TABLE))
     expect(op.gesture).toBe('delete')
+  })
+})
+
+describe('projectLayer', () => {
+  const TABLE = 'proj-table'
+  beforeEach(() => localStorage.clear())
+
+  test('an empty log takes genesis from the Yjs tree', async () => {
+    const { ydoc, layerEl } = await setup(['die1', 'dice_d6'], ['tray1', 'tray_sum'])
+    const before = layerEl.innerHTML
+
+    const head = projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a' })
+
+    const ops = [...getOps(ydoc).values()]
+    expect(ops.length).toBe(1)
+    expect(ops[0].gesture).toBe('checkpoint')
+    expect(head).toBe(ops[0].id)
+    expect(getHead(TABLE)).toBe(head)
+    expect(layerEl.innerHTML).toBe(before)
+  })
+
+  test('genesis reproduces the layer on a peer that has only the log', async () => {
+    const { ydoc, layerEl } = await setup(['die1', 'dice_d6'], ['tray1', 'tray_sum'])
+    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a' })
+
+    const fresh = document.createElementNS(SVG_NS, 'g')
+    fresh.id = 'toys-layer'
+    projectLayer(ydoc, fresh, { tableId: 'peer-table', authorId: 'user-b' })
+
+    expect(fresh.innerHTML).toBe(layerEl.innerHTML)
+  })
+
+  test('projecting twice is idempotent', async () => {
+    const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
+    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a' })
+    const once = layerEl.innerHTML
+    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a' })
+    expect(layerEl.innerHTML).toBe(once)
+  })
+
+  test('a gesture after genesis projects onto a fresh layer', async () => {
+    const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
+    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a' })
+
+    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE)
+    L.applyMoveCommit(L.find('die1'), 321, 123)
+
+    const fresh = document.createElementNS(SVG_NS, 'g')
+    fresh.id = 'toys-layer'
+    projectLayer(ydoc, fresh, { tableId: TABLE, authorId: 'user-a' })
+
+    expect(fresh.querySelector('[data-toy-id="die1"] > svg').getAttribute('x'))
+      .toBe(layerEl.querySelector('[data-toy-id="die1"] > svg').getAttribute('x'))
+  })
+
+  test('genesis is written once, not on every projection', async () => {
+    const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
+    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a' })
+    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a' })
+    expect([...getOps(ydoc).values()].filter(o => o.gesture === 'checkpoint').length).toBe(1)
+  })
+})
+
+describe('placeToy', () => {
+  const TABLE = 'place-table'
+  beforeEach(() => localStorage.clear())
+
+  const emptyLayer = () => {
+    const el = document.createElementNS(SVG_NS, 'g')
+    el.id = 'toys-layer'
+    return el
+  }
+
+  test('places into the DOM and records an operation', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = emptyLayer()
+    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a' })
+
+    await placeToy(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 50, y: 50, color: '#fff' },
+                   { authorId: 'user-a', tableId: TABLE })
+
+    expect(layerEl.querySelector('[data-toy-id="die1"]')).toBeTruthy()
+    const op = getOps(ydoc).get(getHead(TABLE))
+    expect(op.gesture).toBe('place')
+    expect(op.mutations.length).toBeGreaterThan(0)
+  })
+
+  test('the placement projects onto a peer holding only the log', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = emptyLayer()
+    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a' })
+    await placeToy(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 50, y: 50, color: '#fff' },
+                   { authorId: 'user-a', tableId: TABLE })
+
+    const peer = emptyLayer()
+    projectLayer(ydoc, peer, { tableId: 'peer', authorId: 'user-b' })
+    expect(peer.innerHTML).toBe(layerEl.innerHTML)
+  })
+
+  test('placing two toys yields two operations in sequence', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = emptyLayer()
+    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a' })
+    for (const id of ['die1', 'die2']) {
+      await placeToy(ydoc, layerEl, { id, toyType: 'dice_d6', x: 10, y: 10, color: '#fff' },
+                     { authorId: 'user-a', tableId: TABLE })
+    }
+    const placements = [...getOps(ydoc).values()].filter(o => o.gesture === 'place')
+    expect(placements.length).toBe(2)
+    expect(layerEl.querySelectorAll('[data-toy-id]').length).toBe(2)
   })
 })

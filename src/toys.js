@@ -29,7 +29,10 @@ const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789'
 
 import { number, bool } from './tools-schema.js';
 import { runToyHandlerSync, runInEnvelopeSync, commitEnvelope, commitGesture, ENVELOPE_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js';
-import { consumeParents, setHead } from './op_head.js';
+import { consumeParents, setHead, getHead, addMergeTip } from './op_head.js';
+import { getOps, appendOp, getOp, heads } from './op_dag.js';
+import { checkpointOp, projectFrom } from './op_checkpoint.js';
+import { receiveOp } from './op_replay.js';
 
 // NOTE: envelope.js imports render()/yNodeFor()/registerYNode() from this
 // file, so this is an intentional cycle — safe because neither side uses
@@ -1667,7 +1670,6 @@ function runContentsChangeCascadeInto(allRecords, layerEl) {
  * same way invokeMenuActionSync does below.
  */
 export const LAYER_DATA_ID = 'tt-layer-toys'
-
 /** The layer root needs an identity of its own to be a mutation target. */
 export function ensureLayerId(layerEl) {
   if (layerEl && !layerEl.getAttribute('data-id')) layerEl.setAttribute('data-id', LAYER_DATA_ID)
@@ -1881,8 +1883,54 @@ function activateAllToyScripts(ydoc, yToys) {
  * captures them. The contract app.js relies on is that whatever find()
  * returns is what the other methods accept — here, a rendered <g>.
  */
-export function makeLayerAPI(ydoc, getLayerEl, myId, tableId) {
-  const layer = () => (typeof getLayerEl === 'function' ? getLayerEl() : getLayerEl)
+/**
+ * Bring the layer to the state the op log describes.
+ *
+ * An empty log means this table predates the log (or is brand new): render
+ * from the Yjs tree once and freeze the result as the genesis checkpoint,
+ * so there is always a checkpoint at the root to project from.
+ *
+ * Returns the head it left the layer at.
+ */
+export function projectLayer(ydoc, layerEl, { tableId, authorId } = {}) {
+  ensureLayerId(layerEl)
+  const ops = getOps(ydoc)
+
+  if (ops.size === 0) {
+    render(ydoc.getXmlFragment('toys'), layerEl)
+    const genesis = checkpointOp(layerEl, { authorId, parents: [] })
+    appendOp(ydoc, genesis)
+    if (tableId) setHead(tableId, genesis.id)
+    return genesis.id
+  }
+
+  const head = (tableId && getHead(tableId)) ?? null
+  const target = (head && getOp(ops, head)) ? head : (heads(ops)[0] ?? null)
+  if (!target) return null
+
+  projectFrom(layerEl, ops, target)
+  if (tableId) setHead(tableId, target)
+  return target
+}
+
+/**
+ * Place a toy via the DOM, as a gesture.
+ *
+ * The template fetch is async and happens first, outside the envelope —
+ * the gesture itself has to stay synchronous, and the fetch is not part
+ * of what the gesture did.
+ */
+export async function placeToy(ydoc, layerEl, attrs, opts = {}) {
+  const svgText = await fetchToySvgText(attrs.toyType)
+  let toyEl = null
+  runGestureSync(ydoc, layerEl, () => {
+    toyEl = addToyDom(ydoc, layerEl, attrs, svgText)
+  }, { gesture: 'place', ...opts })
+  activateToyScripts(ydoc, attrs.toyType)
+  return toyEl
+}
+
+export function makeLayerAPI(ydoc, getLayerEl, myId, tableId) {  const layer = () => (typeof getLayerEl === 'function' ? getLayerEl() : getLayerEl)
   const gesture = (name, fn) =>
     runGestureSync(ydoc, layer(), fn, { gesture: name, authorId: myId, tableId })
 
@@ -1898,5 +1946,8 @@ export function makeLayerAPI(ydoc, getLayerEl, myId, tableId) {
     edit:            (el, editData)  => gesture('edit',   () => editDom(el, editData)),
     listData:        ()              => toysDataDom(layer()),
     render:          (layerEl)       => render(ydoc.getXmlFragment('toys'), layerEl),
+    project:         (layerEl)       => projectLayer(ydoc, layerEl, { tableId, authorId: myId }),
+    place:           (layerEl, attrs) => placeToy(ydoc, layerEl, attrs, { authorId: myId, tableId }),
+    receive:         (layerEl, opId) => receiveOp(layerEl, getOps(ydoc), tableId && getHead(tableId), opId),
   };
 }

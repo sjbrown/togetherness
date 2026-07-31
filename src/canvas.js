@@ -144,21 +144,28 @@ function hitForActiveLayer(e) {
 }
 
 // ── Shape click wiring ────────────────────────────────────────────────────────
-// Called by App after renderDocLayer — attaches click listeners to drawing-layer shapes.
+// Called by App after renderDocLayer. One delegated listener per layer rather
+// than one per element: elements outlive a render now, so per-element wiring
+// would stack up a fresh listener on every call.
 // Note: shift-click is handled entirely via pointer events (onPointerDown/Up) because
 // setPointerCapture routes the click event to _stage rather than the child element,
 // so a shift-click listener here would never fire on toys or shapes.
+const _clickWired = new WeakSet();
+
 export function wireShapeClicks(layer) {
-  layer.querySelectorAll('[data-module]').forEach(el => {
-    el.addEventListener('click', ev => {
+  if (!layer || _clickWired.has(layer)) return;
+  _clickWired.add(layer);
+
+  layer.addEventListener('click', ev => {
+    const el = ev.target.closest?.('[data-module]');
+    if (el && layer.contains(el)) {
       if (ToolMode.tool !== 'select') return;
       ev.stopPropagation();
       App.select(el.dataset.id);
-    });
-  });
-  // Click on empty canvas deselects
-  layer.addEventListener('click', e => {
-    if (!e.target.closest('[data-module]')) App.select(null);
+      return;
+    }
+    // Click on empty canvas deselects, whatever the tool.
+    App.select(null);
   });
 }
 
