@@ -21,7 +21,7 @@ const SIGNALING_URL = process.env.SIGNALING_URL || 'ws://localhost:4444';
 
 test.describe('multi-select', () => {
   test('single-click, rubber-band, shift-click, deselect', async () => {
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
     const ctx     = await browser.newContext();
     const page    = await ctx.newPage();
 

@@ -55,15 +55,15 @@ async function twoPeers(browser, roomPrefix) {
 
 // Place a d6 on `page` at canvas-relative (x, y); returns its data-id.
 async function placeToy(page, x, y) {
-  const before = await page.locator('[data-id]').count();
+  const before = await page.locator('[data-toy-id]').count();
   const box = await page.locator('#canvas').boundingBox();
   await page.evaluate(() => window.UI.pillTap('d6'));
   await page.waitForTimeout(100);
   await page.mouse.move(box.x + x, box.y + y);
   await page.mouse.down();
   await page.mouse.up();
-  await expect(page.locator('[data-id]')).toHaveCount(before + 1, { timeout: 5000 });
-  const ids = await page.locator('[data-id]').evaluateAll(
+  await expect(page.locator('[data-toy-id]')).toHaveCount(before + 1, { timeout: 5000 });
+  const ids = await page.locator('[data-toy-id]').evaluateAll(
     els => els.map(el => el.dataset.id));
   return ids[ids.length - 1];
 }
@@ -90,11 +90,11 @@ test.describe('soft-lock: two-peer element requests', () => {
     // The requester-side half of this assertion is the one that would have
     // caught the phantom-drag-ghost bug: it depends on the real
     // pointerdown → select() → (no startDrag) wiring and real z-order.
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
     const { page1, page2 } = await twoPeers(browser, 'e2e-softlock-req');
 
     const id = await placeToy(page1, 120, 120);
-    await expect(page2.locator('[data-id]')).toHaveCount(1, { timeout: 5000 });
+    await expect(page2.locator('[data-toy-id]')).toHaveCount(1, { timeout: 5000 });
 
     await clickToy(page1, id);                     // A holds it
     await expect(page1.locator('#overlay-layer .selRing')).toHaveCount(1, { timeout: 3000 });
@@ -113,11 +113,11 @@ test.describe('soft-lock: two-peer element requests', () => {
   });
 
   test('uncontested request completes after 3s: rings swap on both pages, loser sees remote ring (not nothing)', async () => {
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
     const { page1, page2 } = await twoPeers(browser, 'e2e-softlock-handoff');
 
     const id = await placeToy(page1, 120, 120);
-    await expect(page2.locator('[data-id]')).toHaveCount(1, { timeout: 5000 });
+    await expect(page2.locator('[data-toy-id]')).toHaveCount(1, { timeout: 5000 });
 
     await clickToy(page1, id);                     // A holds
     await clickToy(page2, id);                     // B requests, A stays away
@@ -135,11 +135,11 @@ test.describe('soft-lock: two-peer element requests', () => {
   });
 
   test('holder re-clicking the toy within the window aborts the request', async () => {
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
     const { page1, page2 } = await twoPeers(browser, 'e2e-softlock-abort');
 
     const id = await placeToy(page1, 120, 120);
-    await expect(page2.locator('[data-id]')).toHaveCount(1, { timeout: 5000 });
+    await expect(page2.locator('[data-toy-id]')).toHaveCount(1, { timeout: 5000 });
 
     await clickToy(page1, id);                     // A holds
     await clickToy(page2, id);                     // B requests
@@ -165,12 +165,12 @@ test.describe('soft-lock: two-peer element requests', () => {
     // The exact live trace: A holds two dice, B requests die 1, A drags the
     // group grabbing die 2. Only a real pointer drag exercises the
     // canvas.js multi-move branch → startMultiDrag group-claim refresh.
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
     const { page1, page2 } = await twoPeers(browser, 'e2e-softlock-group');
 
     const id1 = await placeToy(page1, 120, 120);
     const id2 = await placeToy(page1, 260, 120);
-    await expect(page2.locator('[data-id]')).toHaveCount(2, { timeout: 5000 });
+    await expect(page2.locator('[data-toy-id]')).toHaveCount(2, { timeout: 5000 });
 
     await clickToy(page1, id1);                    // A selects die 1...
     await clickToy(page1, id2, { shift: true });   // ...and shift-adds die 2
@@ -196,12 +196,12 @@ test.describe('soft-lock: two-peer element requests', () => {
   test('rubber-band sweep silently excludes a peer-held toy', async () => {
     // Replaces the deleted mirror-test coverage of getBoxCandidates
     // filtering, at the strongest possible layer: real shift-drag sweep.
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
     const { page1, page2 } = await twoPeers(browser, 'e2e-softlock-sweep');
 
     const id1 = await placeToy(page1, 120, 120);
     const id2 = await placeToy(page1, 260, 120);
-    await expect(page2.locator('[data-id]')).toHaveCount(2, { timeout: 5000 });
+    await expect(page2.locator('[data-toy-id]')).toHaveCount(2, { timeout: 5000 });
 
     await clickToy(page2, id1);                    // B holds toy 1
     await expect(page1.locator('#overlay-layer .remote-sel')).toHaveCount(1, { timeout: 3000 });

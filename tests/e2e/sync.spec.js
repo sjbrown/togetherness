@@ -16,7 +16,7 @@ const SIGNALING_URL = process.env.SIGNALING_URL || 'ws://localhost:4444';
 
 test.describe('two-peer sync', () => {
   test('toys added on peer A appear on peer B', async () => {
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
     const ctx1    = await browser.newContext();
     const ctx2    = await browser.newContext();
     const page1   = await ctx1.newPage();
@@ -33,7 +33,7 @@ test.describe('two-peer sync', () => {
     await expect(page2.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
 
     // Sanity check - initially no toys on page2
-    await expect(page2.locator('[data-id]')).toHaveCount(0, { timeout: 5000 });
+    await expect(page2.locator('[data-toy-id]')).toHaveCount(0, { timeout: 5000 });
 
     // Place a d6 on page1
     const canvas = page1.locator('#canvas');
@@ -46,13 +46,13 @@ test.describe('two-peer sync', () => {
     await page1.mouse.up();
 
     // Toy should appear on page2
-    await expect(page2.locator('[data-id]')).toHaveCount(1, { timeout: 5000 });
+    await expect(page2.locator('[data-toy-id]')).toHaveCount(1, { timeout: 5000 });
 
     await browser.close();
   });
 
   test('selecting a toy on peer A shows selection rings on both peers', async () => {
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
     const ctx1    = await browser.newContext();
     const ctx2    = await browser.newContext();
     const page1   = await ctx1.newPage();
@@ -66,7 +66,7 @@ test.describe('two-peer sync', () => {
     await expect(page2.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
 
     // Sanity check - initially no toys on page2
-    await expect(page2.locator('[data-id]')).toHaveCount(0, { timeout: 5000 });
+    await expect(page2.locator('[data-toy-id]')).toHaveCount(0, { timeout: 5000 });
 
     // Place a d6 on page1
     const canvas = page1.locator('#canvas');
@@ -79,8 +79,8 @@ test.describe('two-peer sync', () => {
     await page1.mouse.up();
 
     // Wait for toy to appear on both peers
-    await expect(page1.locator('[data-id]')).toHaveCount(1, { timeout: 5000 });
-    await expect(page2.locator('[data-id]')).toHaveCount(1, { timeout: 5000 });
+    await expect(page1.locator('[data-toy-id]')).toHaveCount(1, { timeout: 5000 });
+    await expect(page2.locator('[data-toy-id]')).toHaveCount(1, { timeout: 5000 });
 
     // Select the toy on page1
     await page1.evaluate(() => window.UI.pillTap('select'));
@@ -105,7 +105,7 @@ test.describe('two-peer sync', () => {
   });
 
   test('toy deleted on peer A disappears on peer B', async () => {
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
     const ctx1    = await browser.newContext();
     const ctx2    = await browser.newContext();
     const page1   = await ctx1.newPage();
@@ -118,7 +118,7 @@ test.describe('two-peer sync', () => {
     await expect(page1.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
 
     // Sanity check - initially no toys on page2
-    await expect(page2.locator('[data-id]')).toHaveCount(0, { timeout: 5000 });
+    await expect(page2.locator('[data-toy-id]')).toHaveCount(0, { timeout: 5000 });
 
     // Place a d6 on page1
     const canvas = page1.locator('#canvas');
@@ -131,7 +131,7 @@ test.describe('two-peer sync', () => {
     await page1.mouse.down();
     await page1.mouse.up();
 
-    await expect(page2.locator('[data-id]')).toHaveCount(1, { timeout: 5000 });
+    await expect(page2.locator('[data-toy-id]')).toHaveCount(1, { timeout: 5000 });
 
     // Select the toy on page1
     await page1.evaluate(() => window.UI.pillTap('select'));
@@ -146,10 +146,10 @@ test.describe('two-peer sync', () => {
     await page1.waitForTimeout(100); // let the UI settle
 
     // This browser should show no more toy
-    await expect(page1.locator('[data-id]')).toHaveCount(0, { timeout: 5000 });
+    await expect(page1.locator('[data-toy-id]')).toHaveCount(0, { timeout: 5000 });
 
     // Other browser should show no more toy
-    await expect(page2.locator('[data-id]')).toHaveCount(0, { timeout: 5000 });
+    await expect(page2.locator('[data-toy-id]')).toHaveCount(0, { timeout: 5000 });
 
     await browser.close();
   });

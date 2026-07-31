@@ -18,7 +18,7 @@ const SIGNALING_URL = process.env.SIGNALING_URL || 'ws://localhost:4444';
 
 test.describe('two-peer dice roll sync', () => {
   test('rolling a d6 on peer A updates its face on peer B', async () => {
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
     const ctx1    = await browser.newContext();
     const ctx2    = await browser.newContext();
     const page1   = await ctx1.newPage();
@@ -40,8 +40,8 @@ test.describe('two-peer dice roll sync', () => {
     await page1.mouse.down();
     await page1.mouse.up();
 
-    await expect(page1.locator('[data-id]')).toHaveCount(1, { timeout: 5000 });
-    await expect(page2.locator('[data-id]')).toHaveCount(1, { timeout: 5000 });
+    await expect(page1.locator('[data-toy-id]')).toHaveCount(1, { timeout: 5000 });
+    await expect(page2.locator('[data-toy-id]')).toHaveCount(1, { timeout: 5000 });
 
     // The die always ships face-up as "6" (see dice_d6.svg) — confirm both
     // peers start in agreement before rolling.
@@ -78,7 +78,7 @@ test.describe('two-peer dice roll sync', () => {
   });
 
   test('a die stays clickable after an action (regression: click wiring)', async () => {
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
     const ctx1    = await browser.newContext();
     const page1   = await ctx1.newPage();
 
@@ -93,7 +93,7 @@ test.describe('two-peer dice roll sync', () => {
     await page1.mouse.move(box.x + 100, box.y + 100);
     await page1.mouse.down();
     await page1.mouse.up();
-    await expect(page1.locator('[data-id]')).toHaveCount(1, { timeout: 5000 });
+    await expect(page1.locator('[data-toy-id]')).toHaveCount(1, { timeout: 5000 });
 
     // Select, open the Edit panel, and roll — this is the path that used
     // to leave the layer's click handlers unwired (see envelope.js).
@@ -120,7 +120,7 @@ test.describe('two-peer dice roll sync', () => {
   });
 
   test('Turn Up deterministically advances the face and syncs', async () => {
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
     const ctx1    = await browser.newContext();
     const ctx2    = await browser.newContext();
     const page1   = await ctx1.newPage();
@@ -138,7 +138,7 @@ test.describe('two-peer dice roll sync', () => {
     await page1.mouse.move(box.x + 100, box.y + 100);
     await page1.mouse.down();
     await page1.mouse.up();
-    await expect(page2.locator('[data-id]')).toHaveCount(1, { timeout: 5000 });
+    await expect(page2.locator('[data-toy-id]')).toHaveCount(1, { timeout: 5000 });
 
     await page1.evaluate(() => window.UI.pillTap('select'));
     await page1.waitForTimeout(100);
