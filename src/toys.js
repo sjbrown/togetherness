@@ -28,7 +28,8 @@ const XLINK_NS = 'http://www.w3.org/1999/xlink'
 const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789'
 
 import { number, bool } from './tools-schema.js';
-import { runToyHandlerSync, runInEnvelopeSync, commitEnvelope, ENVELOPE_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js';
+import { runToyHandlerSync, runInEnvelopeSync, commitEnvelope, commitGesture, ENVELOPE_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js';
+import { consumeParents, setHead } from './op_head.js';
 
 // NOTE: envelope.js imports render()/yNodeFor()/registerYNode() from this
 // file, so this is an intentional cycle — safe because neither side uses
@@ -1665,10 +1666,31 @@ function runContentsChangeCascadeInto(allRecords, layerEl) {
  * (see undo_redo.js's "Atomicity" note) provide their own outer wrap, the
  * same way invokeMenuActionSync does below.
  */
+export const LAYER_DATA_ID = 'tt-layer-toys'
+
+/** The layer root needs an identity of its own to be a mutation target. */
+export function ensureLayerId(layerEl) {
+  if (layerEl && !layerEl.getAttribute('data-id')) layerEl.setAttribute('data-id', LAYER_DATA_ID)
+  return layerEl
+}
+
 export function runGestureSync(ydoc, layerEl, fn, opts = {}) {
+  ensureLayerId(layerEl)
   const allRecords = runInEnvelopeSync(layerEl, fn)
   runContentsChangeCascadeInto(allRecords, layerEl)
-  return commitEnvelope(ydoc, allRecords, opts)
+  const result = commitEnvelope(ydoc, allRecords, opts)
+
+  const { tableId } = opts
+  if (tableId) {
+    const op = commitGesture(ydoc, allRecords, {
+      gesture:  opts.gesture ?? 'gesture',
+      authorId: opts.authorId ?? null,
+      parents:  consumeParents(tableId),
+    })
+    if (op) setHead(tableId, op.id)
+    result.op = op ?? null
+  }
+  return result
 }
 
 /**
@@ -1859,9 +1881,10 @@ function activateAllToyScripts(ydoc, yToys) {
  * captures them. The contract app.js relies on is that whatever find()
  * returns is what the other methods accept — here, a rendered <g>.
  */
-export function makeLayerAPI(ydoc, getLayerEl, myId) {
+export function makeLayerAPI(ydoc, getLayerEl, myId, tableId) {
   const layer = () => (typeof getLayerEl === 'function' ? getLayerEl() : getLayerEl)
-  const gesture = (name, fn) => runGestureSync(ydoc, layer(), fn, { gesture: name, authorId: myId })
+  const gesture = (name, fn) =>
+    runGestureSync(ydoc, layer(), fn, { gesture: name, authorId: myId, tableId })
 
   return {
     find:            (id)            => findToyDom(layer(), id),

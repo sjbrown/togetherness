@@ -14,19 +14,14 @@
 
 import { serializeNode, apply as applyWire, ensureIds } from './op_wire_mutation.js'
 import { ancestors, getOp, isAncestor, pathFrom } from './op_dag.js'
+import { ensureLayerId, LAYER_DATA_ID } from './toys.js'
 
-export const LAYER_DATA_ID = 'tt-layer-toys'
+export { ensureLayerId, LAYER_DATA_ID }
 export const CHECKPOINT_GESTURE = 'checkpoint'
 
 let _counter = 0
 const mintOpId = () =>
   `tt-op-${Date.now().toString(36)}-${(_counter++).toString(36)}-${Math.random().toString(36).slice(2, 7)}`
-
-/** The layer root needs an identity of its own to be a mutation target. */
-export function ensureLayerId(layerEl) {
-  if (layerEl && !layerEl.getAttribute('data-id')) layerEl.setAttribute('data-id', LAYER_DATA_ID)
-  return layerEl
-}
 
 export const isCheckpoint = (op) => op?.gesture === CHECKPOINT_GESTURE
 

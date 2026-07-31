@@ -55,6 +55,12 @@ that call `chromium.launch()` themselves read it too. Both paths need it —
 setting only one leaves a subset of tests failing on a missing executable,
 which reads like a code failure and isn't.
 
+### Run unit tests when ...
+
+Run tests as-targetted-as-possible during a turn.  Only run the whole suite
+if you've touched multiple `src/*.js` files, and only right before presenting
+files.
+
 ### Run e2e when ...
 
 End-to-end tests take a long time, and incur tool / token costs.  Be stingy

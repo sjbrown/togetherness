@@ -40,4 +40,4 @@ done
 export APP_URL=http://localhost:3000
 export SIGNALING_URL=ws://localhost:4444
 
-npx playwright test --reporter=list "$@"
+npx playwright test --config tests/e2e/playwright.config.js --reporter=list "$@"

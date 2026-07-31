@@ -316,7 +316,7 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, svgElem
   // value app.js stamps on rendered SVG elements.
   _Layers = {
     'drawing':  Drawing.makeLayerAPI(_ydoc, _yDrawing),
-    'toys':     Toys.makeLayerAPI(_ydoc, () => _svgEl.querySelector('#toys-layer'), _myId),
+    'toys':     Toys.makeLayerAPI(_ydoc, () => _svgEl.querySelector('#toys-layer'), _myId, tableId),
     'boun_pos': BounPos.makeLayerAPI(_ydoc, _yBounPos),
   };
 

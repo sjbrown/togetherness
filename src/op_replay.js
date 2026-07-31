@@ -127,3 +127,52 @@ export function advanceTo(layerEl, ops, headId, targetId, joinSequence = []) {
 
 /** Every tip in the log, for a caller deciding what to converge on. */
 export const tips = (ops) => heads(ops)
+
+/**
+ * Apply a concurrent, non-conflicting arrival directly — safe, since by
+ * construction it touches nothing the local head's own path touches.
+ * Does not move the primary head: neither op is the other's ancestor, so
+ * there is no single id that names "both". The caller is expected to
+ * remember incomingId as a merge tip (op_head.addMergeTip) so it becomes
+ * an extra parent next time this peer commits — that commit, not this
+ * application, is what actually joins the branches in the graph.
+ */
+export function mergeConcurrent(layerEl, op) {
+  return withSuppressedCapture(() => applyWire(op?.mutations ?? [], layerEl))
+}
+
+export const RECEIVED_KNOWN      = 'received-known'
+export const RECEIVED_SUBSEQUENT = 'received-subsequent'
+export const RECEIVED_MERGED     = 'received-merged'
+export const RECEIVED_CONFLICT   = 'received-conflict'
+
+/**
+ * The single entry point for an arriving operation: classify it against
+ * the local head, apply it if that's safe, and report what happened.
+ *
+ * - known: nothing to do.
+ * - subsequent: DOM advances, head moves.
+ * - concurrent, non-conflicting: DOM absorbs it via mergeConcurrent, head
+ *   stays put, incomingId is returned as a mergeTip for the caller to
+ *   persist (op_head.addMergeTip) — this function has no table id to key
+ *   storage on, so it reports rather than writes.
+ * - conflicting: nothing is applied. The caller resolves via the branch
+ *   dialog (§6 of CONCURRENCY_AND_BRANCHING.md); lca and both tips are
+ *   returned for that.
+ */
+export function receiveOp(layerEl, ops, headId, incomingId, joinSequence = []) {
+  const { kind, lca: base } = classify(ops, headId, incomingId)
+
+  if (kind === KNOWN) {
+    return { result: RECEIVED_KNOWN, head: headId, mergeTip: null, lca: base }
+  }
+  if (kind === SUBSEQUENT) {
+    const head = advanceTo(layerEl, ops, headId, incomingId, joinSequence)
+    return { result: RECEIVED_SUBSEQUENT, head, mergeTip: null, lca: base }
+  }
+  if (kind === CONCURRENT) {
+    mergeConcurrent(layerEl, getOp(ops, incomingId))
+    return { result: RECEIVED_MERGED, head: headId, mergeTip: incomingId, lca: base }
+  }
+  return { result: RECEIVED_CONFLICT, head: headId, mergeTip: null, lca: base, tips: [headId, incomingId] }
+}

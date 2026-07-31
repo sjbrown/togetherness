@@ -17,6 +17,9 @@ import {
   makeLayerAPI, addToy, render, findToy, getTtState,
   clearYNodeMap, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
+import { getOps } from '../../src/op_dag.js'
+import { getHead } from '../../src/op_head.js'
+import { apply as applyWire, invert } from '../../src/op_wire_mutation.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
@@ -158,5 +161,69 @@ describe('a peer receives what the LayerAPI wrote', () => {
     const peer = new Y.Doc()
     Y.applyUpdate(peer, Y.encodeStateAsUpdate(ydoc))
     expect(findToy(peer.getXmlFragment('toys'), 'die1').getAttribute('data-color')).toBe('#abcdef')
+  })
+})
+
+describe('gestures also land in the operation log', () => {
+  const TABLE = 'test-table'
+
+  beforeEach(() => localStorage.clear())
+
+  async function withLog(...toys) {
+    const { ydoc, yToys, layerEl } = await setup(...toys)
+    return { ydoc, yToys, layerEl, L: makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE) }
+  }
+
+  test('a move appends an operation and advances the head', async () => {
+    const { ydoc, L } = await withLog(['die1', 'dice_d6'])
+    expect(getHead(TABLE)).toBeNull()
+
+    L.applyMoveCommit(L.find('die1'), 300, 400)
+
+    const ops = [...getOps(ydoc).values()]
+    expect(ops.length).toBe(1)
+    expect(ops[0].gesture).toBe('move')
+    expect(ops[0].authorId).toBe('user-a')
+    expect(ops[0].mutations.length).toBeGreaterThan(0)
+    expect(getHead(TABLE)).toBe(ops[0].id)
+  })
+
+  test('a second gesture parents onto the first', async () => {
+    const { ydoc, L } = await withLog(['die1', 'dice_d6'])
+    L.applyMoveCommit(L.find('die1'), 10, 10)
+    const first = getHead(TABLE)
+    L.applyMoveCommit(L.find('die1'), 20, 20)
+    const second = getHead(TABLE)
+
+    expect(second).not.toBe(first)
+    expect(getOps(ydoc).get(second).parents).toEqual([first])
+  })
+
+  test('the recorded mutations replay onto a peer', async () => {
+    const { ydoc, layerEl, L } = await withLog(['die1', 'dice_d6'])
+    L.applyMoveCommit(L.find('die1'), 250, 175)
+
+    const op = getOps(ydoc).get(getHead(TABLE))
+    const peer = layerEl.cloneNode(true)
+    // undo the move on the clone so it stands at the pre-gesture state
+    applyWire(invert(op.mutations), peer)
+    applyWire(op.mutations, peer)
+
+    expect(peer.querySelector('[data-toy-id="die1"] > svg').getAttribute('x'))
+      .toBe(layerEl.querySelector('[data-toy-id="die1"] > svg').getAttribute('x'))
+  })
+
+  test('without a tableId, no operation is recorded', async () => {
+    const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
+    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a')  // no tableId
+    L.applyMoveCommit(L.find('die1'), 5, 5)
+    expect([...getOps(ydoc).values()].length).toBe(0)
+  })
+
+  test('a delete is recorded too', async () => {
+    const { ydoc, L } = await withLog(['die1', 'dice_d6'], ['tray1', 'tray_sum'])
+    L.delete('die1')
+    const op = getOps(ydoc).get(getHead(TABLE))
+    expect(op.gesture).toBe('delete')
   })
 })
