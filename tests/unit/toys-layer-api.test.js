@@ -607,12 +607,53 @@ describe('conflict resolution end to end — resolve, adopt, and fork-seed agree
     expect(layerEl.querySelector('[data-id="r"]').getAttribute('x')).toBe('99')
 
     // The fork seed independently reconstructs what Bob was actually
-    // doing on the splitter branch.
+    // doing on the splitter branch. Authored to orderedIds[0] (§6.5),
+    // not to Bob's own id directly — same thing when Bob is the only
+    // contributor, but see the next test for why the distinction matters.
     const { genesis, rebasedOps } = buildToyForkSeed(
-      ydoc, decision.lca, decision.splitter, { authorId: 'bob', joinSequence })
+      ydoc, decision.lca, decision.splitter, { authorId: decision.orderedIds[0], joinSequence })
     const seeded = new Map([[genesis.id, genesis], ...rebasedOps.map(o => [o.id, o])])
     const forkLayer = document.createElementNS(SVG_NS, 'g')
     projectFrom(forkLayer, seeded, decision.splitter)
     expect(forkLayer.querySelector('[data-id="r"]').getAttribute('x')).toBe('55')
+  })
+
+  test('two contributors on the splitter branch compute a byte-identical genesis regardless of whose browser resolves it', () => {
+    // Regression test: authoring the checkpoint to the resolving peer's
+    // own identity (rather than orderedIds[0]) would make the genesis
+    // *object* differ between contributors even though its content-derived
+    // id matched — Bob's copy would carry authorId: 'bob', Clyde's would
+    // carry authorId: 'clyde'. Syncing two forks at the same table id
+    // would then leave Yjs's own last-writer-wins to arbitrarily settle
+    // which one survives at that key, reintroducing the exact
+    // peer-dependence §6.5 exists to remove.
+    const ydoc = new Y.Doc()
+    const base = document.createElementNS(SVG_NS, 'g')
+    base.innerHTML = '<rect data-id="r" x="0"/>'
+    const L = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
+    appendOp(ydoc, L)
+    const a1 = { id: 'a1', parents: ['L'], authorId: 'alice', gesture: 'move', ts: 1,
+      mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '99' }] }
+    // Both Bob and Clyde contributed to the splitter branch.
+    const s1 = { id: 's1', parents: ['L'], authorId: 'bob', gesture: 'move', ts: 1,
+      mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '55' }] }
+    const s2 = { id: 's2', parents: ['s1'], authorId: 'clyde', gesture: 'move', ts: 2,
+      mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '55', newValue: '66' }] }
+    appendOp(ydoc, a1); appendOp(ydoc, s1); appendOp(ydoc, s2)
+    const joinSequence = ['alice', 'bob', 'clyde']
+
+    // Resolved once "on Bob's machine", once "on Clyde's" — same shared
+    // ops, different local authorId for the bystander/splitter check.
+    const asBob   = resolveToyBranchConflict(ydoc, ['a1', 's2'], { authorId: 'bob', joinSequence })
+    const asClyde = resolveToyBranchConflict(ydoc, ['a1', 's2'], { authorId: 'clyde', joinSequence })
+    expect(asBob.orderedIds).toEqual(asClyde.orderedIds) // shared, order-preserved: ['bob', 'clyde']
+
+    const seedFromBob = buildToyForkSeed(
+      ydoc, asBob.lca, asBob.splitter, { authorId: asBob.orderedIds[0], joinSequence })
+    const seedFromClyde = buildToyForkSeed(
+      ydoc, asClyde.lca, asClyde.splitter, { authorId: asClyde.orderedIds[0], joinSequence })
+
+    expect(seedFromBob.genesis).toEqual(seedFromClyde.genesis)
+    expect(seedFromBob.genesis.authorId).toBe('bob') // orderedIds[0], not whoever resolved it
   })
 })

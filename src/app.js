@@ -495,7 +495,17 @@ function handleToyBranchConflict(tips) {
   }
 
   addHistory("branch conflict — preserving your divergent work in a new table", { elType: 'toys' });
-  const seed = Toys.buildToyForkSeed(_ydoc, decision.lca, decision.splitter, { authorId: _myId, joinSequence });
+  // The checkpoint is authored to orderedIds[0], not _myId: two peers
+  // independently forking the same branch compute the same orderedIds,
+  // so authoring to it (rather than to whichever peer's browser happens
+  // to be running this code) is what makes the checkpoint OBJECT — not
+  // just its content-derived id — actually identical between them. If
+  // each authored to their own identity, the ids would still match but
+  // the stored authorId field wouldn't, and syncing two forks at the
+  // same table id would leave Yjs's last-writer-wins to arbitrarily pick
+  // one — exactly the peer-dependent outcome this design exists to avoid.
+  const seed = Toys.buildToyForkSeed(_ydoc, decision.lca, decision.splitter,
+    { authorId: decision.orderedIds[0], joinSequence });
   tablesAPI.forkLiveDoc(_ydoc, decision.orderedIds, seed)
     .then(forkedTableId => {
       tablesAPI.touchTableRecord(forkedTableId, { name: `${_tableId} (branch)` });
