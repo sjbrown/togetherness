@@ -1304,7 +1304,7 @@ const App = {
             if (containerGeom) {
               Toys.applyMoveDom(movedEl, rx - containerGeom.x, ry - containerGeom.y);
             }
-          }, { origin: ENVELOPE_ORIGIN, authorId: _myId });
+          }, { origin: ENVELOPE_ORIGIN, gesture: 'reparent', authorId: _myId, tableId: _tableId });
         });
       } catch (err) {
         // a malformed container asset can reach here and throw.

@@ -1859,6 +1859,32 @@ export function render(yToys, layerEl) {
 }
 
 /**
+ * DOM counterpart to activateAllToyScripts: scans a rendered layer for
+ * every distinct data-toy-type present and activates each once per
+ * session. activateAllToyScripts walks the Yjs toys tree, and only
+ * projectLayer's creator-genesis branch ever calls plain render() (which
+ * is what runs it) — every other path a non-creator peer's DOM gets built
+ * through (projectFrom, advanceTo, the ops-Map replay in receiveToyOp) is
+ * pure DOM, never touches yToys, and never activated anything. A toy
+ * synced in rather than placed locally would render its markup and
+ * attributes fine — the color widget doesn't need a namespace — but its
+ * menu would stay permanently empty, since getMenuActions reads
+ * globalThis[namespace].menu and nothing had ever populated it.
+ */
+export function activateAllToyScriptsDom(ydoc, layerEl) {
+  if (!layerEl) return
+  const seen = new Set()
+  for (const el of layerEl.querySelectorAll('[data-toy-type]')) {
+    const toyType = el.getAttribute('data-toy-type')
+    if (!toyType || seen.has(toyType) || isToyTypeActivated(toyType)) continue
+    seen.add(toyType)
+    activateToyScripts(ydoc, toyType).catch(err => {
+      console.error(`[toys] script activation failed for toy type "${toyType}"`, err)
+    })
+  }
+}
+
+/**
  * Recursively activate every distinct toyType found anywhere in the toys
  * tree (top-level and nested), each once per session.
  * Guards against re-activating already-seen toys.
@@ -1934,6 +1960,7 @@ export function projectLayer(ydoc, layerEl, { tableId, authorId, isCreator = fal
   if (projectedAt(layerEl) === target) return target
 
   projectFrom(layerEl, ops, target)
+  activateAllToyScriptsDom(ydoc, layerEl)
   if (tableId) setHead(tableId, target)
   markProjectedAt(layerEl, target)
   return target
@@ -1981,6 +2008,9 @@ export function receiveToyOp(ydoc, layerEl, opId, tableId) {
   const head = tableId ? getHead(tableId) : null
   const out = receiveOp(layerEl, ops, head, opId)
 
+  if (out.result !== 'received-known' && out.result !== 'received-conflict') {
+    activateAllToyScriptsDom(ydoc, layerEl)
+  }
   if (out.head && out.head !== head) {
     if (tableId) setHead(tableId, out.head)
     markProjectedAt(layerEl, out.head)
