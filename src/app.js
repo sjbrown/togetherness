@@ -1647,6 +1647,16 @@ const App = {
 
   // ── Misc ─────────────────────────────────────────────────────────────────
   setLayer: (id) => {
+    // Abandon any claims on the layer being left. Selection has never been
+    // layer-scoped by construction (_myClaims is one flat map, and
+    // toggleSelection doesn't check moduleForElement) — this is what makes
+    // it actually impossible to hold a mixed toys+drawing selection, rather
+    // than just unlikely. That in turn is what lets undo stay one
+    // mechanism per action: a single gesture can never span both the
+    // op-log-based toys undo and the Y.UndoManager drawing/boundaries one,
+    // so there's no case where reversing "what I just did" means invoking
+    // both.
+    if (id !== _activeLayer) _clearClaims();
     _activeLayer = id;
     // Default to Select when changing layers (tools differ per layer)
     App.setTool('select');
