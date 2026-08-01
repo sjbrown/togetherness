@@ -108,3 +108,55 @@ export function projectFrom(layerEl, ops, headId, joinSequence = []) {
   }
   return layerEl
 }
+
+// ── forking ─────────────────────────────────────────────────────────────
+
+// FNV-1a, 32-bit, synchronous. A fork's genesis id only needs one
+// property — two peers hashing the same content land on the same id —
+// not cryptographic collision-resistance or async crypto.subtle: it's
+// never shown to a person and never used to name anything externally
+// (compare tables.js's generateForkTableId, which is both of those and
+// earns SHA-256 accordingly).
+function deterministicSuffix(seedString) {
+  let h = 0x811c9dc5
+  for (let i = 0; i < seedString.length; i++) {
+    h ^= seedString.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return (h >>> 0).toString(16).padStart(8, '0')
+}
+
+/**
+ * The seed content for a forked table (§7.1: "a checkpoint of the LCA
+ * state plus the splitter branch's ops"): a genesis checkpoint of the
+ * branch point, authored deterministically so two peers independently
+ * forking the same branch produce byte-identical seed content — which is
+ * what lets tables.js's forkLiveDoc name the fork by hashing it and have
+ * both peers land on the same table id — plus the splitter branch's own
+ * operations, each rebased onto that new genesis wherever it pointed at
+ * lcaId before.
+ *
+ * ops/joinSequence describe the parent table and are read-only. layerEl
+ * must already be projected to lcaId — building that projection needs a
+ * real DOM, which is the caller's to provide, not this function's to
+ * assume it can create headlessly.
+ *
+ * Returns { genesis, rebasedOps } as plain data. No ydoc is touched here;
+ * the caller seeds a fresh table's own ops Map with
+ * [genesis, ...rebasedOps].
+ */
+export function buildForkSeed(ops, lcaId, splitterTipId, layerEl, { authorId, joinSequence = [] } = {}) {
+  const draft = checkpointOp(layerEl, { authorId, parents: [] })
+  const genesis = {
+    ...draft,
+    id: `tt-op-ck-${deterministicSuffix(JSON.stringify(draft.mutations))}`,
+    ts: getOp(ops, lcaId)?.ts ?? 0,
+  }
+
+  const rebasedOps = pathFrom(ops, lcaId, splitterTipId, joinSequence).map(opId => {
+    const op = getOp(ops, opId)
+    return { ...op, parents: op.parents.map(p => (p === lcaId ? genesis.id : p)) }
+  })
+
+  return { genesis, rebasedOps }
+}

@@ -21,6 +21,7 @@
 import { initIcons }                              from './icons.js';
 import * as Drawing                               from './drawing.js';
 import * as Toys                                  from './toys.js';
+import { getOps }                                 from './op_dag.js';
 import * as Storage                               from './storage.js';
 import * as BounPos                               from './boun_pos.js';
 import { TOOLS as TOY_TOOLS, addToy, findToy, newToyId,
@@ -75,7 +76,7 @@ const _layerVisibility = {
   'toys':                 true,
   'drawing':              true,
 };
-let _myId, _myGrad, _tableId;
+let _myId, _myGrad, _tableId, _isCreator;
 let _svgEl;
 let _activeLayer  = 'toys';
 
@@ -299,7 +300,7 @@ function buildToolRegistry() {
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
-export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, svgElement, displayName }) {
+export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreator = false, svgElement, displayName }) {
   _ydoc           = ydoc;
   _yMeta          = ydoc.getMap('meta');
   _yToys          = ydoc.getXmlFragment('toys');
@@ -310,13 +311,14 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, svgElem
   _myId       = myId;
   _myGrad    = myGrad;
   _tableId    = tableId;
+  _isCreator  = isCreator;
   _svgEl      = svgElement ?? document.querySelector('#stage svg') ?? document.getElementById('canvas');
 
   // Layers — the canonical LayerAPI dispatch table, keyed by the data-module
   // value app.js stamps on rendered SVG elements.
   _Layers = {
     'drawing':  Drawing.makeLayerAPI(_ydoc, _yDrawing),
-    'toys':     Toys.makeLayerAPI(_ydoc, () => _svgEl.querySelector('#toys-layer'), _myId, tableId),
+    'toys':     Toys.makeLayerAPI(_ydoc, () => _svgEl.querySelector('#toys-layer'), _myId, tableId, isCreator),
     'boun_pos': BounPos.makeLayerAPI(_ydoc, _yBounPos),
   };
 
@@ -350,6 +352,7 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, svgElem
   _yDrawing.observe(onDocChanged);
   _yBounPos.observe(onDocChanged);
   _yMeta.observe(onMetaChanged);
+  getOps(_ydoc).observe(onOpsChanged);
   _awareness.on('change', onPresenceChanged);
 
   // Undo/redo — one UndoManager over the three element fragments.
@@ -457,8 +460,31 @@ function renderBounPosLayer() {
 function renderToysLayer() {
   const layer = _svgEl.querySelector('#toys-layer');
   if (!layer) throw new Error("renderToysLayer: '#toys-layer' not found in SVG document — malformed template?");
+  // render() is projectLayer now: a non-creator with an empty op log
+  // returns null rather than inventing a genesis (see toys.js). There is
+  // nothing to show yet — onOpsChanged re-renders once the real one syncs
+  // in — so this is not an error, just "not yet".
   _Layers.toys.render(layer);
   Canvas.wireShapeClicks(layer);
+}
+
+/**
+ * A remote operation arrived. Local ones are already reflected in the DOM
+ * that produced them, so this only has work to do for someone else's.
+ */
+function onOpsChanged(evt, transaction) {
+  if (transaction?.local) return;
+  const layer = _svgEl?.querySelector('#toys-layer');
+  if (!layer) return;
+
+  for (const [opId, change] of evt.changes.keys) {
+    if (change.action !== 'add') continue;
+    const out = _Layers.toys.receive(layer, opId);
+    if (out.result === 'received-conflict') {
+      addHistory(`branch conflict at ${opId}`, { elType: 'toys' });
+    }
+  }
+  Overlay.render();
 }
 
 function renderDrawingLayer() {
@@ -569,7 +595,7 @@ function dispatchContentsChangeCascade(events) {
   const layerEl = _svgEl.querySelector('#toys-layer');
   _dispatchingContentsChange = true;
   try {
-    Toys.runContentsChangeCascadeSync(_ydoc, _yToys, layerEl, containerIds, _myId);
+    Toys.runContentsChangeCascadeSync(_ydoc, _yToys, layerEl, containerIds, _myId, _tableId);
   } catch (err) {
     console.error('[app] contents_change_handler dispatch failed', err);
   } finally {
@@ -1008,7 +1034,7 @@ const App = {
     // so guard with _dispatchingContentsChange
     _dispatchingContentsChange = true;
     try {
-      Toys.invokeMenuActionSync(_ydoc, _yToys, layerEl, svgEl, namespace, key, undefined, _myId);
+      Toys.invokeMenuActionSync(_ydoc, _yToys, layerEl, svgEl, namespace, key, undefined, _myId, _tableId);
       // _yToys.observeDeep already re-renders the toys layer once that commit
       // lands; refreshFromDoc() here just keeps the Edit panel's own action
       // list current too
@@ -1046,30 +1072,34 @@ const App = {
     const def = _toolById[toolName];
     if (!def?.toyType) { UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
     const id = newToyId();
-    // Tag before addToy's placement transaction runs.
-    // Later, initializeToySync()'s runs with its own outer transact()
-    // that has no explicit origin, so its merged handler-plus-cascade
-    // transaction commits under null, a SEPARATE transaction from
-    // addToy's placement
+    const layerEl = _svgEl?.querySelector('#toys-layer');
+    if (!layerEl) return;
+    // Tag before placeToy's placement transaction runs.
+    // initializeToySync below runs its own outer transact() with no
+    // explicit origin, so its merged handler-plus-cascade transaction
+    // commits under null — a separate transaction, and a separate
+    // operation, from placement. Deliberate: initialize is its own
+    // gesture, not part of "place".
     UndoRedo.tag(`place ${def.label} ${id}`);
-    addToy(_ydoc, _yToys, {
+    Toys.placeToy(_ydoc, layerEl, {
       id, toyType: def.toyType, x, y,
       color: _toolParams[toolName]?.fill ?? _myGrad.c1,
-    }).then(async () => {
+    }, { authorId: _myId, tableId: _tableId }).then(async () => {
       addHistory(`placed ${def.label} ${id}`, { elType: 'toy' });
       App.addLog(`placed ${def.label} ${id}`, 'local');
 
       // Awaiting activateToyScripts() here guarantees the namespace is actually
-      // ready before initialize() reads it off window[namespace].
+      // ready before initialize() reads it off window[namespace]. placeToy
+      // already kicked this off; the promise is memoized, so this just
+      // waits on the same one.
       await activateToyScripts(_ydoc, def.toyType);
-      const svgEl   = _svgEl?.querySelector(`[data-id="${id}"]`);
-      const layerEl = _svgEl?.querySelector('#toys-layer');
+      const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
       if (svgEl && layerEl) {
         // Same guard as invokeToyMenuAction, same reason: initializeToySync
         // already ran its own complete cascade before committing.
         _dispatchingContentsChange = true;
         try {
-          Toys.initializeToySync(_ydoc, _yToys, layerEl, svgEl, def.toyType, _myId);
+          Toys.initializeToySync(_ydoc, _yToys, layerEl, svgEl, def.toyType, _myId, _tableId);
         } finally {
           _dispatchingContentsChange = false;
         }
@@ -1242,8 +1272,6 @@ const App = {
       ? findDropTarget(_svgEl.querySelector('#toys-layer'), id, rx, ry)
       : null;
 
-    // Ghost gone before bbox changes — prevents one-frame ghost "jitter"
-    Overlay.endDragPlaceholder(id);
     Overlay.setDropTargetHover(null);
     _awareness.setLocalStateField('drag', null);
     _dragState = null;
@@ -1282,10 +1310,15 @@ const App = {
         // a malformed container asset can reach here and throw.
         // Surface it, else the pointerup handler may crash silently mid-drag.
         UI.toast(`Could not move into container: ${err.message}`, 'warn');
+        Overlay.endDragPlaceholder(id);
         return;
       } finally {
         _dispatchingContentsChange = false;
       }
+
+      // Ghost ends after the commit, not before — see the comment on the
+      // plain-move branch below for why.
+      Overlay.endDragPlaceholder(id);
 
       // A toy landing inside a container leaves it: selection doesn't carry
       // through a reparent, mirroring archive2025's own drop-into-container
@@ -1306,6 +1339,14 @@ const App = {
       _Layers[mtype].applyMoveCommit(_Layers[mtype].find(id), rx, ry);
       // observeDeep fires on all layers and calls renderDoc()
     }
+    // Ghost ends after the commit: endDragPlaceholder's own render() paints
+    // the selection ring from whatever the DOM currently shows. Calling it
+    // before applyMoveCommit paints the ring at the pre-move position —
+    // and since this whole handler runs synchronously with no await
+    // anywhere in it, the browser never gets a chance to paint that stale
+    // frame before this function returns, so there was never a "jitter"
+    // this ordering protected against, only a stale-ring bug it caused.
+    Overlay.endDragPlaceholder(id);
     addHistory(`moved ${id} → (${rx}, ${ry})`, {
       fill: domEl?.getAttribute('fill'),
       elType: mtype,
@@ -1374,13 +1415,17 @@ const App = {
   commitResize: (id, corner, px, py) => {
     if (!_resizeState || _resizeState.id !== id) return;
     const toRect   = Toys.computeResizeRect(_resizeState.startRect, corner, px, py);
-    Overlay.endResizeGhost(id);
     _resizeState = null;
 
     const toyEl = _Layers.toys.find(id);
     UndoRedo.tag(`resize ${id}`);
     _Layers.toys.applyResize(toyEl, toRect.x, toRect.y, toRect.width, toRect.height);
     // observeDeep fires and calls renderDoc()
+    // Ghost ends after the commit — same reasoning as commitMove:
+    // endResizeGhost's own render() paints the selection ring from
+    // whatever the DOM currently shows, so it has to run after the real
+    // size lands, not before.
+    Overlay.endResizeGhost(id);
     addHistory(`resized ${id}`, { elType: 'toys' });
   },
 
@@ -1496,7 +1541,6 @@ const App = {
     if (!_multiDragState) return;
     const { elements, boundsRects, snapPoints, lastValidDx, lastValidDy } = _multiDragState;
 
-    for (const el of elements) Overlay.endDragPlaceholder(el.id);
     _awareness.setLocalStateField('multidrag', null);
 
     // Use the last constrained (dx, dy) from moveMulti, falling back to
@@ -1515,6 +1559,15 @@ const App = {
         if (L) L.applyMoveCommit(L.find(el.id), rx, ry);
       }
     });
+
+    // Ghosts end after the commit, not before: endDragPlaceholder's own
+    // render() paints the selection ring from whatever the DOM currently
+    // shows, so calling it before the real position lands paints the ring
+    // at the old position — briefly in theory, but since everything here
+    // is synchronous with no await in between, the browser never actually
+    // paints that intermediate frame; there's no "jitter" this ordering
+    // was ever protecting against, only a bug this ordering was causing.
+    for (const el of elements) Overlay.endDragPlaceholder(el.id);
 
     // observeDeep on all layers and calls renderDoc()
 
@@ -1556,8 +1609,33 @@ const App = {
   },
   setOffline: (v)   => {
     _offline = v;
-    if (v) _provider?.disconnect();
-    else   _provider?.connect();
+    if (v) {
+      _provider?.disconnect();
+      return;
+    }
+    _provider?.connect();
+    // y-webrtc's Room.disconnect() calls removeAwarenessStates on this
+    // client's OWN clientID — not just a "mark as gone" broadcast, but an
+    // actual delete from awareness.states, so awareness.getLocalState()
+    // returns null afterward. Awareness.setLocalStateField's own
+    // implementation is `if (getLocalState() !== null) { ... }` — a
+    // silent no-op otherwise. Every _broadcastSelection / _broadcastMode /
+    // _broadcastPendingRequests call after this point would do nothing,
+    // forever, with no error: peers stop seeing this client's selection
+    // rings, and this client's own soft-lock requests never reach anyone
+    // either, making a peer's hold look unbreakable from here.
+    // A full setLocalState (not setLocalStateField) re-establishes the
+    // entry, restoring whatever this client's current state actually is
+    // rather than the boot-time blank one index.html set originally.
+    _awareness?.setLocalState({
+      id:              _myId,
+      color:           _myGrad.c1,
+      grad:            _myGrad,
+      cursor:          null,
+      selection:       Object.keys(_myClaims).length        ? { ..._myClaims }        : null,
+      mode:            _resizeModeId ? 'sel-resize' : null,
+      pendingRequests: Object.keys(_pendingRequests).length  ? { ..._pendingRequests }  : null,
+    });
   },
   // Undo/redo delegate to undo_redo.js (Y.UndoManager). History-log and
   // toast side effects are wired via the onApply/onEmpty callbacks in boot().

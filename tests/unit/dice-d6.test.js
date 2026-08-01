@@ -4,6 +4,9 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { getOps, appendOp } from '../../src/op_dag.js'
+import { checkpointOp, projectFrom } from '../../src/op_checkpoint.js'
+import { getHead, setHead } from '../../src/op_head.js'
 import * as Toys from '../../src/toys.js'
 import { addToy, findToy, clearYNodeMap, _clearSvgTextCache,
          _resetToyScriptState, getMenuActions, invokeMenuActionSync,
@@ -266,6 +269,53 @@ describe('full vertical slice — roll via menu \u2192 tspan changes \u2192 enve
     await new Promise(r => setTimeout(r, 0)) // flush script activation on peer B too
 
     expect(layerB.querySelector('#t1__tspan_die_value').textContent).toBe('1')
+  })
+})
+
+describe('invokeMenuActionSync dual-writes to the op log when given a tableId', () => {
+  beforeEach(() => localStorage.clear())
+
+  test('a menu action with no tableId writes Yjs only, as before', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
+
+    invokeMenuActionSync(ydoc, yToys, layerEl, toyEl, 'd6', 'Turn Up', undefined, 'alice')
+
+    expect([...getOps(ydoc).values()].length).toBe(0)
+  })
+
+  test('a menu action with a tableId appends an operation', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
+
+    invokeMenuActionSync(ydoc, yToys, layerEl, toyEl, 'd6', 'Turn Up', undefined, 'alice', 'race-table')
+
+    const ops = [...getOps(ydoc).values()]
+    expect(ops.length).toBe(1)
+    expect(ops[0].gesture).toBe('menu:d6.Turn Up')
+    expect(ops[0].authorId).toBe('alice')
+    expect(getHead('race-table')).toBe(ops[0].id)
+  })
+
+  test('the recorded operation replays a die roll onto a peer', async () => {
+    const ydoc = new Y.Doc()
+    const { yToys } = getToysLayer(ydoc)
+    const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
+
+    const genesis = checkpointOp(layerEl, { authorId: 'alice', parents: [] })
+    appendOp(ydoc, genesis)
+    setHead('race-table', genesis.id)
+
+    invokeMenuActionSync(ydoc, yToys, layerEl, toyEl, 'd6', 'Turn Up', undefined, 'alice', 'race-table')
+
+    const rollOp = [...getOps(ydoc).values()].find(o => o.gesture.startsWith('menu:'))
+    expect(rollOp.parents).toEqual([genesis.id])
+
+    const peerLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    projectFrom(peerLayer, getOps(ydoc), rollOp.id)
+    expect(peerLayer.querySelector('#t1__tspan_die_value').textContent).toBe('1')
   })
 })
 

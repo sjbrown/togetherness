@@ -9,6 +9,7 @@
  */
 
 import { test, expect, chromium } from '@playwright/test';
+import { openAsCreator, joinRoom, openCreatorAndJoiner } from './helpers.js';
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const SIGNALING_URL = process.env.SIGNALING_URL || 'ws://localhost:4444';
@@ -22,11 +23,11 @@ test.describe('two-peer sync', () => {
     const page1   = await ctx1.newPage();
     const page2   = await ctx2.newPage();
 
-    const room = `e2e-test-${Date.now()}`;
-    await page1.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
+    await openAsCreator(page1, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
     await expect(page1.locator('#peerCount')).toHaveText('0', { timeout: 8000 });
+    const room = await page1.evaluate(() => location.hash.slice(1));
 
-    await page2.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
+    await joinRoom(page2, room, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
 
     // Wait for both peers to see each other
     await expect(page1.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
@@ -58,9 +59,7 @@ test.describe('two-peer sync', () => {
     const page1   = await ctx1.newPage();
     const page2   = await ctx2.newPage();
 
-    const room = `e2e-sel-${Date.now()}`;
-    await page1.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
-    await page2.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
+    await openCreatorAndJoiner(page1, page2, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
 
     await expect(page1.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
     await expect(page2.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
@@ -111,9 +110,7 @@ test.describe('two-peer sync', () => {
     const page1   = await ctx1.newPage();
     const page2   = await ctx2.newPage();
 
-    const room = `e2e-del-${Date.now()}`;
-    await page1.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
-    await page2.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
+    await openCreatorAndJoiner(page1, page2, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
 
     await expect(page1.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
 

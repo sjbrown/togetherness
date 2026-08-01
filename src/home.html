@@ -876,7 +876,8 @@ async function seedTable(tableId, sampleSvgEl) {
   ydoc.transact(() => {
     // Sampler templates carry a decorative rotation on each toy <g> for
     // homepage visual flair — not part of the canonical seeded document.
-    populateFromSvgDoc(sampleSvgEl, ydoc, { stripToyDecorative: true });
+    const { localId: myId } = getIdentity();
+    populateFromSvgDoc(sampleSvgEl, ydoc, { stripToyDecorative: true, asNewTable: true, authorId: myId });
   });
 
   // ensure the doc is synced to Indexeddb before we navigate away

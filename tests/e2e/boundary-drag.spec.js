@@ -16,6 +16,7 @@
  */
 
 import { test, expect, chromium } from '@playwright/test';
+import { openAsCreator } from './helpers.js';
 
 const APP_URL      = process.env.APP_URL      || 'http://localhost:3000';
 const SIGNALING_URL = process.env.SIGNALING_URL || 'ws://localhost:4444';
@@ -26,8 +27,7 @@ test.describe('boundary-constrained toy dragging', () => {
     const ctx     = await browser.newContext();
     const page    = await ctx.newPage();
 
-    const room = `e2e-bounds-${Date.now()}`;
-    await page.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
+    await openAsCreator(page, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
 
     // Wait for app to boot (same pattern as sync.spec.js)
     await expect(page.locator('#peerCount')).toHaveText('0', { timeout: 8000 });

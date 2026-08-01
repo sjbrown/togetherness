@@ -5,13 +5,13 @@
 // directly only to assert on internal state, the way any white-box test
 // would — production code never does this, only tablesAPI's exported
 // functions (ensureJoined, compareAuthority, isAuthoritative,
-// resetJoinSequenceToSelf), which all take a ydoc, never the raw array.
+// resetJoinSequence), which all take a ydoc, never the raw array.
 
 import * as Y from 'yjs'
 import { describe, test, expect } from 'vitest'
 import { tablesAPI } from '../../src/tables.js'
 
-const { ensureJoined, compareAuthority, isAuthoritative, resetJoinSequenceToSelf } = tablesAPI
+const { ensureJoined, compareAuthority, isAuthoritative, resetJoinSequence } = tablesAPI
 
 // White-box only: production code never calls this directly.
 function rawJoinSequence(ydoc) {
@@ -120,21 +120,28 @@ describe('compareAuthority / isAuthoritative', () => {
   })
 })
 
-describe('resetJoinSequenceToSelf', () => {
-  test('clears every existing entry and leaves only soleId', () => {
+describe('resetJoinSequence', () => {
+  test('clears every existing entry and leaves only the given ids, in order', () => {
     const ydoc = new Y.Doc()
     ensureJoined(ydoc, 'peer-A')
     ensureJoined(ydoc, 'peer-B')
     ensureJoined(ydoc, 'peer-C')
 
-    resetJoinSequenceToSelf(ydoc, 'peer-B')
+    resetJoinSequence(ydoc, ['peer-B'])
 
     expect(rawJoinSequence(ydoc).toArray()).toEqual(['peer-B'])
   })
 
+  test('accepts more than one id, in the order given', () => {
+    const ydoc = new Y.Doc()
+    ensureJoined(ydoc, 'peer-A')
+    resetJoinSequence(ydoc, ['peer-C', 'peer-B'])
+    expect(rawJoinSequence(ydoc).toArray()).toEqual(['peer-C', 'peer-B'])
+  })
+
   test('works on an already-empty joinSequence', () => {
     const ydoc = new Y.Doc()
-    resetJoinSequenceToSelf(ydoc, 'peer-A')
+    resetJoinSequence(ydoc, ['peer-A'])
     expect(rawJoinSequence(ydoc).toArray()).toEqual(['peer-A'])
   })
 
@@ -142,10 +149,17 @@ describe('resetJoinSequenceToSelf', () => {
     const ydoc = new Y.Doc()
     ensureJoined(ydoc, 'peer-A')
     ensureJoined(ydoc, 'peer-B')
-    resetJoinSequenceToSelf(ydoc, 'peer-B')
+    resetJoinSequence(ydoc, ['peer-B'])
 
     // peer-A joined the source table earlier, but is gone from this branch's
     // joinSequence entirely now — peer-B (the forking user) is authoritative.
     expect(isAuthoritative(ydoc, 'peer-B', 'peer-A')).toBe(true)
+  })
+
+  test('with several ids, earlier in the array is authoritative — inherited order intact', () => {
+    const ydoc = new Y.Doc()
+    resetJoinSequence(ydoc, ['peer-B', 'peer-C'])
+    expect(isAuthoritative(ydoc, 'peer-B', 'peer-C')).toBe(true)
+    expect(isAuthoritative(ydoc, 'peer-C', 'peer-B')).toBe(false)
   })
 })

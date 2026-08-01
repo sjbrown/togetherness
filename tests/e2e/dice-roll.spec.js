@@ -12,6 +12,7 @@
  */
 
 import { test, expect, chromium } from '@playwright/test';
+import { openCreatorAndJoiner, openAsCreator } from './helpers.js';
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const SIGNALING_URL = process.env.SIGNALING_URL || 'ws://localhost:4444';
@@ -24,9 +25,7 @@ test.describe('two-peer dice roll sync', () => {
     const page1   = await ctx1.newPage();
     const page2   = await ctx2.newPage();
 
-    const room = `e2e-dice-${Date.now()}`;
-    await page1.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
-    await page2.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
+    await openCreatorAndJoiner(page1, page2, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
 
     await expect(page1.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
     await expect(page2.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
@@ -82,8 +81,7 @@ test.describe('two-peer dice roll sync', () => {
     const ctx1    = await browser.newContext();
     const page1   = await ctx1.newPage();
 
-    const room = `e2e-dice-clickable-${Date.now()}`;
-    await page1.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
+    await openAsCreator(page1, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
     await expect(page1.locator('#peerCount')).toHaveText('0', { timeout: 8000 });
 
     const canvas = page1.locator('#canvas');
@@ -126,9 +124,7 @@ test.describe('two-peer dice roll sync', () => {
     const page1   = await ctx1.newPage();
     const page2   = await ctx2.newPage();
 
-    const room = `e2e-dice-turn-${Date.now()}`;
-    await page1.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
-    await page2.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
+    await openCreatorAndJoiner(page1, page2, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
     await expect(page1.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
 
     const canvas = page1.locator('#canvas');

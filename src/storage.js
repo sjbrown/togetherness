@@ -7,6 +7,8 @@
 import * as Y        from 'yjs';
 import * as Toys     from './toys.js';
 import * as Drawing  from './drawing.js';
+import { appendOp }     from './op_dag.js';
+import { checkpointOp } from './op_checkpoint.js';
 
 // ── DOM → Yjs ────────────────────────────────────────────────────────────────
 
@@ -40,6 +42,18 @@ export function domToY(node) {
  * insertion. home.html's sampler templates carry a decorative rotation
  * (`transform="rotate(...)"`) for visual flair on the homepage that isn't
  * part of the canonical document a seeded room should start with.
+ *
+ * opts.asNewTable — this ydoc has never had anything in it (a table just
+ * created for this content, not a live one being imported into). Only
+ * then are toys written as a genesis checkpoint (parents: []) rather than
+ * left for the caller to place as real gestures. Appending a genesis to a
+ * table that already has history forks it — the same bug closed for the
+ * boot race applies here too, just triggered by an import button instead
+ * of two tabs opening at once. app.js's live-table importSVG must not set
+ * this; it has no gesture-based import path yet (see REVISION_PLAN.md
+ * C5) and currently only writes drawing/boundaries/meta correctly when
+ * used against a live table — its toy handling is a known gap, not
+ * silently declared fixed here.
  *
  * Returns { toyCount, drawCount, invalidToyEls }. invalidToyEls are DOM
  * elements found directly inside #toys-layer that Toys.parseForeignToy
@@ -82,8 +96,22 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
       [{ namespace, src: null, code: el.textContent }]);
   }
 
-  // Toys layer
+  // Toys layer. asNewTable: build a scratch DOM layer and take one
+  // genesis checkpoint from it — Toys.checkpointOp reads a live layer
+  // directly, so parsed toy nodes go straight in with no domToY detour.
+  //
+  // Not asNewTable (a live-table import): still validate/normalise/hoist
+  // scripts per toy, but there is no gesture-based import path yet (see
+  // REVISION_PLAN.md C5) to hand a parsed toy to. Falls back to the old
+  // yToys.insert — invisible to the op-log-driven render path already
+  // (a known, separately-flagged gap; see the asNewTable doc above), but
+  // at least not silently discarded, which a bare "parse and drop" would
+  // be. Whoever builds the real import gesture replaces this branch.
   if (toysLayerEl) {
+    const scratchLayer = opts.asNewTable
+      ? document.createElementNS('http://www.w3.org/2000/svg', 'g')
+      : null;
+
     for (const child of toysLayerEl.children) {
       const { parsedNode } = Toys.parseForeignToy(ydoc, child);
       if (!parsedNode) {
@@ -93,8 +121,18 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
 
       if (opts.stripToyDecorative) parsedNode.removeAttribute('transform');
 
-      const yG = domToY(parsedNode);
-      if (yG) { yToys.insert(yToys.length, [yG]); toyCount++; }
+      if (scratchLayer) {
+        scratchLayer.appendChild(parsedNode);
+        toyCount++;
+      } else {
+        const yG = domToY(parsedNode);
+        if (yG) { yToys.insert(yToys.length, [yG]); toyCount++; }
+      }
+    }
+
+    if (scratchLayer && toyCount) {
+      const genesis = checkpointOp(scratchLayer, { authorId: opts.authorId, parents: [] });
+      appendOp(ydoc, genesis);
     }
   }
 
@@ -147,7 +185,6 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
  * on the toy/drawing layers so Inkscape treats them as real layers.
  */
 export function buildExportSvg(liveSvgEl, ydoc) {
-  const yToys    = ydoc.getXmlFragment('toys');
   const yDrawing = ydoc.getXmlFragment('drawing');
   const yScripts = ydoc.getXmlFragment('scripts');
 
@@ -157,10 +194,14 @@ export function buildExportSvg(liveSvgEl, ydoc) {
     clone.querySelector(sel)?.remove();
   });
 
+  // Toys: the live DOM is the canonical projection of the op log (or,
+  // absent that, of Yjs — projectLayer's fallback). cloneNode(true) above
+  // already captured it faithfully, data-id and all, so there's nothing
+  // to rebuild here — only internal bookkeeping to strip before it leaks
+  // into a file a person might open in Inkscape.
   const toysLayerEl = clone.querySelector('#toys-layer');
   if (toysLayerEl) {
-    toysLayerEl.innerHTML = '';
-    Toys.listToys(yToys).forEach(el => toysLayerEl.appendChild(el));
+    toysLayerEl.removeAttribute(Toys.HEAD_MARKER);
     toysLayerEl.setAttribute('inkscape:groupmode', 'layer');
   }
   const drawLayerEl = clone.querySelector('#drawing-layer');

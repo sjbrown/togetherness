@@ -15,7 +15,7 @@
  */
 import * as Y                   from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
-import { compareAuthority as compareAuthorityIn } from './op_dag.js';
+import { compareAuthority as compareAuthorityIn, getOps, appendOp } from './op_dag.js';
 
 const TABLES_KEY  = 'tt_tables';
 const MAX_TABLES  = 20;
@@ -53,6 +53,14 @@ const JOIN_SEQUENCE_KEY = 'joinSequence';
 
 function getJoinSequence(ydoc) {
   return ydoc.getArray(JOIN_SEQUENCE_KEY);
+}
+
+/** Public, read-only view of the current joinSequence, for a caller (the
+ * branch-dialog wiring) that needs real data to compute a fork's ordered
+ * ids against — tables.js owns the Y.Array, callers only ever see a copy.
+ */
+function getJoinSequenceArray(ydoc) {
+  return getJoinSequence(ydoc).toArray();
 }
 
 /**
@@ -94,14 +102,19 @@ function isAuthoritative(ydoc, idA, idB) {
 }
 
 /**
- * Reset ydoc's joinSequence to contain ONLY soleId.
- * Used when forking a table
+ * Reset ydoc's joinSequence to exactly orderedIds, in that order.
+ *
+ * Used when forking a table. orderedIds is the caller's — a single-element
+ * array for an at-rest "Duplicate" (forkTable), or a branch's contributors
+ * in inherited order for a live fork (see op_dag.js's forkJoinSequence and
+ * CONCURRENCY_AND_BRANCHING.md §6.5). Either way, tables.js just writes
+ * what it's given; it has no idea what a branch is.
  */
-function resetJoinSequenceToSelf(ydoc, soleId) {
+function resetJoinSequence(ydoc, orderedIds) {
   const yJoinSequence = getJoinSequence(ydoc);
   ydoc.transact(() => {
     if (yJoinSequence.length > 0) yJoinSequence.delete(0, yJoinSequence.length);
-    yJoinSequence.push([soleId]);
+    yJoinSequence.push(orderedIds);
   });
 }
 
@@ -237,7 +250,7 @@ async function forkTable(sourceTableId, forkedTableId, forkingUserId) {
   // table uses
   const forkDoc = makeDoc();
   Y.applyUpdate(forkDoc, update);
-  resetJoinSequenceToSelf(forkDoc, forkingUserId);
+  resetJoinSequence(forkDoc, [forkingUserId]);
   await openTablePersistenceSynced(forkedTableId, forkDoc);
   forkDoc.destroy();
 }
@@ -277,44 +290,100 @@ async function generateForkTableId(updateBytes) {
 }
 
 /**
+ * A Y.Doc's clientID is a random 32-ish-bit integer minted at
+ * construction, and Yjs tags every new struct a doc originates — an
+ * insert, a delete, a Y.Map.clear()'s tombstones — with it. Two
+ * independently-created docs with byte-identical prior history still
+ * encode "the same" next edit differently by default, purely because
+ * their clientIDs differ.
+ *
+ * forkLiveDoc needs the opposite: every peer forking the identical branch
+ * has to author its reset/prune edits identically. Deriving the clientID
+ * from the same pre-fork bytes every peer already has achieves that —
+ * synchronous FNV-1a is enough; this doesn't need SHA-256's collision
+ * resistance, just determinism from shared input, the same reasoning as
+ * op_checkpoint.js's own deterministicSuffix for a fork's genesis op id.
+ */
+function deterministicClientId(bytes) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < bytes.length; i++) {
+    h ^= bytes[i];
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+/**
  * Fork a LIVE Y.Doc — already in memory, actively synced/edited, unlike
  * forkTable's at-rest reload — into a brand-new IndexedDB database, named
  * deterministically from the doc's own current content
  * (generateForkTableId). Returns the new table's id.
  *
- * Y.encodeStateAsUpdate(liveDoc) is called EXACTLY ONCE, synchronously, as
- * the very first thing here — before the only await in this function
- * (generateForkTableId's crypto.subtle.digest call) — and that single
- * captured snapshot is what both the hash and the seeded fork content
- * come from. Not a style choice: forkingUserId differs per peer too, so
- * this single capture is also what keeps the id itself peer-independent
- * (hashing after resetJoinSequenceToSelf would make it peer-specific,
- * defeating the entire point — two peers with identical divergent
- * content need the identical id).
+ * orderedIds is the branch's joinSequence, already computed by the caller
+ * (op_dag.js's branchAuthors + forkJoinSequence — see
+ * CONCURRENCY_AND_BRANCHING.md §6.5). Unlike the old single forkingUserId,
+ * this is the same on every peer independently forking the same branch —
+ * it comes from data they already share, not from who happens to click
+ * first. That is what makes it safe for the reset to happen BEFORE the
+ * hash below, not after: content that's peer-independent going in stays
+ * peer-independent coming out, so the id finally describes what it names.
+ * (The old ordering — hash first, reset after — existed only because
+ * forkingUserId was peer-specific; resetting first would have made the id
+ * peer-specific too, defeating the entire point.)
  *
- * Idempotent: if this is called twice for the same content, both calls
- * compute the same forkedTableId, and openTablePersistenceSynced syncing
- * into an already-seeded table converges rather than duplicating anything.
+ * opsSeed, if given — { genesis, rebasedOps } from op_checkpoint.js's
+ * buildForkSeed — replaces the toys op log wholesale: without it, forkDoc
+ * inherits liveDoc's entire op history including the leader branch's ops,
+ * which a forked table never wants (see §7.1, "Fork"). Omitting it forks
+ * the whole doc verbatim, which is exactly forkTable's behaviour and is
+ * fine for a caller with no branch to prune to.
+ *
+ * liveDoc itself is never mutated — captured once via Y.encodeStateAsUpdate
+ * into a fresh forkDoc immediately, before anything below touches it.
+ *
+ * Idempotent: called twice for the same content (same orderedIds, same
+ * opsSeed), both calls compute the same forkedTableId, and
+ * openTablePersistenceSynced syncing into an already-seeded table
+ * converges rather than duplicating anything.
  *
  * Does NOT touch the 'tt_tables' registry — same convention as forkTable;
  * callers register the entry themselves via touchTableRecord.
- *
- * forkingUserId required for a fresh joinSequence — same reasoning as
- * forkTable.
  */
-async function forkLiveDoc(liveDoc, forkingUserId) {
-  if (!forkingUserId) {
-    throw new Error('forkLiveDoc: forkingUserId is required (the branch\'s joinSequence must reset to the forking user)');
+async function forkLiveDoc(liveDoc, orderedIds, opsSeed) {
+  if (!orderedIds || !orderedIds.length) {
+    throw new Error('forkLiveDoc: orderedIds is required and must be non-empty (the branch\'s joinSequence must reset to its contributors)');
   }
 
-  const update         = Y.encodeStateAsUpdate(liveDoc); // ONE snapshot, before the only await below
+  const baseUpdate = Y.encodeStateAsUpdate(liveDoc); // one snapshot; liveDoc untouched from here on
+  const forkDoc = makeDoc();
+  Y.applyUpdate(forkDoc, baseUpdate);
+
+  // Every edit from here on (resetJoinSequence, the opsSeed prune+reseed)
+  // has to encode identically no matter which peer's browser performs
+  // it, or the "same orderedIds -> same bytes -> same id" property this
+  // whole function exists for breaks silently: Yjs tags every new struct
+  // — including a Y.Map.clear()'s tombstones — with the authoring doc's
+  // own clientID, and two independently-created Y.Docs mint different
+  // random ones by default even when their prior history is identical.
+  // Forcing a clientID derived from the shared pre-fork content (not
+  // Math.random()'s default) makes every peer's forkDoc author these
+  // specific edits byte-for-byte the same way.
+  forkDoc.clientID = deterministicClientId(baseUpdate);
+
+  resetJoinSequence(forkDoc, orderedIds);
+
+  if (opsSeed) {
+    const forkOps = getOps(forkDoc);
+    forkDoc.transact(() => {
+      forkOps.clear();
+      appendOp(forkDoc, opsSeed.genesis);
+      for (const op of opsSeed.rebasedOps) appendOp(forkDoc, op);
+    });
+  }
+
+  const update         = Y.encodeStateAsUpdate(forkDoc); // post-reset, post-prune bytes
   const forkedTableId = await generateForkTableId(update);
 
-  const forkDoc = makeDoc();
-  Y.applyUpdate(forkDoc, update);
-  // resetJoinSequenceToSelf must go *after* generateForkTableId, or else Bob
-  // and Clyde won't get the same id, and won't be able to join each other.
-  resetJoinSequenceToSelf(forkDoc, forkingUserId);
   await openTablePersistenceSynced(forkedTableId, forkDoc);
   forkDoc.destroy();
 
@@ -346,8 +415,9 @@ export const tablesAPI = {
   makeDoc,
   initTableDoc,
   ensureJoined,
+  getJoinSequenceArray,
   isAuthoritative,
-  resetJoinSequenceToSelf,
+  resetJoinSequence,
   openTablePersistenceSynced,
   getYDoc,
   loadTables,
@@ -357,6 +427,7 @@ export const tablesAPI = {
   loadTableDoc,
   forkTable,
   generateForkTableId,
+  deterministicClientId,
   forkLiveDoc,
   generateTableId,
   randSlug,

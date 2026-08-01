@@ -30,8 +30,8 @@ const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789'
 import { number, bool } from './tools-schema.js';
 import { runToyHandlerSync, runInEnvelopeSync, commitEnvelope, commitGesture, ENVELOPE_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js';
 import { consumeParents, setHead, getHead, addMergeTip } from './op_head.js';
-import { getOps, appendOp, getOp, heads } from './op_dag.js';
-import { checkpointOp, projectFrom } from './op_checkpoint.js';
+import { getOps, appendOp, getOp, heads, labelBranches, branchAuthors, forkJoinSequence } from './op_dag.js';
+import { checkpointOp, projectFrom, buildForkSeed } from './op_checkpoint.js';
 import { receiveOp } from './op_replay.js';
 
 // NOTE: envelope.js imports render()/yNodeFor()/registerYNode() from this
@@ -1689,7 +1689,10 @@ export function runGestureSync(ydoc, layerEl, fn, opts = {}) {
       authorId: opts.authorId ?? null,
       parents:  consumeParents(tableId),
     })
-    if (op) setHead(tableId, op.id)
+    if (op) {
+      setHead(tableId, op.id)
+      markProjectedAt(layerEl, op.id)
+    }
     result.op = op ?? null
   }
   return result
@@ -1709,7 +1712,7 @@ export function runGestureSync(ydoc, layerEl, fn, opts = {}) {
  * honors the outermost call's origin), so the merged transaction commits
  * under null regardless of the ENVELOPE_ORIGIN passed below
  */
-export function invokeMenuActionSync(ydoc, yToys, layerEl, svgEl, namespace, key, evt, authorId) {
+export function invokeMenuActionSync(ydoc, yToys, layerEl, svgEl, namespace, key, evt, authorId, tableId) {
   const ns    = globalThis[namespace]
   const entry = ns?.menu?.[key]
   if (!entry || typeof entry.handler !== 'function') {
@@ -1720,7 +1723,8 @@ export function invokeMenuActionSync(ydoc, yToys, layerEl, svgEl, namespace, key
   }
   let result
   ydoc.transact(() => {
-    result = runGestureSync(ydoc, layerEl, () => entry.handler.call(svgEl, evt), { origin: ENVELOPE_ORIGIN, authorId })
+    result = runGestureSync(ydoc, layerEl, () => entry.handler.call(svgEl, evt),
+      { origin: ENVELOPE_ORIGIN, gesture: `menu:${namespace}.${key}`, authorId, tableId })
   })
   return result
 }
@@ -1738,7 +1742,7 @@ export function invokeMenuActionSync(ydoc, yToys, layerEl, svgEl, namespace, key
  * Ordinarily there's nothing to fold. But initialize() has the freedom
  * to mutate anything in toys-layer.
  */
-export function initializeToySync(ydoc, yToys, layerEl, svgEl, toyType, authorId) {
+export function initializeToySync(ydoc, yToys, layerEl, svgEl, toyType, authorId, tableId) {
   const initializers = getNamespacesForType(toyType)
     .map(name => globalThis[name])
     .filter(ns => ns && typeof ns.initialize === 'function')
@@ -1747,7 +1751,7 @@ export function initializeToySync(ydoc, yToys, layerEl, svgEl, toyType, authorId
   ydoc.transact(() => {
     runGestureSync(ydoc, layerEl, () => {
       initializers.forEach(ns => ns.initialize(svgEl))
-    }, { origin: LIFECYCLE_ORIGIN, authorId })
+    }, { origin: LIFECYCLE_ORIGIN, gesture: 'initialize', authorId, tableId })
   })
 }
 
@@ -1784,15 +1788,15 @@ export function findAncestorContainerIds(yNode) {
  *
  * No-op if toyType has no contents_change_handler-providing namespace.
  */
-export function runContentsChangeHandlerSync(ydoc, yToys, layerEl, svgEl, toyType, authorId) {
+export function runContentsChangeHandlerSync(ydoc, yToys, layerEl, svgEl, toyType, authorId, tableId) {
   const handlers = getNamespacesForType(toyType)
     .map(name => globalThis[name])
     .filter(ns => ns && typeof ns.contents_change_handler === 'function')
   if (!handlers.length) return
 
-  runToyHandlerSync(ydoc, yToys, layerEl, svgEl, () => {
+  runGestureSync(ydoc, layerEl, () => {
     handlers.forEach(ns => ns.contents_change_handler(svgEl))
-  }, { origin: ENVELOPE_ORIGIN, authorId })
+  }, { origin: ENVELOPE_ORIGIN, gesture: 'contents_change', authorId, tableId })
 }
 
 /**
@@ -1829,13 +1833,13 @@ export function affectedContainerIdsInnerFirst(changedYNodes) {
  * transaction. When run from an observer (no open transaction), each is
  * its own transaction instead — same end state, just not folded.
  */
-export function runContentsChangeCascadeSync(ydoc, yToys, layerEl, containerIds, authorId) {
+export function runContentsChangeCascadeSync(ydoc, yToys, layerEl, containerIds, authorId, tableId) {
   for (const containerId of containerIds) {
     render(yToys, layerEl)
     const containerEl = layerEl.querySelector(`[data-id="${containerId}"]`)
     const ycontainer  = findToy(yToys, containerId)
     if (!containerEl || !ycontainer) continue // e.g. the container itself was deleted in the same transaction
-    runContentsChangeHandlerSync(ydoc, yToys, layerEl, containerEl, ycontainer.getAttribute('data-toy-type'), authorId)
+    runContentsChangeHandlerSync(ydoc, yToys, layerEl, containerEl, ycontainer.getAttribute('data-toy-type'), authorId, tableId)
   }
 }
 
@@ -1892,15 +1896,32 @@ function activateAllToyScripts(ydoc, yToys) {
  *
  * Returns the head it left the layer at.
  */
-export function projectLayer(ydoc, layerEl, { tableId, authorId } = {}) {
+/**
+ * isCreator matters only on the "the log is empty" path, and it has to be
+ * the same signal index.html already uses to decide whether to mint a
+ * fresh table id: !location.hash, computed once, at the top of boot.
+ * "My local ops map has nothing in it" is NOT that signal — it's also
+ * true for a joiner who arrived before the creator's genesis has synced
+ * in, and minting a checkpoint there forks the table's history before
+ * anyone has done anything. Two peers can't both create the same table;
+ * exactly one of them generated the hash the other one joined.
+ *
+ * A non-creator with an empty log takes no genesis and returns null —
+ * there is nothing yet to project, and inventing something would be
+ * exactly the bug this guards against. The caller re-renders once the
+ * real genesis arrives (see app.js's ops-Map observer).
+ */
+export function projectLayer(ydoc, layerEl, { tableId, authorId, isCreator = false } = {}) {
   ensureLayerId(layerEl)
   const ops = getOps(ydoc)
 
   if (ops.size === 0) {
+    if (!isCreator) return null
     render(ydoc.getXmlFragment('toys'), layerEl)
     const genesis = checkpointOp(layerEl, { authorId, parents: [] })
     appendOp(ydoc, genesis)
     if (tableId) setHead(tableId, genesis.id)
+    markProjectedAt(layerEl, genesis.id)
     return genesis.id
   }
 
@@ -1908,9 +1929,24 @@ export function projectLayer(ydoc, layerEl, { tableId, authorId } = {}) {
   const target = (head && getOp(ops, head)) ? head : (heads(ops)[0] ?? null)
   if (!target) return null
 
+  // Already showing this state — reprojecting would discard a DOM that
+  // gestures and remote operations have been maintaining in place.
+  if (projectedAt(layerEl) === target) return target
+
   projectFrom(layerEl, ops, target)
   if (tableId) setHead(tableId, target)
+  markProjectedAt(layerEl, target)
   return target
+}
+
+export const HEAD_MARKER = 'data-tt-head'
+
+/** Which operation the layer's DOM currently reflects. */
+export const projectedAt = (layerEl) => layerEl?.getAttribute(HEAD_MARKER) ?? null
+
+export function markProjectedAt(layerEl, opId) {
+  if (layerEl && opId) layerEl.setAttribute(HEAD_MARKER, opId)
+  return layerEl
 }
 
 /**
@@ -1930,7 +1966,71 @@ export async function placeToy(ydoc, layerEl, attrs, opts = {}) {
   return toyEl
 }
 
-export function makeLayerAPI(ydoc, getLayerEl, myId, tableId) {  const layer = () => (typeof getLayerEl === 'function' ? getLayerEl() : getLayerEl)
+/**
+ * Apply one arriving operation to the toys layer, keeping the head, any
+ * merge tips, and the projection marker (render()'s idempotence check)
+ * all consistent with what actually happened.
+ *
+ * Not yet called from app.js. L.render still does plain Yjs rendering
+ * rather than projectLayer — see the "boot race" test in
+ * toys-layer-api.test.js — so there's no op-log head for a receive to
+ * advance yet. This is the piece that will wire in once that's resolved.
+ */
+export function receiveToyOp(ydoc, layerEl, opId, tableId) {
+  const ops = getOps(ydoc)
+  const head = tableId ? getHead(tableId) : null
+  const out = receiveOp(layerEl, ops, head, opId)
+
+  if (out.head && out.head !== head) {
+    if (tableId) setHead(tableId, out.head)
+    markProjectedAt(layerEl, out.head)
+  }
+  if (out.mergeTip && tableId) addMergeTip(tableId, out.mergeTip)
+
+  return out
+}
+
+/**
+ * Decide what a conflicting arrival means for THIS peer, without
+ * touching any DOM or ydoc: label leader/splitter (op_dag.labelBranches),
+ * then check whether authorId contributed to the splitter.
+ *
+ * A bystander (didn't) just needs to know which branch is the leader, to
+ * adopt it silently. A peer who authored on the splitter needs a fork —
+ * orderedIds is ready to hand to tables.js's forkLiveDoc; opsSeed is NOT
+ * computed here (it needs a real projected layer, real DOM work, only
+ * worth doing in the fork case) — see buildToyForkSeed for that half.
+ */
+export function resolveToyBranchConflict(ydoc, tips, { authorId, joinSequence = [] } = {}) {
+  const ops = getOps(ydoc)
+  const { leader, splitter, lca } = labelBranches(ops, tips[0], tips[1], joinSequence)
+  const authors = branchAuthors(ops, splitter, lca)
+
+  if (!authors.has(authorId)) {
+    return { leader, splitter, lca, authoredSplitter: false }
+  }
+
+  return {
+    leader, splitter, lca, authoredSplitter: true,
+    orderedIds: forkJoinSequence(joinSequence, authors),
+  }
+}
+
+/**
+ * The DOM-touching half of resolving a conflict this peer is on the
+ * losing side of: project a scratch layer to lca (buildForkSeed needs a
+ * real layer to checkpoint from) and build the fork's seed content.
+ * Only worth calling when resolveToyBranchConflict reported
+ * authoredSplitter: true.
+ */
+export function buildToyForkSeed(ydoc, lca, splitter, { authorId, joinSequence = [] } = {}) {
+  const ops = getOps(ydoc)
+  const scratch = document.createElementNS(SVG_NS, 'g')
+  projectFrom(scratch, ops, lca, joinSequence)
+  return buildForkSeed(ops, lca, splitter, scratch, { authorId, joinSequence })
+}
+
+export function makeLayerAPI(ydoc, getLayerEl, myId, tableId, isCreator = false) {  const layer = () => (typeof getLayerEl === 'function' ? getLayerEl() : getLayerEl)
   const gesture = (name, fn) =>
     runGestureSync(ydoc, layer(), fn, { gesture: name, authorId: myId, tableId })
 
@@ -1945,9 +2045,7 @@ export function makeLayerAPI(ydoc, getLayerEl, myId, tableId) {  const layer = (
     applyResize:     (el, x, y, w, h) => gesture('resize', () => applyResizeDom(el, x, y, w, h)),
     edit:            (el, editData)  => gesture('edit',   () => editDom(el, editData)),
     listData:        ()              => toysDataDom(layer()),
-    render:          (layerEl)       => render(ydoc.getXmlFragment('toys'), layerEl),
-    project:         (layerEl)       => projectLayer(ydoc, layerEl, { tableId, authorId: myId }),
-    place:           (layerEl, attrs) => placeToy(ydoc, layerEl, attrs, { authorId: myId, tableId }),
-    receive:         (layerEl, opId) => receiveOp(layerEl, getOps(ydoc), tableId && getHead(tableId), opId),
+    render:          (layerEl)       => projectLayer(ydoc, layerEl, { tableId, authorId: myId, isCreator }),
+    receive:         (layerEl, opId) => receiveToyOp(ydoc, layerEl, opId, tableId),
   };
 }

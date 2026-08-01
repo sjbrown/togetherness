@@ -17,7 +17,47 @@ import * as Y from 'yjs'
 import { describe, test, expect } from 'vitest'
 import { tablesAPI } from '../../src/tables.js'
 
-const { generateForkTableId, forkLiveDoc } = tablesAPI
+const { generateForkTableId, forkLiveDoc, deterministicClientId } = tablesAPI
+
+describe('deterministicClientId', () => {
+  test('the same bytes produce the same id', () => {
+    const bytes = new Uint8Array([1, 2, 3, 4, 5])
+    expect(deterministicClientId(bytes)).toBe(deterministicClientId(bytes))
+  })
+
+  test('different bytes produce different ids', () => {
+    const a = deterministicClientId(new Uint8Array([1, 2, 3]))
+    const b = deterministicClientId(new Uint8Array([1, 2, 4]))
+    expect(a).not.toBe(b)
+  })
+
+  test('is a non-negative 32-bit integer, valid as a Y.Doc clientID', () => {
+    const id = deterministicClientId(new Uint8Array([9, 9, 9]))
+    expect(Number.isInteger(id)).toBe(true)
+    expect(id).toBeGreaterThanOrEqual(0)
+    expect(id).toBeLessThanOrEqual(0xffffffff)
+  })
+
+  test('setting it on two independent docs makes their next edit encode identically', () => {
+    // The actual property this function exists for, isolated from
+    // forkLiveDoc's own logic: without it, two fresh Y.Docs (even with
+    // identical prior history) encode "the same" next edit differently,
+    // because each mints its own random clientID by default.
+    const src = new Y.Doc()
+    src.getArray('x').push([1, 2, 3])
+    const srcBytes = Y.encodeStateAsUpdate(src)
+
+    const build = () => {
+      const doc = new Y.Doc()
+      Y.applyUpdate(doc, srcBytes)
+      doc.clientID = deterministicClientId(srcBytes)
+      doc.getArray('y').push(['same edit'])
+      return Y.encodeStateAsUpdate(doc)
+    }
+
+    expect(build()).toEqual(build())
+  })
+})
 
 describe('generateForkTableId', () => {
   test('matches the expected id shape', async () => {
@@ -95,10 +135,117 @@ describe('generateForkTableId', () => {
 })
 
 describe('forkLiveDoc — validation (no IndexedDB reached)', () => {
-  test('throws without a forkingUserId, before touching persistence at all', async () => {
+  test('throws without orderedIds, before touching persistence at all', async () => {
     const ydoc = new Y.Doc()
-    await expect(forkLiveDoc(ydoc, undefined)).rejects.toThrow(/forkingUserId is required/)
-    await expect(forkLiveDoc(ydoc, null)).rejects.toThrow(/forkingUserId is required/)
-    await expect(forkLiveDoc(ydoc, '')).rejects.toThrow(/forkingUserId is required/)
+    await expect(forkLiveDoc(ydoc, undefined)).rejects.toThrow(/orderedIds is required/)
+    await expect(forkLiveDoc(ydoc, null)).rejects.toThrow(/orderedIds is required/)
+    await expect(forkLiveDoc(ydoc, [])).rejects.toThrow(/orderedIds is required/)
+  })
+})
+
+describe('resetJoinSequence ordering, reset-before-hash', () => {
+  // This is the property the whole content-hash naming scheme exists for
+  // (§6.5's "load-bearing, not cosmetic"): two peers independently
+  // forking the identical branch — same orderedIds, computed from shared
+  // branch data — must produce byte-identical fork content, and therefore
+  // the identical table id, with zero coordination between them.
+  test('two docs, same orderedIds, produce byte-identical Y.encodeStateAsUpdate output', async () => {
+    // bobDoc is the only doc actually authored — clydeDoc is derived from
+    // its real update bytes, the same way the "actual scenario" test above
+    // does it. Two INDEPENDENTLY authored docs (fresh Y.Doc(), same
+    // operations replayed on each) do NOT produce identical bytes even for
+    // logically identical content — each Y.Doc mints its own random
+    // internal clientID, and that id is baked into every encoded update.
+    // Real peers never hit this: Bob and Clyde's docs converged through
+    // normal Yjs sync, which is exactly what applyUpdate reproduces here.
+    const bobDoc = new Y.Doc()
+    bobDoc.getArray('joinSequence').push(['alice', 'bob', 'clyde'])
+    const el = new Y.XmlElement('g')
+    el.setAttribute('id', 'shared')
+    bobDoc.getXmlFragment('toys').insert(0, [el])
+
+    const clydeDoc = new Y.Doc()
+    Y.applyUpdate(clydeDoc, Y.encodeStateAsUpdate(bobDoc))
+
+    const orderedIds = ['bob', 'clyde'] // both compute this identically from shared branch data
+
+    // Reach into forkLiveDoc's own logic without IndexedDB: replicate the
+    // pre-persistence steps directly, since openTablePersistenceSynced
+    // needs indexedDB (unavailable in jsdom — see this file's header).
+    const seedForkDoc = (liveDoc) => {
+      const forkDoc = new Y.Doc()
+      const baseUpdate = Y.encodeStateAsUpdate(liveDoc)
+      Y.applyUpdate(forkDoc, baseUpdate)
+      forkDoc.clientID = deterministicClientId(baseUpdate)
+      const seq = forkDoc.getArray('joinSequence')
+      seq.delete(0, seq.length)
+      seq.push(orderedIds)
+      return forkDoc
+    }
+
+    const bobFork   = seedForkDoc(bobDoc)
+    const clydeFork = seedForkDoc(clydeDoc)
+
+    const bobBytes   = Y.encodeStateAsUpdate(bobFork)
+    const clydeBytes = Y.encodeStateAsUpdate(clydeFork)
+    expect(bobBytes).toEqual(clydeBytes)
+
+    const bobId   = await generateForkTableId(bobBytes)
+    const clydeId = await generateForkTableId(clydeBytes)
+    expect(bobId).toBe(clydeId)
+  })
+
+  test('an opsSeed replaces the toys op log wholesale, not just adds to it', () => {
+    // forkLiveDoc's own opsSeed branch, replicated directly — same
+    // IndexedDB constraint as the test above.
+    const sourceDoc = new Y.Doc()
+    const ops = sourceDoc.getMap('ops')
+    ops.set('leader-op-1', { id: 'leader-op-1', parents: [], gesture: 'checkpoint' })
+    ops.set('splitter-op-1', { id: 'splitter-op-1', parents: [], gesture: 'checkpoint' })
+    const baseUpdate = Y.encodeStateAsUpdate(sourceDoc)
+
+    const forkDoc = new Y.Doc()
+    Y.applyUpdate(forkDoc, baseUpdate)
+    forkDoc.clientID = deterministicClientId(baseUpdate)
+    expect(forkDoc.getMap('ops').size).toBe(2) // inherited everything, including the leader's op
+
+    const opsSeed = {
+      genesis: { id: 'new-genesis', parents: [], gesture: 'checkpoint' },
+      rebasedOps: [{ id: 'splitter-op-1', parents: ['new-genesis'], gesture: 'move' }],
+    }
+
+    const forkOps = forkDoc.getMap('ops')
+    forkDoc.transact(() => {
+      forkOps.clear()
+      forkOps.set(opsSeed.genesis.id, opsSeed.genesis)
+      for (const op of opsSeed.rebasedOps) forkOps.set(op.id, op)
+    })
+
+    const finalIds = [...forkDoc.getMap('ops').keys()]
+    expect(finalIds.sort()).toEqual(['new-genesis', 'splitter-op-1'])
+    expect(finalIds).not.toContain('leader-op-1') // the leader branch's op did not survive the prune
+  })
+
+  test('two peers pruning to the same opsSeed produce byte-identical ops content', () => {
+    const sourceDoc = new Y.Doc()
+    sourceDoc.getMap('ops').set('leader-op-1', { id: 'leader-op-1', parents: [] })
+    const baseUpdate = Y.encodeStateAsUpdate(sourceDoc)
+
+    const opsSeed = { genesis: { id: 'g', parents: [] }, rebasedOps: [{ id: 's1', parents: ['g'] }] }
+
+    const pruneCopy = () => {
+      const doc = new Y.Doc()
+      Y.applyUpdate(doc, baseUpdate)
+      doc.clientID = deterministicClientId(baseUpdate)
+      const opsMap = doc.getMap('ops')
+      doc.transact(() => {
+        opsMap.clear()
+        opsMap.set(opsSeed.genesis.id, opsSeed.genesis)
+        for (const op of opsSeed.rebasedOps) opsMap.set(op.id, op)
+      })
+      return Y.encodeStateAsUpdate(doc)
+    }
+
+    expect(pruneCopy()).toEqual(pruneCopy())
   })
 })

@@ -15,9 +15,11 @@ import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   makeLayerAPI, projectLayer, placeToy, addToy, render, findToy, getTtState,
+  resolveToyBranchConflict, buildToyForkSeed,
   clearYNodeMap, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
-import { getOps } from '../../src/op_dag.js'
+import { getOps, appendOp } from '../../src/op_dag.js'
+import { checkpointOp, projectFrom } from '../../src/op_checkpoint.js'
 import { getHead } from '../../src/op_head.js'
 import { apply as applyWire, invert } from '../../src/op_wire_mutation.js'
 
@@ -236,7 +238,7 @@ describe('projectLayer', () => {
     const { ydoc, layerEl } = await setup(['die1', 'dice_d6'], ['tray1', 'tray_sum'])
     const before = layerEl.innerHTML
 
-    const head = projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a' })
+    const head = projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a', isCreator: true })
 
     const ops = [...getOps(ydoc).values()]
     expect(ops.length).toBe(1)
@@ -248,7 +250,7 @@ describe('projectLayer', () => {
 
   test('genesis reproduces the layer on a peer that has only the log', async () => {
     const { ydoc, layerEl } = await setup(['die1', 'dice_d6'], ['tray1', 'tray_sum'])
-    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a' })
+    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a', isCreator: true })
 
     const fresh = document.createElementNS(SVG_NS, 'g')
     fresh.id = 'toys-layer'
@@ -259,7 +261,7 @@ describe('projectLayer', () => {
 
   test('projecting twice is idempotent', async () => {
     const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
-    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a' })
+    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a', isCreator: true })
     const once = layerEl.innerHTML
     projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a' })
     expect(layerEl.innerHTML).toBe(once)
@@ -267,7 +269,7 @@ describe('projectLayer', () => {
 
   test('a gesture after genesis projects onto a fresh layer', async () => {
     const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
-    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a' })
+    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a', isCreator: true })
 
     const L = makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE)
     L.applyMoveCommit(L.find('die1'), 321, 123)
@@ -282,7 +284,7 @@ describe('projectLayer', () => {
 
   test('genesis is written once, not on every projection', async () => {
     const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
-    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a' })
+    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a', isCreator: true })
     projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a' })
     expect([...getOps(ydoc).values()].filter(o => o.gesture === 'checkpoint').length).toBe(1)
   })
@@ -301,7 +303,7 @@ describe('placeToy', () => {
   test('places into the DOM and records an operation', async () => {
     const ydoc = new Y.Doc()
     const layerEl = emptyLayer()
-    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a' })
+    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a', isCreator: true })
 
     await placeToy(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 50, y: 50, color: '#fff' },
                    { authorId: 'user-a', tableId: TABLE })
@@ -315,7 +317,7 @@ describe('placeToy', () => {
   test('the placement projects onto a peer holding only the log', async () => {
     const ydoc = new Y.Doc()
     const layerEl = emptyLayer()
-    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a' })
+    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a', isCreator: true })
     await placeToy(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 50, y: 50, color: '#fff' },
                    { authorId: 'user-a', tableId: TABLE })
 
@@ -327,7 +329,7 @@ describe('placeToy', () => {
   test('placing two toys yields two operations in sequence', async () => {
     const ydoc = new Y.Doc()
     const layerEl = emptyLayer()
-    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a' })
+    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a', isCreator: true })
     for (const id of ['die1', 'die2']) {
       await placeToy(ydoc, layerEl, { id, toyType: 'dice_d6', x: 10, y: 10, color: '#fff' },
                      { authorId: 'user-a', tableId: TABLE })
@@ -335,5 +337,184 @@ describe('placeToy', () => {
     const placements = [...getOps(ydoc).values()].filter(o => o.gesture === 'place')
     expect(placements.length).toBe(2)
     expect(layerEl.querySelectorAll('[data-toy-id]').length).toBe(2)
+  })
+})
+
+describe('L.render is projectLayer, gated by isCreator', () => {
+  const TABLE = 'layerapi-render-table'
+  beforeEach(() => localStorage.clear())
+
+  test('a creator LayerAPI renders and takes genesis', async () => {
+    const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
+    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE, true)
+
+    const head = L.render(layerEl)
+
+    expect(head).toBe(getHead(TABLE))
+    expect([...getOps(ydoc).values()][0].gesture).toBe('checkpoint')
+  })
+
+  test('a non-creator LayerAPI on a fresh table renders nothing and does not fork', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = document.createElementNS(SVG_NS, 'g')
+    const L = makeLayerAPI(ydoc, () => layerEl, 'user-b', TABLE, false)
+
+    expect(L.render(layerEl)).toBeNull()
+    expect([...getOps(ydoc).values()].length).toBe(0)
+  })
+
+  test('a second L.render call by the creator does not re-derive genesis', async () => {
+    const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
+    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE, true)
+    L.render(layerEl)
+    L.render(layerEl)
+    expect([...getOps(ydoc).values()].filter(o => o.gesture === 'checkpoint').length).toBe(1)
+  })
+
+  test('a gesture through the LayerAPI, then L.render again, keeps the DOM live rather than reprojecting stale', async () => {
+    const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
+    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE, true)
+    L.render(layerEl)
+
+    L.applyMoveCommit(L.find('die1'), 42, 42)
+    L.render(layerEl)
+
+    expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 42, cy: 42 })
+  })
+})
+
+describe('creator vs joiner — the human protocol the boot race was missing', () => {
+  const TABLE = 'race-table'
+  beforeEach(() => localStorage.clear())
+
+  test('a joiner with an empty log takes no genesis and returns null', async () => {
+    const b = new Y.Doc()
+    const result = projectLayer(b, document.createElementNS(SVG_NS, 'g'),
+      { tableId: 'peerB', authorId: 'bob', isCreator: false })
+
+    expect(result).toBeNull()
+    expect([...getOps(b).values()].length).toBe(0)
+  })
+
+  test('only the creator mints a genesis; the joiner ends up on the same one after sync', async () => {
+    const a = new Y.Doc()  // creator
+    const b = new Y.Doc()  // joiner
+
+    const aLayer = document.createElementNS(SVG_NS, 'g')
+    const bLayer = document.createElementNS(SVG_NS, 'g')
+
+    // Real boot order: both render locally before any network activity.
+    const aHead = projectLayer(a, aLayer, { tableId: 'peerA', authorId: 'alice', isCreator: true })
+    const bHead = projectLayer(b, bLayer, { tableId: 'peerB', authorId: 'bob', isCreator: false })
+
+    expect(aHead).not.toBeNull()
+    expect(bHead).toBeNull()  // waiting, correctly
+
+    // Now they sync, as they would over WebRTC.
+    Y.applyUpdate(b, Y.encodeStateAsUpdate(a))
+    Y.applyUpdate(a, Y.encodeStateAsUpdate(b))
+
+    const ops = getOps(a)
+    expect([...ops.values()].filter(o => o.gesture === 'checkpoint').length).toBe(1)
+
+    // The joiner's next render (triggered by the ops-Map observer in real
+    // app.js — see onOpsChanged) finds the real genesis and projects it.
+    const bHeadAfterSync = projectLayer(b, bLayer, { tableId: 'peerB', authorId: 'bob', isCreator: false })
+    expect(bHeadAfterSync).toBe(aHead)
+    expect(bLayer.innerHTML).toBe(aLayer.innerHTML)
+  })
+
+  test('two peers both flagged as creator would still fork — isCreator has to come from the URL, not be assumed', async () => {
+    // This is the failure mode the fix removes production's access to,
+    // not one it makes impossible in the abstract: if two sessions both
+    // computed isCreator=true for the same table id, they would still
+    // fork. The guarantee is behavioural (exactly one browser session
+    // ever fails to find a hash in its URL for a given table), not
+    // enforced by this function.
+    const a = new Y.Doc()
+    const b = new Y.Doc()
+    projectLayer(a, document.createElementNS(SVG_NS, 'g'), { tableId: 'x', authorId: 'alice', isCreator: true })
+    projectLayer(b, document.createElementNS(SVG_NS, 'g'), { tableId: 'y', authorId: 'bob', isCreator: true })
+    Y.applyUpdate(b, Y.encodeStateAsUpdate(a))
+    expect([...getOps(b).values()].filter(o => o.gesture === 'checkpoint').length).toBe(2)
+  })
+})
+
+describe('resolveToyBranchConflict', () => {
+  function fork(ydoc) {
+    // L -> a1(alice, leader tip) / L -> s1(bob) -> s2(clyde) (splitter tip)
+    const base = document.createElementNS(SVG_NS, 'g')
+    base.innerHTML = '<rect data-id="r" x="0"/>'
+    const L = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
+    appendOp(ydoc, L)
+    const a1 = { id: 'a1', parents: ['L'], authorId: 'alice', gesture: 'move', ts: 1,
+      mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '1' }] }
+    const s1 = { id: 's1', parents: ['L'], authorId: 'bob', gesture: 'move', ts: 1,
+      mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '2' }] }
+    const s2 = { id: 's2', parents: ['s1'], authorId: 'clyde', gesture: 'move', ts: 2,
+      mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '2', newValue: '3' }] }
+    appendOp(ydoc, a1); appendOp(ydoc, s1); appendOp(ydoc, s2)
+    return { tips: ['a1', 's2'] }
+  }
+
+  test('the authoring contributor gets authoredSplitter: true with ready orderedIds', () => {
+    const ydoc = new Y.Doc()
+    const { tips } = fork(ydoc)
+    const joinSequence = ['alice', 'bob', 'clyde']
+
+    const out = resolveToyBranchConflict(ydoc, tips, { authorId: 'bob', joinSequence })
+    expect(out.leader).toBe('a1')
+    expect(out.splitter).toBe('s2')
+    expect(out.lca).toBe('L')
+    expect(out.authoredSplitter).toBe(true)
+    expect(out.orderedIds).toEqual(['bob', 'clyde'])
+  })
+
+  test('a bystander who touched neither branch gets authoredSplitter: false', () => {
+    const ydoc = new Y.Doc()
+    const { tips } = fork(ydoc)
+    const out = resolveToyBranchConflict(ydoc, tips, { authorId: 'zoe', joinSequence: ['alice', 'bob', 'clyde'] })
+    expect(out.authoredSplitter).toBe(false)
+    expect(out.orderedIds).toBeUndefined()
+  })
+
+  test('the leader author is also just a bystander to the splitter', () => {
+    const ydoc = new Y.Doc()
+    const { tips } = fork(ydoc)
+    const out = resolveToyBranchConflict(ydoc, tips, { authorId: 'alice', joinSequence: ['alice', 'bob', 'clyde'] })
+    expect(out.authoredSplitter).toBe(false)
+  })
+
+  test('label does not depend on argument order', () => {
+    const ydoc = new Y.Doc()
+    const { tips } = fork(ydoc)
+    const joinSequence = ['alice', 'bob', 'clyde']
+    const forward = resolveToyBranchConflict(ydoc, [tips[0], tips[1]], { authorId: 'zoe', joinSequence })
+    const reversed = resolveToyBranchConflict(ydoc, [tips[1], tips[0]], { authorId: 'zoe', joinSequence })
+    expect(forward.leader).toBe(reversed.leader)
+    expect(forward.splitter).toBe(reversed.splitter)
+  })
+})
+
+describe('buildToyForkSeed', () => {
+  test('produces a genesis at the LCA plus the splitter ops, ready for forkLiveDoc', () => {
+    const ydoc = new Y.Doc()
+    const base = document.createElementNS(SVG_NS, 'g')
+    base.innerHTML = '<rect data-id="r" x="0"/>'
+    const L = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
+    appendOp(ydoc, L)
+    const s1 = { id: 's1', parents: ['L'], authorId: 'bob', gesture: 'move', ts: 1,
+      mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '9' }] }
+    appendOp(ydoc, s1)
+
+    const { genesis, rebasedOps } = buildToyForkSeed(ydoc, 'L', 's1', { authorId: 'bob', joinSequence: ['alice', 'bob'] })
+
+    expect(genesis.parents).toEqual([])
+    expect(rebasedOps[0].parents).toEqual([genesis.id])
+
+    const seeded = new Map([[genesis.id, genesis], ...rebasedOps.map(o => [o.id, o])])
+    const layer = document.createElementNS(SVG_NS, 'g')
+    projectFrom(layer, seeded, 's1')
+    expect(layer.querySelector('[data-id="r"]').getAttribute('x')).toBe('9')
   })
 })
