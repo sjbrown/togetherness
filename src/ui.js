@@ -596,9 +596,9 @@ export function closePanel() {
 // shown when a peer's own divergent content gets forked into a new table
 // because in-place conflict recovery couldn't fully restore it.
 //
-// TODO: Currently
-// unwired pending the concurrency redesign (see CONCURRENCY_AND_BRANCHING.md
-// §6); kept ready for that trigger to call back into.
+// Called from app.js's onOpsChanged, via handleToyBranchConflict, once
+// the fork it triggers has actually landed (see CONCURRENCY_AND_BRANCHING.md
+// §6).
 //
 // A real choice, not a dismissible notice: "join the shared table" just
 // closes this (the peer's current session never left it — the fork

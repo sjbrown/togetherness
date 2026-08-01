@@ -32,7 +32,7 @@ import { runToyHandlerSync, runInEnvelopeSync, commitEnvelope, commitGesture, EN
 import { consumeParents, setHead, getHead, addMergeTip } from './op_head.js';
 import { getOps, appendOp, getOp, heads, labelBranches, branchAuthors, forkJoinSequence } from './op_dag.js';
 import { checkpointOp, projectFrom, buildForkSeed } from './op_checkpoint.js';
-import { receiveOp } from './op_replay.js';
+import { receiveOp, advanceTo } from './op_replay.js';
 
 // NOTE: envelope.js imports render()/yNodeFor()/registerYNode() from this
 // file, so this is an intentional cycle — safe because neither side uses
@@ -2003,6 +2003,24 @@ export async function placeToy(ydoc, layerEl, attrs, opts = {}) {
  * toys-layer-api.test.js — so there's no op-log head for a receive to
  * advance yet. This is the piece that will wire in once that's resolved.
  */
+/**
+ * Move this peer's own view of the toys layer to targetHeadId, regardless
+ * of whether it's a descendant of the current head or a genuinely
+ * different branch this peer never had. Used when resolving a conflict:
+ * every peer — whether or not they authored anything on the losing side —
+ * ends up looking at the leader. The session never "leaves" the shared
+ * table; a fork is a separate table entirely, a background event, not a
+ * navigation away from this one.
+ */
+export function adoptToyBranch(ydoc, layerEl, targetHeadId, tableId) {
+  const ops = getOps(ydoc)
+  const head = tableId ? getHead(tableId) : null
+  advanceTo(layerEl, ops, head, targetHeadId)
+  activateAllToyScriptsDom(ydoc, layerEl)
+  if (tableId) setHead(tableId, targetHeadId)
+  markProjectedAt(layerEl, targetHeadId)
+}
+
 export function receiveToyOp(ydoc, layerEl, opId, tableId) {
   const ops = getOps(ydoc)
   const head = tableId ? getHead(tableId) : null

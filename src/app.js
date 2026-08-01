@@ -21,6 +21,7 @@
 import { initIcons }                              from './icons.js';
 import * as Drawing                               from './drawing.js';
 import * as Toys                                  from './toys.js';
+import { tablesAPI }                              from './tables.js';
 import { getOps }                                 from './op_dag.js';
 import * as Storage                               from './storage.js';
 import * as BounPos                               from './boun_pos.js';
@@ -472,6 +473,40 @@ function renderToysLayer() {
  * A remote operation arrived. Local ones are already reflected in the DOM
  * that produced them, so this only has work to do for someone else's.
  */
+/**
+ * A conflicting operation arrived. Every peer — bystander or not — ends
+ * up viewing the leader (the session never "leaves" the shared table).
+ * A peer who authored anything on the losing branch also gets it forked
+ * into a separate table, so nothing is lost, and is shown the branch
+ * dialog once that fork lands.
+ */
+function handleToyBranchConflict(tips) {
+  const layer = _svgEl?.querySelector('#toys-layer');
+  if (!layer) return;
+
+  const joinSequence = tablesAPI.getJoinSequenceArray(_ydoc);
+  const decision = Toys.resolveToyBranchConflict(_ydoc, tips, { authorId: _myId, joinSequence });
+
+  Toys.adoptToyBranch(_ydoc, layer, decision.leader, _tableId);
+
+  if (!decision.authoredSplitter) {
+    addHistory('branch resolved (adopted shared history)', { elType: 'toys' });
+    return;
+  }
+
+  addHistory("branch conflict — preserving your divergent work in a new table", { elType: 'toys' });
+  const seed = Toys.buildToyForkSeed(_ydoc, decision.lca, decision.splitter, { authorId: _myId, joinSequence });
+  tablesAPI.forkLiveDoc(_ydoc, decision.orderedIds, seed)
+    .then(forkedTableId => {
+      tablesAPI.touchTableRecord(forkedTableId, { name: `${_tableId} (branch)` });
+      UI.showBranchDialog(forkedTableId);
+    })
+    .catch(err => {
+      console.error('[app] branch fork failed', err);
+      UI.toast('Could not preserve your divergent work in a new table', 'warn');
+    });
+}
+
 function onOpsChanged(evt, transaction) {
   if (transaction?.local) return;
   const layer = _svgEl?.querySelector('#toys-layer');
@@ -481,7 +516,7 @@ function onOpsChanged(evt, transaction) {
     if (change.action !== 'add') continue;
     const out = _Layers.toys.receive(layer, opId);
     if (out.result === 'received-conflict') {
-      addHistory(`branch conflict at ${opId}`, { elType: 'toys' });
+      handleToyBranchConflict(out.tips);
     }
   }
   Overlay.render();

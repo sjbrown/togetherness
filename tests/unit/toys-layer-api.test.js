@@ -15,12 +15,12 @@ import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   makeLayerAPI, projectLayer, placeToy, addToy, render, findToy, getTtState,
-  resolveToyBranchConflict, buildToyForkSeed,
+  resolveToyBranchConflict, buildToyForkSeed, adoptToyBranch,
   clearYNodeMap, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { getOps, appendOp } from '../../src/op_dag.js'
 import { checkpointOp, projectFrom } from '../../src/op_checkpoint.js'
-import { getHead } from '../../src/op_head.js'
+import { getHead, setHead } from '../../src/op_head.js'
 import { apply as applyWire, invert } from '../../src/op_wire_mutation.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
@@ -516,5 +516,103 @@ describe('buildToyForkSeed', () => {
     const layer = document.createElementNS(SVG_NS, 'g')
     projectFrom(layer, seeded, 's1')
     expect(layer.querySelector('[data-id="r"]').getAttribute('x')).toBe('9')
+  })
+})
+
+describe('adoptToyBranch', () => {
+  const TABLE = 'adopt-table'
+  beforeEach(() => localStorage.clear())
+
+  function fork(ydoc) {
+    const base = document.createElementNS(SVG_NS, 'g')
+    base.innerHTML = '<rect data-id="r" x="0"/>'
+    const L = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
+    appendOp(ydoc, L)
+    const a1 = { id: 'a1', parents: ['L'], authorId: 'alice', gesture: 'move', ts: 1,
+      mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '11' }] }
+    const s1 = { id: 's1', parents: ['L'], authorId: 'bob', gesture: 'move', ts: 1,
+      mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '22' }] }
+    appendOp(ydoc, a1); appendOp(ydoc, s1)
+    return { leader: 'a1', splitter: 's1' }
+  }
+
+  test('moves the DOM from the current head to an unrelated target head', () => {
+    const ydoc = new Y.Doc()
+    const { splitter, leader } = fork(ydoc)
+    const layerEl = document.createElementNS(SVG_NS, 'g')
+    projectFrom(layerEl, getOps(ydoc), splitter)
+    setHead(TABLE, splitter)
+    expect(layerEl.querySelector('[data-id="r"]').getAttribute('x')).toBe('22')
+
+    adoptToyBranch(ydoc, layerEl, leader, TABLE)
+
+    expect(layerEl.querySelector('[data-id="r"]').getAttribute('x')).toBe('11')
+    expect(getHead(TABLE)).toBe(leader)
+  })
+
+  test('works even with no prior local head at all', () => {
+    const ydoc = new Y.Doc()
+    const { leader } = fork(ydoc)
+    const layerEl = document.createElementNS(SVG_NS, 'g')
+
+    adoptToyBranch(ydoc, layerEl, leader, TABLE)
+
+    expect(layerEl.querySelector('[data-id="r"]').getAttribute('x')).toBe('11')
+    expect(getHead(TABLE)).toBe(leader)
+  })
+})
+
+describe('conflict resolution end to end — resolve, adopt, and fork-seed agree', () => {
+  const TABLE = 'e2e-conflict-table'
+  beforeEach(() => localStorage.clear())
+
+  function forkedHistory(ydoc) {
+    const base = document.createElementNS(SVG_NS, 'g')
+    base.innerHTML = '<rect data-id="r" x="0"/>'
+    const L = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
+    appendOp(ydoc, L)
+    const a1 = { id: 'a1', parents: ['L'], authorId: 'alice', gesture: 'move', ts: 1,
+      mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '99' }] }
+    const s1 = { id: 's1', parents: ['L'], authorId: 'bob', gesture: 'move', ts: 1,
+      mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '55' }] }
+    appendOp(ydoc, a1); appendOp(ydoc, s1)
+  }
+
+  test('a bystander (zoe) ends up viewing the leader after resolving', () => {
+    const ydoc = new Y.Doc()
+    forkedHistory(ydoc)
+    const joinSequence = ['alice', 'bob', 'zoe']
+
+    const decision = resolveToyBranchConflict(ydoc, ['a1', 's1'], { authorId: 'zoe', joinSequence })
+    expect(decision.authoredSplitter).toBe(false)
+
+    const layerEl = document.createElementNS(SVG_NS, 'g')
+    adoptToyBranch(ydoc, layerEl, decision.leader, TABLE)
+    expect(layerEl.querySelector('[data-id="r"]').getAttribute('x')).toBe('99')
+  })
+
+  test("bob (the splitter's author) gets a fork seed that reconstructs his own branch, and still ends up viewing the leader locally", () => {
+    const ydoc = new Y.Doc()
+    forkedHistory(ydoc)
+    const joinSequence = ['alice', 'bob']
+
+    const decision = resolveToyBranchConflict(ydoc, ['a1', 's1'], { authorId: 'bob', joinSequence })
+    expect(decision.authoredSplitter).toBe(true)
+    expect(decision.orderedIds).toEqual(['bob'])
+
+    // Bob's local view still adopts the leader — the session never leaves
+    // the shared table.
+    const layerEl = document.createElementNS(SVG_NS, 'g')
+    adoptToyBranch(ydoc, layerEl, decision.leader, TABLE)
+    expect(layerEl.querySelector('[data-id="r"]').getAttribute('x')).toBe('99')
+
+    // The fork seed independently reconstructs what Bob was actually
+    // doing on the splitter branch.
+    const { genesis, rebasedOps } = buildToyForkSeed(
+      ydoc, decision.lca, decision.splitter, { authorId: 'bob', joinSequence })
+    const seeded = new Map([[genesis.id, genesis], ...rebasedOps.map(o => [o.id, o])])
+    const forkLayer = document.createElementNS(SVG_NS, 'g')
+    projectFrom(forkLayer, seeded, decision.splitter)
+    expect(forkLayer.querySelector('[data-id="r"]').getAttribute('x')).toBe('55')
   })
 })

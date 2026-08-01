@@ -333,3 +333,65 @@ function findYText(yEl, id) {
   }
   return null
 }
+
+describe('script activation for a peer who only receives, never places', () => {
+  const TABLE = 'receive-only-table'
+  beforeEach(() => localStorage.clear())
+
+  test('getMenuActions is empty before activation, populated after receiveToyOp', async () => {
+    // Peer A: places for real, activating d6 on ITS OWN globalThis. We then
+    // simulate a completely separate peer B by clearing the namespace and
+    // the activation cache, so B has to earn its own activation.
+    const ydocA  = new Y.Doc()
+    const { yToys: yToysA } = getToysLayer(ydocA)
+    const { layerEl: layerA } = await placeAndActivate(ydocA, yToysA, 't1')
+    const genesis = checkpointOp(layerA, { authorId: 'alice', parents: [] })
+    appendOp(ydocA, genesis)
+
+    // Peer B: same ops (synced), fresh DOM, fresh namespace state.
+    delete globalThis.d6
+    Toys._resetToyScriptState()
+    const ydocB = new Y.Doc()
+    Y.applyUpdate(ydocB, Y.encodeStateAsUpdate(ydocA))
+    const layerB = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+
+    // Before B has ever projected/received anything: no menu, obviously.
+    expect(Toys.getMenuActions(layerA.querySelector('#t1__die') ?? layerA)).toBeDefined()
+
+    projectFrom(layerB, getOps(ydocB), genesis.id)
+    const toyElBeforeActivation = layerB.querySelector('[data-toy-id="t1"]')
+    expect(Toys.getMenuActions(toyElBeforeActivation)).toEqual([])
+
+    // The fix: receiveToyOp (or projectLayer's non-empty branch) activates
+    // scripts for whatever toy types the DOM now contains.
+    Toys.activateAllToyScriptsDom(ydocB, layerB)
+    await new Promise(r => setTimeout(r, 0))
+
+    const toyElAfterActivation = layerB.querySelector('[data-toy-id="t1"]')
+    const actions = Toys.getMenuActions(toyElAfterActivation)
+    expect(actions.length).toBeGreaterThan(0)
+    expect(actions.some(a => a.namespace === 'd6')).toBe(true)
+  })
+
+  test('projectLayer itself activates scripts on a non-creator DOM rebuild', async () => {
+    const ydocA  = new Y.Doc()
+    const { yToys: yToysA } = getToysLayer(ydocA)
+    const { layerEl: layerA } = await placeAndActivate(ydocA, yToysA, 't1')
+    const genesis = checkpointOp(layerA, { authorId: 'alice', parents: [] })
+    appendOp(ydocA, genesis)
+    setHead(TABLE, genesis.id) // pretend this session already caught up to genesis
+
+    delete globalThis.d6
+    Toys._resetToyScriptState()
+    const ydocB = new Y.Doc()
+    Y.applyUpdate(ydocB, Y.encodeStateAsUpdate(ydocA))
+    const layerB = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    layerB.id = 'toys-layer'
+
+    Toys.projectLayer(ydocB, layerB, { tableId: TABLE, authorId: 'bob', isCreator: false })
+    await new Promise(r => setTimeout(r, 0))
+
+    const toyEl = layerB.querySelector('[data-toy-id="t1"]')
+    expect(Toys.getMenuActions(toyEl).length).toBeGreaterThan(0)
+  })
+})

@@ -775,9 +775,14 @@ function renderTables() {
       fork.disabled = true;
       fork.textContent = 'Forking…';
       try {
-        const forkTail = '-' + tables.randSlug()
-        const forkedId = tables.generateTableId(t.name || t.id) + forkTail;
-        const forkedName = t.name ? t.name + forkTail : forkedId;
+        // Extends the ancestor's own id (not a fresh generateTableId
+        // call) so a duplicated table sorts right next to the one it
+        // came from — a deliberate, human-initiated fork gets to look
+        // like what it is. Contrast generateForkTableId: an automatic
+        // conflict-fork needs a name every peer can independently land
+        // on with no coordination, so it's a content hash instead.
+        const forkedId   = `${t.id}-fork-${tables.randSlug()}`;
+        const forkedName = t.name ? `${t.name} (fork)` : forkedId;
         const { localId: forkingUserId } = getIdentity();
         await tables.forkTable(t.id, forkedId, forkingUserId);
         tables.touchTableRecord(forkedId, { name: forkedName });

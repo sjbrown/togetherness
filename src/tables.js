@@ -280,13 +280,14 @@ async function forkTable(sourceTableId, forkedTableId, forkingUserId) {
  * SHA-256 via the standard Web Crypto API (available in every browser
  * this project targets, and in this project's own jsdom-based test
  * environment) — not a hand-rolled hash. Truncated to 12 hex chars: not
- * cryptographic collision-resistance territory, just a short, readable,
- * deterministic table-id suffix.
+ * cryptographic collision-resistance territory, just a short,
+ * deterministic table-id suffix. Shares generateTableId's tt-T-v1- prefix
+ * — a fork is still just a table.
  */
 async function generateForkTableId(updateBytes) {
   const digest = await crypto.subtle.digest('SHA-256', updateBytes);
   const hex    = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
-  return `tt-F-v1-${hex.slice(0, 12)}`;
+  return `tt-T-v1-${hex.slice(0, 12)}`;
 }
 
 /**
