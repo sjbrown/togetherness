@@ -63,7 +63,7 @@ describe('generateForkTableId', () => {
   test('matches the expected id shape', async () => {
     const ydoc = new Y.Doc()
     const id = await generateForkTableId(Y.encodeStateAsUpdate(ydoc))
-    expect(id).toMatch(/^tt-F-v1-[0-9a-f]{12}$/)
+    expect(id).toMatch(/^tt-T-v1-[0-9a-f]{12}$/)
   })
 
   test('is deterministic — the same bytes hashed twice give the same id', async () => {

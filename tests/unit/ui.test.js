@@ -371,18 +371,18 @@ describe('showBranchDialog / branchDialogJoin / branchDialogKeepWorking', () => 
 
   test('showBranchDialog opens both the scrim and the dialog, and names the branch table', () => {
     mountBranchDialogSkeleton()
-    showBranchDialog('tt-F-v1-abc123def456')
+    showBranchDialog('tt-T-v1-abc123def456')
 
     expect(document.querySelector('#branchDialogScrim').classList.contains('open')).toBe(true)
     expect(document.querySelector('#branchDialogScrim').getAttribute('aria-hidden')).toBe('false')
     expect(document.querySelector('#branchDialog').classList.contains('open')).toBe(true)
     expect(document.querySelector('#branchDialog').getAttribute('aria-hidden')).toBe('false')
-    expect(document.querySelector('#branchDialogBody').textContent).toContain('tt-F-v1-abc123def456')
+    expect(document.querySelector('#branchDialogBody').textContent).toContain('tt-T-v1-abc123def456')
   })
 
   test('branchDialogJoin closes the dialog and does NOT navigate anywhere', () => {
     mountBranchDialogSkeleton()
-    showBranchDialog('tt-F-v1-abc123def456')
+    showBranchDialog('tt-T-v1-abc123def456')
     const { reload, getHash } = stubLocation()
 
     branchDialogJoin()
@@ -398,12 +398,12 @@ describe('showBranchDialog / branchDialogJoin / branchDialogKeepWorking', () => 
 
   test('branchDialogKeepWorking sets the hash to the branch table and reloads', () => {
     mountBranchDialogSkeleton()
-    showBranchDialog('tt-F-v1-abc123def456')
+    showBranchDialog('tt-T-v1-abc123def456')
     const { reload, getHash } = stubLocation()
 
     branchDialogKeepWorking()
 
-    expect(getHash()).toBe('tt-F-v1-abc123def456')
+    expect(getHash()).toBe('tt-T-v1-abc123def456')
     expect(reload).toHaveBeenCalledOnce()
     vi.unstubAllGlobals()
   })
@@ -420,7 +420,7 @@ describe('showBranchDialog / branchDialogJoin / branchDialogKeepWorking', () => 
 
   test('branchDialogKeepWorking only acts on the table it was shown for, not a later, different one, once already consumed', () => {
     mountBranchDialogSkeleton()
-    showBranchDialog('tt-F-v1-first000000')
+    showBranchDialog('tt-T-v1-first000000')
     branchDialogJoin() // dismiss without keeping — clears the pending table
 
     const { reload } = stubLocation()
