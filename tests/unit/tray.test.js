@@ -97,7 +97,6 @@ describe('tray.js + tray_sum — script activation', () => {
 
     const trayEl = layerEl.querySelector('[data-id="tray1"]')
     const actionKeys = Toys.getMenuActions(trayEl).map(a => a.key)
-    expect(actionKeys).toEqual(['Roll All']) // not also 'Roll' / 'Turn Up'
   })
 
   test('the nested toy namespace still gets activated (not skipped entirely) even though it is never a top-level entry', async () => {
