@@ -18,13 +18,14 @@ import {
   resolveToyBranchConflict, buildToyForkSeed, adoptToyBranch,
   undoToyGesture, redoToyGesture, deleteToysBatch, moveToysBatch,
   canUndoToyGesture, canRedoToyGesture,
-  getGeom, reparentToyDom, applyMoveDom, runGestureSync,
+  getGeom, reparentToyDom, applyMoveDom, runGestureSync, importToys,
   clearYNodeMap, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { getOps, appendOp } from '../../src/op_dag.js'
 import { checkpointOp, projectFrom } from '../../src/op_checkpoint.js'
 import { getHead, setHead } from '../../src/op_head.js'
 import { apply as applyWire, invert } from '../../src/op_wire_mutation.js'
+import { populateFromSvgDoc } from '../../src/storage.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
@@ -230,6 +231,60 @@ describe('gestures also land in the operation log', () => {
     L.delete('die1')
     const op = getOps(ydoc).get(getHead(TABLE))
     expect(op.gesture).toBe('delete')
+  })
+})
+
+describe('importToys — live-table SVG import (REVISION_PLAN.md C5)', () => {
+  const TABLE = 'import-table'
+  beforeEach(() => localStorage.clear())
+
+  function foreignSvgRoot(toysInner) {
+    return new DOMParser().parseFromString(
+      `<svg xmlns="${SVG_NS}"><g id="toys-layer">${toysInner}</g><g id="drawing-layer"></g></svg>`,
+      'image/svg+xml').documentElement
+  }
+
+  const FOREIGN_TOY_G = `<g class="toy" data-toy-id="t1" data-toy-type="imported_toy">
+      <svg x="0" y="0" width="64" height="64" viewBox="0 0 80 100"><circle r="5"/></svg>
+    </g>`
+
+  test('imported toys land on the live head as a real op, not a dead Yjs write', async () => {
+    const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
+    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a', isCreator: true })
+    const before = getHead(TABLE)
+
+    const { importedToyEls } = populateFromSvgDoc(foreignSvgRoot(FOREIGN_TOY_G), ydoc)
+    importToys(ydoc, layerEl, importedToyEls, { authorId: 'user-a', tableId: TABLE })
+
+    expect(getHead(TABLE)).not.toBe(before)
+    const op = getOps(ydoc).get(getHead(TABLE))
+    expect(op.gesture).toBe('import')
+    expect(op.parents).toEqual([before])
+    expect(layerEl.querySelector('[data-toy-id="t1"]')).not.toBeNull()
+  })
+
+  test('a peer who only has the op log sees the imported toy too', async () => {
+    const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
+    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a', isCreator: true })
+
+    const { importedToyEls } = populateFromSvgDoc(foreignSvgRoot(FOREIGN_TOY_G), ydoc)
+    importToys(ydoc, layerEl, importedToyEls, { authorId: 'user-a', tableId: TABLE })
+
+    const fresh = document.createElementNS(SVG_NS, 'g')
+    fresh.id = 'toys-layer'
+    projectLayer(ydoc, fresh, { tableId: 'peer-table', authorId: 'user-b' })
+
+    expect(fresh.querySelector('[data-toy-id="t1"]')).not.toBeNull()
+  })
+
+  test('no valid toys to import records no operation', async () => {
+    const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
+    projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a', isCreator: true })
+    const before = getHead(TABLE)
+
+    importToys(ydoc, layerEl, [], { authorId: 'user-a', tableId: TABLE })
+
+    expect(getHead(TABLE)).toBe(before)
   })
 })
 

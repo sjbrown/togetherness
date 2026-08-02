@@ -141,12 +141,12 @@ describe('populateFromSvgDoc', () => {
   })
 
   test('imports valid toys and counts them', () => {
-    const { ydoc, yToys } = freshLayers()
-    const { toyCount } = populateFromSvgDoc(
+    const { ydoc } = freshLayers()
+    const { toyCount, importedToyEls } = populateFromSvgDoc(
       makeDocSvg({ toysInner: VALID_TOY_G }), ydoc)
     expect(toyCount).toBe(1)
-    expect(yToys.toArray().length).toBe(1)
-    expect(yToys.toArray()[0].getAttribute('data-toy-id')).toBe('t1')
+    expect(importedToyEls.length).toBe(1)
+    expect(importedToyEls[0].getAttribute('data-toy-id')).toBe('t1')
   })
 
   test('collects invalid toys-layer children without importing them', () => {
@@ -185,16 +185,15 @@ describe('populateFromSvgDoc', () => {
   })
 
   test('hoists a script from an imported toy into the scripts fragment, stripped from the toy itself', () => {
-    const { ydoc, yToys } = freshLayers()
+    const { ydoc } = freshLayers()
     const toyWithScript = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6">
         <svg x="0" y="0" width="64" height="64" viewBox="0 0 80 100">
           <script type="text/javascript" data-namespace="d6"><![CDATA[ var d6 = 1 ]]></script>
         </svg>
       </g>`
-    populateFromSvgDoc(makeDocSvg({ toysInner: toyWithScript }), ydoc)
-    const svgNode = yToys.toArray()[0].toArray()[0]
+    const { importedToyEls } = populateFromSvgDoc(makeDocSvg({ toysInner: toyWithScript }), ydoc)
     // Never in the toy's own subtree, live or at rest.
-    expect(svgNode.toArray().some(c => c.nodeName === 'script')).toBe(false)
+    expect(importedToyEls[0].querySelector('script')).toBeNull()
     // Hoisted into the document's scripts fragment instead.
     const scripts = _getScriptsFragment(ydoc).toArray()
     expect(scripts.length).toBe(1)
@@ -208,33 +207,39 @@ describe('populateFromSvgDoc', () => {
         transform="rotate(-8,105,100)"><svg/></g>`
 
     test('off by default — transform is preserved', () => {
-      const { ydoc, yToys } = freshLayers()
-      populateFromSvgDoc(makeDocSvg({ toysInner: rotatedToy }), ydoc)
-      expect(yToys.toArray()[0].getAttribute('transform')).toBe('rotate(-8,105,100)')
+      const { ydoc } = freshLayers()
+      const { importedToyEls } = populateFromSvgDoc(makeDocSvg({ toysInner: rotatedToy }), ydoc)
+      expect(importedToyEls[0].getAttribute('transform')).toBe('rotate(-8,105,100)')
     })
 
     test('when true, strips the transform before insertion', () => {
-      const { ydoc, yToys } = freshLayers()
-      populateFromSvgDoc(makeDocSvg({ toysInner: rotatedToy }), ydoc,
+      const { ydoc } = freshLayers()
+      const { importedToyEls } = populateFromSvgDoc(makeDocSvg({ toysInner: rotatedToy }), ydoc,
         { stripToyDecorative: true })
-      expect(yToys.toArray()[0].getAttribute('transform')).toBeUndefined()
+      expect(importedToyEls[0].getAttribute('transform')).toBeNull()
     })
   })
 
   describe('opts.asNewTable — seeding a fresh table takes a genesis checkpoint', () => {
-    test('without it, toys still go straight to yToys (the live-import fallback)', () => {
+    test('without it, no operation is recorded — toys are handed back for the caller to commit as a gesture', () => {
       const { ydoc } = freshLayers()
-      populateFromSvgDoc(makeDocSvg({ toysInner: VALID_TOY_G }), ydoc)
+      const { toyCount, importedToyEls } = populateFromSvgDoc(
+        makeDocSvg({ toysInner: VALID_TOY_G }), ydoc)
+      expect(toyCount).toBe(1)
+      expect(importedToyEls.length).toBe(1)
+      // No op-log history exists yet to chain onto — see toys-layer-api.test.js's
+      // "L.import" block for the live-table caller side (App.importSVG) that
+      // takes these elements and commits them as a real gesture.
       expect([...getOps(ydoc).values()].length).toBe(0)
     })
 
     test('with it, toys become one genesis checkpoint operation instead', () => {
-      const { ydoc, yToys } = freshLayers()
-      const { toyCount } = populateFromSvgDoc(
+      const { ydoc } = freshLayers()
+      const { toyCount, importedToyEls } = populateFromSvgDoc(
         makeDocSvg({ toysInner: VALID_TOY_G }), ydoc, { asNewTable: true, authorId: 'alice' })
 
       expect(toyCount).toBe(1)
-      expect(yToys.toArray().length).toBe(0) // nothing written to the old fragment
+      expect(importedToyEls.length).toBe(0) // consumed into the checkpoint, not handed back
 
       const ops = [...getOps(ydoc).values()]
       expect(ops.length).toBe(1)

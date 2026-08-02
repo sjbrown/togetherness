@@ -61,7 +61,6 @@ export function domToY(node) {
  */
 export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
   const yMeta    = ydoc.getMap('meta');
-  const yToys    = ydoc.getXmlFragment('toys');
   const yDrawing = ydoc.getXmlFragment('drawing');
 
   const bgPattern   = svgRootEl.querySelector('defs pattern');
@@ -70,6 +69,7 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
 
   let toyCount = 0, drawCount = 0;
   const invalidToyEls = [];
+  const importedToyEls = [];
 
   // Background: extract bg image url/dimensions from the <pattern> in
   // <defs> and write to yMeta so the background is restored on import.
@@ -96,21 +96,20 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
       [{ namespace, src: null, code: el.textContent }]);
   }
 
-  // Toys layer. asNewTable: build a scratch DOM layer and take one
-  // genesis checkpoint from it — Toys.checkpointOp reads a live layer
-  // directly, so parsed toy nodes go straight in with no domToY detour.
+  // Toys layer. Every valid child gets parsed and normalised into a
+  // detached scratch layer — Toys.parseForeignToy already stamps the
+  // data-id invariant and hoists any inline scripts, so what comes out is
+  // a ready-to-insert <g>, regardless of destination.
   //
-  // Not asNewTable (a live-table import): still validate/normalise/hoist
-  // scripts per toy, but there is no gesture-based import path yet (see
-  // REVISION_PLAN.md C5) to hand a parsed toy to. Falls back to the old
-  // yToys.insert — invisible to the op-log-driven render path already
-  // (a known, separately-flagged gap; see the asNewTable doc above), but
-  // at least not silently discarded, which a bare "parse and drop" would
-  // be. Whoever builds the real import gesture replaces this branch.
+  // asNewTable: the scratch layer's contents become one genesis checkpoint
+  // (parents: []) — there is no prior op-log history to chain onto.
+  //
+  // Not asNewTable (a live-table import): there IS prior history, so a
+  // fresh genesis would be wrong — this only hands the parsed elements
+  // back. The caller (App.importSVG) commits them as a real gesture onto
+  // the live head, the same way any other toy placement does.
   if (toysLayerEl) {
-    const scratchLayer = opts.asNewTable
-      ? document.createElementNS('http://www.w3.org/2000/svg', 'g')
-      : null;
+    const scratchLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
 
     for (const child of toysLayerEl.children) {
       const { parsedNode } = Toys.parseForeignToy(ydoc, child);
@@ -121,18 +120,17 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
 
       if (opts.stripToyDecorative) parsedNode.removeAttribute('transform');
 
-      if (scratchLayer) {
-        scratchLayer.appendChild(parsedNode);
-        toyCount++;
-      } else {
-        const yG = domToY(parsedNode);
-        if (yG) { yToys.insert(yToys.length, [yG]); toyCount++; }
-      }
+      scratchLayer.appendChild(parsedNode);
+      toyCount++;
     }
 
-    if (scratchLayer && toyCount) {
-      const genesis = checkpointOp(scratchLayer, { authorId: opts.authorId, parents: [] });
-      appendOp(ydoc, genesis);
+    if (toyCount) {
+      if (opts.asNewTable) {
+        const genesis = checkpointOp(scratchLayer, { authorId: opts.authorId, parents: [] });
+        appendOp(ydoc, genesis);
+      } else {
+        importedToyEls.push(...scratchLayer.children);
+      }
     }
   }
 
@@ -159,7 +157,7 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
     if (yEl) { yDrawing.insert(yDrawing.length, [yEl]); drawCount++; }
   }
 
-  return { toyCount, drawCount, invalidToyEls };
+  return { toyCount, drawCount, invalidToyEls, importedToyEls };
 }
 
 // ── Yjs → DOM (export) ────────────────────────────────────────────────────────

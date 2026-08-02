@@ -1995,6 +1995,22 @@ export async function placeToy(ydoc, layerEl, attrs, opts = {}) {
 }
 
 /**
+ * Commit pre-parsed foreign toy elements — storage.js's populateFromSvgDoc,
+ * live-table branch — onto a live layer as one gesture, chaining onto the
+ * current op-log head the same way placeToy does for a single toy. Named
+ * importToys rather than import: the latter is a reserved word and can't
+ * be a function identifier.
+ */
+export function importToys(ydoc, layerEl, toyEls, opts = {}) {
+  if (!toyEls?.length) return null
+  const result = runGestureSync(ydoc, layerEl, () => {
+    toyEls.forEach(el => layerEl.appendChild(el))
+  }, { gesture: 'import', ...opts })
+  activateAllToyScriptsDom(ydoc, layerEl)
+  return result
+}
+
+/**
  * Apply one arriving operation to the toys layer, keeping the head, any
  * merge tips, and the projection marker (render()'s idempotence check)
  * all consistent with what actually happened.

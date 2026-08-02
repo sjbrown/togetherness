@@ -1764,6 +1764,12 @@ const App = {
   // reason — the button should be enabled if either has something,
   // independent of which one _lastActionScope currently favours.
   undo: () => {
+    // A moved/resized/deleted toy's selRing is meaningless once the
+    // gesture that put it there is undone — the claim itself may now
+    // point at stale geometry (or nothing, if the toy was just
+    // resurrected/removed). Abandoning all claims is simpler and more
+    // robust than trying to reconcile them post-hoc.
+    _clearClaims();
     const tryToys = () => {
       const layer = _svgEl?.querySelector('#toys-layer');
       const op = layer ? Toys.undoToyGesture(_ydoc, layer, _tableId, _myId) : null;
@@ -1785,6 +1791,7 @@ const App = {
     UI.toast('Nothing to undo', 'warn');
   },
   redo: () => {
+    _clearClaims();
     const tryToys = () => {
       const layer = _svgEl?.querySelector('#toys-layer');
       const op = layer ? Toys.redoToyGesture(_ydoc, layer, _tableId, _myId) : null;
@@ -1838,7 +1845,12 @@ const App = {
       _ydoc.transact(() => {
         result = Storage.populateFromSvgDoc(svgDoc.documentElement, _ydoc);
       });
-      const { toyCount, drawCount, invalidToyEls } = result;
+      const { toyCount, drawCount, invalidToyEls, importedToyEls } = result;
+
+      if (toyCount) {
+        const layerEl = _svgEl.querySelector('#toys-layer');
+        Toys.importToys(_ydoc, layerEl, importedToyEls, { authorId: _myId, tableId: _tableId });
+      }
 
       if (invalidToyEls.length) {
         let errLayer = _svgEl.querySelector('#errors-layer');
