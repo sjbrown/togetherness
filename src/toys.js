@@ -15,9 +15,9 @@
  *            └─ ...toy content (dragged in sub-toys)
  *
  * A toy's <script> nodes are part of that canonical tree (preserved through
- * import/export) but are never mirrored into live DOM — see mirror() below.
- * Activating them (running the code, wiring up menu actions and lifecycle
- * hooks) is a separate step, in the "Toy behaviour contract" section
+ * import/export) but are never part of the live DOM. Activating them
+ * (running the code, wiring up menu actions and lifecycle hooks) is a
+ * separate step, in the "Toy behaviour contract" section
  *
  * ID format: tt-t-v1-XXXXX
  */
@@ -28,17 +28,12 @@ const XLINK_NS = 'http://www.w3.org/1999/xlink'
 const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789'
 
 import { number, bool } from './tools-schema.js';
-import { runToyHandlerSync, runInEnvelopeSync, commitEnvelope, commitGesture, ENVELOPE_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js';
+import { runInEnvelopeSync, commitGesture } from './envelope.js';
 import { consumeParents, setHead, getHead, addMergeTip } from './op_head.js';
 import { getOps, appendOp, getOp, heads, labelBranches, branchAuthors, forkJoinSequence, toyUndoRedoStacks } from './op_dag.js';
 import { invert as invertWire, apply as applyWire } from './op_wire_mutation.js';
 import { checkpointOp, projectFrom, buildForkSeed, isCheckpoint } from './op_checkpoint.js';
 import { receiveOp, advanceTo } from './op_replay.js';
-
-// NOTE: envelope.js imports render()/yNodeFor()/registerYNode() from this
-// file, so this is an intentional cycle — safe because neither side uses
-// the other's bindings until a function runs later, well after both
-// modules have finished loading.
 
 // ── ID helpers ────────────────────────────────────────────────────────────────
 
@@ -119,16 +114,6 @@ export function colorMatrixValues(color) {
   }
   const f = v => v.toFixed(4)
   return `${f(r)} 0 0 0 0  ${f(g)} 0 0 0 0  ${f(b)} 0 0 0 0  0 0 0 1 0`
-}
-
-/**
- * Apply a color to all feColorMatrix nodes in the toy's Yjs tree.
- */
-function applyColor(colorMatrices, color) {
-  const values = colorMatrixValues(color)
-  for (const matrix of colorMatrices) {
-    matrix.setAttribute('values', values)
-  }
 }
 
 // ── SVG import: DOM → Yjs XML ───────────────────────────────────────────────────
@@ -342,42 +327,10 @@ export function resolveRef(ref, rootEl) {
   return null
 }
 
-// Recursively convert an SVG DOM element into a detached Y.XmlElement tree.
-// - drops foreign-namespace elements/attrs (inkscape, sodipodi, dc, rdf, cc)
-// - drops <script> nodes entirely — they never live in a toy's own
-//   subtree; see "Script hoisting" below for where they actually go
-// - `accum.colorMatricies` collects direct refs to any feColorMatrix nodes
-//   into accum.colorMatrices, since a detached tree can't be walked later
-//   (toArray() throws until the tree is attached to a doc)
-function elementToYXml(node, prefix, idMap, classAddMap, accum) {
-  const yEl = new Y.XmlElement(node.localName)
-
-  if (accum && node.localName === 'feColorMatrix') {
-    accum.colorMatrices.push(yEl)
-  }
-
-  for (const [name, value] of parseForeignNode(node, { prefix, idMap, classAddMap, accum })) {
-    yEl.setAttribute(name, value)
-  }
-
-  const children = []
-  for (const child of Array.from(node.childNodes)) {
-    if (child.nodeType === 1) {                                   // ELEMENT_NODE
-      if (child.namespaceURI && child.namespaceURI !== SVG_NS) continue
-      if (child.localName === 'script') continue                  // hoisted, not embedded
-      children.push(elementToYXml(child, prefix, idMap, classAddMap, accum))
-    } else if (child.nodeType === 3 || child.nodeType === 4) {     // TEXT_NODE / CDATA_SECTION_NODE
-      if (child.textContent.trim() !== '') children.push(new Y.XmlText(child.textContent))
-    }
-  }
-  if (children.length) yEl.insert(0, children)
-  return yEl
-}
-
 // ── Script hoisting ──────────────────────────────────────────────────────
 //
-// A toy's <script> tags never become part of its own Yjs subtree (see
-// elementToYXml above). Two kinds, two different fates:
+// A toy's <script> tags never become part of its own DOM subtree (see
+// buildToyDom/normalizeForeignToySubtree). Two kinds, two different fates:
 //   - src= (e.g. dice_utils.js) — never persisted at all. Fetched fresh off
 //     the network every session (activateToyScripts, below), so whatever's
 //     currently on disk is always what runs — freshness by construction,
@@ -452,44 +405,6 @@ export function hoistInlineScripts(ydoc, toyType, scripts) {
   }
 }
 
-/**
- * Parse a toy SVG file's text into a detached Y.XmlElement rooted at <svg>
- *
- * Returns { ySvg, colorMatrices, width, height, scripts }
- */
-export function svgTextToYXml(svgText, prefix) {
-  const dom  = new DOMParser().parseFromString(svgText, 'image/svg+xml')
-  const root = dom.documentElement
-
-  // idMap is { 'foo': 'tt-t-v1-12a34__foo', 'bar': 'tt-t-v1-12a34__bar'}
-  const idMap = new Map()
-  for (const el of [root, ...root.querySelectorAll('[id]')]) {
-    const id = el.getAttribute('id')
-    if (id) idMap.set(id, prefix + id)
-  }
-
-  const classAddMap = new Map([
-    ['tt_contents', prefix + 'tt_contents'],
-    ['tt_wh_follow_resize', prefix + 'tt_wh_follow_resize'],
-    ['tt_colored', prefix + 'tt_colored'],
-    ['tt_color_filter', prefix + 'tt_color_filter'],
-    ['tt_name', prefix + 'tt_name'],
-    ['tt_hit_plate', prefix + 'tt_hit_plate'],
-  ])
-
-  const accum = { colorMatrices: [], sequenceNumber: 0 }
-  const ySvg = elementToYXml(root, prefix, idMap, classAddMap, accum)
-  const width  = parseFloat(root.getAttribute('width'))  || 100
-  const height = parseFloat(root.getAttribute('height')) || 100
-  // Synthesize a viewBox from width/height if the file
-  // lacks one (so display sizing scales the content).
-  if (!root.getAttribute('viewBox')) {
-    ySvg.setAttribute('viewBox', `0 0 ${width} ${height}`)
-  }
-  const scripts = extractScripts(root)
-  return { ySvg, colorMatrices: accum.colorMatrices, width, height, scripts }
-}
-
 // ── Toy operations ────────────────────────────────────────────────────────────
 
 // Cache of raw SVG text keyed by toy type. Populated on first fetch; subsequent
@@ -499,42 +414,6 @@ const _svgTextCache = new Map()  // toyType → svgText string
 
 /** Clear the SVG template cache. Intended for tests only. */
 export function _clearSvgTextCache() { _svgTextCache.clear() }
-
-/**
- * Place a toy on the table synchronously from already-fetched SVG text.
- * The cache must be warm for this toyType — call addToy() if unsure.
- * attrs: { id, toyType, x, y, color }  (x,y is the center point)
- */
-export function addToySync(ydoc, yToys, attrs, svgText) {
-  const { id, toyType, x, y, color } = attrs
-  const prefix = `${id}__`
-  const { ySvg, colorMatrices, width: nativeWidth, height: nativeHeight, scripts } = svgTextToYXml(svgText, prefix)
-
-  // Tint the toy's colorize filter with the color before insertion.
-  // The matrix values are set on the direct refs captured during import,
-  // so the color is part of the CRDT state from the moment the toy is placed.
-  if (color) applyColor(colorMatrices, color)
-
-  ydoc.transact(() => {
-    hoistInlineScripts(ydoc, toyType, scripts)
-
-    const width  = clampToySize(nativeWidth)
-    const height = clampToySize(nativeHeight)
-    ySvg.setAttribute('x',      String(x - width / 2))
-    ySvg.setAttribute('y',      String(y - height / 2))
-    ySvg.setAttribute('width',  String(width))
-    ySvg.setAttribute('height', String(height))
-
-    const g = new Y.XmlElement('g')
-    g.setAttribute('class',         'toy')
-    g.setAttribute('data-toy-id',   id)
-    g.setAttribute('data-toy-type', toyType)
-    g.setAttribute('data-color',    color ?? '#888')
-    g.insert(0, [ySvg])
-
-    yToys.insert(yToys.length, [g])
-  })
-}
 
 /**
  * Parse a toy SVG template into a detached DOM <svg>, namespaced per
@@ -636,89 +515,18 @@ async function fetchToySvgText(toyType) {
 }
 
 /**
- * Place a toy on the table. Fetches the toy's SVG file on first use and
- * caches it; subsequent placements of the same toy type are cache hits
- * attrs: { id, toyType, x, y, color }  (x,y is the center point)
+ * Place a toy directly onto a layer's DOM. Fetches the toy's SVG file on
+ * first use and caches it; subsequent placements of the same toy type are
+ * cache hits. attrs: { id, toyType, x, y, color } (x,y is the center point).
+ *
+ * Not a gesture — nothing is committed to the op log. This exists for
+ * building up a layerEl's contents before a checkpoint is taken (table
+ * genesis, seeding a scratch layer for tests) — see placeToy for the
+ * gesture-committing counterpart used once a table is live.
  */
-export async function addToy(ydoc, yToys, attrs) {
+export async function addToy(ydoc, layerEl, attrs) {
   const svgText = await fetchToySvgText(attrs.toyType)
-  addToySync(ydoc, yToys, attrs, svgText)
-}
-
-/**
- * Whether a Y.XmlElement is a toy's wrapper:
-    <g class="toy" data-toy-id data-toy-type>
- */
-function isToyG(yEl) {
-  if (!(yEl instanceof Y.XmlElement) || yEl.nodeName !== 'g') return false
-  return (yEl.getAttribute('class') || '').split(/\s+/).includes('toy')
-}
-
-/**
- * Find all Y.XmlElement descendants of `yEl` that carry the
- * `className`
- *
- * Returns an array (possibly empty), in depth-first document order.
- */
-function yClassSelector(yEl, className) {
-  const matching = []
-  const walk = (_yEl) => {
-    for (const child of _yEl.toArray()) {
-      if (!(child instanceof Y.XmlElement)) continue
-      const classes = (child.getAttribute('class') || '').split(/\s+/).filter(Boolean)
-      if (classes.includes(className)) matching.push(child)
-      walk(child)
-    }
-  }
-  walk(yEl)
-  return matching
-}
-
-/**
- *   '#foo'              → { attr: 'id', value: 'foo' }
- *   '[data-foo="bar"]'  → { attr: 'data-foo', value: 'bar' }
- */
-function parseYSelector(selector) {
-  let m
-  if ((m = selector.match(/^#(.+)$/))) return { attr: 'id', value: m[1] }
-  if ((m = selector.match(/^\[([\w:-]+)="([^"]*)"\]$/))) return { attr: m[1], value: m[2] }
-  throw new Error(`[toys] yExactSelector: unsupported selector: ${selector}`)
-}
-
-/**
- * Walk yEl (itself, then its descendants, depth-first) for the first
- * Y.XmlElement matching `selector`
- *  - id selector ('#foo')
- *  - exact-attribute selector ('[data-foo="bar"]')
- *
- * Returns:
- * posContext is false (default)
- *  - the matching Y.XmlElement (or null)
- * posContext is true
- *  - { yEl, parent, index } (or null)
- */
-function yExactSelector(yEl, selector, posContext = false) {
-  const { attr, value } = parseYSelector(selector)
-  const matches = (el) => el instanceof Y.XmlElement && el.getAttribute(attr) === value
-
-  if (matches(yEl)) {
-    return posContext ? { yEl, parent: null, index: -1 } : yEl
-  }
-
-  const walk = (container) => {
-    const children = container.toArray()
-    for (let i = 0; i < children.length; i++) {
-      const child = children[i]
-      if (!(child instanceof Y.XmlElement)) continue
-      if (matches(child)) {
-        return posContext ? { yEl: child, parent: container, index: i } : child
-      }
-      const found = walk(child)
-      if (found) return found
-    }
-    return null
-  }
-  return walk(yEl)
+  return addToyDom(ydoc, layerEl, attrs, svgText)
 }
 
 
@@ -742,31 +550,6 @@ export function deleteToyDom(layerEl, id) {
   if (!el) return false
   el.remove()
   return true
-}
-
-/**
- * Convenience wrapper over deleteToyDom for callers (mainly tests, and the
- * shared LayerAPI) that just want "delete this toy" as one self-contained
- * atomic action. Renders a scratch layer from the current Yjs state,
- * removes inside an envelope, commits. Same external contract the old
- * pure-Yjs deleteToy had.
- */
-export function deleteToy(ydoc, yToys, id, authorId) {
-  const layerEl = document.createElementNS(SVG_NS, 'g')
-  render(yToys, layerEl)
-  let found = false
-  const records = runInEnvelopeSync(layerEl, () => { found = deleteToyDom(layerEl, id) })
-  if (!found) return false
-  commitEnvelope(ydoc, records, { authorId })
-  return true
-}
-
-/**
- * Find a toy's <g> wrapper by id — searches the whole toys tree, including
- * nested inside containers. Returns null if not found.
- */
-export function findToy(yToys, id) {
-  return yExactSelector(yToys, `[data-toy-id="${id}"]`)
 }
 
 /**
@@ -826,26 +609,6 @@ export function reparentToyDom(layerEl, id, containerElId) {
   targetGroup.appendChild(el) // also removes el from its old parent — native DOM behavior
   return el
 }
-
-/**
- * Convenience wrapper over reparentToyDom for callers (mainly tests) that
- * just want "move this toy" as one self-contained atomic action, without
- * composing it with other DOM mutations the way commitMove does. Renders a
- * scratch layer from the current Yjs state, moves the toy inside an
- * envelope, commits, and returns the resulting Yjs node at its new
- * location (findToy(yToys, id)) — same external contract the old
- * pure-Yjs reparentToy had, so existing callers don't need to change.
- */
-export function reparentToy(ydoc, yToys, id, containerElId, authorId) {
-  const layerEl = document.createElementNS(SVG_NS, 'g')
-  render(yToys, layerEl)
-  const records = runInEnvelopeSync(layerEl, () => {
-    reparentToyDom(layerEl, id, containerElId)
-  })
-  commitEnvelope(ydoc, records, { authorId })
-  return findToy(yToys, id)
-}
-
 
 
 /**
@@ -928,23 +691,6 @@ export function selectModes(domEl) {
 
 
 /**
- * Commit a toy move to the Yjs doc in a single transaction.
- */
-export function applyMoveCommit(ydoc, yToy, cx, cy) {
-  if (!yToy) return
-  const ySvg = yToy.toArray()[0]
-  if (!ySvg) return
-  // (cx, cy) is the centre point; the embedded <svg> is offset by
-  // (-width/2, -height/2) using the toy's own w & h
-  const halfW = Math.round(parseFloat(ySvg.getAttribute('width')  ?? String(FALLBACK_TOY_SIZE)) / 2)
-  const halfH = Math.round(parseFloat(ySvg.getAttribute('height') ?? String(FALLBACK_TOY_SIZE)) / 2)
-  ydoc.transact(() => {
-    ySvg.setAttribute('x', String(cx - halfW))
-    ySvg.setAttribute('y', String(cy - halfH))
-  })
-}
-
-/**
  * Apply a toy move to a live DOM element only — no Yjs write.
  * domEl is the rendered <g> wrapper; updates the embedded <svg> x/y directly.
  * (cx, cy) is the centre anchor point.
@@ -1009,34 +755,6 @@ export function computeResizeRect(startRect, corner, px, py) {
 }
 
 /**
- * Commit a toy resize to the Yjs doc in a single transaction.
- * (x, y) is the new top-left; (width, height) the new
- * native size — both in canvas-space, already computed by
- * computeResizeRect.
- */
-export function applyResizeCommit(ydoc, yToy, x, y, width, height) {
-  if (!yToy) return
-  const ySvg = yToy.toArray()[0]
-  if (!ySvg) return
-  const toyId = yToy.getAttribute('data-toy-id')
-  if (!toyId) return
-  const w = clampResizeDim(width)
-  const h = clampResizeDim(height)
-  ydoc.transact(() => {
-    ySvg.setAttribute('x', String(Math.round(x)))
-    ySvg.setAttribute('y', String(Math.round(y)))
-    ySvg.setAttribute('width',  String(w))
-    ySvg.setAttribute('height', String(h))
-    ySvg.setAttribute('viewBox', `0 0 ${w} ${h}`)
-    for (const el of yClassSelector(ySvg, `${toyId}__tt_wh_follow_resize`)) {
-      el.setAttribute('width',  String(w))
-      el.setAttribute('height', String(h))
-    }
-  })
-}
-
-
-/**
  * Apply a resize to a live DOM element only — no Yjs write.
  * domEl is the rendered <g> wrapper.
  */
@@ -1061,68 +779,6 @@ export function applyResizeDom(domEl, x, y, width, height) {
   }
 }
 
-/**
- * yNode ↔ DOM registry.
- * Populated during mirror() so app code can resolve a rendered DOM node
- * (e.g. a deep <tspan> the user clicked) back to the Y.XmlElement/Y.XmlText
- * that produced it. Rebuilt naturally on every render, since mirror() runs
- * on every render. WeakMap keys are DOM nodes, so entries for discarded
- * elements are garbage-collected automatically — no manual eviction needed.
- */
-let _yNodeByDom = new WeakMap()
-
-/** Look up the Y.XmlElement/Y.XmlText that a rendered DOM node mirrors, or undefined. */
-export function yNodeFor(domNode) {
-  return _yNodeByDom.get(domNode)
-}
-
-/** Reset the yNode↔DOM registry. Intended for test isolation only. */
-export function clearYNodeMap() {
-  _yNodeByDom = new WeakMap()
-}
-
-/**
- * Register a DOM node ↔ Y node mapping directly. Used by envelope.js when
- * translating handler-created DOM nodes (via storage.js's domToY) into the
- * Yjs tree — those nodes never pass through mirror(), so nothing else would
- * add them to the registry, and later mutations on them (e.g. a follow-up
- * setAttribute) would be unresolvable without this.
- */
-export function registerYNode(domNode, yNode) {
-  _yNodeByDom.set(domNode, yNode)
-}
-
-/**
- * Mirror a Y.XmlElement tree into a live, SVG-namespaced DOM element.
- * We can't use Y.XmlElement.toDOM() (HTML namespace, won't render as SVG) nor
- * toString()+DOMParser (lowercases tag names like feColorMatrix and drops the
- * xmlns:xlink declaration). The recursive createElementNS walk preserves both.
- * Never encounters a <script> node to worry about mirroring — a toy's own
- * subtree can't contain one; see "Script hoisting" above.
- */
-function mirror(yNode, opts = {}) {
-  if (yNode instanceof Y.XmlText) {
-    const textNode = document.createTextNode(yNode.toString())
-    _yNodeByDom.set(textNode, yNode)
-    return textNode
-  }
-  if (!(yNode instanceof Y.XmlElement)) return null
-  const el = document.createElementNS(SVG_NS, yNode.nodeName)
-  _yNodeByDom.set(el, yNode)
-  const attrs = yNode.getAttributes()
-  for (const k in attrs) {
-    if (k === 'xlink:href') el.setAttributeNS(XLINK_NS, 'href', attrs[k])
-    else                    el.setAttribute(k, attrs[k])
-  }
-  // Every toy wrapper (including nested) gets the rendering handles stamped
-  if (isToyG(yNode)) stampToyHandles(el, yNode)
-  yNode.toArray().forEach(child => {
-    const dom = mirror(child, opts)
-    if (dom) el.appendChild(dom)
-  })
-  return el
-}
-
 // ── scoped id lookup for toy handler code ($) ───────────────────────────────
 //
 // Ids are namespaced per instance (see elementToYXml) so placed toys never
@@ -1144,39 +800,6 @@ function attachScopedLookup(rootEl, toyId) {
 }
 
 /**
- * Stamp the rendering handles app.js needs onto a mirrored toy <g>
- * Called by mirror() for every toy wrapper it encounters, at any nesting
- * depth — not just the top level.
- */
-function stampToyHandles(el, yNode) {
-  const id = yNode.getAttribute('data-toy-id')
-  el.setAttribute('id',              id)
-  el.setAttribute('data-id',         id)
-  el.setAttribute('data-module', 'toys')
-  attachScopedLookup(el, id)
-}
-
-export function _toSVGEl(yEl, opts = {}) {
-  return mirror(yEl, opts)
-}
-
-
-/**
- * All placed toys, in z-order. Each entry is a rendered SVG element
- * stamped with data-id + data-module.
- * Pass { includeScripts: true } to also mirror <script> nodes — for export
- * only; normal rendering always omits them so nothing executes.
- */
-export function listToys(yToys, opts = {}) {
-  const results = []
-  yToys.toArray().forEach(yEl => {
-    if (!(yEl instanceof Y.XmlElement)) return
-    results.push(_toSVGEl(yEl, opts))
-  })
-  return results
-}
-
-/**
  * Summarise a rendered toy svgEl as a plain layer-object descriptor.
  */
 function toyData(svgEl) {
@@ -1189,14 +812,6 @@ function toyData(svgEl) {
     fill:  color,
     kind:  toyType,
   }
-}
-
-/**
- * All toys as layer-object descriptors, in z-order.
- * Used by app.js getLayerObjects — keeps toy internals out of the app bus.
- */
-export function toysData(yToys) {
-  return listToys(yToys).map(toyData)
 }
 
 /** A toy's rendered <g> wrapper, by toy id. Top level only, like findToy. */
@@ -1362,25 +977,6 @@ export function editDom(toyEl, editData) {
     const nameEl = toyEl.querySelector(`.${toyId}__tt_name`)
     if (nameEl) nameEl.textContent = String(name)
   }
-}
-
-/**
- * Convenience wrapper over editDom for callers (mainly tests, and the
- * shared LayerAPI's Yjs-node-based contract) that just want to edit a toy
- * given its Yjs node rather than a live DOM element. Renders a scratch
- * layer from the current Yjs state, edits inside an envelope, commits.
- * Same external contract the old pure-Yjs edit had.
- */
-export function edit(ydoc, yToy, editData, authorId) {
-  if (!yToy) return
-  const toyId = yToy.getAttribute('data-toy-id')
-  if (!toyId) return
-  const yToys   = ydoc.getXmlFragment('toys')
-  const layerEl = document.createElementNS(SVG_NS, 'g')
-  render(yToys, layerEl)
-  const toyEl = layerEl.querySelector(`[data-id="${toyId}"]`)
-  const records = runInEnvelopeSync(layerEl, () => editDom(toyEl, editData))
-  commitEnvelope(ydoc, records, { authorId })
 }
 
 // ── Toy behaviour contract ──────────────────────────────────────────────────
@@ -1654,21 +1250,16 @@ function runContentsChangeCascadeInto(allRecords, layerEl) {
 /**
  * Run fn() against the live DOM (inside an envelope observing layerEl),
  * then run whatever contents_change_handler cascade fn's mutations
- * trigger, then translate the whole thing — the gesture and its entire
- * cascade, however many rounds — into Yjs in ONE commitEnvelope call. No
- * re-rendering anywhere in this: nothing here touches Yjs until that
- * final call, so the DOM stays authoritative and current for every step.
+ * trigger, then commit the whole thing — the gesture and its entire
+ * cascade, however many rounds — as ONE operation. No re-rendering
+ * anywhere in this: the DOM stays authoritative and current for every step,
+ * and nothing is committed until that final call.
  *
  * This is the shared machinery behind invokeMenuActionSync/
  * initializeToySync (below) — also exported directly for a caller whose
  * gesture isn't a toy handler at all (app.js's commitMove folds a
  * drag-drop reparent + reposition through this too) but still needs the
- * exact same "one atomic transaction, cascade included" treatment.
- *
- * Not itself wrapped in a ydoc.transact() — callers that need the
- * "commits under null, same as every other folded call site" behavior
- * (see undo_redo.js's "Atomicity" note) provide their own outer wrap, the
- * same way invokeMenuActionSync does below.
+ * exact same "one atomic operation, cascade included" treatment.
  */
 export const LAYER_DATA_ID = 'tt-layer-toys'
 /** The layer root needs an identity of its own to be a mutation target. */
@@ -1681,11 +1272,11 @@ export function runGestureSync(ydoc, layerEl, fn, opts = {}) {
   ensureLayerId(layerEl)
   const allRecords = runInEnvelopeSync(layerEl, fn)
   runContentsChangeCascadeInto(allRecords, layerEl)
-  const result = commitEnvelope(ydoc, allRecords, opts)
 
   const { tableId } = opts
+  let op = null
   if (tableId) {
-    const op = commitGesture(ydoc, allRecords, {
+    op = commitGesture(ydoc, allRecords, {
       gesture:  opts.gesture ?? 'gesture',
       authorId: opts.authorId ?? null,
       parents:  consumeParents(tableId),
@@ -1694,9 +1285,8 @@ export function runGestureSync(ydoc, layerEl, fn, opts = {}) {
       setHead(tableId, op.id)
       markProjectedAt(layerEl, op.id)
     }
-    result.op = op ?? null
   }
-  return result
+  return { op }
 }
 
 /**
@@ -1708,12 +1298,11 @@ export function runGestureSync(ydoc, layerEl, fn, opts = {}) {
  * as the handler's own commit — one transaction, one undo step, no window
  * where the action landed but its reaction hadn't yet.
  *
- * Note: Wrapped in an outer, unlabeled ydoc.transact(): commitEnvelope's
- * own nested transact() call has its origin argument ignored (Yjs only
- * honors the outermost call's origin), so the merged transaction commits
- * under null regardless of the ENVELOPE_ORIGIN passed below
+ * Note: Wrapped in an outer, unlabeled ydoc.transact() so a folded caller's
+ * commit lands under null, the same as every other folded call site (see
+ * undo_redo.js's "Atomicity" note).
  */
-export function invokeMenuActionSync(ydoc, yToys, layerEl, svgEl, namespace, key, evt, authorId, tableId) {
+export function invokeMenuActionSync(ydoc, layerEl, svgEl, namespace, key, evt, authorId, tableId) {
   const ns    = globalThis[namespace]
   const entry = ns?.menu?.[key]
   if (!entry || typeof entry.handler !== 'function') {
@@ -1725,7 +1314,7 @@ export function invokeMenuActionSync(ydoc, yToys, layerEl, svgEl, namespace, key
   let result
   ydoc.transact(() => {
     result = runGestureSync(ydoc, layerEl, () => entry.handler.call(svgEl, evt),
-      { origin: ENVELOPE_ORIGIN, gesture: `menu:${namespace}.${key}`, authorId, tableId })
+      { gesture: `menu:${namespace}.${key}`, authorId, tableId })
   })
   return result
 }
@@ -1743,7 +1332,7 @@ export function invokeMenuActionSync(ydoc, yToys, layerEl, svgEl, namespace, key
  * Ordinarily there's nothing to fold. But initialize() has the freedom
  * to mutate anything in toys-layer.
  */
-export function initializeToySync(ydoc, yToys, layerEl, svgEl, toyType, authorId, tableId) {
+export function initializeToySync(ydoc, layerEl, svgEl, toyType, authorId, tableId) {
   const initializers = getNamespacesForType(toyType)
     .map(name => globalThis[name])
     .filter(ns => ns && typeof ns.initialize === 'function')
@@ -1752,7 +1341,7 @@ export function initializeToySync(ydoc, yToys, layerEl, svgEl, toyType, authorId
   ydoc.transact(() => {
     runGestureSync(ydoc, layerEl, () => {
       initializers.forEach(ns => ns.initialize(svgEl))
-    }, { origin: LIFECYCLE_ORIGIN, gesture: 'initialize', authorId, tableId })
+    }, { gesture: 'initialize', authorId, tableId })
   })
 }
 
@@ -1785,11 +1374,11 @@ export function findAncestorContainerIds(yNode) {
  * called from inside an open ydoc.transact its commit folds into that
  * transaction rather than landing a microtask later in its own.
  *
- * Committed under ENVELOPE_ORIGIN.
+ * Committed as one operation, via runGestureSync.
  *
  * No-op if toyType has no contents_change_handler-providing namespace.
  */
-export function runContentsChangeHandlerSync(ydoc, yToys, layerEl, svgEl, toyType, authorId, tableId) {
+export function runContentsChangeHandlerSync(ydoc, layerEl, svgEl, toyType, authorId, tableId) {
   const handlers = getNamespacesForType(toyType)
     .map(name => globalThis[name])
     .filter(ns => ns && typeof ns.contents_change_handler === 'function')
@@ -1797,7 +1386,7 @@ export function runContentsChangeHandlerSync(ydoc, yToys, layerEl, svgEl, toyTyp
 
   runGestureSync(ydoc, layerEl, () => {
     handlers.forEach(ns => ns.contents_change_handler(svgEl))
-  }, { origin: ENVELOPE_ORIGIN, gesture: 'contents_change', authorId, tableId })
+  }, { gesture: 'contents_change', authorId, tableId })
 }
 
 /**
@@ -1826,51 +1415,30 @@ export function affectedContainerIdsInnerFirst(changedYNodes) {
 
 /**
  * Run the contents_change_handler cascade synchronously for `containerIds`
- * (innermost-first — see affectedContainerIdsInnerFirst). Re-renders
- * layerEl before each container so an outer container reads the inner
- * container's just-committed result. Each handler commits under
- * ENVELOPE_ORIGIN; when this runs inside an open transaction those commits
- * collapse into it, making a placement and its reaction one atomic
- * transaction. When run from an observer (no open transaction), each is
- * its own transaction instead — same end state, just not folded.
+ * (innermost-first — see affectedContainerIdsInnerFirst). layerEl is
+ * durable DOM (each handler mutates it directly), so an outer container
+ * reads the inner container's just-committed result with no rebuild in
+ * between. Each handler commits as part of the same gesture; when this runs
+ * inside an open transaction those commits collapse into it, making a
+ * placement and its reaction one atomic transaction. When run from an
+ * observer (no open transaction), each is its own transaction instead —
+ * same end state, just not folded.
  */
-export function runContentsChangeCascadeSync(ydoc, yToys, layerEl, containerIds, authorId, tableId) {
+export function runContentsChangeCascadeSync(ydoc, layerEl, containerIds, authorId, tableId) {
   for (const containerId of containerIds) {
-    render(yToys, layerEl)
     const containerEl = layerEl.querySelector(`[data-id="${containerId}"]`)
-    const ycontainer  = findToy(yToys, containerId)
-    if (!containerEl || !ycontainer) continue // e.g. the container itself was deleted in the same transaction
-    runContentsChangeHandlerSync(ydoc, yToys, layerEl, containerEl, ycontainer.getAttribute('data-toy-type'), authorId, tableId)
+    if (!containerEl) continue // e.g. the container itself was deleted in the same transaction
+    runContentsChangeHandlerSync(ydoc, layerEl, containerEl, containerEl.getAttribute('data-toy-type'), authorId, tableId)
   }
 }
 
 /**
- * Render the toys layer: clear layerEl, mirror every toy, then
- * kick off script activation
- */
-export function render(yToys, layerEl) {
-  registerYNode(layerEl, yToys);
-  layerEl.innerHTML = '';
-  listToys(yToys).forEach(svgEl => {
-    svgEl.style.cursor = 'grab';
-    layerEl.appendChild(svgEl);
-  });
-  // (fire-and-forget — render() must stay synchronous)
-  activateAllToyScripts(yToys.doc, yToys);
-}
-
-/**
- * DOM counterpart to activateAllToyScripts: scans a rendered layer for
- * every distinct data-toy-type present and activates each once per
- * session. activateAllToyScripts walks the Yjs toys tree, and only
- * projectLayer's creator-genesis branch ever calls plain render() (which
- * is what runs it) — every other path a non-creator peer's DOM gets built
- * through (projectFrom, advanceTo, the ops-Map replay in receiveToyOp) is
- * pure DOM, never touches yToys, and never activated anything. A toy
- * synced in rather than placed locally would render its markup and
- * attributes fine — the color widget doesn't need a namespace — but its
- * menu would stay permanently empty, since getMenuActions reads
- * globalThis[namespace].menu and nothing had ever populated it.
+ * Scans a rendered layer for every distinct data-toy-type present and
+ * activates each once per session. A toy synced in rather than placed
+ * locally would render its markup and attributes fine — the color widget
+ * doesn't need a namespace — but its menu would stay permanently empty,
+ * since getMenuActions reads globalThis[namespace].menu and nothing had
+ * ever populated it.
  */
 export function activateAllToyScriptsDom(ydoc, layerEl) {
   if (!layerEl) return
@@ -1883,27 +1451,6 @@ export function activateAllToyScriptsDom(ydoc, layerEl) {
       console.error(`[toys] script activation failed for toy type "${toyType}"`, err)
     })
   }
-}
-
-/**
- * Recursively activate every distinct toyType found anywhere in the toys
- * tree (top-level and nested), each once per session.
- * Guards against re-activating already-seen toys.
- */
-function activateAllToyScripts(ydoc, yToys) {
-  function walk(yEl) {
-    if (!(yEl instanceof Y.XmlElement)) return
-    if (isToyG(yEl)) {
-      const toyType = yEl.getAttribute('data-toy-type')
-      if (toyType && !isToyTypeActivated(toyType)) {
-        activateToyScripts(ydoc, toyType).catch(err => {
-          console.error(`[toys] script activation failed for toy type "${toyType}"`, err)
-        })
-      }
-    }
-    yEl.toArray().forEach(walk)
-  }
-  yToys.toArray().forEach(walk)
 }
 
 /**
@@ -1944,7 +1491,6 @@ export function projectLayer(ydoc, layerEl, { tableId, authorId, isCreator = fal
 
   if (ops.size === 0) {
     if (!isCreator) return null
-    render(ydoc.getXmlFragment('toys'), layerEl)
     const genesis = checkpointOp(layerEl, { authorId, parents: [] })
     appendOp(ydoc, genesis)
     if (tableId) setHead(tableId, genesis.id)

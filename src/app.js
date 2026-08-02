@@ -25,10 +25,9 @@ import { tablesAPI }                              from './tables.js';
 import { getOps }                                 from './op_dag.js';
 import * as Storage                               from './storage.js';
 import * as BounPos                               from './boun_pos.js';
-import { TOOLS as TOY_TOOLS, addToy, findToy, newToyId,
+import { TOOLS as TOY_TOOLS, newToyId,
          getMenuActions, activateToyScripts,
          findDropTarget } from './toys.js';
-import { ENVELOPE_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js'
 import { SELECT_TOOL }                            from './tools-schema.js';
 import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
@@ -57,7 +56,7 @@ const DEFAULT_BACKGROUNDS = [
 
 
 // ── Internal app state ────────────────────────────────────────────────────────
-let _ydoc, _yMeta, _yToys, _yDrawing,
+let _ydoc, _yMeta, _yDrawing,
     _yBounPos,
     _awareness, _provider;
 
@@ -318,7 +317,6 @@ function buildToolRegistry() {
 export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreator = false, svgElement, displayName }) {
   _ydoc           = ydoc;
   _yMeta          = ydoc.getMap('meta');
-  _yToys          = ydoc.getXmlFragment('toys');
   _yDrawing       = ydoc.getXmlFragment('drawing');
   _yBounPos       = ydoc.getXmlFragment('boundaries');
   _awareness  = awareness;
@@ -360,10 +358,8 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
   // CRDT observers
   // Layers use observeDeep so attribute changes trigger renderDoc on
   // every client
-  _yToys.observeDeep(onToysChanged);
   _yDrawing.observeDeep(onDrawingChanged);
   _yBounPos.observeDeep(onBounPosChanged);
-  _yToys.observe(onDocChanged);
   _yDrawing.observe(onDocChanged);
   _yBounPos.observe(onDocChanged);
   _yMeta.observe(onMetaChanged);
@@ -542,8 +538,20 @@ function onOpsChanged(evt, transaction) {
   const layer = _svgEl?.querySelector('#toys-layer');
   if (!layer) return;
 
+  // Gestures that are derived/internal, not independent peer intent — not
+  // worth a log line (same spirit as the old Yjs-observer version only
+  // logging structural top-level adds/deletes, but this covers every real
+  // user gesture type generically instead of just placements/deletions).
+  const SILENT_GESTURES = new Set(['checkpoint', 'contents_change', 'initialize']);
+  const ops = getOps(_ydoc);
   for (const [opId, change] of evt.changes.keys) {
     if (change.action !== 'add') continue;
+    const op = ops.get(opId);
+    if (op && !SILENT_GESTURES.has(op.gesture)) {
+      const msg = `remote: ${op.gesture}`;
+      App.addLog(msg, 'remote');
+      addHistory(msg, { elType: 'toys' });
+    }
     const out = _Layers.toys.receive(layer, opId);
     if (out.result === 'received-conflict') {
       handleToyBranchConflict(out.tips);
@@ -585,87 +593,6 @@ function onBounPosChanged(events, transaction) {
     }
   }
   renderDoc();
-}
-
-// Suppresses the observer-driven cascade in onToysChanged while a cascade is
-// already being handled for the current change.
-let _dispatchingContentsChange = false;
-
-function onToysChanged(events, transaction) {
-  if (!transaction.local) { // filters out our own ops
-    for (const event of events) {
-      // The structural event (target is yToys) is where we log remote placements
-      if (event.target !== _yToys) continue
-      event.changes.added.forEach(item => {
-        item.content.getContent().forEach(yEl => {
-          if (yEl instanceof Y.XmlElement && yEl.nodeName === 'g') {
-            const tid = yEl.getAttribute('data-toy-id') || '?'
-            let msg = `remote: placed ${yEl.getAttribute('data-toy-type')} ${tid.slice(0,6)}`;
-            App.addLog(msg, 'remote')
-            addHistory(msg, {fill: yEl.getAttribute('fill'), elType: yEl.nodeName,})
-          }
-        })
-      })
-      event.changes.deleted.forEach(item => {
-        item.content.getContent().forEach(yEl => {
-          if (!yEl.getAttribute) return;
-          let msg = `remote deleted a toy ${yEl.nodeName}`;
-          addHistory(msg, {
-            fill: yEl.getAttribute('fill'), elType: yEl.nodeName,
-          });
-          App.addLog(msg, 'del');
-        });
-      });
-    }
-  }
-  // renderDoc() runs *before* the dispatchContentsChangeCascade below.
-  // contents_change_handler reads the *DOM*, so the toys layer must
-  // already reflect this transaction's just-committed change (eg a mutation
-  // to a die inside .tt_contents after a reparentToy)
-  // before the handler runs
-  renderDoc();
-  // Derived contents_change: a local change touched inside a container's
-  // .tt_contents -- recompute that container's own derived display.
-  //
-  // Skipped for:
-  //  - remote-origin changes: the *originator* computes; the result syncs
-  //    as data (a peer never recomputes in reaction to a remote change).
-  //  - LIFECYCLE_ORIGIN: a toy's one-time initialize() side effects, never
-  //    independent intent, so it must not trigger another cascade.
-  //  - _dispatchingContentsChange: the drop-into-container path (commitMove)
-  //    folds its own reaction into the placement transaction and sets this
-  //    flag so the observer doesn't recompute it a second time.
-  const isCascadeResult = transaction.origin === LIFECYCLE_ORIGIN;
-  if (transaction.local && !isCascadeResult && !_dispatchingContentsChange) {
-    dispatchContentsChangeCascade(events);
-  }
-}
-
-// Local transaction (not itself a cascade result) touched something inside a
-// container's .tt_contents? Recompute every affected container's own
-// contents_change_handler, innermost first, so outer containers read their
-// inner containers' fresh results.
-//
-// This runs synchronously, with no microtask hop, which matters when this
-// is reached from *inside* an open transaction (a caller that folds its own
-// commit and its reaction together, mid-transact) — then the cascade's
-// commits fold in too.
-//
-// The _dispatchingContentsChange flag guards a folded caller's own transaction
-// from being recomputed a redundant second time once its observer fires
-function dispatchContentsChangeCascade(events) {
-  const containerIds = Toys.affectedContainerIdsInnerFirst(events.map(e => e.target));
-  if (!containerIds.length) return;
-
-  const layerEl = _svgEl.querySelector('#toys-layer');
-  _dispatchingContentsChange = true;
-  try {
-    Toys.runContentsChangeCascadeSync(_ydoc, _yToys, layerEl, containerIds, _myId, _tableId);
-  } catch (err) {
-    console.error('[app] contents_change_handler dispatch failed', err);
-  } finally {
-    _dispatchingContentsChange = false;
-  }
 }
 
 function onDrawingChanged(events, transaction) {
@@ -1115,11 +1042,8 @@ const App = {
     if (!svgEl) return;
     const layerEl = _svgEl?.querySelector('#toys-layer');
     if (!layerEl) return;
-    // invokeMenuActionSync runs a complete contents_change_handler cascade
-    // so guard with _dispatchingContentsChange
-    _dispatchingContentsChange = true;
     try {
-      Toys.invokeMenuActionSync(_ydoc, _yToys, layerEl, svgEl, namespace, key, undefined, _myId, _tableId);
+      Toys.invokeMenuActionSync(_ydoc, layerEl, svgEl, namespace, key, undefined, _myId, _tableId);
       _lastActionScope = 'toys';
       // addHistory calls refreshFromDoc() itself — this was previously a
       // bare UI.refreshFromDoc() call with no addHistory, so a toy's own
@@ -1129,8 +1053,6 @@ const App = {
     } catch (err) {
       UI.toast(`Action failed: ${err.message}`, 'warn');
       App.addLog(`toy action failed: ${err.message}`, 'del');
-    } finally {
-      _dispatchingContentsChange = false;
     }
   },
 
@@ -1181,14 +1103,7 @@ const App = {
       await activateToyScripts(_ydoc, def.toyType);
       const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
       if (svgEl && layerEl) {
-        // Same guard as invokeToyMenuAction, same reason: initializeToySync
-        // already ran its own complete cascade before committing.
-        _dispatchingContentsChange = true;
-        try {
-          Toys.initializeToySync(_ydoc, _yToys, layerEl, svgEl, def.toyType, _myId, _tableId);
-        } finally {
-          _dispatchingContentsChange = false;
-        }
+        Toys.initializeToySync(_ydoc, layerEl, svgEl, def.toyType, _myId, _tableId);
       }
     }).catch(err => {
       UI.toast(`Failed to place ${def.label}`, 'warn');
@@ -1369,17 +1284,10 @@ const App = {
       // transaction, via the same DOM-based gesture machinery toy handlers
       // use (Toys.runGestureSync): reparent and reposition are plain DOM
       // mutations captured by one envelope, the cascade runs against that
-      // same live DOM with no re-rendering, and everything translates into
-      // Yjs in one commitEnvelope call. One undo step, one thing to
-      // arbitrate or fork on conflict, no "die inserted but its reaction
-      // lost" intermediate.
+      // same live DOM with no re-rendering, and everything commits as one
+      // operation. One undo step, one thing to arbitrate or fork on
+      // conflict, no "die inserted but its reaction lost" intermediate.
       _lastActionScope = 'toys';
-      // Same guard as invokeToyMenuAction/commitToy, same reason:
-      // runGestureSync already runs its own complete cascade before
-      // committing (folds under an unlabeled transact, effectively null
-      // origin — see undo_redo.js's "Atomicity" note), so the observer
-      // must not recompute the same containers again.
-      _dispatchingContentsChange = true;
       try {
         const layerEl = _svgEl.querySelector('#toys-layer');
         _ydoc.transact(() => {
@@ -1391,7 +1299,7 @@ const App = {
             if (containerGeom) {
               Toys.applyMoveDom(movedEl, rx - containerGeom.x, ry - containerGeom.y);
             }
-          }, { origin: ENVELOPE_ORIGIN, gesture: 'reparent', authorId: _myId, tableId: _tableId });
+          }, { gesture: 'reparent', authorId: _myId, tableId: _tableId });
         });
       } catch (err) {
         // a malformed container asset can reach here and throw.
@@ -1399,8 +1307,6 @@ const App = {
         UI.toast(`Could not move into container: ${err.message}`, 'warn');
         Overlay.endDragPlaceholder(id);
         return;
-      } finally {
-        _dispatchingContentsChange = false;
       }
 
       // Ghost ends after the commit, not before — see the comment on the

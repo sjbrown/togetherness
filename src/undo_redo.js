@@ -20,9 +20,8 @@
  * ── What is (and isn't) undoable ──────────────────────────────────────
  *
  * trackedOrigins decides. app.js's structural writes (add / move / delete /
- * resize) transact with a null origin; a user-intent handler commits under
- * ENVELOPE_ORIGIN. All are tracked — a derived write is not a separate
- * class of thing from the action that caused it.
+ * resize) transact with a null origin. All are tracked — a derived write
+ * is not a separate class of thing from the action that caused it.
  *
  * Note: "not tracked" is about a *standalone* derived transaction (reached
  * from the observer, after its triggering transaction has already closed).
@@ -50,7 +49,6 @@
  */
 
 import * as Y from 'yjs';
-import { ENVELOPE_ORIGIN } from './envelope.js';
 
 let _um       = null;   // Y.UndoManager
 let _pending  = null;   // label for the next stack item created by a user action
@@ -76,9 +74,9 @@ export function init({ ydoc, scopes, onApply, onEmpty, onChange }) {
   _onChange = onChange ?? (() => {});
 
   _um = new Y.UndoManager(scopes, {
-    // null: app.js's structural writes. ENVELOPE_ORIGIN: user-intent toy
-    // handlers (rolls). Derived/lifecycle origins are intentionally absent.
-    trackedOrigins: new Set([null, ENVELOPE_ORIGIN]),
+    // Every tracked write (drawing, boundaries) transacts with a null
+    // origin. Derived/lifecycle origins are intentionally absent.
+    trackedOrigins: new Set([null]),
     // Each tracked transaction is its own undo step; app.js keeps one
     // logical action to one transaction, so no time-based coalescing needed.
     captureTimeout: 0,
