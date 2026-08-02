@@ -43,12 +43,35 @@ var tray_sum = {
     if (tspan) tspan.textContent = String(sum)
   },
 
+  eject_all: function(elem) {
+    const toysLayer = elem.closest('#toys-layer')
+    const ownSvg = elem.querySelector(':scope > svg')
+    const ownX = parseFloat(ownSvg && ownSvg.getAttribute('x')) || 0
+    const ownY = parseFloat(ownSvg && ownSvg.getAttribute('y')) || 0
+
+    tray.visit_contents(elem, (child) => {
+      childSvg = child.querySelector(':scope > svg')
+      const x = parseFloat(childSvg.getAttribute('x')) || 0
+      const y = parseFloat(childSvg.getAttribute('y')) || 0
+      childSvg.setAttribute('x', String(ownX + x))
+      childSvg.setAttribute('y', String(ownY + y))
+      toysLayer.appendChild(child)
+    })
+  },
+
   menu: {
     'Roll All': {
       eventName: 'tray_roll',
       applicable: (node) => { return true },
       handler: function(evt) {
         return tray.roll_all(this)
+      },
+    },
+    'Eject All': {
+      eventName: 'tray_eject',
+      applicable: (node) => { return true },
+      handler: function(evt) {
+        return tray_sum.eject_all(this)
       },
     },
   },
