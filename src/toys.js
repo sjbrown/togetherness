@@ -30,8 +30,9 @@ const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789'
 import { number, bool } from './tools-schema.js';
 import { runToyHandlerSync, runInEnvelopeSync, commitEnvelope, commitGesture, ENVELOPE_ORIGIN, LIFECYCLE_ORIGIN } from './envelope.js';
 import { consumeParents, setHead, getHead, addMergeTip } from './op_head.js';
-import { getOps, appendOp, getOp, heads, labelBranches, branchAuthors, forkJoinSequence } from './op_dag.js';
-import { checkpointOp, projectFrom, buildForkSeed } from './op_checkpoint.js';
+import { getOps, appendOp, getOp, heads, labelBranches, branchAuthors, forkJoinSequence, toyUndoRedoStacks } from './op_dag.js';
+import { invert as invertWire, apply as applyWire } from './op_wire_mutation.js';
+import { checkpointOp, projectFrom, buildForkSeed, isCheckpoint } from './op_checkpoint.js';
 import { receiveOp, advanceTo } from './op_replay.js';
 
 // NOTE: envelope.js imports render()/yNodeFor()/registerYNode() from this
@@ -2003,6 +2004,139 @@ export async function placeToy(ydoc, layerEl, attrs, opts = {}) {
  * toys-layer-api.test.js — so there's no op-log head for a receive to
  * advance yet. This is the piece that will wire in once that's resolved.
  */
+/**
+ * True only if every wire entry's target resolves against layerEl right
+ * now. Read-only — touches nothing. apply() applies entries one at a
+ * time and throws on the first unresolvable target, which can leave
+ * earlier entries in a batch already mutated with nothing committed to
+ * describe it; undo needs to know *before* touching anything, since a
+ * half-applied inverse with no corresponding operation is exactly the
+ * silent-divergence apply() is designed to refuse, just reached a
+ * different way.
+ */
+function canApplyWire(wire, layerEl) {
+  for (const entry of wire ?? []) {
+    if (!resolveRef(entry.target, layerEl)) return false
+  }
+  return true
+}
+
+/**
+ * Undo/redo, backed by op_dag.toyUndoRedoStacks — a real undo/redo stack,
+ * reconstructed by replaying this author's own ops rather than a single
+ * backward pointer walk. That distinction matters: skipping past an
+ * 'undo' op and continuing to its *parent* doesn't reach an older
+ * action — an undo's parent IS the op it just inverted, by construction,
+ * so that walk just finds the same thing again. Repeated Undo presses
+ * need the full stack simulation to reach progressively older gestures
+ * instead of toggling between the last two.
+ *
+ * Both skip checkpoints inherently (toyUndoRedoStacks never pushes one):
+ * a genesis checkpoint is authored to whoever took it, so on a fresh
+ * table it would otherwise look like "my most recent op" with nothing
+ * else having happened yet — but it isn't a user action, it's
+ * "reconstruct this state from scratch." Undoing it would mean deleting
+ * everything.
+ *
+ * Not "reverse the current state" — an operation against something a
+ * later change already removed does nothing visible (§8's goblin
+ * example) rather than crash: canApplyWire checks first, and if any part
+ * of the inverse can't land, none of it does. Both return null rather
+ * than commit a partial, inconsistent result.
+ */
+function applyToyUndoRedo(ydoc, layerEl, tableId, authorId, targetId, verb) {
+  if (!targetId) return null
+  const ops = getOps(ydoc)
+  const target = getOp(ops, targetId)
+  const inverseMutations = invertWire(target.mutations)
+  if (!canApplyWire(inverseMutations, layerEl)) return null
+
+  // Strip one leading 'undo:'/'redo:' from the target's own gesture, so
+  // the new tag always names the ORIGINAL real action — 'undo:move',
+  // 'redo:move' — never nests ('redo:undo:move'), no matter how many
+  // times something gets toggled back and forth. This is what lets a
+  // caller show a real label ("undid: move") instead of "undid: undo".
+  const describedGesture = target.gesture.replace(/^(undo|redo):/, '')
+
+  const result = runGestureSync(ydoc, layerEl, () => {
+    applyWire(inverseMutations, layerEl)
+  }, { gesture: `${verb}:${describedGesture}`, authorId, tableId })
+
+  return result.op ?? null
+}
+
+export function undoToyGesture(ydoc, layerEl, tableId, authorId) {
+  const ops = getOps(ydoc)
+  const head = tableId ? getHead(tableId) : null
+  const { undoTargetId } = toyUndoRedoStacks(ops, head, authorId)
+  return applyToyUndoRedo(ydoc, layerEl, tableId, authorId, undoTargetId, 'undo')
+}
+
+export function redoToyGesture(ydoc, layerEl, tableId, authorId) {
+  const ops = getOps(ydoc)
+  const head = tableId ? getHead(tableId) : null
+  const { redoTargetId } = toyUndoRedoStacks(ops, head, authorId)
+  return applyToyUndoRedo(ydoc, layerEl, tableId, authorId, redoTargetId, 'redo')
+}
+
+/**
+ * Delete several toys as one gesture, one operation — not one runGestureSync
+ * call per id. commitGesture has no free nested-transaction collapsing the
+ * way Y.UndoManager gives drawing/boundaries; a loop of individual
+ * L.delete(id) calls would mint N separate operations, and undo only ever
+ * reverses "my most recent one" — a multi-delete would need N separate undo
+ * presses to fully reverse instead of one. Used by app.js's
+ * deleteMultiSelected when the (uniform, since a selection can never span
+ * layers) selection is toys.
+ *
+ * Returns the resulting operation, or null if nothing was actually deleted
+ * (every id already gone).
+ */
+export function deleteToysBatch(ydoc, layerEl, ids, { authorId, tableId } = {}) {
+  let deletedAny = false
+  const result = runGestureSync(ydoc, layerEl, () => {
+    for (const id of ids) {
+      if (deleteToyDom(layerEl, id)) deletedAny = true
+    }
+  }, { gesture: 'delete-batch', authorId, tableId })
+  return deletedAny ? (result.op ?? null) : null
+}
+
+/**
+ * Move several toys as one gesture, one operation. Same reasoning as
+ * deleteToysBatch. moves: [{ id, x, y }] — x/y are the same centre-point
+ * convention applyMoveDom/applyMoveCommit already use.
+ */
+export function moveToysBatch(ydoc, layerEl, moves, { authorId, tableId } = {}) {
+  let movedAny = false
+  const result = runGestureSync(ydoc, layerEl, () => {
+    for (const { id, x, y } of moves) {
+      const el = findToyDom(layerEl, id)
+      if (el) { applyMoveDom(el, x, y); movedAny = true }
+    }
+  }, { gesture: 'move-batch', authorId, tableId })
+  return movedAny ? (result.op ?? null) : null
+}
+
+/**
+ * Cheap existence checks for the undo/redo buttons' enabled state — no DOM
+ * needed, no mutation. canApplyWire's resolvability check still runs at
+ * actual undo/redo time, so a button can be enabled and the press can still
+ * turn out to be a no-op if the target vanished between the check and the
+ * click; that's an acceptable, minor imprecision most editors share.
+ */
+export function canUndoToyGesture(ydoc, tableId, authorId) {
+  const ops = getOps(ydoc)
+  const head = tableId ? getHead(tableId) : null
+  return toyUndoRedoStacks(ops, head, authorId).undoTargetId != null
+}
+
+export function canRedoToyGesture(ydoc, tableId, authorId) {
+  const ops = getOps(ydoc)
+  const head = tableId ? getHead(tableId) : null
+  return toyUndoRedoStacks(ops, head, authorId).redoTargetId != null
+}
+
 /**
  * Move this peer's own view of the toys layer to targetHeadId, regardless
  * of whether it's a descendant of the current head or a genuinely

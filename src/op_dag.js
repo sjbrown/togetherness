@@ -105,6 +105,109 @@ export function lca(ops, a, b) {
 // ── ordering ────────────────────────────────────────────────────────────
 
 /**
+ * Simulate one author's own undo/redo stack by replaying their ops, in
+ * causal order (oldest first), along the primary ancestry of headId.
+ *
+ * A real gesture pushes onto the undo stack. An op tagged 'undo:X' (X
+ * names the original real gesture — see toys.js's applyToyUndoRedo) pops
+ * the undo stack onto the redo stack. A 'redo:X' op pops the redo stack
+ * back onto the undo stack. A NEW real gesture clears the redo stack —
+ * ordinary editor semantics: doing something new invalidates whatever
+ * you could previously have redone.
+ *
+ * This replaces a simpler, broken idea: skipping past an 'undo' op and
+ * continuing to its *parent* doesn't reach an older action — an undo's
+ * parent IS the op it just inverted, by construction, so that walk just
+ * finds the same thing again. A real stack, reconstructed by replaying
+ * the sequence rather than following one pointer backward, is what
+ * actually lets repeated Undo presses reach progressively older gestures.
+ *
+ * Walks parents[0] only — one causal path, not the full DAG. Exactly
+ * right for a single peer's own linear action history, which is what
+ * this reconstructs; a concurrent-merge commit's other parents (from
+ * op_replay's mergeConcurrent) are not part of that peer's own sequence
+ * of gestures and are correctly ignored here.
+ *
+ * Returns { undoTargetId, redoTargetId } — the op at the top of each
+ * virtual stack, or null.
+ */
+export function toyUndoRedoStacks(ops, headId, authorId) {
+  if (headId == null || !authorId) return { undoTargetId: null, redoTargetId: null }
+
+  const mineNearestFirst = []
+  let cursor = headId
+  const seen = new Set()
+  while (cursor != null && !seen.has(cursor)) {
+    seen.add(cursor)
+    const op = getOp(ops, cursor)
+    if (!op) break
+    if (op.authorId === authorId && op.gesture !== 'checkpoint') mineNearestFirst.push(op)
+    cursor = op.parents?.[0] ?? null
+  }
+
+  const undoStack = []
+  const redoStack = []
+  for (const op of [...mineNearestFirst].reverse()) {
+    if (op.gesture.startsWith('undo:')) {
+      // The thing it undid is no longer active; the undo op ITSELF is
+      // what redo needs to invert next (inverting it restores what it
+      // undid — invert(invert(X)) is X again).
+      undoStack.pop()
+      redoStack.push(op)
+    } else if (op.gesture.startsWith('redo:')) {
+      // Symmetric: a redo op's own mutations are functionally identical
+      // to the original gesture's (double inversion cancels), so it's
+      // exactly what a subsequent undo should invert — same effect,
+      // fresh op id.
+      redoStack.pop()
+      undoStack.push(op)
+    } else {
+      undoStack.push(op)
+      redoStack.length = 0
+    }
+  }
+
+  return {
+    undoTargetId: undoStack.length ? undoStack[undoStack.length - 1].id : null,
+    redoTargetId: redoStack.length ? redoStack[redoStack.length - 1].id : null,
+  }
+}
+
+/**
+ * The nearest operation, at or behind headId, authored by authorId — a
+ * breadth-first walk outward from head, so "nearest" means fewest hops
+ * back through parents, not lowest ts. In a DAG with concurrent branches
+ * there's no single well-defined "most recent"; BFS-nearest is the
+ * deterministic choice this makes, not an approximation of a truer
+ * answer. null if authorId never touched this branch's ancestry at all.
+ *
+ * skip(op), if given, passes over an op that matches even when it's
+ * authorId's own — the search continues past it rather than stopping.
+ * Generic on purpose: op_dag.js doesn't know what a checkpoint is, but a
+ * caller (toys.js's undo, skipping isCheckpoint) does.
+ *
+ * This is what "my most recent operation" (§8) means in code: undo finds
+ * this and inverts it, whatever its gesture — including a prior 'undo'
+ * itself, which is what makes redo fall out as the same operation
+ * applied again rather than needing its own stack.
+ */
+export function findLastAuthoredOp(ops, headId, authorId, skip) {
+  if (headId == null || !authorId) return null
+  const seen = new Set()
+  const queue = [headId]
+  while (queue.length) {
+    const id = queue.shift()
+    if (seen.has(id)) continue
+    seen.add(id)
+    const op = getOp(ops, id)
+    if (!op) continue
+    if (op.authorId === authorId && !(skip && skip(op))) return id
+    for (const p of op.parents ?? []) queue.push(p)
+  }
+  return null
+}
+
+/**
  * -1 if idA is authoritative over idB, 1 if idB is, 0 if equal.
  * An id missing from the sequence sorts last.
  */

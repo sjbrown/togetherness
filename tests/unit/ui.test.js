@@ -5,7 +5,7 @@
 
 // @vitest-environment jsdom
 import { describe, test, expect, vi, beforeEach } from 'vitest'
-import { layerObjectListHTML, refreshLayerList, UIData, init, toast, showBranchDialog, branchDialogJoin, branchDialogKeepWorking, peersBody, openSheet, closePanel, restorePanelState } from '../../src/ui.js'
+import { layerObjectListHTML, refreshLayerList, UIData, init, toast, showBranchDialog, branchDialogJoin, branchDialogKeepWorking, peersBody, openSheet, closePanel, restorePanelState, histBody } from '../../src/ui.js'
 
 const mockObjects = [
   { id: 'a', label: 'rect',   fill: '#c8941e', kind: 'rect'   },
@@ -452,6 +452,9 @@ describe('panel open/tab persistence (tt_panel_state)', () => {
     isOffline: () => false,
     getTableId: () => 'tt-T-v1-test',
     getHistory: () => [],
+    getUndoHistory: () => [],
+    canUndo: () => false,
+    canRedo: () => false,
   }
 
   function mountPanelSkeleton() {
@@ -547,5 +550,90 @@ describe('panel open/tab persistence (tt_panel_state)', () => {
       `
       init(mockApp) // NOT clearing localStorage — that's the point
     }
+  })
+})
+
+describe('histBody — undo/redo panel layout', () => {
+  const history     = [{ label: 'moved die1' }, { label: 'placed die2' }]
+  const undoHistory = [{ label: 'undid: move' }]
+
+  function withApp(overrides) {
+    init({ getPeers: () => [], isOffline: () => false, getTableId: () => 'tt-T-v1-test',
+           canUndo: () => false, canRedo: () => false, ...overrides })
+  }
+
+  test('renders both lists, in order: undo, history, redo, undo history', () => {
+    withApp({ canUndo: () => true, canRedo: () => true })
+    const html = histBody(history, undoHistory)
+    const undoBtnAt   = html.indexOf('Undo last action')
+    const historyAt   = html.indexOf('moved die1')
+    const redoBtnAt   = html.indexOf('Redo last undone action')
+    const undoHistAt  = html.indexOf('undid: move')
+    expect(undoBtnAt).toBeGreaterThan(-1)
+    expect(undoBtnAt).toBeLessThan(historyAt)
+    expect(historyAt).toBeLessThan(redoBtnAt)
+    expect(redoBtnAt).toBeLessThan(undoHistAt)
+  })
+
+  test('the gesture history list shows real actions, not undo entries — those are a separate list', () => {
+    withApp({ canUndo: () => true })
+    const div = document.createElement('div')
+    div.innerHTML = histBody(history, undoHistory)
+    const historyField = div.querySelectorAll('.field')[1]
+    expect(historyField.textContent).toContain('moved die1')
+    expect(historyField.textContent).not.toContain('undid:')
+  })
+
+  test('undo button is wired to App.undo() when something is undoable', () => {
+    withApp({ canUndo: () => true })
+    const div = document.createElement('div')
+    div.innerHTML = histBody(history, [])
+    const btn = [...div.querySelectorAll('.action-btn')].find(b => b.textContent.includes('Undo last action'))
+    expect(btn.getAttribute('onclick')).toBe('App.undo()')
+    expect(btn.disabled).toBe(false)
+  })
+
+  test('undo button is disabled, not wired, when nothing is undoable', () => {
+    withApp({ canUndo: () => false })
+    const div = document.createElement('div')
+    div.innerHTML = histBody([], [])
+    const btn = [...div.querySelectorAll('.action-btn')].find(b => b.textContent.includes('Undo last action'))
+    expect(btn.hasAttribute('onclick')).toBe(false)
+    expect(btn.disabled).toBe(true)
+  })
+
+  test('redo button is wired to App.redo() when something is redoable — it never was before this', () => {
+    withApp({ canRedo: () => true })
+    const div = document.createElement('div')
+    div.innerHTML = histBody([], undoHistory)
+    const btn = [...div.querySelectorAll('.action-btn')].find(b => b.textContent.includes('Redo last undone action'))
+    expect(btn.getAttribute('onclick')).toBe('App.redo()')
+    expect(btn.disabled).toBe(false)
+  })
+
+  test('redo button is disabled when nothing is redoable', () => {
+    withApp({ canRedo: () => false })
+    const div = document.createElement('div')
+    div.innerHTML = histBody([], [])
+    const btn = [...div.querySelectorAll('.action-btn')].find(b => b.textContent.includes('Redo last undone action'))
+    expect(btn.hasAttribute('onclick')).toBe(false)
+    expect(btn.disabled).toBe(true)
+  })
+
+  test('empty states are labelled distinctly for each list', () => {
+    withApp({})
+    const div = document.createElement('div')
+    div.innerHTML = histBody([], [])
+    expect(div.textContent).toContain('No history')
+    expect(div.textContent).toContain('Nothing undone')
+  })
+
+  test('both lists get the scrollable, 4-item-limited list class — same pattern as the Layers panel', () => {
+    withApp({})
+    const div = document.createElement('div')
+    div.innerHTML = histBody(history, undoHistory)
+    const lists = div.querySelectorAll('.hist-list')
+    expect(lists.length).toBe(2)
+    for (const list of lists) expect(list.classList.contains('shape-list')).toBe(true)
   })
 })

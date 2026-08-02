@@ -229,6 +229,9 @@ function _singleSelectedId() {
 let _activeTool   = 'select';
 let _offline      = false;
 let _historyLog   = [];      // { label } — human-readable, newest first
+let _undoLog      = [];      // { label } — actions undone, newest first;
+                              // shown near the Redo button, separate from
+                              // _historyLog per the panel's own layout.
 
 // Active drag — set by App.startDrag, cleared by commitMove / cancelMove.
 // Awareness state: drag: { elId, dx, dy }
@@ -250,6 +253,17 @@ let _multiDragState = null;  // { elements: [{ id, mtype, anchorX, anchorY, bbox
 // Only reachable while _resizeModeId === id and only ever for a container.
 let _resizeState = null;    // { id, corner, startRect: {x,y,width,height},
                             //   lastRect: {x,y,width,height} } | null
+
+// Which undo mechanism App.undo/App.redo should invoke: the toys op log
+// (Toys.undoToyGesture) or the drawing/boundaries Y.UndoManager
+// (UndoRedo.undo). Set at every commit callsite to whichever the action
+// just performed actually touched. Never ambiguous within one action:
+// switching the active layer clears the selection (App.setLayer), so a
+// single gesture can never span both toys and drawing/boundaries.
+// Defaults to 'toys' — on a session where nothing has happened yet,
+// either mechanism reporting "nothing to undo" is equally correct, and
+// toys is this app's primary domain.
+let _lastActionScope = 'toys';   // 'toys' | 'draw_bounds'
 
 // ── Tool registry ───────────────────────────────────────────────────────────
 // Built from the layer registries + the universal Select tool.
@@ -356,14 +370,20 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
   getOps(_ydoc).observe(onOpsChanged);
   _awareness.on('change', onPresenceChanged);
 
-  // Undo/redo — one UndoManager over the three element fragments.
+  // Undo/redo — one UndoManager over drawing + boundaries. Toys undo is a
+  // separate mechanism entirely; see undo_redo.js's module docstring and
+  // App.undo/App.redo below.
   UndoRedo.init({
     ydoc:   _ydoc,
-    scopes: [_yToys, _yDrawing, _yBounPos],
+    scopes: [_yDrawing, _yBounPos],
     onApply: (kind, label) => {
-      const verb = kind === 'undo' ? 'undid' : 'redid';
-      addHistory(label ? `${verb}: ${label}` : `${verb} a change`);
-      UI.toast(kind === 'undo' ? 'Undone' : 'Redone');
+      if (kind === 'undo') {
+        addUndoHistory(label ? `undid: ${label}` : 'undid a change');
+        UI.toast('Undone');
+      } else {
+        addHistory(label ? `redid: ${label}` : 'redid a change');
+        UI.toast('Redone');
+      }
     },
     onEmpty: (kind) => UI.toast(`Nothing to ${kind}`, 'warn'),
   });
@@ -726,6 +746,7 @@ const App = {
   // ── Queries (ui.js, overlay.js read these) ─────────────────────────────────
   getActiveLayer:  () => _activeLayer,
   getHistory:      () => _historyLog.slice(0, 20),
+  getUndoHistory:  () => _undoLog.slice(0, 20),
   getLayers:       () => _layerMeta.map(l => ({
     ...l,
     visible: _layerVisibility[l.id] ?? true,
@@ -918,21 +939,36 @@ const App = {
   deleteMultiSelected: () => {
     const ids = Object.keys(_myClaims);
     if (ids.length === 0) return;
+
+    // A selection can never span layers (App.setLayer clears claims on
+    // switch), so every id here shares one mtype — resolve it from
+    // whichever id happens to still exist in the DOM.
+    const firstEl = ids.map(id => _svgEl.querySelector(`[data-id="${id}"]`)).find(Boolean);
+    const mtype   = firstEl ? moduleForElement(firstEl) : null;
+
     let deleted = 0;
-    UndoRedo.tag(`deleted ${ids.length} objects`);
-    _ydoc.transact(() => {
-      for (const id of ids) {
-        const svgEl = _svgEl.querySelector(`[data-id="${id}"]`);
-        if (!svgEl) continue;
-        const mtype = moduleForElement(svgEl);
-        const L = _Layers[mtype];
-        if (!L) continue;
-        const yEl = L.find(id);
-        if (!yEl) continue;
-        L.delete(id);
-        deleted++;
-      }
-    });
+    if (mtype === 'toys') {
+      _lastActionScope = 'toys';
+      const layerEl = _svgEl.querySelector('#toys-layer');
+      const op = layerEl ? Toys.deleteToysBatch(_ydoc, layerEl, ids, { authorId: _myId, tableId: _tableId }) : null;
+      deleted = op ? ids.length : 0; // one op for the whole batch; exact per-id count isn't tracked separately
+    } else {
+      _lastActionScope = 'draw_bounds';
+      UndoRedo.tag(`deleted ${ids.length} objects`);
+      _ydoc.transact(() => {
+        for (const id of ids) {
+          const svgEl = _svgEl.querySelector(`[data-id="${id}"]`);
+          if (!svgEl) continue;
+          const L = _Layers[moduleForElement(svgEl)];
+          if (!L) continue;
+          const yEl = L.find(id);
+          if (!yEl) continue;
+          L.delete(id);
+          deleted++;
+        }
+      });
+    }
+
     if (deleted > 0) {
       addHistory(`deleted ${deleted} objects`);
       App.addLog(`deleted ${deleted} objects`, 'local');
@@ -946,6 +982,7 @@ const App = {
     if (ids.length === 0) return;
     let added = 0;
     // The inner addDrawing transactions collapse into this outer one.
+    _lastActionScope = 'draw_bounds';
     UndoRedo.tag(`duplicated ${ids.length} objects`);
     _ydoc.transact(() => {
       for (const id of ids) {
@@ -973,6 +1010,7 @@ const App = {
   // ── Document mutations ────────────────────────────────────────────────────
   commitDrawing: (attrs) => {
     const id = App.getMyId() + '_' + Math.random().toString(36).slice(2, 7);
+    _lastActionScope = 'draw_bounds';
     UndoRedo.tag(`add ${attrs.type ?? 'rect'} ${id}`);
     Drawing.addDrawing(_ydoc, _yDrawing, { ...attrs, id });
     addHistory(`added ${attrs.type ?? 'rect'} ${id}`, {
@@ -987,6 +1025,7 @@ const App = {
     const { id, name } = def.newId();
     if (def.genType === null) {
       // boundary
+      _lastActionScope = 'draw_bounds';
       UndoRedo.tag(`add ${def.label} ${name}`);
       def.create(_ydoc, _yBounPos, { id, name, x, y, w, h });
     } else {
@@ -996,6 +1035,7 @@ const App = {
       const genType  = def.genType;
       const createParams = BounPos.toolParamsToCreateParams(genType, params, {x, y, w, h});
       if (createParams.circles.length === 0) return;
+      _lastActionScope = 'draw_bounds';
       UndoRedo.tag(`add ${def.label} ${name}`);
       def.create(_ydoc, _yBounPos,
         {
@@ -1080,10 +1120,12 @@ const App = {
     _dispatchingContentsChange = true;
     try {
       Toys.invokeMenuActionSync(_ydoc, _yToys, layerEl, svgEl, namespace, key, undefined, _myId, _tableId);
-      // _yToys.observeDeep already re-renders the toys layer once that commit
-      // lands; refreshFromDoc() here just keeps the Edit panel's own action
-      // list current too
-      UI.refreshFromDoc();
+      _lastActionScope = 'toys';
+      // addHistory calls refreshFromDoc() itself — this was previously a
+      // bare UI.refreshFromDoc() call with no addHistory, so a toy's own
+      // menu actions (Roll, Turn Up, Roll All, ...) never appeared in the
+      // history log at all, ever, regardless of which panel was open.
+      addHistory(`${key} ${id}`, { elType: 'toys' });
     } catch (err) {
       UI.toast(`Action failed: ${err.message}`, 'warn');
       App.addLog(`toy action failed: ${err.message}`, 'del');
@@ -1119,13 +1161,12 @@ const App = {
     const id = newToyId();
     const layerEl = _svgEl?.querySelector('#toys-layer');
     if (!layerEl) return;
-    // Tag before placeToy's placement transaction runs.
     // initializeToySync below runs its own outer transact() with no
     // explicit origin, so its merged handler-plus-cascade transaction
     // commits under null — a separate transaction, and a separate
     // operation, from placement. Deliberate: initialize is its own
     // gesture, not part of "place".
-    UndoRedo.tag(`place ${def.label} ${id}`);
+    _lastActionScope = 'toys';
     Toys.placeToy(_ydoc, layerEl, {
       id, toyType: def.toyType, x, y,
       color: _toolParams[toolName]?.fill ?? _myGrad.c1,
@@ -1162,7 +1203,8 @@ const App = {
     if (!L) return false;
     const yEl = L.find(id);
     if (!yEl) return false;
-    UndoRedo.tag(`delete ${mtype}:${id}`);
+    if (mtype === 'toys') _lastActionScope = 'toys';
+    else { _lastActionScope = 'draw_bounds'; UndoRedo.tag(`delete ${mtype}:${id}`); }
     L.delete(id);
     addHistory(`deleted ${mtype}:${id}`);
     App.addLog(`deleted ${id}`, 'local');
@@ -1331,7 +1373,7 @@ const App = {
       // Yjs in one commitEnvelope call. One undo step, one thing to
       // arbitrate or fork on conflict, no "die inserted but its reaction
       // lost" intermediate.
-      UndoRedo.tag(`move ${id} into a container`);
+      _lastActionScope = 'toys';
       // Same guard as invokeToyMenuAction/commitToy, same reason:
       // runGestureSync already runs its own complete cascade before
       // committing (folds under an unlabeled transact, effectively null
@@ -1379,7 +1421,8 @@ const App = {
       return;
     }
 
-    UndoRedo.tag(`move ${id} → (${rx}, ${ry})`);
+    if (mtype === 'toys') _lastActionScope = 'toys';
+    else { _lastActionScope = 'draw_bounds'; UndoRedo.tag(`move ${id} → (${rx}, ${ry})`); }
     if (_Layers[mtype]) {
       _Layers[mtype].applyMoveCommit(_Layers[mtype].find(id), rx, ry);
       // observeDeep fires on all layers and calls renderDoc()
@@ -1463,7 +1506,7 @@ const App = {
     _resizeState = null;
 
     const toyEl = _Layers.toys.find(id);
-    UndoRedo.tag(`resize ${id}`);
+    _lastActionScope = 'toys';
     _Layers.toys.applyResize(toyEl, toRect.x, toRect.y, toRect.width, toRect.height);
     // observeDeep fires and calls renderDoc()
     // Ghost ends after the commit — same reasoning as commitMove:
@@ -1594,16 +1637,32 @@ const App = {
     const fdx = constrained ? lastValidDx : Math.round(ddx);
     const fdy = constrained ? lastValidDy : Math.round(ddy);
 
-    // One transaction → one undo step for the whole group move
-    UndoRedo.tag(`move ${elements.length} objects`);
-    _ydoc.transact(() => {
-      for (const el of elements) {
-        const rx = Math.round(el.anchorX + fdx);
-        const ry = Math.round(el.anchorY + fdy);
-        const L = _Layers[el.mtype];
-        if (L) L.applyMoveCommit(L.find(el.id), rx, ry);
+    // A selection can never span layers (App.setLayer clears claims on
+    // switch), so every element here shares one mtype.
+    const mtype = elements[0]?.mtype;
+
+    if (mtype === 'toys') {
+      _lastActionScope = 'toys';
+      const layerEl = _svgEl.querySelector('#toys-layer');
+      if (layerEl) {
+        const moves = elements.map(el => ({
+          id: el.id, x: Math.round(el.anchorX + fdx), y: Math.round(el.anchorY + fdy),
+        }));
+        Toys.moveToysBatch(_ydoc, layerEl, moves, { authorId: _myId, tableId: _tableId });
       }
-    });
+    } else {
+      _lastActionScope = 'draw_bounds';
+      // One transaction → one undo step for the whole group move
+      UndoRedo.tag(`move ${elements.length} objects`);
+      _ydoc.transact(() => {
+        for (const el of elements) {
+          const rx = Math.round(el.anchorX + fdx);
+          const ry = Math.round(el.anchorY + fdy);
+          const L = _Layers[el.mtype];
+          if (L) L.applyMoveCommit(L.find(el.id), rx, ry);
+        }
+      });
+    }
 
     // Ghosts end after the commit, not before: endDragPlaceholder's own
     // render() paints the selection ring from whatever the DOM currently
@@ -1692,12 +1751,62 @@ const App = {
       pendingRequests: Object.keys(_pendingRequests).length  ? { ..._pendingRequests }  : null,
     });
   },
-  // Undo/redo delegate to undo_redo.js (Y.UndoManager). History-log and
-  // toast side effects are wired via the onApply/onEmpty callbacks in boot().
-  undo: () => UndoRedo.undo(),
-  redo: () => UndoRedo.redo(),
-  canUndo: () => UndoRedo.canUndo(),
-  canRedo: () => UndoRedo.canRedo(),
+  // Undo/redo tries the mechanism _lastActionScope points at first, then
+  // falls back to the other one. The fallback is what makes repeated
+  // undo presses correctly walk back through actions that touched
+  // different layers: _lastActionScope only moves at commit time, so
+  // right after undoing a drawing action it's still 'draw_bounds' — a
+  // second press has to fall through to toys, or it would report
+  // "nothing to undo" the moment the drawing side runs dry, stranding
+  // whatever's still undoable in toys.
+  //
+  // canUndo/canRedo check both mechanisms with a plain OR, for the same
+  // reason — the button should be enabled if either has something,
+  // independent of which one _lastActionScope currently favours.
+  undo: () => {
+    const tryToys = () => {
+      const layer = _svgEl?.querySelector('#toys-layer');
+      const op = layer ? Toys.undoToyGesture(_ydoc, layer, _tableId, _myId) : null;
+      if (!op) return false;
+      _lastActionScope = 'toys';
+      addUndoHistory(`undid: ${describeToyGesture(op.gesture)}`);
+      UI.toast('Undone');
+      return true;
+    };
+    const tryDrawBounds = () => {
+      if (!UndoRedo.canUndo()) return false; // avoid UndoRedo's own onEmpty toast on a fallback probe
+      UndoRedo.undo();
+      _lastActionScope = 'draw_bounds';
+      return true;
+    };
+    const [primary, fallback] = _lastActionScope === 'draw_bounds'
+      ? [tryDrawBounds, tryToys] : [tryToys, tryDrawBounds];
+    if (primary() || fallback()) return;
+    UI.toast('Nothing to undo', 'warn');
+  },
+  redo: () => {
+    const tryToys = () => {
+      const layer = _svgEl?.querySelector('#toys-layer');
+      const op = layer ? Toys.redoToyGesture(_ydoc, layer, _tableId, _myId) : null;
+      if (!op) return false;
+      _lastActionScope = 'toys';
+      addHistory(`redid: ${describeToyGesture(op.gesture)}`);
+      UI.toast('Redone');
+      return true;
+    };
+    const tryDrawBounds = () => {
+      if (!UndoRedo.canRedo()) return false;
+      UndoRedo.redo();
+      _lastActionScope = 'draw_bounds';
+      return true;
+    };
+    const [primary, fallback] = _lastActionScope === 'draw_bounds'
+      ? [tryDrawBounds, tryToys] : [tryToys, tryDrawBounds];
+    if (primary() || fallback()) return;
+    UI.toast('Nothing to redo', 'warn');
+  },
+  canUndo: () => Toys.canUndoToyGesture(_ydoc, _tableId, _myId) || UndoRedo.canUndo(),
+  canRedo: () => Toys.canRedoToyGesture(_ydoc, _tableId, _myId) || UndoRedo.canRedo(),
   exportSVG: () => {
     const clone = Storage.buildExportSvg(_svgEl, _ydoc);
     const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
@@ -1778,9 +1887,32 @@ const App = {
 };
 
 // ── History log ───────────────────────────────────────────────────────────────
+
+// A human-readable label for a toy operation's gesture, for undo/redo
+// history + toast text. Toy ops don't carry a custom label the way
+// UndoRedo.tag() gives drawing/boundaries actions — this is the toys-side
+// equivalent, coarser but good enough for "undid: X" text.
+function describeToyGesture(gesture) {
+  if (gesture.startsWith('undo:')) return describeToyGesture(gesture.slice('undo:'.length));
+  if (gesture.startsWith('redo:')) return describeToyGesture(gesture.slice('redo:'.length));
+  if (gesture.startsWith('menu:')) return gesture.slice('menu:'.length);
+  if (gesture === 'delete-batch') return 'delete';
+  if (gesture === 'move-batch')   return 'move';
+  return gesture; // move, resize, place, delete, reparent, edit, ...
+}
+
 function addHistory(label, meta = {}) {
   _historyLog.unshift({ label, ts: Date.now(), fill: meta.fill, elType: meta.elType });
   if (_historyLog.length > 40) _historyLog.pop();
+  UI.refreshFromDoc();
+}
+
+// A separate log for undo actions, shown near the Redo button rather than
+// in the main gesture history — an undo isn't itself a gesture the user
+// asked the document to remember, it's the tool reversing one.
+function addUndoHistory(label) {
+  _undoLog.unshift({ label, ts: Date.now() });
+  if (_undoLog.length > 40) _undoLog.pop();
   UI.refreshFromDoc();
 }
 

@@ -552,9 +552,18 @@ input[type=range] { width: 100%; accent-color: var(--primary); height: 28px; }
 .toggle.on::after { transform: translateX(18px); }
 
 /* History */
-.hist-item { display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-radius: 8px; font-size: 13px; color: var(--text); }
+.hist-item { display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-radius: 8px; font-size: 13px; color: var(--text); min-height: 40px; }
 .hist-item:first-child { background: var(--primary-soft); color: var(--primary); }
 .hist-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+/* Same recipe as .layer-obj-list: 4 items visible, scroll for the rest. */
+.hist-list {
+  max-height: calc(4 * 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: rgba(0,0,0,0.22);
+  border: 0.5px solid var(--border);
+  border-radius: 9px;
+}
 
 .action-btn {
   display: flex; align-items: center; gap: 10px; width: 100%;

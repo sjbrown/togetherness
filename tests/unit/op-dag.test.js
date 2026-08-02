@@ -9,16 +9,16 @@ import * as Y from 'yjs'
 import { describe, test, expect } from 'vitest'
 import {
   getOps, appendOp, getOp, allOps, toOpMap,
-  ancestors, isAncestor, heads, lca,
+  ancestors, isAncestor, heads, lca, findLastAuthoredOp,
   compareAuthority, totalOrder, pathFrom,
-  branchAuthors, forkJoinSequence, labelBranches,
+  branchAuthors, forkJoinSequence, labelBranches, toyUndoRedoStacks,
 } from '../../src/op_dag.js'
 
-/** Build a plain op map from [id, parents, authorId] triples. */
+/** Build a plain op map from [id, parents, authorId, ts] triples. */
 function graph(...rows) {
   const m = new Map()
-  for (const [id, parents = [], authorId = 'anon'] of rows) {
-    m.set(id, { id, parents, authorId, gesture: 'test', mutations: [], ts: 0 })
+  for (const [id, parents = [], authorId = 'anon', ts = 0] of rows) {
+    m.set(id, { id, parents, authorId, gesture: 'test', mutations: [], ts })
   }
   return m
 }
@@ -132,6 +132,147 @@ describe('lca', () => {
       ['r', []], ['m', ['r']], ['a', ['m']], ['b', ['m']],
     )
     expect(lca(g, 'a', 'b')).toBe('m')
+  })
+})
+
+describe('toyUndoRedoStacks', () => {
+  const move = (id, parents, authorId, from, to) => ({
+    id, parents, authorId, gesture: 'move', ts: 0,
+    mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: from, newValue: to }],
+  })
+  const meta = (id, parents, authorId, gesture) => ({ id, parents, authorId, gesture, ts: 0, mutations: [] })
+
+  test('three real gestures: repeated undo reaches each one in turn, not just the last', () => {
+    const ops = new Map()
+    ops.set('M1', move('M1', [], 'alice', '0', '1'))
+    ops.set('M2', move('M2', ['M1'], 'alice', '1', '2'))
+    ops.set('M3', move('M3', ['M2'], 'alice', '2', '3'))
+
+    // Undo #1: target is M3 (the most recent real gesture).
+    let { undoTargetId } = toyUndoRedoStacks(ops, 'M3', 'alice')
+    expect(undoTargetId).toBe('M3')
+    ops.set('U1', meta('U1', ['M3'], 'alice', 'undo:move'))
+
+    // Undo #2: must reach M2, NOT M3 again — this is the exact bug.
+    ;({ undoTargetId } = toyUndoRedoStacks(ops, 'U1', 'alice'))
+    expect(undoTargetId).toBe('M2')
+    ops.set('U2', meta('U2', ['U1'], 'alice', 'undo:move'))
+
+    // Undo #3: reaches M1.
+    ;({ undoTargetId } = toyUndoRedoStacks(ops, 'U2', 'alice'))
+    expect(undoTargetId).toBe('M1')
+    ops.set('U3', meta('U3', ['U2'], 'alice', 'undo:move'))
+
+    // Nothing left.
+    ;({ undoTargetId } = toyUndoRedoStacks(ops, 'U3', 'alice'))
+    expect(undoTargetId).toBeNull()
+  })
+
+  test('redo targets the most recently undone gesture', () => {
+    const ops = new Map()
+    ops.set('M1', move('M1', [], 'alice', '0', '1'))
+    ops.set('U1', meta('U1', ['M1'], 'alice', 'undo:move'))
+    const { redoTargetId } = toyUndoRedoStacks(ops, 'U1', 'alice')
+    expect(redoTargetId).toBe('U1')
+  })
+
+  test('a new real gesture after an undo clears the redo target', () => {
+    const ops = new Map()
+    ops.set('M1', move('M1', [], 'alice', '0', '1'))
+    ops.set('U1', meta('U1', ['M1'], 'alice', 'undo:move'))
+    ops.set('M2', move('M2', ['U1'], 'alice', '0', '5')) // a fresh action, not a redo
+    const { redoTargetId, undoTargetId } = toyUndoRedoStacks(ops, 'M2', 'alice')
+    expect(redoTargetId).toBeNull()
+    expect(undoTargetId).toBe('M2')
+  })
+
+  test('undo, redo, undo again reaches the same gesture — does not skip past it', () => {
+    const ops = new Map()
+    ops.set('M1', move('M1', [], 'alice', '0', '1'))
+    ops.set('M2', move('M2', ['M1'], 'alice', '1', '2'))
+    ops.set('U1', meta('U1', ['M2'], 'alice', 'undo:move')) // undoes M2
+    ops.set('R1', meta('R1', ['U1'], 'alice', 'redo:move')) // redoes M2
+
+    const { undoTargetId } = toyUndoRedoStacks(ops, 'R1', 'alice')
+    // R1's own mutations are invert(U1's mutations) == M2's mutations
+    // again (double inversion cancels) — functionally identical to
+    // undoing M2 directly, just a fresh op id rather than M2's own.
+    expect(undoTargetId).toBe('R1')
+  })
+
+  test('checkpoints never appear on either stack', () => {
+    const ops = new Map()
+    ops.set('L', { id: 'L', parents: [], authorId: 'alice', gesture: 'checkpoint', ts: 0, mutations: [] })
+    const { undoTargetId, redoTargetId } = toyUndoRedoStacks(ops, 'L', 'alice')
+    expect(undoTargetId).toBeNull()
+    expect(redoTargetId).toBeNull()
+  })
+
+  test('another author’s ops in between are skipped, not treated as mine', () => {
+    const ops = new Map()
+    ops.set('M1', move('M1', [], 'alice', '0', '1'))
+    ops.set('B1', move('B1', ['M1'], 'bob', '9', '9')) // bob's own action
+    const { undoTargetId } = toyUndoRedoStacks(ops, 'B1', 'alice')
+    expect(undoTargetId).toBe('M1')
+  })
+
+  test('null head or null authorId returns both null, not a throw', () => {
+    const ops = new Map()
+    expect(toyUndoRedoStacks(ops, null, 'alice')).toEqual({ undoTargetId: null, redoTargetId: null })
+    expect(toyUndoRedoStacks(ops, 'x', null)).toEqual({ undoTargetId: null, redoTargetId: null })
+  })
+})
+
+describe('findLastAuthoredOp', () => {
+  test('finds the head itself when it is the author’s own', () => {
+    expect(findLastAuthoredOp(worked(), 'A1', 'alice')).toBe('A1')
+  })
+
+  test('walks back past ops by other authors to find one of mine', () => {
+    const g = graph(['r', [], 'alice'], ['x', ['r'], 'bob'], ['y', ['x'], 'clyde'])
+    expect(findLastAuthoredOp(g, 'y', 'alice')).toBe('r')
+  })
+
+  test('nearest by hop count, not by ts', () => {
+    const g = graph(
+      ['r', [], 'alice', 100],
+      ['a_far', ['r'], 'alice', 999],
+      ['b_near', ['a_far'], 'bob'],
+      ['a_near', ['b_near'], 'alice', 1],
+    )
+    // a_near is one hop back; a_far is two, despite its much later ts.
+    expect(findLastAuthoredOp(g, 'a_near', 'alice')).toBe('a_near')
+  })
+
+  test('null when the author never touched this branch', () => {
+    expect(findLastAuthoredOp(worked(), 'C1', 'zoe')).toBeNull()
+  })
+
+  test('null for a null head', () => {
+    expect(findLastAuthoredOp(worked(), null, 'alice')).toBeNull()
+  })
+
+  test('finds an author whose own op is itself a prior undo — no special-casing', () => {
+    const g = graph(['r', [], 'alice'], ['u', ['r'], 'alice'])
+    expect(findLastAuthoredOp(g, 'u', 'alice')).toBe('u')
+  })
+
+  test('skip passes over a matching op and continues searching further back', () => {
+    const g = graph(
+      ['r', [], 'alice'],
+      ['checkpoint1', ['r'], 'alice'],
+      ['real-move', ['checkpoint1'], 'alice'],
+    )
+    const skipCheckpoints = (op) => op.gesture === 'test' && op.id === 'checkpoint1'
+    // Without skip: finds the nearer op regardless of what it is.
+    expect(findLastAuthoredOp(g, 'real-move', 'alice')).toBe('real-move')
+    // With skip on the head itself: passes over it, keeps walking back.
+    expect(findLastAuthoredOp(g, 'checkpoint1', 'alice', skipCheckpoints)).toBe('r')
+  })
+
+  test('skip that matches everything correctly returns null rather than looping', () => {
+    const g = graph(['r', [], 'alice'], ['x', ['r'], 'alice'])
+    expect(findLastAuthoredOp(g, 'x', 'alice', () => true)).toBeNull()
   })
 })
 

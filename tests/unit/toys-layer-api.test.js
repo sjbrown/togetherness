@@ -16,6 +16,9 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   makeLayerAPI, projectLayer, placeToy, addToy, render, findToy, getTtState,
   resolveToyBranchConflict, buildToyForkSeed, adoptToyBranch,
+  undoToyGesture, redoToyGesture, deleteToysBatch, moveToysBatch,
+  canUndoToyGesture, canRedoToyGesture,
+  getGeom, reparentToyDom, applyMoveDom, runGestureSync,
   clearYNodeMap, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { getOps, appendOp } from '../../src/op_dag.js'
@@ -655,5 +658,294 @@ describe('conflict resolution end to end — resolve, adopt, and fork-seed agree
 
     expect(seedFromBob.genesis).toEqual(seedFromClyde.genesis)
     expect(seedFromBob.genesis.authorId).toBe('bob') // orderedIds[0], not whoever resolved it
+  })
+})
+
+describe('undoToyGesture / redoToyGesture', () => {
+  const TABLE = 'undo-table'
+  beforeEach(() => localStorage.clear())
+
+  async function seeded() {
+    const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
+    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE, true)
+    L.render(layerEl) // genesis
+    return { ydoc, layerEl, L }
+  }
+
+  test('undoes my own last move, appending a real undo operation', async () => {
+    const { ydoc, layerEl, L } = await seeded()
+    L.applyMoveCommit(L.find('die1'), 500, 500)
+    expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 500, cy: 500 })
+
+    const op = undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
+
+    expect(op).not.toBeNull()
+    expect(op.gesture).toBe('undo:move')
+    expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 100, cy: 100 })
+  })
+
+  test('redo restores what undo just undid', async () => {
+    const { ydoc, layerEl, L } = await seeded()
+    L.applyMoveCommit(L.find('die1'), 500, 500)
+    undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
+    expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 100, cy: 100 })
+
+    const op = redoToyGesture(ydoc, layerEl, TABLE, 'user-a')
+
+    expect(op).not.toBeNull()
+    expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 500, cy: 500 })
+  })
+
+  test('redo is a no-op when my last own operation was not an undo', async () => {
+    const { ydoc, layerEl, L } = await seeded()
+    L.applyMoveCommit(L.find('die1'), 500, 500)
+
+    expect(redoToyGesture(ydoc, layerEl, TABLE, 'user-a')).toBeNull()
+    expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 500, cy: 500 })
+  })
+
+  test('undo is null when I have never authored anything on this branch', async () => {
+    const { ydoc, layerEl } = await seeded()
+    expect(undoToyGesture(ydoc, layerEl, TABLE, 'someone-else')).toBeNull()
+  })
+
+  test('undo skips past another peer’s op to find my own', async () => {
+    const { ydoc, layerEl, L } = await seeded()
+    L.applyMoveCommit(L.find('die1'), 200, 200)          // mine
+    const bobsLayerApi = makeLayerAPI(ydoc, () => layerEl, 'bob', TABLE, false)
+    bobsLayerApi.edit(bobsLayerApi.find('die1'), { color: '#123456' }) // someone else's, most recent
+
+    undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
+
+    // My move is undone; Bob's unrelated edit is untouched by it.
+    expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 100, cy: 100, color: '#123456' })
+  })
+
+  test('undoing my own delete resurrects the toy — undo targets my MOST recent op, whatever it is', async () => {
+    const { ydoc, layerEl, L } = await seeded()
+    L.applyMoveCommit(L.find('die1'), 500, 500)
+    L.delete('die1')
+    expect(layerEl.querySelector('[data-toy-id="die1"]')).toBeNull()
+
+    const op = undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
+
+    expect(op).not.toBeNull()
+    expect(layerEl.querySelector('[data-toy-id="die1"]')).not.toBeNull()
+    // Resurrected at the position it held right before the delete — the
+    // move is untouched; undo reversed the delete, not the move before it.
+    expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 500, cy: 500 })
+  })
+
+  test('undo does nothing — no crash, no partial mutation — when the target no longer exists', async () => {
+    const { ydoc, layerEl, L } = await seeded()
+    L.applyMoveCommit(L.find('die1'), 500, 500)
+    // Deleted by someone else, not me — my own most recent op is still
+    // the move. If I'd deleted it myself, undo would (correctly) target
+    // that delete instead, since it's my more recent action.
+    const bobsLayerApi = makeLayerAPI(ydoc, () => layerEl, 'bob', TABLE, false)
+    bobsLayerApi.delete('die1')
+
+    const op = undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
+
+    expect(op).toBeNull()
+    expect(layerEl.querySelector('[data-toy-id="die1"]')).toBeNull()
+  })
+
+  test('undo/redo/undo/redo round-trips cleanly', async () => {
+    const { ydoc, layerEl, L } = await seeded()
+    L.applyMoveCommit(L.find('die1'), 300, 300)
+
+    undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
+    redoToyGesture(ydoc, layerEl, TABLE, 'user-a')
+    undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
+    redoToyGesture(ydoc, layerEl, TABLE, 'user-a')
+
+    expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 300, cy: 300 })
+  })
+
+  test('redo tags its own operation "redo", not "undo"', async () => {
+    const { ydoc, layerEl, L } = await seeded()
+    L.applyMoveCommit(L.find('die1'), 300, 300)
+    undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
+
+    const redoOp = redoToyGesture(ydoc, layerEl, TABLE, 'user-a')
+
+    expect(redoOp.gesture).toBe('redo:move')
+  })
+
+  test('repeated undo walks back through several real gestures instead of toggling one', async () => {
+    // The actual bug: undo's search used to only skip checkpoints, so a
+    // second press found the first undo (its own most recent op) and
+    // inverted THAT -- redoing the first move instead of reversing an
+    // earlier one. Three real moves, three undos, should land back at
+    // the toy's original placed position -- not oscillate between the
+    // last two.
+    const { ydoc, layerEl, L } = await seeded()
+    L.applyMoveCommit(L.find('die1'), 200, 200)
+    L.applyMoveCommit(L.find('die1'), 300, 300)
+    L.applyMoveCommit(L.find('die1'), 400, 400)
+
+    undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
+    expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 300, cy: 300 })
+
+    undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
+    expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 200, cy: 200 })
+
+    undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
+    expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 100, cy: 100 })
+
+    // Nothing further of mine to undo (only genesis, which is skipped).
+    expect(undoToyGesture(ydoc, layerEl, TABLE, 'user-a')).toBeNull()
+  })
+
+  test('undo after a redo re-reverses the same gesture, skipping the redo op itself', async () => {
+    const { ydoc, layerEl, L } = await seeded()
+    L.applyMoveCommit(L.find('die1'), 200, 200)
+    L.applyMoveCommit(L.find('die1'), 300, 300)
+
+    undoToyGesture(ydoc, layerEl, TABLE, 'user-a') // back to 200,200
+    redoToyGesture(ydoc, layerEl, TABLE, 'user-a')  // forward to 300,300 again
+    expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 300, cy: 300 })
+
+    undoToyGesture(ydoc, layerEl, TABLE, 'user-a') // should reach 200,200 again,
+    expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 200, cy: 200 }) // not skip past it to 100,100
+  })
+
+  test('redo is exhausted after one use — pressing it again finds nothing', async () => {
+    const { ydoc, layerEl, L } = await seeded()
+    L.applyMoveCommit(L.find('die1'), 300, 300)
+    undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
+    redoToyGesture(ydoc, layerEl, TABLE, 'user-a')
+
+    // My most recent own op is now the redo itself — nothing newer has
+    // been undone since, so a second redo press correctly finds nothing.
+    expect(redoToyGesture(ydoc, layerEl, TABLE, 'user-a')).toBeNull()
+    expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 300, cy: 300 })
+  })
+
+  test('undoing a container-drop restores both the canvas position and the top-level parent', async () => {
+    // The real bug report: drag a die into a tray (one atomic gesture,
+    // reparent + reposition together — exactly commitMove's own
+    // composition, not the LayerAPI's plain applyMoveCommit), then undo.
+    const { ydoc, layerEl } = await setup(['tray1', 'tray_sum'], ['die1', 'dice_d6'])
+    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE, true)
+    L.render(layerEl)
+
+    const dieBefore = L.getTtState(L.find('die1'))
+
+    const containerEl   = layerEl.querySelector('[data-id="tray1"]')
+    const containerGeom = getGeom(containerEl)
+    runGestureSync(ydoc, layerEl, () => {
+      reparentToyDom(layerEl, 'die1', 'tray1')
+      const movedEl = layerEl.querySelector('[data-id="die1"]')
+      applyMoveDom(movedEl, 320 - containerGeom.x, 320 - containerGeom.y)
+    }, { origin: 'envelope', gesture: 'reparent', authorId: 'user-a', tableId: TABLE })
+
+    expect(layerEl.querySelector('[data-id="die1"]').closest('[data-id="tray1"]')).not.toBeNull()
+
+    undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
+
+    expect(layerEl.querySelector('[data-id="die1"]').closest('[data-id="tray1"]')).toBeNull()
+    expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: dieBefore.cx, cy: dieBefore.cy })
+  })
+})
+
+describe('deleteToysBatch / moveToysBatch — one op for a multi-select action', () => {
+  const TABLE = 'batch-table'
+  beforeEach(() => localStorage.clear())
+
+  async function seededTwo() {
+    const { ydoc, layerEl } = await setup(['die1', 'dice_d6'], ['die2', 'dice_d6'])
+    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE, true)
+    L.render(layerEl)
+    return { ydoc, layerEl, L }
+  }
+
+  test('deletes several toys and appends exactly one operation', async () => {
+    const { ydoc, layerEl } = await seededTwo()
+    const before = [...getOps(ydoc).values()].length
+
+    const op = deleteToysBatch(ydoc, layerEl, ['die1', 'die2'], { authorId: 'user-a', tableId: TABLE })
+
+    expect(op).not.toBeNull()
+    expect(op.gesture).toBe('delete-batch')
+    expect([...getOps(ydoc).values()].length).toBe(before + 1)
+    expect(layerEl.querySelectorAll('[data-toy-id]').length).toBe(0)
+  })
+
+  test('undo reverses the whole batch in one press', async () => {
+    const { ydoc, layerEl } = await seededTwo()
+    deleteToysBatch(ydoc, layerEl, ['die1', 'die2'], { authorId: 'user-a', tableId: TABLE })
+    expect(layerEl.querySelectorAll('[data-toy-id]').length).toBe(0)
+
+    undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
+
+    expect(layerEl.querySelectorAll('[data-toy-id]').length).toBe(2)
+  })
+
+  test('null when every id in the batch is already gone', async () => {
+    const { ydoc, layerEl } = await seededTwo()
+    expect(deleteToysBatch(ydoc, layerEl, ['nope', 'also-nope'], { authorId: 'user-a', tableId: TABLE })).toBeNull()
+  })
+
+  test('moves several toys and appends exactly one operation', async () => {
+    const { ydoc, layerEl, L } = await seededTwo()
+    const before = [...getOps(ydoc).values()].length
+
+    const op = moveToysBatch(ydoc, layerEl,
+      [{ id: 'die1', x: 400, y: 400 }, { id: 'die2', x: 450, y: 450 }],
+      { authorId: 'user-a', tableId: TABLE })
+
+    expect(op).not.toBeNull()
+    expect(op.gesture).toBe('move-batch')
+    expect([...getOps(ydoc).values()].length).toBe(before + 1)
+    expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 400, cy: 400 })
+    expect(L.getTtState(L.find('die2'))).toMatchObject({ cx: 450, cy: 450 })
+  })
+
+  test('a single undo reverses a whole multi-move', async () => {
+    const { ydoc, layerEl, L } = await seededTwo()
+    moveToysBatch(ydoc, layerEl,
+      [{ id: 'die1', x: 400, y: 400 }, { id: 'die2', x: 450, y: 450 }],
+      { authorId: 'user-a', tableId: TABLE })
+
+    undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
+
+    expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 100, cy: 100 })
+    expect(L.getTtState(L.find('die2'))).toMatchObject({ cx: 100, cy: 100 })
+  })
+})
+
+describe('canUndoToyGesture / canRedoToyGesture — cheap existence checks', () => {
+  const TABLE = 'can-table'
+  beforeEach(() => localStorage.clear())
+
+  test('false on a fresh table with nothing done', async () => {
+    const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
+    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE, true)
+    L.render(layerEl)
+    expect(canUndoToyGesture(ydoc, TABLE, 'user-a')).toBe(false)
+    expect(canRedoToyGesture(ydoc, TABLE, 'user-a')).toBe(false)
+  })
+
+  test('true for undo after a real gesture; false for redo until an undo happens', async () => {
+    const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
+    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE, true)
+    L.render(layerEl)
+    L.applyMoveCommit(L.find('die1'), 300, 300)
+
+    expect(canUndoToyGesture(ydoc, TABLE, 'user-a')).toBe(true)
+    expect(canRedoToyGesture(ydoc, TABLE, 'user-a')).toBe(false)
+
+    undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
+    expect(canRedoToyGesture(ydoc, TABLE, 'user-a')).toBe(true)
+  })
+
+  test('false for a peer who never authored anything on this branch', async () => {
+    const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
+    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE, true)
+    L.render(layerEl)
+    L.applyMoveCommit(L.find('die1'), 300, 300)
+    expect(canUndoToyGesture(ydoc, TABLE, 'someone-else')).toBe(false)
   })
 })

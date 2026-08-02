@@ -336,10 +336,7 @@ currently entirely about `UndoManager` semantics.
 `domToY`'s toys usage (it stays for drawing), the `toys` `Y.XmlFragment`
 itself.
 
-Migration for existing tables: a boot-time check for a non-empty
-`toys` fragment writes it as a genesis checkpoint and clears it. Worth
-doing properly — there are real tables in IndexedDB, including the live
-demo's.
+Migration for existing tables: No migration, since we're pre-public-deploy.
 
 ---
 

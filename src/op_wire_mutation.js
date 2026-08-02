@@ -184,6 +184,17 @@ function matchesSerialized(node, s) {
  */
 export function apply(wire, rootEl) {
   const doc = rootEl.ownerDocument ?? document
+  // Nodes this SAME apply() call has already detached via removeChild,
+  // keyed by data-id — a subsequent 'added' entry naming the same
+  // identity reuses the live node rather than deserializing a fresh
+  // clone from its snapshot. Matters when one batch both moves a node
+  // and mutates it elsewhere (an ordinary reparent-into-container
+  // gesture, or the undo of one): the snapshot only describes shape and
+  // attributes as of serialization time, so a fresh clone silently
+  // discards whatever this apply() call has already done to the real
+  // node — e.g. an attribute revert applied earlier in an undo batch,
+  // gone the moment a stale clone replaces it in the tree.
+  const detached = new Map()
 
   for (const entry of wire ?? []) {
     const target = resolveRef(entry.target, rootEl)
@@ -209,12 +220,17 @@ export function apply(wire, rootEl) {
     if (entry.t === 'child') {
       for (const s of entry.removed ?? []) {
         const victim = Array.from(target.childNodes).find(n => matchesSerialized(n, s))
-        if (victim) target.removeChild(victim)
+        if (victim) {
+          target.removeChild(victim)
+          const vid = victim.nodeType === ELEMENT ? victim.getAttribute?.('data-id') : null
+          if (vid) detached.set(vid, victim)
+        }
       }
       if (entry.added?.length) {
         const before = insertionPoint(target, entry, rootEl)
         for (const s of entry.added) {
-          const node = deserializeNode(s, doc)
+          const sid = (s.at ?? []).find(([n]) => n === 'data-id')?.[1]
+          const node = (sid && detached.get(sid)) ?? deserializeNode(s, doc)
           if (node) target.insertBefore(node, before)
         }
       }

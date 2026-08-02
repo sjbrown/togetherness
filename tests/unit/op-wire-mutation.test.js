@@ -373,4 +373,42 @@ describe('round trip over real toy gestures', () => {
     apply(invert(wire), layerEl)
     expect(markup(layerEl)).toBe(beforeHtml)
   })
+
+  test('a drop into a tray that ALSO repositions the die (commitMove\'s real shape) restores both position and parent on undo', async () => {
+    // Regression test: the existing "inverts back out" test above only
+    // reparents, in isolation — never in the same batch as a reposition.
+    // commitMove's actual drop-into-container gesture always does both
+    // together, one envelope, one operation (see app.js). That
+    // combination is exactly what broke: apply()'s handling of a
+    // childList 'added' entry always deserialized a fresh clone from its
+    // snapshot, discarding whatever this SAME apply() call had already
+    // done to the real node earlier in the batch — here, the attribute
+    // revert that undo's own reversed-batch order applies before the
+    // reparent-back-out step runs.
+    const { layerEl } = await layerWith(['tray1', 'tray_sum'], ['die1', 'dice_d6'])
+    const beforeHtml = markup(layerEl)
+
+    const dieBeforeXY = (() => {
+      const svg = layerEl.querySelector('[data-id="die1"] svg')
+      return { x: svg.getAttribute('x'), y: svg.getAttribute('y') }
+    })()
+
+    const wire = serialize(capture(layerEl, () => {
+      const contents  = layerEl.querySelector('[data-id="tray1"] .tt_contents')
+      const dieEl     = layerEl.querySelector('[data-id="die1"]')
+      contents.appendChild(dieEl)
+      // A real reposition, not a no-op — same as applyMoveDom would do.
+      dieEl.querySelector('svg').setAttribute('x', '999')
+      dieEl.querySelector('svg').setAttribute('y', '888')
+    }))
+
+    apply(invert(wire), layerEl)
+
+    // Both the parent AND the position must be restored — not just one.
+    expect(markup(layerEl)).toBe(beforeHtml)
+    const dieAfterUndo = layerEl.querySelector('[data-id="die1"] svg')
+    expect(dieAfterUndo.getAttribute('x')).toBe(dieBeforeXY.x)
+    expect(dieAfterUndo.getAttribute('y')).toBe(dieBeforeXY.y)
+    expect(layerEl.querySelector('[data-id="die1"]').closest('[data-id="tray1"]')).toBeNull()
+  })
 })

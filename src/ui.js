@@ -571,7 +571,7 @@ export function openSheet(which) {
       edit:     () => editBody(gatherTtStateData()),
       tools:    () => toolsBody(gatherToolsData()),
       peers:    () => peersBody(gatherPeersData()),
-      history:  () => histBody(App.getHistory()),
+      history:  () => histBody(App.getHistory(), App.getUndoHistory()),
       layers:   () => layersBody(gatherLayersData()),
       save:     () => saveBody(),
       gestures: () => gesturesBody(),
@@ -851,20 +851,35 @@ function wirePeersToggles() {
   }
 }
 
-export function histBody(history) {
-  const rows = history.map((entry, i) => {
-    const swatch = entry.fill
-      ? `<span class="sw-chip kind-${entry.elType}" style="background:${entry.fill};flex-shrink:0"></span>`
-      : `<span class="hist-dot"></span>`;
-    return `<div class="hist-item">${swatch}<span style="flex:1">${entry.label}</span>${i === 0 ? '<span class="meta">latest</span>' : ''}</div>`;
-  }).join('');
+export function histBody(history, undoHistory = []) {
+  const rowsHtml = (entries, emptyLabel) => {
+    const rows = entries.map((entry, i) => {
+      const swatch = entry.fill
+        ? `<span class="sw-chip kind-${entry.elType}" style="background:${entry.fill};flex-shrink:0"></span>`
+        : `<span class="hist-dot"></span>`;
+      return `<div class="hist-item">${swatch}<span style="flex:1">${entry.label}</span>${i === 0 ? '<span class="meta">latest</span>' : ''}</div>`;
+    }).join('');
+    return rows || `<span class="meta">${emptyLabel}</span>`;
+  };
+
+  // App.canUndo/canRedo are cheap (no DOM, no mutation) — safe to check on
+  // every render to decide whether these look clickable, the same way any
+  // other panel field reflects current state.
+  const undoDisabled = !App.canUndo();
+  const redoDisabled = !App.canRedo();
+
   return `
     <div class="field"><label>Undo</label>
-      <button class="action-btn" onclick="App.undo()">${icon('undo')} Undo last action</button>
-      <button class="action-btn" style="opacity:.4;cursor:not-allowed">${icon('check')} Redo (nothing to redo)</button>
+      <button class="action-btn" ${undoDisabled ? 'style="opacity:.4;cursor:not-allowed" disabled' : 'onclick="App.undo()"'}>${icon('undo')} Undo last action</button>
     </div>
     <div class="field"><label>History</label>
-      <div class="shape-list">${rows || '<span class="meta">No history</span>'}</div>
+      <div class="shape-list hist-list">${rowsHtml(history, 'No history')}</div>
+    </div>
+    <div class="field"><label>Redo</label>
+      <button class="action-btn" ${redoDisabled ? 'style="opacity:.4;cursor:not-allowed" disabled' : 'onclick="App.redo()"'}>${icon('check')} Redo last undone action</button>
+    </div>
+    <div class="field"><label>Undo history</label>
+      <div class="shape-list hist-list">${rowsHtml(undoHistory, 'Nothing undone')}</div>
     </div>`;
 }
 
@@ -932,7 +947,7 @@ export function refreshFromDoc() {
   if (!body) return;
   switch (UIData.panelOpen) {
     case 'edit':    body.innerHTML = editBody(gatherTtStateData());   wireColorPickers(body); break;
-    case 'history': body.innerHTML = histBody(App.getHistory());   break;
+    case 'history': body.innerHTML = histBody(App.getHistory(), App.getUndoHistory());   break;
     case 'layers':  body.innerHTML = layersBody(gatherLayersData()); break;
     case 'tools':   body.innerHTML = toolsBody(gatherToolsData()); wireColorPickers(body); break;
   }
