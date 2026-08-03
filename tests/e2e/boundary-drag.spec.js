@@ -16,18 +16,18 @@
  */
 
 import { test, expect, chromium } from '@playwright/test';
+import { openAsCreator } from './helpers.js';
 
 const APP_URL      = process.env.APP_URL      || 'http://localhost:3000';
 const SIGNALING_URL = process.env.SIGNALING_URL || 'ws://localhost:4444';
 
 test.describe('boundary-constrained toy dragging', () => {
   test('toy drag ghost respects boundaries and toy lands in second boundary', async () => {
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
     const ctx     = await browser.newContext();
     const page    = await ctx.newPage();
 
-    const room = `e2e-bounds-${Date.now()}`;
-    await page.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
+    await openAsCreator(page, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
 
     // Wait for app to boot (same pattern as sync.spec.js)
     await expect(page.locator('#peerCount')).toHaveText('0', { timeout: 8000 });
@@ -118,10 +118,10 @@ test.describe('boundary-constrained toy dragging', () => {
     await page.mouse.up();
     await page.waitForTimeout(200);
 
-    await expect(page.locator('#toys-layer [data-id]')).toHaveCount(1, { timeout: 3000 });
+    await expect(page.locator('#toys-layer [data-toy-id]')).toHaveCount(1, { timeout: 3000 });
 
     const toyId = await page.evaluate(() =>
-      document.querySelector('#toys-layer [data-id]')?.getAttribute('data-id') ?? null
+      document.querySelector('#toys-layer [data-toy-id]')?.getAttribute('data-id') ?? null
     );
     expect(toyId).toBeTruthy();
 

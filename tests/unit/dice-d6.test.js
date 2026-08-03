@@ -4,9 +4,12 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { getOps, appendOp } from '../../src/op_dag.js'
+import { checkpointOp, projectFrom } from '../../src/op_checkpoint.js'
+import { getHead, setHead } from '../../src/op_head.js'
 import * as Toys from '../../src/toys.js'
-import { addToy, findToy, clearYNodeMap, _clearSvgTextCache,
-         _resetToyScriptState, getMenuActions, invokeMenuAction,
+import { addToy, activateAllToyScriptsDom, _clearSvgTextCache,
+         _resetToyScriptState, getMenuActions, invokeMenuActionSync,
          getNamespacesForType } from '../../src/toys.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
@@ -18,12 +21,9 @@ const TOY_DIR = path.resolve(__dir, '../../src/toy')
 const D6_SVG        = fs.readFileSync(path.join(TOY_DIR, 'dice_d6.svg'), 'utf8')
 const DICE_UTILS_JS = fs.readFileSync(path.join(TOY_DIR, 'js/dice_utils.js'), 'utf8')
 
-const getToysLayer = (ydoc) => ({ yToys: ydoc.getXmlFragment('toys') })
-
-function renderLayer(yToys) {
+function freshLayer() {
   const layerEl = document.createElementNS(SVG_NS, 'g')
   layerEl.id = 'toys-layer'
-  Toys.render(yToys, layerEl)
   return layerEl
 }
 
@@ -35,16 +35,15 @@ function stubToyFetch() {
   })
 }
 
-async function placeAndActivate(ydoc, yToys, id) {
-  await addToy(ydoc, yToys, { id, toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-  const layerEl = renderLayer(yToys)
-  await new Promise(r => setTimeout(r, 0)) // flush render()'s fire-and-forget script activation
+async function placeAndActivate(ydoc, layerEl, id) {
+  await addToy(ydoc, layerEl, { id, toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+  activateAllToyScriptsDom(ydoc, layerEl)
+  await new Promise(r => setTimeout(r, 0)) // flush the fire-and-forget script activation
   return { layerEl, toyEl: layerEl.querySelector(`[data-id="${id}"]`) }
 }
 
 beforeEach(() => {
   _clearSvgTextCache()
-  clearYNodeMap()
   _resetToyScriptState()
   delete globalThis.dice
   delete globalThis.d6
@@ -55,8 +54,8 @@ afterEach(() => { vi.unstubAllGlobals() })
 describe('dice_utils.js + d6 — script activation', () => {
   test('placing a d6 defines window.dice and window.d6', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await placeAndActivate(ydoc, yToys, 't1')
+    const layerEl = freshLayer()
+    await placeAndActivate(ydoc, layerEl, 't1')
 
     expect(typeof globalThis.dice.roll_handler).toBe('function')
     expect(typeof globalThis.dice.turn_handler).toBe('function')
@@ -200,8 +199,8 @@ describe('dice_utils.js — getValue', () => {
 describe('d6 menu', () => {
   test('menu exposes Roll and Turn Up, both applicable', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    const { toyEl } = await placeAndActivate(ydoc, yToys, 't1')
+    const layerEl = freshLayer()
+    const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
     const actions = getMenuActions(toyEl)
     expect(actions.map(a => a.key).sort()).toEqual(['Roll', 'Turn Up'])
@@ -209,77 +208,143 @@ describe('d6 menu', () => {
 
   test("Turn Up's uiLabel previews the exact face it will land on", async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    const { toyEl } = await placeAndActivate(ydoc, yToys, 't1')
+    const layerEl = freshLayer()
+    const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
     const turnUp = getMenuActions(toyEl).find(a => a.key === 'Turn Up')
     expect(turnUp.label).toBe('Turn to 1') // starts at 6 in the SVG source -> wraps to 1
   })
 })
 
-describe('full vertical slice — roll via menu \u2192 tspan changes \u2192 envelope \u2192 Yjs', () => {
-  test('invoking Turn Up mutates the DOM and commits the new face to Yjs', async () => {
+describe('full vertical slice — roll via menu \u2192 tspan changes \u2192 envelope', () => {
+  test('invoking Turn Up mutates the DOM', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
+    const layerEl = freshLayer()
+    const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
-    await invokeMenuAction(ydoc, yToys, layerEl, toyEl, 'd6', 'Turn Up')
+    invokeMenuActionSync(ydoc, layerEl, toyEl, 'd6', 'Turn Up')
 
     expect(layerEl.querySelector('#t1__tspan_die_value').textContent).toBe('1')
-
-    const yToy = findToy(yToys, 't1')
-    expect(findYText(yToy, 't1__tspan_die_value')).toBe('1')
   })
 
-  test('invoking Roll commits a valid, DOM-matching face to Yjs', async () => {
+  test('invoking Roll commits a valid face', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
+    const layerEl = freshLayer()
+    const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
-    await invokeMenuAction(ydoc, yToys, layerEl, toyEl, 'd6', 'Roll')
+    invokeMenuActionSync(ydoc, layerEl, toyEl, 'd6', 'Roll')
 
     const domValue = layerEl.querySelector('#t1__tspan_die_value').textContent
     expect(Number(domValue)).toBeGreaterThanOrEqual(1)
     expect(Number(domValue)).toBeLessThanOrEqual(6)
-
-    const yToy = findToy(yToys, 't1')
-    expect(findYText(yToy, 't1__tspan_die_value')).toBe(domValue)
-  })
-
-  test('another peer, applying only the Yjs state, renders the same new face', async () => {
-    // Peer A: place + roll (deterministic Turn Up, so the expected face is known).
-    const ydocA = new Y.Doc()
-    const { yToys: yToysA } = getToysLayer(ydocA)
-    const { layerEl: layerA, toyEl: toyA } = await placeAndActivate(ydocA, yToysA, 't1')
-    await invokeMenuAction(ydocA, yToysA, layerA, toyA, 'd6', 'Turn Up')
-    expect(layerA.querySelector('#t1__tspan_die_value').textContent).toBe('1')
-
-    // Peer B: a completely separate Y.Doc that only ever receives A's full
-    // state (placement + the roll), never touches App/envelope directly —
-    // this is the "other peer renders new face" half of the vertical slice,
-    // at the CRDT layer (tests/e2e covers the same thing through real UI).
-    const ydocB = new Y.Doc()
-    const { yToys: yToysB } = getToysLayer(ydocB)
-    Y.applyUpdate(ydocB, Y.encodeStateAsUpdate(ydocA))
-
-    const layerB = renderLayer(yToysB)
-    await new Promise(r => setTimeout(r, 0)) // flush script activation on peer B too
-
-    expect(layerB.querySelector('#t1__tspan_die_value').textContent).toBe('1')
   })
 })
 
-// First descendant (or self) Y.XmlText content directly under an element
-// with the given id.
-function findYText(yEl, id) {
-  if (!(yEl instanceof Y.XmlElement)) return null
-  if (yEl.getAttribute?.('id') === id) {
-    const text = yEl.toArray().find(c => c instanceof Y.XmlText)
-    return text ? text.toString() : null
-  }
-  for (const child of yEl.toArray()) {
-    const hit = findYText(child, id)
-    if (hit !== null) return hit
-  }
-  return null
-}
+describe('invokeMenuActionSync records an operation when given a tableId', () => {
+  beforeEach(() => localStorage.clear())
+
+  test('a menu action with no tableId records no operation', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
+
+    invokeMenuActionSync(ydoc, layerEl, toyEl, 'd6', 'Turn Up', undefined, 'alice')
+
+    expect([...getOps(ydoc).values()].length).toBe(0)
+  })
+
+  test('a menu action with a tableId appends an operation', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
+
+    invokeMenuActionSync(ydoc, layerEl, toyEl, 'd6', 'Turn Up', undefined, 'alice', 'race-table')
+
+    const ops = [...getOps(ydoc).values()]
+    expect(ops.length).toBe(1)
+    expect(ops[0].gesture).toBe('menu:d6.Turn Up')
+    expect(ops[0].authorId).toBe('alice')
+    expect(getHead('race-table')).toBe(ops[0].id)
+  })
+
+  test('the recorded operation replays a die roll onto a peer', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
+
+    const genesis = checkpointOp(layerEl, { authorId: 'alice', parents: [] })
+    appendOp(ydoc, genesis)
+    setHead('race-table', genesis.id)
+
+    invokeMenuActionSync(ydoc, layerEl, toyEl, 'd6', 'Turn Up', undefined, 'alice', 'race-table')
+
+    const rollOp = [...getOps(ydoc).values()].find(o => o.gesture.startsWith('menu:'))
+    expect(rollOp.parents).toEqual([genesis.id])
+
+    const peerLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    projectFrom(peerLayer, getOps(ydoc), rollOp.id)
+    expect(peerLayer.querySelector('#t1__tspan_die_value').textContent).toBe('1')
+  })
+})
+
+describe('script activation for a peer who only receives, never places', () => {
+  const TABLE = 'receive-only-table'
+  beforeEach(() => localStorage.clear())
+
+  test('getMenuActions is empty before activation, populated after receiveToyOp', async () => {
+    // Peer A: places for real, activating d6 on ITS OWN globalThis. We then
+    // simulate a completely separate peer B by clearing the namespace and
+    // the activation cache, so B has to earn its own activation.
+    const ydocA  = new Y.Doc()
+    const layerA = freshLayer()
+    await placeAndActivate(ydocA, layerA, 't1')
+    const genesis = checkpointOp(layerA, { authorId: 'alice', parents: [] })
+    appendOp(ydocA, genesis)
+
+    // Peer B: same ops (synced), fresh DOM, fresh namespace state.
+    delete globalThis.d6
+    Toys._resetToyScriptState()
+    const ydocB = new Y.Doc()
+    Y.applyUpdate(ydocB, Y.encodeStateAsUpdate(ydocA))
+    const layerB = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+
+    // Before B has ever projected/received anything: no menu, obviously.
+    expect(Toys.getMenuActions(layerA.querySelector('#t1__die') ?? layerA)).toBeDefined()
+
+    projectFrom(layerB, getOps(ydocB), genesis.id)
+    const toyElBeforeActivation = layerB.querySelector('[data-toy-id="t1"]')
+    expect(Toys.getMenuActions(toyElBeforeActivation)).toEqual([])
+
+    // The fix: receiveToyOp (or projectLayer's non-empty branch) activates
+    // scripts for whatever toy types the DOM now contains.
+    Toys.activateAllToyScriptsDom(ydocB, layerB)
+    await new Promise(r => setTimeout(r, 0))
+
+    const toyElAfterActivation = layerB.querySelector('[data-toy-id="t1"]')
+    const actions = Toys.getMenuActions(toyElAfterActivation)
+    expect(actions.length).toBeGreaterThan(0)
+    expect(actions.some(a => a.namespace === 'd6')).toBe(true)
+  })
+
+  test('projectLayer itself activates scripts on a non-creator DOM rebuild', async () => {
+    const ydocA  = new Y.Doc()
+    const layerA = freshLayer()
+    await placeAndActivate(ydocA, layerA, 't1')
+    const genesis = checkpointOp(layerA, { authorId: 'alice', parents: [] })
+    appendOp(ydocA, genesis)
+    setHead(TABLE, genesis.id) // pretend this session already caught up to genesis
+
+    delete globalThis.d6
+    Toys._resetToyScriptState()
+    const ydocB = new Y.Doc()
+    Y.applyUpdate(ydocB, Y.encodeStateAsUpdate(ydocA))
+    const layerB = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    layerB.id = 'toys-layer'
+
+    Toys.projectLayer(ydocB, layerB, { tableId: TABLE, authorId: 'bob', isCreator: false })
+    await new Promise(r => setTimeout(r, 0))
+
+    const toyEl = layerB.querySelector('[data-toy-id="t1"]')
+    expect(Toys.getMenuActions(toyEl).length).toBeGreaterThan(0)
+  })
+})

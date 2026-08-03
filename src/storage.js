@@ -7,6 +7,8 @@
 import * as Y        from 'yjs';
 import * as Toys     from './toys.js';
 import * as Drawing  from './drawing.js';
+import { appendOp }     from './op_dag.js';
+import { checkpointOp } from './op_checkpoint.js';
 
 // ── DOM → Yjs ────────────────────────────────────────────────────────────────
 
@@ -30,24 +32,6 @@ export function domToY(node) {
 }
 
 /**
- * Toy contract: <g class="toy" data-toy-id data-toy-type> with ≥1 <svg>
- * child. Anything else found directly inside #toys-layer is invalid and
- * reported back to the caller.
- *
- * data-id, id=, data-module, and .$() are never read here and never
- * required — they're rendering/dispatch conveniences recomputed fresh by
- * the renderer at every depth, every time, not
- * part of the on-disk contract.
- */
-export function isToyG(el) {
-  return el.localName === 'g' &&
-         el.classList.contains('toy') &&
-         el.getAttribute('data-toy-id') &&
-         el.getAttribute('data-toy-type') &&
-         el.querySelector(':scope > svg');
-}
-
-/**
  * Populate a Yjs document (yMeta/yToys/yDrawing, all obtained directly off
  * ydoc) from a source <svg> root element — background pattern, #toys-layer,
  * #drawing-layer, and (as a fallback) any other top-level elements not
@@ -59,13 +43,24 @@ export function isToyG(el) {
  * (`transform="rotate(...)"`) for visual flair on the homepage that isn't
  * part of the canonical document a seeded room should start with.
  *
+ * opts.asNewTable — this ydoc has never had anything in it (a table just
+ * created for this content, not a live one being imported into). Only
+ * then are toys written as a genesis checkpoint (parents: []) rather than
+ * left for the caller to place as real gestures. Appending a genesis to a
+ * table that already has history forks it — the same bug closed for the
+ * boot race applies here too, just triggered by an import button instead
+ * of two tabs opening at once. app.js's live-table importSVG must not set
+ * this; it has no gesture-based import path yet (see REVISION_PLAN.md
+ * C5) and currently only writes drawing/boundaries/meta correctly when
+ * used against a live table — its toy handling is a known gap, not
+ * silently declared fixed here.
+ *
  * Returns { toyCount, drawCount, invalidToyEls }. invalidToyEls are DOM
- * elements found directly inside #toys-layer that don't satisfy isToyG();
- * the caller decides what to do with them
+ * elements found directly inside #toys-layer that Toys.parseForeignToy
+ * doesn't recognise as a toy; the caller decides what to do with them.
  */
 export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
   const yMeta    = ydoc.getMap('meta');
-  const yToys    = ydoc.getXmlFragment('toys');
   const yDrawing = ydoc.getXmlFragment('drawing');
 
   const bgPattern   = svgRootEl.querySelector('defs pattern');
@@ -74,6 +69,7 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
 
   let toyCount = 0, drawCount = 0;
   const invalidToyEls = [];
+  const importedToyEls = [];
 
   // Background: extract bg image url/dimensions from the <pattern> in
   // <defs> and write to yMeta so the background is restored on import.
@@ -100,31 +96,40 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
       [{ namespace, src: null, code: el.textContent }]);
   }
 
-  // Toys layer
+  // Toys layer. Every valid child gets parsed and normalised into a
+  // detached scratch layer — Toys.parseForeignToy already stamps the
+  // data-id invariant and hoists any inline scripts, so what comes out is
+  // a ready-to-insert <g>, regardless of destination.
+  //
+  // asNewTable: the scratch layer's contents become one genesis checkpoint
+  // (parents: []) — there is no prior op-log history to chain onto.
+  //
+  // Not asNewTable (a live-table import): there IS prior history, so a
+  // fresh genesis would be wrong — this only hands the parsed elements
+  // back. The caller (App.importSVG) commits them as a real gesture onto
+  // the live head, the same way any other toy placement does.
   if (toysLayerEl) {
+    const scratchLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+
     for (const child of toysLayerEl.children) {
-      if (isToyG(child)) {
-        // A toy's own embedded <script>(s) — not our export format (those
-        // are hoisted to document root above), but still possible from a
-        // hand-crafted custom toy SVG, or a file saved before hoisting
-        // existed. Hoist into the scripts fragment the same as at
-        // placement time (see toys.js's addToySync), then strip before
-        // domToY: a toy's Yjs subtree never carries a <script> of its own,
-        // live or at rest — see toys.js, "Script hoisting".
-        const toyType  = child.getAttribute('data-toy-type');
-        const innerSvg = child.querySelector(':scope > svg');
-        if (innerSvg) {
-          Toys.hoistInlineScripts(ydoc, toyType, Toys.extractScripts(innerSvg));
-          innerSvg.querySelectorAll(':scope > script').forEach(s => s.remove());
-        }
-        const yG = domToY(child);
-        if (yG) {
-          if (opts.stripToyDecorative) yG.removeAttribute('transform');
-          yToys.insert(yToys.length, [yG]);
-          toyCount++;
-        }
-      } else {
+      const { parsedNode } = Toys.parseForeignToy(ydoc, child);
+      if (!parsedNode) {
         invalidToyEls.push(child);
+        continue;
+      }
+
+      if (opts.stripToyDecorative) parsedNode.removeAttribute('transform');
+
+      scratchLayer.appendChild(parsedNode);
+      toyCount++;
+    }
+
+    if (toyCount) {
+      if (opts.asNewTable) {
+        const genesis = checkpointOp(scratchLayer, { authorId: opts.authorId, parents: [] });
+        appendOp(ydoc, genesis);
+      } else {
+        importedToyEls.push(...scratchLayer.children);
       }
     }
   }
@@ -152,7 +157,7 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
     if (yEl) { yDrawing.insert(yDrawing.length, [yEl]); drawCount++; }
   }
 
-  return { toyCount, drawCount, invalidToyEls };
+  return { toyCount, drawCount, invalidToyEls, importedToyEls };
 }
 
 // ── Yjs → DOM (export) ────────────────────────────────────────────────────────
@@ -178,7 +183,6 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
  * on the toy/drawing layers so Inkscape treats them as real layers.
  */
 export function buildExportSvg(liveSvgEl, ydoc) {
-  const yToys    = ydoc.getXmlFragment('toys');
   const yDrawing = ydoc.getXmlFragment('drawing');
   const yScripts = ydoc.getXmlFragment('scripts');
 
@@ -188,10 +192,14 @@ export function buildExportSvg(liveSvgEl, ydoc) {
     clone.querySelector(sel)?.remove();
   });
 
+  // Toys: the live DOM is the canonical projection of the op log (or,
+  // absent that, of Yjs — projectLayer's fallback). cloneNode(true) above
+  // already captured it faithfully, data-id and all, so there's nothing
+  // to rebuild here — only internal bookkeeping to strip before it leaks
+  // into a file a person might open in Inkscape.
   const toysLayerEl = clone.querySelector('#toys-layer');
   if (toysLayerEl) {
-    toysLayerEl.innerHTML = '';
-    Toys.listToys(yToys).forEach(el => toysLayerEl.appendChild(el));
+    toysLayerEl.removeAttribute(Toys.HEAD_MARKER);
     toysLayerEl.setAttribute('inkscape:groupmode', 'layer');
   }
   const drawLayerEl = clone.querySelector('#drawing-layer');

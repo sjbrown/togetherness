@@ -12,21 +12,20 @@
  */
 
 import { test, expect, chromium } from '@playwright/test';
+import { openCreatorAndJoiner, openAsCreator } from './helpers.js';
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const SIGNALING_URL = process.env.SIGNALING_URL || 'ws://localhost:4444';
 
 test.describe('two-peer dice roll sync', () => {
   test('rolling a d6 on peer A updates its face on peer B', async () => {
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
     const ctx1    = await browser.newContext();
     const ctx2    = await browser.newContext();
     const page1   = await ctx1.newPage();
     const page2   = await ctx2.newPage();
 
-    const room = `e2e-dice-${Date.now()}`;
-    await page1.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
-    await page2.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
+    await openCreatorAndJoiner(page1, page2, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
 
     await expect(page1.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
     await expect(page2.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
@@ -40,8 +39,8 @@ test.describe('two-peer dice roll sync', () => {
     await page1.mouse.down();
     await page1.mouse.up();
 
-    await expect(page1.locator('[data-id]')).toHaveCount(1, { timeout: 5000 });
-    await expect(page2.locator('[data-id]')).toHaveCount(1, { timeout: 5000 });
+    await expect(page1.locator('[data-toy-id]')).toHaveCount(1, { timeout: 5000 });
+    await expect(page2.locator('[data-toy-id]')).toHaveCount(1, { timeout: 5000 });
 
     // The die always ships face-up as "6" (see dice_d6.svg) — confirm both
     // peers start in agreement before rolling.
@@ -77,13 +76,59 @@ test.describe('two-peer dice roll sync', () => {
     await browser.close();
   });
 
+  test("the joiner's own Edit panel shows menu actions for a toy it only received, never placed", async () => {
+    // Regression test for a real bug: menu actions come from a toy's own
+    // script namespace (globalThis[toyType].menu), activated by
+    // Toys.activateAllToyScriptsDom. The creator activates a type the
+    // moment it places one — a peer who only ever *receives* toys had no
+    // path that activated anything for them at all, so their Edit panel
+    // showed the color widget (generic, script-independent) but no menu
+    // buttons, silently, for every toy they didn't place themselves.
+    //
+    // page1 places (creator); page2 is the one under test — it never
+    // places anything, only receives, then opens its own Edit panel.
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
+    const ctx1    = await browser.newContext();
+    const ctx2    = await browser.newContext();
+    const page1   = await ctx1.newPage();
+    const page2   = await ctx2.newPage();
+
+    await openCreatorAndJoiner(page1, page2, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+    await expect(page1.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
+    await expect(page2.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
+
+    const canvas = page1.locator('#canvas');
+    const box    = await canvas.boundingBox();
+    await page1.evaluate(() => window.UI.pillTap('d6'));
+    await page1.waitForTimeout(100);
+    await page1.mouse.move(box.x + 100, box.y + 100);
+    await page1.mouse.down();
+    await page1.mouse.up();
+
+    await expect(page2.locator('[data-toy-id]')).toHaveCount(1, { timeout: 5000 });
+
+    // page2 selects the die it received and opens its own Edit panel.
+    await page2.evaluate(() => window.UI.pillTap('select'));
+    await page2.waitForTimeout(100);
+    const box2 = await page2.locator('#canvas').boundingBox();
+    await page2.mouse.move(box2.x + 100, box2.y + 100);
+    await page2.mouse.down();
+    await page2.mouse.up();
+    await page2.waitForTimeout(100);
+    await page2.evaluate(() => window.UI.openSheet('edit'));
+
+    // The bug: this would be count 0 — menu empty, color widget present.
+    await expect(page2.locator('.toy-action-btn', { hasText: 'Roll' })).toHaveCount(1, { timeout: 5000 });
+
+    await browser.close();
+  });
+
   test('a die stays clickable after an action (regression: click wiring)', async () => {
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
     const ctx1    = await browser.newContext();
     const page1   = await ctx1.newPage();
 
-    const room = `e2e-dice-clickable-${Date.now()}`;
-    await page1.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
+    await openAsCreator(page1, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
     await expect(page1.locator('#peerCount')).toHaveText('0', { timeout: 8000 });
 
     const canvas = page1.locator('#canvas');
@@ -93,7 +138,7 @@ test.describe('two-peer dice roll sync', () => {
     await page1.mouse.move(box.x + 100, box.y + 100);
     await page1.mouse.down();
     await page1.mouse.up();
-    await expect(page1.locator('[data-id]')).toHaveCount(1, { timeout: 5000 });
+    await expect(page1.locator('[data-toy-id]')).toHaveCount(1, { timeout: 5000 });
 
     // Select, open the Edit panel, and roll — this is the path that used
     // to leave the layer's click handlers unwired (see envelope.js).
@@ -120,15 +165,13 @@ test.describe('two-peer dice roll sync', () => {
   });
 
   test('Turn Up deterministically advances the face and syncs', async () => {
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
     const ctx1    = await browser.newContext();
     const ctx2    = await browser.newContext();
     const page1   = await ctx1.newPage();
     const page2   = await ctx2.newPage();
 
-    const room = `e2e-dice-turn-${Date.now()}`;
-    await page1.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
-    await page2.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
+    await openCreatorAndJoiner(page1, page2, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
     await expect(page1.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
 
     const canvas = page1.locator('#canvas');
@@ -138,7 +181,7 @@ test.describe('two-peer dice roll sync', () => {
     await page1.mouse.move(box.x + 100, box.y + 100);
     await page1.mouse.down();
     await page1.mouse.up();
-    await expect(page2.locator('[data-id]')).toHaveCount(1, { timeout: 5000 });
+    await expect(page2.locator('[data-toy-id]')).toHaveCount(1, { timeout: 5000 });
 
     await page1.evaluate(() => window.UI.pillTap('select'));
     await page1.waitForTimeout(100);

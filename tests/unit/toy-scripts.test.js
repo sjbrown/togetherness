@@ -7,7 +7,7 @@ import {
   isToyTypeActivated,
   _resetToyScriptState,
   _getScriptsFragment,
-  addToy, render, _clearSvgTextCache, clearYNodeMap,
+  addToy, activateAllToyScriptsDom, _clearSvgTextCache,
 } from '../../src/toys.js'
 
 // ── low-level fixture: a "foreign" toyType's scripts, hoisted by hand ──────
@@ -132,7 +132,6 @@ function stubToyFetch() {
 describe('activateToyScripts — a registered toyType (real file), fetched fresh', () => {
   beforeEach(() => {
     _clearSvgTextCache()
-    clearYNodeMap()
     delete globalThis.d6
     delete globalThis.dice
     delete globalThis.__d6ActivationCount
@@ -142,17 +141,16 @@ describe('activateToyScripts — a registered toyType (real file), fetched fresh
 
   test('placing a second d6 does not re-evaluate scripts', async () => {
     const ydoc  = new Y.Doc()
-    const yToys = ydoc.getXmlFragment('toys')
     const layer = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     const fetchMock = stubToyFetch()
     vi.stubGlobal('fetch', fetchMock)
 
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    render(yToys, layer)
+    await addToy(ydoc, layer, { id: 't1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    activateAllToyScriptsDom(ydoc, layer)
     await new Promise(r => setTimeout(r, 0))
 
-    await addToy(ydoc, yToys, { id: 't2', toyType: 'dice_d6', x: 10, y: 10, color: '#fff' })
-    render(yToys, layer)
+    await addToy(ydoc, layer, { id: 't2', toyType: 'dice_d6', x: 10, y: 10, color: '#fff' })
+    activateAllToyScriptsDom(ydoc, layer)
     await new Promise(r => setTimeout(r, 0))
 
     expect(globalThis.__d6ActivationCount).toBe(1)
@@ -164,21 +162,21 @@ describe('activateToyScripts — a registered toyType (real file), fetched fresh
   })
 
   test('a fresh session (cold _svgTextCache) re-fetches the template to activate an already-placed toy', async () => {
-    // render()'s activateAllToyScripts path (not addToy's own placement
-    // fetch) — the case of opening a table that already has toys in it.
+    // activateAllToyScriptsDom is the path a table-open takes (not
+    // addToy's own placement fetch) — the case of opening a table that
+    // already has toys in it.
     const ydoc  = new Y.Doc()
-    const yToys = ydoc.getXmlFragment('toys')
     const layer = document.createElementNS('http://www.w3.org/2000/svg', 'g')
 
-    // Build the toy directly (bypassing addToy) so nothing has warmed the
-    // svg text cache — mirrors a page load syncing in pre-existing state.
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    // Build the toy directly (bypassing activation) so nothing has warmed
+    // the svg text cache — mirrors a page load syncing in pre-existing state.
+    await addToy(ydoc, layer, { id: 't1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
     _clearSvgTextCache()
     _resetToyScriptState()
     delete globalThis.d6
     delete globalThis.dice
 
-    render(yToys, layer)
+    activateAllToyScriptsDom(ydoc, layer)
     await new Promise(r => setTimeout(r, 0))
 
     expect(globalThis.d6).toBeDefined()

@@ -5,9 +5,12 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as Toys from '../../src/toys.js'
-import { addToy, clearYNodeMap, _clearSvgTextCache,
+import { addToy, activateAllToyScriptsDom, reparentToyDom, undoToyGesture, _clearSvgTextCache,
          _resetToyScriptState, getNamespacesForType } from '../../src/toys.js'
-import { getReactionLog } from '../../src/conflict.js'
+import { getOps } from '../../src/op_dag.js'
+
+const TABLE  = 'test-table'
+const AUTHOR = 'tester'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
@@ -20,12 +23,9 @@ const TRAY_JS       = fs.readFileSync(path.join(TOY_DIR, 'js/tray.js'), 'utf8')
 const D6_SVG         = fs.readFileSync(path.join(TOY_DIR, 'dice_d6.svg'), 'utf8')
 const DICE_UTILS_JS  = fs.readFileSync(path.join(TOY_DIR, 'js/dice_utils.js'), 'utf8')
 
-const getToysLayer = (ydoc) => ({ yToys: ydoc.getXmlFragment('toys') })
-
-function renderLayer(yToys) {
+function freshLayer() {
   const layerEl = document.createElementNS(SVG_NS, 'g')
   layerEl.id = 'toys-layer'
-  Toys.render(yToys, layerEl)
   return layerEl
 }
 
@@ -39,16 +39,15 @@ function stubToyFetch() {
   })
 }
 
-async function placeAndActivate(ydoc, yToys, toyType, id) {
-  await addToy(ydoc, yToys, { id, toyType, x: 0, y: 0, color: '#fff' })
-  const layerEl = renderLayer(yToys)
-  await new Promise(r => setTimeout(r, 0)) // flush render()'s fire-and-forget script activation
+async function placeAndActivate(ydoc, layerEl, toyType, id) {
+  await addToy(ydoc, layerEl, { id, toyType, x: 0, y: 0, color: '#fff' })
+  activateAllToyScriptsDom(ydoc, layerEl)
+  await new Promise(r => setTimeout(r, 0)) // flush the fire-and-forget script activation
   return { layerEl, toyEl: layerEl.querySelector(`[data-id="${id}"]`) }
 }
 
 beforeEach(() => {
   _clearSvgTextCache()
-  clearYNodeMap()
   _resetToyScriptState()
   delete globalThis.tray
   delete globalThis.tray_sum
@@ -68,8 +67,8 @@ afterEach(() => {
 describe('tray.js + tray_sum — script activation', () => {
   test('placing a tray_sum defines window.tray and window.tray_sum, loaded like dice_utils.js', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await placeAndActivate(ydoc, yToys, 'tray_sum', 't1')
+    const layerEl = freshLayer()
+    await placeAndActivate(ydoc, layerEl, 'tray_sum', 't1')
 
     expect(typeof globalThis.tray.visit_contents).toBe('function')
     expect(typeof globalThis.tray.getValue).toBe('function')
@@ -80,16 +79,16 @@ describe('tray.js + tray_sum — script activation', () => {
 
   test('activating a tray whose very first render already has a toy nested inside it does not leak the nested toy\u2019s namespaces onto the tray\u2019s own type (regression: this is exactly what a page load of a synced doc looks like \u2014 the tray and its contents all arrive, and get mirrored, in one shot)', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    // Build the doc "off camera" — as if this were state already synced
-    // from a peer before this client ever renders anything.
-    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    Toys.reparentToy(ydoc, yToys, 'die1', 'tray1')
+    const layerEl = freshLayer()
+    // Build the layer "off camera" — as if this were state already synced
+    // from a peer before this client ever activates anything.
+    await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    reparentToyDom(layerEl, 'die1', 'tray1')
 
-    // Now this client renders for the very first time — tray1 already has
+    // Now this client activates for the very first time — tray1 already has
     // die1 nested, before 'tray_sum' has ever been activated.
-    const layerEl = renderLayer(yToys)
+    activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
     expect(getNamespacesForType('tray_sum')).toEqual(['tray', 'tray_sum'])
@@ -101,12 +100,12 @@ describe('tray.js + tray_sum — script activation', () => {
 
   test('the nested toy namespace still gets activated (not skipped entirely) even though it is never a top-level entry', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    Toys.reparentToy(ydoc, yToys, 'die1', 'tray1')
+    const layerEl = freshLayer()
+    await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    reparentToyDom(layerEl, 'die1', 'tray1')
 
-    const layerEl = renderLayer(yToys)
+    activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
     expect(typeof globalThis.dice.roll_handler).toBe('function')
@@ -376,8 +375,8 @@ describe('tray.js — roll_all', () => {
 describe('tray_sum — contents_change_handler', () => {
   test('sums every contained die value and writes it to the result tspan', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    const { toyEl } = await placeAndActivate(ydoc, yToys, 'tray_sum', 'tray1')
+    const layerEl = freshLayer()
+    const { toyEl } = await placeAndActivate(ydoc, layerEl, 'tray_sum', 'tray1')
 
     // Hand-build two dice-shaped children directly inside the rendered
     // tray's tt_contents (phase 5.2's reparentToy op is what will do
@@ -402,8 +401,8 @@ describe('tray_sum — contents_change_handler', () => {
 
   test('an empty tray sums to 0', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    const { toyEl } = await placeAndActivate(ydoc, yToys, 'tray_sum', 'tray1')
+    const layerEl = freshLayer()
+    const { toyEl } = await placeAndActivate(ydoc, layerEl, 'tray_sum', 'tray1')
 
     globalThis.tray_sum.contents_change_handler(toyEl)
 
@@ -412,8 +411,8 @@ describe('tray_sum — contents_change_handler', () => {
 
   test('writes to its OWN result tspan, never a nested sub-tray — regardless of document order (regression: contents_change_handler used to use a plain, unscoped .tspan_result selector, which matches .tt_contents before .result_container in the markup and so silently overwrote a nested tray\u2019s own result instead of its own)', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    const { toyEl: outerEl } = await placeAndActivate(ydoc, yToys, 'tray_sum', 'outer')
+    const layerEl = freshLayer()
+    const { toyEl: outerEl } = await placeAndActivate(ydoc, layerEl, 'tray_sum', 'outer')
 
     // Hand-build a nested sub-tray directly inside outer's tt_contents,
     // with the SAME shape a real placed tray_sum has: its own
@@ -452,26 +451,26 @@ describe('tray_sum — contents_change_handler', () => {
 describe('tray_sum — "Roll All" menu action, end to end', () => {
   test('clicking Roll All rolls the contained die and the sum reflects its new value', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    Toys.reparentToy(ydoc, yToys, 'die1', 'tray1')
+    const layerEl = freshLayer()
+    await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    Toys.reparentToyDom(layerEl, 'die1', 'tray1')
 
-    const layerEl = renderLayer(yToys)
+    activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
     const trayEl = layerEl.querySelector('[data-id="tray1"]')
     const dieEl  = layerEl.querySelector('[data-id="die1"]')
 
     // "Roll All" is a real menu action — go through the same
-    // getMenuActions/invokeMenuAction path app.js uses for any menu click,
-    // not a direct globalThis.tray_sum call, so this exercises the actual
-    // wiring (including the applicable() check and the envelope commit).
+    // getMenuActions/invokeMenuActionSync path app.js uses for any menu
+    // click, not a direct globalThis.tray_sum call, so this exercises the
+    // actual wiring (including the applicable() check and the envelope commit).
     const actions = Toys.getMenuActions(trayEl)
     const rollAll = actions.find(a => a.key === 'Roll All')
     expect(rollAll).toBeTruthy()
 
-    await Toys.invokeMenuAction(ydoc, yToys, layerEl, trayEl, rollAll.namespace, rollAll.key)
+    Toys.invokeMenuActionSync(ydoc, layerEl, trayEl, rollAll.namespace, rollAll.key)
 
     const dieValue = Number(dieEl.querySelector('tspan').textContent)
     expect(dieValue).toBeGreaterThanOrEqual(1)
@@ -485,52 +484,30 @@ describe('tray_sum — "Roll All" menu action, end to end', () => {
 
   test('Roll All on an empty tray does nothing and does not throw', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    const layerEl = renderLayer(yToys)
+    const layerEl = freshLayer()
+    await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
     const trayEl = layerEl.querySelector('[data-id="tray1"]')
 
     const actions = Toys.getMenuActions(trayEl)
     const rollAll = actions.find(a => a.key === 'Roll All')
 
-    await expect(
-      Toys.invokeMenuAction(ydoc, yToys, layerEl, trayEl, rollAll.namespace, rollAll.key)
-    ).resolves.not.toThrow()
+    expect(() =>
+      Toys.invokeMenuActionSync(ydoc, layerEl, trayEl, rollAll.namespace, rollAll.key)
+    ).not.toThrow()
   })
 })
 
 describe('tray_sum — "Roll" / "Roll All" via invokeMenuActionSync — folded reaction', () => {
-  test('the authorId param reaches the recorded bundle through the full production call chain', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    Toys.reparentToy(ydoc, yToys, 'die1', 'tray1')
-
-    const layerEl = renderLayer(yToys)
-    await new Promise(r => setTimeout(r, 0))
-    const dieEl = layerEl.querySelector('[data-id="die1"]')
-    const roll  = Toys.getMenuActions(dieEl).find(a => a.eventName === 'die_roll')
-
-    Toys.invokeMenuActionSync(ydoc, yToys, layerEl, dieEl, roll.namespace, roll.key, undefined, 'tt-p-v1-01-aaa')
-
-    // The setup's own reparentToy call above also records a bundle (no
-    // authorId given there) — check the roll's own bundle specifically,
-    // not array length.
-    const bundles = getReactionLog(ydoc).toArray()
-    const rollBundle = bundles[bundles.length - 1]
-    expect(rollBundle.authorId).toBe('tt-p-v1-01-aaa')
-  })
-
   test('a lone die\'s own Roll folds its containing tray\'s recompute into the same transaction', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    Toys.reparentToy(ydoc, yToys, 'die1', 'tray1')
+    const layerEl = freshLayer()
+    await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    Toys.reparentToyDom(layerEl, 'die1', 'tray1')
 
-    const layerEl = renderLayer(yToys)
+    activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
     const dieEl = layerEl.querySelector('[data-id="die1"]')
 
@@ -538,83 +515,77 @@ describe('tray_sum — "Roll" / "Roll All" via invokeMenuActionSync — folded r
     const roll = dieActions.find(a => a.eventName === 'die_roll')
     expect(roll).toBeTruthy()
 
-    let updates = 0
-    const onUpdate = () => { updates++ }
-    ydoc.on('update', onUpdate)
-    Toys.invokeMenuActionSync(ydoc, yToys, layerEl, dieEl, roll.namespace, roll.key)
-    ydoc.off('update', onUpdate)
+    let before = getOps(ydoc).size
+    Toys.invokeMenuActionSync(ydoc, layerEl, dieEl, roll.namespace, roll.key, undefined, AUTHOR, TABLE)
 
-    // one transaction for the roll AND the tray's recompute together
-    expect(updates).toBe(1)
+    // one operation for the roll AND the tray's recompute together
+    expect(getOps(ydoc).size - before).toBe(1)
 
     const dieValue = Number(dieEl.querySelector('tspan').textContent)
     const trayEl = layerEl.querySelector('[data-id="tray1"]')
-    // no manual contents_change_handler call needed — the sum is already
-    // current, straight off Yjs, unlike the async invokeMenuAction path
-    // above which requires a separate recompute call.
+    // no manual contents_change_handler call needed — invokeMenuActionSync
+    // folds the tray's own recompute into the roll's transaction, so the
+    // sum is already current, straight off Yjs.
     expect(globalThis.tray.getValue(trayEl)).toBe(String(dieValue))
   })
 
   test('Roll All folds every rolled die plus the tray\'s own sum into one transaction', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, yToys, { id: 'dieA', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, yToys, { id: 'dieB', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    Toys.reparentToy(ydoc, yToys, 'dieA', 'tray1')
-    Toys.reparentToy(ydoc, yToys, 'dieB', 'tray1')
+    const layerEl = freshLayer()
+    await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'dieA', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'dieB', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    Toys.reparentToyDom(layerEl, 'dieA', 'tray1')
+    Toys.reparentToyDom(layerEl, 'dieB', 'tray1')
 
-    const layerEl = renderLayer(yToys)
+    activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
     const trayEl = layerEl.querySelector('[data-id="tray1"]')
 
     const actions = Toys.getMenuActions(trayEl)
     const rollAll = actions.find(a => a.key === 'Roll All')
 
-    let updates = 0
-    const onUpdate = () => { updates++ }
-    ydoc.on('update', onUpdate)
-    Toys.invokeMenuActionSync(ydoc, yToys, layerEl, trayEl, rollAll.namespace, rollAll.key)
-    ydoc.off('update', onUpdate)
+    const before = getOps(ydoc).size
+    Toys.invokeMenuActionSync(ydoc, layerEl, trayEl, rollAll.namespace, rollAll.key, undefined, AUTHOR, TABLE)
 
-    expect(updates).toBe(1) // both dice + the sum, one atomic transaction
+    expect(getOps(ydoc).size - before).toBe(1) // both dice + the sum, one atomic operation
 
     const dieA = Number(layerEl.querySelector('[data-id="dieA"]').querySelector('tspan').textContent)
     const dieB = Number(layerEl.querySelector('[data-id="dieB"]').querySelector('tspan').textContent)
-    // trayEl was captured before the call; runContentsChangeCascadeSync
-    // rebuilds layerEl's DOM, so re-query for the tray's post-recompute
-    // element rather than reading the now-detached original reference.
     const trayElAfter = layerEl.querySelector('[data-id="tray1"]')
     expect(globalThis.tray.getValue(trayElAfter)).toBe(String(dieA + dieB))
   })
 
   test('a single Roll All is a single undo step, reverting both the die and the sum together', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    Toys.reparentToy(ydoc, yToys, 'die1', 'tray1')
+    const layerEl = freshLayer()
+    await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    Toys.reparentToyDom(layerEl, 'die1', 'tray1')
 
-    let layerEl = renderLayer(yToys)
+    activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
+    const trayEl = layerEl.querySelector('[data-id="tray1"]')
+    // A real drop-into-tray gesture cascades immediately (see
+    // placement-reaction-atomic.test.js) — the manual reparentToyDom()
+    // above is just fixture construction and skips that, so bring the
+    // tray to the state a real drop would have already left it in before
+    // this test's own action (the roll) begins.
+    globalThis.tray_sum.contents_change_handler(trayEl)
+
     const originalFace = layerEl.querySelector('[data-id="die1"]').querySelector('tspan').textContent
-    // The manual reparentToy() above ran with no cascade wired (this test,
-    // unlike production, doesn't wire an observer) — so the tray's sum
-    // tspan is still at its as-placed default, not yet reflecting die1.
-    // That uncomputed value, not the die's face, is undo's correct target.
-    const originalSum = globalThis.tray.getValue(layerEl.querySelector('[data-id="tray1"]'))
+    const originalSum  = globalThis.tray.getValue(trayEl)
+    expect(originalSum).toBe(originalFace) // sanity: one die, sum == its face
 
-    const um = new Y.UndoManager(yToys, { trackedOrigins: new Set([null]), captureTimeout: 0 })
+    const before = getOps(ydoc).size
 
-    const trayEl  = layerEl.querySelector('[data-id="tray1"]')
     const actions = Toys.getMenuActions(trayEl)
     const rollAll = actions.find(a => a.key === 'Roll All')
-    Toys.invokeMenuActionSync(ydoc, yToys, layerEl, trayEl, rollAll.namespace, rollAll.key)
+    Toys.invokeMenuActionSync(ydoc, layerEl, trayEl, rollAll.namespace, rollAll.key, undefined, AUTHOR, TABLE)
 
-    expect(um.undoStack.length).toBe(1) // roll + recompute, ONE undo step
+    expect(getOps(ydoc).size - before).toBe(1) // roll + recompute, ONE operation
 
-    um.undo()
-    layerEl = renderLayer(yToys) // this harness has no observer driving renders; re-render by hand
+    Toys.undoToyGesture(ydoc, layerEl, TABLE, AUTHOR)
 
     const revertedFace = layerEl.querySelector('[data-id="die1"]').querySelector('tspan').textContent
     expect(revertedFace).toBe(originalFace) // die's face reverted...
@@ -634,24 +605,23 @@ describe('tray_sum — "Roll" / "Roll All" via invokeMenuActionSync — folded r
 describe('invokeMenuActionSync — the DOM-based cascade itself', () => {
   test('a doubly-nested tray: rolling the innermost die updates both sums, inner then outer, in ONE transaction', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'outer', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, yToys, { id: 'inner', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, yToys, { id: 'die1',  toyType: 'dice_d6',  x: 0, y: 0, color: '#fff' })
-    Toys.reparentToy(ydoc, yToys, 'inner', 'outer')
-    Toys.reparentToy(ydoc, yToys, 'die1', 'inner')
+    const layerEl = freshLayer()
+    await addToy(ydoc, layerEl, { id: 'outer', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'inner', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'die1',  toyType: 'dice_d6',  x: 0, y: 0, color: '#fff' })
+    Toys.reparentToyDom(layerEl, 'inner', 'outer')
+    Toys.reparentToyDom(layerEl, 'die1', 'inner')
 
-    const layerEl = renderLayer(yToys)
+    activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
     const dieEl = layerEl.querySelector('[data-id="die1"]')
 
     const roll = Toys.getMenuActions(dieEl).find(a => a.eventName === 'die_roll')
 
-    let updates = 0
-    ydoc.on('update', () => { updates++ })
-    Toys.invokeMenuActionSync(ydoc, yToys, layerEl, dieEl, roll.namespace, roll.key)
+    const before = getOps(ydoc).size
+    Toys.invokeMenuActionSync(ydoc, layerEl, dieEl, roll.namespace, roll.key, undefined, AUTHOR, TABLE)
 
-    expect(updates).toBe(1) // die's roll + both trays' recompute, one transaction
+    expect(getOps(ydoc).size - before).toBe(1) // die's roll + both trays' recompute, one operation
 
     const dieValue = Number(layerEl.querySelector('[data-id="die1"]').querySelector('tspan').textContent)
     const innerEl = layerEl.querySelector('[data-id="inner"]')
@@ -662,15 +632,15 @@ describe('invokeMenuActionSync — the DOM-based cascade itself', () => {
 
   test('a handler that touches TWO unrelated (non-nested) trays cascades both', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'trayA', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, yToys, { id: 'trayB', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, yToys, { id: 'dieA', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, yToys, { id: 'dieB', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    Toys.reparentToy(ydoc, yToys, 'dieA', 'trayA')
-    Toys.reparentToy(ydoc, yToys, 'dieB', 'trayB')
+    const layerEl = freshLayer()
+    await addToy(ydoc, layerEl, { id: 'trayA', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'trayB', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'dieA', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'dieB', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    Toys.reparentToyDom(layerEl, 'dieA', 'trayA')
+    Toys.reparentToyDom(layerEl, 'dieB', 'trayB')
 
-    const layerEl = renderLayer(yToys)
+    activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
     // A synthetic "roll both" menu action, installed directly on the real
@@ -691,11 +661,10 @@ describe('invokeMenuActionSync — the DOM-based cascade itself', () => {
       },
     }
 
-    let updates = 0
-    ydoc.on('update', () => { updates++ })
-    Toys.invokeMenuActionSync(ydoc, yToys, layerEl, dieAEl, 'd6', '__rollBoth')
+    const before = getOps(ydoc).size
+    Toys.invokeMenuActionSync(ydoc, layerEl, dieAEl, 'd6', '__rollBoth', undefined, AUTHOR, TABLE)
 
-    expect(updates).toBe(1)
+    expect(getOps(ydoc).size - before).toBe(1)
     const dieAValue = Number(layerEl.querySelector('[data-id="dieA"]').querySelector('tspan').textContent)
     const dieBValue = Number(layerEl.querySelector('[data-id="dieB"]').querySelector('tspan').textContent)
     expect(globalThis.tray.getValue(layerEl.querySelector('[data-id="trayA"]'))).toBe(String(dieAValue))
@@ -749,10 +718,10 @@ describe('invokeMenuActionSync — the DOM-based cascade itself', () => {
     }))
 
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'loopA', toyType: 'player_marker', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, yToys, { id: 'loopB', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    const layerEl = renderLayer(yToys)
+    const layerEl = freshLayer()
+    await addToy(ydoc, layerEl, { id: 'loopA', toyType: 'player_marker', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'loopB', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    activateAllToyScriptsDom(ydoc, layerEl)
     // The handler scripts above use document.querySelector to reach across
     // toys (same as production code now legitimately can) — that only
     // finds anything if the layer is actually attached to the page, unlike
@@ -764,13 +733,12 @@ describe('invokeMenuActionSync — the DOM-based cascade itself', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const loopAEl = layerEl.querySelector('[data-id="loopA"]')
 
-    let updates = 0
-    ydoc.on('update', () => { updates++ })
+    const before = getOps(ydoc).size
     expect(() => {
-      Toys.invokeMenuActionSync(ydoc, yToys, layerEl, loopAEl, 'loop_a', 'Trigger')
+      Toys.invokeMenuActionSync(ydoc, layerEl, loopAEl, 'loop_a', 'Trigger', undefined, AUTHOR, TABLE)
     }).not.toThrow()
 
-    expect(updates).toBe(1) // still one atomic transaction, cycle and all
+    expect(getOps(ydoc).size - before).toBe(1) // still one atomic operation, cycle and all
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('loopB'))
 
     const loopBEl = layerEl.querySelector('[data-id="loopB"]')

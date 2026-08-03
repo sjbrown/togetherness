@@ -700,16 +700,15 @@ async function makeThumbnail(tableId) {
   try {
     const ydoc  = await tables.loadTableDoc(tableId);
     const yMeta = ydoc.getMap('meta');
-    const yToys = ydoc.getXmlFragment('toys');
 
     const bgUrl = yMeta.get('bg_url')    || 'img/bg_default.png';
     const bgW   = yMeta.get('bg_width')  || 120;
     const bgH   = yMeta.get('bg_height') || 120;
 
-    // Topmost toy = last in yToys (insertion order = z-order)
-    const all    = yToys.toArray().filter(n => n instanceof Y.XmlElement);
-    const topToy = all.length ? all[all.length - 1] : null;
-    const toyEl  = topToy ? mirrorYNode(Y, topToy) : null;
+    // Topmost toy = last child in the projected toys layer (DOM order = z-order)
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    Toys.projectLayer(ydoc, layerEl, { tableId, isCreator: false });
+    const toyEl = layerEl.lastElementChild ? layerEl.lastElementChild.cloneNode(true) : null;
     toyEl.firstChild.setAttribute('width', '100');
     toyEl.firstChild.setAttribute('height', '100');
 
@@ -775,9 +774,14 @@ function renderTables() {
       fork.disabled = true;
       fork.textContent = 'Forking…';
       try {
-        const forkTail = '-' + tables.randSlug()
-        const forkedId = tables.generateTableId(t.name || t.id) + forkTail;
-        const forkedName = t.name ? t.name + forkTail : forkedId;
+        // Extends the ancestor's own id (not a fresh generateTableId
+        // call) so a duplicated table sorts right next to the one it
+        // came from — a deliberate, human-initiated fork gets to look
+        // like what it is. Contrast generateForkTableId: an automatic
+        // conflict-fork needs a name every peer can independently land
+        // on with no coordination, so it's a content hash instead.
+        const forkedId   = `${t.id}-fork-${tables.randSlug()}`;
+        const forkedName = t.name ? `${t.name} (fork)` : forkedId;
         const { localId: forkingUserId } = getIdentity();
         await tables.forkTable(t.id, forkedId, forkingUserId);
         tables.touchTableRecord(forkedId, { name: forkedName });
@@ -837,7 +841,6 @@ const SAMPLER_DICE = [
 async function renderSamplerDice() {
   const rows    = document.querySelectorAll('svg.sampler-scene');
   const scratch = new Y.Doc();               // display-only, never persisted
-  const yToys   = scratch.getXmlFragment('toys');
 
   for (const { rowIndex, colors, faces } of SAMPLER_DICE) {
     const toysLayerEl = rows[rowIndex]?.querySelector('#toys-layer');
@@ -848,15 +851,13 @@ async function renderSamplerDice() {
       // Sequential await: addToy only fetches toy/dice_d6.svg once (cached
       // after the first call) — running these concurrently would race
       // multiple fetches before the cache is warm.
-      await Toys.addToy(scratch, yToys, { id, toyType: 'dice_d6', x: cx, y: cy, color: colors[i] });
-      const el = Toys._toSVGEl(Toys.findToy(yToys, id));
+      const el = await Toys.addToy(scratch, toysLayerEl, { id, toyType: 'dice_d6', x: cx, y: cy, color: colors[i] });
       el.setAttribute('transform', `rotate(${rotate},${cx},${cy})`);
       el.setAttribute('style', 'filter:drop-shadow(0 4px 10px rgba(0,0,0,0.75))');
       // Cosmetic only: pick a varied face per sample die, same DOM tweak the
       // toy's own turn_handler script performs — no Yjs write.
       const tspan = el.querySelector('tspan');
       if (tspan) tspan.textContent = String(faces[i]);
-      toysLayerEl.appendChild(el);
     }
   }
 }
@@ -876,7 +877,8 @@ async function seedTable(tableId, sampleSvgEl) {
   ydoc.transact(() => {
     // Sampler templates carry a decorative rotation on each toy <g> for
     // homepage visual flair — not part of the canonical seeded document.
-    populateFromSvgDoc(sampleSvgEl, ydoc, { stripToyDecorative: true });
+    const { localId: myId } = getIdentity();
+    populateFromSvgDoc(sampleSvgEl, ydoc, { stripToyDecorative: true, asNewTable: true, authorId: myId });
   });
 
   // ensure the doc is synced to Indexeddb before we navigate away

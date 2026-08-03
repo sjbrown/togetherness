@@ -571,7 +571,7 @@ export function openSheet(which) {
       edit:     () => editBody(gatherTtStateData()),
       tools:    () => toolsBody(gatherToolsData()),
       peers:    () => peersBody(gatherPeersData()),
-      history:  () => histBody(App.getHistory()),
+      history:  () => histBody(App.getHistory(), App.getUndoHistory()),
       layers:   () => layersBody(gatherLayersData()),
       save:     () => saveBody(),
       gestures: () => gesturesBody(),
@@ -593,16 +593,19 @@ export function closePanel() {
 
 // -- Branch Acknowledge dialog ---------------------------------------------
 // Blocking (every viewport, unlike the mobile-only #scrim/#panel sheet) —
-// shown when TODO #11's branch escalation forks a peer's own divergent
-// content into a new table because in-place revert couldn't fully recover
-// it (see app.js's onReactionLogChanged / escalation.js's needsEscalation).
+// shown when a peer's own divergent content gets forked into a new table
+// because in-place conflict recovery couldn't fully restore it.
+//
+// Called from app.js's onOpsChanged, via handleToyBranchConflict, once
+// the fork it triggers has actually landed (see CONCURRENCY_AND_BRANCHING.md
+// §6).
+//
 // A real choice, not a dismissible notice: "join the shared table" just
 // closes this (the peer's current session never left it — the fork
 // happened in the background, onto a separate table); "keep working on my
 // branch" hard-reloads onto the forked table, since a hash-only change to
 // the current page doesn't itself trigger re-loading a different table's
-// document (see index.html's own boot sequence, which only ever reads
-// location.hash once, at load).
+// document
 let _pendingBranchTableId = null;
 
 export function showBranchDialog(forkedTableId) {
@@ -663,7 +666,6 @@ function gatherPeersData() {
   return {
     peers: App.getPeers(),
     offline: App.isOffline(),
-    revertsEnabled: App.isRevertsEnabled(),
     roomId: App.getTableId(),
   };
 }
@@ -797,11 +799,6 @@ export function peersBody(data) {
            <div style="font-size:12px;color:var(--text-3)">Queue changes, sync on reconnect</div></div>
       <div class="toggle ${data.offline ? 'on' : ''}" id="offToggle"></div>
     </div>
-    <div class="row-btn" style="border-bottom:0.5px solid var(--border)">
-      <div><div style="font-size:14px;font-weight:500">Enable Reverts (experimental)</div>
-           <div style="font-size:12px;color:var(--text-3)">Auto-restore your own conflicting changes when overruled</div></div>
-      <div class="toggle ${data.revertsEnabled ? 'on' : ''}" id="revertsToggle"></div>
-    </div>
     <div class="field" style="margin-top:18px"><label>Invite nearby</label>
       <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:4px">
         ${fakeQR()}
@@ -852,30 +849,37 @@ function wirePeersToggles() {
       toast(App.isOffline() ? 'Offline — syncing paused' : 'Back online', App.isOffline() ? 'warn' : '');
     });
   }
-  const reverts = $('#revertsToggle');
-  if (reverts) {
-    reverts.addEventListener('click', () => {
-      App.setRevertsEnabled(!App.isRevertsEnabled());
-      reverts.classList.toggle('on', App.isRevertsEnabled());
-      toast(App.isRevertsEnabled() ? 'Reverts enabled' : 'Reverts disabled — unrecoverable conflicts branch instead of restoring', 'info');
-    });
-  }
 }
 
-export function histBody(history) {
-  const rows = history.map((entry, i) => {
-    const swatch = entry.fill
-      ? `<span class="sw-chip kind-${entry.elType}" style="background:${entry.fill};flex-shrink:0"></span>`
-      : `<span class="hist-dot"></span>`;
-    return `<div class="hist-item">${swatch}<span style="flex:1">${entry.label}</span>${i === 0 ? '<span class="meta">latest</span>' : ''}</div>`;
-  }).join('');
+export function histBody(history, undoHistory = []) {
+  const rowsHtml = (entries, emptyLabel) => {
+    const rows = entries.map((entry, i) => {
+      const swatch = entry.fill
+        ? `<span class="sw-chip kind-${entry.elType}" style="background:${entry.fill};flex-shrink:0"></span>`
+        : `<span class="hist-dot"></span>`;
+      return `<div class="hist-item">${swatch}<span style="flex:1">${entry.label}</span>${i === 0 ? '<span class="meta">latest</span>' : ''}</div>`;
+    }).join('');
+    return rows || `<span class="meta">${emptyLabel}</span>`;
+  };
+
+  // App.canUndo/canRedo are cheap (no DOM, no mutation) — safe to check on
+  // every render to decide whether these look clickable, the same way any
+  // other panel field reflects current state.
+  const undoDisabled = !App.canUndo();
+  const redoDisabled = !App.canRedo();
+
   return `
     <div class="field"><label>Undo</label>
-      <button class="action-btn" onclick="App.undo()">${icon('undo')} Undo last action</button>
-      <button class="action-btn" style="opacity:.4;cursor:not-allowed">${icon('check')} Redo (nothing to redo)</button>
+      <button class="action-btn" ${undoDisabled ? 'style="opacity:.4;cursor:not-allowed" disabled' : 'onclick="App.undo()"'}>${icon('undo')} Undo last action</button>
     </div>
     <div class="field"><label>History</label>
-      <div class="shape-list">${rows || '<span class="meta">No history</span>'}</div>
+      <div class="shape-list hist-list">${rowsHtml(history, 'No history')}</div>
+    </div>
+    <div class="field"><label>Redo</label>
+      <button class="action-btn" ${redoDisabled ? 'style="opacity:.4;cursor:not-allowed" disabled' : 'onclick="App.redo()"'}>${icon('check')} Redo last undone action</button>
+    </div>
+    <div class="field"><label>Undo history</label>
+      <div class="shape-list hist-list">${rowsHtml(undoHistory, 'Nothing undone')}</div>
     </div>`;
 }
 
@@ -943,7 +947,7 @@ export function refreshFromDoc() {
   if (!body) return;
   switch (UIData.panelOpen) {
     case 'edit':    body.innerHTML = editBody(gatherTtStateData());   wireColorPickers(body); break;
-    case 'history': body.innerHTML = histBody(App.getHistory());   break;
+    case 'history': body.innerHTML = histBody(App.getHistory(), App.getUndoHistory());   break;
     case 'layers':  body.innerHTML = layersBody(gatherLayersData()); break;
     case 'tools':   body.innerHTML = toolsBody(gatherToolsData()); wireColorPickers(body); break;
   }

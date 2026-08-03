@@ -4,16 +4,13 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import * as Toys from '../../src/toys.js'
-import { addToy, findToy, clearYNodeMap, _clearSvgTextCache,
-         _resetToyScriptState, activateToyScripts, initializeToy } from '../../src/toys.js'
+import { addToy, _clearSvgTextCache,
+         _resetToyScriptState, activateToyScripts, initializeToySync } from '../../src/toys.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
-const getToysLayer = (ydoc) => ({ yToys: ydoc.getXmlFragment('toys') })
 
 // A toy whose namespace mutates its own DOM in initialize() — enough to
-// prove the mutation commits to Yjs through the envelope, the same way a
-// menu-action handler's mutation does.
+// prove the mutation lands, the same way a menu-action handler's does.
 const TOY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="80" height="100" id="widget_root">
   <script type="text/javascript" data-namespace="widgetNs" id="script_widget"><![CDATA[
@@ -39,10 +36,9 @@ const NO_INIT_SVG = `<?xml version="1.0" encoding="UTF-8"?>
   <text id="status_text"><tspan id="status_tspan">unset</tspan></text>
 </svg>`
 
-function renderLayer(yToys) {
+function freshLayer() {
   const layerEl = document.createElementNS(SVG_NS, 'g')
   layerEl.id = 'toys-layer'
-  Toys.render(yToys, layerEl)
   return layerEl
 }
 
@@ -50,45 +46,40 @@ function stubFetch(svgText) {
   return vi.fn(async () => ({ ok: true, text: async () => svgText }))
 }
 
-async function placeAndActivate(ydoc, yToys, id) {
-  await addToy(ydoc, yToys, { id, toyType: 'player_marker', x: 0, y: 0 })
-  const layerEl = renderLayer(yToys)
+async function placeAndActivate(ydoc, layerEl, id) {
+  await addToy(ydoc, layerEl, { id, toyType: 'player_marker', x: 0, y: 0 })
   await activateToyScripts(ydoc, 'player_marker') // await real completion, not just "started"
   return { layerEl, toyEl: layerEl.querySelector(`[data-id="${id}"]`) }
 }
 
 beforeEach(() => {
   _clearSvgTextCache()
-  clearYNodeMap()
   _resetToyScriptState()
   delete globalThis.widgetNs
   delete globalThis.plainNs
 })
 afterEach(() => { vi.unstubAllGlobals() })
 
-describe('initializeToy', () => {
-  test('calls initialize(elem) with no prototype, and the mutation commits to Yjs', async () => {
+describe('initializeToySync', () => {
+  test('calls initialize(elem) with no prototype, and the mutation lands in the DOM', async () => {
     vi.stubGlobal('fetch', stubFetch(TOY_SVG))
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
+    const layerEl = freshLayer()
+    const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
-    await initializeToy(ydoc, yToys, layerEl, toyEl, 'player_marker')
+    initializeToySync(ydoc, layerEl, toyEl, 'player_marker')
 
     expect(layerEl.querySelector('#t1__status_tspan').textContent).toBe('initialized')
     expect(globalThis.widgetNs.initializeCallCount).toBe(1)
-
-    const yToy = findToy(yToys, 't1')
-    expect(findYText(yToy, 't1__status_tspan')).toBe('initialized')
   })
 
   test('never passes a prototype (archive2025\u2019s config-dialog arg is deferred)', async () => {
     vi.stubGlobal('fetch', stubFetch(TOY_SVG))
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
+    const layerEl = freshLayer()
+    const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
-    await initializeToy(ydoc, yToys, layerEl, toyEl, 'player_marker')
+    initializeToySync(ydoc, layerEl, toyEl, 'player_marker')
 
     // If a prototype had been passed, widgetNs.initialize would have
     // written 'from-prototype' instead.
@@ -98,10 +89,10 @@ describe('initializeToy', () => {
   test('a namespace with no initialize() is skipped without error', async () => {
     vi.stubGlobal('fetch', stubFetch(NO_INIT_SVG))
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
+    const layerEl = freshLayer()
+    const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
-    await expect(initializeToy(ydoc, yToys, layerEl, toyEl, 'player_marker')).resolves.toBeUndefined()
+    expect(initializeToySync(ydoc, layerEl, toyEl, 'player_marker')).toBeUndefined()
     expect(layerEl.querySelector('#t1__status_tspan').textContent).toBe('unset')
   })
 
@@ -119,10 +110,10 @@ describe('initializeToy', () => {
 </svg>`
     vi.stubGlobal('fetch', stubFetch(TWO_NS_SVG))
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
+    const layerEl = freshLayer()
+    const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
-    await initializeToy(ydoc, yToys, layerEl, toyEl, 'player_marker')
+    initializeToySync(ydoc, layerEl, toyEl, 'player_marker')
 
     expect(layerEl.querySelector('#t1__a_tspan').textContent).toBe('a-done')
     expect(layerEl.querySelector('#t1__b_tspan').textContent).toBe('b-done')
@@ -137,26 +128,11 @@ describe('initializeToy', () => {
       return { ok: true, text: async () => D6_SVG }
     }))
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    const { layerEl, toyEl } = await placeAndActivate(ydoc, yToys, 't1')
+    const layerEl = freshLayer()
+    const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
     const before = layerEl.querySelector('#t1__tspan_die_value').textContent
-    await expect(initializeToy(ydoc, yToys, layerEl, toyEl, 'player_marker')).resolves.toBeUndefined()
+    expect(initializeToySync(ydoc, layerEl, toyEl, 'player_marker')).toBeUndefined()
     expect(layerEl.querySelector('#t1__tspan_die_value').textContent).toBe(before)
   })
 })
-
-// First descendant (or self) Y.XmlText content directly under an element
-// with the given id.
-function findYText(yEl, id) {
-  if (!(yEl instanceof Y.XmlElement)) return null
-  if (yEl.getAttribute?.('id') === id) {
-    const text = yEl.toArray().find(c => c instanceof Y.XmlText)
-    return text ? text.toString() : null
-  }
-  for (const child of yEl.toArray()) {
-    const hit = findYText(child, id)
-    if (hit !== null) return hit
-  }
-  return null
-}

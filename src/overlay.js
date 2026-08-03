@@ -384,7 +384,13 @@ export function updateLocalDragGhost(elId, dx, dy) {
 
 /**
  * End a local drag (commit or cancel). Removes all ghost elements and
- * triggers a render so selection rings reflect the new committed position.
+ * triggers a render so selection rings reflect the current committed
+ * position. Callers that commit a real change must call this AFTER that
+ * change lands — this function's own render() just paints whatever the
+ * DOM already shows, so calling it too early paints the pre-move
+ * position. (Everything in a commit path runs synchronously with no
+ * await in between, so there's no visible intermediate frame either way —
+ * ordering here is about correctness, not flicker.)
  */
 export function endDragPlaceholder(elId) {
   const entry = _dragGhosts.get(elId);
@@ -472,7 +478,8 @@ export function updateResizeGhost(elId, x, y, width, height) {
 /**
  * End a local resize (commit or cancel). Removes the ghost/placeholder/ring
  * and triggers a render so the (now-committed, or reverted) real element's
- * own selection ring takes over.
+ * own selection ring takes over. Same ordering requirement as
+ * endDragPlaceholder: call this AFTER a real size change lands, not before.
  */
 export function endResizeGhost(elId) {
   const entry = _resizeGhosts.get(elId);

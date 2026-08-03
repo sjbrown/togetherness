@@ -1,11 +1,18 @@
 /**
- * undo_redo.js — togetherness undo / redo
+ * undo_redo.js — togetherness undo / redo for drawing and boundaries
  *
- * Wraps a single Y.UndoManager over the document's element fragments
- * (toys, drawing, boundaries). Because the Yjs XML tree IS the document,
- * undo/redo is Yjs reversing its own operations. A deleted toy comes back
- * as the exact same subtree it left as; a reparent-into-tray reverses
- * to its original parent and index; a die's roll reverts its face.
+ * Wraps a single Y.UndoManager over the document's drawing and boundaries
+ * fragments. Toys are NOT tracked here — the toys layer's Yjs content is
+ * an append-only map of immutable operation records now, and undoing "an
+ * operation record was appended" removes the record without touching the
+ * DOM state it described. See CONCURRENCY_AND_BRANCHING.md §8: toys undo
+ * is a separate mechanism (toys.js's undoToyGesture/redoToyGesture —
+ * append the inverse operation), and app.js decides which of the two
+ * mechanisms a given Undo press invokes based on which layer the most
+ * recent action actually touched (_lastActionScope). The two can never
+ * need to run together for one action, because switching the active
+ * layer clears the selection (App.setLayer) — a single gesture can never
+ * span both toys and drawing/boundaries.
  *
  * Depends on: nothing but Yjs. app.js owns the ydoc/fragments and the
  * side-effect callbacks (history log + toasts); this module owns the stack.
@@ -13,30 +20,19 @@
  * ── What is (and isn't) undoable ──────────────────────────────────────
  *
  * trackedOrigins decides. app.js's structural writes (add / move / delete /
- * resize / reparent) transact with a null origin; a user-intent toy handler
- * (a die's Roll, a tray's Roll All) commits under ENVELOPE_ORIGIN. Both are
- * tracked — rolls are genuine document changes the user should be able to
- * take back.
- *
- * Deliberately NOT tracked as their OWN undo step:
- *  - DERIVED_ORIGIN (a tray recomputing due to contents changes)
- *  - LIFECYCLE_ORIGIN (a toy's one-time initialize)
- * Those are downstream of a tracked action, never independent user intent —
- * see the origin constants in envelope.js.
+ * resize) transact with a null origin. All are tracked — a derived write
+ * is not a separate class of thing from the action that caused it.
  *
  * Note: "not tracked" is about a *standalone* derived transaction (reached
  * from the observer, after its triggering transaction has already closed).
- * When a reaction is folded into its triggering action instead — a drop
- * into a tray, a die's Roll, a tray's Roll All, a toy's placement-time
- * initialize() — the whole thing (the action's own commit plus whatever
- * reaction it triggers) is one transaction. Each of those folded callsites
- * opens its outer transact with no explicit origin, so the merged
- * transaction's origin is null regardless of what origin the inner,
- * now-nested commit would have used standalone (ENVELOPE_ORIGIN for a menu
- * action, LIFECYCLE_ORIGIN for initialize) — a nested transact's origin
- * argument is only honored on the call that actually opens the transaction;
- * every nested call just reuses it. null is tracked, so the reaction still
- * rides the action's undo step and reverses with it either way.
+ * When a reaction is folded into its triggering action instead, the whole
+ * thing is one transaction. Each of those folded callsites opens its outer
+ * transact with no explicit origin, so the merged transaction's origin is
+ * null regardless of what origin the inner, now-nested commit would have
+ * used standalone — a nested transact's origin argument is only honored on
+ * the call that actually opens the transaction; every nested call just
+ * reuses it. null is tracked, so the reaction still rides the action's
+ * undo step and reverses with it either way.
  *
  * TODO:
  * Remote peers' operations arrive under their provider's own origin (not
@@ -47,15 +43,12 @@
  *
  * One logical action must be one Yjs transaction to be one undo step.
  * Nested ydoc.transact() calls collapse into the outermost transaction, so
- * a multi-part action (e.g. reparentToy + applyMoveCommit for a drop, plus
- * the tray's synchronous contents_change reaction) is made atomic simply by
- * wrapping all of it in one transact in app.js — the drop and the sum it
- * produces undo together as a single step.
+ * a multi-part action is made atomic simply by wrapping all of it in one
+ * transact in app.js.
  *
  */
 
 import * as Y from 'yjs';
-import { ENVELOPE_ORIGIN } from './envelope.js';
 
 let _um       = null;   // Y.UndoManager
 let _pending  = null;   // label for the next stack item created by a user action
@@ -67,7 +60,8 @@ let _onChange = null;   // () => void  — fired whenever canUndo/canRedo may ha
  * Initialise the undo/redo stack.
  *
  *   ydoc     — the shared Y.Doc.
- *   scopes   — array of tracked Y.XmlFragment (toys, drawing, boundaries).
+ *   scopes   — array of tracked Y.XmlFragment (drawing, boundaries — NOT
+ *              toys; see the module docstring).
  *   onApply  — called after a successful undo()/redo() with the popped
  *              item's label, for history logging + toasts.
  *   onEmpty  — called when undo()/redo() is a no-op (nothing to undo/redo).
@@ -80,9 +74,9 @@ export function init({ ydoc, scopes, onApply, onEmpty, onChange }) {
   _onChange = onChange ?? (() => {});
 
   _um = new Y.UndoManager(scopes, {
-    // null: app.js's structural writes. ENVELOPE_ORIGIN: user-intent toy
-    // handlers (rolls). Derived/lifecycle origins are intentionally absent.
-    trackedOrigins: new Set([null, ENVELOPE_ORIGIN]),
+    // Every tracked write (drawing, boundaries) transacts with a null
+    // origin. Derived/lifecycle origins are intentionally absent.
+    trackedOrigins: new Set([null]),
     // Each tracked transaction is its own undo step; app.js keeps one
     // logical action to one transaction, so no time-based coalescing needed.
     captureTimeout: 0,

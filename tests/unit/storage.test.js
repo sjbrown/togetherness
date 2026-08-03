@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { domToY, isToyG, populateFromSvgDoc, buildExportSvg } from '../../src/storage.js'
+import { domToY, populateFromSvgDoc, buildExportSvg } from '../../src/storage.js'
+import { getOps } from '../../src/op_dag.js'
+import { projectFrom } from '../../src/op_checkpoint.js'
+import * as Toys from '../../src/toys.js'
 import { addToy, findToy, _clearSvgTextCache, _getScriptsFragment } from '../../src/toys.js'
 import { addDrawing } from '../../src/drawing.js'
 
@@ -101,32 +104,10 @@ describe('domToY', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────────────────────
-// isToyG
-// ─────────────────────────────────────────────────────────────────────────────
+// isForeignToyG / parseForeignToy now live entirely in toys.js — see
+// tests/unit/node-identity.test.js. storage.js no longer knows the toy
+// contract, so it has nothing of its own to test here.
 
-describe('isToyG', () => {
-  test('accepts a well-formed, hand-authored toy <g> — no rendering attrs required', () => {
-    expect(isToyG(parseSvg(VALID_TOY_G))).toBeTruthy()
-  })
-
-  test('also accepts a toy carrying rendering-only attrs (e.g. a re-imported export)', () => {
-    const g = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6" data-id="t1" data-module="toys" id="t1">
-        <svg/>
-      </g>`
-    expect(isToyG(parseSvg(g))).toBeTruthy()
-  })
-
-  test.each([
-    ['missing class="toy"',      `<g data-toy-id="t1" data-toy-type="x"><svg/></g>`],
-    ['missing data-toy-id',      `<g class="toy" data-toy-type="x"><svg/></g>`],
-    ['missing data-toy-type',    `<g class="toy" data-toy-id="t1"><svg/></g>`],
-    ['no <svg> child',           `<g class="toy" data-toy-id="t1" data-toy-type="x"></g>`],
-    ['wrong tag entirely',       `<rect class="toy" data-toy-id="t1" data-toy-type="x"/>`],
-  ])('rejects: %s', (_label, svg) => {
-    expect(isToyG(parseSvg(svg))).toBeFalsy()
-  })
-})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // populateFromSvgDoc
@@ -137,7 +118,6 @@ function freshLayers() {
   return {
     ydoc,
     yMeta:    ydoc.getMap('meta'),
-    yToys:    ydoc.getXmlFragment('toys'),
     yDrawing: ydoc.getXmlFragment('drawing'),
   }
 }
@@ -160,12 +140,12 @@ describe('populateFromSvgDoc', () => {
   })
 
   test('imports valid toys and counts them', () => {
-    const { ydoc, yToys } = freshLayers()
-    const { toyCount } = populateFromSvgDoc(
+    const { ydoc } = freshLayers()
+    const { toyCount, importedToyEls } = populateFromSvgDoc(
       makeDocSvg({ toysInner: VALID_TOY_G }), ydoc)
     expect(toyCount).toBe(1)
-    expect(yToys.toArray().length).toBe(1)
-    expect(yToys.toArray()[0].getAttribute('data-toy-id')).toBe('t1')
+    expect(importedToyEls.length).toBe(1)
+    expect(importedToyEls[0].getAttribute('data-toy-id')).toBe('t1')
   })
 
   test('collects invalid toys-layer children without importing them', () => {
@@ -204,16 +184,15 @@ describe('populateFromSvgDoc', () => {
   })
 
   test('hoists a script from an imported toy into the scripts fragment, stripped from the toy itself', () => {
-    const { ydoc, yToys } = freshLayers()
+    const { ydoc } = freshLayers()
     const toyWithScript = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6">
         <svg x="0" y="0" width="64" height="64" viewBox="0 0 80 100">
           <script type="text/javascript" data-namespace="d6"><![CDATA[ var d6 = 1 ]]></script>
         </svg>
       </g>`
-    populateFromSvgDoc(makeDocSvg({ toysInner: toyWithScript }), ydoc)
-    const svgNode = yToys.toArray()[0].toArray()[0]
+    const { importedToyEls } = populateFromSvgDoc(makeDocSvg({ toysInner: toyWithScript }), ydoc)
     // Never in the toy's own subtree, live or at rest.
-    expect(svgNode.toArray().some(c => c.nodeName === 'script')).toBe(false)
+    expect(importedToyEls[0].querySelector('script')).toBeNull()
     // Hoisted into the document's scripts fragment instead.
     const scripts = _getScriptsFragment(ydoc).toArray()
     expect(scripts.length).toBe(1)
@@ -227,16 +206,84 @@ describe('populateFromSvgDoc', () => {
         transform="rotate(-8,105,100)"><svg/></g>`
 
     test('off by default — transform is preserved', () => {
-      const { ydoc, yToys } = freshLayers()
-      populateFromSvgDoc(makeDocSvg({ toysInner: rotatedToy }), ydoc)
-      expect(yToys.toArray()[0].getAttribute('transform')).toBe('rotate(-8,105,100)')
+      const { ydoc } = freshLayers()
+      const { importedToyEls } = populateFromSvgDoc(makeDocSvg({ toysInner: rotatedToy }), ydoc)
+      expect(importedToyEls[0].getAttribute('transform')).toBe('rotate(-8,105,100)')
     })
 
     test('when true, strips the transform before insertion', () => {
-      const { ydoc, yToys } = freshLayers()
-      populateFromSvgDoc(makeDocSvg({ toysInner: rotatedToy }), ydoc,
+      const { ydoc } = freshLayers()
+      const { importedToyEls } = populateFromSvgDoc(makeDocSvg({ toysInner: rotatedToy }), ydoc,
         { stripToyDecorative: true })
-      expect(yToys.toArray()[0].getAttribute('transform')).toBeUndefined()
+      expect(importedToyEls[0].getAttribute('transform')).toBeNull()
+    })
+  })
+
+  describe('opts.asNewTable — seeding a fresh table takes a genesis checkpoint', () => {
+    test('without it, no operation is recorded — toys are handed back for the caller to commit as a gesture', () => {
+      const { ydoc } = freshLayers()
+      const { toyCount, importedToyEls } = populateFromSvgDoc(
+        makeDocSvg({ toysInner: VALID_TOY_G }), ydoc)
+      expect(toyCount).toBe(1)
+      expect(importedToyEls.length).toBe(1)
+      // No op-log history exists yet to chain onto — see toys-layer-api.test.js's
+      // "L.import" block for the live-table caller side (App.importSVG) that
+      // takes these elements and commits them as a real gesture.
+      expect([...getOps(ydoc).values()].length).toBe(0)
+    })
+
+    test('with it, toys become one genesis checkpoint operation instead', () => {
+      const { ydoc } = freshLayers()
+      const { toyCount, importedToyEls } = populateFromSvgDoc(
+        makeDocSvg({ toysInner: VALID_TOY_G }), ydoc, { asNewTable: true, authorId: 'alice' })
+
+      expect(toyCount).toBe(1)
+      expect(importedToyEls.length).toBe(0) // consumed into the checkpoint, not handed back
+
+      const ops = [...getOps(ydoc).values()]
+      expect(ops.length).toBe(1)
+      expect(ops[0].gesture).toBe('checkpoint')
+      expect(ops[0].parents).toEqual([])
+      expect(ops[0].authorId).toBe('alice')
+    })
+
+    test('the checkpoint projects onto a fresh layer with the imported toy intact', () => {
+      const { ydoc } = freshLayers()
+      populateFromSvgDoc(makeDocSvg({ toysInner: VALID_TOY_G }), ydoc, { asNewTable: true, authorId: 'alice' })
+
+      const genesis = [...getOps(ydoc).values()][0]
+      const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+      projectFrom(layerEl, getOps(ydoc), genesis.id)
+
+      expect(layerEl.querySelector('[data-toy-id="t1"]')).not.toBeNull()
+    })
+
+    test('an empty toys layer takes no genesis at all', () => {
+      const { ydoc } = freshLayers()
+      populateFromSvgDoc(makeDocSvg(), ydoc, { asNewTable: true, authorId: 'alice' })
+      expect([...getOps(ydoc).values()].length).toBe(0)
+    })
+
+    test('invalid toys are still rejected the same way', () => {
+      const { ydoc } = freshLayers()
+      const badG = `<g class="not-a-toy"><rect/></g>`
+      const { toyCount, invalidToyEls } = populateFromSvgDoc(
+        makeDocSvg({ toysInner: VALID_TOY_G + badG }), ydoc, { asNewTable: true, authorId: 'alice' })
+      expect(toyCount).toBe(1)
+      expect(invalidToyEls.length).toBe(1)
+    })
+
+    test('stripToyDecorative applies before the checkpoint is taken', () => {
+      const { ydoc } = freshLayers()
+      const rotatedToy = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6"
+          transform="rotate(-8,105,100)"><svg/></g>`
+      populateFromSvgDoc(makeDocSvg({ toysInner: rotatedToy }), ydoc,
+        { asNewTable: true, stripToyDecorative: true, authorId: 'alice' })
+
+      const genesis = [...getOps(ydoc).values()][0]
+      const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+      projectFrom(layerEl, getOps(ydoc), genesis.id)
+      expect(layerEl.querySelector('[data-toy-id="t1"]').hasAttribute('transform')).toBe(false)
     })
   })
 })
@@ -284,16 +331,38 @@ describe('buildExportSvg', () => {
 
   test('writes hoisted scripts once at document root, not per-toy', async () => {
     const ydoc = new Y.Doc()
-    const yToys = ydoc.getXmlFragment('toys')
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+    const live = liveCanvasSvg()
+    await addToy(ydoc, live.querySelector('#toys-layer'), { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
 
-    const clone = buildExportSvg(liveCanvasSvg(), ydoc)
+    const clone = buildExportSvg(live, ydoc)
     // Only the inline script (data-namespace="d6") gets hoisted/exported —
     // the src-referenced one (dice_utils.js) is never persisted at all.
     const scripts = clone.querySelectorAll(':scope > script')
     expect(scripts.length).toBe(1)
     expect(scripts[0].getAttribute('data-namespace')).toBe('d6')
     expect(clone.querySelector('#toys-layer script')).toBeNull()
+  })
+
+
+  test('toys export whatever is in the live DOM, data-id and all', () => {
+    const ydoc = new Y.Doc()
+    const live = liveCanvasSvg()
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    g.setAttribute('data-toy-id', 't1')
+    g.setAttribute('data-id', 't1')
+    live.querySelector('#toys-layer').appendChild(g)
+
+    const clone = buildExportSvg(live, ydoc)
+    expect(clone.querySelector('#toys-layer [data-toy-id="t1"]')).not.toBeNull()
+  })
+
+  test('strips the internal head marker from the exported toys layer', () => {
+    const ydoc = new Y.Doc()
+    const live = liveCanvasSvg()
+    live.querySelector('#toys-layer').setAttribute(Toys.HEAD_MARKER, 'tt-op-abc123')
+
+    const clone = buildExportSvg(live, ydoc)
+    expect(clone.querySelector('#toys-layer').hasAttribute(Toys.HEAD_MARKER)).toBe(false)
   })
 
   test('rebuilds #drawing-layer from the Yjs fragment', () => {

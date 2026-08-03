@@ -5,7 +5,7 @@
 
 // @vitest-environment jsdom
 import { describe, test, expect, vi, beforeEach } from 'vitest'
-import { layerObjectListHTML, refreshLayerList, UIData, init, toast, showBranchDialog, branchDialogJoin, branchDialogKeepWorking, peersBody, openSheet, closePanel, restorePanelState } from '../../src/ui.js'
+import { layerObjectListHTML, refreshLayerList, UIData, init, toast, showBranchDialog, branchDialogJoin, branchDialogKeepWorking, peersBody, openSheet, closePanel, restorePanelState, histBody } from '../../src/ui.js'
 
 const mockObjects = [
   { id: 'a', label: 'rect',   fill: '#c8941e', kind: 'rect'   },
@@ -308,7 +308,7 @@ describe('toast — warn/error toasts are mirrored to console.warn', () => {
     warnSpy.mockRestore()
   })
 
-  test('kind "error" logs too — used throughout TODO #11\'s conflict resolution (dedupToys, onReactionLogChanged)', () => {
+  test('kind "error" logs too — used for surfacing failures generally', () => {
     document.body.innerHTML = '<div id="toasts"></div>'
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     toast('Something broke', 'error')
@@ -371,18 +371,18 @@ describe('showBranchDialog / branchDialogJoin / branchDialogKeepWorking', () => 
 
   test('showBranchDialog opens both the scrim and the dialog, and names the branch table', () => {
     mountBranchDialogSkeleton()
-    showBranchDialog('tt-F-v1-abc123def456')
+    showBranchDialog('tt-T-v1-abc123def456')
 
     expect(document.querySelector('#branchDialogScrim').classList.contains('open')).toBe(true)
     expect(document.querySelector('#branchDialogScrim').getAttribute('aria-hidden')).toBe('false')
     expect(document.querySelector('#branchDialog').classList.contains('open')).toBe(true)
     expect(document.querySelector('#branchDialog').getAttribute('aria-hidden')).toBe('false')
-    expect(document.querySelector('#branchDialogBody').textContent).toContain('tt-F-v1-abc123def456')
+    expect(document.querySelector('#branchDialogBody').textContent).toContain('tt-T-v1-abc123def456')
   })
 
   test('branchDialogJoin closes the dialog and does NOT navigate anywhere', () => {
     mountBranchDialogSkeleton()
-    showBranchDialog('tt-F-v1-abc123def456')
+    showBranchDialog('tt-T-v1-abc123def456')
     const { reload, getHash } = stubLocation()
 
     branchDialogJoin()
@@ -398,12 +398,12 @@ describe('showBranchDialog / branchDialogJoin / branchDialogKeepWorking', () => 
 
   test('branchDialogKeepWorking sets the hash to the branch table and reloads', () => {
     mountBranchDialogSkeleton()
-    showBranchDialog('tt-F-v1-abc123def456')
+    showBranchDialog('tt-T-v1-abc123def456')
     const { reload, getHash } = stubLocation()
 
     branchDialogKeepWorking()
 
-    expect(getHash()).toBe('tt-F-v1-abc123def456')
+    expect(getHash()).toBe('tt-T-v1-abc123def456')
     expect(reload).toHaveBeenCalledOnce()
     vi.unstubAllGlobals()
   })
@@ -420,7 +420,7 @@ describe('showBranchDialog / branchDialogJoin / branchDialogKeepWorking', () => 
 
   test('branchDialogKeepWorking only acts on the table it was shown for, not a later, different one, once already consumed', () => {
     mountBranchDialogSkeleton()
-    showBranchDialog('tt-F-v1-first000000')
+    showBranchDialog('tt-T-v1-first000000')
     branchDialogJoin() // dismiss without keeping — clears the pending table
 
     const { reload } = stubLocation()
@@ -430,8 +430,8 @@ describe('showBranchDialog / branchDialogJoin / branchDialogKeepWorking', () => 
   })
 })
 
-describe('peersBody — Offline mode / Enable Reverts toggles', () => {
-  const baseData = { peers: [], offline: false, revertsEnabled: true, roomId: 'tt-T-v1-test' }
+describe('peersBody — Offline mode toggle', () => {
+  const baseData = { peers: [], offline: false, roomId: 'tt-T-v1-test' }
 
   test('offline toggle reflects data.offline: off', () => {
     const div = document.createElement('div')
@@ -444,34 +444,17 @@ describe('peersBody — Offline mode / Enable Reverts toggles', () => {
     div.innerHTML = peersBody({ ...baseData, offline: true })
     expect(div.querySelector('#offToggle').classList.contains('on')).toBe(true)
   })
-
-  test('reverts toggle reflects data.revertsEnabled: on (the default)', () => {
-    const div = document.createElement('div')
-    div.innerHTML = peersBody(baseData)
-    expect(div.querySelector('#revertsToggle').classList.contains('on')).toBe(true)
-  })
-
-  test('reverts toggle reflects data.revertsEnabled: off', () => {
-    const div = document.createElement('div')
-    div.innerHTML = peersBody({ ...baseData, revertsEnabled: false })
-    expect(div.querySelector('#revertsToggle').classList.contains('on')).toBe(false)
-  })
-
-  test('both toggles are independent — one being on does not force the other', () => {
-    const div = document.createElement('div')
-    div.innerHTML = peersBody({ ...baseData, offline: true, revertsEnabled: false })
-    expect(div.querySelector('#offToggle').classList.contains('on')).toBe(true)
-    expect(div.querySelector('#revertsToggle').classList.contains('on')).toBe(false)
-  })
 })
 
 describe('panel open/tab persistence (tt_panel_state)', () => {
   const mockApp = {
     getPeers: () => [],
     isOffline: () => false,
-    isRevertsEnabled: () => true,
     getTableId: () => 'tt-T-v1-test',
     getHistory: () => [],
+    getUndoHistory: () => [],
+    canUndo: () => false,
+    canRedo: () => false,
   }
 
   function mountPanelSkeleton() {
@@ -567,5 +550,90 @@ describe('panel open/tab persistence (tt_panel_state)', () => {
       `
       init(mockApp) // NOT clearing localStorage — that's the point
     }
+  })
+})
+
+describe('histBody — undo/redo panel layout', () => {
+  const history     = [{ label: 'moved die1' }, { label: 'placed die2' }]
+  const undoHistory = [{ label: 'undid: move' }]
+
+  function withApp(overrides) {
+    init({ getPeers: () => [], isOffline: () => false, getTableId: () => 'tt-T-v1-test',
+           canUndo: () => false, canRedo: () => false, ...overrides })
+  }
+
+  test('renders both lists, in order: undo, history, redo, undo history', () => {
+    withApp({ canUndo: () => true, canRedo: () => true })
+    const html = histBody(history, undoHistory)
+    const undoBtnAt   = html.indexOf('Undo last action')
+    const historyAt   = html.indexOf('moved die1')
+    const redoBtnAt   = html.indexOf('Redo last undone action')
+    const undoHistAt  = html.indexOf('undid: move')
+    expect(undoBtnAt).toBeGreaterThan(-1)
+    expect(undoBtnAt).toBeLessThan(historyAt)
+    expect(historyAt).toBeLessThan(redoBtnAt)
+    expect(redoBtnAt).toBeLessThan(undoHistAt)
+  })
+
+  test('the gesture history list shows real actions, not undo entries — those are a separate list', () => {
+    withApp({ canUndo: () => true })
+    const div = document.createElement('div')
+    div.innerHTML = histBody(history, undoHistory)
+    const historyField = div.querySelectorAll('.field')[1]
+    expect(historyField.textContent).toContain('moved die1')
+    expect(historyField.textContent).not.toContain('undid:')
+  })
+
+  test('undo button is wired to App.undo() when something is undoable', () => {
+    withApp({ canUndo: () => true })
+    const div = document.createElement('div')
+    div.innerHTML = histBody(history, [])
+    const btn = [...div.querySelectorAll('.action-btn')].find(b => b.textContent.includes('Undo last action'))
+    expect(btn.getAttribute('onclick')).toBe('App.undo()')
+    expect(btn.disabled).toBe(false)
+  })
+
+  test('undo button is disabled, not wired, when nothing is undoable', () => {
+    withApp({ canUndo: () => false })
+    const div = document.createElement('div')
+    div.innerHTML = histBody([], [])
+    const btn = [...div.querySelectorAll('.action-btn')].find(b => b.textContent.includes('Undo last action'))
+    expect(btn.hasAttribute('onclick')).toBe(false)
+    expect(btn.disabled).toBe(true)
+  })
+
+  test('redo button is wired to App.redo() when something is redoable — it never was before this', () => {
+    withApp({ canRedo: () => true })
+    const div = document.createElement('div')
+    div.innerHTML = histBody([], undoHistory)
+    const btn = [...div.querySelectorAll('.action-btn')].find(b => b.textContent.includes('Redo last undone action'))
+    expect(btn.getAttribute('onclick')).toBe('App.redo()')
+    expect(btn.disabled).toBe(false)
+  })
+
+  test('redo button is disabled when nothing is redoable', () => {
+    withApp({ canRedo: () => false })
+    const div = document.createElement('div')
+    div.innerHTML = histBody([], [])
+    const btn = [...div.querySelectorAll('.action-btn')].find(b => b.textContent.includes('Redo last undone action'))
+    expect(btn.hasAttribute('onclick')).toBe(false)
+    expect(btn.disabled).toBe(true)
+  })
+
+  test('empty states are labelled distinctly for each list', () => {
+    withApp({})
+    const div = document.createElement('div')
+    div.innerHTML = histBody([], [])
+    expect(div.textContent).toContain('No history')
+    expect(div.textContent).toContain('Nothing undone')
+  })
+
+  test('both lists get the scrollable, 4-item-limited list class — same pattern as the Layers panel', () => {
+    withApp({})
+    const div = document.createElement('div')
+    div.innerHTML = histBody(history, undoHistory)
+    const lists = div.querySelectorAll('.hist-list')
+    expect(lists.length).toBe(2)
+    for (const list of lists) expect(list.classList.contains('shape-list')).toBe(true)
   })
 })

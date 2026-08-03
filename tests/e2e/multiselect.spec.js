@@ -15,18 +15,18 @@
  */
 
 import { test, expect, chromium } from '@playwright/test';
+import { openAsCreator } from './helpers.js';
 
 const APP_URL       = process.env.APP_URL       || 'http://localhost:3000';
 const SIGNALING_URL = process.env.SIGNALING_URL || 'ws://localhost:4444';
 
 test.describe('multi-select', () => {
   test('single-click, rubber-band, shift-click, deselect', async () => {
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
     const ctx     = await browser.newContext();
     const page    = await ctx.newPage();
 
-    const room = `e2e-multisel-${Date.now()}`;
-    await page.goto(`${APP_URL}/?signaling=${SIGNALING_URL}#${room}`);
+    await openAsCreator(page, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
     await expect(page.locator('#peerCount')).toHaveText('0', { timeout: 8000 });
 
     const canvas    = page.locator('#canvas');

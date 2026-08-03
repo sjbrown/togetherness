@@ -210,7 +210,8 @@ document.getElementById('myIdLabel').textContent = `me: ${myDisplayName}`;
 
 // ── Table  ──────────────────────────────────────────────────────────────────
 let tableId = location.hash.slice(1);
-if (!tableId) {
+const isCreator = !tableId;
+if (isCreator) {
   tableId = tables.generateTableId(myDisplayName);
   location.hash = tableId;
 }
@@ -232,7 +233,7 @@ const awareness    = provider.awareness;
 awareness.setLocalState({ id: myId, color: myGrad.c1, grad: myGrad, cursor: null, selection: null });
 
 // ── Boot ────────────────────────────────────────────────────────────────────
-boot({ ydoc, awareness, provider, myId, myGrad, tableId, displayName: myDisplayName });
+boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreator, displayName: myDisplayName });
 </script>
 
 </body>
