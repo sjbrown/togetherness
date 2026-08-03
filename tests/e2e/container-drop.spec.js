@@ -2,7 +2,7 @@
  * tests/e2e/container-drop.spec.js
  *
  * Regression test for a real bug: commitMove's drop-into-container branch
- * called Toys.runGestureSync without a tableId, so the reparent never
+ * called Toys.runGesture without a tableId, so the reparent never
  * appended an operation to the op log — only the dual-write to Yjs
  * happened. Peer A's own screen looked correct (its DOM was mutated
  * directly by the gesture); a joining peer, whose render path is driven

@@ -11,7 +11,7 @@
  * per the project's convention that app.js integration is e2e, not
  * vitest). placeInTrayAtomic() below is a faithful, literal
  * re-implementation of exactly what commitMove's drop branch does —
- * reparent + move, inside runGestureSync, whose internal
+ * reparent + move, inside runGesture, whose internal
  * runContentsChangeCascadeInto folds the tray's reaction into the SAME
  * batch before commitGesture appends it as one operation.
  *
@@ -25,7 +25,7 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  addToy, reparentToyDom, applyMoveDom, getGeom, findToyDom, runGestureSync,
+  addToy, reparentToyDom, applyMoveDom, getGeom, findToyDom, runGesture,
   activateAllToyScriptsDom, undoToyGesture,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
@@ -66,7 +66,7 @@ function ownResultTspan(trayEl) {
 
 // Faithful re-implementation of app.js commitMove's drop-into-tray branch.
 function placeInTrayAtomic(ydoc, layerEl, dieId, trayId, dropX = 10, dropY = 10) {
-  return runGestureSync(ydoc, layerEl, () => {
+  return runGesture(ydoc, layerEl, () => {
     reparentToyDom(layerEl, dieId, trayId)
     const movedEl  = findToyDom(layerEl, dieId) ?? layerEl.querySelector(`[data-id="${dieId}"]`)
     const trayEl   = layerEl.querySelector(`[data-id="${trayId}"]`)
@@ -79,7 +79,7 @@ function placeInTrayAtomic(ydoc, layerEl, dieId, trayId, dropX = 10, dropY = 10)
 // deterministic — mirrors what a real Roll would commit.
 function setDieFace(ydoc, layerEl, dieId, value) {
   const dieEl = layerEl.querySelector(`[data-id="${dieId}"]`)
-  runGestureSync(ydoc, layerEl, () => {
+  runGesture(ydoc, layerEl, () => {
     dieEl.querySelector('tspan').textContent = String(value)
   }, { gesture: 'set-face', authorId: AUTHOR, tableId: TABLE })
 }
@@ -164,7 +164,7 @@ describe('placement + reaction commit as ONE atomic operation', () => {
     activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
     // Nest inner inside outer first (its own operation).
-    runGestureSync(ydoc, layerEl, () => {
+    runGesture(ydoc, layerEl, () => {
       reparentToyDom(layerEl, 'inner', 'outer')
     }, { gesture: 'reparent', authorId: AUTHOR, tableId: TABLE })
     setDieFace(ydoc, layerEl, 'die1', 6)

@@ -120,19 +120,9 @@ function resetJoinSequence(ydoc, orderedIds) {
 
 // ── IndexedDB database naming ───────────────────────────────────────────
 
-/**
- * Open (or create) a table's IndexedDB persistence for a live Y.Doc.
- */
-function openTablePersistence(tableId, ydoc) {
-  return new IndexeddbPersistence(tableId, ydoc);
-}
 
-/**
- * Same as openTablePersistence, but awaits the initial sync before
- * resolving
- */
-async function openTablePersistenceSynced(tableId, ydoc) {
-  const persistence = openTablePersistence(tableId, ydoc);
+async function openTablePersistence(tableId, ydoc) {
+  const persistence = new IndexeddbPersistence(tableId, ydoc);
   await new Promise((resolve, reject) => {
     persistence.on('synced', resolve);
     persistence.on('error',  reject);
@@ -149,7 +139,7 @@ async function openTablePersistenceSynced(tableId, ydoc) {
  */
 async function getYDoc(tableId) {
   const ydoc = makeDoc();
-  await openTablePersistenceSynced(tableId, ydoc);
+  await openTablePersistence(tableId, ydoc);
   if (!ydoc.getMap('meta').get('docId')) {
     initTableDoc(ydoc, tableId);
   }
@@ -246,12 +236,10 @@ async function forkTable(sourceTableId, forkedTableId, forkingUserId) {
   const update    = Y.encodeStateAsUpdate(sourceDoc);
   sourceDoc.destroy();
 
-  // Write the copy via openTablePersistenceSynced — the same path a live
-  // table uses
   const forkDoc = makeDoc();
   Y.applyUpdate(forkDoc, update);
   resetJoinSequence(forkDoc, [forkingUserId]);
-  await openTablePersistenceSynced(forkedTableId, forkDoc);
+  await openTablePersistence(forkedTableId, forkDoc);
   forkDoc.destroy();
 }
 
@@ -344,7 +332,7 @@ function deterministicClientId(bytes) {
  *
  * Idempotent: called twice for the same content (same orderedIds, same
  * opsSeed), both calls compute the same forkedTableId, and
- * openTablePersistenceSynced syncing into an already-seeded table
+ * openTablePersistence syncing into an already-seeded table
  * converges rather than duplicating anything.
  *
  * Does NOT touch the 'tt_tables' registry — same convention as forkTable;
@@ -385,7 +373,7 @@ async function forkLiveDoc(liveDoc, orderedIds, opsSeed) {
   const update         = Y.encodeStateAsUpdate(forkDoc); // post-reset, post-prune bytes
   const forkedTableId = await generateForkTableId(update);
 
-  await openTablePersistenceSynced(forkedTableId, forkDoc);
+  await openTablePersistence(forkedTableId, forkDoc);
   forkDoc.destroy();
 
   return forkedTableId;
@@ -419,7 +407,7 @@ export const tablesAPI = {
   getJoinSequenceArray,
   isAuthoritative,
   resetJoinSequence,
-  openTablePersistenceSynced,
+  openTablePersistence,
   getYDoc,
   loadTables,
   saveTables,

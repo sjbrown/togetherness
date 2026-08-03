@@ -1,9 +1,7 @@
 /**
  * op_head.js — which operation this peer's DOM currently reflects.
  *
- * Per-peer, per-table, and deliberately not in the shared document: two
- * peers sitting on different heads is a branch, not an error, and putting
- * the head in the doc would make it a contended value.
+ * Per-peer, per-table, and deliberately not in the shared document.
  */
 
 const KEY_PREFIX = 'tt_head_'

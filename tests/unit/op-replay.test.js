@@ -14,7 +14,7 @@ import {
 } from '../../src/op_replay.js'
 import { getHead, setHead, clearHead } from '../../src/op_head.js'
 import { checkpointOp, ensureLayerId } from '../../src/op_checkpoint.js'
-import { runInEnvelopeSync, commitGesture } from '../../src/envelope.js'
+import { runInEnvelope, commitGesture } from '../../src/envelope.js'
 import { getOps, appendOp } from '../../src/op_dag.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -93,14 +93,14 @@ describe('withSuppressedCapture', () => {
   test('the envelope captures nothing while suppressed', () => {
     const root = layer('<rect data-id="r" x="1"/>')
     const records = withSuppressedCapture(() =>
-      runInEnvelopeSync(root, () => root.querySelector('[data-id="r"]').setAttribute('x', '9')))
+      runInEnvelope(root, () => root.querySelector('[data-id="r"]').setAttribute('x', '9')))
     expect(records).toEqual([])
     expect(root.querySelector('[data-id="r"]').getAttribute('x')).toBe('9')
   })
 
   test('and captures normally once suppression lifts', () => {
     const root = layer('<rect data-id="r" x="1"/>')
-    const records = runInEnvelopeSync(root, () =>
+    const records = runInEnvelope(root, () =>
       root.querySelector('[data-id="r"]').setAttribute('x', '9'))
     expect(records.length).toBeGreaterThan(0)
   })
@@ -263,7 +263,7 @@ describe('advanceTo', () => {
 
     // The observer still sees the DOM change — suppression is the
     // envelope's contract, not the browser's — but the envelope drops it.
-    const records = withSuppressedCapture(() => runInEnvelopeSync(live, () => {}))
+    const records = withSuppressedCapture(() => runInEnvelope(live, () => {}))
     expect(records).toEqual([])
     mo.disconnect()
   })
@@ -273,7 +273,7 @@ describe('commitGesture', () => {
   test('turns a captured batch into an operation in the log', () => {
     const ydoc = new Y.Doc()
     const root = layer('<rect data-id="r" x="1"/>')
-    const records = runInEnvelopeSync(root, () =>
+    const records = runInEnvelope(root, () =>
       root.querySelector('[data-id="r"]').setAttribute('x', '7'))
 
     const op = commitGesture(ydoc, records, { gesture: 'move', authorId: 'alice', parents: ['cp'] })
@@ -288,7 +288,7 @@ describe('commitGesture', () => {
   test('a gesture that changed nothing is not an operation', () => {
     const ydoc = new Y.Doc()
     const root = layer('<rect data-id="r"/>')
-    const records = runInEnvelopeSync(root, () => {})
+    const records = runInEnvelope(root, () => {})
     expect(commitGesture(ydoc, records, { authorId: 'alice' })).toBeNull()
     expect([...getOps(ydoc).values()].length).toBe(0)
   })
@@ -296,7 +296,7 @@ describe('commitGesture', () => {
   test('null parents are dropped rather than stored', () => {
     const ydoc = new Y.Doc()
     const root = layer('<rect data-id="r" x="1"/>')
-    const records = runInEnvelopeSync(root, () =>
+    const records = runInEnvelope(root, () =>
       root.querySelector('[data-id="r"]').setAttribute('x', '2'))
     const op = commitGesture(ydoc, records, { authorId: 'a', parents: [null] })
     expect(op.parents).toEqual([])
@@ -307,7 +307,7 @@ describe('commitGesture', () => {
     const root = layer('<rect data-id="r" x="1"/>')
     const genesis = checkpointOp(root, { id: 'cp', authorId: 'alice' })
 
-    const records = runInEnvelopeSync(root, () =>
+    const records = runInEnvelope(root, () =>
       root.querySelector('[data-id="r"]').setAttribute('x', '7'))
     const op = commitGesture(ydoc, records, { authorId: 'alice', parents: ['cp'] })
 
@@ -321,7 +321,7 @@ describe('commitGesture', () => {
     // be able to reconstruct it. That is what makes genesis a checkpoint.
     const ydoc = new Y.Doc()
     const root = layer('<rect data-id="r" x="1"/>')
-    const records = runInEnvelopeSync(root, () =>
+    const records = runInEnvelope(root, () =>
       root.querySelector('[data-id="r"]').setAttribute('x', '7'))
     const op = commitGesture(ydoc, records, { authorId: 'alice' })
 

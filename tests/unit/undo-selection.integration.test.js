@@ -19,7 +19,7 @@ import * as Y from 'yjs'
 import * as awarenessProtocol from 'y-protocols/awareness'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  addToy, findToyDom, applyMoveDom, runGestureSync, _clearSvgTextCache,
+  addToy, findToyDom, applyMoveDom, runGesture, _clearSvgTextCache,
 } from '../../src/toys.js'
 
 vi.mock('../../src/ui.js', () => ({
@@ -115,7 +115,7 @@ describe('App.undo / App.redo abandon selection claims', () => {
     // A real, undoable gesture authored by this client — a move, exactly
     // the scenario in the bug report.
     const el = findToyDom(layerEl, 'die-1')
-    runGestureSync(ydoc, layerEl, () => applyMoveDom(el, 300, 300), {
+    runGesture(ydoc, layerEl, () => applyMoveDom(el, 300, 300), {
       gesture: 'move', authorId: 'bailey', tableId: 'test-room',
     })
 
@@ -132,7 +132,7 @@ describe('App.undo / App.redo abandon selection claims', () => {
     const layerEl = svgEl.querySelector('#toys-layer')
 
     const el = findToyDom(layerEl, 'die-1')
-    runGestureSync(ydoc, layerEl, () => applyMoveDom(el, 300, 300), {
+    runGesture(ydoc, layerEl, () => applyMoveDom(el, 300, 300), {
       gesture: 'move', authorId: 'bailey', tableId: 'test-room',
     })
 

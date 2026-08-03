@@ -109,18 +109,11 @@ export function lca(ops, a, b) {
  * causal order (oldest first), along the primary ancestry of headId.
  *
  * A real gesture pushes onto the undo stack. An op tagged 'undo:X' (X
- * names the original real gesture — see toys.js's applyToyUndoRedo) pops
- * the undo stack onto the redo stack. A 'redo:X' op pops the redo stack
+ * names the original real gesture) pops the undo stack onto the redo stack.
+ * A 'redo:X' op pops the redo stack
  * back onto the undo stack. A NEW real gesture clears the redo stack —
  * ordinary editor semantics: doing something new invalidates whatever
  * you could previously have redone.
- *
- * This replaces a simpler, broken idea: skipping past an 'undo' op and
- * continuing to its *parent* doesn't reach an older action — an undo's
- * parent IS the op it just inverted, by construction, so that walk just
- * finds the same thing again. A real stack, reconstructed by replaying
- * the sequence rather than following one pointer backward, is what
- * actually lets repeated Undo presses reach progressively older gestures.
  *
  * Walks parents[0] only — one causal path, not the full DAG. Exactly
  * right for a single peer's own linear action history, which is what
@@ -186,7 +179,7 @@ export function toyUndoRedoStacks(ops, headId, authorId) {
  * Generic on purpose: op_dag.js doesn't know what a checkpoint is, but a
  * caller (toys.js's undo, skipping isCheckpoint) does.
  *
- * This is what "my most recent operation" (§8) means in code: undo finds
+ * This is what "my most recent operation" means in code: undo finds
  * this and inverts it, whatever its gesture — including a prior 'undo'
  * itself, which is what makes redo fall out as the same operation
  * applied again rather than needing its own stack.

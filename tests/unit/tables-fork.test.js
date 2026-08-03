@@ -6,7 +6,7 @@
 // tested here. forkLiveDoc's own validation (throws without a
 // forkingUserId) is tested too, since that check runs before anything
 // touches persistence. forkLiveDoc's actual end-to-end behavior — does it
-// really write a working table via openTablePersistenceSynced — is NOT
+// really write a working table via openTablePersistence — is NOT
 // tested here: jsdom (this project's test environment) has no indexedDB
 // at all (typeof indexedDB === 'undefined'), and fake-indexeddb is a
 // dependency this project has already, deliberately, not taken on (see
@@ -170,7 +170,7 @@ describe('resetJoinSequence ordering, reset-before-hash', () => {
     const orderedIds = ['bob', 'clyde'] // both compute this identically from shared branch data
 
     // Reach into forkLiveDoc's own logic without IndexedDB: replicate the
-    // pre-persistence steps directly, since openTablePersistenceSynced
+    // pre-persistence steps directly, since openTablePersistence
     // needs indexedDB (unavailable in jsdom — see this file's header).
     const seedForkDoc = (liveDoc) => {
       const forkDoc = new Y.Doc()

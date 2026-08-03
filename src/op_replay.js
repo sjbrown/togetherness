@@ -157,8 +157,7 @@ export const RECEIVED_CONFLICT   = 'received-conflict'
  *   persist (op_head.addMergeTip) — this function has no table id to key
  *   storage on, so it reports rather than writes.
  * - conflicting: nothing is applied. The caller resolves via the branch
- *   dialog (§6 of CONCURRENCY_AND_BRANCHING.md); lca and both tips are
- *   returned for that.
+ *   dialog; lca and both tips are returned for that.
  */
 export function receiveOp(layerEl, ops, headId, incomingId, joinSequence = []) {
   const { kind, lca: base } = classify(ops, headId, incomingId)

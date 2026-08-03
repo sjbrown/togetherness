@@ -28,7 +28,7 @@ const XLINK_NS = 'http://www.w3.org/1999/xlink'
 const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789'
 
 import { number, bool } from './tools-schema.js';
-import { runInEnvelopeSync, commitGesture } from './envelope.js';
+import { runInEnvelope, commitGesture } from './envelope.js';
 import { consumeParents, setHead, getHead, addMergeTip } from './op_head.js';
 import { getOps, appendOp, getOp, heads, labelBranches, branchAuthors, forkJoinSequence, toyUndoRedoStacks } from './op_dag.js';
 import { invert as invertWire, apply as applyWire } from './op_wire_mutation.js';
@@ -115,8 +115,6 @@ export function colorMatrixValues(color) {
   const f = v => v.toFixed(4)
   return `${f(r)} 0 0 0 0  ${f(g)} 0 0 0 0  ${f(b)} 0 0 0 0  0 0 0 1 0`
 }
-
-// ── SVG import: DOM → Yjs XML ───────────────────────────────────────────────────
 
 // Rewrite url(#id) references in an attribute value using the id map.
 function rewriteUrlRefs(value, idMap) {
@@ -265,7 +263,7 @@ export function isForeignToyG(el) {
  * parsedNode is el's subtree normalised for the data-id invariant
  * (normalizeForeignToySubtree) with any embedded <script>s already
  * stripped, and those scripts have already been hoisted into ydoc's own
- * scripts fragment — same as at placement time (addToySync) — since
+ * scripts fragment — same as at placement time (addToy) — since
  * hoisting needs data-toy-type, which is exactly the kind of toy-contract
  * detail a caller storing/exporting documents shouldn't have to read.
  * scripts is returned too, for a caller that wants to know what was found
@@ -490,7 +488,7 @@ export function buildToyDom(attrs, svgText) {
 
 /**
  * Place a toy into the live layer. Hoists the template's inline scripts
- * into ydoc, then appends the wrapper. Call from inside runInEnvelopeSync.
+ * into ydoc, then appends the wrapper. Call from inside runInEnvelope.
  */
 export function addToyDom(ydoc, layerEl, attrs, svgText) {
   const { toyEl, scripts } = buildToyDom(attrs, svgText)
@@ -534,7 +532,7 @@ export async function addToy(ydoc, layerEl, attrs) {
 /**
  * Remove a toy element from the DOM by id — searches the whole toys tree,
  * including nested. A DOM operation, like every other structural toy
- * mutation now. Call from inside runInEnvelopeSync; this function
+ * mutation now. Call from inside runInEnvelope; this function
  * doesn't open its own envelope, so it composes with whatever else the
  * caller wants folded into the same transaction (a batch delete — see
  * app.js's deleteMultiSelected, which already wraps its own calls in one
@@ -559,7 +557,7 @@ export function deleteToyDom(layerEl, id) {
  * (containerElId null/undefined).
  *
  * A DOM operation, like every other structural toy mutation now — NOT a
- * pure Yjs write. Call from inside runInEnvelopeSync; this function
+ * pure Yjs write. Call from inside runInEnvelope; this function
  * doesn't open its own envelope, so it composes with whatever else the
  * caller wants folded into the same transaction (a reposition, a
  * contents_change_handler cascade — see commitMove's drop-into-container
@@ -953,7 +951,7 @@ export function getTtState(yToy) {
 
 /**
  * Edit a toy's own color and/or name — a DOM operation, like every other
- * content-mutating toy operation now. Call from inside runInEnvelopeSync;
+ * content-mutating toy operation now. Call from inside runInEnvelope;
  * this function doesn't open its own envelope.
  *   color — every one of the toy's own feColorMatrix nodes is updated and
  *           data-color on the toy's own wrapper is kept in sync.
@@ -1158,7 +1156,7 @@ export function getMenuActions(svgEl) {
 
 // ── gesture-triggered cascade (DOM-only, no Yjs until the final commit) ────
 //
-// invokeMenuActionSync / initializeToySync use these.
+// invokeMenuAction / initializeToy use these.
 //
 // These walk the live DOM directly and never re-render, because a gesture's
 // handler and everything it cascades into mutate the same live DOM in place
@@ -1238,7 +1236,7 @@ function runContentsChangeCascadeInto(allRecords, layerEl) {
         .map(name => globalThis[name])
         .filter(ns => ns && typeof ns.contents_change_handler === 'function')
       if (!handlers.length) continue
-      const records = runInEnvelopeSync(containerEl, () => {
+      const records = runInEnvelope(containerEl, () => {
         handlers.forEach(ns => ns.contents_change_handler(containerEl))
       })
       stepRecords.push(...records)
@@ -1256,8 +1254,8 @@ function runContentsChangeCascadeInto(allRecords, layerEl) {
  * anywhere in this: the DOM stays authoritative and current for every step,
  * and nothing is committed until that final call.
  *
- * This is the shared machinery behind invokeMenuActionSync/
- * initializeToySync (below) — also exported directly for a caller whose
+ * This is the shared machinery behind invokeMenuAction/
+ * initializeToy (below) — also exported directly for a caller whose
  * gesture isn't a toy handler at all (app.js's commitMove folds a
  * drag-drop reparent + reposition through this too) but still needs the
  * exact same "one atomic operation, cascade included" treatment.
@@ -1269,9 +1267,9 @@ export function ensureLayerId(layerEl) {
   return layerEl
 }
 
-export function runGestureSync(ydoc, layerEl, fn, opts = {}) {
+export function runGesture(ydoc, layerEl, fn, opts = {}) {
   ensureLayerId(layerEl)
-  const allRecords = runInEnvelopeSync(layerEl, fn)
+  const allRecords = runInEnvelope(layerEl, fn)
   runContentsChangeCascadeInto(allRecords, layerEl)
 
   const { tableId } = opts
@@ -1303,7 +1301,7 @@ export function runGestureSync(ydoc, layerEl, fn, opts = {}) {
  * commit lands under null, the same as every other folded call site (see
  * undo_redo.js's "Atomicity" note).
  */
-export function invokeMenuActionSync(ydoc, layerEl, svgEl, namespace, key, evt, authorId, tableId) {
+export function invokeMenuAction(ydoc, layerEl, svgEl, namespace, key, evt, authorId, tableId) {
   const ns    = globalThis[namespace]
   const entry = ns?.menu?.[key]
   if (!entry || typeof entry.handler !== 'function') {
@@ -1314,7 +1312,7 @@ export function invokeMenuActionSync(ydoc, layerEl, svgEl, namespace, key, evt, 
   }
   let result
   ydoc.transact(() => {
-    result = runGestureSync(ydoc, layerEl, () => entry.handler.call(svgEl, evt),
+    result = runGesture(ydoc, layerEl, () => entry.handler.call(svgEl, evt),
       { gesture: `menu:${namespace}.${key}`, authorId, tableId })
   })
   return result
@@ -1333,14 +1331,14 @@ export function invokeMenuActionSync(ydoc, layerEl, svgEl, namespace, key, evt, 
  * Ordinarily there's nothing to fold. But initialize() has the freedom
  * to mutate anything in toys-layer.
  */
-export function initializeToySync(ydoc, layerEl, svgEl, toyType, authorId, tableId) {
+export function initializeToy(ydoc, layerEl, svgEl, toyType, authorId, tableId) {
   const initializers = getNamespacesForType(toyType)
     .map(name => globalThis[name])
     .filter(ns => ns && typeof ns.initialize === 'function')
   if (!initializers.length) return
 
   ydoc.transact(() => {
-    runGestureSync(ydoc, layerEl, () => {
+    runGesture(ydoc, layerEl, () => {
       initializers.forEach(ns => ns.initialize(svgEl))
     }, { gesture: 'initialize', authorId, tableId })
   })
@@ -1371,7 +1369,7 @@ export function activateAllToyScriptsDom(ydoc, layerEl) {
  * makeLayerAPI — the canonical LayerAPI for the toys layer.
  *
  * getLayerEl returns the live #toys-layer. Everything here reads and
- * writes that DOM; writes run inside runGestureSync so the envelope
+ * writes that DOM; writes run inside runGesture so the envelope
  * captures them. The contract app.js relies on is that whatever find()
  * returns is what the other methods accept — here, a rendered <g>.
  */
@@ -1447,7 +1445,7 @@ export function markProjectedAt(layerEl, opId) {
 export async function placeToy(ydoc, layerEl, attrs, opts = {}) {
   const svgText = await fetchToySvgText(attrs.toyType)
   let toyEl = null
-  runGestureSync(ydoc, layerEl, () => {
+  runGesture(ydoc, layerEl, () => {
     toyEl = addToyDom(ydoc, layerEl, attrs, svgText)
   }, { gesture: 'place', ...opts })
   activateToyScripts(ydoc, attrs.toyType)
@@ -1463,7 +1461,7 @@ export async function placeToy(ydoc, layerEl, attrs, opts = {}) {
  */
 export function importToys(ydoc, layerEl, toyEls, opts = {}) {
   if (!toyEls?.length) return null
-  const result = runGestureSync(ydoc, layerEl, () => {
+  const result = runGesture(ydoc, layerEl, () => {
     toyEls.forEach(el => layerEl.appendChild(el))
   }, { gesture: 'import', ...opts })
   activateAllToyScriptsDom(ydoc, layerEl)
@@ -1534,7 +1532,7 @@ function applyToyUndoRedo(ydoc, layerEl, tableId, authorId, targetId, verb) {
   // caller show a real label ("undid: move") instead of "undid: undo".
   const describedGesture = target.gesture.replace(/^(undo|redo):/, '')
 
-  const result = runGestureSync(ydoc, layerEl, () => {
+  const result = runGesture(ydoc, layerEl, () => {
     applyWire(inverseMutations, layerEl)
   }, { gesture: `${verb}:${describedGesture}`, authorId, tableId })
 
@@ -1556,7 +1554,7 @@ export function redoToyGesture(ydoc, layerEl, tableId, authorId) {
 }
 
 /**
- * Delete several toys as one gesture, one operation — not one runGestureSync
+ * Delete several toys as one gesture, one operation — not one runGesture
  * call per id. commitGesture has no free nested-transaction collapsing the
  * way Y.UndoManager gives drawing/boundaries; a loop of individual
  * L.delete(id) calls would mint N separate operations, and undo only ever
@@ -1570,7 +1568,7 @@ export function redoToyGesture(ydoc, layerEl, tableId, authorId) {
  */
 export function deleteToysBatch(ydoc, layerEl, ids, { authorId, tableId } = {}) {
   let deletedAny = false
-  const result = runGestureSync(ydoc, layerEl, () => {
+  const result = runGesture(ydoc, layerEl, () => {
     for (const id of ids) {
       if (deleteToyDom(layerEl, id)) deletedAny = true
     }
@@ -1585,7 +1583,7 @@ export function deleteToysBatch(ydoc, layerEl, ids, { authorId, tableId } = {}) 
  */
 export function moveToysBatch(ydoc, layerEl, moves, { authorId, tableId } = {}) {
   let movedAny = false
-  const result = runGestureSync(ydoc, layerEl, () => {
+  const result = runGesture(ydoc, layerEl, () => {
     for (const { id, x, y } of moves) {
       const el = findToyDom(layerEl, id)
       if (el) { applyMoveDom(el, x, y); movedAny = true }
@@ -1690,7 +1688,7 @@ export function buildToyForkSeed(ydoc, lca, splitter, { authorId, joinSequence =
 
 export function makeLayerAPI(ydoc, getLayerEl, myId, tableId, isCreator = false) {  const layer = () => (typeof getLayerEl === 'function' ? getLayerEl() : getLayerEl)
   const gesture = (name, fn) =>
-    runGestureSync(ydoc, layer(), fn, { gesture: name, authorId: myId, tableId })
+    runGesture(ydoc, layer(), fn, { gesture: name, authorId: myId, tableId })
 
   return {
     find:            (id)            => findToyDom(layer(), id),

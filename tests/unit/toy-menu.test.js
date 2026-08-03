@@ -2,7 +2,7 @@
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { addToy, _clearSvgTextCache,
-         _resetToyScriptState, activateToyScripts, getMenuActions, invokeMenuActionSync } from '../../src/toys.js'
+         _resetToyScriptState, activateToyScripts, getMenuActions, invokeMenuAction } from '../../src/toys.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
@@ -101,16 +101,16 @@ describe('getMenuActions', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// invokeMenuActionSync — running a handler through the envelope
+// invokeMenuAction — running a handler through the envelope
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('invokeMenuActionSync', () => {
+describe('invokeMenuAction', () => {
   test('runs the handler inside an envelope; the mutation lands in the DOM', async () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
     const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
-    invokeMenuActionSync(ydoc, layerEl, toyEl, 'widgetNs', 'Bump')
+    invokeMenuAction(ydoc, layerEl, toyEl, 'widgetNs', 'Bump')
 
     expect(layerEl.querySelector('#t1__tspan_count').textContent).toBe('1')
   })
@@ -120,12 +120,12 @@ describe('invokeMenuActionSync', () => {
     const layerEl = freshLayer()
     const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
-    invokeMenuActionSync(ydoc, layerEl, toyEl, 'widgetNs', 'Bump')
-    // invokeMenuActionSync doesn't rebuild the layer, so this is still the
+    invokeMenuAction(ydoc, layerEl, toyEl, 'widgetNs', 'Bump')
+    // invokeMenuAction doesn't rebuild the layer, so this is still the
     // same live node — re-querying just confirms callers can safely do so
     // rather than needing to hold onto the original element.
     const toyElAfter1 = layerEl.querySelector('[data-id="t1"]')
-    invokeMenuActionSync(ydoc, layerEl, toyElAfter1, 'widgetNs', 'Bump')
+    invokeMenuAction(ydoc, layerEl, toyElAfter1, 'widgetNs', 'Bump')
 
     expect(layerEl.querySelector('#t1__tspan_count').textContent).toBe('2')
   })
@@ -136,7 +136,7 @@ describe('invokeMenuActionSync', () => {
     const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
     expect(() =>
-      invokeMenuActionSync(ydoc, layerEl, toyEl, 'widgetNs', 'Hidden')
+      invokeMenuAction(ydoc, layerEl, toyEl, 'widgetNs', 'Hidden')
     ).toThrow(/not applicable/)
     expect(layerEl.querySelector('#t1__tspan_count').textContent).toBe('0')
   })
@@ -147,10 +147,10 @@ describe('invokeMenuActionSync', () => {
     const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
     expect(() =>
-      invokeMenuActionSync(ydoc, layerEl, toyEl, 'nopeNs', 'Bump')
+      invokeMenuAction(ydoc, layerEl, toyEl, 'nopeNs', 'Bump')
     ).toThrow(/no such menu action/)
     expect(() =>
-      invokeMenuActionSync(ydoc, layerEl, toyEl, 'widgetNs', 'Nope')
+      invokeMenuAction(ydoc, layerEl, toyEl, 'widgetNs', 'Nope')
     ).toThrow(/no such menu action/)
   })
 })
