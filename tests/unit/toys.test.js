@@ -5,11 +5,10 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  svgTextToYXml, addToy, deleteToy, listToys, findToy, TOY_TYPES, TOOLS,
-  getGeom, _toSVGEl, getTtStateSchema, edit, reparentToy,
+  svgTextToDom, addToy, addToyDom, deleteToyDom, TOY_TYPES, TOOLS,
+  getGeom, getTtStateSchema, editDom, reparentToyDom, findToyDom,
   hslToRgb, colorMatrixValues,
-  _clearSvgTextCache, _resetToyScriptState,
-  yNodeFor, clearYNodeMap,
+  _clearSvgTextCache, _resetToyScriptState, activateAllToyScriptsDom,
   newToyId, _getScriptsFragment,
 } from '../../src/toys.js'
 
@@ -23,13 +22,6 @@ const TRAY_SUM_SVG  = fs.readFileSync(path.join(TOY_DIR, 'tray_sum.svg'), 'utf8'
 const TRAY_JS        = fs.readFileSync(path.join(TOY_DIR, 'js/tray.js'), 'utf8')
 const D6_SVG         = fs.readFileSync(path.join(TOY_DIR, 'dice_d6.svg'), 'utf8')
 const DICE_UTILS_JS  = fs.readFileSync(path.join(TOY_DIR, 'js/dice_utils.js'), 'utf8')
-
-// Local accessor for the toys fragment + meta map. The production code creates
-// these via ydoc.get*() directly (see tables.js's makeDoc); tests just need a
-// thin equivalent.
-const getToysLayer = (ydoc) => ({
-  yToys: ydoc.getXmlFragment('toys'),
-})
 
 // ── Fixtures & helpers ──────────────────────────────────────────────────────
 
@@ -53,35 +45,14 @@ const TOY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
   </g>
 </svg>`
 
-// First descendant (or self) whose nodeName matches.
-function find(yEl, nodeName) {
-  if (yEl.nodeName === nodeName) return yEl
-  for (const c of yEl.toArray()) {
-    if (c instanceof Y.XmlElement) {
-      const hit = find(c, nodeName)
-      if (hit) return hit
-    }
-  }
-  return null
-}
+// First descendant matching a tag name.
+const find = (root, tagName) => root.querySelector(tagName)
+// All descendants matching a tag name.
+const findAll = (root, tagName) => [...root.querySelectorAll(tagName)]
 
-// All descendants (or self) whose nodeName matches.
-function findAll(yEl, nodeName, out = []) {
-  if (yEl.nodeName === nodeName) out.push(yEl)
-  for (const c of yEl.toArray()) {
-    if (c instanceof Y.XmlElement) findAll(c, nodeName, out)
-  }
-  return out
-}
-
-// svgTextToYXml returns { ySvg, colorMatrices }; reading ySvg throws until integrated.
-// Integrate into a throwaway doc, then return the readable root.
+// svgTextToDom returns { svgEl, ... } — a real, immediately-readable DOM element.
 function importRoot(svgText, prefix) {
-  const ydoc = new Y.Doc()
-  const frag = ydoc.getXmlFragment('test')
-  const { ySvg } = svgTextToYXml(svgText, prefix)
-  ydoc.transact(() => frag.insert(0, [ySvg]))
-  return frag.toArray()[0]
+  return svgTextToDom(svgText, prefix).svgEl
 }
 
 function sync(a, b) {
@@ -92,7 +63,6 @@ function sync(a, b) {
 // addToy fetches the toy file; stub it to return our fixture.
 beforeEach(() => {
   _clearSvgTextCache()
-  clearYNodeMap()
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, text: async () => TOY_SVG })))
 })
 afterEach(() => { vi.unstubAllGlobals() })
@@ -111,10 +81,10 @@ describe('newToyId', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// svgTextToYXml — the SVG importer (the real new machinery)
+// svgTextToDom — the SVG importer
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('svgTextToYXml', () => {
+describe('svgTextToDom — namespacing, url rewriting, viewBox synthesis', () => {
   test('namespaces the root id', () => {
     expect(importRoot(TOY_SVG, 'P__').getAttribute('id')).toBe('P__token_solidcolor')
   })
@@ -135,11 +105,12 @@ describe('svgTextToYXml', () => {
   })
 
   test('rewrites xlink:href fragment references', () => {
-    expect(find(importRoot(TOY_SVG, 'P__'), 'use').getAttribute('xlink:href')).toBe('#P__token_front')
+    const XLINK_NS = 'http://www.w3.org/1999/xlink'
+    expect(find(importRoot(TOY_SVG, 'P__'), 'use').getAttributeNS(XLINK_NS, 'href')).toBe('#P__token_front')
   })
 
-  test('extracts <script> elements as data, never into the Yjs tree', () => {
-    const { scripts } = svgTextToYXml(TOY_SVG, 'P__')
+  test('extracts <script> elements as data, never into the toy\u2019s own subtree', () => {
+    const { scripts } = svgTextToDom(TOY_SVG, 'P__')
     expect(scripts.length).toBe(2)
 
     const srcScript = scripts.find(s => s.src)
@@ -150,7 +121,7 @@ describe('svgTextToYXml', () => {
     const inlineScript = scripts.find(s => s.namespace === 'token_solidcolor')
     expect(inlineScript.code).toContain('token_solidcolor')
 
-    // Never in the Yjs tree itself, live or at rest — see toys.js,
+    // Never in the toy's own subtree itself, live or at rest — see toys.js,
     // "Script hoisting".
     expect(findAll(importRoot(TOY_SVG, 'P__'), 'script').length).toBe(0)
   })
@@ -161,13 +132,13 @@ describe('svgTextToYXml', () => {
 
   test('drops foreign-namespace attributes', () => {
     const root = importRoot(TOY_SVG, 'P__')
-    expect(root.getAttribute('inkscape:version')).toBeUndefined()
-    expect(find(root, 'g').getAttribute('inkscape:label')).toBeUndefined()
+    expect(root.getAttribute('inkscape:version')).toBeNull()
+    expect(find(root, 'g').getAttribute('inkscape:label')).toBeNull()
   })
 
   test('preserves element text content', () => {
     const tspan = find(importRoot(TOY_SVG, 'P__'), 'tspan')
-    expect(tspan.toArray()[0].toString()).toBe('5')
+    expect(tspan.textContent).toBe('5')
   })
 
   test('synthesizes a viewBox from width/height when absent', () => {
@@ -230,140 +201,73 @@ describe('svgTextToYXml', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// addToy / deleteToy / listToys
+// addToy / deleteToyDom / toysDataDom
 // ─────────────────────────────────────────────────────────────────────────────
+//
+// addToy's own wrapper-attribute/positioning/id-namespacing/script-hoisting
+// behavior is comprehensively covered in toys-dom-ops.test.js (it shares
+// buildToyDom with addToyDom) -- kept here is what isn't covered there:
+// the reject-and-write-nothing failure paths, deleteToyDom's own return
+// contract, and the "scripts never in the toy's own DOM" property.
 
 describe('addToy', () => {
-  test('places a <g> wrapper carrying placement + app metadata', async () => {
+  test('throws on unknown toy type and places nothing', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 100, y: 200, color: '#abc' })
-
-    expect(yToys.length).toBe(1)
-    const g = yToys.toArray()[0]
-    expect(g.nodeName).toBe('g')
-    expect(g.getAttribute('class')).toBe('toy')
-    expect(g.getAttribute('data-toy-id')).toBe('t1')
-    expect(g.getAttribute('data-toy-type')).toBe('player_marker')
-    expect(g.getAttribute('data-color')).toBe('#abc')
-  })
-
-  test('embeds an <svg> sub-document sized and centered on (x, y), using the file\u2019s own native size (TOY_SVG is 80\u00d7100)', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 100, y: 200, color: '#abc' })
-
-    const svg = find(yToys.toArray()[0], 'svg')
-    expect(svg).toBeTruthy()
-    expect(svg.getAttribute('width')).toBe('80')
-    expect(svg.getAttribute('height')).toBe('100')
-    expect(svg.getAttribute('x')).toBe('60')   // 100 - 80/2
-    expect(svg.getAttribute('y')).toBe('150')  // 200 - 100/2
-  })
-
-  test('records data-toy-type and data-color on the <g> wrapper', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0, color: 'hsl(200, 80%, 50%)' })
-
-    const g = yToys.toArray()[0]
-    expect(g.getAttribute('data-toy-type')).toBe('player_marker')
-    expect(g.getAttribute('data-color')).toBe('hsl(200, 80%, 50%)')
-  })
-
-  test('getTtState captures color from the <g> data-color attribute', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0, color: 'hsl(200, 80%, 50%)' })
-    const { getTtState } = await import('../../src/toys.js')
-    const state = getTtState(yToys.toArray()[0])
-    expect(state.color).toBe('hsl(200, 80%, 50%)')
-  })
-
-  test('ids inside the embedded toy are namespaced by instance id', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0, color: '#abc' })
-    expect(find(yToys.toArray()[0], 'circle').getAttribute('id')).toBe('t1__token_front')
-  })
-
-  test('throws on unknown toy type and writes nothing', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     await expect(
-      addToy(ydoc, yToys, { id: 'x', toyType: 'nope', x: 0, y: 0 })
+      addToy(ydoc, layerEl, { id: 'x', toyType: 'nope', x: 0, y: 0 })
     ).rejects.toThrow(/unknown toy type/)
-    expect(yToys.length).toBe(0)
+    expect(layerEl.children.length).toBe(0)
   })
 
   test('throws when the toy file cannot be loaded', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 })))
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     await expect(
-      addToy(ydoc, yToys, { id: 'x', toyType: 'player_marker', x: 0, y: 0 })
+      addToy(ydoc, layerEl, { id: 'x', toyType: 'player_marker', x: 0, y: 0 })
     ).rejects.toThrow(/failed to load/)
-    expect(yToys.length).toBe(0)
+    expect(layerEl.children.length).toBe(0)
   })
 })
 
-describe('deleteToy', () => {
-  test('removes the toy <g> from the fragment', async () => {
+describe('deleteToyDom', () => {
+  test('removes the toy <g> from the layer', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
-    await addToy(ydoc, yToys, { id: 't2', toyType: 'player_marker', x: 0, y: 0 })
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    await addToy(ydoc, layerEl, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+    await addToy(ydoc, layerEl, { id: 't2', toyType: 'player_marker', x: 0, y: 0 })
 
-    expect(deleteToy(ydoc, yToys, 't1')).toBe(true)
-    expect(yToys.length).toBe(1)
-    expect(yToys.toArray()[0].getAttribute('data-toy-id')).toBe('t2')
+    expect(deleteToyDom(layerEl, 't1')).toBe(true)
+    expect(layerEl.children.length).toBe(1)
+    expect(layerEl.children[0].getAttribute('data-toy-id')).toBe('t2')
   })
 
   test('returns false for an unknown id', () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    expect(deleteToy(ydoc, yToys, 'nope')).toBe(false)
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    expect(deleteToyDom(layerEl, 'nope')).toBe(false)
   })
 })
 
-describe('listToys', () => {
-  test('returns placed toys in z-order with element, type, and meta', async () => {
+describe('toysDataDom / scripts stay out of the toy\'s own DOM', () => {
+  test('scripts are never in a placed toy\'s own DOM \u2014 hoisted to the document instead', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0, color: '#111' })
-    await addToy(ydoc, yToys, { id: 't2', toyType: 'player_marker', x: 0, y: 0, color: '#222' })
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
 
-    const toys = listToys(yToys)
-    expect(toys.map(svgEl => svgEl.getAttribute('data-id'))).toEqual(['t1', 't2'])
-    expect(toys[0].getAttribute('data-toy-type')).toBe('player_marker')
-    expect(toys[0].tagName).toBe('g')
-    expect(toys[0].getAttribute('data-color')).toBe('#111')
-    expect(toys[1].getAttribute('data-color')).toBe('#222')
-  })
-
-  test('scripts are never in a toy\'s own Yjs subtree or the rendered DOM — hoisted to the document instead', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
-
-    // Not in the toy's own Yjs subtree...
-    expect(findAll(findToy(yToys, 't1'), 'script').length).toBe(0)
-    // ...not in the mirrored DOM used for on-screen rendering...
-    const [toyEl] = listToys(yToys)
+    // Not in the mirrored DOM used for on-screen rendering...
     expect(toyEl.querySelector('script')).toBeNull()
     // ...hoisted into the document's own scripts fragment instead.
     expect(_getScriptsFragment(ydoc).toArray().length).toBe(1) // just the inline 'd6'
   })
-
 })
 
 describe('scoped lookup ($)', () => {
   test('rewrites a bare #id to the toy-instance-namespaced id and finds it', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
 
-    const toyEl = _toSVGEl(findToy(yToys, 't1'))
     const found = toyEl.$('#token_front')
     expect(found).not.toBeNull()
     expect(found.getAttribute('id')).toBe('t1__token_front')
@@ -371,10 +275,9 @@ describe('scoped lookup ($)', () => {
 
   test('rewrites every #token in a compound selector, leaving classes alone', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
 
-    const toyEl = _toSVGEl(findToy(yToys, 't1'))
     const found = toyEl.$('#label #ts')
     expect(found).not.toBeNull()
     expect(found.getAttribute('id')).toBe('t1__ts')
@@ -382,195 +285,33 @@ describe('scoped lookup ($)', () => {
 
   test('returns null when the rewritten id has no match, same as querySelector', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
 
-    const toyEl = _toSVGEl(findToy(yToys, 't1'))
     expect(toyEl.$('#does_not_exist')).toBeNull()
   })
 
   test('two instances of the same type resolve to their own ids, not the other\u2019s', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'a', toyType: 'player_marker', x: 0, y: 0 })
-    await addToy(ydoc, yToys, { id: 'b', toyType: 'player_marker', x: 0, y: 0 })
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const elA = await addToy(ydoc, layerEl, { id: 'a', toyType: 'player_marker', x: 0, y: 0 })
+    const elB = await addToy(ydoc, layerEl, { id: 'b', toyType: 'player_marker', x: 0, y: 0 })
 
-    const elA = _toSVGEl(findToy(yToys, 'a'))
-    const elB = _toSVGEl(findToy(yToys, 'b'))
     expect(elA.$('#token_front').getAttribute('id')).toBe('a__token_front')
     expect(elB.$('#token_front').getAttribute('id')).toBe('b__token_front')
   })
 
   test('.$() is only on the toy root; a nested element reaches it via closest()', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
 
-    const toyEl = _toSVGEl(findToy(yToys, 't1'))
     const nested = toyEl.querySelector('#t1__ts')
     expect(nested.$).toBeUndefined()
 
     const root = nested.closest('[data-toy-id]')
     expect(root).toBe(toyEl)
     expect(root.$('#token_front').getAttribute('id')).toBe('t1__token_front')
-  })
-})
-
-describe('yNodeFor / clearYNodeMap', () => {
-  test('resolves a deep rendered DOM element back to its Y.XmlElement', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
-
-    const [toyEl] = listToys(yToys)
-    const tspanDom = toyEl.querySelector('tspan')
-    expect(tspanDom).toBeTruthy()
-
-    const yTspan = yNodeFor(tspanDom)
-    expect(yTspan).toBeInstanceOf(Y.XmlElement)
-    expect(yTspan.nodeName).toBe('tspan')
-    // Same node found by walking the Yjs tree directly for the same id.
-    expect(yTspan.getAttribute('id')).toBe('t1__ts')
-    expect(yTspan).toBe(find(findToy(yToys, 't1'), 'tspan'))
-  })
-
-  test('resolves the mirrored text node inside a tspan back to its Y.XmlText', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
-
-    const [toyEl] = listToys(yToys)
-    const textDom = toyEl.querySelector('tspan').firstChild
-    expect(textDom.nodeType).toBe(Node.TEXT_NODE)
-
-    const yText = yNodeFor(textDom)
-    expect(yText).toBeInstanceOf(Y.XmlText)
-    expect(yText.toString()).toBe('5')
-  })
-
-  test('returns undefined for a DOM node that was never mirrored', () => {
-    const orphan = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    expect(yNodeFor(orphan)).toBeUndefined()
-  })
-
-  test('clearYNodeMap() drops prior entries', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
-
-    const [toyEl] = listToys(yToys)
-    const tspanDom = toyEl.querySelector('tspan')
-    expect(yNodeFor(tspanDom)).toBeTruthy()
-
-    clearYNodeMap()
-    expect(yNodeFor(tspanDom)).toBeUndefined()
-  })
-
-  test('re-rendering repopulates the map for the new DOM nodes', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
-
-    const [firstRender] = listToys(yToys)
-    const [secondRender] = listToys(yToys)
-    const firstTspan  = firstRender.querySelector('tspan')
-    const secondTspan = secondRender.querySelector('tspan')
-
-    expect(firstTspan).not.toBe(secondTspan)
-    expect(yNodeFor(firstTspan)).toBeTruthy()
-    expect(yNodeFor(secondTspan)).toBeTruthy()
-    expect(yNodeFor(firstTspan)).toBe(yNodeFor(secondTspan)) // same underlying Y.XmlElement
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CRDT convergence — the property that justifies XmlFragment over Y.Map
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('convergence', () => {
-  test('concurrent placements on two peers both survive after sync', async () => {
-    const p1 = new Y.Doc(); const t1 = getToysLayer(p1)
-    const p2 = new Y.Doc(); const t2 = getToysLayer(p2)
-
-    await addToy(p1, t1.yToys, { id: 'a', toyType: 'player_marker', x: 0, y: 0 })
-    await addToy(p2, t2.yToys, { id: 'b', toyType: 'player_marker', x: 0, y: 0 })
-
-    sync(p1, p2)
-
-    expect(t1.yToys.length).toBe(2)
-    expect(t2.yToys.length).toBe(2)
-    const ids1 = t1.yToys.toArray().map(g => g.getAttribute('data-toy-id')).sort()
-    const ids2 = t2.yToys.toArray().map(g => g.getAttribute('data-toy-id')).sort()
-    expect(ids1).toEqual(['a', 'b'])
-    expect(ids2).toEqual(['a', 'b'])
-  })
-
-  test('concurrent edits to different parts of one toy merge (not last-write-wins)', async () => {
-    const p1 = new Y.Doc(); const t1 = getToysLayer(p1)
-    await addToy(p1, t1.yToys, { id: 'shared', toyType: 'player_marker', x: 0, y: 0 })
-
-    const p2 = new Y.Doc(); const t2 = getToysLayer(p2)
-    sync(p1, p2)
-
-    // partition: p1 recolors the inner circle; p2 moves the embedded svg
-    p1.transact(() => find(t1.yToys.toArray()[0], 'circle').setAttribute('fill', '#f00'))
-    p2.transact(() => find(t2.yToys.toArray()[0], 'svg').setAttribute('x', '99'))
-
-    sync(p1, p2)
-
-    for (const t of [t1, t2]) {
-      expect(find(t.yToys.toArray()[0], 'circle').getAttribute('fill')).toBe('#f00')
-      expect(find(t.yToys.toArray()[0], 'svg').getAttribute('x')).toBe('99')
-    }
-  })
-
-  test('both peers converge to byte-identical state', async () => {
-    const p1 = new Y.Doc(); const t1 = getToysLayer(p1)
-    const p2 = new Y.Doc(); const t2 = getToysLayer(p2)
-    await addToy(p1, t1.yToys, { id: 'a', toyType: 'player_marker', x: 0, y: 0 })
-    await addToy(p2, t2.yToys, { id: 'b', toyType: 'player_marker', x: 0, y: 0 })
-    sync(p1, p2)
-    const s1 = Buffer.from(Y.encodeStateAsUpdate(p1)).toString('hex')
-    const s2 = Buffer.from(Y.encodeStateAsUpdate(p2)).toString('hex')
-    expect(s1).toBe(s2)
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
-// findToy
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('findToy', () => {
-  test('returns the <g> wrapper for a known id', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
-    const g = findToy(yToys, 't1')
-    expect(g).not.toBeNull()
-    expect(g.nodeName).toBe('g')
-    expect(g.getAttribute('data-toy-id')).toBe('t1')
-  })
-
-  test('returns null for an unknown id', () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    expect(findToy(yToys, 'nope')).toBeNull()
-  })
-
-  test('returns null on an empty fragment', () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    expect(findToy(yToys, 't1')).toBeNull()
-  })
-
-  test('finds the correct toy among several', async () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'a', toyType: 'player_marker', x: 0, y: 0 })
-    await addToy(ydoc, yToys, { id: 'b', toyType: 'player_marker', x: 0, y: 0 })
-    await addToy(ydoc, yToys, { id: 'c', toyType: 'player_marker', x: 0, y: 0 })
-    expect(findToy(yToys, 'b').getAttribute('data-toy-id')).toBe('b')
-    expect(findToy(yToys, 'c').getAttribute('data-toy-id')).toBe('c')
   })
 })
 
@@ -585,13 +326,12 @@ describe('getGeom (toys)', () => {
   // getGeom reads those attrs off the rendered svgEl — no padding.
   const TOY_WIDTH  = 80
   const TOY_HEIGHT = 100
-  const elFor = (yToys, id) => _toSVGEl(findToy(yToys, id))
 
   test('returns numeric bbox centered on the placement point', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 100, y: 200 })
-    const geo = getGeom(elFor(yToys, 't1'))
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'player_marker', x: 100, y: 200 })
+    const geo = getGeom(toyEl)
     expect(geo).toEqual({ x: 100 - TOY_WIDTH / 2, y: 200 - TOY_HEIGHT / 2, width: TOY_WIDTH, height: TOY_HEIGHT })
     expect(typeof geo.x).toBe('number')
     expect(typeof geo.width).toBe('number')
@@ -599,9 +339,9 @@ describe('getGeom (toys)', () => {
 
   test('returns the exact embedded svg bounds', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 50, y: 80 })
-    const geo = getGeom(elFor(yToys, 't1'))
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'player_marker', x: 50, y: 80 })
+    const geo = getGeom(toyEl)
     expect(geo.x).toBe(50 - TOY_WIDTH / 2)
     expect(geo.y).toBe(80 - TOY_HEIGHT / 2)
     expect(geo.width).toBe(TOY_WIDTH)
@@ -609,39 +349,34 @@ describe('getGeom (toys)', () => {
   })
 
   test('returns null for a missing toy / nullish input', () => {
-    const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    expect(getGeom(elFor(yToys, 'nope'))).toBeNull()
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    expect(getGeom(layerEl.querySelector('[data-id="nope"]'))).toBeNull()
     expect(getGeom(null)).toBeNull()
   })
 
   test('returns correct geometry after the embedded svg is repositioned', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 100, y: 100 })
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'player_marker', x: 100, y: 100 })
 
-    // simulate a drag: mutate the embedded svg's x and y directly in the CRDT
-    const g   = findToy(yToys, 't1')
-    const svg = g.toArray().find(e => e instanceof Y.XmlElement && e.nodeName === 'svg')
-    ydoc.transact(() => {
-      svg.setAttribute('x', '200')
-      svg.setAttribute('y', '300')
-    })
+    // simulate a drag: mutate the embedded svg's x and y directly
+    const svg = toyEl.querySelector('svg')
+    svg.setAttribute('x', '200')
+    svg.setAttribute('y', '300')
 
-    // re-render after the mutation
-    const geo = getGeom(elFor(yToys, 't1'))
+    const geo = getGeom(toyEl)
     expect(geo.x).toBe(200)
     expect(geo.y).toBe(300)
   })
 
   test('geometry from two instances does not bleed between them', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'a', toyType: 'player_marker', x: 100, y: 100 })
-    await addToy(ydoc, yToys, { id: 'b', toyType: 'player_marker', x: 400, y: 400 })
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const toyA = await addToy(ydoc, layerEl, { id: 'a', toyType: 'player_marker', x: 100, y: 100 })
+    const toyB = await addToy(ydoc, layerEl, { id: 'b', toyType: 'player_marker', x: 400, y: 400 })
 
-    const geoA = getGeom(elFor(yToys, 'a'))
-    const geoB = getGeom(elFor(yToys, 'b'))
+    const geoA = getGeom(toyA)
+    const geoB = getGeom(toyB)
     expect(geoA.x).toBe(100 - TOY_WIDTH / 2)
     expect(geoB.x).toBe(400 - TOY_WIDTH / 2)
     expect(geoA.x).not.toBe(geoB.x)
@@ -649,21 +384,21 @@ describe('getGeom (toys)', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Movement — dragging commits the final position to the embedded <svg>'s x/y.
-// These exercise the CRDT contract the drag handler relies on (the handler
-// itself lives in index.html; here we assert the data-level behaviour).
+// Movement — a committed drag ends up at the embedded <svg>'s x/y. The
+// concurrent-move/recolor/converge properties these used to also check
+// relied on Yjs XmlFragment's fine-grained attribute-merge CRDT — toys
+// don't sync that way anymore (DOM + op log, with the deliberately-designed
+// conflict system in toys-layer-api.test.js's resolveToyBranchConflict /
+// buildToyForkSeed / adoptToyBranch blocks), so that part is redundant with
+// that real coverage now, not a property of movement specifically.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Mirror of index.html's drag-commit: set the embedded svg x/y in one transact.
-function commitMove(ydoc, yToys, id, x, y) {
-  const svg = embeddedSvg(yToys, id)
+function commitMove(toyEl, x, y) {
+  const svg = toyEl?.querySelector('svg')
   if (!svg) return false
-  ydoc.transact(() => { svg.setAttribute('x', String(x)); svg.setAttribute('y', String(y)) })
+  svg.setAttribute('x', String(x))
+  svg.setAttribute('y', String(y))
   return true
-}
-function embeddedSvg(yToys, id) {
-  const g = findToy(yToys, id)
-  return g?.toArray().find(e => e instanceof Y.XmlElement && e.nodeName === 'svg') ?? null
 }
 
 describe('movement', () => {
@@ -673,79 +408,25 @@ describe('movement', () => {
 
   test('committing a move updates the embedded svg position', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't', toyType: 'player_marker', x: 100, y: 100 })
-    expect(embeddedSvg(yToys, 't').getAttribute('x')).toBe(String(100 - TOY_WIDTH / 2))
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const toyEl = await addToy(ydoc, layerEl, { id: 't', toyType: 'player_marker', x: 100, y: 100 })
+    expect(toyEl.querySelector('svg').getAttribute('x')).toBe(String(100 - TOY_WIDTH / 2))
 
-    commitMove(ydoc, yToys, 't', 200, 250)
-    const svg = embeddedSvg(yToys, 't')
+    commitMove(toyEl, 200, 250)
+    const svg = toyEl.querySelector('svg')
     expect(svg.getAttribute('x')).toBe('200')
     expect(svg.getAttribute('y')).toBe('250')
   })
 
   test('getGeom reflects the moved position', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't', toyType: 'player_marker', x: 100, y: 100 })
-    commitMove(ydoc, yToys, 't', 300, 0)
-    const geo = getGeom(_toSVGEl(findToy(yToys, 't')))
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const toyEl = await addToy(ydoc, layerEl, { id: 't', toyType: 'player_marker', x: 100, y: 100 })
+    commitMove(toyEl, 300, 0)
+    const geo = getGeom(toyEl)
     expect(geo).toEqual({ x: 300, y: 0, width: TOY_WIDTH, height: TOY_HEIGHT })
   })
-
-  test('a move syncs to a peer', async () => {
-    const p1 = new Y.Doc(); const a = getToysLayer(p1)
-    await addToy(p1, a.yToys, { id: 't', toyType: 'player_marker', x: 0, y: 0 })
-    const p2 = new Y.Doc(); const b = getToysLayer(p2)
-    sync(p1, p2)
-
-    commitMove(p1, a.yToys, 't', 500, 600)
-    sync(p1, p2)
-
-    const svg = embeddedSvg(b.yToys, 't')
-    expect(svg.getAttribute('x')).toBe('500')
-    expect(svg.getAttribute('y')).toBe('600')
-  })
-
-  test('concurrent move and recolor on the same toy both survive', async () => {
-    const p1 = new Y.Doc(); const a = getToysLayer(p1)
-    await addToy(p1, a.yToys, { id: 't', toyType: 'player_marker', x: 0, y: 0 })
-    const p2 = new Y.Doc(); const b = getToysLayer(p2)
-    sync(p1, p2)
-
-    // p1 moves the toy; p2 recolors its inner circle — different sub-nodes
-    commitMove(p1, a.yToys, 't', 123, 456)
-    p2.transact(() => find(b.yToys.toArray()[0], 'circle').setAttribute('fill', '#0f0'))
-
-    sync(p1, p2)
-
-    for (const layer of [a.yToys, b.yToys]) {
-      expect(embeddedSvg(layer, 't').getAttribute('x')).toBe('123')
-      expect(find(layer.toArray()[0], 'circle').getAttribute('fill')).toBe('#0f0')
-    }
-  })
-
-  test('concurrent moves converge identically on both peers', async () => {
-    const p1 = new Y.Doc(); const a = getToysLayer(p1)
-    await addToy(p1, a.yToys, { id: 't', toyType: 'player_marker', x: 0, y: 0 })
-    const p2 = new Y.Doc(); const b = getToysLayer(p2)
-    sync(p1, p2)
-
-    commitMove(p1, a.yToys, 't', 10, 10)
-    commitMove(p2, b.yToys, 't', 90, 90)
-    sync(p1, p2)
-
-    const svgA = embeddedSvg(a.yToys, 't')
-    const svgB = embeddedSvg(b.yToys, 't')
-    expect(svgA.getAttribute('x')).toBe(svgB.getAttribute('x'))
-    expect(svgA.getAttribute('y')).toBe(svgB.getAttribute('y'))
-    expect(Buffer.from(Y.encodeStateAsUpdate(p1)).toString('hex'))
-      .toBe(Buffer.from(Y.encodeStateAsUpdate(p2)).toString('hex'))
-  })
 })
-
-// ─────────────────────────────────────────────────────────────────────────────
-// hslToRgb
-// ─────────────────────────────────────────────────────────────────────────────
 
 describe('hslToRgb', () => {
   test('pure red hsl(0, 100%, 50%)', () => {
@@ -825,24 +506,14 @@ describe('colorMatrixValues', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('applyColor (via addToy)', () => {
-  function getMatrixEl(yToys) {
-    function find(el, name) {
-      if (!(el instanceof Y.XmlElement)) return null
-      if (el.nodeName === name) return el
-      for (const c of el.toArray()) { const h = find(c, name); if (h) return h }
-      return null
-    }
-    return find(yToys.toArray()[0], 'feColorMatrix')
-  }
-
   test('feColorMatrix values are set after placement (red)', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, {
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const toyEl = await addToy(ydoc, layerEl, {
       id: 't1', toyType: 'player_marker', x: 100, y: 100,
       color: 'hsl(0, 100%, 50%)',
     })
-    const m = getMatrixEl(yToys).getAttribute('values').trim().split(/\s+/).map(Number)
+    const m = toyEl.querySelector('feColorMatrix').getAttribute('values').trim().split(/\s+/).map(Number)
     expect(m[0]).toBeCloseTo(1, 2)
     expect(m[5]).toBeCloseTo(0, 2)
     expect(m[10]).toBeCloseTo(0, 2)
@@ -850,49 +521,22 @@ describe('applyColor (via addToy)', () => {
 
   test('two players get different feColorMatrix values', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'p1', toyType: 'player_marker', x: 0, y: 0, color: 'hsl(0, 100%, 50%)' })
-    await addToy(ydoc, yToys, { id: 'p2', toyType: 'player_marker', x: 0, y: 0, color: 'hsl(240, 100%, 50%)' })
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const toy1 = await addToy(ydoc, layerEl, { id: 'p1', toyType: 'player_marker', x: 0, y: 0, color: 'hsl(0, 100%, 50%)' })
+    const toy2 = await addToy(ydoc, layerEl, { id: 'p2', toyType: 'player_marker', x: 0, y: 0, color: 'hsl(240, 100%, 50%)' })
 
-    function getMatrix(g) {
-      function find(el, name) {
-        if (!(el instanceof Y.XmlElement)) return null
-        if (el.nodeName === name) return el
-        for (const c of el.toArray()) { const h = find(c, name); if (h) return h }
-        return null
-      }
-      return find(g, 'feColorMatrix')
-    }
-    const [g1, g2] = yToys.toArray()
-    const m1 = getMatrix(g1).getAttribute('values').trim().split(/\s+/).map(Number)
-    const m2 = getMatrix(g2).getAttribute('values').trim().split(/\s+/).map(Number)
+    const m1 = toy1.querySelector('feColorMatrix').getAttribute('values').trim().split(/\s+/).map(Number)
+    const m2 = toy2.querySelector('feColorMatrix').getAttribute('values').trim().split(/\s+/).map(Number)
     expect(m1[0]).toBeGreaterThan(m1[10])   // red: R > B
     expect(m2[10]).toBeGreaterThan(m2[0])   // blue: B > R
   })
 
-  test('color matrix syncs to a peer unchanged', async () => {
-    const p1 = new Y.Doc(); const a = getToysLayer(p1)
-    await addToy(p1, a.yToys, { id: 't', toyType: 'player_marker', x: 0, y: 0, color: 'hsl(120, 80%, 40%)' })
-    const p2 = new Y.Doc(); const b = getToysLayer(p2)
-    Y.applyUpdate(p2, Y.encodeStateAsUpdate(p1))
-    function getMatrix(yToys) {
-      function find(el, name) {
-        if (!(el instanceof Y.XmlElement)) return null
-        if (el.nodeName === name) return el
-        for (const c of el.toArray()) { const h = find(c, name); if (h) return h }
-        return null
-      }
-      return find(yToys.toArray()[0], 'feColorMatrix')
-    }
-    expect(getMatrix(a.yToys).getAttribute('values')).toBe(getMatrix(b.yToys).getAttribute('values'))
-  })
-
   test('placement without a color leaves default matrix values', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0, color: undefined })
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'player_marker', x: 0, y: 0, color: undefined })
     // default from the TOY_SVG fixture: '1 0 0 0 0  1 0 0 0 0  1 0 0 0 0  0 0 0 1 0'
-    expect(getMatrixEl(yToys).getAttribute('values')).toContain('1 0 0 0 0')
+    expect(toyEl.querySelector('feColorMatrix').getAttribute('values')).toContain('1 0 0 0 0')
   })
 })
 
@@ -929,52 +573,51 @@ describe('tray_sum: color option + editable name (real assets)', () => {
 
   test('getTtStateSchema includes color for a placed tray_sum — data-driven on its own feColorMatrix, not its toyType', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#5e7ea8' })
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const trayEl = await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#5e7ea8' })
 
-    const traySchema = getTtStateSchema(_toSVGEl(findToy(yToys, 'tray1')))
+    const traySchema = getTtStateSchema(trayEl)
     expect(traySchema.types).toHaveProperty('color', 'color-hsl')
     expect(traySchema.color).toBe('#5e7ea8')
   })
 
   test('getTtStateSchema includes an editable name for tray_sum (has a .tspan_name) but not for dice_d6 (no name)', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, yToys, { id: 'die1',  toyType: 'dice_d6',  x: 0, y: 0, color: '#fff' })
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const trayEl = await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    const dieEl  = await addToy(ydoc, layerEl, { id: 'die1',  toyType: 'dice_d6',  x: 0, y: 0, color: '#fff' })
 
-    const traySchema = getTtStateSchema(_toSVGEl(findToy(yToys, 'tray1')))
-    const dieSchema   = getTtStateSchema(_toSVGEl(findToy(yToys, 'die1')))
+    const traySchema = getTtStateSchema(trayEl)
+    const dieSchema   = getTtStateSchema(dieEl)
 
     expect(traySchema.types).toHaveProperty('name', { kind: 'string', show: ['edit'] })
     expect(traySchema.name).toBe('sum') // tray_sum.svg's default tspan_name text
     expect(dieSchema.types).not.toHaveProperty('name')
   })
 
-  test('edit() writes a new name into a tray_sum\'s own .tspan_name', async () => {
+  test('editDom() writes a new name into a tray_sum\'s own .tspan_name', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const trayEl = await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
 
-    edit(ydoc, findToy(yToys, 'tray1'), { name: 'loot' })
+    editDom(trayEl, { name: 'loot' })
 
-    const traySchema = getTtStateSchema(_toSVGEl(findToy(yToys, 'tray1')))
-    expect(traySchema.name).toBe('loot')
+    expect(getTtStateSchema(trayEl).name).toBe('loot')
   })
 
   test('editing a tray\'s color/name never reaches a die nested inside it (boundary-safe)', async () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 300, y: 300, color: '#5e7ea8' })
-    await addToy(ydoc, yToys, { id: 'die1',  toyType: 'dice_d6',  x: 300, y: 300, color: '#a8905e' })
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 300, y: 300, color: '#5e7ea8' })
+    await addToy(ydoc, layerEl, { id: 'die1',  toyType: 'dice_d6',  x: 300, y: 300, color: '#a8905e' })
 
-    reparentToy(ydoc, yToys, 'die1', 'tray1') // die1 now lives in tray1's tt_contents — a pure Yjs-tree move, no render needed
+    reparentToyDom(layerEl, 'die1', 'tray1') // die1 now lives in tray1's tt_contents
 
-    const dieBefore = getTtStateSchema(_toSVGEl(findToy(yToys, 'die1')))
+    const dieBefore = getTtStateSchema(layerEl.querySelector('[data-id="die1"]'))
 
-    edit(ydoc, findToy(yToys, 'tray1'), { color: 'hsl(0, 100%, 50%)', name: 'loot' })
+    editDom(layerEl.querySelector('[data-id="tray1"]'), { color: 'hsl(0, 100%, 50%)', name: 'loot' })
 
-    const dieAfter = getTtStateSchema(_toSVGEl(findToy(yToys, 'die1')))
+    const dieAfter = getTtStateSchema(layerEl.querySelector('[data-id="die1"]'))
     expect(dieAfter.color).toBe(dieBefore.color) // untouched by the tray's recolor
     expect(dieAfter.types).not.toHaveProperty('name') // dice never had a name field to begin with
   })
@@ -986,19 +629,19 @@ describe('tray_sum: color option + editable name (real assets)', () => {
     // id-prefixed class (${outerToyId}__tt_color_filter etc.) and not just
     // finding "a" tt_color_filter/tspan_name anywhere in the subtree.
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    await addToy(ydoc, yToys, { id: 'outer', toyType: 'tray_sum', x: 0, y: 0, color: '#5e7ea8' })
-    await addToy(ydoc, yToys, { id: 'inner', toyType: 'tray_sum', x: 0, y: 0, color: '#a8905e' })
-    edit(ydoc, findToy(yToys, 'inner'), { name: 'inner-loot' })
-    reparentToy(ydoc, yToys, 'inner', 'outer')
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    await addToy(ydoc, layerEl, { id: 'outer', toyType: 'tray_sum', x: 0, y: 0, color: '#5e7ea8' })
+    await addToy(ydoc, layerEl, { id: 'inner', toyType: 'tray_sum', x: 0, y: 0, color: '#a8905e' })
+    editDom(layerEl.querySelector('[data-id="inner"]'), { name: 'inner-loot' })
+    reparentToyDom(layerEl, 'inner', 'outer')
 
-    const innerBefore = getTtStateSchema(_toSVGEl(findToy(yToys, 'inner')))
+    const innerBefore = getTtStateSchema(layerEl.querySelector('[data-id="inner"]'))
     expect(innerBefore.name).toBe('inner-loot')
 
-    edit(ydoc, findToy(yToys, 'outer'), { color: 'hsl(0, 100%, 50%)', name: 'outer-loot' })
+    editDom(layerEl.querySelector('[data-id="outer"]'), { color: 'hsl(0, 100%, 50%)', name: 'outer-loot' })
 
-    const outerAfter = getTtStateSchema(_toSVGEl(findToy(yToys, 'outer')))
-    const innerAfter = getTtStateSchema(_toSVGEl(findToy(yToys, 'inner')))
+    const outerAfter = getTtStateSchema(layerEl.querySelector('[data-id="outer"]'))
+    const innerAfter = getTtStateSchema(layerEl.querySelector('[data-id="inner"]'))
     expect(outerAfter.name).toBe('outer-loot')       // outer got its own edit
     expect(innerAfter.name).toBe('inner-loot')       // inner's own name untouched
     expect(innerAfter.color).toBe(innerBefore.color) // inner's own color untouched

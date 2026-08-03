@@ -1,9 +1,11 @@
 /**
  * tests/unit/toys-dom-ops.test.js
  *
- * The DOM-side counterparts of the toys layer's Yjs writers and readers.
- * Each is checked against the Yjs original where one exists, so the swap
- * doesn't silently change behaviour.
+ * The toys layer's DOM writers and readers: building, moving, resizing,
+ * editing, and reading a placed toy directly against the live DOM. (Used
+ * to be checked against Yjs originals for parity during the DOM
+ * migration; those originals are gone now that toys are DOM/op-log based
+ * throughout, so these assert the DOM behaviour directly.)
  */
 
 // @vitest-environment jsdom
@@ -13,12 +15,11 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  addToy, render, findToy, getTtState, toysData,
-  addToyDom, buildToyDom, svgTextToDom,
-  applyResizeDom, applyResizeCommit, applyMoveDom, applyMoveCommit,
+  addToy, addToyDom, buildToyDom, svgTextToDom,
+  applyResizeDom, applyMoveDom,
   findToyDom, listToysDom, toysDataDom, getTtStateDom, editDom,
   _getScriptsFragment,
-  clearYNodeMap, _clearSvgTextCache, _resetToyScriptState,
+  _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
@@ -41,7 +42,7 @@ function stubToyFetch() {
 }
 
 beforeEach(() => {
-  _clearSvgTextCache(); clearYNodeMap(); _resetToyScriptState()
+  _clearSvgTextCache(); _resetToyScriptState()
   delete globalThis.tray; delete globalThis.tray_sum; delete globalThis.dice
   vi.stubGlobal('fetch', stubToyFetch())
 })
@@ -53,22 +54,8 @@ const bareLayer = () => {
   return el
 }
 
-/** The same toy, placed both ways, for behaviour comparison. */
-async function bothWays(attrs, svgText) {
-  const ydoc  = new Y.Doc()
-  const yToys = ydoc.getXmlFragment('toys')
-  await addToy(ydoc, yToys, attrs)
-  const yLayer = bareLayer()
-  render(yToys, yLayer)
-
-  const domLayer = bareLayer()
-  addToyDom(new Y.Doc(), domLayer, attrs, svgText)
-
-  return { yLayer, domLayer, ydoc, yToys }
-}
-
 describe('svgTextToDom', () => {
-  test('namespaces ids per instance, like svgTextToYXml', () => {
+  test('namespaces ids per instance', () => {
     const { svgEl } = svgTextToDom(D6_SVG, 'die1__')
     for (const el of svgEl.querySelectorAll('[id]')) {
       expect(el.getAttribute('id').startsWith('die1__')).toBe(true)
@@ -103,24 +90,12 @@ describe('svgTextToDom', () => {
 describe('buildToyDom / addToyDom', () => {
   const attrs = { id: 'die1', toyType: 'dice_d6', x: 100, y: 50, color: '#ff0000' }
 
-  test('produces the same wrapper attributes the Yjs path does', async () => {
-    const { yLayer, domLayer } = await bothWays(attrs, D6_SVG)
-    const yG = yLayer.querySelector('[data-toy-id="die1"]')
-    const dG = domLayer.querySelector('[data-toy-id="die1"]')
-
-    for (const name of ['class', 'data-toy-id', 'data-toy-type', 'data-color']) {
-      expect(dG.getAttribute(name)).toBe(yG.getAttribute(name))
-    }
-  })
-
-  test('positions the embedded <svg> identically', async () => {
-    const { yLayer, domLayer } = await bothWays(attrs, D6_SVG)
-    const ySvg = yLayer.querySelector('[data-toy-id="die1"] > svg')
-    const dSvg = domLayer.querySelector('[data-toy-id="die1"] > svg')
-
-    for (const name of ['x', 'y', 'width', 'height']) {
-      expect(dSvg.getAttribute(name)).toBe(ySvg.getAttribute(name))
-    }
+  test('wrapper carries class/data-toy-id/data-toy-type/data-color', () => {
+    const { toyEl } = buildToyDom(attrs, D6_SVG)
+    expect(toyEl.getAttribute('class')).toBe('toy')
+    expect(toyEl.getAttribute('data-toy-id')).toBe('die1')
+    expect(toyEl.getAttribute('data-toy-type')).toBe('dice_d6')
+    expect(toyEl.getAttribute('data-color')).toBe('#ff0000')
   })
 
   test('centres the toy on (x, y)', () => {
@@ -171,100 +146,57 @@ describe('buildToyDom / addToyDom', () => {
   })
 })
 
-describe('applyMoveDom matches applyMoveCommit', () => {
-  test('same resulting x/y', async () => {
-    const attrs = { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' }
-    const { yLayer, domLayer, ydoc, yToys } = await bothWays(attrs, D6_SVG)
+describe('applyMoveDom', () => {
+  test('centers the toy on the new (cx, cy)', () => {
+    const layerEl = bareLayer()
+    const { toyEl } = buildToyDom({ id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' }, D6_SVG)
+    layerEl.appendChild(toyEl)
 
-    applyMoveCommit(ydoc, findToy(yToys, 'die1'), 250, 175)
-    const reY = bareLayer(); render(yToys, reY)
-    applyMoveDom(domLayer.querySelector('[data-toy-id="die1"]'), 250, 175)
+    applyMoveDom(toyEl, 250, 175)
 
-    const ySvg = reY.querySelector('[data-toy-id="die1"] > svg')
-    const dSvg = domLayer.querySelector('[data-toy-id="die1"] > svg')
-    expect(dSvg.getAttribute('x')).toBe(ySvg.getAttribute('x'))
-    expect(dSvg.getAttribute('y')).toBe(ySvg.getAttribute('y'))
+    const svg = toyEl.querySelector('svg')
+    const w = Number(svg.getAttribute('width'))
+    const h = Number(svg.getAttribute('height'))
+    expect(Number(svg.getAttribute('x')) + w / 2).toBe(250)
+    expect(Number(svg.getAttribute('y')) + h / 2).toBe(175)
   })
 })
 
-describe('applyResizeDom matches applyResizeCommit', () => {
-  test('same x/y/width/height/viewBox', async () => {
-    const attrs = { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' }
-    const { yLayer, domLayer, ydoc, yToys } = await bothWays(attrs, TRAY_SUM_SVG)
-
-    applyResizeCommit(ydoc, findToy(yToys, 'tray1'), 10, 20, 300, 200)
-    const reY = bareLayer(); render(yToys, reY)
-    applyResizeDom(domLayer.querySelector('[data-toy-id="tray1"]'), 10, 20, 300, 200)
-
-    const ySvg = reY.querySelector('[data-toy-id="tray1"] > svg')
-    const dSvg = domLayer.querySelector('[data-toy-id="tray1"] > svg')
-    for (const name of ['x', 'y', 'width', 'height', 'viewBox']) {
-      expect(dSvg.getAttribute(name)).toBe(ySvg.getAttribute(name))
-    }
+describe('DOM readers', () => {
+  test('getTtStateDom reports id/type/color/centre', () => {
+    const { toyEl } = buildToyDom(
+      { id: 'die1', toyType: 'dice_d6', x: 40, y: 60, color: '#00ff00' }, D6_SVG)
+    expect(getTtStateDom(toyEl)).toMatchObject({
+      id: 'die1', toyType: 'dice_d6', color: '#00ff00', cx: 40, cy: 60,
+    })
   })
 
-  test('carries wh_follow_resize elements along', async () => {
-    const attrs = { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' }
-    const { domLayer } = await bothWays(attrs, TRAY_SUM_SVG)
-    const toyEl = domLayer.querySelector('[data-toy-id="tray1"]')
-
-    applyResizeDom(toyEl, 0, 0, 300, 200)
-    for (const el of toyEl.querySelectorAll('.tray1__tt_wh_follow_resize')) {
-      expect(el.getAttribute('width')).toBe('300')
-      expect(el.getAttribute('height')).toBe('200')
-    }
-  })
-
-  test('clamps absurd dimensions the same way', async () => {
-    const attrs = { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' }
-    const { domLayer, ydoc, yToys } = await bothWays(attrs, TRAY_SUM_SVG)
-
-    applyResizeCommit(ydoc, findToy(yToys, 'tray1'), 0, 0, 1, 1)
-    const reY = bareLayer(); render(yToys, reY)
-    applyResizeDom(domLayer.querySelector('[data-toy-id="tray1"]'), 0, 0, 1, 1)
-
-    expect(domLayer.querySelector('[data-toy-id="tray1"] > svg').getAttribute('width'))
-      .toBe(reY.querySelector('[data-toy-id="tray1"] > svg').getAttribute('width'))
-  })
-})
-
-describe('DOM readers match their Yjs counterparts', () => {
-  test('getTtStateDom matches getTtState', async () => {
-    const attrs = { id: 'die1', toyType: 'dice_d6', x: 40, y: 60, color: '#00ff00' }
-    const { domLayer, yToys } = await bothWays(attrs, D6_SVG)
-    expect(getTtStateDom(domLayer.querySelector('[data-toy-id="die1"]')))
-      .toEqual(getTtState(findToy(yToys, 'die1')))
-  })
-
-  test('toysDataDom matches toysData', async () => {
-    const ydoc  = new Y.Doc()
-    const yToys = ydoc.getXmlFragment('toys')
-    await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#abc' })
-
+  test('toysDataDom lists placed toys in z-order with element, type, and meta', () => {
     const layerEl = bareLayer()
-    render(yToys, layerEl)
-    expect(toysDataDom(layerEl)).toEqual(toysData(yToys))
+    const ydoc = new Y.Doc()
+    addToyDom(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' }, D6_SVG)
+    addToyDom(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#abc' }, TRAY_SUM_SVG)
+
+    const data = toysDataDom(layerEl)
+    expect(data.map(d => d.id)).toEqual(['die1', 'tray1'])
+    expect(data[1].kind).toBe('tray_sum')
+    expect(data[1].fill).toBe('#abc')
   })
 
-  test('findToyDom finds a top-level toy', async () => {
-    const ydoc  = new Y.Doc()
-    const yToys = ydoc.getXmlFragment('toys')
-    await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+  test('findToyDom finds a top-level toy', () => {
     const layerEl = bareLayer()
-    render(yToys, layerEl)
+    const ydoc = new Y.Doc()
+    addToyDom(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' }, D6_SVG)
     expect(findToyDom(layerEl, 'die1')).toBeTruthy()
     expect(findToyDom(layerEl, 'nope')).toBeNull()
   })
 
-  test('findToyDom does not reach into a container, matching findToy', async () => {
-    const ydoc  = new Y.Doc()
-    const yToys = ydoc.getXmlFragment('toys')
-    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-
+  test('findToyDom does not reach into a container (top level only)', () => {
     const layerEl = bareLayer()
-    render(yToys, layerEl)
+    const ydoc = new Y.Doc()
+    addToyDom(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' }, TRAY_SUM_SVG)
+    addToyDom(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' }, D6_SVG)
+
     const contents = layerEl.querySelector('[data-toy-id="tray1"] .tt_contents')
     contents.appendChild(layerEl.querySelector('[data-toy-id="die1"]'))
 
@@ -272,10 +204,9 @@ describe('DOM readers match their Yjs counterparts', () => {
     expect(listToysDom(layerEl).map(el => el.getAttribute('data-toy-id'))).toEqual(['tray1'])
   })
 
-  test('getTtStateDom reflects an editDom colour change', async () => {
-    const attrs = { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#ffffff' }
-    const { domLayer } = await bothWays(attrs, D6_SVG)
-    const toyEl = domLayer.querySelector('[data-toy-id="die1"]')
+  test('getTtStateDom reflects an editDom colour change', () => {
+    const { toyEl } = buildToyDom(
+      { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#ffffff' }, D6_SVG)
 
     editDom(toyEl, { color: '#123456' })
     expect(getTtStateDom(toyEl).color).toBe('#123456')

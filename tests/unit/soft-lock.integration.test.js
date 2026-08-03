@@ -86,23 +86,23 @@ afterEach(() => {
 })
 
 // Boots a real App instance (Peer B) exactly as index.html does, and
-// returns { App, ydoc, yToys, awareness }. extraToys are placed alongside
-// die-1, before boot() — production no longer writes yToys directly
-// (Toys.placeToy is the only placement path, and it's async plus network-
-// dependent), and toys placed after the render pipeline has taken its
-// genesis checkpoint from the op log would never be projected, matching
-// how a real peer's content actually reaches the DOM now.
+// returns { App, ydoc, awareness }. extraToys are placed alongside die-1,
+// directly onto the live toys-layer DOM, before boot() — production
+// placement (Toys.placeToy) is async plus network-dependent, so this
+// mirrors what a real peer's synced-in content looks like by the time
+// boot()'s genesis checkpoint takes its snapshot: already-built DOM,
+// nothing left to fetch.
 async function bootPeerB(extraToys = []) {
   const svgEl = makeCanvasDOM()
   const { boot, App } = await import('../../src/app.js')
   const { tablesAPI } = await import('../../src/tables.js')
   const ydoc  = tablesAPI.makeDoc()
-  const yToys = ydoc.getXmlFragment('toys')
+  const layerEl = svgEl.querySelector('#toys-layer')
   const awareness = new awarenessProtocol.Awareness(ydoc)
   const myGrad = { c1: '#0f0', c2: '#0a0', angle: 45 }
 
-  await addToy(ydoc, yToys, { id: 'die-1', toyType: 'player_marker', x: 0, y: 0, color: '#abc' })
-  for (const attrs of extraToys) await addToy(ydoc, yToys, attrs)
+  await addToy(ydoc, layerEl, { id: 'die-1', toyType: 'player_marker', x: 0, y: 0, color: '#abc' })
+  for (const attrs of extraToys) await addToy(ydoc, layerEl, attrs)
 
   // Exactly index.html's initialization order: setLocalState BEFORE boot().
   awareness.setLocalState({ id: 'bailey', color: myGrad.c1, grad: myGrad, cursor: null, selection: null })
@@ -114,7 +114,7 @@ async function bootPeerB(extraToys = []) {
     svgElement: svgEl, displayName: 'Bailey',
   })
 
-  return { App, ydoc, yToys, awareness }
+  return { App, ydoc, awareness }
 }
 
 const DIE_2 = { id: 'die-2', toyType: 'player_marker', x: 50, y: 0, color: '#abc' }
@@ -289,7 +289,7 @@ describe('soft-lock e2e — multi-select claim defense regression (real trace)',
   test('clicking a multi-selected die to defend it prevents a pending request from succeeding', async () => {
     vi.useFakeTimers()
     try {
-      const { App, awareness, ydoc, yToys } = await bootPeerB([DIE_2])
+      const { App, awareness, ydoc } = await bootPeerB([DIE_2])
 
       // A selects two dice via a real multi-select.
       App.select('die-1')
@@ -324,7 +324,7 @@ describe('soft-lock e2e — multi-select claim defense regression (real trace)',
   test('control: WITHOUT the defend click, the same request succeeds (proves the test is meaningful)', async () => {
     vi.useFakeTimers()
     try {
-      const { App, awareness, ydoc, yToys } = await bootPeerB([DIE_2])
+      const { App, awareness, ydoc } = await bootPeerB([DIE_2])
 
       App.select('die-1')
       App.toggleSelection('die-2')
@@ -434,7 +434,7 @@ describe('soft-lock e2e — multi-drag defends the whole group, not just the lea
   test('starting a group drag defends every element in the group, not just the leader', async () => {
     vi.useFakeTimers()
     try {
-      const { App, awareness, ydoc, yToys } = await bootPeerB([DIE_2])
+      const { App, awareness, ydoc } = await bootPeerB([DIE_2])
 
       App.select('die-1')
       App.toggleSelection('die-2')
@@ -460,7 +460,7 @@ describe('soft-lock e2e — multi-drag defends the whole group, not just the lea
   test('control: a group drag whose leader is the SAME element being requested still defends it (sanity)', async () => {
     vi.useFakeTimers()
     try {
-      const { App, awareness, ydoc, yToys } = await bootPeerB([DIE_2])
+      const { App, awareness, ydoc } = await bootPeerB([DIE_2])
 
       App.select('die-1')
       App.toggleSelection('die-2')
@@ -482,7 +482,7 @@ describe('soft-lock e2e — multi-drag defends the whole group, not just the lea
   test('a long group drag keeps defending via moveMulti\'s throttled refresh, not just at drag start', async () => {
     vi.useFakeTimers()
     try {
-      const { App, awareness, ydoc, yToys } = await bootPeerB([DIE_2])
+      const { App, awareness, ydoc } = await bootPeerB([DIE_2])
 
       App.select('die-1')
       App.toggleSelection('die-2')

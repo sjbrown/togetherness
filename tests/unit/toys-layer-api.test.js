@@ -14,12 +14,12 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  makeLayerAPI, projectLayer, placeToy, addToy, render, findToy, getTtState,
+  makeLayerAPI, projectLayer, placeToy, addToy, activateAllToyScriptsDom,
   resolveToyBranchConflict, buildToyForkSeed, adoptToyBranch,
   undoToyGesture, redoToyGesture, deleteToysBatch, moveToysBatch,
   canUndoToyGesture, canRedoToyGesture,
   getGeom, reparentToyDom, applyMoveDom, runGestureSync, importToys,
-  clearYNodeMap, _clearSvgTextCache, _resetToyScriptState,
+  _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { getOps, appendOp } from '../../src/op_dag.js'
 import { checkpointOp, projectFrom } from '../../src/op_checkpoint.js'
@@ -47,7 +47,7 @@ function stubToyFetch() {
 }
 
 beforeEach(() => {
-  _clearSvgTextCache(); clearYNodeMap(); _resetToyScriptState()
+  _clearSvgTextCache(); _resetToyScriptState()
   delete globalThis.tray; delete globalThis.tray_sum; delete globalThis.dice
   vi.stubGlobal('fetch', stubToyFetch())
 })
@@ -56,17 +56,16 @@ afterEach(() => { vi.unstubAllGlobals() })
 /** A live doc plus its rendered layer, wired the way app.js wires them. */
 async function setup(...toys) {
   const ydoc  = new Y.Doc()
-  const yToys = ydoc.getXmlFragment('toys')
-  for (const [id, toyType] of toys) {
-    await addToy(ydoc, yToys, { id, toyType, x: 100, y: 100, color: '#ffffff' })
-  }
   const layerEl = document.createElementNS(SVG_NS, 'g')
   layerEl.id = 'toys-layer'
-  render(yToys, layerEl)
+  for (const [id, toyType] of toys) {
+    await addToy(ydoc, layerEl, { id, toyType, x: 100, y: 100, color: '#ffffff' })
+  }
+  activateAllToyScriptsDom(ydoc, layerEl)
   await new Promise(r => setTimeout(r, 0))
 
   const L = makeLayerAPI(ydoc, () => layerEl, 'user-a')
-  return { ydoc, yToys, layerEl, L }
+  return { ydoc, layerEl, L }
 }
 
 describe('find', () => {
@@ -84,17 +83,18 @@ describe('find', () => {
   })
 
   test('resolves against the layer as it is now, not as it was at construction', async () => {
-    const { L, ydoc, yToys, layerEl } = await setup(['die1', 'dice_d6'])
-    await addToy(ydoc, yToys, { id: 'die2', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    render(yToys, layerEl)
+    const { L, ydoc, layerEl } = await setup(['die1', 'dice_d6'])
+    await addToy(ydoc, layerEl, { id: 'die2', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
     expect(L.find('die2')).toBeTruthy()
   })
 })
 
 describe('reads come from the DOM', () => {
-  test('getTtState matches the Yjs original', async () => {
-    const { L, yToys } = await setup(['die1', 'dice_d6'])
-    expect(L.getTtState(L.find('die1'))).toEqual(getTtState(findToy(yToys, 'die1')))
+  test('getTtState reports id/type/color/centre', async () => {
+    const { L } = await setup(['die1', 'dice_d6'])
+    expect(L.getTtState(L.find('die1'))).toMatchObject({
+      id: 'die1', toyType: 'dice_d6', color: '#ffffff', cx: 100, cy: 100,
+    })
   })
 
   test('listData lists placed toys', async () => {
@@ -110,63 +110,34 @@ describe('reads come from the DOM', () => {
   })
 })
 
-describe('writes mutate the DOM and reach Yjs', () => {
-  test('applyMoveCommit moves the toy and persists', async () => {
-    const { L, yToys, layerEl } = await setup(['die1', 'dice_d6'])
+describe('writes mutate the DOM', () => {
+  // Without a tableId (as setup() wires it), nothing is durable beyond the
+  // DOM mutation itself — no operation is recorded (see 'gestures also
+  // land in the operation log' below for that, and for peer replay).
+  test('applyMoveCommit moves the toy', async () => {
+    const { L } = await setup(['die1', 'dice_d6'])
     L.applyMoveCommit(L.find('die1'), 300, 400)
-
     expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 300, cy: 400 })
-
-    const fresh = document.createElementNS(SVG_NS, 'g')
-    fresh.id = 'toys-layer'
-    render(yToys, fresh)
-    expect(getTtState(findToy(yToys, 'die1'))).toMatchObject({ cx: 300, cy: 400 })
   })
 
-  test('applyResize resizes and persists', async () => {
-    const { L, yToys } = await setup(['tray1', 'tray_sum'])
+  test('applyResize resizes', async () => {
+    const { L } = await setup(['tray1', 'tray_sum'])
     L.applyResize(L.find('tray1'), 10, 20, 300, 200)
-
     const svgEl = L.find('tray1').querySelector('svg')
     expect(svgEl.getAttribute('width')).toBe('300')
-
-    const ySvg = findToy(yToys, 'tray1').toArray()[0]
-    expect(ySvg.getAttribute('width')).toBe('300')
   })
 
-  test('edit changes colour and persists', async () => {
-    const { L, yToys } = await setup(['die1', 'dice_d6'])
+  test('edit changes colour', async () => {
+    const { L } = await setup(['die1', 'dice_d6'])
     L.edit(L.find('die1'), { color: '#123456' })
-
     expect(L.getTtState(L.find('die1')).color).toBe('#123456')
-    expect(findToy(yToys, 'die1').getAttribute('data-color')).toBe('#123456')
   })
 
-  test('delete removes the toy and persists', async () => {
-    const { L, yToys } = await setup(['die1', 'dice_d6'], ['tray1', 'tray_sum'])
+  test('delete removes the toy', async () => {
+    const { L } = await setup(['die1', 'dice_d6'], ['tray1', 'tray_sum'])
     L.delete('die1')
-
     expect(L.find('die1')).toBeNull()
-    expect(findToy(yToys, 'die1')).toBeFalsy()
-    expect(findToy(yToys, 'tray1')).toBeTruthy()
-  })
-
-  test('a move survives a re-render from Yjs', async () => {
-    const { L, yToys, layerEl } = await setup(['die1', 'dice_d6'])
-    L.applyMoveCommit(L.find('die1'), 250, 175)
-    render(yToys, layerEl)
-    expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 250, cy: 175 })
-  })
-})
-
-describe('a peer receives what the LayerAPI wrote', () => {
-  test('an edit syncs to a second doc', async () => {
-    const { L, ydoc } = await setup(['die1', 'dice_d6'])
-    L.edit(L.find('die1'), { color: '#abcdef' })
-
-    const peer = new Y.Doc()
-    Y.applyUpdate(peer, Y.encodeStateAsUpdate(ydoc))
-    expect(findToy(peer.getXmlFragment('toys'), 'die1').getAttribute('data-color')).toBe('#abcdef')
+    expect(L.find('tray1')).toBeTruthy()
   })
 })
 
@@ -176,8 +147,8 @@ describe('gestures also land in the operation log', () => {
   beforeEach(() => localStorage.clear())
 
   async function withLog(...toys) {
-    const { ydoc, yToys, layerEl } = await setup(...toys)
-    return { ydoc, yToys, layerEl, L: makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE) }
+    const { ydoc, layerEl } = await setup(...toys)
+    return { ydoc, layerEl, L: makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE) }
   }
 
   test('a move appends an operation and advances the head', async () => {

@@ -2,187 +2,115 @@
 //
 // Tests for undo_redo.js — the Y.UndoManager-backed undo/redo stack.
 //
+// undo_redo.js is fragment-agnostic: it tracks whatever Y.XmlFragment
+// scopes it's given (drawing, boundaries in production). Toys have their
+// own, separate undo mechanism entirely (toys.js's undoToyGesture — see
+// undo_redo.js's module doc) — these fixtures are deliberately generic
+// shapes, not toy-shaped, since toys are never what this module actually
+// scopes over.
+//
 // These drive the module directly against Yjs fragments, mirroring how
 // app.js uses it: tag a label, run the action's transaction, then undo/redo.
-// The transaction origins here match what app.js / envelope.js actually use:
-//   - null            → structural writes (add/move/delete/reparent)
-//   - ENVELOPE_ORIGIN → a user-intent toy handler (a die roll), or a tray
-//                        recomputing its sum in reaction to it            [tracked]
-//   - LIFECYCLE_ORIGIN→ a toy's placement-time initialize()            [untracked]
+// Every tracked write here transacts under a null origin, matching what
+// app.js's structural writes actually use — trackedOrigins is just {null}.
 
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import * as UndoRedo from '../../src/undo_redo.js'
-import { ENVELOPE_ORIGIN, LIFECYCLE_ORIGIN } from '../../src/envelope.js'
-import { addToySync, findToy, reparentToy } from '../../src/toys.js'
 
-const TRAY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="200" height="150" id="tray_fixture" class="tray_fixture tray">
-  <g id="tt_contents" class="tt_contents"></g>
-  <text id="result"><tspan id="tspan_result" class="tspan_result">0</tspan></text>
-</svg>`
-
-const DIE_SVG = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="80" height="100" id="die_fixture" class="die_fixture">
-  <text id="text_value"><tspan id="tspan_value">6</tspan></text>
-</svg>`
-
-const placeTray = (ydoc, yToys, id) =>
-  addToySync(ydoc, yToys, { id, toyType: 'tray_fixture', x: 0, y: 0, color: '#fff' }, TRAY_SVG)
-const placeDie = (ydoc, yToys, id) =>
-  addToySync(ydoc, yToys, { id, toyType: 'die_fixture', x: 0, y: 0, color: '#fff' }, DIE_SVG)
-
-// Is `id` a direct child of `container` (not descending into nested trays)?
-const isDirectChild = (container, id) =>
-  container.toArray().some(c => c instanceof Y.XmlElement && c.getAttribute('data-toy-id') === id)
-
-// Locate the tray's .tt_contents Y node.
-function contentsGroupOf(yTray) {
-  const svg = yTray.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'svg')
-  return svg.toArray().find(
-    c => c instanceof Y.XmlElement && (c.getAttribute('class') || '').split(/\s+/).includes('tt_contents')
-  )
+function makeGroup(id) {
+  const g = new Y.XmlElement('g')
+  g.setAttribute('data-id', id)
+  return g
 }
 
 // Fresh doc + module per test. The module holds one UndoManager in module
 // scope, so re-init each time to reset the stack.
 function freshDoc() {
   const ydoc    = new Y.Doc()
-  const yToys   = ydoc.getXmlFragment('toys')
   const yDraw   = ydoc.getXmlFragment('drawing')
   const yBoun   = ydoc.getXmlFragment('boundaries')
   const applied = []
   UndoRedo.init({
     ydoc,
-    scopes: [yToys, yDraw, yBoun],
+    scopes: [yDraw, yBoun],
     onApply: (kind, label) => applied.push({ kind, label }),
     onEmpty: (kind)        => applied.push({ kind, label: null, empty: true }),
   })
-  return { ydoc, yToys, yDraw, yBoun, applied }
+  return { ydoc, yDraw, yBoun, applied }
 }
 
 describe('undo_redo — tracked structural actions', () => {
   let ctx
   beforeEach(() => { ctx = freshDoc() })
 
-  test('a drop-into-tray wrapped in one transaction is a single undo step', () => {
-    const { ydoc, yToys } = ctx
-    placeTray(ydoc, yToys, 'tray1')
-    placeDie(ydoc, yToys, 'die1')
+  test('a delete + reposition wrapped in one transaction is a single undo step', () => {
+    const { ydoc, yDraw } = ctx
+    const keep = makeGroup('keep')
+    const gone = makeGroup('gone')
+    yDraw.insert(0, [keep, gone])
 
-    // The drop, exactly as app.js commits it: reparent + reposition in ONE
-    // transaction so the two inner transacts collapse into one stack item.
-    UndoRedo.tag('move die1 into a tray')
+    UndoRedo.tag('delete gone and reposition keep')
     ydoc.transact(() => {
-      const moved = reparentToy(ydoc, yToys, 'die1', 'tray1')
-      moved.setAttribute('x', '20')
-      moved.setAttribute('y', '20')
+      yDraw.delete(1, 1) // remove 'gone'
+      keep.setAttribute('x', '20')
+      keep.setAttribute('y', '20')
     })
 
-    const tray = findToy(yToys, 'tray1')
-    expect(isDirectChild(contentsGroupOf(tray), 'die1')).toBe(true)
-    expect(isDirectChild(yToys, 'die1')).toBe(false)
+    expect(yDraw.toArray()).toEqual([keep])
+    expect(keep.getAttribute('x')).toBe('20')
 
-    // ONE undo takes the whole drop back to the top level.
+    // ONE undo takes both back.
     expect(UndoRedo.undo()).toBe(true)
-    expect(isDirectChild(yToys, 'die1')).toBe(true)
-    expect(isDirectChild(contentsGroupOf(findToy(yToys, 'tray1')), 'die1')).toBe(false)
+    expect(yDraw.toArray().length).toBe(2)
+    expect(keep.getAttribute('x')).toBeUndefined()
 
-    // ...and one redo puts it back inside, repositioned.
+    // ...and one redo re-applies both together.
     expect(UndoRedo.redo()).toBe(true)
-    const back = findToy(yToys, 'die1')
-    expect(isDirectChild(contentsGroupOf(findToy(yToys, 'tray1')), 'die1')).toBe(true)
-    expect(back.getAttribute('x')).toBe('20')
+    expect(yDraw.toArray().length).toBe(1)
+    expect(keep.getAttribute('x')).toBe('20')
   })
 
   test('undoing a delete restores the exact subtree (contents included)', () => {
-    const { ydoc, yToys } = ctx
-    placeTray(ydoc, yToys, 'tray1')
-    placeDie(ydoc, yToys, 'die1')
-    // die nested inside the tray, so the tray delete must bring it back too.
-    ydoc.transact(() => { reparentToy(ydoc, yToys, 'die1', 'tray1') })
+    const { ydoc, yDraw } = ctx
+    const outer = makeGroup('outer')
+    const inner = makeGroup('inner')
+    outer.insert(0, [inner])
+    yDraw.insert(0, [outer])
 
-    UndoRedo.tag('delete tray1')
-    ydoc.transact(() => {
-      const idx = yToys.toArray().findIndex(
-        c => c instanceof Y.XmlElement && c.getAttribute('data-toy-id') === 'tray1')
-      yToys.delete(idx, 1)
-    })
-    expect(findToy(yToys, 'tray1')).toBeNull()
-    expect(findToy(yToys, 'die1')).toBeNull()
+    UndoRedo.tag('delete outer')
+    ydoc.transact(() => { yDraw.delete(0, 1) })
+    expect(yDraw.toArray().length).toBe(0)
 
     UndoRedo.undo()
-    // Whole subtree is back — tray AND its nested die, no file re-fetch.
-    expect(findToy(yToys, 'tray1')).not.toBeNull()
-    expect(isDirectChild(contentsGroupOf(findToy(yToys, 'tray1')), 'die1')).toBe(true)
+    // Whole subtree is back — outer AND its nested inner.
+    expect(yDraw.toArray().length).toBe(1)
+    expect(yDraw.toArray()[0].toArray().length).toBe(1)
   })
 
   test('a move is one undo step and reverts to the prior position', () => {
-    const { ydoc, yToys } = ctx
-    placeDie(ydoc, yToys, 'die1')
-    const die = findToy(yToys, 'die1')
-    const x0 = die.getAttribute('x')
+    const { ydoc, yDraw } = ctx
+    const el = makeGroup('el')
+    el.setAttribute('x', '0')
+    yDraw.insert(0, [el])
 
-    UndoRedo.tag('move die1')
-    ydoc.transact(() => { findToy(yToys, 'die1').setAttribute('x', '999') })
-    expect(findToy(yToys, 'die1').getAttribute('x')).toBe('999')
+    UndoRedo.tag('move el')
+    ydoc.transact(() => { el.setAttribute('x', '999') })
+    expect(el.getAttribute('x')).toBe('999')
 
     UndoRedo.undo()
-    expect(findToy(yToys, 'die1').getAttribute('x')).toBe(x0)
+    expect(el.getAttribute('x')).toBe('0')
   })
 })
 
-describe('undo_redo — rolls are undoable', () => {
-  test('a die roll (ENVELOPE_ORIGIN) is a tracked, reversible step', () => {
-    const { ydoc, yToys } = freshDoc()
-    placeDie(ydoc, yToys, 'die1')
-    UndoRedo.clear()   // isolate: forget the placement, keep only the roll
+describe('undo_redo — only null-origin transactions are tracked', () => {
+  test('a transaction under a non-null origin is not tracked', () => {
+    const { ydoc, yDraw } = freshDoc()
+    const el = makeGroup('el')
+    yDraw.insert(0, [el])
+    UndoRedo.clear() // isolate: forget the (tracked, null-origin) insert above
 
-    // A roll commits under ENVELOPE_ORIGIN, like invokeMenuActionSync → commitEnvelope.
-    // (The real handler rewrites the tspan text; a tracked attribute write
-    // exercises the same origin-tracking path this test cares about.)
-    UndoRedo.tag('roll die1')
-    ydoc.transact(() => { findToy(yToys, 'die1').setAttribute('data-face', '3') }, ENVELOPE_ORIGIN)
-    expect(findToy(yToys, 'die1').getAttribute('data-face')).toBe('3')
-
-    expect(UndoRedo.canUndo()).toBe(true)
-    UndoRedo.undo()
-    expect(findToy(yToys, 'die1').getAttribute('data-face') ?? null).toBeNull()
-  })
-})
-
-describe('undo_redo — lifecycle writes stay off the stack', () => {
-  test('a derived write (tray sum recompute, ENVELOPE_ORIGIN) is tracked like any other envelope commit', () => {
-    const { ydoc, yToys } = freshDoc()
-    placeTray(ydoc, yToys, 'tray1')
-    UndoRedo.clear()   // isolate from the placement
-
-    // A structural, tracked change first.
-    UndoRedo.tag('move tray1')
-    ydoc.transact(() => { findToy(yToys, 'tray1').setAttribute('x', '50') })
-    expect(UndoRedo.canUndo()).toBe(true)
-
-    // A derived recompute reached from the observer (not folded into its
-    // triggering transaction) commits under ENVELOPE_ORIGIN like any other
-    // envelope commit — it is not a separate class of thing, so it pushes
-    // its own tracked step rather than riding on the move above.
-    UndoRedo.tag('tray1 recomputed its sum')
-    ydoc.transact(() => { findToy(yToys, 'tray1').setAttribute('data-derived', 'yes') }, ENVELOPE_ORIGIN)
-
-    UndoRedo.undo()
-    expect(findToy(yToys, 'tray1').getAttribute('data-derived') ?? null).toBeNull()
-    expect(findToy(yToys, 'tray1').getAttribute('x')).toBe('50') // the move is still there
-
-    UndoRedo.undo()
-    expect(findToy(yToys, 'tray1').getAttribute('x')).not.toBe('50')
-  })
-
-  test('LIFECYCLE_ORIGIN (initialize) is not tracked', () => {
-    const { ydoc, yToys } = freshDoc()
-    placeDie(ydoc, yToys, 'die1')
-    UndoRedo.clear()   // isolate from the placement
-
-    ydoc.transact(() => { findToy(yToys, 'die1').setAttribute('data-init', '1') }, LIFECYCLE_ORIGIN)
+    ydoc.transact(() => { el.setAttribute('data-derived', '1') }, 'some-other-origin')
     // No tracked change happened, so there is nothing to undo.
     expect(UndoRedo.canUndo()).toBe(false)
     expect(UndoRedo.undo()).toBe(false)

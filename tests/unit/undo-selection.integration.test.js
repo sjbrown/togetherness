@@ -89,11 +89,11 @@ async function bootApp() {
   const { boot, App } = await import('../../src/app.js')
   const { tablesAPI } = await import('../../src/tables.js')
   const ydoc  = tablesAPI.makeDoc()
-  const yToys = ydoc.getXmlFragment('toys')
+  const layerEl = svgEl.querySelector('#toys-layer')
   const awareness = new awarenessProtocol.Awareness(ydoc)
   const myGrad = { c1: '#0f0', c2: '#0a0', angle: 45 }
 
-  await addToy(ydoc, yToys, { id: 'die-1', toyType: 'player_marker', x: 0, y: 0, color: '#abc' })
+  await addToy(ydoc, layerEl, { id: 'die-1', toyType: 'player_marker', x: 0, y: 0, color: '#abc' })
 
   awareness.setLocalState({ id: 'bailey', color: myGrad.c1, grad: myGrad, cursor: null, selection: null })
 

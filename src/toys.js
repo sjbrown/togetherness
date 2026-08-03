@@ -225,6 +225,7 @@ export function normalizeForeignToySubtree(el, ctx) {
   }
   for (const child of Array.from(el.childNodes)) {
     if (child.nodeType === 1) {
+      if (child.namespaceURI && child.namespaceURI !== SVG_NS) continue
       if (child.localName === 'script') continue
       out.appendChild(normalizeForeignToySubtree(child, cx))
     } else if (child.nodeType === 3 || child.nodeType === 4) {

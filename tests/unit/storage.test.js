@@ -118,7 +118,6 @@ function freshLayers() {
   return {
     ydoc,
     yMeta:    ydoc.getMap('meta'),
-    yToys:    ydoc.getXmlFragment('toys'),
     yDrawing: ydoc.getXmlFragment('drawing'),
   }
 }
@@ -332,10 +331,8 @@ describe('buildExportSvg', () => {
 
   test('writes hoisted scripts once at document root, not per-toy', async () => {
     const ydoc = new Y.Doc()
-    const yToys = ydoc.getXmlFragment('toys')
     const live = liveCanvasSvg()
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
-    live.querySelector('#toys-layer').appendChild(Toys.listToys(yToys)[0])
+    await addToy(ydoc, live.querySelector('#toys-layer'), { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
 
     const clone = buildExportSvg(live, ydoc)
     // Only the inline script (data-namespace="d6") gets hoisted/exported —
@@ -346,18 +343,6 @@ describe('buildExportSvg', () => {
     expect(clone.querySelector('#toys-layer script')).toBeNull()
   })
 
-  test('toys export the live DOM, not Yjs — a toy in Yjs but not the DOM does not appear', async () => {
-    const ydoc = new Y.Doc()
-    const yToys = ydoc.getXmlFragment('toys')
-    await addToy(ydoc, yToys, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
-
-    // liveCanvasSvg()'s #toys-layer is deliberately empty — Yjs has a toy
-    // the DOM was never told about (dual-write drifted, or this is a test
-    // fixture that never rendered). Export reflects what the DOM actually
-    // shows, since that's what every peer's screen shows too.
-    const clone = buildExportSvg(liveCanvasSvg(), ydoc)
-    expect(clone.querySelector('#toys-layer').children.length).toBe(0)
-  })
 
   test('toys export whatever is in the live DOM, data-id and all', () => {
     const ydoc = new Y.Doc()

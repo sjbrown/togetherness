@@ -15,8 +15,8 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as Toys from '../../src/toys.js'
 import {
   parseForeignNode, nodeRef, resolveRef,
-  addToy, render, svgTextToYXml,
-  clearYNodeMap, _clearSvgTextCache, _resetToyScriptState,
+  addToy,
+  _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { domToY } from '../../src/storage.js'
 
@@ -46,7 +46,7 @@ const ctx = (prefix = 'p__') => ({ prefix, accum: { sequenceNumber: 0 } })
 const attrMap = (pairs) => new Map(pairs)
 
 beforeEach(() => {
-  _clearSvgTextCache(); clearYNodeMap(); _resetToyScriptState()
+  _clearSvgTextCache(); _resetToyScriptState()
   delete globalThis.tray; delete globalThis.tray_sum; delete globalThis.dice
   vi.stubGlobal('fetch', stubToyFetch())
 })
@@ -129,12 +129,9 @@ describe('parseForeignNode', () => {
 describe('every element in a placed toy carries a data-id', () => {
   test('a real toy renders with no unstamped elements', async () => {
     const ydoc  = new Y.Doc()
-    const yToys = ydoc.getXmlFragment('toys')
-    await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-
     const layerEl = document.createElementNS(SVG_NS, 'g')
     layerEl.id = 'toys-layer'
-    render(yToys, layerEl)
+    await addToy(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
 
     const unstamped = [...layerEl.querySelectorAll('*')].filter(el => !el.getAttribute('data-id'))
     expect(unstamped.map(el => el.localName)).toEqual([])
@@ -142,13 +139,10 @@ describe('every element in a placed toy carries a data-id', () => {
 
   test('two placements of the same toy type share no data-id', async () => {
     const ydoc  = new Y.Doc()
-    const yToys = ydoc.getXmlFragment('toys')
-    await addToy(ydoc, yToys, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, yToys, { id: 'die2', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-
     const layerEl = document.createElementNS(SVG_NS, 'g')
     layerEl.id = 'toys-layer'
-    render(yToys, layerEl)
+    await addToy(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'die2', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
 
     const ids = [...layerEl.querySelectorAll('[data-id]')].map(el => el.getAttribute('data-id'))
     expect(ids.length).toBeGreaterThan(2)
@@ -209,13 +203,10 @@ describe('nodeRef / resolveRef', () => {
 
   test('round trip holds for every addressable node in a real toy subtree', async () => {
     const ydoc  = new Y.Doc()
-    const yToys = ydoc.getXmlFragment('toys')
-    await addToy(ydoc, yToys, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-
     const layerEl = document.createElementNS(SVG_NS, 'g')
     layerEl.id = 'toys-layer'
     layerEl.setAttribute('data-id', 'toys-layer')
-    render(yToys, layerEl)
+    await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
 
     const walk = (node, out = []) => {
       out.push(node)
