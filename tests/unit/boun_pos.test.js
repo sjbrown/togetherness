@@ -360,6 +360,34 @@ describe('computePositionSnapPoints', () => {
       { id: bid, name: 'forest', x: 0, y: 0, w: 300, h: 300 });
     expect(computePositionSnapPoints(layer.yBounPos, new Set(['forest']))).toHaveLength(0);
   });
+
+  test('with no occupiedCenters argument, every point is returned (default [])', () => {
+    const layer = makeLayer();
+    const { id } = addPS(layer, { x: 0, y: 0, w: 200, h: 100, genType: 'square', xSpacing: 100, ySpacing: 100 });
+    editBounPos({ id, name: 'forest' }, layer.ydoc, layer.yBounPos);
+    const pts = computePositionSnapPoints(layer.yBounPos, new Set(['forest']));
+    expect(pts.length).toBeGreaterThan(0);
+  });
+
+  test('a point exactly matching an occupied centre is filtered out', () => {
+    const layer = makeLayer();
+    const { id, circles } = addPS(layer, { x: 0, y: 0, w: 200, h: 100, genType: 'square', xSpacing: 100, ySpacing: 100 });
+    editBounPos({ id, name: 'forest' }, layer.ydoc, layer.yBounPos);
+    const occupied = [{ cx: circles[0].cx, cy: circles[0].cy }];
+    const pts = computePositionSnapPoints(layer.yBounPos, new Set(['forest']), occupied);
+    expect(pts.length).toBe(circles.length - 1);
+    expect(pts.some(p => p.cx === circles[0].cx && p.cy === circles[0].cy)).toBe(false);
+  });
+
+  test('occupiedCenters that don\u2019t exactly match any point filter nothing', () => {
+    const layer = makeLayer();
+    const { id, circles } = addPS(layer, { x: 0, y: 0, w: 200, h: 100, genType: 'square', xSpacing: 100, ySpacing: 100 });
+    editBounPos({ id, name: 'forest' }, layer.ydoc, layer.yBounPos);
+    // Near but not exact — exact equality only, no radius fuzz.
+    const occupied = [{ cx: circles[0].cx + 1, cy: circles[0].cy }];
+    const pts = computePositionSnapPoints(layer.yBounPos, new Set(['forest']), occupied);
+    expect(pts.length).toBe(circles.length);
+  });
 });
 
 // ── Edit schema ───────────────────────────────────────────────────────────────

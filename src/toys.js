@@ -677,6 +677,270 @@ export function getContentsGroup(domEl) {
   return domEl.querySelector(`.${domEl.id}__tt_contents`)
 }
 
+/**
+ * A top-level toy's own tt_positions group — a per-instance-prefixed
+ * class, the same convention getContentsGroup uses for tt_contents.
+ * Returns the <g class="tt_positions" data-bounpos-type="pos-set" name=…>
+ * element, or null if this toy doesn't offer any positions.
+ */
+function getPositionsGroup(domEl) {
+  return domEl?.querySelector?.(`.${domEl.id}__tt_positions`) ?? null
+}
+
+/**
+ * Scan the toys layer for top-level toys offering a tt_positions pos-set
+ * whose name ∈ toyClasses, and return their snap points in canvas space —
+ * the toy-layer counterpart to BounPos.computePositionSnapPoints.
+ *
+ * Each point is { cx, cy, snapRadius, ownerId } — ownerId is the id of the
+ * toy that owns the position (the toy being placed to snap onto it), so a
+ * caller can invoke that owner's positions_change_handler once the drop
+ * commits.
+ *
+ * A tt_positions circle is authored in the owning toy's own local
+ * coordinate space, but on the live DOM viewBox is always kept in sync
+ * with width/height (see applyResizeDom), so converting to canvas space is
+ * a plain translation by the toy's geom origin — no scaling needed.
+ *
+ * z-ordering: unlike BounPos's boundary-layer points (which are filtered
+ * out whenever ANY toy already sits exactly on them), a toy-layer point is
+ * only filtered out when a toy ABOVE the point's owner (later in DOM/
+ * paint order) already occupies it. A toy sitting exactly on its own
+ * generated point — the normal, expected case for something like a chip
+ * stack, where the point coincides with the owner's own center — or a toy
+ * below the owner, never blocks the point; only another toy already
+ * stacked on top of it does.
+ *
+ * excludeId — typically the id of the toy currently being dragged, left
+ * out of the occupancy check so its own (about-to-move) position doesn't
+ * block the very slot it might snap right back onto.
+ */
+export function computePositionSnapPoints(layerEl, toyClasses, excludeId = null) {
+  if (!layerEl || !toyClasses || toyClasses.size === 0) return []
+  const topLevelToys = [...layerEl.querySelectorAll(':scope > [data-id]')]
+    .filter(el => el.getAttribute('data-id') !== excludeId)
+
+  const centers = topLevelToys.map(el => {
+    const geom = getGeom(el)
+    return geom ? { el, cx: geom.x + geom.width / 2, cy: geom.y + geom.height / 2 } : null
+  })
+
+  const points = []
+  topLevelToys.forEach((ownerEl, ownerIndex) => {
+    const geom = getGeom(ownerEl)
+    if (!geom) return
+    const posGroup = getPositionsGroup(ownerEl)
+    if (!posGroup) return
+    if ((posGroup.getAttribute('data-bounpos-type') ?? 'pos-set') !== 'pos-set') return
+    const name = posGroup.getAttribute('name')
+    if (!name || !toyClasses.has(name)) return
+    const ownerId = ownerEl.getAttribute('data-id')
+    const snapRadius = Number(posGroup.getAttribute('data-snap-radius') ?? 30)
+
+    for (const child of posGroup.children) {
+      if (child.tagName !== 'circle') continue
+      const cx = geom.x + Number(child.getAttribute('cx') ?? 0)
+      const cy = geom.y + Number(child.getAttribute('cy') ?? 0)
+
+      const blockedFromAbove = topLevelToys.some((otherEl, otherIndex) => {
+        if (otherIndex <= ownerIndex) return false // same toy, or below — never blocks
+        const c = centers[otherIndex]
+        return c && c.cx === cx && c.cy === cy
+      })
+      if (blockedFromAbove) continue
+
+      points.push({ cx, cy, snapRadius, ownerId })
+    }
+  })
+  return points
+}
+
+// ── positions bookkeeping (self-contained — no caller-supplied ownership) ──
+//
+// applyMoveCommit needs to know which OTHER toys' tt_positions points a
+// move affects, so it can run their positions_change_handler as part of
+// the same gesture. Rather than have the caller (app.js) work this out
+// during the drag and thread ownerIds back down through a round-trip,
+// applyMoveCommit figures it out itself, from el's own before/after
+// geometry — a fire-and-forget computation, not a negotiated one.
+
+/**
+ * Every top-level toy offering a tt_positions pos-set, with its points
+ * already converted to canvas space. Unlike computePositionSnapPoints,
+ * this doesn't filter by toyClasses or z-order — it's a plain inventory of
+ * every declared position, used only to detect exact-coincidence
+ * occupancy for the bookkeeping below, not to offer drag destinations.
+ */
+function allPositionOwners(layerEl) {
+  if (!layerEl) return []
+  const owners = []
+  for (const el of layerEl.querySelectorAll(':scope > [data-id]')) {
+    const geom = getGeom(el)
+    if (!geom) continue
+    const posGroup = getPositionsGroup(el)
+    if (!posGroup) continue
+    if ((posGroup.getAttribute('data-bounpos-type') ?? 'pos-set') !== 'pos-set') continue
+    const points = [...posGroup.children]
+      .filter(c => c.tagName === 'circle')
+      .map(c => ({
+        cx: geom.x + Number(c.getAttribute('cx') ?? 0),
+        cy: geom.y + Number(c.getAttribute('cy') ?? 0),
+      }))
+    owners.push({ ownerId: el.getAttribute('data-id'), points })
+  }
+  return owners
+}
+
+/** Ids of every top-level toy (except excludeId) whose centre sits exactly on (cx, cy). */
+function toyIdsAt(layerEl, cx, cy, excludeId) {
+  const ids = []
+  for (const el of layerEl.querySelectorAll(':scope > [data-id]')) {
+    const id = el.getAttribute('data-id')
+    if (id === excludeId) continue
+    const geom = getGeom(el)
+    if (geom && geom.x + geom.width / 2 === cx && geom.y + geom.height / 2 === cy) ids.push(id)
+  }
+  return ids
+}
+
+/** Owner ids (excluding excludeId) whose tt_positions point sits exactly on (cx, cy). */
+function ownersAtPoint(layerEl, cx, cy, excludeId) {
+  return allPositionOwners(layerEl)
+    .filter(o => o.ownerId !== excludeId && o.points.some(p => p.cx === cx && p.cy === cy))
+    .map(o => o.ownerId)
+}
+
+/** Ids of every top-level toy currently sitting exactly on one of el's OWN tt_positions points. */
+function directOccupantIds(layerEl, el) {
+  const geom = getGeom(el)
+  const posGroup = getPositionsGroup(el)
+  if (!geom || !posGroup) return []
+  const toyId = el.getAttribute('data-id')
+  const ids = new Set()
+  for (const c of posGroup.children) {
+    if (c.tagName !== 'circle') continue
+    const cx = geom.x + Number(c.getAttribute('cx') ?? 0)
+    const cy = geom.y + Number(c.getAttribute('cy') ?? 0)
+    for (const id of toyIdsAt(layerEl, cx, cy, toyId)) ids.add(id)
+  }
+  return [...ids]
+}
+
+/**
+ * Owner ids el is currently sitting on (i.e. el's own centre sits exactly
+ * on some OTHER toy's tt_positions point) — the departure half of a move's
+ * positions bookkeeping.
+ */
+export function departingPositionOwners(layerEl, el) {
+  if (!layerEl || !el) return []
+  const geom = getGeom(el)
+  if (!geom) return []
+  const toyId = el.getAttribute('data-id')
+  return ownersAtPoint(layerEl, geom.x + geom.width / 2, geom.y + geom.height / 2, toyId)
+}
+
+/**
+ * Owner ids el is ABOUT to sit on once moved to (x, y) — the arrival half.
+ * Independent of el's own current position; only asks whether some OTHER
+ * toy declares a point exactly at the destination.
+ */
+export function arrivingPositionOwners(layerEl, el, x, y) {
+  if (!layerEl || !el) return []
+  return ownersAtPoint(layerEl, x, y, el.getAttribute('data-id'))
+}
+
+/**
+ * departingPositionOwners, bundled with the (x, y) el is departing FROM
+ * and el itself — the shape runGesture's positions_change_handler cascade
+ * consumes (see runPositionsChangeCascadeInto). One event per owner.
+ */
+export function departingPositionEvents(layerEl, el) {
+  if (!layerEl || !el) return []
+  const geom = getGeom(el)
+  if (!geom) return []
+  const x = geom.x + geom.width / 2, y = geom.y + geom.height / 2
+  return departingPositionOwners(layerEl, el).map(ownerId => ({ ownerId, x, y, el, kind: 'departed' }))
+}
+
+/**
+ * arrivingPositionOwners, bundled with the (x, y) el is arriving AT and el
+ * itself — the shape runGesture's positions_change_handler cascade
+ * consumes. One event per owner.
+ */
+export function arrivingPositionEvents(layerEl, el, x, y) {
+  return arrivingPositionOwners(layerEl, el, x, y).map(ownerId => ({ ownerId, x, y, el, kind: 'arrived' }))
+}
+
+/**
+ * Bring el to the topmost z-order among top-level toys, then recursively
+ * do the same for whatever's currently stacked on el's OWN tt_positions —
+ * and for whatever's stacked on THEIR positions, and so on down the whole
+ * stack. Each level is promoted in its existing relative order to the
+ * others at that level, so siblings never swap places, only rise as a
+ * group above whatever they're stacked on.
+ *
+ * A DOM-only reorder: appendChild within the same parent changes paint
+ * order without touching any attributes, so this doesn't disturb anything
+ * else about the promoted elements. `seen` guards against a malformed/
+ * cyclic stacking relationship recursing forever.
+ */
+export function promoteZOrder(layerEl, el, seen = new Set()) {
+  if (!layerEl || !el) return
+  const toyId = el.getAttribute('data-id')
+  if (seen.has(toyId)) return
+  seen.add(toyId)
+
+  const occupantIds = new Set(directOccupantIds(layerEl, el))
+  layerEl.appendChild(el) // el itself → topmost (so far)
+
+  if (!occupantIds.size) return
+  // Promote occupants in their existing relative order (not occupantIds'
+  // discovery order, which follows circle/DOM-scan order, not z-order).
+  const inOrder = [...layerEl.querySelectorAll(':scope > [data-id]')]
+    .filter(o => occupantIds.has(o.getAttribute('data-id')))
+  for (const occupant of inOrder) promoteZOrder(layerEl, occupant, seen)
+}
+
+/**
+ * Move el to new centre (x, y), carrying its whole stack along with it —
+ * whatever's sitting on el's tt_positions, and whatever's sitting on
+ * THEIR positions, recursively — so a stack moves as one rigid body
+ * rather than the base sliding out from under everything on top of it.
+ *
+ * Every member's offset is computed from a single upfront traversal (el's
+ * own geometry, unchanged at this point) before anything is actually
+ * moved, so later members in the walk never read another member's
+ * already-updated position.
+ */
+export function moveToyAndStack(layerEl, el, x, y) {
+  if (!el) return
+  const geom = getGeom(el)
+  if (!geom) { applyMoveDom(el, x, y); return }
+  const dx = x - (geom.x + geom.width / 2)
+  const dy = y - (geom.y + geom.height / 2)
+
+  const stack = []
+  const seen = new Set()
+  const collect = (member) => {
+    const id = member.getAttribute('data-id')
+    if (seen.has(id)) return
+    seen.add(id)
+    stack.push(member)
+    if (!layerEl) return
+    for (const occId of directOccupantIds(layerEl, member)) {
+      const occEl = layerEl.querySelector(`:scope > [data-id="${occId}"]`)
+      if (occEl) collect(occEl)
+    }
+  }
+  collect(el)
+
+  const targets = stack.map(member => {
+    const g = getGeom(member)
+    return { member, cx: g ? g.x + g.width / 2 + dx : x, cy: g ? g.y + g.height / 2 + dy : y }
+  })
+  for (const { member, cx, cy } of targets) applyMoveDom(member, cx, cy)
+}
+
 export function selectModes(domEl) {
   const ownSvg = domEl?.querySelector?.(':scope > svg')
   let modes = []
@@ -1261,6 +1525,60 @@ function runContentsChangeCascadeInto(allRecords, layerEl) {
 }
 
 /**
+ * Run positions_change_handler for each owner touched by this gesture's
+ * position events — the tt_positions counterpart to
+ * runContentsChangeCascadeInto, invoked when a toy is placed onto (or
+ * moves off of) another toy's snap point.
+ *
+ * events: array of { ownerId, x, y, el, kind } — kind is 'departed' or
+ * 'arrived' (see departingPositionEvents / arrivingPositionEvents).
+ * Unlike the contents cascade, these aren't discovered from
+ * MutationRecord ancestry — a toy sitting on another toy's position is a
+ * DOM sibling, not a descendant, so there's nothing to walk. Callers
+ * (app.js's drag-commit code, makeLayerAPI's applyMoveCommit) compute
+ * events directly from geometry and pass them straight through runGesture's
+ * opts.
+ *
+ * Events are grouped per owner into two Maps keyed by "x,y" → the element
+ * that departed/arrived at that point, and each owner's
+ * positions_change_handler(elem, departedElements, arrivingElements) is
+ * called once with both — every departure and arrival across all of that
+ * owner's points in this one gesture, in a single call. Each owner's
+ * handler runs at most once, same "runs once per gesture" rule as
+ * contents_change_handler. If a handler's own mutations affect a
+ * container, those are folded into the contents cascade too, so the whole
+ * thing still lands as one Yjs transaction.
+ */
+function runPositionsChangeCascadeInto(allRecords, layerEl, events) {
+  if (!events || !events.length) return
+  const byOwner = new Map() // ownerId -> { departed: Map<"x,y", el>, arrived: Map<"x,y", el> }
+  for (const { ownerId, x, y, el, kind } of events) {
+    if (!byOwner.has(ownerId)) byOwner.set(ownerId, { departed: new Map(), arrived: new Map() })
+    const bucket = byOwner.get(ownerId)
+    ;(kind === 'departed' ? bucket.departed : bucket.arrived).set(`${x},${y}`, el)
+  }
+
+  const stepRecords = []
+  for (const [ownerId, { departed, arrived }] of byOwner) {
+    const ownerEl = layerEl.querySelector(`[data-id="${ownerId}"]`)
+    if (!ownerEl) continue // e.g. the owner was deleted mid-gesture
+    const handlers = getNamespacesForType(ownerEl.getAttribute('data-toy-type'))
+      .map(name => globalThis[name])
+      .filter(ns => ns && typeof ns.positions_change_handler === 'function')
+    if (!handlers.length) continue
+    const records = runInEnvelope(ownerEl, () => {
+      handlers.forEach(ns => ns.positions_change_handler(ownerEl, departed, arrived))
+    })
+    stepRecords.push(...records)
+  }
+  if (!stepRecords.length) return
+  allRecords.push(...stepRecords)
+  // Let any DOM changes the positions handlers made cascade into containers
+  // the same way any other gesture mutation would.
+  runContentsChangeCascadeInto(allRecords, layerEl)
+}
+
+/**
  * Run fn() against the live DOM (inside an envelope observing layerEl),
  * then run whatever contents_change_handler cascade fn's mutations
  * trigger, then commit the whole thing — the gesture and its entire
@@ -1285,6 +1603,7 @@ export function runGesture(ydoc, layerEl, fn, opts = {}) {
   ensureLayerId(layerEl)
   const allRecords = runInEnvelope(layerEl, fn)
   runContentsChangeCascadeInto(allRecords, layerEl)
+  runPositionsChangeCascadeInto(allRecords, layerEl, opts.positionEvents)
 
   const { tableId } = opts
   let op = null
@@ -1701,8 +2020,8 @@ export function buildToyForkSeed(ydoc, lca, splitter, { authorId, joinSequence =
 }
 
 export function makeLayerAPI(ydoc, getLayerEl, myId, tableId, isCreator = false) {  const layer = () => (typeof getLayerEl === 'function' ? getLayerEl() : getLayerEl)
-  const gesture = (name, fn) =>
-    runGesture(ydoc, layer(), fn, { gesture: name, authorId: myId, tableId })
+  const gesture = (name, fn, extraOpts = {}) =>
+    runGesture(ydoc, layer(), fn, { gesture: name, authorId: myId, tableId, ...extraOpts })
 
   return {
     find:            (id)            => findToyDom(layer(), id),
@@ -1711,7 +2030,25 @@ export function makeLayerAPI(ydoc, getLayerEl, myId, tableId, isCreator = false)
     getAnchor,
     getTtState:      getTtStateDom,
     getTtStateSchema,
-    applyMoveCommit: (el, x, y)      => gesture('move',   () => applyMoveDom(el, x, y)),
+    applyMoveCommit: (el, x, y) => {
+      const layerEl = layer()
+      // Steps 1 & 3: departing/arriving events, read from OTHER toys'
+      // geometry (unaffected by the z-order reorder or the move itself,
+      // so safe to compute upfront rather than mid-gesture). A true no-op
+      // (same centre) suppresses both — nothing actually changed, so
+      // nothing to notify — though promotion/move (steps 2 & 4) below
+      // still run regardless, since picking a toy up and setting it back
+      // down still brings it to front.
+      const oldGeom = getGeom(el)
+      const moved = !oldGeom || oldGeom.x + oldGeom.width / 2 !== x || oldGeom.y + oldGeom.height / 2 !== y
+      const positionEvents = moved
+        ? [...departingPositionEvents(layerEl, el), ...arrivingPositionEvents(layerEl, el, x, y)]
+        : []
+      return gesture('move', () => {
+        promoteZOrder(layerEl, el)          // step 2: el + its whole stack, to the front
+        moveToyAndStack(layerEl, el, x, y)  // step 4: el + its whole stack, to the new spot
+      }, { positionEvents })                // step 5: runGesture's own cascade
+    },
     applyResize:     (el, x, y, w, h) => gesture('resize', () => applyResizeDom(el, x, y, w, h)),
     edit:            (el, editData)  => gesture('edit',   () => editDom(el, editData)),
     listData:        ()              => toysDataDom(layer()),

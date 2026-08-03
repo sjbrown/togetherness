@@ -983,8 +983,16 @@ export function computeBoundaryRects(yBounPos, toyClasses, anchor) {
 /**
  * Scan yBounPos for pos-sets whose name ∈ toyClasses.
  * Returns a flat array of {cx, cy, snapRadius} for all matching snap points.
+ *
+ * occupiedCenters — optional array of {cx, cy} for toys currently placed on
+ * the canvas (typically every top-level toy except the one being dragged).
+ * Any snap point whose (cx, cy) exactly matches an occupied center is
+ * filtered out — that slot is already taken, so it isn't offered as a drag
+ * destination. Exact equality only (no radius fuzz): a toy is "on" a
+ * position when its center coincides with the point precisely, the same
+ * way applyMoveCommit snaps it there in the first place.
  */
-export function computePositionSnapPoints(yBounPos, toyClasses) {
+export function computePositionSnapPoints(yBounPos, toyClasses, occupiedCenters = []) {
   if (!toyClasses || toyClasses.size === 0) return [];
   const points = [];
   for (const node of yBounPos.toArray()) {
@@ -995,11 +1003,10 @@ export function computePositionSnapPoints(yBounPos, toyClasses) {
     const snapRadius = Number(node.getAttribute('data-snap-radius') ?? 30);
     for (const child of node.toArray()) {
       if (!(child instanceof Y.XmlElement) || child.nodeName !== 'circle') continue;
-      points.push({
-        cx: Number(child.getAttribute('cx') ?? 0),
-        cy: Number(child.getAttribute('cy') ?? 0),
-        snapRadius,
-      });
+      const cx = Number(child.getAttribute('cx') ?? 0);
+      const cy = Number(child.getAttribute('cy') ?? 0);
+      if (occupiedCenters.some(o => o.cx === cx && o.cy === cy)) continue;
+      points.push({ cx, cy, snapRadius });
     }
   }
   return points;

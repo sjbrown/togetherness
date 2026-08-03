@@ -433,6 +433,24 @@ function findNearestSnap(x, y, snapPoints) {
   return best;
 }
 
+/**
+ * Canvas-space centers of every top-level toy currently on the layer,
+ * except excludeId (typically the toy about to be dragged — its own
+ * current position shouldn't count as "occupying" a slot it's about to
+ * leave).
+ */
+function _currentToyCenters(excludeId) {
+  const layerEl = _svgEl.querySelector('#toys-layer');
+  if (!layerEl) return [];
+  const centers = [];
+  for (const el of layerEl.querySelectorAll(':scope > [data-id]')) {
+    if (el.getAttribute('data-id') === excludeId) continue;
+    const geom = Toys.getGeom(el);
+    if (geom) centers.push({ cx: geom.x + geom.width / 2, cy: geom.y + geom.height / 2 });
+  }
+  return centers;
+}
+
 function renderDoc() {
   renderBackgroundLayer();
   renderBounPosLayer();
@@ -1148,7 +1166,10 @@ const App = {
     const isToy = moduleForElement(domEl) === 'toys';
     const toyClasses  = isToy ? getToyClasses(domEl) : new Set();
     const boundsRects = isToy ? BounPos.computeBoundaryRects(_yBounPos, toyClasses, anchor) : null;
-    const snapPoints  = isToy ? BounPos.computePositionSnapPoints(_yBounPos, toyClasses) : [];
+    const boundsSnap  = isToy ? BounPos.computePositionSnapPoints(_yBounPos, toyClasses, _currentToyCenters(id)) : [];
+    const toysLayerEl = _svgEl.querySelector('#toys-layer');
+    const toySnap     = isToy ? Toys.computePositionSnapPoints(toysLayerEl, toyClasses, id) : [];
+    const snapPoints  = [...boundsSnap, ...toySnap];
     _dragState = { id, startX: anchor.x, startY: anchor.y,
       startBboxX: bbox.x,
       startBboxY: bbox.y,
@@ -1246,7 +1267,12 @@ const App = {
 
     if (dropContainerId) {
       // Drop into a container = reparent + reposition into it, plus its
-      // own contents_change_handler reaction.
+      // own contents_change_handler reaction. Landing inside a container
+      // is never itself a position-snap (dropContainerId preempts
+      // snapping), so the only position bookkeeping that can apply here is
+      // whatever this toy is vacating — Toys.departingPositionEvents reads
+      // domEl's still-current (pre-reparent) geometry to work that out
+      // itself; app.js doesn't compute or pass any ownership.
       // Everything commits as one operation.
       _lastActionScope = 'toys';
       try {
@@ -1260,7 +1286,10 @@ const App = {
             if (containerGeom) {
               Toys.applyMoveDom(movedEl, rx - containerGeom.x, ry - containerGeom.y);
             }
-          }, { gesture: 'reparent', authorId: _myId, tableId: _tableId });
+          }, {
+            gesture: 'reparent', authorId: _myId, tableId: _tableId,
+            positionEvents: Toys.departingPositionEvents(layerEl, domEl),
+          });
         });
       } catch (err) {
         // a malformed container asset can reach here and throw.
@@ -1289,6 +1318,9 @@ const App = {
     if (mtype === 'toys') _lastActionScope = 'toys';
     else { _lastActionScope = 'draw_bounds'; UndoRedo.tag(`move ${id} → (${rx}, ${ry})`); }
     if (_Layers[mtype]) {
+      // Toys' applyMoveCommit works out its own positions_change_handler
+      // bookkeeping from el's before/after geometry — no ownership is
+      // computed or passed here.
       _Layers[mtype].applyMoveCommit(_Layers[mtype].find(id), rx, ry);
       // observeDeep fires on all layers and calls renderDoc()
     }
