@@ -463,14 +463,14 @@ describe('tray_sum — "Roll All" menu action, end to end', () => {
     const dieEl  = layerEl.querySelector('[data-id="die1"]')
 
     // "Roll All" is a real menu action — go through the same
-    // getMenuActions/invokeMenuActionSync path app.js uses for any menu
+    // getMenuActions/invokeMenuAction path app.js uses for any menu
     // click, not a direct globalThis.tray_sum call, so this exercises the
     // actual wiring (including the applicable() check and the envelope commit).
     const actions = Toys.getMenuActions(trayEl)
     const rollAll = actions.find(a => a.key === 'Roll All')
     expect(rollAll).toBeTruthy()
 
-    Toys.invokeMenuActionSync(ydoc, layerEl, trayEl, rollAll.namespace, rollAll.key)
+    Toys.invokeMenuAction(ydoc, layerEl, trayEl, rollAll.namespace, rollAll.key)
 
     const dieValue = Number(dieEl.querySelector('tspan').textContent)
     expect(dieValue).toBeGreaterThanOrEqual(1)
@@ -494,12 +494,12 @@ describe('tray_sum — "Roll All" menu action, end to end', () => {
     const rollAll = actions.find(a => a.key === 'Roll All')
 
     expect(() =>
-      Toys.invokeMenuActionSync(ydoc, layerEl, trayEl, rollAll.namespace, rollAll.key)
+      Toys.invokeMenuAction(ydoc, layerEl, trayEl, rollAll.namespace, rollAll.key)
     ).not.toThrow()
   })
 })
 
-describe('tray_sum — "Roll" / "Roll All" via invokeMenuActionSync — folded reaction', () => {
+describe('tray_sum — "Roll" / "Roll All" via invokeMenuAction — folded reaction', () => {
   test('a lone die\'s own Roll folds its containing tray\'s recompute into the same transaction', async () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
@@ -516,14 +516,14 @@ describe('tray_sum — "Roll" / "Roll All" via invokeMenuActionSync — folded r
     expect(roll).toBeTruthy()
 
     let before = getOps(ydoc).size
-    Toys.invokeMenuActionSync(ydoc, layerEl, dieEl, roll.namespace, roll.key, undefined, AUTHOR, TABLE)
+    Toys.invokeMenuAction(ydoc, layerEl, dieEl, roll.namespace, roll.key, undefined, AUTHOR, TABLE)
 
     // one operation for the roll AND the tray's recompute together
     expect(getOps(ydoc).size - before).toBe(1)
 
     const dieValue = Number(dieEl.querySelector('tspan').textContent)
     const trayEl = layerEl.querySelector('[data-id="tray1"]')
-    // no manual contents_change_handler call needed — invokeMenuActionSync
+    // no manual contents_change_handler call needed — invokeMenuAction
     // folds the tray's own recompute into the roll's transaction, so the
     // sum is already current, straight off Yjs.
     expect(globalThis.tray.getValue(trayEl)).toBe(String(dieValue))
@@ -546,7 +546,7 @@ describe('tray_sum — "Roll" / "Roll All" via invokeMenuActionSync — folded r
     const rollAll = actions.find(a => a.key === 'Roll All')
 
     const before = getOps(ydoc).size
-    Toys.invokeMenuActionSync(ydoc, layerEl, trayEl, rollAll.namespace, rollAll.key, undefined, AUTHOR, TABLE)
+    Toys.invokeMenuAction(ydoc, layerEl, trayEl, rollAll.namespace, rollAll.key, undefined, AUTHOR, TABLE)
 
     expect(getOps(ydoc).size - before).toBe(1) // both dice + the sum, one atomic operation
 
@@ -581,7 +581,7 @@ describe('tray_sum — "Roll" / "Roll All" via invokeMenuActionSync — folded r
 
     const actions = Toys.getMenuActions(trayEl)
     const rollAll = actions.find(a => a.key === 'Roll All')
-    Toys.invokeMenuActionSync(ydoc, layerEl, trayEl, rollAll.namespace, rollAll.key, undefined, AUTHOR, TABLE)
+    Toys.invokeMenuAction(ydoc, layerEl, trayEl, rollAll.namespace, rollAll.key, undefined, AUTHOR, TABLE)
 
     expect(getOps(ydoc).size - before).toBe(1) // roll + recompute, ONE operation
 
@@ -597,12 +597,12 @@ describe('tray_sum — "Roll" / "Roll All" via invokeMenuActionSync — folded r
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The gesture-triggered cascade (invokeMenuActionSync's DOM-based
+// The gesture-triggered cascade (invokeMenuAction's DOM-based
 // runContentsChangeCascadeInto): run-once-per-tray, nested trays, and a
 // handler that reaches a tray that ISN'T an ancestor of the original change.
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('invokeMenuActionSync — the DOM-based cascade itself', () => {
+describe('invokeMenuAction — the DOM-based cascade itself', () => {
   test('a doubly-nested tray: rolling the innermost die updates both sums, inner then outer, in ONE transaction', async () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
@@ -619,7 +619,7 @@ describe('invokeMenuActionSync — the DOM-based cascade itself', () => {
     const roll = Toys.getMenuActions(dieEl).find(a => a.eventName === 'die_roll')
 
     const before = getOps(ydoc).size
-    Toys.invokeMenuActionSync(ydoc, layerEl, dieEl, roll.namespace, roll.key, undefined, AUTHOR, TABLE)
+    Toys.invokeMenuAction(ydoc, layerEl, dieEl, roll.namespace, roll.key, undefined, AUTHOR, TABLE)
 
     expect(getOps(ydoc).size - before).toBe(1) // die's roll + both trays' recompute, one operation
 
@@ -662,7 +662,7 @@ describe('invokeMenuActionSync — the DOM-based cascade itself', () => {
     }
 
     const before = getOps(ydoc).size
-    Toys.invokeMenuActionSync(ydoc, layerEl, dieAEl, 'd6', '__rollBoth', undefined, AUTHOR, TABLE)
+    Toys.invokeMenuAction(ydoc, layerEl, dieAEl, 'd6', '__rollBoth', undefined, AUTHOR, TABLE)
 
     expect(getOps(ydoc).size - before).toBe(1)
     const dieAValue = Number(layerEl.querySelector('[data-id="dieA"]').querySelector('tspan').textContent)
@@ -735,7 +735,7 @@ describe('invokeMenuActionSync — the DOM-based cascade itself', () => {
 
     const before = getOps(ydoc).size
     expect(() => {
-      Toys.invokeMenuActionSync(ydoc, layerEl, loopAEl, 'loop_a', 'Trigger', undefined, AUTHOR, TABLE)
+      Toys.invokeMenuAction(ydoc, layerEl, loopAEl, 'loop_a', 'Trigger', undefined, AUTHOR, TABLE)
     }).not.toThrow()
 
     expect(getOps(ydoc).size - before).toBe(1) // still one atomic operation, cycle and all

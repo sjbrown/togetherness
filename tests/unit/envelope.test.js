@@ -1,7 +1,7 @@
 /**
  * tests/unit/envelope.test.js
  *
- * runInEnvelopeSync's job: capture whatever a handler did to the DOM, as
+ * runInEnvelope's job: capture whatever a handler did to the DOM, as
  * raw MutationRecord[], so commitGesture (op_wire_mutation.js's serialize)
  * can turn it into an operation. This file used to also test
  * commitEnvelope's Yjs-tree translation (attribute/childList/characterData
@@ -17,7 +17,7 @@
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { addToy, _clearSvgTextCache } from '../../src/toys.js'
-import { runInEnvelopeSync } from '../../src/envelope.js'
+import { runInEnvelope } from '../../src/envelope.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
@@ -55,13 +55,13 @@ async function placeToy(ydoc, layerEl, id, color = '#111') {
   return addToy(ydoc, layerEl, { id, toyType: 'player_marker', x: 0, y: 0, color })
 }
 
-describe('runInEnvelopeSync — raw capture', () => {
+describe('runInEnvelope — raw capture', () => {
   test('attribute mutation produces an attributes record', async () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
     const toyEl = await placeToy(ydoc, layerEl, 't1')
 
-    const records = runInEnvelopeSync(toyEl, () => {
+    const records = runInEnvelope(toyEl, () => {
       toyEl.setAttribute('data-color', '#f00')
     })
 
@@ -79,7 +79,7 @@ describe('runInEnvelopeSync — raw capture', () => {
     const groupEl = toyEl.querySelector('g.colorable')
     const circle  = document.createElementNS(SVG_NS, 'circle')
 
-    const records = runInEnvelopeSync(toyEl, () => {
+    const records = runInEnvelope(toyEl, () => {
       groupEl.appendChild(circle)
     })
 
@@ -95,7 +95,7 @@ describe('runInEnvelopeSync — raw capture', () => {
     const toyEl    = await placeToy(ydoc, layerEl, 't1')
     const textNode = toyEl.querySelector('tspan').firstChild
 
-    const records = runInEnvelopeSync(toyEl, () => {
+    const records = runInEnvelope(toyEl, () => {
       textNode.data = '9'
     })
 
@@ -110,7 +110,7 @@ describe('runInEnvelopeSync — raw capture', () => {
     const layerEl = freshLayer()
     const toyEl = await placeToy(ydoc, layerEl, 't1')
 
-    const records = runInEnvelopeSync(toyEl, () => {})
+    const records = runInEnvelope(toyEl, () => {})
     expect(records).toEqual([])
   })
 
@@ -130,7 +130,7 @@ describe('runInEnvelopeSync — raw capture', () => {
     layerEl.appendChild(trayEl)
 
     // A mutation on toyEl itself is still captured...
-    const records = runInEnvelopeSync(toyEl, () => {
+    const records = runInEnvelope(toyEl, () => {
       toyEl.setAttribute('data-color', '#0f0')
     })
     expect(records.some(r => r.type === 'attributes' && r.target === toyEl)).toBe(true)
@@ -140,7 +140,7 @@ describe('runInEnvelopeSync — raw capture', () => {
     // envelope's coverage is the whole layer, found via closest() from
     // toyEl, not toyEl's own subtree.
     const toy2El = await placeToy(ydoc, layerEl, 't2')
-    const records2 = runInEnvelopeSync(toyEl, () => {
+    const records2 = runInEnvelope(toyEl, () => {
       toy2El.setAttribute('data-color', '#bad')
     })
     expect(records2.some(r => r.target === toy2El)).toBe(true)
@@ -153,20 +153,20 @@ describe('runInEnvelopeSync — raw capture', () => {
     const bareLayerEl = document.createElementNS(SVG_NS, 'g')
     const toyEl = await placeToy(ydoc, bareLayerEl, 't1')
 
-    const records = runInEnvelopeSync(toyEl, () => {
+    const records = runInEnvelope(toyEl, () => {
       toyEl.setAttribute('data-color', '#0f0')
     })
     expect(records.some(r => r.type === 'attributes' && r.target === toyEl)).toBe(true)
   })
 })
 
-describe('runInEnvelopeSync — synchronous contract', () => {
+describe('runInEnvelope — synchronous contract', () => {
   test('captures a synchronous mutation and returns records with no Promise', async () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
     const toyEl = await placeToy(ydoc, layerEl, 't1')
 
-    const records = runInEnvelopeSync(toyEl, () => {
+    const records = runInEnvelope(toyEl, () => {
       toyEl.setAttribute('data-color', '#222')
     })
     // A plain array, synchronously — not a thenable.
@@ -179,6 +179,6 @@ describe('runInEnvelopeSync — synchronous contract', () => {
     const layerEl = freshLayer()
     const toyEl = await placeToy(ydoc, layerEl, 't1')
 
-    expect(() => runInEnvelopeSync(toyEl, async () => {})).toThrow(/synchronous handlers only/)
+    expect(() => runInEnvelope(toyEl, async () => {})).toThrow(/synchronous handlers only/)
   })
 })

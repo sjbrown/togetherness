@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { addToy, _clearSvgTextCache,
-         _resetToyScriptState, activateToyScripts, initializeToySync } from '../../src/toys.js'
+         _resetToyScriptState, activateToyScripts, initializeToy } from '../../src/toys.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
@@ -60,14 +60,14 @@ beforeEach(() => {
 })
 afterEach(() => { vi.unstubAllGlobals() })
 
-describe('initializeToySync', () => {
+describe('initializeToy', () => {
   test('calls initialize(elem) with no prototype, and the mutation lands in the DOM', async () => {
     vi.stubGlobal('fetch', stubFetch(TOY_SVG))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
     const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
-    initializeToySync(ydoc, layerEl, toyEl, 'player_marker')
+    initializeToy(ydoc, layerEl, toyEl, 'player_marker')
 
     expect(layerEl.querySelector('#t1__status_tspan').textContent).toBe('initialized')
     expect(globalThis.widgetNs.initializeCallCount).toBe(1)
@@ -79,7 +79,7 @@ describe('initializeToySync', () => {
     const layerEl = freshLayer()
     const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
-    initializeToySync(ydoc, layerEl, toyEl, 'player_marker')
+    initializeToy(ydoc, layerEl, toyEl, 'player_marker')
 
     // If a prototype had been passed, widgetNs.initialize would have
     // written 'from-prototype' instead.
@@ -92,7 +92,7 @@ describe('initializeToySync', () => {
     const layerEl = freshLayer()
     const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
-    expect(initializeToySync(ydoc, layerEl, toyEl, 'player_marker')).toBeUndefined()
+    expect(initializeToy(ydoc, layerEl, toyEl, 'player_marker')).toBeUndefined()
     expect(layerEl.querySelector('#t1__status_tspan').textContent).toBe('unset')
   })
 
@@ -113,7 +113,7 @@ describe('initializeToySync', () => {
     const layerEl = freshLayer()
     const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
-    initializeToySync(ydoc, layerEl, toyEl, 'player_marker')
+    initializeToy(ydoc, layerEl, toyEl, 'player_marker')
 
     expect(layerEl.querySelector('#t1__a_tspan').textContent).toBe('a-done')
     expect(layerEl.querySelector('#t1__b_tspan').textContent).toBe('b-done')
@@ -132,7 +132,7 @@ describe('initializeToySync', () => {
     const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
     const before = layerEl.querySelector('#t1__tspan_die_value').textContent
-    expect(initializeToySync(ydoc, layerEl, toyEl, 'player_marker')).toBeUndefined()
+    expect(initializeToy(ydoc, layerEl, toyEl, 'player_marker')).toBeUndefined()
     expect(layerEl.querySelector('#t1__tspan_die_value').textContent).toBe(before)
   })
 })

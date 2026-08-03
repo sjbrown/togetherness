@@ -9,7 +9,7 @@ import { checkpointOp, projectFrom } from '../../src/op_checkpoint.js'
 import { getHead, setHead } from '../../src/op_head.js'
 import * as Toys from '../../src/toys.js'
 import { addToy, activateAllToyScriptsDom, _clearSvgTextCache,
-         _resetToyScriptState, getMenuActions, invokeMenuActionSync,
+         _resetToyScriptState, getMenuActions, invokeMenuAction,
          getNamespacesForType } from '../../src/toys.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
@@ -222,7 +222,7 @@ describe('full vertical slice — roll via menu \u2192 tspan changes \u2192 enve
     const layerEl = freshLayer()
     const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
-    invokeMenuActionSync(ydoc, layerEl, toyEl, 'd6', 'Turn Up')
+    invokeMenuAction(ydoc, layerEl, toyEl, 'd6', 'Turn Up')
 
     expect(layerEl.querySelector('#t1__tspan_die_value').textContent).toBe('1')
   })
@@ -232,7 +232,7 @@ describe('full vertical slice — roll via menu \u2192 tspan changes \u2192 enve
     const layerEl = freshLayer()
     const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
-    invokeMenuActionSync(ydoc, layerEl, toyEl, 'd6', 'Roll')
+    invokeMenuAction(ydoc, layerEl, toyEl, 'd6', 'Roll')
 
     const domValue = layerEl.querySelector('#t1__tspan_die_value').textContent
     expect(Number(domValue)).toBeGreaterThanOrEqual(1)
@@ -240,7 +240,7 @@ describe('full vertical slice — roll via menu \u2192 tspan changes \u2192 enve
   })
 })
 
-describe('invokeMenuActionSync records an operation when given a tableId', () => {
+describe('invokeMenuAction records an operation when given a tableId', () => {
   beforeEach(() => localStorage.clear())
 
   test('a menu action with no tableId records no operation', async () => {
@@ -248,7 +248,7 @@ describe('invokeMenuActionSync records an operation when given a tableId', () =>
     const layerEl = freshLayer()
     const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
-    invokeMenuActionSync(ydoc, layerEl, toyEl, 'd6', 'Turn Up', undefined, 'alice')
+    invokeMenuAction(ydoc, layerEl, toyEl, 'd6', 'Turn Up', undefined, 'alice')
 
     expect([...getOps(ydoc).values()].length).toBe(0)
   })
@@ -258,7 +258,7 @@ describe('invokeMenuActionSync records an operation when given a tableId', () =>
     const layerEl = freshLayer()
     const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
-    invokeMenuActionSync(ydoc, layerEl, toyEl, 'd6', 'Turn Up', undefined, 'alice', 'race-table')
+    invokeMenuAction(ydoc, layerEl, toyEl, 'd6', 'Turn Up', undefined, 'alice', 'race-table')
 
     const ops = [...getOps(ydoc).values()]
     expect(ops.length).toBe(1)
@@ -276,7 +276,7 @@ describe('invokeMenuActionSync records an operation when given a tableId', () =>
     appendOp(ydoc, genesis)
     setHead('race-table', genesis.id)
 
-    invokeMenuActionSync(ydoc, layerEl, toyEl, 'd6', 'Turn Up', undefined, 'alice', 'race-table')
+    invokeMenuAction(ydoc, layerEl, toyEl, 'd6', 'Turn Up', undefined, 'alice', 'race-table')
 
     const rollOp = [...getOps(ydoc).values()].find(o => o.gesture.startsWith('menu:'))
     expect(rollOp.parents).toEqual([genesis.id])

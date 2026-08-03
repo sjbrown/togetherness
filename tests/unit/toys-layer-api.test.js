@@ -18,7 +18,7 @@ import {
   resolveToyBranchConflict, buildToyForkSeed, adoptToyBranch,
   undoToyGesture, redoToyGesture, deleteToysBatch, moveToysBatch,
   canUndoToyGesture, canRedoToyGesture,
-  getGeom, reparentToyDom, applyMoveDom, runGestureSync, importToys,
+  getGeom, reparentToyDom, applyMoveDom, runGesture, importToys,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { getOps, appendOp } from '../../src/op_dag.js'
@@ -861,7 +861,7 @@ describe('undoToyGesture / redoToyGesture', () => {
 
     const containerEl   = layerEl.querySelector('[data-id="tray1"]')
     const containerGeom = getGeom(containerEl)
-    runGestureSync(ydoc, layerEl, () => {
+    runGesture(ydoc, layerEl, () => {
       reparentToyDom(layerEl, 'die1', 'tray1')
       const movedEl = layerEl.querySelector('[data-id="die1"]')
       applyMoveDom(movedEl, 320 - containerGeom.x, 320 - containerGeom.y)
