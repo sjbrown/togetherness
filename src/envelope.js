@@ -9,13 +9,13 @@
  * of the whole toys layer, and the DOM IS the canonical document now (see
  * REVISION_PLAN.md Phase C) — so a handler just mutates it directly:
  *
- *   const records = runInEnvelopeSync(toyEl, () => handler.run(toyEl))
+ *   const records = runInEnvelope(toyEl, () => handler.run(toyEl))
  *   commitGesture(ydoc, records, { gesture, authorId, parents })
  *
- * runInEnvelopeSync's only job now is capturing what a handler did, as raw
+ * runInEnvelope's only job now is capturing what a handler did, as raw
  * MutationRecord[], so commitGesture (op_wire_mutation.js's serialize) can
  * turn that into an operation. There is no Yjs tree to translate into
- * anymore; toys.js's runGestureSync is the one real caller.
+ * anymore; toys.js's runGesture is the one real caller.
  *
  * Benefits to this design:
    - a MutationObserver is transparent (handler code is unmodified, ordinary
@@ -24,7 +24,7 @@
    - doesn't need escape-proofing like a proxy wrapper
  *
  * Handlers are synchronous only — no await, no setTimeout, no fetch, no
- * promise. runInEnvelopeSync throws if a handler returns a thenable.
+ * promise. runInEnvelope throws if a handler returns a thenable.
  */
 
 import { serialize as serializeRecords } from './op_wire_mutation.js'
@@ -54,13 +54,13 @@ const MUTATION_OPTS = {
  * silently drop the mutations it would make after its first await — a loud
  * failure, not a silent fallback.
  */
-export function runInEnvelopeSync(toyEl, fn) {
+export function runInEnvelope(toyEl, fn) {
   // Applying a peer's operation mutates our DOM too; capturing that would
   // make two peers generate operations at each other forever.
   if (isReplaying()) {
     const result = fn()
     if (result && typeof result.then === 'function') {
-      throw new Error('[envelope] runInEnvelopeSync: handler returned a Promise; synchronous handlers only')
+      throw new Error('[envelope] runInEnvelope: handler returned a Promise; synchronous handlers only')
     }
     return []
   }
@@ -73,7 +73,7 @@ export function runInEnvelopeSync(toyEl, fn) {
   try {
     const result = fn()
     if (result && typeof result.then === 'function') {
-      throw new Error('[envelope] runInEnvelopeSync: handler returned a Promise; synchronous handlers only')
+      throw new Error('[envelope] runInEnvelope: handler returned a Promise; synchronous handlers only')
     }
   } finally {
     records.push(...observer.takeRecords())

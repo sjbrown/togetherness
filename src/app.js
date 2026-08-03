@@ -1282,7 +1282,7 @@ const App = {
       // Drop into a container = reparent + reposition into it, plus its
       // own contents_change_handler reaction — ALL in one
       // transaction, via the same DOM-based gesture machinery toy handlers
-      // use (Toys.runGestureSync): reparent and reposition are plain DOM
+      // use (Toys.runGesture): reparent and reposition are plain DOM
       // mutations captured by one envelope, the cascade runs against that
       // same live DOM with no re-rendering, and everything commits as one
       // operation. One undo step, one thing to arbitrate or fork on
@@ -1291,7 +1291,7 @@ const App = {
       try {
         const layerEl = _svgEl.querySelector('#toys-layer');
         _ydoc.transact(() => {
-          Toys.runGestureSync(_ydoc, layerEl, () => {
+          Toys.runGesture(_ydoc, layerEl, () => {
             Toys.reparentToyDom(layerEl, id, dropContainerId);
             const movedEl      = layerEl.querySelector(`[data-id="${id}"]`);
             const containerEl  = layerEl.querySelector(`[data-id="${dropContainerId}"]`);
