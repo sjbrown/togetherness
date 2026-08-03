@@ -432,6 +432,7 @@ export function svgTextToDom(svgText, prefix) {
 
   const classAddMap = new Map([
     ['tt_contents',          prefix + 'tt_contents'],
+    ['tt_positions',         prefix + 'tt_positions'],
     ['tt_wh_follow_resize',  prefix + 'tt_wh_follow_resize'],
     ['tt_colored',           prefix + 'tt_colored'],
     ['tt_color_filter',      prefix + 'tt_color_filter'],
@@ -892,12 +893,25 @@ export const TOOLS = [
       { kind: 'color-hsl', key: 'fill', label: 'Bag color', show: ['add', 'edit', 'addQuick'] },
     ],
   },
+  {
+    name:    'chip',
+    toyType: 'chip',
+    file: 'chip.svg',
+    label: 'Chip',
+    iconUrl: 'toy/chip.svg',
+    layer:   'toys',
+    defaults: { fill: '#f8f8e5' },
+    options: [
+      { kind: 'color-hsl', key: 'fill', label: 'Chip color', show: ['add', 'edit', 'addQuick'] },
+    ],
+  },
 ];
 export const TOY_TYPES = {
   player_marker: TOOLS[0],
   dice_d6: TOOLS[1],
   tray_sum: TOOLS[2],
   bag: TOOLS[3],
+  chip: TOOLS[4],
 }
 
 // ── ttState / ttStateSchema ───────────────────────────────────────────────────

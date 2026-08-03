@@ -1,12 +1,14 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
-   xmlns:dc="http://purl.org/dc/elements/1.1/"
-   xmlns:svg="http://www.w3.org/2000/svg"
    xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
    xmlns:xlink="http://www.w3.org/1999/xlink"
    height="80"
    width="80"
    version="1.1"
+   id="chip"
+   class="chip"
+   viewBox="0 0 80 80"
    >
   <defs id="defs4">
     <filter class="tt_color_filter"
@@ -34,7 +36,7 @@ var chip = {
       otherEvents: ['dblclick'],
       applicable: (node) => { return true },
       handler: function(evt) {
-        console.log('not implemented')
+        chip.increment(this, 1)
       },
     },
     'Value -1': {
@@ -42,9 +44,15 @@ var chip = {
       otherEvents: ['dblclick'],
       applicable: (node) => { return true },
       handler: function(evt) {
-        console.log('not implemented')
+        chip.increment(this, -1)
       },
     },
+  },
+
+  increment: function(elem, step) {
+    const tspan = elem.querySelector('tspan')
+    const current = parseInt(tspan.textContent)
+    tspan.textContent = String(current + step)
   },
 
 }
@@ -61,7 +69,8 @@ var chip = {
   />
 
   <g
-     class="chip_head"
+     class="chip_head tt_colored"
+     filter="url(#app-filter-colorize)"
      width="80"
      height="80"
   >
@@ -70,15 +79,19 @@ var chip = {
       r="36" cy="40" cx="40"
       fill="white"
     />
-    <text x="22" y="62"
-      fill="black"
-      style="font-size:60px">
+    <text x="40" y="60"
+      style="font-style:normal;font-variant:normal;font-weight:normal;
+       font-size:55px;line-height:1.25;font-family:sans-serif;
+       text-align:center; text-anchor:middle;
+       letter-spacing:0px;word-spacing:0px;
+       fill:#000;fill-opacity:1"
+      >
     <tspan>5</tspan>
     </text>
     </g>
   </g>
 
-  <g class="tt_stacked" data-bounpos-type="pos-set" name="chip">
+  <g class="tt_positions" data-bounpos-type="pos-set" name="chip">
     <circle cx="40" cy="40" r="10" fill="#fff" fill-opacity="0.2"></circle>
   </g>
 
