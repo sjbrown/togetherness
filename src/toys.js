@@ -263,7 +263,7 @@ export function isForeignToyG(el) {
  * parsedNode is el's subtree normalised for the data-id invariant
  * (normalizeForeignToySubtree) with any embedded <script>s already
  * stripped, and those scripts have already been hoisted into ydoc's own
- * scripts fragment — same as at placement time (addToySync) — since
+ * scripts fragment — same as at placement time (addToy) — since
  * hoisting needs data-toy-type, which is exactly the kind of toy-contract
  * detail a caller storing/exporting documents shouldn't have to read.
  * scripts is returned too, for a caller that wants to know what was found
@@ -1156,7 +1156,7 @@ export function getMenuActions(svgEl) {
 
 // ── gesture-triggered cascade (DOM-only, no Yjs until the final commit) ────
 //
-// invokeMenuActionSync / initializeToy use these.
+// invokeMenuAction / initializeToy use these.
 //
 // These walk the live DOM directly and never re-render, because a gesture's
 // handler and everything it cascades into mutate the same live DOM in place
@@ -1254,7 +1254,7 @@ function runContentsChangeCascadeInto(allRecords, layerEl) {
  * anywhere in this: the DOM stays authoritative and current for every step,
  * and nothing is committed until that final call.
  *
- * This is the shared machinery behind invokeMenuActionSync/
+ * This is the shared machinery behind invokeMenuAction/
  * initializeToy (below) — also exported directly for a caller whose
  * gesture isn't a toy handler at all (app.js's commitMove folds a
  * drag-drop reparent + reposition through this too) but still needs the
@@ -1301,7 +1301,7 @@ export function runGesture(ydoc, layerEl, fn, opts = {}) {
  * commit lands under null, the same as every other folded call site (see
  * undo_redo.js's "Atomicity" note).
  */
-export function invokeMenuActionSync(ydoc, layerEl, svgEl, namespace, key, evt, authorId, tableId) {
+export function invokeMenuAction(ydoc, layerEl, svgEl, namespace, key, evt, authorId, tableId) {
   const ns    = globalThis[namespace]
   const entry = ns?.menu?.[key]
   if (!entry || typeof entry.handler !== 'function') {

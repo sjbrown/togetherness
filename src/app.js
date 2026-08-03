@@ -1011,7 +1011,7 @@ const App = {
     const layerEl = _svgEl?.querySelector('#toys-layer');
     if (!layerEl) return;
     try {
-      Toys.invokeMenuActionSync(_ydoc, layerEl, svgEl, namespace, key, undefined, _myId, _tableId);
+      Toys.invokeMenuAction(_ydoc, layerEl, svgEl, namespace, key, undefined, _myId, _tableId);
       _lastActionScope = 'toys';
       // addHistory calls refreshFromDoc() itself — this was previously a
       // bare UI.refreshFromDoc() call with no addHistory, so a toy's own

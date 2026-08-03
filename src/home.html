@@ -882,7 +882,7 @@ async function seedTable(tableId, sampleSvgEl) {
   });
 
   // ensure the doc is synced to Indexeddb before we navigate away
-  await tables.openTablePersistenceSynced(tableId, ydoc);
+  await tables.openTablePersistence(tableId, ydoc);
 }
 
 // ── Wire sampler row clicks to static HTML rows ──────────────────────────────

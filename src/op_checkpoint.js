@@ -127,14 +127,11 @@ function deterministicSuffix(seedString) {
 }
 
 /**
- * The seed content for a forked table (§7.1: "a checkpoint of the LCA
- * state plus the splitter branch's ops"): a genesis checkpoint of the
- * branch point, authored deterministically so two peers independently
- * forking the same branch produce byte-identical seed content — which is
- * what lets tables.js's forkLiveDoc name the fork by hashing it and have
- * both peers land on the same table id — plus the splitter branch's own
- * operations, each rebased onto that new genesis wherever it pointed at
- * lcaId before.
+ * The seed content for a forked table.
+ * A genesis checkpoint of the branch point, authored deterministically so
+ * two peers independently forking the same branch produce byte-identical
+ * seed content.
+ * Both splitting peers land on the same table id
  *
  * ops/joinSequence describe the parent table and are read-only. layerEl
  * must already be projected to lcaId — building that projection needs a
