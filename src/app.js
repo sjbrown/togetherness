@@ -19,15 +19,12 @@
  */
 
 import { initIcons }                              from './icons.js';
+import * as BounPos                               from './boun_pos.js';
 import * as Drawing                               from './drawing.js';
 import * as Toys                                  from './toys.js';
 import { tablesAPI }                              from './tables.js';
 import { getOps }                                 from './op_dag.js';
 import * as Storage                               from './storage.js';
-import * as BounPos                               from './boun_pos.js';
-import { TOOLS as TOY_TOOLS, newToyId,
-         getMenuActions, activateToyScripts,
-         findDropTarget } from './toys.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
 import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
@@ -256,8 +253,8 @@ let _resizeState = null;    // { id, corner, startRect: {x,y,width,height},
 // Which undo mechanism App.undo/App.redo should invoke: the toys op log
 // (Toys.undoToyGesture) or the drawing/boundaries Y.UndoManager
 // (UndoRedo.undo). Set at every commit callsite to whichever the action
-// just performed actually touched. Never ambiguous within one action:
-// switching the active layer clears the selection (App.setLayer), so a
+// just performed actually touched.
+// Switching the active layer clears the selection (App.setLayer), so a
 // single gesture can never span both toys and drawing/boundaries.
 // Defaults to 'toys' — on a session where nothing has happened yet,
 // either mechanism reporting "nothing to undo" is equally correct, and
@@ -297,8 +294,8 @@ function buildToolRegistry() {
     _toolParams[def.name] = { ...BounPos.BOUNPOS_TYPES[def.name].schema.values };
   });
   _toolsByLayer['boundaries-positions'] = [SELECT_TOOL, ...bounPosTools];
-  TOY_TOOLS.forEach(register);
-  _toolsByLayer['toys'] = [SELECT_TOOL, ...TOY_TOOLS];
+  Toys.TOOLS.forEach(register);
+  _toolsByLayer['toys'] = [SELECT_TOOL, ...Toys.TOOLS];
   const drawTools = Object.entries(Drawing.SHAPE_TYPES).map(([name, def]) => ({
     name,
     label:   def.schema.label,
@@ -470,25 +467,20 @@ function renderBounPosLayer() {
   Canvas.wireShapeClicks(layer);
 }
 
-// Toys layer — mirror each <g> wrapper (and its embedded <svg> sub-document).
-// mousedown selects the toy and begins a drag (toys mode only — the layer's
-// pointer-events are gated by setMode). Movement is applied to the DOM live and
-// committed to the CRDT on drop (see the window mouseup handler).
 function renderToysLayer() {
   const layer = _svgEl.querySelector('#toys-layer');
   if (!layer) throw new Error("renderToysLayer: '#toys-layer' not found in SVG document — malformed template?");
-  // render() is projectLayer now: a non-creator with an empty op log
-  // returns null rather than inventing a genesis (see toys.js). There is
-  // nothing to show yet — onOpsChanged re-renders once the real one syncs
-  // in — so this is not an error, just "not yet".
   _Layers.toys.render(layer);
   Canvas.wireShapeClicks(layer);
 }
 
-/**
- * A remote operation arrived. Local ones are already reflected in the DOM
- * that produced them, so this only has work to do for someone else's.
- */
+function renderDrawingLayer() {
+  const layer = _svgEl.querySelector('#drawing-layer');
+  if (!layer) throw new Error("renderDrawingLayer: '#drawing-layer' not found in SVG document — malformed template?");
+  _Layers.drawing.render(layer);
+  Canvas.wireShapeClicks(layer);
+}
+
 /**
  * A conflicting operation arrived. Every peer — bystander or not — ends
  * up viewing the leader (the session never "leaves" the shared table).
@@ -511,15 +503,6 @@ function handleToyBranchConflict(tips) {
   }
 
   addHistory("branch conflict — preserving your divergent work in a new table", { elType: 'toys' });
-  // The checkpoint is authored to orderedIds[0], not _myId: two peers
-  // independently forking the same branch compute the same orderedIds,
-  // so authoring to it (rather than to whichever peer's browser happens
-  // to be running this code) is what makes the checkpoint OBJECT — not
-  // just its content-derived id — actually identical between them. If
-  // each authored to their own identity, the ids would still match but
-  // the stored authorId field wouldn't, and syncing two forks at the
-  // same table id would leave Yjs's last-writer-wins to arbitrarily pick
-  // one — exactly the peer-dependent outcome this design exists to avoid.
   const seed = Toys.buildToyForkSeed(_ydoc, decision.lca, decision.splitter,
     { authorId: decision.orderedIds[0], joinSequence });
   tablesAPI.forkLiveDoc(_ydoc, decision.orderedIds, seed)
@@ -560,12 +543,6 @@ function onOpsChanged(evt, transaction) {
   Overlay.render();
 }
 
-function renderDrawingLayer() {
-  const layer = _svgEl.querySelector('#drawing-layer');
-  if (!layer) throw new Error("renderDrawingLayer: '#drawing-layer' not found in SVG document — malformed template?");
-  _Layers.drawing.render(layer);
-  Canvas.wireShapeClicks(layer);
-}
 
 function updatePeerCount() {
   let peers = 0;
@@ -655,9 +632,6 @@ function logAwarenessChange({ added, updated, removed }, origin) {
   if (lines.length) console.log(lines.join('\n'));
 }
 
-// Maps the panel layer id (as used in _layerMeta / getActiveLayer) to the
-// data-module value stamped on rendered SVG elements and used as the key
-// into _Layers. 'background' has no LayerAPI
 const LAYER_ID_TO_MODULE = {
   'drawing':               'drawing',
   'toys':                  'toys',
@@ -753,10 +727,7 @@ const App = {
   },
   // Broadcast the current rubber-band candidate set via awareness.
   // Uses its own `candidates` awareness field, separate from `selection`,
-  // so that committed holdings are never clobbered during a sweep — the
-  // bug being fixed: if a pending request matured while a sweep was in
-  // progress, resolveElementWinner saw no holder in `selection` and handed
-  // the element to the requester despite it being actively held.
+  // so that committed holdings are never clobbered during a sweep
   broadcastCandidates: (ids) => {
     _awareness.setLocalStateField('candidates', ids.length ? ids : null);
   },
@@ -775,9 +746,6 @@ const App = {
 
   // ── Selection ────────────────────────────────────────────────────────────
 
-  // True if elId is currently held by some other peer's committed selection.
-  // Thin wrapper over soft-lock.js so callers here don't reach into
-  // _awareness directly.
   isHeldByOther: (id) => isElementHeldByOther(id, _awareness.getStates(), _awareness.clientID),
 
   // Advisory soft-lock request: write/refresh this client's own acquisition
@@ -1029,7 +997,7 @@ const App = {
     if (!id) return [];
     const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
     if (!svgEl || moduleForElement(svgEl) !== 'toys') return [];
-    return getMenuActions(svgEl);
+    return Toys.getMenuActions(svgEl);
   },
 
   /**
@@ -1080,10 +1048,10 @@ const App = {
   commitToy: (toolName, x, y) => {
     const def = _toolById[toolName];
     if (!def?.toyType) { UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
-    const id = newToyId();
+    const id = Toys.newToyId();
     const layerEl = _svgEl?.querySelector('#toys-layer');
     if (!layerEl) return;
-    // initializeToySync below runs its own outer transact() with no
+    // initializeToy below runs its own outer transact() with no
     // explicit origin, so its merged handler-plus-cascade transaction
     // commits under null — a separate transaction, and a separate
     // operation, from placement. Deliberate: initialize is its own
@@ -1100,10 +1068,10 @@ const App = {
       // ready before initialize() reads it off window[namespace]. placeToy
       // already kicked this off; the promise is memoized, so this just
       // waits on the same one.
-      await activateToyScripts(_ydoc, def.toyType);
+      await Toys.activateToyScripts(_ydoc, def.toyType);
       const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
       if (svgEl && layerEl) {
-        Toys.initializeToySync(_ydoc, layerEl, svgEl, def.toyType, _myId, _tableId);
+        Toys.initializeToy(_ydoc, layerEl, svgEl, def.toyType, _myId, _tableId);
       }
     }).catch(err => {
       UI.toast(`Failed to place ${def.label}`, 'warn');
@@ -1199,12 +1167,10 @@ const App = {
 
     // Throttled claim refresh: a drag that runs long enough to cross the
     // 3s request window should defend itself, the same way clicking a
-    // multi-selected element does (App.reassertClaim) — actively dragging
-    // something is at least as strong a signal of "I'm using this" as a
-    // click. select()/startDrag already stamp a fresh claim at the start
+    // multi-selected element does (App.reassertClaim)
+    // select()/startDrag already stamp a fresh claim at the start
     // of the gesture, so this only matters for drags that outlast that —
-    // throttled to avoid broadcasting on every pointermove, which can fire
-    // far more often than any request-arbitration decision needs.
+    // throttled to avoid broadcasting on every pointermove
     const now = Date.now();
     if (now - (_dragState.lastClaimRefresh ?? 0) >= CLAIM_REFRESH_THROTTLE_MS) {
       _dragState.lastClaimRefresh = now;
@@ -1252,7 +1218,7 @@ const App = {
     const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
     if (moduleForElement(domEl) === 'toys') {
       const toysLayerEl = _svgEl.querySelector('#toys-layer');
-      const dt = findDropTarget(toysLayerEl, id, rx, ry)
+      const dt = Toys.findDropTarget(toysLayerEl, id, rx, ry)
       Overlay.setDropTargetHover(dt)
     }
   },
@@ -1271,7 +1237,7 @@ const App = {
     // Same hit-test move() used for the live hover highlight, run once more
     // against the final drop position
     const dropContainerId = mtype === 'toys'
-      ? findDropTarget(_svgEl.querySelector('#toys-layer'), id, rx, ry)
+      ? Toys.findDropTarget(_svgEl.querySelector('#toys-layer'), id, rx, ry)
       : null;
 
     Overlay.setDropTargetHover(null);
@@ -1280,13 +1246,8 @@ const App = {
 
     if (dropContainerId) {
       // Drop into a container = reparent + reposition into it, plus its
-      // own contents_change_handler reaction — ALL in one
-      // transaction, via the same DOM-based gesture machinery toy handlers
-      // use (Toys.runGesture): reparent and reposition are plain DOM
-      // mutations captured by one envelope, the cascade runs against that
-      // same live DOM with no re-rendering, and everything commits as one
-      // operation. One undo step, one thing to arbitrate or fork on
-      // conflict, no "die inserted but its reaction lost" intermediate.
+      // own contents_change_handler reaction.
+      // Everything commits as one operation.
       _lastActionScope = 'toys';
       try {
         const layerEl = _svgEl.querySelector('#toys-layer');
@@ -1313,9 +1274,7 @@ const App = {
       // plain-move branch below for why.
       Overlay.endDragPlaceholder(id);
 
-      // A toy landing inside a container leaves it: selection doesn't carry
-      // through a reparent, mirroring archive2025's own drop-into-container
-      // behavior.
+      // A toy landing inside a container leaves selection
       _clearClaims();
 
       // observeDeep fires and calls renderDoc() — same as the ordinary
@@ -1334,12 +1293,7 @@ const App = {
       // observeDeep fires on all layers and calls renderDoc()
     }
     // Ghost ends after the commit: endDragPlaceholder's own render() paints
-    // the selection ring from whatever the DOM currently shows. Calling it
-    // before applyMoveCommit paints the ring at the pre-move position —
-    // and since this whole handler runs synchronously with no await
-    // anywhere in it, the browser never gets a chance to paint that stale
-    // frame before this function returns, so there was never a "jitter"
-    // this ordering protected against, only a stale-ring bug it caused.
+    // the selection ring from whatever the DOM currently shows.
     Overlay.endDragPlaceholder(id);
     addHistory(`moved ${id} → (${rx}, ${ry})`, {
       fill: domEl?.getAttribute('fill'),
@@ -1570,13 +1524,7 @@ const App = {
       });
     }
 
-    // Ghosts end after the commit, not before: endDragPlaceholder's own
-    // render() paints the selection ring from whatever the DOM currently
-    // shows, so calling it before the real position lands paints the ring
-    // at the old position — briefly in theory, but since everything here
-    // is synchronous with no await in between, the browser never actually
-    // paints that intermediate frame; there's no "jitter" this ordering
-    // was ever protecting against, only a bug this ordering was causing.
+    // Ghosts end after the commit
     for (const el of elements) Overlay.endDragPlaceholder(el.id);
 
     // observeDeep on all layers and calls renderDoc()
@@ -1612,15 +1560,9 @@ const App = {
 
   // ── Misc ─────────────────────────────────────────────────────────────────
   setLayer: (id) => {
-    // Abandon any claims on the layer being left. Selection has never been
-    // layer-scoped by construction (_myClaims is one flat map, and
-    // toggleSelection doesn't check moduleForElement) — this is what makes
-    // it actually impossible to hold a mixed toys+drawing selection, rather
-    // than just unlikely. That in turn is what lets undo stay one
-    // mechanism per action: a single gesture can never span both the
-    // op-log-based toys undo and the Y.UndoManager drawing/boundaries one,
-    // so there's no case where reversing "what I just did" means invoking
-    // both.
+    // Abandon any claims on the layer being left.
+    // this makes it impossible to hold a mixed toys+drawing selection
+    // That in turn is what lets undo stay one mechanism per action
     if (id !== _activeLayer) _clearClaims();
     _activeLayer = id;
     // Default to Select when changing layers (tools differ per layer)
@@ -1657,24 +1599,9 @@ const App = {
       pendingRequests: Object.keys(_pendingRequests).length  ? { ..._pendingRequests }  : null,
     });
   },
-  // Undo/redo tries the mechanism _lastActionScope points at first, then
-  // falls back to the other one. The fallback is what makes repeated
-  // undo presses correctly walk back through actions that touched
-  // different layers: _lastActionScope only moves at commit time, so
-  // right after undoing a drawing action it's still 'draw_bounds' — a
-  // second press has to fall through to toys, or it would report
-  // "nothing to undo" the moment the drawing side runs dry, stranding
-  // whatever's still undoable in toys.
-  //
-  // canUndo/canRedo check both mechanisms with a plain OR, for the same
-  // reason — the button should be enabled if either has something,
-  // independent of which one _lastActionScope currently favours.
   undo: () => {
     // A moved/resized/deleted toy's selRing is meaningless once the
-    // gesture that put it there is undone — the claim itself may now
-    // point at stale geometry (or nothing, if the toy was just
-    // resurrected/removed). Abandoning all claims is simpler and more
-    // robust than trying to reconcile them post-hoc.
+    // gesture that put it there is undone
     _clearClaims();
     const tryToys = () => {
       const layer = _svgEl?.querySelector('#toys-layer');

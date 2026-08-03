@@ -116,8 +116,6 @@ export function colorMatrixValues(color) {
   return `${f(r)} 0 0 0 0  ${f(g)} 0 0 0 0  ${f(b)} 0 0 0 0  0 0 0 1 0`
 }
 
-// ── SVG import: DOM → Yjs XML ───────────────────────────────────────────────────
-
 // Rewrite url(#id) references in an attribute value using the id map.
 function rewriteUrlRefs(value, idMap) {
   return value.replace(/url\(#([^)\s]+)\)/g, (m, id) =>
@@ -1158,7 +1156,7 @@ export function getMenuActions(svgEl) {
 
 // ── gesture-triggered cascade (DOM-only, no Yjs until the final commit) ────
 //
-// invokeMenuActionSync / initializeToySync use these.
+// invokeMenuActionSync / initializeToy use these.
 //
 // These walk the live DOM directly and never re-render, because a gesture's
 // handler and everything it cascades into mutate the same live DOM in place
@@ -1257,7 +1255,7 @@ function runContentsChangeCascadeInto(allRecords, layerEl) {
  * and nothing is committed until that final call.
  *
  * This is the shared machinery behind invokeMenuActionSync/
- * initializeToySync (below) — also exported directly for a caller whose
+ * initializeToy (below) — also exported directly for a caller whose
  * gesture isn't a toy handler at all (app.js's commitMove folds a
  * drag-drop reparent + reposition through this too) but still needs the
  * exact same "one atomic operation, cascade included" treatment.
@@ -1333,7 +1331,7 @@ export function invokeMenuActionSync(ydoc, layerEl, svgEl, namespace, key, evt, 
  * Ordinarily there's nothing to fold. But initialize() has the freedom
  * to mutate anything in toys-layer.
  */
-export function initializeToySync(ydoc, layerEl, svgEl, toyType, authorId, tableId) {
+export function initializeToy(ydoc, layerEl, svgEl, toyType, authorId, tableId) {
   const initializers = getNamespacesForType(toyType)
     .map(name => globalThis[name])
     .filter(ns => ns && typeof ns.initialize === 'function')
