@@ -2,12 +2,10 @@
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
-  addToySync, render, findDropTarget, _clearSvgTextCache, clearYNodeMap,
+  addToyDom, findDropTarget, _clearSvgTextCache,
 } from '../../src/toys.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
-const getToysLayer = (ydoc) => ({ yToys: ydoc.getXmlFragment('toys') })
-
 // A 200x150 container at (0,0)-(200,150) in table space with a .tt_contents.
 const TRAY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="150" id="tray_fixture" class="tray_fixture tray">
@@ -23,33 +21,25 @@ const DIE_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="80" height="100" id="die_fixture" class="die_fixture">
 </svg>`
 
-// addToySync places the toy's embedded <svg> centered on (x, y), sized to
+// addToyDom places the toy's embedded <svg> centered on (x, y), sized to
 // the fixture's own native width/height (clamped for sanity — see
 // clampToySize) — no longer forced to one fixed DISPLAY square. So place
 // with (x, y) = the desired *center* and read back the actual placed
-// geometry via render() rather than assuming a fixed size.
-function place(ydoc, yToys, id, toyType, svgText, cx, cy) {
-  addToySync(ydoc, yToys, { id, toyType, x: cx, y: cy, color: '#fff' }, svgText)
-}
-
-function renderLayer(yToys) {
-  const layerEl = document.createElementNS(SVG_NS, 'g')
-  render(yToys, layerEl)
-  return layerEl
+// geometry rather than assuming a fixed size.
+function place(ydoc, layerEl, id, toyType, svgText, cx, cy) {
+  addToyDom(ydoc, layerEl, { id, toyType, x: cx, y: cy, color: '#fff' }, svgText)
 }
 
 beforeEach(() => {
   _clearSvgTextCache()
-  clearYNodeMap()
 })
 
 describe('findDropTarget — drop inside/outside boundaries', () => {
   test('a drop centre inside a tray\u2019s bounds returns that tray\u2019s id', () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    place(ydoc, yToys, 'tray1', 'tray_fixture', TRAY_SVG, 300, 300)
-    place(ydoc, yToys, 'die1',  'die_fixture',  DIE_SVG,  100, 100) // elsewhere, uninvolved
-    const layerEl = renderLayer(yToys)
+    const layerEl = document.createElementNS(SVG_NS, 'g')
+    place(ydoc, layerEl, 'tray1', 'tray_fixture', TRAY_SVG, 300, 300)
+    place(ydoc, layerEl, 'die1',  'die_fixture',  DIE_SVG,  100, 100) // elsewhere, uninvolved
 
     // drop die1 right at the tray's own centre
     const found = findDropTarget(layerEl, 'die1', 300, 300)
@@ -58,10 +48,9 @@ describe('findDropTarget — drop inside/outside boundaries', () => {
 
   test('a drop centre far outside every tray\u2019s bounds returns null', () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    place(ydoc, yToys, 'tray1', 'tray_fixture', TRAY_SVG, 300, 300)
-    place(ydoc, yToys, 'die1',  'die_fixture',  DIE_SVG,  100, 100)
-    const layerEl = renderLayer(yToys)
+    const layerEl = document.createElementNS(SVG_NS, 'g')
+    place(ydoc, layerEl, 'tray1', 'tray_fixture', TRAY_SVG, 300, 300)
+    place(ydoc, layerEl, 'die1',  'die_fixture',  DIE_SVG,  100, 100)
 
     const found = findDropTarget(layerEl, 'die1', 5000, 5000)
     expect(found).toBeNull()
@@ -69,10 +58,9 @@ describe('findDropTarget — drop inside/outside boundaries', () => {
 
   test('a drop that only partially overlaps a tray\u2019s edge still counts (overlap, not full containment)', () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    place(ydoc, yToys, 'tray1', 'tray_fixture', TRAY_SVG, 300, 300)
-    place(ydoc, yToys, 'die1',  'die_fixture',  DIE_SVG,  100, 100)
-    const layerEl = renderLayer(yToys)
+    const layerEl = document.createElementNS(SVG_NS, 'g')
+    place(ydoc, layerEl, 'tray1', 'tray_fixture', TRAY_SVG, 300, 300)
+    place(ydoc, layerEl, 'die1',  'die_fixture',  DIE_SVG,  100, 100)
 
     // die1's own footprint is 80x100 (DISPLAY-driven, symmetric) — drop its
     // centre just inside the tray's left edge, so most of the die's own
@@ -85,9 +73,8 @@ describe('findDropTarget — drop inside/outside boundaries', () => {
 
   test('a toy dropped on itself never matches (excludes the dragged id)', () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    place(ydoc, yToys, 'tray1', 'tray_fixture', TRAY_SVG, 300, 300)
-    const layerEl = renderLayer(yToys)
+    const layerEl = document.createElementNS(SVG_NS, 'g')
+    place(ydoc, layerEl, 'tray1', 'tray_fixture', TRAY_SVG, 300, 300)
 
     // "drag" tray1 and drop it centred on its own current position
     const found = findDropTarget(layerEl, 'tray1', 300, 300)
@@ -96,10 +83,9 @@ describe('findDropTarget — drop inside/outside boundaries', () => {
 
   test('a non-container toy (no .tt_contents) is never a valid target', () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    place(ydoc, yToys, 'board1', 'board_fixture', NON_TRAY_SVG, 300, 300)
-    place(ydoc, yToys, 'die1',   'die_fixture',   DIE_SVG,      100, 100)
-    const layerEl = renderLayer(yToys)
+    const layerEl = document.createElementNS(SVG_NS, 'g')
+    place(ydoc, layerEl, 'board1', 'board_fixture', NON_TRAY_SVG, 300, 300)
+    place(ydoc, layerEl, 'die1',   'die_fixture',   DIE_SVG,      100, 100)
 
     const found = findDropTarget(layerEl, 'die1', 300, 300)
     expect(found).toBeNull()
@@ -107,11 +93,10 @@ describe('findDropTarget — drop inside/outside boundaries', () => {
 
   test('when the drop overlaps more than one tray, returns one of them (first match) rather than throwing', () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    place(ydoc, yToys, 'tray1', 'tray_fixture', TRAY_SVG, 300, 300)
-    place(ydoc, yToys, 'tray2', 'tray_fixture', TRAY_SVG, 320, 300) // overlapping tray1
-    place(ydoc, yToys, 'die1',  'die_fixture',  DIE_SVG,  100, 100)
-    const layerEl = renderLayer(yToys)
+    const layerEl = document.createElementNS(SVG_NS, 'g')
+    place(ydoc, layerEl, 'tray1', 'tray_fixture', TRAY_SVG, 300, 300)
+    place(ydoc, layerEl, 'tray2', 'tray_fixture', TRAY_SVG, 320, 300) // overlapping tray1
+    place(ydoc, layerEl, 'die1',  'die_fixture',  DIE_SVG,  100, 100)
 
     const found = findDropTarget(layerEl, 'die1', 310, 300)
     expect(['tray1', 'tray2']).toContain(found)
@@ -119,9 +104,8 @@ describe('findDropTarget — drop inside/outside boundaries', () => {
 
   test('returns null (rather than throwing) when the dragged id isn\u2019t currently rendered', () => {
     const ydoc = new Y.Doc()
-    const { yToys } = getToysLayer(ydoc)
-    place(ydoc, yToys, 'tray1', 'tray_fixture', TRAY_SVG, 300, 300)
-    const layerEl = renderLayer(yToys)
+    const layerEl = document.createElementNS(SVG_NS, 'g')
+    place(ydoc, layerEl, 'tray1', 'tray_fixture', TRAY_SVG, 300, 300)
 
     expect(() => findDropTarget(layerEl, 'ghost-id', 300, 300)).not.toThrow()
     expect(findDropTarget(layerEl, 'ghost-id', 300, 300)).toBeNull()
@@ -134,7 +118,7 @@ describe('findDropTarget — drop inside/outside boundaries', () => {
 
 // Small helper for the partial-overlap test: read a placed tray's actual
 // rendered geometry rather than assuming the fixture's raw width/height,
-// since addToySync overwrites width/height to DISPLAY on import.
+// since placement overwrites width/height to DISPLAY on import.
 function readTrayGeom(layerEl, id) {
   const el = layerEl.querySelector(`[data-id="${id}"] svg`)
   return {

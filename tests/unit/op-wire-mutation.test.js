@@ -17,8 +17,8 @@ import {
   serialize, apply, invert, ensureIds, serializeNode, deserializeNode,
 } from '../../src/op_wire_mutation.js'
 import {
-  addToy, render, reparentToy,
-  clearYNodeMap, _clearSvgTextCache, _resetToyScriptState,
+  addToy, activateAllToyScriptsDom,
+  _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
@@ -41,7 +41,7 @@ function stubToyFetch() {
 }
 
 beforeEach(() => {
-  _clearSvgTextCache(); clearYNodeMap(); _resetToyScriptState()
+  _clearSvgTextCache(); _resetToyScriptState()
   delete globalThis.tray; delete globalThis.tray_sum; delete globalThis.dice
   vi.stubGlobal('fetch', stubToyFetch())
 })
@@ -313,17 +313,16 @@ describe('apply refuses what it cannot resolve', () => {
 
 describe('round trip over real toy gestures', () => {
   async function layerWith(...toys) {
-    const ydoc  = new Y.Doc()
-    const yToys = ydoc.getXmlFragment('toys')
-    for (const [id, toyType] of toys) {
-      await addToy(ydoc, yToys, { id, toyType, x: 0, y: 0, color: '#fff' })
-    }
+    const ydoc = new Y.Doc()
     const layerEl = document.createElementNS(SVG_NS, 'g')
     layerEl.id = 'toys-layer'
     layerEl.setAttribute('data-id', 'toys-layer')
-    render(yToys, layerEl)
+    for (const [id, toyType] of toys) {
+      await addToy(ydoc, layerEl, { id, toyType, x: 0, y: 0, color: '#fff' })
+    }
+    activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
-    return { ydoc, yToys, layerEl }
+    return { ydoc, layerEl }
   }
 
   test('a die roll replays onto a peer identically', async () => {
