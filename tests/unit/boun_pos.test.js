@@ -24,7 +24,7 @@ import {
   // Edit schema
   getTtStateSchema, edit,
   // Drag context
-  computeBoundaryRects, computePositionSnapPoints,
+  computeBoundaryRects, getSnapPoints,
 } from '../../src/boun_pos.js';
 import { tablesAPI } from '../../src/tables.js';
 const { makeDoc } = tablesAPI;
@@ -325,26 +325,14 @@ describe('computeBoundaryRects', () => {
   });
 });
 
-describe('computePositionSnapPoints', () => {
-  test('returns empty array when toy has no classes', () => {
-    const layer = makeLayer();
-    addPS(layer, { x: 0, y: 0, w: 400, h: 300, genType: 'square', xSpacing: 80, ySpacing: 80 });
-    expect(computePositionSnapPoints(layer.yBounPos, new Set())).toHaveLength(0);
-  });
-
-  test('returns empty array when pos-set name does not match', () => {
-    const layer = makeLayer();
-    addPS(layer, { x: 0, y: 0, w: 400, h: 300, genType: 'square', xSpacing: 80, ySpacing: 80 });
-    expect(computePositionSnapPoints(layer.yBounPos, new Set(['dungeon']))).toHaveLength(0);
-  });
-
-  test('returns snap points for class-matched pos-sets', () => {
+describe('getSnapPoints', () => {
+  test('returns snap points', () => {
     const layer = makeLayer();
     const { id, circles } = addPS(layer, { x: 0, y: 0, w: 400, h: 400, genType: 'square', xSpacing: 100, ySpacing: 100 });
     // Set name to known value
     const yEl = findEl(layer.yBounPos, id);
     editBounPos({ id, name: 'forest' }, layer.ydoc, layer.yBounPos);
-    const pts = computePositionSnapPoints(layer.yBounPos, new Set(['forest']));
+    const pts = getSnapPoints(layer.yBounPos);
     expect(pts.length).toBe(circles.length);
     pts.forEach(p => {
       expect(typeof p.cx).toBe('number');
@@ -353,13 +341,6 @@ describe('computePositionSnapPoints', () => {
     });
   });
 
-  test('boundary elements are ignored', () => {
-    const layer = makeLayer();
-    const { id: bid } = newBoundaryId();
-    addBoundary(layer.ydoc, layer.yBounPos,
-      { id: bid, name: 'forest', x: 0, y: 0, w: 300, h: 300 });
-    expect(computePositionSnapPoints(layer.yBounPos, new Set(['forest']))).toHaveLength(0);
-  });
 });
 
 // ── Edit schema ───────────────────────────────────────────────────────────────

@@ -4,6 +4,8 @@ Instructions for Claude working in this repo.
 
 ## Running tests
 
+Docker isn't available in your sandbox!  Don't try to run bin/*docker*sh
+
 Unit tests run anywhere:
 
 ```bash

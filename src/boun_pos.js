@@ -980,26 +980,18 @@ export function computeBoundaryRects(yBounPos, toyClasses, anchor) {
   return startsInside ? rects : null;
 }
 
-/**
- * Scan yBounPos for pos-sets whose name ∈ toyClasses.
- * Returns a flat array of {cx, cy, snapRadius} for all matching snap points.
- */
-export function computePositionSnapPoints(yBounPos, toyClasses) {
-  if (!toyClasses || toyClasses.size === 0) return [];
+export function getSnapPoints(yBounPos) {
   const points = [];
   for (const node of yBounPos.toArray()) {
     if (!(node instanceof Y.XmlElement)) continue;
     if (node.getAttribute('data-bounpos-type') !== 'pos-set') continue;
     const name = node.getAttribute('name');
-    if (!name || !toyClasses.has(name)) continue;
     const snapRadius = Number(node.getAttribute('data-snap-radius') ?? 30);
     for (const child of node.toArray()) {
       if (!(child instanceof Y.XmlElement) || child.nodeName !== 'circle') continue;
-      points.push({
-        cx: Number(child.getAttribute('cx') ?? 0),
-        cy: Number(child.getAttribute('cy') ?? 0),
-        snapRadius,
-      });
+      const cx = Number(child.getAttribute('cx') ?? 0);
+      const cy = Number(child.getAttribute('cy') ?? 0);
+      points.push({ cx, cy, name, snapRadius });
     }
   }
   return points;
