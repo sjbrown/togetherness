@@ -757,20 +757,11 @@ export function computePositionSnapPoints(layerEl, toyClasses, excludeId = null)
 }
 
 // ── positions bookkeeping (self-contained — no caller-supplied ownership) ──
-//
-// applyMoveCommit needs to know which OTHER toys' tt_positions points a
-// move affects, so it can run their positions_change_handler as part of
-// the same gesture. Rather than have the caller (app.js) work this out
-// during the drag and thread ownerIds back down through a round-trip,
-// applyMoveCommit figures it out itself, from el's own before/after
-// geometry — a fire-and-forget computation, not a negotiated one.
 
 /**
  * Every top-level toy offering a tt_positions pos-set, with its points
- * already converted to canvas space. Unlike computePositionSnapPoints,
- * this doesn't filter by toyClasses or z-order — it's a plain inventory of
- * every declared position, used only to detect exact-coincidence
- * occupancy for the bookkeeping below, not to offer drag destinations.
+ * already converted to canvas space and each carrying a positionId. Unlike
+ * computePositionSnapPoints, this doesn't filter by toyClasses or z-order
  */
 function allPositionOwners(layerEl) {
   if (!layerEl) return []
@@ -781,13 +772,17 @@ function allPositionOwners(layerEl) {
     const posGroup = getPositionsGroup(el)
     if (!posGroup) continue
     if ((posGroup.getAttribute('data-bounpos-type') ?? 'pos-set') !== 'pos-set') continue
+    const ownerId = el.getAttribute('data-id')
     const points = [...posGroup.children]
       .filter(c => c.tagName === 'circle')
-      .map(c => ({
-        cx: geom.x + Number(c.getAttribute('cx') ?? 0),
-        cy: geom.y + Number(c.getAttribute('cy') ?? 0),
-      }))
-    owners.push({ ownerId: el.getAttribute('data-id'), points })
+      .map((c, i) => {
+        return {
+          cx: geom.x + Number(c.getAttribute('cx') ?? 0),
+          cy: geom.y + Number(c.getAttribute('cy') ?? 0),
+          positionId: c.getAttribute('id') ?? '',
+        }
+      })
+    owners.push({ ownerId, points })
   }
   return owners
 }
@@ -804,11 +799,22 @@ function toyIdsAt(layerEl, cx, cy, excludeId) {
   return ids
 }
 
-/** Owner ids (excluding excludeId) whose tt_positions point sits exactly on (cx, cy). */
+/**
+ * { ownerId, positionId } for every OTHER toy's tt_positions point that
+ * sits exactly on (cx, cy) — excludeId is left out (typically el itself,
+ * so it never matches its own position against its own point). A single
+ * owner can appear more than once if it happens to have more than one
+ * circle at the same coordinate.
+ */
 function ownersAtPoint(layerEl, cx, cy, excludeId) {
-  return allPositionOwners(layerEl)
-    .filter(o => o.ownerId !== excludeId && o.points.some(p => p.cx === cx && p.cy === cy))
-    .map(o => o.ownerId)
+  const matches = []
+  for (const { ownerId, points } of allPositionOwners(layerEl)) {
+    if (ownerId === excludeId) continue
+    for (const p of points) {
+      if (p.cx === cx && p.cy === cy) matches.push({ ownerId, positionId: p.positionId })
+    }
+  }
+  return matches
 }
 
 /** Ids of every top-level toy currently sitting exactly on one of el's OWN tt_positions points. */
@@ -827,45 +833,27 @@ function directOccupantIds(layerEl, el) {
   return [...ids]
 }
 
-/**
- * Owner ids el is currently sitting on (i.e. el's own centre sits exactly
- * on some OTHER toy's tt_positions point) — the departure half of a move's
- * positions bookkeeping.
- */
-export function departingPositionOwners(layerEl, el) {
-  if (!layerEl || !el || !getGeom(el)) return []
-  const anchor = getAnchor(el)
-  return ownersAtPoint(layerEl, anchor.x, anchor.y, el.getAttribute('data-id'))
-}
-
-/**
- * Owner ids el is ABOUT to sit on once moved to (x, y) — the arrival half.
- * Independent of el's own current position; only asks whether some OTHER
- * toy declares a point exactly at the destination.
- */
-export function arrivingPositionOwners(layerEl, el, x, y) {
-  if (!layerEl || !el) return []
-  return ownersAtPoint(layerEl, x, y, el.getAttribute('data-id'))
-}
-
-/**
- * departingPositionOwners, bundled with the (x, y) el is departing FROM
- * and el itself — the shape runGesture's positions_change_handler cascade
- * consumes (see runPositionsChangeCascadeInto). One event per owner.
- */
 export function departingPositionEvents(layerEl, el) {
   if (!layerEl || !el || !getGeom(el)) return []
-  const { x, y } = getAnchor(el)
-  return departingPositionOwners(layerEl, el).map(ownerId => ({ ownerId, x, y, el, kind: 'departed' }))
+  const selfId = el.getAttribute('data-id')
+  const anchor = getAnchor(el)
+  const events = []
+  for (const { ownerId, positionId } of ownersAtPoint(layerEl, anchor.x, anchor.y, selfId)) {
+    events.push({ fnName: 'on_position_vacated', elemId: ownerId, positionId, ownerId, movingId: selfId })
+    events.push({ fnName: 'on_depart_position', elemId: selfId,  positionId, ownerId, movingId: selfId })
+  }
+  return events
 }
 
-/**
- * arrivingPositionOwners, bundled with the (x, y) el is arriving AT and el
- * itself — the shape runGesture's positions_change_handler cascade
- * consumes. One event per owner.
- */
 export function arrivingPositionEvents(layerEl, el, x, y) {
-  return arrivingPositionOwners(layerEl, el, x, y).map(ownerId => ({ ownerId, x, y, el, kind: 'arrived' }))
+  if (!layerEl || !el) return []
+  const selfId = el.getAttribute('data-id')
+  const events = []
+  for (const { ownerId, positionId } of ownersAtPoint(layerEl, x, y, selfId)) {
+    events.push({ fnName: 'on_position_occupied', elemId: ownerId, positionId, ownerId, movingId: selfId })
+    events.push({ fnName: 'on_arrive_position', elemId: selfId,  positionId, ownerId, movingId: selfId })
+  }
+  return events
 }
 
 /**
@@ -1523,80 +1511,64 @@ function runContentsChangeCascadeInto(allRecords, layerEl) {
 }
 
 /**
- * Run positions_change_handler for each owner touched by this gesture's
- * position events — the tt_positions counterpart to
- * runContentsChangeCascadeInto, invoked when a toy is placed onto (or
- * moves off of) another toy's snap point.
- *
- * events: array of { ownerId, x, y, el, kind } — kind is 'departed' or
- * 'arrived' (see departingPositionEvents / arrivingPositionEvents).
- * Unlike the contents cascade, these aren't discovered from
- * MutationRecord ancestry — a toy sitting on another toy's position is a
- * DOM sibling, not a descendant, so there's nothing to walk. Callers
- * (app.js's drag-commit code, makeLayerAPI's applyMoveCommit) compute
- * events directly from geometry and pass them straight through runGesture's
- * opts.
- *
- * Events are grouped per owner into two Maps keyed by "x,y" → the element
- * that departed/arrived at that point, and each owner's
- * positions_change_handler(elem, departedElements, arrivingElements) is
- * called once with both — every departure and arrival across all of that
- * owner's points in this one gesture, in a single call. Each owner's
- * handler runs at most once, same "runs once per gesture" rule as
- * contents_change_handler. If a handler's own mutations affect a
- * container, those are folded into the contents cascade too, so the whole
- * thing still lands as one Yjs transaction.
+ * Run the relevant handler for each event in this gesture's
+ * position events, invoked when a toy is placed onto (or
+ * moves off of) another toy's position.
  */
 function runPositionsChangeCascadeInto(allRecords, layerEl, events) {
   if (!events || !events.length) return
-  const byOwner = new Map() // ownerId -> { departed: Map<"x,y", el>, arrived: Map<"x,y", el> }
-  for (const { ownerId, x, y, el, kind } of events) {
-    if (!byOwner.has(ownerId)) byOwner.set(ownerId, { departed: new Map(), arrived: new Map() })
-    const bucket = byOwner.get(ownerId)
-    ;(kind === 'departed' ? bucket.departed : bucket.arrived).set(`${x},${y}`, el)
-  }
-
+  const seen = new Set()
   const stepRecords = []
-  for (const [ownerId, { departed, arrived }] of byOwner) {
-    const ownerEl = layerEl.querySelector(`[data-id="${ownerId}"]`)
-    if (!ownerEl) continue // e.g. the owner was deleted mid-gesture
-    const handlers = getNamespacesForType(ownerEl.getAttribute('data-toy-type'))
+  for (const { fnName, elemId, positionId, ownerId, movingId } of events) {
+    if (!fnName) continue
+
+    // De-duplicate - run a handler AT MOST ONCE
+    // A single element can legitimately receive more than one distinct
+    // position event in one gesture (e.g. an occupant departing one
+    // position and arriving at another).
+    const dedupeKey = `${elemId}|${fnName}|${positionId}|${movingId}`
+    if (seen.has(dedupeKey)) continue
+    seen.add(dedupeKey)
+
+    const elem = layerEl.querySelector(`[data-id="${elemId}"]`)
+    if (!elem) continue // e.g. deleted mid-gesture
+    const handlers = getNamespacesForType(elem.getAttribute('data-toy-type'))
       .map(name => globalThis[name])
-      .filter(ns => ns && typeof ns.positions_change_handler === 'function')
+      .filter(ns => ns && typeof ns[fnName] === 'function')
     if (!handlers.length) continue
-    const records = runInEnvelope(ownerEl, () => {
-      handlers.forEach(ns => ns.positions_change_handler(ownerEl, departed, arrived))
+    const records = runInEnvelope(elem, () => {
+      handlers.forEach(ns => ns[fnName](elem, positionId, ownerId, movingId))
     })
     stepRecords.push(...records)
   }
   if (!stepRecords.length) return
   allRecords.push(...stepRecords)
-  // Let any DOM changes the positions handlers made cascade into containers
+  // Let any DOM changes the position handlers made cascade into containers
   // the same way any other gesture mutation would.
   runContentsChangeCascadeInto(allRecords, layerEl)
 }
 
-/**
- * Run fn() against the live DOM (inside an envelope observing layerEl),
- * then run whatever contents_change_handler cascade fn's mutations
- * trigger, then commit the whole thing — the gesture and its entire
- * cascade, however many rounds — as ONE operation. No re-rendering
- * anywhere in this: the DOM stays authoritative and current for every step,
- * and nothing is committed until that final call.
- *
- * This is the shared machinery behind invokeMenuAction/
- * initializeToy (below) — also exported directly for a caller whose
- * gesture isn't a toy handler at all (app.js's commitMove folds a
- * drag-drop reparent + reposition through this too) but still needs the
- * exact same "one atomic operation, cascade included" treatment.
- */
 export const LAYER_DATA_ID = 'tt-layer-toys'
-/** The layer root needs an identity of its own to be a mutation target. */
+
 export function ensureLayerId(layerEl) {
   if (layerEl && !layerEl.getAttribute('data-id')) layerEl.setAttribute('data-id', LAYER_DATA_ID)
   return layerEl
 }
 
+/**
+ * Run fn() against the live DOM (inside an envelope observing layerEl),
+ * then run whatever handler cascade fn's mutations
+ * trigger, then commit the whole thing — the gesture and its entire
+ * cascade, however many rounds — as ONE operation.
+ * No re-rendering anywhere in this: the DOM stays authoritative and
+ * current for every step, and nothing is committed until that final call.
+ *
+ * This is the shared machinery behind invokeMenuAction/
+ * initializeToy (below) — also exported directly for a caller whose
+ * gesture isn't a toy handler at all (see app.js's)
+ * but still needs the exact same "one atomic operation, cascade included"
+ * treatment.
+ */
 export function runGesture(ydoc, layerEl, fn, opts = {}) {
   ensureLayerId(layerEl)
   const allRecords = runInEnvelope(layerEl, fn)
@@ -1628,9 +1600,6 @@ export function runGesture(ydoc, layerEl, fn, opts = {}) {
  * as the handler's own commit — one transaction, one undo step, no window
  * where the action landed but its reaction hadn't yet.
  *
- * Note: Wrapped in an outer, unlabeled ydoc.transact() so a folded caller's
- * commit lands under null, the same as every other folded call site (see
- * undo_redo.js's "Atomicity" note).
  */
 export function invokeMenuAction(ydoc, layerEl, svgEl, namespace, key, evt, authorId, tableId) {
   const ns    = globalThis[namespace]
@@ -1642,6 +1611,11 @@ export function invokeMenuAction(ydoc, layerEl, svgEl, namespace, key, evt, auth
     throw new Error(`[toys] menu action not applicable: ${namespace}.${key}`)
   }
   let result
+  /*
+   * Note: Wrapped in an outer, unlabeled ydoc.transact() so a folded caller's
+   * commit lands under null, the same as every other folded call site (see
+   * undo_redo.js's "Atomicity" note).
+   */
   ydoc.transact(() => {
     result = runGesture(ydoc, layerEl, () => entry.handler.call(svgEl, evt),
       { gesture: `menu:${namespace}.${key}`, authorId, tableId })
@@ -1697,14 +1671,6 @@ export function activateAllToyScriptsDom(ydoc, layerEl) {
 }
 
 /**
- * makeLayerAPI — the canonical LayerAPI for the toys layer.
- *
- * getLayerEl returns the live #toys-layer. Everything here reads and
- * writes that DOM; writes run inside runGesture so the envelope
- * captures them. The contract app.js relies on is that whatever find()
- * returns is what the other methods accept — here, a rendered <g>.
- */
-/**
  * Bring the layer to the state the op log describes.
  *
  * An empty log means this table predates the log (or is brand new): render
@@ -1712,8 +1678,7 @@ export function activateAllToyScriptsDom(ydoc, layerEl) {
  * so there is always a checkpoint at the root to project from.
  *
  * Returns the head it left the layer at.
- */
-/**
+ *
  * isCreator matters only on the "the log is empty" path, and it has to be
  * the same signal index.html already uses to decide whether to mint a
  * fresh table id: !location.hash, computed once, at the top of boot.
@@ -1804,12 +1769,6 @@ export function importToys(ydoc, layerEl, toyEls, opts = {}) {
  * merge tips, and the projection marker (render()'s idempotence check)
  * all consistent with what actually happened.
  *
- * Not yet called from app.js. L.render still does plain Yjs rendering
- * rather than projectLayer — see the "boot race" test in
- * toys-layer-api.test.js — so there's no op-log head for a receive to
- * advance yet. This is the piece that will wire in once that's resolved.
- */
-/**
  * True only if every wire entry's target resolves against layerEl right
  * now. Read-only — touches nothing. apply() applies entries one at a
  * time and throws on the first unresolvable target, which can leave
@@ -1842,12 +1801,6 @@ function canApplyWire(wire, layerEl) {
  * else having happened yet — but it isn't a user action, it's
  * "reconstruct this state from scratch." Undoing it would mean deleting
  * everything.
- *
- * Not "reverse the current state" — an operation against something a
- * later change already removed does nothing visible (§8's goblin
- * example) rather than crash: canApplyWire checks first, and if any part
- * of the inverse can't land, none of it does. Both return null rather
- * than commit a partial, inconsistent result.
  */
 function applyToyUndoRedo(ydoc, layerEl, tableId, authorId, targetId, verb) {
   if (!targetId) return null
@@ -2030,6 +1983,14 @@ export function buildToyForkSeed(ydoc, lca, splitter, { authorId, joinSequence =
   return buildForkSeed(ops, lca, splitter, scratch, { authorId, joinSequence })
 }
 
+/**
+ * makeLayerAPI — the canonical LayerAPI for the toys layer.
+ *
+ * getLayerEl returns the live #toys-layer. Everything here reads and
+ * writes that DOM; writes run inside runGesture so the envelope
+ * captures them. The contract app.js relies on is that whatever find()
+ * returns is what the other methods accept — here, a rendered <g>.
+ */
 export function makeLayerAPI(ydoc, getLayerEl, myId, tableId, isCreator = false) {  const layer = () => (typeof getLayerEl === 'function' ? getLayerEl() : getLayerEl)
   const gesture = (name, fn, extraOpts = {}) =>
     runGesture(ydoc, layer(), fn, { gesture: name, authorId: myId, tableId, ...extraOpts })

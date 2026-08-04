@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   height="110"
+   width="80"
+   version="1.1"
+   id="chip"
+   class="chip"
+   viewBox="0 0 80 110"
+   sodipodi:docname="stack.svg"
+   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview29"
+     pagecolor="#212121"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     inkscape:zoom="5.0875"
+     inkscape:cx="12.678133"
+     inkscape:cy="57.592138"
+     inkscape:window-width="1920"
+     inkscape:window-height="1011"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="chip" />
+  <defs
+     id="defs4">
+    <linearGradient
+       inkscape:collect="always"
+       id="linearGradient893">
+      <stop
+         style="stop-color:#ffffff;stop-opacity:0;"
+         offset="0"
+         id="stop889" />
+      <stop
+         style="stop-color:#ffffff;stop-opacity:1;"
+         offset="1"
+         id="stop891" />
+    </linearGradient>
+    <filter
+       class="tt_color_filter"
+       id="app-filter-colorize"
+       color-interpolation-filters="sRGB"
+       x="0"
+       y="0"
+       width="1"
+       height="1">
+      <feColorMatrix
+         id="recolorize-filter-matrix"
+         type="matrix"
+         values="1.0 0.0 0.0 0.0  0.0                  1.0 0.0 0.0 0.0  0.0                  1.0 0.0 0.0 0.0  0.0                  0.0 0.0 0.0 1.0  0.0" />
+    </filter>
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient893"
+       id="linearGradient897"
+       x1="40.492935"
+       y1="55"
+       x2="40.492935"
+       y2="105.93827"
+       gradientUnits="userSpaceOnUse" />
+  </defs>
+  <script
+     type="text/javascript"
+     data-namespace="chip"
+     id="script5"><![CDATA[
+
+var stack = {
+
+  menu: {
+    'Fan': {
+      eventName: 'stack_fan',
+      otherEvents: ['dblclick'],
+      applicable: (node) => { return true },
+      handler: function(evt) {
+        console.warn('not impl')
+      },
+    },
+  },
+
+  contents_change_handler: function(elem) {
+    tspan = elem.querySelector('tspan.stack_summary')
+    tspan.textContent = 'C!'
+  },
+
+}
+
+  ]]></script>
+  <rect
+     class="bg_highlight"
+     style="fill:url(#linearGradient897);fill-opacity:1"
+     width="80"
+     height="110"
+     x="0"
+     y="0"
+     rx="1"
+     ry="1" />
+  <g class="stack_summary">
+    <rect
+       class="rect_stack_summary"
+       x="10"
+       y="85"
+       width="60"
+       height="20"
+       rx="2"
+       ry="2"
+       fill="#ffffff"
+       opacity="0.4"
+       id="rect18" />
+    <text
+       class="text_stack_summary"
+       x="40"
+       y="97"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-size:15px;line-height:1.25;font-family:sans-serif;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1"
+       id="text22"><tspan
+         class="tspan_sum stack_summary"
+         >0</tspan></text>
+  </g>
+  <g class="tt_contents">
+  </g>
+  <g
+     class="tt_positions"
+     data-bounpos-type="pos-set"
+     name="stackable"
+     id="g26">
+    <circle
+       cx="40"
+       cy="32"
+       r="10"
+       fill="#ffffff"
+       fill-opacity="0.2"
+       id="circle24" />
+  </g>
+</svg>

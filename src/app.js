@@ -1318,7 +1318,7 @@ const App = {
     if (mtype === 'toys') _lastActionScope = 'toys';
     else { _lastActionScope = 'draw_bounds'; UndoRedo.tag(`move ${id} → (${rx}, ${ry})`); }
     if (_Layers[mtype]) {
-      // Toys' applyMoveCommit works out its own positions_change_handler
+      // Toys' applyMoveCommit works out its own on_position_* handler
       // bookkeeping from el's before/after geometry — no ownership is
       // computed or passed here.
       _Layers[mtype].applyMoveCommit(_Layers[mtype].find(id), rx, ry);
