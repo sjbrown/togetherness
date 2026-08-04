@@ -721,8 +721,9 @@ export function computePositionSnapPoints(layerEl, toyClasses, excludeId = null)
     .filter(el => el.getAttribute('data-id') !== excludeId)
 
   const centers = topLevelToys.map(el => {
-    const geom = getGeom(el)
-    return geom ? { el, cx: geom.x + geom.width / 2, cy: geom.y + geom.height / 2 } : null
+    if (!getGeom(el)) return null
+    const { x, y } = getAnchor(el)
+    return { el, cx: x, cy: y }
   })
 
   const points = []
@@ -796,9 +797,9 @@ function toyIdsAt(layerEl, cx, cy, excludeId) {
   const ids = []
   for (const el of layerEl.querySelectorAll(':scope > [data-id]')) {
     const id = el.getAttribute('data-id')
-    if (id === excludeId) continue
-    const geom = getGeom(el)
-    if (geom && geom.x + geom.width / 2 === cx && geom.y + geom.height / 2 === cy) ids.push(id)
+    if (id === excludeId || !getGeom(el)) continue
+    const anchor = getAnchor(el)
+    if (anchor.x === cx && anchor.y === cy) ids.push(id)
   }
   return ids
 }
@@ -832,11 +833,9 @@ function directOccupantIds(layerEl, el) {
  * positions bookkeeping.
  */
 export function departingPositionOwners(layerEl, el) {
-  if (!layerEl || !el) return []
-  const geom = getGeom(el)
-  if (!geom) return []
-  const toyId = el.getAttribute('data-id')
-  return ownersAtPoint(layerEl, geom.x + geom.width / 2, geom.y + geom.height / 2, toyId)
+  if (!layerEl || !el || !getGeom(el)) return []
+  const anchor = getAnchor(el)
+  return ownersAtPoint(layerEl, anchor.x, anchor.y, el.getAttribute('data-id'))
 }
 
 /**
@@ -855,10 +854,8 @@ export function arrivingPositionOwners(layerEl, el, x, y) {
  * consumes (see runPositionsChangeCascadeInto). One event per owner.
  */
 export function departingPositionEvents(layerEl, el) {
-  if (!layerEl || !el) return []
-  const geom = getGeom(el)
-  if (!geom) return []
-  const x = geom.x + geom.width / 2, y = geom.y + geom.height / 2
+  if (!layerEl || !el || !getGeom(el)) return []
+  const { x, y } = getAnchor(el)
   return departingPositionOwners(layerEl, el).map(ownerId => ({ ownerId, x, y, el, kind: 'departed' }))
 }
 
@@ -914,10 +911,10 @@ export function promoteZOrder(layerEl, el, seen = new Set()) {
  */
 export function moveToyAndStack(layerEl, el, x, y) {
   if (!el) return
-  const geom = getGeom(el)
-  if (!geom) { applyMoveDom(el, x, y); return }
-  const dx = x - (geom.x + geom.width / 2)
-  const dy = y - (geom.y + geom.height / 2)
+  if (!getGeom(el)) { applyMoveDom(el, x, y); return }
+  const anchor = getAnchor(el)
+  const dx = x - anchor.x
+  const dy = y - anchor.y
 
   const stack = []
   const seen = new Set()
@@ -935,8 +932,9 @@ export function moveToyAndStack(layerEl, el, x, y) {
   collect(el)
 
   const targets = stack.map(member => {
-    const g = getGeom(member)
-    return { member, cx: g ? g.x + g.width / 2 + dx : x, cy: g ? g.y + g.height / 2 + dy : y }
+    const hasGeom = !!getGeom(member)
+    const a = hasGeom ? getAnchor(member) : null
+    return { member, cx: a ? a.x + dx : x, cy: a ? a.y + dy : y }
   })
   for (const { member, cx, cy } of targets) applyMoveDom(member, cx, cy)
 }
@@ -1913,13 +1911,26 @@ export function deleteToysBatch(ydoc, layerEl, ids, { authorId, tableId } = {}) 
  * Move several toys as one gesture, one operation. Same reasoning as
  * deleteToysBatch. moves: [{ id, x, y }] — x/y are the same centre-point
  * convention applyMoveDom/applyMoveCommit already use.
+ *
+ * Each move also promotes that toy (and, recursively, whatever's stacked
+ * on its own tt_positions) to the topmost z-order, same as
+ * applyMoveCommit's single-toy path — so multi-dragging a stack still
+ * brings it to front. In array order, so the last move in the batch ends
+ * up on top of the others.
+ *
+ * Unlike applyMoveCommit, this does NOT carry occupant stacks along
+ * positionally, and does NOT run the positions_change_handler cascade —
+ * only single-toy moves get that full treatment for now.
  */
 export function moveToysBatch(ydoc, layerEl, moves, { authorId, tableId } = {}) {
   let movedAny = false
   const result = runGesture(ydoc, layerEl, () => {
     for (const { id, x, y } of moves) {
       const el = findToyDom(layerEl, id)
-      if (el) { applyMoveDom(el, x, y); movedAny = true }
+      if (!el) continue
+      promoteZOrder(layerEl, el)
+      applyMoveDom(el, x, y)
+      movedAny = true
     }
   }, { gesture: 'move-batch', authorId, tableId })
   return movedAny ? (result.op ?? null) : null
@@ -2035,12 +2046,12 @@ export function makeLayerAPI(ydoc, getLayerEl, myId, tableId, isCreator = false)
       // Steps 1 & 3: departing/arriving events, read from OTHER toys'
       // geometry (unaffected by the z-order reorder or the move itself,
       // so safe to compute upfront rather than mid-gesture). A true no-op
-      // (same centre) suppresses both — nothing actually changed, so
+      // (same anchor) suppresses both — nothing actually changed, so
       // nothing to notify — though promotion/move (steps 2 & 4) below
       // still run regardless, since picking a toy up and setting it back
       // down still brings it to front.
-      const oldGeom = getGeom(el)
-      const moved = !oldGeom || oldGeom.x + oldGeom.width / 2 !== x || oldGeom.y + oldGeom.height / 2 !== y
+      const oldAnchor = getAnchor(el)
+      const moved = oldAnchor.x !== x || oldAnchor.y !== y
       const positionEvents = moved
         ? [...departingPositionEvents(layerEl, el), ...arrivingPositionEvents(layerEl, el, x, y)]
         : []
