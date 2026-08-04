@@ -1270,13 +1270,7 @@ const App = {
 
     if (dropContainerId) {
       // Drop into a container = reparent + reposition into it, plus its
-      // own contents_change_handler reaction. Landing inside a container
-      // is never itself a position-snap (dropContainerId preempts
-      // snapping), so the only position bookkeeping that can apply here is
-      // whatever this toy is vacating — Toys.departingPositionEvents reads
-      // domEl's still-current (pre-reparent) geometry to work that out
-      // itself; app.js doesn't compute or pass any ownership.
-      // Everything commits as one operation.
+      // own contents_change_handler reaction.
       _lastActionScope = 'toys';
       try {
         const layerEl = _svgEl.querySelector('#toys-layer');
@@ -1321,9 +1315,6 @@ const App = {
     if (mtype === 'toys') _lastActionScope = 'toys';
     else { _lastActionScope = 'draw_bounds'; UndoRedo.tag(`move ${id} → (${rx}, ${ry})`); }
     if (_Layers[mtype]) {
-      // Toys' applyMoveCommit works out its own on_position_* handler
-      // bookkeeping from el's before/after geometry — no ownership is
-      // computed or passed here.
       _Layers[mtype].applyMoveCommit(_Layers[mtype].find(id), rx, ry);
       // observeDeep fires on all layers and calls renderDoc()
     }
