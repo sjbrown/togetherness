@@ -677,14 +677,29 @@ export function getContentsGroup(domEl) {
   return domEl.querySelector(`.${domEl.id}__tt_contents`)
 }
 
-/**
- * A top-level toy's own tt_positions group — a per-instance-prefixed
- * class, the same convention getContentsGroup uses for tt_contents.
- * Returns the <g class="tt_positions" data-bounpos-type="pos-set" name=…>
- * element, or null if this toy doesn't offer any positions.
- */
-function getPositionsGroup(domEl) {
-  return domEl?.querySelector?.(`.${domEl.id}__tt_positions`) ?? null
+function getPositionsMeta(domEl) {
+  const NULL = { g: null, name: null, snapRadius: null, circles: null }
+  const g = domEl?.querySelector?.(`.${domEl.id}__tt_positions`) ?? null
+  if (!g) return NULL
+  const geom = getGeom(domEl)
+  if (!geom) return NULL
+
+  const circles = g.querySelectorAll(`circle`)
+  if (!circles.length) return NULL
+  const c0 = circles[0]
+  const snapRadius = Number(g.getAttribute('data-snap-radius') ?? c0.getAttribute('r'))
+  const name = g.getAttribute('name') || '';
+
+  const canvasCircles = []
+  circles.forEach((c) => {
+    canvasCircles.push({
+      id: c.getAttribute('id') ?? '',
+      r: Number(c.getAttribute('r') ?? 0),
+      cx: geom.x + Number(c.getAttribute('cx') ?? 0),
+      cy: geom.y + Number(c.getAttribute('cy') ?? 0),
+    })
+  })
+  return { g, name, snapRadius, circles, canvasCircles }
 }
 
 /**
@@ -720,37 +735,31 @@ export function computePositionSnapPoints(layerEl, toyClasses, excludeId = null)
   const topLevelToys = [...layerEl.querySelectorAll(':scope > [data-id]')]
     .filter(el => el.getAttribute('data-id') !== excludeId)
 
-  const centers = topLevelToys.map(el => {
+  const anchors = topLevelToys.map(el => {
     if (!getGeom(el)) return null
     const { x, y } = getAnchor(el)
-    return { el, cx: x, cy: y }
+    return { el, x, y }
   })
 
   const points = []
   topLevelToys.forEach((ownerEl, ownerIndex) => {
+    const ownerId = ownerEl.getAttribute('data-id')
     const geom = getGeom(ownerEl)
     if (!geom) return
-    const posGroup = getPositionsGroup(ownerEl)
-    if (!posGroup) return
-    if ((posGroup.getAttribute('data-bounpos-type') ?? 'pos-set') !== 'pos-set') return
-    const name = posGroup.getAttribute('name')
-    if (!name || !toyClasses.has(name)) return
-    const ownerId = ownerEl.getAttribute('data-id')
-    const snapRadius = Number(posGroup.getAttribute('data-snap-radius') ?? 30)
 
-    for (const child of posGroup.children) {
-      if (child.tagName !== 'circle') continue
-      const cx = geom.x + Number(child.getAttribute('cx') ?? 0)
-      const cy = geom.y + Number(child.getAttribute('cy') ?? 0)
+    const { g, circles, name, snapRadius, canvasCircles } = getPositionsMeta(ownerEl)
+    if (!g) return
+    if (!toyClasses.has(name)) return
 
+    for (const c of canvasCircles) {
       const blockedFromAbove = topLevelToys.some((otherEl, otherIndex) => {
         if (otherIndex <= ownerIndex) return false // same toy, or below — never blocks
-        const c = centers[otherIndex]
-        return c && c.cx === cx && c.cy === cy
+        const a = anchors[otherIndex]
+        return a && a.x === c.cx && a.y === c.cy
       })
-      if (blockedFromAbove) continue
+      if (blockedFromAbove) return
 
-      points.push({ cx, cy, snapRadius, ownerId })
+      points.push({ cx: c.cx, cy: c.cy, snapRadius, ownerId })
     }
   })
   return points
@@ -758,77 +767,53 @@ export function computePositionSnapPoints(layerEl, toyClasses, excludeId = null)
 
 // ── positions bookkeeping (self-contained — no caller-supplied ownership) ──
 
-/**
- * Every top-level toy offering a tt_positions pos-set, with its points
- * already converted to canvas space and each carrying a positionId. Unlike
- * computePositionSnapPoints, this doesn't filter by toyClasses or z-order
- */
-function allPositionOwners(layerEl) {
-  if (!layerEl) return []
-  const owners = []
-  for (const el of layerEl.querySelectorAll(':scope > [data-id]')) {
-    const geom = getGeom(el)
-    if (!geom) continue
-    const posGroup = getPositionsGroup(el)
-    if (!posGroup) continue
-    if ((posGroup.getAttribute('data-bounpos-type') ?? 'pos-set') !== 'pos-set') continue
-    const ownerId = el.getAttribute('data-id')
-    const points = [...posGroup.children]
-      .filter(c => c.tagName === 'circle')
-      .map((c, i) => {
-        return {
-          cx: geom.x + Number(c.getAttribute('cx') ?? 0),
-          cy: geom.y + Number(c.getAttribute('cy') ?? 0),
-          positionId: c.getAttribute('id') ?? '',
-        }
-      })
-    owners.push({ ownerId, points })
-  }
-  return owners
-}
 
-/** Ids of every top-level toy (except excludeId) whose centre sits exactly on (cx, cy). */
-function toyIdsAt(layerEl, cx, cy, excludeId) {
-  const ids = []
-  for (const el of layerEl.querySelectorAll(':scope > [data-id]')) {
-    const id = el.getAttribute('data-id')
-    if (id === excludeId || !getGeom(el)) continue
-    const anchor = getAnchor(el)
-    if (anchor.x === cx && anchor.y === cy) ids.push(id)
-  }
-  return ids
-}
 
 /**
  * { ownerId, positionId } for every OTHER toy's tt_positions point that
- * sits exactly on (cx, cy) — excludeId is left out (typically el itself,
- * so it never matches its own position against its own point). A single
- * owner can appear more than once if it happens to have more than one
- * circle at the same coordinate.
+ * sits exactly on (cx, cy)
+ * A single owner can appear more than once if it happens to have more than
+ * one circle at the same coordinate.
  */
 function ownersAtPoint(layerEl, cx, cy, excludeId) {
   const matches = []
-  for (const { ownerId, points } of allPositionOwners(layerEl)) {
+
+  for (const el of layerEl.querySelectorAll(':scope > [data-id]')) {
+    const ownerId = el.getAttribute('data-id')
     if (ownerId === excludeId) continue
-    for (const p of points) {
-      if (p.cx === cx && p.cy === cy) matches.push({ ownerId, positionId: p.positionId })
+
+    const { g, canvasCircles, name } = getPositionsMeta(el)
+    if (!g) continue
+
+    for (const c of canvasCircles ) {
+      if (c.cx === cx && c.cy === cy) {
+        matches.push({ ownerId, positionId: c.id })
+      }
     }
   }
   return matches
 }
 
 /** Ids of every top-level toy currently sitting exactly on one of el's OWN tt_positions points. */
-function directOccupantIds(layerEl, el) {
-  const geom = getGeom(el)
-  const posGroup = getPositionsGroup(el)
-  if (!geom || !posGroup) return []
-  const toyId = el.getAttribute('data-id')
+function directOccupantIds(layerEl, hostEl) {
+  const toyIdsAt = function(circle) {
+    const excludeId = hostEl.getAttribute('data-id')
+    const ids = []
+    for (const el of layerEl.querySelectorAll(':scope > [data-id]')) {
+      const id = el.getAttribute('data-id')
+      if (id === excludeId || !getGeom(el)) continue
+      const anchor = getAnchor(el)
+      if (anchor.x === circle.cx && anchor.y === circle.cy) ids.push(id)
+    }
+    return ids
+  }
+
+  const { g, circles, canvasCircles, name, snapRadius } = getPositionsMeta(hostEl)
+  if (!g) return []
+
   const ids = new Set()
-  for (const c of posGroup.children) {
-    if (c.tagName !== 'circle') continue
-    const cx = geom.x + Number(c.getAttribute('cx') ?? 0)
-    const cy = geom.y + Number(c.getAttribute('cy') ?? 0)
-    for (const id of toyIdsAt(layerEl, cx, cy, toyId)) ids.add(id)
+  for (const c of canvasCircles) {
+    for (const id of toyIdsAt(c)) ids.add(id)
   }
   return [...ids]
 }
@@ -2004,13 +1989,6 @@ export function makeLayerAPI(ydoc, getLayerEl, myId, tableId, isCreator = false)
     getTtStateSchema,
     applyMoveCommit: (el, x, y) => {
       const layerEl = layer()
-      // Steps 1 & 3: departing/arriving events, read from OTHER toys'
-      // geometry (unaffected by the z-order reorder or the move itself,
-      // so safe to compute upfront rather than mid-gesture). A true no-op
-      // (same anchor) suppresses both — nothing actually changed, so
-      // nothing to notify — though promotion/move (steps 2 & 4) below
-      // still run regardless, since picking a toy up and setting it back
-      // down still brings it to front.
       const oldAnchor = getAnchor(el)
       const moved = oldAnchor.x !== x || oldAnchor.y !== y
       const positionEvents = moved
