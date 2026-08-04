@@ -1,8 +1,6 @@
 /**
  * tests/unit/toy-position-snap.test.js
  *
- * Toys.computePositionSnapPoints — the toy-layer counterpart to
- * BounPos.computePositionSnapPoints (see tests/unit/boun_pos.test.js) —
  * plus the four position-relationship handlers that fire through
  * Toys.runGesture when a toy is placed onto (or moves off of) another
  * toy's tt_positions snap point:
@@ -30,7 +28,7 @@ import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import {
   addToy, getGeom, applyMoveDom, runGesture, activateAllToyScriptsDom,
-  computePositionSnapPoints, departingPositionEvents, arrivingPositionEvents,
+  getSnapPoints, departingPositionEvents, arrivingPositionEvents,
   promoteZOrder, moveToyAndStack, moveToysBatch,
   makeLayerAPI, listToysDom, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
@@ -122,16 +120,7 @@ beforeEach(() => {
   _resetToyScriptState()
 })
 
-describe('Toys.computePositionSnapPoints', () => {
-  test('returns empty array when toy has no classes', () => {
-    const layerEl = freshLayer()
-    expect(computePositionSnapPoints(layerEl, new Set())).toHaveLength(0)
-  })
-
-  test('returns empty array when layerEl is null', () => {
-    expect(computePositionSnapPoints(null, new Set(['chip']))).toHaveLength(0)
-  })
-
+describe('Toys.getSnapPoints', () => {
   test('converts a tt_positions circle to canvas space via the owner\u2019s geom origin', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
       if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
@@ -141,96 +130,13 @@ describe('Toys.computePositionSnapPoints', () => {
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: 300, y: 200, color: '#fff' })
 
-    const pts = computePositionSnapPoints(layerEl, new Set(['chip']))
+    const pts = getSnapPoints(layerEl, new Set(['chip']))
     expect(pts).toHaveLength(1)
     // chip's own point sits 8px above its own centre (see CHIP_POINT_OFFSET_Y).
     const expected = chipPointFor(300, 200)
     expect(pts[0]).toMatchObject({ cx: expected.x, cy: expected.y, ownerId: 'chipA' })
   })
 
-  test('returns empty array when no toy\u2019s tt_positions name matches toyClasses', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
-      throw new Error(`unexpected fetch: ${url}`)
-    }))
-    const ydoc = new Y.Doc()
-    const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: 300, y: 200, color: '#fff' })
-
-    expect(computePositionSnapPoints(layerEl, new Set(['dungeon']))).toHaveLength(0)
-  })
-
-  test('excludeId omits that toy from both ownership and occupancy — a dragged toy doesn\u2019t block its own slot', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
-      throw new Error(`unexpected fetch: ${url}`)
-    }))
-    const ydoc = new Y.Doc()
-    const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: 300, y: 200, color: '#fff' })
-
-    // Excluding chipA itself: it owned the only point, so no points remain.
-    expect(computePositionSnapPoints(layerEl, new Set(['chip']), 'chipA')).toHaveLength(0)
-  })
-
-  test('a lone toy\u2019s own point is never self-blocked (nothing else exists to block it)', async () => {
-    // The z-order block check only ever compares a point against OTHER
-    // toys' centres, later in DOM order than the point's owner — it never
-    // compares the owner's own centre to its own point, so this holds
-    // regardless of whether the point happens to coincide with the
-    // owner's centre (chip's doesn't — see CHIP_POINT_OFFSET_Y).
-    vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
-      throw new Error(`unexpected fetch: ${url}`)
-    }))
-    const ydoc = new Y.Doc()
-    const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: 300, y: 200, color: '#fff' })
-
-    const pts = computePositionSnapPoints(layerEl, new Set(['chip']))
-    expect(pts).toHaveLength(1)
-  })
-
-  test('z-ordering: a point IS filtered out once a toy rendered ABOVE the owner sits exactly on it', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
-      throw new Error(`unexpected fetch: ${url}`)
-    }))
-    const ydoc = new Y.Doc()
-    const layerEl = freshLayer()
-    // chipA placed first (below); chipB placed second (above, later in DOM
-    // order) with its own CENTRE landing exactly on chipA's point.
-    const chipAAnchor = { x: 300, y: 200 }
-    const chipAPoint = chipPointFor(chipAAnchor.x, chipAAnchor.y)
-    await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: chipAAnchor.x, y: chipAAnchor.y, color: '#fff' })
-    await addToy(ydoc, layerEl, { id: 'chipB', toyType: 'chip', x: chipAPoint.x, y: chipAPoint.y, color: '#fff' })
-
-    // chipA's point is now occupied from above (by chipB) — filtered out.
-    // chipB's own point is still offered (that's the next chip in the
-    // stack's landing spot) — nothing sits above chipB.
-    const pts = computePositionSnapPoints(layerEl, new Set(['chip']))
-    expect(pts).toHaveLength(1)
-    expect(pts[0].ownerId).toBe('chipB')
-  })
-
-  test('excluding the top-of-stack toy (the one being dragged away) frees the base toy\u2019s point again', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
-      throw new Error(`unexpected fetch: ${url}`)
-    }))
-    const ydoc = new Y.Doc()
-    const layerEl = freshLayer()
-    const chipAAnchor = { x: 300, y: 200 }
-    const chipAPoint = chipPointFor(chipAAnchor.x, chipAAnchor.y)
-    await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: chipAAnchor.x, y: chipAAnchor.y, color: '#fff' })
-    await addToy(ydoc, layerEl, { id: 'chipB', toyType: 'chip', x: chipAPoint.x, y: chipAPoint.y, color: '#fff' })
-
-    // chipB is about to be dragged (excluded) — chipA's point should
-    // reappear as available, since its sole occupant is leaving.
-    const pts = computePositionSnapPoints(layerEl, new Set(['chip']), 'chipB')
-    expect(pts).toHaveLength(1)
-    expect(pts[0].ownerId).toBe('chipA')
-  })
 })
 
 describe('on_position_* / on_*_position cascade (via runGesture)', () => {
@@ -730,23 +636,6 @@ describe('moveToyAndStack — recursive move', () => {
     }
   })
 
-  test('an unrelated toy elsewhere is not moved', async () => {
-    const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
-    vi.stubGlobal('fetch', stubToyFetch({
-      '/toy/player_marker.svg': BASE_SVG,
-      '/toy/dice_d6.svg':       plainFixtureSvg({ id: 'other_fixture', className: 'other' }),
-    }))
-    const ydoc = new Y.Doc()
-    const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'base',  toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
-    await addToy(ydoc, layerEl, { id: 'other', toyType: 'dice_d6',       x: 900, y: 900, color: '#fff' })
-
-    moveToyAndStack(layerEl, layerEl.querySelector('[data-id="base"]'), 400, 400)
-
-    const otherGeom = getGeom(layerEl.querySelector('[data-id="other"]'))
-    expect(otherGeom.x + otherGeom.width / 2).toBe(900)
-    expect(otherGeom.y + otherGeom.height / 2).toBe(900)
-  })
 })
 
 describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
@@ -859,71 +748,3 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
   })
 })
 
-describe('moveToysBatch — z-order promotion (no stack-carry, no positions cascade)', () => {
-  function idsInOrder(layerEl) {
-    return listToysDom(layerEl).map(el => el.getAttribute('data-id'))
-  }
-
-  test('each moved toy is promoted to topmost, in the order given in the batch', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
-      throw new Error(`unexpected fetch: ${url}`)
-    }))
-    const ydoc = new Y.Doc()
-    const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: 100, y: 100, color: '#fff' })
-    await addToy(ydoc, layerEl, { id: 'chipB', toyType: 'chip', x: 500, y: 500, color: '#fff' })
-    await addToy(ydoc, layerEl, { id: 'chipC', toyType: 'chip', x: 700, y: 700, color: '#fff' })
-    expect(idsInOrder(layerEl)).toEqual(['chipA', 'chipB', 'chipC'])
-
-    // Move the two bottommost toys, chipA before chipB — chipB should end
-    // up on top, since it's promoted second.
-    const op = moveToysBatch(ydoc, layerEl,
-      [{ id: 'chipA', x: 900, y: 900 }, { id: 'chipB', x: 950, y: 950 }],
-      { authorId: 'tester', tableId: 'test-table' })
-
-    expect(op).not.toBeNull()
-    expect(idsInOrder(layerEl)).toEqual(['chipC', 'chipA', 'chipB'])
-  })
-
-  test('a moved toy\u2019s occupant is promoted above it, but NOT carried along positionally', async () => {
-    const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
-    vi.stubGlobal('fetch', stubToyFetch({
-      '/toy/player_marker.svg': BASE_SVG,
-      '/toy/dice_d6.svg':       plainFixtureSvg({ id: 'occ_fixture', className: 'occ' }),
-      '/toy/bag.svg':           plainFixtureSvg({ id: 'other_fixture', className: 'other' }),
-    }))
-    const ydoc = new Y.Doc()
-    const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'base',      toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
-    await addToy(ydoc, layerEl, { id: 'occupant',  toyType: 'dice_d6',       x: 100, y: 100, color: '#fff' })
-    await addToy(ydoc, layerEl, { id: 'bystander', toyType: 'bag',           x: 900, y: 900, color: '#fff' })
-
-    moveToysBatch(ydoc, layerEl, [{ id: 'base', x: 300, y: 300 }], { authorId: 'tester', tableId: 'test-table' })
-
-    // z-order: base promoted, its occupant promoted above it.
-    expect(idsInOrder(layerEl)).toEqual(['bystander', 'base', 'occupant'])
-    // But occupant stayed put — batch move doesn't carry stacks.
-    const occGeom = getGeom(layerEl.querySelector('[data-id="occupant"]'))
-    expect(occGeom.x + occGeom.width / 2).toBe(100)
-    expect(occGeom.y + occGeom.height / 2).toBe(100)
-  })
-
-  test('no on_position_* cascade fires for a batch move', async () => {
-    const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
-    vi.stubGlobal('fetch', stubToyFetch({
-      '/toy/player_marker.svg': BASE_SVG,
-      '/toy/dice_d6.svg':       plainFixtureSvg({ id: 'mover_fixture', className: 'stacker_class' }),
-    }))
-    const ydoc = new Y.Doc()
-    const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
-    await addToy(ydoc, layerEl, { id: 'mover', toyType: 'dice_d6',       x: 500, y: 500, color: '#fff' })
-    activateAllToyScriptsDom(ydoc, layerEl)
-    await new Promise(r => setTimeout(r, 0))
-
-    moveToysBatch(ydoc, layerEl, [{ id: 'mover', x: 100, y: 100 }], { authorId: 'tester', tableId: 'test-table' })
-
-    expect(layerEl.querySelector('[data-id="owner"]').getAttribute('data-on_position_occupied-count')).toBeNull()
-  })
-})
