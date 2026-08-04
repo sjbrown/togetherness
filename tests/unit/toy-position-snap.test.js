@@ -3,9 +3,18 @@
  *
  * Toys.computePositionSnapPoints — the toy-layer counterpart to
  * BounPos.computePositionSnapPoints (see tests/unit/boun_pos.test.js) —
- * plus the positions_change_handler cascade that fires through
+ * plus the four position-relationship handlers that fire through
  * Toys.runGesture when a toy is placed onto (or moves off of) another
- * toy's tt_positions snap point.
+ * toy's tt_positions snap point:
+ *   on_position_occupied(elem, positionId, ownerId, movingId) — owner, gained an occupant
+ *   on_position_vacated(elem, positionId, ownerId, movingId)  — owner, lost its occupant
+ *   on_arrive_position(elem, positionId, ownerId, movingId)   — occupant, landed
+ *   on_depart_position(elem, positionId, ownerId, movingId)   — occupant, left
+ * elem is always self. ownerId is always the id of the toy the position
+ * belongs to. movingId is always the id of the toy that's arriving/
+ * departing. positionId is whatever raw `id` attribute ended up on the
+ * <circle> in the live DOM — unmodified, including the toy instance's own
+ * `${toyId}__` auto-minted prefix if the circle wasn't authored with one.
  *
  * app.js's startDrag/move/commitMove are the production callers (untested
  * directly here — see the project's existing convention, e.g.
@@ -21,8 +30,8 @@ import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import {
   addToy, getGeom, applyMoveDom, runGesture, activateAllToyScriptsDom,
-  computePositionSnapPoints, departingPositionOwners, arrivingPositionOwners,
-  promoteZOrder, moveToyAndStack,
+  computePositionSnapPoints, departingPositionEvents, arrivingPositionEvents,
+  promoteZOrder, moveToyAndStack, moveToysBatch,
   makeLayerAPI, listToysDom, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { getOps } from '../../src/op_dag.js'
@@ -35,29 +44,57 @@ const TOY_DIR = path.resolve(__dir, '../../src/toy')
 
 const CHIP_SVG = fs.readFileSync(path.join(TOY_DIR, 'chip.svg'), 'utf8')
 
-// A fixture with a single tt_positions point at its own centre (mirroring
-// chip.svg's real layout: an 80x80 toy with one circle at cx=40 cy=40) and
-// a positions_change_handler that just counts invocations.
+// chip.svg is an 80x80 toy whose tt_positions circle sits at local
+// (40, 32) — 8px above its own geometric centre (40, 40), for a fanned
+// poker-chip-stack look — not exactly at its own centre. A chip placed at
+// canvas centre (x, y) therefore generates a snap point at (x, y - 8).
+const CHIP_POINT_OFFSET_Y = 8
+function chipPointFor(x, y) { return { x, y: y - CHIP_POINT_OFFSET_Y } }
+
+// The live-DOM id of ownerId's own tt_positions circle — whatever
+// positionId actually is, unmodified: the id the toy author wrote
+// (prefixed with the toy instance's own `${ownerId}__`, same as every
+// other id on the toy), or the auto-minted `${ownerId}__N` sequence
+// number if the author didn't write one. Read dynamically rather than
+// predicted, so these tests don't hardcode an assumption about a fixed
+// asset's internal structure.
+function realPositionId(layerEl, ownerId) {
+  const circle = layerEl.querySelector(`[data-id="${ownerId}"] .${ownerId}__tt_positions circle`)
+  return circle?.getAttribute('id') ?? ''
+}
+
+// A fixture with a single tt_positions point at its own centre (id="pos",
+// so its live-DOM positionId is predictably "${id}__pos") and all four
+// handlers, each recording invocation count + the (positionId, ownerId,
+// movingId) it was last called with, as a DOM attribute, so tests can
+// assert on the signature without hooking into the namespace object.
 function baseFixtureSvg({ id, className, size = 80 }) {
   const c = size / 2
+  const record = name =>
+    `${name}: function(elem, positionId, ownerId, movingId) {
+        const n = Number(elem.getAttribute('data-${name}-count') || 0) + 1
+        elem.setAttribute('data-${name}-count', String(n))
+        elem.setAttribute('data-${name}-last', positionId + ':' + ownerId + ':' + movingId)
+      },`
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="${SVG_NS}" width="${size}" height="${size}" id="${id}" class="${className}">
   <script type="text/javascript" data-namespace="${id}_ns"><![CDATA[
     var ${id}_ns = {
-      positions_change_handler: function(elem) {
-        elem.setAttribute('data-pos-recomputed', String(Number(elem.getAttribute('data-pos-recomputed') || 0) + 1))
-      },
+      ${record('on_position_occupied')}
+      ${record('on_position_vacated')}
+      ${record('on_arrive_position')}
+      ${record('on_depart_position')}
     }
   ]]></script>
   <g class="tt_positions" data-bounpos-type="pos-set" name="${className}">
-    <circle cx="${c}" cy="${c}" r="10"></circle>
+    <circle id="pos" cx="${c}" cy="${c}" r="10"></circle>
   </g>
 </svg>`
 }
 
-// A fixture with no tt_positions at all — a plain stacker with no reaction,
-// used to confirm nothing errors when there's no positions_change_handler
-// to call (chip.svg's actual real-world case).
+// A fixture with no tt_positions at all — a plain stacker with no
+// reaction, used to confirm nothing errors when there's no handler to
+// call, and as an occupant that doesn't need to react to being carried.
 function plainFixtureSvg({ id, className, size = 80 }) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="${SVG_NS}" width="${size}" height="${size}" id="${id}" class="${className}"></svg>`
@@ -69,9 +106,10 @@ function freshLayer() {
   return layerEl
 }
 
-// Reuses the player_marker / dice_d6 / bag TOY_TYPES slots (addToy
-// requires a registered TOY_TYPES entry) with custom fetch-stubbed SVG —
-// same technique tests/unit/tray.test.js's cross-tray-cycle test uses.
+// Reuses the player_marker / dice_d6 / bag / tray_sum TOY_TYPES slots
+// (addToy requires a registered TOY_TYPES entry) with custom fetch-stubbed
+// SVG — same technique tests/unit/tray.test.js's cross-tray-cycle test
+// uses.
 function stubToyFetch(map) {
   return vi.fn(async (url) => {
     if (url in map) return { ok: true, text: async () => map[url] }
@@ -105,9 +143,9 @@ describe('Toys.computePositionSnapPoints', () => {
 
     const pts = computePositionSnapPoints(layerEl, new Set(['chip']))
     expect(pts).toHaveLength(1)
-    // chip's own point sits at its local centre (40,40 in an 80x80 doc),
-    // which after placement at canvas centre (300,200) is exactly there.
-    expect(pts[0]).toMatchObject({ cx: 300, cy: 200, ownerId: 'chipA' })
+    // chip's own point sits 8px above its own centre (see CHIP_POINT_OFFSET_Y).
+    const expected = chipPointFor(300, 200)
+    expect(pts[0]).toMatchObject({ cx: expected.x, cy: expected.y, ownerId: 'chipA' })
   })
 
   test('returns empty array when no toy\u2019s tt_positions name matches toyClasses', async () => {
@@ -135,9 +173,12 @@ describe('Toys.computePositionSnapPoints', () => {
     expect(computePositionSnapPoints(layerEl, new Set(['chip']), 'chipA')).toHaveLength(0)
   })
 
-  test('z-ordering: a point is NOT filtered out by a toy BELOW its owner (the owner\u2019s own base case)', async () => {
-    // A single chip's point coincides with its own centre — the point
-    // owner is always "at" its own point. That must never self-block.
+  test('a lone toy\u2019s own point is never self-blocked (nothing else exists to block it)', async () => {
+    // The z-order block check only ever compares a point against OTHER
+    // toys' centres, later in DOM order than the point's owner — it never
+    // compares the owner's own centre to its own point, so this holds
+    // regardless of whether the point happens to coincide with the
+    // owner's centre (chip's doesn't — see CHIP_POINT_OFFSET_Y).
     vi.stubGlobal('fetch', vi.fn(async (url) => {
       if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
       throw new Error(`unexpected fetch: ${url}`)
@@ -158,14 +199,15 @@ describe('Toys.computePositionSnapPoints', () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
     // chipA placed first (below); chipB placed second (above, later in DOM
-    // order) and stacked exactly on chipA's own point.
-    await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: 300, y: 200, color: '#fff' })
-    await addToy(ydoc, layerEl, { id: 'chipB', toyType: 'chip', x: 300, y: 200, color: '#fff' })
+    // order) with its own CENTRE landing exactly on chipA's point.
+    const chipAAnchor = { x: 300, y: 200 }
+    const chipAPoint = chipPointFor(chipAAnchor.x, chipAAnchor.y)
+    await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: chipAAnchor.x, y: chipAAnchor.y, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'chipB', toyType: 'chip', x: chipAPoint.x, y: chipAPoint.y, color: '#fff' })
 
     // chipA's point is now occupied from above (by chipB) — filtered out.
-    // chipB's own point also coincides with (300,200) (same centre), and
-    // nothing sits above chipB, so chipB's own point should still be
-    // offered (that's the next chip in the stack's landing spot).
+    // chipB's own point is still offered (that's the next chip in the
+    // stack's landing spot) — nothing sits above chipB.
     const pts = computePositionSnapPoints(layerEl, new Set(['chip']))
     expect(pts).toHaveLength(1)
     expect(pts[0].ownerId).toBe('chipB')
@@ -178,8 +220,10 @@ describe('Toys.computePositionSnapPoints', () => {
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: 300, y: 200, color: '#fff' })
-    await addToy(ydoc, layerEl, { id: 'chipB', toyType: 'chip', x: 300, y: 200, color: '#fff' })
+    const chipAAnchor = { x: 300, y: 200 }
+    const chipAPoint = chipPointFor(chipAAnchor.x, chipAAnchor.y)
+    await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: chipAAnchor.x, y: chipAAnchor.y, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'chipB', toyType: 'chip', x: chipAPoint.x, y: chipAPoint.y, color: '#fff' })
 
     // chipB is about to be dragged (excluded) — chipA's point should
     // reappear as available, since its sole occupant is leaving.
@@ -189,10 +233,10 @@ describe('Toys.computePositionSnapPoints', () => {
   })
 })
 
-describe('positions_change_handler cascade (via runGesture)', () => {
-  test('invokes positions_change_handler on the owner id passed as positionOwnerIds, as part of the same operation', async () => {
-    const BASE_SVG   = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
-    const STACKER_SVG = plainFixtureSvg({ id: 'stacker_fixture', className: 'stacker_class' })
+describe('on_position_* / on_*_position cascade (via runGesture)', () => {
+  test('arriving on an owner\u2019s position fires on_position_occupied on the owner AND on_arrive_position on the occupant, as part of the same operation', async () => {
+    const BASE_SVG    = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
+    const STACKER_SVG = baseFixtureSvg({ id: 'stacker_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
       '/toy/player_marker.svg': BASE_SVG,
       '/toy/dice_d6.svg':       STACKER_SVG,
@@ -208,15 +252,128 @@ describe('positions_change_handler cascade (via runGesture)', () => {
     const stackerEl = layerEl.querySelector('[data-id="stacker1"]')
     runGesture(ydoc, layerEl, () => {
       applyMoveDom(stackerEl, 100, 100) // land exactly on base1's point
-    }, { gesture: 'move', authorId: AUTHOR, tableId: TABLE, positionOwnerIds: ['base1'] })
+    }, {
+      gesture: 'move', authorId: AUTHOR, tableId: TABLE,
+      positionEvents: [
+        { fnName: 'on_position_occupied', elemId: 'base1',    positionId: 'p0', ownerId: 'base1', movingId: 'stacker1' },
+        { fnName: 'on_arrive_position',   elemId: 'stacker1', positionId: 'p0', ownerId: 'base1', movingId: 'stacker1' },
+      ],
+    })
 
-    // One atomic operation — the move and the handler's reaction together.
+    // One atomic operation — the move and both reactions together.
     expect(getOps(ydoc).size - before).toBe(1)
     const baseEl = layerEl.querySelector('[data-id="base1"]')
-    expect(baseEl.getAttribute('data-pos-recomputed')).toBe('1')
+    expect(baseEl.getAttribute('data-on_position_occupied-count')).toBe('1')
+    expect(baseEl.getAttribute('data-on_position_occupied-last')).toBe('p0:base1:stacker1')
+    expect(baseEl.getAttribute('data-on_position_vacated-count')).toBeNull()
+    expect(stackerEl.getAttribute('data-on_arrive_position-count')).toBe('1')
+    expect(stackerEl.getAttribute('data-on_arrive_position-last')).toBe('p0:base1:stacker1')
+    expect(stackerEl.getAttribute('data-on_depart_position-count')).toBeNull()
   })
 
-  test('a missing positions_change_handler is a silent no-op — no error, no crash (chip.svg\u2019s real case)', async () => {
+  test('departing an owner\u2019s position fires on_position_vacated on the owner AND on_depart_position on the occupant', async () => {
+    const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
+    vi.stubGlobal('fetch', stubToyFetch({
+      '/toy/player_marker.svg': BASE_SVG,
+      '/toy/dice_d6.svg':       baseFixtureSvg({ id: 'stacker_fixture', className: 'stacker_class' }),
+    }))
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'mover', toyType: 'dice_d6',       x: 100, y: 100, color: '#fff' })
+    activateAllToyScriptsDom(ydoc, layerEl)
+    await new Promise(r => setTimeout(r, 0))
+
+    runGesture(ydoc, layerEl, () => {}, {
+      gesture: 'move', authorId: AUTHOR, tableId: TABLE,
+      positionEvents: [
+        { fnName: 'on_position_vacated', elemId: 'owner', positionId: 'p0', ownerId: 'owner', movingId: 'mover' },
+        { fnName: 'on_depart_position',  elemId: 'mover', positionId: 'p0', ownerId: 'owner', movingId: 'mover' },
+      ],
+    })
+
+    const ownerEl = layerEl.querySelector('[data-id="owner"]')
+    const moverEl = layerEl.querySelector('[data-id="mover"]')
+    expect(ownerEl.getAttribute('data-on_position_vacated-count')).toBe('1')
+    expect(ownerEl.getAttribute('data-on_position_vacated-last')).toBe('p0:owner:mover')
+    expect(ownerEl.getAttribute('data-on_position_occupied-count')).toBeNull()
+    expect(moverEl.getAttribute('data-on_depart_position-count')).toBe('1')
+    expect(moverEl.getAttribute('data-on_depart_position-last')).toBe('p0:owner:mover')
+    expect(moverEl.getAttribute('data-on_arrive_position-count')).toBeNull()
+  })
+
+  test('a toy that both departs one owner and arrives at another gets both reactions in the same gesture', async () => {
+    const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
+    vi.stubGlobal('fetch', stubToyFetch({
+      '/toy/player_marker.svg': BASE_SVG,
+      '/toy/dice_d6.svg':       BASE_SVG.replace(/base_fixture/g, 'base_fixture2'),
+      '/toy/bag.svg':           baseFixtureSvg({ id: 'mover_fixture', className: 'stacker_class' }),
+    }))
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    await addToy(ydoc, layerEl, { id: 'ownerA', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'ownerB', toyType: 'dice_d6',       x: 500, y: 500, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'mover',  toyType: 'bag',           x: 100, y: 100, color: '#fff' })
+    activateAllToyScriptsDom(ydoc, layerEl)
+    await new Promise(r => setTimeout(r, 0))
+
+    runGesture(ydoc, layerEl, () => {}, {
+      gesture: 'move', authorId: AUTHOR, tableId: TABLE,
+      positionEvents: [
+        { fnName: 'on_position_vacated',  elemId: 'ownerA', positionId: 'p0', ownerId: 'ownerA', movingId: 'mover' },
+        { fnName: 'on_depart_position',   elemId: 'mover',  positionId: 'p0', ownerId: 'ownerA', movingId: 'mover' },
+        { fnName: 'on_position_occupied', elemId: 'ownerB', positionId: 'p1', ownerId: 'ownerB', movingId: 'mover' },
+        { fnName: 'on_arrive_position',   elemId: 'mover',  positionId: 'p1', ownerId: 'ownerB', movingId: 'mover' },
+      ],
+    })
+
+    const moverEl = layerEl.querySelector('[data-id="mover"]')
+    expect(moverEl.getAttribute('data-on_depart_position-last')).toBe('p0:ownerA:mover')
+    expect(moverEl.getAttribute('data-on_arrive_position-last')).toBe('p1:ownerB:mover')
+    expect(layerEl.querySelector('[data-id="ownerA"]').getAttribute('data-on_position_vacated-last')).toBe('p0:ownerA:mover')
+    expect(layerEl.querySelector('[data-id="ownerB"]').getAttribute('data-on_position_occupied-last')).toBe('p1:ownerB:mover')
+  })
+
+  test('an identical duplicate event is deduped — the handler runs at most once', async () => {
+    const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
+    vi.stubGlobal('fetch', stubToyFetch({ '/toy/player_marker.svg': BASE_SVG }))
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    activateAllToyScriptsDom(ydoc, layerEl)
+    await new Promise(r => setTimeout(r, 0))
+
+    runGesture(ydoc, layerEl, () => {}, {
+      gesture: 'move', authorId: AUTHOR, tableId: TABLE,
+      positionEvents: [
+        { fnName: 'on_position_occupied', elemId: 'owner', positionId: 'p0', ownerId: 'owner', movingId: 'mover' },
+        { fnName: 'on_position_occupied', elemId: 'owner', positionId: 'p0', ownerId: 'owner', movingId: 'mover' },
+      ],
+    })
+
+    expect(layerEl.querySelector('[data-id="owner"]').getAttribute('data-on_position_occupied-count')).toBe('1')
+  })
+
+  test('a missing handler is a silent no-op — no error, no crash', async () => {
+    const PLAIN_SVG = plainFixtureSvg({ id: 'plain_fixture', className: 'plain' })
+    vi.stubGlobal('fetch', stubToyFetch({ '/toy/player_marker.svg': PLAIN_SVG }))
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    activateAllToyScriptsDom(ydoc, layerEl)
+    await new Promise(r => setTimeout(r, 0))
+
+    expect(() => {
+      runGesture(ydoc, layerEl, () => {}, {
+        gesture: 'move', authorId: AUTHOR, tableId: TABLE,
+        positionEvents: [
+          { fnName: 'on_position_occupied', elemId: 'owner', positionId: 'p0', ownerId: 'owner', movingId: 'mover' },
+        ],
+      })
+    }).not.toThrow()
+  })
+
+  test('the real chip.svg\u2019s own on_position_*/on_*_position handlers set data-above/data-below as documented', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
       if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
       throw new Error(`unexpected fetch: ${url}`)
@@ -228,25 +385,54 @@ describe('positions_change_handler cascade (via runGesture)', () => {
     activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
+    const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
+    // chipB lands exactly on chipA's point.
+    const chipAPoint = chipPointFor(300, 200)
+    api.applyMoveCommit(api.find('chipB'), chipAPoint.x, chipAPoint.y)
+
+    const chipAEl = layerEl.querySelector('[data-id="chipA"]')
     const chipBEl = layerEl.querySelector('[data-id="chipB"]')
-    expect(() => {
-      runGesture(ydoc, layerEl, () => {
-        applyMoveDom(chipBEl, 300, 200) // stack chipB onto chipA's own point
-      }, { gesture: 'move', authorId: AUTHOR, tableId: TABLE, positionOwnerIds: ['chipA'] })
-    }).not.toThrow()
+    expect(chipAEl.getAttribute('data-below')).toBe('chipB')
+    expect(chipBEl.getAttribute('data-above')).toBe('chipA')
+
+    // Pick chipB back up and move it away — the reverse should clear both.
+    api.applyMoveCommit(chipBEl, 900, 900)
+    expect(chipAEl.getAttribute('data-below')).toBe('')
+    expect(chipBEl.getAttribute('data-above')).toBe('')
   })
 
-  test('an unknown owner id (e.g. deleted mid-gesture) is skipped without error', async () => {
+  test('an unknown elemId (e.g. deleted mid-gesture) is skipped without error', async () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
     expect(() => {
       runGesture(ydoc, layerEl, () => {}, {
-        gesture: 'move', authorId: AUTHOR, tableId: TABLE, positionOwnerIds: ['does-not-exist'],
+        gesture: 'move', authorId: AUTHOR, tableId: TABLE,
+        positionEvents: [
+          { fnName: 'on_position_occupied', elemId: 'does-not-exist', positionId: 'p0', ownerId: 'does-not-exist', movingId: 'x' },
+        ],
       })
     }).not.toThrow()
   })
 
-  test('with no positionOwnerIds, runGesture behaves exactly as before (backward compatible)', async () => {
+  test('an event with no fnName is skipped without error', async () => {
+    const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
+    vi.stubGlobal('fetch', stubToyFetch({ '/toy/player_marker.svg': BASE_SVG }))
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    activateAllToyScriptsDom(ydoc, layerEl)
+    await new Promise(r => setTimeout(r, 0))
+
+    expect(() => {
+      runGesture(ydoc, layerEl, () => {}, {
+        gesture: 'move', authorId: AUTHOR, tableId: TABLE,
+        positionEvents: [{ elemId: 'owner', positionId: 'p0', ownerId: 'owner', movingId: 'x' }],
+      })
+    }).not.toThrow()
+    expect(layerEl.querySelector('[data-id="owner"]').getAttribute('data-on_position_occupied-count')).toBeNull()
+  })
+
+  test('with no positionEvents, runGesture behaves exactly as before (backward compatible)', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
       if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
       throw new Error(`unexpected fetch: ${url}`)
@@ -266,54 +452,67 @@ describe('positions_change_handler cascade (via runGesture)', () => {
   })
 })
 
-describe('departingPositionOwners / arrivingPositionOwners', () => {
-  test('departingPositionOwners: [] when el isn\u2019t sitting on anyone\u2019s point', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
-      throw new Error(`unexpected fetch: ${url}`)
+describe('departingPositionEvents / arrivingPositionEvents', () => {
+  test('departingPositionEvents: [] when el isn\u2019t sitting on anyone\u2019s point', async () => {
+    const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
+    vi.stubGlobal('fetch', stubToyFetch({
+      '/toy/player_marker.svg': BASE_SVG,
+      '/toy/dice_d6.svg':       plainFixtureSvg({ id: 'other_fixture', className: 'other' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: 300, y: 200, color: '#fff' })
-    await addToy(ydoc, layerEl, { id: 'chipB', toyType: 'chip', x: 900, y: 900, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'other', toyType: 'dice_d6',       x: 900, y: 900, color: '#fff' })
 
-    const chipBEl = layerEl.querySelector('[data-id="chipB"]')
-    expect(departingPositionOwners(layerEl, chipBEl)).toEqual([])
+    const otherEl = layerEl.querySelector('[data-id="other"]')
+    expect(departingPositionEvents(layerEl, otherEl)).toEqual([])
   })
 
-  test('departingPositionOwners: reports the owner el\u2019s current centre sits on', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
-      throw new Error(`unexpected fetch: ${url}`)
+  test('departingPositionEvents: an \'on_position_vacated\' event for the owner and an \'on_depart_position\' event for el, sharing the same positionId/ownerId', async () => {
+    const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
+    vi.stubGlobal('fetch', stubToyFetch({
+      '/toy/player_marker.svg': BASE_SVG,
+      '/toy/dice_d6.svg':       plainFixtureSvg({ id: 'mover_fixture', className: 'stacker_class' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: 300, y: 200, color: '#fff' })
-    // chipB starts stacked exactly on chipA's point.
-    await addToy(ydoc, layerEl, { id: 'chipB', toyType: 'chip', x: 300, y: 200, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    // mover starts stacked exactly on owner's point.
+    await addToy(ydoc, layerEl, { id: 'mover', toyType: 'dice_d6',       x: 100, y: 100, color: '#fff' })
 
-    const chipBEl = layerEl.querySelector('[data-id="chipB"]')
-    expect(departingPositionOwners(layerEl, chipBEl)).toEqual(['chipA'])
+    const moverEl = layerEl.querySelector('[data-id="mover"]')
+    const posId = realPositionId(layerEl, 'owner')
+    expect(posId).toBe('owner__pos') // the fixture's authored id, prefixed — unstripped
+    const events = departingPositionEvents(layerEl, moverEl)
+    expect(events).toEqual([
+      { fnName: 'on_position_vacated', elemId: 'owner', positionId: posId, ownerId: 'owner', movingId: 'mover' },
+      { fnName: 'on_depart_position',  elemId: 'mover', positionId: posId, ownerId: 'owner', movingId: 'mover' },
+    ])
   })
 
-  test('arrivingPositionOwners: reports the owner whose point sits exactly at the given (x, y)', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
-      throw new Error(`unexpected fetch: ${url}`)
+  test('arrivingPositionEvents: an \'on_position_occupied\' event for the owner and an \'on_arrive_position\' event for el', async () => {
+    const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
+    vi.stubGlobal('fetch', stubToyFetch({
+      '/toy/player_marker.svg': BASE_SVG,
+      '/toy/dice_d6.svg':       plainFixtureSvg({ id: 'mover_fixture', className: 'stacker_class' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: 300, y: 200, color: '#fff' })
-    await addToy(ydoc, layerEl, { id: 'chipB', toyType: 'chip', x: 900, y: 900, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'mover', toyType: 'dice_d6',       x: 900, y: 900, color: '#fff' })
 
-    const chipBEl = layerEl.querySelector('[data-id="chipB"]')
-    // chipB about to land exactly on chipA's own point.
-    expect(arrivingPositionOwners(layerEl, chipBEl, 300, 200)).toEqual(['chipA'])
+    const moverEl = layerEl.querySelector('[data-id="mover"]')
+    const posId = realPositionId(layerEl, 'owner')
+    // mover about to land exactly on owner's own point.
+    expect(arrivingPositionEvents(layerEl, moverEl, 100, 100)).toEqual([
+      { fnName: 'on_position_occupied', elemId: 'owner', positionId: posId, ownerId: 'owner', movingId: 'mover' },
+      { fnName: 'on_arrive_position',   elemId: 'mover', positionId: posId, ownerId: 'owner', movingId: 'mover' },
+    ])
     // Nowhere special.
-    expect(arrivingPositionOwners(layerEl, chipBEl, 1234, 5678)).toEqual([])
+    expect(arrivingPositionEvents(layerEl, moverEl, 1234, 5678)).toEqual([])
   })
 
-  test('arrivingPositionOwners excludes el itself even if the destination happens to equal one of its OWN points', async () => {
+  test('arrivingPositionEvents excludes el itself even if the destination happens to equal one of its OWN points', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
       if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
       throw new Error(`unexpected fetch: ${url}`)
@@ -323,13 +522,37 @@ describe('departingPositionOwners / arrivingPositionOwners', () => {
     await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: 300, y: 200, color: '#fff' })
 
     const chipAEl = layerEl.querySelector('[data-id="chipA"]')
-    // chip's own point coincides with its own centre — landing "on itself".
-    expect(arrivingPositionOwners(layerEl, chipAEl, 300, 200)).toEqual([])
+    const chipAPoint = chipPointFor(300, 200)
+    // landing exactly "on itself" — its own point, own id excluded.
+    expect(arrivingPositionEvents(layerEl, chipAEl, chipAPoint.x, chipAPoint.y)).toEqual([])
+  })
+
+  test('positionId is the raw, unstripped live-DOM id — including the toy instance\u2019s own auto-minted prefix when the circle wasn\u2019t authored with one', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
+      throw new Error(`unexpected fetch: ${url}`)
+    }))
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: 300, y: 200, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'chipB', toyType: 'chip', x: 900, y: 900, color: '#fff' })
+
+    const chipBEl = layerEl.querySelector('[data-id="chipB"]')
+    const chipAPoint = chipPointFor(300, 200)
+    const events = arrivingPositionEvents(layerEl, chipBEl, chipAPoint.x, chipAPoint.y)
+    const posId = realPositionId(layerEl, 'chipA')
+    // chip.svg's own circle has no authored id, so its live-DOM id is
+    // whatever svgTextToDom auto-minted for it: "chipA__<sequence>".
+    expect(posId).toMatch(/^chipA__/)
+    expect(events).toEqual([
+      { fnName: 'on_position_occupied', elemId: 'chipA', positionId: posId, ownerId: 'chipA', movingId: 'chipB' },
+      { fnName: 'on_arrive_position',   elemId: 'chipB', positionId: posId, ownerId: 'chipA', movingId: 'chipB' },
+    ])
   })
 
   test('null layerEl/el is handled without throwing', () => {
-    expect(departingPositionOwners(null, null)).toEqual([])
-    expect(arrivingPositionOwners(null, null, 0, 0)).toEqual([])
+    expect(departingPositionEvents(null, null)).toEqual([])
+    expect(arrivingPositionEvents(null, null, 0, 0)).toEqual([])
   })
 })
 
@@ -345,6 +568,7 @@ describe('promoteZOrder — recursive', () => {
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
+    // chipA is added first (bottommost), then two more toys on top of it.
     await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'chipB', toyType: 'chip', x: 500, y: 500, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'chipC', toyType: 'chip', x: 700, y: 700, color: '#fff' })
@@ -527,8 +751,8 @@ describe('moveToyAndStack — recursive move', () => {
 
 describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
   test('caller passes only (el, x, y) — everything else (ownership, promotion, the stack move, the cascade) is self-contained', async () => {
-    const BASE_SVG   = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
-    const STACKER_SVG = plainFixtureSvg({ id: 'stacker_fixture', className: 'stacker_class' })
+    const BASE_SVG    = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
+    const STACKER_SVG = baseFixtureSvg({ id: 'stacker_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
       '/toy/player_marker.svg': BASE_SVG,
       '/toy/dice_d6.svg':       STACKER_SVG,
@@ -542,11 +766,16 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
 
     const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
     const before = getOps(ydoc).size
-    api.applyMoveCommit(api.find('stacker1'), 100, 100) // land exactly on base1's point
+    const stackerEl = api.find('stacker1')
+    const posId = realPositionId(layerEl, 'base1')
+    api.applyMoveCommit(stackerEl, 100, 100) // land exactly on base1's point
 
     expect(getOps(ydoc).size - before).toBe(1) // still one atomic operation
     const baseEl = layerEl.querySelector('[data-id="base1"]')
-    expect(baseEl.getAttribute('data-pos-recomputed')).toBe('1') // arrivingPositionOwners cascade fired
+    expect(baseEl.getAttribute('data-on_position_occupied-count')).toBe('1')
+    expect(baseEl.getAttribute('data-on_position_occupied-last')).toBe(`${posId}:base1:stacker1`)
+    expect(stackerEl.getAttribute('data-on_arrive_position-count')).toBe('1')
+    expect(stackerEl.getAttribute('data-on_arrive_position-last')).toBe(`${posId}:base1:stacker1`)
   })
 
   test('moving a toy with no tt_positions relationship at all is a normal, unaffected move', async () => {
@@ -601,11 +830,15 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
 
     const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
     const before = getOps(ydoc).size
-    api.applyMoveCommit(api.find('movingBase'), 900, 900) // land exactly on destBase's point
+    const movingBaseEl = api.find('movingBase')
+    const posId = realPositionId(layerEl, 'destBase')
+    api.applyMoveCommit(movingBaseEl, 900, 900) // land exactly on destBase's point
 
     expect(getOps(ydoc).size - before).toBe(1) // everything — move, stack, cascade — one operation
 
-    // The occupant followed movingBase to the new location.
+    // The occupant followed movingBase to the new location (no position
+    // event fires for it — only the top-level moved toy's own arrival
+    // triggers a reaction).
     const occGeom = getGeom(layerEl.querySelector('[data-id="occupant"]'))
     expect(occGeom.x + occGeom.width / 2).toBe(900)
     expect(occGeom.y + occGeom.height / 2).toBe(900)
@@ -614,7 +847,83 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
     const idsInOrder = listToysDom(layerEl).map(el => el.getAttribute('data-id'))
     expect(idsInOrder).toEqual(['destBase', 'movingBase', 'occupant'])
 
-    // destBase reacted to the arrival.
-    expect(layerEl.querySelector('[data-id="destBase"]').getAttribute('data-pos-recomputed')).toBe('1')
+    // destBase reacted to the arrival, movingBase reacted to its own arrival.
+    const destBaseEl = layerEl.querySelector('[data-id="destBase"]')
+    expect(destBaseEl.getAttribute('data-on_position_occupied-count')).toBe('1')
+    expect(destBaseEl.getAttribute('data-on_position_occupied-last')).toBe(`${posId}:destBase:movingBase`)
+    expect(movingBaseEl.getAttribute('data-on_arrive_position-count')).toBe('1')
+    expect(movingBaseEl.getAttribute('data-on_arrive_position-last')).toBe(`${posId}:destBase:movingBase`)
+    // movingBase wasn't sitting on anyone's position before, so no departure.
+    expect(destBaseEl.getAttribute('data-on_position_vacated-count')).toBeNull()
+    expect(movingBaseEl.getAttribute('data-on_depart_position-count')).toBeNull()
+  })
+})
+
+describe('moveToysBatch — z-order promotion (no stack-carry, no positions cascade)', () => {
+  function idsInOrder(layerEl) {
+    return listToysDom(layerEl).map(el => el.getAttribute('data-id'))
+  }
+
+  test('each moved toy is promoted to topmost, in the order given in the batch', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
+      throw new Error(`unexpected fetch: ${url}`)
+    }))
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'chipB', toyType: 'chip', x: 500, y: 500, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'chipC', toyType: 'chip', x: 700, y: 700, color: '#fff' })
+    expect(idsInOrder(layerEl)).toEqual(['chipA', 'chipB', 'chipC'])
+
+    // Move the two bottommost toys, chipA before chipB — chipB should end
+    // up on top, since it's promoted second.
+    const op = moveToysBatch(ydoc, layerEl,
+      [{ id: 'chipA', x: 900, y: 900 }, { id: 'chipB', x: 950, y: 950 }],
+      { authorId: 'tester', tableId: 'test-table' })
+
+    expect(op).not.toBeNull()
+    expect(idsInOrder(layerEl)).toEqual(['chipC', 'chipA', 'chipB'])
+  })
+
+  test('a moved toy\u2019s occupant is promoted above it, but NOT carried along positionally', async () => {
+    const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
+    vi.stubGlobal('fetch', stubToyFetch({
+      '/toy/player_marker.svg': BASE_SVG,
+      '/toy/dice_d6.svg':       plainFixtureSvg({ id: 'occ_fixture', className: 'occ' }),
+      '/toy/bag.svg':           plainFixtureSvg({ id: 'other_fixture', className: 'other' }),
+    }))
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    await addToy(ydoc, layerEl, { id: 'base',      toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'occupant',  toyType: 'dice_d6',       x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'bystander', toyType: 'bag',           x: 900, y: 900, color: '#fff' })
+
+    moveToysBatch(ydoc, layerEl, [{ id: 'base', x: 300, y: 300 }], { authorId: 'tester', tableId: 'test-table' })
+
+    // z-order: base promoted, its occupant promoted above it.
+    expect(idsInOrder(layerEl)).toEqual(['bystander', 'base', 'occupant'])
+    // But occupant stayed put — batch move doesn't carry stacks.
+    const occGeom = getGeom(layerEl.querySelector('[data-id="occupant"]'))
+    expect(occGeom.x + occGeom.width / 2).toBe(100)
+    expect(occGeom.y + occGeom.height / 2).toBe(100)
+  })
+
+  test('no on_position_* cascade fires for a batch move', async () => {
+    const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
+    vi.stubGlobal('fetch', stubToyFetch({
+      '/toy/player_marker.svg': BASE_SVG,
+      '/toy/dice_d6.svg':       plainFixtureSvg({ id: 'mover_fixture', className: 'stacker_class' }),
+    }))
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'mover', toyType: 'dice_d6',       x: 500, y: 500, color: '#fff' })
+    activateAllToyScriptsDom(ydoc, layerEl)
+    await new Promise(r => setTimeout(r, 0))
+
+    moveToysBatch(ydoc, layerEl, [{ id: 'mover', x: 100, y: 100 }], { authorId: 'tester', tableId: 'test-table' })
+
+    expect(layerEl.querySelector('[data-id="owner"]').getAttribute('data-on_position_occupied-count')).toBeNull()
   })
 })
