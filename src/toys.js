@@ -704,62 +704,26 @@ function getPositionsMeta(domEl) {
 
 /**
  * Scan the toys layer for top-level toys offering a tt_positions pos-set
- * whose name ∈ toyClasses, and return their snap points in canvas space —
- * the toy-layer counterpart to BounPos.computePositionSnapPoints.
- *
- * Each point is { cx, cy, snapRadius, ownerId } — ownerId is the id of the
- * toy that owns the position (the toy being placed to snap onto it), so a
- * caller can invoke that owner's positions_change_handler once the drop
- * commits.
- *
- * A tt_positions circle is authored in the owning toy's own local
- * coordinate space, but on the live DOM viewBox is always kept in sync
- * with width/height (see applyResizeDom), so converting to canvas space is
- * a plain translation by the toy's geom origin — no scaling needed.
- *
- * z-ordering: unlike BounPos's boundary-layer points (which are filtered
- * out whenever ANY toy already sits exactly on them), a toy-layer point is
- * only filtered out when a toy ABOVE the point's owner (later in DOM/
- * paint order) already occupies it. A toy sitting exactly on its own
- * generated point — the normal, expected case for something like a chip
- * stack, where the point coincides with the owner's own center — or a toy
- * below the owner, never blocks the point; only another toy already
- * stacked on top of it does.
- *
- * excludeId — typically the id of the toy currently being dragged, left
- * out of the occupancy check so its own (about-to-move) position doesn't
- * block the very slot it might snap right back onto.
  */
-export function computePositionSnapPoints(layerEl, toyClasses, excludeId = null) {
-  if (!layerEl || !toyClasses || toyClasses.size === 0) return []
+export function getSnapPoints(layerEl) {
   const topLevelToys = [...layerEl.querySelectorAll(':scope > [data-id]')]
-    .filter(el => el.getAttribute('data-id') !== excludeId)
-
-  const anchors = topLevelToys.map(el => {
-    if (!getGeom(el)) return null
-    const { x, y } = getAnchor(el)
-    return { el, x, y }
-  })
 
   const points = []
-  topLevelToys.forEach((ownerEl, ownerIndex) => {
+  topLevelToys.forEach((ownerEl) => {
     const ownerId = ownerEl.getAttribute('data-id')
-    const geom = getGeom(ownerEl)
-    if (!geom) return
 
     const { g, circles, name, snapRadius, canvasCircles } = getPositionsMeta(ownerEl)
     if (!g) return
-    if (!toyClasses.has(name)) return
 
     for (const c of canvasCircles) {
-      const blockedFromAbove = topLevelToys.some((otherEl, otherIndex) => {
-        if (otherIndex <= ownerIndex) return false // same toy, or below — never blocks
-        const a = anchors[otherIndex]
-        return a && a.x === c.cx && a.y === c.cy
+      points.push({
+        cx: c.cx,
+        cy: c.cy,
+        snapRadius: c.r,
+        circleId: c.id,
+        ownerId: ownerId,
+        name: name,
       })
-      if (blockedFromAbove) return
-
-      points.push({ cx: c.cx, cy: c.cy, snapRadius, ownerId })
     }
   })
   return points

@@ -413,6 +413,7 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
  * Returns a Set (empty if the toy has no classes).
  */
 function getToyClasses(domEl) {
+  if (moduleForElement(domEl) !== 'toys') return new Set();
   return new Set([
     ...domEl.classList,
     ...(domEl.querySelector('svg')?.classList ?? []),
@@ -433,22 +434,26 @@ function findNearestSnap(x, y, snapPoints) {
   return best;
 }
 
-/**
- * Canvas-space centers of every top-level toy currently on the layer,
- * except excludeId (typically the toy about to be dragged — its own
- * current position shouldn't count as "occupying" a slot it's about to
- * leave).
- */
-function _currentToyCenters(excludeId) {
-  const layerEl = _svgEl.querySelector('#toys-layer');
-  if (!layerEl) return [];
-  const centers = [];
-  for (const el of layerEl.querySelectorAll(':scope > [data-id]')) {
-    if (el.getAttribute('data-id') === excludeId) continue;
-    const geom = Toys.getGeom(el);
-    if (geom) centers.push({ cx: geom.x + geom.width / 2, cy: geom.y + geom.height / 2 });
+function filterSnapPoints(domEl, snapPoints) {
+  const toyClasses  = getToyClasses(domEl);
+  const matchesSelf = function(snapPoint) {
+    return domEl.getAttribute('data-id') === (snapPoint.ownerId)
   }
-  return centers;
+  const matchesName = function(snapPoint) {
+    return toyClasses.has(snapPoint.name)
+  }
+  const anchorPoints = []
+  for (const topToyEl of _svgEl.querySelectorAll('#toys-layer > [data-id]')) {
+    anchorPoints.push(Toys.getAnchor(topToyEl))
+  }
+  const occupantExists = function(snapPoint) {
+    return anchorPoints.some(a => a.x === snapPoint.cx && a.y === snapPoint.cy)
+  }
+
+  return snapPoints
+    .filter(p => !occupantExists(p))
+    .filter(p => !matchesSelf(p))
+    .filter(p => matchesName(p))
 }
 
 function renderDoc() {
@@ -1160,16 +1165,16 @@ const App = {
     // directly should silently no-op rather than broadcast a bogus `drag`
     // awareness field for someone else's element.
     if (App.isHeldByOther(id)) return;
+    const toysLayerEl = _svgEl.querySelector('#toys-layer');
     const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
     const anchor = App.getAnchor(domEl);
     const bbox = App.getBBox(id);
     const isToy = moduleForElement(domEl) === 'toys';
-    const toyClasses  = isToy ? getToyClasses(domEl) : new Set();
+    const toyClasses  = getToyClasses(domEl);
     const boundsRects = isToy ? BounPos.computeBoundaryRects(_yBounPos, toyClasses, anchor) : null;
-    const boundsSnap  = isToy ? BounPos.computePositionSnapPoints(_yBounPos, toyClasses, _currentToyCenters(id)) : [];
-    const toysLayerEl = _svgEl.querySelector('#toys-layer');
-    const toySnap     = isToy ? Toys.computePositionSnapPoints(toysLayerEl, toyClasses, id) : [];
-    const snapPoints  = [...boundsSnap, ...toySnap];
+    const boundsSnap  = BounPos.getSnapPoints(_yBounPos);
+    const toySnap     = Toys.getSnapPoints(toysLayerEl);
+    const snapPoints  = filterSnapPoints(domEl, [...boundsSnap, ...toySnap]);
     _dragState = { id, startX: anchor.x, startY: anchor.y,
       startBboxX: bbox.x,
       startBboxY: bbox.y,
@@ -1209,15 +1214,13 @@ const App = {
 
     // Snap-to-position: pull ghost to the nearest snap point if within radius.
     // Reject the snap if the snap point itself is outside the boundary zone.
-    if (_dragState.snapPoints.length > 0) {
-      const snapped = findNearestSnap(rx, ry, _dragState.snapPoints);
-      if (snapped) {
-        const snapOk = !_dragState.boundsRects || _dragState.boundsRects.some(
-          r => snapped.cx >= r.x && snapped.cx <= r.x + r.w &&
-               snapped.cy >= r.y && snapped.cy <= r.y + r.h
-        );
-        if (snapOk) { rx = snapped.cx; ry = snapped.cy; }
-      }
+    const snapped = findNearestSnap(rx, ry, _dragState.snapPoints);
+    if (snapped) {
+      const snapOk = !_dragState.boundsRects || _dragState.boundsRects.some(
+        r => snapped.cx >= r.x && snapped.cx <= r.x + r.w &&
+             snapped.cy >= r.y && snapped.cy <= r.y + r.h
+      );
+      if (snapOk) { rx = snapped.cx; ry = snapped.cy; }
     }
 
     _dragState.lastValidX = rx;
@@ -1439,9 +1442,9 @@ const App = {
     const leaderEl  = elements.find(e => e.id === leaderId) ?? elements[0];
     const anchorDom = _svgEl.querySelector(`[data-id="${leaderEl.id}"]`);
     const isToy     = leaderEl.mtype === 'toys';
-    const toyClasses   = isToy ? getToyClasses(anchorDom) : new Set();
+    const toyClasses   = getToyClasses(anchorDom);
     const boundsRects  = isToy ? BounPos.computeBoundaryRects(_yBounPos, toyClasses, { x: leaderEl.anchorX, y: leaderEl.anchorY }) : null;
-    const snapPoints   = isToy ? BounPos.computePositionSnapPoints(_yBounPos, toyClasses) : [];
+    const snapPoints   = BounPos.getSnapPoints(_yBounPos);
 
     _multiDragState = {
       elements,
@@ -1491,15 +1494,13 @@ const App = {
       if (!inBounds) return;
     }
 
-    if (snapPoints.length > 0) {
-      const snapped = findNearestSnap(rx, ry, snapPoints);
-      if (snapped) {
-        const snapOk = !boundsRects || boundsRects.some(
-          r => snapped.cx >= r.x && snapped.cx <= r.x + r.w &&
-               snapped.cy >= r.y && snapped.cy <= r.y + r.h
-        );
-        if (snapOk) { rx = snapped.cx; ry = snapped.cy; }
-      }
+    const snapped = findNearestSnap(rx, ry, snapPoints);
+    if (snapped) {
+      const snapOk = !boundsRects || boundsRects.some(
+        r => snapped.cx >= r.x && snapped.cx <= r.x + r.w &&
+             snapped.cy >= r.y && snapped.cy <= r.y + r.h
+      );
+      if (snapOk) { rx = snapped.cx; ry = snapped.cy; }
     }
 
     // Derive actual (dx, dy) from the constrained anchor position
