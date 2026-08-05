@@ -127,6 +127,7 @@ html, body {
 .handle[data-corner="ne"] { cursor: ne-resize; }
 .handle[data-corner="sw"] { cursor: sw-resize; }
 .handle[data-corner="se"] { cursor: se-resize; }
+.handle[data-corner="r"]  { cursor: ew-resize; }
 
 /* A toy nested inside a tray is excluded from native hit-testing, so a
  * click over it lands on whatever's actually painted underneath — the

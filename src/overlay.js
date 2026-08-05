@@ -81,6 +81,17 @@ export function resizeCorners(geo) {
 }
 
 /**
+ * The single radius-drag handle for a 'resize-r' shape (currently just
+ * circles): centered on the right edge of geo, padded out to the
+ * selection ring same as resizeCorners. geo's centre is assumed fixed —
+ * only the right edge moves as the radius changes.
+ */
+export function resizeRHandle(geo) {
+  const { x, y, width, height } = geo;
+  return { x: x + width + PAD, y: y + height / 2 };
+}
+
+/**
  * Which resize corner (if any) canvas-space point (px, py) is within
  * grabbing distance of, for a toy with bounding box geo. Returns a
  * RESIZE_CORNER_* index (0-3) or null. scale is the current view scale —
@@ -98,6 +109,19 @@ export function hitTestResizeCorner(geo, px, py, scale) {
     if (Math.abs(px - hx) <= radius && Math.abs(py - hy) <= radius) return i;
   }
   return null;
+}
+
+/**
+ * Whether canvas-space point (px, py) is within grabbing distance of geo's
+ * single radius-drag handle. Same screen-space hit box sizing as
+ * hitTestResizeCorner. Returns a boolean rather than an index — there's
+ * only ever one handle.
+ */
+export function hitTestResizeRHandle(geo, px, py, scale) {
+  if (!geo) return false;
+  const radius = (HANDLE_SIZE / 2 + HANDLE_HIT_PAD) / scale;
+  const { x: hx, y: hy } = resizeRHandle(geo);
+  return Math.abs(px - hx) <= radius && Math.abs(py - hy) <= radius;
 }
 
 // ── SelectionMode ─────────────────────────────────────────────────────────────
@@ -208,7 +232,7 @@ export function init(appBus, svgElement) {
  */
 export function localSelectionChanged(selectedIds) {
   for (const [id, entry] of SelectionMode) {
-    if (entry.kind === 'local' || entry.kind === 'resize' || entry.kind === 'candidate') {
+    if (entry.kind === 'local' || entry.kind === 'resize' || entry.kind === 'resize-r' || entry.kind === 'candidate') {
       SelectionMode.delete(id);
     }
   }
@@ -221,20 +245,22 @@ export function localSelectionChanged(selectedIds) {
 }
 
 // Demotes any existing
-// 'resize' entry back to 'local' first (there is ever at most one — resize
-// mode requires an exclusive single selection — but this stays defensive
-// rather than assuming), then promotes elId's own entry to 'resize' if it
-// currently has one and it's 'local' (i.e. really is the sole selection —
-// a stale/mismatched elId is silently a no-op, matching localSelectionChanged's
-// no-throw style elsewhere in this file).
+// 'resize'/'resize-r' entry back to 'local' first (there is ever at most
+// one — resize mode requires an exclusive single selection — but this
+// stays defensive rather than assuming), then promotes elId's own entry
+// to `kind` if it currently has one and it's 'local' (i.e. really is the
+// sole selection — a stale/mismatched elId is silently a no-op, matching
+// localSelectionChanged's no-throw style elsewhere in this file).
 // Pass elId=null to exit resize mode entirely (leaves everything 'local').
-export function setResizeMode(elId) {
+// kind defaults to 'resize' (corner-drag); pass 'resize-r' for the
+// single-handle radius-drag mode (circles).
+export function setResizeMode(elId, kind = 'resize') {
   for (const [id, entry] of SelectionMode) {
-    if (entry.kind === 'resize') SelectionMode.set(id, { ...entry, kind: 'local' });
+    if (entry.kind === 'resize' || entry.kind === 'resize-r') SelectionMode.set(id, { ...entry, kind: 'local' });
   }
   if (elId) {
     const entry = SelectionMode.get(elId);
-    if (entry && entry.kind === 'local') SelectionMode.set(elId, { ...entry, kind: 'resize' });
+    if (entry && entry.kind === 'local') SelectionMode.set(elId, { ...entry, kind });
   }
   render();
 }
@@ -471,6 +497,13 @@ export function updateResizeGhost(elId, x, y, width, height) {
     entry.ghostEl.setAttribute('y', y);
     entry.ghostEl.setAttribute('width', width);
     entry.ghostEl.setAttribute('height', height);
+  } else if (entry.ghostEl.tagName === 'circle') {
+    // (x, y, width, height) is the circle's bbox form (see
+    // Drawing.computeResizeRadiusRect) — derive cx/cy/r from it.
+    const r = width / 2;
+    entry.ghostEl.setAttribute('cx', x + r);
+    entry.ghostEl.setAttribute('cy', y + r);
+    entry.ghostEl.setAttribute('r',  r);
   }
   const scale = App.getViewScale();
   entry.ringEl.setAttribute('x',                x - PAD);
@@ -578,6 +611,9 @@ export function render() {
         break;
       case 'resize':
         renderLocalResizeSelection(geo, entry, scale);
+        break;
+      case 'resize-r':
+        renderLocalResizeRSelection(geo, entry, scale);
         break;
     }
   }
@@ -698,6 +734,42 @@ function renderLocalResizeSelection(geo, entry, scale) {
       'data-corner': corners[i],
     }));
   }
+}
+
+/**
+ * Same selection ring as renderLocalResizeSelection, but a single
+ * radius-drag handle centered on the right edge instead of four corner
+ * handles — used for the 'resize-r' kind (currently: circles).
+ */
+function renderLocalResizeRSelection(geo, entry, scale) {
+  const { x, y, width, height } = geo;
+  const stroke = entry.grad ? `url(#${LOCAL_GRAD_ID})` : (entry.color ?? 'var(--info)');
+  const ring = el('rect', {
+    x:      x - PAD,
+    y:      y - PAD,
+    width:  width  + PAD * 2,
+    height: height + PAD * 2,
+    rx:     10,
+    fill:           'none',
+    stroke,
+    'stroke-width': 2 / scale,
+    class:          'selRing',
+  });
+  _layerEl.appendChild(ring);
+
+  const side_len = HANDLE_SIZE / scale;
+  const { x: hx, y: hy } = resizeRHandle(geo);
+  _layerEl.appendChild(el('rect', {
+    x: hx - side_len / 2,
+    y: hy - side_len / 2,
+    width: side_len,
+    height: side_len,
+    rx: 3 / scale,
+    fill: 'var(--surface-solid)', stroke: 'var(--info)',
+    'stroke-width': 1.5 / scale,
+    class: 'handle',
+    'data-corner': 'r',
+  }));
 }
 
 function renderRemoteSelection(geo, entry, scale) {

@@ -128,7 +128,7 @@ function _afterClaimsChanged() {
   } else if (_resizeModeId) {
     // Still valid — reassert the 'resize' kind, since localSelectionChanged
     // just reset every claimed id back to 'local'.
-    Overlay.setResizeMode(_resizeModeId);
+    Overlay.setResizeMode(_resizeModeId, _resizeModeKind);
   }
   _broadcastSelection();
   UI.onSelectionChanged(claimedSet);
@@ -147,9 +147,10 @@ function _broadcastSelection() {
 // A single elId or null — resize only one object at a time.
 // Broadcast via the awareness `mode` field: 'sel-resize'
 let _resizeModeId = null;
+let _resizeModeKind = 'resize'; // 'resize' (corner-drag) | 'resize-r' (single-handle radius-drag)
 
 function _broadcastMode() {
-  _awareness.setLocalStateField('mode', _resizeModeId ? 'sel-resize' : null);
+  _awareness.setLocalStateField('mode', _resizeModeId ? (_resizeModeKind === 'resize-r' ? 'sel-resize-r' : 'sel-resize') : null);
 }
 
 // Shared by the public exitResizeMode() and _afterClaimsChanged's own
@@ -1346,15 +1347,17 @@ const App = {
   // lifecycle: startResize/resize/commitResize/cancelResize
 
   enterResizeMode: (id) => {
-    // Only a toy that is already the client's own exclusive single selection
-    // can enter resize mode — silently a no-op otherwise
+    // Only an element that is already the client's own exclusive single
+    // selection can enter resize mode — silently a no-op otherwise
     if (Object.keys(_myClaims).length !== 1 || !(id in _myClaims)) return;
     const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
     const mtype = moduleForElement(domEl);
     const modes = _Layers[mtype]?.selectModes?.(domEl) ?? [];
-    if (!modes.includes('resize')) return;
+    const kind = modes.includes('resize') ? 'resize' : modes.includes('resize-r') ? 'resize-r' : null;
+    if (!kind) return;
     _resizeModeId = id;
-    Overlay.setResizeMode(id);
+    _resizeModeKind = kind;
+    Overlay.setResizeMode(id, kind);
     _broadcastMode();
   },
 
@@ -1367,7 +1370,11 @@ const App = {
 
   getResizeCorner: (id, cx, cy) => {
     if (_resizeModeId !== id) return null;
-    return Overlay.hitTestResizeCorner(App.getBBox(id), cx, cy, App.getViewScale());
+    const geo = App.getBBox(id);
+    if (_resizeModeKind === 'resize-r') {
+      return Overlay.hitTestResizeRHandle(geo, cx, cy, App.getViewScale()) ? 'r' : null;
+    }
+    return Overlay.hitTestResizeCorner(geo, cx, cy, App.getViewScale());
   },
 
   startResize: (id, corner) => {
@@ -1376,22 +1383,27 @@ const App = {
     if (!bbox) return;
     const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
     const mtype = moduleForElement(domEl);
-    _resizeState = { id, corner, mtype, startRect: { ...bbox }, lastRect: { ...bbox } };
+    _resizeState = { id, corner, mtype, kind: _resizeModeKind, startRect: { ...bbox }, lastRect: { ...bbox } };
     Overlay.startResizeGhost(id);
   },
 
   // Called on every pointermove during a resize drag; (px, py) is the raw
-  // canvas-space pointer position — computeResizeRect does the corner math.
+  // canvas-space pointer position — computeResizeRect (corner-drag) or
+  // Drawing.computeResizeRadiusRect (single-handle radius-drag) does the math.
   resize: (id, corner, px, py) => {
     if (!_resizeState || _resizeState.id !== id) return;
-    const rect = Toys.computeResizeRect(_resizeState.startRect, corner, px, py);
+    const rect = _resizeState.kind === 'resize-r'
+      ? Drawing.computeResizeRadiusRect(_resizeState.startRect, px, py)
+      : Toys.computeResizeRect(_resizeState.startRect, corner, px, py);
     _resizeState.lastRect = rect;
     Overlay.updateResizeGhost(id, rect.x, rect.y, rect.width, rect.height);
   },
 
   commitResize: (id, corner, px, py) => {
     if (!_resizeState || _resizeState.id !== id) return;
-    const toRect   = Toys.computeResizeRect(_resizeState.startRect, corner, px, py);
+    const toRect = _resizeState.kind === 'resize-r'
+      ? Drawing.computeResizeRadiusRect(_resizeState.startRect, px, py)
+      : Toys.computeResizeRect(_resizeState.startRect, corner, px, py);
     const mtype    = _resizeState.mtype;
     _resizeState = null;
 
@@ -1623,7 +1635,7 @@ const App = {
       grad:            _myGrad,
       cursor:          null,
       selection:       Object.keys(_myClaims).length        ? { ..._myClaims }        : null,
-      mode:            _resizeModeId ? 'sel-resize' : null,
+      mode:            _resizeModeId ? (_resizeModeKind === 'resize-r' ? 'sel-resize-r' : 'sel-resize') : null,
       pendingRequests: Object.keys(_pendingRequests).length  ? { ..._pendingRequests }  : null,
     });
   },

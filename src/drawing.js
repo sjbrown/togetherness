@@ -225,7 +225,10 @@ export function getAnchor(svgEl) {
  * (a resizable circle would need a radius-only corner-drag scheme).
  */
 export function selectModes(svgEl) {
-  return svgEl?.tagName === 'rect' ? ['resize'] : [];
+  const tag = svgEl?.tagName;
+  if (tag === 'rect')   return ['resize'];
+  if (tag === 'circle') return ['resize-r'];
+  return [];
 }
 
 /**
@@ -251,21 +254,50 @@ export function applyMoveCommit(ydoc, yEl, x, y) {
   });
 }
 
+const MIN_CIRCLE_R = 15  // never let a radius-drag shrink a circle below this
+const MAX_CIRCLE_R = 2000 // generous sanity cap
+
+function clampCircleR(r) {
+  return Math.min(MAX_CIRCLE_R, Math.max(MIN_CIRCLE_R, r))
+}
+
 /**
- * Commit a resize to the Yjs doc in a single transaction. rect only —
+ * Pure geometry for the single-handle radius drag: given the circle's bbox
+ * at drag start and the current pointer position (px, py), compute the new
+ * bbox with the SAME centre and a radius equal to the pointer's distance
+ * from that centre (clamped to MIN_CIRCLE_R/MAX_CIRCLE_R). Returned in the
+ * same {x, y, width, height} bbox shape applyResize/updateResizeGhost
+ * already expect, so the rest of the resize pipeline (shared with rects'
+ * corner-drag) doesn't need to know shapes differ.
+ */
+export function computeResizeRadiusRect(startRect, px, py) {
+  const cx = startRect.x + startRect.width  / 2;
+  const cy = startRect.y + startRect.height / 2;
+  const r  = clampCircleR(Math.hypot(px - cx, py - cy));
+  return { x: cx - r, y: cy - r, width: r * 2, height: r * 2 };
+}
+
+/**
+ * Commit a resize to the Yjs doc in a single transaction. rect and circle —
  * mirrors applyMoveCommit's shape (type-branching lives here, callers are
- * type-agnostic). x, y are the new top-left corner; width/height the new
- * size, all in canvas-space.
+ * type-agnostic). x, y, width, height are the new bbox in canvas-space
+ * (for circle, computeResizeRadiusRect's centre-preserving bbox).
  */
 export function applyResize(ydoc, yEl, x, y, width, height) {
   if (!yEl) return;
   const tag = yEl.nodeName;
-  if (tag !== 'rect') return;
   ydoc.transact(() => {
-    yEl.setAttribute('x',      String(Math.round(x)));
-    yEl.setAttribute('y',      String(Math.round(y)));
-    yEl.setAttribute('width',  String(Math.round(width)));
-    yEl.setAttribute('height', String(Math.round(height)));
+    if (tag === 'rect') {
+      yEl.setAttribute('x',      String(Math.round(x)));
+      yEl.setAttribute('y',      String(Math.round(y)));
+      yEl.setAttribute('width',  String(Math.round(width)));
+      yEl.setAttribute('height', String(Math.round(height)));
+    } else if (tag === 'circle') {
+      const r = width / 2;
+      yEl.setAttribute('cx', String(Math.round(x + r)));
+      yEl.setAttribute('cy', String(Math.round(y + r)));
+      yEl.setAttribute('r',  String(Math.round(r)));
+    }
   });
 }
 

@@ -878,7 +878,7 @@ export function moveToyAndStack(layerEl, el, x, y) {
 
 export function selectModes(domEl) {
   const ownSvg = domEl?.querySelector?.(':scope > svg')
-  let modes = []
+  let modes = ['action']
   if (!!ownSvg?.classList.contains('tt-mode-resize')) {
     modes.push('resize')
   }
