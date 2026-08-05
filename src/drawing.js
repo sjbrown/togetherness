@@ -220,6 +220,15 @@ export function getAnchor(svgEl) {
 }
 
 /**
+ * Which selection modes svgEl supports — mirrors toys.js's selectModes so
+ * app.js can dispatch generically. Currently only rects can be resized
+ * (a resizable circle would need a radius-only corner-drag scheme).
+ */
+export function selectModes(svgEl) {
+  return svgEl?.tagName === 'rect' ? ['resize'] : [];
+}
+
+/**
  * Commit a move to the Yjs doc in a single transaction.
  * Called once on pointerup.
  * All shape-type branching lives here; callers are type-agnostic.
@@ -239,6 +248,24 @@ export function applyMoveCommit(ydoc, yEl, x, y) {
       yEl.setAttribute('cx', String(x));
       yEl.setAttribute('cy', String(y));
     }
+  });
+}
+
+/**
+ * Commit a resize to the Yjs doc in a single transaction. rect only —
+ * mirrors applyMoveCommit's shape (type-branching lives here, callers are
+ * type-agnostic). x, y are the new top-left corner; width/height the new
+ * size, all in canvas-space.
+ */
+export function applyResize(ydoc, yEl, x, y, width, height) {
+  if (!yEl) return;
+  const tag = yEl.nodeName;
+  if (tag !== 'rect') return;
+  ydoc.transact(() => {
+    yEl.setAttribute('x',      String(Math.round(x)));
+    yEl.setAttribute('y',      String(Math.round(y)));
+    yEl.setAttribute('width',  String(Math.round(width)));
+    yEl.setAttribute('height', String(Math.round(height)));
   });
 }
 
@@ -420,7 +447,9 @@ export function makeLayerAPI(ydoc, yDrawing) {
     getAnchor,
     getTtState,
     getTtStateSchema,
+    selectModes,
     applyMoveCommit: (yEl, x, y)     => applyMoveCommit(ydoc, yEl, x, y),
+    applyResize:     (yEl, x, y, w, h) => applyResize(ydoc, yEl, x, y, w, h),
     applyTtState:    (state)         => applyTtState(ydoc, yDrawing, state),
     edit:            (yEl, editData) => edit(ydoc, yEl, editData),
     listData:        ()              => drawingsData(yDrawing),

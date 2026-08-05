@@ -1951,6 +1951,7 @@ export function makeLayerAPI(ydoc, getLayerEl, myId, tableId, isCreator = false)
     getAnchor,
     getTtState:      getTtStateDom,
     getTtStateSchema,
+    selectModes,
     applyMoveCommit: (el, x, y) => {
       const layerEl = layer()
       const oldAnchor = getAnchor(el)

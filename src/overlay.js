@@ -464,6 +464,13 @@ export function updateResizeGhost(elId, x, y, width, height) {
       el.setAttribute('width', width);
       el.setAttribute('height', height);
     }
+  } else if (entry.ghostEl.tagName === 'rect') {
+    // Drawing-layer rects have no embedded <svg> to resize — the ghost
+    // clone IS the shape, so mutate its own x/y/width/height directly.
+    entry.ghostEl.setAttribute('x', x);
+    entry.ghostEl.setAttribute('y', y);
+    entry.ghostEl.setAttribute('width', width);
+    entry.ghostEl.setAttribute('height', height);
   }
   const scale = App.getViewScale();
   entry.ringEl.setAttribute('x',                x - PAD);

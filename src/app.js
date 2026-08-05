@@ -1350,8 +1350,9 @@ const App = {
     // can enter resize mode — silently a no-op otherwise
     if (Object.keys(_myClaims).length !== 1 || !(id in _myClaims)) return;
     const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
-    const toyModes = Toys.selectModes(domEl)
-    if (moduleForElement(domEl) !== 'toys' || !toyModes.includes('resize')) return;
+    const mtype = moduleForElement(domEl);
+    const modes = _Layers[mtype]?.selectModes?.(domEl) ?? [];
+    if (!modes.includes('resize')) return;
     _resizeModeId = id;
     Overlay.setResizeMode(id);
     _broadcastMode();
@@ -1373,7 +1374,9 @@ const App = {
     if (_resizeModeId !== id || App.isHeldByOther(id)) return;
     const bbox = App.getBBox(id);
     if (!bbox) return;
-    _resizeState = { id, corner, startRect: { ...bbox }, lastRect: { ...bbox } };
+    const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
+    const mtype = moduleForElement(domEl);
+    _resizeState = { id, corner, mtype, startRect: { ...bbox }, lastRect: { ...bbox } };
     Overlay.startResizeGhost(id);
   },
 
@@ -1389,18 +1392,19 @@ const App = {
   commitResize: (id, corner, px, py) => {
     if (!_resizeState || _resizeState.id !== id) return;
     const toRect   = Toys.computeResizeRect(_resizeState.startRect, corner, px, py);
+    const mtype    = _resizeState.mtype;
     _resizeState = null;
 
-    const toyEl = _Layers.toys.find(id);
-    _lastActionScope = 'toys';
-    _Layers.toys.applyResize(toyEl, toRect.x, toRect.y, toRect.width, toRect.height);
+    const el = _Layers[mtype]?.find(id);
+    _lastActionScope = mtype;
+    _Layers[mtype]?.applyResize(el, toRect.x, toRect.y, toRect.width, toRect.height);
     // observeDeep fires and calls renderDoc()
     // Ghost ends after the commit — same reasoning as commitMove:
     // endResizeGhost's own render() paints the selection ring from
     // whatever the DOM currently shows, so it has to run after the real
     // size lands, not before.
     Overlay.endResizeGhost(id);
-    addHistory(`resized ${id}`, { elType: 'toys' });
+    addHistory(`resized ${id}`, { elType: mtype });
   },
 
   cancelResize: () => {
