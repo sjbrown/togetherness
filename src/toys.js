@@ -507,7 +507,7 @@ async function fetchToySvgText(toyType) {
   if (svgText) return svgText
   const def = TOY_TYPES[toyType]
   if (!def) throw new Error(`unknown toy type: ${toyType}`)
-  const res = await fetch(`/toy/${def.file}`)
+  const res = await fetch(`./toy/${def.file}`)
   if (!res.ok) throw new Error(`failed to load ${def.file}: ${res.status}`)
   svgText = await res.text()
   _svgTextCache.set(toyType, svgText)
@@ -1047,7 +1047,7 @@ export const TOOLS = [
     toyType: 'player_marker',
     file: 'player_marker.svg',
     label: 'Player Marker',
-    iconUrl: 'toy/player_marker.svg',
+    iconUrl: './toy/player_marker.svg',
     layer:   'toys',
     defaults: { label: '', size: 24 },
     options: [
@@ -1061,7 +1061,7 @@ export const TOOLS = [
     toyType: 'dice_d6',
     file: 'dice_d6.svg',
     label: 'D6',
-    iconUrl: 'toy/dice_d6.svg',
+    iconUrl: './toy/dice_d6.svg',
     layer:   'toys',
     defaults: { fill: '#f8f8e5' },
     options: [
@@ -1073,7 +1073,7 @@ export const TOOLS = [
     toyType: 'tray_sum',
     file: 'tray_sum.svg',
     label: 'Sum Tray',
-    iconUrl: 'toy/tray_sum.svg',
+    iconUrl: './toy/tray_sum.svg',
     layer:   'toys',
     defaults: { fill: '#fefed8' },
     options: [
@@ -1085,7 +1085,7 @@ export const TOOLS = [
     toyType: 'bag',
     file: 'bag.svg',
     label: 'Bag',
-    iconUrl: 'toy/bag.svg',
+    iconUrl: './toy/bag.svg',
     layer:   'toys',
     defaults: { fill: '#311' },
     options: [
@@ -1097,7 +1097,7 @@ export const TOOLS = [
     toyType: 'chip',
     file: 'chip.svg',
     label: 'Chip',
-    iconUrl: 'toy/chip.svg',
+    iconUrl: './toy/chip.svg',
     layer:   'toys',
     defaults: { fill: '#f8f8e5' },
     options: [
@@ -1275,7 +1275,7 @@ async function activateScript({ namespace, src, code }, toyType) {
   recordNamespace(toyType, namespace)
 
   if (src) {
-    const url = `/toy/${src}`
+    const url = `./toy/${src}`
     if (_seenScriptUrls.has(url)) return
     _seenScriptUrls.add(url)
     const res = await fetch(url)
