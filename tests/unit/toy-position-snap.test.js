@@ -123,7 +123,7 @@ beforeEach(() => {
 describe('Toys.getSnapPoints', () => {
   test('converts a tt_positions circle to canvas space via the owner\u2019s geom origin', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
+      if (url === 'toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
       throw new Error(`unexpected fetch: ${url}`)
     }))
     const ydoc = new Y.Doc()
@@ -144,8 +144,8 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
     const BASE_SVG    = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     const STACKER_SVG = baseFixtureSvg({ id: 'stacker_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      '/toy/player_marker.svg': BASE_SVG,
-      '/toy/dice_d6.svg':       STACKER_SVG,
+      'toy/player_marker.svg': BASE_SVG,
+      'toy/dice_d6.svg':       STACKER_SVG,
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
@@ -180,8 +180,8 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
   test('departing an owner\u2019s position fires on_position_vacated on the owner AND on_depart_position on the occupant', async () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      '/toy/player_marker.svg': BASE_SVG,
-      '/toy/dice_d6.svg':       baseFixtureSvg({ id: 'stacker_fixture', className: 'stacker_class' }),
+      'toy/player_marker.svg': BASE_SVG,
+      'toy/dice_d6.svg':       baseFixtureSvg({ id: 'stacker_fixture', className: 'stacker_class' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
@@ -211,9 +211,9 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
   test('a toy that both departs one owner and arrives at another gets both reactions in the same gesture', async () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      '/toy/player_marker.svg': BASE_SVG,
-      '/toy/dice_d6.svg':       BASE_SVG.replace(/base_fixture/g, 'base_fixture2'),
-      '/toy/bag.svg':           baseFixtureSvg({ id: 'mover_fixture', className: 'stacker_class' }),
+      'toy/player_marker.svg': BASE_SVG,
+      'toy/dice_d6.svg':       BASE_SVG.replace(/base_fixture/g, 'base_fixture2'),
+      'toy/bag.svg':           baseFixtureSvg({ id: 'mover_fixture', className: 'stacker_class' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
@@ -242,7 +242,7 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
 
   test('an identical duplicate event is deduped — the handler runs at most once', async () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
-    vi.stubGlobal('fetch', stubToyFetch({ '/toy/player_marker.svg': BASE_SVG }))
+    vi.stubGlobal('fetch', stubToyFetch({ 'toy/player_marker.svg': BASE_SVG }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'owner', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
@@ -262,7 +262,7 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
 
   test('a missing handler is a silent no-op — no error, no crash', async () => {
     const PLAIN_SVG = plainFixtureSvg({ id: 'plain_fixture', className: 'plain' })
-    vi.stubGlobal('fetch', stubToyFetch({ '/toy/player_marker.svg': PLAIN_SVG }))
+    vi.stubGlobal('fetch', stubToyFetch({ 'toy/player_marker.svg': PLAIN_SVG }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'owner', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
@@ -281,7 +281,7 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
 
   test('the real chip.svg\u2019s own on_position_*/on_*_position handlers set data-above/data-below as documented', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
+      if (url === 'toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
       throw new Error(`unexpected fetch: ${url}`)
     }))
     const ydoc = new Y.Doc()
@@ -322,7 +322,7 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
 
   test('an event with no fnName is skipped without error', async () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
-    vi.stubGlobal('fetch', stubToyFetch({ '/toy/player_marker.svg': BASE_SVG }))
+    vi.stubGlobal('fetch', stubToyFetch({ 'toy/player_marker.svg': BASE_SVG }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'owner', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
@@ -340,7 +340,7 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
 
   test('with no positionEvents, runGesture behaves exactly as before (backward compatible)', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
+      if (url === 'toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
       throw new Error(`unexpected fetch: ${url}`)
     }))
     const ydoc = new Y.Doc()
@@ -362,8 +362,8 @@ describe('departingPositionEvents / arrivingPositionEvents', () => {
   test('departingPositionEvents: [] when el isn\u2019t sitting on anyone\u2019s point', async () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      '/toy/player_marker.svg': BASE_SVG,
-      '/toy/dice_d6.svg':       plainFixtureSvg({ id: 'other_fixture', className: 'other' }),
+      'toy/player_marker.svg': BASE_SVG,
+      'toy/dice_d6.svg':       plainFixtureSvg({ id: 'other_fixture', className: 'other' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
@@ -377,8 +377,8 @@ describe('departingPositionEvents / arrivingPositionEvents', () => {
   test('departingPositionEvents: an \'on_position_vacated\' event for the owner and an \'on_depart_position\' event for el, sharing the same positionId/ownerId', async () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      '/toy/player_marker.svg': BASE_SVG,
-      '/toy/dice_d6.svg':       plainFixtureSvg({ id: 'mover_fixture', className: 'stacker_class' }),
+      'toy/player_marker.svg': BASE_SVG,
+      'toy/dice_d6.svg':       plainFixtureSvg({ id: 'mover_fixture', className: 'stacker_class' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
@@ -399,8 +399,8 @@ describe('departingPositionEvents / arrivingPositionEvents', () => {
   test('arrivingPositionEvents: an \'on_position_occupied\' event for the owner and an \'on_arrive_position\' event for el', async () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      '/toy/player_marker.svg': BASE_SVG,
-      '/toy/dice_d6.svg':       plainFixtureSvg({ id: 'mover_fixture', className: 'stacker_class' }),
+      'toy/player_marker.svg': BASE_SVG,
+      'toy/dice_d6.svg':       plainFixtureSvg({ id: 'mover_fixture', className: 'stacker_class' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
@@ -420,7 +420,7 @@ describe('departingPositionEvents / arrivingPositionEvents', () => {
 
   test('arrivingPositionEvents excludes el itself even if the destination happens to equal one of its OWN points', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
+      if (url === 'toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
       throw new Error(`unexpected fetch: ${url}`)
     }))
     const ydoc = new Y.Doc()
@@ -435,7 +435,7 @@ describe('departingPositionEvents / arrivingPositionEvents', () => {
 
   test('positionId is the raw, unstripped live-DOM id — including the toy instance\u2019s own auto-minted prefix when the circle wasn\u2019t authored with one', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
+      if (url === 'toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
       throw new Error(`unexpected fetch: ${url}`)
     }))
     const ydoc = new Y.Doc()
@@ -469,7 +469,7 @@ describe('promoteZOrder — recursive', () => {
 
   test('el is promoted to the topmost (last) position among top-level toys', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
+      if (url === 'toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
       throw new Error(`unexpected fetch: ${url}`)
     }))
     const ydoc = new Y.Doc()
@@ -487,7 +487,7 @@ describe('promoteZOrder — recursive', () => {
 
   test('a toy with nothing stacked on it is simply promoted, no side effects on others', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
+      if (url === 'toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
       throw new Error(`unexpected fetch: ${url}`)
     }))
     const ydoc = new Y.Doc()
@@ -503,10 +503,10 @@ describe('promoteZOrder — recursive', () => {
   test('direct occupants are promoted above el, preserving their relative order to each other', async () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      '/toy/player_marker.svg': BASE_SVG,
-      '/toy/dice_d6.svg':       plainFixtureSvg({ id: 'y_fixture', className: 'y' }),
-      '/toy/tray_sum.svg':      plainFixtureSvg({ id: 'x_fixture', className: 'x' }),
-      '/toy/bag.svg':           plainFixtureSvg({ id: 'other_fixture', className: 'other' }),
+      'toy/player_marker.svg': BASE_SVG,
+      'toy/dice_d6.svg':       plainFixtureSvg({ id: 'y_fixture', className: 'y' }),
+      'toy/tray_sum.svg':      plainFixtureSvg({ id: 'x_fixture', className: 'x' }),
+      'toy/bag.svg':           plainFixtureSvg({ id: 'other_fixture', className: 'other' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
@@ -531,10 +531,10 @@ describe('promoteZOrder — recursive', () => {
     const BASE_SVG   = baseFixtureSvg({ id: 'base_fixture', className: 'onbase' })
     const MIDDLE_SVG = baseFixtureSvg({ id: 'middle_fixture', className: 'onmiddle' })
     vi.stubGlobal('fetch', stubToyFetch({
-      '/toy/player_marker.svg': BASE_SVG,
-      '/toy/dice_d6.svg':       MIDDLE_SVG,
-      '/toy/bag.svg':           plainFixtureSvg({ id: 'top_fixture', className: 'top' }),
-      '/toy/tray_sum.svg':      plainFixtureSvg({ id: 'other_fixture', className: 'other' }),
+      'toy/player_marker.svg': BASE_SVG,
+      'toy/dice_d6.svg':       MIDDLE_SVG,
+      'toy/bag.svg':           plainFixtureSvg({ id: 'top_fixture', className: 'top' }),
+      'toy/tray_sum.svg':      plainFixtureSvg({ id: 'other_fixture', className: 'other' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
@@ -552,9 +552,9 @@ describe('promoteZOrder — recursive', () => {
   test('only occupants (direct or transitive) are promoted — an unrelated toy is untouched', async () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      '/toy/player_marker.svg': BASE_SVG,
-      '/toy/dice_d6.svg':       plainFixtureSvg({ id: 'occ_fixture', className: 'occ' }),
-      '/toy/bag.svg':           plainFixtureSvg({ id: 'other_fixture', className: 'other' }),
+      'toy/player_marker.svg': BASE_SVG,
+      'toy/dice_d6.svg':       plainFixtureSvg({ id: 'occ_fixture', className: 'occ' }),
+      'toy/bag.svg':           plainFixtureSvg({ id: 'other_fixture', className: 'other' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
@@ -575,7 +575,7 @@ describe('promoteZOrder — recursive', () => {
 describe('moveToyAndStack — recursive move', () => {
   test('moves el alone when nothing is stacked on it', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
+      if (url === 'toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
       throw new Error(`unexpected fetch: ${url}`)
     }))
     const ydoc = new Y.Doc()
@@ -592,8 +592,8 @@ describe('moveToyAndStack — recursive move', () => {
   test('carries a direct occupant along by the same delta, preserving its offset within the stack', async () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      '/toy/player_marker.svg': BASE_SVG,
-      '/toy/dice_d6.svg':       plainFixtureSvg({ id: 'occ_fixture', className: 'occ' }),
+      'toy/player_marker.svg': BASE_SVG,
+      'toy/dice_d6.svg':       plainFixtureSvg({ id: 'occ_fixture', className: 'occ' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
@@ -617,9 +617,9 @@ describe('moveToyAndStack — recursive move', () => {
     const BASE_SVG   = baseFixtureSvg({ id: 'base_fixture', className: 'onbase' })
     const MIDDLE_SVG = baseFixtureSvg({ id: 'middle_fixture', className: 'onmiddle' })
     vi.stubGlobal('fetch', stubToyFetch({
-      '/toy/player_marker.svg': BASE_SVG,
-      '/toy/dice_d6.svg':       MIDDLE_SVG,
-      '/toy/bag.svg':           plainFixtureSvg({ id: 'top_fixture', className: 'top' }),
+      'toy/player_marker.svg': BASE_SVG,
+      'toy/dice_d6.svg':       MIDDLE_SVG,
+      'toy/bag.svg':           plainFixtureSvg({ id: 'top_fixture', className: 'top' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
@@ -643,8 +643,8 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
     const BASE_SVG    = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     const STACKER_SVG = baseFixtureSvg({ id: 'stacker_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      '/toy/player_marker.svg': BASE_SVG,
-      '/toy/dice_d6.svg':       STACKER_SVG,
+      'toy/player_marker.svg': BASE_SVG,
+      'toy/dice_d6.svg':       STACKER_SVG,
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
@@ -669,7 +669,7 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
 
   test('moving a toy with no tt_positions relationship at all is a normal, unaffected move', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
+      if (url === 'toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
       throw new Error(`unexpected fetch: ${url}`)
     }))
     const ydoc = new Y.Doc()
@@ -686,7 +686,7 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
 
   test('promotion happens even on a no-op move (same centre) — every commit brings the toy to front', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
+      if (url === 'toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
       throw new Error(`unexpected fetch: ${url}`)
     }))
     const ydoc = new Y.Doc()
@@ -705,9 +705,9 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     const OTHER_BASE_SVG = baseFixtureSvg({ id: 'other_base_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      '/toy/player_marker.svg': BASE_SVG,       // moving base
-      '/toy/dice_d6.svg':       plainFixtureSvg({ id: 'occ_fixture', className: 'occ' }), // its occupant
-      '/toy/bag.svg':           OTHER_BASE_SVG, // the destination owner
+      'toy/player_marker.svg': BASE_SVG,       // moving base
+      'toy/dice_d6.svg':       plainFixtureSvg({ id: 'occ_fixture', className: 'occ' }), // its occupant
+      'toy/bag.svg':           OTHER_BASE_SVG, // the destination owner
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()

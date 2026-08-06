@@ -27,9 +27,9 @@ function freshLayer() {
 beforeEach(() => {
   _clearSvgTextCache()
   vi.stubGlobal('fetch', vi.fn(async (url) => {
-    if (url === '/toy/player_marker.svg') return { ok: true, text: async () => PLAYER_MARKER_SVG }
-    if (url === '/toy/tray_sum.svg')      return { ok: true, text: async () => TRAY_SUM_SVG }
-    if (url === '/toy/js/tray.js')        return { ok: true, text: async () => TRAY_JS }
+    if (url === 'toy/player_marker.svg') return { ok: true, text: async () => PLAYER_MARKER_SVG }
+    if (url === 'toy/tray_sum.svg')      return { ok: true, text: async () => TRAY_SUM_SVG }
+    if (url === 'toy/js/tray.js')        return { ok: true, text: async () => TRAY_JS }
     throw new Error(`unexpected fetch: ${url}`)
   }))
 })

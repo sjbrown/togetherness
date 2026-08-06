@@ -60,10 +60,10 @@ describe('drop-position rebase — real tray_sum + dice_d6 assets', () => {
     _clearSvgTextCache()
     _resetToyScriptState()
     vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/tray_sum.svg')     return { ok: true, text: async () => TRAY_SUM_SVG }
-      if (url === '/toy/js/tray.js')       return { ok: true, text: async () => TRAY_JS }
-      if (url === '/toy/dice_d6.svg')      return { ok: true, text: async () => D6_SVG }
-      if (url === '/toy/js/dice_utils.js') return { ok: true, text: async () => DICE_UTILS_JS }
+      if (url === 'toy/tray_sum.svg')     return { ok: true, text: async () => TRAY_SUM_SVG }
+      if (url === 'toy/js/tray.js')       return { ok: true, text: async () => TRAY_JS }
+      if (url === 'toy/dice_d6.svg')      return { ok: true, text: async () => D6_SVG }
+      if (url === 'toy/js/dice_utils.js') return { ok: true, text: async () => DICE_UTILS_JS }
       throw new Error(`unexpected fetch: ${url}`)
     }))
   })

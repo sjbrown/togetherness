@@ -123,8 +123,8 @@ var dice = { roll_handler: function () {} }
 
 function stubToyFetch() {
   return vi.fn(async (url) => {
-    if (url === '/toy/dice_d6.svg')     return { ok: true, text: async () => D6_SVG }
-    if (url === '/toy/js/dice_utils.js') return { ok: true, text: async () => DICE_UTILS_JS }
+    if (url === 'toy/dice_d6.svg')     return { ok: true, text: async () => D6_SVG }
+    if (url === 'toy/js/dice_utils.js') return { ok: true, text: async () => DICE_UTILS_JS }
     throw new Error(`unexpected fetch: ${url}`)
   })
 }
@@ -157,7 +157,7 @@ describe('activateToyScripts — a registered toyType (real file), fetched fresh
     expect(globalThis.__diceActivationCount).toBe(1)
     // Only one fetch for js/dice_utils.js despite two placements — the
     // dice_d6.svg fetch itself is separately deduped by addToy's own cache.
-    const scriptFetches = fetchMock.mock.calls.filter(([u]) => u === '/toy/js/dice_utils.js')
+    const scriptFetches = fetchMock.mock.calls.filter(([u]) => u === 'toy/js/dice_utils.js')
     expect(scriptFetches).toHaveLength(1)
   })
 
