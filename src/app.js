@@ -130,6 +130,21 @@ function _afterClaimsChanged() {
     // just reset every claimed id back to 'local'.
     Overlay.setResizeMode(_resizeModeId, _resizeModeKind);
   }
+  // Action-mode affordance (kebab + * icon squares) — like resize mode,
+  // only makes sense for an exclusive single selection, but unlike resize
+  // mode it doesn't require a second click: it's shown immediately
+  // alongside the ordinary 'local' selection ring for any sole-selected
+  // element whose LayerAPI.selectModes() includes 'action' (currently all
+  // toys). Overlay itself hides it once that id enters 'resize'/'resize-r'.
+  if (claimedSet.size === 1) {
+    const [soleId] = claimedSet;
+    const domEl = _svgEl.querySelector(`[data-id="${soleId}"]`);
+    const mtype = moduleForElement(domEl);
+    const modes = _Layers[mtype]?.selectModes?.(domEl) ?? [];
+    Overlay.setActionAffordance(modes.includes('action') ? soleId : null);
+  } else {
+    Overlay.setActionAffordance(null);
+  }
   _broadcastSelection();
   UI.onSelectionChanged(claimedSet);
 }

@@ -7,7 +7,7 @@
 <title>Togetherness Table</title>
 <link rel="icon" type="image/svg+xml"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='black'/%3E%3Ctext x='3' y='26' font-size='26' fill='%23fffff0' font-family='serif' letter-spacing='-5'%3ETT%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="./ui.css">
+<link rel="stylesheet" href="ui.css">
 </head>
 <body>
 
@@ -187,8 +187,8 @@ import * as Y                   from './lib/yjs.js';
 import { WebrtcProvider }       from './lib/y-webrtc.js';
 import { boot, App }            from './app.js';
 import * as UI                  from './ui.js';
-import { getIdentity }               from './user.js';
-import { dragPlaceholderFilterSVG, snapPointGradientSVG }  from './defs.js';
+import { getIdentity }          from './user.js';
+import { dragPlaceholderFilterSVG, snapPointGradientSVG, localActionFilterSVG }  from './defs.js';
 import { tablesAPI as tables } from './tables.js';
 
 // Inject shared SVG defs (filters etc.) into the canvas <defs> element.
@@ -196,6 +196,8 @@ document.querySelector('#canvas defs')
   .insertAdjacentHTML('beforeend', dragPlaceholderFilterSVG);
 document.querySelector('#canvas defs')
   .insertAdjacentHTML('beforeend', snapPointGradientSVG);
+document.querySelector('#canvas defs')
+  .insertAdjacentHTML('beforeend', localActionFilterSVG);
 
 
 // Expose UI and App on window so inline onclick handlers in the HTML can reach them.

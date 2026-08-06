@@ -56,6 +56,8 @@
  */
 
 import { getAllContestedElementIds } from './soft-lock.js';
+import { colorMatrixValues } from './toys.js';
+import { LOCAL_ACTION_FILTER_ID } from './defs.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const HANDLE_SIZE = 12;  // px in canvas-space
@@ -539,6 +541,25 @@ export function endResizeGhost(elId) {
 let _dropTargetId = null;
 
 /**
+ * The elId currently showing the action-mode affordance (kebab + * icon
+ * squares), or null. Set by App whenever the sole local selection supports
+ * the 'action' select mode (see LayerAPI.selectModes) — currently all
+ * toys. A single id, like resize mode — the affordance only makes sense
+ * for an exclusive single selection.
+ */
+let _actionAffordanceId = null;
+
+/**
+ * Called by App.select/_afterClaimsChanged with the sole selected id (if
+ * it supports 'action') or null otherwise. Short circuits when unchanged.
+ */
+export function setActionAffordance(elId) {
+  if (_actionAffordanceId === elId) return;
+  _actionAffordanceId = elId;
+  render();
+}
+
+/**
  * Called by App while dragging a toy, with the id of a .tt_contents-having
  * element currently under the drop position, or null.
  * Short circuits when the id is unchanged,
@@ -573,6 +594,13 @@ export function setLocalGradient(grad) {
   const stop1 = document.getElementById(`${LOCAL_GRAD_ID}-stop1`);
   if (stop0) stop0.setAttribute('stop-color', grad.c1);
   if (stop1) stop1.setAttribute('stop-color', grad.c2);
+
+  // #local-action-filter: same colorMatrixValues() trick toy artwork uses,
+  // tinting the action-affordance icon squares (see renderActionAffordance)
+  // to the player's own color. Uses grad.c1 — the filter takes one flat
+  // color, not a gradient.
+  const filterMatrix = document.querySelector(`#${LOCAL_ACTION_FILTER_ID} feColorMatrix`);
+  if (filterMatrix) filterMatrix.setAttribute('values', colorMatrixValues(grad.c1));
 }
 
 export function render() {
@@ -626,6 +654,20 @@ export function render() {
     const geo = App.getBBox(elId);
     if (!geo) continue;
     renderRequestedIndicator(geo, scale);
+  }
+
+  // ── Action-mode affordance (kebab + * icon squares) — independent of
+  // SelectionMode kind at the App level (App tracks it alongside, not as
+  // part of, the selection claim), but only actually drawn while the id's
+  // own current kind is still 'local' — once the same id enters
+  // 'resize'/'resize-r' mode (a second click), the corner/edge handle
+  // decorations take over that space instead.
+  if (_actionAffordanceId) {
+    const entry = SelectionMode.get(_actionAffordanceId);
+    if (entry && entry.kind === 'local') {
+      const geo = App.getBBox(_actionAffordanceId);
+      if (geo) renderActionAffordance(geo, scale);
+    }
   }
 
   // ── Remote drag ghosts + rings ─────────────────────────────────────────
@@ -770,6 +812,67 @@ function renderLocalResizeRSelection(geo, entry, scale) {
     class: 'handle',
     'data-corner': 'r',
   }));
+}
+
+// ── Action-mode affordance ───────────────────────────────────────────────────
+// Two rounded-corner icon squares — kebab (⋮) at SE, asterisk (*) at SW —
+// tinted to the local player's own color via the same feColorMatrix trick
+// toy artwork uses (see setLocalGradient / LOCAL_ACTION_FILTER_ID): a white
+// square background becomes the player's color; the glyph itself is drawn
+// as a sibling (not filtered) in a fixed dark ink so it stays legible
+// against any player color.
+const ACTION_ICON_SIZE = 22; // px in canvas-space — a tappable button, bigger than the 12px resize handles
+
+function renderActionAffordance(geo, scale) {
+  const side = ACTION_ICON_SIZE / scale;
+  const [, , se, sw] = resizeCorners(geo); // resizeCorners: [NW, NE, SE, SW]
+  drawActionSquare(se, side, scale, 'kebab');
+  drawActionSquare(sw, side, scale, 'asterisk');
+}
+
+function drawActionSquare({ x: cx, y: cy }, side, scale, glyph) {
+  _layerEl.appendChild(el('rect', {
+    x: cx - side / 2, y: cy - side / 2,
+    width: side, height: side,
+    rx: side * 0.25,
+    fill:   'white',
+    filter: `url(#${LOCAL_ACTION_FILTER_ID})`,
+    class:  'actionSquare',
+  }));
+  if (glyph === 'kebab')    drawKebabGlyph(cx, cy, side);
+  else                      drawAsteriskGlyph(cx, cy, side);
+}
+
+// Vertical ellipsis (⋮) — three stacked dots.
+function drawKebabGlyph(cx, cy, side) {
+  const r   = side * 0.09;
+  const gap = side * 0.22;
+  for (const dy of [-gap, 0, gap]) {
+    _layerEl.appendChild(el('circle', {
+      cx, cy: cy + dy, r,
+      fill:  'var(--surface-solid)',
+      class: 'actionGlyph',
+    }));
+  }
+}
+
+// Asterisk (*) — three spokes 120° apart (a 6-point star), drawn as
+// strokes rather than a text glyph so it scales crisply at any zoom.
+function drawAsteriskGlyph(cx, cy, side) {
+  const len         = side * 0.32;
+  const strokeWidth = Math.max(1.5, side * 0.09);
+  for (const deg of [90, 210, 330]) {
+    const rad = deg * Math.PI / 180;
+    const dx = Math.cos(rad) * len, dy = Math.sin(rad) * len;
+    _layerEl.appendChild(el('line', {
+      x1: cx - dx, y1: cy - dy,
+      x2: cx + dx, y2: cy + dy,
+      stroke:             'var(--surface-solid)',
+      'stroke-width':     strokeWidth,
+      'stroke-linecap':   'round',
+      class:              'actionGlyph',
+    }));
+  }
 }
 
 function renderRemoteSelection(geo, entry, scale) {

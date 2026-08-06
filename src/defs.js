@@ -47,6 +47,26 @@ export const dragPlaceholderFilterSVG = `\
 export const SNAP_POINT_GRADIENT_ID = 'snap-point-gradient';
 
 /**
+ * local-action-filter: recolors the action-mode affordance icons (kebab +
+ * asterisk square backgrounds) to the local player's own color, using the
+ * same feColorMatrix trick toys.js's colorMatrixValues() builds for toy
+ * artwork recoloring — a white source pixel becomes the target color, a
+ * black source pixel stays black, so icon glyphs drawn in black on top of
+ * a white square background stay visible once tinted.
+ * The `values` attribute is overwritten at boot (and whenever the local
+ * player's color changes) by Overlay.setLocalGradient, via
+ * toys.js's colorMatrixValues(). The identity-ish default below is just a
+ * placeholder until that first call.
+ */
+export const LOCAL_ACTION_FILTER_ID = 'local-action-filter';
+
+export const localActionFilterSVG = `\\
+<filter id="${LOCAL_ACTION_FILTER_ID}" color-interpolation-filters="sRGB">
+  <feColorMatrix type="matrix" values="1 0 0 0 0  1 0 0 0 0  1 0 0 0 0  0 0 0 1 0"/>
+</filter>
+`;
+
+/**
  * Radial gradient for position-set snap point circles.
  * Centre: white 22% opacity. Edge: white 6% opacity.
  * Inject into the canvas <defs> at boot alongside the drag filter.
