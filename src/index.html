@@ -32,6 +32,11 @@
     <g id="toys-layer"></g>
     <g id="drawing-layer"></g>
     <g id="overlay-layer" pointer-events="none"></g>
+    <!-- #delight-layer is NEVER wiped (unlike #overlay-layer, which
+         Overlay.render() clears wholesale on every awareness update).
+         The live bowstring gesture and its clones/sparks live here so a
+         peer's cursor moving can't destroy an in-flight pull. -->
+    <g id="delight-layer" pointer-events="none"></g>
   </svg>
   <div id="draw-preview"></div>
   <div id="select-preview"></div>
@@ -188,7 +193,7 @@ import { WebrtcProvider }       from './lib/y-webrtc.js';
 import { boot, App }            from './app.js';
 import * as UI                  from './ui.js';
 import { getIdentity }          from './user.js';
-import { dragPlaceholderFilterSVG, snapPointGradientSVG, localActionFilterSVG }  from './defs.js';
+import { dragPlaceholderFilterSVG, snapPointGradientSVG, localActionFilterSVG, glowFilterSVG }  from './defs.js';
 import { tablesAPI as tables } from './tables.js';
 
 // Inject shared SVG defs (filters etc.) into the canvas <defs> element.
@@ -198,6 +203,8 @@ document.querySelector('#canvas defs')
   .insertAdjacentHTML('beforeend', snapPointGradientSVG);
 document.querySelector('#canvas defs')
   .insertAdjacentHTML('beforeend', localActionFilterSVG);
+document.querySelector('#canvas defs')
+  .insertAdjacentHTML('beforeend', glowFilterSVG);
 
 
 // Expose UI and App on window so inline onclick handlers in the HTML can reach them.

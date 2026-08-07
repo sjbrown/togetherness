@@ -60,9 +60,25 @@ export const SNAP_POINT_GRADIENT_ID = 'snap-point-gradient';
  */
 export const LOCAL_ACTION_FILTER_ID = 'local-action-filter';
 
-export const localActionFilterSVG = `\\
+export const localActionFilterSVG = `\
 <filter id="${LOCAL_ACTION_FILTER_ID}" color-interpolation-filters="sRGB">
   <feColorMatrix type="matrix" values="1 0 0 0 0  1 0 0 0 0  1 0 0 0 0  0 0 0 1 0"/>
+</filter>
+`;
+
+/**
+ * glow: a soft blur merged behind the source graphic. Used by the bowstring
+ * handle's rect and its spark particles (see delight.js) for a subtle halo.
+ */
+export const GLOW_FILTER_ID = 'glow';
+
+export const glowFilterSVG = `\
+<filter id="${GLOW_FILTER_ID}" x="-50%" y="-50%" width="200%" height="200%">
+  <feGaussianBlur stdDeviation="1.5" result="blur"/>
+  <feMerge>
+    <feMergeNode in="blur"/>
+    <feMergeNode in="SourceGraphic"/>
+  </feMerge>
 </filter>
 `;
 

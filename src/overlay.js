@@ -826,12 +826,18 @@ const ACTION_ICON_SIZE = 22; // px in canvas-space — a tappable button, bigger
 function renderActionAffordance(geo, scale) {
   const side = ACTION_ICON_SIZE / scale;
   const [, , se, sw] = resizeCorners(geo); // resizeCorners: [NW, NE, SE, SW]
-  drawActionSquare(se, side, scale, 'kebab');
-  drawActionSquare(sw, side, scale, 'asterisk');
+  // The SE square is the bowstring handle's resting state (see delight.js).
+  // It's wrapped in its own <g class="bowstring"> so the whole control —
+  // square plus glyph — is addressable as one unit. This layer still gets
+  // wiped on every render(); the LIVE gesture is built separately in
+  // #delight-layer, which is never wiped.
+  drawActionSquare(se, side, scale, 'asterisk', 'bowstring');
+  drawActionSquare(sw, side, scale, 'kebab');
 }
 
-function drawActionSquare({ x: cx, y: cy }, side, scale, glyph) {
-  _layerEl.appendChild(el('rect', {
+function drawActionSquare({ x: cx, y: cy }, side, scale, glyph, groupClass) {
+  const parent = groupClass ? el('g', { class: groupClass }) : _layerEl;
+  parent.appendChild(el('rect', {
     x: cx - side / 2, y: cy - side / 2,
     width: side, height: side,
     rx: side * 0.25,
@@ -839,16 +845,17 @@ function drawActionSquare({ x: cx, y: cy }, side, scale, glyph) {
     filter: `url(#${LOCAL_ACTION_FILTER_ID})`,
     class:  'actionSquare',
   }));
-  if (glyph === 'kebab')    drawKebabGlyph(cx, cy, side);
-  else                      drawAsteriskGlyph(cx, cy, side);
+  if (glyph === 'kebab')    drawKebabGlyph(cx, cy, side, parent);
+  else                      drawAsteriskGlyph(cx, cy, side, parent);
+  if (parent !== _layerEl) _layerEl.appendChild(parent);
 }
 
 // Vertical ellipsis (⋮) — three stacked dots.
-function drawKebabGlyph(cx, cy, side) {
+function drawKebabGlyph(cx, cy, side, parent = _layerEl) {
   const r   = side * 0.09;
   const gap = side * 0.22;
   for (const dy of [-gap, 0, gap]) {
-    _layerEl.appendChild(el('circle', {
+    parent.appendChild(el('circle', {
       cx, cy: cy + dy, r,
       fill:  'var(--surface-solid)',
       class: 'actionGlyph',
@@ -858,13 +865,13 @@ function drawKebabGlyph(cx, cy, side) {
 
 // Asterisk (*) — three spokes 120° apart (a 6-point star), drawn as
 // strokes rather than a text glyph so it scales crisply at any zoom.
-function drawAsteriskGlyph(cx, cy, side) {
+function drawAsteriskGlyph(cx, cy, side, parent = _layerEl) {
   const len         = side * 0.32;
   const strokeWidth = Math.max(1.5, side * 0.09);
   for (const deg of [90, 210, 330]) {
     const rad = deg * Math.PI / 180;
     const dx = Math.cos(rad) * len, dy = Math.sin(rad) * len;
-    _layerEl.appendChild(el('line', {
+    parent.appendChild(el('line', {
       x1: cx - dx, y1: cy - dy,
       x2: cx + dx, y2: cy + dy,
       stroke:             'var(--surface-solid)',

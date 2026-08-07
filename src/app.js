@@ -29,6 +29,7 @@ import { SELECT_TOOL }                            from './tools-schema.js';
 import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
 import * as Overlay                               from './overlay.js';
+import * as Delight                               from './delight.js';
 import * as UndoRedo                              from './undo_redo.js';
 import { entityGradient }            from './entity_gradient.js';
 import { isElementHeldByOther, computeTickActions } from './soft-lock.js';
@@ -357,6 +358,10 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
   // Overlay — needs App + SVG element
   Overlay.init(App, _svgEl);
   Overlay.setLocalGradient(_myGrad);
+
+  // Delight (bowstring handle) — needs App + SVG element. Owns
+  // #delight-layer, which is never wiped by Overlay.render().
+  Delight.init(App, _svgEl);
 
   // Canvas — needs App + SVG element; attaches pointer listeners
   Canvas.init(App, _svgEl);
@@ -1382,6 +1387,52 @@ const App = {
   },
 
   getResizeModeId: () => _resizeModeId,
+
+  // ── Bowstring handle (delight.js) ─────────────────────────────────────────
+  // The SE action square is a drag-to-fire control: click for the toy's
+  // first menu action now, or pull it back and release for the same action
+  // as a "charged" gesture. canvas.js calls startBowstringAt on pointerdown
+  // ahead of ordinary hit-testing; if it takes, the pointer belongs to the
+  // bowstring for the rest of the gesture.
+
+  /**
+   * Try to begin a bowstring gesture at a canvas-space point. Returns true
+   * if the point landed on the affordance (and the gesture started), false
+   * to let canvas.js fall through to normal hit-testing.
+   */
+  startBowstringAt: (e, canvasPoint) => {
+    const id = _singleSelectedId();
+    if (!id) return false;
+    const domEl = _svgEl?.querySelector(`[data-id="${id}"]`);
+    if (!domEl || moduleForElement(domEl) !== 'toys') return false;
+    const modes = _Layers['toys']?.selectModes?.(domEl) ?? [];
+    if (!modes.includes('action')) return false;
+    const geo = App.getBBox(id);
+    if (!geo) return false;
+    if (!Delight.hitTestBowstring(geo, canvasPoint.x, canvasPoint.y, App.getViewScale())) return false;
+    return Delight.startBowstring(id, e, _svgEl);
+  },
+
+  moveBowstring: (e, canvasPoint) => Delight.moveBowstring(e, canvasPoint),
+  endBowstring:  (e)              => Delight.endBowstring(e),
+
+  /**
+   * Called by delight.js when a bowstring resolves — on click, or on the
+   * far end of a charged pull's snap-back. Fires the toy's FIRST menu
+   * action: getMenuActions preserves the namespace's own declaration order
+   * (Object.entries over the menu object), so [0] is whatever the toy
+   * author listed first, which is the convention for "the obvious thing to
+   * do with this toy" (Roll, for a die).
+   */
+  fireBowstring: (id, { charged = false, pull = 0 } = {}) => {
+    const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
+    if (!svgEl) return;
+    const actions = Toys.getMenuActions(svgEl);
+    if (!actions.length) return;
+    const { namespace, key } = actions[0];
+    App.invokeToyMenuAction(id, namespace, key);
+    App.addLog(`bowstring ${charged ? 'charged' : 'tap'} → ${key}`, 'local');
+  },
 
   getResizeCorner: (id, cx, cy) => {
     if (_resizeModeId !== id) return null;

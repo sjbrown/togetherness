@@ -228,6 +228,16 @@ function onPointerDown(e) {
     // one of them often lands on nothing hitForActiveLayer() can see
     // Check the pointer position against the resize-mode tray's corners FIRST,
     // independent of hitId, before falling through to ordinary hit-testing.
+    // The bowstring handle (delight.js) sits on the selection ring's SE
+    // corner, outside the toy's own hit-testable bounds — same problem the
+    // resize corners have, so it gets the same treatment: check the pointer
+    // against it FIRST, independent of hitId. A bowstring gesture takes over
+    // the pointer completely; no move/select gesture starts for it.
+    if (App.startBowstringAt(e, toCanvas(e.clientX, e.clientY))) {
+      ToolMode._gesture = 'bowstring';
+      return;
+    }
+
     const resizeId = App.getResizeModeId();
     if (resizeId) {
       const rp = toCanvas(e.clientX, e.clientY);
@@ -348,6 +358,11 @@ function onPointerMove(e) {
     return;
   }
 
+  if (ToolMode._gesture === 'bowstring') {
+    App.moveBowstring(e, toCanvas(e.clientX, e.clientY));
+    return;
+  }
+
   if (ToolMode._gesture === 'move' && ToolMode._moveRef) {
     const ref  = ToolMode._moveRef;
     const p    = toCanvas(e.clientX, e.clientY);
@@ -418,6 +433,13 @@ function onPointerUp(e) {
   _stageEl.classList.remove('dragging');
 
   const isCancelled = e.type === 'pointercancel';
+
+  if (ToolMode._gesture === 'bowstring') {
+    App.endBowstring(e);
+    ToolMode._gesture = null;
+    ToolMode._moveRef = null;
+    return;
+  }
 
   if (ToolMode._gesture === 'move' && ToolMode._moveRef) {
     if (ToolMode._moveRef.moved) {

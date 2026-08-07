@@ -658,3 +658,56 @@ input[type=range] { width: 100%; accent-color: var(--primary); height: 28px; }
 svg.tt-icon-letter {
   animation: tt-icon-pulse 1.2s ease-in-out infinite;
 }
+
+/* ── Bowstring handle (delight.js / #delight-layer) ───────────────────────── */
+
+/* The resting affordance in #overlay-layer. The live handle is built in
+ * #delight-layer on pointerdown and is a separate DOM tree entirely. */
+.bowstring { pointer-events: auto; cursor: grab; }
+#delight-layer { pointer-events: none; }
+
+/* Press-scale lives on its own transform layer, separate from the
+ * position+rotation transform on the parent .handleGroup, so the two can
+ * animate independently without clobbering each other. */
+.handleVisual {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 90ms cubic-bezier(.34, 1.56, .64, 1);
+}
+
+/* Delight echoes: the skew loop is entirely declarative once the element
+ * exists. The one live value JS contributes — the pull parallax — is read
+ * from --drag-x/--drag-y INSIDE the keyframes, because a CSS animation on
+ * `transform` would otherwise silently override any transform attribute JS
+ * set on the same element. */
+.selRing-delight-0,
+.selRing-delight-1,
+.toy-delight {
+  transform-box: fill-box;
+  transform-origin: center;
+  pointer-events: none;
+}
+.selRing-delight-0 { animation: ring-skew-0 3.2s ease-in-out infinite; }
+.selRing-delight-1 { animation: ring-skew-1 2.4s ease-in-out infinite; }
+.toy-delight {
+  opacity: 0.5;
+  animation: ring-skew-1 2.4s ease-in-out infinite;
+}
+
+@keyframes ring-skew-0 {
+  0%, 100% { transform: translate(var(--drag-x, 0px), var(--drag-y, 0px)) skewX(0deg); }
+  50%      { transform: translate(var(--drag-x, 0px), var(--drag-y, 0px)) skewX(-6deg); }
+}
+@keyframes ring-skew-1 {
+  0%, 100% { transform: translate(var(--drag-x, 0px), var(--drag-y, 0px)) skewX(0deg); }
+  50%      { transform: translate(var(--drag-x, 0px), var(--drag-y, 0px)) skewX(4deg); }
+}
+
+.spark {
+  pointer-events: none;
+  animation: spark-burst var(--spark-duration, 500ms) cubic-bezier(.2,.7,.3,1) forwards;
+}
+@keyframes spark-burst {
+  0%   { transform: translate(0px, 0px); opacity: 1; }
+  100% { transform: translate(var(--tx), var(--ty)); opacity: 0; }
+}

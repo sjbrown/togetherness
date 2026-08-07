@@ -68,6 +68,12 @@ function makeApp(overrides = {}) {
     cancelMultiMove:    () => {},
     getResizeModeId:    () => null,
     getResizeCorner:    () => null,
+    // Bowstring handle (delight.js) — canvas.js offers every select-tool
+    // pointerdown to it before ordinary hit-testing. Declining by default
+    // keeps these tests exercising the normal select/move/resize paths.
+    startBowstringAt:   () => false,
+    moveBowstring:      () => {},
+    endBowstring:       () => {},
     enterResizeMode:    () => {},
     exitResizeMode:     () => {},
     startResize:        () => {},
