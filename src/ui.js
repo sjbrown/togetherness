@@ -61,7 +61,7 @@ export const UIData = {
   panelOpen:            null,
   menuOpen:             false,
   toolOptsOpen:         false,
-  projectName: 'togetherness',
+  projectName: 'Togetherness Table',
   userId:      'anon-????',
   roomId:      '????',
 };
@@ -78,8 +78,6 @@ export function init(appBus) {
     if (!inMenu && UIData.menuOpen) closeMenu();
     const inOpts = $('#toolOpts')?.contains(e.target) || $('#pill')?.contains(e.target);
     if (!inOpts && UIData.toolOptsOpen) hideToolOpts();
-    const pop = $('#popover');
-    if (pop && !pop.contains(e.target) && pop.style.display === 'flex') hidePopover();
   }, { capture: true });
   renderPill();
   updateInfoBar();
@@ -132,7 +130,7 @@ export function toggleMenu() {
   UIData.menuOpen = !UIData.menuOpen;
   $('#menuBtn')?.classList.toggle('open', UIData.menuOpen);
   $('#menuItems')?.classList.toggle('open', UIData.menuOpen);
-  if (UIData.menuOpen) { hideToolOpts(); hidePopover(); }
+  if (UIData.menuOpen) { hideToolOpts(); }
   updateInfoBar();
 }
 export function closeMenu() {
@@ -148,21 +146,37 @@ export function closeMenu() {
 
 /**
  * pillHTML(data) -- PURE.
- *   data = { selectionActive, multiSelectionActive, selectedCount, activeTool, tools:ToolDef[], mruTool }
+ *   data = { selectionActive, multiSelectionActive, selectedCount, activeTool,
+ *            tools:ToolDef[], mruTool, ltype, id, toyMenuActions }
+ *   ltype is the sole selection's layer type ('drawing'|'toys'|'boun_pos'|null),
+ *   id is its elId, and toyMenuActions is its App.getToyMenuActions() result —
+ *   all three only meaningful when selectionActive is true.
  */
 export function pillHTML(data) {
   if (data.multiSelectionActive) {
     const n = data.selectedCount;
-    return [
-      icoBtn(ICON_ACTIONS.trash, `Delete ${n}`, "UI.deleteSelected()", 'danger'),
-      icoBtn(ICON_ACTIONS.copy,  `Duplicate ${n}`, "UI.duplicateSelected()"),
-    ].join('');
+    return icoBtn(ICON_ACTIONS.trash, `Delete ${n}`, "UI.deleteSelected()", 'danger');
   }
   if (data.selectionActive) {
+    // Toys render a menuItems-style stacked menu (words + icons) right in
+    // the pill's position, instead of the row of round icon buttons —
+    // one entry per toy menu (namespace) action (using the static
+    // 'asterisk' icon — see icons.js's drawAsteriskGlyph for its dynamic,
+    // canvas-space sibling), plus the standard Edit/Delete entries.
+    if (data.ltype === 'toys') {
+      const items = (data.toyMenuActions ?? []).map(a => menuItemHTML(
+        a.label, icon('asterisk'),
+        `App.invokeToyMenuAction('${data.id}','${a.namespace}','${a.key}')`,
+      ));
+      items.push(menuItemHTML('Edit',   icon('edit'),  "UI.openSheet('edit')"));
+      items.push(menuItemHTML('Delete', icon('trash'), "UI.deleteSelected()"));
+      return items.join('');
+    }
+    const canDuplicate = data.ltype === 'drawing';
     return [
-      icoBtn(ICON_ACTIONS.trash,  'Delete',        "UI.deleteSelected()", 'danger'),
-      icoBtn(ICON_ACTIONS.copy,   'Duplicate',      "UI.duplicateSelected()"),
-      icoBtn(ICON_ACTIONS.swatch, 'Color',          "UI.openSheet('tools')"),
+      icoBtn(ICON_ACTIONS.trash, 'Delete', "UI.deleteSelected()", 'danger'),
+      canDuplicate ? icoBtn(ICON_ACTIONS.copy, 'Duplicate', "UI.duplicateSelected()") : '',
+      icoBtn(ICON_ACTIONS.edit,  'Edit',   "UI.openSheet('edit')"),
     ].join('');
   }
   const select = data.tools.find(t => t.name === 'select');
@@ -175,20 +189,34 @@ export function pillHTML(data) {
   for (const t of others) html += toolIco(t, data.activeTool);
   return html;
 }
+/**
+ * menuItemHTML(label, iconSvg, onclick) -- PURE.
+ * Same markup/classes as the #menuItems fan-out (label pill + icon circle) —
+ * used for the toy pill-position menu so it matches that style exactly.
+ */
+function menuItemHTML(label, iconSvg, onclick) {
+  return `<div class="menu-item" onclick="${onclick}">
+    <span class="menu-label">${label}</span>
+    <span class="menu-circle">${iconSvg}</span>
+  </div>`;
+}
 function toolIco(toolDef, activeTool) {
   const cls = activeTool === toolDef.name ? 'active' : '';
   return `<button class="ico ${cls}" aria-label="${toolDef.label}" title="${toolDef.label}" onclick="if(event.detail<2)UI.pillTap('${toolDef.name}')" ondblclick="UI.openSheet('tools')">${iconFor(toolDef)}<span class="active-dot"></span></button>`;
 }
 function icoBtn(iconSvg, label, onclick, cls = '') {
-  return `<button class="ico ${cls}" aria-label="${label}" title="${label}" onclick="if(event.detail<2){${onclick}}" ondblclick="UI.openSheet('tools')">${iconSvg}<span class="active-dot"></span></button>`;
+  if (!iconSvg) return '';
+  return `<button class="ico ${cls}" aria-label="${label}" title="${label}" onclick="if(event.detail<2){${onclick}}">${iconSvg}<span class="active-dot"></span></button>`;
 }
 const ICON_ACTIONS = {
-  trash:  icon('trash'), copy: icon('copy'), swatch: icon('swatch'),
+  trash: icon('trash'), copy: icon('copy'), edit: icon('edit'),
 };
 
 export function renderPill() {
   const pill = $('#pill');
   if (!pill) return;
+  const ltype = UIData.selectionActive ? (App.getSelectedLtype?.() ?? null) : null;
+  pill.classList.toggle('toy-menu', ltype === 'toys');
   pill.innerHTML = pillHTML({
     selectionActive:      UIData.selectionActive,
     multiSelectionActive: UIData.multiSelectionActive,
@@ -196,6 +224,9 @@ export function renderPill() {
     activeTool:           UIData.activeTool,
     tools:                App.getTools(App.getActiveLayer()),
     mruTool:              UIData.mruTool,
+    ltype,
+    id:                   UIData.selectionActive ? (App.getSelectedIds?.()[0] ?? null) : null,
+    toyMenuActions:       ltype === 'toys' ? (App.getToyMenuActions?.() ?? []) : [],
   });
 }
 export function pillTap(toolName) {
@@ -248,9 +279,6 @@ function gatherTtStateData() {
     toyClasses: element?.ltype === 'boun_pos'
                   ? (App.getToyClasses?.() ?? [])
                   : null,
-    toyMenuActions: element?.ltype === 'toys'
-                  ? (App.getToyMenuActions?.() ?? [])
-                  : [],
   };
 }
 
@@ -420,27 +448,10 @@ export function editBody(data) {
   const fields  = Object.entries(types)
     .map(([key, typeSpec]) => renderSchemaField(key, values[key], typeSpec, { mode: 'edit', id }))
     .join('');
-  const actions = ltype === 'toys' ? toyActionsHTML(id, data.toyMenuActions) : '';
   const help = ltype === 'boun_pos'
     ? bounPosHelpHTML(data.toyClasses ?? [])
     : '';
-  return header + fields + actions + help;
-}
-
-/**
- * toyActionsHTML — renders a toy's currently-applicable menu actions
- * (App.getToyMenuActions) as buttons in the Edit panel. Each button calls
- * back into App.invokeToyMenuAction(id, namespace, key) — the same
- * (namespace, key) pair the action was reported under, so app.js can look
- * the live handler back up off window[namespace].menu[key] at click time
- * rather than this HTML string carrying a function reference.
- */
-function toyActionsHTML(id, actions) {
-  if (!actions?.length) return '';
-  const buttons = actions.map(a => `<button type="button" class="toy-action-btn"
-      onclick="App.invokeToyMenuAction('${id}','${a.namespace}','${a.key}')">${a.label}</button>`
-  ).join('');
-  return `<div class="toy-actions" style="display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 4px">${buttons}</div>`;
+  return header + fields + help;
 }
 
 /**
@@ -789,6 +800,7 @@ export function toolsBody(data) {
 
 export function peersBody(data) {
   const rows = peerRowsHTML(data.peers);
+  const link = `https://apps.1kfa.com/table/index.html#${data.roomId}`;
   return `
     <div class="field" id="peersListField">
       <label>Connected (<span id="peerLiveCount">${data.peers.filter(p => p.live).length}</span>)</label>
@@ -799,19 +811,13 @@ export function peersBody(data) {
            <div style="font-size:12px;color:var(--text-3)">Queue changes, sync on reconnect</div></div>
       <div class="toggle ${data.offline ? 'on' : ''}" id="offToggle"></div>
     </div>
-    <div class="field" style="margin-top:18px"><label>Invite nearby</label>
+    <div class="peer-invite field" style="margin-top:18px"><label>Invite nearby</label>
       <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:4px">
+        <span><a target="_new" href="https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${link}">Generate
+        QR Code
         ${fakeQR()}
-        <div class="room-code">#${data.roomId}</div>
-        <div style="font-size:12px;color:var(--text-3)">Scan to join peer-to-peer · no server</div>
-      </div>
-      <div class="sec">
-        <div class="sec-label">Event Log</div>
-        <div class="event-log" id="eventLog"></div>
-      </div>
-      <div class="sec">
-        <div class="sec-label">Doc Meta</div>
-        <div class="meta-kv" id="docMeta"></div>
+        </a></span>
+        <div class="room-code"><a href="${link}">${link}</a></div>
       </div>
     </div>`;
 }
@@ -1000,33 +1006,12 @@ export function gesturesBody() {
       ${ges('pinch',     'Pinch',                'Zoom the canvas in and out')}
       ${ges('pan',       'Two-finger drag',       'Pan around the canvas')}
       ${ges('pen',       'One-finger drag',       'Draw a shape, or move a selection')}
-      ${ges('longpress', 'Long press an object',  'Open the context menu')}
       ${ges('doubletap', 'Double-tap canvas',     'Reset zoom and pan to home')}
       ${ges('history',   'Tap active tool twice', 'Open tool-specific options')}
     </div>
     <div style="margin-top:16px;font-size:12px;color:var(--text-3);line-height:1.6">
       On desktop: scroll wheel pans · Ctrl/⌘+scroll zooms
     </div>`;
-}
-
-// ==============================================================================
-//  CONTEXT POPOVER
-// ==============================================================================
-export function showPopover(x, y, elId) {
-  const pop = $('#popover');
-  if (!pop) return;
-  pop.innerHTML = `
-    <button onclick="App.duplicateSelected();UI.hidePopover()">${icon('copy')} Duplicate</button>
-    <button onclick="UI.openSheet('tools');UI.hidePopover()">${icon('swatch')} Properties</button>
-    <button class="danger" onclick="App.deleteSelected();UI.hidePopover()">${icon('trash')} Delete</button>`;
-  pop.style.display = 'flex';
-  const pw = 170, ph = 190;
-  pop.style.left = Math.min(x, window.innerWidth  - pw - 12) + 'px';
-  pop.style.top  = Math.min(y, window.innerHeight - ph - 12) + 'px';
-}
-export function hidePopover() {
-  const pop = $('#popover');
-  if (pop) pop.style.display = 'none';
 }
 
 // -- Action forwarding ---------------------------------------------------------
@@ -1047,5 +1032,11 @@ function fakeQR() {
     const finder = (r < 3 && c < 3) || (r < 3 && c > grid - 4) || (r > grid - 4 && c < 3);
     if (finder || rnd() > 0.5) cells += `<rect x="${c*size}" y="${r*size}" width="${size}" height="${size}" fill="#1a1a1a"/>`;
   }
-  return `<svg class="qr" viewBox="0 0 110 110">${cells}</svg>`;
+  return `<svg class="qr" width="22" height="22" viewBox="0 0 110 110">
+    <rect fill="#fff" width="110" height="110" />
+    ${cells}
+    <rect fill="#fff" x="4" y="4" width="18" height="18" />
+    <rect fill="#fff" x="94" y="4" width="18" height="18" />
+    <rect fill="#fff" x="4" y="94" width="18" height="18" />
+  </svg>`;
 }

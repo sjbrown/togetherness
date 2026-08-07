@@ -24,7 +24,6 @@ export const ToolMode = {
   _draft:    null,
   _pointers: new Map(),
   _gesture:  null,
-  _pressTimer: null,
   _startView:  null,
   _startDist:  0,
   _startMid:   null,
@@ -215,7 +214,6 @@ function onPointerDown(e) {
     ToolMode._startDist = dist(pts[0], pts[1]);
     ToolMode._startMid  = mid(pts[0], pts[1]);
     ToolMode._startView = { ..._view };
-    clearTimeout(ToolMode._pressTimer);
     return;
   }
 
@@ -298,9 +296,6 @@ function onPointerDown(e) {
       if (App.getSelectedIds().includes(hitId)) {
         App.startDrag(hitId);
       }
-      ToolMode._pressTimer = setTimeout(() => {
-        if (!ToolMode._moveRef?.moved) App.requestContextMenu(e.clientX, e.clientY, hitId);
-      }, 480);
     } else {
       // Empty canvas: shift OR multi-toggle → box-select; otherwise pan
       if (ToolMode.params.multi || e.shiftKey) {
@@ -367,7 +362,6 @@ function onPointerMove(e) {
     const ref  = ToolMode._moveRef;
     const p    = toCanvas(e.clientX, e.clientY);
     ref.moved  = true;
-    clearTimeout(ToolMode._pressTimer);
     App.move(ref.id, p.x - ref.dx, p.y - ref.dy);
     return;
   }
@@ -385,7 +379,6 @@ function onPointerMove(e) {
     const ddx = (e.clientX - ref.sx) / _view.scale;
     const ddy = (e.clientY - ref.sy) / _view.scale;
     ref.moved = true;
-    clearTimeout(ToolMode._pressTimer);
     App.moveMulti(ddx, ddy);
     return;
   }
@@ -426,7 +419,6 @@ function onPointerMove(e) {
 }
 
 function onPointerUp(e) {
-  clearTimeout(ToolMode._pressTimer);
   ToolMode._pointers.delete(e.pointerId);
   _preview.hide();
   _selectPreview.hide();

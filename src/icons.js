@@ -23,7 +23,6 @@ export const ICON_DEFS = {
   // Actions
   'trash':   '<path d="M4 7h16M9 7V5h6v2M7 7l1 13h8l1-13"/>',
   'copy':    '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>',
-  'swatch':  '<path d="M4 19a2 2 0 0 0 2 2c4 0 8-3 8-9a6 6 0 1 0-10 7z"/><circle cx="9" cy="9" r="1.2" fill="currentColor"/>',
   'front':   '<rect x="4" y="4" width="11" height="11" rx="2"/><path d="M9 20h11V9"/>',
   'check':   '<path d="M5 13l4 4L19 7" stroke-width="2.4"/>',
   'undo':    '<path d="M9 14L4 9l5-5"/><path d="M4 9h11a6 6 0 0 1 0 12H9"/>',
@@ -44,7 +43,6 @@ export const ICON_DEFS = {
   // Gesture illustrations (used in help panel)
   'pinch':   '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M9 11h4M11 9v4"/>',
   'pan':     '<path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M3 12h18M12 3v18"/>',
-  'longpress':'<circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8" stroke-dasharray="2 3"/>',
   'doubletap':'<path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="4"/>',
 
   // Layers icons
@@ -55,6 +53,13 @@ export const ICON_DEFS = {
   'eye':     '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   'eye-off': '<path d="M17.94 17.94A10.1 10.1 0 0 1 12 20c-6 0-10-8-10-8a17.5 17.5 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.77 9.77 0 0 1 12 4c6 0 10 8 10 8a17.4 17.4 0 0 1-2.44 3.45"/><line x1="2" y1="2" x2="22" y2="22"/>',
   'edit-tab': '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
+  // Duplicated from 'edit-tab' — same pencil glyph, used for the pill/toy-menu
+  // "Edit" action. May diverge from the panel tab icon later.
+  'edit':     '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
+  // Static 24x24 version of the canvas-space action-affordance asterisk
+  // (see drawAsteriskGlyph below) — three spokes 120° apart, same shape,
+  // fixed size. Used for a toy's menu (namespace) actions in the pill.
+  'asterisk': '<line x1="12" y1="5" x2="12" y2="19"/><line x1="6.1" y1="8.5" x2="17.9" y2="15.5"/><line x1="17.9" y1="8.5" x2="6.1" y2="15.5"/>',
 };
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -119,4 +124,38 @@ export function iconEl(id, opts = {}) {
   use.setAttribute('href', `#icon-${id}`);
   el.appendChild(use);
   return el;
+}
+
+// ── Canvas-space glyph drawing ───────────────────────────────────────────────
+// Unlike the fixed-viewBox icons above, the action-mode affordance glyph is
+// drawn directly at dynamic canvas-space coordinates (see overlay.js's
+// renderActionAffordance) rather than stamped from a <symbol>.
+
+function svgEl(tag, attrs) {
+  const node = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  return node;
+}
+
+/**
+ * drawAsteriskGlyph(cx, cy, side, parent)
+ * Asterisk (*) — three spokes 120° apart (a 6-point star), drawn as
+ * strokes rather than a text glyph so it scales crisply at any zoom.
+ * Appends directly to `parent` (an SVGElement); returns nothing.
+ */
+export function drawAsteriskGlyph(cx, cy, side, parent) {
+  const len         = side * 0.32;
+  const strokeWidth = Math.max(1.5, side * 0.09);
+  for (const deg of [90, 210, 330]) {
+    const rad = deg * Math.PI / 180;
+    const dx = Math.cos(rad) * len, dy = Math.sin(rad) * len;
+    parent.appendChild(svgEl('line', {
+      x1: cx - dx, y1: cy - dy,
+      x2: cx + dx, y2: cy + dy,
+      stroke:             'var(--surface-solid)',
+      'stroke-width':     strokeWidth,
+      'stroke-linecap':   'round',
+      class:              'actionGlyph',
+    }));
+  }
 }
