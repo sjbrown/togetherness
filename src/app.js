@@ -29,6 +29,7 @@ import { SELECT_TOOL }                            from './tools-schema.js';
 import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
 import * as Overlay                               from './overlay.js';
+import * as Delight                               from './delight.js';
 import * as UndoRedo                              from './undo_redo.js';
 import { entityGradient }            from './entity_gradient.js';
 import { isElementHeldByOther, computeTickActions } from './soft-lock.js';
@@ -128,7 +129,22 @@ function _afterClaimsChanged() {
   } else if (_resizeModeId) {
     // Still valid — reassert the 'resize' kind, since localSelectionChanged
     // just reset every claimed id back to 'local'.
-    Overlay.setResizeMode(_resizeModeId);
+    Overlay.setResizeMode(_resizeModeId, _resizeModeKind);
+  }
+  // Action-mode affordance (kebab + * icon squares) — like resize mode,
+  // only makes sense for an exclusive single selection, but unlike resize
+  // mode it doesn't require a second click: it's shown immediately
+  // alongside the ordinary 'local' selection ring for any sole-selected
+  // element whose LayerAPI.selectModes() includes 'action' (currently all
+  // toys). Overlay itself hides it once that id enters 'resize'/'resize-r'.
+  if (claimedSet.size === 1) {
+    const [soleId] = claimedSet;
+    const domEl = _svgEl.querySelector(`[data-id="${soleId}"]`);
+    const mtype = moduleForElement(domEl);
+    const modes = _Layers[mtype]?.selectModes?.(domEl) ?? [];
+    Overlay.setActionAffordance(modes.includes('action') ? soleId : null);
+  } else {
+    Overlay.setActionAffordance(null);
   }
   _broadcastSelection();
   UI.onSelectionChanged(claimedSet);
@@ -147,9 +163,10 @@ function _broadcastSelection() {
 // A single elId or null — resize only one object at a time.
 // Broadcast via the awareness `mode` field: 'sel-resize'
 let _resizeModeId = null;
+let _resizeModeKind = 'resize'; // 'resize' (corner-drag) | 'resize-r' (single-handle radius-drag)
 
 function _broadcastMode() {
-  _awareness.setLocalStateField('mode', _resizeModeId ? 'sel-resize' : null);
+  _awareness.setLocalStateField('mode', _resizeModeId ? (_resizeModeKind === 'resize-r' ? 'sel-resize-r' : 'sel-resize') : null);
 }
 
 // Shared by the public exitResizeMode() and _afterClaimsChanged's own
@@ -341,6 +358,10 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
   // Overlay — needs App + SVG element
   Overlay.init(App, _svgEl);
   Overlay.setLocalGradient(_myGrad);
+
+  // Delight (bowstring handle) — needs App + SVG element. Owns
+  // #delight-layer, which is never wiped by Overlay.render().
+  Delight.init(App, _svgEl);
 
   // Canvas — needs App + SVG element; attaches pointer listeners
   Canvas.init(App, _svgEl);
@@ -1346,14 +1367,17 @@ const App = {
   // lifecycle: startResize/resize/commitResize/cancelResize
 
   enterResizeMode: (id) => {
-    // Only a toy that is already the client's own exclusive single selection
-    // can enter resize mode — silently a no-op otherwise
+    // Only an element that is already the client's own exclusive single
+    // selection can enter resize mode — silently a no-op otherwise
     if (Object.keys(_myClaims).length !== 1 || !(id in _myClaims)) return;
     const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
-    const toyModes = Toys.selectModes(domEl)
-    if (moduleForElement(domEl) !== 'toys' || !toyModes.includes('resize')) return;
+    const mtype = moduleForElement(domEl);
+    const modes = _Layers[mtype]?.selectModes?.(domEl) ?? [];
+    const kind = modes.includes('resize') ? 'resize' : modes.includes('resize-r') ? 'resize-r' : null;
+    if (!kind) return;
     _resizeModeId = id;
-    Overlay.setResizeMode(id);
+    _resizeModeKind = kind;
+    Overlay.setResizeMode(id, kind);
     _broadcastMode();
   },
 
@@ -1364,43 +1388,101 @@ const App = {
 
   getResizeModeId: () => _resizeModeId,
 
+  // ── Bowstring handle (delight.js) ─────────────────────────────────────────
+  // The SE action square is a drag-to-fire control: click for the toy's
+  // first menu action now, or pull it back and release for the same action
+  // as a "charged" gesture. canvas.js calls startBowstringAt on pointerdown
+  // ahead of ordinary hit-testing; if it takes, the pointer belongs to the
+  // bowstring for the rest of the gesture.
+
+  /**
+   * Try to begin a bowstring gesture at a canvas-space point. Returns true
+   * if the point landed on the affordance (and the gesture started), false
+   * to let canvas.js fall through to normal hit-testing.
+   */
+  startBowstringAt: (e, canvasPoint) => {
+    const id = _singleSelectedId();
+    if (!id) return false;
+    const domEl = _svgEl?.querySelector(`[data-id="${id}"]`);
+    if (!domEl || moduleForElement(domEl) !== 'toys') return false;
+    const modes = _Layers['toys']?.selectModes?.(domEl) ?? [];
+    if (!modes.includes('action')) return false;
+    const geo = App.getBBox(id);
+    if (!geo) return false;
+    if (!Delight.hitTestBowstring(geo, canvasPoint.x, canvasPoint.y, App.getViewScale())) return false;
+    return Delight.startBowstring(id, e, _svgEl);
+  },
+
+  moveBowstring: (e, canvasPoint) => Delight.moveBowstring(e, canvasPoint),
+  endBowstring:  (e)              => Delight.endBowstring(e),
+
+  /**
+   * Called by delight.js when a bowstring resolves — on click, or on the
+   * far end of a charged pull's snap-back. Fires the toy's FIRST menu
+   * action: getMenuActions preserves the namespace's own declaration order
+   * (Object.entries over the menu object), so [0] is whatever the toy
+   * author listed first, which is the convention for "the obvious thing to
+   * do with this toy" (Roll, for a die).
+   */
+  fireBowstring: (id, { charged = false, pull = 0 } = {}) => {
+    const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
+    if (!svgEl) return;
+    const actions = Toys.getMenuActions(svgEl);
+    if (!actions.length) return;
+    const { namespace, key } = actions[0];
+    App.invokeToyMenuAction(id, namespace, key);
+    App.addLog(`bowstring ${charged ? 'charged' : 'tap'} → ${key}`, 'local');
+  },
+
   getResizeCorner: (id, cx, cy) => {
     if (_resizeModeId !== id) return null;
-    return Overlay.hitTestResizeCorner(App.getBBox(id), cx, cy, App.getViewScale());
+    const geo = App.getBBox(id);
+    if (_resizeModeKind === 'resize-r') {
+      return Overlay.hitTestResizeRHandle(geo, cx, cy, App.getViewScale()) ? 'r' : null;
+    }
+    return Overlay.hitTestResizeCorner(geo, cx, cy, App.getViewScale());
   },
 
   startResize: (id, corner) => {
     if (_resizeModeId !== id || App.isHeldByOther(id)) return;
     const bbox = App.getBBox(id);
     if (!bbox) return;
-    _resizeState = { id, corner, startRect: { ...bbox }, lastRect: { ...bbox } };
+    const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
+    const mtype = moduleForElement(domEl);
+    _resizeState = { id, corner, mtype, kind: _resizeModeKind, startRect: { ...bbox }, lastRect: { ...bbox } };
     Overlay.startResizeGhost(id);
   },
 
   // Called on every pointermove during a resize drag; (px, py) is the raw
-  // canvas-space pointer position — computeResizeRect does the corner math.
+  // canvas-space pointer position — computeResizeRect (corner-drag) or
+  // Drawing.computeResizeRadiusRect (single-handle radius-drag) does the math.
   resize: (id, corner, px, py) => {
     if (!_resizeState || _resizeState.id !== id) return;
-    const rect = Toys.computeResizeRect(_resizeState.startRect, corner, px, py);
+    const rect = _resizeState.kind === 'resize-r'
+      ? Drawing.computeResizeRadiusRect(_resizeState.startRect, px, py)
+      : Toys.computeResizeRect(_resizeState.startRect, corner, px, py);
     _resizeState.lastRect = rect;
     Overlay.updateResizeGhost(id, rect.x, rect.y, rect.width, rect.height);
   },
 
   commitResize: (id, corner, px, py) => {
     if (!_resizeState || _resizeState.id !== id) return;
-    const toRect   = Toys.computeResizeRect(_resizeState.startRect, corner, px, py);
+    const toRect = _resizeState.kind === 'resize-r'
+      ? Drawing.computeResizeRadiusRect(_resizeState.startRect, px, py)
+      : Toys.computeResizeRect(_resizeState.startRect, corner, px, py);
+    const mtype    = _resizeState.mtype;
     _resizeState = null;
 
-    const toyEl = _Layers.toys.find(id);
-    _lastActionScope = 'toys';
-    _Layers.toys.applyResize(toyEl, toRect.x, toRect.y, toRect.width, toRect.height);
+    const el = _Layers[mtype]?.find(id);
+    _lastActionScope = mtype;
+    _Layers[mtype]?.applyResize(el, toRect.x, toRect.y, toRect.width, toRect.height);
     // observeDeep fires and calls renderDoc()
     // Ghost ends after the commit — same reasoning as commitMove:
     // endResizeGhost's own render() paints the selection ring from
     // whatever the DOM currently shows, so it has to run after the real
     // size lands, not before.
     Overlay.endResizeGhost(id);
-    addHistory(`resized ${id}`, { elType: 'toys' });
+    addHistory(`resized ${id}`, { elType: mtype });
   },
 
   cancelResize: () => {
@@ -1619,7 +1701,7 @@ const App = {
       grad:            _myGrad,
       cursor:          null,
       selection:       Object.keys(_myClaims).length        ? { ..._myClaims }        : null,
-      mode:            _resizeModeId ? 'sel-resize' : null,
+      mode:            _resizeModeId ? (_resizeModeKind === 'resize-r' ? 'sel-resize-r' : 'sel-resize') : null,
       pendingRequests: Object.keys(_pendingRequests).length  ? { ..._pendingRequests }  : null,
     });
   },

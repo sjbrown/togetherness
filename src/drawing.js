@@ -220,6 +220,18 @@ export function getAnchor(svgEl) {
 }
 
 /**
+ * Which selection modes svgEl supports — mirrors toys.js's selectModes so
+ * app.js can dispatch generically. Currently only rects can be resized
+ * (a resizable circle would need a radius-only corner-drag scheme).
+ */
+export function selectModes(svgEl) {
+  const tag = svgEl?.tagName;
+  if (tag === 'rect')   return ['resize'];
+  if (tag === 'circle') return ['resize-r'];
+  return [];
+}
+
+/**
  * Commit a move to the Yjs doc in a single transaction.
  * Called once on pointerup.
  * All shape-type branching lives here; callers are type-agnostic.
@@ -238,6 +250,53 @@ export function applyMoveCommit(ydoc, yEl, x, y) {
     } else if (tag === 'circle') {
       yEl.setAttribute('cx', String(x));
       yEl.setAttribute('cy', String(y));
+    }
+  });
+}
+
+const MIN_CIRCLE_R = 15  // never let a radius-drag shrink a circle below this
+const MAX_CIRCLE_R = 2000 // generous sanity cap
+
+function clampCircleR(r) {
+  return Math.min(MAX_CIRCLE_R, Math.max(MIN_CIRCLE_R, r))
+}
+
+/**
+ * Pure geometry for the single-handle radius drag: given the circle's bbox
+ * at drag start and the current pointer position (px, py), compute the new
+ * bbox with the SAME centre and a radius equal to the pointer's distance
+ * from that centre (clamped to MIN_CIRCLE_R/MAX_CIRCLE_R). Returned in the
+ * same {x, y, width, height} bbox shape applyResize/updateResizeGhost
+ * already expect, so the rest of the resize pipeline (shared with rects'
+ * corner-drag) doesn't need to know shapes differ.
+ */
+export function computeResizeRadiusRect(startRect, px, py) {
+  const cx = startRect.x + startRect.width  / 2;
+  const cy = startRect.y + startRect.height / 2;
+  const r  = clampCircleR(Math.hypot(px - cx, py - cy));
+  return { x: cx - r, y: cy - r, width: r * 2, height: r * 2 };
+}
+
+/**
+ * Commit a resize to the Yjs doc in a single transaction. rect and circle —
+ * mirrors applyMoveCommit's shape (type-branching lives here, callers are
+ * type-agnostic). x, y, width, height are the new bbox in canvas-space
+ * (for circle, computeResizeRadiusRect's centre-preserving bbox).
+ */
+export function applyResize(ydoc, yEl, x, y, width, height) {
+  if (!yEl) return;
+  const tag = yEl.nodeName;
+  ydoc.transact(() => {
+    if (tag === 'rect') {
+      yEl.setAttribute('x',      String(Math.round(x)));
+      yEl.setAttribute('y',      String(Math.round(y)));
+      yEl.setAttribute('width',  String(Math.round(width)));
+      yEl.setAttribute('height', String(Math.round(height)));
+    } else if (tag === 'circle') {
+      const r = width / 2;
+      yEl.setAttribute('cx', String(Math.round(x + r)));
+      yEl.setAttribute('cy', String(Math.round(y + r)));
+      yEl.setAttribute('r',  String(Math.round(r)));
     }
   });
 }
@@ -420,7 +479,9 @@ export function makeLayerAPI(ydoc, yDrawing) {
     getAnchor,
     getTtState,
     getTtStateSchema,
+    selectModes,
     applyMoveCommit: (yEl, x, y)     => applyMoveCommit(ydoc, yEl, x, y),
+    applyResize:     (yEl, x, y, w, h) => applyResize(ydoc, yEl, x, y, w, h),
     applyTtState:    (state)         => applyTtState(ydoc, yDrawing, state),
     edit:            (yEl, editData) => edit(ydoc, yEl, editData),
     listData:        ()              => drawingsData(yDrawing),

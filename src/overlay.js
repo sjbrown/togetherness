@@ -56,6 +56,8 @@
  */
 
 import { getAllContestedElementIds } from './soft-lock.js';
+import { colorMatrixValues } from './toys.js';
+import { LOCAL_ACTION_FILTER_ID } from './defs.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const HANDLE_SIZE = 12;  // px in canvas-space
@@ -81,6 +83,17 @@ export function resizeCorners(geo) {
 }
 
 /**
+ * The single radius-drag handle for a 'resize-r' shape (currently just
+ * circles): centered on the right edge of geo, padded out to the
+ * selection ring same as resizeCorners. geo's centre is assumed fixed —
+ * only the right edge moves as the radius changes.
+ */
+export function resizeRHandle(geo) {
+  const { x, y, width, height } = geo;
+  return { x: x + width + PAD, y: y + height / 2 };
+}
+
+/**
  * Which resize corner (if any) canvas-space point (px, py) is within
  * grabbing distance of, for a toy with bounding box geo. Returns a
  * RESIZE_CORNER_* index (0-3) or null. scale is the current view scale —
@@ -98,6 +111,19 @@ export function hitTestResizeCorner(geo, px, py, scale) {
     if (Math.abs(px - hx) <= radius && Math.abs(py - hy) <= radius) return i;
   }
   return null;
+}
+
+/**
+ * Whether canvas-space point (px, py) is within grabbing distance of geo's
+ * single radius-drag handle. Same screen-space hit box sizing as
+ * hitTestResizeCorner. Returns a boolean rather than an index — there's
+ * only ever one handle.
+ */
+export function hitTestResizeRHandle(geo, px, py, scale) {
+  if (!geo) return false;
+  const radius = (HANDLE_SIZE / 2 + HANDLE_HIT_PAD) / scale;
+  const { x: hx, y: hy } = resizeRHandle(geo);
+  return Math.abs(px - hx) <= radius && Math.abs(py - hy) <= radius;
 }
 
 // ── SelectionMode ─────────────────────────────────────────────────────────────
@@ -208,7 +234,7 @@ export function init(appBus, svgElement) {
  */
 export function localSelectionChanged(selectedIds) {
   for (const [id, entry] of SelectionMode) {
-    if (entry.kind === 'local' || entry.kind === 'resize' || entry.kind === 'candidate') {
+    if (entry.kind === 'local' || entry.kind === 'resize' || entry.kind === 'resize-r' || entry.kind === 'candidate') {
       SelectionMode.delete(id);
     }
   }
@@ -221,20 +247,22 @@ export function localSelectionChanged(selectedIds) {
 }
 
 // Demotes any existing
-// 'resize' entry back to 'local' first (there is ever at most one — resize
-// mode requires an exclusive single selection — but this stays defensive
-// rather than assuming), then promotes elId's own entry to 'resize' if it
-// currently has one and it's 'local' (i.e. really is the sole selection —
-// a stale/mismatched elId is silently a no-op, matching localSelectionChanged's
-// no-throw style elsewhere in this file).
+// 'resize'/'resize-r' entry back to 'local' first (there is ever at most
+// one — resize mode requires an exclusive single selection — but this
+// stays defensive rather than assuming), then promotes elId's own entry
+// to `kind` if it currently has one and it's 'local' (i.e. really is the
+// sole selection — a stale/mismatched elId is silently a no-op, matching
+// localSelectionChanged's no-throw style elsewhere in this file).
 // Pass elId=null to exit resize mode entirely (leaves everything 'local').
-export function setResizeMode(elId) {
+// kind defaults to 'resize' (corner-drag); pass 'resize-r' for the
+// single-handle radius-drag mode (circles).
+export function setResizeMode(elId, kind = 'resize') {
   for (const [id, entry] of SelectionMode) {
-    if (entry.kind === 'resize') SelectionMode.set(id, { ...entry, kind: 'local' });
+    if (entry.kind === 'resize' || entry.kind === 'resize-r') SelectionMode.set(id, { ...entry, kind: 'local' });
   }
   if (elId) {
     const entry = SelectionMode.get(elId);
-    if (entry && entry.kind === 'local') SelectionMode.set(elId, { ...entry, kind: 'resize' });
+    if (entry && entry.kind === 'local') SelectionMode.set(elId, { ...entry, kind });
   }
   render();
 }
@@ -464,6 +492,20 @@ export function updateResizeGhost(elId, x, y, width, height) {
       el.setAttribute('width', width);
       el.setAttribute('height', height);
     }
+  } else if (entry.ghostEl.tagName === 'rect') {
+    // Drawing-layer rects have no embedded <svg> to resize — the ghost
+    // clone IS the shape, so mutate its own x/y/width/height directly.
+    entry.ghostEl.setAttribute('x', x);
+    entry.ghostEl.setAttribute('y', y);
+    entry.ghostEl.setAttribute('width', width);
+    entry.ghostEl.setAttribute('height', height);
+  } else if (entry.ghostEl.tagName === 'circle') {
+    // (x, y, width, height) is the circle's bbox form (see
+    // Drawing.computeResizeRadiusRect) — derive cx/cy/r from it.
+    const r = width / 2;
+    entry.ghostEl.setAttribute('cx', x + r);
+    entry.ghostEl.setAttribute('cy', y + r);
+    entry.ghostEl.setAttribute('r',  r);
   }
   const scale = App.getViewScale();
   entry.ringEl.setAttribute('x',                x - PAD);
@@ -497,6 +539,25 @@ export function endResizeGhost(elId) {
 // time against the drop position, not the raw pointer); cleared on
 // commit/cancel. A single id — at most one el can be the live drop target
 let _dropTargetId = null;
+
+/**
+ * The elId currently showing the action-mode affordance (kebab + * icon
+ * squares), or null. Set by App whenever the sole local selection supports
+ * the 'action' select mode (see LayerAPI.selectModes) — currently all
+ * toys. A single id, like resize mode — the affordance only makes sense
+ * for an exclusive single selection.
+ */
+let _actionAffordanceId = null;
+
+/**
+ * Called by App.select/_afterClaimsChanged with the sole selected id (if
+ * it supports 'action') or null otherwise. Short circuits when unchanged.
+ */
+export function setActionAffordance(elId) {
+  if (_actionAffordanceId === elId) return;
+  _actionAffordanceId = elId;
+  render();
+}
 
 /**
  * Called by App while dragging a toy, with the id of a .tt_contents-having
@@ -533,6 +594,13 @@ export function setLocalGradient(grad) {
   const stop1 = document.getElementById(`${LOCAL_GRAD_ID}-stop1`);
   if (stop0) stop0.setAttribute('stop-color', grad.c1);
   if (stop1) stop1.setAttribute('stop-color', grad.c2);
+
+  // #local-action-filter: same colorMatrixValues() trick toy artwork uses,
+  // tinting the action-affordance icon squares (see renderActionAffordance)
+  // to the player's own color. Uses grad.c1 — the filter takes one flat
+  // color, not a gradient.
+  const filterMatrix = document.querySelector(`#${LOCAL_ACTION_FILTER_ID} feColorMatrix`);
+  if (filterMatrix) filterMatrix.setAttribute('values', colorMatrixValues(grad.c1));
 }
 
 export function render() {
@@ -572,6 +640,9 @@ export function render() {
       case 'resize':
         renderLocalResizeSelection(geo, entry, scale);
         break;
+      case 'resize-r':
+        renderLocalResizeRSelection(geo, entry, scale);
+        break;
     }
   }
 
@@ -583,6 +654,20 @@ export function render() {
     const geo = App.getBBox(elId);
     if (!geo) continue;
     renderRequestedIndicator(geo, scale);
+  }
+
+  // ── Action-mode affordance (kebab + * icon squares) — independent of
+  // SelectionMode kind at the App level (App tracks it alongside, not as
+  // part of, the selection claim), but only actually drawn while the id's
+  // own current kind is still 'local' — once the same id enters
+  // 'resize'/'resize-r' mode (a second click), the corner/edge handle
+  // decorations take over that space instead.
+  if (_actionAffordanceId) {
+    const entry = SelectionMode.get(_actionAffordanceId);
+    if (entry && entry.kind === 'local') {
+      const geo = App.getBBox(_actionAffordanceId);
+      if (geo) renderActionAffordance(geo, scale);
+    }
   }
 
   // ── Remote drag ghosts + rings ─────────────────────────────────────────
@@ -689,6 +774,110 @@ function renderLocalResizeSelection(geo, entry, scale) {
       'stroke-width': 1.5 / scale,
       class: 'handle',
       'data-corner': corners[i],
+    }));
+  }
+}
+
+/**
+ * Same selection ring as renderLocalResizeSelection, but a single
+ * radius-drag handle centered on the right edge instead of four corner
+ * handles — used for the 'resize-r' kind (currently: circles).
+ */
+function renderLocalResizeRSelection(geo, entry, scale) {
+  const { x, y, width, height } = geo;
+  const stroke = entry.grad ? `url(#${LOCAL_GRAD_ID})` : (entry.color ?? 'var(--info)');
+  const ring = el('rect', {
+    x:      x - PAD,
+    y:      y - PAD,
+    width:  width  + PAD * 2,
+    height: height + PAD * 2,
+    rx:     10,
+    fill:           'none',
+    stroke,
+    'stroke-width': 2 / scale,
+    class:          'selRing',
+  });
+  _layerEl.appendChild(ring);
+
+  const side_len = HANDLE_SIZE / scale;
+  const { x: hx, y: hy } = resizeRHandle(geo);
+  _layerEl.appendChild(el('rect', {
+    x: hx - side_len / 2,
+    y: hy - side_len / 2,
+    width: side_len,
+    height: side_len,
+    rx: 3 / scale,
+    fill: 'var(--surface-solid)', stroke: 'var(--info)',
+    'stroke-width': 1.5 / scale,
+    class: 'handle',
+    'data-corner': 'r',
+  }));
+}
+
+// ── Action-mode affordance ───────────────────────────────────────────────────
+// Two rounded-corner icon squares — kebab (⋮) at SE, asterisk (*) at SW —
+// tinted to the local player's own color via the same feColorMatrix trick
+// toy artwork uses (see setLocalGradient / LOCAL_ACTION_FILTER_ID): a white
+// square background becomes the player's color; the glyph itself is drawn
+// as a sibling (not filtered) in a fixed dark ink so it stays legible
+// against any player color.
+const ACTION_ICON_SIZE = 22; // px in canvas-space — a tappable button, bigger than the 12px resize handles
+
+function renderActionAffordance(geo, scale) {
+  const side = ACTION_ICON_SIZE / scale;
+  const [, , se, sw] = resizeCorners(geo); // resizeCorners: [NW, NE, SE, SW]
+  // The SE square is the bowstring handle's resting state (see delight.js).
+  // It's wrapped in its own <g class="bowstring"> so the whole control —
+  // square plus glyph — is addressable as one unit. This layer still gets
+  // wiped on every render(); the LIVE gesture is built separately in
+  // #delight-layer, which is never wiped.
+  drawActionSquare(se, side, scale, 'asterisk', 'bowstring');
+  drawActionSquare(sw, side, scale, 'kebab');
+}
+
+function drawActionSquare({ x: cx, y: cy }, side, scale, glyph, groupClass) {
+  const parent = groupClass ? el('g', { class: groupClass }) : _layerEl;
+  parent.appendChild(el('rect', {
+    x: cx - side / 2, y: cy - side / 2,
+    width: side, height: side,
+    rx: side * 0.25,
+    fill:   'white',
+    filter: `url(#${LOCAL_ACTION_FILTER_ID})`,
+    class:  'actionSquare',
+  }));
+  if (glyph === 'kebab')    drawKebabGlyph(cx, cy, side, parent);
+  else                      drawAsteriskGlyph(cx, cy, side, parent);
+  if (parent !== _layerEl) _layerEl.appendChild(parent);
+}
+
+// Vertical ellipsis (⋮) — three stacked dots.
+function drawKebabGlyph(cx, cy, side, parent = _layerEl) {
+  const r   = side * 0.09;
+  const gap = side * 0.22;
+  for (const dy of [-gap, 0, gap]) {
+    parent.appendChild(el('circle', {
+      cx, cy: cy + dy, r,
+      fill:  'var(--surface-solid)',
+      class: 'actionGlyph',
+    }));
+  }
+}
+
+// Asterisk (*) — three spokes 120° apart (a 6-point star), drawn as
+// strokes rather than a text glyph so it scales crisply at any zoom.
+function drawAsteriskGlyph(cx, cy, side, parent = _layerEl) {
+  const len         = side * 0.32;
+  const strokeWidth = Math.max(1.5, side * 0.09);
+  for (const deg of [90, 210, 330]) {
+    const rad = deg * Math.PI / 180;
+    const dx = Math.cos(rad) * len, dy = Math.sin(rad) * len;
+    parent.appendChild(el('line', {
+      x1: cx - dx, y1: cy - dy,
+      x2: cx + dx, y2: cy + dy,
+      stroke:             'var(--surface-solid)',
+      'stroke-width':     strokeWidth,
+      'stroke-linecap':   'round',
+      class:              'actionGlyph',
     }));
   }
 }

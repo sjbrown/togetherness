@@ -124,7 +124,7 @@ describe('initializeToy', () => {
     const D6_SVG        = fs.readFileSync(path.join(toyDir, 'dice_d6.svg'), 'utf8')
     const DICE_UTILS_JS = fs.readFileSync(path.join(toyDir, 'js/dice_utils.js'), 'utf8')
     vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === '/toy/js/dice_utils.js') return { ok: true, text: async () => DICE_UTILS_JS }
+      if (url === 'toy/js/dice_utils.js') return { ok: true, text: async () => DICE_UTILS_JS }
       return { ok: true, text: async () => D6_SVG }
     }))
     const ydoc = new Y.Doc()

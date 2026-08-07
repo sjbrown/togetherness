@@ -507,7 +507,7 @@ async function fetchToySvgText(toyType) {
   if (svgText) return svgText
   const def = TOY_TYPES[toyType]
   if (!def) throw new Error(`unknown toy type: ${toyType}`)
-  const res = await fetch(`/toy/${def.file}`)
+  const res = await fetch(`toy/${def.file}`)
   if (!res.ok) throw new Error(`failed to load ${def.file}: ${res.status}`)
   svgText = await res.text()
   _svgTextCache.set(toyType, svgText)
@@ -878,7 +878,7 @@ export function moveToyAndStack(layerEl, el, x, y) {
 
 export function selectModes(domEl) {
   const ownSvg = domEl?.querySelector?.(':scope > svg')
-  let modes = []
+  let modes = ['action']
   if (!!ownSvg?.classList.contains('tt-mode-resize')) {
     modes.push('resize')
   }
@@ -1275,7 +1275,7 @@ async function activateScript({ namespace, src, code }, toyType) {
   recordNamespace(toyType, namespace)
 
   if (src) {
-    const url = `/toy/${src}`
+    const url = `toy/${src}`
     if (_seenScriptUrls.has(url)) return
     _seenScriptUrls.add(url)
     const res = await fetch(url)
@@ -1951,6 +1951,7 @@ export function makeLayerAPI(ydoc, getLayerEl, myId, tableId, isCreator = false)
     getAnchor,
     getTtState:      getTtStateDom,
     getTtStateSchema,
+    selectModes,
     applyMoveCommit: (el, x, y) => {
       const layerEl = layer()
       const oldAnchor = getAnchor(el)
