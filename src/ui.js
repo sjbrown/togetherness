@@ -170,7 +170,7 @@ export function pillHTML(data) {
       ));
       items.push(menuItemHTML('Edit',   icon('edit'),  "UI.openSheet('edit')"));
       items.push(menuItemHTML('Delete', icon('trash'), "UI.deleteSelected()"));
-      return items.join('');
+      return items.reverse().join('');
     }
     const canDuplicate = data.ltype === 'drawing';
     return [

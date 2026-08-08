@@ -1414,6 +1414,12 @@ const App = {
   startBowstringAt: (e, canvasPoint) => {
     const id = _singleSelectedId();
     if (!id) return false;
+    // Once this id is in resize/resize-r mode, its SE corner belongs to the
+    // resize handle, not the bowstring — overlay.js stops drawing the action
+    // square the moment resize mode is entered (see render()'s kind==='local'
+    // guard), so the live gesture must decline the same way or it keeps
+    // intercepting the corner that no longer visually shows it.
+    if (_resizeModeId === id) return false;
     const domEl = _svgEl?.querySelector(`[data-id="${id}"]`);
     if (!domEl || moduleForElement(domEl) !== 'toys') return false;
     const modes = _Layers['toys']?.selectModes?.(domEl) ?? [];
