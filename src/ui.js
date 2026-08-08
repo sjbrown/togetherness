@@ -54,7 +54,7 @@ function _letterIcon(label) {
 // Pure presentation state for the chrome. ui.js is the only writer.
 export const UIData = {
   activeTool:           'select',
-  mruTool:              null,
+  mruTools:             [], // most-recently-used tool names, newest first
   selectionActive:      false,
   multiSelectionActive: false,
   selectedCount:        0,
@@ -148,7 +148,7 @@ export function closeMenu() {
  * pillHTML(data) -- PURE. Dispatches to one of three pure sub-renderers
  * based on selection state; see each for its own data contract.
  *   data = { selectionActive, multiSelectionActive, selectedCount, activeTool,
- *            tools:ToolDef[], mruTool, layer, maxOthers, ltype, id, toyMenuActions }
+ *            tools:ToolDef[], mruTools, layer, maxOthers, ltype, id, toyMenuActions }
  *   ltype is the sole selection's layer type ('drawing'|'toys'|'boun_pos'|null),
  *   id is its elId, and toyMenuActions is its App.getToyMenuActions() result —
  *   all three only meaningful when selectionActive is true.
@@ -197,44 +197,48 @@ function singleSelectPillHTML(data) {
 
 /**
  * noSelectionPillHTML(data) -- PURE.
- *   data = { tools:ToolDef[], activeTool, mruTool, layer, maxOthers }
+ *   data = { tools:ToolDef[], activeTool, mruTools, layer, maxOthers }
  *
  * Four sections, left to right:
  *   1. Select (cursor) tool
- *   2. Most-recently-used tool — only shown on the toys layer. mruTool is
- *      tracked globally across every layer (onToolChanged), but a tool
- *      remembered from a different layer never belongs to THIS layer's
- *      tools list, so scoping display to 'toys' here is what keeps a
- *      stale drawing/boundaries tool from ever appearing on this layer.
+ *   2. Most-recently-used tools, most-recent first — only shown on the
+ *      toys layer. mruTools is tracked globally across every layer
+ *      (onToolChanged), but a tool remembered from a different layer
+ *      never belongs to THIS layer's tools list, so scoping display to
+ *      'toys' here is what keeps a stale drawing/boundaries tool from
+ *      ever appearing on this layer. Accumulates left-to-right as more
+ *      tools get used, in that recency order — the tool used most
+ *      recently is always leftmost within this section.
  *   3. Default palette of the layer's remaining tools, minus whichever
- *      one section 2 is already showing (never shown twice).
+ *      ones section 2 is already showing (never shown twice).
  *   4. An ellipsis button opening the full Tools Panel.
  *
  * maxOthers caps how many section-2+3 tool slots are shown (screen-size
  * dependent — see pillCapacity() at the renderPill() call site). MRU
- * always wins the first slot of that budget when present; the palette
- * fills whatever's left, in its normal order.
+ * always wins slots in that budget first, in its own recency order; the
+ * palette fills whatever's left, in its normal order.
  */
 function noSelectionPillHTML(data) {
   const tools  = data.tools ?? [];
   const select = tools.find(t => t.name === 'select');
   const others = tools.filter(t => t.name !== 'select');
 
-  const mruDef = (data.layer === 'toys')
-    ? others.find(t => t.name === data.mruTool)
-    : null;
-  const paletteTools = others.filter(t => t.name !== mruDef?.name);
+  const mruNames = (data.layer === 'toys') ? (data.mruTools ?? []) : [];
+  const mruDefs  = mruNames.map(name => others.find(t => t.name === name)).filter(Boolean);
+  const mruNameSet   = new Set(mruDefs.map(t => t.name));
+  const paletteTools = others.filter(t => !mruNameSet.has(t.name));
 
-  const budget        = data.maxOthers ?? Infinity;
-  const paletteBudget = Math.max(0, budget - (mruDef ? 1 : 0));
-  const shownPalette  = paletteTools.slice(0, paletteBudget);
+  const budget         = data.maxOthers ?? Infinity;
+  const shownMru       = mruDefs.slice(0, budget);
+  const paletteBudget  = Math.max(0, budget - shownMru.length);
+  const shownPalette   = paletteTools.slice(0, paletteBudget);
 
   let html = '';
   if (select) {
     html += toolIco(select, data.activeTool);
     html += '<span class="pill-sep"></span>';
   }
-  if (mruDef) html += toolIco(mruDef, data.activeTool);
+  for (const t of shownMru)     html += toolIco(t, data.activeTool);
   for (const t of shownPalette) html += toolIco(t, data.activeTool);
   html += '<span class="pill-sep"></span>';
   html += ellipsisBtn();
@@ -296,7 +300,7 @@ export function renderPill() {
     selectedCount:        UIData.selectedCount,
     activeTool:           UIData.activeTool,
     tools:                App.getTools(App.getActiveLayer()),
-    mruTool:              UIData.mruTool,
+    mruTools:             UIData.mruTools,
     layer:                App.getActiveLayer(),
     maxOthers:            pillCapacity(),
     ltype,
@@ -312,11 +316,24 @@ export function pillTap(toolName) {
     App.setTool(toolName);
   }
 }
+// Generous cap on how many tool names UIData remembers — separate from
+// (and larger than) however many the pill actually has room to display
+// (see noSelectionPillHTML's data.maxOthers budget), so shrinking the
+// viewport doesn't lose history, just how much of it is shown.
+const MAX_MRU_TOOLS = 8;
+
+// Push toolName to the front of UIData.mruTools, de-duplicating any prior
+// occurrence so re-using a tool moves it, rather than repeats it.
+function pushMru(toolName) {
+  if (!toolName || toolName === 'select') return;
+  UIData.mruTools = [toolName, ...UIData.mruTools.filter(t => t !== toolName)].slice(0, MAX_MRU_TOOLS);
+}
+
 export function onToolChanged(toolName) {
   const prev = UIData.activeTool;
   UIData.activeTool = toolName;
-  if (toolName !== 'select') UIData.mruTool = toolName;
-  else if (prev && prev !== 'select') UIData.mruTool = prev;
+  if (toolName !== 'select') pushMru(toolName);
+  else if (prev && prev !== 'select') pushMru(prev);
   hideToolOpts();
   renderPill();
   if (UIData.panelOpen === 'tools') {

@@ -273,27 +273,32 @@ function box(className, html) {
 section('Pill');
 story('Pill', 'drawing layer · select active', () =>
   box('pill-clone', `<div id="pill" style="display:inline-flex">${
-    UI.pillHTML({ selectionActive:false, activeTool:'select', tools:drawingTools, mruTool:null, layer:'drawing' })
+    UI.pillHTML({ selectionActive:false, activeTool:'select', tools:drawingTools, mruTools:[], layer:'drawing' })
   }</div>`));
 
 story('Pill', 'drawing layer · rect active (no MRU section outside toys)', () =>
   box('pill-clone', `<div id="pill" style="display:inline-flex">${
-    UI.pillHTML({ selectionActive:false, activeTool:'rect', tools:drawingTools, mruTool:'rect', layer:'drawing' })
+    UI.pillHTML({ selectionActive:false, activeTool:'rect', tools:drawingTools, mruTools:['rect'], layer:'drawing' })
   }</div>`));
 
 story('Pill', 'toys layer · marker active, marker is the MRU tool', () =>
   box('pill-clone', `<div id="pill" style="display:inline-flex">${
-    UI.pillHTML({ selectionActive:false, activeTool:'marker', tools:toysTools, mruTool:'marker', layer:'toys' })
+    UI.pillHTML({ selectionActive:false, activeTool:'marker', tools:toysTools, mruTools:['marker'], layer:'toys' })
+  }</div>`));
+
+story('Pill', 'toys layer · several MRU tools accumulated, most-recent leftmost', () =>
+  box('pill-clone', `<div id="pill" style="display:inline-flex">${
+    UI.pillHTML({ selectionActive:false, activeTool:'select', tools:toysTools, mruTools:['marker','d6','chip'], layer:'toys' })
   }</div>`));
 
 story('Pill', 'toys layer · mobile width (maxOthers:3)', () =>
   box('pill-clone', `<div id="pill" style="display:inline-flex">${
-    UI.pillHTML({ selectionActive:false, activeTool:'select', tools:toysTools, mruTool:'marker', layer:'toys', maxOthers:3 })
+    UI.pillHTML({ selectionActive:false, activeTool:'select', tools:toysTools, mruTools:['marker','d6'], layer:'toys', maxOthers:3 })
   }</div>`));
 
 story('Pill', 'selection action strip', () =>
   box('pill-clone', `<div id="pill" style="display:inline-flex">${
-    UI.pillHTML({ selectionActive:true, activeTool:'select', tools:drawingTools, mruTool:null, ltype:'drawing' })
+    UI.pillHTML({ selectionActive:true, activeTool:'select', tools:drawingTools, mruTools:[], ltype:'drawing' })
   }</div>`));
 
 // ── TOOL OPTIONS stories (schema-driven) ───────────────────────────────────────
