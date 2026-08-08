@@ -38,6 +38,10 @@ function initTableDoc(ydoc, tableId) {
     yMeta.set('created',       new Date().toISOString());
     yMeta.set('schemaVersion', CURRENT_SCHEMA);
   });
+  // playerOptions exists on every table from creation, even though nothing
+  // is in it yet — ensurePlayerOptions() below is also idempotent so any
+  // caller reaching a table doc from before this existed still self-heals.
+  ydoc.getMap(PLAYER_OPTIONS_KEY);
 }
 
 // ── Join sequence (authority ordering) ──────────────────────────────────
@@ -115,6 +119,72 @@ function resetJoinSequence(ydoc, orderedIds) {
   ydoc.transact(() => {
     if (yJoinSequence.length > 0) yJoinSequence.delete(0, yJoinSequence.length);
     yJoinSequence.push(orderedIds);
+  });
+}
+
+// ── Player options (per-player, per-table key-value store) ─────────────
+//
+// `playerOptions` is a Y.Map living in the document, keyed by *player* id
+// (user.js's persistent localId — tt-p-v1-DD-XXX — not the ephemeral Yjs
+// clientID a browser tab mints per session). Each value is itself a
+// Y.Map: that player's own key-value store, scoped to this one table.
+// Because it lives inside the table's own Y.Doc, the same player has an
+// entirely independent store on every table they visit — nothing here is
+// shared across tables.
+//
+// The first key ever stored under a player's map is 'recentToys': a
+// plain (non-Yjs) array of toy ids, most-recently-gestured first. It's
+// kept as a plain array value on the Y.Map rather than a nested Y.Array
+// because the whole list is always replaced together (recordRecentToy
+// re-sets it wholesale) — there's no need for element-level CRDT merge
+// semantics on what is, in practice, a single player's own local MRU list.
+
+const PLAYER_OPTIONS_KEY = 'playerOptions';
+const RECENT_TOYS_KEY    = 'recentToys';
+const MAX_RECENT_TOYS    = 10;
+
+function getPlayerOptionsRoot(ydoc) {
+  return ydoc.getMap(PLAYER_OPTIONS_KEY);
+}
+
+/**
+ * Get (creating if necessary) the Y.Map holding one player's own
+ * key-value store on this table.
+ */
+function ensurePlayerOptions(ydoc, playerId) {
+  const root = getPlayerOptionsRoot(ydoc);
+  let yPlayer = root.get(playerId);
+  if (!(yPlayer instanceof Y.Map)) {
+    yPlayer = new Y.Map();
+    ydoc.transact(() => root.set(playerId, yPlayer));
+  }
+  return yPlayer;
+}
+
+/**
+ * Read-only view of a player's recentToys list on this table (most
+ * recently gestured-with first). Returns [] if the player has none yet.
+ */
+function getRecentToys(ydoc, playerId) {
+  const yPlayer = getPlayerOptionsRoot(ydoc).get(playerId);
+  if (!yPlayer) return [];
+  return yPlayer.get(RECENT_TOYS_KEY) || [];
+}
+
+/**
+ * Record a gesture on toyId by playerId: moves toyId to the front of
+ * that player's recentToys list on THIS table, de-duplicating any prior
+ * occurrence, and capping the list at MAX_RECENT_TOYS.
+ *
+ * Scoped entirely to this table's own doc — the same player's
+ * recentToys on a different table is a completely separate list.
+ */
+function recordRecentToy(ydoc, playerId, toyId) {
+  const yPlayer = ensurePlayerOptions(ydoc, playerId);
+  ydoc.transact(() => {
+    const prior  = yPlayer.get(RECENT_TOYS_KEY) || [];
+    const next   = [toyId, ...prior.filter(id => id !== toyId)].slice(0, MAX_RECENT_TOYS);
+    yPlayer.set(RECENT_TOYS_KEY, next);
   });
 }
 
@@ -421,4 +491,7 @@ export const tablesAPI = {
   generateTableId,
   randSlug,
   compareAuthority,
+  ensurePlayerOptions,
+  getRecentToys,
+  recordRecentToy,
 };
