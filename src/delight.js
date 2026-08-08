@@ -58,6 +58,12 @@ const SNAP_SPEEDUP = 1.6;
 const DELIGHT_TRANSLATE_SCALE = 0.05;
 const HANDLE_HALF = 11;        // the handle rect is 22x22
 
+// Charge indicators, drawn on #overlay-layer from getBowstringState().
+const CHARGE_FADE_MS = 500;        // toy clone fades in over this, then holds
+const CHARGE_RADIUS_RATIO = 0.10;  // circle radius as a fraction of pull distance
+export const MAX_CHARGE_RADIUS = 50; // screen px, hard cap
+const BOWSTRING_BROADCAST_MS = 50;    // awareness update throttle while pulling
+
 // ── Pure math (unit-tested; no DOM) ───────────────────────────────────────
 
 /**
@@ -86,6 +92,28 @@ export function wobbleAmpFor(dist, velocity) {
   const t = Math.min(Math.max(dist, 0) / MAX_PULL, 1);
   const thinFactor = Math.max(0, (t - 0.6) / 0.4);
   return Math.min(velocity * 4.5, 14) * thinFactor;
+}
+
+/**
+ * Charge-clone opacity: fades 0 -> 1 over CHARGE_FADE_MS, then holds.
+ *
+ * Deliberately computed in JS from heldMs rather than expressed as a CSS
+ * transition/keyframe, because the overlay layer this is drawn on is wiped
+ * and rebuilt every frame — a CSS animation would restart from 0 on each
+ * rebuild and the clone would never actually appear. Anything drawn on a
+ * layer that gets recreated per frame must derive its state from elapsed
+ * time, not from animation state stored on the element.
+ */
+export function chargeOpacityFor(heldMs) {
+  return Math.min(Math.max(heldMs, 0) / CHARGE_FADE_MS, 1);
+}
+
+/**
+ * Charge-circle radius in screen px: a quarter of the pull distance,
+ * hard-capped so a very long pull can't grow it without bound.
+ */
+export function chargeRadiusFor(pull) {
+  return Math.min(Math.max(pull, 0) * CHARGE_RADIUS_RATIO, MAX_CHARGE_RADIUS);
 }
 
 /** Snap-back duration in ms — longer the further it was pulled, then sped up. */
@@ -126,6 +154,40 @@ export function init(appBus, svgElement) {
 /** True while a bowstring gesture is in flight — canvas.js checks this. */
 export function isDragging() {
   return _active !== null;
+}
+
+/**
+ * The live gesture's ephemeral state, or null when idle.
+ *
+ * This is the whole bridge to overlay.js. #overlay-layer is wiped and
+ * rebuilt wholesale on every render(), so it cannot HOLD state across a
+ * gesture — but it can READ it. Keeping the flow pull-based (overlay asks
+ * delight at render time) rather than push-based (delight reaches into
+ * overlay's DOM) means a wipe is harmless: the next render reconstructs
+ * itself from a source that outlived it.
+ *
+ * Both fields are ephemeral by the project's own taxonomy — they describe
+ * how someone is manipulating a toy right now, not what the toy IS. They
+ * never touch Yjs and never appear in exported SVG.
+ *
+ *   pull   — screen-space px from the origin (zoom-independent, as the
+ *            rest of the pull physics are)
+ *   t      — pull normalized to 0..1 against MAX_PULL
+ *   heldMs — ms since pointerdown. Note this advances with NO pointer
+ *            event at all, which is why the rAF loop has to drive renders
+ *            (see spinStep) rather than pointermove alone.
+ */
+export function getBowstringState() {
+  if (!_active) return null;
+  const { elId, origin, current, scale, startTime } = _active;
+  const pull = Math.hypot(current.x - origin.x, current.y - origin.y) * scale;
+  return {
+    elId,
+    origin,
+    pull,
+    t: Math.min(pull / MAX_PULL, 1),
+    heldMs: performance.now() - startTime,
+  };
 }
 
 function el(tag, attrs) {
@@ -174,6 +236,7 @@ export function startBowstring(elId, e, stageEl) {
 
   _active = {
     elId, origin, scale, stageEl,
+    startTime: performance.now(),
     pointerId: e.pointerId,
     startClientX: e.clientX, startClientY: e.clientY,
     moved: 0,
@@ -189,6 +252,9 @@ export function startBowstring(elId, e, stageEl) {
   };
 
   setPressed(true);
+  // Announce immediately, before any movement, so peers start their fade at
+  // the same moment the local one starts rather than on first pointermove.
+  broadcastCharge(true);
   _active.spinAnimId = requestAnimationFrame(spinStep);
   return true;
 }
@@ -293,6 +359,13 @@ function spinStep(now) {
   _active.angle = (_active.angle + spinSpeedFor(dist) * dt) % 360;
   applyHandleTransform();
 
+  // Drive the overlay's charge indicator from here rather than from
+  // pointermove: heldMs keeps advancing while the pointer holds perfectly
+  // still, and a press-and-hold with no movement fires no events at all.
+  // This loop's lifetime is exactly the hold's, so it can't leak a
+  // permanent render loop.
+  App.requestOverlayRender();
+
   _active.spinAnimId = requestAnimationFrame(spinStep);
 }
 
@@ -318,6 +391,25 @@ export function moveBowstring(e, canvasPoint) {
   applyHandleTransform();
   updateString();
   updateParallax();
+  broadcastCharge();
+}
+
+/**
+ * Push the charge to peers, throttled. Only `pull` changes in a way peers
+ * need told about — the fade is timed independently on each receiver — so
+ * this rides pointermove rather than the rAF loop, and stays quiet when the
+ * pointer holds still.
+ */
+function broadcastCharge(force = false) {
+  if (!_active) return;
+  const now = performance.now();
+  if (!force && now - (_active.lastBroadcast ?? -Infinity) < BOWSTRING_BROADCAST_MS) return;
+  _active.lastBroadcast = now;
+  const { origin, current, scale, elId } = _active;
+  App.broadcastBowstring({
+    elId,
+    pull: Math.hypot(current.x - origin.x, current.y - origin.y) * scale,
+  });
 }
 
 function updateString() {
@@ -457,6 +549,12 @@ function teardown() {
   destroyDelights();
   _active.group.remove();
   _active = null;
+  App.broadcastBowstring(null);
+  // One last render with no state, so the overlay's charge indicators
+  // (which only exist for as long as getBowstringState() is non-null)
+  // disappear on pointerup rather than lingering until the next
+  // unrelated render.
+  App.requestOverlayRender();
 }
 
 /**

@@ -721,3 +721,10 @@ svg.tt-icon-letter {
   0%   { transform: translate(0px, 0px); opacity: 1; }
   100% { transform: translate(var(--tx), var(--ty)); opacity: 0; }
 }
+
+/* Bowstring charge indicators — drawn on #overlay-layer from delight.js's
+ * live gesture state. Opacity on the clone is set per-frame from JS (see
+ * chargeOpacityFor): the layer is rebuilt every frame, so a CSS transition
+ * here would restart from zero each time and never visibly progress. */
+.bowstring-charge-clone,
+.bowstring-charge-ring { pointer-events: none; }

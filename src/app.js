@@ -1430,6 +1430,28 @@ const App = {
     return Delight.startBowstring(id, e, _svgEl);
   },
 
+  /**
+   * Repaint the overlay. Called from delight.js's rAF loop so the bowstring
+   * charge indicators keep advancing while the pointer holds still (heldMs
+   * changes with no pointer event to hang a repaint off).
+   */
+  requestOverlayRender: () => Overlay.render(),
+
+  /**
+   * Broadcast (or clear) the local bowstring charge so peers can see someone
+   * winding up. Pass null on release.
+   *
+   * Only `pull` travels. heldMs deliberately does NOT: it would need either
+   * a constant stream of updates (the value changes with no pointer event)
+   * or a shared wall clock (which peers don't have). Instead each receiver
+   * times the fade from when IT first saw the charge appear — see
+   * overlay.js's _remoteBowstrings. Costs a little network latency at the
+   * start of the fade, buys immunity to clock skew.
+   */
+  broadcastBowstring: (payload) => {
+    _awareness.setLocalStateField('bowstring', payload);
+  },
+
   moveBowstring: (e, canvasPoint) => Delight.moveBowstring(e, canvasPoint),
   endBowstring:  (e)              => Delight.endBowstring(e),
 

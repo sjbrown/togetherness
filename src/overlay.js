@@ -58,6 +58,7 @@
 import { getAllContestedElementIds } from './soft-lock.js';
 import { colorMatrixValues } from './toys.js';
 import { LOCAL_ACTION_FILTER_ID } from './defs.js';
+import { getBowstringState, chargeOpacityFor, chargeRadiusFor, bowstringOrigin } from './delight.js';
 import { drawAsteriskGlyph } from './icons.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -215,6 +216,14 @@ function _prunePeerGradients(liveClientIds) {
 // decoration layer rather than another mutually-exclusive `kind`.
 let _contestedIds = new Set();
 
+// Remote bowstring charges, keyed by clientId. Rebuilt from awareness on
+// each syncFromAwareness() call, but firstSeenAt is CARRIED OVER for a
+// client that was already charging — that timestamp is what times the
+// fade-in locally, so resetting it every sync would restart the fade on
+// every awareness packet and it would never finish.
+let _remoteBowstrings = new Map();
+let _remoteChargeRafId = null;
+
 let App       = null;
 let _layerEl  = null;   // #overlay-layer <g>
 let _svgEl    = null;   // root <svg> — used to look up live toy DOM nodes for resize ghost cloning
@@ -302,6 +311,7 @@ export function syncFromAwareness(awarenessStates, myClientId) {
   }
   _remoteDrags.clear();
 
+  const nextRemoteBowstrings = new Map();
   const liveClientIds = new Set();
 
   awarenessStates.forEach((state, clientId) => {
@@ -346,6 +356,20 @@ export function syncFromAwareness(awarenessStates, myClientId) {
       });
     }
 
+    // Remote bowstring charge
+    if (state?.bowstring?.elId) {
+      const prev = _remoteBowstrings.get(clientId);
+      nextRemoteBowstrings.set(clientId, {
+        elId:  state.bowstring.elId,
+        pull:  state.bowstring.pull ?? 0,
+        gradId,
+        // Same peer, same continuing gesture → keep the original start time.
+        firstSeenAt: (prev && prev.elId === state.bowstring.elId)
+          ? prev.firstSeenAt
+          : performance.now(),
+      });
+    }
+
     // Remote multi drag ghosts — one entry per element
     if (Array.isArray(state?.multidrag?.elIds) && state.multidrag.elIds.length) {
       state.multidrag.elIds.forEach((elId, i) => {
@@ -361,9 +385,11 @@ export function syncFromAwareness(awarenessStates, myClientId) {
       });
     }
   });
+  _remoteBowstrings = nextRemoteBowstrings;
   _prunePeerGradients(liveClientIds);
   _contestedIds = getAllContestedElementIds(awarenessStates);
   render();
+  _pumpRemoteCharge();
 }
 
 /**
@@ -707,6 +733,93 @@ export function render() {
   for (const entry of _resizeGhosts.values()) {
     _layerEl.appendChild(entry.ghostEl);
     _layerEl.appendChild(entry.ringEl);
+  }
+
+  renderBowstringCharge(scale);
+}
+
+// ── Bowstring charge indicators ──────────────────────────────────────────────
+// Read (never written) from delight.js's live gesture state. Pull-based on
+// purpose: this layer is wiped on every render, so it must be able to
+// rebuild itself from scratch each frame off a source that survives the
+// wipe. delight.js's rAF loop calls App.requestOverlayRender() to keep this
+// ticking even when the pointer isn't moving.
+//
+// Nothing here is persisted: pull and heldMs describe how someone is
+// manipulating a toy right now, not what the toy is, so they stay out of
+// the document entirely.
+
+function renderBowstringCharge(scale) {
+  const local = getBowstringState();
+  if (local) drawCharge(local.elId, local.pull, local.heldMs, `url(#${LOCAL_GRAD_ID})`, scale);
+
+  // Peers' charges are drawn identically, in their own colour, with the
+  // fade timed from when this client first saw the charge rather than from
+  // the sender's clock.
+  const now = performance.now();
+  for (const bs of _remoteBowstrings.values()) {
+    drawCharge(bs.elId, bs.pull, now - bs.firstSeenAt, `url(#${bs.gradId})`, scale);
+  }
+}
+
+/**
+ * While any peer is charging, keep repainting: their heldMs advances with
+ * no awareness traffic at all (the sender stays quiet when the pointer
+ * holds still), so nothing else would drive the fade forward. Self-cancels
+ * as soon as the last remote charge clears.
+ */
+function _pumpRemoteCharge() {
+  if (_remoteChargeRafId !== null) return;
+  if (_remoteBowstrings.size === 0) return;
+  const step = () => {
+    _remoteChargeRafId = null;
+    if (_remoteBowstrings.size === 0) return;
+    render();
+    _remoteChargeRafId = requestAnimationFrame(step);
+  };
+  _remoteChargeRafId = requestAnimationFrame(step);
+}
+
+function drawCharge(elId, pull, heldMs, stroke, scale) {
+  const geo = App.getBBox(elId);
+  if (!geo) return;
+  const origin = bowstringOrigin(geo);
+
+  const toyEl = _svgEl?.querySelector(`[data-id="${elId}"]`);
+  const toySvgEl = toyEl?.querySelector('svg');
+
+  // 1. Toy clone, fading in over its first half-second and then holding.
+  //    Deep clone keeps the toy's own x/y/width/height/viewBox so it lands
+  //    exactly on the original with no positioning math. Text is stripped
+  //    so labels don't double up; any url(#...) inside still resolves,
+  //    since SVG id lookup is document-global and the original outlives
+  //    this clone.
+  if (toySvgEl) {
+    const clone = toySvgEl.cloneNode(true);
+    clone.removeAttribute('id');
+    clone.querySelectorAll('[id]').forEach(n => n.removeAttribute('id'));
+    clone.querySelectorAll('text, tspan').forEach(n => n.remove());
+    clone.setAttribute('class', 'bowstring-charge-clone');
+    clone.setAttribute('opacity', chargeOpacityFor(heldMs).toFixed(3));
+    clone.setAttribute('pointer-events', 'none');
+    _layerEl.appendChild(clone);
+  }
+
+  // 2. Charge circle in the player's own color, centred on the SE corner of
+  //    the selection ring. Radius tracks pull distance and is capped; both
+  //    are screen-space px, so /scale converts to the canvas space this
+  //    layer draws in and the circle looks identical at any zoom.
+  const r = chargeRadiusFor(pull);
+  if (r > 0) {
+    _layerEl.appendChild(el('circle', {
+      cx: origin.x,
+      cy: origin.y,
+      r:  r / scale,
+      fill:   'none',
+      stroke,
+      'stroke-width': 2 / scale,
+      class: 'bowstring-charge-ring',
+    }));
   }
 }
 

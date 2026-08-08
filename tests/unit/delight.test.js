@@ -8,6 +8,9 @@ import {
   stringPathD,
   bowstringOrigin,
   hitTestBowstring,
+  chargeOpacityFor,
+  chargeRadiusFor,
+  MAX_CHARGE_RADIUS,
 } from '../../src/delight.js'
 
 describe('spinSpeedFor — fast at the origin, stopped at max pull', () => {
@@ -154,3 +157,35 @@ describe('hitTestBowstring', () => {
     expect(hitTestBowstring(geo, origin.x + 20, origin.y, 0.5)).toBe(true)
   })
 })
+
+
+describe('chargeOpacityFor — the clone fades in, then holds', () => {
+  it('is fully transparent the instant the press lands', () => {
+    expect(chargeOpacityFor(0)).toBe(0)
+  })
+
+  it('is half faded in at 250ms', () => {
+    expect(chargeOpacityFor(250)).toBeCloseTo(0.5)
+  })
+
+  it('reaches full opacity at exactly 500ms', () => {
+    expect(chargeOpacityFor(500)).toBe(1)
+  })
+
+  it('holds at full opacity indefinitely rather than looping or fading back', () => {
+    expect(chargeOpacityFor(5_000)).toBe(1)
+    expect(chargeOpacityFor(60_000)).toBe(1)
+  })
+
+  it('clamps a negative elapsed time to transparent', () => {
+    expect(chargeOpacityFor(-100)).toBe(0)
+  })
+
+  it('increases monotonically across the fade', () => {
+    const steps = [0, 100, 200, 300, 400, 500].map(chargeOpacityFor)
+    for (let i = 1; i < steps.length; i++) {
+      expect(steps[i]).toBeGreaterThan(steps[i - 1])
+    }
+  })
+})
+
