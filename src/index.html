@@ -163,9 +163,6 @@
   </div>
 </div>
 
-<!-- ── Context popover (long-press on shape) ──────────────────────────────── -->
-<div id="popover"></div>
-
 <!-- ── Status bar (retained from old index.html for debugging) ────────────── -->
 <div id="statusBar" style="position:fixed;top:0;left:50%;transform:translateX(-50%);
      font-size:11px;color:var(--text-3);pointer-events:none;z-index:100;
@@ -195,6 +192,7 @@ import * as UI                  from './ui.js';
 import { getIdentity }          from './user.js';
 import { dragPlaceholderFilterSVG, snapPointGradientSVG, localActionFilterSVG, glowFilterSVG }  from './defs.js';
 import { tablesAPI as tables } from './tables.js';
+import { resolveSignalingServer } from './signaling.js';
 
 // Inject shared SVG defs (filters etc.) into the canvas <defs> element.
 document.querySelector('#canvas defs')
@@ -236,7 +234,7 @@ tables.touchTableRecord(tableId);
 tables.ensureJoined(ydoc, myId);
 
 // ── WebRTC  ─────────────────────────────────────────────────────────────────
-const signalingUrl = new URLSearchParams(location.search).get('signaling') || 'ws://localhost:4444';
+const signalingUrl = resolveSignalingServer();
 const provider     = new WebrtcProvider(tableId, ydoc, { signaling: [signalingUrl] });
 const awareness    = provider.awareness;
 awareness.setLocalState({ id: myId, color: myGrad.c1, grad: myGrad, cursor: null, selection: null });

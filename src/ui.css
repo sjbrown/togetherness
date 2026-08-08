@@ -315,6 +315,17 @@ html, body {
   }
 }
 
+/* ── Pill, toy special case ──────────────────────────────────
+   A single selected toy replaces the row of round icon buttons with a
+   stacked menuItems-style list (words + icon circles), fanning UP from
+   the pill's own position instead of sideways — same classes/markup as
+   #menuItems (.menu-item/.menu-label/.menu-circle) so the look matches
+   exactly, just anchored at the pill instead of the menu button. */
+#pill.toy-menu {
+  flex-direction: column-reverse; align-items: stretch; gap: 10px;
+  background: none; box-shadow: none; padding: 0; border-radius: 0;
+}
+
 .ico {
   width: 46px; height: 46px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
@@ -358,13 +369,6 @@ html, body {
   display: flex; align-items: center; gap: 4px; font-family: var(--font-body);
 }
 .cp-none.active { color: var(--text); border-color: var(--text-2); box-shadow: 0 0 0 1px rgba(0,0,0,0.8); }
-.toy-actions { }
-.toy-action-btn {
-  height: 30px; padding: 0 12px; border-radius: 6px; border: 0.5px solid var(--border-2);
-  background: var(--surface-2); color: var(--text); font-size: 12px; font-weight: 500;
-  cursor: pointer; box-shadow: var(--emboss); font-family: var(--font-body);
-}
-.toy-action-btn:active { box-shadow: var(--emboss-inset); }
 .stepper { display: flex; align-items: center; gap: 6px; }
 .step-btn {
   width: 30px; height: 30px; border-radius: 50%; border: none;
@@ -536,8 +540,30 @@ input[type=range] { width: 100%; accent-color: var(--primary); height: 28px; }
 }
 @keyframes pulseGlow { 0%,100%{opacity:1;box-shadow:0 0 4px var(--primary);}50%{opacity:.6;box-shadow:0 0 10px var(--primary);} }
 
-.qr { width: 130px; height: 130px; border-radius: 10px; background: #f8f4ec; padding: 10px; display: block; }
-.room-code { font-size: 12px; color: var(--text-2); font-family: ui-monospace, Menlo, monospace; background: var(--surface-2); box-shadow: var(--emboss-inset); padding: 5px 10px; border-radius: 7px; }
+.peer-invite a {
+  display: block; width: 100%;
+  font-size: 15px; font-weight: 700; color: var(--primary);
+  font-family: ui-monospace, Menlo, monospace;
+  word-break: break-all; text-decoration: none;
+  background: var(--surface-2); box-shadow: var(--emboss-inset);
+  padding: 10px 12px; border-radius: 8px;
+}
+.invite-block { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.invite-url {
+  display: block; width: 100%;
+  font-size: 15px; font-weight: 700; color: var(--primary);
+  font-family: ui-monospace, Menlo, monospace;
+  word-break: break-all; text-decoration: none;
+  background: var(--surface-2); box-shadow: var(--emboss-inset);
+  padding: 10px 12px; border-radius: 8px;
+}
+.invite-url:hover { text-decoration: underline; }
+.qr-gen-link {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 500; color: var(--text-2); text-decoration: none;
+}
+.qr-gen-link svg { border-radius: 2px; flex-shrink: 0; }
+.qr-gen-link:hover { color: var(--primary); }
 .row-btn { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; }
 .toggle {
   width: 44px; height: 26px; border-radius: 13px;
@@ -615,22 +641,6 @@ input[type=range] { width: 100%; accent-color: var(--primary); height: 28px; }
   padding: 10px 12px; font-size: 12px; color: var(--text-3); min-height: 40px;
   display: flex; align-items: center;
 }
-
-/* ── Context popover ──────────────────────────────────────── */
-#popover {
-  position: fixed; z-index: 90;
-  background: var(--surface); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px);
-  box-shadow: var(--emboss-lg);
-  border-radius: var(--radius-sm); padding: 5px; display: none; flex-direction: column; min-width: 170px;
-}
-#popover button {
-  display: flex; align-items: center; gap: 10px; width: 100%;
-  padding: 10px 12px; background: none; border: none; color: var(--text);
-  font-size: 14px; cursor: pointer; border-radius: 7px; font-family: var(--font-body);
-}
-#popover button:hover { background: var(--surface-2); }
-#popover button.danger { color: #b85454; }
-#popover svg { width: 17px; height: 17px; }
 
 .bg-preset-grid {
   display: grid;

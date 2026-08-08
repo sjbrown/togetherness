@@ -58,6 +58,7 @@
 import { getAllContestedElementIds } from './soft-lock.js';
 import { colorMatrixValues } from './toys.js';
 import { LOCAL_ACTION_FILTER_ID } from './defs.js';
+import { drawAsteriskGlyph } from './icons.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const HANDLE_SIZE = 12;  // px in canvas-space
@@ -815,27 +816,27 @@ function renderLocalResizeRSelection(geo, entry, scale) {
 }
 
 // ── Action-mode affordance ───────────────────────────────────────────────────
-// Two rounded-corner icon squares — kebab (⋮) at SE, asterisk (*) at SW —
-// tinted to the local player's own color via the same feColorMatrix trick
-// toy artwork uses (see setLocalGradient / LOCAL_ACTION_FILTER_ID): a white
-// square background becomes the player's color; the glyph itself is drawn
-// as a sibling (not filtered) in a fixed dark ink so it stays legible
-// against any player color.
+// A single rounded-corner icon square — asterisk (*), the bowstring handle's
+// resting state (see delight.js) — tinted to the local player's own color
+// via the same feColorMatrix trick toy artwork uses (see setLocalGradient /
+// LOCAL_ACTION_FILTER_ID): a white square background becomes the player's
+// color; the glyph itself (drawAsteriskGlyph, icons.js) is drawn as a
+// sibling (not filtered) in a fixed dark ink so it stays legible against
+// any player color.
 const ACTION_ICON_SIZE = 22; // px in canvas-space — a tappable button, bigger than the 12px resize handles
 
 function renderActionAffordance(geo, scale) {
   const side = ACTION_ICON_SIZE / scale;
-  const [, , se, sw] = resizeCorners(geo); // resizeCorners: [NW, NE, SE, SW]
+  const [, , se] = resizeCorners(geo); // resizeCorners: [NW, NE, SE, SW]
   // The SE square is the bowstring handle's resting state (see delight.js).
   // It's wrapped in its own <g class="bowstring"> so the whole control —
   // square plus glyph — is addressable as one unit. This layer still gets
   // wiped on every render(); the LIVE gesture is built separately in
   // #delight-layer, which is never wiped.
-  drawActionSquare(se, side, scale, 'asterisk', 'bowstring');
-  drawActionSquare(sw, side, scale, 'kebab');
+  drawActionSquare(se, side, scale, 'bowstring');
 }
 
-function drawActionSquare({ x: cx, y: cy }, side, scale, glyph, groupClass) {
+function drawActionSquare({ x: cx, y: cy }, side, scale, groupClass) {
   const parent = groupClass ? el('g', { class: groupClass }) : _layerEl;
   parent.appendChild(el('rect', {
     x: cx - side / 2, y: cy - side / 2,
@@ -845,41 +846,8 @@ function drawActionSquare({ x: cx, y: cy }, side, scale, glyph, groupClass) {
     filter: `url(#${LOCAL_ACTION_FILTER_ID})`,
     class:  'actionSquare',
   }));
-  if (glyph === 'kebab')    drawKebabGlyph(cx, cy, side, parent);
-  else                      drawAsteriskGlyph(cx, cy, side, parent);
+  drawAsteriskGlyph(cx, cy, side, parent);
   if (parent !== _layerEl) _layerEl.appendChild(parent);
-}
-
-// Vertical ellipsis (⋮) — three stacked dots.
-function drawKebabGlyph(cx, cy, side, parent = _layerEl) {
-  const r   = side * 0.09;
-  const gap = side * 0.22;
-  for (const dy of [-gap, 0, gap]) {
-    parent.appendChild(el('circle', {
-      cx, cy: cy + dy, r,
-      fill:  'var(--surface-solid)',
-      class: 'actionGlyph',
-    }));
-  }
-}
-
-// Asterisk (*) — three spokes 120° apart (a 6-point star), drawn as
-// strokes rather than a text glyph so it scales crisply at any zoom.
-function drawAsteriskGlyph(cx, cy, side, parent = _layerEl) {
-  const len         = side * 0.32;
-  const strokeWidth = Math.max(1.5, side * 0.09);
-  for (const deg of [90, 210, 330]) {
-    const rad = deg * Math.PI / 180;
-    const dx = Math.cos(rad) * len, dy = Math.sin(rad) * len;
-    parent.appendChild(el('line', {
-      x1: cx - dx, y1: cy - dy,
-      x2: cx + dx, y2: cy + dy,
-      stroke:             'var(--surface-solid)',
-      'stroke-width':     strokeWidth,
-      'stroke-linecap':   'round',
-      class:              'actionGlyph',
-    }));
-  }
 }
 
 function renderRemoteSelection(geo, entry, scale) {

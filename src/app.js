@@ -368,7 +368,7 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
 
   // UI — needs App; attaches panel/menu/pill listeners
   UI.init(App);
-  UI.setIdentity({ projectName: 'togetherness', userId: displayName, tableId: tableId });
+  UI.setIdentity({ projectName: 'Togetherness Table', userId: displayName, tableId: tableId });
 
   // Keyboard shortcuts
   window.addEventListener('keydown', onKeyDown);
@@ -786,7 +786,6 @@ const App = {
   // ── Tool mutations (canvas.js calls back into ui.js via these) ────────────
   onToolChanged:          (t)   => UI.onToolChanged(t),
   onViewReset:            ()    => UI.toast('View reset'),
-  requestContextMenu: (x, y, id) => UI.showPopover(x, y, id),
 
   // ── Selection ────────────────────────────────────────────────────────────
 
@@ -1029,6 +1028,18 @@ const App = {
     if (!L) return null;
     const schema = L.getTtStateSchema(svgEl);
     return { ltype: mtype, ...schema, id };
+  },
+
+  /**
+   * The ltype ('drawing' | 'toys' | 'boun_pos') of the sole selected
+   * element, or null for zero/multi selections. Used by ui.js to decide
+   * which pill actions apply (e.g. Duplicate is drawing-only).
+   */
+  getSelectedLtype: () => {
+    const id = _singleSelectedId();
+    if (!id) return null;
+    const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
+    return svgEl ? moduleForElement(svgEl) : null;
   },
 
   /**

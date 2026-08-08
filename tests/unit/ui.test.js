@@ -107,14 +107,14 @@ describe('pillHTML — double-click opens Tools panel', () => {
     }
   })
 
-  test('selection-active pill buttons also carry ondblclick', () => {
-    const html = pillHTML({ selectionActive: true, activeTool: 'select', tools: MOCK_TOOLS })
+  test('selection-active pill buttons do NOT carry ondblclick (they act directly via onclick)', () => {
+    const html = pillHTML({ selectionActive: true, activeTool: 'select', tools: MOCK_TOOLS, ltype: 'drawing' })
     const div = document.createElement('div')
     div.innerHTML = html
     const btns = div.querySelectorAll('button.ico')
     expect(btns.length).toBeGreaterThan(0)
     for (const btn of btns) {
-      expect(btn.getAttribute('ondblclick')).toContain("UI.openSheet('tools')")
+      expect(btn.getAttribute('ondblclick')).toBeNull()
     }
   })
 
@@ -156,7 +156,7 @@ describe('SELECT_TOOL multi option — show surfaces', () => {
 
 
 describe('pillHTML — multi-selection (N > 1)', () => {
-  test('multiSelectionActive renders Delete N and Duplicate N buttons', () => {
+  test('multiSelectionActive renders only a Delete N button (no Duplicate)', () => {
     const html = pillHTML({
       selectionActive: false, multiSelectionActive: true, selectedCount: 3,
       activeTool: 'select', tools: MOCK_TOOLS,
@@ -164,9 +164,8 @@ describe('pillHTML — multi-selection (N > 1)', () => {
     const div = document.createElement('div')
     div.innerHTML = html
     const btns = [...div.querySelectorAll('button.ico')]
-    expect(btns.length).toBe(2)
+    expect(btns.length).toBe(1)
     expect(btns[0].getAttribute('aria-label')).toMatch(/delete.*3/i)
-    expect(btns[1].getAttribute('aria-label')).toMatch(/duplicate.*3/i)
   })
 
   test('multiSelectionActive takes priority over selectionActive', () => {
@@ -177,20 +176,32 @@ describe('pillHTML — multi-selection (N > 1)', () => {
     const div = document.createElement('div')
     div.innerHTML = html
     const btns = [...div.querySelectorAll('button.ico')]
-    // Should show N=2 buttons, not the 4-button single-selection set
-    expect(btns.length).toBe(2)
+    // Should show the single multi-select Delete button, not the
+    // single-selection button set
+    expect(btns.length).toBe(1)
     expect(btns[0].getAttribute('aria-label')).toMatch(/2/)
   })
 
-  test('multiSelectionActive false with selectionActive shows normal 3-button set', () => {
+  test('multiSelectionActive false with selectionActive and ltype "drawing" shows the 3-button set (Delete/Duplicate/Edit)', () => {
     const html = pillHTML({
       selectionActive: true, multiSelectionActive: false, selectedCount: 0,
-      activeTool: 'select', tools: MOCK_TOOLS,
+      activeTool: 'select', tools: MOCK_TOOLS, ltype: 'drawing',
     })
     const div = document.createElement('div')
     div.innerHTML = html
     const btns = [...div.querySelectorAll('button.ico')]
     expect(btns.length).toBe(3)
+  })
+
+  test('a non-drawing selection (e.g. boun_pos) omits Duplicate, showing only Delete/Edit', () => {
+    const html = pillHTML({
+      selectionActive: true, multiSelectionActive: false, selectedCount: 0,
+      activeTool: 'select', tools: MOCK_TOOLS, ltype: 'boun_pos',
+    })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const btns = [...div.querySelectorAll('button.ico')]
+    expect(btns.length).toBe(2)
   })
 
   test('neither active shows tool buttons', () => {

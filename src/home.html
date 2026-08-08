@@ -174,6 +174,39 @@ body {
 }
 .profile-name-input::placeholder { color: var(--text-3); font-style: italic; }
 
+.advanced-link {
+  font-size: 11px;
+  color: var(--text-3);
+  text-decoration: none;
+  align-self: flex-start;
+}
+.advanced-link:hover { color: var(--text-2); text-decoration: underline; }
+
+.advanced-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.advanced-label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  font-family: var(--font-body);
+}
+.advanced-input {
+  background: rgba(0,0,0,0.35);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  padding: 6px 10px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.advanced-input:focus { border-color: var(--primary); }
+
 /* gradient picker row */
 .gradient-options {
   display: flex;
@@ -485,6 +518,11 @@ body {
           <input class="profile-name-input" id="displayName" type="text" maxlength="32" autocomplete="off">
         </div>
         <div class="gradient-options" id="gradientOptions"></div>
+        <a href="#" class="advanced-link" id="advancedLink">Advanced</a>
+        <div class="advanced-panel" id="advancedPanel" style="display:none">
+          <label class="advanced-label" for="signalingServer">Signaling Server:</label>
+          <input class="advanced-input" id="signalingServer" type="text" autocomplete="off" spellcheck="false">
+        </div>
       </div>
     </div>
 
@@ -621,6 +659,7 @@ import * as Toys                from './toys.js';
 import { entityGradient }        from './entity_gradient.js';
 import { getIdentity, setName, setGrad } from './user.js';
 import { tablesAPI as tables } from './tables.js';
+import { getStoredSignalingServer, setStoredSignalingServer, defaultSignalingServer } from './signaling.js';
 
 function drawGradientSwatch(canvas, gradObj) {
   const ctx  = canvas.getContext('2d');
@@ -693,6 +732,35 @@ displayNameEl.addEventListener('input', () => {
 });
 
 initProfile();
+
+// ── Advanced: signaling server ──────────────────────────────────────────────
+// The field shows the localStorage override if one exists, else the
+// host-based default — but that default is NOT written to localStorage
+// until the person actually edits the field (see signaling.js).
+const advancedLinkEl  = document.getElementById('advancedLink');
+const advancedPanelEl = document.getElementById('advancedPanel');
+const signalingEl     = document.getElementById('signalingServer');
+
+advancedLinkEl.addEventListener('click', (e) => {
+  e.preventDefault();
+  const opening = advancedPanelEl.style.display === 'none';
+  advancedPanelEl.style.display = opening ? 'flex' : 'none';
+  if (opening) {
+    signalingEl.value = getStoredSignalingServer() ?? defaultSignalingServer();
+  }
+});
+
+signalingEl.addEventListener('change', () => {
+  const value = signalingEl.value.trim();
+  // Only persist if the person actually changed it away from the default —
+  // otherwise a future change to the built-in default would be masked by
+  // a stored value nobody meant to set.
+  if (value && value !== defaultSignalingServer()) {
+    setStoredSignalingServer(value);
+  } else {
+    setStoredSignalingServer(null);
+  }
+});
 
 // ── Previous tables ───────────────────────────────────────────────────────
 
