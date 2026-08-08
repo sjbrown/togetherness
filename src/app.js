@@ -1156,7 +1156,7 @@ const App = {
     const id = _singleSelectedId();
     if (!id) {
       if (Object.keys(_myClaims).length > 1) {
-        UI.toast('Use Delete N for multi-selection', 'warn');
+        UI.toast('Use Delete Button for multi-selection', 'warn');
         console.error('deleteSelected called with multi-selection; use deleteMultiSelected');
       }
       return;

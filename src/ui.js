@@ -54,7 +54,7 @@ function _letterIcon(label) {
 // Pure presentation state for the chrome. ui.js is the only writer.
 export const UIData = {
   activeTool:           'select',
-  mruTool:              null,
+  mruTools:             [], // most-recently-used tool names, newest first
   selectionActive:      false,
   multiSelectionActive: false,
   selectedCount:        0,
@@ -145,49 +145,108 @@ export function closeMenu() {
 // ==============================================================================
 
 /**
- * pillHTML(data) -- PURE.
+ * pillHTML(data) -- PURE. Dispatches to one of three pure sub-renderers
+ * based on selection state; see each for its own data contract.
  *   data = { selectionActive, multiSelectionActive, selectedCount, activeTool,
- *            tools:ToolDef[], mruTool, ltype, id, toyMenuActions }
+ *            tools:ToolDef[], mruTools, layer, maxOthers, ltype, id, toyMenuActions }
  *   ltype is the sole selection's layer type ('drawing'|'toys'|'boun_pos'|null),
  *   id is its elId, and toyMenuActions is its App.getToyMenuActions() result —
  *   all three only meaningful when selectionActive is true.
+ *   layer/maxOthers are only meaningful when neither selection flag is set —
+ *   see noSelectionPillHTML.
  */
 export function pillHTML(data) {
-  if (data.multiSelectionActive) {
-    const n = data.selectedCount;
-    return icoBtn(ICON_ACTIONS.trash, `Delete ${n}`, "UI.deleteSelected()", 'danger');
+  if (data.multiSelectionActive) return multiSelectPillHTML(data);
+  if (data.selectionActive)      return singleSelectPillHTML(data);
+  return noSelectionPillHTML(data);
+}
+
+/**
+ * multiSelectPillHTML(data) -- PURE. data = { selectedCount }.
+ */
+function multiSelectPillHTML(data) {
+  const n = data.selectedCount;
+  return icoBtn(ICON_ACTIONS.trash, `Delete ${n}`, "UI.deleteSelected()", 'danger');
+}
+
+/**
+ * singleSelectPillHTML(data) -- PURE. data = { ltype, id, toyMenuActions }.
+ */
+function singleSelectPillHTML(data) {
+  // Toys render a menuItems-style stacked menu (words + icons) right in
+  // the pill's position, instead of the row of round icon buttons —
+  // one entry per toy menu (namespace) action (using the static
+  // 'asterisk' icon — see icons.js's drawAsteriskGlyph for its dynamic,
+  // canvas-space sibling), plus the standard Edit/Delete entries.
+  if (data.ltype === 'toys') {
+    const items = (data.toyMenuActions ?? []).map(a => menuItemHTML(
+      a.label, icon('asterisk'),
+      `App.invokeToyMenuAction('${data.id}','${a.namespace}','${a.key}')`,
+    ));
+    items.push(menuItemHTML('Edit',   icon('edit'),  "UI.openSheet('edit')"));
+    items.push(menuItemHTML('Delete', icon('trash'), "UI.deleteSelected()"));
+    return items.reverse().join('');
   }
-  if (data.selectionActive) {
-    // Toys render a menuItems-style stacked menu (words + icons) right in
-    // the pill's position, instead of the row of round icon buttons —
-    // one entry per toy menu (namespace) action (using the static
-    // 'asterisk' icon — see icons.js's drawAsteriskGlyph for its dynamic,
-    // canvas-space sibling), plus the standard Edit/Delete entries.
-    if (data.ltype === 'toys') {
-      const items = (data.toyMenuActions ?? []).map(a => menuItemHTML(
-        a.label, icon('asterisk'),
-        `App.invokeToyMenuAction('${data.id}','${a.namespace}','${a.key}')`,
-      ));
-      items.push(menuItemHTML('Edit',   icon('edit'),  "UI.openSheet('edit')"));
-      items.push(menuItemHTML('Delete', icon('trash'), "UI.deleteSelected()"));
-      return items.reverse().join('');
-    }
-    const canDuplicate = data.ltype === 'drawing';
-    return [
-      icoBtn(ICON_ACTIONS.trash, 'Delete', "UI.deleteSelected()", 'danger'),
-      canDuplicate ? icoBtn(ICON_ACTIONS.copy, 'Duplicate', "UI.duplicateSelected()") : '',
-      icoBtn(ICON_ACTIONS.edit,  'Edit',   "UI.openSheet('edit')"),
-    ].join('');
-  }
-  const select = data.tools.find(t => t.name === 'select');
-  const others = data.tools.filter(t => t.name !== 'select');
+  const canDuplicate = data.ltype === 'drawing';
+  return [
+    icoBtn(ICON_ACTIONS.trash, 'Delete', "UI.deleteSelected()", 'danger'),
+    canDuplicate ? icoBtn(ICON_ACTIONS.copy, 'Duplicate', "UI.duplicateSelected()") : '',
+    icoBtn(ICON_ACTIONS.edit,  'Edit',   "UI.openSheet('edit')"),
+  ].join('');
+}
+
+/**
+ * noSelectionPillHTML(data) -- PURE.
+ *   data = { tools:ToolDef[], activeTool, mruTools, layer, maxOthers }
+ *
+ * Four sections, left to right:
+ *   1. Select (cursor) tool
+ *   2. Most-recently-used tools, most-recent first — only shown on the
+ *      toys layer. mruTools is tracked globally across every layer
+ *      (onToolChanged), but a tool remembered from a different layer
+ *      never belongs to THIS layer's tools list, so scoping display to
+ *      'toys' here is what keeps a stale drawing/boundaries tool from
+ *      ever appearing on this layer. Accumulates left-to-right as more
+ *      tools get used, in that recency order — the tool used most
+ *      recently is always leftmost within this section.
+ *   3. Default palette of the layer's remaining tools, minus whichever
+ *      ones section 2 is already showing (never shown twice).
+ *   4. An ellipsis button opening the full Tools Panel.
+ *
+ * maxOthers caps how many section-2+3 tool slots are shown (screen-size
+ * dependent — see pillCapacity() at the renderPill() call site). MRU
+ * always wins slots in that budget first, in its own recency order; the
+ * palette fills whatever's left, in its normal order.
+ */
+function noSelectionPillHTML(data) {
+  const tools  = data.tools ?? [];
+  const select = tools.find(t => t.name === 'select');
+  const others = tools.filter(t => t.name !== 'select');
+
+  const mruNames = (data.layer === 'toys') ? (data.mruTools ?? []) : [];
+  const mruDefs  = mruNames.map(name => others.find(t => t.name === name)).filter(Boolean);
+  const mruNameSet   = new Set(mruDefs.map(t => t.name));
+  const paletteTools = others.filter(t => !mruNameSet.has(t.name));
+
+  const budget         = data.maxOthers ?? Infinity;
+  const shownMru       = mruDefs.slice(0, budget);
+  const paletteBudget  = Math.max(0, budget - shownMru.length);
+  const shownPalette   = paletteTools.slice(0, paletteBudget);
+
   let html = '';
   if (select) {
     html += toolIco(select, data.activeTool);
     html += '<span class="pill-sep"></span>';
   }
-  for (const t of others) html += toolIco(t, data.activeTool);
+  for (const t of shownMru)     html += toolIco(t, data.activeTool);
+  for (const t of shownPalette) html += toolIco(t, data.activeTool);
+  html += '<span class="pill-sep"></span>';
+  html += ellipsisBtn();
   return html;
+}
+
+function ellipsisBtn() {
+  return `<button class="ico" aria-label="More tools" title="Open Tools panel" onclick="UI.openSheet('tools')">${icon('ellipsis')}</button>`;
 }
 /**
  * menuItemHTML(label, iconSvg, onclick) -- PURE.
@@ -212,6 +271,24 @@ const ICON_ACTIONS = {
   trash: icon('trash'), copy: icon('copy'), edit: icon('edit'),
 };
 
+/**
+ * pillCapacity() -- how many non-select, non-ellipsis tool slots
+ * (MRU + default palette combined) the no-selection pill has room for at
+ * the current viewport width. Reads window.innerWidth directly — this is
+ * the one place screen size enters the pill; noSelectionPillHTML itself
+ * stays pure and just receives the resulting number as data.maxOthers.
+ *
+ * Mobile (<480px): Select + Ellipsis + 3 others, per spec.
+ * Tablet (<900px): a bit more breathing room.
+ * Desktop: every tool in the layer fits, no truncation.
+ */
+function pillCapacity() {
+  const w = (typeof window !== 'undefined' && window.innerWidth) || Infinity;
+  if (w < 480) return 3;
+  if (w < 900) return 6;
+  return Infinity;
+}
+
 export function renderPill() {
   const pill = $('#pill');
   if (!pill) return;
@@ -223,7 +300,9 @@ export function renderPill() {
     selectedCount:        UIData.selectedCount,
     activeTool:           UIData.activeTool,
     tools:                App.getTools(App.getActiveLayer()),
-    mruTool:              UIData.mruTool,
+    mruTools:             UIData.mruTools,
+    layer:                App.getActiveLayer(),
+    maxOthers:            pillCapacity(),
     ltype,
     id:                   UIData.selectionActive ? (App.getSelectedIds?.()[0] ?? null) : null,
     toyMenuActions:       ltype === 'toys' ? (App.getToyMenuActions?.() ?? []) : [],
@@ -237,11 +316,24 @@ export function pillTap(toolName) {
     App.setTool(toolName);
   }
 }
+// Generous cap on how many tool names UIData remembers — separate from
+// (and larger than) however many the pill actually has room to display
+// (see noSelectionPillHTML's data.maxOthers budget), so shrinking the
+// viewport doesn't lose history, just how much of it is shown.
+const MAX_MRU_TOOLS = 8;
+
+// Push toolName to the front of UIData.mruTools, de-duplicating any prior
+// occurrence so re-using a tool moves it, rather than repeats it.
+function pushMru(toolName) {
+  if (!toolName || toolName === 'select') return;
+  UIData.mruTools = [toolName, ...UIData.mruTools.filter(t => t !== toolName)].slice(0, MAX_MRU_TOOLS);
+}
+
 export function onToolChanged(toolName) {
   const prev = UIData.activeTool;
   UIData.activeTool = toolName;
-  if (toolName !== 'select') UIData.mruTool = toolName;
-  else if (prev && prev !== 'select') UIData.mruTool = prev;
+  if (toolName !== 'select') pushMru(toolName);
+  else if (prev && prev !== 'select') pushMru(prev);
   hideToolOpts();
   renderPill();
   if (UIData.panelOpen === 'tools') {

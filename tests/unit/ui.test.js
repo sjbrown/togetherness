@@ -100,7 +100,10 @@ describe('pillHTML — double-click opens Tools panel', () => {
     const html = pillHTML({ selectionActive: false, activeTool: 'select', tools: MOCK_TOOLS })
     const div = document.createElement('div')
     div.innerHTML = html
-    const btns = div.querySelectorAll('button.ico')
+    // The section-4 ellipsis button opens the Tools panel via a plain
+    // single-click onclick, not ondblclick like the tool buttons — scope
+    // this assertion to the actual tool buttons.
+    const btns = [...div.querySelectorAll('button.ico')].filter(b => b.getAttribute('aria-label') !== 'More tools')
     expect(btns.length).toBeGreaterThan(0)
     for (const btn of btns) {
       expect(btn.getAttribute('ondblclick')).toContain("UI.openSheet('tools')")
@@ -215,6 +218,143 @@ describe('pillHTML — multi-selection (N > 1)', () => {
     expect(btns.length).toBeGreaterThan(0)
     // Select tool icon present
     expect(btns[0].getAttribute('aria-label')).toBe('Select')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// pillHTML — no-selection mode: 4 sections (Select / MRU / palette / ellipsis)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const D6    = { name: 'd6',    label: 'D6',    layer: 'toys' }
+const D20   = { name: 'd20',   label: 'D20',   layer: 'toys' }
+const CARD  = { name: 'card',  label: 'Card',  layer: 'toys' }
+const TRAY  = { name: 'tray',  label: 'Tray',  layer: 'toys' }
+const RECT  = { name: 'rect',  label: 'Rect',  layer: 'drawing' }
+const CIRC  = { name: 'circ',  label: 'Circle',layer: 'drawing' }
+const TOYS_TOOLS = [SELECT_TOOL, D6, D20, CARD, TRAY]
+
+function labelsOf(div) {
+  return [...div.querySelectorAll('button.ico')].map(b => b.getAttribute('aria-label'))
+}
+
+describe('pillHTML — no-selection 4-section layout', () => {
+  test('always renders an ellipsis button opening the Tools panel', () => {
+    const html = pillHTML({ selectionActive: false, activeTool: 'select', tools: TOYS_TOOLS, layer: 'toys' })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const ellipsis = [...div.querySelectorAll('button.ico')].find(b => b.getAttribute('aria-label') === 'More tools')
+    expect(ellipsis).toBeDefined()
+    expect(ellipsis.getAttribute('onclick')).toContain("UI.openSheet('tools')")
+  })
+
+  test('on the toys layer, mruTools appears right after Select, before the rest of the palette', () => {
+    const html = pillHTML({
+      selectionActive: false, activeTool: 'select', tools: TOYS_TOOLS,
+      layer: 'toys', mruTools: ['card'],
+    })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const labels = labelsOf(div)
+    expect(labels[0]).toBe('Select')
+    expect(labels[1]).toBe('Card')
+  })
+
+  test('accumulates multiple MRU tools, most-recently-used leftmost', () => {
+    const html = pillHTML({
+      selectionActive: false, activeTool: 'select', tools: TOYS_TOOLS,
+      layer: 'toys', mruTools: ['tray', 'card', 'd6'],
+    })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const labels = labelsOf(div)
+    // mruTools is newest-first; that order is preserved left-to-right
+    // right after Select.
+    expect(labels.slice(0, 4)).toEqual(['Select', 'Tray', 'Card', 'D6'])
+  })
+
+  test('mruTools is de-duplicated out of the default palette section — each tool appears only once', () => {
+    const html = pillHTML({
+      selectionActive: false, activeTool: 'select', tools: TOYS_TOOLS,
+      layer: 'toys', mruTools: ['card', 'd6'],
+    })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const labels = labelsOf(div)
+    expect(labels.filter(l => l === 'Card').length).toBe(1)
+    expect(labels.filter(l => l === 'D6').length).toBe(1)
+  })
+
+  test('mruTools is ignored outside the toys layer — no MRU section on drawing', () => {
+    const html = pillHTML({
+      selectionActive: false, activeTool: 'select', tools: [SELECT_TOOL, RECT, CIRC],
+      layer: 'drawing', mruTools: ['rect'],
+    })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const labels = labelsOf(div)
+    // Rect still appears (it's in the palette), but only once, and Select
+    // is immediately followed by the palette order, not singled out as MRU.
+    expect(labels).toEqual(['Select', 'Rect', 'Circle', 'More tools'])
+  })
+
+  test('a stale MRU tool from a different layer is dropped rather than shown wrongly', () => {
+    // 'rect' was used on the drawing layer; tools here are toys-layer
+    // only, so 'rect' isn't among them and must not appear at all.
+    const html = pillHTML({
+      selectionActive: false, activeTool: 'select', tools: TOYS_TOOLS,
+      layer: 'toys', mruTools: ['rect'],
+    })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const labels = labelsOf(div)
+    expect(labels).not.toContain('Rect')
+  })
+
+  test('maxOthers caps total MRU+palette slots, MRU winning ties in its own recency order', () => {
+    const html = pillHTML({
+      selectionActive: false, activeTool: 'select', tools: TOYS_TOOLS,
+      layer: 'toys', mruTools: ['tray', 'card'], maxOthers: 2,
+    })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const labels = labelsOf(div)
+    // Select + ellipsis are not counted against the budget; both MRU
+    // entries fill the entire budget, leaving no room for the palette.
+    expect(labels).toEqual(['Select', 'Tray', 'Card', 'More tools'])
+  })
+
+  test('maxOthers smaller than the MRU list truncates MRU itself, still most-recent first', () => {
+    const html = pillHTML({
+      selectionActive: false, activeTool: 'select', tools: TOYS_TOOLS,
+      layer: 'toys', mruTools: ['tray', 'card', 'd6'], maxOthers: 2,
+    })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const labels = labelsOf(div)
+    expect(labels).toEqual(['Select', 'Tray', 'Card', 'More tools'])
+  })
+
+  test('mobile-sized budget (maxOthers=3) shows Select + Ellipsis + 3 others', () => {
+    const html = pillHTML({
+      selectionActive: false, activeTool: 'select', tools: TOYS_TOOLS,
+      layer: 'toys', maxOthers: 3,
+    })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const labels = labelsOf(div)
+    expect(labels.length).toBe(5) // Select + 3 others + Ellipsis
+    expect(labels[0]).toBe('Select')
+    expect(labels[labels.length - 1]).toBe('More tools')
+  })
+
+  test('no maxOthers (desktop) shows every tool in the layer', () => {
+    const html = pillHTML({
+      selectionActive: false, activeTool: 'select', tools: TOYS_TOOLS, layer: 'toys',
+    })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const labels = labelsOf(div)
+    expect(labels).toEqual(['Select', 'D6', 'D20', 'Card', 'Tray', 'More tools'])
   })
 })
 

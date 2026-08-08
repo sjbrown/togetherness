@@ -56,6 +56,9 @@ export const ICON_DEFS = {
   // Duplicated from 'edit-tab' — same pencil glyph, used for the pill/toy-menu
   // "Edit" action. May diverge from the panel tab icon later.
   'edit':     '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
+  // Three-dot "more" glyph — the pill's no-selection section 4, opens the
+  // full Tools Panel.
+  'ellipsis': '<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/>',
   // Static 24x24 version of the canvas-space action-affordance asterisk
   // (see drawAsteriskGlyph below) — three spokes 120° apart, same shape,
   // fixed size. Used for a toy's menu (namespace) actions in the pill.

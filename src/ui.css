@@ -341,7 +341,7 @@ html, body {
   width: 4px; height: 4px; border-radius: 50%; background: var(--primary); display: none;
 }
 .ico.active .active-dot { display: block; }
-.pill-sep { width: 0.5px; height: 24px; background: var(--border-2); margin: 0 1px; flex-shrink: 0; }
+.pill-sep { width: 2px; height: 24px; background: var(--border-2); margin: 0 1px; flex-shrink: 0; }
 
 /* ── Tool-options popover (above pill) ────────────────────── */
 #toolOpts {
@@ -721,10 +721,3 @@ svg.tt-icon-letter {
   0%   { transform: translate(0px, 0px); opacity: 1; }
   100% { transform: translate(var(--tx), var(--ty)); opacity: 0; }
 }
-
-/* Bowstring charge indicators — drawn on #overlay-layer from delight.js's
- * live gesture state. Opacity on the clone is set per-frame from JS (see
- * chargeOpacityFor): the layer is rebuilt every frame, so a CSS transition
- * here would restart from zero each time and never visibly progress. */
-.bowstring-charge-clone,
-.bowstring-charge-ring { pointer-events: none; }
