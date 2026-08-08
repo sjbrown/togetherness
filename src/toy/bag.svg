@@ -158,18 +158,19 @@
 var bag = {
 
   menu: {
+    'Take': {
+      eventName: 'bag_take',
+      applicable: (node) => { return bag._contents(node).length > 0 },
+      handler: function(evt) {
+        console.log('bag take', this)
+        bag._take(this)
+      },
+    },
     'Shake': {
       eventName: 'tray_roll',
       applicable: (node) => { return true },
       handler: function(evt) {
         return tray.roll_all(this)
-      },
-    },
-    'Take': {
-      eventName: 'bag_take',
-      applicable: (node) => { return bag._contents(node).length > 0 },
-      handler: function(evt) {
-        bag._take(this)
       },
     },
   },

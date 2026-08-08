@@ -36,12 +36,13 @@ vi.mock('../../src/ui.js', () => ({
 }))
 
 vi.mock('../../src/canvas.js', () => ({
-  init:            vi.fn(),
-  getView:         vi.fn(() => ({ x: 0, y: 0, scale: 1 })),
-  leaderId:        vi.fn(),
-  setParams:       vi.fn(),
-  setTool:         vi.fn(),
-  wireShapeClicks: vi.fn(),
+  init:                    vi.fn(),
+  getView:                 vi.fn(() => ({ x: 0, y: 0, scale: 1 })),
+  leaderId:                vi.fn(),
+  setParams:               vi.fn(),
+  setTool:                 vi.fn(),
+  wireShapeClicks:         vi.fn(),
+  syncBackgroundTransform: vi.fn(),
 }))
 
 const TOY_SVG = `<?xml version="1.0" encoding="UTF-8"?>

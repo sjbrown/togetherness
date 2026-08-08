@@ -48,12 +48,16 @@ export function init(appBus, svgElement) {
 
   // Collect every layer that pans/zooms with the view, in z-order.
   // New layers in index.html are picked up automatically — no changes here.
+  // #background-layer is deliberately excluded: it holds a 100%x100% rect
+  // that must stay pinned to the viewport (see applyViewTransform's
+  // #bg-pattern handling below) so panning never exposes empty space past
+  // its edge.
   _transformedLayers = [
-    '#background-layer',
     '#boundaries-positions-layer',
     '#toys-layer',
     '#drawing-layer',
     '#overlay-layer',
+    '#delight-layer',
   ].map(sel => svgElement.querySelector(sel)).filter(Boolean);
 
   _stageEl.addEventListener('pointerdown',  onPointerDown);
@@ -82,6 +86,12 @@ export function setParams(params) {
 }
 export function getView() { return { ..._view }; }
 
+// Re-applies the current view transform to #bg-pattern. Exported so app.js
+// can call it right after renderBackgroundLayer() rebuilds the pattern from
+// scratch — otherwise a freshly (re)created pattern briefly sits untransformed
+// until the next pan/zoom.
+export function syncBackgroundTransform() { applyViewTransform(); }
+
 export function resetView() {
   _view = { x: 0, y: 0, scale: 1 };
   applyViewTransform();
@@ -90,6 +100,14 @@ export function resetView() {
 function applyViewTransform() {
   const tf = `translate(${_view.x} ${_view.y}) scale(${_view.scale})`;
   for (const layer of _transformedLayers) layer.setAttribute('transform', tf);
+  // #background-layer's rect stays untransformed and pinned to the full
+  // viewport (see init()). To still read as panning/zooming with everything
+  // else, the tile pattern's own content moves instead of the rect that
+  // references it — patternTransform, not the layer's transform attribute.
+  // Queried fresh each call since renderBackgroundLayer() (app.js) rebuilds
+  // #bg-pattern from scratch whenever the background image/size changes.
+  const pattern = _svgEl?.querySelector('#bg-pattern');
+  if (pattern) pattern.setAttribute('patternTransform', tf);
   // Sync dot-grid background position (CSS custom property for the tile pattern)
   document.documentElement.style.setProperty('--bgx', _view.x + 'px');
   document.documentElement.style.setProperty('--bgy', _view.y + 'px');
