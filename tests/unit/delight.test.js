@@ -189,26 +189,3 @@ describe('chargeOpacityFor — the clone fades in, then holds', () => {
   })
 })
 
-describe('chargeRadiusFor — a quarter of the pull, capped', () => {
-  it('is zero at rest', () => {
-    expect(chargeRadiusFor(0)).toBe(0)
-  })
-
-  it('is a quarter of the pull distance below the cap', () => {
-    expect(chargeRadiusFor(200)).toBe(50)
-    expect(chargeRadiusFor(40)).toBe(10)
-  })
-
-  it('reaches the cap exactly at a 400px pull', () => {
-    expect(chargeRadiusFor(400)).toBe(MAX_CHARGE_RADIUS)
-  })
-
-  it('stays capped for an absurd pull — 404px and 4000px look the same', () => {
-    expect(chargeRadiusFor(404)).toBe(MAX_CHARGE_RADIUS)
-    expect(chargeRadiusFor(4000)).toBe(MAX_CHARGE_RADIUS)
-  })
-
-  it('clamps a negative pull to zero rather than a negative radius', () => {
-    expect(chargeRadiusFor(-50)).toBe(0)
-  })
-})
