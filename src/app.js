@@ -1931,6 +1931,10 @@ function renderBackgroundLayer() {
   rect.setAttribute('fill',           'url(#bg-pattern)');
   rect.setAttribute('pointer-events', 'none');
   layer.appendChild(rect);
+  // The pattern was just rebuilt from scratch, so it has no patternTransform
+  // yet — re-sync it to the current view so the tile doesn't jump to the
+  // origin if the table is panned/zoomed when the background changes.
+  Canvas.syncBackgroundTransform();
 }
 
 
