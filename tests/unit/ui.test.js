@@ -247,10 +247,10 @@ describe('pillHTML — no-selection 4-section layout', () => {
     expect(ellipsis.getAttribute('onclick')).toContain("UI.openSheet('tools')")
   })
 
-  test('on the toys layer, mruTool appears right after Select, before the rest of the palette', () => {
+  test('on the toys layer, mruTools appears right after Select, before the rest of the palette', () => {
     const html = pillHTML({
       selectionActive: false, activeTool: 'select', tools: TOYS_TOOLS,
-      layer: 'toys', mruTool: 'card',
+      layer: 'toys', mruTools: ['card'],
     })
     const div = document.createElement('div')
     div.innerHTML = html
@@ -259,21 +259,35 @@ describe('pillHTML — no-selection 4-section layout', () => {
     expect(labels[1]).toBe('Card')
   })
 
-  test('mruTool is de-duplicated out of the default palette section — appears only once', () => {
+  test('accumulates multiple MRU tools, most-recently-used leftmost', () => {
     const html = pillHTML({
       selectionActive: false, activeTool: 'select', tools: TOYS_TOOLS,
-      layer: 'toys', mruTool: 'card',
+      layer: 'toys', mruTools: ['tray', 'card', 'd6'],
+    })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const labels = labelsOf(div)
+    // mruTools is newest-first; that order is preserved left-to-right
+    // right after Select.
+    expect(labels.slice(0, 4)).toEqual(['Select', 'Tray', 'Card', 'D6'])
+  })
+
+  test('mruTools is de-duplicated out of the default palette section — each tool appears only once', () => {
+    const html = pillHTML({
+      selectionActive: false, activeTool: 'select', tools: TOYS_TOOLS,
+      layer: 'toys', mruTools: ['card', 'd6'],
     })
     const div = document.createElement('div')
     div.innerHTML = html
     const labels = labelsOf(div)
     expect(labels.filter(l => l === 'Card').length).toBe(1)
+    expect(labels.filter(l => l === 'D6').length).toBe(1)
   })
 
-  test('mruTool is ignored outside the toys layer — no MRU section on drawing', () => {
+  test('mruTools is ignored outside the toys layer — no MRU section on drawing', () => {
     const html = pillHTML({
       selectionActive: false, activeTool: 'select', tools: [SELECT_TOOL, RECT, CIRC],
-      layer: 'drawing', mruTool: 'rect',
+      layer: 'drawing', mruTools: ['rect'],
     })
     const div = document.createElement('div')
     div.innerHTML = html
@@ -283,12 +297,12 @@ describe('pillHTML — no-selection 4-section layout', () => {
     expect(labels).toEqual(['Select', 'Rect', 'Circle', 'More tools'])
   })
 
-  test('a stale mruTool from a different layer is dropped rather than shown wrongly', () => {
-    // mruTool 'rect' was set on the drawing layer; tools here are toys-layer
+  test('a stale MRU tool from a different layer is dropped rather than shown wrongly', () => {
+    // 'rect' was used on the drawing layer; tools here are toys-layer
     // only, so 'rect' isn't among them and must not appear at all.
     const html = pillHTML({
       selectionActive: false, activeTool: 'select', tools: TOYS_TOOLS,
-      layer: 'toys', mruTool: 'rect',
+      layer: 'toys', mruTools: ['rect'],
     })
     const div = document.createElement('div')
     div.innerHTML = html
@@ -296,22 +310,28 @@ describe('pillHTML — no-selection 4-section layout', () => {
     expect(labels).not.toContain('Rect')
   })
 
-  test('maxOthers caps total MRU+palette slots, MRU winning the tie', () => {
+  test('maxOthers caps total MRU+palette slots, MRU winning ties in its own recency order', () => {
     const html = pillHTML({
       selectionActive: false, activeTool: 'select', tools: TOYS_TOOLS,
-      layer: 'toys', mruTool: 'tray', maxOthers: 2,
+      layer: 'toys', mruTools: ['tray', 'card'], maxOthers: 2,
     })
     const div = document.createElement('div')
     div.innerHTML = html
     const labels = labelsOf(div)
-    // Select + ellipsis are not counted against the budget; MRU (Tray)
-    // always gets a slot, leaving exactly 1 more for the palette.
-    expect(labels).toContain('Select')
-    expect(labels).toContain('Tray')
-    expect(labels).toContain('More tools')
-    const nonBudgetLabels = new Set(['Select', 'More tools', 'Tray'])
-    const paletteShown = labels.filter(l => !nonBudgetLabels.has(l))
-    expect(paletteShown.length).toBe(1)
+    // Select + ellipsis are not counted against the budget; both MRU
+    // entries fill the entire budget, leaving no room for the palette.
+    expect(labels).toEqual(['Select', 'Tray', 'Card', 'More tools'])
+  })
+
+  test('maxOthers smaller than the MRU list truncates MRU itself, still most-recent first', () => {
+    const html = pillHTML({
+      selectionActive: false, activeTool: 'select', tools: TOYS_TOOLS,
+      layer: 'toys', mruTools: ['tray', 'card', 'd6'], maxOthers: 2,
+    })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const labels = labelsOf(div)
+    expect(labels).toEqual(['Select', 'Tray', 'Card', 'More tools'])
   })
 
   test('mobile-sized budget (maxOthers=3) shows Select + Ellipsis + 3 others', () => {
