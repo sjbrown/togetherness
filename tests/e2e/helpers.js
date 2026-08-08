@@ -15,19 +15,36 @@
  */
 
 /**
+ * The app resolves its signaling server from localStorage (see
+ * src/signaling.js: SIGNALING_KEY), falling back to a host-based default
+ * that only points at localhost when the page is actually served from
+ * "localhost". Tests are served from whatever host the harness picked —
+ * a container name under Docker, a bare IP in CI — so we seed the
+ * override before any script runs rather than relying on that default.
+ */
+async function seedSignaling(page, signalingUrl) {
+  if (!signalingUrl) return;
+  await page.addInitScript(url => {
+    localStorage.setItem('tt_signaling_server', url);
+  }, signalingUrl);
+}
+
+/**
  * Navigate page with no hash — it becomes the creator and mints a table
  * id. Returns the room id once the hash has actually been set, so callers
  * can assert on the creator-alone state before anyone joins.
  */
 export async function openAsCreator(page, { appUrl, signalingUrl }) {
-  await page.goto(`${appUrl}/?signaling=${signalingUrl}`);
+  await seedSignaling(page, signalingUrl);
+  await page.goto(`${appUrl}/`);
   await page.waitForFunction(() => location.hash.length > 1);
   return page.evaluate(() => location.hash.slice(1));
 }
 
 /** Navigate page to an existing room — a real joiner, never a creator. */
 export async function joinRoom(page, room, { appUrl, signalingUrl }) {
-  await page.goto(`${appUrl}/?signaling=${signalingUrl}#${room}`);
+  await seedSignaling(page, signalingUrl);
+  await page.goto(`${appUrl}/#${room}`);
 }
 
 /** openAsCreator + joinRoom, for the common case with nothing in between. */
