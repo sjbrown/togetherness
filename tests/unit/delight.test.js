@@ -8,6 +8,9 @@ import {
   stringPathD,
   bowstringOrigin,
   hitTestBowstring,
+  chargeOpacityFor,
+  chargeRadiusFor,
+  MAX_CHARGE_RADIUS,
 } from '../../src/delight.js'
 
 describe('spinSpeedFor — fast at the origin, stopped at max pull', () => {
@@ -152,5 +155,60 @@ describe('hitTestBowstring', () => {
     // units out — a miss at scale 1 — now lands inside it.
     expect(hitTestBowstring(geo, origin.x + 20, origin.y, 1)).toBe(false)
     expect(hitTestBowstring(geo, origin.x + 20, origin.y, 0.5)).toBe(true)
+  })
+})
+
+
+describe('chargeOpacityFor — the clone fades in, then holds', () => {
+  it('is fully transparent the instant the press lands', () => {
+    expect(chargeOpacityFor(0)).toBe(0)
+  })
+
+  it('is half faded in at 250ms', () => {
+    expect(chargeOpacityFor(250)).toBeCloseTo(0.5)
+  })
+
+  it('reaches full opacity at exactly 500ms', () => {
+    expect(chargeOpacityFor(500)).toBe(1)
+  })
+
+  it('holds at full opacity indefinitely rather than looping or fading back', () => {
+    expect(chargeOpacityFor(5_000)).toBe(1)
+    expect(chargeOpacityFor(60_000)).toBe(1)
+  })
+
+  it('clamps a negative elapsed time to transparent', () => {
+    expect(chargeOpacityFor(-100)).toBe(0)
+  })
+
+  it('increases monotonically across the fade', () => {
+    const steps = [0, 100, 200, 300, 400, 500].map(chargeOpacityFor)
+    for (let i = 1; i < steps.length; i++) {
+      expect(steps[i]).toBeGreaterThan(steps[i - 1])
+    }
+  })
+})
+
+describe('chargeRadiusFor — a quarter of the pull, capped', () => {
+  it('is zero at rest', () => {
+    expect(chargeRadiusFor(0)).toBe(0)
+  })
+
+  it('is a quarter of the pull distance below the cap', () => {
+    expect(chargeRadiusFor(200)).toBe(50)
+    expect(chargeRadiusFor(40)).toBe(10)
+  })
+
+  it('reaches the cap exactly at a 400px pull', () => {
+    expect(chargeRadiusFor(400)).toBe(MAX_CHARGE_RADIUS)
+  })
+
+  it('stays capped for an absurd pull — 404px and 4000px look the same', () => {
+    expect(chargeRadiusFor(404)).toBe(MAX_CHARGE_RADIUS)
+    expect(chargeRadiusFor(4000)).toBe(MAX_CHARGE_RADIUS)
+  })
+
+  it('clamps a negative pull to zero rather than a negative radius', () => {
+    expect(chargeRadiusFor(-50)).toBe(0)
   })
 })
