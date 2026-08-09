@@ -162,3 +162,24 @@ export function drawAsteriskGlyph(cx, cy, side, parent) {
     }));
   }
 }
+
+/**
+ * drawCrosshairGlyph(cx, cy, arm, parent, color)
+ * A plain "+" — two lines, matching the OS crosshair cursor shape — used
+ * by overlay.js's add-cursor to mark where a peer is about to place a
+ * toy/drawing/boundary-position element. `arm` is the half-length of each
+ * line. Unlike drawAsteriskGlyph, colour is per-caller (the placing
+ * player's own colour), not a fixed CSS var. Appends directly to `parent`;
+ * returns nothing.
+ */
+export function drawCrosshairGlyph(cx, cy, arm, parent, color) {
+  const strokeWidth = Math.max(1.5, arm * 0.12);
+  const attrs = {
+    stroke:           color,
+    'stroke-width':   strokeWidth,
+    'stroke-linecap': 'round',
+    class:            'addCursorGlyph',
+  };
+  parent.appendChild(svgEl('line', { x1: cx - arm, y1: cy,       x2: cx + arm, y2: cy,       ...attrs }));
+  parent.appendChild(svgEl('line', { x1: cx,       y1: cy - arm, x2: cx,       y2: cy + arm, ...attrs }));
+}

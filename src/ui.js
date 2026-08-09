@@ -45,6 +45,20 @@ function iconFor(toolDef) {
   return _letterIcon(toolDef.label);
 }
 
+// getToolPreviewMarkup(toolDef) -- like iconFor, but for callers that want
+// the actual fetched SVG document (or nothing) rather than a letter-icon
+// fallback. Used by Overlay to build the add-cursor placement preview —
+// for toy tools toolDef.iconUrl already points at the toy's own full SVG,
+// so this doubles as "a clone of the currently selected toy"; for
+// drawing/boundary tools it's just their icon glyph. Returns null if the
+// tool has no iconUrl or the fetch hasn't resolved (or failed) yet — the
+// caller should skip the preview in that case rather than show a letter.
+export function getToolPreviewMarkup(toolDef) {
+  if (!toolDef?.iconUrl) return null;
+  const cached = _iconCache.get(toolDef.iconUrl);
+  return (cached && cached !== 'pending' && cached !== 'error') ? cached : null;
+}
+
 function _letterIcon(label) {
   const letter = (label ?? '?')[0].toUpperCase();
   return `<svg class="tt-icon-letter" width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><title>${label}</title><text x="11" y="16" text-anchor="middle" font-size="14" font-family="ui-sans-serif,sans-serif" fill="currentColor">${letter}</text></svg>`;

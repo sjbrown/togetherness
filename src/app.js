@@ -705,6 +705,15 @@ const App = {
   getTool:         (name)  => _toolById[name] ?? null,
   getToolOptions:  (name)  => _toolById[name]?.options ?? [],
   getToolParams:   (name)  => _toolParams[name] ?? {},
+  // Cached SVG markup for a tool's pill icon (fetched via ui.js's iconUrl
+  // cache) — for toy tools this is the actual full toy SVG, so it doubles
+  // as a "clone of the currently selected toy"; for drawing/boundary tools
+  // it's just the icon glyph. Used by Overlay's add-cursor preview. Returns
+  // null if the tool has no iconUrl or the fetch hasn't resolved yet.
+  getToolPreviewMarkup: (name) => {
+    const def = _toolById[name];
+    return def ? UI.getToolPreviewMarkup(def) : null;
+  },
   // Returns the full ttStateSchema for a tool — for drawing tools this comes from
   // SHAPE_TYPES[name].schema; for other tools it falls back to a minimal schema
   // built from the tool def's options array.
@@ -779,6 +788,22 @@ const App = {
   clearBoxCandidates: () => {
     Overlay.clearHoverCandidates();
     _awareness.setLocalStateField('candidates', null);
+  },
+
+  // ── Add-cursor (awareness crosshair + placement preview) ──────────────────
+  // Called by canvas.js on every pointermove while a non-'select' tool is
+  // active — including while just hovering, before any gesture has
+  // started. Local rendering is immediate (Overlay draws it straight away,
+  // same as a drag ghost); the same position + tool is also broadcast via
+  // awareness so peers see this player's crosshair and a preview of what
+  // they're about to place, in this player's colour.
+  updateAddCursor: (x, y, tool) => {
+    _awareness.setLocalStateField('cursor', { x, y, tool });
+    Overlay.updateLocalAddCursor(x, y, tool);
+  },
+  clearAddCursor: () => {
+    _awareness.setLocalStateField('cursor', null);
+    Overlay.clearLocalAddCursor();
   },
   getViewScale:    () => Canvas.getView().scale,
   isOffline:       () => _offline,
@@ -1694,6 +1719,7 @@ const App = {
     _activeTool = name;
     Canvas.setTool(name, _toolParams[name] ?? {});
     UI.onToolChanged(name);
+    if (name === 'select') App.clearAddCursor();
   },
   setToolParam: (toolName, key, value) => {
     const p = _toolParams[toolName] ?? (_toolParams[toolName] = {});

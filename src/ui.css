@@ -286,9 +286,9 @@ html, body {
 #stage[data-tool="select"][data-select-mode="pan"]   { cursor: grab; }
 #stage[data-tool="select"][data-select-mode="pan"].dragging { cursor: grabbing; }
 #stage[data-tool="select"][data-select-mode="multi"] { cursor: crosshair; }
-#stage[data-tool="rect"]    { cursor: crosshair; }
-#stage[data-tool="circle"]  { cursor: crosshair; }
-#stage[data-tool="pen"]     { cursor: crosshair; }
+/* Any non-select tool (drawing, toy, or boundary/position) is "adding" —
+   crosshair by default; text is the one deliberate exception below. */
+#stage[data-tool]:not([data-tool="select"]):not([data-tool="text"]) { cursor: crosshair; }
 #stage[data-tool="text"]    { cursor: text; }
 
 #select-preview {

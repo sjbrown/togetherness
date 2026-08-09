@@ -64,6 +64,7 @@ export function init(appBus, svgElement) {
   _stageEl.addEventListener('pointermove',  onPointerMove);
   _stageEl.addEventListener('pointerup',    onPointerUp);
   _stageEl.addEventListener('pointercancel',onPointerUp);
+  _stageEl.addEventListener('pointerleave', onPointerLeaveStage);
   _stageEl.addEventListener('wheel', onWheel, { passive: false });
 
   // Track shift key for cursor updates — shift implies box-select mode
@@ -138,6 +139,13 @@ function onShiftKey(e) {
   if (held === _shiftHeld) return;
   _shiftHeld = held;
   updateCursor();
+}
+
+// Clears the add-cursor when the pointer leaves the canvas — otherwise it
+// would sit stranded at its last position instead of following the actual
+// (now off-canvas) OS cursor.
+function onPointerLeaveStage() {
+  if (ToolMode.tool !== 'select') App.clearAddCursor();
 }
 
 // ── Layer-aware hit testing ───────────────────────────────────────────────────
@@ -335,6 +343,16 @@ function onPointerDown(e) {
 }
 
 function onPointerMove(e) {
+  // Add-cursor: tracks the pointer whenever a non-'select' tool is active,
+  // including plain hover with no button down — deliberately runs before
+  // the pointer-tracking guard below, which only covers pointers already
+  // captured by an in-progress gesture. See overlay.js's "Add-cursor
+  // system" doc.
+  if (ToolMode.tool !== 'select') {
+    const p = toCanvas(e.clientX, e.clientY);
+    App.updateAddCursor(p.x, p.y, ToolMode.tool);
+  }
+
   if (!ToolMode._pointers.has(e.pointerId)) return;
   ToolMode._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 

@@ -53,13 +53,21 @@
  *
  * Resize ghost system:
  *   Same placeholder-plus-live-preview shape as the drag ghost
+ *
+ * Add-cursor system:
+ *   While a non-'select' tool is active, tracks the pointer with a small
+ *   crosshair (in the placing player's colour) plus a dim clone preview of
+ *   what's about to be placed. Local: drawn immediately, offline-safe, same
+ *   rationale as the drag ghost. Remote: driven by awareness's `cursor`
+ *   field. Deliberately plain — canvas-space constants, no scale
+ *   compensation, no animation.
  */
 
 import { getAllContestedElementIds } from './soft-lock.js';
 import { colorMatrixValues } from './toys.js';
 import { LOCAL_ACTION_FILTER_ID } from './defs.js';
 import { getBowstringState, chargeOpacityFor, chargeRadiusFor, bowstringOrigin } from './delight.js';
-import { drawAsteriskGlyph } from './icons.js';
+import { drawAsteriskGlyph, drawCrosshairGlyph } from './icons.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const HANDLE_SIZE = 12;  // px in canvas-space
@@ -142,6 +150,15 @@ const _dragGhosts = new Map();
 // Remote drags — rebuilt from awareness on each syncFromAwareness() call.
 // Map<elId, { peerId, bboxX, bboxY, color, gradId }>
 const _remoteDrags = new Map();
+
+// Remote peers' "adding" cursors — clientId -> { x, y, tool, color }.
+// Rebuilt from awareness on each syncFromAwareness() call.
+const _remoteAddCursors = new Map();
+
+// Local "adding" cursor — drawn immediately (not round-tripped through
+// awareness), same rationale as the drag ghost above: works fully offline.
+// { tool, groupEl } | null.
+let _localAddCursor = null;
 
 // ── Peer gradient registry ───────────────────────────────────────────────────
 // Each peer broadcasts a color gradient
@@ -310,6 +327,7 @@ export function syncFromAwareness(awarenessStates, myClientId) {
     if (entry.kind === 'remote' || entry.kind === 'locked') SelectionMode.delete(id);
   }
   _remoteDrags.clear();
+  _remoteAddCursors.clear();
 
   const nextRemoteBowstrings = new Map();
   const liveClientIds = new Set();
@@ -382,6 +400,17 @@ export function syncFromAwareness(awarenessStates, myClientId) {
           color: state.color ?? '#888',
           gradId,
         });
+      });
+    }
+
+    // Remote add-cursor — peer is hovering/placing with a non-'select'
+    // tool active. See "Add-cursor system" in the file header.
+    if (state?.cursor && typeof state.cursor.x === 'number' && typeof state.cursor.y === 'number' && state.cursor.tool) {
+      _remoteAddCursors.set(clientId, {
+        x:     state.cursor.x,
+        y:     state.cursor.y,
+        tool:  state.cursor.tool,
+        color: state.color ?? '#888',
       });
     }
   });
@@ -736,6 +765,7 @@ export function render() {
   }
 
   renderBowstringCharge(scale);
+  renderAddCursors();
 }
 
 // ── Bowstring charge indicators ──────────────────────────────────────────────
@@ -1055,6 +1085,105 @@ function renderDropTargetHover(geo, scale) {
 }
 
 // ── SVG element factory ─────────────────────────────────────────────────────
+// ── Add-cursor (awareness crosshair + placement preview) ─────────────────────
+// See "Add-cursor system" in the file header.
+const ADD_CURSOR_ARM           = 12; // crosshair half-length, canvas-space units
+const ADD_CURSOR_GAP           = 8;  // gap between crosshair and preview clone
+const ADD_CURSOR_CLONE_SIZE    = 32; // per spec: the clone's host <svg> is 32x32
+const ADD_CURSOR_CLONE_OPACITY = 0.25;
+
+// Cache of parsed preview templates, keyed by tool name — avoids re-parsing
+// the icon markup string on every pointermove. Only successful builds are
+// cached; a not-yet-fetched result (App.getToolPreviewMarkup returns null)
+// is retried on the next call rather than permanently remembered as
+// "no preview", since the underlying fetch (kicked off by ui.js the first
+// time that tool's pill icon rendered) may still be in flight.
+const _addCursorPreviewTemplates = new Map(); // toolName -> SVGSVGElement
+
+function _addCursorPreviewTemplate(toolName) {
+  const cached = _addCursorPreviewTemplates.get(toolName);
+  if (cached) return cached;
+
+  const markup = App.getToolPreviewMarkup(toolName);
+  if (!markup) return null;
+
+  const src = new DOMParser().parseFromString(markup, 'image/svg+xml').documentElement;
+  if (!src || src.nodeName !== 'svg') return null;
+
+  const template = el('svg', {
+    width:   ADD_CURSOR_CLONE_SIZE,
+    height:  ADD_CURSOR_CLONE_SIZE,
+    viewBox: src.getAttribute('viewBox')
+      || `0 0 ${src.getAttribute('width') || 24} ${src.getAttribute('height') || 24}`,
+    class:   'addCursorClone',
+  });
+  // Scripts are stripped — this is a decorative preview, not a live toy
+  // instance. Real placement (App.commitToy) is what actually activates a
+  // toy's namespace.
+  for (const child of Array.from(src.childNodes)) {
+    if (child.nodeName?.toLowerCase() === 'script') continue;
+    template.appendChild(document.importNode(child, true));
+  }
+  _addCursorPreviewTemplates.set(toolName, template);
+  return template;
+}
+
+// Builds one add-cursor group: a crosshair at the local origin, plus (if a
+// preview is available) the clone svg positioned to its right. Position on
+// the canvas is left to the caller (a transform on the returned group).
+function _buildAddCursorGroup(tool, color) {
+  const groupEl = el('g', { class: 'add-cursor' });
+  drawCrosshairGlyph(0, 0, ADD_CURSOR_ARM, groupEl, color);
+  const template = _addCursorPreviewTemplate(tool);
+  if (template) {
+    const cloneEl = template.cloneNode(true);
+    cloneEl.style.color = color; // tints any currentColor-stroked icon paths
+    cloneEl.setAttribute('x', ADD_CURSOR_ARM + ADD_CURSOR_GAP);
+    cloneEl.setAttribute('y', -ADD_CURSOR_CLONE_SIZE / 2);
+    cloneEl.setAttribute('opacity', ADD_CURSOR_CLONE_OPACITY);
+    groupEl.appendChild(cloneEl);
+  }
+  return groupEl;
+}
+
+/**
+ * Update the local add-cursor position. Called by App on every
+ * pointermove while a non-'select' tool is active — including while just
+ * hovering, before any gesture has started. Rebuilds the group only when
+ * the tool changes (a new preview clone is needed); otherwise just
+ * repositions the existing one.
+ */
+export function updateLocalAddCursor(x, y, tool) {
+  if (!_layerEl) return;
+  if (!_localAddCursor || _localAddCursor.tool !== tool) {
+    _localAddCursor?.groupEl.remove();
+    const groupEl = _buildAddCursorGroup(tool, App.getMyColor());
+    _localAddCursor = { tool, groupEl };
+    _layerEl.appendChild(groupEl);
+  }
+  _localAddCursor.groupEl.setAttribute('transform', `translate(${x}, ${y})`);
+}
+
+// Ends the local add-cursor (tool switched back to 'select', or pointer
+// left the canvas).
+export function clearLocalAddCursor() {
+  _localAddCursor?.groupEl.remove();
+  _localAddCursor = null;
+}
+
+// Re-appends the local add-cursor group (survives the innerHTML wipe at the
+// top of render(), same as the drag/resize ghosts) and draws one group per
+// remote peer currently in an add-tool, from _remoteAddCursors. Called at
+// the end of render() — z-top, like the bowstring charge.
+function renderAddCursors() {
+  if (_localAddCursor) _layerEl.appendChild(_localAddCursor.groupEl);
+  for (const cursor of _remoteAddCursors.values()) {
+    const groupEl = _buildAddCursorGroup(cursor.tool, cursor.color);
+    groupEl.setAttribute('transform', `translate(${cursor.x}, ${cursor.y})`);
+    _layerEl.appendChild(groupEl);
+  }
+}
+
 function el(tag, attrs) {
   const node = document.createElementNS(SVGNS, tag);
   for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
