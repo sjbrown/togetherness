@@ -210,10 +210,6 @@ var supply = {
     },
   },
 
-  _getTarget: function(elem) {
-    const itemId = elem.getAttribute('data-below')
-  },
-
   _take: function(elem) {
     const itemId = elem.getAttribute('data-below')
     if (!itemId) {
