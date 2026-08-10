@@ -373,6 +373,13 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
   // Keyboard shortcuts
   window.addEventListener('keydown', onKeyDown);
 
+  // Toy request bus — toy handler scripts (running inside placed <svg>
+  // subtrees) never call into app.js directly; they dispatch synchronous
+  // CustomEvents on `document`. See src/toy/supply.svg (`supply._event`)
+  // for the calling convention. Contract: the listener sets exactly one
+  // of detail.retval / detail.error.
+  bindToyRequestBus();
+
   // CRDT observers
   // Layers use observeDeep so attribute changes trigger renderDoc on
   // every client
@@ -1933,6 +1940,69 @@ function addUndoHistory(label) {
 }
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
+/**
+ * Wire the toy-authored request bus — see boot()'s call site for the
+ * calling convention this satisfies. Called once from boot().
+ */
+function bindToyRequestBus() {
+  document.addEventListener('toy:clone', (e) => {
+    const { id: sourceId, sourceEl } = e.detail;
+    const layerEl = _svgEl?.querySelector('#toys-layer');
+    if (!layerEl) { e.detail.error = 'toys layer not ready'; return; }
+    const subjectEl = Toys.findToyDom(layerEl, sourceId);
+    if (!subjectEl) { e.detail.error = `toy not found: ${sourceId}`; return; }
+
+    // Placement: prefer a `.tt_target` marker inside the requesting toy's
+    // own markup (mapped into canvas space); otherwise default to that
+    // toy's own centre. The requesting toy never computes canvas-space
+    // coordinates itself — see chat notes on why that boundary matters.
+    const target = sourceEl?.querySelector?.('.tt_target');
+    const { x, y } = target
+      ? Toys.getInnerAnchor(sourceEl, target)
+      : Toys.getAnchor(sourceEl);
+
+    const newId = Toys.newToyId();
+    let result;
+    try {
+      result = Toys.cloneToy(_ydoc, layerEl, sourceId, newId, x, y, { authorId: _myId, tableId: _tableId });
+    } catch (err) {
+      e.detail.error = err.message;
+      return;
+    }
+    // cloneToy is fully synchronous (no template fetch, unlike placeToy),
+    // so — unlike toy:add's old flow — retval is trustworthy immediately.
+    e.detail.retval = { id: newId };
+
+    // initialize() re-runs on every instance the clone produced (root +
+    // any nested toys), each as its own separate gesture — same pattern
+    // App.commitToy already uses for a fresh placement. The harness has
+    // no idea what a toyType's handler-owned data-* attributes mean
+    // (stacking pointers, etc.), so it can't reset them itself; that's
+    // what each toyType's own initialize(elem) hook is for. See
+    // Toys.cloneToy's doc comment for the full contract.
+    for (const { toyType, el } of result.cloned) {
+      Toys.initializeToy(_ydoc, layerEl, el, toyType, _myId, _tableId);
+    }
+
+    _lastActionScope = 'toys';
+    addHistory(`cloned ${subjectEl.getAttribute('data-toy-type')} ${newId}`, { elType: 'toy' });
+    App.addLog(`cloned ${sourceId} → ${newId}`, 'local');
+  });
+
+  // Mirrors console.log/warn/error by name — toy handlers dispatch bare
+  // 'log' | 'warn' | 'error', unnamespaced, on purpose (see chat notes).
+  // UI.toast() already mirrors 'warn'/'error' kinds to console.warn and
+  // ui.css already styles .toast.info/.warn/.error, so no ui.js or
+  // ui.css changes were needed for this.
+  const TOAST_KIND = { log: 'info', warn: 'warn', error: 'error' };
+  for (const evName of Object.keys(TOAST_KIND)) {
+    document.addEventListener(evName, (e) => {
+      UI.toast(e.detail.msg, TOAST_KIND[evName]);
+      e.detail.retval = {};
+    });
+  }
+}
+
 function onKeyDown(e) {
   if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
   if (e.key === 'r' || e.key === 'R') App.setTool('rect');

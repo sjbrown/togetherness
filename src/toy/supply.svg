@@ -1,0 +1,317 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   width="100"
+   height="150"
+   viewBox="0 0 100 150"
+   id="supply"
+   class="supply tt-mode-resize tt-mode-rummage"
+   version="1.1"
+   >
+  <defs
+     id="defs5">
+    <linearGradient
+       id="linearGradient1745">
+      <stop
+         style="stop-color:#ffffff;stop-opacity:1;"
+         offset="0"
+         id="stop1741" />
+      <stop
+         style="stop-color:#ffffff;stop-opacity:0;"
+         offset="1"
+         id="stop1743" />
+    </linearGradient>
+    <filter
+       class="tt_color_filter"
+       id="app-filter-colorize"
+       color-interpolation-filters="sRGB"
+       x="-0.0093018432"
+       y="-0.01048486"
+       width="1.0186037"
+       height="1.0209697">
+      <feColorMatrix
+         id="recolorize-filter-matrix"
+         type="matrix"
+         values="1.0 0.0 0.0 0.0  0.0                  1.0 0.0 0.0 0.0  0.0                  1.0 0.0 0.0 0.0  0.0                  0.0 0.0 0.0 1.0  0.0" />
+    </filter>
+    <linearGradient
+       xlink:href="#linearGradient60894"
+       id="linearGradient60896"
+       x1="124.58331"
+       y1="105.76905"
+       x2="124.58331"
+       y2="117.31888"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="translate(-112.21034,-90.522263)" />
+    <linearGradient
+       id="linearGradient60894">
+      <stop
+         style="stop-color:#787878;stop-opacity:1;"
+         offset="0"
+         id="stop60890" />
+      <stop
+         style="stop-color:#3e3e3e;stop-opacity:1;"
+         offset="1"
+         id="stop60892" />
+    </linearGradient>
+    <linearGradient
+       xlink:href="#linearGradient11728"
+       id="linearGradient11730"
+       x1="126.26675"
+       y1="116.38761"
+       x2="126.26675"
+       y2="93.988335"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="translate(-112.21034,-90.522263)" />
+    <linearGradient
+       id="linearGradient11728">
+      <stop
+         style="stop-color:#000000;stop-opacity:1;"
+         offset="0"
+         id="stop11724" />
+      <stop
+         style="stop-color:#8b8b8b;stop-opacity:1;"
+         offset="1"
+         id="stop11726" />
+    </linearGradient>
+    <radialGradient
+       xlink:href="#linearGradient_supply_bottom"
+       id="radialGradient21176"
+       cx="126.61951"
+       cy="103.49127"
+       fx="126.61951"
+       fy="103.49127"
+       r="9.4266262"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="matrix(0.87066376,0,0,1,-95.833849,-90.522263)" />
+    <linearGradient
+       id="linearGradient_supply_bottom">
+      <stop
+         style="stop-color:#000000;stop-opacity:1;"
+         offset="0"
+         id="stop21170" />
+      <stop
+         style="stop-color:#181818;stop-opacity:1;"
+         offset="0.82457083"
+         id="stop41926" />
+      <stop
+         style="stop-color:#2b2b2b;stop-opacity:1;"
+         offset="1"
+         id="stop21172" />
+    </linearGradient>
+    <linearGradient
+       xlink:href="#linearGradient49498"
+       id="linearGradient49500"
+       x1="126.25869"
+       y1="93.833717"
+       x2="126.25869"
+       y2="112.78059"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="translate(-112.21034,-90.522263)" />
+    <linearGradient
+       id="linearGradient49498">
+      <stop
+         style="stop-color:#626262;stop-opacity:1;"
+         offset="0"
+         id="stop49494" />
+      <stop
+         style="stop-color:#cccccc;stop-opacity:0.09561406;"
+         offset="1"
+         id="stop49496" />
+    </linearGradient>
+    <linearGradient
+       xlink:href="#linearGradient_white_to_trans"
+       id="linearGradient87248"
+       x1="127.17322"
+       y1="91.851143"
+       x2="127.17322"
+       y2="96.78344"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="matrix(0.8766596,0,0,1.0013461,-96.59304,-90.848179)" />
+    <linearGradient
+       id="linearGradient_white_to_trans">
+      <stop
+         style="stop-color:#ffffff;stop-opacity:1;"
+         offset="0"
+         id="stop87242" />
+      <stop
+         style="stop-color:#ffffff;stop-opacity:0;"
+         offset="1"
+         id="stop87244" />
+    </linearGradient>
+    <linearGradient
+       xlink:href="#linearGradient_black_to_trans"
+       id="linearGradient101566"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="matrix(1.0488533,0,0,1.082466,-147.21445,-103.19929)"
+       x1="154.03436"
+       y1="115.18021"
+       x2="154.03436"
+       y2="123.02574" />
+    <linearGradient
+       id="linearGradient_black_to_trans">
+      <stop
+         style="stop-color:#000000;stop-opacity:0;"
+         offset="0"
+         id="stop101646" />
+      <stop
+         style="stop-color:#000000;stop-opacity:1;"
+         offset="1"
+         id="stop101648" />
+    </linearGradient>
+    <linearGradient
+       xlink:href="#linearGradient60894"
+       id="linearGradient929"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="translate(-112.21034,-90.522263)"
+       x1="124.58331"
+       y1="105.76905"
+       x2="124.58331"
+       y2="117.31888" />
+    <linearGradient
+       xlink:href="#linearGradient11728"
+       id="linearGradient931"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="translate(-112.21034,-90.522263)"
+       x1="126.26675"
+       y1="116.38761"
+       x2="126.26675"
+       y2="93.988335" />
+    <radialGradient
+       xlink:href="#linearGradient1745"
+       id="radialGradient1747"
+       cx="51.906639"
+       cy="22.026314"
+       fx="51.906639"
+       fy="22.026314"
+       r="10.001824"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="translate(-1.9066375)" />
+  </defs>
+  <script
+     type="text/javascript"
+     data-namespace="supply"
+     id="script_supply"><![CDATA[
+
+var supply = {
+
+  menu: {
+    'Take': {
+      eventName: 'supply_take',
+      applicable: (node) => { 
+         return node.getAttribute('data-below')
+      },
+      handler: function(evt) {
+        console.log('supply take', this)
+        supply._take(this)
+      },
+    },
+  },
+
+  _getTarget: function(elem) {
+    const itemId = elem.getAttribute('data-below')
+  },
+
+  _take: function(elem) {
+    const itemId = elem.getAttribute('data-below')
+    if (!itemId) {
+      supply._event('warn', {msg: 'Supply needs a prototype toy'})
+      return
+    }
+    // Placement is the harness's call, not ours — it'll use our
+    // .tt_target marker if we have one, else its own judgement.
+    supply._event('toy:clone', {id: itemId, sourceEl: elem})
+  },
+
+  _event: function(evName, args) {
+    const detail = { ...args, retval: {} };
+    document.dispatchEvent(new CustomEvent(evName, { detail }));
+    if (detail.error) throw new Error(detail.error);
+    return detail.retval;
+  },
+
+  // Runs once at placement - including during clone (eg, from a supply)
+  initialize: function(elem) {
+    elem.setAttribute('data-below', '')
+    elem.setAttribute('data-above', '')
+  },
+
+  on_position_occupied: function(elem, posId, ownerId, movingId) {
+    elem.setAttribute('data-below', movingId)
+  },
+
+  on_position_vacated: function(elem, posId, ownerId, movingId) {
+    elem.setAttribute('data-below', '')
+  },
+
+}
+
+  ]]></script>
+
+  <g class="shadow" >
+    <ellipse
+       style="fill:#000000;fill-opacity:0.4;"
+       cx="14.409167"
+       cy="21.181854"
+       rx="12.322562"
+       ry="8.8221397"
+       transform="matrix(2.7631741,0,0,1.8078993,10.184965,49.381819)" />
+    <ellipse
+       style="fill:#000000;fill-opacity:0.427726;stroke:none;stroke-width:0.207261;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers;filter:url(#app-filter-colorize)"
+       cx="14.409167"
+       cy="21.181854"
+       rx="12.322562"
+       ry="8.8221397"
+       transform="matrix(3.466124,0,0,2.3452375,0.05604118,24)" />
+  </g>
+  <g
+     class="supply_bag tt_colored"
+     filter="url(#app-filter-colorize)"
+   >
+    <circle
+       style="fill:url(#linearGradient60896);fill-opacity:1;stroke:url(#linearGradient11730);stroke-width:0.335149;stroke-dasharray:none;paint-order:stroke fill markers;filter:url(#app-filter-colorize)"
+       id="path11645"
+       cx="14.409167"
+       cy="14.409164"
+       r="13.859164"
+       transform="matrix(3.466124,0,0,3.1078806,0.05604118,2.424401)" />
+    <path
+       id="circle927"
+       style="fill:url(#linearGradient929);stroke:url(#linearGradient931);stroke-width:0.485028;paint-order:stroke fill markers;filter:url(#app-filter-colorize)"
+       transform="matrix(2.6543958,0,0,1.9376919,11.752368,47.874037)"
+       d="m 28.011969,16.136785 c 1e-6,7.654206 -5.948596,11.792273 -13.602802,11.792272 -7.6542053,0 -13.60968931,-4.140939 -13.60968876,-11.795144 10e-8,-7.6542043 6.04167486,-13.9825586 13.69587976,-13.9825586 7.654205,-6e-7 13.516611,6.3312257 13.516611,13.9854306 z"
+       />
+    <path
+       id="circle11699"
+       style="fill:url(#radialGradient21176);stroke:url(#linearGradient49500);stroke-width:0.35074;paint-order:stroke fill markers;filter:url(#app-filter-colorize)"
+       transform="matrix(3.466124,0,0,2.3452375,0.05604118,44)"
+       d="m 23.835793,14.409164 c 0,5.206182 -4.220444,9.426627 -9.426626,9.426627 -5.2061821,0 -9.4266263,-4.220445 -9.4266259,-9.426627 2e-7,-5.2061816 4.1548437,-7.299395 9.3610249,-7.2993952 5.206182,10e-8 9.492227,2.0932135 9.492227,7.2993952 z"
+       />
+    <ellipse
+       style="fill:none;fill-opacity:1;stroke:url(#linearGradient87248);stroke-width:0.164309;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers;filter:url(#app-filter-colorize)"
+       id="path87240"
+       cx="14.409167"
+       cy="15.89019"
+       rx="10.268847"
+       ry="11.908691"
+       transform="matrix(3.466124,0,0,2.3452375,0.05604118,44)" />
+    <ellipse
+       style="fill:#cccccc;stroke:#ffffff;stroke-width:1.00157;stroke-linecap:round;stroke-linejoin:round;paint-order:stroke fill markers;fill-opacity:0.5;stroke-opacity:1"
+       id="path1131"
+       class="tt_target"
+       cx="50"
+       cy="117.04456"
+       rx="16.071808"
+       ry="5.7634964" />
+  </g>
+
+  <g class="tt_positions" data-bounpos-type="pos-set" name="toy">
+    <circle
+       style="fill:url(#radialGradient1747);fill-opacity:1"
+       cx="50"
+       cy="22"
+       r="9.5" />
+   </g>
+</svg>
