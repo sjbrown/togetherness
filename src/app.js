@@ -1989,6 +1989,24 @@ function bindToyRequestBus() {
     App.addLog(`cloned ${sourceId} → ${newId}`, 'local');
   });
 
+  // A toy editing its own (or, in principle, another toy's — id is
+  // caller-given, not implicitly "self") color/name — e.g. supply
+  // borrowing a landed toy's color and restoring its own afterward. Goes
+  // through App.commitEdit rather than Toys.editDom directly so a
+  // script-driven edit gets exactly the same treatment a person's edit
+  // does (UI panel refresh included) — one edit path, not two.
+  document.addEventListener('toy:edit', (e) => {
+    const { id, color, name } = e.detail;
+    const layerEl = _svgEl?.querySelector('#toys-layer');
+    const toyEl = layerEl?.querySelector(`[data-toy-id="${id}"]`);
+    if (!toyEl) { e.detail.error = `toy not found: ${id}`; return; }
+    const editData = {};
+    if (color !== undefined) editData.color = color;
+    if (name  !== undefined) editData.name  = name;
+    App.commitEdit(id, editData);
+    e.detail.retval = {};
+  });
+
   // Mirrors console.log/warn/error by name — toy handlers dispatch bare
   // 'log' | 'warn' | 'error', unnamespaced, on purpose (see chat notes).
   // UI.toast() already mirrors 'warn'/'error' kinds to console.warn and

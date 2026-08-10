@@ -55,16 +55,18 @@ function freshLayer() {
   return layerEl
 }
 
-// tray_sum and dice_d6 are TOY_TYPES-registered, so scriptsForType()
-// always re-fetches their own .svg for activation regardless of how
-// they were placed (only an unregistered type, like supply, falls back
-// to reading its already-hoisted scripts). chip is registered too.
+// tray_sum, dice_d6, chip, and (now that it's a real TOOLS entry) supply
+// are all TOY_TYPES-registered, so scriptsForType() always re-fetches
+// each one's own .svg for activation regardless of how it was placed —
+// an unregistered type would fall back to reading its already-hoisted
+// scripts instead, but none of the four toys here are unregistered.
 // Placement itself never needs fetch either way: every toy below is
 // placed via addToyDom directly (real svg text, no network), matching
 // tests/unit/toys-dom-ops.test.js's convention — this stub exists only
 // for what *activation* needs.
 function stubToyFetch() {
   return vi.fn(async (url) => {
+    if (url === 'toy/supply.svg')       return { ok: true, text: async () => SUPPLY_SVG }
     if (url === 'toy/chip.svg')         return { ok: true, text: async () => CHIP_SVG }
     if (url === 'toy/tray_sum.svg')     return { ok: true, text: async () => TRAY_SUM_SVG }
     if (url === 'toy/js/tray.js')       return { ok: true, text: async () => TRAY_JS }
@@ -80,11 +82,19 @@ async function activateAll(ydoc, layerEl) {
 }
 
 /**
- * Faithful reimplementation of app.js's bindToyRequestBus 'toy:clone'
- * listener (see this file's header). Returns an unbind function.
+ * Faithful reimplementation of app.js's bindToyRequestBus — the
+ * 'toy:clone' listener plus the 'toy:edit' listener supply's color-borrow
+ * feature relies on (see this file's header for the general convention).
+ * 'toy:edit' mirrors App.commitEdit's effect via the same
+ * Toys.makeLayerAPI().edit() gesture App.commitEdit itself dispatches to
+ * — commitEdit also refreshes the Edit-panel UI, which has nothing to
+ * assert against headless, so that part's skipped here.
+ * Returns an unbind function.
  */
-function bindToyCloneHarness(ydoc, layerEl) {
-  const listener = (e) => {
+function bindSupplyHarness(ydoc, layerEl) {
+  const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
+
+  const cloneListener = (e) => {
     const { id: sourceId, sourceEl } = e.detail
     const subjectEl = findToyDom(layerEl, sourceId)
     if (!subjectEl) { e.detail.error = `toy not found: ${sourceId}`; return }
@@ -105,8 +115,24 @@ function bindToyCloneHarness(ydoc, layerEl) {
       initializeToy(ydoc, layerEl, el, toyType, AUTHOR, TABLE)
     }
   }
-  document.addEventListener('toy:clone', listener)
-  return () => document.removeEventListener('toy:clone', listener)
+
+  const editListener = (e) => {
+    const { id, color, name } = e.detail
+    const toyEl = layerEl.querySelector(`[data-toy-id="${id}"]`)
+    if (!toyEl) { e.detail.error = `toy not found: ${id}`; return }
+    const editData = {}
+    if (color !== undefined) editData.color = color
+    if (name  !== undefined) editData.name  = name
+    api.edit(toyEl, editData)
+    e.detail.retval = {}
+  }
+
+  document.addEventListener('toy:clone', cloneListener)
+  document.addEventListener('toy:edit',  editListener)
+  return () => {
+    document.removeEventListener('toy:clone', cloneListener)
+    document.removeEventListener('toy:edit',  editListener)
+  }
 }
 
 // Every id ever seen on data-toy-id/data-id/id attributes anywhere in
@@ -216,7 +242,7 @@ describe('supply — clone scenario: tray_sum with a nested dice_d6', () => {
     const supplyEl = findToyDom(layerEl, 'supply1')
     expect(supplyEl.getAttribute('data-below')).toBe('tray1')
 
-    const unbind = bindToyCloneHarness(ydoc, layerEl)
+    const unbind = bindSupplyHarness(ydoc, layerEl)
     return { ydoc, layerEl, supplyEl, unbind }
   }
 
@@ -305,7 +331,7 @@ describe('supply — clone scenario: chip "5" with chip "6" stacked on top', () 
     expect(chip5El.getAttribute('data-below')).toBe('chip6')
     expect(chip6El.getAttribute('data-above')).toBe('chip5')
 
-    const unbind = bindToyCloneHarness(ydoc, layerEl)
+    const unbind = bindSupplyHarness(ydoc, layerEl)
     return { ydoc, layerEl, supplyEl, unbind }
   }
 
@@ -366,5 +392,80 @@ describe('supply — clone scenario: chip "5" with chip "6" stacked on top', () 
     const placed = getAnchor(newChip)
     expect(placed.x).toBeCloseTo(expected.x, 1)
     expect(placed.y).toBeCloseTo(expected.y, 1)
+  })
+})
+
+describe('supply — borrows a landed toy\u2019s color, then gives it back', () => {
+  async function setUp() {
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    addToyDom(ydoc, layerEl, { id: 'supply1', toyType: 'supply', x: 100, y: 100, color: '#123456' }, SUPPLY_SVG)
+    addToyDom(ydoc, layerEl, { id: 'chipA',   toyType: 'chip',   x: 500, y: 500, color: '#dd2222' }, CHIP_SVG)
+    await activateAll(ydoc, layerEl)
+
+    const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
+    const unbind = bindSupplyHarness(ydoc, layerEl)
+    const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')
+    return { ydoc, layerEl, api, unbind, supplyPoint }
+  }
+
+  test('landing a colored chip on supply recolors supply and stashes its original color', async () => {
+    const { layerEl, api, unbind, supplyPoint } = await setUp()
+    const supplyEl = findToyDom(layerEl, 'supply1')
+    expect(supplyEl.getAttribute('data-color')).toBe('#123456')
+
+    api.applyMoveCommit(api.find('chipA'), supplyPoint.cx, supplyPoint.cy)
+    unbind()
+
+    expect(supplyEl.getAttribute('data-color')).toBe('#dd2222')
+    expect(supplyEl.getAttribute('data-orig-color')).toBe('#123456')
+    // editDom's real effect, not just the bookkeeping attribute — the
+    // filter matrix actually changed too.
+    const values = supplyEl.querySelector('.supply1__tt_color_filter feColorMatrix').getAttribute('values')
+    const chipValues = findToyDom(layerEl, 'chipA').querySelector('.chipA__tt_color_filter feColorMatrix').getAttribute('values')
+    expect(values).toBe(chipValues)
+  })
+
+  test('picking the chip back up restores supply\u2019s original color and clears the stash', async () => {
+    const { layerEl, api, unbind, supplyPoint } = await setUp()
+    const supplyEl = findToyDom(layerEl, 'supply1')
+    api.applyMoveCommit(api.find('chipA'), supplyPoint.cx, supplyPoint.cy)
+    expect(supplyEl.getAttribute('data-color')).toBe('#dd2222') // sanity: borrow happened
+
+    api.applyMoveCommit(findToyDom(layerEl, 'chipA'), 500, 500) // pick it back up, move away
+    unbind()
+
+    expect(supplyEl.getAttribute('data-color')).toBe('#123456')
+    expect(supplyEl.getAttribute('data-orig-color')).toBeFalsy()
+  })
+
+  test('a second, different-colored chip landing after the first departs stashes the TRUE original, not the borrowed one', async () => {
+    const { ydoc, layerEl, api, unbind, supplyPoint } = await setUp()
+    addToyDom(ydoc, layerEl, { id: 'chipB', toyType: 'chip', x: 700, y: 700, color: '#22aa22' }, CHIP_SVG)
+    activateAllToyScriptsDom(ydoc, layerEl)
+    const supplyEl = findToyDom(layerEl, 'supply1')
+
+    api.applyMoveCommit(api.find('chipA'), supplyPoint.cx, supplyPoint.cy)
+    api.applyMoveCommit(findToyDom(layerEl, 'chipA'), 500, 500) // depart, restoring original
+    api.applyMoveCommit(api.find('chipB'), supplyPoint.cx, supplyPoint.cy) // second, different borrow
+    unbind()
+
+    expect(supplyEl.getAttribute('data-color')).toBe('#22aa22')
+    expect(supplyEl.getAttribute('data-orig-color')).toBe('#123456') // not '#dd2222'
+  })
+
+  test('initialize() resets a stuck borrow (e.g. a clone made while mid-borrow) back to the true original', async () => {
+    const { ydoc, layerEl, unbind } = await setUp()
+    const supplyEl = findToyDom(layerEl, 'supply1')
+    // Simulate "cloned while something else's color was borrowed",
+    // without needing an actual clone-of-a-clone scenario to set it up.
+    supplyEl.setAttribute('data-color', '#dd2222')
+    supplyEl.setAttribute('data-orig-color', '#123456')
+
+    initializeToy(ydoc, layerEl, supplyEl, 'supply', AUTHOR, TABLE)
+    unbind()
+
+    expect(supplyEl.getAttribute('data-color')).toBe('#123456')
+    expect(supplyEl.getAttribute('data-orig-color')).toBeFalsy()
   })
 })
