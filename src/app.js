@@ -2,7 +2,7 @@
  * app.js — togetherness application bus
  *
  * The only module that imports from all others.
- * It wires the layers together through a narrow, typed interface.
+ * It wires the layers together through a narrow interface.
  *
  * Roles:
  *   - Initialise all modules and inject this bus object as their sole dependency
@@ -31,6 +31,7 @@ import * as Canvas                                from './canvas.js';
 import * as Overlay                               from './overlay.js';
 import * as Delight                               from './delight.js';
 import * as UndoRedo                              from './undo_redo.js';
+import * as Events                                from './events.js';
 import { entityGradient }            from './entity_gradient.js';
 import { isElementHeldByOther, computeTickActions } from './soft-lock.js';
 
@@ -373,11 +374,9 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
   UI.init(App);
   UI.setIdentity({ userId: displayName, tableId: tableId });
 
-  // Keyboard shortcuts
-  window.addEventListener('keydown', onKeyDown);
-
   // Toy request bus - toy menu/handler code will dispatch CustomEvents
-  bindToyRequestBus();
+  Events.init(_svgEl, _lastActionScope, Toys, UI);
+  Events.keyboardHandlers(App)
 
   // CRDT observers
   // Layers use observeDeep so attribute changes trigger renderDoc on
@@ -1933,125 +1932,6 @@ function addUndoHistory(label) {
   UI.refreshFromDoc();
 }
 
-// ── Keyboard shortcuts ────────────────────────────────────────────────────────
-/**
- * Wire the toy-authored request bus — see boot()'s call site for the
- * calling convention this satisfies. Called once from boot().
- */
-function bindToyRequestBus() {
-  document.addEventListener('toy:clone', (e) => {
-    const { id: sourceId, sourceEl } = e.detail;
-    const layerEl = _svgEl?.querySelector('#toys-layer');
-    if (!layerEl) { e.detail.error = 'toys layer not ready'; return; }
-    const subjectEl = Toys.findToyDom(layerEl, sourceId);
-    if (!subjectEl) { e.detail.error = `toy not found: ${sourceId}`; return; }
-
-    // Placement: prefer a `.tt_target` marker inside the requesting toy's
-    // own markup (mapped into canvas space); otherwise default to that
-    // toy's own centre. The requesting toy never computes canvas-space
-    // coordinates itself — see chat notes on why that boundary matters.
-    const target = sourceEl?.querySelector?.('.tt_target');
-    const { x, y } = target
-      ? Toys.getInnerAnchor(sourceEl, target)
-      : Toys.getAnchor(sourceEl);
-
-    const newId = Toys.newToyId();
-    let result;
-    try {
-      // Two shapes, chosen by whether an envelope is already open. A
-      // 'toy:clone' request only ever fires synchronously from inside a
-      // toy handler's own call stack — a menu action (invokeMenuAction),
-      // a position/contents cascade, etc. — and those are ALWAYS already
-      // wrapped in their own runInEnvelope. Calling Toys.cloneToy there
-      // too would nest a second, separately-committing envelope inside
-      // the first: both would independently observe and commit the SAME
-      // DOM mutation, producing two ops that each insert the clone —
-      // which replays as a genuine duplicate node (see chat notes; this
-      // is exactly the bug that was found). So when an outer envelope is
-      // already active, just mutate the DOM and let it capture + commit
-      // this as part of its one gesture. The self-committing branch only
-      // exists so a future caller invoked with nothing enclosing it
-      // doesn't silently lose the mutation instead.
-      if (Toys.isInsideEnvelope()) {
-        result = Toys.addClonedToyDom(layerEl, subjectEl, newId, x, y);
-      } else {
-        result = Toys.cloneToy(_ydoc, layerEl, sourceId, newId, x, y, { authorId: _myId, tableId: _tableId });
-      }
-    } catch (err) {
-      e.detail.error = err.message;
-      return;
-    }
-    // cloneToy/addClonedToyDom are both fully synchronous (no template
-    // fetch, unlike placeToy), so — unlike toy:add's old flow — retval
-    // is trustworthy immediately either way.
-    e.detail.retval = { id: newId };
-
-    // initialize() re-runs on every instance the clone produced (root +
-    // any nested toys) — same reasoning as the clone itself above: fold
-    // into the enclosing envelope if there is one, otherwise commit each
-    // as its own separate gesture (same pattern App.commitToy already
-    // uses for a fresh placement). The harness has no idea what a
-    // toyType's handler-owned data-* attributes mean (stacking pointers,
-    // etc.), so it can't reset them itself; that's what each toyType's
-    // own initialize(elem) hook is for. See Toys.cloneToy's doc comment
-    // for the full contract.
-    for (const { toyType, el } of result.cloned) {
-      if (Toys.isInsideEnvelope()) Toys.runInitializers(el, toyType);
-      else                         Toys.initializeToy(_ydoc, layerEl, el, toyType, _myId, _tableId);
-    }
-
-    _lastActionScope = 'toys';
-    addHistory(`cloned ${subjectEl.getAttribute('data-toy-type')} ${newId}`, { elType: 'toy' });
-    App.addLog(`cloned ${sourceId} → ${newId}`, 'local');
-  });
-
-  // A toy editing its own (or, in principle, another toy's — id is
-  // caller-given, not implicitly "self") color/name — e.g. supply
-  // borrowing a landed toy's color and restoring its own afterward.
-  // Same two-shape reasoning as 'toy:clone' above: this always fires
-  // synchronously from inside a toy handler's call stack (typically a
-  // position cascade during a move), so it must fold into that envelope
-  // rather than open its own — App.commitEdit is only for the case
-  // nothing already encloses this (and gets the UI panel refresh that
-  // Toys.editDom alone doesn't bother with).
-  document.addEventListener('toy:edit', (e) => {
-    const { id, color, name } = e.detail;
-    const layerEl = _svgEl?.querySelector('#toys-layer');
-    const toyEl = layerEl?.querySelector(`[data-toy-id="${id}"]`);
-    if (!toyEl) { e.detail.error = `toy not found: ${id}`; return; }
-    const editData = {};
-    if (color !== undefined) editData.color = color;
-    if (name  !== undefined) editData.name  = name;
-    if (Toys.isInsideEnvelope()) Toys.editDom(toyEl, editData);
-    else                         App.commitEdit(id, editData);
-    e.detail.retval = {};
-  });
-
-  // Mirrors console.log/warn/error by name — toy handlers dispatch bare
-  // 'log' | 'warn' | 'error', unnamespaced, on purpose (see chat notes).
-  // UI.toast() already mirrors 'warn'/'error' kinds to console.warn and
-  // ui.css already styles .toast.info/.warn/.error, so no ui.js or
-  // ui.css changes were needed for this.
-  const TOAST_KIND = { log: 'info', warn: 'warn', error: 'error' };
-  for (const evName of Object.keys(TOAST_KIND)) {
-    document.addEventListener(evName, (e) => {
-      UI.toast(e.detail.msg, TOAST_KIND[evName]);
-      e.detail.retval = {};
-    });
-  }
-}
-
-function onKeyDown(e) {
-  if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
-  if (e.key === 'r' || e.key === 'R') App.setTool('rect');
-  if (e.key === 'c' || e.key === 'C') App.setTool('circle');
-  if (e.key === 's' || e.key === 'S') App.setTool('select');
-  if (e.key === 'Escape') App.select(null);
-  if ((e.key === 'Delete' || e.key === 'Backspace')) App.deleteSelected();
-  if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey) && e.shiftKey) { e.preventDefault(); App.redo(); return; }
-  if ((e.key === 'y' || e.key === 'Y') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); App.redo(); return; }
-  if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); App.undo(); }
-}
 
 function onMetaChanged() {
   renderBackgroundLayer();

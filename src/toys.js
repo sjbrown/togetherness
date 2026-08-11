@@ -646,6 +646,32 @@ function cloneToyBoundary(sourceEl, newId, cloned) {
   return g
 }
 
+// ----------------------------------------------------------------------------
+export function toyCloneToy(layerEl, clonerEl, cloneeEl) {
+  if (!isInsideEnvelope()) {
+    throw new Error('Not Implemented: un-enveleoped toyCloneToy')
+  }
+
+  // Placement: prefer any element having class tt_target, default to center.
+  const target = clonerEl.querySelector?.('.tt_target');
+  const { x, y } = target
+    ? getInnerAnchor(clonerEl, target)
+    : getAnchor(sourceEl);
+
+  const newId = newToyId();
+  const result = addClonedToyDom(layerEl, cloneeEl, newId, x, y)
+
+  // initialize() re-runs on every instance the clone produced (root +
+  // any nested toys)
+  // A toyType's handler-owned data-* attributes belong and are only
+  // in the semantic scope of that (potentiall user-authored) code.
+  // So the harness can't reset them itself
+  for (const { toyType, el } of result.cloned) {
+    runInitializers(el, toyType)
+  }
+  return newId
+}
+
 /**
  * Deep-clone an already-placed toy under a fresh id, nested toys and
  * all — the "duplicate this specific instance, live state and all"
