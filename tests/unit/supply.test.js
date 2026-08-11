@@ -6,11 +6,10 @@
  * and leaves canvas-space placement entirely to the harness (via its own
  * .tt_target marker, or the harness's default of supply's own centre).
  *
- * The harness side (app.js's bindToyRequestBus) isn't imported directly —
- * same convention as tests/unit/toy-position-snap.test.js and
- * reparent-position.test.js: a faithful reimplementation of its 'toy:clone'
- * listener, exercising the real Toys.cloneToy/initializeToy machinery
- * without needing a full boot() (providers, awareness, etc.).
+ * The harness side calls the real events.js module directly (see
+ * bindSupplyHarness below) rather than reimplementing its listeners —
+ * events.js takes its dependencies as plain parameters now, so a small
+ * stub App/UI is enough to run the actual production code here.
  *
  * Two scenarios, matching a real correctness gap found in chat: cloning a
  * toy with something NESTED inside it (a tray_sum containing a dice_d6)
@@ -27,10 +26,11 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as Toys from '../../src/toys.js'
+import * as Events from '../../src/events.js'
 import {
   addToyDom, activateAllToyScriptsDom, reparentToyDom, makeLayerAPI,
   getContentsGroup, findToyDom, getSnapPoints, getAnchor, getInnerAnchor,
-  cloneToy, initializeToy, newToyId,
+  initializeToy, newToyId,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { getOps, heads } from '../../src/op_dag.js'
@@ -84,65 +84,30 @@ async function activateAll(ydoc, layerEl) {
 }
 
 /**
- * Faithful reimplementation of app.js's bindToyRequestBus — the
- * 'toy:clone' listener plus the 'toy:edit' listener supply's color-borrow
- * feature relies on (see this file's header for the general convention).
- * 'toy:edit' mirrors App.commitEdit's effect via the same
- * Toys.makeLayerAPI().edit() gesture App.commitEdit itself dispatches to
- * — commitEdit also refreshes the Edit-panel UI, which has nothing to
- * assert against headless, so that part's skipped here.
- * Returns an unbind function.
+ * Wires the real production event bus (events.js's init) rather than a
+ * hand-reimplementation — now that events.js takes its dependencies as
+ * plain parameters (App, svgEl, Toys, UI) instead of closing over
+ * app.js's module state, it's directly usable here: a small stub App/UI
+ * satisfying just what events.js actually calls, and a stub svgEl whose
+ * only job is routing '#toys-layer' lookups to the real layerEl. This
+ * means these tests exercise the exact same code app.js runs, not a
+ * parallel reimplementation that could quietly drift out of sync with
+ * it — which is exactly the gap that let the nested-envelope
+ * duplicate-clone bug through undetected earlier in this file's history.
+ * Returns an unbind function (events.js's init returns one for this).
  */
 function bindSupplyHarness(ydoc, layerEl) {
-  const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
-
-  const cloneListener = (e) => {
-    const { id: sourceId, sourceEl } = e.detail
-    const subjectEl = findToyDom(layerEl, sourceId)
-    if (!subjectEl) { e.detail.error = `toy not found: ${sourceId}`; return }
-
-    const target = sourceEl?.querySelector?.('.tt_target')
-    const { x, y } = target ? getInnerAnchor(sourceEl, target) : getAnchor(sourceEl)
-
-    const newId = newToyId()
-    let result
-    try {
-      // Mirrors app.js's real bindToyRequestBus exactly: fold into an
-      // already-open envelope (invokeMenuAction, a cascade, ...) rather
-      // than open a second, separately-committing one — see chat notes
-      // on the nested-envelope duplicate-clone bug this fixes.
-      result = Toys.isInsideEnvelope()
-        ? Toys.addClonedToyDom(layerEl, subjectEl, newId, x, y)
-        : cloneToy(ydoc, layerEl, sourceId, newId, x, y, { authorId: AUTHOR, tableId: TABLE })
-    } catch (err) {
-      e.detail.error = err.message
-      return
-    }
-    e.detail.retval = { id: newId }
-    for (const { toyType, el } of result.cloned) {
-      if (Toys.isInsideEnvelope()) Toys.runInitializers(el, toyType)
-      else                         initializeToy(ydoc, layerEl, el, toyType, AUTHOR, TABLE)
-    }
+  const svgEl = { querySelector: (sel) => sel === '#toys-layer' ? layerEl : layerEl.querySelector(sel) }
+  const fakeApp = {
+    getYdoc: () => ydoc,
+    getMyId: () => AUTHOR,
+    getTableId: () => TABLE,
+    setLastActionScope: () => {},
+    addHistory: () => {},
+    addLog: () => {},
   }
-
-  const editListener = (e) => {
-    const { id, color, name } = e.detail
-    const toyEl = layerEl.querySelector(`[data-toy-id="${id}"]`)
-    if (!toyEl) { e.detail.error = `toy not found: ${id}`; return }
-    const editData = {}
-    if (color !== undefined) editData.color = color
-    if (name  !== undefined) editData.name  = name
-    if (Toys.isInsideEnvelope()) Toys.editDom(toyEl, editData)
-    else                         api.edit(toyEl, editData)
-    e.detail.retval = {}
-  }
-
-  document.addEventListener('toy:clone', cloneListener)
-  document.addEventListener('toy:edit',  editListener)
-  return () => {
-    document.removeEventListener('toy:clone', cloneListener)
-    document.removeEventListener('toy:edit',  editListener)
-  }
+  const fakeUI = { toast: () => {}, refreshFromDoc: () => {} }
+  return Events.init(fakeApp, svgEl, Toys, fakeUI)
 }
 
 /**

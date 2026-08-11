@@ -646,30 +646,36 @@ function cloneToyBoundary(sourceEl, newId, cloned) {
   return g
 }
 
-// ----------------------------------------------------------------------------
-export function toyCloneToy(layerEl, clonerEl, cloneeEl) {
-  if (!isInsideEnvelope()) {
-    throw new Error('Not Implemented: un-enveleoped toyCloneToy')
-  }
+/**
+ * Handle a 'toy:clone' request from a toy handler script (see
+ * src/toy/supply.svg) — clone cloneeEl under a fresh id, placed via
+ * clonerEl's own .tt_target marker if it has one (else clonerEl's own
+ * centre — clonerEl never computes canvas-space coordinates itself),
+ * and re-run initialize() on every instance the clone produces (root +
+ * any nested toys — see cloneToyBoundary's doc comment).
+ *
+ * Built on ensureEnvelope, so this is safe to call from either context:
+ * the normal one — already inside an envelope, via a toy handler's own
+ * synchronous request-event dispatch — where it folds in and commits
+ * nothing of its own; or with nothing enclosing it, where it opens and
+ * commits its own single 'clone' gesture. Either way this is exactly
+ * one atomic unit: the DOM clone and every initialize() call it
+ * triggers are never split across two ops, unlike App.commitToy's
+ * placement flow, which keeps them separate on purpose because an
+ * async template fetch sits in between there — nothing does here.
+ */
+export function toyCloneToy(ydoc, layerEl, clonerEl, cloneeEl, opts = {}) {
+  const target = clonerEl?.querySelector?.('.tt_target')
+  const { x, y } = target ? getInnerAnchor(clonerEl, target) : getAnchor(clonerEl)
+  const newId = newToyId()
 
-  // Placement: prefer any element having class tt_target, default to center.
-  const target = clonerEl.querySelector?.('.tt_target');
-  const { x, y } = target
-    ? getInnerAnchor(clonerEl, target)
-    : getAnchor(sourceEl);
+  const { result } = ensureEnvelope(ydoc, layerEl, () => {
+    const built = addClonedToyDom(layerEl, cloneeEl, newId, x, y)
+    for (const { toyType, el } of built.cloned) runInitializers(el, toyType)
+    return built
+  }, { gesture: 'clone', ...opts })
 
-  const newId = newToyId();
-  const result = addClonedToyDom(layerEl, cloneeEl, newId, x, y)
-
-  // initialize() re-runs on every instance the clone produced (root +
-  // any nested toys)
-  // A toyType's handler-owned data-* attributes belong and are only
-  // in the semantic scope of that (potentiall user-authored) code.
-  // So the harness can't reset them itself
-  for (const { toyType, el } of result.cloned) {
-    runInitializers(el, toyType)
-  }
-  return newId
+  return { id: newId, cloned: result.cloned }
 }
 
 /**
@@ -704,39 +710,6 @@ export function cloneToyDom(sourceEl, newId, x, y) {
 export function addClonedToyDom(layerEl, sourceEl, newId, x, y) {
   const result = cloneToyDom(sourceEl, newId, x, y)
   layerEl.appendChild(result.toyEl)
-  return result
-}
-
-/**
- * Clone an already-placed toy as a gesture — the DOM-duplicate analog of
- * placeToy() for supply-style toys. Fully synchronous (no template
- * fetch, unlike placeToy, and no activateToyScripts wait either — every
- * toyType involved is already active), so a caller can trust the
- * return value immediately, in the same tick, with no promise involved.
- *
- * Returns { toyEl, cloned } — cloned lists every toy instance created by
- * this call (root + any nested ones). The clone gesture itself is
- * deliberately DOM-only: it never calls initializeToy. Contract for
- * toy authors: the harness has no idea what any given toyType's
- * handler-owned data-* attributes mean (stacking pointers, etc.), so it
- * cannot reset them — that's what a toyType's own initialize(elem) hook
- * is for. Same rule for a nested toy as for the root: whatever
- * initialize() does for a brand-new blank instance, it should also do
- * (idempotently) for a freshly cloned one — typically clearing anything
- * that points at another toy's id, via elem.setAttribute(name, '') or
- * elem.removeAttribute(name) (NOT setAttribute(name, null), which
- * stringifies to the literal text "null"). Callers (see app.js) run
- * initializeToy() once per entry in `cloned`, as its own gesture per
- * entry, mirroring how App.commitToy already treats initialize as a
- * separate gesture from placement.
- */
-export function cloneToy(ydoc, layerEl, sourceId, newId, x, y, opts = {}) {
-  const sourceEl = findToyDom(layerEl, sourceId)
-  if (!sourceEl) throw new Error(`cloneToy: source toy not found: ${sourceId}`)
-  let result = null
-  runGesture(ydoc, layerEl, () => {
-    result = addClonedToyDom(layerEl, sourceEl, newId, x, y)
-  }, { gesture: 'clone', ...opts })
   return result
 }
 
@@ -1805,6 +1778,36 @@ export function runGesture(ydoc, layerEl, fn, opts = {}) {
     }
   }
   return { op }
+}
+
+/**
+ * Run fn(), guaranteeing its mutations land inside exactly one open
+ * envelope — never zero (silently lost), never two (independently
+ * captured and committed twice, replaying as duplicated DOM — see chat
+ * notes on the nested-envelope clone-duplication bug this exists to
+ * rule out generically, rather than call-site by call-site).
+ *
+ * If already inside an envelope (a toy handler's own request-event
+ * dispatch, itself inside invokeMenuAction's or a cascade's own
+ * envelope), fn just runs and folds in — nothing commits here, and
+ * opts.gesture is never used for anything, because there is no "here"
+ * to name; fn's mutations become part of whatever the ENCLOSING
+ * envelope eventually commits under. If nothing encloses it, this opens
+ * and commits its own single runGesture instead, so the mutation is
+ * never silently dropped rather than duplicated. This is an envelope
+ * guarantee, not a gesture guarantee — it never promises fn's work
+ * becomes its own named, identifiable op; only that it's captured
+ * exactly once.
+ *
+ * Returns { result, op } — result is fn()'s return value either way;
+ * op is the committed operation, or null when this folded into an
+ * enclosing envelope instead of committing one of its own.
+ */
+export function ensureEnvelope(ydoc, layerEl, fn, opts = {}) {
+  if (isInsideEnvelope()) return { result: fn(), op: null }
+  let result
+  const { op } = runGesture(ydoc, layerEl, () => { result = fn() }, opts)
+  return { result, op }
 }
 
 /**

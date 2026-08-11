@@ -375,7 +375,7 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
   UI.setIdentity({ userId: displayName, tableId: tableId });
 
   // Toy request bus - toy menu/handler code will dispatch CustomEvents
-  Events.init(_svgEl, _lastActionScope, Toys, UI);
+  Events.init(App, _svgEl, Toys, UI);
   Events.keyboardHandlers(App)
 
   // CRDT observers
@@ -741,6 +741,7 @@ const App = {
     return out;
   },
   getTableId:      () => _tableId,
+  getYdoc:         () => _ydoc,
   getSelectedIds:  () => Object.keys(_myClaims),
   getBBox:  (id) => {
     const svgEl = _svgEl.querySelector(`[data-id="${id}"]`);
@@ -1875,6 +1876,13 @@ const App = {
     };
     input.click();
   },
+
+  // A toy handler's own request-event handlers (see events.js) run
+  // outside app.js's module scope, so _lastActionScope — read by undo/
+  // redo to pick which log (toys vs draw_bounds) a bare Ctrl+Z applies
+  // to — needs a setter rather than being assignable directly.
+  setLastActionScope: (scope) => { _lastActionScope = scope; },
+  addHistory,
 
   addLog: (msg, type='') => {
     const log   = document.getElementById('eventLog')
