@@ -1964,24 +1964,46 @@ function bindToyRequestBus() {
     const newId = Toys.newToyId();
     let result;
     try {
-      result = Toys.cloneToy(_ydoc, layerEl, sourceId, newId, x, y, { authorId: _myId, tableId: _tableId });
+      // Two shapes, chosen by whether an envelope is already open. A
+      // 'toy:clone' request only ever fires synchronously from inside a
+      // toy handler's own call stack — a menu action (invokeMenuAction),
+      // a position/contents cascade, etc. — and those are ALWAYS already
+      // wrapped in their own runInEnvelope. Calling Toys.cloneToy there
+      // too would nest a second, separately-committing envelope inside
+      // the first: both would independently observe and commit the SAME
+      // DOM mutation, producing two ops that each insert the clone —
+      // which replays as a genuine duplicate node (see chat notes; this
+      // is exactly the bug that was found). So when an outer envelope is
+      // already active, just mutate the DOM and let it capture + commit
+      // this as part of its one gesture. The self-committing branch only
+      // exists so a future caller invoked with nothing enclosing it
+      // doesn't silently lose the mutation instead.
+      if (Toys.isInsideEnvelope()) {
+        result = Toys.addClonedToyDom(layerEl, subjectEl, newId, x, y);
+      } else {
+        result = Toys.cloneToy(_ydoc, layerEl, sourceId, newId, x, y, { authorId: _myId, tableId: _tableId });
+      }
     } catch (err) {
       e.detail.error = err.message;
       return;
     }
-    // cloneToy is fully synchronous (no template fetch, unlike placeToy),
-    // so — unlike toy:add's old flow — retval is trustworthy immediately.
+    // cloneToy/addClonedToyDom are both fully synchronous (no template
+    // fetch, unlike placeToy), so — unlike toy:add's old flow — retval
+    // is trustworthy immediately either way.
     e.detail.retval = { id: newId };
 
     // initialize() re-runs on every instance the clone produced (root +
-    // any nested toys), each as its own separate gesture — same pattern
-    // App.commitToy already uses for a fresh placement. The harness has
-    // no idea what a toyType's handler-owned data-* attributes mean
-    // (stacking pointers, etc.), so it can't reset them itself; that's
-    // what each toyType's own initialize(elem) hook is for. See
-    // Toys.cloneToy's doc comment for the full contract.
+    // any nested toys) — same reasoning as the clone itself above: fold
+    // into the enclosing envelope if there is one, otherwise commit each
+    // as its own separate gesture (same pattern App.commitToy already
+    // uses for a fresh placement). The harness has no idea what a
+    // toyType's handler-owned data-* attributes mean (stacking pointers,
+    // etc.), so it can't reset them itself; that's what each toyType's
+    // own initialize(elem) hook is for. See Toys.cloneToy's doc comment
+    // for the full contract.
     for (const { toyType, el } of result.cloned) {
-      Toys.initializeToy(_ydoc, layerEl, el, toyType, _myId, _tableId);
+      if (Toys.isInsideEnvelope()) Toys.runInitializers(el, toyType);
+      else                         Toys.initializeToy(_ydoc, layerEl, el, toyType, _myId, _tableId);
     }
 
     _lastActionScope = 'toys';
@@ -1991,10 +2013,13 @@ function bindToyRequestBus() {
 
   // A toy editing its own (or, in principle, another toy's — id is
   // caller-given, not implicitly "self") color/name — e.g. supply
-  // borrowing a landed toy's color and restoring its own afterward. Goes
-  // through App.commitEdit rather than Toys.editDom directly so a
-  // script-driven edit gets exactly the same treatment a person's edit
-  // does (UI panel refresh included) — one edit path, not two.
+  // borrowing a landed toy's color and restoring its own afterward.
+  // Same two-shape reasoning as 'toy:clone' above: this always fires
+  // synchronously from inside a toy handler's call stack (typically a
+  // position cascade during a move), so it must fold into that envelope
+  // rather than open its own — App.commitEdit is only for the case
+  // nothing already encloses this (and gets the UI panel refresh that
+  // Toys.editDom alone doesn't bother with).
   document.addEventListener('toy:edit', (e) => {
     const { id, color, name } = e.detail;
     const layerEl = _svgEl?.querySelector('#toys-layer');
@@ -2003,7 +2028,8 @@ function bindToyRequestBus() {
     const editData = {};
     if (color !== undefined) editData.color = color;
     if (name  !== undefined) editData.name  = name;
-    App.commitEdit(id, editData);
+    if (Toys.isInsideEnvelope()) Toys.editDom(toyEl, editData);
+    else                         App.commitEdit(id, editData);
     e.detail.retval = {};
   });
 

@@ -28,7 +28,8 @@ const XLINK_NS = 'http://www.w3.org/1999/xlink'
 const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789'
 
 import { number, bool } from './tools-schema.js';
-import { runInEnvelope, commitGesture } from './envelope.js';
+import { runInEnvelope, commitGesture, isInsideEnvelope } from './envelope.js';
+export { isInsideEnvelope };
 import { consumeParents, setHead, getHead, addMergeTip } from './op_head.js';
 import { getOps, appendOp, getOp, heads, labelBranches, branchAuthors, forkJoinSequence, toyUndoRedoStacks } from './op_dag.js';
 import { invert as invertWire, apply as applyWire } from './op_wire_mutation.js';
@@ -1825,15 +1826,25 @@ export function invokeMenuAction(ydoc, layerEl, svgEl, namespace, key, evt, auth
  * Ordinarily there's nothing to fold. But initialize() has the freedom
  * to mutate anything in toys-layer.
  */
-export function initializeToy(ydoc, layerEl, svgEl, toyType, authorId, tableId) {
+/**
+ * Run every activated namespace's initialize(elem), if present — pure DOM
+ * mutation, no envelope, no commit. Use this directly when already inside
+ * an envelope (see isInsideEnvelope's doc comment — a toy request-event
+ * handler running synchronously inside whatever triggered it); use
+ * initializeToy below when nothing else is capturing this gesture.
+ */
+export function runInitializers(svgEl, toyType) {
   const initializers = getNamespacesForType(toyType)
     .map(name => globalThis[name])
     .filter(ns => ns && typeof ns.initialize === 'function')
-  if (!initializers.length) return
+  initializers.forEach(ns => ns.initialize(svgEl))
+}
 
+export function initializeToy(ydoc, layerEl, svgEl, toyType, authorId, tableId) {
+  if (!getNamespacesForType(toyType).some(name => typeof globalThis[name]?.initialize === 'function')) return
   ydoc.transact(() => {
     runGesture(ydoc, layerEl, () => {
-      initializers.forEach(ns => ns.initialize(svgEl))
+      runInitializers(svgEl, toyType)
     }, { gesture: 'initialize', authorId, tableId })
   })
 }

@@ -33,6 +33,8 @@ import {
   cloneToy, initializeToy, newToyId,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
+import { getOps, heads } from '../../src/op_dag.js'
+import { projectFrom } from '../../src/op_checkpoint.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
 const TABLE   = 'test-table'
@@ -105,14 +107,21 @@ function bindSupplyHarness(ydoc, layerEl) {
     const newId = newToyId()
     let result
     try {
-      result = cloneToy(ydoc, layerEl, sourceId, newId, x, y, { authorId: AUTHOR, tableId: TABLE })
+      // Mirrors app.js's real bindToyRequestBus exactly: fold into an
+      // already-open envelope (invokeMenuAction, a cascade, ...) rather
+      // than open a second, separately-committing one — see chat notes
+      // on the nested-envelope duplicate-clone bug this fixes.
+      result = Toys.isInsideEnvelope()
+        ? Toys.addClonedToyDom(layerEl, subjectEl, newId, x, y)
+        : cloneToy(ydoc, layerEl, sourceId, newId, x, y, { authorId: AUTHOR, tableId: TABLE })
     } catch (err) {
       e.detail.error = err.message
       return
     }
     e.detail.retval = { id: newId }
     for (const { toyType, el } of result.cloned) {
-      initializeToy(ydoc, layerEl, el, toyType, AUTHOR, TABLE)
+      if (Toys.isInsideEnvelope()) Toys.runInitializers(el, toyType)
+      else                         initializeToy(ydoc, layerEl, el, toyType, AUTHOR, TABLE)
     }
   }
 
@@ -123,7 +132,8 @@ function bindSupplyHarness(ydoc, layerEl) {
     const editData = {}
     if (color !== undefined) editData.color = color
     if (name  !== undefined) editData.name  = name
-    api.edit(toyEl, editData)
+    if (Toys.isInsideEnvelope()) Toys.editDom(toyEl, editData)
+    else                         api.edit(toyEl, editData)
     e.detail.retval = {}
   }
 
@@ -133,6 +143,37 @@ function bindSupplyHarness(ydoc, layerEl) {
     document.removeEventListener('toy:clone', cloneListener)
     document.removeEventListener('toy:edit',  editListener)
   }
+}
+
+/**
+ * Click supply's 'Take' menu action via the real production path
+ * (Toys.invokeMenuAction), not by calling globalThis.supply._take(elem)
+ * directly. This matters: invokeMenuAction wraps the whole handler call
+ * in its own runInEnvelope, and _take's synchronous 'toy:clone' dispatch
+ * runs inside that — calling _take directly, bypassing invokeMenuAction,
+ * never exercises that outer envelope at all, which is exactly the gap
+ * that let the duplicate-clone-on-reload bug through undetected here.
+ */
+function clickTake(ydoc, layerEl, supplyEl) {
+  Toys.invokeMenuAction(ydoc, layerEl, supplyEl, 'supply', 'Take', {}, AUTHOR, TABLE)
+}
+
+/**
+ * Replay ydoc's op log onto a brand-new empty layer, the same way a
+ * fresh page load rebuilds the toys layer from IndexedDB-hydrated ops
+ * (Toys.projectLayer's own logic, minus its early-return/short-circuit
+ * bookkeeping — those don't matter to this comparison).
+ */
+function reloadedIds(ydoc) {
+  const ops = getOps(ydoc)
+  const head = heads(ops)[0] ?? null
+  const layer = freshLayer()
+  projectFrom(layer, ops, head)
+  return [...layer.querySelectorAll('[data-toy-id]')].map(el => el.getAttribute('data-toy-id')).sort()
+}
+
+function liveIds(layerEl) {
+  return [...layerEl.querySelectorAll('[data-toy-id]')].map(el => el.getAttribute('data-toy-id')).sort()
 }
 
 // Every id ever seen on data-toy-id/data-id/id attributes anywhere in
@@ -173,6 +214,10 @@ describe('supply - no prototype beneath it', () => {
 
     const supplyEl = findToyDom(layerEl, 'supply1')
     expect(supplyEl.getAttribute('data-below')).toBeFalsy()
+    // Direct call, not clickTake/invokeMenuAction: supply.svg's own
+    // 'applicable' check already gates 'Take' out of the menu whenever
+    // nothing is below it, so the real click path can never reach this
+    // case — this is exercising _take's own defensive fallback instead.
     globalThis.supply._take(supplyEl)
 
     expect(warnSpy).toHaveBeenCalledTimes(1)
@@ -200,7 +245,7 @@ describe('supply — dispatch contract', () => {
     let seenDetail = null
     const listener = (e) => { seenDetail = e.detail }
     document.addEventListener('toy:clone', listener)
-    globalThis.supply._take(supplyEl)
+    clickTake(ydoc, layerEl, supplyEl)
     document.removeEventListener('toy:clone', listener)
 
     expect(seenDetail.id).toBe('chipA')
@@ -247,10 +292,10 @@ describe('supply — clone scenario: tray_sum with a nested dice_d6', () => {
   }
 
   test('produces a new tray with its own new id, containing a new die with its own new id — no collisions', async () => {
-    const { layerEl, supplyEl, unbind } = await setUp()
+    const { ydoc, layerEl, supplyEl, unbind } = await setUp()
 
     const before = allToyBoundaryIds(layerEl)
-    globalThis.supply._take(supplyEl)
+    clickTake(ydoc, layerEl, supplyEl)
     unbind()
 
     const after = allToyBoundaryIds(layerEl)
@@ -277,8 +322,8 @@ describe('supply — clone scenario: tray_sum with a nested dice_d6', () => {
   })
 
   test('preserves the nested die\u2019s live state (its rolled value) and the tray\u2019s color, rather than a blank instance', async () => {
-    const { layerEl, supplyEl, unbind } = await setUp()
-    globalThis.supply._take(supplyEl)
+    const { ydoc, layerEl, supplyEl, unbind } = await setUp()
+    clickTake(ydoc, layerEl, supplyEl)
     unbind()
 
     const newTrayEl = [...layerEl.querySelectorAll('[data-toy-type="tray_sum"]')]
@@ -290,8 +335,8 @@ describe('supply — clone scenario: tray_sum with a nested dice_d6', () => {
   })
 
   test('leaves the original tray and die completely untouched', async () => {
-    const { layerEl, supplyEl, unbind } = await setUp()
-    globalThis.supply._take(supplyEl)
+    const { ydoc, layerEl, supplyEl, unbind } = await setUp()
+    clickTake(ydoc, layerEl, supplyEl)
     unbind()
 
     const origTray = findToyDom(layerEl, 'tray1')
@@ -336,10 +381,10 @@ describe('supply — clone scenario: chip "5" with chip "6" stacked on top', () 
   }
 
   test('clones only chip5 — chip6 is a sibling, not nested, and is left alone', async () => {
-    const { layerEl, supplyEl, unbind } = await setUp()
+    const { ydoc, layerEl, supplyEl, unbind } = await setUp()
 
     const chipsBefore = layerEl.querySelectorAll('[data-toy-type="chip"]').length
-    globalThis.supply._take(supplyEl)
+    clickTake(ydoc, layerEl, supplyEl)
     unbind()
 
     const chipsAfter = layerEl.querySelectorAll('[data-toy-type="chip"]').length
@@ -350,8 +395,8 @@ describe('supply — clone scenario: chip "5" with chip "6" stacked on top', () 
   })
 
   test('the clone carries chip5\u2019s value ("5") but starts with NO stacking relationship — initialize() clears data-below/data-above', async () => {
-    const { layerEl, supplyEl, unbind } = await setUp()
-    globalThis.supply._take(supplyEl)
+    const { ydoc, layerEl, supplyEl, unbind } = await setUp()
+    clickTake(ydoc, layerEl, supplyEl)
     unbind()
 
     const newChip = [...layerEl.querySelectorAll('[data-toy-type="chip"]')]
@@ -365,8 +410,8 @@ describe('supply — clone scenario: chip "5" with chip "6" stacked on top', () 
   })
 
   test('does not disturb the original stack — chip5/chip6\u2019s data-above/data-below are unchanged after cloning', async () => {
-    const { layerEl, supplyEl, unbind } = await setUp()
-    globalThis.supply._take(supplyEl)
+    const { ydoc, layerEl, supplyEl, unbind } = await setUp()
+    clickTake(ydoc, layerEl, supplyEl)
     unbind()
 
     expect(findToyDom(layerEl, 'chip5').getAttribute('data-below')).toBe('chip6')
@@ -374,7 +419,7 @@ describe('supply — clone scenario: chip "5" with chip "6" stacked on top', () 
   })
 
   test('places the clone using supply\u2019s .tt_target marker, not supply\u2019s raw centre', async () => {
-    const { layerEl, supplyEl, unbind } = await setUp()
+    const { ydoc, layerEl, supplyEl, unbind } = await setUp()
 
     const target   = supplyEl.querySelector('.tt_target')
     const expected = getInnerAnchor(supplyEl, target)
@@ -384,7 +429,7 @@ describe('supply — clone scenario: chip "5" with chip "6" stacked on top', () 
     // accidental fallback to supply's own centre.
     expect(Math.abs(expected.x - rawCentre.x) + Math.abs(expected.y - rawCentre.y)).toBeGreaterThan(1)
 
-    globalThis.supply._take(supplyEl)
+    clickTake(ydoc, layerEl, supplyEl)
     unbind()
 
     const newChip = [...layerEl.querySelectorAll('[data-toy-type="chip"]')]
@@ -410,7 +455,7 @@ describe('supply — borrows a landed toy\u2019s color, then gives it back', () 
   }
 
   test('landing a colored chip on supply recolors supply and stashes its original color', async () => {
-    const { layerEl, api, unbind, supplyPoint } = await setUp()
+    const { ydoc, layerEl, api, unbind, supplyPoint } = await setUp()
     const supplyEl = findToyDom(layerEl, 'supply1')
     expect(supplyEl.getAttribute('data-color')).toBe('#123456')
 
@@ -427,7 +472,7 @@ describe('supply — borrows a landed toy\u2019s color, then gives it back', () 
   })
 
   test('picking the chip back up restores supply\u2019s original color and clears the stash', async () => {
-    const { layerEl, api, unbind, supplyPoint } = await setUp()
+    const { ydoc, layerEl, api, unbind, supplyPoint } = await setUp()
     const supplyEl = findToyDom(layerEl, 'supply1')
     api.applyMoveCommit(api.find('chipA'), supplyPoint.cx, supplyPoint.cy)
     expect(supplyEl.getAttribute('data-color')).toBe('#dd2222') // sanity: borrow happened
@@ -467,5 +512,87 @@ describe('supply — borrows a landed toy\u2019s color, then gives it back', () 
 
     expect(supplyEl.getAttribute('data-color')).toBe('#123456')
     expect(supplyEl.getAttribute('data-orig-color')).toBeFalsy()
+  })
+})
+
+describe('supply — reload parity (regression: nested-envelope duplicate clone)', () => {
+  // invokeMenuAction wraps the whole 'Take' handler call in its own
+  // envelope; _take's synchronous 'toy:clone' dispatch runs inside that.
+  // If the request-bus handler ALSO opened its own separately-committing
+  // envelope (Toys.cloneToy/initializeToy called unconditionally, the
+  // original bug), both envelopes independently observe and commit the
+  // SAME DOM mutation — two ops that each insert the clone, which
+  // replays as a genuine duplicate node. These assert the fix directly:
+  // one click, one op, and a replay-from-log matches the live DOM.
+
+  test('clicking Take (via the real menu-action path) produces exactly one new op', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    addToyDom(ydoc, layerEl, { id: 'supply1', toyType: 'supply', x: 100, y: 100, color: '#fff' }, SUPPLY_SVG)
+    addToyDom(ydoc, layerEl, { id: 'chip5',   toyType: 'chip',   x: 500, y: 500, color: '#dd2222' }, CHIP_SVG)
+    await activateAll(ydoc, layerEl)
+
+    const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
+    const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')
+    api.applyMoveCommit(api.find('chip5'), supplyPoint.cx, supplyPoint.cy)
+    const supplyEl = findToyDom(layerEl, 'supply1')
+
+    const unbind = bindSupplyHarness(ydoc, layerEl)
+    const opsBefore = getOps(ydoc).size
+    clickTake(ydoc, layerEl, supplyEl)
+    unbind()
+
+    expect(getOps(ydoc).size).toBe(opsBefore + 1)
+  })
+
+  test('chip scenario: replaying the op log from scratch matches the live layer exactly', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    // Real, op-committing placement (Toys.placeToy) — not addToyDom
+    // directly — because reloadedIds() replays purely from the op log,
+    // and the initial placements need to be *in* that log for the
+    // comparison to mean anything. (Every other describe block in this
+    // file uses addToyDom deliberately, to avoid needing the fetch
+    // stub at all; this one specifically needs the opposite.)
+    await Toys.placeToy(ydoc, layerEl, { id: 'supply1', toyType: 'supply', x: 100, y: 100, color: '#fff' }, { authorId: AUTHOR, tableId: TABLE })
+    await Toys.placeToy(ydoc, layerEl, { id: 'chip5',   toyType: 'chip',   x: 500, y: 500, color: '#dd2222' }, { authorId: AUTHOR, tableId: TABLE })
+    await activateAll(ydoc, layerEl)
+
+    const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
+    const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')
+    api.applyMoveCommit(api.find('chip5'), supplyPoint.cx, supplyPoint.cy)
+    const supplyEl = findToyDom(layerEl, 'supply1')
+
+    const unbind = bindSupplyHarness(ydoc, layerEl)
+    clickTake(ydoc, layerEl, supplyEl)
+    unbind()
+
+    expect(reloadedIds(ydoc)).toEqual(liveIds(layerEl))
+  })
+
+  test('tray scenario: replaying the op log from scratch matches the live layer exactly, nested die included', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    await Toys.placeToy(ydoc, layerEl, { id: 'supply1', toyType: 'supply',   x: 100, y: 100, color: '#fff' }, { authorId: AUTHOR, tableId: TABLE })
+    await Toys.placeToy(ydoc, layerEl, { id: 'tray1',   toyType: 'tray_sum', x: 100, y: 300, color: '#3355ff' }, { authorId: AUTHOR, tableId: TABLE })
+    await Toys.placeToy(ydoc, layerEl, { id: 'die1',    toyType: 'dice_d6',  x: 100, y: 300, color: '#ffcc00' }, { authorId: AUTHOR, tableId: TABLE })
+    // reparentToyDom is a plain DOM op — wrap it in its own gesture so
+    // the nesting itself is a real, replayable op too (same reasoning
+    // as placeToy above: reloadedIds() only sees what's in the log).
+    Toys.runGesture(ydoc, layerEl, () => {
+      reparentToyDom(layerEl, 'die1', 'tray1')
+    }, { gesture: 'reparent', authorId: AUTHOR, tableId: TABLE })
+    await activateAll(ydoc, layerEl)
+
+    const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
+    const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')
+    api.applyMoveCommit(api.find('tray1'), supplyPoint.cx, supplyPoint.cy)
+    const supplyEl = findToyDom(layerEl, 'supply1')
+
+    const unbind = bindSupplyHarness(ydoc, layerEl)
+    clickTake(ydoc, layerEl, supplyEl)
+    unbind()
+
+    expect(reloadedIds(ydoc)).toEqual(liveIds(layerEl))
   })
 })
