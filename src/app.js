@@ -327,57 +327,56 @@ function buildToolRegistry() {
   _toolsByLayer['drawing'] = [SELECT_TOOL, ...drawTools];
 }
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
+// ── Boot ────────────────────────────────────────────────────────────────────
 export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreator = false, svgElement, displayName }) {
-  _ydoc           = ydoc;
-  _yMeta          = ydoc.getMap('meta');
-  _yDrawing       = ydoc.getXmlFragment('drawing');
-  _yBounPos       = ydoc.getXmlFragment('boundaries');
-  _awareness  = awareness;
-  _provider   = provider;
-  _myId       = myId;
+  _ydoc      = ydoc;
+  _yMeta     = ydoc.getMap('meta');
+  _yDrawing  = ydoc.getXmlFragment('drawing');
+  _yBounPos  = ydoc.getXmlFragment('boundaries');
+  _awareness = awareness;
+  _provider  = provider;
+  _myId      = myId;
   _myGrad    = myGrad;
-  _tableId    = tableId;
-  _isCreator  = isCreator;
-  _svgEl      = svgElement ?? document.querySelector('#stage svg') ?? document.getElementById('canvas');
+  _tableId   = tableId;
+  _isCreator = isCreator;
+  _svgEl     = svgElement ?? document.querySelector('#stage svg');
 
-  // Layers — the canonical LayerAPI dispatch table, keyed by the data-module
-  // value app.js stamps on rendered SVG elements.
+  // Layers - the canonical LayerAPI dispatch table, keyed by the data-module
   _Layers = {
     'drawing':  Drawing.makeLayerAPI(_ydoc, _yDrawing),
-    'toys':     Toys.makeLayerAPI(_ydoc, () => _svgEl.querySelector('#toys-layer'), _myId, tableId, isCreator),
+    'toys':     Toys.makeLayerAPI(
+                  _ydoc,
+                  () => _svgEl.querySelector('#toys-layer'),
+                  _myId,
+                  tableId,
+                  isCreator
+                ),
     'boun_pos': BounPos.makeLayerAPI(_ydoc, _yBounPos),
   };
 
-  // Icons — stamp symbols into DOM before anyone builds HTML
+  // Icons - stamp symbols into DOM before anyone builds HTML
   initIcons();
 
-  // Tool registry — assemble layer tool palettes from registries
+  // Tool registry - assemble layer tool palettes from registries
   buildToolRegistry();
 
-  // Overlay — needs App + SVG element
-  Overlay.init(App, _svgEl);
-  Overlay.setLocalGradient(_myGrad);
+  // Awareness layer - indicators of peers and for peers
+  Overlay.init(App, _svgEl, _myGrad);
 
-  // Delight (bowstring handle) — needs App + SVG element. Owns
-  // #delight-layer, which is never wiped by Overlay.render().
+  // Delight (bowstring handle and sparks)
   Delight.init(App, _svgEl);
 
-  // Canvas — needs App + SVG element; attaches pointer listeners
+  // Canvas - attaches pointer listeners
   Canvas.init(App, _svgEl);
 
   // UI — needs App; attaches panel/menu/pill listeners
   UI.init(App);
-  UI.setIdentity({ projectName: 'Togetherness Table', userId: displayName, tableId: tableId });
+  UI.setIdentity({ userId: displayName, tableId: tableId });
 
   // Keyboard shortcuts
   window.addEventListener('keydown', onKeyDown);
 
-  // Toy request bus — toy handler scripts (running inside placed <svg>
-  // subtrees) never call into app.js directly; they dispatch synchronous
-  // CustomEvents on `document`. See src/toy/supply.svg (`supply._event`)
-  // for the calling convention. Contract: the listener sets exactly one
-  // of detail.retval / detail.error.
+  // Toy request bus - toy menu/handler code will dispatch CustomEvents
   bindToyRequestBus();
 
   // CRDT observers
@@ -391,9 +390,8 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
   getOps(_ydoc).observe(onOpsChanged);
   _awareness.on('change', onPresenceChanged);
 
-  // Undo/redo — one UndoManager over drawing + boundaries. Toys undo is a
-  // separate mechanism entirely; see undo_redo.js's module docstring and
-  // App.undo/App.redo below.
+  // Undo/redo - UndoManager handles drawing + boundaries layers.
+  // Toys layer undo is a separate mechanism -- see undo_redo.js
   UndoRedo.init({
     ydoc:   _ydoc,
     scopes: [_yDrawing, _yBounPos],
@@ -448,17 +446,13 @@ function getToyClasses(domEl) {
   ]);
 }
 
-/**
- * Find the nearest snap point within its snap radius.
- * Returns {cx, cy} or null if nothing is within reach.
- * Uses squared-distance comparison to avoid sqrt.
- */
 function findNearestSnap(x, y, snapPoints) {
   let best = null, bestD2 = Infinity;
   for (const { cx, cy, snapRadius } of snapPoints) {
     const d2 = (x - cx) ** 2 + (y - cy) ** 2;
     if (d2 < snapRadius ** 2 && d2 < bestD2) { best = { cx, cy }; bestD2 = d2; }
   }
+  // Returns {cx, cy} or null if nothing is within reach.
   return best;
 }
 
