@@ -1,14 +1,5 @@
-
 /**
- * The toy-authored request bus: toy handler scripts (running inside
- * placed <svg> subtrees) never call into app.js directly — they
- * dispatch synchronous CustomEvents on `document`. See
- * src/toy/supply.svg (`supply._event`) for the calling convention.
  * Contract: the listener sets exactly one of detail.retval / detail.error.
- *
- * App is the same facade object every other module (ui.js, canvas.js,
- * overlay.js) receives — svgEl, Toys, and UI are passed alongside it
- * because they're not otherwise reachable through App itself.
  */
 export function init(App, svgEl, Toys, UI) {
   const ydoc    = App.getYdoc()
@@ -24,10 +15,6 @@ export function init(App, svgEl, Toys, UI) {
 
       let result
       try {
-        // toyCloneToy is built on ensureEnvelope, so this is correct
-        // whether we're already inside an envelope (the normal case — a
-        // toy handler's own synchronous dispatch, itself inside
-        // invokeMenuAction's or a cascade's own envelope) or not.
         result = Toys.toyCloneToy(ydoc, layerEl, sourceEl, subjectEl, { authorId: myId, tableId })
       } catch (err) {
         e.detail.error = err.message
@@ -49,10 +36,6 @@ export function init(App, svgEl, Toys, UI) {
       if (color !== undefined) editData.color = color
       if (name  !== undefined) editData.name  = name
 
-      // ensureEnvelope covers the commit either way; UI.refreshFromDoc()
-      // only matters when THIS call is the one that committed (nothing
-      // was enclosing it) — otherwise the enclosing gesture's own
-      // eventual commit is what the UI observes and refreshes from.
       const wasInside = Toys.isInsideEnvelope()
       Toys.ensureEnvelope(ydoc, layerEl, () => Toys.editDom(toyEl, editData),
         { gesture: 'edit', authorId: myId, tableId })
@@ -60,8 +43,6 @@ export function init(App, svgEl, Toys, UI) {
       e.detail.retval = {}
     },
 
-    // Mirrors console.log/warn/error by name — toy handlers dispatch
-    // bare 'log' | 'warn' | 'error', unnamespaced, on purpose.
     'log':   (e) => { UI.toast(e.detail.msg, 'info'); e.detail.retval = {} },
     'warn':  (e) => { UI.toast(e.detail.msg, 'warn');  console.warn(e.detail.msg);  e.detail.retval = {} },
     'error': (e) => { UI.toast(e.detail.msg, 'error'); console.error(e.detail.msg); e.detail.retval = {} },

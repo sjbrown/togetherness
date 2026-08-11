@@ -44,15 +44,7 @@ const MUTATION_OPTS = {
 
 let _envelopeDepth = 0
 
-/** True while a runInEnvelope() capture is on the call stack — including
- * a caller's own envelope one or more levels up, not just the innermost.
- * Lets a request-event handler (toy:clone, toy:edit, ...) tell whether
- * it's running synchronously inside whatever triggered it (a menu action
- * via invokeMenuAction, a position/contents cascade, ...) and should
- * therefore just mutate the DOM and let that outer envelope capture and
- * commit it — versus running with nothing enclosing it, where it must
- * commit for itself or the mutation is silently lost. See app.js's
- * bindToyRequestBus for the two call shapes this distinguishes. */
+/** True while a runInEnvelope() capture is on the call stack
 export const isInsideEnvelope = () => _envelopeDepth > 0
 
 /**

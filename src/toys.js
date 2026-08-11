@@ -329,8 +329,8 @@ export function resolveRef(ref, rootEl) {
 
 // ── Script hoisting ──────────────────────────────────────────────────────
 //
-// A toy's <script> tags never become part of its own DOM subtree (see
-// buildToyDom/normalizeForeignToySubtree). Two kinds, two different fates:
+// A toy's <script> tags never become part of its own DOM subtree.
+// Two kinds, two different fates:
 //   - src= (e.g. dice_utils.js) — never persisted at all. Fetched fresh off
 //     the network every session (activateToyScripts, below), so whatever's
 //     currently on disk is always what runs — freshness by construction,
@@ -531,13 +531,7 @@ export async function addToy(ydoc, layerEl, attrs) {
 }
 
 /**
- * Whether el is a toy instance boundary — <g class="toy" data-toy-id>,
- * or (defensively) anything else carrying data-toy-id that's either a
- * <g> or classed "toy". Cloning has to stop and re-scope at every one
- * of these, not just the outermost: a resizable toy's tt_contents can
- * hold other full toy instances (a tray with a die inside), each with
- * its own independent id and its own id-prefix scope, unrelated to its
- * container's — see cloneToyBoundary.
+ * <g class="toy" data-toy-id="...">,
  */
 function isToyBoundaryEl(el) {
   return !!el?.hasAttribute?.('data-toy-id') &&
@@ -545,26 +539,16 @@ function isToyBoundaryEl(el) {
 }
 
 /**
- * Clone one toy instance's DOM, recursing into any nested toy instances
- * found inside it (tray contents, etc.) rather than folding them into
- * the container's own id-prefix scope. Every id — and every url(#...)/
- * href referencing one — is rewritten from that ONE instance's own
- * `${sourceId}__` prefix to a freshly minted `${newId}__` prefix, scoped
- * to that instance alone; a nested toy gets its own fresh id and its own
- * scope, entirely independent of its container's. This reuses
- * parseForeignNode's ref-rewriting — the same primitive
- * normalizeForeignToySubtree is built on for the ordinary (non-nested)
- * case — rather than re-deriving it.
+ * Clone toy's DOM, recursing into any nested toy instances
+ * found inside it.
+ * Every id — and every url(#...)/href referencing one — is rewritten
  *
- * <script> children are dropped, same as normalizeForeignToySubtree —
- * nothing to hoist here, since every toyType involved is already
- * activated (it had to be, to be sitting on the table in the first
- * place — this applies to nested toys too, not just the root).
+ * <script> children are dropped, since every toyType involved is already
+ * activated
  *
  * cloned accumulates { id, toyType, el } for every toy instance created,
  * root and nested alike, post-order (a nested toy is pushed before its
- * container). The caller uses this to run initializeToy() on each one —
- * see cloneToy()'s doc comment for why cloning re-runs initialize.
+ * container).
  */
 function cloneToyBoundary(sourceEl, newId, cloned) {
   const sourceId  = sourceEl.getAttribute('data-toy-id')
@@ -617,12 +601,10 @@ function cloneToyBoundary(sourceEl, newId, cloned) {
   }
   const svgEl = cloneNode(sourceSvg)
 
-  // classAddMap (in ctx above) only knows how to ADD a prefixed class
-  // next to a bare one — it doesn't know how to swap out a *stale*
-  // prefixed class left over from the source's own placement (e.g.
-  // tt_positions elements carry both "tt_positions" and
-  // "{sourceId}__tt_positions"). Sweep those separately so the clone
-  // doesn't carry classes pointing back at its source's namespace.
+  // swap out a *stale* prefixed class left over from the source's
+  // own placement.
+  // Sweep those separately so the clone doesn't carry classes pointing back
+  // at its source's namespace.
   for (const el of [svgEl, ...svgEl.querySelectorAll('[class]')]) {
     const classes = el.getAttribute('class')
     if (!classes?.includes(oldPrefix)) continue
@@ -647,22 +629,9 @@ function cloneToyBoundary(sourceEl, newId, cloned) {
 }
 
 /**
- * Handle a 'toy:clone' request from a toy handler script (see
- * src/toy/supply.svg) — clone cloneeEl under a fresh id, placed via
- * clonerEl's own .tt_target marker if it has one (else clonerEl's own
- * centre — clonerEl never computes canvas-space coordinates itself),
- * and re-run initialize() on every instance the clone produces (root +
- * any nested toys — see cloneToyBoundary's doc comment).
- *
- * Built on ensureEnvelope, so this is safe to call from either context:
- * the normal one — already inside an envelope, via a toy handler's own
- * synchronous request-event dispatch — where it folds in and commits
- * nothing of its own; or with nothing enclosing it, where it opens and
- * commits its own single 'clone' gesture. Either way this is exactly
- * one atomic unit: the DOM clone and every initialize() call it
- * triggers are never split across two ops, unlike App.commitToy's
- * placement flow, which keeps them separate on purpose because an
- * async template fetch sits in between there — nothing does here.
+ * clone cloneeEl under a fresh id, placed via clonerEl's own .tt_target
+ * marker if present.
+ * Then re-run initialize() on every cloned instance.
  */
 export function toyCloneToy(ydoc, layerEl, clonerEl, cloneeEl, opts = {}) {
   const target = clonerEl?.querySelector?.('.tt_target')
@@ -687,13 +656,10 @@ export function toyCloneToy(ydoc, layerEl, clonerEl, cloneeEl, opts = {}) {
  * blank instance.
  *
  * (x, y) is the new root instance's centre point in canvas space;
- * width/height carry over unchanged from the source (not reclamped — a
- * clone should be the same size as what it was cloned from). Nested
- * toys keep whatever position they already had relative to their
- * container.
+ * width/height carry over unchanged from the source
  *
  * Returns { toyEl, cloned }, where cloned lists every toy instance this
- * produced ({ id, toyType, el }) — see cloneToyBoundary's doc comment.
+ * produced ({ id, toyType, el })
  */
 export function cloneToyDom(sourceEl, newId, x, y) {
   const cloned = []
@@ -823,16 +789,12 @@ export function getAnchor(svgEl) {
 
 /**
  * Canvas-space centre of innerEl, an element living somewhere inside
- * toyRootEl's embedded <svg> (e.g. a toy-authored `.tt_target` marker
- * used to hint where a requested toy:clone/toy:add should land). Hand-
- * replicates the browser's default 'xMidYMid meet' viewBox scaling —
- * jsdom has no getScreenCTM()/getBBox(), so every coordinate helper in
- * this file reads geometry off attributes only, and this one follows
- * suit for the same testability reason.
+ * toyRootEl's embedded <svg>
+ * Replicates the browser's default 'xMidYMid meet' viewBox scaling.
  *
- * innerEl must carry cx/cy (circle/ellipse) or x/y(+width/height) (rect
- * and friends); anything else — or a missing/malformed viewBox — falls
- * back to the toy's own overall anchor via getAnchor().
+ * innerEl must carry cx/cy (circle/ellipse) or x/y(+width/height)
+ * anything else — or a missing/malformed viewBox — falls back to the
+ * toy's own overall anchor via getAnchor().
  */
 export function getInnerAnchor(toyRootEl, innerEl) {
   const outerSvg = toyRootEl?.tagName === 'svg' ? toyRootEl : toyRootEl?.querySelector?.('svg')
@@ -1846,21 +1808,7 @@ export function invokeMenuAction(ydoc, layerEl, svgEl, namespace, key, evt, auth
 
 /**
  * Run every activated namespace's initialize(elem), if present, for a
- * freshly placed toy instance — inside an envelope, on the current tick,
- * with any container reaction folded into the same transaction.
- *
- * Runs once per instance, at placement only. Callers are responsible for
- * only calling this at placement.
- *
- * Ordinarily there's nothing to fold. But initialize() has the freedom
- * to mutate anything in toys-layer.
- */
-/**
- * Run every activated namespace's initialize(elem), if present — pure DOM
- * mutation, no envelope, no commit. Use this directly when already inside
- * an envelope (see isInsideEnvelope's doc comment — a toy request-event
- * handler running synchronously inside whatever triggered it); use
- * initializeToy below when nothing else is capturing this gesture.
+ * freshly placed/cloned toy instance
  */
 export function runInitializers(svgEl, toyType) {
   const initializers = getNamespacesForType(toyType)
@@ -2181,7 +2129,7 @@ export function receiveToyOp(ydoc, layerEl, opId, tableId) {
  * adopt it silently. A peer who authored on the splitter needs a fork —
  * orderedIds is ready to hand to tables.js's forkLiveDoc; opsSeed is NOT
  * computed here (it needs a real projected layer, real DOM work, only
- * worth doing in the fork case) — see buildToyForkSeed for that half.
+ * worth doing in the fork case)
  */
 export function resolveToyBranchConflict(ydoc, tips, { authorId, joinSequence = [] } = {}) {
   const ops = getOps(ydoc)
