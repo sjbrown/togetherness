@@ -231,6 +231,9 @@ export function apply(wire, rootEl) {
         for (const s of entry.added) {
           const sid = (s.at ?? []).find(([n]) => n === 'data-id')?.[1]
           const node = (sid && detached.get(sid)) ?? deserializeNode(s, doc)
+          if (sid) {
+            const existing = rootEl.querySelector(`[data-id="${sid}"]`)
+          }
           if (node) target.insertBefore(node, before)
         }
       }

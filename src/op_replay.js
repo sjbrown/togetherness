@@ -115,7 +115,8 @@ export function classify(ops, headId, incomingId) {
 export function advanceTo(layerEl, ops, headId, targetId, joinSequence = []) {
   return withSuppressedCapture(() => {
     if (headId != null && (headId === targetId || isAncestor(ops, headId, targetId))) {
-      for (const id of pathFrom(ops, headId, targetId, joinSequence)) {
+      const path = pathFrom(ops, headId, targetId, joinSequence)
+      for (const id of path) {
         applyWire(getOp(ops, id).mutations ?? [], layerEl)
       }
     } else {

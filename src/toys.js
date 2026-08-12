@@ -28,7 +28,8 @@ const XLINK_NS = 'http://www.w3.org/1999/xlink'
 const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789'
 
 import { number, bool } from './tools-schema.js';
-import { runInEnvelope, commitGesture } from './envelope.js';
+import { runInEnvelope, commitGesture, isInsideEnvelope } from './envelope.js';
+export { isInsideEnvelope };
 import { consumeParents, setHead, getHead, addMergeTip } from './op_head.js';
 import { getOps, appendOp, getOp, heads, labelBranches, branchAuthors, forkJoinSequence, toyUndoRedoStacks } from './op_dag.js';
 import { invert as invertWire, apply as applyWire } from './op_wire_mutation.js';
@@ -328,8 +329,8 @@ export function resolveRef(ref, rootEl) {
 
 // ── Script hoisting ──────────────────────────────────────────────────────
 //
-// A toy's <script> tags never become part of its own DOM subtree (see
-// buildToyDom/normalizeForeignToySubtree). Two kinds, two different fates:
+// A toy's <script> tags never become part of its own DOM subtree.
+// Two kinds, two different fates:
 //   - src= (e.g. dice_utils.js) — never persisted at all. Fetched fresh off
 //     the network every session (activateToyScripts, below), so whatever's
 //     currently on disk is always what runs — freshness by construction,
@@ -529,6 +530,155 @@ export async function addToy(ydoc, layerEl, attrs) {
   return addToyDom(ydoc, layerEl, attrs, svgText)
 }
 
+/**
+ * <g class="toy" data-toy-id="...">,
+ */
+function isToyBoundaryEl(el) {
+  return !!el?.hasAttribute?.('data-toy-id') &&
+         (el.tagName === 'g' || el.classList?.contains('toy'))
+}
+
+/**
+ * Clone toy's DOM, recursing into any nested toy instances
+ * found inside it.
+ * Every id — and every url(#...)/href referencing one — is rewritten
+ *
+ * <script> children are dropped, since every toyType involved is already
+ * activated
+ *
+ * cloned accumulates { id, toyType, el } for every toy instance created,
+ * root and nested alike, post-order (a nested toy is pushed before its
+ * container).
+ */
+function cloneToyBoundary(sourceEl, newId, cloned) {
+  const sourceId  = sourceEl.getAttribute('data-toy-id')
+  const oldPrefix = `${sourceId}__`
+  const newPrefix = `${newId}__`
+  const toyType   = sourceEl.getAttribute('data-toy-type')
+  const color     = sourceEl.getAttribute('data-color')
+
+  // idMap covers only ids in THIS instance's own scope. The walk below
+  // stops at any nested toy boundary — that gets its own scope via the
+  // recursive cloneToyBoundary call in cloneNode, not this one.
+  const idMap = new Map()
+  const mapId = (id) => {
+    const suffix = id.startsWith(oldPrefix) ? id.slice(oldPrefix.length) : id
+    idMap.set(id, newPrefix + suffix)
+  }
+  const sourceSvg = sourceEl.querySelector(':scope > svg')
+  if (sourceSvg.getAttribute('id')) mapId(sourceSvg.getAttribute('id'))
+  ;(function collectOwnIds(el) {
+    for (const child of el.children) {
+      if (isToyBoundaryEl(child)) continue
+      if (child.getAttribute('id')) mapId(child.getAttribute('id'))
+      collectOwnIds(child)
+    }
+  })(sourceSvg)
+
+  const ctx = {
+    prefix: newPrefix, idMap, classAddMap: EMPTY_MAP,
+    accum: { sequenceNumber: 0 }, mintId: false, keepForeign: true,
+  }
+  const cloneNode = (node) => {
+    if (node !== sourceSvg && isToyBoundaryEl(node)) {
+      return cloneToyBoundary(node, newToyId(), cloned)
+    }
+    const out = document.createElementNS(SVG_NS, node.localName)
+    for (const [name, value] of parseForeignNode(node, ctx)) {
+      if (name === 'xlink:href') out.setAttributeNS(XLINK_NS, 'href', value)
+      else                       out.setAttribute(name, value)
+    }
+    for (const child of Array.from(node.childNodes)) {
+      if (child.nodeType === 1) {
+        if (child.namespaceURI && child.namespaceURI !== SVG_NS) continue
+        if (child.localName === 'script') continue
+        out.appendChild(cloneNode(child))
+      } else if (child.nodeType === 3 || child.nodeType === 4) {
+        if (child.textContent.trim() !== '') out.appendChild(document.createTextNode(child.textContent))
+      }
+    }
+    return out
+  }
+  const svgEl = cloneNode(sourceSvg)
+
+  // swap out a *stale* prefixed class left over from the source's
+  // own placement.
+  // Sweep those separately so the clone doesn't carry classes pointing back
+  // at its source's namespace.
+  for (const el of [svgEl, ...svgEl.querySelectorAll('[class]')]) {
+    const classes = el.getAttribute('class')
+    if (!classes?.includes(oldPrefix)) continue
+    el.setAttribute('class', classes.split(/\s+/)
+      .map(c => c.startsWith(oldPrefix) ? newPrefix + c.slice(oldPrefix.length) : c)
+      .join(' '))
+  }
+
+  const g = document.createElementNS(SVG_NS, 'g')
+  g.setAttribute('class',         'toy')
+  g.setAttribute('data-toy-id',   newId)
+  g.setAttribute('data-toy-type', toyType)
+  if (color) g.setAttribute('data-color', color)
+  g.setAttribute('data-id',       newId)
+  g.setAttribute('id',            newId)
+  g.setAttribute('data-module',   'toys')
+  g.appendChild(svgEl)
+  attachScopedLookup(g, newId)
+
+  cloned.push({ id: newId, toyType, el: g })
+  return g
+}
+
+/**
+ * clone cloneeEl under a fresh id, placed via clonerEl's own .tt_target
+ * marker if present.
+ * Then re-run initialize() on every cloned instance.
+ */
+export function toyCloneToy(ydoc, layerEl, clonerEl, cloneeEl, opts = {}) {
+  const target = clonerEl?.querySelector?.('.tt_target')
+  const { x, y } = target ? getInnerAnchor(clonerEl, target) : getAnchor(clonerEl)
+  const newId = newToyId()
+
+  const { result } = ensureEnvelope(ydoc, layerEl, () => {
+    const built = addClonedToyDom(layerEl, cloneeEl, newId, x, y)
+    for (const { toyType, el } of built.cloned) runInitializers(el, toyType)
+    return built
+  }, { gesture: 'clone', ...opts })
+
+  return { id: newId, cloned: result.cloned }
+}
+
+/**
+ * Deep-clone an already-placed toy under a fresh id, nested toys and
+ * all — the "duplicate this specific instance, live state and all"
+ * counterpart to buildToyDom's "instantiate a fresh one from its
+ * template". Used by supply-style toys (see src/toy/supply.svg) that
+ * hand back a copy of whatever they're holding rather than conjuring a
+ * blank instance.
+ *
+ * (x, y) is the new root instance's centre point in canvas space;
+ * width/height carry over unchanged from the source
+ *
+ * Returns { toyEl, cloned }, where cloned lists every toy instance this
+ * produced ({ id, toyType, el })
+ */
+export function cloneToyDom(sourceEl, newId, x, y) {
+  const cloned = []
+  const toyEl  = cloneToyBoundary(sourceEl, newId, cloned)
+  const svgEl  = toyEl.querySelector(':scope > svg')
+  const width  = parseFloat(svgEl.getAttribute('width'))  || FALLBACK_TOY_SIZE
+  const height = parseFloat(svgEl.getAttribute('height')) || FALLBACK_TOY_SIZE
+  svgEl.setAttribute('x', String(x - width / 2))
+  svgEl.setAttribute('y', String(y - height / 2))
+  return { toyEl, cloned }
+}
+
+/** Clone + append, mirroring addToyDom's relationship to buildToyDom. */
+export function addClonedToyDom(layerEl, sourceEl, newId, x, y) {
+  const result = cloneToyDom(sourceEl, newId, x, y)
+  layerEl.appendChild(result.toyEl)
+  return result
+}
+
 
 /**
  * Remove a toy element from the DOM by id — searches the whole toys tree,
@@ -635,6 +785,45 @@ export function getAnchor(svgEl) {
   const geom = getGeom(svgEl)
   if (!geom) return { x: 0, y: 0 }
   return { x: geom.x + geom.width / 2, y: geom.y + geom.height / 2 }
+}
+
+/**
+ * Canvas-space centre of innerEl, an element living somewhere inside
+ * toyRootEl's embedded <svg>
+ * Replicates the browser's default 'xMidYMid meet' viewBox scaling.
+ *
+ * innerEl must carry cx/cy (circle/ellipse) or x/y(+width/height)
+ * anything else — or a missing/malformed viewBox — falls back to the
+ * toy's own overall anchor via getAnchor().
+ */
+export function getInnerAnchor(toyRootEl, innerEl) {
+  const outerSvg = toyRootEl?.tagName === 'svg' ? toyRootEl : toyRootEl?.querySelector?.('svg')
+  if (!outerSvg || !innerEl) return getAnchor(toyRootEl)
+
+  const outX = parseFloat(outerSvg.getAttribute('x'))      || 0
+  const outY = parseFloat(outerSvg.getAttribute('y'))      || 0
+  const outW = parseFloat(outerSvg.getAttribute('width'))  || 0
+  const outH = parseFloat(outerSvg.getAttribute('height')) || 0
+  const vb = (outerSvg.getAttribute('viewBox') || `0 0 ${outW} ${outH}`).trim().split(/[\s,]+/).map(Number)
+  const [vbX, vbY, vbW, vbH] = vb
+  if (!outW || !outH || !vbW || !vbH) return getAnchor(toyRootEl)
+
+  const scale   = Math.min(outW / vbW, outH / vbH)
+  const offsetX = (outW - vbW * scale) / 2
+  const offsetY = (outH - vbH * scale) / 2
+
+  let cx, cy
+  if (innerEl.hasAttribute('cx')) {
+    cx = parseFloat(innerEl.getAttribute('cx')) || 0
+    cy = parseFloat(innerEl.getAttribute('cy')) || 0
+  } else if (innerEl.hasAttribute('x')) {
+    cx = (parseFloat(innerEl.getAttribute('x')) || 0) + (parseFloat(innerEl.getAttribute('width'))  || 0) / 2
+    cy = (parseFloat(innerEl.getAttribute('y')) || 0) + (parseFloat(innerEl.getAttribute('height')) || 0) / 2
+  } else {
+    return getAnchor(toyRootEl)
+  }
+
+  return { x: outX + offsetX + (cx - vbX) * scale, y: outY + offsetY + (cy - vbY) * scale }
 }
 
 function pointInRect(x, y, rect) {
@@ -1069,15 +1258,15 @@ export const TOOLS = [
     ],
   },
   {
-    name:    'tray_sum',
-    toyType: 'tray_sum',
-    file: 'tray_sum.svg',
-    label: 'Sum Tray',
-    iconUrl: 'toy/tray_sum.svg',
+    name:    'chip',
+    toyType: 'chip',
+    file: 'chip.svg',
+    label: 'Chip',
+    iconUrl: 'toy/chip.svg',
     layer:   'toys',
-    defaults: { fill: '#fefed8' },
+    defaults: { fill: '#f8f8e5' },
     options: [
-      { kind: 'color-hsl', key: 'fill', label: 'Tray color', show: ['add', 'edit', 'addQuick'] },
+      { kind: 'color-hsl', key: 'fill', label: 'Chip color', show: ['add', 'edit', 'addQuick'] },
     ],
   },
   {
@@ -1093,24 +1282,37 @@ export const TOOLS = [
     ],
   },
   {
-    name:    'chip',
-    toyType: 'chip',
-    file: 'chip.svg',
-    label: 'Chip',
-    iconUrl: 'toy/chip.svg',
+    name:    'supply',
+    toyType: 'supply',
+    file: 'supply.svg',
+    label: 'Supply',
+    iconUrl: 'toy/supply.svg',
     layer:   'toys',
-    defaults: { fill: '#f8f8e5' },
+    defaults: { fill: '#311' },
     options: [
-      { kind: 'color-hsl', key: 'fill', label: 'Chip color', show: ['add', 'edit', 'addQuick'] },
+      { },
+    ],
+  },
+  {
+    name:    'tray_sum',
+    toyType: 'tray_sum',
+    file: 'tray_sum.svg',
+    label: 'Sum Tray',
+    iconUrl: 'toy/tray_sum.svg',
+    layer:   'toys',
+    defaults: { fill: '#fefed8' },
+    options: [
+      { kind: 'color-hsl', key: 'fill', label: 'Tray color', show: ['add', 'edit', 'addQuick'] },
     ],
   },
 ];
 export const TOY_TYPES = {
   player_marker: TOOLS[0],
   dice_d6: TOOLS[1],
-  tray_sum: TOOLS[2],
+  chip: TOOLS[2],
   bag: TOOLS[3],
-  chip: TOOLS[4],
+  supply: TOOLS[4],
+  tray_sum: TOOLS[5],
 }
 
 // ── ttState / ttStateSchema ───────────────────────────────────────────────────
@@ -1541,6 +1743,36 @@ export function runGesture(ydoc, layerEl, fn, opts = {}) {
 }
 
 /**
+ * Run fn(), guaranteeing its mutations land inside exactly one open
+ * envelope — never zero (silently lost), never two (independently
+ * captured and committed twice, replaying as duplicated DOM — see chat
+ * notes on the nested-envelope clone-duplication bug this exists to
+ * rule out generically, rather than call-site by call-site).
+ *
+ * If already inside an envelope (a toy handler's own request-event
+ * dispatch, itself inside invokeMenuAction's or a cascade's own
+ * envelope), fn just runs and folds in — nothing commits here, and
+ * opts.gesture is never used for anything, because there is no "here"
+ * to name; fn's mutations become part of whatever the ENCLOSING
+ * envelope eventually commits under. If nothing encloses it, this opens
+ * and commits its own single runGesture instead, so the mutation is
+ * never silently dropped rather than duplicated. This is an envelope
+ * guarantee, not a gesture guarantee — it never promises fn's work
+ * becomes its own named, identifiable op; only that it's captured
+ * exactly once.
+ *
+ * Returns { result, op } — result is fn()'s return value either way;
+ * op is the committed operation, or null when this folded into an
+ * enclosing envelope instead of committing one of its own.
+ */
+export function ensureEnvelope(ydoc, layerEl, fn, opts = {}) {
+  if (isInsideEnvelope()) return { result: fn(), op: null }
+  let result
+  const { op } = runGesture(ydoc, layerEl, () => { result = fn() }, opts)
+  return { result, op }
+}
+
+/**
  * Invoke a toy's menu action by (namespace, key) — the identifiers
  * getMenuActions() handed back. Re-validates applicable() first (UI state
  * may be stale — another peer's move could land between render and click).
@@ -1576,24 +1808,20 @@ export function invokeMenuAction(ydoc, layerEl, svgEl, namespace, key, evt, auth
 
 /**
  * Run every activated namespace's initialize(elem), if present, for a
- * freshly placed toy instance — inside an envelope, on the current tick,
- * with any container reaction folded into the same transaction.
- *
- * Runs once per instance, at placement only. Callers are responsible for
- * only calling this at placement.
- *
- * Ordinarily there's nothing to fold. But initialize() has the freedom
- * to mutate anything in toys-layer.
+ * freshly placed/cloned toy instance
  */
-export function initializeToy(ydoc, layerEl, svgEl, toyType, authorId, tableId) {
+export function runInitializers(svgEl, toyType) {
   const initializers = getNamespacesForType(toyType)
     .map(name => globalThis[name])
     .filter(ns => ns && typeof ns.initialize === 'function')
-  if (!initializers.length) return
+  initializers.forEach(ns => ns.initialize(svgEl))
+}
 
+export function initializeToy(ydoc, layerEl, svgEl, toyType, authorId, tableId) {
+  if (!getNamespacesForType(toyType).some(name => typeof globalThis[name]?.initialize === 'function')) return
   ydoc.transact(() => {
     runGesture(ydoc, layerEl, () => {
-      initializers.forEach(ns => ns.initialize(svgEl))
+      runInitializers(svgEl, toyType)
     }, { gesture: 'initialize', authorId, tableId })
   })
 }
@@ -1901,7 +2129,7 @@ export function receiveToyOp(ydoc, layerEl, opId, tableId) {
  * adopt it silently. A peer who authored on the splitter needs a fork —
  * orderedIds is ready to hand to tables.js's forkLiveDoc; opsSeed is NOT
  * computed here (it needs a real projected layer, real DOM work, only
- * worth doing in the fork case) — see buildToyForkSeed for that half.
+ * worth doing in the fork case)
  */
 export function resolveToyBranchConflict(ydoc, tips, { authorId, joinSequence = [] } = {}) {
   const ops = getOps(ydoc)

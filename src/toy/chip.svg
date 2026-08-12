@@ -71,6 +71,12 @@ var chip = {
     tspan.textContent = String(current + step)
   },
 
+  // Runs once at placement - including during clone (eg, from a supply)
+  initialize: function(elem) {
+    elem.setAttribute('data-below', '')
+    elem.setAttribute('data-above', '')
+  },
+
   on_position_occupied: function(elem, posId, ownerId, movingId) {
     elem.setAttribute('data-below', movingId)
   },

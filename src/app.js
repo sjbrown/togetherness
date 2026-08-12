@@ -2,7 +2,7 @@
  * app.js — togetherness application bus
  *
  * The only module that imports from all others.
- * It wires the layers together through a narrow, typed interface.
+ * It wires the layers together through a narrow interface.
  *
  * Roles:
  *   - Initialise all modules and inject this bus object as their sole dependency
@@ -31,6 +31,7 @@ import * as Canvas                                from './canvas.js';
 import * as Overlay                               from './overlay.js';
 import * as Delight                               from './delight.js';
 import * as UndoRedo                              from './undo_redo.js';
+import * as Events                                from './events.js';
 import { entityGradient }            from './entity_gradient.js';
 import { isElementHeldByOther, computeTickActions } from './soft-lock.js';
 
@@ -327,51 +328,55 @@ function buildToolRegistry() {
   _toolsByLayer['drawing'] = [SELECT_TOOL, ...drawTools];
 }
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
+// ── Boot ────────────────────────────────────────────────────────────────────
 export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreator = false, svgElement, displayName }) {
-  _ydoc           = ydoc;
-  _yMeta          = ydoc.getMap('meta');
-  _yDrawing       = ydoc.getXmlFragment('drawing');
-  _yBounPos       = ydoc.getXmlFragment('boundaries');
-  _awareness  = awareness;
-  _provider   = provider;
-  _myId       = myId;
+  _ydoc      = ydoc;
+  _yMeta     = ydoc.getMap('meta');
+  _yDrawing  = ydoc.getXmlFragment('drawing');
+  _yBounPos  = ydoc.getXmlFragment('boundaries');
+  _awareness = awareness;
+  _provider  = provider;
+  _myId      = myId;
   _myGrad    = myGrad;
-  _tableId    = tableId;
-  _isCreator  = isCreator;
-  _svgEl      = svgElement ?? document.querySelector('#stage svg') ?? document.getElementById('canvas');
+  _tableId   = tableId;
+  _isCreator = isCreator;
+  _svgEl     = svgElement ?? document.querySelector('#stage svg');
 
-  // Layers — the canonical LayerAPI dispatch table, keyed by the data-module
-  // value app.js stamps on rendered SVG elements.
+  // Layers - the canonical LayerAPI dispatch table, keyed by the data-module
   _Layers = {
     'drawing':  Drawing.makeLayerAPI(_ydoc, _yDrawing),
-    'toys':     Toys.makeLayerAPI(_ydoc, () => _svgEl.querySelector('#toys-layer'), _myId, tableId, isCreator),
+    'toys':     Toys.makeLayerAPI(
+                  _ydoc,
+                  () => _svgEl.querySelector('#toys-layer'),
+                  _myId,
+                  tableId,
+                  isCreator
+                ),
     'boun_pos': BounPos.makeLayerAPI(_ydoc, _yBounPos),
   };
 
-  // Icons — stamp symbols into DOM before anyone builds HTML
+  // Icons - stamp symbols into DOM before anyone builds HTML
   initIcons();
 
-  // Tool registry — assemble layer tool palettes from registries
+  // Tool registry - assemble layer tool palettes from registries
   buildToolRegistry();
 
-  // Overlay — needs App + SVG element
-  Overlay.init(App, _svgEl);
-  Overlay.setLocalGradient(_myGrad);
+  // Awareness layer - indicators of peers and for peers
+  Overlay.init(App, _svgEl, _myGrad);
 
-  // Delight (bowstring handle) — needs App + SVG element. Owns
-  // #delight-layer, which is never wiped by Overlay.render().
+  // Delight (bowstring handle and sparks)
   Delight.init(App, _svgEl);
 
-  // Canvas — needs App + SVG element; attaches pointer listeners
+  // Canvas - attaches pointer listeners
   Canvas.init(App, _svgEl);
 
   // UI — needs App; attaches panel/menu/pill listeners
   UI.init(App);
-  UI.setIdentity({ projectName: 'Togetherness Table', userId: displayName, tableId: tableId });
+  UI.setIdentity({ userId: displayName, tableId: tableId });
 
-  // Keyboard shortcuts
-  window.addEventListener('keydown', onKeyDown);
+  // Toy request bus - toy menu/handler code will dispatch CustomEvents
+  Events.init(App, _svgEl, Toys, UI);
+  Events.keyboardHandlers(App)
 
   // CRDT observers
   // Layers use observeDeep so attribute changes trigger renderDoc on
@@ -384,9 +389,8 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
   getOps(_ydoc).observe(onOpsChanged);
   _awareness.on('change', onPresenceChanged);
 
-  // Undo/redo — one UndoManager over drawing + boundaries. Toys undo is a
-  // separate mechanism entirely; see undo_redo.js's module docstring and
-  // App.undo/App.redo below.
+  // Undo/redo - UndoManager handles drawing + boundaries layers.
+  // Toys layer undo is a separate mechanism -- see undo_redo.js
   UndoRedo.init({
     ydoc:   _ydoc,
     scopes: [_yDrawing, _yBounPos],
@@ -441,17 +445,13 @@ function getToyClasses(domEl) {
   ]);
 }
 
-/**
- * Find the nearest snap point within its snap radius.
- * Returns {cx, cy} or null if nothing is within reach.
- * Uses squared-distance comparison to avoid sqrt.
- */
 function findNearestSnap(x, y, snapPoints) {
   let best = null, bestD2 = Infinity;
   for (const { cx, cy, snapRadius } of snapPoints) {
     const d2 = (x - cx) ** 2 + (y - cy) ** 2;
     if (d2 < snapRadius ** 2 && d2 < bestD2) { best = { cx, cy }; bestD2 = d2; }
   }
+  // Returns {cx, cy} or null if nothing is within reach.
   return best;
 }
 
@@ -741,6 +741,7 @@ const App = {
     return out;
   },
   getTableId:      () => _tableId,
+  getYdoc:         () => _ydoc,
   getSelectedIds:  () => Object.keys(_myClaims),
   getBBox:  (id) => {
     const svgEl = _svgEl.querySelector(`[data-id="${id}"]`);
@@ -1876,6 +1877,11 @@ const App = {
     input.click();
   },
 
+  // _lastActionScope is read by undo/redo to pick which log
+  // (toys vs draw_bounds)
+  setLastActionScope: (scope) => { _lastActionScope = scope; },
+  addHistory,
+
   addLog: (msg, type='') => {
     const log   = document.getElementById('eventLog')
     if (log === null) return;
@@ -1932,18 +1938,6 @@ function addUndoHistory(label) {
   UI.refreshFromDoc();
 }
 
-// ── Keyboard shortcuts ────────────────────────────────────────────────────────
-function onKeyDown(e) {
-  if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
-  if (e.key === 'r' || e.key === 'R') App.setTool('rect');
-  if (e.key === 'c' || e.key === 'C') App.setTool('circle');
-  if (e.key === 's' || e.key === 'S') App.setTool('select');
-  if (e.key === 'Escape') App.select(null);
-  if ((e.key === 'Delete' || e.key === 'Backspace')) App.deleteSelected();
-  if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey) && e.shiftKey) { e.preventDefault(); App.redo(); return; }
-  if ((e.key === 'y' || e.key === 'Y') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); App.redo(); return; }
-  if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); App.undo(); }
-}
 
 function onMetaChanged() {
   renderBackgroundLayer();

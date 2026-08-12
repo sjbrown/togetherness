@@ -246,10 +246,11 @@ let _layerEl  = null;   // #overlay-layer <g>
 let _svgEl    = null;   // root <svg> — used to look up live toy DOM nodes for resize ghost cloning
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-export function init(appBus, svgElement) {
+export function init(appBus, svgElement, localGrad = null) {
   App      = appBus;
   _svgEl   = svgElement;
   _layerEl = svgElement.querySelector('#overlay-layer') || svgElement.querySelector('#overlay');
+  if (localGrad) setLocalGradient(localGrad);
 }
 
 // ── SelectionMode setters ─────────────────────────────────────────────────────

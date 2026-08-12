@@ -42,6 +42,11 @@ const MUTATION_OPTS = {
 
 // ── raw mutation capture ──────────────────────────────────────────────
 
+let _envelopeDepth = 0
+
+/** True while a runInEnvelope() capture is on the call stack **/
+export const isInsideEnvelope = () => _envelopeDepth > 0
+
 /**
  * Run fn() while watching the toys layer for DOM mutations, then return the
  * raw MutationRecord[] produced.
@@ -70,12 +75,14 @@ export function runInEnvelope(toyEl, fn) {
   const records = []
   const observer = new MutationObserver(muts => records.push(...muts))
   observer.observe(scopeEl, MUTATION_OPTS)
+  _envelopeDepth++
   try {
     const result = fn()
     if (result && typeof result.then === 'function') {
       throw new Error('[envelope] runInEnvelope: handler returned a Promise; synchronous handlers only')
     }
   } finally {
+    _envelopeDepth--
     records.push(...observer.takeRecords())
     observer.disconnect()
   }
