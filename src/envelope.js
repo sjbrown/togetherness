@@ -44,7 +44,7 @@ const MUTATION_OPTS = {
 
 let _envelopeDepth = 0
 
-/** True while a runInEnvelope() capture is on the call stack
+/** True while a runInEnvelope() capture is on the call stack **/
 export const isInsideEnvelope = () => _envelopeDepth > 0
 
 /**
