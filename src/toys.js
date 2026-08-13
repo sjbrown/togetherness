@@ -1335,6 +1335,18 @@ export const TOOLS = [
       { kind: 'color-hsl', key: 'fill', label: 'Tray color', show: ['add', 'edit', 'addQuick'] },
     ],
   },
+  {
+    name:    'token_glass',
+    toyType: 'token_glass',
+    file: 'token_glass.svg',
+    label: 'Token',
+    iconUrl: 'toy/token_glass.svg',
+    layer:   'toys',
+    defaults: { fill: '#fa2020' },
+    options: [
+      { kind: 'color-hsl', key: 'fill', label: 'Token color', show: ['add', 'edit', 'addQuick'] },
+    ],
+  },
 ];
 export const TOY_TYPES = {
   player_marker: TOOLS[0],
@@ -1343,6 +1355,7 @@ export const TOY_TYPES = {
   bag: TOOLS[3],
   supply: TOOLS[4],
   tray_sum: TOOLS[5],
+  token_glass: TOOLS[6],
 }
 
 // ── ttState / ttStateSchema ───────────────────────────────────────────────────

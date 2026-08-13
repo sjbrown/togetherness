@@ -767,3 +767,58 @@ describe('resize mode — corner-drag gesture', () => {
     expect(entered).toEqual([])
   })
 })
+
+// ── Pinch gesture (mobile): should not trigger double-tap view reset ──
+
+describe('Pinch gesture', () => {
+  beforeEach(() => {
+    makeDOM()
+    _pointerId = 0
+  })
+
+  test('pinch (two-finger zoom) should not trigger view reset', () => {
+    const onViewResetCalls = []
+    const app = makeApp({
+      onViewReset: () => onViewResetCalls.push(true),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+
+    // Simulate pinch: two fingers down
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100 }))
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+
+    // Simulate pinch: first finger lifts
+    stage.dispatchEvent(makePointerEvent('pointerup', { clientX: 100, clientY: 100 }))
+
+    // Simulate pinch: second finger lifts (within 300ms, but should NOT trigger reset)
+    stage.dispatchEvent(makePointerEvent('pointerup', { clientX: 200, clientY: 200 }))
+
+    // View reset should NOT have been called
+    expect(onViewResetCalls).toEqual([])
+  })
+
+  test('legitimate double-tap still triggers view reset', () => {
+    const onViewResetCalls = []
+    const app = makeApp({
+      onViewReset: () => onViewResetCalls.push(true),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+
+    // First tap
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100 }))
+    stage.dispatchEvent(makePointerEvent('pointerup', { clientX: 100, clientY: 100 }))
+
+    // Second tap (within 300ms)
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100 }))
+    stage.dispatchEvent(makePointerEvent('pointerup', { clientX: 100, clientY: 100 }))
+
+    // View reset SHOULD have been called
+    expect(onViewResetCalls).toEqual([true])
+  })
+})

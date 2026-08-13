@@ -543,6 +543,8 @@ function onPointerUp(e) {
     }
   }
 
+  const wasMultiPointer = ToolMode._gesture === 'pinch';
+
   if (ToolMode._pointers.size < 2 && ToolMode._gesture === 'pinch') {
     ToolMode._gesture = ToolMode._pointers.size === 1 ? 'pending' : null;
   }
@@ -552,8 +554,9 @@ function onPointerUp(e) {
   }
 
   // Double-tap: reset view
+  // (but not if the preceding pointerup was part of a multi-pointer gesture like pinch)
   const now = Date.now();
-  if (now - ToolMode._lastTap < 300 && ToolMode._pointers.size === 0 && !ToolMode._moveRef?.moved) {
+  if (now - ToolMode._lastTap < 300 && ToolMode._pointers.size === 0 && !ToolMode._moveRef?.moved && !wasMultiPointer) {
     resetView();
     App.onViewReset();
   }
