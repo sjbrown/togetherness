@@ -3,8 +3,8 @@
    xmlns="http://www.w3.org/2000/svg"
    xmlns:svg="http://www.w3.org/2000/svg"
    xmlns:xlink="http://www.w3.org/1999/xlink"
-   width="100"
-   height="150"
+   width="150"
+   height="225"
    viewBox="0 0 100 150"
    id="supply"
    class="supply tt-mode-resize tt-mode-rummage"
@@ -39,32 +39,30 @@
     <linearGradient
        xlink:href="#linearGradient60894"
        id="linearGradient60896"
-       x1="124.58331"
-       y1="105.76905"
-       x2="124.58331"
-       y2="117.31888"
-       gradientUnits="userSpaceOnUse"
-       gradientTransform="translate(-112.21034,-90.522263)" />
+       x1="0"
+       y1="15"
+       x2="0"
+       y2="25"
+       gradientUnits="userSpaceOnUse" />
     <linearGradient
        id="linearGradient60894">
       <stop
-         style="stop-color:#787878;stop-opacity:1;"
+         style="stop-color:#ababab;stop-opacity:1;"
          offset="0"
          id="stop60890" />
       <stop
-         style="stop-color:#3e3e3e;stop-opacity:1;"
+         style="stop-color:#575757;stop-opacity:1;"
          offset="1"
          id="stop60892" />
     </linearGradient>
     <linearGradient
        xlink:href="#linearGradient11728"
        id="linearGradient11730"
-       x1="126.26675"
-       y1="116.38761"
-       x2="126.26675"
-       y2="93.988335"
-       gradientUnits="userSpaceOnUse"
-       gradientTransform="translate(-112.21034,-90.522263)" />
+       x1="0"
+       y1="25"
+       x2="0"
+       y2="4"
+       gradientUnits="userSpaceOnUse" />
     <linearGradient
        id="linearGradient11728">
       <stop
@@ -104,12 +102,12 @@
     <linearGradient
        xlink:href="#linearGradient49498"
        id="linearGradient49500"
-       x1="126.25869"
+       x1="14"
        y1="93.833717"
-       x2="126.25869"
-       y2="112.78059"
+       x2="0"
+       y2="0"
        gradientUnits="userSpaceOnUse"
-       gradientTransform="translate(-112.21034,-90.522263)" />
+       gradientTransform="translate(0,-90.522263)" />
     <linearGradient
        id="linearGradient49498">
       <stop
@@ -165,11 +163,10 @@
        xlink:href="#linearGradient60894"
        id="linearGradient929"
        gradientUnits="userSpaceOnUse"
-       gradientTransform="translate(-112.21034,-90.522263)"
-       x1="124.58331"
-       y1="105.76905"
-       x2="124.58331"
-       y2="117.31888" />
+       x1="12"
+       y1="15"
+       x2="12"
+       y2="27" />
     <linearGradient
        xlink:href="#linearGradient11728"
        id="linearGradient931"
