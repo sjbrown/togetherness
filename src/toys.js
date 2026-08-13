@@ -866,12 +866,40 @@ export function getContentsGroup(domEl) {
   return domEl.querySelector(`.${domEl.id}__tt_contents`)
 }
 
-function getPositionsMeta(domEl) {
-  const NULL = { g: null, name: null, snapRadius: null, circles: null }
+/**
+ * Matrix mapping points in localEl's own coordinate space into layerEl's
+ * coordinate space: layerEl^-1 * localEl, via getScreenCTM().
+ *
+ * getScreenCTM() is the one SVG API that correctly folds in a toy's
+ * viewBox-to-width/height scaling (e.g. a supply toy whose width/height
+ * were bumped up while its viewBox stayed put) plus any nested <g>
+ * transforms, at any depth — no hand-rolled 'xMidYMid meet' math needed.
+ * "Screen space" here is just the one coordinate frame every SVG element
+ * is guaranteed to share; the whole conversion collapses to a single
+ * matrix multiply, not a real round trip through pixels.
+ *
+ * Returns null if either element isn't attached to a rendered SVG
+ * (getScreenCTM() returns null in that case).
+ */
+function localToLayerMatrix(localEl, layerEl) {
+  const layerCtm = layerEl?.getScreenCTM?.()
+  const localCtm = localEl?.getScreenCTM?.()
+  if (!layerCtm || !localCtm) return null
+  return layerCtm.inverse().multiply(localCtm)
+}
+
+/**
+ * domEl's tt_positions circles, converted into layerEl's coordinate space.
+ *
+ * layerInv is layerEl's inverted screen CTM, precomputed once by the
+ * caller and passed in — getScreenCTM() forces layout, so callers that
+ * loop over many owners (getSnapPoints, ownersAtPoint, directOccupantIds)
+ * should look it up once per call rather than once per owner.
+ */
+function getPositionsMeta(domEl, layerInv) {
+  const NULL = { g: null, name: null, snapRadius: null, circles: null, canvasCircles: null }
   const g = domEl?.querySelector?.(`.${domEl.id}__tt_positions`) ?? null
   if (!g) return NULL
-  const geom = getGeom(domEl)
-  if (!geom) return NULL
 
   const circles = g.querySelectorAll(`circle`)
   if (!circles.length) return NULL
@@ -879,13 +907,20 @@ function getPositionsMeta(domEl) {
   const snapRadius = Number(g.getAttribute('data-snap-radius') ?? c0.getAttribute('r'))
   const name = g.getAttribute('name') || '';
 
+  const groupCtm = g.getScreenCTM?.()
+  const m = layerInv && groupCtm ? layerInv.multiply(groupCtm) : null
+  if (!m) return NULL
+  const scale = Math.hypot(m.a, m.b)
+
   const canvasCircles = []
   circles.forEach((c) => {
+    const cx = Number(c.getAttribute('cx') ?? 0)
+    const cy = Number(c.getAttribute('cy') ?? 0)
     canvasCircles.push({
       id: c.getAttribute('id') ?? '',
-      r: Number(c.getAttribute('r') ?? 0),
-      cx: geom.x + Number(c.getAttribute('cx') ?? 0),
-      cy: geom.y + Number(c.getAttribute('cy') ?? 0),
+      r: Number(c.getAttribute('r') ?? 0) * scale,
+      cx: cx * m.a + cy * m.c + m.e,
+      cy: cx * m.b + cy * m.d + m.f,
     })
   })
   return { g, name, snapRadius, circles, canvasCircles }
@@ -895,26 +930,19 @@ function getPositionsMeta(domEl) {
  * Scan the toys layer for top-level toys offering a tt_positions pos-set
  */
 export function getSnapPoints(layerEl) {
-  const topLevelToys = [...layerEl.querySelectorAll(':scope > [data-id]')]
-
   const points = []
-  topLevelToys.forEach((ownerEl) => {
-    const ownerId = ownerEl.getAttribute('data-id')
+  const layerInv = layerEl?.getScreenCTM?.()?.inverse?.() ?? null
 
-    const { g, circles, name, snapRadius, canvasCircles } = getPositionsMeta(ownerEl)
-    if (!g) return
+  for (const ownerEl of layerEl.querySelectorAll(':scope > [data-id]')) {
+    const ownerId = ownerEl.getAttribute('data-id')
+    const { g, canvasCircles, name } = getPositionsMeta(ownerEl, layerInv)
+    if (!g) continue
 
     for (const c of canvasCircles) {
-      points.push({
-        cx: c.cx,
-        cy: c.cy,
-        snapRadius: c.r,
-        circleId: c.id,
-        ownerId: ownerId,
-        name: name,
-      })
+      points.push({ cx: c.cx, cy: c.cy, snapRadius: c.r, circleId: c.id, ownerId, name })
     }
-  })
+  }
+
   return points
 }
 
@@ -930,12 +958,13 @@ export function getSnapPoints(layerEl) {
  */
 function ownersAtPoint(layerEl, cx, cy, excludeId) {
   const matches = []
+  const layerInv = layerEl?.getScreenCTM?.()?.inverse?.() ?? null
 
   for (const el of layerEl.querySelectorAll(':scope > [data-id]')) {
     const ownerId = el.getAttribute('data-id')
     if (ownerId === excludeId) continue
 
-    const { g, canvasCircles, name } = getPositionsMeta(el)
+    const { g, canvasCircles } = getPositionsMeta(el, layerInv)
     if (!g) continue
 
     for (const c of canvasCircles ) {
@@ -961,7 +990,8 @@ function directOccupantIds(layerEl, hostEl) {
     return ids
   }
 
-  const { g, circles, canvasCircles, name, snapRadius } = getPositionsMeta(hostEl)
+  const layerInv = layerEl?.getScreenCTM?.()?.inverse?.() ?? null
+  const { g, canvasCircles } = getPositionsMeta(hostEl, layerInv)
   if (!g) return []
 
   const ids = new Set()
@@ -1288,7 +1318,7 @@ export const TOOLS = [
     label: 'Supply',
     iconUrl: 'toy/supply.svg',
     layer:   'toys',
-    defaults: { fill: '#311' },
+    defaults: { fill: '#fafafa' },
     options: [
       { },
     ],
