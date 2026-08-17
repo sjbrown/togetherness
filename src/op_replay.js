@@ -9,6 +9,7 @@
 import { apply as applyWire } from './op_wire_mutation.js'
 import { getOp, isAncestor, lca, pathFrom, heads } from './op_dag.js'
 import { projectFrom } from './op_checkpoint.js'
+import * as Trace from './trace.js'
 
 let _suppressed = false
 
@@ -116,10 +117,19 @@ export function advanceTo(layerEl, ops, headId, targetId, joinSequence = []) {
   return withSuppressedCapture(() => {
     if (headId != null && (headId === targetId || isAncestor(ops, headId, targetId))) {
       const path = pathFrom(ops, headId, targetId, joinSequence)
+      // The path IS the order of application — the one thing about replay
+      // that is impossible to infer from the resulting DOM.
+      Trace.op('advance', `replaying ${path.length} operation${path.length === 1 ? '' : 's'}`, () => ({
+        mode: 'replay', from: headId, to: targetId,
+        path: path.map((id, i) => ({ i, id, gesture: getOp(ops, id)?.gesture ?? null,
+                                     authorId: getOp(ops, id)?.authorId ?? null })),
+      }))
       for (const id of path) {
         applyWire(getOp(ops, id).mutations ?? [], layerEl)
       }
     } else {
+      Trace.op('advance', 'rebuilding from the nearest checkpoint',
+        { mode: 'project', from: headId, to: targetId })
       projectFrom(layerEl, ops, targetId, joinSequence)
     }
     return targetId
@@ -139,6 +149,8 @@ export const tips = (ops) => heads(ops)
  * application, is what actually joins the branches in the graph.
  */
 export function mergeConcurrent(layerEl, op) {
+  Trace.op('merge', `absorbing concurrent ${op?.gesture ?? '?'} ${op?.id ?? '?'}`,
+    { id: op?.id ?? null, gesture: op?.gesture ?? null, authorId: op?.authorId ?? null })
   return withSuppressedCapture(() => applyWire(op?.mutations ?? [], layerEl))
 }
 
@@ -162,6 +174,11 @@ export const RECEIVED_CONFLICT   = 'received-conflict'
  */
 export function receiveOp(layerEl, ops, headId, incomingId, joinSequence = []) {
   const { kind, lca: base } = classify(ops, headId, incomingId)
+  Trace.op('classify', `${incomingId} is ${kind} relative to head`, () => ({
+    incoming: incomingId, head: headId, kind, lca: base,
+    gesture:  getOp(ops, incomingId)?.gesture ?? null,
+    authorId: getOp(ops, incomingId)?.authorId ?? null,
+  }), kind === CONFLICTING ? 'warn' : 'info')
 
   if (kind === KNOWN) {
     return { result: RECEIVED_KNOWN, head: headId, mergeTip: null, lca: base }

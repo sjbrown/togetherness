@@ -16,6 +16,7 @@
 import * as Y                   from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { compareAuthority as compareAuthorityIn, getOps, appendOp } from './op_dag.js';
+import * as Trace                from './trace.js';
 
 const TABLES_KEY  = 'tt_tables';
 const MAX_TABLES  = 20;
@@ -82,6 +83,8 @@ function ensureJoined(ydoc, myId) {
     if (yJoinSequence.toArray().includes(myId)) return;
     yJoinSequence.push([myId]);
   });
+  Trace.boot('join', `joined the authority ordering at index ${yJoinSequence.toArray().indexOf(myId)}`,
+    { myId, joinSequence: yJoinSequence.toArray() });
 }
 
 /**
@@ -192,10 +195,27 @@ function recordRecentToy(ydoc, playerId, toyId) {
 
 
 async function openTablePersistence(tableId, ydoc) {
+  Trace.boot('indexeddb-open', `opening IndexedDB database "${tableId}"`, { tableId });
+  const close = Trace.span(Trace.BOOT, 'indexeddb-replay', 'IndexedDB replay landed');
   const persistence = new IndexeddbPersistence(tableId, ydoc);
-  await new Promise((resolve, reject) => {
-    persistence.on('synced', resolve);
-    persistence.on('error',  reject);
+  try {
+    await new Promise((resolve, reject) => {
+      persistence.on('synced', resolve);
+      persistence.on('error',  reject);
+    });
+  } catch (err) {
+    close({ tableId, error: String(err?.message ?? err) }, 'error');
+    throw err;
+  }
+  // What the local replay actually restored, before any peer is involved —
+  // the difference between "this table was empty" and "this table synced
+  // in from a peer" is otherwise invisible after the fact.
+  close({
+    tableId,
+    ops:          getOps(ydoc).size,
+    joinSequence: getJoinSequence(ydoc).toArray(),
+    docId:        ydoc.getMap('meta').get('docId') ?? null,
+    schema:       ydoc.getMap('meta').get('schemaVersion') ?? null,
   });
   return persistence;
 }
@@ -211,6 +231,8 @@ async function getYDoc(tableId) {
   const ydoc = makeDoc();
   await openTablePersistence(tableId, ydoc);
   if (!ydoc.getMap('meta').get('docId')) {
+    Trace.boot('table-init', `stamping a fresh document for "${tableId}"`,
+      { tableId, schemaVersion: CURRENT_SCHEMA });
     initTableDoc(ydoc, tableId);
   }
   return ydoc;

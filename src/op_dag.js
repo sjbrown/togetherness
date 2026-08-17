@@ -15,6 +15,8 @@
  * }
  */
 
+import * as Trace from './trace.js'
+
 const OPS_KEY = 'ops'
 
 // ── storage ─────────────────────────────────────────────────────────────
@@ -26,8 +28,15 @@ export function getOps(ydoc) {
 export function appendOp(ydoc, op) {
   if (!op?.id) throw new Error('appendOp: op.id is required')
   const ops = getOps(ydoc)
-  if (ops.has(op.id)) return op
+  if (ops.has(op.id)) {
+    Trace.op('append-duplicate', `${op.id} already in the log`, { id: op.id, gesture: op.gesture })
+    return op
+  }
   ops.set(op.id, op)
+  // The whole op, mutations included — this is the inspectable wire packet.
+  // It is already immutable plain data living in the Y.Map, so holding a
+  // reference costs nothing beyond the pointer.
+  Trace.op('append', `${op.gesture} entered the log as ${op.id}`, op)
   return op
 }
 

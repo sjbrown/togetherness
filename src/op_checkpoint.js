@@ -15,6 +15,7 @@
 import { serializeNode, apply as applyWire, ensureIds } from './op_wire_mutation.js'
 import { ancestors, getOp, isAncestor, pathFrom } from './op_dag.js'
 import { ensureLayerId, LAYER_DATA_ID } from './toys.js'
+import * as Trace from './trace.js'
 
 export { ensureLayerId, LAYER_DATA_ID }
 export const CHECKPOINT_GESTURE = 'checkpoint'
@@ -97,14 +98,27 @@ export function projectFrom(layerEl, ops, headId, joinSequence = []) {
   ensureLayerId(layerEl)
   while (layerEl.firstChild) layerEl.removeChild(layerEl.firstChild)
 
-  if (headId == null) return layerEl
+  if (headId == null) {
+    Trace.op('project-empty', 'nothing to project — no head', { head: null })
+    return layerEl
+  }
 
   const base = nearestCheckpoint(ops, headId)
+  const path = pathFrom(ops, base, headId, joinSequence)
+  Trace.op('project',
+    `rebuilt from ${base ? 'checkpoint' : 'nothing'} + ${path.length} operation${path.length === 1 ? '' : 's'}`,
+    () => ({
+      head: headId,
+      checkpoint: base,
+      path: path.map((id, i) => ({ i, id, gesture: getOp(ops, id)?.gesture ?? null,
+                                   authorId: getOp(ops, id)?.authorId ?? null })),
+    }))
+
   if (base) {
     applyOps(layerEl, ops, [base])
-    applyOps(layerEl, ops, pathFrom(ops, base, headId, joinSequence))
+    applyOps(layerEl, ops, path)
   } else {
-    applyOps(layerEl, ops, pathFrom(ops, null, headId, joinSequence))
+    applyOps(layerEl, ops, path)
   }
   return layerEl
 }

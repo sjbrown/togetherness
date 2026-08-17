@@ -17,6 +17,7 @@
  */
 
 import { icon } from './icons.js';
+import * as Debug from './debug_panel.js';
 import './component/color-picker.js';
 
 // ── Icon loading ──────────────────────────────────────────────────────────────
@@ -86,6 +87,7 @@ const $ = s => document.querySelector(s);
 // -- Init --------------------------------------------------------------------
 export function init(appBus) {
   App = appBus;
+  Debug.init(appBus);
   $('#scrim')?.addEventListener('click', closePanel);
   document.addEventListener('pointerdown', e => {
     const inMenu = $('#menuBtn')?.contains(e.target) || $('#menuItems')?.contains(e.target);
@@ -627,10 +629,12 @@ const PANEL_TABS = [
   { id: 'peers',   label: 'Peers',   iconId: 'peers' },
   { id: 'history', label: 'History', iconId: 'history' },
   { id: 'save',    label: 'File',    iconId: 'save' },
+  { id: 'debug',   label: 'Debug',   iconId: 'debug' },
 ];
 const PANEL_TITLES = {
   edit: 'Edit', tools:'Tools', peers:'Peers & sharing', history:'History & undo',
   layers:'Layers', save:'File', gestures:'Gestures & help',
+  debug: 'Debug — signals & state',
 };
 
 // -- Panel open/tab persistence ------------------------------------------------
@@ -692,13 +696,21 @@ export function openSheet(which) {
       layers:   () => layersBody(gatherLayersData()),
       save:     () => saveBody(),
       gestures: () => gesturesBody(),
+      debug:    () => Debug.debugBody(Debug.gatherDebugData()),
     }[which] ?? (() => ''))();
     wireColorPickers(body);
   }
   if (which === 'peers') wirePeersToggles();
+  // The Debug tab is the one panel with live listeners of its own: it
+  // subscribes to the trace so it updates as things happen, not only when
+  // the document changes. Mounting is therefore paired with unmounting on
+  // the way out of the tab, not just on panel close.
+  if (which === 'debug') Debug.mount(body);
+  else                   Debug.unmount();
   updateInfoBar();
 }
 export function closePanel() {
+  Debug.unmount();
   savePanelState(false, UIData.panelOpen); // remember the tab even though now closed
   UIData.panelOpen = null;
   $('#panel')?.classList.remove('open');
@@ -1062,6 +1074,9 @@ export function refreshFromDoc() {
     case 'history': body.innerHTML = histBody(App.getHistory(), App.getUndoHistory());   break;
     case 'layers':  body.innerHTML = layersBody(gatherLayersData()); break;
     case 'tools':   body.innerHTML = toolsBody(gatherToolsData()); wireColorPickers(body); break;
+    // Debug re-renders itself in place (it owns listeners and scroll
+    // position); it must not have its innerHTML replaced from out here.
+    case 'debug':   Debug.refresh(); break;
   }
 }
 

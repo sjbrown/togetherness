@@ -39,6 +39,8 @@ export const ICON_DEFS = {
   'layers':  '<path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/><path d="M12 2L2 7l10 5 10-5z"/>',
   'peers':   '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 20a5 5 0 0 1 5-5"/>',
   'history': '<path d="M9 14L4 9l5-5"/><path d="M4 9h11a6 6 0 0 1 0 12H9"/>',
+  // A pulse/waveform: the invisible signals the Debug panel makes visible.
+  'debug':   '<path d="M2 12h4l3-7 4 14 3-7h6"/>',
 
   // Gesture illustrations (used in help panel)
   'pinch':   '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M9 11h4M11 9v4"/>',

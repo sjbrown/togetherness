@@ -13,6 +13,7 @@
  */
 
 import { nodeRef, resolveRef } from './toys.js'
+import * as Trace from './trace.js'
 
 const SVG_NS   = 'http://www.w3.org/2000/svg'
 const XLINK_NS = 'http://www.w3.org/1999/xlink'
@@ -102,11 +103,16 @@ export function deserializeNode(s, doc = document) {
  */
 export function serialize(records) {
   const out = []
+  // A dropped record is a mutation a peer will never see. Silent by design
+  // (the alternative is sending a reference the receiver cannot resolve),
+  // but silence is exactly what a debug panel exists to undo.
+  let unaddressable = 0
+  let empty = 0
 
   for (const r of records ?? []) {
     if (r.type === 'attributes') {
       const target = nodeRef(r.target)
-      if (!target) continue
+      if (!target) { unaddressable++; continue }
       const name = r.attributeName
       out.push({
         t: 'attr',
@@ -121,7 +127,7 @@ export function serialize(records) {
 
     if (r.type === 'characterData') {
       const target = nodeRef(r.target)
-      if (!target) continue
+      if (!target) { unaddressable++; continue }
       out.push({
         t: 'text',
         target,
@@ -133,10 +139,10 @@ export function serialize(records) {
 
     if (r.type === 'childList') {
       const target = nodeRef(r.target)
-      if (!target) continue
+      if (!target) { unaddressable++; continue }
       const added   = Array.from(r.addedNodes).map(n => serializeNode(ensureIds(n))).filter(Boolean)
       const removed = Array.from(r.removedNodes).map(serializeNode).filter(Boolean)
-      if (!added.length && !removed.length) continue
+      if (!added.length && !removed.length) { empty++; continue }
       out.push({
         t: 'child',
         target,
@@ -146,6 +152,17 @@ export function serialize(records) {
         nextSibling: nodeRef(r.nextSibling),
       })
     }
+  }
+
+  if (unaddressable) {
+    Trace.wire('serialize-dropped',
+      `${unaddressable} mutation${unaddressable === 1 ? '' : 's'} dropped — target not addressable`,
+      { records: records?.length ?? 0, entries: out.length, unaddressable, empty }, 'warn')
+  } else if (Trace.willRecord(Trace.WIRE)) {
+    const n = records?.length ?? 0
+    Trace.wire('serialize',
+      `${n} record${n === 1 ? '' : 's'} → ${out.length} entr${out.length === 1 ? 'y' : 'ies'}`,
+      { records: n, entries: out.length, empty })
   }
 
   return out
@@ -183,6 +200,11 @@ function matchesSerialized(node, s) {
  * ever had, which is worse than stopping.
  */
 export function apply(wire, rootEl) {
+  Trace.wire('apply', `applying ${wire?.length ?? 0} entries`, () => ({
+    entries: wire?.length ?? 0,
+    root:    rootEl?.getAttribute?.('data-id') ?? rootEl?.getAttribute?.('id') ?? null,
+    wire,
+  }))
   const doc = rootEl.ownerDocument ?? document
   // Nodes this SAME apply() call has already detached via removeChild,
   // keyed by data-id — a subsequent 'added' entry naming the same
@@ -198,7 +220,11 @@ export function apply(wire, rootEl) {
 
   for (const entry of wire ?? []) {
     const target = resolveRef(entry.target, rootEl)
-    if (!target) throw new WireApplyError(`unresolvable target ${JSON.stringify(entry.target)}`)
+    if (!target) {
+      Trace.wire('apply-unresolvable', `cannot resolve ${JSON.stringify(entry.target)}`,
+        { entry }, 'error')
+      throw new WireApplyError(`unresolvable target ${JSON.stringify(entry.target)}`)
+    }
 
     if (entry.t === 'attr') {
       if (entry.newValue === null || entry.newValue === undefined) {
@@ -250,6 +276,7 @@ export function apply(wire, rootEl) {
  * entry reversed, the whole batch back to front.
  */
 export function invert(wire) {
+  Trace.wire('invert', `inverting ${wire?.length ?? 0} entries`, () => ({ entries: wire?.length ?? 0, wire }))
   const out = []
 
   for (const entry of wire ?? []) {

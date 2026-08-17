@@ -192,7 +192,8 @@ import * as UI                  from './ui.js';
 import { getIdentity }          from './user.js';
 import { dragPlaceholderFilterSVG, snapPointGradientSVG, localActionFilterSVG, glowFilterSVG }  from './defs.js';
 import { tablesAPI as tables } from './tables.js';
-import { resolveSignalingServer } from './signaling.js';
+import { resolveSignalingServer, getStoredSignalingServer } from './signaling.js';
+import * as Trace                  from './trace.js';
 
 // Inject shared SVG defs (filters etc.) into the canvas <defs> element.
 document.querySelector('#canvas defs')
@@ -214,6 +215,8 @@ window.App = App;
 // Persistent identity lives in localStorage
 const { name: myDisplayName, grad: myGrad, localId: myId } = getIdentity();
 document.getElementById('myIdLabel').textContent = `me: ${myDisplayName}`;
+Trace.boot('identity', `local identity resolved: ${myDisplayName}`,
+  { myId, displayName: myDisplayName });
 
 // ── Table  ──────────────────────────────────────────────────────────────────
 let tableId = location.hash.slice(1);
@@ -223,6 +226,8 @@ if (isCreator) {
   location.hash = tableId;
 }
 document.getElementById('tableLabel').textContent = tableId;
+Trace.boot('table-id', isCreator ? `minted a new table: ${tableId}` : `joining table: ${tableId}`,
+  { tableId, isCreator, hash: location.hash });
 
 const ydoc  = await tables.getYDoc(tableId);
 App.addLog('loaded from indexeddb', 'local');
@@ -235,12 +240,21 @@ tables.ensureJoined(ydoc, myId);
 
 // ── WebRTC  ─────────────────────────────────────────────────────────────────
 const signalingUrl = resolveSignalingServer();
+Trace.net('signaling', `signaling server: ${signalingUrl}`, {
+  url:        signalingUrl,
+  // Whether this came from the person's own override or the built-in default
+  // is the first thing to check when a table won't find its peers.
+  overridden: getStoredSignalingServer() !== null,
+  room:       tableId,
+});
 const provider     = new WebrtcProvider(tableId, ydoc, { signaling: [signalingUrl] });
+Trace.net('provider', 'WebrtcProvider constructed — handshakes begin', { room: tableId });
 const awareness    = provider.awareness;
 awareness.setLocalState({ id: myId, color: myGrad.c1, grad: myGrad, cursor: null, selection: null });
 
 // ── Boot ────────────────────────────────────────────────────────────────────
-boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreator, displayName: myDisplayName });
+boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreator, displayName: myDisplayName,
+       signalingUrl });
 </script>
 
 </body>
