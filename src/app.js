@@ -23,7 +23,10 @@ import * as BounPos                               from './boun_pos.js';
 import * as Drawing                               from './drawing.js';
 import * as Toys                                  from './toys.js';
 import { tablesAPI }                              from './tables.js';
-import { getOps }                                 from './op_dag.js';
+import { getOps, heads, totalOrder }              from './op_dag.js';
+import { getHead, getMergeTips }                  from './op_head.js';
+import { isCheckpoint }                           from './op_checkpoint.js';
+import * as Trace                                 from './trace.js';
 import * as Storage                               from './storage.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
 import * as UI                                    from './ui.js';
@@ -78,6 +81,11 @@ const _layerVisibility = {
 let _myId, _myGrad, _tableId, _isCreator;
 let _svgEl;
 let _activeLayer  = 'toys';
+
+// Transport facts the provider reports through events and never exposes as
+// readable state. Mirrored here purely so the Debug panel can show what the
+// connection is doing right now, not only what it did.
+const _netStatus = { connected: false, synced: false, webrtcPeers: 0, bcPeers: 0, signaling: null };
 
 // _myClaims is the single local SSOT for this client's committed selection.
 //   { [elId: string]: number }   elId -> claim timestamp (ms)
@@ -198,6 +206,11 @@ function _broadcastPendingRequests() {
 // independently recomputes the same facts from the same shared awareness
 // state and the same REQUEST_WINDOW_MS deadline (see soft-lock.js).
 const SOFT_LOCK_TICK_MS = 250;
+
+// How many operations the Debug panel orders and renders. totalOrder is a
+// topological sort over everything it is given; a table with thousands of
+// operations should not pay for the whole log on every panel refresh.
+const MAX_DEBUG_OPS = 250;
 
 // Minimum gap between claim-refresh broadcasts during a single drag
 // gesture (App.move). Well under REQUEST_WINDOW_MS (3s), so a long drag
@@ -329,7 +342,7 @@ function buildToolRegistry() {
 }
 
 // ── Boot ────────────────────────────────────────────────────────────────────
-export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreator = false, svgElement, displayName }) {
+export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreator = false, svgElement, displayName, signalingUrl = null }) {
   _ydoc      = ydoc;
   _yMeta     = ydoc.getMap('meta');
   _yDrawing  = ydoc.getXmlFragment('drawing');
@@ -341,6 +354,15 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
   _tableId   = tableId;
   _isCreator = isCreator;
   _svgEl     = svgElement ?? document.querySelector('#stage svg');
+
+  _netStatus.signaling = signalingUrl;
+
+  Trace.boot('boot', `booting table ${tableId}`, {
+    tableId, myId, displayName, isCreator,
+    ops:      getOps(ydoc).size,
+    head:     getHead(tableId),
+    clientId: ydoc.clientID,
+  });
 
   // Layers - the canonical LayerAPI dispatch table, keyed by the data-module
   _Layers = {
@@ -410,14 +432,31 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
   const dot = document.getElementById('statusDot');
   _provider.on('synced', () => {
     if (dot) dot.className = 'status-dot connected';
+    _netStatus.synced = true;
+    Trace.net('synced', 'provider reports synced with peers', { ops: getOps(_ydoc).size });
     UI.toast('Synced with peers');
     App.addLog('synced with peers', 'remote');
   });
   _provider.on('status', ({ connected }) => {
     if (dot) dot.className = connected ? 'status-dot connected' : 'status-dot connecting';
+    _netStatus.connected = connected;
+    Trace.net('status', connected ? 'signaling connected' : 'signaling disconnected',
+      { connected }, connected ? 'info' : 'warn');
     // Cancel any in-progress drag on disconnect — doc stays at committed position.
     if (!connected && _dragState) App.cancelMove();
     if (!connected && _multiDragState) App.cancelMultiMove();
+  });
+  // y-webrtc's own peer bookkeeping — the WebRTC handshakes themselves,
+  // which awareness only reflects indirectly and after the fact.
+  _provider.on('peers', ({ added = [], removed = [], webrtcPeers = [], bcPeers = [] }) => {
+    _netStatus.webrtcPeers = webrtcPeers.length;
+    _netStatus.bcPeers     = bcPeers.length;
+    for (const id of added) {
+      Trace.net('peer-connected', `WebRTC peer connected: ${id}`, { peer: id, webrtcPeers, bcPeers });
+    }
+    for (const id of removed) {
+      Trace.net('peer-disconnected', `WebRTC peer left: ${id}`, { peer: id, webrtcPeers, bcPeers });
+    }
   });
 
   // Initial render
@@ -574,12 +613,16 @@ function onOpsChanged(evt, transaction) {
   for (const [opId, change] of evt.changes.keys) {
     if (change.action !== 'add') continue;
     const op = ops.get(opId);
+    Trace.op('arrived', `remote operation arrived: ${op?.gesture ?? '?'} ${opId}`, op ?? { id: opId });
     if (op && !SILENT_GESTURES.has(op.gesture)) {
       const msg = `remote: ${op.gesture}`;
       App.addLog(msg, 'remote');
       addHistory(msg, { elType: 'toys' });
     }
     const out = _Layers.toys.receive(layer, opId);
+    Trace.op('received', `${opId} → ${out.result}`,
+      { id: opId, ...out },
+      out.result === 'received-conflict' ? 'warn' : 'info');
     if (out.result === 'received-conflict') {
       handleToyBranchConflict(out.tips);
     }
@@ -653,6 +696,18 @@ function onPresenceChanged(changes, origin) {
 }
 
 function logAwarenessChange({ added, updated, removed }, origin) {
+  // Presence arrivals and departures only. `updated` fires on every cursor
+  // move from every peer — tracing it would evict everything else from the
+  // ring within seconds and tell nobody anything.
+  for (const clientId of added) {
+    const state = _awareness.getStates().get(clientId);
+    Trace.net('presence-join', `peer present: ${state?.id ?? clientId}`,
+      { clientId, peerId: state?.id ?? null, origin, self: clientId === _awareness.clientID });
+  }
+  for (const clientId of removed) {
+    Trace.net('presence-leave', `peer gone: ${clientId}`, { clientId, origin });
+  }
+
   if (!DEBUG) return;
   const direction = origin === 'local' ? 'SEND' : 'RECV';
   const ts = new Date().toISOString().slice(11, 23); // HH:MM:SS.mmm, for ordering when pasted
@@ -1882,15 +1937,93 @@ const App = {
   setLastActionScope: (scope) => { _lastActionScope = scope; },
   addHistory,
 
+  // Application narration. `type` is one of 'local' | 'remote' | 'del' | ''.
+  // Recorded rather than rendered: #eventLog no longer exists, and a ring
+  // buffer the Debug panel reads outlives a DOM node that only existed while
+  // one particular panel was open.
   addLog: (msg, type='') => {
-    const log   = document.getElementById('eventLog')
-    if (log === null) return;
-    const entry = document.createElement('div')
-    entry.className   = `log-entry ${type}`
-    entry.textContent = `${new Date().toISOString().slice(11,19)} ${msg}`
-    if (type === 'local') entry.style.borderLeftColor = _myGrad.c1
-    log.prepend(entry)
-    while (log.children.length > 40) log.lastChild.remove()
+    Trace.app(type || 'log', msg, { type }, type === 'del' ? 'warn' : 'info');
+  },
+
+  /**
+   * Everything the Debug panel shows that is state rather than history.
+   * app.js is the only module holding the ydoc, provider and awareness, so
+   * it is the only place this can be assembled; ui.js keeps its App-bus-only
+   * contract by asking for it here.
+   *
+   * MAX_DEBUG_OPS caps what gets ordered and returned — totalOrder is a
+   * topological sort over the whole log, and a long-lived table should not
+   * pay for it on every panel refresh.
+   */
+  getDebugState: () => {
+    const ops     = getOps(_ydoc);
+    const allIds  = [...ops.keys()];
+    const joinSeq = tablesAPI.getJoinSequenceArray(_ydoc);
+    const layerEl = _svgEl?.querySelector('#toys-layer') ?? null;
+    const head    = getHead(_tableId);
+    const shown   = allIds.length > MAX_DEBUG_OPS ? allIds.slice(-MAX_DEBUG_OPS) : allIds;
+
+    const ordered = totalOrder(ops, shown, joinSeq).map((id, i) => {
+      const op = ops.get(id);
+      return {
+        i, id,
+        gesture:    op?.gesture ?? null,
+        authorId:   op?.authorId ?? null,
+        parents:    op?.parents ?? [],
+        ts:         op?.ts ?? null,
+        mine:       op?.authorId === _myId,
+        checkpoint: isCheckpoint(op),
+        entries:    op?.mutations?.length ?? 0,
+        mutations:  op?.mutations ?? [],
+      };
+    });
+
+    const projected = Toys.projectedAt(layerEl);
+    const peers = [];
+    _awareness.getStates().forEach((state, clientId) => {
+      peers.push({
+        clientId,
+        peerId: state?.id ?? null,
+        self:   clientId === _awareness.clientID,
+        color:  state?.color ?? null,
+      });
+    });
+
+    return {
+      table: {
+        tableId:  _tableId,
+        isCreator: _isCreator,
+        docId:    _yMeta.get('docId') ?? null,
+        created:  _yMeta.get('created') ?? null,
+        schema:   _yMeta.get('schemaVersion') ?? null,
+      },
+      identity: { myId: _myId, clientId: _ydoc.clientID },
+      head: {
+        head:      head,
+        mergeTips: getMergeTips(_tableId),
+        projected,
+        // A projection marker that disagrees with the stored head means the
+        // DOM is showing something other than what this peer thinks it is —
+        // the single most useful red light this panel can offer.
+        agrees:    projected === head,
+      },
+      ops: {
+        total:       allIds.length,
+        shown:       ordered.length,
+        truncated:   allIds.length > ordered.length,
+        tips:        heads(ops),
+        checkpoints: ordered.filter(o => o.checkpoint).length,
+        mine:        ordered.filter(o => o.mine).length,
+        ordered,
+      },
+      net: {
+        ..._netStatus,
+        offline: _offline,
+        peers,
+      },
+      joinSequence: joinSeq,
+      myAuthorityIndex: joinSeq.indexOf(_myId),
+    };
   },
 
   getDefaultBackgrounds: () => DEFAULT_BACKGROUNDS,

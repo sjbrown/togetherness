@@ -447,7 +447,7 @@ html, body {
 @media (min-width: 760px) {
   #panel {
     top: 0; bottom: 0; right: 0; left: auto;
-    width: 340px; height: 100%; border-radius: 0; padding-bottom: 0;
+    width: 540px; height: 100%; border-radius: 0; padding-bottom: 0;
     box-shadow: inset 1px 0 0 rgba(210,185,130,0.08), -8px 0 32px rgba(0,0,0,0.60);
     transform: translateX(110%);
   }
@@ -482,7 +482,10 @@ html, body {
 #panelTabs { flex-shrink: 0; }
 .panel-tabs {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  /* Auto columns rather than a fixed count — PANEL_TABS in ui.js is the
+     single source of truth for how many tabs there are. */
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   border-bottom: 0.5px solid var(--border-2);
   background: rgba(0,0,0,0.15);
 }
@@ -721,3 +724,164 @@ svg.tt-icon-letter {
   0%   { transform: translate(0px, 0px); opacity: 1; }
   100% { transform: translate(var(--tx), var(--ty)); opacity: 0; }
 }
+
+/* ── Debug panel (debug_panel.js) ──────────────────────────────
+   Dense, monospace, information-first. This is the one panel that should
+   look like an instrument rather than a control: nothing here is a thing
+   you do to the table, it is all a readout of what the table already did. */
+
+.dbg-section { border-bottom: 0.5px solid var(--border); }
+.dbg-summary {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  padding: 10px 2px; list-style: none; user-select: none;
+}
+.dbg-summary::-webkit-details-marker { display: none; }
+.dbg-summary::before {
+  content: "▸"; color: var(--text-3); font-size: 14px; width: 10px;
+  transition: transform .15s;
+}
+.dbg-section[open] > .dbg-summary::before { transform: rotate(90deg); }
+.dbg-sec-title {
+  flex: 1; font-size: 14px; font-weight: 700; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: .08em;
+}
+.dbg-sec-meta { font-size: 15px; color: var(--text-2); font-family: ui-monospace, monospace; }
+.dbg-section-body { padding: 2px 0 14px; }
+
+/* Cards */
+.dbg-card {
+  background: rgba(0,0,0,0.22); border-radius: var(--radius-sm);
+  padding: 10px 12px; margin-bottom: 8px;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.dbg-card.warn { box-shadow: inset 0 0 0 1px rgba(184,120,32,0.45); }
+.dbg-card-title {
+  font-size: 14px; font-weight: 700; color: var(--text-2);
+  text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px;
+}
+.dbg-kv {
+  display: flex; gap: 10px; align-items: baseline;
+  padding: 3px 0; font-size: 15px; line-height: 1.5;
+}
+.dbg-k { color: var(--text-3); flex: 0 0 40%; }
+.dbg-v { color: var(--text); flex: 1; min-width: 0; word-break: break-word; }
+.dbg-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 15px;
+  background: rgba(0,0,0,0.35); border-radius: 4px; padding: 1px 5px;
+  color: var(--text-2);
+}
+.dbg-id.me { color: var(--primary); box-shadow: inset 0 0 0 1px rgba(200,148,30,0.4); }
+.dbg-nil { color: var(--text-3); font-style: italic; }
+.dbg-ok  { color: #6a9a6a; }
+.dbg-bad { color: var(--warn); }
+.dbg-note { font-size: 15px; color: var(--text-3); margin-top: 8px; line-height: 1.5; }
+.dbg-alert {
+  margin-top: 8px; padding: 8px 10px; border-radius: 8px;
+  background: var(--warn-soft); color: var(--text); font-size: 15px; line-height: 1.5;
+}
+.dbg-empty { font-size: 15px; color: var(--text-3); padding: 10px 2px; }
+
+/* JSON blocks — wire packets and event detail */
+.dbg-json {
+  margin: 6px 0 0; padding: 8px 10px; max-height: 320px; overflow: auto;
+  background: #0b0812; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px; line-height: 1.5; color: var(--text-2);
+  white-space: pre; -webkit-overflow-scrolling: touch;
+}
+
+/* Operations */
+.dbg-op-list { display: flex; flex-direction: column; gap: 2px; }
+.dbg-op { border-radius: 6px; background: rgba(0,0,0,0.18); }
+.dbg-op-sum {
+  display: flex; align-items: center; gap: 7px; cursor: pointer;
+  padding: 6px 8px; list-style: none; font-size: 15px;
+}
+.dbg-op-sum::-webkit-details-marker { display: none; }
+.dbg-op-i {
+  font-family: ui-monospace, monospace; font-size: 14px; color: var(--text-3);
+  min-width: 22px; text-align: right;
+}
+.dbg-op-gesture {
+  flex: 1; color: var(--text); font-family: ui-monospace, monospace; font-size: 15px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dbg-op-entries { font-size: 14px; color: var(--text-3); font-family: ui-monospace, monospace; }
+.dbg-op-body { padding: 4px 10px 10px; }
+.dbg-tag {
+  font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+  padding: 1px 5px; border-radius: 4px; color: var(--text-3);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.dbg-tag.mine { color: var(--primary); box-shadow: inset 0 0 0 1px rgba(200,148,30,0.4); }
+.dbg-tag.head { color: #6a9a6a; box-shadow: inset 0 0 0 1px rgba(106,154,106,0.4); }
+.dbg-wire-label {
+  display: flex; align-items: center; gap: 8px; margin-top: 10px;
+  font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3);
+}
+
+/* Channel chips */
+.dbg-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+.dbg-chip {
+  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  border: none; border-radius: 999px; padding: 4px 9px;
+  background: var(--surface-2); box-shadow: var(--emboss);
+  color: var(--text-3); font-family: var(--font-body); font-size: 15px;
+}
+.dbg-chip.on { color: var(--primary); box-shadow: var(--emboss-active); }
+.dbg-chip-n { font-family: ui-monospace, monospace; font-size: 14px; opacity: .8; }
+
+/* Event stream */
+.dbg-stream {
+  max-height: 42vh; overflow-y: auto; overscroll-behavior: contain;
+  background: rgba(0,0,0,0.22); border-radius: var(--radius-sm);
+  box-shadow: inset 0 0 0 1px var(--border); padding: 4px;
+}
+.dbg-ev { border-radius: 5px; }
+.dbg-ev + .dbg-ev { border-top: 0.5px solid var(--border); }
+.dbg-ev-sum, .dbg-ev.flat {
+  display: flex; align-items: baseline; gap: 7px; padding: 4px 6px;
+  list-style: none; font-size: 15px; line-height: 1.45;
+}
+.dbg-ev-sum { cursor: pointer; }
+.dbg-ev-sum::-webkit-details-marker { display: none; }
+.dbg-ev-seq {
+  font-family: ui-monospace, monospace; font-size: 9.5px; color: var(--text-3);
+  min-width: 28px; text-align: right; flex-shrink: 0;
+}
+.dbg-ev-time {
+  font-family: ui-monospace, monospace; font-size: 9.5px; color: var(--text-3);
+  flex-shrink: 0;
+}
+.dbg-ev-ch {
+  font-size: 9px; text-transform: uppercase; letter-spacing: .05em;
+  padding: 1px 5px; border-radius: 4px; flex-shrink: 0;
+  background: rgba(255,255,255,0.04); color: var(--text-2);
+}
+.dbg-ev-ch.ch-boot     { color: #8a7fc0; }
+.dbg-ev-ch.ch-net      { color: #5a9ec0; }
+.dbg-ev-ch.ch-op       { color: var(--primary); }
+.dbg-ev-ch.ch-envelope { color: #6a9a6a; }
+.dbg-ev-ch.ch-wire     { color: #a07ba0; }
+.dbg-ev-ch.ch-app      { color: var(--text-2); }
+.dbg-ev-msg { flex: 1; color: var(--text); min-width: 0; word-break: break-word; }
+.dbg-ev.lvl-warn  { background: rgba(184,120,32,0.10); }
+.dbg-ev.lvl-error { background: rgba(139,42,42,0.18); }
+.dbg-ev.lvl-error .dbg-ev-msg { color: #d8a0a0; }
+.dbg-ev .dbg-json { margin: 0 6px 6px 28px; }
+
+/* Buttons */
+.dbg-btn-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.dbg-btn {
+  flex: 1; min-width: 108px; border: none; border-radius: var(--radius-sm);
+  padding: 8px 10px; cursor: pointer;
+  background: var(--surface-2); box-shadow: var(--emboss);
+  color: var(--text-2); font-family: var(--font-body); font-size: 12px;
+}
+.dbg-btn:active { box-shadow: var(--emboss-inset); }
+.dbg-mini {
+  border: none; border-radius: 5px; padding: 2px 7px; cursor: pointer;
+  background: var(--surface-2); box-shadow: var(--emboss);
+  color: var(--text-2); font-family: var(--font-body); font-size: 10px;
+}
+.dbg-mini:active { box-shadow: var(--emboss-inset); }

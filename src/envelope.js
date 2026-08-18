@@ -30,6 +30,7 @@
 import { serialize as serializeRecords } from './op_wire_mutation.js'
 import { appendOp } from './op_dag.js'
 import { isReplaying } from './op_replay.js'
+import * as Trace from './trace.js'
 
 const MUTATION_OPTS = {
   attributes:            true,
@@ -63,6 +64,8 @@ export function runInEnvelope(toyEl, fn) {
   // Applying a peer's operation mutates our DOM too; capturing that would
   // make two peers generate operations at each other forever.
   if (isReplaying()) {
+    Trace.envelope('suppressed', 'envelope suppressed — replaying a peer operation',
+      { depth: _envelopeDepth })
     const result = fn()
     if (result && typeof result.then === 'function') {
       throw new Error('[envelope] runInEnvelope: handler returned a Promise; synchronous handlers only')
@@ -75,18 +78,41 @@ export function runInEnvelope(toyEl, fn) {
   const records = []
   const observer = new MutationObserver(muts => records.push(...muts))
   observer.observe(scopeEl, MUTATION_OPTS)
-  _envelopeDepth++
+  const depth = ++_envelopeDepth
+  const nested = depth > 1
+  const close = Trace.span(Trace.ENVELOPE, nested ? 'nested' : 'capture',
+    nested ? 'envelope folded into an open one' : 'envelope captured a gesture')
+  let threw = null
   try {
     const result = fn()
     if (result && typeof result.then === 'function') {
       throw new Error('[envelope] runInEnvelope: handler returned a Promise; synchronous handlers only')
     }
+  } catch (err) {
+    threw = err
+    throw err
   } finally {
     _envelopeDepth--
     records.push(...observer.takeRecords())
     observer.disconnect()
+    // Records themselves are never handed to Trace: a MutationRecord holds
+    // live references to removed nodes, and a ring buffer of them would keep
+    // whole detached subtrees alive. Counts only.
+    close({
+      depth,
+      scope:   scopeEl?.getAttribute?.('id') ?? scopeEl?.getAttribute?.('data-id') ?? null,
+      records: records.length,
+      types:   countRecordTypes(records),
+      ...(threw ? { threw: threw.message } : {}),
+    }, threw ? 'error' : 'info')
   }
   return records
+}
+
+function countRecordTypes(records) {
+  const out = { attributes: 0, childList: 0, characterData: 0 }
+  for (const r of records) if (out[r.type] !== undefined) out[r.type]++
+  return out
 }
 
 // ── commit ───────────────────────────────────────────────────────────────
@@ -101,7 +127,11 @@ export function runInEnvelope(toyEl, fn) {
  */
 export function commitGesture(ydoc, records, { gesture = 'gesture', authorId = null, parents = [], id, ts } = {}) {
   const mutations = serializeRecords(records)
-  if (!mutations.length) return null
+  if (!mutations.length) {
+    Trace.envelope('empty', `gesture "${gesture}" changed nothing — not an operation`,
+      { gesture, records: records?.length ?? 0 })
+    return null
+  }
 
   const op = {
     id: id ?? mintOpId(),
@@ -111,6 +141,8 @@ export function commitGesture(ydoc, records, { gesture = 'gesture', authorId = n
     mutations,
     ts: ts ?? Date.now(),
   }
+  Trace.envelope('commit', `${gesture} → ${op.id}`,
+    { gesture, id: op.id, parents: op.parents, records: records.length, entries: mutations.length })
   appendOp(ydoc, op)
   return op
 }
