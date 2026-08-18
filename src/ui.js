@@ -918,7 +918,7 @@ export function toolsBody(data) {
 
 export function peersBody(data) {
   const rows = peerRowsHTML(data.peers);
-  const link = `https://apps.1kfa.com/table/index.html#${data.roomId}`;
+  const link = `${location.origin}${location.pathname}#${data.roomId}`;
   return `
     <div class="field" id="peersListField">
       <label>Connected (<span id="peerLiveCount">${data.peers.filter(p => p.live).length}</span>)</label>
@@ -931,10 +931,8 @@ export function peersBody(data) {
     </div>
     <div class="peer-invite field" style="margin-top:18px"><label>Invite nearby</label>
       <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:4px">
-        <span><a target="_new" href="https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${link}">Generate
-        QR Code
-        ${fakeQR()}
-        </a></span>
+        <span><a target="_new" href="https://apps.1kfa.com/qr.html?q=${link}"
+        >Generate QR Code ${fakeQR()} </a></span>
         <div class="room-code"><a href="${link}">${link}</a></div>
       </div>
     </div>`;
