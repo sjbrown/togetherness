@@ -867,6 +867,7 @@ const App = {
   // ── Tool mutations (canvas.js calls back into ui.js via these) ────────────
   onToolChanged:          (t)   => UI.onToolChanged(t),
   onViewReset:            ()    => UI.toast('View reset'),
+  onTripleTap:            ()    => UI.toast('Attention 3-Click'),
 
   // ── Selection ────────────────────────────────────────────────────────────
 

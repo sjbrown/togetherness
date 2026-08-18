@@ -13,7 +13,7 @@
  */
 
 // @vitest-environment jsdom
-import { describe, test, expect, beforeEach } from 'vitest'
+import { describe, test, expect, beforeEach, vi } from 'vitest'
 import { init, setTool, setParams, resetView, ToolMode } from '../../src/canvas.js'
 
 // ── DOM setup ────────────────────────────────────────────────────────────────
@@ -55,6 +55,7 @@ function makeApp(overrides = {}) {
     commitMove:        () => {},
     move:              () => {},
     onViewReset:       () => {},
+    onTripleTap:       () => {},
     requestContextMenu: () => {},
     getBoxCandidates:   () => [],
     broadcastCandidates: () => {},
@@ -115,6 +116,10 @@ beforeEach(() => {
   ToolMode.tool      = 'select'
   ToolMode.params    = {}
   ToolMode._lastTap  = 0
+  ToolMode._wasPinch = false
+  ToolMode._tapCount = 0
+  clearTimeout(ToolMode._tapTimer)
+  ToolMode._tapTimer = null
 })
 
 // ── updateCursor via setTool / setParams ──────────────────────────────────────
@@ -777,6 +782,7 @@ describe('Pinch gesture', () => {
   })
 
   test('pinch (two-finger zoom) should not trigger view reset', () => {
+    vi.useFakeTimers()
     const onViewResetCalls = []
     const app = makeApp({
       onViewReset: () => onViewResetCalls.push(true),
@@ -786,21 +792,28 @@ describe('Pinch gesture', () => {
 
     const stage = document.getElementById('stage')
 
-    // Simulate pinch: two fingers down
+    // Simulate pinch: two fingers down (distinct pointerIds, as real touch
+    // hardware assigns — the shared-counter makePointerEvent() helper gives
+    // pointerdown a fresh id each call).
     stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100 }))
     stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
 
-    // Simulate pinch: first finger lifts
-    stage.dispatchEvent(makePointerEvent('pointerup', { clientX: 100, clientY: 100 }))
+    // Simulate pinch: fingers lift one at a time, a few ms apart — each
+    // pointerup call below reuses the pointerId of the *last* pointerdown
+    // unless we advance the counter, so dispatch against the actual ids.
+    const [id1, id2] = [...ToolMode._pointers.keys()]
+    stage.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, clientX: 100, clientY: 100, pointerId: id1 }))
+    stage.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, clientX: 200, clientY: 200, pointerId: id2 }))
 
-    // Simulate pinch: second finger lifts (within 300ms, but should NOT trigger reset)
-    stage.dispatchEvent(makePointerEvent('pointerup', { clientX: 200, clientY: 200 }))
+    vi.advanceTimersByTime(400)
+    vi.useRealTimers()
 
     // View reset should NOT have been called
     expect(onViewResetCalls).toEqual([])
   })
 
   test('legitimate double-tap still triggers view reset', () => {
+    vi.useFakeTimers()
     const onViewResetCalls = []
     const app = makeApp({
       onViewReset: () => onViewResetCalls.push(true),
@@ -817,6 +830,10 @@ describe('Pinch gesture', () => {
     // Second tap (within 300ms)
     stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100 }))
     stage.dispatchEvent(makePointerEvent('pointerup', { clientX: 100, clientY: 100 }))
+
+    // Reset only fires once the tap-counting window elapses without a third tap.
+    vi.advanceTimersByTime(400)
+    vi.useRealTimers()
 
     // View reset SHOULD have been called
     expect(onViewResetCalls).toEqual([true])
