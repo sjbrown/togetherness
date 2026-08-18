@@ -300,7 +300,7 @@ const ICON_ACTIONS = {
  */
 function pillCapacity() {
   const w = (typeof window !== 'undefined' && window.innerWidth) || Infinity;
-  if (w < 480) return 3;
+  if (w < 480) return 2;
   if (w < 900) return 6;
   return Infinity;
 }
@@ -1067,6 +1067,7 @@ export function selectLayer(id) {
  * stays current without the doc layer knowing anything about panels.
  */
 export function refreshFromDoc() {
+  renderPill();
   const body = $('#panelBody');
   if (!body) return;
   switch (UIData.panelOpen) {

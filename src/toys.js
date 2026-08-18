@@ -1269,11 +1269,7 @@ export const TOOLS = [
     iconUrl: 'toy/player_marker.svg',
     layer:   'toys',
     defaults: { label: '', size: 24 },
-    options: [
-      { kind: 'color-hsl', key: 'fill', label: 'Token color', show: ['add', 'edit', 'addQuick'] },
-      number('size', 'Size', { min: 12, max: 64, step: 4 }),
-      bool('showLabel', 'Show name label'),
-    ],
+    options: [],
   },
   {
     name:    'd6',
