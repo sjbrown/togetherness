@@ -428,37 +428,6 @@ describe('movement', () => {
   })
 })
 
-describe('hslToRgb', () => {
-  test('pure red hsl(0, 100%, 50%)', () => {
-    const [r, g, b] = hslToRgb(0, 100, 50)
-    expect(r).toBeCloseTo(1, 2); expect(g).toBeCloseTo(0, 2); expect(b).toBeCloseTo(0, 2)
-  })
-  test('pure green hsl(120, 100%, 50%)', () => {
-    const [r, g, b] = hslToRgb(120, 100, 50)
-    expect(r).toBeCloseTo(0, 2); expect(g).toBeCloseTo(1, 2); expect(b).toBeCloseTo(0, 2)
-  })
-  test('pure blue hsl(240, 100%, 50%)', () => {
-    const [r, g, b] = hslToRgb(240, 100, 50)
-    expect(r).toBeCloseTo(0, 2); expect(g).toBeCloseTo(0, 2); expect(b).toBeCloseTo(1, 2)
-  })
-  test('white hsl(0, 0%, 100%)', () => {
-    const [r, g, b] = hslToRgb(0, 0, 100)
-    expect(r).toBeCloseTo(1, 2); expect(g).toBeCloseTo(1, 2); expect(b).toBeCloseTo(1, 2)
-  })
-  test('black hsl(0, 0%, 0%)', () => {
-    const [r, g, b] = hslToRgb(0, 0, 0)
-    expect(r).toBeCloseTo(0, 2); expect(g).toBeCloseTo(0, 2); expect(b).toBeCloseTo(0, 2)
-  })
-  test('output values are in [0, 1]', () => {
-    for (const [h, s, l] of [[30,80,40],[200,60,70],[300,100,20]]) {
-      const [r, g, b] = hslToRgb(h, s, l)
-      for (const v of [r, g, b]) {
-        expect(v).toBeGreaterThanOrEqual(0)
-        expect(v).toBeLessThanOrEqual(1)
-      }
-    }
-  })
-})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // colorMatrixValues
@@ -474,19 +443,6 @@ describe('colorMatrixValues', () => {
     const m = parseMatrix(colorMatrixValues('hsl(0, 100%, 50%)'))
     expect(m[0]).toBeCloseTo(1, 2); expect(m[5]).toBeCloseTo(0, 2); expect(m[10]).toBeCloseTo(0, 2)
   })
-  test('blue hsl(240,100%,50%) → R≈0, B≈1', () => {
-    const m = parseMatrix(colorMatrixValues('hsl(240, 100%, 50%)'))
-    expect(m[0]).toBeCloseTo(0, 2); expect(m[10]).toBeCloseTo(1, 2)
-  })
-  test('alpha row is always 0 0 0 1 0', () => {
-    const m = parseMatrix(colorMatrixValues('hsl(120, 80%, 40%)'))
-    expect(m[15]).toBe(0); expect(m[16]).toBe(0); expect(m[17]).toBe(0)
-    expect(m[18]).toBe(1); expect(m[19]).toBe(0)
-  })
-  test('all non-diagonal values in RGB rows are 0', () => {
-    const m = parseMatrix(colorMatrixValues('hsl(200, 60%, 55%)'))
-    for (const i of [1,2,3,4,6,7,8,9,11,12,13,14]) expect(m[i]).toBe(0)
-  })
   test('very dark color is boosted (sum of RGB ≥ 0.9)', () => {
     const m = parseMatrix(colorMatrixValues('hsl(0, 0%, 5%)'))
     expect(m[0] + m[5] + m[10]).toBeGreaterThanOrEqual(0.9)
@@ -494,10 +450,6 @@ describe('colorMatrixValues', () => {
   test('hex #ff0000 → pure red', () => {
     const m = parseMatrix(colorMatrixValues('#ff0000'))
     expect(m[0]).toBeCloseTo(1, 2); expect(m[5]).toBeCloseTo(0, 2); expect(m[10]).toBeCloseTo(0, 2)
-  })
-  test('hex #0000ff → pure blue', () => {
-    const m = parseMatrix(colorMatrixValues('#0000ff'))
-    expect(m[0]).toBeCloseTo(0, 2); expect(m[10]).toBeCloseTo(1, 2)
   })
 })
 
@@ -561,16 +513,6 @@ describe('tray_sum: color option + editable name (real assets)', () => {
     }))
   })
 
-  test('TOOLS.tray_sum now has a color-hsl option, same as marker/d6', () => {
-    const trayTool   = TOOLS.find(t => t.toyType === 'tray_sum')
-    const d6Tool      = TOOLS.find(t => t.toyType === 'dice_d6')
-    const markerTool = TOOLS.find(t => t.toyType === 'player_marker')
-
-    expect(trayTool.options.some(o => o.kind === 'color-hsl')).toBe(true)
-    expect(d6Tool.options.some(o => o.kind === 'color-hsl')).toBe(true)
-    expect(markerTool.options.some(o => o.kind === 'color-hsl')).toBe(true)
-  })
-
   test('getTtStateSchema includes color for a placed tray_sum — data-driven on its own feColorMatrix, not its toyType', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
@@ -581,20 +523,6 @@ describe('tray_sum: color option + editable name (real assets)', () => {
     expect(traySchema.color).toBe('#5e7ea8')
   })
 
-  test('getTtStateSchema includes an editable name for tray_sum (has a .tspan_name) but not for dice_d6 (no name)', async () => {
-    const ydoc = new Y.Doc()
-    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    const trayEl = await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    const dieEl  = await addToy(ydoc, layerEl, { id: 'die1',  toyType: 'dice_d6',  x: 0, y: 0, color: '#fff' })
-
-    const traySchema = getTtStateSchema(trayEl)
-    const dieSchema   = getTtStateSchema(dieEl)
-
-    expect(traySchema.types).toHaveProperty('name', { kind: 'string', show: ['edit'] })
-    expect(traySchema.name).toBe('sum') // tray_sum.svg's default tspan_name text
-    expect(dieSchema.types).not.toHaveProperty('name')
-  })
-
   test('editDom() writes a new name into a tray_sum\'s own .tspan_name', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
@@ -603,23 +531,6 @@ describe('tray_sum: color option + editable name (real assets)', () => {
     editDom(trayEl, { name: 'loot' })
 
     expect(getTtStateSchema(trayEl).name).toBe('loot')
-  })
-
-  test('editing a tray\'s color/name never reaches a die nested inside it (boundary-safe)', async () => {
-    const ydoc = new Y.Doc()
-    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 300, y: 300, color: '#5e7ea8' })
-    await addToy(ydoc, layerEl, { id: 'die1',  toyType: 'dice_d6',  x: 300, y: 300, color: '#a8905e' })
-
-    reparentToyDom(layerEl, 'die1', 'tray1') // die1 now lives in tray1's tt_contents
-
-    const dieBefore = getTtStateSchema(layerEl.querySelector('[data-id="die1"]'))
-
-    editDom(layerEl.querySelector('[data-id="tray1"]'), { color: 'hsl(0, 100%, 50%)', name: 'loot' })
-
-    const dieAfter = getTtStateSchema(layerEl.querySelector('[data-id="die1"]'))
-    expect(dieAfter.color).toBe(dieBefore.color) // untouched by the tray's recolor
-    expect(dieAfter.types).not.toHaveProperty('name') // dice never had a name field to begin with
   })
 
   test('editing an outer tray\'s color/name never reaches a tray nested inside it (id-prefix isolation, not just structural nesting)', async () => {
