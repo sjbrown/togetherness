@@ -315,16 +315,30 @@ html, body {
   }
 }
 
-/* ── Pill, toy special case ──────────────────────────────────
-   A single selected toy replaces the row of round icon buttons with a
-   stacked menuItems-style list (words + icon circles), fanning UP from
-   the pill's own position instead of sideways — same classes/markup as
-   #menuItems (.menu-item/.menu-label/.menu-circle) so the look matches
-   exactly, just anchored at the pill instead of the menu button. */
 #pill.toy-menu {
-  flex-direction: column-reverse; align-items: stretch; gap: 10px;
+  flex-direction: column; align-items: center; gap: 3px;
   background: none; box-shadow: none; padding: 0; border-radius: 0;
 }
+
+.toy-menu-row {
+  background: var(--surface);
+  backdrop-filter: blur(18px) saturate(1.3); -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  box-shadow: var(--emboss);
+  border-radius: 22px;
+  display: flex; align-items: stretch; overflow: hidden;
+}
+.toy-menu-row:first-child:not(:last-child)  { border-radius: 22px 22px 8px 8px; }
+.toy-menu-row:last-child:not(:first-child)  { border-radius: 8px 8px 22px 22px; }
+.toy-menu-row:not(:first-child):not(:last-child) { border-radius: 8px; }
+
+.toy-menu-item {
+  display: flex; align-items: center; gap: 7px; flex: 1; justify-content: center;
+  padding: 14px 16px; color: var(--text-2); font-size: 12.5px; font-weight: 500;
+  border-right: 1px solid var(--border); cursor: pointer; white-space: nowrap;
+}
+.toy-menu-item:last-child { border-right: none; }
+.toy-menu-item:hover { color: var(--text); }
+.toy-menu-item.danger:hover { color: var(--danger); }
 
 .ico {
   width: 46px; height: 46px; border-radius: 50%;
