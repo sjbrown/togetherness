@@ -29,6 +29,10 @@ export const ToolMode = {
   _startMid:   null,
   _moveRef:    null,
   _lastTap:    0,
+  _wasPinch:   false,   // latched true for the whole pinch gesture, including
+                         // the trailing pointerup(s) as fingers lift one at a time
+  _tapCount:   0,
+  _tapTimer:   null,
 };
 
 // Internal
@@ -236,6 +240,7 @@ function onPointerDown(e) {
   if (ToolMode._pointers.size === 2) {
     cancelDraft();
     ToolMode._gesture = 'pinch';
+    ToolMode._wasPinch = true;
     const pts = [...ToolMode._pointers.values()];
     ToolMode._startDist = dist(pts[0], pts[1]);
     ToolMode._startMid  = mid(pts[0], pts[1]);
@@ -543,24 +548,55 @@ function onPointerUp(e) {
     }
   }
 
-  const wasMultiPointer = ToolMode._gesture === 'pinch';
-
   if (ToolMode._pointers.size < 2 && ToolMode._gesture === 'pinch') {
     ToolMode._gesture = ToolMode._pointers.size === 1 ? 'pending' : null;
   }
+
   if (ToolMode._pointers.size === 0) {
+    // wasPinch is latched from pointerdown through every pointerup in the
+    // gesture — fingers lift one at a time, not simultaneously, so by the
+    // time the *last* finger's pointerup arrives ToolMode._gesture has
+    // already been downgraded away from 'pinch' (see above). Re-deriving
+    // "was this a pinch" from _gesture here would miss that last pointerup
+    // and misread it as a plain tap.
+    const wasMultiPointer = ToolMode._wasPinch;
+    const moved = !!ToolMode._moveRef?.moved;
+    ToolMode._wasPinch = false;
     ToolMode._gesture = null;
     ToolMode._moveRef = null;
-  }
 
-  // Double-tap: reset view
-  // (but not if the preceding pointerup was part of a multi-pointer gesture like pinch)
-  const now = Date.now();
-  if (now - ToolMode._lastTap < 300 && ToolMode._pointers.size === 0 && !ToolMode._moveRef?.moved && !wasMultiPointer) {
-    resetView();
-    App.onViewReset();
+    const isPlainTap = !moved && !wasMultiPointer;
+    const now = Date.now();
+
+    if (isPlainTap) {
+      if (now - ToolMode._lastTap < 300) {
+        ToolMode._tapCount++;
+      } else {
+        ToolMode._tapCount = 1;
+      }
+      ToolMode._lastTap = now;
+
+      // Multi-click counting: we can't tell a double-click from the first
+      // half of a triple-click until a little more time has passed, so we
+      // wait out the double-tap window before acting on the final count.
+      clearTimeout(ToolMode._tapTimer);
+      ToolMode._tapTimer = setTimeout(() => {
+        if (ToolMode._tapCount === 2) {
+          resetView();
+          App.onViewReset();
+        } else if (ToolMode._tapCount >= 3) {
+          App.onTripleTap();
+        }
+        ToolMode._tapCount = 0;
+      }, 300);
+    } else {
+      // A drag or multi-pointer gesture breaks any pending tap sequence.
+      ToolMode._tapCount = 0;
+      ToolMode._lastTap = 0;
+      clearTimeout(ToolMode._tapTimer);
+      ToolMode._tapTimer = null;
+    }
   }
-  ToolMode._lastTap = now;
 }
 
 function finishDraft(e) {
