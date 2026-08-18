@@ -189,19 +189,18 @@ function multiSelectPillHTML(data) {
  * singleSelectPillHTML(data) -- PURE. data = { ltype, id, toyMenuActions }.
  */
 function singleSelectPillHTML(data) {
-  // Toys render a menuItems-style stacked menu (words + icons) right in
-  // the pill's position, instead of the row of round icon buttons —
-  // one entry per toy menu (namespace) action (using the static
-  // 'asterisk' icon — see icons.js's drawAsteriskGlyph for its dynamic,
-  // canvas-space sibling), plus the standard Edit/Delete entries.
   if (data.ltype === 'toys') {
-    const items = (data.toyMenuActions ?? []).map(a => menuItemHTML(
-      a.label, icon('asterisk'),
+    const budget = toyMenuRowBudget();
+    const primary = (data.toyMenuActions ?? []).map(a => toyMenuItemHTML(
+      a.label, icon('asterisk', { size: 16 }),
       `App.invokeToyMenuAction('${data.id}','${a.namespace}','${a.key}')`,
     ));
-    items.push(menuItemHTML('Edit',   icon('edit'),  "UI.openSheet('edit')"));
-    items.push(menuItemHTML('Delete', icon('trash'), "UI.deleteSelected()"));
-    return items.reverse().join('');
+    const utility = [
+      toyMenuItemHTML('Edit',   icon('edit',  { size: 16 }), "UI.openSheet('edit')"),
+      toyMenuItemHTML('Delete', icon('trash', { size: 16 }), "UI.deleteSelected()", 'danger'),
+    ];
+    const rows = [...chunkItems(primary, budget), ...chunkItems(utility, budget)];
+    return rows.map(row => `<div class="toy-menu-row">${row.join('')}</div>`).join('');
   }
   const canDuplicate = data.ltype === 'drawing';
   return [
@@ -209,6 +208,15 @@ function singleSelectPillHTML(data) {
     canDuplicate ? icoBtn(ICON_ACTIONS.copy, 'Duplicate', "UI.duplicateSelected()") : '',
     icoBtn(ICON_ACTIONS.edit,  'Edit',   "UI.openSheet('edit')"),
   ].join('');
+}
+function chunkItems(items, size) {
+  const rows = [];
+  for (let i = 0; i < items.length; i += size) rows.push(items.slice(i, i + size));
+  return rows;
+}
+function toyMenuRowBudget() {
+  const w = (typeof window !== 'undefined' && window.innerWidth) || Infinity;
+  return w < 480 ? 2 : 4;
 }
 
 /**
@@ -264,16 +272,8 @@ function noSelectionPillHTML(data) {
 function ellipsisBtn() {
   return `<button class="ico" aria-label="More tools" title="Open Tools panel" onclick="UI.openSheet('tools')">${icon('ellipsis')}</button>`;
 }
-/**
- * menuItemHTML(label, iconSvg, onclick) -- PURE.
- * Same markup/classes as the #menuItems fan-out (label pill + icon circle) —
- * used for the toy pill-position menu so it matches that style exactly.
- */
-function menuItemHTML(label, iconSvg, onclick) {
-  return `<div class="menu-item" onclick="${onclick}">
-    <span class="menu-label">${label}</span>
-    <span class="menu-circle">${iconSvg}</span>
-  </div>`;
+function toyMenuItemHTML(label, iconSvg, onclick, cls = '') {
+  return `<div class="toy-menu-item ${cls}" onclick="${onclick}">${iconSvg}<span>${label}</span></div>`;
 }
 function toolIco(toolDef, activeTool) {
   const cls = activeTool === toolDef.name ? 'active' : '';
@@ -300,7 +300,7 @@ const ICON_ACTIONS = {
  */
 function pillCapacity() {
   const w = (typeof window !== 'undefined' && window.innerWidth) || Infinity;
-  if (w < 480) return 3;
+  if (w < 480) return 2;
   if (w < 900) return 6;
   return Infinity;
 }
@@ -1067,6 +1067,7 @@ export function selectLayer(id) {
  * stays current without the doc layer knowing anything about panels.
  */
 export function refreshFromDoc() {
+  renderPill();
   const body = $('#panelBody');
   if (!body) return;
   switch (UIData.panelOpen) {
