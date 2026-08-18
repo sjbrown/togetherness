@@ -157,6 +157,7 @@ export function stateHTML(s) {
     </div>`
 
   const seq = s.joinSequence ?? []
+  const onlineIds = new Set((s.net?.peers ?? []).map(p => p.peerId).filter(Boolean))
   const tableCard = `
     <div class="dbg-card">
       <div class="dbg-card-title">Table</div>
@@ -165,13 +166,47 @@ export function stateHTML(s) {
       ${kv('schema', String(s.table?.schema ?? '—'))}
       ${kv('my peer id', `<code class="dbg-id" title="${esc(s.identity?.myId)}">${esc(s.identity?.myId ?? '—')}</code>`)}
       ${kv('yjs client id', String(s.identity?.clientId ?? '—'))}
-      ${kv('authority order', seq.length
-        ? seq.map((id, i) => `<code class="dbg-id ${i === s.myAuthorityIndex ? 'me' : ''}" title="${esc(id)}">${i}·${esc(shortId(id, 5))}</code>`).join(' ')
-        : '<span class="dbg-nil">empty</span>')}
-      <div class="dbg-note">Earlier in the order wins a conflict.</div>
     </div>`
 
-  return headCard + opsCard + netCard + tableCard
+  const joinSeqCard = `
+    <div class="dbg-card">
+      <div class="dbg-card-title">Join Sequence</div>
+      ${joinSequenceHTML(seq, s.identity?.myId, onlineIds)}
+    </div>`
+
+  return headCard + opsCard + netCard + tableCard + joinSeqCard
+}
+
+/**
+ * The joinSequence is a Y.Array of peer ids: append-only, earlier index
+ * wins a conflict. It's the one structure in the whole system where
+ * *position* is the entire meaning — a plain chip row was compressing that
+ * into something you had to squint at, so this renders it as what it is:
+ * an ordered ladder, index first, with online/offline read off presence.
+ */
+export function joinSequenceHTML(seq, myId, onlineIds = new Set()) {
+  if (!seq.length) {
+    return '<div class="dbg-empty">Empty. table has not been joined.</div>'
+  }
+
+  const rows = seq.map((id, i) => {
+    const mine   = id === myId
+    const online = onlineIds.has(id)
+    return `<div class="dbg-join-row ${mine ? 'me' : ''}">
+      <span class="dbg-join-i">${i}</span>
+      <span class="dbg-join-dot ${online ? 'online' : 'offline'}" title="${online ? 'currently connected' : 'not currently connected'}"></span>
+      <code class="dbg-id ${mine ? 'me' : ''}" title="${esc(id)}">${esc(shortId(id, 14))}</code>
+      ${mine ? '<span class="dbg-tag mine">me</span>' : ''}
+      ${i === 0 ? '<span class="dbg-tag head">wins ties</span>' : ''}
+    </div>`
+  }).join('')
+
+  return `
+    <div class="dbg-join-ladder">${rows}</div>
+    <div class="dbg-note">Lower index wins a concurrent-edit conflict.
+    </div>
+    <details class="dbg-join-raw"><summary>Raw array</summary>${jsonHTML(seq)}</details>
+  `
 }
 
 // ── OPS ─────────────────────────────────────────────────────────────────

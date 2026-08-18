@@ -16,7 +16,7 @@ import { describe, test, expect, beforeEach, vi } from 'vitest'
 import * as Trace from '../../src/trace.js'
 import {
   esc, clockTime, shortId, idHTML, jsonHTML,
-  stateHTML, opRowsHTML, streamRowsHTML, channelChipsHTML,
+  stateHTML, opRowsHTML, streamRowsHTML, channelChipsHTML, joinSequenceHTML,
   debugBody, gatherDebugData, init, mount, unmount, isMounted, render,
 } from '../../src/debug_panel.js'
 
@@ -130,13 +130,55 @@ describe('stateHTML', () => {
 
   test('my own position in the authority order is marked', () => {
     const d = parse(stateHTML(makeState()))
-    const mine = d.querySelectorAll('.dbg-id.me')
+    const mine = d.querySelectorAll('.dbg-join-row.me')
     expect(mine).toHaveLength(1)
-    expect(mine[0].getAttribute('title')).toBe('tt-p-v1-AA-abc')
+    expect(mine[0].querySelector('.dbg-id').getAttribute('title')).toBe('tt-p-v1-AA-abc')
   })
 
   test('renders a message rather than throwing when there is no state', () => {
     expect(parse(stateHTML(null)).textContent).toContain('has not booted')
+  })
+})
+
+describe('joinSequenceHTML', () => {
+  const seq = ['tt-p-v1-AA-abc', 'tt-p-v1-BB-xyz', 'tt-p-v1-CC-qrs']
+
+  test('renders one row per entry, in order, with its index', () => {
+    const d = parse(joinSequenceHTML(seq, null, new Set()))
+    const rows = d.querySelectorAll('.dbg-join-row')
+    expect(rows).toHaveLength(3)
+    expect([...rows].map(r => r.querySelector('.dbg-join-i').textContent)).toEqual(['0', '1', '2'])
+  })
+
+  test('marks my own row', () => {
+    const d = parse(joinSequenceHTML(seq, 'tt-p-v1-BB-xyz', new Set()))
+    const rows = d.querySelectorAll('.dbg-join-row')
+    expect(rows[0].classList.contains('me')).toBe(false)
+    expect(rows[1].classList.contains('me')).toBe(true)
+    expect(rows[1].querySelector('.dbg-tag.mine')).not.toBeNull()
+  })
+
+  test('only index 0 is marked as tie-winner', () => {
+    const d = parse(joinSequenceHTML(seq, null, new Set()))
+    expect(d.querySelectorAll('.dbg-tag.head')).toHaveLength(1)
+    expect(d.querySelectorAll('.dbg-join-row')[0].querySelector('.dbg-tag.head')).not.toBeNull()
+  })
+
+  test('online/offline is read off current presence, independent of position', () => {
+    const d = parse(joinSequenceHTML(seq, null, new Set(['tt-p-v1-BB-xyz'])))
+    const rows = d.querySelectorAll('.dbg-join-row')
+    expect(rows[0].querySelector('.dbg-join-dot').classList.contains('offline')).toBe(true)
+    expect(rows[1].querySelector('.dbg-join-dot').classList.contains('online')).toBe(true)
+    expect(rows[2].querySelector('.dbg-join-dot').classList.contains('offline')).toBe(true)
+  })
+
+  test('an empty sequence explains itself rather than rendering nothing', () => {
+    expect(parse(joinSequenceHTML([], null, new Set())).textContent).toContain('not been joined')
+  })
+
+  test('carries the raw array for exact inspection', () => {
+    const d = parse(joinSequenceHTML(seq, null, new Set()))
+    expect(d.querySelector('.dbg-join-raw .dbg-json').textContent).toContain('tt-p-v1-CC-qrs')
   })
 })
 
