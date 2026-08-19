@@ -27,6 +27,76 @@ export function init(App, svgEl, Toys, UI) {
       App.addLog(`cloned ${sourceId} → ${result.id}`, 'local')
     },
 
+    'toy:add': (e) => {
+      const { toyType, x, y, color, initArgs } = e.detail
+      if (!toyType) { e.detail.error = 'toy:add requires toyType'; return }
+      const layerEl = svgEl.querySelector('#toys-layer')
+      if (!layerEl) { e.detail.error = 'toys layer not found'; return }
+
+      const id = Toys.newToyId()
+      e.detail.retval = { id }
+
+      App.setLastActionScope('toys')
+      Toys.placeToy(ydoc, layerEl, {
+        id, toyType, x: x ?? 0, y: y ?? 0, color,
+      }, { authorId: myId, tableId }).then(async () => {
+        App.addHistory(`placed ${toyType} ${id}`, { elType: 'toy' })
+        App.addLog(`placed ${toyType} ${id}`, 'local')
+
+        // Awaiting activateToyScripts() here guarantees the namespace is
+        // actually ready before initialize() reads it off window[namespace].
+        // placeToy already kicked this off; the promise is memoized, so
+        // this just waits on the same one.
+        await Toys.activateToyScripts(ydoc, toyType)
+        const placedEl = layerEl.querySelector(`[data-toy-id="${id}"]`)
+        if (placedEl) {
+          Toys.initializeToy(ydoc, layerEl, placedEl, toyType, myId, tableId, initArgs)
+        }
+      }).catch(err => {
+        UI.toast(`Failed to place ${toyType}`, 'warn')
+        App.addLog(`toy:add failed: ${err.message}`, 'del')
+      })
+    },
+
+    'toy:reparent': (e) => {
+      const { ids, containerId } = e.detail
+      if (!Array.isArray(ids) || !ids.length) { e.detail.error = 'toy:reparent requires ids'; return }
+      const layerEl = svgEl.querySelector('#toys-layer')
+      if (!layerEl) { e.detail.error = 'toys layer not found'; return }
+      const containerEl = layerEl.querySelector(`[data-toy-id="${containerId}"]`)
+      if (!containerEl) { e.detail.error = `toy not found: ${containerId}`; return }
+
+      const wasInside = Toys.isInsideEnvelope()
+      try {
+        Toys.ensureEnvelope(ydoc, layerEl, () => {
+          for (const id of ids) {
+            if (id === containerId) continue
+            const movedEl = layerEl.querySelector(`[data-toy-id="${id}"]`)
+            if (!movedEl) continue
+            const movedSvg = movedEl.querySelector(':scope > svg')
+            const mw = parseFloat(movedSvg?.getAttribute('width'))  || 0
+            const mh = parseFloat(movedSvg?.getAttribute('height')) || 0
+            // Computed BEFORE this item joins .tt_contents, so it chains
+            // onto whichever item is currently last, not onto itself.
+            const slot = Toys.nextContainerSlot(containerEl, mw, mh)
+            Toys.reparentToyDom(layerEl, id, containerId)
+            Toys.applyMoveDom(movedEl, slot.x, slot.y)
+          }
+        }, { gesture: 'reparent', authorId: myId, tableId })
+      } catch (err) {
+        e.detail.error = err.message
+        return
+      }
+      e.detail.retval = {}
+      if (!wasInside) UI.refreshFromDoc()
+
+      const selectedIds = App.getSelectedIds()
+      if (ids.some(id => selectedIds.includes(id))) App.clearSelection()
+
+      App.setLastActionScope('toys')
+      App.addLog(`reparented ${ids.join(', ')} → ${containerId}`, 'local')
+    },
+
     'toy:edit': (e) => {
       const { id, color, name } = e.detail
       const layerEl = svgEl.querySelector('#toys-layer')
