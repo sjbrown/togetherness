@@ -799,6 +799,7 @@ function gatherPeersData() {
     peers: App.getPeers(),
     offline: App.isOffline(),
     roomId: App.getTableId(),
+    checkpointFrequency: App.getCheckpointFrequency?.() ?? 0,
   };
 }
 function gatherLayersData() {
@@ -938,7 +939,33 @@ export function peersBody(data) {
         >Generate QR Code ${fakeQR()} </a></span>
         <div class="room-code"><a href="${link}">${link}</a></div>
       </div>
+    </div>
+    ${checkpointFrequencyHTML(data.checkpointFrequency)}`;
+}
+function checkpointFrequencyLabel(freq) {
+  return freq === 0 ? 'Off' : `Every ${freq} min${freq === 1 ? '' : 's'}`;
+}
+function checkpointFrequencyHTML(freq) {
+  return `
+    <div class="field" style="margin-top:18px">
+      <label>Checkpoint frequency</label>
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:6px">
+        Compact the history when you've been idle a while. The panel opening
+        always checkpoints when there's enough to compact — this only
+        controls the extra idle-triggered check.
+      </div>
+      <div class="opt-row">
+        <span class="opt-label" id="checkpointFreqLabel">${checkpointFrequencyLabel(freq)}</span>
+        <input type="range" id="checkpointFreqSlider" min="0" max="10" step="1" value="${freq}"
+          style="accent-color:var(--accent)"
+          oninput="UI.onCheckpointFrequencyInput(Number(this.value))"/>
+      </div>
     </div>`;
+}
+export function onCheckpointFrequencyInput(minutes) {
+  const clamped = App.setCheckpointFrequency(minutes);
+  const label = $('#checkpointFreqLabel');
+  if (label) label.textContent = checkpointFrequencyLabel(clamped);
 }
 function avatarSVG(p) {
   const fill = p.gradId ? `url(#${p.gradId})` : p.color;

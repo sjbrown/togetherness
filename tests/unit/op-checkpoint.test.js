@@ -17,6 +17,7 @@ import {
   checkpointOp, nearestCheckpoint, applyOps, projectFrom,
   ensureLayerId, isCheckpoint, LAYER_DATA_ID,
   opsSinceCheckpoint, shouldCheckpoint, CHECKPOINT_MIN_OPS,
+  lastCheckpointTs,
 } from '../../src/op_checkpoint.js'
 import { getOps, appendOp } from '../../src/op_dag.js'
 import { serialize } from '../../src/op_wire_mutation.js'
@@ -243,6 +244,39 @@ describe('opsSinceCheckpoint / shouldCheckpoint', () => {
   test('null head is never worth checkpointing', () => {
     expect(opsSinceCheckpoint(new Map(), null)).toBe(0)
     expect(shouldCheckpoint(new Map(), null)).toBe(false)
+  })
+})
+
+describe('lastCheckpointTs', () => {
+  test('null when the log has no checkpoints at all', () => {
+    const ops = new Map([
+      ['g', { id: 'g', parents: [], authorId: 'a', gesture: 'move', mutations: [], ts: 100 }],
+    ])
+    expect(lastCheckpointTs(ops)).toBeNull()
+  })
+
+  test('the single checkpoint\'s ts', () => {
+    const ops = new Map()
+    ops.set('cp', checkpointOp(bareLayer(), { id: 'cp', authorId: 'a', ts: 500 }))
+    expect(lastCheckpointTs(ops)).toBe(500)
+  })
+
+  test('the latest, not the first, among several checkpoints', () => {
+    const ops = new Map()
+    ops.set('cp1', checkpointOp(bareLayer(), { id: 'cp1', authorId: 'a', ts: 100 }))
+    ops.set('cp2', checkpointOp(bareLayer(), { id: 'cp2', parents: ['cp1'], authorId: 'b', ts: 900 }))
+    ops.set('cp3', checkpointOp(bareLayer(), { id: 'cp3', parents: ['cp1'], authorId: 'c', ts: 300 }))
+    expect(lastCheckpointTs(ops)).toBe(900)
+  })
+
+  test('is not scoped to any one branch — considers every checkpoint in the map', () => {
+    // cp-b is on a sibling branch, not an ancestor of cp-a's descendants,
+    // but still counts: "since a checkpoint landed" is a global fact.
+    const ops = new Map()
+    ops.set('root', { id: 'root', parents: [], authorId: 'a', gesture: 'move', mutations: [], ts: 0 })
+    ops.set('cp-a', checkpointOp(bareLayer(), { id: 'cp-a', parents: ['root'], authorId: 'a', ts: 100 }))
+    ops.set('cp-b', checkpointOp(bareLayer(), { id: 'cp-b', parents: ['root'], authorId: 'b', ts: 700 }))
+    expect(lastCheckpointTs(ops)).toBe(700)
   })
 })
 

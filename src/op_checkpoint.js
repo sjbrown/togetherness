@@ -54,6 +54,22 @@ const mintOpId = () =>
 export const isCheckpoint = (op) => op?.gesture === CHECKPOINT_GESTURE
 
 /**
+ * The most recent checkpoint anywhere in the log, by wall-clock ts —
+ * not scoped to any one head or branch. Used for idle-checkpoint timing,
+ * where "how long since *a* checkpoint landed" is a global fact: any
+ * peer's checkpoint resets the clock for all of them, same as any peer's
+ * op advances the shared log. Returns null if the log has none yet.
+ */
+export function lastCheckpointTs(ops) {
+  let latest = null
+  for (const op of ops.values()) {
+    if (!isCheckpoint(op)) continue
+    if (latest == null || op.ts > latest) latest = op.ts
+  }
+  return latest
+}
+
+/**
  * Freeze a layer's current contents as an operation. Reads the live DOM,
  * which is a faithful projection already — replaying the log to rebuild
  * something we are holding would be ceremony.
