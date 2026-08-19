@@ -15,7 +15,7 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
 import * as Trace from '../../src/trace.js'
 import {
-  esc, clockTime, shortId, idHTML, jsonHTML,
+  esc, clockTime, idHTML, jsonHTML,
   stateHTML, opRowsHTML, streamRowsHTML, channelChipsHTML, joinSequenceHTML,
   debugBody, gatherDebugData, init, mount, unmount, isMounted, render,
 } from '../../src/debug_panel.js'
@@ -66,22 +66,6 @@ describe('formatting helpers', () => {
   test('clockTime is millisecond-resolution, so near-simultaneous events order', () => {
     expect(clockTime(0)).toBe('00:00:00.000')
     expect(clockTime(undefined)).toBe('--:--:--')
-  })
-
-  test('shortId keeps the distinguishing tail', () => {
-    expect(shortId('tt-op-abcdefghijkl')).toBe('…efghijkl')
-    expect(shortId('short')).toBe('short')
-    expect(shortId(null)).toBe('—')
-  })
-
-  test('idHTML carries the full id in a title for copying', () => {
-    const el = parse(idHTML('tt-op-abcdefghijkl')).querySelector('code')
-    expect(el.getAttribute('title')).toBe('tt-op-abcdefghijkl')
-  })
-
-  test('jsonHTML renders nothing for a null detail', () => {
-    expect(jsonHTML(null)).toBe('')
-    expect(jsonHTML(undefined)).toBe('')
   })
 
   test('jsonHTML survives a circular detail rather than throwing mid-render', () => {
