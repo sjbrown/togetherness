@@ -57,19 +57,9 @@ export function clockTime(t) {
   return new Date(t).toISOString().slice(11, 23)
 }
 
-/**
- * Operation and node ids are long and share a prefix; the tail is the part
- * that distinguishes them. Shown short, with the whole thing on hover.
- */
-export function shortId(id, keep = 8) {
-  if (!id) return '—'
-  const s = String(id)
-  return s.length <= keep + 2 ? s : `…${s.slice(-keep)}`
-}
-
 export function idHTML(id) {
   if (!id) return '<span class="dbg-nil">none</span>'
-  return `<code class="dbg-id" title="${esc(id)}">${esc(shortId(id))}</code>`
+  return `<code class="dbg-id" title="${esc(id)}">${esc(id)}</code>`
 }
 
 /** Pretty JSON, escaped, in a copyable block. Undefined detail renders nothing. */
@@ -152,7 +142,7 @@ export function stateHTML(s) {
       ${kv('broadcastchannel peers', String(net.bcPeers ?? 0))}
       ${net.offline ? kv('offline mode', '<span class="dbg-bad">on</span>') : ''}
       ${kv('presence', peers.length
-        ? peers.map(p => `<code class="dbg-id" title="${esc(p.peerId ?? p.clientId)}">${esc(shortId(p.peerId ?? String(p.clientId), 6))}${p.self ? ' (me)' : ''}</code>`).join(' ')
+        ? peers.map(p => `<code class="dbg-id" title="${esc(p.peerId ?? p.clientId)}">${esc(p.peerId ?? String(p.clientId), 6)}${p.self ? ' (me)' : ''}</code>`).join(' ')
         : '<span class="dbg-nil">nobody</span>')}
     </div>`
 
@@ -195,7 +185,7 @@ export function joinSequenceHTML(seq, myId, onlineIds = new Set()) {
     return `<div class="dbg-join-row ${mine ? 'me' : ''}">
       <span class="dbg-join-i">${i}</span>
       <span class="dbg-join-dot ${online ? 'online' : 'offline'}" title="${online ? 'currently connected' : 'not currently connected'}"></span>
-      <code class="dbg-id ${mine ? 'me' : ''}" title="${esc(id)}">${esc(shortId(id, 14))}</code>
+      <code class="dbg-id ${mine ? 'me' : ''}" title="${esc(id)}">${esc(id)}</code>
       ${mine ? '<span class="dbg-tag mine">me</span>' : ''}
       ${i === 0 ? '<span class="dbg-tag head">wins ties</span>' : ''}
     </div>`
