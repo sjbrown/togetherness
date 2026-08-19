@@ -20,6 +20,33 @@ import * as Trace from './trace.js'
 export { ensureLayerId, LAYER_DATA_ID }
 export const CHECKPOINT_GESTURE = 'checkpoint'
 
+// Below this many ops since the last checkpoint, writing a new one isn't
+// worth it — replaying a handful of operations is cheap, and a checkpoint
+// op costs a full serialized layer. Triggers should check this before
+// doing anything else.
+export const CHECKPOINT_MIN_OPS = 10
+
+/**
+ * How many operations stand between headId and its nearest checkpoint
+ * (or genesis, if it has none). This is the only number the "is it worth
+ * checkpointing" decision needs — it says nothing about *when*, only
+ * about whether a checkpoint right now would do any good.
+ */
+export function opsSinceCheckpoint(ops, headId) {
+  if (headId == null) return 0
+  const base = nearestCheckpoint(ops, headId)
+  return pathFrom(ops, base, headId).length
+}
+
+/**
+ * Whether a checkpoint at headId would be worth writing. Callers still
+ * decide *when* to ask — this only answers whether asking now would pay
+ * off, per CHECKPOINT_MIN_OPS.
+ */
+export function shouldCheckpoint(ops, headId) {
+  return opsSinceCheckpoint(ops, headId) > CHECKPOINT_MIN_OPS
+}
+
 let _counter = 0
 const mintOpId = () =>
   `tt-op-${Date.now().toString(36)}-${(_counter++).toString(36)}-${Math.random().toString(36).slice(2, 7)}`

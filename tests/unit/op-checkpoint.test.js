@@ -16,6 +16,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   checkpointOp, nearestCheckpoint, applyOps, projectFrom,
   ensureLayerId, isCheckpoint, LAYER_DATA_ID,
+  opsSinceCheckpoint, shouldCheckpoint, CHECKPOINT_MIN_OPS,
 } from '../../src/op_checkpoint.js'
 import { getOps, appendOp } from '../../src/op_dag.js'
 import { serialize } from '../../src/op_wire_mutation.js'
@@ -190,6 +191,58 @@ describe('nearestCheckpoint', () => {
 
   test('null head yields null', () => {
     expect(nearestCheckpoint(new Map(), null)).toBeNull()
+  })
+})
+
+// Builds a checkpoint followed by a straight-line chain of `n` trivial
+// move ops, returning the ops map and the tip id.
+function chainAfterCheckpoint(n, { checkpointId = 'cp' } = {}) {
+  const ops = new Map()
+  const cp = checkpointOp(bareLayer(), { id: checkpointId, authorId: 'a' })
+  ops.set(cp.id, cp)
+  let tip = cp.id
+  for (let i = 0; i < n; i++) {
+    const id = `m${i}`
+    ops.set(id, { id, parents: [tip], authorId: 'a', gesture: 'move', mutations: [] })
+    tip = id
+  }
+  return { ops, tip }
+}
+
+describe('opsSinceCheckpoint / shouldCheckpoint', () => {
+  test('zero ops past a checkpoint at the head itself', () => {
+    const { ops, tip } = chainAfterCheckpoint(0)
+    expect(opsSinceCheckpoint(ops, tip)).toBe(0)
+    expect(shouldCheckpoint(ops, tip)).toBe(false)
+  })
+
+  test('counts the ops between the head and its nearest checkpoint', () => {
+    const { ops, tip } = chainAfterCheckpoint(5)
+    expect(opsSinceCheckpoint(ops, tip)).toBe(5)
+  })
+
+  test('exactly CHECKPOINT_MIN_OPS is not yet worth checkpointing', () => {
+    const { ops, tip } = chainAfterCheckpoint(CHECKPOINT_MIN_OPS)
+    expect(opsSinceCheckpoint(ops, tip)).toBe(CHECKPOINT_MIN_OPS)
+    expect(shouldCheckpoint(ops, tip)).toBe(false)
+  })
+
+  test('one past CHECKPOINT_MIN_OPS is worth checkpointing', () => {
+    const { ops, tip } = chainAfterCheckpoint(CHECKPOINT_MIN_OPS + 1)
+    expect(shouldCheckpoint(ops, tip)).toBe(true)
+  })
+
+  test('a branch with no checkpoint at all counts from genesis', () => {
+    const ops = new Map([
+      ['g',  { id: 'g',  parents: [],    authorId: 'a', gesture: 'move', mutations: [] }],
+      ['m1', { id: 'm1', parents: ['g'], authorId: 'a', gesture: 'move', mutations: [] }],
+    ])
+    expect(opsSinceCheckpoint(ops, 'm1')).toBe(2)
+  })
+
+  test('null head is never worth checkpointing', () => {
+    expect(opsSinceCheckpoint(new Map(), null)).toBe(0)
+    expect(shouldCheckpoint(new Map(), null)).toBe(false)
   })
 })
 

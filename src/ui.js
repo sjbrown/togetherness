@@ -675,6 +675,9 @@ export function panelTabsHTML(activeId) {
 }
 
 export function openSheet(which) {
+  // Opening the panel is an intent signal: the user interactions will leave
+  // the canvas, so it's a good moment to try writing a checkpoint
+  if (UIData.panelOpen === null) App.maybeCheckpoint?.('panel-open');
   savePanelState(true, which);
   UIData.panelOpen = which;
   const desktop = window.innerWidth >= 760;
