@@ -866,6 +866,54 @@ export function getContentsGroup(domEl) {
   return domEl.querySelector(`.${domEl.id}__tt_contents`)
 }
 
+// Fallback inset for the first item placed into an empty container, or
+// one whose last child has no snap point of its own to chain onto.
+const CONTAINER_TOP_INSET = 5
+
+/**
+ * Where a newly-added item should land inside containerEl, in
+ * containerEl's own local coordinate frame (the same space its
+ * .tt_contents children's own <svg> x/y already live in) — as a centre
+ * point, ready for applyMoveDom. movingWidth/movingHeight are the
+ * incoming item's own size (needed to centre it when there's nothing to
+ * chain onto yet).
+ *
+ * Chains onto whatever's already there: if the last existing child
+ * exposes its own tt_positions snap circle (chip.svg does; most toys
+ * don't), the new item's centre lands exactly on that circle — the same
+ * "stacked on the position below it" convention top-level toys already
+ * use, just applied one level down (chip.svg's circle sits above its own
+ * centre, so this naturally produces a realistic overlapping chip-pile
+ * look, not a full-height non-overlapping list). Otherwise falls back to
+ * stacking directly beneath the last child, or a small top inset for the
+ * first item into an empty container.
+ *
+ * Read-only — callers still have to reparent + applyMoveDom themselves.
+ * Call this BEFORE reparenting the incoming item, so it isn't counted as
+ * its own last child.
+ */
+export function nextContainerSlot(containerEl, movingWidth = 0, movingHeight = 0) {
+  const containerGeom = getGeom(containerEl)
+  const cx = (containerGeom?.width ?? 0) / 2
+
+  const contentsGroup = containerEl && getContentsGroup(containerEl)
+  const children = contentsGroup ? [...contentsGroup.querySelectorAll(':scope > .toy')] : []
+  const lastChild = children[children.length - 1] ?? null
+
+  if (lastChild) {
+    const lastId = lastChild.getAttribute('data-toy-id')
+    const circle = lastId && lastChild.querySelector(`.${lastId}__tt_positions circle`)
+    if (circle) return getInnerAnchor(lastChild, circle)
+
+    // lastChild has no snap point of its own — stack directly beneath it.
+    const lastGeom = getGeom(lastChild)
+    if (lastGeom) return { x: cx, y: lastGeom.y + lastGeom.height + movingHeight / 2 }
+  }
+
+  // First item into an empty container.
+  return { x: cx, y: CONTAINER_TOP_INSET + movingHeight / 2 }
+}
+
 /**
  * Matrix mapping points in localEl's own coordinate space into layerEl's
  * coordinate space: layerEl^-1 * localEl, via getScreenCTM().
@@ -1352,6 +1400,16 @@ export const TOY_TYPES = {
   supply: TOOLS[4],
   tray_sum: TOOLS[5],
   token_glass: TOOLS[6],
+  stack: {
+    name:    'stack',
+    toyType: 'stack',
+    file: 'stack.svg',
+    label: 'Stack',
+    iconUrl: 'toy/stack.svg',
+    layer:   'toys',
+    defaults: {},
+    options: [],
+  },
 }
 
 // ── ttState / ttStateSchema ───────────────────────────────────────────────────
@@ -1849,18 +1907,18 @@ export function invokeMenuAction(ydoc, layerEl, svgEl, namespace, key, evt, auth
  * Run every activated namespace's initialize(elem), if present, for a
  * freshly placed/cloned toy instance
  */
-export function runInitializers(svgEl, toyType) {
+export function runInitializers(svgEl, toyType, initArgs) {
   const initializers = getNamespacesForType(toyType)
     .map(name => globalThis[name])
     .filter(ns => ns && typeof ns.initialize === 'function')
-  initializers.forEach(ns => ns.initialize(svgEl))
+  initializers.forEach(ns => ns.initialize(svgEl, initArgs))
 }
 
-export function initializeToy(ydoc, layerEl, svgEl, toyType, authorId, tableId) {
+export function initializeToy(ydoc, layerEl, svgEl, toyType, authorId, tableId, initArgs) {
   if (!getNamespacesForType(toyType).some(name => typeof globalThis[name]?.initialize === 'function')) return
   ydoc.transact(() => {
     runGesture(ydoc, layerEl, () => {
-      runInitializers(svgEl, toyType)
+      runInitializers(svgEl, toyType, initArgs)
     }, { gesture: 'initialize', authorId, tableId })
   })
 }

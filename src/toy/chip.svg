@@ -52,7 +52,7 @@ var chip = {
       otherEvents: ['dblclick'],
       applicable: (node) => chip.stack_applicable(node),
       handler: function(evt) {
-        console.warn('TODO')
+        chip.stack(this)
       },
     },
   },
@@ -63,6 +63,59 @@ var chip = {
     } else {
       return false
     }
+  },
+
+  // Walk a data-above/data-below chain starting at elem, collecting the
+  // chip ids found along the way (nearest neighbor first).
+  chain: function(elem, attr) {
+    const layer = elem.closest('#toys-layer')
+    const ids = []
+    let nextId = elem.getAttribute(attr)
+    while (nextId) {
+      const nextEl = layer?.querySelector(`[data-toy-id="${nextId}"]`)
+      if (!nextEl) break
+      ids.push(nextId)
+      nextId = nextEl.getAttribute(attr)
+    }
+    return ids
+  },
+
+  stack: function(elem) {
+    const layer = elem.closest('#toys-layer')
+    const myId  = elem.getAttribute('data-toy-id')
+
+    // data-above walks toward the base of the pile; data-below walks
+    // toward the most recently placed (top) chip.
+    const underIds = chip.chain(elem, 'data-above').reverse()
+    const aboveIds = chip.chain(elem, 'data-below')
+
+    const ids = [...underIds, myId, ...aboveIds]
+    const bottomId = ids[0]
+    const bottomEl = layer?.querySelector(`[data-toy-id="${bottomId}"]`) ?? elem
+
+    const { x, y } = chip.anchor_of(bottomEl)
+
+    chip._event('toy:add', {
+      toyType: 'stack',
+      x, y,
+      initArgs: ids,
+    })
+  },
+
+  anchor_of: function(toyEl) {
+    const svg = toyEl.querySelector(':scope > svg')
+    const x = parseFloat(svg?.getAttribute('x')) || 0
+    const y = parseFloat(svg?.getAttribute('y')) || 0
+    const w = parseFloat(svg?.getAttribute('width')) || 0
+    const h = parseFloat(svg?.getAttribute('height')) || 0
+    return { x: x + w / 2, y: y + h / 2 }
+  },
+
+  _event: function(evName, args) {
+    const detail = { ...args, retval: {} };
+    document.dispatchEvent(new CustomEvent(evName, { detail }));
+    if (detail.error) throw new Error(detail.error);
+    return detail.retval;
   },
 
   increment: function(elem, step) {

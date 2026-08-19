@@ -3,8 +3,8 @@
    height="110"
    width="80"
    version="1.1"
-   id="chip"
-   class="chip"
+   id="stack"
+   class="stack"
    viewBox="0 0 80 110"
    sodipodi:docname="stack.svg"
    inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
@@ -71,7 +71,12 @@
   </defs>
   <script
      type="text/javascript"
-     data-namespace="chip"
+     src="js/tray.js"
+     data-namespace="tray"
+     id="script_tray" />
+  <script
+     type="text/javascript"
+     data-namespace="stack"
      id="script5"><![CDATA[
 
 var stack = {
@@ -87,9 +92,73 @@ var stack = {
     },
   },
 
+  // Runs once at placement. chipIds is the ordered (bottom-to-top) list
+  // of chip ids chip.js's Stack action collected — ask app.js to move
+  // each of them, live state and all, into our own .tt_contents.
+  initialize: function(elem, chipIds) {
+    if (!Array.isArray(chipIds) || !chipIds.length) return
+    const containerId = elem.getAttribute('data-toy-id')
+    stack._event('toy:reparent', { ids: chipIds, containerId })
+  },
+
+  // Fixed margins reserved below the column of stacked chips for the sum
+  // readout. Chosen so a single default 80-tall chip (placed by the
+  // generic toy:reparent layout, which insets 5px from the top) reproduces
+  // the toy's original fixed 110 height exactly (5 + 80 + 20 + 5 = 110).
+  layout: {
+    WIDTH:         80,
+    FOOTER_HEIGHT: 20,
+    BOTTOM_MARGIN: 5,
+  },
+
+  // Runs whenever .tt_contents changes (a chip reparented in or out, ...).
+  // Reads each contained chip's own geometry — laid out by the generic
+  // toy:reparent handler, never rewritten here — to grow/shrink our own
+  // height to fit them, and keeps the sum readout and background in sync.
+  // Deliberately does not touch anything inside .tt_contents: writing to a
+  // contained child from here would be flagged as its own new "contents
+  // changed" event and skipped as a same-gesture repeat (see toys.js's
+  // runContentsChangeCascadeInto) — layout is toy:reparent's job, this
+  // handler only reads the result.
   contents_change_handler: function(elem) {
-    tspan = elem.querySelector('tspan.stack_summary')
-    tspan.textContent = 'C!'
+    const { WIDTH, FOOTER_HEIGHT, BOTTOM_MARGIN } = stack.layout
+    const outerSvg = elem.querySelector(':scope > svg')
+    if (!outerSvg) return
+
+    let sum = 0
+    let contentBottom = 0
+    tray.visit_contents(elem, (child) => {
+      sum += tray.get_numeric_value(child)
+
+      const childSvg = child.querySelector(':scope > svg')
+      if (!childSvg) return
+      const y = parseFloat(childSvg.getAttribute('y'))      || 0
+      const h = parseFloat(childSvg.getAttribute('height')) || 0
+      contentBottom = Math.max(contentBottom, y + h)
+    })
+
+    const footerY   = contentBottom
+    const newHeight = footerY + FOOTER_HEIGHT + BOTTOM_MARGIN
+
+    outerSvg.setAttribute('height', String(newHeight))
+    outerSvg.setAttribute('viewBox', `0 0 ${WIDTH} ${newHeight}`)
+
+    const bg = elem.querySelector('.bg_highlight')
+    if (bg) bg.setAttribute('height', String(newHeight))
+
+    const footerRect = elem.querySelector('.rect_stack_summary')
+    const footerText = elem.querySelector('.text_stack_summary')
+    const tspan       = elem.querySelector('.tspan_sum')
+    if (footerRect) footerRect.setAttribute('y', String(footerY))
+    if (footerText) footerText.setAttribute('y', String(footerY + 12))
+    if (tspan) tspan.textContent = String(sum)
+  },
+
+  _event: function(evName, args) {
+    const detail = { ...args, retval: {} };
+    document.dispatchEvent(new CustomEvent(evName, { detail }));
+    if (detail.error) throw new Error(detail.error);
+    return detail.retval;
   },
 
 }
