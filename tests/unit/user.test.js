@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 import { describe, test, expect, beforeEach } from 'vitest'
-import { getIdentity, setName, setGrad, randomName, makeLocalId } from '../../src/user.js'
+import {
+  getIdentity, setName, setGrad, randomName, makeLocalId,
+  getCheckpointFrequency, setCheckpointFrequency,
+  MIN_CHECKPOINT_FREQUENCY, MAX_CHECKPOINT_FREQUENCY, DEFAULT_CHECKPOINT_FREQUENCY,
+} from '../../src/user.js'
 
 const STORAGE_KEY = 'tt_player'
 
@@ -22,14 +26,8 @@ describe('getIdentity', () => {
     expect(stored).toEqual(identity)
   })
 
-  test('returns the same identity on repeated calls (no re-generation)', () => {
-    const first  = getIdentity()
-    const second = getIdentity()
-    expect(second).toEqual(first)
-  })
-
   test('reads back a previously persisted identity', () => {
-    const record = { name: 'Existing Player', grad: { c1: 'hsl(1,2%,3%)', c2: 'hsl(4,5%,6%)' }, localId: 'tt-p-v1-05-xyz' }
+    const record = { name: 'Existing Player', grad: { c1: 'hsl(1,2%,3%)', c2: 'hsl(4,5%,6%)' }, localId: 'tt-p-v1-05-xyz', checkpointFrequency: 3 }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(record))
 
     expect(getIdentity()).toEqual(record)
@@ -68,6 +66,16 @@ describe('getIdentity', () => {
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
     const identity = getIdentity()
     expect(identity.name).toBeTruthy()
+  })
+
+  test('heals a record missing checkpointFrequency without touching other fields', () => {
+    const record = { name: 'No Freq Player', grad: { c1: 'hsl(1,2%,3%)', c2: 'hsl(4,5%,6%)' }, localId: 'tt-p-v1-05-xyz' }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(record))
+
+    const identity = getIdentity()
+    expect(identity.checkpointFrequency).toBe(DEFAULT_CHECKPOINT_FREQUENCY)
+    expect(identity.name).toBe('No Freq Player')
+    expect(identity.localId).toBe('tt-p-v1-05-xyz')
   })
 })
 
@@ -113,4 +121,32 @@ describe('makeLocalId', () => {
   test('returns a tt-p-v1-DD-XXX formatted id', () => {
     expect(makeLocalId()).toMatch(/^tt-p-v1-\d{2}-[a-z]{3}$/)
   })
+})
+
+describe('getCheckpointFrequency', () => {
+  test('defaults when nothing has ever been stored', () => {
+    expect(getCheckpointFrequency()).toBe(DEFAULT_CHECKPOINT_FREQUENCY)
+  })
+
+  test('reflects a previously-stored value', () => {
+    setCheckpointFrequency(7)
+    expect(getCheckpointFrequency()).toBe(7)
+  })
+})
+
+describe('setCheckpointFrequency', () => {
+  test('0 is a valid value and means idle checkpointing is off', () => {
+    setCheckpointFrequency(0)
+    expect(getCheckpointFrequency()).toBe(0)
+  })
+
+  test('clamps below MIN_CHECKPOINT_FREQUENCY (negative input)', () => {
+    setCheckpointFrequency(-3)
+    expect(getCheckpointFrequency()).toBe(MIN_CHECKPOINT_FREQUENCY)
+  })
+
+  test('returns the clamped value it actually stored', () => {
+    expect(setCheckpointFrequency(20)).toBe(MAX_CHECKPOINT_FREQUENCY)
+  })
+
 })

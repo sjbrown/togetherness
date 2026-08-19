@@ -23,9 +23,10 @@ import * as BounPos                               from './boun_pos.js';
 import * as Drawing                               from './drawing.js';
 import * as Toys                                  from './toys.js';
 import { tablesAPI }                              from './tables.js';
-import { getOps, heads, totalOrder }              from './op_dag.js';
-import { getHead, getMergeTips }                  from './op_head.js';
-import { isCheckpoint }                           from './op_checkpoint.js';
+import { getOps, heads, totalOrder, appendOp }    from './op_dag.js';
+import { getHead, getMergeTips, setHead }         from './op_head.js';
+import { isCheckpoint, checkpointOp, shouldCheckpoint, lastCheckpointTs } from './op_checkpoint.js';
+import { getCheckpointFrequency, setCheckpointFrequency } from './user.js';
 import * as Trace                                 from './trace.js';
 import * as Storage                               from './storage.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
@@ -97,6 +98,8 @@ const _netStatus = { connected: false, synced: false, webrtcPeers: 0, bcPeers: 0
 // Overlay.localSelectionChanged + _broadcastSelection + UI.onSelectionChanged,
 // so forgetting to broadcast is structurally impossible.
 let _myClaims = {};
+// Tracks whether the last _afterClaimsChanged call left a non-empty selection
+let _lastClaimedSetNonEmpty = false;
 
 // ── Selection mutation helpers —
 
@@ -129,6 +132,10 @@ function _clearClaims() {
 // SelectionMode entry at all. See overlay.js for the guard.
 function _afterClaimsChanged() {
   const claimedSet = new Set(Object.keys(_myClaims));
+  const wasSelecting = _lastClaimedSetNonEmpty;
+  _lastClaimedSetNonEmpty = claimedSet.size > 0;
+  // Deselecting to nothing is an intent signal - good time to try checkpointing
+  if (wasSelecting && claimedSet.size === 0) maybeIdleCheckpoint('deselect');
   Overlay.localSelectionChanged(claimedSet);
   // Resize mode only makes sense while its own id is the sole selection —
   // Checked here rather than at each individual call site so this
@@ -599,6 +606,49 @@ function handleToyBranchConflict(tips) {
     });
 }
 
+/**
+ * The idle-checkpoint trigger
+ * Only proceeds if the player's own checkpoint-frequency setting is non-zero
+ * AND that many minutes have passed since the last checkpoint ANYONE wrote
+ */
+function maybeIdleCheckpoint(reason) {
+  const frequencyMin = getCheckpointFrequency();
+  if (frequencyMin <= 0) return null;
+  if (!_tableId || !_ydoc) return null;
+
+  const ops = getOps(_ydoc);
+  const lastTs = lastCheckpointTs(ops);
+  // No checkpoint has ever landed on this table — nothing to measure
+  // "since", so there's no reason to withhold on time grounds; let
+  // maybeCheckpoint's own ops-since-checkpoint gate decide.
+  const elapsedMs = lastTs == null ? Infinity : Date.now() - lastTs;
+  if (elapsedMs < frequencyMin * 60_000) return null;
+
+  return maybeCheckpoint(reason);
+}
+
+/**
+ * Write a checkpoint at the current head, 10+ ops behind.
+ */
+function maybeCheckpoint(reason) {
+  if (!_tableId || !_ydoc) return null;
+  if (Toys.isInsideEnvelope()) return null;
+
+  const ops = getOps(_ydoc);
+  const headId = getHead(_tableId);
+  if (headId == null) return null;
+  if (!shouldCheckpoint(ops, headId)) return null;
+
+  const layer = _svgEl?.querySelector('#toys-layer');
+  if (!layer) return null;
+
+  const op = checkpointOp(layer, { authorId: _myId, parents: [headId] });
+  appendOp(_ydoc, op);
+  setHead(_tableId, op.id);
+  Trace.op('checkpoint', `wrote checkpoint ${op.id} (${reason})`, { id: op.id, reason });
+  return op;
+}
+
 function onOpsChanged(evt, transaction) {
   if (transaction?.local) return;
   const layer = _svgEl?.querySelector('#toys-layer');
@@ -797,6 +847,9 @@ const App = {
   },
   getTableId:      () => _tableId,
   getYdoc:         () => _ydoc,
+  maybeCheckpoint: (reason) => maybeCheckpoint(reason),
+  getCheckpointFrequency: () => getCheckpointFrequency(),
+  setCheckpointFrequency: (minutes) => setCheckpointFrequency(minutes),
   getSelectedIds:  () => Object.keys(_myClaims),
   getBBox:  (id) => {
     const svgEl = _svgEl.querySelector(`[data-id="${id}"]`);

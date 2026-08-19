@@ -2,12 +2,14 @@
  * user.js — persistent player-profile identity, backed by localStorage.
  *
  * Single JSON key `tt_player` (mirrors the `tt_tables` naming convention
- * used elsewhere) holding { name, grad, localId }:
+ * used elsewhere) holding { name, grad, localId, checkpointFrequency }:
  *   name    — display name string
  *   grad    — full entityGradient() output object, stored frozen so the
  *             gradient is immune to future changes in entityGradient's
  *             algorithm
  *   localId — persistent peer id, format tt-p-v1-DD-XXX
+ *   checkpointFrequency — minutes between idle-triggered checkpoints, 0-10.
+ *             any other player's client does.
  *
  * localStorage is synchronous, so every export here is a plain sync
  * function — no promises, no await, unlike the IndexedDB store this
@@ -18,6 +20,10 @@
 import { entityGradient } from './entity_gradient.js';
 
 const STORAGE_KEY = 'tt_player';
+
+export const MIN_CHECKPOINT_FREQUENCY     = 0;
+export const MAX_CHECKPOINT_FREQUENCY     = 10;
+export const DEFAULT_CHECKPOINT_FREQUENCY = 2;
 
 const ADJS = ['Wily','Deadly','Gaunt','Sallow','Brazen','Vexed','Hollow','Sullen','Grim','Feral',
   'Ashen','Dread','Craven','Stout','Wroth','Sunken','Brash','Pallid','Sly','Gnarled',
@@ -120,6 +126,11 @@ export function getIdentity() {
     dirty = true;
   }
 
+  if (!Number.isFinite(record.checkpointFrequency)) {
+    record.checkpointFrequency = DEFAULT_CHECKPOINT_FREQUENCY;
+    dirty = true;
+  }
+
   if (dirty) writeRecord(record);
 
   return record;
@@ -145,4 +156,26 @@ export function setGrad(grad) {
   const record = getIdentity();
   record.grad = grad;
   writeRecord(record);
+}
+
+const clampCheckpointFrequency = (n) =>
+  Math.min(MAX_CHECKPOINT_FREQUENCY, Math.max(MIN_CHECKPOINT_FREQUENCY, n));
+
+/**
+ * Returns this player's idle-checkpoint frequency, in minutes (0-10).
+ * 0 means idle checkpointing is off.
+ */
+export function getCheckpointFrequency() {
+  return getIdentity().checkpointFrequency;
+}
+
+/**
+ * Updates the idle-checkpoint frequency and persists it.
+ */
+export function setCheckpointFrequency(minutes) {
+  const clamped = clampCheckpointFrequency(Math.round(Number(minutes) || 0));
+  const record  = getIdentity();
+  record.checkpointFrequency = clamped;
+  writeRecord(record);
+  return clamped;
 }
