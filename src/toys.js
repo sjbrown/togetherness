@@ -1380,6 +1380,18 @@ export const TOOLS = [
       { kind: 'number', key: 'value', label: 'Token style', min: 0, max: 24, step: 1, show: ['add'] },
     ],
   },
+  {
+    name:    'single_poker_card',
+    toyType: 'single_poker_card',
+    file: 'single_poker_card.svg',
+    label: 'Poker Card',
+    iconUrl: 'toy/single_poker_card.svg',
+    layer:   'toys',
+    defaults: { fill: '#fa2020' },
+    options: [
+      { kind: 'color-hsl', key: 'fill', label: 'Back color', show: ['add', 'edit', 'addQuick'] },
+    ],
+  },
 ];
 export const TOY_TYPES = {
   player_marker: TOOLS[0],
@@ -1389,6 +1401,7 @@ export const TOY_TYPES = {
   supply: TOOLS[4],
   tray_sum: TOOLS[5],
   token_glass: TOOLS[6],
+  single_poker_card: TOOLS[7],
   stack: {
     name:    'stack',
     toyType: 'stack',
