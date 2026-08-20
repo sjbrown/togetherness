@@ -24,11 +24,10 @@ gamut of activities including "creation", "play" and "hosting".
 ## Features
 
 With Togetherness Table, multiple users can manipulate "toys", draw and
-edit shapes, and create rules and behaviours in a shared SVG document
-that syncs in real time using [Yjs](https://yjs.dev/) CRDTs over WebRTC.
+edit shapes, and create rules and behaviours in a shared SVG document.
 
 No accounts. No servers storing your data. No surveillance. The document
-lives in your browser and syncs peer-to-peer — the signaling server only
+lives in your browser and syncs peer-to-peer. The signaling server only
 brokers WebRTC handshakes and never sees document content.
 
 ## Goals
@@ -63,11 +62,15 @@ Furthermore, Togetherness Table should:
    * Easy to fork.  If someone wants to add Togetherness Table as a widget
      on a website they host, that should be possible.
 
+And ultimately, the goal of Togetherness Table is **liberation**.
+
 # Live Demo
 
 I'm going to try to keep a demo up and running at
-[https://www.1kfa.com/table](https://www.1kfa.com/table)
+[https://apps.1kfa.com/table/index.html](https://apps.1kfa.com/table/index.html)
 
+Beta version with the latest changes - might be unstable:
+[https://sjbrown.github.io/togetherness/index.html](https://sjbrown.github.io/togetherness/index.html)
 
 ## Quick start
 
@@ -81,7 +84,7 @@ bin/dev.sh
 
 Then open your browser to [http://localhost:3000](http://localhost:3000)
 
-That's it!
+That's it! No build step! No dependencies on your localhost!
 
 Open the app in two browser windows with the same URL hash (e.g. `http://localhost:3000/#my-room`) to see real-time sync.
 
@@ -97,9 +100,8 @@ All tests run inside Docker containers — no local Node installation required.
 
 There are two layers of tests:
 
-- **Unit tests** — pure CRDT logic, no browser, no network. Sync is simulated with `Y.encodeStateAsUpdate` / `Y.applyUpdate`.
+- **Unit tests** — pure CRDT logic, no browser, no network.
 - **E2E tests** — Playwright tests against a full running stack (app + signaling server).
-
 
 
 ## Offline-first
