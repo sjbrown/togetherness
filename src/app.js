@@ -407,6 +407,11 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
   Events.init(App, _svgEl, Toys, UI);
   Events.keyboardHandlers(App)
 
+  // Warm toy scripts - activate every registered type up front so
+  // toy:add (including menu-triggered ones like chip's stack action)
+  // doesn't hit the network mid-gesture.
+  Toys.init(_ydoc);
+
   // CRDT observers
   // Layers use observeDeep so attribute changes trigger renderDoc on
   // every client

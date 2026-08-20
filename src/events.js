@@ -43,8 +43,6 @@ export function init(App, svgEl, Toys, UI) {
         App.addHistory(`placed ${toyType} ${id}`, { elType: 'toy' })
         App.addLog(`placed ${toyType} ${id}`, 'local')
 
-        // TODO: WE'RE BREAKING THE CONTRACT HERE!
-        await Toys.activateToyScripts(ydoc, toyType)
         const placedEl = layerEl.querySelector(`[data-toy-id="${id}"]`)
         if (placedEl) {
           Toys.initializeToy(ydoc, layerEl, placedEl, toyType, myId, tableId, initArgs)

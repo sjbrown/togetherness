@@ -1593,6 +1593,14 @@ async function scriptsForType(ydoc, toyType) {
     }))
 }
 
+export function init(ydoc) {
+  for (const toyType of Object.keys(TOY_TYPES)) {
+    activateToyScripts(ydoc, toyType).catch(err => {
+      console.error(`[toys] warm activation failed for toy type "${toyType}"`, err)
+    })
+  }
+}
+
 /**
  * Activate every script a toy type needs, once per toy type per session.
  * Safe to call for every rendered instance and concurrently — every
