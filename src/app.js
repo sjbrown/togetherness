@@ -1842,6 +1842,12 @@ const App = {
   // be added) — it never mutates the document or the current selection.
   // Live-editing an existing object goes through the Edit panel → commitEdit.
   setTool: (name) => {
+    // Selecting a tool always drops any held claims first: a placement
+    // tool chosen while something is selected must not leave a stale
+    // selection behind it, since a non-empty selection makes the pill
+    // render selection actions instead of the tool row -- with no way
+    // back to the select tool, the placement cursor would be stuck.
+    _clearClaims();
     _activeTool = name;
     Canvas.setTool(name, _toolParams[name] ?? {});
     UI.onToolChanged(name);
