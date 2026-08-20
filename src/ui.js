@@ -354,7 +354,7 @@ export function onToolChanged(toolName) {
   renderPill();
   if (UIData.panelOpen === 'tools') {
     const body = $('#panelBody');
-    if (body) body.innerHTML = toolsBody(gatherToolsData());
+    if (body) { body.innerHTML = toolsBody(gatherToolsData()); wireColorPickers(body); }
   }
   if (toolName !== 'select') {
     const def = App.getTool(toolName);

@@ -5,7 +5,7 @@
 
 // @vitest-environment jsdom
 import { describe, test, expect, vi, beforeEach } from 'vitest'
-import { layerObjectListHTML, refreshLayerList, UIData, init, toast, showBranchDialog, branchDialogJoin, branchDialogKeepWorking, peersBody, openSheet, closePanel, restorePanelState, histBody } from '../../src/ui.js'
+import { layerObjectListHTML, refreshLayerList, UIData, init, toast, showBranchDialog, branchDialogJoin, branchDialogKeepWorking, peersBody, openSheet, closePanel, restorePanelState, histBody, onToolChanged } from '../../src/ui.js'
 
 const mockObjects = [
   { id: 'a', label: 'rect',   fill: '#c8941e', kind: 'rect'   },
@@ -447,6 +447,37 @@ describe('onSelectionChanged handles all selection states', () => {
       expect(UIData.multiSelectionActive).toBe(true)
       expect(UIData.selectedCount).toBe(3)
     })
+  })
+})
+
+describe('onToolChanged — re-rendered Tools panel keeps its color picker wired', () => {
+  test('picking a color after switching tools calls App.setToolParam (regression: was missing wireColorPickers)', () => {
+    document.body.innerHTML = '<div id="panelBody"></div><div id="pill"></div>'
+    const setToolParam = vi.fn()
+    init({
+      getActiveLayer:        () => 'toys',
+      getTools:               () => [{ name: 'd6', label: 'D6' }],
+      getTool:                () => ({ label: 'D6' }),
+      getToolSchema:          () => ({ types: { fill: { kind: 'color-hsl', show: ['add', 'edit', 'addQuick'] } }, values: {} }),
+      getToolParams:          () => ({}),
+      getBackground:          () => ({}),
+      getDefaultBackgrounds:  () => [],
+      getToyClasses:          () => [],
+      setToolParam,
+    })
+    UIData.panelOpen = 'tools'
+
+    onToolChanged('d6')
+
+    const picker = document.querySelector('#panelBody color-picker')
+    expect(picker).not.toBeNull()
+    picker.dispatchEvent(new CustomEvent('color-picked', {
+      detail: { h: 0, s: 100, l: 50, a: 100, hex: '#ff0000', hex8: '#ff0000ff', rgba: 'rgba(255, 0, 0, 1.00)' },
+      bubbles: true,
+      composed: true,
+    }))
+
+    expect(setToolParam).toHaveBeenCalledWith('d6', 'fill', '#ff0000')
   })
 })
 
