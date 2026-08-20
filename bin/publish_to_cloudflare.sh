@@ -1,5 +1,9 @@
 #! /bin/bash
 
+echo "Check connection..."
+rclone lsd r2:apps-1kfa-com
+
+echo "Troubleshoot: Show Config with   rclone config show r2"
 
 echo "rclone sync ./src r2:apps-1kfa-com/table"
 rclone sync ./src r2:apps-1kfa-com/table
