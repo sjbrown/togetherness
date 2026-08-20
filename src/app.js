@@ -1398,12 +1398,21 @@ const App = {
         _ydoc.transact(() => {
           Toys.runGesture(_ydoc, layerEl, () => {
             const containerEl = layerEl.querySelector(`[data-id="${dropContainerId}"]`);
-            const domGeom = Toys.getGeom(domEl);
-            const slot = containerEl && Toys.nextContainerSlot(containerEl, domGeom?.width ?? 0, domGeom?.height ?? 0);
+            // A container that tracks its own landing position (stack.svg
+            // does, via its tt_positions circle) always lands the moved
+            // item exactly there — reparentToyDom handles this itself —
+            // regardless of where inside its bounds it was actually
+            // dropped. Only a container with no circle of its own
+            // (tray_sum, bag) falls back to honoring the raw drop
+            // position, which we still have to apply ourselves here.
+            const hasLandingPosition = containerEl && !!Toys.getLandingPosition(containerEl);
             Toys.reparentToyDom(layerEl, id, dropContainerId);
-            const movedEl = layerEl.querySelector(`[data-id="${id}"]`);
-            if (movedEl && slot) {
-              Toys.applyMoveDom(movedEl, slot.x, slot.y);
+            if (!hasLandingPosition) {
+              const movedEl = layerEl.querySelector(`[data-id="${id}"]`);
+              const containerGeom = containerEl && Toys.getGeom(containerEl);
+              if (movedEl && containerGeom) {
+                Toys.applyMoveDom(movedEl, rx - containerGeom.x, ry - containerGeom.y);
+              }
             }
           }, {
             gesture: 'reparent', authorId: _myId, tableId: _tableId,

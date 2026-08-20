@@ -733,12 +733,52 @@ export function deleteToyDom(layerEl, id) {
  *  - containerElId is id itself, or one of id's own contained toys
  *    (moving a toy into its own descendant would disconnect that subtree
  *    from the document entirely, so this is refused)
+ *
+ * If the target container exposes its own tt_positions circle
+ * (getLandingPosition), el's own x/y are set so its centre lands exactly
+ * there — same centre-from-width/height math getAnchor/applyMoveDom use
+ * elsewhere. A container with no circle of its own (trays, bags, ...) is
+ * left untouched here; the caller is free to position el however it
+ * wants afterward (e.g. wherever the user actually dropped it).
+ *
+ * Symmetrically, moving OUT of a container (containerElId null/undefined)
+ * translates el's old container-local x/y into canvas space using that
+ * container's own geometry, so el ends up wherever it visually was —
+ * again, the caller is free to override this afterward (e.g. stack.svg's
+ * Fan lays its own fan-out positions over this default).
+ *
+ * Also directly (synchronously) runs contents_change_handler for the
+ * container being entered and, if el was already sitting inside one, the
+ * container being left — immediately, not deferred to the generic
+ * end-of-gesture scan (runContentsChangeCascadeInto, still run by
+ * runGesture as a backstop for changes that AREN'T a reparent at all,
+ * e.g. tray.roll_all mutating a contained die's own value in place, or a
+ * stacked chip's own increment/decrement). This is what lets a
+ * container's own derived state (stack.svg's tt_positions circle, its
+ * height, its sum) stay current between individual reparents even
+ * within a single multi-item gesture, rather than only catching up once
+ * the whole gesture closes.
  */
 export function reparentToyDom(layerEl, id, containerElId) {
   const el = layerEl.querySelector(`[data-id="${id}"]`)
   if (!el) throw new Error(`[toys] reparentToy: toy not found: ${id}`)
+  const elSvg = el.tagName === 'svg' ? el : el.querySelector('svg')
+  if (!elSvg) throw new Error(`[toys] reparentToy: toy > svg not found: ${id}`)
+
+  const previousContainerId = immediateContainingId(el)
+  const previousContainerEl = previousContainerId && layerEl.querySelector(`[data-id="${previousContainerId}"]`)
+  // Read before the move — el's own container-local x/y don't change
+  // just from being reparented, but we need them relative to
+  // previousContainerEl's geometry, captured before anything (including
+  // that container's OWN contents_change_handler, run further below)
+  // has a chance to touch it.
+  const previousContainerGeom = previousContainerEl && getGeom(previousContainerEl)
+  const priorLocalX = parseFloat(elSvg.getAttribute('x')) || 0
+  const priorLocalY = parseFloat(elSvg.getAttribute('y')) || 0
 
   let targetGroup
+  let landingPosition = null
+  let newContainerId = null
   if (containerElId == null) {
     targetGroup = layerEl
   } else {
@@ -754,9 +794,29 @@ export function reparentToyDom(layerEl, id, containerElId) {
       throw new Error(`[toys] reparentToy: target ${containerElId} has no .tt_contents`)
     }
     targetGroup = contentsGroup
+    landingPosition = getLandingPosition(targetEl)
+    newContainerId = containerElId
   }
 
   targetGroup.appendChild(el) // also removes el from its old parent — native DOM behavior
+
+  if (landingPosition) {
+    const w = parseFloat(elSvg.getAttribute('width'))  || 0
+    const h = parseFloat(elSvg.getAttribute('height')) || 0
+    elSvg.setAttribute('x', String(landingPosition.x - w / 2))
+    elSvg.setAttribute('y', String(landingPosition.y - h / 2))
+  } else if (containerElId == null && previousContainerGeom) {
+    elSvg.setAttribute('x', String(previousContainerGeom.x + priorLocalX))
+    elSvg.setAttribute('y', String(previousContainerGeom.y + priorLocalY))
+  }
+
+  if (newContainerId && newContainerId !== previousContainerId) {
+    runContentsChangeHandlersFor(layerEl.querySelector(`[data-id="${newContainerId}"]`))
+  }
+  if (previousContainerId && previousContainerId !== newContainerId) {
+    runContentsChangeHandlersFor(layerEl.querySelector(`[data-id="${previousContainerId}"]`))
+  }
+
   return el
 }
 
@@ -866,52 +926,28 @@ export function getContentsGroup(domEl) {
   return domEl.querySelector(`.${domEl.id}__tt_contents`)
 }
 
-// Fallback inset for the first item placed into an empty container, or
-// one whose last child has no snap point of its own to chain onto.
-const CONTAINER_TOP_INSET = 5
-
 /**
- * Where a newly-added item should land inside containerEl, in
- * containerEl's own local coordinate frame (the same space its
- * .tt_contents children's own <svg> x/y already live in) — as a centre
- * point, ready for applyMoveDom. movingWidth/movingHeight are the
- * incoming item's own size (needed to centre it when there's nothing to
- * chain onto yet).
+ * The local point (in containerEl's own coordinate frame — the same
+ * space its .tt_contents children's own <svg> x/y already live in) where
+ * the next item dropped into containerEl should land, straight off
+ * containerEl's own tt_positions circle if it has one. This is the same
+ * "position-having toy" convention used for ordinary top-level stacking
+ * (chip.svg has one too) — a container that wants chained-stacking
+ * behavior just needs its own circle, kept current by its own
+ * contents_change_handler.
  *
- * Chains onto whatever's already there: if the last existing child
- * exposes its own tt_positions snap circle (chip.svg does; most toys
- * don't), the new item's centre lands exactly on that circle — the same
- * "stacked on the position below it" convention top-level toys already
- * use, just applied one level down (chip.svg's circle sits above its own
- * centre, so this naturally produces a realistic overlapping chip-pile
- * look, not a full-height non-overlapping list). Otherwise falls back to
- * stacking directly beneath the last child, or a small top inset for the
- * first item into an empty container.
- *
- * Read-only — callers still have to reparent + applyMoveDom themselves.
- * Call this BEFORE reparenting the incoming item, so it isn't counted as
- * its own last child.
+ * Containers without a tt_positions circle of their own (trays, bags,
+ * ...) return null — callers should fall back to wherever the user
+ * actually dropped the item, not force a position on them.
  */
-export function nextContainerSlot(containerEl, movingWidth = 0, movingHeight = 0) {
-  const containerGeom = getGeom(containerEl)
-  const cx = (containerGeom?.width ?? 0) / 2
-
-  const contentsGroup = containerEl && getContentsGroup(containerEl)
-  const children = contentsGroup ? [...contentsGroup.querySelectorAll(':scope > .toy')] : []
-  const lastChild = children[children.length - 1] ?? null
-
-  if (lastChild) {
-    const lastId = lastChild.getAttribute('data-toy-id')
-    const circle = lastId && lastChild.querySelector(`.${lastId}__tt_positions circle`)
-    if (circle) return getInnerAnchor(lastChild, circle)
-
-    // lastChild has no snap point of its own — stack directly beneath it.
-    const lastGeom = getGeom(lastChild)
-    if (lastGeom) return { x: cx, y: lastGeom.y + lastGeom.height + movingHeight / 2 }
+export function getLandingPosition(containerEl) {
+  const containerId = containerEl?.getAttribute('data-toy-id')
+  const circle = containerId && containerEl.querySelector(`.${containerId}__tt_positions circle`)
+  if (!circle) return null
+  return {
+    x: parseFloat(circle.getAttribute('cx')) || 0,
+    y: parseFloat(circle.getAttribute('cy')) || 0,
   }
-
-  // First item into an empty container.
-  return { x: cx, y: CONTAINER_TOP_INSET + movingHeight / 2 }
 }
 
 /**
@@ -1727,6 +1763,21 @@ function affectedContainerIdsFromRecords(records) {
  * Each container's handler runs AT MOST ONCE per gesture.
  * If a cycle is detected, we log loudly (console.error) and skip
  */
+/**
+ * Run containerEl's own contents_change_handler(s), if its toy type has
+ * any registered — a plain, direct, synchronous call, not tied to any
+ * mutation-record scanning. Used both by the generic end-of-gesture
+ * cascade below and directly by reparentToyDom, so a reparent's own
+ * container reaction doesn't have to wait for that scan to discover it.
+ */
+function runContentsChangeHandlersFor(containerEl) {
+  if (!containerEl) return
+  const handlers = getNamespacesForType(containerEl.getAttribute('data-toy-type'))
+    .map(name => globalThis[name])
+    .filter(ns => ns && typeof ns.contents_change_handler === 'function')
+  handlers.forEach(ns => ns.contents_change_handler(containerEl))
+}
+
 function runContentsChangeCascadeInto(allRecords, layerEl) {
   const seen = new Set()
   let toCheck = allRecords
@@ -1744,12 +1795,8 @@ function runContentsChangeCascadeInto(allRecords, layerEl) {
       seen.add(containerId)
       const containerEl = layerEl.querySelector(`[data-id="${containerId}"]`)
       if (!containerEl) continue // e.g. the container itself was deleted mid-cascade
-      const handlers = getNamespacesForType(containerEl.getAttribute('data-toy-type'))
-        .map(name => globalThis[name])
-        .filter(ns => ns && typeof ns.contents_change_handler === 'function')
-      if (!handlers.length) continue
       const records = runInEnvelope(containerEl, () => {
-        handlers.forEach(ns => ns.contents_change_handler(containerEl))
+        runContentsChangeHandlersFor(containerEl)
       })
       stepRecords.push(...records)
     }
