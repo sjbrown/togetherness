@@ -1214,10 +1214,6 @@ const App = {
     try {
       Toys.invokeMenuAction(_ydoc, layerEl, svgEl, namespace, key, undefined, _myId, _tableId);
       _lastActionScope = 'toys';
-      // addHistory calls refreshFromDoc() itself — this was previously a
-      // bare UI.refreshFromDoc() call with no addHistory, so a toy's own
-      // menu actions (Roll, Turn Up, Roll All, ...) never appeared in the
-      // history log at all, ever, regardless of which panel was open.
       addHistory(`${key} ${id}`, { elType: 'toys' });
     } catch (err) {
       UI.toast(`Action failed: ${err.message}`, 'warn');
@@ -1591,13 +1587,6 @@ const App = {
   /**
    * Broadcast (or clear) the local bowstring charge so peers can see someone
    * winding up. Pass null on release.
-   *
-   * Only `pull` travels. heldMs deliberately does NOT: it would need either
-   * a constant stream of updates (the value changes with no pointer event)
-   * or a shared wall clock (which peers don't have). Instead each receiver
-   * times the fade from when IT first saw the charge appear — see
-   * overlay.js's _remoteBowstrings. Costs a little network latency at the
-   * start of the fade, buys immunity to clock skew.
    */
   broadcastBowstring: (payload) => {
     _awareness.setLocalStateField('bowstring', payload);
@@ -1608,11 +1597,7 @@ const App = {
 
   /**
    * Called by delight.js when a bowstring resolves — on click, or on the
-   * far end of a charged pull's snap-back. Fires the toy's FIRST menu
-   * action: getMenuActions preserves the namespace's own declaration order
-   * (Object.entries over the menu object), so [0] is whatever the toy
-   * author listed first, which is the convention for "the obvious thing to
-   * do with this toy" (Roll, for a die).
+   * far end of a charged pull's snap-back.
    */
   fireBowstring: (id, { charged = false, pull = 0 } = {}) => {
     const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
@@ -1823,8 +1808,6 @@ const App = {
     // Ghosts end after the commit
     for (const el of elements) Overlay.endDragPlaceholder(el.id);
 
-    // observeDeep on all layers and calls renderDoc()
-
     addHistory(`moved ${elements.length} objects`);
     App.addLog(`moved ${elements.length} objects`, 'local');
     _multiDragState = null;
@@ -1837,22 +1820,14 @@ const App = {
     _multiDragState = null;
   },
 
-  // ── Tool selection + params (ui.js → app → canvas.js) ─────────────────────
-  // setToolParam affects only _toolParams (defaults for the *next* object to
-  // be added) — it never mutates the document or the current selection.
-  // Live-editing an existing object goes through the Edit panel → commitEdit.
   setTool: (name) => {
-    // Selecting a tool always drops any held claims first: a placement
-    // tool chosen while something is selected must not leave a stale
-    // selection behind it, since a non-empty selection makes the pill
-    // render selection actions instead of the tool row -- with no way
-    // back to the select tool, the placement cursor would be stuck.
     _clearClaims();
     _activeTool = name;
     Canvas.setTool(name, _toolParams[name] ?? {});
     UI.onToolChanged(name);
     if (name === 'select') App.clearAddCursor();
   },
+
   setToolParam: (toolName, key, value) => {
     const p = _toolParams[toolName] ?? (_toolParams[toolName] = {});
     p[key] = (typeof value === 'string' && value !== '' && !isNaN(value)) ? +value : value;
