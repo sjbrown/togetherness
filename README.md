@@ -115,3 +115,6 @@ After joining The Gauntlet and playing around with the awesome
 [roller](https://github.com/shanel/roller),
 I got the itch to create my own "dice-rolling" application.
 
+<!-- github-integration-test: safe to close this PR, verifying webhook wiring -->
+
+
