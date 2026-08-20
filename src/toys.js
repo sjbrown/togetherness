@@ -705,40 +705,36 @@ export function deleteToyDom(layerEl, id) {
 /**
  * Move a toy to a new position in the containment tree: either into a
  * .tt_contents, or back to the top level of the toys layer
- * (containerElId null/undefined).
  *
- * A DOM operation, like every other structural toy mutation now — NOT a
- * pure Yjs write. Call from inside runInEnvelope; this function
- * doesn't open its own envelope, so it composes with whatever else the
- * caller wants folded into the same transaction (a reposition, a
- * contents_change_handler cascade — see commitMove's drop-into-container
- * path in app.js). envelope.js's MutationObserver captures the move as
- * ordinary childList records (removed from the old parent, added to the
- * new); commitEnvelope translates it into Yjs the same way it translates
- * any other structural mutation — no special-casing needed here at all,
- * because a toy's own Yjs subtree can no longer contain anything the DOM
- * doesn't also have (scripts are hoisted out entirely at placement time —
- * see "Script hoisting" above) — so rebuilding the moved subtree fresh
- * from the DOM loses nothing. The moved toy's CRDT identity is NOT
- * preserved (a fresh Yjs subtree, same as the old clone-based
- * implementation this replaces) — its content always is.
- *
- * Returns the moved DOM element (the same node, relocated — not a clone;
- * DOM elements don't need cloning to change parents).
+ * Returns the moved DOM element
  *
  * Throws if:
  *  - id's own element isn't found in layerEl
  *  - containerElId is given but not found in layerEl
  *  - containerElId's own element has no .tt_contents
  *  - containerElId is id itself, or one of id's own contained toys
- *    (moving a toy into its own descendant would disconnect that subtree
- *    from the document entirely, so this is refused)
+ *
+ * Also directly (synchronously) runs contents_change_handler for the
+ * container being entered and, if el was already sitting inside one, the
+ * container being left
+ * Note, there's also an end-of-gesture scan (runContentsChangeCascadeInto)
+ * called by runGesture as a backstop
  */
 export function reparentToyDom(layerEl, id, containerElId) {
   const el = layerEl.querySelector(`[data-id="${id}"]`)
   if (!el) throw new Error(`[toys] reparentToy: toy not found: ${id}`)
+  const elSvg = el.tagName === 'svg' ? el : el.querySelector('svg')
+  if (!elSvg) throw new Error(`[toys] reparentToy: toy > svg not found: ${id}`)
+
+  const previousContainerId = immediateContainingId(el)
+  const previousContainerEl = previousContainerId && layerEl.querySelector(`[data-id="${previousContainerId}"]`)
+  const previousContainerGeom = previousContainerEl && getGeom(previousContainerEl)
+  const priorLocalX = parseFloat(elSvg.getAttribute('x')) || 0
+  const priorLocalY = parseFloat(elSvg.getAttribute('y')) || 0
 
   let targetGroup
+  let landingPosition = null
+  let newContainerId = null
   if (containerElId == null) {
     targetGroup = layerEl
   } else {
@@ -754,9 +750,32 @@ export function reparentToyDom(layerEl, id, containerElId) {
       throw new Error(`[toys] reparentToy: target ${containerElId} has no .tt_contents`)
     }
     targetGroup = contentsGroup
+
+    // If the target container exposes its own tt_positions circle
+    // (getLandingPosition), el's own x/y are set so its centre lands there
+    landingPosition = getLandingPosition(targetEl)
+    newContainerId = containerElId
   }
 
   targetGroup.appendChild(el) // also removes el from its old parent — native DOM behavior
+
+  if (landingPosition) {
+    const w = parseFloat(elSvg.getAttribute('width'))  || 0
+    const h = parseFloat(elSvg.getAttribute('height')) || 0
+    elSvg.setAttribute('x', String(landingPosition.x - w / 2))
+    elSvg.setAttribute('y', String(landingPosition.y - h / 2))
+  } else if (containerElId == null && previousContainerGeom) {
+    elSvg.setAttribute('x', String(previousContainerGeom.x + priorLocalX))
+    elSvg.setAttribute('y', String(previousContainerGeom.y + priorLocalY))
+  }
+
+  if (newContainerId && newContainerId !== previousContainerId) {
+    runContentsChangeHandlersFor(layerEl.querySelector(`[data-id="${newContainerId}"]`))
+  }
+  if (previousContainerId && previousContainerId !== newContainerId) {
+    runContentsChangeHandlersFor(layerEl.querySelector(`[data-id="${previousContainerId}"]`))
+  }
+
   return el
 }
 
@@ -864,6 +883,16 @@ export function findDropTarget(layerEl, draggedId, rx, ry) {
 
 export function getContentsGroup(domEl) {
   return domEl.querySelector(`.${domEl.id}__tt_contents`)
+}
+
+export function getLandingPosition(containerEl) {
+  const containerId = containerEl?.getAttribute('data-toy-id')
+  const circle = containerId && containerEl.querySelector(`.${containerId}__tt_positions circle`)
+  if (!circle) return null
+  return {
+    x: parseFloat(circle.getAttribute('cx')) || 0,
+    y: parseFloat(circle.getAttribute('cy')) || 0,
+  }
 }
 
 /**
@@ -1352,6 +1381,16 @@ export const TOY_TYPES = {
   supply: TOOLS[4],
   tray_sum: TOOLS[5],
   token_glass: TOOLS[6],
+  stack: {
+    name:    'stack',
+    toyType: 'stack',
+    file: 'stack.svg',
+    label: 'Stack',
+    iconUrl: 'toy/stack.svg',
+    layer:   'toys',
+    defaults: {},
+    options: [],
+  },
 }
 
 // ── ttState / ttStateSchema ───────────────────────────────────────────────────
@@ -1554,6 +1593,14 @@ async function scriptsForType(ydoc, toyType) {
     }))
 }
 
+export function init(ydoc) {
+  for (const toyType of Object.keys(TOY_TYPES)) {
+    activateToyScripts(ydoc, toyType).catch(err => {
+      console.error(`[toys] warm activation failed for toy type "${toyType}"`, err)
+    })
+  }
+}
+
 /**
  * Activate every script a toy type needs, once per toy type per session.
  * Safe to call for every rendered instance and concurrently — every
@@ -1655,6 +1702,21 @@ function affectedContainerIdsFromRecords(records) {
 }
 
 /**
+ * Run containerEl's own contents_change_handler(s), if its toy type has
+ * any registered — a plain, direct, synchronous call, not tied to any
+ * mutation-record scanning. Used both by the generic end-of-gesture
+ * cascade below and directly by reparentToyDom, so a reparent's own
+ * container reaction doesn't have to wait for that scan to discover it.
+ */
+function runContentsChangeHandlersFor(containerEl) {
+  if (!containerEl) return
+  const handlers = getNamespacesForType(containerEl.getAttribute('data-toy-type'))
+    .map(name => globalThis[name])
+    .filter(ns => ns && typeof ns.contents_change_handler === 'function')
+  handlers.forEach(ns => ns.contents_change_handler(containerEl))
+}
+
+/**
  * Run the contents_change_handler cascade against the live DOM,
  * appending every record it produces into allRecords.
  *
@@ -1666,7 +1728,6 @@ function affectedContainerIdsFromRecords(records) {
  * Each round resolves only the IMMEDIATE containing container for whatever
  * changed in the round before it
  *
- * Each container's handler runs AT MOST ONCE per gesture.
  * If a cycle is detected, we log loudly (console.error) and skip
  */
 function runContentsChangeCascadeInto(allRecords, layerEl) {
@@ -1686,12 +1747,8 @@ function runContentsChangeCascadeInto(allRecords, layerEl) {
       seen.add(containerId)
       const containerEl = layerEl.querySelector(`[data-id="${containerId}"]`)
       if (!containerEl) continue // e.g. the container itself was deleted mid-cascade
-      const handlers = getNamespacesForType(containerEl.getAttribute('data-toy-type'))
-        .map(name => globalThis[name])
-        .filter(ns => ns && typeof ns.contents_change_handler === 'function')
-      if (!handlers.length) continue
       const records = runInEnvelope(containerEl, () => {
-        handlers.forEach(ns => ns.contents_change_handler(containerEl))
+        runContentsChangeHandlersFor(containerEl)
       })
       stepRecords.push(...records)
     }
@@ -1849,18 +1906,18 @@ export function invokeMenuAction(ydoc, layerEl, svgEl, namespace, key, evt, auth
  * Run every activated namespace's initialize(elem), if present, for a
  * freshly placed/cloned toy instance
  */
-export function runInitializers(svgEl, toyType) {
+export function runInitializers(svgEl, toyType, initArgs) {
   const initializers = getNamespacesForType(toyType)
     .map(name => globalThis[name])
     .filter(ns => ns && typeof ns.initialize === 'function')
-  initializers.forEach(ns => ns.initialize(svgEl))
+  initializers.forEach(ns => ns.initialize(svgEl, initArgs))
 }
 
-export function initializeToy(ydoc, layerEl, svgEl, toyType, authorId, tableId) {
+export function initializeToy(ydoc, layerEl, svgEl, toyType, authorId, tableId, initArgs) {
   if (!getNamespacesForType(toyType).some(name => typeof globalThis[name]?.initialize === 'function')) return
   ydoc.transact(() => {
     runGesture(ydoc, layerEl, () => {
-      runInitializers(svgEl, toyType)
+      runInitializers(svgEl, toyType, initArgs)
     }, { gesture: 'initialize', authorId, tableId })
   })
 }

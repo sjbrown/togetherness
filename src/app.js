@@ -407,6 +407,11 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
   Events.init(App, _svgEl, Toys, UI);
   Events.keyboardHandlers(App)
 
+  // Warm toy scripts - activate every registered type up front so
+  // toy:add (including menu-triggered ones like chip's stack action)
+  // doesn't hit the network mid-gesture.
+  Toys.init(_ydoc);
+
   // CRDT observers
   // Layers use observeDeep so attribute changes trigger renderDoc on
   // every client
@@ -943,6 +948,12 @@ const App = {
     _claim([id]);
   },
 
+  // Drop every claim this client currently holds
+  //  * no tool switch, unlike select(null).
+  clearSelection: () => {
+    _clearClaims();
+  },
+
   select: (id) => {
     App.setTool('select');
     if (id && App.isHeldByOther(id)) {
@@ -1443,12 +1454,17 @@ const App = {
         const layerEl = _svgEl.querySelector('#toys-layer');
         _ydoc.transact(() => {
           Toys.runGesture(_ydoc, layerEl, () => {
+            const containerEl = layerEl.querySelector(`[data-id="${dropContainerId}"]`);
+            // A container that tracks its own landing position
+            // always lands the moved item exactly there
+            const hasLandingPosition = containerEl && !!Toys.getLandingPosition(containerEl);
             Toys.reparentToyDom(layerEl, id, dropContainerId);
-            const movedEl      = layerEl.querySelector(`[data-id="${id}"]`);
-            const containerEl  = layerEl.querySelector(`[data-id="${dropContainerId}"]`);
-            const containerGeom = containerEl && Toys.getGeom(containerEl);
-            if (containerGeom) {
-              Toys.applyMoveDom(movedEl, rx - containerGeom.x, ry - containerGeom.y);
+            if (!hasLandingPosition) {
+              const movedEl = layerEl.querySelector(`[data-id="${id}"]`);
+              const containerGeom = containerEl && Toys.getGeom(containerEl);
+              if (movedEl && containerGeom) {
+                Toys.applyMoveDom(movedEl, rx - containerGeom.x, ry - containerGeom.y);
+              }
             }
           }, {
             gesture: 'reparent', authorId: _myId, tableId: _tableId,

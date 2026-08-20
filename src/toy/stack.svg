@@ -3,8 +3,8 @@
    height="110"
    width="80"
    version="1.1"
-   id="chip"
-   class="chip"
+   id="stack"
+   class="stack"
    viewBox="0 0 80 110"
    sodipodi:docname="stack.svg"
    inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
@@ -32,26 +32,18 @@
      inkscape:window-y="0"
      inkscape:window-maximized="1"
      inkscape:current-layer="chip" />
-  <defs
-     id="defs4">
+  <defs id="defs1">
     <linearGradient
        inkscape:collect="always"
        id="linearGradient893">
-      <stop
-         style="stop-color:#ffffff;stop-opacity:0;"
-         offset="0"
-         id="stop889" />
-      <stop
-         style="stop-color:#ffffff;stop-opacity:1;"
-         offset="1"
-         id="stop891" />
+      <stop style="stop-color:#fff;stop-opacity:0;" offset="0" id="stop1" />
+      <stop style="stop-color:#fff;stop-opacity:0.8;" offset="1" id="stop2" />
     </linearGradient>
     <filter
        class="tt_color_filter"
        id="app-filter-colorize"
        color-interpolation-filters="sRGB"
-       x="0"
-       y="0"
+       x="0" y="0"
        width="1"
        height="1">
       <feColorMatrix
@@ -63,16 +55,21 @@
        inkscape:collect="always"
        xlink:href="#linearGradient893"
        id="linearGradient897"
-       x1="40.492935"
+       x1="0"
        y1="55"
-       x2="40.492935"
-       y2="105.93827"
+       x2="0"
+       y2="105"
        gradientUnits="userSpaceOnUse" />
   </defs>
   <script
      type="text/javascript"
-     data-namespace="chip"
-     id="script5"><![CDATA[
+     src="js/container.js"
+     data-namespace="container"
+     id="script_container" />
+  <script
+     type="text/javascript"
+     data-namespace="stack"
+     id="script1"><![CDATA[
 
 var stack = {
 
@@ -82,14 +79,185 @@ var stack = {
       otherEvents: ['dblclick'],
       applicable: (node) => { return true },
       handler: function(evt) {
-        console.warn('not impl')
+        stack.fan_all(this)
       },
     },
   },
 
+  // Eject every contained chip back onto the toys-layer as top-level
+  // toys, fanned out around the stack's own centre point.
+  fan_all: function(elem) {
+    const ownSvg = elem.querySelector(':scope > svg')
+    const ownX = parseFloat(ownSvg && ownSvg.getAttribute('x'))      || 0
+    const ownY = parseFloat(ownSvg && ownSvg.getAttribute('y'))      || 0
+    const ownW = parseFloat(ownSvg && ownSvg.getAttribute('width'))  || 0
+    const ownH = parseFloat(ownSvg && ownSvg.getAttribute('height')) || 0
+    const centreX = ownX + ownW / 2
+    const centreY = ownY + ownH / 2
+
+    const contentsGroup = elem.querySelector('.tt_contents')
+    const total = contentsGroup ? contentsGroup.querySelectorAll(':scope > .toy').length : 0
+    const middleIndex = Math.floor((total - 1) / 2)
+
+    container.visit_contents(elem, (child, i) => {
+      child.setAttribute('data-above', '')
+      child.setAttribute('data-below', '')
+      const childId = child.getAttribute('data-toy-id')
+      const childSvg = child.querySelector(':scope > svg')
+      if (!childSvg) return
+      const w = parseFloat(childSvg.getAttribute('width'))  || 0
+      const h = parseFloat(childSvg.getAttribute('height')) || 0
+      const step = i - middleIndex
+      const cx = centreX + step * (w / 2)
+      const deltaY = (i < middleIndex) ? step * -5 : step * 5
+      const cy = centreY + deltaY
+
+      stack._event('toy:reparent', { id: childId, containerId: null })
+
+      // Overrides reparentToyDom's own "preserve visual position" default
+      // for a move to the top level with the fan-out layout instead.
+      childSvg.setAttribute('x', String(cx - w / 2))
+      childSvg.setAttribute('y', String(cy - h / 2))
+    })
+
+    stack._event('toy:delete', { id: elem.getAttribute('data-toy-id') })
+  },
+
+  // chipIds is the ordered (bottom-to-top) list of chip ids
+  initialize: function(elem, chipIds) {
+    if (!Array.isArray(chipIds) || !chipIds.length) return
+    const containerId = elem.getAttribute('data-toy-id')
+    for (const id of chipIds) {
+      stack._event('toy:reparent', { id, containerId })
+    }
+  },
+
+  // Margins around the column of stacked chips: TOP_PAD above the
+  // topmost chip's own top edge, FOOTER_HEIGHT + BOTTOM_MARGIN reserved
+  // below the lowest chip's bottom edge for the sum readout. Chosen so a
+  // single default 80-tall chip — landing on our own template-authored
+  // circle (cy=32, i.e. 8px above its own centre) — reproduces the toy's
+  // original fixed 110 height exactly.
+  layout: {
+    WIDTH:         80,
+    TOP_PAD:       5,
+    FOOTER_HEIGHT: 20,
+    BOTTOM_MARGIN: 5,
+  },
+
+  // Self-contained replica of toys.js's getInnerAnchor: toy scripts can't
+  // import toys.js, so the same xMidYMid-meet math (folding in a toy's
+  // viewBox-to-width/height scaling, same as the platform itself uses
+  // when placing anything) lives here too. Maps innerEl's own cx/cy (or
+  // x/y/width/height) through toyRootEl's own x/y/width/height/viewBox
+  // into toyRootEl's PARENT's coordinate space. Returns null rather than
+  // guessing if toyRootEl isn't a normal placed toy.
+  _inner_anchor: function(toyRootEl, innerEl) {
+    const outerSvg = toyRootEl.querySelector(':scope > svg')
+    if (!outerSvg || !innerEl) return null
+
+    const outX = parseFloat(outerSvg.getAttribute('x'))      || 0
+    const outY = parseFloat(outerSvg.getAttribute('y'))      || 0
+    const outW = parseFloat(outerSvg.getAttribute('width'))  || 0
+    const outH = parseFloat(outerSvg.getAttribute('height')) || 0
+    const vb = (outerSvg.getAttribute('viewBox') || `0 0 ${outW} ${outH}`).trim().split(/[\s,]+/).map(Number)
+    const [vbX, vbY, vbW, vbH] = vb
+    if (!outW || !outH || !vbW || !vbH) return null
+
+    const scale   = Math.min(outW / vbW, outH / vbH)
+    const offsetX = (outW - vbW * scale) / 2
+    const offsetY = (outH - vbH * scale) / 2
+
+    let cx, cy
+    if (innerEl.hasAttribute('cx')) {
+      cx = parseFloat(innerEl.getAttribute('cx')) || 0
+      cy = parseFloat(innerEl.getAttribute('cy')) || 0
+    } else if (innerEl.hasAttribute('x')) {
+      cx = (parseFloat(innerEl.getAttribute('x')) || 0) + (parseFloat(innerEl.getAttribute('width'))  || 0) / 2
+      cy = (parseFloat(innerEl.getAttribute('y')) || 0) + (parseFloat(innerEl.getAttribute('height')) || 0) / 2
+    } else {
+      return null
+    }
+
+    return { x: outX + offsetX + (cx - vbX) * scale, y: outY + offsetY + (cy - vbY) * scale }
+  },
+
   contents_change_handler: function(elem) {
-    tspan = elem.querySelector('tspan.stack_summary')
-    tspan.textContent = 'C!'
+    const { WIDTH, TOP_PAD, FOOTER_HEIGHT, BOTTOM_MARGIN } = stack.layout
+    const outerSvg = elem.querySelector(':scope > svg')
+    if (!outerSvg) return
+
+    let sum = 0
+    let minY = null
+    let maxY = null
+    let lastChild = null
+    container.visit_contents(elem, (child) => {
+      sum += container.get_numeric_value(child)
+      lastChild = child
+
+      const childSvg = child.querySelector(':scope > svg')
+      if (!childSvg) return
+      const y = parseFloat(childSvg.getAttribute('y'))      || 0
+      const h = parseFloat(childSvg.getAttribute('height')) || 0
+      minY = minY === null ? y     : Math.min(minY, y)
+      maxY = maxY === null ? y + h : Math.max(maxY, y + h)
+    })
+    const tspan = elem.querySelector('.tspan_sum')
+    if (tspan) tspan.textContent = String(sum)
+
+    if (minY === null) { minY = 0; maxY = 0 }
+
+    // Advance our OWN tt_positions circle to sit on the top chip's circle
+    if (lastChild) {
+      const lastId = lastChild.getAttribute('data-toy-id')
+      const ownId = elem.getAttribute('data-toy-id')
+      const lastCircle = lastChild.querySelector(`.${lastId}__tt_positions circle`)
+      const ownCircle = outerSvg.querySelector(`.${ownId}__tt_positions circle`)
+      const anchor = stack._inner_anchor(lastChild, lastCircle)
+      if (ownCircle && anchor) {
+        ownCircle.setAttribute('cx', String(anchor.x))
+        ownCircle.setAttribute('cy', String(anchor.y))
+      }
+    }
+
+    const viewBoxMinY = minY - TOP_PAD
+    const footerY      = maxY
+    const newHeight     = (footerY - viewBoxMinY) + FOOTER_HEIGHT + BOTTOM_MARGIN
+
+    // Keep the box's canvas-space bottom edge fixed and grow upward.
+    // Anchored to a bottom edge recorded ONCE (the first time this runs,
+    // i.e. right after initial placement) rather than re-derived from
+    // outerSvg's own current y+height on every call — a fixed reference
+    // point can't drift no matter what order things run in.
+    const placedY      = parseFloat(outerSvg.getAttribute('y'))      || 0
+    const placedHeight = parseFloat(outerSvg.getAttribute('height')) || 0
+    let anchorBottom = placedY + placedHeight
+    if (newHeight <= placedHeight) {
+      return // already we're tall enough
+    }
+    const newY = anchorBottom - newHeight
+
+    outerSvg.setAttribute('y', String(newY))
+    outerSvg.setAttribute('height', String(newHeight))
+    outerSvg.setAttribute('viewBox', `0 ${viewBoxMinY} ${WIDTH} ${newHeight}`)
+
+    const bg = elem.querySelector('.bg_highlight')
+    if (bg) {
+      bg.setAttribute('y', String(viewBoxMinY))
+      bg.setAttribute('height', String(newHeight))
+    }
+
+    const footerRect = elem.querySelector('.rect_stack_summary')
+    const footerText = elem.querySelector('.text_stack_summary')
+    if (footerRect) footerRect.setAttribute('y', String(footerY))
+    if (footerText) footerText.setAttribute('y', String(footerY + 14))
+  },
+
+  _event: function(evName, args) {
+    const detail = { ...args, retval: {} };
+    document.dispatchEvent(new CustomEvent(evName, { detail }));
+    if (detail.error) throw new Error(detail.error);
+    return detail.retval;
   },
 
 }
@@ -104,40 +272,37 @@ var stack = {
      y="0"
      rx="1"
      ry="1" />
-  <g class="stack_summary">
+  <g class="tt_contents">
+  </g>
+  <g class="stack_summary" transform="translate(0, 0)">
     <rect
        class="rect_stack_summary"
-       x="10"
-       y="85"
-       width="60"
-       height="20"
-       rx="2"
-       ry="2"
+       x="10" y="85"
+       width="60" height="20"
+       rx="8" ry="8"
        fill="#ffffff"
-       opacity="0.4"
+       opacity="0.2"
        id="rect18" />
     <text
        class="text_stack_summary"
        x="40"
-       y="97"
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-size:15px;line-height:1.25;font-family:sans-serif;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1"
-       id="text22"><tspan
+       y="98"
+       style="font-style:normal;font-variant:normal;font-weight:normal;
+       font-size:15px;line-height:1.25;font-family:sans-serif;
+       text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1"
+       ><tspan
          class="tspan_sum stack_summary"
          >0</tspan></text>
-  </g>
-  <g class="tt_contents">
   </g>
   <g
      class="tt_positions"
      data-bounpos-type="pos-set"
-     name="stackable"
-     id="g26">
-    <circle
-       cx="40"
-       cy="32"
-       r="10"
+     name="chip"
+     ><circle
+       cx="40" cy="32"
+       r="25"
        fill="#ffffff"
-       fill-opacity="0.2"
-       id="circle24" />
+       fill-opacity="0.1"
+       />
   </g>
 </svg>

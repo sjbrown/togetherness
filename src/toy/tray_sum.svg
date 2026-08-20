@@ -44,19 +44,17 @@ var tray_sum = {
   },
 
   eject_all: function(elem) {
-    const toysLayer = elem.closest('#toys-layer')
-    const ownSvg = elem.querySelector(':scope > svg')
-    const ownX = parseFloat(ownSvg && ownSvg.getAttribute('x')) || 0
-    const ownY = parseFloat(ownSvg && ownSvg.getAttribute('y')) || 0
-
     tray.visit_contents(elem, (child) => {
-      childSvg = child.querySelector(':scope > svg')
-      const x = parseFloat(childSvg.getAttribute('x')) || 0
-      const y = parseFloat(childSvg.getAttribute('y')) || 0
-      childSvg.setAttribute('x', String(ownX + x))
-      childSvg.setAttribute('y', String(ownY + y))
-      toysLayer.appendChild(child)
+      const childId = child.getAttribute('data-toy-id')
+      tray_sum._event('toy:reparent', { id: childId, containerId: null })
     })
+  },
+
+  _event: function(evName, args) {
+    const detail = { ...args, retval: {} };
+    document.dispatchEvent(new CustomEvent(evName, { detail }));
+    if (detail.error) throw new Error(detail.error);
+    return detail.retval;
   },
 
   menu: {

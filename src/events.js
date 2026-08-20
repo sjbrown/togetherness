@@ -27,6 +27,91 @@ export function init(App, svgEl, Toys, UI) {
       App.addLog(`cloned ${sourceId} → ${result.id}`, 'local')
     },
 
+    'toy:add': (e) => {
+      const { toyType, x, y, color, initArgs } = e.detail
+      if (!toyType) { e.detail.error = 'toy:add requires toyType'; return }
+      const layerEl = svgEl.querySelector('#toys-layer')
+      if (!layerEl) { e.detail.error = 'toys layer not found'; return }
+
+      const id = Toys.newToyId()
+      e.detail.retval = { id }
+
+      App.setLastActionScope('toys')
+      Toys.placeToy(ydoc, layerEl, {
+        id, toyType, x: x ?? 0, y: y ?? 0, color,
+      }, { authorId: myId, tableId }).then(async () => {
+        App.addHistory(`placed ${toyType} ${id}`, { elType: 'toy' })
+        App.addLog(`placed ${toyType} ${id}`, 'local')
+
+        const placedEl = layerEl.querySelector(`[data-toy-id="${id}"]`)
+        if (placedEl) {
+          Toys.initializeToy(ydoc, layerEl, placedEl, toyType, myId, tableId, initArgs)
+        }
+      }).catch(err => {
+        UI.toast(`Failed to place ${toyType}`, 'warn')
+        App.addLog(`toy:add failed: ${err.message}`, 'del')
+      })
+    },
+
+    'toy:reparent': (e) => {
+      const { id, containerId } = e.detail
+      if (!id) { e.detail.error = 'toy:reparent requires id'; return }
+      const layerEl = svgEl.querySelector('#toys-layer')
+      if (!layerEl) { e.detail.error = 'toys layer not found'; return }
+      // containerId === null (or omitted) means "move to the top level" —
+      // same convention reparentToyDom itself uses. Only look one up when
+      // an actual target was given.
+      if (containerId != null && !layerEl.querySelector(`[data-toy-id="${containerId}"]`)) {
+        e.detail.error = `toy not found: ${containerId}`; return
+      }
+      if (id === containerId) { e.detail.error = 'cannot reparent a toy into itself'; return }
+      if (!layerEl.querySelector(`[data-toy-id="${id}"]`)) { e.detail.error = `toy not found: ${id}`; return }
+
+      const wasInside = Toys.isInsideEnvelope()
+      try {
+        Toys.ensureEnvelope(ydoc, layerEl, () => {
+          Toys.reparentToyDom(layerEl, id, containerId)
+        }, { gesture: 'reparent', authorId: myId, tableId })
+      } catch (err) {
+        e.detail.error = err.message
+        return
+      }
+      e.detail.retval = {}
+      if (!wasInside) UI.refreshFromDoc()
+
+      const selectedIds = App.getSelectedIds()
+      if (selectedIds.includes(id)) App.clearSelection()
+
+      App.setLastActionScope('toys')
+      App.addLog(`reparented ${id} → ${containerId ?? 'toys-layer'}`, 'local')
+    },
+
+    'toy:delete': (e) => {
+      const { id } = e.detail
+      if (!id) { e.detail.error = 'toy:delete requires id'; return }
+      const layerEl = svgEl.querySelector('#toys-layer')
+      if (!layerEl) { e.detail.error = 'toys layer not found'; return }
+
+      const wasInside = Toys.isInsideEnvelope()
+      let deleted = false
+      try {
+        Toys.ensureEnvelope(ydoc, layerEl, () => {
+          deleted = Toys.deleteToyDom(layerEl, id)
+        }, { gesture: 'delete', authorId: myId, tableId })
+      } catch (err) {
+        e.detail.error = err.message
+        return
+      }
+      e.detail.retval = { deleted }
+      if (!wasInside) UI.refreshFromDoc()
+
+      const selectedIds = App.getSelectedIds()
+      if (selectedIds.includes(id)) App.clearSelection()
+
+      App.setLastActionScope('toys')
+      App.addLog(`deleted ${id}`, 'local')
+    },
+
     'toy:edit': (e) => {
       const { id, color, name } = e.detail
       const layerEl = svgEl.querySelector('#toys-layer')
