@@ -705,59 +705,20 @@ export function deleteToyDom(layerEl, id) {
 /**
  * Move a toy to a new position in the containment tree: either into a
  * .tt_contents, or back to the top level of the toys layer
- * (containerElId null/undefined).
  *
- * A DOM operation, like every other structural toy mutation now — NOT a
- * pure Yjs write. Call from inside runInEnvelope; this function
- * doesn't open its own envelope, so it composes with whatever else the
- * caller wants folded into the same transaction (a reposition, a
- * contents_change_handler cascade — see commitMove's drop-into-container
- * path in app.js). envelope.js's MutationObserver captures the move as
- * ordinary childList records (removed from the old parent, added to the
- * new); commitEnvelope translates it into Yjs the same way it translates
- * any other structural mutation — no special-casing needed here at all,
- * because a toy's own Yjs subtree can no longer contain anything the DOM
- * doesn't also have (scripts are hoisted out entirely at placement time —
- * see "Script hoisting" above) — so rebuilding the moved subtree fresh
- * from the DOM loses nothing. The moved toy's CRDT identity is NOT
- * preserved (a fresh Yjs subtree, same as the old clone-based
- * implementation this replaces) — its content always is.
- *
- * Returns the moved DOM element (the same node, relocated — not a clone;
- * DOM elements don't need cloning to change parents).
+ * Returns the moved DOM element
  *
  * Throws if:
  *  - id's own element isn't found in layerEl
  *  - containerElId is given but not found in layerEl
  *  - containerElId's own element has no .tt_contents
  *  - containerElId is id itself, or one of id's own contained toys
- *    (moving a toy into its own descendant would disconnect that subtree
- *    from the document entirely, so this is refused)
- *
- * If the target container exposes its own tt_positions circle
- * (getLandingPosition), el's own x/y are set so its centre lands exactly
- * there — same centre-from-width/height math getAnchor/applyMoveDom use
- * elsewhere. A container with no circle of its own (trays, bags, ...) is
- * left untouched here; the caller is free to position el however it
- * wants afterward (e.g. wherever the user actually dropped it).
- *
- * Symmetrically, moving OUT of a container (containerElId null/undefined)
- * translates el's old container-local x/y into canvas space using that
- * container's own geometry, so el ends up wherever it visually was —
- * again, the caller is free to override this afterward (e.g. stack.svg's
- * Fan lays its own fan-out positions over this default).
  *
  * Also directly (synchronously) runs contents_change_handler for the
  * container being entered and, if el was already sitting inside one, the
- * container being left — immediately, not deferred to the generic
- * end-of-gesture scan (runContentsChangeCascadeInto, still run by
- * runGesture as a backstop for changes that AREN'T a reparent at all,
- * e.g. tray.roll_all mutating a contained die's own value in place, or a
- * stacked chip's own increment/decrement). This is what lets a
- * container's own derived state (stack.svg's tt_positions circle, its
- * height, its sum) stay current between individual reparents even
- * within a single multi-item gesture, rather than only catching up once
- * the whole gesture closes.
+ * container being left
+ * Note, there's also an end-of-gesture scan (runContentsChangeCascadeInto)
+ * called by runGesture as a backstop
  */
 export function reparentToyDom(layerEl, id, containerElId) {
   const el = layerEl.querySelector(`[data-id="${id}"]`)
@@ -767,11 +728,6 @@ export function reparentToyDom(layerEl, id, containerElId) {
 
   const previousContainerId = immediateContainingId(el)
   const previousContainerEl = previousContainerId && layerEl.querySelector(`[data-id="${previousContainerId}"]`)
-  // Read before the move — el's own container-local x/y don't change
-  // just from being reparented, but we need them relative to
-  // previousContainerEl's geometry, captured before anything (including
-  // that container's OWN contents_change_handler, run further below)
-  // has a chance to touch it.
   const previousContainerGeom = previousContainerEl && getGeom(previousContainerEl)
   const priorLocalX = parseFloat(elSvg.getAttribute('x')) || 0
   const priorLocalY = parseFloat(elSvg.getAttribute('y')) || 0
@@ -794,6 +750,9 @@ export function reparentToyDom(layerEl, id, containerElId) {
       throw new Error(`[toys] reparentToy: target ${containerElId} has no .tt_contents`)
     }
     targetGroup = contentsGroup
+
+    // If the target container exposes its own tt_positions circle
+    // (getLandingPosition), el's own x/y are set so its centre lands there
     landingPosition = getLandingPosition(targetEl)
     newContainerId = containerElId
   }
@@ -926,20 +885,6 @@ export function getContentsGroup(domEl) {
   return domEl.querySelector(`.${domEl.id}__tt_contents`)
 }
 
-/**
- * The local point (in containerEl's own coordinate frame — the same
- * space its .tt_contents children's own <svg> x/y already live in) where
- * the next item dropped into containerEl should land, straight off
- * containerEl's own tt_positions circle if it has one. This is the same
- * "position-having toy" convention used for ordinary top-level stacking
- * (chip.svg has one too) — a container that wants chained-stacking
- * behavior just needs its own circle, kept current by its own
- * contents_change_handler.
- *
- * Containers without a tt_positions circle of their own (trays, bags,
- * ...) return null — callers should fall back to wherever the user
- * actually dropped the item, not force a position on them.
- */
 export function getLandingPosition(containerEl) {
   const containerId = containerEl?.getAttribute('data-toy-id')
   const circle = containerId && containerEl.querySelector(`.${containerId}__tt_positions circle`)
@@ -1749,21 +1694,6 @@ function affectedContainerIdsFromRecords(records) {
 }
 
 /**
- * Run the contents_change_handler cascade against the live DOM,
- * appending every record it produces into allRecords.
- *
- * (allRecords is mutated in place —
- * the caller feeds this to ONE final commitEnvelope call, so the gesture
- * and its whole cascade land as a single Yjs transaction, single undo
- * step).
- *
- * Each round resolves only the IMMEDIATE containing container for whatever
- * changed in the round before it
- *
- * Each container's handler runs AT MOST ONCE per gesture.
- * If a cycle is detected, we log loudly (console.error) and skip
- */
-/**
  * Run containerEl's own contents_change_handler(s), if its toy type has
  * any registered — a plain, direct, synchronous call, not tied to any
  * mutation-record scanning. Used both by the generic end-of-gesture
@@ -1778,6 +1708,20 @@ function runContentsChangeHandlersFor(containerEl) {
   handlers.forEach(ns => ns.contents_change_handler(containerEl))
 }
 
+/**
+ * Run the contents_change_handler cascade against the live DOM,
+ * appending every record it produces into allRecords.
+ *
+ * (allRecords is mutated in place —
+ * the caller feeds this to ONE final commitEnvelope call, so the gesture
+ * and its whole cascade land as a single Yjs transaction, single undo
+ * step).
+ *
+ * Each round resolves only the IMMEDIATE containing container for whatever
+ * changed in the round before it
+ *
+ * If a cycle is detected, we log loudly (console.error) and skip
+ */
 function runContentsChangeCascadeInto(allRecords, layerEl) {
   const seen = new Set()
   let toCheck = allRecords

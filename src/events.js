@@ -43,10 +43,7 @@ export function init(App, svgEl, Toys, UI) {
         App.addHistory(`placed ${toyType} ${id}`, { elType: 'toy' })
         App.addLog(`placed ${toyType} ${id}`, 'local')
 
-        // Awaiting activateToyScripts() here guarantees the namespace is
-        // actually ready before initialize() reads it off window[namespace].
-        // placeToy already kicked this off; the promise is memoized, so
-        // this just waits on the same one.
+        // TODO: WE'RE BREAKING THE CONTRACT HERE!
         await Toys.activateToyScripts(ydoc, toyType)
         const placedEl = layerEl.querySelector(`[data-toy-id="${id}"]`)
         if (placedEl) {
