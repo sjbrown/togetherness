@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RangeTicked Web Component Examples</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f5f5;
+      padding: 2rem;
+      color: #333;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body {
+        background: #1a1a1a;
+        color: #e0e0e0;
+      }
+    }
+
+    .container {
+      max-width: 700px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 28px;
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+    }
+
+    .subtitle {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 2rem;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .subtitle {
+        color: #999;
+      }
+    }
+
+    .example {
+      background: white;
+      padding: 2rem;
+      border-radius: 12px;
+      margin-bottom: 2rem;
+      border: 1px solid #e0e0e0;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .example {
+        background: #222;
+        border-color: #333;
+      }
+    }
+
+    .example h2 {
+      font-size: 18px;
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+    }
+
+    .example p {
+      font-size: 13px;
+      line-height: 1.6;
+      margin-bottom: 1.5rem;
+      color: #555;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .example p {
+        color: #aaa;
+      }
+    }
+
+    code {
+      background: #f0f0f0;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      code {
+        background: #333;
+        color: #e0e0e0;
+      }
+    }
+
+    .code-block {
+      background: #f0f0f0;
+      padding: 1rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      margin: 1rem 0;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .code-block {
+        background: #1a1a1a;
+        border: 1px solid #333;
+      }
+    }
+
+    range-ticked {
+      display: block;
+      margin: 0.5rem 0;
+    }
+
+    .output {
+      background: #f9f9f9;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 1rem;
+      font-family: monospace;
+      font-size: 12px;
+      margin-top: 1rem;
+      color: #666;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .output {
+        background: #1a1a1a;
+        border-color: #333;
+        color: #999;
+      }
+    }
+
+    .api {
+      margin-top: 2rem;
+      padding-top: 2rem;
+      border-top: 1px solid #e0e0e0;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .api {
+        border-color: #333;
+      }
+    }
+
+    .api h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .api-item {
+      margin-bottom: 1rem;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .api-item strong {
+      font-weight: 600;
+    }
+
+    button {
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      border: 0.5px solid #ccc;
+      background: transparent;
+      cursor: pointer;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>RangeTicked</h1>
+    <p class="subtitle">A range input with native tick marks and a visible row of numeric labels underneath</p>
+
+    <!-- Example 1: Basic 1-25 -->
+    <div class="example">
+      <h2>1. Basic (1-25)</h2>
+      <p>25 stops, under the default 30-stop threshold — ticks and a thinned set of visible numbers render automatically.</p>
+      <range-ticked id="picker1" min="1" max="25" step="1" value="5"></range-ticked>
+      <div id="output1" class="output">Drag the slider to see the value here</div>
+    </div>
+
+    <!-- Example 2: 0 as an explicit null case -->
+    <div class="example">
+      <h2>2. Including 0 as a "none" stop</h2>
+      <p>Nothing special about 0 to this component — it's just another stop. Whether 0 means "nothing selected" is a decision the host page makes when it reads the value.</p>
+      <range-ticked id="picker2" min="0" max="24" step="1" value="0"></range-ticked>
+      <div id="output2" class="output">Drag the slider to see the value here</div>
+    </div>
+
+    <!-- Example 3: too many stops for ticks -->
+    <div class="example">
+      <h2>3. A wide range skips ticks entirely</h2>
+      <p>46 stops (20 to 200 by 4) is at or above the default <code>tick-threshold</code> of 30, so this renders as a plain range input — no ticks, no datalist, no label row.</p>
+      <range-ticked min="20" max="200" step="4"></range-ticked>
+    </div>
+
+    <!-- Example 4: tuning the thresholds -->
+    <div class="example">
+      <h2>4. Tuning the thresholds</h2>
+      <p><code>tick-threshold</code> lowered to 15 turns ticks off for this 0-20 range (21 stops, otherwise under the default threshold of 30). <code>max-visible-labels</code> raised to 20 shows a denser set of numbers on a 0-28 range (29 stops) than the default cap of 13 would.</p>
+      <div>
+        <p style="margin-bottom:0.5rem"><code>tick-threshold="15"</code> (21 stops, ticks off)</p>
+        <range-ticked min="0" max="20" step="1" tick-threshold="15"></range-ticked>
+      </div>
+      <div style="margin-top:1.5rem">
+        <p style="margin-bottom:0.5rem"><code>max-visible-labels="20"</code> (29 stops, ticks on)</p>
+        <range-ticked min="0" max="28" step="1" max-visible-labels="20"></range-ticked>
+      </div>
+    </div>
+
+    <!-- Example 5: Programmatic access -->
+    <div class="example">
+      <h2>5. Programmatic Access</h2>
+      <p>Get and set the value from JavaScript. Setting <code>.value</code> moves the slider without firing <code>range-changed</code>.</p>
+      <range-ticked id="picker5" min="1" max="10" value="3"></range-ticked>
+      <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+        <button id="getValueBtn">Get Current Value</button>
+        <button id="setValueBtn">Set to 8</button>
+      </div>
+      <div id="output5" class="output"></div>
+    </div>
+
+    <!-- API Reference -->
+    <div class="example api">
+      <h2>API Reference</h2>
+
+      <h3>Attributes</h3>
+      <div class="api-item">
+        <strong>min</strong> (number, default: 0)
+      </div>
+      <div class="api-item">
+        <strong>max</strong> (number, default: 100)
+      </div>
+      <div class="api-item">
+        <strong>step</strong> (number, default: 1)<br>
+        A zero or negative value falls back to 1.
+      </div>
+      <div class="api-item">
+        <strong>value</strong> (number, default: min)<br>
+        Safe to set after connection — updates the live slider directly, does not rebuild the component.
+      </div>
+      <div class="api-item">
+        <strong>tick-threshold</strong> (number, default: 30)<br>
+        Stop count ceiling for showing ticks/labels at all.
+      </div>
+      <div class="api-item">
+        <strong>max-visible-labels</strong> (number, default: 13)<br>
+        Cap on visible number text once ticks are showing; the datalist still ticks every stop.
+      </div>
+
+      <h3>Properties</h3>
+      <div class="api-item">
+        Every attribute above has a matching camelCase JS property: <code>min</code>, <code>max</code>, <code>step</code>, <code>value</code>, <code>tickThreshold</code>, <code>maxVisibleLabels</code>.
+      </div>
+
+      <h3>Methods</h3>
+      <div class="api-item">
+        <strong>getValue()</strong><br>
+        Returns the current value as a number. Symmetric with the <code>.value</code> property.
+      </div>
+
+      <h3>Events</h3>
+      <div class="api-item">
+        <strong>range-changed</strong><br>
+        Fired on every drag tick. Detail:
+        <div class="code-block">{
+  value: number
+}</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="range_ticked.js"></script>
+  <script>
+    // Example 1
+    document.getElementById('picker1').addEventListener('range-changed', (e) => {
+      document.getElementById('output1').innerHTML = `<strong>Value:</strong> ${e.detail.value}`;
+    });
+
+    // Example 2
+    document.getElementById('picker2').addEventListener('range-changed', (e) => {
+      const { value } = e.detail;
+      document.getElementById('output2').innerHTML = value === 0
+        ? `<strong>Value:</strong> 0 &mdash; the host page treats this as "none"`
+        : `<strong>Value:</strong> ${value}`;
+    });
+
+    // Example 5: programmatic access
+    document.getElementById('getValueBtn').addEventListener('click', () => {
+      const picker = document.getElementById('picker5');
+      document.getElementById('output5').innerHTML = `<strong>Current value:</strong> ${picker.getValue()}`;
+    });
+    document.getElementById('setValueBtn').addEventListener('click', () => {
+      const picker = document.getElementById('picker5');
+      picker.value = 8;
+      document.getElementById('output5').innerHTML = `<strong>Set to:</strong> ${picker.getValue()} (no range-changed fired)`;
+    });
+  </script>
+</body>
+</html>

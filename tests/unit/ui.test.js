@@ -90,7 +90,7 @@ describe('refreshLayerList', () => {
 // Pill buttons: double-click → Tools panel; select tool quick opts
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { pillHTML, toolOptsHTML } from '../../src/ui.js'
+import { pillHTML, toolOptsHTML, wireRangeTicked } from '../../src/ui.js'
 import { SELECT_TOOL } from '../../src/tools-schema.js'
 
 const MOCK_TOOLS = [SELECT_TOOL]
@@ -156,7 +156,7 @@ describe('SELECT_TOOL multi option — show surfaces', () => {
     expect(checkbox).not.toBeNull()
   })
 
-  test('toolOptsHTML wires a min+max range field (< 30 stops) to a <datalist> of numeric tick labels', () => {
+  test('toolOptsHTML renders a min+max range field as a wired <range-ticked>', () => {
     const schema = {
       types:  { value: { kind: 'number', min: 1, max: 25, step: 1, show: ['add', 'addQuick'] } },
       values: { value: 17 },
@@ -164,45 +164,40 @@ describe('SELECT_TOOL multi option — show surfaces', () => {
     const html = toolOptsHTML({ label: 'Chip', toolName: 'chip', schema, values: { value: 17 } })
     const div = document.createElement('div')
     div.innerHTML = html
-    const range = div.querySelector('input[type="range"]')
-    expect(range).not.toBeNull()
-    expect(range.value).toBe('17')
-
-    // Native tick labels, not a hand-rolled JS readout: the slider names a
-    // <datalist> via its own 'list' attribute, and that datalist carries
-    // one numeric <option> per stop (1..25) — no oninput bookkeeping to
-    // keep a separate label in sync.
-    const listId = range.getAttribute('list')
-    expect(listId).toBeTruthy()
-    const datalist = div.querySelector(`datalist#${listId}`)
-    expect(datalist).not.toBeNull()
-    const optionValues = [...datalist.querySelectorAll('option')].map(o => o.getAttribute('value'))
-    expect(optionValues).toEqual(Array.from({ length: 25 }, (_, i) => String(i + 1)))
-    expect(datalist.querySelector('option[value="17"]').getAttribute('label')).toBe('17')
-
-    // No browser actually draws a <datalist> option's label on screen, so
-    // there's also a plain CSS row of numbers under the track — one span
-    // per stop (flex-spaced to line up with the ticks), thinned to at
-    // most MAX_VISIBLE_TICK_LABELS of visible text since 25 numbers packed
-    // edge to edge would be unreadable. min and max are always shown.
-    const spans = [...range.parentElement.querySelectorAll('div span')]
-    expect(spans).toHaveLength(25)
-    expect(spans[0].textContent).toBe('1')
-    expect(spans[24].textContent).toBe('25')
-    expect(spans.filter(s => s.textContent !== '').length).toBeLessThanOrEqual(13)
+    // Ticks, the datalist, and the visible label row are <range-ticked>'s
+    // own concern (see tests/unit/range_ticked.test.js) — this only checks
+    // that renderSchemaField hands it the right min/max/step/value and
+    // wires it up for wireRangeTicked to pick up.
+    const rt = div.querySelector('range-ticked')
+    expect(rt).not.toBeNull()
+    expect(rt.getAttribute('min')).toBe('1')
+    expect(rt.getAttribute('max')).toBe('25')
+    expect(rt.getAttribute('step')).toBe('1')
+    expect(rt.getAttribute('value')).toBe('17')
+    expect(rt.hasAttribute('data-rt-wire')).toBe(true)
+    expect(rt.dataset.rtMode).toBe('addQuick')
+    expect(rt.dataset.rtTarget).toBe('chip')
+    expect(rt.dataset.rtKey).toBe('value')
   })
 
-  test('a range field with 30+ stops gets no datalist — too many ticks to be legible', () => {
+  test('a range-changed event on a wired <range-ticked> calls App.setToolParam with its value', () => {
     const schema = {
-      types:  { spacing: { kind: 'number', min: 20, max: 200, step: 4, show: ['addQuick'] } },
-      values: { spacing: 40 },
+      types:  { value: { kind: 'number', min: 1, max: 25, step: 1, show: ['add', 'addQuick'] } },
+      values: { value: 17 },
     }
-    const html = toolOptsHTML({ label: 'Grid', toolName: 'grid', schema, values: { spacing: 40 } })
+    const html = toolOptsHTML({ label: 'Chip', toolName: 'chip', schema, values: { value: 17 } })
     const div = document.createElement('div')
     div.innerHTML = html
-    const range = div.querySelector('input[type="range"]')
-    expect(range.hasAttribute('list')).toBe(false)
-    expect(div.querySelector('datalist')).toBeNull()
+    document.body.appendChild(div)
+    const setToolParam = vi.fn()
+    init({ setToolParam })
+    wireRangeTicked(div)
+
+    const rt = div.querySelector('range-ticked')
+    rt.dispatchEvent(new CustomEvent('range-changed', { detail: { value: 9 }, bubbles: true, composed: true }))
+
+    expect(setToolParam).toHaveBeenCalledWith('chip', 'value', 9)
+    div.remove()
   })
 })
 
