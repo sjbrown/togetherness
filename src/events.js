@@ -10,7 +10,7 @@ export function init(App, svgEl, Toys, UI) {
     'toy:clone': (e) => {
       const { id: sourceId, sourceEl } = e.detail
       const layerEl = svgEl.querySelector('#toys-layer')
-      const subjectEl = layerEl?.querySelector(`[data-toy-id="${sourceId}"]`)
+      const subjectEl = layerEl?.querySelector(`[data-id="${sourceId}"]`)
       if (!subjectEl) { e.detail.error = `toy not found: ${sourceId}`; return }
 
       let result
@@ -43,7 +43,7 @@ export function init(App, svgEl, Toys, UI) {
         App.addHistory(`placed ${toyType} ${id}`, { elType: 'toy' })
         App.addLog(`placed ${toyType} ${id}`, 'local')
 
-        const placedEl = layerEl.querySelector(`[data-toy-id="${id}"]`)
+        const placedEl = layerEl.querySelector(`[data-id="${id}"]`)
         if (placedEl) {
           Toys.initializeToy(ydoc, layerEl, placedEl, toyType, myId, tableId, initArgs)
         }
@@ -61,11 +61,11 @@ export function init(App, svgEl, Toys, UI) {
       // containerId === null (or omitted) means "move to the top level" —
       // same convention reparentToyDom itself uses. Only look one up when
       // an actual target was given.
-      if (containerId != null && !layerEl.querySelector(`[data-toy-id="${containerId}"]`)) {
+      if (containerId != null && !layerEl.querySelector(`[data-id="${containerId}"]`)) {
         e.detail.error = `toy not found: ${containerId}`; return
       }
       if (id === containerId) { e.detail.error = 'cannot reparent a toy into itself'; return }
-      if (!layerEl.querySelector(`[data-toy-id="${id}"]`)) { e.detail.error = `toy not found: ${id}`; return }
+      if (!layerEl.querySelector(`[data-id="${id}"]`)) { e.detail.error = `toy not found: ${id}`; return }
 
       const wasInside = Toys.isInsideEnvelope()
       try {
@@ -115,7 +115,7 @@ export function init(App, svgEl, Toys, UI) {
     'toy:edit': (e) => {
       const { id, color, name } = e.detail
       const layerEl = svgEl.querySelector('#toys-layer')
-      const toyEl = layerEl?.querySelector(`[data-toy-id="${id}"]`)
+      const toyEl = layerEl?.querySelector(`[data-id="${id}"]`)
       if (!toyEl) { e.detail.error = `toy not found: ${id}`; return }
       const editData = {}
       if (color !== undefined) editData.color = color

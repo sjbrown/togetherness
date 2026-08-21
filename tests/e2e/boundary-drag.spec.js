@@ -118,10 +118,10 @@ test.describe('boundary-constrained toy dragging', () => {
     await page.mouse.up();
     await page.waitForTimeout(200);
 
-    await expect(page.locator('#toys-layer [data-toy-id]')).toHaveCount(1, { timeout: 3000 });
+    await expect(page.locator('#toys-layer [data-toy-type]')).toHaveCount(1, { timeout: 3000 });
 
     const toyId = await page.evaluate(() =>
-      document.querySelector('#toys-layer [data-toy-id]')?.getAttribute('data-id') ?? null
+      document.querySelector('#toys-layer [data-toy-type]')?.getAttribute('data-id') ?? null
     );
     expect(toyId).toBeTruthy();
 

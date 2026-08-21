@@ -47,11 +47,11 @@ test.describe('two-peer container drop sync', () => {
     await page1.mouse.down();
     await page1.mouse.up();
 
-    await expect(page1.locator('[data-toy-id]')).toHaveCount(2, { timeout: 5000 });
-    await expect(page2.locator('[data-toy-id]')).toHaveCount(2, { timeout: 5000 });
+    await expect(page1.locator('[data-toy-type]')).toHaveCount(2, { timeout: 5000 });
+    await expect(page2.locator('[data-toy-type]')).toHaveCount(2, { timeout: 5000 });
 
-    const trayId = await page1.locator('[data-toy-type="tray_sum"]').getAttribute('data-toy-id');
-    const dieId  = await page1.locator('[data-toy-type="dice_d6"]').getAttribute('data-toy-id');
+    const trayId = await page1.locator('[data-toy-type="tray_sum"]').getAttribute('data-id');
+    const dieId  = await page1.locator('[data-toy-type="dice_d6"]').getAttribute('data-id');
 
     // Select the die and drag it onto the tray.
     await page1.evaluate(() => window.UI.pillTap('select'));
@@ -65,19 +65,19 @@ test.describe('two-peer container drop sync', () => {
     // On peer A: the die is now nested inside the tray's contents group,
     // not a sibling of it at the top level of #toys-layer.
     await expect(
-      page1.locator(`#toys-layer > [data-toy-id="${trayId}"] .tt_contents [data-toy-id="${dieId}"]`)
+      page1.locator(`#toys-layer > [data-id="${trayId}"] .tt_contents [data-id="${dieId}"]`)
     ).toHaveCount(1, { timeout: 5000 });
     await expect(
-      page1.locator(`#toys-layer > [data-toy-id="${dieId}"]`)
+      page1.locator(`#toys-layer > [data-id="${dieId}"]`)
     ).toHaveCount(0);
 
     // The bug: without this, peer B's die stays a top-level sibling,
     // never reparented, because the gesture never became an operation.
     await expect(
-      page2.locator(`#toys-layer > [data-toy-id="${trayId}"] .tt_contents [data-toy-id="${dieId}"]`)
+      page2.locator(`#toys-layer > [data-id="${trayId}"] .tt_contents [data-id="${dieId}"]`)
     ).toHaveCount(1, { timeout: 5000 });
     await expect(
-      page2.locator(`#toys-layer > [data-toy-id="${dieId}"]`)
+      page2.locator(`#toys-layer > [data-id="${dieId}"]`)
     ).toHaveCount(0);
 
     await browser.close();
@@ -113,10 +113,10 @@ test.describe('two-peer container drop sync', () => {
     await page.mouse.move(box.x + 80, box.y + 80);
     await page.mouse.down();
     await page.mouse.up();
-    await expect(page.locator('[data-toy-id]')).toHaveCount(2, { timeout: 5000 });
+    await expect(page.locator('[data-toy-type]')).toHaveCount(2, { timeout: 5000 });
 
-    const dieId = await page.locator('[data-toy-type="dice_d6"]').getAttribute('data-toy-id');
-    const xBeforeDrop = await page.locator(`[data-toy-id="${dieId}"] > svg`).getAttribute('x');
+    const dieId = await page.locator('[data-toy-type="dice_d6"]').getAttribute('data-id');
+    const xBeforeDrop = await page.locator(`[data-id="${dieId}"] > svg`).getAttribute('x');
 
     await page.evaluate(() => window.UI.pillTap('select'));
     await page.waitForTimeout(100);
@@ -127,7 +127,7 @@ test.describe('two-peer container drop sync', () => {
     await page.mouse.up();
 
     // Confirms the drop actually happened (die is nested, not top-level).
-    await expect(page.locator(`#toys-layer > [data-toy-id="${dieId}"]`)).toHaveCount(0);
+    await expect(page.locator(`#toys-layer > [data-id="${dieId}"]`)).toHaveCount(0);
 
     await page.evaluate(() => window.UI.openSheet('history'));
     await page.waitForTimeout(200);
@@ -135,9 +135,9 @@ test.describe('two-peer container drop sync', () => {
     await page.waitForTimeout(200);
 
     // Reparented back to the top level...
-    await expect(page.locator(`#toys-layer > [data-toy-id="${dieId}"]`)).toHaveCount(1, { timeout: 5000 });
+    await expect(page.locator(`#toys-layer > [data-id="${dieId}"]`)).toHaveCount(1, { timeout: 5000 });
     // ...AND at its original canvas position, not the tray-local one.
-    const xAfterUndo = await page.locator(`[data-toy-id="${dieId}"] > svg`).getAttribute('x');
+    const xAfterUndo = await page.locator(`[data-id="${dieId}"] > svg`).getAttribute('x');
     expect(xAfterUndo).toBe(xBeforeDrop);
 
     await browser.close();

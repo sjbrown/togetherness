@@ -42,15 +42,14 @@ step, no compile pass. The file *is* the toy.
 When placed, your `<svg>` is wrapped:
 
 ```
-<g class="toy" data-toy-id="tt-t-v1-a8f3d2" data-toy-type="counter">
+<g class="toy" data-id="tt-t-v1-a8f3d2" data-toy-type="counter">
   <svg ...>...your file's content...</svg>
 </g>
 ```
 
 You never write the `<g>` wrapper — the platform adds it at placement and
-manages `data-toy-id`/`data-toy-type`. Everything below that line is
-yours: exactly the DOM you authored, using whatever internal ids or
-classes you liked.
+manages its `data-*` attributes. Everything inside that `<g>` is yours:
+the DOM you authored, using whatever internal classes you liked.
 
 ## The behaviour namespace
 
@@ -75,7 +74,7 @@ inert artwork.
 Namespaces are plain objects on `window`, shared by every instance of your
 toy type — pick a `data-namespace` that isn't already taken by a built-in
 toy (check `src/toy/` and `src/toy/js/` for the current list — things like
-`dice`, `d6`, `tray`, `tray_sum`, `token`, `clock`, `card_deck`). Reusing
+`dice`, `d6`, `tray`, `tray_sum`, `token`, `card_deck`). Reusing
 an existing name silently overwrites it, and whichever toy loads last
 wins — not an error you'll see at the point it happens.
 
@@ -164,7 +163,7 @@ whenever your selector includes an id; classes need no such treatment,
 which is why the first example above didn't need it.
 
 If you're holding an element nested somewhere inside your toy and need to
-get back to your own root: `elem.closest('[data-toy-id]')`.
+get back to your own root: `elem.closest('g.toy')`.
 
 ## The envelope: what your handler can and can't do
 
@@ -192,7 +191,7 @@ directly, but two rules follow from it:
 A toy can end up nested inside a tray (or any container) rather than
 placed directly on the table. Write your handler code without assuming
 you're at the top level — `this.$()`/`this.querySelector()` and
-`closest('[data-toy-id]')` already handle this correctly; just don't
+`closest('g.toy')` already handle this correctly; just don't
 reach for `document.body` or assume a fixed DOM depth.
 
 If you're building a *container* — something other toys can be dropped
