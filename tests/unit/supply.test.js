@@ -561,3 +561,93 @@ describe('supply — reload parity (regression: nested-envelope duplicate clone)
     expect(reloadedIds(ydoc)).toEqual(liveIds(layerEl))
   })
 })
+
+describe('supply — clone inner elements get their own data-id (regression: moved clone swaps places with its prototype on reload)', () => {
+  // A real bug report: drag a chip onto a supply, Take a clone of it, move
+  // the clone away to wherever it's actually going to be played, then
+  // refresh the browser — and the chip that's still sitting on the supply
+  // jumps down into the supply's own deposit spot, while the clone snaps
+  // back to right where it was taken.
+  //
+  // Root cause: cloneToyBoundary deep-clones the prototype's whole <svg>
+  // subtree, remapping every element's plain `id` (and href/url(#...)
+  // references to it) onto the new instance's own prefix — but
+  // parseForeignNode's data-id derivation preferred whatever data-id the
+  // SOURCE element already had, and every source element already has one
+  // (stamped at its own original placement). The clone ended up with
+  // every inner element sharing its data-id with the corresponding
+  // element in the still-live prototype. That's invisible locally — live
+  // handlers hold direct element references, never look anything up by
+  // id — but the op log addresses every mutation target by data-id
+  // (op_wire_mutation.js's nodeRef/resolveRef), and a duplicate data-id
+  // resolves to whichever of the two elements comes first in document
+  // order. Moving the clone serializes an attribute change against that
+  // shared id; replaying it (a reload, or a peer who never saw the
+  // moment live) applies it to the FIRST match instead — the original
+  // prototype, still sitting on the supply — while the clone's own
+  // snapshot (baked into the earlier 'Take' op) keeps showing it at its
+  // original, pre-move spot.
+  async function setUp() {
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    await Toys.placeToy(ydoc, layerEl, { id: 'supply1', toyType: 'supply', x: 100, y: 100, color: '#fff' }, { authorId: AUTHOR, tableId: TABLE })
+    await Toys.placeToy(ydoc, layerEl, { id: 'chip5',   toyType: 'chip',   x: 500, y: 500, color: '#dd2222' }, { authorId: AUTHOR, tableId: TABLE })
+    await activateAll(ydoc, layerEl)
+
+    const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
+    const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')
+    api.applyMoveCommit(api.find('chip5'), supplyPoint.cx, supplyPoint.cy)
+    const supplyEl = findToyDom(layerEl, 'supply1')
+    expect(supplyEl.getAttribute('data-below')).toBe('chip5')
+
+    const unbind = bindSupplyHarness(ydoc, layerEl)
+    clickTake(ydoc, layerEl, supplyEl)
+    unbind()
+
+    const cloneEl = [...layerEl.querySelectorAll('[data-toy-type="chip"]')]
+      .find(el => el.getAttribute('data-toy-id') !== 'chip5')
+    return { ydoc, layerEl, api, supplyEl, cloneId: cloneEl.getAttribute('data-toy-id') }
+  }
+
+  test('none of the clone’s inner data-ids collide with the prototype’s', async () => {
+    const { layerEl, cloneId } = await setUp()
+    const originalEl = findToyDom(layerEl, 'chip5')
+    const cloneEl    = findToyDom(layerEl, cloneId)
+
+    const originalIds = [originalEl, ...originalEl.querySelectorAll('[data-id]')].map(el => el.getAttribute('data-id'))
+    const cloneIds    = [cloneEl,    ...cloneEl.querySelectorAll('[data-id]')].map(el => el.getAttribute('data-id'))
+
+    expect(cloneIds.length).toBeGreaterThan(1) // sanity: the chip template has inner elements to check
+    expect(cloneIds.filter(id => originalIds.includes(id))).toEqual([])
+  })
+
+  test('moving the clone after Take, then replaying the op log from scratch, leaves both the prototype and the clone at their real positions', async () => {
+    const { ydoc, layerEl, api, cloneId } = await setUp()
+
+    // Move the clone away from the supply's deposit spot — the natural
+    // next thing a player does with what they just took.
+    api.applyMoveCommit(api.find(cloneId), 800, 800)
+
+    const liveProtoAnchor = getAnchor(findToyDom(layerEl, 'chip5'))
+    const liveCloneAnchor = getAnchor(findToyDom(layerEl, cloneId))
+    expect(liveCloneAnchor).toEqual({ x: 800, y: 800 })
+
+    const ops = getOps(ydoc)
+    const reloadedLayer = freshLayer()
+    projectFrom(reloadedLayer, ops, heads(ops)[0] ?? null)
+
+    const reloadedProto = reloadedLayer.querySelector('[data-toy-id="chip5"]')
+    const reloadedClone = reloadedLayer.querySelector(`[data-toy-id="${cloneId}"]`)
+    expect(reloadedProto).toBeTruthy()
+    expect(reloadedClone).toBeTruthy()
+
+    // The prototype must still be sitting on the supply, right where it
+    // always was — NOT wherever the clone got dragged to.
+    expect(getAnchor(reloadedProto)).toEqual(liveProtoAnchor)
+    // The clone must be at the spot it was actually moved to — NOT back
+    // at its original deposit-area placement.
+    expect(getAnchor(reloadedClone)).toEqual(liveCloneAnchor)
+
+    expect(reloadedLayer.querySelector('[data-toy-id="supply1"]').getAttribute('data-below')).toBe('chip5')
+  })
+})

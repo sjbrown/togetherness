@@ -155,7 +155,9 @@ export function parseForeignNode(node, ctx = {}) {
   if (elementId) elementId = idMap.get(elementId) ?? elementId
   else if (mintId) elementId = mint()
 
-  const dataId = node.getAttribute('data-id') || elementId || mint()
+  let dataId = node.getAttribute('data-id')
+  if (dataId) dataId = idMap.get(dataId) ?? dataId
+  dataId = dataId || elementId || mint()
 
   const attrs = []
   if (elementId) attrs.push(['id', elementId])
@@ -560,6 +562,19 @@ function cloneToyBoundary(sourceEl, newId, cloned) {
   // idMap covers only ids in THIS instance's own scope. The walk below
   // stops at any nested toy boundary — that gets its own scope via the
   // recursive cloneToyBoundary call in cloneNode, not this one.
+  //
+  // Both id and data-id go through the same map: every source element
+  // already carries a data-id (stamped at its own original placement),
+  // and parseForeignNode's default behaviour is to copy that verbatim —
+  // exactly right for a reimported toy, but fatal here, where the source
+  // subtree stays live in the document right alongside its clone. Two
+  // elements sharing one data-id makes every later data-id lookup
+  // (nodeRef/resolveRef, the whole op-log wire format) ambiguous: it
+  // resolves to whichever of the two comes first in document order,
+  // silently misrouting mutations meant for the clone onto the original
+  // — invisible locally (live code holds direct element references) but
+  // wrong the moment the mutation is serialized and replayed elsewhere,
+  // e.g. after a page reload.
   const idMap = new Map()
   const mapId = (id) => {
     const suffix = id.startsWith(oldPrefix) ? id.slice(oldPrefix.length) : id
@@ -567,10 +582,12 @@ function cloneToyBoundary(sourceEl, newId, cloned) {
   }
   const sourceSvg = sourceEl.querySelector(':scope > svg')
   if (sourceSvg.getAttribute('id')) mapId(sourceSvg.getAttribute('id'))
+  if (sourceSvg.getAttribute('data-id')) mapId(sourceSvg.getAttribute('data-id'))
   ;(function collectOwnIds(el) {
     for (const child of el.children) {
       if (isToyBoundaryEl(child)) continue
       if (child.getAttribute('id')) mapId(child.getAttribute('id'))
+      if (child.getAttribute('data-id')) mapId(child.getAttribute('data-id'))
       collectOwnIds(child)
     }
   })(sourceSvg)
