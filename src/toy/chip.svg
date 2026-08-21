@@ -72,7 +72,7 @@ var chip = {
     const ids = []
     let nextId = elem.getAttribute(attr)
     while (nextId) {
-      const nextEl = layer?.querySelector(`[data-toy-id="${nextId}"]`)
+      const nextEl = layer?.querySelector(`[data-id="${nextId}"]`)
       if (!nextEl) break
       ids.push(nextId)
       nextId = nextEl.getAttribute(attr)
@@ -82,7 +82,7 @@ var chip = {
 
   stack: function(elem) {
     const layer = elem.closest('#toys-layer')
-    const myId  = elem.getAttribute('data-toy-id')
+    const myId  = elem.getAttribute('data-id')
 
     // data-above walks toward the base of the pile; data-below walks
     // toward the most recently placed (top) chip.
@@ -91,7 +91,7 @@ var chip = {
 
     const ids = [...underIds, myId, ...aboveIds]
     const bottomId = ids[0]
-    const bottomEl = layer?.querySelector(`[data-toy-id="${bottomId}"]`) ?? elem
+    const bottomEl = layer?.querySelector(`[data-id="${bottomId}"]`) ?? elem
 
     const { x, y } = chip.anchor_of(bottomEl)
 

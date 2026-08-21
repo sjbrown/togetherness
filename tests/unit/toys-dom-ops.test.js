@@ -90,10 +90,10 @@ describe('svgTextToDom', () => {
 describe('buildToyDom / addToyDom', () => {
   const attrs = { id: 'die1', toyType: 'dice_d6', x: 100, y: 50, color: '#ff0000' }
 
-  test('wrapper carries class/data-toy-id/data-toy-type/data-color', () => {
+  test('wrapper carries class/data-id/data-toy-type/data-color', () => {
     const { toyEl } = buildToyDom(attrs, D6_SVG)
     expect(toyEl.getAttribute('class')).toBe('toy')
-    expect(toyEl.getAttribute('data-toy-id')).toBe('die1')
+    expect(toyEl.getAttribute('data-id')).toBe('die1')
     expect(toyEl.getAttribute('data-toy-type')).toBe('dice_d6')
     expect(toyEl.getAttribute('data-color')).toBe('#ff0000')
   })
@@ -197,11 +197,11 @@ describe('DOM readers', () => {
     addToyDom(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' }, TRAY_SUM_SVG)
     addToyDom(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' }, D6_SVG)
 
-    const contents = layerEl.querySelector('[data-toy-id="tray1"] .tt_contents')
-    contents.appendChild(layerEl.querySelector('[data-toy-id="die1"]'))
+    const contents = layerEl.querySelector('[data-id="tray1"] .tt_contents')
+    contents.appendChild(layerEl.querySelector('[data-id="die1"]'))
 
     expect(findToyDom(layerEl, 'die1')).toBeNull()
-    expect(listToysDom(layerEl).map(el => el.getAttribute('data-toy-id'))).toEqual(['tray1'])
+    expect(listToysDom(layerEl).map(el => el.getAttribute('data-id'))).toEqual(['tray1'])
   })
 
   test('getTtStateDom reflects an editDom colour change', () => {

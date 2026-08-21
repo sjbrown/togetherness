@@ -328,19 +328,19 @@ describe('normalizeForeignToySubtree stamps identity on a reimported toy', () =>
 
   test('a whole reimported toy round-trips through storage’s import path unchanged', () => {
     const svgText =
-      '<g class="toy" data-toy-id="die1" data-toy-type="dice_d6" data-color="#fff">' +
+      '<g class="toy" data-id="die1" data-toy-type="dice_d6" data-color="#fff">' +
       '<svg x="0" y="0" width="80" height="100" viewBox="0 0 80 100">' +
       '<rect id="face"/><text id="t"><tspan>3</tspan></text></svg></g>'
     const el = parseSvg(`<svg xmlns="http://www.w3.org/2000/svg">${svgText}</svg>`).querySelector('g')
     const out = Toys.normalizeForeignToySubtree(el)
-    expect(out.getAttribute('data-toy-id')).toBe('die1')
+    expect(out.getAttribute('data-id')).toBe('die1')
     expect(out.querySelector('rect').getAttribute('data-id')).toBeTruthy()
     expect(out.querySelector('tspan').textContent).toBe('3')
   })
 })
 
 describe('isForeignToyG', () => {
-  const VALID_TOY_G = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6">
+  const VALID_TOY_G = `<g class="toy" data-toy-type="dice_d6">
       <svg x="0" y="0" width="64" height="64" viewBox="0 0 80 100"><circle r="5"/></svg>
     </g>`
 
@@ -349,25 +349,28 @@ describe('isForeignToyG', () => {
   })
 
   test('also accepts a toy carrying rendering-only attrs (e.g. a re-imported export)', () => {
-    const g = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6" data-id="t1" data-module="toys" id="t1">
+    const g = `<g class="toy" data-toy-type="dice_d6" data-id="t1" data-module="toys" id="t1">
         <svg/>
       </g>`
     expect(Toys.isForeignToyG(parseSvg(g))).toBeTruthy()
   })
 
+  // data-id is deliberately absent from every one of these — identity is
+  // never part of the contract isForeignToyG checks (see its own doc
+  // comment): a missing/foreign data-id is recomputed fresh, never a
+  // rejection reason.
   test.each([
-    ['missing class="toy"',      `<g data-toy-id="t1" data-toy-type="x"><svg/></g>`],
-    ['missing data-toy-id',      `<g class="toy" data-toy-type="x"><svg/></g>`],
-    ['missing data-toy-type',    `<g class="toy" data-toy-id="t1"><svg/></g>`],
-    ['no <svg> child',           `<g class="toy" data-toy-id="t1" data-toy-type="x"></g>`],
-    ['wrong tag entirely',       `<rect class="toy" data-toy-id="t1" data-toy-type="x"/>`],
+    ['missing class="toy"',      `<g data-toy-type="x"><svg/></g>`],
+    ['missing data-toy-type',    `<g class="toy"><svg/></g>`],
+    ['no <svg> child',           `<g class="toy" data-toy-type="x"></g>`],
+    ['wrong tag entirely',       `<rect class="toy" data-toy-type="x"/>`],
   ])('rejects: %s', (_label, svg) => {
     expect(Toys.isForeignToyG(parseSvg(svg))).toBeFalsy()
   })
 })
 
 describe('parseForeignToy — the single entry point storage.js calls', () => {
-  const VALID_TOY_G = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6">
+  const VALID_TOY_G = `<g class="toy" data-toy-type="dice_d6">
       <svg x="0" y="0" width="64" height="64" viewBox="0 0 80 100"><circle r="5"/></svg>
     </g>`
 
@@ -381,7 +384,7 @@ describe('parseForeignToy — the single entry point storage.js calls', () => {
     const el = parseSvg(VALID_TOY_G)
     const { parsedNode } = Toys.parseForeignToy(new Y.Doc(), el)
     expect(parsedNode).toBeTruthy()
-    expect(parsedNode.getAttribute('data-toy-id')).toBe('t1')
+    expect(parsedNode.getAttribute('data-id')).toBeTruthy()
     expect(parsedNode.querySelector('circle').getAttribute('data-id')).toBeTruthy()
   })
 
@@ -393,7 +396,7 @@ describe('parseForeignToy — the single entry point storage.js calls', () => {
 
   test('an embedded <script> is hoisted into ydoc and stripped from parsedNode', () => {
     const el = parseSvg(
-      `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6">
+      `<g class="toy" data-toy-type="dice_d6">
          <svg><script data-namespace="d6">var d6 = 1</script></svg>
        </g>`
     )

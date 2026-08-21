@@ -50,7 +50,7 @@ function makeDocSvg({ toysInner = '', drawingInner = '', extra = '' } = {}) {
   </svg>`)
 }
 
-const VALID_TOY_G = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6">
+const VALID_TOY_G = `<g class="toy" data-id="t1" data-toy-type="dice_d6">
     <svg x="0" y="0" width="64" height="64" viewBox="0 0 80 100"><circle r="5"/></svg>
   </g>`
 
@@ -145,7 +145,7 @@ describe('populateFromSvgDoc', () => {
       makeDocSvg({ toysInner: VALID_TOY_G }), ydoc)
     expect(toyCount).toBe(1)
     expect(importedToyEls.length).toBe(1)
-    expect(importedToyEls[0].getAttribute('data-toy-id')).toBe('t1')
+    expect(importedToyEls[0].getAttribute("data-id")).toBe('t1')
   })
 
   test('collects invalid toys-layer children without importing them', () => {
@@ -185,7 +185,7 @@ describe('populateFromSvgDoc', () => {
 
   test('hoists a script from an imported toy into the scripts fragment, stripped from the toy itself', () => {
     const { ydoc } = freshLayers()
-    const toyWithScript = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6">
+    const toyWithScript = `<g class="toy" data-id="t1" data-toy-type="dice_d6">
         <svg x="0" y="0" width="64" height="64" viewBox="0 0 80 100">
           <script type="text/javascript" data-namespace="d6"><![CDATA[ var d6 = 1 ]]></script>
         </svg>
@@ -202,7 +202,7 @@ describe('populateFromSvgDoc', () => {
   })
 
   describe('opts.stripToyDecorative', () => {
-    const rotatedToy = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6"
+    const rotatedToy = `<g class="toy" data-id="t1" data-toy-type="dice_d6"
         transform="rotate(-8,105,100)"><svg/></g>`
 
     test('off by default — transform is preserved', () => {
@@ -255,7 +255,7 @@ describe('populateFromSvgDoc', () => {
       const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
       projectFrom(layerEl, getOps(ydoc), genesis.id)
 
-      expect(layerEl.querySelector('[data-toy-id="t1"]')).not.toBeNull()
+      expect(layerEl.querySelector('[data-id="t1"]')).not.toBeNull()
     })
 
     test('an empty toys layer takes no genesis at all', () => {
@@ -275,7 +275,7 @@ describe('populateFromSvgDoc', () => {
 
     test('stripToyDecorative applies before the checkpoint is taken', () => {
       const { ydoc } = freshLayers()
-      const rotatedToy = `<g class="toy" data-toy-id="t1" data-toy-type="dice_d6"
+      const rotatedToy = `<g class="toy" data-id="t1" data-toy-type="dice_d6"
           transform="rotate(-8,105,100)"><svg/></g>`
       populateFromSvgDoc(makeDocSvg({ toysInner: rotatedToy }), ydoc,
         { asNewTable: true, stripToyDecorative: true, authorId: 'alice' })
@@ -283,7 +283,7 @@ describe('populateFromSvgDoc', () => {
       const genesis = [...getOps(ydoc).values()][0]
       const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
       projectFrom(layerEl, getOps(ydoc), genesis.id)
-      expect(layerEl.querySelector('[data-toy-id="t1"]').hasAttribute('transform')).toBe(false)
+      expect(layerEl.querySelector('[data-id="t1"]').hasAttribute('transform')).toBe(false)
     })
   })
 })
@@ -348,12 +348,11 @@ describe('buildExportSvg', () => {
     const ydoc = new Y.Doc()
     const live = liveCanvasSvg()
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    g.setAttribute('data-toy-id', 't1')
     g.setAttribute('data-id', 't1')
     live.querySelector('#toys-layer').appendChild(g)
 
     const clone = buildExportSvg(live, ydoc)
-    expect(clone.querySelector('#toys-layer [data-toy-id="t1"]')).not.toBeNull()
+    expect(clone.querySelector('#toys-layer [data-id="t1"]')).not.toBeNull()
   })
 
   test('strips the internal head marker from the exported toys layer', () => {

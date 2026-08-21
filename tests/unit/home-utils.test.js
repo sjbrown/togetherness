@@ -10,7 +10,6 @@ function makeToyGEl({ x = 10, y = 20, w = 64, h = 80, withTransform = false } = 
   const SVG_NS = 'http://www.w3.org/2000/svg'
   const g = document.createElementNS(SVG_NS, 'g')
   g.setAttribute('class',           'toy')
-  g.setAttribute('data-toy-id',     'test-toy')
   g.setAttribute('data-toy-type',   'dice_d6')
   g.setAttribute('data-id',        'test-toy')
   g.setAttribute('data-module', 'toys')
@@ -37,7 +36,7 @@ function makeToyYXml() {
 
   const g = new Y.XmlElement('g')
   g.setAttribute('class',         'toy')
-  g.setAttribute('data-toy-id',   'ytoy')
+  g.setAttribute('data-id',       'ytoy')
   g.setAttribute('data-toy-type', 'dice_d6')
   g.setAttribute('transform',     'rotate(-8,105,100)')
 

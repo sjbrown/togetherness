@@ -45,7 +45,7 @@ var tray_sum = {
 
   eject_all: function(elem) {
     tray.visit_contents(elem, (child) => {
-      const childId = child.getAttribute('data-toy-id')
+      const childId = child.getAttribute('data-id')
       tray_sum._event('toy:reparent', { id: childId, containerId: null })
     })
   },

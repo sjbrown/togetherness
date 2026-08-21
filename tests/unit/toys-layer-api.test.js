@@ -74,7 +74,7 @@ describe('find', () => {
     const el = L.find('die1')
     expect(el.nodeType).toBe(1)
     expect(el.localName).toBe('g')
-    expect(el.getAttribute('data-toy-id')).toBe('die1')
+    expect(el.getAttribute('data-id')).toBe('die1')
   })
 
   test('null for an unknown id', async () => {
@@ -186,8 +186,8 @@ describe('gestures also land in the operation log', () => {
     applyWire(invert(op.mutations), peer)
     applyWire(op.mutations, peer)
 
-    expect(peer.querySelector('[data-toy-id="die1"] > svg').getAttribute('x'))
-      .toBe(layerEl.querySelector('[data-toy-id="die1"] > svg').getAttribute('x'))
+    expect(peer.querySelector('[data-id="die1"] > svg').getAttribute('x'))
+      .toBe(layerEl.querySelector('[data-id="die1"] > svg').getAttribute('x'))
   })
 
   test('without a tableId, no operation is recorded', async () => {
@@ -215,7 +215,7 @@ describe('importToys — live-table SVG import (REVISION_PLAN.md C5)', () => {
       'image/svg+xml').documentElement
   }
 
-  const FOREIGN_TOY_G = `<g class="toy" data-toy-id="t1" data-toy-type="imported_toy">
+  const FOREIGN_TOY_G = `<g class="toy" data-id="t1" data-toy-type="imported_toy">
       <svg x="0" y="0" width="64" height="64" viewBox="0 0 80 100"><circle r="5"/></svg>
     </g>`
 
@@ -231,7 +231,7 @@ describe('importToys — live-table SVG import (REVISION_PLAN.md C5)', () => {
     const op = getOps(ydoc).get(getHead(TABLE))
     expect(op.gesture).toBe('import')
     expect(op.parents).toEqual([before])
-    expect(layerEl.querySelector('[data-toy-id="t1"]')).not.toBeNull()
+    expect(layerEl.querySelector('[data-id="t1"]')).not.toBeNull()
   })
 
   test('a peer who only has the op log sees the imported toy too', async () => {
@@ -245,7 +245,7 @@ describe('importToys — live-table SVG import (REVISION_PLAN.md C5)', () => {
     fresh.id = 'toys-layer'
     projectLayer(ydoc, fresh, { tableId: 'peer-table', authorId: 'user-b' })
 
-    expect(fresh.querySelector('[data-toy-id="t1"]')).not.toBeNull()
+    expect(fresh.querySelector('[data-id="t1"]')).not.toBeNull()
   })
 
   test('no valid toys to import records no operation', async () => {
@@ -307,8 +307,8 @@ describe('projectLayer', () => {
     fresh.id = 'toys-layer'
     projectLayer(ydoc, fresh, { tableId: TABLE, authorId: 'user-a' })
 
-    expect(fresh.querySelector('[data-toy-id="die1"] > svg').getAttribute('x'))
-      .toBe(layerEl.querySelector('[data-toy-id="die1"] > svg').getAttribute('x'))
+    expect(fresh.querySelector('[data-id="die1"] > svg').getAttribute('x'))
+      .toBe(layerEl.querySelector('[data-id="die1"] > svg').getAttribute('x'))
   })
 
   test('genesis is written once, not on every projection', async () => {
@@ -337,7 +337,7 @@ describe('placeToy', () => {
     await placeToy(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 50, y: 50, color: '#fff' },
                    { authorId: 'user-a', tableId: TABLE })
 
-    expect(layerEl.querySelector('[data-toy-id="die1"]')).toBeTruthy()
+    expect(layerEl.querySelector('[data-id="die1"]')).toBeTruthy()
     const op = getOps(ydoc).get(getHead(TABLE))
     expect(op.gesture).toBe('place')
     expect(op.mutations.length).toBeGreaterThan(0)
@@ -365,7 +365,7 @@ describe('placeToy', () => {
     }
     const placements = [...getOps(ydoc).values()].filter(o => o.gesture === 'place')
     expect(placements.length).toBe(2)
-    expect(layerEl.querySelectorAll('[data-toy-id]').length).toBe(2)
+    expect(layerEl.querySelectorAll('[data-toy-type]').length).toBe(2)
   })
 })
 
@@ -751,12 +751,12 @@ describe('undoToyGesture / redoToyGesture', () => {
     const { ydoc, layerEl, L } = await seeded()
     L.applyMoveCommit(L.find('die1'), 500, 500)
     L.delete('die1')
-    expect(layerEl.querySelector('[data-toy-id="die1"]')).toBeNull()
+    expect(layerEl.querySelector('[data-id="die1"]')).toBeNull()
 
     const op = undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
 
     expect(op).not.toBeNull()
-    expect(layerEl.querySelector('[data-toy-id="die1"]')).not.toBeNull()
+    expect(layerEl.querySelector('[data-id="die1"]')).not.toBeNull()
     // Resurrected at the position it held right before the delete — the
     // move is untouched; undo reversed the delete, not the move before it.
     expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 500, cy: 500 })
@@ -774,7 +774,7 @@ describe('undoToyGesture / redoToyGesture', () => {
     const op = undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
 
     expect(op).toBeNull()
-    expect(layerEl.querySelector('[data-toy-id="die1"]')).toBeNull()
+    expect(layerEl.querySelector('[data-id="die1"]')).toBeNull()
   })
 
   test('undo/redo/undo/redo round-trips cleanly', async () => {
@@ -896,17 +896,17 @@ describe('deleteToysBatch / moveToysBatch — one op for a multi-select action',
     expect(op).not.toBeNull()
     expect(op.gesture).toBe('delete-batch')
     expect([...getOps(ydoc).values()].length).toBe(before + 1)
-    expect(layerEl.querySelectorAll('[data-toy-id]').length).toBe(0)
+    expect(layerEl.querySelectorAll('[data-toy-type]').length).toBe(0)
   })
 
   test('undo reverses the whole batch in one press', async () => {
     const { ydoc, layerEl } = await seededTwo()
     deleteToysBatch(ydoc, layerEl, ['die1', 'die2'], { authorId: 'user-a', tableId: TABLE })
-    expect(layerEl.querySelectorAll('[data-toy-id]').length).toBe(0)
+    expect(layerEl.querySelectorAll('[data-toy-type]').length).toBe(0)
 
     undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
 
-    expect(layerEl.querySelectorAll('[data-toy-id]').length).toBe(2)
+    expect(layerEl.querySelectorAll('[data-toy-type]').length).toBe(2)
   })
 
   test('null when every id in the batch is already gone', async () => {

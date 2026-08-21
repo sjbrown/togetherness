@@ -7,7 +7,7 @@
  * contents) merge at the attribute/child level.
  *
  * yToys (XmlFragment)
- *  └─ <g class="toy" data-toy-id data-toy-type data-color>  ← placement + state
+ *  └─ <g class="toy" data-id data-toy-type data-color>  ← placement + state
  *      └─ <svg x y width height viewBox>                    ← the live toy sub-document
  *          └─ ...toy content (defs, paths, tspans, <script>, ...)
  *      (optional)
@@ -155,7 +155,9 @@ export function parseForeignNode(node, ctx = {}) {
   if (elementId) elementId = idMap.get(elementId) ?? elementId
   else if (mintId) elementId = mint()
 
-  const dataId = node.getAttribute('data-id') || elementId || mint()
+  let dataId = node.getAttribute('data-id')
+  if (dataId) dataId = idMap.get(dataId) ?? dataId
+  dataId = dataId || elementId || mint()
 
   const attrs = []
   if (elementId) attrs.push(['id', elementId])
@@ -236,9 +238,9 @@ export function normalizeForeignToySubtree(el, ctx) {
 
 /**
  * Toy contract for a DOM element arriving from outside the document (an
- * imported .svg's toys-layer child): <g class="toy" data-toy-id
- * data-toy-type> with ≥1 <svg> child. Anything else found directly inside
- * #toys-layer is invalid.
+ * imported .svg's toys-layer child): <g class="toy" data-toy-type> with
+ * ≥1 <svg> child. Anything else found directly inside #toys-layer is
+ * invalid.
  *
  * data-id, id=, data-module, and .$() are never checked here and never
  * required — they're rendering/dispatch conveniences recomputed fresh by
@@ -248,7 +250,6 @@ export function normalizeForeignToySubtree(el, ctx) {
 export function isForeignToyG(el) {
   return el.localName === 'g' &&
          el.classList.contains('toy') &&
-         el.getAttribute('data-toy-id') &&
          el.getAttribute('data-toy-type') &&
          el.querySelector(':scope > svg')
 }
@@ -476,7 +477,6 @@ export function buildToyDom(attrs, svgText) {
 
   const g = document.createElementNS(SVG_NS, 'g')
   g.setAttribute('class',         'toy')
-  g.setAttribute('data-toy-id',   id)
   g.setAttribute('data-toy-type', toyType)
   g.setAttribute('data-color',    color ?? '#888')
   g.setAttribute('data-id',       id)
@@ -531,10 +531,10 @@ export async function addToy(ydoc, layerEl, attrs) {
 }
 
 /**
- * <g class="toy" data-toy-id="...">,
+ * <g class="toy" data-toy-type="...">,
  */
 function isToyBoundaryEl(el) {
-  return !!el?.hasAttribute?.('data-toy-id') &&
+  return !!el?.hasAttribute?.('data-toy-type') &&
          (el.tagName === 'g' || el.classList?.contains('toy'))
 }
 
@@ -551,15 +551,17 @@ function isToyBoundaryEl(el) {
  * container).
  */
 function cloneToyBoundary(sourceEl, newId, cloned) {
-  const sourceId  = sourceEl.getAttribute('data-toy-id')
+  const sourceId  = sourceEl.getAttribute('data-id')
   const oldPrefix = `${sourceId}__`
   const newPrefix = `${newId}__`
   const toyType   = sourceEl.getAttribute('data-toy-type')
   const color     = sourceEl.getAttribute('data-color')
 
-  // idMap covers only ids in THIS instance's own scope. The walk below
-  // stops at any nested toy boundary — that gets its own scope via the
-  // recursive cloneToyBoundary call in cloneNode, not this one.
+  // Both id and data-id go through the same map: every source element
+  // already carries a data-id (stamped at its own original placement),
+  // and parseForeignNode's default behaviour is to copy that verbatim.
+  // That would cause problems, the source subtree staying live in the document
+  // right alongside its clone.
   const idMap = new Map()
   const mapId = (id) => {
     const suffix = id.startsWith(oldPrefix) ? id.slice(oldPrefix.length) : id
@@ -567,10 +569,15 @@ function cloneToyBoundary(sourceEl, newId, cloned) {
   }
   const sourceSvg = sourceEl.querySelector(':scope > svg')
   if (sourceSvg.getAttribute('id')) mapId(sourceSvg.getAttribute('id'))
+  if (sourceSvg.getAttribute('data-id')) mapId(sourceSvg.getAttribute('data-id'))
   ;(function collectOwnIds(el) {
+    // idMap covers only ids in THIS instance's own scope. The walk
+    // stops at any nested toy boundary -- that gets its own scope via the
+    // recursive cloneToyBoundary call in cloneNode, not this one.
     for (const child of el.children) {
       if (isToyBoundaryEl(child)) continue
       if (child.getAttribute('id')) mapId(child.getAttribute('id'))
+      if (child.getAttribute('data-id')) mapId(child.getAttribute('data-id'))
       collectOwnIds(child)
     }
   })(sourceSvg)
@@ -615,7 +622,6 @@ function cloneToyBoundary(sourceEl, newId, cloned) {
 
   const g = document.createElementNS(SVG_NS, 'g')
   g.setAttribute('class',         'toy')
-  g.setAttribute('data-toy-id',   newId)
   g.setAttribute('data-toy-type', toyType)
   if (color) g.setAttribute('data-color', color)
   g.setAttribute('data-id',       newId)
@@ -886,7 +892,7 @@ export function getContentsGroup(domEl) {
 }
 
 export function getLandingPosition(containerEl) {
-  const containerId = containerEl?.getAttribute('data-toy-id')
+  const containerId = containerEl?.getAttribute('data-id')
   const circle = containerId && containerEl.querySelector(`.${containerId}__tt_positions circle`)
   if (!circle) return null
   return {
@@ -1229,11 +1235,11 @@ export function applyResizeDom(domEl, x, y, width, height) {
 // ── scoped id lookup for toy handler code ($) ───────────────────────────────
 //
 // Ids are namespaced per instance (see elementToYXml) so placed toys never
-// collide, but that means a bare selector like '#pie4' — the natural way
-// to write toy handler code — won't match. rootEl.$(selector) rewrites
+// collide, but that means a bare selector like '#pie4', the natural way
+// to write toy handler code, won't match. rootEl.$(selector) rewrites
 // every #token in the selector to the instance's namespaced id first, then
 // queries from the toy's root <g>. A handler holding a nested element can
-// reach it via elem.closest('[data-toy-id]').$(...).
+// reach it via elem.closest('g.toy').$(...)
 const ID_TOKEN_RE = /#([\w-]+)/g
 
 function rewriteSelector(selector, toyId) {
@@ -1263,12 +1269,12 @@ function toyData(svgEl) {
 
 /** A toy's rendered <g> wrapper, by toy id. Top level only, like findToy. */
 export function findToyDom(layerEl, id) {
-  return layerEl?.querySelector(`:scope > [data-toy-id="${id}"]`) ?? null
+  return layerEl?.querySelector(`:scope > [data-id="${id}"]`) ?? null
 }
 
 /** Every top-level toy wrapper in z-order. */
 export function listToysDom(layerEl) {
-  return layerEl ? [...layerEl.querySelectorAll(':scope > [data-toy-id]')] : []
+  return layerEl ? [...layerEl.querySelectorAll(':scope > g.toy')] : []
 }
 
 export function toysDataDom(layerEl) {
@@ -1278,7 +1284,7 @@ export function toysDataDom(layerEl) {
 /** getTtState against the rendered DOM rather than the Yjs tree. */
 export function getTtStateDom(toyEl) {
   if (!toyEl) return null
-  const id      = toyEl.getAttribute('data-toy-id')
+  const id      = toyEl.getAttribute('data-id')
   const toyType = toyEl.getAttribute('data-toy-type')
   const color   = toyEl.getAttribute('data-color') ?? '#888'
   const svgEl   = toyEl.querySelector(':scope > svg')
@@ -1403,7 +1409,7 @@ export const TOY_TYPES = {
  * part of the Yjs tree and always in sync with the CRDT state.
  */
 export function getTtStateSchema(svgEl) {
-  const toyId = svgEl.getAttribute?.('data-toy-id')
+  const toyId = svgEl.getAttribute?.('data-id')
   if (!toyId) return null
   // Find elem's own '.tt_name' element — boundary-safe via id-prefix
   // matching, don't accidentally match a tt_contents-contained toy.
@@ -1429,7 +1435,7 @@ export function getTtStateSchema(svgEl) {
  */
 export function getTtState(yToy) {
   if (!yToy) return null;
-  const id      = yToy.getAttribute('data-toy-id');
+  const id      = yToy.getAttribute('data-id');
   const toyType = yToy.getAttribute('data-toy-type');
   const color   = yToy.getAttribute('data-color') ?? '#888';
   const ySvg    = yToy.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'svg');

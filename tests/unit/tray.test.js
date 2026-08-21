@@ -131,7 +131,7 @@ describe('tray.js — visit_contents', () => {
     const children = childIds.map(id => {
       const child = document.createElementNS(SVG_NS, 'g')
       child.classList.add('toy')
-      child.setAttribute('data-toy-id', id)
+      child.setAttribute('data-id', id)
       group.appendChild(child)
       return child
     })
@@ -142,7 +142,7 @@ describe('tray.js — visit_contents', () => {
     ;(0, eval)(TRAY_JS)
     const { elem, children } = makeTrayWithContents(['a', 'b', 'c'])
     const seen = []
-    tray.visit_contents(elem, (child) => seen.push(child.getAttribute('data-toy-id')))
+    tray.visit_contents(elem, (child) => seen.push(child.getAttribute('data-id')))
     expect(seen).toEqual(['a', 'b', 'c'])
   })
 
