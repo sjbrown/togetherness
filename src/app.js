@@ -1268,7 +1268,7 @@ const App = {
       await Toys.activateToyScripts(_ydoc, def.toyType);
       const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
       if (svgEl && layerEl) {
-        Toys.initializeToy(_ydoc, layerEl, svgEl, def.toyType, _myId, _tableId);
+        Toys.initializeToy(_ydoc, layerEl, svgEl, def.toyType, _myId, _tableId, _toolParams[toolName]?.value);
       }
     }).catch(err => {
       UI.toast(`Failed to place ${def.label}`, 'warn');

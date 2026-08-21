@@ -1319,9 +1319,10 @@ export const TOOLS = [
     label: 'Chip',
     iconUrl: 'toy/chip.svg',
     layer:   'toys',
-    defaults: { fill: '#f8f8e5' },
+    defaults: { fill: '#f8f8e5', value: 5 },
     options: [
       { kind: 'color-hsl', key: 'fill', label: 'Chip color', show: ['add', 'edit', 'addQuick'] },
+      { kind: 'number', key: 'value', label: 'Chip value', min: 1, max: 25, step: 1, show: ['add'] },
     ],
   },
   {
