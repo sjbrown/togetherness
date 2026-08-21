@@ -482,10 +482,13 @@ function renderSchemaField(key, value, typeSpec, ctx) {
     const hasRange = min !== undefined && max !== undefined;
     if (mode === 'edit') {
       if (hasRange) {
-        return `<div class="field"><label>${key}</label><input type="range" value="${value ?? min}"
+        return `<div class="field"><label>${key}</label><div style="display:flex;align-items:center;gap:10px">
+          <input type="range" value="${value ?? min}"
           min="${min}" max="${max}" step="${step}"
-          style="width:100%;accent-color:var(--accent)"
-          oninput="App.commitEdit('${ctx.id}',{'${key}':Number(this.value)})"/></div>`;
+          style="flex:1;accent-color:var(--accent)"
+          oninput="App.commitEdit('${ctx.id}',{'${key}':Number(this.value)})"/>
+          <span style="font-size:12px;color:var(--text-3);font-family:ui-monospace,monospace;min-width:2ch;text-align:right">${value ?? min}</span>
+          </div></div>`;
       }
       return `<div class="field"><label>${key}</label><input type="number" value="${value ?? 0}"
         ${min !== undefined ? `min="${min}"` : ''} step="${step}"
@@ -493,9 +496,12 @@ function renderSchemaField(key, value, typeSpec, ctx) {
         onchange="App.commitEdit('${ctx.id}',{'${key}':Number(this.value)})"/></div>`;
     } else {
       if (hasRange) {
-        return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><input type="range" min="${min}" max="${max}" step="${step}" value="${value ?? min}"
-          style="accent-color:var(--accent)"
-          oninput="App.setToolParam('${ctx.toolName}','${key}',Number(this.value));UI.refreshToolOpts()"></div>`;
+        return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><span style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+          <input type="range" min="${min}" max="${max}" step="${step}" value="${value ?? min}"
+          style="flex:1;accent-color:var(--accent)"
+          oninput="App.setToolParam('${ctx.toolName}','${key}',Number(this.value));UI.refreshToolOpts()">
+          <span style="font-size:12px;color:var(--text-3);font-family:ui-monospace,monospace;min-width:2ch;text-align:right">${value ?? min}</span>
+          </span></div>`;
       }
       return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><input type="number" value="${value ?? 0}"
         ${min !== undefined ? `min="${min}"` : ''} step="${step}"

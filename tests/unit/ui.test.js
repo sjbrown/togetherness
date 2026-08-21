@@ -155,6 +155,20 @@ describe('SELECT_TOOL multi option — show surfaces', () => {
     const checkbox = div.querySelector('input[type="checkbox"]')
     expect(checkbox).not.toBeNull()
   })
+
+  test('toolOptsHTML renders a numeric readout next to a min+max range field, showing the current value', () => {
+    const schema = {
+      types:  { value: { kind: 'number', min: 1, max: 25, step: 1, show: ['add', 'addQuick'] } },
+      values: { value: 17 },
+    }
+    const html = toolOptsHTML({ label: 'Chip', toolName: 'chip', schema, values: { value: 17 } })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const range = div.querySelector('input[type="range"]')
+    expect(range).not.toBeNull()
+    expect(range.value).toBe('17')
+    expect(div.textContent).toContain('17') // the visible numeric readout
+  })
 })
 
 
