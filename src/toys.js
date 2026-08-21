@@ -1368,9 +1368,10 @@ export const TOOLS = [
     label: 'Token',
     iconUrl: 'toy/token_glass.svg',
     layer:   'toys',
-    defaults: { fill: '#fa2020' },
+    defaults: { fill: '#fa2020', value: 0 },
     options: [
       { kind: 'color-hsl', key: 'fill', label: 'Token color', show: ['add', 'edit', 'addQuick'] },
+      { kind: 'number', key: 'value', label: 'Token style', min: 0, max: 24, step: 1, show: ['add'] },
     ],
   },
 ];
