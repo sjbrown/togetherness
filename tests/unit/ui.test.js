@@ -168,6 +168,13 @@ describe('SELECT_TOOL multi option — show surfaces', () => {
     expect(range).not.toBeNull()
     expect(range.value).toBe('17')
     expect(div.textContent).toContain('17') // the visible numeric readout
+
+    // The readout must update via a direct DOM write on the slider's own
+    // 'oninput', not by waiting on a panel re-render: this field lives in
+    // the Tools panel sheet (mode 'add'), where UI.refreshToolOpts() is a
+    // no-op (it only repaints the separate addQuick popup) — so a
+    // refresh-only readout would never move as the user drags.
+    expect(range.getAttribute('oninput')).toMatch(/nextElementSibling\.textContent\s*=\s*this\.value/)
   })
 })
 

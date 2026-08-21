@@ -486,8 +486,8 @@ function renderSchemaField(key, value, typeSpec, ctx) {
           <input type="range" value="${value ?? min}"
           min="${min}" max="${max}" step="${step}"
           style="flex:1;accent-color:var(--accent)"
-          oninput="App.commitEdit('${ctx.id}',{'${key}':Number(this.value)})"/>
-          <span style="font-size:12px;color:var(--text-3);font-family:ui-monospace,monospace;min-width:2ch;text-align:right">${value ?? min}</span>
+          oninput="this.nextElementSibling.textContent=this.value;App.commitEdit('${ctx.id}',{'${key}':Number(this.value)})"/>
+          <span class="range-value" style="font-size:12px;color:var(--text-3);font-family:ui-monospace,monospace;min-width:2ch;text-align:right">${value ?? min}</span>
           </div></div>`;
       }
       return `<div class="field"><label>${key}</label><input type="number" value="${value ?? 0}"
@@ -499,8 +499,8 @@ function renderSchemaField(key, value, typeSpec, ctx) {
         return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><span style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
           <input type="range" min="${min}" max="${max}" step="${step}" value="${value ?? min}"
           style="flex:1;accent-color:var(--accent)"
-          oninput="App.setToolParam('${ctx.toolName}','${key}',Number(this.value));UI.refreshToolOpts()">
-          <span style="font-size:12px;color:var(--text-3);font-family:ui-monospace,monospace;min-width:2ch;text-align:right">${value ?? min}</span>
+          oninput="this.nextElementSibling.textContent=this.value;App.setToolParam('${ctx.toolName}','${key}',Number(this.value));UI.refreshToolOpts()">
+          <span class="range-value" style="font-size:12px;color:var(--text-3);font-family:ui-monospace,monospace;min-width:2ch;text-align:right">${value ?? min}</span>
           </span></div>`;
       }
       return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><input type="number" value="${value ?? 0}"
