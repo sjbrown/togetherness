@@ -557,22 +557,11 @@ function cloneToyBoundary(sourceEl, newId, cloned) {
   const toyType   = sourceEl.getAttribute('data-toy-type')
   const color     = sourceEl.getAttribute('data-color')
 
-  // idMap covers only ids in THIS instance's own scope. The walk below
-  // stops at any nested toy boundary — that gets its own scope via the
-  // recursive cloneToyBoundary call in cloneNode, not this one.
-  //
   // Both id and data-id go through the same map: every source element
   // already carries a data-id (stamped at its own original placement),
-  // and parseForeignNode's default behaviour is to copy that verbatim —
-  // exactly right for a reimported toy, but fatal here, where the source
-  // subtree stays live in the document right alongside its clone. Two
-  // elements sharing one data-id makes every later data-id lookup
-  // (nodeRef/resolveRef, the whole op-log wire format) ambiguous: it
-  // resolves to whichever of the two comes first in document order,
-  // silently misrouting mutations meant for the clone onto the original
-  // — invisible locally (live code holds direct element references) but
-  // wrong the moment the mutation is serialized and replayed elsewhere,
-  // e.g. after a page reload.
+  // and parseForeignNode's default behaviour is to copy that verbatim.
+  // That would cause problems, the source subtree staying live in the document
+  // right alongside its clone.
   const idMap = new Map()
   const mapId = (id) => {
     const suffix = id.startsWith(oldPrefix) ? id.slice(oldPrefix.length) : id
@@ -582,6 +571,9 @@ function cloneToyBoundary(sourceEl, newId, cloned) {
   if (sourceSvg.getAttribute('id')) mapId(sourceSvg.getAttribute('id'))
   if (sourceSvg.getAttribute('data-id')) mapId(sourceSvg.getAttribute('data-id'))
   ;(function collectOwnIds(el) {
+    // idMap covers only ids in THIS instance's own scope. The walk
+    // stops at any nested toy boundary -- that gets its own scope via the
+    // recursive cloneToyBoundary call in cloneNode, not this one.
     for (const child of el.children) {
       if (isToyBoundaryEl(child)) continue
       if (child.getAttribute('id')) mapId(child.getAttribute('id'))
@@ -1243,11 +1235,11 @@ export function applyResizeDom(domEl, x, y, width, height) {
 // ── scoped id lookup for toy handler code ($) ───────────────────────────────
 //
 // Ids are namespaced per instance (see elementToYXml) so placed toys never
-// collide, but that means a bare selector like '#pie4' — the natural way
-// to write toy handler code — won't match. rootEl.$(selector) rewrites
+// collide, but that means a bare selector like '#pie4', the natural way
+// to write toy handler code, won't match. rootEl.$(selector) rewrites
 // every #token in the selector to the instance's namespaced id first, then
 // queries from the toy's root <g>. A handler holding a nested element can
-// reach it via elem.closest('[data-toy-type]').$(...).
+// reach it via elem.closest('g.toy').$(...)
 const ID_TOKEN_RE = /#([\w-]+)/g
 
 function rewriteSelector(selector, toyId) {
@@ -1282,7 +1274,7 @@ export function findToyDom(layerEl, id) {
 
 /** Every top-level toy wrapper in z-order. */
 export function listToysDom(layerEl) {
-  return layerEl ? [...layerEl.querySelectorAll(':scope > [data-toy-type]')] : []
+  return layerEl ? [...layerEl.querySelectorAll(':scope > g.toy')] : []
 }
 
 export function toysDataDom(layerEl) {
