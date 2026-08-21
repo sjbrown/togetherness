@@ -92,6 +92,27 @@ el.addEventListener('range-changed', (event) => {
 }
 ```
 
+### `range-committed`
+
+Emitted once when the gesture actually ends — the native `change` event
+under the hood, which fires on mouse release (not on every drag tick) or
+after a keyboard nudge. Same detail shape as `range-changed`.
+
+Use this instead of `range-changed` for anything that should only happen
+once per interaction rather than on every tick — most importantly, writing
+to a shared or synced data store. Committing on every `input` tick and
+having that trigger a re-render of an ancestor containing this element
+will tear down and rebuild the live `<input>` out from under an
+in-progress drag, breaking the browser's own drag tracking on it (see
+"Why `value` gets a cheap update path" below — this is the same failure
+mode one level up, and `range-committed` exists so a consumer doesn't have
+to reinvent input-vs-change debouncing to avoid it).
+
+```javascript
+el.addEventListener('range-changed', (e) => updateLocalPreview(e.detail.value));
+el.addEventListener('range-committed', (e) => saveToServer(e.detail.value));
+```
+
 ## Examples
 
 ### A 1-25 die-style value picker

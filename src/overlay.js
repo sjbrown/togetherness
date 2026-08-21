@@ -590,6 +590,74 @@ export function endResizeGhost(elId) {
   render();
 }
 
+// ── Attribute ghosts ─────────────────────────────────────────────────────────
+// Live preview for a plain attribute tweak (e.g. a drawing shape's
+// stroke-width) that changes no geometry — same rationale as the resize
+// ghost above: the real element can be wiped out mid-gesture by any peer's
+// Yjs transaction (a full toys/drawing-layer rebuild), so the live preview
+// lives on a detached clone that survives render() calls, not the real
+// element. Simpler than the resize ghost's two-copy scheme: since nothing
+// moves or resizes, the dim placeholder and the bright ghost sit at the
+// exact same footprint as the real element, so the ghost (drawn after, at
+// z-top) fully occludes the placeholder AND the real element beneath it —
+// net visual effect is just the live preview, no double-vision, with no
+// separate hide/show step needed for the real element.
+// Map<elId, { placeholderEl, ghostEl }>
+const _attrGhosts = new Map();
+
+/**
+ * Begin a local attribute preview. Creates a dim placeholder at the
+ * element's committed state (mirrors startResizeGhost) and a live clone to
+ * preview attribute changes into. No-op if a ghost for this elId already
+ * exists, or if the element can't be found — safe to call on every tick of
+ * a gesture, not just the first (see App.previewField).
+ */
+export function startAttrGhost(elId) {
+  if (!_layerEl || _attrGhosts.has(elId)) return;
+  const liveEl = _svgEl?.querySelector(`[data-id="${elId}"]`);
+  if (!liveEl) return;
+
+  const placeholderEl = el('use', {});
+  placeholderEl.setAttribute('href', `#${elId}`);
+  placeholderEl.setAttribute('filter', 'url(#drag-placeholder-filter)');
+
+  const ghostEl = liveEl.cloneNode(true);
+  ghostEl.removeAttribute('id');
+
+  _attrGhosts.set(elId, { placeholderEl, ghostEl });
+  render();
+}
+
+/**
+ * Set one attribute on the live ghost clone. attr is the real SVG
+ * attribute name (already resolved from any schema-key alias by the
+ * caller — see App.previewField) — this function is deliberately generic
+ * over what attribute or element type it's touching, the same way
+ * updateResizeGhost's rect/circle/svg branches are the only place that
+ * needs to know shape-specific structure.
+ */
+export function updateAttrGhost(elId, attr, value) {
+  const entry = _attrGhosts.get(elId);
+  if (!entry) return;
+  entry.ghostEl.setAttribute(attr, value);
+}
+
+/**
+ * End a local attribute preview (commit or cancel). Removes the
+ * ghost/placeholder and triggers a render so the (now-committed, or
+ * reverted) real element takes over. Same ordering requirement as
+ * endResizeGhost: call this AFTER a real attribute change lands, not
+ * before.
+ */
+export function endAttrGhost(elId) {
+  const entry = _attrGhosts.get(elId);
+  if (!entry) return;
+  entry.placeholderEl.remove();
+  entry.ghostEl.remove();
+  _attrGhosts.delete(elId);
+  render();
+}
+
 // ── Drop-target hover
 // The el id currently under a toy being dragged, or null. Set by
 // App.move() on every pointermove while dragging a toy (re-hit-tested each
@@ -671,6 +739,9 @@ export function render() {
     _layerEl.appendChild(entry.placeholderEl);
   }
   for (const entry of _resizeGhosts.values()) {
+    _layerEl.appendChild(entry.placeholderEl);
+  }
+  for (const entry of _attrGhosts.values()) {
     _layerEl.appendChild(entry.placeholderEl);
   }
   for (const [elId] of _remoteDrags) {
@@ -763,6 +834,11 @@ export function render() {
   for (const entry of _resizeGhosts.values()) {
     _layerEl.appendChild(entry.ghostEl);
     _layerEl.appendChild(entry.ringEl);
+  }
+
+  // ── Local attribute-preview ghosts — z-top ─────────────────────────────
+  for (const entry of _attrGhosts.values()) {
+    _layerEl.appendChild(entry.ghostEl);
   }
 
   renderBowstringCharge(scale);

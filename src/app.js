@@ -288,6 +288,12 @@ let _multiDragState = null;  // { elements: [{ id, mtype, anchorX, anchorY, bbox
 let _resizeState = null;    // { id, corner, startRect: {x,y,width,height},
                             //   lastRect: {x,y,width,height} } | null
 
+// Active Edit-panel field preview (see App.previewField). Mirrors
+// _resizeState's role: bookkeeping for cancelFieldPreview, not required
+// for the ghost's own idempotency (Overlay.startAttrGhost already no-ops
+// once a ghost exists for an id).
+let _fieldPreviewState = null; // { id, key, mtype } | null
+
 // Which undo mechanism App.undo/App.redo should invoke: the toys op log
 // (Toys.undoToyGesture) or the drawing/boundaries Y.UndoManager
 // (UndoRedo.undo). Set at every commit callsite to whichever the action
@@ -1236,6 +1242,59 @@ const App = {
     // observeDeep fires synchronously
     // Refresh the Edit panel body to show the updated values.
     UI.refreshFromDoc();
+  },
+
+  // ── Edit-panel field preview (ghost, no Yjs write) ────────────────────────
+  // Same shape as the resize lifecycle above (startResize/resize/
+  // commitResize/cancelResize): a live-updating Edit panel field (currently
+  // just range-ticked sliders — see ui.js's wireRangeTicked 'edit' branch)
+  // would otherwise call commitEdit on every tick, and commitEdit's
+  // UI.refreshFromDoc() rebuilds #panelBody's whole innerHTML synchronously
+  // on every one of those — including the very <range-ticked> element the
+  // user has their mouse on mid-drag, killing the browser's native
+  // slider-drag tracking on it. previewField instead only mutates a
+  // detached ghost clone on the Overlay layer (Overlay.startAttrGhost/
+  // updateAttrGhost — see overlay.js for why a clone, not the real
+  // element); #panelBody is never touched until commitFieldPreview writes
+  // the real Yjs change once, at gesture end.
+  //
+  // lifecycle: previewField (every tick, lazily starts the ghost on the
+  //            first call) / commitFieldPreview (once, on release) /
+  //            cancelFieldPreview (discard, no Yjs write)
+
+  previewField: (id, key, value) => {
+    const domEl = _svgEl?.querySelector(`[data-id="${id}"]`);
+    if (!domEl) return;
+    const mtype = moduleForElement(domEl);
+    // Only drawing shapes have a schema-key -> SVG-attribute alias (e.g.
+    // corner-r -> rx — see drawing.js's SHAPE_TYPES attrMap); everywhere
+    // else the schema key already is the attribute name. Ghost-previewing
+    // a field with no such direct attribute (e.g. boun_pos's snapRadius,
+    // which recomputes several nested circles) is a harmless no-op here —
+    // the clone just doesn't visually change — but this call still fixes
+    // the actual bug for those fields too, since it's still the only
+    // thing standing between the drag and a per-tick Yjs write.
+    const svgAttr = mtype === 'drawing'
+      ? (Drawing.SHAPE_TYPES[domEl.tagName]?.attrMap?.[key] ?? key)
+      : key;
+    _fieldPreviewState = { id, key, mtype };
+    Overlay.startAttrGhost(id);
+    Overlay.updateAttrGhost(id, svgAttr, value);
+  },
+
+  commitFieldPreview: (id, key, value) => {
+    _fieldPreviewState = null;
+    App.commitEdit(id, { [key]: value });
+    // Ghost ends after the commit — same ordering requirement as
+    // commitResize: endAttrGhost's own render() paints whatever the DOM
+    // currently shows, so it has to run after the real change lands.
+    Overlay.endAttrGhost(id);
+  },
+
+  cancelFieldPreview: (id) => {
+    if (!_fieldPreviewState || _fieldPreviewState.id !== id) return;
+    _fieldPreviewState = null;
+    Overlay.endAttrGhost(id);
   },
 
   /**

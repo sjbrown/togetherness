@@ -114,6 +114,30 @@ test('dragging fires range-changed with the new numeric value on every input tic
   expect(received).toEqual([{ value: 12 }, { value: 13 }])
 })
 
+test('range-committed fires once on the native "change" (gesture end), not on every input tick', () => {
+  const el = makeRangeTicked({ min: '1', max: '25', step: '1', value: '5' })
+  const input = el.shadowRoot.querySelector('input')
+  const changed   = []
+  const committed = []
+  el.addEventListener('range-changed',   e => changed.push(e.detail))
+  el.addEventListener('range-committed', e => committed.push(e.detail))
+
+  // Three ticks of a drag...
+  input.value = '10'
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  input.value = '15'
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  input.value = '19'
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  expect(changed).toHaveLength(3)
+  expect(committed).toHaveLength(0) // nothing committed mid-drag
+
+  // ...then the mouse is released — the browser fires 'change' once.
+  input.dispatchEvent(new Event('change', { bubbles: true }))
+  expect(committed).toEqual([{ value: 19 }])
+  expect(changed).toHaveLength(3) // 'change' does not also re-fire range-changed
+})
+
 test('dragging reflects the new value onto .value/getValue()/the value attribute', () => {
   const el = makeRangeTicked({ min: '1', max: '25', step: '1', value: '5' })
   const input = el.shadowRoot.querySelector('input')
