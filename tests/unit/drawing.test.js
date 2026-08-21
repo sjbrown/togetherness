@@ -86,6 +86,14 @@ describe('SHAPE_TYPES registry', () => {
     expect(s).toContain('50')
   })
 
+  test('stroke-width range is 0.5-10, excluding 0 — stroke is toggled off via the stroke color control (its "None" swatch), not by zeroing the width', () => {
+    for (const type of ['rect', 'circle']) {
+      expect(SHAPE_TYPES[type].schema.types['stroke-width']).toEqual({
+        kind: 'number', min: 0.5, max: 10, step: 0.5, show: ['edit'],
+      })
+    }
+  })
+
   test('circle label shows radius', () => {
     const s = SHAPE_TYPES.circle.label({ cx: '50', cy: '60', r: '30' })
     expect(s).toContain('30')
