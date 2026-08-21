@@ -80,6 +80,10 @@
   --color-border-tertiary:  var(--border);
   --color-border-secondary: var(--border-2);
   --color-text-primary:     var(--text);
+
+  /* Aliases consumed by <range-ticked> (component/range_ticked.js) */
+  --color-accent:        var(--primary);
+  --color-text-tertiary: var(--text-3);
 }
 
 /* ── Reset & base ─────────────────────────────────────────── */

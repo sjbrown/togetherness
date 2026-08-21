@@ -1325,9 +1325,10 @@ export const TOOLS = [
     label: 'Chip',
     iconUrl: 'toy/chip.svg',
     layer:   'toys',
-    defaults: { fill: '#f8f8e5' },
+    defaults: { fill: '#f8f8e5', value: 5 },
     options: [
       { kind: 'color-hsl', key: 'fill', label: 'Chip color', show: ['add', 'edit', 'addQuick'] },
+      { kind: 'number', key: 'value', label: 'Chip value', min: 1, max: 25, step: 1, show: ['add'] },
     ],
   },
   {
@@ -1373,9 +1374,10 @@ export const TOOLS = [
     label: 'Token',
     iconUrl: 'toy/token_glass.svg',
     layer:   'toys',
-    defaults: { fill: '#fa2020' },
+    defaults: { fill: '#fa2020', value: 0 },
     options: [
       { kind: 'color-hsl', key: 'fill', label: 'Token color', show: ['add', 'edit', 'addQuick'] },
+      { kind: 'number', key: 'value', label: 'Token style', min: 0, max: 24, step: 1, show: ['add'] },
     ],
   },
 ];

@@ -9,7 +9,7 @@ import {
   getGeom, getTtStateSchema, editDom, reparentToyDom, findToyDom,
   hslToRgb, colorMatrixValues,
   _clearSvgTextCache, _resetToyScriptState, activateAllToyScriptsDom,
-  newToyId, _getScriptsFragment,
+  newToyId, _getScriptsFragment, initializeToy,
 } from '../../src/toys.js'
 
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
@@ -22,6 +22,8 @@ const TRAY_SUM_SVG  = fs.readFileSync(path.join(TOY_DIR, 'tray_sum.svg'), 'utf8'
 const TRAY_JS        = fs.readFileSync(path.join(TOY_DIR, 'js/tray.js'), 'utf8')
 const D6_SVG         = fs.readFileSync(path.join(TOY_DIR, 'dice_d6.svg'), 'utf8')
 const DICE_UTILS_JS  = fs.readFileSync(path.join(TOY_DIR, 'js/dice_utils.js'), 'utf8')
+const CHIP_SVG       = fs.readFileSync(path.join(TOY_DIR, 'chip.svg'), 'utf8')
+const TOKEN_GLASS_SVG = fs.readFileSync(path.join(TOY_DIR, 'token_glass.svg'), 'utf8')
 
 // ── Fixtures & helpers ──────────────────────────────────────────────────────
 
@@ -556,6 +558,128 @@ describe('tray_sum: color option + editable name (real assets)', () => {
     expect(outerAfter.name).toBe('outer-loot')       // outer got its own edit
     expect(innerAfter.name).toBe('inner-loot')       // inner's own name untouched
     expect(innerAfter.color).toBe(innerBefore.color) // inner's own color untouched
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// chip: Tools panel value range slider (1-25) → initialize(elem, value)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// app.js's commitToy passes the active tool's 'value' param through as
+// initializeToy's initArgs — untested directly here (see this project's
+// convention of exercising toys.js's own lifecycle contract instead of
+// importing app.js). This covers chip.svg's side of that contract: a
+// numeric initArgs on placement overwrites the template's default tspan
+// text; the clone path (which calls initialize with no initArgs — see
+// supply.test.js) must keep working, i.e. no initArgs must leave the
+// tspan exactly as placed.
+describe('chip: value from the Tools panel range slider (real assets)', () => {
+  const AUTHOR = 'tester'
+  const TABLE  = 'test-table'
+
+  beforeEach(() => {
+    _resetToyScriptState()
+    delete globalThis.chip
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (url === 'toy/chip.svg') return { ok: true, text: async () => CHIP_SVG }
+      throw new Error(`unexpected fetch: ${url}`)
+    }))
+  })
+
+  test('a numeric initArgs sets the tspan to that value, overwriting the template default ("5")', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const chipEl = await addToy(ydoc, layerEl, { id: 'chip1', toyType: 'chip', x: 0, y: 0, color: '#fff' })
+    activateAllToyScriptsDom(ydoc, layerEl)
+    await new Promise(r => setTimeout(r, 0)) // flush fire-and-forget script activation
+
+    initializeToy(ydoc, layerEl, chipEl, 'chip', AUTHOR, TABLE, 17)
+
+    expect(chipEl.querySelector('tspan').textContent).toBe('17')
+  })
+
+  test('no initArgs (e.g. the clone path) leaves the tspan at its placed value', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const chipEl = await addToy(ydoc, layerEl, { id: 'chip1', toyType: 'chip', x: 0, y: 0, color: '#fff' })
+    activateAllToyScriptsDom(ydoc, layerEl)
+    await new Promise(r => setTimeout(r, 0))
+
+    initializeToy(ydoc, layerEl, chipEl, 'chip', AUTHOR, TABLE)
+
+    expect(chipEl.querySelector('tspan').textContent).toBe('5') // template default, untouched
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// token_glass: Tools panel value range slider (0-24) → initialize(elem, value)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Same contract as chip above: app.js's commitToy forwards the active
+// tool's 'value' param as initializeToy's initArgs. token_glass.svg's own
+// side of it picks which of its 24 .game-icon faces (data-token-style-index
+// 1-24) is visible — or, for 0, hides all of them. That 0 case matters:
+// it's the same "nothing showing" state increment() already leaves you in
+// after cycling Value+1 past the last face, so 0 has to mean the same
+// thing on placement as it does mid-game.
+describe('token_glass: value from the Tools panel range slider (real assets)', () => {
+  const AUTHOR = 'tester'
+  const TABLE  = 'test-table'
+
+  beforeEach(() => {
+    _resetToyScriptState()
+    delete globalThis.token_glass
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (url === 'toy/token_glass.svg') return { ok: true, text: async () => TOKEN_GLASS_SVG }
+      throw new Error(`unexpected fetch: ${url}`)
+    }))
+  })
+
+  async function placedToken(ydoc, layerEl) {
+    const tokenEl = await addToy(ydoc, layerEl, { id: 'tok1', toyType: 'token_glass', x: 0, y: 0, color: '#fff' })
+    activateAllToyScriptsDom(ydoc, layerEl)
+    await new Promise(r => setTimeout(r, 0)) // flush fire-and-forget script activation
+    return tokenEl
+  }
+  const visibleIndex = tokenEl => {
+    const vis = tokenEl.querySelector('.game-icon:not([display="none"])')
+    return vis ? Number(vis.getAttribute('data-token-style-index')) : null
+  }
+
+  test('a numeric initArgs of 0 hides every .game-icon — the null case', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const tokenEl = await placedToken(ydoc, layerEl)
+
+    initializeToy(ydoc, layerEl, tokenEl, 'token_glass', AUTHOR, TABLE, 0)
+
+    expect(visibleIndex(tokenEl)).toBeNull()
+  })
+
+  test('a numeric initArgs of N shows only the .game-icon at data-token-style-index N', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const tokenEl = await placedToken(ydoc, layerEl)
+
+    initializeToy(ydoc, layerEl, tokenEl, 'token_glass', AUTHOR, TABLE, 12)
+
+    expect(visibleIndex(tokenEl)).toBe(12)
+    const hidden = [...tokenEl.querySelectorAll('.game-icon')].filter(el => el.getAttribute('data-token-style-index') !== '12')
+    expect(hidden.every(el => el.getAttribute('display') === 'none')).toBe(true)
+  })
+
+  test('no initArgs (e.g. the clone path) leaves the template default untouched — no face visible', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const tokenEl = await placedToken(ydoc, layerEl)
+
+    initializeToy(ydoc, layerEl, tokenEl, 'token_glass', AUTHOR, TABLE)
+
+    // token_glass.svg's own template ships every .game-icon display:none —
+    // increment()'s first click is what reveals face 1. That's the same
+    // null case value 0 produces, so leaving it alone on a no-initArgs
+    // call (e.g. clone) is already correct.
+    expect(visibleIndex(tokenEl)).toBeNull()
   })
 })
 

@@ -5,7 +5,8 @@
 
 // @vitest-environment jsdom
 import { describe, test, expect, vi, beforeEach } from 'vitest'
-import { layerObjectListHTML, refreshLayerList, UIData, init, toast, showBranchDialog, branchDialogJoin, branchDialogKeepWorking, peersBody, openSheet, closePanel, restorePanelState, histBody, onToolChanged } from '../../src/ui.js'
+import { layerObjectListHTML, refreshLayerList, UIData, init, toast, showBranchDialog, branchDialogJoin, branchDialogKeepWorking, peersBody, openSheet, closePanel, restorePanelState, histBody, onToolChanged, editBody } from '../../src/ui.js'
+import { SHAPE_TYPES } from '../../src/drawing.js'
 
 const mockObjects = [
   { id: 'a', label: 'rect',   fill: '#c8941e', kind: 'rect'   },
@@ -90,7 +91,7 @@ describe('refreshLayerList', () => {
 // Pill buttons: double-click → Tools panel; select tool quick opts
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { pillHTML, toolOptsHTML } from '../../src/ui.js'
+import { pillHTML, toolOptsHTML, wireRangeTicked } from '../../src/ui.js'
 import { SELECT_TOOL } from '../../src/tools-schema.js'
 
 const MOCK_TOOLS = [SELECT_TOOL]
@@ -154,6 +155,72 @@ describe('SELECT_TOOL multi option — show surfaces', () => {
     div.innerHTML = html
     const checkbox = div.querySelector('input[type="checkbox"]')
     expect(checkbox).not.toBeNull()
+  })
+
+  test('toolOptsHTML renders a min+max range field as a wired <range-ticked>', () => {
+    const schema = {
+      types:  { value: { kind: 'number', min: 1, max: 25, step: 1, show: ['add', 'addQuick'] } },
+      values: { value: 17 },
+    }
+    const html = toolOptsHTML({ label: 'Chip', toolName: 'chip', schema, values: { value: 17 } })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    // Ticks, the datalist, and the visible label row are <range-ticked>'s
+    // own concern (see tests/unit/range_ticked.test.js) — this only checks
+    // that renderSchemaField hands it the right min/max/step/value and
+    // wires it up for wireRangeTicked to pick up.
+    const rt = div.querySelector('range-ticked')
+    expect(rt).not.toBeNull()
+    expect(rt.getAttribute('min')).toBe('1')
+    expect(rt.getAttribute('max')).toBe('25')
+    expect(rt.getAttribute('step')).toBe('1')
+    expect(rt.getAttribute('value')).toBe('17')
+    expect(rt.hasAttribute('data-rt-wire')).toBe(true)
+    expect(rt.dataset.rtMode).toBe('addQuick')
+    expect(rt.dataset.rtTarget).toBe('chip')
+    expect(rt.dataset.rtKey).toBe('value')
+  })
+
+  test('a range-changed event on a wired <range-ticked> calls App.setToolParam with its value', () => {
+    const schema = {
+      types:  { value: { kind: 'number', min: 1, max: 25, step: 1, show: ['add', 'addQuick'] } },
+      values: { value: 17 },
+    }
+    const html = toolOptsHTML({ label: 'Chip', toolName: 'chip', schema, values: { value: 17 } })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    document.body.appendChild(div)
+    const setToolParam = vi.fn()
+    init({ setToolParam })
+    wireRangeTicked(div)
+
+    const rt = div.querySelector('range-ticked')
+    rt.dispatchEvent(new CustomEvent('range-changed', { detail: { value: 9 }, bubbles: true, composed: true }))
+
+    expect(setToolParam).toHaveBeenCalledWith('chip', 'value', 9)
+    div.remove()
+  })
+
+  test('editBody renders drawing stroke-width (rect/circle) as a <range-ticked min=0.5 max=10 step=0.5> — 0 is excluded since stroke is toggled off via the stroke color control, not width', () => {
+    for (const type of ['rect', 'circle']) {
+      const element = {
+        ...SHAPE_TYPES[type].schema.values,
+        ltype: 'drawing', id: 'shape1', label: SHAPE_TYPES[type].schema.label,
+        types: SHAPE_TYPES[type].schema.types,
+        'stroke-width': 2,
+      }
+      const html = editBody({ element })
+      const div = document.createElement('div')
+      div.innerHTML = html
+      const rt = [...div.querySelectorAll('range-ticked')].find(el => el.dataset.rtKey === 'stroke-width')
+      expect(rt).toBeTruthy()
+      expect(rt.getAttribute('min')).toBe('0.5')
+      expect(rt.getAttribute('max')).toBe('10')
+      expect(rt.getAttribute('step')).toBe('0.5')
+      expect(rt.getAttribute('value')).toBe('2')
+      expect(rt.dataset.rtMode).toBe('edit')
+      expect(rt.dataset.rtTarget).toBe('shape1')
+    }
   })
 })
 

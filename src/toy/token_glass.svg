@@ -148,6 +148,14 @@ var token_glass = {
     }
   },
 
+  initialize: function(elem, value) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return
+    elem.querySelectorAll('.game-icon').forEach(icon => {
+      const idx = Number(icon.getAttribute('data-token-style-index'))
+      icon.setAttribute('display', idx === value ? '' : 'none')
+    })
+  },
+
 }
 
   ]]></script>

@@ -19,6 +19,7 @@
 import { icon } from './icons.js';
 import * as Debug from './debug_panel.js';
 import './component/color-picker.js';
+import './component/range_ticked.js';
 
 // ── Icon loading ──────────────────────────────────────────────────────────────
 // Tools with an `iconUrl` have their SVG fetched once and cached here.
@@ -354,7 +355,7 @@ export function onToolChanged(toolName) {
   renderPill();
   if (UIData.panelOpen === 'tools') {
     const body = $('#panelBody');
-    if (body) { body.innerHTML = toolsBody(gatherToolsData()); wireColorPickers(body); }
+    if (body) { body.innerHTML = toolsBody(gatherToolsData()); wireColorPickers(body); wireRangeTicked(body); }
   }
   if (toolName !== 'select') {
     const def = App.getTool(toolName);
@@ -372,7 +373,7 @@ export function onSelectionChanged(selectedIds) {
   // Keep the Edit panel live — re-render it whenever the selection changes.
   if (UIData.panelOpen === 'edit') {
     const body = $('#panelBody');
-    if (body) { body.innerHTML = editBody(gatherTtStateData()); wireColorPickers(body); }
+    if (body) { body.innerHTML = editBody(gatherTtStateData()); wireColorPickers(body); wireRangeTicked(body); }
   }
 }
 
@@ -482,10 +483,10 @@ function renderSchemaField(key, value, typeSpec, ctx) {
     const hasRange = min !== undefined && max !== undefined;
     if (mode === 'edit') {
       if (hasRange) {
-        return `<div class="field"><label>${key}</label><input type="range" value="${value ?? min}"
-          min="${min}" max="${max}" step="${step}"
-          style="width:100%;accent-color:var(--accent)"
-          oninput="App.commitEdit('${ctx.id}',{'${key}':Number(this.value)})"/></div>`;
+        return `<div class="field"><label>${key}</label>
+          <range-ticked data-rt-wire data-rt-mode="edit" data-rt-target="${ctx.id}" data-rt-key="${key}"
+            min="${min}" max="${max}" step="${step}" value="${value ?? min}"></range-ticked>
+          </div>`;
       }
       return `<div class="field"><label>${key}</label><input type="number" value="${value ?? 0}"
         ${min !== undefined ? `min="${min}"` : ''} step="${step}"
@@ -493,9 +494,10 @@ function renderSchemaField(key, value, typeSpec, ctx) {
         onchange="App.commitEdit('${ctx.id}',{'${key}':Number(this.value)})"/></div>`;
     } else {
       if (hasRange) {
-        return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><input type="range" min="${min}" max="${max}" step="${step}" value="${value ?? min}"
-          style="accent-color:var(--accent)"
-          oninput="App.setToolParam('${ctx.toolName}','${key}',Number(this.value));UI.refreshToolOpts()"></div>`;
+        return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span>
+          <range-ticked data-rt-wire data-rt-mode="${mode}" data-rt-target="${ctx.toolName}" data-rt-key="${key}"
+            style="flex:1;min-width:0" min="${min}" max="${max}" step="${step}" value="${value ?? min}"></range-ticked>
+          </div>`;
       }
       return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><input type="number" value="${value ?? 0}"
         ${min !== undefined ? `min="${min}"` : ''} step="${step}"
@@ -540,6 +542,37 @@ export function wireColorPickers(container) {
     noneBtn?.addEventListener('click', () => {
       noneBtn.classList.add('active');
       applyColor('none');
+    });
+  });
+}
+
+// ── range-ticked wiring (impure) ────────────────────────────────────────────
+// renderSchemaField and checkpointFrequencyHTML emit <range-ticked>
+// elements with no event listeners (both are pure string renderers).
+// After any innerHTML assignment that may contain `[data-rt-wire]`
+// elements, call wireRangeTicked(container) to attach 'range-changed'
+// listeners. No re-render call here on purpose: <range-ticked> keeps its
+// own tick labels in sync internally (see component/range_ticked.js), so
+// there's nothing left for a caller-side refresh to do — and calling one
+// on every drag tick would replace the live <range-ticked> element out
+// from under the user's own drag, the exact bug this component exists to
+// avoid (see RANGE_TICKED_README.md's "why value gets a cheap update path").
+export function wireRangeTicked(container) {
+  if (!container) return;
+  container.querySelectorAll('range-ticked[data-rt-wire]').forEach(el => {
+    const mode   = el.dataset.rtMode;   // 'edit' | 'add' | 'addQuick' | 'checkpoint'
+    const target = el.dataset.rtTarget; // element id (edit) or tool name (add/addQuick)
+    const key    = el.dataset.rtKey;
+
+    el.addEventListener('range-changed', (e) => {
+      const value = e.detail.value;
+      if (mode === 'edit') {
+        App.commitEdit(target, { [key]: value });
+      } else if (mode === 'checkpoint') {
+        onCheckpointFrequencyInput(value);
+      } else {
+        App.setToolParam(target, key, value);
+      }
     });
   });
 }
@@ -596,6 +629,7 @@ export function showToolOpts(toolName) {
     values:   App.getToolParams(toolName),
   });
   wireColorPickers(to);
+  wireRangeTicked(to);
   const pr  = pill.getBoundingClientRect();
   const toR = to.getBoundingClientRect();
   let left = pr.left + pr.width / 2 - toR.width / 2;
@@ -702,6 +736,7 @@ export function openSheet(which) {
       debug:    () => Debug.debugBody(Debug.gatherDebugData()),
     }[which] ?? (() => ''))();
     wireColorPickers(body);
+    wireRangeTicked(body);
   }
   if (which === 'peers') wirePeersToggles();
   // The Debug tab is the one panel with live listeners of its own: it
@@ -956,9 +991,8 @@ function checkpointFrequencyHTML(freq) {
       </div>
       <div class="opt-row">
         <span class="opt-label" id="checkpointFreqLabel">${checkpointFrequencyLabel(freq)}</span>
-        <input type="range" id="checkpointFreqSlider" min="0" max="10" step="1" value="${freq}"
-          style="accent-color:var(--accent)"
-          oninput="UI.onCheckpointFrequencyInput(Number(this.value))"/>
+        <range-ticked data-rt-wire data-rt-mode="checkpoint"
+          style="flex:1;min-width:0" min="0" max="10" step="1" value="${freq}"></range-ticked>
       </div>
     </div>`;
 }
@@ -1099,10 +1133,10 @@ export function refreshFromDoc() {
   const body = $('#panelBody');
   if (!body) return;
   switch (UIData.panelOpen) {
-    case 'edit':    body.innerHTML = editBody(gatherTtStateData());   wireColorPickers(body); break;
+    case 'edit':    body.innerHTML = editBody(gatherTtStateData());   wireColorPickers(body); wireRangeTicked(body); break;
     case 'history': body.innerHTML = histBody(App.getHistory(), App.getUndoHistory());   break;
     case 'layers':  body.innerHTML = layersBody(gatherLayersData()); break;
-    case 'tools':   body.innerHTML = toolsBody(gatherToolsData()); wireColorPickers(body); break;
+    case 'tools':   body.innerHTML = toolsBody(gatherToolsData()); wireColorPickers(body); wireRangeTicked(body); break;
     // Debug re-renders itself in place (it owns listeners and scroll
     // position); it must not have its innerHTML replaced from out here.
     case 'debug':   Debug.refresh(); break;
