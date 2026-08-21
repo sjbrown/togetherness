@@ -148,10 +148,6 @@ var token_glass = {
     }
   },
 
-  // value comes from the Tools panel's range slider (0-24) when placing a
-  // fresh token; absent on clone, where the cloned face is kept as-is.
-  // 0 is the null case: every .game-icon hidden, same state increment()
-  // leaves you in after cycling past the last face.
   initialize: function(elem, value) {
     if (typeof value !== 'number' || !Number.isFinite(value)) return
     elem.querySelectorAll('.game-icon').forEach(icon => {

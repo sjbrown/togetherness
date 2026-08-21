@@ -128,9 +128,6 @@ var chip = {
     tspan.textContent = String(current + step)
   },
 
-  // Runs once at placement - including during clone (eg, from a supply).
-  // value comes from the Tools panel's range slider (1-25) when placing a
-  // fresh chip; absent on clone, where the cloned tspan text is kept as-is.
   initialize: function(elem, value) {
     elem.setAttribute('data-below', '')
     elem.setAttribute('data-above', '')
