@@ -251,12 +251,12 @@ var supply = {
   on_position_occupied: function(elem, posId, ownerId, movingId) {
     elem.setAttribute('data-below', movingId)
     const layer = elem.closest('#toys-layer')
-    const movingColor = layer?.querySelector(`[data-toy-id="${movingId}"]`)?.getAttribute('data-color')
+    const movingColor = layer?.querySelector(`[data-id="${movingId}"]`)?.getAttribute('data-color')
     if (!movingColor) return
     if (!elem.hasAttribute('data-orig-color')) {
       elem.setAttribute('data-orig-color', elem.getAttribute('data-color') || '')
     }
-    supply._event('toy:edit', {id: elem.getAttribute('data-toy-id'), color: movingColor})
+    supply._event('toy:edit', {id: elem.getAttribute('data-id'), color: movingColor})
   },
 
   on_position_vacated: function(elem, posId, ownerId, movingId) {
@@ -267,7 +267,7 @@ var supply = {
   _restoreColor: function(elem) {
     const orig = elem.getAttribute('data-orig-color')
     elem.removeAttribute('data-orig-color')
-    if (orig) supply._event('toy:edit', {id: elem.getAttribute('data-toy-id'), color: orig})
+    if (orig) supply._event('toy:edit', {id: elem.getAttribute('data-id'), color: orig})
   },
 
 }

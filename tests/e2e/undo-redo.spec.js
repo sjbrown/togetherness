@@ -36,7 +36,7 @@ test.describe('undo / redo', () => {
     await page.mouse.move(box.x + 100, box.y + 100);
     await page.mouse.down();
     await page.mouse.up();
-    await expect(page.locator('[data-toy-id]')).toHaveCount(1, { timeout: 5000 });
+    await expect(page.locator('[data-toy-type]')).toHaveCount(1, { timeout: 5000 });
 
     // Select and drag it to (400, 400).
     await page.evaluate(() => window.UI.pillTap('select'));
@@ -47,7 +47,7 @@ test.describe('undo / redo', () => {
     await page.mouse.up();
 
     const svgAttr = async (name) =>
-      page.locator('[data-toy-id] > svg').getAttribute(name);
+      page.locator('[data-toy-type] > svg').getAttribute(name);
 
     const movedX = await svgAttr('x');
     expect(Number(movedX)).toBeGreaterThan(300); // moved, roughly, allowing for centring math
@@ -101,7 +101,7 @@ test.describe('undo / redo', () => {
     await page.mouse.move(box.x + 100, box.y + 100);
     await page.mouse.down();
     await page.mouse.up();
-    await expect(page.locator('[data-toy-id]')).toHaveCount(1, { timeout: 5000 });
+    await expect(page.locator('[data-toy-type]')).toHaveCount(1, { timeout: 5000 });
 
     // Switch layers (this itself proves layer-switch doesn't disturb
     // _lastActionScope's routing for what already happened) and add a rect.
@@ -118,12 +118,12 @@ test.describe('undo / redo', () => {
     await page.evaluate(() => window.App.undo());
     await page.waitForTimeout(200);
     await expect(page.locator('#drawing-layer rect')).toHaveCount(0);
-    await expect(page.locator('[data-toy-id]')).toHaveCount(1);
+    await expect(page.locator('[data-toy-type]')).toHaveCount(1);
 
     // Second undo: routes to toys now, reverses the placement.
     await page.evaluate(() => window.App.undo());
     await page.waitForTimeout(200);
-    await expect(page.locator('[data-toy-id]')).toHaveCount(0);
+    await expect(page.locator('[data-toy-type]')).toHaveCount(0);
 
     await browser.close();
   });
@@ -145,10 +145,10 @@ test.describe('undo / redo', () => {
       await page.mouse.down();
       await page.mouse.up();
     }
-    await expect(page.locator('[data-toy-id]')).toHaveCount(2, { timeout: 5000 });
+    await expect(page.locator('[data-toy-type]')).toHaveCount(2, { timeout: 5000 });
 
     const ids = await page.evaluate(() =>
-      [...document.querySelectorAll('[data-toy-id]')].map(el => el.getAttribute('data-toy-id')));
+      [...document.querySelectorAll('[data-toy-type]')].map(el => el.getAttribute('data-id')));
     expect(ids.length).toBe(2);
 
     // Select both directly — this test is about batch-delete-undo, not
@@ -158,12 +158,12 @@ test.describe('undo / redo', () => {
       window.App.toggleSelection(ids[1]);
     }, ids);
     await page.evaluate(() => window.App.deleteMultiSelected());
-    await expect(page.locator('[data-toy-id]')).toHaveCount(0, { timeout: 5000 });
+    await expect(page.locator('[data-toy-type]')).toHaveCount(0, { timeout: 5000 });
 
     // One undo press brings back both.
     await page.evaluate(() => window.App.undo());
     await page.waitForTimeout(200);
-    await expect(page.locator('[data-toy-id]')).toHaveCount(2);
+    await expect(page.locator('[data-toy-type]')).toHaveCount(2);
 
     await browser.close();
   });
@@ -185,7 +185,7 @@ test.describe('repeated undo walks back through multiple gestures, and the real 
     await page.mouse.move(box.x + 100, box.y + 100);
     await page.mouse.down();
     await page.mouse.up();
-    await expect(page.locator('[data-toy-id]')).toHaveCount(1, { timeout: 5000 });
+    await expect(page.locator('[data-toy-type]')).toHaveCount(1, { timeout: 5000 });
 
     await page.evaluate(() => window.UI.pillTap('select'));
     await page.waitForTimeout(100);
@@ -199,7 +199,7 @@ test.describe('repeated undo walks back through multiple gestures, and the real 
       await page.waitForTimeout(100);
     }
 
-    const xAt = async () => Number(await page.locator('[data-toy-id] > svg').getAttribute('x'));
+    const xAt = async () => Number(await page.locator('[data-toy-type] > svg').getAttribute('x'));
     const xAfter400 = await xAt();
 
     await page.evaluate(() => window.UI.openSheet('history'));
@@ -251,7 +251,7 @@ test.describe('repeated undo walks back through multiple gestures, and the real 
     await page.mouse.move(box.x + 400, box.y + 400, { steps: 10 });
     await page.mouse.up();
 
-    const xAt = async () => Number(await page.locator('[data-toy-id] > svg').getAttribute('x'));
+    const xAt = async () => Number(await page.locator('[data-toy-type] > svg').getAttribute('x'));
     const xMoved = await xAt();
 
     await page.evaluate(() => window.UI.openSheet('history'));

@@ -7,7 +7,7 @@
  * contents) merge at the attribute/child level.
  *
  * yToys (XmlFragment)
- *  └─ <g class="toy" data-toy-id data-toy-type data-color>  ← placement + state
+ *  └─ <g class="toy" data-id data-toy-type data-color>  ← placement + state
  *      └─ <svg x y width height viewBox>                    ← the live toy sub-document
  *          └─ ...toy content (defs, paths, tspans, <script>, ...)
  *      (optional)
@@ -238,9 +238,9 @@ export function normalizeForeignToySubtree(el, ctx) {
 
 /**
  * Toy contract for a DOM element arriving from outside the document (an
- * imported .svg's toys-layer child): <g class="toy" data-toy-id
- * data-toy-type> with ≥1 <svg> child. Anything else found directly inside
- * #toys-layer is invalid.
+ * imported .svg's toys-layer child): <g class="toy" data-toy-type> with
+ * ≥1 <svg> child. Anything else found directly inside #toys-layer is
+ * invalid.
  *
  * data-id, id=, data-module, and .$() are never checked here and never
  * required — they're rendering/dispatch conveniences recomputed fresh by
@@ -250,7 +250,6 @@ export function normalizeForeignToySubtree(el, ctx) {
 export function isForeignToyG(el) {
   return el.localName === 'g' &&
          el.classList.contains('toy') &&
-         el.getAttribute('data-toy-id') &&
          el.getAttribute('data-toy-type') &&
          el.querySelector(':scope > svg')
 }
@@ -478,7 +477,6 @@ export function buildToyDom(attrs, svgText) {
 
   const g = document.createElementNS(SVG_NS, 'g')
   g.setAttribute('class',         'toy')
-  g.setAttribute('data-toy-id',   id)
   g.setAttribute('data-toy-type', toyType)
   g.setAttribute('data-color',    color ?? '#888')
   g.setAttribute('data-id',       id)
@@ -533,10 +531,10 @@ export async function addToy(ydoc, layerEl, attrs) {
 }
 
 /**
- * <g class="toy" data-toy-id="...">,
+ * <g class="toy" data-toy-type="...">,
  */
 function isToyBoundaryEl(el) {
-  return !!el?.hasAttribute?.('data-toy-id') &&
+  return !!el?.hasAttribute?.('data-toy-type') &&
          (el.tagName === 'g' || el.classList?.contains('toy'))
 }
 
@@ -553,7 +551,7 @@ function isToyBoundaryEl(el) {
  * container).
  */
 function cloneToyBoundary(sourceEl, newId, cloned) {
-  const sourceId  = sourceEl.getAttribute('data-toy-id')
+  const sourceId  = sourceEl.getAttribute('data-id')
   const oldPrefix = `${sourceId}__`
   const newPrefix = `${newId}__`
   const toyType   = sourceEl.getAttribute('data-toy-type')
@@ -632,7 +630,6 @@ function cloneToyBoundary(sourceEl, newId, cloned) {
 
   const g = document.createElementNS(SVG_NS, 'g')
   g.setAttribute('class',         'toy')
-  g.setAttribute('data-toy-id',   newId)
   g.setAttribute('data-toy-type', toyType)
   if (color) g.setAttribute('data-color', color)
   g.setAttribute('data-id',       newId)
@@ -903,7 +900,7 @@ export function getContentsGroup(domEl) {
 }
 
 export function getLandingPosition(containerEl) {
-  const containerId = containerEl?.getAttribute('data-toy-id')
+  const containerId = containerEl?.getAttribute('data-id')
   const circle = containerId && containerEl.querySelector(`.${containerId}__tt_positions circle`)
   if (!circle) return null
   return {
@@ -1250,7 +1247,7 @@ export function applyResizeDom(domEl, x, y, width, height) {
 // to write toy handler code — won't match. rootEl.$(selector) rewrites
 // every #token in the selector to the instance's namespaced id first, then
 // queries from the toy's root <g>. A handler holding a nested element can
-// reach it via elem.closest('[data-toy-id]').$(...).
+// reach it via elem.closest('[data-toy-type]').$(...).
 const ID_TOKEN_RE = /#([\w-]+)/g
 
 function rewriteSelector(selector, toyId) {
@@ -1280,12 +1277,12 @@ function toyData(svgEl) {
 
 /** A toy's rendered <g> wrapper, by toy id. Top level only, like findToy. */
 export function findToyDom(layerEl, id) {
-  return layerEl?.querySelector(`:scope > [data-toy-id="${id}"]`) ?? null
+  return layerEl?.querySelector(`:scope > [data-id="${id}"]`) ?? null
 }
 
 /** Every top-level toy wrapper in z-order. */
 export function listToysDom(layerEl) {
-  return layerEl ? [...layerEl.querySelectorAll(':scope > [data-toy-id]')] : []
+  return layerEl ? [...layerEl.querySelectorAll(':scope > [data-toy-type]')] : []
 }
 
 export function toysDataDom(layerEl) {
@@ -1295,7 +1292,7 @@ export function toysDataDom(layerEl) {
 /** getTtState against the rendered DOM rather than the Yjs tree. */
 export function getTtStateDom(toyEl) {
   if (!toyEl) return null
-  const id      = toyEl.getAttribute('data-toy-id')
+  const id      = toyEl.getAttribute('data-id')
   const toyType = toyEl.getAttribute('data-toy-type')
   const color   = toyEl.getAttribute('data-color') ?? '#888'
   const svgEl   = toyEl.querySelector(':scope > svg')
@@ -1418,7 +1415,7 @@ export const TOY_TYPES = {
  * part of the Yjs tree and always in sync with the CRDT state.
  */
 export function getTtStateSchema(svgEl) {
-  const toyId = svgEl.getAttribute?.('data-toy-id')
+  const toyId = svgEl.getAttribute?.('data-id')
   if (!toyId) return null
   // Find elem's own '.tt_name' element — boundary-safe via id-prefix
   // matching, don't accidentally match a tt_contents-contained toy.
@@ -1444,7 +1441,7 @@ export function getTtStateSchema(svgEl) {
  */
 export function getTtState(yToy) {
   if (!yToy) return null;
-  const id      = yToy.getAttribute('data-toy-id');
+  const id      = yToy.getAttribute('data-id');
   const toyType = yToy.getAttribute('data-toy-type');
   const color   = yToy.getAttribute('data-color') ?? '#888';
   const ySvg    = yToy.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'svg');

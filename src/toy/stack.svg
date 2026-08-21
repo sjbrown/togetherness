@@ -102,7 +102,7 @@ var stack = {
     container.visit_contents(elem, (child, i) => {
       child.setAttribute('data-above', '')
       child.setAttribute('data-below', '')
-      const childId = child.getAttribute('data-toy-id')
+      const childId = child.getAttribute('data-id')
       const childSvg = child.querySelector(':scope > svg')
       if (!childSvg) return
       const w = parseFloat(childSvg.getAttribute('width'))  || 0
@@ -120,13 +120,13 @@ var stack = {
       childSvg.setAttribute('y', String(cy - h / 2))
     })
 
-    stack._event('toy:delete', { id: elem.getAttribute('data-toy-id') })
+    stack._event('toy:delete', { id: elem.getAttribute('data-id') })
   },
 
   // chipIds is the ordered (bottom-to-top) list of chip ids
   initialize: function(elem, chipIds) {
     if (!Array.isArray(chipIds) || !chipIds.length) return
-    const containerId = elem.getAttribute('data-toy-id')
+    const containerId = elem.getAttribute('data-id')
     for (const id of chipIds) {
       stack._event('toy:reparent', { id, containerId })
     }
@@ -209,8 +209,8 @@ var stack = {
 
     // Advance our OWN tt_positions circle to sit on the top chip's circle
     if (lastChild) {
-      const lastId = lastChild.getAttribute('data-toy-id')
-      const ownId = elem.getAttribute('data-toy-id')
+      const lastId = lastChild.getAttribute('data-id')
+      const ownId = elem.getAttribute('data-id')
       const lastCircle = lastChild.querySelector(`.${lastId}__tt_positions circle`)
       const ownCircle = outerSvg.querySelector(`.${ownId}__tt_positions circle`)
       const anchor = stack._inner_anchor(lastChild, lastCircle)

@@ -240,7 +240,7 @@ describe('deleteToyDom', () => {
 
     expect(deleteToyDom(layerEl, 't1')).toBe(true)
     expect(layerEl.children.length).toBe(1)
-    expect(layerEl.children[0].getAttribute('data-toy-id')).toBe('t2')
+    expect(layerEl.children[0].getAttribute('data-id')).toBe('t2')
   })
 
   test('returns false for an unknown id', () => {
@@ -309,7 +309,7 @@ describe('scoped lookup ($)', () => {
     const nested = toyEl.querySelector('#t1__ts')
     expect(nested.$).toBeUndefined()
 
-    const root = nested.closest('[data-toy-id]')
+    const root = nested.closest('[data-toy-type]')
     expect(root).toBe(toyEl)
     expect(root.$('#token_front').getAttribute('id')).toBe('t1__token_front')
   })

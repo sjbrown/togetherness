@@ -134,21 +134,20 @@ function reloadedIds(ydoc) {
   const head = heads(ops)[0] ?? null
   const layer = freshLayer()
   projectFrom(layer, ops, head)
-  return [...layer.querySelectorAll('[data-toy-id]')].map(el => el.getAttribute('data-toy-id')).sort()
+  return [...layer.querySelectorAll('[data-toy-type]')].map(el => el.getAttribute('data-id')).sort()
 }
 
 function liveIds(layerEl) {
-  return [...layerEl.querySelectorAll('[data-toy-id]')].map(el => el.getAttribute('data-toy-id')).sort()
+  return [...layerEl.querySelectorAll('[data-toy-type]')].map(el => el.getAttribute('data-id')).sort()
 }
 
-// Every id ever seen on data-toy-id/data-id/id attributes anywhere in
-// the layer, for asserting "nothing collides" without hardcoding which
-// ids are expected to exist.
+// Every id ever seen on data-id/id attributes anywhere in the layer, for
+// asserting "nothing collides" without hardcoding which ids are expected
+// to exist.
 function allToyBoundaryIds(layerEl) {
-  return [...layerEl.querySelectorAll('[data-toy-id]')].map(el => ({
+  return [...layerEl.querySelectorAll('[data-toy-type]')].map(el => ({
     id:      el.getAttribute('id'),
     dataId:  el.getAttribute('data-id'),
-    toyId:   el.getAttribute('data-toy-id'),
   }))
 }
 
@@ -238,7 +237,7 @@ describe('supply — clone scenario: tray_sum with a nested dice_d6', () => {
     // die1 is nested inside tray1 by now, so it's not a top-level
     // layerEl child any more — findToyDom's :scope-restricted lookup
     // won't see it; a plain querySelector will.
-    const die1El = layerEl.querySelector('[data-toy-id="die1"]')
+    const die1El = layerEl.querySelector('[data-id="die1"]')
     die1El.querySelector('tspan').textContent = '4'
 
     // Stack the whole tray onto supply's own position slot, via the real
@@ -266,24 +265,22 @@ describe('supply — clone scenario: tray_sum with a nested dice_d6', () => {
     const after = allToyBoundaryIds(layerEl)
     expect(after.length).toBe(before.length + 2) // new tray + new nested die
 
-    const allIds = after.map(x => x.toyId)
-    expect(new Set(allIds).size).toBe(allIds.length) // every data-toy-id is unique
+    const allIds = after.map(x => x.dataId)
+    expect(new Set(allIds).size).toBe(allIds.length) // every data-id is unique
 
-    const newTray = after.find(x => x.toyId !== 'tray1' && x.toyId !== 'supply1' && x.toyId !== 'die1'
-      && layerEl.querySelector(`[data-toy-id="${x.toyId}"]`).getAttribute('data-toy-type') === 'tray_sum')
+    const newTray = after.find(x => x.dataId !== 'tray1' && x.dataId !== 'supply1' && x.dataId !== 'die1'
+      && layerEl.querySelector(`[data-id="${x.dataId}"]`).getAttribute('data-toy-type') === 'tray_sum')
     expect(newTray).toBeTruthy()
-    expect(newTray.id).toBe(newTray.dataId)     // id === data-id
-    expect(newTray.id).toBe(newTray.toyId)      // id === data-toy-id — the invariant the bug broke
+    expect(newTray.id).toBe(newTray.dataId)     // id === data-id — the invariant the bug broke
 
-    const newTrayEl = layerEl.querySelector(`[data-toy-id="${newTray.toyId}"]`)
+    const newTrayEl = layerEl.querySelector(`[data-id="${newTray.dataId}"]`)
     const contents  = getContentsGroup(newTrayEl)
-    const nestedDie = contents.querySelector('[data-toy-id]')
+    const nestedDie = contents.querySelector('[data-toy-type]')
     expect(nestedDie).toBeTruthy()
     expect(nestedDie.getAttribute('data-toy-type')).toBe('dice_d6')
     expect(nestedDie.getAttribute('id')).toBe(nestedDie.getAttribute('data-id'))
-    expect(nestedDie.getAttribute('id')).toBe(nestedDie.getAttribute('data-toy-id'))
-    expect(nestedDie.getAttribute('data-toy-id')).not.toBe('die1')
-    expect(nestedDie.getAttribute('data-toy-id')).not.toBe(newTray.toyId)
+    expect(nestedDie.getAttribute('data-id')).not.toBe('die1')
+    expect(nestedDie.getAttribute('data-id')).not.toBe(newTray.dataId)
   })
 
   test('preserves the nested die\u2019s live state (its rolled value) and the tray\u2019s color, rather than a blank instance', async () => {
@@ -292,10 +289,10 @@ describe('supply — clone scenario: tray_sum with a nested dice_d6', () => {
     unbind()
 
     const newTrayEl = [...layerEl.querySelectorAll('[data-toy-type="tray_sum"]')]
-      .find(el => el.getAttribute('data-toy-id') !== 'tray1')
+      .find(el => el.getAttribute('data-id') !== 'tray1')
     expect(newTrayEl.getAttribute('data-color')).toBe('#3355ff')
 
-    const nestedDie = getContentsGroup(newTrayEl).querySelector('[data-toy-id]')
+    const nestedDie = getContentsGroup(newTrayEl).querySelector('[data-toy-type]')
     expect(nestedDie.querySelector('tspan').textContent).toBe('4') // carried over, not reset to the template's 6
   })
 
@@ -305,8 +302,8 @@ describe('supply — clone scenario: tray_sum with a nested dice_d6', () => {
     unbind()
 
     const origTray = findToyDom(layerEl, 'tray1')
-    const origDie  = getContentsGroup(origTray).querySelector('[data-toy-id]')
-    expect(origDie.getAttribute('data-toy-id')).toBe('die1')
+    const origDie  = getContentsGroup(origTray).querySelector('[data-toy-type]')
+    expect(origDie.getAttribute('data-id')).toBe('die1')
     expect(origDie.querySelector('tspan').textContent).toBe('4')
   })
 })
@@ -356,7 +353,7 @@ describe('supply — clone scenario: chip "5" with chip "6" stacked on top', () 
     expect(chipsAfter).toBe(chipsBefore + 1) // exactly one new chip, not two
 
     expect(findToyDom(layerEl, 'chip6')).toBeTruthy() // still exactly the original chip6
-    expect(layerEl.querySelectorAll('[data-toy-id="chip6"]').length).toBe(1)
+    expect(layerEl.querySelectorAll('[data-id="chip6"]').length).toBe(1)
   })
 
   test('the clone carries chip5\u2019s value ("5") but starts with NO stacking relationship — initialize() clears data-below/data-above', async () => {
@@ -365,13 +362,12 @@ describe('supply — clone scenario: chip "5" with chip "6" stacked on top', () 
     unbind()
 
     const newChip = [...layerEl.querySelectorAll('[data-toy-type="chip"]')]
-      .find(el => !['chip5', 'chip6'].includes(el.getAttribute('data-toy-id')))
+      .find(el => !['chip5', 'chip6'].includes(el.getAttribute('data-id')))
     expect(newChip).toBeTruthy()
     expect(newChip.querySelector('tspan').textContent).toBe('5') // chip5's value, not chip6's "6"
     expect(newChip.getAttribute('data-below')).toBe('')
     expect(newChip.getAttribute('data-above')).toBe('')
-    expect(newChip.getAttribute('data-toy-id')).toBe(newChip.getAttribute('id'))
-    expect(newChip.getAttribute('data-toy-id')).toBe(newChip.getAttribute('data-id'))
+    expect(newChip.getAttribute('data-id')).toBe(newChip.getAttribute('id'))
   })
 
   test('does not disturb the original stack — chip5/chip6\u2019s data-above/data-below are unchanged after cloning', async () => {
@@ -398,7 +394,7 @@ describe('supply — clone scenario: chip "5" with chip "6" stacked on top', () 
     unbind()
 
     const newChip = [...layerEl.querySelectorAll('[data-toy-type="chip"]')]
-      .find(el => !['chip5', 'chip6'].includes(el.getAttribute('data-toy-id')))
+      .find(el => !['chip5', 'chip6'].includes(el.getAttribute('data-id')))
     const placed = getAnchor(newChip)
     expect(placed.x).toBeCloseTo(expected.x, 1)
     expect(placed.y).toBeCloseTo(expected.y, 1)
@@ -605,8 +601,8 @@ describe('supply — clone inner elements get their own data-id (regression: mov
     unbind()
 
     const cloneEl = [...layerEl.querySelectorAll('[data-toy-type="chip"]')]
-      .find(el => el.getAttribute('data-toy-id') !== 'chip5')
-    return { ydoc, layerEl, api, supplyEl, cloneId: cloneEl.getAttribute('data-toy-id') }
+      .find(el => el.getAttribute('data-id') !== 'chip5')
+    return { ydoc, layerEl, api, supplyEl, cloneId: cloneEl.getAttribute('data-id') }
   }
 
   test('none of the clone’s inner data-ids collide with the prototype’s', async () => {
@@ -636,8 +632,8 @@ describe('supply — clone inner elements get their own data-id (regression: mov
     const reloadedLayer = freshLayer()
     projectFrom(reloadedLayer, ops, heads(ops)[0] ?? null)
 
-    const reloadedProto = reloadedLayer.querySelector('[data-toy-id="chip5"]')
-    const reloadedClone = reloadedLayer.querySelector(`[data-toy-id="${cloneId}"]`)
+    const reloadedProto = reloadedLayer.querySelector('[data-id="chip5"]')
+    const reloadedClone = reloadedLayer.querySelector(`[data-id="${cloneId}"]`)
     expect(reloadedProto).toBeTruthy()
     expect(reloadedClone).toBeTruthy()
 
@@ -648,6 +644,6 @@ describe('supply — clone inner elements get their own data-id (regression: mov
     // at its original deposit-area placement.
     expect(getAnchor(reloadedClone)).toEqual(liveCloneAnchor)
 
-    expect(reloadedLayer.querySelector('[data-toy-id="supply1"]').getAttribute('data-below')).toBe('chip5')
+    expect(reloadedLayer.querySelector('[data-id="supply1"]').getAttribute('data-below')).toBe('chip5')
   })
 })
