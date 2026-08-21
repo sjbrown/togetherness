@@ -156,7 +156,7 @@ describe('SELECT_TOOL multi option — show surfaces', () => {
     expect(checkbox).not.toBeNull()
   })
 
-  test('toolOptsHTML renders a numeric readout next to a min+max range field, showing the current value', () => {
+  test('toolOptsHTML wires a min+max range field (< 30 stops) to a <datalist> of numeric tick labels', () => {
     const schema = {
       types:  { value: { kind: 'number', min: 1, max: 25, step: 1, show: ['add', 'addQuick'] } },
       values: { value: 17 },
@@ -167,14 +167,42 @@ describe('SELECT_TOOL multi option — show surfaces', () => {
     const range = div.querySelector('input[type="range"]')
     expect(range).not.toBeNull()
     expect(range.value).toBe('17')
-    expect(div.textContent).toContain('17') // the visible numeric readout
 
-    // The readout must update via a direct DOM write on the slider's own
-    // 'oninput', not by waiting on a panel re-render: this field lives in
-    // the Tools panel sheet (mode 'add'), where UI.refreshToolOpts() is a
-    // no-op (it only repaints the separate addQuick popup) — so a
-    // refresh-only readout would never move as the user drags.
-    expect(range.getAttribute('oninput')).toMatch(/nextElementSibling\.textContent\s*=\s*this\.value/)
+    // Native tick labels, not a hand-rolled JS readout: the slider names a
+    // <datalist> via its own 'list' attribute, and that datalist carries
+    // one numeric <option> per stop (1..25) — no oninput bookkeeping to
+    // keep a separate label in sync.
+    const listId = range.getAttribute('list')
+    expect(listId).toBeTruthy()
+    const datalist = div.querySelector(`datalist#${listId}`)
+    expect(datalist).not.toBeNull()
+    const optionValues = [...datalist.querySelectorAll('option')].map(o => o.getAttribute('value'))
+    expect(optionValues).toEqual(Array.from({ length: 25 }, (_, i) => String(i + 1)))
+    expect(datalist.querySelector('option[value="17"]').getAttribute('label')).toBe('17')
+
+    // No browser actually draws a <datalist> option's label on screen, so
+    // there's also a plain CSS row of numbers under the track — one span
+    // per stop (flex-spaced to line up with the ticks), thinned to at
+    // most MAX_VISIBLE_TICK_LABELS of visible text since 25 numbers packed
+    // edge to edge would be unreadable. min and max are always shown.
+    const spans = [...range.parentElement.querySelectorAll('div span')]
+    expect(spans).toHaveLength(25)
+    expect(spans[0].textContent).toBe('1')
+    expect(spans[24].textContent).toBe('25')
+    expect(spans.filter(s => s.textContent !== '').length).toBeLessThanOrEqual(13)
+  })
+
+  test('a range field with 30+ stops gets no datalist — too many ticks to be legible', () => {
+    const schema = {
+      types:  { spacing: { kind: 'number', min: 20, max: 200, step: 4, show: ['addQuick'] } },
+      values: { spacing: 40 },
+    }
+    const html = toolOptsHTML({ label: 'Grid', toolName: 'grid', schema, values: { spacing: 40 } })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const range = div.querySelector('input[type="range"]')
+    expect(range.hasAttribute('list')).toBe(false)
+    expect(div.querySelector('datalist')).toBeNull()
   })
 })
 
