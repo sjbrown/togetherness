@@ -1821,7 +1821,13 @@ const App = {
   },
 
   setTool: (name) => {
-    _clearClaims();
+    // Switching to a placement/drawing tool drops any held claims, so a
+    // selection never survives underneath a stuck placement cursor (see
+    // the toy-tool-placement bug). Switching to 'select' does NOT clear
+    // claims here -- select()/toggleSelection() already own that decision
+    // (e.g. a redundant setTool('select') while a multi-selection is being
+    // built via shift-click must not wipe it out).
+    if (name !== 'select') _clearClaims();
     _activeTool = name;
     Canvas.setTool(name, _toolParams[name] ?? {});
     UI.onToolChanged(name);
