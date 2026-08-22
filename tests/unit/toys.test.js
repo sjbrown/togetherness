@@ -6,7 +6,7 @@ import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   svgTextToDom, addToy, addToyDom, deleteToyDom, TOY_TYPES, TOOLS,
-  getGeom, getTtStateSchema, editDom, reparentToyDom, findToyDom,
+  getGeom, getTtStateSchema, editDom, previewEdit, reparentToyDom, findToyDom,
   hslToRgb, colorMatrixValues,
   _clearSvgTextCache, _resetToyScriptState, activateAllToyScriptsDom,
   newToyId, _getScriptsFragment, initializeToy,
@@ -24,6 +24,7 @@ const D6_SVG         = fs.readFileSync(path.join(TOY_DIR, 'dice_d6.svg'), 'utf8'
 const DICE_UTILS_JS  = fs.readFileSync(path.join(TOY_DIR, 'js/dice_utils.js'), 'utf8')
 const CHIP_SVG       = fs.readFileSync(path.join(TOY_DIR, 'chip.svg'), 'utf8')
 const TOKEN_GLASS_SVG = fs.readFileSync(path.join(TOY_DIR, 'token_glass.svg'), 'utf8')
+const SINGLE_POKER_CARD_SVG = fs.readFileSync(path.join(TOY_DIR, 'single_poker_card.svg'), 'utf8')
 
 // ── Fixtures & helpers ──────────────────────────────────────────────────────
 
@@ -680,6 +681,105 @@ describe('token_glass: value from the Tools panel range slider (real assets)', (
     // null case value 0 produces, so leaving it alone on a no-initArgs
     // call (e.g. clone) is already correct.
     expect(visibleIndex(tokenEl)).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// single_poker_card: Tools panel suit/rank sliders → initialize(elem, initArgs),
+// and Edit panel suit/rank sliders → editableFields()/applyEdit() (real assets)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Unlike chip/token_glass's single 'value' option, single_poker_card
+// declares two non-fill options (suit, rank) — app.js's commitToy forwards
+// those as an { suit, rank } object rather than unwrapping to a bare
+// scalar (see app.js's commitToy). This block covers single_poker_card's
+// own side of that contract, plus its editableFields/applyEdit hooks —
+// toys.js's generic getTtStateSchema/editDom/previewEdit delegate any
+// non-color/name field to whichever namespace declares them.
+describe('single_poker_card: suit/rank from the Tools + Edit panel sliders (real assets)', () => {
+  beforeEach(() => {
+    _resetToyScriptState()
+    delete globalThis.single_poker_card
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (url === 'toy/single_poker_card.svg') return { ok: true, text: async () => SINGLE_POKER_CARD_SVG }
+      throw new Error(`unexpected fetch: ${url}`)
+    }))
+  })
+
+  async function placedCard(ydoc, layerEl, id = 'card1') {
+    const cardEl = await addToy(ydoc, layerEl, { id, toyType: 'single_poker_card', x: 0, y: 0, color: '#fff' })
+    activateAllToyScriptsDom(ydoc, layerEl)
+    await new Promise(r => setTimeout(r, 0)) // flush fire-and-forget script activation
+    return cardEl
+  }
+
+  test('an { suit, rank } initArgs paints the matching face and records both numbers on the card', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const cardEl = await placedCard(ydoc, layerEl)
+
+    initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table', { suit: 3, rank: 11 })
+
+    const card = cardEl.querySelector('.draggable-group')
+    expect(card.querySelector('.tspan_suit').textContent).toBe('♦')
+    expect(card.querySelector('.tspan_rank').textContent).toBe('J')
+    expect(card.dataset.suit).toBe('3')
+    expect(card.dataset.rank).toBe('11')
+  })
+
+  test('no initArgs (e.g. the clone path) still deals a valid, in-range card', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const cardEl = await placedCard(ydoc, layerEl)
+
+    initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table')
+
+    const card = cardEl.querySelector('.draggable-group')
+    expect(Number(card.dataset.suit)).toBeGreaterThanOrEqual(1)
+    expect(Number(card.dataset.suit)).toBeLessThanOrEqual(4)
+    expect(Number(card.dataset.rank)).toBeGreaterThanOrEqual(1)
+    expect(Number(card.dataset.rank)).toBeLessThanOrEqual(13)
+  })
+
+  test('getTtStateSchema merges in suit/rank as edit-mode range fields, reading the card\'s current values', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const cardEl = await placedCard(ydoc, layerEl)
+    initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table', { suit: 2, rank: 7 })
+
+    const schema = getTtStateSchema(cardEl)
+
+    expect(schema.suit).toBe(2)
+    expect(schema.rank).toBe(7)
+    expect(schema.types.suit).toEqual({ kind: 'number', min: 1, max: 4, step: 1, show: ['edit'] })
+    expect(schema.types.rank).toEqual({ kind: 'number', min: 1, max: 13, step: 1, show: ['edit'] })
+  })
+
+  test('editDom({ suit, rank }) repaints an already-placed card via applyEdit — the real commit path', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const cardEl = await placedCard(ydoc, layerEl)
+    initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table', { suit: 1, rank: 1 })
+
+    editDom(cardEl, { rank: 13 })
+
+    const card = cardEl.querySelector('.draggable-group')
+    expect(card.querySelector('.tspan_rank').textContent).toBe('K')
+    expect(card.dataset.rank).toBe('13') // committed
+    expect(card.dataset.suit).toBe('1')  // untouched — only rank was in editData
+  })
+
+  test('previewEdit({ suit, rank }) repaints a detached ghost clone without touching the real card', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const cardEl = await placedCard(ydoc, layerEl)
+    initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table', { suit: 1, rank: 1 })
+    const ghostEl = cardEl.cloneNode(true)
+
+    previewEdit(ghostEl, { suit: 4, rank: 13 })
+
+    expect(ghostEl.querySelector('.draggable-group').querySelector('.tspan_suit').textContent).toBe('♠')
+    expect(cardEl.querySelector('.draggable-group').querySelector('.tspan_suit').textContent).toBe('♥') // real card untouched
   })
 })
 
