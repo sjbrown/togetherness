@@ -1263,17 +1263,13 @@ const App = {
     const id = Toys.newToyId();
     const layerEl = _svgEl?.querySelector('#toys-layer');
     if (!layerEl) return;
-    // initialize()'s options bag always carries color (the runtime name
-    // for the 'fill' schema key) plus every other tool option, keyed by
-    // its schema name — symmetric with the TOOLS array regardless of how
-    // many non-color options a given toy declares.
     const params = _toolParams[toolName] ?? {};
+    // initialize()'s options always carries color + every other tool option
     const color  = params.fill ?? _myGrad.c1;
     const initArgs = {
       color,
       ...Object.fromEntries((def.options ?? [])
         .map(o => o.key)
-        .filter(k => k && k !== 'fill')
         .map(k => [k, params[k]])),
     };
     // initializeToy below runs its own outer transact() with no
