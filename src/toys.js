@@ -27,7 +27,6 @@ const SVG_NS   = 'http://www.w3.org/2000/svg'
 const XLINK_NS = 'http://www.w3.org/1999/xlink'
 const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789'
 
-import { number, bool } from './tools-schema.js';
 import { runInEnvelope, commitGesture, isInsideEnvelope } from './envelope.js';
 export { isInsideEnvelope };
 import { consumeParents, setHead, getHead, addMergeTip } from './op_head.js';
@@ -1390,8 +1389,8 @@ export const TOOLS = [
     defaults: { fill: '#fa2020', suit: 1, rank: 1 },
     options: [
       { kind: 'color-hsl', key: 'fill', label: 'Back color', show: ['add', 'edit', 'addQuick'] },
-      { ...number('suit', 'Suit', { min: 1, max: 4,  step: 1 }), show: ['add'] },
-      { ...number('rank', 'Rank', { min: 1, max: 13, step: 1 }), show: ['add'] },
+      { kind: 'number', key: 'suit', label: 'Suit', min: 1, max: 4, step: 1, show: ['add'] },
+      { kind: 'number', key: 'rank', label: 'Rank', min: 1, max: 13, step: 1, show: ['add'] },
     ],
   },
 ];
