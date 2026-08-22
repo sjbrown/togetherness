@@ -201,6 +201,43 @@ describe('SELECT_TOOL multi option — show surfaces', () => {
     div.remove()
   })
 
+  test('an edit-mode <range-ticked>: range-changed previews (no commitEdit), range-committed calls the ordinary App.commitEdit(id, editData)', () => {
+    // The whole point of previewEdit (see app.js) is that App.commitEdit —
+    // which synchronously rebuilds #panelBody via UI.refreshFromDoc() —
+    // must NOT run on every drag tick, or it tears down the very
+    // <range-ticked> the user is dragging. So 'range-changed' (fires
+    // continuously) must go to previewEdit, a local-only ghost preview,
+    // and only 'range-committed' (fires once, gesture end) may call the
+    // same commitEdit(id, editData) every other Edit-panel field already
+    // uses — no separate "commit the preview" entry point.
+    const element = {
+      ...SHAPE_TYPES.rect.schema.values,
+      ltype: 'drawing', id: 'shape1', label: SHAPE_TYPES.rect.schema.label,
+      types: SHAPE_TYPES.rect.schema.types,
+      'stroke-width': 2,
+    }
+    const html = editBody({ element })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    document.body.appendChild(div)
+    const commitEdit   = vi.fn()
+    const previewEdit   = vi.fn()
+    init({ commitEdit, previewEdit })
+    wireRangeTicked(div)
+
+    const rt = [...div.querySelectorAll('range-ticked')].find(el => el.dataset.rtKey === 'stroke-width')
+    rt.dispatchEvent(new CustomEvent('range-changed', { detail: { value: 4 }, bubbles: true, composed: true }))
+    rt.dispatchEvent(new CustomEvent('range-changed', { detail: { value: 5 }, bubbles: true, composed: true }))
+    expect(previewEdit).toHaveBeenNthCalledWith(1, 'shape1', { 'stroke-width': 4 })
+    expect(previewEdit).toHaveBeenNthCalledWith(2, 'shape1', { 'stroke-width': 5 })
+    expect(commitEdit).not.toHaveBeenCalled()
+
+    rt.dispatchEvent(new CustomEvent('range-committed', { detail: { value: 5 }, bubbles: true, composed: true }))
+    expect(commitEdit).toHaveBeenCalledWith('shape1', { 'stroke-width': 5 })
+
+    div.remove()
+  })
+
   test('editBody renders drawing stroke-width (rect/circle) as a <range-ticked min=0.5 max=10 step=0.5> — 0 is excluded since stroke is toggled off via the stroke color control, not width', () => {
     for (const type of ['rect', 'circle']) {
       const element = {

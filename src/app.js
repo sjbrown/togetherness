@@ -1236,7 +1236,22 @@ const App = {
     // observeDeep fires synchronously
     // Refresh the Edit panel body to show the updated values.
     UI.refreshFromDoc();
+    // endGhost's render() paints current DOM state, so it must run
+    // after the real change lands
+    Overlay.endGhost(id);
   },
+
+  previewEdit: (id, editData) => {
+    const domEl = _svgEl?.querySelector(`[data-id="${id}"]`);
+    if (!domEl) return;
+    const mtype = moduleForElement(domEl);
+    const L = _Layers[mtype];
+    Overlay.startGhost(id);
+    Overlay.updateGhost(id, (ghostEl) => L.previewEdit(ghostEl, editData));
+  },
+
+  // Discard an in-progress preview without writing anything
+  cancelEdit: (id) => Overlay.endGhost(id),
 
   /**
    * Place a toy on the table, then run its namespace(s)' initialize(elem)

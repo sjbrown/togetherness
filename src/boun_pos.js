@@ -77,13 +77,26 @@ export function toolParamsToCreateParams(genType, toolParams, {x, y, w, h}) {
   return { snapRadius, xSpacing, ySpacing, circles }
 }
 
+/**
+ * Compute the circle positions + shared radius for genType/xSpacing/
+ * ySpacing within an extent rect ({x,y,w,h}), at the given snapRadius
+ * level (1-4)
+ * Exposed separately (pure, no Yjs) so a live preview can compute the
+ * identical result without writing anything
+ */
+export function computeGridPositions(extent, genType, xSpacing, ySpacing, snapRadiusLevel) {
+  const { x, y, w, h } = extent;
+  const circles = gridFillExtent(x, y, w, h, genType, xSpacing, ySpacing);
+  const r = snapRadiusLevelToRadius(snapRadiusLevel ?? 2, genType, xSpacing, ySpacing);
+  return { circles, r };
+}
+
 function rebuildPositionSetGrid(ydoc, yEl, { genType, xSpacing, ySpacing, snapRadiusLevel }) {
   const yPath = yChildByTag(yEl, 'path');
   if (!yPath) return;
 
-  const { x, y, w, h } = pathToRect(yPath.getAttribute('d') ?? 'M0,0 L100,0 L100,100 L0,100 Z');
-  const circles = gridFillExtent(x, y, w, h, genType, xSpacing, ySpacing);
-  const r = snapRadiusLevelToRadius(snapRadiusLevel ?? 2, genType, xSpacing, ySpacing);
+  const extent = pathToRect(yPath.getAttribute('d') ?? 'M0,0 L100,0 L100,100 L0,100 Z');
+  const { circles, r } = computeGridPositions(extent, genType, xSpacing, ySpacing, snapRadiusLevel);
 
   ydoc.transact(() => {
     yEl.setAttribute('data-gen-type',      genType);
@@ -950,6 +963,42 @@ export function editEl(ydoc, yEl, editData) {
     });
   }
 }
+
+/**
+ * Preview an edit on a detached ghost clone
+ * Whichever of the three keys aren't present in editData are read
+ * off ghostEl's own current attributes
+ */
+export function previewEdit(ghostEl, editData) {
+  if (ghostEl.getAttribute('data-bounpos-type') !== 'pos-set') return;
+  if (editData.xSpacing === undefined && editData.ySpacing === undefined && editData.snapRadius === undefined) return;
+
+  const current = getTtStateSchema(ghostEl);
+  const genType = ghostEl.getAttribute('data-gen-type') ?? 'square';
+  const xSpacing        = editData.xSpacing   ?? current.xSpacing;
+  const ySpacing        = editData.ySpacing   ?? current.ySpacing;
+  const snapRadiusLevel = editData.snapRadius ?? current.snapRadius;
+  const extent = getGeom(ghostEl);
+  if (!extent) return;
+  const { circles, r } = computeGridPositions(
+    { x: extent.x, y: extent.y, w: extent.width, h: extent.height },
+    genType, xSpacing, ySpacing, snapRadiusLevel
+  );
+
+  // Reuse the first existing circle as a template
+  // falls back to a bare circle only if the ghost started with none at all.
+  const existing = [...ghostEl.querySelectorAll(':scope > circle')];
+  const template = existing[0] ?? null;
+  for (const c of existing) c.remove();
+  for (const { cx, cy } of circles) {
+    const circle = template ? template.cloneNode(true) : document.createElementNS(SVG_NS, 'circle');
+    circle.setAttribute('cx', Math.round(cx));
+    circle.setAttribute('cy', Math.round(cy));
+    circle.setAttribute('r',  Math.round(r));
+    ghostEl.appendChild(circle);
+  }
+}
+
 // ── Drag context helpers ──────────────────────────────────────────────────────
 
 /**
@@ -1013,6 +1062,7 @@ export function makeLayerAPI(ydoc, yBounPos) {
     applyMoveCommit:  (yEl, x, y)        => applyMoveCommit(ydoc, yEl, x, y),
     applyTtState:     (state)            => applyTtState(ydoc, yBounPos, state),
     edit:             (yEl, editData)    => editEl(ydoc, yEl, editData),
+    previewEdit,
     listData:         ()                 => layerData(yBounPos),
     render:           (layerEl)          => render(yBounPos, layerEl),
   };

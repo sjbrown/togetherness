@@ -492,13 +492,7 @@ export function endDragPlaceholder(elId) {
 // real toy element can be wiped out mid-gesture by renderToysLayer()'s full
 // innerHTML rebuild (fired by ANY peer's Yjs transaction, not just this
 // client's own), so the live preview lives on a detached clone that
-// survives render() calls, not the real element. A <use> placeholder alone
-// (as the move-ghost uses) can't show the resize itself — <use>'s
-// width/height override only applies when the referenced element is an
-// <svg> or <symbol>, and the href here targets the toy's outer <g>
-// wrapper — so instead the ghost is a real cloned copy of the toy's DOM,
-// with its own embedded <svg> directly
-// mutated to the current preview size on every updateResizeGhost() call.
+// survives render() calls, not the real element.
 // Map<elId, { placeholderEl, ghostEl, ringEl }>
 const _resizeGhosts = new Map();
 
@@ -590,6 +584,64 @@ export function endResizeGhost(elId) {
   render();
 }
 
+// ── Edit-preview ghosts ──────────────────────────────────────────────────────
+// Live preview for an in-progress Edit-panel gesture
+//
+// Changes no geometry — same rationale as the resize ghost above: the real
+// element can be wiped out mid-gesture by any peer's Yjs transaction (a
+// full toys/drawing/boun_pos-layer rebuild), so the live preview lives on
+// a detached clone that survives render() calls, not the real element.
+//
+// Map<elId, { placeholderEl, ghostEl }>
+const _ghosts = new Map();
+
+/**
+ * Begin a local edit preview. Creates a dim placeholder at the element's
+ * committed state and a live clone to preview changes into.
+ */
+export function startGhost(elId) {
+  if (!_layerEl || _ghosts.has(elId)) return;
+  const liveEl = _svgEl?.querySelector(`[data-id="${elId}"]`);
+  if (!liveEl) return;
+
+  const placeholderEl = el('use', {});
+  placeholderEl.setAttribute('href', `#${elId}`);
+  placeholderEl.setAttribute('filter', 'url(#drag-placeholder-filter)');
+
+  const ghostEl = liveEl.cloneNode(true);
+  ghostEl.removeAttribute('id');
+
+  _ghosts.set(elId, { placeholderEl, ghostEl });
+  render();
+}
+
+/**
+ * Hand the live ghost clone's DOM node to `mutate` so the caller can apply
+ * whatever change it represents. Deliberately generic — overlay.js doesn't
+ * know or care whether that means setting one attribute or rebuilding a
+ * whole subtree of children
+ */
+export function updateGhost(elId, mutate) {
+  const entry = _ghosts.get(elId);
+  if (!entry) return;
+  mutate(entry.ghostEl);
+}
+
+/**
+ * End a local edit preview (commit or cancel). Removes the
+ * ghost/placeholder and triggers a render so the (now-committed, or
+ * reverted) real element takes over. Same ordering requirement as
+ * endResizeGhost: call this AFTER a real change lands, not before.
+ */
+export function endGhost(elId) {
+  const entry = _ghosts.get(elId);
+  if (!entry) return;
+  entry.placeholderEl.remove();
+  entry.ghostEl.remove();
+  _ghosts.delete(elId);
+  render();
+}
+
 // ── Drop-target hover
 // The el id currently under a toy being dragged, or null. Set by
 // App.move() on every pointermove while dragging a toy (re-hit-tested each
@@ -600,8 +652,8 @@ let _dropTargetId = null;
 /**
  * The elId currently showing the action-mode affordance (kebab + * icon
  * squares), or null. Set by App whenever the sole local selection supports
- * the 'action' select mode (see LayerAPI.selectModes) — currently all
- * toys. A single id, like resize mode — the affordance only makes sense
+ * the 'action' select mode; currently all toys.
+ * A single id, like resize mode — the affordance only makes sense
  * for an exclusive single selection.
  */
 let _actionAffordanceId = null;
@@ -671,6 +723,9 @@ export function render() {
     _layerEl.appendChild(entry.placeholderEl);
   }
   for (const entry of _resizeGhosts.values()) {
+    _layerEl.appendChild(entry.placeholderEl);
+  }
+  for (const entry of _ghosts.values()) {
     _layerEl.appendChild(entry.placeholderEl);
   }
   for (const [elId] of _remoteDrags) {
@@ -763,6 +818,11 @@ export function render() {
   for (const entry of _resizeGhosts.values()) {
     _layerEl.appendChild(entry.ghostEl);
     _layerEl.appendChild(entry.ringEl);
+  }
+
+  // ── Local edit-preview ghosts — z-top ──────────────────────────────────
+  for (const entry of _ghosts.values()) {
+    _layerEl.appendChild(entry.ghostEl);
   }
 
   renderBowstringCharge(scale);

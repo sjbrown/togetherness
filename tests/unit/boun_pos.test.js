@@ -14,7 +14,7 @@ import {
   // Geometry
   rectToPath, pathToRect,
   // Grid math
-  generateSquareGrid, generateHexGrid, gridFillExtent, computeMaxSnapRadius,
+  generateSquareGrid, generateHexGrid, gridFillExtent, computeMaxSnapRadius, computeGridPositions,
   // CRDT
   addBoundary, addPositionSet, createPositionSetElement, findEl, deleteEl, editBounPos, applyMoveCommit,
   // Layer API
@@ -22,12 +22,14 @@ import {
   // Geometry queries
   getGeom, getAnchor,
   // Edit schema
-  getTtStateSchema, edit,
+  getTtStateSchema, edit, previewEdit,
   // Drag context
   computeBoundaryRects, getSnapPoints,
 } from '../../src/boun_pos.js';
 import { tablesAPI } from '../../src/tables.js';
 const { makeDoc } = tablesAPI;
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -58,6 +60,33 @@ function addPS(layer, overrides = {}) {
     ...overrides, id, name,
   });
   return { id, name, circles };
+}
+
+// Mirrors what overlay.js's startGhost clones from a rendered pos-set
+// element (see boun_pos.js's _positionSetToSVGEl): a <g data-bounpos-type
+// ="pos-set"> with its data-gen-*/data-snap-radius attributes, a <path>
+// (getGeom reads this for the extent), and N <circle fill="url(#...)">
+// children — the fill is what previewEdit's template-clone approach
+// exists to preserve.
+function makeGhostPosSet({ x = 0, y = 0, w = 200, h = 200, genType = 'square', xSpacing = 80, ySpacing = 80, snapRadius = 30, circleCount = 4 } = {}) {
+  const g = document.createElementNS(SVG_NS, 'g');
+  g.setAttribute('data-bounpos-type',   'pos-set');
+  g.setAttribute('data-gen-type',       genType);
+  g.setAttribute('data-gen-x-spacing',  String(xSpacing));
+  g.setAttribute('data-gen-y-spacing',  String(ySpacing));
+  g.setAttribute('data-snap-radius',    String(snapRadius));
+  const path = document.createElementNS(SVG_NS, 'path');
+  path.setAttribute('d', rectToPath(x, y, w, h));
+  g.appendChild(path);
+  for (let i = 0; i < circleCount; i++) {
+    const circle = document.createElementNS(SVG_NS, 'circle');
+    circle.setAttribute('cx', String(i * 50));
+    circle.setAttribute('cy', String(i * 50));
+    circle.setAttribute('r',  '10');
+    circle.setAttribute('fill', 'url(#snap-point-grad)');
+    g.appendChild(circle);
+  }
+  return g;
 }
 
 // ── ID helpers ─────────────────────────────────────────────────────────────────
@@ -162,6 +191,33 @@ describe('gridFillExtent', () => {
   });
 });
 
+describe('computeGridPositions', () => {
+  // The same math rebuildPositionSetGrid uses to actually commit a
+  // resize (see editBounPos/editEl below) — exposed separately so this
+  // file's own previewEdit (tested further down) can compute the
+  // identical result without touching Yjs.
+  test('circles match gridFillExtent for the same inputs', () => {
+    const extent = { x: 0, y: 0, w: 200, h: 200 };
+    const { circles } = computeGridPositions(extent, 'square', 50, 50, 2);
+    expect(circles).toEqual(gridFillExtent(0, 0, 200, 200, 'square', 50, 50));
+  });
+
+  test('r scales with snapRadius level (1 through 4)', () => {
+    const extent = { x: 0, y: 0, w: 200, h: 200 };
+    const radii = [1, 2, 3, 4].map(level => computeGridPositions(extent, 'square', 80, 80, level).r);
+    expect(radii[0]).toBeLessThan(radii[1]);
+    expect(radii[1]).toBeLessThan(radii[2]);
+    expect(radii[2]).toBeLessThan(radii[3]);
+  });
+
+  test('works for hex grids too', () => {
+    const extent = { x: 0, y: 0, w: 300, h: 300 };
+    const { circles, r } = computeGridPositions(extent, 'hex', 70, 60, 2);
+    expect(circles.length).toBeGreaterThan(0);
+    expect(r).toBeGreaterThan(0);
+  });
+});
+
 // ── CRDT operations ───────────────────────────────────────────────────────────
 
 describe('addBoundary / findEl', () => {
@@ -237,6 +293,120 @@ describe('editBounPos rename', () => {
     editBounPos({ id, name: 'forest' }, layer.ydoc, layer.yBounPos);
     expect(yEl.getAttribute('name')).toBe('forest');
     expect(findEl(layer.yBounPos, id).getAttribute('name')).toBe('forest');
+  });
+});
+
+describe('editBounPos grid resize (xSpacing/ySpacing/snapRadius)', () => {
+  // Locks in that the real commit path (rebuildPositionSetGrid, called
+  // via editBounPos/editEl) produces exactly what computeGridPositions
+  // predicts — the same parity a live ghost preview relies on to show a
+  // grid that matches what actually lands on release.
+  test('changing xSpacing rebuilds the circle set to match computeGridPositions', () => {
+    const layer = makeLayer();
+    const { id } = addPS(layer, { x: 0, y: 0, w: 200, h: 200, genType: 'square', xSpacing: 80, ySpacing: 80 });
+
+    editBounPos({ id, xSpacing: 50, ySpacing: 80 }, layer.ydoc, layer.yBounPos);
+
+    const yEl = findEl(layer.yBounPos, id);
+    const committedCircles = yEl.toArray()
+      .filter(c => c instanceof Y.XmlElement && c.nodeName === 'circle')
+      .map(c => ({ cx: Number(c.getAttribute('cx')), cy: Number(c.getAttribute('cy')) }));
+    const { circles: expectedCircles } = computeGridPositions({ x: 0, y: 0, w: 200, h: 200 }, 'square', 50, 80, 2);
+    expect(committedCircles).toEqual(expectedCircles);
+    expect(yEl.getAttribute('data-gen-x-spacing')).toBe('50');
+  });
+
+  test('changing snapRadius level updates every circle’s r to match computeGridPositions', () => {
+    const layer = makeLayer();
+    const { id } = addPS(layer, { x: 0, y: 0, w: 200, h: 200, genType: 'square', xSpacing: 80, ySpacing: 80 });
+
+    editBounPos({ id, snapRadius: 4 }, layer.ydoc, layer.yBounPos);
+
+    const yEl = findEl(layer.yBounPos, id);
+    const { r: expectedR } = computeGridPositions({ x: 0, y: 0, w: 200, h: 200 }, 'square', 80, 80, 4);
+    const committedRadii = yEl.toArray()
+      .filter(c => c instanceof Y.XmlElement && c.nodeName === 'circle')
+      .map(c => Number(c.getAttribute('r')));
+    expect(committedRadii.every(r => r === expectedR)).toBe(true);
+    expect(yEl.getAttribute('data-snap-radius')).toBe(String(expectedR));
+  });
+});
+
+describe('previewEdit', () => {
+  // This is the function that used to live as overlay.js's
+  // updatePosSetGhost — moved here so boun_pos.js is the only file that
+  // knows a pos-set's circles are derived from spacing/snapRadius, not a
+  // plain attribute. ghostEl mirrors the detached clone overlay.js's
+  // startGhost hands it — same shape as attr-ghost.test.js's harness, but
+  // exercised directly against this module instead of through Overlay.
+  test('replaces the circle children to match a new grid, preserving the fill from an existing circle', () => {
+    const ghostEl = makeGhostPosSet({ x: 0, y: 0, w: 200, h: 200, genType: 'square', xSpacing: 80, ySpacing: 80 });
+    // The level previewEdit itself derives off the ghost's own (unmutated)
+    // attributes — same call it makes internally.
+    const { snapRadius: level, ySpacing } = getTtStateSchema(ghostEl);
+
+    previewEdit(ghostEl, { xSpacing: 50 });
+
+    const { circles: expected, r: expectedR } = computeGridPositions({ x: 0, y: 0, w: 200, h: 200 }, 'square', 50, ySpacing, level);
+    const circles = [...ghostEl.querySelectorAll(':scope > circle')];
+    expect(circles).toHaveLength(expected.length);
+    expect(circles.map(c => [Number(c.getAttribute('cx')), Number(c.getAttribute('cy'))]))
+      .toEqual(expected.map(({ cx, cy }) => [Math.round(cx), Math.round(cy)]));
+    expect(circles.every(c => Number(c.getAttribute('r')) === Math.round(expectedR))).toBe(true);
+    // Template-cloned from an existing circle, so the gradient fill survives.
+    expect(circles.every(c => c.getAttribute('fill') === 'url(#snap-point-grad)')).toBe(true);
+  });
+
+  test('reads whichever of xSpacing/ySpacing/snapRadius are absent from editData off the ghost’s own attributes', () => {
+    const ghostEl = makeGhostPosSet({ x: 0, y: 0, w: 200, h: 200, genType: 'square', xSpacing: 80, ySpacing: 80 });
+    const { snapRadius: level, xSpacing } = getTtStateSchema(ghostEl);
+
+    // Only ySpacing is previewed; xSpacing/snapRadius should come from the
+    // ghost's current data-gen-x-spacing/data-snap-radius attributes.
+    previewEdit(ghostEl, { ySpacing: 40 });
+
+    const { circles: expected } = computeGridPositions({ x: 0, y: 0, w: 200, h: 200 }, 'square', xSpacing, 40, level);
+    const circles = [...ghostEl.querySelectorAll(':scope > circle')];
+    expect(circles.map(c => [Number(c.getAttribute('cx')), Number(c.getAttribute('cy'))]))
+      .toEqual(expected.map(({ cx, cy }) => [Math.round(cx), Math.round(cy)]));
+  });
+
+  test('the <path> child is left untouched', () => {
+    const ghostEl = makeGhostPosSet({ x: 0, y: 0, w: 200, h: 200 });
+    const d = ghostEl.querySelector('path').getAttribute('d');
+
+    previewEdit(ghostEl, { xSpacing: 20 });
+
+    expect(ghostEl.querySelector('path').getAttribute('d')).toBe(d);
+  });
+
+  test('falls back to a bare circle (no fill) if the ghost started with zero circles', () => {
+    const ghostEl = makeGhostPosSet({ x: 0, y: 0, w: 50, h: 50, circleCount: 0 });
+
+    previewEdit(ghostEl, { xSpacing: 40, ySpacing: 40 });
+
+    const circles = [...ghostEl.querySelectorAll(':scope > circle')];
+    expect(circles.length).toBeGreaterThan(0);
+    expect(circles[0].hasAttribute('fill')).toBe(false);
+  });
+
+  test('is a no-op for a boundary ghost (no spacing/snapRadius to preview)', () => {
+    const ghostEl = document.createElementNS(SVG_NS, 'g');
+    ghostEl.setAttribute('data-bounpos-type', 'boundary');
+    const path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', rectToPath(0, 0, 100, 100));
+    ghostEl.appendChild(path);
+
+    expect(() => previewEdit(ghostEl, { name: 'dungeon' })).not.toThrow();
+    expect(ghostEl.querySelectorAll('circle')).toHaveLength(0);
+  });
+
+  test('is a no-op when editData has none of xSpacing/ySpacing/snapRadius', () => {
+    const ghostEl = makeGhostPosSet({ circleCount: 3 });
+
+    previewEdit(ghostEl, { name: 'grid' });
+
+    expect(ghostEl.querySelectorAll(':scope > circle')).toHaveLength(3);
   });
 });
 

@@ -550,13 +550,27 @@ export function wireColorPickers(container) {
 // renderSchemaField and checkpointFrequencyHTML emit <range-ticked>
 // elements with no event listeners (both are pure string renderers).
 // After any innerHTML assignment that may contain `[data-rt-wire]`
-// elements, call wireRangeTicked(container) to attach 'range-changed'
-// listeners. No re-render call here on purpose: <range-ticked> keeps its
-// own tick labels in sync internally (see component/range_ticked.js), so
-// there's nothing left for a caller-side refresh to do — and calling one
-// on every drag tick would replace the live <range-ticked> element out
-// from under the user's own drag, the exact bug this component exists to
-// avoid (see RANGE_TICKED_README.md's "why value gets a cheap update path").
+// elements, call wireRangeTicked(container) to attach listeners.
+//
+// 'add'/'addQuick'/'checkpoint' fields never write anywhere that triggers
+// a re-render (App.setToolParam and onCheckpointFrequencyInput both just
+// mutate local state / patch one label), so they wire 'range-changed'
+// (fires on every drag tick) straight through — there's nothing to
+// interrupt.
+//
+// 'edit' fields are different: App.commitEdit writes to the live Yjs doc,
+// and that synchronously triggers UI.refreshFromDoc(), which replaces
+// #panelBody's whole innerHTML — including the very <range-ticked> the
+// user has their mouse on. Calling that on every 'range-changed' tick
+// tears the element down mid-drag, killing the browser's native slider
+// tracking on it. So 'edit' mode instead treats the two range-ticked
+// events differently: 'range-changed' (every tick) only drives a local
+// preview via App.previewEdit(id, editData) — a detached ghost clone on
+// the Overlay layer, no Yjs write, so #panelBody is never touched mid-drag
+// — and only 'range-committed' (fires once, when the gesture actually
+// ends) calls the real App.commitEdit(id, editData), same as any other
+// Edit-panel field, which does the Yjs write and (as part of committing)
+// clears the preview ghost.
 export function wireRangeTicked(container) {
   if (!container) return;
   container.querySelectorAll('range-ticked[data-rt-wire]').forEach(el => {
@@ -564,11 +578,15 @@ export function wireRangeTicked(container) {
     const target = el.dataset.rtTarget; // element id (edit) or tool name (add/addQuick)
     const key    = el.dataset.rtKey;
 
+    if (mode === 'edit') {
+      el.addEventListener('range-changed',   (e) => App.previewEdit(target, { [key]: e.detail.value }));
+      el.addEventListener('range-committed', (e) => App.commitEdit(target, { [key]: e.detail.value }));
+      return;
+    }
+
     el.addEventListener('range-changed', (e) => {
       const value = e.detail.value;
-      if (mode === 'edit') {
-        App.commitEdit(target, { [key]: value });
-      } else if (mode === 'checkpoint') {
+      if (mode === 'checkpoint') {
         onCheckpointFrequencyInput(value);
       } else {
         App.setToolParam(target, key, value);

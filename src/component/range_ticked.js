@@ -26,6 +26,9 @@
  *
  * @fires range-changed - Emitted on every 'input' tick of the drag
  *   Detail: {value: number}
+ * @fires range-committed - Emitted once when the gesture ends (native
+ *   'change' — mouse released, or a keyboard nudge's own press-and-commit).
+ *   Detail: {value: number}
  */
 class RangeTicked extends HTMLElement {
   constructor() {
@@ -170,6 +173,14 @@ class RangeTicked extends HTMLElement {
       this.setAttribute('value', this._input.value);
       this.emitChange();
     });
+    // Native 'change' fires once per gesture (mouse released, or a
+    // keyboard nudge's own atomic press-and-commit) — unlike 'input',
+    // which fires continuously while dragging. A consumer that wants to
+    // defer a heavier commit (e.g. writing to a shared/synced document)
+    // until the interaction is actually finished, rather than on every
+    // drag tick, should listen for 'range-committed' instead of
+    // 'range-changed'.
+    this._input.addEventListener('change', () => this.emitCommit());
   }
 
   /**
@@ -200,6 +211,14 @@ class RangeTicked extends HTMLElement {
 
   emitChange() {
     this.dispatchEvent(new CustomEvent('range-changed', {
+      detail: { value: Number(this._input.value) },
+      bubbles: true,
+      composed: true,
+    }));
+  }
+
+  emitCommit() {
+    this.dispatchEvent(new CustomEvent('range-committed', {
       detail: { value: Number(this._input.value) },
       bubbles: true,
       composed: true,
