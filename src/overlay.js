@@ -643,6 +643,32 @@ export function updateAttrGhost(elId, attr, value) {
 }
 
 /**
+ * Rebuild the ghost clone's <circle> children to match a freshly computed
+ * position-set grid (see boun_pos.js's computeGridPositions) — unlike a
+ * plain attribute tweak, changing spacing/snapRadius changes how many
+ * snap points there are, so this replaces the whole set rather than
+ * mutating cx/cy/r on however many happened to exist before. Reuses the
+ * first existing circle as a template (preserving its fill — the
+ * snap-point gradient — and any other authored attributes) for every new
+ * position; falls back to a bare circle only if the ghost started with
+ * none at all.
+ */
+export function updatePosSetGhost(elId, circles, r) {
+  const entry = _attrGhosts.get(elId);
+  if (!entry) return;
+  const existing = [...entry.ghostEl.querySelectorAll(':scope > circle')];
+  const template = existing[0] ?? null;
+  for (const c of existing) c.remove();
+  for (const { cx, cy } of circles) {
+    const circle = template ? template.cloneNode(true) : el('circle', {});
+    circle.setAttribute('cx', Math.round(cx));
+    circle.setAttribute('cy', Math.round(cy));
+    circle.setAttribute('r',  Math.round(r));
+    entry.ghostEl.appendChild(circle);
+  }
+}
+
+/**
  * End a local attribute preview (commit or cancel). Removes the
  * ghost/placeholder and triggers a render so the (now-committed, or
  * reverted) real element takes over. Same ordering requirement as

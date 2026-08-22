@@ -1266,19 +1266,34 @@ const App = {
     const domEl = _svgEl?.querySelector(`[data-id="${id}"]`);
     if (!domEl) return;
     const mtype = moduleForElement(domEl);
+    _fieldPreviewState = { id, key, mtype };
+    Overlay.startAttrGhost(id);
+
+    // boun_pos position-sets don't have a single attribute to preview —
+    // snapRadius/xSpacing/ySpacing each recompute the whole snap-point
+    // grid (see boun_pos.js's computeGridPositions, the same math the
+    // real commit path uses). Read the OTHER two current values off the
+    // live element (getTtStateSchema already derives them from its
+    // data-gen-*/data-snap-radius attributes) so dragging one field
+    // previews a real grid, not a guess at the other two.
+    if (mtype === 'boun_pos' && domEl.getAttribute('data-bounpos-type') === 'pos-set') {
+      const current   = BounPos.getTtStateSchema(domEl);
+      const genType    = domEl.getAttribute('data-gen-type') ?? 'square';
+      const xSpacing   = key === 'xSpacing'   ? value : current.xSpacing;
+      const ySpacing   = key === 'ySpacing'   ? value : current.ySpacing;
+      const snapRLevel = key === 'snapRadius' ? value : current.snapRadius;
+      const { x, y, width: w, height: h } = BounPos.getGeom(domEl) ?? {};
+      const { circles, r } = BounPos.computeGridPositions({ x, y, w, h }, genType, xSpacing, ySpacing, snapRLevel);
+      Overlay.updatePosSetGhost(id, circles, r);
+      return;
+    }
+
     // Only drawing shapes have a schema-key -> SVG-attribute alias (e.g.
     // corner-r -> rx — see drawing.js's SHAPE_TYPES attrMap); everywhere
-    // else the schema key already is the attribute name. Ghost-previewing
-    // a field with no such direct attribute (e.g. boun_pos's snapRadius,
-    // which recomputes several nested circles) is a harmless no-op here —
-    // the clone just doesn't visually change — but this call still fixes
-    // the actual bug for those fields too, since it's still the only
-    // thing standing between the drag and a per-tick Yjs write.
+    // else the schema key already is the attribute name.
     const svgAttr = mtype === 'drawing'
       ? (Drawing.SHAPE_TYPES[domEl.tagName]?.attrMap?.[key] ?? key)
       : key;
-    _fieldPreviewState = { id, key, mtype };
-    Overlay.startAttrGhost(id);
     Overlay.updateAttrGhost(id, svgAttr, value);
   },
 

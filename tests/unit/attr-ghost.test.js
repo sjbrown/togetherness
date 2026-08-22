@@ -19,7 +19,7 @@
 // @vitest-environment jsdom
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
-  startAttrGhost, updateAttrGhost, endAttrGhost,
+  startAttrGhost, updateAttrGhost, endAttrGhost, updatePosSetGhost,
   init as overlayInit,
 } from '../../src/overlay.js'
 
@@ -60,6 +60,31 @@ function placeRect(id, attrs = {}) {
   for (const [k, v] of Object.entries(attrs)) rect.setAttribute(k, v)
   document.getElementById('drawing-layer').appendChild(rect)
   return rect
+}
+
+// Mirrors a real boun_pos position-set: a <g data-id> with <path>, <text>,
+// and N <circle fill="url(#...)"> children (see boun_pos.js's
+// _positionSetToSVGEl) — the circle's fill is what updatePosSetGhost's
+// template-clone approach exists to preserve.
+function placePosSet(id, circleCount = 4, r = 10) {
+  const g = document.createElementNS(SVG_NS, 'g')
+  g.setAttribute('data-id', id)
+  g.setAttribute('id', id)
+  g.setAttribute('data-module', 'boun_pos')
+  g.setAttribute('data-bounpos-type', 'pos-set')
+  const path = document.createElementNS(SVG_NS, 'path')
+  path.setAttribute('d', 'M0,0 L200,0 L200,200 L0,200 Z')
+  g.appendChild(path)
+  for (let i = 0; i < circleCount; i++) {
+    const circle = document.createElementNS(SVG_NS, 'circle')
+    circle.setAttribute('cx', String(i * 50))
+    circle.setAttribute('cy', String(i * 50))
+    circle.setAttribute('r', String(r))
+    circle.setAttribute('fill', 'url(#snap-point-grad)')
+    g.appendChild(circle)
+  }
+  document.getElementById('drawing-layer').appendChild(g) // any layer works for this harness
+  return g
 }
 
 beforeEach(() => {
@@ -150,5 +175,59 @@ describe('endAttrGhost', () => {
     endAttrGhost('shape1')
     startAttrGhost('shape1')
     expect(document.querySelectorAll('#overlay-layer rect')).toHaveLength(1)
+  })
+})
+
+describe('updatePosSetGhost', () => {
+  test('replaces the ghost’s circle children to match a new grid, preserving the fill from an existing circle', () => {
+    placePosSet('shape1', 4, 10)
+    startAttrGhost('shape1')
+
+    updatePosSetGhost('shape1', [{ cx: 0, cy: 0 }, { cx: 25, cy: 0 }, { cx: 0, cy: 25 }], 6)
+
+    const circles = [...document.querySelectorAll('#overlay-layer g[data-id="shape1"] > circle')]
+    expect(circles).toHaveLength(3) // count changed — a denser grid than the original 4
+    expect(circles.map(c => [c.getAttribute('cx'), c.getAttribute('cy'), c.getAttribute('r')]))
+      .toEqual([['0', '0', '6'], ['25', '0', '6'], ['0', '25', '6']])
+    // Template-cloned from an existing circle, so the gradient fill survives.
+    expect(circles.every(c => c.getAttribute('fill') === 'url(#snap-point-grad)')).toBe(true)
+  })
+
+  test('the <path> and other non-circle children are untouched', () => {
+    placePosSet('shape1', 4, 10)
+    startAttrGhost('shape1')
+
+    updatePosSetGhost('shape1', [{ cx: 0, cy: 0 }], 6)
+
+    const ghost = document.querySelector('#overlay-layer g[data-id="shape1"]')
+    expect(ghost.querySelector('path').getAttribute('d')).toBe('M0,0 L200,0 L200,200 L0,200 Z')
+  })
+
+  test('falls back to a bare circle (no fill) if the ghost started with zero circles', () => {
+    placePosSet('shape1', 0)
+    startAttrGhost('shape1')
+
+    updatePosSetGhost('shape1', [{ cx: 5, cy: 5 }], 3)
+
+    const circles = [...document.querySelectorAll('#overlay-layer g[data-id="shape1"] > circle')]
+    expect(circles).toHaveLength(1)
+    expect(circles[0].getAttribute('cx')).toBe('5')
+  })
+
+  test('is a no-op if no ghost was started for that id', () => {
+    placePosSet('shape1', 4)
+    expect(() => updatePosSetGhost('shape1', [{ cx: 0, cy: 0 }], 6)).not.toThrow()
+    expect(document.querySelectorAll('#overlay-layer *')).toHaveLength(0)
+  })
+
+  test('the real element’s circles are never touched — only the ghost clone', () => {
+    const real = placePosSet('shape1', 4, 10)
+    startAttrGhost('shape1')
+
+    updatePosSetGhost('shape1', [{ cx: 999, cy: 999 }], 50)
+
+    const realCircles = [...real.querySelectorAll(':scope > circle')]
+    expect(realCircles).toHaveLength(4)
+    expect(realCircles[0].getAttribute('cx')).toBe('0') // untouched
   })
 })

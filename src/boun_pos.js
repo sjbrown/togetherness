@@ -77,13 +77,27 @@ export function toolParamsToCreateParams(genType, toolParams, {x, y, w, h}) {
   return { snapRadius, xSpacing, ySpacing, circles }
 }
 
+/**
+ * Compute the circle positions + shared radius for genType/xSpacing/
+ * ySpacing within an extent rect ({x,y,w,h}), at the given snapRadius
+ * level (1-4) — the same math rebuildPositionSetGrid uses to actually
+ * commit a grid resize. Exposed separately (pure, no Yjs) so a live
+ * preview can compute the identical result without writing anything —
+ * see overlay.js's updatePosSetGhost and app.js's previewField.
+ */
+export function computeGridPositions(extent, genType, xSpacing, ySpacing, snapRadiusLevel) {
+  const { x, y, w, h } = extent;
+  const circles = gridFillExtent(x, y, w, h, genType, xSpacing, ySpacing);
+  const r = snapRadiusLevelToRadius(snapRadiusLevel ?? 2, genType, xSpacing, ySpacing);
+  return { circles, r };
+}
+
 function rebuildPositionSetGrid(ydoc, yEl, { genType, xSpacing, ySpacing, snapRadiusLevel }) {
   const yPath = yChildByTag(yEl, 'path');
   if (!yPath) return;
 
-  const { x, y, w, h } = pathToRect(yPath.getAttribute('d') ?? 'M0,0 L100,0 L100,100 L0,100 Z');
-  const circles = gridFillExtent(x, y, w, h, genType, xSpacing, ySpacing);
-  const r = snapRadiusLevelToRadius(snapRadiusLevel ?? 2, genType, xSpacing, ySpacing);
+  const extent = pathToRect(yPath.getAttribute('d') ?? 'M0,0 L100,0 L100,100 L0,100 Z');
+  const { circles, r } = computeGridPositions(extent, genType, xSpacing, ySpacing, snapRadiusLevel);
 
   ydoc.transact(() => {
     yEl.setAttribute('data-gen-type',      genType);

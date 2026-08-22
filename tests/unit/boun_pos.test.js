@@ -14,7 +14,7 @@ import {
   // Geometry
   rectToPath, pathToRect,
   // Grid math
-  generateSquareGrid, generateHexGrid, gridFillExtent, computeMaxSnapRadius,
+  generateSquareGrid, generateHexGrid, gridFillExtent, computeMaxSnapRadius, computeGridPositions,
   // CRDT
   addBoundary, addPositionSet, createPositionSetElement, findEl, deleteEl, editBounPos, applyMoveCommit,
   // Layer API
@@ -162,6 +162,33 @@ describe('gridFillExtent', () => {
   });
 });
 
+describe('computeGridPositions', () => {
+  // The same math rebuildPositionSetGrid uses to actually commit a
+  // resize (see editBounPos/editEl below) — exposed separately so a live
+  // preview (overlay.js's updatePosSetGhost / app.js's previewField) can
+  // compute the identical result without touching Yjs.
+  test('circles match gridFillExtent for the same inputs', () => {
+    const extent = { x: 0, y: 0, w: 200, h: 200 };
+    const { circles } = computeGridPositions(extent, 'square', 50, 50, 2);
+    expect(circles).toEqual(gridFillExtent(0, 0, 200, 200, 'square', 50, 50));
+  });
+
+  test('r scales with snapRadius level (1 through 4)', () => {
+    const extent = { x: 0, y: 0, w: 200, h: 200 };
+    const radii = [1, 2, 3, 4].map(level => computeGridPositions(extent, 'square', 80, 80, level).r);
+    expect(radii[0]).toBeLessThan(radii[1]);
+    expect(radii[1]).toBeLessThan(radii[2]);
+    expect(radii[2]).toBeLessThan(radii[3]);
+  });
+
+  test('works for hex grids too', () => {
+    const extent = { x: 0, y: 0, w: 300, h: 300 };
+    const { circles, r } = computeGridPositions(extent, 'hex', 70, 60, 2);
+    expect(circles.length).toBeGreaterThan(0);
+    expect(r).toBeGreaterThan(0);
+  });
+});
+
 // ── CRDT operations ───────────────────────────────────────────────────────────
 
 describe('addBoundary / findEl', () => {
@@ -237,6 +264,42 @@ describe('editBounPos rename', () => {
     editBounPos({ id, name: 'forest' }, layer.ydoc, layer.yBounPos);
     expect(yEl.getAttribute('name')).toBe('forest');
     expect(findEl(layer.yBounPos, id).getAttribute('name')).toBe('forest');
+  });
+});
+
+describe('editBounPos grid resize (xSpacing/ySpacing/snapRadius)', () => {
+  // Locks in that the real commit path (rebuildPositionSetGrid, called
+  // via editBounPos/editEl) produces exactly what computeGridPositions
+  // predicts — the same parity a live ghost preview relies on to show a
+  // grid that matches what actually lands on release.
+  test('changing xSpacing rebuilds the circle set to match computeGridPositions', () => {
+    const layer = makeLayer();
+    const { id } = addPS(layer, { x: 0, y: 0, w: 200, h: 200, genType: 'square', xSpacing: 80, ySpacing: 80 });
+
+    editBounPos({ id, xSpacing: 50, ySpacing: 80 }, layer.ydoc, layer.yBounPos);
+
+    const yEl = findEl(layer.yBounPos, id);
+    const committedCircles = yEl.toArray()
+      .filter(c => c instanceof Y.XmlElement && c.nodeName === 'circle')
+      .map(c => ({ cx: Number(c.getAttribute('cx')), cy: Number(c.getAttribute('cy')) }));
+    const { circles: expectedCircles } = computeGridPositions({ x: 0, y: 0, w: 200, h: 200 }, 'square', 50, 80, 2);
+    expect(committedCircles).toEqual(expectedCircles);
+    expect(yEl.getAttribute('data-gen-x-spacing')).toBe('50');
+  });
+
+  test('changing snapRadius level updates every circle’s r to match computeGridPositions', () => {
+    const layer = makeLayer();
+    const { id } = addPS(layer, { x: 0, y: 0, w: 200, h: 200, genType: 'square', xSpacing: 80, ySpacing: 80 });
+
+    editBounPos({ id, snapRadius: 4 }, layer.ydoc, layer.yBounPos);
+
+    const yEl = findEl(layer.yBounPos, id);
+    const { r: expectedR } = computeGridPositions({ x: 0, y: 0, w: 200, h: 200 }, 'square', 80, 80, 4);
+    const committedRadii = yEl.toArray()
+      .filter(c => c instanceof Y.XmlElement && c.nodeName === 'circle')
+      .map(c => Number(c.getAttribute('r')));
+    expect(committedRadii.every(r => r === expectedR)).toBe(true);
+    expect(yEl.getAttribute('data-snap-radius')).toBe(String(expectedR));
   });
 });
 
