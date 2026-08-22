@@ -27,7 +27,6 @@ const SVG_NS   = 'http://www.w3.org/2000/svg'
 const XLINK_NS = 'http://www.w3.org/1999/xlink'
 const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789'
 
-import { number, bool } from './tools-schema.js';
 import { runInEnvelope, commitGesture, isInsideEnvelope } from './envelope.js';
 export { isInsideEnvelope };
 import { consumeParents, setHead, getHead, addMergeTip } from './op_head.js';
@@ -1380,6 +1379,20 @@ export const TOOLS = [
       { kind: 'number', key: 'value', label: 'Token style', min: 0, max: 24, step: 1, show: ['add'] },
     ],
   },
+  {
+    name:    'single_poker_card',
+    toyType: 'single_poker_card',
+    file: 'single_poker_card.svg',
+    label: 'Poker Card',
+    iconUrl: 'toy/single_poker_card.svg',
+    layer:   'toys',
+    defaults: { fill: '#fa2020', suit: 1, rank: 1 },
+    options: [
+      { kind: 'color-hsl', key: 'fill', label: 'Back color', show: ['add', 'edit', 'addQuick'] },
+      { kind: 'number', key: 'suit', label: 'Suit', min: 1, max: 4, step: 1, show: ['add'] },
+      { kind: 'number', key: 'rank', label: 'Rank', min: 1, max: 13, step: 1, show: ['add'] },
+    ],
+  },
 ];
 export const TOY_TYPES = {
   player_marker: TOOLS[0],
@@ -1389,6 +1402,7 @@ export const TOY_TYPES = {
   supply: TOOLS[4],
   tray_sum: TOOLS[5],
   token_glass: TOOLS[6],
+  single_poker_card: TOOLS[7],
   stack: {
     name:    'stack',
     toyType: 'stack',
@@ -1404,6 +1418,19 @@ export const TOY_TYPES = {
 // ── ttState / ttStateSchema ───────────────────────────────────────────────────
 
 /**
+ * A toy's own namespace(s) may define `editableFields(elem)`, returning
+ * extra { values, types } beyond the generic color/name fields below — see
+ * single_poker_card's suit/rank sliders. First namespace that defines it
+ * wins; { values: {}, types: {} } if none do.
+ */
+function toyEditableFields(svgEl, toyType) {
+  const ns = getNamespacesForType(toyType)
+    .map(name => globalThis[name])
+    .find(ns => ns && typeof ns.editableFields === 'function')
+  return ns ? ns.editableFields(svgEl) : { values: {}, types: {} }
+}
+
+/**
  * Return the ttStateSchema for a rendered toy element.
  * Color is read from the data-color attribute on the <g> wrapper, which is
  * part of the Yjs tree and always in sync with the CRDT state.
@@ -1417,13 +1444,17 @@ export function getTtStateSchema(svgEl) {
   function isColorable() {
     return svgEl.querySelector(`.${toyId}__tt_color_filter`) !== null
   }
+  const { values: extraValues, types: extraTypes } =
+    toyEditableFields(svgEl, svgEl.getAttribute('data-toy-type'))
 
   return {
     color: svgEl.getAttribute('data-color') ?? '#888',
     ...(nameEl ? { name: nameEl.textContent ?? '' } : {}),
+    ...extraValues,
     types: {
       ...(isColorable(svgEl) ? { color: 'color-hsl' } : {}),   // hsl only — toy opacity is not user-editable
       ...(nameEl ? { name: { kind: 'string', show: ['edit'] } } : {}),
+      ...extraTypes,
     },
   };
 }
@@ -1463,8 +1494,7 @@ export function editDom(toyEl, editData) {
   if (!toyEl) return
   const toyId = toyEl.getAttribute('data-id')
   if (!toyId) return
-  const { color, name } = editData
-  if (color === undefined && name === undefined) return
+  const { color, name, ...rest } = editData
 
   if (color !== undefined) {
     const values = colorMatrixValues(color)
@@ -1476,6 +1506,16 @@ export function editDom(toyEl, editData) {
   if (name !== undefined) {
     const nameEl = toyEl.querySelector(`.${toyId}__tt_name`)
     if (nameEl) nameEl.textContent = String(name)
+  }
+  // Any remaining keys are a toy-defined editable field (see
+  // toyEditableFields above) — hand them to whichever namespace declared
+  // applyEdit, if any.
+  if (Object.keys(rest).length) {
+    const toyType = toyEl.getAttribute('data-toy-type')
+    const ns = getNamespacesForType(toyType)
+      .map(nsName => globalThis[nsName])
+      .find(ns => ns && typeof ns.applyEdit === 'function')
+    ns?.applyEdit(toyEl, rest)
   }
 }
 
@@ -1490,6 +1530,15 @@ export function previewEdit(ghostEl, editData) {
   for (const [key, value] of Object.entries(editData)) {
     ghostEl.setAttribute(key, value)
   }
+  // A toy-defined applyEdit (see toyEditableFields) also gets a shot at the
+  // ghost — its own clone of the real toy, attribute-per-key isn't enough
+  // to preview e.g. single_poker_card's suit/rank, which repaint several
+  // descendant nodes together.
+  const toyType = ghostEl.getAttribute?.('data-toy-type')
+  const ns = getNamespacesForType(toyType)
+    .map(nsName => globalThis[nsName])
+    .find(ns => ns && typeof ns.applyEdit === 'function')
+  ns?.applyEdit(ghostEl, editData)
 }
 
 // ── Toy behaviour contract ──────────────────────────────────────────────────

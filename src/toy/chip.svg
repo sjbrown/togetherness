@@ -128,11 +128,11 @@ var chip = {
     tspan.textContent = String(current + step)
   },
 
-  initialize: function(elem, value) {
+  initialize: function(elem, options = {}) {
     elem.setAttribute('data-below', '')
     elem.setAttribute('data-above', '')
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      elem.querySelector('tspan').textContent = String(value)
+    if (typeof options.value === 'number' && Number.isFinite(options.value)) {
+      elem.querySelector('tspan').textContent = String(options.value)
     }
   },
 

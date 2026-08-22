@@ -1263,6 +1263,15 @@ const App = {
     const id = Toys.newToyId();
     const layerEl = _svgEl?.querySelector('#toys-layer');
     if (!layerEl) return;
+    const params = _toolParams[toolName] ?? {};
+    // initialize()'s options always carries color + every other tool option
+    const color  = params.fill ?? _myGrad.c1;
+    const initArgs = {
+      color,
+      ...Object.fromEntries((def.options ?? [])
+        .map(o => o.key)
+        .map(k => [k, params[k]])),
+    };
     // initializeToy below runs its own outer transact() with no
     // explicit origin, so its merged handler-plus-cascade transaction
     // commits under null — a separate transaction, and a separate
@@ -1270,8 +1279,7 @@ const App = {
     // gesture, not part of "place".
     _lastActionScope = 'toys';
     Toys.placeToy(_ydoc, layerEl, {
-      id, toyType: def.toyType, x, y,
-      color: _toolParams[toolName]?.fill ?? _myGrad.c1,
+      id, toyType: def.toyType, x, y, color,
     }, { authorId: _myId, tableId: _tableId }).then(async () => {
       addHistory(`placed ${def.label} ${id}`, { elType: 'toy' });
       App.addLog(`placed ${def.label} ${id}`, 'local');
@@ -1283,7 +1291,7 @@ const App = {
       await Toys.activateToyScripts(_ydoc, def.toyType);
       const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
       if (svgEl && layerEl) {
-        Toys.initializeToy(_ydoc, layerEl, svgEl, def.toyType, _myId, _tableId, _toolParams[toolName]?.value);
+        Toys.initializeToy(_ydoc, layerEl, svgEl, def.toyType, _myId, _tableId, initArgs);
       }
     }).catch(err => {
       UI.toast(`Failed to place ${def.label}`, 'warn');

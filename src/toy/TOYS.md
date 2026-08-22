@@ -67,6 +67,16 @@ entire public contract. Recognized members:
 - **`contents_change_handler(elem)`** — called automatically whenever
   something inside this toy's `.tt_contents` changes, if your toy is a
   container (see "Containment").
+- **`editableFields(elem)`** — extra Edit-panel fields beyond the built-in
+  color/name, as `{ values, types }` (same shape as a ttStateSchema — see
+  `tools-schema.js`'s OptionField kinds). Merged in generically by
+  `getTtStateSchema`; see `single_poker_card.svg`'s suit/rank sliders.
+- **`applyEdit(elem, editData)`** — counterpart to `editableFields`. Called
+  with whatever edit keys `editDom` doesn't own itself (i.e. everything
+  but `color`/`name`) whenever one of your fields is committed — and also,
+  on a detached ghost clone of `elem`, while the user is still dragging an
+  edit-mode range-ticked slider (see `previewEdit`), so a live preview
+  comes for free if `applyEdit` works from `elem`/`editData` alone.
 
 All are optional. A toy with none of them just sits on the table as
 inert artwork.

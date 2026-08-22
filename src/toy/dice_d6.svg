@@ -71,13 +71,9 @@ var d6 = {
     },
   },
 
-  initialize: function(elem, prototype) {
-    if (!prototype) {
-      return
-    }
-    elem.querySelector('tspan').textContent = (
-      prototype.querySelector('tspan').textContent
-    )
+  initialize: function(elem, options = {}) {
+    // Nothing here currently reads options — no non-color TOOLS entry for
+    // d6 yet — but the signature stays standard with every other toy's.
   },
 
 }
