@@ -565,11 +565,12 @@ export function wireColorPickers(container) {
 // tears the element down mid-drag, killing the browser's native slider
 // tracking on it. So 'edit' mode instead treats the two range-ticked
 // events differently: 'range-changed' (every tick) only drives a local
-// preview via App.previewField — a detached ghost clone on the Overlay
-// layer, no Yjs write, so #panelBody is never touched mid-drag — and only
-// 'range-committed' (fires once, when the gesture actually ends) calls
-// App.commitFieldPreview, which does the real Yjs write and only then
-// lets #panelBody re-render.
+// preview via App.previewEdit(id, editData) — a detached ghost clone on
+// the Overlay layer, no Yjs write, so #panelBody is never touched mid-drag
+// — and only 'range-committed' (fires once, when the gesture actually
+// ends) calls the real App.commitEdit(id, editData), same as any other
+// Edit-panel field, which does the Yjs write and (as part of committing)
+// clears the preview ghost.
 export function wireRangeTicked(container) {
   if (!container) return;
   container.querySelectorAll('range-ticked[data-rt-wire]').forEach(el => {
@@ -578,8 +579,8 @@ export function wireRangeTicked(container) {
     const key    = el.dataset.rtKey;
 
     if (mode === 'edit') {
-      el.addEventListener('range-changed',   (e) => App.previewField(target, key, e.detail.value));
-      el.addEventListener('range-committed', (e) => App.commitFieldPreview(target, key, e.detail.value));
+      el.addEventListener('range-changed',   (e) => App.previewEdit(target, { [key]: e.detail.value }));
+      el.addEventListener('range-committed', (e) => App.commitEdit(target, { [key]: e.detail.value }));
       return;
     }
 

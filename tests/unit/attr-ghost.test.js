@@ -2,18 +2,18 @@
  * tests/unit/attr-ghost.test.js
  *
  * overlay.js's attribute-preview ghost (startAttrGhost/updateAttrGhost/
- * endAttrGhost) — the mechanism behind App.previewField (app.js), which
- * lets an Edit-panel field (e.g. a <range-ticked> stroke-width slider)
- * show a live preview on the canvas without writing to Yjs on every drag
- * tick. Same rationale, and same harness pattern (real overlay.js +
- * jsdom, no App boot), as drop-target-hover.test.js / resize.test.js.
+ * endAttrGhost) — the mechanism behind App.previewEdit(id, editData)
+ * (app.js), which lets an Edit-panel field (e.g. a <range-ticked>
+ * stroke-width slider) show a live preview on the canvas without writing
+ * to Yjs on every drag tick. Same rationale, and same harness pattern
+ * (real overlay.js + jsdom, no App boot), as drop-target-hover.test.js /
+ * resize.test.js.
  *
- * app.js's previewField/commitFieldPreview/cancelFieldPreview themselves
- * are untested here by convention — see this project's established
- * pattern of not importing app.js in unit tests (e.g.
- * toy-position-snap.test.js's header) and instead testing the primitives
- * it orchestrates. Real end-to-end drag behavior is verified separately
- * in a browser.
+ * app.js's previewEdit/commitEdit/cancelEdit themselves are untested here
+ * by convention — see this project's established pattern of not
+ * importing app.js in unit tests (e.g. toy-position-snap.test.js's
+ * header) and instead testing the primitives it orchestrates. Real
+ * end-to-end drag behavior is verified separately in a browser.
  */
 
 // @vitest-environment jsdom

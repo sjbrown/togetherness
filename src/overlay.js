@@ -610,7 +610,7 @@ const _attrGhosts = new Map();
  * element's committed state (mirrors startResizeGhost) and a live clone to
  * preview attribute changes into. No-op if a ghost for this elId already
  * exists, or if the element can't be found — safe to call on every tick of
- * a gesture, not just the first (see App.previewField).
+ * a gesture, not just the first (see App.previewEdit).
  */
 export function startAttrGhost(elId) {
   if (!_layerEl || _attrGhosts.has(elId)) return;
@@ -631,7 +631,7 @@ export function startAttrGhost(elId) {
 /**
  * Set one attribute on the live ghost clone. attr is the real SVG
  * attribute name (already resolved from any schema-key alias by the
- * caller — see App.previewField) — this function is deliberately generic
+ * caller — see App.previewEdit) — this function is deliberately generic
  * over what attribute or element type it's touching, the same way
  * updateResizeGhost's rect/circle/svg branches are the only place that
  * needs to know shape-specific structure.

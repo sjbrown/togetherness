@@ -165,7 +165,7 @@ describe('gridFillExtent', () => {
 describe('computeGridPositions', () => {
   // The same math rebuildPositionSetGrid uses to actually commit a
   // resize (see editBounPos/editEl below) — exposed separately so a live
-  // preview (overlay.js's updatePosSetGhost / app.js's previewField) can
+  // preview (overlay.js's updatePosSetGhost / app.js's previewEdit) can
   // compute the identical result without touching Yjs.
   test('circles match gridFillExtent for the same inputs', () => {
     const extent = { x: 0, y: 0, w: 200, h: 200 };

@@ -201,14 +201,15 @@ describe('SELECT_TOOL multi option — show surfaces', () => {
     div.remove()
   })
 
-  test('an edit-mode <range-ticked>: range-changed previews (no commitEdit), range-committed commits — never calls App.commitEdit directly on every tick', () => {
-    // The whole point of previewField/commitFieldPreview (see app.js) is
-    // that App.commitEdit — which synchronously rebuilds #panelBody via
-    // UI.refreshFromDoc() — must NOT run on every drag tick, or it tears
-    // down the very <range-ticked> the user is dragging. So 'range-changed'
-    // (fires continuously) must go to previewField, a local-only ghost
-    // preview, and only 'range-committed' (fires once, gesture end) may
-    // call commitEdit — via commitFieldPreview.
+  test('an edit-mode <range-ticked>: range-changed previews (no commitEdit), range-committed calls the ordinary App.commitEdit(id, editData)', () => {
+    // The whole point of previewEdit (see app.js) is that App.commitEdit —
+    // which synchronously rebuilds #panelBody via UI.refreshFromDoc() —
+    // must NOT run on every drag tick, or it tears down the very
+    // <range-ticked> the user is dragging. So 'range-changed' (fires
+    // continuously) must go to previewEdit, a local-only ghost preview,
+    // and only 'range-committed' (fires once, gesture end) may call the
+    // same commitEdit(id, editData) every other Edit-panel field already
+    // uses — no separate "commit the preview" entry point.
     const element = {
       ...SHAPE_TYPES.rect.schema.values,
       ltype: 'drawing', id: 'shape1', label: SHAPE_TYPES.rect.schema.label,
@@ -219,22 +220,20 @@ describe('SELECT_TOOL multi option — show surfaces', () => {
     const div = document.createElement('div')
     div.innerHTML = html
     document.body.appendChild(div)
-    const commitEdit       = vi.fn()
-    const previewField     = vi.fn()
-    const commitFieldPreview = vi.fn()
-    init({ commitEdit, previewField, commitFieldPreview })
+    const commitEdit   = vi.fn()
+    const previewEdit   = vi.fn()
+    init({ commitEdit, previewEdit })
     wireRangeTicked(div)
 
     const rt = [...div.querySelectorAll('range-ticked')].find(el => el.dataset.rtKey === 'stroke-width')
     rt.dispatchEvent(new CustomEvent('range-changed', { detail: { value: 4 }, bubbles: true, composed: true }))
     rt.dispatchEvent(new CustomEvent('range-changed', { detail: { value: 5 }, bubbles: true, composed: true }))
-    expect(previewField).toHaveBeenNthCalledWith(1, 'shape1', 'stroke-width', 4)
-    expect(previewField).toHaveBeenNthCalledWith(2, 'shape1', 'stroke-width', 5)
+    expect(previewEdit).toHaveBeenNthCalledWith(1, 'shape1', { 'stroke-width': 4 })
+    expect(previewEdit).toHaveBeenNthCalledWith(2, 'shape1', { 'stroke-width': 5 })
     expect(commitEdit).not.toHaveBeenCalled()
 
     rt.dispatchEvent(new CustomEvent('range-committed', { detail: { value: 5 }, bubbles: true, composed: true }))
-    expect(commitFieldPreview).toHaveBeenCalledWith('shape1', 'stroke-width', 5)
-    expect(commitEdit).not.toHaveBeenCalled() // commitFieldPreview owns calling commitEdit itself, not wireRangeTicked
+    expect(commitEdit).toHaveBeenCalledWith('shape1', { 'stroke-width': 5 })
 
     div.remove()
   })

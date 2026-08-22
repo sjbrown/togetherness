@@ -288,12 +288,6 @@ let _multiDragState = null;  // { elements: [{ id, mtype, anchorX, anchorY, bbox
 let _resizeState = null;    // { id, corner, startRect: {x,y,width,height},
                             //   lastRect: {x,y,width,height} } | null
 
-// Active Edit-panel field preview (see App.previewField). Mirrors
-// _resizeState's role: bookkeeping for cancelFieldPreview, not required
-// for the ghost's own idempotency (Overlay.startAttrGhost already no-ops
-// once a ghost exists for an id).
-let _fieldPreviewState = null; // { id, key, mtype } | null
-
 // Which undo mechanism App.undo/App.redo should invoke: the toys op log
 // (Toys.undoToyGesture) or the drawing/boundaries Y.UndoManager
 // (UndoRedo.undo). Set at every commit callsite to whichever the action
@@ -1242,46 +1236,55 @@ const App = {
     // observeDeep fires synchronously
     // Refresh the Edit panel body to show the updated values.
     UI.refreshFromDoc();
+    // Ghost ends after the commit — same ordering requirement as
+    // commitResize: endAttrGhost's own render() paints whatever the DOM
+    // currently shows, so it has to run after the real change lands. A
+    // no-op whenever this id has no active preview (see previewEdit) —
+    // every commitEdit call clears one if there is one, so callers never
+    // need to remember to do it themselves.
+    Overlay.endAttrGhost(id);
   },
 
-  // ── Edit-panel field preview (ghost, no Yjs write) ────────────────────────
+  // ── Edit-panel live preview (ghost, no Yjs write) ─────────────────────────
   // Same shape as the resize lifecycle above (startResize/resize/
-  // commitResize/cancelResize): a live-updating Edit panel field (currently
-  // just range-ticked sliders — see ui.js's wireRangeTicked 'edit' branch)
-  // would otherwise call commitEdit on every tick, and commitEdit's
-  // UI.refreshFromDoc() rebuilds #panelBody's whole innerHTML synchronously
-  // on every one of those — including the very <range-ticked> element the
-  // user has their mouse on mid-drag, killing the browser's native
-  // slider-drag tracking on it. previewField instead only mutates a
-  // detached ghost clone on the Overlay layer (Overlay.startAttrGhost/
-  // updateAttrGhost — see overlay.js for why a clone, not the real
-  // element); #panelBody is never touched until commitFieldPreview writes
-  // the real Yjs change once, at gesture end.
+  // commitResize/cancelResize), and the same editData an ordinary
+  // commitEdit(id, editData) takes — this just doesn't write it yet. A
+  // live-updating Edit panel field (currently just range-ticked sliders —
+  // see ui.js's wireRangeTicked 'edit' branch) would otherwise call
+  // commitEdit on every tick, and commitEdit's UI.refreshFromDoc() rebuilds
+  // #panelBody's whole innerHTML synchronously on every one of those —
+  // including the very <range-ticked> element the user has their mouse on
+  // mid-drag, killing the browser's native slider-drag tracking on it.
+  // previewEdit instead only mutates a detached ghost clone on the Overlay
+  // layer (Overlay.startAttrGhost/updateAttrGhost — see overlay.js for why
+  // a clone, not the real element); #panelBody is never touched until the
+  // caller's own commitEdit(id, editData) call writes the real change, at
+  // gesture end.
   //
-  // lifecycle: previewField (every tick, lazily starts the ghost on the
-  //            first call) / commitFieldPreview (once, on release) /
-  //            cancelFieldPreview (discard, no Yjs write)
+  // lifecycle: previewEdit (every tick, lazily starts the ghost on the
+  //            first call) / commitEdit (once, on release — see above,
+  //            it ends the ghost itself) / cancelEdit (discard, no write)
 
-  previewField: (id, key, value) => {
+  previewEdit: (id, editData) => {
     const domEl = _svgEl?.querySelector(`[data-id="${id}"]`);
     if (!domEl) return;
     const mtype = moduleForElement(domEl);
-    _fieldPreviewState = { id, key, mtype };
     Overlay.startAttrGhost(id);
 
     // boun_pos position-sets don't have a single attribute to preview —
     // snapRadius/xSpacing/ySpacing each recompute the whole snap-point
     // grid (see boun_pos.js's computeGridPositions, the same math the
-    // real commit path uses). Read the OTHER two current values off the
-    // live element (getTtStateSchema already derives them from its
-    // data-gen-*/data-snap-radius attributes) so dragging one field
-    // previews a real grid, not a guess at the other two.
-    if (mtype === 'boun_pos' && domEl.getAttribute('data-bounpos-type') === 'pos-set') {
+    // real commit path uses). Read whichever of the three aren't present
+    // in editData off the live element (getTtStateSchema already derives
+    // them from its data-gen-*/data-snap-radius attributes) so previewing
+    // just one still shows a real grid, not a guess at the other two.
+    if (mtype === 'boun_pos' && domEl.getAttribute('data-bounpos-type') === 'pos-set' &&
+        (editData.xSpacing !== undefined || editData.ySpacing !== undefined || editData.snapRadius !== undefined)) {
       const current   = BounPos.getTtStateSchema(domEl);
       const genType    = domEl.getAttribute('data-gen-type') ?? 'square';
-      const xSpacing   = key === 'xSpacing'   ? value : current.xSpacing;
-      const ySpacing   = key === 'ySpacing'   ? value : current.ySpacing;
-      const snapRLevel = key === 'snapRadius' ? value : current.snapRadius;
+      const xSpacing   = editData.xSpacing   ?? current.xSpacing;
+      const ySpacing   = editData.ySpacing   ?? current.ySpacing;
+      const snapRLevel = editData.snapRadius ?? current.snapRadius;
       const { x, y, width: w, height: h } = BounPos.getGeom(domEl) ?? {};
       const { circles, r } = BounPos.computeGridPositions({ x, y, w, h }, genType, xSpacing, ySpacing, snapRLevel);
       Overlay.updatePosSetGhost(id, circles, r);
@@ -1291,26 +1294,18 @@ const App = {
     // Only drawing shapes have a schema-key -> SVG-attribute alias (e.g.
     // corner-r -> rx — see drawing.js's SHAPE_TYPES attrMap); everywhere
     // else the schema key already is the attribute name.
-    const svgAttr = mtype === 'drawing'
-      ? (Drawing.SHAPE_TYPES[domEl.tagName]?.attrMap?.[key] ?? key)
-      : key;
-    Overlay.updateAttrGhost(id, svgAttr, value);
+    for (const [key, value] of Object.entries(editData)) {
+      const svgAttr = mtype === 'drawing'
+        ? (Drawing.SHAPE_TYPES[domEl.tagName]?.attrMap?.[key] ?? key)
+        : key;
+      Overlay.updateAttrGhost(id, svgAttr, value);
+    }
   },
 
-  commitFieldPreview: (id, key, value) => {
-    _fieldPreviewState = null;
-    App.commitEdit(id, { [key]: value });
-    // Ghost ends after the commit — same ordering requirement as
-    // commitResize: endAttrGhost's own render() paints whatever the DOM
-    // currently shows, so it has to run after the real change lands.
-    Overlay.endAttrGhost(id);
-  },
-
-  cancelFieldPreview: (id) => {
-    if (!_fieldPreviewState || _fieldPreviewState.id !== id) return;
-    _fieldPreviewState = null;
-    Overlay.endAttrGhost(id);
-  },
+  // Discard an in-progress preview without writing anything — Overlay.
+  // endAttrGhost is already a no-op if there's nothing to discard, so this
+  // needs no bookkeeping of its own.
+  cancelEdit: (id) => Overlay.endAttrGhost(id),
 
   /**
    * Place a toy on the table, then run its namespace(s)' initialize(elem)

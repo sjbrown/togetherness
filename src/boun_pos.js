@@ -83,7 +83,7 @@ export function toolParamsToCreateParams(genType, toolParams, {x, y, w, h}) {
  * level (1-4) — the same math rebuildPositionSetGrid uses to actually
  * commit a grid resize. Exposed separately (pure, no Yjs) so a live
  * preview can compute the identical result without writing anything —
- * see overlay.js's updatePosSetGhost and app.js's previewField.
+ * see overlay.js's updatePosSetGhost and app.js's previewEdit.
  */
 export function computeGridPositions(extent, genType, xSpacing, ySpacing, snapRadiusLevel) {
   const { x, y, w, h } = extent;
