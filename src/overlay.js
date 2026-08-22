@@ -492,13 +492,7 @@ export function endDragPlaceholder(elId) {
 // real toy element can be wiped out mid-gesture by renderToysLayer()'s full
 // innerHTML rebuild (fired by ANY peer's Yjs transaction, not just this
 // client's own), so the live preview lives on a detached clone that
-// survives render() calls, not the real element. A <use> placeholder alone
-// (as the move-ghost uses) can't show the resize itself — <use>'s
-// width/height override only applies when the referenced element is an
-// <svg> or <symbol>, and the href here targets the toy's outer <g>
-// wrapper — so instead the ghost is a real cloned copy of the toy's DOM,
-// with its own embedded <svg> directly
-// mutated to the current preview size on every updateResizeGhost() call.
+// survives render() calls, not the real element.
 // Map<elId, { placeholderEl, ghostEl, ringEl }>
 const _resizeGhosts = new Map();
 
@@ -591,35 +585,19 @@ export function endResizeGhost(elId) {
 }
 
 // ── Edit-preview ghosts ──────────────────────────────────────────────────────
-// Live preview for an in-progress Edit-panel gesture (e.g. a drawing
-// shape's stroke-width, or a boun_pos position-set's snap-point grid) that
-// changes no geometry — same rationale as the resize ghost above: the real
+// Live preview for an in-progress Edit-panel gesture
+//
+// Changes no geometry — same rationale as the resize ghost above: the real
 // element can be wiped out mid-gesture by any peer's Yjs transaction (a
 // full toys/drawing/boun_pos-layer rebuild), so the live preview lives on
 // a detached clone that survives render() calls, not the real element.
-// Simpler than the resize ghost's two-copy scheme: since nothing moves or
-// resizes, the dim placeholder and the bright ghost sit at the exact same
-// footprint as the real element, so the ghost (drawn after, at z-top)
-// fully occludes the placeholder AND the real element beneath it — net
-// visual effect is just the live preview, no double-vision, with no
-// separate hide/show step needed for the real element.
 //
-// overlay.js itself has no idea what's being previewed — updateGhost just
-// hands the raw ghost DOM node to a caller-supplied mutator. It's App's
-// previewEdit (app.js) that asks the relevant layer module (boun_pos.js,
-// drawing.js, toys.js) how to apply an editData object to a ghost of its
-// own element type — only that module knows its own DOM shape (e.g. only
-// boun_pos.js knows a position-set's circles are derived from spacing and
-// need regenerating, not just re-attributed).
 // Map<elId, { placeholderEl, ghostEl }>
 const _ghosts = new Map();
 
 /**
  * Begin a local edit preview. Creates a dim placeholder at the element's
- * committed state (mirrors startResizeGhost) and a live clone to preview
- * changes into. No-op if a ghost for this elId already exists, or if the
- * element can't be found — safe to call on every tick of a gesture, not
- * just the first (see App.previewEdit).
+ * committed state and a live clone to preview changes into.
  */
 export function startGhost(elId) {
   if (!_layerEl || _ghosts.has(elId)) return;
@@ -641,9 +619,7 @@ export function startGhost(elId) {
  * Hand the live ghost clone's DOM node to `mutate` so the caller can apply
  * whatever change it represents. Deliberately generic — overlay.js doesn't
  * know or care whether that means setting one attribute or rebuilding a
- * whole subtree of children; that knowledge lives with whoever passes
- * `mutate` in (see App.previewEdit, which delegates to the element's own
- * layer module). No-op if no ghost was started for this id.
+ * whole subtree of children
  */
 export function updateGhost(elId, mutate) {
   const entry = _ghosts.get(elId);
@@ -676,8 +652,8 @@ let _dropTargetId = null;
 /**
  * The elId currently showing the action-mode affordance (kebab + * icon
  * squares), or null. Set by App whenever the sole local selection supports
- * the 'action' select mode (see LayerAPI.selectModes) — currently all
- * toys. A single id, like resize mode — the affordance only makes sense
+ * the 'action' select mode; currently all toys.
+ * A single id, like resize mode — the affordance only makes sense
  * for an exclusive single selection.
  */
 let _actionAffordanceId = null;
