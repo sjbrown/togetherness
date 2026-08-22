@@ -1479,6 +1479,19 @@ export function editDom(toyEl, editData) {
   }
 }
 
+/**
+ * Preview an edit on a detached ghost clone (see overlay.js's ghost
+ * system, used via App.previewEdit) — mutates ghostEl's own attributes
+ * directly, never touches Yjs. Unlike drawing.js's shapes, toy editData
+ * keys map straight onto DOM attributes with no aliasing, so this is a
+ * plain attribute-per-key loop.
+ */
+export function previewEdit(ghostEl, editData) {
+  for (const [key, value] of Object.entries(editData)) {
+    ghostEl.setAttribute(key, value)
+  }
+}
+
 // ── Toy behaviour contract ──────────────────────────────────────────────────
 //
 // A toy's <script> tags (hoisted out to the document's own `scripts`
@@ -2298,6 +2311,7 @@ export function makeLayerAPI(ydoc, getLayerEl, myId, tableId, isCreator = false)
     },
     applyResize:     (el, x, y, w, h) => gesture('resize', () => applyResizeDom(el, x, y, w, h)),
     edit:            (el, editData)  => gesture('edit',   () => editDom(el, editData)),
+    previewEdit,
     listData:        ()              => toysDataDom(layer()),
     render:          (layerEl)       => projectLayer(ydoc, layerEl, { tableId, authorId: myId, isCreator }),
     receive:         (layerEl, opId) => receiveToyOp(ydoc, layerEl, opId, tableId),

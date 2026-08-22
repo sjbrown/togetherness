@@ -1237,12 +1237,12 @@ const App = {
     // Refresh the Edit panel body to show the updated values.
     UI.refreshFromDoc();
     // Ghost ends after the commit — same ordering requirement as
-    // commitResize: endAttrGhost's own render() paints whatever the DOM
+    // commitResize: endGhost's own render() paints whatever the DOM
     // currently shows, so it has to run after the real change lands. A
     // no-op whenever this id has no active preview (see previewEdit) —
     // every commitEdit call clears one if there is one, so callers never
     // need to remember to do it themselves.
-    Overlay.endAttrGhost(id);
+    Overlay.endGhost(id);
   },
 
   // ── Edit-panel live preview (ghost, no Yjs write) ─────────────────────────
@@ -1256,10 +1256,17 @@ const App = {
   // including the very <range-ticked> element the user has their mouse on
   // mid-drag, killing the browser's native slider-drag tracking on it.
   // previewEdit instead only mutates a detached ghost clone on the Overlay
-  // layer (Overlay.startAttrGhost/updateAttrGhost — see overlay.js for why
-  // a clone, not the real element); #panelBody is never touched until the
+  // layer (Overlay.startGhost/updateGhost — see overlay.js for why a
+  // clone, not the real element); #panelBody is never touched until the
   // caller's own commitEdit(id, editData) call writes the real change, at
   // gesture end.
+  //
+  // App itself has no idea how a given editData applies to a given
+  // element's ghost — that's each layer module's own business (e.g. only
+  // boun_pos.js knows a position-set's circles are derived from spacing;
+  // only drawing.js knows its schema-key -> SVG-attribute aliases). This
+  // just finds the ghost's layer and hands the clone to its
+  // previewEdit(ghostEl, editData).
   //
   // lifecycle: previewEdit (every tick, lazily starts the ghost on the
   //            first call) / commitEdit (once, on release — see above,
@@ -1269,43 +1276,15 @@ const App = {
     const domEl = _svgEl?.querySelector(`[data-id="${id}"]`);
     if (!domEl) return;
     const mtype = moduleForElement(domEl);
-    Overlay.startAttrGhost(id);
-
-    // boun_pos position-sets don't have a single attribute to preview —
-    // snapRadius/xSpacing/ySpacing each recompute the whole snap-point
-    // grid (see boun_pos.js's computeGridPositions, the same math the
-    // real commit path uses). Read whichever of the three aren't present
-    // in editData off the live element (getTtStateSchema already derives
-    // them from its data-gen-*/data-snap-radius attributes) so previewing
-    // just one still shows a real grid, not a guess at the other two.
-    if (mtype === 'boun_pos' && domEl.getAttribute('data-bounpos-type') === 'pos-set' &&
-        (editData.xSpacing !== undefined || editData.ySpacing !== undefined || editData.snapRadius !== undefined)) {
-      const current   = BounPos.getTtStateSchema(domEl);
-      const genType    = domEl.getAttribute('data-gen-type') ?? 'square';
-      const xSpacing   = editData.xSpacing   ?? current.xSpacing;
-      const ySpacing   = editData.ySpacing   ?? current.ySpacing;
-      const snapRLevel = editData.snapRadius ?? current.snapRadius;
-      const { x, y, width: w, height: h } = BounPos.getGeom(domEl) ?? {};
-      const { circles, r } = BounPos.computeGridPositions({ x, y, w, h }, genType, xSpacing, ySpacing, snapRLevel);
-      Overlay.updatePosSetGhost(id, circles, r);
-      return;
-    }
-
-    // Only drawing shapes have a schema-key -> SVG-attribute alias (e.g.
-    // corner-r -> rx — see drawing.js's SHAPE_TYPES attrMap); everywhere
-    // else the schema key already is the attribute name.
-    for (const [key, value] of Object.entries(editData)) {
-      const svgAttr = mtype === 'drawing'
-        ? (Drawing.SHAPE_TYPES[domEl.tagName]?.attrMap?.[key] ?? key)
-        : key;
-      Overlay.updateAttrGhost(id, svgAttr, value);
-    }
+    const L = _Layers[mtype];
+    Overlay.startGhost(id);
+    Overlay.updateGhost(id, (ghostEl) => L?.previewEdit?.(ghostEl, editData));
   },
 
   // Discard an in-progress preview without writing anything — Overlay.
-  // endAttrGhost is already a no-op if there's nothing to discard, so this
+  // endGhost is already a no-op if there's nothing to discard, so this
   // needs no bookkeeping of its own.
-  cancelEdit: (id) => Overlay.endAttrGhost(id),
+  cancelEdit: (id) => Overlay.endGhost(id),
 
   /**
    * Place a toy on the table, then run its namespace(s)' initialize(elem)

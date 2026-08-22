@@ -590,30 +590,39 @@ export function endResizeGhost(elId) {
   render();
 }
 
-// ── Attribute ghosts ─────────────────────────────────────────────────────────
-// Live preview for a plain attribute tweak (e.g. a drawing shape's
-// stroke-width) that changes no geometry — same rationale as the resize
-// ghost above: the real element can be wiped out mid-gesture by any peer's
-// Yjs transaction (a full toys/drawing-layer rebuild), so the live preview
-// lives on a detached clone that survives render() calls, not the real
-// element. Simpler than the resize ghost's two-copy scheme: since nothing
-// moves or resizes, the dim placeholder and the bright ghost sit at the
-// exact same footprint as the real element, so the ghost (drawn after, at
-// z-top) fully occludes the placeholder AND the real element beneath it —
-// net visual effect is just the live preview, no double-vision, with no
+// ── Edit-preview ghosts ──────────────────────────────────────────────────────
+// Live preview for an in-progress Edit-panel gesture (e.g. a drawing
+// shape's stroke-width, or a boun_pos position-set's snap-point grid) that
+// changes no geometry — same rationale as the resize ghost above: the real
+// element can be wiped out mid-gesture by any peer's Yjs transaction (a
+// full toys/drawing/boun_pos-layer rebuild), so the live preview lives on
+// a detached clone that survives render() calls, not the real element.
+// Simpler than the resize ghost's two-copy scheme: since nothing moves or
+// resizes, the dim placeholder and the bright ghost sit at the exact same
+// footprint as the real element, so the ghost (drawn after, at z-top)
+// fully occludes the placeholder AND the real element beneath it — net
+// visual effect is just the live preview, no double-vision, with no
 // separate hide/show step needed for the real element.
+//
+// overlay.js itself has no idea what's being previewed — updateGhost just
+// hands the raw ghost DOM node to a caller-supplied mutator. It's App's
+// previewEdit (app.js) that asks the relevant layer module (boun_pos.js,
+// drawing.js, toys.js) how to apply an editData object to a ghost of its
+// own element type — only that module knows its own DOM shape (e.g. only
+// boun_pos.js knows a position-set's circles are derived from spacing and
+// need regenerating, not just re-attributed).
 // Map<elId, { placeholderEl, ghostEl }>
-const _attrGhosts = new Map();
+const _ghosts = new Map();
 
 /**
- * Begin a local attribute preview. Creates a dim placeholder at the
- * element's committed state (mirrors startResizeGhost) and a live clone to
- * preview attribute changes into. No-op if a ghost for this elId already
- * exists, or if the element can't be found — safe to call on every tick of
- * a gesture, not just the first (see App.previewEdit).
+ * Begin a local edit preview. Creates a dim placeholder at the element's
+ * committed state (mirrors startResizeGhost) and a live clone to preview
+ * changes into. No-op if a ghost for this elId already exists, or if the
+ * element can't be found — safe to call on every tick of a gesture, not
+ * just the first (see App.previewEdit).
  */
-export function startAttrGhost(elId) {
-  if (!_layerEl || _attrGhosts.has(elId)) return;
+export function startGhost(elId) {
+  if (!_layerEl || _ghosts.has(elId)) return;
   const liveEl = _svgEl?.querySelector(`[data-id="${elId}"]`);
   if (!liveEl) return;
 
@@ -624,63 +633,36 @@ export function startAttrGhost(elId) {
   const ghostEl = liveEl.cloneNode(true);
   ghostEl.removeAttribute('id');
 
-  _attrGhosts.set(elId, { placeholderEl, ghostEl });
+  _ghosts.set(elId, { placeholderEl, ghostEl });
   render();
 }
 
 /**
- * Set one attribute on the live ghost clone. attr is the real SVG
- * attribute name (already resolved from any schema-key alias by the
- * caller — see App.previewEdit) — this function is deliberately generic
- * over what attribute or element type it's touching, the same way
- * updateResizeGhost's rect/circle/svg branches are the only place that
- * needs to know shape-specific structure.
+ * Hand the live ghost clone's DOM node to `mutate` so the caller can apply
+ * whatever change it represents. Deliberately generic — overlay.js doesn't
+ * know or care whether that means setting one attribute or rebuilding a
+ * whole subtree of children; that knowledge lives with whoever passes
+ * `mutate` in (see App.previewEdit, which delegates to the element's own
+ * layer module). No-op if no ghost was started for this id.
  */
-export function updateAttrGhost(elId, attr, value) {
-  const entry = _attrGhosts.get(elId);
+export function updateGhost(elId, mutate) {
+  const entry = _ghosts.get(elId);
   if (!entry) return;
-  entry.ghostEl.setAttribute(attr, value);
+  mutate(entry.ghostEl);
 }
 
 /**
- * Rebuild the ghost clone's <circle> children to match a freshly computed
- * position-set grid (see boun_pos.js's computeGridPositions) — unlike a
- * plain attribute tweak, changing spacing/snapRadius changes how many
- * snap points there are, so this replaces the whole set rather than
- * mutating cx/cy/r on however many happened to exist before. Reuses the
- * first existing circle as a template (preserving its fill — the
- * snap-point gradient — and any other authored attributes) for every new
- * position; falls back to a bare circle only if the ghost started with
- * none at all.
- */
-export function updatePosSetGhost(elId, circles, r) {
-  const entry = _attrGhosts.get(elId);
-  if (!entry) return;
-  const existing = [...entry.ghostEl.querySelectorAll(':scope > circle')];
-  const template = existing[0] ?? null;
-  for (const c of existing) c.remove();
-  for (const { cx, cy } of circles) {
-    const circle = template ? template.cloneNode(true) : el('circle', {});
-    circle.setAttribute('cx', Math.round(cx));
-    circle.setAttribute('cy', Math.round(cy));
-    circle.setAttribute('r',  Math.round(r));
-    entry.ghostEl.appendChild(circle);
-  }
-}
-
-/**
- * End a local attribute preview (commit or cancel). Removes the
+ * End a local edit preview (commit or cancel). Removes the
  * ghost/placeholder and triggers a render so the (now-committed, or
  * reverted) real element takes over. Same ordering requirement as
- * endResizeGhost: call this AFTER a real attribute change lands, not
- * before.
+ * endResizeGhost: call this AFTER a real change lands, not before.
  */
-export function endAttrGhost(elId) {
-  const entry = _attrGhosts.get(elId);
+export function endGhost(elId) {
+  const entry = _ghosts.get(elId);
   if (!entry) return;
   entry.placeholderEl.remove();
   entry.ghostEl.remove();
-  _attrGhosts.delete(elId);
+  _ghosts.delete(elId);
   render();
 }
 
@@ -767,7 +749,7 @@ export function render() {
   for (const entry of _resizeGhosts.values()) {
     _layerEl.appendChild(entry.placeholderEl);
   }
-  for (const entry of _attrGhosts.values()) {
+  for (const entry of _ghosts.values()) {
     _layerEl.appendChild(entry.placeholderEl);
   }
   for (const [elId] of _remoteDrags) {
@@ -862,8 +844,8 @@ export function render() {
     _layerEl.appendChild(entry.ringEl);
   }
 
-  // ── Local attribute-preview ghosts — z-top ─────────────────────────────
-  for (const entry of _attrGhosts.values()) {
+  // ── Local edit-preview ghosts — z-top ──────────────────────────────────
+  for (const entry of _ghosts.values()) {
     _layerEl.appendChild(entry.ghostEl);
   }
 

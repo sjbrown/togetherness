@@ -83,7 +83,7 @@ export function toolParamsToCreateParams(genType, toolParams, {x, y, w, h}) {
  * level (1-4) — the same math rebuildPositionSetGrid uses to actually
  * commit a grid resize. Exposed separately (pure, no Yjs) so a live
  * preview can compute the identical result without writing anything —
- * see overlay.js's updatePosSetGhost and app.js's previewEdit.
+ * see this file's own previewEdit, below.
  */
 export function computeGridPositions(extent, genType, xSpacing, ySpacing, snapRadiusLevel) {
   const { x, y, w, h } = extent;
@@ -964,6 +964,53 @@ export function editEl(ydoc, yEl, editData) {
     });
   }
 }
+
+/**
+ * Preview an edit on a detached ghost clone (see overlay.js's ghost
+ * system, used via App.previewEdit) — mutates ghostEl directly, never
+ * touches Yjs. Only pos-sets have anything to preview here, and only for
+ * snapRadius/xSpacing/ySpacing: unlike a plain attribute tweak, each of
+ * those recomputes the whole snap-point grid (a variable number of
+ * <circle> children), using the exact math editEl's real commit path
+ * uses (computeGridPositions) — so this is the one place outside editEl
+ * that needs to know a pos-set even HAS circles, let alone how many or
+ * where. Whichever of the three keys aren't present in editData are read
+ * off ghostEl's own current attributes (getTtStateSchema works on any
+ * element carrying the right data-gen-… / data-snap-radius attributes, a
+ * ghost clone included), so previewing just one still shows a real grid.
+ */
+export function previewEdit(ghostEl, editData) {
+  if (ghostEl.getAttribute('data-bounpos-type') !== 'pos-set') return;
+  if (editData.xSpacing === undefined && editData.ySpacing === undefined && editData.snapRadius === undefined) return;
+
+  const current = getTtStateSchema(ghostEl);
+  const genType = ghostEl.getAttribute('data-gen-type') ?? 'square';
+  const xSpacing        = editData.xSpacing   ?? current.xSpacing;
+  const ySpacing        = editData.ySpacing   ?? current.ySpacing;
+  const snapRadiusLevel = editData.snapRadius ?? current.snapRadius;
+  const extent = getGeom(ghostEl);
+  if (!extent) return;
+  const { circles, r } = computeGridPositions(
+    { x: extent.x, y: extent.y, w: extent.width, h: extent.height },
+    genType, xSpacing, ySpacing, snapRadiusLevel
+  );
+
+  // Reuse the first existing circle as a template (preserving its fill —
+  // the snap-point gradient — and any other authored attributes) for
+  // every new position; falls back to a bare circle only if the ghost
+  // started with none at all.
+  const existing = [...ghostEl.querySelectorAll(':scope > circle')];
+  const template = existing[0] ?? null;
+  for (const c of existing) c.remove();
+  for (const { cx, cy } of circles) {
+    const circle = template ? template.cloneNode(true) : document.createElementNS(SVG_NS, 'circle');
+    circle.setAttribute('cx', Math.round(cx));
+    circle.setAttribute('cy', Math.round(cy));
+    circle.setAttribute('r',  Math.round(r));
+    ghostEl.appendChild(circle);
+  }
+}
+
 // ── Drag context helpers ──────────────────────────────────────────────────────
 
 /**
@@ -1027,6 +1074,7 @@ export function makeLayerAPI(ydoc, yBounPos) {
     applyMoveCommit:  (yEl, x, y)        => applyMoveCommit(ydoc, yEl, x, y),
     applyTtState:     (state)            => applyTtState(ydoc, yBounPos, state),
     edit:             (yEl, editData)    => editEl(ydoc, yEl, editData),
+    previewEdit,
     listData:         ()                 => layerData(yBounPos),
     render:           (layerEl)          => render(yBounPos, layerEl),
   };
