@@ -1236,41 +1236,10 @@ const App = {
     // observeDeep fires synchronously
     // Refresh the Edit panel body to show the updated values.
     UI.refreshFromDoc();
-    // Ghost ends after the commit — same ordering requirement as
-    // commitResize: endGhost's own render() paints whatever the DOM
-    // currently shows, so it has to run after the real change lands. A
-    // no-op whenever this id has no active preview (see previewEdit) —
-    // every commitEdit call clears one if there is one, so callers never
-    // need to remember to do it themselves.
+    // endGhost's render() paints current DOM state, so it must run
+    // after the real change lands
     Overlay.endGhost(id);
   },
-
-  // ── Edit-panel live preview (ghost, no Yjs write) ─────────────────────────
-  // Same shape as the resize lifecycle above (startResize/resize/
-  // commitResize/cancelResize), and the same editData an ordinary
-  // commitEdit(id, editData) takes — this just doesn't write it yet. A
-  // live-updating Edit panel field (currently just range-ticked sliders —
-  // see ui.js's wireRangeTicked 'edit' branch) would otherwise call
-  // commitEdit on every tick, and commitEdit's UI.refreshFromDoc() rebuilds
-  // #panelBody's whole innerHTML synchronously on every one of those —
-  // including the very <range-ticked> element the user has their mouse on
-  // mid-drag, killing the browser's native slider-drag tracking on it.
-  // previewEdit instead only mutates a detached ghost clone on the Overlay
-  // layer (Overlay.startGhost/updateGhost — see overlay.js for why a
-  // clone, not the real element); #panelBody is never touched until the
-  // caller's own commitEdit(id, editData) call writes the real change, at
-  // gesture end.
-  //
-  // App itself has no idea how a given editData applies to a given
-  // element's ghost — that's each layer module's own business (e.g. only
-  // boun_pos.js knows a position-set's circles are derived from spacing;
-  // only drawing.js knows its schema-key -> SVG-attribute aliases). This
-  // just finds the ghost's layer and hands the clone to its
-  // previewEdit(ghostEl, editData).
-  //
-  // lifecycle: previewEdit (every tick, lazily starts the ghost on the
-  //            first call) / commitEdit (once, on release — see above,
-  //            it ends the ghost itself) / cancelEdit (discard, no write)
 
   previewEdit: (id, editData) => {
     const domEl = _svgEl?.querySelector(`[data-id="${id}"]`);
@@ -1278,12 +1247,10 @@ const App = {
     const mtype = moduleForElement(domEl);
     const L = _Layers[mtype];
     Overlay.startGhost(id);
-    Overlay.updateGhost(id, (ghostEl) => L?.previewEdit?.(ghostEl, editData));
+    Overlay.updateGhost(id, (ghostEl) => L.previewEdit(ghostEl, editData));
   },
 
-  // Discard an in-progress preview without writing anything — Overlay.
-  // endGhost is already a no-op if there's nothing to discard, so this
-  // needs no bookkeeping of its own.
+  // Discard an in-progress preview without writing anything
   cancelEdit: (id) => Overlay.endGhost(id),
 
   /**

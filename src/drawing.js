@@ -454,14 +454,6 @@ export function edit(ydoc, yEl, editData) {
   });
 }
 
-/**
- * Preview an edit on a detached ghost clone (see overlay.js's ghost
- * system, used via App.previewEdit) — mutates ghostEl's own attributes
- * directly, never touches Yjs. Translates a schema key through its
- * attrMap alias (e.g. corner-r -> rx) the same way addDrawing applies it
- * at creation time, since the ghost is a real rendered element (a clone)
- * and only understands actual SVG attribute names.
- */
 export function previewEdit(ghostEl, editData) {
   const attrMap = SHAPE_TYPES[ghostEl.tagName]?.attrMap ?? {};
   for (const [key, value] of Object.entries(editData)) {

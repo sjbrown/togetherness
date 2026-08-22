@@ -80,10 +80,9 @@ export function toolParamsToCreateParams(genType, toolParams, {x, y, w, h}) {
 /**
  * Compute the circle positions + shared radius for genType/xSpacing/
  * ySpacing within an extent rect ({x,y,w,h}), at the given snapRadius
- * level (1-4) — the same math rebuildPositionSetGrid uses to actually
- * commit a grid resize. Exposed separately (pure, no Yjs) so a live
- * preview can compute the identical result without writing anything —
- * see this file's own previewEdit, below.
+ * level (1-4)
+ * Exposed separately (pure, no Yjs) so a live preview can compute the
+ * identical result without writing anything
  */
 export function computeGridPositions(extent, genType, xSpacing, ySpacing, snapRadiusLevel) {
   const { x, y, w, h } = extent;
@@ -966,18 +965,9 @@ export function editEl(ydoc, yEl, editData) {
 }
 
 /**
- * Preview an edit on a detached ghost clone (see overlay.js's ghost
- * system, used via App.previewEdit) — mutates ghostEl directly, never
- * touches Yjs. Only pos-sets have anything to preview here, and only for
- * snapRadius/xSpacing/ySpacing: unlike a plain attribute tweak, each of
- * those recomputes the whole snap-point grid (a variable number of
- * <circle> children), using the exact math editEl's real commit path
- * uses (computeGridPositions) — so this is the one place outside editEl
- * that needs to know a pos-set even HAS circles, let alone how many or
- * where. Whichever of the three keys aren't present in editData are read
- * off ghostEl's own current attributes (getTtStateSchema works on any
- * element carrying the right data-gen-… / data-snap-radius attributes, a
- * ghost clone included), so previewing just one still shows a real grid.
+ * Preview an edit on a detached ghost clone
+ * Whichever of the three keys aren't present in editData are read
+ * off ghostEl's own current attributes
  */
 export function previewEdit(ghostEl, editData) {
   if (ghostEl.getAttribute('data-bounpos-type') !== 'pos-set') return;
@@ -995,10 +985,8 @@ export function previewEdit(ghostEl, editData) {
     genType, xSpacing, ySpacing, snapRadiusLevel
   );
 
-  // Reuse the first existing circle as a template (preserving its fill —
-  // the snap-point gradient — and any other authored attributes) for
-  // every new position; falls back to a bare circle only if the ghost
-  // started with none at all.
+  // Reuse the first existing circle as a template
+  // falls back to a bare circle only if the ghost started with none at all.
   const existing = [...ghostEl.querySelectorAll(':scope > circle')];
   const template = existing[0] ?? null;
   for (const c of existing) c.remove();
