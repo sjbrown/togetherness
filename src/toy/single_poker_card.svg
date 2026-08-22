@@ -91,9 +91,9 @@ var single_poker_card = {
     }
   },
 
-  initialize: function(elem, initArgs) {
-    const suit = initArgs?.suit ?? (1 + Math.floor(Math.random() * 4))
-    const rank = initArgs?.rank ?? (1 + Math.floor(Math.random() * 13))
+  initialize: function(elem, options = {}) {
+    const suit = options.suit ?? (1 + Math.floor(Math.random() * 4))
+    const rank = options.rank ?? (1 + Math.floor(Math.random() * 13))
     single_poker_card.paint_card(elem, suit, rank)
     single_poker_card.flip_card_to_back(elem)
   },

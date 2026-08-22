@@ -563,17 +563,18 @@ describe('tray_sum: color option + editable name (real assets)', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// chip: Tools panel value range slider (1-25) → initialize(elem, value)
+// chip: Tools panel value range slider (1-25) → initialize(elem, options)
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// app.js's commitToy passes the active tool's 'value' param through as
-// initializeToy's initArgs — untested directly here (see this project's
-// convention of exercising toys.js's own lifecycle contract instead of
-// importing app.js). This covers chip.svg's side of that contract: a
-// numeric initArgs on placement overwrites the template's default tspan
-// text; the clone path (which calls initialize with no initArgs — see
-// supply.test.js) must keep working, i.e. no initArgs must leave the
-// tspan exactly as placed.
+// app.js's commitToy passes every tool option through as initializeToy's
+// initArgs, as a plain { color, ...options } object (color always present,
+// even though chip's own initialize doesn't read it — see app.js's
+// commitToy) — untested directly here (see this project's convention of
+// exercising toys.js's own lifecycle contract instead of importing app.js).
+// This covers chip.svg's side of that contract: options.value on placement
+// overwrites the template's default tspan text; the clone path (which
+// calls initialize with no initArgs at all — see supply.test.js) must keep
+// working, i.e. no initArgs must leave the tspan exactly as placed.
 describe('chip: value from the Tools panel range slider (real assets)', () => {
   const AUTHOR = 'tester'
   const TABLE  = 'test-table'
@@ -587,14 +588,14 @@ describe('chip: value from the Tools panel range slider (real assets)', () => {
     }))
   })
 
-  test('a numeric initArgs sets the tspan to that value, overwriting the template default ("5")', async () => {
+  test('options.value sets the tspan to that value, overwriting the template default ("5")', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     const chipEl = await addToy(ydoc, layerEl, { id: 'chip1', toyType: 'chip', x: 0, y: 0, color: '#fff' })
     activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0)) // flush fire-and-forget script activation
 
-    initializeToy(ydoc, layerEl, chipEl, 'chip', AUTHOR, TABLE, 17)
+    initializeToy(ydoc, layerEl, chipEl, 'chip', AUTHOR, TABLE, { color: '#fff', value: 17 })
 
     expect(chipEl.querySelector('tspan').textContent).toBe('17')
   })
@@ -613,16 +614,16 @@ describe('chip: value from the Tools panel range slider (real assets)', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// token_glass: Tools panel value range slider (0-24) → initialize(elem, value)
+// token_glass: Tools panel value range slider (0-24) → initialize(elem, options)
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // Same contract as chip above: app.js's commitToy forwards the active
-// tool's 'value' param as initializeToy's initArgs. token_glass.svg's own
-// side of it picks which of its 24 .game-icon faces (data-token-style-index
-// 1-24) is visible — or, for 0, hides all of them. That 0 case matters:
-// it's the same "nothing showing" state increment() already leaves you in
-// after cycling Value+1 past the last face, so 0 has to mean the same
-// thing on placement as it does mid-game.
+// tool's params as an { color, value } initArgs object. token_glass.svg's
+// own side of it picks which of its 24 .game-icon faces
+// (data-token-style-index 1-24) is visible — or, for 0, hides all of them.
+// That 0 case matters: it's the same "nothing showing" state increment()
+// already leaves you in after cycling Value+1 past the last face, so 0 has
+// to mean the same thing on placement as it does mid-game.
 describe('token_glass: value from the Tools panel range slider (real assets)', () => {
   const AUTHOR = 'tester'
   const TABLE  = 'test-table'
@@ -647,22 +648,22 @@ describe('token_glass: value from the Tools panel range slider (real assets)', (
     return vis ? Number(vis.getAttribute('data-token-style-index')) : null
   }
 
-  test('a numeric initArgs of 0 hides every .game-icon — the null case', async () => {
+  test('options.value of 0 hides every .game-icon — the null case', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     const tokenEl = await placedToken(ydoc, layerEl)
 
-    initializeToy(ydoc, layerEl, tokenEl, 'token_glass', AUTHOR, TABLE, 0)
+    initializeToy(ydoc, layerEl, tokenEl, 'token_glass', AUTHOR, TABLE, { color: '#fff', value: 0 })
 
     expect(visibleIndex(tokenEl)).toBeNull()
   })
 
-  test('a numeric initArgs of N shows only the .game-icon at data-token-style-index N', async () => {
+  test('options.value of N shows only the .game-icon at data-token-style-index N', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     const tokenEl = await placedToken(ydoc, layerEl)
 
-    initializeToy(ydoc, layerEl, tokenEl, 'token_glass', AUTHOR, TABLE, 12)
+    initializeToy(ydoc, layerEl, tokenEl, 'token_glass', AUTHOR, TABLE, { color: '#fff', value: 12 })
 
     expect(visibleIndex(tokenEl)).toBe(12)
     const hidden = [...tokenEl.querySelectorAll('.game-icon')].filter(el => el.getAttribute('data-token-style-index') !== '12')
@@ -685,17 +686,17 @@ describe('token_glass: value from the Tools panel range slider (real assets)', (
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// single_poker_card: Tools panel suit/rank sliders → initialize(elem, initArgs),
+// single_poker_card: Tools panel suit/rank sliders → initialize(elem, options),
 // and Edit panel suit/rank sliders → editableFields()/applyEdit() (real assets)
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// Unlike chip/token_glass's single 'value' option, single_poker_card
-// declares two non-fill options (suit, rank) — app.js's commitToy forwards
-// those as an { suit, rank } object rather than unwrapping to a bare
-// scalar (see app.js's commitToy). This block covers single_poker_card's
-// own side of that contract, plus its editableFields/applyEdit hooks —
-// toys.js's generic getTtStateSchema/editDom/previewEdit delegate any
-// non-color/name field to whichever namespace declares them.
+// Like chip/token_glass above, app.js's commitToy forwards every tool
+// option as one { color, ...options } object — single_poker_card just
+// reads two keys (suit, rank) off it instead of one. This block covers
+// single_poker_card's own side of that contract, plus its
+// editableFields/applyEdit hooks — toys.js's generic
+// getTtStateSchema/editDom/previewEdit delegate any non-color/name field
+// to whichever namespace declares them.
 describe('single_poker_card: suit/rank from the Tools + Edit panel sliders (real assets)', () => {
   beforeEach(() => {
     _resetToyScriptState()
@@ -713,18 +714,17 @@ describe('single_poker_card: suit/rank from the Tools + Edit panel sliders (real
     return cardEl
   }
 
-  test('an { suit, rank } initArgs paints the matching face and records both numbers on the card', async () => {
+  test('an { suit, rank } options bag paints the matching face and records both numbers on the toy', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     const cardEl = await placedCard(ydoc, layerEl)
 
-    initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table', { suit: 3, rank: 11 })
+    initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table', { color: '#fff', suit: 3, rank: 11 })
 
-    const card = cardEl.querySelector('.draggable-group')
-    expect(card.querySelector('.tspan_suit').textContent).toBe('♦')
-    expect(card.querySelector('.tspan_rank').textContent).toBe('J')
-    expect(card.dataset.suit).toBe('3')
-    expect(card.dataset.rank).toBe('11')
+    expect(cardEl.querySelector('.tspan_suit').textContent).toBe('♦')
+    expect(cardEl.querySelector('.tspan_rank').textContent).toBe('J')
+    expect(cardEl.dataset.suit).toBe('3')
+    expect(cardEl.dataset.rank).toBe('11')
   })
 
   test('no initArgs (e.g. the clone path) still deals a valid, in-range card', async () => {
@@ -734,18 +734,17 @@ describe('single_poker_card: suit/rank from the Tools + Edit panel sliders (real
 
     initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table')
 
-    const card = cardEl.querySelector('.draggable-group')
-    expect(Number(card.dataset.suit)).toBeGreaterThanOrEqual(1)
-    expect(Number(card.dataset.suit)).toBeLessThanOrEqual(4)
-    expect(Number(card.dataset.rank)).toBeGreaterThanOrEqual(1)
-    expect(Number(card.dataset.rank)).toBeLessThanOrEqual(13)
+    expect(Number(cardEl.dataset.suit)).toBeGreaterThanOrEqual(1)
+    expect(Number(cardEl.dataset.suit)).toBeLessThanOrEqual(4)
+    expect(Number(cardEl.dataset.rank)).toBeGreaterThanOrEqual(1)
+    expect(Number(cardEl.dataset.rank)).toBeLessThanOrEqual(13)
   })
 
   test('getTtStateSchema merges in suit/rank as edit-mode range fields, reading the card\'s current values', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     const cardEl = await placedCard(ydoc, layerEl)
-    initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table', { suit: 2, rank: 7 })
+    initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table', { color: '#fff', suit: 2, rank: 7 })
 
     const schema = getTtStateSchema(cardEl)
 
@@ -759,27 +758,26 @@ describe('single_poker_card: suit/rank from the Tools + Edit panel sliders (real
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     const cardEl = await placedCard(ydoc, layerEl)
-    initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table', { suit: 1, rank: 1 })
+    initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table', { color: '#fff', suit: 1, rank: 1 })
 
     editDom(cardEl, { rank: 13 })
 
-    const card = cardEl.querySelector('.draggable-group')
-    expect(card.querySelector('.tspan_rank').textContent).toBe('K')
-    expect(card.dataset.rank).toBe('13') // committed
-    expect(card.dataset.suit).toBe('1')  // untouched — only rank was in editData
+    expect(cardEl.querySelector('.tspan_rank').textContent).toBe('K')
+    expect(cardEl.dataset.rank).toBe('13') // committed
+    expect(cardEl.dataset.suit).toBe('1')  // untouched — only rank was in editData
   })
 
   test('previewEdit({ suit, rank }) repaints a detached ghost clone without touching the real card', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     const cardEl = await placedCard(ydoc, layerEl)
-    initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table', { suit: 1, rank: 1 })
+    initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table', { color: '#fff', suit: 1, rank: 1 })
     const ghostEl = cardEl.cloneNode(true)
 
     previewEdit(ghostEl, { suit: 4, rank: 13 })
 
-    expect(ghostEl.querySelector('.draggable-group').querySelector('.tspan_suit').textContent).toBe('♠')
-    expect(cardEl.querySelector('.draggable-group').querySelector('.tspan_suit').textContent).toBe('♥') // real card untouched
+    expect(ghostEl.querySelector('.tspan_suit').textContent).toBe('♠')
+    expect(cardEl.querySelector('.tspan_suit').textContent).toBe('♥') // real card untouched
   })
 })
 
