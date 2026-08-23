@@ -105,7 +105,7 @@ async function bootApp() {
 
   boot({
     ydoc,
-    awareness, provider: { on: vi.fn() },
+    awareness, provider: { on: vi.fn(), signalingConns: [] },
     myId: 'bailey', myGrad, tableId: 'test-room', isCreator: true,
     svgElement: svgEl, displayName: 'Bailey',
   })
