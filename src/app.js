@@ -471,6 +471,28 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
     }
   });
 
+  // Raw signaling relay traffic (announce/signal), one layer below 'peers'.
+  // 'peers' only fires once an announce has actually been relayed back to
+  // us — its absence looks identical whether the signaling server never
+  // bridged the two sides, or it did and ICE negotiation failed after.
+  // Tracing the relay messages themselves tells those apart.
+  _provider.signalingConns.forEach(conn => {
+    conn.on('message', (m) => {
+      if (m?.type !== 'publish' || m.topic !== tableId) return;
+      const data = m.data;
+      const mine = data?.from === _provider.room?.peerId;
+      if (data?.type === 'announce') {
+        Trace.net(mine ? 'announce-sent' : 'announce-received',
+          mine ? 'announced ourselves to the room' : `peer announced itself: ${data.from}`,
+          { peerId: data.from });
+      } else if (data?.type === 'signal') {
+        Trace.net(mine ? 'signal-sent' : 'signal-received',
+          `${data.signal?.type ?? 'signal'} ${mine ? 'to' : 'from'} ${mine ? data.to : data.from}`,
+          { from: data.from, to: data.to, kind: data.signal?.type });
+      }
+    });
+  });
+
   // Initial render
   renderDoc();
   renderPresence();
