@@ -229,6 +229,19 @@ document.getElementById('tableLabel').textContent = tableId;
 Trace.boot('table-id', isCreator ? `minted a new table: ${tableId}` : `joining table: ${tableId}`,
   { tableId, isCreator, hash: location.hash });
 
+// Leave this table and join/create whatever table the hash names next —
+// a peer editing the URL bar, browser back/forward, or a same-page link to
+// another #tableId all land here. A full reload re-runs the creator/joiner
+// logic above from scratch, so nothing here needs to hand-unwind this
+// table's provider, doc, or DOM listeners.
+// Guarded against the creator mint just above: setting location.hash there
+// queues its own hashchange, which would otherwise reload a table that
+// just finished booting.
+window.addEventListener('hashchange', () => {
+  if (location.hash.slice(1) === tableId) return;
+  location.reload();
+});
+
 const ydoc  = await tables.getYDoc(tableId);
 App.addLog('loaded from indexeddb', 'local');
 tables.touchTableRecord(tableId);
