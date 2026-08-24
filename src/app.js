@@ -449,7 +449,13 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
     UI.toast('Synced with peers');
     App.addLog('synced with peers', 'remote');
   });
-  _provider.on('status', ({ connected }) => {
+  // Deliberately NOT the library's own 'status' event: that reflects
+  // provider.connected (room !== null && shouldConnect), which goes true
+  // moments after construction whether or not the underlying WebSocket
+  // ever actually opens — "signaling connected" looked fine while the
+  // socket to the signaling server had never succeeded. Track the
+  // SignalingConn's own connect/disconnect (the real transport) instead.
+  const setSignalingConnected = (connected) => {
     if (dot) dot.className = connected ? 'status-dot connected' : 'status-dot connecting';
     _netStatus.connected = connected;
     Trace.net('status', connected ? 'signaling connected' : 'signaling disconnected',
@@ -457,7 +463,7 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
     // Cancel any in-progress drag on disconnect — doc stays at committed position.
     if (!connected && _dragState) App.cancelMove();
     if (!connected && _multiDragState) App.cancelMultiMove();
-  });
+  };
   // y-webrtc's own peer bookkeeping — the WebRTC handshakes themselves,
   // which awareness only reflects indirectly and after the fact.
   _provider.on('peers', ({ added = [], removed = [], webrtcPeers = [], bcPeers = [] }) => {
@@ -477,6 +483,8 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
   // bridged the two sides, or it did and ICE negotiation failed after.
   // Tracing the relay messages themselves tells those apart.
   _provider.signalingConns.forEach(conn => {
+    conn.on('connect', () => setSignalingConnected(true));
+    conn.on('disconnect', () => setSignalingConnected(false));
     conn.on('message', (m) => {
       if (m?.type !== 'publish' || m.topic !== tableId) return;
       const data = m.data;
