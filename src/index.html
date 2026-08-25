@@ -192,7 +192,7 @@ import * as UI                  from './ui.js';
 import { getIdentity }          from './user.js';
 import { dragPlaceholderFilterSVG, snapPointGradientSVG, localActionFilterSVG, glowFilterSVG }  from './defs.js';
 import { tablesAPI as tables } from './tables.js';
-import { resolveSignalingServer, getStoredSignalingServer } from './signaling.js';
+import { resolveSignalingServers, getStoredSignalingServer, getStoredFallbackSignalingServer } from './signaling.js';
 import * as Trace                  from './trace.js';
 
 // Inject shared SVG defs (filters etc.) into the canvas <defs> element.
@@ -252,22 +252,23 @@ tables.touchTableRecord(tableId);
 tables.ensureJoined(ydoc, myId);
 
 // ── WebRTC  ─────────────────────────────────────────────────────────────────
-const signalingUrl = resolveSignalingServer();
-Trace.net('signaling', `signaling server: ${signalingUrl}`, {
-  url:        signalingUrl,
-  // Whether this came from the person's own override or the built-in default
-  // is the first thing to check when a table won't find its peers.
-  overridden: getStoredSignalingServer() !== null,
-  room:       tableId,
+const signalingUrls = resolveSignalingServers();
+Trace.net('signaling', `signaling servers: ${signalingUrls.join(', ')}`, {
+  urls:               signalingUrls,
+  // Whether these came from the person's own overrides or the built-in
+  // defaults is the first thing to check when a table won't find its peers.
+  overridden:         getStoredSignalingServer() !== null,
+  fallbackOverridden: getStoredFallbackSignalingServer() !== null,
+  room:               tableId,
 });
-const provider     = new WebrtcProvider(tableId, ydoc, { signaling: [signalingUrl] });
+const provider     = new WebrtcProvider(tableId, ydoc, { signaling: signalingUrls });
 Trace.net('provider', 'WebrtcProvider constructed — handshakes begin', { room: tableId });
 const awareness    = provider.awareness;
 awareness.setLocalState({ id: myId, color: myGrad.c1, grad: myGrad, cursor: null, selection: null });
 
 // ── Boot ────────────────────────────────────────────────────────────────────
 boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreator, displayName: myDisplayName,
-       signalingUrl });
+       signalingUrls });
 </script>
 
 </body>

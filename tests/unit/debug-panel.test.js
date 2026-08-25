@@ -40,7 +40,7 @@ const makeState = (over = {}) => ({
                   entries: 2, mutations: [{ t: 'attr', name: 'transform' }] },
               ] },
   net:      { connected: true, synced: true, webrtcPeers: 1, bcPeers: 0,
-              signaling: 'ws://localhost:4444', offline: false,
+              signaling: ['ws://localhost:4444'], offline: false,
               peers: [{ clientId: 1, peerId: 'tt-p-v1-AA-abc', self: true }] },
   joinSequence: ['tt-p-v1-AA-abc', 'tt-p-v1-BB-xyz'],
   myAuthorityIndex: 0,
