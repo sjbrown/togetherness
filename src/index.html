@@ -248,8 +248,10 @@ tables.touchTableRecord(tableId);
 
 // Join the authority ordering only now that the local IndexedDB replay has
 // landed — ensureJoined's guard needs to see this table's *existing*
-// joinSequence
-tables.ensureJoined(ydoc, myId);
+// joinSequence. isCreator tells it whether an empty joinSequence means
+// "brand new table" or "haven't synced with the creator yet" (see
+// tables.js's ensureJoined).
+tables.ensureJoined(ydoc, myId, { isCreator });
 
 // ── WebRTC  ─────────────────────────────────────────────────────────────────
 const signalingUrls = resolveSignalingServers();
