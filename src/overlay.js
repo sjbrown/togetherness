@@ -25,15 +25,15 @@
  * driven by App.move() during a toy drag, not by SelectionMode or
  * awareness.
  *
- * Awareness selection schema: { [elId: string]: number } | null
- *   Keys are the held elIds; values are per-elId claim timestamps (see
- *   soft-lock.js). Single selection: one key. Multi-selection (rubber-band
- *   committed group): multiple keys. No separate ids array —
- *   membership is exactly Object.keys(selection).
+ * Awareness desired schema: { [elId]: { ts: number, holding: boolean } } | null
+ *   One record per elId this peer wants; `holding: true` entries are their
+ *   held selection (see soft-lock.js) — that's the subset rendered as
+ *   remote selection rings here. Single selection: one held key.
+ *   Multi-selection (rubber-band committed group): multiple held keys.
  *
  * Awareness candidates field: string[] | null
  *   The ids currently under a rubber-band sweep, broadcast separately from
- *   `selection` so that committed holdings are never clobbered mid-sweep.
+ *   `desired` so that committed holdings are never clobbered mid-sweep.
  *   Remote peers' candidate sweeps are not currently rendered (there is no
  *   visual for "someone else is sweeping over these"), but the field is
  *   wire-present so it can be added without a schema change.
@@ -340,10 +340,12 @@ export function syncFromAwareness(awarenessStates, myClientId) {
     const peerId = state?.id ?? String(clientId);
     const gradId = _ensurePeerGradient(clientId, state?.grad);
 
-    // Remote selection rings — one per key in the selection map
-    // (selection: { [elId]: claimTimestamp } | null — see soft-lock.js).
-    if (state?.selection && typeof state.selection === 'object') {
-      const elIds = Object.keys(state.selection);
+    // Remote selection rings — one per held (holding:true) key in the
+    // desired map (desired: { [elId]: { ts, holding } } | null — see
+    // soft-lock.js). A holding:false entry is a bid, not a selection —
+    // those render via the contested/'requested' ring instead, below.
+    if (state?.desired && typeof state.desired === 'object') {
+      const elIds = Object.keys(state.desired).filter((elId) => state.desired[elId].holding);
       for (const elId of elIds) {
         // Local selection always takes precedence over a remote peer's
         // claim to the same elId — mirrors the same rule setHoverCandidates

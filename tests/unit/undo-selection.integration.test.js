@@ -97,7 +97,7 @@ async function bootApp() {
 
   await addToy(ydoc, layerEl, { id: 'die-1', toyType: 'player_marker', x: 0, y: 0, color: '#abc' })
 
-  awareness.setLocalState({ id: 'bailey', color: myGrad.c1, grad: myGrad, cursor: null, selection: null })
+  awareness.setLocalState({ id: 'bailey', color: myGrad.c1, grad: myGrad, cursor: null, desired: null })
 
   boot({
     ydoc,

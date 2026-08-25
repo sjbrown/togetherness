@@ -9,10 +9,10 @@
  *
  * App.setOffline(true) then App.setOffline(false) triggers exactly this
  * sequence. Without restoring a full local state on reconnect, every
- * subsequent _broadcastSelection / _broadcastMode / _broadcastPendingRequests
- * call (all setLocalStateField) does nothing, forever, with no error —
- * this peer's selection stops reaching others, and this peer's own
- * soft-lock acquisition requests never reach anyone either.
+ * subsequent _broadcastDesired / _broadcastMode call (all setLocalStateField)
+ * does nothing, forever, with no error — this peer's selection stops
+ * reaching others, and this peer's own soft-lock acquisition requests
+ * never reach anyone either.
  *
  * app.js has no unit coverage by project convention, so this pins the
  * underlying mechanism directly against the real y-protocols/awareness
@@ -42,7 +42,7 @@ describe('awareness after a disconnect/reconnect cycle', () => {
   test('disconnect removes the local state entirely, not just marks it gone', () => {
     const doc = new Y.Doc()
     aw = new awarenessProtocol.Awareness(doc)
-    aw.setLocalState({ id: 'bob', selection: null })
+    aw.setLocalState({ id: 'bob', desired: null })
     expect(aw.getLocalState()).not.toBeNull()
 
     removeOwnAwarenessState(aw)
@@ -52,34 +52,34 @@ describe('awareness after a disconnect/reconnect cycle', () => {
   test('the bug: setLocalStateField silently does nothing once local state is null', () => {
     const doc = new Y.Doc()
     aw = new awarenessProtocol.Awareness(doc)
-    aw.setLocalState({ id: 'bob', selection: null })
+    aw.setLocalState({ id: 'bob', desired: null })
     removeOwnAwarenessState(aw)
 
-    aw.setLocalStateField('selection', { toy1: 123 })
+    aw.setLocalStateField('desired', { toy1: 123 })
     expect(aw.getLocalState()).toBeNull() // no error, no effect — the actual bug
   })
 
   test('the fix: a full setLocalState after reconnect restores the entry', () => {
     const doc = new Y.Doc()
     aw = new awarenessProtocol.Awareness(doc)
-    aw.setLocalState({ id: 'bob', selection: null })
+    aw.setLocalState({ id: 'bob', desired: null })
     removeOwnAwarenessState(aw)
 
     // What App.setOffline(false) now does: reconstruct and set the full
     // state, not just a field.
-    aw.setLocalState({ id: 'bob', selection: { toy1: 123 } })
-    expect(aw.getLocalState()).toEqual({ id: 'bob', selection: { toy1: 123 } })
+    aw.setLocalState({ id: 'bob', desired: { toy1: 123 } })
+    expect(aw.getLocalState()).toEqual({ id: 'bob', desired: { toy1: 123 } })
   })
 
   test('after the fix, setLocalStateField works normally again', () => {
     const doc = new Y.Doc()
     aw = new awarenessProtocol.Awareness(doc)
-    aw.setLocalState({ id: 'bob', selection: null })
+    aw.setLocalState({ id: 'bob', desired: null })
     removeOwnAwarenessState(aw)
-    aw.setLocalState({ id: 'bob', selection: { toy1: 123 } })
+    aw.setLocalState({ id: 'bob', desired: { toy1: 123 } })
 
-    aw.setLocalStateField('selection', { toy2: 456 })
-    expect(aw.getLocalState()).toEqual({ id: 'bob', selection: { toy2: 456 } })
+    aw.setLocalStateField('desired', { toy2: 456 })
+    expect(aw.getLocalState()).toEqual({ id: 'bob', desired: { toy2: 456 } })
   })
 
   test('a remote peer sees the reconnecting client vanish, then reappear, on real update events', () => {
@@ -89,7 +89,7 @@ describe('awareness after a disconnect/reconnect cycle', () => {
     // the reported symptom ("Peer A can't see Peer B's selRings").
     const bobDoc = new Y.Doc()
     const bobAw  = new awarenessProtocol.Awareness(bobDoc)
-    bobAw.setLocalState({ id: 'bob', selection: { toy1: 1 } })
+    bobAw.setLocalState({ id: 'bob', desired: { toy1: 1 } })
 
     const aliceDoc = new Y.Doc()
     const aliceAw  = new awarenessProtocol.Awareness(aliceDoc)
@@ -104,7 +104,7 @@ describe('awareness after a disconnect/reconnect cycle', () => {
     // Manually mirror what a real sync would produce: Alice's states map
     // gaining Bob's clientID entry.
     aliceAw.states.set(bobAw.clientID, bobAw.getLocalState())
-    expect(bobEntry()).toEqual({ id: 'bob', selection: { toy1: 1 } })
+    expect(bobEntry()).toEqual({ id: 'bob', desired: { toy1: 1 } })
 
     // Bob disconnects: his own state is removed locally, and (in the real
     // system) that removal propagates to Alice too.
@@ -115,14 +115,14 @@ describe('awareness after a disconnect/reconnect cycle', () => {
     // Bob "reconnects" without the fix: setLocalStateField no-ops, so
     // nothing ever propagates back to Alice — her view of Bob stays empty
     // forever.
-    bobAw.setLocalStateField('selection', { toy1: 1 })
+    bobAw.setLocalStateField('desired', { toy1: 1 })
     expect(bobAw.getLocalState()).toBeNull()
 
     // With the fix: a full setLocalState on reconnect gives Alice
     // something to receive again.
-    bobAw.setLocalState({ id: 'bob', selection: { toy1: 1 } })
+    bobAw.setLocalState({ id: 'bob', desired: { toy1: 1 } })
     aliceAw.states.set(bobAw.clientID, bobAw.getLocalState())
-    expect(bobEntry()).toEqual({ id: 'bob', selection: { toy1: 1 } })
+    expect(bobEntry()).toEqual({ id: 'bob', desired: { toy1: 1 } })
 
     bobAw.destroy(); aliceAw.destroy()
   })

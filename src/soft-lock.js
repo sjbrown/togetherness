@@ -10,24 +10,29 @@
  *
  * Awareness schema:
  *
- *   selection: { [elId: string]: number } | null
- *   pendingRequests: { [elId]: number } | null
+ *   desired: { [elId: string]: { ts: number, holding: boolean } } | null
  *
- * `selection[elId]` is this client's own timestamp for "when did I most
- * recently claim elId" — set whenever elId enters this client's own
- * selection (initial select, a tick's promotion, or a deliberate re-click
- * of an already-held element, which naturally refreshes it — no separate
- * "reassert" bookkeeping needed). Membership (which elIds I hold) and claim
- * recency (since when) are the same piece of data now, not two — an
- * earlier design carried a separate `elIds` array alongside `claimedAt`,
- * but the array was always redundant with Object.keys(claimedAt), so it
- * was dropped. This also removes the redundancy's failure mode: nothing
- * can hold a stale elId in one field while the other has already moved on.
+ * One entry per elId this client currently wants, replacing the earlier
+ * two-field `selection`/`pendingRequests` schema — an elId used to be able
+ * to appear in one map or the other, a distinction enforced only by every
+ * call site remembering to keep them disjoint (a client should never hold
+ * AND request the same elId). Now it's one map with exactly one record per
+ * elId, so that invariant is structural: an id is either present-and-
+ * holding or present-and-not, never both, because there is only one slot
+ * for it to occupy.
  *
- * `pendingRequests[elId]` exists ONLY while a client is actively trying to
- * acquire an elId it does not yet hold — deleted the moment that bid is
- * resolved, win or lose. It is never a retention signal, and deliberately
- * has the same {elId: number} shape as `selection` for consistency.
+ * `holding: true` means this elId is part of this client's own committed
+ * selection; `ts` is this client's own timestamp for "when did I most
+ * recently claim it" — set on initial select, a tick's promotion, or a
+ * deliberate re-click of an already-held element (the "bathroom" defense
+ * gesture), which naturally refreshes it.
+ *
+ * `holding: false` means this client does not yet hold this elId but is
+ * actively bidding to acquire it; `ts` is when that bid started, fixed for
+ * the life of the bid (a client cannot cancel or re-issue its own pending
+ * request once sent — see selection.js's request()). The entry is deleted
+ * entirely the moment the bid resolves, win or lose; it is never a
+ * retention signal.
  *
  * All functions here are pure: given a snapshot (a Map<clientId, state>, as
  * returned by awareness.getStates()), they compute derived facts with no
@@ -42,12 +47,11 @@ export const REQUEST_WINDOW_MS = 3000;
 // ── Basic element-ownership queries ─────────────────────────────────────────
 
 /**
- * The clientId currently holding `elId` in its committed `selection`, or
- * null if nobody holds it. Assumes at most one holder at a time (the
- * invariant this whole protocol exists to make usually-true, not guaranteed
- * — if two clients somehow both list elId, the first one encountered wins
- * — callers needing to detect that specific case should use
- * getOtherHoldersOf instead).
+ * The clientId currently holding `elId`, or null if nobody holds it.
+ * Assumes at most one holder at a time (the invariant this whole protocol
+ * exists to make usually-true, not guaranteed — if two clients somehow
+ * both hold elId, the first one encountered wins — callers needing to
+ * detect that specific case should use getOtherHoldersOf instead).
  *
  * @param {string} elId
  * @param {Map<number, object>} awarenessStates
@@ -57,7 +61,7 @@ export function getHolderClientId(elId, awarenessStates) {
   let holder = null;
   awarenessStates.forEach((state, clientId) => {
     if (holder !== null) return;
-    if (state?.selection && elId in state.selection) {
+    if (state?.desired?.[elId]?.holding) {
       holder = clientId;
     }
   });
@@ -78,12 +82,12 @@ export function isElementHeldByOther(elId, awarenessStates, myClientId) {
 }
 
 /**
- * Every clientId (excluding myClientId) whose own committed selection
- * currently contains elId. Unlike getHolderClientId (which assumes at most
- * one true holder and returns the first one found), this deliberately does
- * NOT assume single-holder — it's used specifically to detect the case
- * where that invariant has (temporarily or buggily) broken and more than
- * one client currently believes it holds the same element.
+ * Every clientId (excluding myClientId) currently holding elId. Unlike
+ * getHolderClientId (which assumes at most one true holder and returns the
+ * first one found), this deliberately does NOT assume single-holder — it's
+ * used specifically to detect the case where that invariant has
+ * (temporarily or buggily) broken and more than one client currently
+ * believes it holds the same element.
  *
  * @param {string} elId
  * @param {Map<number, object>} awarenessStates
@@ -94,7 +98,7 @@ export function getOtherHoldersOf(elId, awarenessStates, myClientId) {
   const others = [];
   awarenessStates.forEach((state, clientId) => {
     if (clientId === myClientId) return;
-    if (state?.selection && elId in state.selection) {
+    if (state?.desired?.[elId]?.holding) {
       others.push(clientId);
     }
   });
@@ -103,9 +107,10 @@ export function getOtherHoldersOf(elId, awarenessStates, myClientId) {
 
 /**
  * `clientId`'s own claim timestamp for elId — how recently they last
- * claimed it in their own selection. 0 if they don't currently hold it, or
- * hold it but never stamped a claim (shouldn't happen for a real holder,
- * treated safely as "no claim" rather than throwing).
+ * claimed it. 0 if they don't currently hold it (including if they're
+ * merely bidding for it), or hold it but never stamped a claim (shouldn't
+ * happen for a real holder, treated safely as "no claim" rather than
+ * throwing).
  *
  * @param {string} elId
  * @param {Map<number, object>} awarenessStates
@@ -113,15 +118,16 @@ export function getOtherHoldersOf(elId, awarenessStates, myClientId) {
  * @returns {number}
  */
 export function getClaimTimestamp(elId, awarenessStates, clientId) {
-  return awarenessStates.get(clientId)?.selection?.[elId] ?? 0;
+  const entry = awarenessStates.get(clientId)?.desired?.[elId];
+  return entry?.holding ? entry.ts : 0;
 }
 
 // ── Request queries ──────────────────────────────────────────────────────────
 
 /**
- * Every outstanding acquisition bid for elId, across all clients.
- * pendingRequests entries are always acquisition bids by construction — see
- * file header — so no held-by-same-client disambiguation is needed here.
+ * Every outstanding acquisition bid for elId, across all clients — every
+ * desired[elId] entry with holding:false, by construction always a bid
+ * (see file header) so no held-by-same-client disambiguation is needed.
  *
  * @param {string} elId
  * @param {Map<number, object>} awarenessStates
@@ -130,8 +136,8 @@ export function getClaimTimestamp(elId, awarenessStates, clientId) {
 export function getAcquirersOf(elId, awarenessStates) {
   const acquirers = [];
   awarenessStates.forEach((state, clientId) => {
-    const ts = state?.pendingRequests?.[elId];
-    if (typeof ts === 'number') acquirers.push({ clientId, ts });
+    const entry = state?.desired?.[elId];
+    if (entry && entry.holding === false) acquirers.push({ clientId, ts: entry.ts });
   });
   return acquirers;
 }
@@ -159,9 +165,10 @@ export function isElementContested(elId, awarenessStates) {
 export function getAllContestedElementIds(awarenessStates) {
   const contested = new Set();
   awarenessStates.forEach((state) => {
-    if (!state?.pendingRequests) return;
-    for (const elId of Object.keys(state.pendingRequests)) {
-      contested.add(elId);
+    const desired = state?.desired;
+    if (!desired) return;
+    for (const [elId, entry] of Object.entries(desired)) {
+      if (entry && entry.holding === false) contested.add(elId);
     }
   });
   return contested;
@@ -175,9 +182,9 @@ export function getAllContestedElementIds(awarenessStates) {
  *   1. Among outstanding acquirers, the earliest request ts wins; exact ts
  *      ties broken by lowest clientId, for determinism.
  *   2. If elId currently has a holder, and that holder's OWN claim
- *      timestamp (selection[elId] — refreshed by a deliberate
- *      re-click, i.e. the "bathroom" defense gesture) is at least as recent
- *      as the winning acquirer's request, the holder's claim rebuts it.
+ *      timestamp (refreshed by a deliberate re-click, i.e. the "bathroom"
+ *      defense gesture) is at least as recent as the winning acquirer's
+ *      request, the holder's claim rebuts it.
  *   3. If there are no acquirers at all, return null.
  *
  * Does not consult wall-clock time or the 3s window — callers decide when
@@ -222,26 +229,24 @@ export function isRequestWindowElapsed(acquirer, now) {
  * become. Performs no writes; the caller (App's tick loop) applies the
  * returned diff to local state and re-broadcasts.
  *
- *   - Acquirer side: for each of my own pendingRequests entries whose
- *     window has elapsed, if I'm the resolved winner I should acquire it;
- *     otherwise (rebutted, or lost a tie-break to another acquirer) I
- *     should drop my own request for it.
- *   - Holder side: for each elId I currently hold —
+ *   - Acquirer side: for each of my own desired entries with holding:false
+ *     whose window has elapsed, if I'm the resolved winner I should
+ *     acquire it; otherwise (rebutted, or lost a tie-break to another
+ *     acquirer) I should drop my own bid for it.
+ *   - Holder side: for each elId I currently hold (holding:true) —
  *       (a) if resolution finds a winning acquirer whose window has
  *           elapsed, release it (the common case);
- *       (b) otherwise, as a fallback: if some OTHER client's own selection
- *           also currently contains this elId (a durable conflict, which
- *           can arise even when (a) finds no acquirer — a successful
- *           acquirer's own pendingRequests entry is deleted immediately
- *           upon promotion, so by the time my tick runs there may be
- *           nothing left in pendingRequests to resolve against), compare
- *           claim timestamps directly via selection[elId]: whoever
- *           claimed it more recently keeps it. A client that never
- *           explicitly (re-)claimed it has no entry, treated as 0, and
- *           always loses to a client with an actual claim. Genuine ties
- *           (including 0-vs-0 — e.g. two clients simultaneously
- *           plain-selecting a previously free element) fall back to a
- *           deterministic clientId comparison.
+ *       (b) otherwise, as a fallback: if some OTHER client also currently
+ *           holds this elId (a durable conflict, which can arise even when
+ *           (a) finds no acquirer — a successful acquirer's own bid entry
+ *           is deleted immediately upon promotion, so by the time my tick
+ *           runs there may be no bid left to resolve against), compare
+ *           claim timestamps directly: whoever claimed it more recently
+ *           keeps it. A client that never explicitly (re-)claimed it has
+ *           no claim timestamp, treated as 0, and always loses to a client
+ *           with an actual claim. Genuine ties (including 0-vs-0 — e.g.
+ *           two clients simultaneously plain-selecting a previously free
+ *           element) fall back to a deterministic clientId comparison.
  *
  * @param {{ myClientId: number, awarenessStates: Map<number, object>, now: number }} args
  * @returns {{
@@ -251,9 +256,11 @@ export function isRequestWindowElapsed(acquirer, now) {
  * }}
  */
 export function computeTickActions({ myClientId, awarenessStates, now }) {
-  const myState = awarenessStates.get(myClientId) ?? {};
-  const mySelectedIds = new Set(Object.keys(myState.selection ?? {}));
-  const myPendingRequests = myState.pendingRequests ?? {};
+  const myDesired = awarenessStates.get(myClientId)?.desired ?? {};
+  const mySelectedIds = Object.keys(myDesired).filter((id) => myDesired[id].holding);
+  const myPendingRequests = Object.fromEntries(
+    Object.entries(myDesired).filter(([, entry]) => !entry.holding).map(([id, entry]) => [id, entry.ts]),
+  );
 
   const elIdsToAcquire = [];
   const elIdsToDropRequest = [];
