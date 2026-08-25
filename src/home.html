@@ -902,7 +902,7 @@ const rowSvgReady = new Map(
 // Uses storage.js import machinery to read svg contents from a sampler
 // template into the live doc getYDoc() hands back
 async function seedTable(tableId, sampleSvgEl) {
-  const ydoc = await tables.getYDoc(tableId);
+  const { ydoc } = await tables.getYDoc(tableId);
   ydoc.transact(() => {
     // Sampler templates carry a decorative rotation on each toy <g> for
     // homepage visual flair — not part of the canonical seeded document.
@@ -946,13 +946,22 @@ function launchRipple(cx, cy, svgEl) {
 
   // Seed the table into IndexedDB, then navigate once done (or after the
   // ripple animation completes, whichever is later).
+  //
+  // ?mint=1 tells index.html this table id was just minted here, not
+  // pasted/typed in from somewhere else — seedTable already stamps this
+  // table's docId via getYDoc before navigating, so by the time index.html
+  // loads it, "have I already got this table locally" alone can no longer
+  // tell "I just made this" apart from "I'm genuinely revisiting it" (see
+  // join_intent.js's module comment). Without the marker, index.html would
+  // wrongly treat this as an existing table and never join its own
+  // joinSequence.
   const seedDone    = seedTable(tableId, svgEl);
   const rippleDone  = new Promise(r => setTimeout(r, 520));
   Promise.all([seedDone, rippleDone]).then(() => {
-    window.location.href = `index.html#${tableId}`;
+    window.location.href = `index.html?mint=1#${tableId}`;
   }).catch(err => {
     console.error('togetherness: table seed failed', err);
-    window.location.href = `index.html#${tableId}`;
+    window.location.href = `index.html?mint=1#${tableId}`;
   });
 }
 

@@ -163,6 +163,21 @@
   </div>
 </div>
 
+<!-- ── Join-intent dialog (blocking — shown only while a typed/pasted
+     #tableId this browser has never seen before is being probed; see
+     join_dialog.js's resolveJoinIntent) ─────────────────────────────── -->
+<div id="joinDialogScrim" class="dialog-scrim" aria-hidden="true"></div>
+<div id="joinDialog" class="dialog" role="alertdialog" aria-modal="true"
+     aria-labelledby="joinDialogTitle" aria-hidden="true">
+  <div class="dialog-head">
+    <h2 id="joinDialogTitle">Connecting…</h2>
+  </div>
+  <div class="dialog-body" id="joinDialogBody">
+    <p>Looking for this table on the network…</p>
+  </div>
+  <div class="dialog-actions" id="joinDialogActions"></div>
+</div>
+
 <!-- ── Status bar (retained from old index.html for debugging) ────────────── -->
 <div id="statusBar" style="position:fixed;top:0;left:50%;transform:translateX(-50%);
      font-size:11px;color:var(--text-3);pointer-events:none;z-index:100;
@@ -192,6 +207,7 @@ import * as UI                  from './ui.js';
 import { getIdentity }          from './user.js';
 import { dragPlaceholderFilterSVG, snapPointGradientSVG, localActionFilterSVG, glowFilterSVG }  from './defs.js';
 import { tablesAPI as tables } from './tables.js';
+import { resolveJoinIntent }    from './join_dialog.js';
 import { resolveSignalingServers, getStoredSignalingServer, getStoredFallbackSignalingServer } from './signaling.js';
 import * as Trace                  from './trace.js';
 
@@ -220,14 +236,22 @@ Trace.boot('identity', `local identity resolved: ${myDisplayName}`,
 
 // ── Table  ──────────────────────────────────────────────────────────────────
 let tableId = location.hash.slice(1);
-const isCreator = !tableId;
-if (isCreator) {
+const noHash = !tableId;
+
+// ?mint=1 marks a hash that index.html itself just set a moment ago (see
+// home.html's launchRipple) — a *known* fresh table, not a pasted/typed
+// link to an unknown one. Scrubbed from the URL immediately so it never
+// ends up in a bookmark or a shared link.
+const mintedHere = new URLSearchParams(location.search).get('mint') === '1';
+if (mintedHere) history.replaceState(null, '', location.pathname + location.hash);
+
+if (noHash) {
   tableId = tables.generateTableId(myDisplayName);
   location.hash = tableId;
 }
 document.getElementById('tableLabel').textContent = tableId;
-Trace.boot('table-id', isCreator ? `minted a new table: ${tableId}` : `joining table: ${tableId}`,
-  { tableId, isCreator, hash: location.hash });
+Trace.boot('table-id', noHash ? `minted a new table: ${tableId}` : `joining table: ${tableId}`,
+  { tableId, noHash, mintedHere, hash: location.hash });
 
 // Leave this table and join/create whatever table the hash names next —
 // a peer editing the URL bar, browser back/forward, or a same-page link to
@@ -242,18 +266,13 @@ window.addEventListener('hashchange', () => {
   location.reload();
 });
 
-const ydoc  = await tables.getYDoc(tableId);
+const { ydoc, wasFresh } = await tables.getYDoc(tableId);
 App.addLog('loaded from indexeddb', 'local');
 tables.touchTableRecord(tableId);
 
-// Join the authority ordering only now that the local IndexedDB replay has
-// landed — ensureJoined's guard needs to see this table's *existing*
-// joinSequence. isCreator tells it whether an empty joinSequence means
-// "brand new table" or "haven't synced with the creator yet" (see
-// tables.js's ensureJoined).
-tables.ensureJoined(ydoc, myId, { isCreator });
-
 // ── WebRTC  ─────────────────────────────────────────────────────────────────
+// Constructed before isCreator is decided: the ambiguous case below needs
+// a live provider to probe, and the unambiguous cases need one anyway.
 const signalingUrls = resolveSignalingServers();
 Trace.net('signaling', `signaling servers: ${signalingUrls.join(', ')}`, {
   urls:               signalingUrls,
@@ -267,6 +286,28 @@ const provider     = new WebrtcProvider(tableId, ydoc, { signaling: signalingUrl
 Trace.net('provider', 'WebrtcProvider constructed — handshakes begin', { room: tableId });
 const awareness    = provider.awareness;
 awareness.setLocalState({ id: myId, color: myGrad.c1, grad: myGrad, cursor: null, selection: null });
+
+// isCreator: !location.hash alone isn't enough — a table id can also
+// arrive already-known locally (a returning visit or a fork, where
+// ensureJoined is moot either way), freshly minted by home.html's "Start
+// Here" (mintedHere), or genuinely ambiguous (a typed/pasted link this
+// browser has never seen). Only that last case needs to actually ask —
+// resolveJoinIntent probes the network and shows a dialog (see
+// join_intent.js / join_dialog.js / ui.js).
+let isCreator;
+if (noHash || mintedHere) {
+  isCreator = true;
+} else if (!wasFresh) {
+  isCreator = false;
+} else {
+  isCreator = await resolveJoinIntent({ provider, tableId, ydoc });
+}
+
+// Join the authority ordering only now that isCreator is settled —
+// ensureJoined's guard needs to know whether an empty joinSequence means
+// "brand new table" or "haven't synced with the creator yet" (see
+// tables.js's ensureJoined).
+tables.ensureJoined(ydoc, myId, { isCreator });
 
 // ── Boot ────────────────────────────────────────────────────────────────────
 boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreator, displayName: myDisplayName,
