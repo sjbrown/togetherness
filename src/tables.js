@@ -71,20 +71,52 @@ function getJoinSequenceArray(ydoc) {
 /**
  * Append myId to this table's join sequence, only if not already
  * present. Safe to call every session.
+ *
+ * isCreator is the same signal index.html already computes for the op
+ * log's genesis checkpoint (toys.js's projectLayer): !location.hash,
+ * decided once at the top of boot. It matters only when the local
+ * joinSequence is currently empty — indistinguishable, from this peer's
+ * own replica, between "this table has genuinely just come into being"
+ * and "the creator's own join hasn't synced in over the wire yet".
+ *
+ * A joiner (isCreator: false) who inserted anyway in that second case
+ * would race the creator's not-yet-arrived entry as a concurrent Y.Array
+ * insert — and Yjs's CRDT tie-break for that race doesn't honor
+ * real-world join order, so the joiner could land ahead of the creator.
+ * (CONCURRENCY_AND_BRANCHING.md: "Bias toward the table's creator is
+ * intentional.") So a joiner facing an empty joinSequence defers instead,
+ * and retries once the array actually changes — either the creator's
+ * entry lands, or (rarer) another joiner's does, and either way this
+ * peer then correctly appends after it. A joiner who never sees the
+ * array change (no peer ever online) never joins — the same fate as
+ * projectLayer's non-creator-with-empty-log path.
  */
-function ensureJoined(ydoc, myId) {
+function ensureJoined(ydoc, myId, { isCreator = false } = {}) {
   const yJoinSequence = getJoinSequence(ydoc);
-  if (yJoinSequence.toArray().includes(myId)) return;
-  ydoc.transact(() => {
-    // Re-check inside the transaction in case something else already
-    // appended this id while this call was in flight (e.g. a duplicate
-    // ensureJoined call from a second boot path). Concurrent joins from
-    // *other* peers are a different id and never collide with this guard.
+
+  const attempt = () => {
     if (yJoinSequence.toArray().includes(myId)) return;
-    yJoinSequence.push([myId]);
-  });
-  Trace.boot('join', `joined the authority ordering at index ${yJoinSequence.toArray().indexOf(myId)}`,
-    { myId, joinSequence: yJoinSequence.toArray() });
+    if (yJoinSequence.length === 0 && !isCreator) {
+      const retry = () => {
+        yJoinSequence.unobserve(retry);
+        attempt();
+      };
+      yJoinSequence.observe(retry);
+      return;
+    }
+    ydoc.transact(() => {
+      // Re-check inside the transaction in case something else already
+      // appended this id while this call was in flight (e.g. a duplicate
+      // ensureJoined call from a second boot path). Concurrent joins from
+      // *other* peers are a different id and never collide with this guard.
+      if (yJoinSequence.toArray().includes(myId)) return;
+      yJoinSequence.push([myId]);
+    });
+    Trace.boot('join', `joined the authority ordering at index ${yJoinSequence.toArray().indexOf(myId)}`,
+      { myId, joinSequence: yJoinSequence.toArray() });
+  };
+
+  attempt();
 }
 
 /**

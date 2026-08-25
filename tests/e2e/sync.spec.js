@@ -151,6 +151,48 @@ test.describe('two-peer sync', () => {
     await browser.close();
   });
 
+  // This doesn't reproduce the actual race (the unit tests in
+  // tests/unit/tables-authority.test.js do that deterministically, by
+  // controlling the order updates are applied in) — a same-machine
+  // WebRTC handshake is fast enough that page1's join entry is usually
+  // already committed before page2's boot script even runs. What this
+  // does check is the wiring: that index.html actually threads isCreator
+  // through to ensureJoined, and that the Debug tab renders the resulting
+  // joinSequence identically on both peers.
+  test('the creator sorts before a joiner in the joinSequence, on both peers', async () => {
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
+    const ctx1    = await browser.newContext();
+    const ctx2    = await browser.newContext();
+    const page1   = await ctx1.newPage();
+    const page2   = await ctx2.newPage();
+
+    await openCreatorAndJoiner(page1, page2, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+
+    await expect(page1.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
+    await expect(page2.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
+
+    // Open the Debug tab on both peers, which renders the joinSequence as
+    // an ordered ladder (debug_panel.js's joinSequenceHTML).
+    await page1.evaluate(() => window.UI.openSheet('debug'));
+    await page2.evaluate(() => window.UI.openSheet('debug'));
+
+    const readJoinSequence = (page) =>
+      page.$$eval('.dbg-join-row .dbg-id', els => els.map(el => el.textContent));
+
+    // Both replicas must converge to the identical order, and the table's
+    // creator (page1) — not the joiner (page2) — must be first: bug was
+    // the joiner racing ahead of the creator's not-yet-synced entry.
+    await expect.poll(() => readJoinSequence(page1)).toHaveLength(2);
+    const seq1 = await readJoinSequence(page1);
+    const seq2 = await readJoinSequence(page2);
+    expect(seq1).toEqual(seq2);
+
+    await expect(page1.locator('.dbg-join-row.me .dbg-join-i')).toHaveText('0');
+    await expect(page2.locator('.dbg-join-row.me .dbg-join-i')).toHaveText('1');
+
+    await browser.close();
+  });
+
   test('no console errors or warnings on load', async ({ page }) => {
     const messages = [];
     page.on('console', msg => {
