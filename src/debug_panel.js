@@ -135,7 +135,9 @@ export function stateHTML(s) {
   const netCard = `
     <div class="dbg-card ${net.connected ? '' : 'warn'}">
       <div class="dbg-card-title">Transport</div>
-      ${kv('signaling', net.signaling ? `<code class="dbg-id">${esc(net.signaling)}</code>` : '<span class="dbg-nil">unknown</span>')}
+      ${kv('signaling', (net.signaling && net.signaling.length)
+        ? net.signaling.map(url => `<code class="dbg-id">${esc(url)}</code>`).join(' ')
+        : '<span class="dbg-nil">unknown</span>')}
       ${kv('signaling link', net.connected ? '<span class="dbg-ok">connected</span>' : '<span class="dbg-bad">disconnected</span>')}
       ${kv('doc synced', net.synced ? '<span class="dbg-ok">yes</span>' : '<span class="dbg-nil">not yet</span>')}
       ${kv('webrtc peers', String(net.webrtcPeers ?? 0))}

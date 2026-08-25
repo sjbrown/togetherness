@@ -522,6 +522,8 @@ body {
         <div class="advanced-panel" id="advancedPanel" style="display:none">
           <label class="advanced-label" for="signalingServer">Signaling Server:</label>
           <input class="advanced-input" id="signalingServer" type="text" autocomplete="off" spellcheck="false">
+          <label class="advanced-label" for="signalingServerFallback">Signaling Server (fallback):</label>
+          <input class="advanced-input" id="signalingServerFallback" type="text" autocomplete="off" spellcheck="false">
         </div>
       </div>
     </div>
@@ -659,7 +661,10 @@ import * as Toys                from './toys.js';
 import { entityGradient }        from './entity_gradient.js';
 import { getIdentity, setName, setGrad } from './user.js';
 import { tablesAPI as tables } from './tables.js';
-import { getStoredSignalingServer, setStoredSignalingServer, defaultSignalingServer } from './signaling.js';
+import {
+  getStoredSignalingServer, setStoredSignalingServer, defaultSignalingServer,
+  getStoredFallbackSignalingServer, setStoredFallbackSignalingServer, defaultFallbackSignalingServer,
+} from './signaling.js';
 
 function drawGradientSwatch(canvas, gradObj) {
   const ctx  = canvas.getContext('2d');
@@ -733,20 +738,24 @@ displayNameEl.addEventListener('input', () => {
 
 initProfile();
 
-// ── Advanced: signaling server ──────────────────────────────────────────────
-// The field shows the localStorage override if one exists, else the
+// ── Advanced: signaling server(s) ────────────────────────────────────────────
+// Each field shows the localStorage override if one exists, else its
 // host-based default — but that default is NOT written to localStorage
-// until the person actually edits the field (see signaling.js).
-const advancedLinkEl  = document.getElementById('advancedLink');
-const advancedPanelEl = document.getElementById('advancedPanel');
-const signalingEl     = document.getElementById('signalingServer');
+// until the person actually edits the field (see signaling.js). y-webrtc
+// connects to both servers concurrently rather than falling over from one
+// to the other; "fallback" describes intent, not the connection mechanics.
+const advancedLinkEl     = document.getElementById('advancedLink');
+const advancedPanelEl    = document.getElementById('advancedPanel');
+const signalingEl        = document.getElementById('signalingServer');
+const signalingFallbackEl = document.getElementById('signalingServerFallback');
 
 advancedLinkEl.addEventListener('click', (e) => {
   e.preventDefault();
   const opening = advancedPanelEl.style.display === 'none';
   advancedPanelEl.style.display = opening ? 'flex' : 'none';
   if (opening) {
-    signalingEl.value = getStoredSignalingServer() ?? defaultSignalingServer();
+    signalingEl.value         = getStoredSignalingServer() ?? defaultSignalingServer();
+    signalingFallbackEl.value = getStoredFallbackSignalingServer() ?? defaultFallbackSignalingServer();
   }
 });
 
@@ -759,6 +768,15 @@ signalingEl.addEventListener('change', () => {
     setStoredSignalingServer(value);
   } else {
     setStoredSignalingServer(null);
+  }
+});
+
+signalingFallbackEl.addEventListener('change', () => {
+  const value = signalingFallbackEl.value.trim();
+  if (value && value !== defaultFallbackSignalingServer()) {
+    setStoredFallbackSignalingServer(value);
+  } else {
+    setStoredFallbackSignalingServer(null);
   }
 });
 

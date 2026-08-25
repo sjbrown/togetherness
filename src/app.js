@@ -86,7 +86,7 @@ let _activeLayer  = 'toys';
 // Transport facts the provider reports through events and never exposes as
 // readable state. Mirrored here purely so the Debug panel can show what the
 // connection is doing right now, not only what it did.
-const _netStatus = { connected: false, synced: false, webrtcPeers: 0, bcPeers: 0, signaling: null };
+const _netStatus = { connected: false, synced: false, webrtcPeers: 0, bcPeers: 0, signaling: [] };
 
 // _myClaims is the single local SSOT for this client's committed selection.
 //   { [elId: string]: number }   elId -> claim timestamp (ms)
@@ -349,7 +349,7 @@ function buildToolRegistry() {
 }
 
 // ── Boot ────────────────────────────────────────────────────────────────────
-export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreator = false, svgElement, displayName, signalingUrl = null }) {
+export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreator = false, svgElement, displayName, signalingUrls = [] }) {
   _ydoc      = ydoc;
   _yMeta     = ydoc.getMap('meta');
   _yDrawing  = ydoc.getXmlFragment('drawing');
@@ -362,7 +362,7 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
   _isCreator = isCreator;
   _svgEl     = svgElement ?? document.querySelector('#stage svg');
 
-  _netStatus.signaling = signalingUrl;
+  _netStatus.signaling = signalingUrls;
 
   Trace.boot('boot', `booting table ${tableId}`, {
     tableId, myId, displayName, isCreator,
@@ -449,21 +449,6 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
     UI.toast('Synced with peers');
     App.addLog('synced with peers', 'remote');
   });
-  // Deliberately NOT the library's own 'status' event: that reflects
-  // provider.connected (room !== null && shouldConnect), which goes true
-  // moments after construction whether or not the underlying WebSocket
-  // ever actually opens — "signaling connected" looked fine while the
-  // socket to the signaling server had never succeeded. Track the
-  // SignalingConn's own connect/disconnect (the real transport) instead.
-  const setSignalingConnected = (connected) => {
-    if (dot) dot.className = connected ? 'status-dot connected' : 'status-dot connecting';
-    _netStatus.connected = connected;
-    Trace.net('status', connected ? 'signaling connected' : 'signaling disconnected',
-      { connected }, connected ? 'info' : 'warn');
-    // Cancel any in-progress drag on disconnect — doc stays at committed position.
-    if (!connected && _dragState) App.cancelMove();
-    if (!connected && _multiDragState) App.cancelMultiMove();
-  };
   // y-webrtc's own peer bookkeeping — the WebRTC handshakes themselves,
   // which awareness only reflects indirectly and after the fact.
   _provider.on('peers', ({ added = [], removed = [], webrtcPeers = [], bcPeers = [] }) => {
@@ -476,12 +461,17 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
       Trace.net('peer-disconnected', `WebRTC peer left: ${id}`, { peer: id, webrtcPeers, bcPeers });
     }
   });
-
-  // Raw signaling relay traffic (announce/signal), one layer below 'peers'.
-  // 'peers' only fires once an announce has actually been relayed back to
-  // us — its absence looks identical whether the signaling server never
-  // bridged the two sides, or it did and ICE negotiation failed after.
-  // Tracing the relay messages themselves tells those apart.
+  // NOTE: _provider.on('status' is a red herring. It's just true after
+  // construction. We really want the real connect/disconnect state
+  const setSignalingConnected = (connected) => {
+    if (dot) dot.className = connected ? 'status-dot connected' : 'status-dot connecting';
+    _netStatus.connected = connected;
+    Trace.net('status', connected ? 'signaling connected' : 'signaling disconnected',
+      { connected }, connected ? 'info' : 'warn');
+    // Cancel any in-progress drag on disconnect — doc stays at committed position.
+    if (!connected && _dragState) App.cancelMove();
+    if (!connected && _multiDragState) App.cancelMultiMove();
+  };
   _provider.signalingConns.forEach(conn => {
     conn.on('connect', () => setSignalingConnected(true));
     conn.on('disconnect', () => setSignalingConnected(false));
@@ -500,6 +490,7 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
       }
     });
   });
+
 
   // Initial render
   renderDoc();
