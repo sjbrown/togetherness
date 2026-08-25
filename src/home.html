@@ -416,6 +416,26 @@ body {
 }
 .sampler-row:hover::after { opacity: 0.5; }
 
+/* loading spinner — shown in place of the Start Here button while a row's
+   start-table SVG is still being fetched */
+.sampler-spinner {
+  display: none;
+  position: absolute;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid rgba(210,185,130,0.18);
+  border-top-color: var(--primary);
+  pointer-events: none;
+  animation: sampler-spin 0.8s linear infinite;
+}
+.sampler-row.loading .sampler-spinner { display: block; }
+.sampler-row.loading .start-btn { display: none; }
+@keyframes sampler-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* start button */
 .start-btn {
   pointer-events: none;
@@ -562,86 +582,30 @@ body {
   <main class="sampler" id="sampler">
 
 <!-- ── Row 1: slatehex ──────────────────────────────────────────── -->
-<div class="sampler-row fade-in" style="--tint:rgba(13,11,19,0.45); transition-delay:0.05s"
-     data-bg="slatehex" data-bg-width="1384" data-bg-height="998">
-  <svg class="sampler-scene" xmlns="http://www.w3.org/2000/svg"
-       xmlns:xlink="http://www.w3.org/1999/xlink"
-       viewBox="0 0 600 200" preserveAspectRatio="xMidYMid slice">
-    <defs>
-      <pattern id="s0-bg" x="0" y="0" width="1384" height="998" patternUnits="userSpaceOnUse">
-        <image href="img/bg_slatehex.png" x="0" y="0" width="1384" height="998"/>
-      </pattern>
-    </defs>
-    <g id="background-layer">
-      <rect width="100%" height="100%" fill="url(#s0-bg)"/>
-    </g>
-    <g id="boundaries-positions-layer"/>
-    <g id="toys-layer"></g>
-    <g id="drawing-layer"/>
-  </svg>
+<div class="sampler-row fade-in loading" style="--tint:rgba(13,11,19,0.45); transition-delay:0.05s"
+     data-start-table="slatehex.svg">
+  <div class="sampler-spinner" aria-hidden="true"></div>
   <button class="start-btn">Start Here</button>
 </div>
 
 <!-- ── Row 2: beigehex ──────────────────────────────────────────── -->
-<div class="sampler-row fade-in" style="--tint:rgba(30,22,10,0.40); transition-delay:0.12s"
-     data-bg="beigehex" data-bg-width="815" data-bg-height="718">
-  <svg class="sampler-scene" xmlns="http://www.w3.org/2000/svg"
-       xmlns:xlink="http://www.w3.org/1999/xlink"
-       viewBox="0 0 600 200" preserveAspectRatio="xMidYMid slice">
-    <defs>
-      <pattern id="s1-bg" x="0" y="0" width="815" height="718" patternUnits="userSpaceOnUse">
-        <image href="img/bg_beigehex.png" x="0" y="0" width="815" height="718"/>
-      </pattern>
-    </defs>
-    <g id="background-layer">
-      <rect width="100%" height="100%" fill="url(#s1-bg)"/>
-    </g>
-    <g id="boundaries-positions-layer"/>
-    <g id="toys-layer"></g>
-    <g id="drawing-layer"/>
-  </svg>
+<div class="sampler-row fade-in loading" style="--tint:rgba(30,22,10,0.40); transition-delay:0.12s"
+     data-start-table="beigehex.svg">
+  <div class="sampler-spinner" aria-hidden="true"></div>
   <button class="start-btn">Start Here</button>
 </div>
 
 <!-- ── Row 3: greenfelt ──────────────────────────────────────────── -->
-<div class="sampler-row fade-in" style="--tint:rgba(8,20,10,0.38); transition-delay:0.19s"
-     data-bg="greenfelt" data-bg-width="800" data-bg-height="600">
-  <svg class="sampler-scene" xmlns="http://www.w3.org/2000/svg"
-       xmlns:xlink="http://www.w3.org/1999/xlink"
-       viewBox="0 0 600 200" preserveAspectRatio="xMidYMid slice">
-    <defs>
-      <pattern id="s2-bg" x="0" y="0" width="800" height="600" patternUnits="userSpaceOnUse">
-        <image href="img/bg_greenfelt.png" x="0" y="0" width="800" height="600"/>
-      </pattern>
-    </defs>
-    <g id="background-layer">
-      <rect width="100%" height="100%" fill="url(#s2-bg)"/>
-    </g>
-    <g id="boundaries-positions-layer"/>
-    <g id="toys-layer"></g>
-    <g id="drawing-layer"/>
-  </svg>
+<div class="sampler-row fade-in loading" style="--tint:rgba(8,20,10,0.38); transition-delay:0.19s"
+     data-start-table="greenfelt.svg">
+  <div class="sampler-spinner" aria-hidden="true"></div>
   <button class="start-btn">Start Here</button>
 </div>
 
 <!-- ── Row 4: irongrid ──────────────────────────────────────────── -->
-<div class="sampler-row fade-in" style="--tint:rgba(10,12,16,0.50); transition-delay:0.26s"
-     data-bg="irongrid" data-bg-width="438" data-bg-height="285">
-  <svg class="sampler-scene" xmlns="http://www.w3.org/2000/svg"
-       xmlns:xlink="http://www.w3.org/1999/xlink"
-       viewBox="0 0 600 200" preserveAspectRatio="xMidYMid slice">
-    <defs>
-      <pattern id="s3-bg" x="0" y="0" width="438" height="285" patternUnits="userSpaceOnUse">
-        <image href="img/bg_irongrid.png" x="0" y="0" width="438" height="285"/>
-      </pattern>
-    </defs>
-    <g id="background-layer">
-      <rect width="100%" height="100%" fill="url(#s3-bg)"/>
-    </g>
-    <g id="boundaries-positions-layer"/>
-    <g id="toys-layer"></g>
-    <g id="drawing-layer"/>
-  </svg>
+<div class="sampler-row fade-in loading" style="--tint:rgba(10,12,16,0.50); transition-delay:0.26s"
+     data-start-table="irongrid.svg">
+  <div class="sampler-spinner" aria-hidden="true"></div>
   <button class="start-btn">Start Here</button>
 </div>
 
@@ -653,7 +617,6 @@ body {
 { "imports": { "yjs": "./lib/yjs.js", "y-indexeddb": "./lib/y-indexeddb.js" } }
 </script>
 <script type="module">
-import * as Y                   from 'yjs';
 import { mirrorYNode, buildThumbSVG, THUMB_W, THUMB_H } from './home-utils.js';
 import { populateFromSvgDoc }   from './storage.js';
 import * as Toys                from './toys.js';
@@ -904,61 +867,41 @@ window.addEventListener('pageshow', () => {
   renderTables();
 });
 
-// ── Sampler dice: render the real toy/dice_d6.svg content ────────────────────
-// The homepage used to hand-author simplified stand-in dice markup, which
-// could silently drift from the actual toy file's artwork/structure. Instead,
-// build each sample die via the same Toys.addToy → mirror pipeline a real
-// in-app placement uses, into a throwaway Y.Doc that's never persisted or
-// connected to anything — purely for display. Position/rotation are display
-// choices only (not stored), matched to the sampler's original layout.
-const DICE_LAYOUT = [
-  { cx: 105, cy: 100, rotate: -8 },
-  { cx: 235, cy: 100, rotate:  4 },
-  { cx: 365, cy: 100, rotate: -3 },
-  { cx: 495, cy: 100, rotate:  9 },
-];
-const SAMPLER_DICE = [
-  { rowIndex: 0, colors: ['#191e78', '#3c14a0', '#0a0a5a', '#5a28b4'], faces: [6, 4, 1, 5] },
-  { rowIndex: 1, colors: ['#f0e6c8', '#f0e6c8', '#f0e6c8', '#f0e6c8'], faces: [3, 6, 2, 4] },
-  { rowIndex: 2, colors: ['#be1414', '#be1414', '#be1414', '#be1414'], faces: [1, 3, 5, 2] },
-  { rowIndex: 3, colors: ['#641ea0', '#1e823c', '#6e4114', '#82828c'], faces: [5, 2, 6, 3] },
-];
-
-async function renderSamplerDice() {
-  const rows    = document.querySelectorAll('svg.sampler-scene');
-  const scratch = new Y.Doc();               // display-only, never persisted
-
-  for (const { rowIndex, colors, faces } of SAMPLER_DICE) {
-    const toysLayerEl = rows[rowIndex]?.querySelector('#toys-layer');
-    if (!toysLayerEl) continue;
-    for (let i = 0; i < DICE_LAYOUT.length; i++) {
-      const { cx, cy, rotate } = DICE_LAYOUT[i];
-      const id = `sample-s${rowIndex}d${i}`;
-      // Sequential await: addToy only fetches toy/dice_d6.svg once (cached
-      // after the first call) — running these concurrently would race
-      // multiple fetches before the cache is warm.
-      const el = await Toys.addToy(scratch, toysLayerEl, { id, toyType: 'dice_d6', x: cx, y: cy, color: colors[i] });
-      el.setAttribute('transform', `rotate(${rotate},${cx},${cy})`);
-      el.setAttribute('style', 'filter:drop-shadow(0 4px 10px rgba(0,0,0,0.75))');
-      // Cosmetic only: pick a varied face per sample die, same DOM tweak the
-      // toy's own turn_handler script performs — no Yjs write.
-      const tspan = el.querySelector('tspan');
-      if (tspan) tspan.textContent = String(faces[i]);
-    }
-  }
+// ── Sampler previews: load each row's starting-table SVG doc ─────────────────
+// The starting states themselves (background + baked-in toys) live in
+// src/start_tables/*.svg — see that folder — not in this page. Each row
+// names its file via data-start-table; fetch it, parse it, and inject the
+// <svg> as the row's preview scene. The same parsed element is what
+// seedTable hands to the standard Load machinery (populateFromSvgDoc) on
+// click, so the preview is exactly what gets loaded — no separate
+// display-only path to drift out of sync.
+function loadStartTable(row) {
+  const file = row.dataset.startTable;
+  return fetch(`start_tables/${file}`)
+    .then(res => res.text())
+    .then(text => {
+      const doc   = new DOMParser().parseFromString(text, 'image/svg+xml');
+      const svgEl = document.importNode(doc.documentElement, true);
+      row.insertBefore(svgEl, row.querySelector('.start-btn'));
+      row.classList.remove('loading');
+      return svgEl;
+    })
+    .catch(err => {
+      console.error('togetherness: failed to load start table', file, err);
+      row.classList.remove('loading');
+      return null;
+    });
 }
-const samplerDiceReady = renderSamplerDice().catch(err => {
-  console.error('togetherness: sampler dice render failed', err);
-});
+
+const startTableRows = document.querySelectorAll('.sampler-row[data-start-table]');
+const rowSvgReady = new Map(
+  Array.from(startTableRows, row => [row, loadStartTable(row)])
+);
 
 // ── Seed a new table from a sample SVG into IndexedDB ────────────────────────
 // Uses storage.js import machinery to read svg contents from a sampler
 // template into the live doc getYDoc() hands back
 async function seedTable(tableId, sampleSvgEl) {
-  // Guard against a click landing before the sampler dice finish rendering
-  // (single network fetch, so this resolves almost immediately in practice).
-  await samplerDiceReady;
-
   const ydoc = await tables.getYDoc(tableId);
   ydoc.transact(() => {
     // Sampler templates carry a decorative rotation on each toy <g> for
@@ -971,10 +914,11 @@ async function seedTable(tableId, sampleSvgEl) {
   await tables.openTablePersistence(tableId, ydoc);
 }
 
-// ── Wire sampler row clicks to static HTML rows ──────────────────────────────
-document.querySelectorAll('.sampler-row').forEach(el => {
-  el.addEventListener('click', e => {
-    const svgEl = el.querySelector('svg.sampler-scene');
+// ── Wire sampler row clicks to their (possibly still-loading) preview ────────
+startTableRows.forEach(el => {
+  el.addEventListener('click', async e => {
+    const svgEl = await rowSvgReady.get(el);
+    if (!svgEl) return;
     launchRipple(e.clientX, e.clientY, svgEl);
   });
 });
