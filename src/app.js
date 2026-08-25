@@ -38,6 +38,7 @@ import * as UndoRedo                              from './undo_redo.js';
 import * as Events                                from './events.js';
 import { entityGradient }            from './entity_gradient.js';
 import { isElementHeldByOther, computeTickActions } from './soft-lock.js';
+import * as Selection                              from './selection.js';
 
 
 import * as Y from 'yjs';
@@ -94,32 +95,57 @@ const _netStatus = { connected: false, synced: false, webrtcPeers: 0, bcPeers: 0
 // Membership (which elIds I hold) and recency (since when) together.
 // Invariant: Object.keys(_myClaims) is always the held-id set
 //
-// All writes go through the helpers below, each of which ends in
-// Overlay.localSelectionChanged + _broadcastSelection + UI.onSelectionChanged,
-// so forgetting to broadcast is structurally impossible.
+// Every membership/request DECISION (select, toggle, request, reassert,
+// clear, commitMultiSelect, a tick's resolution) is made by the pure
+// functions in selection.js and folded back in via _applySelState below --
+// forgetting to broadcast is structurally impossible, since that's the
+// only path that ever reassigns these two variables. The one exception is
+// a gesture that only REFRESHES an already-held claim's timestamp without
+// changing membership (the drag/multi-drag "defend" paths below); those
+// still write _myClaims directly and call _broadcastSelection() themselves
+// -- deliberately lighter than _afterClaimsChanged, since membership
+// hasn't changed (see the comment on the throttled refresh in moveMulti).
 let _myClaims = {};
+// Soft-lock request state — this client's own outstanding acquisition bids,
+// keyed by elId. Exists ONLY while actively trying to acquire an elId not
+// yet in _myClaims; deleted the moment that bid resolves, win or lose.
+//   { [elId: string]: number }  // elId -> request timestamp (ms)
+let _pendingRequests = {};
 // Tracks whether the last _afterClaimsChanged call left a non-empty selection
 let _lastClaimedSetNonEmpty = false;
 
 // ── Selection mutation helpers —
 
-// Add elIds to the committed selection, stamping a fresh claim timestamp.
-// Idempotent: re-claiming an already-held id just refreshes its timestamp.
-function _claim(ids, ts = Date.now()) {
-  for (const id of ids) _myClaims[id] = ts;
-  _afterClaimsChanged();
+// Applies a new pure Selection state (src/selection.js) to the local SSOT
+// variables above, running the existing side-effect helpers for whichever
+// half actually changed. selection.js's functions return the identical
+// claims/pendingRequests object, by reference, when that half didn't
+// change -- see its file header -- so this diff is just two `!==` checks.
+function _applySelState(next) {
+  if (next.claims !== _myClaims) {
+    _myClaims = next.claims;
+    _afterClaimsChanged();
+  }
+  if (next.pendingRequests !== _pendingRequests) {
+    _pendingRequests = next.pendingRequests;
+    _broadcastPendingRequests();
+  }
+}
+
+function _selState() {
+  return { claims: _myClaims, pendingRequests: _pendingRequests };
 }
 
 // Remove specific elIds from the committed selection.
 function _unclaim(ids) {
-  for (const id of ids) delete _myClaims[id];
-  _afterClaimsChanged();
+  let state = _selState();
+  for (const id of ids) state = Selection.unclaim(state, id);
+  _applySelState(state);
 }
 
 // Clear the committed selection entirely.
 function _clearClaims() {
-  _myClaims = {};
-  _afterClaimsChanged();
+  _applySelState(Selection.clearClaims(_selState()));
 }
 
 // Called by every mutation helper after _myClaims has been updated.
@@ -195,35 +221,11 @@ function _exitResizeModeInternal() {
   _broadcastMode();
 }
 
-// Soft-lock request state — this client's own outstanding acquisition bids,
-// keyed by elId. Exists ONLY while actively trying to acquire an elId not
-// yet in _myClaims; deleted the moment that bid resolves, win or lose.
-//   { [elId: string]: number }  // elId -> request timestamp (ms)
-let _pendingRequests = {};
-
 // Broadcast the current _pendingRequests as this client's awareness
 // `pendingRequests` field. Sibling to how `selection` is broadcast.
 function _broadcastPendingRequests() {
   const keys = Object.keys(_pendingRequests);
   _awareness.setLocalStateField('pendingRequests', keys.length ? { ..._pendingRequests } : null);
-}
-
-// Drop every outstanding pending request except (optionally) one to keep.
-// select() is exclusive (single-select): moving the committed selection to
-// something else means any other outstanding bid is no longer wanted and
-// must not survive to resolve later, after the selection has already moved
-// on -- otherwise a later tick can silently add the abandoned id back into
-// _myClaims alongside whatever was selected next. `exceptId` lets a
-// reclick of the SAME held-by-other id keep its existing request
-// untouched (write-once: requestElement() itself refuses to refresh it).
-function _abandonPendingRequests(exceptId = null) {
-  const keys = Object.keys(_pendingRequests);
-  if (keys.length === 0) return;
-  if (keys.length === 1 && keys[0] === exceptId) return;
-  _pendingRequests = exceptId != null && _pendingRequests[exceptId] != null
-    ? { [exceptId]: _pendingRequests[exceptId] }
-    : {};
-  _broadcastPendingRequests();
 }
 
 // Soft-lock tick — periodically evaluates computeTickActions() and applies
@@ -245,30 +247,20 @@ const CLAIM_REFRESH_THROTTLE_MS = 500;
 let _softLockTickHandle = null;
 
 function _softLockTick() {
-  const { elIdsToAcquire, elIdsToDropRequest, elIdsToRelease } = computeTickActions({
+  const tickActions = computeTickActions({
     myClientId:      _awareness.clientID,
     awarenessStates: _awareness.getStates(),
     now:             Date.now(),
   });
 
+  const { elIdsToAcquire, elIdsToDropRequest, elIdsToRelease } = tickActions;
   if (!elIdsToAcquire.length && !elIdsToDropRequest.length && !elIdsToRelease.length) return;
 
-  for (const elId of elIdsToAcquire) {
-    _myClaims[elId] = Date.now();           // promotion moment IS the claim
-    delete _pendingRequests[elId];          // bid resolved — won
-  }
-  for (const elId of elIdsToDropRequest) {
-    delete _pendingRequests[elId];          // bid resolved — lost
-  }
-  for (const elId of elIdsToRelease) {
-    delete _myClaims[elId];
-    delete _pendingRequests[elId]; // defensive; shouldn't normally exist for a held elId
-  }
-
-  // _afterClaimsChanged handles localSelectionChanged + broadcast + UI notify
-  // with the correct pre-broadcast ordering (see comment on _afterClaimsChanged).
-  _afterClaimsChanged();
-  _broadcastPendingRequests();
+  // Selection.applyTickActions always returns fresh claims/pendingRequests
+  // objects when called (see its own doc comment), so _applySelState runs
+  // both side effects here unconditionally, matching this tick handler's
+  // original always-both-fire behavior.
+  _applySelState(Selection.applyTickActions(_selState(), tickActions));
 }
 
 // Returns the single selected id, or null if zero or more than one are selected.
@@ -973,18 +965,17 @@ const App = {
   // Advisory soft-lock request: write/refresh this client's own acquisition
   // entry for `id`. Per protocol, an acquirer's request is write-once — a
   // client cannot cancel or re-issue its own pending request once sent, so
-  // this is a no-op if one is already outstanding for this id.
+  // this is a no-op if one is already outstanding for this id. See
+  // selection.js's request().
   requestElement: (id) => {
-    if (_pendingRequests[id] != null) return;
-    _pendingRequests[id] = Date.now();
-    _broadcastPendingRequests();
+    _applySelState(Selection.request(_selState(), id));
   },
 
   // Refresh this client's claim timestamp for a single already-held elId,
-  // without touching the rest of the current multi-selection.
+  // without touching the rest of the current multi-selection. See
+  // selection.js's reassertClaim().
   reassertClaim: (id) => {
-    if (!(id in _myClaims)) return; // only meaningful if I already hold it
-    _claim([id]);
+    _applySelState(Selection.reassertClaim(_selState(), id));
   },
 
   // Drop every claim this client currently holds
@@ -993,54 +984,19 @@ const App = {
     _clearClaims();
   },
 
+  // Exclusive single-select — see selection.js's select() for the actual
+  // decision (held-by-other → request instead of claiming; abandoning any
+  // stale pending request for a different id; a re-click of a held-by-self
+  // id as rebuttal).
   select: (id) => {
     App.setTool('select');
-    if (id && App.isHeldByOther(id)) {
-      // Plain click on a held-by-other element is a request.
-      // Shift wasn't held, so any selection I currently hold is cleared
-      _clearClaims();
-      // Abandon a stale bid for a different id -- see _abandonPendingRequests.
-      // Reclicking the SAME id keeps its existing request untouched.
-      _abandonPendingRequests(id);
-      App.requestElement(id);
-      return;
-    }
-    if (id) {
-      // select() is exclusive (single-select): replace the whole selection
-      // with just this one id.
-      // This also handles re-clicking a held-by-self element as rebuttal
-      // gesture -- it gets a fresh timestamp from _claim()
-      _myClaims = {};
-      _claim([id]);
-      // Abandon any outstanding request for some other id -- see
-      // _abandonPendingRequests (same regression, different trigger:
-      // clicking a free element while a request for a different one is
-      // still pending).
-      _abandonPendingRequests();
-    } else {
-      _clearClaims();
-      _abandonPendingRequests();
-    }
+    _applySelState(Selection.select(_selState(), id, { isHeldByOther: App.isHeldByOther }));
   },
 
-  // Toggle a single id in/out of the current selection.
-  // If the result is N===0: deselect. N===1: single-select. N>1: multi-select.
-  // Collapses back to single-select mode when size drops to 1.
-  //
-  // shift-clicking a held-by-other element queues a request for it
-  // (App.requestElement), independent of and alongside whatever else is
-  // already held-by-self or other pending requests.
-  // Shift-clicking a held-by-self element is still a plain deselect toggle,
-  // and is a no-op with respect to pendingRequests
+  // Toggle a single id in/out of the current selection — see selection.js's
+  // toggle() (deselect if held, request if held-by-other, else add).
   toggleSelection: (id) => {
-    if (id in _myClaims) {
-      _unclaim([id]);
-    } else if (App.isHeldByOther(id)) {
-      App.requestElement(id);
-      return; // request queued; _myClaims untouched
-    } else {
-      _claim([id]);
-    }
+    _applySelState(Selection.toggle(_selState(), id, { isHeldByOther: App.isHeldByOther }));
   },
 
   commitMultiSelect: ({ x, y, width, height, additive = false } = {}) => {
@@ -1054,17 +1010,7 @@ const App = {
     } else if (ids.length === 1) {
       App.select(ids[0]);
     } else {
-      // Preserve existing claim timestamps for any already-held.
-      // Timestamp a fresh claim only for newly-added ones.
-      const ts = Date.now();
-      for (const id of ids) {
-        if (!(id in _myClaims)) _myClaims[id] = ts;
-      }
-      // Drop any ids no longer in the new set (non-additive replace).
-      for (const id of Object.keys(_myClaims)) {
-        if (!ids.includes(id)) delete _myClaims[id];
-      }
-      _afterClaimsChanged();
+      _applySelState(Selection.commitMultiSelect(_selState(), ids));
     }
   },
 
