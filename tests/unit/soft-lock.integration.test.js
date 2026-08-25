@@ -267,6 +267,60 @@ describe('soft-lock e2e — oscillation regression (real trace, real tick)', () 
   })
 })
 
+describe('soft-lock e2e — switching selection abandons a pending claim (real trace)', () => {
+  test('selecting a different, unheld toy before the pending request resolves drops the stale request', async () => {
+    vi.useFakeTimers()
+    try {
+      const { App, awareness } = await bootPeerB([DIE_2])
+      simulateRemoteSelection(awareness, 'die-1') // Alice holds die-1
+
+      await vi.advanceTimersByTimeAsync(10)
+
+      App.select('die-1') // Bailey requests die-1 (held by Alice)
+      expect(App.getSelectedIds()).toEqual([])
+      expect(awareness.getLocalState()?.pendingRequests).toEqual({ 'die-1': expect.any(Number) })
+
+      // Before die-1's 3s request window elapses, Bailey clicks a different,
+      // unheld toy without shift.
+      App.select('die-2')
+      expect(App.getSelectedIds()).toEqual(['die-2'])
+
+      // The stale request for die-1 must be gone immediately, not just
+      // eventually — a peer's own tick could otherwise still see it.
+      expect(awareness.getLocalState()?.pendingRequests).toBeFalsy()
+
+      // Advance well past the original 3s window: die-1 must NOT silently
+      // join Bailey's selection alongside die-2.
+      await vi.advanceTimersByTimeAsync(4000)
+      expect(App.getSelectedIds()).toEqual(['die-2'])
+      expect(awareness.getLocalState()?.pendingRequests).toBeFalsy()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('re-clicking the SAME held-by-other toy does not refresh its request timestamp (write-once)', async () => {
+    vi.useFakeTimers()
+    try {
+      const { App, awareness } = await bootPeerB()
+      simulateRemoteSelection(awareness, 'die-1')
+
+      await vi.advanceTimersByTimeAsync(10)
+
+      App.select('die-1')
+      const firstTs = awareness.getLocalState()?.pendingRequests?.['die-1']
+      expect(firstTs).toEqual(expect.any(Number))
+
+      await vi.advanceTimersByTimeAsync(500)
+      App.select('die-1') // reclick same still-held id
+      const secondTs = awareness.getLocalState()?.pendingRequests?.['die-1']
+      expect(secondTs).toBe(firstTs) // untouched -- write-once
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
 describe('soft-lock e2e — multi-select claim defense regression (real trace)', () => {
   // Reproduces a real live bug: A holds two dice in a multi-selection. B
   // requests one of them. A clicks that die to defend it — but since it's

@@ -208,6 +208,24 @@ function _broadcastPendingRequests() {
   _awareness.setLocalStateField('pendingRequests', keys.length ? { ..._pendingRequests } : null);
 }
 
+// Drop every outstanding pending request except (optionally) one to keep.
+// select() is exclusive (single-select): moving the committed selection to
+// something else means any other outstanding bid is no longer wanted and
+// must not survive to resolve later, after the selection has already moved
+// on -- otherwise a later tick can silently add the abandoned id back into
+// _myClaims alongside whatever was selected next. `exceptId` lets a
+// reclick of the SAME held-by-other id keep its existing request
+// untouched (write-once: requestElement() itself refuses to refresh it).
+function _abandonPendingRequests(exceptId = null) {
+  const keys = Object.keys(_pendingRequests);
+  if (keys.length === 0) return;
+  if (keys.length === 1 && keys[0] === exceptId) return;
+  _pendingRequests = exceptId != null && _pendingRequests[exceptId] != null
+    ? { [exceptId]: _pendingRequests[exceptId] }
+    : {};
+  _broadcastPendingRequests();
+}
+
 // Soft-lock tick — periodically evaluates computeTickActions() and applies
 // the result. Nothing is coordinated between clients; each client's tick
 // independently recomputes the same facts from the same shared awareness
@@ -981,6 +999,9 @@ const App = {
       // Plain click on a held-by-other element is a request.
       // Shift wasn't held, so any selection I currently hold is cleared
       _clearClaims();
+      // Abandon a stale bid for a different id -- see _abandonPendingRequests.
+      // Reclicking the SAME id keeps its existing request untouched.
+      _abandonPendingRequests(id);
       App.requestElement(id);
       return;
     }
@@ -991,8 +1012,14 @@ const App = {
       // gesture -- it gets a fresh timestamp from _claim()
       _myClaims = {};
       _claim([id]);
+      // Abandon any outstanding request for some other id -- see
+      // _abandonPendingRequests (same regression, different trigger:
+      // clicking a free element while a request for a different one is
+      // still pending).
+      _abandonPendingRequests();
     } else {
       _clearClaims();
+      _abandonPendingRequests();
     }
   },
 
