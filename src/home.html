@@ -416,6 +416,26 @@ body {
 }
 .sampler-row:hover::after { opacity: 0.5; }
 
+/* loading spinner — shown in place of the Start Here button while a row's
+   start-table SVG is still being fetched */
+.sampler-spinner {
+  display: none;
+  position: absolute;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid rgba(210,185,130,0.18);
+  border-top-color: var(--primary);
+  pointer-events: none;
+  animation: sampler-spin 0.8s linear infinite;
+}
+.sampler-row.loading .sampler-spinner { display: block; }
+.sampler-row.loading .start-btn { display: none; }
+@keyframes sampler-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* start button */
 .start-btn {
   pointer-events: none;
@@ -562,26 +582,30 @@ body {
   <main class="sampler" id="sampler">
 
 <!-- ── Row 1: slatehex ──────────────────────────────────────────── -->
-<div class="sampler-row fade-in" style="--tint:rgba(13,11,19,0.45); transition-delay:0.05s"
+<div class="sampler-row fade-in loading" style="--tint:rgba(13,11,19,0.45); transition-delay:0.05s"
      data-start-table="slatehex.svg">
+  <div class="sampler-spinner" aria-hidden="true"></div>
   <button class="start-btn">Start Here</button>
 </div>
 
 <!-- ── Row 2: beigehex ──────────────────────────────────────────── -->
-<div class="sampler-row fade-in" style="--tint:rgba(30,22,10,0.40); transition-delay:0.12s"
+<div class="sampler-row fade-in loading" style="--tint:rgba(30,22,10,0.40); transition-delay:0.12s"
      data-start-table="beigehex.svg">
+  <div class="sampler-spinner" aria-hidden="true"></div>
   <button class="start-btn">Start Here</button>
 </div>
 
 <!-- ── Row 3: greenfelt ──────────────────────────────────────────── -->
-<div class="sampler-row fade-in" style="--tint:rgba(8,20,10,0.38); transition-delay:0.19s"
+<div class="sampler-row fade-in loading" style="--tint:rgba(8,20,10,0.38); transition-delay:0.19s"
      data-start-table="greenfelt.svg">
+  <div class="sampler-spinner" aria-hidden="true"></div>
   <button class="start-btn">Start Here</button>
 </div>
 
 <!-- ── Row 4: irongrid ──────────────────────────────────────────── -->
-<div class="sampler-row fade-in" style="--tint:rgba(10,12,16,0.50); transition-delay:0.26s"
+<div class="sampler-row fade-in loading" style="--tint:rgba(10,12,16,0.50); transition-delay:0.26s"
      data-start-table="irongrid.svg">
+  <div class="sampler-spinner" aria-hidden="true"></div>
   <button class="start-btn">Start Here</button>
 </div>
 
@@ -859,10 +883,12 @@ function loadStartTable(row) {
       const doc   = new DOMParser().parseFromString(text, 'image/svg+xml');
       const svgEl = document.importNode(doc.documentElement, true);
       row.insertBefore(svgEl, row.querySelector('.start-btn'));
+      row.classList.remove('loading');
       return svgEl;
     })
     .catch(err => {
       console.error('togetherness: failed to load start table', file, err);
+      row.classList.remove('loading');
       return null;
     });
 }
