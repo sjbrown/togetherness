@@ -25,7 +25,6 @@ import {
   shape,
   soleHeldId,
   enterMode,
-  exitMode,
   reconcileMode,
 } from '../../src/selection.js'
 
@@ -188,23 +187,25 @@ describe('select()', () => {
   // select() itself never touches .activeMode -- it only carries it
   // through unchanged (see withDesired) -- because select()'s "not held"
   // branch internally clears every claim before re-adding the target id
-  // (see its own comment), and a mode-invalidation check run on THAT
-  // intermediate state would wrongly exit a mode that a same-id reselect
-  // should actually leave alone. Invalidation is reconcileMode's job,
-  // applied exactly once by app.js's _applySelState to the FINAL result of
-  // a whole gesture, never composed in partway through one. These two
-  // tests exercise that real composition, the way app.js actually uses it.
+  // (see its own comment), and a mode-reseeding check run on THAT
+  // intermediate state would wrongly reset a mode that a same-id reselect
+  // should actually leave alone. Reseeding is reconcileMode's job, applied
+  // exactly once by app.js's _applySelState to the FINAL result of a whole
+  // gesture, never composed in partway through one. These two tests
+  // exercise that real composition, the way app.js actually uses it.
   test('re-selecting the SAME sole id leaves an active mode untouched, once reconciled', () => {
     const s0 = { desired: { 'die-1': { ts: 1, holding: true } }, activeMode: { id: 'die-1', mode: 'sel-resize' } }
-    const s1 = reconcileMode(select(s0, 'die-1', { isHeldByOther: notHeld, now: 500 }))
+    // A different defaultMode is passed on purpose -- it must be ignored,
+    // since die-1 is still the id being tracked.
+    const s1 = reconcileMode(select(s0, 'die-1', { isHeldByOther: notHeld, now: 500 }), 'sel-move')
     expect(s1.activeMode).toEqual({ id: 'die-1', mode: 'sel-resize' })
     expect(s1.desired['die-1'].ts).toBe(500) // still refreshed
   })
 
-  test('selecting a DIFFERENT id drops an active mode, once reconciled', () => {
+  test('selecting a DIFFERENT id reseeds the active mode to the new id\'s default, once reconciled', () => {
     const s0 = { desired: { 'die-1': { ts: 1, holding: true } }, activeMode: { id: 'die-1', mode: 'sel-resize' } }
-    const s1 = reconcileMode(select(s0, 'die-2', { isHeldByOther: notHeld, now: 500 }))
-    expect(s1.activeMode).toBeNull()
+    const s1 = reconcileMode(select(s0, 'die-2', { isHeldByOther: notHeld, now: 500 }), 'sel-move')
+    expect(s1.activeMode).toEqual({ id: 'die-2', mode: 'sel-move' })
   })
 })
 
@@ -321,7 +322,7 @@ describe('shape() / soleHeldId()', () => {
   })
 })
 
-describe('enterMode() / exitMode()', () => {
+describe('enterMode()', () => {
   test('enters a mode for the sole held id', () => {
     const s0 = stateWith({ 'die-1': 1 })
     const s1 = enterMode(s0, 'die-1', 'sel-resize')
@@ -359,39 +360,54 @@ describe('enterMode() / exitMode()', () => {
     expect(s1.activeMode).toEqual({ id: 'die-1', mode: 'sel-rummage' })
   })
 
-  test('exitMode clears an active mode', () => {
+  test('can enter the default mode explicitly, same as any other mode string', () => {
+    // enterMode doesn't distinguish "the default" from any other mode --
+    // that's just a mode string like any other from this function's POV.
     const s0 = { desired: { 'die-1': { ts: 1, holding: true } }, activeMode: { id: 'die-1', mode: 'sel-resize' } }
-    expect(exitMode(s0).activeMode).toBeNull()
-  })
-
-  test('exitMode no-ops (same reference) when no mode is active', () => {
-    const s0 = stateWith({ 'die-1': 1 })
-    expect(exitMode(s0)).toBe(s0)
+    const s1 = enterMode(s0, 'die-1', 'sel-move')
+    expect(s1.activeMode).toEqual({ id: 'die-1', mode: 'sel-move' })
   })
 })
 
 describe('reconcileMode()', () => {
-  test('no-ops (same reference) when no mode is active', () => {
-    expect(reconcileMode(EMPTY_STATE)).toBe(EMPTY_STATE)
+  // Invariant under test throughout this block: activeMode is null iff
+  // shape isn't 'single' -- see selection.js's file header.
+
+  test('no-ops (same reference) on an empty state', () => {
+    expect(reconcileMode(EMPTY_STATE, 'sel-move')).toBe(EMPTY_STATE)
   })
 
-  test('no-ops (same reference) when the mode is still valid', () => {
+  test('no-ops (same reference) when already tracking the sole held id, regardless of defaultMode', () => {
     const s0 = { desired: { 'die-1': { ts: 1, holding: true } }, activeMode: { id: 'die-1', mode: 'sel-resize' } }
-    expect(reconcileMode(s0)).toBe(s0)
+    // A different defaultMode is passed here on purpose: an id already
+    // being tracked is never second-guessed back toward the default.
+    expect(reconcileMode(s0, 'sel-move')).toBe(s0)
   })
 
-  test('clears the mode when its id is no longer held', () => {
+  test('seeds activeMode to defaultMode for a fresh single selection', () => {
+    const s0 = { desired: { 'die-1': { ts: 1, holding: true } }, activeMode: null }
+    const s1 = reconcileMode(s0, 'sel-move')
+    expect(s1.activeMode).toEqual({ id: 'die-1', mode: 'sel-move' })
+  })
+
+  test('reseeds activeMode with the new defaultMode when the sole id changed', () => {
+    const s0 = { desired: { 'die-2': { ts: 2, holding: true } }, activeMode: { id: 'die-1', mode: 'sel-resize' } }
+    const s1 = reconcileMode(s0, 'sel-action')
+    expect(s1.activeMode).toEqual({ id: 'die-2', mode: 'sel-action' })
+  })
+
+  test('clears the mode when nothing is held anymore', () => {
     const s0 = { desired: {}, activeMode: { id: 'die-1', mode: 'sel-resize' } }
-    expect(reconcileMode(s0).activeMode).toBeNull()
+    expect(reconcileMode(s0, 'sel-move').activeMode).toBeNull()
   })
 
   test('clears the mode when its id is now only a bid', () => {
     const s0 = { desired: { 'die-1': { ts: 1, holding: false } }, activeMode: { id: 'die-1', mode: 'sel-resize' } }
-    expect(reconcileMode(s0).activeMode).toBeNull()
+    expect(reconcileMode(s0, 'sel-move').activeMode).toBeNull()
   })
 
   test('clears the mode when the selection grew to multi', () => {
     const s0 = { desired: { 'die-1': { ts: 1, holding: true }, 'die-2': { ts: 2, holding: true } }, activeMode: { id: 'die-1', mode: 'sel-resize' } }
-    expect(reconcileMode(s0).activeMode).toBeNull()
+    expect(reconcileMode(s0, 'sel-move').activeMode).toBeNull()
   })
 })

@@ -51,6 +51,14 @@
  * sel-resize-r, sel-action, ...) — this module treats them as opaque
  * strings and never constructs or strips that prefix itself.
  *
+ * Invariant: `activeMode` is null if and only if `shape(state) !== 'single'`.
+ * There is no "single selection, no mode chosen yet" state — a fresh single
+ * selection is always seeded with its type's own automatic default mode
+ * (e.g. sel-move for drawings, sel-action for toys), not left at null until
+ * a click explicitly enters something. `reconcileMode` is what seeds and
+ * maintains this; `enterMode` is what moves it to a specific mode
+ * (defaulting or otherwise) once a caller has decided which one.
+ *
  * A selection's *mode* and a SelectionMode Map entry's *kind* (overlay.js)
  * are two names for the same idea; both files say "mode" now, not "kind" —
  * "selections don't have kinds, they have modes."
@@ -228,7 +236,8 @@ export function applyTickActions(state, { elIdsToAcquire, elIdsToDropRequest, el
 // Enter `mode` for `id` -- only valid while `id` is this client's sole held
 // selection. `mode` is trusted as already domain-vetted by the caller
 // (app.js asks the element's owning LayerAPI what mode a click should
-// cycle into; this module never judges the string itself, and doesn't need
+// cycle into -- possibly its own automatic default; this module doesn't
+// distinguish "the default" from any other mode string, and doesn't need
 // a capability lookup of its own -- it only owns the one universal rule
 // every mode shares, exclusivity to a single held element). No-op if the
 // precondition fails, or if `id`/`mode` already match the current one.
@@ -238,24 +247,32 @@ export function enterMode(state, id, mode) {
   return { desired: state.desired, activeMode: { id, mode } };
 }
 
-// Leave whatever mode is currently active, if any.
-export function exitMode(state) {
-  return state.activeMode ? { desired: state.desired, activeMode: null } : state;
-}
-
-// Re-checks the current mode (if any) against the current desired/shape,
-// clearing it if it's no longer valid -- e.g. the mode's id was deselected,
-// released to another client, or the selection grew past a single id.
+// Keeps activeMode in sync with the current selection shape, maintaining
+// the invariant from the file header (activeMode is null iff shape isn't
+// 'single'):
+//   - not 'single' (empty or multi): activeMode must be null -- there is
+//     no id for a mode to apply to.
+//   - 'single': activeMode must already be tracking the sole held id;
+//     if it isn't (a fresh single selection, or the sole id just changed
+//     to a different element), it's (re)seeded to `defaultMode` -- that
+//     element's owning LayerAPI's own automatic default (see toys.js's/
+//     drawing.js's nextSelectMode(domEl, null)), computed by app.js since
+//     this module has no DOM access. Ignored when shape isn't 'single'.
+//     An already-tracked id's mode is never second-guessed here, however
+//     it got there (default or explicitly cycled) -- only enterMode moves
+//     it once it's established.
+//
 // Call this after ANY operation that might have changed the held set,
 // once, on that operation's FINAL result -- not on an intermediate state
 // inside a composite transition like select() (which internally clears the
 // old selection before re-adding the new one; evaluating validity at that
-// intermediate point would wrongly exit a mode that a same-id reselect
+// intermediate point would wrongly reseed a mode that a same-id reselect
 // should actually leave untouched). app.js's _applySelState does this
 // unconditionally for every state transition, so none of the functions
 // above need to remember to call it themselves.
-export function reconcileMode(state) {
-  if (!state.activeMode) return state;
-  const stillValid = state.desired[state.activeMode.id]?.holding && shape(state) === 'single';
-  return stillValid ? state : { desired: state.desired, activeMode: null };
+export function reconcileMode(state, defaultMode) {
+  const soleId = soleHeldId(state);
+  if (!soleId) return state.activeMode ? { desired: state.desired, activeMode: null } : state;
+  if (state.activeMode?.id === soleId) return state;
+  return { desired: state.desired, activeMode: { id: soleId, mode: defaultMode } };
 }
