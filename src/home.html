@@ -899,16 +899,18 @@ const rowSvgReady = new Map(
 );
 
 // ── Seed a new table from a sample SVG into IndexedDB ────────────────────────
-// Uses storage.js import machinery to read svg contents from a sampler
-// template into the live doc getYDoc() hands back
 async function seedTable(tableId, sampleSvgEl) {
-  const ydoc = await tables.getYDoc(tableId);
+  const { ydoc } = await tables.getYDoc(tableId);
+  const { localId: myId } = getIdentity();
   ydoc.transact(() => {
     // Sampler templates carry a decorative rotation on each toy <g> for
     // homepage visual flair — not part of the canonical seeded document.
-    const { localId: myId } = getIdentity();
     populateFromSvgDoc(sampleSvgEl, ydoc, { stripToyDecorative: true, asNewTable: true, authorId: myId });
   });
+
+  // Add myself to the joinSequence. Doing it here means index.html's
+  // boot logic will find the table and know "me" is the creator.
+  tables.ensureJoined(ydoc, myId, { isCreator: true });
 
   // ensure the doc is synced to Indexeddb before we navigate away
   await tables.openTablePersistence(tableId, ydoc);
@@ -945,7 +947,7 @@ function launchRipple(cx, cy, svgEl) {
   tables.touchTableRecord(tableId);
 
   // Seed the table into IndexedDB, then navigate once done (or after the
-  // ripple animation completes, whichever is later).
+  // ripple animation completes, whichever is later)
   const seedDone    = seedTable(tableId, svgEl);
   const rippleDone  = new Promise(r => setTimeout(r, 520));
   Promise.all([seedDone, rippleDone]).then(() => {

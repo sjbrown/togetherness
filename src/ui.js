@@ -832,6 +832,90 @@ export function branchDialogKeepWorking() {
   location.reload();
 }
 
+// -- Join-intent dialog ---------------------------------------------------
+// Blocking (every viewport, same as the branch dialog above) — shown while
+// index.html is deciding whether this session is a table's creator, for a
+// typed/pasted #tableId it's never seen before (see join_intent.js's
+// module comment for why that can only be settled by probing the
+// network). Purely presentational: no Yjs, no provider, no tables.js — the
+// caller (a new ui_join_dialog.js, which owns the actual network probe) hands
+// in plain strings/arrays and a callback, same contract as every other
+// exported render function in this file.
+//
+// tableId and peer ids both ultimately come from outside this browser (a
+// pasted link; another peer's synced joinSequence) — escaped via
+// debug_panel.js's esc(), the same convention that panel already uses for
+// the same untrusted values.
+
+export function showJoinDialogConnecting() {
+  const title = $('#joinDialogTitle');
+  if (title) title.textContent = 'Connecting…';
+  const body = $('#joinDialogBody');
+  if (body) body.innerHTML = '<p>Looking for this table on the network…</p>';
+  const actions = $('#joinDialogActions');
+  if (actions) actions.innerHTML = '';
+  $('#joinDialogScrim')?.classList.add('open');
+  $('#joinDialogScrim')?.setAttribute('aria-hidden', 'false');
+  $('#joinDialog')?.classList.add('open');
+  $('#joinDialog')?.setAttribute('aria-hidden', 'false');
+}
+
+const JOIN_DIALOG_COPY = {
+  unreachable: () => ({
+    title: "Can't reach the network",
+    body: `<p>We couldn't reach the signaling server, so we can't tell
+      whether anyone else is already using this table.</p>`,
+    button: 'Proceed offline',
+  }),
+  'not-found': (tableId) => ({
+    title: 'Create this table?',
+    body: `<p>Nobody else is here yet. This starts
+      <strong>${Debug.esc(tableId)}</strong> as a brand-new table.</p>`,
+    button: 'Create this table',
+  }),
+  found: (peerIds) => ({
+    title: 'Join this table?',
+    body: `
+      <p>This table already has ${peerIds.length} member${peerIds.length === 1 ? '' : 's'}:</p>
+      <div class="dbg-join-ladder">${
+        peerIds.map(id => `<code class="dbg-id">${Debug.esc(id)}</code>`).join('')
+      }</div>`,
+    button: 'Join this table',
+  }),
+};
+
+/**
+ * phase: 'unreachable' | 'not-found' | 'found', matching join_intent.js's
+ * watchTableProbe outcomes. data is the phase-specific payload
+ * (undefined, the tableId string, or the peer-id array, respectively).
+ * onConfirm fires when the dialog's one action button is clicked — the
+ * caller decides what that means (proceed as creator or as joiner).
+ */
+export function showJoinDialogPrompt(phase, data, onConfirm) {
+  const spec = JOIN_DIALOG_COPY[phase]?.(data);
+  if (!spec) return;
+  const title = $('#joinDialogTitle');
+  if (title) title.textContent = spec.title;
+  const body = $('#joinDialogBody');
+  if (body) body.innerHTML = spec.body;
+  const actions = $('#joinDialogActions');
+  if (actions) {
+    actions.innerHTML = '';
+    const btn = document.createElement('button');
+    btn.className = 'dialog-btn dialog-btn-primary';
+    btn.textContent = spec.button;
+    btn.addEventListener('click', onConfirm, { once: true });
+    actions.appendChild(btn);
+  }
+}
+
+export function hideJoinDialog() {
+  $('#joinDialogScrim')?.classList.remove('open');
+  $('#joinDialogScrim')?.setAttribute('aria-hidden', 'true');
+  $('#joinDialog')?.classList.remove('open');
+  $('#joinDialog')?.setAttribute('aria-hidden', 'true');
+}
+
 // -- Data gatherers (impure) ---------------------------------------------------
 function gatherToolsData() {
   const layer = App.getActiveLayer();

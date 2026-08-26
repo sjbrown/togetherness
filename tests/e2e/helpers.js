@@ -41,10 +41,45 @@ export async function openAsCreator(page, { appUrl, signalingUrl }) {
   return page.evaluate(() => location.hash.slice(1));
 }
 
-/** Navigate page to an existing room — a real joiner, never a creator. */
+/**
+ * join_intent.js's network-probe timeouts, overridable the same way
+ * seedSignaling overrides the signaling URL — via localStorage, seeded
+ * before any script runs. Only needed by specs that deliberately exercise
+ * the "nobody's here" / "can't reach the network" outcomes quickly;
+ * joinRoom below leaves the real (generous) defaults in place, since a
+ * real joiner's dialog should almost always resolve to "found" well
+ * within them.
+ */
+export async function seedJoinTimeouts(page, { signalingTimeoutMs, peerTimeoutMs } = {}) {
+  await page.addInitScript(({ signalingTimeoutMs, peerTimeoutMs }) => {
+    if (signalingTimeoutMs) localStorage.setItem('tt_join_signaling_timeout_ms', String(signalingTimeoutMs));
+    if (peerTimeoutMs)      localStorage.setItem('tt_join_peer_timeout_ms', String(peerTimeoutMs));
+  }, { signalingTimeoutMs, peerTimeoutMs });
+}
+
+/**
+ * The join-intent dialog's one action button (any of "Join this table" /
+ * "Create this table" / "Proceed offline" — see ui.js's
+ * showJoinDialogPrompt). Callers wait for it themselves (e.g.
+ * `.click({ timeout })`), generously, since the real probe races network
+ * timeouts (join_intent.js's SIGNALING_TIMEOUT_MS + PEER_TIMEOUT_MS).
+ */
+export function joinDialogButton(page) {
+  return page.locator('#joinDialogActions button').first();
+}
+
+/**
+ * Navigate page to an existing room — a real joiner, never a creator.
+ * Always lands on the join-intent dialog first (a fresh browser context
+ * has no local record of the room), so this waits for and confirms
+ * whichever outcome the probe reaches — in practice always "Join this
+ * table", since the creator (already open in another page) is normally
+ * long since connected to signaling by the time this runs.
+ */
 export async function joinRoom(page, room, { appUrl, signalingUrl }) {
   await seedSignaling(page, signalingUrl);
   await page.goto(`${appUrl}/#${room}`);
+  await joinDialogButton(page).click({ timeout: 15000 });
 }
 
 /** openAsCreator + joinRoom, for the common case with nothing in between. */
