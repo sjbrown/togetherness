@@ -31,28 +31,41 @@ test.describe('join-intent dialog', () => {
     await expect(page.locator('#joinDialogScrim')).not.toHaveClass(/open/);
   });
 
-  test('?mint=1 (home.html\'s Start Here): creator, dialog never appears', async ({ page }) => {
+  test('home.html\'s "Start Here": creator, dialog never appears', async ({ page }) => {
     await seedSignalingUrl(page, SIGNALING_URL);
-    const tableId = 'tt-T-v1-mint-test-' + Date.now();
-    await page.goto(`${APP_URL}/?mint=1#${tableId}`);
-    await expect(page.locator('#tableLabel')).toHaveText(tableId);
-    await page.waitForTimeout(300);
-    await expect(page.locator('#joinDialogScrim')).not.toHaveClass(/open/);
+    await page.goto(`${APP_URL}/home.html`);
 
-    // The mint marker is scrubbed from the URL immediately.
-    expect(await page.evaluate(() => location.search)).toBe('');
+    // seedTable joins the authority ordering as part of seeding (see
+    // home.html's launchRipple/seedTable) — index.html should never need
+    // to ask anything about a table it just created.
+    const row = page.locator('.sampler-row').first();
+    await expect(row).not.toHaveClass(/loading/, { timeout: 10000 });
+    await row.click();
+
+    // serve resolves "index.html" implicitly for "/", so the navigated URL
+    // is just "/#tableId", not "/index.html#tableId".
+    await page.waitForURL(/\/#tt-T-v1-/, { timeout: 10000 });
+    await expect(page.locator('#tableLabel')).not.toHaveText('', { timeout: 8000 });
+    await page.waitForTimeout(300); // give a spurious dialog a chance to open
+    await expect(page.locator('#joinDialogScrim')).not.toHaveClass(/open/);
 
     await page.evaluate(() => window.UI.openSheet('debug'));
     const createdHere = page.locator('.dbg-kv:has(.dbg-k:text-is("created here")) .dbg-v');
     await expect(createdHere).toHaveText('yes');
   });
 
-  test('returning visit (reload as creator): dialog never appears', async ({ page }) => {
+  test('returning visit (reload as creator): dialog never appears, and "created here" is still accurate', async ({ page }) => {
     const room = await openAsCreator(page, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
     await page.reload();
     await expect(page.locator('#tableLabel')).toHaveText(room);
     await page.waitForTimeout(300);
     await expect(page.locator('#joinDialogScrim')).not.toHaveClass(/open/);
+
+    // isCreator for an already-known table is derived from joinSequence,
+    // not hardcoded false — a returning creator should still see "yes".
+    await page.evaluate(() => window.UI.openSheet('debug'));
+    const createdHere = page.locator('.dbg-kv:has(.dbg-k:text-is("created here")) .dbg-v');
+    await expect(createdHere).toHaveText('yes');
   });
 
   test('a real joiner sees "Join this table?" listing the creator, and proceeds after confirming', async () => {
