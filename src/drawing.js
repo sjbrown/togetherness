@@ -220,27 +220,17 @@ export function getAnchor(svgEl) {
 }
 
 /**
- * Which selection modes svgEl supports — mirrors toys.js's selectModes so
- * app.js can dispatch generically. Currently only rects can be resized
- * (a resizable circle would need a radius-only corner-drag scheme).
+ * Every mode svgEl can be in, in cycle order, fully `sel-`-prefixed —
+ * mirrors toys.js's selectModes so app.js can dispatch generically.
+ * 'sel-move' is the default every shape shows with no click at all (plain
+ * selection ring); rects/circles each add their one resize-family mode
+ * after it. Currently only rects/circles can be resized.
  */
 export function selectModes(svgEl) {
   const tag = svgEl?.tagName;
-  if (tag === 'rect')   return ['resize'];
-  if (tag === 'circle') return ['resize-r'];
-  return [];
-}
-
-// Every mode svgEl can be in, in cycle order, fully `sel-`-prefixed.
-// 'sel-move' is the default every shape shows with no click at all (plain
-// selection ring); rects/circles each add their one resize-family mode
-// after it. Mirrors toys.js's selectModeCycle.
-function selectModeCycle(svgEl) {
-  const modes = selectModes(svgEl);
-  const cycle = ['sel-move'];
-  if (modes.includes('resize'))   cycle.push('sel-resize');
-  if (modes.includes('resize-r')) cycle.push('sel-resize-r');
-  return cycle;
+  if (tag === 'rect')   return ['sel-move', 'sel-resize'];
+  if (tag === 'circle') return ['sel-move', 'sel-resize-r'];
+  return ['sel-move'];
 }
 
 /**
@@ -249,7 +239,7 @@ function selectModeCycle(svgEl) {
  * toys.js's nextSelectMode.
  */
 export function nextSelectMode(svgEl, currentMode) {
-  const cycle = selectModeCycle(svgEl);
+  const cycle = selectModes(svgEl);
   const i = cycle.indexOf(currentMode);
   return cycle[(i + 1) % cycle.length];
 }

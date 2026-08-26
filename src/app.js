@@ -1548,9 +1548,9 @@ const App = {
     _dragState = null;
   },
 
-  // ── Resize mode + resize gesture ──────────────────────────────────────────
-  // enterResizeMode / exitResizeMode / getResizeModeId
-  // click-to-select, click-again-to-resize toggle
+  // ── Selection mode + resize gesture ─────────────────────────────────────
+  // nextSelectionMode / exitSelectionMode / getResizeModeId
+  // click-to-select, click-again-to-cycle
   // getResizeCorner   — hit-test a canvas-space point against id's corner
   //                     handles; used by canvas.js on pointerdown to decide
   //                     whether a click on an already-resize-mode container
@@ -1562,13 +1562,11 @@ const App = {
   // LayerAPI (toys.js/drawing.js) via nextSelectMode, which is the one
   // place that domain knowledge ("rects resize, circles resize-r, trays
   // will someday rummage") actually lives, and hands the answer straight
-  // to Selection.enterMode. Kept named enterResizeMode rather than
-  // something more generic since resize is still the only click-to-cycle
-  // mode that exists -- canvas.js's call site already treats it as "cycle
-  // to the next mode" (see its own comment at the click site). Every
-  // LayerAPI's cycle wraps around rather than ever landing on "no mode",
-  // so this always has something to enter.
-  enterResizeMode: (id) => {
+  // to Selection.enterMode. canvas.js's call site already treats this as
+  // "cycle to the next mode" (see its own comment at the click site).
+  // Every LayerAPI's cycle wraps around rather than ever landing on "no
+  // mode", so this always has something to enter.
+  nextSelectionMode: (id) => {
     if (Selection.shape(_selState()) !== 'single' || !_desired[id]?.holding) return;
     const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
     const layer = _Layers[moduleForElement(domEl)];
@@ -1577,7 +1575,11 @@ const App = {
     _applySelState(Selection.enterMode(_selState(), id, mode));
   },
 
-  exitResizeMode: () => {
+  // Drop back to the sole selection's automatic default mode -- called by
+  // canvas.js when a click lands on the body (not a handle) of the element
+  // currently in an explicitly-entered mode, so that click can fall
+  // through to an ordinary move gesture instead of also cycling the mode.
+  exitSelectionMode: () => {
     _applySelState(Selection.exitMode(_selState()));
   },
 

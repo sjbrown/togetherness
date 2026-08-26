@@ -299,7 +299,7 @@ function onPointerDown(e) {
       // mode back on (see wasReclick below) — otherwise a tap on the body
       // would exit and immediately re-enter resize mode in one gesture.
       const wasInResizeMode = resizeId === hitId;
-      if (wasInResizeMode) App.exitResizeMode();
+      if (wasInResizeMode) App.exitSelectionMode();
 
       ToolMode._gesture = 'move';
       const anchor = App.getAnchor(hitEl);
@@ -490,7 +490,7 @@ function onPointerUp(e) {
       // selection, it's a deliberate second click — toggle the next mode
       // in the cycle
       if (!isCancelled && ToolMode._moveRef.wasReclick) {
-        App.enterResizeMode(ToolMode._moveRef.id);
+        App.nextSelectionMode(ToolMode._moveRef.id);
       }
     }
   }

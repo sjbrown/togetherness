@@ -416,10 +416,10 @@ describe('selectModes / nextSelectMode', () => {
     return g
   }
 
-  test('selectModes always includes action, plus resize/rummage per class', () => {
-    expect(selectModes(makeToyDom())).toEqual(['action'])
-    expect(selectModes(makeToyDom(['tt-mode-resize']))).toEqual(['action', 'resize'])
-    expect(selectModes(makeToyDom(['tt-mode-resize', 'tt-mode-rummage']))).toEqual(['action', 'resize', 'rummage'])
+  test('selectModes always includes sel-action, plus sel-resize/sel-rummage per class', () => {
+    expect(selectModes(makeToyDom())).toEqual(['sel-action'])
+    expect(selectModes(makeToyDom(['tt-mode-resize']))).toEqual(['sel-action', 'sel-resize'])
+    expect(selectModes(makeToyDom(['tt-mode-resize', 'tt-mode-rummage']))).toEqual(['sel-action', 'sel-resize', 'sel-rummage'])
   })
 
   test('nextSelectMode cycles sel-action <-> sel-resize for a resizable toy', () => {

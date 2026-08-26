@@ -202,10 +202,10 @@ describe('selectModes / nextSelectMode', () => {
   const circleEl = () => document.createElementNS('http://www.w3.org/2000/svg', 'circle')
   const lineEl   = () => document.createElementNS('http://www.w3.org/2000/svg', 'line')
 
-  test('selectModes: rects support resize, circles resize-r, everything else nothing', () => {
-    expect(selectModes(rectEl())).toEqual(['resize'])
-    expect(selectModes(circleEl())).toEqual(['resize-r'])
-    expect(selectModes(lineEl())).toEqual([])
+  test('selectModes: sel-move plus rects support sel-resize, circles sel-resize-r', () => {
+    expect(selectModes(rectEl())).toEqual(['sel-move', 'sel-resize'])
+    expect(selectModes(circleEl())).toEqual(['sel-move', 'sel-resize-r'])
+    expect(selectModes(lineEl())).toEqual(['sel-move'])
   })
 
   test('nextSelectMode cycles a rect through sel-move <-> sel-resize', () => {

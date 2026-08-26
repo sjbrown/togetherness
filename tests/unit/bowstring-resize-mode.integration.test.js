@@ -2,11 +2,12 @@
  * tests/unit/bowstring-resize-mode.integration.test.js
  *
  * Regression: clicking a resizable toy (tray_sum, bag — anything whose
- * toys.js selectModes() reports both 'action' and 'resize') a second time
- * to enter resize mode left its SE corner still answering to the bowstring
- * handle instead of the resize-corner handle. overlay.js's render() already
- * stops drawing the action square the moment the id enters 'resize'/
- * 'resize-r' mode (see its `entry.mode === 'local'` guard), but
+ * toys.js selectModes() reports both 'sel-action' and 'sel-resize') a
+ * second time to enter resize mode left its SE corner still answering to
+ * the bowstring handle instead of the resize-corner handle. overlay.js's
+ * render() already stops drawing the action square the moment the id
+ * enters 'sel-resize'/'sel-resize-r' mode (see its `entry.mode === 'local'`
+ * guard), but
  * App.startBowstringAt — which canvas.js's pointerdown consults BEFORE
  * ordinary/resize hit-testing — never checked resize mode itself, so the
  * live gesture kept firing even though nothing was drawn there any more.
@@ -48,8 +49,8 @@ vi.mock('../../src/canvas.js', () => ({
 // A stand-in for tray_sum.svg — real toyType (so TOY_TYPES[toyType] exists
 // and addToy's fetch resolves), but pared down to the one thing this test
 // cares about: the tt-mode-resize class that makes toys.js's selectModes()
-// report 'resize' alongside 'action'. The fetch mock below serves this
-// content for whatever toyType is requested.
+// report 'sel-resize' alongside 'sel-action'. The fetch mock below serves
+// this content for whatever toyType is requested.
 const RESIZABLE_TOY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" class="tt-mode-resize" id="tray_sum">
   <g id="layer1" class="colorable">
@@ -129,7 +130,7 @@ describe('bowstring vs. resize mode on a resizable toy (tray_sum/bag-like)', () 
   test('entering resize mode stops the SE corner from starting a bowstring gesture', async () => {
     const { App } = await bootApp()
     App.select('tray-1')
-    App.enterResizeMode('tray-1')
+    App.nextSelectionMode('tray-1')
     expect(App.getResizeModeId()).toBe('tray-1')
 
     const geo = App.getBBox('tray-1')
@@ -143,7 +144,7 @@ describe('bowstring vs. resize mode on a resizable toy (tray_sum/bag-like)', () 
   test('the resize-corner hit-test itself still recognizes the SE corner once in resize mode', async () => {
     const { App } = await bootApp()
     App.select('tray-1')
-    App.enterResizeMode('tray-1')
+    App.nextSelectionMode('tray-1')
 
     const geo = App.getBBox('tray-1')
     const corner = App.getResizeCorner('tray-1', geo.x + geo.width, geo.y + geo.height)
@@ -157,8 +158,8 @@ describe('bowstring vs. resize mode on a resizable toy (tray_sum/bag-like)', () 
   test('leaving resize mode restores the bowstring at the SE corner', async () => {
     const { App } = await bootApp()
     App.select('tray-1')
-    App.enterResizeMode('tray-1')
-    App.exitResizeMode()
+    App.nextSelectionMode('tray-1')
+    App.exitSelectionMode()
 
     const geo = App.getBBox('tray-1')
     const point = { x: geo.x + geo.width + 6, y: geo.y + geo.height + 6 }

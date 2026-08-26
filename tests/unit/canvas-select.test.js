@@ -75,8 +75,8 @@ function makeApp(overrides = {}) {
     startBowstringAt:   () => false,
     moveBowstring:      () => {},
     endBowstring:       () => {},
-    enterResizeMode:    () => {},
-    exitResizeMode:     () => {},
+    nextSelectionMode:  () => {},
+    exitSelectionMode:  () => {},
     startResize:        () => {},
     resize:             () => {},
     commitResize:       () => {},
@@ -600,11 +600,11 @@ function makeHitEl(id, module = 'drawing') {
 }
 
 describe('resize mode — reclick-to-toggle', () => {
-  test('a plain tap (no movement) on the already-sole-selected element calls App.enterResizeMode', () => {
+  test('a plain tap (no movement) on the already-sole-selected element calls App.nextSelectionMode', () => {
     const entered = []
     const app = makeApp({
       getSelectedIds: () => ['shape-a'],
-      enterResizeMode: (id) => entered.push(id),
+      nextSelectionMode: (id) => entered.push(id),
     })
     init(app, document.getElementById('canvas'))
     setTool('select', {})
@@ -622,7 +622,7 @@ describe('resize mode — reclick-to-toggle', () => {
     const committed = []
     const app = makeApp({
       getSelectedIds: () => ['shape-a'],
-      enterResizeMode: (id) => entered.push(id),
+      nextSelectionMode: (id) => entered.push(id),
       commitMove: (...args) => committed.push(args),
     })
     init(app, document.getElementById('canvas'))
@@ -642,7 +642,7 @@ describe('resize mode — reclick-to-toggle', () => {
     const entered = []
     const app = makeApp({
       getSelectedIds: () => [], // nothing selected yet — this click is the first select
-      enterResizeMode: (id) => entered.push(id),
+      nextSelectionMode: (id) => entered.push(id),
     })
     init(app, document.getElementById('canvas'))
     setTool('select', {})
@@ -737,7 +737,7 @@ describe('resize mode — corner-drag gesture', () => {
       getSelectedIds: () => ['tray-1'],
       getResizeModeId: () => 'tray-1',
       getResizeCorner: () => null, // not near any corner
-      exitResizeMode: () => exited.push(true),
+      exitSelectionMode: () => exited.push(true),
     })
     init(app, document.getElementById('canvas'))
     setTool('select', {})
@@ -757,8 +757,8 @@ describe('resize mode — corner-drag gesture', () => {
       getSelectedIds: () => ['tray-1'],
       getResizeModeId: () => 'tray-1',
       getResizeCorner: () => null,
-      exitResizeMode:  () => exited.push(true),
-      enterResizeMode: (id) => entered.push(id),
+      exitSelectionMode:  () => exited.push(true),
+      nextSelectionMode: (id) => entered.push(id),
     })
     init(app, document.getElementById('canvas'))
     setTool('select', {})

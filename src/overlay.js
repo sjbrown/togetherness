@@ -60,7 +60,7 @@
  * Awareness mode field: string | null, e.g. 'sel-resize'
  *   Mirrors selection.js's local `activeMode` state ({ id, mode } | null) —
  *   already carries its own `sel-` prefix, minted by whichever LayerAPI
- *   decided a click should cycle into it (see app.js's enterResizeMode).
+ *   decided a click should cycle into it (see app.js's nextSelectionMode).
  *   Explicit modes only — an automatic default like 'sel-action' or
  *   'sel-move' is never broadcast unless a click actually entered it.
  *   Purely advisory to peers (rendering doesn't currently distinguish it on

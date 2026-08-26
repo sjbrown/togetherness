@@ -1129,33 +1129,32 @@ export function moveToyAndStack(layerEl, el, x, y) {
   for (const { member, cx, cy } of targets) applyMoveDom(member, cx, cy)
 }
 
+// Every selection mode domEl declares support for, fully `sel-`-prefixed.
+// 'sel-action' is unconditional -- every toy gets the action affordance
+// ('*' glyph / bowstring handle resting state). 'sel-rummage' is a real
+// capability tag some toy SVGs already carry (tt-mode-rummage, on
+// trays/bags/supply) but has no gesture or rendering behind it yet (see
+// selectModeCycle below, which excludes it from the click-to-cycle set).
 export function selectModes(domEl) {
   const ownSvg = domEl?.querySelector?.(':scope > svg')
-  let modes = ['action']
+  let modes = ['sel-action']
   if (!!ownSvg?.classList.contains('tt-mode-resize')) {
-    modes.push('resize')
+    modes.push('sel-resize')
   }
   if (!!ownSvg?.classList.contains('tt-mode-rummage')) {
-    modes.push('rummage')
+    modes.push('sel-rummage')
   }
   return modes
 }
 
-// Every mode domEl can be in, in cycle order, fully `sel-`-prefixed. First
-// entry is what a sole selection shows automatically, with no click
-// required -- for every toy that's the action affordance ('*' glyph /
-// bowstring handle resting state, see selectModes' unconditional 'action'
-// entry). 'rummage' is a real capability tag some toy SVGs already carry
-// (tt-mode-rummage, on trays/bags/supply) but has no gesture or rendering
-// behind it yet, so it's deliberately excluded from the cycle for now: a
-// rummage-capable container still just cycles action -> resize -> action,
-// the same as any other resizable toy, until rummage mode actually exists
-// here.
+// Every mode domEl can be in, in cycle order. First entry is what a sole
+// selection shows automatically, with no click required (see selectModes'
+// unconditional 'sel-action' entry). 'sel-rummage' is deliberately
+// excluded here (see selectModes' own comment): a rummage-capable
+// container still just cycles sel-action -> sel-resize -> sel-action, the
+// same as any other resizable toy, until rummage mode actually exists.
 function selectModeCycle(domEl) {
-  const modes = selectModes(domEl)
-  const cycle = ['sel-action']
-  if (modes.includes('resize')) cycle.push('sel-resize')
-  return cycle
+  return selectModes(domEl).filter(mode => mode !== 'sel-rummage')
 }
 
 // The next mode domEl should show, given the mode it's currently in (pass
