@@ -260,11 +260,7 @@ async function openTablePersistence(tableId, ydoc) {
  * initTableDoc() before returning. Callers never need to check themselves
  *
  * Returns { ydoc, wasFresh }: wasFresh is true iff this browser had never
- * seen this tableId before this call (no docId was found, so one was just
- * stamped). index.html uses this to tell a genuinely-new table apart from
- * one it's simply revisiting — see join_intent.js's module comment for
- * why that distinction can't be made any other way from inside the doc
- * itself.
+ * seen this tableId before this call
  */
 async function getYDoc(tableId) {
   const ydoc = makeDoc();

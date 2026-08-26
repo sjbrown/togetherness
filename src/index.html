@@ -264,8 +264,7 @@ App.addLog('loaded from indexeddb', 'local');
 tables.touchTableRecord(tableId);
 
 // ── WebRTC  ─────────────────────────────────────────────────────────────────
-// Constructed before isCreator is decided: the ambiguous case below needs
-// a live provider to probe, and the unambiguous cases need one anyway.
+// Must be constructed before isCreator is decided
 const signalingUrls = resolveSignalingServers();
 Trace.net('signaling', `signaling servers: ${signalingUrls.join(', ')}`, {
   urls:               signalingUrls,
@@ -280,27 +279,19 @@ Trace.net('provider', 'WebrtcProvider constructed — handshakes begin', { room:
 const awareness    = provider.awareness;
 awareness.setLocalState({ id: myId, color: myGrad.c1, grad: myGrad, cursor: null, selection: null });
 
-// isCreator: !location.hash alone isn't enough — a table id can also
-// arrive already-known locally, where it's just a fact already sitting in
-// the doc (home.html's "Start Here" and its fork/duplicate flows both
-// join the authority ordering as part of seeding, before ever navigating
-// here — see home.html's seedTable), or genuinely ambiguous (a
-// typed/pasted link this browser has never seen). Only that last case
-// needs to actually ask — resolveJoinIntent probes the network and shows
-// a dialog (see join_intent.js / ui_join_dialog.js / ui.js).
 let isCreator;
 if (noHash) {
   isCreator = true;
 } else if (!wasFresh) {
   isCreator = tables.getJoinSequenceArray(ydoc)[0] === myId;
 } else {
+  // resolveJoinIntent probes the network and shows a dialog
   isCreator = await resolveJoinIntent({ provider, tableId, ydoc });
 }
 
-// Join the authority ordering only now that isCreator is settled —
-// ensureJoined's guard needs to know whether an empty joinSequence means
-// "brand new table" or "haven't synced with the creator yet" (see
-// tables.js's ensureJoined).
+// Must go after isCreator is settled -- ensureJoined's guard needs to know
+// whether an empty joinSequence means
+// "brand new table" or "haven't synced with the creator yet"
 tables.ensureJoined(ydoc, myId, { isCreator });
 
 // ── Boot ────────────────────────────────────────────────────────────────────

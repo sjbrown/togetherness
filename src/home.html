@@ -899,8 +899,6 @@ const rowSvgReady = new Map(
 );
 
 // ── Seed a new table from a sample SVG into IndexedDB ────────────────────────
-// Uses storage.js import machinery to read svg contents from a sampler
-// template into the live doc getYDoc() hands back
 async function seedTable(tableId, sampleSvgEl) {
   const { ydoc } = await tables.getYDoc(tableId);
   const { localId: myId } = getIdentity();
@@ -910,14 +908,8 @@ async function seedTable(tableId, sampleSvgEl) {
     populateFromSvgDoc(sampleSvgEl, ydoc, { stripToyDecorative: true, asNewTable: true, authorId: myId });
   });
 
-  // Join the authority ordering here, not in index.html: this table id was
-  // just generated a moment ago (tables.generateTableId, above), so nobody
-  // else can possibly know it yet — genuinely unambiguous, unlike a
-  // typed/pasted #tableId index.html has never seen (see
-  // join_intent.js's module comment). Doing it here means index.html's own
-  // boot logic never needs a special "I was just created" case at all: by
-  // the time it loads this table, isCreator is just a fact already sitting
-  // in the doc (see index.html's isCreator derivation).
+  // Add myself to the joinSequence. Doing it here means index.html's
+  // boot logic will find the table and know "me" is the creator.
   tables.ensureJoined(ydoc, myId, { isCreator: true });
 
   // ensure the doc is synced to Indexeddb before we navigate away
@@ -955,10 +947,7 @@ function launchRipple(cx, cy, svgEl) {
   tables.touchTableRecord(tableId);
 
   // Seed the table into IndexedDB, then navigate once done (or after the
-  // ripple animation completes, whichever is later). seedTable already
-  // joined the authority ordering as part of seeding, so index.html's own
-  // boot logic just sees an already-known table with this browser's id
-  // first in its joinSequence — no marker needed.
+  // ripple animation completes, whichever is later)
   const seedDone    = seedTable(tableId, svgEl);
   const rippleDone  = new Promise(r => setTimeout(r, 520));
   Promise.all([seedDone, rippleDone]).then(() => {
