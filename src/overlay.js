@@ -176,9 +176,27 @@ export function hitTestResizeRHandle(geo, px, py, scale) {
   return Math.abs(px - hx) <= radius && Math.abs(py - hy) <= radius;
 }
 
+/**
+ * Which handle (if any) of the CURRENT mode's own decoration canvas-space
+ * point (px, py) is within grabbing distance of, for an element with
+ * bounding box geo -- a RESIZE_CORNER_* index for 'sel-resize', 'r' for
+ * 'sel-resize-r', or null for a mode with no handles of its own (or no
+ * geo). Mirrors render()'s own mode switch: app.js doesn't need to know
+ * which hit-test function a mode's handles call for, only to ask by mode
+ * string and forward whatever comes back straight to startResize/
+ * getResizeCorner's callers.
+ */
+export function hitTestSelectionHandle(mode, geo, px, py, scale) {
+  switch (mode) {
+    case 'sel-resize':   return hitTestResizeCorner(geo, px, py, scale);
+    case 'sel-resize-r': return hitTestResizeRHandle(geo, px, py, scale) ? 'r' : null;
+    default:             return null;
+  }
+}
+
 // ── SelectionMode ─────────────────────────────────────────────────────────────
-// Map<elId, { kind, peerId?, color? }>
-// overlay.js is the only writer (via setSelectionKind).
+// Map<elId, { mode, peerId?, color? }>
+// overlay.js is the only writer (via setSelectionMode).
 // App.js reads it to answer queries.
 export const SelectionMode = new Map();
 

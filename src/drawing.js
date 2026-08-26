@@ -9,6 +9,7 @@
  */
 
 import * as Y from 'yjs';
+import { computeResizeRect } from './toys.js';
 
 const SVG_NS   = 'http://www.w3.org/2000/svg';
 const XLINK_NS = 'http://www.w3.org/1999/xlink';
@@ -290,6 +291,18 @@ export function computeResizeRadiusRect(startRect, px, py) {
   return { x: cx - r, y: cy - r, width: r * 2, height: r * 2 };
 }
 
+// Which resize math a live drag/commit needs, by mode -- this module's own
+// judgment call about what its modes mean, so callers (app.js) don't have
+// to know 'sel-resize-r' means "radius drag, ignore corner". Corner-drag
+// math (toys.js's computeResizeRect) is shared with rects rather than
+// duplicated -- it's plain rectangle geometry, nothing toy-specific about
+// it, just defined there since toys needed it first.
+export function computeResize(mode, startRect, corner, px, py) {
+  return mode === 'sel-resize-r'
+    ? computeResizeRadiusRect(startRect, px, py)
+    : computeResizeRect(startRect, corner, px, py);
+}
+
 /**
  * Commit a resize to the Yjs doc in a single transaction. rect and circle —
  * mirrors applyMoveCommit's shape (type-branching lives here, callers are
@@ -501,6 +514,7 @@ export function makeLayerAPI(ydoc, yDrawing) {
     getTtStateSchema,
     selectModes,
     nextSelectMode,
+    computeResize,
     applyMoveCommit: (yEl, x, y)     => applyMoveCommit(ydoc, yEl, x, y),
     applyResize:     (yEl, x, y, w, h) => applyResize(ydoc, yEl, x, y, w, h),
     applyTtState:    (state)         => applyTtState(ydoc, yDrawing, state),

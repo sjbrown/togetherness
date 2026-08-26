@@ -262,6 +262,13 @@ export function enterMode(state, id, mode) {
 //     it got there (default or explicitly cycled) -- only enterMode moves
 //     it once it's established.
 //
+// `defaultMode` itself being null (a layer with no modes at all -- every
+// LayerAPI today defines one, even if it's just an unconditional
+// 'sel-move', but this stays defensive rather than assuming) means there's
+// nothing to seed with, so activeMode stays null rather than becoming a
+// malformed { id, mode: null } entry -- a mode is either a real string or
+// activeMode itself is null, never both a populated id and a null mode.
+//
 // Call this after ANY operation that might have changed the held set,
 // once, on that operation's FINAL result -- not on an intermediate state
 // inside a composite transition like select() (which internally clears the
@@ -272,7 +279,7 @@ export function enterMode(state, id, mode) {
 // above need to remember to call it themselves.
 export function reconcileMode(state, defaultMode) {
   const soleId = soleHeldId(state);
-  if (!soleId) return state.activeMode ? { desired: state.desired, activeMode: null } : state;
-  if (state.activeMode?.id === soleId) return state;
+  if (soleId && state.activeMode?.id === soleId) return state;
+  if (!soleId || defaultMode == null) return state.activeMode ? { desired: state.desired, activeMode: null } : state;
   return { desired: state.desired, activeMode: { id: soleId, mode: defaultMode } };
 }

@@ -1046,6 +1046,22 @@ export function getSnapPoints(yBounPos) {
   return points;
 }
 
+// Boundaries/positions elements have no resize or action capability of
+// their own -- every one just shows the plain default selection ring,
+// the same treatment drawing.js gives a shape with no other modes (see
+// its own selectModes/nextSelectMode). Without this, a sole-selected
+// boun_pos element would have no default mode for selection.js's
+// reconcileMode to seed it with, and end up with no ring at all.
+export function selectModes(_domEl) {
+  return ['sel-move'];
+}
+
+export function nextSelectMode(_domEl, currentMode) {
+  const cycle = selectModes(_domEl);
+  const i = cycle.indexOf(currentMode);
+  return cycle[(i + 1) % cycle.length];
+}
+
 /**
  * makeLayerAPI — returns the canonical LayerAPI for the Boundaries and
  * Positions layer, closing over (ydoc, yBounPos) so app.js can dispatch
@@ -1059,6 +1075,8 @@ export function makeLayerAPI(ydoc, yBounPos) {
     getAnchor,
     getTtState,
     getTtStateSchema,
+    selectModes,
+    nextSelectMode,
     applyMoveCommit:  (yEl, x, y)        => applyMoveCommit(ydoc, yEl, x, y),
     applyTtState:     (state)            => applyTtState(ydoc, yBounPos, state),
     edit:             (yEl, editData)    => editEl(ydoc, yEl, editData),

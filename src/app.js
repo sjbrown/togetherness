@@ -1668,10 +1668,7 @@ const App = {
   getResizeCorner: (id, cx, cy) => {
     if (_activeMode?.id !== id || !RESIZE_HANDLE_MODES.has(_activeMode.mode)) return null;
     const geo = App.getBBox(id);
-    if (_activeMode.mode === 'sel-resize-r') {
-      return Overlay.hitTestResizeRHandle(geo, cx, cy, App.getViewScale()) ? 'r' : null;
-    }
-    return Overlay.hitTestResizeCorner(geo, cx, cy, App.getViewScale());
+    return Overlay.hitTestSelectionHandle(_activeMode.mode, geo, cx, cy, App.getViewScale());
   },
 
   startResize: (id, corner) => {
@@ -1685,22 +1682,20 @@ const App = {
   },
 
   // Called on every pointermove during a resize drag; (px, py) is the raw
-  // canvas-space pointer position — computeResizeRect (corner-drag) or
-  // Drawing.computeResizeRadiusRect (single-handle radius-drag) does the math.
+  // canvas-space pointer position. Which geometry a mode's drag needs
+  // (corner-drag vs radius-drag) is id's own owning LayerAPI's call, via
+  // computeResize(mode, ...) -- app.js doesn't know or care which modes
+  // need which math, only which layer owns id.
   resize: (id, corner, px, py) => {
     if (!_resizeState || _resizeState.id !== id) return;
-    const rect = _resizeState.mode === 'sel-resize-r'
-      ? Drawing.computeResizeRadiusRect(_resizeState.startRect, px, py)
-      : Toys.computeResizeRect(_resizeState.startRect, corner, px, py);
+    const rect = _Layers[_resizeState.mtype].computeResize(_resizeState.mode, _resizeState.startRect, corner, px, py);
     _resizeState.lastRect = rect;
     Overlay.updateResizeGhost(id, rect.x, rect.y, rect.width, rect.height);
   },
 
   commitResize: (id, corner, px, py) => {
     if (!_resizeState || _resizeState.id !== id) return;
-    const toRect = _resizeState.mode === 'sel-resize-r'
-      ? Drawing.computeResizeRadiusRect(_resizeState.startRect, px, py)
-      : Toys.computeResizeRect(_resizeState.startRect, corner, px, py);
+    const toRect = _Layers[_resizeState.mtype].computeResize(_resizeState.mode, _resizeState.startRect, corner, px, py);
     const mtype    = _resizeState.mtype;
     _resizeState = null;
 

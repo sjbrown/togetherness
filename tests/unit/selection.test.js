@@ -396,6 +396,22 @@ describe('reconcileMode()', () => {
     expect(s1.activeMode).toEqual({ id: 'die-2', mode: 'sel-action' })
   })
 
+  // Regression: a layer with no modes of its own (defaultMode === null,
+  // e.g. a hypothetical LayerAPI with no nextSelectMode) must leave
+  // activeMode null rather than seeding a malformed { id, mode: null }
+  // entry -- one that overlay.js's setSelectionMode would then try to
+  // apply as a real mode string, wiping out the plain 'local' ring
+  // localSelectionChanged had already drawn (see app.js's _renderSelectionMode).
+  test('leaves activeMode null for a fresh single selection when defaultMode is null', () => {
+    const s0 = { desired: { 'die-1': { ts: 1, holding: true } }, activeMode: null }
+    expect(reconcileMode(s0, null)).toBe(s0)
+  })
+
+  test('drops a stale tracked mode down to null if reseeding is needed but defaultMode is null', () => {
+    const s0 = { desired: { 'die-2': { ts: 2, holding: true } }, activeMode: { id: 'die-1', mode: 'sel-resize' } }
+    expect(reconcileMode(s0, null).activeMode).toBeNull()
+  })
+
   test('clears the mode when nothing is held anymore', () => {
     const s0 = { desired: {}, activeMode: { id: 'die-1', mode: 'sel-resize' } }
     expect(reconcileMode(s0, 'sel-move').activeMode).toBeNull()

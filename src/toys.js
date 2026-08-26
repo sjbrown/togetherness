@@ -2374,6 +2374,10 @@ export function makeLayerAPI(ydoc, getLayerEl, myId, tableId, isCreator = false)
     getTtStateSchema,
     selectModes,
     nextSelectMode,
+    // Toys only ever have one resize flavor (corner-drag), so `mode` is
+    // unused here -- it exists so callers (app.js) can ask uniformly
+    // across layers without knowing which flavor each one supports.
+    computeResize: (mode, startRect, corner, px, py) => computeResizeRect(startRect, corner, px, py),
     applyMoveCommit: (el, x, y) => {
       const layerEl = layer()
       const oldAnchor = getAnchor(el)
