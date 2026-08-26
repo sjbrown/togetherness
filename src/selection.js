@@ -12,20 +12,16 @@
  * element actually IS -- app.js is the router: it turns a raw gesture or
  * network event into a call here (consulting the element's owning
  * LayerAPI first when a decision needs domain knowledge this module
- * doesn't have, e.g. "what mode does a second click cycle into"), then
- * applies the state this module returns by driving every side effect
- * (Overlay rendering, awareness broadcast, action-affordance lookup) from
- * the diff between old and new state. The action affordance itself is
- * NOT part of this module's state -- it's a cheap, always-current
- * derivation from `desired` plus a capability lookup, computed at render
- * time by app.js rather than tracked here.
+ * doesn't have, e.g. "what mode does a click cycle into"), then applies
+ * the state this module returns by driving every side effect (Overlay
+ * rendering, awareness broadcast) from the diff between old and new state.
  *
  * State shape, mirrored by awareness's own `desired` field (see
  * soft-lock.js's file header) plus one purely-local piece of UI state:
  *
  *   {
  *     desired: { [elId]: { ts: number, holding: boolean } },
- *     mode: { id: string, kind: string } | null,
+ *     activeMode: { id: string, mode: string } | null,
  *   }
  *
  * There is exactly one record per elId this client wants, not two parallel
@@ -40,30 +36,38 @@
  * "build the new map without copying old entries forward" — impossible to
  * forget at a call site the way clearing a second map was.
  *
- * `mode` is a second selection-gated UI mode slot — resize, and in the
+ * `activeMode` is a second selection-gated slot — resize, and in the
  * future things like rummage (trays) or rotate — never negotiated with
  * other clients the way `desired` is, but still only meaningful relative
  * to the current selection: a mode can only be active while its own id is
  * this client's sole held selection (see `shape`/`enterMode` below). This
- * module has no idea what 'resize' or 'rummage' *mean* or which element
- * types support them — that's domain knowledge that lives on each
+ * module has no idea what 'sel-resize' or 'sel-rummage' *mean* or which
+ * element types support them — that's domain knowledge that lives on each
  * LayerAPI (toys.js, drawing.js), which app.js consults and passes the
- * resulting `kind` straight through. This module only enforces the one
- * universal rule every mode shares: exclusivity to a single held element.
+ * resulting mode string straight through, already fully formed (see
+ * toys.js's/drawing.js's nextSelectMode). This module only enforces the
+ * one universal rule every mode shares: exclusivity to a single held
+ * element. Every mode string carries a `sel-` prefix (sel-move, sel-resize,
+ * sel-resize-r, sel-action, ...) — this module treats them as opaque
+ * strings and never constructs or strips that prefix itself.
+ *
+ * A selection's *mode* and a SelectionMode Map entry's *kind* (overlay.js)
+ * are two names for the same idea; both files say "mode" now, not "kind" —
+ * "selections don't have kinds, they have modes."
  *
  * Every function here is total and side-effect-free: same inputs, same
  * output, every time. A branch that changes nothing returns the identical
- * state (or the identical `desired`/`mode` sub-value) it was given — app.js
- * relies on that reference equality to decide, cheaply, whether anything
- * needs to be re-rendered or broadcast at all.
+ * state (or the identical `desired`/`activeMode` sub-value) it was given —
+ * app.js relies on that reference equality to decide, cheaply, whether
+ * anything needs to be re-rendered or broadcast at all.
  */
 
-export const EMPTY_STATE = { desired: {}, mode: null };
+export const EMPTY_STATE = { desired: {}, activeMode: null };
 
 // ── Internal helpers ─────────────────────────────────────────────────────
 
 function withDesired(state, desired) {
-  return { desired, mode: state.mode };
+  return { desired, activeMode: state.activeMode };
 }
 
 function heldIds(state) {
@@ -77,8 +81,8 @@ function biddingIds(state) {
 // ── Selection shape ──────────────────────────────────────────────────────
 
 // The cardinality of the committed selection, named once instead of being
-// re-derived ad hoc at every call site that cares (resize-mode eligibility,
-// the action affordance, "use the multi-select button" warnings, ...).
+// re-derived ad hoc at every call site that cares (mode eligibility, "use
+// the multi-select button" warnings, ...).
 export function shape(state) {
   const n = heldIds(state).length;
   return n === 0 ? 'empty' : n === 1 ? 'single' : 'multi';
@@ -221,22 +225,22 @@ export function applyTickActions(state, { elIdsToAcquire, elIdsToDropRequest, el
 
 // ── Selection-gated mode (resize, future: rummage/rotate/...) ────────────
 
-// Enter `kind` for `id` -- only valid while `id` is this client's sole held
-// selection. `kind` is trusted as already domain-vetted by the caller (app.js
-// asks the element's owning LayerAPI what mode a click should cycle into;
-// this module never sees or judges the string itself, and doesn't need a
-// capability lookup of its own -- it only owns the one universal rule every
-// mode shares, exclusivity to a single held element). No-op if the
-// precondition fails, or if `id`/`kind` already match the current mode.
-export function enterMode(state, id, kind) {
-  if (kind == null || !state.desired[id]?.holding || shape(state) !== 'single') return state;
-  if (state.mode?.id === id && state.mode.kind === kind) return state;
-  return { desired: state.desired, mode: { id, kind } };
+// Enter `mode` for `id` -- only valid while `id` is this client's sole held
+// selection. `mode` is trusted as already domain-vetted by the caller
+// (app.js asks the element's owning LayerAPI what mode a click should
+// cycle into; this module never judges the string itself, and doesn't need
+// a capability lookup of its own -- it only owns the one universal rule
+// every mode shares, exclusivity to a single held element). No-op if the
+// precondition fails, or if `id`/`mode` already match the current one.
+export function enterMode(state, id, mode) {
+  if (mode == null || !state.desired[id]?.holding || shape(state) !== 'single') return state;
+  if (state.activeMode?.id === id && state.activeMode.mode === mode) return state;
+  return { desired: state.desired, activeMode: { id, mode } };
 }
 
 // Leave whatever mode is currently active, if any.
 export function exitMode(state) {
-  return state.mode ? { desired: state.desired, mode: null } : state;
+  return state.activeMode ? { desired: state.desired, activeMode: null } : state;
 }
 
 // Re-checks the current mode (if any) against the current desired/shape,
@@ -251,7 +255,7 @@ export function exitMode(state) {
 // unconditionally for every state transition, so none of the functions
 // above need to remember to call it themselves.
 export function reconcileMode(state) {
-  if (!state.mode) return state;
-  const stillValid = state.desired[state.mode.id]?.holding && shape(state) === 'single';
-  return stillValid ? state : { desired: state.desired, mode: null };
+  if (!state.activeMode) return state;
+  const stillValid = state.desired[state.activeMode.id]?.holding && shape(state) === 'single';
+  return stillValid ? state : { desired: state.desired, activeMode: null };
 }

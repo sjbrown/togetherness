@@ -422,24 +422,27 @@ describe('selectModes / nextSelectMode', () => {
     expect(selectModes(makeToyDom(['tt-mode-resize', 'tt-mode-rummage']))).toEqual(['action', 'resize', 'rummage'])
   })
 
-  test('nextSelectMode cycles resize <-> none for a resizable toy', () => {
+  test('nextSelectMode cycles sel-action <-> sel-resize for a resizable toy', () => {
     const domEl = makeToyDom(['tt-mode-resize'])
-    expect(nextSelectMode(domEl, null)).toBe('resize')
-    expect(nextSelectMode(domEl, 'resize')).toBeNull()
+    expect(nextSelectMode(domEl, null)).toBe('sel-action')
+    expect(nextSelectMode(domEl, 'sel-action')).toBe('sel-resize')
+    expect(nextSelectMode(domEl, 'sel-resize')).toBe('sel-action')
   })
 
-  test('nextSelectMode is null for a toy with no resize capability', () => {
+  test('nextSelectMode always offers sel-action for a toy with no resize capability', () => {
     const domEl = makeToyDom()
-    expect(nextSelectMode(domEl, null)).toBeNull()
+    expect(nextSelectMode(domEl, null)).toBe('sel-action')
+    expect(nextSelectMode(domEl, 'sel-action')).toBe('sel-action')
   })
 
-  // Rummage has no gesture/rendering behind it yet (see nextSelectMode's own
+  // Rummage has no gesture/rendering behind it yet (see selectModeCycle's own
   // comment) -- a tray/bag/supply-like toy that declares BOTH capabilities
-  // must still only cycle resize <-> none, not surface rummage.
+  // must still only cycle sel-action <-> sel-resize, not surface rummage.
   test('nextSelectMode skips rummage even when the toy declares both capabilities', () => {
     const domEl = makeToyDom(['tt-mode-resize', 'tt-mode-rummage'])
-    expect(nextSelectMode(domEl, null)).toBe('resize')
-    expect(nextSelectMode(domEl, 'resize')).toBeNull()
+    expect(nextSelectMode(domEl, null)).toBe('sel-action')
+    expect(nextSelectMode(domEl, 'sel-action')).toBe('sel-resize')
+    expect(nextSelectMode(domEl, 'sel-resize')).toBe('sel-action')
   })
 })
 

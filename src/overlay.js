@@ -8,30 +8,33 @@
  *
  * Depends on: App (bus). No ui.js imports. No canvas.js imports.
  *
- * SelectionMode kinds:
- *   'none'       — no decoration
- *   'local'      — solid gradient ring
- *   'candidate'  — same visual as 'local'; live rubber-band candidates
- *                  (cleared on commit/cancel)
- *   'remote'     — dashed border + peer name label (awareness)
- *   'resize'     — local selection ring + 4 corner drag handles
- *   'resize-r'   — local selection ring + 1 radius-drag handle (circles)
- *   'toy-action' — local selection ring + the action affordance square
- *                  (kebab/asterisk glyph, bowstring handle's resting state)
- *   'locked'     — remote peer is actively editing
+ * SelectionMode modes (the `.mode` property on each Map entry):
+ *   'none'         — no decoration
+ *   'local'        — solid gradient ring
+ *   'candidate'    — same visual as 'local'; live rubber-band candidates
+ *                    (cleared on commit/cancel)
+ *   'remote'       — dashed border + peer name label (awareness)
+ *   'sel-move'     — same visual as 'local'; the default a sole selection
+ *                    shows before any mode-cycling click (see below)
+ *   'sel-resize'   — local selection ring + 4 corner drag handles
+ *   'sel-resize-r' — local selection ring + 1 radius-drag handle (circles)
+ *   'sel-action'   — local selection ring + the action affordance square
+ *                    (kebab/asterisk glyph, bowstring handle's resting state)
+ *   'locked'       — remote peer is actively editing
  *
- * 'resize'/'resize-r'/'toy-action' are selection-gated MODE kinds (see
- * MODE_KINDS below and selection.js's file header) — set via
- * Overlay.setSelectionMode(), not localSelectionChanged(), and mutually
- * exclusive with every other kind above (and with each other). Two flavors:
- * 'resize'/'resize-r' are entered by an explicit second click and tracked
- * in selection.js's `mode` state; 'toy-action' is offered automatically,
- * with no click, by any sole-selected element whose owning LayerAPI
- * reports it (toys.js's autoSelectMode) — app.js's _renderSelectionKind is
- * the one place that reconciles "explicit mode, or else automatic one" into
- * a single kind. A future mode (rummage, rotate, ...) adds its own kind
- * string to MODE_KINDS and its own case to render()'s switch; nothing else
- * in this file hardcodes the current three.
+ * 'sel-move'/'sel-resize'/'sel-resize-r'/'sel-action' are selection-gated
+ * MODES (see SELECTION_MODES below and selection.js's file header) — set
+ * via Overlay.setSelectionMode(), not localSelectionChanged(), and
+ * mutually exclusive with every other mode above (and with each other).
+ * Every LayerAPI's nextSelectMode() cycles through a list of these that
+ * starts with whichever one is that element type's automatic, no-click
+ * default ('sel-move' for drawings, 'sel-action' for toys) — app.js's
+ * _renderSelectionMode is the one place that reconciles "explicit mode
+ * entered by a click, or else the automatic default" into a single mode
+ * string, via each LayerAPI's nextSelectMode(domEl, null). A future mode
+ * (rummage, rotate, ...) adds its own string to SELECTION_MODES and its
+ * own case to render()'s switch; nothing else in this file hardcodes the
+ * current set.
  *
  * Requested/contested indicator (soft-lock.js): a separate, independent
  * decoration — not a SelectionMode kind — drawn on any element with an
@@ -54,15 +57,15 @@
  *   visual for "someone else is sweeping over these"), but the field is
  *   wire-present so it can be added without a schema change.
  *
- * Awareness mode field: `sel-${kind}` | null, e.g. 'sel-resize'
- *   Mirrors selection.js's local `mode` state ({ id, kind } | null) — kind
- *   is whatever the id's owning LayerAPI decided a click should cycle into
- *   (see app.js's enterResizeMode). Explicit modes only — the automatic
- *   'toy-action' kind is never broadcast, same as it never was back when
- *   it was tracked separately (see below). Purely advisory to peers
- *   (rendering doesn't currently distinguish it on remote rings) — the
- *   local effect is entirely driven by SelectionMode's own mode-kind entry
- *   instead, set directly via Overlay.setSelectionMode().
+ * Awareness mode field: string | null, e.g. 'sel-resize'
+ *   Mirrors selection.js's local `activeMode` state ({ id, mode } | null) —
+ *   already carries its own `sel-` prefix, minted by whichever LayerAPI
+ *   decided a click should cycle into it (see app.js's enterResizeMode).
+ *   Explicit modes only — an automatic default like 'sel-action' or
+ *   'sel-move' is never broadcast unless a click actually entered it.
+ *   Purely advisory to peers (rendering doesn't currently distinguish it on
+ *   remote rings) — the local effect is entirely driven by SelectionMode's
+ *   own entry instead, set directly via Overlay.setSelectionMode().
  *
  * Drag ghost system:
  *   The native layer element is never touched during drag; but overlay renders:
@@ -95,18 +98,19 @@ export const PAD = 6;           // selection ring padding
 const REQUESTED_PAD = PAD + 6; // extra clearance so the requested ring sits outside the selection ring
 const HANDLE_HIT_PAD = 6; // extra px (canvas-space, pre-scale) added to the handle's own hit box — easier to grab than its drawn size alone
 
-// SelectionMode kinds that represent an active selection-gated mode (see
+// SelectionMode modes that represent an active selection-gated mode (see
 // selection.js's file header) rather than a plain 'local'/'remote'/etc.
-// selection state — whether explicitly entered by a click (resize,
-// resize-r) or offered automatically with no click (toy-action). A future
-// mode (rummage, rotate, ...) gets added here and to the render() switch
-// below when its own visuals exist — every other place that needs to know
-// "is this id currently in a mode" (setSelectionMode's own demote-the-
-// old-one step, the local/remote precedence guards in setHoverCandidates
-// and syncFromAwareness) reads this one set instead of repeating the kind
-// list, so adding a mode is a one-line change here, not a hunt through
-// the file for every hardcoded kind literal.
-const MODE_KINDS = new Set(['resize', 'resize-r', 'toy-action']);
+// selection state — whether it's the automatic default (sel-move,
+// sel-action) or one explicitly entered by a click (sel-resize,
+// sel-resize-r). A future mode (rummage, rotate, ...) gets added here and
+// to the render() switch below when its own visuals exist — every other
+// place that needs to know "is this id currently in a mode" (
+// setSelectionMode's own demote-the-old-one step, the local/remote
+// precedence guards in setHoverCandidates and syncFromAwareness) reads
+// this one set instead of repeating the mode list, so adding a mode is a
+// one-line change here, not a hunt through the file for every hardcoded
+// mode-string literal.
+const SELECTION_MODES = new Set(['sel-move', 'sel-resize', 'sel-resize-r', 'sel-action']);
 
 /**
  * The four resize corner points for a geo rect (already padded out to the
@@ -126,7 +130,7 @@ export function resizeCorners(geo) {
 }
 
 /**
- * The single radius-drag handle for a 'resize-r' shape (currently just
+ * The single radius-drag handle for a 'sel-resize-r' shape (currently just
  * circles): centered on the right edge of geo, padded out to the
  * selection ring same as resizeCorners. geo's centre is assumed fixed —
  * only the right edge moves as the radius changes.
@@ -295,60 +299,58 @@ export function init(appBus, svgElement, localGrad = null) {
  */
 export function localSelectionChanged(selectedIds) {
   for (const [id, entry] of SelectionMode) {
-    if (entry.kind === 'local' || entry.kind === 'candidate' || MODE_KINDS.has(entry.kind)) {
+    if (entry.mode === 'local' || entry.mode === 'candidate' || SELECTION_MODES.has(entry.mode)) {
       SelectionMode.delete(id);
     }
   }
   const color = App.getMyColor();
   const grad  = App.getMyGradient();
   for (const id of selectedIds) {
-    SelectionMode.set(id, { kind: 'local', color, grad });
+    SelectionMode.set(id, { mode: 'local', color, grad });
   }
   render();
 }
 
-// Reflects selection.js's `mode` ({ id, kind } | null — see its file
-// header) onto SelectionMode. Demotes any existing mode-kind entry back to
-// 'local' first (there is ever at most one — a mode requires an exclusive
-// single selection — but this stays defensive rather than assuming), then
-// promotes elId's own entry to `kind` if it currently has one and it's
-// 'local' (i.e. really is the sole selection — a stale/mismatched elId is
-// silently a no-op, matching localSelectionChanged's no-throw style
-// elsewhere in this file). Pass elId=null to exit the mode entirely
-// (leaves everything 'local').
+// Reflects selection.js's `activeMode` ({ id, mode } | null — see its file
+// header) onto SelectionMode. Demotes any existing selection-mode entry
+// back to 'local' first (there is ever at most one — a mode requires an
+// exclusive single selection — but this stays defensive rather than
+// assuming), then promotes elId's own entry to `mode` if it currently has
+// one and it's 'local' (i.e. really is the sole selection — a
+// stale/mismatched elId is silently a no-op, matching
+// localSelectionChanged's no-throw style elsewhere in this file). Pass
+// elId=null (or mode=null) to leave everything 'local'.
 //
-// `kind` is one of MODE_KINDS above — 'resize' (corner-drag) and
-// 'resize-r' (single-handle radius-drag, circles) are the only ones with
-// rendering today (see the switch in render()); a future kind (rummage,
-// rotate, ...) is drawn correctly here the moment it's added to
-// MODE_KINDS and given its own render() case — this function itself
-// doesn't hardcode which kinds exist.
-export function setSelectionMode(elId, kind) {
+// `mode` is one of SELECTION_MODES above; a future mode (rummage, rotate,
+// ...) is drawn correctly here the moment it's added there and given its
+// own render() case — this function itself doesn't hardcode which modes
+// exist.
+export function setSelectionMode(elId, mode) {
   for (const [id, entry] of SelectionMode) {
-    if (MODE_KINDS.has(entry.kind)) SelectionMode.set(id, { ...entry, kind: 'local' });
+    if (SELECTION_MODES.has(entry.mode)) SelectionMode.set(id, { ...entry, mode: 'local' });
   }
   if (elId) {
     const entry = SelectionMode.get(elId);
-    if (entry && entry.kind === 'local') SelectionMode.set(elId, { ...entry, kind });
+    if (entry && entry.mode === 'local') SelectionMode.set(elId, { ...entry, mode });
   }
   render();
 }
 
 // Set live rubber-band candidates. Replaces any existing candidate entries;
-// does not touch 'local', 'remote', 'locked', or any mode-kind entries.
-// If an id already has a 'local' or mode entry (committed single
+// does not touch 'local', 'remote', 'locked', or any selection-mode
+// entries. If an id already has a 'local' or mode entry (committed single
 // selection, possibly already in a mode), it is left as-is — the local
 // ring takes precedence over the candidate ring.
 export function setHoverCandidates(ids) {
   for (const [id, entry] of SelectionMode) {
-    if (entry.kind === 'candidate') SelectionMode.delete(id);
+    if (entry.mode === 'candidate') SelectionMode.delete(id);
   }
   const color = App.getMyColor();
   const grad  = App.getMyGradient();
   for (const id of ids) {
     const existing = SelectionMode.get(id);
-    if (existing && (existing.kind === 'local' || MODE_KINDS.has(existing.kind))) continue;
-    SelectionMode.set(id, { kind: 'candidate', color, grad });
+    if (existing && (existing.mode === 'local' || SELECTION_MODES.has(existing.mode))) continue;
+    SelectionMode.set(id, { mode: 'candidate', color, grad });
   }
   render();
 }
@@ -356,7 +358,7 @@ export function setHoverCandidates(ids) {
 // Clear all rubber-band candidate entries (called on box-select cancel or commit).
 export function clearHoverCandidates() {
   for (const [id, entry] of SelectionMode) {
-    if (entry.kind === 'candidate') SelectionMode.delete(id);
+    if (entry.mode === 'candidate') SelectionMode.delete(id);
   }
   render();
 }
@@ -365,7 +367,7 @@ export function clearHoverCandidates() {
 export function syncFromAwareness(awarenessStates, myClientId) {
   // Remove stale remote entries
   for (const [id, entry] of SelectionMode) {
-    if (entry.kind === 'remote' || entry.kind === 'locked') SelectionMode.delete(id);
+    if (entry.mode === 'remote' || entry.mode === 'locked') SelectionMode.delete(id);
   }
   _remoteDrags.clear();
   _remoteAddCursors.clear();
@@ -396,9 +398,9 @@ export function syncFromAwareness(awarenessStates, myClientId) {
         // other peer's ring instead of my own, even though my own
         // selection data still says I hold it.
         const existing = SelectionMode.get(elId);
-        if (existing && (existing.kind === 'local' || MODE_KINDS.has(existing.kind))) continue;
+        if (existing && (existing.mode === 'local' || SELECTION_MODES.has(existing.mode))) continue;
         SelectionMode.set(elId, {
-          kind:   'remote',
+          mode:   'remote',
           peerId,
           color:  state.color ?? '#888',
           gradId,
@@ -760,25 +762,26 @@ export function render() {
 
   // ── Selection rings  ───────────────────────────────
   for (const [elId, entry] of SelectionMode) {
-    if (entry.kind === 'none') continue;
+    if (entry.mode === 'none') continue;
     const geo = App.getBBox(elId);
     if (!geo) continue;
-    switch (entry.kind) {
+    switch (entry.mode) {
       case 'local':
       case 'candidate':
+      case 'sel-move':
         renderLocalSelection(geo, entry, scale);
         break;
       case 'remote':
       case 'locked':
         renderRemoteSelection(geo, entry, scale);
         break;
-      case 'resize':
+      case 'sel-resize':
         renderLocalResizeSelection(geo, entry, scale);
         break;
-      case 'resize-r':
+      case 'sel-resize-r':
         renderLocalResizeRSelection(geo, entry, scale);
         break;
-      case 'toy-action':
+      case 'sel-action':
         renderLocalSelection(geo, entry, scale);
         renderActionAffordance(geo, scale);
         break;
@@ -999,7 +1002,7 @@ function renderLocalResizeSelection(geo, entry, scale) {
 /**
  * Same selection ring as renderLocalResizeSelection, but a single
  * radius-drag handle centered on the right edge instead of four corner
- * handles — used for the 'resize-r' kind (currently: circles).
+ * handles — used for the 'sel-resize-r' mode (currently: circles).
  */
 function renderLocalResizeRSelection(geo, entry, scale) {
   const { x, y, width, height } = geo;
@@ -1033,8 +1036,8 @@ function renderLocalResizeRSelection(geo, entry, scale) {
 }
 
 // ── Action-mode affordance ───────────────────────────────────────────────────
-// Drawn by the 'toy-action' case above, alongside the ordinary selection
-// ring (see MODE_KINDS and the file header). A single rounded-corner icon
+// Drawn by the 'sel-action' case above, alongside the ordinary selection
+// ring (see SELECTION_MODES and the file header). A single rounded-corner icon
 // square — asterisk (*), the bowstring handle's resting state (see
 // delight.js) — tinted to the local player's own color via the same
 // feColorMatrix trick toy artwork uses (see setLocalGradient /

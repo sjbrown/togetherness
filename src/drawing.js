@@ -231,25 +231,27 @@ export function selectModes(svgEl) {
   return [];
 }
 
-/**
- * Which selection mode a second click should cycle svgEl into, given the
- * mode it's currently in (or null). Mirrors toys.js's nextSelectMode --
- * rects/circles each support exactly one resize-family mode, so the cycle
- * is just that mode <-> none.
- */
-export function nextSelectMode(svgEl, currentKind) {
-  const kind = selectModes(svgEl)[0] ?? null;
-  if (!kind) return null;
-  return currentKind === kind ? null : kind;
+// Every mode svgEl can be in, in cycle order, fully `sel-`-prefixed.
+// 'sel-move' is the default every shape shows with no click at all (plain
+// selection ring); rects/circles each add their one resize-family mode
+// after it. Mirrors toys.js's selectModeCycle.
+function selectModeCycle(svgEl) {
+  const modes = selectModes(svgEl);
+  const cycle = ['sel-move'];
+  if (modes.includes('resize'))   cycle.push('sel-resize');
+  if (modes.includes('resize-r')) cycle.push('sel-resize-r');
+  return cycle;
 }
 
 /**
- * Drawings have no automatic (click-free) selection mode -- only the
- * click-to-cycle resize-family modes from nextSelectMode. Mirrors toys.js's
- * autoSelectMode for symmetry across LayerAPIs.
+ * The next mode svgEl should show, given the mode it's currently in (pass
+ * null for "nothing yet, what should this show automatically"). Mirrors
+ * toys.js's nextSelectMode.
  */
-export function autoSelectMode(_svgEl) {
-  return null;
+export function nextSelectMode(svgEl, currentMode) {
+  const cycle = selectModeCycle(svgEl);
+  const i = cycle.indexOf(currentMode);
+  return cycle[(i + 1) % cycle.length];
 }
 
 /**
@@ -509,7 +511,6 @@ export function makeLayerAPI(ydoc, yDrawing) {
     getTtStateSchema,
     selectModes,
     nextSelectMode,
-    autoSelectMode,
     applyMoveCommit: (yEl, x, y)     => applyMoveCommit(ydoc, yEl, x, y),
     applyResize:     (yEl, x, y, w, h) => applyResize(ydoc, yEl, x, y, w, h),
     applyTtState:    (state)         => applyTtState(ydoc, yDrawing, state),

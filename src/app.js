@@ -110,12 +110,14 @@ const _netStatus = { connected: false, synced: false, webrtcPeers: 0, bcPeers: 0
 // -- deliberately lighter than _afterClaimsChanged, since membership
 // hasn't changed (see the comment on the throttled refresh in moveMulti).
 let _desired = {};
-// The active selection-gated mode (resize; in the future rummage/rotate/
-// ...), or null. { id, kind } | null -- see selection.js's file header.
-// Orthogonal to _desired's map shape: at most one mode is ever active,
-// scoped to a single id, never negotiated with other clients the way
-// _desired is. Broadcast via the awareness `mode` field as `sel-${kind}`.
-let _mode = null;
+// The active, explicitly-entered selection-gated mode (sel-resize; in the
+// future sel-rummage/sel-rotate/...), or null. { id, mode } | null -- see
+// selection.js's file header. Orthogonal to _desired's map shape: at most
+// one mode is ever active, scoped to a single id, never negotiated with
+// other clients the way _desired is. Broadcast via the awareness `mode`
+// field verbatim -- `mode` already carries its own `sel-` prefix, minted
+// by whichever LayerAPI produced it (see selection.js's file header).
+let _activeMode = null;
 // Tracks whether the last _afterClaimsChanged call left a non-empty selection
 let _lastClaimedSetNonEmpty = false;
 
@@ -133,40 +135,40 @@ function _sameIdSet(a, b) {
 }
 
 function _selState() {
-  return { desired: _desired, mode: _mode };
+  return { desired: _desired, activeMode: _activeMode };
 }
 
-// Applies a new pure Selection state (src/selection.js) to _desired/_mode,
-// running the existing side-effect helpers depending on what changed.
-// Selection.reconcileMode runs unconditionally first, so no caller
-// anywhere -- not this function, not the transitions in selection.js
-// themselves -- has to remember that a mode can be invalidated by
-// something that changed the held set out from under it; this is the one
-// place that rule is enforced, on the operation's FINAL result.
-// selection.js's functions return the identical desired/mode value, by
-// reference, when nothing changed at all -- see its file header -- so a
-// no-op gesture (e.g. re-requesting an id already being bid on) costs a
-// couple of reference checks and nothing else. When something DID change,
-// the three possible outcomes are independent: the held-id SET changing
-// needs the full _afterClaimsChanged treatment (mode re-render, action
-// affordance, UI notify, checkpointing); a mode-only change (entering/
-// exiting/cycling, held set unchanged) just needs to re-render and
-// re-broadcast the mode; a bid-only change (a new/dropped request,
+// Applies a new pure Selection state (src/selection.js) to
+// _desired/_activeMode, running the existing side-effect helpers depending
+// on what changed. Selection.reconcileMode runs unconditionally first, so
+// no caller anywhere -- not this function, not the transitions in
+// selection.js themselves -- has to remember that a mode can be
+// invalidated by something that changed the held set out from under it;
+// this is the one place that rule is enforced, on the operation's FINAL
+// result. selection.js's functions return the identical desired/activeMode
+// value, by reference, when nothing changed at all -- see its file header
+// -- so a no-op gesture (e.g. re-requesting an id already being bid on)
+// costs a couple of reference checks and nothing else. When something DID
+// change, the three possible outcomes are independent: the held-id SET
+// changing needs the full _afterClaimsChanged treatment (mode re-render,
+// action affordance, UI notify, checkpointing); a mode-only change
+// (entering/exiting/cycling, held set unchanged) just needs to re-render
+// and re-broadcast the mode; a bid-only change (a new/dropped request,
 // nothing promoted or released) just needs a broadcast.
 function _applySelState(rawNext) {
   const next = Selection.reconcileMode(rawNext);
   const desiredChanged = next.desired !== _desired;
-  const modeChanged = next.mode !== _mode;
+  const modeChanged = next.activeMode !== _activeMode;
   if (!desiredChanged && !modeChanged) return;
 
   const prevHeld = _heldIds();
   _desired = next.desired;
-  _mode = next.mode;
+  _activeMode = next.activeMode;
 
   if (desiredChanged && !_sameIdSet(prevHeld, _heldIds())) {
     _afterClaimsChanged();
   } else if (modeChanged) {
-    _renderSelectionKind();
+    _renderSelectionMode();
     _broadcastMode();
   } else {
     _broadcastDesired();
@@ -200,11 +202,11 @@ function _afterClaimsChanged() {
   // Deselecting to nothing is an intent signal - good time to try checkpointing
   if (wasSelecting && claimedSet.size === 0) maybeIdleCheckpoint('deselect');
   Overlay.localSelectionChanged(claimedSet);
-  // _mode has already been reconciled (see _applySelState) by the time this
-  // runs, so this is pure rendering -- no validity decision left to make
-  // here. Still needed even when the mode itself is unchanged, since
-  // localSelectionChanged just reset every claimed id back to 'local'.
-  _renderSelectionKind();
+  // _activeMode has already been reconciled (see _applySelState) by the
+  // time this runs, so this is pure rendering -- no validity decision left
+  // to make here. Still needed even when the mode itself is unchanged,
+  // since localSelectionChanged just reset every claimed id back to 'local'.
+  _renderSelectionMode();
   _broadcastDesired();
   _broadcastMode();
   UI.onSelectionChanged(claimedSet);
@@ -219,35 +221,31 @@ function _broadcastDesired() {
 }
 
 // ── Selection-gated mode (resize; future: rummage/rotate/...) ──────────────
-// See selection.js's file header for what `mode` is and the exclusivity
-// rule it enforces.
-//
-// The sole held id's visual kind comes from one of two sources, which
-// share the same underlying mechanism (Overlay.setSelectionMode's
-// demote-then-promote onto SelectionMode) and are mutually exclusive at
-// the same id, so this is the one place that decides which wins and makes
-// exactly one call:
-//   1. An explicit mode (_mode) -- entered by a click, tracked in
-//      selection.js, already reconciled valid-or-null by the time this
-//      runs (see _applySelState).
-//   2. Failing that, an automatic mode the sole id's own owning LayerAPI
-//      reports on its own initiative with no click at all -- e.g. toys'
-//      action affordance ('toy-action', see toys.js's autoSelectMode).
-//      app.js doesn't know which element types get this or why; it only
-//      knows to ask.
-function _renderSelectionKind() {
+// See selection.js's file header for what `activeMode` is and the
+// exclusivity rule it enforces.
+
+// id's current mode, whether or not a click ever explicitly entered one:
+// _activeMode if id is the one currently holding it (already reconciled
+// valid-or-null by the time this runs -- see _applySelState), otherwise
+// whatever id's owning LayerAPI reports as its automatic, no-click default
+// (nextSelectMode(domEl, null) -- e.g. toys' action affordance, drawings'
+// plain sel-move). app.js doesn't know which element types default to
+// what; it only knows to ask.
+function _currentSelectionMode(id, domEl, layer) {
+  if (_activeMode?.id === id) return _activeMode.mode;
+  return layer?.nextSelectMode?.(domEl, null) ?? null;
+}
+
+function _renderSelectionMode() {
   const soleId = Selection.soleHeldId(_selState());
-  let kind = _mode?.kind ?? null;
-  if (!kind && soleId) {
-    const domEl = _svgEl.querySelector(`[data-id="${soleId}"]`);
-    const layer = _Layers[moduleForElement(domEl)];
-    kind = layer?.autoSelectMode?.(domEl) ?? null;
-  }
-  Overlay.setSelectionMode(kind ? soleId : null, kind);
+  const domEl = soleId && _svgEl.querySelector(`[data-id="${soleId}"]`);
+  const layer = domEl && _Layers[moduleForElement(domEl)];
+  const mode = soleId ? _currentSelectionMode(soleId, domEl, layer) : null;
+  Overlay.setSelectionMode(mode ? soleId : null, mode);
 }
 
 function _broadcastMode() {
-  _awareness.setLocalStateField('mode', _mode ? `sel-${_mode.kind}` : null);
+  _awareness.setLocalStateField('mode', _activeMode ? _activeMode.mode : null);
 }
 
 // Soft-lock tick — periodically evaluates computeTickActions() and applies
@@ -312,7 +310,7 @@ let _multiDragState = null;  // { elements: [{ id, mtype, anchorX, anchorY, bbox
                              //   lastValidDx, lastValidDy } | null
 
 // Active corner-drag resize
-// Only reachable while _mode === { id, kind: 'resize'|'resize-r' } and only
+// Only reachable while _activeMode === { id, mode: 'sel-resize'|'sel-resize-r' } and only
 // ever for a container.
 let _resizeState = null;    // { id, corner, startRect: {x,y,width,height},
                             //   lastRect: {x,y,width,height} } | null
@@ -1564,26 +1562,26 @@ const App = {
   // LayerAPI (toys.js/drawing.js) via nextSelectMode, which is the one
   // place that domain knowledge ("rects resize, circles resize-r, trays
   // will someday rummage") actually lives, and hands the answer straight
-  // to Selection.enterMode/exitMode. Kept named enterResizeMode rather
-  // than something more generic since resize is still the only mode that
-  // exists -- canvas.js's call site already treats it as "cycle to the
-  // next mode" (see its own comment at the click site).
+  // to Selection.enterMode. Kept named enterResizeMode rather than
+  // something more generic since resize is still the only click-to-cycle
+  // mode that exists -- canvas.js's call site already treats it as "cycle
+  // to the next mode" (see its own comment at the click site). Every
+  // LayerAPI's cycle wraps around rather than ever landing on "no mode",
+  // so this always has something to enter.
   enterResizeMode: (id) => {
     if (Selection.shape(_selState()) !== 'single' || !_desired[id]?.holding) return;
     const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
     const layer = _Layers[moduleForElement(domEl)];
-    const currentKind = _mode?.id === id ? _mode.kind : null;
-    const kind = layer?.nextSelectMode?.(domEl, currentKind) ?? null;
-    _applySelState(kind == null
-      ? Selection.exitMode(_selState())
-      : Selection.enterMode(_selState(), id, kind));
+    const current = _currentSelectionMode(id, domEl, layer);
+    const mode = layer?.nextSelectMode?.(domEl, current) ?? null;
+    _applySelState(Selection.enterMode(_selState(), id, mode));
   },
 
   exitResizeMode: () => {
     _applySelState(Selection.exitMode(_selState()));
   },
 
-  getResizeModeId: () => _mode?.id ?? null,
+  getResizeModeId: () => _activeMode?.id ?? null,
 
   // ── Bowstring handle (delight.js) ─────────────────────────────────────────
   // The SE action square is a drag-to-fire control: click for the toy's
@@ -1600,19 +1598,20 @@ const App = {
   startBowstringAt: (e, canvasPoint) => {
     const id = _singleSelectedId();
     if (!id) return false;
-    // Once this id is in a mode, its SE corner belongs to that mode's own
-    // handle, not the bowstring — overlay.js stops drawing the action
-    // square the moment resize mode is entered (see render()'s kind==='local'
-    // guard), so the live gesture must decline the same way or it keeps
-    // intercepting the corner that no longer visually shows it.
-    if (_mode?.id === id) return false;
+    // Once this id is in an explicitly-entered mode, its SE corner belongs
+    // to that mode's own handle, not the bowstring — overlay.js stops
+    // drawing the action square the moment resize mode is entered (see
+    // render()'s 'sel-action' case, the only one that draws it), so the
+    // live gesture must decline the same way or it keeps intercepting the
+    // corner that no longer visually shows it.
+    if (_activeMode?.id === id) return false;
     const domEl = _svgEl?.querySelector(`[data-id="${id}"]`);
     if (!domEl) return false;
     const layer = _Layers[moduleForElement(domEl)];
-    // Same question _renderSelectionKind asks to decide what to show —
+    // Same question _renderSelectionMode asks to decide what to show —
     // app.js doesn't know which element types get the action affordance,
     // only that a bowstring gesture only applies where one is showing.
-    if (layer?.autoSelectMode?.(domEl) !== 'toy-action') return false;
+    if (layer?.nextSelectMode?.(domEl, null) !== 'sel-action') return false;
     const geo = App.getBBox(id);
     if (!geo) return false;
     if (!Delight.hitTestBowstring(geo, canvasPoint.x, canvasPoint.y, App.getViewScale())) return false;
@@ -1652,21 +1651,21 @@ const App = {
   },
 
   getResizeCorner: (id, cx, cy) => {
-    if (_mode?.id !== id) return null;
+    if (_activeMode?.id !== id) return null;
     const geo = App.getBBox(id);
-    if (_mode.kind === 'resize-r') {
+    if (_activeMode.mode === 'sel-resize-r') {
       return Overlay.hitTestResizeRHandle(geo, cx, cy, App.getViewScale()) ? 'r' : null;
     }
     return Overlay.hitTestResizeCorner(geo, cx, cy, App.getViewScale());
   },
 
   startResize: (id, corner) => {
-    if (_mode?.id !== id || App.isHeldByOther(id)) return;
+    if (_activeMode?.id !== id || App.isHeldByOther(id)) return;
     const bbox = App.getBBox(id);
     if (!bbox) return;
     const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
     const mtype = moduleForElement(domEl);
-    _resizeState = { id, corner, mtype, kind: _mode.kind, startRect: { ...bbox }, lastRect: { ...bbox } };
+    _resizeState = { id, corner, mtype, mode: _activeMode.mode, startRect: { ...bbox }, lastRect: { ...bbox } };
     Overlay.startResizeGhost(id);
   },
 
@@ -1675,7 +1674,7 @@ const App = {
   // Drawing.computeResizeRadiusRect (single-handle radius-drag) does the math.
   resize: (id, corner, px, py) => {
     if (!_resizeState || _resizeState.id !== id) return;
-    const rect = _resizeState.kind === 'resize-r'
+    const rect = _resizeState.mode === 'sel-resize-r'
       ? Drawing.computeResizeRadiusRect(_resizeState.startRect, px, py)
       : Toys.computeResizeRect(_resizeState.startRect, corner, px, py);
     _resizeState.lastRect = rect;
@@ -1684,7 +1683,7 @@ const App = {
 
   commitResize: (id, corner, px, py) => {
     if (!_resizeState || _resizeState.id !== id) return;
-    const toRect = _resizeState.kind === 'resize-r'
+    const toRect = _resizeState.mode === 'sel-resize-r'
       ? Drawing.computeResizeRadiusRect(_resizeState.startRect, px, py)
       : Toys.computeResizeRect(_resizeState.startRect, corner, px, py);
     const mtype    = _resizeState.mtype;
@@ -1921,7 +1920,7 @@ const App = {
       grad:    _myGrad,
       cursor:  null,
       desired: Object.keys(_desired).length ? { ..._desired } : null,
-      mode:    _mode ? `sel-${_mode.kind}` : null,
+      mode:    _activeMode ? _activeMode.mode : null,
     });
   },
   undo: () => {

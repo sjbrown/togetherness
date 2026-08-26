@@ -6,7 +6,7 @@
  * to enter resize mode left its SE corner still answering to the bowstring
  * handle instead of the resize-corner handle. overlay.js's render() already
  * stops drawing the action square the moment the id enters 'resize'/
- * 'resize-r' mode (see its `entry.kind === 'local'` guard), but
+ * 'resize-r' mode (see its `entry.mode === 'local'` guard), but
  * App.startBowstringAt — which canvas.js's pointerdown consults BEFORE
  * ordinary/resize hit-testing — never checked resize mode itself, so the
  * live gesture kept firing even though nothing was drawn there any more.

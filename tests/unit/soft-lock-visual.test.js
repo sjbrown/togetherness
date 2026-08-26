@@ -128,7 +128,7 @@ describe('requested indicator — basic presence', () => {
   })
 })
 
-describe('requested indicator — independence from SelectionMode kind', () => {
+describe('requested indicator — independence from SelectionMode mode', () => {
   test('coexists with a local selection ring when I am the contested holder', () => {
     overlayInit(makeOverlayApp({ 'goblin-1': BBOX }), document.getElementById('canvas'))
     localSelectionChanged(new Set(['goblin-1'])) // I hold it locally
@@ -138,7 +138,7 @@ describe('requested indicator — independence from SelectionMode kind', () => {
     ])
     syncFromAwareness(states, 1)
 
-    expect(SelectionMode.get('goblin-1')?.kind).toBe('local')
+    expect(SelectionMode.get('goblin-1')?.mode).toBe('local')
     expect(document.querySelectorAll('#overlay-layer .selRing')).toHaveLength(1)
     expect(document.querySelectorAll('#overlay-layer .requestedRing')).toHaveLength(1)
   })
@@ -151,7 +151,7 @@ describe('requested indicator — independence from SelectionMode kind', () => {
     ])
     syncFromAwareness(states, 999) // I'm neither Alice nor Bailey
 
-    expect(SelectionMode.get('goblin-1')?.kind).toBe('remote')
+    expect(SelectionMode.get('goblin-1')?.mode).toBe('remote')
     // Remote selection is now wrapped in <g class="remote-sel">; assert on
     // that group's presence rather than the individual ring/label children.
     expect(document.querySelectorAll('#overlay-layer .remote-sel')).toHaveLength(1)
@@ -225,7 +225,7 @@ describe('local selection precedence over a conflicting remote broadcast', () =>
     ])
     syncFromAwareness(states, 1)
 
-    expect(SelectionMode.get('die-1')?.kind).toBe('local')
+    expect(SelectionMode.get('die-1')?.mode).toBe('local')
     expect(document.querySelectorAll('#overlay-layer .selRing')).toHaveLength(1)
   })
 
@@ -238,7 +238,7 @@ describe('local selection precedence over a conflicting remote broadcast', () =>
       [1, { desired: held(['die-1']) }],
       [2, { desired: held(['die-1']) }],
     ]), 1)
-    expect(SelectionMode.get('die-1')?.kind).toBe('local')
+    expect(SelectionMode.get('die-1')?.mode).toBe('local')
 
     // Client 2's own view (separate overlay instance state — SelectionMode
     // is module-level, so simulate by clearing and reinitializing as if we
@@ -249,7 +249,7 @@ describe('local selection precedence over a conflicting remote broadcast', () =>
       [1, { desired: held(['die-1']) }],
       [2, { desired: held(['die-1']) }],
     ]), 2)
-    expect(SelectionMode.get('die-1')?.kind).toBe('local')
+    expect(SelectionMode.get('die-1')?.mode).toBe('local')
   })
 
   test('remote still renders normally for elIds with no local conflict', () => {
@@ -262,7 +262,7 @@ describe('local selection precedence over a conflicting remote broadcast', () =>
     ])
     syncFromAwareness(states, 1)
 
-    expect(SelectionMode.get('die-1')?.kind).toBe('local')
-    expect(SelectionMode.get('die-2')?.kind).toBe('remote')
+    expect(SelectionMode.get('die-1')?.mode).toBe('local')
+    expect(SelectionMode.get('die-2')?.mode).toBe('remote')
   })
 })

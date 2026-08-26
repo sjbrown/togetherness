@@ -208,20 +208,22 @@ describe('selectModes / nextSelectMode', () => {
     expect(selectModes(lineEl())).toEqual([])
   })
 
-  test('nextSelectMode cycles a rect through resize <-> none', () => {
+  test('nextSelectMode cycles a rect through sel-move <-> sel-resize', () => {
     const el = rectEl()
-    expect(nextSelectMode(el, null)).toBe('resize')
-    expect(nextSelectMode(el, 'resize')).toBeNull()
+    expect(nextSelectMode(el, null)).toBe('sel-move')
+    expect(nextSelectMode(el, 'sel-move')).toBe('sel-resize')
+    expect(nextSelectMode(el, 'sel-resize')).toBe('sel-move')
   })
 
-  test('nextSelectMode cycles a circle through resize-r <-> none', () => {
+  test('nextSelectMode cycles a circle through sel-move <-> sel-resize-r', () => {
     const el = circleEl()
-    expect(nextSelectMode(el, null)).toBe('resize-r')
-    expect(nextSelectMode(el, 'resize-r')).toBeNull()
+    expect(nextSelectMode(el, null)).toBe('sel-move')
+    expect(nextSelectMode(el, 'sel-move')).toBe('sel-resize-r')
+    expect(nextSelectMode(el, 'sel-resize-r')).toBe('sel-move')
   })
 
-  test('nextSelectMode is null for a shape with no selection modes', () => {
-    expect(nextSelectMode(lineEl(), null)).toBeNull()
+  test('nextSelectMode always offers sel-move for a shape with no other selection modes', () => {
+    expect(nextSelectMode(lineEl(), null)).toBe('sel-move')
   })
 })
 

@@ -1141,30 +1141,32 @@ export function selectModes(domEl) {
   return modes
 }
 
-// Which selection mode a second click should cycle domEl into, given the
-// mode it's currently in (or null). 'action' isn't part of this cycle --
-// it's the static affordance shown alongside the ordinary selection ring,
-// not something a click enters/exits. 'rummage' is a real capability tag
-// some toy SVGs already carry (tt-mode-rummage, on trays/bags/supply) but
-// has no gesture or rendering behind it yet, so it's deliberately excluded
-// from the cycle for now: a rummage-capable container still just cycles
-// resize -> none -> resize, the same as any other resizable toy, until
-// rummage mode actually exists here.
-export function nextSelectMode(domEl, currentKind) {
-  if (!selectModes(domEl).includes('resize')) return null
-  return currentKind === 'resize' ? null : 'resize'
+// Every mode domEl can be in, in cycle order, fully `sel-`-prefixed. First
+// entry is what a sole selection shows automatically, with no click
+// required -- for every toy that's the action affordance ('*' glyph /
+// bowstring handle resting state, see selectModes' unconditional 'action'
+// entry). 'rummage' is a real capability tag some toy SVGs already carry
+// (tt-mode-rummage, on trays/bags/supply) but has no gesture or rendering
+// behind it yet, so it's deliberately excluded from the cycle for now: a
+// rummage-capable container still just cycles action -> resize -> action,
+// the same as any other resizable toy, until rummage mode actually exists
+// here.
+function selectModeCycle(domEl) {
+  const modes = selectModes(domEl)
+  const cycle = ['sel-action']
+  if (modes.includes('resize')) cycle.push('sel-resize')
+  return cycle
 }
 
-// The selection mode a sole-selected domEl shows automatically, with no
-// click required -- currently just the action affordance ('*' glyph /
-// bowstring handle resting state), which every toy gets regardless of its
-// other capabilities (see selectModes' unconditional 'action' entry).
-// Distinct from nextSelectMode's click-to-cycle modes: this one activates
-// the instant the element becomes the sole selection and is suppressed
-// the moment a click-triggered mode is entered (app.js's
-// _renderSelectionKind checks this only when no explicit mode is active).
-export function autoSelectMode(domEl) {
-  return selectModes(domEl).includes('action') ? 'toy-action' : null
+// The next mode domEl should show, given the mode it's currently in (pass
+// null for "nothing yet, what should this show automatically"). Finds
+// currentMode in the cycle and returns the next one, wrapping around --
+// null (not found) wraps to index 0, which is how "automatic" and "cycle
+// past the last mode" end up being the same case.
+export function nextSelectMode(domEl, currentMode) {
+  const cycle = selectModeCycle(domEl)
+  const i = cycle.indexOf(currentMode)
+  return cycle[(i + 1) % cycle.length]
 }
 
 
@@ -2373,7 +2375,6 @@ export function makeLayerAPI(ydoc, getLayerEl, myId, tableId, isCreator = false)
     getTtStateSchema,
     selectModes,
     nextSelectMode,
-    autoSelectMode,
     applyMoveCommit: (el, x, y) => {
       const layerEl = layer()
       const oldAnchor = getAnchor(el)
