@@ -5,10 +5,15 @@
  * derivation functions (src/soft-lock.js).
  *
  * Schema:
- *   desired: { [elId]: { ts: number, holding: boolean } } | null
+ *   desired: { [elId]: { ts: number, holding: boolean } }
  *   holding:true  = this client's own claim, ts = last (re)claimed
  *   holding:false = this client's own outstanding acquisition bid,
  *                   ts = when the bid started
+ *
+ * app.js's own convention is to always broadcast a plain object (`{}`
+ * when nothing is desired, never null), but every function here still
+ * tolerates a null/missing value defensively, since a foreign/older peer
+ * may send either.
  */
 
 import { describe, test, expect } from 'vitest'

@@ -102,7 +102,7 @@ async function bootApp() {
 
   await addToy(ydoc, layerEl, { id: 'tray-1', toyType: 'tray_sum', x: 100, y: 100, color: '#abc' })
 
-  awareness.setLocalState({ id: 'bailey', color: myGrad.c1, grad: myGrad, cursor: null, desired: null })
+  awareness.setLocalState({ id: 'bailey', color: myGrad.c1, grad: myGrad, cursor: null, desired: {} })
 
   boot({
     ydoc,

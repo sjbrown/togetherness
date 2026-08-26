@@ -107,7 +107,7 @@ async function bootPeerB(extraToys = []) {
   for (const attrs of extraToys) await addToy(ydoc, layerEl, attrs)
 
   // Exactly index.html's initialization order: setLocalState BEFORE boot().
-  awareness.setLocalState({ id: 'bailey', color: myGrad.c1, grad: myGrad, cursor: null, desired: null })
+  awareness.setLocalState({ id: 'bailey', color: myGrad.c1, grad: myGrad, cursor: null, desired: {} })
 
   boot({
     ydoc,
@@ -258,9 +258,10 @@ describe('soft-lock e2e — oscillation regression (real trace, real tick)', () 
 
       // The broadcast state itself must be clean too, not just the local
       // getter — nothing lingering for a future tick (mine or anyone
-      // else's) to misinterpret.
+      // else's) to misinterpret. app.js always broadcasts `desired` as a
+      // plain object (never null), so "clean" means empty, not falsy.
       const myState = awareness.getLocalState()
-      expect(myState?.desired).toBeFalsy()
+      expect(Object.keys(myState?.desired ?? {})).toEqual([])
     } finally {
       vi.useRealTimers()
     }
@@ -332,7 +333,7 @@ describe('soft-lock e2e — multi-select claim defense regression (real trace)',
   function makeBobRequester(bobAwareness) {
     const bobDoc = new Y.Doc()
     const bobAw  = new awarenessProtocol.Awareness(bobDoc)
-    bobAw.setLocalState({ id: 'bob', color: '#00f', grad: null, cursor: null, desired: null })
+    bobAw.setLocalState({ id: 'bob', color: '#00f', grad: null, cursor: null, desired: {} })
     return {
       request(elId) {
         bobAw.setLocalStateField('desired', { [elId]: { ts: Date.now(), holding: false } })
@@ -411,7 +412,7 @@ describe('soft-lock e2e — long single-element drag claim refresh', () => {
   function makeBobRequester(bobAwareness) {
     const bobDoc = new Y.Doc()
     const bobAw  = new awarenessProtocol.Awareness(bobDoc)
-    bobAw.setLocalState({ id: 'bob', color: '#00f', grad: null, cursor: null, desired: null })
+    bobAw.setLocalState({ id: 'bob', color: '#00f', grad: null, cursor: null, desired: {} })
     return {
       request(elId) {
         bobAw.setLocalStateField('desired', { [elId]: { ts: Date.now(), holding: false } })
@@ -477,7 +478,7 @@ describe('soft-lock e2e — multi-drag defends the whole group, not just the lea
   function makeRequester(targetAwareness) {
     const doc = new Y.Doc()
     const aw  = new awarenessProtocol.Awareness(doc)
-    aw.setLocalState({ id: 'bob', color: '#00f', grad: null, cursor: null, desired: null })
+    aw.setLocalState({ id: 'bob', color: '#00f', grad: null, cursor: null, desired: {} })
     return {
       request(elId) {
         aw.setLocalStateField('desired', { [elId]: { ts: Date.now(), holding: false } })
@@ -585,8 +586,10 @@ describe('soft-lock integration — getBoxCandidates excludes peer-held elements
     expect(result).not.toContain('die-1')
 
     // No request was queued — box-select never invokes the soft-lock
-    // request path, only shift-click does.
-    expect(awareness.getLocalState()?.desired).toBeFalsy()
+    // request path, only shift-click does. app.js always broadcasts
+    // `desired` as a plain object (never null), so "nothing queued" means
+    // empty, not falsy.
+    expect(Object.keys(awareness.getLocalState()?.desired ?? {})).toEqual([])
   })
 
   test('a toy I already hold myself is included in the box-select result', async () => {

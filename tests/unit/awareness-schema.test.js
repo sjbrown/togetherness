@@ -2,13 +2,19 @@
  * tests/unit/awareness-schema.test.js
  *
  * Tests for the awareness desired schema:
- *   { [elId]: { ts: number, holding: boolean } } | null
+ *   { [elId]: { ts: number, holding: boolean } }
  *
  * One record per elId this client wants: holding:true is a committed
  * claim (ts = last claimed), holding:false is an outstanding acquisition
  * bid (ts = when the bid started). There is no separate ids array and no
  * separate pendingRequests map — membership and holding-vs-bidding status
  * are both read directly off this one map (see soft-lock.js).
+ *
+ * app.js's own convention (see _broadcastDesired) is to always write a
+ * plain object — `{}` when nothing is desired, never null: "desired = {}"
+ * reads as "I desire the empty set", not "I have no opinion". The read
+ * side still tolerates null/missing defensively, since a foreign or older
+ * client (or one that hasn't broadcast yet) may send either.
  *
  * These tests verify the shape that App.select() must write and the shape
  * that overlay.js syncFromAwareness() must read.
@@ -66,7 +72,7 @@ describe('awareness desired schema — write side', () => {
     doc.destroy()
   })
 
-  test('null clears desired', () => {
+  test('the underlying field can still be explicitly nulled (a library capability app.js no longer uses)', () => {
     const doc = new Y.Doc()
     const aw  = new awarenessProtocol.Awareness(doc)
 
@@ -78,10 +84,10 @@ describe('awareness desired schema — write side', () => {
     doc.destroy()
   })
 
-  test('an empty object is a valid (if unusual) cleared-candidate state', () => {
-    // App.js always broadcasts null rather than {} when nothing is
-    // selected (see _broadcastDesired), but readers should treat an empty
-    // object the same as null — zero keys, zero holdings, either way.
+  test('an empty object is the canonical cleared-desired state app.js broadcasts', () => {
+    // App.js always broadcasts {} rather than null when nothing is
+    // desired (see _broadcastDesired) — "desired = {}" reads as "I desire
+    // the empty set", not "I have no opinion".
     const doc = new Y.Doc()
     const aw  = new awarenessProtocol.Awareness(doc)
 
@@ -121,6 +127,9 @@ describe('awareness desired schema — read side (overlay syncFromAwareness logi
     expect(extractRemoteSelections(state)).toEqual(['a', 'b', 'c'])
   })
 
+  // This client's own writes are never null (see the write-side describe
+  // block above), but a foreign/older peer's could still be — the reader
+  // must tolerate it regardless of what we ourselves send.
   test('null desired: no ids returned', () => {
     const state = { desired: null, color: '#00f' }
     expect(extractRemoteSelections(state)).toEqual([])

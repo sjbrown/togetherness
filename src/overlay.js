@@ -44,11 +44,14 @@
  * driven by App.move() during a toy drag, not by SelectionMode or
  * awareness.
  *
- * Awareness desired schema: { [elId]: { ts: number, holding: boolean } } | null
+ * Awareness desired schema: { [elId]: { ts: number, holding: boolean } }
  *   One record per elId this peer wants; `holding: true` entries are their
  *   held selection (see soft-lock.js) — that's the subset rendered as
  *   remote selection rings here. Single selection: one held key.
  *   Multi-selection (rubber-band committed group): multiple held keys.
+ *   This client always broadcasts it as a plain object -- `{}` when
+ *   nothing is desired, never null -- but a foreign/older peer's `desired`
+ *   may still arrive null or absent, so reads here tolerate both.
  *
  * Awareness candidates field: string[] | null
  *   The ids currently under a rubber-band sweep, broadcast separately from
@@ -383,7 +386,7 @@ export function syncFromAwareness(awarenessStates, myClientId) {
     const gradId = _ensurePeerGradient(clientId, state?.grad);
 
     // Remote selection rings — one per held (holding:true) key in the
-    // desired map (desired: { [elId]: { ts, holding } } | null — see
+    // desired map (desired: { [elId]: { ts, holding } } — see
     // soft-lock.js). A holding:false entry is a bid, not a selection —
     // those render via the contested/'requested' ring instead, below.
     if (state?.desired && typeof state.desired === 'object') {

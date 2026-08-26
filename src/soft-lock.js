@@ -10,7 +10,14 @@
  *
  * Awareness schema:
  *
- *   desired: { [elId: string]: { ts: number, holding: boolean } } | null
+ *   desired: { [elId: string]: { ts: number, holding: boolean } }
+ *
+ * This client always broadcasts `desired` as a plain object -- `{}` when
+ * it wants nothing (never null: "desired = {}" reads as "I desire the
+ * empty set", not "I have no opinion" -- see app.js's _broadcastDesired).
+ * Every function below still tolerates a missing or null value when
+ * reading a peer's state, since a foreign/older client or one that hasn't
+ * broadcast yet may still send either.
  *
  * One entry per elId this client currently wants, replacing the earlier
  * two-field `selection`/`pendingRequests` schema — an elId used to be able

@@ -214,10 +214,11 @@ function _afterClaimsChanged() {
 
 // Broadcast the current _desired as this client's awareness `desired`
 // field. Centralized so every call site broadcasts the same shape
-// consistently.
+// consistently -- always a plain object, `{}` when nothing is desired
+// (never null: "desired = {}" reads as "I desire the empty set", not
+// "I have no opinion").
 function _broadcastDesired() {
-  const keys = Object.keys(_desired);
-  _awareness.setLocalStateField('desired', keys.length ? { ..._desired } : null);
+  _awareness.setLocalStateField('desired', { ..._desired });
 }
 
 // ── Selection-gated mode (resize; future: rummage/rotate/...) ──────────────
@@ -296,7 +297,7 @@ let _undoLog      = [];      // { label } — actions undone, newest first;
 // Active drag — set by App.startDrag, cleared by commitMove / cancelMove.
 // Awareness state: drag: { elId, dx, dy }
 // local awareness schema: { id, color, grad, cursor, desired, drag? }
-// desired: { [elId]: { ts: number, holding: boolean } } | null — see soft-lock.js
+// desired: { [elId]: { ts: number, holding: boolean } } — see soft-lock.js
 let _dragState    = null;    // { id, startX, startY, startBboxX, startBboxY,
                               //   boundsRects: [{x,y,w,h}]|null, lastValidX, lastValidY,
                               //   snapPoints: [{cx,cy,snapRadius}] } | null
@@ -825,7 +826,7 @@ function logAwarenessChange({ added, updated, removed }, origin) {
     // devtools renders object/array arguments as collapsed, clickable
     // trees, which makes copy/paste tedious (must expand-everything-by-hand).
     const payload = JSON.stringify({
-      desired: state?.desired ?? null,
+      desired: state?.desired ?? {},
       drag:    state?.drag ?? null,
     });
     lines.push(`[awareness ${direction} ${ts}] client=${clientId} ${payload}`);
@@ -1921,7 +1922,7 @@ const App = {
       color:   _myGrad.c1,
       grad:    _myGrad,
       cursor:  null,
-      desired: Object.keys(_desired).length ? { ..._desired } : null,
+      desired: { ..._desired },
       mode:    _activeMode ? _activeMode.mode : null,
     });
   },
