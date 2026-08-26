@@ -838,7 +838,7 @@ export function branchDialogKeepWorking() {
 // typed/pasted #tableId it's never seen before (see join_intent.js's
 // module comment for why that can only be settled by probing the
 // network). Purely presentational: no Yjs, no provider, no tables.js — the
-// caller (a new join_dialog.js, which owns the actual network probe) hands
+// caller (a new ui_join_dialog.js, which owns the actual network probe) hands
 // in plain strings/arrays and a callback, same contract as every other
 // exported render function in this file.
 //

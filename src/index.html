@@ -165,7 +165,7 @@
 
 <!-- ── Join-intent dialog (blocking — shown only while a typed/pasted
      #tableId this browser has never seen before is being probed; see
-     join_dialog.js's resolveJoinIntent) ─────────────────────────────── -->
+     ui_join_dialog.js's resolveJoinIntent) ───────────────────────────── -->
 <div id="joinDialogScrim" class="dialog-scrim" aria-hidden="true"></div>
 <div id="joinDialog" class="dialog" role="alertdialog" aria-modal="true"
      aria-labelledby="joinDialogTitle" aria-hidden="true">
@@ -207,7 +207,7 @@ import * as UI                  from './ui.js';
 import { getIdentity }          from './user.js';
 import { dragPlaceholderFilterSVG, snapPointGradientSVG, localActionFilterSVG, glowFilterSVG }  from './defs.js';
 import { tablesAPI as tables } from './tables.js';
-import { resolveJoinIntent }    from './join_dialog.js';
+import { resolveJoinIntent }    from './ui_join_dialog.js';
 import { resolveSignalingServers, getStoredSignalingServer, getStoredFallbackSignalingServer } from './signaling.js';
 import * as Trace                  from './trace.js';
 
@@ -287,7 +287,7 @@ awareness.setLocalState({ id: myId, color: myGrad.c1, grad: myGrad, cursor: null
 // here — see home.html's seedTable), or genuinely ambiguous (a
 // typed/pasted link this browser has never seen). Only that last case
 // needs to actually ask — resolveJoinIntent probes the network and shows
-// a dialog (see join_intent.js / join_dialog.js / ui.js).
+// a dialog (see join_intent.js / ui_join_dialog.js / ui.js).
 let isCreator;
 if (noHash) {
   isCreator = true;

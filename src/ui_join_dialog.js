@@ -1,5 +1,5 @@
 /**
- * join_dialog.js — turns join_intent.js's network probe into the actual
+ * ui_join_dialog.js — turns join_intent.js's network probe into the actual
  * "is this session a table's creator?" decision, driving the join-intent
  * dialog (ui.js's showJoinDialogConnecting/showJoinDialogPrompt/
  * hideJoinDialog).

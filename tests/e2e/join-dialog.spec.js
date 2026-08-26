@@ -4,7 +4,7 @@
  * isCreator used to be just `!location.hash` — too coarse. A typed/pasted
  * #tableId this browser has never seen before is genuinely ambiguous:
  * nobody knows without asking the network whether someone else already
- * created it. join_intent.js/join_dialog.js/ui.js resolve that by probing
+ * created it. join_intent.js/ui_join_dialog.js/ui.js resolve that by probing
  * the WebRTC signaling handshake and showing a blocking dialog when (and
  * only when) it's actually ambiguous — see index.html's isCreator
  * derivation and its comment.
