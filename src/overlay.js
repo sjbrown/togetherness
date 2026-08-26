@@ -15,7 +15,15 @@
  *                 (cleared on commit/cancel)
  *   'remote'    — dashed border + peer name label (awareness)
  *   'resize'    — local selection ring + 4 corner drag handles
+ *   'resize-r'  — local selection ring + 1 radius-drag handle (circles)
  *   'locked'    — remote peer is actively editing
+ *
+ * 'resize'/'resize-r' are selection-gated MODE kinds (see MODE_KINDS below
+ * and selection.js's file header) — set via Overlay.setSelectionMode(),
+ * not localSelectionChanged(), and mutually exclusive with every other
+ * kind above. A future mode (rummage, rotate, ...) adds its own kind
+ * string to MODE_KINDS and its own case to render()'s switch; nothing
+ * else in this file hardcodes the current two.
  *
  * Requested/contested indicator (soft-lock.js): a separate, independent
  * decoration — not a SelectionMode kind — drawn on any element with an
@@ -43,8 +51,8 @@
  *   is whatever the id's owning LayerAPI decided a click should cycle into
  *   (see app.js's enterResizeMode). Purely advisory to peers (rendering
  *   doesn't currently distinguish it on remote rings) — the local effect
- *   is entirely driven by SelectionMode's 'resize'/'resize-r' kind
- *   instead, set directly via Overlay.setResizeMode().
+ *   is entirely driven by SelectionMode's own mode-kind entry instead, set
+ *   directly via Overlay.setSelectionMode().
  *
  * Drag ghost system:
  *   The native layer element is never touched during drag; but overlay renders:
@@ -76,6 +84,18 @@ const HANDLE_SIZE = 12;  // px in canvas-space
 export const PAD = 6;           // selection ring padding
 const REQUESTED_PAD = PAD + 6; // extra clearance so the requested ring sits outside the selection ring
 const HANDLE_HIT_PAD = 6; // extra px (canvas-space, pre-scale) added to the handle's own hit box — easier to grab than its drawn size alone
+
+// SelectionMode kinds that represent an active selection-gated mode (see
+// selection.js's file header) rather than a plain 'local'/'remote'/etc.
+// selection state. 'resize'/'resize-r' are the only ones with rendering
+// today; a future kind (rummage, rotate, ...) gets added here and to the
+// render() switch below when its own visuals exist — every other place
+// that needs to know "is this id currently in a mode" (setSelectionMode's
+// own demote-the-old-one step, the local/remote precedence guards in
+// setHoverCandidates and syncFromAwareness) reads this one set instead of
+// repeating the kind list, so adding a mode is a one-line change here, not
+// a hunt through the file for every hardcoded 'resize'/'resize-r' pair.
+const MODE_KINDS = new Set(['resize', 'resize-r']);
 
 /**
  * The four resize corner points for a geo rect (already padded out to the
@@ -264,7 +284,7 @@ export function init(appBus, svgElement, localGrad = null) {
  */
 export function localSelectionChanged(selectedIds) {
   for (const [id, entry] of SelectionMode) {
-    if (entry.kind === 'local' || entry.kind === 'resize' || entry.kind === 'resize-r' || entry.kind === 'candidate') {
+    if (entry.kind === 'local' || entry.kind === 'candidate' || MODE_KINDS.has(entry.kind)) {
       SelectionMode.delete(id);
     }
   }
@@ -276,19 +296,25 @@ export function localSelectionChanged(selectedIds) {
   render();
 }
 
-// Demotes any existing
-// 'resize'/'resize-r' entry back to 'local' first (there is ever at most
-// one — resize mode requires an exclusive single selection — but this
-// stays defensive rather than assuming), then promotes elId's own entry
-// to `kind` if it currently has one and it's 'local' (i.e. really is the
-// sole selection — a stale/mismatched elId is silently a no-op, matching
-// localSelectionChanged's no-throw style elsewhere in this file).
-// Pass elId=null to exit resize mode entirely (leaves everything 'local').
-// kind defaults to 'resize' (corner-drag); pass 'resize-r' for the
-// single-handle radius-drag mode (circles).
-export function setResizeMode(elId, kind = 'resize') {
+// Reflects selection.js's `mode` ({ id, kind } | null — see its file
+// header) onto SelectionMode. Demotes any existing mode-kind entry back to
+// 'local' first (there is ever at most one — a mode requires an exclusive
+// single selection — but this stays defensive rather than assuming), then
+// promotes elId's own entry to `kind` if it currently has one and it's
+// 'local' (i.e. really is the sole selection — a stale/mismatched elId is
+// silently a no-op, matching localSelectionChanged's no-throw style
+// elsewhere in this file). Pass elId=null to exit the mode entirely
+// (leaves everything 'local').
+//
+// `kind` is one of MODE_KINDS above — 'resize' (corner-drag) and
+// 'resize-r' (single-handle radius-drag, circles) are the only ones with
+// rendering today (see the switch in render()); a future kind (rummage,
+// rotate, ...) is drawn correctly here the moment it's added to
+// MODE_KINDS and given its own render() case — this function itself
+// doesn't hardcode which kinds exist.
+export function setSelectionMode(elId, kind) {
   for (const [id, entry] of SelectionMode) {
-    if (entry.kind === 'resize' || entry.kind === 'resize-r') SelectionMode.set(id, { ...entry, kind: 'local' });
+    if (MODE_KINDS.has(entry.kind)) SelectionMode.set(id, { ...entry, kind: 'local' });
   }
   if (elId) {
     const entry = SelectionMode.get(elId);
@@ -298,9 +324,10 @@ export function setResizeMode(elId, kind = 'resize') {
 }
 
 // Set live rubber-band candidates. Replaces any existing candidate entries;
-// does not touch 'local', 'remote', 'locked', or 'resize' entries.
-// If an id already has a 'local' entry (committed single selection), it is
-// left as-is — the local ring takes precedence over the candidate ring.
+// does not touch 'local', 'remote', 'locked', or any mode-kind entries.
+// If an id already has a 'local' or mode entry (committed single
+// selection, possibly already in a mode), it is left as-is — the local
+// ring takes precedence over the candidate ring.
 export function setHoverCandidates(ids) {
   for (const [id, entry] of SelectionMode) {
     if (entry.kind === 'candidate') SelectionMode.delete(id);
@@ -309,7 +336,7 @@ export function setHoverCandidates(ids) {
   const grad  = App.getMyGradient();
   for (const id of ids) {
     const existing = SelectionMode.get(id);
-    if (existing && (existing.kind === 'local' || existing.kind === 'resize')) continue;
+    if (existing && (existing.kind === 'local' || MODE_KINDS.has(existing.kind))) continue;
     SelectionMode.set(id, { kind: 'candidate', color, grad });
   }
   render();
@@ -358,7 +385,7 @@ export function syncFromAwareness(awarenessStates, myClientId) {
         // other peer's ring instead of my own, even though my own
         // selection data still says I hold it.
         const existing = SelectionMode.get(elId);
-        if (existing && (existing.kind === 'local' || existing.kind === 'resize')) continue;
+        if (existing && (existing.kind === 'local' || MODE_KINDS.has(existing.kind))) continue;
         SelectionMode.set(elId, {
           kind:   'remote',
           peerId,

@@ -237,15 +237,11 @@ function _broadcastDesired() {
 
 // ── Selection-gated mode (resize; future: rummage/rotate/...) ──────────────
 // See selection.js's file header for what `mode` is and the exclusivity
-// rule it enforces. Rendering only exists for resize-family kinds today
-// (Overlay has no other mode's visuals yet) -- a future kind gets its own
-// Overlay call added here when it exists, same as this one was.
+// rule it enforces. Overlay.setSelectionMode itself already handles "which
+// kinds actually have rendering" (its own MODE_KINDS) and "elId=null exits
+// whatever's active" -- this is just a straight reflection of _mode onto it.
 function _renderMode() {
-  if (_mode?.kind === 'resize' || _mode?.kind === 'resize-r') {
-    Overlay.setResizeMode(_mode.id, _mode.kind);
-  } else {
-    Overlay.setResizeMode(null);
-  }
+  Overlay.setSelectionMode(_mode?.id ?? null, _mode?.kind);
 }
 
 function _broadcastMode() {
