@@ -1155,6 +1155,18 @@ export function nextSelectMode(domEl, currentKind) {
   return currentKind === 'resize' ? null : 'resize'
 }
 
+// The selection mode a sole-selected domEl shows automatically, with no
+// click required -- currently just the action affordance ('*' glyph /
+// bowstring handle resting state), which every toy gets regardless of its
+// other capabilities (see selectModes' unconditional 'action' entry).
+// Distinct from nextSelectMode's click-to-cycle modes: this one activates
+// the instant the element becomes the sole selection and is suppressed
+// the moment a click-triggered mode is entered (app.js's
+// _renderSelectionKind checks this only when no explicit mode is active).
+export function autoSelectMode(domEl) {
+  return selectModes(domEl).includes('action') ? 'toy-action' : null
+}
+
 
 /**
  * Apply a toy move to a live DOM element only — no Yjs write.
@@ -2361,6 +2373,7 @@ export function makeLayerAPI(ydoc, getLayerEl, myId, tableId, isCreator = false)
     getTtStateSchema,
     selectModes,
     nextSelectMode,
+    autoSelectMode,
     applyMoveCommit: (el, x, y) => {
       const layerEl = layer()
       const oldAnchor = getAnchor(el)

@@ -9,21 +9,29 @@
  * Depends on: App (bus). No ui.js imports. No canvas.js imports.
  *
  * SelectionMode kinds:
- *   'none'      — no decoration
- *   'local'     — solid gradient ring
- *   'candidate' — same visual as 'local'; live rubber-band candidates
- *                 (cleared on commit/cancel)
- *   'remote'    — dashed border + peer name label (awareness)
- *   'resize'    — local selection ring + 4 corner drag handles
- *   'resize-r'  — local selection ring + 1 radius-drag handle (circles)
- *   'locked'    — remote peer is actively editing
+ *   'none'       — no decoration
+ *   'local'      — solid gradient ring
+ *   'candidate'  — same visual as 'local'; live rubber-band candidates
+ *                  (cleared on commit/cancel)
+ *   'remote'     — dashed border + peer name label (awareness)
+ *   'resize'     — local selection ring + 4 corner drag handles
+ *   'resize-r'   — local selection ring + 1 radius-drag handle (circles)
+ *   'toy-action' — local selection ring + the action affordance square
+ *                  (kebab/asterisk glyph, bowstring handle's resting state)
+ *   'locked'     — remote peer is actively editing
  *
- * 'resize'/'resize-r' are selection-gated MODE kinds (see MODE_KINDS below
- * and selection.js's file header) — set via Overlay.setSelectionMode(),
- * not localSelectionChanged(), and mutually exclusive with every other
- * kind above. A future mode (rummage, rotate, ...) adds its own kind
- * string to MODE_KINDS and its own case to render()'s switch; nothing
- * else in this file hardcodes the current two.
+ * 'resize'/'resize-r'/'toy-action' are selection-gated MODE kinds (see
+ * MODE_KINDS below and selection.js's file header) — set via
+ * Overlay.setSelectionMode(), not localSelectionChanged(), and mutually
+ * exclusive with every other kind above (and with each other). Two flavors:
+ * 'resize'/'resize-r' are entered by an explicit second click and tracked
+ * in selection.js's `mode` state; 'toy-action' is offered automatically,
+ * with no click, by any sole-selected element whose owning LayerAPI
+ * reports it (toys.js's autoSelectMode) — app.js's _renderSelectionKind is
+ * the one place that reconciles "explicit mode, or else automatic one" into
+ * a single kind. A future mode (rummage, rotate, ...) adds its own kind
+ * string to MODE_KINDS and its own case to render()'s switch; nothing else
+ * in this file hardcodes the current three.
  *
  * Requested/contested indicator (soft-lock.js): a separate, independent
  * decoration — not a SelectionMode kind — drawn on any element with an
@@ -49,10 +57,12 @@
  * Awareness mode field: `sel-${kind}` | null, e.g. 'sel-resize'
  *   Mirrors selection.js's local `mode` state ({ id, kind } | null) — kind
  *   is whatever the id's owning LayerAPI decided a click should cycle into
- *   (see app.js's enterResizeMode). Purely advisory to peers (rendering
- *   doesn't currently distinguish it on remote rings) — the local effect
- *   is entirely driven by SelectionMode's own mode-kind entry instead, set
- *   directly via Overlay.setSelectionMode().
+ *   (see app.js's enterResizeMode). Explicit modes only — the automatic
+ *   'toy-action' kind is never broadcast, same as it never was back when
+ *   it was tracked separately (see below). Purely advisory to peers
+ *   (rendering doesn't currently distinguish it on remote rings) — the
+ *   local effect is entirely driven by SelectionMode's own mode-kind entry
+ *   instead, set directly via Overlay.setSelectionMode().
  *
  * Drag ghost system:
  *   The native layer element is never touched during drag; but overlay renders:
@@ -87,15 +97,16 @@ const HANDLE_HIT_PAD = 6; // extra px (canvas-space, pre-scale) added to the han
 
 // SelectionMode kinds that represent an active selection-gated mode (see
 // selection.js's file header) rather than a plain 'local'/'remote'/etc.
-// selection state. 'resize'/'resize-r' are the only ones with rendering
-// today; a future kind (rummage, rotate, ...) gets added here and to the
-// render() switch below when its own visuals exist — every other place
-// that needs to know "is this id currently in a mode" (setSelectionMode's
-// own demote-the-old-one step, the local/remote precedence guards in
-// setHoverCandidates and syncFromAwareness) reads this one set instead of
-// repeating the kind list, so adding a mode is a one-line change here, not
-// a hunt through the file for every hardcoded 'resize'/'resize-r' pair.
-const MODE_KINDS = new Set(['resize', 'resize-r']);
+// selection state — whether explicitly entered by a click (resize,
+// resize-r) or offered automatically with no click (toy-action). A future
+// mode (rummage, rotate, ...) gets added here and to the render() switch
+// below when its own visuals exist — every other place that needs to know
+// "is this id currently in a mode" (setSelectionMode's own demote-the-
+// old-one step, the local/remote precedence guards in setHoverCandidates
+// and syncFromAwareness) reads this one set instead of repeating the kind
+// list, so adding a mode is a one-line change here, not a hunt through
+// the file for every hardcoded kind literal.
+const MODE_KINDS = new Set(['resize', 'resize-r', 'toy-action']);
 
 /**
  * The four resize corner points for a geo rect (already padded out to the
@@ -681,25 +692,6 @@ export function endGhost(elId) {
 let _dropTargetId = null;
 
 /**
- * The elId currently showing the action-mode affordance (kebab + * icon
- * squares), or null. Set by App whenever the sole local selection supports
- * the 'action' select mode; currently all toys.
- * A single id, like resize mode — the affordance only makes sense
- * for an exclusive single selection.
- */
-let _actionAffordanceId = null;
-
-/**
- * Called by App.select/_afterClaimsChanged with the sole selected id (if
- * it supports 'action') or null otherwise. Short circuits when unchanged.
- */
-export function setActionAffordance(elId) {
-  if (_actionAffordanceId === elId) return;
-  _actionAffordanceId = elId;
-  render();
-}
-
-/**
  * Called by App while dragging a toy, with the id of a .tt_contents-having
  * element currently under the drop position, or null.
  * Short circuits when the id is unchanged,
@@ -786,6 +778,10 @@ export function render() {
       case 'resize-r':
         renderLocalResizeRSelection(geo, entry, scale);
         break;
+      case 'toy-action':
+        renderLocalSelection(geo, entry, scale);
+        renderActionAffordance(geo, scale);
+        break;
     }
   }
 
@@ -797,20 +793,6 @@ export function render() {
     const geo = App.getBBox(elId);
     if (!geo) continue;
     renderRequestedIndicator(geo, scale);
-  }
-
-  // ── Action-mode affordance (kebab + * icon squares) — independent of
-  // SelectionMode kind at the App level (App tracks it alongside, not as
-  // part of, the selection claim), but only actually drawn while the id's
-  // own current kind is still 'local' — once the same id enters
-  // 'resize'/'resize-r' mode (a second click), the corner/edge handle
-  // decorations take over that space instead.
-  if (_actionAffordanceId) {
-    const entry = SelectionMode.get(_actionAffordanceId);
-    if (entry && entry.kind === 'local') {
-      const geo = App.getBBox(_actionAffordanceId);
-      if (geo) renderActionAffordance(geo, scale);
-    }
   }
 
   // ── Remote drag ghosts + rings ─────────────────────────────────────────
@@ -1051,9 +1033,11 @@ function renderLocalResizeRSelection(geo, entry, scale) {
 }
 
 // ── Action-mode affordance ───────────────────────────────────────────────────
-// A single rounded-corner icon square — asterisk (*), the bowstring handle's
-// resting state (see delight.js) — tinted to the local player's own color
-// via the same feColorMatrix trick toy artwork uses (see setLocalGradient /
+// Drawn by the 'toy-action' case above, alongside the ordinary selection
+// ring (see MODE_KINDS and the file header). A single rounded-corner icon
+// square — asterisk (*), the bowstring handle's resting state (see
+// delight.js) — tinted to the local player's own color via the same
+// feColorMatrix trick toy artwork uses (see setLocalGradient /
 // LOCAL_ACTION_FILTER_ID): a white square background becomes the player's
 // color; the glyph itself (drawAsteriskGlyph, icons.js) is drawn as a
 // sibling (not filtered) in a fixed dark ink so it stays legible against

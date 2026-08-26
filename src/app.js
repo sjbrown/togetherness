@@ -166,7 +166,7 @@ function _applySelState(rawNext) {
   if (desiredChanged && !_sameIdSet(prevHeld, _heldIds())) {
     _afterClaimsChanged();
   } else if (modeChanged) {
-    _renderMode();
+    _renderSelectionKind();
     _broadcastMode();
   } else {
     _broadcastDesired();
@@ -204,24 +204,7 @@ function _afterClaimsChanged() {
   // runs, so this is pure rendering -- no validity decision left to make
   // here. Still needed even when the mode itself is unchanged, since
   // localSelectionChanged just reset every claimed id back to 'local'.
-  _renderMode();
-  // Action-mode affordance (kebab + * icon squares) — like a mode, only
-  // makes sense for an exclusive single selection, but unlike a mode it
-  // doesn't require a second click: it's shown immediately alongside the
-  // ordinary 'local' selection ring for any sole-selected element whose
-  // LayerAPI.selectModes() includes 'action' (currently all toys). This is
-  // a pure derivation from the current selection, not stored state, so
-  // it's recomputed fresh here rather than tracked in selection.js.
-  // Overlay itself hides it once that id enters a mode.
-  if (claimedSet.size === 1) {
-    const [soleId] = claimedSet;
-    const domEl = _svgEl.querySelector(`[data-id="${soleId}"]`);
-    const mtype = moduleForElement(domEl);
-    const modes = _Layers[mtype]?.selectModes?.(domEl) ?? [];
-    Overlay.setActionAffordance(modes.includes('action') ? soleId : null);
-  } else {
-    Overlay.setActionAffordance(null);
-  }
+  _renderSelectionKind();
   _broadcastDesired();
   _broadcastMode();
   UI.onSelectionChanged(claimedSet);
@@ -237,11 +220,30 @@ function _broadcastDesired() {
 
 // ── Selection-gated mode (resize; future: rummage/rotate/...) ──────────────
 // See selection.js's file header for what `mode` is and the exclusivity
-// rule it enforces. Overlay.setSelectionMode itself already handles "which
-// kinds actually have rendering" (its own MODE_KINDS) and "elId=null exits
-// whatever's active" -- this is just a straight reflection of _mode onto it.
-function _renderMode() {
-  Overlay.setSelectionMode(_mode?.id ?? null, _mode?.kind);
+// rule it enforces.
+//
+// The sole held id's visual kind comes from one of two sources, which
+// share the same underlying mechanism (Overlay.setSelectionMode's
+// demote-then-promote onto SelectionMode) and are mutually exclusive at
+// the same id, so this is the one place that decides which wins and makes
+// exactly one call:
+//   1. An explicit mode (_mode) -- entered by a click, tracked in
+//      selection.js, already reconciled valid-or-null by the time this
+//      runs (see _applySelState).
+//   2. Failing that, an automatic mode the sole id's own owning LayerAPI
+//      reports on its own initiative with no click at all -- e.g. toys'
+//      action affordance ('toy-action', see toys.js's autoSelectMode).
+//      app.js doesn't know which element types get this or why; it only
+//      knows to ask.
+function _renderSelectionKind() {
+  const soleId = Selection.soleHeldId(_selState());
+  let kind = _mode?.kind ?? null;
+  if (!kind && soleId) {
+    const domEl = _svgEl.querySelector(`[data-id="${soleId}"]`);
+    const layer = _Layers[moduleForElement(domEl)];
+    kind = layer?.autoSelectMode?.(domEl) ?? null;
+  }
+  Overlay.setSelectionMode(kind ? soleId : null, kind);
 }
 
 function _broadcastMode() {
@@ -1605,9 +1607,12 @@ const App = {
     // intercepting the corner that no longer visually shows it.
     if (_mode?.id === id) return false;
     const domEl = _svgEl?.querySelector(`[data-id="${id}"]`);
-    if (!domEl || moduleForElement(domEl) !== 'toys') return false;
-    const modes = _Layers['toys']?.selectModes?.(domEl) ?? [];
-    if (!modes.includes('action')) return false;
+    if (!domEl) return false;
+    const layer = _Layers[moduleForElement(domEl)];
+    // Same question _renderSelectionKind asks to decide what to show —
+    // app.js doesn't know which element types get the action affordance,
+    // only that a bowstring gesture only applies where one is showing.
+    if (layer?.autoSelectMode?.(domEl) !== 'toy-action') return false;
     const geo = App.getBBox(id);
     if (!geo) return false;
     if (!Delight.hitTestBowstring(geo, canvasPoint.x, canvasPoint.y, App.getViewScale())) return false;

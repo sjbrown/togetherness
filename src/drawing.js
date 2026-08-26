@@ -244,6 +244,15 @@ export function nextSelectMode(svgEl, currentKind) {
 }
 
 /**
+ * Drawings have no automatic (click-free) selection mode -- only the
+ * click-to-cycle resize-family modes from nextSelectMode. Mirrors toys.js's
+ * autoSelectMode for symmetry across LayerAPIs.
+ */
+export function autoSelectMode(_svgEl) {
+  return null;
+}
+
+/**
  * Commit a move to the Yjs doc in a single transaction.
  * Called once on pointerup.
  * All shape-type branching lives here; callers are type-agnostic.
@@ -500,6 +509,7 @@ export function makeLayerAPI(ydoc, yDrawing) {
     getTtStateSchema,
     selectModes,
     nextSelectMode,
+    autoSelectMode,
     applyMoveCommit: (yEl, x, y)     => applyMoveCommit(ydoc, yEl, x, y),
     applyResize:     (yEl, x, y, w, h) => applyResize(ydoc, yEl, x, y, w, h),
     applyTtState:    (state)         => applyTtState(ydoc, yDrawing, state),
