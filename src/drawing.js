@@ -232,6 +232,18 @@ export function selectModes(svgEl) {
 }
 
 /**
+ * Which selection mode a second click should cycle svgEl into, given the
+ * mode it's currently in (or null). Mirrors toys.js's nextSelectMode --
+ * rects/circles each support exactly one resize-family mode, so the cycle
+ * is just that mode <-> none.
+ */
+export function nextSelectMode(svgEl, currentKind) {
+  const kind = selectModes(svgEl)[0] ?? null;
+  if (!kind) return null;
+  return currentKind === kind ? null : kind;
+}
+
+/**
  * Commit a move to the Yjs doc in a single transaction.
  * Called once on pointerup.
  * All shape-type branching lives here; callers are type-agnostic.
@@ -487,6 +499,7 @@ export function makeLayerAPI(ydoc, yDrawing) {
     getTtState,
     getTtStateSchema,
     selectModes,
+    nextSelectMode,
     applyMoveCommit: (yEl, x, y)     => applyMoveCommit(ydoc, yEl, x, y),
     applyResize:     (yEl, x, y, w, h) => applyResize(ydoc, yEl, x, y, w, h),
     applyTtState:    (state)         => applyTtState(ydoc, yDrawing, state),

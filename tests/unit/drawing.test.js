@@ -13,6 +13,7 @@ import { describe, test, expect } from 'vitest'
 import {
   addDrawing, deleteDrawing, findDrawing,
   getGeom, _toSVGEl, listDrawings, CURRENT_SCHEMA, SHAPE_TYPES,
+  selectModes, nextSelectMode,
 } from '../../src/drawing.js'
 import { tablesAPI } from '../../src/tables.js'
 
@@ -195,6 +196,34 @@ describe('basic operations', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // getGeom — raw bounding box from a rendered svgEl (PAD lives in the overlay)
 // ─────────────────────────────────────────────────────────────────────────────
+
+describe('selectModes / nextSelectMode', () => {
+  const rectEl   = () => document.createElementNS('http://www.w3.org/2000/svg', 'rect')
+  const circleEl = () => document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+  const lineEl   = () => document.createElementNS('http://www.w3.org/2000/svg', 'line')
+
+  test('selectModes: rects support resize, circles resize-r, everything else nothing', () => {
+    expect(selectModes(rectEl())).toEqual(['resize'])
+    expect(selectModes(circleEl())).toEqual(['resize-r'])
+    expect(selectModes(lineEl())).toEqual([])
+  })
+
+  test('nextSelectMode cycles a rect through resize <-> none', () => {
+    const el = rectEl()
+    expect(nextSelectMode(el, null)).toBe('resize')
+    expect(nextSelectMode(el, 'resize')).toBeNull()
+  })
+
+  test('nextSelectMode cycles a circle through resize-r <-> none', () => {
+    const el = circleEl()
+    expect(nextSelectMode(el, null)).toBe('resize-r')
+    expect(nextSelectMode(el, 'resize-r')).toBeNull()
+  })
+
+  test('nextSelectMode is null for a shape with no selection modes', () => {
+    expect(nextSelectMode(lineEl(), null)).toBeNull()
+  })
+})
 
 describe('getGeom', () => {
   // Helper: render a shape to its svgEl the same way listDrawings does.

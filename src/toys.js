@@ -1141,6 +1141,20 @@ export function selectModes(domEl) {
   return modes
 }
 
+// Which selection mode a second click should cycle domEl into, given the
+// mode it's currently in (or null). 'action' isn't part of this cycle --
+// it's the static affordance shown alongside the ordinary selection ring,
+// not something a click enters/exits. 'rummage' is a real capability tag
+// some toy SVGs already carry (tt-mode-rummage, on trays/bags/supply) but
+// has no gesture or rendering behind it yet, so it's deliberately excluded
+// from the cycle for now: a rummage-capable container still just cycles
+// resize -> none -> resize, the same as any other resizable toy, until
+// rummage mode actually exists here.
+export function nextSelectMode(domEl, currentKind) {
+  if (!selectModes(domEl).includes('resize')) return null
+  return currentKind === 'resize' ? null : 'resize'
+}
+
 
 /**
  * Apply a toy move to a live DOM element only — no Yjs write.
@@ -2346,6 +2360,7 @@ export function makeLayerAPI(ydoc, getLayerEl, myId, tableId, isCreator = false)
     getTtState:      getTtStateDom,
     getTtStateSchema,
     selectModes,
+    nextSelectMode,
     applyMoveCommit: (el, x, y) => {
       const layerEl = layer()
       const oldAnchor = getAnchor(el)

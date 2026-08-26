@@ -38,10 +38,12 @@
  *   visual for "someone else is sweeping over these"), but the field is
  *   wire-present so it can be added without a schema change.
  *
- * Awareness mode field: 'sel-resize' | null
- *   Set by App.enterResizeMode/exitResizeMode. Purely advisory to peers
- *   (rendering doesn't currently distinguish it on remote rings) — the
- *   local effect is entirely driven by SelectionMode's 'resize' kind
+ * Awareness mode field: `sel-${kind}` | null, e.g. 'sel-resize'
+ *   Mirrors selection.js's local `mode` state ({ id, kind } | null) — kind
+ *   is whatever the id's owning LayerAPI decided a click should cycle into
+ *   (see app.js's enterResizeMode). Purely advisory to peers (rendering
+ *   doesn't currently distinguish it on remote rings) — the local effect
+ *   is entirely driven by SelectionMode's 'resize'/'resize-r' kind
  *   instead, set directly via Overlay.setResizeMode().
  *
  * Drag ghost system:
