@@ -22,6 +22,21 @@ async function seedSignalingUrl(page, url) {
   await page.addInitScript((url) => localStorage.setItem('tt_signaling_server', url), url);
 }
 
+/**
+ * Overrides BOTH signaling URLs. signaling.js's defaultFallbackSignalingServer()
+ * only returns '' when location.hostname === 'localhost' — under Docker the
+ * page is served from a container IP, so leaving the fallback at its
+ * default resolves to a real public server, which a Docker test runner
+ * with real network access can actually reach. Tests asserting a truly
+ * unreachable signaling layer need both URLs broken, not just the primary.
+ */
+async function seedUnreachableSignaling(page) {
+  await page.addInitScript(() => {
+    localStorage.setItem('tt_signaling_server', 'ws://127.0.0.1:1');
+    localStorage.setItem('tt_signaling_server_fallback', 'ws://127.0.0.1:1');
+  });
+}
+
 test.describe('join-intent dialog', () => {
   test('no hash: creator, dialog never appears', async ({ page }) => {
     await seedSignalingUrl(page, SIGNALING_URL);
@@ -42,9 +57,10 @@ test.describe('join-intent dialog', () => {
     await expect(row).not.toHaveClass(/loading/, { timeout: 10000 });
     await row.click();
 
-    // serve resolves "index.html" implicitly for "/", so the navigated URL
-    // is just "/#tableId", not "/index.html#tableId".
-    await page.waitForURL(/\/#tt-T-v1-/, { timeout: 10000 });
+    // Different static servers resolve "/" differently — some show a bare
+    // "/#tableId", others "/index.html#tableId" — so match on the hash
+    // alone rather than assuming what precedes it.
+    await page.waitForURL(/#tt-T-v1-/, { timeout: 10000 });
     await expect(page.locator('#tableLabel')).not.toHaveText('', { timeout: 8000 });
     await page.waitForTimeout(300); // give a spurious dialog a chance to open
     await expect(page.locator('#joinDialogScrim')).not.toHaveClass(/open/);
@@ -114,8 +130,9 @@ test.describe('join-intent dialog', () => {
   });
 
   test('signaling unreachable: offline prompt, "Proceed offline" proceeds as creator', async ({ page }) => {
-    // Port 1: nothing listens there, so the WebSocket fails fast.
-    await seedSignalingUrl(page, 'ws://127.0.0.1:1');
+    // Port 1: nothing listens there, so the WebSocket fails fast. Both
+    // primary and fallback need to be broken — see seedUnreachableSignaling.
+    await seedUnreachableSignaling(page);
     await seedJoinTimeouts(page, { signalingTimeoutMs: 1500, peerTimeoutMs: 1500 });
 
     const tableId = 'tt-T-v1-unreachable-' + Date.now();
