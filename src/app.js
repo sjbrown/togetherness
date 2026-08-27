@@ -38,6 +38,7 @@ import * as UndoRedo                              from './undo_redo.js';
 import * as Events                                from './events.js';
 import { entityGradient }            from './entity_gradient.js';
 import { isElementHeldByOther, computeTickActions } from './soft-lock.js';
+import * as Selection                              from './selection.js';
 
 
 import * as Y from 'yjs';
@@ -88,41 +89,82 @@ let _activeLayer  = 'toys';
 // connection is doing right now, not only what it did.
 const _netStatus = { connected: false, synced: false, webrtcPeers: 0, bcPeers: 0, signaling: [] };
 
-// _myClaims is the single local SSOT for this client's committed selection.
-//   { [elId: string]: number }   elId -> claim timestamp (ms)
+// _desired is this client's own selection intent:
+//   { [elId]: { ts: number, holding: boolean } }
 //
-// Membership (which elIds I hold) and recency (since when) together.
-// Invariant: Object.keys(_myClaims) is always the held-id set
+// holding:true means its in my committed selection (ts = last claimed)
+// holding:false means a bid to acquire (el held by someone else)
+//               (ts = when the bid started)
 //
-// All writes go through the helpers below, each of which ends in
-// Overlay.localSelectionChanged + _broadcastSelection + UI.onSelectionChanged,
-// so forgetting to broadcast is structurally impossible.
-let _myClaims = {};
+// _applySelState (below) mutates _desired
+// Exception: a gesture that only refreshes an already-held claim's
+// timestamp writes _desired directly and broadcasts itself
+let _desired = {};
+
+// The selection-gated mode for the sole held id: { id, mode } | null.
+// Null iff the held set isn't a single element
+// Broadcast via the awareness `mode` field verbatim
+let _activeMode = null;
+
 // Tracks whether the last _afterClaimsChanged call left a non-empty selection
 let _lastClaimedSetNonEmpty = false;
 
 // ── Selection mutation helpers —
 
-// Add elIds to the committed selection, stamping a fresh claim timestamp.
-// Idempotent: re-claiming an already-held id just refreshes its timestamp.
-function _claim(ids, ts = Date.now()) {
-  for (const id of ids) _myClaims[id] = ts;
-  _afterClaimsChanged();
+// The elIds I currently hold (a snapshot array, not a live view).
+function _heldIds() {
+  return Object.keys(_desired).filter((id) => _desired[id].holding);
+}
+
+function _sameIdSet(a, b) {
+  if (a.length !== b.length) return false;
+  const setA = new Set(a);
+  return b.every((id) => setA.has(id));
+}
+
+function _selState() {
+  return { desired: _desired, activeMode: _activeMode };
+}
+
+// Applies a new pure Selection state to _desired/_activeMode.
+function _applySelState(rawNext) {
+  const soleId = Selection.soleHeldId(rawNext);
+  // Reconcile runs first, unconditionally, so no caller has to remember
+  // that a mode can be invalidated by a changed held set.
+  const next = Selection.reconcileMode(rawNext, soleId ? _defaultModeFor(soleId) : null);
+  const desiredChanged = next.desired !== _desired;
+  const modeChanged = next.activeMode !== _activeMode;
+  if (!desiredChanged && !modeChanged) return;
+
+  const prevHeld = _heldIds();
+  _desired = next.desired;
+  _activeMode = next.activeMode;
+
+  // a mode-only change re-renders and re-broadcasts
+  // a bid-only change just broadcasts.
+  if (desiredChanged && !_sameIdSet(prevHeld, _heldIds())) {
+    _afterClaimsChanged();
+  } else if (modeChanged) {
+    _renderSelectionMode();
+    _broadcastMode();
+  } else {
+    _broadcastDesired();
+  }
 }
 
 // Remove specific elIds from the committed selection.
 function _unclaim(ids) {
-  for (const id of ids) delete _myClaims[id];
-  _afterClaimsChanged();
+  let state = _selState();
+  for (const id of ids) state = Selection.unclaim(state, id);
+  _applySelState(state);
 }
 
 // Clear the committed selection entirely.
 function _clearClaims() {
-  _myClaims = {};
-  _afterClaimsChanged();
+  _applySelState(Selection.clearClaims(_selState()));
 }
 
-// Called by every mutation helper after _myClaims has been updated.
+// Called whenever the held-id SET has changed (not just a bid or a mode).
 // Order matters: local SelectionMode must be updated BEFORE broadcasting,
 // because setLocalStateField fires 'change' synchronously, which can trigger
 // syncFromAwareness before this function returns. If a stale 'local' entry
@@ -131,81 +173,48 @@ function _clearClaims() {
 // nothing afterward re-triggers that decision, leaving the elId with no
 // SelectionMode entry at all. See overlay.js for the guard.
 function _afterClaimsChanged() {
-  const claimedSet = new Set(Object.keys(_myClaims));
+  const claimedSet = new Set(_heldIds());
   const wasSelecting = _lastClaimedSetNonEmpty;
   _lastClaimedSetNonEmpty = claimedSet.size > 0;
   // Deselecting to nothing is an intent signal - good time to try checkpointing
   if (wasSelecting && claimedSet.size === 0) maybeIdleCheckpoint('deselect');
   Overlay.localSelectionChanged(claimedSet);
-  // Resize mode only makes sense while its own id is the sole selection —
-  // Checked here rather than at each individual call site so this
-  // invariant can't be forgotten.
-  if (_resizeModeId && !(claimedSet.size === 1 && claimedSet.has(_resizeModeId))) {
-    _exitResizeModeInternal();
-  } else if (_resizeModeId) {
-    // Still valid — reassert the 'resize' kind, since localSelectionChanged
-    // just reset every claimed id back to 'local'.
-    Overlay.setResizeMode(_resizeModeId, _resizeModeKind);
-  }
-  // Action-mode affordance (kebab + * icon squares) — like resize mode,
-  // only makes sense for an exclusive single selection, but unlike resize
-  // mode it doesn't require a second click: it's shown immediately
-  // alongside the ordinary 'local' selection ring for any sole-selected
-  // element whose LayerAPI.selectModes() includes 'action' (currently all
-  // toys). Overlay itself hides it once that id enters 'resize'/'resize-r'.
-  if (claimedSet.size === 1) {
-    const [soleId] = claimedSet;
-    const domEl = _svgEl.querySelector(`[data-id="${soleId}"]`);
-    const mtype = moduleForElement(domEl);
-    const modes = _Layers[mtype]?.selectModes?.(domEl) ?? [];
-    Overlay.setActionAffordance(modes.includes('action') ? soleId : null);
-  } else {
-    Overlay.setActionAffordance(null);
-  }
-  _broadcastSelection();
+  // _activeMode is already reconciled by this point, so this is pure
+  // rendering. Still needed even when the mode is unchanged, since
+  // localSelectionChanged just reset every claimed id to 'local'.
+  _renderSelectionMode();
+  _broadcastDesired();
+  _broadcastMode();
   UI.onSelectionChanged(claimedSet);
 }
 
-// Broadcast the current _myClaims as this client's awareness `selection`
-// field. Centralized so every call site broadcasts the same shape consistently.
-function _broadcastSelection() {
-  const keys = Object.keys(_myClaims);
-  _awareness.setLocalStateField('selection', keys.length ? { ..._myClaims } : null);
+function _broadcastDesired() {
+  _awareness.setLocalStateField('desired', { ..._desired });
 }
 
-// ── Resize mode ─────────────────────────────────────────────────────────────
-// A per-client UI mode, orthogonal to _myClaims.
-// Entered by clicking an already-sole-selected container a second time
-// A single elId or null — resize only one object at a time.
-// Broadcast via the awareness `mode` field: 'sel-resize'
-let _resizeModeId = null;
-let _resizeModeKind = 'resize'; // 'resize' (corner-drag) | 'resize-r' (single-handle radius-drag)
+// ── Selection-gated mode ─────────────────────────────────────────────────
+
+// Modes with their own drag handles.
+const RESIZE_HANDLE_MODES = new Set(['sel-resize', 'sel-resize-r']);
+
+// id's own live DOM element and owning LayerAPI
+function _layerFor(id) {
+  const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
+  return { domEl, layer: _Layers[moduleForElement(domEl)] };
+}
+
+function _defaultModeFor(id) {
+  const { domEl, layer } = _layerFor(id);
+  return layer?.nextSelectMode?.(domEl, null) ?? null;
+}
+
+function _renderSelectionMode() {
+  const soleId = Selection.soleHeldId(_selState());
+  Overlay.setSelectionMode(soleId, soleId ? _activeMode.mode : null);
+}
 
 function _broadcastMode() {
-  _awareness.setLocalStateField('mode', _resizeModeId ? (_resizeModeKind === 'resize-r' ? 'sel-resize-r' : 'sel-resize') : null);
-}
-
-// Shared by the public exitResizeMode() and _afterClaimsChanged's own
-// invalidation check above — avoids exitResizeMode() re-deriving a claimedSet
-// it already has, and keeps both paths' ordering (Overlay first, then
-// broadcast) identical.
-function _exitResizeModeInternal() {
-  _resizeModeId = null;
-  Overlay.setResizeMode(null);
-  _broadcastMode();
-}
-
-// Soft-lock request state — this client's own outstanding acquisition bids,
-// keyed by elId. Exists ONLY while actively trying to acquire an elId not
-// yet in _myClaims; deleted the moment that bid resolves, win or lose.
-//   { [elId: string]: number }  // elId -> request timestamp (ms)
-let _pendingRequests = {};
-
-// Broadcast the current _pendingRequests as this client's awareness
-// `pendingRequests` field. Sibling to how `selection` is broadcast.
-function _broadcastPendingRequests() {
-  const keys = Object.keys(_pendingRequests);
-  _awareness.setLocalStateField('pendingRequests', keys.length ? { ..._pendingRequests } : null);
+  _awareness.setLocalStateField('mode', _activeMode ? _activeMode.mode : null);
 }
 
 // Soft-lock tick — periodically evaluates computeTickActions() and applies
@@ -227,37 +236,23 @@ const CLAIM_REFRESH_THROTTLE_MS = 500;
 let _softLockTickHandle = null;
 
 function _softLockTick() {
-  const { elIdsToAcquire, elIdsToDropRequest, elIdsToRelease } = computeTickActions({
+  const tickActions = computeTickActions({
     myClientId:      _awareness.clientID,
     awarenessStates: _awareness.getStates(),
     now:             Date.now(),
   });
 
+  const { elIdsToAcquire, elIdsToDropRequest, elIdsToRelease } = tickActions;
   if (!elIdsToAcquire.length && !elIdsToDropRequest.length && !elIdsToRelease.length) return;
 
-  for (const elId of elIdsToAcquire) {
-    _myClaims[elId] = Date.now();           // promotion moment IS the claim
-    delete _pendingRequests[elId];          // bid resolved — won
-  }
-  for (const elId of elIdsToDropRequest) {
-    delete _pendingRequests[elId];          // bid resolved — lost
-  }
-  for (const elId of elIdsToRelease) {
-    delete _myClaims[elId];
-    delete _pendingRequests[elId]; // defensive; shouldn't normally exist for a held elId
-  }
-
-  // _afterClaimsChanged handles localSelectionChanged + broadcast + UI notify
-  // with the correct pre-broadcast ordering (see comment on _afterClaimsChanged).
-  _afterClaimsChanged();
-  _broadcastPendingRequests();
+  _applySelState(Selection.applyTickActions(_selState(), tickActions));
 }
 
 // Returns the single selected id, or null if zero or more than one are selected.
 // Callers that need to work on a single element must check
 // this returns non-null before proceeding
 function _singleSelectedId() {
-  const ids = Object.keys(_myClaims);
+  const ids = _heldIds();
   return ids.length === 1 ? ids[0] : null;
 }
 let _activeTool   = 'select';
@@ -269,8 +264,8 @@ let _undoLog      = [];      // { label } — actions undone, newest first;
 
 // Active drag — set by App.startDrag, cleared by commitMove / cancelMove.
 // Awareness state: drag: { elId, dx, dy }
-// local awareness schema: { id, color, grad, cursor, selection, drag? }
-// selection: { [elId: string]: number } | null  // elId -> claim timestamp (ms)
+// local awareness schema: { id, color, grad, cursor, desired, drag? }
+// desired: { [elId]: { ts: number, holding: boolean } }
 let _dragState    = null;    // { id, startX, startY, startBboxX, startBboxY,
                               //   boundsRects: [{x,y,w,h}]|null, lastValidX, lastValidY,
                               //   snapPoints: [{cx,cy,snapRadius}] } | null
@@ -284,7 +279,6 @@ let _multiDragState = null;  // { elements: [{ id, mtype, anchorX, anchorY, bbox
                              //   lastValidDx, lastValidDy } | null
 
 // Active corner-drag resize
-// Only reachable while _resizeModeId === id and only ever for a container.
 let _resizeState = null;    // { id, corner, startRect: {x,y,width,height},
                             //   lastRect: {x,y,width,height} } | null
 
@@ -798,9 +792,8 @@ function logAwarenessChange({ added, updated, removed }, origin) {
     // devtools renders object/array arguments as collapsed, clickable
     // trees, which makes copy/paste tedious (must expand-everything-by-hand).
     const payload = JSON.stringify({
-      selection:       state?.selection ?? null,
-      pendingRequests: state?.pendingRequests ?? null,
-      drag:            state?.drag ?? null,
+      desired: state?.desired ?? {},
+      drag:    state?.drag ?? null,
     });
     lines.push(`[awareness ${direction} ${ts}] client=${clientId} ${payload}`);
   }
@@ -876,7 +869,7 @@ const App = {
   maybeCheckpoint: (reason) => maybeCheckpoint(reason),
   getCheckpointFrequency: () => getCheckpointFrequency(),
   setCheckpointFrequency: (minutes) => setCheckpointFrequency(minutes),
-  getSelectedIds:  () => Object.keys(_myClaims),
+  getSelectedIds:  () => _heldIds(),
   getBBox:  (id) => {
     const svgEl = _svgEl.querySelector(`[data-id="${id}"]`);
     if (!svgEl) return null;
@@ -953,20 +946,15 @@ const App = {
   isHeldByOther: (id) => isElementHeldByOther(id, _awareness.getStates(), _awareness.clientID),
 
   // Advisory soft-lock request: write/refresh this client's own acquisition
-  // entry for `id`. Per protocol, an acquirer's request is write-once — a
-  // client cannot cancel or re-issue its own pending request once sent, so
-  // this is a no-op if one is already outstanding for this id.
+  // entry for `id`. A no-op if one is already outstanding for this id.
   requestElement: (id) => {
-    if (_pendingRequests[id] != null) return;
-    _pendingRequests[id] = Date.now();
-    _broadcastPendingRequests();
+    _applySelState(Selection.request(_selState(), id));
   },
 
-  // Refresh this client's claim timestamp for a single already-held elId,
-  // without touching the rest of the current multi-selection.
+  // Refresh this client's claim timestamp for a single already-held
+  // elId, without touching the rest of the current multi-selection.
   reassertClaim: (id) => {
-    if (!(id in _myClaims)) return; // only meaningful if I already hold it
-    _claim([id]);
+    _applySelState(Selection.reassertClaim(_selState(), id));
   },
 
   // Drop every claim this client currently holds
@@ -975,74 +963,37 @@ const App = {
     _clearClaims();
   },
 
+  // Exclusive single-select: a held-by-other id becomes a request
+  // instead of a claim, abandoning any stale request for a different
+  // id; a re-click of a held-by-self id is a rebuttal.
   select: (id) => {
     App.setTool('select');
-    if (id && App.isHeldByOther(id)) {
-      // Plain click on a held-by-other element is a request.
-      // Shift wasn't held, so any selection I currently hold is cleared
-      _clearClaims();
-      App.requestElement(id);
-      return;
-    }
-    if (id) {
-      // select() is exclusive (single-select): replace the whole selection
-      // with just this one id.
-      // This also handles re-clicking a held-by-self element as rebuttal
-      // gesture -- it gets a fresh timestamp from _claim()
-      _myClaims = {};
-      _claim([id]);
-    } else {
-      _clearClaims();
-    }
+    _applySelState(Selection.select(_selState(), id, { isHeldByOther: App.isHeldByOther }));
   },
 
-  // Toggle a single id in/out of the current selection.
-  // If the result is N===0: deselect. N===1: single-select. N>1: multi-select.
-  // Collapses back to single-select mode when size drops to 1.
-  //
-  // shift-clicking a held-by-other element queues a request for it
-  // (App.requestElement), independent of and alongside whatever else is
-  // already held-by-self or other pending requests.
-  // Shift-clicking a held-by-self element is still a plain deselect toggle,
-  // and is a no-op with respect to pendingRequests
+  // Toggle a single id in/out of the selection: deselect if held,
+  // request if held-by-other, else add.
   toggleSelection: (id) => {
-    if (id in _myClaims) {
-      _unclaim([id]);
-    } else if (App.isHeldByOther(id)) {
-      App.requestElement(id);
-      return; // request queued; _myClaims untouched
-    } else {
-      _claim([id]);
-    }
+    _applySelState(Selection.toggle(_selState(), id, { isHeldByOther: App.isHeldByOther }));
   },
 
   commitMultiSelect: ({ x, y, width, height, additive = false } = {}) => {
     const newIds = App.getBoxCandidates({ x, y, width, height });
     // additive: union with existing selection; otherwise replace
     const ids = additive
-      ? [...new Set([...Object.keys(_myClaims), ...newIds])]
+      ? [...new Set([..._heldIds(), ...newIds])]
       : newIds;
     if (ids.length === 0) {
       App.select(null);
     } else if (ids.length === 1) {
       App.select(ids[0]);
     } else {
-      // Preserve existing claim timestamps for any already-held.
-      // Timestamp a fresh claim only for newly-added ones.
-      const ts = Date.now();
-      for (const id of ids) {
-        if (!(id in _myClaims)) _myClaims[id] = ts;
-      }
-      // Drop any ids no longer in the new set (non-additive replace).
-      for (const id of Object.keys(_myClaims)) {
-        if (!ids.includes(id)) delete _myClaims[id];
-      }
-      _afterClaimsChanged();
+      _applySelState(Selection.commitMultiSelect(_selState(), ids));
     }
   },
 
   deleteMultiSelected: () => {
-    const ids = Object.keys(_myClaims);
+    const ids = _heldIds();
     if (ids.length === 0) return;
 
     // A selection can never span layers (App.setLayer clears claims on
@@ -1083,7 +1034,7 @@ const App = {
   },
 
   duplicateMultiSelected: () => {
-    const ids = Object.keys(_myClaims);
+    const ids = _heldIds();
     if (ids.length === 0) return;
     let added = 0;
     // The inner addDrawing transactions collapse into this outer one.
@@ -1332,7 +1283,7 @@ const App = {
     L.delete(id);
     addHistory(`deleted ${mtype}:${id}`);
     App.addLog(`deleted ${id}`, 'local');
-    if (id in _myClaims) {
+    if (_desired[id]?.holding) {
       _unclaim([id]);
     }
     return true;
@@ -1341,7 +1292,7 @@ const App = {
   deleteSelected: () => {
     const id = _singleSelectedId();
     if (!id) {
-      if (Object.keys(_myClaims).length > 1) {
+      if (_heldIds().length > 1) {
         UI.toast('Use Delete Button for multi-selection', 'warn');
         console.error('deleteSelected called with multi-selection; use deleteMultiSelected');
       }
@@ -1353,7 +1304,7 @@ const App = {
   duplicateSelected: () => {
     const id = _singleSelectedId();
     if (!id) {
-      if (Object.keys(_myClaims).length > 1) {
+      if (_heldIds().length > 1) {
         UI.toast('Use Duplicate N for multi-selection', 'warn');
         console.error('duplicateSelected called with multi-selection; use duplicateMultiSelected');
       }
@@ -1559,36 +1510,19 @@ const App = {
     _dragState = null;
   },
 
-  // ── Resize mode + resize gesture ──────────────────────────────────────────
-  // enterResizeMode / exitResizeMode / getResizeModeId
-  // click-to-select, click-again-to-resize toggle
-  // getResizeCorner   — hit-test a canvas-space point against id's corner
-  //                     handles; used by canvas.js on pointerdown to decide
-  //                     whether a click on an already-resize-mode container
-  //                     starts a resize gesture or falls through.
-  // lifecycle: startResize/resize/commitResize/cancelResize
-
-  enterResizeMode: (id) => {
-    // Only an element that is already the client's own exclusive single
-    // selection can enter resize mode — silently a no-op otherwise
-    if (Object.keys(_myClaims).length !== 1 || !(id in _myClaims)) return;
-    const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
-    const mtype = moduleForElement(domEl);
-    const modes = _Layers[mtype]?.selectModes?.(domEl) ?? [];
-    const kind = modes.includes('resize') ? 'resize' : modes.includes('resize-r') ? 'resize-r' : null;
-    if (!kind) return;
-    _resizeModeId = id;
-    _resizeModeKind = kind;
-    Overlay.setResizeMode(id, kind);
-    _broadcastMode();
+  // The generic "further click" gesture: asks id's own owning LayerAPI
+  // what mode comes next and hands the answer to Selection.enterMode.
+  nextSelectionMode: (id) => {
+    if (Selection.shape(_selState()) !== 'single' || !_desired[id]?.holding) return;
+    const { domEl, layer } = _layerFor(id);
+    const mode = layer?.nextSelectMode?.(domEl, _activeMode?.mode ?? null) ?? null;
+    _applySelState(Selection.enterMode(_selState(), id, mode));
   },
 
-  exitResizeMode: () => {
-    if (!_resizeModeId) return;
-    _exitResizeModeInternal();
-  },
-
-  getResizeModeId: () => _resizeModeId,
+  // True only once id has been cycled into a mode with actual drag
+  // handles -- sel-move/sel-action have none, so this isn't just "is
+  // _activeMode set".
+  getResizeModeId: () => (_activeMode && RESIZE_HANDLE_MODES.has(_activeMode.mode)) ? _activeMode.id : null,
 
   // ── Bowstring handle (delight.js) ─────────────────────────────────────────
   // The SE action square is a drag-to-fire control: click for the toy's
@@ -1605,16 +1539,13 @@ const App = {
   startBowstringAt: (e, canvasPoint) => {
     const id = _singleSelectedId();
     if (!id) return false;
-    // Once this id is in resize/resize-r mode, its SE corner belongs to the
-    // resize handle, not the bowstring — overlay.js stops drawing the action
-    // square the moment resize mode is entered (see render()'s kind==='local'
-    // guard), so the live gesture must decline the same way or it keeps
-    // intercepting the corner that no longer visually shows it.
-    if (_resizeModeId === id) return false;
-    const domEl = _svgEl?.querySelector(`[data-id="${id}"]`);
-    if (!domEl || moduleForElement(domEl) !== 'toys') return false;
-    const modes = _Layers['toys']?.selectModes?.(domEl) ?? [];
-    if (!modes.includes('action')) return false;
+    const { domEl, layer } = _layerFor(id);
+    if (!domEl) return false;
+    const defaultMode = layer?.nextSelectMode?.(domEl, null) ?? null;
+    // Only shows for a type whose own default mode is 'sel-action', and
+    // only while the current mode still is that default -- declining
+    // otherwise avoids intercepting a corner that no longer shows it.
+    if (defaultMode !== 'sel-action' || _activeMode?.mode !== defaultMode) return false;
     const geo = App.getBBox(id);
     if (!geo) return false;
     if (!Delight.hitTestBowstring(geo, canvasPoint.x, canvasPoint.y, App.getViewScale())) return false;
@@ -1653,42 +1584,39 @@ const App = {
     App.addLog(`bowstring ${charged ? 'charged' : 'tap'} → ${key}`, 'local');
   },
 
+  // getResizeCorner   — hit-test a canvas-space point against id's corner
+  //                     handles; used by canvas.js on pointerdown to decide
+  //                     whether a click on an already-resize-mode container
+  //                     starts a resize gesture or falls through.
   getResizeCorner: (id, cx, cy) => {
-    if (_resizeModeId !== id) return null;
+    if (_activeMode?.id !== id || !RESIZE_HANDLE_MODES.has(_activeMode.mode)) return null;
     const geo = App.getBBox(id);
-    if (_resizeModeKind === 'resize-r') {
-      return Overlay.hitTestResizeRHandle(geo, cx, cy, App.getViewScale()) ? 'r' : null;
-    }
-    return Overlay.hitTestResizeCorner(geo, cx, cy, App.getViewScale());
+    return Overlay.hitTestSelectionHandle(_activeMode.mode, geo, cx, cy, App.getViewScale());
   },
 
   startResize: (id, corner) => {
-    if (_resizeModeId !== id || App.isHeldByOther(id)) return;
+    if (_activeMode?.id !== id || !RESIZE_HANDLE_MODES.has(_activeMode.mode) || App.isHeldByOther(id)) return;
     const bbox = App.getBBox(id);
     if (!bbox) return;
     const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
     const mtype = moduleForElement(domEl);
-    _resizeState = { id, corner, mtype, kind: _resizeModeKind, startRect: { ...bbox }, lastRect: { ...bbox } };
+    _resizeState = { id, corner, mtype, mode: _activeMode.mode, startRect: { ...bbox }, lastRect: { ...bbox } };
     Overlay.startResizeGhost(id);
   },
 
-  // Called on every pointermove during a resize drag; (px, py) is the raw
-  // canvas-space pointer position — computeResizeRect (corner-drag) or
-  // Drawing.computeResizeRadiusRect (single-handle radius-drag) does the math.
+  // Called on every pointermove during a resize drag; (px, py) is the
+  // raw canvas-space pointer position. Which geometry the mode needs
+  // is id's own owning LayerAPI's call, via computeResize(mode, ...).
   resize: (id, corner, px, py) => {
     if (!_resizeState || _resizeState.id !== id) return;
-    const rect = _resizeState.kind === 'resize-r'
-      ? Drawing.computeResizeRadiusRect(_resizeState.startRect, px, py)
-      : Toys.computeResizeRect(_resizeState.startRect, corner, px, py);
+    const rect = _Layers[_resizeState.mtype].computeResize(_resizeState.mode, _resizeState.startRect, corner, px, py);
     _resizeState.lastRect = rect;
     Overlay.updateResizeGhost(id, rect.x, rect.y, rect.width, rect.height);
   },
 
   commitResize: (id, corner, px, py) => {
     if (!_resizeState || _resizeState.id !== id) return;
-    const toRect = _resizeState.kind === 'resize-r'
-      ? Drawing.computeResizeRadiusRect(_resizeState.startRect, px, py)
-      : Toys.computeResizeRect(_resizeState.startRect, corner, px, py);
+    const toRect = _Layers[_resizeState.mtype].computeResize(_resizeState.mode, _resizeState.startRect, corner, px, py);
     const mtype    = _resizeState.mtype;
     _resizeState = null;
 
@@ -1717,7 +1645,7 @@ const App = {
   // cancelMultiMove — called on pointercancel; reverts all ghosts, no Yjs write
 
   startMultiDrag: (originCanvas) => {
-    const elements = Object.keys(_myClaims).map(id => {
+    const elements = _heldIds().map(id => {
       const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
       if (!domEl) return null;
       const anchor = App.getAnchor(domEl);
@@ -1752,8 +1680,8 @@ const App = {
     // Defend every element in the group, not just the one under the
     // pointer.  All of them are being "used".
     const claimNow = Date.now();
-    for (const el of elements) _myClaims[el.id] = claimNow;
-    _broadcastSelection();
+    for (const el of elements) _desired[el.id] = { ts: claimNow, holding: true };
+    _broadcastDesired();
 
     _awareness.setLocalStateField('multidrag', {
       elIds:   elements.map(e => e.id),
@@ -1771,8 +1699,8 @@ const App = {
     const now = Date.now();
     if (now - (_multiDragState.lastClaimRefresh ?? 0) >= CLAIM_REFRESH_THROTTLE_MS) {
       _multiDragState.lastClaimRefresh = now;
-      for (const el of elements) _myClaims[el.id] = now;
-      _broadcastSelection();
+      for (const el of elements) _desired[el.id] = { ts: now, holding: true };
+      _broadcastDesired();
     }
 
     // Compute the candidate anchor position and apply constraints
@@ -1909,22 +1837,20 @@ const App = {
     // actual delete from awareness.states, so awareness.getLocalState()
     // returns null afterward. Awareness.setLocalStateField's own
     // implementation is `if (getLocalState() !== null) { ... }` — a
-    // silent no-op otherwise. Every _broadcastSelection / _broadcastMode /
-    // _broadcastPendingRequests call after this point would do nothing,
-    // forever, with no error: peers stop seeing this client's selection
-    // rings, and this client's own soft-lock requests never reach anyone
-    // either, making a peer's hold look unbreakable from here.
-    // A full setLocalState (not setLocalStateField) re-establishes the
-    // entry, restoring whatever this client's current state actually is
-    // rather than the boot-time blank one index.html set originally.
+    // silent no-op otherwise. Every _broadcastDesired / _broadcastMode call
+    // after this point would do nothing, this client's own soft-lock
+    // requests never reach anyone, making a peer's hold look unbreakable
+    // from here.
+    // A full setLocalState re-establishes the entry, restoring whatever
+    // this client's current state actually is rather than the boot-time
+    // blank one index.html set originally.
     _awareness?.setLocalState({
-      id:              _myId,
-      color:           _myGrad.c1,
-      grad:            _myGrad,
-      cursor:          null,
-      selection:       Object.keys(_myClaims).length        ? { ..._myClaims }        : null,
-      mode:            _resizeModeId ? (_resizeModeKind === 'resize-r' ? 'sel-resize-r' : 'sel-resize') : null,
-      pendingRequests: Object.keys(_pendingRequests).length  ? { ..._pendingRequests }  : null,
+      id:      _myId,
+      color:   _myGrad.c1,
+      grad:    _myGrad,
+      cursor:  null,
+      desired: { ..._desired },
+      mode:    _activeMode ? _activeMode.mode : null,
     });
   },
   undo: () => {

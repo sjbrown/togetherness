@@ -1,14 +1,16 @@
 /**
  * tests/unit/awareness-schema.test.js
  *
- * Tests for the awareness selection schema: { [elId: string]: number } | null
+ * Tests for the awareness desired schema:
+ *   { [elId]: { ts: number, holding: boolean } }
  *
- * Keys are the held elIds; values are per-elId claim timestamps (see
- * soft-lock.js). There is no separate ids array — membership is exactly
- * Object.keys(selection). An earlier version of this schema was
- * { elIds: string[] }; a claimedAt map was added alongside it for the
- * soft-lock feature, then the array was dropped entirely once it became
- * clear it was always redundant with Object.keys(claimedAt).
+ * One record per elId a client wants: holding:true is a committed claim
+ * (ts = last claimed), holding:false is an outstanding bid (ts = when it
+ * started). Membership and holding-vs-bidding are both read off this map.
+ *
+ * app.js's own convention is to always write a plain object -- `{}`
+ * when nothing is desired, never null. Reads still tolerate a null or
+ * missing value, since a foreign or older client may send either.
  *
  * These tests verify the shape that App.select() must write and the shape
  * that overlay.js syncFromAwareness() must read.
@@ -22,18 +24,18 @@ import { describe, test, expect } from 'vitest'
 
 // ── Schema shape (what app.js writes) ────────────────────────────────────────
 
-describe('awareness selection schema — write side', () => {
-  test('single-element selection uses a flat {elId: ts} map, not an elIds array', () => {
+describe('awareness desired schema — write side', () => {
+  test('single-element selection uses a flat {elId: {ts, holding}} map, not an elIds array', () => {
     const doc = new Y.Doc()
     const aw  = new awarenessProtocol.Awareness(doc)
 
-    aw.setLocalStateField('selection', { 'toy-abc': 12345 })
+    aw.setLocalStateField('desired', { 'toy-abc': { ts: 12345, holding: true } })
 
     const state = aw.getLocalState()
-    expect(state.selection).toEqual({ 'toy-abc': 12345 })
-    expect(state.selection.elIds).toBeUndefined()
-    expect(state.selection.elId).toBeUndefined()
-    expect(Object.keys(state.selection)).toEqual(['toy-abc'])
+    expect(state.desired).toEqual({ 'toy-abc': { ts: 12345, holding: true } })
+    expect(state.desired.elIds).toBeUndefined()
+    expect(state.desired.elId).toBeUndefined()
+    expect(Object.keys(state.desired)).toEqual(['toy-abc'])
 
     doc.destroy()
   })
@@ -41,38 +43,52 @@ describe('awareness selection schema — write side', () => {
   test('multi-element selection carries a claim timestamp per id', () => {
     const doc = new Y.Doc()
     const aw  = new awarenessProtocol.Awareness(doc)
-    const claims = { 'toy-aaa': 1000, 'toy-bbb': 2000, 'toy-ccc': 3000 }
+    const claims = {
+      'toy-aaa': { ts: 1000, holding: true },
+      'toy-bbb': { ts: 2000, holding: true },
+      'toy-ccc': { ts: 3000, holding: true },
+    }
 
-    aw.setLocalStateField('selection', claims)
+    aw.setLocalStateField('desired', claims)
 
-    expect(aw.getLocalState().selection).toEqual(claims)
-    expect(Object.keys(aw.getLocalState().selection)).toEqual(['toy-aaa', 'toy-bbb', 'toy-ccc'])
-
-    doc.destroy()
-  })
-
-  test('null clears selection', () => {
-    const doc = new Y.Doc()
-    const aw  = new awarenessProtocol.Awareness(doc)
-
-    aw.setLocalStateField('selection', { 'toy-abc': 500 })
-    aw.setLocalStateField('selection', null)
-
-    expect(aw.getLocalState().selection).toBeNull()
+    expect(aw.getLocalState().desired).toEqual(claims)
+    expect(Object.keys(aw.getLocalState().desired)).toEqual(['toy-aaa', 'toy-bbb', 'toy-ccc'])
 
     doc.destroy()
   })
 
-  test('an empty object is a valid (if unusual) cleared-candidate state', () => {
-    // App.js always broadcasts null rather than {} when nothing is
-    // selected (see _broadcastSelection), but readers should treat an
-    // empty object the same as null — zero keys, zero holdings, either way.
+  test('a bid (holding:false) is distinguishable from a claim on the same shape', () => {
     const doc = new Y.Doc()
     const aw  = new awarenessProtocol.Awareness(doc)
 
-    aw.setLocalStateField('selection', {})
+    aw.setLocalStateField('desired', { 'toy-abc': { ts: 500, holding: false } })
 
-    expect(Object.keys(aw.getLocalState().selection)).toEqual([])
+    expect(aw.getLocalState().desired['toy-abc'].holding).toBe(false)
+
+    doc.destroy()
+  })
+
+  test('the underlying field can still be explicitly nulled (a library capability app.js no longer uses)', () => {
+    const doc = new Y.Doc()
+    const aw  = new awarenessProtocol.Awareness(doc)
+
+    aw.setLocalStateField('desired', { 'toy-abc': { ts: 500, holding: true } })
+    aw.setLocalStateField('desired', null)
+
+    expect(aw.getLocalState().desired).toBeNull()
+
+    doc.destroy()
+  })
+
+  test('an empty object is the canonical cleared-desired state app.js broadcasts', () => {
+    // App.js always broadcasts {} rather than null when nothing is
+    // desired — "desired = {}" reads as "I desire the empty set."
+    const doc = new Y.Doc()
+    const aw  = new awarenessProtocol.Awareness(doc)
+
+    aw.setLocalStateField('desired', {})
+
+    expect(Object.keys(aw.getLocalState().desired)).toEqual([])
 
     doc.destroy()
   })
@@ -80,85 +96,101 @@ describe('awareness selection schema — write side', () => {
 
 // ── Schema shape (what overlay.js syncFromAwareness reads) ────────────────────
 
-describe('awareness selection schema — read side (overlay syncFromAwareness logic)', () => {
+describe('awareness desired schema — read side (overlay syncFromAwareness logic)', () => {
   // Mirrors the exact read logic in overlay.js syncFromAwareness so we can
-  // assert on it without booting the full app.
+  // assert on it without booting the full app: only holding:true entries
+  // render as a remote selection ring.
   function extractRemoteSelections(state) {
-    if (!state?.selection || typeof state.selection !== 'object') return []
-    return Object.keys(state.selection)
+    if (!state?.desired || typeof state.desired !== 'object') return []
+    return Object.keys(state.desired).filter((elId) => state.desired[elId].holding)
   }
 
   test('single remote selection: one id returned', () => {
-    const state = { selection: { 'shape-xyz': 1000 }, color: '#f00' }
+    const state = { desired: { 'shape-xyz': { ts: 1000, holding: true } }, color: '#f00' }
     expect(extractRemoteSelections(state)).toEqual(['shape-xyz'])
   })
 
   test('multi remote selection: all ids returned', () => {
-    const state = { selection: { a: 1, b: 2, c: 3 }, color: '#0f0' }
+    const state = {
+      desired: {
+        a: { ts: 1, holding: true },
+        b: { ts: 2, holding: true },
+        c: { ts: 3, holding: true },
+      },
+      color: '#0f0',
+    }
     expect(extractRemoteSelections(state)).toEqual(['a', 'b', 'c'])
   })
 
-  test('null selection: no ids returned', () => {
-    const state = { selection: null, color: '#00f' }
+  // This client's own writes are never null (see the write-side describe
+  // block above), but a foreign/older peer's could still be — the reader
+  // must tolerate it regardless of what we ourselves send.
+  test('null desired: no ids returned', () => {
+    const state = { desired: null, color: '#00f' }
     expect(extractRemoteSelections(state)).toEqual([])
   })
 
-  test('missing selection field: no ids returned', () => {
+  test('missing desired field: no ids returned', () => {
     const state = { color: '#00f' }
     expect(extractRemoteSelections(state)).toEqual([])
   })
 
-  test('empty selection object: no rings rendered', () => {
-    const state = { selection: {}, color: '#888' }
+  test('empty desired object: no rings rendered', () => {
+    const state = { desired: {}, color: '#888' }
     expect(extractRemoteSelections(state)).toEqual([])
   })
 
-  test('a legacy elIds-array-shaped payload (old schema) is not misread as ids', () => {
-    // Defends against a stale/mixed-version peer sending the old shape —
-    // Object.keys({ elIds: [...] }) would be ['elIds'], a single bogus
-    // "id" — worth an explicit test since this is exactly the kind of
-    // schema-migration edge case that's easy to get wrong silently.
-    const state = { selection: { elIds: ['shape-old'] }, color: '#888' }
-    expect(extractRemoteSelections(state)).toEqual(['elIds']) // documents actual (bogus) behavior
-    // This elId ('elIds') simply won't match any real element's data-id,
-    // so App.getBBox returns null and rendering silently skips it — a
-    // stale/mixed-version peer degrades harmlessly rather than crashing,
-    // but is not expected in a single-deployed-version app.
+  test('a bid (holding:false) is not read as a selection ring', () => {
+    // Bids render via the separate contested/'requested' ring instead
+    // (getAllContestedElementIds in soft-lock.js), not as a selection ring.
+    const state = { desired: { 'shape-xyz': { ts: 1000, holding: false } }, color: '#f00' }
+    expect(extractRemoteSelections(state)).toEqual([])
+  })
+
+  test('a mix of held and bidding entries returns only the held ones', () => {
+    const state = {
+      desired: {
+        'shape-held':   { ts: 1000, holding: true },
+        'shape-bid':    { ts: 2000, holding: false },
+      },
+      color: '#f00',
+    }
+    expect(extractRemoteSelections(state)).toEqual(['shape-held'])
   })
 })
 
-// ── Candidates field — structurally separate from selection ───────────────────
+// ── Candidates field — structurally separate from desired ────────────────────
 
-describe('awareness schema: candidates field is separate from selection', () => {
-  test('a client can have both selection and candidates simultaneously', () => {
+describe('awareness schema: candidates field is separate from desired', () => {
+  test('a client can have both desired and candidates simultaneously', () => {
     const doc = new Y.Doc()
     const aw  = new awarenessProtocol.Awareness(doc)
 
-    // Committed holdings in selection...
-    aw.setLocalStateField('selection', { 'toy-held': 12345 })
+    // Committed holdings in desired...
+    aw.setLocalStateField('desired', { 'toy-held': { ts: 12345, holding: true } })
     // ...and a concurrent rubber-band sweep in candidates.
     aw.setLocalStateField('candidates', ['toy-a', 'toy-b'])
 
     const state = aw.getLocalState()
-    expect(Object.keys(state.selection)).toEqual(['toy-held'])
+    expect(Object.keys(state.desired)).toEqual(['toy-held'])
     expect(state.candidates).toEqual(['toy-a', 'toy-b'])
-    // The two fields are independent — candidates never affected selection.
-    expect(state.selection['toy-a']).toBeUndefined()
+    // The two fields are independent — candidates never affected desired.
+    expect(state.desired['toy-a']).toBeUndefined()
 
     doc.destroy()
   })
 
-  test('clearing candidates does not touch selection', () => {
+  test('clearing candidates does not touch desired', () => {
     const doc = new Y.Doc()
     const aw  = new awarenessProtocol.Awareness(doc)
 
-    aw.setLocalStateField('selection', { 'toy-held': 12345 })
+    aw.setLocalStateField('desired', { 'toy-held': { ts: 12345, holding: true } })
     aw.setLocalStateField('candidates', ['toy-a', 'toy-b'])
     aw.setLocalStateField('candidates', null)
 
     const state = aw.getLocalState()
     expect(state.candidates).toBeNull()
-    expect(Object.keys(state.selection)).toEqual(['toy-held'])
+    expect(Object.keys(state.desired)).toEqual(['toy-held'])
 
     doc.destroy()
   })
@@ -168,17 +200,22 @@ describe('awareness schema: candidates field is separate from selection', () => 
     // with Date.now() timestamps, then clearBoxCandidates set `selection`
     // to null. This test shows what that looked like, and why it was wrong:
     // a committed holding was silently wiped by an unrelated sweep-clear.
+    // The field is called `desired` now, but the historical bug and its
+    // fix (candidates gets its own field) are unchanged.
     const doc = new Y.Doc()
     const aw  = new awarenessProtocol.Awareness(doc)
 
-    aw.setLocalStateField('selection', { 'toy-held': 12345 }) // committed
-    aw.setLocalStateField('selection', { 'toy-a': Date.now(), 'toy-b': Date.now() }) // old broadcastCandidates
+    aw.setLocalStateField('desired', { 'toy-held': { ts: 12345, holding: true } }) // committed
+    aw.setLocalStateField('desired', { // old broadcastCandidates
+      'toy-a': { ts: Date.now(), holding: true },
+      'toy-b': { ts: Date.now(), holding: true },
+    })
     // At this point, 'toy-held' is gone from the broadcast — the commitment
     // was silently erased by the sweep. Any concurrent request on 'toy-held'
     // would have resolved with no holder during the sweep.
 
-    aw.setLocalStateField('selection', null) // old clearBoxCandidates
-    expect(aw.getLocalState().selection).toBeNull()
+    aw.setLocalStateField('desired', null) // old clearBoxCandidates
+    expect(aw.getLocalState().desired).toBeNull()
     // 'toy-held' is permanently lost from the broadcast even though the user
     // never deselected it. The fix: candidates gets its own field.
 

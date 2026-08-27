@@ -1,7 +1,7 @@
 /**
  * tests/e2e/layer-switch-clears-selection.spec.js
  *
- * Selection is never layer-scoped by construction — _myClaims is one flat
+ * Selection is never layer-scoped by construction — _desired is one flat
  * map, and toggleSelection doesn't check which layer an id belongs to.
  * Switching the active layer now clears the selection explicitly, which is
  * what makes a mixed toys+drawing selection actually impossible rather

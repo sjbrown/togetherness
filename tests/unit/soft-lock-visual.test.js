@@ -50,6 +50,18 @@ function makeOverlayApp(bboxMap = {}) {
 
 const BBOX = { x: 10, y: 10, width: 50, height: 50 }
 
+// Shorthand for the held (holding:true) portion of a `desired` field.
+function held(elIds, claimedAt = {}) {
+  const out = {}
+  for (const elId of elIds) out[elId] = { ts: claimedAt[elId] ?? 0, holding: true }
+  return out
+}
+
+// Shorthand for a single outstanding bid (holding:false) entry.
+function bid(elId, ts) {
+  return { [elId]: { ts, holding: false } }
+}
+
 beforeEach(() => {
   makeOverlayDOM()
   SelectionMode.clear()
@@ -63,8 +75,8 @@ describe('requested indicator — basic presence', () => {
   test('an element with an outstanding acquisition request renders a requestedRing', () => {
     overlayInit(makeOverlayApp({ 'goblin-1': BBOX }), document.getElementById('canvas'))
     const states = new Map([
-      [1, { selection: { 'goblin-1': 0 } }],
-      [2, { selection: null, pendingRequests: { 'goblin-1': 1000 } }],
+      [1, { desired: held(['goblin-1']) }],
+      [2, { desired: bid('goblin-1', 1000) }],
     ])
     syncFromAwareness(states, 999) // 999 = "me", an uninvolved observer
 
@@ -74,21 +86,19 @@ describe('requested indicator — basic presence', () => {
 
   test('an uncontested element renders no requestedRing', () => {
     overlayInit(makeOverlayApp({ 'goblin-1': BBOX }), document.getElementById('canvas'))
-    const states = new Map([[1, { selection: { 'goblin-1': 0 } }]])
+    const states = new Map([[1, { desired: held(['goblin-1']) }]])
     syncFromAwareness(states, 999)
 
     expect(document.querySelectorAll('#overlay-layer .requestedRing')).toHaveLength(0)
   })
 
-  test('a holder with only a claim timestamp (no pendingRequests entry) renders no requestedRing', () => {
-    // A held elId's claim timestamp lives directly in selection[elId] now
-    // (pendingRequests is exclusively outstanding acquisition bids — see
-    // soft-lock.js). A held elId with a claim timestamp and no
-    // pendingRequests entry at all is the normal, common case and must not
-    // render as contested.
+  test('a holder with only a claim timestamp (no bid entry) renders no requestedRing', () => {
+    // A held elId's claim timestamp lives in desired[elId].ts -- a held
+    // elId with no bid entry at all is the normal, common case and
+    // must not render as contested.
     overlayInit(makeOverlayApp({ 'goblin-1': BBOX }), document.getElementById('canvas'))
     const states = new Map([
-      [1, { selection: { 'goblin-1': 500 } }],
+      [1, { desired: held(['goblin-1'], { 'goblin-1': 500 }) }],
     ])
     syncFromAwareness(states, 999)
 
@@ -98,8 +108,8 @@ describe('requested indicator — basic presence', () => {
   test('an element with null bbox is skipped without throwing', () => {
     overlayInit(makeOverlayApp({}), document.getElementById('canvas')) // no bbox for 'goblin-1'
     const states = new Map([
-      [1, { selection: { 'goblin-1': 0 } }],
-      [2, { selection: null, pendingRequests: { 'goblin-1': 1000 } }],
+      [1, { desired: held(['goblin-1']) }],
+      [2, { desired: bid('goblin-1', 1000) }],
     ])
     expect(() => syncFromAwareness(states, 999)).not.toThrow()
     expect(document.querySelectorAll('#overlay-layer .requestedRing')).toHaveLength(0)
@@ -108,9 +118,9 @@ describe('requested indicator — basic presence', () => {
   test('multiple independently contested elements each get their own ring', () => {
     overlayInit(makeOverlayApp({ g1: BBOX, g2: { ...BBOX, x: 200 } }), document.getElementById('canvas'))
     const states = new Map([
-      [1, { selection: { 'g1': 0, 'g2': 0 } }],
-      [2, { selection: null, pendingRequests: { g1: 1000 } }],
-      [3, { selection: null, pendingRequests: { g2: 1200 } }],
+      [1, { desired: held(['g1', 'g2']) }],
+      [2, { desired: bid('g1', 1000) }],
+      [3, { desired: bid('g2', 1200) }],
     ])
     syncFromAwareness(states, 999)
 
@@ -118,17 +128,17 @@ describe('requested indicator — basic presence', () => {
   })
 })
 
-describe('requested indicator — independence from SelectionMode kind', () => {
+describe('requested indicator — independence from SelectionMode mode', () => {
   test('coexists with a local selection ring when I am the contested holder', () => {
     overlayInit(makeOverlayApp({ 'goblin-1': BBOX }), document.getElementById('canvas'))
     localSelectionChanged(new Set(['goblin-1'])) // I hold it locally
     const states = new Map([
-      [1 /* me */, { selection: { 'goblin-1': 0 } }],
-      [2,          { selection: null, pendingRequests: { 'goblin-1': 1000 } }],
+      [1 /* me */, { desired: held(['goblin-1']) }],
+      [2,          { desired: bid('goblin-1', 1000) }],
     ])
     syncFromAwareness(states, 1)
 
-    expect(SelectionMode.get('goblin-1')?.kind).toBe('local')
+    expect(SelectionMode.get('goblin-1')?.mode).toBe('local')
     expect(document.querySelectorAll('#overlay-layer .selRing')).toHaveLength(1)
     expect(document.querySelectorAll('#overlay-layer .requestedRing')).toHaveLength(1)
   })
@@ -136,12 +146,12 @@ describe('requested indicator — independence from SelectionMode kind', () => {
   test('coexists with a remote selection ring when someone else holds the contested element', () => {
     overlayInit(makeOverlayApp({ 'goblin-1': BBOX }), document.getElementById('canvas'))
     const states = new Map([
-      [1 /* Alice, not me */, { selection: { 'goblin-1': 0 } }],
-      [2 /* Bailey, not me */, { selection: null, pendingRequests: { 'goblin-1': 1000 } }],
+      [1 /* Alice, not me */, { desired: held(['goblin-1']) }],
+      [2 /* Bailey, not me */, { desired: bid('goblin-1', 1000) }],
     ])
     syncFromAwareness(states, 999) // I'm neither Alice nor Bailey
 
-    expect(SelectionMode.get('goblin-1')?.kind).toBe('remote')
+    expect(SelectionMode.get('goblin-1')?.mode).toBe('remote')
     // Remote selection is now wrapped in <g class="remote-sel">; assert on
     // that group's presence rather than the individual ring/label children.
     expect(document.querySelectorAll('#overlay-layer .remote-sel')).toHaveLength(1)
@@ -153,8 +163,8 @@ describe('requested indicator — independence from SelectionMode kind', () => {
     // only the acquisition request itself exists.
     overlayInit(makeOverlayApp({ 'goblin-1': BBOX }), document.getElementById('canvas'))
     const states = new Map([
-      [1, { selection: { 'goblin-1': 0 } }],
-      [2, { selection: null, pendingRequests: { 'goblin-1': 1000 } }],
+      [1, { desired: held(['goblin-1']) }],
+      [2, { desired: bid('goblin-1', 1000) }],
     ])
     syncFromAwareness(states, 999)
     SelectionMode.delete('goblin-1') // simulate no SelectionMode entry
@@ -174,17 +184,17 @@ describe('requested indicator — clears when no longer contested', () => {
   test('a subsequent sync with the request gone removes the requestedRing', () => {
     overlayInit(makeOverlayApp({ 'goblin-1': BBOX }), document.getElementById('canvas'))
     const contested = new Map([
-      [1, { selection: { 'goblin-1': 0 } }],
-      [2, { selection: null, pendingRequests: { 'goblin-1': 1000 } }],
+      [1, { desired: held(['goblin-1']) }],
+      [2, { desired: bid('goblin-1', 1000) }],
     ])
     syncFromAwareness(contested, 999)
     expect(document.querySelectorAll('#overlay-layer .requestedRing')).toHaveLength(1)
 
     // Request resolved (promoted or aborted) — client 2 no longer has a
-    // pendingRequests entry for it.
+    // bid entry for it.
     const resolved = new Map([
-      [1, { selection: null }],
-      [2, { selection: { 'goblin-1': 0 }, pendingRequests: null }],
+      [1, { desired: null }],
+      [2, { desired: held(['goblin-1']) }],
     ])
     syncFromAwareness(resolved, 999)
     expect(document.querySelectorAll('#overlay-layer .requestedRing')).toHaveLength(0)
@@ -210,12 +220,12 @@ describe('local selection precedence over a conflicting remote broadcast', () =>
     localSelectionChanged(new Set(['die-1'])) // I legitimately hold it
 
     const states = new Map([
-      [1 /* me */, { selection: { 'die-1': 0 } }],
-      [2 /* other peer, conflicting broadcast for the same elId */, { selection: { 'die-1': 0 } }],
+      [1 /* me */, { desired: held(['die-1']) }],
+      [2 /* other peer, conflicting broadcast for the same elId */, { desired: held(['die-1']) }],
     ])
     syncFromAwareness(states, 1)
 
-    expect(SelectionMode.get('die-1')?.kind).toBe('local')
+    expect(SelectionMode.get('die-1')?.mode).toBe('local')
     expect(document.querySelectorAll('#overlay-layer .selRing')).toHaveLength(1)
   })
 
@@ -225,10 +235,10 @@ describe('local selection precedence over a conflicting remote broadcast', () =>
     overlayInit(makeOverlayApp({ 'die-1': BBOX }), document.getElementById('canvas'))
     localSelectionChanged(new Set(['die-1']))
     syncFromAwareness(new Map([
-      [1, { selection: { 'die-1': 0 } }],
-      [2, { selection: { 'die-1': 0 } }],
+      [1, { desired: held(['die-1']) }],
+      [2, { desired: held(['die-1']) }],
     ]), 1)
-    expect(SelectionMode.get('die-1')?.kind).toBe('local')
+    expect(SelectionMode.get('die-1')?.mode).toBe('local')
 
     // Client 2's own view (separate overlay instance state — SelectionMode
     // is module-level, so simulate by clearing and reinitializing as if we
@@ -236,10 +246,10 @@ describe('local selection precedence over a conflicting remote broadcast', () =>
     SelectionMode.clear()
     localSelectionChanged(new Set(['die-1']))
     syncFromAwareness(new Map([
-      [1, { selection: { 'die-1': 0 } }],
-      [2, { selection: { 'die-1': 0 } }],
+      [1, { desired: held(['die-1']) }],
+      [2, { desired: held(['die-1']) }],
     ]), 2)
-    expect(SelectionMode.get('die-1')?.kind).toBe('local')
+    expect(SelectionMode.get('die-1')?.mode).toBe('local')
   })
 
   test('remote still renders normally for elIds with no local conflict', () => {
@@ -247,12 +257,12 @@ describe('local selection precedence over a conflicting remote broadcast', () =>
     localSelectionChanged(new Set(['die-1']))
 
     const states = new Map([
-      [1, { selection: { 'die-1': 0 } }],
-      [2, { selection: { 'die-2': 0 } }], // no conflict — different elId
+      [1, { desired: held(['die-1']) }],
+      [2, { desired: held(['die-2']) }], // no conflict — different elId
     ])
     syncFromAwareness(states, 1)
 
-    expect(SelectionMode.get('die-1')?.kind).toBe('local')
-    expect(SelectionMode.get('die-2')?.kind).toBe('remote')
+    expect(SelectionMode.get('die-1')?.mode).toBe('local')
+    expect(SelectionMode.get('die-2')?.mode).toBe('remote')
   })
 })

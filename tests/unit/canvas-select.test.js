@@ -75,8 +75,7 @@ function makeApp(overrides = {}) {
     startBowstringAt:   () => false,
     moveBowstring:      () => {},
     endBowstring:       () => {},
-    enterResizeMode:    () => {},
-    exitResizeMode:     () => {},
+    nextSelectionMode:  () => {},
     startResize:        () => {},
     resize:             () => {},
     commitResize:       () => {},
@@ -600,11 +599,11 @@ function makeHitEl(id, module = 'drawing') {
 }
 
 describe('resize mode — reclick-to-toggle', () => {
-  test('a plain tap (no movement) on the already-sole-selected element calls App.enterResizeMode', () => {
+  test('a plain tap (no movement) on the already-sole-selected element calls App.nextSelectionMode', () => {
     const entered = []
     const app = makeApp({
       getSelectedIds: () => ['shape-a'],
-      enterResizeMode: (id) => entered.push(id),
+      nextSelectionMode: (id) => entered.push(id),
     })
     init(app, document.getElementById('canvas'))
     setTool('select', {})
@@ -622,7 +621,7 @@ describe('resize mode — reclick-to-toggle', () => {
     const committed = []
     const app = makeApp({
       getSelectedIds: () => ['shape-a'],
-      enterResizeMode: (id) => entered.push(id),
+      nextSelectionMode: (id) => entered.push(id),
       commitMove: (...args) => committed.push(args),
     })
     init(app, document.getElementById('canvas'))
@@ -642,7 +641,7 @@ describe('resize mode — reclick-to-toggle', () => {
     const entered = []
     const app = makeApp({
       getSelectedIds: () => [], // nothing selected yet — this click is the first select
-      enterResizeMode: (id) => entered.push(id),
+      nextSelectionMode: (id) => entered.push(id),
     })
     init(app, document.getElementById('canvas'))
     setTool('select', {})
@@ -731,13 +730,14 @@ describe('resize mode — corner-drag gesture', () => {
     expect(committed).toHaveLength(0)
   })
 
-  test('a click on the resize-mode element\u2019s body (off any corner) exits resize mode and falls through to a normal move', () => {
-    const exited = []
+  test('a pointerdown on the resize-mode element\u2019s body (off any corner) falls through to a normal move without touching the mode', () => {
+    const exited  = []
+    const entered = []
     const app = makeApp({
       getSelectedIds: () => ['tray-1'],
       getResizeModeId: () => 'tray-1',
       getResizeCorner: () => null, // not near any corner
-      exitResizeMode: () => exited.push(true),
+      nextSelectionMode: (id) => entered.push(id),
     })
     init(app, document.getElementById('canvas'))
     setTool('select', {})
@@ -746,19 +746,21 @@ describe('resize mode — corner-drag gesture', () => {
     const stage = document.getElementById('stage')
     stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el }))
 
-    expect(exited).toEqual([true])
+    // Dragging a resize-mode element by its body must leave its mode
+    // untouched; neither call fires until pointerup decides whether
+    // this was a drag or a plain tap.
+    expect(exited).toEqual([])
+    expect(entered).toEqual([])
     expect(ToolMode._gesture).toBe('move')
   })
 
-  test('exiting resize mode via a body click does not also immediately re-enter it on pointerup', () => {
-    const exited  = []
+  test('a plain tap (no movement) on the resize-mode element\u2019s body cycles its mode forward on pointerup, same as any other reclick', () => {
     const entered = []
     const app = makeApp({
       getSelectedIds: () => ['tray-1'],
       getResizeModeId: () => 'tray-1',
       getResizeCorner: () => null,
-      exitResizeMode:  () => exited.push(true),
-      enterResizeMode: (id) => entered.push(id),
+      nextSelectionMode: (id) => entered.push(id),
     })
     init(app, document.getElementById('canvas'))
     setTool('select', {})
@@ -768,8 +770,30 @@ describe('resize mode — corner-drag gesture', () => {
     stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el }))
     stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 100, clientY: 100 }))
 
-    expect(exited).toEqual([true])
+    expect(entered).toEqual(['tray-1'])
+  })
+
+  test('a real drag (movement) starting on the resize-mode element\u2019s body commits a move and never cycles the mode', () => {
+    const entered = []
+    const committed = []
+    const app = makeApp({
+      getSelectedIds: () => ['tray-1'],
+      getResizeModeId: () => 'tray-1',
+      getResizeCorner: () => null,
+      nextSelectionMode: (id) => entered.push(id),
+      commitMove: (...args) => committed.push(args),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+    const el = makeHitEl('tray-1')
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el }))
+    stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 140, clientY: 140 }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 140, clientY: 140 }))
+
     expect(entered).toEqual([])
+    expect(committed).toHaveLength(1)
   })
 })
 

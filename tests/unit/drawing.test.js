@@ -13,6 +13,7 @@ import { describe, test, expect } from 'vitest'
 import {
   addDrawing, deleteDrawing, findDrawing,
   getGeom, _toSVGEl, listDrawings, CURRENT_SCHEMA, SHAPE_TYPES,
+  selectModes, nextSelectMode, computeResize,
 } from '../../src/drawing.js'
 import { tablesAPI } from '../../src/tables.js'
 
@@ -195,6 +196,82 @@ describe('basic operations', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // getGeom — raw bounding box from a rendered svgEl (PAD lives in the overlay)
 // ─────────────────────────────────────────────────────────────────────────────
+
+describe('selectModes / nextSelectMode', () => {
+  const rectEl   = () => document.createElementNS('http://www.w3.org/2000/svg', 'rect')
+  const circleEl = () => document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+  const lineEl   = () => document.createElementNS('http://www.w3.org/2000/svg', 'line')
+
+  test('selectModes: sel-move plus rects support sel-resize, circles sel-resize-r', () => {
+    expect(selectModes(rectEl())).toEqual(['sel-move', 'sel-resize'])
+    expect(selectModes(circleEl())).toEqual(['sel-move', 'sel-resize-r'])
+    expect(selectModes(lineEl())).toEqual(['sel-move'])
+  })
+
+  test('nextSelectMode cycles a rect through sel-move <-> sel-resize', () => {
+    const el = rectEl()
+    expect(nextSelectMode(el, null)).toBe('sel-move')
+    expect(nextSelectMode(el, 'sel-move')).toBe('sel-resize')
+    expect(nextSelectMode(el, 'sel-resize')).toBe('sel-move')
+  })
+
+  test('nextSelectMode cycles a circle through sel-move <-> sel-resize-r', () => {
+    const el = circleEl()
+    expect(nextSelectMode(el, null)).toBe('sel-move')
+    expect(nextSelectMode(el, 'sel-move')).toBe('sel-resize-r')
+    expect(nextSelectMode(el, 'sel-resize-r')).toBe('sel-move')
+  })
+
+  test('nextSelectMode always offers sel-move for a shape with no other selection modes', () => {
+    expect(nextSelectMode(lineEl(), null)).toBe('sel-move')
+  })
+})
+
+describe('computeResize', () => {
+  // Corner indices: 0=NW, 1=NE, 2=SE, 3=SW.
+  const startRect = { x: 100, y: 100, width: 200, height: 150 } // right=300, bottom=250
+
+  test('sel-resize: BR drag keeps the top-left corner fixed, size follows the pointer', () => {
+    const rect = computeResize('sel-resize', startRect, 2, 340, 260)
+    expect(rect).toEqual({ x: 100, y: 100, width: 240, height: 160 })
+  })
+
+  test('sel-resize: TL drag keeps the bottom-right corner fixed', () => {
+    const rect = computeResize('sel-resize', startRect, 0, 80, 90)
+    expect(rect).toEqual({ x: 80, y: 90, width: 220, height: 160 })
+  })
+
+  test('sel-resize: TR drag keeps the bottom-left corner fixed — x never moves', () => {
+    const rect = computeResize('sel-resize', startRect, 1, 360, 80)
+    expect(rect).toEqual({ x: 100, y: 80, width: 260, height: 170 })
+  })
+
+  test('sel-resize: SW drag keeps the top-right corner fixed — y never moves', () => {
+    const rect = computeResize('sel-resize', startRect, 3, 60, 300)
+    expect(rect).toEqual({ x: 60, y: 100, width: 240, height: 200 })
+  })
+
+  test('sel-resize: dragging past the fixed corner clamps to the minimum size, never inverts', () => {
+    const rect = computeResize('sel-resize', startRect, 2, 50, 50)
+    expect(rect.x).toBe(100)
+    expect(rect.y).toBe(100)
+    expect(rect.width).toBeGreaterThanOrEqual(30)
+    expect(rect.height).toBeGreaterThanOrEqual(30)
+  })
+
+  test('sel-resize-r: grows a centered radius toward the pointer, ignoring corner', () => {
+    const circleRect = { x: 100, y: 100, width: 80, height: 80 } // centre (140,140)
+    const rect = computeResize('sel-resize-r', circleRect, 2, 220, 140)
+    expect(rect).toEqual({ x: 60, y: 60, width: 160, height: 160 }) // r=80, centre unchanged
+  })
+
+  test('sel-resize-r: clamps to the minimum radius rather than collapsing to a point', () => {
+    const circleRect = { x: 100, y: 100, width: 80, height: 80 }
+    const rect = computeResize('sel-resize-r', circleRect, 2, 140, 140) // pointer AT the centre
+    expect(rect.width).toBeGreaterThan(0)
+    expect(rect.height).toBe(rect.width)
+  })
+})
 
 describe('getGeom', () => {
   // Helper: render a shape to its svgEl the same way listDrawings does.

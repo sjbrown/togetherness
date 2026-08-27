@@ -107,7 +107,7 @@ async function bootPeerB(extraToys = []) {
   for (const attrs of extraToys) await addToy(ydoc, layerEl, attrs)
 
   // Exactly index.html's initialization order: setLocalState BEFORE boot().
-  awareness.setLocalState({ id: 'bailey', color: myGrad.c1, grad: myGrad, cursor: null, selection: null })
+  awareness.setLocalState({ id: 'bailey', color: myGrad.c1, grad: myGrad, cursor: null, desired: {} })
 
   boot({
     ydoc,
@@ -128,7 +128,7 @@ const DIE_2 = { id: 'die-2', toyType: 'player_marker', x: 50, y: 0, color: '#abc
 function simulateRemoteSelection(bobAwareness, elId) {
   const aliceDoc = new Y.Doc()
   const aliceAw  = new awarenessProtocol.Awareness(aliceDoc)
-  aliceAw.setLocalState({ id: 'alice', color: '#f00', grad: null, cursor: null, selection: { [elId]: Date.now() } })
+  aliceAw.setLocalState({ id: 'alice', color: '#f00', grad: null, cursor: null, desired: { [elId]: { ts: Date.now(), holding: true } } })
   const update = awarenessProtocol.encodeAwarenessUpdate(aliceAw, [aliceAw.clientID])
   awarenessProtocol.applyAwarenessUpdate(bobAwareness, update, 'network')
   return aliceAw
@@ -247,20 +247,73 @@ describe('soft-lock e2e — oscillation regression (real trace, real tick)', () 
       // selection — got reclassified as a fresh acquisition bid, and the
       // tick silently re-acquired what was just deliberately let go of,
       // forever. Advancing through several more tick cycles here proves
-      // that can't happen anymore: claimedAt lives inside selection itself,
-      // so deselecting removes it in the same operation, by construction.
+      // that can't happen anymore: holding and bidding share one record
+      // per elId, so deselecting removes it in the same operation.
       await vi.advanceTimersByTimeAsync(3000)
       expect(App.getSelectedIds()).toEqual([])
 
       await vi.advanceTimersByTimeAsync(5000)
       expect(App.getSelectedIds()).toEqual([])
 
-      // The broadcast state itself must be clean too, not just the local
-      // getter — nothing lingering for a future tick (mine or anyone
-      // else's) to misinterpret.
+      // The broadcast state itself must be clean too -- nothing lingering
+      // for a future tick to misinterpret. `desired` is always a plain
+      // object (never null), so "clean" means empty, not falsy.
       const myState = awareness.getLocalState()
-      expect(myState?.selection).toBeFalsy()
-      expect(myState?.pendingRequests).toBeFalsy()
+      expect(Object.keys(myState?.desired ?? {})).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('soft-lock e2e — switching selection abandons a pending claim (real trace)', () => {
+  test('selecting a different, unheld toy before the pending request resolves drops the stale request', async () => {
+    vi.useFakeTimers()
+    try {
+      const { App, awareness } = await bootPeerB([DIE_2])
+      simulateRemoteSelection(awareness, 'die-1') // Alice holds die-1
+
+      await vi.advanceTimersByTimeAsync(10)
+
+      App.select('die-1') // Bailey requests die-1 (held by Alice)
+      expect(App.getSelectedIds()).toEqual([])
+      expect(awareness.getLocalState()?.desired).toEqual({ 'die-1': { ts: expect.any(Number), holding: false } })
+
+      // Before die-1's 3s request window elapses, Bailey clicks a different,
+      // unheld toy without shift.
+      App.select('die-2')
+      expect(App.getSelectedIds()).toEqual(['die-2'])
+
+      // The stale request for die-1 must be gone immediately, not just
+      // eventually — a peer's own tick could otherwise still see it.
+      expect(awareness.getLocalState()?.desired?.['die-1']).toBeUndefined()
+
+      // Advance well past the original 3s window: die-1 must NOT silently
+      // join Bailey's selection alongside die-2.
+      await vi.advanceTimersByTimeAsync(4000)
+      expect(App.getSelectedIds()).toEqual(['die-2'])
+      expect(awareness.getLocalState()?.desired?.['die-1']).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('re-clicking the SAME held-by-other toy does not refresh its request timestamp (write-once)', async () => {
+    vi.useFakeTimers()
+    try {
+      const { App, awareness } = await bootPeerB()
+      simulateRemoteSelection(awareness, 'die-1')
+
+      await vi.advanceTimersByTimeAsync(10)
+
+      App.select('die-1')
+      const firstTs = awareness.getLocalState()?.desired?.['die-1']?.ts
+      expect(firstTs).toEqual(expect.any(Number))
+
+      await vi.advanceTimersByTimeAsync(500)
+      App.select('die-1') // reclick same still-held id
+      const secondTs = awareness.getLocalState()?.desired?.['die-1']?.ts
+      expect(secondTs).toBe(firstTs) // untouched -- write-once
     } finally {
       vi.useRealTimers()
     }
@@ -278,10 +331,10 @@ describe('soft-lock e2e — multi-select claim defense regression (real trace)',
   function makeBobRequester(bobAwareness) {
     const bobDoc = new Y.Doc()
     const bobAw  = new awarenessProtocol.Awareness(bobDoc)
-    bobAw.setLocalState({ id: 'bob', color: '#00f', grad: null, cursor: null, selection: null })
+    bobAw.setLocalState({ id: 'bob', color: '#00f', grad: null, cursor: null, desired: {} })
     return {
       request(elId) {
-        bobAw.setLocalStateField('pendingRequests', { [elId]: Date.now() })
+        bobAw.setLocalStateField('desired', { [elId]: { ts: Date.now(), holding: false } })
         const update = awarenessProtocol.encodeAwarenessUpdate(bobAw, [bobAw.clientID])
         awarenessProtocol.applyAwarenessUpdate(bobAwareness, update, 'network')
       },
@@ -357,10 +410,10 @@ describe('soft-lock e2e — long single-element drag claim refresh', () => {
   function makeBobRequester(bobAwareness) {
     const bobDoc = new Y.Doc()
     const bobAw  = new awarenessProtocol.Awareness(bobDoc)
-    bobAw.setLocalState({ id: 'bob', color: '#00f', grad: null, cursor: null, selection: null })
+    bobAw.setLocalState({ id: 'bob', color: '#00f', grad: null, cursor: null, desired: {} })
     return {
       request(elId) {
-        bobAw.setLocalStateField('pendingRequests', { [elId]: Date.now() })
+        bobAw.setLocalStateField('desired', { [elId]: { ts: Date.now(), holding: false } })
         const update = awarenessProtocol.encodeAwarenessUpdate(bobAw, [bobAw.clientID])
         awarenessProtocol.applyAwarenessUpdate(bobAwareness, update, 'network')
       },
@@ -423,10 +476,10 @@ describe('soft-lock e2e — multi-drag defends the whole group, not just the lea
   function makeRequester(targetAwareness) {
     const doc = new Y.Doc()
     const aw  = new awarenessProtocol.Awareness(doc)
-    aw.setLocalState({ id: 'bob', color: '#00f', grad: null, cursor: null, selection: null })
+    aw.setLocalState({ id: 'bob', color: '#00f', grad: null, cursor: null, desired: {} })
     return {
       request(elId) {
-        aw.setLocalStateField('pendingRequests', { [elId]: Date.now() })
+        aw.setLocalStateField('desired', { [elId]: { ts: Date.now(), holding: false } })
         const update = awarenessProtocol.encodeAwarenessUpdate(aw, [aw.clientID])
         awarenessProtocol.applyAwarenessUpdate(targetAwareness, update, 'network')
       },
@@ -531,8 +584,9 @@ describe('soft-lock integration — getBoxCandidates excludes peer-held elements
     expect(result).not.toContain('die-1')
 
     // No request was queued — box-select never invokes the soft-lock
-    // request path, only shift-click does.
-    expect(awareness.getLocalState()?.pendingRequests).toBeFalsy()
+    // request path, only shift-click does. `desired` is always a plain
+    // object (never null), so "nothing queued" means empty, not falsy.
+    expect(Object.keys(awareness.getLocalState()?.desired ?? {})).toEqual([])
   })
 
   test('a toy I already hold myself is included in the box-select result', async () => {

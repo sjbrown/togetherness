@@ -220,15 +220,25 @@ export function getAnchor(svgEl) {
 }
 
 /**
- * Which selection modes svgEl supports — mirrors toys.js's selectModes so
- * app.js can dispatch generically. Currently only rects can be resized
- * (a resizable circle would need a radius-only corner-drag scheme).
+ * Every mode svgEl can be in, in cycle order, fully `sel-`-prefixed.
+ * 'sel-move' is the default every shape shows with no click; rects/
+ * circles each add their one resize-family mode after it.
  */
 export function selectModes(svgEl) {
   const tag = svgEl?.tagName;
-  if (tag === 'rect')   return ['resize'];
-  if (tag === 'circle') return ['resize-r'];
-  return [];
+  if (tag === 'rect')   return ['sel-move', 'sel-resize'];
+  if (tag === 'circle') return ['sel-move', 'sel-resize-r'];
+  return ['sel-move'];
+}
+
+/**
+ * The next mode svgEl should show, given the mode it's currently in
+ * (pass null for "nothing yet, what should this show automatically").
+ */
+export function nextSelectMode(svgEl, currentMode) {
+  const cycle = selectModes(svgEl);
+  const i = cycle.indexOf(currentMode);
+  return cycle[(i + 1) % cycle.length];
 }
 
 /**
@@ -275,6 +285,45 @@ export function computeResizeRadiusRect(startRect, px, py) {
   const cy = startRect.y + startRect.height / 2;
   const r  = clampCircleR(Math.hypot(px - cx, py - cy));
   return { x: cx - r, y: cy - r, width: r * 2, height: r * 2 };
+}
+
+const MIN_RECT_RESIZE_SIZE = 30 // never let a corner-drag shrink a rect below this
+
+/**
+ * Pure geometry for a rect's corner-drag resize: given the rect at drag
+ * start and the corner being dragged (0=NW/1=NE/2=SE/3=SW), compute the
+ * new bbox for pointer (px, py), keeping the opposite corner fixed.
+ */
+function computeResizeCornerRect(startRect, corner, px, py) {
+  const { x, y, width, height } = startRect;
+  const left = x, top = y, right = x + width, bottom = y + height;
+
+  switch (corner) {
+    case 0: { // NW
+      const newLeft = Math.min(px, right - MIN_RECT_RESIZE_SIZE);
+      const newTop  = Math.min(py, bottom - MIN_RECT_RESIZE_SIZE);
+      return { x: newLeft, y: newTop, width: right - newLeft, height: bottom - newTop };
+    }
+    case 1: { // NE
+      const newTop = Math.min(py, bottom - MIN_RECT_RESIZE_SIZE);
+      return { x: left, y: newTop, width: Math.max(px - left, MIN_RECT_RESIZE_SIZE), height: bottom - newTop };
+    }
+    case 3: { // SW
+      const newLeft = Math.min(px, right - MIN_RECT_RESIZE_SIZE);
+      return { x: newLeft, y: top, width: right - newLeft, height: Math.max(py - top, MIN_RECT_RESIZE_SIZE) };
+    }
+    case 2: // SE
+    default: {
+      return { x: left, y: top, width: Math.max(px - left, MIN_RECT_RESIZE_SIZE), height: Math.max(py - top, MIN_RECT_RESIZE_SIZE) };
+    }
+  }
+}
+
+// Which resize math a live drag/commit needs, by mode
+export function computeResize(mode, startRect, corner, px, py) {
+  return mode === 'sel-resize-r'
+    ? computeResizeRadiusRect(startRect, px, py)
+    : computeResizeCornerRect(startRect, corner, px, py);
 }
 
 /**
@@ -487,6 +536,8 @@ export function makeLayerAPI(ydoc, yDrawing) {
     getTtState,
     getTtStateSchema,
     selectModes,
+    nextSelectMode,
+    computeResize,
     applyMoveCommit: (yEl, x, y)     => applyMoveCommit(ydoc, yEl, x, y),
     applyResize:     (yEl, x, y, w, h) => applyResize(ydoc, yEl, x, y, w, h),
     applyTtState:    (state)         => applyTtState(ydoc, yDrawing, state),

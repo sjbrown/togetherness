@@ -147,9 +147,9 @@ describe('Overlay.setHoverCandidates', () => {
   test('sets candidate entries for each id', () => {
     overlayInit(makeOverlayApp(), document.getElementById('canvas'))
     setHoverCandidates(['a', 'b', 'c'])
-    expect(SelectionMode.get('a')?.kind).toBe('candidate')
-    expect(SelectionMode.get('b')?.kind).toBe('candidate')
-    expect(SelectionMode.get('c')?.kind).toBe('candidate')
+    expect(SelectionMode.get('a')?.mode).toBe('candidate')
+    expect(SelectionMode.get('b')?.mode).toBe('candidate')
+    expect(SelectionMode.get('c')?.mode).toBe('candidate')
   })
 
   test('replaces previous candidate entries', () => {
@@ -158,33 +158,33 @@ describe('Overlay.setHoverCandidates', () => {
     setHoverCandidates(['c'])
     expect(SelectionMode.has('a')).toBe(false)
     expect(SelectionMode.has('b')).toBe(false)
-    expect(SelectionMode.get('c')?.kind).toBe('candidate')
+    expect(SelectionMode.get('c')?.mode).toBe('candidate')
   })
 
   test('does not overwrite a local entry for the same id', () => {
     overlayInit(makeOverlayApp({ 'my-shape': { x: 0, y: 0, width: 10, height: 10 } }), document.getElementById('canvas'))
     localSelectionChanged(new Set(['my-shape']))
-    expect(SelectionMode.get('my-shape')?.kind).toBe('local')
+    expect(SelectionMode.get('my-shape')?.mode).toBe('local')
 
     // rubber-band box now includes 'my-shape'
     setHoverCandidates(['my-shape', 'other'])
     // local entry must survive
-    expect(SelectionMode.get('my-shape')?.kind).toBe('local')
-    expect(SelectionMode.get('other')?.kind).toBe('candidate')
+    expect(SelectionMode.get('my-shape')?.mode).toBe('local')
+    expect(SelectionMode.get('other')?.mode).toBe('candidate')
   })
 
   test('does not touch local entries', () => {
     overlayInit(makeOverlayApp({ 'my-shape': { x: 0, y: 0, width: 10, height: 10 } }), document.getElementById('canvas'))
     localSelectionChanged(new Set(['my-shape']))
     setHoverCandidates(['x', 'y'])
-    expect(SelectionMode.get('my-shape')?.kind).toBe('local')
+    expect(SelectionMode.get('my-shape')?.mode).toBe('local')
   })
 
   test('does not touch remote entries', () => {
     overlayInit(makeOverlayApp(), document.getElementById('canvas'))
-    SelectionMode.set('remote-el', { kind: 'remote', peerId: 'peer1', color: '#f00' })
+    SelectionMode.set('remote-el', { mode: 'remote', peerId: 'peer1', color: '#f00' })
     setHoverCandidates(['x'])
-    expect(SelectionMode.get('remote-el')?.kind).toBe('remote')
+    expect(SelectionMode.get('remote-el')?.mode).toBe('remote')
   })
 
   test('empty ids array clears all candidates', () => {
@@ -251,7 +251,7 @@ describe('Overlay.clearHoverCandidates', () => {
     localSelectionChanged(new Set(['s']))
     setHoverCandidates(['c'])
     clearHoverCandidates()
-    expect(SelectionMode.get('s')?.kind).toBe('local')
+    expect(SelectionMode.get('s')?.mode).toBe('local')
   })
 
   test('is safe to call with no candidates', () => {
@@ -352,7 +352,7 @@ describe('Overlay.localSelectionChanged', () => {
     makeOverlayDOM()
     overlayInit(makeOverlayApp({ 'a': { x: 0, y: 0, width: 50, height: 50 } }), document.getElementById('canvas'))
     localSelectionChanged(new Set(['a']))
-    expect(SelectionMode.get('a')?.kind).toBe('local')
+    expect(SelectionMode.get('a')?.mode).toBe('local')
     expect(SelectionMode.size).toBe(1)
   })
 
@@ -365,16 +365,16 @@ describe('Overlay.localSelectionChanged', () => {
     }
     overlayInit(makeOverlayApp(bboxMap), document.getElementById('canvas'))
     localSelectionChanged(new Set(['a', 'b', 'c']))
-    expect(SelectionMode.get('a')?.kind).toBe('local')
-    expect(SelectionMode.get('b')?.kind).toBe('local')
-    expect(SelectionMode.get('c')?.kind).toBe('local')
+    expect(SelectionMode.get('a')?.mode).toBe('local')
+    expect(SelectionMode.get('b')?.mode).toBe('local')
+    expect(SelectionMode.get('c')?.mode).toBe('local')
   })
 
   test('also clears candidate entries from a prior rubber-band', () => {
     makeOverlayDOM()
     overlayInit(makeOverlayApp({ 'x': { x: 0, y: 0, width: 50, height: 50 } }), document.getElementById('canvas'))
     setHoverCandidates(['x'])
-    expect(SelectionMode.get('x')?.kind).toBe('candidate')
+    expect(SelectionMode.get('x')?.mode).toBe('candidate')
     localSelectionChanged(new Set())
     expect(SelectionMode.has('x')).toBe(false)
   })
@@ -382,9 +382,9 @@ describe('Overlay.localSelectionChanged', () => {
   test('does not touch remote entries', () => {
     makeOverlayDOM()
     overlayInit(makeOverlayApp(), document.getElementById('canvas'))
-    SelectionMode.set('remote-el', { kind: 'remote', peerId: 'p1', color: '#f00' })
+    SelectionMode.set('remote-el', { mode: 'remote', peerId: 'p1', color: '#f00' })
     localSelectionChanged(new Set(['a']))
-    expect(SelectionMode.get('remote-el')?.kind).toBe('remote')
+    expect(SelectionMode.get('remote-el')?.mode).toBe('remote')
   })
 
   test('renders rings for each id with a known bbox', () => {

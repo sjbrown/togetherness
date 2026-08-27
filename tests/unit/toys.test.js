@@ -7,7 +7,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   svgTextToDom, addToy, addToyDom, deleteToyDom, TOY_TYPES, TOOLS,
   getGeom, getTtStateSchema, editDom, previewEdit, reparentToyDom, findToyDom,
-  hslToRgb, colorMatrixValues,
+  hslToRgb, colorMatrixValues, selectModes, nextSelectMode,
   _clearSvgTextCache, _resetToyScriptState, activateAllToyScriptsDom,
   newToyId, _getScriptsFragment, initializeToy,
 } from '../../src/toys.js'
@@ -403,6 +403,48 @@ function commitMove(toyEl, x, y) {
   svg.setAttribute('y', String(y))
   return true
 }
+
+describe('selectModes / nextSelectMode', () => {
+  // selectModes reads classes off the toy's own embedded <svg>
+  // (domEl.querySelector(':scope > svg')) -- a minimal <g><svg class="..">
+  // wrapper is enough to exercise it without going through addToy/fetch.
+  function makeToyDom(classes = []) {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    if (classes.length) svg.setAttribute('class', classes.join(' '))
+    g.appendChild(svg)
+    return g
+  }
+
+  test('selectModes always includes sel-action, plus sel-resize/sel-rummage per class', () => {
+    expect(selectModes(makeToyDom())).toEqual(['sel-action'])
+    expect(selectModes(makeToyDom(['tt-mode-resize']))).toEqual(['sel-action', 'sel-resize'])
+    expect(selectModes(makeToyDom(['tt-mode-resize', 'tt-mode-rummage']))).toEqual(['sel-action', 'sel-resize', 'sel-rummage'])
+  })
+
+  test('nextSelectMode cycles sel-action <-> sel-resize for a resizable toy', () => {
+    const domEl = makeToyDom(['tt-mode-resize'])
+    expect(nextSelectMode(domEl, null)).toBe('sel-action')
+    expect(nextSelectMode(domEl, 'sel-action')).toBe('sel-resize')
+    expect(nextSelectMode(domEl, 'sel-resize')).toBe('sel-action')
+  })
+
+  test('nextSelectMode always offers sel-action for a toy with no resize capability', () => {
+    const domEl = makeToyDom()
+    expect(nextSelectMode(domEl, null)).toBe('sel-action')
+    expect(nextSelectMode(domEl, 'sel-action')).toBe('sel-action')
+  })
+
+  // Rummage has no gesture/rendering behind it yet -- a toy declaring
+  // both capabilities must still only cycle sel-action <-> sel-resize,
+  // not surface rummage.
+  test('nextSelectMode skips rummage even when the toy declares both capabilities', () => {
+    const domEl = makeToyDom(['tt-mode-resize', 'tt-mode-rummage'])
+    expect(nextSelectMode(domEl, null)).toBe('sel-action')
+    expect(nextSelectMode(domEl, 'sel-action')).toBe('sel-resize')
+    expect(nextSelectMode(domEl, 'sel-resize')).toBe('sel-action')
+  })
+})
 
 describe('movement', () => {
   // TOY_SVG (top of file) is 80x100 — addToy places it at x = cx - 40, y = cy - 50.

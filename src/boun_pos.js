@@ -1046,6 +1046,16 @@ export function getSnapPoints(yBounPos) {
   return points;
 }
 
+export function selectModes(_domEl) {
+  return ['sel-move'];
+}
+
+export function nextSelectMode(_domEl, currentMode) {
+  const cycle = selectModes(_domEl);
+  const i = cycle.indexOf(currentMode);
+  return cycle[(i + 1) % cycle.length];
+}
+
 /**
  * makeLayerAPI — returns the canonical LayerAPI for the Boundaries and
  * Positions layer, closing over (ydoc, yBounPos) so app.js can dispatch
@@ -1059,6 +1069,8 @@ export function makeLayerAPI(ydoc, yBounPos) {
     getAnchor,
     getTtState,
     getTtStateSchema,
+    selectModes,
+    nextSelectMode,
     applyMoveCommit:  (yEl, x, y)        => applyMoveCommit(ydoc, yEl, x, y),
     applyTtState:     (state)            => applyTtState(ydoc, yBounPos, state),
     edit:             (yEl, editData)    => editEl(ydoc, yEl, editData),

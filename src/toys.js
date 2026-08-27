@@ -1131,14 +1131,25 @@ export function moveToyAndStack(layerEl, el, x, y) {
 
 export function selectModes(domEl) {
   const ownSvg = domEl?.querySelector?.(':scope > svg')
-  let modes = ['action']
+  let modes = ['sel-action']
   if (!!ownSvg?.classList.contains('tt-mode-resize')) {
-    modes.push('resize')
+    modes.push('sel-resize')
   }
   if (!!ownSvg?.classList.contains('tt-mode-rummage')) {
-    modes.push('rummage')
+    modes.push('sel-rummage')
   }
   return modes
+}
+
+function selectModeCycle(domEl) {
+  // 'sel-rummage' stays excluded until it has a real gesture behind it.
+  return selectModes(domEl).filter(mode => mode !== 'sel-rummage')
+}
+
+export function nextSelectMode(domEl, currentMode) {
+  const cycle = selectModeCycle(domEl)
+  const i = cycle.indexOf(currentMode)
+  return cycle[(i + 1) % cycle.length]
 }
 
 
@@ -2346,6 +2357,10 @@ export function makeLayerAPI(ydoc, getLayerEl, myId, tableId, isCreator = false)
     getTtState:      getTtStateDom,
     getTtStateSchema,
     selectModes,
+    nextSelectMode,
+    // Toys only have one resize flavor (corner-drag), so `mode` is
+    // unused here -- kept so callers can ask uniformly across layers.
+    computeResize: (mode, startRect, corner, px, py) => computeResizeRect(startRect, corner, px, py),
     applyMoveCommit: (el, x, y) => {
       const layerEl = layer()
       const oldAnchor = getAnchor(el)

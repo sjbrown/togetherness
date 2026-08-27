@@ -291,16 +291,6 @@ function onPointerDown(e) {
       }
       const p = toCanvas(e.clientX, e.clientY);
 
-      // A click that reaches here landed on hitId's own body, not a
-      // handle — if hitId is the tray currently in resize mode, that's a
-      // deliberate "click off the handles" and exits resize mode before
-      // falling through.
-      // This click must NOT also count as the reclick that toggles resize
-      // mode back on (see wasReclick below) — otherwise a tap on the body
-      // would exit and immediately re-enter resize mode in one gesture.
-      const wasInResizeMode = resizeId === hitId;
-      if (wasInResizeMode) App.exitResizeMode();
-
       ToolMode._gesture = 'move';
       const anchor = App.getAnchor(hitEl);
       // If the hit element is part of a multi-selection, start a multi-element drag
@@ -312,9 +302,9 @@ function onPointerDown(e) {
       }
       // A plain (non-shift) click that lands on the element already the
       // client's own sole selection is a reclick — a tap (no movement) on
-      // pointerup toggles resize mode instead of just re-affirming the
-      // selection. A drag still wins if the pointer actually moves.
-      const wasSoleSelected = !wasInResizeMode &&
+      // pointerup cycles its selection mode instead of re-affirming the
+      // selection. A real drag leaves the mode untouched.
+      const wasSoleSelected =
         App.getSelectedIds().length === 1 && App.getSelectedIds()[0] === hitId;
       ToolMode._moveRef = { id: hitId, dx: p.x - anchor.x, dy: p.y - anchor.y, moved: false, wasReclick: wasSoleSelected };
       App.select(hitId);
@@ -490,7 +480,7 @@ function onPointerUp(e) {
       // selection, it's a deliberate second click — toggle the next mode
       // in the cycle
       if (!isCancelled && ToolMode._moveRef.wasReclick) {
-        App.enterResizeMode(ToolMode._moveRef.id);
+        App.nextSelectionMode(ToolMode._moveRef.id);
       }
     }
   }
