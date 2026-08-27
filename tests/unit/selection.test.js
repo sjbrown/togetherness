@@ -32,9 +32,8 @@ const notHeld = () => false
 const heldBy = (heldId) => (id) => id === heldId
 
 // Shorthand for a state whose `desired` map is built from a plain
-// { id: ts, ... } shape, all holding:true — the common case in these
-// tests (an existing selection to mutate). No mode active, unless a test
-// adds one afterward.
+// { id: ts, ... } shape, all holding:true. No mode active unless a
+// test adds one afterward.
 function stateWith(heldMap, activeMode = null) {
   const desired = {}
   for (const [id, ts] of Object.entries(heldMap)) desired[id] = { ts, holding: true }
@@ -184,15 +183,9 @@ describe('select()', () => {
     expect(s1).toEqual(EMPTY_STATE)
   })
 
-  // select() itself never touches .activeMode -- it only carries it
-  // through unchanged (see withDesired) -- because select()'s "not held"
-  // branch internally clears every claim before re-adding the target id
-  // (see its own comment), and a mode-reseeding check run on THAT
-  // intermediate state would wrongly reset a mode that a same-id reselect
-  // should actually leave alone. Reseeding is reconcileMode's job, applied
-  // exactly once by app.js's _applySelState to the FINAL result of a whole
-  // gesture, never composed in partway through one. These two tests
-  // exercise that real composition, the way app.js actually uses it.
+  // select() itself never touches .activeMode -- an intermediate reseed
+  // mid-transition would wrongly reset a same-id reselect's mode.
+  // Reseeding happens once, on the final result.
   test('re-selecting the SAME sole id leaves an active mode untouched, once reconciled', () => {
     const s0 = { desired: { 'die-1': { ts: 1, holding: true } }, activeMode: { id: 'die-1', mode: 'sel-resize' } }
     // A different defaultMode is passed on purpose -- it must be ignored,
@@ -371,7 +364,7 @@ describe('enterMode()', () => {
 
 describe('reconcileMode()', () => {
   // Invariant under test throughout this block: activeMode is null iff
-  // shape isn't 'single' -- see selection.js's file header.
+  // shape isn't 'single'.
 
   test('no-ops (same reference) on an empty state', () => {
     expect(reconcileMode(EMPTY_STATE, 'sel-move')).toBe(EMPTY_STATE)
@@ -396,12 +389,9 @@ describe('reconcileMode()', () => {
     expect(s1.activeMode).toEqual({ id: 'die-2', mode: 'sel-action' })
   })
 
-  // Regression: a layer with no modes of its own (defaultMode === null,
-  // e.g. a hypothetical LayerAPI with no nextSelectMode) must leave
-  // activeMode null rather than seeding a malformed { id, mode: null }
-  // entry -- one that overlay.js's setSelectionMode would then try to
-  // apply as a real mode string, wiping out the plain 'local' ring
-  // localSelectionChanged had already drawn (see app.js's _renderSelectionMode).
+  // Regression: a layer with no modes of its own must leave activeMode
+  // null rather than seeding a malformed { id, mode: null } entry,
+  // which would wipe out the plain ring already drawn for it.
   test('leaves activeMode null for a fresh single selection when defaultMode is null', () => {
     const s0 = { desired: { 'die-1': { ts: 1, holding: true } }, activeMode: null }
     expect(reconcileMode(s0, null)).toBe(s0)

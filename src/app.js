@@ -89,36 +89,27 @@ let _activeLayer  = 'toys';
 // connection is doing right now, not only what it did.
 const _netStatus = { connected: false, synced: false, webrtcPeers: 0, bcPeers: 0, signaling: [] };
 
-// _desired is the single local SSOT for this client's selection intent:
-// which elements it wants, and its relationship to each.
+// _desired is this client's own selection intent:
 //   { [elId]: { ts: number, holding: boolean } }
 //
-// holding:true means elId is part of my committed selection (ts = when I
-// most recently claimed it); holding:false means I'm bidding to acquire an
-// elId held by someone else (ts = when that bid started). One record per
-// elId, never both at once for the same id — see selection.js's file
-// header for why that used to be two separately-mutated maps.
+// holding:true is part of my committed selection (ts = last claimed);
+// holding:false is a bid to acquire an elId held by someone else (ts =
+// when the bid started). One record per elId, never both.
 //
-// Every membership/request DECISION (select, toggle, request, reassert,
-// clear, commitMultiSelect, a tick's resolution) is made by the pure
-// functions in selection.js and folded back in via _applySelState below --
-// forgetting to broadcast is structurally impossible, since that's the
-// only path that ever reassigns this variable. The one exception is a
-// gesture that only REFRESHES an already-held claim's timestamp without
-// changing membership (the drag/multi-drag "defend" paths below); those
-// still write _desired directly and call _broadcastDesired() themselves
-// -- deliberately lighter than _afterClaimsChanged, since membership
-// hasn't changed (see the comment on the throttled refresh in moveMulti).
+// Every membership/request decision funnels through _applySelState
+// below, the only path that reassigns this variable -- forgetting to
+// broadcast is structurally impossible.
+//
+// Exception: a gesture that only refreshes an already-held claim's
+// timestamp writes _desired directly and broadcasts itself, lighter
+// than the full _afterClaimsChanged path.
 let _desired = {};
-// The selection-gated mode for the current sole held id: { id, mode } |
-// null -- see selection.js's file header. null iff the held set isn't a
-// single element; a fresh single selection is always seeded with its own
-// automatic default mode (sel-move, sel-action, ...), never left at null
-// waiting for a click. Orthogonal to _desired's map shape: at most one
-// mode is ever active, scoped to a single id, never negotiated with other
-// clients the way _desired is. Broadcast via the awareness `mode` field
-// verbatim -- `mode` already carries its own `sel-` prefix, minted by
-// whichever LayerAPI produced it (see selection.js's file header).
+// The selection-gated mode for the sole held id: { id, mode } | null.
+// Null iff the held set isn't a single element; a fresh single
+// selection is seeded with its own default mode immediately.
+//
+// Never negotiated with other clients. Broadcast via the awareness
+// `mode` field verbatim -- already carrying its own `sel-` prefix.
 let _activeMode = null;
 // Tracks whether the last _afterClaimsChanged call left a non-empty selection
 let _lastClaimedSetNonEmpty = false;
@@ -140,23 +131,13 @@ function _selState() {
   return { desired: _desired, activeMode: _activeMode };
 }
 
-// Applies a new pure Selection state (src/selection.js) to
-// _desired/_activeMode, running the existing side-effect helpers depending
-// on what changed. Selection.reconcileMode runs unconditionally first, so
-// no caller anywhere -- not this function, not the transitions in
-// selection.js themselves -- has to remember that a mode can be
-// invalidated by something that changed the held set out from under it;
-// this is the one place that rule is enforced, on the operation's FINAL
-// result. selection.js's functions return the identical desired/activeMode
-// value, by reference, when nothing changed at all -- see its file header
-// -- so a no-op gesture (e.g. re-requesting an id already being bid on)
-// costs a couple of reference checks and nothing else. When something DID
-// change, the three possible outcomes are independent: the held-id SET
-// changing needs the full _afterClaimsChanged treatment (mode re-render,
-// action affordance, UI notify, checkpointing); a mode-only change
-// (entering/exiting/cycling, held set unchanged) just needs to re-render
-// and re-broadcast the mode; a bid-only change (a new/dropped request,
-// nothing promoted or released) just needs a broadcast.
+// Applies a new pure Selection state to _desired/_activeMode.
+// Reconcile runs first, unconditionally, so no caller has to remember
+// that a mode can be invalidated by a changed held set.
+//
+// A no-op returns by reference, cheap to check. Otherwise: a held-set
+// change gets the full _afterClaimsChanged treatment; a mode-only
+// change re-renders and re-broadcasts; a bid-only change just broadcasts.
 function _applySelState(rawNext) {
   const soleId = Selection.soleHeldId(rawNext);
   const next = Selection.reconcileMode(rawNext, soleId ? _defaultModeFor(soleId) : null);
@@ -205,34 +186,27 @@ function _afterClaimsChanged() {
   // Deselecting to nothing is an intent signal - good time to try checkpointing
   if (wasSelecting && claimedSet.size === 0) maybeIdleCheckpoint('deselect');
   Overlay.localSelectionChanged(claimedSet);
-  // _activeMode has already been reconciled (see _applySelState) by the
-  // time this runs, so this is pure rendering -- no validity decision left
-  // to make here. Still needed even when the mode itself is unchanged,
-  // since localSelectionChanged just reset every claimed id back to 'local'.
+  // _activeMode is already reconciled by this point, so this is pure
+  // rendering. Still needed even when the mode is unchanged, since
+  // localSelectionChanged just reset every claimed id to 'local'.
   _renderSelectionMode();
   _broadcastDesired();
   _broadcastMode();
   UI.onSelectionChanged(claimedSet);
 }
 
-// Broadcast the current _desired as this client's awareness `desired`
-// field. Centralized so every call site broadcasts the same shape
-// consistently -- always a plain object, `{}` when nothing is desired
-// (never null: "desired = {}" reads as "I desire the empty set", not
-// "I have no opinion").
+// Broadcast the current _desired verbatim -- always a plain object,
+// `{}` when nothing is desired, never null. "desired = {}" reads as "I
+// desire the empty set," not "I have no opinion."
 function _broadcastDesired() {
   _awareness.setLocalStateField('desired', { ..._desired });
 }
 
-// ── Selection-gated mode (resize; future: rummage/rotate/...) ──────────────
-// See selection.js's file header for what `activeMode` is and the
-// invariant it maintains (null iff the held set isn't a single element).
+// ── Selection-gated mode ─────────────────────────────────────────────────
 
-// Modes with their own drag handles (rendered by overlay.js's
-// renderLocalResizeSelection/renderLocalResizeRSelection). Every single
-// selection has SOME mode now, including the handle-less automatic
-// defaults (sel-move, sel-action) -- this is what actually distinguishes
-// "genuinely in a resize gesture's mode" from "just plain selected".
+// Modes with their own drag handles. Every single selection has some
+// mode, including the handle-less defaults -- this distinguishes
+// "genuinely in a resize gesture" from "just selected".
 const RESIZE_HANDLE_MODES = new Set(['sel-resize', 'sel-resize-r']);
 
 // id's own live DOM element and owning LayerAPI, looked up together since
@@ -242,10 +216,8 @@ function _layerFor(id) {
   return { domEl, layer: _Layers[moduleForElement(domEl)] };
 }
 
-// id's owning LayerAPI's automatic, no-click default mode (toys' action
-// affordance, drawings' plain sel-move, ...). app.js doesn't know which
-// element types default to what; it only knows to ask, via
-// nextSelectMode(domEl, null) -- see toys.js's/drawing.js's file headers.
+// id's owning LayerAPI's automatic, no-click default mode. app.js
+// doesn't know which element types default to what, only how to ask.
 function _defaultModeFor(id) {
   const { domEl, layer } = _layerFor(id);
   return layer?.nextSelectMode?.(domEl, null) ?? null;
@@ -308,7 +280,7 @@ let _undoLog      = [];      // { label } — actions undone, newest first;
 // Active drag — set by App.startDrag, cleared by commitMove / cancelMove.
 // Awareness state: drag: { elId, dx, dy }
 // local awareness schema: { id, color, grad, cursor, desired, drag? }
-// desired: { [elId]: { ts: number, holding: boolean } } — see soft-lock.js
+// desired: { [elId]: { ts: number, holding: boolean } }
 let _dragState    = null;    // { id, startX, startY, startBboxX, startBboxY,
                               //   boundsRects: [{x,y,w,h}]|null, lastValidX, lastValidY,
                               //   snapPoints: [{cx,cy,snapRadius}] } | null
@@ -322,8 +294,8 @@ let _multiDragState = null;  // { elements: [{ id, mtype, anchorX, anchorY, bbox
                              //   lastValidDx, lastValidDy } | null
 
 // Active corner-drag resize
-// Only reachable while _activeMode === { id, mode: 'sel-resize'|'sel-resize-r' } and only
-// ever for a container.
+// Only reachable while _activeMode.mode is a resize-family mode, and
+// only ever for a container.
 let _resizeState = null;    // { id, corner, startRect: {x,y,width,height},
                             //   lastRect: {x,y,width,height} } | null
 
@@ -990,18 +962,15 @@ const App = {
 
   isHeldByOther: (id) => isElementHeldByOther(id, _awareness.getStates(), _awareness.clientID),
 
-  // Advisory soft-lock request: write/refresh this client's own acquisition
-  // entry for `id`. Per protocol, an acquirer's request is write-once — a
-  // client cannot cancel or re-issue its own pending request once sent, so
-  // this is a no-op if one is already outstanding for this id. See
-  // selection.js's request().
+  // Advisory soft-lock request: write/refresh this client's own
+  // acquisition entry for `id`. Write-once -- a no-op if one is
+  // already outstanding for this id.
   requestElement: (id) => {
     _applySelState(Selection.request(_selState(), id));
   },
 
-  // Refresh this client's claim timestamp for a single already-held elId,
-  // without touching the rest of the current multi-selection. See
-  // selection.js's reassertClaim().
+  // Refresh this client's claim timestamp for a single already-held
+  // elId, without touching the rest of the current multi-selection.
   reassertClaim: (id) => {
     _applySelState(Selection.reassertClaim(_selState(), id));
   },
@@ -1012,17 +981,16 @@ const App = {
     _clearClaims();
   },
 
-  // Exclusive single-select — see selection.js's select() for the actual
-  // decision (held-by-other → request instead of claiming; abandoning any
-  // stale pending request for a different id; a re-click of a held-by-self
-  // id as rebuttal).
+  // Exclusive single-select: a held-by-other id becomes a request
+  // instead of a claim, abandoning any stale request for a different
+  // id; a re-click of a held-by-self id is a rebuttal.
   select: (id) => {
     App.setTool('select');
     _applySelState(Selection.select(_selState(), id, { isHeldByOther: App.isHeldByOther }));
   },
 
-  // Toggle a single id in/out of the current selection — see selection.js's
-  // toggle() (deselect if held, request if held-by-other, else add).
+  // Toggle a single id in/out of the selection: deselect if held,
+  // request if held-by-other, else add.
   toggleSelection: (id) => {
     _applySelState(Selection.toggle(_selState(), id, { isHeldByOther: App.isHeldByOther }));
   },
@@ -1569,15 +1537,9 @@ const App = {
   //                     starts a resize gesture or falls through.
   // lifecycle: startResize/resize/commitResize/cancelResize
 
-  // The generic "second click" gesture: app.js doesn't know what modes id's
-  // element supports, or which one comes next -- it asks id's own owning
-  // LayerAPI (toys.js/drawing.js) via nextSelectMode, which is the one
-  // place that domain knowledge ("rects resize, circles resize-r, trays
-  // will someday rummage") actually lives, and hands the answer straight
-  // to Selection.enterMode. canvas.js's call site already treats this as
-  // "cycle to the next mode" (see its own comment at the click site).
-  // Every LayerAPI's cycle wraps around rather than ever landing on "no
-  // mode", so this always has something to enter.
+  // The generic "second click" gesture: asks id's own owning LayerAPI
+  // what mode comes next and hands the answer to Selection.enterMode.
+  // Every cycle wraps around, so there's always something to enter.
   nextSelectionMode: (id) => {
     if (Selection.shape(_selState()) !== 'single' || !_desired[id]?.holding) return;
     const { domEl, layer } = _layerFor(id);
@@ -1594,10 +1556,9 @@ const App = {
     _applySelState(Selection.enterMode(_selState(), id, _defaultModeFor(id)));
   },
 
-  // Only true once id has been explicitly cycled into a mode with actual
-  // corner/radius drag handles -- every single selection has SOME mode
-  // (see selection.js's invariant), but sel-move/sel-action have no
-  // handles of their own, so this isn't just "is _activeMode set".
+  // True only once id has been cycled into a mode with actual drag
+  // handles -- sel-move/sel-action have none, so this isn't just "is
+  // _activeMode set".
   getResizeModeId: () => (_activeMode && RESIZE_HANDLE_MODES.has(_activeMode.mode)) ? _activeMode.id : null,
 
   // ── Bowstring handle (delight.js) ─────────────────────────────────────────
@@ -1618,14 +1579,9 @@ const App = {
     const { domEl, layer } = _layerFor(id);
     if (!domEl) return false;
     const defaultMode = layer?.nextSelectMode?.(domEl, null) ?? null;
-    // The action affordance only shows for a type whose own default mode
-    // IS 'sel-action' (toys; drawings default to 'sel-move' and never get
-    // one), and only while the current mode still IS that default --
-    // overlay.js stops drawing the action square the moment an explicit
-    // mode like sel-resize is cycled into (see render()'s 'sel-action'
-    // case, the only one that draws it), so the live gesture must decline
-    // the same way or it keeps intercepting a corner that no longer
-    // visually shows it.
+    // Only shows for a type whose own default mode is 'sel-action', and
+    // only while the current mode still is that default -- declining
+    // otherwise avoids intercepting a corner that no longer shows it.
     if (defaultMode !== 'sel-action' || _activeMode?.mode !== defaultMode) return false;
     const geo = App.getBBox(id);
     if (!geo) return false;
@@ -1681,11 +1637,9 @@ const App = {
     Overlay.startResizeGhost(id);
   },
 
-  // Called on every pointermove during a resize drag; (px, py) is the raw
-  // canvas-space pointer position. Which geometry a mode's drag needs
-  // (corner-drag vs radius-drag) is id's own owning LayerAPI's call, via
-  // computeResize(mode, ...) -- app.js doesn't know or care which modes
-  // need which math, only which layer owns id.
+  // Called on every pointermove during a resize drag; (px, py) is the
+  // raw canvas-space pointer position. Which geometry the mode needs
+  // is id's own owning LayerAPI's call, via computeResize(mode, ...).
   resize: (id, corner, px, py) => {
     if (!_resizeState || _resizeState.id !== id) return;
     const rect = _Layers[_resizeState.mtype].computeResize(_resizeState.mode, _resizeState.startRect, corner, px, py);

@@ -1129,12 +1129,9 @@ export function moveToyAndStack(layerEl, el, x, y) {
   for (const { member, cx, cy } of targets) applyMoveDom(member, cx, cy)
 }
 
-// Every selection mode domEl declares support for, fully `sel-`-prefixed.
-// 'sel-action' is unconditional -- every toy gets the action affordance
-// ('*' glyph / bowstring handle resting state). 'sel-rummage' is a real
-// capability tag some toy SVGs already carry (tt-mode-rummage, on
-// trays/bags/supply) but has no gesture or rendering behind it yet (see
-// selectModeCycle below, which excludes it from the click-to-cycle set).
+// Every selection mode domEl declares support for, `sel-`-prefixed.
+// 'sel-action' is unconditional; 'sel-rummage' is a real capability tag
+// (tt-mode-rummage) with no gesture or rendering behind it yet.
 export function selectModes(domEl) {
   const ownSvg = domEl?.querySelector?.(':scope > svg')
   let modes = ['sel-action']
@@ -1147,21 +1144,16 @@ export function selectModes(domEl) {
   return modes
 }
 
-// Every mode domEl can be in, in cycle order. First entry is what a sole
-// selection shows automatically, with no click required (see selectModes'
-// unconditional 'sel-action' entry). 'sel-rummage' is deliberately
-// excluded here (see selectModes' own comment): a rummage-capable
-// container still just cycles sel-action -> sel-resize -> sel-action, the
-// same as any other resizable toy, until rummage mode actually exists.
+// Every mode domEl can be in, in cycle order; the first entry is the
+// automatic no-click default. 'sel-rummage' stays excluded until it
+// has a real gesture behind it.
 function selectModeCycle(domEl) {
   return selectModes(domEl).filter(mode => mode !== 'sel-rummage')
 }
 
-// The next mode domEl should show, given the mode it's currently in (pass
-// null for "nothing yet, what should this show automatically"). Finds
-// currentMode in the cycle and returns the next one, wrapping around --
-// null (not found) wraps to index 0, which is how "automatic" and "cycle
-// past the last mode" end up being the same case.
+// The next mode domEl should show, given the current one (null for
+// "nothing yet"). Wraps to index 0 when not found, so "automatic" and
+// "past the last mode" are the same case.
 export function nextSelectMode(domEl, currentMode) {
   const cycle = selectModeCycle(domEl)
   const i = cycle.indexOf(currentMode)
@@ -2374,9 +2366,8 @@ export function makeLayerAPI(ydoc, getLayerEl, myId, tableId, isCreator = false)
     getTtStateSchema,
     selectModes,
     nextSelectMode,
-    // Toys only ever have one resize flavor (corner-drag), so `mode` is
-    // unused here -- it exists so callers (app.js) can ask uniformly
-    // across layers without knowing which flavor each one supports.
+    // Toys only have one resize flavor (corner-drag), so `mode` is
+    // unused here -- kept so callers can ask uniformly across layers.
     computeResize: (mode, startRect, corner, px, py) => computeResizeRect(startRect, corner, px, py),
     applyMoveCommit: (el, x, y) => {
       const layerEl = layer()

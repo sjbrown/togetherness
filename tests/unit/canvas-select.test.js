@@ -748,10 +748,9 @@ describe('resize mode — corner-drag gesture', () => {
     const stage = document.getElementById('stage')
     stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el }))
 
-    // The mode-reset is no longer eager on pointerdown -- dragging a
-    // resize-mode element by its body must leave its mode untouched (see
-    // canvas.js's own comment at the click site), so neither call fires
-    // until pointerup decides whether this was a drag or a plain tap.
+    // Dragging a resize-mode element by its body must leave its mode
+    // untouched; neither call fires until pointerup decides whether
+    // this was a drag or a plain tap.
     expect(exited).toEqual([])
     expect(entered).toEqual([])
     expect(ToolMode._gesture).toBe('move')

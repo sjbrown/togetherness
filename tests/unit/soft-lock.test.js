@@ -10,10 +10,9 @@
  *   holding:false = this client's own outstanding acquisition bid,
  *                   ts = when the bid started
  *
- * app.js's own convention is to always broadcast a plain object (`{}`
- * when nothing is desired, never null), but every function here still
- * tolerates a null/missing value defensively, since a foreign/older peer
- * may send either.
+ * By convention, `desired` is broadcast as a plain object -- `{}` when
+ * empty, never null -- though every function here still tolerates a
+ * null or missing value from a foreign/older peer.
  */
 
 import { describe, test, expect } from 'vitest'
@@ -127,11 +126,9 @@ describe('getClaimTimestamp', () => {
   })
 
   test('returns the actual value (0) for an elId explicitly claimed at time zero', () => {
-    // An entry whose ts happens to be 0 is still a real claim (at ts=0),
-    // not "no claim" — getClaimTimestamp can't distinguish it from "never
-    // held" by return value alone, which is fine, since 0 already behaves
-    // correctly as "loses to anything real" everywhere it's consumed
-    // (resolveElementWinner, computeTickActions).
+    // An entry whose ts is 0 is still a real claim, not "no claim" --
+    // getClaimTimestamp can't tell them apart by return value alone, but
+    // 0 already loses to anything real wherever it's consumed.
     const states = statesMap([[1, { desired: { g1: { ts: 0, holding: true } } }]])
     expect(getClaimTimestamp('g1', states, 1)).toBe(0)
   })

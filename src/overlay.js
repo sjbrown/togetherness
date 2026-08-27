@@ -23,18 +23,9 @@
  *   'locked'       — remote peer is actively editing
  *
  * 'sel-move'/'sel-resize'/'sel-resize-r'/'sel-action' are selection-gated
- * MODES (see SELECTION_MODES below and selection.js's file header) — set
- * via Overlay.setSelectionMode(), not localSelectionChanged(), and
- * mutually exclusive with every other mode above (and with each other).
- * Every LayerAPI's nextSelectMode() cycles through a list of these that
- * starts with whichever one is that element type's automatic, no-click
- * default ('sel-move' for drawings, 'sel-action' for toys) — app.js's
- * _renderSelectionMode is the one place that reconciles "explicit mode
- * entered by a click, or else the automatic default" into a single mode
- * string, via each LayerAPI's nextSelectMode(domEl, null). A future mode
- * (rummage, rotate, ...) adds its own string to SELECTION_MODES and its
- * own case to render()'s switch; nothing else in this file hardcodes the
- * current set.
+ * modes (see SELECTION_MODES below), mutually exclusive with every other
+ * mode above and with each other. A future mode adds its own string
+ * there and its own case to render()'s switch.
  *
  * Requested/contested indicator (soft-lock.js): a separate, independent
  * decoration — not a SelectionMode kind — drawn on any element with an
@@ -45,13 +36,9 @@
  * awareness.
  *
  * Awareness desired schema: { [elId]: { ts: number, holding: boolean } }
- *   One record per elId this peer wants; `holding: true` entries are their
- *   held selection (see soft-lock.js) — that's the subset rendered as
- *   remote selection rings here. Single selection: one held key.
- *   Multi-selection (rubber-band committed group): multiple held keys.
- *   This client always broadcasts it as a plain object -- `{}` when
- *   nothing is desired, never null -- but a foreign/older peer's `desired`
- *   may still arrive null or absent, so reads here tolerate both.
+ *   One record per elId a peer wants; `holding: true` entries are the
+ *   held selection, rendered here as remote rings. Broadcast as a plain
+ *   object, `{}` when empty, though a stray null is tolerated on read.
  *
  * Awareness candidates field: string[] | null
  *   The ids currently under a rubber-band sweep, broadcast separately from
@@ -61,14 +48,9 @@
  *   wire-present so it can be added without a schema change.
  *
  * Awareness mode field: string | null, e.g. 'sel-resize'
- *   Mirrors selection.js's local `activeMode` state ({ id, mode } | null) —
- *   already carries its own `sel-` prefix, minted by whichever LayerAPI
- *   decided a click should cycle into it (see app.js's nextSelectionMode).
- *   Explicit modes only — an automatic default like 'sel-action' or
- *   'sel-move' is never broadcast unless a click actually entered it.
- *   Purely advisory to peers (rendering doesn't currently distinguish it on
- *   remote rings) — the local effect is entirely driven by SelectionMode's
- *   own entry instead, set directly via Overlay.setSelectionMode().
+ *   Already carries its own `sel-` prefix. Explicit modes only — an
+ *   automatic default is never broadcast unless a click entered it.
+ *   Purely advisory; local rendering doesn't read this field.
  *
  * Drag ghost system:
  *   The native layer element is never touched during drag; but overlay renders:
@@ -101,18 +83,9 @@ export const PAD = 6;           // selection ring padding
 const REQUESTED_PAD = PAD + 6; // extra clearance so the requested ring sits outside the selection ring
 const HANDLE_HIT_PAD = 6; // extra px (canvas-space, pre-scale) added to the handle's own hit box — easier to grab than its drawn size alone
 
-// SelectionMode modes that represent an active selection-gated mode (see
-// selection.js's file header) rather than a plain 'local'/'remote'/etc.
-// selection state — whether it's the automatic default (sel-move,
-// sel-action) or one explicitly entered by a click (sel-resize,
-// sel-resize-r). A future mode (rummage, rotate, ...) gets added here and
-// to the render() switch below when its own visuals exist — every other
-// place that needs to know "is this id currently in a mode" (
-// setSelectionMode's own demote-the-old-one step, the local/remote
-// precedence guards in setHoverCandidates and syncFromAwareness) reads
-// this one set instead of repeating the mode list, so adding a mode is a
-// one-line change here, not a hunt through the file for every hardcoded
-// mode-string literal.
+// Modes that represent an active selection-gated mode, whether the
+// automatic default or one entered by a click. Consulted wherever
+// local-vs-mode precedence matters, so adding a mode is a one-line change.
 const SELECTION_MODES = new Set(['sel-move', 'sel-resize', 'sel-resize-r', 'sel-action']);
 
 /**
@@ -178,14 +151,9 @@ export function hitTestResizeRHandle(geo, px, py, scale) {
 }
 
 /**
- * Which handle (if any) of the CURRENT mode's own decoration canvas-space
- * point (px, py) is within grabbing distance of, for an element with
- * bounding box geo -- a RESIZE_CORNER_* index for 'sel-resize', 'r' for
- * 'sel-resize-r', or null for a mode with no handles of its own (or no
- * geo). Mirrors render()'s own mode switch: app.js doesn't need to know
- * which hit-test function a mode's handles call for, only to ask by mode
- * string and forward whatever comes back straight to startResize/
- * getResizeCorner's callers.
+ * Which handle of `mode`'s own decoration canvas-space point (px, py) is
+ * within grabbing distance of, for bounding box geo -- a corner index for
+ * 'sel-resize', 'r' for 'sel-resize-r', or null otherwise.
  */
 export function hitTestSelectionHandle(mode, geo, px, py, scale) {
   switch (mode) {
@@ -333,20 +301,12 @@ export function localSelectionChanged(selectedIds) {
   render();
 }
 
-// Reflects selection.js's `activeMode` ({ id, mode } | null — see its file
-// header) onto SelectionMode. Demotes any existing selection-mode entry
-// back to 'local' first (there is ever at most one — a mode requires an
-// exclusive single selection — but this stays defensive rather than
-// assuming), then promotes elId's own entry to `mode` if it currently has
-// one and it's 'local' (i.e. really is the sole selection — a
-// stale/mismatched elId is silently a no-op, matching
-// localSelectionChanged's no-throw style elsewhere in this file). Pass
-// elId=null (or mode=null) to leave everything 'local'.
+// Demotes any existing selection-mode entry back to 'local', then
+// promotes elId's own entry to `mode` if it's currently 'local'. Pass
+// elId=null to leave everything 'local'.
 //
-// `mode` is one of SELECTION_MODES above; a future mode (rummage, rotate,
-// ...) is drawn correctly here the moment it's added there and given its
-// own render() case — this function itself doesn't hardcode which modes
-// exist.
+// `mode` is one of SELECTION_MODES; a future mode needs its own
+// render() case.
 export function setSelectionMode(elId, mode) {
   for (const [id, entry] of SelectionMode) {
     if (SELECTION_MODES.has(entry.mode)) SelectionMode.set(id, { ...entry, mode: 'local' });
@@ -358,11 +318,9 @@ export function setSelectionMode(elId, mode) {
   render();
 }
 
-// Set live rubber-band candidates. Replaces any existing candidate entries;
-// does not touch 'local', 'remote', 'locked', or any selection-mode
-// entries. If an id already has a 'local' or mode entry (committed single
-// selection, possibly already in a mode), it is left as-is — the local
-// ring takes precedence over the candidate ring.
+// Replaces any existing candidate entries; leaves 'local', 'remote',
+// 'locked', and mode entries alone. A 'local' or mode entry always
+// takes precedence over the candidate ring.
 export function setHoverCandidates(ids) {
   for (const [id, entry] of SelectionMode) {
     if (entry.mode === 'candidate') SelectionMode.delete(id);
@@ -404,10 +362,9 @@ export function syncFromAwareness(awarenessStates, myClientId) {
     const peerId = state?.id ?? String(clientId);
     const gradId = _ensurePeerGradient(clientId, state?.grad);
 
-    // Remote selection rings — one per held (holding:true) key in the
-    // desired map (desired: { [elId]: { ts, holding } } — see
-    // soft-lock.js). A holding:false entry is a bid, not a selection —
-    // those render via the contested/'requested' ring instead, below.
+    // Remote selection rings — one per held (holding:true) key in
+    // `desired`. A holding:false entry is a bid, rendered instead via
+    // the contested/'requested' ring below.
     if (state?.desired && typeof state.desired === 'object') {
       const elIds = Object.keys(state.desired).filter((elId) => state.desired[elId].holding);
       for (const elId of elIds) {
@@ -588,13 +545,9 @@ export function startResizeGhost(elId) {
 }
 
 /**
- * Update the local resize ghost to (x, y, width, height) — canvas-space,
- * already computed by id's owning LayerAPI's own computeResize. Mutates
- * the clone's own root <svg> and all child elements marked with
- * tt_wh_follow_resize class directly (toys), or the clone's own x/y/
- * width/height or cx/cy/r (drawing rects/circles) — this is DOM-only,
- * never touches Yjs (see toys.js's/drawing.js's applyResize for the
- * commit path).
+ * Update the local resize ghost to (x, y, width, height) — canvas-space.
+ * Mutates the clone directly: tt_wh_follow_resize children (toys), or
+ * its own x/y/width/height or cx/cy/r (rects/circles). DOM-only.
  */
 export function updateResizeGhost(elId, x, y, width, height) {
   const entry = _resizeGhosts.get(elId);

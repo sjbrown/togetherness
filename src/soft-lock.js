@@ -12,34 +12,21 @@
  *
  *   desired: { [elId: string]: { ts: number, holding: boolean } }
  *
- * This client always broadcasts `desired` as a plain object -- `{}` when
- * it wants nothing (never null: "desired = {}" reads as "I desire the
- * empty set", not "I have no opinion" -- see app.js's _broadcastDesired).
- * Every function below still tolerates a missing or null value when
- * reading a peer's state, since a foreign/older client or one that hasn't
- * broadcast yet may still send either.
+ * Always broadcast as a plain object -- `{}` when empty, never null:
+ * "desired = {}" reads as "I desire the empty set." Reads still
+ * tolerate a missing or null value from other peers.
  *
- * One entry per elId this client currently wants, replacing the earlier
- * two-field `selection`/`pendingRequests` schema — an elId used to be able
- * to appear in one map or the other, a distinction enforced only by every
- * call site remembering to keep them disjoint (a client should never hold
- * AND request the same elId). Now it's one map with exactly one record per
- * elId, so that invariant is structural: an id is either present-and-
- * holding or present-and-not, never both, because there is only one slot
- * for it to occupy.
+ * One entry per elId a client wants: an id is either present-and-holding
+ * or present-and-bidding, never both, since there's only one slot for
+ * it to occupy.
  *
- * `holding: true` means this elId is part of this client's own committed
- * selection; `ts` is this client's own timestamp for "when did I most
- * recently claim it" — set on initial select, a tick's promotion, or a
- * deliberate re-click of an already-held element (the "bathroom" defense
- * gesture), which naturally refreshes it.
+ * `holding: true`: elId is part of this client's committed selection.
+ * `ts` is the last-claimed time -- set on select, promotion, or a
+ * deliberate reclick (the "bathroom" defense gesture).
  *
- * `holding: false` means this client does not yet hold this elId but is
- * actively bidding to acquire it; `ts` is when that bid started, fixed for
- * the life of the bid (a client cannot cancel or re-issue its own pending
- * request once sent — see selection.js's request()). The entry is deleted
- * entirely the moment the bid resolves, win or lose; it is never a
- * retention signal.
+ * `holding: false`: not yet held, but bidding to acquire it. `ts` is
+ * fixed at the bid's start. The entry is deleted the moment it
+ * resolves, win or lose -- never a retention signal.
  *
  * All functions here are pure: given a snapshot (a Map<clientId, state>, as
  * returned by awareness.getStates()), they compute derived facts with no

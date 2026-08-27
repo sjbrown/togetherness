@@ -302,12 +302,8 @@ function onPointerDown(e) {
       }
       // A plain (non-shift) click that lands on the element already the
       // client's own sole selection is a reclick — a tap (no movement) on
-      // pointerup cycles its selection mode instead of just re-affirming
-      // the selection (see wasReclick below). A drag still wins if the
-      // pointer actually moves, and leaves whatever mode the element was
-      // already in untouched — dragging a resize-mode rect by its body
-      // doesn't knock it back to sel-move the way an eager reset-on-click
-      // used to.
+      // pointerup cycles its selection mode instead of re-affirming the
+      // selection. A real drag leaves the mode untouched.
       const wasSoleSelected =
         App.getSelectedIds().length === 1 && App.getSelectedIds()[0] === hitId;
       ToolMode._moveRef = { id: hitId, dx: p.x - anchor.x, dy: p.y - anchor.y, moved: false, wasReclick: wasSoleSelected };

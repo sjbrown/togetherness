@@ -93,9 +93,9 @@ describe('requested indicator — basic presence', () => {
   })
 
   test('a holder with only a claim timestamp (no bid entry) renders no requestedRing', () => {
-    // A held elId's claim timestamp lives directly in its desired[elId].ts
-    // now — a held elId with a claim timestamp and no bid entry at all is
-    // the normal, common case and must not render as contested.
+    // A held elId's claim timestamp lives in desired[elId].ts -- a held
+    // elId with no bid entry at all is the normal, common case and
+    // must not render as contested.
     overlayInit(makeOverlayApp({ 'goblin-1': BBOX }), document.getElementById('canvas'))
     const states = new Map([
       [1, { desired: held(['goblin-1'], { 'goblin-1': 500 }) }],

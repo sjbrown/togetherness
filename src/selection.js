@@ -3,71 +3,32 @@
  * selection intent: which elements it wants, and its relationship to each
  * (already holding it, or bidding to acquire it).
  *
- * Sibling to soft-lock.js: soft-lock.js derives facts from OTHER clients'
- * awareness broadcasts (who holds what, who's contesting what, who should
- * win a tick's resolution); this module decides how THIS client's own
- * local state changes in response to a gesture (select, toggle, request,
- * entering/leaving a mode, or applying a tick's resolution). Neither
- * module touches the DOM, Yjs, or Awareness, and neither knows what any
- * element actually IS -- app.js is the router: it turns a raw gesture or
- * network event into a call here (consulting the element's owning
- * LayerAPI first when a decision needs domain knowledge this module
- * doesn't have, e.g. "what mode does a click cycle into"), then applies
- * the state this module returns by driving every side effect (Overlay
- * rendering, awareness broadcast) from the diff between old and new state.
+ * Every function takes a state and returns a new one. None touch the
+ * DOM, Yjs, or Awareness, and none know what an element actually is.
  *
- * State shape, mirrored by awareness's own `desired` field (see
- * soft-lock.js's file header) plus one purely-local piece of UI state:
+ * State shape -- a `desired` map for negotiated claims and bids, plus
+ * one locally-owned mode slot:
  *
  *   {
  *     desired: { [elId]: { ts: number, holding: boolean } },
  *     activeMode: { id: string, mode: string } | null,
  *   }
  *
- * There is exactly one record per elId this client wants, not two parallel
- * maps that have to be kept disjoint by convention — an id is either
- * present-and-holding or present-and-bidding, never both, because there is
- * only one slot for it. This is what fixed the bug that prompted this
- * design: a stale bid for an abandoned id used to be able to outlive the
- * selection moving on to something else, because "what I hold" and "what
- * I'm bidding on" were two independently-mutated maps and nothing forced
- * them to agree. Now every function below returns a single map, so
- * "abandon everything except what's in the new desired set" is just
- * "build the new map without copying old entries forward" — impossible to
- * forget at a call site the way clearing a second map was.
+ * Exactly one record per elId: an id is either held or bidding, never
+ * both, since there's only one slot for it to occupy.
  *
- * `activeMode` is a second selection-gated slot — resize, and in the
- * future things like rummage (trays) or rotate — never negotiated with
- * other clients the way `desired` is, but still only meaningful relative
- * to the current selection: a mode can only be active while its own id is
- * this client's sole held selection (see `shape`/`enterMode` below). This
- * module has no idea what 'sel-resize' or 'sel-rummage' *mean* or which
- * element types support them — that's domain knowledge that lives on each
- * LayerAPI (toys.js, drawing.js), which app.js consults and passes the
- * resulting mode string straight through, already fully formed (see
- * toys.js's/drawing.js's nextSelectMode). This module only enforces the
- * one universal rule every mode shares: exclusivity to a single held
- * element. Every mode string carries a `sel-` prefix (sel-move, sel-resize,
- * sel-resize-r, sel-action, ...) — this module treats them as opaque
- * strings and never constructs or strips that prefix itself.
+ * activeMode is a second selection-gated slot, never negotiated with
+ * other clients -- active only while its id is the sole held selection.
+ * Mode strings (sel-move, sel-resize, ...) are opaque here, never
+ * parsed or judged, always carrying their own `sel-` prefix already.
  *
- * Invariant: `activeMode` is null if and only if `shape(state) !== 'single'`.
- * There is no "single selection, no mode chosen yet" state — a fresh single
- * selection is always seeded with its type's own automatic default mode
- * (e.g. sel-move for drawings, sel-action for toys), not left at null until
- * a click explicitly enters something. `reconcileMode` is what seeds and
- * maintains this; `enterMode` is what moves it to a specific mode
- * (defaulting or otherwise) once a caller has decided which one.
+ * Invariant: activeMode is null iff shape(state) isn't 'single'. A
+ * fresh single selection is seeded with its own default mode
+ * immediately, never left null waiting for a click.
  *
- * A selection's *mode* and a SelectionMode Map entry's *kind* (overlay.js)
- * are two names for the same idea; both files say "mode" now, not "kind" —
- * "selections don't have kinds, they have modes."
- *
- * Every function here is total and side-effect-free: same inputs, same
- * output, every time. A branch that changes nothing returns the identical
- * state (or the identical `desired`/`activeMode` sub-value) it was given —
- * app.js relies on that reference equality to decide, cheaply, whether
- * anything needs to be re-rendered or broadcast at all.
+ * Every function is total and side-effect-free. A no-op branch returns
+ * the identical state (or sub-value) it was given, so callers can diff
+ * by reference alone.
  */
 
 export const EMPTY_STATE = { desired: {}, activeMode: null };
@@ -88,9 +49,7 @@ function biddingIds(state) {
 
 // ── Selection shape ──────────────────────────────────────────────────────
 
-// The cardinality of the committed selection, named once instead of being
-// re-derived ad hoc at every call site that cares (mode eligibility, "use
-// the multi-select button" warnings, ...).
+// The cardinality of the committed selection.
 export function shape(state) {
   const n = heldIds(state).length;
   return n === 0 ? 'empty' : n === 1 ? 'single' : 'multi';
@@ -104,23 +63,16 @@ export function soleHeldId(state) {
 
 // ── Public transitions ───────────────────────────────────────────────────
 
-// Advisory soft-lock request: write this client's own acquisition entry
-// for `id`. Write-once — a client cannot cancel or re-issue its own
-// pending request once sent, so this is a no-op if `id` already has any
-// entry at all (whether that's an existing bid, or — shouldn't normally
-// happen, since callers only request ids they don't hold — a claim).
+// Advisory soft-lock request for `id`. Write-once: a no-op if `id`
+// already has any entry, bid or claim.
 export function request(state, id, { now = Date.now() } = {}) {
   if (state.desired[id] != null) return state;
   return withDesired(state, { ...state.desired, [id]: { ts: now, holding: false } });
 }
 
-// Drop every outstanding bid (holding:false entry) except (optionally) one
-// to keep, leaving actual claims (holding:true) untouched. select() is
-// exclusive (single-select): moving the committed selection to something
-// else means any other outstanding bid is no longer wanted and must not
-// survive to resolve later, on a tick after the selection has already
-// moved on. `exceptId` lets a reclick of the SAME held-by-other id keep
-// its existing bid untouched (write-once, see request() above).
+// Drops every outstanding bid except (optionally) one to keep; claims
+// are untouched. `exceptId` preserves a reclick's existing bid for the
+// same id (write-once).
 export function abandonPendingRequests(state, exceptId = null) {
   const bidding = biddingIds(state);
   if (bidding.length === 0) return state;
@@ -149,10 +101,8 @@ export function unclaim(state, id) {
   return withDesired(state, desired);
 }
 
-// Drop every claim this client currently holds. Leaves outstanding bids
-// untouched — callers that also want to abandon those call
-// abandonPendingRequests() explicitly (select() does this; a plain
-// deselect-to-empty via toggle() deliberately doesn't).
+// Drops every claim; leaves bids untouched. Callers that also want
+// those gone call abandonPendingRequests() explicitly.
 export function clearClaims(state) {
   const held = heldIds(state);
   if (held.length === 0) return state;
@@ -161,27 +111,23 @@ export function clearClaims(state) {
   return withDesired(state, desired);
 }
 
-// Exclusive single-select: replace the whole committed selection with just
-// `id` (or clear it, if `id` is falsy). `isHeldByOther(id)` is supplied by
-// the caller, since holder-ship is a fact about OTHER clients' live
-// awareness state, not part of this module's own pure state.
+// Exclusive single-select: replaces the whole selection with just `id`
+// (or clears it if falsy). `isHeldByOther` is supplied since
+// holder-ship isn't part of this module's own state.
 export function select(state, id, { isHeldByOther, now = Date.now() } = {}) {
   if (id && isHeldByOther(id)) {
-    // Plain click on a held-by-other element is a request. Shift wasn't
-    // held, so any selection currently held is cleared, and any stale bid
-    // for a DIFFERENT id is abandoned — but not one already outstanding
-    // for this same id (write-once; see request()).
+    // A held-by-other click is a request: clear the current selection,
+    // abandon any stale bid for a different id, keep one already
+    // outstanding for this id (write-once).
     let next = clearClaims(state);
     next = abandonPendingRequests(next, id);
     next = request(next, id, { now });
     return next;
   }
   if (id) {
-    // Replace the whole selection with just this one id, dropping every
-    // other claim AND every other bid. Also handles re-clicking a
-    // held-by-self element as a rebuttal gesture (fresh timestamp here),
-    // and claiming an id that happened to have a stale bid of its own
-    // (the new holding:true entry below simply overwrites it).
+    // Replace the whole selection with just this id, dropping every
+    // other claim and bid. A reclick refreshes the timestamp; a stale
+    // bid on this id is simply overwritten.
     let next = clearClaims(state);
     next = withDesired(next, { ...next.desired, [id]: { ts: now, holding: true } });
     next = abandonPendingRequests(next);
@@ -190,27 +136,20 @@ export function select(state, id, { isHeldByOther, now = Date.now() } = {}) {
   return abandonPendingRequests(clearClaims(state));
 }
 
-// Toggle a single id in/out of the current selection.
-// If the result is N===0: deselect. N===1: single-select. N>1: multi-select.
+// Toggle a single id in/out of the selection. N=0: deselect. N=1:
+// single-select. N>1: multi-select.
 //
-// Shift-clicking a held-by-other element queues a request for it,
-// independent of and alongside whatever else is already held or pending.
-// Shift-clicking a held-by-self element is a plain deselect toggle, and a
-// no-op with respect to other bids.
+// A held-by-other shift-click queues a request alongside whatever else
+// is held. A held-by-self shift-click is a plain deselect.
 export function toggle(state, id, { isHeldByOther, now = Date.now() } = {}) {
   if (state.desired[id]?.holding) return unclaim(state, id);
   if (isHeldByOther(id)) return request(state, id, { now }); // claims untouched
   return withDesired(state, { ...state.desired, [id]: { ts: now, holding: true } });
 }
 
-// Replace (or, if additive, union) the committed selection with exactly
-// `ids`, preserving each already-held id's existing claim timestamp and
-// stamping a fresh one only for newly-added ids. Any bid for an id outside
-// the new set — or for an id now inside it, since box-select candidates
-// are never held-by-other (see getBoxCandidates) — is dropped, since it
-// only ever fell out of `desired` above by not being carried forward.
-// Callers handle the 0-id/1-id cases via select(null)/select(id) instead
-// — this is for the genuine N>1 case.
+// Replaces the selection with exactly `ids`, keeping each held id's
+// existing timestamp and stamping fresh ones for new ids. Any bid
+// outside the set is dropped. For the genuine N>1 case only.
 export function commitMultiSelect(state, ids, { now = Date.now() } = {}) {
   const desired = {};
   for (const id of ids) {
@@ -220,9 +159,8 @@ export function commitMultiSelect(state, ids, { now = Date.now() } = {}) {
   return withDesired(state, desired);
 }
 
-// Applies one soft-lock tick's resolution (soft-lock.js's
-// computeTickActions() output) onto local state: promote won acquisitions,
-// drop lost/rebutted bids, release elements another client has won.
+// Applies one tick's resolution onto local state: promote won
+// acquisitions, drop lost bids, release elements another client won.
 export function applyTickActions(state, { elIdsToAcquire, elIdsToDropRequest, elIdsToRelease }, { now = Date.now() } = {}) {
   const desired = { ...state.desired };
   for (const id of elIdsToAcquire) desired[id] = { ts: now, holding: true };
@@ -231,52 +169,27 @@ export function applyTickActions(state, { elIdsToAcquire, elIdsToDropRequest, el
   return withDesired(state, desired);
 }
 
-// ── Selection-gated mode (resize, future: rummage/rotate/...) ────────────
+// ── Selection-gated mode ─────────────────────────────────────────────────
 
-// Enter `mode` for `id` -- only valid while `id` is this client's sole held
-// selection. `mode` is trusted as already domain-vetted by the caller
-// (app.js asks the element's owning LayerAPI what mode a click should
-// cycle into -- possibly its own automatic default; this module doesn't
-// distinguish "the default" from any other mode string, and doesn't need
-// a capability lookup of its own -- it only owns the one universal rule
-// every mode shares, exclusivity to a single held element). No-op if the
-// precondition fails, or if `id`/`mode` already match the current one.
+// Enters `mode` for `id`, valid only while `id` is the sole held
+// selection. `mode` is trusted as already vetted by the caller. No-op
+// if the precondition fails or nothing would change.
 export function enterMode(state, id, mode) {
   if (mode == null || !state.desired[id]?.holding || shape(state) !== 'single') return state;
   if (state.activeMode?.id === id && state.activeMode.mode === mode) return state;
   return { desired: state.desired, activeMode: { id, mode } };
 }
 
-// Keeps activeMode in sync with the current selection shape, maintaining
-// the invariant from the file header (activeMode is null iff shape isn't
-// 'single'):
-//   - not 'single' (empty or multi): activeMode must be null -- there is
-//     no id for a mode to apply to.
-//   - 'single': activeMode must already be tracking the sole held id;
-//     if it isn't (a fresh single selection, or the sole id just changed
-//     to a different element), it's (re)seeded to `defaultMode` -- that
-//     element's owning LayerAPI's own automatic default (see toys.js's/
-//     drawing.js's nextSelectMode(domEl, null)), computed by app.js since
-//     this module has no DOM access. Ignored when shape isn't 'single'.
-//     An already-tracked id's mode is never second-guessed here, however
-//     it got there (default or explicitly cycled) -- only enterMode moves
-//     it once it's established.
+// Restores the invariant after a transition changes the held set: null
+// when not 'single', seeded to defaultMode when freshly or newly
+// single, otherwise left alone.
 //
-// `defaultMode` itself being null (a layer with no modes at all -- every
-// LayerAPI today defines one, even if it's just an unconditional
-// 'sel-move', but this stays defensive rather than assuming) means there's
-// nothing to seed with, so activeMode stays null rather than becoming a
-// malformed { id, mode: null } entry -- a mode is either a real string or
-// activeMode itself is null, never both a populated id and a null mode.
+// If defaultMode is null, activeMode stays null rather than becoming a
+// malformed entry with a null mode.
 //
-// Call this after ANY operation that might have changed the held set,
-// once, on that operation's FINAL result -- not on an intermediate state
-// inside a composite transition like select() (which internally clears the
-// old selection before re-adding the new one; evaluating validity at that
-// intermediate point would wrongly reseed a mode that a same-id reselect
-// should actually leave untouched). app.js's _applySelState does this
-// unconditionally for every state transition, so none of the functions
-// above need to remember to call it themselves.
+// Call once, on a transition's FINAL result -- not on an intermediate
+// state inside a composite transition, or a same-id reselect could be
+// wrongly reseeded.
 export function reconcileMode(state, defaultMode) {
   const soleId = soleHeldId(state);
   if (soleId && state.activeMode?.id === soleId) return state;

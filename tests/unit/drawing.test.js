@@ -228,7 +228,7 @@ describe('selectModes / nextSelectMode', () => {
 })
 
 describe('computeResize', () => {
-  // Corner indices match overlay.js's resizeCorners() order: 0=NW, 1=NE, 2=SE, 3=SW.
+  // Corner indices: 0=NW, 1=NE, 2=SE, 3=SW.
   const startRect = { x: 100, y: 100, width: 200, height: 150 } // right=300, bottom=250
 
   test('sel-resize: BR drag keeps the top-left corner fixed, size follows the pointer', () => {

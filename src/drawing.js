@@ -220,11 +220,9 @@ export function getAnchor(svgEl) {
 }
 
 /**
- * Every mode svgEl can be in, in cycle order, fully `sel-`-prefixed —
- * mirrors toys.js's selectModes so app.js can dispatch generically.
- * 'sel-move' is the default every shape shows with no click at all (plain
- * selection ring); rects/circles each add their one resize-family mode
- * after it. Currently only rects/circles can be resized.
+ * Every mode svgEl can be in, in cycle order, fully `sel-`-prefixed.
+ * 'sel-move' is the default every shape shows with no click; rects/
+ * circles each add their one resize-family mode after it.
  */
 export function selectModes(svgEl) {
   const tag = svgEl?.tagName;
@@ -234,9 +232,8 @@ export function selectModes(svgEl) {
 }
 
 /**
- * The next mode svgEl should show, given the mode it's currently in (pass
- * null for "nothing yet, what should this show automatically"). Mirrors
- * toys.js's nextSelectMode.
+ * The next mode svgEl should show, given the mode it's currently in
+ * (pass null for "nothing yet, what should this show automatically").
  */
 export function nextSelectMode(svgEl, currentMode) {
   const cycle = selectModes(svgEl);
@@ -294,14 +291,8 @@ const MIN_RECT_RESIZE_SIZE = 30 // never let a corner-drag shrink a rect below t
 
 /**
  * Pure geometry for a rect's corner-drag resize: given the rect at drag
- * start and the corner being dragged (a 0=NW/1=NE/2=SE/3=SW index -- the
- * same order overlay.js's resizeCorners() produces, so a hit-test result
- * passes straight through with no translation), compute the new
- * { x, y, width, height } for the current pointer position (px, py),
- * keeping the corner OPPOSITE the dragged one fixed in place. Deliberately
- * independent of toys.js's own near-identical computeResizeRect --
- * they're two different element types that happen to both support
- * corner-drag, not one shared behaviour.
+ * start and the corner being dragged (0=NW/1=NE/2=SE/3=SW), compute the
+ * new bbox for pointer (px, py), keeping the opposite corner fixed.
  */
 function computeResizeCornerRect(startRect, corner, px, py) {
   const { x, y, width, height } = startRect;
@@ -328,9 +319,8 @@ function computeResizeCornerRect(startRect, corner, px, py) {
   }
 }
 
-// Which resize math a live drag/commit needs, by mode -- this module's own
-// judgment call about what its modes mean, so callers (app.js) don't have
-// to know 'sel-resize-r' means "radius drag, ignore corner".
+// Which resize math a live drag/commit needs, by mode -- this module's
+// own judgment call about what its modes mean.
 export function computeResize(mode, startRect, corner, px, py) {
   return mode === 'sel-resize-r'
     ? computeResizeRadiusRect(startRect, px, py)

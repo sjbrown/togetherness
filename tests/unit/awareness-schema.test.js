@@ -4,17 +4,13 @@
  * Tests for the awareness desired schema:
  *   { [elId]: { ts: number, holding: boolean } }
  *
- * One record per elId this client wants: holding:true is a committed
- * claim (ts = last claimed), holding:false is an outstanding acquisition
- * bid (ts = when the bid started). There is no separate ids array and no
- * separate pendingRequests map — membership and holding-vs-bidding status
- * are both read directly off this one map (see soft-lock.js).
+ * One record per elId a client wants: holding:true is a committed claim
+ * (ts = last claimed), holding:false is an outstanding bid (ts = when it
+ * started). Membership and holding-vs-bidding are both read off this map.
  *
- * app.js's own convention (see _broadcastDesired) is to always write a
- * plain object — `{}` when nothing is desired, never null: "desired = {}"
- * reads as "I desire the empty set", not "I have no opinion". The read
- * side still tolerates null/missing defensively, since a foreign or older
- * client (or one that hasn't broadcast yet) may send either.
+ * app.js's own convention is to always write a plain object -- `{}`
+ * when nothing is desired, never null. Reads still tolerate a null or
+ * missing value, since a foreign or older client may send either.
  *
  * These tests verify the shape that App.select() must write and the shape
  * that overlay.js syncFromAwareness() must read.
@@ -86,8 +82,7 @@ describe('awareness desired schema — write side', () => {
 
   test('an empty object is the canonical cleared-desired state app.js broadcasts', () => {
     // App.js always broadcasts {} rather than null when nothing is
-    // desired (see _broadcastDesired) — "desired = {}" reads as "I desire
-    // the empty set", not "I have no opinion".
+    // desired — "desired = {}" reads as "I desire the empty set."
     const doc = new Y.Doc()
     const aw  = new awarenessProtocol.Awareness(doc)
 

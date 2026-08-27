@@ -247,19 +247,17 @@ describe('soft-lock e2e — oscillation regression (real trace, real tick)', () 
       // selection — got reclassified as a fresh acquisition bid, and the
       // tick silently re-acquired what was just deliberately let go of,
       // forever. Advancing through several more tick cycles here proves
-      // that can't happen anymore: holding and bidding share one record per
-      // elId now (selection.js's `desired`), so deselecting removes it in
-      // the same operation, by construction.
+      // that can't happen anymore: holding and bidding share one record
+      // per elId, so deselecting removes it in the same operation.
       await vi.advanceTimersByTimeAsync(3000)
       expect(App.getSelectedIds()).toEqual([])
 
       await vi.advanceTimersByTimeAsync(5000)
       expect(App.getSelectedIds()).toEqual([])
 
-      // The broadcast state itself must be clean too, not just the local
-      // getter — nothing lingering for a future tick (mine or anyone
-      // else's) to misinterpret. app.js always broadcasts `desired` as a
-      // plain object (never null), so "clean" means empty, not falsy.
+      // The broadcast state itself must be clean too -- nothing lingering
+      // for a future tick to misinterpret. `desired` is always a plain
+      // object (never null), so "clean" means empty, not falsy.
       const myState = awareness.getLocalState()
       expect(Object.keys(myState?.desired ?? {})).toEqual([])
     } finally {
@@ -586,9 +584,8 @@ describe('soft-lock integration — getBoxCandidates excludes peer-held elements
     expect(result).not.toContain('die-1')
 
     // No request was queued — box-select never invokes the soft-lock
-    // request path, only shift-click does. app.js always broadcasts
-    // `desired` as a plain object (never null), so "nothing queued" means
-    // empty, not falsy.
+    // request path, only shift-click does. `desired` is always a plain
+    // object (never null), so "nothing queued" means empty, not falsy.
     expect(Object.keys(awareness.getLocalState()?.desired ?? {})).toEqual([])
   })
 
