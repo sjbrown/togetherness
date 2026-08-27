@@ -12,21 +12,16 @@
  *
  *   desired: { [elId: string]: { ts: number, holding: boolean } }
  *
- * Always broadcast as a plain object -- `{}` when empty, never null:
- * "desired = {}" reads as "I desire the empty set." Reads still
- * tolerate a missing or null value from other peers.
- *
  * One entry per elId a client wants: an id is either present-and-holding
- * or present-and-bidding, never both, since there's only one slot for
- * it to occupy.
+ * or present-and-bidding
  *
  * `holding: true`: elId is part of this client's committed selection.
- * `ts` is the last-claimed time -- set on select, promotion, or a
- * deliberate reclick (the "bathroom" defense gesture).
+ *                  `ts` is the last-claimed time -- set on select, promotion,
+ *                  or a deliberate reclick
  *
- * `holding: false`: not yet held, but bidding to acquire it. `ts` is
- * fixed at the bid's start. The entry is deleted the moment it
- * resolves, win or lose -- never a retention signal.
+ * `holding: false`: not yet held, but bidding to acquire it.
+ *                  `ts` is fixed at the bid's start.
+ *                  The entry is deleted the moment it resolves, win or lose
  *
  * All functions here are pure: given a snapshot (a Map<clientId, state>, as
  * returned by awareness.getStates()), they compute derived facts with no
@@ -103,8 +98,7 @@ export function getOtherHoldersOf(elId, awarenessStates, myClientId) {
  * `clientId`'s own claim timestamp for elId — how recently they last
  * claimed it. 0 if they don't currently hold it (including if they're
  * merely bidding for it), or hold it but never stamped a claim (shouldn't
- * happen for a real holder, treated safely as "no claim" rather than
- * throwing).
+ * happen)
  *
  * @param {string} elId
  * @param {Map<number, object>} awarenessStates
@@ -121,7 +115,7 @@ export function getClaimTimestamp(elId, awarenessStates, clientId) {
 /**
  * Every outstanding acquisition bid for elId, across all clients — every
  * desired[elId] entry with holding:false, by construction always a bid
- * (see file header) so no held-by-same-client disambiguation is needed.
+ * so no held-by-same-client disambiguation is needed.
  *
  * @param {string} elId
  * @param {Map<number, object>} awarenessStates

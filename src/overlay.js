@@ -1,12 +1,10 @@
 /**
  * overlay.js — togetherness overlay renderer
  *
- * Owns SelectionMode: the per-shape decoration map.
  * Renders into #overlay-layer SVG group.
+ * Owns SelectionMode: the per-shape decoration map.
  * Called by App after doc changes (renderDoc pipeline) and
  * after awareness changes (renderPresence pipeline).
- *
- * Depends on: App (bus). No ui.js imports. No canvas.js imports.
  *
  * SelectionMode modes (the `.mode` property on each Map entry):
  *   'none'         — no decoration
@@ -22,23 +20,15 @@
  *                    (kebab/asterisk glyph, bowstring handle's resting state)
  *   'locked'       — remote peer is actively editing
  *
- * 'sel-move'/'sel-resize'/'sel-resize-r'/'sel-action' are selection-gated
- * modes (see SELECTION_MODES below), mutually exclusive with every other
- * mode above and with each other. A future mode adds its own string
- * there and its own case to render()'s switch.
- *
  * Requested/contested indicator (soft-lock.js): a separate, independent
- * decoration — not a SelectionMode kind — drawn on any element with an
- * outstanding acquisition request
+ * decoration drawn on any element with an outstanding acquisition request
  *
  * Drop-target hover indicator: another independent decoration,
- * driven by App.move() during a toy drag, not by SelectionMode or
- * awareness.
+ * driven by App.move() during a toy drag
  *
  * Awareness desired schema: { [elId]: { ts: number, holding: boolean } }
  *   One record per elId a peer wants; `holding: true` entries are the
- *   held selection, rendered here as remote rings. Broadcast as a plain
- *   object, `{}` when empty, though a stray null is tolerated on read.
+ *   held selection, rendered here as remote rings.
  *
  * Awareness candidates field: string[] | null
  *   The ids currently under a rubber-band sweep, broadcast separately from
@@ -67,8 +57,7 @@
  *   crosshair (in the placing player's colour) plus a dim clone preview of
  *   what's about to be placed. Local: drawn immediately, offline-safe, same
  *   rationale as the drag ghost. Remote: driven by awareness's `cursor`
- *   field. Deliberately plain — canvas-space constants, no scale
- *   compensation, no animation.
+ *   field.
  */
 
 import { getAllContestedElementIds } from './soft-lock.js';
@@ -79,25 +68,24 @@ import { drawAsteriskGlyph, drawCrosshairGlyph } from './icons.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const HANDLE_SIZE = 12;  // px in canvas-space
-export const PAD = 6;           // selection ring padding
-const REQUESTED_PAD = PAD + 6; // extra clearance so the requested ring sits outside the selection ring
-const HANDLE_HIT_PAD = 6; // extra px (canvas-space, pre-scale) added to the handle's own hit box — easier to grab than its drawn size alone
+export const PAD = 6;    // selection ring padding
+const REQUESTED_PAD = PAD + 6;  // extra clearance so the requested ring
+                                // sits outside the selection ring
+const HANDLE_HIT_PAD = 6; // extra px (canvas-space, pre-scale)
+                          // added to the handle's own hit box
 
-// Modes that represent an active selection-gated mode, whether the
-// automatic default or one entered by a click. Consulted wherever
-// local-vs-mode precedence matters, so adding a mode is a one-line change.
-const SELECTION_MODES = new Set(['sel-move', 'sel-resize', 'sel-resize-r', 'sel-action']);
+const SELECTION_MODES = new Set([
+  'sel-move', 'sel-resize', 'sel-resize-r', 'sel-action',
+]);
 
 /**
  * The four resize corner points for a geo rect (already padded out to the
- * selection ring, same as renderLocalResizeSelection draws), in a fixed
- * order — [NW, NE, SE, SW] — matching toys.js's RESIZE_CORNER_* constants
- * and drawing.js's own corner-drag geometry, so a hit-test result can be
- * passed straight through to either LayerAPI's computeResize with no
- * translation.
+ * selection ring, same as renderLocalResizeSelection draws)
  */
 export function resizeCorners(geo) {
   const { x, y, width, height } = geo;
+  // order is [NW, NE, SE, SW] -- matching toys.js's RESIZE_CORNER_* constants
+  // and drawing.js's corner-drag geometry
   return [
     { x: x - PAD,          y: y - PAD },          //NW
     { x: x + width + PAD,  y: y - PAD },          //NE
@@ -152,8 +140,7 @@ export function hitTestResizeRHandle(geo, px, py, scale) {
 
 /**
  * Which handle of `mode`'s own decoration canvas-space point (px, py) is
- * within grabbing distance of, for bounding box geo -- a corner index for
- * 'sel-resize', 'r' for 'sel-resize-r', or null otherwise.
+ * within grabbing distance of, for bounding box geo
  */
 export function hitTestSelectionHandle(mode, geo, px, py, scale) {
   switch (mode) {
@@ -302,11 +289,10 @@ export function localSelectionChanged(selectedIds) {
 }
 
 // Demotes any existing selection-mode entry back to 'local', then
-// promotes elId's own entry to `mode` if it's currently 'local'. Pass
-// elId=null to leave everything 'local'.
+// promotes elId's own entry to `mode` if it's currently 'local'.
 //
-// `mode` is one of SELECTION_MODES; a future mode needs its own
-// render() case.
+// Pass elId=null to leave everything 'local'.
+// `mode` is one of SELECTION_MODES
 export function setSelectionMode(elId, mode) {
   for (const [id, entry] of SelectionMode) {
     if (SELECTION_MODES.has(entry.mode)) SelectionMode.set(id, { ...entry, mode: 'local' });
@@ -1013,17 +999,10 @@ function renderLocalResizeRSelection(geo, entry, scale) {
 }
 
 // ── Action-mode affordance ───────────────────────────────────────────────────
-// Drawn by the 'sel-action' case above, alongside the ordinary selection
-// ring (see SELECTION_MODES and the file header). A single rounded-corner icon
-// square — asterisk (*), the bowstring handle's resting state (see
-// delight.js) — tinted to the local player's own color via the same
-// feColorMatrix trick toy artwork uses (see setLocalGradient /
-// LOCAL_ACTION_FILTER_ID): a white square background becomes the player's
-// color; the glyph itself (drawAsteriskGlyph, icons.js) is drawn as a
-// sibling (not filtered) in a fixed dark ink so it stays legible against
-// any player color.
-const ACTION_ICON_SIZE = 22; // px in canvas-space — a tappable button, bigger than the 12px resize handles
+const ACTION_ICON_SIZE = 22; // px
 
+// Render a single rounded-corner icon square — asterisk (*), the bowstring
+// handle's resting state
 function renderActionAffordance(geo, scale) {
   const side = ACTION_ICON_SIZE / scale;
   const [, , se] = resizeCorners(geo); // resizeCorners: [NW, NE, SE, SW]

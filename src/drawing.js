@@ -319,8 +319,7 @@ function computeResizeCornerRect(startRect, corner, px, py) {
   }
 }
 
-// Which resize math a live drag/commit needs, by mode -- this module's
-// own judgment call about what its modes mean.
+// Which resize math a live drag/commit needs, by mode
 export function computeResize(mode, startRect, corner, px, py) {
   return mode === 'sel-resize-r'
     ? computeResizeRadiusRect(startRect, px, py)

@@ -76,7 +76,6 @@ function makeApp(overrides = {}) {
     moveBowstring:      () => {},
     endBowstring:       () => {},
     nextSelectionMode:  () => {},
-    exitSelectionMode:  () => {},
     startResize:        () => {},
     resize:             () => {},
     commitResize:       () => {},
@@ -738,7 +737,6 @@ describe('resize mode — corner-drag gesture', () => {
       getSelectedIds: () => ['tray-1'],
       getResizeModeId: () => 'tray-1',
       getResizeCorner: () => null, // not near any corner
-      exitSelectionMode:  () => exited.push(true),
       nextSelectionMode: (id) => entered.push(id),
     })
     init(app, document.getElementById('canvas'))

@@ -65,7 +65,6 @@ function makeApp(overrides = {}) {
     moveBowstring:      () => {},
     endBowstring:       () => {},
     nextSelectionMode:  () => {},
-    exitSelectionMode:  () => {},
     startResize:        () => {},
     resize:             () => {},
     commitResize:       () => {},

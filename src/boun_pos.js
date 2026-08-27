@@ -1046,8 +1046,6 @@ export function getSnapPoints(yBounPos) {
   return points;
 }
 
-// No resize or action capability of its own -- always just the plain
-// default selection ring.
 export function selectModes(_domEl) {
   return ['sel-move'];
 }

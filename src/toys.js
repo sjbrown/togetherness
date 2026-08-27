@@ -1129,9 +1129,6 @@ export function moveToyAndStack(layerEl, el, x, y) {
   for (const { member, cx, cy } of targets) applyMoveDom(member, cx, cy)
 }
 
-// Every selection mode domEl declares support for, `sel-`-prefixed.
-// 'sel-action' is unconditional; 'sel-rummage' is a real capability tag
-// (tt-mode-rummage) with no gesture or rendering behind it yet.
 export function selectModes(domEl) {
   const ownSvg = domEl?.querySelector?.(':scope > svg')
   let modes = ['sel-action']
@@ -1144,16 +1141,11 @@ export function selectModes(domEl) {
   return modes
 }
 
-// Every mode domEl can be in, in cycle order; the first entry is the
-// automatic no-click default. 'sel-rummage' stays excluded until it
-// has a real gesture behind it.
 function selectModeCycle(domEl) {
+  // 'sel-rummage' stays excluded until it has a real gesture behind it.
   return selectModes(domEl).filter(mode => mode !== 'sel-rummage')
 }
 
-// The next mode domEl should show, given the current one (null for
-// "nothing yet"). Wraps to index 0 when not found, so "automatic" and
-// "past the last mode" are the same case.
 export function nextSelectMode(domEl, currentMode) {
   const cycle = selectModeCycle(domEl)
   const i = cycle.indexOf(currentMode)

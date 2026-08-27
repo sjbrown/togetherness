@@ -155,16 +155,4 @@ describe('bowstring vs. resize mode on a resizable toy (tray_sum/bag-like)', () 
     expect(corner).toBe(2)
   })
 
-  test('leaving resize mode restores the bowstring at the SE corner', async () => {
-    const { App } = await bootApp()
-    App.select('tray-1')
-    App.nextSelectionMode('tray-1')
-    App.exitSelectionMode()
-
-    const geo = App.getBBox('tray-1')
-    const point = { x: geo.x + geo.width + 6, y: geo.y + geo.height + 6 }
-
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, point)).toBe(true)
-    App.endBowstring({ pointerId: 1 })
-  })
 })
