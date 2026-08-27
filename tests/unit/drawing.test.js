@@ -13,7 +13,7 @@ import { describe, test, expect } from 'vitest'
 import {
   addDrawing, deleteDrawing, findDrawing,
   getGeom, _toSVGEl, listDrawings, CURRENT_SCHEMA, SHAPE_TYPES,
-  selectModes, nextSelectMode,
+  selectModes, nextSelectMode, computeResize,
 } from '../../src/drawing.js'
 import { tablesAPI } from '../../src/tables.js'
 
@@ -224,6 +224,52 @@ describe('selectModes / nextSelectMode', () => {
 
   test('nextSelectMode always offers sel-move for a shape with no other selection modes', () => {
     expect(nextSelectMode(lineEl(), null)).toBe('sel-move')
+  })
+})
+
+describe('computeResize', () => {
+  // Corner indices match overlay.js's resizeCorners() order: 0=NW, 1=NE, 2=SE, 3=SW.
+  const startRect = { x: 100, y: 100, width: 200, height: 150 } // right=300, bottom=250
+
+  test('sel-resize: BR drag keeps the top-left corner fixed, size follows the pointer', () => {
+    const rect = computeResize('sel-resize', startRect, 2, 340, 260)
+    expect(rect).toEqual({ x: 100, y: 100, width: 240, height: 160 })
+  })
+
+  test('sel-resize: TL drag keeps the bottom-right corner fixed', () => {
+    const rect = computeResize('sel-resize', startRect, 0, 80, 90)
+    expect(rect).toEqual({ x: 80, y: 90, width: 220, height: 160 })
+  })
+
+  test('sel-resize: TR drag keeps the bottom-left corner fixed — x never moves', () => {
+    const rect = computeResize('sel-resize', startRect, 1, 360, 80)
+    expect(rect).toEqual({ x: 100, y: 80, width: 260, height: 170 })
+  })
+
+  test('sel-resize: SW drag keeps the top-right corner fixed — y never moves', () => {
+    const rect = computeResize('sel-resize', startRect, 3, 60, 300)
+    expect(rect).toEqual({ x: 60, y: 100, width: 240, height: 200 })
+  })
+
+  test('sel-resize: dragging past the fixed corner clamps to the minimum size, never inverts', () => {
+    const rect = computeResize('sel-resize', startRect, 2, 50, 50)
+    expect(rect.x).toBe(100)
+    expect(rect.y).toBe(100)
+    expect(rect.width).toBeGreaterThanOrEqual(30)
+    expect(rect.height).toBeGreaterThanOrEqual(30)
+  })
+
+  test('sel-resize-r: grows a centered radius toward the pointer, ignoring corner', () => {
+    const circleRect = { x: 100, y: 100, width: 80, height: 80 } // centre (140,140)
+    const rect = computeResize('sel-resize-r', circleRect, 2, 220, 140)
+    expect(rect).toEqual({ x: 60, y: 60, width: 160, height: 160 }) // r=80, centre unchanged
+  })
+
+  test('sel-resize-r: clamps to the minimum radius rather than collapsing to a point', () => {
+    const circleRect = { x: 100, y: 100, width: 80, height: 80 }
+    const rect = computeResize('sel-resize-r', circleRect, 2, 140, 140) // pointer AT the centre
+    expect(rect.width).toBeGreaterThan(0)
+    expect(rect.height).toBe(rect.width)
   })
 })
 

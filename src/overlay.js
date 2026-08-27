@@ -118,9 +118,10 @@ const SELECTION_MODES = new Set(['sel-move', 'sel-resize', 'sel-resize-r', 'sel-
 /**
  * The four resize corner points for a geo rect (already padded out to the
  * selection ring, same as renderLocalResizeSelection draws), in a fixed
- * order — [NW, NE, SE, SW] — matching toys.js's RESIZE_CORNER_* constants,
- * so a hit-test result can be passed straight through to
- * Toys.computeResizeRect with no translation.
+ * order — [NW, NE, SE, SW] — matching toys.js's RESIZE_CORNER_* constants
+ * and drawing.js's own corner-drag geometry, so a hit-test result can be
+ * passed straight through to either LayerAPI's computeResize with no
+ * translation.
  */
 export function resizeCorners(geo) {
   const { x, y, width, height } = geo;
@@ -588,10 +589,12 @@ export function startResizeGhost(elId) {
 
 /**
  * Update the local resize ghost to (x, y, width, height) — canvas-space,
- * already computed by Toys.computeResizeRect. Mutates the clone's own
- * root <svg> and all child elements marked with tt_wh_follow_resize class
- * directly — this is DOM-only, never touches Yjs (see toys.js's
- * applyResizeCommit for the commit path).
+ * already computed by id's owning LayerAPI's own computeResize. Mutates
+ * the clone's own root <svg> and all child elements marked with
+ * tt_wh_follow_resize class directly (toys), or the clone's own x/y/
+ * width/height or cx/cy/r (drawing rects/circles) — this is DOM-only,
+ * never touches Yjs (see toys.js's/drawing.js's applyResize for the
+ * commit path).
  */
 export function updateResizeGhost(elId, x, y, width, height) {
   const entry = _resizeGhosts.get(elId);

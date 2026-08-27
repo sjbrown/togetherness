@@ -9,7 +9,6 @@
  */
 
 import * as Y from 'yjs';
-import { computeResizeRect } from './toys.js';
 
 const SVG_NS   = 'http://www.w3.org/2000/svg';
 const XLINK_NS = 'http://www.w3.org/1999/xlink';
@@ -291,16 +290,51 @@ export function computeResizeRadiusRect(startRect, px, py) {
   return { x: cx - r, y: cy - r, width: r * 2, height: r * 2 };
 }
 
+const MIN_RECT_RESIZE_SIZE = 30 // never let a corner-drag shrink a rect below this
+
+/**
+ * Pure geometry for a rect's corner-drag resize: given the rect at drag
+ * start and the corner being dragged (a 0=NW/1=NE/2=SE/3=SW index -- the
+ * same order overlay.js's resizeCorners() produces, so a hit-test result
+ * passes straight through with no translation), compute the new
+ * { x, y, width, height } for the current pointer position (px, py),
+ * keeping the corner OPPOSITE the dragged one fixed in place. Deliberately
+ * independent of toys.js's own near-identical computeResizeRect --
+ * they're two different element types that happen to both support
+ * corner-drag, not one shared behaviour.
+ */
+function computeResizeCornerRect(startRect, corner, px, py) {
+  const { x, y, width, height } = startRect;
+  const left = x, top = y, right = x + width, bottom = y + height;
+
+  switch (corner) {
+    case 0: { // NW
+      const newLeft = Math.min(px, right - MIN_RECT_RESIZE_SIZE);
+      const newTop  = Math.min(py, bottom - MIN_RECT_RESIZE_SIZE);
+      return { x: newLeft, y: newTop, width: right - newLeft, height: bottom - newTop };
+    }
+    case 1: { // NE
+      const newTop = Math.min(py, bottom - MIN_RECT_RESIZE_SIZE);
+      return { x: left, y: newTop, width: Math.max(px - left, MIN_RECT_RESIZE_SIZE), height: bottom - newTop };
+    }
+    case 3: { // SW
+      const newLeft = Math.min(px, right - MIN_RECT_RESIZE_SIZE);
+      return { x: newLeft, y: top, width: right - newLeft, height: Math.max(py - top, MIN_RECT_RESIZE_SIZE) };
+    }
+    case 2: // SE
+    default: {
+      return { x: left, y: top, width: Math.max(px - left, MIN_RECT_RESIZE_SIZE), height: Math.max(py - top, MIN_RECT_RESIZE_SIZE) };
+    }
+  }
+}
+
 // Which resize math a live drag/commit needs, by mode -- this module's own
 // judgment call about what its modes mean, so callers (app.js) don't have
-// to know 'sel-resize-r' means "radius drag, ignore corner". Corner-drag
-// math (toys.js's computeResizeRect) is shared with rects rather than
-// duplicated -- it's plain rectangle geometry, nothing toy-specific about
-// it, just defined there since toys needed it first.
+// to know 'sel-resize-r' means "radius drag, ignore corner".
 export function computeResize(mode, startRect, corner, px, py) {
   return mode === 'sel-resize-r'
     ? computeResizeRadiusRect(startRect, px, py)
-    : computeResizeRect(startRect, corner, px, py);
+    : computeResizeCornerRect(startRect, corner, px, py);
 }
 
 /**
