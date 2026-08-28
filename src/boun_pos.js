@@ -156,18 +156,18 @@ export function generateHexGrid(origin, rows, cols, xSpacing, ySpacing) {
 }
 
 /**
- * Flat-top hex grid (redblobgames.com standard).
+ * Flat-top hex grid (redblobgames.com standard). xSpacing is the column
+ * spacing, ySpacing is the row spacing within a column — independently
+ * adjustable, mirroring generateHexGrid's xSpacing/ySpacing split.
  */
-export function generateFlatHexGrid(origin, rows, cols, hexSize) {
-  const colSp       = hexSize * 1.5;
-  const rowSp       = hexSize * Math.sqrt(3);
-  const oddOffset   = rowSp / 2;
+export function generateFlatHexGrid(origin, rows, cols, xSpacing, ySpacing) {
+  const oddOffset = ySpacing / 2;
   const points = [];
   for (let col = 0; col < cols; col++) {
     for (let row = 0; row < rows; row++) {
       points.push({
-        cx: origin.x + col * colSp,
-        cy: origin.y + row * rowSp + (col % 2) * oddOffset,
+        cx: origin.x + col * xSpacing,
+        cy: origin.y + row * ySpacing + (col % 2) * oddOffset,
       });
     }
   }

@@ -14,7 +14,7 @@ import {
   // Geometry
   rectToPath, pathToRect,
   // Grid math
-  generateSquareGrid, generateHexGrid, gridFillExtent, computeMaxSnapRadius, computeGridPositions,
+  generateSquareGrid, generateHexGrid, generateFlatHexGrid, gridFillExtent, computeMaxSnapRadius, computeGridPositions,
   // CRDT
   addBoundary, addPositionSet, createPositionSetElement, findEl, deleteEl, editBounPos, applyMoveCommit,
   // Layer API
@@ -157,6 +157,45 @@ describe('generateHexGrid', () => {
   });
 });
 
+describe('generateFlatHexGrid', () => {
+  // Regression: gridFillExtent calls generateFlatHexGrid(origin, rows, cols,
+  // xSpacing, ySpacing) — a 5-arg call — but the function used to declare
+  // only 4 params (origin, rows, cols, hexSize), so ySpacing was silently
+  // dropped and xSpacing alone drove BOTH column spacing and row spacing
+  // (and the odd-column offset derived from it). That made "x spacing" in
+  // the Edit panel move circles in y too, and "y spacing" do nothing.
+  test('column spacing (cx) is driven by xSpacing alone', () => {
+    const pts = generateFlatHexGrid({ x: 0, y: 0 }, 1, 3, 60, 40);
+    expect(pts[0].cx).toBeCloseTo(0);
+    expect(pts[1].cx).toBeCloseTo(60);
+    expect(pts[2].cx).toBeCloseTo(120);
+  });
+
+  test('row spacing (cy) is driven by ySpacing alone', () => {
+    const pts = generateFlatHexGrid({ x: 0, y: 0 }, 3, 1, 60, 40);
+    // col 0 is never offset — cy should step by ySpacing only.
+    expect(pts.map(p => p.cy)).toEqual([0, 40, 80]);
+  });
+
+  test('odd columns are offset by half the ROW spacing (ySpacing), not xSpacing', () => {
+    const pts = generateFlatHexGrid({ x: 0, y: 0 }, 1, 2, 60, 40);
+    expect(pts[0]).toMatchObject({ cx: 0,  cy: 0 });
+    expect(pts[1]).toMatchObject({ cx: 60, cy: 20 }); // col 1: offset by ySpacing/2 = 20
+  });
+
+  test('changing xSpacing alone leaves every cy exactly as it was', () => {
+    const before = generateFlatHexGrid({ x: 0, y: 0 }, 2, 2, 60, 40).map(p => p.cy);
+    const after  = generateFlatHexGrid({ x: 0, y: 0 }, 2, 2, 90, 40).map(p => p.cy);
+    expect(after).toEqual(before);
+  });
+
+  test('changing ySpacing alone leaves every cx exactly as it was', () => {
+    const before = generateFlatHexGrid({ x: 0, y: 0 }, 2, 2, 60, 40).map(p => p.cx);
+    const after  = generateFlatHexGrid({ x: 0, y: 0 }, 2, 2, 60, 90).map(p => p.cx);
+    expect(after).toEqual(before);
+  });
+});
+
 describe('computeMaxSnapRadius', () => {
   test('square: half the min spacing', () => {
     expect(computeMaxSnapRadius('square', 80, 80)).toBe(40);
@@ -217,6 +256,16 @@ describe('computeGridPositions', () => {
     const { circles, r } = computeGridPositions(extent, 'hex', 70, 60, 2);
     expect(circles.length).toBeGreaterThan(0);
     expect(r).toBeGreaterThan(0);
+  });
+
+  test('works for flat-hex grids too, with xSpacing/ySpacing independently controlling cx/cy', () => {
+    const extent = { x: 0, y: 0, w: 300, h: 300 };
+    const { circles: withNarrowX } = computeGridPositions(extent, 'flat-hex', 60, 40, 2);
+    const { circles: withWiderX }  = computeGridPositions(extent, 'flat-hex', 90, 40, 2);
+    expect(withNarrowX.length).toBeGreaterThan(0);
+    // Same ySpacing → the set of cy values used is unchanged by xSpacing.
+    const cySet = arr => [...new Set(arr.map(p => Math.round(p.cy)))].sort((a, b) => a - b);
+    expect(cySet(withWiderX)).toEqual(cySet(withNarrowX));
   });
 });
 
