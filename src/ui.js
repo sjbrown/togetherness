@@ -18,8 +18,8 @@
 
 import { icon } from './icons.js';
 import * as Debug from './debug_panel.js';
-import './component/color-picker.js';
-import './component/range_ticked.js';
+import './ui_component/color-picker.js';
+import './ui_component/range_ticked.js';
 
 // ── Icon loading ──────────────────────────────────────────────────────────────
 // Tools with an `iconUrl` have their SVG fetched once and cached here.

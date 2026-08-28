@@ -617,7 +617,7 @@ body {
 { "imports": { "yjs": "./lib/yjs.js", "y-indexeddb": "./lib/y-indexeddb.js" } }
 </script>
 <script type="module">
-import { mirrorYNode, buildThumbSVG, THUMB_W, THUMB_H } from './home-utils.js';
+import { mirrorYNode, buildThumbSVG, THUMB_W, THUMB_H } from './home_utils.js';
 import { populateFromSvgDoc }   from './storage.js';
 import * as Toys                from './toys.js';
 
@@ -869,7 +869,7 @@ window.addEventListener('pageshow', () => {
 
 // ── Sampler previews: load each row's starting-table SVG doc ─────────────────
 // The starting states themselves (background + baked-in toys) live in
-// src/start_tables/*.svg — see that folder — not in this page. Each row
+// src/home_tables/*.svg — see that folder — not in this page. Each row
 // names its file via data-start-table; fetch it, parse it, and inject the
 // <svg> as the row's preview scene. The same parsed element is what
 // seedTable hands to the standard Load machinery (populateFromSvgDoc) on
@@ -877,7 +877,7 @@ window.addEventListener('pageshow', () => {
 // display-only path to drift out of sync.
 function loadStartTable(row) {
   const file = row.dataset.startTable;
-  return fetch(`start_tables/${file}`)
+  return fetch(`home_tables/${file}`)
     .then(res => res.text())
     .then(text => {
       const doc   = new DOMParser().parseFromString(text, 'image/svg+xml');

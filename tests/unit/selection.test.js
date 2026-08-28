@@ -6,7 +6,7 @@
  * plain state out. The App-integration equivalents (real App.select, real
  * DOM, real awareness) live in soft-lock.integration.test.js; this file is
  * where the state-transition *logic itself* should be pinned down, the
- * same split soft-lock.js/soft-lock.test.js already use for the
+ * same split soft_lock.js/soft-lock.test.js already use for the
  * cross-client resolution half of the protocol.
  */
 

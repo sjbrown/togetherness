@@ -1,5 +1,5 @@
 /**
- * soft-lock.js — pure derivation functions for the "soft lock" element
+ * soft_lock.js — pure derivation functions for the "soft lock" element
  * request protocol (advisory, whole-element granularity).
  *
  * Design context (see project discussion): Togetherness is genuinely P2P

@@ -1,7 +1,7 @@
 /**
  * tests/unit/range_ticked.test.js
  *
- * <range-ticked> (src/component/range_ticked.js) — the shared value-slider
+ * <range-ticked> (src/ui_component/range_ticked.js) — the shared value-slider
  * component chip and token_glass both use, and the standalone
  * checkpoint-frequency slider. Unlike ui.js's own renderers (pure string
  * builders, tested in ui.test.js by asserting on the emitted markup) this
@@ -15,7 +15,7 @@
 
 // @vitest-environment jsdom
 import { test, expect, beforeEach } from 'vitest'
-import '../../src/component/range_ticked.js'
+import '../../src/ui_component/range_ticked.js'
 
 function makeRangeTicked(attrs) {
   const el = document.createElement('range-ticked')

@@ -3,7 +3,7 @@
  *
  * Unit tests for the "requested"/contested visual indicator (Commit 4):
  * overlay.js's independent decoration layer, driven by
- * soft-lock.js's getAllContestedElementIds, rendered via
+ * soft_lock.js's getAllContestedElementIds, rendered via
  * Overlay.syncFromAwareness() → render().
  *
  * This indicator is deliberately NOT a SelectionMode `kind` — it's rendered
