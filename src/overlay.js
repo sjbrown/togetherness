@@ -62,6 +62,7 @@
 
 import { getAllContestedElementIds } from './soft-lock.js';
 import { colorMatrixValues } from './toys.js';
+import { previewResize as previewBounPosResize } from './boun_pos.js';
 import { LOCAL_ACTION_FILTER_ID } from './defs.js';
 import { getBowstringState, chargeOpacityFor, chargeRadiusFor, bowstringOrigin } from './delight.js';
 import { drawAsteriskGlyph, drawCrosshairGlyph } from './icons.js';
@@ -564,6 +565,11 @@ export function updateResizeGhost(elId, x, y, width, height) {
     entry.ghostEl.setAttribute('cx', x + r);
     entry.ghostEl.setAttribute('cy', y + r);
     entry.ghostEl.setAttribute('r',  r);
+  } else if (entry.ghostEl.getAttribute?.('data-module') === 'boun_pos') {
+    // A boundary/pos-set ghost is a <g> with <path>/<text>(/<circle>...)
+    // children rather than its own x/y/width/height.
+    // A pos-set's grid has to be regenerated, not just stretched.
+    previewBounPosResize(entry.ghostEl, x, y, width, height);
   }
   const scale = App.getViewScale();
   entry.ringEl.setAttribute('x',                x - PAD);

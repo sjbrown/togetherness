@@ -14,7 +14,7 @@ import {
   // Geometry
   rectToPath, pathToRect,
   // Grid math
-  generateSquareGrid, generateHexGrid, gridFillExtent, computeMaxSnapRadius, computeGridPositions,
+  generateSquareGrid, generateHexGrid, generateFlatHexGrid, gridFillExtent, computeMaxSnapRadius, computeGridPositions,
   // CRDT
   addBoundary, addPositionSet, createPositionSetElement, findEl, deleteEl, editBounPos, applyMoveCommit,
   // Layer API
@@ -23,6 +23,8 @@ import {
   getGeom, getAnchor,
   // Edit schema
   getTtStateSchema, edit, previewEdit,
+  // Selection modes / resize
+  selectModes, nextSelectMode, computeResize, applyResize, previewResize,
   // Drag context
   computeBoundaryRects, getSnapPoints,
 } from '../../src/boun_pos.js';
@@ -155,6 +157,45 @@ describe('generateHexGrid', () => {
   });
 });
 
+describe('generateFlatHexGrid', () => {
+  // Regression: gridFillExtent calls generateFlatHexGrid(origin, rows, cols,
+  // xSpacing, ySpacing) — a 5-arg call — but the function used to declare
+  // only 4 params (origin, rows, cols, hexSize), so ySpacing was silently
+  // dropped and xSpacing alone drove BOTH column spacing and row spacing
+  // (and the odd-column offset derived from it). That made "x spacing" in
+  // the Edit panel move circles in y too, and "y spacing" do nothing.
+  test('column spacing (cx) is driven by xSpacing alone', () => {
+    const pts = generateFlatHexGrid({ x: 0, y: 0 }, 1, 3, 60, 40);
+    expect(pts[0].cx).toBeCloseTo(0);
+    expect(pts[1].cx).toBeCloseTo(60);
+    expect(pts[2].cx).toBeCloseTo(120);
+  });
+
+  test('row spacing (cy) is driven by ySpacing alone', () => {
+    const pts = generateFlatHexGrid({ x: 0, y: 0 }, 3, 1, 60, 40);
+    // col 0 is never offset — cy should step by ySpacing only.
+    expect(pts.map(p => p.cy)).toEqual([0, 40, 80]);
+  });
+
+  test('odd columns are offset by half the ROW spacing (ySpacing), not xSpacing', () => {
+    const pts = generateFlatHexGrid({ x: 0, y: 0 }, 1, 2, 60, 40);
+    expect(pts[0]).toMatchObject({ cx: 0,  cy: 0 });
+    expect(pts[1]).toMatchObject({ cx: 60, cy: 20 }); // col 1: offset by ySpacing/2 = 20
+  });
+
+  test('changing xSpacing alone leaves every cy exactly as it was', () => {
+    const before = generateFlatHexGrid({ x: 0, y: 0 }, 2, 2, 60, 40).map(p => p.cy);
+    const after  = generateFlatHexGrid({ x: 0, y: 0 }, 2, 2, 90, 40).map(p => p.cy);
+    expect(after).toEqual(before);
+  });
+
+  test('changing ySpacing alone leaves every cx exactly as it was', () => {
+    const before = generateFlatHexGrid({ x: 0, y: 0 }, 2, 2, 60, 40).map(p => p.cx);
+    const after  = generateFlatHexGrid({ x: 0, y: 0 }, 2, 2, 60, 90).map(p => p.cx);
+    expect(after).toEqual(before);
+  });
+});
+
 describe('computeMaxSnapRadius', () => {
   test('square: half the min spacing', () => {
     expect(computeMaxSnapRadius('square', 80, 80)).toBe(40);
@@ -215,6 +256,16 @@ describe('computeGridPositions', () => {
     const { circles, r } = computeGridPositions(extent, 'hex', 70, 60, 2);
     expect(circles.length).toBeGreaterThan(0);
     expect(r).toBeGreaterThan(0);
+  });
+
+  test('works for flat-hex grids too, with xSpacing/ySpacing independently controlling cx/cy', () => {
+    const extent = { x: 0, y: 0, w: 300, h: 300 };
+    const { circles: withNarrowX } = computeGridPositions(extent, 'flat-hex', 60, 40, 2);
+    const { circles: withWiderX }  = computeGridPositions(extent, 'flat-hex', 90, 40, 2);
+    expect(withNarrowX.length).toBeGreaterThan(0);
+    // Same ySpacing → the set of cy values used is unchanged by xSpacing.
+    const cySet = arr => [...new Set(arr.map(p => Math.round(p.cy)))].sort((a, b) => a - b);
+    expect(cySet(withWiderX)).toEqual(cySet(withNarrowX));
   });
 });
 
@@ -442,6 +493,129 @@ describe('applyMoveCommit', () => {
       expect(after.cx).toBeCloseTo(circlesBefore[i].cx + 100);
       expect(after.cy).toBeCloseTo(circlesBefore[i].cy + 100);
     });
+  });
+});
+
+// ── Selection modes / resize ────────────────────────────────────────────────
+
+describe('selectModes / nextSelectMode', () => {
+  test('selectModes offers sel-move then sel-resize for both boundaries and pos-sets', () => {
+    const boundaryEl = document.createElementNS(SVG_NS, 'g');
+    boundaryEl.setAttribute('data-bounpos-type', 'boundary');
+    const posSetEl = document.createElementNS(SVG_NS, 'g');
+    posSetEl.setAttribute('data-bounpos-type', 'pos-set');
+    expect(selectModes(boundaryEl)).toEqual(['sel-move', 'sel-resize']);
+    expect(selectModes(posSetEl)).toEqual(['sel-move', 'sel-resize']);
+  });
+
+  test('nextSelectMode cycles sel-move <-> sel-resize', () => {
+    const el = document.createElementNS(SVG_NS, 'g');
+    expect(nextSelectMode(el, null)).toBe('sel-move');
+    expect(nextSelectMode(el, 'sel-move')).toBe('sel-resize');
+    expect(nextSelectMode(el, 'sel-resize')).toBe('sel-move');
+  });
+});
+
+describe('computeResize', () => {
+  // Corner indices: 0=NW, 1=NE, 2=SE, 3=SW — same order as drawing.js/toys.js.
+  const startRect = { x: 100, y: 100, width: 200, height: 150 }; // right=300, bottom=250
+
+  test('SE drag keeps the top-left corner fixed, size follows the pointer', () => {
+    const rect = computeResize('sel-resize', startRect, 2, 340, 260);
+    expect(rect).toEqual({ x: 100, y: 100, width: 240, height: 160 });
+  });
+
+  test('NW drag keeps the bottom-right corner fixed', () => {
+    const rect = computeResize('sel-resize', startRect, 0, 80, 90);
+    expect(rect).toEqual({ x: 80, y: 90, width: 220, height: 160 });
+  });
+
+  test('dragging past the fixed corner clamps to the minimum size, never inverts', () => {
+    const rect = computeResize('sel-resize', startRect, 2, 50, 50);
+    expect(rect.x).toBe(100);
+    expect(rect.y).toBe(100);
+    expect(rect.width).toBeGreaterThanOrEqual(30);
+    expect(rect.height).toBeGreaterThanOrEqual(30);
+  });
+});
+
+describe('applyResize', () => {
+  test('boundary: updates <path> d and <text> position, same shape as applyMoveCommit', () => {
+    const layer = makeLayer();
+    const { id } = addB(layer, { x: 100, y: 100, w: 200, h: 150 });
+    const yEl = findEl(layer.yBounPos, id);
+
+    applyResize(layer.ydoc, yEl, 50, 60, 300, 220);
+
+    const yPath = yEl.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'path');
+    expect(pathToRect(yPath.getAttribute('d'))).toEqual({ x: 50, y: 60, w: 300, h: 220 });
+    const yText = yEl.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'text');
+    expect(Number(yText.getAttribute('x'))).toBe(50 + 300);
+    expect(Number(yText.getAttribute('y'))).toBe(60 - 5);
+  });
+
+  test('pos-set: regenerates the circle grid to fill the new extent, preserving genType/spacing/snapRadius', () => {
+    const layer = makeLayer();
+    // snapRadius:20 round-trips exactly to level 2 for xSpacing/ySpacing 80
+    // (maxR = 40, level 2 = 40 * 2/4 = 20) — computeGridPositions below
+    // asserts against that same level 2.
+    const { id } = addPS(layer, { x: 0, y: 0, w: 200, h: 200, genType: 'square', xSpacing: 80, ySpacing: 80, snapRadius: 20 });
+    const yEl = findEl(layer.yBounPos, id);
+
+    applyResize(layer.ydoc, yEl, 0, 0, 400, 400);
+
+    const { circles: expectedCircles, r: expectedR } =
+      computeGridPositions({ x: 0, y: 0, w: 400, h: 400 }, 'square', 80, 80, 2);
+    const committedCircles = yEl.toArray()
+      .filter(c => c instanceof Y.XmlElement && c.nodeName === 'circle')
+      .map(c => ({ cx: Number(c.getAttribute('cx')), cy: Number(c.getAttribute('cy')) }));
+    expect(committedCircles).toEqual(expectedCircles);
+    expect(committedCircles.length).toBeGreaterThan(4); // strictly more points than the 200x200 extent had
+    expect(yEl.toArray().find(c => c.nodeName === 'circle')?.getAttribute('r')).toBe(String(expectedR));
+    // genType/xSpacing/ySpacing/snapRadius are untouched by a resize.
+    expect(yEl.getAttribute('data-gen-type')).toBe('square');
+    expect(yEl.getAttribute('data-gen-x-spacing')).toBe('80');
+  });
+
+  test('is a no-op when yEl is null', () => {
+    const layer = makeLayer();
+    expect(() => applyResize(layer.ydoc, null, 0, 0, 100, 100)).not.toThrow();
+  });
+});
+
+describe('previewResize', () => {
+  test('boundary ghost: moves <path> and <text> to the new rect', () => {
+    const ghostEl = document.createElementNS(SVG_NS, 'g');
+    ghostEl.setAttribute('data-bounpos-type', 'boundary');
+    const path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', rectToPath(0, 0, 100, 100));
+    const text = document.createElementNS(SVG_NS, 'text');
+    text.setAttribute('x', '100');
+    text.setAttribute('y', '-5');
+    ghostEl.appendChild(path);
+    ghostEl.appendChild(text);
+
+    previewResize(ghostEl, 20, 30, 150, 120);
+
+    expect(pathToRect(ghostEl.querySelector('path').getAttribute('d'))).toEqual({ x: 20, y: 30, w: 150, h: 120 });
+    expect(ghostEl.querySelector('text').getAttribute('x')).toBe(String(20 + 150));
+    expect(ghostEl.querySelector('text').getAttribute('y')).toBe(String(30 - 5));
+  });
+
+  test('pos-set ghost: regenerates circles to fill the new extent, preserving fill from an existing circle', () => {
+    // snapRadius:20 round-trips exactly to level 2 for xSpacing/ySpacing 80 (see applyResize's pos-set test above).
+    const ghostEl = makeGhostPosSet({ x: 0, y: 0, w: 200, h: 200, genType: 'square', xSpacing: 80, ySpacing: 80, snapRadius: 20 });
+
+    previewResize(ghostEl, 0, 0, 400, 400);
+
+    const { circles: expected, r: expectedR } = computeGridPositions({ x: 0, y: 0, w: 400, h: 400 }, 'square', 80, 80, 2);
+    const circles = [...ghostEl.querySelectorAll(':scope > circle')];
+    expect(circles).toHaveLength(expected.length);
+    expect(circles.map(c => [Number(c.getAttribute('cx')), Number(c.getAttribute('cy'))]))
+      .toEqual(expected.map(({ cx, cy }) => [Math.round(cx), Math.round(cy)]));
+    expect(circles.every(c => Number(c.getAttribute('r')) === Math.round(expectedR))).toBe(true);
+    expect(circles.every(c => c.getAttribute('fill') === 'url(#snap-point-grad)')).toBe(true);
+    expect(ghostEl.querySelector('path').getAttribute('d')).toBe(rectToPath(0, 0, 400, 400));
   });
 });
 

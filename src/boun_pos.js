@@ -158,16 +158,14 @@ export function generateHexGrid(origin, rows, cols, xSpacing, ySpacing) {
 /**
  * Flat-top hex grid (redblobgames.com standard).
  */
-export function generateFlatHexGrid(origin, rows, cols, hexSize) {
-  const colSp       = hexSize * 1.5;
-  const rowSp       = hexSize * Math.sqrt(3);
-  const oddOffset   = rowSp / 2;
+export function generateFlatHexGrid(origin, rows, cols, xSpacing, ySpacing) {
+  const oddOffset = ySpacing / 2;
   const points = [];
   for (let col = 0; col < cols; col++) {
     for (let row = 0; row < rows; row++) {
       points.push({
-        cx: origin.x + col * colSp,
-        cy: origin.y + row * rowSp + (col % 2) * oddOffset,
+        cx: origin.x + col * xSpacing,
+        cy: origin.y + row * ySpacing + (col % 2) * oddOffset,
       });
     }
   }
@@ -648,6 +646,77 @@ export function applyMoveCommit(ydoc, yEl, x, y) {
   });
 }
 
+const MIN_BOUNPOS_RESIZE_SIZE = 30; // Can't resize below this limit
+
+/**
+ * Pure geometry for a corner-drag resize
+ */
+function computeResizeRect(startRect, corner, px, py) {
+  const { x, y, width, height } = startRect;
+  const left = x, top = y, right = x + width, bottom = y + height;
+
+  switch (corner) {
+    case 0: { // NW
+      const newLeft = Math.min(px, right - MIN_BOUNPOS_RESIZE_SIZE);
+      const newTop  = Math.min(py, bottom - MIN_BOUNPOS_RESIZE_SIZE);
+      return { x: newLeft, y: newTop, width: right - newLeft, height: bottom - newTop };
+    }
+    case 1: { // NE
+      const newTop = Math.min(py, bottom - MIN_BOUNPOS_RESIZE_SIZE);
+      return { x: left, y: newTop, width: Math.max(px - left, MIN_BOUNPOS_RESIZE_SIZE), height: bottom - newTop };
+    }
+    case 3: { // SW
+      const newLeft = Math.min(px, right - MIN_BOUNPOS_RESIZE_SIZE);
+      return { x: newLeft, y: top, width: right - newLeft, height: Math.max(py - top, MIN_BOUNPOS_RESIZE_SIZE) };
+    }
+    case 2: // SE
+    default: {
+      return { x: left, y: top, width: Math.max(px - left, MIN_BOUNPOS_RESIZE_SIZE), height: Math.max(py - top, MIN_BOUNPOS_RESIZE_SIZE) };
+    }
+  }
+}
+
+export function computeResize(mode, startRect, corner, px, py) {
+  return computeResizeRect(startRect, corner, px, py);
+}
+
+/**
+ * Commit a corner-drag resize to the Yjs doc in a single transaction.
+ * For a pos-set, also regenerates the circle grid
+ */
+export function applyResize(ydoc, yEl, x, y, width, height) {
+  if (!yEl) return;
+  const type  = yEl.getAttribute('data-bounpos-type') ?? 'boundary';
+  const yPath = yChildByTag(yEl, 'path');
+  const yText = yChildByTag(yEl, 'text');
+  if (!yPath) return;
+
+  ydoc.transact(() => {
+    yPath.setAttribute('d', rectToPath(x, y, width, height));
+    if (yText) {
+      yText.setAttribute('x', String(x + width));
+      yText.setAttribute('y', String(y - 5));
+    }
+
+    if (type === 'pos-set') {
+      const genType = yEl.getAttribute('data-gen-type') ?? 'square';
+      const { xSpacing, ySpacing } = gridSpacingFromInput(genType, {
+        xSpacing: yEl.getAttribute('data-gen-x-spacing'),
+        ySpacing: yEl.getAttribute('data-gen-y-spacing'),
+        genParam: yEl.getAttribute('data-gen-param'),
+      });
+      const snapRadiusLevel = snapRadiusRadiusToLevel(
+        Number(yEl.getAttribute('data-snap-radius') ?? 30),
+        genType, xSpacing, ySpacing
+      );
+      // rebuildPositionSetGrid reads its extent off yPath's own 'd' —
+      // already updated above, in this same transaction, so it regenerates
+      // the grid against the NEW rect, not the pre-resize one.
+      rebuildPositionSetGrid(ydoc, yEl, { genType, xSpacing, ySpacing, snapRadiusLevel });
+    }
+  });
+}
+
 /**
  * Render the entire Boundaries and Positions layer into layerEl.
  */
@@ -964,10 +1033,24 @@ export function editEl(ydoc, yEl, editData) {
   }
 }
 
+// Replaces ghostEl's <circle> children with fresh ones at `circles`
+function _rebuildGhostCircles(ghostEl, circles, r) {
+  const existing = [...ghostEl.querySelectorAll(':scope > circle')];
+  // Reuse the first existing circle as a template so per-circle
+  // attributes like the gradient fill survive
+  const template = existing[0] ?? null;
+  for (const c of existing) c.remove();
+  for (const { cx, cy } of circles) {
+    const circle = template ? template.cloneNode(true) : document.createElementNS(SVG_NS, 'circle');
+    circle.setAttribute('cx', Math.round(cx));
+    circle.setAttribute('cy', Math.round(cy));
+    circle.setAttribute('r',  Math.round(r));
+    ghostEl.appendChild(circle);
+  }
+}
+
 /**
  * Preview an edit on a detached ghost clone
- * Whichever of the three keys aren't present in editData are read
- * off ghostEl's own current attributes
  */
 export function previewEdit(ghostEl, editData) {
   if (ghostEl.getAttribute('data-bounpos-type') !== 'pos-set') return;
@@ -975,6 +1058,8 @@ export function previewEdit(ghostEl, editData) {
 
   const current = getTtStateSchema(ghostEl);
   const genType = ghostEl.getAttribute('data-gen-type') ?? 'square';
+  // Whichever of the three keys aren't present in editData are read
+  // off ghostEl's own current attributes
   const xSpacing        = editData.xSpacing   ?? current.xSpacing;
   const ySpacing        = editData.ySpacing   ?? current.ySpacing;
   const snapRadiusLevel = editData.snapRadius ?? current.snapRadius;
@@ -985,18 +1070,31 @@ export function previewEdit(ghostEl, editData) {
     genType, xSpacing, ySpacing, snapRadiusLevel
   );
 
-  // Reuse the first existing circle as a template
-  // falls back to a bare circle only if the ghost started with none at all.
-  const existing = [...ghostEl.querySelectorAll(':scope > circle')];
-  const template = existing[0] ?? null;
-  for (const c of existing) c.remove();
-  for (const { cx, cy } of circles) {
-    const circle = template ? template.cloneNode(true) : document.createElementNS(SVG_NS, 'circle');
-    circle.setAttribute('cx', Math.round(cx));
-    circle.setAttribute('cy', Math.round(cy));
-    circle.setAttribute('r',  Math.round(r));
-    ghostEl.appendChild(circle);
+  _rebuildGhostCircles(ghostEl, circles, r);
+}
+
+/**
+ * Preview a corner-drag resize on a detached ghost clone
+ */
+export function previewResize(ghostEl, x, y, width, height) {
+  const path = ghostEl.querySelector(':scope > path');
+  if (path) path.setAttribute('d', rectToPath(x, y, width, height));
+  const text = ghostEl.querySelector(':scope > text');
+  if (text) {
+    text.setAttribute('x', String(x + width));
+    text.setAttribute('y', String(y - 5));
   }
+
+  if (ghostEl.getAttribute('data-bounpos-type') !== 'pos-set') return;
+
+  const current = getTtStateSchema(ghostEl);
+  const genType = ghostEl.getAttribute('data-gen-type') ?? 'square';
+  const { circles, r } = computeGridPositions(
+    { x, y, w: width, h: height },
+    genType, current.xSpacing, current.ySpacing, current.snapRadius
+  );
+
+  _rebuildGhostCircles(ghostEl, circles, r);
 }
 
 // ── Drag context helpers ──────────────────────────────────────────────────────
@@ -1047,7 +1145,7 @@ export function getSnapPoints(yBounPos) {
 }
 
 export function selectModes(_domEl) {
-  return ['sel-move'];
+  return ['sel-move', 'sel-resize'];
 }
 
 export function nextSelectMode(_domEl, currentMode) {
@@ -1071,10 +1169,13 @@ export function makeLayerAPI(ydoc, yBounPos) {
     getTtStateSchema,
     selectModes,
     nextSelectMode,
+    computeResize,
     applyMoveCommit:  (yEl, x, y)        => applyMoveCommit(ydoc, yEl, x, y),
+    applyResize:      (yEl, x, y, w, h)  => applyResize(ydoc, yEl, x, y, w, h),
     applyTtState:     (state)            => applyTtState(ydoc, yBounPos, state),
     edit:             (yEl, editData)    => editEl(ydoc, yEl, editData),
     previewEdit,
+    previewResize,
     listData:         ()                 => layerData(yBounPos),
     render:           (layerEl)          => render(yBounPos, layerEl),
   };
