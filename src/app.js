@@ -37,7 +37,7 @@ import * as Delight                               from './delight.js';
 import * as UndoRedo                              from './undo_redo.js';
 import * as Events                                from './events.js';
 import { entityGradient }            from './entity_gradient.js';
-import { isElementHeldByOther, computeTickActions } from './soft-lock.js';
+import { isElementHeldByOther, computeTickActions } from './soft_lock.js';
 import * as Selection                              from './selection.js';
 
 
@@ -220,7 +220,7 @@ function _broadcastMode() {
 // Soft-lock tick — periodically evaluates computeTickActions() and applies
 // the result. Nothing is coordinated between clients; each client's tick
 // independently recomputes the same facts from the same shared awareness
-// state and the same REQUEST_WINDOW_MS deadline (see soft-lock.js).
+// state and the same REQUEST_WINDOW_MS deadline (see soft_lock.js).
 const SOFT_LOCK_TICK_MS = 250;
 
 // How many operations the Debug panel orders and renders. totalOrder is a
@@ -494,7 +494,7 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
   // Must go after the render above: tabs read live doc-derived data
   UI.restorePanelState();
 
-  // Soft-lock tick — see soft-lock.js / computeTickActions.
+  // Soft-lock tick — see soft_lock.js / computeTickActions.
   _softLockTickHandle = setInterval(_softLockTick, SOFT_LOCK_TICK_MS);
 }
 

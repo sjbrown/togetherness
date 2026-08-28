@@ -142,7 +142,7 @@ describe('awareness desired schema — read side (overlay syncFromAwareness logi
 
   test('a bid (holding:false) is not read as a selection ring', () => {
     // Bids render via the separate contested/'requested' ring instead
-    // (getAllContestedElementIds in soft-lock.js), not as a selection ring.
+    // (getAllContestedElementIds in soft_lock.js), not as a selection ring.
     const state = { desired: { 'shape-xyz': { ts: 1000, holding: false } }, color: '#f00' }
     expect(extractRemoteSelections(state)).toEqual([])
   })

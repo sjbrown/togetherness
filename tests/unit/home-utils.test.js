@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import * as Y from 'yjs'
 import { describe, test, expect } from 'vitest'
-import { mirrorYNode, buildThumbSVG, THUMB_W, THUMB_H } from '../../src/home-utils.js'
+import { mirrorYNode, buildThumbSVG, THUMB_W, THUMB_H } from '../../src/home_utils.js'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 

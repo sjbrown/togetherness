@@ -20,7 +20,7 @@
  *                    (kebab/asterisk glyph, bowstring handle's resting state)
  *   'locked'       — remote peer is actively editing
  *
- * Requested/contested indicator (soft-lock.js): a separate, independent
+ * Requested/contested indicator (soft_lock.js): a separate, independent
  * decoration drawn on any element with an outstanding acquisition request
  *
  * Drop-target hover indicator: another independent decoration,
@@ -60,7 +60,7 @@
  *   field.
  */
 
-import { getAllContestedElementIds } from './soft-lock.js';
+import { getAllContestedElementIds } from './soft_lock.js';
 import { colorMatrixValues } from './toys.js';
 import { previewResize as previewBounPosResize } from './boun_pos.js';
 import { LOCAL_ACTION_FILTER_ID } from './defs.js';

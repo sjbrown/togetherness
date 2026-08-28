@@ -1,5 +1,5 @@
 /**
- * home-utils.js — pure utility functions for home.html
+ * home_utils.js — pure utility functions for home.html
  *
  * Extracted as a module so they can be unit-tested independently of the page.
  * home.html imports these; tests import them directly.

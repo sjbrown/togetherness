@@ -14,7 +14,7 @@
  *
  * ui.js and canvas.js are mocked (this is not a gesture test — canvas-select.test.js
  * covers gesture-to-App-call wiring separately); only app.js, overlay.js,
- * soft-lock.js, toys.js, and real y-protocols Awareness are live.
+ * soft_lock.js, toys.js, and real y-protocols Awareness are live.
  */
 
 // @vitest-environment jsdom

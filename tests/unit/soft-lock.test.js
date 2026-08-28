@@ -2,7 +2,7 @@
  * tests/unit/soft-lock.test.js
  *
  * Tests for the advisory soft-lock element-request protocol's pure
- * derivation functions (src/soft-lock.js).
+ * derivation functions (src/soft_lock.js).
  *
  * Schema:
  *   desired: { [elId]: { ts: number, holding: boolean } }
@@ -28,7 +28,7 @@ import {
   resolveElementWinner,
   isRequestWindowElapsed,
   computeTickActions,
-} from '../../src/soft-lock.js'
+} from '../../src/soft_lock.js'
 
 // Build a plain Map<clientId, state> — the same shape awareness.getStates()
 // returns.
@@ -303,7 +303,7 @@ describe('Scenario 6b — aborted handoff (holder rebuts before deadline)', () =
 
     // t=2500 — Alice re-clicks her own held element: selecting it again
     // naturally refreshes her claim timestamp (no separate "reassert" call
-    // needed in the new design — see soft-lock.js header).
+    // needed in the new design — see soft_lock.js header).
     states = statesMap([
       [1, { desired: held(['dragon-mini'], { 'dragon-mini': 2500 }) }],
       [2, { desired: bid('dragon-mini', 1000) }],
