@@ -567,9 +567,8 @@ export function updateResizeGhost(elId, x, y, width, height) {
     entry.ghostEl.setAttribute('r',  r);
   } else if (entry.ghostEl.getAttribute?.('data-module') === 'boun_pos') {
     // A boundary/pos-set ghost is a <g> with <path>/<text>(/<circle>...)
-    // children rather than its own x/y/width/height — boun_pos.js is the
-    // only module that knows how those relate to a resized extent (a
-    // pos-set's grid has to be regenerated, not just stretched).
+    // children rather than its own x/y/width/height.
+    // A pos-set's grid has to be regenerated, not just stretched.
     previewBounPosResize(entry.ghostEl, x, y, width, height);
   }
   const scale = App.getViewScale();

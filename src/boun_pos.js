@@ -156,9 +156,7 @@ export function generateHexGrid(origin, rows, cols, xSpacing, ySpacing) {
 }
 
 /**
- * Flat-top hex grid (redblobgames.com standard). xSpacing is the column
- * spacing, ySpacing is the row spacing within a column — independently
- * adjustable, mirroring generateHexGrid's xSpacing/ySpacing split.
+ * Flat-top hex grid (redblobgames.com standard).
  */
 export function generateFlatHexGrid(origin, rows, cols, xSpacing, ySpacing) {
   const oddOffset = ySpacing / 2;
@@ -648,16 +646,10 @@ export function applyMoveCommit(ydoc, yEl, x, y) {
   });
 }
 
-const MIN_BOUNPOS_RESIZE_SIZE = 30; // never let a corner-drag shrink a boun_pos rect below this
+const MIN_BOUNPOS_RESIZE_SIZE = 30; // Can't resize below this limit
 
 /**
- * Pure geometry for a corner-drag resize: given the element's rect at drag
- * start and the corner being dragged (0=NW/1=NE/2=SE/3=SW), compute the new
- * bbox for pointer (px, py), keeping the opposite corner fixed. Same shape
- * as drawing.js's/toys.js's own corner-drag math — boundaries and pos-sets
- * are always rects, so there's only this one resize flavor (unlike
- * drawing.js's rect-vs-circle split), which is why computeResize below
- * ignores `mode` entirely.
+ * Pure geometry for a corner-drag resize
  */
 function computeResizeRect(startRect, corner, px, py) {
   const { x, y, width, height } = startRect;
@@ -684,20 +676,13 @@ function computeResizeRect(startRect, corner, px, py) {
   }
 }
 
-// Which resize math a live drag/commit needs, by mode. Boundaries and
-// pos-sets only ever offer 'sel-resize' (see selectModes), so `mode` is
-// unused here — kept in the signature for parity with drawing.js/App's
-// generic `_Layers[mtype].computeResize(mode, startRect, corner, px, py)` call.
 export function computeResize(mode, startRect, corner, px, py) {
   return computeResizeRect(startRect, corner, px, py);
 }
 
 /**
  * Commit a corner-drag resize to the Yjs doc in a single transaction.
- * Moves/resizes the <path>/<text> the same way applyMoveCommit does, and
- * for a pos-set also regenerates the circle grid to refill the new extent
- * at its existing genType/spacing/snapRadius (mirrors editBounPos's own
- * rebuildPositionSetGrid call for a spacing edit).
+ * For a pos-set, also regenerates the circle grid
  */
 export function applyResize(ydoc, yEl, x, y, width, height) {
   if (!yEl) return;
@@ -1048,19 +1033,11 @@ export function editEl(ydoc, yEl, editData) {
   }
 }
 
-/**
- * Preview an edit on a detached ghost clone
- * Whichever of the three keys aren't present in editData are read
- * off ghostEl's own current attributes
- */
 // Replaces ghostEl's <circle> children with fresh ones at `circles`
-// (all sharing radius `r`), reusing the first existing circle as a
-// template so per-circle attributes like the gradient fill survive —
-// falls back to a bare circle only if the ghost started with none at all.
-// Shared by previewEdit (spacing/snapRadius changes) and previewResize
-// (extent changes) — both just recompute `circles`/`r` differently.
 function _rebuildGhostCircles(ghostEl, circles, r) {
   const existing = [...ghostEl.querySelectorAll(':scope > circle')];
+  // Reuse the first existing circle as a template so per-circle
+  // attributes like the gradient fill survive
   const template = existing[0] ?? null;
   for (const c of existing) c.remove();
   for (const { cx, cy } of circles) {
@@ -1072,12 +1049,17 @@ function _rebuildGhostCircles(ghostEl, circles, r) {
   }
 }
 
+/**
+ * Preview an edit on a detached ghost clone
+ */
 export function previewEdit(ghostEl, editData) {
   if (ghostEl.getAttribute('data-bounpos-type') !== 'pos-set') return;
   if (editData.xSpacing === undefined && editData.ySpacing === undefined && editData.snapRadius === undefined) return;
 
   const current = getTtStateSchema(ghostEl);
   const genType = ghostEl.getAttribute('data-gen-type') ?? 'square';
+  // Whichever of the three keys aren't present in editData are read
+  // off ghostEl's own current attributes
   const xSpacing        = editData.xSpacing   ?? current.xSpacing;
   const ySpacing        = editData.ySpacing   ?? current.ySpacing;
   const snapRadiusLevel = editData.snapRadius ?? current.snapRadius;
@@ -1092,10 +1074,7 @@ export function previewEdit(ghostEl, editData) {
 }
 
 /**
- * Preview a corner-drag resize on a detached ghost clone (mirrors
- * previewEdit's role for spacing edits): moves the <path>/<text> to the
- * new rect and, for a pos-set, regenerates its circles to refill the new
- * extent at the ghost's own current genType/spacing/snapRadius.
+ * Preview a corner-drag resize on a detached ghost clone
  */
 export function previewResize(ghostEl, x, y, width, height) {
   const path = ghostEl.querySelector(':scope > path');
