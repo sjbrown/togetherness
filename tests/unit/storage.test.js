@@ -7,6 +7,7 @@ import { projectFrom } from '../../src/op_checkpoint.js'
 import * as Toys from '../../src/toys.js'
 import { addToy, findToy, _clearSvgTextCache, _getScriptsFragment } from '../../src/toys.js'
 import { addDrawing } from '../../src/drawing.js'
+import * as BounPos from '../../src/boun_pos.js'
 
 // ── Fixtures & helpers ──────────────────────────────────────────────────────
 
@@ -183,6 +184,63 @@ describe('populateFromSvgDoc', () => {
     expect(drawCount).toBe(1) // only the <rect>, not toys/drawing/background/boundaries-positions layers again
   })
 
+  describe('boundaries-positions-layer', () => {
+    // Build the layer's inner markup the same way buildExportSvg does: a
+    // live render of BounPos-created elements via BounPos.render().
+    function exportedBounPosInner() {
+      const srcDoc = new Y.Doc()
+      const srcYBounPos = srcDoc.getXmlFragment('boundaries')
+      BounPos.addBoundary(srcDoc, srcYBounPos, { id: 'tt-b-v1-abc', name: 'Hand', x: 10, y: 20, w: 100, h: 50 })
+      BounPos.addPositionSet(srcDoc, srcYBounPos, {
+        x: 0, y: 0, w: 200, h: 200, toolName: 'pos-grid-sq', toolParams: { spacing: 80, snapRadius: 2 },
+      })
+      const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+      BounPos.render(srcYBounPos, layerEl)
+      return layerEl.innerHTML
+    }
+
+    test('imports boundaries and position sets into the boundaries Yjs fragment', () => {
+      const { ydoc } = freshLayers()
+      const yBounPos = ydoc.getXmlFragment('boundaries')
+      const { bounPosCount } = populateFromSvgDoc(
+        makeDocSvg({ extra: `` }), ydoc)
+      expect(bounPosCount).toBe(0)
+      expect(yBounPos.toArray().length).toBe(0)
+
+      const doc = parseSvg(`<svg xmlns="http://www.w3.org/2000/svg">
+        <g id="boundaries-positions-layer">${exportedBounPosInner()}</g>
+        <g id="toys-layer"></g>
+        <g id="drawing-layer"></g>
+      </svg>`)
+      const result = populateFromSvgDoc(doc, ydoc)
+      expect(result.bounPosCount).toBe(2)
+      expect(yBounPos.toArray().length).toBe(2)
+
+      const boundary = yBounPos.toArray().find(el => el.getAttribute('data-bounpos-type') === 'boundary')
+      expect(BounPos.getTtState(boundary)).toMatchObject({ id: 'tt-b-v1-abc', name: 'Hand', x: 10, y: 20, w: 100, h: 50 })
+
+      const posSet = yBounPos.toArray().find(el => el.getAttribute('data-bounpos-type') === 'pos-set')
+      expect(BounPos.getTtState(posSet)).toMatchObject({ bounPosType: 'pos-set', genType: 'square' })
+
+      // The imported fragment renders back into live SVG without error.
+      const rendered = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+      BounPos.render(yBounPos, rendered)
+      expect(rendered.querySelectorAll('[data-bounpos-type]').length).toBe(2)
+    })
+
+    test('does not double-import via the fallback sweep', () => {
+      const { ydoc } = freshLayers()
+      const doc = parseSvg(`<svg xmlns="http://www.w3.org/2000/svg">
+        <g id="boundaries-positions-layer">${exportedBounPosInner()}</g>
+        <g id="toys-layer"></g>
+        <g id="drawing-layer"></g>
+      </svg>`)
+      const { bounPosCount, drawCount } = populateFromSvgDoc(doc, ydoc)
+      expect(bounPosCount).toBe(2)
+      expect(drawCount).toBe(0)
+    })
+  })
+
   test('hoists a script from an imported toy into the scripts fragment, stripped from the toy itself', () => {
     const { ydoc } = freshLayers()
     const toyWithScript = `<g class="toy" data-id="t1" data-toy-type="dice_d6">
@@ -307,6 +365,7 @@ describe('buildExportSvg', () => {
       <g id="toys-layer"></g>
       <g id="drawing-layer"></g>
       <g id="overlay-layer" pointer-events="none"></g>
+      <g id="delight-layer"><g class="actionColorGroup"></g></g>
     </svg>`)
   }
 
@@ -314,6 +373,12 @@ describe('buildExportSvg', () => {
     const ydoc = new Y.Doc()
     const clone = buildExportSvg(liveCanvasSvg(), ydoc)
     expect(clone.querySelector('#overlay-layer')).toBeNull()
+  })
+
+  test('removes the delight layer', () => {
+    const ydoc = new Y.Doc()
+    const clone = buildExportSvg(liveCanvasSvg(), ydoc)
+    expect(clone.querySelector('#delight-layer')).toBeNull()
   })
 
   test('strips pointer-events attributes throughout', () => {
