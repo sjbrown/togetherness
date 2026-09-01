@@ -1932,7 +1932,7 @@ const App = {
       _ydoc.transact(() => {
         result = Storage.populateFromSvgDoc(svgDoc.documentElement, _ydoc);
       });
-      const { toyCount, drawCount, invalidToyEls, importedToyEls } = result;
+      const { toyCount, drawCount, bounPosCount, invalidToyEls, importedToyEls } = result;
 
       if (toyCount) {
         const layerEl = _svgEl.querySelector('#toys-layer');
@@ -1952,6 +1952,7 @@ const App = {
       const parts = [];
       if (toyCount)  parts.push(`${toyCount} toy${toyCount === 1 ? '' : 's'}`);
       if (drawCount) parts.push(`${drawCount} shape${drawCount === 1 ? '' : 's'}`);
+      if (bounPosCount) parts.push(`${bounPosCount} boundary/position${bounPosCount === 1 ? '' : 's'}`);
       if (invalidToyEls.length) parts.push(`${invalidToyEls.length} invalid → errors layer`);
       if (!parts.length) UI.toast('Nothing importable found', 'warn');
       else UI.toast(`Imported: ${parts.join(', ')}`);

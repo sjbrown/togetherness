@@ -32,11 +32,12 @@ export function domToY(node) {
 }
 
 /**
- * Populate a Yjs document (yMeta/yToys/yDrawing, all obtained directly off
- * ydoc) from a source <svg> root element — background pattern, #toys-layer,
- * #drawing-layer, and (as a fallback) any other top-level elements not
- * belonging to a known layer. Caller is responsible for wrapping this in a
- * ydoc.transact() if atomicity matters.
+ * Populate a Yjs document (yMeta/yToys/yDrawing/yBounPos, all obtained
+ * directly off ydoc) from a source <svg> root element — background pattern,
+ * #toys-layer, #drawing-layer, #boundaries-positions-layer, and (as a
+ * fallback) any other top-level elements not belonging to a known layer.
+ * Caller is responsible for wrapping this in a ydoc.transact() if atomicity
+ * matters.
  *
  * opts.stripToyDecorative — drop each toy <g>'s `transform` attribute before
  * insertion. home.html's sampler templates carry a decorative rotation
@@ -55,19 +56,22 @@ export function domToY(node) {
  * used against a live table — its toy handling is a known gap, not
  * silently declared fixed here.
  *
- * Returns { toyCount, drawCount, invalidToyEls }. invalidToyEls are DOM
- * elements found directly inside #toys-layer that Toys.parseForeignToy
- * doesn't recognise as a toy; the caller decides what to do with them.
+ * Returns { toyCount, drawCount, bounPosCount, invalidToyEls }.
+ * invalidToyEls are DOM elements found directly inside #toys-layer that
+ * Toys.parseForeignToy doesn't recognise as a toy; the caller decides what
+ * to do with them.
  */
 export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
   const yMeta    = ydoc.getMap('meta');
   const yDrawing = ydoc.getXmlFragment('drawing');
+  const yBounPos = ydoc.getXmlFragment('boundaries');
 
-  const bgPattern   = svgRootEl.querySelector('defs pattern');
-  const toysLayerEl = svgRootEl.querySelector('#toys-layer');
-  const drawLayerEl = svgRootEl.querySelector('#drawing-layer');
+  const bgPattern    = svgRootEl.querySelector('defs pattern');
+  const toysLayerEl  = svgRootEl.querySelector('#toys-layer');
+  const drawLayerEl  = svgRootEl.querySelector('#drawing-layer');
+  const bounPosLayerEl = svgRootEl.querySelector('#boundaries-positions-layer');
 
-  let toyCount = 0, drawCount = 0;
+  let toyCount = 0, drawCount = 0, bounPosCount = 0;
   const invalidToyEls = [];
   const importedToyEls = [];
 
@@ -142,6 +146,19 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
     }
   }
 
+  // Boundaries and Positions layer. boun_pos.js's Yjs shape (a <g
+  // data-bounpos-type> with path/text[/circle] children) is exactly what a
+  // generic domToY() produces from the exported DOM (see boun_pos.js's
+  // toSVGEl functions) — extra DOM-only attributes like data-id/data-module
+  // ride along harmlessly since render() rebuilds child elements fresh from
+  // the attributes it actually reads.
+  if (bounPosLayerEl) {
+    for (const child of bounPosLayerEl.children) {
+      const yEl = domToY(child);
+      if (yEl) { yBounPos.insert(yBounPos.length, [yEl]); bounPosCount++; }
+    }
+  }
+
   // Everything else → drawing layer
   for (const el of svgRootEl.children) {
     const id = el.getAttribute('id') ?? '';
@@ -149,15 +166,14 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
     if (el.localName === 'script') continue; // handled above
     if (id === 'toys-layer' || id === 'drawing-layer') continue;
     if (id === 'background-layer') continue;
-    // TODO: boundaries-positions import into its own Yjs fragment when implemented
-    if (id === 'boundaries-positions-layer') continue;
+    if (id === 'boundaries-positions-layer') continue; // handled above
     // overlay-layer is UI-only and is stripped on export
     if (id === 'overlay-layer') continue;
     const yEl = domToY(el);
     if (yEl) { yDrawing.insert(yDrawing.length, [yEl]); drawCount++; }
   }
 
-  return { toyCount, drawCount, invalidToyEls, importedToyEls };
+  return { toyCount, drawCount, bounPosCount, invalidToyEls, importedToyEls };
 }
 
 // ── Yjs → DOM (export) ────────────────────────────────────────────────────────
@@ -188,7 +204,7 @@ export function buildExportSvg(liveSvgEl, ydoc) {
 
   const clone = liveSvgEl.cloneNode(true);
   clone.removeAttribute('id');
-  ['#overlay-layer', '#draw-preview'].forEach(sel => {
+  ['#overlay-layer', '#draw-preview', '#delight-layer'].forEach(sel => {
     clone.querySelector(sel)?.remove();
   });
 
