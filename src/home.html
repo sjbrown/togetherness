@@ -581,9 +581,9 @@ body {
   <!-- Right sampler -->
   <main class="sampler" id="sampler">
 
-<!-- ── Row 1: slatehex ──────────────────────────────────────────── -->
+<!-- ── Row 1: Heros and Goblins ────────────────────────────────────────── -->
 <div class="sampler-row fade-in loading" style="--tint:rgba(13,11,19,0.45); transition-delay:0.05s"
-     data-start-table="slatehex.svg">
+     data-start-table="heros_and_goblins.svg">
   <div class="sampler-spinner" aria-hidden="true"></div>
   <button class="start-btn">Start Here</button>
 </div>
@@ -595,16 +595,16 @@ body {
   <button class="start-btn">Start Here</button>
 </div>
 
-<!-- ── Row 3: greenfelt ──────────────────────────────────────────── -->
-<div class="sampler-row fade-in loading" style="--tint:rgba(8,20,10,0.38); transition-delay:0.19s"
-     data-start-table="greenfelt.svg">
+<!-- ── Row 3: Threshold Guardian ──────────────────────────────────────── -->
+<div class="sampler-row fade-in loading" style="--tint:rgba(10,12,16,0.50); transition-delay:0.26s"
+     data-start-table="threshold_guardian.svg">
   <div class="sampler-spinner" aria-hidden="true"></div>
   <button class="start-btn">Start Here</button>
 </div>
 
-<!-- ── Row 4: irongrid ──────────────────────────────────────────── -->
-<div class="sampler-row fade-in loading" style="--tint:rgba(10,12,16,0.50); transition-delay:0.26s"
-     data-start-table="irongrid.svg">
+<!-- ── Row 4: greenfelt ──────────────────────────────────────────── -->
+<div class="sampler-row fade-in loading" style="--tint:rgba(8,20,10,0.38); transition-delay:0.19s"
+     data-start-table="greenfelt.svg">
   <div class="sampler-spinner" aria-hidden="true"></div>
   <button class="start-btn">Start Here</button>
 </div>
@@ -882,6 +882,8 @@ function loadStartTable(row) {
     .then(text => {
       const doc   = new DOMParser().parseFromString(text, 'image/svg+xml');
       const svgEl = document.importNode(doc.documentElement, true);
+      svgEl.classList.add('sampler-scene')
+      svgEl.setAttribute('preserveAspectRatio', 'xMidYMid slice')
       row.insertBefore(svgEl, row.querySelector('.start-btn'));
       row.classList.remove('loading');
       return svgEl;
