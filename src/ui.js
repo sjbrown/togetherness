@@ -676,7 +676,7 @@ const PANEL_W = 340;
 
 const PANEL_TABS = [
   { id: 'edit',    label: 'Edit',    iconId: 'edit-tab' },
-  { id: 'tools',   label: 'Tools',   iconId: 'rect' },
+  { id: 'tools',   label: 'Tools',   iconId: 'tools' },
   { id: 'layers',  label: 'Layers',  iconId: 'layers' },
   { id: 'peers',   label: 'Peers',   iconId: 'peers' },
   { id: 'history', label: 'History', iconId: 'history' },

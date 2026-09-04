@@ -19,6 +19,10 @@ export const ICON_DEFS = {
   'circle':  '<circle cx="12" cy="12" r="8"/>',
   'pen':     '<path d="M4 20l4-1 9-9-3-3-9 9z"/><path d="M14 7l3 3"/>',
   'text':    '<path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/>',
+  // Tools panel tab glyph — a small select cursor plus a "+", standing in
+  // for the whole tool set (cursor tools + addable elements) now that a
+  // rectangle is just one tool among many.
+  'tools':   '<g transform="translate(1,1) scale(0.6)"><path d="M5 3l15 9-6 1.5L11 20z"/></g><line x1="14" y1="18" x2="22" y2="18"/><line x1="18" y1="14" x2="18" y2="22"/>',
 
   // Actions
   'trash':   '<path d="M4 7h16M9 7V5h6v2M7 7l1 13h8l1-13"/>',
