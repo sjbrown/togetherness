@@ -291,7 +291,7 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
     activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
-    const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
+    const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
     // chipB lands exactly on chipA's point.
     const chipAPoint = chipPointFor(300, 200)
     api.applyMoveCommit(api.find('chipB'), chipAPoint.x, chipAPoint.y)
@@ -653,7 +653,7 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
     activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
-    const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
+    const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
     const before = getOps(ydoc).size
     const stackerEl = api.find('stacker1')
     const posId = realPositionId(layerEl, 'base1')
@@ -676,7 +676,7 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: 300, y: 200, color: '#fff' })
 
-    const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
+    const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
     const before = getOps(ydoc).size
     api.applyMoveCommit(api.find('chipA'), 400, 400)
 
@@ -694,7 +694,7 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
     await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'chipB', toyType: 'chip', x: 500, y: 500, color: '#fff' })
 
-    const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
+    const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
     api.applyMoveCommit(api.find('chipA'), 100, 100) // same centre — a no-op move
 
     const idsInOrder = listToysDom(layerEl).map(el => el.getAttribute('data-id'))
@@ -717,7 +717,7 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
     activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
-    const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
+    const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
     const before = getOps(ydoc).size
     const movingBaseEl = api.find('movingBase')
     const posId = realPositionId(layerEl, 'destBase')

@@ -64,7 +64,7 @@ async function setup(...toys) {
   activateAllToyScriptsDom(ydoc, layerEl)
   await new Promise(r => setTimeout(r, 0))
 
-  const L = makeLayerAPI(ydoc, () => layerEl, 'user-a')
+  const L = makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' })
   return { ydoc, layerEl, L }
 }
 
@@ -148,7 +148,7 @@ describe('gestures also land in the operation log', () => {
 
   async function withLog(...toys) {
     const { ydoc, layerEl } = await setup(...toys)
-    return { ydoc, layerEl, L: makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE) }
+    return { ydoc, layerEl, L: makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' }, TABLE) }
   }
 
   test('a move appends an operation and advances the head', async () => {
@@ -192,7 +192,7 @@ describe('gestures also land in the operation log', () => {
 
   test('without a tableId, no operation is recorded', async () => {
     const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
-    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a')  // no tableId
+    const L = makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' })  // no tableId
     L.applyMoveCommit(L.find('die1'), 5, 5)
     expect([...getOps(ydoc).values()].length).toBe(0)
   })
@@ -300,7 +300,7 @@ describe('projectLayer', () => {
     const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
     projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a', isCreator: true })
 
-    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE)
+    const L = makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' }, TABLE)
     L.applyMoveCommit(L.find('die1'), 321, 123)
 
     const fresh = document.createElementNS(SVG_NS, 'g')
@@ -375,7 +375,7 @@ describe('L.render is projectLayer, gated by isCreator', () => {
 
   test('a creator LayerAPI renders and takes genesis', async () => {
     const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
-    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE, true)
+    const L = makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' }, TABLE, true)
 
     const head = L.render(layerEl)
 
@@ -386,7 +386,7 @@ describe('L.render is projectLayer, gated by isCreator', () => {
   test('a non-creator LayerAPI on a fresh table renders nothing and does not fork', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS(SVG_NS, 'g')
-    const L = makeLayerAPI(ydoc, () => layerEl, 'user-b', TABLE, false)
+    const L = makeLayerAPI(ydoc, () => layerEl, { id: 'user-b' }, TABLE, false)
 
     expect(L.render(layerEl)).toBeNull()
     expect([...getOps(ydoc).values()].length).toBe(0)
@@ -394,7 +394,7 @@ describe('L.render is projectLayer, gated by isCreator', () => {
 
   test('a second L.render call by the creator does not re-derive genesis', async () => {
     const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
-    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE, true)
+    const L = makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' }, TABLE, true)
     L.render(layerEl)
     L.render(layerEl)
     expect([...getOps(ydoc).values()].filter(o => o.gesture === 'checkpoint').length).toBe(1)
@@ -402,7 +402,7 @@ describe('L.render is projectLayer, gated by isCreator', () => {
 
   test('a gesture through the LayerAPI, then L.render again, keeps the DOM live rather than reprojecting stale', async () => {
     const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
-    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE, true)
+    const L = makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' }, TABLE, true)
     L.render(layerEl)
 
     L.applyMoveCommit(L.find('die1'), 42, 42)
@@ -693,7 +693,7 @@ describe('undoToyGesture / redoToyGesture', () => {
 
   async function seeded() {
     const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
-    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE, true)
+    const L = makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' }, TABLE, true)
     L.render(layerEl) // genesis
     return { ydoc, layerEl, L }
   }
@@ -738,7 +738,7 @@ describe('undoToyGesture / redoToyGesture', () => {
   test('undo skips past another peer’s op to find my own', async () => {
     const { ydoc, layerEl, L } = await seeded()
     L.applyMoveCommit(L.find('die1'), 200, 200)          // mine
-    const bobsLayerApi = makeLayerAPI(ydoc, () => layerEl, 'bob', TABLE, false)
+    const bobsLayerApi = makeLayerAPI(ydoc, () => layerEl, { id: 'bob' }, TABLE, false)
     bobsLayerApi.edit(bobsLayerApi.find('die1'), { color: '#123456' }) // someone else's, most recent
 
     undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
@@ -768,7 +768,7 @@ describe('undoToyGesture / redoToyGesture', () => {
     // Deleted by someone else, not me — my own most recent op is still
     // the move. If I'd deleted it myself, undo would (correctly) target
     // that delete instead, since it's my more recent action.
-    const bobsLayerApi = makeLayerAPI(ydoc, () => layerEl, 'bob', TABLE, false)
+    const bobsLayerApi = makeLayerAPI(ydoc, () => layerEl, { id: 'bob' }, TABLE, false)
     bobsLayerApi.delete('die1')
 
     const op = undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
@@ -854,7 +854,7 @@ describe('undoToyGesture / redoToyGesture', () => {
     // reparent + reposition together — exactly commitMove's own
     // composition, not the LayerAPI's plain applyMoveCommit), then undo.
     const { ydoc, layerEl } = await setup(['tray1', 'tray_sum'], ['die1', 'dice_d6'])
-    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE, true)
+    const L = makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' }, TABLE, true)
     L.render(layerEl)
 
     const dieBefore = L.getTtState(L.find('die1'))
@@ -882,7 +882,7 @@ describe('deleteToysBatch / moveToysBatch — one op for a multi-select action',
 
   async function seededTwo() {
     const { ydoc, layerEl } = await setup(['die1', 'dice_d6'], ['die2', 'dice_d6'])
-    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE, true)
+    const L = makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' }, TABLE, true)
     L.render(layerEl)
     return { ydoc, layerEl, L }
   }
@@ -948,7 +948,7 @@ describe('canUndoToyGesture / canRedoToyGesture — cheap existence checks', () 
 
   test('false on a fresh table with nothing done', async () => {
     const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
-    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE, true)
+    const L = makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' }, TABLE, true)
     L.render(layerEl)
     expect(canUndoToyGesture(ydoc, TABLE, 'user-a')).toBe(false)
     expect(canRedoToyGesture(ydoc, TABLE, 'user-a')).toBe(false)
@@ -956,7 +956,7 @@ describe('canUndoToyGesture / canRedoToyGesture — cheap existence checks', () 
 
   test('true for undo after a real gesture; false for redo until an undo happens', async () => {
     const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
-    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE, true)
+    const L = makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' }, TABLE, true)
     L.render(layerEl)
     L.applyMoveCommit(L.find('die1'), 300, 300)
 
@@ -969,7 +969,7 @@ describe('canUndoToyGesture / canRedoToyGesture — cheap existence checks', () 
 
   test('false for a peer who never authored anything on this branch', async () => {
     const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
-    const L = makeLayerAPI(ydoc, () => layerEl, 'user-a', TABLE, true)
+    const L = makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' }, TABLE, true)
     L.render(layerEl)
     L.applyMoveCommit(L.find('die1'), 300, 300)
     expect(canUndoToyGesture(ydoc, TABLE, 'someone-else')).toBe(false)

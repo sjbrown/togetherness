@@ -2345,9 +2345,9 @@ export function buildToyForkSeed(ydoc, lca, splitter, { authorId, joinSequence =
  * captures them. The contract app.js relies on is that whatever find()
  * returns is what the other methods accept — here, a rendered <g>.
  */
-export function makeLayerAPI(ydoc, getLayerEl, myId, tableId, isCreator = false) {  const layer = () => (typeof getLayerEl === 'function' ? getLayerEl() : getLayerEl)
+export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false) {  const layer = () => (typeof getLayerEl === 'function' ? getLayerEl() : getLayerEl)
   const gesture = (name, fn, extraOpts = {}) =>
-    runGesture(ydoc, layer(), fn, { gesture: name, authorId: myId, tableId, ...extraOpts })
+    runGesture(ydoc, layer(), fn, { gesture: name, authorId: user.id, tableId, ...extraOpts })
 
   return {
     find:            (id)            => findToyDom(layer(), id),
@@ -2377,7 +2377,7 @@ export function makeLayerAPI(ydoc, getLayerEl, myId, tableId, isCreator = false)
     edit:            (el, editData)  => gesture('edit',   () => editDom(el, editData)),
     previewEdit,
     listData:        ()              => toysDataDom(layer()),
-    render:          (layerEl)       => projectLayer(ydoc, layerEl, { tableId, authorId: myId, isCreator }),
+    render:          (layerEl)       => projectLayer(ydoc, layerEl, { tableId, authorId: user.id, isCreator }),
     receive:         (layerEl, opId) => receiveToyOp(ydoc, layerEl, opId, tableId),
   };
 }

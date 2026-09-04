@@ -370,7 +370,7 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
     'toys':     Toys.makeLayerAPI(
                   _ydoc,
                   () => _svgEl.querySelector('#toys-layer'),
-                  user.id,
+                  user,
                   tableId,
                   isCreator
                 ),
@@ -399,7 +399,7 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
 
   // UI — needs App; attaches panel/menu/pill listeners
   UI.init(App);
-  UI.setIdentity({ userId: user.name, tableId: tableId });
+  UI.setIdentity({ user, tableId: tableId });
 
   // Toy request bus - toy menu/handler code will dispatch CustomEvents
   Events.init(App, _svgEl, Toys, UI);

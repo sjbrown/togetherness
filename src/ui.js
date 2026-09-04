@@ -78,7 +78,7 @@ export const UIData = {
   menuOpen:             false,
   toolOptsOpen:         false,
   projectName: 'Togetherness Table',
-  userId:      'anon-????',
+  user:        { name: 'anon-????' },
   roomId:      '????',
 };
 
@@ -124,14 +124,14 @@ function dismissToast(t) {
 }
 
 // -- Identity bar ------------------------------------------------------------
-export function setIdentity({ projectName, userId, tableId }) {
+export function setIdentity({ projectName, user, tableId }) {
   if (projectName) UIData.projectName = projectName;
-  if (userId)      UIData.userId      = userId;
+  if (user)        UIData.user        = user;
   if (tableId)     UIData.roomId      = tableId;
   const el = $('#idbar');
   if (!el) return;
   el.querySelector('.idbar-project').textContent = UIData.projectName;
-  el.querySelector('.idbar-user').textContent    = UIData.userId;
+  el.querySelector('.idbar-user').textContent    = UIData.user.name;
   el.querySelector('.idbar-table').textContent    = `#${UIData.roomId}`;
 }
 export function updateInfoBar() {
@@ -1112,7 +1112,7 @@ function avatarSVG(p) {
   // grad-{id}: the <linearGradient> user.js maintains for every known
   // user (see upsertUserGradient) — referenced here by convention, never
   // created by ui.js.
-  const fill = p.gradient?.c1 ? `url(#grad-${p.id})` : p.color;
+  const fill = p.gradient ? `url(#grad-${p.id})` : p.color;
   const initial = p.name[0].toUpperCase();
   return `<svg class="avatar" viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
     <circle cx="16" cy="16" r="16" fill="${fill}"></circle>
