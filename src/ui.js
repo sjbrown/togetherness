@@ -934,7 +934,7 @@ function gatherToolsData() {
 function gatherPeersData() {
   return {
     peers: App.getPeers(),
-    me: { name: App.getMyId(), color: App.getMyColor(), gradId: App.getMyGradId() },
+    me: { name: App.getMyName(), color: App.getMyColor(), gradId: App.getMyGradId() },
     offline: App.isOffline(),
     roomId: App.getTableId(),
     checkpointFrequency: App.getCheckpointFrequency?.() ?? 0,

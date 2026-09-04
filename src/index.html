@@ -277,7 +277,7 @@ Trace.net('signaling', `signaling servers: ${signalingUrls.join(', ')}`, {
 const provider     = new WebrtcProvider(tableId, ydoc, { signaling: signalingUrls });
 Trace.net('provider', 'WebrtcProvider constructed — handshakes begin', { room: tableId });
 const awareness    = provider.awareness;
-awareness.setLocalState({ id: myId, color: myGrad.c1, grad: myGrad, cursor: null, desired: {} });
+awareness.setLocalState({ id: myDisplayName, color: myGrad.c1, grad: myGrad, cursor: null, desired: {} });
 
 let isCreator;
 if (noHash) {

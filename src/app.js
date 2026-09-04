@@ -80,7 +80,7 @@ const _layerVisibility = {
   'toys':                 true,
   'drawing':              true,
 };
-let _myId, _myGrad, _tableId, _isCreator;
+let _myId, _myGrad, _tableId, _isCreator, _displayName;
 let _svgEl;
 let _activeLayer  = 'toys';
 
@@ -354,6 +354,7 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
   _myGrad    = myGrad;
   _tableId   = tableId;
   _isCreator = isCreator;
+  _displayName = displayName;
   _svgEl     = svgElement ?? document.querySelector('#stage svg');
 
   _netStatus.signaling = signalingUrls;
@@ -825,6 +826,7 @@ const App = {
   getMyGradient:   () => _myGrad,
   getMyGradId:     () => Overlay.LOCAL_GRAD_ID,
   getMyId:         () => _myId,
+  getMyName:       () => _displayName,
   // ── Tool registry queries ──────────────────────────────────────────────────
   getTools:        (layer) => _toolsByLayer[layer] ?? [SELECT_TOOL],
   getTool:         (name)  => _toolById[name] ?? null,
@@ -1846,7 +1848,7 @@ const App = {
     // this client's current state actually is rather than the boot-time
     // blank one index.html set originally.
     _awareness?.setLocalState({
-      id:      _myId,
+      id:      _displayName,
       color:   _myGrad.c1,
       grad:    _myGrad,
       cursor:  null,
