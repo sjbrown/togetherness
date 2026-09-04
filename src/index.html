@@ -93,16 +93,16 @@
       </svg>
     </span>
   </div>
-  <div class="menu-item" onclick="UI.openSheet('history');UI.closeMenu()">
-    <span class="menu-label">History &amp; Undo</span>
+  <div class="menu-item" onclick="UI.openSheet('layers');UI.closeMenu()">
+    <span class="menu-label">Layers</span>
     <span class="menu-circle">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M9 14L4 9l5-5"/><path d="M4 9h11a6 6 0 0 1 0 12H9"/>
+        <path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/><path d="M12 2L2 7l10 5 10-5z"/>
       </svg>
     </span>
   </div>
   <div class="menu-item" onclick="UI.openSheet('peers');UI.closeMenu()">
-    <span class="menu-label">Peers</span>
+    <span class="menu-label">Peers / Sharing</span>
     <span class="menu-circle" style="position:relative">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/>
@@ -111,11 +111,11 @@
       <span id="offlineDot" style="position:absolute;top:-2px;right:-2px;width:12px;height:12px;border-radius:50%;border:2px solid var(--surface-solid);background:var(--warn);display:none"></span>
     </span>
   </div>
-  <div class="menu-item" onclick="UI.openSheet('layers');UI.closeMenu()">
-    <span class="menu-label">Layers</span>
+  <div class="menu-item" onclick="UI.openSheet('history');UI.closeMenu()">
+    <span class="menu-label">Undo / History</span>
     <span class="menu-circle">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/><path d="M12 2L2 7l10 5 10-5z"/>
+        <path d="M9 14L4 9l5-5"/><path d="M4 9h11a6 6 0 0 1 0 12H9"/>
       </svg>
     </span>
   </div>
