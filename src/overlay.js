@@ -675,7 +675,7 @@ export function setDropTargetHover(containerElId) {
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
-const LOCAL_GRAD_ID = 'local-sel-grad';
+export const LOCAL_GRAD_ID = 'local-sel-grad';
 
 /**
  * Update the persistent #local-sel-grad element in the SVG <defs> to reflect

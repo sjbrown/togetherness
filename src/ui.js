@@ -934,6 +934,7 @@ function gatherToolsData() {
 function gatherPeersData() {
   return {
     peers: App.getPeers(),
+    me: { name: App.getMyId(), color: App.getMyColor(), gradId: App.getMyGradId() },
     offline: App.isOffline(),
     roomId: App.getTableId(),
     checkpointFrequency: App.getCheckpointFrequency?.() ?? 0,
@@ -1061,6 +1062,10 @@ export function peersBody(data) {
   const rows = peerRowsHTML(data.peers);
   const link = `${location.origin}${location.pathname}#${data.roomId}`;
   return `
+    <div class="field" id="meField">
+      <label>Me</label>
+      <div id="meRow">${meRowHTML(data.me)}</div>
+    </div>
     <div class="field" id="peersListField">
       <label>Connected (<span id="peerLiveCount">${data.peers.filter(p => p.live).length}</span>)</label>
       <div id="peerRows">${rows}</div>
@@ -1110,6 +1115,9 @@ function avatarSVG(p) {
     <circle cx="16" cy="16" r="16" fill="${fill}"></circle>
     <text x="16" y="21" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">${initial}</text>
   </svg>`;
+}
+function meRowHTML(me) {
+  return `<div class="peer-row me-row">${avatarSVG(me)}<div><div style="font-size:14px">${me.name}</div><div style="font-size:12px;color:var(--text-3)">You</div></div><a class="me-edit-btn" href="home.html" title="Edit profile" aria-label="Edit profile">${icon('edit', { size: 16 })}</a></div>`;
 }
 function peerRowsHTML(peers) {
   if (!peers.length)

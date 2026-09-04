@@ -823,6 +823,7 @@ const App = {
   })),
   getMyColor:      () => _myGrad.c1,
   getMyGradient:   () => _myGrad,
+  getMyGradId:     () => Overlay.LOCAL_GRAD_ID,
   getMyId:         () => _myId,
   // ── Tool registry queries ──────────────────────────────────────────────────
   getTools:        (layer) => _toolsByLayer[layer] ?? [SELECT_TOOL],

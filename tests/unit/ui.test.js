@@ -717,7 +717,7 @@ describe('showBranchDialog / branchDialogJoin / branchDialogKeepWorking', () => 
 })
 
 describe('peersBody — Offline mode toggle', () => {
-  const baseData = { peers: [], offline: false, roomId: 'tt-T-v1-test' }
+  const baseData = { peers: [], me: { name: 'Alice', color: '#4287f5', gradId: null }, offline: false, roomId: 'tt-T-v1-test' }
 
   test('offline toggle reflects data.offline: off', () => {
     const div = document.createElement('div')
@@ -735,6 +735,9 @@ describe('peersBody — Offline mode toggle', () => {
 describe('panel open/tab persistence (tt_panel_state)', () => {
   const mockApp = {
     getPeers: () => [],
+    getMyId: () => 'Alice',
+    getMyColor: () => '#4287f5',
+    getMyGradId: () => 'local-sel-grad',
     isOffline: () => false,
     getTableId: () => 'tt-T-v1-test',
     getHistory: () => [],
