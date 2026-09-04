@@ -40,7 +40,7 @@ xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
 id="bg-pattern" x="0" y="0" width="1384" height="998"
 patternUnits="userSpaceOnUse"
 patternTransform="translate(0 0) scale(1)"
-><image href="/img/bg_slatehex.png"
+><image href="img/bg_slatehex.png"
 x="0" y="0" width="1384" height="998">
 </image>
 </pattern>
