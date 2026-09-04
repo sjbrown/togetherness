@@ -21,7 +21,7 @@ import * as Trace                from './trace.js';
 const TABLES_KEY  = 'tt_tables';
 const MAX_TABLES  = 20;
 
-const CURRENT_SCHEMA = 4;
+const SCHEMA_VERSION = 1;
 
 // ── Document construction ───────────────────────────────────────────────
 
@@ -37,7 +37,7 @@ function initTableDoc(ydoc, tableId) {
   ydoc.transact(() => {
     yMeta.set('docId',         tableId);
     yMeta.set('created',       new Date().toISOString());
-    yMeta.set('schemaVersion', CURRENT_SCHEMA);
+    yMeta.set('schemaVersion', SCHEMA_VERSION);
   });
   // playerOptions exists on every table from creation, even though nothing
   // is in it yet — ensurePlayerOptions() below is also idempotent so any
@@ -268,7 +268,7 @@ async function getYDoc(tableId) {
   const wasFresh = !ydoc.getMap('meta').get('docId');
   if (wasFresh) {
     Trace.boot('table-init', `stamping a fresh document for "${tableId}"`,
-      { tableId, schemaVersion: CURRENT_SCHEMA });
+      { tableId, schemaVersion: SCHEMA_VERSION });
     initTableDoc(ydoc, tableId);
   }
   return { ydoc, wasFresh };
