@@ -15,6 +15,14 @@
  * function — no promises, no await, unlike the IndexedDB store this
  * replaces. Both index.html and home.html import from here so the
  * identity logic exists in exactly one place.
+ *
+ * getMyUser() derives the durable `user` shape — {id, name, color,
+ * gradient} — that's passed around by shape (no getters) everywhere else
+ * in the app: App.user, a peer's awareness state.user, App.getPeers().
+ * This module also owns every user's <linearGradient> DOM element (see
+ * upsertUserGradient/pruneUserGradients) — the one place gradient markup
+ * is created or removed, by convention at id `grad-{user.id}`. Overlay
+ * and ui.js only ever reference that id; they never create or mutate it.
  */
 
 import { entityGradient } from './entity_gradient.js';
@@ -156,6 +164,93 @@ export function setGrad(grad) {
   const record = getIdentity();
   record.grad = grad;
   writeRecord(record);
+}
+
+/**
+ * Returns this player's durable identity as a `user` object — the same
+ * {id, name, color, gradient} shape broadcast to peers over awareness
+ * (see index.html) and read back via App.user / a peer's awareness
+ * state.user. `id` is the persistent localId (tt-p-v1-...), stable
+ * across reconnects and reloads, unlike the ephemeral Yjs clientID.
+ *
+ * @returns {{id: string, name: string, color: string, gradient: object}}
+ */
+export function getMyUser() {
+  const { name, grad, localId } = getIdentity();
+  return { id: localId, name, color: grad.c1, gradient: grad };
+}
+
+const SVGNS = 'http://www.w3.org/2000/svg';
+const GRADIENT_DEFS_ID = 'user-gradient-defs';
+const GRADIENT_ID_PREFIX = 'grad-';
+
+// Lazily creates the hidden, page-root <svg><defs> that holds every known
+// user's <linearGradient> — the local player and every peer alike. Mirrors
+// icons.js's initIcons(): injected once, prepended to <body>, never
+// removed. Both index.html and home.html get one the first time any
+// gradient is upserted; neither needs to declare it in markup.
+function ensureGradientDefsRoot() {
+  let defs = document.getElementById(GRADIENT_DEFS_ID);
+  if (defs) return defs;
+  const host = document.createElementNS(SVGNS, 'svg');
+  host.setAttribute('aria-hidden', 'true');
+  host.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
+  defs = document.createElementNS(SVGNS, 'defs');
+  defs.id = GRADIENT_DEFS_ID;
+  host.appendChild(defs);
+  document.body.prepend(host);
+  return defs;
+}
+
+/**
+ * Creates (or updates in place) the <linearGradient id="grad-{user.id}">
+ * for `user` in the shared page-root defs (see ensureGradientDefsRoot) —
+ * the one place in the app that owns a user's gradient DOM. Called once
+ * for the local player at boot, and again for every peer whenever their
+ * awareness-broadcast user record is (re)observed, so an existing
+ * element's stops/angle are refreshed in place rather than recreated.
+ * A user with no gradient data is a no-op.
+ */
+export function upsertUserGradient(user) {
+  if (!user?.id || !user?.gradient?.c1) return;
+  const gradId = `${GRADIENT_ID_PREFIX}${user.id}`;
+  const defs   = ensureGradientDefsRoot();
+  let lg = document.getElementById(gradId);
+  if (!lg) {
+    lg = document.createElementNS(SVGNS, 'linearGradient');
+    lg.setAttribute('id', gradId);
+    const stop0 = document.createElementNS(SVGNS, 'stop');
+    stop0.setAttribute('id', `${gradId}-stop0`);
+    stop0.setAttribute('offset', '0%');
+    const stop1 = document.createElementNS(SVGNS, 'stop');
+    stop1.setAttribute('id', `${gradId}-stop1`);
+    stop1.setAttribute('offset', '100%');
+    lg.appendChild(stop0);
+    lg.appendChild(stop1);
+    defs.appendChild(lg);
+  }
+  // Gradient direction: map CSS angle (0°=up, 90°=right) to SVG objectBoundingBox
+  const rad = ((user.gradient.angle ?? 90) - 90) * Math.PI / 180;
+  lg.setAttribute('x1', 0.5 - Math.cos(rad) / 2);
+  lg.setAttribute('y1', 0.5 - Math.sin(rad) / 2);
+  lg.setAttribute('x2', 0.5 + Math.cos(rad) / 2);
+  lg.setAttribute('y2', 0.5 + Math.sin(rad) / 2);
+  document.getElementById(`${gradId}-stop0`).setAttribute('stop-color', user.gradient.c1);
+  document.getElementById(`${gradId}-stop1`).setAttribute('stop-color', user.gradient.c2 ?? user.gradient.c1);
+}
+
+/**
+ * Removes the <linearGradient> for any known user NOT in `liveUserIds` —
+ * called after each awareness sync so a departed peer's gradient doesn't
+ * accumulate forever. Callers must include their own id in `liveUserIds`.
+ */
+export function pruneUserGradients(liveUserIds) {
+  const defs = document.getElementById(GRADIENT_DEFS_ID);
+  if (!defs) return;
+  defs.querySelectorAll('linearGradient').forEach(lg => {
+    const id = lg.getAttribute('id')?.slice(GRADIENT_ID_PREFIX.length);
+    if (id && !liveUserIds.has(id)) lg.remove();
+  });
 }
 
 const clampCheckpointFrequency = (n) =>

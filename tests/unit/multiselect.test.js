@@ -5,12 +5,16 @@
  *   1. getBoxCandidates — AABB containment logic
  *   2. Overlay candidate rings (setHoverCandidates / clearHoverCandidates)
  *   3. Awareness broadcast (broadcastCandidates / clearBoxCandidates)
- *   4. setLocalGradient — updates persistent #local-sel-grad in canvas <defs>
- *   5. Overlay.localSelectionChanged — unified committed selection update
- *   6. Batch undo — { op: 'batch', entries: [...] } stack shape
- *   7. _selectedIds as SSOT — _singleSelectedId contract
- *   8. toggleSelection logic
- *   9. Multi-drag anchor element constraint logic
+ *   4. Overlay.localSelectionChanged — unified committed selection update
+ *   5. Batch undo — { op: 'batch', entries: [...] } stack shape
+ *   6. _selectedIds as SSOT — _singleSelectedId contract
+ *   7. toggleSelection logic
+ *   8. Multi-drag anchor element constraint logic
+ *
+ * user.js's upsertUserGradient/pruneUserGradients (formerly
+ * Overlay.setLocalGradient's persistent-<defs> gradient) are covered in
+ * user.test.js — gradient DOM ownership moved there; Overlay just
+ * references url(#grad-{id}) by convention.
  */
 
 // @vitest-environment jsdom
@@ -113,17 +117,12 @@ describe('getBoxCandidates — AABB containment', () => {
 // 2. Overlay — setHoverCandidates / clearHoverCandidates
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { SelectionMode, localSelectionChanged, setHoverCandidates, clearHoverCandidates, setLocalGradient, init as overlayInit } from '../../src/overlay.js'
+import { SelectionMode, localSelectionChanged, setHoverCandidates, clearHoverCandidates, init as overlayInit } from '../../src/overlay.js'
 
 function makeOverlayDOM() {
   document.body.innerHTML = `
     <svg id="canvas">
-      <defs>
-        <linearGradient id="local-sel-grad" x1="0" y1="0.5" x2="1" y2="0.5">
-          <stop id="local-sel-grad-stop0" offset="0%"   stop-color="#5a7ea8"></stop>
-          <stop id="local-sel-grad-stop1" offset="100%" stop-color="#3a5e88"></stop>
-        </linearGradient>
-      </defs>
+      <defs></defs>
       <g id="overlay-layer"></g>
     </svg>
   `
@@ -131,8 +130,7 @@ function makeOverlayDOM() {
 
 function makeOverlayApp(bboxMap = {}) {
   return {
-    getMyColor:    () => '#5a7ea8',
-    getMyGradient: () => ({ c1: '#5a7ea8', c2: '#3a5e88', angle: 45 }),
+    user:          { id: 'me', name: 'Me', color: '#5a7ea8', gradient: { c1: '#5a7ea8', c2: '#3a5e88', angle: 45 } },
     getViewScale:  () => 1,
     getBBox:       (id) => bboxMap[id] ?? null,
   }
@@ -206,27 +204,22 @@ describe('Overlay.setHoverCandidates', () => {
     expect(rings).toHaveLength(2)
   })
 
-  test('candidate rings render even when no local selection exists (grad defs are built)', () => {
-    // Regression: when only candidates exist, #local-sel-grad was not written
-    // into <defs>, so stroke:url(#local-sel-grad) resolved to nothing.
-    // Fixed by moving the gradient to persistent canvas <defs> in index.html.
+  test('candidate rings render even when no local selection exists, stroking the caller\'s own grad-{id}', () => {
     const bboxMap = {
       'toy-a': { x: 10, y: 10, width: 64, height: 64 },
       'toy-b': { x: 100, y: 10, width: 64, height: 64 },
     }
-    overlayInit(makeOverlayApp(bboxMap), document.getElementById('canvas'))
+    overlayInit(makeOverlayApp(bboxMap), document.getElementById('canvas'), { id: 'me' })
     // No local selection — SelectionMode is empty
     expect(SelectionMode.size).toBe(0)
 
     setHoverCandidates(['toy-a', 'toy-b'])
 
-    // The persistent gradient exists in canvas <defs> (not overlay-layer)
-    const grad = document.getElementById('local-sel-grad')
-    expect(grad).not.toBeNull()
-
-    // Rings must be present — stroke resolves because gradient is persistent
+    // Rings must be present, referencing the id init() was given — the
+    // element itself is user.js's responsibility, not Overlay's.
     const rings = document.querySelectorAll('#overlay-layer .selRing')
     expect(rings).toHaveLength(2)
+    rings.forEach(r => expect(r.getAttribute('stroke')).toBe('url(#grad-me)'))
   })
 
   test('candidate with null bbox renders no ring (getBBox returns null)', () => {
@@ -301,36 +294,6 @@ describe('broadcastCandidates awareness writes', () => {
     clearBoxCandidates()
     expect(calls[0]).toEqual({ key: 'candidates', value: null })
     expect(calls.some(c => c.key === 'selection')).toBe(false)
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 4. setLocalGradient — updates persistent #local-sel-grad in canvas <defs>
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('Overlay.setLocalGradient', () => {
-  test('updates stop colors on the persistent gradient element', () => {
-    makeOverlayDOM()
-    overlayInit(makeOverlayApp(), document.getElementById('canvas'))
-    setLocalGradient({ c1: '#ff0000', c2: '#0000ff', angle: 90 })
-    expect(document.getElementById('local-sel-grad-stop0').getAttribute('stop-color')).toBe('#ff0000')
-    expect(document.getElementById('local-sel-grad-stop1').getAttribute('stop-color')).toBe('#0000ff')
-  })
-
-  test('updates gradient direction from angle', () => {
-    makeOverlayDOM()
-    overlayInit(makeOverlayApp(), document.getElementById('canvas'))
-    setLocalGradient({ c1: '#aaa', c2: '#bbb', angle: 90 })
-    const lg = document.getElementById('local-sel-grad')
-    // angle=90 → horizontal: x1≈0, x2≈1, y1=y2=0.5
-    expect(parseFloat(lg.getAttribute('x1'))).toBeCloseTo(0, 1)
-    expect(parseFloat(lg.getAttribute('x2'))).toBeCloseTo(1, 1)
-  })
-
-  test('is a no-op when element does not exist', () => {
-    document.body.innerHTML = '<svg id="canvas"><g id="overlay-layer"></g></svg>'
-    overlayInit(makeOverlayApp(), document.getElementById('canvas'))
-    expect(() => setLocalGradient({ c1: '#aaa', c2: '#bbb', angle: 0 })).not.toThrow()
   })
 })
 

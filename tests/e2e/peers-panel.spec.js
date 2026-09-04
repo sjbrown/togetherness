@@ -67,4 +67,40 @@ test.describe('Peers & Sharing panel — identity display', () => {
 
     await browser.close();
   });
+
+  test('avatars fill from a real grad-{user.id} <linearGradient>, mine and a peer\'s alike', async () => {
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+    const ctx1    = await browser.newContext();
+    const ctx2    = await browser.newContext();
+    const page1   = await ctx1.newPage();
+    const page2   = await ctx2.newPage();
+
+    await seedIdentity(page1, 'Gravel Zuko');
+    await seedIdentity(page2, 'Sable Wren');
+
+    const room = await openAsCreator(page1, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+    await joinRoom(page2, room, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+    await expect(page1.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
+
+    await page1.evaluate(() => window.UI.openSheet('peers'));
+
+    // Every avatar's fill is `url(#grad-{id})`, and that id resolves to an
+    // actual <linearGradient> with real color stops — not a dangling
+    // reference to an element user.js never created.
+    const fills = await page1.$$eval('#meRow .avatar circle, #peerRows .avatar circle',
+      els => els.map(el => el.getAttribute('fill')));
+    expect(fills.length).toBe(2); // me + the one joined peer
+    for (const fill of fills) {
+      const match = /^url\(#(grad-[^)]+)\)$/.exec(fill);
+      expect(match).not.toBeNull();
+      const gradId = match[1];
+      const stopColor = await page1.evaluate(id => {
+        const stop = document.querySelector(`#${CSS.escape(id)} stop`);
+        return stop?.getAttribute('stop-color') ?? null;
+      }, gradId);
+      expect(stopColor).toBeTruthy();
+    }
+
+    await browser.close();
+  });
 });

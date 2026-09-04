@@ -15,14 +15,9 @@
 <div id="stage">
   <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <!-- local-sel-grad: player's own selection ring gradient.
-             Stops are updated at boot by Overlay.setLocalGradient(myGrad). -->
-        <linearGradient id="local-sel-grad"
-          x1="0.000" y1="0.500"
-          x2="1.000" y2="0.500"
-          ><stop id="local-sel-grad-stop0" offset="0%"  stop-color="hsl(160, 100%, 55%)"></stop
-          ><stop id="local-sel-grad-stop1" offset="100%" stop-color="hsl(165, 90%, 45%)"></stop
-        ></linearGradient>
+        <!-- Every user's <linearGradient id="grad-{user.id}"> (mine and
+             every peer's) lives in a separate page-root <defs> that
+             user.js injects and maintains — see upsertUserGradient. -->
         <!-- drag-placeholder-filter injected by defs.js via the module script below -->
       </defs>
     <g id="background-layer">
@@ -204,7 +199,7 @@ import * as Y                   from './lib/yjs.js';
 import { WebrtcProvider }       from './lib/y-webrtc.js';
 import { boot, App }            from './app.js';
 import * as UI                  from './ui.js';
-import { getIdentity }          from './user.js';
+import { getMyUser } from './user.js';
 import { dragPlaceholderFilterSVG, snapPointGradientSVG, localActionFilterSVG, glowFilterSVG }  from './defs.js';
 import { tablesAPI as tables } from './tables.js';
 import { resolveJoinIntent }    from './ui_join_dialog.js';
@@ -229,17 +224,16 @@ window.App = App;
 
 // ── Identity ────────────────────────────────────────────────────────────────
 // Persistent identity lives in localStorage
-const { name: myDisplayName, grad: myGrad, localId: myId } = getIdentity();
-document.getElementById('myIdLabel').textContent = `me: ${myDisplayName}`;
-Trace.boot('identity', `local identity resolved: ${myDisplayName}`,
-  { myId, displayName: myDisplayName });
+const user = getMyUser();
+document.getElementById('myIdLabel').textContent = `me: ${user.name}`;
+Trace.boot('identity', `local identity resolved: ${user.name}`, { user });
 
 // ── Table  ──────────────────────────────────────────────────────────────────
 let tableId = location.hash.slice(1);
 const noHash = !tableId;
 
 if (noHash) {
-  tableId = tables.generateTableId(myDisplayName);
+  tableId = tables.generateTableId(user.name);
   location.hash = tableId;
 }
 document.getElementById('tableLabel').textContent = tableId;
@@ -277,13 +271,13 @@ Trace.net('signaling', `signaling servers: ${signalingUrls.join(', ')}`, {
 const provider     = new WebrtcProvider(tableId, ydoc, { signaling: signalingUrls });
 Trace.net('provider', 'WebrtcProvider constructed — handshakes begin', { room: tableId });
 const awareness    = provider.awareness;
-awareness.setLocalState({ id: myDisplayName, color: myGrad.c1, grad: myGrad, cursor: null, desired: {} });
+awareness.setLocalState({ user, cursor: null, desired: {} });
 
 let isCreator;
 if (noHash) {
   isCreator = true;
 } else if (!wasFresh) {
-  isCreator = tables.getJoinSequenceArray(ydoc)[0] === myId;
+  isCreator = tables.getJoinSequenceArray(ydoc)[0] === user.id;
 } else {
   // resolveJoinIntent probes the network and shows a dialog
   isCreator = await resolveJoinIntent({ provider, tableId, ydoc });
@@ -292,11 +286,10 @@ if (noHash) {
 // Must go after isCreator is settled -- ensureJoined's guard needs to know
 // whether an empty joinSequence means
 // "brand new table" or "haven't synced with the creator yet"
-tables.ensureJoined(ydoc, myId, { isCreator });
+tables.ensureJoined(ydoc, user.id, { isCreator });
 
 // ── Boot ────────────────────────────────────────────────────────────────────
-boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreator, displayName: myDisplayName,
-       signalingUrls });
+boot({ ydoc, awareness, provider, user, tableId, isCreator, signalingUrls });
 </script>
 
 </body>

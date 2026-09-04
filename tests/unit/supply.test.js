@@ -100,7 +100,7 @@ function bindSupplyHarness(ydoc, layerEl) {
   const svgEl = { querySelector: (sel) => sel === '#toys-layer' ? layerEl : layerEl.querySelector(sel) }
   const fakeApp = {
     getYdoc: () => ydoc,
-    getMyId: () => AUTHOR,
+    user: { id: AUTHOR, name: AUTHOR, color: '#888', gradient: null },
     getTableId: () => TABLE,
     setLastActionScope: () => {},
     addHistory: () => {},

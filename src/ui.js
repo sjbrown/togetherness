@@ -934,7 +934,7 @@ function gatherToolsData() {
 function gatherPeersData() {
   return {
     peers: App.getPeers(),
-    me: { name: App.getMyName(), color: App.getMyColor(), gradId: App.getMyGradId() },
+    me: App.user,
     offline: App.isOffline(),
     roomId: App.getTableId(),
     checkpointFrequency: App.getCheckpointFrequency?.() ?? 0,
@@ -1109,7 +1109,10 @@ export function onCheckpointFrequencyInput(minutes) {
   if (label) label.textContent = checkpointFrequencyLabel(clamped);
 }
 function avatarSVG(p) {
-  const fill = p.gradId ? `url(#${p.gradId})` : p.color;
+  // grad-{id}: the <linearGradient> user.js maintains for every known
+  // user (see upsertUserGradient) — referenced here by convention, never
+  // created by ui.js.
+  const fill = p.gradient?.c1 ? `url(#grad-${p.id})` : p.color;
   const initial = p.name[0].toUpperCase();
   return `<svg class="avatar" viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
     <circle cx="16" cy="16" r="16" fill="${fill}"></circle>

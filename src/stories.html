@@ -114,6 +114,8 @@ import * as UI from '/ui.js';
 import { SELECT_TOOL } from '/tools-schema.js';
 import { SHAPE_TYPES } from '/drawing.js';
 import { TOOLS as TOY_TOOLS } from '/toys.js';
+import { entityGradient } from '/entity_gradient.js';
+import { upsertUserGradient } from '/user.js';
 
 initIcons();
 
@@ -132,41 +134,26 @@ const mockShapes = [
   { id:'b', type:'circle', fill:'#5a7ea8', author:'Mara' },
   { id:'c', type:'rect',   fill:'#a85e5e', author:'you'  },
 ];
+const mockMe = (() => {
+  const p = { id:'me', name:'you' };
+  const gradient = entityGradient(p.name);
+  return { ...p, color: gradient.c1, gradient };
+})();
 const mockPeers = [
-  { clientId: 9001, name:'Mara', color:'#5a7ea8', live:true },
-  { clientId: 9002, name:'Theo', color:'#a85e5e', live:true },
-  { clientId: 9003, name:'Jin',  color:'#8a5ea8', live:false },
-];
+  { id:'peer-mara', name:'Mara', live:true },
+  { id:'peer-theo', name:'Theo', live:true },
+  { id:'peer-jin',  name:'Jin',  live:false },
+].map(p => {
+  const gradient = entityGradient(p.name);
+  return { ...p, color: gradient.c1, gradient };
+});
 
-// mockPeers' avatars use the same gradient-fill technique the real Peers
-// panel does (ui.js's avatarSVG + overlay.js's peer-sel-grad registry):
-// fill="url(#peer-sel-grad-{clientId})" pointing at a persistent per-peer
-// <linearGradient>. Stories are self-contained (no live awareness), so build
-// that one small defs shim here — same trick the local-sel-grad shim further
-// down this file uses for "me". Angle-to-xy conversion mirrors overlay.js's
-// _ensurePeerGradient exactly, since these are static demo defs, not a live
-// awareness-driven registry.
-{
-  const svgNS = 'http://www.w3.org/2000/svg';
-  const defsShim = document.createElementNS(svgNS, 'svg');
-  defsShim.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
-  const defsEl = document.createElementNS(svgNS, 'defs');
-  for (const p of mockPeers) {
-    const g   = entityGradient(p.name);
-    const rad = (g.angle - 90) * Math.PI / 180;
-    const lg  = document.createElementNS(svgNS, 'linearGradient');
-    lg.setAttribute('id', Overlay.peerGradId(p.clientId));
-    lg.setAttribute('x1', 0.5 - Math.cos(rad) / 2);
-    lg.setAttribute('y1', 0.5 - Math.sin(rad) / 2);
-    lg.setAttribute('x2', 0.5 + Math.cos(rad) / 2);
-    lg.setAttribute('y2', 0.5 + Math.sin(rad) / 2);
-    lg.innerHTML = `<stop offset="0%" stop-color="${g.c1}"></stop><stop offset="100%" stop-color="${g.c2}"></stop>`;
-    defsEl.appendChild(lg);
-    p.gradId = Overlay.peerGradId(p.clientId);
-  }
-  defsShim.appendChild(defsEl);
-  document.body.appendChild(defsShim);
-}
+// mockPeers/mockMe avatars use the same gradient-fill technique the real
+// Peers panel does (ui.js's avatarSVG + user.js's grad-{id} convention):
+// fill="url(#grad-{id})" pointing at a persistent per-user <linearGradient>.
+// Stories are self-contained (no live awareness), so just call the same
+// upsertUserGradient every real peer's arrival calls in app.js.
+for (const p of [mockMe, ...mockPeers]) upsertUserGradient(p);
 const mockHistory = [
   { label:'added rect a1b2c3',  fill:'#c8941e', elType:'rect' },
   { label:'added circle d4e5',  fill:'#5a7ea8', elType:'circle' },
@@ -366,7 +353,7 @@ story('Panel · Layers', 'background active', () =>
   panelFrame('Layers', UI.layersBody({ layers:mockLayers, active:'background', selectedIds: new Set() }), 'layers'));
 
 story('Panel · Peers', 'two live, one offline', () =>
-  panelFrame('Peers & sharing', UI.peersBody({ peers:mockPeers, offline:false, roomId:'design-room-7f3a' }), 'peers'));
+  panelFrame('Peers & sharing', UI.peersBody({ me:mockMe, peers:mockPeers, offline:false, roomId:'design-room-7f3a' }), 'peers'));
 
 story('Panel · History', 'with swatches', () =>
   panelFrame('History & undo', UI.histBody(mockHistory), 'history'));
@@ -378,33 +365,21 @@ story('Panel · Save', '', () =>
 // These stories render actual SVG shapes via _toSVGEl + the real overlay.js.
 // No CRDT or network: shapes are created directly from attrs.
 // Overlay.init() receives a minimal fake App that answers getBBox,
-// getViewScale, getMyColor, and getMyGradient from local data.
+// getViewScale, and user from local data.
 
 import * as Overlay from '/overlay.js';
 import { getGeom } from '/drawing.js';
-import { entityGradient } from '/entity_gradient.js';
 import { dragPlaceholderFilterSVG } from '/defs.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const myGrad = entityGradient('stories-user');
+const storiesUser = { id: 'stories-user', name: 'stories-user', color: myGrad.c1, gradient: myGrad };
 
-// overlay.js's renderLocalSelection() always strokes with `url(#local-sel-grad)` —
-// a *document-wide* persistent gradient element that index.html defines once in
-// the real canvas's <defs> and that Overlay.setLocalGradient() colors at boot.
-// Stories build self-contained per-story SVGs with no such element, so without
-// this the local selection ring's stroke silently resolves to nothing (the ring
-// <rect> is there, just invisible). Replicate that one persistent def here,
-// same as the real app does, so the local ring actually renders.
-const localGradDefs = document.createElementNS(SVG_NS, 'svg');
-localGradDefs.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
-localGradDefs.innerHTML = `<defs>
-  <linearGradient id="local-sel-grad" x1="0" y1="0.5" x2="1" y2="0.5">
-    <stop id="local-sel-grad-stop0" offset="0%"></stop>
-    <stop id="local-sel-grad-stop1" offset="100%"></stop>
-  </linearGradient>
-</defs>`;
-document.body.appendChild(localGradDefs);
-Overlay.setLocalGradient(myGrad);
+// overlay.js's renderLocalSelection() strokes with `url(#grad-{id})` — a
+// *document-wide* persistent gradient element that user.js's
+// upsertUserGradient creates/keeps current (see index.html's real boot
+// path). Call the same function here so the local ring actually renders.
+upsertUserGradient(storiesUser);
 
 // Minimal tag map for building plain SVG elements in stories (no CRDT needed).
 const SHAPE_TAG = { rect: 'rect', circle: 'circle' };
@@ -447,8 +422,7 @@ function buildStageSVG(shapes) {
 function fakeOverlayApp(svgEl) {
   return {
     getViewScale:   () => 1,
-    getMyColor:     () => myGrad.c1,
-    getMyGradient:  () => myGrad,
+    user:           storiesUser,
     getBBox: (id) => {
       const el = svgEl.querySelector(`[data-id="${id}"]`);
       return el ? getGeom(el) : null;
@@ -465,10 +439,10 @@ function canvasStory(label, variant, shapes, selectionKind, selectedId, remoteCo
     if (selectedId && selectionKind === 'local') {
       Overlay.SelectionMode.set(selectedId, { kind: 'local', color: myGrad.c1, grad: myGrad });
     } else if (selectedId && selectionKind === 'remote') {
-      Overlay.SelectionMode.set(selectedId, { kind: 'remote', peerId: 'Mara', color: remoteColor ?? '#5a7ea8' });
+      Overlay.SelectionMode.set(selectedId, { kind: 'remote', peerName: 'Mara', color: remoteColor ?? '#5a7ea8' });
     }
 
-    Overlay.init(fakeOverlayApp(svg), svg);
+    Overlay.init(fakeOverlayApp(svg), svg, storiesUser);
     Overlay.render();
     return svg;
   });
@@ -494,8 +468,8 @@ story('Mixed', 'rect local · circle remote', () => {
   const svg = buildStageSVG(shapes);
   Overlay.SelectionMode.clear();
   Overlay.SelectionMode.set('mx1', { kind:'local',  color: myGrad.c1,   grad: myGrad });
-  Overlay.SelectionMode.set('mx2', { kind:'remote', peerId:'Mara', color:'#5a7ea8' });
-  Overlay.init(fakeOverlayApp(svg), svg);
+  Overlay.SelectionMode.set('mx2', { kind:'remote', peerName:'Mara', color:'#5a7ea8' });
+  Overlay.init(fakeOverlayApp(svg), svg, storiesUser);
   Overlay.render();
   return svg;
 });

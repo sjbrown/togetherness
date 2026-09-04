@@ -3,7 +3,7 @@
  */
 export function init(App, svgEl, Toys, UI) {
   const ydoc    = App.getYdoc()
-  const myId    = App.getMyId()
+  const myId    = App.user.id
   const tableId = App.getTableId()
 
   const events = {
