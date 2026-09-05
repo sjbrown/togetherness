@@ -180,6 +180,15 @@ export function getMyUser() {
   return { id: localId, name, color: grad.c1, gradient: grad };
 }
 
+/**
+ * Called once at boot, same convention as Overlay.init/Delight.init/etc.
+ * Seeds the local player's own <linearGradient id="grad-{user.id}"> —
+ * see upsertUserGradient.
+ */
+export function init(App, user) {
+  upsertUserGradient(user);
+}
+
 const SVGNS = 'http://www.w3.org/2000/svg';
 const GRADIENT_DEFS_ID = 'user-gradient-defs';
 const GRADIENT_ID_PREFIX = 'grad-';

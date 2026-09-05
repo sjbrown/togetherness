@@ -26,7 +26,7 @@ import { tablesAPI }                              from './tables.js';
 import { getOps, heads, totalOrder, appendOp }    from './op_dag.js';
 import { getHead, getMergeTips, setHead }         from './op_head.js';
 import { isCheckpoint, checkpointOp, shouldCheckpoint, lastCheckpointTs } from './op_checkpoint.js';
-import { getCheckpointFrequency, setCheckpointFrequency, upsertUserGradient, pruneUserGradients } from './user.js';
+import * as User                                  from './user.js';
 import * as Trace                                 from './trace.js';
 import * as Storage                               from './storage.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
@@ -383,10 +383,7 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   // Tool registry - assemble layer tool palettes from registries
   buildToolRegistry();
 
-  // This user's own <linearGradient id="grad-{id}"> — see user.js's
-  // upsertUserGradient. Peers' gradients are upserted as they're
-  // observed over awareness (see syncUserGradients/renderPresence).
-  upsertUserGradient(user);
+  User.init(App, user);
 
   // Awareness layer - indicators of peers and for peers
   Overlay.init(App, _svgEl, user);
@@ -558,7 +555,7 @@ function renderDoc() {
 }
 
 function renderPresence() {
-  syncUserGradients();
+  syncUserVisuals();
   Overlay.syncFromAwareness(_awareness.getStates(), _awareness.clientID);
   updatePeerCount();
 }
@@ -566,14 +563,14 @@ function renderPresence() {
 // Keeps every live peer's (and my own) <linearGradient id="grad-{id}">
 // current — see user.js's upsertUserGradient/pruneUserGradients. Runs on
 // every awareness change, same cadence Overlay.syncFromAwareness runs at.
-function syncUserGradients() {
+function syncUserVisuals() {
   const liveUserIds = new Set([App.user.id]);
   _awareness.getStates().forEach((state) => {
     if (!state?.user?.id) return;
     liveUserIds.add(state.user.id);
-    upsertUserGradient(state.user);
+    User.upsertUserGradient(state.user);
   });
-  pruneUserGradients(liveUserIds);
+  User.pruneUserGradients(liveUserIds);
 }
 
 // Each layer id maps to a group element id via the convention: `${id}-layer`.
@@ -650,7 +647,7 @@ function handleToyBranchConflict(tips) {
  * AND that many minutes have passed since the last checkpoint ANYONE wrote
  */
 function maybeIdleCheckpoint(reason) {
-  const frequencyMin = getCheckpointFrequency();
+  const frequencyMin = User.getCheckpointFrequency();
   if (frequencyMin <= 0) return null;
   if (!_tableId || !_ydoc) return null;
 
@@ -829,10 +826,6 @@ function moduleForElement(el) {
 }
 
 // ── App bus — the object passed to all modules ───────────────────────────────
-// App.user (set once, in boot()) is a plain {id, name, color, gradient}
-// data property, not a getter — every module reads its fields directly
-// (App.user.id, App.user.color, ...) rather than through App.getMyXxx()
-// accessors. See user.js for the shape's origin and its gradient DOM.
 const App = {
   // ── Queries (ui.js, overlay.js read these) ─────────────────────────────────
   getActiveLayer:  () => _activeLayer,
@@ -882,8 +875,8 @@ const App = {
   getTableId:      () => _tableId,
   getYdoc:         () => _ydoc,
   maybeCheckpoint: (reason) => maybeCheckpoint(reason),
-  getCheckpointFrequency: () => getCheckpointFrequency(),
-  setCheckpointFrequency: (minutes) => setCheckpointFrequency(minutes),
+  getCheckpointFrequency: () => User.getCheckpointFrequency(),
+  setCheckpointFrequency: (minutes) => User.setCheckpointFrequency(minutes),
   getSelectedIds:  () => _heldIds(),
   getBBox:  (id) => {
     const svgEl = _svgEl.querySelector(`[data-id="${id}"]`);
