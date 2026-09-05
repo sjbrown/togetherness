@@ -1067,21 +1067,26 @@ export function peersBody(data) {
       <div id="meRow">${meRowHTML(data.me)}</div>
     </div>
     <div class="field" id="peersListField">
-      <label>Connected (<span id="peerLiveCount">${data.peers.filter(p => p.live).length}</span>)</label>
+      <label>Peers (<span id="peerLiveCount">${data.peers.filter(p => p.live).length}</span>)</label>
       <div id="peerRows">${rows}</div>
     </div>
-    <div class="row-btn" style="border-bottom:0.5px solid var(--border)">
-      <div><div style="font-size:14px;font-weight:500">Offline mode</div>
-           <div style="font-size:12px;color:var(--text-3)">Queue changes, sync on reconnect</div></div>
-      <div class="toggle ${data.offline ? 'on' : ''}" id="offToggle"></div>
-    </div>
-    <div class="peer-invite field" style="margin-top:18px"><label>Invite nearby</label>
+
+    <div class="peer-invite field" style="margin-top:18px"><label>Invite</label>
       <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:4px">
         <span><a target="_new" href="https://apps.1kfa.com/qr.html?q=${link}"
         >Generate QR Code ${fakeQR()} </a></span>
         <div class="room-code"><a href="${link}">${link}</a></div>
       </div>
     </div>
+
+    <div class="row-btn"
+         style="border-bottom:0.5px solid var(--border); border-top:0.5px solid var(--border)"
+    >
+      <div><div style="font-size:14px;font-weight:500">Offline mode</div>
+           <div style="font-size:12px;color:var(--text-3)">Queue changes, sync on reconnect</div></div>
+      <div class="toggle ${data.offline ? 'on' : ''}" id="offToggle"></div>
+    </div>
+
     ${checkpointFrequencyHTML(data.checkpointFrequency)}`;
 }
 function checkpointFrequencyLabel(freq) {
@@ -1090,11 +1095,11 @@ function checkpointFrequencyLabel(freq) {
 function checkpointFrequencyHTML(freq) {
   return `
     <div class="field" style="margin-top:18px">
-      <label>Checkpoint frequency</label>
+      <label>Idle Checkpoint frequency</label>
       <div style="font-size:12px;color:var(--text-3);margin-bottom:6px">
-        Compact the history when you've been idle a while. The panel opening
-        always checkpoints when there's enough to compact — this only
-        controls the extra idle-triggered check.
+        Compact the operation log when you've been idle a while. Small op
+        logs transmit fewer bytes over the wire, but checkpointing often
+        consumes CPU.
       </div>
       <div class="opt-row">
         <span class="opt-label" id="checkpointFreqLabel">${checkpointFrequencyLabel(freq)}</span>
@@ -1109,9 +1114,6 @@ export function onCheckpointFrequencyInput(minutes) {
   if (label) label.textContent = checkpointFrequencyLabel(clamped);
 }
 function avatarSVG(p) {
-  // grad-{id}: the <linearGradient> user.js maintains for every known
-  // user (see upsertUserGradient) — referenced here by convention, never
-  // created by ui.js.
   const fill = p.gradient ? `url(#grad-${p.id})` : p.color;
   const initial = p.name[0].toUpperCase();
   return `<svg class="avatar" viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
@@ -1119,14 +1121,14 @@ function avatarSVG(p) {
     <text x="16" y="21" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">${initial}</text>
   </svg>`;
 }
-function meRowHTML(me) {
-  return `<div class="peer-row me-row">${avatarSVG(me)}<div><div style="font-size:14px">${me.name}</div><div style="font-size:12px;color:var(--text-3)">You</div></div><a class="me-edit-btn" href="home.html" title="Edit profile" aria-label="Edit profile">${icon('edit', { size: 16 })}</a></div>`;
+function meRowHTML(user) {
+  return `<div class="peer-row me-row">${avatarSVG(user)}<div><div style="font-size:14px">${user.name}</div><div style="font-size:12px;color:var(--text-3)">${user.id}</div></div><a class="me-edit-btn" href="home.html" title="Edit profile" aria-label="Edit profile">${icon('edit', { size: 16 })}</a></div>`;
 }
 function peerRowsHTML(peers) {
   if (!peers.length)
     return '<div style="font-size:13px;color:var(--text-3);padding:8px 0">No other peers connected</div>';
-  return peers.map(p =>
-    `<div class="peer-row">${avatarSVG(p)}<div><div style="font-size:14px">${p.name}</div><div style="font-size:12px;color:var(--text-3)">${p.live ? 'editing now' : 'offline'}</div></div>${p.live ? '<span class="pulse"></span>' : ''}</div>`
+  return peers.map(user =>
+    `<div class="peer-row">${avatarSVG(user)}<div><div style="font-size:14px">${user.name}</div><div style="font-size:12px;color:var(--text-3)">${user.id}</div></div>${user.live ? '<span class="pulse"></span>' : ''}</div>`
   ).join('');
 }
 export function updatePeersPanel() {
@@ -1134,7 +1136,7 @@ export function updatePeersPanel() {
   const countEl = document.getElementById('peerLiveCount');
   if (!rowsEl) return;
   const peers = App.getPeers();
-  if (countEl) countEl.textContent = peers.filter(p => p.live).length;
+  if (countEl) countEl.textContent = peers.filter(user => user.live).length;
   rowsEl.innerHTML = peerRowsHTML(peers);
 }
 function wirePeersToggles() {
