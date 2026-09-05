@@ -7,7 +7,7 @@
  *   grad    — full entityGradient() output object, stored frozen so the
  *             gradient is immune to future changes in entityGradient's
  *             algorithm
- *   localId — persistent peer id, format tt-p-v1-DD-XXX
+ *   localId — persistent peer id, format tt-u-v1-DD-XXX
  *   checkpointFrequency — minutes between idle-triggered checkpoints, 0-10.
  *             any other player's client does.
  *
@@ -52,7 +52,7 @@ export function randomName() {
 }
 
 /**
- * Generates a fresh persistent peer id, format tt-p-v1-DD-XXX where DD is
+ * Generates a fresh persistent peer id, format tt-u-v1-DD-XXX where DD is
  * the current day-of-month and XXX is 3 random lowercase letters.
  *
  * @returns {string}
@@ -61,7 +61,7 @@ export function makeLocalId() {
   const dd    = String(new Date().getDate()).padStart(2, '0');
   const chars = 'abcdefghijklmnopqrstuvwxyz';
   const rand  = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-  return `tt-p-v1-${dd}-${rand}`;
+  return `tt-u-v1-${dd}-${rand}`;
 }
 
 /**
@@ -170,7 +170,7 @@ export function setGrad(grad) {
  * Returns this player's durable identity as a `user` object — the same
  * {id, name, color, gradient} shape broadcast to peers over awareness
  * (see index.html) and read back via App.user / a peer's awareness
- * state.user. `id` is the persistent localId (tt-p-v1-...), stable
+ * state.user. `id` is the persistent localId (tt-u-v1-...), stable
  * across reconnects and reloads, unlike the ephemeral Yjs clientID.
  *
  * @returns {{id: string, name: string, color: string, gradient: object}}

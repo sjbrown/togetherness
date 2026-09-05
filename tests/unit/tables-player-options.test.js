@@ -10,29 +10,29 @@ const { recordRecentToy, getRecentToys, ensurePlayerOptions } = tablesAPI
 describe('recentToys', () => {
   test('starts empty for a player who has never gestured on this table', () => {
     const ydoc = new Y.Doc()
-    expect(getRecentToys(ydoc, 'tt-p-v1-01-aaa')).toEqual([])
+    expect(getRecentToys(ydoc, 'tt-u-v1-01-aaa')).toEqual([])
   })
 
   test('records a gesture, most-recent first', () => {
     const ydoc = new Y.Doc()
-    recordRecentToy(ydoc, 'tt-p-v1-01-aaa', 'toy-1')
-    recordRecentToy(ydoc, 'tt-p-v1-01-aaa', 'toy-2')
-    recordRecentToy(ydoc, 'tt-p-v1-01-aaa', 'toy-3')
-    expect(getRecentToys(ydoc, 'tt-p-v1-01-aaa')).toEqual(['toy-3', 'toy-2', 'toy-1'])
+    recordRecentToy(ydoc, 'tt-u-v1-01-aaa', 'toy-1')
+    recordRecentToy(ydoc, 'tt-u-v1-01-aaa', 'toy-2')
+    recordRecentToy(ydoc, 'tt-u-v1-01-aaa', 'toy-3')
+    expect(getRecentToys(ydoc, 'tt-u-v1-01-aaa')).toEqual(['toy-3', 'toy-2', 'toy-1'])
   })
 
   test('re-gesturing an already-present toy moves it to the front instead of duplicating', () => {
     const ydoc = new Y.Doc()
-    recordRecentToy(ydoc, 'tt-p-v1-01-aaa', 'toy-1')
-    recordRecentToy(ydoc, 'tt-p-v1-01-aaa', 'toy-2')
-    recordRecentToy(ydoc, 'tt-p-v1-01-aaa', 'toy-1')
-    expect(getRecentToys(ydoc, 'tt-p-v1-01-aaa')).toEqual(['toy-1', 'toy-2'])
+    recordRecentToy(ydoc, 'tt-u-v1-01-aaa', 'toy-1')
+    recordRecentToy(ydoc, 'tt-u-v1-01-aaa', 'toy-2')
+    recordRecentToy(ydoc, 'tt-u-v1-01-aaa', 'toy-1')
+    expect(getRecentToys(ydoc, 'tt-u-v1-01-aaa')).toEqual(['toy-1', 'toy-2'])
   })
 
   test('recentToys can be different on two different tables for the SAME player', () => {
     const tableA = new Y.Doc()
     const tableB = new Y.Doc()
-    const playerId = 'tt-p-v1-01-aaa'
+    const playerId = 'tt-u-v1-01-aaa'
 
     recordRecentToy(tableA, playerId, 'toy-map')
     recordRecentToy(tableA, playerId, 'toy-dice')
@@ -53,7 +53,7 @@ describe('recentToys', () => {
 
   test('caps the list at MAX_RECENT_TOYS, dropping the oldest', () => {
     const ydoc = new Y.Doc()
-    const playerId = 'tt-p-v1-01-aaa'
+    const playerId = 'tt-u-v1-01-aaa'
     for (let i = 0; i < 15; i++) recordRecentToy(ydoc, playerId, `toy-${i}`)
     const recent = getRecentToys(ydoc, playerId)
     expect(recent.length).toBe(10)
@@ -65,15 +65,15 @@ describe('recentToys', () => {
 describe('ensurePlayerOptions', () => {
   test('is idempotent — returns the same Y.Map on repeated calls', () => {
     const ydoc = new Y.Doc()
-    const first  = ensurePlayerOptions(ydoc, 'tt-p-v1-01-aaa')
-    const second = ensurePlayerOptions(ydoc, 'tt-p-v1-01-aaa')
+    const first  = ensurePlayerOptions(ydoc, 'tt-u-v1-01-aaa')
+    const second = ensurePlayerOptions(ydoc, 'tt-u-v1-01-aaa')
     expect(first).toBe(second)
   })
 
   test('playerOptions lives under its own top-level Y.Map, keyed by player id', () => {
     const ydoc = new Y.Doc()
-    ensurePlayerOptions(ydoc, 'tt-p-v1-01-aaa')
+    ensurePlayerOptions(ydoc, 'tt-u-v1-01-aaa')
     const root = ydoc.getMap('playerOptions')
-    expect(root.get('tt-p-v1-01-aaa')).toBeInstanceOf(Y.Map)
+    expect(root.get('tt-u-v1-01-aaa')).toBeInstanceOf(Y.Map)
   })
 })
