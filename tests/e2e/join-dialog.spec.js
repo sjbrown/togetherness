@@ -13,7 +13,7 @@
  */
 
 import { test, expect, chromium } from '@playwright/test';
-import { openAsCreator, seedJoinTimeouts, joinDialogButton } from './helpers.js';
+import { openAsCreator, seedJoinTimeouts, joinDialogButton, waitForTableId, waitForPeerCount } from './helpers.js';
 
 const APP_URL        = process.env.APP_URL       || 'http://localhost:3000';
 const SIGNALING_URL  = process.env.SIGNALING_URL || 'ws://localhost:4444';
@@ -61,7 +61,7 @@ test.describe('join-intent dialog', () => {
     // "/#tableId", others "/index.html#tableId" — so match on the hash
     // alone rather than assuming what precedes it.
     await page.waitForURL(/#tt-T-v1-/, { timeout: 10000 });
-    await expect(page.locator('#tableLabel')).not.toHaveText('', { timeout: 8000 });
+    await expect.poll(() => page.evaluate(() => window.App.getTableId()), { timeout: 8000 }).toBeTruthy();
     await page.waitForTimeout(300); // give a spurious dialog a chance to open
     await expect(page.locator('#joinDialogScrim')).not.toHaveClass(/open/);
 
@@ -73,7 +73,7 @@ test.describe('join-intent dialog', () => {
   test('returning visit (reload as creator): dialog never appears, and "created here" is still accurate', async ({ page }) => {
     const room = await openAsCreator(page, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
     await page.reload();
-    await expect(page.locator('#tableLabel')).toHaveText(room);
+    await waitForTableId(page, room);
     await page.waitForTimeout(300);
     await expect(page.locator('#joinDialogScrim')).not.toHaveClass(/open/);
 
@@ -105,8 +105,8 @@ test.describe('join-intent dialog', () => {
 
     await joinDialogButton(page2).click();
 
-    await expect(page1.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
-    await expect(page2.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
+    await waitForPeerCount(page1, 1);
+    await waitForPeerCount(page2, 1);
 
     await browser.close();
   });

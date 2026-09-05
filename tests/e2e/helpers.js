@@ -1,3 +1,5 @@
+import { expect } from '@playwright/test';
+
 /**
  * tests/e2e/helpers.js
  *
@@ -87,4 +89,38 @@ export async function openCreatorAndJoiner(page1, page2, opts) {
   const room = await openAsCreator(page1, opts);
   await joinRoom(page2, room, opts);
   return room;
+}
+
+/**
+ * page.evaluate rejects with "Execution context was destroyed" when a
+ * navigation (e.g. a hashchange-triggered reload) lands mid-poll. Treat
+ * that the same as any other not-yet-matching value instead of aborting
+ * expect.poll, which — unlike locator assertions — doesn't retry on a
+ * thrown evaluate.
+ */
+async function evaluateOrUndefined(page, fn) {
+  try {
+    return await page.evaluate(fn);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Polls App.getTableId() (see app.js; window.App is exposed by index.html)
+ * until it equals room. Stands in for the old #tableLabel status-bar text
+ * as the "boot landed on this table" signal.
+ */
+export async function waitForTableId(page, room, opts = {}) {
+  await expect.poll(() => evaluateOrUndefined(page, () => window.App.getTableId()), { timeout: 8000, ...opts })
+    .toBe(room);
+}
+
+/**
+ * Polls App.getPeers().length (see app.js) until it equals n. Stands in
+ * for the old #peerCount status-bar text as the peer-connected barrier.
+ */
+export async function waitForPeerCount(page, n, opts = {}) {
+  await expect.poll(() => evaluateOrUndefined(page, () => window.App.getPeers().length), { timeout: 8000, ...opts })
+    .toBe(n);
 }

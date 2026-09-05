@@ -13,7 +13,7 @@
  */
 
 import { test, expect, chromium } from '@playwright/test';
-import { openCreatorAndJoiner, openAsCreator } from './helpers.js';
+import { openCreatorAndJoiner, openAsCreator, waitForPeerCount } from './helpers.js';
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const SIGNALING_URL = process.env.SIGNALING_URL || 'ws://localhost:4444';
@@ -27,8 +27,8 @@ test.describe('two-peer container drop sync', () => {
     const page2   = await ctx2.newPage();
 
     await openCreatorAndJoiner(page1, page2, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
-    await expect(page1.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
-    await expect(page2.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
+    await waitForPeerCount(page1, 1);
+    await waitForPeerCount(page2, 1);
 
     const canvas = page1.locator('#canvas');
     const box    = await canvas.boundingBox();

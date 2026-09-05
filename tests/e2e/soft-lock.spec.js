@@ -30,7 +30,7 @@
  */
 
 import { test, expect, chromium } from '@playwright/test';
-import { openCreatorAndJoiner } from './helpers.js';
+import { openCreatorAndJoiner, waitForPeerCount } from './helpers.js';
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const SIGNALING_URL = process.env.SIGNALING_URL || 'ws://localhost:4444';
@@ -47,8 +47,8 @@ async function twoPeers(browser) {
 
   await openCreatorAndJoiner(page1, page2, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
 
-  await expect(page1.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
-  await expect(page2.locator('#peerCount')).toHaveText('1', { timeout: 8000 });
+  await waitForPeerCount(page1, 1);
+  await waitForPeerCount(page2, 1);
 
   return { page1, page2 };
 }
