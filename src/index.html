@@ -174,17 +174,6 @@
   <div class="dialog-actions" id="joinDialogActions"></div>
 </div>
 
-<!-- ── Status bar (retained from old index.html for debugging) ────────────── -->
-<div id="statusBar" style="position:fixed;top:0;left:50%;transform:translateX(-50%);
-     font-size:11px;color:var(--text-3);pointer-events:none;z-index:100;
-     display:flex;gap:10px;padding:4px 8px">
-  <span id="tableLabel" style="font-family:monospace"></span>
-  <span id="myIdLabel" style="font-family:monospace"></span>
-  <span class="status-dot" id="statusDot" style="width:8px;height:8px;border-radius:50%;
-        background:var(--warn);align-self:center;flex-shrink:0"></span>
-  <span>peers: <span id="peerCount">0</span></span>
-</div>
-
 <!-- ── Module imports ─────────────────────────────────────────────────────── -->
 <script type="importmap">
 {
@@ -226,7 +215,6 @@ window.App = App;
 // ── Identity ────────────────────────────────────────────────────────────────
 // Persistent identity lives in localStorage
 const user = getMyUser();
-document.getElementById('myIdLabel').textContent = `me: ${user.name}`;
 Trace.boot('identity', `local identity resolved: ${user.name}`, { user });
 
 // ── Table  ──────────────────────────────────────────────────────────────────
@@ -237,7 +225,6 @@ if (noHash) {
   tableId = tables.generateTableId(user.name);
   location.hash = tableId;
 }
-document.getElementById('tableLabel').textContent = tableId;
 Trace.boot('table-id', noHash ? `minted a new table: ${tableId}` : `joining table: ${tableId}`,
   { tableId, noHash, hash: location.hash });
 

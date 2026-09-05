@@ -436,9 +436,7 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   });
 
   // Provider status
-  const dot = document.getElementById('statusDot');
   _provider.on('synced', () => {
-    if (dot) dot.className = 'status-dot connected';
     _netStatus.synced = true;
     Trace.net('synced', 'provider reports synced with peers', { ops: getOps(_ydoc).size });
     UI.toast('Synced with peers');
@@ -459,7 +457,6 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   // NOTE: _provider.on('status' is a red herring. It's just true after
   // construction. We really want the real connect/disconnect state
   const setSignalingConnected = (connected) => {
-    if (dot) dot.className = connected ? 'status-dot connected' : 'status-dot connecting';
     _netStatus.connected = connected;
     Trace.net('status', connected ? 'signaling connected' : 'signaling disconnected',
       { connected }, connected ? 'info' : 'warn');
@@ -550,14 +547,12 @@ function renderDoc() {
   renderToysLayer();
   renderDrawingLayer();
   applyLayerVisibility();
-  updatePeerCount();
   Overlay.render();          // doc geometry may have changed under selections
 }
 
 function renderPresence() {
   syncUserVisuals();
   Overlay.syncFromAwareness(_awareness.getStates(), _awareness.clientID);
-  updatePeerCount();
 }
 
 // Keeps every live peer's (and my own) <linearGradient id="grad-{id}">
@@ -715,13 +710,6 @@ function onOpsChanged(evt, transaction) {
   Overlay.render();
 }
 
-
-function updatePeerCount() {
-  let peers = 0;
-  _awareness.getStates().forEach((_, cid) => { if (cid !== _awareness.clientID) peers++; });
-  const el = document.getElementById('peerCount');
-  if (el) el.textContent = peers;
-}
 
 // ── CRDT observers ────────────────────────────────────────────────────────────
 function onDocChanged() {
