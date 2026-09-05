@@ -52,19 +52,14 @@ const TOY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
   </g>
 </svg>`
 
-// Same #canvas structure as src/index.html — real layer containers +
-// #local-sel-grad, since app.js/overlay.js throw loudly (or silently fail
-// to find things) if these are missing, matching the actual boot fixture.
+// Same #canvas structure as src/index.html — real layer containers, since
+// app.js/overlay.js throw loudly (or silently fail to find things) if
+// these are missing, matching the actual boot fixture.
 function makeCanvasDOM() {
   document.body.innerHTML = `
     <div id="stage">
       <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="local-sel-grad" x1="0" y1="0.5" x2="1" y2="0.5">
-            <stop id="local-sel-grad-stop0" offset="0%"   stop-color="#5a7ea8"></stop>
-            <stop id="local-sel-grad-stop1" offset="100%" stop-color="#3a5e88"></stop>
-          </linearGradient>
-        </defs>
+        <defs></defs>
         <g id="background-layer"></g>
         <g id="boundaries-positions-layer"></g>
         <g id="toys-layer"></g>
@@ -101,19 +96,19 @@ async function bootPeerB(extraToys = []) {
   const ydoc  = tablesAPI.makeDoc()
   const layerEl = svgEl.querySelector('#toys-layer')
   const awareness = new awarenessProtocol.Awareness(ydoc)
-  const myGrad = { c1: '#0f0', c2: '#0a0', angle: 45 }
+  const user = { id: 'bailey', name: 'Bailey', color: '#0f0', gradient: { c1: '#0f0', c2: '#0a0', angle: 45 } }
 
   await addToy(ydoc, layerEl, { id: 'die-1', toyType: 'player_marker', x: 0, y: 0, color: '#abc' })
   for (const attrs of extraToys) await addToy(ydoc, layerEl, attrs)
 
   // Exactly index.html's initialization order: setLocalState BEFORE boot().
-  awareness.setLocalState({ id: 'bailey', color: myGrad.c1, grad: myGrad, cursor: null, desired: {} })
+  awareness.setLocalState({ user, cursor: null, desired: {} })
 
   boot({
     ydoc,
     awareness, provider: { on: vi.fn(), signalingConns: [] },
-    myId: 'bailey', myGrad, tableId: 'test-room', isCreator: true,
-    svgElement: svgEl, displayName: 'Bailey',
+    user, tableId: 'test-room', isCreator: true,
+    svgElement: svgEl,
   })
 
   return { App, ydoc, awareness }
@@ -128,7 +123,7 @@ const DIE_2 = { id: 'die-2', toyType: 'player_marker', x: 50, y: 0, color: '#abc
 function simulateRemoteSelection(bobAwareness, elId) {
   const aliceDoc = new Y.Doc()
   const aliceAw  = new awarenessProtocol.Awareness(aliceDoc)
-  aliceAw.setLocalState({ id: 'alice', color: '#f00', grad: null, cursor: null, desired: { [elId]: { ts: Date.now(), holding: true } } })
+  aliceAw.setLocalState({ user: { id: 'alice', name: 'Alice', color: '#f00', gradient: null }, cursor: null, desired: { [elId]: { ts: Date.now(), holding: true } } })
   const update = awarenessProtocol.encodeAwarenessUpdate(aliceAw, [aliceAw.clientID])
   awarenessProtocol.applyAwarenessUpdate(bobAwareness, update, 'network')
   return aliceAw

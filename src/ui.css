@@ -554,6 +554,16 @@ input[type=range] { width: 100%; accent-color: var(--primary); height: 28px; }
 
 /* Peers */
 .peer-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 0.5px solid var(--border); }
+.me-edit-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+  margin-left: auto;
+  background: var(--surface-2); box-shadow: var(--emboss);
+  color: var(--text-2); text-decoration: none; cursor: pointer;
+  transition: color .15s, box-shadow .15s;
+}
+.me-edit-btn:hover  { color: var(--text); }
+.me-edit-btn:active { box-shadow: var(--emboss-inset); }
 .avatar { width: 32px; height: 32px; flex-shrink: 0; }
 .pulse {
   width: 8px; height: 8px; border-radius: 50%; background: var(--primary); margin-left: auto; flex-shrink: 0;

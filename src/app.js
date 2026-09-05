@@ -26,7 +26,7 @@ import { tablesAPI }                              from './tables.js';
 import { getOps, heads, totalOrder, appendOp }    from './op_dag.js';
 import { getHead, getMergeTips, setHead }         from './op_head.js';
 import { isCheckpoint, checkpointOp, shouldCheckpoint, lastCheckpointTs } from './op_checkpoint.js';
-import { getCheckpointFrequency, setCheckpointFrequency } from './user.js';
+import * as User                                  from './user.js';
 import * as Trace                                 from './trace.js';
 import * as Storage                               from './storage.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
@@ -80,7 +80,7 @@ const _layerVisibility = {
   'toys':                 true,
   'drawing':              true,
 };
-let _myId, _myGrad, _tableId, _isCreator;
+let _tableId, _isCreator;
 let _svgEl;
 let _activeLayer  = 'toys';
 
@@ -343,15 +343,14 @@ function buildToolRegistry() {
 }
 
 // ── Boot ────────────────────────────────────────────────────────────────────
-export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreator = false, svgElement, displayName, signalingUrls = [] }) {
+export function boot({ ydoc, awareness, provider, user, tableId, isCreator = false, svgElement, signalingUrls = [] }) {
   _ydoc      = ydoc;
   _yMeta     = ydoc.getMap('meta');
   _yDrawing  = ydoc.getXmlFragment('drawing');
   _yBounPos  = ydoc.getXmlFragment('boundaries');
   _awareness = awareness;
   _provider  = provider;
-  _myId      = myId;
-  _myGrad    = myGrad;
+  App.user   = user;
   _tableId   = tableId;
   _isCreator = isCreator;
   _svgEl     = svgElement ?? document.querySelector('#stage svg');
@@ -359,7 +358,7 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
   _netStatus.signaling = signalingUrls;
 
   Trace.boot('boot', `booting table ${tableId}`, {
-    tableId, myId, displayName, isCreator,
+    tableId, user, isCreator,
     ops:      getOps(ydoc).size,
     head:     getHead(tableId),
     clientId: ydoc.clientID,
@@ -371,7 +370,7 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
     'toys':     Toys.makeLayerAPI(
                   _ydoc,
                   () => _svgEl.querySelector('#toys-layer'),
-                  _myId,
+                  user,
                   tableId,
                   isCreator
                 ),
@@ -384,8 +383,10 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
   // Tool registry - assemble layer tool palettes from registries
   buildToolRegistry();
 
+  User.init(App, user);
+
   // Awareness layer - indicators of peers and for peers
-  Overlay.init(App, _svgEl, _myGrad);
+  Overlay.init(App, _svgEl, user);
 
   // Delight (bowstring handle and sparks)
   Delight.init(App, _svgEl);
@@ -395,7 +396,7 @@ export function boot({ ydoc, awareness, provider, myId, myGrad, tableId, isCreat
 
   // UI — needs App; attaches panel/menu/pill listeners
   UI.init(App);
-  UI.setIdentity({ userId: displayName, tableId: tableId });
+  UI.setIdentity({ user, tableId: tableId });
 
   // Toy request bus - toy menu/handler code will dispatch CustomEvents
   Events.init(App, _svgEl, Toys, UI);
@@ -554,8 +555,22 @@ function renderDoc() {
 }
 
 function renderPresence() {
+  syncUserVisuals();
   Overlay.syncFromAwareness(_awareness.getStates(), _awareness.clientID);
   updatePeerCount();
+}
+
+// Keeps every live peer's (and my own) <linearGradient id="grad-{id}">
+// current — see user.js's upsertUserGradient/pruneUserGradients. Runs on
+// every awareness change, same cadence Overlay.syncFromAwareness runs at.
+function syncUserVisuals() {
+  const liveUserIds = new Set([App.user.id]);
+  _awareness.getStates().forEach((state) => {
+    if (!state?.user?.id) return;
+    liveUserIds.add(state.user.id);
+    User.upsertUserGradient(state.user);
+  });
+  User.pruneUserGradients(liveUserIds);
 }
 
 // Each layer id maps to a group element id via the convention: `${id}-layer`.
@@ -603,7 +618,7 @@ function handleToyBranchConflict(tips) {
   if (!layer) return;
 
   const joinSequence = tablesAPI.getJoinSequenceArray(_ydoc);
-  const decision = Toys.resolveToyBranchConflict(_ydoc, tips, { authorId: _myId, joinSequence });
+  const decision = Toys.resolveToyBranchConflict(_ydoc, tips, { authorId: App.user.id, joinSequence });
 
   Toys.adoptToyBranch(_ydoc, layer, decision.leader, _tableId);
 
@@ -632,7 +647,7 @@ function handleToyBranchConflict(tips) {
  * AND that many minutes have passed since the last checkpoint ANYONE wrote
  */
 function maybeIdleCheckpoint(reason) {
-  const frequencyMin = getCheckpointFrequency();
+  const frequencyMin = User.getCheckpointFrequency();
   if (frequencyMin <= 0) return null;
   if (!_tableId || !_ydoc) return null;
 
@@ -662,7 +677,7 @@ function maybeCheckpoint(reason) {
   const layer = _svgEl?.querySelector('#toys-layer');
   if (!layer) return null;
 
-  const op = checkpointOp(layer, { authorId: _myId, parents: [headId] });
+  const op = checkpointOp(layer, { authorId: App.user.id, parents: [headId] });
   appendOp(_ydoc, op);
   setHead(_tableId, op.id);
   Trace.op('checkpoint', `wrote checkpoint ${op.id} (${reason})`, { id: op.id, reason });
@@ -771,8 +786,8 @@ function logAwarenessChange({ added, updated, removed }, origin) {
   // ring within seconds and tell nobody anything.
   for (const clientId of added) {
     const state = _awareness.getStates().get(clientId);
-    Trace.net('presence-join', `peer present: ${state?.id ?? clientId}`,
-      { clientId, peerId: state?.id ?? null, origin, self: clientId === _awareness.clientID });
+    Trace.net('presence-join', `peer present: ${state?.user?.name ?? clientId}`,
+      { clientId, peerId: state?.user?.id ?? null, origin, self: clientId === _awareness.clientID });
   }
   for (const clientId of removed) {
     Trace.net('presence-leave', `peer gone: ${clientId}`, { clientId, origin });
@@ -821,9 +836,6 @@ const App = {
     visible: _layerVisibility[l.id] ?? true,
     count: l.id === 'background' ? 1 : (_Layers[LAYER_ID_TO_MODULE[l.id]]?.listData().length ?? 0),
   })),
-  getMyColor:      () => _myGrad.c1,
-  getMyGradient:   () => _myGrad,
-  getMyId:         () => _myId,
   // ── Tool registry queries ──────────────────────────────────────────────────
   getTools:        (layer) => _toolsByLayer[layer] ?? [SELECT_TOOL],
   getTool:         (name)  => _toolById[name] ?? null,
@@ -855,20 +867,16 @@ const App = {
     const out = [];
     _awareness.getStates().forEach((state, cid) => {
       if (cid === _awareness.clientID) return;
-      out.push({
-        name:   state.id ?? String(cid),
-        color:  state.color ?? '#888',
-        gradId: state.grad ? Overlay.peerGradId(cid) : null,
-        live:   true,
-      });
+      const peer = state.user ?? { id: String(cid), name: String(cid), color: '#888', gradient: null };
+      out.push({ ...peer, live: true });
     });
     return out;
   },
   getTableId:      () => _tableId,
   getYdoc:         () => _ydoc,
   maybeCheckpoint: (reason) => maybeCheckpoint(reason),
-  getCheckpointFrequency: () => getCheckpointFrequency(),
-  setCheckpointFrequency: (minutes) => setCheckpointFrequency(minutes),
+  getCheckpointFrequency: () => User.getCheckpointFrequency(),
+  setCheckpointFrequency: (minutes) => User.setCheckpointFrequency(minutes),
   getSelectedIds:  () => _heldIds(),
   getBBox:  (id) => {
     const svgEl = _svgEl.querySelector(`[data-id="${id}"]`);
@@ -1006,7 +1014,7 @@ const App = {
     if (mtype === 'toys') {
       _lastActionScope = 'toys';
       const layerEl = _svgEl.querySelector('#toys-layer');
-      const op = layerEl ? Toys.deleteToysBatch(_ydoc, layerEl, ids, { authorId: _myId, tableId: _tableId }) : null;
+      const op = layerEl ? Toys.deleteToysBatch(_ydoc, layerEl, ids, { authorId: App.user.id, tableId: _tableId }) : null;
       deleted = op ? ids.length : 0; // one op for the whole batch; exact per-id count isn't tracked separately
     } else {
       _lastActionScope = 'draw_bounds';
@@ -1046,7 +1054,7 @@ const App = {
         if (!yEl) continue;
         const attrs = yEl.getAttributes();
         const type  = yEl.nodeName;
-        const newId = App.getMyId() + '_' + Math.random().toString(36).slice(2, 7);
+        const newId = App.user.id + '_' + Math.random().toString(36).slice(2, 7);
         const offset = { x: +(attrs.x ?? attrs.cx ?? 0) + 22, y: +(attrs.y ?? attrs.cy ?? 0) + 22 };
         const geom   = type === 'rect'
           ? { x: offset.x, y: offset.y, width: +attrs.width, height: +attrs.height }
@@ -1065,7 +1073,7 @@ const App = {
 
   // ── Document mutations ────────────────────────────────────────────────────
   commitDrawing: (attrs) => {
-    const id = App.getMyId() + '_' + Math.random().toString(36).slice(2, 7);
+    const id = App.user.id + '_' + Math.random().toString(36).slice(2, 7);
     _lastActionScope = 'draw_bounds';
     UndoRedo.tag(`add ${attrs.type ?? 'rect'} ${id}`);
     Drawing.addDrawing(_ydoc, _yDrawing, { ...attrs, id });
@@ -1184,7 +1192,7 @@ const App = {
     const layerEl = _svgEl?.querySelector('#toys-layer');
     if (!layerEl) return;
     try {
-      Toys.invokeMenuAction(_ydoc, layerEl, svgEl, namespace, key, undefined, _myId, _tableId);
+      Toys.invokeMenuAction(_ydoc, layerEl, svgEl, namespace, key, undefined, App.user.id, _tableId);
       _lastActionScope = 'toys';
       addHistory(`${key} ${id}`, { elType: 'toys' });
     } catch (err) {
@@ -1237,7 +1245,7 @@ const App = {
     if (!layerEl) return;
     const params = _toolParams[toolName] ?? {};
     // initialize()'s options always carries color + every other tool option
-    const color  = params.fill ?? _myGrad.c1;
+    const color  = params.fill ?? App.user.color;
     const initArgs = {
       color,
       ...Object.fromEntries((def.options ?? [])
@@ -1252,7 +1260,7 @@ const App = {
     _lastActionScope = 'toys';
     Toys.placeToy(_ydoc, layerEl, {
       id, toyType: def.toyType, x, y, color,
-    }, { authorId: _myId, tableId: _tableId }).then(async () => {
+    }, { authorId: App.user.id, tableId: _tableId }).then(async () => {
       addHistory(`placed ${def.label} ${id}`, { elType: 'toy' });
       App.addLog(`placed ${def.label} ${id}`, 'local');
 
@@ -1263,7 +1271,7 @@ const App = {
       await Toys.activateToyScripts(_ydoc, def.toyType);
       const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
       if (svgEl && layerEl) {
-        Toys.initializeToy(_ydoc, layerEl, svgEl, def.toyType, _myId, _tableId, initArgs);
+        Toys.initializeToy(_ydoc, layerEl, svgEl, def.toyType, App.user.id, _tableId, initArgs);
       }
     }).catch(err => {
       UI.toast(`Failed to place ${def.label}`, 'warn');
@@ -1458,7 +1466,7 @@ const App = {
               }
             }
           }, {
-            gesture: 'reparent', authorId: _myId, tableId: _tableId,
+            gesture: 'reparent', authorId: App.user.id, tableId: _tableId,
             positionEvents: Toys.departingPositionEvents(layerEl, domEl),
           });
         });
@@ -1761,7 +1769,7 @@ const App = {
         const moves = elements.map(el => ({
           id: el.id, x: Math.round(el.anchorX + fdx), y: Math.round(el.anchorY + fdy),
         }));
-        Toys.moveToysBatch(_ydoc, layerEl, moves, { authorId: _myId, tableId: _tableId });
+        Toys.moveToysBatch(_ydoc, layerEl, moves, { authorId: App.user.id, tableId: _tableId });
       }
     } else {
       _lastActionScope = 'draw_bounds';
@@ -1845,9 +1853,7 @@ const App = {
     // this client's current state actually is rather than the boot-time
     // blank one index.html set originally.
     _awareness?.setLocalState({
-      id:      _myId,
-      color:   _myGrad.c1,
-      grad:    _myGrad,
+      user:    App.user,
       cursor:  null,
       desired: { ..._desired },
       mode:    _activeMode ? _activeMode.mode : null,
@@ -1859,7 +1865,7 @@ const App = {
     _clearClaims();
     const tryToys = () => {
       const layer = _svgEl?.querySelector('#toys-layer');
-      const op = layer ? Toys.undoToyGesture(_ydoc, layer, _tableId, _myId) : null;
+      const op = layer ? Toys.undoToyGesture(_ydoc, layer, _tableId, App.user.id) : null;
       if (!op) return false;
       _lastActionScope = 'toys';
       addUndoHistory(`undid: ${describeToyGesture(op.gesture)}`);
@@ -1881,7 +1887,7 @@ const App = {
     _clearClaims();
     const tryToys = () => {
       const layer = _svgEl?.querySelector('#toys-layer');
-      const op = layer ? Toys.redoToyGesture(_ydoc, layer, _tableId, _myId) : null;
+      const op = layer ? Toys.redoToyGesture(_ydoc, layer, _tableId, App.user.id) : null;
       if (!op) return false;
       _lastActionScope = 'toys';
       addHistory(`redid: ${describeToyGesture(op.gesture)}`);
@@ -1899,8 +1905,8 @@ const App = {
     if (primary() || fallback()) return;
     UI.toast('Nothing to redo', 'warn');
   },
-  canUndo: () => Toys.canUndoToyGesture(_ydoc, _tableId, _myId) || UndoRedo.canUndo(),
-  canRedo: () => Toys.canRedoToyGesture(_ydoc, _tableId, _myId) || UndoRedo.canRedo(),
+  canUndo: () => Toys.canUndoToyGesture(_ydoc, _tableId, App.user.id) || UndoRedo.canUndo(),
+  canRedo: () => Toys.canRedoToyGesture(_ydoc, _tableId, App.user.id) || UndoRedo.canRedo(),
   exportSVG: () => {
     const clone = Storage.buildExportSvg(_svgEl, _ydoc);
     const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
@@ -1936,7 +1942,7 @@ const App = {
 
       if (toyCount) {
         const layerEl = _svgEl.querySelector('#toys-layer');
-        Toys.importToys(_ydoc, layerEl, importedToyEls, { authorId: _myId, tableId: _tableId });
+        Toys.importToys(_ydoc, layerEl, importedToyEls, { authorId: App.user.id, tableId: _tableId });
       }
 
       if (invalidToyEls.length) {
@@ -1999,7 +2005,7 @@ const App = {
         authorId:   op?.authorId ?? null,
         parents:    op?.parents ?? [],
         ts:         op?.ts ?? null,
-        mine:       op?.authorId === _myId,
+        mine:       op?.authorId === App.user.id,
         checkpoint: isCheckpoint(op),
         entries:    op?.mutations?.length ?? 0,
         mutations:  op?.mutations ?? [],
@@ -2011,9 +2017,9 @@ const App = {
     _awareness.getStates().forEach((state, clientId) => {
       peers.push({
         clientId,
-        peerId: state?.id ?? null,
+        peerId: state?.user?.id ?? null,
         self:   clientId === _awareness.clientID,
-        color:  state?.color ?? null,
+        color:  state?.user?.color ?? null,
       });
     });
 
@@ -2025,7 +2031,7 @@ const App = {
         created:  _yMeta.get('created') ?? null,
         schema:   _yMeta.get('schemaVersion') ?? null,
       },
-      identity: { myId: _myId, clientId: _ydoc.clientID },
+      identity: { myId: App.user.id, clientId: _ydoc.clientID },
       head: {
         head:      head,
         mergeTips: getMergeTips(_tableId),
@@ -2050,7 +2056,7 @@ const App = {
         peers,
       },
       joinSequence: joinSeq,
-      myAuthorityIndex: joinSeq.indexOf(_myId),
+      myAuthorityIndex: joinSeq.indexOf(App.user.id),
     };
   },
 

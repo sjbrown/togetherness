@@ -53,8 +53,7 @@ export const SNAP_POINT_GRADIENT_ID = 'snap-point-gradient';
  * artwork recoloring — a white source pixel becomes the target color, a
  * black source pixel stays black, so icon glyphs drawn in black on top of
  * a white square background stay visible once tinted.
- * The `values` attribute is overwritten at boot (and whenever the local
- * player's color changes) by Overlay.setLocalGradient, via
+ * The `values` attribute is overwritten once at boot by Overlay.init, via
  * toys.js's colorMatrixValues(). The identity-ish default below is just a
  * placeholder until that first call.
  */

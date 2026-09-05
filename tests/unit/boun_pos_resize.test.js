@@ -56,12 +56,7 @@ function makeCanvasDOM() {
   document.body.innerHTML = `
     <div id="stage">
       <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="local-sel-grad" x1="0" y1="0.5" x2="1" y2="0.5">
-            <stop id="local-sel-grad-stop0" offset="0%"   stop-color="#5a7ea8"></stop>
-            <stop id="local-sel-grad-stop1" offset="100%" stop-color="#3a5e88"></stop>
-          </linearGradient>
-        </defs>
+        <defs></defs>
         <g id="background-layer"></g>
         <g id="boundaries-positions-layer"></g>
         <g id="toys-layer"></g>
@@ -95,15 +90,15 @@ async function bootApp() {
   const { tablesAPI } = await import('../../src/tables.js')
   const ydoc = tablesAPI.makeDoc()
   const awareness = new awarenessProtocol.Awareness(ydoc)
-  const myGrad = { c1: '#0f0', c2: '#0a0', angle: 45 }
+  const user = { id: 'bailey', name: 'Bailey', color: '#0f0', gradient: { c1: '#0f0', c2: '#0a0', angle: 45 } }
 
-  awareness.setLocalState({ id: 'bailey', color: myGrad.c1, grad: myGrad, cursor: null, desired: {} })
+  awareness.setLocalState({ user, cursor: null, desired: {} })
 
   boot({
     ydoc,
     awareness, provider: { on: vi.fn(), signalingConns: [] },
-    myId: 'bailey', myGrad, tableId: 'test-room', isCreator: true,
-    svgElement: svgEl, displayName: 'Bailey',
+    user, tableId: 'test-room', isCreator: true,
+    svgElement: svgEl,
   })
 
   return { App, ydoc, svgEl }

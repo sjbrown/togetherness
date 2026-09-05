@@ -100,7 +100,7 @@ function bindSupplyHarness(ydoc, layerEl) {
   const svgEl = { querySelector: (sel) => sel === '#toys-layer' ? layerEl : layerEl.querySelector(sel) }
   const fakeApp = {
     getYdoc: () => ydoc,
-    getMyId: () => AUTHOR,
+    user: { id: AUTHOR, name: AUTHOR, color: '#888', gradient: null },
     getTableId: () => TABLE,
     setLastActionScope: () => {},
     addHistory: () => {},
@@ -201,7 +201,7 @@ describe('supply — dispatch contract', () => {
     await activateAll(ydoc, layerEl)
 
     const supplyEl = findToyDom(layerEl, 'supply1')
-    const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
+    const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
     const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')
     api.applyMoveCommit(api.find('chipA'), supplyPoint.cx, supplyPoint.cy)
     expect(supplyEl.getAttribute('data-below')).toBe('chipA')
@@ -244,7 +244,7 @@ describe('supply — clone scenario: tray_sum with a nested dice_d6', () => {
     // production move/cascade path — same technique
     // toy-position-snap.test.js uses for chip-on-chip — so supply's own
     // data-below ends up set the same way it would in the app.
-    const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
+    const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
     const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')
     api.applyMoveCommit(api.find('tray1'), supplyPoint.cx, supplyPoint.cy)
 
@@ -322,7 +322,7 @@ describe('supply — clone scenario: chip "5" with chip "6" stacked on top', () 
     // wrongly duplicated instead of left alone.
     findToyDom(layerEl, 'chip6').querySelector('tspan').textContent = '6'
 
-    const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
+    const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
     // chip6 lands on chip5's own snap point — real stacking, same
     // technique as tests/unit/toy-position-snap.test.js.
     const chip5Point = getSnapPoints(layerEl).find(p => p.ownerId === 'chip5')
@@ -409,7 +409,7 @@ describe('supply — borrows a landed toy\u2019s color, then gives it back', () 
     addToyDom(ydoc, layerEl, { id: 'chipA',   toyType: 'chip',   x: 500, y: 500, color: '#dd2222' }, CHIP_SVG)
     await activateAll(ydoc, layerEl)
 
-    const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
+    const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
     const unbind = bindSupplyHarness(ydoc, layerEl)
     const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')
     return { ydoc, layerEl, api, unbind, supplyPoint }
@@ -493,7 +493,7 @@ describe('supply — reload parity (regression: nested-envelope duplicate clone)
     addToyDom(ydoc, layerEl, { id: 'chip5',   toyType: 'chip',   x: 500, y: 500, color: '#dd2222' }, CHIP_SVG)
     await activateAll(ydoc, layerEl)
 
-    const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
+    const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
     const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')
     api.applyMoveCommit(api.find('chip5'), supplyPoint.cx, supplyPoint.cy)
     const supplyEl = findToyDom(layerEl, 'supply1')
@@ -519,7 +519,7 @@ describe('supply — reload parity (regression: nested-envelope duplicate clone)
     await Toys.placeToy(ydoc, layerEl, { id: 'chip5',   toyType: 'chip',   x: 500, y: 500, color: '#dd2222' }, { authorId: AUTHOR, tableId: TABLE })
     await activateAll(ydoc, layerEl)
 
-    const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
+    const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
     const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')
     api.applyMoveCommit(api.find('chip5'), supplyPoint.cx, supplyPoint.cy)
     const supplyEl = findToyDom(layerEl, 'supply1')
@@ -545,7 +545,7 @@ describe('supply — reload parity (regression: nested-envelope duplicate clone)
     }, { gesture: 'reparent', authorId: AUTHOR, tableId: TABLE })
     await activateAll(ydoc, layerEl)
 
-    const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
+    const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
     const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')
     api.applyMoveCommit(api.find('tray1'), supplyPoint.cx, supplyPoint.cy)
     const supplyEl = findToyDom(layerEl, 'supply1')
@@ -590,7 +590,7 @@ describe('supply — clone inner elements get their own data-id (regression: mov
     await Toys.placeToy(ydoc, layerEl, { id: 'chip5',   toyType: 'chip',   x: 500, y: 500, color: '#dd2222' }, { authorId: AUTHOR, tableId: TABLE })
     await activateAll(ydoc, layerEl)
 
-    const api = makeLayerAPI(ydoc, () => layerEl, AUTHOR, TABLE)
+    const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
     const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')
     api.applyMoveCommit(api.find('chip5'), supplyPoint.cx, supplyPoint.cy)
     const supplyEl = findToyDom(layerEl, 'supply1')

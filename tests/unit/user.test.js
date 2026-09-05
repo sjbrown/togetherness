@@ -4,12 +4,14 @@ import {
   getIdentity, setName, setGrad, randomName, makeLocalId,
   getCheckpointFrequency, setCheckpointFrequency,
   MIN_CHECKPOINT_FREQUENCY, MAX_CHECKPOINT_FREQUENCY, DEFAULT_CHECKPOINT_FREQUENCY,
+  getMyUser, upsertUserGradient, pruneUserGradients,
 } from '../../src/user.js'
 
 const STORAGE_KEY = 'tt_player'
 
 beforeEach(() => {
   localStorage.clear()
+  document.body.innerHTML = ''
 })
 
 describe('getIdentity', () => {
@@ -149,4 +151,74 @@ describe('setCheckpointFrequency', () => {
     expect(setCheckpointFrequency(20)).toBe(MAX_CHECKPOINT_FREQUENCY)
   })
 
+})
+
+describe('getMyUser', () => {
+  test('derives {id, name, color, gradient} from the persisted identity', () => {
+    const record = { name: 'Wily Frodo', grad: { c1: 'hsl(1,2%,3%)', c2: 'hsl(4,5%,6%)' }, localId: 'tt-p-v1-05-xyz' }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(record))
+
+    expect(getMyUser()).toEqual({
+      id: 'tt-p-v1-05-xyz', name: 'Wily Frodo',
+      color: 'hsl(1,2%,3%)', gradient: record.grad,
+    })
+  })
+
+  test('generates and persists a fresh identity on first call, same as getIdentity', () => {
+    const user = getMyUser()
+    expect(user.id).toMatch(/^tt-p-v1-\d{2}-[a-z]{3}$/)
+    expect(user.name.length).toBeGreaterThan(0)
+    expect(user.color).toBe(user.gradient.c1)
+  })
+})
+
+describe('upsertUserGradient', () => {
+  const grad = { c1: '#ff0000', c2: '#0000ff', angle: 90 }
+
+  test('creates a <linearGradient id="grad-{id}"> in a page-root <defs>', () => {
+    upsertUserGradient({ id: 'alice', gradient: grad })
+    const lg = document.getElementById('grad-alice')
+    expect(lg).not.toBeNull()
+    expect(lg.tagName.toLowerCase()).toBe('lineargradient')
+    expect(document.getElementById('grad-alice-stop0').getAttribute('stop-color')).toBe('#ff0000')
+    expect(document.getElementById('grad-alice-stop1').getAttribute('stop-color')).toBe('#0000ff')
+  })
+
+  test('updates an existing element in place rather than duplicating it', () => {
+    upsertUserGradient({ id: 'alice', gradient: grad })
+    upsertUserGradient({ id: 'alice', gradient: { c1: '#00ff00', c2: '#00ffff', angle: 0 } })
+
+    expect(document.querySelectorAll('#grad-alice').length).toBe(1)
+    expect(document.getElementById('grad-alice-stop0').getAttribute('stop-color')).toBe('#00ff00')
+  })
+
+  test('is a no-op for a user with no gradient data', () => {
+    expect(() => upsertUserGradient({ id: 'bob', gradient: null })).not.toThrow()
+    expect(document.getElementById('grad-bob')).toBeNull()
+  })
+
+  test('two different users each get their own element', () => {
+    upsertUserGradient({ id: 'alice', gradient: grad })
+    upsertUserGradient({ id: 'bob', gradient: { c1: '#111', c2: '#222', angle: 45 } })
+    expect(document.getElementById('grad-alice')).not.toBeNull()
+    expect(document.getElementById('grad-bob')).not.toBeNull()
+  })
+})
+
+describe('pruneUserGradients', () => {
+  const grad = { c1: '#ff0000', c2: '#0000ff', angle: 90 }
+
+  test('removes gradients for users not in the live set', () => {
+    upsertUserGradient({ id: 'alice', gradient: grad })
+    upsertUserGradient({ id: 'bob', gradient: grad })
+
+    pruneUserGradients(new Set(['alice']))
+
+    expect(document.getElementById('grad-alice')).not.toBeNull()
+    expect(document.getElementById('grad-bob')).toBeNull()
+  })
+
+  test('does nothing when no gradient defs exist yet', () => {
+    expect(() => pruneUserGradients(new Set(['alice']))).not.toThrow()
+  })
 })

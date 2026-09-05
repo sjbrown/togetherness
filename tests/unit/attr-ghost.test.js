@@ -35,12 +35,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg'
 function makeOverlayDOM() {
   document.body.innerHTML = `
     <svg id="canvas">
-      <defs>
-        <linearGradient id="local-sel-grad" x1="0" y1="0.5" x2="1" y2="0.5">
-          <stop id="local-sel-grad-stop0" offset="0%"   stop-color="#5a7ea8"></stop>
-          <stop id="local-sel-grad-stop1" offset="100%" stop-color="#3a5e88"></stop>
-        </linearGradient>
-      </defs>
+      <defs></defs>
       <g id="drawing-layer"></g>
       <g id="overlay-layer"></g>
     </svg>
@@ -49,8 +44,7 @@ function makeOverlayDOM() {
 
 function makeOverlayApp() {
   return {
-    getMyColor:    () => '#5a7ea8',
-    getMyGradient: () => ({ c1: '#5a7ea8', c2: '#3a5e88', angle: 45 }),
+    user:          { id: 'me', name: 'Me', color: '#5a7ea8', gradient: { c1: '#5a7ea8', c2: '#3a5e88', angle: 45 } },
     getViewScale:  () => 1,
     getBBox:       () => null,
   }

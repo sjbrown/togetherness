@@ -16,8 +16,9 @@
  * clones.
  *
  * So the live gesture runs in its own #delight-layer, which nothing ever
- * wipes. This mirrors the existing reasoning for #local-sel-grad living in
- * <defs> rather than the overlay layer (see Overlay.setLocalGradient).
+ * wipes. This mirrors the existing reasoning for user gradients living in
+ * their own page-root <defs> rather than the overlay layer (see user.js's
+ * upsertUserGradient).
  *
  * Division of labour with overlay.js:
  *   overlay.js  — draws the RESTING affordance (the SE square, wrapped in
