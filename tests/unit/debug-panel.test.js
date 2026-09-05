@@ -28,21 +28,21 @@ const parse = (html) => {
 
 const makeState = (over = {}) => ({
   table:    { tableId: 'demo-table', isCreator: true, schema: 4 },
-  identity: { myId: 'tt-p-v1-AA-abc', clientId: 12345 },
+  identity: { myId: 'tt-u-v1-AA-abc', clientId: 12345 },
   head:     { head: 'tt-op-aaa', mergeTips: [], projected: 'tt-op-aaa', agrees: true },
   ops:      { total: 2, shown: 2, truncated: false, tips: ['tt-op-bbb'], checkpoints: 1, mine: 1,
               ordered: [
-                { i: 0, id: 'tt-op-aaa', gesture: 'checkpoint', authorId: 'tt-p-v1-AA-abc',
+                { i: 0, id: 'tt-op-aaa', gesture: 'checkpoint', authorId: 'tt-u-v1-AA-abc',
                   parents: [], ts: 1700000000000, mine: true, checkpoint: true,
                   entries: 1, mutations: [{ t: 'child', target: { id: 'tt-layer-toys' } }] },
-                { i: 1, id: 'tt-op-bbb', gesture: 'move', authorId: 'tt-p-v1-BB-xyz',
+                { i: 1, id: 'tt-op-bbb', gesture: 'move', authorId: 'tt-u-v1-BB-xyz',
                   parents: ['tt-op-aaa'], ts: 1700000001000, mine: false, checkpoint: false,
                   entries: 2, mutations: [{ t: 'attr', name: 'transform' }] },
               ] },
   net:      { connected: true, synced: true, webrtcPeers: 1, bcPeers: 0,
               signaling: ['ws://localhost:4444'], offline: false,
-              peers: [{ clientId: 1, peerId: 'tt-p-v1-AA-abc', self: true }] },
-  joinSequence: ['tt-p-v1-AA-abc', 'tt-p-v1-BB-xyz'],
+              peers: [{ clientId: 1, peerId: 'tt-u-v1-AA-abc', self: true }] },
+  joinSequence: ['tt-u-v1-AA-abc', 'tt-u-v1-BB-xyz'],
   myAuthorityIndex: 0,
   ...over,
 })
@@ -116,7 +116,7 @@ describe('stateHTML', () => {
     const d = parse(stateHTML(makeState()))
     const mine = d.querySelectorAll('.dbg-join-row.me')
     expect(mine).toHaveLength(1)
-    expect(mine[0].querySelector('.dbg-id').getAttribute('title')).toBe('tt-p-v1-AA-abc')
+    expect(mine[0].querySelector('.dbg-id').getAttribute('title')).toBe('tt-u-v1-AA-abc')
   })
 
   test('renders a message rather than throwing when there is no state', () => {
@@ -125,7 +125,7 @@ describe('stateHTML', () => {
 })
 
 describe('joinSequenceHTML', () => {
-  const seq = ['tt-p-v1-AA-abc', 'tt-p-v1-BB-xyz', 'tt-p-v1-CC-qrs']
+  const seq = ['tt-u-v1-AA-abc', 'tt-u-v1-BB-xyz', 'tt-u-v1-CC-qrs']
 
   test('renders one row per entry, in order, with its index', () => {
     const d = parse(joinSequenceHTML(seq, null, new Set()))
@@ -135,7 +135,7 @@ describe('joinSequenceHTML', () => {
   })
 
   test('marks my own row', () => {
-    const d = parse(joinSequenceHTML(seq, 'tt-p-v1-BB-xyz', new Set()))
+    const d = parse(joinSequenceHTML(seq, 'tt-u-v1-BB-xyz', new Set()))
     const rows = d.querySelectorAll('.dbg-join-row')
     expect(rows[0].classList.contains('me')).toBe(false)
     expect(rows[1].classList.contains('me')).toBe(true)
@@ -149,7 +149,7 @@ describe('joinSequenceHTML', () => {
   })
 
   test('online/offline is read off current presence, independent of position', () => {
-    const d = parse(joinSequenceHTML(seq, null, new Set(['tt-p-v1-BB-xyz'])))
+    const d = parse(joinSequenceHTML(seq, null, new Set(['tt-u-v1-BB-xyz'])))
     const rows = d.querySelectorAll('.dbg-join-row')
     expect(rows[0].querySelector('.dbg-join-dot').classList.contains('offline')).toBe(true)
     expect(rows[1].querySelector('.dbg-join-dot').classList.contains('online')).toBe(true)
@@ -162,7 +162,7 @@ describe('joinSequenceHTML', () => {
 
   test('carries the raw array for exact inspection', () => {
     const d = parse(joinSequenceHTML(seq, null, new Set()))
-    expect(d.querySelector('.dbg-join-raw .dbg-json').textContent).toContain('tt-p-v1-CC-qrs')
+    expect(d.querySelector('.dbg-join-raw .dbg-json').textContent).toContain('tt-u-v1-CC-qrs')
   })
 })
 

@@ -160,7 +160,7 @@ function resetJoinSequence(ydoc, orderedIds) {
 // ── Player options (per-player, per-table key-value store) ─────────────
 //
 // `playerOptions` is a Y.Map living in the document, keyed by *player* id
-// (user.js's persistent localId — tt-p-v1-DD-XXX — not the ephemeral Yjs
+// (user.js's persistent localId — tt-u-v1-DD-XXX — not the ephemeral Yjs
 // clientID a browser tab mints per session). Each value is itself a
 // Y.Map: that player's own key-value store, scoped to this one table.
 // Because it lives inside the table's own Y.Doc, the same player has an

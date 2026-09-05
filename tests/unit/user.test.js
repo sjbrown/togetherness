@@ -22,14 +22,14 @@ describe('getIdentity', () => {
     expect(identity.name.length).toBeGreaterThan(0)
     expect(identity.grad).toBeTruthy()
     expect(typeof identity.grad.c1).toBe('string')
-    expect(identity.localId).toMatch(/^tt-p-v1-\d{2}-[a-z]{3}$/)
+    expect(identity.localId).toMatch(/^tt-u-v1-\d{2}-[a-z]{3}$/)
 
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY))
     expect(stored).toEqual(identity)
   })
 
   test('reads back a previously persisted identity', () => {
-    const record = { name: 'Existing Player', grad: { c1: 'hsl(1,2%,3%)', c2: 'hsl(4,5%,6%)' }, localId: 'tt-p-v1-05-xyz', checkpointFrequency: 3 }
+    const record = { name: 'Existing Player', grad: { c1: 'hsl(1,2%,3%)', c2: 'hsl(4,5%,6%)' }, localId: 'tt-u-v1-05-xyz', checkpointFrequency: 3 }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(record))
 
     expect(getIdentity()).toEqual(record)
@@ -42,17 +42,17 @@ describe('getIdentity', () => {
     const identity = getIdentity()
     expect(identity.name).toBe('Partial Player')
     expect(identity.grad).toEqual(record.grad)
-    expect(identity.localId).toMatch(/^tt-p-v1-\d{2}-[a-z]{3}$/)
+    expect(identity.localId).toMatch(/^tt-u-v1-\d{2}-[a-z]{3}$/)
   })
 
   test('heals a record with a malformed grad (missing c1)', () => {
-    const record = { name: 'Broken Grad', grad: { oops: true }, localId: 'tt-p-v1-05-xyz' }
+    const record = { name: 'Broken Grad', grad: { oops: true }, localId: 'tt-u-v1-05-xyz' }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(record))
 
     const identity = getIdentity()
     expect(identity.grad.c1).toBeTruthy()
     expect(identity.name).toBe('Broken Grad')
-    expect(identity.localId).toBe('tt-p-v1-05-xyz')
+    expect(identity.localId).toBe('tt-u-v1-05-xyz')
   })
 
   test('falls back to a fresh identity when stored JSON is corrupt', () => {
@@ -61,7 +61,7 @@ describe('getIdentity', () => {
     const identity = getIdentity()
     expect(identity.name).toBeTruthy()
     expect(identity.grad.c1).toBeTruthy()
-    expect(identity.localId).toMatch(/^tt-p-v1-\d{2}-[a-z]{3}$/)
+    expect(identity.localId).toMatch(/^tt-u-v1-\d{2}-[a-z]{3}$/)
   })
 
   test('falls back to a fresh identity when the key is absent', () => {
@@ -71,13 +71,13 @@ describe('getIdentity', () => {
   })
 
   test('heals a record missing checkpointFrequency without touching other fields', () => {
-    const record = { name: 'No Freq Player', grad: { c1: 'hsl(1,2%,3%)', c2: 'hsl(4,5%,6%)' }, localId: 'tt-p-v1-05-xyz' }
+    const record = { name: 'No Freq Player', grad: { c1: 'hsl(1,2%,3%)', c2: 'hsl(4,5%,6%)' }, localId: 'tt-u-v1-05-xyz' }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(record))
 
     const identity = getIdentity()
     expect(identity.checkpointFrequency).toBe(DEFAULT_CHECKPOINT_FREQUENCY)
     expect(identity.name).toBe('No Freq Player')
-    expect(identity.localId).toBe('tt-p-v1-05-xyz')
+    expect(identity.localId).toBe('tt-u-v1-05-xyz')
   })
 })
 
@@ -120,8 +120,8 @@ describe('randomName', () => {
 })
 
 describe('makeLocalId', () => {
-  test('returns a tt-p-v1-DD-XXX formatted id', () => {
-    expect(makeLocalId()).toMatch(/^tt-p-v1-\d{2}-[a-z]{3}$/)
+  test('returns a tt-u-v1-DD-XXX formatted id', () => {
+    expect(makeLocalId()).toMatch(/^tt-u-v1-\d{2}-[a-z]{3}$/)
   })
 })
 
@@ -155,18 +155,18 @@ describe('setCheckpointFrequency', () => {
 
 describe('getMyUser', () => {
   test('derives {id, name, color, gradient} from the persisted identity', () => {
-    const record = { name: 'Wily Frodo', grad: { c1: 'hsl(1,2%,3%)', c2: 'hsl(4,5%,6%)' }, localId: 'tt-p-v1-05-xyz' }
+    const record = { name: 'Wily Frodo', grad: { c1: 'hsl(1,2%,3%)', c2: 'hsl(4,5%,6%)' }, localId: 'tt-u-v1-05-xyz' }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(record))
 
     expect(getMyUser()).toEqual({
-      id: 'tt-p-v1-05-xyz', name: 'Wily Frodo',
+      id: 'tt-u-v1-05-xyz', name: 'Wily Frodo',
       color: 'hsl(1,2%,3%)', gradient: record.grad,
     })
   })
 
   test('generates and persists a fresh identity on first call, same as getIdentity', () => {
     const user = getMyUser()
-    expect(user.id).toMatch(/^tt-p-v1-\d{2}-[a-z]{3}$/)
+    expect(user.id).toMatch(/^tt-u-v1-\d{2}-[a-z]{3}$/)
     expect(user.name.length).toBeGreaterThan(0)
     expect(user.color).toBe(user.gradient.c1)
   })

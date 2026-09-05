@@ -21,8 +21,8 @@ function rawJoinSequence(ydoc) {
 describe('ensureJoined', () => {
   test('the creator appends a fresh id to an empty joinSequence', () => {
     const ydoc = new Y.Doc()
-    ensureJoined(ydoc, 'tt-p-v1-01-aaa', { isCreator: true })
-    expect(rawJoinSequence(ydoc).toArray()).toEqual(['tt-p-v1-01-aaa'])
+    ensureJoined(ydoc, 'tt-u-v1-01-aaa', { isCreator: true })
+    expect(rawJoinSequence(ydoc).toArray()).toEqual(['tt-u-v1-01-aaa'])
   })
 
   test('a joiner (isCreator: false) defers on an empty joinSequence instead of inserting', () => {
@@ -44,10 +44,10 @@ describe('ensureJoined', () => {
 
   test('is idempotent — calling again for the same id does not re-append', () => {
     const ydoc = new Y.Doc()
-    ensureJoined(ydoc, 'tt-p-v1-01-aaa', { isCreator: true })
-    ensureJoined(ydoc, 'tt-p-v1-01-aaa', { isCreator: true })
-    ensureJoined(ydoc, 'tt-p-v1-01-aaa', { isCreator: true })
-    expect(rawJoinSequence(ydoc).toArray()).toEqual(['tt-p-v1-01-aaa'])
+    ensureJoined(ydoc, 'tt-u-v1-01-aaa', { isCreator: true })
+    ensureJoined(ydoc, 'tt-u-v1-01-aaa', { isCreator: true })
+    ensureJoined(ydoc, 'tt-u-v1-01-aaa', { isCreator: true })
+    expect(rawJoinSequence(ydoc).toArray()).toEqual(['tt-u-v1-01-aaa'])
   })
 
   test('preserves join order across multiple distinct peers', () => {
