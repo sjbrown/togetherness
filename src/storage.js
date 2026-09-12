@@ -138,11 +138,16 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
     }
   }
 
-  // Drawing layer
+  // Drawing layer. A shape's rotation lives in the document as a degree
+  // count; the transform an export carries is derived from it and is
+  // re-derived on render, so it never becomes part of the document.
   if (drawLayerEl) {
     for (const child of drawLayerEl.children) {
       const yEl = domToY(child);
-      if (yEl) { yDrawing.insert(yDrawing.length, [yEl]); drawCount++; }
+      if (!yEl) continue;
+      Drawing.stripDerivedTransform(yEl);
+      yDrawing.insert(yDrawing.length, [yEl]);
+      drawCount++;
     }
   }
 

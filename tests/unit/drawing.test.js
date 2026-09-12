@@ -16,7 +16,7 @@ import {
   selectModes, nextSelectMode, computeResize,
   computeRotate, snapAngle, normalizeAngle, getRotation, syncRotation,
   applyRotate, applyMoveCommit, previewResize, previewRotate, rotationCenter,
-  ROTATE_SNAP_DEG,
+  stripDerivedTransform, ROTATE_SNAP_DEG,
 } from '../../src/drawing.js'
 import { tablesAPI } from '../../src/tables.js'
 
@@ -598,10 +598,17 @@ describe('rotation on the DOM', () => {
     expect(el.getAttribute('transform')).toBeNull()
   })
 
-  test('a transform this module did not write is left alone', () => {
-    const el = rectDom({ transform: 'translate(5 5)' })
+  test('a shape with no data-rotate keeps whatever transform its author gave it', () => {
+    const el = rectDom({ transform: 'rotate(30 100 100)' })
     syncRotation(el)
-    expect(el.getAttribute('transform')).toBe('translate(5 5)')
+    expect(el.getAttribute('transform')).toBe('rotate(30 100 100)')
+  })
+
+  test('a shape whose rotation went back to 0 sheds the transform it had', () => {
+    const el = rectDom({ 'data-rotate': '30' })
+    syncRotation(el)
+    previewRotate(el, 0)
+    expect(el.getAttribute('transform')).toBeNull()
   })
 
   test('_toSVGEl renders the stored rotation as a transform', () => {
@@ -663,5 +670,31 @@ describe('applyRotate', () => {
     applyMoveCommit(doc.ydoc, yEl, 200, 200)
     const el = _toSVGEl(yEl)
     expect(el.getAttribute('transform')).toBe('rotate(45 250 230)')
+  })
+})
+
+describe('stripDerivedTransform', () => {
+  test('drops the transform an export baked in, keeping the degree count as the one answer', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'r1', x: 0, y: 0, width: 100, height: 60, rotate: 45 })
+    const yEl = findDrawing(doc.yDrawing, 'r1')
+    yEl.setAttribute('transform', 'rotate(45 50 30)')  // what an export writes
+
+    stripDerivedTransform(yEl)
+    expect(yEl.getAttribute('transform')).toBeUndefined()
+    expect(yEl.getAttribute('data-rotate')).toBe('45')
+    // ...and the render still comes out rotated, from the degrees alone.
+    expect(_toSVGEl(yEl).getAttribute('transform')).toBe('rotate(45 50 30)')
+  })
+
+  test('leaves a transform alone on a shape that carries no rotation of ours', () => {
+    const doc = makeDoc()
+    const yEl = new Y.XmlElement('rect')
+    yEl.setAttribute('id', 'foreign')
+    yEl.setAttribute('transform', 'translate(5 5)')
+    doc.yDrawing.insert(0, [yEl])
+
+    stripDerivedTransform(yEl)
+    expect(yEl.getAttribute('transform')).toBe('translate(5 5)')
   })
 })

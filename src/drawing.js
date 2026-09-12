@@ -247,14 +247,16 @@ export function rotationCenter(geom) {
  * Project a shape's stored rotation onto its live DOM element as a
  * transform. Called after every geometry write so the pivot tracks the
  * shape rather than the position it had when the rotation was set.
- * A transform this module didn't put there (an imported, hand-authored
- * shape) is left alone.
  */
 export function syncRotation(domEl) {
   if (!domEl?.setAttribute) return;
+  // No data-rotate means this shape's transform isn't ours — a hand-authored
+  // or imported SVG can carry its own, and rewriting it would silently
+  // throw the author's geometry away.
+  if (!domEl.hasAttribute?.(ROTATE_ATTR)) return;
   const deg = getRotation(domEl);
   if (!deg) {
-    if (domEl.getAttribute('transform')?.startsWith('rotate(')) domEl.removeAttribute('transform');
+    domEl.removeAttribute('transform');
     return;
   }
   const { cx, cy } = rotationCenter(getGeom(domEl));
@@ -300,6 +302,19 @@ export function applyRotate(ydoc, yEl, deg) {
   ydoc.transact(() => {
     yEl.setAttribute(ROTATE_ATTR, String(normalizeAngle(deg)));
   });
+}
+
+/**
+ * Drop the transform an export baked in from a shape's `rotate` — the
+ * document keeps degrees, not matrices, and the transform is re-derived on
+ * every render, so storing the exported copy too would leave two answers to
+ * the same question with one of them going stale on the next move. Called
+ * by storage.js on import. A transform on a shape carrying no `rotate` is
+ * the author's own and is left in place.
+ */
+export function stripDerivedTransform(yEl) {
+  if (yEl?.getAttribute?.(ROTATE_ATTR) == null) return;
+  if (yEl.getAttribute('transform') != null) yEl.removeAttribute('transform');
 }
 
 /**
