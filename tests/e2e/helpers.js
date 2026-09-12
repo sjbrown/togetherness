@@ -18,7 +18,7 @@ import { expect } from '@playwright/test';
 
 /**
  * The app resolves its signaling server from localStorage (see
- * src/signaling.js: SIGNALING_KEY), falling back to a host-based default
+ * src/external_services.js: SIGNALLING_KEY), falling back to a host-based default
  * that only points at localhost when the page is actually served from
  * "localhost". Tests are served from whatever host the harness picked —
  * a container name under Docker, a bare IP in CI — so we seed the
@@ -27,7 +27,7 @@ import { expect } from '@playwright/test';
 async function seedSignaling(page, signalingUrl) {
   if (!signalingUrl) return;
   await page.addInitScript(url => {
-    localStorage.setItem('tt_signaling_server', url);
+    localStorage.setItem('tt_external_service_signaling', url);
   }, signalingUrl);
 }
 

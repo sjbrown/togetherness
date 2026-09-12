@@ -193,7 +193,7 @@ import { getMyUser } from './user.js';
 import { dragPlaceholderFilterSVG, snapPointGradientSVG, localActionFilterSVG, glowFilterSVG }  from './defs.js';
 import { tablesAPI as tables } from './tables.js';
 import { resolveJoinIntent }    from './ui_join_dialog.js';
-import { resolveSignalingServers, getStoredSignalingServer, getStoredFallbackSignalingServer } from './signaling.js';
+import * as ExternalServices    from './external_services.js';
 import * as Trace                  from './trace.js';
 
 // Inject shared SVG defs (filters etc.) into the canvas <defs> element.
@@ -247,17 +247,22 @@ tables.touchTableRecord(tableId);
 
 // ── WebRTC  ─────────────────────────────────────────────────────────────────
 // Must be constructed before isCreator is decided
-const signalingUrls = resolveSignalingServers();
+const signalingUrls = ExternalServices.resolveSignallingAll();
 Trace.net('signaling', `signaling servers: ${signalingUrls.join(', ')}`, {
   urls:               signalingUrls,
   // Whether these came from the person's own overrides or the built-in
   // defaults is the first thing to check when a table won't find its peers.
-  overridden:         getStoredSignalingServer() !== null,
-  fallbackOverridden: getStoredFallbackSignalingServer() !== null,
+  overridden:         ExternalServices.getSignalling() !== null,
+  fallbackOverridden: ExternalServices.getSignallingFallback() !== null,
   room:               tableId,
 });
-const provider     = new WebrtcProvider(tableId, ydoc, { signaling: signalingUrls });
-Trace.net('provider', 'WebrtcProvider constructed — handshakes begin', { room: tableId });
+// No iceServers override means no `peerOpts.config` at all, leaving
+// simple-peer's own built-in STUN servers in effect.
+const iceServers   = ExternalServices.resolveIceServers();
+const providerOpts = { signaling: signalingUrls };
+if (iceServers.length) providerOpts.peerOpts = { config: { iceServers } };
+const provider     = new WebrtcProvider(tableId, ydoc, providerOpts);
+Trace.net('provider', 'WebrtcProvider constructed — handshakes begin', { room: tableId, iceServers });
 const awareness    = provider.awareness;
 awareness.setLocalState({ user, cursor: null, desired: {} });
 

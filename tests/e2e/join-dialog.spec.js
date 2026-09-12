@@ -19,11 +19,11 @@ const APP_URL        = process.env.APP_URL       || 'http://localhost:3000';
 const SIGNALING_URL  = process.env.SIGNALING_URL || 'ws://localhost:4444';
 
 async function seedSignalingUrl(page, url) {
-  await page.addInitScript((url) => localStorage.setItem('tt_signaling_server', url), url);
+  await page.addInitScript((url) => localStorage.setItem('tt_external_service_signaling', url), url);
 }
 
 /**
- * Overrides BOTH signaling URLs. signaling.js's defaultFallbackSignalingServer()
+ * Overrides BOTH signaling URLs. external_services.js's defaultSignallingFallback()
  * only returns '' when location.hostname === 'localhost' — under Docker the
  * page is served from a container IP, so leaving the fallback at its
  * default resolves to a real public server, which a Docker test runner
@@ -32,8 +32,8 @@ async function seedSignalingUrl(page, url) {
  */
 async function seedUnreachableSignaling(page) {
   await page.addInitScript(() => {
-    localStorage.setItem('tt_signaling_server', 'ws://127.0.0.1:1');
-    localStorage.setItem('tt_signaling_server_fallback', 'ws://127.0.0.1:1');
+    localStorage.setItem('tt_external_service_signaling', 'ws://127.0.0.1:1');
+    localStorage.setItem('tt_external_service_signaling_fallback', 'ws://127.0.0.1:1');
   });
 }
 

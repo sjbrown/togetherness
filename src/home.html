@@ -544,6 +544,14 @@ body {
           <input class="advanced-input" id="signalingServer" type="text" autocomplete="off" spellcheck="false">
           <label class="advanced-label" for="signalingServerFallback">Signaling Server (fallback):</label>
           <input class="advanced-input" id="signalingServerFallback" type="text" autocomplete="off" spellcheck="false">
+          <label class="advanced-label" for="stunServer">STUN Server:</label>
+          <input class="advanced-input" id="stunServer" type="text" autocomplete="off" spellcheck="false" placeholder="[Yjs Default]">
+          <label class="advanced-label" for="stunServerFallback">STUN Server (fallback):</label>
+          <input class="advanced-input" id="stunServerFallback" type="text" autocomplete="off" spellcheck="false" placeholder="[Yjs Default]">
+          <label class="advanced-label" for="turnServer">TURN Server:</label>
+          <input class="advanced-input" id="turnServer" type="text" autocomplete="off" spellcheck="false" placeholder="[Coming Soon]" disabled>
+          <label class="advanced-label" for="turnServerFallback">TURN Server (fallback):</label>
+          <input class="advanced-input" id="turnServerFallback" type="text" autocomplete="off" spellcheck="false" placeholder="[Coming Soon]" disabled>
         </div>
       </div>
     </div>
@@ -624,10 +632,7 @@ import * as Toys                from './toys.js';
 import { entityGradient }        from './entity_gradient.js';
 import { getIdentity, setName, setGrad, getMyUser, upsertUserGradient } from './user.js';
 import { tablesAPI as tables } from './tables.js';
-import {
-  getStoredSignalingServer, setStoredSignalingServer, defaultSignalingServer,
-  getStoredFallbackSignalingServer, setStoredFallbackSignalingServer, defaultFallbackSignalingServer,
-} from './signaling.js';
+import * as ExternalServices from './external_services.js';
 
 function drawGradientSwatch(canvas, gradObj) {
   const ctx  = canvas.getContext('2d');
@@ -710,43 +715,64 @@ initProfile();
 // ── Advanced: signaling server(s) ────────────────────────────────────────────
 // Each field shows the localStorage override if one exists, else its
 // host-based default — but that default is NOT written to localStorage
-// until the person actually edits the field (see signaling.js). y-webrtc
+// until the person actually edits the field (see external_services.js). y-webrtc
 // connects to both servers concurrently rather than falling over from one
 // to the other; "fallback" describes intent, not the connection mechanics.
 const advancedLinkEl     = document.getElementById('advancedLink');
 const advancedPanelEl    = document.getElementById('advancedPanel');
 const signalingEl        = document.getElementById('signalingServer');
 const signalingFallbackEl = document.getElementById('signalingServerFallback');
+const stunEl             = document.getElementById('stunServer');
+const stunFallbackEl     = document.getElementById('stunServerFallback');
+const turnEl             = document.getElementById('turnServer');
+const turnFallbackEl     = document.getElementById('turnServerFallback');
 
 advancedLinkEl.addEventListener('click', (e) => {
   e.preventDefault();
   const opening = advancedPanelEl.style.display === 'none';
   advancedPanelEl.style.display = opening ? 'flex' : 'none';
   if (opening) {
-    signalingEl.value         = getStoredSignalingServer() ?? defaultSignalingServer();
-    signalingFallbackEl.value = getStoredFallbackSignalingServer() ?? defaultFallbackSignalingServer();
+    signalingEl.value         = ExternalServices.getSignalling() ?? ExternalServices.defaultSignalling();
+    signalingFallbackEl.value = ExternalServices.getSignallingFallback() ?? ExternalServices.defaultSignallingFallback();
+    // No built-in default to show here — an unset field just means the
+    // "[Yjs Default]" placeholder shows through.
+    stunEl.value             = ExternalServices.getSTUN() ?? '';
+    stunFallbackEl.value     = ExternalServices.getSTUNFallback() ?? '';
+    // TURN inputs are disabled — there's no editing UI for these yet — but
+    // show whatever's stored so the field isn't misleadingly blank if a
+    // value ever gets in there some other way.
+    turnEl.value             = ExternalServices.getTURN() ?? '';
+    turnFallbackEl.value     = ExternalServices.getTURNFallback() ?? '';
   }
 });
 
+// setSignalling/setSignallingFallback decide for themselves whether a
+// value is worth persisting (not empty, not just the built-in default,
+// and — for the fallback — not identical to the resolved primary);
+// re-reading afterward reverts the field to whatever's actually in
+// effect rather than leaving a rejected value sitting in the input.
 signalingEl.addEventListener('change', () => {
-  const value = signalingEl.value.trim();
-  // Only persist if the person actually changed it away from the default —
-  // otherwise a future change to the built-in default would be masked by
-  // a stored value nobody meant to set.
-  if (value && value !== defaultSignalingServer()) {
-    setStoredSignalingServer(value);
-  } else {
-    setStoredSignalingServer(null);
-  }
+  ExternalServices.setSignalling(signalingEl.value);
+  signalingEl.value = ExternalServices.getSignalling() ?? ExternalServices.defaultSignalling();
 });
 
 signalingFallbackEl.addEventListener('change', () => {
-  const value = signalingFallbackEl.value.trim();
-  if (value && value !== defaultFallbackSignalingServer()) {
-    setStoredFallbackSignalingServer(value);
-  } else {
-    setStoredFallbackSignalingServer(null);
-  }
+  ExternalServices.setSignallingFallback(signalingFallbackEl.value);
+  signalingFallbackEl.value = ExternalServices.getSignallingFallback() ?? ExternalServices.defaultSignallingFallback();
+});
+
+// Same idea for STUN: empty, invalid, or (for the fallback) identical to
+// the primary is a no-op in the setters, so re-reading afterward reverts
+// the field to whatever's actually stored (blank if nothing valid was
+// ever stored).
+stunEl.addEventListener('change', () => {
+  ExternalServices.setSTUN(stunEl.value);
+  stunEl.value = ExternalServices.getSTUN() ?? '';
+});
+
+stunFallbackEl.addEventListener('change', () => {
+  ExternalServices.setSTUNFallback(stunFallbackEl.value);
+  stunFallbackEl.value = ExternalServices.getSTUNFallback() ?? '';
 });
 
 // ── Previous tables ───────────────────────────────────────────────────────
