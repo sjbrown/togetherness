@@ -16,6 +16,7 @@ import {
   selectModes, nextSelectMode, computeResize,
   computeRotate, snapAngle, normalizeAngle, getRotation, syncRotation,
   applyRotate, applyMoveCommit, previewResize, previewRotate, rotationCenter,
+  resolveRotation, rotationTransform, getPivot,
   stripDerivedTransform, ROTATE_SNAP_DEG,
 } from '../../src/drawing.js'
 import { tablesAPI } from '../../src/tables.js'
@@ -205,18 +206,18 @@ describe('selectModes / nextSelectMode', () => {
   const circleEl = () => document.createElementNS('http://www.w3.org/2000/svg', 'circle')
   const lineEl   = () => document.createElementNS('http://www.w3.org/2000/svg', 'line')
 
-  test('selectModes: sel-move plus rects support sel-resize/sel-rotate, circles sel-resize-r', () => {
-    expect(selectModes(rectEl())).toEqual(['sel-move', 'sel-resize', 'sel-rotate'])
+  test('selectModes: sel-move plus rects support sel-resize/sel-rotate-pivot, circles sel-resize-r', () => {
+    expect(selectModes(rectEl())).toEqual(['sel-move', 'sel-resize', 'sel-rotate-pivot'])
     expect(selectModes(circleEl())).toEqual(['sel-move', 'sel-resize-r'])
     expect(selectModes(lineEl())).toEqual(['sel-move'])
   })
 
-  test('nextSelectMode cycles a rect sel-move -> sel-resize -> sel-rotate -> sel-move', () => {
+  test('nextSelectMode cycles a rect sel-move -> sel-resize -> sel-rotate-pivot -> sel-move', () => {
     const el = rectEl()
     expect(nextSelectMode(el, null)).toBe('sel-move')
     expect(nextSelectMode(el, 'sel-move')).toBe('sel-resize')
-    expect(nextSelectMode(el, 'sel-resize')).toBe('sel-rotate')
-    expect(nextSelectMode(el, 'sel-rotate')).toBe('sel-move')
+    expect(nextSelectMode(el, 'sel-resize')).toBe('sel-rotate-pivot')
+    expect(nextSelectMode(el, 'sel-rotate-pivot')).toBe('sel-move')
   })
 
   test('nextSelectMode cycles a circle through sel-move <-> sel-resize-r', () => {
@@ -537,33 +538,44 @@ describe('computeRotate', () => {
   // A square, so every corner sits on a diagonal and the arithmetic is
   // checkable by eye. centre (100, 100).
   const startRect = { x: 50, y: 50, width: 100, height: 100 }
+  const mid = { cx: 100, cy: 100 }
 
   test('pointer left on the grabbed corner means no rotation', () => {
-    expect(computeRotate(startRect, 2, 150, 150)).toBe(0)  // SE corner
-    expect(computeRotate(startRect, 0, 50, 50)).toBe(0)    // NW corner
+    expect(computeRotate(startRect, mid, 2, 150, 150)).toBe(0)  // SE corner
+    expect(computeRotate(startRect, mid, 0, 50, 50)).toBe(0)    // NW corner
   })
 
   test('the grabbed corner follows the pointer — a quarter turn reads as 90°', () => {
     // SE corner starts at 45° from centre; pointer moved to 135° (SW side).
-    expect(computeRotate(startRect, 2, 50, 150)).toBe(90)
+    expect(computeRotate(startRect, mid, 2, 50, 150)).toBe(90)
   })
 
   test('each corner measures from its own start, so all four agree on the angle', () => {
     // Every corner dragged a quarter turn clockwise gives the same 90°.
-    expect(computeRotate(startRect, 0, 150, 50)).toBe(90)  // NW → NE position
-    expect(computeRotate(startRect, 1, 150, 150)).toBe(90) // NE → SE position
-    expect(computeRotate(startRect, 3, 50, 50)).toBe(90)   // SW → NW position
+    expect(computeRotate(startRect, mid, 0, 150, 50)).toBe(90)  // NW → NE position
+    expect(computeRotate(startRect, mid, 1, 150, 150)).toBe(90) // NE → SE position
+    expect(computeRotate(startRect, mid, 3, 50, 50)).toBe(90)   // SW → NW position
   })
 
   test('the raw angle is snapped to the step before it is returned', () => {
-    const rect = { x: 0, y: 0, width: 200, height: 200 } // centre (100,100)
+    const rect = { x: 0, y: 0, width: 200, height: 200 }
+    const c    = { cx: 100, cy: 100 }
     // ~10° past the SE corner's 45° — snaps down to 0 at 15°, up to 45 at 40°.
-    expect(computeRotate(rect, 2, 100, 200)).toBe(45)
-    expect(computeRotate(rect, 2, 200, 190, 90)).toBe(0)
+    expect(computeRotate(rect, c, 2, 100, 200)).toBe(45)
+    expect(computeRotate(rect, c, 2, 200, 190, 90)).toBe(0)
   })
 
   test('counter-clockwise rotation comes back normalized, never negative', () => {
-    expect(computeRotate(startRect, 2, 150, 50)).toBe(270)
+    expect(computeRotate(startRect, mid, 2, 150, 50)).toBe(270)
+  })
+
+  test('the centre is an argument, so an off-centre pivot needs no change here', () => {
+    // Turning about the NW corner instead of the middle: the SE corner
+    // starts at 45° from it too (square), but a quarter turn about a
+    // different point is still a quarter turn.
+    const nw = { cx: 50, cy: 50 }
+    expect(computeRotate(startRect, nw, 2, 150, 150)).toBe(0)
+    expect(computeRotate(startRect, nw, 2, -50, 150)).toBe(90)
   })
 })
 
@@ -582,8 +594,33 @@ describe('rotation on the DOM', () => {
     expect(getRotation(null)).toBe(0)
   })
 
-  test('rotationCenter is the centre of the unrotated bbox', () => {
+  test('rotationCenter defaults to the centre of the unrotated bbox', () => {
     expect(rotationCenter({ x: 50, y: 50, width: 100, height: 200 })).toEqual({ cx: 100, cy: 150 })
+  })
+
+  test('rotationCenter resolves any pivot as fractions of the bbox', () => {
+    const geom = { x: 50, y: 50, width: 100, height: 200 }
+    expect(rotationCenter(geom, { fx: 0, fy: 0 })).toEqual({ cx: 50, cy: 50 })    // NW
+    expect(rotationCenter(geom, { fx: 0, fy: 1 })).toEqual({ cx: 50, cy: 250 })   // SW
+    expect(rotationCenter(geom, { fx: 1.5, fy: 0.5 })).toEqual({ cx: 200, cy: 150 }) // outside
+  })
+
+  test('a pivot expressed as fractions rides a resize, an absolute point would not', () => {
+    const pivot = getPivot(rectDom())
+    const before = rotationCenter({ x: 0, y: 0, width: 100, height: 100 }, pivot)
+    const after  = rotationCenter({ x: 0, y: 0, width: 200, height: 200 }, pivot)
+    expect(before).toEqual({ cx: 50, cy: 50 })
+    expect(after).toEqual({ cx: 100, cy: 100 })
+  })
+
+  test('resolveRotation is null for an unrotated shape, { deg, cx, cy } otherwise', () => {
+    expect(resolveRotation(rectDom())).toBeNull()
+    expect(resolveRotation(rectDom({ 'data-rotate': '30' }))).toEqual({ deg: 30, cx: 100, cy: 100 })
+  })
+
+  test('rotationTransform formats a resolved rotation, and null stays null', () => {
+    expect(rotationTransform({ deg: 30, cx: 100, cy: 100 })).toBe('rotate(30 100 100)')
+    expect(rotationTransform(null)).toBeNull()
   })
 
   test('syncRotation derives a transform about the shape centre', () => {

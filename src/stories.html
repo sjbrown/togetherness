@@ -473,7 +473,9 @@ function modeStory(variant, mode, rotation = 0) {
     }
     Overlay.SelectionMode.clear();
     Overlay.SelectionMode.set('sm1', { mode, color: myGrad.c1, grad: myGrad });
-    Overlay.init({ ...fakeOverlayApp(svg), getRotation: () => rotation }, svg, storiesUser);
+    const centre = { cx: rectGeom.x + rectGeom.width / 2, cy: rectGeom.y + rectGeom.height / 2 };
+    const rot = rotation ? { deg: rotation, ...centre } : null;
+    Overlay.init({ ...fakeOverlayApp(svg), getRotation: () => rot }, svg, storiesUser);
     Overlay.render();
     return svg;
   });
@@ -481,8 +483,8 @@ function modeStory(variant, mode, rotation = 0) {
 
 modeStory('sel-move', 'sel-move');
 modeStory('sel-resize · square corner handles', 'sel-resize');
-modeStory('sel-rotate · round handles, turn arrow', 'sel-rotate');
-modeStory('sel-rotate · already turned 30°, furniture rides with it', 'sel-rotate', 30);
+modeStory('sel-rotate-pivot · round handles, turn arrow', 'sel-rotate-pivot');
+modeStory('sel-rotate-pivot · already turned 30°, furniture rides with it', 'sel-rotate-pivot', 30);
 
 // Mixed: both local + remote selections active simultaneously.
 story('Mixed', 'rect local · circle remote', () => {

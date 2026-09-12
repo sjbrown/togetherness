@@ -90,7 +90,7 @@ async function bootApp() {
     svgElement: svgEl,
   })
 
-  return { App, ydoc, svgEl }
+  return { App, ydoc, svgEl, awareness }
 }
 
 // A 200x200 square at (100,100) — centre (200,200), so every corner sits on
@@ -128,6 +128,14 @@ describe('rotate is the third mode in a rect’s cycle', () => {
     App.nextSelectionMode(id)
     expect(App.getRotateModeId()).toBeNull()
     expect(App.getResizeModeId()).toBeNull()
+  })
+
+  test('a rect uses the placeable-pivot variant; sel-rotate is reserved for toys', async () => {
+    const { App, awareness, id } = await bootWithSquare()
+    App.nextSelectionMode(id)
+    App.nextSelectionMode(id)
+    // The mode name is what peers see on the wire, so it is the contract.
+    expect(awareness.getLocalState().mode).toBe('sel-rotate-pivot')
   })
 
   test('a circle never reaches rotate mode — it has no rotate handles to offer', async () => {
