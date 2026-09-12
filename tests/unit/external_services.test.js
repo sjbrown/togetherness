@@ -6,223 +6,212 @@
 // tests/e2e/join-dialog.spec.js and tests/e2e/sync.spec.js.
 
 import { beforeEach, describe, test, expect } from 'vitest'
-import {
-  isValidStunUrl,
-  getStoredStunServer, setStoredStunServer,
-  getStoredStunServerFallback, setStoredStunServerFallback,
-  isValidTurnUrl,
-  getStoredTurnServer, setStoredTurnServer,
-  getStoredTurnServerFallback, setStoredTurnServerFallback,
-  resolveIceServers,
-  getStoredSignalingServer, setStoredSignalingServer, defaultSignalingServer,
-  getStoredFallbackSignalingServer, setStoredFallbackSignalingServer, defaultFallbackSignalingServer,
-  resolveSignalingServers,
-} from '../../src/external_services.js'
+import * as ExternalServices from '../../src/external_services.js'
 
 beforeEach(() => {
   localStorage.clear()
 })
 
-describe('isValidStunUrl', () => {
+describe('isValidSTUN', () => {
   test('accepts a bare stun: host', () => {
-    expect(isValidStunUrl('stun:stun.example.com')).toBe(true)
+    expect(ExternalServices.isValidSTUN('stun:stun.example.com')).toBe(true)
   })
 
   test('accepts stun: with a port', () => {
-    expect(isValidStunUrl('stun:stun.example.com:19302')).toBe(true)
+    expect(ExternalServices.isValidSTUN('stun:stun.example.com:19302')).toBe(true)
   })
 
   test('accepts stuns:', () => {
-    expect(isValidStunUrl('stuns:stun.example.com:5349')).toBe(true)
+    expect(ExternalServices.isValidSTUN('stuns:stun.example.com:5349')).toBe(true)
   })
 
   test('tolerates surrounding whitespace', () => {
-    expect(isValidStunUrl('  stun:stun.example.com  ')).toBe(true)
+    expect(ExternalServices.isValidSTUN('  stun:stun.example.com  ')).toBe(true)
   })
 
   test('rejects the empty string', () => {
-    expect(isValidStunUrl('')).toBe(false)
+    expect(ExternalServices.isValidSTUN('')).toBe(false)
   })
 
   test('rejects a non-stun scheme', () => {
-    expect(isValidStunUrl('https://stun.example.com')).toBe(false)
+    expect(ExternalServices.isValidSTUN('https://stun.example.com')).toBe(false)
   })
 
   test('rejects a scheme with no host', () => {
-    expect(isValidStunUrl('stun:')).toBe(false)
+    expect(ExternalServices.isValidSTUN('stun:')).toBe(false)
   })
 
   test('rejects non-string input', () => {
-    expect(isValidStunUrl(null)).toBe(false)
-    expect(isValidStunUrl(undefined)).toBe(false)
+    expect(ExternalServices.isValidSTUN(null)).toBe(false)
+    expect(ExternalServices.isValidSTUN(undefined)).toBe(false)
   })
 })
 
-describe('setStoredStunServer', () => {
+describe('setSTUN', () => {
   test('persists a valid value', () => {
-    setStoredStunServer('stun:stun.example.com:19302')
-    expect(getStoredStunServer()).toBe('stun:stun.example.com:19302')
+    ExternalServices.setSTUN('stun:stun.example.com:19302')
+    expect(ExternalServices.getSTUN()).toBe('stun:stun.example.com:19302')
   })
 
   test('trims before storing', () => {
-    setStoredStunServer('  stun:stun.example.com  ')
-    expect(getStoredStunServer()).toBe('stun:stun.example.com')
+    ExternalServices.setSTUN('  stun:stun.example.com  ')
+    expect(ExternalServices.getSTUN()).toBe('stun:stun.example.com')
   })
 
   test('is a no-op on an empty value, leaving prior storage untouched', () => {
-    setStoredStunServer('stun:stun.example.com')
-    setStoredStunServer('')
-    expect(getStoredStunServer()).toBe('stun:stun.example.com')
+    ExternalServices.setSTUN('stun:stun.example.com')
+    ExternalServices.setSTUN('')
+    expect(ExternalServices.getSTUN()).toBe('stun:stun.example.com')
   })
 
   test('is a no-op on an invalid value, leaving prior storage untouched', () => {
-    setStoredStunServer('stun:stun.example.com')
-    setStoredStunServer('not-a-stun-url')
-    expect(getStoredStunServer()).toBe('stun:stun.example.com')
+    ExternalServices.setSTUN('stun:stun.example.com')
+    ExternalServices.setSTUN('not-a-stun-url')
+    expect(ExternalServices.getSTUN()).toBe('stun:stun.example.com')
   })
 
   test('nothing stored yet plus an invalid value stays unset', () => {
-    setStoredStunServer('nope')
-    expect(getStoredStunServer()).toBeNull()
+    ExternalServices.setSTUN('nope')
+    expect(ExternalServices.getSTUN()).toBeNull()
   })
 })
 
-describe('setStoredStunServerFallback', () => {
+describe('setSTUNFallback', () => {
   test('persists independently of the primary', () => {
-    setStoredStunServer('stun:primary.example.com')
-    setStoredStunServerFallback('stun:fallback.example.com')
-    expect(getStoredStunServer()).toBe('stun:primary.example.com')
-    expect(getStoredStunServerFallback()).toBe('stun:fallback.example.com')
+    ExternalServices.setSTUN('stun:primary.example.com')
+    ExternalServices.setSTUNFallback('stun:fallback.example.com')
+    expect(ExternalServices.getSTUN()).toBe('stun:primary.example.com')
+    expect(ExternalServices.getSTUNFallback()).toBe('stun:fallback.example.com')
   })
 
   test('is a no-op on an invalid value', () => {
-    setStoredStunServerFallback('stun:fallback.example.com')
-    setStoredStunServerFallback('garbage')
-    expect(getStoredStunServerFallback()).toBe('stun:fallback.example.com')
+    ExternalServices.setSTUNFallback('stun:fallback.example.com')
+    ExternalServices.setSTUNFallback('garbage')
+    expect(ExternalServices.getSTUNFallback()).toBe('stun:fallback.example.com')
   })
 
   test('is a no-op when identical to the stored primary', () => {
-    setStoredStunServer('stun:same.example.com')
-    setStoredStunServerFallback('stun:same.example.com')
-    expect(getStoredStunServerFallback()).toBeNull()
+    ExternalServices.setSTUN('stun:same.example.com')
+    ExternalServices.setSTUNFallback('stun:same.example.com')
+    expect(ExternalServices.getSTUNFallback()).toBeNull()
   })
 
   test('rejecting a duplicate leaves a previously-stored fallback untouched', () => {
-    setStoredStunServer('stun:primary.example.com')
-    setStoredStunServerFallback('stun:fallback.example.com')
-    setStoredStunServerFallback('stun:primary.example.com')
-    expect(getStoredStunServerFallback()).toBe('stun:fallback.example.com')
+    ExternalServices.setSTUN('stun:primary.example.com')
+    ExternalServices.setSTUNFallback('stun:fallback.example.com')
+    ExternalServices.setSTUNFallback('stun:primary.example.com')
+    expect(ExternalServices.getSTUNFallback()).toBe('stun:fallback.example.com')
   })
 })
 
-describe('isValidTurnUrl', () => {
+describe('isValidTURN', () => {
   test('accepts a bare turn: host', () => {
-    expect(isValidTurnUrl('turn:turn.example.com')).toBe(true)
+    expect(ExternalServices.isValidTURN('turn:turn.example.com')).toBe(true)
   })
 
   test('accepts turn: with a port', () => {
-    expect(isValidTurnUrl('turn:turn.example.com:3478')).toBe(true)
+    expect(ExternalServices.isValidTURN('turn:turn.example.com:3478')).toBe(true)
   })
 
   test('accepts turns:', () => {
-    expect(isValidTurnUrl('turns:turn.example.com:5349')).toBe(true)
+    expect(ExternalServices.isValidTURN('turns:turn.example.com:5349')).toBe(true)
   })
 
   test('rejects the empty string', () => {
-    expect(isValidTurnUrl('')).toBe(false)
+    expect(ExternalServices.isValidTURN('')).toBe(false)
   })
 
   test('rejects a non-turn scheme', () => {
-    expect(isValidTurnUrl('stun:turn.example.com')).toBe(false)
+    expect(ExternalServices.isValidTURN('stun:turn.example.com')).toBe(false)
   })
 
   test('rejects a scheme with no host', () => {
-    expect(isValidTurnUrl('turn:')).toBe(false)
+    expect(ExternalServices.isValidTURN('turn:')).toBe(false)
   })
 
   test('rejects non-string input', () => {
-    expect(isValidTurnUrl(null)).toBe(false)
-    expect(isValidTurnUrl(undefined)).toBe(false)
+    expect(ExternalServices.isValidTURN(null)).toBe(false)
+    expect(ExternalServices.isValidTURN(undefined)).toBe(false)
   })
 })
 
-describe('setStoredTurnServer', () => {
+describe('setTURN', () => {
   test('persists a valid value', () => {
-    setStoredTurnServer('turn:turn.example.com:3478')
-    expect(getStoredTurnServer()).toBe('turn:turn.example.com:3478')
+    ExternalServices.setTURN('turn:turn.example.com:3478')
+    expect(ExternalServices.getTURN()).toBe('turn:turn.example.com:3478')
   })
 
   test('trims before storing', () => {
-    setStoredTurnServer('  turn:turn.example.com  ')
-    expect(getStoredTurnServer()).toBe('turn:turn.example.com')
+    ExternalServices.setTURN('  turn:turn.example.com  ')
+    expect(ExternalServices.getTURN()).toBe('turn:turn.example.com')
   })
 
   test('is a no-op on an empty or invalid value, leaving prior storage untouched', () => {
-    setStoredTurnServer('turn:turn.example.com')
-    setStoredTurnServer('')
-    setStoredTurnServer('not-a-turn-url')
-    expect(getStoredTurnServer()).toBe('turn:turn.example.com')
+    ExternalServices.setTURN('turn:turn.example.com')
+    ExternalServices.setTURN('')
+    ExternalServices.setTURN('not-a-turn-url')
+    expect(ExternalServices.getTURN()).toBe('turn:turn.example.com')
   })
 })
 
-describe('setStoredTurnServerFallback', () => {
+describe('setTURNFallback', () => {
   test('persists independently of the primary', () => {
-    setStoredTurnServer('turn:primary.example.com')
-    setStoredTurnServerFallback('turn:fallback.example.com')
-    expect(getStoredTurnServer()).toBe('turn:primary.example.com')
-    expect(getStoredTurnServerFallback()).toBe('turn:fallback.example.com')
+    ExternalServices.setTURN('turn:primary.example.com')
+    ExternalServices.setTURNFallback('turn:fallback.example.com')
+    expect(ExternalServices.getTURN()).toBe('turn:primary.example.com')
+    expect(ExternalServices.getTURNFallback()).toBe('turn:fallback.example.com')
   })
 
   test('is a no-op on an invalid value', () => {
-    setStoredTurnServerFallback('turn:fallback.example.com')
-    setStoredTurnServerFallback('garbage')
-    expect(getStoredTurnServerFallback()).toBe('turn:fallback.example.com')
+    ExternalServices.setTURNFallback('turn:fallback.example.com')
+    ExternalServices.setTURNFallback('garbage')
+    expect(ExternalServices.getTURNFallback()).toBe('turn:fallback.example.com')
   })
 
   test('is a no-op when identical to the stored primary', () => {
-    setStoredTurnServer('turn:same.example.com')
-    setStoredTurnServerFallback('turn:same.example.com')
-    expect(getStoredTurnServerFallback()).toBeNull()
+    ExternalServices.setTURN('turn:same.example.com')
+    ExternalServices.setTURNFallback('turn:same.example.com')
+    expect(ExternalServices.getTURNFallback()).toBeNull()
   })
 
   test('rejecting a duplicate leaves a previously-stored fallback untouched', () => {
-    setStoredTurnServer('turn:primary.example.com')
-    setStoredTurnServerFallback('turn:fallback.example.com')
-    setStoredTurnServerFallback('turn:primary.example.com')
-    expect(getStoredTurnServerFallback()).toBe('turn:fallback.example.com')
+    ExternalServices.setTURN('turn:primary.example.com')
+    ExternalServices.setTURNFallback('turn:fallback.example.com')
+    ExternalServices.setTURNFallback('turn:primary.example.com')
+    expect(ExternalServices.getTURNFallback()).toBe('turn:fallback.example.com')
   })
 })
 
 describe('resolveIceServers', () => {
   test('is empty when nothing is stored', () => {
-    expect(resolveIceServers()).toEqual([])
+    expect(ExternalServices.resolveIceServers()).toEqual([])
   })
 
   test('includes only the primary when no fallback is stored', () => {
-    setStoredStunServer('stun:stun.example.com')
-    expect(resolveIceServers()).toEqual([{ urls: 'stun:stun.example.com' }])
+    ExternalServices.setSTUN('stun:stun.example.com')
+    expect(ExternalServices.resolveIceServers()).toEqual([{ urls: 'stun:stun.example.com' }])
   })
 
   test('includes both STUN entries when both are stored', () => {
-    setStoredStunServer('stun:primary.example.com')
-    setStoredStunServerFallback('stun:fallback.example.com')
-    expect(resolveIceServers()).toEqual([
+    ExternalServices.setSTUN('stun:primary.example.com')
+    ExternalServices.setSTUNFallback('stun:fallback.example.com')
+    expect(ExternalServices.resolveIceServers()).toEqual([
       { urls: 'stun:primary.example.com' },
       { urls: 'stun:fallback.example.com' },
     ])
   })
 
   test('includes TURN entries even with no STUN stored', () => {
-    setStoredTurnServer('turn:turn.example.com')
-    expect(resolveIceServers()).toEqual([{ urls: 'turn:turn.example.com' }])
+    ExternalServices.setTURN('turn:turn.example.com')
+    expect(ExternalServices.resolveIceServers()).toEqual([{ urls: 'turn:turn.example.com' }])
   })
 
   test('orders STUN entries before TURN entries', () => {
-    setStoredStunServer('stun:stun.example.com')
-    setStoredStunServerFallback('stun:stun-fallback.example.com')
-    setStoredTurnServer('turn:turn.example.com')
-    setStoredTurnServerFallback('turn:turn-fallback.example.com')
-    expect(resolveIceServers()).toEqual([
+    ExternalServices.setSTUN('stun:stun.example.com')
+    ExternalServices.setSTUNFallback('stun:stun-fallback.example.com')
+    ExternalServices.setTURN('turn:turn.example.com')
+    ExternalServices.setTURNFallback('turn:turn-fallback.example.com')
+    expect(ExternalServices.resolveIceServers()).toEqual([
       { urls: 'stun:stun.example.com' },
       { urls: 'stun:stun-fallback.example.com' },
       { urls: 'turn:turn.example.com' },
@@ -231,70 +220,70 @@ describe('resolveIceServers', () => {
   })
 })
 
-describe('setStoredSignalingServer', () => {
+describe('setSignalling', () => {
   test('persists a value that differs from the built-in default', () => {
-    setStoredSignalingServer('wss://custom.example.com')
-    expect(getStoredSignalingServer()).toBe('wss://custom.example.com')
+    ExternalServices.setSignalling('wss://custom.example.com')
+    expect(ExternalServices.getSignalling()).toBe('wss://custom.example.com')
   })
 
   test('is a no-op (clears) on an empty value', () => {
-    setStoredSignalingServer('wss://custom.example.com')
-    setStoredSignalingServer('')
-    expect(getStoredSignalingServer()).toBeNull()
+    ExternalServices.setSignalling('wss://custom.example.com')
+    ExternalServices.setSignalling('')
+    expect(ExternalServices.getSignalling()).toBeNull()
   })
 
   test('is a no-op (clears) when identical to the built-in default', () => {
-    setStoredSignalingServer('wss://custom.example.com')
-    setStoredSignalingServer(defaultSignalingServer())
-    expect(getStoredSignalingServer()).toBeNull()
+    ExternalServices.setSignalling('wss://custom.example.com')
+    ExternalServices.setSignalling(ExternalServices.defaultSignalling())
+    expect(ExternalServices.getSignalling()).toBeNull()
   })
 })
 
-describe('setStoredFallbackSignalingServer', () => {
+describe('setSignallingFallback', () => {
   test('persists a value that differs from both the default and the primary', () => {
-    setStoredSignalingServer('wss://primary.example.com')
-    setStoredFallbackSignalingServer('wss://fallback.example.com')
-    expect(getStoredFallbackSignalingServer()).toBe('wss://fallback.example.com')
+    ExternalServices.setSignalling('wss://primary.example.com')
+    ExternalServices.setSignallingFallback('wss://fallback.example.com')
+    expect(ExternalServices.getSignallingFallback()).toBe('wss://fallback.example.com')
   })
 
   test('is a no-op (clears) when identical to the resolved primary', () => {
-    setStoredSignalingServer('wss://same.example.com')
-    setStoredFallbackSignalingServer('wss://same.example.com')
-    expect(getStoredFallbackSignalingServer()).toBeNull()
+    ExternalServices.setSignalling('wss://same.example.com')
+    ExternalServices.setSignallingFallback('wss://same.example.com')
+    expect(ExternalServices.getSignallingFallback()).toBeNull()
   })
 
   test('is a no-op when identical to the primary default, with no primary override stored', () => {
-    // resolveSignalingServer() falls back to defaultSignalingServer() here.
-    setStoredFallbackSignalingServer(defaultSignalingServer())
-    expect(getStoredFallbackSignalingServer()).toBeNull()
+    // resolveSignalling() falls back to defaultSignalling() here.
+    ExternalServices.setSignallingFallback(ExternalServices.defaultSignalling())
+    expect(ExternalServices.getSignallingFallback()).toBeNull()
   })
 
   test('rejecting a duplicate leaves a previously-stored fallback untouched', () => {
-    setStoredSignalingServer('wss://primary.example.com')
-    setStoredFallbackSignalingServer('wss://fallback.example.com')
-    setStoredFallbackSignalingServer('wss://primary.example.com')
-    expect(getStoredFallbackSignalingServer()).toBe('wss://fallback.example.com')
+    ExternalServices.setSignalling('wss://primary.example.com')
+    ExternalServices.setSignallingFallback('wss://fallback.example.com')
+    ExternalServices.setSignallingFallback('wss://primary.example.com')
+    expect(ExternalServices.getSignallingFallback()).toBe('wss://fallback.example.com')
   })
 
   test('is a no-op (clears) when identical to the built-in fallback default', () => {
-    setStoredFallbackSignalingServer('wss://fallback.example.com')
-    setStoredFallbackSignalingServer(defaultFallbackSignalingServer())
-    expect(getStoredFallbackSignalingServer()).toBeNull()
+    ExternalServices.setSignallingFallback('wss://fallback.example.com')
+    ExternalServices.setSignallingFallback(ExternalServices.defaultSignallingFallback())
+    expect(ExternalServices.getSignallingFallback()).toBeNull()
   })
 })
 
-describe('resolveSignalingServers', () => {
+describe('resolveSignallingAll', () => {
   test('is just the primary when no fallback is stored or defaulted', () => {
-    // Under jsdom's default localhost origin, defaultFallbackSignalingServer()
+    // Under jsdom's default localhost origin, defaultSignallingFallback()
     // is '' — no fallback in play at all.
-    setStoredSignalingServer('wss://only.example.com')
-    expect(resolveSignalingServers()).toEqual(['wss://only.example.com'])
+    ExternalServices.setSignalling('wss://only.example.com')
+    expect(ExternalServices.resolveSignallingAll()).toEqual(['wss://only.example.com'])
   })
 
   test('includes both when primary and fallback differ', () => {
-    setStoredSignalingServer('wss://primary.example.com')
-    setStoredFallbackSignalingServer('wss://fallback.example.com')
-    expect(resolveSignalingServers()).toEqual([
+    ExternalServices.setSignalling('wss://primary.example.com')
+    ExternalServices.setSignallingFallback('wss://fallback.example.com')
+    expect(ExternalServices.resolveSignallingAll()).toEqual([
       'wss://primary.example.com',
       'wss://fallback.example.com',
     ])
