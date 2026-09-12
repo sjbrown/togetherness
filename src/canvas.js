@@ -279,6 +279,21 @@ function onPointerDown(e) {
       }
     }
 
+    // Rotate mode's corner handles sit exactly where resize mode's do, and
+    // are just as far outside the element's own hit-testable bounds, so
+    // they get the same pointer-position check rather than relying on hitId.
+    const rotateId = App.getRotateModeId();
+    if (rotateId) {
+      const rp = toCanvas(e.clientX, e.clientY);
+      const corner = App.getRotateHandle(rotateId, rp.x, rp.y);
+      if (corner != null) {
+        ToolMode._gesture = 'rotate';
+        ToolMode._moveRef = { id: rotateId, corner, moved: false };
+        App.startRotate(rotateId, corner);
+        return;
+      }
+    }
+
     if (hitId) {
       if (e.shiftKey) {
         // Shift-click: toggle selection membership.
@@ -405,6 +420,14 @@ function onPointerMove(e) {
     return;
   }
 
+  if (ToolMode._gesture === 'rotate' && ToolMode._moveRef) {
+    const ref = ToolMode._moveRef;
+    const p   = toCanvas(e.clientX, e.clientY);
+    ref.moved = true;
+    App.rotate(ref.id, ref.corner, p.x, p.y);
+    return;
+  }
+
   if (ToolMode._gesture === 'multi-move' && ToolMode._moveRef) {
     const ref = ToolMode._moveRef;
     const ddx = (e.clientX - ref.sx) / _view.scale;
@@ -492,6 +515,16 @@ function onPointerUp(e) {
       const ref = ToolMode._moveRef;
       const p   = toCanvas(e.clientX, e.clientY);
       App.commitResize(ref.id, ref.corner, p.x, p.y);
+    }
+  }
+
+  if (ToolMode._gesture === 'rotate' && ToolMode._moveRef) {
+    if (isCancelled || !ToolMode._moveRef.moved) {
+      App.cancelRotate();
+    } else {
+      const ref = ToolMode._moveRef;
+      const p   = toCanvas(e.clientX, e.clientY);
+      App.commitRotate(ref.id, ref.corner, p.x, p.y);
     }
   }
 

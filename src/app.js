@@ -196,6 +196,7 @@ function _broadcastDesired() {
 
 // Modes with their own drag handles.
 const RESIZE_HANDLE_MODES = new Set(['sel-resize', 'sel-resize-r']);
+const ROTATE_HANDLE_MODES = new Set(['sel-rotate']);
 
 // id's own live DOM element and owning LayerAPI
 function _layerFor(id) {
@@ -206,6 +207,30 @@ function _layerFor(id) {
 function _defaultModeFor(id) {
   const { domEl, layer } = _layerFor(id);
   return layer?.nextSelectMode?.(domEl, null) ?? null;
+}
+
+// id's rotation in degrees, 0 for a layer that doesn't do rotation.
+function _rotationOf(id) {
+  const { domEl, layer } = _layerFor(id);
+  return layer?.getRotation?.(domEl) ?? 0;
+}
+
+// Canvas-space (px, py) expressed in id's own UNROTATED space. Handles are
+// drawn rotated with the element, and getGeom()/computeResize() both speak
+// local space, so every hit-test and resize computation comes through here
+// first. A no-op for anything unrotated, which is nearly everything.
+function _toLocalPoint(id, px, py, deg = _rotationOf(id)) {
+  if (!deg) return { x: px, y: py };
+  const geo = App.getBBox(id);
+  if (!geo) return { x: px, y: py };
+  const cx  = geo.x + geo.width / 2;
+  const cy  = geo.y + geo.height / 2;
+  const rad = -deg * Math.PI / 180;
+  const dx  = px - cx, dy = py - cy;
+  return {
+    x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
+    y: cy + dx * Math.sin(rad) + dy * Math.cos(rad),
+  };
 }
 
 function _renderSelectionMode() {
@@ -279,8 +304,20 @@ let _multiDragState = null;  // { elements: [{ id, mtype, anchorX, anchorY, bbox
                              //   lastValidDx, lastValidDy } | null
 
 // Active corner-drag resize
-let _resizeState = null;    // { id, corner, startRect: {x,y,width,height},
+let _resizeState = null;    // { id, corner, mtype, mode, rotation,
+                            //   startRect: {x,y,width,height},
                             //   lastRect: {x,y,width,height} } | null
+
+// Active corner-drag rotation — the sibling of _resizeState, kept separate
+// so the two gestures can never be half-confused for one another.
+let _rotateState = null;    // { id, corner, mtype,
+                            //   startRect: {x,y,width,height} } | null
+
+// How far one rotate step turns a shape. A single mutable seam so a future
+// per-table or per-user control has somewhere to write; every geometry
+// function downstream takes the step as an argument rather than reading a
+// constant.
+let _rotateSnapDeg = Drawing.ROTATE_SNAP_DEG;
 
 // Which undo mechanism App.undo/App.redo should invoke: the toys op log
 // (Toys.undoToyGesture) or the drawing/boundaries Y.UndoManager
@@ -877,6 +914,10 @@ const App = {
     const mtype = moduleForElement(svgEl);
     return _Layers[mtype]?.getAnchor(svgEl) ?? { x: 0, y: 0 };
   },
+  // Degrees, 0 when the element isn't rotated or its layer has no notion of
+  // rotation. Read by overlay.js to turn an element's selection furniture
+  // with it — getBBox stays unrotated.
+  getRotation: (id) => _rotationOf(id),
   getLayerObjects: (layerId) => _Layers[LAYER_ID_TO_MODULE[layerId]]?.listData() ?? [],
   // Return ids of objects on the active layer whose bbox is fully inside rect.
   // rect is canvas-space { x, y, width, height }.
@@ -1587,7 +1628,8 @@ const App = {
   getResizeCorner: (id, cx, cy) => {
     if (_activeMode?.id !== id || !RESIZE_HANDLE_MODES.has(_activeMode.mode)) return null;
     const geo = App.getBBox(id);
-    return Overlay.hitTestSelectionHandle(_activeMode.mode, geo, cx, cy, App.getViewScale());
+    const p   = _toLocalPoint(id, cx, cy);
+    return Overlay.hitTestSelectionHandle(_activeMode.mode, geo, p.x, p.y, App.getViewScale());
   },
 
   startResize: (id, corner) => {
@@ -1596,7 +1638,13 @@ const App = {
     if (!bbox) return;
     const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
     const mtype = moduleForElement(domEl);
-    _resizeState = { id, corner, mtype, mode: _activeMode.mode, startRect: { ...bbox }, lastRect: { ...bbox } };
+    // The rotation is captured once: a resize never changes it, and every
+    // pointer sample has to be un-rotated by the SAME angle the handles
+    // were drawn at.
+    _resizeState = {
+      id, corner, mtype, mode: _activeMode.mode, rotation: _rotationOf(id),
+      startRect: { ...bbox }, lastRect: { ...bbox },
+    };
     Overlay.startResizeGhost(id);
   },
 
@@ -1605,14 +1653,16 @@ const App = {
   // is id's own owning LayerAPI's call, via computeResize(mode, ...).
   resize: (id, corner, px, py) => {
     if (!_resizeState || _resizeState.id !== id) return;
-    const rect = _Layers[_resizeState.mtype].computeResize(_resizeState.mode, _resizeState.startRect, corner, px, py);
+    const p = _toLocalPoint(id, px, py, _resizeState.rotation);
+    const rect = _Layers[_resizeState.mtype].computeResize(_resizeState.mode, _resizeState.startRect, corner, p.x, p.y);
     _resizeState.lastRect = rect;
     Overlay.updateResizeGhost(id, rect.x, rect.y, rect.width, rect.height);
   },
 
   commitResize: (id, corner, px, py) => {
     if (!_resizeState || _resizeState.id !== id) return;
-    const toRect = _Layers[_resizeState.mtype].computeResize(_resizeState.mode, _resizeState.startRect, corner, px, py);
+    const p = _toLocalPoint(id, px, py, _resizeState.rotation);
+    const toRect = _Layers[_resizeState.mtype].computeResize(_resizeState.mode, _resizeState.startRect, corner, p.x, p.y);
     const mtype    = _resizeState.mtype;
     _resizeState = null;
 
@@ -1632,6 +1682,68 @@ const App = {
     if (!_resizeState) return;
     Overlay.endResizeGhost(_resizeState.id);
     _resizeState = null;
+  },
+
+  // ── Rotate lifecycle ──────────────────────────────────────────────────────
+  // Deliberately parallel to the resize lifecycle above — same corner-handle
+  // hit-test, same ghost, same start/move/commit/cancel shape — because it
+  // is the same gesture with different arithmetic behind it. What differs:
+  // the pointer stays in CANVAS space (an absolute angle about the shape's
+  // centre is the whole point), and the commit writes one degree count
+  // rather than a bbox.
+
+  // The rotate-mode twin of getResizeModeId.
+  getRotateModeId: () => (_activeMode && ROTATE_HANDLE_MODES.has(_activeMode.mode)) ? _activeMode.id : null,
+
+  // The step rotation snaps to, in degrees. Surfaced as a pair so a control
+  // can change it later without any geometry knowing.
+  getRotateSnapDeg: () => _rotateSnapDeg,
+  setRotateSnapDeg: (deg) => { _rotateSnapDeg = Number(deg) || 0; },
+
+  getRotateHandle: (id, cx, cy) => {
+    if (_activeMode?.id !== id || !ROTATE_HANDLE_MODES.has(_activeMode.mode)) return null;
+    const geo = App.getBBox(id);
+    const p   = _toLocalPoint(id, cx, cy);
+    return Overlay.hitTestSelectionHandle(_activeMode.mode, geo, p.x, p.y, App.getViewScale());
+  },
+
+  startRotate: (id, corner) => {
+    if (_activeMode?.id !== id || !ROTATE_HANDLE_MODES.has(_activeMode.mode) || App.isHeldByOther(id)) return;
+    const bbox = App.getBBox(id);
+    if (!bbox) return;
+    const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
+    _rotateState = { id, corner, mtype: moduleForElement(domEl), startRect: { ...bbox } };
+    Overlay.startResizeGhost(id);
+  },
+
+  // Called on every pointermove during a rotate drag; (px, py) is the raw
+  // canvas-space pointer position, NOT un-rotated — computeRotate measures
+  // the absolute angle from the shape's centre out to the pointer.
+  rotate: (id, corner, px, py) => {
+    if (!_rotateState || _rotateState.id !== id) return;
+    const layer = _Layers[_rotateState.mtype];
+    const deg = layer.computeRotate(_rotateState.startRect, corner, px, py, _rotateSnapDeg);
+    Overlay.updateRotateGhost(id, deg, _rotateState.startRect);
+  },
+
+  commitRotate: (id, corner, px, py) => {
+    if (!_rotateState || _rotateState.id !== id) return;
+    const mtype = _rotateState.mtype;
+    const deg = _Layers[mtype].computeRotate(_rotateState.startRect, corner, px, py, _rotateSnapDeg);
+    _rotateState = null;
+
+    const el = _Layers[mtype]?.find(id);
+    _lastActionScope = mtype;
+    _Layers[mtype]?.applyRotate(el, deg);
+    // Ghost ends after the commit — same reasoning as commitResize.
+    Overlay.endResizeGhost(id);
+    addHistory(`rotated ${id} → ${deg}°`, { elType: mtype });
+  },
+
+  cancelRotate: () => {
+    if (!_rotateState) return;
+    Overlay.endResizeGhost(_rotateState.id);
+    _rotateState = null;
   },
 
   // ── Multi-element drag lifecycle ──────────────────────────────────────────

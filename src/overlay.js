@@ -16,6 +16,9 @@
  *                    shows before any mode-cycling click (see below)
  *   'sel-resize'   — local selection ring + 4 corner drag handles
  *   'sel-resize-r' — local selection ring + 1 radius-drag handle (circles)
+ *   'sel-rotate'   — local selection ring + 4 corner rotate handles; round,
+ *                    with a circular-arrow glyph, so they never read as the
+ *                    square resize handles
  *   'sel-action'   — local selection ring + the action affordance square
  *                    (kebab/asterisk glyph, bowstring handle's resting state)
  *   'locked'       — remote peer is actively editing
@@ -63,9 +66,14 @@
 import { getAllContestedElementIds } from './soft_lock.js';
 import { colorMatrixValues } from './toys.js';
 import { previewResize as previewBounPosResize } from './boun_pos.js';
+import {
+  previewResize as previewDrawingResize,
+  previewRotate as previewDrawingRotate,
+  getRotation   as elementRotation,
+} from './drawing.js';
 import { LOCAL_ACTION_FILTER_ID } from './defs.js';
 import { getBowstringState, chargeOpacityFor, chargeRadiusFor, bowstringOrigin } from './delight.js';
-import { drawAsteriskGlyph, drawCrosshairGlyph } from './icons.js';
+import { drawAsteriskGlyph, drawCrosshairGlyph, drawRotateGlyph } from './icons.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const HANDLE_SIZE = 12;  // px in canvas-space
@@ -76,7 +84,7 @@ const HANDLE_HIT_PAD = 6; // extra px (canvas-space, pre-scale)
                           // added to the handle's own hit box
 
 const SELECTION_MODES = new Set([
-  'sel-move', 'sel-resize', 'sel-resize-r', 'sel-action',
+  'sel-move', 'sel-resize', 'sel-resize-r', 'sel-rotate', 'sel-action',
 ]);
 
 /**
@@ -145,7 +153,8 @@ export function hitTestResizeRHandle(geo, px, py, scale) {
  */
 export function hitTestSelectionHandle(mode, geo, px, py, scale) {
   switch (mode) {
-    case 'sel-resize':   return hitTestResizeCorner(geo, px, py, scale);
+    case 'sel-resize':
+    case 'sel-rotate':   return hitTestResizeCorner(geo, px, py, scale);
     case 'sel-resize-r': return hitTestResizeRHandle(geo, px, py, scale) ? 'r' : null;
     default:             return null;
   }
@@ -506,34 +515,51 @@ export function updateResizeGhost(elId, x, y, width, height) {
       el.setAttribute('width', width);
       el.setAttribute('height', height);
     }
-  } else if (entry.ghostEl.tagName === 'rect') {
-    // Drawing-layer rects have no embedded <svg> to resize — the ghost
-    // clone IS the shape, so mutate its own x/y/width/height directly.
-    entry.ghostEl.setAttribute('x', x);
-    entry.ghostEl.setAttribute('y', y);
-    entry.ghostEl.setAttribute('width', width);
-    entry.ghostEl.setAttribute('height', height);
-  } else if (entry.ghostEl.tagName === 'circle') {
-    // (x, y, width, height) is the circle's bbox form (see
-    // Drawing.computeResizeRadiusRect) — derive cx/cy/r from it.
-    const r = width / 2;
-    entry.ghostEl.setAttribute('cx', x + r);
-    entry.ghostEl.setAttribute('cy', y + r);
-    entry.ghostEl.setAttribute('r',  r);
+  } else if (entry.ghostEl.getAttribute?.('data-module') === 'drawing') {
+    // Drawing-layer shapes have no embedded <svg> to resize — the ghost
+    // clone IS the shape. drawing.js owns which attributes that means, and
+    // re-derives a rotated shape's pivot from the new geometry.
+    previewDrawingResize(entry.ghostEl, x, y, width, height);
   } else if (entry.ghostEl.getAttribute?.('data-module') === 'boun_pos') {
     // A boundary/pos-set ghost is a <g> with <path>/<text>(/<circle>...)
     // children rather than its own x/y/width/height.
     // A pos-set's grid has to be regenerated, not just stretched.
     previewBounPosResize(entry.ghostEl, x, y, width, height);
   }
-  const scale = App.getViewScale();
-  entry.ringEl.setAttribute('x',                x - PAD);
-  entry.ringEl.setAttribute('y',                y - PAD);
-  entry.ringEl.setAttribute('width',            width  + PAD * 2);
-  entry.ringEl.setAttribute('height',           height + PAD * 2);
-  entry.ringEl.setAttribute('rx',               10);
-  entry.ringEl.setAttribute('stroke',           _localGradUrl());
-  entry.ringEl.setAttribute('stroke-width',     2 / scale);
+  _sizeGhostRing(entry, x, y, width, height);
+}
+
+/**
+ * A ghost's own selection ring: same geometry as the live one, pinned to
+ * whatever the gesture is previewing rather than to the committed bbox, and
+ * turned to match whatever rotation the ghost itself is carrying.
+ */
+function _sizeGhostRing(entry, x, y, width, height) {
+  const scale  = App.getViewScale();
+  const deg    = elementRotation(entry.ghostEl);
+  const ringEl = entry.ringEl;
+  ringEl.setAttribute('x',            x - PAD);
+  ringEl.setAttribute('y',            y - PAD);
+  ringEl.setAttribute('width',        width  + PAD * 2);
+  ringEl.setAttribute('height',       height + PAD * 2);
+  ringEl.setAttribute('rx',           10);
+  ringEl.setAttribute('stroke',       _localGradUrl());
+  ringEl.setAttribute('stroke-width', 2 / scale);
+  if (deg) ringEl.setAttribute('transform', `rotate(${deg} ${x + width / 2} ${y + height / 2})`);
+  else     ringEl.removeAttribute('transform');
+}
+
+/**
+ * Update the local rotate ghost to `deg` — the rotate counterpart of
+ * updateResizeGhost, sharing its ghost/placeholder pair since only one
+ * handle gesture can be live at a time. geo is the element's committed
+ * (unrotated) bbox, which a rotation never changes. DOM-only.
+ */
+export function updateRotateGhost(elId, deg, geo) {
+  const entry = _resizeGhosts.get(elId);
+  if (!entry || !geo) return;
+  previewDrawingRotate(entry.ghostEl, deg);
+  _sizeGhostRing(entry, geo.x, geo.y, geo.width, geo.height);
 }
 
 /**
@@ -658,25 +684,32 @@ export function render() {
     if (entry.mode === 'none') continue;
     const geo = App.getBBox(elId);
     if (!geo) continue;
+    // getBBox is the element's UNROTATED box; its furniture rides the same
+    // rotation the element itself carries so the ring hugs the shape
+    // instead of its axis-aligned bounds.
+    const rot = decorRotation(elId, geo);
     switch (entry.mode) {
       case 'local':
       case 'candidate':
       case 'sel-move':
-        renderLocalSelection(geo, entry, scale);
+        renderLocalSelection(geo, entry, scale, rot);
         break;
       case 'remote':
       case 'locked':
-        renderRemoteSelection(geo, entry, scale);
+        renderRemoteSelection(geo, entry, scale, rot);
         break;
       case 'sel-resize':
-        renderLocalResizeSelection(geo, entry, scale);
+        renderLocalResizeSelection(geo, entry, scale, rot);
         break;
       case 'sel-resize-r':
-        renderLocalResizeRSelection(geo, entry, scale);
+        renderLocalResizeRSelection(geo, entry, scale, rot);
+        break;
+      case 'sel-rotate':
+        renderLocalRotateSelection(geo, entry, scale, rot);
         break;
       case 'sel-action':
-        renderLocalSelection(geo, entry, scale);
-        renderActionAffordance(geo, scale);
+        renderLocalSelection(geo, entry, scale, rot);
+        renderActionAffordance(geo, scale, rot);
         break;
     }
   }
@@ -688,7 +721,7 @@ export function render() {
   for (const elId of _contestedIds) {
     const geo = App.getBBox(elId);
     if (!geo) continue;
-    renderRequestedIndicator(geo, scale);
+    renderRequestedIndicator(geo, scale, decorRotation(elId, geo));
   }
 
   // ── Remote drag ghosts + rings ─────────────────────────────────────────
@@ -839,7 +872,31 @@ function _updateDragRing(entry, elId, scale) {
   ringEl.setAttribute('stroke-dasharray',   `${6 / scale} ${3 / scale}`);
 }
 
-function renderLocalSelection(geo, entry, scale) {
+/**
+ * The rotate() an element's selection furniture has to ride, as an SVG
+ * transform string, or null when the element isn't rotated. Layers that
+ * don't do rotation (toys, boundaries) report none and everything below
+ * takes the untransformed path unchanged.
+ */
+function decorRotation(elId, geo) {
+  const deg = App.getRotation?.(elId) ?? 0;
+  if (!deg) return null;
+  return `rotate(${deg} ${geo.x + geo.width / 2} ${geo.y + geo.height / 2})`;
+}
+
+/**
+ * Where one element's selection furniture should be appended: a rotated
+ * <g> for a rotated element, or the layer itself for the common case, so
+ * an unrotated selection costs no extra node.
+ */
+function decorGroup(rot) {
+  if (!rot) return _layerEl;
+  const g = el('g', { transform: rot });
+  _layerEl.appendChild(g);
+  return g;
+}
+
+function renderLocalSelection(geo, entry, scale, rot = null) {
   const { x, y, width, height } = geo;
   const stroke = _localGradUrl();
   const ring = el('rect', {
@@ -853,12 +910,13 @@ function renderLocalSelection(geo, entry, scale) {
     'stroke-width': 2 / scale,
     class:          'selRing',
   });
-  _layerEl.appendChild(ring);
+  decorGroup(rot).appendChild(ring);
 
 }
 
-function renderLocalResizeSelection(geo, entry, scale) {
+function renderLocalResizeSelection(geo, entry, scale, rot = null) {
   const { x, y, width, height } = geo;
+  const parent = decorGroup(rot);
   const stroke = entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)');
   const ring = el('rect', {
     x:      x - PAD,
@@ -871,14 +929,14 @@ function renderLocalResizeSelection(geo, entry, scale) {
     'stroke-width': 2 / scale,
     class:          'selRing',
   });
-  _layerEl.appendChild(ring);
+  parent.appendChild(ring);
 
   // Build corner handles
   const side_len = HANDLE_SIZE / scale;
   const corners = ['nw', 'ne', 'se', 'sw'];
   for (let i = 0; i < resizeCorners(geo).length; i++) {
     const { x: hx, y: hy } = resizeCorners(geo)[i];
-    _layerEl.appendChild(el('rect', {
+    parent.appendChild(el('rect', {
       x: hx - side_len / 2,
       y: hy - side_len / 2,
       width: side_len,
@@ -893,12 +951,56 @@ function renderLocalResizeSelection(geo, entry, scale) {
 }
 
 /**
+ * Same selection ring as renderLocalResizeSelection, but the four corner
+ * handles are ROUND and carry a circular-arrow glyph instead of being plain
+ * squares — the one visual cue that says this drag spins the shape rather
+ * than stretching it. Used for the 'sel-rotate' mode (currently: rects).
+ */
+function renderLocalRotateSelection(geo, entry, scale, rot = null) {
+  const { x, y, width, height } = geo;
+  const parent = decorGroup(rot);
+  const stroke = entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)');
+  parent.appendChild(el('rect', {
+    x:      x - PAD,
+    y:      y - PAD,
+    width:  width  + PAD * 2,
+    height: height + PAD * 2,
+    rx:     10,
+    fill:           'none',
+    stroke,
+    'stroke-width': 2 / scale,
+    class:          'selRing',
+  }));
+
+  // A shade larger than the resize squares — both because a disc reads
+  // smaller than a square of the same span, and because the arrow inside
+  // needs the room to be legible. Still well inside hitTestResizeCorner's
+  // grab radius, which both modes share.
+  const r = (HANDLE_SIZE * 0.62) / scale;
+  const corners = ['nw', 'ne', 'se', 'sw'];
+  resizeCorners(geo).forEach(({ x: hx, y: hy }, i) => {
+    // The disc and its glyph ride together in one <g> so the whole handle
+    // is addressable as a unit (and so the glyph never takes the pointer
+    // away from the disc under it).
+    const handle = el('g', { class: 'handle rotateHandle', 'data-corner': corners[i], 'data-rotate-handle': '' });
+    handle.appendChild(el('circle', {
+      cx: hx, cy: hy, r,
+      fill: 'var(--surface-solid)', stroke: 'var(--info)',
+      'stroke-width': 1.5 / scale,
+    }));
+    drawRotateGlyph(hx, hy, r * 0.46, handle);
+    parent.appendChild(handle);
+  });
+}
+
+/**
  * Same selection ring as renderLocalResizeSelection, but a single
  * radius-drag handle centered on the right edge instead of four corner
  * handles — used for the 'sel-resize-r' mode (currently: circles).
  */
-function renderLocalResizeRSelection(geo, entry, scale) {
+function renderLocalResizeRSelection(geo, entry, scale, rot = null) {
   const { x, y, width, height } = geo;
+  const parent = decorGroup(rot);
   const stroke = entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)');
   const ring = el('rect', {
     x:      x - PAD,
@@ -911,11 +1013,11 @@ function renderLocalResizeRSelection(geo, entry, scale) {
     'stroke-width': 2 / scale,
     class:          'selRing',
   });
-  _layerEl.appendChild(ring);
+  parent.appendChild(ring);
 
   const side_len = HANDLE_SIZE / scale;
   const { x: hx, y: hy } = resizeRHandle(geo);
-  _layerEl.appendChild(el('rect', {
+  parent.appendChild(el('rect', {
     x: hx - side_len / 2,
     y: hy - side_len / 2,
     width: side_len,
@@ -933,7 +1035,7 @@ const ACTION_ICON_SIZE = 22; // px
 
 // Render a single rounded-corner icon square — asterisk (*), the bowstring
 // handle's resting state
-function renderActionAffordance(geo, scale) {
+function renderActionAffordance(geo, scale, rot = null) {
   const side = ACTION_ICON_SIZE / scale;
   const [, , se] = resizeCorners(geo); // resizeCorners: [NW, NE, SE, SW]
   // The SE square is the bowstring handle's resting state (see delight.js).
@@ -941,11 +1043,11 @@ function renderActionAffordance(geo, scale) {
   // square plus glyph — is addressable as one unit. This layer still gets
   // wiped on every render(); the LIVE gesture is built separately in
   // #delight-layer, which is never wiped.
-  drawActionSquare(se, side, scale, 'bowstring');
+  drawActionSquare(se, side, scale, 'bowstring', decorGroup(rot));
 }
 
-function drawActionSquare({ x: cx, y: cy }, side, scale, groupClass) {
-  const parent = groupClass ? el('g', { class: groupClass }) : _layerEl;
+function drawActionSquare({ x: cx, y: cy }, side, scale, groupClass, host = _layerEl) {
+  const parent = groupClass ? el('g', { class: groupClass }) : host;
   parent.appendChild(el('rect', {
     x: cx - side / 2, y: cy - side / 2,
     width: side, height: side,
@@ -955,10 +1057,10 @@ function drawActionSquare({ x: cx, y: cy }, side, scale, groupClass) {
     class:  'actionSquare',
   }));
   drawAsteriskGlyph(cx, cy, side, parent);
-  if (parent !== _layerEl) _layerEl.appendChild(parent);
+  if (parent !== host) host.appendChild(parent);
 }
 
-function renderRemoteSelection(geo, entry, scale) {
+function renderRemoteSelection(geo, entry, scale, rot = null) {
   const { x, y, width, height } = geo;
   const group = el('g', { class: 'remote-sel' });
 
@@ -977,6 +1079,9 @@ function renderRemoteSelection(geo, entry, scale) {
     'stroke-width': 1.5 / scale,
     'stroke-dasharray': `${4 / scale} ${3 / scale}`,
   });
+  // Only the ring rides the rotation — the peer name label stays upright
+  // and readable however the element is turned.
+  if (rot) ring.setAttribute('transform', rot);
   group.appendChild(ring);
 
   // Peer name label above the ring
@@ -1010,7 +1115,7 @@ function renderRemoteSelection(geo, entry, scale) {
 // selection ring, or nothing at all). Deliberately visually distinct from
 // both the local (gradient) and remote (peer-colored dashed) rings so it
 // reads as "someone wants this" rather than "someone has this".
-function renderRequestedIndicator(geo, scale) {
+function renderRequestedIndicator(geo, scale, rot = null) {
   const { x, y, width, height } = geo;
   const ring = el('rect', {
     x:      x - REQUESTED_PAD,
@@ -1030,6 +1135,7 @@ function renderRequestedIndicator(geo, scale) {
   anim.setAttribute('dur',           '1.2s');
   anim.setAttribute('repeatCount',   'indefinite');
   ring.appendChild(anim);
+  if (rot) ring.setAttribute('transform', rot);
   _layerEl.appendChild(ring);
 }
 
