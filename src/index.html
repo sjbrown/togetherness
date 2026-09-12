@@ -194,6 +194,7 @@ import { dragPlaceholderFilterSVG, snapPointGradientSVG, localActionFilterSVG, g
 import { tablesAPI as tables } from './tables.js';
 import { resolveJoinIntent }    from './ui_join_dialog.js';
 import { resolveSignalingServers, getStoredSignalingServer, getStoredFallbackSignalingServer } from './signaling.js';
+import { resolveIceServers } from './stun.js';
 import * as Trace                  from './trace.js';
 
 // Inject shared SVG defs (filters etc.) into the canvas <defs> element.
@@ -256,8 +257,13 @@ Trace.net('signaling', `signaling servers: ${signalingUrls.join(', ')}`, {
   fallbackOverridden: getStoredFallbackSignalingServer() !== null,
   room:               tableId,
 });
-const provider     = new WebrtcProvider(tableId, ydoc, { signaling: signalingUrls });
-Trace.net('provider', 'WebrtcProvider constructed — handshakes begin', { room: tableId });
+// No iceServers override means no `peerOpts.config` at all, leaving
+// simple-peer's own built-in STUN servers in effect.
+const iceServers   = resolveIceServers();
+const providerOpts = { signaling: signalingUrls };
+if (iceServers.length) providerOpts.peerOpts = { config: { iceServers } };
+const provider     = new WebrtcProvider(tableId, ydoc, providerOpts);
+Trace.net('provider', 'WebrtcProvider constructed — handshakes begin', { room: tableId, iceServers });
 const awareness    = provider.awareness;
 awareness.setLocalState({ user, cursor: null, desired: {} });
 

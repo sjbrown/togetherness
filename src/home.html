@@ -544,6 +544,10 @@ body {
           <input class="advanced-input" id="signalingServer" type="text" autocomplete="off" spellcheck="false">
           <label class="advanced-label" for="signalingServerFallback">Signaling Server (fallback):</label>
           <input class="advanced-input" id="signalingServerFallback" type="text" autocomplete="off" spellcheck="false">
+          <label class="advanced-label" for="stunServer">STUN Server:</label>
+          <input class="advanced-input" id="stunServer" type="text" autocomplete="off" spellcheck="false" placeholder="[Yjs Default]">
+          <label class="advanced-label" for="stunServerFallback">STUN Server (fallback):</label>
+          <input class="advanced-input" id="stunServerFallback" type="text" autocomplete="off" spellcheck="false" placeholder="[Yjs Default]">
         </div>
       </div>
     </div>
@@ -628,6 +632,10 @@ import {
   getStoredSignalingServer, setStoredSignalingServer, defaultSignalingServer,
   getStoredFallbackSignalingServer, setStoredFallbackSignalingServer, defaultFallbackSignalingServer,
 } from './signaling.js';
+import {
+  getStoredStunServer, setStoredStunServer,
+  getStoredStunServerFallback, setStoredStunServerFallback,
+} from './stun.js';
 
 function drawGradientSwatch(canvas, gradObj) {
   const ctx  = canvas.getContext('2d');
@@ -717,6 +725,8 @@ const advancedLinkEl     = document.getElementById('advancedLink');
 const advancedPanelEl    = document.getElementById('advancedPanel');
 const signalingEl        = document.getElementById('signalingServer');
 const signalingFallbackEl = document.getElementById('signalingServerFallback');
+const stunEl             = document.getElementById('stunServer');
+const stunFallbackEl     = document.getElementById('stunServerFallback');
 
 advancedLinkEl.addEventListener('click', (e) => {
   e.preventDefault();
@@ -725,6 +735,10 @@ advancedLinkEl.addEventListener('click', (e) => {
   if (opening) {
     signalingEl.value         = getStoredSignalingServer() ?? defaultSignalingServer();
     signalingFallbackEl.value = getStoredFallbackSignalingServer() ?? defaultFallbackSignalingServer();
+    // No built-in default to show here — an unset field just means the
+    // "[Yjs Default]" placeholder shows through.
+    stunEl.value             = getStoredStunServer() ?? '';
+    stunFallbackEl.value     = getStoredStunServerFallback() ?? '';
   }
 });
 
@@ -747,6 +761,20 @@ signalingFallbackEl.addEventListener('change', () => {
   } else {
     setStoredFallbackSignalingServer(null);
   }
+});
+
+// Empty or invalid input is a no-op in setStoredStunServer(); re-reading
+// the stored value afterward reverts the field to whatever's actually in
+// effect (blank if nothing valid was ever stored) rather than leaving a
+// rejected value sitting in the input.
+stunEl.addEventListener('change', () => {
+  setStoredStunServer(stunEl.value);
+  stunEl.value = getStoredStunServer() ?? '';
+});
+
+stunFallbackEl.addEventListener('change', () => {
+  setStoredStunServerFallback(stunFallbackEl.value);
+  stunFallbackEl.value = getStoredStunServerFallback() ?? '';
 });
 
 // ── Previous tables ───────────────────────────────────────────────────────
