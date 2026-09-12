@@ -196,7 +196,10 @@ function _broadcastDesired() {
 
 // Modes with their own drag handles.
 const RESIZE_HANDLE_MODES = new Set(['sel-resize', 'sel-resize-r']);
-const ROTATE_HANDLE_MODES = new Set(['sel-rotate']);
+// 'sel-rotate' turns about a fixed pivot (toys); 'sel-rotate-pivot' about one
+// the user can place (rects). The gesture is identical either way — only
+// where the shape's own layer says the centre is differs.
+const ROTATE_HANDLE_MODES = new Set(['sel-rotate', 'sel-rotate-pivot']);
 
 // id's own live DOM element and owning LayerAPI
 function _layerFor(id) {
@@ -209,22 +212,29 @@ function _defaultModeFor(id) {
   return layer?.nextSelectMode?.(domEl, null) ?? null;
 }
 
-// id's rotation in degrees, 0 for a layer that doesn't do rotation.
+// id's rotation resolved against its current geometry — { deg, cx, cy }, or
+// null when it isn't rotated or its layer has no notion of rotation. The
+// layer owns where the pivot is; nothing here assumes the middle.
 function _rotationOf(id) {
   const { domEl, layer } = _layerFor(id);
-  return layer?.getRotation?.(domEl) ?? 0;
+  return layer?.resolveRotation?.(domEl) ?? null;
+}
+
+// The canvas-space point id turns about, rotated or not, or null for a layer
+// that has no notion of one. Captured at the start of a gesture so every
+// sample of it measures from the same place.
+function _rotationCenterOf(id, geom) {
+  const { domEl, layer } = _layerFor(id);
+  return layer?.rotationCenter?.(domEl, geom) ?? null;
 }
 
 // Canvas-space (px, py) expressed in id's own UNROTATED space. Handles are
 // drawn rotated with the element, and getGeom()/computeResize() both speak
 // local space, so every hit-test and resize computation comes through here
 // first. A no-op for anything unrotated, which is nearly everything.
-function _toLocalPoint(id, px, py, deg = _rotationOf(id)) {
-  if (!deg) return { x: px, y: py };
-  const geo = App.getBBox(id);
-  if (!geo) return { x: px, y: py };
-  const cx  = geo.x + geo.width / 2;
-  const cy  = geo.y + geo.height / 2;
+function _toLocalPoint(id, px, py, rot = _rotationOf(id)) {
+  if (!rot) return { x: px, y: py };
+  const { deg, cx, cy } = rot;
   const rad = -deg * Math.PI / 180;
   const dx  = px - cx, dy = py - cy;
   return {
@@ -310,7 +320,7 @@ let _resizeState = null;    // { id, corner, mtype, mode, rotation,
 
 // Active corner-drag rotation — the sibling of _resizeState, kept separate
 // so the two gestures can never be half-confused for one another.
-let _rotateState = null;    // { id, corner, mtype,
+let _rotateState = null;    // { id, corner, mtype, centre: {cx,cy},
                             //   startRect: {x,y,width,height} } | null
 
 // How far one rotate step turns a shape. A single mutable seam so a future
@@ -914,9 +924,8 @@ const App = {
     const mtype = moduleForElement(svgEl);
     return _Layers[mtype]?.getAnchor(svgEl) ?? { x: 0, y: 0 };
   },
-  // Degrees, 0 when the element isn't rotated or its layer has no notion of
-  // rotation. Read by overlay.js to turn an element's selection furniture
-  // with it — getBBox stays unrotated.
+  // { deg, cx, cy } or null. Read by overlay.js to turn an element's
+  // selection furniture with it — getBBox stays unrotated.
   getRotation: (id) => _rotationOf(id),
   getLayerObjects: (layerId) => _Layers[LAYER_ID_TO_MODULE[layerId]]?.listData() ?? [],
   // Return ids of objects on the active layer whose bbox is fully inside rect.
@@ -1639,7 +1648,7 @@ const App = {
     const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
     const mtype = moduleForElement(domEl);
     // The rotation is captured once: a resize never changes it, and every
-    // pointer sample has to be un-rotated by the SAME angle the handles
+    // pointer sample has to be un-rotated about the SAME point the handles
     // were drawn at.
     _resizeState = {
       id, corner, mtype, mode: _activeMode.mode, rotation: _rotationOf(id),
@@ -1711,8 +1720,12 @@ const App = {
     if (_activeMode?.id !== id || !ROTATE_HANDLE_MODES.has(_activeMode.mode) || App.isHeldByOther(id)) return;
     const bbox = App.getBBox(id);
     if (!bbox) return;
+    // The pivot is captured once, like the resize gesture captures rotation:
+    // every sample of the drag has to measure from the same point.
+    const centre = _rotationCenterOf(id, bbox);
+    if (!centre) return;
     const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
-    _rotateState = { id, corner, mtype: moduleForElement(domEl), startRect: { ...bbox } };
+    _rotateState = { id, corner, mtype: moduleForElement(domEl), startRect: { ...bbox }, centre };
     Overlay.startResizeGhost(id);
   },
 
@@ -1722,14 +1735,14 @@ const App = {
   rotate: (id, corner, px, py) => {
     if (!_rotateState || _rotateState.id !== id) return;
     const layer = _Layers[_rotateState.mtype];
-    const deg = layer.computeRotate(_rotateState.startRect, corner, px, py, _rotateSnapDeg);
+    const deg = layer.computeRotate(_rotateState.startRect, _rotateState.centre, corner, px, py, _rotateSnapDeg);
     Overlay.updateRotateGhost(id, deg, _rotateState.startRect);
   },
 
   commitRotate: (id, corner, px, py) => {
     if (!_rotateState || _rotateState.id !== id) return;
     const mtype = _rotateState.mtype;
-    const deg = _Layers[mtype].computeRotate(_rotateState.startRect, corner, px, py, _rotateSnapDeg);
+    const deg = _Layers[mtype].computeRotate(_rotateState.startRect, _rotateState.centre, corner, px, py, _rotateSnapDeg);
     _rotateState = null;
 
     const el = _Layers[mtype]?.find(id);

@@ -18,7 +18,11 @@
  *   'sel-resize-r' — local selection ring + 1 radius-drag handle (circles)
  *   'sel-rotate'   — local selection ring + 4 corner rotate handles; round,
  *                    with a circular-arrow glyph, so they never read as the
- *                    square resize handles
+ *                    square resize handles. Fixed pivot (toys).
+ *   'sel-rotate-pivot'
+ *                  — the same decoration for shapes whose pivot the user can
+ *                    place (rects). Only the pivot differs, so the two share
+ *                    every rendering and hit-testing path below.
  *   'sel-action'   — local selection ring + the action affordance square
  *                    (kebab/asterisk glyph, bowstring handle's resting state)
  *   'locked'       — remote peer is actively editing
@@ -67,9 +71,10 @@ import { getAllContestedElementIds } from './soft_lock.js';
 import { colorMatrixValues } from './toys.js';
 import { previewResize as previewBounPosResize } from './boun_pos.js';
 import {
-  previewResize as previewDrawingResize,
-  previewRotate as previewDrawingRotate,
-  getRotation   as elementRotation,
+  previewResize     as previewDrawingResize,
+  previewRotate     as previewDrawingRotate,
+  resolveRotation   as elementRotation,
+  rotationTransform,
 } from './drawing.js';
 import { LOCAL_ACTION_FILTER_ID } from './defs.js';
 import { getBowstringState, chargeOpacityFor, chargeRadiusFor, bowstringOrigin } from './delight.js';
@@ -84,7 +89,7 @@ const HANDLE_HIT_PAD = 6; // extra px (canvas-space, pre-scale)
                           // added to the handle's own hit box
 
 const SELECTION_MODES = new Set([
-  'sel-move', 'sel-resize', 'sel-resize-r', 'sel-rotate', 'sel-action',
+  'sel-move', 'sel-resize', 'sel-resize-r', 'sel-rotate', 'sel-rotate-pivot', 'sel-action',
 ]);
 
 /**
@@ -154,7 +159,8 @@ export function hitTestResizeRHandle(geo, px, py, scale) {
 export function hitTestSelectionHandle(mode, geo, px, py, scale) {
   switch (mode) {
     case 'sel-resize':
-    case 'sel-rotate':   return hitTestResizeCorner(geo, px, py, scale);
+    case 'sel-rotate':
+    case 'sel-rotate-pivot': return hitTestResizeCorner(geo, px, py, scale);
     case 'sel-resize-r': return hitTestResizeRHandle(geo, px, py, scale) ? 'r' : null;
     default:             return null;
   }
@@ -536,7 +542,6 @@ export function updateResizeGhost(elId, x, y, width, height) {
  */
 function _sizeGhostRing(entry, x, y, width, height) {
   const scale  = App.getViewScale();
-  const deg    = elementRotation(entry.ghostEl);
   const ringEl = entry.ringEl;
   ringEl.setAttribute('x',            x - PAD);
   ringEl.setAttribute('y',            y - PAD);
@@ -545,8 +550,11 @@ function _sizeGhostRing(entry, x, y, width, height) {
   ringEl.setAttribute('rx',           10);
   ringEl.setAttribute('stroke',       _localGradUrl());
   ringEl.setAttribute('stroke-width', 2 / scale);
-  if (deg) ringEl.setAttribute('transform', `rotate(${deg} ${x + width / 2} ${y + height / 2})`);
-  else     ringEl.removeAttribute('transform');
+  // Resolved against what the gesture is previewing, not the committed
+  // geometry — the pivot moves with the shape during a resize.
+  const transform = rotationTransform(elementRotation(entry.ghostEl, { x, y, width, height }));
+  if (transform) ringEl.setAttribute('transform', transform);
+  else           ringEl.removeAttribute('transform');
 }
 
 /**
@@ -687,7 +695,7 @@ export function render() {
     // getBBox is the element's UNROTATED box; its furniture rides the same
     // rotation the element itself carries so the ring hugs the shape
     // instead of its axis-aligned bounds.
-    const rot = decorRotation(elId, geo);
+    const rot = decorRotation(elId);
     switch (entry.mode) {
       case 'local':
       case 'candidate':
@@ -705,6 +713,7 @@ export function render() {
         renderLocalResizeRSelection(geo, entry, scale, rot);
         break;
       case 'sel-rotate':
+      case 'sel-rotate-pivot':
         renderLocalRotateSelection(geo, entry, scale, rot);
         break;
       case 'sel-action':
@@ -721,7 +730,7 @@ export function render() {
   for (const elId of _contestedIds) {
     const geo = App.getBBox(elId);
     if (!geo) continue;
-    renderRequestedIndicator(geo, scale, decorRotation(elId, geo));
+    renderRequestedIndicator(geo, scale, decorRotation(elId));
   }
 
   // ── Remote drag ghosts + rings ─────────────────────────────────────────
@@ -878,10 +887,8 @@ function _updateDragRing(entry, elId, scale) {
  * don't do rotation (toys, boundaries) report none and everything below
  * takes the untransformed path unchanged.
  */
-function decorRotation(elId, geo) {
-  const deg = App.getRotation?.(elId) ?? 0;
-  if (!deg) return null;
-  return `rotate(${deg} ${geo.x + geo.width / 2} ${geo.y + geo.height / 2})`;
+function decorRotation(elId) {
+  return rotationTransform(App.getRotation?.(elId) ?? null);
 }
 
 /**

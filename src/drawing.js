@@ -236,11 +236,45 @@ export function getRotation(svgEl) {
   return parseFloat(svgEl?.getAttribute?.(ROTATE_ATTR)) || 0;
 }
 
-/** The point a shape rotates about — the centre of its unrotated bbox. */
-export function rotationCenter(geom) {
+// Where a shape's pivot sits, as fractions of its own bbox: {fx: 0.5, fy: 0.5}
+// is the centre, {fx: 0, fy: 1} the bottom-left corner. Fractions rather than
+// canvas-space coordinates for the same reason the rotation is degrees — a
+// point expressed against the shape survives a move and a resize, an absolute
+// one goes stale on both.
+const CENTER_PIVOT = { fx: 0.5, fy: 0.5 };
+
+/**
+ * A shape's pivot. Every shape pivots on its centre today; this is the one
+ * function a per-shape, user-placeable pivot would change, and nothing
+ * downstream of rotationCenter() assumes the answer.
+ */
+export function getPivot(_svgEl) {
+  return CENTER_PIVOT;
+}
+
+/** The canvas-space point a shape rotates about, for a given pivot. */
+export function rotationCenter(geom, pivot = CENTER_PIVOT) {
   return geom
-    ? { cx: geom.x + geom.width / 2, cy: geom.y + geom.height / 2 }
+    ? { cx: geom.x + pivot.fx * geom.width, cy: geom.y + pivot.fy * geom.height }
     : { cx: 0, cy: 0 };
+}
+
+/**
+ * A shape's rotation resolved against geometry: { deg, cx, cy }, or null
+ * when it isn't rotated. The single place degrees and pivot are turned into
+ * the concrete point everything else rotates about — overlay.js turns
+ * selection furniture with it, app.js un-rotates pointers through it, and
+ * syncRotation writes it onto the element.
+ */
+export function resolveRotation(svgEl, geom = getGeom(svgEl)) {
+  const deg = getRotation(svgEl);
+  if (!deg) return null;
+  return { deg, ...rotationCenter(geom, getPivot(svgEl)) };
+}
+
+/** Format a resolved rotation as an SVG transform, or null for none. */
+export function rotationTransform(rot) {
+  return rot ? `rotate(${rot.deg} ${rot.cx} ${rot.cy})` : null;
 }
 
 /**
@@ -254,31 +288,31 @@ export function syncRotation(domEl) {
   // or imported SVG can carry its own, and rewriting it would silently
   // throw the author's geometry away.
   if (!domEl.hasAttribute?.(ROTATE_ATTR)) return;
-  const deg = getRotation(domEl);
-  if (!deg) {
-    domEl.removeAttribute('transform');
-    return;
-  }
-  const { cx, cy } = rotationCenter(getGeom(domEl));
-  domEl.setAttribute('transform', `rotate(${deg} ${cx} ${cy})`);
+  const transform = rotationTransform(resolveRotation(domEl));
+  if (transform) domEl.setAttribute('transform', transform);
+  else           domEl.removeAttribute('transform');
 }
 
 /**
  * Pure geometry for a corner-drag rotation: the angle from the shape's
- * centre out to the pointer, less the angle out to the corner that was
+ * pivot out to the pointer, less the angle out to the corner that was
  * grabbed, so that corner stays under the pointer. Snapped to snapDeg.
  *
  * The result is absolute, not a delta — the rotation the shape had when
  * the drag began is already implied by where the grabbed corner started.
+ *
+ * centre is the canvas-space {cx, cy} to turn about, captured at drag start
+ * (see rotationCenter) rather than re-derived here, so this stays pure and a
+ * pivot anywhere other than the middle needs no change.
  *
  * corner is a RESIZE_CORNER_* index (0=NW/1=NE/2=SE/3=SW). px/py are
  * canvas-space. The corner angle is taken from the unpadded bbox corner,
  * which is a fraction of a degree off the padded handle overlay.js draws;
  * snapping absorbs it.
  */
-export function computeRotate(startRect, corner, px, py, snapDeg = ROTATE_SNAP_DEG) {
+export function computeRotate(startRect, centre, corner, px, py, snapDeg = ROTATE_SNAP_DEG) {
   const { x, y, width, height } = startRect;
-  const { cx, cy } = rotationCenter(startRect);
+  const { cx, cy } = centre;
   const corners = [
     { x: x,         y: y },          // NW
     { x: x + width, y: y },          // NE
@@ -349,10 +383,13 @@ export function getAnchor(svgEl) {
  * Every mode svgEl can be in, in cycle order, fully `sel-`-prefixed.
  * 'sel-move' is the default every shape shows with no click; rects/
  * circles each add their one resize-family mode after it.
+ *
+ * Rects rotate as 'sel-rotate-pivot' — the variant whose pivot the user can
+ * place. 'sel-rotate' is the fixed-pivot variant, which toys will use.
  */
 export function selectModes(svgEl) {
   const tag = svgEl?.tagName;
-  if (tag === 'rect')   return ['sel-move', 'sel-resize', 'sel-rotate'];
+  if (tag === 'rect')   return ['sel-move', 'sel-resize', 'sel-rotate-pivot'];
   if (tag === 'circle') return ['sel-move', 'sel-resize-r'];
   return ['sel-move'];
 }
@@ -701,6 +738,8 @@ export function makeLayerAPI(ydoc, yDrawing) {
     nextSelectMode,
     computeResize,
     getRotation,
+    resolveRotation,
+    rotationCenter:  (svgEl, geom) => rotationCenter(geom, getPivot(svgEl)),
     computeRotate,
     previewResize,
     previewRotate,
