@@ -23,7 +23,7 @@ async function seedSignalingUrl(page, url) {
 }
 
 /**
- * Overrides BOTH signaling URLs. signaling.js's defaultFallbackSignalingServer()
+ * Overrides BOTH signaling URLs. external_services.js's defaultFallbackSignalingServer()
  * only returns '' when location.hostname === 'localhost' — under Docker the
  * page is served from a container IP, so leaving the fallback at its
  * default resolves to a real public server, which a Docker test runner

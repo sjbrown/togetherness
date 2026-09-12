@@ -193,8 +193,7 @@ import { getMyUser } from './user.js';
 import { dragPlaceholderFilterSVG, snapPointGradientSVG, localActionFilterSVG, glowFilterSVG }  from './defs.js';
 import { tablesAPI as tables } from './tables.js';
 import { resolveJoinIntent }    from './ui_join_dialog.js';
-import { resolveSignalingServers, getStoredSignalingServer, getStoredFallbackSignalingServer } from './signaling.js';
-import { resolveIceServers } from './stun.js';
+import { resolveSignalingServers, getStoredSignalingServer, getStoredFallbackSignalingServer, resolveIceServers } from './external_services.js';
 import * as Trace                  from './trace.js';
 
 // Inject shared SVG defs (filters etc.) into the canvas <defs> element.

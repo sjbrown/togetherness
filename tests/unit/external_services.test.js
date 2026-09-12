@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
-// Tests for stun.js's optional STUN server overrides — see that file for
-// why an empty/invalid value is a no-op rather than a "clear to default".
+// Tests for external_services.js's optional STUN server overrides — see
+// that file for why an empty/invalid value is a no-op rather than a
+// "clear to default". (The signaling-server half of that file has no
+// localStorage-independent behavior worth unit testing here — it's
+// exercised end-to-end instead; see tests/e2e/join-dialog.spec.js.)
 
 import { beforeEach, describe, test, expect } from 'vitest'
 import {
@@ -8,7 +11,7 @@ import {
   getStoredStunServer, setStoredStunServer,
   getStoredStunServerFallback, setStoredStunServerFallback,
   resolveIceServers,
-} from '../../src/stun.js'
+} from '../../src/external_services.js'
 
 beforeEach(() => {
   localStorage.clear()
