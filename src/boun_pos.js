@@ -172,14 +172,23 @@ export function generateFlatHexGrid(origin, rows, cols, xSpacing, ySpacing) {
   return points;
 }
 
+const MIN_GRID_SPACING = 1;
+const MAX_GRID_SPACING = 10000;
+
+function sanitizeSpacing(value, fallback = 80) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(Math.max(num, MIN_GRID_SPACING), MAX_GRID_SPACING);
+}
+
 function gridSpacingFromInput(genType, input = {}) {
   if (input.xSpacing !== undefined || input.ySpacing !== undefined) {
-    const xSpacing = Number(input.xSpacing ?? input.ySpacing ?? input.spacing ?? input['hex-size'] ?? 80);
-    const ySpacing = Number(input.ySpacing ?? input.xSpacing ?? input.spacing ?? input['hex-size'] ?? xSpacing);
+    const xSpacing = sanitizeSpacing(input.xSpacing ?? input.ySpacing ?? input.spacing ?? input['hex-size'] ?? 80);
+    const ySpacing = sanitizeSpacing(input.ySpacing ?? input.xSpacing ?? input.spacing ?? input['hex-size'] ?? xSpacing, xSpacing);
     return { xSpacing, ySpacing };
   }
 
-  const legacy = Number(input.spacing ?? input['hex-size'] ?? input.genParam ?? 80);
+  const legacy = sanitizeSpacing(input.spacing ?? input['hex-size'] ?? input.genParam ?? 80);
   if (genType === 'hex') {
     // Pointy-top:
     // *   colSpacing = hexSize * √3
