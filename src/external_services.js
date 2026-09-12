@@ -1,8 +1,8 @@
 /**
- * external_services.js — shared config for the two kinds of third-party
- * network endpoints the app talks to: y-webrtc signaling servers, and
- * optional STUN server overrides for the underlying RTCPeerConnections.
- * home.html's "Advanced" panel edits both; index.html reads both when
+ * external_services.js — shared config for the third-party network
+ * endpoints the app talks to: y-webrtc signaling servers, and optional
+ * STUN/TURN server overrides for the underlying RTCPeerConnections.
+ * home.html's "Advanced" panel edits these; index.html reads them when
  * constructing its WebrtcProvider.
  */
 
@@ -157,13 +157,64 @@ export function setStoredStunServerFallback(url) {
   localStorage.setItem(STUN_FALLBACK_KEY, value);
 }
 
+// ── TURN servers ─────────────────────────────────────────────────────────────
 /**
- * RTCIceServer entries built from whatever valid overrides are stored.
- * Empty when nothing is stored — callers should skip passing `iceServers`
- * at all in that case, so simple-peer's own defaults apply.
+ * Two more URLs live in localStorage, same shape and validation pattern as
+ * the STUN pair above. The home.html inputs for these are disabled for
+ * now — TURN needs a username/credential this UI doesn't collect yet — but
+ * the storage and resolution machinery is wired up ahead of that, so
+ * turning the inputs on later is just an HTML change.
+ */
+
+export const TURN_KEY          = 'tt_external_service_turn';
+export const TURN_FALLBACK_KEY = 'tt_external_service_turn_fallback';
+
+/** Loosely validates a turn:/turns: URI — scheme, host, optional port. */
+export function isValidTurnUrl(value) {
+  if (typeof value !== 'string') return false;
+  return /^turns?:[^\s:]+(:\d+)?$/i.test(value.trim());
+}
+
+/** The primary value currently in localStorage, or null if never set. */
+export function getStoredTurnServer() {
+  return localStorage.getItem(TURN_KEY) || null;
+}
+
+/** The fallback value currently in localStorage, or null if never set. */
+export function getStoredTurnServerFallback() {
+  return localStorage.getItem(TURN_FALLBACK_KEY) || null;
+}
+
+/**
+ * Persist the primary TURN server URL. A no-op on an empty or invalid
+ * value — any existing stored value is left untouched.
+ */
+export function setStoredTurnServer(url) {
+  if (isValidTurnUrl(url)) localStorage.setItem(TURN_KEY, url.trim());
+}
+
+/**
+ * Persist the fallback TURN server URL. A no-op on an empty or invalid
+ * value, or one identical to the stored primary TURN server — any
+ * existing stored value is left untouched. Two identical TURN servers add
+ * nothing over one, so that last case is rejected rather than silently
+ * duplicating the primary.
+ */
+export function setStoredTurnServerFallback(url) {
+  if (!isValidTurnUrl(url)) return;
+  const value = url.trim();
+  if (value === getStoredTurnServer()) return;
+  localStorage.setItem(TURN_FALLBACK_KEY, value);
+}
+
+/**
+ * RTCIceServer entries built from whatever valid overrides are stored,
+ * STUN then TURN. Empty when nothing is stored — callers should skip
+ * passing `iceServers` at all in that case, so simple-peer's own defaults
+ * apply.
  */
 export function resolveIceServers() {
-  return [getStoredStunServer(), getStoredStunServerFallback()]
-    .filter(isValidStunUrl)
-    .map(urls => ({ urls }));
+  const stun = [getStoredStunServer(), getStoredStunServerFallback()].filter(isValidStunUrl);
+  const turn = [getStoredTurnServer(), getStoredTurnServerFallback()].filter(isValidTurnUrl);
+  return [...stun, ...turn].map(urls => ({ urls }));
 }

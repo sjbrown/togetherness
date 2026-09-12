@@ -10,6 +10,9 @@ import {
   isValidStunUrl,
   getStoredStunServer, setStoredStunServer,
   getStoredStunServerFallback, setStoredStunServerFallback,
+  isValidTurnUrl,
+  getStoredTurnServer, setStoredTurnServer,
+  getStoredTurnServerFallback, setStoredTurnServerFallback,
   resolveIceServers,
   getStoredSignalingServer, setStoredSignalingServer, defaultSignalingServer,
   getStoredFallbackSignalingServer, setStoredFallbackSignalingServer, defaultFallbackSignalingServer,
@@ -112,6 +115,84 @@ describe('setStoredStunServerFallback', () => {
   })
 })
 
+describe('isValidTurnUrl', () => {
+  test('accepts a bare turn: host', () => {
+    expect(isValidTurnUrl('turn:turn.example.com')).toBe(true)
+  })
+
+  test('accepts turn: with a port', () => {
+    expect(isValidTurnUrl('turn:turn.example.com:3478')).toBe(true)
+  })
+
+  test('accepts turns:', () => {
+    expect(isValidTurnUrl('turns:turn.example.com:5349')).toBe(true)
+  })
+
+  test('rejects the empty string', () => {
+    expect(isValidTurnUrl('')).toBe(false)
+  })
+
+  test('rejects a non-turn scheme', () => {
+    expect(isValidTurnUrl('stun:turn.example.com')).toBe(false)
+  })
+
+  test('rejects a scheme with no host', () => {
+    expect(isValidTurnUrl('turn:')).toBe(false)
+  })
+
+  test('rejects non-string input', () => {
+    expect(isValidTurnUrl(null)).toBe(false)
+    expect(isValidTurnUrl(undefined)).toBe(false)
+  })
+})
+
+describe('setStoredTurnServer', () => {
+  test('persists a valid value', () => {
+    setStoredTurnServer('turn:turn.example.com:3478')
+    expect(getStoredTurnServer()).toBe('turn:turn.example.com:3478')
+  })
+
+  test('trims before storing', () => {
+    setStoredTurnServer('  turn:turn.example.com  ')
+    expect(getStoredTurnServer()).toBe('turn:turn.example.com')
+  })
+
+  test('is a no-op on an empty or invalid value, leaving prior storage untouched', () => {
+    setStoredTurnServer('turn:turn.example.com')
+    setStoredTurnServer('')
+    setStoredTurnServer('not-a-turn-url')
+    expect(getStoredTurnServer()).toBe('turn:turn.example.com')
+  })
+})
+
+describe('setStoredTurnServerFallback', () => {
+  test('persists independently of the primary', () => {
+    setStoredTurnServer('turn:primary.example.com')
+    setStoredTurnServerFallback('turn:fallback.example.com')
+    expect(getStoredTurnServer()).toBe('turn:primary.example.com')
+    expect(getStoredTurnServerFallback()).toBe('turn:fallback.example.com')
+  })
+
+  test('is a no-op on an invalid value', () => {
+    setStoredTurnServerFallback('turn:fallback.example.com')
+    setStoredTurnServerFallback('garbage')
+    expect(getStoredTurnServerFallback()).toBe('turn:fallback.example.com')
+  })
+
+  test('is a no-op when identical to the stored primary', () => {
+    setStoredTurnServer('turn:same.example.com')
+    setStoredTurnServerFallback('turn:same.example.com')
+    expect(getStoredTurnServerFallback()).toBeNull()
+  })
+
+  test('rejecting a duplicate leaves a previously-stored fallback untouched', () => {
+    setStoredTurnServer('turn:primary.example.com')
+    setStoredTurnServerFallback('turn:fallback.example.com')
+    setStoredTurnServerFallback('turn:primary.example.com')
+    expect(getStoredTurnServerFallback()).toBe('turn:fallback.example.com')
+  })
+})
+
 describe('resolveIceServers', () => {
   test('is empty when nothing is stored', () => {
     expect(resolveIceServers()).toEqual([])
@@ -122,12 +203,30 @@ describe('resolveIceServers', () => {
     expect(resolveIceServers()).toEqual([{ urls: 'stun:stun.example.com' }])
   })
 
-  test('includes both when both are stored', () => {
+  test('includes both STUN entries when both are stored', () => {
     setStoredStunServer('stun:primary.example.com')
     setStoredStunServerFallback('stun:fallback.example.com')
     expect(resolveIceServers()).toEqual([
       { urls: 'stun:primary.example.com' },
       { urls: 'stun:fallback.example.com' },
+    ])
+  })
+
+  test('includes TURN entries even with no STUN stored', () => {
+    setStoredTurnServer('turn:turn.example.com')
+    expect(resolveIceServers()).toEqual([{ urls: 'turn:turn.example.com' }])
+  })
+
+  test('orders STUN entries before TURN entries', () => {
+    setStoredStunServer('stun:stun.example.com')
+    setStoredStunServerFallback('stun:stun-fallback.example.com')
+    setStoredTurnServer('turn:turn.example.com')
+    setStoredTurnServerFallback('turn:turn-fallback.example.com')
+    expect(resolveIceServers()).toEqual([
+      { urls: 'stun:stun.example.com' },
+      { urls: 'stun:stun-fallback.example.com' },
+      { urls: 'turn:turn.example.com' },
+      { urls: 'turn:turn-fallback.example.com' },
     ])
   })
 })
