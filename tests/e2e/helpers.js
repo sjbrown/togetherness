@@ -27,7 +27,7 @@ import { expect } from '@playwright/test';
 async function seedSignaling(page, signalingUrl) {
   if (!signalingUrl) return;
   await page.addInitScript(url => {
-    localStorage.setItem('tt_signaling_server', url);
+    localStorage.setItem('tt_external_service_signaling', url);
   }, signalingUrl);
 }
 

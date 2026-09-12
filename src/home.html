@@ -740,31 +740,26 @@ advancedLinkEl.addEventListener('click', (e) => {
   }
 });
 
+// setStoredSignalingServer/setStoredFallbackSignalingServer decide for
+// themselves whether a value is worth persisting (not empty, not just the
+// built-in default, and — for the fallback — not identical to the
+// resolved primary); re-reading afterward reverts the field to whatever's
+// actually in effect rather than leaving a rejected value sitting in the
+// input.
 signalingEl.addEventListener('change', () => {
-  const value = signalingEl.value.trim();
-  // Only persist if the person actually changed it away from the default —
-  // otherwise a future change to the built-in default would be masked by
-  // a stored value nobody meant to set.
-  if (value && value !== defaultSignalingServer()) {
-    setStoredSignalingServer(value);
-  } else {
-    setStoredSignalingServer(null);
-  }
+  setStoredSignalingServer(signalingEl.value);
+  signalingEl.value = getStoredSignalingServer() ?? defaultSignalingServer();
 });
 
 signalingFallbackEl.addEventListener('change', () => {
-  const value = signalingFallbackEl.value.trim();
-  if (value && value !== defaultFallbackSignalingServer()) {
-    setStoredFallbackSignalingServer(value);
-  } else {
-    setStoredFallbackSignalingServer(null);
-  }
+  setStoredFallbackSignalingServer(signalingFallbackEl.value);
+  signalingFallbackEl.value = getStoredFallbackSignalingServer() ?? defaultFallbackSignalingServer();
 });
 
-// Empty or invalid input is a no-op in setStoredStunServer(); re-reading
-// the stored value afterward reverts the field to whatever's actually in
-// effect (blank if nothing valid was ever stored) rather than leaving a
-// rejected value sitting in the input.
+// Same idea for STUN: empty, invalid, or (for the fallback) identical to
+// the primary is a no-op in the setters, so re-reading afterward reverts
+// the field to whatever's actually stored (blank if nothing valid was
+// ever stored).
 stunEl.addEventListener('change', () => {
   setStoredStunServer(stunEl.value);
   stunEl.value = getStoredStunServer() ?? '';

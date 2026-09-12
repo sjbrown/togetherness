@@ -23,8 +23,8 @@
  * the primary is down), not the actual connection mechanics.
  */
 
-export const SIGNALING_KEY          = 'tt_signaling_server';
-export const SIGNALING_FALLBACK_KEY = 'tt_signaling_server_fallback';
+export const SIGNALING_KEY          = 'tt_external_service_signaling';
+export const SIGNALING_FALLBACK_KEY = 'tt_external_service_signaling_fallback';
 
 /** The primary value currently in localStorage, or null if never set. */
 export function getStoredSignalingServer() {
@@ -36,24 +36,6 @@ export function getStoredFallbackSignalingServer() {
   return localStorage.getItem(SIGNALING_FALLBACK_KEY) || null;
 }
 
-/**
- * Persist the primary signaling server URL. Passing a falsy value clears
- * the override and falls back to defaultSignalingServer() again.
- */
-export function setStoredSignalingServer(url) {
-  if (url) localStorage.setItem(SIGNALING_KEY, url);
-  else localStorage.removeItem(SIGNALING_KEY);
-}
-
-/**
- * Persist the fallback signaling server URL. Passing a falsy value clears
- * the override and falls back to defaultFallbackSignalingServer() again.
- */
-export function setStoredFallbackSignalingServer(url) {
-  if (url) localStorage.setItem(SIGNALING_FALLBACK_KEY, url);
-  else localStorage.removeItem(SIGNALING_FALLBACK_KEY);
-}
-
 /** The built-in primary default: local dev server on localhost, public Worker otherwise. */
 export function defaultSignalingServer() {
   return location.hostname === 'localhost' ? 'ws://localhost:4444' : 'wss://signaling.1kfa.com';
@@ -62,6 +44,39 @@ export function defaultSignalingServer() {
 /** The built-in fallback default: none locally, the VPS-hosted server otherwise. */
 export function defaultFallbackSignalingServer() {
   return location.hostname === 'localhost' ? '' : 'wss://signaling.ezide.com';
+}
+
+/**
+ * Persist the primary signaling server URL. A no-op (clearing any stored
+ * override) on an empty value or one identical to the built-in default —
+ * otherwise a future change to that default would be masked by a stored
+ * value nobody meant to set.
+ */
+export function setStoredSignalingServer(url) {
+  const value = (url || '').trim();
+  if (value && value !== defaultSignalingServer()) {
+    localStorage.setItem(SIGNALING_KEY, value);
+  } else {
+    localStorage.removeItem(SIGNALING_KEY);
+  }
+}
+
+/**
+ * Persist the fallback signaling server URL. An empty value or one
+ * identical to the built-in fallback default clears any stored override
+ * (the person is asking for "no fallback" / "just use the default").
+ * A value identical to the resolved primary server is rejected instead —
+ * y-webrtc gains nothing from two identical signaling URLs — leaving any
+ * existing stored override untouched rather than clearing it.
+ */
+export function setStoredFallbackSignalingServer(url) {
+  const value = (url || '').trim();
+  if (!value || value === defaultFallbackSignalingServer()) {
+    localStorage.removeItem(SIGNALING_FALLBACK_KEY);
+    return;
+  }
+  if (value === resolveSignalingServer()) return;
+  localStorage.setItem(SIGNALING_FALLBACK_KEY, value);
 }
 
 /** The primary URL to actually connect with: localStorage override, else the default. */
@@ -101,8 +116,8 @@ export function resolveSignalingServers() {
  * this layer to clear back to.
  */
 
-export const STUN_KEY          = 'tt_stun_server';
-export const STUN_FALLBACK_KEY = 'tt_stun_server_fallback';
+export const STUN_KEY          = 'tt_external_service_stun';
+export const STUN_FALLBACK_KEY = 'tt_external_service_stun_fallback';
 
 /** Loosely validates a stun:/stuns: URI — scheme, host, optional port. */
 export function isValidStunUrl(value) {
@@ -130,10 +145,16 @@ export function setStoredStunServer(url) {
 
 /**
  * Persist the fallback STUN server URL. A no-op on an empty or invalid
- * value — any existing stored value is left untouched.
+ * value, or one identical to the stored primary STUN server — any
+ * existing stored value is left untouched. Two identical STUN servers add
+ * nothing over one, so that last case is rejected rather than silently
+ * duplicating the primary.
  */
 export function setStoredStunServerFallback(url) {
-  if (isValidStunUrl(url)) localStorage.setItem(STUN_FALLBACK_KEY, url.trim());
+  if (!isValidStunUrl(url)) return;
+  const value = url.trim();
+  if (value === getStoredStunServer()) return;
+  localStorage.setItem(STUN_FALLBACK_KEY, value);
 }
 
 /**
