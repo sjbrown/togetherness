@@ -1,56 +1,39 @@
 /**
- * external_services.js — shared config for the third-party network
- * endpoints the app talks to: y-webrtc signaling servers, and optional
- * STUN/TURN server overrides for the underlying RTCPeerConnections.
+ * external_services.js — signaling/STUN/TURN overrides for y-webrtc.
  * home.html's "Advanced" panel edits these; index.html reads them when
  * constructing its WebrtcProvider.
  */
 
 // ── Signaling servers ───────────────────────────────────────────────────────
 /**
- * Two URLs live in localStorage — a primary and a "fallback" — shared by
- * index.html (which actually connects to both concurrently) and home.html
- * (which offers an "Advanced" field to view/edit them). If nothing is
- * stored yet, host-based defaults are used and NOT written to localStorage
- * until the person actually changes a field — so a future change to a
- * built-in default still takes effect for anyone who never touched that
- * field.
- *
- * Note on "fallback": y-webrtc connects to every signaling URL passed to
- * WebrtcProvider concurrently, not in priority order — both are in use
- * simultaneously whenever both are reachable. "Fallback" here describes
- * intent (the second server exists so peers can still find each other if
- * the primary is down), not the actual connection mechanics.
+ * Primary + fallback signaling URLs live in localStorage; unset fields
+ * use host-based defaults not written until edited. y-webrtc connects to
+ * both concurrently — "fallback" describes intent, not failover order.
  */
 
 export const SIGNALING_KEY          = 'tt_external_service_signaling';
 export const SIGNALING_FALLBACK_KEY = 'tt_external_service_signaling_fallback';
 
-/** The primary value currently in localStorage, or null if never set. */
 export function getStoredSignalingServer() {
   return localStorage.getItem(SIGNALING_KEY) || null;
 }
 
-/** The fallback value currently in localStorage, or null if never set. */
 export function getStoredFallbackSignalingServer() {
   return localStorage.getItem(SIGNALING_FALLBACK_KEY) || null;
 }
 
-/** The built-in primary default: local dev server on localhost, public Worker otherwise. */
 export function defaultSignalingServer() {
   return location.hostname === 'localhost' ? 'ws://localhost:4444' : 'wss://signaling.1kfa.com';
 }
 
-/** The built-in fallback default: none locally, the VPS-hosted server otherwise. */
 export function defaultFallbackSignalingServer() {
   return location.hostname === 'localhost' ? '' : 'wss://signaling.ezide.com';
 }
 
 /**
- * Persist the primary signaling server URL. A no-op (clearing any stored
- * override) on an empty value or one identical to the built-in default —
- * otherwise a future change to that default would be masked by a stored
- * value nobody meant to set.
+ * A no-op (clearing any override) on empty or identical-to-default —
+ * otherwise a future default change would be masked by a stored value
+ * nobody meant to set.
  */
 export function setStoredSignalingServer(url) {
   const value = (url || '').trim();
@@ -62,12 +45,9 @@ export function setStoredSignalingServer(url) {
 }
 
 /**
- * Persist the fallback signaling server URL. An empty value or one
- * identical to the built-in fallback default clears any stored override
- * (the person is asking for "no fallback" / "just use the default").
- * A value identical to the resolved primary server is rejected instead —
- * y-webrtc gains nothing from two identical signaling URLs — leaving any
- * existing stored override untouched rather than clearing it.
+ * Empty or identical-to-default clears the override. Identical to the
+ * resolved primary is rejected instead, leaving any existing override
+ * untouched — two identical signaling URLs help nobody.
  */
 export function setStoredFallbackSignalingServer(url) {
   const value = (url || '').trim();
@@ -79,20 +59,17 @@ export function setStoredFallbackSignalingServer(url) {
   localStorage.setItem(SIGNALING_FALLBACK_KEY, value);
 }
 
-/** The primary URL to actually connect with: localStorage override, else the default. */
 export function resolveSignalingServer() {
   return getStoredSignalingServer() ?? defaultSignalingServer();
 }
 
-/** The fallback URL to actually connect with: localStorage override, else the default. */
 export function resolveFallbackSignalingServer() {
   return getStoredFallbackSignalingServer() ?? defaultFallbackSignalingServer();
 }
 
 /**
- * All signaling URLs to hand to WebrtcProvider, primary first. Empty/blank
- * entries and exact duplicates are dropped, so an unset or blanked-out
- * fallback simply means connecting to one server instead of two.
+ * All signaling URLs for WebrtcProvider, primary first, blanks and
+ * duplicates dropped.
  */
 export function resolveSignalingServers() {
   const urls = [resolveSignalingServer(), resolveFallbackSignalingServer()]
@@ -103,52 +80,34 @@ export function resolveSignalingServers() {
 
 // ── STUN servers ─────────────────────────────────────────────────────────────
 /**
- * Two URLs live in localStorage; home.html offers "Advanced" fields to
- * view/edit them, same pattern as the signaling servers above. Unlike
- * signaling, there is no host-based default to fall back to — leaving both
- * unset means simple-peer (and therefore y-webrtc) keeps using its own
- * built-in STUN servers untouched, which is what the "[Yjs Default]"
- * placeholder in the UI refers to.
- *
- * A value is only ever persisted when it parses as a stun:/stuns: URI. An
- * empty or invalid value leaves whatever is already stored untouched —
- * there's no "clear to default" gesture here, since there's no default at
- * this layer to clear back to.
+ * Primary + fallback STUN URLs live in localStorage. Unlike signaling,
+ * there's no built-in default — unset means simple-peer's own STUN
+ * servers apply, shown as "[Yjs Default]" in the UI.
  */
 
 export const STUN_KEY          = 'tt_external_service_stun';
 export const STUN_FALLBACK_KEY = 'tt_external_service_stun_fallback';
 
-/** Loosely validates a stun:/stuns: URI — scheme, host, optional port. */
 export function isValidStunUrl(value) {
   if (typeof value !== 'string') return false;
   return /^stuns?:[^\s:]+(:\d+)?$/i.test(value.trim());
 }
 
-/** The primary value currently in localStorage, or null if never set. */
 export function getStoredStunServer() {
   return localStorage.getItem(STUN_KEY) || null;
 }
 
-/** The fallback value currently in localStorage, or null if never set. */
 export function getStoredStunServerFallback() {
   return localStorage.getItem(STUN_FALLBACK_KEY) || null;
 }
 
-/**
- * Persist the primary STUN server URL. A no-op on an empty or invalid
- * value — any existing stored value is left untouched.
- */
 export function setStoredStunServer(url) {
   if (isValidStunUrl(url)) localStorage.setItem(STUN_KEY, url.trim());
 }
 
 /**
- * Persist the fallback STUN server URL. A no-op on an empty or invalid
- * value, or one identical to the stored primary STUN server — any
- * existing stored value is left untouched. Two identical STUN servers add
- * nothing over one, so that last case is rejected rather than silently
- * duplicating the primary.
+ * A no-op on empty/invalid input, or one identical to the stored
+ * primary — existing storage is left untouched either way.
  */
 export function setStoredStunServerFallback(url) {
   if (!isValidStunUrl(url)) return;
@@ -159,46 +118,34 @@ export function setStoredStunServerFallback(url) {
 
 // ── TURN servers ─────────────────────────────────────────────────────────────
 /**
- * Two more URLs live in localStorage, same shape and validation pattern as
- * the STUN pair above. The home.html inputs for these are disabled for
- * now — TURN needs a username/credential this UI doesn't collect yet — but
- * the storage and resolution machinery is wired up ahead of that, so
- * turning the inputs on later is just an HTML change.
+ * Primary + fallback TURN URLs, same shape as STUN. home.html's inputs
+ * are disabled for now (TURN needs credentials this UI doesn't collect),
+ * but storage/resolution are wired up ahead of that.
  */
 
 export const TURN_KEY          = 'tt_external_service_turn';
 export const TURN_FALLBACK_KEY = 'tt_external_service_turn_fallback';
 
-/** Loosely validates a turn:/turns: URI — scheme, host, optional port. */
 export function isValidTurnUrl(value) {
   if (typeof value !== 'string') return false;
   return /^turns?:[^\s:]+(:\d+)?$/i.test(value.trim());
 }
 
-/** The primary value currently in localStorage, or null if never set. */
 export function getStoredTurnServer() {
   return localStorage.getItem(TURN_KEY) || null;
 }
 
-/** The fallback value currently in localStorage, or null if never set. */
 export function getStoredTurnServerFallback() {
   return localStorage.getItem(TURN_FALLBACK_KEY) || null;
 }
 
-/**
- * Persist the primary TURN server URL. A no-op on an empty or invalid
- * value — any existing stored value is left untouched.
- */
 export function setStoredTurnServer(url) {
   if (isValidTurnUrl(url)) localStorage.setItem(TURN_KEY, url.trim());
 }
 
 /**
- * Persist the fallback TURN server URL. A no-op on an empty or invalid
- * value, or one identical to the stored primary TURN server — any
- * existing stored value is left untouched. Two identical TURN servers add
- * nothing over one, so that last case is rejected rather than silently
- * duplicating the primary.
+ * A no-op on empty/invalid input, or one identical to the stored
+ * primary — existing storage is left untouched either way.
  */
 export function setStoredTurnServerFallback(url) {
   if (!isValidTurnUrl(url)) return;
@@ -208,10 +155,8 @@ export function setStoredTurnServerFallback(url) {
 }
 
 /**
- * RTCIceServer entries built from whatever valid overrides are stored,
- * STUN then TURN. Empty when nothing is stored — callers should skip
- * passing `iceServers` at all in that case, so simple-peer's own defaults
- * apply.
+ * RTCIceServer entries from stored overrides, STUN then TURN. Empty
+ * means skip `iceServers` entirely so simple-peer's defaults apply.
  */
 export function resolveIceServers() {
   const stun = [getStoredStunServer(), getStoredStunServerFallback()].filter(isValidStunUrl);
