@@ -10,14 +10,12 @@
  */
 
 // @vitest-environment jsdom
-import fs from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
   localSelectionChanged,
   setSelectionMode,
   hitTestSelectionHandle,
+  handleCursor,
   resizeCorners,
   init as overlayInit,
 } from '../../src/overlay.js'
@@ -166,47 +164,99 @@ describe('a rotated element’s furniture rides its rotation', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Handle cursors. Asserted against ui.css itself rather than a rendered page:
-// jsdom applies no stylesheets, and the rule that matters here is one a
-// reader is likely to "correct" on sight.
+// Handle cursors. A handle is drawn turned with its shape, so the direction it
+// drags along turns with it — the cursor is computed per render rather than
+// pinned per corner in CSS.
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('rotate handle cursors', () => {
-  const css = fs.readFileSync(
-    path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../src/ui.css'), 'utf8')
+describe('handleCursor', () => {
+  const CORNERS = ['nw', 'ne', 'se', 'sw']
 
-  const cursorFor = (selector) => {
-    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    return css.match(new RegExp(`${escaped}\\s*\\{[^}]*cursor:\\s*([a-z-]+)`))?.[1] ?? null
-  }
+  test('a resize corner shows the radius it stretches along', () => {
+    for (const c of CORNERS) expect(handleCursor(c, 0, 'resize')).toBe(`${c}-resize`)
+  })
 
-  // A resize cursor points along the radius; a rotating corner travels along
-  // the tangent, which is the other diagonal.
-  const TANGENT = { nw: 'ne', ne: 'nw', se: 'sw', sw: 'se' }
+  test('a rotate corner shows the tangent it travels along — the other diagonal', () => {
+    expect(handleCursor('nw', 0, 'rotate')).toBe('ne-resize')
+    expect(handleCursor('ne', 0, 'rotate')).toBe('nw-resize')
+    expect(handleCursor('se', 0, 'rotate')).toBe('sw-resize')
+    expect(handleCursor('sw', 0, 'rotate')).toBe('se-resize')
+  })
 
-  test('resize handles show the radius — each corner gets its own direction', () => {
-    for (const corner of Object.keys(TANGENT)) {
-      expect(cursorFor(`.handle[data-corner="${corner}"]`)).toBe(`${corner}-resize`)
+  test('the tangent is always square to the radius, at any angle', () => {
+    const idx = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']
+    for (const deg of [0, 45, 90, 135, 180, 225, 270, 315]) {
+      for (const c of CORNERS) {
+        const r = idx.indexOf(handleCursor(c, deg, 'resize').replace('-resize', ''))
+        const t = idx.indexOf(handleCursor(c, deg, 'rotate').replace('-resize', ''))
+        expect(Math.abs(r - t) % 4).toBe(2)   // 90° apart, either way round
+      }
     }
   })
 
-  test('rotate handles show the tangent — the OPPOSITE corner, deliberately', () => {
-    for (const [corner, tangent] of Object.entries(TANGENT)) {
-      expect(cursorFor(`.rotateHandle[data-corner="${corner}"]`)).toBe(`${tangent}-resize`)
+  test('a quarter turn steps every cursor a quarter of the way round', () => {
+    expect(handleCursor('nw', 90, 'resize')).toBe('ne-resize')
+    expect(handleCursor('ne', 90, 'resize')).toBe('se-resize')
+    expect(handleCursor('se', 90, 'resize')).toBe('sw-resize')
+    expect(handleCursor('sw', 90, 'resize')).toBe('nw-resize')
+  })
+
+  test('a half turn puts each corner on the same axis it started on', () => {
+    // nw-resize and se-resize name the same diagonal, so 180° reads identically.
+    expect(handleCursor('nw', 180, 'resize')).toBe('se-resize')
+    expect(handleCursor('se', 180, 'resize')).toBe('nw-resize')
+  })
+
+  test('a full turn comes back to where it started', () => {
+    for (const c of CORNERS) {
+      expect(handleCursor(c, 360, 'resize')).toBe(handleCursor(c, 0, 'resize'))
+      expect(handleCursor(c, 360, 'rotate')).toBe(handleCursor(c, 0, 'rotate'))
     }
   })
 
-  test('every rotate corner is covered, so none falls back to a resize cursor', () => {
-    const covered = [...css.matchAll(/^\.rotateHandle\[data-corner="(\w+)"\]/gm)].map(m => m[1])
-    expect(covered.sort()).toEqual(['ne', 'nw', 'se', 'sw'])
+  test('angles between steps round to the nearest 45°, which is as fine as cursors go', () => {
+    expect(handleCursor('nw', 20, 'resize')).toBe('nw-resize')   // rounds to 0
+    expect(handleCursor('nw', 25, 'resize')).toBe('n-resize')    // rounds to 45
   })
 
-  test('the rotate rules come last — equal specificity means source order decides', () => {
-    // .handle[data-corner=…] and .rotateHandle[data-corner=…] are both (0,2,0),
-    // so moving the rotate block above the generic one silently reverts this.
-    const generic = css.search(/^\.handle\[data-corner="nw"\]/m)
-    const rotate  = css.search(/^\.rotateHandle\[data-corner="nw"\]/m)
-    expect(generic).toBeGreaterThan(-1)
-    expect(rotate).toBeGreaterThan(generic)
+  test('a negative or over-turned angle still lands in range', () => {
+    expect(handleCursor('nw', -90, 'resize')).toBe('sw-resize')
+    expect(handleCursor('nw', 450, 'resize')).toBe('ne-resize')
+  })
+
+  test('an unknown corner or mode has no cursor to offer', () => {
+    expect(handleCursor('r', 0, 'resize')).toBeNull()
+    expect(handleCursor('nw', 0, 'spin')).toBeNull()
+  })
+})
+
+describe('handles carry their cursor inline, so it can follow the rotation', () => {
+  const cursors = () => Object.fromEntries(
+    [...document.querySelectorAll('#overlay-layer .handle')]
+      .map(h => [h.getAttribute('data-corner'), h.style.cursor]))
+
+  test('resize handles on an unrotated shape read like any resize handle', () => {
+    boot()
+    enter('sel-resize')
+    expect(cursors()).toEqual({ nw: 'nw-resize', ne: 'ne-resize', se: 'se-resize', sw: 'sw-resize' })
+  })
+
+  test('rotate handles on an unrotated shape sit square to those', () => {
+    boot()
+    enter('sel-rotate-pivot')
+    expect(cursors()).toEqual({ nw: 'ne-resize', ne: 'nw-resize', se: 'sw-resize', sw: 'se-resize' })
+  })
+
+  test('a turned shape turns its resize cursors with it', () => {
+    boot({ rotation: 90 })
+    enter('sel-resize')
+    // At 90° the handle still labelled nw is drawn at the north-east position.
+    expect(cursors()).toEqual({ nw: 'ne-resize', ne: 'se-resize', se: 'sw-resize', sw: 'nw-resize' })
+  })
+
+  test('a turned shape turns its rotate cursors with it', () => {
+    boot({ rotation: 90 })
+    enter('sel-rotate-pivot')
+    expect(cursors()).toEqual({ nw: 'se-resize', ne: 'ne-resize', se: 'nw-resize', sw: 'sw-resize' })
   })
 })
