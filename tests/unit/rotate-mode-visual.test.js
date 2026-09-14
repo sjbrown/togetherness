@@ -10,6 +10,9 @@
  */
 
 // @vitest-environment jsdom
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
   localSelectionChanged,
@@ -159,5 +162,51 @@ describe('a rotated element’s furniture rides its rotation', () => {
     const group = document.querySelector('#overlay-layer g[transform]')
     expect(group.getAttribute('transform')).toBe('rotate(90 200 150)')
     expect(group.querySelectorAll('rect.handle')).toHaveLength(4)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Handle cursors. Asserted against ui.css itself rather than a rendered page:
+// jsdom applies no stylesheets, and the rule that matters here is one a
+// reader is likely to "correct" on sight.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('rotate handle cursors', () => {
+  const css = fs.readFileSync(
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../src/ui.css'), 'utf8')
+
+  const cursorFor = (selector) => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return css.match(new RegExp(`${escaped}\\s*\\{[^}]*cursor:\\s*([a-z-]+)`))?.[1] ?? null
+  }
+
+  // A resize cursor points along the radius; a rotating corner travels along
+  // the tangent, which is the other diagonal.
+  const TANGENT = { nw: 'ne', ne: 'nw', se: 'sw', sw: 'se' }
+
+  test('resize handles show the radius — each corner gets its own direction', () => {
+    for (const corner of Object.keys(TANGENT)) {
+      expect(cursorFor(`.handle[data-corner="${corner}"]`)).toBe(`${corner}-resize`)
+    }
+  })
+
+  test('rotate handles show the tangent — the OPPOSITE corner, deliberately', () => {
+    for (const [corner, tangent] of Object.entries(TANGENT)) {
+      expect(cursorFor(`.rotateHandle[data-corner="${corner}"]`)).toBe(`${tangent}-resize`)
+    }
+  })
+
+  test('every rotate corner is covered, so none falls back to a resize cursor', () => {
+    const covered = [...css.matchAll(/^\.rotateHandle\[data-corner="(\w+)"\]/gm)].map(m => m[1])
+    expect(covered.sort()).toEqual(['ne', 'nw', 'se', 'sw'])
+  })
+
+  test('the rotate rules come last — equal specificity means source order decides', () => {
+    // .handle[data-corner=…] and .rotateHandle[data-corner=…] are both (0,2,0),
+    // so moving the rotate block above the generic one silently reverts this.
+    const generic = css.search(/^\.handle\[data-corner="nw"\]/m)
+    const rotate  = css.search(/^\.rotateHandle\[data-corner="nw"\]/m)
+    expect(generic).toBeGreaterThan(-1)
+    expect(rotate).toBeGreaterThan(generic)
   })
 })
