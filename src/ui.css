@@ -127,21 +127,12 @@ html, body {
 .requestedRing { pointer-events: none; }
 .remote-sel     { pointer-events: none; }
 .handle    { pointer-events: auto; }
-.handle[data-corner="nw"] { cursor: nw-resize; }
-.handle[data-corner="ne"] { cursor: ne-resize; }
-.handle[data-corner="sw"] { cursor: sw-resize; }
-.handle[data-corner="se"] { cursor: se-resize; }
+/* Corner handles get their cursor inline, per render — a handle is drawn
+   turned with its shape, so the direction it drags along turns too and no
+   static rule per corner can be right at every angle. See overlay.js's
+   handleCursor(). The radius handle is circles-only, and circles don't
+   rotate, so it stays here. */
 .handle[data-corner="r"]  { cursor: ew-resize; }
-/* Rotate handles take the cursor of the OPPOSITE corner, and that is not a
-   typo. A resize cursor points along the radius — the direction a corner
-   moves when you stretch the shape. A corner being rotated travels along the
-   tangent instead, which is the other diagonal: at NW the radius runs NW-SE,
-   so the motion runs NE-SW. Each handle therefore shows the diagonal it
-   actually moves along. */
-.rotateHandle[data-corner="nw"] { cursor: ne-resize; }
-.rotateHandle[data-corner="ne"] { cursor: nw-resize; }
-.rotateHandle[data-corner="se"] { cursor: sw-resize; }
-.rotateHandle[data-corner="sw"] { cursor: se-resize; }
 .rotateGlyph { pointer-events: none; }
 
 /* A toy nested inside a tray is excluded from native hit-testing, so a

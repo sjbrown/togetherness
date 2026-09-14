@@ -694,8 +694,8 @@ export function render() {
     if (!geo) continue;
     // getBBox is the element's UNROTATED box; its furniture rides the same
     // rotation the element itself carries so the ring hugs the shape
-    // instead of its axis-aligned bounds.
-    const rot = decorRotation(elId);
+    // instead of its axis-aligned bounds. { deg, cx, cy } or null.
+    const rot = App.getRotation?.(elId) ?? null;
     switch (entry.mode) {
       case 'local':
       case 'candidate':
@@ -730,7 +730,7 @@ export function render() {
   for (const elId of _contestedIds) {
     const geo = App.getBBox(elId);
     if (!geo) continue;
-    renderRequestedIndicator(geo, scale, decorRotation(elId));
+    renderRequestedIndicator(geo, scale, App.getRotation?.(elId) ?? null);
   }
 
   // ── Remote drag ghosts + rings ─────────────────────────────────────────
@@ -882,25 +882,44 @@ function _updateDragRing(entry, elId, scale) {
 }
 
 /**
- * The rotate() an element's selection furniture has to ride, as an SVG
- * transform string, or null when the element isn't rotated. Layers that
- * don't do rotation (toys, boundaries) report none and everything below
- * takes the untransformed path unchanged.
- */
-function decorRotation(elId) {
-  return rotationTransform(App.getRotation?.(elId) ?? null);
-}
-
-/**
  * Where one element's selection furniture should be appended: a rotated
  * <g> for a rotated element, or the layer itself for the common case, so
- * an unrotated selection costs no extra node.
+ * an unrotated selection costs no extra node. `rot` is a resolved rotation
+ * ({ deg, cx, cy }) or null — layers that don't rotate report none and
+ * everything below takes the untransformed path unchanged.
  */
 function decorGroup(rot) {
   if (!rot) return _layerEl;
-  const g = el('g', { transform: rot });
+  const g = el('g', { transform: rotationTransform(rot) });
   _layerEl.appendChild(g);
   return g;
+}
+
+// The eight directions CSS resize cursors come in, 45° apart, clockwise on
+// screen — so stepping forward through this list is stepping clockwise.
+const COMPASS = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
+
+// Which way a handle's drag runs, before the shape's own rotation is added.
+// A resize corner moves along the radius, out from the centre. A rotating
+// corner travels along the tangent — the perpendicular, which for a corner
+// is the other diagonal.
+const HANDLE_AXIS = {
+  resize: { nw: 'nw', ne: 'ne', se: 'se', sw: 'sw' },
+  rotate: { nw: 'ne', ne: 'nw', se: 'sw', sw: 'se' },
+};
+
+/**
+ * The cursor for a handle at `corner` of a shape turned `deg` degrees, in
+ * mode `kind` ('resize' | 'rotate'). The handle is drawn rotated with the
+ * shape, so the direction it drags along turns with it too; a static CSS
+ * rule per corner would be right only at 0°. Rounded to the nearest 45°,
+ * which is as fine as the cursor set goes.
+ */
+export function handleCursor(corner, deg, kind) {
+  const axis = HANDLE_AXIS[kind]?.[corner];
+  if (!axis) return null;
+  const steps = Math.round((deg || 0) / 45);
+  return `${COMPASS[(COMPASS.indexOf(axis) + steps % 8 + 8) % 8]}-resize`;
 }
 
 function renderLocalSelection(geo, entry, scale, rot = null) {
@@ -943,7 +962,7 @@ function renderLocalResizeSelection(geo, entry, scale, rot = null) {
   const corners = ['nw', 'ne', 'se', 'sw'];
   for (let i = 0; i < resizeCorners(geo).length; i++) {
     const { x: hx, y: hy } = resizeCorners(geo)[i];
-    parent.appendChild(el('rect', {
+    const handle = el('rect', {
       x: hx - side_len / 2,
       y: hy - side_len / 2,
       width: side_len,
@@ -953,7 +972,9 @@ function renderLocalResizeSelection(geo, entry, scale, rot = null) {
       'stroke-width': 1.5 / scale,
       class: 'handle',
       'data-corner': corners[i],
-    }));
+    });
+    handle.style.cursor = handleCursor(corners[i], rot?.deg ?? 0, 'resize');
+    parent.appendChild(handle);
   }
 }
 
@@ -990,6 +1011,7 @@ function renderLocalRotateSelection(geo, entry, scale, rot = null) {
     // is addressable as a unit (and so the glyph never takes the pointer
     // away from the disc under it).
     const handle = el('g', { class: 'handle rotateHandle', 'data-corner': corners[i], 'data-rotate-handle': '' });
+    handle.style.cursor = handleCursor(corners[i], rot?.deg ?? 0, 'rotate');
     handle.appendChild(el('circle', {
       cx: hx, cy: hy, r,
       fill: 'var(--surface-solid)', stroke: 'var(--info)',
@@ -1088,7 +1110,7 @@ function renderRemoteSelection(geo, entry, scale, rot = null) {
   });
   // Only the ring rides the rotation — the peer name label stays upright
   // and readable however the element is turned.
-  if (rot) ring.setAttribute('transform', rot);
+  if (rot) ring.setAttribute('transform', rotationTransform(rot));
   group.appendChild(ring);
 
   // Peer name label above the ring
@@ -1142,7 +1164,7 @@ function renderRequestedIndicator(geo, scale, rot = null) {
   anim.setAttribute('dur',           '1.2s');
   anim.setAttribute('repeatCount',   'indefinite');
   ring.appendChild(anim);
-  if (rot) ring.setAttribute('transform', rot);
+  if (rot) ring.setAttribute('transform', rotationTransform(rot));
   _layerEl.appendChild(ring);
 }
 
