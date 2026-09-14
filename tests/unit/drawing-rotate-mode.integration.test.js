@@ -258,23 +258,49 @@ describe('dragging a rotate handle', () => {
 })
 
 describe('resizing an already-rotated rect', () => {
-  test('the pointer is measured in the shape’s own turned frame, not the screen’s', async () => {
-    const { App, ydoc, id } = await bootWithSquare()
-    // Turn it a quarter turn, then resize by its (now rotated) SE handle.
-    App.nextSelectionMode(id)
-    App.nextSelectionMode(id)
-    App.startRotate(id, 2)
-    App.commitRotate(id, 2, 100, 300)   // 90°
+  // Where a point in the shape's own unrotated space actually lands on the
+  // canvas, once its rotation is applied. The corner the user is NOT dragging
+  // has to come out of a resize at the same canvas point it went in at —
+  // that is what "the opposite corner stays fixed" means to someone looking
+  // at the screen.
+  const onCanvas = (yEl, local) => {
+    const n   = (k) => Number(yEl.getAttribute(k))
+    const deg = Number(yEl.getAttribute('data-rotate') ?? 0)
+    const cx  = n('x') + n('width') / 2
+    const cy  = n('y') + n('height') / 2
+    const r   = deg * Math.PI / 180
+    const dx  = local.x - cx, dy = local.y - cy
+    return { x: cx + dx * Math.cos(r) - dy * Math.sin(r), y: cy + dx * Math.sin(r) + dy * Math.cos(r) }
+  }
+  const nw = (yEl) => ({ x: Number(yEl.getAttribute('x')), y: Number(yEl.getAttribute('y')) })
 
-    // Back round the cycle into resize mode.
-    App.nextSelectionMode(id)
-    App.nextSelectionMode(id)
-    expect(App.getResizeModeId()).toBe(id)
+  // applyResize rounds x/y/width/height to whole numbers before they reach the
+  // document, so the anchor can land up to about a pixel off the exact answer.
+  // That is the rounding, not the correction — without the correction it slides
+  // tens of pixels (see the naive case in the commit message's numbers).
+  const expectAnchorHeld = (before, after) => {
+    const now = onCanvas(after, nw(after))
+    expect(Math.abs(now.x - before.x)).toBeLessThan(1)
+    expect(Math.abs(now.y - before.y)).toBeLessThan(1)
+  }
 
-    // At 90°, the SE handle is drawn where the NE corner's unrotated
-    // position would be — down and left of centre on screen.
-    const corner = App.getRotateHandle(id, 0, 0) // wrong mode: nothing
-    expect(corner).toBeNull()
+  // Turn the rect, then cycle back round to resize mode.
+  async function rotatedThenResizing(commitAt) {
+    const b = await bootWithSquare()
+    b.App.nextSelectionMode(b.id)
+    b.App.nextSelectionMode(b.id)
+    b.App.startRotate(b.id, 2)
+    b.App.commitRotate(b.id, 2, commitAt.x, commitAt.y)
+    b.App.nextSelectionMode(b.id)
+    b.App.nextSelectionMode(b.id)
+    expect(b.App.getResizeModeId()).toBe(b.id)
+    return b
+  }
+
+  test('the pointer is measured in the shape\u2019s own turned frame, not the screen\u2019s', async () => {
+    const { App, ydoc, id } = await rotatedThenResizing({ x: 100, y: 300 })  // 90°
+    // At 90° the SE handle is drawn where the NE corner's unrotated position
+    // would be — down and left of centre on screen.
     expect(App.getResizeCorner(id, 94, 306)).toBe(2)
 
     App.startResize(id, 2)
@@ -282,12 +308,53 @@ describe('resizing an already-rotated rect', () => {
     App.commitResize(id, 2, 50, 350)
 
     const yEl = yRect(ydoc, id)
-    // Local-space SE drag: the top-left stays put and the box grows by 50
-    // on each side, even though the screen-space drag was down-and-left.
+    expect(yEl.getAttribute('width')).toBe('250')
+    expect(yEl.getAttribute('height')).toBe('250')
+    expect(yEl.getAttribute('data-rotate')).toBe('90')
+  })
+
+  test('the opposite corner stays put on the canvas, not just in local space', async () => {
+    const { App, ydoc, id } = await rotatedThenResizing({ x: 100, y: 300 })  // 90°
+    const anchorBefore = onCanvas(yRect(ydoc, id), nw(yRect(ydoc, id)))
+
+    App.startResize(id, 2)
+    App.commitResize(id, 2, 50, 350)
+
+    expectAnchorHeld(anchorBefore, yRect(ydoc, id))
+  })
+
+  test('holds at an angle that is not a quarter turn, where the slide is worst', async () => {
+    // 45°: the pivot shift and the rotation compound instead of cancelling.
+    const { App, ydoc, id } = await rotatedThenResizing({ x: 200, y: 400 })
+    expect(yRect(ydoc, id).getAttribute('data-rotate')).toBe('45')
+    const anchorBefore = onCanvas(yRect(ydoc, id), nw(yRect(ydoc, id)))
+
+    const corner = App.getResizeCorner(id, ...Object.values(
+      // the SE handle's screen position at 45°, padded out like the overlay draws it
+      (() => { const g = App.getBBox(id); const c = { x: g.x + g.width / 2, y: g.y + g.height / 2 }
+               const d = { x: g.width / 2 + 6, y: g.height / 2 + 6 }
+               const r = Math.PI / 4
+               return { x: c.x + d.x * Math.cos(r) - d.y * Math.sin(r),
+                        y: c.y + d.x * Math.sin(r) + d.y * Math.cos(r) } })()))
+    expect(corner).toBe(2)
+
+    App.startResize(id, corner)
+    App.commitResize(id, corner, 260, 420)
+
+    expect(Number(yRect(ydoc, id).getAttribute('width'))).toBeGreaterThan(200)
+    expectAnchorHeld(anchorBefore, yRect(ydoc, id))
+  })
+
+  test('an unrotated rect is untouched by the correction — plain local-space resize', async () => {
+    const { App, ydoc, id } = await bootWithSquare()
+    App.nextSelectionMode(id)
+    App.startResize(id, 2)
+    App.commitResize(id, 2, 350, 350)
+
+    const yEl = yRect(ydoc, id)
     expect(yEl.getAttribute('x')).toBe('100')
     expect(yEl.getAttribute('y')).toBe('100')
     expect(yEl.getAttribute('width')).toBe('250')
     expect(yEl.getAttribute('height')).toBe('250')
-    expect(yEl.getAttribute('data-rotate')).toBe('90')
   })
 })

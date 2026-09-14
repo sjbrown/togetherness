@@ -228,6 +228,26 @@ function _rotationCenterOf(id, geom) {
   return layer?.rotationCenter?.(domEl, geom) ?? null;
 }
 
+// computeResize keeps the corner opposite the dragged one fixed in the shape's
+// OWN space. For a rotated shape that isn't enough: the resize also moves the
+// pivot the shape turns about, so the anchor corner slides across the canvas
+// even though it never moved locally. Translating the result by
+// d = R(delta) - delta, where delta is how far the pivot moved, puts it back
+// exactly where the user sees it.
+function _reanchorRotated(id, rect, rot) {
+  if (!rot) return rect;
+  const centre = _rotationCenterOf(id, rect);
+  if (!centre) return rect;
+  const dx  = centre.cx - rot.cx;
+  const dy  = centre.cy - rot.cy;
+  const rad = rot.deg * Math.PI / 180;
+  return {
+    ...rect,
+    x: rect.x + dx * Math.cos(rad) - dy * Math.sin(rad) - dx,
+    y: rect.y + dx * Math.sin(rad) + dy * Math.cos(rad) - dy,
+  };
+}
+
 // Canvas-space (px, py) expressed in id's own UNROTATED space. Handles are
 // drawn rotated with the element, and getGeom()/computeResize() both speak
 // local space, so every hit-test and resize computation comes through here
@@ -1668,7 +1688,8 @@ const App = {
   resize: (id, corner, px, py) => {
     if (!_resizeState || _resizeState.id !== id) return;
     const p = _toLocalPoint(id, px, py, _resizeState.rotation);
-    const rect = _Layers[_resizeState.mtype].computeResize(_resizeState.mode, _resizeState.startRect, corner, p.x, p.y);
+    const local = _Layers[_resizeState.mtype].computeResize(_resizeState.mode, _resizeState.startRect, corner, p.x, p.y);
+    const rect = _reanchorRotated(id, local, _resizeState.rotation);
     _resizeState.lastRect = rect;
     Overlay.updateResizeGhost(id, rect.x, rect.y, rect.width, rect.height);
   },
@@ -1676,7 +1697,8 @@ const App = {
   commitResize: (id, corner, px, py) => {
     if (!_resizeState || _resizeState.id !== id) return;
     const p = _toLocalPoint(id, px, py, _resizeState.rotation);
-    const toRect = _Layers[_resizeState.mtype].computeResize(_resizeState.mode, _resizeState.startRect, corner, p.x, p.y);
+    const local = _Layers[_resizeState.mtype].computeResize(_resizeState.mode, _resizeState.startRect, corner, p.x, p.y);
+    const toRect = _reanchorRotated(id, local, _resizeState.rotation);
     const mtype    = _resizeState.mtype;
     _resizeState = null;
 
