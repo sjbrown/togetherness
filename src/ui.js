@@ -718,6 +718,40 @@ export function restorePanelState() {
   openSheet(state.tab);
 }
 
+// -- Layer state persistence ---------------------------------------------------
+// `active` is a single layer id rather than a flag on each layer: exactly one
+// layer is ever active, and a per-layer flag could express zero or two.
+const LAYER_STATE_KEY = 'tt_layer_state';
+
+export function saveLayerState() {
+  try {
+    localStorage.setItem(LAYER_STATE_KEY, JSON.stringify({ active: App.getActiveLayer() }));
+  } catch {} // private browsing / quota — losing this preference is fine
+}
+
+function loadLayerState() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LAYER_STATE_KEY));
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed;
+  } catch {
+    return null; // absent, or corrupt/stale from an older version — start fresh
+  }
+}
+
+/**
+ * Re-select whatever layer was active last session.
+ * Must run before restorePanelState: the Layers and Tools tabs read the
+ * active layer as they render.
+ */
+export function restoreLayerState() {
+  const state = loadLayerState();
+  if (!state) return;
+  // A layer id this build no longer has would leave the app on a layer with
+  // no tools, so fall through to the default instead.
+  if (App.getLayers().some(l => l.id === state.active)) App.setLayer(state.active);
+}
+
 export function panelTabsHTML(activeId) {
   return `<div class="panel-tabs">${
     PANEL_TABS.map(t =>

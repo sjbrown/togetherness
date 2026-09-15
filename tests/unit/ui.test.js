@@ -5,7 +5,7 @@
 
 // @vitest-environment jsdom
 import { describe, test, expect, vi, beforeEach } from 'vitest'
-import { layerObjectListHTML, refreshLayerList, UIData, init, toast, showBranchDialog, branchDialogJoin, branchDialogKeepWorking, peersBody, openSheet, closePanel, restorePanelState, histBody, onToolChanged, editBody } from '../../src/ui.js'
+import { layerObjectListHTML, refreshLayerList, UIData, init, toast, showBranchDialog, branchDialogJoin, branchDialogKeepWorking, peersBody, openSheet, closePanel, restorePanelState, restoreLayerState, saveLayerState, histBody, onToolChanged, editBody } from '../../src/ui.js'
 import { SHAPE_TYPES } from '../../src/drawing.js'
 
 const mockObjects = [
@@ -922,5 +922,83 @@ describe('histBody — undo/redo panel layout', () => {
     const lists = div.querySelectorAll('.hist-list')
     expect(lists.length).toBe(2)
     for (const list of lists) expect(list.classList.contains('shape-list')).toBe(true)
+  })
+})
+
+describe('layer state persistence (tt_layer_state)', () => {
+  const LAYERS = [
+    { id: 'background',           label: 'Background',   visible: true  },
+    { id: 'boundaries-positions', label: 'Boun/Pos',     visible: false },
+    { id: 'toys',                 label: 'Toys',         visible: true  },
+    { id: 'drawing',              label: 'Drawing',      visible: true  },
+  ]
+
+  // Stands in for app.js: setLayer records what it was asked to select, and
+  // getActiveLayer reports it back, so save/restore can be driven end to end.
+  function mockApp(active = 'toys') {
+    return {
+      getLayers:      () => LAYERS,
+      getActiveLayer: () => active,
+      setLayer:       vi.fn((id) => { active = id }),
+    }
+  }
+
+  beforeEach(() => {
+    document.body.innerHTML = ''
+    localStorage.clear()
+  })
+
+  test('saveLayerState writes the active layer', () => {
+    init(mockApp('drawing'))
+    saveLayerState()
+    expect(JSON.parse(localStorage.getItem('tt_layer_state'))).toEqual({ active: 'drawing' })
+  })
+
+  test('restoreLayerState re-selects the persisted layer', () => {
+    const app = mockApp('toys')
+    init(app)
+    localStorage.setItem('tt_layer_state', JSON.stringify({ active: 'drawing' }))
+
+    restoreLayerState()
+
+    expect(app.setLayer).toHaveBeenCalledWith('drawing')
+  })
+
+  test('restoreLayerState ignores a layer id this build no longer has', () => {
+    const app = mockApp('toys')
+    init(app)
+    localStorage.setItem('tt_layer_state', JSON.stringify({ active: 'no-longer-a-real-layer' }))
+
+    expect(() => restoreLayerState()).not.toThrow()
+    expect(app.setLayer).not.toHaveBeenCalled()
+  })
+
+  test('restoreLayerState does nothing when nothing was ever persisted', () => {
+    const app = mockApp('toys')
+    init(app)
+
+    expect(() => restoreLayerState()).not.toThrow()
+    expect(app.setLayer).not.toHaveBeenCalled()
+  })
+
+  test('restoreLayerState tolerates genuinely malformed JSON', () => {
+    const app = mockApp('toys')
+    init(app)
+    localStorage.setItem('tt_layer_state', '{not valid json')
+
+    expect(() => restoreLayerState()).not.toThrow()
+    expect(app.setLayer).not.toHaveBeenCalled()
+  })
+
+  test('end-to-end: select a layer, reload, land back on it', () => {
+    init(mockApp('drawing'))
+    saveLayerState()
+
+    // Simulate a reload: fresh app on the default layer, same localStorage.
+    const reloaded = mockApp('toys')
+    init(reloaded)
+    restoreLayerState()
+
+    expect(reloaded.setLayer).toHaveBeenCalledWith('drawing')
   })
 })
