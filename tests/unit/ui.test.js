@@ -933,13 +933,19 @@ describe('layer state persistence (tt_layer_state)', () => {
     { id: 'drawing',              label: 'Drawing',      visible: true  },
   ]
 
-  // Stands in for app.js: setLayer records what it was asked to select, and
-  // getActiveLayer reports it back, so save/restore can be driven end to end.
+  // Stands in for app.js: the setters record what they were asked to do and
+  // mutate local state, so the getters report it back and save/restore can be
+  // driven end to end.
   function mockApp(active = 'toys') {
+    const layers = LAYERS.map(l => ({ ...l }))
     return {
-      getLayers:      () => LAYERS,
-      getActiveLayer: () => active,
-      setLayer:       vi.fn((id) => { active = id }),
+      getLayers:       () => layers,
+      getActiveLayer:  () => active,
+      setLayer:        vi.fn((id) => { active = id }),
+      setLayerVisible: vi.fn((id, visible) => {
+        const l = layers.find(x => x.id === id)
+        if (l) l.visible = visible
+      }),
     }
   }
 
@@ -948,10 +954,60 @@ describe('layer state persistence (tt_layer_state)', () => {
     localStorage.clear()
   })
 
-  test('saveLayerState writes the active layer', () => {
+  test('saveLayerState writes the active layer and every layer\'s visibility', () => {
     init(mockApp('drawing'))
     saveLayerState()
-    expect(JSON.parse(localStorage.getItem('tt_layer_state'))).toEqual({ active: 'drawing' })
+    expect(JSON.parse(localStorage.getItem('tt_layer_state'))).toEqual({
+      active: 'drawing',
+      layers: {
+        'background':           { visible: true  },
+        'boundaries-positions': { visible: false },
+        'toys':                 { visible: true  },
+        'drawing':              { visible: true  },
+      },
+    })
+  })
+
+  test('saveLayerState keeps an entry for a layer this build does not have', () => {
+    init(mockApp('toys'))
+    localStorage.setItem('tt_layer_state', JSON.stringify({
+      active: 'toys',
+      layers: { 'some-future-layer': { visible: false } },
+    }))
+
+    saveLayerState()
+
+    const written = JSON.parse(localStorage.getItem('tt_layer_state'))
+    expect(written.layers['some-future-layer']).toEqual({ visible: false })
+    expect(written.layers['toys']).toEqual({ visible: true })
+  })
+
+  test('restoreLayerState applies persisted visibility', () => {
+    const app = mockApp('toys')
+    init(app)
+    localStorage.setItem('tt_layer_state', JSON.stringify({
+      active: 'toys',
+      layers: { 'drawing': { visible: false }, 'boundaries-positions': { visible: true } },
+    }))
+
+    restoreLayerState()
+
+    expect(app.setLayerVisible).toHaveBeenCalledWith('drawing', false)
+    expect(app.setLayerVisible).toHaveBeenCalledWith('boundaries-positions', true)
+  })
+
+  test('restoreLayerState leaves a layer with no stored entry at its default', () => {
+    const app = mockApp('toys')
+    init(app)
+    // 'boundaries-positions' defaults to hidden and is absent from the store.
+    localStorage.setItem('tt_layer_state', JSON.stringify({
+      active: 'toys',
+      layers: { 'drawing': { visible: true } },
+    }))
+
+    restoreLayerState()
+
+    expect(app.setLayerVisible).not.toHaveBeenCalledWith('boundaries-positions', expect.anything())
   })
 
   test('restoreLayerState re-selects the persisted layer', () => {
@@ -990,15 +1046,19 @@ describe('layer state persistence (tt_layer_state)', () => {
     expect(app.setLayer).not.toHaveBeenCalled()
   })
 
-  test('end-to-end: select a layer, reload, land back on it', () => {
-    init(mockApp('drawing'))
+  test('end-to-end: select a layer, hide another, reload, land back on both', () => {
+    const app = mockApp('toys')
+    init(app)
+    app.setLayerVisible('drawing', false)
+    app.setLayer('drawing')
     saveLayerState()
 
-    // Simulate a reload: fresh app on the default layer, same localStorage.
+    // Simulate a reload: fresh app at its defaults, same localStorage.
     const reloaded = mockApp('toys')
     init(reloaded)
     restoreLayerState()
 
     expect(reloaded.setLayer).toHaveBeenCalledWith('drawing')
+    expect(reloaded.setLayerVisible).toHaveBeenCalledWith('drawing', false)
   })
 })

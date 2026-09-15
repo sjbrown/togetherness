@@ -719,13 +719,19 @@ export function restorePanelState() {
 }
 
 // -- Layer state persistence ---------------------------------------------------
+// Shape: { active: <layer id>, layers: { <layer id>: { visible } } }
+//
 // `active` is a single layer id rather than a flag on each layer: exactly one
 // layer is ever active, and a per-layer flag could express zero or two.
+// Visibility genuinely is per-layer, so it keys off the layer id, and an entry
+// for a layer this build doesn't have rides through untouched.
 const LAYER_STATE_KEY = 'tt_layer_state';
 
 export function saveLayerState() {
   try {
-    localStorage.setItem(LAYER_STATE_KEY, JSON.stringify({ active: App.getActiveLayer() }));
+    const layers = { ...(loadLayerState()?.layers ?? {}) };
+    for (const l of App.getLayers()) layers[l.id] = { ...layers[l.id], visible: l.visible };
+    localStorage.setItem(LAYER_STATE_KEY, JSON.stringify({ active: App.getActiveLayer(), layers }));
   } catch {} // private browsing / quota — losing this preference is fine
 }
 
@@ -740,13 +746,19 @@ function loadLayerState() {
 }
 
 /**
- * Re-select whatever layer was active last session.
- * Must run before restorePanelState: the Layers and Tools tabs read the
- * active layer as they render.
+ * Re-select whatever layer was active last session, and restore each layer's
+ * visibility. Must run before restorePanelState: the Layers and Tools tabs
+ * read both as they render.
  */
 export function restoreLayerState() {
   const state = loadLayerState();
   if (!state) return;
+  for (const l of App.getLayers()) {
+    // No stored entry means this layer is new since the last save — leave it
+    // at whatever default app.js seeded, which is not `true` for every layer.
+    const visible = state.layers?.[l.id]?.visible;
+    if (typeof visible === 'boolean' && visible !== l.visible) App.setLayerVisible(l.id, visible);
+  }
   // A layer id this build no longer has would leave the app on a layer with
   // no tools, so fall through to the default instead.
   if (App.getLayers().some(l => l.id === state.active)) App.setLayer(state.active);

@@ -1113,6 +1113,7 @@ const App = {
 
   setLayerVisible: (id, visible) => {
     _layerVisibility[id] = visible;
+    UI.saveLayerState();
     applyLayerVisibility();
     UI.refreshFromDoc();
   },
