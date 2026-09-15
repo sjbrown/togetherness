@@ -1819,7 +1819,6 @@ const App = {
     _activeLayer = id;
     // Default to Select when changing layers (tools differ per layer)
     App.setTool('select');
-    UI.toast(`Layer: ${id}`);
   },
   setOffline: (v)   => {
     _offline = v;
