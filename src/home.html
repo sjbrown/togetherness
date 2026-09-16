@@ -549,9 +549,13 @@ body {
           <label class="advanced-label" for="stunServerFallback">STUN Server (fallback):</label>
           <input class="advanced-input" id="stunServerFallback" type="text" autocomplete="off" spellcheck="false" placeholder="[Yjs Default]">
           <label class="advanced-label" for="turnServer">TURN Server:</label>
-          <input class="advanced-input" id="turnServer" type="text" autocomplete="off" spellcheck="false" placeholder="[Coming Soon]" disabled>
+          <input class="advanced-input" id="turnServer" type="text" autocomplete="off" spellcheck="false">
           <label class="advanced-label" for="turnServerFallback">TURN Server (fallback):</label>
-          <input class="advanced-input" id="turnServerFallback" type="text" autocomplete="off" spellcheck="false" placeholder="[Coming Soon]" disabled>
+          <input class="advanced-input" id="turnServerFallback" type="text" autocomplete="off" spellcheck="false">
+          <label class="advanced-label" for="turnUsername">TURN Username:</label>
+          <input class="advanced-input" id="turnUsername" type="text" autocomplete="off" spellcheck="false">
+          <label class="advanced-label" for="turnCredential">TURN Credential:</label>
+          <input class="advanced-input" id="turnCredential" type="text" autocomplete="off" spellcheck="false">
         </div>
       </div>
     </div>
@@ -726,6 +730,8 @@ const stunEl             = document.getElementById('stunServer');
 const stunFallbackEl     = document.getElementById('stunServerFallback');
 const turnEl             = document.getElementById('turnServer');
 const turnFallbackEl     = document.getElementById('turnServerFallback');
+const turnUsernameEl     = document.getElementById('turnUsername');
+const turnCredentialEl   = document.getElementById('turnCredential');
 
 advancedLinkEl.addEventListener('click', (e) => {
   e.preventDefault();
@@ -738,11 +744,13 @@ advancedLinkEl.addEventListener('click', (e) => {
     // "[Yjs Default]" placeholder shows through.
     stunEl.value             = ExternalServices.getSTUN() ?? '';
     stunFallbackEl.value     = ExternalServices.getSTUNFallback() ?? '';
-    // TURN inputs are disabled — there's no editing UI for these yet — but
-    // show whatever's stored so the field isn't misleadingly blank if a
-    // value ever gets in there some other way.
-    turnEl.value             = ExternalServices.getTURN() ?? '';
-    turnFallbackEl.value     = ExternalServices.getTURNFallback() ?? '';
+    // TURN does have built-in defaults — a free public test relay — so an
+    // unset field shows what's actually in effect rather than blank. The
+    // one credential pair applies to both TURN URLs.
+    turnEl.value             = ExternalServices.resolveTURN();
+    turnFallbackEl.value     = ExternalServices.resolveTURNFallback();
+    turnUsernameEl.value     = ExternalServices.resolveTURNUsername();
+    turnCredentialEl.value   = ExternalServices.resolveTURNCredential();
   }
 });
 
@@ -773,6 +781,30 @@ stunEl.addEventListener('change', () => {
 stunFallbackEl.addEventListener('change', () => {
   ExternalServices.setSTUNFallback(stunFallbackEl.value);
   stunFallbackEl.value = ExternalServices.getSTUNFallback() ?? '';
+});
+
+// TURN follows the signalling rules rather than STUN's: empty or
+// identical-to-default clears the override, an unparseable URL or a
+// fallback duplicating the primary is rejected. Re-reading afterward
+// puts the value actually in effect back in the field either way.
+turnEl.addEventListener('change', () => {
+  ExternalServices.setTURN(turnEl.value);
+  turnEl.value = ExternalServices.resolveTURN();
+});
+
+turnFallbackEl.addEventListener('change', () => {
+  ExternalServices.setTURNFallback(turnFallbackEl.value);
+  turnFallbackEl.value = ExternalServices.resolveTURNFallback();
+});
+
+turnUsernameEl.addEventListener('change', () => {
+  ExternalServices.setTURNUsername(turnUsernameEl.value);
+  turnUsernameEl.value = ExternalServices.resolveTURNUsername();
+});
+
+turnCredentialEl.addEventListener('change', () => {
+  ExternalServices.setTURNCredential(turnCredentialEl.value);
+  turnCredentialEl.value = ExternalServices.resolveTURNCredential();
 });
 
 // ── Previous tables ───────────────────────────────────────────────────────

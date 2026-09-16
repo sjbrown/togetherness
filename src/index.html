@@ -256,8 +256,6 @@ Trace.net('signaling', `signaling servers: ${signalingUrls.join(', ')}`, {
   fallbackOverridden: ExternalServices.getSignallingFallback() !== null,
   room:               tableId,
 });
-// No iceServers override means no `peerOpts.config` at all, leaving
-// simple-peer's own built-in STUN servers in effect.
 const iceServers   = ExternalServices.resolveIceServers();
 const providerOpts = { signaling: signalingUrls };
 if (iceServers.length) providerOpts.peerOpts = { config: { iceServers } };
