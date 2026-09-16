@@ -33,6 +33,8 @@ vi.mock('../../src/ui.js', () => ({
   toast:              vi.fn(),
   updatePeersPanel:   vi.fn(),
   restorePanelState:  vi.fn(),
+  restoreLayerState:  vi.fn(),
+  saveLayerState:     vi.fn(),
 }))
 
 vi.mock('../../src/canvas.js', () => ({

@@ -488,6 +488,10 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   renderDoc();
   renderPresence();
 
+  // Re-select the layer this client was last on. Before restorePanelState:
+  // the Layers and Tools tabs read the active layer as they render.
+  UI.restoreLayerState();
+
   // Reopen the panel wherever it was left
   // Must go after the render above: tabs read live doc-derived data
   UI.restorePanelState();
@@ -1109,6 +1113,7 @@ const App = {
 
   setLayerVisible: (id, visible) => {
     _layerVisibility[id] = visible;
+    UI.saveLayerState();
     applyLayerVisibility();
     UI.refreshFromDoc();
   },
@@ -1817,9 +1822,9 @@ const App = {
     // That in turn is what lets undo stay one mechanism per action
     if (id !== _activeLayer) _clearClaims();
     _activeLayer = id;
+    UI.saveLayerState();
     // Default to Select when changing layers (tools differ per layer)
     App.setTool('select');
-    UI.toast(`Layer: ${id}`);
   },
   setOffline: (v)   => {
     _offline = v;
