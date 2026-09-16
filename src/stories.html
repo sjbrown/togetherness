@@ -368,7 +368,7 @@ story('Panel · Save', '', () =>
 // getViewScale, and user from local data.
 
 import * as Overlay from '/overlay.js';
-import { getGeom } from '/drawing.js';
+import { getGeom, syncRotation } from '/drawing.js';
 import { dragPlaceholderFilterSVG } from '/defs.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -459,6 +459,33 @@ canvasStory('Rect',   'remote selected',  [{ id:'r3', type:'rect',   geom:rectGe
 canvasStory('Circle', 'unselected',       [{ id:'c1', type:'circle', geom:circleGeom, fill:'#5a7ea8' }], null);
 canvasStory('Circle', 'local selected',   [{ id:'c2', type:'circle', geom:circleGeom, fill:'#5a7ea8' }], 'local',  'c2');
 canvasStory('Circle', 'remote selected',  [{ id:'c3', type:'circle', geom:circleGeom, fill:'#5a7ea8' }], 'remote', 'c3');
+// Selection modes — the furniture each one draws, side by side. Rotate
+// mode's round, arrow-marked handles have to read differently from resize
+// mode's plain squares at a glance, and a turned shape's ring has to hug
+// the shape rather than its axis-aligned bounds; both are eyeball checks.
+function modeStory(variant, mode, rotation = 0) {
+  story('Select mode', variant, () => {
+    const svg = buildStageSVG([{ id: 'sm1', type: 'rect', geom: rectGeom, fill: '#c8941e' }]);
+    if (rotation) {
+      const el = svg.querySelector('[data-id="sm1"]');
+      el.setAttribute('data-rotate', String(rotation));
+      syncRotation(el);
+    }
+    Overlay.SelectionMode.clear();
+    Overlay.SelectionMode.set('sm1', { mode, color: myGrad.c1, grad: myGrad });
+    const centre = { cx: rectGeom.x + rectGeom.width / 2, cy: rectGeom.y + rectGeom.height / 2 };
+    const rot = rotation ? { deg: rotation, ...centre } : null;
+    Overlay.init({ ...fakeOverlayApp(svg), getRotation: () => rot }, svg, storiesUser);
+    Overlay.render();
+    return svg;
+  });
+}
+
+modeStory('sel-move', 'sel-move');
+modeStory('sel-resize · square corner handles', 'sel-resize');
+modeStory('sel-rotate-pivot · round handles, turn arrow', 'sel-rotate-pivot');
+modeStory('sel-rotate-pivot · already turned 30°, furniture rides with it', 'sel-rotate-pivot', 30);
+
 // Mixed: both local + remote selections active simultaneously.
 story('Mixed', 'rect local · circle remote', () => {
   const shapes = [

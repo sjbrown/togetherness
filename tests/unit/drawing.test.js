@@ -14,6 +14,10 @@ import {
   addDrawing, deleteDrawing, findDrawing,
   getGeom, _toSVGEl, listDrawings, CURRENT_SCHEMA, SHAPE_TYPES,
   selectModes, nextSelectMode, computeResize,
+  computeRotate, snapAngle, normalizeAngle, getRotation, syncRotation,
+  applyRotate, applyMoveCommit, previewResize, previewRotate, rotationCenter,
+  resolveRotation, rotationTransform, getPivot,
+  stripDerivedTransform, ROTATE_SNAP_DEG,
 } from '../../src/drawing.js'
 import { tablesAPI } from '../../src/tables.js'
 
@@ -202,17 +206,18 @@ describe('selectModes / nextSelectMode', () => {
   const circleEl = () => document.createElementNS('http://www.w3.org/2000/svg', 'circle')
   const lineEl   = () => document.createElementNS('http://www.w3.org/2000/svg', 'line')
 
-  test('selectModes: sel-move plus rects support sel-resize, circles sel-resize-r', () => {
-    expect(selectModes(rectEl())).toEqual(['sel-move', 'sel-resize'])
+  test('selectModes: sel-move plus rects support sel-resize/sel-rotate-pivot, circles sel-resize-r', () => {
+    expect(selectModes(rectEl())).toEqual(['sel-move', 'sel-resize', 'sel-rotate-pivot'])
     expect(selectModes(circleEl())).toEqual(['sel-move', 'sel-resize-r'])
     expect(selectModes(lineEl())).toEqual(['sel-move'])
   })
 
-  test('nextSelectMode cycles a rect through sel-move <-> sel-resize', () => {
+  test('nextSelectMode cycles a rect sel-move -> sel-resize -> sel-rotate-pivot -> sel-move', () => {
     const el = rectEl()
     expect(nextSelectMode(el, null)).toBe('sel-move')
     expect(nextSelectMode(el, 'sel-move')).toBe('sel-resize')
-    expect(nextSelectMode(el, 'sel-resize')).toBe('sel-move')
+    expect(nextSelectMode(el, 'sel-resize')).toBe('sel-rotate-pivot')
+    expect(nextSelectMode(el, 'sel-rotate-pivot')).toBe('sel-move')
   })
 
   test('nextSelectMode cycles a circle through sel-move <-> sel-resize-r', () => {
@@ -492,5 +497,241 @@ describe('z-order', () => {
     const order2 = listDrawings(peer2.yDrawing).map(svgEl => svgEl.getAttribute("data-id"))
     expect(order1).toEqual(order2)
     expect(order1.length).toBe(2)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Rotation
+// Stored as a degree count (data-rotate); the SVG transform is derived from
+// it plus the shape's current geometry, never stored.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('snapAngle / normalizeAngle', () => {
+  test('snaps to the nearest multiple of the default 15° step', () => {
+    expect(ROTATE_SNAP_DEG).toBe(15)
+    expect(snapAngle(7)).toBe(0)
+    expect(snapAngle(8)).toBe(15)
+    expect(snapAngle(37)).toBe(30)
+    expect(snapAngle(38)).toBe(45)
+  })
+
+  test('the step is an argument, not a constant — a caller can pass its own', () => {
+    expect(snapAngle(38, 90)).toBe(0)
+    expect(snapAngle(50, 90)).toBe(90)
+    expect(snapAngle(7, 5)).toBe(5)
+  })
+
+  test('a step of 0 means free rotation — the angle passes through unsnapped', () => {
+    expect(snapAngle(37.5, 0)).toBeCloseTo(37.5)
+  })
+
+  test('normalizes into [0, 360) so a snap that lands on 360 reads as 0', () => {
+    expect(normalizeAngle(-15)).toBe(345)
+    expect(normalizeAngle(360)).toBe(0)
+    expect(normalizeAngle(725)).toBe(5)
+    expect(snapAngle(-8)).toBe(345)
+    expect(snapAngle(358)).toBe(0)
+  })
+})
+
+describe('computeRotate', () => {
+  // A square, so every corner sits on a diagonal and the arithmetic is
+  // checkable by eye. centre (100, 100).
+  const startRect = { x: 50, y: 50, width: 100, height: 100 }
+  const mid = { cx: 100, cy: 100 }
+
+  test('pointer left on the grabbed corner means no rotation', () => {
+    expect(computeRotate(startRect, mid, 2, 150, 150)).toBe(0)  // SE corner
+    expect(computeRotate(startRect, mid, 0, 50, 50)).toBe(0)    // NW corner
+  })
+
+  test('the grabbed corner follows the pointer — a quarter turn reads as 90°', () => {
+    // SE corner starts at 45° from centre; pointer moved to 135° (SW side).
+    expect(computeRotate(startRect, mid, 2, 50, 150)).toBe(90)
+  })
+
+  test('each corner measures from its own start, so all four agree on the angle', () => {
+    // Every corner dragged a quarter turn clockwise gives the same 90°.
+    expect(computeRotate(startRect, mid, 0, 150, 50)).toBe(90)  // NW → NE position
+    expect(computeRotate(startRect, mid, 1, 150, 150)).toBe(90) // NE → SE position
+    expect(computeRotate(startRect, mid, 3, 50, 50)).toBe(90)   // SW → NW position
+  })
+
+  test('the raw angle is snapped to the step before it is returned', () => {
+    const rect = { x: 0, y: 0, width: 200, height: 200 }
+    const c    = { cx: 100, cy: 100 }
+    // ~10° past the SE corner's 45° — snaps down to 0 at 15°, up to 45 at 40°.
+    expect(computeRotate(rect, c, 2, 100, 200)).toBe(45)
+    expect(computeRotate(rect, c, 2, 200, 190, 90)).toBe(0)
+  })
+
+  test('counter-clockwise rotation comes back normalized, never negative', () => {
+    expect(computeRotate(startRect, mid, 2, 150, 50)).toBe(270)
+  })
+
+  test('the centre is an argument, so an off-centre pivot needs no change here', () => {
+    // Turning about the NW corner instead of the middle: the SE corner
+    // starts at 45° from it too (square), but a quarter turn about a
+    // different point is still a quarter turn.
+    const nw = { cx: 50, cy: 50 }
+    expect(computeRotate(startRect, nw, 2, 150, 150)).toBe(0)
+    expect(computeRotate(startRect, nw, 2, -50, 150)).toBe(90)
+  })
+})
+
+describe('rotation on the DOM', () => {
+  const rectDom = (attrs = {}) => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
+    for (const [k, v] of Object.entries({ x: 50, y: 50, width: 100, height: 100, ...attrs })) {
+      el.setAttribute(k, String(v))
+    }
+    return el
+  }
+
+  test('getRotation reads data-rotate, defaulting to 0', () => {
+    expect(getRotation(rectDom())).toBe(0)
+    expect(getRotation(rectDom({ 'data-rotate': '45' }))).toBe(45)
+    expect(getRotation(null)).toBe(0)
+  })
+
+  test('rotationCenter defaults to the centre of the unrotated bbox', () => {
+    expect(rotationCenter({ x: 50, y: 50, width: 100, height: 200 })).toEqual({ cx: 100, cy: 150 })
+  })
+
+  test('rotationCenter resolves any pivot as fractions of the bbox', () => {
+    const geom = { x: 50, y: 50, width: 100, height: 200 }
+    expect(rotationCenter(geom, { fx: 0, fy: 0 })).toEqual({ cx: 50, cy: 50 })    // NW
+    expect(rotationCenter(geom, { fx: 0, fy: 1 })).toEqual({ cx: 50, cy: 250 })   // SW
+    expect(rotationCenter(geom, { fx: 1.5, fy: 0.5 })).toEqual({ cx: 200, cy: 150 }) // outside
+  })
+
+  test('a pivot expressed as fractions rides a resize, an absolute point would not', () => {
+    const pivot = getPivot(rectDom())
+    const before = rotationCenter({ x: 0, y: 0, width: 100, height: 100 }, pivot)
+    const after  = rotationCenter({ x: 0, y: 0, width: 200, height: 200 }, pivot)
+    expect(before).toEqual({ cx: 50, cy: 50 })
+    expect(after).toEqual({ cx: 100, cy: 100 })
+  })
+
+  test('resolveRotation is null for an unrotated shape, { deg, cx, cy } otherwise', () => {
+    expect(resolveRotation(rectDom())).toBeNull()
+    expect(resolveRotation(rectDom({ 'data-rotate': '30' }))).toEqual({ deg: 30, cx: 100, cy: 100 })
+  })
+
+  test('rotationTransform formats a resolved rotation, and null stays null', () => {
+    expect(rotationTransform({ deg: 30, cx: 100, cy: 100 })).toBe('rotate(30 100 100)')
+    expect(rotationTransform(null)).toBeNull()
+  })
+
+  test('syncRotation derives a transform about the shape centre', () => {
+    const el = rectDom({ 'data-rotate': '30' })
+    syncRotation(el)
+    expect(el.getAttribute('transform')).toBe('rotate(30 100 100)')
+  })
+
+  test('a rotation of 0 carries no transform at all', () => {
+    const el = rectDom({ 'data-rotate': '0' })
+    syncRotation(el)
+    expect(el.getAttribute('transform')).toBeNull()
+  })
+
+  test('a shape with no data-rotate keeps whatever transform its author gave it', () => {
+    const el = rectDom({ transform: 'rotate(30 100 100)' })
+    syncRotation(el)
+    expect(el.getAttribute('transform')).toBe('rotate(30 100 100)')
+  })
+
+  test('a shape whose rotation went back to 0 sheds the transform it had', () => {
+    const el = rectDom({ 'data-rotate': '30' })
+    syncRotation(el)
+    previewRotate(el, 0)
+    expect(el.getAttribute('transform')).toBeNull()
+  })
+
+  test('_toSVGEl renders the stored rotation as a transform', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'r1', x: 0, y: 0, width: 100, height: 60, rotate: 45 })
+    const el = _toSVGEl(findDrawing(doc.yDrawing, 'r1'))
+    expect(el.getAttribute('data-rotate')).toBe('45')
+    expect(el.getAttribute('transform')).toBe('rotate(45 50 30)')
+  })
+
+  test('the pivot follows the shape — previewResize re-centres the transform', () => {
+    const el = rectDom({ 'data-rotate': '45' })
+    syncRotation(el)
+    expect(el.getAttribute('transform')).toBe('rotate(45 100 100)')
+    previewResize(el, 50, 50, 200, 200)
+    expect(el.getAttribute('transform')).toBe('rotate(45 150 150)')
+  })
+
+  test('previewRotate sets both the stored degrees and the derived transform', () => {
+    const el = rectDom()
+    previewRotate(el, 90)
+    expect(el.getAttribute('data-rotate')).toBe('90')
+    expect(el.getAttribute('transform')).toBe('rotate(90 100 100)')
+  })
+
+  test('previewResize on a circle keeps the centre and derives r from the bbox', () => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+    previewResize(el, 60, 60, 80, 80)
+    expect(el.getAttribute('cx')).toBe('100')
+    expect(el.getAttribute('cy')).toBe('100')
+    expect(el.getAttribute('r')).toBe('40')
+  })
+})
+
+describe('applyRotate', () => {
+  test('writes a normalized degree count that survives sync', () => {
+    const a = makeDoc()
+    const b = makeDoc()
+    add(a, { id: 'r1' })
+    sync(a.ydoc, b.ydoc)
+
+    applyRotate(a.ydoc, findDrawing(a.yDrawing, 'r1'), -30)
+    sync(a.ydoc, b.ydoc)
+    expect(findDrawing(b.yDrawing, 'r1').getAttribute('data-rotate')).toBe('330')
+  })
+
+  test('is a no-op for a shape type whose schema has no rotate key', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'c1', type: 'circle', cx: 50, cy: 50, r: 30 })
+    const yEl = findDrawing(doc.yDrawing, 'c1')
+    applyRotate(doc.ydoc, yEl, 45)
+    expect(yEl.getAttribute('data-rotate')).toBeUndefined()
+  })
+
+  test('a rotated rect keeps its rotation across a move', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'r1', x: 0, y: 0, width: 100, height: 60, rotate: 45 })
+    const yEl = findDrawing(doc.yDrawing, 'r1')
+    applyMoveCommit(doc.ydoc, yEl, 200, 200)
+    const el = _toSVGEl(yEl)
+    expect(el.getAttribute('transform')).toBe('rotate(45 250 230)')
+  })
+})
+
+describe('stripDerivedTransform', () => {
+  test('drops the transform an export baked in, keeping the degree count as the one answer', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'r1', x: 0, y: 0, width: 100, height: 60, rotate: 45 })
+    const yEl = findDrawing(doc.yDrawing, 'r1')
+    yEl.setAttribute('transform', 'rotate(45 50 30)')  // what an export writes
+
+    stripDerivedTransform(yEl)
+    expect(yEl.getAttribute('transform')).toBeUndefined()
+    expect(yEl.getAttribute('data-rotate')).toBe('45')
+    // ...and the render still comes out rotated, from the degrees alone.
+    expect(_toSVGEl(yEl).getAttribute('transform')).toBe('rotate(45 50 30)')
+  })
+
+  test('leaves a transform alone on a shape that carries no rotation of ours', () => {
+    const doc = makeDoc()
+    const yEl = new Y.XmlElement('rect')
+    yEl.setAttribute('id', 'foreign')
+    yEl.setAttribute('transform', 'translate(5 5)')
+    doc.yDrawing.insert(0, [yEl])
+
+    stripDerivedTransform(yEl)
+    expect(yEl.getAttribute('transform')).toBe('translate(5 5)')
   })
 })

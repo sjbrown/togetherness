@@ -189,3 +189,38 @@ export function drawCrosshairGlyph(cx, cy, arm, parent, color) {
   parent.appendChild(svgEl('line', { x1: cx - arm, y1: cy,       x2: cx + arm, y2: cy,       ...attrs }));
   parent.appendChild(svgEl('line', { x1: cx,       y1: cy - arm, x2: cx,       y2: cy + arm, ...attrs }));
 }
+
+/**
+ * drawRotateGlyph(cx, cy, r, parent)
+ * A circular arrow — an arc most of the way round, with a filled arrowhead
+ * on its leading end. Drawn at dynamic canvas-space coordinates like the
+ * two glyphs above, and used by overlay.js's rotate-mode handles to say
+ * "spin" where the resize handles' plain squares say "stretch".
+ * `r` is the arc radius. Appends directly to `parent`; returns nothing.
+ */
+export function drawRotateGlyph(cx, cy, r, parent) {
+  const pt = deg => {
+    const rad = deg * Math.PI / 180;
+    return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+  };
+  const start = pt(60);
+  const end   = pt(0);   // 300° of arc, swept the long way round
+  parent.appendChild(svgEl('path', {
+    d: `M ${start.x} ${start.y} A ${r} ${r} 0 1 1 ${end.x} ${end.y}`,
+    fill:             'none',
+    stroke:           'var(--info)',
+    'stroke-width':   Math.max(0.6, r * 0.30),
+    'stroke-linecap': 'round',
+    class:            'rotateGlyph',
+  }));
+
+  // Arrowhead on the arc's end, pointing along the direction of travel
+  // (tangent at 0° in a y-down space is straight down).
+  const head = r * 0.72;
+  parent.appendChild(svgEl('path', {
+    d: `M ${end.x - head} ${end.y} L ${end.x + head} ${end.y} L ${end.x} ${end.y + head * 1.5} Z`,
+    fill:   'var(--info)',
+    stroke: 'none',
+    class:  'rotateGlyph',
+  }));
+}

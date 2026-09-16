@@ -24,6 +24,22 @@ Run these checks before merging large changesets. Automated tests catch logic er
 
 ---
 
+## Rect Rotation
+
+1. Draw a rect; click it once to select, again for resize, again for rotate
+2. Handles change from squares to round discs with a turn arrow
+3. Drag a corner; the rect turns in 15° steps and the ring turns with it
+4. Rotate to 45°, then cycle back to resize and drag a corner
+   - The corner you grab is the one that moves; the opposite one stays put
+5. Rotate to 45°, then drag the rect somewhere else
+   - It stays at 45°, turning about its own new centre (not the old one)
+6. Second browser window: the rotation appears there too
+7. Export, reopen in Inkscape: the rect is drawn turned
+8. Re-import: still turned, and the Yjs `<rect>` has `data-rotate` but no
+   `transform` (the transform is derived on render, never stored)
+
+---
+
 ## Boundary Constraints
 
 1. **Single boundary:** Create boundary named `"toy"`, toy with class `"toy"` inside

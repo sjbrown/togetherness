@@ -39,12 +39,15 @@ export const SHAPE_TYPES = {
     getBBox: rectGetBBox,
     iconUrl: 'drawing/rect.svg',
     // attrMap: schema key → actual SVG attribute name (where they differ)
-    attrMap: { 'corner-r': 'rx' },
+    // `rotate` maps to data-rotate rather than a bare `rotate` attribute:
+    // SVG already gives `rotate` a different meaning on <text>, so a
+    // data- name keeps the degree count unambiguously ours.
+    attrMap: { 'corner-r': 'rx', rotate: 'data-rotate' },
     schema: {
       label: 'Rectangle',
       values: {
         id: '', type: 'rect',
-        x: 0, y: 0, width: 120, height: 80,
+        x: 0, y: 0, width: 120, height: 80, rotate: 0,
         fill: '#c8941e', stroke: 'none', 'stroke-width': 1.5, 'corner-r': 8,
       },
       types: {
@@ -54,6 +57,7 @@ export const SHAPE_TYPES = {
         y:              { show: [] },
         width:          { show: [] },
         height:         { show: [] },
+        rotate:         { show: [] },
         fill:           { kind: 'color-hslo',                          show: ['add', 'edit', 'addQuick'] },
         stroke:         { kind: 'color-hslo',                          show: ['edit'] },
         'stroke-width': { kind: 'number', min: 0.5, max: 10, step: 0.5, show: ['edit'] },
@@ -175,6 +179,7 @@ export function _toSVGEl(yEl, opts = {}) {
     el.setAttribute('id',              id);
     el.setAttribute('data-id',         id);
     el.setAttribute('data-module', 'drawing');
+    syncRotation(el);
   }
   return el;
 }
@@ -189,6 +194,161 @@ export function getGeom(svgEl) {
   const a = {};
   for (const k of Object.keys(def.schema.types)) a[k] = svgEl.getAttribute(k);
   return def.getBBox(a);
+}
+
+// ── Rotation ─────────────────────────────────────────────────────────────────
+// A shape stores its rotation as a plain degree count (schema key `rotate`,
+// SVG attribute data-rotate) and never as a baked transform. The transform is
+// derived — `rotate(deg cx cy)` about the shape's own centre — so a move or a
+// resize re-pivots for free: everything that writes geometry calls
+// syncRotation() afterwards and the pivot follows.
+//
+// getGeom() deliberately stays in the shape's UNROTATED local space. Callers
+// that need screen/canvas-space geometry (hit-testing a handle, drawing a
+// selection ring) rotate the point or the decoration themselves, using
+// getRotation() — keeping one bbox definition instead of two.
+
+// Default rotation step. Every function that snaps takes snapDeg as an
+// argument defaulting to this, so a per-table or per-user increment can be
+// threaded through without touching the geometry.
+export const ROTATE_SNAP_DEG = 15;
+
+const ROTATE_ATTR = 'data-rotate';
+
+/** Degrees in [0, 360). */
+export function normalizeAngle(deg) {
+  const d = Number(deg) || 0;
+  return ((d % 360) + 360) % 360;
+}
+
+/**
+ * Snap deg to the nearest multiple of snapDeg. A snapDeg of 0 (or less)
+ * means free rotation — the angle passes through unsnapped.
+ */
+export function snapAngle(deg, snapDeg = ROTATE_SNAP_DEG) {
+  const step = Number(snapDeg);
+  if (!(step > 0)) return normalizeAngle(deg);
+  return normalizeAngle(Math.round(Number(deg) / step) * step);
+}
+
+/** A rendered shape's rotation in degrees (0 when it has none). */
+export function getRotation(svgEl) {
+  return parseFloat(svgEl?.getAttribute?.(ROTATE_ATTR)) || 0;
+}
+
+// Where a shape's pivot sits, as fractions of its own bbox: {fx: 0.5, fy: 0.5}
+// is the centre, {fx: 0, fy: 1} the bottom-left corner. Fractions rather than
+// canvas-space coordinates for the same reason the rotation is degrees — a
+// point expressed against the shape survives a move and a resize, an absolute
+// one goes stale on both.
+const CENTER_PIVOT = { fx: 0.5, fy: 0.5 };
+
+/**
+ * A shape's pivot. Every shape pivots on its centre today; this is the one
+ * function a per-shape, user-placeable pivot would change, and nothing
+ * downstream of rotationCenter() assumes the answer.
+ */
+export function getPivot(_svgEl) {
+  return CENTER_PIVOT;
+}
+
+/** The canvas-space point a shape rotates about, for a given pivot. */
+export function rotationCenter(geom, pivot = CENTER_PIVOT) {
+  return geom
+    ? { cx: geom.x + pivot.fx * geom.width, cy: geom.y + pivot.fy * geom.height }
+    : { cx: 0, cy: 0 };
+}
+
+/**
+ * A shape's rotation resolved against geometry: { deg, cx, cy }, or null
+ * when it isn't rotated. The single place degrees and pivot are turned into
+ * the concrete point everything else rotates about — overlay.js turns
+ * selection furniture with it, app.js un-rotates pointers through it, and
+ * syncRotation writes it onto the element.
+ */
+export function resolveRotation(svgEl, geom = getGeom(svgEl)) {
+  const deg = getRotation(svgEl);
+  if (!deg) return null;
+  return { deg, ...rotationCenter(geom, getPivot(svgEl)) };
+}
+
+/** Format a resolved rotation as an SVG transform, or null for none. */
+export function rotationTransform(rot) {
+  return rot ? `rotate(${rot.deg} ${rot.cx} ${rot.cy})` : null;
+}
+
+/**
+ * Project a shape's stored rotation onto its live DOM element as a
+ * transform. Called after every geometry write so the pivot tracks the
+ * shape rather than the position it had when the rotation was set.
+ */
+export function syncRotation(domEl) {
+  if (!domEl?.setAttribute) return;
+  // No data-rotate means this shape's transform isn't ours — a hand-authored
+  // or imported SVG can carry its own, and rewriting it would silently
+  // throw the author's geometry away.
+  if (!domEl.hasAttribute?.(ROTATE_ATTR)) return;
+  const transform = rotationTransform(resolveRotation(domEl));
+  if (transform) domEl.setAttribute('transform', transform);
+  else           domEl.removeAttribute('transform');
+}
+
+/**
+ * Pure geometry for a corner-drag rotation: the angle from the shape's
+ * pivot out to the pointer, less the angle out to the corner that was
+ * grabbed, so that corner stays under the pointer. Snapped to snapDeg.
+ *
+ * The result is absolute, not a delta — the rotation the shape had when
+ * the drag began is already implied by where the grabbed corner started.
+ *
+ * centre is the canvas-space {cx, cy} to turn about, captured at drag start
+ * (see rotationCenter) rather than re-derived here, so this stays pure and a
+ * pivot anywhere other than the middle needs no change.
+ *
+ * corner is a RESIZE_CORNER_* index (0=NW/1=NE/2=SE/3=SW). px/py are
+ * canvas-space. The corner angle is taken from the unpadded bbox corner,
+ * which is a fraction of a degree off the padded handle overlay.js draws;
+ * snapping absorbs it.
+ */
+export function computeRotate(startRect, centre, corner, px, py, snapDeg = ROTATE_SNAP_DEG) {
+  const { x, y, width, height } = startRect;
+  const { cx, cy } = centre;
+  const corners = [
+    { x: x,         y: y },          // NW
+    { x: x + width, y: y },          // NE
+    { x: x + width, y: y + height }, // SE
+    { x: x,         y: y + height }, // SW
+  ];
+  const grab = corners[corner] ?? corners[2];
+  const grabAngle = Math.atan2(grab.y - cy, grab.x - cx);
+  const nowAngle  = Math.atan2(py - cy, px - cx);
+  return snapAngle((nowAngle - grabAngle) * 180 / Math.PI, snapDeg);
+}
+
+/**
+ * Commit a rotation to the Yjs doc in a single transaction — the rotate
+ * counterpart of applyResize. Shapes whose schema has no `rotate` key
+ * (circles, where it would be invisible anyway) are a no-op.
+ */
+export function applyRotate(ydoc, yEl, deg) {
+  if (!yEl) return;
+  if (!SHAPE_TYPES[yEl.nodeName]?.schema.types.rotate) return;
+  ydoc.transact(() => {
+    yEl.setAttribute(ROTATE_ATTR, String(normalizeAngle(deg)));
+  });
+}
+
+/**
+ * Drop the transform an export baked in from a shape's `rotate` — the
+ * document keeps degrees, not matrices, and the transform is re-derived on
+ * every render, so storing the exported copy too would leave two answers to
+ * the same question with one of them going stale on the next move. Called
+ * by storage.js on import. A transform on a shape carrying no `rotate` is
+ * the author's own and is left in place.
+ */
+export function stripDerivedTransform(yEl) {
+  if (yEl?.getAttribute?.(ROTATE_ATTR) == null) return;
+  if (yEl.getAttribute('transform') != null) yEl.removeAttribute('transform');
 }
 
 /**
@@ -223,10 +383,13 @@ export function getAnchor(svgEl) {
  * Every mode svgEl can be in, in cycle order, fully `sel-`-prefixed.
  * 'sel-move' is the default every shape shows with no click; rects/
  * circles each add their one resize-family mode after it.
+ *
+ * Rects rotate as 'sel-rotate-pivot' — the variant whose pivot the user can
+ * place. 'sel-rotate' is the fixed-pivot variant, which toys will use.
  */
 export function selectModes(svgEl) {
   const tag = svgEl?.tagName;
-  if (tag === 'rect')   return ['sel-move', 'sel-resize'];
+  if (tag === 'rect')   return ['sel-move', 'sel-resize', 'sel-rotate-pivot'];
   if (tag === 'circle') return ['sel-move', 'sel-resize-r'];
   return ['sel-move'];
 }
@@ -368,6 +531,7 @@ export function applyMoveDom(domEl, x, y) {
     domEl.setAttribute('cx', x);
     domEl.setAttribute('cy', y);
   }
+  syncRotation(domEl);
 }
 
 /**
@@ -503,6 +667,41 @@ export function edit(ydoc, yEl, editData) {
   });
 }
 
+/**
+ * Apply a live resize to a detached ghost clone — DOM only, no Yjs write.
+ * Mirrors boun_pos.js's previewResize so overlay.js can hand any layer's
+ * ghost the same (x, y, width, height) without knowing how each shape
+ * stores its geometry. (x, y, width, height) is the bbox form
+ * computeResize returns; for a circle that's the centre-preserving bbox.
+ */
+export function previewResize(ghostEl, x, y, width, height) {
+  const tag = ghostEl?.tagName;
+  if (tag === 'rect') {
+    ghostEl.setAttribute('x',      x);
+    ghostEl.setAttribute('y',      y);
+    ghostEl.setAttribute('width',  width);
+    ghostEl.setAttribute('height', height);
+  } else if (tag === 'circle') {
+    const r = width / 2;
+    ghostEl.setAttribute('cx', x + r);
+    ghostEl.setAttribute('cy', y + r);
+    ghostEl.setAttribute('r',  r);
+  } else {
+    return;
+  }
+  syncRotation(ghostEl);
+}
+
+/**
+ * Apply a live rotation to a detached ghost clone — DOM only, no Yjs write.
+ * The counterpart of previewResize for the rotate gesture.
+ */
+export function previewRotate(ghostEl, deg) {
+  if (!ghostEl?.setAttribute) return;
+  ghostEl.setAttribute(ROTATE_ATTR, String(normalizeAngle(deg)));
+  syncRotation(ghostEl);
+}
+
 export function previewEdit(ghostEl, editData) {
   const attrMap = SHAPE_TYPES[ghostEl.tagName]?.attrMap ?? {};
   for (const [key, value] of Object.entries(editData)) {
@@ -538,8 +737,15 @@ export function makeLayerAPI(ydoc, yDrawing) {
     selectModes,
     nextSelectMode,
     computeResize,
+    getRotation,
+    resolveRotation,
+    rotationCenter:  (svgEl, geom) => rotationCenter(geom, getPivot(svgEl)),
+    computeRotate,
+    previewResize,
+    previewRotate,
     applyMoveCommit: (yEl, x, y)     => applyMoveCommit(ydoc, yEl, x, y),
     applyResize:     (yEl, x, y, w, h) => applyResize(ydoc, yEl, x, y, w, h),
+    applyRotate:     (yEl, deg)      => applyRotate(ydoc, yEl, deg),
     applyTtState:    (state)         => applyTtState(ydoc, yDrawing, state),
     edit:            (yEl, editData) => edit(ydoc, yEl, editData),
     previewEdit,
