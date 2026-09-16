@@ -280,9 +280,11 @@ describe('handles carry their cursor inline, so it can follow the rotation', () 
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The pivot handle. A centre dot plus up to eight radiating lines, each fading
-// as the pivot nears the edge it points at — which is what lets it share the
-// corners with the rotate handles instead of pushing them out of the way.
+// The pivot handle. A centre dot plus eight radiating lines in four
+// symmetric pairs, one pair per quadrant. A whole quadrant's pair fades
+// together as the pivot nears the edge that quadrant leans toward — which is
+// what lets it share the corners with the rotate handles instead of pushing
+// them out of the way.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const pivotRays = () => document.querySelectorAll('#overlay-layer .pivotHandle line')
@@ -310,14 +312,14 @@ describe('the pivot handle', () => {
     expect(pivotRays()).toHaveLength(8)
   })
 
-  test('drops the three leftward rays at the left edge', () => {
+  test('drops the two left-quadrant pairs at the left edge, keeping both right pairs', () => {
     boot({ pivot: { fx: 0, fy: 0.5 } }); enter('sel-rotate-pivot')
-    expect(pivotRays()).toHaveLength(5)
+    expect(pivotRays()).toHaveLength(4)
   })
 
-  test('keeps only the quarter-fan pointing into the shape at a corner', () => {
+  test('keeps only the one pair pointing into the shape at a corner', () => {
     boot({ pivot: { fx: 0, fy: 0 } }); enter('sel-rotate-pivot')
-    expect(pivotRays()).toHaveLength(3)
+    expect(pivotRays()).toHaveLength(2)
   })
 
   test('a faded ray is drawn at reduced opacity, not simply dropped', () => {
@@ -350,7 +352,7 @@ describe('the pivot handle', () => {
 
     setPivotPreview('rect1', { fx: 0, fy: 0 })
     expect(Number(pivotDot().getAttribute('cx'))).toBe(BBOX.x)
-    expect(pivotRays()).toHaveLength(3)
+    expect(pivotRays()).toHaveLength(2)
 
     setPivotPreview(null, null)
     expect(Number(pivotDot().getAttribute('cx'))).toBe(BBOX.x + BBOX.width / 2)

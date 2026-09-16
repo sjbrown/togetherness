@@ -17,7 +17,7 @@ import {
   computeRotate, snapAngle, normalizeAngle, getRotation, syncRotation,
   applyRotate, applyMoveCommit, applyMoveDom, previewResize, previewRotate, rotationCenter,
   resolveRotation, rotationTransform, getPivot,
-  snapPivot, computePivot, pivotShift, pivotRayOpacities, applyPivot,
+  snapPivot, computePivot, pivotShift, pivotRayOpacities, PIVOT_RAYS, applyPivot,
   reconcileImportedTransform, parseTransformList, reconcileTransform,
   ROTATE_SNAP_DEG, PIVOT_SNAP_FRACTION,
 } from '../../src/drawing.js'
@@ -946,45 +946,109 @@ describe('computePivot', () => {
   })
 })
 
-describe('pivotRayOpacities', () => {
-  const at = (fx, fy) => Object.fromEntries(
-    pivotRayOpacities(fx, fy).map(r => [`${r.dx},${r.dy}`, r.opacity]))
+describe('PIVOT_RAYS layout', () => {
+  // Compass degrees clockwise from north, as specified: a symmetric pair
+  // either side of each quadrant's own diagonal (45/135/225/315°), offset
+  // ±30° from it.
+  const EXPECTED_DEGREES = [15, 75, 105, 165, 195, 255, 285, 345]
 
-  test('all eight rays are full strength at the centre', () => {
-    expect(Object.values(at(0.5, 0.5))).toEqual(Array(8).fill(1))
+  const compassDeg = ({ dx, dy }) => {
+    const deg = Math.atan2(dx, -dy) * 180 / Math.PI   // inverse of dx=sin,dy=-cos
+    return ((deg % 360) + 360) % 360
+  }
+
+  test('eight rays at the specified angles, none on a cardinal axis', () => {
+    const degrees = PIVOT_RAYS.map(compassDeg).sort((a, b) => a - b)
+    expect(degrees).toHaveLength(8)
+    degrees.forEach((d, i) => expect(d).toBeCloseTo(EXPECTED_DEGREES[i], 6))
   })
 
-  test('at the left edge the three leftward rays are gone and the rest are untouched', () => {
-    const o = at(0, 0.5)
-    expect([o['-1,0'], o['-1,-1'], o['-1,1']]).toEqual([0, 0, 0])
-    expect([o['1,0'], o['1,-1'], o['1,1'], o['0,-1'], o['0,1']]).toEqual([1, 1, 1, 1, 1])
-  })
-
-  test('at a corner only the quarter-fan pointing back into the shape survives', () => {
-    const visible = pivotRayOpacities(0, 0).filter(r => r.opacity > 0).map(r => `${r.dx},${r.dy}`)
-    expect(visible.sort()).toEqual(['0,1', '1,0', '1,1'])   // S, E, SE
-  })
-
-  test('every ray that leans toward a corner is gone by the time the pivot reaches it', () => {
-    // This is the whole point: nothing is left to collide with that corner's
-    // rotate handle, so the handles never have to move out of the way.
-    for (const [fx, fy] of [[0, 0], [1, 0], [1, 1], [0, 1]]) {
-      const toward = pivotRayOpacities(fx, fy)
-        .filter(r => r.dx === (fx ? 1 : -1) || r.dy === (fy ? 1 : -1))
-      expect(toward.every(r => r.opacity === 0)).toBe(true)
+  test('every ray leans on both axes — none is purely horizontal or vertical', () => {
+    for (const { dx, dy } of PIVOT_RAYS) {
+      expect(dx).not.toBe(0)
+      expect(dy).not.toBe(0)
     }
   })
 
-  test('a diagonal fades faster than either orthogonal beside it', () => {
-    const o = at(0.25, 0.25)
-    expect(o['-1,-1']).toBeCloseTo(0.25)   // both axes attenuate
-    expect(o['-1,0']).toBeCloseTo(0.5)     // one axis
-    expect(o['0,-1']).toBeCloseTo(0.5)
+  test('each pair spans 60° within its quadrant, with 30° gaps at the cardinal directions between quadrants', () => {
+    const degrees = PIVOT_RAYS.map(compassDeg).sort((a, b) => a - b)
+    // 15→75 (60, within NE), 75→105 (30, the gap at east), 105→165 (60, within SE), ...
+    const gaps = degrees.map((d, i) => (degrees[(i + 1) % 8] - d + 360) % 360)
+    expect(gaps).toEqual([60, 30, 60, 30, 60, 30, 60, 30])
+  })
+
+  test('every ray is a unit vector', () => {
+    for (const { dx, dy } of PIVOT_RAYS) expect(Math.hypot(dx, dy)).toBeCloseTo(1, 10)
+  })
+})
+
+describe('pivotRayOpacities', () => {
+  // Which quadrant a ray belongs to, by the sign of its lean — this is what
+  // fading is actually keyed on, not the ray's exact angle within it.
+  const quadrant = ({ dx, dy }) => `${dx < 0 ? 'W' : 'E'}${dy < 0 ? 'N' : 'S'}`
+  const byQuadrant = (fx, fy) => {
+    const out = {}
+    for (const r of pivotRayOpacities(fx, fy)) (out[quadrant(r)] ??= []).push(r.opacity)
+    return out
+  }
+
+  test('all eight rays are full strength at the centre', () => {
+    expect(pivotRayOpacities(0.5, 0.5).map(r => r.opacity)).toEqual(Array(8).fill(1))
+  })
+
+  test('two rays land in each of the four quadrants', () => {
+    const q = byQuadrant(0.5, 0.5)
+    expect(Object.keys(q).sort()).toEqual(['EN', 'ES', 'WN', 'WS'])
+    for (const rays of Object.values(q)) expect(rays).toHaveLength(2)
+  })
+
+  // The user's own example: at [0, 0.5], the left quadrants vanish and the
+  // right quadrants stay exactly as they were.
+  test('at [0, 0.5] the left quadrants’ lines are invisible, the right quadrants’ visible', () => {
+    const q = byQuadrant(0, 0.5)
+    expect(q.WN).toEqual([0, 0])
+    expect(q.WS).toEqual([0, 0])
+    expect(q.EN).toEqual([1, 1])
+    expect(q.ES).toEqual([1, 1])
+  })
+
+  test('symmetrically for the right edge, top edge, and bottom edge', () => {
+    expect(byQuadrant(1, 0.5).EN).toEqual([0, 0])
+    expect(byQuadrant(1, 0.5).WN).toEqual([1, 1])
+    expect(byQuadrant(0.5, 0).EN).toEqual([0, 0])
+    expect(byQuadrant(0.5, 0).ES).toEqual([1, 1])
+    expect(byQuadrant(0.5, 1).ES).toEqual([0, 0])
+    expect(byQuadrant(0.5, 1).EN).toEqual([1, 1])
+  })
+
+  test('at a corner, only the pair in that corner’s own quadrant survives', () => {
+    const q = byQuadrant(0, 0)   // NW corner
+    expect(q.WN).toEqual([0, 0])
+    expect(q.WS).toEqual([0, 0])
+    expect(q.EN).toEqual([0, 0])
+    expect(q.ES).toEqual([1, 1])   // the pair pointing back into the shape
+  })
+
+  test('at each corner, only the exact opposite quadrant survives — the other three are gone', () => {
+    // This is the whole point: nothing is left to collide with that corner's
+    // rotate handle, so the handles never have to move out of the way.
+    for (const [fx, fy, survivor] of [[0, 0, 'ES'], [1, 0, 'WS'], [1, 1, 'WN'], [0, 1, 'EN']]) {
+      const q = byQuadrant(fx, fy)
+      for (const key of ['EN', 'ES', 'WN', 'WS']) {
+        if (key === survivor) expect(q[key]).toEqual([1, 1])
+        else                  expect(q[key]).toEqual([0, 0])
+      }
+    }
+  })
+
+  test('both rays sharing a quadrant fade identically, whatever their exact angle within it', () => {
+    const q = byQuadrant(0.2, 0.3)
+    for (const rays of Object.values(q)) expect(rays[0]).toBeCloseTo(rays[1], 10)
   })
 
   test('fades linearly rather than switching off at a threshold', () => {
-    expect(at(0.25, 0.5)['-1,0']).toBeCloseTo(0.5)
-    expect(at(0.125, 0.5)['-1,0']).toBeCloseTo(0.25)
+    expect(byQuadrant(0.25, 0.5).WN[0]).toBeCloseTo(0.5)
+    expect(byQuadrant(0.125, 0.5).WN[0]).toBeCloseTo(0.25)
   })
 })
 

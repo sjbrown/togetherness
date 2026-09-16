@@ -228,10 +228,11 @@ export function drawRotateGlyph(cx, cy, r, parent) {
 /**
  * drawPivotGlyph(cx, cy, r, parent, rays)
  * The rotation pivot: a solid centre dot with up to eight lines radiating
- * from it. `rays` is drawing.js's pivotRayOpacities() output — each entry a
- * unit direction plus how visible it should be. Rays at zero are not drawn
- * at all rather than drawn transparent, so a pivot sitting in a corner emits
- * three lines instead of eight.
+ * from it, paired two-per-quadrant. `rays` is drawing.js's
+ * pivotRayOpacities() output — each entry a direction plus how visible it
+ * should be. Rays at zero are not drawn at all rather than drawn
+ * transparent, so a pivot sitting in a corner emits the two lines of its own
+ * quadrant rather than all eight.
  * `r` is the radius the rays reach. Appends directly to `parent`.
  */
 export function drawPivotGlyph(cx, cy, r, parent, rays) {

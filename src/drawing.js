@@ -368,29 +368,42 @@ export function pivotShift(geom, fromPivot, toPivot, deg) {
   };
 }
 
-// The eight directions the pivot handle radiates in, as unit steps.
-export const PIVOT_RAYS = [
-  { dx:  0, dy: -1 }, { dx:  1, dy: -1 }, { dx:  1, dy:  0 }, { dx:  1, dy:  1 },
-  { dx:  0, dy:  1 }, { dx: -1, dy:  1 }, { dx: -1, dy:  0 }, { dx: -1, dy: -1 },
-];
+// The eight directions the pivot handle radiates in: two per quadrant,
+// symmetric about that quadrant's diagonal (NE/SE/SW/NW at 45/135/225/315°,
+// measured clockwise from north) and offset ±30° from it — 15° and 75°
+// either side of NE's 45°, and so on round the compass. None sits on a
+// cardinal axis, which is what lets every ray fade as a whole QUADRANT (see
+// pivotRayOpacities) rather than each ray needing its own per-axis case.
+const PIVOT_RAY_ANGLES = [15, 75, 105, 165, 195, 255, 285, 345];
+export const PIVOT_RAYS = PIVOT_RAY_ANGLES.map(deg => {
+  const rad = deg * Math.PI / 180;
+  return { dx: Math.sin(rad), dy: -Math.cos(rad) };
+});
 
-// A ray fades as the pivot approaches the edge it points at: full strength
-// while the pivot is at or beyond the middle, linearly to nothing at the edge.
+// A ray fades as the pivot approaches the edge its quadrant sits on: full
+// strength while the pivot is at or beyond the middle, linearly to nothing
+// at the edge. Only the SIGN of dir is used — magnitude is irrelevant, which
+// is what lets this double as an axis fade (old cardinal rays, dir = 0/±1)
+// and a quadrant fade (new rays, dir = a fractional sin/cos) with no change.
 function rayAxisOpacity(f, dir) {
   if (!dir) return 1;                       // this ray doesn't lean on this axis
   return clamp01((dir < 0 ? f : 1 - f) / 0.5);
 }
 
 /**
- * How visible each of the eight rays is for a pivot at (fx, fy) — the two
- * axes attenuate independently and multiply, so a diagonal ray fades faster
- * than either orthogonal beside it.
+ * How visible each of the eight rays is for a pivot at (fx, fy). Every ray
+ * has both a horizontal and a vertical lean now (see PIVOT_RAYS), so both
+ * axes always attenuate and multiply — which means the two rays sharing a
+ * quadrant (same sign of dx, same sign of dy) always fade IDENTICALLY,
+ * however differently they're angled within that quadrant. In effect the
+ * fade is per-quadrant: at fx=0 (left edge) every ray leaning left (NW's and
+ * SW's four rays) is gone and every ray leaning right stays exactly as it
+ * was.
  *
  * This is what keeps the pivot handle legible against the rotate handles
  * instead of moving them out of its way: by the time the pivot reaches a
- * corner, every ray that would have pointed at that corner's handle has
- * already faded out, and only the quarter-fan pointing back into the shape
- * is left.
+ * corner, both rays of every OTHER quadrant have faded out, and only the
+ * pair pointing back into the shape from that corner's own quadrant is left.
  */
 export function pivotRayOpacities(fx, fy) {
   return PIVOT_RAYS.map(({ dx, dy }) => ({
