@@ -136,7 +136,7 @@ describe('isValidTURN', () => {
 })
 
 describe('setTURN', () => {
-  test('persists a valid value', () => {
+  test('persists a valid value that differs from the built-in default', () => {
     ExternalServices.setTURN('turn:turn.example.com:3478')
     expect(ExternalServices.getTURN()).toBe('turn:turn.example.com:3478')
   })
@@ -146,9 +146,20 @@ describe('setTURN', () => {
     expect(ExternalServices.getTURN()).toBe('turn:turn.example.com')
   })
 
-  test('is a no-op on an empty or invalid value, leaving prior storage untouched', () => {
+  test('is a no-op (clears) on an empty value', () => {
     ExternalServices.setTURN('turn:turn.example.com')
     ExternalServices.setTURN('')
+    expect(ExternalServices.getTURN()).toBeNull()
+  })
+
+  test('is a no-op (clears) when identical to the built-in default', () => {
+    ExternalServices.setTURN('turn:turn.example.com')
+    ExternalServices.setTURN(ExternalServices.defaultTURN())
+    expect(ExternalServices.getTURN()).toBeNull()
+  })
+
+  test('is a no-op on an invalid value, leaving prior storage untouched', () => {
+    ExternalServices.setTURN('turn:turn.example.com')
     ExternalServices.setTURN('not-a-turn-url')
     expect(ExternalServices.getTURN()).toBe('turn:turn.example.com')
   })
@@ -168,9 +179,21 @@ describe('setTURNFallback', () => {
     expect(ExternalServices.getTURNFallback()).toBe('turn:fallback.example.com')
   })
 
+  test('is a no-op (clears) when identical to the built-in fallback default', () => {
+    ExternalServices.setTURNFallback('turn:fallback.example.com')
+    ExternalServices.setTURNFallback(ExternalServices.defaultTURNFallback())
+    expect(ExternalServices.getTURNFallback()).toBeNull()
+  })
+
   test('is a no-op when identical to the stored primary', () => {
     ExternalServices.setTURN('turn:same.example.com')
     ExternalServices.setTURNFallback('turn:same.example.com')
+    expect(ExternalServices.getTURNFallback()).toBeNull()
+  })
+
+  test('is a no-op when identical to the primary default, with no primary override stored', () => {
+    // resolveTURN() falls back to defaultTURN() here.
+    ExternalServices.setTURNFallback(ExternalServices.defaultTURN())
     expect(ExternalServices.getTURNFallback()).toBeNull()
   })
 
@@ -182,14 +205,88 @@ describe('setTURNFallback', () => {
   })
 })
 
-describe('resolveIceServers', () => {
-  test('is empty when nothing is stored', () => {
-    expect(ExternalServices.resolveIceServers()).toEqual([])
+describe('setTURNUsername / setTURNCredential', () => {
+  test('persist values that differ from the built-in defaults', () => {
+    ExternalServices.setTURNUsername('me')
+    ExternalServices.setTURNCredential('s3cret')
+    expect(ExternalServices.getTURNUsername()).toBe('me')
+    expect(ExternalServices.getTURNCredential()).toBe('s3cret')
   })
 
-  test('includes only the primary when no fallback is stored', () => {
+  test('trim before storing', () => {
+    ExternalServices.setTURNUsername('  me  ')
+    ExternalServices.setTURNCredential('  s3cret  ')
+    expect(ExternalServices.getTURNUsername()).toBe('me')
+    expect(ExternalServices.getTURNCredential()).toBe('s3cret')
+  })
+
+  test('are no-ops (clear) on an empty value', () => {
+    ExternalServices.setTURNUsername('me')
+    ExternalServices.setTURNCredential('s3cret')
+    ExternalServices.setTURNUsername('')
+    ExternalServices.setTURNCredential('')
+    expect(ExternalServices.getTURNUsername()).toBeNull()
+    expect(ExternalServices.getTURNCredential()).toBeNull()
+  })
+
+  test('are no-ops (clear) when identical to the built-in defaults', () => {
+    ExternalServices.setTURNUsername('me')
+    ExternalServices.setTURNCredential('s3cret')
+    ExternalServices.setTURNUsername(ExternalServices.defaultTURNUsername())
+    ExternalServices.setTURNCredential(ExternalServices.defaultTURNCredential())
+    expect(ExternalServices.getTURNUsername()).toBeNull()
+    expect(ExternalServices.getTURNCredential()).toBeNull()
+  })
+})
+
+describe('resolveTURN', () => {
+  test('falls back to the built-in defaults when nothing is stored', () => {
+    expect(ExternalServices.resolveTURN()).toBe(ExternalServices.defaultTURN())
+    expect(ExternalServices.resolveTURNFallback()).toBe(ExternalServices.defaultTURNFallback())
+    expect(ExternalServices.resolveTURNUsername()).toBe(ExternalServices.defaultTURNUsername())
+    expect(ExternalServices.resolveTURNCredential()).toBe(ExternalServices.defaultTURNCredential())
+  })
+
+  test('prefers stored overrides', () => {
+    ExternalServices.setTURN('turn:primary.example.com')
+    ExternalServices.setTURNFallback('turn:fallback.example.com')
+    ExternalServices.setTURNUsername('me')
+    ExternalServices.setTURNCredential('s3cret')
+    expect(ExternalServices.resolveTURN()).toBe('turn:primary.example.com')
+    expect(ExternalServices.resolveTURNFallback()).toBe('turn:fallback.example.com')
+    expect(ExternalServices.resolveTURNUsername()).toBe('me')
+    expect(ExternalServices.resolveTURNCredential()).toBe('s3cret')
+  })
+})
+
+describe('resolveIceServers', () => {
+  const defaultTurnEntries = () => [
+    {
+      urls:       ExternalServices.defaultTURN(),
+      username:   ExternalServices.defaultTURNUsername(),
+      credential: ExternalServices.defaultTURNCredential(),
+    },
+    {
+      urls:       ExternalServices.defaultTURNFallback(),
+      username:   ExternalServices.defaultTURNUsername(),
+      credential: ExternalServices.defaultTURNCredential(),
+    },
+  ]
+
+  test('with nothing stored, falls back to simple-peer STUN plus the default relay', () => {
+    expect(ExternalServices.resolveIceServers()).toEqual([
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' },
+      ...defaultTurnEntries(),
+    ])
+  })
+
+  test('a stored STUN primary displaces the built-in STUN entries entirely', () => {
     ExternalServices.setSTUN('stun:stun.example.com')
-    expect(ExternalServices.resolveIceServers()).toEqual([{ urls: 'stun:stun.example.com' }])
+    expect(ExternalServices.resolveIceServers()).toEqual([
+      { urls: 'stun:stun.example.com' },
+      ...defaultTurnEntries(),
+    ])
   })
 
   test('includes both STUN entries when both are stored', () => {
@@ -198,24 +295,37 @@ describe('resolveIceServers', () => {
     expect(ExternalServices.resolveIceServers()).toEqual([
       { urls: 'stun:primary.example.com' },
       { urls: 'stun:fallback.example.com' },
+      ...defaultTurnEntries(),
     ])
   })
 
-  test('includes TURN entries even with no STUN stored', () => {
-    ExternalServices.setTURN('turn:turn.example.com')
-    expect(ExternalServices.resolveIceServers()).toEqual([{ urls: 'turn:turn.example.com' }])
-  })
-
-  test('orders STUN entries before TURN entries', () => {
+  test('orders STUN entries before TURN entries, each relay carrying the credentials', () => {
     ExternalServices.setSTUN('stun:stun.example.com')
     ExternalServices.setSTUNFallback('stun:stun-fallback.example.com')
     ExternalServices.setTURN('turn:turn.example.com')
     ExternalServices.setTURNFallback('turn:turn-fallback.example.com')
+    ExternalServices.setTURNUsername('me')
+    ExternalServices.setTURNCredential('s3cret')
     expect(ExternalServices.resolveIceServers()).toEqual([
       { urls: 'stun:stun.example.com' },
       { urls: 'stun:stun-fallback.example.com' },
-      { urls: 'turn:turn.example.com' },
-      { urls: 'turn:turn-fallback.example.com' },
+      { urls: 'turn:turn.example.com',          username: 'me', credential: 's3cret' },
+      { urls: 'turn:turn-fallback.example.com', username: 'me', credential: 's3cret' },
+    ])
+  })
+
+  test('collapses a fallback relay identical to the primary', () => {
+    // setTURNFallback rejects a duplicate, but a stored fallback that
+    // later matches a changed primary would still get here.
+    localStorage.setItem(ExternalServices.TURN_KEY, 'turn:same.example.com')
+    localStorage.setItem(ExternalServices.TURN_FALLBACK_KEY, 'turn:same.example.com')
+    const turn = ExternalServices.resolveIceServers().filter(e => e.urls.startsWith('turn:'))
+    expect(turn).toEqual([
+      {
+        urls:       'turn:same.example.com',
+        username:   ExternalServices.defaultTURNUsername(),
+        credential: ExternalServices.defaultTURNCredential(),
+      },
     ])
   })
 })

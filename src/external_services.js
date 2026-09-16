@@ -120,13 +120,17 @@ export function setSTUNFallback(url) {
 
 // ── TURN servers ─────────────────────────────────────────────────────────────
 /**
- * Primary + fallback TURN URLs, same shape as STUN. home.html's inputs
- * are disabled for now (TURN needs credentials this UI doesn't collect),
- * but storage/resolution are wired up ahead of that.
+ * Primary + fallback TURN URLs, plus the single credential pair both are
+ * offered under — a relay, unlike a STUN server, authenticates. Unset
+ * fields fall back to metered.ca's Open Relay, a free public test
+ * service: enough to prove a relayed connection works, not something to
+ * depend on.
  */
 
-export const TURN_KEY          = 'tt_external_service_turn';
-export const TURN_FALLBACK_KEY = 'tt_external_service_turn_fallback';
+export const TURN_KEY            = 'tt_external_service_turn';
+export const TURN_FALLBACK_KEY   = 'tt_external_service_turn_fallback';
+export const TURN_USERNAME_KEY   = 'tt_external_service_turn_username';
+export const TURN_CREDENTIAL_KEY = 'tt_external_service_turn_credential';
 
 export function isValidTURN(value) {
   if (typeof value !== 'string') return false;
@@ -141,27 +145,119 @@ export function getTURNFallback() {
   return localStorage.getItem(TURN_FALLBACK_KEY) || null;
 }
 
-export function setTURN(url) {
-  if (isValidTURN(url)) localStorage.setItem(TURN_KEY, url.trim());
+export function getTURNUsername() {
+  return localStorage.getItem(TURN_USERNAME_KEY) || null;
+}
+
+export function getTURNCredential() {
+  return localStorage.getItem(TURN_CREDENTIAL_KEY) || null;
+}
+
+export function defaultTURN() {
+  return 'turn:openrelay.metered.ca:80';
+}
+
+export function defaultTURNFallback() {
+  return 'turn:openrelay.metered.ca:443';
+}
+
+export function defaultTURNUsername() {
+  return 'openrelayproject';
+}
+
+export function defaultTURNCredential() {
+  return 'openrelayproject';
 }
 
 /**
- * A no-op on empty/invalid input, or one identical to the stored
- * primary — existing storage is left untouched either way.
+ * Empty or identical-to-default clears the override, so a later change
+ * to the built-in default isn't masked by a stored value nobody meant to
+ * set. A malformed URL is rejected instead, leaving storage untouched.
+ */
+export function setTURN(url) {
+  const value = (url || '').trim();
+  if (!value || value === defaultTURN()) {
+    localStorage.removeItem(TURN_KEY);
+    return;
+  }
+  if (!isValidTURN(value)) return;
+  localStorage.setItem(TURN_KEY, value);
+}
+
+/**
+ * Same rules as the primary, plus: one identical to the resolved primary
+ * is rejected — two names for the same relay buy nothing.
  */
 export function setTURNFallback(url) {
-  if (!isValidTURN(url)) return;
-  const value = url.trim();
-  if (value === getTURN()) return;
+  const value = (url || '').trim();
+  if (!value || value === defaultTURNFallback()) {
+    localStorage.removeItem(TURN_FALLBACK_KEY);
+    return;
+  }
+  if (!isValidTURN(value)) return;
+  if (value === resolveTURN()) return;
   localStorage.setItem(TURN_FALLBACK_KEY, value);
 }
 
 /**
- * RTCIceServer entries from stored overrides, STUN then TURN. Empty
- * means skip `iceServers` entirely so simple-peer's defaults apply.
+ * Credentials are free-form, so only the empty/identical-to-default
+ * clearing rule applies. Both TURN URLs are offered under this one pair.
+ */
+export function setTURNUsername(name) {
+  const value = (name || '').trim();
+  if (value && value !== defaultTURNUsername()) {
+    localStorage.setItem(TURN_USERNAME_KEY, value);
+  } else {
+    localStorage.removeItem(TURN_USERNAME_KEY);
+  }
+}
+
+export function setTURNCredential(secret) {
+  const value = (secret || '').trim();
+  if (value && value !== defaultTURNCredential()) {
+    localStorage.setItem(TURN_CREDENTIAL_KEY, value);
+  } else {
+    localStorage.removeItem(TURN_CREDENTIAL_KEY);
+  }
+}
+
+export function resolveTURN() {
+  return getTURN() ?? defaultTURN();
+}
+
+export function resolveTURNFallback() {
+  return getTURNFallback() ?? defaultTURNFallback();
+}
+
+export function resolveTURNUsername() {
+  return getTURNUsername() ?? defaultTURNUsername();
+}
+
+export function resolveTURNCredential() {
+  return getTURNCredential() ?? defaultTURNCredential();
+}
+
+/**
+ * simple-peer's own STUN servers, which passing `iceServers` at all
+ * would otherwise displace. Stand in for an unset STUN override so the
+ * "[Yjs Default]" the UI promises for a blank field stays true now that
+ * the TURN defaults mean `iceServers` is always supplied.
+ */
+const YJS_DEFAULT_STUN = ['stun:stun.l.google.com:19302', 'stun:global.stun.twilio.com:3478'];
+
+/**
+ * RTCIceServer entries for the WebrtcProvider, STUN first then TURN,
+ * each relay carrying the credential pair. Never empty: unset TURN
+ * fields resolve to the public test relay.
  */
 export function resolveIceServers() {
-  const stun = [getSTUN(), getSTUNFallback()].filter(isValidSTUN);
-  const turn = [getTURN(), getTURNFallback()].filter(isValidTURN);
-  return [...stun, ...turn].map(urls => ({ urls }));
+  const stored = [getSTUN(), getSTUNFallback()].filter(isValidSTUN);
+  const stun   = (stored.length ? stored : YJS_DEFAULT_STUN).map(urls => ({ urls }));
+  const turn   = [...new Set([resolveTURN(), resolveTURNFallback()].filter(isValidTURN))]
+    .map(urls => ({
+      urls,
+      username:   resolveTURNUsername(),
+      credential: resolveTURNCredential(),
+    }));
+  return [...stun, ...turn];
 }
