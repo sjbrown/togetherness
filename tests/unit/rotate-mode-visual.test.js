@@ -22,6 +22,9 @@ import {
   startDragPlaceholder,
   updateLocalDragGhost,
   endDragPlaceholder,
+  startResizeGhost,
+  updateRotateGhost,
+  endResizeGhost,
   init as overlayInit,
 } from '../../src/overlay.js'
 
@@ -447,5 +450,124 @@ describe('drag ghost ring on a rotated shape', () => {
     updateLocalDragGhost('rect1', 5, 5)
     endDragPlaceholder('rect1')
     expect(ring()).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// updateRotateGhost — the live-drag ghost's own rotation, shared by every
+// rotatable layer's resize/rotate ghost pair (_resizeGhosts). Reads/writes
+// data-rotate directly and resolves the transform via drawing.js's
+// resolveRotation called WITH an explicit geom, which is pure
+// attribute-plus-arithmetic with zero dependency on the ghost's tagName —
+// true of a cloned <rect> (drawing) exactly as much as a cloned <g> wrapping
+// an <svg> (toys). This pins that generality directly, for both shapes,
+// rather than relying only on drawing-rotate-mode/toy-rotate-mode's
+// integration coverage of the gesture that drives it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('updateRotateGhost', () => {
+  const SVGNS = 'http://www.w3.org/2000/svg'
+  const GEO = { x: 100, y: 100, width: 200, height: 100 }   // centre (200, 150)
+
+  function bootWithLiveEl(liveEl) {
+    document.body.innerHTML = `
+      <svg id="canvas">
+        <defs></defs>
+        <g id="overlay-layer"></g>
+      </svg>
+    `
+    document.getElementById('canvas').appendChild(liveEl)
+    setPivotPreview(null, null)
+    const id = liveEl.getAttribute('data-id')
+    // id-aware, not a blanket () => GEO: SelectionMode is overlay.js module
+    // state that outlives any one test (earlier describe blocks in this file
+    // leave a 'rect1' entry behind), so a fake that answered for EVERY id
+    // would render an extra, geometry-less ghost/ring for that leftover
+    // entry too — and .selRing would then match two elements, not one.
+    overlayInit({
+      user:         { id: 'me', name: 'Me', color: '#5a7ea8', gradient: { c1: '#5a7ea8', c2: '#3a5e88', angle: 45 } },
+      getViewScale: () => 1,
+      getBBox:      (i) => (i === id ? GEO : null),
+      getRotation:  () => null,
+    }, document.getElementById('canvas'))
+  }
+
+  const liveGhost = () => document.querySelector('#overlay-layer [opacity="0.85"]')
+
+  test('a drawing-layer rect ghost rotates about the explicit geom’s centre', () => {
+    const rect = document.createElementNS(SVGNS, 'rect')
+    rect.setAttribute('data-id', 'shape1')
+    Object.entries(GEO).forEach(([k, v]) => rect.setAttribute(k, v))
+    bootWithLiveEl(rect)
+
+    startResizeGhost('shape1')
+    updateRotateGhost('shape1', 90, GEO)
+
+    const ghost = liveGhost()
+    expect(ghost.tagName).toBe('rect')
+    expect(ghost.getAttribute('data-rotate')).toBe('90')
+    expect(ghost.getAttribute('transform')).toBe('rotate(90 200 150)')
+    endResizeGhost('shape1')
+  })
+
+  test('a toy-shaped <g> ghost ALSO rotates about the explicit geom’s centre — the bug this generalization fixes', () => {
+    // Before the fix, this delegated to drawing.js's previewRotate, which
+    // falls back to drawing.js's own shape-keyed getGeom() when no geom is
+    // given — undefined for a <g>, collapsing the pivot to (0, 0) instead
+    // of the toy's actual centre.
+    const g = document.createElementNS(SVGNS, 'g')
+    g.setAttribute('data-id', 'toy1')
+    g.setAttribute('data-module', 'toys')
+    const svg = document.createElementNS(SVGNS, 'svg')
+    Object.entries(GEO).forEach(([k, v]) => svg.setAttribute(k, v))
+    g.appendChild(svg)
+    bootWithLiveEl(g)
+
+    startResizeGhost('toy1')
+    updateRotateGhost('toy1', 90, GEO)
+
+    const ghost = liveGhost()
+    expect(ghost.tagName).toBe('g')
+    expect(ghost.getAttribute('data-rotate')).toBe('90')
+    expect(ghost.getAttribute('transform')).toBe('rotate(90 200 150)')   // NOT rotate(90 0 0)
+    endResizeGhost('toy1')
+  })
+
+  test('a negative/over-turned angle is normalized before it is stored', () => {
+    const rect = document.createElementNS(SVGNS, 'rect')
+    rect.setAttribute('data-id', 'shape1')
+    Object.entries(GEO).forEach(([k, v]) => rect.setAttribute(k, v))
+    bootWithLiveEl(rect)
+
+    startResizeGhost('shape1')
+    updateRotateGhost('shape1', -30, GEO)
+    expect(liveGhost().getAttribute('data-rotate')).toBe('330')
+    endResizeGhost('shape1')
+  })
+
+  test('a rotation of 0 leaves the ghost with no transform', () => {
+    const rect = document.createElementNS(SVGNS, 'rect')
+    rect.setAttribute('data-id', 'shape1')
+    Object.entries(GEO).forEach(([k, v]) => rect.setAttribute(k, v))
+    bootWithLiveEl(rect)
+
+    startResizeGhost('shape1')
+    updateRotateGhost('shape1', 0, GEO)
+    expect(liveGhost().getAttribute('transform')).toBeNull()
+    endResizeGhost('shape1')
+  })
+
+  test('the ghost’s ring tracks the same rotation, on the geom the gesture is previewing', () => {
+    const rect = document.createElementNS(SVGNS, 'rect')
+    rect.setAttribute('data-id', 'shape1')
+    Object.entries(GEO).forEach(([k, v]) => rect.setAttribute(k, v))
+    bootWithLiveEl(rect)
+
+    startResizeGhost('shape1')
+    updateRotateGhost('shape1', 45, GEO)
+
+    const ring = document.querySelector('#overlay-layer .selRing')
+    expect(ring.getAttribute('transform')).toBe('rotate(45 200 150)')
+    endResizeGhost('shape1')
   })
 })

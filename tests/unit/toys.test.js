@@ -10,6 +10,8 @@ import {
   hslToRgb, colorMatrixValues, selectModes, nextSelectMode,
   _clearSvgTextCache, _resetToyScriptState, activateAllToyScriptsDom,
   newToyId, _getScriptsFragment, initializeToy,
+  getRotation, syncRotation, resolveRotation, rotationCenter, applyRotateDom,
+  applyMoveDom, applyResizeDom, ROTATE_SNAP_DEG,
 } from '../../src/toys.js'
 
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
@@ -416,10 +418,29 @@ describe('selectModes / nextSelectMode', () => {
     return g
   }
 
-  test('selectModes always includes sel-action, plus sel-resize/sel-rummage per class', () => {
+  test('selectModes always includes sel-action, plus sel-resize/sel-rotate/sel-rummage per class', () => {
     expect(selectModes(makeToyDom())).toEqual(['sel-action'])
     expect(selectModes(makeToyDom(['tt-mode-resize']))).toEqual(['sel-action', 'sel-resize'])
+    expect(selectModes(makeToyDom(['tt_able_rotate']))).toEqual(['sel-action', 'sel-rotate'])
+    expect(selectModes(makeToyDom(['tt-mode-resize', 'tt_able_rotate']))).toEqual(['sel-action', 'sel-resize', 'sel-rotate'])
     expect(selectModes(makeToyDom(['tt-mode-resize', 'tt-mode-rummage']))).toEqual(['sel-action', 'sel-resize', 'sel-rummage'])
+    expect(selectModes(makeToyDom(['tt-mode-resize', 'tt_able_rotate', 'tt-mode-rummage'])))
+      .toEqual(['sel-action', 'sel-resize', 'sel-rotate', 'sel-rummage'])
+  })
+
+  test('nextSelectMode cycles sel-action <-> sel-rotate for a rotatable toy (chip, single_poker_card)', () => {
+    const domEl = makeToyDom(['tt_able_rotate'])
+    expect(nextSelectMode(domEl, null)).toBe('sel-action')
+    expect(nextSelectMode(domEl, 'sel-action')).toBe('sel-rotate')
+    expect(nextSelectMode(domEl, 'sel-rotate')).toBe('sel-action')
+  })
+
+  test('nextSelectMode cycles through resize then rotate for a toy declaring both', () => {
+    const domEl = makeToyDom(['tt-mode-resize', 'tt_able_rotate'])
+    expect(nextSelectMode(domEl, null)).toBe('sel-action')
+    expect(nextSelectMode(domEl, 'sel-action')).toBe('sel-resize')
+    expect(nextSelectMode(domEl, 'sel-resize')).toBe('sel-rotate')
+    expect(nextSelectMode(domEl, 'sel-rotate')).toBe('sel-action')
   })
 
   test('nextSelectMode cycles sel-action <-> sel-resize for a resizable toy', () => {
@@ -443,6 +464,110 @@ describe('selectModes / nextSelectMode', () => {
     expect(nextSelectMode(domEl, null)).toBe('sel-action')
     expect(nextSelectMode(domEl, 'sel-action')).toBe('sel-resize')
     expect(nextSelectMode(domEl, 'sel-resize')).toBe('sel-action')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Rotation. Only chip/single_poker_card (tt_able_rotate) rotate, always
+// about their own fixed centre -- no placeable pivot the way a rect's
+// sel-rotate-pivot has, so this is deliberately the simple half of
+// drawing.js's rotation design: a degree count and nothing else.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('rotation (toys)', () => {
+  // getRotation/syncRotation/resolveRotation/applyRotateDom all key off the
+  // toy's OUTER <g> (data-id lives there), never the embedded <svg> --
+  // mirrors drawing.js's rule that a shape's geometry (here: the embedded
+  // svg's x/y/width/height) never reflects its own rotation.
+  function makeRotatableToyDom({ x = 50, y = 50, width = 100, height = 100, rotate } = {}) {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    g.setAttribute('data-id', 't1')
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    svg.setAttribute('class', 'chip tt_able_rotate')
+    svg.setAttribute('x', String(x))
+    svg.setAttribute('y', String(y))
+    svg.setAttribute('width', String(width))
+    svg.setAttribute('height', String(height))
+    g.appendChild(svg)
+    if (rotate != null) g.setAttribute('data-rotate', String(rotate))
+    return g
+  }
+
+  test('chips/cards turn in 45° steps, not drawing.js\'s 15°', () => {
+    expect(ROTATE_SNAP_DEG).toBe(45)
+  })
+
+  test('getRotation reads data-rotate off the OUTER <g>, defaulting to 0', () => {
+    expect(getRotation(makeRotatableToyDom())).toBe(0)
+    expect(getRotation(makeRotatableToyDom({ rotate: 90 }))).toBe(90)
+    expect(getRotation(null)).toBe(0)
+  })
+
+  test('rotationCenter is always the toy\'s own geometric centre -- there is no pivot argument to pass', () => {
+    const g = makeRotatableToyDom({ x: 50, y: 50, width: 100, height: 100 })
+    expect(rotationCenter(g)).toEqual({ cx: 100, cy: 100 })
+    expect(rotationCenter(g, { x: 0, y: 0, width: 40, height: 20 })).toEqual({ cx: 20, cy: 10 })
+  })
+
+  test('rotationCenter falls back to the origin when geometry is unavailable', () => {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g') // no embedded <svg> at all
+    expect(rotationCenter(g)).toEqual({ cx: 0, cy: 0 })
+  })
+
+  test('resolveRotation is null for an unrotated toy, { deg, cx, cy } otherwise', () => {
+    expect(resolveRotation(makeRotatableToyDom())).toBeNull()
+    expect(resolveRotation(makeRotatableToyDom({ rotate: 30 }))).toEqual({ deg: 30, cx: 100, cy: 100 })
+  })
+
+  test('syncRotation derives a transform about the toy\'s own centre', () => {
+    const g = makeRotatableToyDom({ rotate: 30 })
+    syncRotation(g)
+    expect(g.getAttribute('transform')).toBe('rotate(30 100 100)')
+  })
+
+  test('a rotation of 0 carries no transform at all', () => {
+    const g = makeRotatableToyDom({ rotate: 0 })
+    syncRotation(g)
+    expect(g.getAttribute('transform')).toBeNull()
+  })
+
+  test('a toy with no data-rotate at all -- true of almost every toy -- is left completely alone', () => {
+    const g = makeRotatableToyDom()               // no `rotate` option -> no data-rotate attr
+    g.setAttribute('transform', 'translate(5 5)')  // stands in for anything already there
+    syncRotation(g)
+    expect(g.getAttribute('transform')).toBe('translate(5 5)')
+  })
+
+  test('applyRotateDom writes a normalized degree count and derives the transform in one call', () => {
+    const g = makeRotatableToyDom()
+    applyRotateDom(g, -30)
+    expect(g.getAttribute('data-rotate')).toBe('330')
+    expect(g.getAttribute('transform')).toBe('rotate(330 100 100)')
+  })
+
+  test('applyMoveDom re-pivots a rotated toy on its NEW centre', () => {
+    const g = makeRotatableToyDom({ rotate: 90 })
+    syncRotation(g)
+    expect(g.getAttribute('transform')).toBe('rotate(90 100 100)')
+
+    applyMoveDom(g, 300, 300)   // move centres the toy at (300, 300)
+    expect(g.getAttribute('transform')).toBe('rotate(90 300 300)')
+    expect(g.getAttribute('data-rotate')).toBe('90')   // the angle itself is untouched by a move
+  })
+
+  test('applyResizeDom re-pivots a rotated toy on its new size (future-proofing -- no toy today has both capabilities)', () => {
+    const g = makeRotatableToyDom({ x: 0, y: 0, width: 100, height: 100, rotate: 45 })
+    syncRotation(g)
+    expect(g.getAttribute('transform')).toBe('rotate(45 50 50)')
+
+    applyResizeDom(g, 0, 0, 200, 200)
+    expect(g.getAttribute('transform')).toBe('rotate(45 100 100)')
+  })
+
+  test('applyMoveDom on a NEVER-rotated toy never touches transform at all -- near-zero overhead for the common case', () => {
+    const g = makeRotatableToyDom()   // no data-rotate
+    applyMoveDom(g, 200, 200)
+    expect(g.hasAttribute('transform')).toBe(false)
   })
 })
 
@@ -820,6 +945,60 @@ describe('single_poker_card: suit/rank from the Tools + Edit panel sliders (real
 
     expect(ghostEl.querySelector('.tspan_suit').textContent).toBe('♠')
     expect(cardEl.querySelector('.tspan_suit').textContent).toBe('♥') // real card untouched
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// tt_able_rotate on the real template files. Everything above tests the
+// GENERIC mechanism against a synthetic fixture; this closes the loop
+// against the two actual files the class was added to.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('chip and single_poker_card carry tt_able_rotate on their real template files', () => {
+  beforeEach(() => {
+    _resetToyScriptState()
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (url === 'toy/chip.svg')               return { ok: true, text: async () => CHIP_SVG }
+      if (url === 'toy/single_poker_card.svg')   return { ok: true, text: async () => SINGLE_POKER_CARD_SVG }
+      throw new Error(`unexpected fetch: ${url}`)
+    }))
+  })
+
+  test('chip.svg’s own root <svg> declares tt_able_rotate', () => {
+    const svgEl = importRoot(CHIP_SVG, 'P__')
+    expect(svgEl.classList.contains('tt_able_rotate')).toBe(true)
+    // Still a chip, still stackable — the addition, not a replacement.
+    expect(svgEl.classList.contains('chip')).toBe(true)
+    expect(svgEl.classList.contains('stackable')).toBe(true)
+  })
+
+  test('single_poker_card.svg’s own root <svg> declares tt_able_rotate', () => {
+    const svgEl = importRoot(SINGLE_POKER_CARD_SVG, 'P__')
+    expect(svgEl.classList.contains('tt_able_rotate')).toBe(true)
+    expect(svgEl.classList.contains('card')).toBe(true)
+  })
+
+  test('a placed chip offers sel-rotate', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const chipEl = await addToy(ydoc, layerEl, { id: 'chip1', toyType: 'chip', x: 0, y: 0, color: '#fff' })
+    expect(selectModes(chipEl)).toContain('sel-rotate')
+  })
+
+  test('a placed single_poker_card offers sel-rotate', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const cardEl = await addToy(ydoc, layerEl, { id: 'card1', toyType: 'single_poker_card', x: 0, y: 0, color: '#fff' })
+    expect(selectModes(cardEl)).toContain('sel-rotate')
+  })
+
+  test('neither template declares tt-mode-resize — rotation does not imply resizability', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const chipEl = await addToy(ydoc, layerEl, { id: 'chip1', toyType: 'chip', x: 0, y: 0, color: '#fff' })
+    const cardEl = await addToy(ydoc, layerEl, { id: 'card1', toyType: 'single_poker_card', x: 100, y: 0, color: '#fff' })
+    expect(selectModes(chipEl)).not.toContain('sel-resize')
+    expect(selectModes(cardEl)).not.toContain('sel-resize')
   })
 })
 

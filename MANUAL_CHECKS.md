@@ -49,10 +49,12 @@ Run these checks before merging large changesets. Automated tests catch logic er
 
 ## Rotation Pivot
 
-1. Rect in rotate mode: a dot with eight short rays sits at its centre
-2. Drag it toward the left edge — the three leftward rays fade out as it goes
-3. Drag it into a corner — only the three rays pointing back into the shape
-   remain, and the corner's rotate handle stays clean and grabbable
+1. Rect in rotate mode: a dot with eight short rays, paired two-per-quadrant,
+   sits at its centre
+2. Drag it toward the left edge — both left-quadrant pairs (four rays) fade
+   out as it goes; the two right-quadrant pairs stay full strength
+3. Drag it into a corner — only the one pair pointing back into the shape
+   remains, and the corner's rotate handle stays clean and grabbable
 4. Click that corner again: the pivot is picked up, not the rotate handle
 5. Rotate the rect 45°, then drag the pivot somewhere else
    - The rect must not move at all; only the handle does
@@ -63,6 +65,26 @@ Run these checks before merging large changesets. Automated tests catch logic er
    rect the shape still must not move
 9. Double-tap bare canvas: that still resets the VIEW, not a pivot
 10. Second browser window: the pivot position appears there too
+
+---
+
+## Toy Rotation (chip, single_poker_card)
+
+1. Place a chip; click once to select, again for rotate (no resize step —
+   chip has none)
+2. Handles are the same round discs with a turn arrow as a rect's, at the
+   toy's own corners
+3. Drag a corner; the chip turns in 45° steps (not a rect's 15°) and the
+   ring/handles turn with it, about the chip's own centre
+4. The pivot never moves — there is no pivot handle at all for a toy
+5. Rotate the chip, then drag it somewhere else — it stays rotated, turning
+   about its own new centre
+6. Second browser window: the rotation appears there too
+7. Place a single_poker_card and repeat — same 45° grain, same behaviour
+8. Any OTHER toy (dice, tray, bag, ...) never offers rotate mode — only
+   chip and single_poker_card declare `tt_able_rotate`
+9. A resizable toy (bag, tray_sum) still resizes normally — rotation and
+   resize are independent capabilities, and today no toy has both
 
 ---
 

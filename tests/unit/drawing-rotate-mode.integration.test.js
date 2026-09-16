@@ -206,21 +206,28 @@ describe('dragging a rotate handle', () => {
     expect(yRect(ydoc, id).getAttribute('data-rotate')).toBe('15')
   })
 
-  test('the snap step is a settable seam, not a hard-coded 15', async () => {
+  test('the snap step is a settable seam, not a hard-coded 15 — per layer', async () => {
     const { App, ydoc, id } = await inRotateMode()
-    expect(App.getRotateSnapDeg()).toBe(15)
+    expect(App.getRotateSnapDeg('drawing')).toBe(15)
 
-    App.setRotateSnapDeg(90)
+    App.setRotateSnapDeg('drawing', 90)
     App.startRotate(id, 2)
     App.commitRotate(id, 2, 280, 316)   // ~11° — far from 90, so snaps to 0
     expect(yRect(ydoc, id).getAttribute('data-rotate')).toBe('0')
 
-    App.setRotateSnapDeg(5)
+    App.setRotateSnapDeg('drawing', 5)
     App.startRotate(id, 2)
     App.commitRotate(id, 2, 280, 316)
     expect(yRect(ydoc, id).getAttribute('data-rotate')).toBe('10')
 
-    App.setRotateSnapDeg(15)
+    App.setRotateSnapDeg('drawing', 15)
+  })
+
+  test('the toys layer keeps its own 45° default, untouched by the drawing layer’s setting', async () => {
+    const { App } = await inRotateMode()
+    App.setRotateSnapDeg('drawing', 90)
+    expect(App.getRotateSnapDeg('toys')).toBe(45)
+    App.setRotateSnapDeg('drawing', 15)
   })
 
   test('the rendered rect carries the derived transform about its own centre', async () => {

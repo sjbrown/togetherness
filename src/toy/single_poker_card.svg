@@ -11,7 +11,7 @@
    viewBox="0 0 100 150"
    version="1.1"
    id="single_poker_card"
-   class="single_poker_card card"
+   class="single_poker_card card tt_able_rotate"
    >
   <defs id="defs1">
     <filter class="tt_color_filter"

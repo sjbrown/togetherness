@@ -34,6 +34,14 @@ import { getOps, appendOp, getOp, heads, labelBranches, branchAuthors, forkJoinS
 import { invert as invertWire, apply as applyWire } from './op_wire_mutation.js';
 import { checkpointOp, projectFrom, buildForkSeed, isCheckpoint } from './op_checkpoint.js';
 import { receiveOp, advanceTo } from './op_replay.js';
+// computeRotate/snapAngle/normalizeAngle are pure degree geometry with zero
+// dependency on drawing.js's shape types (corner indices 0-3 match this
+// module's own RESIZE_CORNER_* numbering) -- reused rather than retyped, the
+// one cross-layer import in an otherwise self-contained module. See the
+// "Rotation" section below for what stays local: toys have no placeable
+// pivot, so the parts of drawing.js's rotation machinery that exist only to
+// support one (getPivot, rotationCenter's pivot argument) are NOT reused.
+import { computeRotate, snapAngle, normalizeAngle } from './drawing.js';
 
 // ── ID helpers ────────────────────────────────────────────────────────────────
 
@@ -1129,11 +1137,90 @@ export function moveToyAndStack(layerEl, el, x, y) {
   for (const { member, cx, cy } of targets) applyMoveDom(member, cx, cy)
 }
 
+// ── Rotation ─────────────────────────────────────────────────────────────────
+// Only a toy whose own embedded <svg> declares class="tt_able_rotate" (chip,
+// single_poker_card) offers rotation, and always about its own fixed centre
+// -- toys never get a placeable pivot the way rects do (see drawing.js): no
+// pivot storage, no pivot handle, no 'sel-rotate-pivot', just a degree count.
+// That's the deliberately simple half of drawing.js's rotation design.
+//
+// The rotate ATTRIBUTE lives on the toy's OUTER <g data-id> wrapper -- the
+// same element every move/resize/select call already keys off of -- not on
+// the embedded <svg>, which stays the toy's own UNROTATED local geometry
+// (x/y/width/height), exactly mirroring drawing.js's rule that getGeom()
+// never reflects rotation. 'data-rotate' is also the same attribute NAME
+// drawing.js uses, so overlay.js's generic ghost-preview code (which reads
+// it off whatever element it's given, tagName-agnostic) works unmodified
+// across both layers.
+const ROTATE_ATTR = 'data-rotate'
+
+// Chips and cards turn in quarter-eighths, not drawing.js's 15° -- a fixed
+// grain, not (yet) a user preference the way rects' is, so there is no
+// setRotateSnapDeg equivalent here; app.js's per-layer snap state supplies
+// this as ITS default for the 'toys' layer, same seam rects' 15° sits in.
+export const ROTATE_SNAP_DEG = 45
+
+/** A toy's rotation in degrees (0 when it has none, or it can't rotate). */
+export function getRotation(domEl) {
+  return parseFloat(domEl?.getAttribute?.(ROTATE_ATTR)) || 0
+}
+
+/** The point a toy turns about: always its own centre, never placeable. */
+export function rotationCenter(domEl, geom = getGeom(domEl)) {
+  return geom
+    ? { cx: geom.x + geom.width / 2, cy: geom.y + geom.height / 2 }
+    : { cx: 0, cy: 0 }
+}
+
+/**
+ * A toy's rotation resolved against geometry: { deg, cx, cy }, or null when
+ * it isn't rotated. Mirrors drawing.js's resolveRotation, using this
+ * module's own getGeom (a toy's geometry lives on its embedded <svg>, not
+ * discoverable by tagName the way a drawing shape's is).
+ */
+export function resolveRotation(domEl, geom = getGeom(domEl)) {
+  const deg = getRotation(domEl)
+  if (!deg) return null
+  return { deg, ...rotationCenter(domEl, geom) }
+}
+
+/**
+ * Project a toy's stored rotation onto its own <g> as a transform. Called
+ * after every geometry write (move, resize) so the pivot tracks the toy's
+ * CURRENT centre rather than the position it had when the rotation was set
+ * -- same rationale as drawing.js's syncRotation. A toy that has never been
+ * rotated (no data-rotate at all -- true for almost every toy, since only
+ * tt_able_rotate ones can ever acquire one) returns immediately.
+ */
+export function syncRotation(domEl) {
+  if (!domEl?.setAttribute) return
+  if (!domEl.hasAttribute?.(ROTATE_ATTR)) return
+  const rot = resolveRotation(domEl)
+  if (rot) domEl.setAttribute('transform', `rotate(${rot.deg} ${rot.cx} ${rot.cy})`)
+  else     domEl.removeAttribute('transform')
+}
+
+/**
+ * Commit a rotation to the live DOM only -- a <g>-only mutation matching
+ * applyResizeDom's shape, so makeLayerAPI can wrap it in a gesture the same
+ * way. Not a no-op guard on tt_able_rotate: app.js already gates the whole
+ * rotate gesture behind selectModes offering 'sel-rotate' in the first
+ * place, so by the time this runs the toy IS one of the two rotatable types.
+ */
+export function applyRotateDom(domEl, deg) {
+  if (!domEl) return
+  domEl.setAttribute(ROTATE_ATTR, String(normalizeAngle(deg)))
+  syncRotation(domEl)
+}
+
 export function selectModes(domEl) {
   const ownSvg = domEl?.querySelector?.(':scope > svg')
   let modes = ['sel-action']
   if (!!ownSvg?.classList.contains('tt-mode-resize')) {
     modes.push('sel-resize')
+  }
+  if (!!ownSvg?.classList.contains('tt_able_rotate')) {
+    modes.push('sel-rotate')
   }
   if (!!ownSvg?.classList.contains('tt-mode-rummage')) {
     modes.push('sel-rummage')
@@ -1166,6 +1253,7 @@ export function applyMoveDom(domEl, cx, cy) {
   const halfH = Math.round(parseFloat(domSvg.getAttribute('height') ?? String(FALLBACK_TOY_SIZE)) / 2)
   domSvg.setAttribute('x', cx - halfW)
   domSvg.setAttribute('y', cy - halfH)
+  syncRotation(domEl)
 }
 
 // Resize corner indices — shared with overlay.js's corner-handle geometry
@@ -1234,6 +1322,12 @@ export function applyResizeDom(domEl, x, y, width, height) {
   domSvg.setAttribute('width',  String(w))
   domSvg.setAttribute('height', String(h))
   domSvg.setAttribute('viewBox', `0 0 ${w} ${h}`)
+  // Keeps a rotated toy's pivot centred on its NEW size. Unreachable today
+  // -- no toy currently declares both tt-mode-resize and tt_able_rotate --
+  // but cheap (syncRotation's own guard exits immediately for the toys that
+  // don't have data-rotate at all, which is every resizable one right now)
+  // and correct if that ever changes.
+  syncRotation(domEl)
 
   if (!toyId) return
   for (const el of domSvg.querySelectorAll(`.${toyId}__tt_wh_follow_resize`)) {
@@ -2361,6 +2455,10 @@ export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false)
     // Toys only have one resize flavor (corner-drag), so `mode` is
     // unused here -- kept so callers can ask uniformly across layers.
     computeResize: (mode, startRect, corner, px, py) => computeResizeRect(startRect, corner, px, py),
+    getRotation,
+    resolveRotation,
+    rotationCenter,
+    computeRotate,
     applyMoveCommit: (el, x, y) => {
       const layerEl = layer()
       const oldAnchor = getAnchor(el)
@@ -2374,6 +2472,7 @@ export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false)
       }, { positionEvents })                // step 5: runGesture's own cascade
     },
     applyResize:     (el, x, y, w, h) => gesture('resize', () => applyResizeDom(el, x, y, w, h)),
+    applyRotate:     (el, deg)       => gesture('rotate', () => applyRotateDom(el, deg)),
     edit:            (el, editData)  => gesture('edit',   () => editDom(el, editData)),
     previewEdit,
     listData:        ()              => toysDataDom(layer()),

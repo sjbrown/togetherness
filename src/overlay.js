@@ -72,10 +72,10 @@ import { colorMatrixValues } from './toys.js';
 import { previewResize as previewBounPosResize } from './boun_pos.js';
 import {
   previewResize     as previewDrawingResize,
-  previewRotate     as previewDrawingRotate,
   resolveRotation   as elementRotation,
   rotationTransform,
   pivotRayOpacities,
+  normalizeAngle,
 } from './drawing.js';
 import { LOCAL_ACTION_FILTER_ID } from './defs.js';
 import { getBowstringState, chargeOpacityFor, chargeRadiusFor, bowstringOrigin } from './delight.js';
@@ -584,7 +584,18 @@ function _sizeGhostRing(entry, x, y, width, height) {
 export function updateRotateGhost(elId, deg, geo) {
   const entry = _resizeGhosts.get(elId);
   if (!entry || !geo) return;
-  previewDrawingRotate(entry.ghostEl, deg);
+  // 'data-rotate' — same attribute name drawing.js and toys.js both use for
+  // this, specifically so the read on the next line works unmodified across
+  // either kind of ghost: elementRotation (drawing.js's resolveRotation),
+  // called WITH an explicit geom like this rather than left to its own
+  // shape-keyed getGeom default, is pure attribute-plus-arithmetic with zero
+  // dependency on what tagName the ghost actually is — true of a cloned
+  // <rect> (drawing) exactly as much as a cloned <g> wrapping an <svg>
+  // (toys). Nothing layer-specific belongs in this function.
+  entry.ghostEl.setAttribute('data-rotate', String(normalizeAngle(deg)));
+  const transform = rotationTransform(elementRotation(entry.ghostEl, geo));
+  if (transform) entry.ghostEl.setAttribute('transform', transform);
+  else           entry.ghostEl.removeAttribute('transform');
   _sizeGhostRing(entry, geo.x, geo.y, geo.width, geo.height);
 }
 

@@ -361,11 +361,20 @@ let _rotateState = null;    // { id, corner, mtype, centre: {cx,cy},
 // thing that moves is the handle itself.
 let _pivotState = null;     // { id, mtype, startRect, fromPivot, deg } | null
 
-// How far one rotate step turns a shape. A single mutable seam so a future
-// per-table or per-user control has somewhere to write; every geometry
-// function downstream takes the step as an argument rather than reading a
-// constant.
-let _rotateSnapDeg = Drawing.ROTATE_SNAP_DEG;
+// How far one rotate step turns a shape, PER LAYER — rects snap at 15°,
+// chips/cards at 45°, and those are different enough (one's a stated future
+// user preference, the other a fixed grain of the toy itself) that forcing
+// one flat value across every rotatable layer was never going to hold past
+// the first second layer. Each layer seeds its own default from its own
+// module constant; a mutable seam so a future per-table or per-user control
+// has somewhere to write, per layer, without touching the others. Every
+// geometry function downstream still takes the step as an argument rather
+// than reading a constant — this is just where app.js decides WHICH value
+// to pass, by mtype.
+let _rotateSnapDegByLayer = {
+  drawing: Drawing.ROTATE_SNAP_DEG,
+  toys:    Toys.ROTATE_SNAP_DEG,
+};
 
 // How close a dragged pivot has to come to one of the nine notable points
 // before it locks on. Same seam as _rotateSnapDeg.
@@ -1763,10 +1772,12 @@ const App = {
   // The rotate-mode twin of getResizeModeId.
   getRotateModeId: () => (_activeMode && ROTATE_HANDLE_MODES.has(_activeMode.mode)) ? _activeMode.id : null,
 
-  // The step rotation snaps to, in degrees. Surfaced as a pair so a control
-  // can change it later without any geometry knowing.
-  getRotateSnapDeg: () => _rotateSnapDeg,
-  setRotateSnapDeg: (deg) => { _rotateSnapDeg = Number(deg) || 0; },
+  // The step rotation snaps to, in degrees, for ONE layer (mtype: 'drawing'
+  // | 'toys'). Surfaced as a pair so a control can change it later without
+  // any geometry knowing — per layer, since a rect's 15° and a chip's 45°
+  // are independent settings, not one flat app-wide number.
+  getRotateSnapDeg: (mtype) => _rotateSnapDegByLayer[mtype],
+  setRotateSnapDeg: (mtype, deg) => { _rotateSnapDegByLayer[mtype] = Number(deg) || 0; },
   getPivotSnapFraction: () => _pivotSnapFraction,
   setPivotSnapFraction: (f) => { _pivotSnapFraction = Number(f) || 0; },
 
@@ -1797,14 +1808,16 @@ const App = {
   rotate: (id, corner, px, py) => {
     if (!_rotateState || _rotateState.id !== id) return;
     const layer = _Layers[_rotateState.mtype];
-    const deg = layer.computeRotate(_rotateState.startRect, _rotateState.centre, corner, px, py, _rotateSnapDeg);
+    const snapDeg = _rotateSnapDegByLayer[_rotateState.mtype];
+    const deg = layer.computeRotate(_rotateState.startRect, _rotateState.centre, corner, px, py, snapDeg);
     Overlay.updateRotateGhost(id, deg, _rotateState.startRect);
   },
 
   commitRotate: (id, corner, px, py) => {
     if (!_rotateState || _rotateState.id !== id) return;
     const mtype = _rotateState.mtype;
-    const deg = _Layers[mtype].computeRotate(_rotateState.startRect, _rotateState.centre, corner, px, py, _rotateSnapDeg);
+    const snapDeg = _rotateSnapDegByLayer[mtype];
+    const deg = _Layers[mtype].computeRotate(_rotateState.startRect, _rotateState.centre, corner, px, py, snapDeg);
     _rotateState = null;
 
     const el = _Layers[mtype]?.find(id);
