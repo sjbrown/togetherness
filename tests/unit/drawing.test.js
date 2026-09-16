@@ -15,10 +15,11 @@ import {
   getGeom, _toSVGEl, listDrawings, CURRENT_SCHEMA, SHAPE_TYPES,
   selectModes, nextSelectMode, computeResize,
   computeRotate, snapAngle, normalizeAngle, getRotation, syncRotation,
-  applyRotate, applyMoveCommit, previewResize, previewRotate, rotationCenter,
+  applyRotate, applyMoveCommit, applyMoveDom, previewResize, previewRotate, rotationCenter,
   resolveRotation, rotationTransform, getPivot,
   snapPivot, computePivot, pivotShift, pivotRayOpacities, applyPivot,
-  stripDerivedTransform, ROTATE_SNAP_DEG, PIVOT_SNAP_FRACTION,
+  reconcileImportedTransform, parseTransformList, reconcileTransform,
+  ROTATE_SNAP_DEG, PIVOT_SNAP_FRACTION,
 } from '../../src/drawing.js'
 import { tablesAPI } from '../../src/tables.js'
 
@@ -711,29 +712,163 @@ describe('applyRotate', () => {
   })
 })
 
-describe('stripDerivedTransform', () => {
-  test('drops the transform an export baked in, keeping the degree count as the one answer', () => {
-    const doc = makeDoc()
-    add(doc, { id: 'r1', x: 0, y: 0, width: 100, height: 60, rotate: 45 })
-    const yEl = findDrawing(doc.yDrawing, 'r1')
-    yEl.setAttribute('transform', 'rotate(45 50 30)')  // what an export writes
+describe('parseTransformList', () => {
+  const near = (m, expected) => m.forEach((n, i) => expect(n).toBeCloseTo(expected[i], 5))
 
-    stripDerivedTransform(yEl)
-    expect(yEl.getAttribute('transform')).toBeUndefined()
-    expect(yEl.getAttribute('data-rotate')).toBe('45')
-    // ...and the render still comes out rotated, from the degrees alone.
-    expect(_toSVGEl(yEl).getAttribute('transform')).toBe('rotate(45 50 30)')
+  test('reads a three-argument rotate — the form CSS has no equivalent of', () => {
+    near(parseTransformList('rotate(90 100 100)'), [0, 1, -1, 0, 200, 0])
   })
 
-  test('leaves a transform alone on a shape that carries no rotation of ours', () => {
+  test('composes a whole list left to right', () => {
+    near(parseTransformList('translate(10 5) scale(2)'), [2, 0, 0, 2, 10, 5])
+  })
+
+  test('accepts comma separators and a bare matrix', () => {
+    near(parseTransformList('matrix(1,0,0,1,7,8)'), [1, 0, 0, 1, 7, 8])
+  })
+
+  test('handles every term an editor might emit', () => {
+    for (const t of ['translate(5)', 'scale(2)', 'rotate(30)', 'skewX(10)', 'skewY(10)']) {
+      expect(parseTransformList(t)).not.toBeNull()
+    }
+  })
+
+  test('refuses a list it does not fully understand rather than acting on half of it', () => {
+    expect(parseTransformList('rotate(30) wobble(3)')).toBeNull()
+    expect(parseTransformList('translate(nope)')).toBeNull()
+    expect(parseTransformList('')).toBeNull()
+    expect(parseTransformList(null)).toBeNull()
+  })
+})
+
+describe('reconcileTransform', () => {
+  const geom = { x: 100, y: 100, width: 200, height: 120 }
+  // Where the shape's corners land under a raw matrix, vs under what the
+  // document would hold after reconciling. Those must agree, or the import
+  // moved the shape.
+  const corners = (g) => [[g.x, g.y], [g.x + g.width, g.y], [g.x + g.width, g.y + g.height], [g.x, g.y + g.height]]
+  const apply = (m, [x, y]) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]
+  const asRendered = (out) => {
+    const g = { ...geom, x: out.x, y: out.y }
+    return parseTransformList(`rotate(${out.rotate ?? 0} ${g.x + g.width / 2} ${g.y + g.height / 2})`)
+        ?? [1, 0, 0, 1, 0, 0]
+  }
+  const worstDrift = (matrix, out) => {
+    const R = asRendered(out), g = { ...geom, x: out.x, y: out.y }
+    return Math.max(...corners(geom).map((p, i) => {
+      const theirs = apply(matrix, p), ours = apply(R, corners(g)[i])
+      return Math.hypot(theirs[0] - ours[0], theirs[1] - ours[1])
+    }))
+  }
+
+  test('no transform at all leaves everything as it was', () => {
+    expect(reconcileTransform(geom, 45, null)).toEqual({ rotate: 45, x: 100, y: 100, transform: null })
+  })
+
+  test('our own derived copy is recognised and dropped, changing nothing', () => {
+    const m = parseTransformList('rotate(45 200 160)')
+    const out = reconcileTransform(geom, 45, m)
+    expect(out.rotate).toBeCloseTo(45, 9)
+    expect(out.x).toBeCloseTo(100, 9)
+    expect(out.y).toBeCloseTo(100, 9)
+    expect(out.transform).toBeNull()
+    expect(worstDrift(m, out)).toBeLessThan(1e-9)
+  })
+
+  test('an external rotation is recovered into the degrees', () => {
+    const m = parseTransformList('rotate(60 200 160)')
+    const out = reconcileTransform(geom, 45, m)   // document still said 45
+    expect(out.rotate).toBeCloseTo(60, 9)
+    expect(worstDrift(m, out)).toBeLessThan(1e-9)
+  })
+
+  test('a rotation about some OTHER point becomes our rotation plus a move', () => {
+    const m = parseTransformList('rotate(60 100 100)')   // about the top-left
+    const out = reconcileTransform(geom, 45, m)
+    expect(out.rotate).toBeCloseTo(60, 9)
+    expect(out.x).not.toBeCloseTo(100, 3)
+    expect(worstDrift(m, out)).toBeLessThan(1e-9)
+  })
+
+  test('a rotate and a move in one matrix recovers both', () => {
+    const m = parseTransformList('translate(40 25) rotate(60 200 160)')
+    const out = reconcileTransform(geom, 45, m)
+    expect(out.rotate).toBeCloseTo(60, 9)
+    expect(out.x).toBeCloseTo(140, 9)
+    expect(out.y).toBeCloseTo(125, 9)
+    expect(worstDrift(m, out)).toBeLessThan(1e-9)
+  })
+
+  test('a hand-edited list of several terms composes before it is read', () => {
+    const m = parseTransformList('rotate(20 200 160) rotate(20 0 0)')
+    const out = reconcileTransform(geom, 45, m)
+    expect(out.rotate).toBeCloseTo(40, 9)   // neither term alone
+    expect(worstDrift(m, out)).toBeLessThan(1e-9)
+  })
+
+  test('scale is not expressible as degrees, so the file keeps its own transform', () => {
+    const m = parseTransformList('scale(1.5) rotate(60 200 160)')
+    const out = reconcileTransform(geom, 45, m)
+    expect(out.rotate).toBeNull()
+    expect(out.transform).toEqual(m)
+    expect(out.x).toBe(100)
+  })
+
+  test('so are skew and flip', () => {
+    for (const t of ['skewX(10)', 'scale(-1 1)']) {
+      const out = reconcileTransform(geom, 45, parseTransformList(t))
+      expect(out.rotate).toBeNull()
+      expect(out.transform).not.toBeNull()
+    }
+  })
+})
+
+describe('reconcileImportedTransform', () => {
+  const imported = (attrs) => {
     const doc = makeDoc()
     const yEl = new Y.XmlElement('rect')
-    yEl.setAttribute('id', 'foreign')
-    yEl.setAttribute('transform', 'translate(5 5)')
+    for (const [k, v] of Object.entries({ id: 'r1', x: 100, y: 100, width: 200, height: 120, ...attrs })) {
+      yEl.setAttribute(k, String(v))
+    }
     doc.yDrawing.insert(0, [yEl])
+    reconcileImportedTransform(yEl)
+    return yEl
+  }
 
-    stripDerivedTransform(yEl)
-    expect(yEl.getAttribute('transform')).toBe('translate(5 5)')
+  test('an untouched export round-trips completely unchanged', () => {
+    const yEl = imported({ 'data-rotate': '45', transform: 'rotate(45 200 160)' })
+    expect(yEl.getAttribute('data-rotate')).toBe('45')
+    expect(yEl.getAttribute('transform')).toBeUndefined()
+    expect(yEl.getAttribute('x')).toBe('100')
+    expect(yEl.getAttribute('y')).toBe('100')
+  })
+
+  test('an external editor\u2019s rotation AND move both survive', () => {
+    const yEl = imported({ 'data-rotate': '45', transform: 'translate(40 25) rotate(60 200 160)' })
+    expect(Number(yEl.getAttribute('data-rotate'))).toBeCloseTo(60, 6)
+    expect(yEl.getAttribute('x')).toBe('140')
+    expect(yEl.getAttribute('y')).toBe('125')
+    expect(yEl.getAttribute('transform')).toBeUndefined()
+  })
+
+  test('a transform we cannot express keeps the file\u2019s own, and drops our stale degrees', () => {
+    const yEl = imported({ 'data-rotate': '45', transform: 'matrix(1.41 0.35 -0.35 1.41 40 25)' })
+    expect(yEl.getAttribute('data-rotate')).toBeUndefined()
+    expect(yEl.getAttribute('transform')).toContain('matrix(')
+    // ...and with no data-rotate, render leaves it exactly alone.
+    expect(_toSVGEl(yEl).getAttribute('transform')).toContain('matrix(')
+  })
+
+  test('a shape with no rotation of ours is never touched', () => {
+    const yEl = imported({ transform: 'skewX(10)' })
+    expect(yEl.getAttribute('transform')).toBe('skewX(10)')
+    expect(yEl.getAttribute('data-rotate')).toBeUndefined()
+  })
+
+  test('an unparseable transform is treated as foreign, not silently dropped', () => {
+    const yEl = imported({ 'data-rotate': '45', transform: 'rotate(30) wobble(3)' })
+    expect(yEl.getAttribute('transform')).toBe('rotate(30) wobble(3)')   // verbatim
+    expect(yEl.getAttribute('data-rotate')).toBeUndefined()              // ours goes instead
   })
 })
 
@@ -946,5 +1081,36 @@ describe('applyPivot', () => {
 
     previewResize(el, 0, 0, 300, 300)
     expect(rotationCenter(getGeom(el), getPivot(el))).toEqual({ cx: 0, cy: 300 })
+  })
+})
+
+describe('a foreign transform is never claimed', () => {
+  const rectWith = (attrs) => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v))
+    return el
+  }
+
+  test('rotate mode is not offered for a shape whose transform is not ours', () => {
+    expect(selectModes(rectWith({ transform: 'skewX(10)' })))
+      .toEqual(['sel-move', 'sel-resize'])
+  })
+
+  test('move and resize stay available — neither of them touches the transform', () => {
+    const el = rectWith({ x: 0, y: 0, width: 100, height: 100, transform: 'skewX(10)' })
+    applyMoveDom(el, 50, 50)
+    previewResize(el, 50, 50, 200, 200)
+    expect(el.getAttribute('transform')).toBe('skewX(10)')
+  })
+
+  test('a shape of ours keeps the full cycle even though it has a transform', () => {
+    const el = rectWith({ x: 0, y: 0, width: 100, height: 100, 'data-rotate': '45' })
+    syncRotation(el)
+    expect(el.getAttribute('transform')).toBe('rotate(45 50 50)')
+    expect(selectModes(el)).toEqual(['sel-move', 'sel-resize', 'sel-rotate-pivot'])
+  })
+
+  test('a plain shape with no transform at all is unaffected', () => {
+    expect(selectModes(rectWith({}))).toEqual(['sel-move', 'sel-resize', 'sel-rotate-pivot'])
   })
 })

@@ -37,6 +37,13 @@ Run these checks before merging large changesets. Automated tests catch logic er
 7. Export, reopen in Inkscape: the rect is drawn turned
 8. Re-import: still turned, and the Yjs `<rect>` has `data-rotate` but no
    `transform` (the transform is derived on render, never stored)
+9. In Inkscape, rotate the rect FURTHER and move it, then re-import
+   - Both edits survive: the new angle is in `data-rotate`, the move in x/y
+   - Try it with Store transformation set to Optimized and to Preserved;
+     the result must be the same either way
+10. In Inkscape, SCALE the rect, then re-import
+   - The rect renders as Inkscape drew it, keeps its own `transform`, and no
+     longer offers rotate mode (move and resize still work)
 
 ---
 

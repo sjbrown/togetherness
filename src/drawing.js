@@ -233,6 +233,18 @@ export function snapAngle(deg, snapDeg = ROTATE_SNAP_DEG) {
   return normalizeAngle(Math.round(Number(deg) / step) * step);
 }
 
+/**
+ * A transform this module didn't write — an imported or hand-authored shape
+ * whose geometry can't be expressed as degrees (see reconcileTransform's
+ * third outcome). Rotating it would replace that transform and throw the
+ * author's work away, so rotation isn't offered at all. Move and resize stay
+ * available: they write x/y/width/height and syncRotation leaves the
+ * transform alone, so nothing is lost.
+ */
+export function hasForeignTransform(svgEl) {
+  return !!svgEl?.hasAttribute?.('transform') && !svgEl.hasAttribute(ROTATE_ATTR);
+}
+
 /** A rendered shape's rotation in degrees (0 when it has none). */
 export function getRotation(svgEl) {
   return parseFloat(svgEl?.getAttribute?.(ROTATE_ATTR)) || 0;
@@ -453,6 +465,112 @@ export function applyRotate(ydoc, yEl, deg) {
   });
 }
 
+// ── Transform reconciliation (import) ────────────────────────────────────────
+// A shape's rotation lives in the document as a degree count and the SVG
+// transform is derived from it. An export carries both, so a file that comes
+// back from another editor can disagree with itself: the transform is what
+// that editor actually did, the degrees are what we last thought. Dropping
+// the transform (which is what the document does with its OWN derived copy)
+// would throw their edit away, so it has to be proved ours before it goes.
+
+const MATRIX_EPSILON = 1e-6;
+
+const IDENTITY = [1, 0, 0, 1, 0, 0];
+
+// [a b c d e f] x [a b c d e f], in SVG's column-vector convention.
+function matMul(m, n) {
+  return [
+    m[0] * n[0] + m[2] * n[1],
+    m[1] * n[0] + m[3] * n[1],
+    m[0] * n[2] + m[2] * n[3],
+    m[1] * n[2] + m[3] * n[3],
+    m[0] * n[4] + m[2] * n[5] + m[4],
+    m[1] * n[4] + m[3] * n[5] + m[5],
+  ];
+}
+
+function termMatrix(name, a) {
+  const rad = d => d * Math.PI / 180;
+  switch (name) {
+    case 'matrix':    return a.length === 6 ? a : null;
+    case 'translate': return [1, 0, 0, 1, a[0] ?? 0, a[1] ?? 0];
+    case 'scale':     return [a[0] ?? 1, 0, 0, a[1] ?? a[0] ?? 1, 0, 0];
+    case 'skewX':     return [1, 0, Math.tan(rad(a[0] ?? 0)), 1, 0, 0];
+    case 'skewY':     return [1, Math.tan(rad(a[0] ?? 0)), 0, 1, 0, 0];
+    case 'rotate': {
+      const [deg, cx = 0, cy = 0] = a;
+      const c = Math.cos(rad(deg)), s = Math.sin(rad(deg));
+      return matMul(matMul([1, 0, 0, 1, cx, cy], [c, s, -s, c, 0, 0]), [1, 0, 0, 1, -cx, -cy]);
+    }
+    default: return null;
+  }
+}
+
+/**
+ * Parse an SVG transform list into a single matrix, or null if any term is
+ * unrecognised (better to treat the whole thing as foreign than to silently
+ * drop a term and act on a partial reading).
+ *
+ * Hand-rolled because there is nothing to borrow: DOMMatrix parses the CSS
+ * grammar, not SVG's (no three-argument rotate), and jsdom implements
+ * neither it nor SVGElement.transform.baseVal.
+ */
+export function parseTransformList(str) {
+  if (typeof str !== 'string' || !str.trim()) return null;
+  const re = /([a-zA-Z]+)\s*\(([^)]*)\)/g;
+  let out = IDENTITY, seen = 0, m;
+  while ((m = re.exec(str)) !== null) {
+    const args = m[2].trim().split(/[\s,]+/).filter(Boolean).map(Number);
+    if (args.some(n => !Number.isFinite(n))) return null;
+    const term = termMatrix(m[1], args);
+    if (!term) return null;
+    out = matMul(out, term);
+    seen++;
+  }
+  return seen ? out : null;
+}
+
+/**
+ * Reconcile a shape's stored rotation against the transform a file arrived
+ * with. Returns what the document should hold: { rotate, x, y, transform }.
+ * `transform` is null when the shape's own degrees fully describe it, and
+ * the original matrix when they can't.
+ *
+ * Three outcomes:
+ *   - the transform is the one we would have derived: ours, dropped.
+ *   - it is a pure rotation about some other point, or with a move on top:
+ *     both are recovered. The angle becomes the shape's own, and whatever
+ *     translation is left over is folded into x/y, where this app keeps
+ *     position anyway. Lossless.
+ *   - it scales, skews or flips: not expressible as degrees, so the file's
+ *     transform is kept verbatim and the stale rotation is dropped. The
+ *     shape renders exactly as authored and simply isn't ours to turn (see
+ *     selectModes, which stops offering rotate mode for it).
+ */
+export function reconcileTransform(geom, storedDeg, matrix) {
+  const base = { rotate: storedDeg, x: geom.x, y: geom.y, transform: null };
+  if (!matrix) return base;
+
+  const [a, b, c, d, e, f] = matrix;
+  const isPureRotation =
+    Math.abs(a * a + b * b - 1) < MATRIX_EPSILON &&   // unit scale
+    Math.abs(a * c + b * d)     < MATRIX_EPSILON &&   // no skew
+    Math.abs(a * d - b * c - 1) < MATRIX_EPSILON;     // no flip
+  if (!isPureRotation) return { rotate: null, x: geom.x, y: geom.y, transform: matrix };
+
+  const deg = normalizeAngle(Math.atan2(b, a) * 180 / Math.PI);
+
+  // Whatever translation is left once the rotation about our own pivot is
+  // accounted for. Zero when the matrix is exactly the one we derived.
+  const { cx, cy } = rotationCenter(geom, { fx: 0.5, fy: 0.5 });
+  const rotatedCx  = a * cx + c * cy;
+  const rotatedCy  = b * cx + d * cy;
+  const dx = e - (cx - rotatedCx);
+  const dy = f - (cy - rotatedCy);
+
+  return { rotate: deg, x: geom.x + dx, y: geom.y + dy, transform: null };
+}
+
 /**
  * Commit a pivot placement. The compensating x/y ride in the SAME
  * transaction as the pivot itself: they are one user action, and a peer that
@@ -478,16 +596,53 @@ export function previewPivot(ghostEl, fx, fy) {
 }
 
 /**
- * Drop the transform an export baked in from a shape's `rotate` — the
- * document keeps degrees, not matrices, and the transform is re-derived on
- * every render, so storing the exported copy too would leave two answers to
- * the same question with one of them going stale on the next move. Called
- * by storage.js on import. A transform on a shape carrying no `rotate` is
- * the author's own and is left in place.
+ * Settle a freshly imported shape's rotation against the transform it arrived
+ * with, writing back whatever the document should actually hold. Called by
+ * storage.js for every drawing element on import.
+ *
+ * A shape with no `rotate` of ours is left completely alone: its transform is
+ * the author's, and syncRotation already declines to manage it.
  */
-export function stripDerivedTransform(yEl) {
+export function reconcileImportedTransform(yEl) {
   if (yEl?.getAttribute?.(ROTATE_ATTR) == null) return;
-  if (yEl.getAttribute('transform') != null) yEl.removeAttribute('transform');
+  const def = SHAPE_TYPES[yEl.nodeName];
+  if (!def) return;
+
+  const attrs = {};
+  for (const k of Object.keys(def.schema.types)) {
+    attrs[k] = yEl.getAttribute((def.attrMap ?? {})[k] ?? k);
+  }
+  const geom = def.getBBox(attrs);
+  if (!Number.isFinite(geom?.width)) return;
+
+  // A transform present but unreadable is foreign by definition — we cannot
+  // have written it — so it stays exactly as the file spelled it, and our now
+  // meaningless degrees go instead. Distinguished from "no transform at all",
+  // which parseTransformList also reports as null.
+  const raw    = yEl.getAttribute('transform');
+  const matrix = parseTransformList(raw);
+  if (raw != null && !matrix) {
+    yEl.removeAttribute(ROTATE_ATTR);
+    return;
+  }
+
+  const out = reconcileTransform(geom, getRotationFromAttr(yEl), matrix);
+
+  if (out.rotate == null) yEl.removeAttribute(ROTATE_ATTR);
+  else                    yEl.setAttribute(ROTATE_ATTR, String(normalizeAngle(out.rotate)));
+  if (out.transform)      yEl.setAttribute('transform', formatMatrix(out.transform));
+  else if (yEl.getAttribute('transform') != null) yEl.removeAttribute('transform');
+  yEl.setAttribute('x', String(Math.round(out.x)));
+  yEl.setAttribute('y', String(Math.round(out.y)));
+}
+
+/** Degrees off a Yjs element's own attribute (getRotation wants a DOM node). */
+function getRotationFromAttr(yEl) {
+  return parseFloat(yEl.getAttribute(ROTATE_ATTR)) || 0;
+}
+
+function formatMatrix(m) {
+  return `matrix(${m.map(n => +n.toFixed(6)).join(' ')})`;
 }
 
 /**
@@ -524,11 +679,15 @@ export function getAnchor(svgEl) {
  * circles each add their one resize-family mode after it.
  *
  * Rects rotate as 'sel-rotate-pivot' — the variant whose pivot the user can
- * place. 'sel-rotate' is the fixed-pivot variant, which toys will use.
+ * place. 'sel-rotate' is the fixed-pivot variant, which toys will use. A
+ * shape carrying a transform of someone else's is not offered either: see
+ * hasForeignTransform.
  */
 export function selectModes(svgEl) {
   const tag = svgEl?.tagName;
-  if (tag === 'rect')   return ['sel-move', 'sel-resize', 'sel-rotate-pivot'];
+  if (tag === 'rect')   return hasForeignTransform(svgEl)
+    ? ['sel-move', 'sel-resize']
+    : ['sel-move', 'sel-resize', 'sel-rotate-pivot'];
   if (tag === 'circle') return ['sel-move', 'sel-resize-r'];
   return ['sel-move'];
 }

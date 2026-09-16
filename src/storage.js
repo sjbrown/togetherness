@@ -138,15 +138,19 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
     }
   }
 
-  // Drawing layer. A shape's rotation lives in the document as a degree
-  // count; the transform an export carries is derived from it and is
-  // re-derived on render, so it never becomes part of the document.
+  // Drawing layer. A shape's rotation lives in the document as a degree count
+  // and the transform is derived from it, so an import has to settle the two
+  // against each other: our own derived copy is dropped, an external editor's
+  // rotation is recovered into the degrees (and x/y), and anything we can't
+  // express as degrees is left exactly as the file had it.
   if (drawLayerEl) {
     for (const child of drawLayerEl.children) {
       const yEl = domToY(child);
       if (!yEl) continue;
-      Drawing.stripDerivedTransform(yEl);
+      // Insert FIRST: Yjs refuses attribute reads on a detached element, so
+      // reconciling before this point silently does nothing at all.
       yDrawing.insert(yDrawing.length, [yEl]);
+      Drawing.reconcileImportedTransform(yEl);
       drawCount++;
     }
   }
