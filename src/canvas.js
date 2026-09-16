@@ -286,6 +286,12 @@ function onPointerDown(e) {
     if (rotateId) {
       const rp = toCanvas(e.clientX, e.clientY);
       const corner = App.getRotateHandle(rotateId, rp.x, rp.y);
+      if (corner === 'pivot') {
+        ToolMode._gesture = 'pivot';
+        ToolMode._moveRef = { id: rotateId, moved: false };
+        App.startPivotDrag(rotateId);
+        return;
+      }
       if (corner != null) {
         ToolMode._gesture = 'rotate';
         ToolMode._moveRef = { id: rotateId, corner, moved: false };
@@ -428,6 +434,14 @@ function onPointerMove(e) {
     return;
   }
 
+  if (ToolMode._gesture === 'pivot' && ToolMode._moveRef) {
+    const ref = ToolMode._moveRef;
+    const p   = toCanvas(e.clientX, e.clientY);
+    ref.moved = true;
+    App.movePivot(ref.id, p.x, p.y);
+    return;
+  }
+
   if (ToolMode._gesture === 'multi-move' && ToolMode._moveRef) {
     const ref = ToolMode._moveRef;
     const ddx = (e.clientX - ref.sx) / _view.scale;
@@ -525,6 +539,16 @@ function onPointerUp(e) {
       const ref = ToolMode._moveRef;
       const p   = toCanvas(e.clientX, e.clientY);
       App.commitRotate(ref.id, ref.corner, p.x, p.y);
+    }
+  }
+
+  if (ToolMode._gesture === 'pivot' && ToolMode._moveRef) {
+    if (isCancelled || !ToolMode._moveRef.moved) {
+      App.cancelPivot();
+    } else {
+      const ref = ToolMode._moveRef;
+      const p   = toCanvas(e.clientX, e.clientY);
+      App.commitPivot(ref.id, p.x, p.y);
     }
   }
 

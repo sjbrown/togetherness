@@ -17,7 +17,8 @@ import {
   computeRotate, snapAngle, normalizeAngle, getRotation, syncRotation,
   applyRotate, applyMoveCommit, previewResize, previewRotate, rotationCenter,
   resolveRotation, rotationTransform, getPivot,
-  stripDerivedTransform, ROTATE_SNAP_DEG,
+  snapPivot, computePivot, pivotShift, pivotRayOpacities, applyPivot,
+  stripDerivedTransform, ROTATE_SNAP_DEG, PIVOT_SNAP_FRACTION,
 } from '../../src/drawing.js'
 import { tablesAPI } from '../../src/tables.js'
 
@@ -733,5 +734,217 @@ describe('stripDerivedTransform', () => {
 
     stripDerivedTransform(yEl)
     expect(yEl.getAttribute('transform')).toBe('translate(5 5)')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pivot placement
+// Stored as fractions of the bbox so it survives a move and a resize, clamped
+// inside the shape (no lever-arm rotation), and compensated on commit so
+// placing it never moves the shape.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('getPivot', () => {
+  const rectDom = (attrs = {}) => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v))
+    return el
+  }
+
+  test('defaults to the centre when the shape says nothing', () => {
+    expect(getPivot(rectDom())).toEqual({ fx: 0.5, fy: 0.5 })
+    expect(getPivot(null)).toEqual({ fx: 0.5, fy: 0.5 })
+  })
+
+  test('reads the stored fractions', () => {
+    expect(getPivot(rectDom({ 'data-pivot-x': '0', 'data-pivot-y': '1' }))).toEqual({ fx: 0, fy: 1 })
+  })
+
+  test('one axis given, the other still defaults', () => {
+    expect(getPivot(rectDom({ 'data-pivot-x': '0.25' }))).toEqual({ fx: 0.25, fy: 0.5 })
+  })
+
+  test('clamps on READ, so a hand-edited value outside the shape is corrected at the boundary', () => {
+    expect(getPivot(rectDom({ 'data-pivot-x': '2.5', 'data-pivot-y': '-4' }))).toEqual({ fx: 1, fy: 0 })
+  })
+})
+
+describe('snapPivot', () => {
+  test('locks onto the nine notable points — corners, edge midpoints, centre', () => {
+    expect(PIVOT_SNAP_FRACTION).toBe(0.08)
+    expect(snapPivot(0.03, 0.97)).toEqual({ fx: 0, fy: 1 })
+    expect(snapPivot(0.52, 0.47)).toEqual({ fx: 0.5, fy: 0.5 })
+  })
+
+  test('each axis snaps on its own, so a drag near the left edge does not also lock vertically', () => {
+    expect(snapPivot(0.02, 0.31)).toEqual({ fx: 0, fy: 0.31 })
+  })
+
+  test('leaves anything outside the tolerance where it is', () => {
+    expect(snapPivot(0.3, 0.7)).toEqual({ fx: 0.3, fy: 0.7 })
+  })
+
+  test('the tolerance is an argument, and 0 means free placement', () => {
+    expect(snapPivot(0.03, 0.03, 0)).toEqual({ fx: 0.03, fy: 0.03 })
+    expect(snapPivot(0.3, 0.3, 0.4)).toEqual({ fx: 0.5, fy: 0.5 })
+  })
+
+  test('a tolerance wide enough to reach two notable points takes the nearer one', () => {
+    // 0.3 is within 0.4 of both 0 and 0.5; 0.5 is nearer.
+    expect(snapPivot(0.3, 0.2, 0.4)).toEqual({ fx: 0.5, fy: 0 })
+  })
+})
+
+describe('computePivot', () => {
+  const rect = { x: 100, y: 100, width: 200, height: 100 }
+
+  test('expresses a canvas point as fractions of the shape', () => {
+    expect(computePivot(rect, 150, 125, 0)).toEqual({ fx: 0.25, fy: 0.25 })
+  })
+
+  test('clamps inside the shape — unlike Inkscape, the pivot never leaves the box', () => {
+    expect(computePivot(rect, -500, 9999, 0)).toEqual({ fx: 0, fy: 1 })
+  })
+
+  test('snaps once inside, so dragging near the centre lands exactly on it', () => {
+    expect(computePivot(rect, 203, 148)).toEqual({ fx: 0.5, fy: 0.5 })
+  })
+})
+
+describe('pivotRayOpacities', () => {
+  const at = (fx, fy) => Object.fromEntries(
+    pivotRayOpacities(fx, fy).map(r => [`${r.dx},${r.dy}`, r.opacity]))
+
+  test('all eight rays are full strength at the centre', () => {
+    expect(Object.values(at(0.5, 0.5))).toEqual(Array(8).fill(1))
+  })
+
+  test('at the left edge the three leftward rays are gone and the rest are untouched', () => {
+    const o = at(0, 0.5)
+    expect([o['-1,0'], o['-1,-1'], o['-1,1']]).toEqual([0, 0, 0])
+    expect([o['1,0'], o['1,-1'], o['1,1'], o['0,-1'], o['0,1']]).toEqual([1, 1, 1, 1, 1])
+  })
+
+  test('at a corner only the quarter-fan pointing back into the shape survives', () => {
+    const visible = pivotRayOpacities(0, 0).filter(r => r.opacity > 0).map(r => `${r.dx},${r.dy}`)
+    expect(visible.sort()).toEqual(['0,1', '1,0', '1,1'])   // S, E, SE
+  })
+
+  test('every ray that leans toward a corner is gone by the time the pivot reaches it', () => {
+    // This is the whole point: nothing is left to collide with that corner's
+    // rotate handle, so the handles never have to move out of the way.
+    for (const [fx, fy] of [[0, 0], [1, 0], [1, 1], [0, 1]]) {
+      const toward = pivotRayOpacities(fx, fy)
+        .filter(r => r.dx === (fx ? 1 : -1) || r.dy === (fy ? 1 : -1))
+      expect(toward.every(r => r.opacity === 0)).toBe(true)
+    }
+  })
+
+  test('a diagonal fades faster than either orthogonal beside it', () => {
+    const o = at(0.25, 0.25)
+    expect(o['-1,-1']).toBeCloseTo(0.25)   // both axes attenuate
+    expect(o['-1,0']).toBeCloseTo(0.5)     // one axis
+    expect(o['0,-1']).toBeCloseTo(0.5)
+  })
+
+  test('fades linearly rather than switching off at a threshold', () => {
+    expect(at(0.25, 0.5)['-1,0']).toBeCloseTo(0.5)
+    expect(at(0.125, 0.5)['-1,0']).toBeCloseTo(0.25)
+  })
+})
+
+describe('pivotShift — placing a pivot never moves the shape', () => {
+  const geom = { x: 100, y: 100, width: 200, height: 120 }
+
+  // Where a point in the shape's own space lands on the canvas, for a given
+  // pivot and angle.
+  const onCanvas = (p, pivot, deg) => {
+    const cx = geom.x + pivot.fx * geom.width
+    const cy = geom.y + pivot.fy * geom.height
+    const r  = deg * Math.PI / 180
+    const dx = p.x - cx, dy = p.y - cy
+    return { x: cx + dx * Math.cos(r) - dy * Math.sin(r), y: cy + dx * Math.sin(r) + dy * Math.cos(r) }
+  }
+
+  test('is zero for an unrotated shape — the pivot only matters to the NEXT rotation', () => {
+    expect(pivotShift(geom, { fx: 0.5, fy: 0.5 }, { fx: 0, fy: 1 }, 0)).toEqual({ dx: 0, dy: 0 })
+  })
+
+  test('is zero when the pivot did not actually move', () => {
+    const s = pivotShift(geom, { fx: 0.5, fy: 0.5 }, { fx: 0.5, fy: 0.5 }, 37)
+    expect(s.dx).toBeCloseTo(0, 10)
+    expect(s.dy).toBeCloseTo(0, 10)
+  })
+
+  test('cancels the jump exactly, at an angle that is not a quarter turn', () => {
+    const from = { fx: 0.5, fy: 0.5 }, to = { fx: 0, fy: 1 }, deg = 37
+    const corner = { x: geom.x, y: geom.y }
+    const before = onCanvas(corner, from, deg)
+
+    // Without the shift the shape swings to a new place...
+    const naive = onCanvas(corner, to, deg)
+    expect(Math.hypot(naive.x - before.x, naive.y - before.y)).toBeGreaterThan(10)
+
+    // ...and with it, the shape is exactly where it was.
+    const { dx, dy } = pivotShift(geom, from, to, deg)
+    const moved = { x: corner.x + dx, y: corner.y + dy }
+    const shifted = { ...geom, x: geom.x + dx, y: geom.y + dy }
+    const cx = shifted.x + to.fx * shifted.width, cy = shifted.y + to.fy * shifted.height
+    const r = deg * Math.PI / 180
+    const ddx = moved.x - cx, ddy = moved.y - cy
+    const after = { x: cx + ddx * Math.cos(r) - ddy * Math.sin(r), y: cy + ddx * Math.sin(r) + ddy * Math.cos(r) }
+
+    expect(after.x).toBeCloseTo(before.x, 10)
+    expect(after.y).toBeCloseTo(before.y, 10)
+  })
+
+  test('grows with the angle — a half turn needs twice the offset of the pivot move', () => {
+    const s = pivotShift(geom, { fx: 0.5, fy: 0.5 }, { fx: 0, fy: 0.5 }, 180)
+    expect(s.dx).toBeCloseTo(200, 6)   // pivot moved -100; a half turn doubles it back
+    expect(s.dy).toBeCloseTo(0, 6)
+  })
+})
+
+describe('applyPivot', () => {
+  test('writes the pivot and the compensating position together, and syncs', () => {
+    const a = makeDoc(), b = makeDoc()
+    add(a, { id: 'r1', x: 100, y: 100, width: 200, height: 120, rotate: 37 })
+    sync(a.ydoc, b.ydoc)
+
+    applyPivot(a.ydoc, findDrawing(a.yDrawing, 'r1'), 0, 1, 140.4, 125.7)
+    sync(a.ydoc, b.ydoc)
+
+    const yEl = findDrawing(b.yDrawing, 'r1')
+    expect(yEl.getAttribute('data-pivot-x')).toBe('0')
+    expect(yEl.getAttribute('data-pivot-y')).toBe('1')
+    expect(yEl.getAttribute('x')).toBe('140')   // rounded, like every other geometry write
+    expect(yEl.getAttribute('y')).toBe('126')
+  })
+
+  test('clamps what it stores, so nothing out of range reaches the document', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'r1' })
+    applyPivot(doc.ydoc, findDrawing(doc.yDrawing, 'r1'), -3, 8, 0, 0)
+    const yEl = findDrawing(doc.yDrawing, 'r1')
+    expect(yEl.getAttribute('data-pivot-x')).toBe('0')
+    expect(yEl.getAttribute('data-pivot-y')).toBe('1')
+  })
+
+  test('is a no-op for a shape type with no pivot in its schema', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'c1', type: 'circle', cx: 50, cy: 50, r: 30 })
+    const yEl = findDrawing(doc.yDrawing, 'c1')
+    applyPivot(doc.ydoc, yEl, 0, 0, 10, 10)
+    expect(yEl.getAttribute('data-pivot-x')).toBeUndefined()
+  })
+
+  test('the pivot rides a resize — fractions keep a corner pivot on the corner', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'r1', x: 0, y: 0, width: 100, height: 100, rotate: 0, 'pivot-x': 0, 'pivot-y': 1 })
+    const el = _toSVGEl(findDrawing(doc.yDrawing, 'r1'))
+    expect(rotationCenter(getGeom(el), getPivot(el))).toEqual({ cx: 0, cy: 100 })
+
+    previewResize(el, 0, 0, 300, 300)
+    expect(rotationCenter(getGeom(el), getPivot(el))).toEqual({ cx: 0, cy: 300 })
   })
 })

@@ -86,6 +86,10 @@ function makeApp(overrides = {}) {
     rotate:             () => {},
     commitRotate:       () => {},
     cancelRotate:       () => {},
+    startPivotDrag:     () => {},
+    movePivot:          () => {},
+    commitPivot:        () => {},
+    cancelPivot:        () => {},
     ...overrides,
   }
 }
@@ -658,6 +662,86 @@ describe('resize mode — reclick-to-toggle', () => {
     stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 100, clientY: 100 }))
 
     expect(entered).toEqual([])
+  })
+})
+
+describe('pivot drag gesture', () => {
+  // getRotateHandle answers 'pivot' instead of a corner index when the
+  // pointer is on the pivot handle; canvas.js routes that to its own gesture.
+  const pivotApp = (overrides = {}) => makeApp({
+    getRotateModeId: () => 'rect-1',
+    getRotateHandle: () => 'pivot',
+    ...overrides,
+  })
+
+  test("a handle answer of 'pivot' starts a pivot drag, not a rotate", () => {
+    const started = [], rotated = []
+    const app = pivotApp({ startPivotDrag: (id) => started.push(id), startRotate: () => rotated.push(true) })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    document.getElementById('stage')
+      .dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+
+    expect(ToolMode._gesture).toBe('pivot')
+    expect(started).toEqual(['rect-1'])
+    expect(rotated).toHaveLength(0)
+  })
+
+  test('pointermove reports the canvas-space point', () => {
+    const moved = []
+    const app = pivotApp({ movePivot: (id, x, y) => moved.push([id, x, y]) })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 240, clientY: 260 }))
+
+    expect(moved).toEqual([['rect-1', 240, 260]])
+  })
+
+  test('pointerup commits', () => {
+    const committed = []
+    const app = pivotApp({ commitPivot: (id, x, y) => committed.push([id, x, y]) })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 240, clientY: 260 }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 240, clientY: 260 }))
+
+    expect(committed).toEqual([['rect-1', 240, 260]])
+  })
+
+  test('a tap with no movement cancels rather than committing a no-op placement', () => {
+    const committed = [], cancelled = []
+    const app = pivotApp({ commitPivot: () => committed.push(true), cancelPivot: () => cancelled.push(true) })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 200, clientY: 200 }))
+
+    expect(cancelled).toHaveLength(1)
+    expect(committed).toHaveLength(0)
+  })
+
+  test('pointercancel mid-drag cancels', () => {
+    const committed = [], cancelled = []
+    const app = pivotApp({ commitPivot: () => committed.push(true), cancelPivot: () => cancelled.push(true) })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown',   { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointermove',   { clientX: 240, clientY: 260 }))
+    stage.dispatchEvent(makePointerEvent('pointercancel', { clientX: 240, clientY: 260 }))
+
+    expect(cancelled).toHaveLength(1)
+    expect(committed).toHaveLength(0)
   })
 })
 

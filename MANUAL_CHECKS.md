@@ -40,6 +40,22 @@ Run these checks before merging large changesets. Automated tests catch logic er
 
 ---
 
+## Rotation Pivot
+
+1. Rect in rotate mode: a dot with eight short rays sits at its centre
+2. Drag it toward the left edge — the three leftward rays fade out as it goes
+3. Drag it into a corner — only the three rays pointing back into the shape
+   remain, and the corner's rotate handle stays clean and grabbable
+4. Click that corner again: the pivot is picked up, not the rotate handle
+5. Rotate the rect 45°, then drag the pivot somewhere else
+   - The rect must not move at all; only the handle does
+6. With the pivot on a corner, drag a rotate handle — it swings about that
+   corner, not the centre
+7. Resize the rect: a pivot on a corner stays on that corner
+8. Second browser window: the pivot position appears there too
+
+---
+
 ## Boundary Constraints
 
 1. **Single boundary:** Create boundary named `"toy"`, toy with class `"toy"` inside

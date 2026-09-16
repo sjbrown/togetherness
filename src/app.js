@@ -343,11 +343,20 @@ let _resizeState = null;    // { id, corner, mtype, mode, rotation,
 let _rotateState = null;    // { id, corner, mtype, centre: {cx,cy},
                             //   startRect: {x,y,width,height} } | null
 
+// Active pivot placement — the third handle-drag gesture, alongside resize
+// and rotate. No ghost: the compensation keeps the shape still, so the only
+// thing that moves is the handle itself.
+let _pivotState = null;     // { id, mtype, startRect, fromPivot, deg } | null
+
 // How far one rotate step turns a shape. A single mutable seam so a future
 // per-table or per-user control has somewhere to write; every geometry
 // function downstream takes the step as an argument rather than reading a
 // constant.
 let _rotateSnapDeg = Drawing.ROTATE_SNAP_DEG;
+
+// How close a dragged pivot has to come to one of the nine notable points
+// before it locks on. Same seam as _rotateSnapDeg.
+let _pivotSnapFraction = Drawing.PIVOT_SNAP_FRACTION;
 
 // Which undo mechanism App.undo/App.redo should invoke: the toys op log
 // (Toys.undoToyGesture) or the drawing/boundaries Y.UndoManager
@@ -951,6 +960,16 @@ const App = {
   // { deg, cx, cy } or null. Read by overlay.js to turn an element's
   // selection furniture with it — getBBox stays unrotated.
   getRotation: (id) => _rotationOf(id),
+  // { fx, fy, cx, cy } — the pivot as fractions of the bbox plus the
+  // canvas-space point they resolve to, or null for a layer with no pivot.
+  // Overlay needs both: the point to draw at, the fractions to fade the rays.
+  getPivot: (id) => {
+    const { domEl, layer } = _layerFor(id);
+    const pivot = layer?.getPivot?.(domEl);
+    const geo   = App.getBBox(id);
+    if (!pivot || !geo) return null;
+    return { ...pivot, ...layer.rotationCenter(domEl, geo) };
+  },
   getLayerObjects: (layerId) => _Layers[LAYER_ID_TO_MODULE[layerId]]?.listData() ?? [],
   // Return ids of objects on the active layer whose bbox is fully inside rect.
   // rect is canvas-space { x, y, width, height }.
@@ -1735,12 +1754,15 @@ const App = {
   // can change it later without any geometry knowing.
   getRotateSnapDeg: () => _rotateSnapDeg,
   setRotateSnapDeg: (deg) => { _rotateSnapDeg = Number(deg) || 0; },
+  getPivotSnapFraction: () => _pivotSnapFraction,
+  setPivotSnapFraction: (f) => { _pivotSnapFraction = Number(f) || 0; },
 
   getRotateHandle: (id, cx, cy) => {
     if (_activeMode?.id !== id || !ROTATE_HANDLE_MODES.has(_activeMode.mode)) return null;
     const geo = App.getBBox(id);
     const p   = _toLocalPoint(id, cx, cy);
-    return Overlay.hitTestSelectionHandle(_activeMode.mode, geo, p.x, p.y, App.getViewScale());
+    return Overlay.hitTestSelectionHandle(
+      _activeMode.mode, geo, p.x, p.y, App.getViewScale(), App.getPivot(id));
   },
 
   startRotate: (id, corner) => {
@@ -1784,6 +1806,61 @@ const App = {
     if (!_rotateState) return;
     Overlay.endResizeGhost(_rotateState.id);
     _rotateState = null;
+  },
+
+  // ── Pivot lifecycle ───────────────────────────────────────────────────────
+  // The third handle drag. Unlike resize and rotate it needs no ghost: the
+  // commit compensates the shape's position so it stays exactly where it is,
+  // which means there is nothing to preview except the handle, and an overlay
+  // repaint covers that.
+
+  startPivotDrag: (id) => {
+    if (_activeMode?.id !== id || _activeMode.mode !== 'sel-rotate-pivot' || App.isHeldByOther(id)) return;
+    const bbox = App.getBBox(id);
+    if (!bbox) return;
+    const { domEl, layer } = _layerFor(id);
+    if (!layer?.getPivot) return;
+    _pivotState = {
+      id,
+      mtype:     moduleForElement(domEl),
+      startRect: { ...bbox },
+      fromPivot: layer.getPivot(domEl),
+      deg:       layer.getRotation?.(domEl) ?? 0,
+    };
+  },
+
+  // (px, py) is the raw canvas-space pointer, un-rotated into the shape's own
+  // frame first: the handle is drawn inside the rotated furniture, so the
+  // fractions have to be measured there too.
+  movePivot: (id, px, py) => {
+    if (!_pivotState || _pivotState.id !== id) return;
+    const p = _toLocalPoint(id, px, py, _rotationOf(id));
+    const pivot = _Layers[_pivotState.mtype].computePivot(_pivotState.startRect, p.x, p.y, _pivotSnapFraction);
+    _pivotState.toPivot = pivot;
+    Overlay.setPivotPreview(id, pivot);
+  },
+
+  commitPivot: (id, px, py) => {
+    if (!_pivotState || _pivotState.id !== id) return;
+    const { mtype, startRect, fromPivot, deg } = _pivotState;
+    const p     = _toLocalPoint(id, px, py, _rotationOf(id));
+    const pivot = _Layers[mtype].computePivot(startRect, p.x, p.y, _pivotSnapFraction);
+    // Moving the pivot re-derives the rotation about a new point, which would
+    // shift the shape. Cancel that in the same transaction.
+    const shift = _Layers[mtype].pivotShift(startRect, fromPivot, pivot, deg);
+    _pivotState = null;
+    Overlay.setPivotPreview(id, null);
+
+    const el = _Layers[mtype]?.find(id);
+    _lastActionScope = mtype;
+    _Layers[mtype]?.applyPivot(el, pivot.fx, pivot.fy, startRect.x + shift.dx, startRect.y + shift.dy);
+    addHistory(`pivot ${id} → (${pivot.fx}, ${pivot.fy})`, { elType: mtype });
+  },
+
+  cancelPivot: () => {
+    if (!_pivotState) return;
+    Overlay.setPivotPreview(_pivotState.id, null);
+    _pivotState = null;
   },
 
   // ── Multi-element drag lifecycle ──────────────────────────────────────────

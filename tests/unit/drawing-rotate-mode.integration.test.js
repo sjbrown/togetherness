@@ -169,7 +169,10 @@ describe('dragging a rotate handle', () => {
     // [NW, NE, SE, SW], each PAD outside its corner.
     expect(App.getRotateHandle(id, geo.x - 6, geo.y - 6)).toBe(0)
     expect(App.getRotateHandle(id, geo.x + geo.width + 6, geo.y + geo.height + 6)).toBe(2)
-    expect(App.getRotateHandle(id, geo.x + geo.width / 2, geo.y + geo.height / 2)).toBeNull()
+    // The middle is the pivot handle's home, so it answers there now.
+    expect(App.getRotateHandle(id, geo.x + geo.width / 2, geo.y + geo.height / 2)).toBe('pivot')
+    // Somewhere on the shape that is neither a corner nor the pivot.
+    expect(App.getRotateHandle(id, geo.x + geo.width / 4, geo.y + geo.height / 2)).toBeNull()
   })
 
   test('getRotateHandle returns nothing while the element is in resize mode', async () => {
@@ -356,5 +359,125 @@ describe('resizing an already-rotated rect', () => {
     expect(yEl.getAttribute('y')).toBe('100')
     expect(yEl.getAttribute('width')).toBe('250')
     expect(yEl.getAttribute('height')).toBe('250')
+  })
+})
+
+describe('placing the pivot', () => {
+  const yAttr = (ydoc, id, k) => Number(yRect(ydoc, id).getAttribute(k))
+
+  // Where a point in the shape's own space lands on the canvas, read straight
+  // off the document.
+  const onCanvas = (yEl, local) => {
+    const n    = (k) => Number(yEl.getAttribute(k))
+    const deg  = Number(yEl.getAttribute('data-rotate') ?? 0)
+    const fx   = Number(yEl.getAttribute('data-pivot-x') ?? 0.5)
+    const fy   = Number(yEl.getAttribute('data-pivot-y') ?? 0.5)
+    const cx   = n('x') + fx * n('width'), cy = n('y') + fy * n('height')
+    const r    = deg * Math.PI / 180
+    const dx   = local.x - cx, dy = local.y - cy
+    return { x: cx + dx * Math.cos(r) - dy * Math.sin(r), y: cy + dx * Math.sin(r) + dy * Math.cos(r) }
+  }
+  const nw = (yEl) => ({ x: Number(yEl.getAttribute('x')), y: Number(yEl.getAttribute('y')) })
+
+  async function inPivotMode() {
+    const b = await bootWithSquare()
+    b.App.nextSelectionMode(b.id)
+    b.App.nextSelectionMode(b.id)
+    expect(b.App.getRotateModeId()).toBe(b.id)
+    return b
+  }
+
+  test('the pivot handle is reported where the pivot is, and answers the hit test', async () => {
+    const { App, id } = await inPivotMode()
+    expect(App.getPivot(id)).toEqual({ fx: 0.5, fy: 0.5, cx: 200, cy: 200 })
+    expect(App.getRotateHandle(id, 200, 200)).toBe('pivot')
+  })
+
+  test('a drag writes fractions of the shape, snapped to a notable point', async () => {
+    const { App, ydoc, id } = await inPivotMode()
+    App.startPivotDrag(id)
+    App.movePivot(id, 104, 297)          // near the SW corner of a 100,100 200x200 rect
+    App.commitPivot(id, 104, 297)
+
+    expect(yRect(ydoc, id).getAttribute('data-pivot-x')).toBe('0')
+    expect(yRect(ydoc, id).getAttribute('data-pivot-y')).toBe('1')
+  })
+
+  test('placing a pivot on an UNROTATED shape moves nothing', async () => {
+    const { App, ydoc, id } = await inPivotMode()
+    App.startPivotDrag(id)
+    App.commitPivot(id, 100, 300)
+
+    expect(yAttr(ydoc, id, 'x')).toBe(100)
+    expect(yAttr(ydoc, id, 'y')).toBe(100)
+  })
+
+  test('placing a pivot on a ROTATED shape leaves it exactly where it was', async () => {
+    const { App, ydoc, id } = await inPivotMode()
+    // Turn it first.
+    App.startRotate(id, 2)
+    App.commitRotate(id, 2, 100, 300)          // 90°
+    const before = onCanvas(yRect(ydoc, id), nw(yRect(ydoc, id)))
+
+    App.nextSelectionMode(id); App.nextSelectionMode(id); App.nextSelectionMode(id)
+    expect(App.getRotateModeId()).toBe(id)
+    App.startPivotDrag(id)
+    // Canvas (100, 300) on a shape turned 90°; the handle is drawn inside the
+    // rotated furniture, so the drop point is un-rotated into the shape's own
+    // frame before it becomes fractions — landing on the SE corner locally.
+    App.commitPivot(id, 100, 300)
+
+    const after = yRect(ydoc, id)
+    expect(after.getAttribute('data-pivot-x')).toBe('1')
+    expect(after.getAttribute('data-pivot-y')).toBe('1')
+    // x/y moved to compensate...
+    expect(yAttr(ydoc, id, 'x')).not.toBe(100)
+    // ...precisely so the shape did not.
+    const now = onCanvas(after, nw(after))
+    expect(Math.abs(now.x - before.x)).toBeLessThan(1)
+    expect(Math.abs(now.y - before.y)).toBeLessThan(1)
+  })
+
+  test('the new pivot is what the next rotation turns about', async () => {
+    const { App, ydoc, id } = await inPivotMode()
+    App.startPivotDrag(id)
+    App.commitPivot(id, 100, 100)              // NW corner
+    expect(App.getPivot(id)).toMatchObject({ fx: 0, fy: 0, cx: 100, cy: 100 })
+
+    App.startRotate(id, 2)
+    App.commitRotate(id, 2, 300, 100)          // drag the SE corner up to the NE
+    expect(yRect(ydoc, id).getAttribute('data-rotate')).toBe('315')
+  })
+
+  test('cancelling a pivot drag writes nothing', async () => {
+    const { App, ydoc, id } = await inPivotMode()
+    App.startPivotDrag(id)
+    App.movePivot(id, 100, 300)
+    App.cancelPivot()
+
+    expect(yRect(ydoc, id).getAttribute('data-pivot-x')).toBe('0.5')
+    expect(yAttr(ydoc, id, 'x')).toBe(100)
+  })
+
+  test('the snap tolerance is a settable seam, like the rotate step', async () => {
+    const { App, ydoc, id } = await inPivotMode()
+    expect(App.getPivotSnapFraction()).toBeCloseTo(0.08)
+
+    App.setPivotSnapFraction(0)                // free placement
+    App.startPivotDrag(id)
+    App.commitPivot(id, 120, 140)              // 10% / 20% in — would have snapped to the corner
+    expect(yRect(ydoc, id).getAttribute('data-pivot-x')).toBe('0.1')
+    expect(yRect(ydoc, id).getAttribute('data-pivot-y')).toBe('0.2')
+
+    App.setPivotSnapFraction(0.08)
+  })
+
+  test('a pivot dragged beyond the shape is clamped to its edge, never outside', async () => {
+    const { App, ydoc, id } = await inPivotMode()
+    App.startPivotDrag(id)
+    App.commitPivot(id, -9999, 9999)
+
+    expect(yRect(ydoc, id).getAttribute('data-pivot-x')).toBe('0')
+    expect(yRect(ydoc, id).getAttribute('data-pivot-y')).toBe('1')
   })
 })

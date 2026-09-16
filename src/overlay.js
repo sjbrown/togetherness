@@ -75,10 +75,11 @@ import {
   previewRotate     as previewDrawingRotate,
   resolveRotation   as elementRotation,
   rotationTransform,
+  pivotRayOpacities,
 } from './drawing.js';
 import { LOCAL_ACTION_FILTER_ID } from './defs.js';
 import { getBowstringState, chargeOpacityFor, chargeRadiusFor, bowstringOrigin } from './delight.js';
-import { drawAsteriskGlyph, drawCrosshairGlyph, drawRotateGlyph } from './icons.js';
+import { drawAsteriskGlyph, drawCrosshairGlyph, drawRotateGlyph, drawPivotGlyph } from './icons.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const HANDLE_SIZE = 12;  // px in canvas-space
@@ -87,6 +88,7 @@ const REQUESTED_PAD = PAD + 6;  // extra clearance so the requested ring
                                 // sits outside the selection ring
 const HANDLE_HIT_PAD = 6; // extra px (canvas-space, pre-scale)
                           // added to the handle's own hit box
+const PIVOT_SIZE = 9;     // px in canvas-space — the pivot handle's ray reach
 
 const SELECTION_MODES = new Set([
   'sel-move', 'sel-resize', 'sel-resize-r', 'sel-rotate', 'sel-rotate-pivot', 'sel-action',
@@ -156,14 +158,30 @@ export function hitTestResizeRHandle(geo, px, py, scale) {
  * Which handle of `mode`'s own decoration canvas-space point (px, py) is
  * within grabbing distance of, for bounding box geo
  */
-export function hitTestSelectionHandle(mode, geo, px, py, scale) {
+export function hitTestSelectionHandle(mode, geo, px, py, scale, pivotPoint = null) {
   switch (mode) {
+    // The pivot is tested before the corners: once it has been dragged onto
+    // one, the two hit boxes overlap, and the pivot is the smaller and more
+    // deliberate target of the two.
+    case 'sel-rotate-pivot':
+      if (pivotPoint && hitTestPivot(pivotPoint, px, py, scale)) return 'pivot';
+      return hitTestResizeCorner(geo, px, py, scale);
     case 'sel-resize':
-    case 'sel-rotate':
-    case 'sel-rotate-pivot': return hitTestResizeCorner(geo, px, py, scale);
+    case 'sel-rotate':   return hitTestResizeCorner(geo, px, py, scale);
     case 'sel-resize-r': return hitTestResizeRHandle(geo, px, py, scale) ? 'r' : null;
     default:             return null;
   }
+}
+
+/**
+ * Whether canvas-space (px, py) is within grabbing distance of the pivot
+ * handle at pivotPoint ({ cx, cy }). Same screen-space sizing as the corner
+ * handles, so it feels the same at any zoom.
+ */
+export function hitTestPivot(pivotPoint, px, py, scale) {
+  if (!pivotPoint) return false;
+  const radius = (PIVOT_SIZE / 2 + HANDLE_HIT_PAD) / scale;
+  return Math.hypot(px - pivotPoint.cx, py - pivotPoint.cy) <= radius;
 }
 
 // ── SelectionMode ─────────────────────────────────────────────────────────────
@@ -644,6 +662,25 @@ export function endGhost(elId) {
   render();
 }
 
+// ── Pivot drag preview ───────────────────────────────────────────────────────
+// Where a pivot drag currently has the handle, before it commits. Module
+// state rather than a DOM node, because this layer is wiped on every render
+// and has to rebuild the handle from scratch each time — same rationale as
+// the bowstring charge above.
+let _pivotPreview = null;   // { elId, fx, fy } | null
+
+/** Set (or clear, with null) the live pivot position for elId. */
+export function setPivotPreview(elId, pivot) {
+  if (!pivot) {
+    if (!_pivotPreview) return;
+    _pivotPreview = null;
+  } else {
+    if (_pivotPreview?.elId === elId && _pivotPreview.fx === pivot.fx && _pivotPreview.fy === pivot.fy) return;
+    _pivotPreview = { elId, fx: pivot.fx, fy: pivot.fy };
+  }
+  render();
+}
+
 // ── Drop-target hover
 // The el id currently under a toy being dragged, or null. Set by
 // App.move() on every pointermove while dragging a toy (re-hit-tested each
@@ -696,29 +733,35 @@ export function render() {
     // rotation the element itself carries so the ring hugs the shape
     // instead of its axis-aligned bounds. { deg, cx, cy } or null.
     const rot = App.getRotation?.(elId) ?? null;
+    // One group per element, so everything an element's selection draws ends
+    // up under the same rotation rather than each renderer making its own.
+    const parent = decorGroup(rot);
     switch (entry.mode) {
       case 'local':
       case 'candidate':
       case 'sel-move':
-        renderLocalSelection(geo, entry, scale, rot);
+        renderLocalSelection(geo, entry, scale, parent);
         break;
       case 'remote':
       case 'locked':
         renderRemoteSelection(geo, entry, scale, rot);
         break;
       case 'sel-resize':
-        renderLocalResizeSelection(geo, entry, scale, rot);
+        renderLocalResizeSelection(geo, entry, scale, rot, parent);
         break;
       case 'sel-resize-r':
-        renderLocalResizeRSelection(geo, entry, scale, rot);
+        renderLocalResizeRSelection(geo, entry, scale, parent);
         break;
       case 'sel-rotate':
+        renderLocalRotateSelection(geo, entry, scale, rot, parent);
+        break;
       case 'sel-rotate-pivot':
-        renderLocalRotateSelection(geo, entry, scale, rot);
+        renderLocalRotateSelection(geo, entry, scale, rot, parent);
+        renderPivotHandle(elId, geo, scale, parent);
         break;
       case 'sel-action':
-        renderLocalSelection(geo, entry, scale, rot);
-        renderActionAffordance(geo, scale, rot);
+        renderLocalSelection(geo, entry, scale, parent);
+        renderActionAffordance(geo, scale, parent);
         break;
     }
   }
@@ -922,7 +965,7 @@ export function handleCursor(corner, deg, kind) {
   return `${COMPASS[(COMPASS.indexOf(axis) + steps % 8 + 8) % 8]}-resize`;
 }
 
-function renderLocalSelection(geo, entry, scale, rot = null) {
+function renderLocalSelection(geo, entry, scale, parent = _layerEl) {
   const { x, y, width, height } = geo;
   const stroke = _localGradUrl();
   const ring = el('rect', {
@@ -936,13 +979,12 @@ function renderLocalSelection(geo, entry, scale, rot = null) {
     'stroke-width': 2 / scale,
     class:          'selRing',
   });
-  decorGroup(rot).appendChild(ring);
+  parent.appendChild(ring);
 
 }
 
-function renderLocalResizeSelection(geo, entry, scale, rot = null) {
+function renderLocalResizeSelection(geo, entry, scale, rot = null, parent = _layerEl) {
   const { x, y, width, height } = geo;
-  const parent = decorGroup(rot);
   const stroke = entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)');
   const ring = el('rect', {
     x:      x - PAD,
@@ -979,14 +1021,38 @@ function renderLocalResizeSelection(geo, entry, scale, rot = null) {
 }
 
 /**
+ * The pivot a shape turns about, drawn as a centre dot with up to eight
+ * radiating lines. Each ray fades as the pivot nears the edge it points at
+ * (see drawing.js's pivotRayOpacities), which is what keeps the handle
+ * legible where it would otherwise collide: a pivot dragged into a corner
+ * has already dropped every ray that pointed at that corner's rotate handle.
+ *
+ * Rides the same rotation group as the rest of the furniture, so it sits on
+ * the shape rather than on its axis-aligned bounds.
+ */
+function renderPivotHandle(elId, geo, scale, parent = _layerEl) {
+  const committed = App.getPivot?.(elId);
+  if (!committed) return;
+  // Mid-drag the handle shows where the pointer has put it; the shape itself
+  // never moves, so there is nothing else to preview.
+  const dragged = _pivotPreview?.elId === elId ? _pivotPreview : null;
+  const pivot = dragged
+    ? { fx: dragged.fx, fy: dragged.fy,
+        cx: geo.x + dragged.fx * geo.width, cy: geo.y + dragged.fy * geo.height }
+    : committed;
+  const g = el('g', { class: 'pivotHandle' });
+  drawPivotGlyph(pivot.cx, pivot.cy, PIVOT_SIZE / scale, g, pivotRayOpacities(pivot.fx, pivot.fy));
+  parent.appendChild(g);
+}
+
+/**
  * Same selection ring as renderLocalResizeSelection, but the four corner
  * handles are ROUND and carry a circular-arrow glyph instead of being plain
  * squares — the one visual cue that says this drag spins the shape rather
  * than stretching it. Used for the 'sel-rotate' mode (currently: rects).
  */
-function renderLocalRotateSelection(geo, entry, scale, rot = null) {
+function renderLocalRotateSelection(geo, entry, scale, rot = null, parent = _layerEl) {
   const { x, y, width, height } = geo;
-  const parent = decorGroup(rot);
   const stroke = entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)');
   parent.appendChild(el('rect', {
     x:      x - PAD,
@@ -1027,9 +1093,8 @@ function renderLocalRotateSelection(geo, entry, scale, rot = null) {
  * radius-drag handle centered on the right edge instead of four corner
  * handles — used for the 'sel-resize-r' mode (currently: circles).
  */
-function renderLocalResizeRSelection(geo, entry, scale, rot = null) {
+function renderLocalResizeRSelection(geo, entry, scale, parent = _layerEl) {
   const { x, y, width, height } = geo;
-  const parent = decorGroup(rot);
   const stroke = entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)');
   const ring = el('rect', {
     x:      x - PAD,
@@ -1064,7 +1129,7 @@ const ACTION_ICON_SIZE = 22; // px
 
 // Render a single rounded-corner icon square — asterisk (*), the bowstring
 // handle's resting state
-function renderActionAffordance(geo, scale, rot = null) {
+function renderActionAffordance(geo, scale, parent = _layerEl) {
   const side = ACTION_ICON_SIZE / scale;
   const [, , se] = resizeCorners(geo); // resizeCorners: [NW, NE, SE, SW]
   // The SE square is the bowstring handle's resting state (see delight.js).
@@ -1072,7 +1137,7 @@ function renderActionAffordance(geo, scale, rot = null) {
   // square plus glyph — is addressable as one unit. This layer still gets
   // wiped on every render(); the LIVE gesture is built separately in
   // #delight-layer, which is never wiped.
-  drawActionSquare(se, side, scale, 'bowstring', decorGroup(rot));
+  drawActionSquare(se, side, scale, 'bowstring', parent);
 }
 
 function drawActionSquare({ x: cx, y: cy }, side, scale, groupClass, host = _layerEl) {

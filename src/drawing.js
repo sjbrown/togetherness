@@ -42,12 +42,12 @@ export const SHAPE_TYPES = {
     // `rotate` maps to data-rotate rather than a bare `rotate` attribute:
     // SVG already gives `rotate` a different meaning on <text>, so a
     // data- name keeps the degree count unambiguously ours.
-    attrMap: { 'corner-r': 'rx', rotate: 'data-rotate' },
+    attrMap: { 'corner-r': 'rx', rotate: 'data-rotate', 'pivot-x': 'data-pivot-x', 'pivot-y': 'data-pivot-y' },
     schema: {
       label: 'Rectangle',
       values: {
         id: '', type: 'rect',
-        x: 0, y: 0, width: 120, height: 80, rotate: 0,
+        x: 0, y: 0, width: 120, height: 80, rotate: 0, 'pivot-x': 0.5, 'pivot-y': 0.5,
         fill: '#c8941e', stroke: 'none', 'stroke-width': 1.5, 'corner-r': 8,
       },
       types: {
@@ -58,6 +58,8 @@ export const SHAPE_TYPES = {
         width:          { show: [] },
         height:         { show: [] },
         rotate:         { show: [] },
+        'pivot-x':      { show: [] },
+        'pivot-y':      { show: [] },
         fill:           { kind: 'color-hslo',                          show: ['add', 'edit', 'addQuick'] },
         stroke:         { kind: 'color-hslo',                          show: ['edit'] },
         'stroke-width': { kind: 'number', min: 0.5, max: 10, step: 0.5, show: ['edit'] },
@@ -243,13 +245,25 @@ export function getRotation(svgEl) {
 // one goes stale on both.
 const CENTER_PIVOT = { fx: 0.5, fy: 0.5 };
 
+const PIVOT_X_ATTR = 'data-pivot-x';
+const PIVOT_Y_ATTR = 'data-pivot-y';
+
+const clamp01 = n => Math.min(1, Math.max(0, n));
+
 /**
- * A shape's pivot. Every shape pivots on its centre today; this is the one
- * function a per-shape, user-placeable pivot would change, and nothing
- * downstream of rotationCenter() assumes the answer.
+ * A shape's pivot, defaulting to its centre. Clamped on READ, not just on
+ * write: a pivot outside the shape is the lever-arm rotation this app
+ * deliberately doesn't offer, so a hand-edited or imported value out of
+ * range is corrected at the boundary rather than trusted.
  */
-export function getPivot(_svgEl) {
-  return CENTER_PIVOT;
+export function getPivot(svgEl) {
+  const fx = parseFloat(svgEl?.getAttribute?.(PIVOT_X_ATTR));
+  const fy = parseFloat(svgEl?.getAttribute?.(PIVOT_Y_ATTR));
+  if (!Number.isFinite(fx) && !Number.isFinite(fy)) return CENTER_PIVOT;
+  return {
+    fx: Number.isFinite(fx) ? clamp01(fx) : 0.5,
+    fy: Number.isFinite(fy) ? clamp01(fy) : 0.5,
+  };
 }
 
 /** The canvas-space point a shape rotates about, for a given pivot. */
@@ -270,6 +284,107 @@ export function resolveRotation(svgEl, geom = getGeom(svgEl)) {
   const deg = getRotation(svgEl);
   if (!deg) return null;
   return { deg, ...rotationCenter(geom, getPivot(svgEl)) };
+}
+
+// ── Pivot placement ──────────────────────────────────────────────────────────
+
+// How close (in fractions of the bbox) a dragged pivot has to come to one of
+// the nine notable points before it snaps: the four corners, the four edge
+// midpoints, and the centre. Same shape as ROTATE_SNAP_DEG — an argument
+// everywhere, so the tolerance can be made a setting without touching any of
+// the geometry.
+export const PIVOT_SNAP_FRACTION = 0.08;
+
+const NOTABLE = [0, 0.5, 1];
+
+/**
+ * Snap a pivot to the nearest notable point on each axis independently, so a
+ * drag near the left edge locks to the edge without also locking vertically.
+ * A tolerance of 0 (or less) means free placement.
+ */
+export function snapPivot(fx, fy, tolerance = PIVOT_SNAP_FRACTION) {
+  const snap1 = (f) => {
+    if (!(tolerance > 0)) return clamp01(f);
+    // Nearest within tolerance, not the first found: the notable points are
+    // 0.5 apart, so a tolerance above 0.25 puts a value in range of two of
+    // them and picking by order would snap to the wrong one.
+    let best = null, bestGap = Infinity;
+    for (const n of NOTABLE) {
+      const gap = Math.abs(f - n);
+      if (gap <= tolerance && gap < bestGap) { best = n; bestGap = gap; }
+    }
+    return best ?? clamp01(f);
+  };
+  return { fx: snap1(fx), fy: snap1(fy) };
+}
+
+/**
+ * Pure geometry for a pivot drag: canvas-space (px, py) expressed as
+ * fractions of startRect, clamped inside the shape and snapped. Unlike
+ * Inkscape, a pivot can never leave the shape's own box — which also bounds
+ * how far pivotShift() below can ever move anything.
+ */
+export function computePivot(startRect, px, py, tolerance = PIVOT_SNAP_FRACTION) {
+  const fx = startRect.width  ? (px - startRect.x) / startRect.width  : 0.5;
+  const fy = startRect.height ? (py - startRect.y) / startRect.height : 0.5;
+  return snapPivot(clamp01(fx), clamp01(fy), tolerance);
+}
+
+/**
+ * How far a shape must move to stay put when its pivot changes.
+ *
+ * The rendered transform is derived from (degrees, pivot), so moving the
+ * pivot of an already-turned shape re-derives it about a new point and the
+ * shape jumps. Translating by R(delta) - delta, where delta is how far the
+ * pivot moved, cancels that exactly. Zero when the shape isn't turned, so
+ * placing a pivot on an unrotated shape changes nothing visible and only
+ * sets up the next rotation.
+ *
+ * The same correction a resize needs — see app.js — since both move the
+ * point the shape turns about.
+ */
+export function pivotShift(geom, fromPivot, toPivot, deg) {
+  if (!deg || !geom) return { dx: 0, dy: 0 };
+  const from = rotationCenter(geom, fromPivot);
+  const to   = rotationCenter(geom, toPivot);
+  const dx   = to.cx - from.cx;
+  const dy   = to.cy - from.cy;
+  const rad  = deg * Math.PI / 180;
+  return {
+    dx: dx * Math.cos(rad) - dy * Math.sin(rad) - dx,
+    dy: dx * Math.sin(rad) + dy * Math.cos(rad) - dy,
+  };
+}
+
+// The eight directions the pivot handle radiates in, as unit steps.
+export const PIVOT_RAYS = [
+  { dx:  0, dy: -1 }, { dx:  1, dy: -1 }, { dx:  1, dy:  0 }, { dx:  1, dy:  1 },
+  { dx:  0, dy:  1 }, { dx: -1, dy:  1 }, { dx: -1, dy:  0 }, { dx: -1, dy: -1 },
+];
+
+// A ray fades as the pivot approaches the edge it points at: full strength
+// while the pivot is at or beyond the middle, linearly to nothing at the edge.
+function rayAxisOpacity(f, dir) {
+  if (!dir) return 1;                       // this ray doesn't lean on this axis
+  return clamp01((dir < 0 ? f : 1 - f) / 0.5);
+}
+
+/**
+ * How visible each of the eight rays is for a pivot at (fx, fy) — the two
+ * axes attenuate independently and multiply, so a diagonal ray fades faster
+ * than either orthogonal beside it.
+ *
+ * This is what keeps the pivot handle legible against the rotate handles
+ * instead of moving them out of its way: by the time the pivot reaches a
+ * corner, every ray that would have pointed at that corner's handle has
+ * already faded out, and only the quarter-fan pointing back into the shape
+ * is left.
+ */
+export function pivotRayOpacities(fx, fy) {
+  return PIVOT_RAYS.map(({ dx, dy }) => ({
+    dx, dy,
+    opacity: rayAxisOpacity(fx, dx) * rayAxisOpacity(fy, dy),
+  }));
 }
 
 /** Format a resolved rotation as an SVG transform, or null for none. */
@@ -336,6 +451,30 @@ export function applyRotate(ydoc, yEl, deg) {
   ydoc.transact(() => {
     yEl.setAttribute(ROTATE_ATTR, String(normalizeAngle(deg)));
   });
+}
+
+/**
+ * Commit a pivot placement. The compensating x/y ride in the SAME
+ * transaction as the pivot itself: they are one user action, and a peer that
+ * saw only half of it would watch the shape jump and come back.
+ */
+export function applyPivot(ydoc, yEl, fx, fy, x, y) {
+  if (!yEl) return;
+  if (!SHAPE_TYPES[yEl.nodeName]?.schema.types['pivot-x']) return;
+  ydoc.transact(() => {
+    yEl.setAttribute(PIVOT_X_ATTR, String(clamp01(fx)));
+    yEl.setAttribute(PIVOT_Y_ATTR, String(clamp01(fy)));
+    yEl.setAttribute('x', String(Math.round(x)));
+    yEl.setAttribute('y', String(Math.round(y)));
+  });
+}
+
+/** DOM-only pivot preview for a ghost clone — the rotate/resize counterpart. */
+export function previewPivot(ghostEl, fx, fy) {
+  if (!ghostEl?.setAttribute) return;
+  ghostEl.setAttribute(PIVOT_X_ATTR, String(clamp01(fx)));
+  ghostEl.setAttribute(PIVOT_Y_ATTR, String(clamp01(fy)));
+  syncRotation(ghostEl);
 }
 
 /**
@@ -740,12 +879,17 @@ export function makeLayerAPI(ydoc, yDrawing) {
     getRotation,
     resolveRotation,
     rotationCenter:  (svgEl, geom) => rotationCenter(geom, getPivot(svgEl)),
+    getPivot,
     computeRotate,
+    computePivot,
+    pivotShift,
     previewResize,
     previewRotate,
+    previewPivot,
     applyMoveCommit: (yEl, x, y)     => applyMoveCommit(ydoc, yEl, x, y),
     applyResize:     (yEl, x, y, w, h) => applyResize(ydoc, yEl, x, y, w, h),
     applyRotate:     (yEl, deg)      => applyRotate(ydoc, yEl, deg),
+    applyPivot:      (yEl, fx, fy, x, y) => applyPivot(ydoc, yEl, fx, fy, x, y),
     applyTtState:    (state)         => applyTtState(ydoc, yDrawing, state),
     edit:            (yEl, editData) => edit(ydoc, yEl, editData),
     previewEdit,

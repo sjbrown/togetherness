@@ -463,19 +463,28 @@ canvasStory('Circle', 'remote selected',  [{ id:'c3', type:'circle', geom:circle
 // mode's round, arrow-marked handles have to read differently from resize
 // mode's plain squares at a glance, and a turned shape's ring has to hug
 // the shape rather than its axis-aligned bounds; both are eyeball checks.
-function modeStory(variant, mode, rotation = 0) {
+function modeStory(variant, mode, rotation = 0, pivot = { fx: 0.5, fy: 0.5 }) {
   story('Select mode', variant, () => {
     const svg = buildStageSVG([{ id: 'sm1', type: 'rect', geom: rectGeom, fill: '#c8941e' }]);
+    const el = svg.querySelector('[data-id="sm1"]');
+    el.setAttribute('data-pivot-x', String(pivot.fx));
+    el.setAttribute('data-pivot-y', String(pivot.fy));
     if (rotation) {
-      const el = svg.querySelector('[data-id="sm1"]');
       el.setAttribute('data-rotate', String(rotation));
       syncRotation(el);
     }
     Overlay.SelectionMode.clear();
     Overlay.SelectionMode.set('sm1', { mode, color: myGrad.c1, grad: myGrad });
-    const centre = { cx: rectGeom.x + rectGeom.width / 2, cy: rectGeom.y + rectGeom.height / 2 };
+    const centre = {
+      cx: rectGeom.x + pivot.fx * rectGeom.width,
+      cy: rectGeom.y + pivot.fy * rectGeom.height,
+    };
     const rot = rotation ? { deg: rotation, ...centre } : null;
-    Overlay.init({ ...fakeOverlayApp(svg), getRotation: () => rot }, svg, storiesUser);
+    Overlay.init({
+      ...fakeOverlayApp(svg),
+      getRotation: () => rot,
+      getPivot:    () => ({ ...pivot, ...centre }),
+    }, svg, storiesUser);
     Overlay.render();
     return svg;
   });
@@ -485,6 +494,13 @@ modeStory('sel-move', 'sel-move');
 modeStory('sel-resize · square corner handles', 'sel-resize');
 modeStory('sel-rotate-pivot · round handles, turn arrow', 'sel-rotate-pivot');
 modeStory('sel-rotate-pivot · already turned 30°, furniture rides with it', 'sel-rotate-pivot', 30);
+modeStory('sel-rotate · fixed pivot (toys), no pivot handle', 'sel-rotate');
+// The pivot handle's rays fade as it nears the edge they point at, so by the
+// time it reaches a corner nothing is left to collide with that corner's
+// rotate handle. These three are the cases to eyeball.
+modeStory('pivot · left edge, leftward rays gone',  'sel-rotate-pivot', 0, { fx: 0,    fy: 0.5 });
+modeStory('pivot · part-way out, rays half faded',  'sel-rotate-pivot', 0, { fx: 0.25, fy: 0.25 });
+modeStory('pivot · parked on a corner',             'sel-rotate-pivot', 0, { fx: 0,    fy: 0 });
 
 // Mixed: both local + remote selections active simultaneously.
 story('Mixed', 'rect local · circle remote', () => {

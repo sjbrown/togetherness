@@ -134,6 +134,8 @@ html, body {
    rotate, so it stays here. */
 .handle[data-corner="r"]  { cursor: ew-resize; }
 .rotateGlyph { pointer-events: none; }
+.pivotGlyph  { pointer-events: none; }
+.pivotHandle { pointer-events: auto; cursor: move; }
 
 /* A toy nested inside a tray is excluded from native hit-testing, so a
  * click over it lands on whatever's actually painted underneath — the

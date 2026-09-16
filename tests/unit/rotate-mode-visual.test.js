@@ -15,8 +15,10 @@ import {
   localSelectionChanged,
   setSelectionMode,
   hitTestSelectionHandle,
+  hitTestPivot,
   handleCursor,
   resizeCorners,
+  setPivotPreview,
   init as overlayInit,
 } from '../../src/overlay.js'
 
@@ -34,13 +36,17 @@ function makeOverlayDOM() {
 // App.getRotation answers with a RESOLVED rotation — { deg, cx, cy } — so
 // overlay.js never derives a pivot itself. `centre` defaults to the middle
 // of BBOX; pass another to stand in for a pivot the user has moved.
-function boot({ rotation = 0, centre = { cx: 200, cy: 150 } } = {}) {
+function boot({ rotation = 0, centre = { cx: 200, cy: 150 }, pivot = { fx: 0.5, fy: 0.5 } } = {}) {
   makeOverlayDOM()
+  setPivotPreview(null, null)   // module state — clear anything a prior test left
   overlayInit({
     user:         { id: 'me', name: 'Me', color: '#5a7ea8', gradient: { c1: '#5a7ea8', c2: '#3a5e88', angle: 45 } },
     getViewScale: () => 1,
     getBBox:      (id) => (id === 'rect1' ? BBOX : null),
     getRotation:  (id) => (id === 'rect1' && rotation ? { deg: rotation, ...centre } : null),
+    getPivot:     (id) => (id === 'rect1'
+      ? { ...pivot, cx: BBOX.x + pivot.fx * BBOX.width, cy: BBOX.y + pivot.fy * BBOX.height }
+      : null),
   }, document.getElementById('canvas'))
 }
 
@@ -93,13 +99,22 @@ describe('rotate handles are visually distinct from sel-resize handles', () => {
   })
 
   // 'sel-rotate' is the fixed-pivot variant (toys); 'sel-rotate-pivot' the
-  // one whose pivot the user can place (rects). Only the pivot differs, so
-  // the decoration must be identical.
-  test('the fixed-pivot and placeable-pivot modes draw the same decoration', () => {
+  // one whose pivot the user can place (rects). They share every bit of
+  // rotate furniture; the placeable variant just adds the pivot handle.
+  test('the two rotate modes draw identical corner handles and ring', () => {
+    const furniture = () => [...document.querySelectorAll('#overlay-layer .handle, #overlay-layer .selRing')]
+      .map(n => n.outerHTML).join('')
     enter('sel-rotate')
-    const fixed = document.getElementById('overlay-layer').innerHTML
+    const fixed = furniture()
     enter('sel-rotate-pivot')
-    expect(document.getElementById('overlay-layer').innerHTML).toBe(fixed)
+    expect(furniture()).toBe(fixed)
+  })
+
+  test('only the placeable variant adds a pivot handle on top', () => {
+    enter('sel-rotate')
+    expect(document.querySelectorAll('#overlay-layer .pivotHandle')).toHaveLength(0)
+    enter('sel-rotate-pivot')
+    expect(document.querySelectorAll('#overlay-layer .pivotHandle')).toHaveLength(1)
   })
 })
 
@@ -258,5 +273,112 @@ describe('handles carry their cursor inline, so it can follow the rotation', () 
     boot({ rotation: 90 })
     enter('sel-rotate-pivot')
     expect(cursors()).toEqual({ nw: 'se-resize', ne: 'ne-resize', se: 'nw-resize', sw: 'sw-resize' })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The pivot handle. A centre dot plus up to eight radiating lines, each fading
+// as the pivot nears the edge it points at — which is what lets it share the
+// corners with the rotate handles instead of pushing them out of the way.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const pivotRays = () => document.querySelectorAll('#overlay-layer .pivotHandle line')
+const pivotDot  = () => document.querySelector('#overlay-layer .pivotHandle circle')
+
+describe('the pivot handle', () => {
+  test('is drawn in sel-rotate-pivot and nowhere else', () => {
+    boot(); enter('sel-rotate-pivot')
+    expect(document.querySelectorAll('#overlay-layer .pivotHandle')).toHaveLength(1)
+
+    enter('sel-rotate')
+    expect(document.querySelectorAll('#overlay-layer .pivotHandle')).toHaveLength(0)
+    enter('sel-resize')
+    expect(document.querySelectorAll('#overlay-layer .pivotHandle')).toHaveLength(0)
+  })
+
+  test('sits at the pivot point App reports', () => {
+    boot({ pivot: { fx: 0, fy: 1 } }); enter('sel-rotate-pivot')
+    expect(Number(pivotDot().getAttribute('cx'))).toBe(BBOX.x)
+    expect(Number(pivotDot().getAttribute('cy'))).toBe(BBOX.y + BBOX.height)
+  })
+
+  test('shows all eight rays at the centre', () => {
+    boot(); enter('sel-rotate-pivot')
+    expect(pivotRays()).toHaveLength(8)
+  })
+
+  test('drops the three leftward rays at the left edge', () => {
+    boot({ pivot: { fx: 0, fy: 0.5 } }); enter('sel-rotate-pivot')
+    expect(pivotRays()).toHaveLength(5)
+  })
+
+  test('keeps only the quarter-fan pointing into the shape at a corner', () => {
+    boot({ pivot: { fx: 0, fy: 0 } }); enter('sel-rotate-pivot')
+    expect(pivotRays()).toHaveLength(3)
+  })
+
+  test('a faded ray is drawn at reduced opacity, not simply dropped', () => {
+    boot({ pivot: { fx: 0.25, fy: 0.5 } }); enter('sel-rotate-pivot')
+    const opacities = [...pivotRays()].map(r => Number(r.getAttribute('opacity')))
+    expect(opacities).toContain(0.5)
+    expect(opacities.filter(o => o === 1).length).toBeGreaterThan(0)
+  })
+
+  test('no ray reaches a corner’s rotate handle once the pivot is parked on it', () => {
+    // The collision this design exists to avoid: measure every ray endpoint
+    // against the rotate handle nearest the pivot.
+    boot({ pivot: { fx: 0, fy: 0 } }); enter('sel-rotate-pivot')
+    const [nw] = resizeCorners(BBOX)
+    for (const line of pivotRays()) {
+      const d = Math.hypot(Number(line.getAttribute('x2')) - nw.x, Number(line.getAttribute('y2')) - nw.y)
+      expect(d).toBeGreaterThan(12)   // the rotate handle's own grab radius
+    }
+  })
+
+  test('rides the rotation with the rest of the furniture', () => {
+    boot({ rotation: 30, pivot: { fx: 0, fy: 0 } }); enter('sel-rotate-pivot')
+    const group = document.querySelector('#overlay-layer g[transform]')
+    expect(group.querySelectorAll('.pivotHandle')).toHaveLength(1)
+  })
+
+  test('a drag preview moves the handle without touching the committed pivot', () => {
+    boot(); enter('sel-rotate-pivot')
+    expect(Number(pivotDot().getAttribute('cx'))).toBe(BBOX.x + BBOX.width / 2)
+
+    setPivotPreview('rect1', { fx: 0, fy: 0 })
+    expect(Number(pivotDot().getAttribute('cx'))).toBe(BBOX.x)
+    expect(pivotRays()).toHaveLength(3)
+
+    setPivotPreview(null, null)
+    expect(Number(pivotDot().getAttribute('cx'))).toBe(BBOX.x + BBOX.width / 2)
+  })
+})
+
+describe('hit-testing the pivot', () => {
+  const pt = { cx: 200, cy: 150 }
+
+  test('a point on the handle is a hit; one well away is not', () => {
+    expect(hitTestPivot(pt, 200, 150, 1)).toBe(true)
+    expect(hitTestPivot(pt, 260, 150, 1)).toBe(false)
+    expect(hitTestPivot(null, 200, 150, 1)).toBe(false)
+  })
+
+  test('sel-rotate-pivot reports the pivot before the corner it is parked on', () => {
+    const [nw] = resizeCorners(BBOX)
+    const onNW = { cx: nw.x, cy: nw.y }
+    // Same point hits the corner when no pivot is offered...
+    expect(hitTestSelectionHandle('sel-rotate-pivot', BBOX, nw.x, nw.y, 1)).toBe(0)
+    // ...and the pivot when one is sitting there.
+    expect(hitTestSelectionHandle('sel-rotate-pivot', BBOX, nw.x, nw.y, 1, onNW)).toBe('pivot')
+  })
+
+  test('corners still answer when the pivot is elsewhere', () => {
+    const [, ne] = resizeCorners(BBOX)
+    const centre = { cx: 200, cy: 150 }
+    expect(hitTestSelectionHandle('sel-rotate-pivot', BBOX, ne.x, ne.y, 1, centre)).toBe(1)
+  })
+
+  test('the fixed-pivot mode never reports a pivot, even if one is passed', () => {
+    expect(hitTestSelectionHandle('sel-rotate', BBOX, 200, 150, 1, { cx: 200, cy: 150 })).toBeNull()
   })
 })
