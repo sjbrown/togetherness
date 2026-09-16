@@ -909,6 +909,18 @@ function drawCharge(elId, pull, heldMs, stroke, scale) {
 }
 
 // Refresh a local drag ring's geometry from the committed bbox + current dx/dy.
+//
+// The ghost itself is a <use href="#elId" transform="translate(dx,dy)">: the
+// referenced element's own transform="rotate(deg cx cy)" rotates it about its
+// ORIGINAL (committed) center, and the outer translate then slides that
+// already-rotated shape as a rigid body — exactly what a drag should do. The
+// ring has to land on the same pixels, but it's a plain <rect>, not a <use>
+// of the rotated original, so it has no transform to inherit. Composing the
+// two steps onto one node instead — bake (dx,dy) into the position the same
+// way the unrotated case always has, then rotate about the center shifted by
+// that same (dx,dy) — lands on the identical point as the <use>'s pipeline
+// (rotate-about-c-then-translate-by-d == translate-by-d-then-rotate-about-(c+d)
+// for a rigid translation), so the ring tracks the ghost exactly.
 function _updateDragRing(entry, elId, scale) {
   const bbox = App.getBBox(elId);
   if (!bbox) return;
@@ -922,6 +934,10 @@ function _updateDragRing(entry, elId, scale) {
   ringEl.setAttribute('stroke',             _localGradUrl());
   ringEl.setAttribute('stroke-width',       2 / scale);
   ringEl.setAttribute('stroke-dasharray',   `${6 / scale} ${3 / scale}`);
+
+  const rot = App.getRotation?.(elId) ?? null;
+  if (rot) ringEl.setAttribute('transform', `rotate(${rot.deg} ${rot.cx + dx} ${rot.cy + dy})`);
+  else     ringEl.removeAttribute('transform');
 }
 
 /**

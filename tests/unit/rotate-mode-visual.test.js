@@ -19,6 +19,9 @@ import {
   handleCursor,
   resizeCorners,
   setPivotPreview,
+  startDragPlaceholder,
+  updateLocalDragGhost,
+  endDragPlaceholder,
   init as overlayInit,
 } from '../../src/overlay.js'
 
@@ -380,5 +383,67 @@ describe('hit-testing the pivot', () => {
 
   test('the fixed-pivot mode never reports a pivot, even if one is passed', () => {
     expect(hitTestSelectionHandle('sel-rotate', BBOX, 200, 150, 1, { cx: 200, cy: 150 })).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The sel-move drag ghost's dashed selection ring, on a rotated shape.
+//
+// The ghost itself is a <use href="#elId" transform="translate(dx,dy)">: the
+// referenced element's own transform="rotate(deg cx cy)" (unmoved — it's
+// still the committed DOM element) rotates it about its ORIGINAL center, and
+// the outer translate then slides that already-rotated shape as a rigid
+// body. The ring is a plain <rect> with no such element to inherit a
+// transform from, so it has to be given the equivalent transform by hand.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('drag ghost ring on a rotated shape', () => {
+  const ring = () => document.querySelector('#overlay-layer .drag-ring')
+
+  test('an unrotated shape’s ring carries no transform, as before', () => {
+    boot({ rotation: 0 })
+    startDragPlaceholder('rect1')
+    updateLocalDragGhost('rect1', 10, -5)
+    expect(ring().getAttribute('transform')).toBeNull()
+    endDragPlaceholder('rect1')
+  })
+
+  test('a rotated shape’s ring picks up the same rotation, about the unshifted center, before any drag movement', () => {
+    boot({ rotation: 90, centre: { cx: 200, cy: 150 } })
+    startDragPlaceholder('rect1')
+    updateLocalDragGhost('rect1', 0, 0)
+    expect(ring().getAttribute('transform')).toBe('rotate(90 200 150)')
+    endDragPlaceholder('rect1')
+  })
+
+  test('as the ghost is dragged, the ring’s rotation center shifts by the same (dx, dy) as the ghost’s own translate', () => {
+    boot({ rotation: 90, centre: { cx: 200, cy: 150 } })
+    startDragPlaceholder('rect1')
+    updateLocalDragGhost('rect1', 15, -8)
+    expect(ring().getAttribute('transform')).toBe('rotate(90 215 142)')
+    endDragPlaceholder('rect1')
+  })
+
+  test('the ring’s own x/y/width/height are unaffected — only a transform is added on top', () => {
+    boot({ rotation: 45, centre: { cx: 200, cy: 150 } })
+    startDragPlaceholder('rect1')
+    updateLocalDragGhost('rect1', 10, 10)
+    const r = ring()
+    // BBOX = {x:100,y:100,width:200,height:100}; PAD is overlay.js's own
+    // constant (6) — same geometry math as the unrotated case, dx/dy baked
+    // straight into position exactly as it always has been.
+    expect(r.getAttribute('x')).toBe(String(100 + 10 - 6))
+    expect(r.getAttribute('y')).toBe(String(100 + 10 - 6))
+    expect(r.getAttribute('width')).toBe(String(200 + 12))
+    expect(r.getAttribute('height')).toBe(String(100 + 12))
+    endDragPlaceholder('rect1')
+  })
+
+  test('ending the drag leaves no stale ring behind', () => {
+    boot({ rotation: 30 })
+    startDragPlaceholder('rect1')
+    updateLocalDragGhost('rect1', 5, 5)
+    endDragPlaceholder('rect1')
+    expect(ring()).toBeNull()
   })
 })
