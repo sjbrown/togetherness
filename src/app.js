@@ -248,6 +248,19 @@ function _reanchorRotated(id, rect, rot) {
   };
 }
 
+// The one place a pivot change is written. Moving the pivot re-derives the
+// rotation about a new point, which would shift the shape; the compensating
+// x/y therefore ride in the SAME transaction, never as a follow-up write a
+// peer could observe on its own.
+function _writePivot(id, mtype, startRect, fromPivot, toPivot, deg) {
+  const shift = _Layers[mtype].pivotShift(startRect, fromPivot, toPivot, deg);
+  const el    = _Layers[mtype]?.find(id);
+  _lastActionScope = mtype;
+  _Layers[mtype]?.applyPivot(el, toPivot.fx, toPivot.fy,
+                             startRect.x + shift.dx, startRect.y + shift.dy);
+  addHistory(`pivot ${id} → (${toPivot.fx}, ${toPivot.fy})`, { elType: mtype });
+}
+
 // Canvas-space (px, py) expressed in id's own UNROTATED space. Handles are
 // drawn rotated with the element, and getGeom()/computeResize() both speak
 // local space, so every hit-test and resize computation comes through here
@@ -1845,16 +1858,25 @@ const App = {
     const { mtype, startRect, fromPivot, deg } = _pivotState;
     const p     = _toLocalPoint(id, px, py, _rotationOf(id));
     const pivot = _Layers[mtype].computePivot(startRect, p.x, p.y, _pivotSnapFraction);
-    // Moving the pivot re-derives the rotation about a new point, which would
-    // shift the shape. Cancel that in the same transaction.
-    const shift = _Layers[mtype].pivotShift(startRect, fromPivot, pivot, deg);
     _pivotState = null;
     Overlay.setPivotPreview(id, null);
+    _writePivot(id, mtype, startRect, fromPivot, pivot, deg);
+  },
 
-    const el = _Layers[mtype]?.find(id);
-    _lastActionScope = mtype;
-    _Layers[mtype]?.applyPivot(el, pivot.fx, pivot.fy, startRect.x + shift.dx, startRect.y + shift.dy);
-    addHistory(`pivot ${id} → (${pivot.fx}, ${pivot.fy})`, { elType: mtype });
+  /**
+   * Put the pivot back in the middle — the double-tap on the handle. Goes
+   * through the same write as a drag, so the shape is held in place by the
+   * same correction and the two can't drift apart.
+   */
+  resetPivot: (id) => {
+    if (_activeMode?.id !== id || _activeMode.mode !== 'sel-rotate-pivot' || App.isHeldByOther(id)) return;
+    const bbox = App.getBBox(id);
+    const { domEl, layer } = _layerFor(id);
+    if (!bbox || !layer?.getPivot) return;
+    const fromPivot = layer.getPivot(domEl);
+    if (fromPivot.fx === 0.5 && fromPivot.fy === 0.5) return;   // already centred
+    _writePivot(id, moduleForElement(domEl), bbox, fromPivot,
+                { fx: 0.5, fy: 0.5 }, layer.getRotation?.(domEl) ?? 0);
   },
 
   cancelPivot: () => {

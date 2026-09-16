@@ -449,6 +449,52 @@ describe('placing the pivot', () => {
     expect(yRect(ydoc, id).getAttribute('data-rotate')).toBe('315')
   })
 
+  test('reset puts the pivot back in the middle', async () => {
+    const { App, ydoc, id } = await inPivotMode()
+    App.startPivotDrag(id)
+    App.commitPivot(id, 100, 100)
+    expect(yRect(ydoc, id).getAttribute('data-pivot-x')).toBe('0')
+
+    App.resetPivot(id)
+    expect(yRect(ydoc, id).getAttribute('data-pivot-x')).toBe('0.5')
+    expect(yRect(ydoc, id).getAttribute('data-pivot-y')).toBe('0.5')
+  })
+
+  test('reset holds a rotated shape in place, same as a drag does', async () => {
+    const { App, ydoc, id } = await inPivotMode()
+    App.startPivotDrag(id)
+    App.commitPivot(id, 100, 100)              // pivot to the NW corner
+    // A commit leaves the element in the same mode, and sel-rotate-pivot
+    // drives both gestures — no cycling needed between them.
+    App.startRotate(id, 2)
+    App.commitRotate(id, 2, 300, 100)          // turn it about that corner
+
+    const before = onCanvas(yRect(ydoc, id), nw(yRect(ydoc, id)))
+    App.resetPivot(id)
+    const after = yRect(ydoc, id)
+
+    expect(after.getAttribute('data-pivot-x')).toBe('0.5')
+    const now = onCanvas(after, nw(after))
+    expect(Math.abs(now.x - before.x)).toBeLessThan(1)
+    expect(Math.abs(now.y - before.y)).toBeLessThan(1)
+  })
+
+  test('reset on an already-centred pivot is a no-op, not a redundant write', async () => {
+    const { App, ydoc, id } = await inPivotMode()
+    const before = yRect(ydoc, id).getAttribute('x')
+    App.resetPivot(id)
+    expect(yRect(ydoc, id).getAttribute('x')).toBe(before)
+  })
+
+  test('reset does nothing outside pivot mode', async () => {
+    const { App, ydoc, id } = await inPivotMode()
+    App.startPivotDrag(id)
+    App.commitPivot(id, 100, 100)
+    App.nextSelectionMode(id)                  // leave sel-rotate-pivot
+    App.resetPivot(id)
+    expect(yRect(ydoc, id).getAttribute('data-pivot-x')).toBe('0')
+  })
+
   test('cancelling a pivot drag writes nothing', async () => {
     const { App, ydoc, id } = await inPivotMode()
     App.startPivotDrag(id)

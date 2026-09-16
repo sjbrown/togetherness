@@ -52,7 +52,10 @@ Run these checks before merging large changesets. Automated tests catch logic er
 6. With the pivot on a corner, drag a rotate handle — it swings about that
    corner, not the centre
 7. Resize the rect: a pivot on a corner stays on that corner
-8. Second browser window: the pivot position appears there too
+8. Double-tap the pivot handle — it returns to the centre, and on a rotated
+   rect the shape still must not move
+9. Double-tap bare canvas: that still resets the VIEW, not a pivot
+10. Second browser window: the pivot position appears there too
 
 ---
 

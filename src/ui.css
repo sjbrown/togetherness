@@ -135,7 +135,10 @@ html, body {
 .handle[data-corner="r"]  { cursor: ew-resize; }
 .rotateGlyph { pointer-events: none; }
 .pivotGlyph  { pointer-events: none; }
-.pivotHandle { pointer-events: auto; cursor: move; }
+.pivotHandle { pointer-events: auto; cursor: crosshair; }
+/* Pointer capture routes the drag to #stage, so without this the crosshair
+   would be lost the moment the pointer left the handle it is dragging. */
+#stage.pivot-dragging, #stage.pivot-dragging * { cursor: crosshair; }
 
 /* A toy nested inside a tray is excluded from native hit-testing, so a
  * click over it lands on whatever's actually painted underneath — the

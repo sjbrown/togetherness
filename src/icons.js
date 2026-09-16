@@ -235,14 +235,16 @@ export function drawRotateGlyph(cx, cy, r, parent) {
  * `r` is the radius the rays reach. Appends directly to `parent`.
  */
 export function drawPivotGlyph(cx, cy, r, parent, rays) {
+  const RAY_INNER = r * 0.42;   // starts clear of the centre dot
+  const RAY_OUTER = r * 1.12;   // ...and runs out to here
   for (const { dx, dy, opacity } of rays) {
     if (opacity <= 0) continue;
     // Diagonals are normalised so every ray ends the same distance out.
     const len = Math.hypot(dx, dy) || 1;
     const ux = dx / len, uy = dy / len;
     parent.appendChild(svgEl('line', {
-      x1: cx + ux * r * 0.42, y1: cy + uy * r * 0.42,
-      x2: cx + ux * r,        y2: cy + uy * r,
+      x1: cx + ux * RAY_INNER, y1: cy + uy * RAY_INNER,
+      x2: cx + ux * RAY_OUTER, y2: cy + uy * RAY_OUTER,
       stroke:           'var(--info)',
       'stroke-width':   Math.max(0.6, r * 0.16),
       'stroke-linecap': 'round',

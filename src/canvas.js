@@ -33,6 +33,12 @@ export const ToolMode = {
                          // the trailing pointerup(s) as fingers lift one at a time
   _tapCount:   0,
   _tapTimer:   null,
+  _pivotTap:   null,    // id whose pivot handle this pointerup tapped, if any
+  _tapTarget:  null,    // the pivot id the whole tap sequence is on, or null.
+                        // A double-tap resets that handle instead of the view,
+                        // but only while EVERY tap in the run landed on it —
+                        // tap the pivot then the canvas and it is a view reset
+                        // again, which is what the second tap asked for.
 };
 
 // Internal
@@ -289,6 +295,7 @@ function onPointerDown(e) {
       if (corner === 'pivot') {
         ToolMode._gesture = 'pivot';
         ToolMode._moveRef = { id: rotateId, moved: false };
+        _stageEl.classList.add('pivot-dragging');
         App.startPivotDrag(rotateId);
         return;
       }
@@ -491,6 +498,7 @@ function onPointerUp(e) {
   _preview.hide();
   _selectPreview.hide();
   _stageEl.classList.remove('dragging');
+  _stageEl.classList.remove('pivot-dragging');
 
   const isCancelled = e.type === 'pointercancel';
 
@@ -545,6 +553,9 @@ function onPointerUp(e) {
   if (ToolMode._gesture === 'pivot' && ToolMode._moveRef) {
     if (isCancelled || !ToolMode._moveRef.moved) {
       App.cancelPivot();
+      // A tap on the pivot, not a drag. Flagged for the tap counter below,
+      // which decides whether the sequence as a whole belongs to this handle.
+      if (!isCancelled) ToolMode._pivotTap = ToolMode._moveRef.id;
     } else {
       const ref = ToolMode._moveRef;
       const p   = toCanvas(e.clientX, e.clientY);
@@ -614,6 +625,8 @@ function onPointerUp(e) {
 
     const isPlainTap = !moved && !wasMultiPointer;
     const now = Date.now();
+    const pivotTap = ToolMode._pivotTap;
+    ToolMode._pivotTap = null;
 
     if (isPlainTap) {
       if (now - ToolMode._lastTap < 300) {
@@ -622,24 +635,33 @@ function onPointerUp(e) {
         ToolMode._tapCount = 1;
       }
       ToolMode._lastTap = now;
+      ToolMode._tapTarget =
+        pivotTap && (ToolMode._tapCount === 1 || ToolMode._tapTarget?.id === pivotTap)
+          ? { kind: 'pivot', id: pivotTap }
+          : null;
 
       // Multi-click counting: we can't tell a double-click from the first
       // half of a triple-click until a little more time has passed, so we
       // wait out the double-tap window before acting on the final count.
+      const target = ToolMode._tapTarget;
       clearTimeout(ToolMode._tapTimer);
       ToolMode._tapTimer = setTimeout(() => {
-        if (ToolMode._tapCount === 2) {
+        if (ToolMode._tapCount === 2 && target?.kind === 'pivot') {
+          App.resetPivot(target.id);
+        } else if (ToolMode._tapCount === 2) {
           resetView();
           App.onViewReset();
         } else if (ToolMode._tapCount >= 3) {
           App.onTripleTap();
         }
-        ToolMode._tapCount = 0;
+        ToolMode._tapCount  = 0;
+        ToolMode._tapTarget = null;
       }, 300);
     } else {
       // A drag or multi-pointer gesture breaks any pending tap sequence.
-      ToolMode._tapCount = 0;
-      ToolMode._lastTap = 0;
+      ToolMode._tapCount  = 0;
+      ToolMode._lastTap   = 0;
+      ToolMode._tapTarget = null;
       clearTimeout(ToolMode._tapTimer);
       ToolMode._tapTimer = null;
     }
