@@ -90,6 +90,9 @@ Run these checks before merging large changesets. Automated tests catch logic er
     the rotated corner; clicking IT (not where the corner used to be)
     fires the chip's first menu action, and pulling it back like a
     bowstring and releasing still charges/fires normally
+10a. While pulling the bowstring on that rotated chip, the faint toy/ring
+    "ghost" echoes in the delight layer sit turned the same way the chip
+    itself is — not sitting upright as if the chip were never rotated
 11. Same check for single_poker_card — clicking its rotated action handle
     flips the card
 12. Second browser window, while the local player charges a rotated toy's

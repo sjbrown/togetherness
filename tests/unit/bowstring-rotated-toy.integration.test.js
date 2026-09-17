@@ -179,4 +179,44 @@ describe('bowstring handle on a rotated toy (chip-like)', () => {
 
     App.endBowstring({ pointerId: 1 })
   })
+
+  test('rotated 90°: the toy-delight ghost (spawnDelights’s clone) is rotated to match, not left un-rotated', async () => {
+    const { App, svgEl } = await bootApp()
+    App.select('chip-1')
+
+    const chipEl = svgEl.querySelector('[data-id="chip-1"]')
+    applyRotateDom(chipEl, 90)
+
+    const geo = App.getBBox('chip-1')
+    const rot = App.getRotation('chip-1')
+    const onScreenPoint = bowstringOrigin(geo, rot)
+
+    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, onScreenPoint)).toBe(true)
+
+    // The clone (cloneNode of the toy's own <svg>) carries no rotation of
+    // its own — spawnDelights has to wrap it in a <g rotate(...)>, the
+    // same transform decorGroup uses for the real selection furniture.
+    const delightLayer = svgEl.querySelector('#delight-layer')
+    const toyDelight = delightLayer.querySelector('.toy-delight')
+    expect(toyDelight).toBeTruthy()
+    expect(toyDelight.getAttribute('transform')).toBeFalsy() // never set directly — CSS would clobber it
+    expect(toyDelight.parentElement.getAttribute('transform')).toBe(`rotate(${rot.deg} ${rot.cx} ${rot.cy})`)
+
+    App.endBowstring({ pointerId: 1 })
+  })
+
+  test('unrotated: no rotation wrapper is created around the delight ghosts', async () => {
+    const { App, svgEl } = await bootApp()
+    App.select('chip-1')
+
+    const geo = App.getBBox('chip-1')
+    const point = { x: geo.x + geo.width + 6, y: geo.y + geo.height + 6 }
+    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, point)).toBe(true)
+
+    const delightLayer = svgEl.querySelector('#delight-layer')
+    const toyDelight = delightLayer.querySelector('.toy-delight')
+    expect(toyDelight.parentElement).toBe(delightLayer)
+
+    App.endBowstring({ pointerId: 1 })
+  })
 })

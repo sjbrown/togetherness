@@ -892,6 +892,9 @@ function drawCharge(elId, pull, heldMs, stroke, scale) {
   //    since SVG id lookup is document-global and the original outlives
   //    this clone.
   if (toySvgEl) {
+    // Clones the toy's own <svg>, not the outer <g> its rotation actually
+    // lives on — carry rot over via a wrapping <g>, same as delight.js's
+    // own local drag-ghost clone (spawnDelights) does.
     const clone = toySvgEl.cloneNode(true);
     clone.removeAttribute('id');
     clone.querySelectorAll('[id]').forEach(n => n.removeAttribute('id'));
@@ -899,7 +902,13 @@ function drawCharge(elId, pull, heldMs, stroke, scale) {
     clone.setAttribute('class', 'bowstring-charge-clone');
     clone.setAttribute('opacity', chargeOpacityFor(heldMs).toFixed(3));
     clone.setAttribute('pointer-events', 'none');
-    _layerEl.appendChild(clone);
+    if (rot) {
+      const wrap = el('g', { transform: `rotate(${rot.deg} ${rot.cx} ${rot.cy})` });
+      wrap.appendChild(clone);
+      _layerEl.appendChild(wrap);
+    } else {
+      _layerEl.appendChild(clone);
+    }
   }
 
   // 2. Charge circle in the player's own color, centred on the SE corner of
