@@ -88,6 +88,24 @@ Run these checks before merging large changesets. Automated tests catch logic er
 
 ---
 
+## Supply — "Include data attributes"
+
+1. Place a Supply and a chip; rotate the chip 45° or 90°, then drag it onto
+   the Supply
+2. Take a clone (menu → Take) — by default the clone comes out un-rotated;
+   this is the pre-existing behaviour, unchanged
+3. Edit panel → Supply → turn on "Include data attributes"
+4. Rotate a fresh prototype chip, drop it on the Supply, Take again — the
+   clone now comes out at the same rotation, turning about its OWN centre
+   (not the prototype's)
+5. Turn the option back off; Take again — back to un-rotated clones
+6. A tray_sum with a nested, rotated chip inside it, stacked on the Supply
+   with the option on — the nested chip's rotation survives the clone too
+   (same option, applies to nested toys the same as the top-level one)
+7. Second browser window: the option's on/off state appears there too
+
+---
+
 ## Boundary Constraints
 
 1. **Single boundary:** Create boundary named `"toy"`, toy with class `"toy"` inside

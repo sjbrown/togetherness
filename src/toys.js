@@ -557,7 +557,7 @@ function isToyBoundaryEl(el) {
  * root and nested alike, post-order (a nested toy is pushed before its
  * container).
  */
-function cloneToyBoundary(sourceEl, newId, cloned) {
+function cloneToyBoundary(sourceEl, newId, cloned, opts = {}) {
   const sourceId  = sourceEl.getAttribute('data-id')
   const oldPrefix = `${sourceId}__`
   const newPrefix = `${newId}__`
@@ -595,7 +595,7 @@ function cloneToyBoundary(sourceEl, newId, cloned) {
   }
   const cloneNode = (node) => {
     if (node !== sourceSvg && isToyBoundaryEl(node)) {
-      return cloneToyBoundary(node, newToyId(), cloned)
+      return cloneToyBoundary(node, newToyId(), cloned, opts)
     }
     const out = document.createElementNS(SVG_NS, node.localName)
     for (const [name, value] of parseForeignNode(node, ctx)) {
@@ -634,8 +634,28 @@ function cloneToyBoundary(sourceEl, newId, cloned) {
   g.setAttribute('data-id',       newId)
   g.setAttribute('id',            newId)
   g.setAttribute('data-module',   'toys')
+
+  // Everything above is the fixed identity of a freshly-cloned instance —
+  // id/data-id/data-module always get the NEW values, never the source's.
+  // Anything else the source's own <g> was carrying (data-rotate, a toy's
+  // own bespoke data-* state) only rides along when the caller opts in,
+  // since most cloners (every non-Supply use of this function) have never
+  // had such state to lose.
+  if (opts.includeDataAttrs) {
+    for (const attr of Array.from(sourceEl.attributes)) {
+      if (!attr.name.startsWith('data-')) continue
+      if (g.hasAttribute(attr.name)) continue
+      g.setAttribute(attr.name, attr.value)
+    }
+  }
+
   g.appendChild(svgEl)
   attachScopedLookup(g, newId)
+  // Only a carried-over data-rotate makes this do anything (syncRotation
+  // no-ops without one). Root-level g gets re-synced again once
+  // cloneToyDom repositions it to the new (x, y) — this pass is what
+  // actually matters for a NESTED clone, whose own geometry never moves.
+  syncRotation(g)
 
   cloned.push({ id: newId, toyType, el: g })
   return g
@@ -647,15 +667,16 @@ function cloneToyBoundary(sourceEl, newId, cloned) {
  * Then re-run initialize() on every cloned instance.
  */
 export function toyCloneToy(ydoc, layerEl, clonerEl, cloneeEl, opts = {}) {
+  const { includeDataAttrs, ...gestureOpts } = opts
   const target = clonerEl?.querySelector?.('.tt_target')
   const { x, y } = target ? getInnerAnchor(clonerEl, target) : getAnchor(clonerEl)
   const newId = newToyId()
 
   const { result } = ensureEnvelope(ydoc, layerEl, () => {
-    const built = addClonedToyDom(layerEl, cloneeEl, newId, x, y)
+    const built = addClonedToyDom(layerEl, cloneeEl, newId, x, y, { includeDataAttrs })
     for (const { toyType, el } of built.cloned) runInitializers(el, toyType)
     return built
-  }, { gesture: 'clone', ...opts })
+  }, { gesture: 'clone', ...gestureOpts })
 
   return { id: newId, cloned: result.cloned }
 }
@@ -674,20 +695,24 @@ export function toyCloneToy(ydoc, layerEl, clonerEl, cloneeEl, opts = {}) {
  * Returns { toyEl, cloned }, where cloned lists every toy instance this
  * produced ({ id, toyType, el })
  */
-export function cloneToyDom(sourceEl, newId, x, y) {
+export function cloneToyDom(sourceEl, newId, x, y, opts = {}) {
   const cloned = []
-  const toyEl  = cloneToyBoundary(sourceEl, newId, cloned)
+  const toyEl  = cloneToyBoundary(sourceEl, newId, cloned, opts)
   const svgEl  = toyEl.querySelector(':scope > svg')
   const width  = parseFloat(svgEl.getAttribute('width'))  || FALLBACK_TOY_SIZE
   const height = parseFloat(svgEl.getAttribute('height')) || FALLBACK_TOY_SIZE
   svgEl.setAttribute('x', String(x - width / 2))
   svgEl.setAttribute('y', String(y - height / 2))
+  // A no-op unless includeDataAttrs carried a data-rotate over onto toyEl —
+  // re-derives the transform for the new position, same as any other
+  // geometry write (see applyMoveDom/applyResizeDom).
+  syncRotation(toyEl)
   return { toyEl, cloned }
 }
 
 /** Clone + append, mirroring addToyDom's relationship to buildToyDom. */
-export function addClonedToyDom(layerEl, sourceEl, newId, x, y) {
-  const result = cloneToyDom(sourceEl, newId, x, y)
+export function addClonedToyDom(layerEl, sourceEl, newId, x, y, opts = {}) {
+  const result = cloneToyDom(sourceEl, newId, x, y, opts)
   layerEl.appendChild(result.toyEl)
   return result
 }
@@ -1454,9 +1479,9 @@ export const TOOLS = [
     label: 'Supply',
     iconUrl: 'toy/supply.svg',
     layer:   'toys',
-    defaults: { fill: '#fafafa' },
+    defaults: { fill: '#fafafa', includeDataAttrs: false },
     options: [
-      { },
+      { kind: 'bool', key: 'includeDataAttrs', label: 'Include data attributes', show: ['add'] },
     ],
   },
   {
