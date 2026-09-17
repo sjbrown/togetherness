@@ -1660,7 +1660,7 @@ const App = {
     if (defaultMode !== 'sel-action' || _activeMode?.mode !== defaultMode) return false;
     const geo = App.getBBox(id);
     if (!geo) return false;
-    if (!Delight.hitTestBowstring(geo, canvasPoint.x, canvasPoint.y, App.getViewScale())) return false;
+    if (!Delight.hitTestBowstring(geo, canvasPoint.x, canvasPoint.y, App.getViewScale(), _rotationOf(id))) return false;
     return Delight.startBowstring(id, e, _svgEl);
   },
 

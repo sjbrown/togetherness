@@ -85,6 +85,16 @@ Run these checks before merging large changesets. Automated tests catch logic er
    chip and single_poker_card declare `tt_able_rotate`
 9. A resizable toy (bag, tray_sum) still resizes normally — rotation and
    resize are independent capabilities, and today no toy has both
+10. Rotate a chip 90°, then click once to cycle back to plain selection
+    (its action-square/bowstring handle) — the handle square is visible at
+    the rotated corner; clicking IT (not where the corner used to be)
+    fires the chip's first menu action, and pulling it back like a
+    bowstring and releasing still charges/fires normally
+11. Same check for single_poker_card — clicking its rotated action handle
+    flips the card
+12. Second browser window, while the local player charges a rotated toy's
+    bowstring: the peer's charge indicator (ghost + ring) shows up at the
+    rotated corner too, not the old unrotated one
 
 ---
 

@@ -879,7 +879,8 @@ function _pumpRemoteCharge() {
 function drawCharge(elId, pull, heldMs, stroke, scale) {
   const geo = App.getBBox(elId);
   if (!geo) return;
-  const origin = bowstringOrigin(geo);
+  const rot = App.getRotation?.(elId) ?? null;
+  const origin = bowstringOrigin(geo, rot);
 
   const toyEl = _svgEl?.querySelector(`[data-id="${elId}"]`);
   const toySvgEl = toyEl?.querySelector('svg');

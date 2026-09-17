@@ -136,6 +136,23 @@ export function stringPathD(origin, x, y, wobble) {
   return `M${origin.x} ${origin.y} Q${midX + nx * wobble} ${midY + ny * wobble} ${x} ${y}`;
 }
 
+/**
+ * Rotate pt by rot.deg (degrees, SVG's clockwise sense) about (rot.cx,
+ * rot.cy) — same direction as the `rotate(deg cx cy)` transform overlay.js
+ * wraps a rotated element's furniture in. A no-op for rot === null, which
+ * is nearly every toy.
+ */
+export function rotatePoint(pt, rot) {
+  if (!rot) return pt;
+  const { deg, cx, cy } = rot;
+  const rad = deg * Math.PI / 180;
+  const dx = pt.x - cx, dy = pt.y - cy;
+  return {
+    x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
+    y: cy + dx * Math.sin(rad) + dy * Math.cos(rad),
+  };
+}
+
 // ── Module state ──────────────────────────────────────────────────────────
 
 let App = null;
@@ -200,20 +217,25 @@ function el(tag, attrs) {
 /**
  * Hit-test a canvas-space point against elId's resting bowstring square.
  * Mirrors Overlay.hitTestResizeCorner's contract so canvas.js can check it
- * the same way, on pointerdown, before ordinary hit-testing.
+ * the same way, on pointerdown, before ordinary hit-testing. rot — the same
+ * { deg, cx, cy } App.getRotation returns, or null — rotates the square
+ * along with the toy, same as the resize/rotate corner handles do.
  */
-export function hitTestBowstring(geo, px, py, scale) {
-  const origin = bowstringOrigin(geo);
+export function hitTestBowstring(geo, px, py, scale, rot = null) {
+  const origin = bowstringOrigin(geo, rot);
   const half = (HANDLE_HALF * 2 / scale) / 2;
   return Math.abs(px - origin.x) <= half && Math.abs(py - origin.y) <= half;
 }
 
 /**
  * The handle's resting anchor: the SE corner of the selection ring, padded
- * out to match where overlay.js draws the action squares.
+ * out to match where overlay.js draws the action squares, then carried
+ * along with the toy's own rotation — overlay.js draws that same unrotated
+ * corner and wraps it in a `rotate(deg cx cy)` group, so this has to apply
+ * the identical transform to land on the same on-screen point.
  */
-export function bowstringOrigin(geo) {
-  return { x: geo.x + geo.width + PAD, y: geo.y + geo.height + PAD };
+export function bowstringOrigin(geo, rot = null) {
+  return rotatePoint({ x: geo.x + geo.width + PAD, y: geo.y + geo.height + PAD }, rot);
 }
 const PAD = 6; // keep in step with overlay.js's PAD
 
@@ -230,7 +252,8 @@ export function startBowstring(elId, e, stageEl) {
   if (!geo) return false;
 
   const scale = App.getViewScale();
-  const origin = bowstringOrigin(geo);
+  const rot = App.getRotation?.(elId) ?? null;
+  const origin = bowstringOrigin(geo, rot);
 
   const chrome = buildChrome(origin, scale);
   const toyEl = _svgEl.querySelector(`[data-id="${elId}"]`);
