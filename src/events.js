@@ -8,14 +8,14 @@ export function init(App, svgEl, Toys, UI) {
 
   const events = {
     'toy:clone': (e) => {
-      const { id: sourceId, sourceEl, includeDataAttrs } = e.detail
+      const { id: sourceId, sourceEl } = e.detail
       const layerEl = svgEl.querySelector('#toys-layer')
       const subjectEl = layerEl?.querySelector(`[data-id="${sourceId}"]`)
       if (!subjectEl) { e.detail.error = `toy not found: ${sourceId}`; return }
 
       let result
       try {
-        result = Toys.toyCloneToy(ydoc, layerEl, sourceEl, subjectEl, { authorId: myId, tableId, includeDataAttrs })
+        result = Toys.toyCloneToy(ydoc, layerEl, sourceEl, subjectEl, { authorId: myId, tableId })
       } catch (err) {
         e.detail.error = err.message
         return

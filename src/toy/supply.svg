@@ -221,9 +221,8 @@ var supply = {
       supply._event('warn', {msg: 'Supply needs a prototype toy'})
       return
     }
-    const includeDataAttrs = elem.getAttribute('data-include-data-attrs') === 'true'
     // Note: .tt_target gets examined by the event handler
-    supply._event('toy:clone', {id: itemId, sourceEl: elem, includeDataAttrs})
+    supply._event('toy:clone', {id: itemId, sourceEl: elem})
   },
 
   _take2: function(elem) {
@@ -246,23 +245,7 @@ var supply = {
   initialize: function(elem, options = {}) {
     elem.setAttribute('data-below', '')
     elem.setAttribute('data-above', '')
-    elem.setAttribute('data-include-data-attrs', String(!!options.includeDataAttrs))
     supply._restoreColor(elem)
-  },
-
-  editableFields: function(elem) {
-    return {
-      values: { includeDataAttrs: elem.getAttribute('data-include-data-attrs') === 'true' },
-      types: {
-        includeDataAttrs: { kind: 'bool', show: ['edit'] },
-      },
-    }
-  },
-
-  applyEdit: function(elem, editData) {
-    if ('includeDataAttrs' in editData) {
-      elem.setAttribute('data-include-data-attrs', String(!!editData.includeDataAttrs))
-    }
   },
 
   on_position_occupied: function(elem, posId, ownerId, movingId) {
