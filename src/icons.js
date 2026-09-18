@@ -193,10 +193,7 @@ export function drawCrosshairGlyph(cx, cy, arm, parent, color) {
 /**
  * drawRotateGlyph(cx, cy, r, parent)
  * A circular arrow — an arc most of the way round, with a filled arrowhead
- * on its leading end. Drawn at dynamic canvas-space coordinates like the
- * two glyphs above, and used by overlay.js's rotate-mode handles to say
- * "spin" where the resize handles' plain squares say "stretch".
- * `r` is the arc radius. Appends directly to `parent`; returns nothing.
+ * on its leading end. `r` is the arc radius. Appends directly to `parent`.
  */
 export function drawRotateGlyph(cx, cy, r, parent) {
   const pt = deg => {
@@ -227,12 +224,9 @@ export function drawRotateGlyph(cx, cy, r, parent) {
 
 /**
  * drawPivotGlyph(cx, cy, r, parent, rays)
- * The rotation pivot: a solid centre dot with up to eight lines radiating
- * from it, paired two-per-quadrant. `rays` is drawing.js's
- * pivotRayOpacities() output — each entry a direction plus how visible it
- * should be. Rays at zero are not drawn at all rather than drawn
- * transparent, so a pivot sitting in a corner emits the two lines of its own
- * quadrant rather than all eight.
+ * A solid centre dot with up to eight lines radiating from it. `rays` is
+ * pivotRayOpacities()'s output — a direction plus visibility per entry.
+ * Rays at zero opacity are skipped entirely, not drawn transparent.
  * `r` is the radius the rays reach. Appends directly to `parent`.
  */
 export function drawPivotGlyph(cx, cy, r, parent, rays) {

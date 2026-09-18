@@ -136,12 +136,7 @@ export function stringPathD(origin, x, y, wobble) {
   return `M${origin.x} ${origin.y} Q${midX + nx * wobble} ${midY + ny * wobble} ${x} ${y}`;
 }
 
-/**
- * Rotate pt by rot.deg (degrees, SVG's clockwise sense) about (rot.cx,
- * rot.cy) — same direction as the `rotate(deg cx cy)` transform overlay.js
- * wraps a rotated element's furniture in. A no-op for rot === null, which
- * is nearly every toy.
- */
+/** Rotate pt by rot.deg (SVG's clockwise sense) about (rot.cx, rot.cy). A no-op for rot === null. */
 export function rotatePoint(pt, rot) {
   if (!rot) return pt;
   const { deg, cx, cy } = rot;
@@ -216,10 +211,8 @@ function el(tag, attrs) {
 
 /**
  * Hit-test a canvas-space point against elId's resting bowstring square.
- * Mirrors Overlay.hitTestResizeCorner's contract so canvas.js can check it
- * the same way, on pointerdown, before ordinary hit-testing. rot — the same
- * { deg, cx, cy } App.getRotation returns, or null — rotates the square
- * along with the toy, same as the resize/rotate corner handles do.
+ * rot (the same { deg, cx, cy } App.getRotation returns, or null) rotates
+ * the square along with the toy.
  */
 export function hitTestBowstring(geo, px, py, scale, rot = null) {
   const origin = bowstringOrigin(geo, rot);
@@ -227,13 +220,7 @@ export function hitTestBowstring(geo, px, py, scale, rot = null) {
   return Math.abs(px - origin.x) <= half && Math.abs(py - origin.y) <= half;
 }
 
-/**
- * The handle's resting anchor: the SE corner of the selection ring, padded
- * out to match where overlay.js draws the action squares, then carried
- * along with the toy's own rotation — overlay.js draws that same unrotated
- * corner and wraps it in a `rotate(deg cx cy)` group, so this has to apply
- * the identical transform to land on the same on-screen point.
- */
+/** The handle's resting anchor: the SE corner of the selection ring, rotated with the toy. */
 export function bowstringOrigin(geo, rot = null) {
   return rotatePoint({ x: geo.x + geo.width + PAD, y: geo.y + geo.height + PAD }, rot);
 }
@@ -330,13 +317,10 @@ function buildChrome(origin, scale) {
  * because the real ring lives in #overlay-layer and would take them with it
  * on the next wipe.
  *
- * rot — the same { deg, cx, cy } App.getRotation returns, or null. Applied
- * via a wrapping <g>, never as a transform on the delight nodes themselves:
- * each of them already carries a CSS transform (the skew loop, driven by
- * --drag-x/--drag-y in updateParallax), and a CSS transform silently
- * overrides any SVG transform ATTRIBUTE set on the same element — the
- * exact reason the parallax itself rides custom properties instead of a
- * plain setAttribute in the first place.
+ * rot ({ deg, cx, cy } or null) is applied via a wrapping <g>, never as a
+ * transform on the delight nodes themselves: each already carries a CSS
+ * transform (the skew loop), and CSS transform silently overrides any SVG
+ * transform ATTRIBUTE on the same element.
  */
 function spawnDelights(toyEl, rot) {
   const ringDelight0 = el('g', { class: 'selRing-delight-0' });

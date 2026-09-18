@@ -1,10 +1,7 @@
 /**
  * geometry.js — shape-agnostic pure geometry: rotation-angle arithmetic and
- * corner-drag resize math. No DOM, no Yjs, no notion of a shape type or a
- * toy — every function here takes plain numbers/rects and returns plain
- * numbers/rects, which is what lets drawing.js, toys.js, and boun_pos.js
- * share one implementation instead of three copies of the same switch
- * statement.
+ * corner-drag resize math. No DOM, no Yjs, no shape-type or toy awareness.
+ * corner, where a function takes one, is always 0=NW/1=NE/2=SE/3=SW.
  */
 
 /** Degrees in [0, 360). */
@@ -13,16 +10,11 @@ export function normalizeAngle(deg) {
   return ((d % 360) + 360) % 360;
 }
 
-// Historical default (drawing.js's own rect snap grain), kept so a caller
-// that omits snapDeg sees no change. Every real caller (app.js, each
-// layer's own rotate gesture) passes its own value explicitly; this default
-// is only ever exercised by a test calling these functions directly.
+// Only exercised when a caller omits snapDeg; every production caller
+// passes its own value explicitly.
 const DEFAULT_SNAP_DEG = 15;
 
-/**
- * Snap deg to the nearest multiple of snapDeg. A snapDeg of 0 (or less)
- * means free rotation — the angle passes through unsnapped.
- */
+/** Nearest multiple of snapDeg. snapDeg <= 0 means free, unsnapped rotation. */
 export function snapAngle(deg, snapDeg = DEFAULT_SNAP_DEG) {
   const step = Number(snapDeg);
   if (!(step > 0)) return normalizeAngle(deg);
@@ -30,16 +22,10 @@ export function snapAngle(deg, snapDeg = DEFAULT_SNAP_DEG) {
 }
 
 /**
- * Pure geometry for a corner-drag rotation: the angle from centre out to
- * the pointer, less the angle out to the corner that was grabbed, so that
- * corner stays under the pointer. The result is absolute, not a delta —
- * the rotation a shape had when the drag began is already implied by
- * where the grabbed corner started. Snapped to snapDeg.
- *
- * centre is the canvas-space {cx, cy} to turn about, captured at drag
- * start rather than re-derived here, so this stays pure and a pivot
- * anywhere other than the middle needs no change. corner is
- * 0=NW/1=NE/2=SE/3=SW into startRect; px/py are canvas-space.
+ * Corner-drag rotation: angle from centre to the pointer, less the angle
+ * to the grabbed corner, so that corner stays under the pointer -- an
+ * absolute angle, not a delta. centre is captured at drag start so a pivot
+ * off-middle needs no special case.
  */
 export function computeRotate(startRect, centre, corner, px, py, snapDeg = DEFAULT_SNAP_DEG) {
   const { x, y, width, height } = startRect;
@@ -59,14 +45,9 @@ export function computeRotate(startRect, centre, corner, px, py, snapDeg = DEFAU
 // ── Corner-drag resize ──────────────────────────────────────────────────────
 
 /**
- * Pure geometry for a corner-drag resize: given a rect at drag start and
- * the corner being dragged (0=NW/1=NE/2=SE/3=SW), compute the new
- * { x, y, width, height } for the current pointer position (px, py),
- * keeping the corner OPPOSITE the dragged one fixed in place. width/height
- * are clamped to minSize so the dragged corner can never cross the fixed
- * one — the fixed corner itself never moves. minSize is a required
- * argument rather than a default: each layer (rect, toy, boun_pos) picks
- * its own floor, and none of them is the geometrically "right" one.
+ * Corner-drag resize: the corner OPPOSITE the dragged one stays fixed;
+ * width/height clamp to minSize so the drag can never cross it. minSize
+ * has no default -- each layer (rect, toy, boun_pos) picks its own floor.
  */
 export function computeResizeCornerRect(startRect, corner, px, py, minSize) {
   const { x, y, width, height } = startRect;

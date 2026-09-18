@@ -577,21 +577,14 @@ function _sizeGhostRing(entry, x, y, width, height) {
 
 /**
  * Update the local rotate ghost to `deg` — the rotate counterpart of
- * updateResizeGhost, sharing its ghost/placeholder pair since only one
- * handle gesture can be live at a time. geo is the element's committed
- * (unrotated) bbox, which a rotation never changes. DOM-only.
+ * updateResizeGhost, sharing its ghost/placeholder pair. geo is the
+ * element's committed (unrotated) bbox, which a rotation never changes.
  */
 export function updateRotateGhost(elId, deg, geo) {
   const entry = _resizeGhosts.get(elId);
   if (!entry || !geo) return;
-  // 'data-rotate' — same attribute name drawing.js and toys.js both use for
-  // this, specifically so the read on the next line works unmodified across
-  // either kind of ghost: elementRotation (drawing.js's resolveRotation),
-  // called WITH an explicit geom like this rather than left to its own
-  // shape-keyed getGeom default, is pure attribute-plus-arithmetic with zero
-  // dependency on what tagName the ghost actually is — true of a cloned
-  // <rect> (drawing) exactly as much as a cloned <g> wrapping an <svg>
-  // (toys). Nothing layer-specific belongs in this function.
+  // An explicit geom, not a shape-keyed getGeom default, keeps this
+  // tagName-agnostic — a rotated <rect> ghost or a toy's <g> ghost alike.
   entry.ghostEl.setAttribute('data-rotate', String(normalizeAngle(deg)));
   const transform = rotationTransform(elementRotation(entry.ghostEl, geo));
   if (transform) entry.ghostEl.setAttribute('transform', transform);
@@ -740,13 +733,10 @@ export function render() {
     if (entry.mode === 'none') continue;
     const geo = App.getBBox(elId);
     if (!geo) continue;
-    // getBBox is the element's UNROTATED box; its furniture rides the same
-    // rotation the element itself carries so the ring hugs the shape
-    // instead of its axis-aligned bounds. { deg, cx, cy } or null.
+    // getBBox is UNROTATED; furniture rides the element's own rotation so
+    // the ring hugs the shape, not its axis-aligned bounds.
     const rot = App.getRotation?.(elId) ?? null;
-    // One group per element, so everything an element's selection draws ends
-    // up under the same rotation rather than each renderer making its own.
-    const parent = decorGroup(rot);
+    const parent = decorGroup(rot); // one shared rotation group per element
     switch (entry.mode) {
       case 'local':
       case 'candidate':
@@ -893,8 +883,7 @@ function drawCharge(elId, pull, heldMs, stroke, scale) {
   //    this clone.
   if (toySvgEl) {
     // Clones the toy's own <svg>, not the outer <g> its rotation actually
-    // lives on — carry rot over via a wrapping <g>, same as delight.js's
-    // own local drag-ghost clone (spawnDelights) does.
+    // lives on — carry rot over via a wrapping <g> below.
     const clone = toySvgEl.cloneNode(true);
     clone.removeAttribute('id');
     clone.querySelectorAll('[id]').forEach(n => n.removeAttribute('id'));
@@ -929,19 +918,11 @@ function drawCharge(elId, pull, heldMs, stroke, scale) {
   }
 }
 
-// Refresh a local drag ring's geometry from the committed bbox + current dx/dy.
-//
-// The ghost itself is a <use href="#elId" transform="translate(dx,dy)">: the
-// referenced element's own transform="rotate(deg cx cy)" rotates it about its
-// ORIGINAL (committed) center, and the outer translate then slides that
-// already-rotated shape as a rigid body — exactly what a drag should do. The
-// ring has to land on the same pixels, but it's a plain <rect>, not a <use>
-// of the rotated original, so it has no transform to inherit. Composing the
-// two steps onto one node instead — bake (dx,dy) into the position the same
-// way the unrotated case always has, then rotate about the center shifted by
-// that same (dx,dy) — lands on the identical point as the <use>'s pipeline
-// (rotate-about-c-then-translate-by-d == translate-by-d-then-rotate-about-(c+d)
-// for a rigid translation), so the ring tracks the ghost exactly.
+// Refresh a local drag ring's geometry from the committed bbox + current
+// dx/dy. The ghost (a rotated <use>, translated by dx/dy) is a rigid-body
+// move; the ring, a plain <rect> with no transform to inherit, matches it
+// by rotating about the centre shifted by that same (dx,dy) — equivalent
+// to rotate-then-translate for a rigid translation.
 function _updateDragRing(entry, elId, scale) {
   const bbox = App.getBBox(elId);
   if (!bbox) return;
@@ -1059,19 +1040,14 @@ function renderLocalResizeSelection(geo, entry, scale, rot = null, parent = _lay
 
 /**
  * The pivot a shape turns about, drawn as a centre dot with up to eight
- * radiating lines. Each ray fades as the pivot nears the edge it points at
- * (see drawing.js's pivotRayOpacities), which is what keeps the handle
- * legible where it would otherwise collide: a pivot dragged into a corner
- * has already dropped every ray that pointed at that corner's rotate handle.
- *
- * Rides the same rotation group as the rest of the furniture, so it sits on
- * the shape rather than on its axis-aligned bounds.
+ * radiating lines. Each ray fades as the pivot nears the edge it points at,
+ * which keeps the handle legible against the rotate handles: a pivot
+ * dragged into a corner has already dropped every ray pointing at it.
  */
 function renderPivotHandle(elId, geo, scale, parent = _layerEl) {
   const committed = App.getPivot?.(elId);
   if (!committed) return;
-  // Mid-drag the handle shows where the pointer has put it; the shape itself
-  // never moves, so there is nothing else to preview.
+  // Mid-drag: the shape itself never moves, so the handle is all there is to preview.
   const dragged = _pivotPreview?.elId === elId ? _pivotPreview : null;
   const pivot = dragged
     ? { fx: dragged.fx, fy: dragged.fy,
@@ -1086,7 +1062,7 @@ function renderPivotHandle(elId, geo, scale, parent = _layerEl) {
  * Same selection ring as renderLocalResizeSelection, but the four corner
  * handles are ROUND and carry a circular-arrow glyph instead of being plain
  * squares — the one visual cue that says this drag spins the shape rather
- * than stretching it. Used for the 'sel-rotate' mode (currently: rects).
+ * than stretching it. Shared by both 'sel-rotate' and 'sel-rotate-pivot'.
  */
 function renderLocalRotateSelection(geo, entry, scale, rot = null, parent = _layerEl) {
   const { x, y, width, height } = geo;

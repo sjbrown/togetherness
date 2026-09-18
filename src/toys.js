@@ -34,12 +34,8 @@ import { getOps, appendOp, getOp, heads, labelBranches, branchAuthors, forkJoinS
 import { invert as invertWire, apply as applyWire } from './op_wire_mutation.js';
 import { checkpointOp, projectFrom, buildForkSeed, isCheckpoint } from './op_checkpoint.js';
 import { receiveOp, advanceTo } from './op_replay.js';
-// geometry.js is shape-agnostic pure math shared with drawing.js and
-// boun_pos.js -- no cross-layer dependency, just a common neutral module.
-// See the "Rotation" section below for what stays local: toys have no
-// placeable pivot, so the parts of drawing.js's own rotation machinery that
-// exist only to support one (getPivot, rotationCenter's pivot argument)
-// are NOT reused.
+// geometry.js is shape-agnostic pure math, shared with drawing.js and
+// boun_pos.js.
 import { computeRotate, snapAngle, normalizeAngle, computeResizeCornerRect } from './geometry.js';
 
 // ── ID helpers ────────────────────────────────────────────────────────────────
@@ -634,11 +630,9 @@ function cloneToyBoundary(sourceEl, newId, cloned) {
   g.setAttribute('id',            newId)
   g.setAttribute('data-module',   'toys')
 
-  // Everything above is the fixed identity of a freshly-cloned instance —
-  // id/data-id/data-module always get the NEW values, never the source's.
-  // Anything else the source's own <g> was carrying (data-rotate, a toy's
-  // own bespoke data-* state) rides along too, so a clone starts out as a
-  // faithful copy of what it was cloned from rather than a blank instance.
+  // id/data-id/data-module above always get the NEW values. Any other
+  // data-* the source's <g> carried (data-rotate, bespoke toy state) rides
+  // along too, so a clone starts as a faithful copy, not a blank instance.
   for (const attr of Array.from(sourceEl.attributes)) {
     if (!attr.name.startsWith('data-')) continue
     if (g.hasAttribute(attr.name)) continue
@@ -647,10 +641,9 @@ function cloneToyBoundary(sourceEl, newId, cloned) {
 
   g.appendChild(svgEl)
   attachScopedLookup(g, newId)
-  // Only a carried-over data-rotate makes this do anything (syncRotation
-  // no-ops without one). Root-level g gets re-synced again once
-  // cloneToyDom repositions it to the new (x, y) — this pass is what
-  // actually matters for a NESTED clone, whose own geometry never moves.
+  // No-ops without a carried-over data-rotate. Matters here for a NESTED
+  // clone (its geometry never moves again); the root gets re-synced once
+  // more once cloneToyDom repositions it.
   syncRotation(g)
 
   cloned.push({ id: newId, toyType, el: g })
@@ -698,9 +691,8 @@ export function cloneToyDom(sourceEl, newId, x, y) {
   const height = parseFloat(svgEl.getAttribute('height')) || FALLBACK_TOY_SIZE
   svgEl.setAttribute('x', String(x - width / 2))
   svgEl.setAttribute('y', String(y - height / 2))
-  // A no-op unless the source carried a data-rotate over onto toyEl —
-  // re-derives the transform for the new position, same as any other
-  // geometry write (see applyMoveDom/applyResizeDom).
+  // No-op unless a data-rotate carried over; re-derives the transform for
+  // the new position.
   syncRotation(toyEl)
   return { toyEl, cloned }
 }
@@ -1158,26 +1150,14 @@ export function moveToyAndStack(layerEl, el, x, y) {
 }
 
 // ── Rotation ─────────────────────────────────────────────────────────────────
-// Only a toy whose own embedded <svg> declares class="tt_able_rotate" (chip,
-// single_poker_card) offers rotation, and always about its own fixed centre
-// -- toys never get a placeable pivot the way rects do (see drawing.js): no
-// pivot storage, no pivot handle, no 'sel-rotate-pivot', just a degree count.
-// That's the deliberately simple half of drawing.js's rotation design.
-//
-// The rotate ATTRIBUTE lives on the toy's OUTER <g data-id> wrapper -- the
-// same element every move/resize/select call already keys off of -- not on
-// the embedded <svg>, which stays the toy's own UNROTATED local geometry
-// (x/y/width/height), exactly mirroring drawing.js's rule that getGeom()
-// never reflects rotation. 'data-rotate' is also the same attribute NAME
-// drawing.js uses, so overlay.js's generic ghost-preview code (which reads
-// it off whatever element it's given, tagName-agnostic) works unmodified
-// across both layers.
+// Offered only when a toy's embedded <svg> declares class="tt_able_rotate"
+// (chip, single_poker_card), always about the toy's own fixed centre -- no
+// placeable pivot. The rotate attribute lives on the outer <g>, the same
+// element move/resize/select already key off of; the embedded <svg> stays
+// unrotated local geometry.
 const ROTATE_ATTR = 'data-rotate'
 
-// Chips and cards turn in quarter-eighths, not drawing.js's 15° -- a fixed
-// grain, not (yet) a user preference the way rects' is, so there is no
-// setRotateSnapDeg equivalent here; app.js's per-layer snap state supplies
-// this as ITS default for the 'toys' layer, same seam rects' 15° sits in.
+// Chips/cards' own rotation step, in degrees -- a fixed grain, not user-adjustable.
 export const ROTATE_SNAP_DEG = 45
 
 /** A toy's rotation in degrees (0 when it has none, or it can't rotate). */
@@ -1192,12 +1172,7 @@ export function rotationCenter(domEl, geom = getGeom(domEl)) {
     : { cx: 0, cy: 0 }
 }
 
-/**
- * A toy's rotation resolved against geometry: { deg, cx, cy }, or null when
- * it isn't rotated. Mirrors drawing.js's resolveRotation, using this
- * module's own getGeom (a toy's geometry lives on its embedded <svg>, not
- * discoverable by tagName the way a drawing shape's is).
- */
+/** A toy's rotation resolved against geometry: { deg, cx, cy }, or null when unrotated. */
 export function resolveRotation(domEl, geom = getGeom(domEl)) {
   const deg = getRotation(domEl)
   if (!deg) return null
@@ -1206,11 +1181,8 @@ export function resolveRotation(domEl, geom = getGeom(domEl)) {
 
 /**
  * Project a toy's stored rotation onto its own <g> as a transform. Called
- * after every geometry write (move, resize) so the pivot tracks the toy's
- * CURRENT centre rather than the position it had when the rotation was set
- * -- same rationale as drawing.js's syncRotation. A toy that has never been
- * rotated (no data-rotate at all -- true for almost every toy, since only
- * tt_able_rotate ones can ever acquire one) returns immediately.
+ * after every geometry write so the pivot tracks the toy's current centre.
+ * A toy with no data-rotate at all returns immediately.
  */
 export function syncRotation(domEl) {
   if (!domEl?.setAttribute) return
@@ -1220,13 +1192,8 @@ export function syncRotation(domEl) {
   else     domEl.removeAttribute('transform')
 }
 
-/**
- * Commit a rotation to the live DOM only -- a <g>-only mutation matching
- * applyResizeDom's shape, so makeLayerAPI can wrap it in a gesture the same
- * way. Not a no-op guard on tt_able_rotate: app.js already gates the whole
- * rotate gesture behind selectModes offering 'sel-rotate' in the first
- * place, so by the time this runs the toy IS one of the two rotatable types.
- */
+// No tt_able_rotate guard: selectModes already gates the whole rotate
+// gesture behind offering 'sel-rotate' in the first place.
 export function applyRotateDom(domEl, deg) {
   if (!domEl) return
   domEl.setAttribute(ROTATE_ATTR, String(normalizeAngle(deg)))
@@ -1318,11 +1285,7 @@ export function applyResizeDom(domEl, x, y, width, height) {
   domSvg.setAttribute('width',  String(w))
   domSvg.setAttribute('height', String(h))
   domSvg.setAttribute('viewBox', `0 0 ${w} ${h}`)
-  // Keeps a rotated toy's pivot centred on its NEW size. Unreachable today
-  // -- no toy currently declares both tt-mode-resize and tt_able_rotate --
-  // but cheap (syncRotation's own guard exits immediately for the toys that
-  // don't have data-rotate at all, which is every resizable one right now)
-  // and correct if that ever changes.
+  // Keeps a resized toy's rotation pivot centred on its new size.
   syncRotation(domEl)
 
   if (!toyId) return

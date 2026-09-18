@@ -218,12 +218,11 @@ function _rotationCenterOf(id, geom) {
   return layer?.rotationCenter?.(domEl, geom) ?? null;
 }
 
-// computeResize keeps the corner opposite the dragged one fixed in the shape's
-// OWN space. For a rotated shape that isn't enough: the resize also moves the
-// pivot the shape turns about, so the anchor corner slides across the canvas
-// even though it never moved locally. Translating the result by
-// d = R(delta) - delta, where delta is how far the pivot moved, puts it back
-// exactly where the user sees it.
+// computeResize keeps the corner opposite the dragged one fixed in the
+// shape's own space, but a resize also moves the pivot a rotated shape
+// turns about, sliding that anchor corner on canvas even though it never
+// moved locally. Translating by d = R(delta) - delta, delta being how far
+// the pivot moved, puts it back exactly where the user sees it.
 function _reanchorRotated(id, rect, rot) {
   if (!rot) return rect;
   const centre = _rotationCenterOf(id, rect);

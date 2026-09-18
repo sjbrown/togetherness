@@ -197,21 +197,15 @@ export function getGeom(svgEl) {
 }
 
 // ── Rotation ─────────────────────────────────────────────────────────────────
-// A shape stores its rotation as a plain degree count (schema key `rotate`,
-// SVG attribute data-rotate) and never as a baked transform. The transform is
-// derived — `rotate(deg cx cy)` about the shape's own centre — so a move or a
-// resize re-pivots for free: everything that writes geometry calls
-// syncRotation() afterwards and the pivot follows.
-//
-// getGeom() deliberately stays in the shape's UNROTATED local space. Callers
-// that need screen/canvas-space geometry (hit-testing a handle, drawing a
-// selection ring) rotate the point or the decoration themselves, using
-// getRotation() — keeping one bbox definition instead of two.
+// Rotation is a plain degree count (schema key `rotate`, attribute
+// data-rotate), never a baked transform -- the transform is derived as
+// `rotate(deg cx cy)`, so a move or resize re-pivots for free by calling
+// syncRotation() afterwards. getGeom() always stays in the shape's own
+// UNROTATED space; a caller needing canvas-space geometry rotates the point
+// itself via getRotation().
 
-// Rects' own rotation step, in degrees. app.js reads this to seed its
-// per-layer snap map and passes it explicitly into computeRotate/snapAngle
-// (geometry.js) on every call — so a per-table or per-user increment can be
-// threaded through without touching the geometry.
+// Rects' own rotation step, in degrees; threaded through explicitly on
+// every call rather than a shared default.
 export const ROTATE_SNAP_DEG = 15;
 
 const ROTATE_ATTR = 'data-rotate';
@@ -226,11 +220,8 @@ export function getRotation(svgEl) {
   return parseFloat(svgEl?.getAttribute?.(ROTATE_ATTR)) || 0;
 }
 
-// Where a shape's pivot sits, as fractions of its own bbox: {fx: 0.5, fy: 0.5}
-// is the centre, {fx: 0, fy: 1} the bottom-left corner. Fractions rather than
-// canvas-space coordinates for the same reason the rotation is degrees — a
-// point expressed against the shape survives a move and a resize, an absolute
-// one goes stale on both.
+// A pivot is fractions of the shape's own bbox ({fx:0.5,fy:0.5} = centre),
+// not canvas coordinates, so it survives a move or resize.
 const CENTER_PIVOT = { fx: 0.5, fy: 0.5 };
 
 const PIVOT_X_ATTR = 'data-pivot-x';
@@ -256,13 +247,7 @@ export function rotationCenter(geom, pivot = CENTER_PIVOT) {
     : { cx: 0, cy: 0 };
 }
 
-/**
- * A shape's rotation resolved against geometry: { deg, cx, cy }, or null
- * when it isn't rotated. The single place degrees and pivot are turned into
- * the concrete point everything else rotates about — overlay.js turns
- * selection furniture with it, app.js un-rotates pointers through it, and
- * syncRotation writes it onto the element.
- */
+/** A shape's rotation resolved against geometry: { deg, cx, cy }, or null when unrotated. */
 export function resolveRotation(svgEl, geom = getGeom(svgEl)) {
   const deg = getRotation(svgEl);
   if (!deg) return null;
@@ -311,17 +296,11 @@ export function computePivot(startRect, px, py, tolerance = PIVOT_SNAP_FRACTION)
 }
 
 /**
- * How far a shape must move to stay put when its pivot changes.
- *
- * The rendered transform is derived from (degrees, pivot), so moving the
- * pivot of an already-turned shape re-derives it about a new point and the
- * shape jumps. Translating by R(delta) - delta, where delta is how far the
- * pivot moved, cancels that exactly. Zero when the shape isn't turned, so
- * placing a pivot on an unrotated shape changes nothing visible and only
- * sets up the next rotation.
- *
- * The same correction a resize needs — see app.js — since both move the
- * point the shape turns about.
+ * How far a shape must move to stay put when its pivot changes. The
+ * rendered transform derives from (degrees, pivot), so moving the pivot of
+ * an already-turned shape re-derives it about a new point and the shape
+ * jumps; translating by R(delta) - delta, where delta is how far the pivot
+ * moved, cancels that exactly. Zero when the shape isn't turned.
  */
 export function pivotShift(geom, fromPivot, toPivot, deg) {
   if (!deg || !geom) return { dx: 0, dy: 0 };
@@ -349,29 +328,19 @@ export const PIVOT_RAYS = PIVOT_RAY_ANGLES.map(deg => {
 });
 
 // A ray fades as the pivot approaches the edge its quadrant sits on: full
-// strength while the pivot is at or beyond the middle, linearly to nothing
-// at the edge. Only the SIGN of dir is used — magnitude is irrelevant, which
-// is what lets this double as an axis fade (old cardinal rays, dir = 0/±1)
-// and a quadrant fade (new rays, dir = a fractional sin/cos) with no change.
+// strength at or beyond the middle, linearly to nothing at the edge. Only
+// the SIGN of dir matters, not its magnitude.
 function rayAxisOpacity(f, dir) {
   if (!dir) return 1;                       // this ray doesn't lean on this axis
   return clamp01((dir < 0 ? f : 1 - f) / 0.5);
 }
 
 /**
- * How visible each of the eight rays is for a pivot at (fx, fy). Every ray
- * has both a horizontal and a vertical lean now (see PIVOT_RAYS), so both
- * axes always attenuate and multiply — which means the two rays sharing a
- * quadrant (same sign of dx, same sign of dy) always fade IDENTICALLY,
- * however differently they're angled within that quadrant. In effect the
- * fade is per-quadrant: at fx=0 (left edge) every ray leaning left (NW's and
- * SW's four rays) is gone and every ray leaning right stays exactly as it
- * was.
- *
- * This is what keeps the pivot handle legible against the rotate handles
- * instead of moving them out of its way: by the time the pivot reaches a
- * corner, both rays of every OTHER quadrant have faded out, and only the
- * pair pointing back into the shape from that corner's own quadrant is left.
+ * Visibility of each of the eight rays for a pivot at (fx, fy). Both axes
+ * attenuate and multiply, so the two rays sharing a quadrant always fade
+ * identically: by the time the pivot reaches a corner, only that corner's
+ * own quadrant pair is still visible, keeping the handle legible against
+ * the rotate handles instead of needing to move them out of its way.
  */
 export function pivotRayOpacities(fx, fy) {
   return PIVOT_RAYS.map(({ dx, dy }) => ({
@@ -401,11 +370,7 @@ export function syncRotation(domEl) {
   else           domEl.removeAttribute('transform');
 }
 
-/**
- * Commit a rotation to the Yjs doc in a single transaction — the rotate
- * counterpart of applyResize. Shapes whose schema has no `rotate` key
- * (circles, where it would be invisible anyway) are a no-op.
- */
+/** Commit a rotation. A shape whose schema has no `rotate` key (circles) is a no-op. */
 export function applyRotate(ydoc, yEl, deg) {
   if (!yEl) return;
   if (!SHAPE_TYPES[yEl.nodeName]?.schema.types.rotate) return;
@@ -415,12 +380,10 @@ export function applyRotate(ydoc, yEl, deg) {
 }
 
 // ── Transform reconciliation (import) ────────────────────────────────────────
-// A shape's rotation lives in the document as a degree count and the SVG
-// transform is derived from it. An export carries both, so a file that comes
-// back from another editor can disagree with itself: the transform is what
-// that editor actually did, the degrees are what we last thought. Dropping
-// the transform (which is what the document does with its OWN derived copy)
-// would throw their edit away, so it has to be proved ours before it goes.
+// A file from another editor can disagree with itself: its transform is
+// what that editor actually did, its degrees are what we last thought.
+// Dropping the transform outright would throw the edit away, so it has to
+// be proved ours before it goes.
 
 const MATRIX_EPSILON = 1e-6;
 
@@ -481,20 +444,15 @@ export function parseTransformList(str) {
 
 /**
  * Reconcile a shape's stored rotation against the transform a file arrived
- * with. Returns what the document should hold: { rotate, x, y, transform }.
- * `transform` is null when the shape's own degrees fully describe it, and
- * the original matrix when they can't.
- *
- * Three outcomes:
+ * with. Returns { rotate, x, y, transform } — transform is null when the
+ * shape's own degrees fully describe it, the original matrix when they
+ * can't. Three outcomes:
  *   - the transform is the one we would have derived: ours, dropped.
- *   - it is a pure rotation about some other point, or with a move on top:
- *     both are recovered. The angle becomes the shape's own, and whatever
- *     translation is left over is folded into x/y, where this app keeps
- *     position anyway. Lossless.
+ *   - it's a pure rotation about some other point, or with a move on top:
+ *     both are recovered losslessly, the angle onto rotate and any leftover
+ *     translation folded into x/y.
  *   - it scales, skews or flips: not expressible as degrees, so the file's
- *     transform is kept verbatim and the stale rotation is dropped. The
- *     shape renders exactly as authored and simply isn't ours to turn (see
- *     selectModes, which stops offering rotate mode for it).
+ *     transform is kept verbatim and the stale rotation is dropped.
  */
 export function reconcileTransform(geom, storedDeg, matrix) {
   const base = { rotate: storedDeg, x: geom.x, y: geom.y, transform: null };
@@ -545,12 +503,9 @@ export function previewPivot(ghostEl, fx, fy) {
 }
 
 /**
- * Settle a freshly imported shape's rotation against the transform it arrived
- * with, writing back whatever the document should actually hold. Called by
- * storage.js for every drawing element on import.
- *
- * A shape with no `rotate` of ours is left completely alone: its transform is
- * the author's, and syncRotation already declines to manage it.
+ * Settle a freshly imported shape's rotation against the transform it
+ * arrived with. A shape with no `rotate` of ours is left completely
+ * alone: its transform is the author's.
  */
 export function reconcileImportedTransform(yEl) {
   if (yEl?.getAttribute?.(ROTATE_ATTR) == null) return;
@@ -564,10 +519,9 @@ export function reconcileImportedTransform(yEl) {
   const geom = def.getBBox(attrs);
   if (!Number.isFinite(geom?.width)) return;
 
-  // A transform present but unreadable is foreign by definition — we cannot
-  // have written it — so it stays exactly as the file spelled it, and our now
-  // meaningless degrees go instead. Distinguished from "no transform at all",
-  // which parseTransformList also reports as null.
+  // Present but unreadable is foreign by definition (we can't have written
+  // it), unlike "no transform at all" -- which parseTransformList also
+  // reports as null, so check the raw attribute to tell them apart.
   const raw    = yEl.getAttribute('transform');
   const matrix = parseTransformList(raw);
   if (raw != null && !matrix) {
@@ -625,12 +579,9 @@ export function getAnchor(svgEl) {
 /**
  * Every mode svgEl can be in, in cycle order, fully `sel-`-prefixed.
  * 'sel-move' is the default every shape shows with no click; rects/
- * circles each add their one resize-family mode after it.
- *
- * Rects rotate as 'sel-rotate-pivot' — the variant whose pivot the user can
- * place. 'sel-rotate' is the fixed-pivot variant, which toys will use. A
- * shape carrying a transform of someone else's is not offered either: see
- * hasForeignTransform.
+ * circles each add their one resize-family mode after it. Rects rotate as
+ * 'sel-rotate-pivot' — the placeable-pivot variant — unless they carry a
+ * foreign transform, which drops rotate mode entirely.
  */
 export function selectModes(svgEl) {
   const tag = svgEl?.tagName;
@@ -886,10 +837,8 @@ export function edit(ydoc, yEl, editData) {
 
 /**
  * Apply a live resize to a detached ghost clone — DOM only, no Yjs write.
- * Mirrors boun_pos.js's previewResize so overlay.js can hand any layer's
- * ghost the same (x, y, width, height) without knowing how each shape
- * stores its geometry. (x, y, width, height) is the bbox form
- * computeResize returns; for a circle that's the centre-preserving bbox.
+ * (x, y, width, height) is the bbox form computeResize returns; for a
+ * circle that's the centre-preserving bbox.
  */
 export function previewResize(ghostEl, x, y, width, height) {
   const tag = ghostEl?.tagName;
