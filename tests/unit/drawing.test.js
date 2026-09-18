@@ -238,32 +238,13 @@ describe('computeResize', () => {
   // Corner indices: 0=NW, 1=NE, 2=SE, 3=SW.
   const startRect = { x: 100, y: 100, width: 200, height: 150 } // right=300, bottom=250
 
-  test('sel-resize: BR drag keeps the top-left corner fixed, size follows the pointer', () => {
-    const rect = computeResize('sel-resize', startRect, 2, 340, 260)
-    expect(rect).toEqual({ x: 100, y: 100, width: 240, height: 160 })
-  })
-
-  test('sel-resize: TL drag keeps the bottom-right corner fixed', () => {
-    const rect = computeResize('sel-resize', startRect, 0, 80, 90)
-    expect(rect).toEqual({ x: 80, y: 90, width: 220, height: 160 })
-  })
-
-  test('sel-resize: TR drag keeps the bottom-left corner fixed — x never moves', () => {
-    const rect = computeResize('sel-resize', startRect, 1, 360, 80)
-    expect(rect).toEqual({ x: 100, y: 80, width: 260, height: 170 })
-  })
-
-  test('sel-resize: SW drag keeps the top-right corner fixed — y never moves', () => {
-    const rect = computeResize('sel-resize', startRect, 3, 60, 300)
-    expect(rect).toEqual({ x: 60, y: 100, width: 240, height: 200 })
-  })
-
-  test('sel-resize: dragging past the fixed corner clamps to the minimum size, never inverts', () => {
+  // Full corner-by-corner coverage of the shared corner-opposite-fixed
+  // algorithm (same fixture numbers) lives in tests/unit/geometry.test.js
+  // now — this just checks the 'sel-resize' mode routes there at all, and
+  // wires MIN_RECT_RESIZE_SIZE through as the clamp floor.
+  test('sel-resize: routes to the shared corner algorithm with rects’ own minimum size', () => {
     const rect = computeResize('sel-resize', startRect, 2, 50, 50)
-    expect(rect.x).toBe(100)
-    expect(rect.y).toBe(100)
-    expect(rect.width).toBeGreaterThanOrEqual(30)
-    expect(rect.height).toBeGreaterThanOrEqual(30)
+    expect(rect).toEqual({ x: 100, y: 100, width: 30, height: 30 }) // MIN_RECT_RESIZE_SIZE
   })
 
   test('sel-resize-r: grows a centered radius toward the pointer, ignoring corner', () => {
