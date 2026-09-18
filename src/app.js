@@ -198,7 +198,6 @@ function _broadcastDesired() {
 const RESIZE_HANDLE_MODES = new Set(['sel-resize', 'sel-resize-r']);
 const ROTATE_HANDLE_MODES = new Set(['sel-rotate', 'sel-rotate-pivot']);
 
-// id's own live DOM element and owning LayerAPI
 function _layerFor(id) {
   const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
   return { domEl, layer: _Layers[moduleForElement(domEl)] };
