@@ -75,8 +75,8 @@ import {
   resolveRotation   as elementRotation,
   rotationTransform,
   pivotRayOpacities,
-  normalizeAngle,
 } from './drawing.js';
+import { normalizeAngle } from './geometry.js';
 import { LOCAL_ACTION_FILTER_ID } from './defs.js';
 import { getBowstringState, chargeOpacityFor, chargeRadiusFor, bowstringOrigin } from './delight.js';
 import { drawAsteriskGlyph, drawCrosshairGlyph, drawRotateGlyph, drawPivotGlyph } from './icons.js';

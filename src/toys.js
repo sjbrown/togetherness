@@ -34,14 +34,13 @@ import { getOps, appendOp, getOp, heads, labelBranches, branchAuthors, forkJoinS
 import { invert as invertWire, apply as applyWire } from './op_wire_mutation.js';
 import { checkpointOp, projectFrom, buildForkSeed, isCheckpoint } from './op_checkpoint.js';
 import { receiveOp, advanceTo } from './op_replay.js';
-// computeRotate/snapAngle/normalizeAngle are pure degree geometry with zero
-// dependency on drawing.js's shape types (corner indices 0-3 match this
-// module's own RESIZE_CORNER_* numbering) -- reused rather than retyped, the
-// one cross-layer import in an otherwise self-contained module. See the
-// "Rotation" section below for what stays local: toys have no placeable
-// pivot, so the parts of drawing.js's rotation machinery that exist only to
-// support one (getPivot, rotationCenter's pivot argument) are NOT reused.
-import { computeRotate, snapAngle, normalizeAngle } from './drawing.js';
+// geometry.js is shape-agnostic pure math shared with drawing.js and
+// boun_pos.js -- no cross-layer dependency, just a common neutral module.
+// See the "Rotation" section below for what stays local: toys have no
+// placeable pivot, so the parts of drawing.js's own rotation machinery that
+// exist only to support one (getPivot, rotationCenter's pivot argument)
+// are NOT reused.
+import { computeRotate, snapAngle, normalizeAngle, computeResizeCornerRect } from './geometry.js';
 
 // ── ID helpers ────────────────────────────────────────────────────────────────
 
@@ -1294,36 +1293,12 @@ function clampResizeDim(value) {
 }
 
 /**
- * Pure geometry for a corner-drag resize: given the toy's rect at drag
- * start and the corner being dragged, compute the new { x, y, width,
- * height } for the current pointer position (px, py), keeping the corner
- * OPPOSITE the dragged one fixed in place. Clamps width/height to
- * MIN_RESIZE_SIZE (never lets the dragged corner cross the fixed one) —
- * the fixed corner itself never moves.
+ * A toy's own corner-drag resize, at the toy's own minimum size. The
+ * shared corner-opposite-fixed algorithm lives in geometry.js; this is
+ * just toys.js's own MIN_RESIZE_SIZE threaded through.
  */
 export function computeResizeRect(startRect, corner, px, py) {
-  const { x, y, width, height } = startRect
-  const left = x, top = y, right = x + width, bottom = y + height
-
-  switch (corner) {
-    case RESIZE_CORNER_NW: {
-      const newLeft = Math.min(px, right - MIN_RESIZE_SIZE)
-      const newTop  = Math.min(py, bottom - MIN_RESIZE_SIZE)
-      return { x: newLeft, y: newTop, width: right - newLeft, height: bottom - newTop }
-    }
-    case RESIZE_CORNER_NE: {
-      const newTop = Math.min(py, bottom - MIN_RESIZE_SIZE)
-      return { x: left, y: newTop, width: Math.max(px - left, MIN_RESIZE_SIZE), height: bottom - newTop }
-    }
-    case RESIZE_CORNER_SW: {
-      const newLeft = Math.min(px, right - MIN_RESIZE_SIZE)
-      return { x: newLeft, y: top, width: right - newLeft, height: Math.max(py - top, MIN_RESIZE_SIZE) }
-    }
-    case RESIZE_CORNER_SE:
-    default: {
-      return { x: left, y: top, width: Math.max(px - left, MIN_RESIZE_SIZE), height: Math.max(py - top, MIN_RESIZE_SIZE) }
-    }
-  }
+  return computeResizeCornerRect(startRect, corner, px, py, MIN_RESIZE_SIZE)
 }
 
 /**

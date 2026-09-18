@@ -14,12 +14,12 @@ import {
   addDrawing, deleteDrawing, findDrawing,
   getGeom, _toSVGEl, listDrawings, CURRENT_SCHEMA, SHAPE_TYPES,
   selectModes, nextSelectMode, computeResize,
-  computeRotate, snapAngle, normalizeAngle, getRotation, syncRotation,
+  getRotation, syncRotation,
   applyRotate, applyMoveCommit, applyMoveDom, previewResize, previewRotate, rotationCenter,
   resolveRotation, rotationTransform, getPivot,
   snapPivot, computePivot, pivotShift, pivotRayOpacities, PIVOT_RAYS, applyPivot,
   reconcileImportedTransform, parseTransformList, reconcileTransform,
-  ROTATE_SNAP_DEG, PIVOT_SNAP_FRACTION,
+  PIVOT_SNAP_FRACTION,
 } from '../../src/drawing.js'
 import { tablesAPI } from '../../src/tables.js'
 
@@ -508,78 +508,8 @@ describe('z-order', () => {
 // it plus the shape's current geometry, never stored.
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('snapAngle / normalizeAngle', () => {
-  test('snaps to the nearest multiple of the default 15° step', () => {
-    expect(ROTATE_SNAP_DEG).toBe(15)
-    expect(snapAngle(7)).toBe(0)
-    expect(snapAngle(8)).toBe(15)
-    expect(snapAngle(37)).toBe(30)
-    expect(snapAngle(38)).toBe(45)
-  })
-
-  test('the step is an argument, not a constant — a caller can pass its own', () => {
-    expect(snapAngle(38, 90)).toBe(0)
-    expect(snapAngle(50, 90)).toBe(90)
-    expect(snapAngle(7, 5)).toBe(5)
-  })
-
-  test('a step of 0 means free rotation — the angle passes through unsnapped', () => {
-    expect(snapAngle(37.5, 0)).toBeCloseTo(37.5)
-  })
-
-  test('normalizes into [0, 360) so a snap that lands on 360 reads as 0', () => {
-    expect(normalizeAngle(-15)).toBe(345)
-    expect(normalizeAngle(360)).toBe(0)
-    expect(normalizeAngle(725)).toBe(5)
-    expect(snapAngle(-8)).toBe(345)
-    expect(snapAngle(358)).toBe(0)
-  })
-})
-
-describe('computeRotate', () => {
-  // A square, so every corner sits on a diagonal and the arithmetic is
-  // checkable by eye. centre (100, 100).
-  const startRect = { x: 50, y: 50, width: 100, height: 100 }
-  const mid = { cx: 100, cy: 100 }
-
-  test('pointer left on the grabbed corner means no rotation', () => {
-    expect(computeRotate(startRect, mid, 2, 150, 150)).toBe(0)  // SE corner
-    expect(computeRotate(startRect, mid, 0, 50, 50)).toBe(0)    // NW corner
-  })
-
-  test('the grabbed corner follows the pointer — a quarter turn reads as 90°', () => {
-    // SE corner starts at 45° from centre; pointer moved to 135° (SW side).
-    expect(computeRotate(startRect, mid, 2, 50, 150)).toBe(90)
-  })
-
-  test('each corner measures from its own start, so all four agree on the angle', () => {
-    // Every corner dragged a quarter turn clockwise gives the same 90°.
-    expect(computeRotate(startRect, mid, 0, 150, 50)).toBe(90)  // NW → NE position
-    expect(computeRotate(startRect, mid, 1, 150, 150)).toBe(90) // NE → SE position
-    expect(computeRotate(startRect, mid, 3, 50, 50)).toBe(90)   // SW → NW position
-  })
-
-  test('the raw angle is snapped to the step before it is returned', () => {
-    const rect = { x: 0, y: 0, width: 200, height: 200 }
-    const c    = { cx: 100, cy: 100 }
-    // ~10° past the SE corner's 45° — snaps down to 0 at 15°, up to 45 at 40°.
-    expect(computeRotate(rect, c, 2, 100, 200)).toBe(45)
-    expect(computeRotate(rect, c, 2, 200, 190, 90)).toBe(0)
-  })
-
-  test('counter-clockwise rotation comes back normalized, never negative', () => {
-    expect(computeRotate(startRect, mid, 2, 150, 50)).toBe(270)
-  })
-
-  test('the centre is an argument, so an off-centre pivot needs no change here', () => {
-    // Turning about the NW corner instead of the middle: the SE corner
-    // starts at 45° from it too (square), but a quarter turn about a
-    // different point is still a quarter turn.
-    const nw = { cx: 50, cy: 50 }
-    expect(computeRotate(startRect, nw, 2, 150, 150)).toBe(0)
-    expect(computeRotate(startRect, nw, 2, -50, 150)).toBe(90)
-  })
-})
+// snapAngle/normalizeAngle/computeRotate now live in geometry.js — see
+// tests/unit/geometry.test.js.
 
 describe('rotation on the DOM', () => {
   const rectDom = (attrs = {}) => {
