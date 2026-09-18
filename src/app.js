@@ -196,9 +196,6 @@ function _broadcastDesired() {
 
 // Modes with their own drag handles.
 const RESIZE_HANDLE_MODES = new Set(['sel-resize', 'sel-resize-r']);
-// 'sel-rotate' turns about a fixed pivot (toys); 'sel-rotate-pivot' about one
-// the user can place (rects). The gesture is identical either way — only
-// where the shape's own layer says the centre is differs.
 const ROTATE_HANDLE_MODES = new Set(['sel-rotate', 'sel-rotate-pivot']);
 
 // id's own live DOM element and owning LayerAPI
