@@ -341,33 +341,16 @@ let _resizeState = null;    // { id, corner, mtype, mode, rotation,
                             //   startRect: {x,y,width,height},
                             //   lastRect: {x,y,width,height} } | null
 
-// Active corner-drag rotation — the sibling of _resizeState, kept separate
-// so the two gestures can never be half-confused for one another.
 let _rotateState = null;    // { id, corner, mtype, centre: {cx,cy},
                             //   startRect: {x,y,width,height} } | null
 
-// Active pivot placement — the third handle-drag gesture, alongside resize
-// and rotate. No ghost: the compensation keeps the shape still, so the only
-// thing that moves is the handle itself.
 let _pivotState = null;     // { id, mtype, startRect, fromPivot, deg } | null
 
-// How far one rotate step turns a shape, PER LAYER — rects snap at 15°,
-// chips/cards at 45°, and those are different enough (one's a stated future
-// user preference, the other a fixed grain of the toy itself) that forcing
-// one flat value across every rotatable layer was never going to hold past
-// the first second layer. Each layer seeds its own default from its own
-// module constant; a mutable seam so a future per-table or per-user control
-// has somewhere to write, per layer, without touching the others. Every
-// geometry function downstream still takes the step as an argument rather
-// than reading a constant — this is just where app.js decides WHICH value
-// to pass, by mtype.
 let _rotateSnapDegByLayer = {
   drawing: Drawing.ROTATE_SNAP_DEG,
   toys:    Toys.ROTATE_SNAP_DEG,
 };
 
-// How close a dragged pivot has to come to one of the nine notable points
-// before it locks on. Same seam as _rotateSnapDeg.
 let _pivotSnapFraction = Drawing.PIVOT_SNAP_FRACTION;
 
 // Which undo mechanism App.undo/App.redo should invoke: the toys op log
@@ -969,12 +952,10 @@ const App = {
     const mtype = moduleForElement(svgEl);
     return _Layers[mtype]?.getAnchor(svgEl) ?? { x: 0, y: 0 };
   },
-  // { deg, cx, cy } or null. Read by overlay.js to turn an element's
-  // selection furniture with it — getBBox stays unrotated.
+  // { deg, cx, cy } or null
   getRotation: (id) => _rotationOf(id),
   // { fx, fy, cx, cy } — the pivot as fractions of the bbox plus the
   // canvas-space point they resolve to, or null for a layer with no pivot.
-  // Overlay needs both: the point to draw at, the fractions to fade the rays.
   getPivot: (id) => {
     const { domEl, layer } = _layerFor(id);
     const pivot = layer?.getPivot?.(domEl);
@@ -1752,20 +1733,13 @@ const App = {
   },
 
   // ── Rotate lifecycle ──────────────────────────────────────────────────────
-  // Deliberately parallel to the resize lifecycle above — same corner-handle
-  // hit-test, same ghost, same start/move/commit/cancel shape — because it
-  // is the same gesture with different arithmetic behind it. What differs:
-  // the pointer stays in CANVAS space (an absolute angle about the shape's
-  // centre is the whole point), and the commit writes one degree count
-  // rather than a bbox.
+  // Parallel to the resize lifecycle above. It's basically the same gesture
+  // (corner-handle hit test, ghost on overlay, start/move/commit/cancel
+  // shape) with different arithmetic. The point stays on CANVAS space and
+  // the commit writes one degree count rather than a bbox.
 
-  // The rotate-mode twin of getResizeModeId.
   getRotateModeId: () => (_activeMode && ROTATE_HANDLE_MODES.has(_activeMode.mode)) ? _activeMode.id : null,
 
-  // The step rotation snaps to, in degrees, for ONE layer (mtype: 'drawing'
-  // | 'toys'). Surfaced as a pair so a control can change it later without
-  // any geometry knowing — per layer, since a rect's 15° and a chip's 45°
-  // are independent settings, not one flat app-wide number.
   getRotateSnapDeg: (mtype) => _rotateSnapDegByLayer[mtype],
   setRotateSnapDeg: (mtype, deg) => { _rotateSnapDegByLayer[mtype] = Number(deg) || 0; },
   getPivotSnapFraction: () => _pivotSnapFraction,
@@ -1825,10 +1799,7 @@ const App = {
   },
 
   // ── Pivot lifecycle ───────────────────────────────────────────────────────
-  // The third handle drag. Unlike resize and rotate it needs no ghost: the
-  // commit compensates the shape's position so it stays exactly where it is,
-  // which means there is nothing to preview except the handle, and an overlay
-  // repaint covers that.
+  // Similar to resize and rotate. No ghost needed though.
 
   startPivotDrag: (id) => {
     if (_activeMode?.id !== id || _activeMode.mode !== 'sel-rotate-pivot' || App.isHeldByOther(id)) return;

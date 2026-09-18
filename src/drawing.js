@@ -39,9 +39,6 @@ export const SHAPE_TYPES = {
     getBBox: rectGetBBox,
     iconUrl: 'drawing/rect.svg',
     // attrMap: schema key → actual SVG attribute name (where they differ)
-    // `rotate` maps to data-rotate rather than a bare `rotate` attribute:
-    // SVG already gives `rotate` a different meaning on <text>, so a
-    // data- name keeps the degree count unambiguously ours.
     attrMap: { 'corner-r': 'rx', rotate: 'data-rotate', 'pivot-x': 'data-pivot-x', 'pivot-y': 'data-pivot-y' },
     schema: {
       label: 'Rectangle',
@@ -233,14 +230,7 @@ export function snapAngle(deg, snapDeg = ROTATE_SNAP_DEG) {
   return normalizeAngle(Math.round(Number(deg) / step) * step);
 }
 
-/**
- * A transform this module didn't write — an imported or hand-authored shape
- * whose geometry can't be expressed as degrees (see reconcileTransform's
- * third outcome). Rotating it would replace that transform and throw the
- * author's work away, so rotation isn't offered at all. Move and resize stay
- * available: they write x/y/width/height and syncRotation leaves the
- * transform alone, so nothing is lost.
- */
+/** A transform this module didn't write -- created by external software or hand-authored */
 export function hasForeignTransform(svgEl) {
   return !!svgEl?.hasAttribute?.('transform') && !svgEl.hasAttribute(ROTATE_ATTR);
 }
@@ -262,12 +252,7 @@ const PIVOT_Y_ATTR = 'data-pivot-y';
 
 const clamp01 = n => Math.min(1, Math.max(0, n));
 
-/**
- * A shape's pivot, defaulting to its centre. Clamped on READ, not just on
- * write: a pivot outside the shape is the lever-arm rotation this app
- * deliberately doesn't offer, so a hand-edited or imported value out of
- * range is corrected at the boundary rather than trusted.
- */
+/** A shape's pivot, defaulting to its centre. Always clamp the return value to defend against hand-edited values out of range */
 export function getPivot(svgEl) {
   const fx = parseFloat(svgEl?.getAttribute?.(PIVOT_X_ATTR));
   const fy = parseFloat(svgEl?.getAttribute?.(PIVOT_Y_ATTR));
@@ -301,10 +286,7 @@ export function resolveRotation(svgEl, geom = getGeom(svgEl)) {
 // ── Pivot placement ──────────────────────────────────────────────────────────
 
 // How close (in fractions of the bbox) a dragged pivot has to come to one of
-// the nine notable points before it snaps: the four corners, the four edge
-// midpoints, and the centre. Same shape as ROTATE_SNAP_DEG — an argument
-// everywhere, so the tolerance can be made a setting without touching any of
-// the geometry.
+// the nine notable points before it snaps.
 export const PIVOT_SNAP_FRACTION = 0.08;
 
 const NOTABLE = [0, 0.5, 1];

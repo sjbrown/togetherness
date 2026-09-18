@@ -138,11 +138,6 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
     }
   }
 
-  // Drawing layer. A shape's rotation lives in the document as a degree count
-  // and the transform is derived from it, so an import has to settle the two
-  // against each other: our own derived copy is dropped, an external editor's
-  // rotation is recovered into the degrees (and x/y), and anything we can't
-  // express as degrees is left exactly as the file had it.
   if (drawLayerEl) {
     for (const child of drawLayerEl.children) {
       const yEl = domToY(child);
