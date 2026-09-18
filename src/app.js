@@ -209,17 +209,11 @@ function _defaultModeFor(id) {
   return layer?.nextSelectMode?.(domEl, null) ?? null;
 }
 
-// id's rotation resolved against its current geometry — { deg, cx, cy }, or
-// null when it isn't rotated or its layer has no notion of rotation. The
-// layer owns where the pivot is; nothing here assumes the middle.
 function _rotationOf(id) {
   const { domEl, layer } = _layerFor(id);
   return layer?.resolveRotation?.(domEl) ?? null;
 }
 
-// The canvas-space point id turns about, rotated or not, or null for a layer
-// that has no notion of one. Captured at the start of a gesture so every
-// sample of it measures from the same place.
 function _rotationCenterOf(id, geom) {
   const { domEl, layer } = _layerFor(id);
   return layer?.rotationCenter?.(domEl, geom) ?? null;
