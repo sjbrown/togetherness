@@ -1054,6 +1054,13 @@ function renderPivotHandle(elId, geo, scale, parent = _layerEl) {
         cx: geo.x + dragged.fx * geo.width, cy: geo.y + dragged.fy * geo.height }
     : committed;
   const g = el('g', { class: 'pivotHandle' });
+  // Invisible circle at hitTestPivot's own radius: the rays/dot below it
+  // opt out of pointer-events, and a <g> has no geometry of its own to
+  // hover, so without this nothing here ever shows the crosshair cursor.
+  g.appendChild(el('circle', {
+    cx: pivot.cx, cy: pivot.cy, r: (PIVOT_SIZE / 2 + HANDLE_HIT_PAD) / scale,
+    fill: 'transparent',
+  }));
   drawPivotGlyph(pivot.cx, pivot.cy, PIVOT_SIZE / scale, g, pivotRayOpacities(pivot.fx, pivot.fy));
   parent.appendChild(g);
 }

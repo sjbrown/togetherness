@@ -291,7 +291,9 @@ describe('handles carry their cursor inline, so it can follow the rotation', () 
 // ─────────────────────────────────────────────────────────────────────────────
 
 const pivotRays = () => document.querySelectorAll('#overlay-layer .pivotHandle line')
-const pivotDot  = () => document.querySelector('#overlay-layer .pivotHandle circle')
+// .pivotGlyph, not just any circle: the handle also carries an invisible
+// hit-target circle (for the hover cursor) at the same coordinates.
+const pivotDot  = () => document.querySelector('#overlay-layer .pivotHandle circle.pivotGlyph')
 
 describe('the pivot handle', () => {
   test('is drawn in sel-rotate-pivot and nowhere else', () => {
@@ -359,6 +361,23 @@ describe('the pivot handle', () => {
 
     setPivotPreview(null, null)
     expect(Number(pivotDot().getAttribute('cx'))).toBe(BBOX.x + BBOX.width / 2)
+  })
+
+  test('carries an invisible circle sized to the real hit radius, so hovering it shows the cursor', () => {
+    // The rays/dot opt out of pointer-events (see icons.js), and a <g> has no
+    // paintable geometry of its own — without a painted, non-glyph shape here,
+    // .pivotHandle's `cursor: crosshair` rule never has anything to hover.
+    boot({ pivot: { fx: 0, fy: 0 } }); enter('sel-rotate-pivot')
+    const hit = document.querySelector('#overlay-layer .pivotHandle circle:not(.pivotGlyph)')
+    expect(hit).not.toBeNull()
+    expect(hit.getAttribute('fill')).toBe('transparent')
+
+    const cx = Number(hit.getAttribute('cx'))
+    const cy = Number(hit.getAttribute('cy'))
+    const r = Number(hit.getAttribute('r'))
+    const pt = { cx: BBOX.x, cy: BBOX.y }
+    expect(hitTestPivot(pt, cx + r - 0.5, cy, 1)).toBe(true)
+    expect(hitTestPivot(pt, cx + r + 0.5, cy, 1)).toBe(false)
   })
 })
 
