@@ -8,7 +8,7 @@
 
 import { describe, test, expect } from 'vitest'
 import {
-  normalizeAngle, snapAngle, computeRotate, computeResizeCornerRect,
+  normalizeAngle, snapAngle, computeRotate, computeResizeCornerRect, rotatePoint,
 } from '../../src/geometry.js'
 
 describe('snapAngle / normalizeAngle', () => {
@@ -35,6 +35,30 @@ describe('snapAngle / normalizeAngle', () => {
     expect(normalizeAngle(725)).toBe(5)
     expect(snapAngle(-8)).toBe(345)
     expect(snapAngle(358)).toBe(0)
+  })
+})
+
+describe('rotatePoint', () => {
+  test('is a no-op with no rotation', () => {
+    expect(rotatePoint({ x: 5, y: 7 }, null)).toEqual({ x: 5, y: 7 })
+  })
+
+  test('turns a point 90° clockwise about its centre (SVG’s rotate() sense)', () => {
+    const p = rotatePoint({ x: 110, y: 100 }, { deg: 90, cx: 100, cy: 100 })
+    expect(p.x).toBeCloseTo(100)
+    expect(p.y).toBeCloseTo(110)
+  })
+
+  test('leaves the pivot itself fixed', () => {
+    const p = rotatePoint({ x: 100, y: 100 }, { deg: 45, cx: 100, cy: 100 })
+    expect(p.x).toBeCloseTo(100)
+    expect(p.y).toBeCloseTo(100)
+  })
+
+  test('cx/cy default to 0, rotating a bare vector about the origin', () => {
+    const p = rotatePoint({ x: 10, y: 0 }, { deg: 90 })
+    expect(p.x).toBeCloseTo(0)
+    expect(p.y).toBeCloseTo(10)
   })
 })
 

@@ -6,7 +6,6 @@ import {
   wobbleAmpFor,
   snapDurationFor,
   stringPathD,
-  rotatePoint,
   bowstringOrigin,
   hitTestBowstring,
   chargeOpacityFor,
@@ -121,24 +120,6 @@ describe('stringPathD', () => {
   it('takes the perpendicular of a vertical pull too', () => {
     // Pull straight down: perpendicular is straight left (nx=-1, ny=0).
     expect(stringPathD(origin, 100, 200, 10)).toBe('M100 100 Q90 150 100 200')
-  })
-})
-
-describe('rotatePoint', () => {
-  it('is a no-op with no rotation', () => {
-    expect(rotatePoint({ x: 5, y: 7 }, null)).toEqual({ x: 5, y: 7 })
-  })
-
-  it('turns a point 90° clockwise about its centre (SVG’s rotate() sense)', () => {
-    const p = rotatePoint({ x: 110, y: 100 }, { deg: 90, cx: 100, cy: 100 })
-    expect(p.x).toBeCloseTo(100)
-    expect(p.y).toBeCloseTo(110)
-  })
-
-  it('leaves the pivot itself fixed', () => {
-    const p = rotatePoint({ x: 100, y: 100 }, { deg: 45, cx: 100, cy: 100 })
-    expect(p.x).toBeCloseTo(100)
-    expect(p.y).toBeCloseTo(100)
   })
 })
 

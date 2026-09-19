@@ -19,6 +19,7 @@
  */
 
 import { initIcons }                              from './icons.js';
+import { rotatePoint }                            from './geometry.js';
 import * as BounPos                               from './boun_pos.js';
 import * as Drawing                               from './drawing.js';
 import * as Toys                                  from './toys.js';
@@ -227,14 +228,10 @@ function _reanchorRotated(id, rect, rot) {
   if (!rot) return rect;
   const centre = _rotationCenterOf(id, rect);
   if (!centre) return rect;
-  const dx  = centre.cx - rot.cx;
-  const dy  = centre.cy - rot.cy;
-  const rad = rot.deg * Math.PI / 180;
-  return {
-    ...rect,
-    x: rect.x + dx * Math.cos(rad) - dy * Math.sin(rad) - dx,
-    y: rect.y + dx * Math.sin(rad) + dy * Math.cos(rad) - dy,
-  };
+  const dx = centre.cx - rot.cx;
+  const dy = centre.cy - rot.cy;
+  const shifted = rotatePoint({ x: dx, y: dy }, { deg: rot.deg });
+  return { ...rect, x: rect.x + shifted.x - dx, y: rect.y + shifted.y - dy };
 }
 
 // The one place a pivot change is written. Moving the pivot re-derives the
@@ -255,14 +252,7 @@ function _writePivot(id, mtype, startRect, fromPivot, toPivot, deg) {
 // local space, so every hit-test and resize computation comes through here
 // first. A no-op for anything unrotated, which is nearly everything.
 function _toLocalPoint(id, px, py, rot = _rotationOf(id)) {
-  if (!rot) return { x: px, y: py };
-  const { deg, cx, cy } = rot;
-  const rad = -deg * Math.PI / 180;
-  const dx  = px - cx, dy = py - cy;
-  return {
-    x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
-    y: cy + dx * Math.sin(rad) + dy * Math.cos(rad),
-  };
+  return rotatePoint({ x: px, y: py }, rot && { ...rot, deg: -rot.deg });
 }
 
 function _renderSelectionMode() {

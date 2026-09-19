@@ -9,7 +9,7 @@
  */
 
 import * as Y from 'yjs';
-import { normalizeAngle, computeRotate, computeResizeCornerRect } from './geometry.js';
+import { normalizeAngle, computeRotate, computeResizeCornerRect, rotatePoint } from './geometry.js';
 
 const SVG_NS   = 'http://www.w3.org/2000/svg';
 const XLINK_NS = 'http://www.w3.org/1999/xlink';
@@ -308,11 +308,8 @@ export function pivotShift(geom, fromPivot, toPivot, deg) {
   const to   = rotationCenter(geom, toPivot);
   const dx   = to.cx - from.cx;
   const dy   = to.cy - from.cy;
-  const rad  = deg * Math.PI / 180;
-  return {
-    dx: dx * Math.cos(rad) - dy * Math.sin(rad) - dx,
-    dy: dx * Math.sin(rad) + dy * Math.cos(rad) - dy,
-  };
+  const shifted = rotatePoint({ x: dx, y: dy }, { deg });
+  return { dx: shifted.x - dx, dy: shifted.y - dy };
 }
 
 // The eight directions the pivot handle radiates in: two per quadrant,

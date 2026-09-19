@@ -45,6 +45,9 @@
  */
 
 import { LOCAL_ACTION_FILTER_ID, GLOW_FILTER_ID } from './defs.js';
+import { rotatePoint } from './geometry.js';
+
+export { rotatePoint };
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 
@@ -134,18 +137,6 @@ export function stringPathD(origin, x, y, wobble) {
   const midX = (origin.x + x) / 2, midY = (origin.y + y) / 2;
   const nx = -dy / dist, ny = dx / dist;
   return `M${origin.x} ${origin.y} Q${midX + nx * wobble} ${midY + ny * wobble} ${x} ${y}`;
-}
-
-/** Rotate pt by rot.deg (SVG's clockwise sense) about (rot.cx, rot.cy). A no-op for rot === null. */
-export function rotatePoint(pt, rot) {
-  if (!rot) return pt;
-  const { deg, cx, cy } = rot;
-  const rad = deg * Math.PI / 180;
-  const dx = pt.x - cx, dy = pt.y - cy;
-  return {
-    x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
-    y: cy + dx * Math.sin(rad) + dy * Math.cos(rad),
-  };
 }
 
 // ── Module state ──────────────────────────────────────────────────────────

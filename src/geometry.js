@@ -42,6 +42,23 @@ export function computeRotate(startRect, centre, corner, px, py, snapDeg = DEFAU
   return snapAngle((nowAngle - grabAngle) * 180 / Math.PI, snapDeg);
 }
 
+/**
+ * Rotate pt by deg (SVG's clockwise-in-screen-space sense) about (cx, cy) --
+ * cx/cy default to 0 so the same call rotates a bare vector. A no-op
+ * (returns pt) when rot is null/undefined, so a caller with an unresolved
+ * rotation needs no guard of its own.
+ */
+export function rotatePoint(pt, rot) {
+  if (!rot) return pt;
+  const { deg, cx = 0, cy = 0 } = rot;
+  const rad = deg * Math.PI / 180;
+  const dx = pt.x - cx, dy = pt.y - cy;
+  return {
+    x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
+    y: cy + dx * Math.sin(rad) + dy * Math.cos(rad),
+  };
+}
+
 // ── Corner-drag resize ──────────────────────────────────────────────────────
 
 /**
