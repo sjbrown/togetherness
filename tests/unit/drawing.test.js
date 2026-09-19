@@ -14,6 +14,12 @@ import {
   addDrawing, deleteDrawing, findDrawing,
   getGeom, _toSVGEl, listDrawings, CURRENT_SCHEMA, SHAPE_TYPES,
   selectModes, nextSelectMode, computeResize,
+  getRotation, syncRotation,
+  applyRotate, applyMoveCommit, applyMoveDom, previewResize, previewRotate, rotationCenter,
+  resolveRotation, rotationTransform, getPivot,
+  snapPivot, computePivot, pivotShift, pivotRayOpacities, PIVOT_RAYS, applyPivot,
+  reconcileImportedTransform, parseTransformList, reconcileTransform,
+  PIVOT_SNAP_FRACTION,
 } from '../../src/drawing.js'
 import { tablesAPI } from '../../src/tables.js'
 
@@ -202,17 +208,18 @@ describe('selectModes / nextSelectMode', () => {
   const circleEl = () => document.createElementNS('http://www.w3.org/2000/svg', 'circle')
   const lineEl   = () => document.createElementNS('http://www.w3.org/2000/svg', 'line')
 
-  test('selectModes: sel-move plus rects support sel-resize, circles sel-resize-r', () => {
-    expect(selectModes(rectEl())).toEqual(['sel-move', 'sel-resize'])
+  test('selectModes: sel-move plus rects support sel-resize/sel-rotate-pivot, circles sel-resize-r', () => {
+    expect(selectModes(rectEl())).toEqual(['sel-move', 'sel-resize', 'sel-rotate-pivot'])
     expect(selectModes(circleEl())).toEqual(['sel-move', 'sel-resize-r'])
     expect(selectModes(lineEl())).toEqual(['sel-move'])
   })
 
-  test('nextSelectMode cycles a rect through sel-move <-> sel-resize', () => {
+  test('nextSelectMode cycles a rect sel-move -> sel-resize -> sel-rotate-pivot -> sel-move', () => {
     const el = rectEl()
     expect(nextSelectMode(el, null)).toBe('sel-move')
     expect(nextSelectMode(el, 'sel-move')).toBe('sel-resize')
-    expect(nextSelectMode(el, 'sel-resize')).toBe('sel-move')
+    expect(nextSelectMode(el, 'sel-resize')).toBe('sel-rotate-pivot')
+    expect(nextSelectMode(el, 'sel-rotate-pivot')).toBe('sel-move')
   })
 
   test('nextSelectMode cycles a circle through sel-move <-> sel-resize-r', () => {
@@ -231,32 +238,13 @@ describe('computeResize', () => {
   // Corner indices: 0=NW, 1=NE, 2=SE, 3=SW.
   const startRect = { x: 100, y: 100, width: 200, height: 150 } // right=300, bottom=250
 
-  test('sel-resize: BR drag keeps the top-left corner fixed, size follows the pointer', () => {
-    const rect = computeResize('sel-resize', startRect, 2, 340, 260)
-    expect(rect).toEqual({ x: 100, y: 100, width: 240, height: 160 })
-  })
-
-  test('sel-resize: TL drag keeps the bottom-right corner fixed', () => {
-    const rect = computeResize('sel-resize', startRect, 0, 80, 90)
-    expect(rect).toEqual({ x: 80, y: 90, width: 220, height: 160 })
-  })
-
-  test('sel-resize: TR drag keeps the bottom-left corner fixed — x never moves', () => {
-    const rect = computeResize('sel-resize', startRect, 1, 360, 80)
-    expect(rect).toEqual({ x: 100, y: 80, width: 260, height: 170 })
-  })
-
-  test('sel-resize: SW drag keeps the top-right corner fixed — y never moves', () => {
-    const rect = computeResize('sel-resize', startRect, 3, 60, 300)
-    expect(rect).toEqual({ x: 60, y: 100, width: 240, height: 200 })
-  })
-
-  test('sel-resize: dragging past the fixed corner clamps to the minimum size, never inverts', () => {
+  // Full corner-by-corner coverage of the shared corner-opposite-fixed
+  // algorithm (same fixture numbers) lives in tests/unit/geometry.test.js
+  // now — this just checks the 'sel-resize' mode routes there at all, and
+  // wires MIN_RECT_RESIZE_SIZE through as the clamp floor.
+  test('sel-resize: routes to the shared corner algorithm with rects’ own minimum size', () => {
     const rect = computeResize('sel-resize', startRect, 2, 50, 50)
-    expect(rect.x).toBe(100)
-    expect(rect.y).toBe(100)
-    expect(rect.width).toBeGreaterThanOrEqual(30)
-    expect(rect.height).toBeGreaterThanOrEqual(30)
+    expect(rect).toEqual({ x: 100, y: 100, width: 30, height: 30 }) // MIN_RECT_RESIZE_SIZE
   })
 
   test('sel-resize-r: grows a centered radius toward the pointer, ignoring corner', () => {
@@ -492,5 +480,612 @@ describe('z-order', () => {
     const order2 = listDrawings(peer2.yDrawing).map(svgEl => svgEl.getAttribute("data-id"))
     expect(order1).toEqual(order2)
     expect(order1.length).toBe(2)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Rotation
+// Stored as a degree count (data-rotate); the SVG transform is derived from
+// it plus the shape's current geometry, never stored.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// snapAngle/normalizeAngle/computeRotate now live in geometry.js — see
+// tests/unit/geometry.test.js.
+
+describe('rotation on the DOM', () => {
+  const rectDom = (attrs = {}) => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
+    for (const [k, v] of Object.entries({ x: 50, y: 50, width: 100, height: 100, ...attrs })) {
+      el.setAttribute(k, String(v))
+    }
+    return el
+  }
+
+  test('getRotation reads data-rotate, defaulting to 0', () => {
+    expect(getRotation(rectDom())).toBe(0)
+    expect(getRotation(rectDom({ 'data-rotate': '45' }))).toBe(45)
+    expect(getRotation(null)).toBe(0)
+  })
+
+  test('rotationCenter defaults to the centre of the unrotated bbox', () => {
+    expect(rotationCenter({ x: 50, y: 50, width: 100, height: 200 })).toEqual({ cx: 100, cy: 150 })
+  })
+
+  test('rotationCenter resolves any pivot as fractions of the bbox', () => {
+    const geom = { x: 50, y: 50, width: 100, height: 200 }
+    expect(rotationCenter(geom, { fx: 0, fy: 0 })).toEqual({ cx: 50, cy: 50 })    // NW
+    expect(rotationCenter(geom, { fx: 0, fy: 1 })).toEqual({ cx: 50, cy: 250 })   // SW
+    expect(rotationCenter(geom, { fx: 1.5, fy: 0.5 })).toEqual({ cx: 200, cy: 150 }) // outside
+  })
+
+  test('a pivot expressed as fractions rides a resize, an absolute point would not', () => {
+    const pivot = getPivot(rectDom())
+    const before = rotationCenter({ x: 0, y: 0, width: 100, height: 100 }, pivot)
+    const after  = rotationCenter({ x: 0, y: 0, width: 200, height: 200 }, pivot)
+    expect(before).toEqual({ cx: 50, cy: 50 })
+    expect(after).toEqual({ cx: 100, cy: 100 })
+  })
+
+  test('resolveRotation is null for an unrotated shape, { deg, cx, cy } otherwise', () => {
+    expect(resolveRotation(rectDom())).toBeNull()
+    expect(resolveRotation(rectDom({ 'data-rotate': '30' }))).toEqual({ deg: 30, cx: 100, cy: 100 })
+  })
+
+  test('rotationTransform formats a resolved rotation, and null stays null', () => {
+    expect(rotationTransform({ deg: 30, cx: 100, cy: 100 })).toBe('rotate(30 100 100)')
+    expect(rotationTransform(null)).toBeNull()
+  })
+
+  test('syncRotation derives a transform about the shape centre', () => {
+    const el = rectDom({ 'data-rotate': '30' })
+    syncRotation(el)
+    expect(el.getAttribute('transform')).toBe('rotate(30 100 100)')
+  })
+
+  test('a rotation of 0 carries no transform at all', () => {
+    const el = rectDom({ 'data-rotate': '0' })
+    syncRotation(el)
+    expect(el.getAttribute('transform')).toBeNull()
+  })
+
+  test('a shape with no data-rotate keeps whatever transform its author gave it', () => {
+    const el = rectDom({ transform: 'rotate(30 100 100)' })
+    syncRotation(el)
+    expect(el.getAttribute('transform')).toBe('rotate(30 100 100)')
+  })
+
+  test('a shape whose rotation went back to 0 sheds the transform it had', () => {
+    const el = rectDom({ 'data-rotate': '30' })
+    syncRotation(el)
+    previewRotate(el, 0)
+    expect(el.getAttribute('transform')).toBeNull()
+  })
+
+  test('_toSVGEl renders the stored rotation as a transform', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'r1', x: 0, y: 0, width: 100, height: 60, rotate: 45 })
+    const el = _toSVGEl(findDrawing(doc.yDrawing, 'r1'))
+    expect(el.getAttribute('data-rotate')).toBe('45')
+    expect(el.getAttribute('transform')).toBe('rotate(45 50 30)')
+  })
+
+  test('the pivot follows the shape — previewResize re-centres the transform', () => {
+    const el = rectDom({ 'data-rotate': '45' })
+    syncRotation(el)
+    expect(el.getAttribute('transform')).toBe('rotate(45 100 100)')
+    previewResize(el, 50, 50, 200, 200)
+    expect(el.getAttribute('transform')).toBe('rotate(45 150 150)')
+  })
+
+  test('previewRotate sets both the stored degrees and the derived transform', () => {
+    const el = rectDom()
+    previewRotate(el, 90)
+    expect(el.getAttribute('data-rotate')).toBe('90')
+    expect(el.getAttribute('transform')).toBe('rotate(90 100 100)')
+  })
+
+  test('previewResize on a circle keeps the centre and derives r from the bbox', () => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+    previewResize(el, 60, 60, 80, 80)
+    expect(el.getAttribute('cx')).toBe('100')
+    expect(el.getAttribute('cy')).toBe('100')
+    expect(el.getAttribute('r')).toBe('40')
+  })
+})
+
+describe('applyRotate', () => {
+  test('writes a normalized degree count that survives sync', () => {
+    const a = makeDoc()
+    const b = makeDoc()
+    add(a, { id: 'r1' })
+    sync(a.ydoc, b.ydoc)
+
+    applyRotate(a.ydoc, findDrawing(a.yDrawing, 'r1'), -30)
+    sync(a.ydoc, b.ydoc)
+    expect(findDrawing(b.yDrawing, 'r1').getAttribute('data-rotate')).toBe('330')
+  })
+
+  test('is a no-op for a shape type whose schema has no rotate key', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'c1', type: 'circle', cx: 50, cy: 50, r: 30 })
+    const yEl = findDrawing(doc.yDrawing, 'c1')
+    applyRotate(doc.ydoc, yEl, 45)
+    expect(yEl.getAttribute('data-rotate')).toBeUndefined()
+  })
+
+  test('a rotated rect keeps its rotation across a move', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'r1', x: 0, y: 0, width: 100, height: 60, rotate: 45 })
+    const yEl = findDrawing(doc.yDrawing, 'r1')
+    applyMoveCommit(doc.ydoc, yEl, 200, 200)
+    const el = _toSVGEl(yEl)
+    expect(el.getAttribute('transform')).toBe('rotate(45 250 230)')
+  })
+})
+
+describe('parseTransformList', () => {
+  const near = (m, expected) => m.forEach((n, i) => expect(n).toBeCloseTo(expected[i], 5))
+
+  test('reads a three-argument rotate — the form CSS has no equivalent of', () => {
+    near(parseTransformList('rotate(90 100 100)'), [0, 1, -1, 0, 200, 0])
+  })
+
+  test('composes a whole list left to right', () => {
+    near(parseTransformList('translate(10 5) scale(2)'), [2, 0, 0, 2, 10, 5])
+  })
+
+  test('accepts comma separators and a bare matrix', () => {
+    near(parseTransformList('matrix(1,0,0,1,7,8)'), [1, 0, 0, 1, 7, 8])
+  })
+
+  test('handles every term an editor might emit', () => {
+    for (const t of ['translate(5)', 'scale(2)', 'rotate(30)', 'skewX(10)', 'skewY(10)']) {
+      expect(parseTransformList(t)).not.toBeNull()
+    }
+  })
+
+  test('refuses a list it does not fully understand rather than acting on half of it', () => {
+    expect(parseTransformList('rotate(30) wobble(3)')).toBeNull()
+    expect(parseTransformList('translate(nope)')).toBeNull()
+    expect(parseTransformList('')).toBeNull()
+    expect(parseTransformList(null)).toBeNull()
+  })
+})
+
+describe('reconcileTransform', () => {
+  const geom = { x: 100, y: 100, width: 200, height: 120 }
+  // Where the shape's corners land under a raw matrix, vs under what the
+  // document would hold after reconciling. Those must agree, or the import
+  // moved the shape.
+  const corners = (g) => [[g.x, g.y], [g.x + g.width, g.y], [g.x + g.width, g.y + g.height], [g.x, g.y + g.height]]
+  const apply = (m, [x, y]) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]
+  const asRendered = (out) => {
+    const g = { ...geom, x: out.x, y: out.y }
+    return parseTransformList(`rotate(${out.rotate ?? 0} ${g.x + g.width / 2} ${g.y + g.height / 2})`)
+        ?? [1, 0, 0, 1, 0, 0]
+  }
+  const worstDrift = (matrix, out) => {
+    const R = asRendered(out), g = { ...geom, x: out.x, y: out.y }
+    return Math.max(...corners(geom).map((p, i) => {
+      const theirs = apply(matrix, p), ours = apply(R, corners(g)[i])
+      return Math.hypot(theirs[0] - ours[0], theirs[1] - ours[1])
+    }))
+  }
+
+  test('no transform at all leaves everything as it was', () => {
+    expect(reconcileTransform(geom, 45, null)).toEqual({ rotate: 45, x: 100, y: 100, transform: null })
+  })
+
+  test('our own derived copy is recognised and dropped, changing nothing', () => {
+    const m = parseTransformList('rotate(45 200 160)')
+    const out = reconcileTransform(geom, 45, m)
+    expect(out.rotate).toBeCloseTo(45, 9)
+    expect(out.x).toBeCloseTo(100, 9)
+    expect(out.y).toBeCloseTo(100, 9)
+    expect(out.transform).toBeNull()
+    expect(worstDrift(m, out)).toBeLessThan(1e-9)
+  })
+
+  test('an external rotation is recovered into the degrees', () => {
+    const m = parseTransformList('rotate(60 200 160)')
+    const out = reconcileTransform(geom, 45, m)   // document still said 45
+    expect(out.rotate).toBeCloseTo(60, 9)
+    expect(worstDrift(m, out)).toBeLessThan(1e-9)
+  })
+
+  test('a rotation about some OTHER point becomes our rotation plus a move', () => {
+    const m = parseTransformList('rotate(60 100 100)')   // about the top-left
+    const out = reconcileTransform(geom, 45, m)
+    expect(out.rotate).toBeCloseTo(60, 9)
+    expect(out.x).not.toBeCloseTo(100, 3)
+    expect(worstDrift(m, out)).toBeLessThan(1e-9)
+  })
+
+  test('a rotate and a move in one matrix recovers both', () => {
+    const m = parseTransformList('translate(40 25) rotate(60 200 160)')
+    const out = reconcileTransform(geom, 45, m)
+    expect(out.rotate).toBeCloseTo(60, 9)
+    expect(out.x).toBeCloseTo(140, 9)
+    expect(out.y).toBeCloseTo(125, 9)
+    expect(worstDrift(m, out)).toBeLessThan(1e-9)
+  })
+
+  test('a hand-edited list of several terms composes before it is read', () => {
+    const m = parseTransformList('rotate(20 200 160) rotate(20 0 0)')
+    const out = reconcileTransform(geom, 45, m)
+    expect(out.rotate).toBeCloseTo(40, 9)   // neither term alone
+    expect(worstDrift(m, out)).toBeLessThan(1e-9)
+  })
+
+  test('scale is not expressible as degrees, so the file keeps its own transform', () => {
+    const m = parseTransformList('scale(1.5) rotate(60 200 160)')
+    const out = reconcileTransform(geom, 45, m)
+    expect(out.rotate).toBeNull()
+    expect(out.transform).toEqual(m)
+    expect(out.x).toBe(100)
+  })
+
+  test('so are skew and flip', () => {
+    for (const t of ['skewX(10)', 'scale(-1 1)']) {
+      const out = reconcileTransform(geom, 45, parseTransformList(t))
+      expect(out.rotate).toBeNull()
+      expect(out.transform).not.toBeNull()
+    }
+  })
+})
+
+describe('reconcileImportedTransform', () => {
+  const imported = (attrs) => {
+    const doc = makeDoc()
+    const yEl = new Y.XmlElement('rect')
+    for (const [k, v] of Object.entries({ id: 'r1', x: 100, y: 100, width: 200, height: 120, ...attrs })) {
+      yEl.setAttribute(k, String(v))
+    }
+    doc.yDrawing.insert(0, [yEl])
+    reconcileImportedTransform(yEl)
+    return yEl
+  }
+
+  test('an untouched export round-trips completely unchanged', () => {
+    const yEl = imported({ 'data-rotate': '45', transform: 'rotate(45 200 160)' })
+    expect(yEl.getAttribute('data-rotate')).toBe('45')
+    expect(yEl.getAttribute('transform')).toBeUndefined()
+    expect(yEl.getAttribute('x')).toBe('100')
+    expect(yEl.getAttribute('y')).toBe('100')
+  })
+
+  test('an external editor\u2019s rotation AND move both survive', () => {
+    const yEl = imported({ 'data-rotate': '45', transform: 'translate(40 25) rotate(60 200 160)' })
+    expect(Number(yEl.getAttribute('data-rotate'))).toBeCloseTo(60, 6)
+    expect(yEl.getAttribute('x')).toBe('140')
+    expect(yEl.getAttribute('y')).toBe('125')
+    expect(yEl.getAttribute('transform')).toBeUndefined()
+  })
+
+  test('a transform we cannot express keeps the file\u2019s own, and drops our stale degrees', () => {
+    const yEl = imported({ 'data-rotate': '45', transform: 'matrix(1.41 0.35 -0.35 1.41 40 25)' })
+    expect(yEl.getAttribute('data-rotate')).toBeUndefined()
+    expect(yEl.getAttribute('transform')).toContain('matrix(')
+    // ...and with no data-rotate, render leaves it exactly alone.
+    expect(_toSVGEl(yEl).getAttribute('transform')).toContain('matrix(')
+  })
+
+  test('a shape with no rotation of ours is never touched', () => {
+    const yEl = imported({ transform: 'skewX(10)' })
+    expect(yEl.getAttribute('transform')).toBe('skewX(10)')
+    expect(yEl.getAttribute('data-rotate')).toBeUndefined()
+  })
+
+  test('an unparseable transform is treated as foreign, not silently dropped', () => {
+    const yEl = imported({ 'data-rotate': '45', transform: 'rotate(30) wobble(3)' })
+    expect(yEl.getAttribute('transform')).toBe('rotate(30) wobble(3)')   // verbatim
+    expect(yEl.getAttribute('data-rotate')).toBeUndefined()              // ours goes instead
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pivot placement
+// Stored as fractions of the bbox so it survives a move and a resize, clamped
+// inside the shape (no lever-arm rotation), and compensated on commit so
+// placing it never moves the shape.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('getPivot', () => {
+  const rectDom = (attrs = {}) => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v))
+    return el
+  }
+
+  test('defaults to the centre when the shape says nothing', () => {
+    expect(getPivot(rectDom())).toEqual({ fx: 0.5, fy: 0.5 })
+    expect(getPivot(null)).toEqual({ fx: 0.5, fy: 0.5 })
+  })
+
+  test('reads the stored fractions', () => {
+    expect(getPivot(rectDom({ 'data-pivot-x': '0', 'data-pivot-y': '1' }))).toEqual({ fx: 0, fy: 1 })
+  })
+
+  test('one axis given, the other still defaults', () => {
+    expect(getPivot(rectDom({ 'data-pivot-x': '0.25' }))).toEqual({ fx: 0.25, fy: 0.5 })
+  })
+
+  test('clamps on READ, so a hand-edited value outside the shape is corrected at the boundary', () => {
+    expect(getPivot(rectDom({ 'data-pivot-x': '2.5', 'data-pivot-y': '-4' }))).toEqual({ fx: 1, fy: 0 })
+  })
+})
+
+describe('snapPivot', () => {
+  test('locks onto the nine notable points — corners, edge midpoints, centre', () => {
+    expect(PIVOT_SNAP_FRACTION).toBe(0.08)
+    expect(snapPivot(0.03, 0.97)).toEqual({ fx: 0, fy: 1 })
+    expect(snapPivot(0.52, 0.47)).toEqual({ fx: 0.5, fy: 0.5 })
+  })
+
+  test('each axis snaps on its own, so a drag near the left edge does not also lock vertically', () => {
+    expect(snapPivot(0.02, 0.31)).toEqual({ fx: 0, fy: 0.31 })
+  })
+
+  test('leaves anything outside the tolerance where it is', () => {
+    expect(snapPivot(0.3, 0.7)).toEqual({ fx: 0.3, fy: 0.7 })
+  })
+
+  test('the tolerance is an argument, and 0 means free placement', () => {
+    expect(snapPivot(0.03, 0.03, 0)).toEqual({ fx: 0.03, fy: 0.03 })
+    expect(snapPivot(0.3, 0.3, 0.4)).toEqual({ fx: 0.5, fy: 0.5 })
+  })
+
+  test('a tolerance wide enough to reach two notable points takes the nearer one', () => {
+    // 0.3 is within 0.4 of both 0 and 0.5; 0.5 is nearer.
+    expect(snapPivot(0.3, 0.2, 0.4)).toEqual({ fx: 0.5, fy: 0 })
+  })
+})
+
+describe('computePivot', () => {
+  const rect = { x: 100, y: 100, width: 200, height: 100 }
+
+  test('expresses a canvas point as fractions of the shape', () => {
+    expect(computePivot(rect, 150, 125, 0)).toEqual({ fx: 0.25, fy: 0.25 })
+  })
+
+  test('clamps inside the shape — unlike Inkscape, the pivot never leaves the box', () => {
+    expect(computePivot(rect, -500, 9999, 0)).toEqual({ fx: 0, fy: 1 })
+  })
+
+  test('snaps once inside, so dragging near the centre lands exactly on it', () => {
+    expect(computePivot(rect, 203, 148)).toEqual({ fx: 0.5, fy: 0.5 })
+  })
+})
+
+describe('PIVOT_RAYS layout', () => {
+  // Compass degrees clockwise from north, as specified: a symmetric pair
+  // either side of each quadrant's own diagonal (45/135/225/315°), offset
+  // ±30° from it.
+  const EXPECTED_DEGREES = [15, 75, 105, 165, 195, 255, 285, 345]
+
+  const compassDeg = ({ dx, dy }) => {
+    const deg = Math.atan2(dx, -dy) * 180 / Math.PI   // inverse of dx=sin,dy=-cos
+    return ((deg % 360) + 360) % 360
+  }
+
+  test('eight rays at the specified angles, none on a cardinal axis', () => {
+    const degrees = PIVOT_RAYS.map(compassDeg).sort((a, b) => a - b)
+    expect(degrees).toHaveLength(8)
+    degrees.forEach((d, i) => expect(d).toBeCloseTo(EXPECTED_DEGREES[i], 6))
+  })
+
+  test('every ray leans on both axes — none is purely horizontal or vertical', () => {
+    for (const { dx, dy } of PIVOT_RAYS) {
+      expect(dx).not.toBe(0)
+      expect(dy).not.toBe(0)
+    }
+  })
+
+  test('each pair spans 60° within its quadrant, with 30° gaps at the cardinal directions between quadrants', () => {
+    const degrees = PIVOT_RAYS.map(compassDeg).sort((a, b) => a - b)
+    // 15→75 (60, within NE), 75→105 (30, the gap at east), 105→165 (60, within SE), ...
+    const gaps = degrees.map((d, i) => (degrees[(i + 1) % 8] - d + 360) % 360)
+    expect(gaps).toEqual([60, 30, 60, 30, 60, 30, 60, 30])
+  })
+
+  test('every ray is a unit vector', () => {
+    for (const { dx, dy } of PIVOT_RAYS) expect(Math.hypot(dx, dy)).toBeCloseTo(1, 10)
+  })
+})
+
+describe('pivotRayOpacities', () => {
+  // Which quadrant a ray belongs to, by the sign of its lean — this is what
+  // fading is actually keyed on, not the ray's exact angle within it.
+  const quadrant = ({ dx, dy }) => `${dx < 0 ? 'W' : 'E'}${dy < 0 ? 'N' : 'S'}`
+  const byQuadrant = (fx, fy) => {
+    const out = {}
+    for (const r of pivotRayOpacities(fx, fy)) (out[quadrant(r)] ??= []).push(r.opacity)
+    return out
+  }
+
+  test('all eight rays are full strength at the centre', () => {
+    expect(pivotRayOpacities(0.5, 0.5).map(r => r.opacity)).toEqual(Array(8).fill(1))
+  })
+
+  test('two rays land in each of the four quadrants', () => {
+    const q = byQuadrant(0.5, 0.5)
+    expect(Object.keys(q).sort()).toEqual(['EN', 'ES', 'WN', 'WS'])
+    for (const rays of Object.values(q)) expect(rays).toHaveLength(2)
+  })
+
+  // The user's own example: at [0, 0.5], the left quadrants vanish and the
+  // right quadrants stay exactly as they were.
+  test('at [0, 0.5] the left quadrants’ lines are invisible, the right quadrants’ visible', () => {
+    const q = byQuadrant(0, 0.5)
+    expect(q.WN).toEqual([0, 0])
+    expect(q.WS).toEqual([0, 0])
+    expect(q.EN).toEqual([1, 1])
+    expect(q.ES).toEqual([1, 1])
+  })
+
+  test('symmetrically for the right edge, top edge, and bottom edge', () => {
+    expect(byQuadrant(1, 0.5).EN).toEqual([0, 0])
+    expect(byQuadrant(1, 0.5).WN).toEqual([1, 1])
+    expect(byQuadrant(0.5, 0).EN).toEqual([0, 0])
+    expect(byQuadrant(0.5, 0).ES).toEqual([1, 1])
+    expect(byQuadrant(0.5, 1).ES).toEqual([0, 0])
+    expect(byQuadrant(0.5, 1).EN).toEqual([1, 1])
+  })
+
+  test('at a corner, only the pair in that corner’s own quadrant survives', () => {
+    const q = byQuadrant(0, 0)   // NW corner
+    expect(q.WN).toEqual([0, 0])
+    expect(q.WS).toEqual([0, 0])
+    expect(q.EN).toEqual([0, 0])
+    expect(q.ES).toEqual([1, 1])   // the pair pointing back into the shape
+  })
+
+  test('at each corner, only the exact opposite quadrant survives — the other three are gone', () => {
+    // This is the whole point: nothing is left to collide with that corner's
+    // rotate handle, so the handles never have to move out of the way.
+    for (const [fx, fy, survivor] of [[0, 0, 'ES'], [1, 0, 'WS'], [1, 1, 'WN'], [0, 1, 'EN']]) {
+      const q = byQuadrant(fx, fy)
+      for (const key of ['EN', 'ES', 'WN', 'WS']) {
+        if (key === survivor) expect(q[key]).toEqual([1, 1])
+        else                  expect(q[key]).toEqual([0, 0])
+      }
+    }
+  })
+
+  test('both rays sharing a quadrant fade identically, whatever their exact angle within it', () => {
+    const q = byQuadrant(0.2, 0.3)
+    for (const rays of Object.values(q)) expect(rays[0]).toBeCloseTo(rays[1], 10)
+  })
+
+  test('fades linearly rather than switching off at a threshold', () => {
+    expect(byQuadrant(0.25, 0.5).WN[0]).toBeCloseTo(0.5)
+    expect(byQuadrant(0.125, 0.5).WN[0]).toBeCloseTo(0.25)
+  })
+})
+
+describe('pivotShift — placing a pivot never moves the shape', () => {
+  const geom = { x: 100, y: 100, width: 200, height: 120 }
+
+  // Where a point in the shape's own space lands on the canvas, for a given
+  // pivot and angle.
+  const onCanvas = (p, pivot, deg) => {
+    const cx = geom.x + pivot.fx * geom.width
+    const cy = geom.y + pivot.fy * geom.height
+    const r  = deg * Math.PI / 180
+    const dx = p.x - cx, dy = p.y - cy
+    return { x: cx + dx * Math.cos(r) - dy * Math.sin(r), y: cy + dx * Math.sin(r) + dy * Math.cos(r) }
+  }
+
+  test('is zero for an unrotated shape — the pivot only matters to the NEXT rotation', () => {
+    expect(pivotShift(geom, { fx: 0.5, fy: 0.5 }, { fx: 0, fy: 1 }, 0)).toEqual({ dx: 0, dy: 0 })
+  })
+
+  test('is zero when the pivot did not actually move', () => {
+    const s = pivotShift(geom, { fx: 0.5, fy: 0.5 }, { fx: 0.5, fy: 0.5 }, 37)
+    expect(s.dx).toBeCloseTo(0, 10)
+    expect(s.dy).toBeCloseTo(0, 10)
+  })
+
+  test('cancels the jump exactly, at an angle that is not a quarter turn', () => {
+    const from = { fx: 0.5, fy: 0.5 }, to = { fx: 0, fy: 1 }, deg = 37
+    const corner = { x: geom.x, y: geom.y }
+    const before = onCanvas(corner, from, deg)
+
+    // Without the shift the shape swings to a new place...
+    const naive = onCanvas(corner, to, deg)
+    expect(Math.hypot(naive.x - before.x, naive.y - before.y)).toBeGreaterThan(10)
+
+    // ...and with it, the shape is exactly where it was.
+    const { dx, dy } = pivotShift(geom, from, to, deg)
+    const moved = { x: corner.x + dx, y: corner.y + dy }
+    const shifted = { ...geom, x: geom.x + dx, y: geom.y + dy }
+    const cx = shifted.x + to.fx * shifted.width, cy = shifted.y + to.fy * shifted.height
+    const r = deg * Math.PI / 180
+    const ddx = moved.x - cx, ddy = moved.y - cy
+    const after = { x: cx + ddx * Math.cos(r) - ddy * Math.sin(r), y: cy + ddx * Math.sin(r) + ddy * Math.cos(r) }
+
+    expect(after.x).toBeCloseTo(before.x, 10)
+    expect(after.y).toBeCloseTo(before.y, 10)
+  })
+
+  test('grows with the angle — a half turn needs twice the offset of the pivot move', () => {
+    const s = pivotShift(geom, { fx: 0.5, fy: 0.5 }, { fx: 0, fy: 0.5 }, 180)
+    expect(s.dx).toBeCloseTo(200, 6)   // pivot moved -100; a half turn doubles it back
+    expect(s.dy).toBeCloseTo(0, 6)
+  })
+})
+
+describe('applyPivot', () => {
+  test('writes the pivot and the compensating position together, and syncs', () => {
+    const a = makeDoc(), b = makeDoc()
+    add(a, { id: 'r1', x: 100, y: 100, width: 200, height: 120, rotate: 37 })
+    sync(a.ydoc, b.ydoc)
+
+    applyPivot(a.ydoc, findDrawing(a.yDrawing, 'r1'), 0, 1, 140.4, 125.7)
+    sync(a.ydoc, b.ydoc)
+
+    const yEl = findDrawing(b.yDrawing, 'r1')
+    expect(yEl.getAttribute('data-pivot-x')).toBe('0')
+    expect(yEl.getAttribute('data-pivot-y')).toBe('1')
+    expect(yEl.getAttribute('x')).toBe('140')   // rounded, like every other geometry write
+    expect(yEl.getAttribute('y')).toBe('126')
+  })
+
+  test('clamps what it stores, so nothing out of range reaches the document', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'r1' })
+    applyPivot(doc.ydoc, findDrawing(doc.yDrawing, 'r1'), -3, 8, 0, 0)
+    const yEl = findDrawing(doc.yDrawing, 'r1')
+    expect(yEl.getAttribute('data-pivot-x')).toBe('0')
+    expect(yEl.getAttribute('data-pivot-y')).toBe('1')
+  })
+
+  test('is a no-op for a shape type with no pivot in its schema', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'c1', type: 'circle', cx: 50, cy: 50, r: 30 })
+    const yEl = findDrawing(doc.yDrawing, 'c1')
+    applyPivot(doc.ydoc, yEl, 0, 0, 10, 10)
+    expect(yEl.getAttribute('data-pivot-x')).toBeUndefined()
+  })
+
+  test('the pivot rides a resize — fractions keep a corner pivot on the corner', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'r1', x: 0, y: 0, width: 100, height: 100, rotate: 0, 'pivot-x': 0, 'pivot-y': 1 })
+    const el = _toSVGEl(findDrawing(doc.yDrawing, 'r1'))
+    expect(rotationCenter(getGeom(el), getPivot(el))).toEqual({ cx: 0, cy: 100 })
+
+    previewResize(el, 0, 0, 300, 300)
+    expect(rotationCenter(getGeom(el), getPivot(el))).toEqual({ cx: 0, cy: 300 })
+  })
+})
+
+describe('a foreign transform is never claimed', () => {
+  const rectWith = (attrs) => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v))
+    return el
+  }
+
+  test('rotate mode is not offered for a shape whose transform is not ours', () => {
+    expect(selectModes(rectWith({ transform: 'skewX(10)' })))
+      .toEqual(['sel-move', 'sel-resize'])
+  })
+
+  test('move and resize stay available — neither of them touches the transform', () => {
+    const el = rectWith({ x: 0, y: 0, width: 100, height: 100, transform: 'skewX(10)' })
+    applyMoveDom(el, 50, 50)
+    previewResize(el, 50, 50, 200, 200)
+    expect(el.getAttribute('transform')).toBe('skewX(10)')
+  })
+
+  test('a shape of ours keeps the full cycle even though it has a transform', () => {
+    const el = rectWith({ x: 0, y: 0, width: 100, height: 100, 'data-rotate': '45' })
+    syncRotation(el)
+    expect(el.getAttribute('transform')).toBe('rotate(45 50 50)')
+    expect(selectModes(el)).toEqual(['sel-move', 'sel-resize', 'sel-rotate-pivot'])
+  })
+
+  test('a plain shape with no transform at all is unaffected', () => {
+    expect(selectModes(rectWith({}))).toEqual(['sel-move', 'sel-resize', 'sel-rotate-pivot'])
   })
 })

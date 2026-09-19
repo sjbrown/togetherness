@@ -138,11 +138,15 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
     }
   }
 
-  // Drawing layer
   if (drawLayerEl) {
     for (const child of drawLayerEl.children) {
       const yEl = domToY(child);
-      if (yEl) { yDrawing.insert(yDrawing.length, [yEl]); drawCount++; }
+      if (!yEl) continue;
+      // Insert FIRST: Yjs refuses attribute reads on a detached element, so
+      // reconciling before this point silently does nothing at all.
+      yDrawing.insert(yDrawing.length, [yEl]);
+      Drawing.reconcileImportedTransform(yEl);
+      drawCount++;
     }
   }
 

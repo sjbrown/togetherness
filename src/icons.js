@@ -189,3 +189,67 @@ export function drawCrosshairGlyph(cx, cy, arm, parent, color) {
   parent.appendChild(svgEl('line', { x1: cx - arm, y1: cy,       x2: cx + arm, y2: cy,       ...attrs }));
   parent.appendChild(svgEl('line', { x1: cx,       y1: cy - arm, x2: cx,       y2: cy + arm, ...attrs }));
 }
+
+/**
+ * drawRotateGlyph(cx, cy, r, parent)
+ * A circular arrow — an arc most of the way round, with a filled arrowhead
+ * on its leading end. `r` is the arc radius. Appends directly to `parent`.
+ */
+export function drawRotateGlyph(cx, cy, r, parent) {
+  const pt = deg => {
+    const rad = deg * Math.PI / 180;
+    return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+  };
+  const start = pt(60);
+  const end   = pt(0);   // 300° of arc, swept the long way round
+  parent.appendChild(svgEl('path', {
+    d: `M ${start.x} ${start.y} A ${r} ${r} 0 1 1 ${end.x} ${end.y}`,
+    fill:             'none',
+    stroke:           'var(--info)',
+    'stroke-width':   Math.max(0.6, r * 0.30),
+    'stroke-linecap': 'round',
+    class:            'rotateGlyph',
+  }));
+
+  // Arrowhead on the arc's end, pointing along the direction of travel
+  // (tangent at 0° in a y-down space is straight down).
+  const head = r * 0.72;
+  parent.appendChild(svgEl('path', {
+    d: `M ${end.x - head} ${end.y} L ${end.x + head} ${end.y} L ${end.x} ${end.y + head * 1.5} Z`,
+    fill:   'var(--info)',
+    stroke: 'none',
+    class:  'rotateGlyph',
+  }));
+}
+
+/**
+ * drawPivotGlyph(cx, cy, r, parent, rays)
+ * A solid centre dot with up to eight lines radiating from it. `rays` is
+ * pivotRayOpacities()'s output — a direction plus visibility per entry.
+ * Rays at zero opacity are skipped entirely, not drawn transparent.
+ * `r` is the radius the rays reach. Appends directly to `parent`.
+ */
+export function drawPivotGlyph(cx, cy, r, parent, rays) {
+  const RAY_INNER = r * 0.42;   // starts clear of the centre dot
+  const RAY_OUTER = r * 1.12;   // ...and runs out to here
+  for (const { dx, dy, opacity } of rays) {
+    if (opacity <= 0) continue;
+    // Diagonals are normalised so every ray ends the same distance out.
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    parent.appendChild(svgEl('line', {
+      x1: cx + ux * RAY_INNER, y1: cy + uy * RAY_INNER,
+      x2: cx + ux * RAY_OUTER, y2: cy + uy * RAY_OUTER,
+      stroke:           'var(--info)',
+      'stroke-width':   Math.max(0.6, r * 0.16),
+      'stroke-linecap': 'round',
+      opacity:          opacity.toFixed(3),
+      class:            'pivotGlyph',
+    }));
+  }
+  parent.appendChild(svgEl('circle', {
+    cx, cy, r: r * 0.26,
+    fill:  'var(--info)',
+    class: 'pivotGlyph',
+  }));
+}

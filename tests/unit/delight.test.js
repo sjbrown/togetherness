@@ -128,6 +128,22 @@ describe('bowstringOrigin — the SE corner of the selection ring', () => {
     expect(bowstringOrigin({ x: 10, y: 20, width: 100, height: 50 }))
       .toEqual({ x: 116, y: 76 })
   })
+
+  it('rides the toy’s own rotation, same as overlay.js’s decorGroup wraps its furniture in', () => {
+    // A 100x100 box centred on (50,50): its unrotated SE corner is (106,106),
+    // 56 right and 56 below centre. Rotated 90° clockwise, that becomes 56
+    // below and 56 LEFT of centre: (-6, 106).
+    const geo = { x: 0, y: 0, width: 100, height: 100 }
+    const rot = { deg: 90, cx: 50, cy: 50 }
+    const origin = bowstringOrigin(geo, rot)
+    expect(origin.x).toBeCloseTo(-6)
+    expect(origin.y).toBeCloseTo(106)
+  })
+
+  it('is unchanged from the no-rotation case when rot is explicitly null', () => {
+    const geo = { x: 10, y: 20, width: 100, height: 50 }
+    expect(bowstringOrigin(geo, null)).toEqual(bowstringOrigin(geo))
+  })
 })
 
 describe('hitTestBowstring', () => {
@@ -155,6 +171,24 @@ describe('hitTestBowstring', () => {
     // units out — a miss at scale 1 — now lands inside it.
     expect(hitTestBowstring(geo, origin.x + 20, origin.y, 1)).toBe(false)
     expect(hitTestBowstring(geo, origin.x + 20, origin.y, 0.5)).toBe(true)
+  })
+
+  describe('on a rotated toy (regression: the handle drew rotated but hit-tested un-rotated)', () => {
+    const rot = { deg: 90, cx: 50, cy: 50 }
+    const rotatedOrigin = bowstringOrigin(geo, rot) // (-6, 106) — see bowstringOrigin tests
+
+    it('hits where the handle is actually drawn once rotation is passed through', () => {
+      expect(hitTestBowstring(geo, rotatedOrigin.x, rotatedOrigin.y, 1, rot)).toBe(true)
+    })
+
+    it('misses the OLD un-rotated corner — a click there is empty canvas now', () => {
+      expect(hitTestBowstring(geo, origin.x, origin.y, 1, rot)).toBe(false)
+    })
+
+    it('without passing rot at all, still finds only the un-rotated spot (default stays backward-compatible)', () => {
+      expect(hitTestBowstring(geo, origin.x, origin.y, 1)).toBe(true)
+      expect(hitTestBowstring(geo, rotatedOrigin.x, rotatedOrigin.y, 1)).toBe(false)
+    })
   })
 })
 

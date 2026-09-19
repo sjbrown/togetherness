@@ -80,6 +80,17 @@ function makeApp(overrides = {}) {
     resize:             () => {},
     commitResize:       () => {},
     cancelResize:       () => {},
+    getRotateModeId:    () => null,
+    getRotateHandle:    () => null,
+    startRotate:        () => {},
+    rotate:             () => {},
+    commitRotate:       () => {},
+    cancelRotate:       () => {},
+    startPivotDrag:     () => {},
+    movePivot:          () => {},
+    commitPivot:        () => {},
+    cancelPivot:        () => {},
+    resetPivot:         () => {},
     ...overrides,
   }
 }
@@ -655,6 +666,297 @@ describe('resize mode — reclick-to-toggle', () => {
   })
 })
 
+describe('pivot drag gesture', () => {
+  // getRotateHandle answers 'pivot' instead of a corner index when the
+  // pointer is on the pivot handle; canvas.js routes that to its own gesture.
+  const pivotApp = (overrides = {}) => makeApp({
+    getRotateModeId: () => 'rect-1',
+    getRotateHandle: () => 'pivot',
+    ...overrides,
+  })
+
+  test("a handle answer of 'pivot' starts a pivot drag, not a rotate", () => {
+    const started = [], rotated = []
+    const app = pivotApp({ startPivotDrag: (id) => started.push(id), startRotate: () => rotated.push(true) })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    document.getElementById('stage')
+      .dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+
+    expect(ToolMode._gesture).toBe('pivot')
+    expect(started).toEqual(['rect-1'])
+    expect(rotated).toHaveLength(0)
+  })
+
+  test('pointermove reports the canvas-space point', () => {
+    const moved = []
+    const app = pivotApp({ movePivot: (id, x, y) => moved.push([id, x, y]) })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 240, clientY: 260 }))
+
+    expect(moved).toEqual([['rect-1', 240, 260]])
+  })
+
+  test('pointerup commits', () => {
+    const committed = []
+    const app = pivotApp({ commitPivot: (id, x, y) => committed.push([id, x, y]) })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 240, clientY: 260 }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 240, clientY: 260 }))
+
+    expect(committed).toEqual([['rect-1', 240, 260]])
+  })
+
+  test('a tap with no movement cancels rather than committing a no-op placement', () => {
+    const committed = [], cancelled = []
+    const app = pivotApp({ commitPivot: () => committed.push(true), cancelPivot: () => cancelled.push(true) })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 200, clientY: 200 }))
+
+    expect(cancelled).toHaveLength(1)
+    expect(committed).toHaveLength(0)
+  })
+
+  test('pointercancel mid-drag cancels', () => {
+    const committed = [], cancelled = []
+    const app = pivotApp({ commitPivot: () => committed.push(true), cancelPivot: () => cancelled.push(true) })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown',   { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointermove',   { clientX: 240, clientY: 260 }))
+    stage.dispatchEvent(makePointerEvent('pointercancel', { clientX: 240, clientY: 260 }))
+
+    expect(cancelled).toHaveLength(1)
+    expect(committed).toHaveLength(0)
+  })
+})
+
+describe('double-tapping the pivot resets it', () => {
+  const pivotApp = (overrides = {}) => makeApp({
+    getRotateModeId: () => 'rect-1',
+    getRotateHandle: () => 'pivot',
+    ...overrides,
+  })
+  const tap = (stage, x = 200, y = 200) => {
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: x, clientY: y }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: x, clientY: y }))
+  }
+
+  test('two taps on the pivot reset that handle, and leave the view alone', () => {
+    vi.useFakeTimers()
+    const reset = [], viewReset = []
+    const app = pivotApp({ resetPivot: (id) => reset.push(id), onViewReset: () => viewReset.push(true) })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+    tap(stage); tap(stage)
+    vi.advanceTimersByTime(400)
+
+    expect(reset).toEqual(['rect-1'])
+    expect(viewReset).toHaveLength(0)
+    vi.useRealTimers()
+  })
+
+  test('a single tap on the pivot resets nothing', () => {
+    vi.useFakeTimers()
+    const reset = []
+    const app = pivotApp({ resetPivot: (id) => reset.push(id) })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    tap(document.getElementById('stage'))
+    vi.advanceTimersByTime(400)
+
+    expect(reset).toHaveLength(0)
+    vi.useRealTimers()
+  })
+
+  test('a pivot tap followed by a canvas tap is a view reset — the second tap asked for that', () => {
+    vi.useFakeTimers()
+    const reset = [], viewReset = []
+    let onPivot = true
+    const app = makeApp({
+      getRotateModeId: () => 'rect-1',
+      getRotateHandle: () => (onPivot ? 'pivot' : null),
+      resetPivot: (id) => reset.push(id),
+      onViewReset: () => viewReset.push(true),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+    tap(stage)
+    onPivot = false            // second tap lands on bare canvas
+    tap(stage)
+    vi.advanceTimersByTime(400)
+
+    expect(reset).toHaveLength(0)
+    expect(viewReset).toHaveLength(1)
+    vi.useRealTimers()
+  })
+
+  test('a pivot DRAG does not count as a tap, so it never resets', () => {
+    vi.useFakeTimers()
+    const reset = []
+    const app = pivotApp({ resetPivot: (id) => reset.push(id) })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+    tap(stage)
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 240, clientY: 240 }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 240, clientY: 240 }))
+    vi.advanceTimersByTime(400)
+
+    expect(reset).toHaveLength(0)
+    vi.useRealTimers()
+  })
+})
+
+describe('rotate mode — corner-drag gesture', () => {
+  // Rotate reuses the resize gesture's shape end to end: the same corner
+  // check ahead of ordinary hit-testing, the same start/move/commit/cancel
+  // ordering. What differs is which App calls it routes to.
+  const rotateApp = (overrides = {}) => makeApp({
+    getRotateModeId: () => 'rect-1',
+    getRotateHandle: () => 1, // NE
+    ...overrides,
+  })
+
+  test('pointerdown on a rotate handle starts a rotate gesture, not a resize', () => {
+    const started = []
+    const app = rotateApp({ startRotate: (id, corner) => started.push([id, corner]) })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250 }))
+
+    expect(ToolMode._gesture).toBe('rotate')
+    expect(started).toEqual([['rect-1', 1]])
+  })
+
+  test('resize mode wins when both are somehow live — the modes are mutually exclusive upstream', () => {
+    const resized = []
+    const rotated = []
+    const app = makeApp({
+      getResizeModeId: () => 'rect-1',
+      getResizeCorner: () => 2,
+      getRotateModeId: () => 'rect-1',
+      getRotateHandle: () => 1,
+      startResize: () => resized.push(true),
+      startRotate: () => rotated.push(true),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    document.getElementById('stage')
+      .dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250 }))
+
+    expect(resized).toHaveLength(1)
+    expect(rotated).toHaveLength(0)
+  })
+
+  test('pointermove during a rotate calls App.rotate with the raw canvas-space point', () => {
+    const rotated = []
+    const app = rotateApp({ rotate: (id, corner, x, y) => rotated.push([id, corner, x, y]) })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250 }))
+    stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 340, clientY: 260 }))
+
+    expect(rotated).toEqual([['rect-1', 1, 340, 260]])
+  })
+
+  test('pointerup after a rotate drag calls App.commitRotate', () => {
+    const committed = []
+    const app = rotateApp({ commitRotate: (id, corner, x, y) => committed.push([id, corner, x, y]) })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250 }))
+    stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 340, clientY: 260 }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 340, clientY: 260 }))
+
+    expect(committed).toEqual([['rect-1', 1, 340, 260]])
+  })
+
+  test('pointerup with no movement cancels the rotate instead of committing', () => {
+    const committed = []
+    const cancelled = []
+    const app = rotateApp({
+      commitRotate: () => committed.push(true),
+      cancelRotate: () => cancelled.push(true),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250 }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 300, clientY: 250 }))
+
+    expect(cancelled).toHaveLength(1)
+    expect(committed).toHaveLength(0)
+  })
+
+  test('pointercancel mid-drag cancels rather than committing a half-finished turn', () => {
+    const committed = []
+    const cancelled = []
+    const app = rotateApp({
+      commitRotate: () => committed.push(true),
+      cancelRotate: () => cancelled.push(true),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown',   { clientX: 300, clientY: 250 }))
+    stage.dispatchEvent(makePointerEvent('pointermove',   { clientX: 340, clientY: 260 }))
+    stage.dispatchEvent(makePointerEvent('pointercancel', { clientX: 340, clientY: 260 }))
+
+    expect(cancelled).toHaveLength(1)
+    expect(committed).toHaveLength(0)
+  })
+
+  test('a pointerdown off every handle falls through to ordinary hit-testing', () => {
+    const started = []
+    const app = rotateApp({
+      getRotateHandle: () => null,
+      getSelectedIds:  () => ['rect-1'],
+      startRotate:     () => started.push(true),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+    const el = makeHitEl('rect-1')
+
+    document.getElementById('stage')
+      .dispatchEvent(makePointerEvent('pointerdown', { clientX: 150, clientY: 150, target: el }))
+
+    expect(started).toEqual([])
+    expect(ToolMode._gesture).toBe('move')
+  })
+})
+
 describe('resize mode — corner-drag gesture', () => {
   test('pointerdown on a corner handle of the resize-mode element starts a resize gesture', () => {
     const started = []
@@ -861,5 +1163,29 @@ describe('Pinch gesture', () => {
 
     // View reset SHOULD have been called
     expect(onViewResetCalls).toEqual([true])
+  })
+})
+
+describe('the pivot drag keeps its cursor while the pointer is captured', () => {
+  test('#stage carries pivot-dragging for the duration of the drag, and not after', () => {
+    const app = makeApp({ getRotateModeId: () => 'rect-1', getRotateHandle: () => 'pivot' })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+    const stage = document.getElementById('stage')
+
+    expect(stage.classList.contains('pivot-dragging')).toBe(false)
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+    expect(stage.classList.contains('pivot-dragging')).toBe(true)
+    stage.dispatchEvent(makePointerEvent('pointerup', { clientX: 240, clientY: 240 }))
+    expect(stage.classList.contains('pivot-dragging')).toBe(false)
+  })
+
+  test('a rotate drag does not claim it', () => {
+    const app = makeApp({ getRotateModeId: () => 'rect-1', getRotateHandle: () => 1 })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+    const stage = document.getElementById('stage')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+    expect(stage.classList.contains('pivot-dragging')).toBe(false)
   })
 })

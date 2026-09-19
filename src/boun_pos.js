@@ -25,6 +25,7 @@
 
 import * as Y from 'yjs';
 import { SNAP_POINT_GRADIENT_ID } from './defs.js';
+import { computeResizeCornerRect } from './geometry.js';
 
 const SVG_NS   = 'http://www.w3.org/2000/svg';
 const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789';
@@ -648,36 +649,8 @@ export function applyMoveCommit(ydoc, yEl, x, y) {
 
 const MIN_BOUNPOS_RESIZE_SIZE = 30; // Can't resize below this limit
 
-/**
- * Pure geometry for a corner-drag resize
- */
-function computeResizeRect(startRect, corner, px, py) {
-  const { x, y, width, height } = startRect;
-  const left = x, top = y, right = x + width, bottom = y + height;
-
-  switch (corner) {
-    case 0: { // NW
-      const newLeft = Math.min(px, right - MIN_BOUNPOS_RESIZE_SIZE);
-      const newTop  = Math.min(py, bottom - MIN_BOUNPOS_RESIZE_SIZE);
-      return { x: newLeft, y: newTop, width: right - newLeft, height: bottom - newTop };
-    }
-    case 1: { // NE
-      const newTop = Math.min(py, bottom - MIN_BOUNPOS_RESIZE_SIZE);
-      return { x: left, y: newTop, width: Math.max(px - left, MIN_BOUNPOS_RESIZE_SIZE), height: bottom - newTop };
-    }
-    case 3: { // SW
-      const newLeft = Math.min(px, right - MIN_BOUNPOS_RESIZE_SIZE);
-      return { x: newLeft, y: top, width: right - newLeft, height: Math.max(py - top, MIN_BOUNPOS_RESIZE_SIZE) };
-    }
-    case 2: // SE
-    default: {
-      return { x: left, y: top, width: Math.max(px - left, MIN_BOUNPOS_RESIZE_SIZE), height: Math.max(py - top, MIN_BOUNPOS_RESIZE_SIZE) };
-    }
-  }
-}
-
 export function computeResize(mode, startRect, corner, px, py) {
-  return computeResizeRect(startRect, corner, px, py);
+  return computeResizeCornerRect(startRect, corner, px, py, MIN_BOUNPOS_RESIZE_SIZE);
 }
 
 /**

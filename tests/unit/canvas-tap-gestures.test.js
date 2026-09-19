@@ -69,6 +69,17 @@ function makeApp(overrides = {}) {
     resize:             () => {},
     commitResize:       () => {},
     cancelResize:       () => {},
+    getRotateModeId:    () => null,
+    getRotateHandle:    () => null,
+    startRotate:        () => {},
+    rotate:             () => {},
+    commitRotate:       () => {},
+    cancelRotate:       () => {},
+    startPivotDrag:     () => {},
+    movePivot:          () => {},
+    commitPivot:        () => {},
+    cancelPivot:        () => {},
+    resetPivot:         () => {},
     ...overrides,
   }
 }

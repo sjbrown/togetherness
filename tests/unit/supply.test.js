@@ -30,7 +30,7 @@ import * as Events from '../../src/events.js'
 import {
   addToyDom, activateAllToyScriptsDom, reparentToyDom, makeLayerAPI,
   getContentsGroup, findToyDom, getSnapPoints, getAnchor, getInnerAnchor,
-  initializeToy, newToyId,
+  initializeToy, newToyId, applyRotateDom,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { getOps, heads } from '../../src/op_dag.js'
@@ -645,5 +645,72 @@ describe('supply — clone inner elements get their own data-id (regression: mov
     expect(getAnchor(reloadedClone)).toEqual(liveCloneAnchor)
 
     expect(reloadedLayer.querySelector('[data-id="supply1"]').getAttribute('data-below')).toBe('chip5')
+  })
+})
+
+describe('supply — a clone always carries the prototype’s other data- attributes', () => {
+  // Real bug report: place a rotated chip/card on a Supply, Take a clone of
+  // it, and the clone comes back un-rotated. cloneToyBoundary built the
+  // clone's <g> wrapper from an explicit, fixed attribute list (class,
+  // data-toy-type, data-color, data-id, id, data-module) that never
+  // included data-rotate — because it predates toy rotation entirely.
+  // This was briefly an opt-in Supply option; the owner decided a clone
+  // should just always be a faithful copy, so it's unconditional now.
+  async function setUp() {
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    addToyDom(ydoc, layerEl, { id: 'supply1', toyType: 'supply', x: 100, y: 100, color: '#fff' }, SUPPLY_SVG)
+    addToyDom(ydoc, layerEl, { id: 'chip5',   toyType: 'chip',   x: 500, y: 500, color: '#dd2222' }, CHIP_SVG)
+    await activateAll(ydoc, layerEl)
+
+    const chip5El = findToyDom(layerEl, 'chip5')
+    applyRotateDom(chip5El, 90)
+    // Any other data-* attribute a real toy might be carrying, unrelated
+    // to rotation, should ride along too.
+    chip5El.setAttribute('data-my-custom', 'keep-me')
+
+    const supplyEl = findToyDom(layerEl, 'supply1')
+
+    const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
+    const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')
+    api.applyMoveCommit(api.find('chip5'), supplyPoint.cx, supplyPoint.cy)
+    expect(supplyEl.getAttribute('data-below')).toBe('chip5')
+
+    const unbind = bindSupplyHarness(ydoc, layerEl)
+    return { ydoc, layerEl, supplyEl, chip5El, unbind }
+  }
+
+  function newClone(layerEl) {
+    return [...layerEl.querySelectorAll('[data-toy-type="chip"]')]
+      .find(el => el.getAttribute('data-id') !== 'chip5')
+  }
+
+  test('the clone carries the rotation over (transform re-derived around its own centre), plus any other data- attribute', async () => {
+    const { ydoc, layerEl, supplyEl, chip5El, unbind } = await setUp()
+    expect(chip5El.getAttribute('data-rotate')).toBe('90') // sanity: the prototype really is rotated
+
+    clickTake(ydoc, layerEl, supplyEl)
+    unbind()
+
+    const clone = newClone(layerEl)
+    expect(clone.getAttribute('data-rotate')).toBe('90')
+    expect(clone.getAttribute('data-my-custom')).toBe('keep-me')
+    // transform is re-derived, not copied verbatim — the clone's centre
+    // differs from the prototype's (it lands on supply's .tt_target spot).
+    const cloneAnchor = getAnchor(clone)
+    expect(clone.getAttribute('transform')).toBe(`rotate(90 ${cloneAnchor.x} ${cloneAnchor.y})`)
+  })
+
+  test('never lets a carried-over data- attribute clobber the clone’s own identity', async () => {
+    const { ydoc, layerEl, supplyEl, chip5El, unbind } = await setUp()
+
+    clickTake(ydoc, layerEl, supplyEl)
+    unbind()
+
+    const clone = newClone(layerEl)
+    expect(clone.getAttribute('data-id')).not.toBe(chip5El.getAttribute('data-id'))
+    expect(clone.getAttribute('data-id')).toBe(clone.getAttribute('id'))
+    expect(clone.getAttribute('data-toy-type')).toBe('chip')
+    expect(clone.getAttribute('data-module')).toBe('toys')
   })
 })

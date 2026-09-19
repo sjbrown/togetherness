@@ -34,6 +34,9 @@ import { getOps, appendOp, getOp, heads, labelBranches, branchAuthors, forkJoinS
 import { invert as invertWire, apply as applyWire } from './op_wire_mutation.js';
 import { checkpointOp, projectFrom, buildForkSeed, isCheckpoint } from './op_checkpoint.js';
 import { receiveOp, advanceTo } from './op_replay.js';
+// geometry.js is shape-agnostic pure math, shared with drawing.js and
+// boun_pos.js.
+import { computeRotate, snapAngle, normalizeAngle, computeResizeCornerRect } from './geometry.js';
 
 // ── ID helpers ────────────────────────────────────────────────────────────────
 
@@ -626,8 +629,22 @@ function cloneToyBoundary(sourceEl, newId, cloned) {
   g.setAttribute('data-id',       newId)
   g.setAttribute('id',            newId)
   g.setAttribute('data-module',   'toys')
+
+  // id/data-id/data-module above always get the NEW values. Any other
+  // data-* the source's <g> carried (data-rotate, bespoke toy state) rides
+  // along too, so a clone starts as a faithful copy, not a blank instance.
+  for (const attr of Array.from(sourceEl.attributes)) {
+    if (!attr.name.startsWith('data-')) continue
+    if (g.hasAttribute(attr.name)) continue
+    g.setAttribute(attr.name, attr.value)
+  }
+
   g.appendChild(svgEl)
   attachScopedLookup(g, newId)
+  // No-ops without a carried-over data-rotate. Matters here for a NESTED
+  // clone (its geometry never moves again); the root gets re-synced once
+  // more once cloneToyDom repositions it.
+  syncRotation(g)
 
   cloned.push({ id: newId, toyType, el: g })
   return g
@@ -674,6 +691,9 @@ export function cloneToyDom(sourceEl, newId, x, y) {
   const height = parseFloat(svgEl.getAttribute('height')) || FALLBACK_TOY_SIZE
   svgEl.setAttribute('x', String(x - width / 2))
   svgEl.setAttribute('y', String(y - height / 2))
+  // No-op unless a data-rotate carried over; re-derives the transform for
+  // the new position.
+  syncRotation(toyEl)
   return { toyEl, cloned }
 }
 
@@ -1129,11 +1149,65 @@ export function moveToyAndStack(layerEl, el, x, y) {
   for (const { member, cx, cy } of targets) applyMoveDom(member, cx, cy)
 }
 
+// ── Rotation ─────────────────────────────────────────────────────────────────
+// Offered only when a toy's embedded <svg> declares class="tt_able_rotate"
+// (chip, single_poker_card), always about the toy's own fixed centre -- no
+// placeable pivot. The rotate attribute lives on the outer <g>, the same
+// element move/resize/select already key off of; the embedded <svg> stays
+// unrotated local geometry.
+const ROTATE_ATTR = 'data-rotate'
+
+// Chips/cards' own rotation step, in degrees -- a fixed grain, not user-adjustable.
+export const ROTATE_SNAP_DEG = 45
+
+/** A toy's rotation in degrees (0 when it has none, or it can't rotate). */
+export function getRotation(domEl) {
+  return parseFloat(domEl?.getAttribute?.(ROTATE_ATTR)) || 0
+}
+
+/** The point a toy turns about: always its own centre, never placeable. */
+export function rotationCenter(domEl, geom = getGeom(domEl)) {
+  return geom
+    ? { cx: geom.x + geom.width / 2, cy: geom.y + geom.height / 2 }
+    : { cx: 0, cy: 0 }
+}
+
+/** A toy's rotation resolved against geometry: { deg, cx, cy }, or null when unrotated. */
+export function resolveRotation(domEl, geom = getGeom(domEl)) {
+  const deg = getRotation(domEl)
+  if (!deg) return null
+  return { deg, ...rotationCenter(domEl, geom) }
+}
+
+/**
+ * Project a toy's stored rotation onto its own <g> as a transform. Called
+ * after every geometry write so the pivot tracks the toy's current centre.
+ * A toy with no data-rotate at all returns immediately.
+ */
+export function syncRotation(domEl) {
+  if (!domEl?.setAttribute) return
+  if (!domEl.hasAttribute?.(ROTATE_ATTR)) return
+  const rot = resolveRotation(domEl)
+  if (rot) domEl.setAttribute('transform', `rotate(${rot.deg} ${rot.cx} ${rot.cy})`)
+  else     domEl.removeAttribute('transform')
+}
+
+// No tt_able_rotate guard: selectModes already gates the whole rotate
+// gesture behind offering 'sel-rotate' in the first place.
+export function applyRotateDom(domEl, deg) {
+  if (!domEl) return
+  domEl.setAttribute(ROTATE_ATTR, String(normalizeAngle(deg)))
+  syncRotation(domEl)
+}
+
 export function selectModes(domEl) {
   const ownSvg = domEl?.querySelector?.(':scope > svg')
   let modes = ['sel-action']
   if (!!ownSvg?.classList.contains('tt-mode-resize')) {
     modes.push('sel-resize')
+  }
+  if (!!ownSvg?.classList.contains('tt_able_rotate')) {
+    modes.push('sel-rotate')
   }
   if (!!ownSvg?.classList.contains('tt-mode-rummage')) {
     modes.push('sel-rummage')
@@ -1166,6 +1240,7 @@ export function applyMoveDom(domEl, cx, cy) {
   const halfH = Math.round(parseFloat(domSvg.getAttribute('height') ?? String(FALLBACK_TOY_SIZE)) / 2)
   domSvg.setAttribute('x', cx - halfW)
   domSvg.setAttribute('y', cy - halfH)
+  syncRotation(domEl)
 }
 
 // Resize corner indices — shared with overlay.js's corner-handle geometry
@@ -1185,36 +1260,12 @@ function clampResizeDim(value) {
 }
 
 /**
- * Pure geometry for a corner-drag resize: given the toy's rect at drag
- * start and the corner being dragged, compute the new { x, y, width,
- * height } for the current pointer position (px, py), keeping the corner
- * OPPOSITE the dragged one fixed in place. Clamps width/height to
- * MIN_RESIZE_SIZE (never lets the dragged corner cross the fixed one) —
- * the fixed corner itself never moves.
+ * A toy's own corner-drag resize, at the toy's own minimum size. The
+ * shared corner-opposite-fixed algorithm lives in geometry.js; this is
+ * just toys.js's own MIN_RESIZE_SIZE threaded through.
  */
 export function computeResizeRect(startRect, corner, px, py) {
-  const { x, y, width, height } = startRect
-  const left = x, top = y, right = x + width, bottom = y + height
-
-  switch (corner) {
-    case RESIZE_CORNER_NW: {
-      const newLeft = Math.min(px, right - MIN_RESIZE_SIZE)
-      const newTop  = Math.min(py, bottom - MIN_RESIZE_SIZE)
-      return { x: newLeft, y: newTop, width: right - newLeft, height: bottom - newTop }
-    }
-    case RESIZE_CORNER_NE: {
-      const newTop = Math.min(py, bottom - MIN_RESIZE_SIZE)
-      return { x: left, y: newTop, width: Math.max(px - left, MIN_RESIZE_SIZE), height: bottom - newTop }
-    }
-    case RESIZE_CORNER_SW: {
-      const newLeft = Math.min(px, right - MIN_RESIZE_SIZE)
-      return { x: newLeft, y: top, width: right - newLeft, height: Math.max(py - top, MIN_RESIZE_SIZE) }
-    }
-    case RESIZE_CORNER_SE:
-    default: {
-      return { x: left, y: top, width: Math.max(px - left, MIN_RESIZE_SIZE), height: Math.max(py - top, MIN_RESIZE_SIZE) }
-    }
-  }
+  return computeResizeCornerRect(startRect, corner, px, py, MIN_RESIZE_SIZE)
 }
 
 /**
@@ -1234,6 +1285,8 @@ export function applyResizeDom(domEl, x, y, width, height) {
   domSvg.setAttribute('width',  String(w))
   domSvg.setAttribute('height', String(h))
   domSvg.setAttribute('viewBox', `0 0 ${w} ${h}`)
+  // Keeps a resized toy's rotation pivot centred on its new size.
+  syncRotation(domEl)
 
   if (!toyId) return
   for (const el of domSvg.querySelectorAll(`.${toyId}__tt_wh_follow_resize`)) {
@@ -1361,9 +1414,7 @@ export const TOOLS = [
     iconUrl: 'toy/supply.svg',
     layer:   'toys',
     defaults: { fill: '#fafafa' },
-    options: [
-      { },
-    ],
+    options: [],
   },
   {
     name:    'tray_sum',
@@ -2361,6 +2412,10 @@ export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false)
     // Toys only have one resize flavor (corner-drag), so `mode` is
     // unused here -- kept so callers can ask uniformly across layers.
     computeResize: (mode, startRect, corner, px, py) => computeResizeRect(startRect, corner, px, py),
+    getRotation,
+    resolveRotation,
+    rotationCenter,
+    computeRotate,
     applyMoveCommit: (el, x, y) => {
       const layerEl = layer()
       const oldAnchor = getAnchor(el)
@@ -2374,6 +2429,7 @@ export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false)
       }, { positionEvents })                // step 5: runGesture's own cascade
     },
     applyResize:     (el, x, y, w, h) => gesture('resize', () => applyResizeDom(el, x, y, w, h)),
+    applyRotate:     (el, deg)       => gesture('rotate', () => applyRotateDom(el, deg)),
     edit:            (el, editData)  => gesture('edit',   () => editDom(el, editData)),
     previewEdit,
     listData:        ()              => toysDataDom(layer()),

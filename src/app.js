@@ -19,6 +19,7 @@
  */
 
 import { initIcons }                              from './icons.js';
+import { rotatePoint }                            from './geometry.js';
 import * as BounPos                               from './boun_pos.js';
 import * as Drawing                               from './drawing.js';
 import * as Toys                                  from './toys.js';
@@ -196,8 +197,8 @@ function _broadcastDesired() {
 
 // Modes with their own drag handles.
 const RESIZE_HANDLE_MODES = new Set(['sel-resize', 'sel-resize-r']);
+const ROTATE_HANDLE_MODES = new Set(['sel-rotate', 'sel-rotate-pivot']);
 
-// id's own live DOM element and owning LayerAPI
 function _layerFor(id) {
   const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
   return { domEl, layer: _Layers[moduleForElement(domEl)] };
@@ -206,6 +207,52 @@ function _layerFor(id) {
 function _defaultModeFor(id) {
   const { domEl, layer } = _layerFor(id);
   return layer?.nextSelectMode?.(domEl, null) ?? null;
+}
+
+function _rotationOf(id) {
+  const { domEl, layer } = _layerFor(id);
+  return layer?.resolveRotation?.(domEl) ?? null;
+}
+
+function _rotationCenterOf(id, geom) {
+  const { domEl, layer } = _layerFor(id);
+  return layer?.rotationCenter?.(domEl, geom) ?? null;
+}
+
+// computeResize keeps the corner opposite the dragged one fixed in the
+// shape's own space, but a resize also moves the pivot a rotated shape
+// turns about, sliding that anchor corner on canvas even though it never
+// moved locally. Translating by d = R(delta) - delta, delta being how far
+// the pivot moved, puts it back exactly where the user sees it.
+function _reanchorRotated(id, rect, rot) {
+  if (!rot) return rect;
+  const centre = _rotationCenterOf(id, rect);
+  if (!centre) return rect;
+  const dx = centre.cx - rot.cx;
+  const dy = centre.cy - rot.cy;
+  const shifted = rotatePoint({ x: dx, y: dy }, { deg: rot.deg });
+  return { ...rect, x: rect.x + shifted.x - dx, y: rect.y + shifted.y - dy };
+}
+
+// The one place a pivot change is written. Moving the pivot re-derives the
+// rotation about a new point, which would shift the shape; the compensating
+// x/y therefore ride in the SAME transaction, never as a follow-up write a
+// peer could observe on its own.
+function _writePivot(id, mtype, startRect, fromPivot, toPivot, deg) {
+  const shift = _Layers[mtype].pivotShift(startRect, fromPivot, toPivot, deg);
+  const el    = _Layers[mtype]?.find(id);
+  _lastActionScope = mtype;
+  _Layers[mtype]?.applyPivot(el, toPivot.fx, toPivot.fy,
+                             startRect.x + shift.dx, startRect.y + shift.dy);
+  addHistory(`pivot ${id} → (${toPivot.fx}, ${toPivot.fy})`, { elType: mtype });
+}
+
+// Canvas-space (px, py) expressed in id's own UNROTATED space. Handles are
+// drawn rotated with the element, and getGeom()/computeResize() both speak
+// local space, so every hit-test and resize computation comes through here
+// first. A no-op for anything unrotated, which is nearly everything.
+function _toLocalPoint(id, px, py, rot = _rotationOf(id)) {
+  return rotatePoint({ x: px, y: py }, rot && { ...rot, deg: -rot.deg });
 }
 
 function _renderSelectionMode() {
@@ -279,8 +326,21 @@ let _multiDragState = null;  // { elements: [{ id, mtype, anchorX, anchorY, bbox
                              //   lastValidDx, lastValidDy } | null
 
 // Active corner-drag resize
-let _resizeState = null;    // { id, corner, startRect: {x,y,width,height},
+let _resizeState = null;    // { id, corner, mtype, mode, rotation,
+                            //   startRect: {x,y,width,height},
                             //   lastRect: {x,y,width,height} } | null
+
+let _rotateState = null;    // { id, corner, mtype, centre: {cx,cy},
+                            //   startRect: {x,y,width,height} } | null
+
+let _pivotState = null;     // { id, mtype, startRect, fromPivot, deg } | null
+
+let _rotateSnapDegByLayer = {
+  drawing: Drawing.ROTATE_SNAP_DEG,
+  toys:    Toys.ROTATE_SNAP_DEG,
+};
+
+let _pivotSnapFraction = Drawing.PIVOT_SNAP_FRACTION;
 
 // Which undo mechanism App.undo/App.redo should invoke: the toys op log
 // (Toys.undoToyGesture) or the drawing/boundaries Y.UndoManager
@@ -880,6 +940,17 @@ const App = {
     if (!svgEl) return { x: 0, y: 0 };
     const mtype = moduleForElement(svgEl);
     return _Layers[mtype]?.getAnchor(svgEl) ?? { x: 0, y: 0 };
+  },
+  // { deg, cx, cy } or null
+  getRotation: (id) => _rotationOf(id),
+  // { fx, fy, cx, cy } — the pivot as fractions of the bbox plus the
+  // canvas-space point they resolve to, or null for a layer with no pivot.
+  getPivot: (id) => {
+    const { domEl, layer } = _layerFor(id);
+    const pivot = layer?.getPivot?.(domEl);
+    const geo   = App.getBBox(id);
+    if (!pivot || !geo) return null;
+    return { ...pivot, ...layer.rotationCenter(domEl, geo) };
   },
   getLayerObjects: (layerId) => _Layers[LAYER_ID_TO_MODULE[layerId]]?.listData() ?? [],
   // Return ids of objects on the active layer whose bbox is fully inside rect.
@@ -1549,7 +1620,7 @@ const App = {
     if (defaultMode !== 'sel-action' || _activeMode?.mode !== defaultMode) return false;
     const geo = App.getBBox(id);
     if (!geo) return false;
-    if (!Delight.hitTestBowstring(geo, canvasPoint.x, canvasPoint.y, App.getViewScale())) return false;
+    if (!Delight.hitTestBowstring(geo, canvasPoint.x, canvasPoint.y, App.getViewScale(), _rotationOf(id))) return false;
     return Delight.startBowstring(id, e, _svgEl);
   },
 
@@ -1592,7 +1663,8 @@ const App = {
   getResizeCorner: (id, cx, cy) => {
     if (_activeMode?.id !== id || !RESIZE_HANDLE_MODES.has(_activeMode.mode)) return null;
     const geo = App.getBBox(id);
-    return Overlay.hitTestSelectionHandle(_activeMode.mode, geo, cx, cy, App.getViewScale());
+    const p   = _toLocalPoint(id, cx, cy);
+    return Overlay.hitTestSelectionHandle(_activeMode.mode, geo, p.x, p.y, App.getViewScale());
   },
 
   startResize: (id, corner) => {
@@ -1601,7 +1673,13 @@ const App = {
     if (!bbox) return;
     const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
     const mtype = moduleForElement(domEl);
-    _resizeState = { id, corner, mtype, mode: _activeMode.mode, startRect: { ...bbox }, lastRect: { ...bbox } };
+    // The rotation is captured once: a resize never changes it, and every
+    // pointer sample has to be un-rotated about the SAME point the handles
+    // were drawn at.
+    _resizeState = {
+      id, corner, mtype, mode: _activeMode.mode, rotation: _rotationOf(id),
+      startRect: { ...bbox }, lastRect: { ...bbox },
+    };
     Overlay.startResizeGhost(id);
   },
 
@@ -1610,14 +1688,18 @@ const App = {
   // is id's own owning LayerAPI's call, via computeResize(mode, ...).
   resize: (id, corner, px, py) => {
     if (!_resizeState || _resizeState.id !== id) return;
-    const rect = _Layers[_resizeState.mtype].computeResize(_resizeState.mode, _resizeState.startRect, corner, px, py);
+    const p = _toLocalPoint(id, px, py, _resizeState.rotation);
+    const local = _Layers[_resizeState.mtype].computeResize(_resizeState.mode, _resizeState.startRect, corner, p.x, p.y);
+    const rect = _reanchorRotated(id, local, _resizeState.rotation);
     _resizeState.lastRect = rect;
     Overlay.updateResizeGhost(id, rect.x, rect.y, rect.width, rect.height);
   },
 
   commitResize: (id, corner, px, py) => {
     if (!_resizeState || _resizeState.id !== id) return;
-    const toRect = _Layers[_resizeState.mtype].computeResize(_resizeState.mode, _resizeState.startRect, corner, px, py);
+    const p = _toLocalPoint(id, px, py, _resizeState.rotation);
+    const local = _Layers[_resizeState.mtype].computeResize(_resizeState.mode, _resizeState.startRect, corner, p.x, p.y);
+    const toRect = _reanchorRotated(id, local, _resizeState.rotation);
     const mtype    = _resizeState.mtype;
     _resizeState = null;
 
@@ -1637,6 +1719,133 @@ const App = {
     if (!_resizeState) return;
     Overlay.endResizeGhost(_resizeState.id);
     _resizeState = null;
+  },
+
+  // ── Rotate lifecycle ──────────────────────────────────────────────────────
+  // Parallel to the resize lifecycle above. It's basically the same gesture
+  // (corner-handle hit test, ghost on overlay, start/move/commit/cancel
+  // shape) with different arithmetic. The point stays on CANVAS space and
+  // the commit writes one degree count rather than a bbox.
+
+  getRotateModeId: () => (_activeMode && ROTATE_HANDLE_MODES.has(_activeMode.mode)) ? _activeMode.id : null,
+
+  getRotateSnapDeg: (mtype) => _rotateSnapDegByLayer[mtype],
+  setRotateSnapDeg: (mtype, deg) => { _rotateSnapDegByLayer[mtype] = Number(deg) || 0; },
+  getPivotSnapFraction: () => _pivotSnapFraction,
+  setPivotSnapFraction: (f) => { _pivotSnapFraction = Number(f) || 0; },
+
+  getRotateHandle: (id, cx, cy) => {
+    if (_activeMode?.id !== id || !ROTATE_HANDLE_MODES.has(_activeMode.mode)) return null;
+    const geo = App.getBBox(id);
+    const p   = _toLocalPoint(id, cx, cy);
+    return Overlay.hitTestSelectionHandle(
+      _activeMode.mode, geo, p.x, p.y, App.getViewScale(), App.getPivot(id));
+  },
+
+  startRotate: (id, corner) => {
+    if (_activeMode?.id !== id || !ROTATE_HANDLE_MODES.has(_activeMode.mode) || App.isHeldByOther(id)) return;
+    const bbox = App.getBBox(id);
+    if (!bbox) return;
+    // The pivot is captured once, like the resize gesture captures rotation:
+    // every sample of the drag has to measure from the same point.
+    const centre = _rotationCenterOf(id, bbox);
+    if (!centre) return;
+    const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
+    _rotateState = { id, corner, mtype: moduleForElement(domEl), startRect: { ...bbox }, centre };
+    Overlay.startResizeGhost(id);
+  },
+
+  // Called on every pointermove during a rotate drag; (px, py) is the raw
+  // canvas-space pointer position, NOT un-rotated — computeRotate measures
+  // the absolute angle from the shape's centre out to the pointer.
+  rotate: (id, corner, px, py) => {
+    if (!_rotateState || _rotateState.id !== id) return;
+    const layer = _Layers[_rotateState.mtype];
+    const snapDeg = _rotateSnapDegByLayer[_rotateState.mtype];
+    const deg = layer.computeRotate(_rotateState.startRect, _rotateState.centre, corner, px, py, snapDeg);
+    Overlay.updateRotateGhost(id, deg, _rotateState.startRect);
+  },
+
+  commitRotate: (id, corner, px, py) => {
+    if (!_rotateState || _rotateState.id !== id) return;
+    const mtype = _rotateState.mtype;
+    const snapDeg = _rotateSnapDegByLayer[mtype];
+    const deg = _Layers[mtype].computeRotate(_rotateState.startRect, _rotateState.centre, corner, px, py, snapDeg);
+    _rotateState = null;
+
+    const el = _Layers[mtype]?.find(id);
+    _lastActionScope = mtype;
+    _Layers[mtype]?.applyRotate(el, deg);
+    // Ghost ends after the commit — same reasoning as commitResize.
+    Overlay.endResizeGhost(id);
+    addHistory(`rotated ${id} → ${deg}°`, { elType: mtype });
+  },
+
+  cancelRotate: () => {
+    if (!_rotateState) return;
+    Overlay.endResizeGhost(_rotateState.id);
+    _rotateState = null;
+  },
+
+  // ── Pivot lifecycle ───────────────────────────────────────────────────────
+  // Similar to resize and rotate. No ghost needed though.
+
+  startPivotDrag: (id) => {
+    if (_activeMode?.id !== id || _activeMode.mode !== 'sel-rotate-pivot' || App.isHeldByOther(id)) return;
+    const bbox = App.getBBox(id);
+    if (!bbox) return;
+    const { domEl, layer } = _layerFor(id);
+    if (!layer?.getPivot) return;
+    _pivotState = {
+      id,
+      mtype:     moduleForElement(domEl),
+      startRect: { ...bbox },
+      fromPivot: layer.getPivot(domEl),
+      deg:       layer.getRotation?.(domEl) ?? 0,
+    };
+  },
+
+  // (px, py) is the raw canvas-space pointer, un-rotated into the shape's own
+  // frame first: the handle is drawn inside the rotated furniture, so the
+  // fractions have to be measured there too.
+  movePivot: (id, px, py) => {
+    if (!_pivotState || _pivotState.id !== id) return;
+    const p = _toLocalPoint(id, px, py, _rotationOf(id));
+    const pivot = _Layers[_pivotState.mtype].computePivot(_pivotState.startRect, p.x, p.y, _pivotSnapFraction);
+    _pivotState.toPivot = pivot;
+    Overlay.setPivotPreview(id, pivot);
+  },
+
+  commitPivot: (id, px, py) => {
+    if (!_pivotState || _pivotState.id !== id) return;
+    const { mtype, startRect, fromPivot, deg } = _pivotState;
+    const p     = _toLocalPoint(id, px, py, _rotationOf(id));
+    const pivot = _Layers[mtype].computePivot(startRect, p.x, p.y, _pivotSnapFraction);
+    _pivotState = null;
+    Overlay.setPivotPreview(id, null);
+    _writePivot(id, mtype, startRect, fromPivot, pivot, deg);
+  },
+
+  /**
+   * Put the pivot back in the middle — the double-tap on the handle. Goes
+   * through the same write as a drag, so the shape is held in place by the
+   * same correction and the two can't drift apart.
+   */
+  resetPivot: (id) => {
+    if (_activeMode?.id !== id || _activeMode.mode !== 'sel-rotate-pivot' || App.isHeldByOther(id)) return;
+    const bbox = App.getBBox(id);
+    const { domEl, layer } = _layerFor(id);
+    if (!bbox || !layer?.getPivot) return;
+    const fromPivot = layer.getPivot(domEl);
+    if (fromPivot.fx === 0.5 && fromPivot.fy === 0.5) return;   // already centred
+    _writePivot(id, moduleForElement(domEl), bbox, fromPivot,
+                { fx: 0.5, fy: 0.5 }, layer.getRotation?.(domEl) ?? 0);
+  },
+
+  cancelPivot: () => {
+    if (!_pivotState) return;
+    Overlay.setPivotPreview(_pivotState.id, null);
+    _pivotState = null;
   },
 
   // ── Multi-element drag lifecycle ──────────────────────────────────────────

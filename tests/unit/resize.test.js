@@ -3,7 +3,7 @@ import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
   addToyDom, computeResizeRect, applyResizeDom,
-  RESIZE_CORNER_NW, RESIZE_CORNER_NE, RESIZE_CORNER_SW, RESIZE_CORNER_SE,
+  RESIZE_CORNER_NW, RESIZE_CORNER_SE,
   reparentToyDom,
   _clearSvgTextCache,
 } from '../../src/toys.js'
@@ -40,43 +40,15 @@ beforeEach(() => {
   _clearSvgTextCache()
 })
 
-describe('computeResizeRect — corner-drag geometry', () => {
+describe('computeResizeRect — toys.js’s own wrapper around the shared corner algorithm', () => {
+  // Full corner-by-corner coverage of the algorithm itself (same fixture
+  // numbers) lives in tests/unit/geometry.test.js now — this just checks
+  // toys.js wires MIN_TOY_SIZE through as the clamp floor.
   const startRect = { x: 100, y: 100, width: 200, height: 150 } // right=300, bottom=250
 
-  test('BR drag: top-left corner (100,100) stays fixed, size follows the pointer', () => {
-    const rect = computeResizeRect(startRect, RESIZE_CORNER_SE, 340, 260)
-    expect(rect).toEqual({ x: 100, y: 100, width: 240, height: 160 })
-  })
-
-  test('TL drag: bottom-right corner (300,250) stays fixed', () => {
-    const rect = computeResizeRect(startRect, RESIZE_CORNER_NW, 80, 90)
-    expect(rect).toEqual({ x: 80, y: 90, width: 220, height: 160 })
-  })
-
-  test('TR drag: bottom-left corner (100,250) stays fixed — x never moves, only width/y/height', () => {
-    const rect = computeResizeRect(startRect, RESIZE_CORNER_NE, 360, 80)
-    expect(rect).toEqual({ x: 100, y: 80, width: 260, height: 170 })
-  })
-
-  test('SW drag: top-right corner (300,100) stays fixed — y never moves, only x/width/height', () => {
-    const rect = computeResizeRect(startRect, RESIZE_CORNER_SW, 60, 300)
-    expect(rect).toEqual({ x: 60, y: 100, width: 240, height: 200 })
-  })
-
-  test('BR drag past the fixed corner clamps to the minimum size, never inverts', () => {
+  test('delegates to computeResizeCornerRect with MIN_TOY_SIZE as the floor', () => {
     const rect = computeResizeRect(startRect, RESIZE_CORNER_SE, 50, 50)
-    expect(rect.x).toBe(100)
-    expect(rect.y).toBe(100)
-    expect(rect.width).toBeGreaterThanOrEqual(30) // MIN_TOY_SIZE
-    expect(rect.height).toBeGreaterThanOrEqual(30)
-  })
-
-  test('TL drag past the fixed corner clamps to the minimum size, fixed corner (300,250) never moves', () => {
-    const rect = computeResizeRect(startRect, RESIZE_CORNER_NW, 500, 500)
-    expect(rect.x + rect.width).toBe(300)
-    expect(rect.y + rect.height).toBe(250)
-    expect(rect.width).toBeGreaterThanOrEqual(30)
-    expect(rect.height).toBeGreaterThanOrEqual(30)
+    expect(rect).toEqual({ x: 100, y: 100, width: 30, height: 30 }) // MIN_TOY_SIZE
   })
 })
 

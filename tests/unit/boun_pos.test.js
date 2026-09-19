@@ -518,24 +518,15 @@ describe('selectModes / nextSelectMode', () => {
 
 describe('computeResize', () => {
   // Corner indices: 0=NW, 1=NE, 2=SE, 3=SW — same order as drawing.js/toys.js.
+  // Full corner-by-corner coverage of the shared corner-opposite-fixed
+  // algorithm (same fixture numbers) lives in tests/unit/geometry.test.js
+  // now — this just checks boun_pos.js wires MIN_BOUNPOS_RESIZE_SIZE
+  // through as the clamp floor.
   const startRect = { x: 100, y: 100, width: 200, height: 150 }; // right=300, bottom=250
 
-  test('SE drag keeps the top-left corner fixed, size follows the pointer', () => {
-    const rect = computeResize('sel-resize', startRect, 2, 340, 260);
-    expect(rect).toEqual({ x: 100, y: 100, width: 240, height: 160 });
-  });
-
-  test('NW drag keeps the bottom-right corner fixed', () => {
-    const rect = computeResize('sel-resize', startRect, 0, 80, 90);
-    expect(rect).toEqual({ x: 80, y: 90, width: 220, height: 160 });
-  });
-
-  test('dragging past the fixed corner clamps to the minimum size, never inverts', () => {
+  test('routes to the shared corner algorithm with boun_pos’ own minimum size', () => {
     const rect = computeResize('sel-resize', startRect, 2, 50, 50);
-    expect(rect.x).toBe(100);
-    expect(rect.y).toBe(100);
-    expect(rect.width).toBeGreaterThanOrEqual(30);
-    expect(rect.height).toBeGreaterThanOrEqual(30);
+    expect(rect).toEqual({ x: 100, y: 100, width: 30, height: 30 }); // MIN_BOUNPOS_RESIZE_SIZE
   });
 });
 

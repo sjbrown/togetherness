@@ -127,11 +127,18 @@ html, body {
 .requestedRing { pointer-events: none; }
 .remote-sel     { pointer-events: none; }
 .handle    { pointer-events: auto; }
-.handle[data-corner="nw"] { cursor: nw-resize; }
-.handle[data-corner="ne"] { cursor: ne-resize; }
-.handle[data-corner="sw"] { cursor: sw-resize; }
-.handle[data-corner="se"] { cursor: se-resize; }
+/* Corner handles get their cursor inline, per render — a handle is drawn
+   turned with its shape, so the direction it drags along turns too and no
+   static rule per corner can be right at every angle. See overlay.js's
+   handleCursor(). The radius handle is circles-only, and circles don't
+   rotate, so it stays here. */
 .handle[data-corner="r"]  { cursor: ew-resize; }
+.rotateGlyph { pointer-events: none; }
+.pivotGlyph  { pointer-events: none; }
+.pivotHandle { pointer-events: auto; cursor: crosshair; }
+/* Pointer capture routes the drag to #stage, so without this the crosshair
+   would be lost the moment the pointer left the handle it is dragging. */
+#stage.pivot-dragging, #stage.pivot-dragging * { cursor: crosshair; }
 
 /* A toy nested inside a tray is excluded from native hit-testing, so a
  * click over it lands on whatever's actually painted underneath — the

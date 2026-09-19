@@ -438,3 +438,81 @@ describe('buildExportSvg', () => {
     expect(clone.querySelector('#drawing-layer rect')).not.toBeNull()
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Rotation on import.
+// A drawing shape's rotation lives in the document as a degree count and its
+// SVG transform is derived from it, so a file that has been through another
+// editor can disagree with itself. Import has to settle the two rather than
+// assume the transform is the copy we wrote.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('populateFromSvgDoc — rotation reconciliation', () => {
+  const SVG_NS = 'http://www.w3.org/2000/svg'
+
+  const withRect = (attrs) => {
+    const svg = document.createElementNS(SVG_NS, 'svg')
+    const layer = document.createElementNS(SVG_NS, 'g')
+    layer.id = 'drawing-layer'
+    const rect = document.createElementNS(SVG_NS, 'rect')
+    for (const [k, v] of Object.entries({
+      id: 'r1', x: 100, y: 100, width: 200, height: 120, 'data-module': 'drawing', ...attrs,
+    })) rect.setAttribute(k, String(v))
+    layer.appendChild(rect)
+    svg.appendChild(layer)
+    return svg
+  }
+
+  const importRect = (attrs) => {
+    const { ydoc, yDrawing } = freshLayers()
+    populateFromSvgDoc(withRect(attrs), ydoc)
+    return yDrawing.toArray()[0]
+  }
+
+  test('our own export comes back byte-identical in the fields that matter', () => {
+    const yEl = importRect({ 'data-rotate': '45', transform: 'rotate(45 200 160)' })
+    expect(yEl.getAttribute('data-rotate')).toBe('45')
+    expect(yEl.getAttribute('transform')).toBeUndefined()
+    expect(yEl.getAttribute('x')).toBe('100')
+    expect(yEl.getAttribute('y')).toBe('100')
+  })
+
+  test('an edit made elsewhere survives — the whole point of the exercise', () => {
+    // TT last stored 45°. In the other editor the user turned it to 60° and
+    // dragged it 40 right, 25 down; the editor consolidated that into one
+    // matrix and left data-rotate alone, not knowing what it means.
+    const yEl = importRect({ 'data-rotate': '45', transform: 'translate(40 25) rotate(60 200 160)' })
+    expect(Number(yEl.getAttribute('data-rotate'))).toBeCloseTo(60, 6)
+    expect(yEl.getAttribute('x')).toBe('140')
+    expect(yEl.getAttribute('y')).toBe('125')
+  })
+
+  test('it does not matter whether the editor baked the move into x/y or the matrix', () => {
+    // Inkscape's "optimized" vs "preserved" storage is a user preference we
+    // don't control, so both spellings have to land in the same place.
+    const preserved = importRect({ 'data-rotate': '45', transform: 'translate(40 25) rotate(60 200 160)' })
+    const optimized = importRect({ x: 140, y: 125, 'data-rotate': '45', transform: 'rotate(60 240 185)' })
+    expect(optimized.getAttribute('x')).toBe(preserved.getAttribute('x'))
+    expect(optimized.getAttribute('y')).toBe(preserved.getAttribute('y'))
+    expect(Number(optimized.getAttribute('data-rotate')))
+      .toBeCloseTo(Number(preserved.getAttribute('data-rotate')), 6)
+  })
+
+  test('a scaled shape keeps the file’s transform and loses our stale degrees', () => {
+    const yEl = importRect({ 'data-rotate': '45', transform: 'scale(1.5) rotate(60 200 160)' })
+    expect(yEl.getAttribute('data-rotate')).toBeUndefined()
+    expect(yEl.getAttribute('transform')).toContain('matrix(')
+  })
+
+  test('a shape that was never ours is imported untouched', () => {
+    const yEl = importRect({ transform: 'skewX(10)' })
+    expect(yEl.getAttribute('transform')).toBe('skewX(10)')
+    expect(yEl.getAttribute('data-rotate')).toBeUndefined()
+  })
+
+  test('a plain unrotated shape is unaffected', () => {
+    const yEl = importRect({})
+    expect(yEl.getAttribute('transform')).toBeUndefined()
+    expect(yEl.getAttribute('x')).toBe('100')
+  })
+})

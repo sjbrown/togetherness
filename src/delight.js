@@ -45,6 +45,7 @@
  */
 
 import { LOCAL_ACTION_FILTER_ID, GLOW_FILTER_ID } from './defs.js';
+import { rotatePoint } from './geometry.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 
@@ -199,21 +200,18 @@ function el(tag, attrs) {
 
 /**
  * Hit-test a canvas-space point against elId's resting bowstring square.
- * Mirrors Overlay.hitTestResizeCorner's contract so canvas.js can check it
- * the same way, on pointerdown, before ordinary hit-testing.
+ * rot (the same { deg, cx, cy } App.getRotation returns, or null) rotates
+ * the square along with the toy.
  */
-export function hitTestBowstring(geo, px, py, scale) {
-  const origin = bowstringOrigin(geo);
+export function hitTestBowstring(geo, px, py, scale, rot = null) {
+  const origin = bowstringOrigin(geo, rot);
   const half = (HANDLE_HALF * 2 / scale) / 2;
   return Math.abs(px - origin.x) <= half && Math.abs(py - origin.y) <= half;
 }
 
-/**
- * The handle's resting anchor: the SE corner of the selection ring, padded
- * out to match where overlay.js draws the action squares.
- */
-export function bowstringOrigin(geo) {
-  return { x: geo.x + geo.width + PAD, y: geo.y + geo.height + PAD };
+/** The handle's resting anchor: the SE corner of the selection ring, rotated with the toy. */
+export function bowstringOrigin(geo, rot = null) {
+  return rotatePoint({ x: geo.x + geo.width + PAD, y: geo.y + geo.height + PAD }, rot);
 }
 const PAD = 6; // keep in step with overlay.js's PAD
 
@@ -230,7 +228,8 @@ export function startBowstring(elId, e, stageEl) {
   if (!geo) return false;
 
   const scale = App.getViewScale();
-  const origin = bowstringOrigin(geo);
+  const rot = App.getRotation?.(elId) ?? null;
+  const origin = bowstringOrigin(geo, rot);
 
   const chrome = buildChrome(origin, scale);
   const toyEl = _svgEl.querySelector(`[data-id="${elId}"]`);
@@ -249,7 +248,7 @@ export function startBowstring(elId, e, stageEl) {
     lastSpinTime: null,
     spinAnimId: null,
     ...chrome,
-    ...spawnDelights(toyEl),
+    ...spawnDelights(toyEl, rot),
   };
 
   setPressed(true);
@@ -306,8 +305,13 @@ function buildChrome(origin, scale) {
  * The ring clones go in #delight-layer rather than next to the real ring,
  * because the real ring lives in #overlay-layer and would take them with it
  * on the next wipe.
+ *
+ * rot ({ deg, cx, cy } or null) is applied via a wrapping <g>, never as a
+ * transform on the delight nodes themselves: each already carries a CSS
+ * transform (the skew loop), and CSS transform silently overrides any SVG
+ * transform ATTRIBUTE on the same element.
  */
-function spawnDelights(toyEl) {
+function spawnDelights(toyEl, rot) {
   const ringDelight0 = el('g', { class: 'selRing-delight-0' });
   const ringDelight1 = el('g', { class: 'selRing-delight-1' });
   ringDelight0.style.opacity = '0.25';
@@ -321,18 +325,24 @@ function spawnDelights(toyEl) {
     // stripped so labels don't double up; defs/script are dead weight, and
     // any url(#...) inside still resolves against the original's defs since
     // SVG id lookup is document-global (safe here: the clone's lifetime is
-    // strictly inside the handle-held lifetime).
+    // strictly inside the handle-held lifetime). It clones the toy's own
+    // <svg>, not the outer <g> the toy's rotation actually lives on — rot
+    // has to be carried over separately, below.
     toyDelight = toySvgEl.cloneNode(true);
     toyDelight.removeAttribute('id');
     toyDelight.classList.add('toy-delight');
     toyDelight.querySelectorAll('text, tspan, defs, script').forEach(n => n.remove());
     toyDelight.querySelectorAll('[id]').forEach(n => n.removeAttribute('id'));
-    _layerEl.appendChild(toyDelight);
   }
-  _layerEl.appendChild(ringDelight0);
-  _layerEl.appendChild(ringDelight1);
 
-  return { ringDelight0, ringDelight1, toyDelight };
+  const delightGroup = rot ? el('g', { transform: `rotate(${rot.deg} ${rot.cx} ${rot.cy})` }) : null;
+  const host = delightGroup ?? _layerEl;
+  if (toyDelight) host.appendChild(toyDelight);
+  host.appendChild(ringDelight0);
+  host.appendChild(ringDelight1);
+  if (delightGroup) _layerEl.appendChild(delightGroup);
+
+  return { ringDelight0, ringDelight1, toyDelight, delightGroup };
 }
 
 function setPressed(isPressed) {
@@ -543,6 +553,9 @@ function destroyDelights() {
     const node = _active?.[k];
     if (node) { node.remove(); _active[k] = null; }
   }
+  // The rotated wrapper (see spawnDelights) is otherwise left behind empty
+  // once its children are gone.
+  if (_active?.delightGroup) { _active.delightGroup.remove(); _active.delightGroup = null; }
 }
 
 function teardown() {
