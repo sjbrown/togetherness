@@ -47,8 +47,6 @@
 import { LOCAL_ACTION_FILTER_ID, GLOW_FILTER_ID } from './defs.js';
 import { rotatePoint } from './geometry.js';
 
-export { rotatePoint };
-
 const SVGNS = 'http://www.w3.org/2000/svg';
 
 // ── Tunables ──────────────────────────────────────────────────────────────
