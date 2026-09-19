@@ -1346,16 +1346,30 @@ export function saveBody() {
 export function gesturesBody() {
   const ges = (iconId, title, desc) =>
     `<div style="display:flex;align-items:flex-start;gap:12px;padding:11px 0;border-bottom:0.5px solid var(--border)"><div style="width:26px;height:26px;flex-shrink:0;color:var(--text-2)">${icon(iconId, { size: 26 })}</div><div><b style="font-size:14px;display:block;margin-bottom:2px;color:var(--text)">${title}</b><span style="font-size:13px;color:var(--text-2)">${desc}</span></div></div>`;
+  const key = (label) =>
+    `<span style="display:inline-block;padding:2px 7px;border-radius:5px;border:1px solid var(--border);background:var(--surface);font:12px/1.4 monospace;color:var(--text)">${label}</span>`;
+  const kbd = (label, desc) =>
+    `<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:0.5px solid var(--border)"><div style="flex-shrink:0;min-width:78px">${label}</div><span style="font-size:13px;color:var(--text-2)">${desc}</span></div>`;
   return `
     <div class="field" style="margin-bottom:0">
       ${ges('pinch',     'Pinch',                'Zoom the canvas in and out')}
       ${ges('pan',       'Two-finger drag',       'Pan around the canvas')}
       ${ges('pen',       'One-finger drag',       'Draw a shape, or move a selection')}
-      ${ges('doubletap', 'Double-tap canvas',     'Reset zoom and pan to home')}
-      ${ges('history',   'Tap active tool twice', 'Open tool-specific options')}
+      ${ges('doubletap', 'Double-tap/click canvas', 'Reset zoom and pan to home')}
+      ${ges('history',   'Tap/click active tool twice', 'Open tool-specific options')}
     </div>
     <div style="margin-top:16px;font-size:12px;color:var(--text-3);line-height:1.6">
       On desktop: scroll wheel pans · Ctrl/⌘+scroll zooms
+    </div>
+    <div style="margin-top:20px;font-size:12px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:var(--text-3)">Keyboard shortcuts</div>
+    <div class="field" style="margin-bottom:0;margin-top:4px">
+      ${kbd(key('S'), 'Select tool')}
+      ${kbd(key('R'), 'Rectangle tool')}
+      ${kbd(key('C'), 'Circle tool')}
+      ${kbd(`${key('Delete')} / ${key('Backspace')}`, 'Delete selection')}
+      ${kbd(key('Esc'), 'Deselect')}
+      ${kbd(`${key('Ctrl/⌘')}+${key('Z')}`, 'Undo')}
+      ${kbd(`${key('Ctrl/⌘')}+${key('Shift')}+${key('Z')}`, 'Redo')}
     </div>`;
 }
 
