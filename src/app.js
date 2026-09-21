@@ -2309,14 +2309,20 @@ const App = {
     }
 
     const previousId = Assets.assetIdFromUrl(_yMeta.get('bg_url'));
-    const id = await Assets.writeAssetPaced(_ydoc, {
-      ...prepared,
-      authorId: App.user.id,
-    }, {
-      onProgress: (done, total) => {
-        if (total > 1 && done < total) UI.toast(`Sharing ${prepared.name} — ${done}/${total}`);
-      },
-    });
+    let id;
+    try {
+      id = await Assets.writeAssetPaced(_ydoc, { ...prepared, authorId: App.user.id }, {
+        // One line when a multi-chunk share starts; the "Shared" toast
+        // below closes it. A toast per chunk would bury everything else.
+        onProgress: (done, total) => {
+          if (done === 1 && total > 1) UI.toast(`Sharing ${prepared.name} — ${total} pieces…`);
+        },
+      });
+    } catch (err) {
+      UI.toast(`Could not share ${prepared.name}`, 'warn');
+      Trace.app('warn', 'background image write failed', { name: prepared.name, err: String(err) }, 'warn');
+      return null;
+    }
 
     App.setBackground({ url: Assets.assetUrl(id), width: prepared.width, height: prepared.height });
     // The old background's bytes are dead weight in every peer's copy of
