@@ -698,6 +698,17 @@ input[type=range] { width: 100%; accent-color: var(--primary); height: 28px; }
   border-radius: 5px; display: block;
 }
 
+/* Sharing an image with the table */
+.field-hint {
+  font-size: 11px; color: var(--text-3); line-height: 1.5;
+  margin: -4px 0 8px;
+}
+.bg-asset-line {
+  font-size: 11px; color: var(--text-2); font-family: ui-monospace, Menlo, monospace;
+  padding: 7px 9px; border-radius: 8px; background: var(--surface-2);
+  box-shadow: var(--emboss-inset); overflow-wrap: anywhere;
+}
+
 /* ── Tool icon loading state ─────────────────────────────────────────────── */
 @keyframes tt-icon-pulse {
   0%, 100% { opacity: 0.9; }

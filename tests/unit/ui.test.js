@@ -5,7 +5,7 @@
 
 // @vitest-environment jsdom
 import { describe, test, expect, vi, beforeEach } from 'vitest'
-import { layerObjectListHTML, refreshLayerList, UIData, init, toast, showBranchDialog, branchDialogJoin, branchDialogKeepWorking, peersBody, openSheet, closePanel, restorePanelState, restoreLayerState, saveLayerState, histBody, onToolChanged, editBody } from '../../src/ui.js'
+import { layerObjectListHTML, refreshLayerList, UIData, init, toast, showBranchDialog, branchDialogJoin, branchDialogKeepWorking, peersBody, openSheet, closePanel, restorePanelState, restoreLayerState, saveLayerState, histBody, onToolChanged, editBody, bgToolsBody, bgAssetLine } from '../../src/ui.js'
 import { SHAPE_TYPES } from '../../src/drawing.js'
 
 const mockObjects = [
@@ -1060,5 +1060,60 @@ describe('layer state persistence (tt_layer_state)', () => {
 
     expect(reloaded.setLayer).toHaveBeenCalledWith('drawing')
     expect(reloaded.setLayerVisible).toHaveBeenCalledWith('drawing', false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Background panel — the shared-image line
+// ─────────────────────────────────────────────────────────────────────────────
+describe('bgAssetLine', () => {
+  test('an ordinary URL background says nothing', () => {
+    expect(bgAssetLine(null)).toBe('')
+  })
+
+  test('a manifest that has not arrived reads as waiting', () => {
+    expect(bgAssetLine({ known: false, complete: false })).toMatch(/waiting/i)
+  })
+
+  test('an incomplete asset shows what has landed', () => {
+    expect(bgAssetLine({ known: true, complete: false, have: 2, total: 5 })).toContain('2/5')
+  })
+
+  test('a complete asset names the file and its size', () => {
+    const line = bgAssetLine({ known: true, complete: true, name: 'map.png', bytes: 40960 })
+    expect(line).toContain('map.png')
+    expect(line).toContain('40 KB')
+  })
+
+  test('a sub-kilobyte asset does not round away to nothing', () => {
+    expect(bgAssetLine({ known: true, complete: true, name: 'x.png', bytes: 120 })).toContain('1 KB')
+  })
+})
+
+describe('bgToolsBody', () => {
+  const data = {
+    background:         { url: 'img/bg_default.png', width: 120, height: 120, asset: null },
+    defaultBackgrounds: [{ label: 'Default', url: 'img/bg_default.png', width: 120, height: 120 }],
+  }
+
+  test('offers a picker that shares the image with the table', () => {
+    const div = document.createElement('div')
+    div.innerHTML = bgToolsBody(data)
+    const btn = [...div.querySelectorAll('button')]
+      .find(b => b.getAttribute('onclick') === 'App.pickBackgroundImage()')
+    expect(btn).toBeTruthy()
+  })
+
+  test('the asset line only appears for a document-carried background', () => {
+    const div = document.createElement('div')
+    div.innerHTML = bgToolsBody(data)
+    expect(div.querySelector('.bg-asset-line')).toBeNull()
+
+    div.innerHTML = bgToolsBody({
+      ...data,
+      background: { ...data.background, url: 'tt-asset:tt-a-v1-0000000000000000',
+                    asset: { known: true, complete: true, name: 'map.png', bytes: 40960 } },
+    })
+    expect(div.querySelector('.bg-asset-line').textContent).toContain('map.png')
   })
 })

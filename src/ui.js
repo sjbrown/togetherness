@@ -996,7 +996,21 @@ function gatherLayersData() {
 }
 
 // -- Pure body builders --------------------------------------------------------
-function bgToolsBody(data) {
+
+/**
+ * One line about a background the document is carrying itself: what it
+ * is, or how much of it has arrived from the peer who shared it.
+ * Returns '' for an ordinary URL background, which needs no explaining.
+ */
+export function bgAssetLine(asset) {
+  if (!asset) return '';
+  if (!asset.known) return 'Waiting for this image from a peer…';
+  if (!asset.complete) return `Receiving from a peer — ${asset.have}/${asset.total}`;
+  const kb = Math.max(1, Math.round(asset.bytes / 1024));
+  return `${asset.name || 'shared image'} · ${kb} KB · in this table`;
+}
+
+export function bgToolsBody(data) {
   const bg = data.background;
   const presets = data.defaultBackgrounds.map(p => `
     <div class="bg-preset" onclick="UI.applyBackgroundPreset('${p.url}', ${p.width}, ${p.height})"
@@ -1004,7 +1018,15 @@ function bgToolsBody(data) {
       <img src="${p.url}" alt="${p.label}"/>
       <span>${p.label}</span>
     </div>`).join('');
+  const assetLine = bgAssetLine(bg.asset);
   return `
+    <div class="field">
+      <label>Share an image</label>
+      <button class="action-btn" onclick="App.pickBackgroundImage()">${icon('upload')} Choose an image…</button>
+      <div class="field-hint">Sent to everyone at the table over the same
+        connection as the rest of the document. No upload, no host.</div>
+      ${assetLine ? `<div class="bg-asset-line">${assetLine}</div>` : ''}
+    </div>
     <div class="field">
       <label>Background image URL</label>
       <input type="url" class="text-input" id="bgUrlInput"

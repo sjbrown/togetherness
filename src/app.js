@@ -30,6 +30,8 @@ import { isCheckpoint, checkpointOp, shouldCheckpoint, lastCheckpointTs } from '
 import * as User                                  from './user.js';
 import * as Trace                                 from './trace.js';
 import * as Storage                               from './storage.js';
+import * as Assets                                from './assets.js';
+import { prepareImageFile, ACCEPT as IMAGE_ACCEPT } from './image_intake.js';
 import { SELECT_TOOL }                            from './tools-schema.js';
 import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
@@ -475,6 +477,7 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   _yDrawing.observe(onDocChanged);
   _yBounPos.observe(onDocChanged);
   _yMeta.observe(onMetaChanged);
+  Assets.observeAssets(_ydoc, onAssetsChanged);
   getOps(_ydoc).observe(onOpsChanged);
   _awareness.on('change', onPresenceChanged);
 
@@ -2263,17 +2266,74 @@ const App = {
   },
 
   getDefaultBackgrounds: () => DEFAULT_BACKGROUNDS,
-  getBackground:   () => ({
-    url:    _yMeta.get('bg_url')    ?? '',
-    width:  _yMeta.get('bg_width')  ?? 120,
-    height: _yMeta.get('bg_height') ?? 120,
-  }),
+  getBackground:   () => {
+    const url = _yMeta.get('bg_url') ?? '';
+    return {
+      url,
+      width:  _yMeta.get('bg_width')  ?? 120,
+      height: _yMeta.get('bg_height') ?? 120,
+      // Present only for a background carried by the document itself, so
+      // the UI can name the file and show what is still on its way.
+      asset:  bgAssetInfo(url),
+    };
+  },
   setBackground:   (attrs) => {
     _ydoc.transact(() => {
       if (attrs.url    !== undefined) _yMeta.set('bg_url',    attrs.url);
       if (attrs.width  !== undefined) _yMeta.set('bg_width',  Number(attrs.width));
       if (attrs.height !== undefined) _yMeta.set('bg_height', Number(attrs.height));
     });
+  },
+
+  /**
+   * Share an image file with the table as its background: decode it,
+   * shrink it if the wire can't take it whole, write it into the document
+   * a chunk at a time, and point bg_url at the result. The bytes reach
+   * peers over the same connection everything else does — nobody has to
+   * host anything.
+   */
+  shareBackgroundImage: async (file) => {
+    if (!file) return null;
+    let prepared;
+    try {
+      prepared = await prepareImageFile(file);
+    } catch (err) {
+      UI.toast(err.message || 'Could not read that image', 'warn');
+      Trace.app('warn', 'background image rejected', { name: file.name, err: String(err) }, 'warn');
+      return null;
+    }
+
+    const previousId = Assets.assetIdFromUrl(_yMeta.get('bg_url'));
+    const id = await Assets.writeAssetPaced(_ydoc, {
+      ...prepared,
+      authorId: App.user.id,
+    }, {
+      onProgress: (done, total) => {
+        if (total > 1 && done < total) UI.toast(`Sharing ${prepared.name} — ${done}/${total}`);
+      },
+    });
+
+    App.setBackground({ url: Assets.assetUrl(id), width: prepared.width, height: prepared.height });
+    // The old background's bytes are dead weight in every peer's copy of
+    // the document the moment nothing points at them.
+    if (previousId && previousId !== id) Assets.deleteAsset(_ydoc, previousId);
+
+    UI.toast(prepared.resized
+      ? `Shared ${prepared.name}, resized to ${prepared.width}×${prepared.height}`
+      : `Shared ${prepared.name}`);
+    addHistory(`shared background: ${prepared.name}`);
+    return id;
+  },
+
+  /** The file types shareBackgroundImage will take, for an <input accept>. */
+  getImageAccept: () => IMAGE_ACCEPT,
+
+  pickBackgroundImage: () => {
+    const input  = document.createElement('input');
+    input.type   = 'file';
+    input.accept = IMAGE_ACCEPT;
+    input.onchange = () => { if (input.files[0]) App.shareBackgroundImage(input.files[0]); };
+    input.click();
   },
 };
 
@@ -2313,13 +2373,45 @@ function onMetaChanged() {
   UI.refreshFromDoc();
 }
 
+// A manifest or a chunk landed — ours or a peer's. A background carried
+// by the document renders the moment its last chunk arrives, and the
+// Tools panel's progress line follows every chunk before that.
+function onAssetsChanged() {
+  if (Assets.isAssetUrl(_yMeta.get('bg_url'))) renderBackgroundLayer();
+  UI.refreshFromDoc();
+}
+
+// What the UI needs to say about a background the document carries:
+// its name, its size, and how much of it is here. Null for an ordinary
+// URL background.
+function bgAssetInfo(url) {
+  const id = Assets.assetIdFromUrl(url);
+  if (!id) return null;
+  const status = Assets.assetStatus(_ydoc, id);
+  return {
+    id,
+    name:     status.manifest?.name ?? '',
+    bytes:    status.bytes,
+    known:    status.known,
+    complete: status.complete,
+    have:     status.have,
+    total:    status.total,
+  };
+}
+
 function renderBackgroundLayer() {
   const layer = _svgEl.querySelector('#background-layer');
   if (!layer) throw new Error("renderBackgroundLayer: '#background-layer' not found in SVG document — malformed template?");
   layer.innerHTML = '';
-  const url    = _yMeta.get('bg_url')    || 'img/bg_default.png';
-  const width  = _yMeta.get('bg_width')  || 120;
-  const height = _yMeta.get('bg_height') || 120;
+  const stored   = _yMeta.get('bg_url') || 'img/bg_default.png';
+  // A tt-asset: background resolves to a data: URL once every chunk is
+  // here, and to null while they are still arriving — a peer who joined
+  // mid-transfer sees the default tile rather than a broken image.
+  const resolved = Assets.resolveUrl(_ydoc, stored);
+  const pending  = resolved === null;
+  const url    = pending ? 'img/bg_default.png' : resolved;
+  const width  = pending ? 120 : (_yMeta.get('bg_width')  || 120);
+  const height = pending ? 120 : (_yMeta.get('bg_height') || 120);
   const SVGNS = 'http://www.w3.org/2000/svg';
   // Tiling pattern so the image repeats across infinite canvas
   const defs    = _svgEl.querySelector('defs');
