@@ -1357,6 +1357,7 @@ export function gesturesBody() {
       ${ges('pen',       'One-finger drag',       'Draw a shape, or move a selection')}
       ${ges('doubletap', 'Double-tap/click canvas', 'Reset zoom and pan to home')}
       ${ges('history',   'Tap/click active tool twice', 'Open tool-specific options')}
+      ${ges('select',    'Hold Shift (select mode)', 'Multi-select — drag a box to select several objects at once')}
     </div>
     <div style="margin-top:16px;font-size:12px;color:var(--text-3);line-height:1.6">
       On desktop: scroll wheel pans · Ctrl/⌘+scroll zooms
@@ -1364,8 +1365,6 @@ export function gesturesBody() {
     <div style="margin-top:20px;font-size:12px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:var(--text-3)">Keyboard shortcuts</div>
     <div class="field" style="margin-bottom:0;margin-top:4px">
       ${kbd(key('S'), 'Select tool')}
-      ${kbd(key('R'), 'Rectangle tool')}
-      ${kbd(key('C'), 'Circle tool')}
       ${kbd(`${key('Delete')} / ${key('Backspace')}`, 'Delete selection')}
       ${kbd(key('Esc'), 'Deselect')}
       ${kbd(`${key('Ctrl/⌘')}+${key('Z')}`, 'Undo')}
