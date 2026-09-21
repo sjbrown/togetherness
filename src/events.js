@@ -150,10 +150,6 @@ export function keyboardHandlers(App) {
       'Escape': (e) => App.select(null),
       'Delete': (e) => App.deleteSelected(),
       'Backspace': (e) => App.deleteSelected(),
-      'r': (e) => App.setTool('rect'),
-      'R': (e) => App.setTool('rect'),
-      'c': (e) => App.setTool('circle'),
-      'C': (e) => App.setTool('circle'),
       's': (e) => App.setTool('select'),
       'S': (e) => App.setTool('select'),
       'z': (e) => {
