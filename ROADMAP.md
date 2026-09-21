@@ -48,6 +48,9 @@ Legend: `[x]` done · `[~]` partial / placeholder · `[ ]` not started
 
 - [ ] Table selection landing page — open tables, friend presence, create new
 - [ ] Side documents — HTML attachments per table
+- [x] Shared images — a picked PNG travels peer-to-peer as a table background
+- [ ] Shared images as canvas objects — maps and tokens, not just the background
+- [ ] Out-of-band transfer for images past the data channel's message ceiling
 
 ---
 

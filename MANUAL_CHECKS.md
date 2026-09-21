@@ -184,6 +184,29 @@ Run these checks before merging large changesets. Automated tests catch logic er
 
 ---
 
+## Shared Background Image
+
+1. Tools panel → Background layer → "Choose an image…" → pick a PNG
+2. The table background becomes that image; the line under the button
+   names the file and its size
+3. Second browser window on the same table: the same background appears,
+   with no URL anywhere in the flow
+4. Pick a large photo (> 1 MB): the toast says it was resized, and the
+   background still renders
+5. Pick a PNG with transparency: it stays a PNG — no black where the
+   transparency was
+6. Open a third window on the table *after* sharing: the background
+   arrives with it
+7. Export SVG, open the file in Inkscape: the background is there, and
+   the file needs nothing alongside it
+8. Re-import that file: background intact, and the Background panel still
+   names an image rather than showing a data: URL
+9. Pick a second image: the first one's bytes are gone from the document
+   (Debug panel → doc size, or re-export and compare)
+10. home.html: the table's thumbnail shows the shared background
+
+---
+
 ## Merge Checklist
 
 - [ ] Sections above all pass
