@@ -2139,6 +2139,11 @@ const App = {
         return;
       }
 
+      // Outside the transaction below: a background inlined by export is
+      // chunked into the asset store, and folding those chunks into one
+      // transaction would undo the chunking.
+      Storage.hoistInlineBackground(svgDoc.documentElement, _ydoc);
+
       let result;
       _ydoc.transact(() => {
         result = Storage.populateFromSvgDoc(svgDoc.documentElement, _ydoc);
@@ -2403,15 +2408,13 @@ function renderBackgroundLayer() {
   const layer = _svgEl.querySelector('#background-layer');
   if (!layer) throw new Error("renderBackgroundLayer: '#background-layer' not found in SVG document — malformed template?");
   layer.innerHTML = '';
-  const stored   = _yMeta.get('bg_url') || 'img/bg_default.png';
-  // A tt-asset: background resolves to a data: URL once every chunk is
-  // here, and to null while they are still arriving — a peer who joined
-  // mid-transfer sees the default tile rather than a broken image.
-  const resolved = Assets.resolveUrl(_ydoc, stored);
-  const pending  = resolved === null;
-  const url    = pending ? 'img/bg_default.png' : resolved;
-  const width  = pending ? 120 : (_yMeta.get('bg_width')  || 120);
-  const height = pending ? 120 : (_yMeta.get('bg_height') || 120);
+  // A tt-asset: background renders once every chunk is here; a peer who
+  // joined mid-transfer gets the default tile, not a broken image.
+  const { url, width, height } = Assets.resolveBackground(_ydoc, {
+    url:    _yMeta.get('bg_url'),
+    width:  _yMeta.get('bg_width'),
+    height: _yMeta.get('bg_height'),
+  }, DEFAULT_BACKGROUNDS[0]);
   const SVGNS = 'http://www.w3.org/2000/svg';
   // Tiling pattern so the image repeats across infinite canvas
   const defs    = _svgEl.querySelector('defs');

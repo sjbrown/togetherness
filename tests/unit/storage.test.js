@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { domToY, populateFromSvgDoc, buildExportSvg } from '../../src/storage.js'
+import { domToY, populateFromSvgDoc, buildExportSvg, hoistInlineBackground } from '../../src/storage.js'
+import { isAssetUrl, assetIdFromUrl, readAssetDataUrl, getManifest, listAssets, MAX_ASSET_BYTES } from '../../src/assets.js'
 import { getOps } from '../../src/op_dag.js'
 import { projectFrom } from '../../src/op_checkpoint.js'
 import * as Toys from '../../src/toys.js'
@@ -514,5 +515,79 @@ describe('populateFromSvgDoc — rotation reconciliation', () => {
     const yEl = importRect({})
     expect(yEl.getAttribute('transform')).toBeUndefined()
     expect(yEl.getAttribute('x')).toBe('100')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared backgrounds — an exported file carries its image inline, and
+// importing it puts those bytes back into the asset store rather than
+// into one enormous meta value.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// A 1×1 PNG, as a browser would hand it to us.
+const PNG_1PX_B64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+const PNG_1PX_DATA_URL = `data:image/png;base64,${PNG_1PX_B64}`
+
+function inlineBgSvg(url = PNG_1PX_DATA_URL) {
+  return parseSvg(`<svg xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <pattern id="bg-pattern" width="64" height="48">
+        <image href="${url}" width="64" height="48"/>
+      </pattern>
+    </defs>
+    <g id="background-layer"></g>
+    <g id="toys-layer"></g>
+    <g id="drawing-layer"></g>
+  </svg>`)
+}
+
+describe('inline backgrounds on import', () => {
+  test('an inline background lands in the asset store, referenced by url', () => {
+    const { ydoc, yMeta } = freshLayers()
+    populateFromSvgDoc(inlineBgSvg(), ydoc)
+
+    const url = yMeta.get('bg_url')
+    expect(isAssetUrl(url)).toBe(true)
+    expect(readAssetDataUrl(ydoc, assetIdFromUrl(url))).toBe(PNG_1PX_DATA_URL)
+    expect(getManifest(ydoc, assetIdFromUrl(url))).toMatchObject({ width: 64, height: 48 })
+    expect(yMeta.get('bg_width')).toBe(64)
+  })
+
+  test('an ordinary url background is stored as written', () => {
+    const { ydoc, yMeta } = freshLayers()
+    populateFromSvgDoc(makeDocSvg(), ydoc)
+    expect(yMeta.get('bg_url')).toBe('img/bg_greenfelt.png')
+    expect(listAssets(ydoc)).toHaveLength(0)
+  })
+
+  test('hoistInlineBackground rewrites the element so the import passes it through', () => {
+    const { ydoc, yMeta } = freshLayers()
+    const svg = inlineBgSvg()
+
+    const id = hoistInlineBackground(svg, ydoc)
+    expect(id).toBeTruthy()
+    expect(svg.querySelector('image').getAttribute('href')).toBe(`tt-asset:${id}`)
+
+    // Running the import afterwards must not store a second copy.
+    populateFromSvgDoc(svg, ydoc)
+    expect(listAssets(ydoc)).toHaveLength(1)
+    expect(yMeta.get('bg_url')).toBe(`tt-asset:${id}`)
+  })
+
+  test('hoistInlineBackground leaves a url background alone', () => {
+    const { ydoc } = freshLayers()
+    const svg = makeDocSvg()
+    expect(hoistInlineBackground(svg, ydoc)).toBe(null)
+    expect(svg.querySelector('#bg-pattern image').getAttribute('href')).toBe('img/bg_greenfelt.png')
+  })
+
+  test('an inline image too big for the wire falls back to the default tile', () => {
+    const { ydoc, yMeta } = freshLayers()
+    const huge = 'data:image/png;base64,' + 'A'.repeat(Math.ceil(MAX_ASSET_BYTES * 4 / 3) + 1000)
+    populateFromSvgDoc(inlineBgSvg(huge), ydoc)
+
+    expect(yMeta.get('bg_url')).toBe('img/bg_default.png')
+    expect(listAssets(ydoc)).toHaveLength(0)
   })
 })

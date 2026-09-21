@@ -9,6 +9,7 @@ import * as Toys     from './toys.js';
 import * as Drawing  from './drawing.js';
 import { appendOp }     from './op_dag.js';
 import { checkpointOp } from './op_checkpoint.js';
+import * as Assets      from './assets.js';
 
 // ── DOM → Yjs ────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,51 @@ export function domToY(node) {
   const children = [...node.childNodes].map(domToY).filter(Boolean);
   if (children.length) yEl.insert(0, children);
   return yEl;
+}
+
+/**
+ * The URL to store for an imported background. Inline image data becomes
+ * an asset and is referenced by its tt-asset: URL; anything else — a
+ * relative path, an http URL, an asset URL from a document that already
+ * had one — is kept as written. An image too big for the asset store is
+ * dropped back to the default tile rather than failing the whole import.
+ */
+function storeBackgroundImage(ydoc, url, { width, height }) {
+  const parsed = Assets.dataUrlToBytes(url);
+  if (!parsed) return url;
+  try {
+    const id = Assets.writeAsset(ydoc, { ...parsed, width, height, name: 'imported background' });
+    return Assets.assetUrl(id);
+  } catch {
+    return 'img/bg_default.png';
+  }
+}
+
+/**
+ * Move an imported document's inline background into the asset store
+ * before the import proper runs, rewriting the <image> to reference it.
+ *
+ * populateFromSvgDoc does this itself for any caller that doesn't, but a
+ * caller wrapping the import in one transaction would fold every chunk
+ * into a single Yjs update — exactly the one-huge-message case the asset
+ * store chunks to avoid. Call this first, outside that transaction.
+ *
+ * Returns the asset id, or null if there was nothing inline to hoist.
+ */
+export function hoistInlineBackground(svgRootEl, ydoc) {
+  const bgPattern = svgRootEl.querySelector('defs pattern');
+  const bgImg     = bgPattern?.querySelector('image');
+  if (!bgImg) return null;
+  const url = bgImg.getAttribute('href') || bgImg.getAttribute('xlink:href') || '';
+  if (!Assets.dataUrlToBytes(url)) return null;
+
+  const stored = storeBackgroundImage(ydoc, url, {
+    width:  Number(bgPattern.getAttribute('width'))  || 0,
+    height: Number(bgPattern.getAttribute('height')) || 0,
+  });
+  bgImg.setAttribute('href', stored);
+  bgImg.removeAttribute('xlink:href');
+  return Assets.assetIdFromUrl(stored);
 }
 
 /**
@@ -80,9 +126,13 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
   const bgImg = bgPattern?.querySelector('image');
   const bgUrl = bgImg?.getAttribute('href') || bgImg?.getAttribute('xlink:href') || '';
   if (bgUrl) {
-    yMeta.set('bg_url', bgUrl);
     const w = Number(bgPattern.getAttribute('width'))  || 0;
     const h = Number(bgPattern.getAttribute('height')) || 0;
+    // An exported file carries a shared background inline, because that is
+    // what makes it a standalone SVG. Coming back in, those bytes belong in
+    // the asset store: a data: URL sitting in yMeta would be one enormous
+    // Yjs value on a wire that sends each update as a single message.
+    yMeta.set('bg_url', storeBackgroundImage(ydoc, bgUrl, { width: w, height: h }));
     if (w) yMeta.set('bg_width',  w);
     if (h) yMeta.set('bg_height', h);
   }

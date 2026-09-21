@@ -274,6 +274,27 @@ export function resolveUrl(ydoc, url) {
   return readAssetDataUrl(ydoc, id);
 }
 
+/**
+ * Resolve a stored background ({url, width, height}) into what should
+ * actually be rendered. A background the document carries is only
+ * renderable once every chunk has arrived; until then the fallback tile
+ * stands in at its own size, because the missing image's dimensions
+ * would tile the stand-in wrongly.
+ *
+ * Returns { url, width, height, pending }.
+ */
+export function resolveBackground(ydoc, stored, fallback) {
+  const url      = stored?.url || fallback.url;
+  const resolved = resolveUrl(ydoc, url);
+  if (resolved === null) return { ...fallback, pending: true };
+  return {
+    url:     resolved,
+    width:   Number(stored?.width)  || fallback.width,
+    height:  Number(stored?.height) || fallback.height,
+    pending: false,
+  };
+}
+
 export function totalAssetBytes(ydoc) {
   return listAssets(ydoc).reduce((sum, m) => sum + (m.bytes || 0), 0);
 }

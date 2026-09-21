@@ -631,6 +631,7 @@ body {
 <script type="module">
 import { mirrorYNode, buildThumbSVG, THUMB_W, THUMB_H } from './home_utils.js';
 import { populateFromSvgDoc }   from './storage.js';
+import * as Assets              from './assets.js';
 import * as Toys                from './toys.js';
 
 import { entityGradient }        from './entity_gradient.js';
@@ -814,9 +815,14 @@ async function makeThumbnail(tableId) {
     const ydoc  = await tables.loadTableDoc(tableId);
     const yMeta = ydoc.getMap('meta');
 
-    const bgUrl = yMeta.get('bg_url')    || 'img/bg_default.png';
-    const bgW   = yMeta.get('bg_width')  || 120;
-    const bgH   = yMeta.get('bg_height') || 120;
+    // A background the table carries itself resolves out of the asset
+    // store; the default tile stands in for one whose chunks this
+    // browser never received.
+    const { url: bgUrl, width: bgW, height: bgH } = Assets.resolveBackground(ydoc, {
+      url:    yMeta.get('bg_url'),
+      width:  yMeta.get('bg_width'),
+      height: yMeta.get('bg_height'),
+    }, { url: 'img/bg_default.png', width: 120, height: 120 });
 
     // Topmost toy = last child in the projected toys layer (DOM order = z-order)
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g');

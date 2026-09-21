@@ -14,7 +14,7 @@ import {
   assetPlan, writeAsset, writeAssetPaced, putManifest, putChunk,
   getManifest, listAssets, assetStatus, isComplete,
   readAssetBytes, readAssetDataUrl, resolveUrl, totalAssetBytes,
-  deleteAsset, collectUnreferenced, observeAssets,
+  deleteAsset, collectUnreferenced, observeAssets, resolveBackground,
 } from '../../src/assets.js'
 
 /** Deterministic pseudo-random bytes — compressible content is irrelevant here. */
@@ -319,5 +319,38 @@ describe('deleting', () => {
     expect(collectUnreferenced(ydoc, [keep])).toEqual([drop])
     expect(listAssets(ydoc).map(m => m.id)).toEqual([keep])
     expect(isComplete(ydoc, keep)).toBe(true)
+  })
+})
+
+describe('resolveBackground', () => {
+  const FALLBACK = { url: 'img/bg_default.png', width: 120, height: 120 }
+
+  test('a url background keeps its own dimensions', () => {
+    const ydoc = new Y.Doc()
+    expect(resolveBackground(ydoc, { url: 'img/bg_greenfelt.png', width: 800, height: 600 }, FALLBACK))
+      .toEqual({ url: 'img/bg_greenfelt.png', width: 800, height: 600, pending: false })
+  })
+
+  test('an unset background falls back', () => {
+    const ydoc = new Y.Doc()
+    expect(resolveBackground(ydoc, { url: '' }, FALLBACK))
+      .toEqual({ ...FALLBACK, pending: false })
+  })
+
+  test('a complete asset resolves to its bytes at the stored size', () => {
+    const ydoc = new Y.Doc()
+    const src  = png()
+    const id   = writeAsset(ydoc, { bytes: src })
+    expect(resolveBackground(ydoc, { url: assetUrl(id), width: 64, height: 48 }, FALLBACK))
+      .toEqual({ url: bytesToDataUrl(src, 'image/png'), width: 64, height: 48, pending: false })
+  })
+
+  test('an asset still arriving reports pending, at the fallback tile size', () => {
+    const ydoc = new Y.Doc()
+    const { id, manifest } = assetPlan({ bytes: bytes(2500), chunkSize: 1000 })
+    putManifest(ydoc, manifest)
+    // The missing image's dimensions would tile the stand-in wrongly.
+    expect(resolveBackground(ydoc, { url: assetUrl(id), width: 900, height: 700 }, FALLBACK))
+      .toEqual({ ...FALLBACK, pending: true })
   })
 })
