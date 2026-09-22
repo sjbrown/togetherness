@@ -79,7 +79,6 @@ function makeApp(overrides = {}) {
     movePivot:          () => {},
     commitPivot:        () => {},
     cancelPivot:        () => {},
-    resetPivot:         () => {},
     ...overrides,
   }
 }

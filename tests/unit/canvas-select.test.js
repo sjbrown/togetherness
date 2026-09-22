@@ -90,7 +90,6 @@ function makeApp(overrides = {}) {
     movePivot:          () => {},
     commitPivot:        () => {},
     cancelPivot:        () => {},
-    resetPivot:         () => {},
     ...overrides,
   }
 }
@@ -743,90 +742,6 @@ describe('pivot drag gesture', () => {
 
     expect(cancelled).toHaveLength(1)
     expect(committed).toHaveLength(0)
-  })
-})
-
-describe('double-tapping the pivot resets it', () => {
-  const pivotApp = (overrides = {}) => makeApp({
-    getRotateModeId: () => 'rect-1',
-    getRotateHandle: () => 'pivot',
-    ...overrides,
-  })
-  const tap = (stage, x = 200, y = 200) => {
-    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: x, clientY: y }))
-    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: x, clientY: y }))
-  }
-
-  test('two taps on the pivot reset that handle, and leave the view alone', () => {
-    vi.useFakeTimers()
-    const reset = [], viewReset = []
-    const app = pivotApp({ resetPivot: (id) => reset.push(id), onViewReset: () => viewReset.push(true) })
-    init(app, document.getElementById('canvas'))
-    setTool('select', {})
-
-    const stage = document.getElementById('stage')
-    tap(stage); tap(stage)
-    vi.advanceTimersByTime(400)
-
-    expect(reset).toEqual(['rect-1'])
-    expect(viewReset).toHaveLength(0)
-    vi.useRealTimers()
-  })
-
-  test('a single tap on the pivot resets nothing', () => {
-    vi.useFakeTimers()
-    const reset = []
-    const app = pivotApp({ resetPivot: (id) => reset.push(id) })
-    init(app, document.getElementById('canvas'))
-    setTool('select', {})
-
-    tap(document.getElementById('stage'))
-    vi.advanceTimersByTime(400)
-
-    expect(reset).toHaveLength(0)
-    vi.useRealTimers()
-  })
-
-  test('a pivot tap followed by a canvas tap is a view reset — the second tap asked for that', () => {
-    vi.useFakeTimers()
-    const reset = [], viewReset = []
-    let onPivot = true
-    const app = makeApp({
-      getRotateModeId: () => 'rect-1',
-      getRotateHandle: () => (onPivot ? 'pivot' : null),
-      resetPivot: (id) => reset.push(id),
-      onViewReset: () => viewReset.push(true),
-    })
-    init(app, document.getElementById('canvas'))
-    setTool('select', {})
-
-    const stage = document.getElementById('stage')
-    tap(stage)
-    onPivot = false            // second tap lands on bare canvas
-    tap(stage)
-    vi.advanceTimersByTime(400)
-
-    expect(reset).toHaveLength(0)
-    expect(viewReset).toHaveLength(1)
-    vi.useRealTimers()
-  })
-
-  test('a pivot DRAG does not count as a tap, so it never resets', () => {
-    vi.useFakeTimers()
-    const reset = []
-    const app = pivotApp({ resetPivot: (id) => reset.push(id) })
-    init(app, document.getElementById('canvas'))
-    setTool('select', {})
-
-    const stage = document.getElementById('stage')
-    tap(stage)
-    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
-    stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 240, clientY: 240 }))
-    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 240, clientY: 240 }))
-    vi.advanceTimersByTime(400)
-
-    expect(reset).toHaveLength(0)
-    vi.useRealTimers()
   })
 })
 

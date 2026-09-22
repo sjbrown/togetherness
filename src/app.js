@@ -1826,22 +1826,6 @@ const App = {
     _writePivot(id, mtype, startRect, fromPivot, pivot, deg);
   },
 
-  /**
-   * Put the pivot back in the middle — the double-tap on the handle. Goes
-   * through the same write as a drag, so the shape is held in place by the
-   * same correction and the two can't drift apart.
-   */
-  resetPivot: (id) => {
-    if (_activeMode?.id !== id || _activeMode.mode !== 'sel-rotate-pivot' || App.isHeldByOther(id)) return;
-    const bbox = App.getBBox(id);
-    const { domEl, layer } = _layerFor(id);
-    if (!bbox || !layer?.getPivot) return;
-    const fromPivot = layer.getPivot(domEl);
-    if (fromPivot.fx === 0.5 && fromPivot.fy === 0.5) return;   // already centred
-    _writePivot(id, moduleForElement(domEl), bbox, fromPivot,
-                { fx: 0.5, fy: 0.5 }, layer.getRotation?.(domEl) ?? 0);
-  },
-
   cancelPivot: () => {
     if (!_pivotState) return;
     Overlay.setPivotPreview(_pivotState.id, null);
