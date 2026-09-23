@@ -103,7 +103,9 @@ export function conflicts(ops, idsA, idsB) {
     const structural = new Set(), valued = new Set()
     const removedIds = new Set(), addedIds = new Set(), targetIds = new Set()
     for (const id of ids) {
-      const t = touchedBy(getOp(ops, id))
+      const op = getOp(ops, id)
+      if (isCheckpoint(op)) continue
+      const t = touchedBy(op)
       for (const r of t.structural) structural.add(r)
       for (const r of t.valued) valued.add(r)
       for (const r of t.removedIds) removedIds.add(r)

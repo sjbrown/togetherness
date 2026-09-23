@@ -407,6 +407,37 @@ describe('a checkpoint applied as a delta contributes nothing', () => {
   })
 })
 
+describe('a checkpoint is left out of conflict classification', () => {
+  function peer(ids = ['a', 'b']) {
+    const L = document.createElementNS(SVG_NS, 'g'); L.setAttribute('data-id', LAYER_DATA_ID)
+    for (const id of ids) {
+      const r = document.createElementNS(SVG_NS, 'g'); r.setAttribute('data-id', id); L.appendChild(r)
+    }
+    document.body.appendChild(L)
+    return L
+  }
+
+  test('a checkpoint concurrent with a structural move on the layer root classifies as concurrent, not conflicting', () => {
+    const ops = new Map()
+    const base = { id: 'base', parents: [], mutations: [] }
+    const ck = { ...checkpointOp(peer(), { authorId: 'alice', parents: ['base'] }), id: 'ck' }
+    const move = childOp('move', ['base'], LAYER_DATA_ID)
+    ops.set('base', base); ops.set('ck', ck); ops.set('move', move)
+
+    expect(classify(ops, 'ck', 'move').kind).toBe(CONCURRENT)
+  })
+
+  test('conflicts is false whenever a checkpoint is on either side', () => {
+    const ops = new Map()
+    const ck = { ...checkpointOp(peer(), { authorId: 'alice' }), id: 'ck' }
+    const move = childOp('move', [], LAYER_DATA_ID)
+    ops.set('ck', ck); ops.set('move', move)
+
+    expect(conflicts(ops, ['ck'], ['move'])).toBe(false)
+    expect(conflicts(ops, ['move'], ['ck'])).toBe(false)
+  })
+})
+
 describe('receiveOp: concurrent delete vs. edit', () => {
   function peer() {
     const svg = document.createElementNS(SVG_NS, 'svg')

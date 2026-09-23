@@ -193,6 +193,67 @@ test.describe('two-peer sync', () => {
     await browser.close();
   });
 
+  test('a checkpoint received mid-session does not duplicate the toys layer', async () => {
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
+    const ctx1    = await browser.newContext();
+    const ctx2    = await browser.newContext();
+    const page1   = await ctx1.newPage();
+    const page2   = await ctx2.newPage();
+
+    await openCreatorAndJoiner(page1, page2, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+
+    await waitForPeerCount(page1, 1);
+    await waitForPeerCount(page2, 1);
+
+    const canvas = page1.locator('#canvas');
+    const box    = await canvas.boundingBox();
+
+    // Place a couple of toys.
+    await page1.evaluate(() => window.UI.pillTap('d6'));
+    await page1.waitForTimeout(100);
+    await page1.mouse.move(box.x + 100, box.y + 100);
+    await page1.mouse.down();
+    await page1.mouse.up();
+
+    await page1.evaluate(() => window.UI.pillTap('d6'));
+    await page1.waitForTimeout(100);
+    await page1.mouse.move(box.x + 200, box.y + 100);
+    await page1.mouse.down();
+    await page1.mouse.up();
+
+    await expect(page2.locator('[data-toy-type]')).toHaveCount(2, { timeout: 5000 });
+
+    // More than CHECKPOINT_MIN_OPS (10) moves, so a checkpoint is worth
+    // writing.
+    await page1.evaluate(() => window.UI.pillTap('select'));
+    await page1.waitForTimeout(100);
+    let cx = box.x + 100, cy = box.y + 100;
+    for (let i = 0; i < 11; i++) {
+      const nx = cx + (i % 2 === 0 ? 30 : -30);
+      const ny = cy + (i % 2 === 0 ? 10 : -10);
+      await page1.mouse.move(cx, cy);
+      await page1.mouse.down();
+      await page1.mouse.move(nx, ny, { steps: 5 });
+      await page1.mouse.up();
+      await page1.waitForTimeout(100);
+      cx = nx; cy = ny;
+    }
+
+    // B should have absorbed all the moves before the checkpoint lands.
+    await expect(page2.locator('[data-toy-type]')).toHaveCount(2, { timeout: 5000 });
+
+    await page1.evaluate(() => window.App.maybeCheckpoint('test'));
+    await page1.waitForTimeout(300); // let the checkpoint op propagate
+
+    const idsOf = (page) => page.$$eval('#toys-layer > [data-id]', els => els.map(el => el.getAttribute('data-id')).sort());
+
+    await expect.poll(() => idsOf(page2)).toEqual(await idsOf(page1));
+    const countA = await page1.$$eval('#toys-layer > [data-id]', els => els.length);
+    await expect(page2.locator('#toys-layer > [data-id]')).toHaveCount(countA);
+
+    await browser.close();
+  });
+
   test('no console errors or warnings on load', async ({ page }) => {
     const messages = [];
     page.on('console', msg => {
