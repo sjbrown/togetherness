@@ -9,8 +9,8 @@
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
-  isReplaying, withSuppressedCapture, touchedBy, conflicts, classify, advanceTo,
-  SUBSEQUENT, CONCURRENT, CONFLICTING, KNOWN,
+  isReplaying, withSuppressedCapture, touchedBy, conflicts, classify, advanceTo, receiveOp,
+  SUBSEQUENT, CONCURRENT, CONFLICTING, KNOWN, RECEIVED_CONFLICT,
 } from '../../src/op_replay.js'
 import { getHead, setHead, clearHead } from '../../src/op_head.js'
 import { checkpointOp, ensureLayerId } from '../../src/op_checkpoint.js'
@@ -37,6 +37,15 @@ const childOp = (id, parents, targetId) => ({
   mutations: [{
     t: 'child', target: { id: targetId },
     added: [{ el: 'circle', at: [['data-id', `${id}-new`]] }], removed: [],
+    prevSibling: null, nextSibling: null,
+  }],
+})
+
+const deleteOp = (id, parents, targetId, removedSubtree) => ({
+  id, parents, authorId: 'alice', gesture: 'delete', ts: 0,
+  mutations: [{
+    t: 'child', target: { id: targetId },
+    added: [], removed: [removedSubtree],
     prevSibling: null, nextSibling: null,
   }],
 })
@@ -127,6 +136,16 @@ describe('touchedBy', () => {
     }
     expect([...touchedBy(op).valued]).toEqual(['t:t1:0#text'])
   })
+
+  test('a delete reports the removed element and its descendants in removedIds', () => {
+    const subtree = {
+      el: 'g', at: [['data-id', 'a']], ch: [
+        { el: 'rect', at: [['data-id', 'a-child']] },
+      ],
+    }
+    const { removedIds } = touchedBy(deleteOp('o1', [], 'layer', subtree))
+    expect([...removedIds].sort()).toEqual(['a', 'a-child'])
+  })
 })
 
 describe('conflicts', () => {
@@ -168,6 +187,63 @@ describe('conflicts', () => {
     // Deliberately narrow: dropping into a tray while someone recolours it
     // is not a contest.
     expect(conflicts(ops, ['d1'], ['ax'])).toBe(false)
+  })
+
+  describe('concurrent delete vs. edit', () => {
+    const dops = new Map()
+    beforeEach(() => {
+      dops.clear()
+      const subtreeA = {
+        el: 'g', at: [['data-id', 'a']], ch: [
+          { el: 'rect', at: [['data-id', 'a-child']] },
+        ],
+      }
+      for (const op of [
+        deleteOp('del', ['L'], 'layer', subtreeA),
+        attrOp('editA', ['L'], 'a', 'x', '0', '1'),
+        attrOp('editChild', ['L'], 'a-child', 'x', '0', '1'),
+        { id: 'textInA', parents: ['L'], authorId: 'alice', gesture: 'type', ts: 0,
+          mutations: [{ t: 'text', target: { parentId: 'a-child', index: 0 }, oldValue: 'x', newValue: 'y' }] },
+        childOp('dropIntoA', ['L'], 'a'),
+        attrOp('editB', ['L'], 'b', 'x', '0', '1'),
+        {
+          id: 'reparentA', parents: ['L'], authorId: 'alice', gesture: 'drag', ts: 0,
+          mutations: [{
+            t: 'child', target: { id: 'other-tray' },
+            added: [subtreeA], removed: [subtreeA],
+            prevSibling: null, nextSibling: null,
+          }],
+        },
+      ]) dops.set(op.id, op)
+    })
+
+    test('delete A vs. attr on A conflicts', () => {
+      expect(conflicts(dops, ['del'], ['editA'])).toBe(true)
+    })
+
+    test('attr on A vs. delete A conflicts regardless of argument order', () => {
+      expect(conflicts(dops, ['editA'], ['del'])).toBe(true)
+    })
+
+    test('delete A vs. attr on a descendant of A conflicts', () => {
+      expect(conflicts(dops, ['del'], ['editChild'])).toBe(true)
+    })
+
+    test('delete A vs. a text edit inside A conflicts', () => {
+      expect(conflicts(dops, ['del'], ['textInA'])).toBe(true)
+    })
+
+    test('delete A vs. a child op targeting A conflicts', () => {
+      expect(conflicts(dops, ['del'], ['dropIntoA'])).toBe(true)
+    })
+
+    test('delete A vs. attr on unrelated B does not conflict', () => {
+      expect(conflicts(dops, ['del'], ['editB'])).toBe(false)
+    })
+
+    test('reparenting A (removed and re-added in one op) vs. attr on A does not conflict', () => {
+      expect(conflicts(dops, ['reparentA'], ['editA'])).toBe(false)
+    })
   })
 })
 
@@ -266,6 +342,32 @@ describe('advanceTo', () => {
     const records = withSuppressedCapture(() => runInEnvelope(live, () => {}))
     expect(records).toEqual([])
     mo.disconnect()
+  })
+})
+
+describe('receiveOp: concurrent delete vs. edit', () => {
+  function peer() {
+    const svg = document.createElementNS(SVG_NS, 'svg')
+    const L = document.createElementNS(SVG_NS, 'g'); L.setAttribute('data-id', 'layer')
+    for (const id of ['x', 'a']) {
+      const r = document.createElementNS(SVG_NS, 'rect'); r.setAttribute('data-id', id); L.appendChild(r)
+    }
+    svg.appendChild(L); document.body.appendChild(svg)
+    return L
+  }
+
+  test('a concurrent delete and an edit of the deleted node are a conflict, not a throw', () => {
+    const P = peer(), Q = peer()
+    const ops = new Map([['base', { id: 'base', parents: [], mutations: [] }]])
+    const del = commitGesture(new Y.Doc(),
+      runInEnvelope(P, () => P.querySelector('[data-id=a]').remove()), { id: 'del', parents: ['base'] })
+    const mv = commitGesture(new Y.Doc(),
+      runInEnvelope(Q, () => Q.querySelector('[data-id=a]').setAttribute('x', '5')), { id: 'mv', parents: ['base'] })
+    ops.set('del', del); ops.set('mv', mv)
+
+    expect(() => receiveOp(P, ops, 'del', 'mv')).not.toThrow()
+    expect(receiveOp(P, ops, 'del', 'mv').result).toBe(RECEIVED_CONFLICT)
+    expect(receiveOp(Q, ops, 'mv', 'del').result).toBe(RECEIVED_CONFLICT)
   })
 })
 
