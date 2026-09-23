@@ -146,13 +146,7 @@ export function findDrawing(yDrawing, id) {
   ) ?? null;
 }
 
-/**
- * Mirror a Y.XmlElement tree into a live, SVG-namespaced DOM element.
- * Uses createElementNS (not toDOM/DOMParser) so the SVG namespace and
- * tag-name case are preserved. <script> elements are stripped at import
- * (storage.js), not here — by the time a node reaches this module, there
- * is nothing left to filter.
- */
+/** Mirror a Y.XmlElement tree into a live, SVG-namespaced DOM element. */
 function mirror(yNode) {
   if (yNode instanceof Y.XmlText) return document.createTextNode(yNode.toString());
   if (!(yNode instanceof Y.XmlElement)) return null;
@@ -169,12 +163,6 @@ function mirror(yNode) {
   return el;
 }
 
-/**
- * Render a shape Y.XmlElement to an SVG DOM element. id, data-id,
- * data-module and (for a rotated shape) transform are all stored on the
- * Y.XmlElement itself (see addDrawing / syncRotationY) and simply ride
- * along via mirror()'s attribute copy — nothing derived at render time.
- */
 export function _toSVGEl(yEl) {
   return mirror(yEl);
 }

@@ -18,11 +18,6 @@
  *       Y.XmlText(name)
  *     <circle cx cy r/>   … N snap points
  *
- * Presentation shared by every instance of a kind (path/text styling, the
- * snap-point circle gradient) is not stored here — it lives in defs.js's
- * boundariesPositionsStylesheetSVG, keyed on data-bounpos-type. The
- * renderer (toSVGEl / mirrorBounPos below) is a pure mirror of this tree.
- *
  * ID formats:
  *   boundary:    tt-b-v1-XXXXX
  *   position set: tt-ps-v1-XXXXX
@@ -34,12 +29,7 @@ import { computeResizeCornerRect } from './geometry.js';
 const SVG_NS   = 'http://www.w3.org/2000/svg';
 const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789';
 
-/**
- * Mirror a Y.XmlElement tree into a live, SVG-namespaced DOM element. Every
- * attribute and child comes from the Yjs node — nothing added, nothing
- * dropped. Uses createElementNS (not toDOM/DOMParser) so the SVG namespace
- * and tag-name case are preserved.
- */
+/** Mirror a Y.XmlElement tree into a live, SVG-namespaced DOM element. */
 function mirrorBounPos(yNode) {
   if (yNode instanceof Y.XmlText) return document.createTextNode(yNode.toString());
   if (!(yNode instanceof Y.XmlElement)) return null;
