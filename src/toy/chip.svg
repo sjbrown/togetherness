@@ -158,7 +158,7 @@ var chip = {
 
   <circle
     id="path_shadow"
-    class="object_shadow"
+    class="tt_shadow"
     r="37"
     cx="40"
     cy="43"
