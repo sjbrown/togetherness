@@ -35,8 +35,10 @@ Run these checks before merging large changesets. Automated tests catch logic er
    - It stays at 45°, turning about its own new centre (not the old one)
 6. Second browser window: the rotation appears there too
 7. Export, reopen in Inkscape: the rect is drawn turned
-8. Re-import: still turned, and the Yjs `<rect>` has `data-rotate` but no
-   `transform` (the transform is derived on render, never stored)
+8. Re-import: still turned, and the Yjs `<rect>` has both `data-rotate` AND
+   the matching `transform` — stored on the element itself, not derived at
+   render time; the rendered `<rect>` in the DOM carries the identical
+   `transform` value, byte for byte
 9. In Inkscape, rotate the rect FURTHER and move it, then re-import
    - Both edits survive: the new angle is in `data-rotate`, the move in x/y
    - Try it with Store transformation set to Optimized and to Preserved;
@@ -179,6 +181,24 @@ Run these checks before merging large changesets. Automated tests catch logic er
 1. **Boundary:** `<g data-bounpos-type="boundary">` has 2 children (`<path>`, `<text>`); all attrs in Yjs
 2. **Position set:** `<g data-bounpos-type="pos-set">` has `<path>`, `<text>`, N `<circle>` children; `snap-radius`, `data-gen-type`, `data-gen-param` on `<g>`
 3. **Yjs sync (two windows):** Create boundary in one; appears in other within 1–2s
+
+---
+
+## Boundaries/Positions Presentation Stylesheet (renderer as pure mirror)
+
+1. Create a boundary and both a square- and hex-grid position set
+2. Visual check: boundary is a white-stroked rect with a right-aligned
+   label; pos-sets are dashed rects with translucent snap-point circles
+   showing the radial gradient — same look as before this change
+3. Inspector: the boundary's `<path>` has no `fill`/`stroke`/`stroke-width`
+   attributes, and its `<text>` has no `text-anchor`/`font-family`/
+   `font-size`/`fill`/`data-boundary-name` — that presentation now lives in
+   `#canvas defs > style`, not on the element
+4. Inspector: a pos-set's `<circle>` elements have no `fill` attribute either
+5. Drawing shapes still show a pointer cursor on hover
+6. Export the document, open the file standalone (not through the app) in a
+   browser or Inkscape: boundaries and pos-sets still show the same styling
+   — the `<style>` rode along inside the exported `<defs>`
 
 ---
 

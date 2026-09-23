@@ -749,7 +749,7 @@ describe('reconcileImportedTransform', () => {
   test('an untouched export round-trips completely unchanged', () => {
     const yEl = imported({ 'data-rotate': '45', transform: 'rotate(45 200 160)' })
     expect(yEl.getAttribute('data-rotate')).toBe('45')
-    expect(yEl.getAttribute('transform')).toBeUndefined()
+    expect(yEl.getAttribute('transform')).toBe('rotate(45 200 160)')
     expect(yEl.getAttribute('x')).toBe('100')
     expect(yEl.getAttribute('y')).toBe('100')
   })
@@ -759,7 +759,9 @@ describe('reconcileImportedTransform', () => {
     expect(Number(yEl.getAttribute('data-rotate'))).toBeCloseTo(60, 6)
     expect(yEl.getAttribute('x')).toBe('140')
     expect(yEl.getAttribute('y')).toBe('125')
-    expect(yEl.getAttribute('transform')).toBeUndefined()
+    // Canonical transform, re-derived about the new position \u2014 not the
+    // file's original matrix.
+    expect(yEl.getAttribute('transform')).toBe('rotate(60 240 185)')
   })
 
   test('a transform we cannot express keeps the file\u2019s own, and drops our stale degrees', () => {

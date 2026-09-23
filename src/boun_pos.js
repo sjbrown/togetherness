@@ -6,15 +6,15 @@
  * the fragment as opaque — all semantic dispatch lives here.
  *
  * Boundary Yjs structure:
- *   <g id name data-bounpos-type="boundary">
- *     <path d fill stroke stroke-width/>
- *     <text x y text-anchor font-family font-size fill>
+ *   <g id data-id data-module name data-bounpos-type="boundary">
+ *     <path d/>
+ *     <text x y>
  *       Y.XmlText(name)
  *
  * Position-set Yjs structure:
- *   <g id name data-bounpos-type="pos-set" data-snap-radius data-gen-type data-gen-param>
- *     <path d fill stroke stroke-dasharray stroke-width/>   ← extent rect
- *     <text x y text-anchor font-family font-size fill>
+ *   <g id data-id data-module name data-bounpos-type="pos-set" data-snap-radius data-gen-type data-gen-x-spacing data-gen-y-spacing>
+ *     <path d/>   ← extent rect
+ *     <text x y>
  *       Y.XmlText(name)
  *     <circle cx cy r/>   … N snap points
  *
@@ -24,11 +24,24 @@
  */
 
 import * as Y from 'yjs';
-import { SNAP_POINT_GRADIENT_ID } from './defs.js';
 import { computeResizeCornerRect } from './geometry.js';
 
 const SVG_NS   = 'http://www.w3.org/2000/svg';
 const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789';
+
+/** Mirror a Y.XmlElement tree into a live, SVG-namespaced DOM element. */
+function mirrorBounPos(yNode) {
+  if (yNode instanceof Y.XmlText) return document.createTextNode(yNode.toString());
+  if (!(yNode instanceof Y.XmlElement)) return null;
+  const el = document.createElementNS(SVG_NS, yNode.nodeName);
+  const attrs = yNode.getAttributes();
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  yNode.toArray().forEach(child => {
+    const dom = mirrorBounPos(child);
+    if (dom) el.appendChild(dom);
+  });
+  return el;
+}
 
 // ── ID helpers ────────────────────────────────────────────────────────────────
 
@@ -277,12 +290,6 @@ function yChildByTag(yEl, tag) {
   return yEl.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === tag) ?? null;
 }
 
-function yTextContent(yEl) {
-  // Read text content from the first Y.XmlText child of yEl.
-  const yt = yEl?.toArray().find(n => n instanceof Y.XmlText);
-  return yt?.toString() ?? '';
-}
-
 function setYTextContent(ydoc, yEl, newText) {
   // Update or create the Y.XmlText child of yEl within the current transaction.
   const existing = yEl?.toArray().find(n => n instanceof Y.XmlText);
@@ -335,57 +342,20 @@ export const BOUNPOS_TYPES = {
       const yText = new Y.XmlElement('text');
       ydoc.transact(() => {
         yG.setAttribute('id',                id);
+        yG.setAttribute('data-id',           id);
+        yG.setAttribute('data-module',       'boun_pos');
         yG.setAttribute('name',              name);
         yG.setAttribute('data-bounpos-type', 'boundary');
         yPath.setAttribute('d',            d);
-        yPath.setAttribute('fill',         'none');
-        yPath.setAttribute('stroke',       'white');
-        yPath.setAttribute('stroke-width', '2');
         yText.setAttribute('x',           String(tx));
         yText.setAttribute('y',           String(ty));
-        yText.setAttribute('text-anchor', 'end');
-        yText.setAttribute('font-family', 'ui-monospace, monospace');
-        yText.setAttribute('font-size',   '12');
-        yText.setAttribute('fill',        'white');
         yText.insert(0, [new Y.XmlText(name)]);
         yG.insert(0, [yPath, yText]);
         yBounPos.insert(yBounPos.length, [yG]);
       });
       return yG;
     },
-    toSVGEl(yG) {
-      const id   = yG.getAttribute('id')   ?? '';
-      const name = yG.getAttribute('name') ?? id;
-      const g = document.createElementNS(SVG_NS, 'g');
-      g.setAttribute('id',               id);
-      g.setAttribute('data-id',          id);
-      g.setAttribute('data-module',      'boun_pos');
-      g.setAttribute('data-bounpos-type','boundary');
-      g.setAttribute('name',             name);
-      for (const child of yG.toArray()) {
-        if (!(child instanceof Y.XmlElement)) continue;
-        if (child.nodeName === 'path') {
-          const path = document.createElementNS(SVG_NS, 'path');
-          path.setAttribute('d',            child.getAttribute('d') ?? '');
-          path.setAttribute('fill',         'none');
-          path.setAttribute('stroke',       'white');
-          path.setAttribute('stroke-width', '2');
-          g.appendChild(path);
-        } else if (child.nodeName === 'text') {
-          const text = document.createElementNS(SVG_NS, 'text');
-          text.setAttribute('x',                  child.getAttribute('x') ?? '0');
-          text.setAttribute('y',                  child.getAttribute('y') ?? '0');
-          text.setAttribute('text-anchor',        child.getAttribute('text-anchor') ?? 'end');
-          text.setAttribute('font-family',        child.getAttribute('font-family') ?? 'ui-monospace, monospace');
-          text.setAttribute('font-size',          child.getAttribute('font-size') ?? '12');
-          text.setAttribute('fill',               child.getAttribute('fill') ?? 'white');
-          text.setAttribute('data-boundary-name', name);
-          text.textContent = yTextContent(child) || name;
-          g.appendChild(text);
-        }
-      }
-      return g;
-    },
+    toSVGEl(yG) { return mirrorBounPos(yG); },
   },
 
   'pos-grid-sq': {
@@ -478,23 +448,17 @@ function _createPositionSet(ydoc, yBounPos,
 
   ydoc.transact(() => {
     yG.setAttribute('id',               id);
+    yG.setAttribute('data-id',          id);
+    yG.setAttribute('data-module',      'boun_pos');
     yG.setAttribute('name',             name);
     yG.setAttribute('data-bounpos-type', 'pos-set');
     yG.setAttribute('data-snap-radius',  String(Math.round(snapRadius)));
     yG.setAttribute('data-gen-type',     genType);
     yG.setAttribute('data-gen-x-spacing', String(Math.round(xSpacing)));
     yG.setAttribute('data-gen-y-spacing', String(Math.round(ySpacing)));
-    yPath.setAttribute('d',                d);
-    yPath.setAttribute('fill',             'none');
-    yPath.setAttribute('stroke',           'rgba(255,255,255,0.5)');
-    yPath.setAttribute('stroke-dasharray', '4 2');
-    yPath.setAttribute('stroke-width',     '1');
-    yText.setAttribute('x',           String(tx));
-    yText.setAttribute('y',           String(ty));
-    yText.setAttribute('text-anchor', 'end');
-    yText.setAttribute('font-family', 'ui-monospace, monospace');
-    yText.setAttribute('font-size',   '12');
-    yText.setAttribute('fill',        'rgba(255,255,255,0.7)');
+    yPath.setAttribute('d', d);
+    yText.setAttribute('x', String(tx));
+    yText.setAttribute('y', String(ty));
     yText.insert(0, [new Y.XmlText(name)]);
     yG.insert(0, [yPath, yText, ...yCircles]);
     yBounPos.insert(yBounPos.length, [yG]);
@@ -502,59 +466,7 @@ function _createPositionSet(ydoc, yBounPos,
   return yG;
 }
 
-function _positionSetToSVGEl(yG) {
-  const id      = yG.getAttribute('id')               ?? '';
-  const name    = yG.getAttribute('name')             ?? id;
-  const snapR   = yG.getAttribute('data-snap-radius')  ?? '30';
-  const genType = yG.getAttribute('data-gen-type')     ?? 'square';
-  const { xSpacing, ySpacing } = gridSpacingFromInput(genType, {
-    xSpacing: yG.getAttribute('data-gen-x-spacing'),
-    ySpacing: yG.getAttribute('data-gen-y-spacing'),
-    genParam: yG.getAttribute('data-gen-param'),
-  });
-
-  const g = document.createElementNS(SVG_NS, 'g');
-  g.setAttribute('id',                id);
-  g.setAttribute('data-id',           id);
-  g.setAttribute('data-module',       'boun_pos');
-  g.setAttribute('data-bounpos-type',  'pos-set');
-  g.setAttribute('name',              name);
-  g.setAttribute('data-snap-radius',  snapR);
-  g.setAttribute('data-gen-type',     genType);
-  g.setAttribute('data-gen-x-spacing', String(xSpacing));
-  g.setAttribute('data-gen-y-spacing', String(ySpacing));
-
-  for (const child of yG.toArray()) {
-    if (!(child instanceof Y.XmlElement)) continue;
-    if (child.nodeName === 'path') {
-      const path = document.createElementNS(SVG_NS, 'path');
-      path.setAttribute('d',                child.getAttribute('d') ?? '');
-      path.setAttribute('fill',             'none');
-      path.setAttribute('stroke',           'rgba(255,255,255,0.5)');
-      path.setAttribute('stroke-dasharray', '4 2');
-      path.setAttribute('stroke-width',     '1');
-      g.appendChild(path);
-    } else if (child.nodeName === 'text') {
-      const text = document.createElementNS(SVG_NS, 'text');
-      text.setAttribute('x',           child.getAttribute('x') ?? '0');
-      text.setAttribute('y',           child.getAttribute('y') ?? '0');
-      text.setAttribute('text-anchor', child.getAttribute('text-anchor') ?? 'end');
-      text.setAttribute('font-family', child.getAttribute('font-family') ?? 'ui-monospace, monospace');
-      text.setAttribute('font-size',   child.getAttribute('font-size') ?? '12');
-      text.setAttribute('fill',        child.getAttribute('fill') ?? 'rgba(255,255,255,0.7)');
-      text.textContent = yTextContent(child) || name;
-      g.appendChild(text);
-    } else if (child.nodeName === 'circle') {
-      const circle = document.createElementNS(SVG_NS, 'circle');
-      circle.setAttribute('cx',   child.getAttribute('cx') ?? '0');
-      circle.setAttribute('cy',   child.getAttribute('cy') ?? '0');
-      circle.setAttribute('r',    child.getAttribute('r')  ?? snapR);
-      circle.setAttribute('fill', `url(#${SNAP_POINT_GRADIENT_ID})`);
-      g.appendChild(circle);
-    }
-  }
-  return g;
-}
+function _positionSetToSVGEl(yG) { return mirrorBounPos(yG); }
 
 // ── Elevated layer API ────────────────────────────────────────────────────────
 

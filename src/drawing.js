@@ -110,12 +110,15 @@ export function addDrawing(ydoc, yDrawing, attrs) {
   const attrMap  = def.attrMap ?? {};
   ydoc.transact(() => {
     el.setAttribute('id', String(attrs.id));
+    el.setAttribute('data-id', String(attrs.id));
+    el.setAttribute('data-module', 'drawing');
     for (const k of Object.keys(def.schema.types)) {
       if (k === 'id' || k === 'type') continue;
       const v = attrs[k] ?? defaults[k];
       if (v != null) el.setAttribute(attrMap[k] ?? k, String(v));
     }
     yDrawing.insert(yDrawing.length, [el]);
+    syncRotationY(el);
   });
   return el;
 }
@@ -143,16 +146,10 @@ export function findDrawing(yDrawing, id) {
   ) ?? null;
 }
 
-/**
- * Mirror a Y.XmlElement tree into a live, SVG-namespaced DOM element.
- * Uses createElementNS (not toDOM/DOMParser) so the SVG namespace and tag-name
- * case are preserved. <script> nodes are never mirrored for live rendering —
- * pass { includeScripts: true } only for export.
- */
-function mirror(yNode, opts = {}) {
+/** Mirror a Y.XmlElement tree into a live, SVG-namespaced DOM element. */
+function mirror(yNode) {
   if (yNode instanceof Y.XmlText) return document.createTextNode(yNode.toString());
   if (!(yNode instanceof Y.XmlElement)) return null;
-  if (yNode.nodeName === 'script' && !opts.includeScripts) return null;
   const el = document.createElementNS(SVG_NS, yNode.nodeName);
   const attrs = yNode.getAttributes();
   for (const k in attrs) {
@@ -160,28 +157,14 @@ function mirror(yNode, opts = {}) {
     else                    el.setAttribute(k, attrs[k]);
   }
   yNode.toArray().forEach(child => {
-    const dom = mirror(child, opts);
+    const dom = mirror(child);
     if (dom) el.appendChild(dom);
   });
   return el;
 }
 
-/**
- * Render a shape Y.XmlElement to an SVG DOM element, stamped with the handles
- * app.js needs: data-id (the shape id), data-module="drawing", and a
- * plain SVG id="{id}" so that overlay.js <use href="#{id}"> can
- * reference the element for drag-ghost rendering without touching its geometry.
- */
-export function _toSVGEl(yEl, opts = {}) {
-  const el = mirror(yEl, opts);
-  if (el && el.setAttribute) {
-    const id = yEl.getAttribute('id');
-    el.setAttribute('id',              id);
-    el.setAttribute('data-id',         id);
-    el.setAttribute('data-module', 'drawing');
-    syncRotation(el);
-  }
-  return el;
+export function _toSVGEl(yEl) {
+  return mirror(yEl);
 }
 
 /**
@@ -367,12 +350,38 @@ export function syncRotation(domEl) {
   else           domEl.removeAttribute('transform');
 }
 
+// Presents a Y.XmlElement with the subset of the DOM Element interface
+// getGeom/resolveRotation actually use, so the rotation math (which only
+// ever reads tagName/getAttribute/hasAttribute) can run against either
+// without duplicating it for Yjs.
+function yElAsSvgEl(yEl) {
+  return {
+    tagName:      yEl.nodeName,
+    getAttribute: (k) => yEl.getAttribute(k) ?? null,
+    hasAttribute: (k) => yEl.getAttribute(k) != null,
+  };
+}
+
+/**
+ * The Yjs-side counterpart of syncRotation: writes the canonical
+ * `transform` onto the stored Y.XmlElement itself, so the rendered DOM
+ * never has to derive it. Same no-data-rotate guard as syncRotation.
+ */
+function syncRotationY(yEl) {
+  if (!yEl?.getAttribute) return;
+  if (yEl.getAttribute(ROTATE_ATTR) == null) return;
+  const transform = rotationTransform(resolveRotation(yElAsSvgEl(yEl)));
+  if (transform) yEl.setAttribute('transform', transform);
+  else           yEl.removeAttribute('transform');
+}
+
 /** Commit a rotation. A shape whose schema has no `rotate` key (circles) is a no-op. */
 export function applyRotate(ydoc, yEl, deg) {
   if (!yEl) return;
   if (!SHAPE_TYPES[yEl.nodeName]?.schema.types.rotate) return;
   ydoc.transact(() => {
     yEl.setAttribute(ROTATE_ATTR, String(normalizeAngle(deg)));
+    syncRotationY(yEl);
   });
 }
 
@@ -488,6 +497,7 @@ export function applyPivot(ydoc, yEl, fx, fy, x, y) {
     yEl.setAttribute(PIVOT_Y_ATTR, String(clamp01(fy)));
     yEl.setAttribute('x', String(Math.round(x)));
     yEl.setAttribute('y', String(Math.round(y)));
+    syncRotationY(yEl);
   });
 }
 
@@ -528,12 +538,17 @@ export function reconcileImportedTransform(yEl) {
 
   const out = reconcileTransform(geom, getRotationFromAttr(yEl), matrix);
 
-  if (out.rotate == null) yEl.removeAttribute(ROTATE_ATTR);
-  else                    yEl.setAttribute(ROTATE_ATTR, String(normalizeAngle(out.rotate)));
-  if (out.transform)      yEl.setAttribute('transform', formatMatrix(out.transform));
-  else if (yEl.getAttribute('transform') != null) yEl.removeAttribute('transform');
   yEl.setAttribute('x', String(Math.round(out.x)));
   yEl.setAttribute('y', String(Math.round(out.y)));
+
+  if (out.rotate == null) {
+    yEl.removeAttribute(ROTATE_ATTR);
+    if (out.transform) yEl.setAttribute('transform', formatMatrix(out.transform));
+    else if (yEl.getAttribute('transform') != null) yEl.removeAttribute('transform');
+    return;
+  }
+  yEl.setAttribute(ROTATE_ATTR, String(normalizeAngle(out.rotate)));
+  syncRotationY(yEl);
 }
 
 /** Degrees off a Yjs element's own attribute (getRotation wants a DOM node). */
@@ -619,6 +634,7 @@ export function applyMoveCommit(ydoc, yEl, x, y) {
       yEl.setAttribute('cx', String(x));
       yEl.setAttribute('cy', String(y));
     }
+    syncRotationY(yEl);
   });
 }
 
@@ -675,6 +691,7 @@ export function applyResize(ydoc, yEl, x, y, width, height) {
       yEl.setAttribute('cy', String(Math.round(y + r)));
       yEl.setAttribute('r',  String(Math.round(r)));
     }
+    syncRotationY(yEl);
   });
 }
 
@@ -701,14 +718,13 @@ export function applyMoveDom(domEl, x, y) {
 
 /**
  * Iterate all XmlElement children in z-order (bottom to top).
- * Returns an array of rendered SVG elements, each stamped with
- * data-id + data-module.
+ * Returns an array of rendered SVG elements.
  */
-export function listDrawings(yDrawing, opts = {}) {
+export function listDrawings(yDrawing) {
   const results = [];
   for (let node = yDrawing.firstChild; node; node = node.nextSibling) {
     if (!(node instanceof Y.XmlElement)) continue;
-    results.push(_toSVGEl(node, opts));
+    results.push(_toSVGEl(node));
   }
   return results;
 }
@@ -812,6 +828,7 @@ export function applyTtState(ydoc, yDrawing, state) {
         if (k === 'id' || k === 'type') continue;
         existing.setAttribute(k, String(v));
       }
+      syncRotationY(existing);
     });
   } else {
     addDrawing(ydoc, yDrawing, state);
@@ -829,6 +846,7 @@ export function edit(ydoc, yEl, editData) {
     for (const [k, v] of Object.entries(editData)) {
       yEl.setAttribute(k, String(v));
     }
+    syncRotationY(yEl);
   });
 }
 
@@ -878,10 +896,7 @@ export function previewEdit(ghostEl, editData) {
  */
 export function render(yDrawing, layerEl) {
   layerEl.innerHTML = '';
-  listDrawings(yDrawing).forEach(svgEl => {
-    svgEl.style.cursor = 'pointer';
-    layerEl.appendChild(svgEl);
-  });
+  listDrawings(yDrawing).forEach(svgEl => layerEl.appendChild(svgEl));
 }
 
 /**

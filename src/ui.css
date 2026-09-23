@@ -122,6 +122,7 @@ html, body {
 
 /* SVG class helpers (applied by canvas.js) */
 .shape     { cursor: pointer; }
+#drawing-layer > * { cursor: pointer; }
 .selRing   { pointer-events: none; }
 .peer-ring { pointer-events: none; }
 .requestedRing { pointer-events: none; }
