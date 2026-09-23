@@ -10,10 +10,10 @@ import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
   isReplaying, withSuppressedCapture, touchedBy, conflicts, classify, advanceTo, receiveOp,
-  SUBSEQUENT, CONCURRENT, CONFLICTING, KNOWN, RECEIVED_CONFLICT,
+  SUBSEQUENT, CONCURRENT, CONFLICTING, KNOWN, RECEIVED_CONFLICT, RECEIVED_SUBSEQUENT, RECEIVED_MERGED,
 } from '../../src/op_replay.js'
 import { getHead, setHead, clearHead } from '../../src/op_head.js'
-import { checkpointOp, ensureLayerId } from '../../src/op_checkpoint.js'
+import { checkpointOp, ensureLayerId, LAYER_DATA_ID } from '../../src/op_checkpoint.js'
 import { runInEnvelope, commitGesture } from '../../src/envelope.js'
 import { getOps, appendOp } from '../../src/op_dag.js'
 
@@ -342,6 +342,68 @@ describe('advanceTo', () => {
     const records = withSuppressedCapture(() => runInEnvelope(live, () => {}))
     expect(records).toEqual([])
     mo.disconnect()
+  })
+})
+
+describe('a checkpoint applied as a delta contributes nothing', () => {
+  function peer(ids = ['a', 'b']) {
+    const L = document.createElementNS(SVG_NS, 'g'); L.setAttribute('data-id', LAYER_DATA_ID)
+    for (const id of ids) {
+      const r = document.createElementNS(SVG_NS, 'g'); r.setAttribute('data-id', id); L.appendChild(r)
+    }
+    document.body.appendChild(L)
+    return L
+  }
+
+  test('a subsequent checkpoint moves the head without duplicating children', () => {
+    const P = peer(), Q = peer()
+    const base = { id: 'base', parents: [], mutations: [] }
+    const ck = { ...checkpointOp(P, { authorId: 'alice', parents: ['base'] }), id: 'ck' }
+    const ops = new Map([['base', base], ['ck', ck]])
+
+    const result = receiveOp(Q, ops, 'base', 'ck')
+
+    expect(result.result).toBe(RECEIVED_SUBSEQUENT)
+    expect(result.head).toBe('ck')
+    expect([...Q.children].map(c => c.getAttribute('data-id'))).toEqual(['a', 'b'])
+  })
+
+  test('a concurrent checkpoint absorbs as a merge tip without duplicating children', () => {
+    const P = peer()
+    const base = { id: 'base', parents: [], mutations: [] }
+    const ck = { ...checkpointOp(P, { authorId: 'alice', parents: ['base'] }), id: 'ck' }
+
+    const Q = peer()
+    const qe = commitGesture(new Y.Doc(),
+      runInEnvelope(Q, () => Q.querySelector('[data-id="b"]').setAttribute('x', '1')),
+      { id: 'qe', parents: ['base'] })
+    const ops = new Map([['base', base], ['ck', ck], ['qe', qe]])
+
+    const result = receiveOp(Q, ops, 'qe', 'ck')
+
+    expect(result.result).toBe(RECEIVED_MERGED)
+    expect(result.mergeTip).toBe('ck')
+    expect([...Q.children].map(c => c.getAttribute('data-id'))).toEqual(['a', 'b'])
+    expect(Q.querySelector('[data-id="b"]').getAttribute('x')).toBe('1')
+  })
+
+  test('a checkpoint mid-path contributes nothing as a delta — the ops around it apply once each', () => {
+    const head = { id: 'head', parents: [], mutations: [] }
+    const op1 = attrOp('op1', ['head'], 'a', 'x', '0', '1')
+    const ckSource = peer()
+    ckSource.querySelector('[data-id="a"]').setAttribute('x', '1')
+    const ck = { ...checkpointOp(ckSource, { authorId: 'alice', parents: ['op1'] }), id: 'ck' }
+    const op2 = attrOp('op2', ['ck'], 'b', 'x', '0', '9')
+
+    const ops = new Map([['head', head], ['op1', op1], ['ck', ck], ['op2', op2]])
+
+    const live = layer('<g data-id="a" x="0"/><g data-id="b" x="0"/>')
+    const resultHead = advanceTo(live, ops, 'head', 'op2')
+
+    expect(resultHead).toBe('op2')
+    expect(live.children.length).toBe(2)
+    expect(live.querySelector('[data-id="a"]').getAttribute('x')).toBe('1')
+    expect(live.querySelector('[data-id="b"]').getAttribute('x')).toBe('9')
   })
 })
 

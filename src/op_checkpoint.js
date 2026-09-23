@@ -54,6 +54,15 @@ const mintOpId = () =>
 export const isCheckpoint = (op) => op?.gesture === CHECKPOINT_GESTURE
 
 /**
+ * The mutations an op contributes when applied as a delta on top of a
+ * live layer, as opposed to as a projection base. A checkpoint's
+ * mutations only make sense against the empty layer projectFrom clears
+ * first — applied anywhere else they'd duplicate what's already there —
+ * so as a delta it contributes nothing.
+ */
+export const deltaMutations = (op) => (isCheckpoint(op) ? [] : (op?.mutations ?? []))
+
+/**
  * The most recent checkpoint anywhere in the log, by wall-clock ts —
  * not scoped to any one head or branch. Used for idle-checkpoint timing,
  * where "how long since *a* checkpoint landed" is a global fact: any
@@ -157,11 +166,9 @@ export function projectFrom(layerEl, ops, headId, joinSequence = []) {
                                    authorId: getOp(ops, id)?.authorId ?? null })),
     }))
 
-  if (base) {
-    applyOps(layerEl, ops, [base])
-    applyOps(layerEl, ops, path)
-  } else {
-    applyOps(layerEl, ops, path)
+  if (base) applyOps(layerEl, ops, [base])
+  for (const id of path) {
+    applyWire(deltaMutations(getOp(ops, id)), layerEl)
   }
   return layerEl
 }

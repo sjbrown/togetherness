@@ -8,7 +8,7 @@
 
 import { apply as applyWire } from './op_wire_mutation.js'
 import { getOp, isAncestor, lca, pathFrom, heads } from './op_dag.js'
-import { projectFrom } from './op_checkpoint.js'
+import { projectFrom, isCheckpoint, deltaMutations } from './op_checkpoint.js'
 import * as Trace from './trace.js'
 
 let _suppressed = false
@@ -163,7 +163,7 @@ export function advanceTo(layerEl, ops, headId, targetId, joinSequence = []) {
                                      authorId: getOp(ops, id)?.authorId ?? null })),
       }))
       for (const id of path) {
-        applyWire(getOp(ops, id).mutations ?? [], layerEl)
+        applyWire(deltaMutations(getOp(ops, id)), layerEl)
       }
     } else {
       Trace.op('advance', 'rebuilding from the nearest checkpoint',
@@ -189,7 +189,7 @@ export const tips = (ops) => heads(ops)
 export function mergeConcurrent(layerEl, op) {
   Trace.op('merge', `absorbing concurrent ${op?.gesture ?? '?'} ${op?.id ?? '?'}`,
     { id: op?.id ?? null, gesture: op?.gesture ?? null, authorId: op?.authorId ?? null })
-  return withSuppressedCapture(() => applyWire(op?.mutations ?? [], layerEl))
+  return withSuppressedCapture(() => applyWire(deltaMutations(op), layerEl))
 }
 
 export const RECEIVED_KNOWN      = 'received-known'
