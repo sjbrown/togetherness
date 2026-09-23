@@ -168,6 +168,24 @@ describe('populateFromSvgDoc', () => {
     expect(yDrawing.toArray()[0].nodeName).toBe('rect')
   })
 
+  test('strips <script> elements (at any depth) from drawing-layer children before storing', () => {
+    const { ydoc, yDrawing } = freshLayers()
+    populateFromSvgDoc(
+      makeDocSvg({ drawingInner:
+        `<g id="g1"><rect id="r1"/><script>alert(1)</script></g>` }),
+      ydoc)
+    const g = yDrawing.toArray()[0]
+    expect(g.toArray().some(c => c.nodeName === 'script')).toBe(false)
+  })
+
+  test('strips <script> elements from the fallback sweep before storing', () => {
+    const { ydoc, yDrawing } = freshLayers()
+    populateFromSvgDoc(
+      makeDocSvg({ extra: `<g id="stray"><script>alert(1)</script></g>` }), ydoc)
+    const g = yDrawing.toArray()[0]
+    expect(g.toArray().some(c => c.nodeName === 'script')).toBe(false)
+  })
+
   test('sweeps unrecognized top-level elements into the drawing layer', () => {
     const { ydoc, yDrawing } = freshLayers()
     const { drawCount } = populateFromSvgDoc(
@@ -238,6 +256,21 @@ describe('populateFromSvgDoc', () => {
       const { bounPosCount, drawCount } = populateFromSvgDoc(doc, ydoc)
       expect(bounPosCount).toBe(2)
       expect(drawCount).toBe(0)
+    })
+
+    test('strips <script> elements from boundaries-positions-layer children before storing', () => {
+      const { ydoc } = freshLayers()
+      const yBounPos = ydoc.getXmlFragment('boundaries')
+      const doc = parseSvg(`<svg xmlns="http://www.w3.org/2000/svg">
+        <g id="boundaries-positions-layer">
+          <g data-bounpos-type="boundary"><script>alert(1)</script><path d="M0,0 L1,0 L1,1 L0,1 Z"/></g>
+        </g>
+        <g id="toys-layer"></g>
+        <g id="drawing-layer"></g>
+      </svg>`)
+      populateFromSvgDoc(doc, ydoc)
+      const g = yBounPos.toArray()[0]
+      expect(g.toArray().some(c => c.nodeName === 'script')).toBe(false)
     })
   })
 

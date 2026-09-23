@@ -12,12 +12,6 @@ import { checkpointOp } from './op_checkpoint.js';
 
 // ── DOM → Yjs ────────────────────────────────────────────────────────────────
 
-/**
- * Convert a DOM node into a detached Y.XmlElement (or Y.XmlText) tree.
- * <script> nodes are preserved as inert document citizens — the Yjs/SVG
- * tree is the canonical document, but nothing ever mirrors a <script> back
- * into a live DOM, so nothing executes.
- */
 // Stamp id/data-id/data-module on an imported top-level drawing or boundary
 // element, minting an id the same way app.js's commitDrawing does when the
 // source had none at all (a foreign shape with no id of its own).
@@ -31,6 +25,20 @@ function ensureIdentity(yEl, dataModule) {
   yEl.setAttribute('data-module', dataModule);
 }
 
+// Remove every <script> descendant in place. Drawing and boundaries are
+// rendered by a pure mirror with no filtering of its own (see drawing.js's
+// mirror(), boun_pos.js's mirrorBounPos()), so anything that shouldn't run
+// live has to be kept out at import instead.
+function stripScripts(el) {
+  el.querySelectorAll('script').forEach(s => s.remove());
+}
+
+/**
+ * Convert a DOM node into a detached Y.XmlElement (or Y.XmlText) tree.
+ * <script> nodes are preserved as inert document citizens — the Yjs/SVG
+ * tree is the canonical document, but nothing ever mirrors a <script> back
+ * into a live DOM, so nothing executes.
+ */
 export function domToY(node) {
   if (node.nodeType === Node.TEXT_NODE || node.nodeType === Node.CDATA_SECTION_NODE) {
     const t = node.textContent.trim();
@@ -153,6 +161,7 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
 
   if (drawLayerEl) {
     for (const child of drawLayerEl.children) {
+      stripScripts(child);
       const yEl = domToY(child);
       if (!yEl) continue;
       // Insert FIRST: Yjs refuses attribute reads on a detached element, so
@@ -167,11 +176,11 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
   // Boundaries and Positions layer. boun_pos.js's Yjs shape (a <g
   // data-bounpos-type> with path/text[/circle] children) is exactly what a
   // generic domToY() produces from the exported DOM (see boun_pos.js's
-  // toSVGEl functions) — extra DOM-only attributes like data-id/data-module
-  // ride along harmlessly since render() rebuilds child elements fresh from
-  // the attributes it actually reads.
+  // mirrorBounPos) — render() mirrors these attributes back out verbatim,
+  // so nothing here needs to know the boun_pos schema.
   if (bounPosLayerEl) {
     for (const child of bounPosLayerEl.children) {
+      stripScripts(child);
       const yEl = domToY(child);
       if (yEl) {
         yBounPos.insert(yBounPos.length, [yEl]);
@@ -191,6 +200,7 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
     if (id === 'boundaries-positions-layer') continue; // handled above
     // overlay-layer is UI-only and is stripped on export
     if (id === 'overlay-layer') continue;
+    stripScripts(el);
     const yEl = domToY(el);
     if (yEl) {
       yDrawing.insert(yDrawing.length, [yEl]);

@@ -147,14 +147,14 @@ export function findDrawing(yDrawing, id) {
 
 /**
  * Mirror a Y.XmlElement tree into a live, SVG-namespaced DOM element.
- * Uses createElementNS (not toDOM/DOMParser) so the SVG namespace and tag-name
- * case are preserved. <script> nodes are never mirrored for live rendering —
- * pass { includeScripts: true } only for export.
+ * Uses createElementNS (not toDOM/DOMParser) so the SVG namespace and
+ * tag-name case are preserved. <script> elements are stripped at import
+ * (storage.js), not here — by the time a node reaches this module, there
+ * is nothing left to filter.
  */
-function mirror(yNode, opts = {}) {
+function mirror(yNode) {
   if (yNode instanceof Y.XmlText) return document.createTextNode(yNode.toString());
   if (!(yNode instanceof Y.XmlElement)) return null;
-  if (yNode.nodeName === 'script' && !opts.includeScripts) return null;
   const el = document.createElementNS(SVG_NS, yNode.nodeName);
   const attrs = yNode.getAttributes();
   for (const k in attrs) {
@@ -162,7 +162,7 @@ function mirror(yNode, opts = {}) {
     else                    el.setAttribute(k, attrs[k]);
   }
   yNode.toArray().forEach(child => {
-    const dom = mirror(child, opts);
+    const dom = mirror(child);
     if (dom) el.appendChild(dom);
   });
   return el;
@@ -173,8 +173,8 @@ function mirror(yNode, opts = {}) {
  * data-module are stored on the Y.XmlElement at creation (see addDrawing)
  * and simply ride along via mirror()'s attribute copy.
  */
-export function _toSVGEl(yEl, opts = {}) {
-  const el = mirror(yEl, opts);
+export function _toSVGEl(yEl) {
+  const el = mirror(yEl);
   if (el && el.setAttribute) {
     syncRotation(el);
   }
@@ -698,14 +698,13 @@ export function applyMoveDom(domEl, x, y) {
 
 /**
  * Iterate all XmlElement children in z-order (bottom to top).
- * Returns an array of rendered SVG elements, each stamped with
- * data-id + data-module.
+ * Returns an array of rendered SVG elements.
  */
-export function listDrawings(yDrawing, opts = {}) {
+export function listDrawings(yDrawing) {
   const results = [];
   for (let node = yDrawing.firstChild; node; node = node.nextSibling) {
     if (!(node instanceof Y.XmlElement)) continue;
-    results.push(_toSVGEl(node, opts));
+    results.push(_toSVGEl(node));
   }
   return results;
 }
