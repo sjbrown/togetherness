@@ -33,15 +33,33 @@ export const CONCURRENT = 'concurrent'
 export const CONFLICTING = 'conflicting'
 export const KNOWN = 'known'
 
+/** Collect every element data-id in a serialized subtree, recursively. */
+function idsIn(nodes, out = new Set()) {
+  for (const n of nodes ?? []) {
+    if (n.tx !== undefined) continue
+    const id = (n.at ?? []).find(([name]) => name === 'data-id')?.[1]
+    if (id) out.add(id)
+    idsIn(n.ch, out)
+  }
+  return out
+}
+
 /**
  * Which refs an operation touches, as comparable strings, split by the
  * kind of touch: a childList change to a node is structural and contends
  * with another peer's structural change to the same node; two attribute
- * writes contend only on the same attribute.
+ * writes contend only on the same attribute. Also reports, separately,
+ * the element ids a delete removes or an insert adds, and the ids the op
+ * addresses directly — used to detect a delete/edit conflict, which
+ * structural/valued alone can't see since a delete targets the parent,
+ * not the deleted node itself.
  */
 export function touchedBy(op) {
   const structural = new Set()
   const valued = new Set()
+  const removedIds = new Set()
+  const addedIds = new Set()
+  const targetIds = new Set()
 
   for (const m of op?.mutations ?? []) {
     const ref = m.target?.id !== undefined
@@ -51,8 +69,16 @@ export function touchedBy(op) {
     if (m.t === 'child')      structural.add(ref)
     else if (m.t === 'text')  valued.add(`${ref}#text`)
     else if (m.t === 'attr')  valued.add(`${ref}#${m.name}`)
+
+    if (m.target?.id !== undefined)         targetIds.add(m.target.id)
+    else if (m.target?.parentId !== undefined) targetIds.add(m.target.parentId)
+
+    if (m.t === 'child') {
+      idsIn(m.removed, removedIds)
+      idsIn(m.added, addedIds)
+    }
   }
-  return { structural, valued }
+  return { structural, valued, removedIds, addedIds, targetIds }
 }
 
 const intersects = (a, b) => {
@@ -65,20 +91,32 @@ const intersects = (a, b) => {
  * change to the same node from both sides, or the same attribute or text
  * position written on both sides. Concurrent edits to different nodes, or
  * to different attributes of one node, merge without complaint.
+ *
+ * Also a conflict: one side deletes a node (net of any re-add in its own
+ * set — a reparent or an undone delete removes and re-adds within one
+ * branch, deleting nothing) that the other side addresses directly. Only
+ * the deleting peer's apply() throws, so both directions are checked to
+ * keep classification symmetric between the two peers.
  */
 export function conflicts(ops, idsA, idsB) {
   const gather = (ids) => {
     const structural = new Set(), valued = new Set()
+    const removedIds = new Set(), addedIds = new Set(), targetIds = new Set()
     for (const id of ids) {
       const t = touchedBy(getOp(ops, id))
       for (const r of t.structural) structural.add(r)
       for (const r of t.valued) valued.add(r)
+      for (const r of t.removedIds) removedIds.add(r)
+      for (const r of t.addedIds) addedIds.add(r)
+      for (const r of t.targetIds) targetIds.add(r)
     }
-    return { structural, valued }
+    const netRemoved = new Set([...removedIds].filter(id => !addedIds.has(id)))
+    return { structural, valued, netRemoved, targetIds }
   }
   const a = gather(idsA)
   const b = gather(idsB)
   return intersects(a.structural, b.structural) || intersects(a.valued, b.valued)
+    || intersects(a.netRemoved, b.targetIds) || intersects(b.netRemoved, a.targetIds)
 }
 
 /**
