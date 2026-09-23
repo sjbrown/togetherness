@@ -335,6 +335,8 @@ export const BOUNPOS_TYPES = {
       const yText = new Y.XmlElement('text');
       ydoc.transact(() => {
         yG.setAttribute('id',                id);
+        yG.setAttribute('data-id',           id);
+        yG.setAttribute('data-module',       'boun_pos');
         yG.setAttribute('name',              name);
         yG.setAttribute('data-bounpos-type', 'boundary');
         yPath.setAttribute('d',            d);
@@ -354,14 +356,10 @@ export const BOUNPOS_TYPES = {
       return yG;
     },
     toSVGEl(yG) {
-      const id   = yG.getAttribute('id')   ?? '';
-      const name = yG.getAttribute('name') ?? id;
+      const name = yG.getAttribute('name') ?? yG.getAttribute('id') ?? '';
       const g = document.createElementNS(SVG_NS, 'g');
-      g.setAttribute('id',               id);
-      g.setAttribute('data-id',          id);
-      g.setAttribute('data-module',      'boun_pos');
-      g.setAttribute('data-bounpos-type','boundary');
-      g.setAttribute('name',             name);
+      const gAttrs = yG.getAttributes();
+      for (const k in gAttrs) g.setAttribute(k, gAttrs[k]);
       for (const child of yG.toArray()) {
         if (!(child instanceof Y.XmlElement)) continue;
         if (child.nodeName === 'path') {
@@ -478,6 +476,8 @@ function _createPositionSet(ydoc, yBounPos,
 
   ydoc.transact(() => {
     yG.setAttribute('id',               id);
+    yG.setAttribute('data-id',          id);
+    yG.setAttribute('data-module',      'boun_pos');
     yG.setAttribute('name',             name);
     yG.setAttribute('data-bounpos-type', 'pos-set');
     yG.setAttribute('data-snap-radius',  String(Math.round(snapRadius)));
@@ -514,13 +514,11 @@ function _positionSetToSVGEl(yG) {
   });
 
   const g = document.createElementNS(SVG_NS, 'g');
-  g.setAttribute('id',                id);
-  g.setAttribute('data-id',           id);
-  g.setAttribute('data-module',       'boun_pos');
-  g.setAttribute('data-bounpos-type',  'pos-set');
-  g.setAttribute('name',              name);
-  g.setAttribute('data-snap-radius',  snapR);
-  g.setAttribute('data-gen-type',     genType);
+  const gAttrs = yG.getAttributes();
+  for (const k in gAttrs) g.setAttribute(k, gAttrs[k]);
+  // data-gen-x-spacing/y-spacing on the stored node may be legacy
+  // (genParam-derived) values; normalize them the same way the rest of
+  // this function's callers expect.
   g.setAttribute('data-gen-x-spacing', String(xSpacing));
   g.setAttribute('data-gen-y-spacing', String(ySpacing));
 

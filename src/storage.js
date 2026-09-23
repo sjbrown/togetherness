@@ -18,6 +18,19 @@ import { checkpointOp } from './op_checkpoint.js';
  * tree is the canonical document, but nothing ever mirrors a <script> back
  * into a live DOM, so nothing executes.
  */
+// Stamp id/data-id/data-module on an imported top-level drawing or boundary
+// element, minting an id the same way app.js's commitDrawing does when the
+// source had none at all (a foreign shape with no id of its own).
+function ensureIdentity(yEl, dataModule) {
+  let id = yEl.getAttribute('id');
+  if (!id) {
+    id = 'import_' + Math.random().toString(36).slice(2, 7);
+    yEl.setAttribute('id', id);
+  }
+  yEl.setAttribute('data-id', id);
+  yEl.setAttribute('data-module', dataModule);
+}
+
 export function domToY(node) {
   if (node.nodeType === Node.TEXT_NODE || node.nodeType === Node.CDATA_SECTION_NODE) {
     const t = node.textContent.trim();
@@ -145,6 +158,7 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
       // Insert FIRST: Yjs refuses attribute reads on a detached element, so
       // reconciling before this point silently does nothing at all.
       yDrawing.insert(yDrawing.length, [yEl]);
+      ensureIdentity(yEl, 'drawing');
       Drawing.reconcileImportedTransform(yEl);
       drawCount++;
     }
@@ -159,7 +173,11 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
   if (bounPosLayerEl) {
     for (const child of bounPosLayerEl.children) {
       const yEl = domToY(child);
-      if (yEl) { yBounPos.insert(yBounPos.length, [yEl]); bounPosCount++; }
+      if (yEl) {
+        yBounPos.insert(yBounPos.length, [yEl]);
+        ensureIdentity(yEl, 'boun_pos');
+        bounPosCount++;
+      }
     }
   }
 
@@ -174,7 +192,11 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
     // overlay-layer is UI-only and is stripped on export
     if (id === 'overlay-layer') continue;
     const yEl = domToY(el);
-    if (yEl) { yDrawing.insert(yDrawing.length, [yEl]); drawCount++; }
+    if (yEl) {
+      yDrawing.insert(yDrawing.length, [yEl]);
+      ensureIdentity(yEl, 'drawing');
+      drawCount++;
+    }
   }
 
   return { toyCount, drawCount, bounPosCount, invalidToyEls, importedToyEls };

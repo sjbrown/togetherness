@@ -110,6 +110,8 @@ export function addDrawing(ydoc, yDrawing, attrs) {
   const attrMap  = def.attrMap ?? {};
   ydoc.transact(() => {
     el.setAttribute('id', String(attrs.id));
+    el.setAttribute('data-id', String(attrs.id));
+    el.setAttribute('data-module', 'drawing');
     for (const k of Object.keys(def.schema.types)) {
       if (k === 'id' || k === 'type') continue;
       const v = attrs[k] ?? defaults[k];
@@ -167,18 +169,13 @@ function mirror(yNode, opts = {}) {
 }
 
 /**
- * Render a shape Y.XmlElement to an SVG DOM element, stamped with the handles
- * app.js needs: data-id (the shape id), data-module="drawing", and a
- * plain SVG id="{id}" so that overlay.js <use href="#{id}"> can
- * reference the element for drag-ghost rendering without touching its geometry.
+ * Render a shape Y.XmlElement to an SVG DOM element. id, data-id and
+ * data-module are stored on the Y.XmlElement at creation (see addDrawing)
+ * and simply ride along via mirror()'s attribute copy.
  */
 export function _toSVGEl(yEl, opts = {}) {
   const el = mirror(yEl, opts);
   if (el && el.setAttribute) {
-    const id = yEl.getAttribute('id');
-    el.setAttribute('id',              id);
-    el.setAttribute('data-id',         id);
-    el.setAttribute('data-module', 'drawing');
     syncRotation(el);
   }
   return el;
