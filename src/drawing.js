@@ -875,10 +875,7 @@ export function previewEdit(ghostEl, editData) {
  */
 export function render(yDrawing, layerEl) {
   layerEl.innerHTML = '';
-  listDrawings(yDrawing).forEach(svgEl => {
-    svgEl.style.cursor = 'pointer';
-    layerEl.appendChild(svgEl);
-  });
+  listDrawings(yDrawing).forEach(svgEl => layerEl.appendChild(svgEl));
 }
 
 /**

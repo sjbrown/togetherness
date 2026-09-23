@@ -90,3 +90,42 @@ export const snapPointGradientSVG = `<radialGradient id="${SNAP_POINT_GRADIENT_I
   <stop offset="0%"   stop-color="white" stop-opacity="0.22"/>
   <stop offset="100%" stop-color="white" stop-opacity="0.06"/>
 </radialGradient>`;
+
+/**
+ * Presentation shared by every boundary / position-set instance of a kind —
+ * not per-instance data, so it lives here rather than on each Y.XmlElement.
+ * Scoped under #boundaries-positions-layer and keyed on
+ * [data-bounpos-type=…] so it can't leak onto anything else on the page.
+ * Sitting inside the SVG <defs>, it rides along into an exported file for
+ * free via buildExportSvg's clone of the live canvas element.
+ */
+export const boundariesPositionsStylesheetSVG = `\
+<style>
+#boundaries-positions-layer [data-bounpos-type="boundary"] > path {
+  fill: none;
+  stroke: white;
+  stroke-width: 2;
+}
+#boundaries-positions-layer [data-bounpos-type="boundary"] > text {
+  text-anchor: end;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  fill: white;
+}
+#boundaries-positions-layer [data-bounpos-type="pos-set"] > path {
+  fill: none;
+  stroke: rgba(255,255,255,0.5);
+  stroke-dasharray: 4 2;
+  stroke-width: 1;
+}
+#boundaries-positions-layer [data-bounpos-type="pos-set"] > text {
+  text-anchor: end;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  fill: rgba(255,255,255,0.7);
+}
+#boundaries-positions-layer [data-bounpos-type="pos-set"] > circle {
+  fill: url(#${SNAP_POINT_GRADIENT_ID});
+}
+</style>
+`;

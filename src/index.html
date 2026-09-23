@@ -190,7 +190,7 @@ import { WebrtcProvider }       from './lib/y-webrtc.js';
 import { boot, App }            from './app.js';
 import * as UI                  from './ui.js';
 import { getMyUser } from './user.js';
-import { dragPlaceholderFilterSVG, snapPointGradientSVG, localActionFilterSVG, glowFilterSVG }  from './defs.js';
+import { dragPlaceholderFilterSVG, snapPointGradientSVG, localActionFilterSVG, glowFilterSVG, boundariesPositionsStylesheetSVG }  from './defs.js';
 import { tablesAPI as tables } from './tables.js';
 import { resolveJoinIntent }    from './ui_join_dialog.js';
 import * as ExternalServices    from './external_services.js';
@@ -205,6 +205,8 @@ document.querySelector('#canvas defs')
   .insertAdjacentHTML('beforeend', localActionFilterSVG);
 document.querySelector('#canvas defs')
   .insertAdjacentHTML('beforeend', glowFilterSVG);
+document.querySelector('#canvas defs')
+  .insertAdjacentHTML('beforeend', boundariesPositionsStylesheetSVG);
 
 
 // Expose UI and App on window so inline onclick handlers in the HTML can reach them.
