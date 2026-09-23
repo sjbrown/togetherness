@@ -88,13 +88,6 @@ A **gesture** is one user intention: a drag, a resize, a menu action
 * **recursive.** A handler may trigger another handler, which may trigger
   another. All of it is one envelope, one batch, one operation.
 
-* **not a place to keep node references.** A handler must not hold onto a
-  DOM node past the end of its own gesture. Node-holding state stashed in a
-  namespace or a global has escaped the model the same way writing outside
-  `#toys-layer` has — it is invisible to the operation we record, and a
-  rebuild (§5.6) can replace the node out from under it. A gesture reads
-  the DOM, acts, and lets go.
-
 
 ### 2.2 An operation
 
@@ -279,7 +272,7 @@ When an operation arrives, compare its `parents` to the local head:
     the layer root, which touches the layer only incidentally), do not
     conflict — see the non-conflicting examples below.
   * **Same attribute, or the same text position, on the same node.**
-    Neither side's value wins automatically. B1: soft-lock is the
+    Neither side's value wins automatically. Soft-lock is the
     workhorse that makes this collision rare for connected peers;
     intentional offline users should expect their edits to conflict;
     partitioned peers get the branch dialog (§5.4), which is accepted.
@@ -452,9 +445,9 @@ on top.
 
 A rebuild replaces DOM nodes, same as adopting a branch (§5.4) — toy
 scripts on the affected subtree are re-activated afterward. It happens
-only when a remote update arrives, never mid-gesture, so §2.1's rule
-against holding node references across gestures is what keeps handler code
-safe around it.
+only when a remote update arrives, never mid-gesture, which is why
+handlers never keep node references between gestures (§8, invariant 14):
+code inside a gesture never sees a rebuild happen underneath it.
 
 A rebuild may also write a **merge checkpoint** (§6.1), if `shouldCheckpoint`
 allows one at that point (more than `CHECKPOINT_MIN_OPS` operations since
