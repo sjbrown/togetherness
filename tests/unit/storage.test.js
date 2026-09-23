@@ -505,7 +505,7 @@ describe('populateFromSvgDoc — rotation reconciliation', () => {
   test('our own export comes back byte-identical in the fields that matter', () => {
     const yEl = importRect({ 'data-rotate': '45', transform: 'rotate(45 200 160)' })
     expect(yEl.getAttribute('data-rotate')).toBe('45')
-    expect(yEl.getAttribute('transform')).toBeUndefined()
+    expect(yEl.getAttribute('transform')).toBe('rotate(45 200 160)')
     expect(yEl.getAttribute('x')).toBe('100')
     expect(yEl.getAttribute('y')).toBe('100')
   })

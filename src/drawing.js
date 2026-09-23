@@ -118,6 +118,7 @@ export function addDrawing(ydoc, yDrawing, attrs) {
       if (v != null) el.setAttribute(attrMap[k] ?? k, String(v));
     }
     yDrawing.insert(yDrawing.length, [el]);
+    syncRotationY(el);
   });
   return el;
 }
@@ -169,16 +170,13 @@ function mirror(yNode) {
 }
 
 /**
- * Render a shape Y.XmlElement to an SVG DOM element. id, data-id and
- * data-module are stored on the Y.XmlElement at creation (see addDrawing)
- * and simply ride along via mirror()'s attribute copy.
+ * Render a shape Y.XmlElement to an SVG DOM element. id, data-id,
+ * data-module and (for a rotated shape) transform are all stored on the
+ * Y.XmlElement itself (see addDrawing / syncRotationY) and simply ride
+ * along via mirror()'s attribute copy — nothing derived at render time.
  */
 export function _toSVGEl(yEl) {
-  const el = mirror(yEl);
-  if (el && el.setAttribute) {
-    syncRotation(el);
-  }
-  return el;
+  return mirror(yEl);
 }
 
 /**
@@ -364,12 +362,38 @@ export function syncRotation(domEl) {
   else           domEl.removeAttribute('transform');
 }
 
+// Presents a Y.XmlElement with the subset of the DOM Element interface
+// getGeom/resolveRotation actually use, so the rotation math (which only
+// ever reads tagName/getAttribute/hasAttribute) can run against either
+// without duplicating it for Yjs.
+function yElAsSvgEl(yEl) {
+  return {
+    tagName:      yEl.nodeName,
+    getAttribute: (k) => yEl.getAttribute(k) ?? null,
+    hasAttribute: (k) => yEl.getAttribute(k) != null,
+  };
+}
+
+/**
+ * The Yjs-side counterpart of syncRotation: writes the canonical
+ * `transform` onto the stored Y.XmlElement itself, so the rendered DOM
+ * never has to derive it. Same no-data-rotate guard as syncRotation.
+ */
+function syncRotationY(yEl) {
+  if (!yEl?.getAttribute) return;
+  if (yEl.getAttribute(ROTATE_ATTR) == null) return;
+  const transform = rotationTransform(resolveRotation(yElAsSvgEl(yEl)));
+  if (transform) yEl.setAttribute('transform', transform);
+  else           yEl.removeAttribute('transform');
+}
+
 /** Commit a rotation. A shape whose schema has no `rotate` key (circles) is a no-op. */
 export function applyRotate(ydoc, yEl, deg) {
   if (!yEl) return;
   if (!SHAPE_TYPES[yEl.nodeName]?.schema.types.rotate) return;
   ydoc.transact(() => {
     yEl.setAttribute(ROTATE_ATTR, String(normalizeAngle(deg)));
+    syncRotationY(yEl);
   });
 }
 
@@ -485,6 +509,7 @@ export function applyPivot(ydoc, yEl, fx, fy, x, y) {
     yEl.setAttribute(PIVOT_Y_ATTR, String(clamp01(fy)));
     yEl.setAttribute('x', String(Math.round(x)));
     yEl.setAttribute('y', String(Math.round(y)));
+    syncRotationY(yEl);
   });
 }
 
@@ -525,12 +550,17 @@ export function reconcileImportedTransform(yEl) {
 
   const out = reconcileTransform(geom, getRotationFromAttr(yEl), matrix);
 
-  if (out.rotate == null) yEl.removeAttribute(ROTATE_ATTR);
-  else                    yEl.setAttribute(ROTATE_ATTR, String(normalizeAngle(out.rotate)));
-  if (out.transform)      yEl.setAttribute('transform', formatMatrix(out.transform));
-  else if (yEl.getAttribute('transform') != null) yEl.removeAttribute('transform');
   yEl.setAttribute('x', String(Math.round(out.x)));
   yEl.setAttribute('y', String(Math.round(out.y)));
+
+  if (out.rotate == null) {
+    yEl.removeAttribute(ROTATE_ATTR);
+    if (out.transform) yEl.setAttribute('transform', formatMatrix(out.transform));
+    else if (yEl.getAttribute('transform') != null) yEl.removeAttribute('transform');
+    return;
+  }
+  yEl.setAttribute(ROTATE_ATTR, String(normalizeAngle(out.rotate)));
+  syncRotationY(yEl);
 }
 
 /** Degrees off a Yjs element's own attribute (getRotation wants a DOM node). */
@@ -616,6 +646,7 @@ export function applyMoveCommit(ydoc, yEl, x, y) {
       yEl.setAttribute('cx', String(x));
       yEl.setAttribute('cy', String(y));
     }
+    syncRotationY(yEl);
   });
 }
 
@@ -672,6 +703,7 @@ export function applyResize(ydoc, yEl, x, y, width, height) {
       yEl.setAttribute('cy', String(Math.round(y + r)));
       yEl.setAttribute('r',  String(Math.round(r)));
     }
+    syncRotationY(yEl);
   });
 }
 
@@ -808,6 +840,7 @@ export function applyTtState(ydoc, yDrawing, state) {
         if (k === 'id' || k === 'type') continue;
         existing.setAttribute(k, String(v));
       }
+      syncRotationY(existing);
     });
   } else {
     addDrawing(ydoc, yDrawing, state);
@@ -825,6 +858,7 @@ export function edit(ydoc, yEl, editData) {
     for (const [k, v] of Object.entries(editData)) {
       yEl.setAttribute(k, String(v));
     }
+    syncRotationY(yEl);
   });
 }
 
