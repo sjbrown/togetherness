@@ -88,6 +88,13 @@ A **gesture** is one user intention: a drag, a resize, a menu action
 * **recursive.** A handler may trigger another handler, which may trigger
   another. All of it is one envelope, one batch, one operation.
 
+* **not a place to keep node references.** A handler must not hold onto a
+  DOM node past the end of its own gesture. Node-holding state stashed in a
+  namespace or a global has escaped the model the same way writing outside
+  `#toys-layer` has — it is invisible to the operation we record, and a
+  rebuild (§5.6) can replace the node out from under it. A gesture reads
+  the DOM, acts, and lets go.
+
 
 ### 2.2 An operation
 
@@ -250,15 +257,56 @@ When an operation arrives, compare its `parents` to the local head:
   cheap.
 
 * **Concurrent** — neither is an ancestor of the other. The DAG now has
-  two tips. *This is not yet a problem.* Alice recoloured a token while
-  Bob moved a different one; both intentions survive and any order gives
-  the same result.
+  two tips, and the two branches **commute**: applied on top of the local
+  DOM in arrival order, they give the same result regardless of which
+  order that is, so each peer can see the two branches in the opposite
+  order from its counterpart and still converge. Replay, later, applies
+  them in `totalOrder` (§5.3) instead of arrival order, and must land on
+  the same DOM. Alice recoloured a token while Bob moved a different one;
+  both intentions survive and any order gives the same result. Anything
+  concurrent that does *not* commute is either a conflict, below, or a
+  case the receiving peer resolves with a deterministic rebuild (§5.6)
+  rather than an arrival-order apply.
 
 * **Conflicting** — concurrent *and* the two branches cannot be projected
-  into one DOM. Two peers dropped different dice into the same empty tray
-  and each recomputed its total. Two peers reparented the same toy to
-  different containers. A node cannot have two parents; a `<tspan>` cannot
-  hold two authors' sums.
+  into one DOM. Precisely, one of:
+
+  * **Same node, structurally**, other than both sides removing it.
+    Structural contention is per child, not per parent: two branches
+    conflict only when both insert, remove, or move the **same** node.
+    Two peers placing different toys into the same layer, or moving
+    different toys (every move promotes the moved toy's z-order through
+    the layer root, which touches the layer only incidentally), do not
+    conflict — see the non-conflicting examples below.
+  * **Same attribute, or the same text position, on the same node.**
+    Neither side's value wins automatically. B1: soft-lock is the
+    workhorse that makes this collision rare for connected peers;
+    intentional offline users should expect their edits to conflict;
+    partitioned peers get the branch dialog (§5.4), which is accepted.
+    This is also what keeps a derived value safe (§4.3) — two peers who
+    each recomputed a tray's running total and produced different sums
+    have no correct way to average or pick between them.
+  * **Delete vs. edit.** One branch's *net* removal of a node — removed,
+    and not re-added on that same branch, so a reparent or an undone
+    delete does not count — conflicts with the other branch addressing
+    that node or anything inside it.
+
+  Two peers reparenting the same toy to different containers is the
+  same-node-structurally case: a node cannot have two parents. Two peers
+  each dropping a die into the same empty tray and each recomputing its
+  total is the same-attribute case: a `<tspan>` cannot hold two authors'
+  sums.
+
+  **Not conflicting:** two peers placing different toys (different nodes,
+  no contention). Two peers moving different toys (different nodes, even
+  though both promote z-order at the layer root). Two peers deleting the
+  same node — a **double delete** merges, because applying a removal
+  whose target is already gone does nothing.
+
+  Checkpoints (§6.1) are ignored when classifying either relationship —
+  a checkpoint changes nothing relative to its parents and carries no
+  one's intent, so it cannot itself be concurrent, conflicting, or
+  contended.
 
 Concurrency is a property of the graph and is cheap to compute.
 Conflict is a property of the *operations* and requires looking at what
@@ -320,8 +368,12 @@ Two separate questions, repeatedly conflated:
   tie-break, for the activity log and for reproducible iteration. Says
   nothing about time.
 
-A total order over concurrent operations is a *presentation* choice. Never
-build a merge on it.
+A total order over concurrent operations is a *presentation* choice, with
+one exception: it decides sibling order for a canonical rebuild (§5.6),
+because there the receiving peer is not choosing an arrival order at all —
+it is reconstructing the one order every peer can agree on. Outside that,
+never build a merge on it, and it never decides an attribute or text value
+or who has authority.
 
 ### 5.4 What a peer does about it
 
@@ -378,6 +430,48 @@ independently, with no coordination, land on the same table.
 
 Which also means the reset must now happen **before** the hash.
 
+### 5.6 Order-sensitive merges
+
+Structural conflict (§5.1) is per child. But when concurrent branches
+insert, remove, or reorder children of the **same parent** without
+touching the same child, there is no conflict and no single arrival order
+either branch's peer can just apply on top and expect to match its
+counterpart — sibling order is exactly the thing arrival order does not
+settle.
+
+So the receiving peer does not apply the arrival on top. It **rebuilds**:
+reset to the nearest checkpoint, then replay the union of every tip's
+ancestry back to that checkpoint, in `totalOrder`. Every peer that sees the
+same tips computes the same order and lands on the same siblings, so the
+live DOM equals what a fresh replay of the log would produce.
+
+A consequence of the tie-break: when two branches concurrently insert or
+promote children of the same parent, `totalOrder` favors the more junior
+author (later in `joinSequence`), so their insertions or promotions end up
+on top.
+
+A rebuild replaces DOM nodes, same as adopting a branch (§5.4) — toy
+scripts on the affected subtree are re-activated afterward. It happens
+only when a remote update arrives, never mid-gesture, so §2.1's rule
+against holding node references across gestures is what keeps handler code
+safe around it.
+
+A rebuild may also write a **merge checkpoint** (§6.1), if `shouldCheckpoint`
+allows one at that point (more than `CHECKPOINT_MIN_OPS` operations since
+the last checkpoint). That checkpoint's `parents` are the sorted tips just
+rebuilt, which makes it the merge commit: it is the point in the graph
+where the branches join. It is fully deterministic — computed the same way
+by every peer that rebuilt the same tips — so:
+
+* `authorId` is null.
+* `ts` is the latest parent's `ts`.
+* its id is a hash of the parents plus the content, the same technique a
+  fork's genesis operation uses (§5.5).
+
+Every peer who rebuilds those tips writes the byte-identical checkpoint,
+so the duplicates collapse in the `Y.Map` rather than creating divergent
+merge points.
+
 ---
 
 ## 6. Projection / Reprojection
@@ -395,8 +489,16 @@ only reprojection rebuilds it.
 ### 6.1 A checkpoint is an operation
 
 The base to reset to is just an operation whose `mutations` are "insert
-this entire subtree into an empty layer." Which means one primitive covers
-four things we would otherwise build separately:
+this entire subtree into an empty layer."
+
+**A checkpoint is a projection base, and only a projection base.** Relative
+to its parents it changes nothing and records no one's intent — it is
+never a delta, and §5.1's classification of concurrent and conflicting
+ignores it entirely. Applied anywhere other than as the base of a
+projection, it is a no-op.
+
+Which means one primitive covers five things we would otherwise build
+separately:
 
 * **Genesis.** A new table's first operation, with an empty or seeded
   layer.
@@ -410,6 +512,9 @@ four things we would otherwise build separately:
   *when* to write one is deferred, the primitive is not.
 * **Fork.** A branch's new table gets a checkpoint of the LCA state plus
   the splitter branch's ops.
+* **Merge.** A canonical rebuild (§5.6) may write a checkpoint of the
+  rebuilt state, parented on the tips it merged. Deterministic, so every
+  peer that rebuilds the same tips writes the same checkpoint.
 
 ### 6.2 Export
 
@@ -478,10 +583,15 @@ Cite these by number in code comments and commit messages.
     never pruned — except at a fork, where it is filtered down to the
     splitter branch's contributors, preserving their inherited relative
     order
-11. Total order over concurrent operations is for display. Never build a
-    merge on it, and never build authority on it either.
+11. Total order over concurrent operations decides sibling order when
+    concurrent branches insert, remove, or reorder children of the same
+    parent, and nothing else. It never decides an attribute or text value
+    and never decides authority. Otherwise it is for display.
 12. Projecting a branch means checkpoint-then-replay. Never inverse-and-
     patch.
+13. A checkpoint is a projection base, never a delta. It carries no intent
+    and never participates in conflict classification.
+14. Handlers never keep node references between gestures.
 
 ---
 
@@ -501,7 +611,9 @@ Known-unresolved, listed so nobody thinks they're resolved.
 * **Log growth and checkpoint policy** (§7.1). The primitive is specified;
   when to write one, and whether old operations are ever dropped from the
   `Y.Map` (and what that does to a peer returning from a long offline
-  stretch with ops parented to a discarded ancestor), is not.
+  stretch with ops parented to a discarded ancestor), is not. A canonical
+  rebuild (§5.6) is one trigger: it may write a merge checkpoint whenever
+  `shouldCheckpoint` allows it.
 
   *Shandy:* transitions from/to home.html are an obvious checkpoint trigger.
   Also, switching away from the Toys layer in the UI is a good chance.
@@ -518,16 +630,10 @@ Known-unresolved, listed so nobody thinks they're resolved.
   Skip this until a distant-future user-facing documentation step
 -->
 
-* **Multi-node conflict granularity** (§6.1). "Conflicting" is currently
-  "these branches touched overlapping nodes in incompatible ways." Where
-  exactly the line falls — is concurrent `fill` and concurrent `x` on the
-  same rect a conflict? — is a policy we will get wrong at least once.
-
-  *Shandy:* we should start coarse and refine it in subsequent optimization
-  steps. So let's just start with ANY object ids shared in two concurrent
-  commits implies conflict.  This may actually last for a long time, as
-  user actions are slow (turn taking is the dominant mode of play) and the
-  soft-lock feature defends against many (but not all) such conflicts.
+* **Multi-node conflict granularity** (§5.1). Resolved: conflict is
+  per-child for structure, per-attribute (or per-text-position) for
+  values, and same-attribute-on-the-same-node is a conflict regardless of
+  whether the values happen to agree. See §5.1 for the precise list.
 
 <!--
 * **Cherry-picking.** Adopting the leader branch currently abandons the
@@ -541,7 +647,11 @@ Known-unresolved, listed so nobody thinks they're resolved.
 * **Multi-peer partition.** Three-way divergence, where the DAG has three
   tips and pairwise conflict labels do not compose into a single answer.
   Two-way is specified; N-way is not. Note that §6.5 handles N *authors*
-  on a two-tip divergence fine — it is N *tips* that is open.
+  on a two-tip divergence fine — it is N *tips* that is open. A canonical
+  rebuild (§5.6) already covers the union of every tip's ancestry, so N
+  tips that pairwise don't conflict merge fine today; what's still open is
+  labelling *conflicting* N-way splits, where pairwise leader/splitter
+  labels don't compose into one answer.
 
   *Shandy:* I suspect that if we don't get too fiddly in our implementation,
   this will fall out naturally.  But let's defer until our above design
