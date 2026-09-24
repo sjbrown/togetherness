@@ -338,6 +338,52 @@ describe('projectFrom replays forward from a checkpoint', () => {
   })
 })
 
+describe('projectFrom with a checkpoint that is not the projection base', () => {
+  test('two checkpoints on concurrent branches: projecting the merge yields each element exactly once', () => {
+    const base = bareLayer('<rect data-id="a"/><rect data-id="b"/>')
+    const genesis = checkpointOp(base, { id: 'genesis', authorId: 'alice' })
+
+    const branchA = bareLayer(markup(base))
+    ensureLayerId(branchA)
+    const ckA = checkpointOp(branchA, { id: 'ckA', authorId: 'alice', parents: ['genesis'] })
+
+    const branchB = bareLayer(markup(base))
+    ensureLayerId(branchB)
+    const ckB = checkpointOp(branchB, { id: 'ckB', authorId: 'bob', parents: ['genesis'] })
+
+    // A merge commit joining both concurrent checkpoints. Its own
+    // mutations are irrelevant here — what matters is that nearestCheckpoint
+    // must pick one of ckA/ckB as the base, and the other one, reachable
+    // only via the path, must not be applied as a delta.
+    const merge = { id: 'merge', parents: ['ckA', 'ckB'], authorId: 'alice', gesture: 'merge', mutations: [] }
+
+    const ops = new Map([
+      [genesis.id, genesis], [ckA.id, ckA], [ckB.id, ckB], [merge.id, merge],
+    ])
+
+    const target = bareLayer()
+    projectFrom(target, ops, 'merge')
+
+    const ids = [...target.children].map(c => c.getAttribute('data-id')).sort()
+    expect(ids).toEqual(['a', 'b'])
+  })
+
+  test('genesis plus a later checkpoint: projecting yields each element exactly once', () => {
+    const genesisSource = bareLayer('<rect data-id="a"/>')
+    const genesis = checkpointOp(genesisSource, { id: 'genesis', authorId: 'alice' })
+
+    const laterSource = bareLayer('<rect data-id="a"/><rect data-id="b"/>')
+    const later = checkpointOp(laterSource, { id: 'later', authorId: 'alice', parents: ['genesis'] })
+
+    const ops = new Map([[genesis.id, genesis], [later.id, later]])
+    const target = bareLayer()
+    projectFrom(target, ops, 'later')
+
+    const ids = [...target.children].map(c => c.getAttribute('data-id')).sort()
+    expect(ids).toEqual(['a', 'b'])
+  })
+})
+
 describe('applyOps', () => {
   test('throws on an operation id not present in the log', () => {
     expect(() => applyOps(bareLayer(), new Map(), ['missing'])).toThrow(/no operation/)
