@@ -53,13 +53,8 @@ const mintOpId = () =>
 
 export const isCheckpoint = (op) => op?.gesture === CHECKPOINT_GESTURE
 
-/**
- * The mutations an op contributes when applied as a delta on top of a
- * live layer, as opposed to as a projection base. A checkpoint's
- * mutations only make sense against the empty layer projectFrom clears
- * first — applied anywhere else they'd duplicate what's already there —
- * so as a delta it contributes nothing.
- */
+/** A checkpoint contributes nothing as a delta — only projectFrom's base,
+ * onto a layer it just cleared, applies its mutations. */
 export const deltaMutations = (op) => (isCheckpoint(op) ? [] : (op?.mutations ?? []))
 
 /**
