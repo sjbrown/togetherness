@@ -25,7 +25,7 @@ import * as Drawing                               from './drawing.js';
 import * as Toys                                  from './toys.js';
 import { tablesAPI }                              from './tables.js';
 import { getOps, heads, totalOrder, appendOp }    from './op_dag.js';
-import { getHead, getMergeTips, setHead }         from './op_head.js';
+import { getHead, getMergeTips, setHead, maximalTips, setMergeTips } from './op_head.js';
 import { isCheckpoint, checkpointOp, shouldCheckpoint, lastCheckpointTs } from './op_checkpoint.js';
 import * as User                                  from './user.js';
 import * as Trace                                 from './trace.js';
@@ -722,7 +722,13 @@ function maybeIdleCheckpoint(reason) {
 }
 
 /**
- * Write a checkpoint at the current head, 10+ ops behind.
+ * Write a checkpoint at the current local tips, 10+ ops behind.
+ *
+ * Authored by this peer (App.user.id), not by mergeCheckpointOp's
+ * deterministic scheme — an idle checkpoint is one peer's own periodic
+ * decision, not something every peer independently computes the same way
+ * from a shared rebuild, so there's no byte-identical-content property to
+ * buy by hashing it instead.
  */
 function maybeCheckpoint(reason) {
   if (!_tableId || !_ydoc) return null;
@@ -731,14 +737,19 @@ function maybeCheckpoint(reason) {
   const ops = getOps(_ydoc);
   const headId = getHead(_tableId);
   if (headId == null) return null;
-  if (!shouldCheckpoint(ops, headId)) return null;
+  const tips = maximalTips(ops, [headId, ...getMergeTips(_tableId)]);
+  if (!shouldCheckpoint(ops, tips)) return null;
 
   const layer = _svgEl?.querySelector('#toys-layer');
   if (!layer) return null;
 
-  const op = checkpointOp(layer, { authorId: App.user.id, parents: [headId] });
+  // §5.6/§6.1: with more than one local tip (merge tips pending from a
+  // MERGED, or a REBUILT that declined its own merge checkpoint), the
+  // parents must be the full tip set, or this checkpoint isn't a cut.
+  const op = checkpointOp(layer, { authorId: App.user.id, parents: tips });
   appendOp(_ydoc, op);
   setHead(_tableId, op.id);
+  setMergeTips(_tableId, []);
   Trace.op('checkpoint', `wrote checkpoint ${op.id} (${reason})`, { id: op.id, reason });
   return op;
 }

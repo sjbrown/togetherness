@@ -522,6 +522,11 @@ separately:
   rebuilt state, parented on the tips it merged. Deterministic, so every
   peer that rebuilds the same tips writes the same checkpoint.
 
+  An idle checkpoint (§9) is the opposite choice: it isn't triggered by a
+  rebuild every peer computed identically, so it stays authored by the
+  triggering peer rather than hashed — there's nothing to gain from
+  determinism when only one peer is ever going to write it.
+
 ### 6.2 Export
 
 Export serializes the **live DOM**, not a replay of the log. The DOM is a

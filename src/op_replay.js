@@ -329,10 +329,15 @@ export const RECEIVED_CONFLICT   = 'received-conflict'
  * - subsequent: DOM advances (deltas in totalOrder), head becomes
  *   incoming, merge tips clear.
  * - merged: D applies as deltas directly on top of the current DOM; head
- *   stays, merge tips become the new maximal tip set minus the head.
+ *   stays, merge tips become the new maximal tip set minus the head — the
+ *   next local commit is what folds them into the graph as parents
+ *   (op_head.consumeParents).
  * - rebuilt: the DOM is order-sensitive against what arrived, so it's
  *   reset to the latest cut checkpoint and replayed (projectTips) rather
  *   than patched; head stays, merge tips update the same way as merged.
+ *   The caller (toys.js's receiveToyOp) may write a merge checkpoint
+ *   parented on this same tip set right after — when it does, the merge
+ *   tips collapse immediately instead of waiting for the next commit.
  * - conflicting: nothing is applied. The caller resolves via the branch
  *   dialog; classification here stays pairwise against the primary head —
  *   N-way conflicts stay unhandled — so lca and tips are reported the

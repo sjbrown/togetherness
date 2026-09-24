@@ -2369,6 +2369,41 @@ export function adoptToyBranch(ydoc, layerEl, targetHeadId, tableId) {
   markProjectedAt(layerEl, [targetHeadId])
 }
 
+/**
+ * After a canonical rebuild (RECEIVED_REBUILT), write a merge checkpoint
+ * if the rebuilt tip set has drifted far enough past its own cut
+ * (OpCheckpoint.shouldCheckpoint) — §5.6's merge commit. layerEl already
+ * reflects tips exactly: OpReplay.receiveOp's REBUILT branch just
+ * projected it there via projectTips, so mergeCheckpointOp's serialize is
+ * a read of DOM this call didn't itself produce, not a second rebuild.
+ *
+ * Guarded the same way app.js's maybeCheckpoint guards an idle checkpoint:
+ * never while a gesture envelope is open, never while a remote operation
+ * is being applied (OpReplay.isReplaying) — though by the time this runs,
+ * receiveOp's own withSuppressedCapture has already unwound, so the second
+ * guard is a defensive belt-and-suspenders, not something normally live
+ * here.
+ *
+ * Writes synchronously, from inside the ops Y.Map observer that called
+ * receiveToyOp (app.js's onOpsChanged). appendOp's ops.set() starts a
+ * fresh, local transaction once the observer's own transaction finishes;
+ * that re-enters onOpsChanged, but as a local change, and onOpsChanged
+ * already returns immediately on transaction.local — so no queueMicrotask
+ * deferral is needed to avoid re-entering as if it were another remote
+ * arrival.
+ */
+function writeMergeCheckpointIfWarranted(ydoc, layerEl, tableId, ops, tips) {
+  if (isInsideEnvelope() || OpReplay.isReplaying()) return null
+  if (!OpCheckpoint.shouldCheckpoint(ops, tips)) return null
+
+  const ck = OpCheckpoint.mergeCheckpointOp(layerEl, tips, ops)
+  OpDag.appendOp(ydoc, ck)
+  OpHead.setHead(tableId, ck.id)
+  OpHead.setMergeTips(tableId, [])
+  markProjectedAt(layerEl, [ck.id])
+  return ck
+}
+
 export function receiveToyOp(ydoc, layerEl, opId, tableId, joinSequence = []) {
   const ops = OpDag.getOps(ydoc)
   const head = tableId ? OpHead.getHead(tableId) : null
@@ -2383,6 +2418,16 @@ export function receiveToyOp(ydoc, layerEl, opId, tableId, joinSequence = []) {
     OpHead.setMergeTips(tableId, out.mergeTips ?? [])
   }
   markProjectedAt(layerEl, [out.head, ...(out.mergeTips ?? [])])
+
+  if (tableId && out.result === OpReplay.RECEIVED_REBUILT) {
+    const tips = OpHead.maximalTips(ops, [out.head, ...(out.mergeTips ?? [])])
+    const ck = writeMergeCheckpointIfWarranted(ydoc, layerEl, tableId, ops, tips)
+    if (ck) {
+      out.head = ck.id
+      out.mergeTips = []
+      out.mergeCheckpoint = ck.id
+    }
+  }
 
   return out
 }

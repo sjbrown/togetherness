@@ -27,24 +27,33 @@ export const CHECKPOINT_GESTURE = 'checkpoint'
 export const CHECKPOINT_MIN_OPS = 10
 
 /**
- * How many operations stand between headId and its nearest checkpoint
- * (or genesis, if it has none). This is the only number the "is it worth
- * checkpointing" decision needs — it says nothing about *when*, only
- * about whether a checkpoint right now would do any good.
+ * How many operations stand between a tip set and its nearest cut
+ * checkpoint (or genesis, if it has none). This is the only number the
+ * "is it worth checkpointing" decision needs — it says nothing about
+ * *when*, only about whether a checkpoint right now would do any good.
+ *
+ * Accepts a bare head id (the common single-tip case) or an array of
+ * tips (a peer sitting on a head plus merge tips, or the tip set a
+ * rebuild just landed on) — same normalizeTips/unionAncestry a tip-set
+ * projection already uses, so this counts the same replay length
+ * projectTips would actually do, not just one branch's path.
  */
-export function opsSinceCheckpoint(ops, headId) {
-  if (headId == null) return 0
-  const base = nearestCheckpoint(ops, headId)
-  return pathFrom(ops, base, headId).length
+export function opsSinceCheckpoint(ops, tipsOrHead) {
+  const tips = normalizeTips(tipsOrHead)
+  if (!tips.length) return 0
+  const base = nearestCheckpoint(ops, tips)
+  const union = unionAncestry(ops, tips)
+  const baseAncestry = base == null ? new Set() : ancestorsInclusive(ops, base)
+  return [...union].filter(id => !baseAncestry.has(id) && getOp(ops, id)).length
 }
 
 /**
- * Whether a checkpoint at headId would be worth writing. Callers still
- * decide *when* to ask — this only answers whether asking now would pay
- * off, per CHECKPOINT_MIN_OPS.
+ * Whether a checkpoint at this tip set would be worth writing. Callers
+ * still decide *when* to ask — this only answers whether asking now would
+ * pay off, per CHECKPOINT_MIN_OPS.
  */
-export function shouldCheckpoint(ops, headId) {
-  return opsSinceCheckpoint(ops, headId) > CHECKPOINT_MIN_OPS
+export function shouldCheckpoint(ops, tipsOrHead) {
+  return opsSinceCheckpoint(ops, tipsOrHead) > CHECKPOINT_MIN_OPS
 }
 
 let _counter = 0
@@ -267,4 +276,28 @@ export function buildForkSeed(ops, lcaId, splitterTipId, layerEl, { authorId, jo
   })
 
   return { genesis, rebasedOps }
+}
+
+/**
+ * The merge checkpoint a canonical rebuild (§5.6) may write: a checkpoint
+ * of the just-rebuilt live layer, parented on the tips that were rebuilt —
+ * the point in the graph where those branches join. Authored the same
+ * deterministic way buildForkSeed authors a fork's genesis (authorId null,
+ * id hashed from content) so that every peer who rebuilds the same tip set
+ * computes the same id and the same content: concurrent writers collapse
+ * into one Y.Map entry rather than diverging merge points.
+ *
+ * layerEl must already reflect tips — the caller just rebuilt it (or
+ * otherwise projected it) to exactly that state; this only records it.
+ * ops is read-only, used to find each tip's ts for the checkpoint's own ts
+ * (the latest of them, per §5.6).
+ */
+export function mergeCheckpointOp(layerEl, tips, ops) {
+  const parents = [...tips].sort()
+  const ts = parents.reduce((max, id) => Math.max(max, getOp(ops, id)?.ts ?? 0), 0)
+  const draft = checkpointOp(layerEl, { authorId: null, parents, ts })
+  return {
+    ...draft,
+    id: `tt-op-ck-${deterministicSuffix(JSON.stringify([parents, draft.mutations]))}`,
+  }
 }

@@ -20,11 +20,11 @@ import {
   placeToy, makeLayerAPI, activateAllToyScriptsDom, projectLayer, ensureLayerId,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
-import { getOps } from '../../src/op_dag.js'
-import { projectTips } from '../../src/op_checkpoint.js'
+import { getOps, appendOp } from '../../src/op_dag.js'
+import { projectTips, nearestCheckpoint, opsSinceCheckpoint, CHECKPOINT_MIN_OPS } from '../../src/op_checkpoint.js'
 import { getHead, getMergeTips, maximalTips, setHead } from '../../src/op_head.js'
 import { serializeNode } from '../../src/op_wire_mutation.js'
-import { RECEIVED_CONFLICT, RECEIVED_REBUILT } from '../../src/op_replay.js'
+import { RECEIVED_CONFLICT, RECEIVED_REBUILT, RECEIVED_SUBSEQUENT } from '../../src/op_replay.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
@@ -289,5 +289,195 @@ describe('concurrent convergence', () => {
 
     const [rP] = deliver(P, [opMove])
     expect(rP.result).toBe(RECEIVED_CONFLICT)
+  })
+})
+
+// ── merge checkpoints (§5.6) ────────────────────────────────────────────
+
+/** A chain of `n` no-op filler operations off `fromId` — cheap padding so
+ * a scenario's real ops-since-cut count crosses CHECKPOINT_MIN_OPS without
+ * placing a pile of real toys. Deterministic, empty mutations: applying
+ * one as a delta is a true no-op. */
+function fillerChain(fromId, n) {
+  const chain = []
+  let parent = fromId
+  for (let i = 0; i < n; i++) {
+    const id = `filler-${fromId}-${i}`
+    chain.push({ id, parents: [parent], authorId: 'system', gesture: 'noop', ts: i + 1, mutations: [] })
+    parent = id
+  }
+  return chain
+}
+
+/** Like seedGenesis, but every peer starts past a shared chain of `n`
+ * filler ops instead of genesis itself — real placements that follow are
+ * then already well past CHECKPOINT_MIN_OPS, which the merge-checkpoint
+ * gate needs exercised. */
+function seedGenesisWithFiller(peers, n) {
+  const genesis = seedGenesis(peers)
+  const chain = fillerChain(genesis.id, n)
+  for (const p of peers) {
+    for (const op of chain) getOps(p.ydoc).set(op.id, op)
+    setHead(p.tableId, chain[chain.length - 1].id)
+  }
+  return chain[chain.length - 1].id
+}
+
+describe('merge checkpoints (§5.6)', () => {
+  test('gate: at or under CHECKPOINT_MIN_OPS since the cut, a rebuild writes no merge checkpoint', async () => {
+    const P = makePeer('alice'), Q = makePeer('bob')
+    seedGenesis([P, Q]) // just genesis — two placements is nowhere near the gate
+
+    const opP = await place(P, 'dieP', 'dice_d6', 0, 0)
+    const opQ = await place(Q, 'dieQ', 'dice_d6', 40, 40)
+
+    const [rP] = deliver(P, [opQ])
+    expect(rP.result).toBe(RECEIVED_REBUILT)
+    expect(rP.mergeCheckpoint).toBeFalsy()
+    expect(rP.mergeTips).toEqual([opQ.id])
+    expect(localTipsOf(P).sort()).toEqual([opP.id, opQ.id].sort())
+  })
+
+  test('determinism: two peers rebuilding the same tips write byte-identical merge checkpoints, and a shared map collapses them to one entry', async () => {
+    const P = makePeer('alice'), Q = makePeer('bob')
+    seedGenesisWithFiller([P, Q], CHECKPOINT_MIN_OPS + 1)
+
+    const opP = await place(P, 'dieP', 'dice_d6', 0, 0)
+    const opQ = await place(Q, 'dieQ', 'dice_d6', 40, 40)
+
+    const [rP] = deliver(P, [opQ])
+    const [rQ] = deliver(Q, [opP])
+    expect(rP.result).toBe(RECEIVED_REBUILT)
+    expect(rQ.result).toBe(RECEIVED_REBUILT)
+    expect(rP.mergeCheckpoint).toBeTruthy()
+    expect(rP.mergeCheckpoint).toBe(rQ.mergeCheckpoint)
+
+    const ckP = getOps(P.ydoc).get(rP.mergeCheckpoint)
+    const ckQ = getOps(Q.ydoc).get(rQ.mergeCheckpoint)
+    expect(ckP).toEqual(ckQ)
+
+    const shared = new Y.Doc()
+    appendOp(shared, ckP)
+    const sizeBefore = getOps(shared).size
+    appendOp(shared, ckQ)
+    expect(getOps(shared).size).toBe(sizeBefore)
+
+    assertConverged([P, Q])
+  })
+
+  test('collapse: local tips become [checkpoint], and the next local commit is parented on it alone', async () => {
+    const P = makePeer('alice'), Q = makePeer('bob')
+    seedGenesisWithFiller([P, Q], CHECKPOINT_MIN_OPS + 1)
+
+    const opP = await place(P, 'dieP', 'dice_d6', 0, 0)
+    const opQ = await place(Q, 'dieQ', 'dice_d6', 40, 40)
+    const [rP] = deliver(P, [opQ])
+    expect(rP.mergeCheckpoint).toBeTruthy()
+    expect(localTipsOf(P)).toEqual([rP.mergeCheckpoint])
+
+    const opNext = await place(P, 'dieP2', 'dice_d6', 80, 80)
+    expect(opNext.parents).toEqual([rP.mergeCheckpoint])
+  })
+
+  test('base moves: the next rebuild after a merge checkpoint uses it as its cut, with a small replay length', async () => {
+    const P = makePeer('alice'), Q = makePeer('bob')
+    seedGenesisWithFiller([P, Q], CHECKPOINT_MIN_OPS + 1)
+
+    const opP = await place(P, 'dieP', 'dice_d6', 0, 0)
+    const opQ = await place(Q, 'dieQ', 'dice_d6', 40, 40)
+    const [rP] = deliver(P, [opQ])
+    const [rQ] = deliver(Q, [opP])
+    const ck = rP.mergeCheckpoint
+    expect(ck).toBeTruthy()
+    expect(ck).toBe(rQ.mergeCheckpoint)
+
+    // Both peers commit directly on top of the checkpoint, concurrently —
+    // the next order-sensitive rebuild.
+    const opP2 = await place(P, 'dieP2', 'dice_d6', 120, 0)
+    const opQ2 = await place(Q, 'dieQ2', 'dice_d6', 160, 40)
+    expect(opP2.parents).toEqual([ck])
+    expect(opQ2.parents).toEqual([ck])
+
+    const [rP2] = deliver(P, [opQ2])
+    const [rQ2] = deliver(Q, [opP2])
+    expect(rP2.result).toBe(RECEIVED_REBUILT)
+    expect(rQ2.result).toBe(RECEIVED_REBUILT)
+
+    const ops = getOps(P.ydoc)
+    const tips2 = localTipsOf(P)
+    expect(nearestCheckpoint(ops, tips2)).toBe(ck)
+    expect(opsSinceCheckpoint(ops, tips2)).toBe(2) // just opP2, opQ2
+
+    assertConverged([P, Q])
+  })
+
+  test('receiving a merge checkpoint: the three cases from CONCURRENCY_AND_BRANCHING.md §5.6 all converge', async () => {
+    const P = makePeer('alice'), Q = makePeer('bob')
+    const R = makePeer('carol'), S = makePeer('dave')
+    seedGenesisWithFiller([P, Q, R, S], CHECKPOINT_MIN_OPS + 1)
+
+    const opP = await place(P, 'dieP', 'dice_d6', 0, 0)
+    const opQ = await place(Q, 'dieQ', 'dice_d6', 40, 40)
+
+    // R has seen opP but not opQ — case "hasn't received one of T's
+    // members yet" once the checkpoint arrives.
+    deliver(R, [opP])
+
+    // S has its own concurrent op, never having seen opP or opQ at all —
+    // case "holding a concurrent op of its own, not in T".
+    const opS = await place(S, 'dieS', 'dice_d6', -40, -40)
+
+    // P and Q exchange and both land on the same merge checkpoint —
+    // case "already rebuilt the same T", exercised on Q's own arrival of
+    // opP (Q reaches T = {opP, opQ} the same way P does).
+    const [rP] = deliver(P, [opQ])
+    const [rQ] = deliver(Q, [opP])
+    const ck = rP.mergeCheckpoint
+    expect(ck).toBeTruthy()
+    expect(ck).toBe(rQ.mergeCheckpoint)
+    expect(localTipsOf(P)).toEqual([ck])
+    expect(localTipsOf(Q)).toEqual([ck])
+
+    const ckOp = getOps(P.ydoc).get(ck)
+
+    // Case A: a peer (Q, above) that already rebuilt the same T receives
+    // the literal checkpoint as SUBSEQUENT — a no-op delta collapsing its
+    // tips to it. Simulate a peer that reached the same DOM state without
+    // itself writing the checkpoint by re-delivering the SAME ckOp
+    // object's id to a peer already sitting on T — Q, immediately before
+    // its own write, would have classified it this way; assert the
+    // now-idempotent form directly instead: re-delivering ck to Q (who's
+    // already at [ck]) is KNOWN, and to P likewise.
+    const [rQAgain] = deliver(Q, [ckOp])
+    expect(rQAgain.result).not.toBe(RECEIVED_CONFLICT)
+    expect(localTipsOf(Q)).toEqual([ck])
+
+    // Case B: R has opP but not opQ. Delivering the checkpoint (with opQ's
+    // record now present in R's own map, as it would be in the one shared
+    // Y.Map) rebuilds cheaply, cut at the checkpoint itself, and collapses
+    // R's tips to it.
+    const [rR] = deliver(R, [opQ, ckOp], [1])
+    expect(rR.result).toBe(RECEIVED_REBUILT)
+    expect(localTipsOf(R)).toEqual([ck])
+    expect(nearestCheckpoint(getOps(R.ydoc), [ck])).toBe(ck)
+
+    // Case C: S has its own concurrent op (opS), not in T. Receiving ck
+    // lands S on tips [ck, opS] (or [opS, ck] — order irrelevant), and
+    // since the filler chain already pushed this table well past the
+    // checkpoint gate, S writes its own merge checkpoint over that pair.
+    const [rS] = deliver(S, [opP, opQ, ckOp], [2])
+    expect(rS.result).toBe(RECEIVED_REBUILT)
+    expect(rS.mergeCheckpoint).toBeTruthy()
+    expect(localTipsOf(S)).toEqual([rS.mergeCheckpoint])
+
+    // S's own merge checkpoint still needs relaying to everyone else for
+    // full convergence — deliver it around like any other op, along with
+    // opS itself (P, Q and R never saw S's own concurrent placement).
+    const ck2 = getOps(S.ydoc).get(rS.mergeCheckpoint)
+    deliver(P, [opS, ck2], [1])
+    deliver(Q, [opS, ck2], [1])
+    deliver(R, [opS, ck2], [1])
+
+    assertConverged([P, Q, R, S])
   })
 })
