@@ -126,9 +126,9 @@ export function lca(ops, a, b) {
  *
  * Walks parents[0] only — one causal path, not the full DAG. Exactly
  * right for a single peer's own linear action history, which is what
- * this reconstructs; a concurrent-merge commit's other parents (from
- * op_replay's mergeConcurrent) are not part of that peer's own sequence
- * of gestures and are correctly ignored here.
+ * this reconstructs; a concurrent-merge commit's other parents are not
+ * part of that peer's own sequence of gestures and are correctly ignored
+ * here.
  *
  * Returns { undoTargetId, redoTargetId } — the op at the top of each
  * virtual stack, or null.

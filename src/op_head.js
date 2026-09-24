@@ -1,8 +1,10 @@
 /**
- * op_head.js — which operation this peer's DOM currently reflects.
+ * op_head.js — which operation(s) this peer's DOM currently reflects.
  *
  * Per-peer, per-table, and deliberately not in the shared document.
  */
+
+import { getOp, isAncestor } from './op_dag.js'
 
 const KEY_PREFIX = 'tt_head_'
 
@@ -30,10 +32,10 @@ export function clearHead(tableId) {
 }
 
 /**
- * Extra tips folded in by a concurrent-but-non-conflicting arrival (see
- * op_replay's mergeConcurrent): applied to the DOM already, but not yet
- * the primary head, since neither op is an ancestor of the other. They
- * become additional parents the next time this peer commits — that
+ * Extra tips folded in by a non-conflicting arrival (see op_replay's
+ * receiveOp, the MERGED/REBUILT results): applied to the DOM already, but
+ * not yet the primary head, since neither op is an ancestor of the other.
+ * They become additional parents the next time this peer commits — that
  * commit is what actually joins the branches in the graph.
  */
 const mergeKey = (tableId) => `${KEY_PREFIX}merge_${tableId}`
@@ -53,9 +55,38 @@ export function addMergeTip(tableId, opId) {
   try { store()?.setItem(mergeKey(tableId), JSON.stringify([...tips, opId])) } catch { /* ignore */ }
 }
 
+/** Replace the whole merge-tip list — used once a receive computes the new
+ * maximal tip set directly, rather than accreting one tip at a time. */
+export function setMergeTips(tableId, tips) {
+  if (!tableId) return
+  const clean = [...new Set((tips ?? []).filter(Boolean))]
+  try {
+    if (!clean.length) store()?.removeItem(mergeKey(tableId))
+    else store()?.setItem(mergeKey(tableId), JSON.stringify(clean))
+  } catch { /* ignore */ }
+}
+
 export function clearMergeTips(tableId) {
   if (!tableId) return
   try { store()?.removeItem(mergeKey(tableId)) } catch { /* ignore */ }
+}
+
+/**
+ * The maximal subset of `ids`: no id in the result is an ancestor of
+ * another, and every id resolves in the log. This is what "this peer's
+ * position in the DAG" means once it is a set rather than a single head —
+ * "what I have" is the inclusive ancestry of the whole set, and every place
+ * that used to reason from the head alone (classification, delta paths,
+ * boot projection) reasons from this instead.
+ */
+export function maximalTips(ops, ids) {
+  const present = [...new Set((ids ?? []).filter(id => id != null && getOp(ops, id)))]
+  return present.filter(id => !present.some(other => other !== id && isAncestor(ops, id, other)))
+}
+
+/** This peer's local tips: head plus merge tips, kept maximal. */
+export function localTips(tableId, ops) {
+  return maximalTips(ops, [getHead(tableId), ...getMergeTips(tableId)])
 }
 
 /**

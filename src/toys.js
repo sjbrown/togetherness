@@ -29,11 +29,11 @@ const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789'
 
 import { runInEnvelope, commitGesture, isInsideEnvelope } from './envelope.js';
 export { isInsideEnvelope };
-import { consumeParents, setHead, getHead, addMergeTip } from './op_head.js';
+import { consumeParents, setHead, getHead, getMergeTips, setMergeTips, maximalTips } from './op_head.js';
 import { getOps, appendOp, getOp, heads, labelBranches, branchAuthors, forkJoinSequence, toyUndoRedoStacks } from './op_dag.js';
 import { invert as invertWire, apply as applyWire } from './op_wire_mutation.js';
-import { checkpointOp, projectFrom, buildForkSeed, isCheckpoint } from './op_checkpoint.js';
-import { receiveOp, advanceTo } from './op_replay.js';
+import { checkpointOp, projectFrom, projectTips, buildForkSeed, isCheckpoint } from './op_checkpoint.js';
+import { receiveOp, advanceTo, RECEIVED_KNOWN, RECEIVED_CONFLICT } from './op_replay.js';
 // geometry.js is shape-agnostic pure math, shared with drawing.js and
 // boun_pos.js.
 import { computeRotate, snapAngle, normalizeAngle, computeResizeCornerRect } from './geometry.js';
@@ -2113,7 +2113,13 @@ export function activateAllToyScriptsDom(ydoc, layerEl) {
  * exactly the bug this guards against. The caller re-renders once the
  * real genesis arrives (see app.js's ops-Map observer).
  */
-export function projectLayer(ydoc, layerEl, { tableId, authorId, isCreator = false } = {}) {
+/**
+ * At boot, project this peer's LOCAL TIPS (head plus merge tips — §2.3),
+ * not the head alone: merge tips are ops this peer already absorbed into
+ * its live DOM before reload, and dropping them here would make a reload
+ * silently lose merged work.
+ */
+export function projectLayer(ydoc, layerEl, { tableId, authorId, isCreator = false, joinSequence = [] } = {}) {
   ensureLayerId(layerEl)
   const ops = getOps(ydoc)
 
@@ -2122,32 +2128,47 @@ export function projectLayer(ydoc, layerEl, { tableId, authorId, isCreator = fal
     const genesis = checkpointOp(layerEl, { authorId, parents: [] })
     appendOp(ydoc, genesis)
     if (tableId) setHead(tableId, genesis.id)
-    markProjectedAt(layerEl, genesis.id)
+    markProjectedAt(layerEl, [genesis.id])
     return genesis.id
   }
 
-  const head = (tableId && getHead(tableId)) ?? null
-  const target = (head && getOp(ops, head)) ? head : (heads(ops)[0] ?? null)
-  if (!target) return null
+  const storedHead = (tableId && getHead(tableId)) ?? null
+  const storedMergeTips = tableId ? getMergeTips(tableId) : []
+  let tips = maximalTips(ops, [storedHead, ...storedMergeTips])
+  if (!tips.length) tips = heads(ops).slice(0, 1)
+  if (!tips.length) return null
+
+  const primaryHead = tips.includes(storedHead) ? storedHead : tips[0]
 
   // Already showing this state — reprojecting would discard a DOM that
   // gestures and remote operations have been maintaining in place.
-  if (projectedAt(layerEl) === target) return target
+  if (projectedAt(layerEl) === tipsMarker(tips)) return primaryHead
 
-  projectFrom(layerEl, ops, target)
+  projectTips(layerEl, ops, tips, joinSequence)
   activateAllToyScriptsDom(ydoc, layerEl)
-  if (tableId) setHead(tableId, target)
-  markProjectedAt(layerEl, target)
-  return target
+  if (tableId) {
+    setHead(tableId, primaryHead)
+    setMergeTips(tableId, tips.filter(t => t !== primaryHead))
+  }
+  markProjectedAt(layerEl, tips)
+  return primaryHead
 }
 
 export const HEAD_MARKER = 'data-tt-head'
 
-/** Which operation the layer's DOM currently reflects. */
+/** Which tip set the layer's DOM currently reflects, as the raw marker
+ * string (sorted tips joined with ','). */
 export const projectedAt = (layerEl) => layerEl?.getAttribute(HEAD_MARKER) ?? null
 
-export function markProjectedAt(layerEl, opId) {
-  if (layerEl && opId) layerEl.setAttribute(HEAD_MARKER, opId)
+const tipsMarker = (tipsOrId) =>
+  [...new Set((Array.isArray(tipsOrId) ? tipsOrId : [tipsOrId]).filter(Boolean))].sort().join(',')
+
+/** Record the tip set (head plus any merge tips) the layer's DOM now
+ * reflects. Accepts a single op id or an array — buildExportSvg already
+ * strips this attribute regardless of shape. */
+export function markProjectedAt(layerEl, tipsOrId) {
+  const marker = tipsMarker(tipsOrId)
+  if (layerEl && marker) layerEl.setAttribute(HEAD_MARKER, marker)
   return layerEl
 }
 
@@ -2342,23 +2363,27 @@ export function adoptToyBranch(ydoc, layerEl, targetHeadId, tableId) {
   const head = tableId ? getHead(tableId) : null
   advanceTo(layerEl, ops, head, targetHeadId)
   activateAllToyScriptsDom(ydoc, layerEl)
-  if (tableId) setHead(tableId, targetHeadId)
-  markProjectedAt(layerEl, targetHeadId)
+  if (tableId) {
+    setHead(tableId, targetHeadId)
+    setMergeTips(tableId, [])
+  }
+  markProjectedAt(layerEl, [targetHeadId])
 }
 
-export function receiveToyOp(ydoc, layerEl, opId, tableId) {
+export function receiveToyOp(ydoc, layerEl, opId, tableId, joinSequence = []) {
   const ops = getOps(ydoc)
   const head = tableId ? getHead(tableId) : null
-  const out = receiveOp(layerEl, ops, head, opId)
+  const mergeTips = tableId ? getMergeTips(tableId) : []
+  const out = receiveOp(layerEl, ops, head, opId, joinSequence, mergeTips)
 
-  if (out.result !== 'received-known' && out.result !== 'received-conflict') {
+  if (out.result !== RECEIVED_KNOWN && out.result !== RECEIVED_CONFLICT) {
     activateAllToyScriptsDom(ydoc, layerEl)
   }
-  if (out.head && out.head !== head) {
-    if (tableId) setHead(tableId, out.head)
-    markProjectedAt(layerEl, out.head)
+  if (tableId) {
+    if (out.head !== head) setHead(tableId, out.head)
+    setMergeTips(tableId, out.mergeTips ?? [])
   }
-  if (out.mergeTip && tableId) addMergeTip(tableId, out.mergeTip)
+  markProjectedAt(layerEl, [out.head, ...(out.mergeTips ?? [])])
 
   return out
 }
@@ -2448,7 +2473,9 @@ export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false)
     edit:            (el, editData)  => gesture('edit',   () => editDom(el, editData)),
     previewEdit,
     listData:        ()              => toysDataDom(layer()),
-    render:          (layerEl)       => projectLayer(ydoc, layerEl, { tableId, authorId: user.id, isCreator }),
-    receive:         (layerEl, opId) => receiveToyOp(ydoc, layerEl, opId, tableId),
+    render:          (layerEl, joinSequence = []) =>
+                       projectLayer(ydoc, layerEl, { tableId, authorId: user.id, isCreator, joinSequence }),
+    receive:         (layerEl, opId, joinSequence = []) =>
+                       receiveToyOp(ydoc, layerEl, opId, tableId, joinSequence),
   };
 }
