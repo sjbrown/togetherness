@@ -64,14 +64,14 @@ function childKey(node, parentId) {
  * not merely the same container. `parents` is the per-container set: the
  * ids of every node a `child` mutation targeted, which is what makes two
  * concurrent inserts under one parent order-sensitive even when they don't
- * conflict (orderSensitive, below, and §5.6's canonical rebuild).
+ * conflict (orderSensitive, below, and the canonical rebuild it triggers).
  *
  * `valued` covers attribute writes and text writes, keyed by attribute
  * name or text position, as before. `textParents` separately names the
  * parent of every text write, because a text ref's `{parentId, index}` can
  * point at a different node once the other side has changed that parent's
- * child list — text vs. structure under the same parent is a conflict
- * (§3.1, §5.1), and that can't be seen from `valued` or `parents` alone.
+ * child list — text vs. structure under the same parent is a conflict,
+ * and that can't be seen from `valued` or `parents` alone.
  *
  * `removedIds`/`addedIds`/`targetIds` are unchanged: they drive the
  * delete-vs-edit check, which addresses nodes rather than containers.
@@ -135,7 +135,7 @@ function gatherParents(ops, ids) {
 }
 
 /**
- * Do two sets of operations contend? Per §5.1:
+ * Do two sets of operations contend?
  *
  * - Structural, per child: two sides conflict on a child key only when
  *   both touch it AND at least one of them re-adds it (moves or inserts
@@ -147,8 +147,8 @@ function gatherParents(ops, ids) {
  * - Text vs. structure under the same parent: one side writes a text
  *   position, the other changes that same parent's child list. The text
  *   ref's index can point at a different node once the child list has
- *   moved, and no replay order fixes that (§3.1's weak joint) — coarse and
- *   rare, since toys keep text in <tspan>s. See §9 for the general dragon.
+ *   moved, and no replay order fixes that — coarse and rare, since toys
+ *   keep text in <tspan>s.
  * - Delete vs. edit: one side's *net* removal of a node — removed and not
  *   re-added on that same side — against the other side addressing that
  *   node or anything inside it. Checked both directions to keep
@@ -197,7 +197,7 @@ export function conflicts(ops, idsA, idsB) {
  * Not a conflict, but not safe to apply in arrival order either: the two
  * sides have `child` mutations under the SAME parent (even when they don't
  * touch the same child), so no arrival order settles sibling order the
- * same way on both peers. §5.6's canonical rebuild is what resolves this.
+ * same way on both peers. A canonical rebuild is what resolves this.
  */
 export function orderSensitive(ops, idsA, idsB) {
   return intersects(gatherParents(ops, idsA), gatherParents(ops, idsB))
@@ -208,7 +208,7 @@ const normalizeTips = (tipsOrHead) =>
 
 /**
  * How an arriving operation relates to this peer's LOCAL TIPS — head plus
- * merge tips (§2.3), rather than the head alone. "What I have" is the
+ * merge tips, rather than the head alone. "What I have" is the
  * inclusive ancestry of the whole set: a descendant of a merge tip must
  * not be treated as brand new just because it isn't a descendant of the
  * primary head (that was a real bug — a merge tip's own ancestry got
@@ -238,7 +238,7 @@ const normalizeTips = (tipsOrHead) =>
  * Returns { kind, D } — D is everything new, for the caller to apply.
  * Pairwise lca/tips reporting for CONFLICTING is the caller's job
  * (receiveOp) — the branch dialog (labelBranches, handleToyBranchConflict)
- * expects a head-vs-incoming pair, and N-way conflicts are a §9 dragon.
+ * expects a head-vs-incoming pair, and N-way conflicts stay unhandled.
  */
 export function classify(ops, tips, incomingId, joinSequence = []) {
   const localTipsArr = maximalTips(ops, normalizeTips(tips))
@@ -322,7 +322,7 @@ export const RECEIVED_CONFLICT   = 'received-conflict'
 
 /**
  * The single entry point for an arriving operation: classify it against
- * this peer's local tips (head plus merge tips — §2.3), apply it if that's
+ * this peer's local tips (head plus merge tips), apply it if that's
  * safe, and report what happened.
  *
  * - known: nothing to do.
@@ -335,7 +335,7 @@ export const RECEIVED_CONFLICT   = 'received-conflict'
  *   than patched; head stays, merge tips update the same way as merged.
  * - conflicting: nothing is applied. The caller resolves via the branch
  *   dialog; classification here stays pairwise against the primary head —
- *   N-way conflicts are a §9 dragon — so lca and tips are reported the
+ *   N-way conflicts stay unhandled — so lca and tips are reported the
  *   same shape as before.
  */
 export function receiveOp(layerEl, ops, headId, incomingId, joinSequence = [], mergeTipIds = []) {

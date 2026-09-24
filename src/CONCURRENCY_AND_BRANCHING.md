@@ -122,23 +122,16 @@ actually resolved against.
 
 ### 2.3 A head is local state
 
-Analagous to Git, every peer has a **head**: the op id whose projection its
-DOM currently reflects. `parents` for a new op is the current head plus any
-merge tips (below) — all local state.
-
-A peer's full position in the DAG is not the head alone but its **local
-tips**: the head plus zero or more **merge tips**, ops this peer has
-absorbed into its live DOM (§5.1's non-conflicting concurrent case) that
-aren't yet the head, since neither is an ancestor of the other. "What this
-peer has" is the inclusive ancestry of the whole set, not of the head by
-itself — classification, delta application, and boot projection all reason
-from the set, never from the head alone.
+A peer's position is its **local tips**: its head plus zero or more
+**merge tips**, ops it has absorbed into its live DOM without either being
+an ancestor of the other. "What this peer has" is the inclusive ancestry of
+the whole set, not of the head alone — every place that used to reason from
+the head reasons from this set instead.
 
 Local tips are *not* in the shared document. They are per-peer, per-table
-local state (localStorage, alongside the table registry). Two peers
-legitimately sitting on different tips is not an error state to be
-reconciled away — an offline GM working on their own branch while players
-continue on the shared one is a valid use case.
+local state (localStorage, alongside the table registry). Two peers sitting
+on different tips is not an error state — an offline GM working on their
+own branch while players continue on the shared one is valid.
 
 ---
 
@@ -452,15 +445,11 @@ So the receiving peer does not apply the arrival on top. It **rebuilds**:
 reset to the **latest cut checkpoint** of the tip set, then replay the
 union of every tip's ancestry back to that checkpoint, in `totalOrder`. A
 checkpoint is a **cut** of a set of ops when every op in the set is an
-ancestor of it, is it, or is a descendant of it — a single moment every
-branch in the set has passed through (or not yet reached). Genesis always
-qualifies, since a table has one root. A checkpoint sitting on only one
-branch of the tips being rebuilt is not a cut and is not used as the base;
-using it anyway would silently drop whatever the other branch holds, since
-a checkpoint contributes nothing when replayed as a delta (§6.1). Every
-peer that sees the same tips computes the same order and lands on the same
-siblings, so the live DOM equals what a fresh replay of the log would
-produce.
+ancestor of it, is it, or descends from it — a moment every branch in the
+set has passed through. A checkpoint on only one branch isn't a cut and
+isn't used as the base, since it contributes nothing as a delta (§6.1) and
+would silently drop the other branch. Every peer that sees the same tips
+computes the same order and lands on the same siblings.
 
 A consequence of the tie-break: when two branches concurrently insert or
 promote children of the same parent, `totalOrder` favors the more junior
