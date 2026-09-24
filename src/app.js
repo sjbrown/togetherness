@@ -654,7 +654,7 @@ function renderBounPosLayer() {
 function renderToysLayer() {
   const layer = _svgEl.querySelector('#toys-layer');
   if (!layer) throw new Error("renderToysLayer: '#toys-layer' not found in SVG document — malformed template?");
-  _Layers.toys.render(layer);
+  _Layers.toys.render(layer, tablesAPI.getJoinSequenceArray(_ydoc));
   Canvas.wireShapeClicks(layer);
 }
 
@@ -763,7 +763,7 @@ function onOpsChanged(evt, transaction) {
       App.addLog(msg, 'remote');
       addHistory(msg, { elType: 'toys' });
     }
-    const out = _Layers.toys.receive(layer, opId);
+    const out = _Layers.toys.receive(layer, opId, tablesAPI.getJoinSequenceArray(_ydoc));
     Trace.op('received', `${opId} → ${out.result}`,
       { id: opId, ...out },
       out.result === 'received-conflict' ? 'warn' : 'info');

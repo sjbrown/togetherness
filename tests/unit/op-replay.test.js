@@ -9,8 +9,9 @@
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
-  isReplaying, withSuppressedCapture, touchedBy, conflicts, classify, advanceTo, receiveOp,
-  SUBSEQUENT, CONCURRENT, CONFLICTING, KNOWN, RECEIVED_CONFLICT, RECEIVED_SUBSEQUENT, RECEIVED_MERGED,
+  isReplaying, withSuppressedCapture, touchedBy, conflicts, orderSensitive, classify, advanceTo, receiveOp,
+  SUBSEQUENT, MERGED, REBUILT, CONFLICTING, KNOWN,
+  RECEIVED_CONFLICT, RECEIVED_SUBSEQUENT, RECEIVED_MERGED, RECEIVED_REBUILT,
 } from '../../src/op_replay.js'
 import { getHead, setHead, clearHead } from '../../src/op_head.js'
 import { checkpointOp, ensureLayerId, LAYER_DATA_ID } from '../../src/op_checkpoint.js'
@@ -116,9 +117,10 @@ describe('withSuppressedCapture', () => {
 })
 
 describe('touchedBy', () => {
-  test('a childList change is structural', () => {
-    const { structural, valued } = touchedBy(childOp('o1', [], 'p'))
-    expect([...structural]).toEqual(['e:p'])
+  test('a childList change is structural, keyed by the child it added, not the container', () => {
+    const { structural, parents, valued } = touchedBy(childOp('o1', [], 'p'))
+    expect([...structural]).toEqual(['e:o1-new'])
+    expect([...parents]).toEqual(['p'])
     expect([...valued]).toEqual([])
   })
 
@@ -175,8 +177,19 @@ describe('conflicts', () => {
     expect(conflicts(ops, ['ax'], ['cx'])).toBe(false)
   })
 
-  test('two structural changes to the same container conflict', () => {
-    expect(conflicts(ops, ['d1'], ['d2'])).toBe(true)
+  test('two placements into the same tray, touching different children, do not conflict', () => {
+    // Structural contention is per child, not per parent (§5.1): d1 and d2
+    // add different toys into the same tray, so there's no contest — they
+    // merge. See the 'orderSensitive' block below for why they still
+    // aren't safe to apply in arrival order.
+    expect(conflicts(ops, ['d1'], ['d2'])).toBe(false)
+  })
+
+  test('but two placements into the same tray DO conflict when each side also writes the tray total', () => {
+    const withTotal = new Map(ops)
+    withTotal.set('d1total', attrOp('d1total', ['L'], 'tray', 'sum', '0', '1'))
+    withTotal.set('d2total', attrOp('d2total', ['L'], 'tray', 'sum', '0', '2'))
+    expect(conflicts(withTotal, ['d1', 'd1total'], ['d2', 'd2total'])).toBe(true)
   })
 
   test('structural changes to different containers do not', () => {
@@ -187,6 +200,51 @@ describe('conflicts', () => {
     // Deliberately narrow: dropping into a tray while someone recolours it
     // is not a contest.
     expect(conflicts(ops, ['d1'], ['ax'])).toBe(false)
+  })
+
+  test('a double delete of the same child does not conflict — it merges', () => {
+    const removeD1 = {
+      id: 'rm1', parents: ['L'], authorId: 'alice', gesture: 'delete', ts: 0,
+      mutations: [{
+        t: 'child', target: { id: 'tray' },
+        added: [], removed: [{ el: 'circle', at: [['data-id', 'x']] }],
+        prevSibling: null, nextSibling: null,
+      }],
+    }
+    const removeD2 = { ...removeD1, id: 'rm2', authorId: 'bob' }
+    const dops = new Map([['rm1', removeD1], ['rm2', removeD2]])
+    expect(conflicts(dops, ['rm1'], ['rm2'])).toBe(false)
+  })
+
+  test('a delete and a re-add (move) of the same child DOES conflict', () => {
+    const removeX = {
+      id: 'rm', parents: ['L'], authorId: 'alice', gesture: 'delete', ts: 0,
+      mutations: [{
+        t: 'child', target: { id: 'tray' },
+        added: [], removed: [{ el: 'circle', at: [['data-id', 'x']] }],
+        prevSibling: null, nextSibling: null,
+      }],
+    }
+    const moveX = {
+      id: 'mv', parents: ['L'], authorId: 'bob', gesture: 'move', ts: 0,
+      mutations: [{
+        t: 'child', target: { id: 'other-tray' },
+        added: [{ el: 'circle', at: [['data-id', 'x']] }], removed: [],
+        prevSibling: null, nextSibling: null,
+      }],
+    }
+    const dops = new Map([['rm', removeX], ['mv', moveX]])
+    expect(conflicts(dops, ['rm'], ['mv'])).toBe(true)
+  })
+
+  test('a text edit vs. a child insert under the same parent conflicts', () => {
+    const textOp = {
+      id: 'txt', parents: ['L'], authorId: 'alice', gesture: 'type', ts: 0,
+      mutations: [{ t: 'text', target: { parentId: 'tray', index: 0 }, oldValue: '1', newValue: '2' }],
+    }
+    const dops = new Map([['txt', textOp], ['d1', ops.get('d1')]])
+    expect(conflicts(dops, ['txt'], ['d1'])).toBe(true)
+    expect(conflicts(dops, ['d1'], ['txt'])).toBe(true)
   })
 
   describe('concurrent delete vs. edit', () => {
@@ -276,20 +334,71 @@ describe('classify', () => {
     expect(classify(build(), null, 'a2').kind).toBe(SUBSEQUENT)
   })
 
-  test('concurrent but non-overlapping is concurrent, not conflicting', () => {
-    const { kind, lca } = classify(build(), 'a1', 'c1')
-    expect(kind).toBe(CONCURRENT)
-    expect(lca).toBe('L')
+  test('concurrent, non-conflicting, non-order-sensitive attribute writes merge', () => {
+    const { kind } = classify(build(), 'a1', 'c1')
+    expect(kind).toBe(MERGED)
   })
 
-  test('concurrent and overlapping is conflicting', () => {
-    const { kind, lca } = classify(build(), 'a1', 'b1')
-    expect(kind).toBe(CONFLICTING)
-    expect(lca).toBe('L')
+  test('concurrent and overlapping (same attribute) is conflicting', () => {
+    expect(classify(build(), 'a1', 'b1').kind).toBe(CONFLICTING)
   })
 
-  test('a deeper divergence still finds the fork point', () => {
-    expect(classify(build(), 'a2', 'b1').lca).toBe('L')
+  test('a single tip accepts a bare id or a one-element array identically', () => {
+    expect(classify(build(), 'a1', 'c1').kind).toBe(classify(build(), ['a1'], 'c1').kind)
+  })
+
+  test('concurrent child mutations under the same parent are order-sensitive, not merged', () => {
+    const ops = new Map()
+    for (const op of [
+      attrOp('L', [], 'r', 'x', '0', '0'),
+      childOp('p1', ['L'], 'tray'),
+      childOp('q1', ['L'], 'tray'),
+    ]) ops.set(op.id, op)
+    expect(classify(ops, 'p1', 'q1').kind).toBe(REBUILT)
+  })
+
+  test('a descendant of a merge tip is already known — bug 3\'s regression', () => {
+    // P holds head p1 and merge tip q1 (a prior REBUILT/MERGED absorbed a
+    // concurrent op from Q). r arrives parented on [p1, q1] — a
+    // descendant of the merge tip, not just of the head. Classifying
+    // against the head alone would say r is SUBSEQUENT and its D would
+    // wrongly include q1 a second time; classifying against the local
+    // TIP SET (head + merge tips) must see q1 is already had.
+    const ops = new Map()
+    for (const op of [
+      attrOp('L', [], 'r', 'x', '0', '0'),
+      attrOp('p1', ['L'], 'a', 'x', '0', '1'),
+      attrOp('q1', ['L'], 'b', 'y', '0', '1'),
+      { id: 'r', parents: ['p1', 'q1'], authorId: 'alice', gesture: 'move', ts: 0,
+        mutations: [{ t: 'attr', target: { id: 'a' }, name: 'x', ns: null, oldValue: '1', newValue: '2' }] },
+    ]) ops.set(op.id, op)
+
+    const { kind, D } = classify(ops, ['p1', 'q1'], 'r')
+    expect(kind).toBe(SUBSEQUENT)
+    expect(D).toEqual(['r'])
+  })
+})
+
+describe('orderSensitive', () => {
+  test('two child mutations under the same parent are order-sensitive', () => {
+    expect(orderSensitive(new Map([['a', childOp('a', [], 'p')], ['b', childOp('b', [], 'p')]]), ['a'], ['b']))
+      .toBe(true)
+  })
+
+  test('child mutations under different parents are not', () => {
+    expect(orderSensitive(new Map([['a', childOp('a', [], 'p')], ['b', childOp('b', [], 'q')]]), ['a'], ['b']))
+      .toBe(false)
+  })
+
+  test('an attribute write alone is never order-sensitive', () => {
+    const ops = new Map([['a', attrOp('a', [], 'r', 'x', '0', '1')], ['b', attrOp('b', [], 'r', 'y', '0', '1')]])
+    expect(orderSensitive(ops, ['a'], ['b'])).toBe(false)
+  })
+
+  test('a checkpoint is left out, same as conflicts', () => {
+    const ck = checkpointOp(layer('<g data-id="tray"/>'), { id: 'ck' })
+    const ops = new Map([['ck', ck], ['a', childOp('a', [], 'tray')]])
+    expect(orderSensitive(ops, ['ck'], ['a'])).toBe(false)
   })
 })
 
@@ -417,14 +526,14 @@ describe('a checkpoint is left out of conflict classification', () => {
     return L
   }
 
-  test('a checkpoint concurrent with a structural move on the layer root classifies as concurrent, not conflicting', () => {
+  test('a checkpoint concurrent with a structural move on the layer root does not conflict', () => {
     const ops = new Map()
     const base = { id: 'base', parents: [], mutations: [] }
     const ck = { ...checkpointOp(peer(), { authorId: 'alice', parents: ['base'] }), id: 'ck' }
     const move = childOp('move', ['base'], LAYER_DATA_ID)
     ops.set('base', base); ops.set('ck', ck); ops.set('move', move)
 
-    expect(classify(ops, 'ck', 'move').kind).toBe(CONCURRENT)
+    expect(classify(ops, 'ck', 'move').kind).not.toBe(CONFLICTING)
   })
 
   test('conflicts is false whenever a checkpoint is on either side', () => {
