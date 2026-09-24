@@ -2112,12 +2112,11 @@ export function activateAllToyScriptsDom(ydoc, layerEl) {
  * there is nothing yet to project, and inventing something would be
  * exactly the bug this guards against. The caller re-renders once the
  * real genesis arrives (see app.js's ops-Map observer).
- */
-/**
- * At boot, project this peer's LOCAL TIPS (head plus merge tips — §2.3),
- * not the head alone: merge tips are ops this peer already absorbed into
- * its live DOM before reload, and dropping them here would make a reload
- * silently lose merged work.
+ *
+ * Once the log is non-empty, projects this peer's LOCAL TIPS (head plus
+ * merge tips — §2.3), not the head alone: merge tips are ops this peer
+ * already absorbed into its live DOM before reload, and dropping them
+ * here would make a reload silently lose merged work.
  */
 export function projectLayer(ydoc, layerEl, { tableId, authorId, isCreator = false, joinSequence = [] } = {}) {
   ensureLayerId(layerEl)
