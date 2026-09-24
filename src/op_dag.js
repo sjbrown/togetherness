@@ -75,7 +75,7 @@ export function ancestors(ops, id) {
   return seen
 }
 
-const ancestorsInclusive = (ops, id) => {
+export const ancestorsInclusive = (ops, id) => {
   const s = ancestors(ops, id)
   s.add(id)
   return s
