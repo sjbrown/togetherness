@@ -28,15 +28,10 @@ export const CHECKPOINT_MIN_OPS = 10
 
 /**
  * How many operations stand between a tip set and its nearest cut
- * checkpoint (or genesis, if it has none). This is the only number the
- * "is it worth checkpointing" decision needs — it says nothing about
- * *when*, only about whether a checkpoint right now would do any good.
- *
- * Accepts a bare head id (the common single-tip case) or an array of
- * tips (a peer sitting on a head plus merge tips, or the tip set a
- * rebuild just landed on) — same normalizeTips/unionAncestry a tip-set
- * projection already uses, so this counts the same replay length
- * projectTips would actually do, not just one branch's path.
+ * checkpoint (or genesis, if it has none). Says nothing about *when* to
+ * checkpoint, only whether one now would do any good. Accepts a bare head
+ * id or an array of tips — same normalizeTips/unionAncestry projectTips
+ * itself uses, so this counts the same replay length it would actually do.
  */
 export function opsSinceCheckpoint(ops, tipsOrHead) {
   const tips = normalizeTips(tipsOrHead)
@@ -279,18 +274,11 @@ export function buildForkSeed(ops, lcaId, splitterTipId, layerEl, { authorId, jo
 }
 
 /**
- * The merge checkpoint a canonical rebuild (§5.6) may write: a checkpoint
- * of the just-rebuilt live layer, parented on the tips that were rebuilt —
- * the point in the graph where those branches join. Authored the same
- * deterministic way buildForkSeed authors a fork's genesis (authorId null,
- * id hashed from content) so that every peer who rebuilds the same tip set
- * computes the same id and the same content: concurrent writers collapse
- * into one Y.Map entry rather than diverging merge points.
- *
- * layerEl must already reflect tips — the caller just rebuilt it (or
- * otherwise projected it) to exactly that state; this only records it.
- * ops is read-only, used to find each tip's ts for the checkpoint's own ts
- * (the latest of them, per §5.6).
+ * The merge checkpoint a canonical rebuild may write: a checkpoint of the
+ * just-rebuilt layerEl, parented on the tips that were rebuilt. Authored
+ * the same deterministic way buildForkSeed authors a fork's genesis, so
+ * every peer who rebuilds the same tips writes the same op. ops is
+ * read-only, used only to find each tip's ts.
  */
 export function mergeCheckpointOp(layerEl, tips, ops) {
   const parents = [...tips].sort()

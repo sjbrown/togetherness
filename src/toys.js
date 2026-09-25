@@ -2370,27 +2370,17 @@ export function adoptToyBranch(ydoc, layerEl, targetHeadId, tableId) {
 }
 
 /**
- * After a canonical rebuild (RECEIVED_REBUILT), write a merge checkpoint
- * if the rebuilt tip set has drifted far enough past its own cut
- * (OpCheckpoint.shouldCheckpoint) — §5.6's merge commit. layerEl already
- * reflects tips exactly: OpReplay.receiveOp's REBUILT branch just
- * projected it there via projectTips, so mergeCheckpointOp's serialize is
- * a read of DOM this call didn't itself produce, not a second rebuild.
- *
- * Guarded the same way app.js's maybeCheckpoint guards an idle checkpoint:
- * never while a gesture envelope is open, never while a remote operation
- * is being applied (OpReplay.isReplaying) — though by the time this runs,
- * receiveOp's own withSuppressedCapture has already unwound, so the second
- * guard is a defensive belt-and-suspenders, not something normally live
- * here.
+ * After a canonical rebuild, write a merge checkpoint if the rebuilt tip
+ * set has drifted far enough past its own cut. layerEl already reflects
+ * tips exactly — receiveOp's own rebuild just projected it there — so
+ * this only records that DOM, not a second rebuild. Guarded like
+ * app.js's idle checkpoint: never inside a gesture envelope or while
+ * applying a remote op.
  *
  * Writes synchronously, from inside the ops Y.Map observer that called
- * receiveToyOp (app.js's onOpsChanged). appendOp's ops.set() starts a
- * fresh, local transaction once the observer's own transaction finishes;
- * that re-enters onOpsChanged, but as a local change, and onOpsChanged
- * already returns immediately on transaction.local — so no queueMicrotask
- * deferral is needed to avoid re-entering as if it were another remote
- * arrival.
+ * receiveToyOp. appendOp's set() starts a fresh, local transaction once
+ * the observer's own finishes; that re-enters onOpsChanged, but as a
+ * local change, which it already ignores — no deferral needed.
  */
 function writeMergeCheckpointIfWarranted(ydoc, layerEl, tableId, ops, tips) {
   if (isInsideEnvelope() || OpReplay.isReplaying()) return null
