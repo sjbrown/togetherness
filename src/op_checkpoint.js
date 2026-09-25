@@ -13,7 +13,7 @@
  */
 
 import { serializeNode, apply as applyWire, ensureIds } from './op_wire_mutation.js'
-import { ancestors, getOp, isAncestor, pathFrom } from './op_dag.js'
+import { ancestors, ancestorsInclusive, getOp, isAncestor, pathFrom, totalOrder } from './op_dag.js'
 import { ensureLayerId, LAYER_DATA_ID } from './toys.js'
 import * as Trace from './trace.js'
 
@@ -27,24 +27,28 @@ export const CHECKPOINT_GESTURE = 'checkpoint'
 export const CHECKPOINT_MIN_OPS = 10
 
 /**
- * How many operations stand between headId and its nearest checkpoint
- * (or genesis, if it has none). This is the only number the "is it worth
- * checkpointing" decision needs — it says nothing about *when*, only
- * about whether a checkpoint right now would do any good.
+ * How many operations stand between a tip set and its nearest cut
+ * checkpoint (or genesis, if it has none). Says nothing about *when* to
+ * checkpoint, only whether one now would do any good. Accepts a bare head
+ * id or an array of tips — same normalizeTips/unionAncestry projectTips
+ * itself uses, so this counts the same replay length it would actually do.
  */
-export function opsSinceCheckpoint(ops, headId) {
-  if (headId == null) return 0
-  const base = nearestCheckpoint(ops, headId)
-  return pathFrom(ops, base, headId).length
+export function opsSinceCheckpoint(ops, tipsOrHead) {
+  const tips = normalizeTips(tipsOrHead)
+  if (!tips.length) return 0
+  const base = nearestCheckpoint(ops, tips)
+  const union = unionAncestry(ops, tips)
+  const baseAncestry = base == null ? new Set() : ancestorsInclusive(ops, base)
+  return [...union].filter(id => !baseAncestry.has(id) && getOp(ops, id)).length
 }
 
 /**
- * Whether a checkpoint at headId would be worth writing. Callers still
- * decide *when* to ask — this only answers whether asking now would pay
- * off, per CHECKPOINT_MIN_OPS.
+ * Whether a checkpoint at this tip set would be worth writing. Callers
+ * still decide *when* to ask — this only answers whether asking now would
+ * pay off, per CHECKPOINT_MIN_OPS.
  */
-export function shouldCheckpoint(ops, headId) {
-  return opsSinceCheckpoint(ops, headId) > CHECKPOINT_MIN_OPS
+export function shouldCheckpoint(ops, tipsOrHead) {
+  return opsSinceCheckpoint(ops, tipsOrHead) > CHECKPOINT_MIN_OPS
 }
 
 let _counter = 0
@@ -110,20 +114,55 @@ export function checkpointOp(layerEl, { authorId, parents = [], id, ts = Date.no
   }
 }
 
-/**
- * The most recent checkpoint at or behind headId: the one no other
- * checkpoint in that ancestry descends from. null when the branch has
- * none and must be replayed from nothing.
- */
-export function nearestCheckpoint(ops, headId) {
-  if (headId == null) return null
-  const reachable = ancestors(ops, headId)
-  reachable.add(headId)
+const normalizeTips = (tipsOrHead) =>
+  (Array.isArray(tipsOrHead) ? tipsOrHead : (tipsOrHead == null ? [] : [tipsOrHead])).filter(id => id != null)
 
+/** The union of every tip's inclusive ancestry. */
+function unionAncestry(ops, tips) {
+  const union = new Set()
+  for (const t of tips) {
+    union.add(t)
+    for (const a of ancestors(ops, t)) union.add(a)
+  }
+  return union
+}
+
+/**
+ * A checkpoint C is a cut of `reachable` (a tip set's union ancestry) when
+ * every op in `reachable` is an ancestor of C, is C, or is a descendant of
+ * C — i.e. C is comparable to everything, so it names a single moment
+ * every branch in the set has passed through (or not yet reached).
+ */
+function isCut(ops, candidateId, reachable) {
+  for (const id of reachable) {
+    if (id === candidateId) continue
+    if (!isAncestor(ops, candidateId, id) && !isAncestor(ops, id, candidateId)) return false
+  }
+  return true
+}
+
+/**
+ * The projection base for a tip set: the latest checkpoint that is a cut
+ * of the union of every tip's ancestry (see isCut above). Cuts within one
+ * set are totally ordered, so "latest" is unambiguous; genesis always
+ * qualifies since it is an ancestor of everything.
+ *
+ * Single-tip callers (the common case — one local head, no merge tips) get
+ * the old per-branch behaviour back: pass a bare id, or a one-element array.
+ * null when the reachable set has no checkpoint at all.
+ */
+export function nearestCheckpoint(ops, tipsOrHead) {
+  const tips = normalizeTips(tipsOrHead)
+  if (!tips.length) return null
+
+  const reachable = unionAncestry(ops, tips)
   const marks = [...reachable].filter(id => isCheckpoint(getOp(ops, id)))
   if (!marks.length) return null
 
-  const latest = marks.filter(id => !marks.some(other => other !== id && isAncestor(ops, id, other)))
+  const cuts = marks.filter(id => isCut(ops, id, reachable))
+  if (!cuts.length) return null
+
+  const latest = cuts.filter(id => !cuts.some(other => other !== id && isAncestor(ops, id, other)))
   return latest.sort()[0] ?? null
 }
 
@@ -138,24 +177,36 @@ export function applyOps(layerEl, ops, ids) {
 }
 
 /**
- * Rebuild the layer so it reflects headId. Clears first, so calling this
- * twice with the same head leaves the same DOM.
+ * Rebuild the layer so it reflects the given tip set. Clears first, so
+ * calling this twice with the same tips leaves the same DOM. This is what
+ * makes projection a function of the tip set alone: replay is
+ *   1. clear the layer
+ *   2. apply the latest cut checkpoint's content
+ *   3. apply the union of every tip's ancestry, minus the cut's own
+ *      ancestry, in totalOrder
+ * so two peers who converge on the same tips compute the same DOM no
+ * matter what order they received the operations in.
  */
-export function projectFrom(layerEl, ops, headId, joinSequence = []) {
+export function projectTips(layerEl, ops, tipIds, joinSequence = []) {
   ensureLayerId(layerEl)
   while (layerEl.firstChild) layerEl.removeChild(layerEl.firstChild)
 
-  if (headId == null) {
-    Trace.op('project-empty', 'nothing to project — no head', { head: null })
+  const tips = normalizeTips(tipIds)
+  if (!tips.length) {
+    Trace.op('project-empty', 'nothing to project — no tips', { tips: [] })
     return layerEl
   }
 
-  const base = nearestCheckpoint(ops, headId)
-  const path = pathFrom(ops, base, headId, joinSequence)
+  const union = unionAncestry(ops, tips)
+  const base = nearestCheckpoint(ops, tips)
+  const baseAncestry = base == null ? new Set() : ancestorsInclusive(ops, base)
+  const remaining = [...union].filter(id => !baseAncestry.has(id) && getOp(ops, id))
+  const path = totalOrder(ops, remaining, joinSequence)
+
   Trace.op('project',
     `rebuilt from ${base ? 'checkpoint' : 'nothing'} + ${path.length} operation${path.length === 1 ? '' : 's'}`,
     () => ({
-      head: headId,
+      tips,
       checkpoint: base,
       path: path.map((id, i) => ({ i, id, gesture: getOp(ops, id)?.gesture ?? null,
                                    authorId: getOp(ops, id)?.authorId ?? null })),
@@ -166,6 +217,11 @@ export function projectFrom(layerEl, ops, headId, joinSequence = []) {
     applyWire(deltaMutations(getOp(ops, id)), layerEl)
   }
   return layerEl
+}
+
+/** The one-tip case of projectTips — kept for the fork seed and existing callers. */
+export function projectFrom(layerEl, ops, headId, joinSequence = []) {
+  return projectTips(layerEl, ops, headId == null ? [] : [headId], joinSequence)
 }
 
 // ── forking ─────────────────────────────────────────────────────────────
@@ -215,4 +271,21 @@ export function buildForkSeed(ops, lcaId, splitterTipId, layerEl, { authorId, jo
   })
 
   return { genesis, rebasedOps }
+}
+
+/**
+ * The merge checkpoint a canonical rebuild may write: a checkpoint of the
+ * just-rebuilt layerEl, parented on the tips that were rebuilt. Authored
+ * the same deterministic way buildForkSeed authors a fork's genesis, so
+ * every peer who rebuilds the same tips writes the same op. ops is
+ * read-only, used only to find each tip's ts.
+ */
+export function mergeCheckpointOp(layerEl, tips, ops) {
+  const parents = [...tips].sort()
+  const ts = parents.reduce((max, id) => Math.max(max, getOp(ops, id)?.ts ?? 0), 0)
+  const draft = checkpointOp(layerEl, { authorId: null, parents, ts })
+  return {
+    ...draft,
+    id: `tt-op-ck-${deterministicSuffix(JSON.stringify([parents, draft.mutations]))}`,
+  }
 }

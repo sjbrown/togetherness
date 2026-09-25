@@ -7,8 +7,9 @@
  */
 
 import { apply as applyWire } from './op_wire_mutation.js'
-import { getOp, isAncestor, lca, pathFrom, heads } from './op_dag.js'
-import { projectFrom, isCheckpoint, deltaMutations } from './op_checkpoint.js'
+import { getOp, isAncestor, lca, ancestorsInclusive, totalOrder, pathFrom, heads } from './op_dag.js'
+import { projectFrom, projectTips, nearestCheckpoint, isCheckpoint, deltaMutations } from './op_checkpoint.js'
+import { maximalTips } from './op_head.js'
 import * as Trace from './trace.js'
 
 let _suppressed = false
@@ -28,10 +29,11 @@ export function withSuppressedCapture(fn) {
 
 // ── classification ──────────────────────────────────────────────────────
 
-export const SUBSEQUENT = 'subsequent'
-export const CONCURRENT = 'concurrent'
+export const SUBSEQUENT  = 'subsequent'
+export const MERGED      = 'merged'
+export const REBUILT     = 'rebuilt'
 export const CONFLICTING = 'conflicting'
-export const KNOWN = 'known'
+export const KNOWN       = 'known'
 
 /** Collect every element data-id in a serialized subtree, recursively. */
 function idsIn(nodes, out = new Set()) {
@@ -44,41 +46,74 @@ function idsIn(nodes, out = new Set()) {
   return out
 }
 
+/** The per-child key for one top-level added/removed node of a `child`
+ * mutation: its own data-id, or `t:<parentId>` for a text node, which has
+ * none. */
+function childKey(node, parentId) {
+  if (node.tx !== undefined) return `t:${parentId}`
+  const id = (node.at ?? []).find(([name]) => name === 'data-id')?.[1]
+  return id ? `e:${id}` : `t:${parentId}`
+}
+
 /**
- * Which refs an operation touches, as comparable strings, split by the
- * kind of touch: a childList change to a node is structural and contends
- * with another peer's structural change to the same node; two attribute
- * writes contend only on the same attribute. Also reports, separately,
- * the element ids a delete removes or an insert adds, and the ids the op
- * addresses directly — used to detect a delete/edit conflict, which
- * structural/valued alone can't see since a delete targets the parent,
- * not the deleted node itself.
+ * Which refs an operation touches, as comparable strings.
+ *
+ * `structural` is keyed PER CHILD — the top-level node a `child` mutation
+ * added or removed, by its own data-id (or `t:<parentId>` for a bare text
+ * node) — so two branches conflict only when they touch the *same* child,
+ * not merely the same container. `parents` is the per-container set: the
+ * ids of every node a `child` mutation targeted, which is what makes two
+ * concurrent inserts under one parent order-sensitive even when they don't
+ * conflict (orderSensitive, below, and the canonical rebuild it triggers).
+ *
+ * `valued` covers attribute writes and text writes, keyed by attribute
+ * name or text position, as before. `textParents` separately names the
+ * parent of every text write, because a text ref's `{parentId, index}` can
+ * point at a different node once the other side has changed that parent's
+ * child list — text vs. structure under the same parent is a conflict,
+ * and that can't be seen from `valued` or `parents` alone.
+ *
+ * `removedIds`/`addedIds`/`targetIds` are unchanged: they drive the
+ * delete-vs-edit check, which addresses nodes rather than containers.
  */
 export function touchedBy(op) {
+  const parents = new Set()
   const structural = new Set()
+  const childTouches = []
+  const textParents = new Set()
   const valued = new Set()
   const removedIds = new Set()
   const addedIds = new Set()
   const targetIds = new Set()
 
   for (const m of op?.mutations ?? []) {
-    const ref = m.target?.id !== undefined
-      ? `e:${m.target.id}`
-      : `t:${m.target?.parentId}:${m.target?.index}`
-
-    if (m.t === 'child')      structural.add(ref)
-    else if (m.t === 'text')  valued.add(`${ref}#text`)
-    else if (m.t === 'attr')  valued.add(`${ref}#${m.name}`)
-
-    if (m.target?.id !== undefined)         targetIds.add(m.target.id)
-    else if (m.target?.parentId !== undefined) targetIds.add(m.target.parentId)
-
     if (m.t === 'child') {
+      const parentKey = m.target?.id
+      if (parentKey !== undefined) { parents.add(parentKey); targetIds.add(parentKey) }
+      for (const node of m.removed ?? []) {
+        const key = childKey(node, parentKey)
+        structural.add(key)
+        childTouches.push({ key, kind: 'removed' })
+      }
+      for (const node of m.added ?? []) {
+        const key = childKey(node, parentKey)
+        structural.add(key)
+        childTouches.push({ key, kind: 'added' })
+      }
       idsIn(m.removed, removedIds)
       idsIn(m.added, addedIds)
+    } else if (m.t === 'text') {
+      valued.add(`t:${m.target?.parentId}:${m.target?.index}#text`)
+      if (m.target?.parentId !== undefined) {
+        textParents.add(m.target.parentId)
+        targetIds.add(m.target.parentId)
+      }
+    } else if (m.t === 'attr') {
+      valued.add(`e:${m.target?.id}#${m.name}`)
+      if (m.target?.id !== undefined) targetIds.add(m.target.id)
     }
   }
-  return { structural, valued, removedIds, addedIds, targetIds }
+  return { parents, structural, childTouches, textParents, valued, removedIds, addedIds, targetIds }
 }
 
 const intersects = (a, b) => {
@@ -86,61 +121,150 @@ const intersects = (a, b) => {
   return false
 }
 
+/** Every container a set of (non-checkpoint) ops touched with a `child`
+ * mutation — shared gathering code for `conflicts`' text-vs-structure check
+ * and for `orderSensitive`. */
+function gatherParents(ops, ids) {
+  const parents = new Set()
+  for (const id of ids) {
+    const op = getOp(ops, id)
+    if (isCheckpoint(op)) continue
+    for (const p of touchedBy(op).parents) parents.add(p)
+  }
+  return parents
+}
+
 /**
- * Do two sets of operations contend? Deliberately narrow: a structural
- * change to the same node from both sides, or the same attribute or text
- * position written on both sides. Concurrent edits to different nodes, or
- * to different attributes of one node, merge without complaint.
+ * Do two sets of operations contend?
  *
- * Also a conflict: one side deletes a node (net of any re-add in its own
- * set — a reparent or an undone delete removes and re-adds within one
- * branch, deleting nothing) that the other side addresses directly. Only
- * the deleting peer's apply() throws, so both directions are checked to
- * keep classification symmetric between the two peers.
+ * - Structural, per child: two sides conflict on a child key only when
+ *   both touch it AND at least one of them re-adds it (moves or inserts
+ *   it) rather than only removing it. Two sides that both only remove the
+ *   same child — the double-delete case — merge: applying a removal whose
+ *   target is already gone does nothing (apply() already skips a missing
+ *   victim).
+ * - Valued: the same attribute, or the same text position, on both sides.
+ * - Text vs. structure under the same parent: one side writes a text
+ *   position, the other changes that same parent's child list. The text
+ *   ref's index can point at a different node once the child list has
+ *   moved, and no replay order fixes that — coarse and rare, since toys
+ *   keep text in <tspan>s.
+ * - Delete vs. edit: one side's *net* removal of a node — removed and not
+ *   re-added on that same side — against the other side addressing that
+ *   node or anything inside it. Checked both directions to keep
+ *   classification symmetric between peers.
  */
 export function conflicts(ops, idsA, idsB) {
   const gather = (ids) => {
-    const structural = new Set(), valued = new Set()
+    const valued = new Set()
     const removedIds = new Set(), addedIds = new Set(), targetIds = new Set()
+    const childRemoved = new Set(), childAdded = new Set()
+    const textParents = new Set()
     for (const id of ids) {
       const op = getOp(ops, id)
       if (isCheckpoint(op)) continue
       const t = touchedBy(op)
-      for (const r of t.structural) structural.add(r)
       for (const r of t.valued) valued.add(r)
       for (const r of t.removedIds) removedIds.add(r)
       for (const r of t.addedIds) addedIds.add(r)
       for (const r of t.targetIds) targetIds.add(r)
+      for (const p of t.textParents) textParents.add(p)
+      for (const c of t.childTouches) {
+        if (c.kind === 'removed') childRemoved.add(c.key)
+        else childAdded.add(c.key)
+      }
     }
     const netRemoved = new Set([...removedIds].filter(id => !addedIds.has(id)))
-    return { structural, valued, netRemoved, targetIds }
+    const childKeys = new Set([...childRemoved, ...childAdded])
+    const onlyRemoved = new Set([...childRemoved].filter(k => !childAdded.has(k)))
+    return { valued, netRemoved, targetIds, childKeys, onlyRemoved, textParents }
   }
   const a = gather(idsA)
   const b = gather(idsB)
-  return intersects(a.structural, b.structural) || intersects(a.valued, b.valued)
+
+  const sharedChildKeys = [...a.childKeys].filter(k => b.childKeys.has(k))
+  const structuralConflict = sharedChildKeys.some(k => !(a.onlyRemoved.has(k) && b.onlyRemoved.has(k)))
+
+  const aParents = gatherParents(ops, idsA)
+  const bParents = gatherParents(ops, idsB)
+  const textVsStructure = intersects(a.textParents, bParents) || intersects(b.textParents, aParents)
+
+  return structuralConflict || textVsStructure || intersects(a.valued, b.valued)
     || intersects(a.netRemoved, b.targetIds) || intersects(b.netRemoved, a.targetIds)
 }
 
 /**
- * How an arriving operation relates to the local head.
- * Returns { kind, lca } — lca only for the concurrent kinds.
+ * Not a conflict, but not safe to apply in arrival order either: the two
+ * sides have `child` mutations under the SAME parent (even when they don't
+ * touch the same child), so no arrival order settles sibling order the
+ * same way on both peers. A canonical rebuild is what resolves this.
  */
-export function classify(ops, headId, incomingId) {
-  if (incomingId === headId) return { kind: KNOWN, lca: headId }
-  if (headId == null) return { kind: SUBSEQUENT, lca: null }
-  if (!getOp(ops, incomingId)) return { kind: KNOWN, lca: null }
+export function orderSensitive(ops, idsA, idsB) {
+  return intersects(gatherParents(ops, idsA), gatherParents(ops, idsB))
+}
 
-  if (isAncestor(ops, incomingId, headId)) return { kind: KNOWN, lca: incomingId }
-  if (isAncestor(ops, headId, incomingId)) return { kind: SUBSEQUENT, lca: headId }
+const normalizeTips = (tipsOrHead) =>
+  (Array.isArray(tipsOrHead) ? tipsOrHead : (tipsOrHead == null ? [] : [tipsOrHead])).filter(id => id != null)
 
-  const base = lca(ops, headId, incomingId)
-  const mine = pathFrom(ops, base, headId)
-  const theirs = pathFrom(ops, base, incomingId)
+/**
+ * How an arriving operation relates to this peer's LOCAL TIPS — head plus
+ * merge tips, rather than the head alone. "What I have" is the
+ * inclusive ancestry of the whole set: a descendant of a merge tip must
+ * not be treated as brand new just because it isn't a descendant of the
+ * primary head (that was a real bug — a merge tip's own ancestry got
+ * re-applied whole on top of a later op that already included it).
+ *
+ * `tips` accepts a bare id, an array, or null/undefined, so a caller with
+ * no merge tips can keep passing a single head id.
+ *
+ * have = inclusive ancestry of localTips
+ * D    = inclusive ancestry(incoming) − have         — everything new
+ * H'   = ops in `have` that are NOT an ancestor of every op in D — i.e.
+ *        ops this peer holds that are concurrent with something new.
+ *        Computed as have − (the intersection of every d∈D's inclusive
+ *        ancestry), so this never re-walks the whole log per d — D is
+ *        usually one or two ops, and each is walked once.
+ *
+ * KNOWN        — D is empty.
+ * CONFLICTING  — conflicts(H', D). (apply nothing)
+ * SUBSEQUENT   — H' is empty: every op this peer has is an ancestor of
+ *                everything new, so every local tip is an ancestor of
+ *                incoming.
+ * REBUILT      — H' non-empty, and orderSensitive(H', D): a canonical
+ *                rebuild is needed to agree on sibling order.
+ * MERGED       — H' non-empty, not order-sensitive: D applies as deltas
+ *                on top of the current DOM in any order.
+ *
+ * Returns { kind, D } — D is everything new, for the caller to apply.
+ * Pairwise lca/tips reporting for CONFLICTING is the caller's job
+ * (receiveOp) — the branch dialog (labelBranches, handleToyBranchConflict)
+ * expects a head-vs-incoming pair, and N-way conflicts stay unhandled.
+ */
+export function classify(ops, tips, incomingId, joinSequence = []) {
+  const localTipsArr = maximalTips(ops, normalizeTips(tips))
+  if (!getOp(ops, incomingId)) return { kind: KNOWN, D: [] }
 
-  return {
-    kind: conflicts(ops, mine, theirs) ? CONFLICTING : CONCURRENT,
-    lca: base,
+  if (!localTipsArr.length) return { kind: SUBSEQUENT, D: [incomingId] }
+
+  const have = new Set()
+  for (const t of localTipsArr) for (const a of ancestorsInclusive(ops, t)) have.add(a)
+
+  if (have.has(incomingId)) return { kind: KNOWN, D: [] }
+
+  const D = [...ancestorsInclusive(ops, incomingId)].filter(id => !have.has(id))
+  if (!D.length) return { kind: KNOWN, D: [] }
+
+  let commonOfD = null
+  for (const d of D) {
+    const s = ancestorsInclusive(ops, d)
+    commonOfD = commonOfD == null ? s : new Set([...commonOfD].filter(x => s.has(x)))
   }
+  const Hp = [...have].filter(h => !commonOfD.has(h))
+
+  if (conflicts(ops, Hp, D)) return { kind: CONFLICTING, D }
+  if (!Hp.length) return { kind: SUBSEQUENT, D }
+  if (orderSensitive(ops, Hp, D)) return { kind: REBUILT, D }
+  return { kind: MERGED, D }
 }
 
 // ── application ─────────────────────────────────────────────────────────
@@ -179,57 +303,85 @@ export function advanceTo(layerEl, ops, headId, targetId, joinSequence = []) {
 /** Every tip in the log, for a caller deciding what to converge on. */
 export const tips = (ops) => heads(ops)
 
-/**
- * Apply a concurrent, non-conflicting arrival directly — safe, since by
- * construction it touches nothing the local head's own path touches.
- * Does not move the primary head: neither op is the other's ancestor, so
- * there is no single id that names "both". The caller is expected to
- * remember incomingId as a merge tip (op_head.addMergeTip) so it becomes
- * an extra parent next time this peer commits — that commit, not this
- * application, is what actually joins the branches in the graph.
- */
-export function mergeConcurrent(layerEl, op) {
-  Trace.op('merge', `absorbing concurrent ${op?.gesture ?? '?'} ${op?.id ?? '?'}`,
-    { id: op?.id ?? null, gesture: op?.gesture ?? null, authorId: op?.authorId ?? null })
-  return withSuppressedCapture(() => applyWire(deltaMutations(op), layerEl))
+/** Apply a set of arrived ops as deltas, in totalOrder, on top of the
+ * current DOM — safe for SUBSEQUENT and MERGED, where nothing in the set
+ * is order-sensitive against what's already there. */
+function applyDeltas(layerEl, ops, ids, joinSequence) {
+  const order = totalOrder(ops, ids, joinSequence)
+  return withSuppressedCapture(() => {
+    for (const id of order) applyWire(deltaMutations(getOp(ops, id)), layerEl)
+    return order
+  })
 }
 
 export const RECEIVED_KNOWN      = 'received-known'
 export const RECEIVED_SUBSEQUENT = 'received-subsequent'
 export const RECEIVED_MERGED     = 'received-merged'
+export const RECEIVED_REBUILT    = 'received-rebuilt'
 export const RECEIVED_CONFLICT   = 'received-conflict'
 
 /**
  * The single entry point for an arriving operation: classify it against
- * the local head, apply it if that's safe, and report what happened.
+ * this peer's local tips (head plus merge tips), apply it if that's
+ * safe, and report what happened.
  *
  * - known: nothing to do.
- * - subsequent: DOM advances, head moves.
- * - concurrent, non-conflicting: DOM absorbs it via mergeConcurrent, head
- *   stays put, incomingId is returned as a mergeTip for the caller to
- *   persist (op_head.addMergeTip) — this function has no table id to key
- *   storage on, so it reports rather than writes.
+ * - subsequent: DOM advances (deltas in totalOrder), head becomes
+ *   incoming, merge tips clear.
+ * - merged: D applies as deltas directly on top of the current DOM; head
+ *   stays, merge tips become the new maximal tip set minus the head — the
+ *   next local commit is what folds them into the graph as parents
+ *   (op_head.consumeParents).
+ * - rebuilt: the DOM is order-sensitive against what arrived, so it's
+ *   reset to the latest cut checkpoint and replayed (projectTips) rather
+ *   than patched; head stays, merge tips update the same way as merged.
+ *   The caller (toys.js's receiveToyOp) may write a merge checkpoint
+ *   parented on this same tip set right after — when it does, the merge
+ *   tips collapse immediately instead of waiting for the next commit.
  * - conflicting: nothing is applied. The caller resolves via the branch
- *   dialog; lca and both tips are returned for that.
+ *   dialog; classification here stays pairwise against the primary head —
+ *   N-way conflicts stay unhandled — so lca and tips are reported the
+ *   same shape as before.
  */
-export function receiveOp(layerEl, ops, headId, incomingId, joinSequence = []) {
-  const { kind, lca: base } = classify(ops, headId, incomingId)
-  Trace.op('classify', `${incomingId} is ${kind} relative to head`, () => ({
-    incoming: incomingId, head: headId, kind, lca: base,
+export function receiveOp(layerEl, ops, headId, incomingId, joinSequence = [], mergeTipIds = []) {
+  const localTipsArr = maximalTips(ops, [headId, ...(mergeTipIds ?? [])])
+  const { kind, D } = classify(ops, localTipsArr, incomingId, joinSequence)
+
+  Trace.op('classify', `${incomingId} is ${kind} relative to local tips`, () => ({
+    incoming: incomingId, tips: localTipsArr, kind,
     gesture:  getOp(ops, incomingId)?.gesture ?? null,
     authorId: getOp(ops, incomingId)?.authorId ?? null,
   }), kind === CONFLICTING ? 'warn' : 'info')
 
   if (kind === KNOWN) {
-    return { result: RECEIVED_KNOWN, head: headId, mergeTip: null, lca: base }
+    return { result: RECEIVED_KNOWN, head: headId, mergeTip: null, mergeTips: mergeTipIds ?? [] }
   }
+
+  if (kind === CONFLICTING) {
+    const base = headId != null ? lca(ops, headId, incomingId) : null
+    return {
+      result: RECEIVED_CONFLICT, head: headId, mergeTip: null, mergeTips: mergeTipIds ?? [],
+      lca: base, tips: [headId, incomingId],
+    }
+  }
+
   if (kind === SUBSEQUENT) {
-    const head = advanceTo(layerEl, ops, headId, incomingId, joinSequence)
-    return { result: RECEIVED_SUBSEQUENT, head, mergeTip: null, lca: base }
+    applyDeltas(layerEl, ops, D, joinSequence)
+    return { result: RECEIVED_SUBSEQUENT, head: incomingId, mergeTip: null, mergeTips: [] }
   }
-  if (kind === CONCURRENT) {
-    mergeConcurrent(layerEl, getOp(ops, incomingId))
-    return { result: RECEIVED_MERGED, head: headId, mergeTip: incomingId, lca: base }
+
+  const newTips = maximalTips(ops, [...localTipsArr, incomingId])
+  const newMergeTips = newTips.filter(t => t !== headId)
+
+  if (kind === MERGED) {
+    applyDeltas(layerEl, ops, D, joinSequence)
+    return { result: RECEIVED_MERGED, head: headId, mergeTip: incomingId, mergeTips: newMergeTips }
   }
-  return { result: RECEIVED_CONFLICT, head: headId, mergeTip: null, lca: base, tips: [headId, incomingId] }
+
+  // REBUILT
+  withSuppressedCapture(() => projectTips(layerEl, ops, newTips, joinSequence))
+  Trace.op('rebuild', `rebuilt ${newTips.length} tip${newTips.length === 1 ? '' : 's'}`, () => ({
+    tips: newTips, cut: nearestCheckpoint(ops, newTips), incoming: incomingId,
+  }))
+  return { result: RECEIVED_REBUILT, head: headId, mergeTip: incomingId, mergeTips: newMergeTips }
 }

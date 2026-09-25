@@ -14,12 +14,12 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  checkpointOp, nearestCheckpoint, applyOps, projectFrom,
+  checkpointOp, nearestCheckpoint, applyOps, projectFrom, projectTips,
   ensureLayerId, isCheckpoint, LAYER_DATA_ID,
   opsSinceCheckpoint, shouldCheckpoint, CHECKPOINT_MIN_OPS,
-  lastCheckpointTs,
+  lastCheckpointTs, mergeCheckpointOp,
 } from '../../src/op_checkpoint.js'
-import { getOps, appendOp } from '../../src/op_dag.js'
+import { getOps, appendOp, isAncestor } from '../../src/op_dag.js'
 import { serialize } from '../../src/op_wire_mutation.js'
 import {
   addToy, activateAllToyScriptsDom,
@@ -381,6 +381,220 @@ describe('projectFrom with a checkpoint that is not the projection base', () => 
 
     const ids = [...target.children].map(c => c.getAttribute('data-id')).sort()
     expect(ids).toEqual(['a', 'b'])
+  })
+})
+
+describe('nearestCheckpoint over a tip set (the cut rule)', () => {
+  test('a checkpoint on only one branch of a merge is not a cut', () => {
+    const ops = new Map()
+    const genesis = checkpointOp(bareLayer('<rect data-id="a"/>'), { id: 'genesis', authorId: 'alice' })
+    ops.set(genesis.id, genesis)
+    // A checkpoint written on branch p only — it does not compare to q,
+    // which shares no ancestry with it beyond genesis.
+    const ckP = checkpointOp(bareLayer('<rect data-id="a"/><rect data-id="p"/>'),
+      { id: 'ckP', authorId: 'alice', parents: ['genesis'] })
+    ops.set(ckP.id, ckP)
+    ops.set('q', { id: 'q', parents: ['genesis'], authorId: 'bob', gesture: 'move', mutations: [] })
+
+    // Tips: the tip of P's branch (past its own checkpoint) and q.
+    expect(nearestCheckpoint(ops, ['ckP', 'q'])).toBe('genesis')
+  })
+
+  test('a checkpoint that dominates every tip is still picked', () => {
+    const ops = new Map()
+    const cp = checkpointOp(bareLayer(), { id: 'cp', authorId: 'alice' })
+    ops.set(cp.id, cp)
+    ops.set('p', { id: 'p', parents: ['cp'], authorId: 'alice', gesture: 'move', mutations: [] })
+    ops.set('q', { id: 'q', parents: ['cp'], authorId: 'bob', gesture: 'move', mutations: [] })
+    expect(nearestCheckpoint(ops, ['p', 'q'])).toBe('cp')
+  })
+
+  test('a single-tip call behaves exactly as before', () => {
+    const { ops, tip } = chainAfterCheckpoint(3)
+    expect(nearestCheckpoint(ops, tip)).toBe(nearestCheckpoint(ops, [tip]))
+  })
+})
+
+describe('projectTips', () => {
+  test('one tip is the same as projectFrom', () => {
+    const source = bareLayer('<g data-id="p"><rect data-id="r" x="1"/></g>')
+    const op = checkpointOp(source, { id: 'cp1', authorId: 'alice' })
+    const ops = new Map([[op.id, op]])
+
+    const a = bareLayer(); projectFrom(a, ops, op.id)
+    const b = bareLayer(); projectTips(b, ops, [op.id])
+    expect(markup(a)).toBe(markup(b))
+  })
+
+  test('empty tips yields an empty layer', () => {
+    const target = bareLayer('<rect/>')
+    projectTips(target, new Map(), [])
+    expect(target.childNodes.length).toBe(0)
+  })
+
+  test('a cut-checkpoint case: projecting two merge tips uses the earlier common cut, not a one-branch checkpoint', () => {
+    // genesis -> p1 (adds "p") -> cp1 (a checkpoint of a+p) -> p2 (adds
+    // "p2"), on one branch; genesis -> q (adds "q") concurrently on the
+    // other, never merged. cp1 does not dominate q, so the projection
+    // base for the tip set {p2, q} must be genesis, not cp1 — picking cp1
+    // would skip p1 and (because a checkpoint contributes nothing as a
+    // delta) drop "p" from the result entirely.
+    const ops = new Map()
+    const add = (id, parents, authorId, childId) => ({
+      id, parents, authorId, gesture: 'drop', ts: 0,
+      mutations: [{
+        t: 'child', target: { id: 'tt-layer-toys' },
+        added: [{ el: 'rect', at: [['data-id', childId]] }], removed: [],
+        prevSibling: null, nextSibling: null,
+      }],
+    })
+
+    const genesis = checkpointOp(bareLayer('<rect data-id="a"/>'), { id: 'genesis', authorId: 'alice' })
+    ops.set(genesis.id, genesis)
+    ops.set('p1', add('p1', ['genesis'], 'alice', 'p'))
+    const cp1 = checkpointOp(bareLayer('<rect data-id="a"/><rect data-id="p"/>'),
+      { id: 'cp1', authorId: 'alice', parents: ['p1'] })
+    ops.set(cp1.id, cp1)
+    ops.set('p2', add('p2', ['cp1'], 'alice', 'p2'))
+    ops.set('q', add('q', ['genesis'], 'bob', 'q'))
+
+    expect(nearestCheckpoint(ops, ['p2', 'q'])).toBe('genesis')
+
+    const target = bareLayer()
+    projectTips(target, ops, ['p2', 'q'])
+
+    const ids = [...target.children].map(c => c.getAttribute('data-id')).sort()
+    expect(ids).toEqual(['a', 'p', 'p2', 'q'])
+  })
+})
+
+describe('mergeCheckpointOp', () => {
+  const add = (id, parents, authorId, childId, ts) => ({
+    id, parents, authorId, gesture: 'drop', ts,
+    mutations: [{
+      t: 'child', target: { id: LAYER_DATA_ID },
+      added: [{ el: 'rect', at: [['data-id', childId]] }], removed: [],
+      prevSibling: null, nextSibling: null,
+    }],
+  })
+
+  function twoConcurrentTips() {
+    const ops = new Map()
+    const genesis = checkpointOp(bareLayer(), { id: 'genesis', authorId: 'alice', ts: 0 })
+    ops.set(genesis.id, genesis)
+    ops.set('p', add('p', ['genesis'], 'alice', 'p', 10))
+    ops.set('q', add('q', ['genesis'], 'bob', 'q', 20))
+    return { ops, tips: ['p', 'q'] }
+  }
+
+  test('two peers rebuilding the same tips produce byte-identical checkpoints — same id', () => {
+    const { ops, tips } = twoConcurrentTips()
+
+    const layerA = bareLayer(); ensureLayerId(layerA)
+    projectTips(layerA, ops, tips)
+    const layerB = bareLayer(); ensureLayerId(layerB)
+    projectTips(layerB, ops, tips)
+
+    const ckA = mergeCheckpointOp(layerA, tips, ops)
+    const ckB = mergeCheckpointOp(layerB, tips, ops)
+
+    expect(ckA.id).toBe(ckB.id)
+    expect(ckA).toEqual(ckB)
+  })
+
+  test('is a checkpoint, authored by nobody, parented on the sorted tips', () => {
+    const { ops } = twoConcurrentTips()
+    const layer = bareLayer(); ensureLayerId(layer)
+    projectTips(layer, ops, ['q', 'p'])
+
+    const ck = mergeCheckpointOp(layer, ['q', 'p'], ops)
+    expect(isCheckpoint(ck)).toBe(true)
+    expect(ck.authorId).toBeNull()
+    expect(ck.parents).toEqual(['p', 'q'])
+  })
+
+  test('ts is the latest of the parents\' ts', () => {
+    const { ops, tips } = twoConcurrentTips()
+    const layer = bareLayer(); ensureLayerId(layer)
+    projectTips(layer, ops, tips)
+    expect(mergeCheckpointOp(layer, tips, ops).ts).toBe(20)
+  })
+
+  test('content equals a fresh projectTips of the same tips', () => {
+    const { ops, tips } = twoConcurrentTips()
+    const layer = bareLayer(); ensureLayerId(layer)
+    projectTips(layer, ops, tips)
+    const ck = mergeCheckpointOp(layer, tips, ops)
+
+    const scratch = bareLayer(); ensureLayerId(scratch)
+    projectTips(scratch, ops, tips)
+    const expected = checkpointOp(scratch, { authorId: null, parents: [...tips].sort(), ts: ck.ts })
+
+    expect(ck.mutations).toEqual(expected.mutations)
+  })
+
+  test('different rebuilt content, same tips, yields a different id', () => {
+    const { ops, tips } = twoConcurrentTips()
+    const layer = bareLayer(); ensureLayerId(layer)
+    projectTips(layer, ops, tips)
+    const ck = mergeCheckpointOp(layer, tips, ops)
+
+    const otherLayer = bareLayer('<rect data-id="extra"/>'); ensureLayerId(otherLayer)
+    const other = mergeCheckpointOp(otherLayer, tips, ops)
+
+    expect(other.id).not.toBe(ck.id)
+  })
+})
+
+describe('an idle checkpoint with merge tips: parents must be the full tip set to stay a true cut', () => {
+  // head and mtip both descend from genesis — a peer sitting on a head
+  // plus one pending merge tip, the shape maybeCheckpoint now has to
+  // handle. Two peers who each build a further op directly on top of the
+  // checkpoint (as OpHead.consumeParents would hand out once local tips
+  // collapse to it) is the "next rebuild uses it as a cut" case; a
+  // checkpoint's own ancestor edges recording the wrong tip set is a
+  // separate, graph-fidelity bug that only shows up as isAncestor lying
+  // about what a checkpoint's content actually depends on.
+  function seedHeadAndMergeTip() {
+    const ops = new Map()
+    const genesis = checkpointOp(bareLayer(), { id: 'genesis', authorId: 'alice' })
+    ops.set(genesis.id, genesis)
+    ops.set('head', { id: 'head', parents: ['genesis'], authorId: 'alice', gesture: 'move', mutations: [] })
+    ops.set('mtip', { id: 'mtip', parents: ['genesis'], authorId: 'bob', gesture: 'move', mutations: [] })
+    return ops
+  }
+
+  test('parents = the full tip set records every tip as an ancestor', () => {
+    const ops = seedHeadAndMergeTip()
+    const ck = checkpointOp(bareLayer(), { id: 'ck', authorId: 'alice', parents: ['head', 'mtip'] })
+    ops.set(ck.id, ck)
+
+    expect(isAncestor(ops, 'head', 'ck')).toBe(true)
+    expect(isAncestor(ops, 'mtip', 'ck')).toBe(true)
+  })
+
+  test('parents = [head] alone silently drops mtip from the graph, even though the checkpoint\'s DOM content already includes mtip\'s mutations', () => {
+    const ops = seedHeadAndMergeTip()
+    const ck = checkpointOp(bareLayer(), { id: 'ck', authorId: 'alice', parents: ['head'] })
+    ops.set(ck.id, ck)
+
+    expect(isAncestor(ops, 'head', 'ck')).toBe(true)
+    // The bug §5.6/§6.1 rules out: mtip's content is in ck (checkpointOp
+    // reads the live DOM, which already absorbed the merge tip), but
+    // dropping it from `parents` makes the graph deny that dependency —
+    // isAncestor(mtip, ck) is wrongly false.
+    expect(isAncestor(ops, 'mtip', 'ck')).toBe(false)
+  })
+
+  test('the next rebuild, once both peers commit directly on top of the checkpoint, uses it as its cut', () => {
+    const ops = seedHeadAndMergeTip()
+    const ck = checkpointOp(bareLayer(), { id: 'ck', authorId: 'alice', parents: ['head', 'mtip'] })
+    ops.set(ck.id, ck)
+    ops.set('p2', { id: 'p2', parents: ['ck'], authorId: 'alice', gesture: 'move', mutations: [] })
+    ops.set('q2', { id: 'q2', parents: ['ck'], authorId: 'bob', gesture: 'move', mutations: [] })
+
+    expect(nearestCheckpoint(ops, ['p2', 'q2'])).toBe('ck')
+    expect(opsSinceCheckpoint(ops, ['p2', 'q2'])).toBe(2) // just p2, q2 — not head/mtip/genesis again
   })
 })
 

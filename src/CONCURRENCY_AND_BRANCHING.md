@@ -122,15 +122,16 @@ actually resolved against.
 
 ### 2.3 A head is local state
 
-Analagous to Git, every peer has a **head**: the op id (or ids) whose
-projection its DOM currently reflects. `parents` for a new op is the
-current head.
+A peer's position is its **local tips**: its head plus zero or more
+**merge tips**, ops it has absorbed into its live DOM without either being
+an ancestor of the other. "What this peer has" is the inclusive ancestry of
+the whole set, not of the head alone — every place that used to reason from
+the head reasons from this set instead.
 
-The head is *not* in the shared document. It is per-peer, per-table local
-state (localStorage, alongside the table registry). Two peers legitimately
-sitting on different heads is not an error state to be reconciled away —
-an offline GM working on their own branch while players continue on the
-shared one is a valid use case.
+Local tips are *not* in the shared document. They are per-peer, per-table
+local state (localStorage, alongside the table registry). Two peers sitting
+on different tips is not an error state — an offline GM working on their
+own branch while players continue on the shared one is valid.
 
 ---
 
@@ -279,6 +280,14 @@ When an operation arrives, compare its `parents` to the local head:
     This is also what keeps a derived value safe (§4.3) — two peers who
     each recomputed a tray's running total and produced different sums
     have no correct way to average or pick between them.
+  * **Text vs. structure under the same parent.** A text mutation
+    addresses `{parentId, index}` (§3.1); if the other branch changes that
+    parent's child list, the index can point at a different node on this
+    peer than on that one, and no replay order fixes that — §3.1's weak
+    joint. Coarse and rare in practice, since toys keep text in
+    `<tspan>`s, but real: dropping a second item into a tray while
+    someone edits that tray's total conflicts, even though the drop and
+    the text write don't touch the same child.
   * **Delete vs. edit.** One branch's *net* removal of a node — removed,
     and not re-added on that same branch, so a reparent or an undone
     delete does not count — conflicts with the other branch addressing
@@ -433,10 +442,14 @@ counterpart — sibling order is exactly the thing arrival order does not
 settle.
 
 So the receiving peer does not apply the arrival on top. It **rebuilds**:
-reset to the nearest checkpoint, then replay the union of every tip's
-ancestry back to that checkpoint, in `totalOrder`. Every peer that sees the
-same tips computes the same order and lands on the same siblings, so the
-live DOM equals what a fresh replay of the log would produce.
+reset to the **latest cut checkpoint** of the tip set, then replay the
+union of every tip's ancestry back to that checkpoint, in `totalOrder`. A
+checkpoint is a **cut** of a set of ops when every op in the set is an
+ancestor of it, is it, or descends from it — a moment every branch in the
+set has passed through. A checkpoint on only one branch isn't a cut and
+isn't used as the base, since it contributes nothing as a delta (§6.1) and
+would silently drop the other branch. Every peer that sees the same tips
+computes the same order and lands on the same siblings.
 
 A consequence of the tie-break: when two branches concurrently insert or
 promote children of the same parent, `totalOrder` favors the more junior
@@ -508,6 +521,11 @@ separately:
 * **Merge.** A canonical rebuild (§5.6) may write a checkpoint of the
   rebuilt state, parented on the tips it merged. Deterministic, so every
   peer that rebuilds the same tips writes the same checkpoint.
+
+  An idle checkpoint (§9) is the opposite choice: it isn't triggered by a
+  rebuild every peer computed identically, so it stays authored by the
+  triggering peer rather than hashed — there's nothing to gain from
+  determinism when only one peer is ever going to write it.
 
 ### 6.2 Export
 
