@@ -36,7 +36,11 @@ export function clearHead(tableId) {
  * receiveOp, the MERGED/REBUILT results): applied to the DOM already, but
  * not yet the primary head, since neither op is an ancestor of the other.
  * They become additional parents the next time this peer commits — that
- * commit is what actually joins the branches in the graph.
+ * commit is what actually joins the branches in the graph. A REBUILT
+ * result may instead write a merge checkpoint (op_checkpoint's
+ * mergeCheckpointOp) on the spot, parented on this same tip set; when it
+ * does, these merge tips collapse immediately, so it's no longer only the
+ * next local commit that joins branches in the graph.
  */
 const mergeKey = (tableId) => `${KEY_PREFIX}merge_${tableId}`
 

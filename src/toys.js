@@ -2369,6 +2369,31 @@ export function adoptToyBranch(ydoc, layerEl, targetHeadId, tableId) {
   markProjectedAt(layerEl, [targetHeadId])
 }
 
+/**
+ * After a canonical rebuild, write a merge checkpoint if the rebuilt tip
+ * set has drifted far enough past its own cut. layerEl already reflects
+ * tips exactly — receiveOp's own rebuild just projected it there — so
+ * this only records that DOM, not a second rebuild. Guarded like
+ * app.js's idle checkpoint: never inside a gesture envelope or while
+ * applying a remote op.
+ *
+ * Writes synchronously, from inside the ops Y.Map observer that called
+ * receiveToyOp. appendOp's set() starts a fresh, local transaction once
+ * the observer's own finishes; that re-enters onOpsChanged, but as a
+ * local change, which it already ignores — no deferral needed.
+ */
+function writeMergeCheckpointIfWarranted(ydoc, layerEl, tableId, ops, tips) {
+  if (isInsideEnvelope() || OpReplay.isReplaying()) return null
+  if (!OpCheckpoint.shouldCheckpoint(ops, tips)) return null
+
+  const ck = OpCheckpoint.mergeCheckpointOp(layerEl, tips, ops)
+  OpDag.appendOp(ydoc, ck)
+  OpHead.setHead(tableId, ck.id)
+  OpHead.setMergeTips(tableId, [])
+  markProjectedAt(layerEl, [ck.id])
+  return ck
+}
+
 export function receiveToyOp(ydoc, layerEl, opId, tableId, joinSequence = []) {
   const ops = OpDag.getOps(ydoc)
   const head = tableId ? OpHead.getHead(tableId) : null
@@ -2383,6 +2408,16 @@ export function receiveToyOp(ydoc, layerEl, opId, tableId, joinSequence = []) {
     OpHead.setMergeTips(tableId, out.mergeTips ?? [])
   }
   markProjectedAt(layerEl, [out.head, ...(out.mergeTips ?? [])])
+
+  if (tableId && out.result === OpReplay.RECEIVED_REBUILT) {
+    const tips = OpHead.maximalTips(ops, [out.head, ...(out.mergeTips ?? [])])
+    const ck = writeMergeCheckpointIfWarranted(ydoc, layerEl, tableId, ops, tips)
+    if (ck) {
+      out.head = ck.id
+      out.mergeTips = []
+      out.mergeCheckpoint = ck.id
+    }
+  }
 
   return out
 }
