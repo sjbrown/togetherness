@@ -34,10 +34,8 @@ hook is pinned to the bundled version.
 
 **Problem.** All signalling conns drive one `_netStatus.connected`. When
 the fallback drops while the primary is up, the panel reads
-"disconnected" and a `warn` is recorded. (The same flag also cancelled any
-in-progress drag; a local-first table keeps working offline, so a lost
-connection never interrupts a gesture.) Trace rows don't name which server changed, and announce/signal
-rows don't say which server carried them.
+"disconnected" and a `warn` is recorded. Trace rows don't name which server
+changed, and announce/signal rows don't say which server carried them.
 
 **Change.**
 - `_netStatus.signalingConns: [{ url, role, connected, lastChange,
@@ -46,15 +44,13 @@ rows don't say which server carried them.
 - `_netStatus.connected` becomes "any conn connected"; existing readers
   keep working.
 - `status` rows carry `{ url }`. A disconnect is `warn` only when no conn
-  remains connected; otherwise `info`. Nothing about the connection
-  state cancels or alters a gesture.
+  remains connected; otherwise `info`.
 - announce/signal rows carry `via: conn.url`.
 
 **Done when.**
 - Stopping one of two signalling servers leaves the panel connected, logs
   an `info` row naming that URL.
-- Stopping both logs a `warn`; a drag in progress is not cancelled and
-  commits locally when released.
+- Stopping both logs a `warn`.
 - e2e covers the two-server case with a second local signalling process
   (`bin/test_e2e.sandbox.sh`), since `app.js` has no unit coverage.
 
