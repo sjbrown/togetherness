@@ -14,7 +14,7 @@ URLs with one credential pair. Coverage today:
 - **Signalling** — resolved URLs and override flags at boot
   (`index.html`); per-server connect/disconnect rows naming the URL and
   announce/signal rows naming the server that carried them (`app.js`,
-  state in `signaling_status.js`).
+  state tracked by `ExternalServices.createSignalingTracker`).
 - **STUN / TURN** — one boot row with the resolved servers, credentials
   masked (`describeIceServers()`). Nothing at runtime: no candidate
   gathering, no ICE state, no candidate errors, no selected route.

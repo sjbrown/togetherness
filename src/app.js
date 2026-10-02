@@ -40,7 +40,7 @@ import * as Events                                from './events.js';
 import { entityGradient }            from './entity_gradient.js';
 import { isElementHeldByOther, computeTickActions } from './soft_lock.js';
 import * as Selection                              from './selection.js';
-import { createSignalingTracker }                  from './signaling_status.js';
+import * as ExternalServices                      from './external_services.js';
 
 
 import * as Y from 'yjs';
@@ -517,7 +517,7 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   });
   // NOTE: _provider.on('status' is a red herring. It's just true after
   // construction. We really want the real connect/disconnect state
-  const signalingTracker = createSignalingTracker(
+  const signalingTracker = ExternalServices.createSignalingTracker(
     _provider.signalingConns.map(conn => ({ url: conn.url, connected: conn.connected })));
   const syncSignalingStatus = () => {
     _netStatus.signalingConns = signalingTracker.snapshot();
