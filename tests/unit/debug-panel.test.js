@@ -159,11 +159,10 @@ describe('signalingCardHTML', () => {
     expect(c.querySelector('.dbg-alert')).toBeNull()
   })
 
-  test('all down: warns, and says connected peers keep syncing', () => {
+  test('all down: warns', () => {
     const c = card([conn({ connected: false }), conn({ url: 'ws://b.example', role: 'fallback', connected: false })])
     expect(c.classList.contains('warn')).toBe(true)
-    expect(c.querySelector('.dbg-alert').textContent.replace(/\s+/g, ' '))
-      .toContain('already connected keep syncing')
+    expect(c.querySelector('.dbg-alert').textContent).toBe('No signalling server is reachable.')
   })
 
   test('tags an override and a default', () => {

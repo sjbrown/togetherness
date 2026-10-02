@@ -187,8 +187,7 @@ export function signalingCardHTML(net) {
       <div class="dbg-card-title">Signalling</div>
       ${rows || '<div class="dbg-empty">No signalling servers.</div>'}
       ${allDown
-        ? `<div class="dbg-alert">No signalling server is reachable. Peers already
-             connected keep syncing; new peers can't be introduced until one comes back.</div>`
+        ? '<div class="dbg-alert">No signalling server is reachable.</div>'
         : ''}
     </div>`
 }
