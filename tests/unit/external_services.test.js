@@ -399,3 +399,63 @@ describe('resolveSignallingAll', () => {
     ])
   })
 })
+
+describe('describeIceServers', () => {
+  const containsDeep = (value, needle) => JSON.stringify(value).includes(needle)
+
+  test('masks the default credential', () => {
+    // The default username and credential are the same string, so look
+    // at the credential fields rather than searching the whole object.
+    const d = ExternalServices.describeIceServers()
+    const turn = d.iceServers.filter(e => e.urls.startsWith('turn:'))
+    expect(turn.length).toBeGreaterThan(0)
+    for (const e of turn) expect(e.credential).toBe('•••')
+  })
+
+  test('masks an overridden credential', () => {
+    ExternalServices.setTURNCredential('hunter2-secret')
+    expect(containsDeep(ExternalServices.describeIceServers(), 'hunter2-secret')).toBe(false)
+  })
+
+  test('keeps urls and username as resolved', () => {
+    ExternalServices.setTURNUsername('alice')
+    const d = ExternalServices.describeIceServers()
+    const live = ExternalServices.resolveIceServers()
+    expect(d.iceServers.map(e => e.urls)).toEqual(live.map(e => e.urls))
+    expect(d.iceServers.filter(e => e.urls.startsWith('turn:')).every(e => e.username === 'alice')).toBe(true)
+  })
+
+  test('does not mutate what resolveIceServers returns', () => {
+    ExternalServices.describeIceServers()
+    const turn = ExternalServices.resolveIceServers().filter(e => e.urls.startsWith('turn:'))
+    expect(turn[0].credential).toBe(ExternalServices.defaultTURNCredential())
+  })
+
+  test('flags are all default with nothing stored', () => {
+    expect(ExternalServices.describeIceServers()).toMatchObject({
+      stunOverridden: false,
+      turnOverridden: false,
+      turnIsPublicTestRelay: true,
+    })
+  })
+
+  test('stunOverridden follows a stored STUN url', () => {
+    ExternalServices.setSTUN('stun:stun.example.com')
+    expect(ExternalServices.describeIceServers().stunOverridden).toBe(true)
+  })
+
+  test('turnOverridden follows stored credentials alone', () => {
+    ExternalServices.setTURNUsername('alice')
+    expect(ExternalServices.describeIceServers().turnOverridden).toBe(true)
+  })
+
+  test('turnIsPublicTestRelay clears once both relays are overridden', () => {
+    ExternalServices.setTURN('turn:relay.example.com:3478')
+    expect(ExternalServices.describeIceServers().turnIsPublicTestRelay).toBe(true)
+    ExternalServices.setTURNFallback('turns:relay.example.com:5349')
+    expect(ExternalServices.describeIceServers()).toMatchObject({
+      turnOverridden: true,
+      turnIsPublicTestRelay: false,
+    })
+  })
+})

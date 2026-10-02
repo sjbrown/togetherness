@@ -261,3 +261,21 @@ export function resolveIceServers() {
     }));
   return [...stun, ...turn];
 }
+
+/**
+ * resolveIceServers() as it's safe to write down: each credential masked,
+ * plus where each kind came from. Trace rows end up in downloaded bug
+ * reports, so this is what index.html records rather than the live config.
+ */
+export function describeIceServers() {
+  const iceServers = resolveIceServers().map(entry =>
+    'credential' in entry ? { ...entry, credential: '•••' } : entry);
+  return {
+    iceServers,
+    stunOverridden: getSTUN() !== null || getSTUNFallback() !== null,
+    turnOverridden: [getTURN(), getTURNFallback(), getTURNUsername(), getTURNCredential()]
+      .some(v => v !== null),
+    turnIsPublicTestRelay: resolveTURN() === defaultTURN()
+      || resolveTURNFallback() === defaultTURNFallback(),
+  };
+}

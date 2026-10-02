@@ -262,7 +262,10 @@ const iceServers   = ExternalServices.resolveIceServers();
 const providerOpts = { signaling: signalingUrls };
 if (iceServers.length) providerOpts.peerOpts = { config: { iceServers } };
 const provider     = new WebrtcProvider(tableId, ydoc, providerOpts);
-Trace.net('provider', 'WebrtcProvider constructed — handshakes begin', { room: tableId, iceServers });
+Trace.net('provider', 'WebrtcProvider constructed — handshakes begin', {
+  room: tableId,
+  ...ExternalServices.describeIceServers(),
+});
 const awareness    = provider.awareness;
 awareness.setLocalState({ user, cursor: null, desired: {} });
 
