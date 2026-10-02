@@ -40,6 +40,7 @@ import * as Events                                from './events.js';
 import { entityGradient }            from './entity_gradient.js';
 import { isElementHeldByOther, computeTickActions } from './soft_lock.js';
 import * as Selection                              from './selection.js';
+import { createSignalingTracker }                  from './signaling_status.js';
 
 
 import * as Y from 'yjs';
@@ -88,7 +89,7 @@ let _activeLayer  = 'toys';
 // Transport facts the provider reports through events and never exposes as
 // readable state. Mirrored here purely so the Debug panel can show what the
 // connection is doing right now, not only what it did.
-const _netStatus = { connected: false, synced: false, webrtcPeers: 0, bcPeers: 0, signaling: [] };
+const _netStatus = { connected: false, synced: false, webrtcPeers: 0, bcPeers: 0, signaling: [], signalingConns: [] };
 
 // _desired is this client's own selection intent:
 //   { [elId]: { ts: number, holding: boolean } }
@@ -516,17 +517,30 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   });
   // NOTE: _provider.on('status' is a red herring. It's just true after
   // construction. We really want the real connect/disconnect state
-  const setSignalingConnected = (connected) => {
-    _netStatus.connected = connected;
-    Trace.net('status', connected ? 'signaling connected' : 'signaling disconnected',
-      { connected }, connected ? 'info' : 'warn');
-    // Cancel any in-progress drag on disconnect — doc stays at committed position.
-    if (!connected && _dragState) App.cancelMove();
-    if (!connected && _multiDragState) App.cancelMultiMove();
+  const signalingTracker = createSignalingTracker(
+    _provider.signalingConns.map(conn => ({ url: conn.url, connected: conn.connected })));
+  const syncSignalingStatus = () => {
+    _netStatus.signalingConns = signalingTracker.snapshot();
+    _netStatus.connected      = signalingTracker.anyConnected();
+  };
+  syncSignalingStatus();
+  const onSignalingChange = (conn, connected) => {
+    const r = signalingTracker.update(conn.url, connected);
+    if (!r.changed) return;
+    syncSignalingStatus();
+    // Only losing every server is a fault; one of several going away is
+    // routine, so it is recorded without a warning.
+    Trace.net('status',
+      `signaling ${connected ? 'connected' : 'disconnected'}: ${conn.url}`,
+      { url: conn.url, role: r.entry.role, connected, anyConnected: r.anyConnected },
+      connected || r.anyConnected ? 'info' : 'warn');
+    // Cancel any in-progress drag when no server is left — doc stays at committed position.
+    if (r.lostAll && _dragState) App.cancelMove();
+    if (r.lostAll && _multiDragState) App.cancelMultiMove();
   };
   _provider.signalingConns.forEach(conn => {
-    conn.on('connect', () => setSignalingConnected(true));
-    conn.on('disconnect', () => setSignalingConnected(false));
+    conn.on('connect', () => onSignalingChange(conn, true));
+    conn.on('disconnect', () => onSignalingChange(conn, false));
     conn.on('message', (m) => {
       if (m?.type !== 'publish' || m.topic !== tableId) return;
       const data = m.data;
@@ -534,11 +548,11 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
       if (data?.type === 'announce') {
         Trace.net(mine ? 'announce-sent' : 'announce-received',
           mine ? 'announced ourselves to the room' : `peer announced itself: ${data.from}`,
-          { peerId: data.from });
+          { peerId: data.from, via: conn.url });
       } else if (data?.type === 'signal') {
         Trace.net(mine ? 'signal-sent' : 'signal-received',
           `${data.signal?.type ?? 'signal'} ${mine ? 'to' : 'from'} ${mine ? data.to : data.from}`,
-          { from: data.from, to: data.to, kind: data.signal?.type });
+          { from: data.from, to: data.to, kind: data.signal?.type, via: conn.url });
       }
     });
   });
