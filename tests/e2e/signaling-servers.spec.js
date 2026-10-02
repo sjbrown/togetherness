@@ -68,8 +68,8 @@ test.describe('signalling servers', () => {
       await expect.poll(async () => (await netState(page)).signalingConns[1].connected).toBe(false);
       const state = await netState(page);
       expect(state.connected).toBe(true);
-      expect(state.signalingConns[0]).toMatchObject({ url: 'ws://localhost:4451', role: 'primary', connected: true, overridden: true });
-      expect(state.signalingConns[1]).toMatchObject({ url: 'ws://localhost:4452', role: 'fallback', disconnects: 1, overridden: true });
+      expect(state.signalingConns[0]).toMatchObject({ url: 'ws://localhost:4451', role: 'primary', connected: true });
+      expect(state.signalingConns[1]).toMatchObject({ url: 'ws://localhost:4452', role: 'fallback', disconnects: 1 });
 
       const rows = await statusRows(page);
       const drop = rows.find(e => e.detail.url === 'ws://localhost:4452' && e.detail.connected === false);

@@ -178,7 +178,6 @@ export function signalingCardHTML(net) {
       <span class="dbg-dot ${c.connected ? 'online' : 'offline'}" title="${c.connected ? 'connected' : 'not connected'}"></span>
       <code class="dbg-id" title="${esc(c.url)}">${esc(c.url)}</code>
       <span class="dbg-tag">${esc(c.role)}</span>
-      <span class="dbg-tag ${c.overridden ? 'mine' : ''}">${c.overridden ? 'override' : 'default'}</span>
       <span class="dbg-sig-counts" title="connects / disconnects">&uarr;${c.connects ?? 0} &darr;${c.disconnects ?? 0}</span>
     </div>`).join('')
 

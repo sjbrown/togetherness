@@ -519,13 +519,8 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   // construction. We really want the real connect/disconnect state
   const signalingTracker = ExternalServices.createSignalingTracker(
     _provider.signalingConns.map(conn => ({ url: conn.url, connected: conn.connected })));
-  const overridden = {
-    primary:  ExternalServices.getSignalling() !== null,
-    fallback: ExternalServices.getSignallingFallback() !== null,
-  };
   const syncSignalingStatus = () => {
-    _netStatus.signalingConns = signalingTracker.snapshot()
-      .map(c => ({ ...c, overridden: overridden[c.role] }));
+    _netStatus.signalingConns = signalingTracker.snapshot();
     _netStatus.connected      = signalingTracker.anyConnected();
   };
   syncSignalingStatus();

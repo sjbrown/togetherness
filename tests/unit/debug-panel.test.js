@@ -42,7 +42,7 @@ const makeState = (over = {}) => ({
   net:      { connected: true, synced: true, webrtcPeers: 1, bcPeers: 0,
               signalingConns: [
                 { url: 'ws://localhost:4444', role: 'primary', connected: true,
-                  overridden: false, connects: 1, disconnects: 0 },
+                  connects: 1, disconnects: 0 },
               ],
               offline: false,
               peers: [{ clientId: 1, peerId: 'tt-u-v1-AA-abc', self: true }] },
@@ -131,7 +131,7 @@ describe('stateHTML', () => {
 describe('signalingCardHTML', () => {
   const conn = (over = {}) => ({
     url: 'ws://a.example', role: 'primary', connected: true,
-    overridden: false, connects: 1, disconnects: 0, ...over,
+    connects: 1, disconnects: 0, ...over,
   })
   const card = (conns) => parse(signalingCardHTML({ signalingConns: conns })).querySelector('.dbg-card')
 
@@ -163,13 +163,6 @@ describe('signalingCardHTML', () => {
     const c = card([conn({ connected: false }), conn({ url: 'ws://b.example', role: 'fallback', connected: false })])
     expect(c.classList.contains('warn')).toBe(true)
     expect(c.querySelector('.dbg-alert').textContent).toBe('No signalling server is reachable.')
-  })
-
-  test('tags an override and a default', () => {
-    const c = card([conn({ overridden: true }), conn({ url: 'ws://b.example', role: 'fallback' })])
-    const tags = [...c.querySelectorAll('.dbg-sig-row')].map(r => r.textContent)
-    expect(tags[0]).toContain('override')
-    expect(tags[1]).toContain('default')
   })
 
   test('no servers: says so, without a warning', () => {
