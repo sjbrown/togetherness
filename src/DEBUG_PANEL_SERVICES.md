@@ -12,14 +12,16 @@ into the trace and the Debug tab. Companion to `DEBUG_PANEL.md`.
 URLs with one credential pair. Coverage today:
 
 - **Signalling** — resolved URLs and override flags at boot
-  (`index.html`); connect/disconnect and announce/signal traffic
-  (`app.js`). Every conn shares one `setSignalingConnected`, so events carry
-  no URL and `_netStatus.connected` is a single boolean for all servers.
-- **STUN / TURN** — one boot row carrying the raw `iceServers` array,
-  credential included. Nothing at runtime: no candidate gathering, no ICE
-  state, no candidate errors, no selected route.
-- **Panel** — the Transport card lists signalling URLs, one connected flag,
-  and peer counts. STUN and TURN do not appear.
+  (`index.html`); per-server connect/disconnect rows naming the URL and
+  announce/signal rows naming the server that carried them (`app.js`,
+  state in `signaling_status.js`).
+- **STUN / TURN** — one boot row with the resolved servers, credentials
+  masked (`describeIceServers()`). Nothing at runtime: no candidate
+  gathering, no ICE state, no candidate errors, no selected route.
+- **Panel** — the Transport card lists signalling URLs, one aggregate
+  connected flag, and peer counts. Per-server state is in
+  `getDebugState().net.signalingConns` but not rendered; STUN and TURN do
+  not appear.
 
 Per-peer ICE data is reachable without touching `lib/`: y-webrtc's
 `room.webrtcConns` holds simple-peer instances, each with its
