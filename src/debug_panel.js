@@ -133,12 +133,8 @@ export function stateHTML(s) {
   const net = s.net ?? {}
   const peers = net.peers ?? []
   const netCard = `
-    <div class="dbg-card ${net.connected ? '' : 'warn'}">
+    <div class="dbg-card">
       <div class="dbg-card-title">Transport</div>
-      ${kv('signaling', (net.signaling && net.signaling.length)
-        ? net.signaling.map(url => `<code class="dbg-id">${esc(url)}</code>`).join(' ')
-        : '<span class="dbg-nil">unknown</span>')}
-      ${kv('signaling link', net.connected ? '<span class="dbg-ok">connected</span>' : '<span class="dbg-bad">disconnected</span>')}
       ${kv('doc synced', net.synced ? '<span class="dbg-ok">yes</span>' : '<span class="dbg-nil">not yet</span>')}
       ${kv('webrtc peers', String(net.webrtcPeers ?? 0))}
       ${kv('broadcastchannel peers', String(net.bcPeers ?? 0))}
@@ -166,7 +162,35 @@ export function stateHTML(s) {
       ${joinSequenceHTML(seq, s.identity?.myId, onlineIds)}
     </div>`
 
-  return headCard + opsCard + netCard + tableCard + joinSeqCard
+  return headCard + opsCard + signalingCardHTML(net) + netCard + tableCard + joinSeqCard
+}
+
+/**
+ * One row per signalling server. The card only warns when every server is
+ * down: one of several going away is routine, and even none is not a
+ * fault — the table keeps working and syncs when a server returns.
+ */
+export function signalingCardHTML(net) {
+  const conns = net?.signalingConns ?? []
+  const allDown = conns.length > 0 && !conns.some(c => c.connected)
+
+  const rows = conns.map(c => `<div class="dbg-sig-row">
+      <span class="dbg-dot ${c.connected ? 'online' : 'offline'}" title="${c.connected ? 'connected' : 'not connected'}"></span>
+      <code class="dbg-id" title="${esc(c.url)}">${esc(c.url)}</code>
+      <span class="dbg-tag">${esc(c.role)}</span>
+      <span class="dbg-tag ${c.overridden ? 'mine' : ''}">${c.overridden ? 'override' : 'default'}</span>
+      <span class="dbg-sig-counts" title="connects / disconnects">&uarr;${c.connects ?? 0} &darr;${c.disconnects ?? 0}</span>
+    </div>`).join('')
+
+  return `
+    <div class="dbg-card ${allDown ? 'warn' : ''}">
+      <div class="dbg-card-title">Signalling</div>
+      ${rows || '<div class="dbg-empty">No signalling servers.</div>'}
+      ${allDown
+        ? `<div class="dbg-alert">No signalling server is reachable. Changes are kept
+             locally and sync when one comes back.</div>`
+        : ''}
+    </div>`
 }
 
 /**

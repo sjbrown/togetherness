@@ -18,41 +18,13 @@ URLs with one credential pair. Coverage today:
 - **STUN / TURN** — one boot row with the resolved servers, credentials
   masked (`describeIceServers()`). Nothing at runtime: no candidate
   gathering, no ICE state, no candidate errors, no selected route.
-- **Panel** — the Transport card lists signalling URLs, one aggregate
-  connected flag, and peer counts. Per-server state is in
-  `getDebugState().net.signalingConns` but not rendered; STUN and TURN do
-  not appear.
+- **Panel** — a Signalling card shows each server's state; STUN and TURN
+  do not appear.
 
 Per-peer ICE data is reachable without touching `lib/`: y-webrtc's
 `room.webrtcConns` holds simple-peer instances, each with its
 `RTCPeerConnection` at `peer._pc`. `_pc` is private to simple-peer; the
 hook is pinned to the bundled version.
-
----
-
-## Commit 2 — Per-server signalling state
-
-**Problem.** All signalling conns drive one `_netStatus.connected`. When
-the fallback drops while the primary is up, the panel reads
-"disconnected" and a `warn` is recorded. Trace rows don't name which server
-changed, and announce/signal rows don't say which server carried them.
-
-**Change.**
-- `_netStatus.signalingConns: [{ url, role, connected, lastChange,
-  connects, disconnects }]`, one per conn. `role` is `primary` /
-  `fallback`.
-- `_netStatus.connected` becomes "any conn connected"; existing readers
-  keep working.
-- `status` rows carry `{ url }`. A disconnect is `warn` only when no conn
-  remains connected; otherwise `info`.
-- announce/signal rows carry `via: conn.url`.
-
-**Done when.**
-- Stopping one of two signalling servers leaves the panel connected, logs
-  an `info` row naming that URL.
-- Stopping both logs a `warn`.
-- e2e covers the two-server case with a second local signalling process
-  (`bin/test_e2e.sandbox.sh`), since `app.js` has no unit coverage.
 
 ---
 
