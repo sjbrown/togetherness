@@ -18,10 +18,8 @@ URLs with one credential pair. Coverage today:
 - **STUN / TURN** — one boot row with the resolved servers, credentials
   masked (`describeIceServers()`). Nothing at runtime: no candidate
   gathering, no ICE state, no candidate errors, no selected route.
-- **Panel** — the Transport card lists signalling URLs, one aggregate
-  connected flag, and peer counts. Per-server state is in
-  `getDebugState().net.signalingConns` but not rendered; STUN and TURN do
-  not appear.
+- **Panel** — a Signalling card shows each server's state; STUN and TURN
+  do not appear.
 
 Per-peer ICE data is reachable without touching `lib/`: y-webrtc's
 `room.webrtcConns` holds simple-peer instances, each with its
@@ -30,48 +28,20 @@ hook is pinned to the bundled version.
 
 ---
 
-## Commit 2 — Per-server signalling state
-
-**Problem.** All signalling conns drive one `_netStatus.connected`. When
-the fallback drops while the primary is up, the panel reads
-"disconnected" and a `warn` is recorded. Trace rows don't name which server
-changed, and announce/signal rows don't say which server carried them.
-
-**Change.**
-- `_netStatus.signalingConns: [{ url, role, connected, lastChange,
-  connects, disconnects }]`, one per conn. `role` is `primary` /
-  `fallback`.
-- `_netStatus.connected` becomes "any conn connected"; existing readers
-  keep working.
-- `status` rows carry `{ url }`. A disconnect is `warn` only when no conn
-  remains connected; otherwise `info`.
-- announce/signal rows carry `via: conn.url`.
-
-**Done when.**
-- Stopping one of two signalling servers leaves the panel connected, logs
-  an `info` row naming that URL.
-- Stopping both logs a `warn`.
-- e2e covers the two-server case with a second local signalling process
-  (`bin/test_e2e.sandbox.sh`), since `app.js` has no unit coverage.
-
----
-
 ## Commit 3 — Signalling card in the Debug panel
 
 **Problem.** The Transport card shows URLs and a single connected flag side
-by side; there is no way to see which server is up, which is an override,
-or how often it has flapped.
+by side; there is no way to see which server is up or how often it has
+flapped.
 
 **Change.** Split Signalling out of Transport. Pure renderer
 `signalingCardHTML(net)`: one row per server with URL, primary/fallback
-tag, override/default tag, connected dot (join-ladder style), and
-connect/disconnect counts. Card is `warn` only when every server is down.
-Requires `getDebugState()` to expose override flags alongside
-`signalingConns`.
+tag, connected dot (join-ladder style), and connect/disconnect counts.
+Card is `warn` only when every server is down.
 
 **Done when.**
 - `tests/unit/debug-panel.test.js` renders literal state for: both up; one
-  down (no `warn`); both down (`warn`); an override tag; an empty list.
+  down (no `warn`); both down (`warn`); an empty list.
 - Transport card no longer duplicates the signalling rows.
 
 ---
@@ -124,9 +94,9 @@ routed. "Is anyone going through TURN?" requires reading the stream.
 - `getDebugState().net` gains `ice: describeIceServers()` and
   `peersIce: [{ peer, state, route, connectMs, lastError }]`, maintained
   by the commit 4 hooks.
-- `iceCardHTML(net)`: STUN row and TURN row, URLs with override/default
-  tags, username (credential never), an amber `public test relay` tag on
-  the Open Relay default, and a status line derived from `peersIce`
+- `iceCardHTML(net)`: STUN row and TURN row, URLs, username (credential
+  never), an amber `public test relay` tag on the Open Relay default, and
+  a status line derived from `peersIce`
   ("STUN ok on 2/2 peers"; "TURN never produced a relay candidate" as a
   `dbg-alert`).
 - `peerTableHTML(net)`: one row per WebRTC peer — id, ICE state, route tag
@@ -135,7 +105,7 @@ routed. "Is anyone going through TURN?" requires reading the stream.
 - CSS in `ui.css` for the route tags and table.
 
 **Done when.**
-- Unit tests render literal state for: default relay (amber tag), overridden
+- Unit tests render literal state for: default relay (amber tag), custom
   relay, no peers, mixed routes, a failed peer with an error.
 - No rendered output contains the credential.
 - Visual check in the running app with two peers.
