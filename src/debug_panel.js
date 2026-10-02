@@ -167,8 +167,8 @@ export function stateHTML(s) {
 
 /**
  * One row per signalling server. The card only warns when every server is
- * down: one of several going away is routine, and even none is not a
- * fault — the table keeps working and syncs when a server returns.
+ * down: one of several going away is routine, and even none doesn't touch
+ * peers already connected — signalling only introduces new ones.
  */
 export function signalingCardHTML(net) {
   const conns = net?.signalingConns ?? []
@@ -187,8 +187,8 @@ export function signalingCardHTML(net) {
       <div class="dbg-card-title">Signalling</div>
       ${rows || '<div class="dbg-empty">No signalling servers.</div>'}
       ${allDown
-        ? `<div class="dbg-alert">No signalling server is reachable. Changes are kept
-             locally and sync when one comes back.</div>`
+        ? `<div class="dbg-alert">No signalling server is reachable. Peers already
+             connected keep syncing; new peers can't be introduced until one comes back.</div>`
         : ''}
     </div>`
 }

@@ -159,10 +159,11 @@ describe('signalingCardHTML', () => {
     expect(c.querySelector('.dbg-alert')).toBeNull()
   })
 
-  test('all down: warns, and says the table keeps working', () => {
+  test('all down: warns, and says connected peers keep syncing', () => {
     const c = card([conn({ connected: false }), conn({ url: 'ws://b.example', role: 'fallback', connected: false })])
     expect(c.classList.contains('warn')).toBe(true)
-    expect(c.querySelector('.dbg-alert').textContent).toContain('kept')
+    expect(c.querySelector('.dbg-alert').textContent.replace(/\s+/g, ' '))
+      .toContain('already connected keep syncing')
   })
 
   test('tags an override and a default', () => {
