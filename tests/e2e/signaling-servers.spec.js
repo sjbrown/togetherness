@@ -81,7 +81,7 @@ test.describe('signalling servers', () => {
     }
   });
 
-  test('losing every server warns and cancels an in-progress drag', async () => {
+  test('losing every server warns but leaves an in-progress drag alone', async () => {
     const a = await startSignaling(4453);
     const b = await startSignaling(4454);
     const browser = await launch();
@@ -105,8 +105,8 @@ test.describe('signalling servers', () => {
       });
       await page.evaluate(() => window.UI.pillTap('select'));
       await page.waitForTimeout(100);
-      const toy = await page.locator('[data-toy-type]').boundingBox();
-      const cx = toy.x + toy.width / 2, cy = toy.y + toy.height / 2;
+      const before = await page.locator('[data-toy-type]').boundingBox();
+      const cx = before.x + before.width / 2, cy = before.y + before.height / 2;
       await page.mouse.move(cx, cy);
       await page.mouse.down();
       await page.mouse.move(cx + 30, cy + 30, { steps: 4 });
@@ -115,12 +115,18 @@ test.describe('signalling servers', () => {
       await expect(page.locator('use[filter*="drag-placeholder"]')).toHaveCount(1);
 
       a.kill();
-      await expect.poll(async () => (await netState(page)).signalingConns[0].connected).toBe(false);
-      expect(await page.evaluate(() => window.__cancels)).toBe(0);
-
       b.kill();
       await expect.poll(async () => (await netState(page)).connected).toBe(false);
-      await expect.poll(() => page.evaluate(() => window.__cancels)).toBeGreaterThan(0);
+
+      // Offline is a normal way to work: the drag is still live, and
+      // finishing it moves the toy.
+      await expect(page.locator('use[filter*="drag-placeholder"]')).toHaveCount(1);
+      await page.mouse.move(cx + 60, cy + 60, { steps: 4 });
+      await page.mouse.up();
+      expect(await page.evaluate(() => window.__cancels)).toBe(0);
+      await expect(page.locator('use[filter*="drag-placeholder"]')).toHaveCount(0);
+      await expect.poll(async () => (await page.locator('[data-toy-type]').boundingBox()).x)
+        .toBeGreaterThan(before.x + 20);
 
       const rows = await statusRows(page);
       const last = rows.filter(e => e.detail.connected === false).at(-1);

@@ -528,15 +528,13 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
     const r = signalingTracker.update(conn.url, connected);
     if (!r.changed) return;
     syncSignalingStatus();
-    // Only losing every server is a fault; one of several going away is
-    // routine, so it is recorded without a warning.
+    // Only losing every server is worth a warning; one of several going
+    // away is routine. Neither interrupts the person — a table keeps
+    // working offline and syncs when a server returns.
     Trace.net('status',
       `signaling ${connected ? 'connected' : 'disconnected'}: ${conn.url}`,
       { url: conn.url, role: r.entry.role, connected, anyConnected: r.anyConnected },
       connected || r.anyConnected ? 'info' : 'warn');
-    // Cancel any in-progress drag when no server is left — doc stays at committed position.
-    if (r.lostAll && _dragState) App.cancelMove();
-    if (r.lostAll && _multiDragState) App.cancelMultiMove();
   };
   _provider.signalingConns.forEach(conn => {
     conn.on('connect', () => onSignalingChange(conn, true));
@@ -1416,7 +1414,7 @@ const App = {
   // startDrag   — called once on pointerdown when a move gesture begins
   // move        — called on every pointermove; updates overlay ghost + awareness
   // commitMove  — called on pointerup; writes final position to Yjs once
-  // cancelMove  — called on pointercancel or disconnect; reverts with no Yjs write
+  // cancelMove  — called on pointercancel; reverts with no Yjs write
 
   startDrag: (id) => {
     // Defense in depth: client should not be drag an element it doesn't

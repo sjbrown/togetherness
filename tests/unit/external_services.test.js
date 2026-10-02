@@ -483,27 +483,27 @@ describe('createSignalingTracker', () => {
   test('a connect updates that server and counts it', () => {
     const t = two()
     const r = t.update('ws://b', true)
-    expect(r).toMatchObject({ changed: true, anyConnected: true, lostAll: false })
+    expect(r).toMatchObject({ changed: true, anyConnected: true })
     expect(r.entry).toMatchObject({ url: 'ws://b', role: 'fallback', connected: true, connects: 1, lastChange: 1234 })
     expect(t.snapshot()[0].connected).toBe(false)
   })
 
-  test('one of two dropping is not lostAll', () => {
+  test('one of two dropping leaves anyConnected true', () => {
     const t = two(true, true)
     const r = t.update('ws://b', false)
-    expect(r).toMatchObject({ changed: true, anyConnected: true, lostAll: false })
+    expect(r).toMatchObject({ changed: true, anyConnected: true })
     expect(t.anyConnected()).toBe(true)
     expect(r.entry.disconnects).toBe(1)
   })
 
-  test('the last connected server dropping is lostAll', () => {
+  test('the last connected server dropping clears anyConnected', () => {
     const t = two(true, true)
     t.update('ws://a', false)
     const r = t.update('ws://b', false)
-    expect(r).toMatchObject({ changed: true, anyConnected: false, lostAll: true })
+    expect(r).toMatchObject({ changed: true, anyConnected: false })
   })
 
-  test('a drop while already fully disconnected is not lostAll again', () => {
+  test('a drop for a server already down changes nothing', () => {
     const t = two(false, false)
     expect(t.update('ws://a', false).changed).toBe(false)
   })

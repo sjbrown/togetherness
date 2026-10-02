@@ -285,10 +285,8 @@ export function describeIceServers() {
 /**
  * Per-server state for the signalling conns a WebrtcProvider opens, which
  * y-webrtc reports only as connect/disconnect events on each conn. app.js
- * feeds each event to `update`; the result says whether the set as a whole
- * went from reachable to unreachable, which decides severity and whether
- * in-flight gestures are abandoned. One server dropping while another
- * stays up is not that.
+ * feeds each event to `update`; the result says whether any server is still
+ * connected, which decides how loudly a drop is recorded.
  */
 
 /**
@@ -317,18 +315,11 @@ export function createSignalingTracker(servers, now = Date.now) {
     if (!entry || entry.connected === connected) {
       return { changed: false, entry: entry ? { ...entry } : null, anyConnected: anyConnected() };
     }
-    const wasAny = anyConnected();
     entry.connected  = connected;
     entry.lastChange = now();
     if (connected) entry.connects++;
     else entry.disconnects++;
-    const anyNow = anyConnected();
-    return {
-      changed:      true,
-      entry:        { ...entry },
-      anyConnected: anyNow,
-      lostAll:      wasAny && !anyNow,
-    };
+    return { changed: true, entry: { ...entry }, anyConnected: anyConnected() };
   }
 
   return {
