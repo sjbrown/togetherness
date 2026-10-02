@@ -28,27 +28,6 @@ hook is pinned to the bundled version.
 
 ---
 
-## Commit 1 — Redact TURN credentials from the trace
-
-**Problem.** `index.html` records `Trace.net('provider', …, { iceServers })`
-with each TURN entry's `username` and `credential`. That row lands in
-*Download trace*, the file people attach to bug reports. A personal TURN
-secret leaks the same way the public Open Relay one does today.
-
-**Change.** Add `ExternalServices.describeIceServers()`: the resolved
-entries with `credential` replaced by `'•••'`, plus `stunOverridden`,
-`turnOverridden`, and `turnIsPublicTestRelay`. Record that instead.
-
-**Done when.**
-- No trace row, and no `snapshot()` output, contains the resolved TURN
-  credential.
-- `tests/unit/external_services.test.js` asserts the credential string is
-  absent from `describeIceServers()` output, for both default and
-  overridden credentials, and that the flags follow storage.
-- `npx vitest run tests/unit/external_services.test.js` green.
-
----
-
 ## Commit 2 — Per-server signalling state
 
 **Problem.** All signalling conns drive one `_netStatus.connected`. When
