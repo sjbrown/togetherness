@@ -13,6 +13,8 @@
  * peerOpts) whose RTCPeerConnection hands simple-peer wrapped channels.
  */
 
+import * as Trace from './trace.js';
+
 export const CHUNK_SIZE = 16 * 1024;
 const HEADER_WHOLE = 1;
 const HEADER_CHUNK = 9;
@@ -56,25 +58,30 @@ export function split(data, msgId) {
 
 /** Per-channel frame reassembly; push() returns a message when one completes. */
 export class Reassembler {
-  constructor() { this._partial = new Map(); }
+  /** onReject(reason) is told about each frame that is dropped as invalid. */
+  constructor(onReject = null) {
+    this._partial = new Map();
+    this._onReject = onReject;
+  }
 
   push(frame) {
     const bytes = toBytes(frame);
     if (bytes[0] === 0) return bytes.subarray(HEADER_WHOLE);
-    if (bytes[0] !== 1 || bytes.length < HEADER_CHUNK) return null;
+    if (bytes[0] !== 1 || bytes.length < HEADER_CHUNK) return this._reject('bad-header');
 
     const view  = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const id    = view.getUint32(1);
     const index = view.getUint16(5);
     const count = view.getUint16(7);
-    if (count === 0 || index >= count) return null;
+    if (count === 0 || index >= count) return this._reject('bad-index');
 
     let entry = this._partial.get(id);
     if (!entry) {
       entry = { count, parts: new Array(count), received: 0, size: 0 };
       this._partial.set(id, entry);
     }
-    if (entry.count !== count || entry.parts[index]) return null;
+    if (entry.count !== count) return this._reject('count-mismatch');
+    if (entry.parts[index]) return this._reject('duplicate');
     const payload = bytes.subarray(HEADER_CHUNK);
     entry.parts[index] = payload;
     entry.received++;
@@ -88,8 +95,17 @@ export class Reassembler {
     return out;
   }
 
-  /** Drop every partially received message. */
-  clear() { this._partial.clear(); }
+  _reject(reason) {
+    this._onReject?.(reason);
+    return null;
+  }
+
+  /** Drop every partially received message; returns how many there were. */
+  clear() {
+    const n = this._partial.size;
+    this._partial.clear();
+    return n;
+  }
 
   get pending() { return this._partial.size; }
 }
@@ -102,7 +118,10 @@ export class Reassembler {
 export class ChunkedDataChannel {
   constructor(raw) {
     this._raw = raw;
-    this._reassembler = new Reassembler();
+    this._reassembler = new Reassembler((reason) => {
+      Trace.net('chunk-reject', `dropped invalid data-channel frame: ${reason}`, { reason }, 'warn');
+    });
+    this._paused = false;
     this._queue = [];
     this._queuedBytes = 0;
     this._nextId = 0;
@@ -115,13 +134,21 @@ export class ChunkedDataChannel {
     raw.onopen    = (e) => this.onopen?.(e);
     raw.onerror   = (e) => this.onerror?.(e);
     raw.onclose   = (e) => {
-      this._reassembler.clear();
+      const partial = this._reassembler.clear();
+      if (partial || this._queue.length) {
+        Trace.net('chunk-drop', 'data channel closed with messages in flight', {
+          partialIncoming: partial, queuedFrames: this._queue.length, queuedBytes: this._queuedBytes,
+        }, 'warn');
+      }
       this._queue.length = 0;
       this._queuedBytes = 0;
       this.onclose?.(e);
     };
     raw.onmessage = (e) => {
       const msg = this._reassembler.push(e.data);
+      if (msg && toBytes(e.data)[0] === 1) {
+        Trace.net('chunk-recv', `reassembled ${msg.length} bytes`, { bytes: msg.length });
+      }
       if (msg) this.onmessage?.({ data: msg.buffer.slice(msg.byteOffset, msg.byteOffset + msg.byteLength) });
     };
     raw.onbufferedamountlow = (e) => {
@@ -141,7 +168,13 @@ export class ChunkedDataChannel {
   set bufferedAmountLowThreshold(v) { this._lowThreshold = v; }
 
   send(data) {
-    const frames = split(data, this._nextId++);
+    const msgId  = this._nextId++;
+    const frames = split(data, msgId);
+    if (frames.length > 1) {
+      Trace.net('chunk-send', `chunked send: ${frames.length} frames`, () => ({
+        msgId, frames: frames.length, bytes: toBytes(data).length, queuedFrames: this._queue.length,
+      }));
+    }
     for (const f of frames) { this._queue.push(f); this._queuedBytes += f.length; }
     this._pump();
   }
@@ -154,6 +187,17 @@ export class ChunkedDataChannel {
       const frame = this._queue.shift();
       this._queuedBytes -= frame.length;
       raw.send(frame);
+    }
+    if (this._queue.length && raw.readyState === 'open') {
+      if (!this._paused) {
+        this._paused = true;
+        Trace.net('chunk-pause', 'send paused for backpressure', () => ({
+          bufferedAmount: raw.bufferedAmount, queuedFrames: this._queue.length, queuedBytes: this._queuedBytes,
+        }));
+      }
+    } else if (this._paused && !this._queue.length) {
+      this._paused = false;
+      Trace.net('chunk-drain', 'send queue drained', { bufferedAmount: raw.bufferedAmount });
     }
   }
 }

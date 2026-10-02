@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { split, Reassembler, CHUNK_SIZE, ChunkedDataChannel } from '../../src/chunked_datachannel.js';
+import { describe, it, expect, beforeEach } from 'vitest';
+import * as Trace from '../../src/trace.js';
+import { split, Reassembler, CHUNK_SIZE, ChunkedDataChannel } from '../../src/net_chunk.js';
 
 const same = (a, b) => Buffer.from(a).equals(Buffer.from(b));
 const make = (n) => Uint8Array.from({ length: n }, (_, i) => (i * 31 + 7) & 0xff);
@@ -98,5 +99,47 @@ describe('ChunkedDataChannel', () => {
     raw.onclose({});
     raw.onmessage({ data: frames.at(-1) });
     expect(got).toEqual([]);
+  });
+});
+
+describe('trace events', () => {
+  const evts = () => Trace.recent(100).map(e => e.evt);
+  const fakeRaw = () => ({ readyState: 'open', bufferedAmount: 0, send(f) { this.bufferedAmount += f.length; }, close() {} });
+  beforeEach(() => { Trace._reset(); });
+
+  it('records chunk-send only for chunked messages', () => {
+    const ch = new ChunkedDataChannel(fakeRaw());
+    ch.send(make(100));
+    expect(evts()).not.toContain('chunk-send');
+    ch.send(make(100_000));
+    expect(evts()).toContain('chunk-send');
+  });
+
+  it('records chunk-recv on reassembly, and chunk-reject on a bad frame', () => {
+    const raw = fakeRaw();
+    const ch = new ChunkedDataChannel(raw);
+    ch.onmessage = () => {};
+    for (const f of split(make(100_000), 1)) raw.onmessage({ data: f });
+    expect(evts()).toContain('chunk-recv');
+    raw.onmessage({ data: new Uint8Array([7, 7]) });
+    const rej = Trace.recent(100).find(e => e.evt === 'chunk-reject');
+    expect(rej.level).toBe('warn');
+  });
+
+  it('records chunk-pause and chunk-drain around backpressure', () => {
+    const raw = fakeRaw();
+    const ch = new ChunkedDataChannel(raw);
+    ch.send(make(5_000_000));
+    expect(evts()).toContain('chunk-pause');
+    while (ch._queue.length) { raw.bufferedAmount = 0; raw.onbufferedamountlow({}); }
+    expect(evts()).toContain('chunk-drain');
+  });
+
+  it('records chunk-drop when a channel closes mid-message', () => {
+    const raw = fakeRaw();
+    new ChunkedDataChannel(raw);
+    raw.onmessage({ data: split(make(100_000), 3)[0] });
+    raw.onclose({});
+    expect(Trace.recent(100).find(e => e.evt === 'chunk-drop').detail.partialIncoming).toBe(1);
   });
 });
