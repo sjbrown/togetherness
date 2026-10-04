@@ -106,14 +106,15 @@ the system.
 
 Four sections, in the order someone actually needs them.
 
-**State** — what is true right now. The most useful thing here is the
-comparison between this peer's stored head (`op_head.js`) and the marker the
-toys layer is actually projected at (`data-tt-head`). When those disagree, the
-DOM is showing something other than what the peer thinks it is, and the panel
-says so in words rather than leaving it to be inferred from two ids. More than
-one tip in the log gets the same treatment.
+**State** — what is true right now: the servers, the transport, the table,
+and who is in it.
 
-**Operations** — the log in `totalOrder`, newest first, each row expanding to
+**Operations** — opens with the Head card, the most useful thing the panel
+has: the comparison between this peer's stored head (`op_head.js`) and the
+marker the toys layer is actually projected at (`data-tt-head`). When those
+disagree, the DOM is showing something other than what the peer thinks it is,
+and the panel says so in words rather than leaving it to be inferred from two
+ids, and flags it on the section's summary. Below that, the log in `totalOrder`, newest first, each row expanding to
 its wire packet with a copy button. Capped at `MAX_DEBUG_OPS` (250): a
 topological sort over the whole log on every refresh is not something a
 long-lived table should pay for.

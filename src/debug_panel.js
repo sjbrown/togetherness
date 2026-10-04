@@ -96,13 +96,16 @@ function kv(label, valueHTML, cls = '') {
 
 // ── STATE ───────────────────────────────────────────────────────────────
 
-export function stateHTML(s) {
-  if (!s) return '<div class="dbg-empty">No document state — the table has not booted.</div>'
-
+/**
+ * This peer's stored head against the marker the toys layer is actually
+ * projected at. It lives with the operation list it indexes into.
+ */
+export function headCardHTML(s) {
+  if (!s) return ''
   const head = s.head ?? {}
   const headWarn = head.head && !head.agrees
 
-  const headCard = `
+  return `
     <div class="dbg-card ${headWarn ? 'warn' : ''}">
       <div class="dbg-card-title">Head</div>
       ${kv('stored head', idHTML(head.head))}
@@ -115,35 +118,13 @@ export function stateHTML(s) {
         ? kv('merge tips', head.mergeTips.map(idHTML).join(' '))
         : kv('merge tips', '<span class="dbg-nil">none pending</span>')}
     </div>`
+}
 
-  const ops = s.ops ?? {}
-  const tips = ops.tips ?? []
-  const opsCard = `
-    <div class="dbg-card ${tips.length > 1 ? 'warn' : ''}">
-      <div class="dbg-card-title">Operation log</div>
-      ${kv('operations', `<b>${ops.total ?? 0}</b>`)}
-      ${kv('checkpoints', String(ops.checkpoints ?? 0))}
-      ${kv('authored by me', String(ops.mine ?? 0))}
-      ${kv(tips.length === 1 ? 'tip' : 'tips', tips.length ? tips.map(idHTML).join(' ') : '<span class="dbg-nil">none</span>')}
-      ${tips.length > 1
-        ? '<div class="dbg-alert">More than one tip: the log has diverged and has not been reconciled yet.</div>'
-        : ''}
-    </div>`
+export function stateHTML(s) {
+  if (!s) return '<div class="dbg-empty">No document state — the table has not booted.</div>'
 
   const net = s.net ?? {}
   const peers = net.peers ?? []
-  const netCard = `
-    <div class="dbg-card">
-      <div class="dbg-card-title">Transport</div>
-      ${kv('doc synced', net.synced ? '<span class="dbg-ok">yes</span>' : '<span class="dbg-nil">not yet</span>')}
-      ${kv('webrtc peers', String(net.webrtcPeers ?? 0))}
-      ${kv('broadcastchannel peers', String(net.bcPeers ?? 0))}
-      ${net.offline ? kv('offline mode', '<span class="dbg-bad">on</span>') : ''}
-      ${kv('presence', peers.length
-        ? peers.map(p => `<code class="dbg-id" title="${esc(p.peerId ?? p.clientId)}">${esc(p.peerId ?? String(p.clientId), 6)}${p.self ? ' (me)' : ''}</code>`).join(' ')
-        : '<span class="dbg-nil">nobody</span>')}
-    </div>`
-
   const seq = s.joinSequence ?? []
   const onlineIds = new Set((s.net?.peers ?? []).map(p => p.peerId).filter(Boolean))
   const tableCard = `
@@ -159,11 +140,18 @@ export function stateHTML(s) {
   const peersCard = `
     <div class="dbg-card">
       <div class="dbg-card-title">Peers</div>
+      ${group('Sync', `
+        ${kv('doc synced', net.synced ? '<span class="dbg-ok">yes</span>' : '<span class="dbg-nil">not yet</span>')}
+        ${kv('broadcastchannel peers', String(net.bcPeers ?? 0))}
+        ${net.offline ? kv('offline mode', '<span class="dbg-bad">on</span>') : ''}`)}
       ${group('WebRTC', peerTableHTML(net))}
+      ${group('Presence', kv('connected', peers.length
+        ? peers.map(p => `<code class="dbg-id" title="${esc(p.peerId ?? p.clientId)}">${esc(p.peerId ?? String(p.clientId), 6)}${p.self ? ' (me)' : ''}</code>`).join(' ')
+        : '<span class="dbg-nil">nobody</span>'))}
       ${group('Join sequence', joinSequenceHTML(seq, s.identity?.myId, onlineIds))}
     </div>`
 
-  return headCard + opsCard + serversCardHTML(net) + netCard + tableCard + peersCard
+  return serversCardHTML(net) + tableCard + peersCard
 }
 
 /** A titled run of rows inside a card; nothing at all when there is nothing to show. */
@@ -422,8 +410,10 @@ export function debugBody(data) {
   const streamMeta = `${counts.total ?? 0}${counts.dropped ? ` · ${counts.dropped} dropped` : ''}`
 
   return `
-    ${section('sec-state', 'State', s?.head?.agrees === false ? '<span class="dbg-bad">head mismatch</span>' : '', stateHTML(s))}
-    ${section('sec-ops', 'Operations', `${s?.ops?.total ?? 0}`, opRowsHTML(s?.ops, s?.head?.head))}
+    ${section('sec-state', 'State', '', stateHTML(s))}
+    ${section('sec-ops', 'Operations',
+      `${s?.head?.agrees === false ? '<span class="dbg-bad">head mismatch</span> · ' : ''}${s?.ops?.total ?? 0}`,
+      headCardHTML(s) + opRowsHTML(s?.ops, s?.head?.head))}
     ${section('sec-stream', 'Stream', streamMeta, `
       <div class="dbg-chips">${channelChipsHTML(counts)}</div>
       <div class="dbg-stream" id="dbgStream">${streamRowsHTML(data?.events)}</div>

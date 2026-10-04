@@ -60,16 +60,16 @@ routed. "Is anyone going through TURN?" requires reading the stream.
 
 ## Commit 6 — Health badges on the State summary
 
-**Problem.** The State section's `<summary>` flags only a head mismatch. A
-service failure is invisible until the section is opened and read.
+**Problem.** The State section's `<summary>` carries nothing (a head
+mismatch is flagged on Operations, beside the Head card). A service
+failure is invisible until the section is opened and read.
 
 **Change.** Badges in the State summary meta: `sig 1/2` when a signalling
 server is down, `relay` when any peer is relayed, `ice failed` when any
 peer's state is `failed`. Rendered from the same state as the cards.
 
 **Done when.**
-- Unit tests cover each badge present and absent, and their combination
-  with `head mismatch`.
+- Unit tests cover each badge present and absent, and their combination.
 
 ---
 

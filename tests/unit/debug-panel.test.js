@@ -16,7 +16,7 @@ import { describe, test, expect, beforeEach, vi } from 'vitest'
 import * as Trace from '../../src/trace.js'
 import {
   esc, clockTime, idHTML, jsonHTML,
-  stateHTML, serversCardHTML, signalingHTML, iceHTML, peerTableHTML, opRowsHTML, streamRowsHTML, channelChipsHTML, joinSequenceHTML,
+  stateHTML, headCardHTML, serversCardHTML, signalingHTML, iceHTML, peerTableHTML, opRowsHTML, streamRowsHTML, channelChipsHTML, joinSequenceHTML,
   debugBody, gatherDebugData, init, mount, unmount, isMounted, render,
 } from '../../src/debug_panel.js'
 
@@ -84,30 +84,36 @@ describe('formatting helpers', () => {
 // state
 // ─────────────────────────────────────────────────────────────────────────
 
-describe('stateHTML', () => {
-  test('shows head, tips, transport and authority order', () => {
-    const d = parse(stateHTML(makeState()))
-    const text = d.textContent
-    expect(text).toContain('Head')
-    expect(text).toContain('Operation log')
-    expect(text).toContain('Signalling')
-    expect(text).toContain('Transport')
-    expect(text).toContain('demo-table')
-    expect(text).toContain('ws://localhost:4444')
+describe('headCardHTML', () => {
+  test('shows the stored head, the projected one and pending merge tips', () => {
+    const s = makeState({ head: { head: 'tt-op-aaa', projected: 'tt-op-aaa', agrees: true, mergeTips: ['tt-op-m1'] } })
+    const card = parse(headCardHTML(s)).querySelector('.dbg-card')
+    expect(card.querySelector('.dbg-card-title').textContent).toBe('Head')
+    expect(card.textContent).toContain('tt-op-aaa')
+    expect(card.textContent).toContain('tt-op-m1')
+    expect(card.classList.contains('warn')).toBe(false)
   })
 
   test('a head/projection disagreement is called out, not just displayed', () => {
     const s = makeState({ head: { head: 'tt-op-aaa', projected: 'tt-op-zzz', agrees: false, mergeTips: [] } })
-    const d = parse(stateHTML(s))
-    expect(d.querySelector('.dbg-card.warn')).not.toBeNull()
-    expect(d.querySelector('.dbg-alert').textContent).toContain('different operation')
+    const card = parse(headCardHTML(s)).querySelector('.dbg-card')
+    expect(card.classList.contains('warn')).toBe(true)
+    expect(card.querySelector('.dbg-alert').textContent).toContain('different operation')
   })
 
-  test('more than one tip is flagged as unreconciled divergence', () => {
-    const s = makeState()
-    s.ops.tips = ['tt-op-bbb', 'tt-op-ccc']
-    const d = parse(stateHTML(s))
-    expect(d.textContent).toContain('diverged')
+  test('renders nothing without state', () => {
+    expect(headCardHTML(null)).toBe('')
+  })
+})
+
+describe('stateHTML', () => {
+  test('shows servers, table, sync and authority order', () => {
+    const d = parse(stateHTML(makeState()))
+    const text = d.textContent
+    expect(text).toContain('Signalling')
+    expect(text).toContain('doc synced')
+    expect(text).toContain('demo-table')
+    expect(text).toContain('ws://localhost:4444')
   })
 
   test('groups servers into one card and peers into another', () => {
@@ -116,24 +122,32 @@ describe('stateHTML', () => {
     s.net.peersIce = []
     const doc = parse(stateHTML(s))
     const titles = [...doc.querySelectorAll('.dbg-card-title')].map(e => e.textContent)
-    expect(titles).toEqual(['Head', 'Operation log', 'Servers', 'Transport', 'Table', 'Peers'])
+    expect(titles).toEqual(['Servers', 'Table', 'Peers'])
 
     const cardOf = (title) => [...doc.querySelectorAll('.dbg-card')].find(c => c.querySelector('.dbg-card-title').textContent === title)
     const subs = (c) => [...c.querySelectorAll('.dbg-subtitle')].map(e => e.textContent)
     expect(subs(cardOf('Servers'))).toEqual(['Signalling', 'STUN / TURN'])
-    expect(subs(cardOf('Peers'))).toEqual(['WebRTC', 'Join sequence'])
+    expect(subs(cardOf('Peers'))).toEqual(['Sync', 'WebRTC', 'Presence', 'Join sequence'])
   })
 
   test('a state with no ice data leaves out the groups it cannot fill', () => {
     const doc = parse(stateHTML(makeState()))
     const subs = [...doc.querySelectorAll('.dbg-subtitle')].map(e => e.textContent)
-    expect(subs).toEqual(['Signalling', 'Join sequence'])
+    expect(subs).toEqual(['Signalling', 'Sync', 'Presence', 'Join sequence'])
   })
 
-  test('the Transport card no longer repeats the signalling rows', () => {
-    const transport = [...parse(stateHTML(makeState())).querySelectorAll('.dbg-card')]
-      .find(c => c.querySelector('.dbg-card-title').textContent === 'Transport')
-    expect(transport.textContent).not.toContain('ws://localhost:4444')
+  test('there is no separate Transport card; its facts live in Peers', () => {
+    const doc = parse(stateHTML(makeState({ net: { ...makeState().net, synced: false, bcPeers: 2, offline: true } })))
+    const titles = [...doc.querySelectorAll('.dbg-card-title')].map(e => e.textContent)
+    expect(titles).not.toContain('Transport')
+    const peers = [...doc.querySelectorAll('.dbg-card')].find(c => c.querySelector('.dbg-card-title').textContent === 'Peers')
+    const t = peers.textContent
+    expect(t).toContain('doc synced')
+    expect(t).toContain('not yet')
+    expect(t).toContain('broadcastchannel peers')
+    expect(t).toContain('offline mode')
+    expect(t).toContain('tt-u-v1-AA-abc')
+    expect(t).not.toContain('webrtc peers')
   })
 
   test('my own position in the authority order is marked', () => {
@@ -483,6 +497,28 @@ describe('channelChipsHTML', () => {
 // ─────────────────────────────────────────────────────────────────────────
 // body + mounting
 // ─────────────────────────────────────────────────────────────────────────
+
+describe('debugBody: where the head card lives', () => {
+  const body = (state) => parse(debugBody({ state, counts: Trace.counts(), events: [], recording: true, capacity: 600 }))
+
+  test('the Head card is in Operations, not State, and there is no Operation log card', () => {
+    const doc = body(makeState())
+    const titlesIn = (key) => [...doc.querySelector(`[data-dbg-key="${key}"]`).querySelectorAll('.dbg-card-title')].map(e => e.textContent)
+    expect(titlesIn('sec-ops')).toEqual(['Head'])
+    expect(titlesIn('sec-state')).not.toContain('Head')
+    expect(doc.textContent).not.toContain('Operation log')
+  })
+
+  test('a head mismatch is flagged on the Operations summary', () => {
+    const doc = body(makeState({ head: { head: 'tt-op-aaa', projected: 'tt-op-zzz', agrees: false, mergeTips: [] } }))
+    expect(doc.querySelector('[data-dbg-key="sec-ops"] .dbg-sec-meta').textContent).toContain('head mismatch')
+    expect(doc.querySelector('[data-dbg-key="sec-state"] .dbg-sec-meta')).toBeNull()
+  })
+
+  test('no mismatch, no flag', () => {
+    expect(body(makeState()).querySelector('[data-dbg-key="sec-ops"] .dbg-sec-meta').textContent).not.toContain('mismatch')
+  })
+})
 
 describe('debugBody', () => {
   test('renders all four sections', () => {
