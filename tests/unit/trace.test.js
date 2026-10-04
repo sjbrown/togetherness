@@ -18,7 +18,7 @@ beforeEach(() => {
 describe('channel registry', () => {
   test('every channel constant appears in CHANNELS', () => {
     const ids = Trace.CHANNELS.map(c => c.id)
-    for (const id of [Trace.BOOT, Trace.NET, Trace.OP, Trace.ENVELOPE, Trace.WIRE, Trace.APP]) {
+    for (const id of [Trace.BOOT, Trace.NET, Trace.ICE, Trace.OP, Trace.ENVELOPE, Trace.WIRE, Trace.APP]) {
       expect(ids).toContain(id)
     }
   })
@@ -26,6 +26,11 @@ describe('channel registry', () => {
   test('isChannel rejects anything not registered', () => {
     expect(Trace.isChannel(Trace.OP)).toBe(true)
     expect(Trace.isChannel('nonsense')).toBe(false)
+  })
+
+  test('ice records by default and has a shorthand', () => {
+    expect(Trace.channelEnabled(Trace.ICE)).toBe(true)
+    expect(Trace.ice('ice-state', 'x', { peer: 'p' }).ch).toBe('ice')
   })
 
   test('wire starts muted — it is the verbose one', () => {

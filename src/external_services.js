@@ -1,11 +1,14 @@
 /**
  * external_services.js — signaling/STUN/TURN overrides for y-webrtc, and
- * the per-server connection state of the signalling conns it configures.
+ * the per-server connection state of the signalling conns it configures,
+ * and a trace of how its STUN/TURN servers performed.
  * home.html's "Advanced" panel edits these; index.html reads them when
  * constructing its WebrtcProvider. Callers do `import * as
  * ExternalServices from './external_services.js'` and call e.g.
  * ExternalServices.getSTUN() / .setSignalling(url).
  */
+
+import * as Trace from './trace.js';
 
 // ── Signalling servers ──────────────────────────────────────────────────────
 /**
@@ -327,4 +330,133 @@ export function createSignalingTracker(servers, now = Date.now) {
     anyConnected,
     snapshot: () => entries.map(e => ({ ...e })),
   };
+}
+
+// ── ICE connection tracing ──────────────────────────────────────────────────
+/**
+ * Writes down what an RTCPeerConnection's ICE machinery does, on the `ice`
+ * trace channel: state changes, how many candidates of each kind it
+ * gathered, candidate errors, and the route it finally selected. That is
+ * the only evidence of whether the STUN and TURN servers configured above
+ * were actually usable — a peer that never connects otherwise looks the
+ * same as one that was never offered.
+ *
+ * Only counts and candidate types are recorded, never candidate strings
+ * or addresses: a downloaded trace shouldn't carry anyone's IP.
+ *
+ * Returns a function that stops listening.
+ */
+export function traceIcePeer(peerId, pc) {
+  const started = Date.now();
+  const counts  = { host: 0, srflx: 0, relay: 0 };
+  let selectedRecorded = false;
+
+  const typeOf = (c) => c?.type ?? /\btyp (\w+)/.exec(c?.candidate ?? '')?.[1];
+
+  const onCandidate = (e) => {
+    const type = typeOf(e.candidate);
+    if (type in counts) counts[type]++;
+  };
+
+  const onGathering = () => {
+    if (pc.iceGatheringState !== 'complete') return;
+    const missing = [];
+    if (counts.srflx === 0) missing.push('no STUN reflexive candidate');
+    if (counts.relay === 0) missing.push('no TURN relay candidate');
+    Trace.ice('ice-candidates',
+      `ICE gathering done${missing.length ? ` — ${missing.join(', ')}` : ''}`,
+      { peer: peerId, ...counts },
+      missing.length ? 'warn' : 'info');
+  };
+
+  const onError = (e) => {
+    Trace.ice('ice-error', `ICE candidate error ${e.errorCode ?? ''} from ${e.url ?? 'unknown server'}`,
+      { peer: peerId, url: e.url ?? null, errorCode: e.errorCode ?? null, errorText: e.errorText ?? null },
+      'warn');
+  };
+
+  const onState = (kind, state) => {
+    Trace.ice('ice-state', `${kind} ${state}: ${peerId}`, { peer: peerId, kind, state },
+      state === 'failed' ? 'error' : state === 'disconnected' ? 'warn' : 'info');
+  };
+
+  // The selected pair isn't always set by the first "connected" event, so
+  // each later connection event tries again until one has been recorded.
+  let selecting = false;
+  const maybeRecordRoute = async () => {
+    if (selectedRecorded || selecting) return;
+    selecting = true;
+    try { selectedRecorded = await recordSelectedRoute(); }
+    finally { selecting = false; }
+  };
+  const isUp = (s) => s === 'connected' || s === 'completed';
+
+  const onIceState = () => {
+    onState('ice', pc.iceConnectionState);
+    if (isUp(pc.iceConnectionState)) maybeRecordRoute();
+  };
+  const onConnState = () => {
+    onState('connection', pc.connectionState);
+    if (pc.connectionState === 'connected') maybeRecordRoute();
+  };
+
+  async function recordSelectedRoute() {
+    try {
+      const stats = new Map();
+      (await pc.getStats()).forEach((v, k) => stats.set(k, v));
+      const all = [...stats.values()];
+      const transport = all.find(s => s.type === 'transport' && s.selectedCandidatePairId);
+      const pair = (transport && stats.get(transport.selectedCandidatePairId))
+        ?? all.find(s => s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded');
+      if (!pair) return false;
+      const local  = stats.get(pair.localCandidateId)?.candidateType ?? null;
+      const remote = stats.get(pair.remoteCandidateId)?.candidateType ?? null;
+      const route  = local === 'relay' || remote === 'relay' ? 'relay'
+                   : local === 'srflx' || remote === 'srflx' || local === 'prflx' || remote === 'prflx' ? 'srflx'
+                   : 'host';
+      Trace.ice('ice-selected', `connected via ${route}: ${peerId}`,
+        { peer: peerId, route, local, remote, ms: Date.now() - started });
+      return true;
+    } catch {
+      return false; // stats are best-effort evidence, never a reason to fail
+    }
+  }
+
+  const listeners = [
+    ['icecandidate',            onCandidate],
+    ['icegatheringstatechange', onGathering],
+    ['icecandidateerror',       onError],
+    ['iceconnectionstatechange', onIceState],
+    ['connectionstatechange',   onConnState],
+  ];
+  for (const [name, fn] of listeners) pc.addEventListener(name, fn);
+  return () => { for (const [name, fn] of listeners) pc.removeEventListener(name, fn); };
+}
+
+/**
+ * Trace ICE for every WebRTC peer a WebrtcProvider creates. y-webrtc
+ * announces a peer as it creates the connection, before ICE starts, so
+ * listeners attached on that event see the whole negotiation. `_pc` is
+ * simple-peer's private handle on the RTCPeerConnection. Register this as
+ * soon as the provider exists: a joiner's connections are made while the
+ * join dialog is still probing, long before the app boots.
+ */
+export function traceIceProvider(provider) {
+  const stops = new Map();
+  provider.on('peers', ({ added = [], removed = [] }) => {
+    for (const id of added) {
+      try {
+        const pc = provider.room?.webrtcConns?.get(id)?.peer?._pc;
+        if (!pc) continue;
+        stops.get(id)?.();
+        stops.set(id, traceIcePeer(id, pc));
+      } catch (err) {
+        console.error('[ice] could not trace peer', id, err);
+      }
+    }
+    for (const id of removed) {
+      stops.get(id)?.();
+      stops.delete(id);
+    }
+  });
 }

@@ -54,8 +54,12 @@ bad credentials, looks the same in the trace: silence after the
 `signal-received` rows.
 
 **Change.** New channel `ice` in `trace.js` `CHANNELS`, on by default (a
-handful of rows per peer). In `app.js`, on each peer reported `added` by
-the provider's `peers` event, hook its `_pc`:
+handful of rows per peer). On each peer reported `added` by the
+provider's `peers` event, hook its `_pc`. The hook is registered in
+`index.html` as soon as the provider exists, not in `app.js`'s `boot`: a
+joiner's connections are made while the join dialog is still probing,
+before boot runs.
+
 - `ice-state` — `iceconnectionstatechange` / `connectionstatechange`,
   `{ peer, state }`. `failed` → `error`; `disconnected` → `warn`.
 - `ice-candidates` — on gathering complete, one row
