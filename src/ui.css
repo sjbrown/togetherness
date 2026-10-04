@@ -857,6 +857,13 @@ svg.tt-icon-letter {
 }
 .dbg-dot.online, .dbg-join-dot.online { background: #6a9a6a; }
 .dbg-dot.offline, .dbg-join-dot.offline { background: transparent; box-shadow: inset 0 0 0 1.5px var(--text-3); }
+.dbg-tag.warn { color: var(--warn); box-shadow: inset 0 0 0 1px rgba(184,120,32,0.45); }
+.dbg-tag.route.host  { color: #6a9a6a; box-shadow: inset 0 0 0 1px rgba(106,154,106,0.4); }
+.dbg-tag.route.srflx, .dbg-tag.route.prflx { color: var(--text-2); }
+.dbg-tag.route.relay { color: var(--warn); box-shadow: inset 0 0 0 1px rgba(184,120,32,0.45); }
+.dbg-peer-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 0; font-size: 15px; }
+.dbg-peer-ms { margin-left: auto; font-size: 14px; color: var(--text-3); font-family: ui-monospace, monospace; }
+.dbg-peer-err { flex-basis: 100%; font-size: 14px; color: var(--warn); font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
 .dbg-sig-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 0; }
 .dbg-sig-counts { margin-left: auto; font-size: 14px; color: var(--text-3); font-family: ui-monospace, monospace; }
 .dbg-wire-label {

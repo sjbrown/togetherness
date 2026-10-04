@@ -38,7 +38,7 @@ const launch = () => chromium.launch({
 });
 
 test.describe('ice trace', () => {
-  test('two local peers record state, candidates and a host route', async () => {
+  test('two local peers record state, candidates and a direct route', async () => {
     const browser = await launch();
     try {
       const [page1, page2] = await connectedPair(browser);
@@ -53,7 +53,18 @@ test.describe('ice trace', () => {
         expect(candidates[0].detail.host).toBeGreaterThan(0);
         const selected = rows.filter(e => e.evt === 'ice-selected');
         expect(selected).toHaveLength(1);
-        expect(selected[0].detail.route).toBe('host');
+        // Which direct route wins (host/host, or a peer-reflexive pair found in
+        // the checks) varies from run to run; going via a relay is what must not happen.
+        expect(selected[0].detail.route).not.toBe('relay');
+
+        // The panel's view of the same peer, and of the configured servers.
+        const net = await page.evaluate(() => window.App.getDebugState().net);
+        expect(net.peersIce).toHaveLength(1);
+        expect(net.peersIce[0]).toMatchObject({ state: expect.stringMatching(/connected|completed/), route: expect.stringMatching(/host|prflx|srflx/) });
+        expect(net.peersIce[0].connectMs).toBeGreaterThanOrEqual(0);
+        const turn = net.ice.iceServers.filter(e => e.urls.startsWith('turn:'));
+        expect(turn.length).toBeGreaterThan(0);
+        for (const e of turn) expect(e.credential).toBe('•••');
 
         // Candidates carry addresses; the trace must not.
         expect(JSON.stringify(rows)).not.toMatch(/\b\d{1,3}(\.\d{1,3}){3}\b/);

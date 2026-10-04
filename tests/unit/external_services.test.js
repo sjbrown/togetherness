@@ -12,6 +12,7 @@ import * as Trace from '../../src/trace.js'
 beforeEach(() => {
   localStorage.clear()
   Trace._reset()
+  ExternalServices._resetIcePeers()
 })
 
 describe('isValidSTUN', () => {
@@ -669,6 +670,22 @@ describe('traceIcePeer', () => {
     expect(rows('ice-selected').map(e => e.detail.route)).toEqual(['host', 'srflx'])
   })
 
+  test('a peer-reflexive candidate is its own route, below srflx and relay', async () => {
+    const make = (a, b) => {
+      const pc = new FakePc()
+      pc.stats = [
+        { id: 't', type: 'transport', selectedCandidatePairId: 'cp' },
+        { id: 'cp', type: 'candidate-pair', localCandidateId: 'l', remoteCandidateId: 'r' },
+        { id: 'l', candidateType: a }, { id: 'r', candidateType: b },
+      ]
+      ExternalServices.traceIcePeer(`${a}-${b}`, pc)
+      pc.iceState('connected')
+    }
+    make('host', 'prflx'); make('prflx', 'srflx'); make('prflx', 'relay')
+    await flush()
+    expect(rows('ice-selected').map(e => e.detail.route)).toEqual(['prflx', 'srflx', 'relay'])
+  })
+
   test('uses the nominated succeeded pair when there is no transport entry', async () => {
     const pc = new FakePc()
     pc.stats = [
@@ -708,6 +725,30 @@ describe('traceIcePeer', () => {
     await flush()
     expect(rows('ice-selected')).toHaveLength(0)
     expect(rows('ice-state')).toHaveLength(1)
+  })
+
+  test('fills in the info object as things happen', async () => {
+    const pc = new FakePc()
+    pc.stats = [
+      { id: 't', type: 'transport', selectedCandidatePairId: 'cp' },
+      { id: 'cp', type: 'candidate-pair', localCandidateId: 'l', remoteCandidateId: 'r' },
+      { id: 'l', candidateType: 'srflx' }, { id: 'r', candidateType: 'host' },
+    ]
+    const info = {}
+    ExternalServices.traceIcePeer('p', pc, info)
+    expect(info).toEqual({ peer: 'p', state: 'new', route: null, connectMs: null, candidates: null, lastError: null })
+
+    pc.candidate('host'); pc.candidate('srflx')
+    pc.emit('icecandidateerror', { url: 'turn:t.example.com', errorCode: 701, errorText: 'unreachable' })
+    pc.gatherDone()
+    pc.iceState('connected')
+    await flush()
+
+    expect(info.state).toBe('connected')
+    expect(info.candidates).toEqual({ host: 1, srflx: 1, relay: 0 })
+    expect(info.lastError).toEqual({ url: 'turn:t.example.com', errorCode: 701, errorText: 'unreachable' })
+    expect(info.route).toBe('srflx')
+    expect(Number.isFinite(info.connectMs)).toBe(true)
   })
 
   test('the returned function stops all recording', () => {
@@ -782,5 +823,26 @@ describe('traceIceProvider', () => {
     provider.room = undefined
     ExternalServices.traceIceProvider(provider)
     expect(() => provider.emit({ added: ['x'], removed: [] })).not.toThrow()
+  })
+
+  test('getIcePeers lists traced peers, current state included, and drops removed ones', () => {
+    const provider = makeProvider()
+    ExternalServices.traceIceProvider(provider)
+    const a = addPeer(provider, 'peer-a')
+    addPeer(provider, 'peer-b')
+    fireIce(a, 'connected')
+    const peers = ExternalServices.getIcePeers()
+    expect(peers.map(p => [p.peer, p.state])).toEqual([['peer-a', 'connected'], ['peer-b', 'new']])
+
+    provider.emit({ added: [], removed: ['peer-a'] })
+    expect(ExternalServices.getIcePeers().map(p => p.peer)).toEqual(['peer-b'])
+  })
+
+  test('getIcePeers returns copies', () => {
+    const provider = makeProvider()
+    ExternalServices.traceIceProvider(provider)
+    addPeer(provider, 'peer-a')
+    ExternalServices.getIcePeers()[0].state = 'tampered'
+    expect(ExternalServices.getIcePeers()[0].state).toBe('new')
   })
 })

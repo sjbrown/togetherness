@@ -162,7 +162,7 @@ export function stateHTML(s) {
       ${joinSequenceHTML(seq, s.identity?.myId, onlineIds)}
     </div>`
 
-  return headCard + opsCard + signalingCardHTML(net) + netCard + tableCard + joinSeqCard
+  return headCard + opsCard + signalingCardHTML(net) + iceCardHTML(net) + peerTableHTML(net) + netCard + tableCard + joinSeqCard
 }
 
 /**
@@ -188,6 +188,88 @@ export function signalingCardHTML(net) {
       ${allDown
         ? '<div class="dbg-alert">No signalling server is reachable.</div>'
         : ''}
+    </div>`
+}
+
+const iceUrls = (servers, scheme) => servers
+  .flatMap(e => [].concat(e.urls))
+  .filter(u => scheme.test(u))
+
+/**
+ * Which STUN and TURN servers are configured, and whether they have
+ * worked: a result line per kind, drawn from how many peers' gathering
+ * produced a reflexive (STUN) or relay (TURN) candidate.
+ */
+export function iceCardHTML(net) {
+  const ice = net?.ice
+  if (!ice) return ''
+  const servers = ice.iceServers ?? []
+  const stun = iceUrls(servers, /^stuns?:/i)
+  const turn = iceUrls(servers, /^turns?:/i)
+  const username = servers.find(e => e.username)?.username
+
+  const gathered = (net.peersIce ?? []).filter(p => p.candidates)
+  const result = (label, key, noun) => {
+    if (!gathered.length) return { row: kv(`${label} result`, '<span class="dbg-nil">no peers yet</span>'), alert: '' }
+    const n = gathered.filter(p => p.candidates[key] > 0).length
+    const text = `${noun} on ${n}/${gathered.length} peers`
+    return {
+      row:   kv(`${label} result`, n === gathered.length ? `<span class="dbg-ok">${text}</span>` : `<span class="dbg-bad">${text}</span>`),
+      alert: n === 0 ? `<div class="dbg-alert">${label} never produced a ${noun.replace(/s$/, '')}.</div>` : '',
+    }
+  }
+  const stunResult = result('STUN', 'srflx', 'reflexive candidates')
+  const turnResult = result('TURN', 'relay', 'relay candidates')
+
+  const urlList = (urls) => urls.length
+    ? urls.map(u => `<code class="dbg-id">${esc(u)}</code>`).join(' ')
+    : '<span class="dbg-nil">none</span>'
+
+  return `
+    <div class="dbg-card">
+      <div class="dbg-card-title">ICE servers</div>
+      ${kv('STUN', urlList(stun))}
+      ${kv('TURN', urlList(turn) + (ice.turnIsPublicTestRelay
+        ? ' <span class="dbg-tag warn" title="A free public relay for testing; not something to depend on">public test relay</span>'
+        : ''))}
+      ${username ? kv('TURN user', `<code class="dbg-id">${esc(username)}</code>`) : ''}
+      ${stunResult.row}
+      ${turnResult.row}
+      ${stunResult.alert}${turnResult.alert}
+    </div>`
+}
+
+const ROUTE_TITLES = {
+  host:  'direct, same network',
+  srflx: 'direct, through NAT (STUN)',
+  prflx: 'direct, address learned during connectivity checks',
+  relay: 'relayed through a TURN server',
+}
+
+/** One row per WebRTC peer: ICE state, the route it ended up on, how long it took. */
+export function peerTableHTML(net) {
+  const peers = net?.peersIce
+  if (!peers) return ''
+  const rows = peers.map(p => {
+    const bad = p.state === 'failed' || p.state === 'disconnected'
+    const err = p.lastError
+      ? `<span class="dbg-peer-err" title="${esc(p.lastError.errorText ?? '')}">${esc(p.lastError.errorCode ?? '')} ${esc(p.lastError.url ?? '')}</span>`
+      : ''
+    return `<div class="dbg-peer-row">
+      <code class="dbg-id" title="${esc(p.peer)}">${esc(String(p.peer).slice(0, 8))}</code>
+      <span class="${bad ? 'dbg-bad' : p.state === 'connected' || p.state === 'completed' ? 'dbg-ok' : 'dbg-nil'}">${esc(p.state)}</span>
+      ${p.route
+        ? `<span class="dbg-tag route ${esc(p.route)}" title="${esc(ROUTE_TITLES[p.route] ?? '')}">${esc(p.route)}</span>`
+        : '<span class="dbg-nil">&mdash;</span>'}
+      <span class="dbg-peer-ms">${p.connectMs != null ? `${p.connectMs} ms` : ''}</span>
+      ${err}
+    </div>`
+  }).join('')
+
+  return `
+    <div class="dbg-card">
+      <div class="dbg-card-title">WebRTC peers</div>
+      ${rows || '<div class="dbg-empty">No WebRTC peers.</div>'}
     </div>`
 }
 

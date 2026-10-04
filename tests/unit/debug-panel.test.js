@@ -16,7 +16,7 @@ import { describe, test, expect, beforeEach, vi } from 'vitest'
 import * as Trace from '../../src/trace.js'
 import {
   esc, clockTime, idHTML, jsonHTML,
-  stateHTML, signalingCardHTML, opRowsHTML, streamRowsHTML, channelChipsHTML, joinSequenceHTML,
+  stateHTML, signalingCardHTML, iceCardHTML, peerTableHTML, opRowsHTML, streamRowsHTML, channelChipsHTML, joinSequenceHTML,
   debugBody, gatherDebugData, init, mount, unmount, isMounted, render,
 } from '../../src/debug_panel.js'
 
@@ -110,6 +110,15 @@ describe('stateHTML', () => {
     expect(d.textContent).toContain('diverged')
   })
 
+  test('includes the ICE cards when the state carries ice data', () => {
+    const s = makeState()
+    s.net.ice = { iceServers: [{ urls: 'stun:s.example.com' }], turnIsPublicTestRelay: false }
+    s.net.peersIce = []
+    const titles = [...parse(stateHTML(s)).querySelectorAll('.dbg-card-title')].map(e => e.textContent)
+    expect(titles).toEqual(expect.arrayContaining(['Signalling', 'ICE servers', 'WebRTC peers', 'Transport']))
+    expect(titles.indexOf('ICE servers')).toBeLessThan(titles.indexOf('Transport'))
+  })
+
   test('the Transport card no longer repeats the signalling rows', () => {
     const transport = [...parse(stateHTML(makeState())).querySelectorAll('.dbg-card')]
       .find(c => c.querySelector('.dbg-card-title').textContent === 'Transport')
@@ -179,6 +188,133 @@ describe('signalingCardHTML', () => {
   test('escapes a url', () => {
     const c = card([conn({ url: 'ws://<img src=x onerror=1>' })])
     expect(c.querySelector('img')).toBeNull()
+  })
+})
+
+describe('iceCardHTML', () => {
+  const ice = (over = {}) => ({
+    iceServers: [
+      { urls: 'stun:stun.example.com:19302' },
+      { urls: 'turn:relay.example.com:3478', username: 'alice', credential: '•••' },
+      { urls: 'turn:relay.example.com:443', username: 'alice', credential: '•••' },
+    ],
+    stunOverridden: true, turnOverridden: true, turnIsPublicTestRelay: false, ...over,
+  })
+  const peer = (candidates, over = {}) => ({ peer: 'p1', state: 'connected', route: 'host', connectMs: 120, candidates, lastError: null, ...over })
+  const card = (net) => parse(iceCardHTML(net)).querySelector('.dbg-card')
+  const text = (net) => card(net).textContent.replace(/\s+/g, ' ')
+
+  test('renders nothing without ice data', () => {
+    expect(iceCardHTML({})).toBe('')
+    expect(iceCardHTML(undefined)).toBe('')
+  })
+
+  test('lists STUN and TURN urls and the TURN username, never a credential', () => {
+    const t = text({ ice: ice(), peersIce: [] })
+    expect(t).toContain('stun:stun.example.com:19302')
+    expect(t).toContain('turn:relay.example.com:3478')
+    expect(t).toContain('turn:relay.example.com:443')
+    expect(t).toContain('alice')
+    expect(t).not.toContain('•••')
+    expect(t).not.toContain('secret')
+  })
+
+  test('tags the public test relay, and only then', () => {
+    expect(card({ ice: ice({ turnIsPublicTestRelay: true }), peersIce: [] }).querySelector('.dbg-tag.warn').textContent).toBe('public test relay')
+    expect(card({ ice: ice(), peersIce: [] }).querySelector('.dbg-tag.warn')).toBeNull()
+  })
+
+  test('with no peers it says so rather than claiming success or failure', () => {
+    const c = card({ ice: ice(), peersIce: [] })
+    expect(c.textContent).toContain('no peers yet')
+    expect(c.querySelector('.dbg-alert')).toBeNull()
+  })
+
+  test('a peer still gathering is not counted', () => {
+    const c = card({ ice: ice(), peersIce: [peer(null)] })
+    expect(c.textContent).toContain('no peers yet')
+  })
+
+  test('both kinds seen on every peer: ok, no alert', () => {
+    const c = card({ ice: ice(), peersIce: [peer({ host: 1, srflx: 1, relay: 1 }), peer({ host: 1, srflx: 2, relay: 1 }, { peer: 'p2' })] })
+    expect(c.textContent).toContain('reflexive candidates on 2/2 peers')
+    expect(c.textContent).toContain('relay candidates on 2/2 peers')
+    expect(c.querySelectorAll('.dbg-ok')).toHaveLength(2)
+    expect(c.querySelector('.dbg-alert')).toBeNull()
+  })
+
+  test('TURN never producing a relay candidate is called out', () => {
+    const c = card({ ice: ice(), peersIce: [peer({ host: 1, srflx: 1, relay: 0 })] })
+    expect(c.querySelector('.dbg-alert').textContent).toBe('TURN never produced a relay candidate.')
+    expect(c.textContent).toContain('relay candidates on 0/1 peers')
+  })
+
+  test('STUN never producing a reflexive candidate is called out', () => {
+    const c = card({ ice: ice(), peersIce: [peer({ host: 1, srflx: 0, relay: 1 })] })
+    expect(c.querySelector('.dbg-alert').textContent).toBe('STUN never produced a reflexive candidate.')
+  })
+
+  test('some peers but not all: flagged, but not the never-alert', () => {
+    const c = card({ ice: ice(), peersIce: [peer({ host: 1, srflx: 1, relay: 1 }), peer({ host: 1, srflx: 1, relay: 0 }, { peer: 'p2' })] })
+    expect(c.textContent).toContain('relay candidates on 1/2 peers')
+    expect(c.querySelector('.dbg-alert')).toBeNull()
+    expect(c.querySelectorAll('.dbg-bad')).toHaveLength(1)
+  })
+
+  test('escapes a server url', () => {
+    const c = card({ ice: ice({ iceServers: [{ urls: 'stun:<img src=x onerror=1>' }] }), peersIce: [] })
+    expect(c.querySelector('img')).toBeNull()
+  })
+})
+
+describe('peerTableHTML', () => {
+  const row = (over = {}) => ({
+    peer: '7f271957-4479-4588-9526-9982e8b1dd01', state: 'connected', route: 'host',
+    connectMs: 87, candidates: { host: 1, srflx: 0, relay: 0 }, lastError: null, ...over,
+  })
+  const card = (peersIce) => parse(peerTableHTML({ peersIce })).querySelector('.dbg-card')
+
+  test('renders nothing when the state has no ice data', () => {
+    expect(peerTableHTML({})).toBe('')
+    expect(peerTableHTML(undefined)).toBe('')
+  })
+
+  test('no peers: says so', () => {
+    expect(card([]).textContent).toContain('No WebRTC peers')
+  })
+
+  test('shows a short id with the full one in the title, state, route and time', () => {
+    const r = card([row()]).querySelector('.dbg-peer-row')
+    expect(r.querySelector('.dbg-id').textContent).toBe('7f271957')
+    expect(r.querySelector('.dbg-id').getAttribute('title')).toBe('7f271957-4479-4588-9526-9982e8b1dd01')
+    expect(r.textContent).toContain('connected')
+    expect(r.querySelector('.dbg-tag.route.host')).not.toBeNull()
+    expect(r.textContent).toContain('87 ms')
+  })
+
+  test('colour-codes each route', () => {
+    const c = card([row({ route: 'host' }), row({ peer: 'b', route: 'srflx' }), row({ peer: 'c', route: 'prflx' }), row({ peer: 'd', route: 'relay' })])
+    for (const r of ['host', 'srflx', 'prflx', 'relay']) expect(c.querySelectorAll(`.dbg-tag.route.${r}`)).toHaveLength(1)
+  })
+
+  test('a peer with no route yet shows a dash and no time', () => {
+    const r = card([row({ state: 'checking', route: null, connectMs: null })]).querySelector('.dbg-peer-row')
+    expect(r.querySelector('.dbg-tag.route')).toBeNull()
+    expect(r.querySelector('.dbg-peer-ms').textContent).toBe('')
+  })
+
+  test('a failed peer reads as bad and shows its last error', () => {
+    const r = card([row({ state: 'failed', route: null, connectMs: null,
+      lastError: { url: 'turn:relay.example.com:3478', errorCode: 401, errorText: 'Unauthorized' } })]).querySelector('.dbg-peer-row')
+    expect(r.querySelector('.dbg-bad').textContent).toBe('failed')
+    expect(r.querySelector('.dbg-peer-err').textContent).toContain('401')
+    expect(r.querySelector('.dbg-peer-err').textContent).toContain('turn:relay.example.com:3478')
+  })
+
+  test('escapes a peer id and an error url', () => {
+    const c = card([row({ peer: '<img src=x onerror=1>', lastError: { url: '<script>1</script>', errorCode: 701 } })])
+    expect(c.querySelector('img')).toBeNull()
+    expect(c.querySelector('script')).toBeNull()
   })
 })
 

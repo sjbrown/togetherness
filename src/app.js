@@ -2256,6 +2256,8 @@ const App = {
       net: {
         ..._netStatus,
         offline: _offline,
+        ice:      ExternalServices.describeIceServers(),
+        peersIce: ExternalServices.getIcePeers(),
         peers,
       },
       joinSequence: joinSeq,

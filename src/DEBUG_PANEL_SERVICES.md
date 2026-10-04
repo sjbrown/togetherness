@@ -18,56 +18,13 @@ URLs with one credential pair. Coverage today:
 - **STUN / TURN** — one boot row with the resolved servers, credentials
   masked (`describeIceServers()`), and per-peer ICE state, candidate
   counts, candidate errors and selected route on the `ice` channel
-  (`traceIceProvider()`). None of it is shown in the panel yet.
-- **Panel** — a Signalling card shows each server's state; STUN and TURN
-  do not appear.
+  (`traceIceProvider()`), shown in the ICE servers and WebRTC peers cards.
+- **Panel** — Signalling, ICE servers and WebRTC peers cards.
 
 Per-peer ICE data is reachable without touching `lib/`: y-webrtc's
 `room.webrtcConns` holds simple-peer instances, each with its
 `RTCPeerConnection` at `peer._pc`. `_pc` is private to simple-peer; the
 hook is pinned to the bundled version.
-
----
-
-## Commit 4 — `ice` trace channel
-
-**Problem.** Nothing records whether STUN or TURN worked. A peer that never
-connects, or connects only through a relay, or is refused by the relay for
-bad credentials, looks the same in the trace: silence after the
-`signal-received` rows.
-
-**Change.** New channel `ice` in `trace.js` `CHANNELS`, on by default (a
-handful of rows per peer). On each peer reported `added` by the
-provider's `peers` event, hook its `_pc`. The hook is registered in
-`index.html` as soon as the provider exists, not in `app.js`'s `boot`: a
-joiner's connections are made while the join dialog is still probing,
-before boot runs.
-
-- `ice-state` — `iceconnectionstatechange` / `connectionstatechange`,
-  `{ peer, state }`. `failed` → `error`; `disconnected` → `warn`.
-- `ice-candidates` — on gathering complete, one row
-  `{ peer, host, srflx, relay }`, counts only (candidate strings carry IP
-  addresses). No `srflx` → `warn` "STUN produced no reflexive candidate";
-  no `relay` → `warn` "TURN produced no relay candidate".
-- `ice-error` — `icecandidateerror`, `{ peer, url, errorCode, errorText }`,
-  `warn`. The only direct evidence of rejected TURN credentials (401) or an
-  unreachable server (701).
-- `ice-selected` — one `getStats()` read after connect: local/remote
-  candidate types of the selected pair, and time-to-connect via
-  `Trace.span`.
-
-Listeners are removed when the peer is `removed`. No candidate string, SDP,
-or `RTCPeerConnection` reference enters a detail.
-
-**Done when.**
-- `tests/unit/trace.test.js` covers the new channel's registration and
-  default.
-- e2e: two peers on localhost produce `ice-state` → `connected`,
-  one `ice-candidates` row per peer, and one `ice-selected` row per peer
-  with type `host`.
-- e2e: an unreachable TURN URL produces an `ice-error` or a no-relay
-  `warn`.
-- A downloaded trace contains no IP addresses from candidates.
 
 ---
 
@@ -79,16 +36,17 @@ routed. "Is anyone going through TURN?" requires reading the stream.
 
 **Change.**
 - `getDebugState().net` gains `ice: describeIceServers()` and
-  `peersIce: [{ peer, state, route, connectMs, lastError }]`, maintained
-  by the commit 4 hooks.
+  `peersIce: getIcePeers()` — `[{ peer, state, route, connectMs,
+  candidates, lastError }]`, kept current by the commit 4 hooks.
 - `iceCardHTML(net)`: STUN row and TURN row, URLs, username (credential
   never), an amber `public test relay` tag on the Open Relay default, and
   a status line derived from `peersIce`
   ("STUN ok on 2/2 peers"; "TURN never produced a relay candidate" as a
   `dbg-alert`).
 - `peerTableHTML(net)`: one row per WebRTC peer — id, ICE state, route tag
-  (`host` / `srflx` / `relay`, colour-coded), connect ms, last error.
-  Cross-referenced with presence as the join ladder does.
+  (`host` / `srflx` / `prflx` / `relay`, colour-coded), connect ms, last
+  error. Not cross-referenced with presence: a WebRTC peer id is a random
+  per-connection id, and nothing maps it to the user ids presence uses.
 - CSS in `ui.css` for the route tags and table.
 
 **Done when.**
