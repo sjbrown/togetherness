@@ -17,7 +17,7 @@ import * as Trace from '../../src/trace.js'
 import {
   esc, clockTime, idHTML, jsonHTML,
   stateHTML, healthBadgesHTML, headCardHTML, serversCardHTML, signalingHTML, iceHTML, peerTableHTML, opRowsHTML, streamRowsHTML, channelChipsHTML, joinSequenceHTML,
-  debugBody, gatherDebugData, viewChipsHTML, connectivityActive, setWarnOnly, isWarnOnly, init, mount, unmount, isMounted, render,
+  debugBody, gatherDebugData, tracePayload, viewChipsHTML, connectivityActive, setWarnOnly, isWarnOnly, init, mount, unmount, isMounted, render,
   openSnapshot, closeSnapshot, isSnapshotOpen,
 } from '../../src/debug_panel.js'
 
@@ -936,5 +936,51 @@ describe('snapshot', () => {
 
   test('closing with nothing open is harmless', () => {
     expect(() => closeSnapshot()).not.toThrow()
+  })
+})
+
+describe('tracePayload (Download trace)', () => {
+  const net = () => ({
+    ...makeState().net,
+    signalingConns: [{ url: 'ws://a', role: 'primary', connected: true, connects: 1, disconnects: 0 }],
+    ice: { iceServers: [{ urls: 'turn:t.example.com:3478', username: 'alice', credential: '•••' }], turnIsPublicTestRelay: false },
+  })
+
+  test('carries the ring, the state, and a services block lifted from it', () => {
+    Trace.net('x', 'a row')
+    init({ getDebugState: () => makeState({ net: net() }) })
+    const p = tracePayload()
+    expect(p.format).toBe('togetherness-trace')
+    expect(p.events.map(e => e.msg)).toContain('a row')
+    expect(p.state.table.tableId).toBe('demo-table')
+    expect(p.services.signaling[0].url).toBe('ws://a')
+    expect(p.services.ice.iceServers[0].urls).toBe('turn:t.example.com:3478')
+  })
+
+  test('the services block carries no credential', () => {
+    init({ getDebugState: () => makeState({ net: net() }) })
+    const text = JSON.stringify(tracePayload().services)
+    expect(text).toContain('•••')
+    expect(text).not.toContain('secret')
+  })
+
+  test('services are null, not missing, when the state has none', () => {
+    init({ getDebugState: () => makeState() })
+    const p = tracePayload()
+    expect(p.services.ice).toBeNull()
+    expect(p.services.signaling[0].url).toBe('ws://localhost:4444')
+  })
+
+  test('a broken state still yields the trace, with null services', () => {
+    init({ getDebugState: () => { throw new Error('nope') } })
+    const p = tracePayload()
+    expect(p.state).toBeNull()
+    expect(p.services).toEqual({ signaling: null, ice: null })
+    expect(Array.isArray(p.events)).toBe(true)
+  })
+
+  test('with no App bus at all', () => {
+    init(null)
+    expect(tracePayload().services).toEqual({ signaling: null, ice: null })
   })
 })

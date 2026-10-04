@@ -654,10 +654,23 @@ export function refresh() {
   if (_container) render()
 }
 
-function downloadTrace() {
+/**
+ * What Download trace writes: the ring, the state, and the service config
+ * and connection state lifted out of it so "which relay did they use?" is
+ * answered without digging. Credentials are already masked in the state.
+ */
+export function tracePayload() {
   let state = null
   try { state = App?.getDebugState?.() ?? null } catch { /* trace alone is still worth having */ }
-  const blob = new Blob([JSON.stringify(Trace.snapshot({ state }), null, 2)],
+  const net = state?.net
+  return Trace.snapshot({
+    state,
+    services: { signaling: net?.signalingConns ?? null, ice: net?.ice ?? null },
+  })
+}
+
+function downloadTrace() {
+  const blob = new Blob([JSON.stringify(tracePayload(), null, 2)],
     { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

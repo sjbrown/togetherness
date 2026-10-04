@@ -58,24 +58,6 @@ routed. "Is anyone going through TURN?" requires reading the stream.
 
 ---
 
-## Commit 8 — Join-intent outcome and snapshot service block
-
-**Problem.** `join_intent.js` decides `unreachable` / `found` /
-`not-found` without a trace row, so "the join dialog said unreachable"
-can't be matched to anything. The downloaded trace carries service state
-only indirectly.
-
-**Change.**
-- `Trace.net('join-intent', …, { outcome, ms })`; `unreachable` is `warn`.
-- `downloadTrace()` adds `services: { signaling, ice }` (redacted) beside
-  `state`.
-
-**Done when.**
-- `join_intent` unit tests assert one row per outcome with elapsed ms.
-- A downloaded trace has a `services` block with no credential in it.
-
----
-
 ## Commit 9 — Edit link and design record
 
 **Problem.** Service settings live on home.html's Advanced panel and apply
