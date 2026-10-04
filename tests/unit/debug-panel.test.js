@@ -16,7 +16,7 @@ import { describe, test, expect, beforeEach, vi } from 'vitest'
 import * as Trace from '../../src/trace.js'
 import {
   esc, clockTime, idHTML, jsonHTML,
-  stateHTML, signalingCardHTML, iceCardHTML, peerTableHTML, opRowsHTML, streamRowsHTML, channelChipsHTML, joinSequenceHTML,
+  stateHTML, serversCardHTML, signalingHTML, iceHTML, peerTableHTML, opRowsHTML, streamRowsHTML, channelChipsHTML, joinSequenceHTML,
   debugBody, gatherDebugData, init, mount, unmount, isMounted, render,
 } from '../../src/debug_panel.js'
 
@@ -110,13 +110,24 @@ describe('stateHTML', () => {
     expect(d.textContent).toContain('diverged')
   })
 
-  test('includes the ICE cards when the state carries ice data', () => {
+  test('groups servers into one card and peers into another', () => {
     const s = makeState()
     s.net.ice = { iceServers: [{ urls: 'stun:s.example.com' }], turnIsPublicTestRelay: false }
     s.net.peersIce = []
-    const titles = [...parse(stateHTML(s)).querySelectorAll('.dbg-card-title')].map(e => e.textContent)
-    expect(titles).toEqual(expect.arrayContaining(['Signalling', 'ICE servers', 'WebRTC peers', 'Transport']))
-    expect(titles.indexOf('ICE servers')).toBeLessThan(titles.indexOf('Transport'))
+    const doc = parse(stateHTML(s))
+    const titles = [...doc.querySelectorAll('.dbg-card-title')].map(e => e.textContent)
+    expect(titles).toEqual(['Head', 'Operation log', 'Servers', 'Transport', 'Table', 'Peers'])
+
+    const cardOf = (title) => [...doc.querySelectorAll('.dbg-card')].find(c => c.querySelector('.dbg-card-title').textContent === title)
+    const subs = (c) => [...c.querySelectorAll('.dbg-subtitle')].map(e => e.textContent)
+    expect(subs(cardOf('Servers'))).toEqual(['Signalling', 'STUN / TURN'])
+    expect(subs(cardOf('Peers'))).toEqual(['WebRTC', 'Join sequence'])
+  })
+
+  test('a state with no ice data leaves out the groups it cannot fill', () => {
+    const doc = parse(stateHTML(makeState()))
+    const subs = [...doc.querySelectorAll('.dbg-subtitle')].map(e => e.textContent)
+    expect(subs).toEqual(['Signalling', 'Join sequence'])
   })
 
   test('the Transport card no longer repeats the signalling rows', () => {
@@ -137,12 +148,12 @@ describe('stateHTML', () => {
   })
 })
 
-describe('signalingCardHTML', () => {
+describe('signalingHTML', () => {
   const conn = (over = {}) => ({
     url: 'ws://a.example', role: 'primary', connected: true,
     connects: 1, disconnects: 0, ...over,
   })
-  const card = (conns) => parse(signalingCardHTML({ signalingConns: conns })).querySelector('.dbg-card')
+  const card = (conns) => parse(`<div class="dbg-card">${signalingHTML({ signalingConns: conns })}</div>`).querySelector('.dbg-card')
 
   test('shows one row per server with url, role and counts', () => {
     const c = card([conn(), conn({ url: 'ws://b.example', role: 'fallback', connects: 3, disconnects: 2 })])
@@ -156,33 +167,31 @@ describe('signalingCardHTML', () => {
 
   test('both up: no warning', () => {
     const c = card([conn(), conn({ url: 'ws://b.example', role: 'fallback' })])
-    expect(c.classList.contains('warn')).toBe(false)
     expect(c.querySelectorAll('.dbg-dot.online')).toHaveLength(2)
+    expect(c.querySelector('.dbg-alert')).toBeNull()
   })
 
   test('one down: marked offline but not a warning', () => {
     const c = card([conn(), conn({ url: 'ws://b.example', role: 'fallback', connected: false })])
-    expect(c.classList.contains('warn')).toBe(false)
     expect(c.querySelectorAll('.dbg-dot.online')).toHaveLength(1)
     expect(c.querySelectorAll('.dbg-dot.offline')).toHaveLength(1)
     expect(c.querySelector('.dbg-alert')).toBeNull()
   })
 
-  test('all down: warns', () => {
+  test('all down: says so', () => {
     const c = card([conn({ connected: false }), conn({ url: 'ws://b.example', role: 'fallback', connected: false })])
-    expect(c.classList.contains('warn')).toBe(true)
     expect(c.querySelector('.dbg-alert').textContent).toBe('No signalling server is reachable.')
   })
 
-  test('no servers: says so, without a warning', () => {
+  test('no servers: says so, without an alert', () => {
     const c = card([])
     expect(c.textContent).toContain('No signalling servers')
-    expect(c.classList.contains('warn')).toBe(false)
+    expect(c.querySelector('.dbg-alert')).toBeNull()
   })
 
   test('a missing list renders like an empty one', () => {
-    expect(parse(signalingCardHTML({})).textContent).toContain('No signalling servers')
-    expect(parse(signalingCardHTML(undefined)).textContent).toContain('No signalling servers')
+    expect(parse(signalingHTML({})).textContent).toContain('No signalling servers')
+    expect(parse(signalingHTML(undefined)).textContent).toContain('No signalling servers')
   })
 
   test('escapes a url', () => {
@@ -191,7 +200,7 @@ describe('signalingCardHTML', () => {
   })
 })
 
-describe('iceCardHTML', () => {
+describe('iceHTML', () => {
   const ice = (over = {}) => ({
     iceServers: [
       { urls: 'stun:stun.example.com:19302' },
@@ -201,12 +210,12 @@ describe('iceCardHTML', () => {
     stunOverridden: true, turnOverridden: true, turnIsPublicTestRelay: false, ...over,
   })
   const peer = (candidates, over = {}) => ({ peer: 'p1', state: 'connected', route: 'host', connectMs: 120, candidates, lastError: null, ...over })
-  const card = (net) => parse(iceCardHTML(net)).querySelector('.dbg-card')
+  const card = (net) => parse(`<div class="dbg-card">${iceHTML(net)}</div>`).querySelector('.dbg-card')
   const text = (net) => card(net).textContent.replace(/\s+/g, ' ')
 
   test('renders nothing without ice data', () => {
-    expect(iceCardHTML({})).toBe('')
-    expect(iceCardHTML(undefined)).toBe('')
+    expect(iceHTML({})).toBe('')
+    expect(iceHTML(undefined)).toBe('')
   })
 
   test('lists STUN and TURN urls and the TURN username, never a credential', () => {
@@ -272,7 +281,7 @@ describe('peerTableHTML', () => {
     peer: '7f271957-4479-4588-9526-9982e8b1dd01', state: 'connected', route: 'host',
     connectMs: 87, candidates: { host: 1, srflx: 0, relay: 0 }, lastError: null, ...over,
   })
-  const card = (peersIce) => parse(peerTableHTML({ peersIce })).querySelector('.dbg-card')
+  const card = (peersIce) => parse(`<div class="dbg-card">${peerTableHTML({ peersIce })}</div>`).querySelector('.dbg-card')
 
   test('renders nothing when the state has no ice data', () => {
     expect(peerTableHTML({})).toBe('')
@@ -315,6 +324,23 @@ describe('peerTableHTML', () => {
     const c = card([row({ peer: '<img src=x onerror=1>', lastError: { url: '<script>1</script>', errorCode: 701 } })])
     expect(c.querySelector('img')).toBeNull()
     expect(c.querySelector('script')).toBeNull()
+  })
+})
+
+describe('serversCardHTML', () => {
+  const conn = (over = {}) => ({ url: 'ws://a.example', role: 'primary', connected: true, connects: 1, disconnects: 0, ...over })
+  const card = (conns) => parse(serversCardHTML({ signalingConns: conns })).querySelector('.dbg-card')
+
+  test('no warning while any signalling server is up', () => {
+    expect(card([conn(), conn({ url: 'ws://b.example', role: 'fallback', connected: false })]).classList.contains('warn')).toBe(false)
+  })
+
+  test('warns when every signalling server is down', () => {
+    expect(card([conn({ connected: false })]).classList.contains('warn')).toBe(true)
+  })
+
+  test('no signalling servers is not a warning', () => {
+    expect(card([]).classList.contains('warn')).toBe(false)
   })
 })
 

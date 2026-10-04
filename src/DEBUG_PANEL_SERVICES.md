@@ -18,8 +18,9 @@ URLs with one credential pair. Coverage today:
 - **STUN / TURN** — one boot row with the resolved servers, credentials
   masked (`describeIceServers()`), and per-peer ICE state, candidate
   counts, candidate errors and selected route on the `ice` channel
-  (`traceIceProvider()`), shown in the ICE servers and WebRTC peers cards.
-- **Panel** — Signalling, ICE servers and WebRTC peers cards.
+  (`traceIceProvider()`), shown in the Servers and Peers cards.
+- **Panel** — a Servers card (signalling, STUN/TURN) and a Peers card
+  (WebRTC peers, join sequence).
 
 Per-peer ICE data is reachable without touching `lib/`: y-webrtc's
 `room.webrtcConns` holds simple-peer instances, each with its
@@ -28,7 +29,7 @@ hook is pinned to the bundled version.
 
 ---
 
-## Commit 5 — ICE servers and Peers cards
+## Commit 5 — ICE servers and WebRTC peers in the panel
 
 **Problem.** With the data from commit 4 recorded, the panel still has
 nowhere to show which ICE servers are configured or how each peer is
@@ -38,12 +39,12 @@ routed. "Is anyone going through TURN?" requires reading the stream.
 - `getDebugState().net` gains `ice: describeIceServers()` and
   `peersIce: getIcePeers()` — `[{ peer, state, route, connectMs,
   candidates, lastError }]`, kept current by the commit 4 hooks.
-- `iceCardHTML(net)`: STUN row and TURN row, URLs, username (credential
+- `iceHTML(net)`, the STUN / TURN group of the Servers card: STUN row and TURN row, URLs, username (credential
   never), an amber `public test relay` tag on the Open Relay default, and
   a status line derived from `peersIce`
   ("STUN ok on 2/2 peers"; "TURN never produced a relay candidate" as a
   `dbg-alert`).
-- `peerTableHTML(net)`: one row per WebRTC peer — id, ICE state, route tag
+- `peerTableHTML(net)`, the WebRTC group of the Peers card: one row per WebRTC peer — id, ICE state, route tag
   (`host` / `srflx` / `prflx` / `relay`, colour-coded), connect ms, last
   error. Not cross-referenced with presence: a WebRTC peer id is a random
   per-connection id, and nothing maps it to the user ids presence uses.
@@ -116,7 +117,7 @@ only on reload; nothing in the Debug tab says either. `DEBUG_PANEL.md`
 doesn't know about the `ice` channel or the new cards.
 
 **Change.**
-- "Edit services…" link from the ICE servers card to home.html's Advanced
+- "Edit services…" link from the Servers card to home.html's Advanced
   panel, with a note that changes take effect on reload.
 - `DEBUG_PANEL.md`: `ice` in the channel table, the new cards in §5, the
   credential and IP-address rules beside the MutationRecord rule in §3, and

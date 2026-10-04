@@ -156,23 +156,45 @@ export function stateHTML(s) {
       ${kv('yjs client id', String(s.identity?.clientId ?? '—'))}
     </div>`
 
-  const joinSeqCard = `
+  const peersCard = `
     <div class="dbg-card">
-      <div class="dbg-card-title">Join Sequence</div>
-      ${joinSequenceHTML(seq, s.identity?.myId, onlineIds)}
+      <div class="dbg-card-title">Peers</div>
+      ${group('WebRTC', peerTableHTML(net))}
+      ${group('Join sequence', joinSequenceHTML(seq, s.identity?.myId, onlineIds))}
     </div>`
 
-  return headCard + opsCard + signalingCardHTML(net) + iceCardHTML(net) + peerTableHTML(net) + netCard + tableCard + joinSeqCard
+  return headCard + opsCard + serversCardHTML(net) + netCard + tableCard + peersCard
+}
+
+/** A titled run of rows inside a card; nothing at all when there is nothing to show. */
+function group(title, inner) {
+  if (!inner) return ''
+  return `<div class="dbg-group"><div class="dbg-subtitle">${esc(title)}</div>${inner}</div>`
+}
+
+/** Signalling and ICE servers in one card; it warns only when no signalling server is up. */
+export function serversCardHTML(net) {
+  return `
+    <div class="dbg-card ${signalingDown(net) ? 'warn' : ''}">
+      <div class="dbg-card-title">Servers</div>
+      ${group('Signalling', signalingHTML(net))}
+      ${group('STUN / TURN', iceHTML(net))}
+    </div>`
+}
+
+const signalingDown = (net) => {
+  const conns = net?.signalingConns ?? []
+  return conns.length > 0 && !conns.some(c => c.connected)
 }
 
 /**
- * One row per signalling server. The card only warns when every server is
- * down: one of several going away is routine, and even none doesn't touch
- * peers already connected — signalling only introduces new ones.
+ * One row per signalling server. Only every server being down is flagged:
+ * one of several going away is routine, and even none doesn't touch peers
+ * already connected — signalling only introduces new ones.
  */
-export function signalingCardHTML(net) {
+export function signalingHTML(net) {
   const conns = net?.signalingConns ?? []
-  const allDown = conns.length > 0 && !conns.some(c => c.connected)
+  const allDown = signalingDown(net)
 
   const rows = conns.map(c => `<div class="dbg-sig-row">
       <span class="dbg-dot ${c.connected ? 'online' : 'offline'}" title="${c.connected ? 'connected' : 'not connected'}"></span>
@@ -182,13 +204,8 @@ export function signalingCardHTML(net) {
     </div>`).join('')
 
   return `
-    <div class="dbg-card ${allDown ? 'warn' : ''}">
-      <div class="dbg-card-title">Signalling</div>
-      ${rows || '<div class="dbg-empty">No signalling servers.</div>'}
-      ${allDown
-        ? '<div class="dbg-alert">No signalling server is reachable.</div>'
-        : ''}
-    </div>`
+    ${rows || '<div class="dbg-empty">No signalling servers.</div>'}
+    ${allDown ? '<div class="dbg-alert">No signalling server is reachable.</div>' : ''}`
 }
 
 const iceUrls = (servers, scheme) => servers
@@ -200,7 +217,7 @@ const iceUrls = (servers, scheme) => servers
  * worked: a result line per kind, drawn from how many peers' gathering
  * produced a reflexive (STUN) or relay (TURN) candidate.
  */
-export function iceCardHTML(net) {
+export function iceHTML(net) {
   const ice = net?.ice
   if (!ice) return ''
   const servers = ice.iceServers ?? []
@@ -226,8 +243,6 @@ export function iceCardHTML(net) {
     : '<span class="dbg-nil">none</span>'
 
   return `
-    <div class="dbg-card">
-      <div class="dbg-card-title">ICE servers</div>
       ${kv('STUN', urlList(stun))}
       ${kv('TURN', urlList(turn) + (ice.turnIsPublicTestRelay
         ? ' <span class="dbg-tag warn" title="A free public relay for testing; not something to depend on">public test relay</span>'
@@ -235,8 +250,7 @@ export function iceCardHTML(net) {
       ${username ? kv('TURN user', `<code class="dbg-id">${esc(username)}</code>`) : ''}
       ${stunResult.row}
       ${turnResult.row}
-      ${stunResult.alert}${turnResult.alert}
-    </div>`
+      ${stunResult.alert}${turnResult.alert}`
 }
 
 const ROUTE_TITLES = {
@@ -266,11 +280,7 @@ export function peerTableHTML(net) {
     </div>`
   }).join('')
 
-  return `
-    <div class="dbg-card">
-      <div class="dbg-card-title">WebRTC peers</div>
-      ${rows || '<div class="dbg-empty">No WebRTC peers.</div>'}
-    </div>`
+  return rows || '<div class="dbg-empty">No WebRTC peers.</div>'
 }
 
 /**

@@ -810,6 +810,11 @@ svg.tt-icon-letter {
 .dbg-nil { color: var(--text-3); font-style: italic; }
 .dbg-ok  { color: #6a9a6a; }
 .dbg-bad { color: var(--warn); }
+.dbg-group + .dbg-group { margin-top: 12px; }
+.dbg-subtitle {
+  font-size: 13px; font-weight: 700; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px;
+}
 .dbg-note { font-size: 15px; color: var(--text-3); margin-top: 8px; line-height: 1.5; }
 .dbg-alert {
   margin-top: 8px; padding: 8px 10px; border-radius: 8px;
