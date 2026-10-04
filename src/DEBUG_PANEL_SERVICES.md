@@ -16,8 +16,9 @@ URLs with one credential pair. Coverage today:
   announce/signal rows naming the server that carried them (`app.js`,
   state tracked by `ExternalServices.createSignalingTracker`).
 - **STUN / TURN** — one boot row with the resolved servers, credentials
-  masked (`describeIceServers()`). Nothing at runtime: no candidate
-  gathering, no ICE state, no candidate errors, no selected route.
+  masked (`describeIceServers()`), and per-peer ICE state, candidate
+  counts, candidate errors and selected route on the `ice` channel
+  (`traceIceProvider()`). None of it is shown in the panel yet.
 - **Panel** — a Signalling card shows each server's state; STUN and TURN
   do not appear.
 
