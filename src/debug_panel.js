@@ -154,6 +154,28 @@ export function stateHTML(s) {
   return serversCardHTML(net) + tableCard + peersCard
 }
 
+/**
+ * Short flags for the State summary, so a service problem shows without
+ * opening the section: signalling servers down, a peer going through a
+ * TURN relay, a peer whose ICE failed.
+ */
+export function healthBadgesHTML(net) {
+  const badges = []
+  const conns = net?.signalingConns ?? []
+  const up = conns.filter(c => c.connected).length
+  if (conns.length && up < conns.length) {
+    badges.push(`<span class="dbg-bad" title="signalling servers connected">sig ${up}/${conns.length}</span>`)
+  }
+  const peers = net?.peersIce ?? []
+  if (peers.some(p => p.route === 'relay')) {
+    badges.push('<span class="dbg-bad" title="a peer is connected through a TURN relay">relay</span>')
+  }
+  if (peers.some(p => p.state === 'failed')) {
+    badges.push('<span class="dbg-bad" title="a peer\'s ICE connection failed">ice failed</span>')
+  }
+  return badges.join(' · ')
+}
+
 /** A titled run of rows inside a card; nothing at all when there is nothing to show. */
 function group(title, inner) {
   if (!inner) return ''
@@ -471,7 +493,7 @@ export function debugBody(data, { snapshot = false, takenAt = Date.now() } = {})
             📷 Snapshot Now
           </button>
         </div>`}
-    ${section('sec-state', 'State', '', stateHTML(s), open)}
+    ${section('sec-state', 'State', healthBadgesHTML(s?.net), stateHTML(s), open)}
     ${section('sec-ops', 'Operations',
       `${s?.head?.agrees === false ? '<span class="dbg-bad">head mismatch</span> · ' : ''}${s?.ops?.total ?? 0}`,
       headCardHTML(s) + opRowsHTML(s?.ops, s?.head?.head), open)}

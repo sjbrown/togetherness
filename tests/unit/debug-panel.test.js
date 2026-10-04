@@ -16,7 +16,7 @@ import { describe, test, expect, beforeEach, vi } from 'vitest'
 import * as Trace from '../../src/trace.js'
 import {
   esc, clockTime, idHTML, jsonHTML,
-  stateHTML, headCardHTML, serversCardHTML, signalingHTML, iceHTML, peerTableHTML, opRowsHTML, streamRowsHTML, channelChipsHTML, joinSequenceHTML,
+  stateHTML, healthBadgesHTML, headCardHTML, serversCardHTML, signalingHTML, iceHTML, peerTableHTML, opRowsHTML, streamRowsHTML, channelChipsHTML, joinSequenceHTML,
   debugBody, gatherDebugData, init, mount, unmount, isMounted, render,
   openSnapshot, closeSnapshot, isSnapshotOpen,
 } from '../../src/debug_panel.js'
@@ -85,6 +85,55 @@ describe('formatting helpers', () => {
 // ─────────────────────────────────────────────────────────────────────────
 // state
 // ─────────────────────────────────────────────────────────────────────────
+
+describe('healthBadgesHTML', () => {
+  const up = { url: 'ws://a', connected: true }
+  const down = { url: 'ws://b', connected: false }
+  const badges = (net) => [...parse(healthBadgesHTML(net)).querySelectorAll('span')].map(e => e.textContent)
+
+  test('nothing when everything is fine', () => {
+    expect(healthBadgesHTML({ signalingConns: [up, up], peersIce: [{ state: 'connected', route: 'host' }] })).toBe('')
+  })
+
+  test('nothing without data', () => {
+    expect(healthBadgesHTML({})).toBe('')
+    expect(healthBadgesHTML(undefined)).toBe('')
+  })
+
+  test('sig n/m when a signalling server is down, including none up', () => {
+    expect(badges({ signalingConns: [up, down] })).toEqual(['sig 1/2'])
+    expect(badges({ signalingConns: [down, down] })).toEqual(['sig 0/2'])
+  })
+
+  test('relay when any peer is relayed', () => {
+    expect(badges({ peersIce: [{ state: 'connected', route: 'host' }, { state: 'connected', route: 'relay' }] })).toEqual(['relay'])
+  })
+
+  test('ice failed when any peer failed', () => {
+    expect(badges({ peersIce: [{ state: 'failed', route: null }] })).toEqual(['ice failed'])
+  })
+
+  test('only the badges that apply, together', () => {
+    expect(badges({ signalingConns: [up, down], peersIce: [{ state: 'failed', route: 'relay' }] }))
+      .toEqual(['sig 1/2', 'relay', 'ice failed'])
+  })
+
+  test('the badges ride on the State summary, and not the Operations one', () => {
+    const s = makeState()
+    s.net.signalingConns = [up, down]
+    const doc = parse(debugBody({ state: s, counts: {}, events: [], recording: true, capacity: 600 }))
+    expect(doc.querySelector('[data-dbg-key="sec-state"] .dbg-sec-meta').textContent).toBe('sig 1/2')
+    expect(doc.querySelector('[data-dbg-key="sec-ops"] .dbg-sec-meta').textContent).not.toContain('sig')
+  })
+
+  test('a head mismatch on Operations does not disturb the State badges', () => {
+    const s = makeState({ head: { head: 'a', projected: 'b', agrees: false, mergeTips: [] } })
+    s.net.peersIce = [{ state: 'failed', route: null }]
+    const doc = parse(debugBody({ state: s, counts: {}, events: [], recording: true, capacity: 600 }))
+    expect(doc.querySelector('[data-dbg-key="sec-state"] .dbg-sec-meta').textContent).toBe('ice failed')
+    expect(doc.querySelector('[data-dbg-key="sec-ops"] .dbg-sec-meta').textContent).toContain('head mismatch')
+  })
+})
 
 describe('headCardHTML', () => {
   test('shows the stored head, the projected one and pending merge tips', () => {
