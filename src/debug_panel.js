@@ -34,6 +34,12 @@ let _frame       = null
 
 const MAX_STREAM_ROWS = 250
 
+// A view filter, not a recording setting: ephemeral like the open sections.
+let _warnOnly = false
+
+export const isWarnOnly = () => _warnOnly
+export function setWarnOnly(v) { _warnOnly = !!v }
+
 export function init(appBus) {
   App = appBus
 }
@@ -377,9 +383,31 @@ export function channelChipsHTML(counts) {
   }).join('')
 }
 
-export function streamRowsHTML(events) {
+/**
+ * Quick views over the channel chips. Connectivity shows only net and ice;
+ * warn+ hides info rows. The first changes which channels record (warnings
+ * and errors are recorded on a muted channel regardless); the second only
+ * filters what is drawn.
+ */
+const CONNECTIVITY = new Set([Trace.NET, Trace.ICE])
+
+export const connectivityActive = () =>
+  Trace.CHANNELS.every(c => Trace.channelEnabled(c.id) === CONNECTIVITY.has(c.id))
+
+export function viewChipsHTML({ warnOnly = false } = {}) {
+  return `<button class="dbg-view-chip ${connectivityActive() ? 'on' : ''}" data-dbg-action="preset-connectivity"
+      title="Show only net and ice; click again to restore the default channels">Connectivity</button>
+    <button class="dbg-view-chip ${warnOnly ? 'on' : ''}" data-dbg-action="toggle-warn"
+      title="Hide info rows; this only filters the view, recording is unchanged">warn+</button>`
+}
+
+export function streamRowsHTML(events, { warnOnly = false } = {}) {
   if (!events?.length) {
     return '<div class="dbg-empty">Nothing recorded yet. Move a toy, or reload with a peer connected.</div>'
+  }
+  if (warnOnly) {
+    events = events.filter(e => e.level === 'warn' || e.level === 'error')
+    if (!events.length) return '<div class="dbg-empty">No warnings or errors in the stream.</div>'
   }
   return events.map(e => {
     const key = `ev-${e.seq}`
@@ -453,6 +481,7 @@ export function gatherDebugData() {
     state:    App?.getDebugState ? safeState() : null,
     counts:   Trace.counts(),
     events:   Trace.recent(MAX_STREAM_ROWS, active),
+    warnOnly: _warnOnly,
     recording: Trace.isEnabled(),
     capacity: Trace.capacity(),
   }
@@ -498,8 +527,9 @@ export function debugBody(data, { snapshot = false, takenAt = Date.now() } = {})
       `${s?.head?.agrees === false ? '<span class="dbg-bad">head mismatch</span> · ' : ''}${s?.ops?.total ?? 0}`,
       headCardHTML(s) + opRowsHTML(s?.ops, s?.head?.head), open)}
     ${section('sec-stream', 'Stream', streamMeta, `
-      ${snapshot ? '' : `<div class="dbg-chips">${channelChipsHTML(counts)}</div>`}
-      <div class="dbg-stream"${snapshot ? '' : ' id="dbgStream"'}>${streamRowsHTML(data?.events)}</div>
+      ${snapshot ? '' : `<div class="dbg-chips">${channelChipsHTML(counts)}</div>
+        <div class="dbg-chips">${viewChipsHTML({ warnOnly: data?.warnOnly })}</div>`}
+      <div class="dbg-stream"${snapshot ? '' : ' id="dbgStream"'}>${streamRowsHTML(data?.events, { warnOnly: data?.warnOnly })}</div>
     `, open)}
     ${snapshot ? '' : section('sec-trace', 'Recorder', data?.recording ? 'on' : '<span class="dbg-bad">paused</span>', `
       <div class="dbg-btn-row">
@@ -562,6 +592,18 @@ function onClick(e) {
   switch (btn.dataset.dbgAction) {
     case 'toggle-channel':
       Trace.setChannelEnabled(btn.dataset.dbgChannel, !Trace.channelEnabled(btn.dataset.dbgChannel))
+      render()
+      break
+    case 'preset-connectivity': {
+      const restore = connectivityActive()
+      for (const c of Trace.CHANNELS) {
+        Trace.setChannelEnabled(c.id, restore ? !c.verbose : CONNECTIVITY.has(c.id))
+      }
+      render()
+      break
+    }
+    case 'toggle-warn':
+      _warnOnly = !_warnOnly
       render()
       break
     case 'toggle-recording':

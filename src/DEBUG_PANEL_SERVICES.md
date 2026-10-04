@@ -58,25 +58,6 @@ routed. "Is anyone going through TURN?" requires reading the stream.
 
 ---
 
-## Commit 7 — Stream presets and level filter
-
-**Problem.** Service warnings are low-rate and get pushed out of view by
-`op` and `envelope` rows. Isolating them takes several chip clicks.
-
-**Change.**
-- A "Connectivity" preset chip that shows only `net` and `ice`.
-- A `warn+` toggle that hides `info` rows. View-only: it filters
-  rendering, not recording. Persisted with the other trace settings only if
-  that stays within `trace.js`'s settings shape; otherwise ephemeral.
-
-**Done when.**
-- Unit tests for `channelChipsHTML` with the preset, and for
-  `streamRowsHTML` filtering by level.
-- Muting via the preset still records `warn`/`error` on muted channels, per
-  the existing rule.
-
----
-
 ## Commit 8 — Join-intent outcome and snapshot service block
 
 **Problem.** `join_intent.js` decides `unreachable` / `found` /

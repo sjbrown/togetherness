@@ -17,7 +17,7 @@ import * as Trace from '../../src/trace.js'
 import {
   esc, clockTime, idHTML, jsonHTML,
   stateHTML, healthBadgesHTML, headCardHTML, serversCardHTML, signalingHTML, iceHTML, peerTableHTML, opRowsHTML, streamRowsHTML, channelChipsHTML, joinSequenceHTML,
-  debugBody, gatherDebugData, init, mount, unmount, isMounted, render,
+  debugBody, gatherDebugData, viewChipsHTML, connectivityActive, setWarnOnly, isWarnOnly, init, mount, unmount, isMounted, render,
   openSnapshot, closeSnapshot, isSnapshotOpen,
 } from '../../src/debug_panel.js'
 
@@ -53,6 +53,7 @@ const makeState = (over = {}) => ({
 })
 
 beforeEach(() => {
+  setWarnOnly(false)
   closeSnapshot()
   Trace._reset()
   unmount()
@@ -493,6 +494,29 @@ describe('opRowsHTML', () => {
 // stream
 // ─────────────────────────────────────────────────────────────────────────
 
+describe('streamRowsHTML level filter', () => {
+  const ev = (seq, level, msg = `row ${seq}`) => ({ seq, t: 0, ms: 0, ch: 'net', evt: 'x', msg, detail: null, level })
+
+  test('warnOnly keeps warnings and errors and drops info', () => {
+    const d = parse(streamRowsHTML([ev(1, 'info'), ev(2, 'warn'), ev(3, 'error'), ev(4, 'info')], { warnOnly: true }))
+    expect([...d.querySelectorAll('.dbg-ev-msg')].map(e => e.textContent)).toEqual(['row 2', 'row 3'])
+  })
+
+  test('without the option every row shows', () => {
+    expect(parse(streamRowsHTML([ev(1, 'info'), ev(2, 'warn')])).querySelectorAll('.dbg-ev')).toHaveLength(2)
+  })
+
+  test('nothing but info rows says there are no warnings, not that nothing was recorded', () => {
+    const t = parse(streamRowsHTML([ev(1, 'info')], { warnOnly: true })).textContent
+    expect(t).toContain('No warnings or errors')
+    expect(t).not.toContain('Nothing recorded yet')
+  })
+
+  test('an empty stream still says nothing was recorded', () => {
+    expect(parse(streamRowsHTML([], { warnOnly: true })).textContent).toContain('Nothing recorded yet')
+  })
+})
+
 describe('streamRowsHTML', () => {
   const ev = (over = {}) => ({
     seq: 1, t: 0, ms: 0, ch: 'op', evt: 'append', msg: 'placed a token',
@@ -526,6 +550,84 @@ describe('streamRowsHTML', () => {
 
   test('an empty stream explains itself', () => {
     expect(parse(streamRowsHTML([])).textContent).toContain('Nothing recorded yet')
+  })
+})
+
+describe('stream views', () => {
+  const host = () => {
+    const h = document.createElement('div')
+    init({ getDebugState: () => makeState() })
+    mount(h); render()
+    return h
+  }
+  const isRecording = (ch) => Trace.channelEnabled(ch)
+
+  test('Connectivity is off by default and marks itself on only for net + ice', () => {
+    expect(connectivityActive()).toBe(false)
+    expect(parse(viewChipsHTML()).querySelector('[data-dbg-action="preset-connectivity"]').classList.contains('on')).toBe(false)
+    for (const c of Trace.CHANNELS) Trace.setChannelEnabled(c.id, c.id === 'net' || c.id === 'ice')
+    expect(connectivityActive()).toBe(true)
+    expect(parse(viewChipsHTML()).querySelector('[data-dbg-action="preset-connectivity"]').classList.contains('on')).toBe(true)
+  })
+
+  test('clicking Connectivity leaves only net and ice recording; clicking again restores the defaults', () => {
+    const h = host()
+    h.querySelector('[data-dbg-action="preset-connectivity"]').click()
+    expect(Trace.CHANNELS.filter(c => isRecording(c.id)).map(c => c.id)).toEqual(['net', 'ice'])
+    expect(h.querySelector('[data-dbg-action="preset-connectivity"]').classList.contains('on')).toBe(true)
+
+    h.querySelector('[data-dbg-action="preset-connectivity"]').click()
+    expect(isRecording('op')).toBe(true)
+    expect(isRecording('boot')).toBe(true)
+    expect(isRecording('wire')).toBe(false)
+    expect(connectivityActive()).toBe(false)
+    unmount()
+  })
+
+  test('warnings and errors on a channel muted by the preset are still recorded', () => {
+    const h = host()
+    h.querySelector('[data-dbg-action="preset-connectivity"]').click()
+    expect(Trace.op('append', 'info is dropped')).toBeNull()
+    expect(Trace.op('append', 'warn survives', null, 'warn')).not.toBeNull()
+    expect(Trace.envelope('x', 'error survives', null, 'error')).not.toBeNull()
+    unmount()
+  })
+
+  test('the preset leaves the rest of the stream to the net and ice channels', () => {
+    Trace.net('a', 'net row'); Trace.ice('b', 'ice row'); Trace.op('c', 'op row')
+    const h = host()
+    h.querySelector('[data-dbg-action="preset-connectivity"]').click()
+    const text = h.querySelector('#dbgStream').textContent
+    expect(text).toContain('net row'); expect(text).toContain('ice row')
+    expect(text).not.toContain('op row')
+    unmount()
+  })
+
+  test('warn+ filters the stream without touching what records', () => {
+    Trace.net('a', 'quiet info row'); Trace.net('b', 'loud warn row', null, 'warn')
+    const h = host()
+    expect(h.querySelector('#dbgStream').textContent).toContain('quiet info row')
+
+    h.querySelector('[data-dbg-action="toggle-warn"]').click()
+    expect(isWarnOnly()).toBe(true)
+    expect(h.querySelector('[data-dbg-action="toggle-warn"]').classList.contains('on')).toBe(true)
+    expect(h.querySelector('#dbgStream').textContent).toContain('loud warn row')
+    expect(h.querySelector('#dbgStream').textContent).not.toContain('quiet info row')
+    expect(Trace.channelEnabled('net')).toBe(true)
+    expect(Trace.events().map(e => e.msg)).toContain('quiet info row')
+
+    h.querySelector('[data-dbg-action="toggle-warn"]').click()
+    expect(h.querySelector('#dbgStream').textContent).toContain('quiet info row')
+    unmount()
+  })
+
+  test('warn+ carries into a snapshot', () => {
+    Trace.net('a', 'quiet info row'); Trace.net('b', 'loud warn row', null, 'warn')
+    setWarnOnly(true)
+    init({ getDebugState: () => makeState() })
+    const doc = parse(debugBody(gatherDebugData(), { snapshot: true }))
+    expect(doc.querySelector('.dbg-stream').textContent).toContain('loud warn row')
+    expect(doc.querySelector('.dbg-stream').textContent).not.toContain('quiet info row')
   })
 })
 

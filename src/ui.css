@@ -893,13 +893,13 @@ svg.tt-icon-letter {
 
 /* Channel chips */
 .dbg-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
-.dbg-chip {
+.dbg-chip, .dbg-view-chip {
   display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
   border: none; border-radius: 999px; padding: 4px 9px;
   background: var(--surface-2); box-shadow: var(--emboss);
   color: var(--text-3); font-family: var(--font-body); font-size: 15px;
 }
-.dbg-chip.on { color: var(--primary); box-shadow: var(--emboss-active); }
+.dbg-chip.on, .dbg-view-chip.on { color: var(--primary); box-shadow: var(--emboss-active); }
 .dbg-chip-n { font-family: ui-monospace, monospace; font-size: 14px; opacity: .8; }
 
 /* Event stream */
