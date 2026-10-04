@@ -38,6 +38,7 @@
 
 export const BOOT     = 'boot'
 export const NET      = 'net'
+export const ICE      = 'ice'
 export const OP       = 'op'
 export const ENVELOPE = 'envelope'
 export const WIRE     = 'wire'
@@ -51,6 +52,7 @@ export const APP      = 'app'
 export const CHANNELS = [
   { id: BOOT,     label: 'Boot', title: 'Table construction, IndexedDB replay, identity' },
   { id: NET,      label: 'Net',  title: 'Signaling, WebRTC handshakes, peer presence' },
+  { id: ICE,      label: 'ICE',  title: 'STUN/TURN: ICE state, candidate gathering, selected route' },
   { id: OP,       label: 'Ops',  title: 'Operation log: commit, arrival, classification, apply order' },
   { id: ENVELOPE, label: 'Env',  title: 'Envelope enter/exit and what each gesture captured' },
   { id: WIRE,     label: 'Wire', title: 'Wire-format serialize/apply/invert', verbose: true },
@@ -185,6 +187,7 @@ function safeDetail(fn) {
 // `Trace.net('peer-join', ...)` — rather than as a channel argument.
 export const boot     = (evt, msg, detail, level) => record(BOOT, evt, msg, detail, level)
 export const net      = (evt, msg, detail, level) => record(NET, evt, msg, detail, level)
+export const ice      = (evt, msg, detail, level) => record(ICE, evt, msg, detail, level)
 export const op       = (evt, msg, detail, level) => record(OP, evt, msg, detail, level)
 export const envelope = (evt, msg, detail, level) => record(ENVELOPE, evt, msg, detail, level)
 export const wire     = (evt, msg, detail, level) => record(WIRE, evt, msg, detail, level)

@@ -16,8 +16,9 @@ URLs with one credential pair. Coverage today:
   announce/signal rows naming the server that carried them (`app.js`,
   state tracked by `ExternalServices.createSignalingTracker`).
 - **STUN / TURN** — one boot row with the resolved servers, credentials
-  masked (`describeIceServers()`). Nothing at runtime: no candidate
-  gathering, no ICE state, no candidate errors, no selected route.
+  masked (`describeIceServers()`), and per-peer ICE state, candidate
+  counts, candidate errors and selected route on the `ice` channel
+  (`traceIceProvider()`). None of it is shown in the panel yet.
 - **Panel** — a Signalling card shows each server's state; STUN and TURN
   do not appear.
 
@@ -25,24 +26,6 @@ Per-peer ICE data is reachable without touching `lib/`: y-webrtc's
 `room.webrtcConns` holds simple-peer instances, each with its
 `RTCPeerConnection` at `peer._pc`. `_pc` is private to simple-peer; the
 hook is pinned to the bundled version.
-
----
-
-## Commit 3 — Signalling card in the Debug panel
-
-**Problem.** The Transport card shows URLs and a single connected flag side
-by side; there is no way to see which server is up or how often it has
-flapped.
-
-**Change.** Split Signalling out of Transport. Pure renderer
-`signalingCardHTML(net)`: one row per server with URL, primary/fallback
-tag, connected dot (join-ladder style), and connect/disconnect counts.
-Card is `warn` only when every server is down.
-
-**Done when.**
-- `tests/unit/debug-panel.test.js` renders literal state for: both up; one
-  down (no `warn`); both down (`warn`); an empty list.
-- Transport card no longer duplicates the signalling rows.
 
 ---
 
@@ -54,8 +37,12 @@ bad credentials, looks the same in the trace: silence after the
 `signal-received` rows.
 
 **Change.** New channel `ice` in `trace.js` `CHANNELS`, on by default (a
-handful of rows per peer). In `app.js`, on each peer reported `added` by
-the provider's `peers` event, hook its `_pc`:
+handful of rows per peer). On each peer reported `added` by the
+provider's `peers` event, hook its `_pc`. The hook is registered in
+`index.html` as soon as the provider exists, not in `app.js`'s `boot`: a
+joiner's connections are made while the join dialog is still probing,
+before boot runs.
+
 - `ice-state` — `iceconnectionstatechange` / `connectionstatechange`,
   `{ peer, state }`. `failed` → `error`; `disconnected` → `warn`.
 - `ice-candidates` — on gathering complete, one row

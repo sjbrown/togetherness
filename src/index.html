@@ -266,6 +266,7 @@ Trace.net('provider', 'WebrtcProvider constructed — handshakes begin', {
   room: tableId,
   ...ExternalServices.describeIceServers(),
 });
+ExternalServices.traceIceProvider(provider);
 const awareness    = provider.awareness;
 awareness.setLocalState({ user, cursor: null, desired: {} });
 

@@ -7,9 +7,11 @@
 
 import { beforeEach, describe, test, expect } from 'vitest'
 import * as ExternalServices from '../../src/external_services.js'
+import * as Trace from '../../src/trace.js'
 
 beforeEach(() => {
   localStorage.clear()
+  Trace._reset()
 })
 
 describe('isValidSTUN', () => {
@@ -532,5 +534,253 @@ describe('createSignalingTracker', () => {
     const t = two(true, true)
     t.snapshot()[0].connected = false
     expect(t.anyConnected()).toBe(true)
+  })
+})
+
+describe('traceIcePeer', () => {
+  class FakePc extends EventTarget {
+    iceConnectionState = 'new'
+    connectionState = 'new'
+    iceGatheringState = 'new'
+    stats = []
+    getStats() { return Promise.resolve(new Map(this.stats.map(s => [s.id, s]))) }
+    emit(name, props = {}) { this.dispatchEvent(Object.assign(new Event(name), props)) }
+    candidate(type, address = '203.0.113.9') {
+      this.emit('icecandidate', { candidate: { type, address, candidate: `candidate:1 1 udp 1 ${address} 5000 typ ${type}` } })
+    }
+    gatherDone() { this.iceGatheringState = 'complete'; this.emit('icegatheringstatechange') }
+    iceState(state) { this.iceConnectionState = state; this.emit('iceconnectionstatechange') }
+  }
+  const rows = (evt) => Trace.events().filter(e => e.ch === 'ice' && e.evt === evt)
+  const flush = () => new Promise(r => setTimeout(r, 0))
+
+  test('records ice and connection state changes, escalating failures', () => {
+    const pc = new FakePc()
+    ExternalServices.traceIcePeer('peer-a', pc)
+    pc.iceState('checking')
+    pc.iceState('disconnected')
+    pc.iceState('failed')
+    pc.connectionState = 'connected'; pc.emit('connectionstatechange')
+    expect(rows('ice-state').map(e => [e.detail.kind, e.detail.state, e.level])).toEqual([
+      ['ice', 'checking', 'info'],
+      ['ice', 'disconnected', 'warn'],
+      ['ice', 'failed', 'error'],
+      ['connection', 'connected', 'info'],
+    ])
+    expect(rows('ice-state')[0].detail.peer).toBe('peer-a')
+  })
+
+  test('one summary row counts candidates by type and is quiet when all kinds arrived', () => {
+    const pc = new FakePc()
+    ExternalServices.traceIcePeer('p', pc)
+    pc.candidate('host'); pc.candidate('host'); pc.candidate('srflx'); pc.candidate('relay')
+    pc.gatherDone()
+    const [row, ...rest] = rows('ice-candidates')
+    expect(rest).toHaveLength(0)
+    expect(row.detail).toEqual({ peer: 'p', host: 2, srflx: 1, relay: 1 })
+    expect(row.level).toBe('info')
+  })
+
+  test('warns, naming what is missing, when STUN or TURN produced nothing', () => {
+    const pc = new FakePc()
+    ExternalServices.traceIcePeer('p', pc)
+    pc.candidate('host')
+    pc.gatherDone()
+    const row = rows('ice-candidates')[0]
+    expect(row.level).toBe('warn')
+    expect(row.msg).toContain('no STUN reflexive candidate')
+    expect(row.msg).toContain('no TURN relay candidate')
+  })
+
+  test('a gathering state other than complete records nothing', () => {
+    const pc = new FakePc()
+    ExternalServices.traceIcePeer('p', pc)
+    pc.iceGatheringState = 'gathering'; pc.emit('icegatheringstatechange')
+    expect(rows('ice-candidates')).toHaveLength(0)
+  })
+
+  test('falls back to the candidate string when the type property is absent', () => {
+    const pc = new FakePc()
+    ExternalServices.traceIcePeer('p', pc)
+    pc.emit('icecandidate', { candidate: { candidate: 'candidate:1 1 udp 1 10.0.0.1 5000 typ relay' } })
+    pc.gatherDone()
+    expect(rows('ice-candidates')[0].detail.relay).toBe(1)
+  })
+
+  test('an end-of-candidates event is ignored', () => {
+    const pc = new FakePc()
+    ExternalServices.traceIcePeer('p', pc)
+    pc.emit('icecandidate', { candidate: null })
+    pc.gatherDone()
+    expect(rows('ice-candidates')[0].detail).toMatchObject({ host: 0, srflx: 0, relay: 0 })
+  })
+
+  test('candidate errors are warnings carrying server url and code', () => {
+    const pc = new FakePc()
+    ExternalServices.traceIcePeer('p', pc)
+    pc.emit('icecandidateerror', { url: 'turn:relay.example.com:3478', errorCode: 401, errorText: 'Unauthorized', address: '198.51.100.7', port: 1234 })
+    const [row] = rows('ice-error')
+    expect(row.level).toBe('warn')
+    expect(row.detail).toEqual({ peer: 'p', url: 'turn:relay.example.com:3478', errorCode: 401, errorText: 'Unauthorized' })
+  })
+
+  test('no row contains an address or candidate string', () => {
+    const pc = new FakePc()
+    ExternalServices.traceIcePeer('p', pc)
+    pc.candidate('host', '192.0.2.44'); pc.candidate('srflx', '203.0.113.9')
+    pc.emit('icecandidateerror', { url: 'stun:s.example.com', errorCode: 701, address: '198.51.100.7' })
+    pc.gatherDone()
+    const text = JSON.stringify(Trace.events())
+    expect(text).not.toMatch(/\d+\.\d+\.\d+\.\d+/)
+    expect(text).not.toContain('candidate:')
+  })
+
+  test('records the selected route once, from the selected pair', async () => {
+    const pc = new FakePc()
+    pc.stats = [
+      { id: 't', type: 'transport', selectedCandidatePairId: 'cp' },
+      { id: 'cp', type: 'candidate-pair', localCandidateId: 'l', remoteCandidateId: 'r' },
+      { id: 'l', type: 'local-candidate', candidateType: 'host' },
+      { id: 'r', type: 'remote-candidate', candidateType: 'relay' },
+    ]
+    ExternalServices.traceIcePeer('p', pc)
+    pc.iceState('connected')
+    pc.iceState('completed')
+    await flush()
+    const sel = rows('ice-selected')
+    expect(sel).toHaveLength(1)
+    expect(sel[0].detail).toMatchObject({ peer: 'p', route: 'relay', local: 'host', remote: 'relay' })
+    expect(Number.isFinite(sel[0].detail.ms)).toBe(true)
+  })
+
+  test('classifies host-to-host as host and server-reflexive as srflx', async () => {
+    const make = (a, b) => {
+      const pc = new FakePc()
+      pc.stats = [
+        { id: 't', type: 'transport', selectedCandidatePairId: 'cp' },
+        { id: 'cp', type: 'candidate-pair', localCandidateId: 'l', remoteCandidateId: 'r' },
+        { id: 'l', candidateType: a }, { id: 'r', candidateType: b },
+      ]
+      ExternalServices.traceIcePeer(`${a}-${b}`, pc)
+      pc.iceState('connected')
+    }
+    make('host', 'host'); make('srflx', 'host')
+    await flush()
+    expect(rows('ice-selected').map(e => e.detail.route)).toEqual(['host', 'srflx'])
+  })
+
+  test('uses the nominated succeeded pair when there is no transport entry', async () => {
+    const pc = new FakePc()
+    pc.stats = [
+      { id: 'cp', type: 'candidate-pair', nominated: true, state: 'succeeded', localCandidateId: 'l', remoteCandidateId: 'r' },
+      { id: 'l', candidateType: 'relay' }, { id: 'r', candidateType: 'host' },
+    ]
+    ExternalServices.traceIcePeer('p', pc)
+    pc.iceState('connected')
+    await flush()
+    expect(rows('ice-selected')[0].detail.route).toBe('relay')
+  })
+
+  test('keeps trying on later connection events until a pair is selected', async () => {
+    const pc = new FakePc()
+    ExternalServices.traceIcePeer('p', pc)
+    pc.iceState('connected')
+    await flush()
+    expect(rows('ice-selected')).toHaveLength(0)
+
+    pc.stats = [
+      { id: 't', type: 'transport', selectedCandidatePairId: 'cp' },
+      { id: 'cp', type: 'candidate-pair', localCandidateId: 'l', remoteCandidateId: 'r' },
+      { id: 'l', candidateType: 'host' }, { id: 'r', candidateType: 'host' },
+    ]
+    pc.connectionState = 'connected'; pc.emit('connectionstatechange')
+    await flush()
+    pc.iceState('completed')
+    await flush()
+    expect(rows('ice-selected')).toHaveLength(1)
+  })
+
+  test('a stats failure is swallowed', async () => {
+    const pc = new FakePc()
+    pc.getStats = () => Promise.reject(new Error('nope'))
+    ExternalServices.traceIcePeer('p', pc)
+    pc.iceState('connected')
+    await flush()
+    expect(rows('ice-selected')).toHaveLength(0)
+    expect(rows('ice-state')).toHaveLength(1)
+  })
+
+  test('the returned function stops all recording', () => {
+    const pc = new FakePc()
+    const stop = ExternalServices.traceIcePeer('p', pc)
+    stop()
+    pc.candidate('host'); pc.gatherDone(); pc.iceState('failed')
+    pc.emit('icecandidateerror', { url: 'x' })
+    pc.connectionState = 'failed'; pc.emit('connectionstatechange')
+    expect(Trace.events().filter(e => e.ch === 'ice')).toHaveLength(0)
+  })
+})
+
+describe('traceIceProvider', () => {
+  const makeProvider = () => {
+    const handlers = []
+    const conns = new Map()
+    return {
+      conns,
+      on: (name, fn) => { if (name === 'peers') handlers.push(fn) },
+      room: { webrtcConns: conns },
+      emit: (detail) => handlers.forEach(fn => fn(detail)),
+    }
+  }
+  const addPeer = (provider, id) => {
+    const pc = new EventTarget()
+    Object.assign(pc, { iceConnectionState: 'new', connectionState: 'new', iceGatheringState: 'new' })
+    provider.conns.set(id, { peer: { _pc: pc } })
+    provider.emit({ added: [id], removed: [] })
+    return pc
+  }
+  const iceStates = () => Trace.events().filter(e => e.ch === 'ice' && e.evt === 'ice-state')
+  const fireIce = (pc, state) => {
+    pc.iceConnectionState = state
+    pc.dispatchEvent(new Event('iceconnectionstatechange'))
+  }
+
+  test('traces a peer once it is added', () => {
+    const provider = makeProvider()
+    ExternalServices.traceIceProvider(provider)
+    const pc = addPeer(provider, 'peer-a')
+    fireIce(pc, 'checking')
+    expect(iceStates().map(e => e.detail.peer)).toEqual(['peer-a'])
+  })
+
+  test('stops tracing a peer once it is removed', () => {
+    const provider = makeProvider()
+    ExternalServices.traceIceProvider(provider)
+    const pc = addPeer(provider, 'peer-a')
+    provider.emit({ added: [], removed: ['peer-a'] })
+    fireIce(pc, 'failed')
+    expect(iceStates()).toHaveLength(0)
+  })
+
+  test('re-adding a peer does not double-record', () => {
+    const provider = makeProvider()
+    ExternalServices.traceIceProvider(provider)
+    addPeer(provider, 'peer-a')
+    const pc = addPeer(provider, 'peer-a')
+    fireIce(pc, 'checking')
+    expect(iceStates()).toHaveLength(1)
+  })
+
+  test('ignores an added id with no webrtc connection (a broadcastchannel peer)', () => {
+    const provider = makeProvider()
+    ExternalServices.traceIceProvider(provider)
+    expect(() => provider.emit({ added: ['bc-peer'], removed: [] })).not.toThrow()
+  })
+
+  test('tolerates a provider without a room', () => {
+    const provider = makeProvider()
+    provider.room = undefined
+    ExternalServices.traceIceProvider(provider)
+    expect(() => provider.emit({ added: ['x'], removed: [] })).not.toThrow()
   })
 })
