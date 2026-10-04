@@ -21,7 +21,6 @@
  */
 
 import * as Trace from './trace.js'
-import { icon } from './icons.js'
 
 let App = null
 
@@ -469,7 +468,7 @@ export function debugBody(data, { snapshot = false, takenAt = Date.now() } = {})
       ? `<div class="dbg-note">Taken at ${esc(clockTime(takenAt))}. This is a copy; it does not update.</div>`
       : `<div class="dbg-snapshot-row">
           <button class="dbg-btn" data-dbg-action="snapshot" title="Freeze the current state and stream in a dialog you can select text from">
-            ${icon('camera', { size: 16 })} Snapshot Now
+            📷 Snapshot Now
           </button>
         </div>`}
     ${section('sec-state', 'State', '', stateHTML(s), open)}

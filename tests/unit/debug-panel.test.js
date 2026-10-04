@@ -662,7 +662,7 @@ describe('snapshot', () => {
     const doc = parse(debugBody(data()))
     const btn = doc.querySelector('[data-dbg-action="snapshot"]')
     expect(btn.textContent).toContain('Snapshot Now')
-    expect(btn.querySelector('svg')).not.toBeNull()
+    expect(btn.textContent).toContain('📷')
     const order = [...doc.querySelectorAll('.dbg-snapshot-row, .dbg-section')]
     expect(order[0].classList.contains('dbg-snapshot-row')).toBe(true)
   })

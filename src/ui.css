@@ -811,7 +811,6 @@ svg.tt-icon-letter {
 .dbg-ok  { color: #6a9a6a; }
 .dbg-bad { color: var(--warn); }
 .dbg-snapshot-row { margin-bottom: 8px; }
-.dbg-snapshot-row .dbg-btn { display: inline-flex; align-items: center; gap: 6px; }
 
 /* Snapshot dialog: the app turns selection off globally; this is the one
    place text is meant to be picked up and copied. */
