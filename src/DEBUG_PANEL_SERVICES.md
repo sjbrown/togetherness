@@ -28,24 +28,6 @@ hook is pinned to the bundled version.
 
 ---
 
-## Commit 3 — Signalling card in the Debug panel
-
-**Problem.** The Transport card shows URLs and a single connected flag side
-by side; there is no way to see which server is up or how often it has
-flapped.
-
-**Change.** Split Signalling out of Transport. Pure renderer
-`signalingCardHTML(net)`: one row per server with URL, primary/fallback
-tag, connected dot (join-ladder style), and connect/disconnect counts.
-Card is `warn` only when every server is down.
-
-**Done when.**
-- `tests/unit/debug-panel.test.js` renders literal state for: both up; one
-  down (no `warn`); both down (`warn`); an empty list.
-- Transport card no longer duplicates the signalling rows.
-
----
-
 ## Commit 4 — `ice` trace channel
 
 **Problem.** Nothing records whether STUN or TURN worked. A peer that never
