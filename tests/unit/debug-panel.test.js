@@ -16,7 +16,7 @@ import { describe, test, expect, beforeEach, vi } from 'vitest'
 import * as Trace from '../../src/trace.js'
 import {
   esc, clockTime, idHTML, jsonHTML,
-  stateHTML, opRowsHTML, streamRowsHTML, channelChipsHTML, joinSequenceHTML,
+  stateHTML, signalingCardHTML, opRowsHTML, streamRowsHTML, channelChipsHTML, joinSequenceHTML,
   debugBody, gatherDebugData, init, mount, unmount, isMounted, render,
 } from '../../src/debug_panel.js'
 
@@ -40,7 +40,11 @@ const makeState = (over = {}) => ({
                   entries: 2, mutations: [{ t: 'attr', name: 'transform' }] },
               ] },
   net:      { connected: true, synced: true, webrtcPeers: 1, bcPeers: 0,
-              signaling: ['ws://localhost:4444'], offline: false,
+              signalingConns: [
+                { url: 'ws://localhost:4444', role: 'primary', connected: true,
+                  connects: 1, disconnects: 0 },
+              ],
+              offline: false,
               peers: [{ clientId: 1, peerId: 'tt-u-v1-AA-abc', self: true }] },
   joinSequence: ['tt-u-v1-AA-abc', 'tt-u-v1-BB-xyz'],
   myAuthorityIndex: 0,
@@ -86,6 +90,7 @@ describe('stateHTML', () => {
     const text = d.textContent
     expect(text).toContain('Head')
     expect(text).toContain('Operation log')
+    expect(text).toContain('Signalling')
     expect(text).toContain('Transport')
     expect(text).toContain('demo-table')
     expect(text).toContain('ws://localhost:4444')
@@ -105,11 +110,10 @@ describe('stateHTML', () => {
     expect(d.textContent).toContain('diverged')
   })
 
-  test('a disconnected transport reads as a warning', () => {
-    const s = makeState()
-    s.net.connected = false
-    const d = parse(stateHTML(s))
-    expect(d.textContent).toContain('disconnected')
+  test('the Transport card no longer repeats the signalling rows', () => {
+    const transport = [...parse(stateHTML(makeState())).querySelectorAll('.dbg-card')]
+      .find(c => c.querySelector('.dbg-card-title').textContent === 'Transport')
+    expect(transport.textContent).not.toContain('ws://localhost:4444')
   })
 
   test('my own position in the authority order is marked', () => {
@@ -121,6 +125,60 @@ describe('stateHTML', () => {
 
   test('renders a message rather than throwing when there is no state', () => {
     expect(parse(stateHTML(null)).textContent).toContain('has not booted')
+  })
+})
+
+describe('signalingCardHTML', () => {
+  const conn = (over = {}) => ({
+    url: 'ws://a.example', role: 'primary', connected: true,
+    connects: 1, disconnects: 0, ...over,
+  })
+  const card = (conns) => parse(signalingCardHTML({ signalingConns: conns })).querySelector('.dbg-card')
+
+  test('shows one row per server with url, role and counts', () => {
+    const c = card([conn(), conn({ url: 'ws://b.example', role: 'fallback', connects: 3, disconnects: 2 })])
+    const rows = c.querySelectorAll('.dbg-sig-row')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].textContent).toContain('ws://a.example')
+    expect(rows[0].textContent).toContain('primary')
+    expect(rows[1].textContent).toContain('fallback')
+    expect(rows[1].querySelector('.dbg-sig-counts').textContent).toMatch(/3.*2/)
+  })
+
+  test('both up: no warning', () => {
+    const c = card([conn(), conn({ url: 'ws://b.example', role: 'fallback' })])
+    expect(c.classList.contains('warn')).toBe(false)
+    expect(c.querySelectorAll('.dbg-dot.online')).toHaveLength(2)
+  })
+
+  test('one down: marked offline but not a warning', () => {
+    const c = card([conn(), conn({ url: 'ws://b.example', role: 'fallback', connected: false })])
+    expect(c.classList.contains('warn')).toBe(false)
+    expect(c.querySelectorAll('.dbg-dot.online')).toHaveLength(1)
+    expect(c.querySelectorAll('.dbg-dot.offline')).toHaveLength(1)
+    expect(c.querySelector('.dbg-alert')).toBeNull()
+  })
+
+  test('all down: warns', () => {
+    const c = card([conn({ connected: false }), conn({ url: 'ws://b.example', role: 'fallback', connected: false })])
+    expect(c.classList.contains('warn')).toBe(true)
+    expect(c.querySelector('.dbg-alert').textContent).toBe('No signalling server is reachable.')
+  })
+
+  test('no servers: says so, without a warning', () => {
+    const c = card([])
+    expect(c.textContent).toContain('No signalling servers')
+    expect(c.classList.contains('warn')).toBe(false)
+  })
+
+  test('a missing list renders like an empty one', () => {
+    expect(parse(signalingCardHTML({})).textContent).toContain('No signalling servers')
+    expect(parse(signalingCardHTML(undefined)).textContent).toContain('No signalling servers')
+  })
+
+  test('escapes a url', () => {
+    const c = card([conn({ url: 'ws://<img src=x onerror=1>' })])
+    expect(c.querySelector('img')).toBeNull()
   })
 })
 
