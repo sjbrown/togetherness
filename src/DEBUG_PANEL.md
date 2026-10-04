@@ -122,6 +122,14 @@ long-lived table should pay for.
 **Stream** — the trace, filterable by channel chip, each event expanding to its
 detail as JSON.
 
+**Snapshot Now** — a button above State. The panel redraws on every trace
+event and the app turns text selection off globally, so nothing in the live
+panel can be picked up and copied. The button opens a dialog holding a frozen
+copy of the same body (`debugBody(data, { snapshot: true })`): every section
+open, no controls that act on the live panel, selection turned back on. It is
+built outside the panel's container and rendered once, so no trace event can
+redraw it under a selection.
+
 **Recorder** — pause, clear, and *Download trace*, which writes a
 self-describing JSON file carrying both the ring and a state snapshot. That
 file is the artifact to attach to a bug report; whoever opens it should not

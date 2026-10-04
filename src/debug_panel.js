@@ -21,6 +21,7 @@
  */
 
 import * as Trace from './trace.js'
+import { icon } from './icons.js'
 
 let App = null
 
@@ -81,8 +82,8 @@ export function jsonHTML(value) {
 
 const isOpen = (id) => _expanded.has(id)
 
-function section(id, title, meta, inner) {
-  return `<details class="dbg-section" data-dbg-key="${id}"${isOpen(id) ? ' open' : ''}>
+function section(id, title, meta, inner, open = isOpen(id)) {
+  return `<details class="dbg-section" data-dbg-key="${id}"${open ? ' open' : ''}>
     <summary class="dbg-summary"><span class="dbg-sec-title">${esc(title)}</span>${
       meta ? `<span class="dbg-sec-meta">${meta}</span>` : ''
     }</summary>
@@ -378,6 +379,53 @@ export function streamRowsHTML(events) {
 
 // ── body ────────────────────────────────────────────────────────────────
 
+// ── snapshot ────────────────────────────────────────────────────────────
+
+let _snapshotEl = null
+let _snapshotKey = null
+
+export const isSnapshotOpen = () => _snapshotEl !== null
+
+/**
+ * Open the snapshot dialog on the current data. Built outside the panel's
+ * container, so the panel's re-render and trace subscription never touch it.
+ */
+export function openSnapshot() {
+  closeSnapshot()
+  const html = debugBody(gatherDebugData(), { snapshot: true })
+
+  const wrap = document.createElement('div')
+  wrap.innerHTML = `
+    <div class="dialog-scrim open" data-dbg-snapshot-close></div>
+    <div class="dialog dialog-snapshot open" role="dialog" aria-modal="true" aria-labelledby="dbgSnapshotTitle">
+      <div class="dialog-head"><h2 id="dbgSnapshotTitle">Debug snapshot</h2></div>
+      <div class="dialog-body dbg-snapshot">${html}</div>
+      <div class="dialog-actions">
+        <button class="dialog-btn dialog-btn-primary" data-dbg-snapshot-close>Close</button>
+      </div>
+    </div>`
+  _snapshotEl = [...wrap.children]
+  document.body.append(..._snapshotEl)
+
+  for (const el of _snapshotEl) el.addEventListener('click', onSnapshotClick)
+  _snapshotKey = (e) => { if (e.key === 'Escape') closeSnapshot() }
+  document.addEventListener('keydown', _snapshotKey)
+  _snapshotEl.at(-1).querySelector('.dialog-btn')?.focus()
+}
+
+export function closeSnapshot() {
+  if (!_snapshotEl) return
+  for (const el of _snapshotEl) el.remove()
+  _snapshotEl = null
+  document.removeEventListener('keydown', _snapshotKey)
+  _snapshotKey = null
+}
+
+function onSnapshotClick(e) {
+  if (e.target.closest?.('[data-dbg-snapshot-close]')) { closeSnapshot(); return }
+  onClick(e)
+}
+
 export function gatherDebugData() {
   const active = Trace.CHANNELS.filter(c => Trace.channelEnabled(c.id)).map(c => c.id)
   return {
@@ -400,25 +448,39 @@ function safeState() {
   }
 }
 
-export function debugBody(data) {
+/**
+ * The whole panel body. With `snapshot`, the same rendering as a frozen copy
+ * to read and copy from: every section open, a note of when it was taken,
+ * and without the controls that act on the live panel (the Snapshot button,
+ * channel chips, the Recorder).
+ */
+export function debugBody(data, { snapshot = false, takenAt = Date.now() } = {}) {
   const s = data?.state
   if (s?.error) {
     return `<div class="dbg-alert">Could not read document state: ${esc(s.error)}</div>`
   }
   const counts = data?.counts ?? {}
+  const open = snapshot ? true : undefined
 
   const streamMeta = `${counts.total ?? 0}${counts.dropped ? ` · ${counts.dropped} dropped` : ''}`
 
   return `
-    ${section('sec-state', 'State', '', stateHTML(s))}
+    ${snapshot
+      ? `<div class="dbg-note">Taken at ${esc(clockTime(takenAt))}. This is a copy; it does not update.</div>`
+      : `<div class="dbg-snapshot-row">
+          <button class="dbg-btn" data-dbg-action="snapshot" title="Freeze the current state and stream in a dialog you can select text from">
+            ${icon('camera', { size: 16 })} Snapshot Now
+          </button>
+        </div>`}
+    ${section('sec-state', 'State', '', stateHTML(s), open)}
     ${section('sec-ops', 'Operations',
       `${s?.head?.agrees === false ? '<span class="dbg-bad">head mismatch</span> · ' : ''}${s?.ops?.total ?? 0}`,
-      headCardHTML(s) + opRowsHTML(s?.ops, s?.head?.head))}
+      headCardHTML(s) + opRowsHTML(s?.ops, s?.head?.head), open)}
     ${section('sec-stream', 'Stream', streamMeta, `
-      <div class="dbg-chips">${channelChipsHTML(counts)}</div>
-      <div class="dbg-stream" id="dbgStream">${streamRowsHTML(data?.events)}</div>
-    `)}
-    ${section('sec-trace', 'Recorder', data?.recording ? 'on' : '<span class="dbg-bad">paused</span>', `
+      ${snapshot ? '' : `<div class="dbg-chips">${channelChipsHTML(counts)}</div>`}
+      <div class="dbg-stream"${snapshot ? '' : ' id="dbgStream"'}>${streamRowsHTML(data?.events)}</div>
+    `, open)}
+    ${snapshot ? '' : section('sec-trace', 'Recorder', data?.recording ? 'on' : '<span class="dbg-bad">paused</span>', `
       <div class="dbg-btn-row">
         <button class="dbg-btn" data-dbg-action="toggle-recording">${data?.recording ? 'Pause recording' : 'Resume recording'}</button>
         <button class="dbg-btn" data-dbg-action="clear">Clear</button>
@@ -494,6 +556,9 @@ function onClick(e) {
       break
     case 'copy-op':
       copyOp(btn.dataset.dbgId, btn)
+      break
+    case 'snapshot':
+      openSnapshot()
       break
   }
 }

@@ -18,6 +18,7 @@ import {
   esc, clockTime, idHTML, jsonHTML,
   stateHTML, headCardHTML, serversCardHTML, signalingHTML, iceHTML, peerTableHTML, opRowsHTML, streamRowsHTML, channelChipsHTML, joinSequenceHTML,
   debugBody, gatherDebugData, init, mount, unmount, isMounted, render,
+  openSnapshot, closeSnapshot, isSnapshotOpen,
 } from '../../src/debug_panel.js'
 
 const parse = (html) => {
@@ -52,6 +53,7 @@ const makeState = (over = {}) => ({
 })
 
 beforeEach(() => {
+  closeSnapshot()
   Trace._reset()
   unmount()
   init(null)
@@ -642,5 +644,146 @@ describe('mount / unmount', () => {
     expect(Trace.counts().total).toBe(0)
     expect(host.textContent).toContain('Nothing recorded yet')
     unmount()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────
+// snapshot
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('snapshot', () => {
+  const data = (over = {}) => ({
+    state: makeState(), counts: Trace.counts(), recording: true, capacity: 600,
+    events: [{ seq: 1, t: 1700000000000, ch: 'net', evt: 'x', msg: 'signaling connected', detail: { url: 'ws://a' }, level: 'info' }],
+    ...over,
+  })
+
+  test('the panel has a Snapshot Now button above the first section', () => {
+    const doc = parse(debugBody(data()))
+    const btn = doc.querySelector('[data-dbg-action="snapshot"]')
+    expect(btn.textContent).toContain('Snapshot Now')
+    expect(btn.querySelector('svg')).not.toBeNull()
+    const order = [...doc.querySelectorAll('.dbg-snapshot-row, .dbg-section')]
+    expect(order[0].classList.contains('dbg-snapshot-row')).toBe(true)
+  })
+
+  const snap = (over, takenAt) => parse(debugBody(data(over), { snapshot: true, takenAt }))
+
+  test('the snapshot is the panel body itself: same sections, all open, with when it was taken', () => {
+    const doc = snap({}, 1700000000000)
+    expect([...doc.querySelectorAll('.dbg-sec-title')].map(e => e.textContent)).toEqual(['State', 'Operations', 'Stream'])
+    expect([...doc.querySelectorAll('details.dbg-section')].every(s => s.open)).toBe(true)
+    expect(doc.textContent).toContain('Taken at 22:13:20.000')
+    expect(doc.textContent).toContain('signaling connected')
+
+    const live = parse(debugBody(data()))
+    for (const key of ['sec-state', 'sec-ops', 'sec-stream']) {
+      expect(doc.querySelector(`[data-dbg-key="${key}"] .dbg-section-body`).innerHTML.length).toBeGreaterThan(0)
+      expect(live.querySelector(`[data-dbg-key="${key}"]`)).not.toBeNull()
+    }
+  })
+
+  test('the snapshot leaves out what only acts on the live panel', () => {
+    const doc = snap()
+    expect(doc.querySelector('.dbg-chips')).toBeNull()
+    expect(doc.querySelector('[data-dbg-action="snapshot"]')).toBeNull()
+    expect(doc.querySelector('[data-dbg-action="toggle-recording"]')).toBeNull()
+    expect(doc.querySelector('[data-dbg-action="clear"]')).toBeNull()
+    expect(doc.querySelector('#dbgStream')).toBeNull()
+  })
+
+  test('the live body is unchanged by the option existing: closed sections, chips, recorder', () => {
+    const doc = parse(debugBody(data()))
+    expect(doc.querySelector('.dbg-chips')).not.toBeNull()
+    expect(doc.querySelector('[data-dbg-action="toggle-recording"]')).not.toBeNull()
+    expect(doc.querySelector('#dbgStream')).not.toBeNull()
+    expect(doc.querySelector('[data-dbg-key="sec-trace"]').open).toBe(false)
+  })
+
+  test('a snapshot flags a head mismatch on Operations and survives a state error', () => {
+    const bad = makeState({ head: { head: 'tt-op-aaa', projected: 'tt-op-zzz', agrees: false, mergeTips: [] } })
+    expect(snap({ state: bad }).querySelector('[data-dbg-key="sec-ops"] .dbg-sec-meta').textContent).toContain('head mismatch')
+    expect(snap({ state: { error: 'boom' } }).textContent).toContain('boom')
+  })
+
+  test('clicking Snapshot Now opens a dialog outside the panel', () => {
+    const host = document.createElement('div')
+    document.body.append(host)
+    init({ getDebugState: () => makeState() })
+    mount(host)
+    render()
+
+    host.querySelector('[data-dbg-action="snapshot"]').click()
+    expect(isSnapshotOpen()).toBe(true)
+    const dlg = document.querySelector('.dialog-snapshot')
+    expect(dlg).not.toBeNull()
+    expect(host.contains(dlg)).toBe(false)
+    expect(dlg.getAttribute('role')).toBe('dialog')
+    expect(dlg.querySelector('.dbg-snapshot').textContent).toContain('Taken at')
+    unmount(); host.remove()
+  })
+
+  test('trace events and panel re-renders leave an open snapshot untouched', async () => {
+    const host = document.createElement('div')
+    document.body.append(host)
+    init({ getDebugState: () => makeState() })
+    mount(host)
+    render()
+    host.querySelector('[data-dbg-action="snapshot"]').click()
+
+    const body = document.querySelector('.dbg-snapshot')
+    const before = body.innerHTML
+    const marker = body.querySelector('.dbg-sec-title')
+
+    Trace.net('later', 'something after the snapshot')
+    render()
+    await new Promise(r => setTimeout(r, 40))
+
+    expect(body.innerHTML).toBe(before)
+    expect(body.contains(marker)).toBe(true)
+    expect(body.textContent).not.toContain('something after the snapshot')
+    expect(host.textContent).toContain('something after the snapshot')
+    unmount(); host.remove()
+  })
+
+  test('closes from the Close button, the scrim and Escape', () => {
+    init({ getDebugState: () => makeState() })
+    openSnapshot()
+    document.querySelector('.dialog-snapshot .dialog-btn').click()
+    expect(isSnapshotOpen()).toBe(false)
+    expect(document.querySelector('.dialog-snapshot')).toBeNull()
+
+    openSnapshot()
+    document.querySelector('.dialog-scrim[data-dbg-snapshot-close]').click()
+    expect(isSnapshotOpen()).toBe(false)
+
+    openSnapshot()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    expect(isSnapshotOpen()).toBe(false)
+    expect(document.querySelector('.dialog-scrim[data-dbg-snapshot-close]')).toBeNull()
+  })
+
+  test('clicking inside the dialog does not close it', () => {
+    init({ getDebugState: () => makeState() })
+    openSnapshot()
+    document.querySelector('.dbg-snapshot').click()
+    expect(isSnapshotOpen()).toBe(true)
+    closeSnapshot()
+  })
+
+  test('opening twice leaves one dialog, and closing removes the key listener', () => {
+    init({ getDebugState: () => makeState() })
+    openSnapshot()
+    openSnapshot()
+    expect(document.querySelectorAll('.dialog-snapshot')).toHaveLength(1)
+    expect(document.querySelectorAll('.dialog-scrim[data-dbg-snapshot-close]')).toHaveLength(1)
+    closeSnapshot()
+    expect(document.querySelectorAll('.dialog-snapshot')).toHaveLength(0)
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    expect(isSnapshotOpen()).toBe(false)
+  })
+
+  test('closing with nothing open is harmless', () => {
+    expect(() => closeSnapshot()).not.toThrow()
   })
 })

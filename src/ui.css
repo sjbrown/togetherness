@@ -810,6 +810,22 @@ svg.tt-icon-letter {
 .dbg-nil { color: var(--text-3); font-style: italic; }
 .dbg-ok  { color: #6a9a6a; }
 .dbg-bad { color: var(--warn); }
+.dbg-snapshot-row { margin-bottom: 8px; }
+.dbg-snapshot-row .dbg-btn { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Snapshot dialog: the app turns selection off globally; this is the one
+   place text is meant to be picked up and copied. */
+.dialog.dialog-snapshot {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100dvh - var(--safe-t) - var(--safe-b) - 32px);
+  touch-action: pan-y;
+}
+.dialog-snapshot .dbg-snapshot,
+.dialog-snapshot .dbg-snapshot * {
+  user-select: text; -webkit-user-select: text;
+}
+.dialog-snapshot .dbg-snapshot { touch-action: pan-y; font-size: 15px; color: var(--text); }
+.dialog-snapshot .dbg-stream { max-height: none; overflow: visible; }
 .dbg-group + .dbg-group { margin-top: 12px; }
 .dbg-subtitle {
   font-size: 13px; font-weight: 700; color: var(--text-3);
