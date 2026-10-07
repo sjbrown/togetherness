@@ -831,6 +831,7 @@ svg.tt-icon-letter {
   text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px;
 }
 .dbg-note { font-size: 15px; color: var(--text-3); margin-top: 8px; line-height: 1.5; }
+.dbg-note a { color: var(--primary); }
 .dbg-alert {
   margin-top: 8px; padding: 8px 10px; border-radius: 8px;
   background: var(--warn-soft); color: var(--text); font-size: 15px; line-height: 1.5;

@@ -393,6 +393,22 @@ describe('peerTableHTML', () => {
   })
 })
 
+describe('serversCardHTML edit link', () => {
+  const card = () => parse(serversCardHTML({ signalingConns: [] })).querySelector('.dbg-card')
+
+  test('links to the Advanced panel on the home page, in a new tab', () => {
+    const a = card().querySelector('a')
+    expect(a.textContent).toBe('Edit services…')
+    expect(a.getAttribute('href')).toBe('home.html#advanced')
+    expect(a.getAttribute('target')).toBe('_blank')
+    expect(a.getAttribute('rel')).toContain('noopener')
+  })
+
+  test('says when changes take effect', () => {
+    expect(card().textContent).toContain('next time this table is opened')
+  })
+})
+
 describe('serversCardHTML', () => {
   const conn = (over = {}) => ({ url: 'ws://a.example', role: 'primary', connected: true, connects: 1, disconnects: 0, ...over })
   const card = (conns) => parse(serversCardHTML({ signalingConns: conns })).querySelector('.dbg-card')

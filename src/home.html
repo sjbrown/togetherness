@@ -735,7 +735,10 @@ const turnCredentialEl   = document.getElementById('turnCredential');
 
 advancedLinkEl.addEventListener('click', (e) => {
   e.preventDefault();
-  const opening = advancedPanelEl.style.display === 'none';
+  setAdvancedOpen(advancedPanelEl.style.display === 'none');
+});
+
+function setAdvancedOpen(opening) {
   advancedPanelEl.style.display = opening ? 'flex' : 'none';
   if (opening) {
     signalingEl.value         = ExternalServices.getSignalling() ?? ExternalServices.defaultSignalling();
@@ -752,7 +755,13 @@ advancedLinkEl.addEventListener('click', (e) => {
     turnUsernameEl.value     = ExternalServices.resolveTURNUsername();
     turnCredentialEl.value   = ExternalServices.resolveTURNCredential();
   }
-});
+}
+
+// The Debug panel's "Edit services…" link lands here.
+if (location.hash === '#advanced') {
+  setAdvancedOpen(true);
+  advancedPanelEl.scrollIntoView({ block: 'center' });
+}
 
 // setSignalling/setSignallingFallback decide for themselves whether a
 // value is worth persisting (not empty, not just the built-in default,

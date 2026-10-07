@@ -195,6 +195,8 @@ export function serversCardHTML(net) {
       <div class="dbg-card-title">Servers</div>
       ${group('Signalling', signalingHTML(net))}
       ${group('STUN / TURN', iceHTML(net))}
+      <div class="dbg-note"><a href="home.html#advanced" target="_blank" rel="noopener">Edit services…</a>
+        Changes apply the next time this table is opened.</div>
     </div>`
 }
 
