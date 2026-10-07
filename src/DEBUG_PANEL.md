@@ -32,7 +32,7 @@ panel ships to every player, on every table, not behind `?debug=1`.
        │ everyone writes
        │
   envelope · op_dag · op_replay · op_checkpoint · op_wire_mutation
-  tables · app · index.html
+  tables · app · index.html · join_intent · external_services
        │
        │ debug_panel reads
        ▼
@@ -75,6 +75,15 @@ removed nodes, and a 600-deep ring of them pins whole detached subtrees alive.
 `envelope.js` summarizes to counts by type at the call site. Any future
 instrumentation near the envelope has the same obligation.
 
+Two more rules of the same kind, for the network channels, because a trace
+is downloaded and attached to bug reports:
+
+- **No credentials.** TURN credentials never enter a trace row or the
+  downloaded file. Anything recording ICE servers goes through
+  `ExternalServices.describeIceServers()`, which masks the credential.
+- **No addresses.** `ice` rows record candidate counts and types, never
+  candidate strings, SDP or IPs.
+
 ---
 
 ## 4. Channels
@@ -82,7 +91,8 @@ instrumentation near the envelope has the same obligation.
 | id | what it carries | default |
 |---|---|---|
 | `boot` | identity, table id, IndexedDB open/replay, join sequence | on |
-| `net` | signaling URL, provider status, WebRTC peers, presence join/leave | on |
+| `net` | signaling URLs and per-server connect/disconnect, announce/signal traffic, WebRTC peers, presence join/leave, the join dialog's outcome | on |
+| `ice` | per-peer ICE state, candidate counts, candidate errors, selected route (host / srflx / prflx / relay) | on |
 | `op` | commit, append, arrival, classification, apply order | on |
 | `envelope` | capture spans, nesting, suppression, empty gestures | on |
 | `wire` | serialize / apply / invert | **off** |
@@ -106,23 +116,42 @@ the system.
 
 Four sections, in the order someone actually needs them.
 
-**State** — what is true right now. The most useful thing here is the
-comparison between this peer's stored head (`op_head.js`) and the marker the
-toys layer is actually projected at (`data-tt-head`). When those disagree, the
-DOM is showing something other than what the peer thinks it is, and the panel
-says so in words rather than leaving it to be inferred from two ids. More than
-one tip in the log gets the same treatment.
+**State** — what is true right now, in three cards. *Servers*: each
+signalling server's state, then the configured STUN and TURN servers and
+whether they have worked, drawn from how many peers' ICE gathering produced
+a reflexive or a relay candidate; it warns only when no signalling server is
+up, and links to the home page's Advanced panel where they are edited.
+*Table*: the table's identity. *Peers*: sync state, one row per WebRTC peer
+(ICE state, route, time to connect, last candidate error), presence, and the
+join sequence. The summary carries short flags (`sig 1/2`, `relay`,
+`ice failed`) so a service problem shows without opening the section.
 
-**Operations** — the log in `totalOrder`, newest first, each row expanding to
+**Operations** — opens with the Head card, the most useful thing the panel
+has: the comparison between this peer's stored head (`op_head.js`) and the
+marker the toys layer is actually projected at (`data-tt-head`). When those
+disagree, the DOM is showing something other than what the peer thinks it is,
+and the panel says so in words rather than leaving it to be inferred from two
+ids, and flags it on the section's summary. Below that, the log in `totalOrder`, newest first, each row expanding to
 its wire packet with a copy button. Capped at `MAX_DEBUG_OPS` (250): a
 topological sort over the whole log on every refresh is not something a
 long-lived table should pay for.
 
 **Stream** — the trace, filterable by channel chip, each event expanding to its
-detail as JSON.
+detail as JSON. *Connectivity* leaves only `net` and `ice` recording; *warn+*
+hides info rows from the view without changing what records.
+
+**Snapshot Now** — a button above State. The panel redraws on every trace
+event and the app turns text selection off globally, so nothing in the live
+panel can be picked up and copied. The button opens a dialog holding a frozen
+copy of the same body (`debugBody(data, { snapshot: true })`): every section
+open, no controls that act on the live panel, selection turned back on. It is
+built outside the panel's container and rendered once, so no trace event can
+redraw it under a selection.
 
 **Recorder** — pause, clear, and *Download trace*, which writes a
-self-describing JSON file carrying both the ring and a state snapshot. That
+self-describing JSON file carrying the ring, a state snapshot, and a
+`services` block (signalling state and the redacted ICE servers) lifted out of
+it. That
 file is the artifact to attach to a bug report; whoever opens it should not
 need this source tree to read it.
 
@@ -140,6 +169,12 @@ need this source tree to read it.
   gesture; the view coalesces to an animation frame.
 - Everything is escaped. Gesture labels reach this panel carrying names other
   people typed.
+- The ICE hook reaches simple-peer's private `_pc` through y-webrtc's
+  `webrtcConns`, so it is pinned to the bundled versions. If `_pc` ever goes
+  missing the hook skips the peer and the `ice` rows disappear quietly; the
+  `ice-trace` e2e spec is what notices. It is registered in `index.html`, as
+  soon as the provider exists, because a joiner's connections are made while
+  the join dialog is still probing, long before the app boots.
 - The view degrades rather than throws. A panel that fails while reporting a
   broken state hides the very thing it exists to show — so `getDebugState()`
   is called inside a guard and a failure renders as a message.

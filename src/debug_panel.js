@@ -34,6 +34,12 @@ let _frame       = null
 
 const MAX_STREAM_ROWS = 250
 
+// A view filter, not a recording setting: ephemeral like the open sections.
+let _warnOnly = false
+
+export const isWarnOnly = () => _warnOnly
+export function setWarnOnly(v) { _warnOnly = !!v }
+
 export function init(appBus) {
   App = appBus
 }
@@ -81,8 +87,8 @@ export function jsonHTML(value) {
 
 const isOpen = (id) => _expanded.has(id)
 
-function section(id, title, meta, inner) {
-  return `<details class="dbg-section" data-dbg-key="${id}"${isOpen(id) ? ' open' : ''}>
+function section(id, title, meta, inner, open = isOpen(id)) {
+  return `<details class="dbg-section" data-dbg-key="${id}"${open ? ' open' : ''}>
     <summary class="dbg-summary"><span class="dbg-sec-title">${esc(title)}</span>${
       meta ? `<span class="dbg-sec-meta">${meta}</span>` : ''
     }</summary>
@@ -96,13 +102,16 @@ function kv(label, valueHTML, cls = '') {
 
 // ── STATE ───────────────────────────────────────────────────────────────
 
-export function stateHTML(s) {
-  if (!s) return '<div class="dbg-empty">No document state — the table has not booted.</div>'
-
+/**
+ * This peer's stored head against the marker the toys layer is actually
+ * projected at. It lives with the operation list it indexes into.
+ */
+export function headCardHTML(s) {
+  if (!s) return ''
   const head = s.head ?? {}
   const headWarn = head.head && !head.agrees
 
-  const headCard = `
+  return `
     <div class="dbg-card ${headWarn ? 'warn' : ''}">
       <div class="dbg-card-title">Head</div>
       ${kv('stored head', idHTML(head.head))}
@@ -115,35 +124,13 @@ export function stateHTML(s) {
         ? kv('merge tips', head.mergeTips.map(idHTML).join(' '))
         : kv('merge tips', '<span class="dbg-nil">none pending</span>')}
     </div>`
+}
 
-  const ops = s.ops ?? {}
-  const tips = ops.tips ?? []
-  const opsCard = `
-    <div class="dbg-card ${tips.length > 1 ? 'warn' : ''}">
-      <div class="dbg-card-title">Operation log</div>
-      ${kv('operations', `<b>${ops.total ?? 0}</b>`)}
-      ${kv('checkpoints', String(ops.checkpoints ?? 0))}
-      ${kv('authored by me', String(ops.mine ?? 0))}
-      ${kv(tips.length === 1 ? 'tip' : 'tips', tips.length ? tips.map(idHTML).join(' ') : '<span class="dbg-nil">none</span>')}
-      ${tips.length > 1
-        ? '<div class="dbg-alert">More than one tip: the log has diverged and has not been reconciled yet.</div>'
-        : ''}
-    </div>`
+export function stateHTML(s) {
+  if (!s) return '<div class="dbg-empty">No document state — the table has not booted.</div>'
 
   const net = s.net ?? {}
   const peers = net.peers ?? []
-  const netCard = `
-    <div class="dbg-card">
-      <div class="dbg-card-title">Transport</div>
-      ${kv('doc synced', net.synced ? '<span class="dbg-ok">yes</span>' : '<span class="dbg-nil">not yet</span>')}
-      ${kv('webrtc peers', String(net.webrtcPeers ?? 0))}
-      ${kv('broadcastchannel peers', String(net.bcPeers ?? 0))}
-      ${net.offline ? kv('offline mode', '<span class="dbg-bad">on</span>') : ''}
-      ${kv('presence', peers.length
-        ? peers.map(p => `<code class="dbg-id" title="${esc(p.peerId ?? p.clientId)}">${esc(p.peerId ?? String(p.clientId), 6)}${p.self ? ' (me)' : ''}</code>`).join(' ')
-        : '<span class="dbg-nil">nobody</span>')}
-    </div>`
-
   const seq = s.joinSequence ?? []
   const onlineIds = new Set((s.net?.peers ?? []).map(p => p.peerId).filter(Boolean))
   const tableCard = `
@@ -156,23 +143,76 @@ export function stateHTML(s) {
       ${kv('yjs client id', String(s.identity?.clientId ?? '—'))}
     </div>`
 
-  const joinSeqCard = `
+  const peersCard = `
     <div class="dbg-card">
-      <div class="dbg-card-title">Join Sequence</div>
-      ${joinSequenceHTML(seq, s.identity?.myId, onlineIds)}
+      <div class="dbg-card-title">Peers</div>
+      ${group('Sync', `
+        ${kv('doc synced', net.synced ? '<span class="dbg-ok">yes</span>' : '<span class="dbg-nil">not yet</span>')}
+        ${kv('broadcastchannel peers', String(net.bcPeers ?? 0))}
+        ${net.offline ? kv('offline mode', '<span class="dbg-bad">on</span>') : ''}`)}
+      ${group('WebRTC', peerTableHTML(net))}
+      ${group('Presence', kv('connected', peers.length
+        ? peers.map(p => `<code class="dbg-id" title="${esc(p.peerId ?? p.clientId)}">${esc(p.peerId ?? String(p.clientId), 6)}${p.self ? ' (me)' : ''}</code>`).join(' ')
+        : '<span class="dbg-nil">nobody</span>'))}
+      ${group('Join sequence', joinSequenceHTML(seq, s.identity?.myId, onlineIds))}
     </div>`
 
-  return headCard + opsCard + signalingCardHTML(net) + netCard + tableCard + joinSeqCard
+  return serversCardHTML(net) + tableCard + peersCard
 }
 
 /**
- * One row per signalling server. The card only warns when every server is
- * down: one of several going away is routine, and even none doesn't touch
- * peers already connected — signalling only introduces new ones.
+ * Short flags for the State summary, so a service problem shows without
+ * opening the section: signalling servers down, a peer going through a
+ * TURN relay, a peer whose ICE failed.
  */
-export function signalingCardHTML(net) {
+export function healthBadgesHTML(net) {
+  const badges = []
   const conns = net?.signalingConns ?? []
-  const allDown = conns.length > 0 && !conns.some(c => c.connected)
+  const up = conns.filter(c => c.connected).length
+  if (conns.length && up < conns.length) {
+    badges.push(`<span class="dbg-bad" title="signalling servers connected">sig ${up}/${conns.length}</span>`)
+  }
+  const peers = net?.peersIce ?? []
+  if (peers.some(p => p.route === 'relay')) {
+    badges.push('<span class="dbg-bad" title="a peer is connected through a TURN relay">relay</span>')
+  }
+  if (peers.some(p => p.state === 'failed')) {
+    badges.push('<span class="dbg-bad" title="a peer\'s ICE connection failed">ice failed</span>')
+  }
+  return badges.join(' · ')
+}
+
+/** A titled run of rows inside a card; nothing at all when there is nothing to show. */
+function group(title, inner) {
+  if (!inner) return ''
+  return `<div class="dbg-group"><div class="dbg-subtitle">${esc(title)}</div>${inner}</div>`
+}
+
+/** Signalling and ICE servers in one card; it warns only when no signalling server is up. */
+export function serversCardHTML(net) {
+  return `
+    <div class="dbg-card ${signalingDown(net) ? 'warn' : ''}">
+      <div class="dbg-card-title">Servers</div>
+      ${group('Signalling', signalingHTML(net))}
+      ${group('STUN / TURN', iceHTML(net))}
+      <div class="dbg-note"><a href="home.html#advanced" target="_blank" rel="noopener">Edit services…</a>
+        Changes apply the next time this table is opened.</div>
+    </div>`
+}
+
+const signalingDown = (net) => {
+  const conns = net?.signalingConns ?? []
+  return conns.length > 0 && !conns.some(c => c.connected)
+}
+
+/**
+ * One row per signalling server. Only every server being down is flagged:
+ * one of several going away is routine, and even none doesn't touch peers
+ * already connected — signalling only introduces new ones.
+ */
+export function signalingHTML(net) {
+  const conns = net?.signalingConns ?? []
+  const allDown = signalingDown(net)
 
   const rows = conns.map(c => `<div class="dbg-sig-row">
       <span class="dbg-dot ${c.connected ? 'online' : 'offline'}" title="${c.connected ? 'connected' : 'not connected'}"></span>
@@ -182,13 +222,83 @@ export function signalingCardHTML(net) {
     </div>`).join('')
 
   return `
-    <div class="dbg-card ${allDown ? 'warn' : ''}">
-      <div class="dbg-card-title">Signalling</div>
-      ${rows || '<div class="dbg-empty">No signalling servers.</div>'}
-      ${allDown
-        ? '<div class="dbg-alert">No signalling server is reachable.</div>'
-        : ''}
+    ${rows || '<div class="dbg-empty">No signalling servers.</div>'}
+    ${allDown ? '<div class="dbg-alert">No signalling server is reachable.</div>' : ''}`
+}
+
+const iceUrls = (servers, scheme) => servers
+  .flatMap(e => [].concat(e.urls))
+  .filter(u => scheme.test(u))
+
+/**
+ * Which STUN and TURN servers are configured, and whether they have
+ * worked: a result line per kind, drawn from how many peers' gathering
+ * produced a reflexive (STUN) or relay (TURN) candidate.
+ */
+export function iceHTML(net) {
+  const ice = net?.ice
+  if (!ice) return ''
+  const servers = ice.iceServers ?? []
+  const stun = iceUrls(servers, /^stuns?:/i)
+  const turn = iceUrls(servers, /^turns?:/i)
+  const username = servers.find(e => e.username)?.username
+
+  const gathered = (net.peersIce ?? []).filter(p => p.candidates)
+  const result = (label, key, noun) => {
+    if (!gathered.length) return { row: kv(`${label} result`, '<span class="dbg-nil">no peers yet</span>'), alert: '' }
+    const n = gathered.filter(p => p.candidates[key] > 0).length
+    const text = `${noun} on ${n}/${gathered.length} peers`
+    return {
+      row:   kv(`${label} result`, n === gathered.length ? `<span class="dbg-ok">${text}</span>` : `<span class="dbg-bad">${text}</span>`),
+      alert: n === 0 ? `<div class="dbg-alert">${label} never produced a ${noun.replace(/s$/, '')}.</div>` : '',
+    }
+  }
+  const stunResult = result('STUN', 'srflx', 'reflexive candidates')
+  const turnResult = result('TURN', 'relay', 'relay candidates')
+
+  const urlList = (urls) => urls.length
+    ? urls.map(u => `<code class="dbg-id">${esc(u)}</code>`).join(' ')
+    : '<span class="dbg-nil">none</span>'
+
+  return `
+      ${kv('STUN', urlList(stun))}
+      ${kv('TURN', urlList(turn) + (ice.turnIsPublicTestRelay
+        ? ' <span class="dbg-tag warn" title="A free public relay for testing; not something to depend on">public test relay</span>'
+        : ''))}
+      ${username ? kv('TURN user', `<code class="dbg-id">${esc(username)}</code>`) : ''}
+      ${stunResult.row}
+      ${turnResult.row}
+      ${stunResult.alert}${turnResult.alert}`
+}
+
+const ROUTE_TITLES = {
+  host:  'direct, same network',
+  srflx: 'direct, through NAT (STUN)',
+  prflx: 'direct, address learned during connectivity checks',
+  relay: 'relayed through a TURN server',
+}
+
+/** One row per WebRTC peer: ICE state, the route it ended up on, how long it took. */
+export function peerTableHTML(net) {
+  const peers = net?.peersIce
+  if (!peers) return ''
+  const rows = peers.map(p => {
+    const bad = p.state === 'failed' || p.state === 'disconnected'
+    const err = p.lastError
+      ? `<span class="dbg-peer-err" title="${esc(p.lastError.errorText ?? '')}">${esc(p.lastError.errorCode ?? '')} ${esc(p.lastError.url ?? '')}</span>`
+      : ''
+    return `<div class="dbg-peer-row">
+      <code class="dbg-id" title="${esc(p.peer)}">${esc(String(p.peer).slice(0, 8))}</code>
+      <span class="${bad ? 'dbg-bad' : p.state === 'connected' || p.state === 'completed' ? 'dbg-ok' : 'dbg-nil'}">${esc(p.state)}</span>
+      ${p.route
+        ? `<span class="dbg-tag route ${esc(p.route)}" title="${esc(ROUTE_TITLES[p.route] ?? '')}">${esc(p.route)}</span>`
+        : '<span class="dbg-nil">&mdash;</span>'}
+      <span class="dbg-peer-ms">${p.connectMs != null ? `${p.connectMs} ms` : ''}</span>
+      ${err}
     </div>`
+  }).join('')
+
+  return rows || '<div class="dbg-empty">No WebRTC peers.</div>'
 }
 
 /**
@@ -275,9 +385,31 @@ export function channelChipsHTML(counts) {
   }).join('')
 }
 
-export function streamRowsHTML(events) {
+/**
+ * Quick views over the channel chips. Connectivity shows only net and ice;
+ * warn+ hides info rows. The first changes which channels record (warnings
+ * and errors are recorded on a muted channel regardless); the second only
+ * filters what is drawn.
+ */
+const CONNECTIVITY = new Set([Trace.NET, Trace.ICE])
+
+export const connectivityActive = () =>
+  Trace.CHANNELS.every(c => Trace.channelEnabled(c.id) === CONNECTIVITY.has(c.id))
+
+export function viewChipsHTML({ warnOnly = false } = {}) {
+  return `<button class="dbg-view-chip ${connectivityActive() ? 'on' : ''}" data-dbg-action="preset-connectivity"
+      title="Show only net and ice; click again to restore the default channels">Connectivity</button>
+    <button class="dbg-view-chip ${warnOnly ? 'on' : ''}" data-dbg-action="toggle-warn"
+      title="Hide info rows; this only filters the view, recording is unchanged">warn+</button>`
+}
+
+export function streamRowsHTML(events, { warnOnly = false } = {}) {
   if (!events?.length) {
     return '<div class="dbg-empty">Nothing recorded yet. Move a toy, or reload with a peer connected.</div>'
+  }
+  if (warnOnly) {
+    events = events.filter(e => e.level === 'warn' || e.level === 'error')
+    if (!events.length) return '<div class="dbg-empty">No warnings or errors in the stream.</div>'
   }
   return events.map(e => {
     const key = `ev-${e.seq}`
@@ -298,12 +430,60 @@ export function streamRowsHTML(events) {
 
 // ── body ────────────────────────────────────────────────────────────────
 
+// ── snapshot ────────────────────────────────────────────────────────────
+
+let _snapshotEl = null
+let _snapshotKey = null
+
+export const isSnapshotOpen = () => _snapshotEl !== null
+
+/**
+ * Open the snapshot dialog on the current data. Built outside the panel's
+ * container, so the panel's re-render and trace subscription never touch it.
+ */
+export function openSnapshot() {
+  closeSnapshot()
+  const html = debugBody(gatherDebugData(), { snapshot: true })
+
+  const wrap = document.createElement('div')
+  wrap.innerHTML = `
+    <div class="dialog-scrim open" data-dbg-snapshot-close></div>
+    <div class="dialog dialog-snapshot open" role="dialog" aria-modal="true" aria-labelledby="dbgSnapshotTitle">
+      <div class="dialog-head"><h2 id="dbgSnapshotTitle">Debug snapshot</h2></div>
+      <div class="dialog-body dbg-snapshot">${html}</div>
+      <div class="dialog-actions">
+        <button class="dialog-btn dialog-btn-primary" data-dbg-snapshot-close>Close</button>
+      </div>
+    </div>`
+  _snapshotEl = [...wrap.children]
+  document.body.append(..._snapshotEl)
+
+  for (const el of _snapshotEl) el.addEventListener('click', onSnapshotClick)
+  _snapshotKey = (e) => { if (e.key === 'Escape') closeSnapshot() }
+  document.addEventListener('keydown', _snapshotKey)
+  _snapshotEl.at(-1).querySelector('.dialog-btn')?.focus()
+}
+
+export function closeSnapshot() {
+  if (!_snapshotEl) return
+  for (const el of _snapshotEl) el.remove()
+  _snapshotEl = null
+  document.removeEventListener('keydown', _snapshotKey)
+  _snapshotKey = null
+}
+
+function onSnapshotClick(e) {
+  if (e.target.closest?.('[data-dbg-snapshot-close]')) { closeSnapshot(); return }
+  onClick(e)
+}
+
 export function gatherDebugData() {
   const active = Trace.CHANNELS.filter(c => Trace.channelEnabled(c.id)).map(c => c.id)
   return {
     state:    App?.getDebugState ? safeState() : null,
     counts:   Trace.counts(),
     events:   Trace.recent(MAX_STREAM_ROWS, active),
+    warnOnly: _warnOnly,
     recording: Trace.isEnabled(),
     capacity: Trace.capacity(),
   }
@@ -320,23 +500,40 @@ function safeState() {
   }
 }
 
-export function debugBody(data) {
+/**
+ * The whole panel body. With `snapshot`, the same rendering as a frozen copy
+ * to read and copy from: every section open, a note of when it was taken,
+ * and without the controls that act on the live panel (the Snapshot button,
+ * channel chips, the Recorder).
+ */
+export function debugBody(data, { snapshot = false, takenAt = Date.now() } = {}) {
   const s = data?.state
   if (s?.error) {
     return `<div class="dbg-alert">Could not read document state: ${esc(s.error)}</div>`
   }
   const counts = data?.counts ?? {}
+  const open = snapshot ? true : undefined
 
   const streamMeta = `${counts.total ?? 0}${counts.dropped ? ` · ${counts.dropped} dropped` : ''}`
 
   return `
-    ${section('sec-state', 'State', s?.head?.agrees === false ? '<span class="dbg-bad">head mismatch</span>' : '', stateHTML(s))}
-    ${section('sec-ops', 'Operations', `${s?.ops?.total ?? 0}`, opRowsHTML(s?.ops, s?.head?.head))}
+    ${snapshot
+      ? `<div class="dbg-note">Taken at ${esc(clockTime(takenAt))}. This is a copy; it does not update.</div>`
+      : `<div class="dbg-snapshot-row">
+          <button class="dbg-btn" data-dbg-action="snapshot" title="Freeze the current state and stream in a dialog you can select text from">
+            📷 Snapshot Now
+          </button>
+        </div>`}
+    ${section('sec-state', 'State', healthBadgesHTML(s?.net), stateHTML(s), open)}
+    ${section('sec-ops', 'Operations',
+      `${s?.head?.agrees === false ? '<span class="dbg-bad">head mismatch</span> · ' : ''}${s?.ops?.total ?? 0}`,
+      headCardHTML(s) + opRowsHTML(s?.ops, s?.head?.head), open)}
     ${section('sec-stream', 'Stream', streamMeta, `
-      <div class="dbg-chips">${channelChipsHTML(counts)}</div>
-      <div class="dbg-stream" id="dbgStream">${streamRowsHTML(data?.events)}</div>
-    `)}
-    ${section('sec-trace', 'Recorder', data?.recording ? 'on' : '<span class="dbg-bad">paused</span>', `
+      ${snapshot ? '' : `<div class="dbg-chips">${channelChipsHTML(counts)}</div>
+        <div class="dbg-chips">${viewChipsHTML({ warnOnly: data?.warnOnly })}</div>`}
+      <div class="dbg-stream"${snapshot ? '' : ' id="dbgStream"'}>${streamRowsHTML(data?.events, { warnOnly: data?.warnOnly })}</div>
+    `, open)}
+    ${snapshot ? '' : section('sec-trace', 'Recorder', data?.recording ? 'on' : '<span class="dbg-bad">paused</span>', `
       <div class="dbg-btn-row">
         <button class="dbg-btn" data-dbg-action="toggle-recording">${data?.recording ? 'Pause recording' : 'Resume recording'}</button>
         <button class="dbg-btn" data-dbg-action="clear">Clear</button>
@@ -399,6 +596,18 @@ function onClick(e) {
       Trace.setChannelEnabled(btn.dataset.dbgChannel, !Trace.channelEnabled(btn.dataset.dbgChannel))
       render()
       break
+    case 'preset-connectivity': {
+      const restore = connectivityActive()
+      for (const c of Trace.CHANNELS) {
+        Trace.setChannelEnabled(c.id, restore ? !c.verbose : CONNECTIVITY.has(c.id))
+      }
+      render()
+      break
+    }
+    case 'toggle-warn':
+      _warnOnly = !_warnOnly
+      render()
+      break
     case 'toggle-recording':
       Trace.setEnabled(!Trace.isEnabled())
       render()
@@ -412,6 +621,9 @@ function onClick(e) {
       break
     case 'copy-op':
       copyOp(btn.dataset.dbgId, btn)
+      break
+    case 'snapshot':
+      openSnapshot()
       break
   }
 }
@@ -444,10 +656,23 @@ export function refresh() {
   if (_container) render()
 }
 
-function downloadTrace() {
+/**
+ * What Download trace writes: the ring, the state, and the service config
+ * and connection state lifted out of it so "which relay did they use?" is
+ * answered without digging. Credentials are already masked in the state.
+ */
+export function tracePayload() {
   let state = null
   try { state = App?.getDebugState?.() ?? null } catch { /* trace alone is still worth having */ }
-  const blob = new Blob([JSON.stringify(Trace.snapshot({ state }), null, 2)],
+  const net = state?.net
+  return Trace.snapshot({
+    state,
+    services: { signaling: net?.signalingConns ?? null, ice: net?.ice ?? null },
+  })
+}
+
+function downloadTrace() {
+  const blob = new Blob([JSON.stringify(tracePayload(), null, 2)],
     { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

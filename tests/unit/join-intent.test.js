@@ -6,6 +6,7 @@
 
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { watchTableProbe } from '../../src/join_intent.js'
+import * as Trace from '../../src/trace.js'
 
 // A minimal stand-in for y-webrtc's SignalingConn: an event emitter with
 // a `connected` flag, supporting exactly what watchTableProbe uses.
@@ -32,7 +33,7 @@ function fakeProvider(signalingConns) {
   }
 }
 
-beforeEach(() => vi.useFakeTimers())
+beforeEach(() => { vi.useFakeTimers(); Trace._reset() })
 afterEach(() => vi.useRealTimers())
 
 describe('watchTableProbe', () => {
@@ -134,5 +135,63 @@ describe('watchTableProbe', () => {
     vi.advanceTimersByTime(500)
     expect(onPhase).toHaveBeenCalledTimes(1)
     expect(onPhase).toHaveBeenCalledWith('not-found')
+  })
+})
+
+describe('watchTableProbe trace rows', () => {
+  const rows = () => Trace.events().filter(e => e.ch === 'net' && e.evt === 'join-intent')
+
+  test('unreachable (no conns): one warn row, outcome and elapsed ms', () => {
+    watchTableProbe(fakeProvider([]), { onPhase: vi.fn(), signalingTimeoutMs: 1000, peerTimeoutMs: 500 })
+    expect(rows()).toHaveLength(1)
+    expect(rows()[0]).toMatchObject({ level: 'warn', detail: { outcome: 'unreachable', ms: 0, signalingTimeoutMs: 1000, peerTimeoutMs: 500 } })
+  })
+
+  test('unreachable (timed out): the warn row carries the time it waited', () => {
+    watchTableProbe(fakeProvider([fakeConn(false)]), { onPhase: vi.fn(), signalingTimeoutMs: 1000, peerTimeoutMs: 500 })
+    vi.advanceTimersByTime(1000)
+    expect(rows()).toHaveLength(1)
+    expect(rows()[0].level).toBe('warn')
+    expect(rows()[0].detail).toMatchObject({ outcome: 'unreachable', ms: 1000 })
+    expect(rows()[0].msg).toContain('1000 ms')
+  })
+
+  test('not-found: one info row, measured from the start of the probe', () => {
+    const provider = fakeProvider([fakeConn(false)])
+    const conn = provider.signalingConns[0]
+    watchTableProbe(provider, { onPhase: vi.fn(), signalingTimeoutMs: 1000, peerTimeoutMs: 500 })
+    vi.advanceTimersByTime(300)
+    conn.emit('connect')
+    vi.advanceTimersByTime(500)
+    expect(rows()).toHaveLength(1)
+    expect(rows()[0]).toMatchObject({ level: 'info', detail: { outcome: 'not-found', ms: 800 } })
+    expect(rows()[0].msg).toContain('500 ms')
+  })
+
+  test('found: one info row with the time to sync', () => {
+    const provider = fakeProvider([fakeConn(true)])
+    watchTableProbe(provider, { onPhase: vi.fn(), signalingTimeoutMs: 1000, peerTimeoutMs: 1000 })
+    vi.advanceTimersByTime(400)
+    provider.emit('synced', { synced: true })
+    expect(rows()).toHaveLength(1)
+    expect(rows()[0]).toMatchObject({ level: 'info', detail: { outcome: 'found', ms: 400 } })
+  })
+
+  test('only the first outcome is recorded', () => {
+    const provider = fakeProvider([fakeConn(true)])
+    watchTableProbe(provider, { onPhase: vi.fn(), signalingTimeoutMs: 1000, peerTimeoutMs: 1000 })
+    provider.emit('synced', { synced: true })
+    vi.advanceTimersByTime(5000)
+    provider.emit('synced', { synced: true })
+    expect(rows()).toHaveLength(1)
+  })
+
+  test('the row is recorded before the callback runs', () => {
+    let seen = null
+    watchTableProbe(fakeProvider([]), {
+      onPhase: () => { seen = rows().length },
+      signalingTimeoutMs: 1000, peerTimeoutMs: 1000,
+    })
+    expect(seen).toBe(1)
   })
 })

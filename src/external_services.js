@@ -344,9 +344,17 @@ export function createSignalingTracker(servers, now = Date.now) {
  * Only counts and candidate types are recorded, never candidate strings
  * or addresses: a downloaded trace shouldn't carry anyone's IP.
  *
+ * `info` is filled in as things happen — current ICE state, candidate
+ * counts, the last candidate error, the selected route — so the Debug
+ * panel can show a peer's standing without replaying the trace.
+ *
  * Returns a function that stops listening.
  */
-export function traceIcePeer(peerId, pc) {
+export function traceIcePeer(peerId, pc, info = {}) {
+  Object.assign(info, {
+    peer: peerId, state: pc.iceConnectionState ?? 'new',
+    route: null, connectMs: null, candidates: null, lastError: null,
+  });
   const started = Date.now();
   const counts  = { host: 0, srflx: 0, relay: 0 };
   let selectedRecorded = false;
@@ -363,6 +371,7 @@ export function traceIcePeer(peerId, pc) {
     const missing = [];
     if (counts.srflx === 0) missing.push('no STUN reflexive candidate');
     if (counts.relay === 0) missing.push('no TURN relay candidate');
+    info.candidates = { ...counts };
     Trace.ice('ice-candidates',
       `ICE gathering done${missing.length ? ` — ${missing.join(', ')}` : ''}`,
       { peer: peerId, ...counts },
@@ -370,6 +379,7 @@ export function traceIcePeer(peerId, pc) {
   };
 
   const onError = (e) => {
+    info.lastError = { url: e.url ?? null, errorCode: e.errorCode ?? null, errorText: e.errorText ?? null };
     Trace.ice('ice-error', `ICE candidate error ${e.errorCode ?? ''} from ${e.url ?? 'unknown server'}`,
       { peer: peerId, url: e.url ?? null, errorCode: e.errorCode ?? null, errorText: e.errorText ?? null },
       'warn');
@@ -392,6 +402,7 @@ export function traceIcePeer(peerId, pc) {
   const isUp = (s) => s === 'connected' || s === 'completed';
 
   const onIceState = () => {
+    info.state = pc.iceConnectionState;
     onState('ice', pc.iceConnectionState);
     if (isUp(pc.iceConnectionState)) maybeRecordRoute();
   };
@@ -411,11 +422,12 @@ export function traceIcePeer(peerId, pc) {
       if (!pair) return false;
       const local  = stats.get(pair.localCandidateId)?.candidateType ?? null;
       const remote = stats.get(pair.remoteCandidateId)?.candidateType ?? null;
-      const route  = local === 'relay' || remote === 'relay' ? 'relay'
-                   : local === 'srflx' || remote === 'srflx' || local === 'prflx' || remote === 'prflx' ? 'srflx'
-                   : 'host';
+      const has    = (t) => local === t || remote === t;
+      const route  = has('relay') ? 'relay' : has('srflx') ? 'srflx' : has('prflx') ? 'prflx' : 'host';
+      info.route     = route;
+      info.connectMs = Date.now() - started;
       Trace.ice('ice-selected', `connected via ${route}: ${peerId}`,
-        { peer: peerId, route, local, remote, ms: Date.now() - started });
+        { peer: peerId, route, local, remote, ms: info.connectMs });
       return true;
     } catch {
       return false; // stats are best-effort evidence, never a reason to fail
@@ -449,7 +461,9 @@ export function traceIceProvider(provider) {
         const pc = provider.room?.webrtcConns?.get(id)?.peer?._pc;
         if (!pc) continue;
         stops.get(id)?.();
-        stops.set(id, traceIcePeer(id, pc));
+        const info = {};
+        stops.set(id, traceIcePeer(id, pc, info));
+        _icePeers.set(id, info);
       } catch (err) {
         console.error('[ice] could not trace peer', id, err);
       }
@@ -457,6 +471,23 @@ export function traceIceProvider(provider) {
     for (const id of removed) {
       stops.get(id)?.();
       stops.delete(id);
+      _icePeers.delete(id);
     }
   });
+}
+
+const _icePeers = new Map();
+
+/** A copy of each traced peer's current standing, for the Debug panel. */
+export function getIcePeers() {
+  return [..._icePeers.values()].map(p => ({
+    ...p,
+    candidates: p.candidates && { ...p.candidates },
+    lastError:  p.lastError && { ...p.lastError },
+  }));
+}
+
+/** Test-only: forget every traced peer. */
+export function _resetIcePeers() {
+  _icePeers.clear();
 }
