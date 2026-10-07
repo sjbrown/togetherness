@@ -1,9 +1,11 @@
 /**
  * tests/e2e/debug-snapshot.spec.js
  *
- * The Debug panel redraws on every trace event and the app turns text
- * selection off globally. The snapshot dialog is the place to select and
- * copy from: frozen, and selectable.
+ * The one thing about the snapshot dialog that needs a real browser: that
+ * text in it can actually be selected. The app turns selection off globally
+ * in ui.css, which jsdom neither applies nor honours, so the unit tests
+ * (tests/unit/debug-panel.test.js) cover everything else — contents,
+ * closing, and not being redrawn.
  */
 
 import { test, expect } from '@playwright/test';
@@ -38,15 +40,5 @@ test.describe('debug snapshot', () => {
 
     expect(await page.evaluate(() => window.getSelection().toString())).toBe(picked);
     await expect(page.locator('.dbg-snapshot')).not.toContainText('arrived after the snapshot');
-  });
-
-  test('Close and Escape dismiss it', async ({ page }) => {
-    await openSnapshot(page);
-    await page.locator('.dialog-snapshot .dialog-btn').click();
-    await expect(page.locator('.dialog-snapshot')).toHaveCount(0);
-
-    await page.locator('[data-dbg-action="snapshot"]').click();
-    await page.keyboard.press('Escape');
-    await expect(page.locator('.dialog-snapshot')).toHaveCount(0);
   });
 });
