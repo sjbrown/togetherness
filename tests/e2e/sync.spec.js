@@ -267,7 +267,7 @@ test.describe('two-peer sync', () => {
   }
 
   // Place n glass tokens in a row, then make 11 moves and checkpoint, so one
-  // update carries every toy's SVG. Returns the checkpoint op's JSON size.
+  // update carries every toy's SVG. Returns the checkpoint content's JSON size.
   async function buildLargeTable(page, n) {
     const box = await page.locator('#canvas').boundingBox();
     for (let i = 0; i < n; i++) await placeToy(page, box, 'token_glass', 60 + i * 60, 100);
@@ -288,7 +288,10 @@ test.describe('two-peer sync', () => {
     }
     return page.evaluate(() => {
       const op = window.App.maybeCheckpoint('test');
-      return op ? JSON.stringify(op).length : 0;
+      if (!op) return 0;
+      // The snapshot lives in the content map, not on the op.
+      const shown = window.App.getDebugState().ops.ordered.find(o => o.id === op.id);
+      return JSON.stringify(shown.mutations).length;
     });
   }
 

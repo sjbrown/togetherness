@@ -18,6 +18,7 @@
 import * as Trace from './trace.js'
 
 const OPS_KEY = 'ops'
+const CONTENT_KEY = 'checkpointContent'
 
 // ── storage ─────────────────────────────────────────────────────────────
 
@@ -38,6 +39,55 @@ export function appendOp(ydoc, op) {
   // reference costs nothing beyond the pointer.
   Trace.op('append', `${op.gesture} entered the log as ${op.id}`, op)
   return op
+}
+
+/** The shared map of checkpoint snapshots, keyed by checkpoint op id. */
+export function getContent(ydoc) {
+  return ydoc.getMap(CONTENT_KEY)
+}
+
+/**
+ * Append a checkpoint op and its snapshot in one transaction. The op is
+ * stored with empty mutations; the snapshot lives in the content map, where
+ * it can be deleted without touching the immutable op (invariant 2).
+ *
+ * The same transaction deletes the content of every strict-ancestor
+ * checkpoint that is not root-most (invariant 17), so a peer never sees the
+ * new cut without the old content already gone, or the reverse.
+ */
+export function appendCheckpoint(ydoc, op, content) {
+  if (!op?.id) throw new Error('appendCheckpoint: op.id is required')
+  const ops = getOps(ydoc)
+  if (ops.has(op.id)) {
+    Trace.op('append-duplicate', `${op.id} already in the log`, { id: op.id, gesture: op.gesture })
+    return op
+  }
+  const contentMap = getContent(ydoc)
+  const stored = { ...op, mutations: [] }
+  ydoc.transact(() => {
+    ops.set(op.id, stored)
+    contentMap.set(op.id, content)
+    for (const id of supersededContent(ops, contentMap, op.id)) contentMap.delete(id)
+  })
+  Trace.op('append', `${op.gesture} entered the log as ${op.id}`, stored)
+  return stored
+}
+
+/**
+ * Checkpoints strictly behind `id` whose content is still held and is not
+ * root-most. A checkpoint is root-most when no checkpoint sits in its own
+ * ancestry: its content is what a projection falls back to when every newer
+ * cut has lost its own, so it must outlive them all.
+ */
+function supersededContent(ops, contentMap, id) {
+  const out = []
+  for (const a of ancestors(ops, id)) {
+    if (getOp(ops, a)?.gesture !== 'checkpoint' || !contentMap.has(a)) continue
+    for (const b of ancestors(ops, a)) {
+      if (getOp(ops, b)?.gesture === 'checkpoint') { out.push(a); break }
+    }
+  }
+  return out
 }
 
 export function getOp(ops, id) {

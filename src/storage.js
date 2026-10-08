@@ -7,7 +7,7 @@
 import * as Y        from 'yjs';
 import * as Toys     from './toys.js';
 import * as Drawing  from './drawing.js';
-import { appendOp }     from './op_dag.js';
+import { appendCheckpoint } from './op_dag.js';
 import { checkpointOp } from './op_checkpoint.js';
 
 // ── DOM → Yjs ────────────────────────────────────────────────────────────────
@@ -151,8 +151,8 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
 
     if (toyCount) {
       if (opts.asNewTable) {
-        const genesis = checkpointOp(scratchLayer, { authorId: opts.authorId, parents: [] });
-        appendOp(ydoc, genesis);
+        const { op: genesis, content } = checkpointOp(scratchLayer, { authorId: opts.authorId, parents: [] });
+        appendCheckpoint(ydoc, genesis, content);
       } else {
         importedToyEls.push(...scratchLayer.children);
       }
