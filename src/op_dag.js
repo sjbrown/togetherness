@@ -414,6 +414,7 @@ export function forkJoinSequence(joinSequence, authorSet) {
 export function labelBranches(ops, tipA, tipB, joinSequence = []) {
   const base = lca(ops, tipA, tipB)
 
+  // With no LCA (disjoint components) each side ranks over its whole ancestry.
   const rank = (tip) => {
     let best = Infinity
     for (const author of branchAuthors(ops, tip, base)) {

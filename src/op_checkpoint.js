@@ -324,6 +324,22 @@ export function buildForkSeed(ops, parentContent, lcaId, splitterTipId, layerEl,
 }
 
 /**
+ * The seed for a fork whose fork point no longer exists in the log: a
+ * genesis checkpoint of `layerEl` itself, with nothing rebased onto it.
+ * `branchIds` are the ops of the branch being preserved; the genesis ts is
+ * their latest, so peers forking the same branch agree on it, and the id is
+ * hashed from the content for the same reason (buildForkSeed). layerEl must
+ * be the live layer as it stands, before anything rebuilds it.
+ */
+export function buildLiveForkSeed(ops, branchIds, layerEl, { authorId } = {}) {
+  const { op: draft, content: snapshot } = checkpointOp(layerEl, { authorId, parents: [] })
+  let ts = 0
+  for (const id of branchIds) ts = Math.max(ts, getOp(ops, id)?.ts ?? 0)
+  const genesis = { ...draft, id: `tt-op-ck-${deterministicSuffix(JSON.stringify(snapshot))}`, ts }
+  return { genesis, rebasedOps: [], content: new Map([[genesis.id, snapshot]]) }
+}
+
+/**
  * The merge checkpoint a canonical rebuild may write: a checkpoint of the
  * just-rebuilt layerEl, parented on the tips that were rebuilt. Authored
  * the same deterministic way buildForkSeed authors a fork's genesis, so

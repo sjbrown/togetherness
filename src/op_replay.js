@@ -226,7 +226,9 @@ const normalizeTips = (tipsOrHead) =>
  *        usually one or two ops, and each is walked once.
  *
  * KNOWN        — D is empty.
- * CONFLICTING  — conflicts(H', D). (apply nothing)
+ * CONFLICTING  — D shares no op with what this peer has (disjoint
+ *                components after both sides pruned their common history),
+ *                or conflicts(H', D). (apply nothing)
  * SUBSEQUENT   — H' is empty: every op this peer has is an ancestor of
  *                everything new, so every local tip is an ancestor of
  *                incoming.
@@ -253,6 +255,11 @@ export function classify(ops, tips, incomingId, joinSequence = []) {
 
   const D = [...ancestorsInclusive(ops, incomingId)].filter(id => !have.has(id))
   if (!D.length) return { kind: KNOWN, D: [] }
+
+  // Nothing of the incoming ancestry is held locally: two components that
+  // share no history, each rooted at its own checkpoint. No delta can join
+  // them, so it is a conflict whatever the ops touched.
+  if (D.length === ancestorsInclusive(ops, incomingId).size) return { kind: CONFLICTING, D }
 
   let commonOfD = null
   for (const d of D) {

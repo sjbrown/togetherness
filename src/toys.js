@@ -2452,8 +2452,11 @@ export function receiveToyOp(ydoc, layerEl, opId, tableId, joinSequence = []) {
  * deletedIds are the keys removed by the event being handled; a head that
  * is merely absent (not yet synced) is not stale, only one that was deleted
  * is. Returns null when the tips are fine, else
- * { tips, authored, orphanIds }: the shared tips adopted, whether this peer
- * authored any op on the orphaned branch, and that branch's op ids.
+ * { tips, authored, orphanIds, fork }: the shared tips adopted, whether this
+ * peer authored any op on the orphaned branch, that branch's op ids, and,
+ * when it did, { seed, orderedIds } for tables.js's forkLiveDoc. The fork
+ * point is gone from the log, so the seed is this peer's own live layer,
+ * taken before the layer is rebuilt onto the shared tips.
  */
 export function resolveOrphanedTips(ydoc, layerEl, tableId, { authorId, joinSequence = [], deletedIds = new Set() } = {}) {
   if (!tableId) return null
@@ -2469,7 +2472,15 @@ export function resolveOrphanedTips(ydoc, layerEl, tableId, { authorId, joinSequ
       if (OpDag.isOrphan(ops, id, memo)) orphanIds.add(id)
     }
   }
-  const authored = [...orphanIds].some(id => OpDag.getOp(ops, id)?.authorId === authorId)
+  const authors = new Set([...orphanIds].map(id => OpDag.getOp(ops, id)?.authorId).filter(Boolean))
+  const authored = authors.has(authorId)
+
+  let fork = null
+  if (authored) {
+    const orderedIds = OpDag.forkJoinSequence(joinSequence, authors)
+    const seed = OpCheckpoint.buildLiveForkSeed(ops, orphanIds, layerEl, { authorId: orderedIds[0] })
+    fork = { seed, orderedIds }
+  }
 
   const tips = OpDag.sharedTips(ops)
   if (tips.length) {
@@ -2480,7 +2491,7 @@ export function resolveOrphanedTips(ydoc, layerEl, tableId, { authorId, joinSequ
     OpHead.setMergeTips(tableId, tips.slice(1))
     markProjectedAt(layerEl, tips)
   }
-  return { tips, authored, orphanIds: [...orphanIds] }
+  return { tips, authored, orphanIds: [...orphanIds], fork }
 }
 
 /**
@@ -2499,7 +2510,10 @@ export function resolveToyBranchConflict(ydoc, tips, { authorId, joinSequence = 
   const { leader, splitter, lca } = OpDag.labelBranches(ops, tips[0], tips[1], joinSequence)
   const authors = OpDag.branchAuthors(ops, splitter, lca)
 
-  if (!authors.has(authorId)) {
+  // With no LCA the two sides are disjoint components. The live layer is
+  // the local head's side, so only that side's author has anything to fork.
+  const ownSide = lca != null || splitter === tips[0]
+  if (!authors.has(authorId) || !ownSide) {
     return { leader, splitter, lca, authoredSplitter: false }
   }
 
@@ -2518,10 +2532,37 @@ export function resolveToyBranchConflict(ydoc, tips, { authorId, joinSequence = 
  */
 export function buildToyForkSeed(ydoc, lca, splitter, { authorId, joinSequence = [] } = {}) {
   const ops = OpDag.getOps(ydoc)
+  if (lca == null || !OpDag.getOp(ops, lca)) {
+    throw new Error('buildToyForkSeed: the fork point is not in the log; seed from the live layer instead')
+  }
   const scratch = document.createElementNS(SVG_NS, 'g')
   const content = OpDag.getContent(ydoc)
   OpCheckpoint.projectFrom(scratch, ops, content, lca, joinSequence)
   return OpCheckpoint.buildForkSeed(ops, content, lca, splitter, scratch, { authorId, joinSequence })
+}
+
+/**
+ * Settle a conflicting arrival for this peer: label the branches, adopt the
+ * leader, and, if this peer authored the splitter, build the fork seed.
+ * Returns the decision plus `seed` (null when there is nothing to fork).
+ * Disjoint components have no LCA to seed from, so the seed is the live
+ * layer, taken before adopting the leader rebuilds it.
+ */
+export function settleBranchConflict(ydoc, layerEl, tableId, tips, { authorId, joinSequence = [] } = {}) {
+  const ops = OpDag.getOps(ydoc)
+  const decision = resolveToyBranchConflict(ydoc, tips, { authorId, joinSequence })
+  const forkAuthor = decision.orderedIds?.[0]
+
+  let seed = null
+  if (decision.authoredSplitter && decision.lca == null) {
+    seed = OpCheckpoint.buildLiveForkSeed(ops, OpDag.ancestorsInclusive(ops, decision.splitter),
+      layerEl, { authorId: forkAuthor })
+  }
+  adoptToyBranch(ydoc, layerEl, decision.leader, tableId)
+  if (decision.authoredSplitter && !seed) {
+    seed = buildToyForkSeed(ydoc, decision.lca, decision.splitter, { authorId: forkAuthor, joinSequence })
+  }
+  return { ...decision, seed }
 }
 
 /**

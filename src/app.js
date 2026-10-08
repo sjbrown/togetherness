@@ -693,9 +693,8 @@ function handleToyBranchConflict(tips) {
   if (!layer) return;
 
   const joinSequence = tablesAPI.getJoinSequenceArray(_ydoc);
-  const decision = Toys.resolveToyBranchConflict(_ydoc, tips, { authorId: App.user.id, joinSequence });
-
-  Toys.adoptToyBranch(_ydoc, layer, decision.leader, _tableId);
+  const decision = Toys.settleBranchConflict(_ydoc, layer, _tableId, tips,
+    { authorId: App.user.id, joinSequence });
 
   if (!decision.authoredSplitter) {
     addHistory('branch resolved (adopted shared history)', { elType: 'toys' });
@@ -703,12 +702,15 @@ function handleToyBranchConflict(tips) {
   }
 
   addHistory("branch conflict — preserving your divergent work in a new table", { elType: 'toys' });
-  const seed = Toys.buildToyForkSeed(_ydoc, decision.lca, decision.splitter,
-    { authorId: decision.orderedIds[0], joinSequence });
-  tablesAPI.forkLiveDoc(_ydoc, decision.orderedIds, seed)
+  // No LCA means the sides share no history: this peer was offline past the prune age.
+  forkIntoNewTable(decision.orderedIds, decision.seed, { offline: decision.lca == null });
+}
+
+function forkIntoNewTable(orderedIds, seed, { offline = false } = {}) {
+  tablesAPI.forkLiveDoc(_ydoc, orderedIds, seed)
     .then(forkedTableId => {
       tablesAPI.touchTableRecord(forkedTableId, { name: `${_tableId} (branch)` });
-      UI.showBranchDialog(forkedTableId);
+      UI.showBranchDialog(forkedTableId, { offline });
     })
     .catch(err => {
       console.error('[app] branch fork failed', err);
@@ -776,7 +778,12 @@ function handleOrphanedLocalTips(layer, deletedIds) {
   if (!out) return;
   Trace.op('orphaned', `local tips were pruned away; adopted ${out.tips.join(', ')}`,
     { authored: out.authored, tips: out.tips }, 'warn');
-  addHistory('shared history moved on while you were away (adopted)', { elType: 'toys' });
+  if (!out.fork) {
+    addHistory('shared history moved on while you were away (adopted)', { elType: 'toys' });
+    return;
+  }
+  addHistory("you were offline while others pruned history — preserving your work in a new table", { elType: 'toys' });
+  forkIntoNewTable(out.fork.orderedIds, out.fork.seed, { offline: true });
 }
 
 function onOpsChanged(evt, transaction) {

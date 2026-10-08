@@ -18,14 +18,16 @@ import {
 } from '../../src/toys.js'
 import {
   getOps, getContent, appendOp, appendCheckpoint, ancestors, ancestorsInclusive,
-  isOrphan, sharedTips, heads, lca, pathFrom, totalOrder,
+  isOrphan, sharedTips, heads, lca, pathFrom, totalOrder, labelBranches,
 } from '../../src/op_dag.js'
 import { projectTips, checkpointOp, isCheckpoint, LAYER_DATA_ID } from '../../src/op_checkpoint.js'
 import { getHead, setHead, setMergeTips, localTips } from '../../src/op_head.js'
 import {
   PRUNE_AGE_MS, _setPruneAgeForTests, noteSeen, noteAllSeen, ageOf, assertPrunable, prune,
 } from '../../src/op_prune.js'
-import { pruneAfterCheckpoint, resolveOrphanedTips } from '../../src/toys.js'
+import {
+  pruneAfterCheckpoint, resolveOrphanedTips, settleBranchConflict, resolveToyBranchConflict, canUndoToyGesture, undoToyGesture, buildToyForkSeed,
+} from '../../src/toys.js'
 import { RECEIVED_CONFLICT, RECEIVED_ORPHAN } from '../../src/op_replay.js'
 import { serializeNode } from '../../src/op_wire_mutation.js'
 
@@ -128,7 +130,7 @@ function deliver(peer, opList) {
  * Map's event exactly as app.js's onOpsChanged does: orphaned local tips
  * first, before any added op is received.
  */
-function syncInto(peer, from) {
+function syncInto(peer, from, { joinSequence = [] } = {}) {
   const events = []
   // Yjs computes an event's changes lazily and only during the handler.
   const watch = (evt) => {
@@ -143,13 +145,20 @@ function syncInto(peer, from) {
   Y.applyUpdate(peer.ydoc, Y.encodeStateAsUpdate(from.ydoc, Y.encodeStateVector(peer.ydoc)), 'remote')
   getOps(peer.ydoc).unobserve(watch)
 
-  const out = { orphaned: null, results: {} }
+  const out = { orphaned: null, results: {}, conflicts: [] }
   for (const { deleted, added } of events) {
     if (deleted.size) {
       out.orphaned = resolveOrphanedTips(peer.ydoc, peer.layer, peer.tableId,
-        { authorId: peer.id, joinSequence: [], deletedIds: deleted })
+        { authorId: peer.id, joinSequence, deletedIds: deleted })
     }
-    for (const id of added) out.results[id] = peer.api.receive(peer.layer, id, [])
+    for (const id of added) {
+      const r = peer.api.receive(peer.layer, id, joinSequence)
+      out.results[id] = r
+      if (r.result === RECEIVED_CONFLICT) {
+        out.conflicts.push(settleBranchConflict(peer.ydoc, peer.layer, peer.tableId, r.tips,
+          { authorId: peer.id, joinSequence }))
+      }
+    }
   }
   return out
 }
@@ -170,6 +179,9 @@ function replayOf(peer) {
   projectTips(scratch, ops, getContent(peer.ydoc), localTips(peer.tableId, ops), [])
   return [...scratch.children].map(serializeNode)
 }
+
+/** What a fork seed's genesis holds, as the serialized children it restores. */
+const seedDom = (seed) => seed.content.get(seed.genesis.id).flatMap(m => m.added)
 
 const domOf = (peer) => [...peer.layer.children].map(serializeNode)
 
@@ -498,5 +510,172 @@ describe('a peer that was away while others pruned', () => {
     expect(domOf(D)).toEqual(domOf(A))
     expect(domOf(D)).toEqual(replayOf(D))
     expect(localTips(D.tableId, getOps(D.ydoc))).toEqual(localTips(A.tableId, getOps(A.ydoc)))
+  })
+
+  test('the returning author forks from her own DOM, then follows the shared table', async () => {
+    const { A, C } = await setup()
+    const preSync = domOf(C)
+    expect(preSync.length).toBe(4)            // a1 a2 c1 c2
+
+    const out = syncInto(C, A)
+    expect(out.orphaned.authored).toBe(true)
+    const { seed, orderedIds } = out.orphaned.fork
+    expect(orderedIds).toEqual(['carol'])
+    expect(seed.rebasedOps).toEqual([])
+    expect(seed.genesis.parents).toEqual([])
+    expect(seed.genesis.id).toMatch(/^tt-op-ck-/)
+    expect(seedDom(seed)).toEqual(preSync)
+
+    expect(domOf(C)).toEqual(domOf(A))
+    expect(domOf(C)).toEqual(replayOf(C))
+    expect(C.layer.querySelector('[data-id="c1"]')).toBeNull()
+  })
+
+  test('two authors of the same orphaned branch land on the same genesis', async () => {
+    const A = makePeer('alice'), C = makePeer('carol'), K = makePeer('clyde')
+    seedShared(A, C, K)
+    await place(A, 'a1', 0, 0)
+    syncInto(C, A); syncInto(K, A)
+    await place(C, 'c1', 100, 0)
+    syncInto(K, C)
+    await place(K, 'k1', 110, 0)
+    syncInto(C, K)
+    expect(domOf(C)).toEqual(domOf(K))
+
+    await place(A, 'a2', 20, 0)
+    writeCheckpoint(A)
+    advance(PRUNE_AGE_MS + MIN)
+    await place(A, 'a3', 30, 0)
+    writeCheckpoint(A)
+
+    const joinSequence = ['alice', 'clyde', 'carol']
+    const fromC = syncInto(C, A, { joinSequence }).orphaned.fork
+    const fromK = syncInto(K, A, { joinSequence }).orphaned.fork
+    expect(fromC.orderedIds).toEqual(['clyde', 'carol'])
+    expect(fromK.orderedIds).toEqual(fromC.orderedIds)
+    expect(fromK.seed.genesis).toEqual(fromC.seed.genesis)
+  })
+})
+
+describe('disconnected components', () => {
+  /**
+   * gm and pl share g, s1. Each then plays on alone, writes cuts, and
+   * prunes the shared history away, so neither component reaches the other.
+   */
+  async function setup() {
+    const G = makePeer('gm'), P = makePeer('pl')
+    seedShared(G, P)
+    await place(G, 's1', 0, 0)
+    syncInto(P, G)
+
+    await place(G, 'g1', 10, 0)
+    writeCheckpoint(G)
+    await place(P, 'p1', 100, 0)
+    writeCheckpoint(P)
+    advance(PRUNE_AGE_MS + MIN)
+    await place(G, 'g2', 20, 0)
+    expect(writeCheckpoint(G).pruned).not.toBeNull()
+    await place(P, 'p2', 110, 0)
+    expect(writeCheckpoint(P).pruned).not.toBeNull()
+
+    for (const peer of [G, P]) {
+      expect(getOps(peer.ydoc).has('genesis')).toBe(false)
+      expect(sharedTips(getOps(peer.ydoc)).length).toBe(1)
+    }
+    return { G, P }
+  }
+
+  test.each([
+    { name: 'the gm joined first', joinSequence: ['gm', 'pl'], leader: 'G', splitter: 'P' },
+    { name: 'the player joined first', joinSequence: ['pl', 'gm'], leader: 'P', splitter: 'G' },
+  ])('$name: the earliest-joining side leads and the other forks from its DOM', async ({ joinSequence, leader, splitter }) => {
+    const { G, P } = await setup()
+    const peers = { G, P }
+    const L = peers[leader], S = peers[splitter]
+    const leaderDom = domOf(L)
+    const splitterDom = domOf(S)
+    expect(leaderDom).not.toEqual(splitterDom)
+
+    const sOut = syncInto(S, L, { joinSequence })
+    const lOut = syncInto(L, S, { joinSequence })
+
+    expect(sOut.conflicts.length).toBe(1)
+    expect(sOut.conflicts[0].lca).toBeNull()
+    expect(sOut.conflicts[0].authoredSplitter).toBe(true)
+    expect(seedDom(sOut.conflicts[0].seed)).toEqual(splitterDom)
+    expect(sOut.conflicts[0].orderedIds).toEqual([S.id])
+
+    expect(lOut.conflicts.length).toBeGreaterThan(0)
+    expect(lOut.conflicts.every(c => c.authoredSplitter === false && c.seed === null)).toBe(true)
+    expect(domOf(L)).toEqual(leaderDom)
+
+    expect(domOf(S)).toEqual(leaderDom)
+    expect(domOf(S)).toEqual(replayOf(S))
+  })
+})
+
+describe('labelling components with no common ancestor', () => {
+  const rows = () => {
+    const ydoc = new Y.Doc()
+    const op = (id, parents, authorId, gesture = 'x') => ({ id, parents, authorId, gesture, mutations: [], ts: 0 })
+    appendCheckpoint(ydoc, op('rx', [], 'other', 'checkpoint'), [])
+    appendOp(ydoc, op('x1', ['rx'], 'other'))
+    appendCheckpoint(ydoc, op('ry', [], 'me', 'checkpoint'), [])
+    appendOp(ydoc, op('y1', ['ry'], 'me'))
+    return ydoc
+  }
+
+  test('each side ranks by its earliest-joining author over its whole ancestry', () => {
+    const ydoc = rows()
+    const ops = getOps(ydoc)
+    expect(lca(ops, 'x1', 'y1')).toBeNull()
+    expect(labelBranches(ops, 'x1', 'y1', ['other', 'me'])).toEqual({ leader: 'x1', splitter: 'y1', lca: null })
+    expect(labelBranches(ops, 'y1', 'x1', ['me', 'other'])).toEqual({ leader: 'y1', splitter: 'x1', lca: null })
+  })
+
+  test('a peer only forks when the splitter is the side its live DOM shows', () => {
+    const ydoc = rows()
+    // Local head x1 leads; I also wrote on y, the incoming splitter. My DOM is x's, so nothing to seed.
+    const d = resolveToyBranchConflict(ydoc, ['x1', 'y1'], { authorId: 'me', joinSequence: ['other', 'me'] })
+    expect(d.splitter).toBe('y1')
+    expect(d.authoredSplitter).toBe(false)
+    // Same graph, but my head is the splitter: now the DOM is mine to preserve.
+    const mine = resolveToyBranchConflict(ydoc, ['y1', 'x1'], { authorId: 'me', joinSequence: ['other', 'me'] })
+    expect(mine.authoredSplitter).toBe(true)
+  })
+
+  test('buildToyForkSeed refuses a fork point that is not in the log', () => {
+    expect(() => buildToyForkSeed(rows(), null, 'y1')).toThrow(/not in the log/)
+    expect(() => buildToyForkSeed(rows(), 'pruned-away', 'y1')).toThrow(/not in the log/)
+  })
+})
+
+describe('undo at the prune line', () => {
+  test('an author whose only ops were pruned has nothing to undo, and undo does not throw', async () => {
+    const A = makePeer('alice'), B = makePeer('bob')
+    seedShared(A, B)
+    await place(A, 'a1', 0, 0)
+    syncInto(B, A)
+    await place(B, 'b1', 50, 0)
+    syncInto(A, B)
+    expect(canUndoToyGesture(A.ydoc, A.tableId, 'alice')).toBe(true)
+    expect(canUndoToyGesture(B.ydoc, B.tableId, 'bob')).toBe(true)
+
+    writeCheckpoint(A)
+    advance(PRUNE_AGE_MS + MIN)
+    await place(A, 'a2', 20, 0)
+    writeCheckpoint(A)
+    syncInto(B, A)
+
+    // alice's a1 and bob's b1 are behind the prune root; a2 is not.
+    expect(canUndoToyGesture(B.ydoc, B.tableId, 'bob')).toBe(false)
+    expect(undoToyGesture(B.ydoc, B.layer, B.tableId, 'bob')).toBeNull()
+    expect(canUndoToyGesture(A.ydoc, A.tableId, 'alice')).toBe(true)
+
+    const undone = undoToyGesture(A.ydoc, A.layer, A.tableId, 'alice')
+    expect(undone.gesture).toBe('undo:place')
+    expect(A.layer.querySelector('[data-id="a2"]')).toBeNull()
+    expect(canUndoToyGesture(A.ydoc, A.tableId, 'alice')).toBe(false)
+    expect(() => undoToyGesture(A.ydoc, A.layer, A.tableId, 'alice')).not.toThrow()
   })
 })
