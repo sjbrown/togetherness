@@ -153,7 +153,7 @@ function isCut(ops, candidateId, reachable) {
 }
 
 /** The cut checkpoints of a tip set, content or not. */
-function cutsOf(ops, tips) {
+export function cutsOf(ops, tips) {
   const reachable = unionAncestry(ops, tips)
   const marks = [...reachable].filter(id => isCheckpoint(getOp(ops, id)))
   return marks.filter(id => isCut(ops, id, reachable))

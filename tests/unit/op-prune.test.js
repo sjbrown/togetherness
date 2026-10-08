@@ -20,8 +20,13 @@ import {
   getOps, getContent, appendOp, appendCheckpoint, ancestors, ancestorsInclusive,
   isOrphan, sharedTips, heads, lca, pathFrom, totalOrder,
 } from '../../src/op_dag.js'
-import { projectTips, checkpointOp, isCheckpoint } from '../../src/op_checkpoint.js'
-import { getHead, setHead } from '../../src/op_head.js'
+import { projectTips, checkpointOp, isCheckpoint, LAYER_DATA_ID } from '../../src/op_checkpoint.js'
+import { getHead, setHead, setMergeTips, localTips } from '../../src/op_head.js'
+import {
+  PRUNE_AGE_MS, _setPruneAgeForTests, noteSeen, noteAllSeen, ageOf, assertPrunable, prune,
+} from '../../src/op_prune.js'
+import { pruneAfterCheckpoint } from '../../src/toys.js'
+import { RECEIVED_CONFLICT } from '../../src/op_replay.js'
 import { serializeNode } from '../../src/op_wire_mutation.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
@@ -33,7 +38,14 @@ const DICE_UTILS_JS = fs.readFileSync(path.join(TOY_DIR, 'js/dice_utils.js'), 'u
 let _tableCounter = 0
 let _peers = []
 
+const MIN = 60 * 1000
+const T0 = Date.UTC(2026, 0, 1)
+
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(T0)
+  _setPruneAgeForTests(null)
+  noteAllSeen(new Map())
   _peers = []
   _clearSvgTextCache(); _resetToyScriptState()
   delete globalThis.dice; delete globalThis.d6
@@ -44,7 +56,7 @@ beforeEach(() => {
     throw new Error(`unexpected fetch: ${url}`)
   }))
 })
-afterEach(() => { vi.unstubAllGlobals() })
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
 
 const freshLayer = () => {
   const el = document.createElementNS(SVG_NS, 'g')
@@ -77,6 +89,38 @@ async function place(peer, id, x = 0, y = 0) {
   activateAllToyScriptsDom(peer.ydoc, peer.layer)
   await new Promise(r => setTimeout(r, 0))
   return getOps(peer.ydoc).get(getHead(peer.tableId))
+}
+
+const advance = (ms) => vi.setSystemTime(Date.now() + ms)
+
+/** What the idle checkpoint trigger does, minus the settings: freeze the
+ * layer as a checkpoint at the local tips, then let pruning run. */
+function writeCheckpoint(peer) {
+  const ops = getOps(peer.ydoc)
+  const tips = localTips(peer.tableId, ops)
+  const { op, content } = checkpointOp(peer.layer, { authorId: peer.id, parents: tips })
+  appendCheckpoint(peer.ydoc, op, content)
+  setHead(peer.tableId, op.id)
+  setMergeTips(peer.tableId, [])
+  const pruned = pruneAfterCheckpoint(peer.ydoc, peer.tableId, op.id)
+  return { ck: op, pruned }
+}
+
+/** Deliver already-committed ops to `peer` the way Yjs would: all present in
+ * the map before any receive() call. A checkpoint's content travels with it. */
+function deliver(peer, opList) {
+  for (const op of opList) {
+    if (isCheckpoint(op)) {
+      const from = _peers.find(p => getContent(p.ydoc).has(op.id))
+      peer.ydoc.transact(() => {
+        getOps(peer.ydoc).set(op.id, op)
+        if (from) getContent(peer.ydoc).set(op.id, getContent(from.ydoc).get(op.id))
+      })
+    } else {
+      getOps(peer.ydoc).set(op.id, op)
+    }
+  }
+  return opList.map(op => peer.api.receive(peer.layer, op.id, []))
 }
 
 const domOf = (peer) => [...peer.layer.children].map(serializeNode)
@@ -160,5 +204,199 @@ describe('ancestry with holes', () => {
     const scratch = freshLayer()
     projectTips(scratch, ops, getContent(P.ydoc), [getHead(P.tableId)], [])
     expect([...scratch.children].map(serializeNode)).toEqual(before)
+  })
+})
+
+describe('lag protects live play', () => {
+  test('a cut that was just written is too young, and the newest: nothing is pruned', async () => {
+    const P = makePeer('alice')
+    seedGenesis([P])
+    for (let i = 0; i < 3; i++) await place(P, `d${i}`, i * 10, 0)
+    const before = getOps(P.ydoc).size
+
+    const { pruned } = writeCheckpoint(P)
+    expect(pruned).toBeNull()
+    expect(getOps(P.ydoc).size).toBe(before + 1)
+  })
+
+  test('a concurrent op whose parent sits just behind a fresh cut merges normally', async () => {
+    const P = makePeer('alice'), Q = makePeer('bob')
+    seedGenesis([P, Q])
+    await place(P, 'a', 0, 0)
+    writeCheckpoint(P)                 // C1
+    advance(11 * MIN)
+    const d = await place(P, 'd', 10, 0)
+    deliver(Q, [...getOps(P.ydoc).values()].filter(op => op.id !== 'genesis'))
+    expect(Q.layer.querySelector('[data-id="d"]')).not.toBeNull()
+
+    const x = await place(Q, 'x', 50, 50)      // parent: d
+    expect(x.parents).toEqual([d.id])
+
+    const { ck: c2, pruned } = writeCheckpoint(P)   // d is now just behind C2
+    expect(pruned.deleted).toBeGreaterThan(0)
+    expect(getOps(P.ydoc).has(d.id)).toBe(true)
+    expect(getOps(P.ydoc).has(c2.id)).toBe(true)
+
+    const [r] = deliver(P, [x])
+    expect(r.result).not.toBe(RECEIVED_CONFLICT)
+    expect(isOrphan(getOps(P.ydoc), x.id)).toBe(false)
+    expect(P.layer.querySelector('[data-id="x"]')).not.toBeNull()
+  })
+})
+
+describe('first sight', () => {
+  /** g ← a ← C1 ← b ← C2 ← c, with every ts a day old. */
+  function oldLog() {
+    const ydoc = new Y.Doc()
+    const old = T0 - 24 * 60 * MIN
+    const op = (id, parents, gesture = 'x') => ({ id, parents, authorId: 'alice', gesture, mutations: [], ts: old })
+    appendCheckpoint(ydoc, op('g', [], 'checkpoint'), [])
+    appendOp(ydoc, op('a', ['g']))
+    appendCheckpoint(ydoc, op('C1', ['a'], 'checkpoint'), [])
+    appendOp(ydoc, op('b', ['C1']))
+    appendCheckpoint(ydoc, op('C2', ['b'], 'checkpoint'), [])
+    appendOp(ydoc, op('c', ['C2']))
+    return ydoc
+  }
+  const run = (ydoc) => prune(ydoc, ['c'], { scratch: freshLayer() })
+
+  test('a cut with a day-old ts that was first seen now is not prunable', () => {
+    const ydoc = oldLog()
+    expect(run(ydoc)).toBeNull()
+    expect(getOps(ydoc).size).toBe(6)
+    expect(ageOf('C1')).toBe(0)
+  })
+
+  test('once T has passed since first sight it is, and the root keeps its content', () => {
+    const ydoc = oldLog()
+    expect(run(ydoc)).toBeNull()
+    advance(PRUNE_AGE_MS)
+    expect(run(ydoc)).toEqual({ root: 'C1', deleted: 2 })
+    expect([...getOps(ydoc).keys()].sort()).toEqual(['C1', 'C2', 'b', 'c'])
+    expect(getContent(ydoc).has('C1')).toBe(true)
+  })
+
+  test('after a simulated boot, no cut is prunable until T passes again', () => {
+    const ydoc = oldLog()
+    run(ydoc)
+    advance(PRUNE_AGE_MS + MIN)
+    noteAllSeen(getOps(ydoc))                    // the page reloaded
+    expect(run(ydoc)).toBeNull()
+    advance(PRUNE_AGE_MS - MIN)
+    expect(run(ydoc)).toBeNull()
+    advance(2 * MIN)
+    expect(run(ydoc)).not.toBeNull()
+  })
+})
+
+describe('assertPrunable', () => {
+  /** g ← a ← b ← C1 ← d ← C2 ← e ← C3 ← f; C1 and C3 hold content. */
+  function chain() {
+    const ydoc = new Y.Doc()
+    const op = (id, parents, gesture = 'x') => ({ id, parents, authorId: 'alice', gesture, mutations: [], ts: 0 })
+    const ops = getOps(ydoc), contents = getContent(ydoc)
+    ops.set('g', op('g', [], 'checkpoint'))
+    ops.set('a', op('a', ['g']))
+    ops.set('b', op('b', ['a']))
+    ops.set('C1', op('C1', ['b'], 'checkpoint'))
+    ops.set('d', op('d', ['C1']))
+    ops.set('C2', op('C2', ['d'], 'checkpoint'))
+    ops.set('e', op('e', ['C2']))
+    ops.set('C3', op('C3', ['e'], 'checkpoint'))
+    ops.set('f', op('f', ['C3']))
+    for (const id of ['g', 'C1', 'C3']) contents.set(id, [])
+    for (const id of ['g', 'C1', 'C3']) noteSeen(id)
+    advance(PRUNE_AGE_MS + MIN)
+    noteSeen('C2')                      // first seen only now: too young
+    return { ops, contents, behindC1: [...ancestors(ops, 'C1')] }
+  }
+  const TIPS = ['f']
+
+  test('accepts a well-formed prune', () => {
+    const { ops, contents, behindC1 } = chain()
+    expect(() => assertPrunable(ops, contents, behindC1, 'C1', TIPS)).not.toThrow()
+  })
+
+  test('refuses a local tip', () => {
+    const { ops, contents, behindC1 } = chain()
+    expect(() => assertPrunable(ops, contents, [...behindC1, 'f'], 'C1', TIPS)).toThrow(/local tip/)
+  })
+
+  test('refuses the prune root itself', () => {
+    const { ops, contents, behindC1 } = chain()
+    expect(() => assertPrunable(ops, contents, [...behindC1, 'C1'], 'C1', TIPS)).toThrow(/prune root/)
+  })
+
+  test('refuses an op that is not a strict ancestor of the root', () => {
+    const { ops, contents, behindC1 } = chain()
+    expect(() => assertPrunable(ops, contents, [...behindC1, 'd'], 'C1', TIPS)).toThrow(/strict ancestor/)
+  })
+
+  test('refuses a root younger than T', () => {
+    const { ops, contents } = chain()
+    contents.set('C2', [])
+    expect(() => assertPrunable(ops, contents, [...ancestors(ops, 'C2')], 'C2', TIPS)).toThrow(/first seen less than/)
+  })
+
+  test('refuses the newest cut', () => {
+    const { ops, contents } = chain()
+    expect(() => assertPrunable(ops, contents, [...ancestors(ops, 'C3')], 'C3', TIPS)).toThrow(/newest cut/)
+  })
+
+  test('refuses a root without content', () => {
+    const { ops, contents, behindC1 } = chain()
+    contents.delete('C1')
+    expect(() => assertPrunable(ops, contents, behindC1, 'C1', TIPS)).toThrow(/no content/)
+  })
+
+  test('refuses a root that is not a checkpoint', () => {
+    const { ops, contents } = chain()
+    expect(() => assertPrunable(ops, contents, [...ancestors(ops, 'e')], 'e', TIPS)).toThrow(/not a checkpoint/)
+  })
+})
+
+describe('size after pruning', () => {
+  test('1,000 ops pruned leave the retained window plus ~30 B per deleted op', () => {
+    const N = 1000, KEEP = 10
+    const opId = (i) => `tt-op-${i.toString(36).padStart(6, '0')}-xxxxx`
+    const op = (i, parent) => ({
+      id: opId(i), parents: [parent], authorId: 'alice', gesture: 'move', ts: i,
+      mutations: [{ t: 'attr', target: { id: LAYER_DATA_ID }, name: 'data-pad',
+                    oldValue: `padding-${i}-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`,
+                    newValue: `padding-${i + 1}-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` }],
+    })
+    const ck = (id, parents) => ({ id, parents, authorId: 'alice', gesture: 'checkpoint', ts: 0, mutations: [] })
+
+    /** genesis, N-KEEP ops, cut R, KEEP ops, the newest cut. `from` skips the
+     * history, as a doc that never held it would. */
+    const build = (ydoc, from) => {
+      let prev = null
+      if (from === 0) { appendCheckpoint(ydoc, ck('genesis', []), []); prev = 'genesis' }
+      for (let i = from; i < N - KEEP; i++) { appendOp(ydoc, op(i, prev)); prev = opId(i) }
+      appendCheckpoint(ydoc, ck('R', prev ? [prev] : []), [])
+      prev = 'R'
+      for (let i = N - KEEP; i < N; i++) { appendOp(ydoc, op(i, prev)); prev = opId(i) }
+      appendCheckpoint(ydoc, ck('newest', [prev]), [])
+    }
+
+    const full = new Y.Doc()
+    build(full, 0)
+    const unpruned = Y.encodeStateAsUpdate(full).length
+
+    noteSeen('R'); noteSeen('newest')
+    advance(PRUNE_AGE_MS + MIN)
+    const res = prune(full, ['newest'], { scratch: freshLayer() })
+    expect(res.root).toBe('R')
+    const pruned = Y.encodeStateAsUpdate(full).length
+
+    const lean = new Y.Doc()
+    build(lean, N - KEEP)
+    const leanSize = Y.encodeStateAsUpdate(lean).length
+
+    console.log(`[size] ${N} ops: ${unpruned} B unpruned; pruned ${res.deleted} → ${pruned} B; ` +
+      `retained window alone ${leanSize} B; residue ${((pruned - leanSize) / res.deleted).toFixed(1)} B per deleted op`)
+
+    expect(pruned).toBeLessThan(unpruned / 4)
+    expect(pruned).toBeLessThanOrEqual(leanSize + 40 * res.deleted + 1024)
   })
 })

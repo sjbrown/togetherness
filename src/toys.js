@@ -34,6 +34,7 @@ import * as OpDag from './op_dag.js';
 import * as OpWireMutation from './op_wire_mutation.js';
 import * as OpCheckpoint from './op_checkpoint.js';
 import * as OpReplay from './op_replay.js';
+import * as OpPrune from './op_prune.js';
 // geometry.js is shape-agnostic pure math, shared with drawing.js and
 // boun_pos.js.
 import * as Geometry from './geometry.js';
@@ -2127,6 +2128,7 @@ export function projectLayer(ydoc, layerEl, { tableId, authorId, isCreator = fal
     if (!isCreator) return null
     const { op: genesis, content: snapshot } = OpCheckpoint.checkpointOp(layerEl, { authorId, parents: [] })
     OpDag.appendCheckpoint(ydoc, genesis, snapshot)
+    OpPrune.noteSeen(genesis.id)
     if (tableId) OpHead.setHead(tableId, genesis.id)
     markProjectedAt(layerEl, [genesis.id])
     return genesis.id
@@ -2383,7 +2385,7 @@ export function adoptToyBranch(ydoc, layerEl, targetHeadId, tableId) {
  * the observer's own finishes; that re-enters onOpsChanged, but as a
  * local change, which it already ignores — no deferral needed.
  */
-function writeMergeCheckpointIfWarranted(ydoc, layerEl, tableId, ops, tips) {
+function writeMergeCheckpointIfWarranted(ydoc, layerEl, tableId, ops, tips, joinSequence = []) {
   if (isInsideEnvelope() || OpReplay.isReplaying()) return null
   if (!OpCheckpoint.shouldCheckpoint(ops, tips)) return null
 
@@ -2392,7 +2394,22 @@ function writeMergeCheckpointIfWarranted(ydoc, layerEl, tableId, ops, tips) {
   OpHead.setHead(tableId, ck.id)
   OpHead.setMergeTips(tableId, [])
   markProjectedAt(layerEl, [ck.id])
+  pruneAfterCheckpoint(ydoc, tableId, ck.id, joinSequence)
   return ck
+}
+
+/**
+ * Called right after this peer writes any checkpoint (idle or merge): notes
+ * it as seen and prunes behind the root op_prune picks. Same guards as the
+ * writers: never inside a gesture envelope, never while applying a remote
+ * op. No timers; the next checkpoint write is the next chance.
+ */
+export function pruneAfterCheckpoint(ydoc, tableId, checkpointId, joinSequence = []) {
+  OpPrune.noteSeen(checkpointId)
+  if (!tableId || isInsideEnvelope() || OpReplay.isReplaying()) return null
+  const ops = OpDag.getOps(ydoc)
+  const scratch = document.createElementNS(SVG_NS, 'g')
+  return OpPrune.prune(ydoc, OpHead.localTips(tableId, ops), { scratch, joinSequence })
 }
 
 export function receiveToyOp(ydoc, layerEl, opId, tableId, joinSequence = []) {
@@ -2412,7 +2429,7 @@ export function receiveToyOp(ydoc, layerEl, opId, tableId, joinSequence = []) {
 
   if (tableId && out.result === OpReplay.RECEIVED_REBUILT) {
     const tips = OpHead.maximalTips(ops, [out.head, ...(out.mergeTips ?? [])])
-    const ck = writeMergeCheckpointIfWarranted(ydoc, layerEl, tableId, ops, tips)
+    const ck = writeMergeCheckpointIfWarranted(ydoc, layerEl, tableId, ops, tips, joinSequence)
     if (ck) {
       out.head = ck.id
       out.mergeTips = []

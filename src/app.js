@@ -27,6 +27,7 @@ import { tablesAPI }                              from './tables.js';
 import * as OpDag                                 from './op_dag.js';
 import * as OpHead                                from './op_head.js';
 import * as OpCheckpoint                          from './op_checkpoint.js';
+import * as OpPrune                               from './op_prune.js';
 import * as User                                  from './user.js';
 import * as Trace                                 from './trace.js';
 import * as Storage                               from './storage.js';
@@ -556,6 +557,9 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   });
 
 
+  // Every checkpoint in the loaded log starts its prune clock now.
+  OpPrune.noteAllSeen(OpDag.getOps(_ydoc));
+
   // Initial render
   renderDoc();
   renderPresence();
@@ -757,6 +761,7 @@ function maybeCheckpoint(reason) {
   OpHead.setHead(_tableId, op.id);
   OpHead.setMergeTips(_tableId, []);
   Trace.op('checkpoint', `wrote checkpoint ${op.id} (${reason})`, { id: op.id, reason });
+  Toys.pruneAfterCheckpoint(_ydoc, _tableId, op.id, tablesAPI.getJoinSequenceArray(_ydoc));
   return op;
 }
 
