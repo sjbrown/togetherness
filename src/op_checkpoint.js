@@ -132,7 +132,7 @@ const normalizeTips = (tipsOrHead) =>
 function unionAncestry(ops, tips) {
   const union = new Set()
   for (const t of tips) {
-    union.add(t)
+    if (getOp(ops, t)) union.add(t)
     for (const a of ancestors(ops, t)) union.add(a)
   }
   return union
