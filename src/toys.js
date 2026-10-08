@@ -2137,7 +2137,8 @@ export function projectLayer(ydoc, layerEl, { tableId, authorId, isCreator = fal
   const storedHead = (tableId && OpHead.getHead(tableId)) ?? null
   const storedMergeTips = tableId ? OpHead.getMergeTips(tableId) : []
   let tips = OpHead.maximalTips(ops, [storedHead, ...storedMergeTips])
-  if (!tips.length) tips = OpDag.heads(ops).slice(0, 1)
+    .filter(t => !OpDag.isOrphan(ops, t))
+  if (!tips.length) tips = OpDag.sharedTips(ops)
   if (!tips.length) return null
 
   const primaryHead = tips.includes(storedHead) ? storedHead : tips[0]
@@ -2418,7 +2419,8 @@ export function receiveToyOp(ydoc, layerEl, opId, tableId, joinSequence = []) {
   const mergeTips = tableId ? OpHead.getMergeTips(tableId) : []
   const out = OpReplay.receiveOp(layerEl, ops, OpDag.getContent(ydoc), head, opId, joinSequence, mergeTips)
 
-  if (out.result !== OpReplay.RECEIVED_KNOWN && out.result !== OpReplay.RECEIVED_CONFLICT) {
+  if (out.result !== OpReplay.RECEIVED_KNOWN && out.result !== OpReplay.RECEIVED_CONFLICT
+      && out.result !== OpReplay.RECEIVED_ORPHAN) {
     activateAllToyScriptsDom(ydoc, layerEl)
   }
   if (tableId) {
@@ -2438,6 +2440,47 @@ export function receiveToyOp(ydoc, layerEl, opId, tableId, joinSequence = []) {
   }
 
   return out
+}
+
+/**
+ * Whether pruning left this peer's own tips behind: a tip that was just
+ * deleted, or one whose ancestry now reaches a missing parent. If so, move
+ * the layer to the shared tips (the maximal non-orphan ops) and report what
+ * was orphaned. Runs before any of the same event's new ops are received, so
+ * nothing has rebuilt the layer yet.
+ *
+ * deletedIds are the keys removed by the event being handled; a head that
+ * is merely absent (not yet synced) is not stale, only one that was deleted
+ * is. Returns null when the tips are fine, else
+ * { tips, authored, orphanIds }: the shared tips adopted, whether this peer
+ * authored any op on the orphaned branch, and that branch's op ids.
+ */
+export function resolveOrphanedTips(ydoc, layerEl, tableId, { authorId, joinSequence = [], deletedIds = new Set() } = {}) {
+  if (!tableId) return null
+  const ops = OpDag.getOps(ydoc)
+  const memo = new Map()
+  const stored = [OpHead.getHead(tableId), ...OpHead.getMergeTips(tableId)].filter(Boolean)
+  const stale = stored.filter(id => deletedIds.has(id) || OpDag.isOrphan(ops, id, memo))
+  if (!stale.length) return null
+
+  const orphanIds = new Set()
+  for (const tip of stale) {
+    for (const id of OpDag.ancestorsInclusive(ops, tip)) {
+      if (OpDag.isOrphan(ops, id, memo)) orphanIds.add(id)
+    }
+  }
+  const authored = [...orphanIds].some(id => OpDag.getOp(ops, id)?.authorId === authorId)
+
+  const tips = OpDag.sharedTips(ops)
+  if (tips.length) {
+    OpReplay.withSuppressedCapture(() =>
+      OpCheckpoint.projectTips(layerEl, ops, OpDag.getContent(ydoc), tips, joinSequence))
+    activateAllToyScriptsDom(ydoc, layerEl)
+    OpHead.setHead(tableId, tips[0])
+    OpHead.setMergeTips(tableId, tips.slice(1))
+    markProjectedAt(layerEl, tips)
+  }
+  return { tips, authored, orphanIds: [...orphanIds] }
 }
 
 /**

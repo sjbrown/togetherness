@@ -765,10 +765,30 @@ function maybeCheckpoint(reason) {
   return op;
 }
 
+/**
+ * Deletes arrived (a peer pruned) and this peer's tips were left behind.
+ * Called before any new op in the same event is received.
+ */
+function handleOrphanedLocalTips(layer, deletedIds) {
+  const joinSequence = tablesAPI.getJoinSequenceArray(_ydoc);
+  const out = Toys.resolveOrphanedTips(_ydoc, layer, _tableId,
+    { authorId: App.user.id, joinSequence, deletedIds });
+  if (!out) return;
+  Trace.op('orphaned', `local tips were pruned away; adopted ${out.tips.join(', ')}`,
+    { authored: out.authored, tips: out.tips }, 'warn');
+  addHistory('shared history moved on while you were away (adopted)', { elType: 'toys' });
+}
+
 function onOpsChanged(evt, transaction) {
   if (transaction?.local) return;
   const layer = _svgEl?.querySelector('#toys-layer');
   if (!layer) return;
+
+  const deletedIds = new Set();
+  for (const [opId, change] of evt.changes.keys) {
+    if (change.action === 'delete') deletedIds.add(opId);
+  }
+  if (deletedIds.size) handleOrphanedLocalTips(layer, deletedIds);
 
   // Gestures that are derived/internal, not independent peer intent — not
   // worth a log line (same spirit as the old Yjs-observer version only

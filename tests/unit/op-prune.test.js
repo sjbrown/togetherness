@@ -25,8 +25,8 @@ import { getHead, setHead, setMergeTips, localTips } from '../../src/op_head.js'
 import {
   PRUNE_AGE_MS, _setPruneAgeForTests, noteSeen, noteAllSeen, ageOf, assertPrunable, prune,
 } from '../../src/op_prune.js'
-import { pruneAfterCheckpoint } from '../../src/toys.js'
-import { RECEIVED_CONFLICT } from '../../src/op_replay.js'
+import { pruneAfterCheckpoint, resolveOrphanedTips } from '../../src/toys.js'
+import { RECEIVED_CONFLICT, RECEIVED_ORPHAN } from '../../src/op_replay.js'
 import { serializeNode } from '../../src/op_wire_mutation.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
@@ -121,6 +121,54 @@ function deliver(peer, opList) {
     }
   }
   return opList.map(op => peer.api.receive(peer.layer, op.id, []))
+}
+
+/**
+ * Sync `from`'s state into `peer` as a real Yjs update, then handle the ops
+ * Map's event exactly as app.js's onOpsChanged does: orphaned local tips
+ * first, before any added op is received.
+ */
+function syncInto(peer, from) {
+  const events = []
+  // Yjs computes an event's changes lazily and only during the handler.
+  const watch = (evt) => {
+    const deleted = new Set(), added = []
+    for (const [id, change] of evt.changes.keys) {
+      if (change.action === 'delete') deleted.add(id)
+      if (change.action === 'add') added.push(id)
+    }
+    events.push({ deleted, added })
+  }
+  getOps(peer.ydoc).observe(watch)
+  Y.applyUpdate(peer.ydoc, Y.encodeStateAsUpdate(from.ydoc, Y.encodeStateVector(peer.ydoc)), 'remote')
+  getOps(peer.ydoc).unobserve(watch)
+
+  const out = { orphaned: null, results: {} }
+  for (const { deleted, added } of events) {
+    if (deleted.size) {
+      out.orphaned = resolveOrphanedTips(peer.ydoc, peer.layer, peer.tableId,
+        { authorId: peer.id, joinSequence: [], deletedIds: deleted })
+    }
+    for (const id of added) out.results[id] = peer.api.receive(peer.layer, id, [])
+  }
+  return out
+}
+
+/** The first peer mints genesis; the rest receive it as part of its doc. */
+function seedShared(first, ...rest) {
+  seedGenesis([first])
+  for (const p of rest) {
+    Y.applyUpdate(p.ydoc, Y.encodeStateAsUpdate(first.ydoc))
+    setHead(p.tableId, 'genesis')
+  }
+}
+
+/** The DOM a peer's local tips project to from its own log. */
+function replayOf(peer) {
+  const ops = getOps(peer.ydoc)
+  const scratch = freshLayer()
+  projectTips(scratch, ops, getContent(peer.ydoc), localTips(peer.tableId, ops), [])
+  return [...scratch.children].map(serializeNode)
 }
 
 const domOf = (peer) => [...peer.layer.children].map(serializeNode)
@@ -398,5 +446,57 @@ describe('size after pruning', () => {
 
     expect(pruned).toBeLessThan(unpruned / 4)
     expect(pruned).toBeLessThanOrEqual(leanSize + 40 * res.deleted + 1024)
+  })
+})
+
+describe('a peer that was away while others pruned', () => {
+  /**
+   * alice, carol and dave share g, a1, a2. Carol goes quiet holding c1, c2
+   * (parent a2). Alice carries on and prunes past a2.
+   */
+  async function setup({ carolWrites = true } = {}) {
+    const A = makePeer('alice'), C = makePeer('carol'), D = makePeer('dave')
+    seedShared(A, C, D)
+    await place(A, 'a1', 0, 0)
+    await place(A, 'a2', 10, 0)
+    syncInto(C, A); syncInto(D, A)
+
+    let c1, c2
+    if (carolWrites) {
+      c1 = await place(C, 'c1', 100, 0)
+      c2 = await place(C, 'c2', 110, 0)
+    }
+
+    await place(A, 'a3', 20, 0)
+    writeCheckpoint(A)                       // C1
+    advance(PRUNE_AGE_MS + MIN)
+    await place(A, 'a4', 30, 0)
+    const { pruned } = writeCheckpoint(A)    // C2: prunes behind C1
+    expect(pruned.deleted).toBeGreaterThan(0)
+    expect(getOps(A.ydoc).has(getHead(C.tableId))).toBe(false)
+    return { A, C, D, c1, c2 }
+  }
+
+  test('a bystander ignores the orphaned ops: its DOM is unchanged and equals its replay', async () => {
+    const { A, C, c1, c2 } = await setup()
+    const before = domOf(A)
+
+    const out = syncInto(A, C)
+    expect(out.results[c1.id].result).toBe(RECEIVED_ORPHAN)
+    expect(out.results[c2.id].result).toBe(RECEIVED_ORPHAN)
+    expect(domOf(A)).toEqual(before)
+    expect(domOf(A)).toEqual(replayOf(A))
+    expect(A.layer.querySelector('[data-id="c1"]')).toBeNull()
+  })
+
+  test('an idle peer whose head was pruned adopts the shared tips without forking', async () => {
+    const { A, D } = await setup({ carolWrites: false })
+    const out = syncInto(D, A)
+
+    expect(out.orphaned).not.toBeNull()
+    expect(out.orphaned.authored).toBe(false)
+    expect(domOf(D)).toEqual(domOf(A))
+    expect(domOf(D)).toEqual(replayOf(D))
+    expect(localTips(D.tableId, getOps(D.ydoc))).toEqual(localTips(A.tableId, getOps(A.ydoc)))
   })
 })
