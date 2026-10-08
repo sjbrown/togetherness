@@ -111,8 +111,8 @@ second structure that can disagree with it.
 
 **Operations are immutable.** Never rewrite one. Never append to a
 `parents` array. Correcting something means appending a new operation
-(including an inverse operation — §7). The log a *history*, not a
-mutable state blob with extra steps.
+(including an inverse operation — §7). The log is a recent history plus a
+snapshot (§6.3), not a mutable state blob with extra steps.
 
 `authorId` is self-reported at commit time and is the persistent
 `user.js` localId, not Yjs's `clientID`. `clientID` is per-session and
@@ -395,6 +395,33 @@ because only the user knows whether that work matters:
 The dialog does not dismiss on scrim-click or Escape. It is a real choice,
 not a notice.
 
+**Orphan branches and disconnected components are splitters too.** Pruning
+(§6.3) can remove a branch's fork point from the log, and two peers who both
+pruned their shared history have components with no common ancestor. Neither
+case has an LCA to compare against, so the rules above apply with these
+additions:
+
+* **Bystanders** never apply orphan ops (§8, invariant 16).
+* **A peer whose own work is orphaned** (it authored ops on that branch)
+  forks. The fork is seeded from **its own live DOM**, because the fork
+  point is gone from the log. Remote deletes never touch the DOM, so the DOM
+  still holds that work. The peer then sees the dialog above: keep working
+  on the fork, or join the shared table. This is the "offline longer than 10
+  minutes" outcome: such a player should expect a fork rather than a smooth
+  merge.
+* **A peer with no ops of its own on the orphaned side** (an idle tab that
+  slept past the prune) silently adopts the current shared tips.
+* **Two components with no common ancestor are a conflict.** If both sides
+  pruned their shared history (a GM preparing offline while the players kept
+  playing), each branch is rooted at its own checkpoint and the LCA is null.
+  It is labelled exactly like any conflict (§5.2): the branch holding the
+  earliest-joining author leads, and the splitter forks from its own live
+  DOM. If the GM joined first, the GM's branch leads and the players are the
+  ones who fork. That is intended.
+
+Orphan detection runs **before** any rebuild (§5.6), so the DOM it would
+seed from is still intact.
+
 ### 5.5 The forked table's joinSequence
 
 More than one peer can have contributed to the splitter branch. Bob
@@ -503,6 +530,24 @@ never a delta, and §5.1's classification of concurrent and conflicting
 ignores it entirely. Applied anywhere other than as the base of a
 projection, it is a no-op.
 
+**A checkpoint's content lives apart from the graph.** The checkpoint op in
+the ops map carries its graph data (`id`, `parents`, `authorId`, `gesture`,
+`ts`). Its snapshot lives in a second shared map, keyed by op id. The op
+record stays immutable (invariant 2); only its content entry is ever
+deleted. A toys snapshot is roughly 12–13 KB per toy (≈ 380 KB at 30 toys),
+against about 300 B per gesture op, so without this split merge checkpoints
+would outweigh the ops many times over.
+
+Once a newer cut with content exists, a checkpoint's content may be
+deleted. The **root-most** checkpoint's content (genesis, or the prune root
+after a prune, §6.3) is never deleted. A projection's base is the latest cut
+**that still has content**. If that is an older cut, the replay is longer but
+just as correct.
+
+**A checkpoint with missing parents is a legal root.** Its content stands
+alone. Any other op whose ancestry reaches a missing parent, without passing
+through a checkpoint first, is an **orphan**, handled in §5.4.
+
 Which means one primitive covers five things we would otherwise build
 separately:
 
@@ -514,8 +559,9 @@ separately:
   want.)
 * **Checkpoint.** Periodically, an operation that supersedes its ancestry,
   so joining a six-month-old table does not mean replaying six million
-  gestures. Log growth is real and this is the answer to it; the policy for
-  *when* to write one is deferred, the primitive is not.
+  gestures. Log growth is real; a checkpoint is what lets the log be pruned
+  (§6.3). The policy for *when* to write one is deferred, the primitive is
+  not.
 * **Fork.** A branch's new table gets a checkpoint of the LCA state plus
   the splitter branch's ops.
 * **Merge.** A canonical rebuild (§5.6) may write a checkpoint of the
@@ -535,6 +581,49 @@ already have in memory would be ceremony. Export writes valid, standalone,
 Inkscape-openable SVG with the hoisted document-level `<script>` elements
 appended — same as `buildExportSvg` does today, and that function survives
 mostly as-is, reading the DOM instead of the Yjs tree.
+
+### 6.3 Pruning
+
+The op log does not grow without bound. Any peer may prune, unilaterally:
+it deletes from the shared map every op that is a strict ancestor of a
+chosen **prune root**, plus those ops' content entries (§6.1). The deletes
+replicate, so a peer that joins later downloads only what is left. There is
+no acknowledgement and no coordination, including with a peer that is
+offline.
+
+**The prune root** is a cut checkpoint, with content, in the ancestry of the
+peer's local tips, that meets both conditions:
+
+* **At least T = 10 minutes old, measured from when this peer first saw
+  it**, not from its `ts`. That makes the age immune to clock skew. First
+  sight is held in memory only, so after a page load every existing cut
+  counts as just seen, and nothing is pruned in the first 10 minutes after
+  loading.
+* **Not the newest cut.** K = 2: at least one newer cut exists. This holds
+  whatever the clocks say.
+
+The peer picks the newest checkpoint that satisfies both.
+
+Live play converges within seconds, so a 10-minute lag never orphans an op
+from a connected peer. A player who hasn't heard from anyone for 10 minutes
+is offline, and should expect a fork (§5.4) rather than a smooth merge.
+
+**When.** A peer prunes after it writes any checkpoint. It never prunes
+inside an envelope or while replaying.
+
+**What is deleted.** Strict ancestors of the prune root, and their content
+entries. The prune root itself stays, and so does its content: it becomes
+the root-most checkpoint (§6.1), and its missing parents make it a legal
+root.
+
+**History is recent, not complete.** Undo (§7) cannot reach a pruned op, and
+neither can the activity log as an audit trail. With T = 10 minutes, about
+10 minutes of history is guaranteed. This is accepted.
+
+**What pruning reclaims.** 1,000 small ops took 310 KB. After deleting 990
+of them, the whole document is 31.7 KB, and that is what a new peer
+downloads. Each deleted entry leaves about 30 B behind permanently: its key
+survives as a tombstone. That residue is the remaining growth (§9).
 
 ---
 
@@ -564,6 +653,8 @@ Consequences worth stating rather than discovering:
   ones. A trust-based table should let you undo your friend's mistake; it
   should not let you do it invisibly.
 * **Redo is the inverse of the inverse.** Falls out. No separate stack.
+* **Undo reaches back as far as the prune line** (§6.3), about 10 minutes.
+  An op that was pruned cannot be inverted.
 
 ### 7.1 Non-Toys Layers
 
@@ -603,6 +694,14 @@ Cite these by number in code comments and commit messages.
 13. A checkpoint is a projection base, never a delta. It carries no intent
     and never participates in conflict classification.
 14. Handlers never keep node references between gestures.
+15. Only strict ancestors of a prune root are ever deleted from the log. A
+    prune root is a cut with content that this peer first saw at least T
+    ago, and it is never the newest cut (§6.3).
+16. A checkpoint whose parents are missing is a root. Any other op whose
+    ancestry reaches a missing parent is an orphan, and bystanders never
+    apply it (§6.1, §5.4).
+17. A checkpoint's content may be deleted once a newer cut with content
+    exists. The root-most checkpoint's content never is (§6.1).
 
 ---
 
@@ -619,17 +718,21 @@ Known-unresolved, listed so nobody thinks they're resolved.
   layer is a simple label or a numerical displayed value. Save any
   optimization or handling-of-fiddly-cases to later.
 
-* **Log growth and checkpoint policy** (§7.1). The primitive is specified;
-  when to write one, and whether old operations are ever dropped from the
-  `Y.Map` (and what that does to a peer returning from a long offline
-  stretch with ops parented to a discarded ancestor), is not. A canonical
-  rebuild (§5.6) is one trigger: it may write a merge checkpoint whenever
-  `shouldCheckpoint` allows it.
+* **Log growth and checkpoint policy** (§6.3). Resolved: any peer prunes
+  strict ancestors of a prune root, and a peer returning from a long offline
+  stretch is handled by the orphan rules (§5.4). What remains open is only
+  *when* checkpoints are written. A canonical rebuild (§5.6) is one trigger:
+  it may write a merge checkpoint whenever `shouldCheckpoint` allows it.
 
   *Shandy:* transitions from/to home.html are an obvious checkpoint trigger.
   Also, switching away from the Toys layer in the UI is a good chance.
   Beyond that, I think a user control in ui.js (Peers tab) that lets users
   select auto-checkpointing between 1-10 minute frequencies.
+
+* **Tombstone residue** (§6.3). Each pruned op leaves about 30 B behind
+  permanently: its key survives in the shared map as a tombstone. Shorter op
+  ids, or starting a fresh document for a table, are the obvious remedies.
+  Not needed yet.
 
 <!--
 * **SVG's non-local semantics.** `<use>` references, `<defs>`
