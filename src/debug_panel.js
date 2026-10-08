@@ -352,17 +352,17 @@ export function opRowsHTML(ops, head) {
         <span class="dbg-op-i">${o.i}</span>
         <span class="dbg-op-gesture">${esc(o.gesture ?? '?')}</span>
         ${flags}
-        <span class="dbg-op-entries">${o.entries}</span>
+        <span class="dbg-op-entries">${o.mutations == null ? '—' : o.entries}</span>
       </summary>
       <div class="dbg-op-body">
         ${kv('id', idHTML(o.id))}
         ${kv('author', idHTML(o.authorId))}
         ${kv('parents', o.parents?.length ? o.parents.map(idHTML).join(' ') : '<span class="dbg-nil">root</span>')}
         ${kv('recorded', o.ts ? esc(clockTime(o.ts)) : '—')}
-        <div class="dbg-wire-label">Wire packet — ${o.entries} entr${o.entries === 1 ? 'y' : 'ies'}
+        <div class="dbg-wire-label">Wire packet — ${o.mutations == null ? 'content deleted' : `${o.entries} entr${o.entries === 1 ? 'y' : 'ies'}`}
           <button class="dbg-mini" data-dbg-action="copy-op" data-dbg-id="${esc(o.id)}">Copy</button>
         </div>
-        ${jsonHTML(o.mutations)}
+        ${o.mutations == null ? '<div class="dbg-empty">(content deleted)</div>' : jsonHTML(o.mutations)}
       </div>
     </details>`
   }).join('')
@@ -684,7 +684,7 @@ function downloadTrace() {
 
 function copyOp(id, btn) {
   const op = App?.getDebugState?.()?.ops?.ordered?.find(o => o.id === id)
-  if (!op) return
+  if (!op || op.mutations == null) return
   const text = JSON.stringify(op.mutations, null, 2)
   const done = () => {
     const was = btn.textContent

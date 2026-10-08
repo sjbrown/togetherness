@@ -15,7 +15,7 @@
  */
 import * as Y                   from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
-import { compareAuthority as compareAuthorityIn, getOps, appendOp } from './op_dag.js';
+import { compareAuthority as compareAuthorityIn, getOps, getContent, appendOp, appendCheckpoint } from './op_dag.js';
 import * as Trace                from './trace.js';
 
 const TABLES_KEY  = 'tt_tables';
@@ -431,6 +431,25 @@ function deterministicClientId(bytes) {
 }
 
 /**
+ * Replace a fork doc's toys log with the seed. The content map is cleared
+ * along with the ops, since the fork inherited the parent's snapshots; each
+ * checkpoint's content goes in with its op.
+ */
+function seedForkOps(forkDoc, opsSeed) {
+  const forkOps = getOps(forkDoc);
+  const forkContent = getContent(forkDoc);
+  forkDoc.transact(() => {
+    forkOps.clear();
+    forkContent.clear();
+    appendCheckpoint(forkDoc, opsSeed.genesis, opsSeed.content.get(opsSeed.genesis.id));
+    for (const op of opsSeed.rebasedOps) {
+      if (opsSeed.content.has(op.id)) appendCheckpoint(forkDoc, op, opsSeed.content.get(op.id));
+      else appendOp(forkDoc, op);
+    }
+  });
+}
+
+/**
  * Fork a LIVE Y.Doc — already in memory, actively synced/edited, unlike
  * forkTable's at-rest reload — into a brand-new IndexedDB database, named
  * deterministically from the doc's own current content
@@ -489,14 +508,7 @@ async function forkLiveDoc(liveDoc, orderedIds, opsSeed) {
 
   resetJoinSequence(forkDoc, orderedIds);
 
-  if (opsSeed) {
-    const forkOps = getOps(forkDoc);
-    forkDoc.transact(() => {
-      forkOps.clear();
-      appendOp(forkDoc, opsSeed.genesis);
-      for (const op of opsSeed.rebasedOps) appendOp(forkDoc, op);
-    });
-  }
+  if (opsSeed) seedForkOps(forkDoc, opsSeed);
 
   const update         = Y.encodeStateAsUpdate(forkDoc); // post-reset, post-prune bytes
   const forkedTableId = await generateForkTableId(update);
@@ -546,6 +558,7 @@ export const tablesAPI = {
   generateForkTableId,
   deterministicClientId,
   forkLiveDoc,
+  seedForkOps,
   generateTableId,
   randSlug,
   compareAuthority,

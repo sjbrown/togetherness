@@ -20,8 +20,8 @@ import {
   placeToy, makeLayerAPI, activateAllToyScriptsDom, projectLayer, ensureLayerId,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
-import { getOps, appendOp } from '../../src/op_dag.js'
-import { projectTips, nearestCheckpoint, opsSinceCheckpoint, CHECKPOINT_MIN_OPS } from '../../src/op_checkpoint.js'
+import { getOps, getContent, appendOp, appendCheckpoint } from '../../src/op_dag.js'
+import { projectTips, nearestCheckpoint, latestCut, isCheckpoint, opsSinceCheckpoint, CHECKPOINT_MIN_OPS } from '../../src/op_checkpoint.js'
 import { getHead, getMergeTips, maximalTips, setHead } from '../../src/op_head.js'
 import { serializeNode } from '../../src/op_wire_mutation.js'
 import { RECEIVED_CONFLICT, RECEIVED_REBUILT, RECEIVED_SUBSEQUENT } from '../../src/op_replay.js'
@@ -36,8 +36,10 @@ const D6_SVG        = fs.readFileSync(path.join(TOY_DIR, 'dice_d6.svg'), 'utf8')
 const DICE_UTILS_JS = fs.readFileSync(path.join(TOY_DIR, 'js/dice_utils.js'), 'utf8')
 
 let _tableCounter = 0
+let _peers = []
 
 beforeEach(() => {
+  _peers = []
   _clearSvgTextCache(); _resetToyScriptState()
   delete globalThis.tray; delete globalThis.tray_sum; delete globalThis.dice; delete globalThis.d6
   localStorage.clear()
@@ -66,7 +68,9 @@ function makePeer(authorId) {
   const ydoc = new Y.Doc()
   const layer = ensureLayerId(freshLayer())
   const api = makeLayerAPI(ydoc, () => layer, { id: authorId }, tableId)
-  return { id: authorId, tableId, ydoc, layer, api }
+  const peer = { id: authorId, tableId, ydoc, layer, api }
+  _peers.push(peer)
+  return peer
 }
 
 /** Every peer starts from the same genesis checkpoint — minted once,
@@ -75,7 +79,7 @@ function makePeer(authorId) {
 function seedGenesis(peers) {
   const genesis = { id: 'genesis', parents: [], authorId: 'system', gesture: 'checkpoint', ts: 0, mutations: [] }
   for (const p of peers) {
-    getOps(p.ydoc).set(genesis.id, genesis)
+    appendCheckpoint(p.ydoc, genesis, [])
     setHead(p.tableId, genesis.id)
   }
   return genesis
@@ -86,7 +90,18 @@ function seedGenesis(peers) {
  * any receive() call, exactly as Yjs would have every op present in the
  * shared Y.Map before onOpsChanged iterates the arrived keys. */
 function deliver(peer, ops, order = ops.map((_, i) => i)) {
-  for (const op of ops) getOps(peer.ydoc).set(op.id, op)
+  for (const op of ops) {
+    if (isCheckpoint(op)) {
+      // A checkpoint's content travels with it, in one update.
+      const from = _peers.find(p => getContent(p.ydoc).has(op.id))
+      peer.ydoc.transact(() => {
+        getOps(peer.ydoc).set(op.id, op)
+        if (from) getContent(peer.ydoc).set(op.id, getContent(from.ydoc).get(op.id))
+      })
+    } else {
+      getOps(peer.ydoc).set(op.id, op)
+    }
+  }
   const results = []
   for (const i of order) {
     results.push(peer.api.receive(peer.layer, ops[i].id, []))
@@ -109,7 +124,7 @@ function assertConverged(peers) {
   const ops = getOps(peers[0].ydoc)
   const unionTips = maximalTips(ops, peers.flatMap(localTipsOf))
   const scratch = freshLayer()
-  projectTips(scratch, ops, unionTips, [])
+  projectTips(scratch, ops, getContent(peers[0].ydoc), unionTips, [])
   expect([...scratch.children].map(serializeNode)).toEqual(serialized[0])
 }
 
@@ -356,11 +371,23 @@ describe('merge checkpoints (§5.6)', () => {
     const ckQ = getOps(Q.ydoc).get(rQ.mergeCheckpoint)
     expect(ckP).toEqual(ckQ)
 
+    // Identical content too, so the shared maps collapse to one entry each.
+    const contentP = getContent(P.ydoc).get(rP.mergeCheckpoint)
+    const contentQ = getContent(Q.ydoc).get(rQ.mergeCheckpoint)
+    expect(contentP).toEqual(contentQ)
+    expect(JSON.stringify(contentP)).toBe(JSON.stringify(contentQ))
+
     const shared = new Y.Doc()
-    appendOp(shared, ckP)
+    appendCheckpoint(shared, ckP, contentP)
     const sizeBefore = getOps(shared).size
-    appendOp(shared, ckQ)
+    appendCheckpoint(shared, ckQ, contentQ)
     expect(getOps(shared).size).toBe(sizeBefore)
+    expect(getContent(shared).size).toBe(1)
+
+    // Genesis keeps its content; the merge checkpoint is the newest cut.
+    for (const peer of [P, Q]) {
+      expect([...getContent(peer.ydoc).keys()].sort()).toEqual(['genesis', rP.mergeCheckpoint].sort())
+    }
 
     assertConverged([P, Q])
   })
@@ -405,7 +432,7 @@ describe('merge checkpoints (§5.6)', () => {
 
     const ops = getOps(P.ydoc)
     const tips2 = localTipsOf(P)
-    expect(nearestCheckpoint(ops, tips2)).toBe(ck)
+    expect(nearestCheckpoint(ops, getContent(P.ydoc), tips2)).toBe(ck)
     expect(opsSinceCheckpoint(ops, tips2)).toBe(2) // just opP2, opQ2
 
     assertConverged([P, Q])
@@ -459,7 +486,7 @@ describe('merge checkpoints (§5.6)', () => {
     const [rR] = deliver(R, [opQ, ckOp], [1])
     expect(rR.result).toBe(RECEIVED_REBUILT)
     expect(localTipsOf(R)).toEqual([ck])
-    expect(nearestCheckpoint(getOps(R.ydoc), [ck])).toBe(ck)
+    expect(nearestCheckpoint(getOps(R.ydoc), getContent(R.ydoc), [ck])).toBe(ck)
 
     // Case C: S has its own concurrent op (opS), not in T. Receiving ck
     // lands S on tips [ck, opS] (or [opS, ck] — order irrelevant), and
@@ -477,6 +504,9 @@ describe('merge checkpoints (§5.6)', () => {
     deliver(P, [opS, ck2], [1])
     deliver(Q, [opS, ck2], [1])
     deliver(R, [opS, ck2], [1])
+
+    // Whichever checkpoints each peer holds, genesis's content is among them.
+    for (const peer of [P, Q, R, S]) expect(getContent(peer.ydoc).has('genesis')).toBe(true)
 
     assertConverged([P, Q, R, S])
   })

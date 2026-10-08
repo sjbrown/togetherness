@@ -277,7 +277,7 @@ export function classify(ops, tips, incomingId, joinSequence = []) {
  *
  * Returns the new head.
  */
-export function advanceTo(layerEl, ops, headId, targetId, joinSequence = []) {
+export function advanceTo(layerEl, ops, content, headId, targetId, joinSequence = []) {
   return withSuppressedCapture(() => {
     if (headId != null && (headId === targetId || isAncestor(ops, headId, targetId))) {
       const path = pathFrom(ops, headId, targetId, joinSequence)
@@ -294,7 +294,7 @@ export function advanceTo(layerEl, ops, headId, targetId, joinSequence = []) {
     } else {
       Trace.op('advance', 'rebuilding from the nearest checkpoint',
         { mode: 'project', from: headId, to: targetId })
-      projectFrom(layerEl, ops, targetId, joinSequence)
+      projectFrom(layerEl, ops, content, targetId, joinSequence)
     }
     return targetId
   })
@@ -343,7 +343,7 @@ export const RECEIVED_CONFLICT   = 'received-conflict'
  *   N-way conflicts stay unhandled — so lca and tips are reported the
  *   same shape as before.
  */
-export function receiveOp(layerEl, ops, headId, incomingId, joinSequence = [], mergeTipIds = []) {
+export function receiveOp(layerEl, ops, content, headId, incomingId, joinSequence = [], mergeTipIds = []) {
   const localTipsArr = maximalTips(ops, [headId, ...(mergeTipIds ?? [])])
   const { kind, D } = classify(ops, localTipsArr, incomingId, joinSequence)
 
@@ -379,9 +379,9 @@ export function receiveOp(layerEl, ops, headId, incomingId, joinSequence = [], m
   }
 
   // REBUILT
-  withSuppressedCapture(() => projectTips(layerEl, ops, newTips, joinSequence))
+  withSuppressedCapture(() => projectTips(layerEl, ops, content, newTips, joinSequence))
   Trace.op('rebuild', `rebuilt ${newTips.length} tip${newTips.length === 1 ? '' : 's'}`, () => ({
-    tips: newTips, cut: nearestCheckpoint(ops, newTips), incoming: incomingId,
+    tips: newTips, cut: nearestCheckpoint(ops, content, newTips), incoming: incomingId,
   }))
   return { result: RECEIVED_REBUILT, head: headId, mergeTip: incomingId, mergeTips: newMergeTips }
 }

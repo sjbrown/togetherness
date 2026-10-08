@@ -18,6 +18,16 @@ import { checkpointOp, ensureLayerId, LAYER_DATA_ID } from '../../src/op_checkpo
 import { runInEnvelope, commitGesture } from '../../src/envelope.js'
 import { getOps, appendOp } from '../../src/op_dag.js'
 
+const content = new Map()
+beforeEach(() => content.clear())
+
+/** checkpointOp, recording the snapshot in the shared content map. */
+function ckOp(el, opts) {
+  const { op, content: snapshot } = checkpointOp(el, opts)
+  content.set(op.id, snapshot)
+  return op
+}
+
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
 function layer(html = '') {
@@ -396,7 +406,7 @@ describe('orderSensitive', () => {
   })
 
   test('a checkpoint is left out, same as conflicts', () => {
-    const ck = checkpointOp(layer('<g data-id="tray"/>'), { id: 'ck' })
+    const ck = ckOp(layer('<g data-id="tray"/>'), { id: 'ck' })
     const ops = new Map([['ck', ck], ['a', childOp('a', [], 'tray')]])
     expect(orderSensitive(ops, ['ck'], ['a'])).toBe(false)
   })
@@ -405,12 +415,12 @@ describe('orderSensitive', () => {
 describe('advanceTo', () => {
   test('a descendant replays only the missing operations', () => {
     const base = layer('<rect data-id="r" x="0"/>')
-    const cp = checkpointOp(base, { id: 'cp', authorId: 'alice' })
+    const cp = ckOp(base, { id: 'cp', authorId: 'alice' })
     const m1 = attrOp('m1', ['cp'], 'r', 'x', '0', '5')
     const ops = new Map([['cp', cp], ['m1', m1]])
 
     const live = layer('<rect data-id="r" x="0"/>')
-    const head = advanceTo(live, ops, 'cp', 'm1')
+    const head = advanceTo(live, ops, content, 'cp', 'm1')
 
     expect(head).toBe('m1')
     expect(live.querySelector('[data-id="r"]').getAttribute('x')).toBe('5')
@@ -418,16 +428,16 @@ describe('advanceTo', () => {
 
   test('switching to a sibling branch rebuilds from the checkpoint', () => {
     const base = layer('<rect data-id="r" x="0"/>')
-    const cp = checkpointOp(base, { id: 'cp', authorId: 'alice' })
+    const cp = ckOp(base, { id: 'cp', authorId: 'alice' })
     const mine = attrOp('mine', ['cp'], 'r', 'x', '0', '11')
     const theirs = attrOp('theirs', ['cp'], 'r', 'x', '0', '22')
     const ops = new Map([['cp', cp], ['mine', mine], ['theirs', theirs]])
 
     const live = layer()
-    advanceTo(live, ops, null, 'mine')
+    advanceTo(live, ops, content, null, 'mine')
     expect(live.querySelector('[data-id="r"]').getAttribute('x')).toBe('11')
 
-    const head = advanceTo(live, ops, 'mine', 'theirs')
+    const head = advanceTo(live, ops, content, 'mine', 'theirs')
     expect(head).toBe('theirs')
     expect(live.querySelector('[data-id="r"]').getAttribute('x')).toBe('22')
   })
@@ -435,7 +445,7 @@ describe('advanceTo', () => {
   test('applying a remote operation produces no operation of our own', () => {
     const ydoc = new Y.Doc()
     const base = layer('<rect data-id="r" x="0"/>')
-    const cp = checkpointOp(base, { id: 'cp', authorId: 'alice' })
+    const cp = ckOp(base, { id: 'cp', authorId: 'alice' })
     const m1 = attrOp('m1', ['cp'], 'r', 'x', '0', '5')
     const ops = new Map([['cp', cp], ['m1', m1]])
 
@@ -444,7 +454,7 @@ describe('advanceTo', () => {
     const mo = new MutationObserver(rs => captured.push(...rs))
     mo.observe(live, { subtree: true, childList: true, attributes: true })
 
-    advanceTo(live, ops, 'cp', 'm1')
+    advanceTo(live, ops, content, 'cp', 'm1')
 
     // The observer still sees the DOM change — suppression is the
     // envelope's contract, not the browser's — but the envelope drops it.
@@ -467,10 +477,10 @@ describe('a checkpoint applied as a delta contributes nothing', () => {
   test('a subsequent checkpoint moves the head without duplicating children', () => {
     const P = peer(), Q = peer()
     const base = { id: 'base', parents: [], mutations: [] }
-    const ck = { ...checkpointOp(P, { authorId: 'alice', parents: ['base'] }), id: 'ck' }
+    const ck = ckOp(P, { authorId: 'alice', parents: ['base'], id: 'ck' })
     const ops = new Map([['base', base], ['ck', ck]])
 
-    const result = receiveOp(Q, ops, 'base', 'ck')
+    const result = receiveOp(Q, ops, content, 'base', 'ck')
 
     expect(result.result).toBe(RECEIVED_SUBSEQUENT)
     expect(result.head).toBe('ck')
@@ -480,7 +490,7 @@ describe('a checkpoint applied as a delta contributes nothing', () => {
   test('a concurrent checkpoint absorbs as a merge tip without duplicating children', () => {
     const P = peer()
     const base = { id: 'base', parents: [], mutations: [] }
-    const ck = { ...checkpointOp(P, { authorId: 'alice', parents: ['base'] }), id: 'ck' }
+    const ck = ckOp(P, { authorId: 'alice', parents: ['base'], id: 'ck' })
 
     const Q = peer()
     const qe = commitGesture(new Y.Doc(),
@@ -488,7 +498,7 @@ describe('a checkpoint applied as a delta contributes nothing', () => {
       { id: 'qe', parents: ['base'] })
     const ops = new Map([['base', base], ['ck', ck], ['qe', qe]])
 
-    const result = receiveOp(Q, ops, 'qe', 'ck')
+    const result = receiveOp(Q, ops, content, 'qe', 'ck')
 
     expect(result.result).toBe(RECEIVED_MERGED)
     expect(result.mergeTip).toBe('ck')
@@ -501,13 +511,13 @@ describe('a checkpoint applied as a delta contributes nothing', () => {
     const op1 = attrOp('op1', ['head'], 'a', 'x', '0', '1')
     const ckSource = peer()
     ckSource.querySelector('[data-id="a"]').setAttribute('x', '1')
-    const ck = { ...checkpointOp(ckSource, { authorId: 'alice', parents: ['op1'] }), id: 'ck' }
+    const ck = ckOp(ckSource, { authorId: 'alice', parents: ['op1'], id: 'ck' })
     const op2 = attrOp('op2', ['ck'], 'b', 'x', '0', '9')
 
     const ops = new Map([['head', head], ['op1', op1], ['ck', ck], ['op2', op2]])
 
     const live = layer('<g data-id="a" x="0"/><g data-id="b" x="0"/>')
-    const resultHead = advanceTo(live, ops, 'head', 'op2')
+    const resultHead = advanceTo(live, ops, content, 'head', 'op2')
 
     expect(resultHead).toBe('op2')
     expect(live.children.length).toBe(2)
@@ -529,7 +539,7 @@ describe('a checkpoint is left out of conflict classification', () => {
   test('a checkpoint concurrent with a structural move on the layer root does not conflict', () => {
     const ops = new Map()
     const base = { id: 'base', parents: [], mutations: [] }
-    const ck = { ...checkpointOp(peer(), { authorId: 'alice', parents: ['base'] }), id: 'ck' }
+    const ck = ckOp(peer(), { authorId: 'alice', parents: ['base'], id: 'ck' })
     const move = childOp('move', ['base'], LAYER_DATA_ID)
     ops.set('base', base); ops.set('ck', ck); ops.set('move', move)
 
@@ -538,7 +548,7 @@ describe('a checkpoint is left out of conflict classification', () => {
 
   test('conflicts is false whenever a checkpoint is on either side', () => {
     const ops = new Map()
-    const ck = { ...checkpointOp(peer(), { authorId: 'alice' }), id: 'ck' }
+    const ck = ckOp(peer(), { authorId: 'alice', id: 'ck' })
     const move = childOp('move', [], LAYER_DATA_ID)
     ops.set('ck', ck); ops.set('move', move)
 
@@ -567,9 +577,9 @@ describe('receiveOp: concurrent delete vs. edit', () => {
       runInEnvelope(Q, () => Q.querySelector('[data-id=a]').setAttribute('x', '5')), { id: 'mv', parents: ['base'] })
     ops.set('del', del); ops.set('mv', mv)
 
-    expect(() => receiveOp(P, ops, 'del', 'mv')).not.toThrow()
-    expect(receiveOp(P, ops, 'del', 'mv').result).toBe(RECEIVED_CONFLICT)
-    expect(receiveOp(Q, ops, 'mv', 'del').result).toBe(RECEIVED_CONFLICT)
+    expect(() => receiveOp(P, ops, content, 'del', 'mv')).not.toThrow()
+    expect(receiveOp(P, ops, content, 'del', 'mv').result).toBe(RECEIVED_CONFLICT)
+    expect(receiveOp(Q, ops, content, 'mv', 'del').result).toBe(RECEIVED_CONFLICT)
   })
 })
 
@@ -609,14 +619,14 @@ describe('commitGesture', () => {
   test('the operation replays onto a peer', () => {
     const ydoc = new Y.Doc()
     const root = layer('<rect data-id="r" x="1"/>')
-    const genesis = checkpointOp(root, { id: 'cp', authorId: 'alice' })
+    const genesis = ckOp(root, { id: 'cp', authorId: 'alice' })
 
     const records = runInEnvelope(root, () =>
       root.querySelector('[data-id="r"]').setAttribute('x', '7'))
     const op = commitGesture(ydoc, records, { authorId: 'alice', parents: ['cp'] })
 
     const peer = layer()
-    advanceTo(peer, new Map([['cp', genesis], [op.id, op]]), null, op.id)
+    advanceTo(peer, new Map([['cp', genesis], [op.id, op]]), content, null, op.id)
     expect(peer.querySelector('[data-id="r"]').getAttribute('x')).toBe('7')
   })
 
@@ -629,7 +639,7 @@ describe('commitGesture', () => {
       root.querySelector('[data-id="r"]').setAttribute('x', '7'))
     const op = commitGesture(ydoc, records, { authorId: 'alice' })
 
-    expect(() => advanceTo(layer(), new Map([[op.id, op]]), null, op.id))
+    expect(() => advanceTo(layer(), new Map([[op.id, op]]), content, null, op.id))
       .toThrow(/unresolvable/)
   })
 })

@@ -752,8 +752,8 @@ function maybeCheckpoint(reason) {
 
   // Parent on the full tip set, not just headId — with pending merge tips,
   // [headId] alone wouldn't be a cut.
-  const op = OpCheckpoint.checkpointOp(layer, { authorId: App.user.id, parents: tips });
-  OpDag.appendOp(_ydoc, op);
+  const { op, content } = OpCheckpoint.checkpointOp(layer, { authorId: App.user.id, parents: tips });
+  OpDag.appendCheckpoint(_ydoc, op, content);
   OpHead.setHead(_tableId, op.id);
   OpHead.setMergeTips(_tableId, []);
   Trace.op('checkpoint', `wrote checkpoint ${op.id} (${reason})`, { id: op.id, reason });
@@ -2194,6 +2194,7 @@ const App = {
    */
   getDebugState: () => {
     const ops     = OpDag.getOps(_ydoc);
+    const content = OpDag.getContent(_ydoc);
     const allIds  = [...ops.keys()];
     const joinSeq = tablesAPI.getJoinSequenceArray(_ydoc);
     const layerEl = _svgEl?.querySelector('#toys-layer') ?? null;
@@ -2202,6 +2203,8 @@ const App = {
 
     const ordered = OpDag.totalOrder(ops, shown, joinSeq).map((id, i) => {
       const op = ops.get(id);
+      const isCk = OpCheckpoint.isCheckpoint(op);
+      const mutations = isCk ? (content.get(id) ?? null) : (op?.mutations ?? []);
       return {
         i, id,
         gesture:    op?.gesture ?? null,
@@ -2209,9 +2212,9 @@ const App = {
         parents:    op?.parents ?? [],
         ts:         op?.ts ?? null,
         mine:       op?.authorId === App.user.id,
-        checkpoint: OpCheckpoint.isCheckpoint(op),
-        entries:    op?.mutations?.length ?? 0,
-        mutations:  op?.mutations ?? [],
+        checkpoint: isCk,
+        entries:    mutations?.length ?? 0,
+        mutations,
       };
     });
 
