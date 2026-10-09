@@ -132,7 +132,7 @@ const normalizeTips = (tipsOrHead) =>
 function unionAncestry(ops, tips) {
   const union = new Set()
   for (const t of tips) {
-    union.add(t)
+    if (getOp(ops, t)) union.add(t)
     for (const a of ancestors(ops, t)) union.add(a)
   }
   return union
@@ -153,7 +153,7 @@ function isCut(ops, candidateId, reachable) {
 }
 
 /** The cut checkpoints of a tip set, content or not. */
-function cutsOf(ops, tips) {
+export function cutsOf(ops, tips) {
   const reachable = unionAncestry(ops, tips)
   const marks = [...reachable].filter(id => isCheckpoint(getOp(ops, id)))
   return marks.filter(id => isCut(ops, id, reachable))
@@ -321,6 +321,22 @@ export function buildForkSeed(ops, parentContent, lcaId, splitterTipId, layerEl,
   })
 
   return { genesis, rebasedOps, content }
+}
+
+/**
+ * The seed for a fork whose fork point no longer exists in the log: a
+ * genesis checkpoint of `layerEl` itself, with nothing rebased onto it.
+ * `branchIds` are the ops of the branch being preserved; the genesis ts is
+ * their latest, so peers forking the same branch agree on it, and the id is
+ * hashed from the content for the same reason (buildForkSeed). layerEl must
+ * be the live layer as it stands, before anything rebuilds it.
+ */
+export function buildLiveForkSeed(ops, branchIds, layerEl, { authorId } = {}) {
+  const { op: draft, content: snapshot } = checkpointOp(layerEl, { authorId, parents: [] })
+  let ts = 0
+  for (const id of branchIds) ts = Math.max(ts, getOp(ops, id)?.ts ?? 0)
+  const genesis = { ...draft, id: `tt-op-ck-${deterministicSuffix(JSON.stringify(snapshot))}`, ts }
+  return { genesis, rebasedOps: [], content: new Map([[genesis.id, snapshot]]) }
 }
 
 /**

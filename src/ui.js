@@ -839,14 +839,19 @@ export function closePanel() {
 // document
 let _pendingBranchTableId = null;
 
-export function showBranchDialog(forkedTableId) {
+export function showBranchDialog(forkedTableId, { offline = false } = {}) {
   _pendingBranchTableId = forkedTableId;
   const body = $('#branchDialogBody');
   if (body) {
+    const offlineNote = offline
+      ? `<p>This table was offline for more than 10 minutes while the other
+      players kept playing.</p>`
+      : '';
     body.innerHTML = `
       <p>Your table drifted out of sync with the other players while you
       were apart, and some of what you did while apart couldn't be
       automatically merged back in.</p>
+      ${offlineNote}
       <p>Nothing was lost — it's saved in a new table:
       <strong>${forkedTableId}</strong>, findable any time from the table
       list.</p>

@@ -7,7 +7,7 @@
  */
 
 import { apply as applyWire } from './op_wire_mutation.js'
-import { getOp, isAncestor, lca, ancestorsInclusive, totalOrder, pathFrom, heads } from './op_dag.js'
+import { getOp, isAncestor, lca, ancestorsInclusive, totalOrder, pathFrom, heads, isOrphan } from './op_dag.js'
 import { projectFrom, projectTips, nearestCheckpoint, isCheckpoint, deltaMutations } from './op_checkpoint.js'
 import { maximalTips } from './op_head.js'
 import * as Trace from './trace.js'
@@ -226,7 +226,9 @@ const normalizeTips = (tipsOrHead) =>
  *        usually one or two ops, and each is walked once.
  *
  * KNOWN        — D is empty.
- * CONFLICTING  — conflicts(H', D). (apply nothing)
+ * CONFLICTING  — D shares no op with what this peer has (disjoint
+ *                components after both sides pruned their common history),
+ *                or conflicts(H', D). (apply nothing)
  * SUBSEQUENT   — H' is empty: every op this peer has is an ancestor of
  *                everything new, so every local tip is an ancestor of
  *                incoming.
@@ -253,6 +255,11 @@ export function classify(ops, tips, incomingId, joinSequence = []) {
 
   const D = [...ancestorsInclusive(ops, incomingId)].filter(id => !have.has(id))
   if (!D.length) return { kind: KNOWN, D: [] }
+
+  // Nothing of the incoming ancestry is held locally: two components that
+  // share no history, each rooted at its own checkpoint. No delta can join
+  // them, so it is a conflict whatever the ops touched.
+  if (D.length === ancestorsInclusive(ops, incomingId).size) return { kind: CONFLICTING, D }
 
   let commonOfD = null
   for (const d of D) {
@@ -319,12 +326,15 @@ export const RECEIVED_SUBSEQUENT = 'received-subsequent'
 export const RECEIVED_MERGED     = 'received-merged'
 export const RECEIVED_REBUILT    = 'received-rebuilt'
 export const RECEIVED_CONFLICT   = 'received-conflict'
+export const RECEIVED_ORPHAN     = 'received-orphan'
 
 /**
  * The single entry point for an arriving operation: classify it against
  * this peer's local tips (head plus merge tips), apply it if that's
  * safe, and report what happened.
  *
+ * - orphan: its ancestry reaches a pruned parent before any checkpoint.
+ *   Nothing is applied and the tips are unchanged (invariant 16).
  * - known: nothing to do.
  * - subsequent: DOM advances (deltas in totalOrder), head becomes
  *   incoming, merge tips clear.
@@ -345,6 +355,16 @@ export const RECEIVED_CONFLICT   = 'received-conflict'
  */
 export function receiveOp(layerEl, ops, content, headId, incomingId, joinSequence = [], mergeTipIds = []) {
   const localTipsArr = maximalTips(ops, [headId, ...(mergeTipIds ?? [])])
+
+  if (isOrphan(ops, incomingId)) {
+    Trace.op('classify', `${incomingId} is an orphan — ignored`, () => ({
+      incoming: incomingId, tips: localTipsArr,
+      gesture:  getOp(ops, incomingId)?.gesture ?? null,
+      authorId: getOp(ops, incomingId)?.authorId ?? null,
+    }), 'warn')
+    return { result: RECEIVED_ORPHAN, head: headId, mergeTip: null, mergeTips: mergeTipIds ?? [] }
+  }
+
   const { kind, D } = classify(ops, localTipsArr, incomingId, joinSequence)
 
   Trace.op('classify', `${incomingId} is ${kind} relative to local tips`, () => ({

@@ -27,6 +27,7 @@ import { tablesAPI }                              from './tables.js';
 import * as OpDag                                 from './op_dag.js';
 import * as OpHead                                from './op_head.js';
 import * as OpCheckpoint                          from './op_checkpoint.js';
+import * as OpPrune                               from './op_prune.js';
 import * as User                                  from './user.js';
 import * as Trace                                 from './trace.js';
 import * as Storage                               from './storage.js';
@@ -556,6 +557,9 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   });
 
 
+  // Every checkpoint in the loaded log starts its prune clock now.
+  OpPrune.noteAllSeen(OpDag.getOps(_ydoc));
+
   // Initial render
   renderDoc();
   renderPresence();
@@ -689,9 +693,8 @@ function handleToyBranchConflict(tips) {
   if (!layer) return;
 
   const joinSequence = tablesAPI.getJoinSequenceArray(_ydoc);
-  const decision = Toys.resolveToyBranchConflict(_ydoc, tips, { authorId: App.user.id, joinSequence });
-
-  Toys.adoptToyBranch(_ydoc, layer, decision.leader, _tableId);
+  const decision = Toys.settleBranchConflict(_ydoc, layer, _tableId, tips,
+    { authorId: App.user.id, joinSequence });
 
   if (!decision.authoredSplitter) {
     addHistory('branch resolved (adopted shared history)', { elType: 'toys' });
@@ -699,12 +702,15 @@ function handleToyBranchConflict(tips) {
   }
 
   addHistory("branch conflict — preserving your divergent work in a new table", { elType: 'toys' });
-  const seed = Toys.buildToyForkSeed(_ydoc, decision.lca, decision.splitter,
-    { authorId: decision.orderedIds[0], joinSequence });
-  tablesAPI.forkLiveDoc(_ydoc, decision.orderedIds, seed)
+  // No LCA means the sides share no history: this peer was offline past the prune age.
+  forkIntoNewTable(decision.orderedIds, decision.seed, { offline: decision.lca == null });
+}
+
+function forkIntoNewTable(orderedIds, seed, { offline = false } = {}) {
+  tablesAPI.forkLiveDoc(_ydoc, orderedIds, seed)
     .then(forkedTableId => {
       tablesAPI.touchTableRecord(forkedTableId, { name: `${_tableId} (branch)` });
-      UI.showBranchDialog(forkedTableId);
+      UI.showBranchDialog(forkedTableId, { offline });
     })
     .catch(err => {
       console.error('[app] branch fork failed', err);
@@ -757,13 +763,39 @@ function maybeCheckpoint(reason) {
   OpHead.setHead(_tableId, op.id);
   OpHead.setMergeTips(_tableId, []);
   Trace.op('checkpoint', `wrote checkpoint ${op.id} (${reason})`, { id: op.id, reason });
+  Toys.pruneAfterCheckpoint(_ydoc, _tableId, op.id, tablesAPI.getJoinSequenceArray(_ydoc));
   return op;
+}
+
+/**
+ * Deletes arrived (a peer pruned) and this peer's tips were left behind.
+ * Called before any new op in the same event is received.
+ */
+function handleOrphanedLocalTips(layer, deletedIds) {
+  const joinSequence = tablesAPI.getJoinSequenceArray(_ydoc);
+  const out = Toys.resolveOrphanedTips(_ydoc, layer, _tableId,
+    { authorId: App.user.id, joinSequence, deletedIds });
+  if (!out) return;
+  Trace.op('orphaned', `local tips were pruned away; adopted ${out.tips.join(', ')}`,
+    { authored: out.authored, tips: out.tips }, 'warn');
+  if (!out.fork) {
+    addHistory('shared history moved on while you were away (adopted)', { elType: 'toys' });
+    return;
+  }
+  addHistory("you were offline while others pruned history — preserving your work in a new table", { elType: 'toys' });
+  forkIntoNewTable(out.fork.orderedIds, out.fork.seed, { offline: true });
 }
 
 function onOpsChanged(evt, transaction) {
   if (transaction?.local) return;
   const layer = _svgEl?.querySelector('#toys-layer');
   if (!layer) return;
+
+  const deletedIds = new Set();
+  for (const [opId, change] of evt.changes.keys) {
+    if (change.action === 'delete') deletedIds.add(opId);
+  }
+  if (deletedIds.size) handleOrphanedLocalTips(layer, deletedIds);
 
   // Gestures that are derived/internal, not independent peer intent — not
   // worth a log line (same spirit as the old Yjs-observer version only
