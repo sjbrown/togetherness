@@ -7,7 +7,7 @@
  * orphans and conflicts, writing merge checkpoints, pruning, undo and redo.
  */
 
-import { runInEnvelope, commitGesture, isInsideEnvelope } from './envelope.js';
+import { runInEnvelope, commitGesture, isInsideEnvelope, assertOpenOn } from './envelope.js';
 import * as OpHead from './op_head.js';
 import * as OpDag from './op_dag.js';
 import * as OpWireMutation from './op_wire_mutation.js';
@@ -78,7 +78,10 @@ export function runGesture(ydoc, layer, layerEl, fn, opts = {}) {
  * enclosing envelope instead of committing one of its own.
  */
 export function ensureEnvelope(ydoc, layer, layerEl, fn, opts = {}) {
-  if (isInsideEnvelope()) return { result: fn(), op: null }
+  if (isInsideEnvelope()) {
+    assertOpenOn(layer.name)
+    return { result: fn(), op: null }
+  }
   let result
   const { op } = runGesture(ydoc, layer, layerEl, () => { result = fn() }, opts)
   return { result, op }

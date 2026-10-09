@@ -51,6 +51,18 @@ let _openLayer = null
 export const isInsideEnvelope = () => _envelopeDepth > 0
 
 /**
+ * Throws if an envelope is open on a layer other than `layerName`. A gesture
+ * never spans layers, and the open envelope observes only its own layer, so
+ * work on another would be silently lost rather than captured.
+ */
+export function assertOpenOn(layerName) {
+  if (_envelopeDepth > 0 && layerName && _openLayer && layerName !== _openLayer) {
+    throw new Error(`[envelope] a gesture cannot span layers `
+      + `(open on "${_openLayer}", nested on "${layerName}")`)
+  }
+}
+
+/**
  * Run fn() while watching an op layer for DOM mutations, then return the
  * raw MutationRecord[] produced.
  *
@@ -83,10 +95,7 @@ export function runInEnvelope(toyEl, fn) {
   const layerRootEl = toyEl.closest?.(`[${LAYER_MARKER}]`)
   const scopeEl = layerRootEl ?? toyEl.parentNode ?? toyEl
   const layerName = layerRootEl?.getAttribute(LAYER_MARKER) ?? null
-  if (_envelopeDepth > 0 && layerName && _openLayer && layerName !== _openLayer) {
-    throw new Error(`[envelope] runInEnvelope: a gesture cannot span layers `
-      + `(open on "${_openLayer}", nested on "${layerName}")`)
-  }
+  assertOpenOn(layerName)
   const records = []
   const observer = new MutationObserver(muts => records.push(...muts))
   observer.observe(scopeEl, MUTATION_OPTS)
