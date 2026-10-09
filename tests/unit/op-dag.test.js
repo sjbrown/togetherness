@@ -12,7 +12,7 @@ import {
   getOps, appendOp, getOp, allOps, toOpMap,
   ancestors, isAncestor, heads, lca, findLastAuthoredOp,
   compareAuthority, totalOrder, pathFrom,
-  branchAuthors, forkJoinSequence, labelBranches, toyUndoRedoStacks,
+  branchAuthors, forkJoinSequence, labelBranches, authorUndoRedoStacks,
 } from '../../src/op_dag.js'
 
 /** Build a plain op map from [id, parents, authorId, ts] triples. */
@@ -136,7 +136,7 @@ describe('lca', () => {
   })
 })
 
-describe('toyUndoRedoStacks', () => {
+describe('authorUndoRedoStacks', () => {
   const move = (id, parents, authorId, from, to) => ({
     id, parents, authorId, gesture: 'move', ts: 0,
     mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: from, newValue: to }],
@@ -150,22 +150,22 @@ describe('toyUndoRedoStacks', () => {
     ops.set('M3', move('M3', ['M2'], 'alice', '2', '3'))
 
     // Undo #1: target is M3 (the most recent real gesture).
-    let { undoTargetId } = toyUndoRedoStacks(ops, 'M3', 'alice')
+    let { undoTargetId } = authorUndoRedoStacks(ops, 'M3', 'alice')
     expect(undoTargetId).toBe('M3')
     ops.set('U1', meta('U1', ['M3'], 'alice', 'undo:move'))
 
     // Undo #2: must reach M2, NOT M3 again — this is the exact bug.
-    ;({ undoTargetId } = toyUndoRedoStacks(ops, 'U1', 'alice'))
+    ;({ undoTargetId } = authorUndoRedoStacks(ops, 'U1', 'alice'))
     expect(undoTargetId).toBe('M2')
     ops.set('U2', meta('U2', ['U1'], 'alice', 'undo:move'))
 
     // Undo #3: reaches M1.
-    ;({ undoTargetId } = toyUndoRedoStacks(ops, 'U2', 'alice'))
+    ;({ undoTargetId } = authorUndoRedoStacks(ops, 'U2', 'alice'))
     expect(undoTargetId).toBe('M1')
     ops.set('U3', meta('U3', ['U2'], 'alice', 'undo:move'))
 
     // Nothing left.
-    ;({ undoTargetId } = toyUndoRedoStacks(ops, 'U3', 'alice'))
+    ;({ undoTargetId } = authorUndoRedoStacks(ops, 'U3', 'alice'))
     expect(undoTargetId).toBeNull()
   })
 
@@ -173,7 +173,7 @@ describe('toyUndoRedoStacks', () => {
     const ops = new Map()
     ops.set('M1', move('M1', [], 'alice', '0', '1'))
     ops.set('U1', meta('U1', ['M1'], 'alice', 'undo:move'))
-    const { redoTargetId } = toyUndoRedoStacks(ops, 'U1', 'alice')
+    const { redoTargetId } = authorUndoRedoStacks(ops, 'U1', 'alice')
     expect(redoTargetId).toBe('U1')
   })
 
@@ -182,7 +182,7 @@ describe('toyUndoRedoStacks', () => {
     ops.set('M1', move('M1', [], 'alice', '0', '1'))
     ops.set('U1', meta('U1', ['M1'], 'alice', 'undo:move'))
     ops.set('M2', move('M2', ['U1'], 'alice', '0', '5')) // a fresh action, not a redo
-    const { redoTargetId, undoTargetId } = toyUndoRedoStacks(ops, 'M2', 'alice')
+    const { redoTargetId, undoTargetId } = authorUndoRedoStacks(ops, 'M2', 'alice')
     expect(redoTargetId).toBeNull()
     expect(undoTargetId).toBe('M2')
   })
@@ -194,7 +194,7 @@ describe('toyUndoRedoStacks', () => {
     ops.set('U1', meta('U1', ['M2'], 'alice', 'undo:move')) // undoes M2
     ops.set('R1', meta('R1', ['U1'], 'alice', 'redo:move')) // redoes M2
 
-    const { undoTargetId } = toyUndoRedoStacks(ops, 'R1', 'alice')
+    const { undoTargetId } = authorUndoRedoStacks(ops, 'R1', 'alice')
     // R1's own mutations are invert(U1's mutations) == M2's mutations
     // again (double inversion cancels) — functionally identical to
     // undoing M2 directly, just a fresh op id rather than M2's own.
@@ -204,7 +204,7 @@ describe('toyUndoRedoStacks', () => {
   test('checkpoints never appear on either stack', () => {
     const ops = new Map()
     ops.set('L', { id: 'L', parents: [], authorId: 'alice', gesture: 'checkpoint', ts: 0, mutations: [] })
-    const { undoTargetId, redoTargetId } = toyUndoRedoStacks(ops, 'L', 'alice')
+    const { undoTargetId, redoTargetId } = authorUndoRedoStacks(ops, 'L', 'alice')
     expect(undoTargetId).toBeNull()
     expect(redoTargetId).toBeNull()
   })
@@ -213,14 +213,14 @@ describe('toyUndoRedoStacks', () => {
     const ops = new Map()
     ops.set('M1', move('M1', [], 'alice', '0', '1'))
     ops.set('B1', move('B1', ['M1'], 'bob', '9', '9')) // bob's own action
-    const { undoTargetId } = toyUndoRedoStacks(ops, 'B1', 'alice')
+    const { undoTargetId } = authorUndoRedoStacks(ops, 'B1', 'alice')
     expect(undoTargetId).toBe('M1')
   })
 
   test('null head or null authorId returns both null, not a throw', () => {
     const ops = new Map()
-    expect(toyUndoRedoStacks(ops, null, 'alice')).toEqual({ undoTargetId: null, redoTargetId: null })
-    expect(toyUndoRedoStacks(ops, 'x', null)).toEqual({ undoTargetId: null, redoTargetId: null })
+    expect(authorUndoRedoStacks(ops, null, 'alice')).toEqual({ undoTargetId: null, redoTargetId: null })
+    expect(authorUndoRedoStacks(ops, 'x', null)).toEqual({ undoTargetId: null, redoTargetId: null })
   })
 })
 

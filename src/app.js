@@ -28,6 +28,7 @@ import * as OpDag                                 from './op_dag.js';
 import * as OpHead                                from './op_head.js';
 import * as OpCheckpoint                          from './op_checkpoint.js';
 import * as OpPrune                               from './op_prune.js';
+import * as OpLayer                               from './op_layer.js';
 import * as User                                  from './user.js';
 import * as Trace                                 from './trace.js';
 import * as Storage                               from './storage.js';
@@ -696,7 +697,7 @@ function handleToyBranchConflict(tips) {
   if (!layer) return;
 
   const joinSequence = tablesAPI.getJoinSequenceArray(_ydoc);
-  const decision = Toys.settleBranchConflict(_ydoc, layer, _tableId, tips,
+  const decision = OpLayer.settleBranchConflict(_ydoc, TOYS, layer, _tableId, tips,
     { authorId: App.user.id, joinSequence });
 
   if (!decision.authoredSplitter) {
@@ -766,7 +767,7 @@ function maybeCheckpoint(reason) {
   OpHead.setHead(_tableId, TOYS, op.id);
   OpHead.setMergeTips(_tableId, TOYS, []);
   Trace.op('checkpoint', `wrote checkpoint ${op.id} (${reason})`, { id: op.id, reason });
-  Toys.pruneAfterCheckpoint(_ydoc, _tableId, op.id, tablesAPI.getJoinSequenceArray(_ydoc));
+  OpLayer.pruneAfterCheckpoint(_ydoc, TOYS, _tableId, op.id, tablesAPI.getJoinSequenceArray(_ydoc));
   return op;
 }
 
@@ -776,7 +777,7 @@ function maybeCheckpoint(reason) {
  */
 function handleOrphanedLocalTips(layer, deletedIds) {
   const joinSequence = tablesAPI.getJoinSequenceArray(_ydoc);
-  const out = Toys.resolveOrphanedTips(_ydoc, layer, _tableId,
+  const out = OpLayer.resolveOrphanedTips(_ydoc, TOYS, layer, _tableId,
     { authorId: App.user.id, joinSequence, deletedIds });
   if (!out) return;
   Trace.op('orphaned', `local tips were pruned away; adopted ${out.tips.join(', ')}`,
@@ -2253,7 +2254,7 @@ const App = {
       };
     });
 
-    const projected = Toys.projectedAt(layerEl);
+    const projected = OpLayer.projectedAt(layerEl);
     const peers = [];
     _awareness.getStates().forEach((state, clientId) => {
       peers.push({

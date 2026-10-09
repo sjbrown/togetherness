@@ -13,11 +13,13 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import {
+  adoptBranch, buildLayerForkSeed, resolveBranchConflict,
+} from '../../src/op_layer.js'
 import { ensureLayerId } from '../../src/op_layers.js'
 import { TOYS_LAYER } from '../../src/toys.js'
 import {
   makeLayerAPI, projectLayer, placeToy, addToy, activateAllToyScriptsDom,
-  resolveToyBranchConflict, buildToyForkSeed, adoptToyBranch,
   undoToyGesture, redoToyGesture, deleteToysBatch, moveToysBatch,
   canUndoToyGesture, canRedoToyGesture,
   getGeom, reparentToyDom, applyMoveDom, runGesture, importToys,
@@ -477,7 +479,7 @@ describe('creator vs joiner — the human protocol the boot race was missing', (
   })
 })
 
-describe('resolveToyBranchConflict', () => {
+describe('resolveBranchConflict', () => {
   function fork(ydoc) {
     // L -> a1(alice, leader tip) / L -> s1(bob) -> s2(clyde) (splitter tip)
     const base = bareG()
@@ -499,7 +501,7 @@ describe('resolveToyBranchConflict', () => {
     const { tips } = fork(ydoc)
     const joinSequence = ['alice', 'bob', 'clyde']
 
-    const out = resolveToyBranchConflict(ydoc, tips, { authorId: 'bob', joinSequence })
+    const out = resolveBranchConflict(ydoc, TOYS_LAYER, tips, { authorId: 'bob', joinSequence })
     expect(out.leader).toBe('a1')
     expect(out.splitter).toBe('s2')
     expect(out.lca).toBe('L')
@@ -510,7 +512,7 @@ describe('resolveToyBranchConflict', () => {
   test('a bystander who touched neither branch gets authoredSplitter: false', () => {
     const ydoc = new Y.Doc()
     const { tips } = fork(ydoc)
-    const out = resolveToyBranchConflict(ydoc, tips, { authorId: 'zoe', joinSequence: ['alice', 'bob', 'clyde'] })
+    const out = resolveBranchConflict(ydoc, TOYS_LAYER, tips, { authorId: 'zoe', joinSequence: ['alice', 'bob', 'clyde'] })
     expect(out.authoredSplitter).toBe(false)
     expect(out.orderedIds).toBeUndefined()
   })
@@ -518,7 +520,7 @@ describe('resolveToyBranchConflict', () => {
   test('the leader author is also just a bystander to the splitter', () => {
     const ydoc = new Y.Doc()
     const { tips } = fork(ydoc)
-    const out = resolveToyBranchConflict(ydoc, tips, { authorId: 'alice', joinSequence: ['alice', 'bob', 'clyde'] })
+    const out = resolveBranchConflict(ydoc, TOYS_LAYER, tips, { authorId: 'alice', joinSequence: ['alice', 'bob', 'clyde'] })
     expect(out.authoredSplitter).toBe(false)
   })
 
@@ -526,14 +528,14 @@ describe('resolveToyBranchConflict', () => {
     const ydoc = new Y.Doc()
     const { tips } = fork(ydoc)
     const joinSequence = ['alice', 'bob', 'clyde']
-    const forward = resolveToyBranchConflict(ydoc, [tips[0], tips[1]], { authorId: 'zoe', joinSequence })
-    const reversed = resolveToyBranchConflict(ydoc, [tips[1], tips[0]], { authorId: 'zoe', joinSequence })
+    const forward = resolveBranchConflict(ydoc, TOYS_LAYER, [tips[0], tips[1]], { authorId: 'zoe', joinSequence })
+    const reversed = resolveBranchConflict(ydoc, TOYS_LAYER, [tips[1], tips[0]], { authorId: 'zoe', joinSequence })
     expect(forward.leader).toBe(reversed.leader)
     expect(forward.splitter).toBe(reversed.splitter)
   })
 })
 
-describe('buildToyForkSeed', () => {
+describe('buildLayerForkSeed', () => {
   test('produces a genesis at the LCA plus the splitter ops, ready for forkLiveDoc', () => {
     const ydoc = new Y.Doc()
     const base = bareG()
@@ -544,7 +546,7 @@ describe('buildToyForkSeed', () => {
       mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '9' }] }
     appendOp(ydoc, TOYS_LAYER, s1)
 
-    const { genesis, rebasedOps, content } = buildToyForkSeed(ydoc, 'L', 's1', { authorId: 'bob', joinSequence: ['alice', 'bob'] })
+    const { genesis, rebasedOps, content } = buildLayerForkSeed(ydoc, TOYS_LAYER, 'L', 's1', { authorId: 'bob', joinSequence: ['alice', 'bob'] })
 
     expect(genesis.parents).toEqual([])
     expect(rebasedOps[0].parents).toEqual([genesis.id])
@@ -556,7 +558,7 @@ describe('buildToyForkSeed', () => {
   })
 })
 
-describe('adoptToyBranch', () => {
+describe('adoptBranch', () => {
   const TABLE = 'adopt-table'
   beforeEach(() => localStorage.clear())
 
@@ -581,7 +583,7 @@ describe('adoptToyBranch', () => {
     setHead(TABLE, TOYS_LAYER, splitter)
     expect(layerEl.querySelector('[data-id="r"]').getAttribute('x')).toBe('22')
 
-    adoptToyBranch(ydoc, layerEl, leader, TABLE)
+    adoptBranch(ydoc, TOYS_LAYER, layerEl, leader, TABLE)
 
     expect(layerEl.querySelector('[data-id="r"]').getAttribute('x')).toBe('11')
     expect(getHead(TABLE, TOYS_LAYER)).toBe(leader)
@@ -592,7 +594,7 @@ describe('adoptToyBranch', () => {
     const { leader } = fork(ydoc)
     const layerEl = bareG()
 
-    adoptToyBranch(ydoc, layerEl, leader, TABLE)
+    adoptBranch(ydoc, TOYS_LAYER, layerEl, leader, TABLE)
 
     expect(layerEl.querySelector('[data-id="r"]').getAttribute('x')).toBe('11')
     expect(getHead(TABLE, TOYS_LAYER)).toBe(leader)
@@ -620,11 +622,11 @@ describe('conflict resolution end to end — resolve, adopt, and fork-seed agree
     forkedHistory(ydoc)
     const joinSequence = ['alice', 'bob', 'zoe']
 
-    const decision = resolveToyBranchConflict(ydoc, ['a1', 's1'], { authorId: 'zoe', joinSequence })
+    const decision = resolveBranchConflict(ydoc, TOYS_LAYER, ['a1', 's1'], { authorId: 'zoe', joinSequence })
     expect(decision.authoredSplitter).toBe(false)
 
     const layerEl = bareG()
-    adoptToyBranch(ydoc, layerEl, decision.leader, TABLE)
+    adoptBranch(ydoc, TOYS_LAYER, layerEl, decision.leader, TABLE)
     expect(layerEl.querySelector('[data-id="r"]').getAttribute('x')).toBe('99')
   })
 
@@ -633,22 +635,22 @@ describe('conflict resolution end to end — resolve, adopt, and fork-seed agree
     forkedHistory(ydoc)
     const joinSequence = ['alice', 'bob']
 
-    const decision = resolveToyBranchConflict(ydoc, ['a1', 's1'], { authorId: 'bob', joinSequence })
+    const decision = resolveBranchConflict(ydoc, TOYS_LAYER, ['a1', 's1'], { authorId: 'bob', joinSequence })
     expect(decision.authoredSplitter).toBe(true)
     expect(decision.orderedIds).toEqual(['bob'])
 
     // Bob's local view still adopts the leader — the session never leaves
     // the shared table.
     const layerEl = bareG()
-    adoptToyBranch(ydoc, layerEl, decision.leader, TABLE)
+    adoptBranch(ydoc, TOYS_LAYER, layerEl, decision.leader, TABLE)
     expect(layerEl.querySelector('[data-id="r"]').getAttribute('x')).toBe('99')
 
     // The fork seed independently reconstructs what Bob was actually
     // doing on the splitter branch. Authored to orderedIds[0] (§6.5),
     // not to Bob's own id directly — same thing when Bob is the only
     // contributor, but see the next test for why the distinction matters.
-    const { genesis, rebasedOps, content } = buildToyForkSeed(
-      ydoc, decision.lca, decision.splitter, { authorId: decision.orderedIds[0], joinSequence })
+    const { genesis, rebasedOps, content } = buildLayerForkSeed(
+      ydoc, TOYS_LAYER, decision.lca, decision.splitter, { authorId: decision.orderedIds[0], joinSequence })
     const seeded = new Map([[genesis.id, genesis], ...rebasedOps.map(o => [o.id, o])])
     const forkLayer = bareG()
     projectFrom(forkLayer, seeded, content, decision.splitter)
@@ -681,14 +683,14 @@ describe('conflict resolution end to end — resolve, adopt, and fork-seed agree
 
     // Resolved once "on Bob's machine", once "on Clyde's" — same shared
     // ops, different local authorId for the bystander/splitter check.
-    const asBob   = resolveToyBranchConflict(ydoc, ['a1', 's2'], { authorId: 'bob', joinSequence })
-    const asClyde = resolveToyBranchConflict(ydoc, ['a1', 's2'], { authorId: 'clyde', joinSequence })
+    const asBob   = resolveBranchConflict(ydoc, TOYS_LAYER, ['a1', 's2'], { authorId: 'bob', joinSequence })
+    const asClyde = resolveBranchConflict(ydoc, TOYS_LAYER, ['a1', 's2'], { authorId: 'clyde', joinSequence })
     expect(asBob.orderedIds).toEqual(asClyde.orderedIds) // shared, order-preserved: ['bob', 'clyde']
 
-    const seedFromBob = buildToyForkSeed(
-      ydoc, asBob.lca, asBob.splitter, { authorId: asBob.orderedIds[0], joinSequence })
-    const seedFromClyde = buildToyForkSeed(
-      ydoc, asClyde.lca, asClyde.splitter, { authorId: asClyde.orderedIds[0], joinSequence })
+    const seedFromBob = buildLayerForkSeed(
+      ydoc, TOYS_LAYER, asBob.lca, asBob.splitter, { authorId: asBob.orderedIds[0], joinSequence })
+    const seedFromClyde = buildLayerForkSeed(
+      ydoc, TOYS_LAYER, asClyde.lca, asClyde.splitter, { authorId: asClyde.orderedIds[0], joinSequence })
 
     expect(seedFromBob.genesis).toEqual(seedFromClyde.genesis)
     expect(seedFromBob.genesis.authorId).toBe('bob') // orderedIds[0], not whoever resolved it

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { HEAD_MARKER } from '../../src/op_layer.js'
 import { TOYS_LAYER } from '../../src/toys.js'
 import { ensureLayerId, getOpLayer } from '../../src/op_layers.js'
 import { domToY, populateFromSvgDoc, buildExportSvg } from '../../src/storage.js'
@@ -458,10 +459,10 @@ describe('buildExportSvg', () => {
   test('strips the internal head marker from the exported toys layer', () => {
     const ydoc = new Y.Doc()
     const live = liveCanvasSvg()
-    live.querySelector('#toys-layer').setAttribute(Toys.HEAD_MARKER, 'tt-op-abc123')
+    live.querySelector('#toys-layer').setAttribute(HEAD_MARKER, 'tt-op-abc123')
 
     const clone = buildExportSvg(live, ydoc)
-    expect(clone.querySelector('#toys-layer').hasAttribute(Toys.HEAD_MARKER)).toBe(false)
+    expect(clone.querySelector('#toys-layer').hasAttribute(HEAD_MARKER)).toBe(false)
   })
 
   test('rebuilds #drawing-layer from the Yjs fragment', () => {

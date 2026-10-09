@@ -12,6 +12,9 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import {
+  buildLayerForkSeed, pruneAfterCheckpoint, resolveBranchConflict, resolveOrphanedTips, settleBranchConflict,
+} from '../../src/op_layer.js'
 import { ensureLayerId } from '../../src/op_layers.js'
 import { TOYS_LAYER } from '../../src/toys.js'
 import {
@@ -27,8 +30,7 @@ import {
   PRUNE_AGE_MS, _setPruneAgeForTests, noteSeen, noteAllSeen, resetFirstSeen, ageOf, assertPrunable, prune,
 } from '../../src/op_prune.js'
 import {
-  pruneAfterCheckpoint, resolveOrphanedTips, settleBranchConflict, resolveToyBranchConflict, canUndoToyGesture, undoToyGesture, buildToyForkSeed,
-} from '../../src/toys.js'
+  canUndoToyGesture, undoToyGesture, } from '../../src/toys.js'
 import { RECEIVED_CONFLICT, RECEIVED_ORPHAN } from '../../src/op_replay.js'
 import { serializeNode } from '../../src/op_wire_mutation.js'
 
@@ -106,7 +108,7 @@ function writeCheckpoint(peer) {
   appendCheckpoint(peer.ydoc, TOYS_LAYER, op, content)
   setHead(peer.tableId, TOYS_LAYER, op.id)
   setMergeTips(peer.tableId, TOYS_LAYER, [])
-  const pruned = pruneAfterCheckpoint(peer.ydoc, peer.tableId, op.id)
+  const pruned = pruneAfterCheckpoint(peer.ydoc, TOYS_LAYER, peer.tableId, op.id)
   return { ck: op, pruned }
 }
 
@@ -150,14 +152,14 @@ function syncInto(peer, from, { joinSequence = [] } = {}) {
   const out = { orphaned: null, results: {}, conflicts: [] }
   for (const { deleted, added } of events) {
     if (deleted.size) {
-      out.orphaned = resolveOrphanedTips(peer.ydoc, peer.layer, peer.tableId,
+      out.orphaned = resolveOrphanedTips(peer.ydoc, TOYS_LAYER, peer.layer, peer.tableId,
         { authorId: peer.id, joinSequence, deletedIds: deleted })
     }
     for (const id of added) {
       const r = peer.api.receive(peer.layer, id, joinSequence)
       out.results[id] = r
       if (r.result === RECEIVED_CONFLICT) {
-        out.conflicts.push(settleBranchConflict(peer.ydoc, peer.layer, peer.tableId, r.tips,
+        out.conflicts.push(settleBranchConflict(peer.ydoc, TOYS_LAYER, peer.layer, peer.tableId, r.tips,
           { authorId: peer.id, joinSequence }))
       }
     }
@@ -638,17 +640,17 @@ describe('labelling components with no common ancestor', () => {
   test('a peer only forks when the splitter is the side its live DOM shows', () => {
     const ydoc = rows()
     // Local head x1 leads; I also wrote on y, the incoming splitter. My DOM is x's, so nothing to seed.
-    const d = resolveToyBranchConflict(ydoc, ['x1', 'y1'], { authorId: 'me', joinSequence: ['other', 'me'] })
+    const d = resolveBranchConflict(ydoc, TOYS_LAYER, ['x1', 'y1'], { authorId: 'me', joinSequence: ['other', 'me'] })
     expect(d.splitter).toBe('y1')
     expect(d.authoredSplitter).toBe(false)
     // Same graph, but my head is the splitter: now the DOM is mine to preserve.
-    const mine = resolveToyBranchConflict(ydoc, ['y1', 'x1'], { authorId: 'me', joinSequence: ['other', 'me'] })
+    const mine = resolveBranchConflict(ydoc, TOYS_LAYER, ['y1', 'x1'], { authorId: 'me', joinSequence: ['other', 'me'] })
     expect(mine.authoredSplitter).toBe(true)
   })
 
-  test('buildToyForkSeed refuses a fork point that is not in the log', () => {
-    expect(() => buildToyForkSeed(rows(), null, 'y1')).toThrow(/not in the log/)
-    expect(() => buildToyForkSeed(rows(), 'pruned-away', 'y1')).toThrow(/not in the log/)
+  test('buildLayerForkSeed refuses a fork point that is not in the log', () => {
+    expect(() => buildLayerForkSeed(rows(), TOYS_LAYER, null, 'y1')).toThrow(/not in the log/)
+    expect(() => buildLayerForkSeed(rows(), TOYS_LAYER, 'pruned-away', 'y1')).toThrow(/not in the log/)
   })
 })
 

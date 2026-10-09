@@ -226,7 +226,7 @@ export function sharedTips(ops) {
  * Returns { undoTargetId, redoTargetId } — the op at the top of each
  * virtual stack, or null.
  */
-export function toyUndoRedoStacks(ops, headId, authorId) {
+export function authorUndoRedoStacks(ops, headId, authorId) {
   if (headId == null || !authorId) return { undoTargetId: null, redoTargetId: null }
 
   const mineNearestFirst = []

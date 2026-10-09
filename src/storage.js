@@ -10,6 +10,7 @@ import * as Drawing  from './drawing.js';
 import { appendCheckpoint } from './op_dag.js';
 import { checkpointOp } from './op_checkpoint.js';
 import { ensureLayerId, getOpLayer } from './op_layers.js';
+import { HEAD_MARKER } from './op_layer.js';
 
 // ── DOM → Yjs ────────────────────────────────────────────────────────────────
 
@@ -253,7 +254,7 @@ export function buildExportSvg(liveSvgEl, ydoc) {
   // into a file a person might open in Inkscape.
   const toysLayerEl = clone.querySelector('#toys-layer');
   if (toysLayerEl) {
-    toysLayerEl.removeAttribute(Toys.HEAD_MARKER);
+    toysLayerEl.removeAttribute(HEAD_MARKER);
     toysLayerEl.setAttribute('inkscape:groupmode', 'layer');
   }
   const drawLayerEl = clone.querySelector('#drawing-layer');

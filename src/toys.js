@@ -30,13 +30,7 @@ const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789'
 import { runInEnvelope, isInsideEnvelope } from './envelope.js';
 export { isInsideEnvelope };
 import { defineOpLayer, ensureLayerId } from './op_layers.js';
-import { runGesture, ensureEnvelope, projectLayer, receiveToyOp } from './op_layer.js';
-export {
-  runGesture, ensureEnvelope, projectLayer, HEAD_MARKER, projectedAt, markProjectedAt,
-  undoToyGesture, redoToyGesture, canUndoToyGesture, canRedoToyGesture,
-  adoptToyBranch, pruneAfterCheckpoint, receiveToyOp, resolveOrphanedTips,
-  resolveToyBranchConflict, buildToyForkSeed, settleBranchConflict,
-} from './op_layer.js';
+import * as OpLayer from './op_layer.js';
 // geometry.js is shape-agnostic pure math, shared with drawing.js and
 // boun_pos.js.
 import * as Geometry from './geometry.js';
@@ -1833,7 +1827,7 @@ function runContentsChangeHandlersFor(containerEl) {
  *
  * If a cycle is detected, we log loudly (console.error) and skip
  */
-export function runContentsChangeCascadeInto(allRecords, layerEl) {
+function runContentsChangeCascadeInto(allRecords, layerEl) {
   const seen = new Set()
   let toCheck = allRecords
   while (toCheck.length) {
@@ -1865,7 +1859,7 @@ export function runContentsChangeCascadeInto(allRecords, layerEl) {
  * position events, invoked when a toy is placed onto (or
  * moves off of) another toy's position.
  */
-export function runPositionsChangeCascadeInto(allRecords, layerEl, events) {
+function runPositionsChangeCascadeInto(allRecords, layerEl, events) {
   if (!events || !events.length) return
   const seen = new Set()
   const stepRecords = []
@@ -1906,7 +1900,35 @@ export const TOYS_LAYER = defineOpLayer({
   contentKey:  'checkpointContent',
   headKey:     (tableId) => `tt_head_${tableId}`,
   mergeKey:    (tableId) => `tt_head_merge_${tableId}`,
+  hooks: {
+    // The contents_change / positions_change cascades run inside the
+    // gesture's own op.
+    afterCapture: (records, layerEl, opts) => {
+      const all = [...records]
+      runContentsChangeCascadeInto(all, layerEl)
+      runPositionsChangeCascadeInto(all, layerEl, opts.positionEvents)
+      return all.slice(records.length)
+    },
+    afterProject: (ydoc, layerEl) => activateAllToyScriptsDom(ydoc, layerEl),
+  },
 })
+
+export const runGesture = (ydoc, layerEl, fn, opts) =>
+  OpLayer.runGesture(ydoc, TOYS_LAYER, layerEl, fn, opts)
+export const ensureEnvelope = (ydoc, layerEl, fn, opts) =>
+  OpLayer.ensureEnvelope(ydoc, TOYS_LAYER, layerEl, fn, opts)
+export const projectLayer = (ydoc, layerEl, opts) =>
+  OpLayer.projectLayer(ydoc, TOYS_LAYER, layerEl, opts)
+export const receiveToyOp = (ydoc, layerEl, opId, tableId, joinSequence) =>
+  OpLayer.receiveLayerOp(ydoc, TOYS_LAYER, layerEl, opId, tableId, joinSequence)
+export const undoToyGesture = (ydoc, layerEl, tableId, authorId) =>
+  OpLayer.undoGesture(ydoc, TOYS_LAYER, layerEl, tableId, authorId)
+export const redoToyGesture = (ydoc, layerEl, tableId, authorId) =>
+  OpLayer.redoGesture(ydoc, TOYS_LAYER, layerEl, tableId, authorId)
+export const canUndoToyGesture = (ydoc, tableId, authorId) =>
+  OpLayer.canUndo(ydoc, TOYS_LAYER, tableId, authorId)
+export const canRedoToyGesture = (ydoc, tableId, authorId) =>
+  OpLayer.canRedo(ydoc, TOYS_LAYER, tableId, authorId)
 
 /**
  * Invoke a toy's menu action by (namespace, key) — the identifiers
