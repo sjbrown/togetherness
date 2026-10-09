@@ -29,6 +29,7 @@ import * as OpHead                                from './op_head.js';
 import * as OpCheckpoint                          from './op_checkpoint.js';
 import * as OpPrune                               from './op_prune.js';
 import * as OpLayer                               from './op_layer.js';
+import { opLayers }                               from './op_layers.js';
 import * as User                                  from './user.js';
 import * as Trace                                 from './trace.js';
 import * as Storage                               from './storage.js';
@@ -47,7 +48,6 @@ import * as ExternalServices                      from './external_services.js';
 
 import * as Y from 'yjs';
 
-const TOYS = Toys.TOYS_LAYER;
 
 // Diagnostic logging — opt-in via ?debug=1 in the URL
 const DEBUG = typeof location !== 'undefined'
@@ -183,7 +183,9 @@ function _afterClaimsChanged() {
   const wasSelecting = _lastClaimedSetNonEmpty;
   _lastClaimedSetNonEmpty = claimedSet.size > 0;
   // Deselecting to nothing is an intent signal - good time to try checkpointing
-  if (wasSelecting && claimedSet.size === 0) maybeIdleCheckpoint('deselect');
+  if (wasSelecting && claimedSet.size === 0) {
+    for (const layer of opLayers()) maybeIdleCheckpoint(layer, 'deselect');
+  }
   Overlay.localSelectionChanged(claimedSet);
   // _activeMode is already reconciled by this point, so this is pure
   // rendering. Still needed even when the mode is unchanged, since
@@ -424,8 +426,8 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
 
   Trace.boot('boot', `booting table ${tableId}`, {
     tableId, user, isCreator,
-    ops:      OpDag.getOps(ydoc, TOYS).size,
-    head:     OpHead.getHead(tableId, TOYS),
+    ops:      Object.fromEntries(opLayers().map(l => [l.name, OpDag.getOps(ydoc, l).size])),
+    head:     Object.fromEntries(opLayers().map(l => [l.name, OpHead.getHead(tableId, l)])),
     clientId: ydoc.clientID,
   });
 
@@ -480,7 +482,9 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   _yDrawing.observe(onDocChanged);
   _yBounPos.observe(onDocChanged);
   _yMeta.observe(onMetaChanged);
-  OpDag.getOps(_ydoc, TOYS).observe(onOpsChanged);
+  for (const layer of opLayers()) {
+    OpDag.getOps(_ydoc, layer).observe((evt, tx) => onOpsChanged(layer, evt, tx));
+  }
   _awareness.on('change', onPresenceChanged);
 
   // Undo/redo - UndoManager handles drawing + boundaries layers.
@@ -503,7 +507,7 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   // Provider status
   _provider.on('synced', () => {
     _netStatus.synced = true;
-    Trace.net('synced', 'provider reports synced with peers', { ops: OpDag.getOps(_ydoc, TOYS).size });
+    Trace.net('synced', 'provider reports synced with peers', { ops: totalOps() });
     UI.toast('Synced with peers');
     App.addLog('synced with peers', 'remote');
   });
@@ -562,7 +566,7 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
 
   // Every checkpoint in the loaded log starts its prune clock now.
   OpPrune.resetFirstSeen();
-  OpPrune.noteAllSeen(OpDag.getOps(_ydoc, TOYS));
+  for (const layer of opLayers()) OpPrune.noteAllSeen(OpDag.getOps(_ydoc, layer));
 
   // Initial render
   renderDoc();
@@ -685,6 +689,11 @@ function renderDrawingLayer() {
   Canvas.wireShapeClicks(layer);
 }
 
+const layerElOf = (layer) => _svgEl?.querySelector(layer.selector) ?? null;
+
+const totalOps = () =>
+  opLayers().reduce((n, layer) => n + OpDag.getOps(_ydoc, layer).size, 0);
+
 /**
  * A conflicting operation arrived. Every peer — bystander or not — ends
  * up viewing the leader (the session never "leaves" the shared table).
@@ -692,26 +701,26 @@ function renderDrawingLayer() {
  * into a separate table, so nothing is lost, and is shown the branch
  * dialog once that fork lands.
  */
-function handleToyBranchConflict(tips) {
-  const layer = _svgEl?.querySelector('#toys-layer');
-  if (!layer) return;
+function handleBranchConflict(layer, tips) {
+  const layerEl = layerElOf(layer);
+  if (!layerEl) return;
 
   const joinSequence = tablesAPI.getJoinSequenceArray(_ydoc);
-  const decision = OpLayer.settleBranchConflict(_ydoc, TOYS, layer, _tableId, tips,
+  const decision = OpLayer.settleBranchConflict(_ydoc, layer, layerEl, _tableId, tips,
     { authorId: App.user.id, joinSequence });
 
   if (!decision.authoredSplitter) {
-    addHistory('branch resolved (adopted shared history)', { elType: 'toys' });
+    addHistory('branch resolved (adopted shared history)', { elType: layer.name });
     return;
   }
 
-  addHistory("branch conflict — preserving your divergent work in a new table", { elType: 'toys' });
+  addHistory("branch conflict — preserving your divergent work in a new table", { elType: layer.name });
   // No LCA means the sides share no history: this peer was offline past the prune age.
-  forkIntoNewTable(decision.orderedIds, decision.seed, { offline: decision.lca == null });
+  forkIntoNewTable(layer, decision.orderedIds, decision.seed, { offline: decision.lca == null });
 }
 
-function forkIntoNewTable(orderedIds, seed, { offline = false } = {}) {
-  tablesAPI.forkLiveDoc(_ydoc, orderedIds, { layer: TOYS, seed })
+function forkIntoNewTable(layer, orderedIds, seed, { offline = false } = {}) {
+  tablesAPI.forkLiveDoc(_ydoc, orderedIds, { layer, seed })
     .then(forkedTableId => {
       tablesAPI.touchTableRecord(forkedTableId, { name: `${_tableId} (branch)` });
       UI.showBranchDialog(forkedTableId, { offline });
@@ -726,13 +735,14 @@ function forkIntoNewTable(orderedIds, seed, { offline = false } = {}) {
  * The idle-checkpoint trigger
  * Only proceeds if the player's own checkpoint-frequency setting is non-zero
  * AND that many minutes have passed since the last checkpoint ANYONE wrote
+ * in the layer
  */
-function maybeIdleCheckpoint(reason) {
+function maybeIdleCheckpoint(layer, reason) {
   const frequencyMin = User.getCheckpointFrequency();
   if (frequencyMin <= 0) return null;
   if (!_tableId || !_ydoc) return null;
 
-  const ops = OpDag.getOps(_ydoc, TOYS);
+  const ops = OpDag.getOps(_ydoc, layer);
   const lastTs = OpCheckpoint.lastCheckpointTs(ops);
   // No checkpoint has ever landed on this table — nothing to measure
   // "since", so there's no reason to withhold on time grounds; let
@@ -740,34 +750,35 @@ function maybeIdleCheckpoint(reason) {
   const elapsedMs = lastTs == null ? Infinity : Date.now() - lastTs;
   if (elapsedMs < frequencyMin * 60_000) return null;
 
-  return maybeCheckpoint(reason);
+  return maybeCheckpoint(layer, reason);
 }
 
 /**
- * Write a checkpoint at the current local tips, 10+ ops behind. Authored
- * by this peer, not hashed deterministically — nothing else needs to match it.
+ * Write a checkpoint at the layer's current local tips, 10+ ops behind.
+ * Authored by this peer, not hashed deterministically — nothing else needs
+ * to match it.
  */
-function maybeCheckpoint(reason) {
+function maybeCheckpoint(layer, reason) {
   if (!_tableId || !_ydoc) return null;
   if (Toys.isInsideEnvelope()) return null;
 
-  const ops = OpDag.getOps(_ydoc, TOYS);
-  const headId = OpHead.getHead(_tableId, TOYS);
+  const ops = OpDag.getOps(_ydoc, layer);
+  const headId = OpHead.getHead(_tableId, layer);
   if (headId == null) return null;
-  const tips = OpHead.maximalTips(ops, [headId, ...OpHead.getMergeTips(_tableId, TOYS)]);
+  const tips = OpHead.maximalTips(ops, [headId, ...OpHead.getMergeTips(_tableId, layer)]);
   if (!OpCheckpoint.shouldCheckpoint(ops, tips)) return null;
 
-  const layer = _svgEl?.querySelector('#toys-layer');
-  if (!layer) return null;
+  const layerEl = layerElOf(layer);
+  if (!layerEl) return null;
 
   // Parent on the full tip set, not just headId — with pending merge tips,
   // [headId] alone wouldn't be a cut.
-  const { op, content } = OpCheckpoint.checkpointOp(layer, { authorId: App.user.id, parents: tips });
-  OpDag.appendCheckpoint(_ydoc, TOYS, op, content);
-  OpHead.setHead(_tableId, TOYS, op.id);
-  OpHead.setMergeTips(_tableId, TOYS, []);
-  Trace.op('checkpoint', `wrote checkpoint ${op.id} (${reason})`, { id: op.id, reason });
-  OpLayer.pruneAfterCheckpoint(_ydoc, TOYS, _tableId, op.id, tablesAPI.getJoinSequenceArray(_ydoc));
+  const { op, content } = OpCheckpoint.checkpointOp(layerEl, { authorId: App.user.id, parents: tips });
+  OpDag.appendCheckpoint(_ydoc, layer, op, content);
+  OpHead.setHead(_tableId, layer, op.id);
+  OpHead.setMergeTips(_tableId, layer, []);
+  Trace.op('checkpoint', `wrote checkpoint ${op.id} (${reason})`, { layer: layer.name, id: op.id, reason });
+  OpLayer.pruneAfterCheckpoint(_ydoc, layer, _tableId, op.id, tablesAPI.getJoinSequenceArray(_ydoc));
   return op;
 }
 
@@ -775,53 +786,55 @@ function maybeCheckpoint(reason) {
  * Deletes arrived (a peer pruned) and this peer's tips were left behind.
  * Called before any new op in the same event is received.
  */
-function handleOrphanedLocalTips(layer, deletedIds) {
+function handleOrphanedLocalTips(layer, layerEl, deletedIds) {
   const joinSequence = tablesAPI.getJoinSequenceArray(_ydoc);
-  const out = OpLayer.resolveOrphanedTips(_ydoc, TOYS, layer, _tableId,
+  const out = OpLayer.resolveOrphanedTips(_ydoc, layer, layerEl, _tableId,
     { authorId: App.user.id, joinSequence, deletedIds });
   if (!out) return;
   Trace.op('orphaned', `local tips were pruned away; adopted ${out.tips.join(', ')}`,
-    { authored: out.authored, tips: out.tips }, 'warn');
+    { layer: layer.name, authored: out.authored, tips: out.tips }, 'warn');
   if (!out.fork) {
-    addHistory('shared history moved on while you were away (adopted)', { elType: 'toys' });
+    addHistory('shared history moved on while you were away (adopted)', { elType: layer.name });
     return;
   }
-  addHistory("you were offline while others pruned history — preserving your work in a new table", { elType: 'toys' });
-  forkIntoNewTable(out.fork.orderedIds, out.fork.seed, { offline: true });
+  addHistory("you were offline while others pruned history — preserving your work in a new table", { elType: layer.name });
+  forkIntoNewTable(layer, out.fork.orderedIds, out.fork.seed, { offline: true });
 }
 
-function onOpsChanged(evt, transaction) {
+function onOpsChanged(layer, evt, transaction) {
   if (transaction?.local) return;
-  const layer = _svgEl?.querySelector('#toys-layer');
-  if (!layer) return;
+  const layerEl = layerElOf(layer);
+  if (!layerEl) return;
 
   const deletedIds = new Set();
   for (const [opId, change] of evt.changes.keys) {
     if (change.action === 'delete') deletedIds.add(opId);
   }
-  if (deletedIds.size) handleOrphanedLocalTips(layer, deletedIds);
+  if (deletedIds.size) handleOrphanedLocalTips(layer, layerEl, deletedIds);
 
   // Gestures that are derived/internal, not independent peer intent — not
   // worth a log line (same spirit as the old Yjs-observer version only
   // logging structural top-level adds/deletes, but this covers every real
   // user gesture type generically instead of just placements/deletions).
   const SILENT_GESTURES = new Set(['checkpoint', 'contents_change', 'initialize']);
-  const ops = OpDag.getOps(_ydoc, TOYS);
+  const ops = OpDag.getOps(_ydoc, layer);
   for (const [opId, change] of evt.changes.keys) {
     if (change.action !== 'add') continue;
     const op = ops.get(opId);
-    Trace.op('arrived', `remote operation arrived: ${op?.gesture ?? '?'} ${opId}`, op ?? { id: opId });
+    Trace.op('arrived', `remote operation arrived: ${op?.gesture ?? '?'} ${opId}`,
+      { layer: layer.name, ...(op ?? { id: opId }) });
     if (op && !SILENT_GESTURES.has(op.gesture)) {
       const msg = `remote: ${op.gesture}`;
       App.addLog(msg, 'remote');
-      addHistory(msg, { elType: 'toys' });
+      addHistory(msg, { elType: layer.name });
     }
-    const out = _Layers.toys.receive(layer, opId, tablesAPI.getJoinSequenceArray(_ydoc));
+    const out = OpLayer.receiveLayerOp(_ydoc, layer, layerEl, opId, _tableId,
+      tablesAPI.getJoinSequenceArray(_ydoc));
     Trace.op('received', `${opId} → ${out.result}`,
-      { id: opId, ...out },
+      { layer: layer.name, id: opId, ...out },
       out.result === 'received-conflict' ? 'warn' : 'info');
     if (out.result === 'received-conflict') {
-      handleToyBranchConflict(out.tips);
+      handleBranchConflict(layer, out.tips);
     }
   }
   Overlay.render();
@@ -979,7 +992,9 @@ const App = {
   },
   getTableId:      () => _tableId,
   getYdoc:         () => _ydoc,
-  maybeCheckpoint: (reason) => maybeCheckpoint(reason),
+  // Keyed by layer name; null where a layer had nothing to checkpoint.
+  maybeCheckpoint: (reason) =>
+    Object.fromEntries(opLayers().map(layer => [layer.name, maybeCheckpoint(layer, reason)])),
   getCheckpointFrequency: () => User.getCheckpointFrequency(),
   setCheckpointFrequency: (minutes) => User.setCheckpointFrequency(minutes),
   getSelectedIds:  () => _heldIds(),
@@ -2229,32 +2244,57 @@ const App = {
    * pay for it on every panel refresh.
    */
   getDebugState: () => {
-    const ops     = OpDag.getOps(_ydoc, TOYS);
-    const content = OpDag.getContent(_ydoc, TOYS);
-    const allIds  = [...ops.keys()];
     const joinSeq = tablesAPI.getJoinSequenceArray(_ydoc);
-    const layerEl = _svgEl?.querySelector('#toys-layer') ?? null;
-    const head    = OpHead.getHead(_tableId, TOYS);
-    const shown   = allIds.length > MAX_DEBUG_OPS ? allIds.slice(-MAX_DEBUG_OPS) : allIds;
 
-    const ordered = OpDag.totalOrder(ops, shown, joinSeq).map((id, i) => {
-      const op = ops.get(id);
-      const isCk = OpCheckpoint.isCheckpoint(op);
-      const mutations = isCk ? (content.get(id) ?? null) : (op?.mutations ?? []);
+    const layers = opLayers().map(layer => {
+      const ops     = OpDag.getOps(_ydoc, layer);
+      const content = OpDag.getContent(_ydoc, layer);
+      const allIds  = [...ops.keys()];
+      const head    = OpHead.getHead(_tableId, layer);
+      const shown   = allIds.length > MAX_DEBUG_OPS ? allIds.slice(-MAX_DEBUG_OPS) : allIds;
+
+      const ordered = OpDag.totalOrder(ops, shown, joinSeq).map((id, i) => {
+        const op = ops.get(id);
+        const isCk = OpCheckpoint.isCheckpoint(op);
+        const mutations = isCk ? (content.get(id) ?? null) : (op?.mutations ?? []);
+        return {
+          i, id,
+          layer:      layer.name,
+          gesture:    op?.gesture ?? null,
+          authorId:   op?.authorId ?? null,
+          parents:    op?.parents ?? [],
+          ts:         op?.ts ?? null,
+          mine:       op?.authorId === App.user.id,
+          checkpoint: isCk,
+          entries:    mutations?.length ?? 0,
+          mutations,
+        };
+      });
+
+      const projected = OpLayer.projectedAt(layerElOf(layer));
       return {
-        i, id,
-        gesture:    op?.gesture ?? null,
-        authorId:   op?.authorId ?? null,
-        parents:    op?.parents ?? [],
-        ts:         op?.ts ?? null,
-        mine:       op?.authorId === App.user.id,
-        checkpoint: isCk,
-        entries:    mutations?.length ?? 0,
-        mutations,
+        name: layer.name,
+        head: {
+          head:      head,
+          mergeTips: OpHead.getMergeTips(_tableId, layer),
+          projected,
+          // A projection marker that disagrees with the stored head means the
+          // DOM is showing something other than what this peer thinks it is —
+          // the single most useful red light this panel can offer.
+          agrees:    projected === head,
+        },
+        ops: {
+          total:       allIds.length,
+          shown:       ordered.length,
+          truncated:   allIds.length > ordered.length,
+          tips:        OpDag.heads(ops),
+          checkpoints: ordered.filter(o => o.checkpoint).length,
+          mine:        ordered.filter(o => o.mine).length,
+          ordered,
+        },
       };
     });
 
-    const projected = OpLayer.projectedAt(layerEl);
     const peers = [];
     _awareness.getStates().forEach((state, clientId) => {
       peers.push({
@@ -2274,23 +2314,17 @@ const App = {
         schema:   _yMeta.get('schemaVersion') ?? null,
       },
       identity: { myId: App.user.id, clientId: _ydoc.clientID },
-      head: {
-        head:      head,
-        mergeTips: OpHead.getMergeTips(_tableId, TOYS),
-        projected,
-        // A projection marker that disagrees with the stored head means the
-        // DOM is showing something other than what this peer thinks it is —
-        // the single most useful red light this panel can offer.
-        agrees:    projected === head,
-      },
+      // Per layer: its stored head and its operation log.
+      layers,
+      // Every layer's operations together, each row tagged with its layer.
       ops: {
-        total:       allIds.length,
-        shown:       ordered.length,
-        truncated:   allIds.length > ordered.length,
-        tips:        OpDag.heads(ops),
-        checkpoints: ordered.filter(o => o.checkpoint).length,
-        mine:        ordered.filter(o => o.mine).length,
-        ordered,
+        total:       layers.reduce((n, l) => n + l.ops.total, 0),
+        shown:       layers.reduce((n, l) => n + l.ops.shown, 0),
+        truncated:   layers.some(l => l.ops.truncated),
+        tips:        layers.flatMap(l => l.ops.tips),
+        checkpoints: layers.reduce((n, l) => n + l.ops.checkpoints, 0),
+        mine:        layers.reduce((n, l) => n + l.ops.mine, 0),
+        ordered:     layers.flatMap(l => l.ops.ordered),
       },
       net: {
         ..._netStatus,

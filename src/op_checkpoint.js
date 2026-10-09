@@ -15,6 +15,7 @@
 
 import { serializeNode, apply as applyWire, ensureIds } from './op_wire_mutation.js'
 import { ancestors, ancestorsInclusive, getOp, isAncestor, pathFrom, totalOrder } from './op_dag.js'
+import { layerNameOf } from './op_layers.js'
 import * as Trace from './trace.js'
 
 export const CHECKPOINT_GESTURE = 'checkpoint'
@@ -236,7 +237,7 @@ export function projectTips(layerEl, ops, content, tipIds, joinSequence = []) {
 
   const tips = normalizeTips(tipIds)
   if (!tips.length) {
-    Trace.op('project-empty', 'nothing to project — no tips', { tips: [] })
+    Trace.op('project-empty', 'nothing to project — no tips', { layer: layerNameOf(layerEl), tips: [] })
     return layerEl
   }
 
@@ -249,6 +250,7 @@ export function projectTips(layerEl, ops, content, tipIds, joinSequence = []) {
   Trace.op('project',
     `rebuilt from ${base ? 'checkpoint' : 'nothing'} + ${path.length} operation${path.length === 1 ? '' : 's'}`,
     () => ({
+      layer: layerNameOf(layerEl),
       tips,
       checkpoint: base,
       path: path.map((id, i) => ({ i, id, gesture: getOp(ops, id)?.gesture ?? null,

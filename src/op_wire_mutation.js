@@ -12,6 +12,7 @@
  * no tree lookups.
  */
 
+import { layerNameOf } from './op_layers.js'
 import * as Trace from './trace.js'
 
 const SVG_NS   = 'http://www.w3.org/2000/svg'
@@ -247,6 +248,7 @@ function matchesSerialized(node, s) {
  */
 export function apply(wire, rootEl) {
   Trace.wire('apply', `applying ${wire?.length ?? 0} entries`, () => ({
+    layer:   layerNameOf(rootEl),
     entries: wire?.length ?? 0,
     root:    rootEl?.getAttribute?.('data-id') ?? rootEl?.getAttribute?.('id') ?? null,
     wire,
@@ -268,7 +270,7 @@ export function apply(wire, rootEl) {
     const target = resolveRef(entry.target, rootEl)
     if (!target) {
       Trace.wire('apply-unresolvable', `cannot resolve ${JSON.stringify(entry.target)}`,
-        { entry }, 'error')
+        { layer: layerNameOf(rootEl), entry }, 'error')
       throw new WireApplyError(`unresolvable target ${JSON.stringify(entry.target)}`)
     }
 

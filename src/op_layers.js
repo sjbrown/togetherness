@@ -46,6 +46,9 @@ export function getOpLayer(name) {
 
 export const opLayers = () => [...registry.values()]
 
+/** The name of the layer a root element was stamped for, for trace events. */
+export const layerNameOf = (layerEl) => layerEl?.getAttribute?.(LAYER_MARKER) ?? null
+
 /**
  * Stamp the layer's root element with its data-id (what checkpoint content
  * targets) and the marker the envelope scopes to. Returns layerEl.
