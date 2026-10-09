@@ -15,7 +15,7 @@
  * runInEnvelope's only job now is capturing what a handler did, as raw
  * MutationRecord[], so commitGesture (op_wire_mutation.js's serialize) can
  * turn that into an operation. There is no Yjs tree to translate into
- * anymore; toys.js's runGesture is the one real caller.
+ * anymore; op_layer.js's runGesture is the one real caller.
  *
  * Benefits to this design:
    - a MutationObserver is transparent (handler code is unmodified, ordinary

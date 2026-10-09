@@ -6,7 +6,7 @@
  * an append-only map of immutable operation records now, and undoing "an
  * operation record was appended" removes the record without touching the
  * DOM state it described. See CONCURRENCY_AND_BRANCHING.md §8: toys undo
- * is a separate mechanism (toys.js's undoToyGesture/redoToyGesture —
+ * is a separate mechanism (op_layer.js's undoGesture/redoGesture —
  * append the inverse operation), and app.js decides which of the two
  * mechanisms a given Undo press invokes based on which layer the most
  * recent action actually touched (_lastActionScope). The two can never

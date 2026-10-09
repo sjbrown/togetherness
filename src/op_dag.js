@@ -279,7 +279,7 @@ export function authorUndoRedoStacks(ops, headId, authorId) {
  * skip(op), if given, passes over an op that matches even when it's
  * authorId's own — the search continues past it rather than stopping.
  * Generic on purpose: op_dag.js doesn't know what a checkpoint is, but a
- * caller (toys.js's undo, skipping isCheckpoint) does.
+ * caller (op_layer.js's undo, skipping isCheckpoint) does.
  *
  * This is what "my most recent operation" means in code: undo finds
  * this and inverts it, whatever its gesture — including a prior 'undo'

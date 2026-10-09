@@ -240,7 +240,7 @@ const normalizeTips = (tipsOrHead) =>
  *
  * Returns { kind, D } — D is everything new, for the caller to apply.
  * Pairwise lca/tips reporting for CONFLICTING is the caller's job
- * (receiveOp) — the branch dialog (labelBranches, handleToyBranchConflict)
+ * (receiveOp) — the branch dialog (labelBranches, handleBranchConflict)
  * expects a head-vs-incoming pair, and N-way conflicts stay unhandled.
  */
 export function classify(ops, tips, incomingId, joinSequence = []) {
@@ -346,7 +346,7 @@ export const RECEIVED_ORPHAN     = 'received-orphan'
  * - rebuilt: the DOM is order-sensitive against what arrived, so it's
  *   reset to the latest cut checkpoint and replayed (projectTips) rather
  *   than patched; head stays, merge tips update the same way as merged.
- *   The caller (toys.js's receiveToyOp) may write a merge checkpoint
+ *   The caller (op_layer.js's receiveLayerOp) may write a merge checkpoint
  *   parented on this same tip set right after — when it does, the merge
  *   tips collapse immediately instead of waiting for the next commit.
  * - conflicting: nothing is applied. The caller resolves via the branch
