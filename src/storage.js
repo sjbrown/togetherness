@@ -9,6 +9,7 @@ import * as Toys     from './toys.js';
 import * as Drawing  from './drawing.js';
 import { appendCheckpoint } from './op_dag.js';
 import { checkpointOp } from './op_checkpoint.js';
+import { ensureLayerId, getOpLayer } from './op_layers.js';
 
 // ── DOM → Yjs ────────────────────────────────────────────────────────────────
 
@@ -134,7 +135,8 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
   // back. The caller (App.importSVG) commits them as a real gesture onto
   // the live head, the same way any other toy placement does.
   if (toysLayerEl) {
-    const scratchLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    const scratchLayer = ensureLayerId(
+      document.createElementNS('http://www.w3.org/2000/svg', 'g'), getOpLayer('toys'));
 
     for (const child of toysLayerEl.children) {
       const { parsedNode } = Toys.parseForeignToy(ydoc, child);

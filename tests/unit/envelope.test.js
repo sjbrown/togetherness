@@ -16,6 +16,8 @@
 // @vitest-environment jsdom
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { TOYS_LAYER } from '../../src/toys.js'
+import { ensureLayerId } from '../../src/op_layers.js'
 import { addToy, _clearSvgTextCache } from '../../src/toys.js'
 import { runInEnvelope } from '../../src/envelope.js'
 
@@ -42,6 +44,7 @@ const TOY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 function freshLayer() {
   const layerEl = document.createElementNS(SVG_NS, 'g')
   layerEl.id = 'toys-layer'
+  ensureLayerId(layerEl, TOYS_LAYER)
   return layerEl
 }
 

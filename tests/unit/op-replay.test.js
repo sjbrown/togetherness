@@ -8,13 +8,15 @@
 // @vitest-environment jsdom
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
+import { ensureLayerId } from '../../src/op_layers.js'
+import { TOYS_LAYER } from '../../src/toys.js'
 import {
   isReplaying, withSuppressedCapture, touchedBy, conflicts, orderSensitive, classify, advanceTo, receiveOp,
   SUBSEQUENT, MERGED, REBUILT, CONFLICTING, KNOWN,
   RECEIVED_CONFLICT, RECEIVED_SUBSEQUENT, RECEIVED_MERGED, RECEIVED_REBUILT,
 } from '../../src/op_replay.js'
 import { getHead, setHead, clearHead } from '../../src/op_head.js'
-import { checkpointOp, ensureLayerId, LAYER_DATA_ID } from '../../src/op_checkpoint.js'
+import { checkpointOp } from '../../src/op_checkpoint.js'
 import { runInEnvelope, commitGesture } from '../../src/envelope.js'
 import { getOps, appendOp } from '../../src/op_dag.js'
 
@@ -34,7 +36,7 @@ function layer(html = '') {
   const el = document.createElementNS(SVG_NS, 'g')
   el.id = 'toys-layer'
   el.innerHTML = html
-  ensureLayerId(el)
+  ensureLayerId(el, TOYS_LAYER)
   return el
 }
 
@@ -466,7 +468,7 @@ describe('advanceTo', () => {
 
 describe('a checkpoint applied as a delta contributes nothing', () => {
   function peer(ids = ['a', 'b']) {
-    const L = document.createElementNS(SVG_NS, 'g'); L.setAttribute('data-id', LAYER_DATA_ID)
+    const L = document.createElementNS(SVG_NS, 'g'); L.setAttribute('data-id', TOYS_LAYER.layerDataId)
     for (const id of ids) {
       const r = document.createElementNS(SVG_NS, 'g'); r.setAttribute('data-id', id); L.appendChild(r)
     }
@@ -528,7 +530,7 @@ describe('a checkpoint applied as a delta contributes nothing', () => {
 
 describe('a checkpoint is left out of conflict classification', () => {
   function peer(ids = ['a', 'b']) {
-    const L = document.createElementNS(SVG_NS, 'g'); L.setAttribute('data-id', LAYER_DATA_ID)
+    const L = document.createElementNS(SVG_NS, 'g'); L.setAttribute('data-id', TOYS_LAYER.layerDataId)
     for (const id of ids) {
       const r = document.createElementNS(SVG_NS, 'g'); r.setAttribute('data-id', id); L.appendChild(r)
     }
@@ -540,7 +542,7 @@ describe('a checkpoint is left out of conflict classification', () => {
     const ops = new Map()
     const base = { id: 'base', parents: [], mutations: [] }
     const ck = ckOp(peer(), { authorId: 'alice', parents: ['base'], id: 'ck' })
-    const move = childOp('move', ['base'], LAYER_DATA_ID)
+    const move = childOp('move', ['base'], TOYS_LAYER.layerDataId)
     ops.set('base', base); ops.set('ck', ck); ops.set('move', move)
 
     expect(classify(ops, 'ck', 'move').kind).not.toBe(CONFLICTING)
@@ -549,7 +551,7 @@ describe('a checkpoint is left out of conflict classification', () => {
   test('conflicts is false whenever a checkpoint is on either side', () => {
     const ops = new Map()
     const ck = ckOp(peer(), { authorId: 'alice', id: 'ck' })
-    const move = childOp('move', [], LAYER_DATA_ID)
+    const move = childOp('move', [], TOYS_LAYER.layerDataId)
     ops.set('ck', ck); ops.set('move', move)
 
     expect(conflicts(ops, ['ck'], ['move'])).toBe(false)

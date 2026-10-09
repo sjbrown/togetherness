@@ -30,6 +30,7 @@
 import { serialize as serializeRecords } from './op_wire_mutation.js'
 import { appendOp } from './op_dag.js'
 import { isReplaying } from './op_replay.js'
+import { LAYER_MARKER } from './op_layers.js'
 import * as Trace from './trace.js'
 
 const MUTATION_OPTS = {
@@ -49,12 +50,13 @@ let _envelopeDepth = 0
 export const isInsideEnvelope = () => _envelopeDepth > 0
 
 /**
- * Run fn() while watching the toys layer for DOM mutations, then return the
+ * Run fn() while watching an op layer for DOM mutations, then return the
  * raw MutationRecord[] produced.
  *
- * Observes the enclosing #toys-layer element — found via closest() from
- * toyEl, so a handler reaching anywhere else in the layer (a die grabbing
- * a sibling die, a tray reaching into a contained toy) is still captured.
+ * Observes the enclosing layer element — found via closest() from toyEl on
+ * the layer marker, so a handler reaching anywhere else in the layer (a die
+ * grabbing a sibling die, a tray reaching into a contained toy) is still
+ * captured.
  *
  * Synchronous handlers only: if fn returns a thenable we throw rather than
  * silently drop the mutations it would make after its first await — a loud
@@ -74,7 +76,7 @@ export function runInEnvelope(toyEl, fn) {
   }
   // scopeEl falls back to toyEl's parent, then toyEl itself, to support
   // e.g. a detached toy in a unit test
-  const scopeEl = toyEl.closest?.('#toys-layer') ?? toyEl.parentNode ?? toyEl
+  const scopeEl = toyEl.closest?.(`[${LAYER_MARKER}]`) ?? toyEl.parentNode ?? toyEl
   const records = []
   const observer = new MutationObserver(muts => records.push(...muts))
   observer.observe(scopeEl, MUTATION_OPTS)

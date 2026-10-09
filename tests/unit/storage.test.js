@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { ensureLayerId, getOpLayer } from '../../src/op_layers.js'
 import { domToY, populateFromSvgDoc, buildExportSvg } from '../../src/storage.js'
 import { getOps, getContent } from '../../src/op_dag.js'
 import { projectFrom } from '../../src/op_checkpoint.js'
@@ -343,7 +344,7 @@ describe('populateFromSvgDoc', () => {
       populateFromSvgDoc(makeDocSvg({ toysInner: VALID_TOY_G }), ydoc, { asNewTable: true, authorId: 'alice' })
 
       const genesis = [...getOps(ydoc).values()][0]
-      const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+      const layerEl = ensureLayerId(document.createElementNS('http://www.w3.org/2000/svg', 'g'), getOpLayer('toys'))
       projectFrom(layerEl, getOps(ydoc), getContent(ydoc), genesis.id)
 
       expect(layerEl.querySelector('[data-id="t1"]')).not.toBeNull()
@@ -372,7 +373,7 @@ describe('populateFromSvgDoc', () => {
         { asNewTable: true, stripToyDecorative: true, authorId: 'alice' })
 
       const genesis = [...getOps(ydoc).values()][0]
-      const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+      const layerEl = ensureLayerId(document.createElementNS('http://www.w3.org/2000/svg', 'g'), getOpLayer('toys'))
       projectFrom(layerEl, getOps(ydoc), getContent(ydoc), genesis.id)
       expect(layerEl.querySelector('[data-id="t1"]').hasAttribute('transform')).toBe(false)
     })

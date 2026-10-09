@@ -33,6 +33,7 @@ import * as OpHead from './op_head.js';
 import * as OpDag from './op_dag.js';
 import * as OpWireMutation from './op_wire_mutation.js';
 import { resolveRef } from './op_wire_mutation.js';
+import { defineOpLayer, ensureLayerId } from './op_layers.js';
 import * as OpCheckpoint from './op_checkpoint.js';
 import * as OpReplay from './op_replay.js';
 import * as OpPrune from './op_prune.js';
@@ -1897,12 +1898,15 @@ function runPositionsChangeCascadeInto(allRecords, layerEl, events) {
   runContentsChangeCascadeInto(allRecords, layerEl)
 }
 
-export const LAYER_DATA_ID = 'tt-layer-toys'
-
-export function ensureLayerId(layerEl) {
-  if (layerEl && !layerEl.getAttribute('data-id')) layerEl.setAttribute('data-id', LAYER_DATA_ID)
-  return layerEl
-}
+export const TOYS_LAYER = defineOpLayer({
+  name:        'toys',
+  selector:    '#toys-layer',
+  layerDataId: 'tt-layer-toys',
+  opsKey:      'ops',
+  contentKey:  'checkpointContent',
+  headKey:     (tableId) => `tt_head_${tableId}`,
+  mergeKey:    (tableId) => `tt_head_merge_${tableId}`,
+})
 
 /**
  * Run fn() against the live DOM (inside an envelope observing layerEl),
@@ -1919,7 +1923,7 @@ export function ensureLayerId(layerEl) {
  * treatment.
  */
 export function runGesture(ydoc, layerEl, fn, opts = {}) {
-  ensureLayerId(layerEl)
+  ensureLayerId(layerEl, TOYS_LAYER)
   const allRecords = runInEnvelope(layerEl, fn)
   runContentsChangeCascadeInto(allRecords, layerEl)
   runPositionsChangeCascadeInto(allRecords, layerEl, opts.positionEvents)
@@ -2074,7 +2078,7 @@ export function activateAllToyScriptsDom(ydoc, layerEl) {
  * make a reload silently lose merged work.
  */
 export function projectLayer(ydoc, layerEl, { tableId, authorId, isCreator = false, joinSequence = [] } = {}) {
-  ensureLayerId(layerEl)
+  ensureLayerId(layerEl, TOYS_LAYER)
   const ops = OpDag.getOps(ydoc)
   const content = OpDag.getContent(ydoc)
 
@@ -2316,6 +2320,7 @@ export function canRedoToyGesture(ydoc, tableId, authorId) {
  * navigation away from this one.
  */
 export function adoptToyBranch(ydoc, layerEl, targetHeadId, tableId) {
+  ensureLayerId(layerEl, TOYS_LAYER)
   const ops = OpDag.getOps(ydoc)
   const head = tableId ? OpHead.getHead(tableId) : null
   OpReplay.advanceTo(layerEl, ops, OpDag.getContent(ydoc), head, targetHeadId)
@@ -2363,11 +2368,12 @@ export function pruneAfterCheckpoint(ydoc, tableId, checkpointId, joinSequence =
   OpPrune.noteSeen(checkpointId)
   if (!tableId || isInsideEnvelope() || OpReplay.isReplaying()) return null
   const ops = OpDag.getOps(ydoc)
-  const scratch = document.createElementNS(SVG_NS, 'g')
+  const scratch = ensureLayerId(document.createElementNS(SVG_NS, 'g'), TOYS_LAYER)
   return OpPrune.prune(ydoc, OpHead.localTips(tableId, ops), { scratch, joinSequence })
 }
 
 export function receiveToyOp(ydoc, layerEl, opId, tableId, joinSequence = []) {
+  ensureLayerId(layerEl, TOYS_LAYER)
   const ops = OpDag.getOps(ydoc)
   const head = tableId ? OpHead.getHead(tableId) : null
   const mergeTips = tableId ? OpHead.getMergeTips(tableId) : []
@@ -2413,6 +2419,7 @@ export function receiveToyOp(ydoc, layerEl, opId, tableId, joinSequence = []) {
  * taken before the layer is rebuilt onto the shared tips.
  */
 export function resolveOrphanedTips(ydoc, layerEl, tableId, { authorId, joinSequence = [], deletedIds = new Set() } = {}) {
+  ensureLayerId(layerEl, TOYS_LAYER)
   if (!tableId) return null
   const ops = OpDag.getOps(ydoc)
   const memo = new Map()
@@ -2489,7 +2496,7 @@ export function buildToyForkSeed(ydoc, lca, splitter, { authorId, joinSequence =
   if (lca == null || !OpDag.getOp(ops, lca)) {
     throw new Error('buildToyForkSeed: the fork point is not in the log; seed from the live layer instead')
   }
-  const scratch = document.createElementNS(SVG_NS, 'g')
+  const scratch = ensureLayerId(document.createElementNS(SVG_NS, 'g'), TOYS_LAYER)
   const content = OpDag.getContent(ydoc)
   OpCheckpoint.projectFrom(scratch, ops, content, lca, joinSequence)
   return OpCheckpoint.buildForkSeed(ops, content, lca, splitter, scratch, { authorId, joinSequence })

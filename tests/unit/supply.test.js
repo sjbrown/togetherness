@@ -25,6 +25,8 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { ensureLayerId } from '../../src/op_layers.js'
+import { TOYS_LAYER } from '../../src/toys.js'
 import * as Toys from '../../src/toys.js'
 import * as Events from '../../src/events.js'
 import {
@@ -54,6 +56,7 @@ const DICE_UTILS_JS  = fs.readFileSync(path.join(TOY_DIR, 'js/dice_utils.js'), '
 function freshLayer() {
   const layerEl = document.createElementNS(SVG_NS, 'g')
   layerEl.id = 'toys-layer'
+  ensureLayerId(layerEl, TOYS_LAYER)
   return layerEl
 }
 

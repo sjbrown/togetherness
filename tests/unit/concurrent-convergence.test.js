@@ -16,9 +16,10 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { ensureLayerId } from '../../src/op_layers.js'
+import { TOYS_LAYER } from '../../src/toys.js'
 import {
-  placeToy, makeLayerAPI, activateAllToyScriptsDom, projectLayer, ensureLayerId,
-  _clearSvgTextCache, _resetToyScriptState,
+  placeToy, makeLayerAPI, activateAllToyScriptsDom, projectLayer, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { getOps, getContent, appendOp, appendCheckpoint } from '../../src/op_dag.js'
 import { projectTips, nearestCheckpoint, latestCut, isCheckpoint, opsSinceCheckpoint, CHECKPOINT_MIN_OPS } from '../../src/op_checkpoint.js'
@@ -56,6 +57,7 @@ afterEach(() => { vi.unstubAllGlobals() })
 function freshLayer() {
   const el = document.createElementNS(SVG_NS, 'g')
   el.id = 'toys-layer'
+  ensureLayerId(el, TOYS_LAYER)
   return el
 }
 
@@ -66,7 +68,7 @@ function freshLayer() {
 function makePeer(authorId) {
   const tableId = `convergence-table-${_tableCounter++}`
   const ydoc = new Y.Doc()
-  const layer = ensureLayerId(freshLayer())
+  const layer = ensureLayerId(freshLayer(), TOYS_LAYER)
   const api = makeLayerAPI(ydoc, () => layer, { id: authorId }, tableId)
   const peer = { id: authorId, tableId, ydoc, layer, api }
   _peers.push(peer)

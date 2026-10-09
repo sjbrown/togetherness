@@ -13,10 +13,11 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { ensureLayerId } from '../../src/op_layers.js'
+import { TOYS_LAYER } from '../../src/toys.js'
 import {
   checkpointOp, nearestCheckpoint, applyOps, projectFrom, projectTips,
-  ensureLayerId, isCheckpoint, LAYER_DATA_ID,
-  opsSinceCheckpoint, shouldCheckpoint, CHECKPOINT_MIN_OPS,
+  isCheckpoint, opsSinceCheckpoint, shouldCheckpoint, CHECKPOINT_MIN_OPS,
   lastCheckpointTs, mergeCheckpointOp, buildForkSeed,
 } from '../../src/op_checkpoint.js'
 import { getOps, getContent, appendOp, appendCheckpoint, isAncestor } from '../../src/op_dag.js'
@@ -68,6 +69,7 @@ const markup = (el) => el.innerHTML
 function bareLayer(html = '') {
   const el = document.createElementNS(SVG_NS, 'g')
   el.id = 'toys-layer'
+  ensureLayerId(el, TOYS_LAYER)
   el.innerHTML = html
   return el
 }
@@ -76,6 +78,7 @@ async function toyLayer(...toys) {
   const ydoc = new Y.Doc()
   const layerEl = document.createElementNS(SVG_NS, 'g')
   layerEl.id = 'toys-layer'
+  ensureLayerId(layerEl, TOYS_LAYER)
   for (const [id, toyType] of toys) {
     await addToy(ydoc, layerEl, { id, toyType, x: 0, y: 0, color: '#fff' })
   }
@@ -87,14 +90,14 @@ async function toyLayer(...toys) {
 describe('ensureLayerId', () => {
   test('stamps a data-id if the layer lacks one', () => {
     const el = bareLayer()
-    ensureLayerId(el)
-    expect(el.getAttribute('data-id')).toBe(LAYER_DATA_ID)
+    ensureLayerId(el, TOYS_LAYER)
+    expect(el.getAttribute('data-id')).toBe(TOYS_LAYER.layerDataId)
   })
 
   test('leaves an existing data-id alone', () => {
     const el = bareLayer()
     el.setAttribute('data-id', 'custom')
-    ensureLayerId(el)
+    ensureLayerId(el, TOYS_LAYER)
     expect(el.getAttribute('data-id')).toBe('custom')
   })
 })
@@ -299,7 +302,7 @@ describe('projectFrom replays forward from a checkpoint', () => {
     const cp = ckOp(base, { id: 'cp', authorId: 'alice' })
 
     const scratch = bareLayer('<rect data-id="r" x="1"/>')
-    ensureLayerId(scratch)
+    ensureLayerId(scratch, TOYS_LAYER)
     scratch.querySelector('[data-id="r"]').setAttribute('x', '99')
     const mo = new MutationObserver(() => {})
     const move = {
@@ -357,11 +360,11 @@ describe('projectFrom with a checkpoint that is not the projection base', () => 
     const genesis = ckOp(base, { id: 'genesis', authorId: 'alice' })
 
     const branchA = bareLayer(markup(base))
-    ensureLayerId(branchA)
+    ensureLayerId(branchA, TOYS_LAYER)
     const ckA = ckOp(branchA, { id: 'ckA', authorId: 'alice', parents: ['genesis'] })
 
     const branchB = bareLayer(markup(base))
-    ensureLayerId(branchB)
+    ensureLayerId(branchB, TOYS_LAYER)
     const ckB = ckOp(branchB, { id: 'ckB', authorId: 'bob', parents: ['genesis'] })
 
     // A merge commit joining both concurrent checkpoints. Its own
@@ -485,7 +488,7 @@ describe('mergeCheckpointOp', () => {
   const add = (id, parents, authorId, childId, ts) => ({
     id, parents, authorId, gesture: 'drop', ts,
     mutations: [{
-      t: 'child', target: { id: LAYER_DATA_ID },
+      t: 'child', target: { id: TOYS_LAYER.layerDataId },
       added: [{ el: 'rect', at: [['data-id', childId]] }], removed: [],
       prevSibling: null, nextSibling: null,
     }],
@@ -503,9 +506,9 @@ describe('mergeCheckpointOp', () => {
   test('two peers rebuilding the same tips produce byte-identical checkpoints — same id', () => {
     const { ops, tips } = twoConcurrentTips()
 
-    const layerA = bareLayer(); ensureLayerId(layerA)
+    const layerA = bareLayer(); ensureLayerId(layerA, TOYS_LAYER)
     projectTips(layerA, ops, content, tips)
-    const layerB = bareLayer(); ensureLayerId(layerB)
+    const layerB = bareLayer(); ensureLayerId(layerB, TOYS_LAYER)
     projectTips(layerB, ops, content, tips)
 
     const ckA = mergeCheckpointOp(layerA, tips, ops)
@@ -518,7 +521,7 @@ describe('mergeCheckpointOp', () => {
 
   test('is a checkpoint, authored by nobody, parented on the sorted tips', () => {
     const { ops } = twoConcurrentTips()
-    const layer = bareLayer(); ensureLayerId(layer)
+    const layer = bareLayer(); ensureLayerId(layer, TOYS_LAYER)
     projectTips(layer, ops, content, ['q', 'p'])
 
     const { op: ck } = mergeCheckpointOp(layer, ['q', 'p'], ops)
@@ -529,18 +532,18 @@ describe('mergeCheckpointOp', () => {
 
   test('ts is the latest of the parents\' ts', () => {
     const { ops, tips } = twoConcurrentTips()
-    const layer = bareLayer(); ensureLayerId(layer)
+    const layer = bareLayer(); ensureLayerId(layer, TOYS_LAYER)
     projectTips(layer, ops, content, tips)
     expect(mergeCheckpointOp(layer, tips, ops).op.ts).toBe(20)
   })
 
   test('content equals a fresh projectTips of the same tips', () => {
     const { ops, tips } = twoConcurrentTips()
-    const layer = bareLayer(); ensureLayerId(layer)
+    const layer = bareLayer(); ensureLayerId(layer, TOYS_LAYER)
     projectTips(layer, ops, content, tips)
     const ck = mergeCheckpointOp(layer, tips, ops)
 
-    const scratch = bareLayer(); ensureLayerId(scratch)
+    const scratch = bareLayer(); ensureLayerId(scratch, TOYS_LAYER)
     projectTips(scratch, ops, content, tips)
     const expected = checkpointOp(scratch, { authorId: null, parents: [...tips].sort(), ts: ck.op.ts })
 
@@ -549,11 +552,11 @@ describe('mergeCheckpointOp', () => {
 
   test('different rebuilt content, same tips, yields a different id', () => {
     const { ops, tips } = twoConcurrentTips()
-    const layer = bareLayer(); ensureLayerId(layer)
+    const layer = bareLayer(); ensureLayerId(layer, TOYS_LAYER)
     projectTips(layer, ops, content, tips)
     const ck = mergeCheckpointOp(layer, tips, ops)
 
-    const otherLayer = bareLayer('<rect data-id="extra"/>'); ensureLayerId(otherLayer)
+    const otherLayer = bareLayer('<rect data-id="extra"/>'); ensureLayerId(otherLayer, TOYS_LAYER)
     const other = mergeCheckpointOp(otherLayer, tips, ops)
 
     expect(other.op.id).not.toBe(ck.op.id)
@@ -619,9 +622,9 @@ describe('applyOps', () => {
 
   test('applies in the given order, not insertion order of the map', () => {
     const base = bareLayer('<rect data-id="r" x="0"/>')
-    ensureLayerId(base)
+    ensureLayerId(base, TOYS_LAYER)
     const target = bareLayer()
-    ensureLayerId(target)
+    ensureLayerId(target, TOYS_LAYER)
 
     const step = (id, parents, from, to) => ({
       id, parents, authorId: 'a', gesture: 'move', ts: 0,
@@ -644,7 +647,7 @@ describe('checkpoint content storage', () => {
   const addOp = (id, parents, childId) => ({
     id, parents, authorId: 'a', gesture: 'drop', ts: 0,
     mutations: [{
-      t: 'child', target: { id: LAYER_DATA_ID },
+      t: 'child', target: { id: TOYS_LAYER.layerDataId },
       added: [{ el: 'rect', at: [['data-id', childId]] }], removed: [],
       prevSibling: null, nextSibling: null,
     }],
@@ -654,7 +657,7 @@ describe('checkpoint content storage', () => {
   function table() {
     const ydoc = new Y.Doc()
     const layer = bareLayer()
-    ensureLayerId(layer)
+    ensureLayerId(layer, TOYS_LAYER)
     const ops = getOps(ydoc)
     const contentMap = getContent(ydoc)
     let tip = null
@@ -802,7 +805,7 @@ describe('checkpoint content storage', () => {
     const toys = Array.from({ length: 10 }, (_, i) => [`toy${i}`, i % 2 ? 'dice_d6' : 'tray_sum'])
     const layer = await toyLayer(...toys)
     const ydoc = new Y.Doc()
-    ensureLayerId(layer)
+    ensureLayerId(layer, TOYS_LAYER)
 
     let tip = null
     let opBytes = 0
@@ -836,7 +839,7 @@ describe('checkpoint content storage', () => {
 
   test('fork: the fork doc\'s genesis content lives in the fork\'s content map, and the fork projects correctly', () => {
     const live = new Y.Doc()
-    const base = bareLayer('<rect data-id="r" x="0"/>'); ensureLayerId(base)
+    const base = bareLayer('<rect data-id="r" x="0"/>'); ensureLayerId(base, TOYS_LAYER)
     const { op: L, content: lContent } = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
     appendCheckpoint(live, L, lContent)
     const s1 = {
@@ -845,7 +848,7 @@ describe('checkpoint content storage', () => {
     }
     appendOp(live, s1)
 
-    const scratch = bareLayer(); ensureLayerId(scratch)
+    const scratch = bareLayer(); ensureLayerId(scratch, TOYS_LAYER)
     projectFrom(scratch, getOps(live), getContent(live), 'L')
     const seed = buildForkSeed(getOps(live), getContent(live), 'L', 's1', scratch, { authorId: 'bob' })
 

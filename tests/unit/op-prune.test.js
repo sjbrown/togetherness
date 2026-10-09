@@ -12,15 +12,16 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { ensureLayerId } from '../../src/op_layers.js'
+import { TOYS_LAYER } from '../../src/toys.js'
 import {
-  placeToy, makeLayerAPI, activateAllToyScriptsDom, ensureLayerId,
-  _clearSvgTextCache, _resetToyScriptState,
+  placeToy, makeLayerAPI, activateAllToyScriptsDom, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import {
   getOps, getContent, appendOp, appendCheckpoint, ancestors, ancestorsInclusive,
   isOrphan, sharedTips, heads, lca, pathFrom, totalOrder, labelBranches,
 } from '../../src/op_dag.js'
-import { projectTips, checkpointOp, isCheckpoint, LAYER_DATA_ID } from '../../src/op_checkpoint.js'
+import { projectTips, checkpointOp, isCheckpoint } from '../../src/op_checkpoint.js'
 import { getHead, setHead, setMergeTips, localTips } from '../../src/op_head.js'
 import {
   PRUNE_AGE_MS, _setPruneAgeForTests, noteSeen, noteAllSeen, ageOf, assertPrunable, prune,
@@ -63,13 +64,14 @@ afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
 const freshLayer = () => {
   const el = document.createElementNS(SVG_NS, 'g')
   el.id = 'toys-layer'
+  ensureLayerId(el, TOYS_LAYER)
   return el
 }
 
 function makePeer(authorId) {
   const tableId = `prune-table-${_tableCounter++}`
   const ydoc = new Y.Doc()
-  const layer = ensureLayerId(freshLayer())
+  const layer = ensureLayerId(freshLayer(), TOYS_LAYER)
   const api = makeLayerAPI(ydoc, () => layer, { id: authorId }, tableId)
   const peer = { id: authorId, tableId, ydoc, layer, api }
   _peers.push(peer)
@@ -421,7 +423,7 @@ describe('size after pruning', () => {
     const opId = (i) => `tt-op-${i.toString(36).padStart(6, '0')}-xxxxx`
     const op = (i, parent) => ({
       id: opId(i), parents: [parent], authorId: 'alice', gesture: 'move', ts: i,
-      mutations: [{ t: 'attr', target: { id: LAYER_DATA_ID }, name: 'data-pad',
+      mutations: [{ t: 'attr', target: { id: TOYS_LAYER.layerDataId }, name: 'data-pad',
                     oldValue: `padding-${i}-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`,
                     newValue: `padding-${i + 1}-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` }],
     })

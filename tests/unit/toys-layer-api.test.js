@@ -13,6 +13,8 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { ensureLayerId } from '../../src/op_layers.js'
+import { TOYS_LAYER } from '../../src/toys.js'
 import {
   makeLayerAPI, projectLayer, placeToy, addToy, activateAllToyScriptsDom,
   resolveToyBranchConflict, buildToyForkSeed, adoptToyBranch,
@@ -28,6 +30,7 @@ import { apply as applyWire, invert } from '../../src/op_wire_mutation.js'
 import { populateFromSvgDoc } from '../../src/storage.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
+const bareG = () => ensureLayerId(document.createElementNS(SVG_NS, 'g'), TOYS_LAYER)
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
 const TOY_DIR = path.resolve(__dir, '../../src/toy')
 
@@ -56,8 +59,9 @@ afterEach(() => { vi.unstubAllGlobals() })
 /** A live doc plus its rendered layer, wired the way app.js wires them. */
 async function setup(...toys) {
   const ydoc  = new Y.Doc()
-  const layerEl = document.createElementNS(SVG_NS, 'g')
+  const layerEl = bareG()
   layerEl.id = 'toys-layer'
+  ensureLayerId(layerEl, TOYS_LAYER)
   for (const [id, toyType] of toys) {
     await addToy(ydoc, layerEl, { id, toyType, x: 100, y: 100, color: '#ffffff' })
   }
@@ -241,8 +245,9 @@ describe('importToys — live-table SVG import (REVISION_PLAN.md C5)', () => {
     const { importedToyEls } = populateFromSvgDoc(foreignSvgRoot(FOREIGN_TOY_G), ydoc)
     importToys(ydoc, layerEl, importedToyEls, { authorId: 'user-a', tableId: TABLE })
 
-    const fresh = document.createElementNS(SVG_NS, 'g')
+    const fresh = bareG()
     fresh.id = 'toys-layer'
+    ensureLayerId(fresh, TOYS_LAYER)
     projectLayer(ydoc, fresh, { tableId: 'peer-table', authorId: 'user-b' })
 
     expect(fresh.querySelector('[data-id="t1"]')).not.toBeNull()
@@ -281,8 +286,9 @@ describe('projectLayer', () => {
     const { ydoc, layerEl } = await setup(['die1', 'dice_d6'], ['tray1', 'tray_sum'])
     projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a', isCreator: true })
 
-    const fresh = document.createElementNS(SVG_NS, 'g')
+    const fresh = bareG()
     fresh.id = 'toys-layer'
+    ensureLayerId(fresh, TOYS_LAYER)
     projectLayer(ydoc, fresh, { tableId: 'peer-table', authorId: 'user-b' })
 
     expect(fresh.innerHTML).toBe(layerEl.innerHTML)
@@ -303,8 +309,9 @@ describe('projectLayer', () => {
     const L = makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' }, TABLE)
     L.applyMoveCommit(L.find('die1'), 321, 123)
 
-    const fresh = document.createElementNS(SVG_NS, 'g')
+    const fresh = bareG()
     fresh.id = 'toys-layer'
+    ensureLayerId(fresh, TOYS_LAYER)
     projectLayer(ydoc, fresh, { tableId: TABLE, authorId: 'user-a' })
 
     expect(fresh.querySelector('[data-id="die1"] > svg').getAttribute('x'))
@@ -324,8 +331,9 @@ describe('placeToy', () => {
   beforeEach(() => localStorage.clear())
 
   const emptyLayer = () => {
-    const el = document.createElementNS(SVG_NS, 'g')
+    const el = bareG()
     el.id = 'toys-layer'
+    ensureLayerId(el, TOYS_LAYER)
     return el
   }
 
@@ -385,7 +393,7 @@ describe('L.render is projectLayer, gated by isCreator', () => {
 
   test('a non-creator LayerAPI on a fresh table renders nothing and does not fork', async () => {
     const ydoc = new Y.Doc()
-    const layerEl = document.createElementNS(SVG_NS, 'g')
+    const layerEl = bareG()
     const L = makeLayerAPI(ydoc, () => layerEl, { id: 'user-b' }, TABLE, false)
 
     expect(L.render(layerEl)).toBeNull()
@@ -418,7 +426,7 @@ describe('creator vs joiner — the human protocol the boot race was missing', (
 
   test('a joiner with an empty log takes no genesis and returns null', async () => {
     const b = new Y.Doc()
-    const result = projectLayer(b, document.createElementNS(SVG_NS, 'g'),
+    const result = projectLayer(b, bareG(),
       { tableId: 'peerB', authorId: 'bob', isCreator: false })
 
     expect(result).toBeNull()
@@ -429,8 +437,8 @@ describe('creator vs joiner — the human protocol the boot race was missing', (
     const a = new Y.Doc()  // creator
     const b = new Y.Doc()  // joiner
 
-    const aLayer = document.createElementNS(SVG_NS, 'g')
-    const bLayer = document.createElementNS(SVG_NS, 'g')
+    const aLayer = bareG()
+    const bLayer = bareG()
 
     // Real boot order: both render locally before any network activity.
     const aHead = projectLayer(a, aLayer, { tableId: 'peerA', authorId: 'alice', isCreator: true })
@@ -462,8 +470,8 @@ describe('creator vs joiner — the human protocol the boot race was missing', (
     // enforced by this function.
     const a = new Y.Doc()
     const b = new Y.Doc()
-    projectLayer(a, document.createElementNS(SVG_NS, 'g'), { tableId: 'x', authorId: 'alice', isCreator: true })
-    projectLayer(b, document.createElementNS(SVG_NS, 'g'), { tableId: 'y', authorId: 'bob', isCreator: true })
+    projectLayer(a, bareG(), { tableId: 'x', authorId: 'alice', isCreator: true })
+    projectLayer(b, bareG(), { tableId: 'y', authorId: 'bob', isCreator: true })
     Y.applyUpdate(b, Y.encodeStateAsUpdate(a))
     expect([...getOps(b).values()].filter(o => o.gesture === 'checkpoint').length).toBe(2)
   })
@@ -472,7 +480,7 @@ describe('creator vs joiner — the human protocol the boot race was missing', (
 describe('resolveToyBranchConflict', () => {
   function fork(ydoc) {
     // L -> a1(alice, leader tip) / L -> s1(bob) -> s2(clyde) (splitter tip)
-    const base = document.createElementNS(SVG_NS, 'g')
+    const base = bareG()
     base.innerHTML = '<rect data-id="r" x="0"/>'
     const { op: L, content: lContent } = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
     appendCheckpoint(ydoc, L, lContent)
@@ -528,7 +536,7 @@ describe('resolveToyBranchConflict', () => {
 describe('buildToyForkSeed', () => {
   test('produces a genesis at the LCA plus the splitter ops, ready for forkLiveDoc', () => {
     const ydoc = new Y.Doc()
-    const base = document.createElementNS(SVG_NS, 'g')
+    const base = bareG()
     base.innerHTML = '<rect data-id="r" x="0"/>'
     const { op: L, content: lContent } = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
     appendCheckpoint(ydoc, L, lContent)
@@ -542,7 +550,7 @@ describe('buildToyForkSeed', () => {
     expect(rebasedOps[0].parents).toEqual([genesis.id])
 
     const seeded = new Map([[genesis.id, genesis], ...rebasedOps.map(o => [o.id, o])])
-    const layer = document.createElementNS(SVG_NS, 'g')
+    const layer = bareG()
     projectFrom(layer, seeded, content, 's1')
     expect(layer.querySelector('[data-id="r"]').getAttribute('x')).toBe('9')
   })
@@ -553,7 +561,7 @@ describe('adoptToyBranch', () => {
   beforeEach(() => localStorage.clear())
 
   function fork(ydoc) {
-    const base = document.createElementNS(SVG_NS, 'g')
+    const base = bareG()
     base.innerHTML = '<rect data-id="r" x="0"/>'
     const { op: L, content: lContent } = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
     appendCheckpoint(ydoc, L, lContent)
@@ -568,7 +576,7 @@ describe('adoptToyBranch', () => {
   test('moves the DOM from the current head to an unrelated target head', () => {
     const ydoc = new Y.Doc()
     const { splitter, leader } = fork(ydoc)
-    const layerEl = document.createElementNS(SVG_NS, 'g')
+    const layerEl = bareG()
     projectFrom(layerEl, getOps(ydoc), getContent(ydoc), splitter)
     setHead(TABLE, splitter)
     expect(layerEl.querySelector('[data-id="r"]').getAttribute('x')).toBe('22')
@@ -582,7 +590,7 @@ describe('adoptToyBranch', () => {
   test('works even with no prior local head at all', () => {
     const ydoc = new Y.Doc()
     const { leader } = fork(ydoc)
-    const layerEl = document.createElementNS(SVG_NS, 'g')
+    const layerEl = bareG()
 
     adoptToyBranch(ydoc, layerEl, leader, TABLE)
 
@@ -596,7 +604,7 @@ describe('conflict resolution end to end — resolve, adopt, and fork-seed agree
   beforeEach(() => localStorage.clear())
 
   function forkedHistory(ydoc) {
-    const base = document.createElementNS(SVG_NS, 'g')
+    const base = bareG()
     base.innerHTML = '<rect data-id="r" x="0"/>'
     const { op: L, content: lContent } = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
     appendCheckpoint(ydoc, L, lContent)
@@ -615,7 +623,7 @@ describe('conflict resolution end to end — resolve, adopt, and fork-seed agree
     const decision = resolveToyBranchConflict(ydoc, ['a1', 's1'], { authorId: 'zoe', joinSequence })
     expect(decision.authoredSplitter).toBe(false)
 
-    const layerEl = document.createElementNS(SVG_NS, 'g')
+    const layerEl = bareG()
     adoptToyBranch(ydoc, layerEl, decision.leader, TABLE)
     expect(layerEl.querySelector('[data-id="r"]').getAttribute('x')).toBe('99')
   })
@@ -631,7 +639,7 @@ describe('conflict resolution end to end — resolve, adopt, and fork-seed agree
 
     // Bob's local view still adopts the leader — the session never leaves
     // the shared table.
-    const layerEl = document.createElementNS(SVG_NS, 'g')
+    const layerEl = bareG()
     adoptToyBranch(ydoc, layerEl, decision.leader, TABLE)
     expect(layerEl.querySelector('[data-id="r"]').getAttribute('x')).toBe('99')
 
@@ -642,7 +650,7 @@ describe('conflict resolution end to end — resolve, adopt, and fork-seed agree
     const { genesis, rebasedOps, content } = buildToyForkSeed(
       ydoc, decision.lca, decision.splitter, { authorId: decision.orderedIds[0], joinSequence })
     const seeded = new Map([[genesis.id, genesis], ...rebasedOps.map(o => [o.id, o])])
-    const forkLayer = document.createElementNS(SVG_NS, 'g')
+    const forkLayer = bareG()
     projectFrom(forkLayer, seeded, content, decision.splitter)
     expect(forkLayer.querySelector('[data-id="r"]').getAttribute('x')).toBe('55')
   })
@@ -657,7 +665,7 @@ describe('conflict resolution end to end — resolve, adopt, and fork-seed agree
     // which one survives at that key, reintroducing the exact
     // peer-dependence §6.5 exists to remove.
     const ydoc = new Y.Doc()
-    const base = document.createElementNS(SVG_NS, 'g')
+    const base = bareG()
     base.innerHTML = '<rect data-id="r" x="0"/>'
     const { op: L, content: lContent } = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
     appendCheckpoint(ydoc, L, lContent)

@@ -19,6 +19,8 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { TOYS_LAYER } from '../../src/toys.js'
+import { ensureLayerId } from '../../src/op_layers.js'
 import {
   placeToy, makeLayerAPI, activateAllToyScriptsDom, runGesture,
   reparentToyDom, applyMoveDom, getMenuActions, invokeMenuAction,
@@ -58,6 +60,7 @@ afterEach(() => { vi.unstubAllGlobals() })
 function freshLayer() {
   const layerEl = document.createElementNS(SVG_NS, 'g')
   layerEl.id = 'toys-layer'
+  ensureLayerId(layerEl, TOYS_LAYER)
   return layerEl
 }
 
