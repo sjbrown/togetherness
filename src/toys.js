@@ -29,7 +29,7 @@ const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789'
 
 import { runInEnvelope, isInsideEnvelope } from './envelope.js';
 export { isInsideEnvelope };
-import { defineOpLayer, ensureLayerId } from './op_layers.js';
+import { defineOpLayer } from './op_layers.js';
 import * as OpLayer from './op_layer.js';
 // geometry.js is shape-agnostic pure math, shared with drawing.js and
 // boun_pos.js.
