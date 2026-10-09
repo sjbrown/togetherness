@@ -7,6 +7,7 @@
 
 import * as Y from 'yjs'
 import { describe, test, expect } from 'vitest'
+import { TOYS_LAYER } from '../../src/toys.js'
 import {
   getOps, appendOp, getOp, allOps, toOpMap,
   ancestors, isAncestor, heads, lca, findLastAuthoredOp,
@@ -38,38 +39,38 @@ const worked = () => graph(
 describe('storage', () => {
   test('appendOp stores and getOp reads back', () => {
     const ydoc = new Y.Doc()
-    appendOp(ydoc, { id: 'op1', parents: [], authorId: 'a', gesture: 'move', mutations: [] })
-    expect(getOp(getOps(ydoc), 'op1').gesture).toBe('move')
+    appendOp(ydoc, TOYS_LAYER, { id: 'op1', parents: [], authorId: 'a', gesture: 'move', mutations: [] })
+    expect(getOp(getOps(ydoc, TOYS_LAYER), 'op1').gesture).toBe('move')
   })
 
   test('appending the same id twice does not duplicate or overwrite', () => {
     const ydoc = new Y.Doc()
-    appendOp(ydoc, { id: 'op1', parents: [], authorId: 'a', gesture: 'first', mutations: [] })
-    appendOp(ydoc, { id: 'op1', parents: [], authorId: 'a', gesture: 'second', mutations: [] })
-    expect(allOps(getOps(ydoc)).length).toBe(1)
-    expect(getOp(getOps(ydoc), 'op1').gesture).toBe('first')
+    appendOp(ydoc, TOYS_LAYER, { id: 'op1', parents: [], authorId: 'a', gesture: 'first', mutations: [] })
+    appendOp(ydoc, TOYS_LAYER, { id: 'op1', parents: [], authorId: 'a', gesture: 'second', mutations: [] })
+    expect(allOps(getOps(ydoc, TOYS_LAYER)).length).toBe(1)
+    expect(getOp(getOps(ydoc, TOYS_LAYER), 'op1').gesture).toBe('first')
   })
 
   test('an op without an id is refused', () => {
-    expect(() => appendOp(new Y.Doc(), { parents: [] })).toThrow(/id is required/)
+    expect(() => appendOp(new Y.Doc(), TOYS_LAYER, { parents: [] })).toThrow(/id is required/)
   })
 
   test('two docs syncing converge on the same op set', () => {
     const a = new Y.Doc(), b = new Y.Doc()
-    appendOp(a, { id: 'x', parents: [], authorId: 'alice', gesture: 'g', mutations: [] })
-    appendOp(b, { id: 'y', parents: [], authorId: 'bob', gesture: 'g', mutations: [] })
+    appendOp(a, TOYS_LAYER, { id: 'x', parents: [], authorId: 'alice', gesture: 'g', mutations: [] })
+    appendOp(b, TOYS_LAYER, { id: 'y', parents: [], authorId: 'bob', gesture: 'g', mutations: [] })
     Y.applyUpdate(b, Y.encodeStateAsUpdate(a))
     Y.applyUpdate(a, Y.encodeStateAsUpdate(b))
-    expect(new Set(toOpMap(getOps(a)).keys())).toEqual(new Set(['x', 'y']))
-    expect(new Set(toOpMap(getOps(b)).keys())).toEqual(new Set(['x', 'y']))
+    expect(new Set(toOpMap(getOps(a, TOYS_LAYER)).keys())).toEqual(new Set(['x', 'y']))
+    expect(new Set(toOpMap(getOps(b, TOYS_LAYER)).keys())).toEqual(new Set(['x', 'y']))
   })
 
   test('the graph helpers work directly against a Y.Map', () => {
     const ydoc = new Y.Doc()
-    appendOp(ydoc, { id: 'r', parents: [], authorId: 'a', gesture: 'g', mutations: [] })
-    appendOp(ydoc, { id: 'c', parents: ['r'], authorId: 'a', gesture: 'g', mutations: [] })
-    expect(heads(getOps(ydoc))).toEqual(['c'])
-    expect(isAncestor(getOps(ydoc), 'r', 'c')).toBe(true)
+    appendOp(ydoc, TOYS_LAYER, { id: 'r', parents: [], authorId: 'a', gesture: 'g', mutations: [] })
+    appendOp(ydoc, TOYS_LAYER, { id: 'c', parents: ['r'], authorId: 'a', gesture: 'g', mutations: [] })
+    expect(heads(getOps(ydoc, TOYS_LAYER))).toEqual(['c'])
+    expect(isAncestor(getOps(ydoc, TOYS_LAYER), 'r', 'c')).toBe(true)
   })
 })
 

@@ -46,6 +46,8 @@ import * as ExternalServices                      from './external_services.js';
 
 import * as Y from 'yjs';
 
+const TOYS = Toys.TOYS_LAYER;
+
 // Diagnostic logging — opt-in via ?debug=1 in the URL
 const DEBUG = typeof location !== 'undefined'
   && new URLSearchParams(location.search).get('debug') === '1';
@@ -421,8 +423,8 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
 
   Trace.boot('boot', `booting table ${tableId}`, {
     tableId, user, isCreator,
-    ops:      OpDag.getOps(ydoc).size,
-    head:     OpHead.getHead(tableId),
+    ops:      OpDag.getOps(ydoc, TOYS).size,
+    head:     OpHead.getHead(tableId, TOYS),
     clientId: ydoc.clientID,
   });
 
@@ -477,7 +479,7 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   _yDrawing.observe(onDocChanged);
   _yBounPos.observe(onDocChanged);
   _yMeta.observe(onMetaChanged);
-  OpDag.getOps(_ydoc).observe(onOpsChanged);
+  OpDag.getOps(_ydoc, TOYS).observe(onOpsChanged);
   _awareness.on('change', onPresenceChanged);
 
   // Undo/redo - UndoManager handles drawing + boundaries layers.
@@ -500,7 +502,7 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   // Provider status
   _provider.on('synced', () => {
     _netStatus.synced = true;
-    Trace.net('synced', 'provider reports synced with peers', { ops: OpDag.getOps(_ydoc).size });
+    Trace.net('synced', 'provider reports synced with peers', { ops: OpDag.getOps(_ydoc, TOYS).size });
     UI.toast('Synced with peers');
     App.addLog('synced with peers', 'remote');
   });
@@ -558,7 +560,8 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
 
 
   // Every checkpoint in the loaded log starts its prune clock now.
-  OpPrune.noteAllSeen(OpDag.getOps(_ydoc));
+  OpPrune.resetFirstSeen();
+  OpPrune.noteAllSeen(OpDag.getOps(_ydoc, TOYS));
 
   // Initial render
   renderDoc();
@@ -707,7 +710,7 @@ function handleToyBranchConflict(tips) {
 }
 
 function forkIntoNewTable(orderedIds, seed, { offline = false } = {}) {
-  tablesAPI.forkLiveDoc(_ydoc, orderedIds, seed)
+  tablesAPI.forkLiveDoc(_ydoc, orderedIds, { layer: TOYS, seed })
     .then(forkedTableId => {
       tablesAPI.touchTableRecord(forkedTableId, { name: `${_tableId} (branch)` });
       UI.showBranchDialog(forkedTableId, { offline });
@@ -728,7 +731,7 @@ function maybeIdleCheckpoint(reason) {
   if (frequencyMin <= 0) return null;
   if (!_tableId || !_ydoc) return null;
 
-  const ops = OpDag.getOps(_ydoc);
+  const ops = OpDag.getOps(_ydoc, TOYS);
   const lastTs = OpCheckpoint.lastCheckpointTs(ops);
   // No checkpoint has ever landed on this table — nothing to measure
   // "since", so there's no reason to withhold on time grounds; let
@@ -747,10 +750,10 @@ function maybeCheckpoint(reason) {
   if (!_tableId || !_ydoc) return null;
   if (Toys.isInsideEnvelope()) return null;
 
-  const ops = OpDag.getOps(_ydoc);
-  const headId = OpHead.getHead(_tableId);
+  const ops = OpDag.getOps(_ydoc, TOYS);
+  const headId = OpHead.getHead(_tableId, TOYS);
   if (headId == null) return null;
-  const tips = OpHead.maximalTips(ops, [headId, ...OpHead.getMergeTips(_tableId)]);
+  const tips = OpHead.maximalTips(ops, [headId, ...OpHead.getMergeTips(_tableId, TOYS)]);
   if (!OpCheckpoint.shouldCheckpoint(ops, tips)) return null;
 
   const layer = _svgEl?.querySelector('#toys-layer');
@@ -759,9 +762,9 @@ function maybeCheckpoint(reason) {
   // Parent on the full tip set, not just headId — with pending merge tips,
   // [headId] alone wouldn't be a cut.
   const { op, content } = OpCheckpoint.checkpointOp(layer, { authorId: App.user.id, parents: tips });
-  OpDag.appendCheckpoint(_ydoc, op, content);
-  OpHead.setHead(_tableId, op.id);
-  OpHead.setMergeTips(_tableId, []);
+  OpDag.appendCheckpoint(_ydoc, TOYS, op, content);
+  OpHead.setHead(_tableId, TOYS, op.id);
+  OpHead.setMergeTips(_tableId, TOYS, []);
   Trace.op('checkpoint', `wrote checkpoint ${op.id} (${reason})`, { id: op.id, reason });
   Toys.pruneAfterCheckpoint(_ydoc, _tableId, op.id, tablesAPI.getJoinSequenceArray(_ydoc));
   return op;
@@ -802,7 +805,7 @@ function onOpsChanged(evt, transaction) {
   // logging structural top-level adds/deletes, but this covers every real
   // user gesture type generically instead of just placements/deletions).
   const SILENT_GESTURES = new Set(['checkpoint', 'contents_change', 'initialize']);
-  const ops = OpDag.getOps(_ydoc);
+  const ops = OpDag.getOps(_ydoc, TOYS);
   for (const [opId, change] of evt.changes.keys) {
     if (change.action !== 'add') continue;
     const op = ops.get(opId);
@@ -2225,12 +2228,12 @@ const App = {
    * pay for it on every panel refresh.
    */
   getDebugState: () => {
-    const ops     = OpDag.getOps(_ydoc);
-    const content = OpDag.getContent(_ydoc);
+    const ops     = OpDag.getOps(_ydoc, TOYS);
+    const content = OpDag.getContent(_ydoc, TOYS);
     const allIds  = [...ops.keys()];
     const joinSeq = tablesAPI.getJoinSequenceArray(_ydoc);
     const layerEl = _svgEl?.querySelector('#toys-layer') ?? null;
-    const head    = OpHead.getHead(_tableId);
+    const head    = OpHead.getHead(_tableId, TOYS);
     const shown   = allIds.length > MAX_DEBUG_OPS ? allIds.slice(-MAX_DEBUG_OPS) : allIds;
 
     const ordered = OpDag.totalOrder(ops, shown, joinSeq).map((id, i) => {
@@ -2272,7 +2275,7 @@ const App = {
       identity: { myId: App.user.id, clientId: _ydoc.clientID },
       head: {
         head:      head,
-        mergeTips: OpHead.getMergeTips(_tableId),
+        mergeTips: OpHead.getMergeTips(_tableId, TOYS),
         projected,
         // A projection marker that disagrees with the stored head means the
         // DOM is showing something other than what this peer thinks it is —

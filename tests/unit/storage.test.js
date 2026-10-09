@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { TOYS_LAYER } from '../../src/toys.js'
 import { ensureLayerId, getOpLayer } from '../../src/op_layers.js'
 import { domToY, populateFromSvgDoc, buildExportSvg } from '../../src/storage.js'
 import { getOps, getContent } from '../../src/op_dag.js'
@@ -321,7 +322,7 @@ describe('populateFromSvgDoc', () => {
       // No op-log history exists yet to chain onto — see toys-layer-api.test.js's
       // "L.import" block for the live-table caller side (App.importSVG) that
       // takes these elements and commits them as a real gesture.
-      expect([...getOps(ydoc).values()].length).toBe(0)
+      expect([...getOps(ydoc, TOYS_LAYER).values()].length).toBe(0)
     })
 
     test('with it, toys become one genesis checkpoint operation instead', () => {
@@ -332,7 +333,7 @@ describe('populateFromSvgDoc', () => {
       expect(toyCount).toBe(1)
       expect(importedToyEls.length).toBe(0) // consumed into the checkpoint, not handed back
 
-      const ops = [...getOps(ydoc).values()]
+      const ops = [...getOps(ydoc, TOYS_LAYER).values()]
       expect(ops.length).toBe(1)
       expect(ops[0].gesture).toBe('checkpoint')
       expect(ops[0].parents).toEqual([])
@@ -343,9 +344,9 @@ describe('populateFromSvgDoc', () => {
       const { ydoc } = freshLayers()
       populateFromSvgDoc(makeDocSvg({ toysInner: VALID_TOY_G }), ydoc, { asNewTable: true, authorId: 'alice' })
 
-      const genesis = [...getOps(ydoc).values()][0]
+      const genesis = [...getOps(ydoc, TOYS_LAYER).values()][0]
       const layerEl = ensureLayerId(document.createElementNS('http://www.w3.org/2000/svg', 'g'), getOpLayer('toys'))
-      projectFrom(layerEl, getOps(ydoc), getContent(ydoc), genesis.id)
+      projectFrom(layerEl, getOps(ydoc, TOYS_LAYER), getContent(ydoc, TOYS_LAYER), genesis.id)
 
       expect(layerEl.querySelector('[data-id="t1"]')).not.toBeNull()
     })
@@ -353,7 +354,7 @@ describe('populateFromSvgDoc', () => {
     test('an empty toys layer takes no genesis at all', () => {
       const { ydoc } = freshLayers()
       populateFromSvgDoc(makeDocSvg(), ydoc, { asNewTable: true, authorId: 'alice' })
-      expect([...getOps(ydoc).values()].length).toBe(0)
+      expect([...getOps(ydoc, TOYS_LAYER).values()].length).toBe(0)
     })
 
     test('invalid toys are still rejected the same way', () => {
@@ -372,9 +373,9 @@ describe('populateFromSvgDoc', () => {
       populateFromSvgDoc(makeDocSvg({ toysInner: rotatedToy }), ydoc,
         { asNewTable: true, stripToyDecorative: true, authorId: 'alice' })
 
-      const genesis = [...getOps(ydoc).values()][0]
+      const genesis = [...getOps(ydoc, TOYS_LAYER).values()][0]
       const layerEl = ensureLayerId(document.createElementNS('http://www.w3.org/2000/svg', 'g'), getOpLayer('toys'))
-      projectFrom(layerEl, getOps(ydoc), getContent(ydoc), genesis.id)
+      projectFrom(layerEl, getOps(ydoc, TOYS_LAYER), getContent(ydoc, TOYS_LAYER), genesis.id)
       expect(layerEl.querySelector('[data-id="t1"]').hasAttribute('transform')).toBe(false)
     })
   })

@@ -17,33 +17,30 @@
 
 import * as Trace from './trace.js'
 
-const OPS_KEY = 'ops'
-const CONTENT_KEY = 'checkpointContent'
-
 // ── storage ─────────────────────────────────────────────────────────────
 
-export function getOps(ydoc) {
-  return ydoc.getMap(OPS_KEY)
+export function getOps(ydoc, layer) {
+  return ydoc.getMap(layer.opsKey)
 }
 
-export function appendOp(ydoc, op) {
+export function appendOp(ydoc, layer, op) {
   if (!op?.id) throw new Error('appendOp: op.id is required')
-  const ops = getOps(ydoc)
+  const ops = getOps(ydoc, layer)
   if (ops.has(op.id)) {
-    Trace.op('append-duplicate', `${op.id} already in the log`, { id: op.id, gesture: op.gesture })
+    Trace.op('append-duplicate', `${op.id} already in the log`, { layer: layer.name, id: op.id, gesture: op.gesture })
     return op
   }
   ops.set(op.id, op)
   // The whole op, mutations included — this is the inspectable wire packet.
   // It is already immutable plain data living in the Y.Map, so holding a
   // reference costs nothing beyond the pointer.
-  Trace.op('append', `${op.gesture} entered the log as ${op.id}`, op)
+  Trace.op('append', `${op.gesture} entered the log as ${op.id}`, { layer: layer.name, ...op })
   return op
 }
 
-/** The shared map of checkpoint snapshots, keyed by checkpoint op id. */
-export function getContent(ydoc) {
-  return ydoc.getMap(CONTENT_KEY)
+/** The layer's shared map of checkpoint snapshots, keyed by checkpoint op id. */
+export function getContent(ydoc, layer) {
+  return ydoc.getMap(layer.contentKey)
 }
 
 /**
@@ -55,21 +52,21 @@ export function getContent(ydoc) {
  * checkpoint that is not root-most (invariant 17), so a peer never sees the
  * new cut without the old content already gone, or the reverse.
  */
-export function appendCheckpoint(ydoc, op, content) {
+export function appendCheckpoint(ydoc, layer, op, content) {
   if (!op?.id) throw new Error('appendCheckpoint: op.id is required')
-  const ops = getOps(ydoc)
+  const ops = getOps(ydoc, layer)
   if (ops.has(op.id)) {
-    Trace.op('append-duplicate', `${op.id} already in the log`, { id: op.id, gesture: op.gesture })
+    Trace.op('append-duplicate', `${op.id} already in the log`, { layer: layer.name, id: op.id, gesture: op.gesture })
     return op
   }
-  const contentMap = getContent(ydoc)
+  const contentMap = getContent(ydoc, layer)
   const stored = { ...op, mutations: [] }
   ydoc.transact(() => {
     ops.set(op.id, stored)
     contentMap.set(op.id, content)
     for (const id of supersededContent(ops, contentMap, op.id)) contentMap.delete(id)
   })
-  Trace.op('append', `${op.gesture} entered the log as ${op.id}`, stored)
+  Trace.op('append', `${op.gesture} entered the log as ${op.id}`, { layer: layer.name, ...stored })
   return stored
 }
 

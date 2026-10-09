@@ -4,6 +4,7 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { TOYS_LAYER } from '../../src/toys.js'
 import * as Toys from '../../src/toys.js'
 import { addToy, activateAllToyScriptsDom, reparentToyDom, undoToyGesture, _clearSvgTextCache,
          _resetToyScriptState, getNamespacesForType } from '../../src/toys.js'
@@ -344,10 +345,10 @@ describe('invokeMenuAction — the DOM-based cascade itself', () => {
 
     const roll = Toys.getMenuActions(dieEl).find(a => a.eventName === 'die_roll')
 
-    const before = getOps(ydoc).size
+    const before = getOps(ydoc, TOYS_LAYER).size
     Toys.invokeMenuAction(ydoc, layerEl, dieEl, roll.namespace, roll.key, undefined, AUTHOR, TABLE)
 
-    expect(getOps(ydoc).size - before).toBe(1) // die's roll + both trays' recompute, one operation
+    expect(getOps(ydoc, TOYS_LAYER).size - before).toBe(1) // die's roll + both trays' recompute, one operation
 
     const dieValue = Number(layerEl.querySelector('[data-id="die1"]').querySelector('tspan').textContent)
     const innerEl = layerEl.querySelector('[data-id="inner"]')
@@ -387,10 +388,10 @@ describe('invokeMenuAction — the DOM-based cascade itself', () => {
       },
     }
 
-    const before = getOps(ydoc).size
+    const before = getOps(ydoc, TOYS_LAYER).size
     Toys.invokeMenuAction(ydoc, layerEl, dieAEl, 'd6', '__rollBoth', undefined, AUTHOR, TABLE)
 
-    expect(getOps(ydoc).size - before).toBe(1)
+    expect(getOps(ydoc, TOYS_LAYER).size - before).toBe(1)
     const dieAValue = Number(layerEl.querySelector('[data-id="dieA"]').querySelector('tspan').textContent)
     const dieBValue = Number(layerEl.querySelector('[data-id="dieB"]').querySelector('tspan').textContent)
     expect(globalThis.tray.getValue(layerEl.querySelector('[data-id="trayA"]'))).toBe(String(dieAValue))
@@ -459,12 +460,12 @@ describe('invokeMenuAction — the DOM-based cascade itself', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const loopAEl = layerEl.querySelector('[data-id="loopA"]')
 
-    const before = getOps(ydoc).size
+    const before = getOps(ydoc, TOYS_LAYER).size
     expect(() => {
       Toys.invokeMenuAction(ydoc, layerEl, loopAEl, 'loop_a', 'Trigger', undefined, AUTHOR, TABLE)
     }).not.toThrow()
 
-    expect(getOps(ydoc).size - before).toBe(1) // still one atomic operation, cycle and all
+    expect(getOps(ydoc, TOYS_LAYER).size - before).toBe(1) // still one atomic operation, cycle and all
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('loopB'))
 
     const loopBEl = layerEl.querySelector('[data-id="loopB"]')

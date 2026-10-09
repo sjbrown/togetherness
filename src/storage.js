@@ -154,7 +154,7 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
     if (toyCount) {
       if (opts.asNewTable) {
         const { op: genesis, content } = checkpointOp(scratchLayer, { authorId: opts.authorId, parents: [] });
-        appendCheckpoint(ydoc, genesis, content);
+        appendCheckpoint(ydoc, getOpLayer('toys'), genesis, content);
       } else {
         importedToyEls.push(...scratchLayer.children);
       }

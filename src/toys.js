@@ -1931,13 +1931,13 @@ export function runGesture(ydoc, layerEl, fn, opts = {}) {
   const { tableId } = opts
   let op = null
   if (tableId) {
-    op = commitGesture(ydoc, allRecords, {
+    op = commitGesture(ydoc, TOYS_LAYER, allRecords, {
       gesture:  opts.gesture ?? 'gesture',
       authorId: opts.authorId ?? null,
-      parents:  OpHead.consumeParents(tableId),
+      parents:  OpHead.consumeParents(tableId, TOYS_LAYER),
     })
     if (op) {
-      OpHead.setHead(tableId, op.id)
+      OpHead.setHead(tableId, TOYS_LAYER, op.id)
       markProjectedAt(layerEl, op.id)
     }
   }
@@ -2079,21 +2079,21 @@ export function activateAllToyScriptsDom(ydoc, layerEl) {
  */
 export function projectLayer(ydoc, layerEl, { tableId, authorId, isCreator = false, joinSequence = [] } = {}) {
   ensureLayerId(layerEl, TOYS_LAYER)
-  const ops = OpDag.getOps(ydoc)
-  const content = OpDag.getContent(ydoc)
+  const ops = OpDag.getOps(ydoc, TOYS_LAYER)
+  const content = OpDag.getContent(ydoc, TOYS_LAYER)
 
   if (ops.size === 0) {
     if (!isCreator) return null
     const { op: genesis, content: snapshot } = OpCheckpoint.checkpointOp(layerEl, { authorId, parents: [] })
-    OpDag.appendCheckpoint(ydoc, genesis, snapshot)
+    OpDag.appendCheckpoint(ydoc, TOYS_LAYER, genesis, snapshot)
     OpPrune.noteSeen(genesis.id)
-    if (tableId) OpHead.setHead(tableId, genesis.id)
+    if (tableId) OpHead.setHead(tableId, TOYS_LAYER, genesis.id)
     markProjectedAt(layerEl, [genesis.id])
     return genesis.id
   }
 
-  const storedHead = (tableId && OpHead.getHead(tableId)) ?? null
-  const storedMergeTips = tableId ? OpHead.getMergeTips(tableId) : []
+  const storedHead = (tableId && OpHead.getHead(tableId, TOYS_LAYER)) ?? null
+  const storedMergeTips = tableId ? OpHead.getMergeTips(tableId, TOYS_LAYER) : []
   let tips = OpHead.maximalTips(ops, [storedHead, ...storedMergeTips])
     .filter(t => !OpDag.isOrphan(ops, t))
   if (!tips.length) tips = OpDag.sharedTips(ops)
@@ -2108,8 +2108,8 @@ export function projectLayer(ydoc, layerEl, { tableId, authorId, isCreator = fal
   OpCheckpoint.projectTips(layerEl, ops, content, tips, joinSequence)
   activateAllToyScriptsDom(ydoc, layerEl)
   if (tableId) {
-    OpHead.setHead(tableId, primaryHead)
-    OpHead.setMergeTips(tableId, tips.filter(t => t !== primaryHead))
+    OpHead.setHead(tableId, TOYS_LAYER, primaryHead)
+    OpHead.setMergeTips(tableId, TOYS_LAYER, tips.filter(t => t !== primaryHead))
   }
   markProjectedAt(layerEl, tips)
   return primaryHead
@@ -2206,7 +2206,7 @@ function canApplyWire(wire, layerEl) {
  */
 function applyToyUndoRedo(ydoc, layerEl, tableId, authorId, targetId, verb) {
   if (!targetId) return null
-  const ops = OpDag.getOps(ydoc)
+  const ops = OpDag.getOps(ydoc, TOYS_LAYER)
   const target = OpDag.getOp(ops, targetId)
   const inverseMutations = OpWireMutation.invert(target.mutations)
   if (!canApplyWire(inverseMutations, layerEl)) return null
@@ -2226,15 +2226,15 @@ function applyToyUndoRedo(ydoc, layerEl, tableId, authorId, targetId, verb) {
 }
 
 export function undoToyGesture(ydoc, layerEl, tableId, authorId) {
-  const ops = OpDag.getOps(ydoc)
-  const head = tableId ? OpHead.getHead(tableId) : null
+  const ops = OpDag.getOps(ydoc, TOYS_LAYER)
+  const head = tableId ? OpHead.getHead(tableId, TOYS_LAYER) : null
   const { undoTargetId } = OpDag.toyUndoRedoStacks(ops, head, authorId)
   return applyToyUndoRedo(ydoc, layerEl, tableId, authorId, undoTargetId, 'undo')
 }
 
 export function redoToyGesture(ydoc, layerEl, tableId, authorId) {
-  const ops = OpDag.getOps(ydoc)
-  const head = tableId ? OpHead.getHead(tableId) : null
+  const ops = OpDag.getOps(ydoc, TOYS_LAYER)
+  const head = tableId ? OpHead.getHead(tableId, TOYS_LAYER) : null
   const { redoTargetId } = OpDag.toyUndoRedoStacks(ops, head, authorId)
   return applyToyUndoRedo(ydoc, layerEl, tableId, authorId, redoTargetId, 'redo')
 }
@@ -2299,14 +2299,14 @@ export function moveToysBatch(ydoc, layerEl, moves, { authorId, tableId } = {}) 
  * click; that's an acceptable, minor imprecision most editors share.
  */
 export function canUndoToyGesture(ydoc, tableId, authorId) {
-  const ops = OpDag.getOps(ydoc)
-  const head = tableId ? OpHead.getHead(tableId) : null
+  const ops = OpDag.getOps(ydoc, TOYS_LAYER)
+  const head = tableId ? OpHead.getHead(tableId, TOYS_LAYER) : null
   return OpDag.toyUndoRedoStacks(ops, head, authorId).undoTargetId != null
 }
 
 export function canRedoToyGesture(ydoc, tableId, authorId) {
-  const ops = OpDag.getOps(ydoc)
-  const head = tableId ? OpHead.getHead(tableId) : null
+  const ops = OpDag.getOps(ydoc, TOYS_LAYER)
+  const head = tableId ? OpHead.getHead(tableId, TOYS_LAYER) : null
   return OpDag.toyUndoRedoStacks(ops, head, authorId).redoTargetId != null
 }
 
@@ -2321,13 +2321,13 @@ export function canRedoToyGesture(ydoc, tableId, authorId) {
  */
 export function adoptToyBranch(ydoc, layerEl, targetHeadId, tableId) {
   ensureLayerId(layerEl, TOYS_LAYER)
-  const ops = OpDag.getOps(ydoc)
-  const head = tableId ? OpHead.getHead(tableId) : null
-  OpReplay.advanceTo(layerEl, ops, OpDag.getContent(ydoc), head, targetHeadId)
+  const ops = OpDag.getOps(ydoc, TOYS_LAYER)
+  const head = tableId ? OpHead.getHead(tableId, TOYS_LAYER) : null
+  OpReplay.advanceTo(layerEl, ops, OpDag.getContent(ydoc, TOYS_LAYER), head, targetHeadId)
   activateAllToyScriptsDom(ydoc, layerEl)
   if (tableId) {
-    OpHead.setHead(tableId, targetHeadId)
-    OpHead.setMergeTips(tableId, [])
+    OpHead.setHead(tableId, TOYS_LAYER, targetHeadId)
+    OpHead.setMergeTips(tableId, TOYS_LAYER, [])
   }
   markProjectedAt(layerEl, [targetHeadId])
 }
@@ -2350,9 +2350,9 @@ function writeMergeCheckpointIfWarranted(ydoc, layerEl, tableId, ops, tips, join
   if (!OpCheckpoint.shouldCheckpoint(ops, tips)) return null
 
   const { op: ck, content } = OpCheckpoint.mergeCheckpointOp(layerEl, tips, ops)
-  OpDag.appendCheckpoint(ydoc, ck, content)
-  OpHead.setHead(tableId, ck.id)
-  OpHead.setMergeTips(tableId, [])
+  OpDag.appendCheckpoint(ydoc, TOYS_LAYER, ck, content)
+  OpHead.setHead(tableId, TOYS_LAYER, ck.id)
+  OpHead.setMergeTips(tableId, TOYS_LAYER, [])
   markProjectedAt(layerEl, [ck.id])
   pruneAfterCheckpoint(ydoc, tableId, ck.id, joinSequence)
   return ck
@@ -2367,25 +2367,25 @@ function writeMergeCheckpointIfWarranted(ydoc, layerEl, tableId, ops, tips, join
 export function pruneAfterCheckpoint(ydoc, tableId, checkpointId, joinSequence = []) {
   OpPrune.noteSeen(checkpointId)
   if (!tableId || isInsideEnvelope() || OpReplay.isReplaying()) return null
-  const ops = OpDag.getOps(ydoc)
+  const ops = OpDag.getOps(ydoc, TOYS_LAYER)
   const scratch = ensureLayerId(document.createElementNS(SVG_NS, 'g'), TOYS_LAYER)
-  return OpPrune.prune(ydoc, OpHead.localTips(tableId, ops), { scratch, joinSequence })
+  return OpPrune.prune(ydoc, TOYS_LAYER, OpHead.localTips(tableId, TOYS_LAYER, ops), { scratch, joinSequence })
 }
 
 export function receiveToyOp(ydoc, layerEl, opId, tableId, joinSequence = []) {
   ensureLayerId(layerEl, TOYS_LAYER)
-  const ops = OpDag.getOps(ydoc)
-  const head = tableId ? OpHead.getHead(tableId) : null
-  const mergeTips = tableId ? OpHead.getMergeTips(tableId) : []
-  const out = OpReplay.receiveOp(layerEl, ops, OpDag.getContent(ydoc), head, opId, joinSequence, mergeTips)
+  const ops = OpDag.getOps(ydoc, TOYS_LAYER)
+  const head = tableId ? OpHead.getHead(tableId, TOYS_LAYER) : null
+  const mergeTips = tableId ? OpHead.getMergeTips(tableId, TOYS_LAYER) : []
+  const out = OpReplay.receiveOp(layerEl, ops, OpDag.getContent(ydoc, TOYS_LAYER), head, opId, joinSequence, mergeTips)
 
   if (out.result !== OpReplay.RECEIVED_KNOWN && out.result !== OpReplay.RECEIVED_CONFLICT
       && out.result !== OpReplay.RECEIVED_ORPHAN) {
     activateAllToyScriptsDom(ydoc, layerEl)
   }
   if (tableId) {
-    if (out.head !== head) OpHead.setHead(tableId, out.head)
-    OpHead.setMergeTips(tableId, out.mergeTips ?? [])
+    if (out.head !== head) OpHead.setHead(tableId, TOYS_LAYER, out.head)
+    OpHead.setMergeTips(tableId, TOYS_LAYER, out.mergeTips ?? [])
   }
   markProjectedAt(layerEl, [out.head, ...(out.mergeTips ?? [])])
 
@@ -2421,9 +2421,9 @@ export function receiveToyOp(ydoc, layerEl, opId, tableId, joinSequence = []) {
 export function resolveOrphanedTips(ydoc, layerEl, tableId, { authorId, joinSequence = [], deletedIds = new Set() } = {}) {
   ensureLayerId(layerEl, TOYS_LAYER)
   if (!tableId) return null
-  const ops = OpDag.getOps(ydoc)
+  const ops = OpDag.getOps(ydoc, TOYS_LAYER)
   const memo = new Map()
-  const stored = [OpHead.getHead(tableId), ...OpHead.getMergeTips(tableId)].filter(Boolean)
+  const stored = [OpHead.getHead(tableId, TOYS_LAYER), ...OpHead.getMergeTips(tableId, TOYS_LAYER)].filter(Boolean)
   const stale = stored.filter(id => deletedIds.has(id) || OpDag.isOrphan(ops, id, memo))
   if (!stale.length) return null
 
@@ -2446,10 +2446,10 @@ export function resolveOrphanedTips(ydoc, layerEl, tableId, { authorId, joinSequ
   const tips = OpDag.sharedTips(ops)
   if (tips.length) {
     OpReplay.withSuppressedCapture(() =>
-      OpCheckpoint.projectTips(layerEl, ops, OpDag.getContent(ydoc), tips, joinSequence))
+      OpCheckpoint.projectTips(layerEl, ops, OpDag.getContent(ydoc, TOYS_LAYER), tips, joinSequence))
     activateAllToyScriptsDom(ydoc, layerEl)
-    OpHead.setHead(tableId, tips[0])
-    OpHead.setMergeTips(tableId, tips.slice(1))
+    OpHead.setHead(tableId, TOYS_LAYER, tips[0])
+    OpHead.setMergeTips(tableId, TOYS_LAYER, tips.slice(1))
     markProjectedAt(layerEl, tips)
   }
   return { tips, authored, orphanIds: [...orphanIds], fork }
@@ -2467,7 +2467,7 @@ export function resolveOrphanedTips(ydoc, layerEl, tableId, { authorId, joinSequ
  * worth doing in the fork case)
  */
 export function resolveToyBranchConflict(ydoc, tips, { authorId, joinSequence = [] } = {}) {
-  const ops = OpDag.getOps(ydoc)
+  const ops = OpDag.getOps(ydoc, TOYS_LAYER)
   const { leader, splitter, lca } = OpDag.labelBranches(ops, tips[0], tips[1], joinSequence)
   const authors = OpDag.branchAuthors(ops, splitter, lca)
 
@@ -2492,12 +2492,12 @@ export function resolveToyBranchConflict(ydoc, tips, { authorId, joinSequence = 
  * authoredSplitter: true.
  */
 export function buildToyForkSeed(ydoc, lca, splitter, { authorId, joinSequence = [] } = {}) {
-  const ops = OpDag.getOps(ydoc)
+  const ops = OpDag.getOps(ydoc, TOYS_LAYER)
   if (lca == null || !OpDag.getOp(ops, lca)) {
     throw new Error('buildToyForkSeed: the fork point is not in the log; seed from the live layer instead')
   }
   const scratch = ensureLayerId(document.createElementNS(SVG_NS, 'g'), TOYS_LAYER)
-  const content = OpDag.getContent(ydoc)
+  const content = OpDag.getContent(ydoc, TOYS_LAYER)
   OpCheckpoint.projectFrom(scratch, ops, content, lca, joinSequence)
   return OpCheckpoint.buildForkSeed(ops, content, lca, splitter, scratch, { authorId, joinSequence })
 }
@@ -2510,7 +2510,7 @@ export function buildToyForkSeed(ydoc, lca, splitter, { authorId, joinSequence =
  * layer, taken before adopting the leader rebuilds it.
  */
 export function settleBranchConflict(ydoc, layerEl, tableId, tips, { authorId, joinSequence = [] } = {}) {
-  const ops = OpDag.getOps(ydoc)
+  const ops = OpDag.getOps(ydoc, TOYS_LAYER)
   const decision = resolveToyBranchConflict(ydoc, tips, { authorId, joinSequence })
   const forkAuthor = decision.orderedIds?.[0]
 

@@ -109,7 +109,7 @@ test(
 
     // Project the recorded log onto a fresh scratch layer and compare.
     const scratch = freshLayer()
-    projectFrom(scratch, getOps(ydoc), getContent(ydoc), getHead(TABLE))
+    projectFrom(scratch, getOps(ydoc, TOYS_LAYER), getContent(ydoc, TOYS_LAYER), getHead(TABLE, TOYS_LAYER))
 
     const liveChildren    = [...layerEl.children].map(serializeNode)
     const scratchChildren = [...scratch.children].map(serializeNode)
