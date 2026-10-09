@@ -11,6 +11,8 @@
  * the outcome into a dialog and an isCreator decision.
  */
 
+import * as Trace from './trace.js'
+
 export const SIGNALING_TIMEOUT_MS = 6000
 export const PEER_TIMEOUT_MS      = 5000
 
@@ -64,6 +66,7 @@ export function watchTableProbe(provider, {
   signalingTimeoutMs = resolveSignalingTimeoutMs(),
   peerTimeoutMs = resolvePeerTimeoutMs(),
 } = {}) {
+  const started = Date.now()
   let settled = false
   let signalingTimer = null
   let peerTimer = null
@@ -85,10 +88,21 @@ export function watchTableProbe(provider, {
     provider.off('synced', onSynced)
   }
 
+  const WHY = {
+    'unreachable': `no signaling connection${signalingTimeoutMs ? ` within ${signalingTimeoutMs} ms` : ''}`,
+    'not-found':   `signaling is up but no peer synced within ${peerTimeoutMs} ms`,
+    'found':       'a peer synced',
+  }
+
   function finish(phase) {
     if (settled) return
     settled = true
     cleanup()
+    // The join dialog says one of these three things; this is the row a
+    // person can match it to.
+    Trace.net('join-intent', `join probe ${phase}: ${WHY[phase]}`,
+      { outcome: phase, ms: Date.now() - started, signalingTimeoutMs, peerTimeoutMs },
+      phase === 'unreachable' ? 'warn' : 'info')
     onPhase(phase)
   }
 

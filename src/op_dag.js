@@ -18,6 +18,7 @@
 import * as Trace from './trace.js'
 
 const OPS_KEY = 'ops'
+const CONTENT_KEY = 'checkpointContent'
 
 // ── storage ─────────────────────────────────────────────────────────────
 
@@ -38,6 +39,55 @@ export function appendOp(ydoc, op) {
   // reference costs nothing beyond the pointer.
   Trace.op('append', `${op.gesture} entered the log as ${op.id}`, op)
   return op
+}
+
+/** The shared map of checkpoint snapshots, keyed by checkpoint op id. */
+export function getContent(ydoc) {
+  return ydoc.getMap(CONTENT_KEY)
+}
+
+/**
+ * Append a checkpoint op and its snapshot in one transaction. The op is
+ * stored with empty mutations; the snapshot lives in the content map, where
+ * it can be deleted without touching the immutable op (invariant 2).
+ *
+ * The same transaction deletes the content of every strict-ancestor
+ * checkpoint that is not root-most (invariant 17), so a peer never sees the
+ * new cut without the old content already gone, or the reverse.
+ */
+export function appendCheckpoint(ydoc, op, content) {
+  if (!op?.id) throw new Error('appendCheckpoint: op.id is required')
+  const ops = getOps(ydoc)
+  if (ops.has(op.id)) {
+    Trace.op('append-duplicate', `${op.id} already in the log`, { id: op.id, gesture: op.gesture })
+    return op
+  }
+  const contentMap = getContent(ydoc)
+  const stored = { ...op, mutations: [] }
+  ydoc.transact(() => {
+    ops.set(op.id, stored)
+    contentMap.set(op.id, content)
+    for (const id of supersededContent(ops, contentMap, op.id)) contentMap.delete(id)
+  })
+  Trace.op('append', `${op.gesture} entered the log as ${op.id}`, stored)
+  return stored
+}
+
+/**
+ * Checkpoints strictly behind `id` whose content is still held and is not
+ * root-most. A checkpoint is root-most when no checkpoint sits in its own
+ * ancestry: its content is what a projection falls back to when every newer
+ * cut has lost its own, so it must outlive them all.
+ */
+function supersededContent(ops, contentMap, id) {
+  const out = []
+  for (const a of ancestors(ops, id)) {
+    if (getOp(ops, a)?.gesture !== 'checkpoint' || !contentMap.has(a)) continue
+    for (const b of ancestors(ops, a)) {
+      if (getOp(ops, b)?.gesture === 'checkpoint') { out.push(a); break }
+    }
+  }
+  return out
 }
 
 export function getOp(ops, id) {
@@ -61,14 +111,16 @@ const parentsOf = (ops, id) => getOp(ops, id)?.parents ?? []
 
 /**
  * Every op reachable from id by following parents, id excluded. Visited
- * tracking makes a malformed cycle terminate instead of hanging.
+ * tracking makes a malformed cycle terminate instead of hanging. A parent
+ * that is not in the log (pruned away) is neither returned nor followed, so
+ * the result only ever holds ids that resolve.
  */
 export function ancestors(ops, id) {
   const seen = new Set()
   const stack = [...parentsOf(ops, id)]
   while (stack.length) {
     const cur = stack.pop()
-    if (cur == null || seen.has(cur)) continue
+    if (cur == null || seen.has(cur) || !getOp(ops, cur)) continue
     seen.add(cur)
     for (const p of parentsOf(ops, cur)) stack.push(p)
   }
@@ -77,7 +129,7 @@ export function ancestors(ops, id) {
 
 export const ancestorsInclusive = (ops, id) => {
   const s = ancestors(ops, id)
-  s.add(id)
+  if (getOp(ops, id)) s.add(id)
   return s
 }
 
@@ -109,6 +161,50 @@ export function lca(ops, a, b) {
 
   const lowest = common.filter(id => !common.some(other => other !== id && isAncestor(ops, id, other)))
   return lowest.sort()[0] ?? null
+}
+
+/**
+ * Whether id's ancestry reaches a parent that is not in the log before it
+ * reaches a checkpoint. A checkpoint is a legal root whatever its parents,
+ * so a path stops there. An id that is not in the log is not an orphan, there
+ * is nothing to ignore. `memo` (id → bool) lets a caller checking several
+ * ids share the work.
+ */
+export function isOrphan(ops, id, memo = new Map()) {
+  if (memo.has(id)) return memo.get(id)
+  const start = getOp(ops, id)
+  if (!start) return false
+  const seen = new Set()
+  const stack = [start]
+  let orphan = false
+  while (stack.length && !orphan) {
+    const op = stack.pop()
+    if (seen.has(op.id)) continue
+    seen.add(op.id)
+    if (memo.get(op.id) === true) { orphan = true; break }
+    if (op.gesture === 'checkpoint' || memo.get(op.id) === false) continue
+    for (const p of op.parents ?? []) {
+      const parent = getOp(ops, p)
+      if (!parent) { orphan = true; break }
+      stack.push(parent)
+    }
+  }
+  memo.set(id, orphan)
+  if (!orphan) for (const seenId of seen) memo.set(seenId, false)
+  return orphan
+}
+
+/**
+ * The maximal non-orphan ops in the log: the tips every peer can agree are
+ * live, ignoring branches whose fork point was pruned. Non-orphan ops are
+ * closed under ancestry, so a non-orphan op's parents are all non-orphan.
+ */
+export function sharedTips(ops) {
+  const memo = new Map()
+  const live = [...ops.values()].filter(op => !isOrphan(ops, op.id, memo))
+  const claimed = new Set()
+  for (const op of live) for (const p of op.parents ?? []) claimed.add(p)
+  return live.map(op => op.id).filter(id => !claimed.has(id)).sort()
 }
 
 // ── ordering ────────────────────────────────────────────────────────────
@@ -318,6 +414,7 @@ export function forkJoinSequence(joinSequence, authorSet) {
 export function labelBranches(ops, tipA, tipB, joinSequence = []) {
   const base = lca(ops, tipA, tipB)
 
+  // With no LCA (disjoint components) each side ranks over its whole ancestry.
   const rank = (tip) => {
     let best = Infinity
     for (const author of branchAuthors(ops, tip, base)) {

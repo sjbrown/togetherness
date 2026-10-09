@@ -254,6 +254,90 @@ test.describe('two-peer sync', () => {
     await browser.close();
   });
 
+  // token_glass is ~70 KB of SVG, so a handful of them puts the toys
+  // checkpoint well past an RTCDataChannel's 256 KiB message cap.
+  const idsOf = (page) => page.$$eval('#toys-layer > [data-id]', els => els.map(el => el.getAttribute('data-id')).sort());
+
+  async function placeToy(page, box, name, x, y) {
+    await page.evaluate((n) => window.UI.pillTap(n), name);
+    await page.waitForTimeout(100);
+    await page.mouse.move(box.x + x, box.y + y);
+    await page.mouse.down();
+    await page.mouse.up();
+  }
+
+  // Place n glass tokens in a row, then make 11 moves and checkpoint, so one
+  // update carries every toy's SVG. Returns the checkpoint content's JSON size.
+  async function buildLargeTable(page, n) {
+    const box = await page.locator('#canvas').boundingBox();
+    for (let i = 0; i < n; i++) await placeToy(page, box, 'token_glass', 60 + i * 60, 100);
+    await expect(page.locator('#toys-layer > [data-id]')).toHaveCount(n, { timeout: 15000 });
+
+    await page.evaluate(() => window.UI.pillTap('select'));
+    await page.waitForTimeout(100);
+    let cx = box.x + 60 + (n - 1) * 60, cy = box.y + 100;
+    for (let i = 0; i < 11; i++) {
+      const nx = cx + (i % 2 === 0 ? 30 : -30);
+      const ny = cy + (i % 2 === 0 ? 10 : -10);
+      await page.mouse.move(cx, cy);
+      await page.mouse.down();
+      await page.mouse.move(nx, ny, { steps: 5 });
+      await page.mouse.up();
+      await page.waitForTimeout(50);
+      cx = nx; cy = ny;
+    }
+    return page.evaluate(() => {
+      const op = window.App.maybeCheckpoint('test');
+      if (!op) return 0;
+      // The snapshot lives in the content map, not on the op.
+      const shown = window.App.getDebugState().ops.ordered.find(o => o.id === op.id);
+      return JSON.stringify(shown.mutations).length;
+    });
+  }
+
+  test('a late joiner syncs a table whose checkpoint exceeds 256 KiB', async () => {
+    test.setTimeout(90000);
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
+    const page1 = await (await browser.newContext()).newPage();
+    const page2 = await (await browser.newContext()).newPage();
+
+    const room = await openAsCreator(page1, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+    const size = await buildLargeTable(page1, 8);
+    console.log(`checkpoint op size: ${size} bytes`);
+    expect(size).toBeGreaterThan(256 * 1024);
+    const idsA = await idsOf(page1);
+    expect(idsA.length).toBe(8);
+
+    await joinRoom(page2, room, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+    await waitForPeerCount(page2, 1);
+    await expect.poll(() => idsOf(page2), { timeout: 30000 }).toEqual(idsA);
+
+    await browser.close();
+  });
+
+  test('a live checkpoint over 256 KiB does not stall later updates', async () => {
+    test.setTimeout(90000);
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
+    const page1 = await (await browser.newContext()).newPage();
+    const page2 = await (await browser.newContext()).newPage();
+
+    await openCreatorAndJoiner(page1, page2, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+    await waitForPeerCount(page1, 1);
+    await waitForPeerCount(page2, 1);
+
+    const size = await buildLargeTable(page1, 8);
+    console.log(`checkpoint op size: ${size} bytes`);
+    expect(size).toBeGreaterThan(256 * 1024);
+    await expect.poll(() => idsOf(page2), { timeout: 30000 }).toEqual(await idsOf(page1));
+
+    const box = await page1.locator('#canvas').boundingBox();
+    await placeToy(page1, box, 'd6', 300, 300);
+    await expect(page1.locator('#toys-layer > [data-id]')).toHaveCount(9, { timeout: 5000 });
+    await expect.poll(() => idsOf(page2), { timeout: 30000 }).toEqual(await idsOf(page1));
+
+    await browser.close();
+  });
+
   test('no console errors or warnings on load', async ({ page }) => {
     const messages = [];
     page.on('console', msg => {

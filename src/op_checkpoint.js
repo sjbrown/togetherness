@@ -2,8 +2,9 @@
  * op_checkpoint.js — turning a layer's current contents into an operation,
  * and a branch's operations back into a layer.
  *
- * A checkpoint is an ordinary operation whose mutations insert a whole
- * subtree into an empty layer. Genesis, import, periodic compaction and a
+ * A checkpoint is an operation whose content inserts a whole subtree into
+ * an empty layer. The content lives in a map apart from the op graph, so it
+ * can be dropped once a newer cut supersedes it. Genesis, import, periodic compaction and a
  * fork's seed are all the same primitive, and its payload is the same
  * serialization export writes.
  *
@@ -27,7 +28,7 @@ export const CHECKPOINT_GESTURE = 'checkpoint'
 export const CHECKPOINT_MIN_OPS = 10
 
 /**
- * How many operations stand between a tip set and its nearest cut
+ * How many operations stand between a tip set and its latest cut
  * checkpoint (or genesis, if it has none). Says nothing about *when* to
  * checkpoint, only whether one now would do any good. Accepts a bare head
  * id or an array of tips — same normalizeTips/unionAncestry projectTips
@@ -36,7 +37,10 @@ export const CHECKPOINT_MIN_OPS = 10
 export function opsSinceCheckpoint(ops, tipsOrHead) {
   const tips = normalizeTips(tipsOrHead)
   if (!tips.length) return 0
-  const base = nearestCheckpoint(ops, tips)
+  // Measured from the latest cut whether or not its content survives: a
+  // content-less cut is still where the last checkpoint was written, and
+  // measuring past it would make every merge write another.
+  const base = latestCut(ops, tips)
   const union = unionAncestry(ops, tips)
   const baseAncestry = base == null ? new Set() : ancestorsInclusive(ops, base)
   return [...union].filter(id => !baseAncestry.has(id) && getOp(ops, id)).length
@@ -58,7 +62,7 @@ const mintOpId = () =>
 export const isCheckpoint = (op) => op?.gesture === CHECKPOINT_GESTURE
 
 /** A checkpoint contributes nothing as a delta — only projectFrom's base,
- * onto a layer it just cleared, applies its mutations. */
+ * onto a layer it just cleared, applies its content. */
 export const deltaMutations = (op) => (isCheckpoint(op) ? [] : (op?.mutations ?? []))
 
 /**
@@ -78,9 +82,11 @@ export function lastCheckpointTs(ops) {
 }
 
 /**
- * Freeze a layer's current contents as an operation. Reads the live DOM,
- * which is a faithful projection already — replaying the log to rebuild
- * something we are holding would be ceremony.
+ * Freeze a layer's current contents as { op, content }. The op carries no
+ * mutations; content is the snapshot, for appendCheckpoint to store apart
+ * from the graph. Reads the live DOM, which is a faithful projection
+ * already — replaying the log to rebuild something we are holding would be
+ * ceremony.
  *
  * opId and ts are accepted so a caller that needs two peers to produce
  * byte-identical output (seeding a forked table) can supply them.
@@ -95,22 +101,27 @@ export function checkpointOp(layerEl, { authorId, parents = [], id, ts = Date.no
     if (s) added.push(s)
   }
 
+  const content = added.length
+    ? [{
+        t: 'child',
+        target: { id: layerEl.getAttribute('data-id') },
+        added,
+        removed: [],
+        prevSibling: null,
+        nextSibling: null,
+      }]
+    : []
+
   return {
-    id: id ?? mintOpId(),
-    parents,
-    authorId,
-    gesture: CHECKPOINT_GESTURE,
-    ts,
-    mutations: added.length
-      ? [{
-          t: 'child',
-          target: { id: layerEl.getAttribute('data-id') },
-          added,
-          removed: [],
-          prevSibling: null,
-          nextSibling: null,
-        }]
-      : [],
+    op: {
+      id: id ?? mintOpId(),
+      parents,
+      authorId,
+      gesture: CHECKPOINT_GESTURE,
+      ts,
+      mutations: [],
+    },
+    content,
   }
 }
 
@@ -121,7 +132,7 @@ const normalizeTips = (tipsOrHead) =>
 function unionAncestry(ops, tips) {
   const union = new Set()
   for (const t of tips) {
-    union.add(t)
+    if (getOp(ops, t)) union.add(t)
     for (const a of ancestors(ops, t)) union.add(a)
   }
   return union
@@ -141,37 +152,73 @@ function isCut(ops, candidateId, reachable) {
   return true
 }
 
+/** The cut checkpoints of a tip set, content or not. */
+export function cutsOf(ops, tips) {
+  const reachable = unionAncestry(ops, tips)
+  const marks = [...reachable].filter(id => isCheckpoint(getOp(ops, id)))
+  return marks.filter(id => isCut(ops, id, reachable))
+}
+
+/** The latest of `cuts`, ties broken by id. Cuts within one set are totally
+ * ordered, so "latest" is unambiguous apart from duplicate-free ties. */
+function latestOf(ops, cuts) {
+  const latest = cuts.filter(id => !cuts.some(other => other !== id && isAncestor(ops, id, other)))
+  return latest.sort()[0] ?? null
+}
+
 /**
- * The projection base for a tip set: the latest checkpoint that is a cut
- * of the union of every tip's ancestry (see isCut above). Cuts within one
- * set are totally ordered, so "latest" is unambiguous; genesis always
- * qualifies since it is an ancestor of everything.
+ * The latest checkpoint that is a cut of the union of every tip's ancestry
+ * (see isCut above), whether or not its content is still held. Genesis
+ * always qualifies since it is an ancestor of everything.
  *
  * Single-tip callers (the common case — one local head, no merge tips) get
  * the old per-branch behaviour back: pass a bare id, or a one-element array.
  * null when the reachable set has no checkpoint at all.
  */
-export function nearestCheckpoint(ops, tipsOrHead) {
+export function latestCut(ops, tipsOrHead) {
+  const tips = normalizeTips(tipsOrHead)
+  if (!tips.length) return null
+  return latestOf(ops, cutsOf(ops, tips))
+}
+
+/**
+ * The projection base for a tip set: the latest cut that still has a
+ * content entry. A newer cut whose content was deleted is skipped and the
+ * replay from the older one is just longer.
+ *
+ * null when the reachable set has no cut at all. Throws when cuts exist but
+ * none has content; the root-most checkpoint's content is never deleted, so
+ * that means the log is damaged rather than merely pruned.
+ */
+export function nearestCheckpoint(ops, content, tipsOrHead) {
   const tips = normalizeTips(tipsOrHead)
   if (!tips.length) return null
 
-  const reachable = unionAncestry(ops, tips)
-  const marks = [...reachable].filter(id => isCheckpoint(getOp(ops, id)))
-  if (!marks.length) return null
-
-  const cuts = marks.filter(id => isCut(ops, id, reachable))
+  const cuts = cutsOf(ops, tips)
   if (!cuts.length) return null
 
-  const latest = cuts.filter(id => !cuts.some(other => other !== id && isAncestor(ops, id, other)))
-  return latest.sort()[0] ?? null
+  const held = cuts.filter(id => content.has(id))
+  if (!held.length) {
+    throw new Error(`nearestCheckpoint: no checkpoint in the ancestry of [${tips.join(', ')}] has content`)
+  }
+  return latestOf(ops, held)
+}
+
+/** A checkpoint's snapshot lives in the content map; any other op carries
+ * its own mutations. */
+function baseMutations(op, content) {
+  if (!isCheckpoint(op)) return op.mutations ?? []
+  const snapshot = content.get(op.id)
+  if (snapshot == null) throw new Error(`applyOps: checkpoint ${op.id} has no content`)
+  return snapshot
 }
 
 /** Apply a list of operation ids to the layer, in the order given. */
-export function applyOps(layerEl, ops, ids) {
+export function applyOps(layerEl, ops, content, ids) {
   for (const id of ids) {
     const op = getOp(ops, id)
     if (!op) throw new Error(`applyOps: no operation ${id}`)
-    applyWire(op.mutations ?? [], layerEl)
+    applyWire(baseMutations(op, content), layerEl)
   }
   return layerEl
 }
@@ -187,7 +234,7 @@ export function applyOps(layerEl, ops, ids) {
  * so two peers who converge on the same tips compute the same DOM no
  * matter what order they received the operations in.
  */
-export function projectTips(layerEl, ops, tipIds, joinSequence = []) {
+export function projectTips(layerEl, ops, content, tipIds, joinSequence = []) {
   ensureLayerId(layerEl)
   while (layerEl.firstChild) layerEl.removeChild(layerEl.firstChild)
 
@@ -198,7 +245,7 @@ export function projectTips(layerEl, ops, tipIds, joinSequence = []) {
   }
 
   const union = unionAncestry(ops, tips)
-  const base = nearestCheckpoint(ops, tips)
+  const base = nearestCheckpoint(ops, content, tips)
   const baseAncestry = base == null ? new Set() : ancestorsInclusive(ops, base)
   const remaining = [...union].filter(id => !baseAncestry.has(id) && getOp(ops, id))
   const path = totalOrder(ops, remaining, joinSequence)
@@ -212,7 +259,7 @@ export function projectTips(layerEl, ops, tipIds, joinSequence = []) {
                                    authorId: getOp(ops, id)?.authorId ?? null })),
     }))
 
-  if (base) applyOps(layerEl, ops, [base])
+  if (base) applyOps(layerEl, ops, content, [base])
   for (const id of path) {
     applyWire(deltaMutations(getOp(ops, id)), layerEl)
   }
@@ -220,8 +267,8 @@ export function projectTips(layerEl, ops, tipIds, joinSequence = []) {
 }
 
 /** The one-tip case of projectTips — kept for the fork seed and existing callers. */
-export function projectFrom(layerEl, ops, headId, joinSequence = []) {
-  return projectTips(layerEl, ops, headId == null ? [] : [headId], joinSequence)
+export function projectFrom(layerEl, ops, content, headId, joinSequence = []) {
+  return projectTips(layerEl, ops, content, headId == null ? [] : [headId], joinSequence)
 }
 
 // ── forking ─────────────────────────────────────────────────────────────
@@ -253,24 +300,43 @@ function deterministicSuffix(seedString) {
  * real DOM, which is the caller's to provide, not this function's to
  * assume it can create headlessly.
  *
- * Returns { genesis, rebasedOps } as plain data. No ydoc is touched here;
- * the caller seeds a fresh table's own ops Map with
- * [genesis, ...rebasedOps].
+ * Returns { genesis, rebasedOps, content } as plain data, where content is
+ * a Map from checkpoint id to snapshot covering the genesis and any
+ * rebased checkpoint whose content the parent table still holds. No ydoc is
+ * touched here; the caller seeds a fresh table with them.
  */
-export function buildForkSeed(ops, lcaId, splitterTipId, layerEl, { authorId, joinSequence = [] } = {}) {
-  const draft = checkpointOp(layerEl, { authorId, parents: [] })
+export function buildForkSeed(ops, parentContent, lcaId, splitterTipId, layerEl, { authorId, joinSequence = [] } = {}) {
+  const { op: draft, content: snapshot } = checkpointOp(layerEl, { authorId, parents: [] })
   const genesis = {
     ...draft,
-    id: `tt-op-ck-${deterministicSuffix(JSON.stringify(draft.mutations))}`,
+    id: `tt-op-ck-${deterministicSuffix(JSON.stringify(snapshot))}`,
     ts: getOp(ops, lcaId)?.ts ?? 0,
   }
+  const content = new Map([[genesis.id, snapshot]])
 
   const rebasedOps = pathFrom(ops, lcaId, splitterTipId, joinSequence).map(opId => {
     const op = getOp(ops, opId)
+    if (isCheckpoint(op) && parentContent.has(opId)) content.set(opId, parentContent.get(opId))
     return { ...op, parents: op.parents.map(p => (p === lcaId ? genesis.id : p)) }
   })
 
-  return { genesis, rebasedOps }
+  return { genesis, rebasedOps, content }
+}
+
+/**
+ * The seed for a fork whose fork point no longer exists in the log: a
+ * genesis checkpoint of `layerEl` itself, with nothing rebased onto it.
+ * `branchIds` are the ops of the branch being preserved; the genesis ts is
+ * their latest, so peers forking the same branch agree on it, and the id is
+ * hashed from the content for the same reason (buildForkSeed). layerEl must
+ * be the live layer as it stands, before anything rebuilds it.
+ */
+export function buildLiveForkSeed(ops, branchIds, layerEl, { authorId } = {}) {
+  const { op: draft, content: snapshot } = checkpointOp(layerEl, { authorId, parents: [] })
+  let ts = 0
+  for (const id of branchIds) ts = Math.max(ts, getOp(ops, id)?.ts ?? 0)
+  const genesis = { ...draft, id: `tt-op-ck-${deterministicSuffix(JSON.stringify(snapshot))}`, ts }
+  return { genesis, rebasedOps: [], content: new Map([[genesis.id, snapshot]]) }
 }
 
 /**
@@ -278,14 +344,14 @@ export function buildForkSeed(ops, lcaId, splitterTipId, layerEl, { authorId, jo
  * just-rebuilt layerEl, parented on the tips that were rebuilt. Authored
  * the same deterministic way buildForkSeed authors a fork's genesis, so
  * every peer who rebuilds the same tips writes the same op. ops is
- * read-only, used only to find each tip's ts.
+ * read-only, used only to find each tip's ts. Returns { op, content }.
  */
 export function mergeCheckpointOp(layerEl, tips, ops) {
   const parents = [...tips].sort()
   const ts = parents.reduce((max, id) => Math.max(max, getOp(ops, id)?.ts ?? 0), 0)
-  const draft = checkpointOp(layerEl, { authorId: null, parents, ts })
+  const { op: draft, content } = checkpointOp(layerEl, { authorId: null, parents, ts })
   return {
-    ...draft,
-    id: `tt-op-ck-${deterministicSuffix(JSON.stringify([parents, draft.mutations]))}`,
+    op: { ...draft, id: `tt-op-ck-${deterministicSuffix(JSON.stringify([parents, content]))}` },
+    content,
   }
 }

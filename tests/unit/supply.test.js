@@ -33,7 +33,7 @@ import {
   initializeToy, newToyId, applyRotateDom,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
-import { getOps, heads } from '../../src/op_dag.js'
+import { getOps, getContent, heads } from '../../src/op_dag.js'
 import { projectFrom } from '../../src/op_checkpoint.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
@@ -133,7 +133,7 @@ function reloadedIds(ydoc) {
   const ops = getOps(ydoc)
   const head = heads(ops)[0] ?? null
   const layer = freshLayer()
-  projectFrom(layer, ops, head)
+  projectFrom(layer, ops, getContent(ydoc), head)
   return [...layer.querySelectorAll('[data-toy-type]')].map(el => el.getAttribute('data-id')).sort()
 }
 
@@ -630,7 +630,7 @@ describe('supply — clone inner elements get their own data-id (regression: mov
 
     const ops = getOps(ydoc)
     const reloadedLayer = freshLayer()
-    projectFrom(reloadedLayer, ops, heads(ops)[0] ?? null)
+    projectFrom(reloadedLayer, ops, getContent(ydoc), heads(ops)[0] ?? null)
 
     const reloadedProto = reloadedLayer.querySelector('[data-id="chip5"]')
     const reloadedClone = reloadedLayer.querySelector(`[data-id="${cloneId}"]`)

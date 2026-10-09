@@ -27,6 +27,7 @@ import { tablesAPI }                              from './tables.js';
 import * as OpDag                                 from './op_dag.js';
 import * as OpHead                                from './op_head.js';
 import * as OpCheckpoint                          from './op_checkpoint.js';
+import * as OpPrune                               from './op_prune.js';
 import * as User                                  from './user.js';
 import * as Trace                                 from './trace.js';
 import * as Storage                               from './storage.js';
@@ -40,6 +41,7 @@ import * as Events                                from './events.js';
 import { entityGradient }            from './entity_gradient.js';
 import { isElementHeldByOther, computeTickActions } from './soft_lock.js';
 import * as Selection                              from './selection.js';
+import * as ExternalServices                      from './external_services.js';
 
 
 import * as Y from 'yjs';
@@ -88,7 +90,7 @@ let _activeLayer  = 'toys';
 // Transport facts the provider reports through events and never exposes as
 // readable state. Mirrored here purely so the Debug panel can show what the
 // connection is doing right now, not only what it did.
-const _netStatus = { connected: false, synced: false, webrtcPeers: 0, bcPeers: 0, signaling: [] };
+const _netStatus = { connected: false, synced: false, webrtcPeers: 0, bcPeers: 0, signaling: [], signalingConns: [] };
 
 // _desired is this client's own selection intent:
 //   { [elId]: { ts: number, holding: boolean } }
@@ -516,17 +518,28 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   });
   // NOTE: _provider.on('status' is a red herring. It's just true after
   // construction. We really want the real connect/disconnect state
-  const setSignalingConnected = (connected) => {
-    _netStatus.connected = connected;
-    Trace.net('status', connected ? 'signaling connected' : 'signaling disconnected',
-      { connected }, connected ? 'info' : 'warn');
-    // Cancel any in-progress drag on disconnect — doc stays at committed position.
-    if (!connected && _dragState) App.cancelMove();
-    if (!connected && _multiDragState) App.cancelMultiMove();
+  const signalingTracker = ExternalServices.createSignalingTracker(
+    _provider.signalingConns.map(conn => ({ url: conn.url, connected: conn.connected })));
+  const syncSignalingStatus = () => {
+    _netStatus.signalingConns = signalingTracker.snapshot();
+    _netStatus.connected      = signalingTracker.anyConnected();
+  };
+  syncSignalingStatus();
+  const onSignalingChange = (conn, connected) => {
+    const r = signalingTracker.update(conn.url, connected);
+    if (!r.changed) return;
+    syncSignalingStatus();
+    // Only losing every server is worth a warning; one of several going
+    // away is routine. Neither interrupts the person — a table keeps
+    // working offline and syncs when a server returns.
+    Trace.net('status',
+      `signaling ${connected ? 'connected' : 'disconnected'}: ${conn.url}`,
+      { url: conn.url, role: r.entry.role, connected, anyConnected: r.anyConnected },
+      connected || r.anyConnected ? 'info' : 'warn');
   };
   _provider.signalingConns.forEach(conn => {
-    conn.on('connect', () => setSignalingConnected(true));
-    conn.on('disconnect', () => setSignalingConnected(false));
+    conn.on('connect', () => onSignalingChange(conn, true));
+    conn.on('disconnect', () => onSignalingChange(conn, false));
     conn.on('message', (m) => {
       if (m?.type !== 'publish' || m.topic !== tableId) return;
       const data = m.data;
@@ -534,15 +547,18 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
       if (data?.type === 'announce') {
         Trace.net(mine ? 'announce-sent' : 'announce-received',
           mine ? 'announced ourselves to the room' : `peer announced itself: ${data.from}`,
-          { peerId: data.from });
+          { peerId: data.from, via: conn.url });
       } else if (data?.type === 'signal') {
         Trace.net(mine ? 'signal-sent' : 'signal-received',
           `${data.signal?.type ?? 'signal'} ${mine ? 'to' : 'from'} ${mine ? data.to : data.from}`,
-          { from: data.from, to: data.to, kind: data.signal?.type });
+          { from: data.from, to: data.to, kind: data.signal?.type, via: conn.url });
       }
     });
   });
 
+
+  // Every checkpoint in the loaded log starts its prune clock now.
+  OpPrune.noteAllSeen(OpDag.getOps(_ydoc));
 
   // Initial render
   renderDoc();
@@ -677,9 +693,8 @@ function handleToyBranchConflict(tips) {
   if (!layer) return;
 
   const joinSequence = tablesAPI.getJoinSequenceArray(_ydoc);
-  const decision = Toys.resolveToyBranchConflict(_ydoc, tips, { authorId: App.user.id, joinSequence });
-
-  Toys.adoptToyBranch(_ydoc, layer, decision.leader, _tableId);
+  const decision = Toys.settleBranchConflict(_ydoc, layer, _tableId, tips,
+    { authorId: App.user.id, joinSequence });
 
   if (!decision.authoredSplitter) {
     addHistory('branch resolved (adopted shared history)', { elType: 'toys' });
@@ -687,12 +702,15 @@ function handleToyBranchConflict(tips) {
   }
 
   addHistory("branch conflict — preserving your divergent work in a new table", { elType: 'toys' });
-  const seed = Toys.buildToyForkSeed(_ydoc, decision.lca, decision.splitter,
-    { authorId: decision.orderedIds[0], joinSequence });
-  tablesAPI.forkLiveDoc(_ydoc, decision.orderedIds, seed)
+  // No LCA means the sides share no history: this peer was offline past the prune age.
+  forkIntoNewTable(decision.orderedIds, decision.seed, { offline: decision.lca == null });
+}
+
+function forkIntoNewTable(orderedIds, seed, { offline = false } = {}) {
+  tablesAPI.forkLiveDoc(_ydoc, orderedIds, seed)
     .then(forkedTableId => {
       tablesAPI.touchTableRecord(forkedTableId, { name: `${_tableId} (branch)` });
-      UI.showBranchDialog(forkedTableId);
+      UI.showBranchDialog(forkedTableId, { offline });
     })
     .catch(err => {
       console.error('[app] branch fork failed', err);
@@ -740,18 +758,44 @@ function maybeCheckpoint(reason) {
 
   // Parent on the full tip set, not just headId — with pending merge tips,
   // [headId] alone wouldn't be a cut.
-  const op = OpCheckpoint.checkpointOp(layer, { authorId: App.user.id, parents: tips });
-  OpDag.appendOp(_ydoc, op);
+  const { op, content } = OpCheckpoint.checkpointOp(layer, { authorId: App.user.id, parents: tips });
+  OpDag.appendCheckpoint(_ydoc, op, content);
   OpHead.setHead(_tableId, op.id);
   OpHead.setMergeTips(_tableId, []);
   Trace.op('checkpoint', `wrote checkpoint ${op.id} (${reason})`, { id: op.id, reason });
+  Toys.pruneAfterCheckpoint(_ydoc, _tableId, op.id, tablesAPI.getJoinSequenceArray(_ydoc));
   return op;
+}
+
+/**
+ * Deletes arrived (a peer pruned) and this peer's tips were left behind.
+ * Called before any new op in the same event is received.
+ */
+function handleOrphanedLocalTips(layer, deletedIds) {
+  const joinSequence = tablesAPI.getJoinSequenceArray(_ydoc);
+  const out = Toys.resolveOrphanedTips(_ydoc, layer, _tableId,
+    { authorId: App.user.id, joinSequence, deletedIds });
+  if (!out) return;
+  Trace.op('orphaned', `local tips were pruned away; adopted ${out.tips.join(', ')}`,
+    { authored: out.authored, tips: out.tips }, 'warn');
+  if (!out.fork) {
+    addHistory('shared history moved on while you were away (adopted)', { elType: 'toys' });
+    return;
+  }
+  addHistory("you were offline while others pruned history — preserving your work in a new table", { elType: 'toys' });
+  forkIntoNewTable(out.fork.orderedIds, out.fork.seed, { offline: true });
 }
 
 function onOpsChanged(evt, transaction) {
   if (transaction?.local) return;
   const layer = _svgEl?.querySelector('#toys-layer');
   if (!layer) return;
+
+  const deletedIds = new Set();
+  for (const [opId, change] of evt.changes.keys) {
+    if (change.action === 'delete') deletedIds.add(opId);
+  }
+  if (deletedIds.size) handleOrphanedLocalTips(layer, deletedIds);
 
   // Gestures that are derived/internal, not independent peer intent — not
   // worth a log line (same spirit as the old Yjs-observer version only
@@ -1402,7 +1446,7 @@ const App = {
   // startDrag   — called once on pointerdown when a move gesture begins
   // move        — called on every pointermove; updates overlay ghost + awareness
   // commitMove  — called on pointerup; writes final position to Yjs once
-  // cancelMove  — called on pointercancel or disconnect; reverts with no Yjs write
+  // cancelMove  — called on pointercancel; reverts with no Yjs write
 
   startDrag: (id) => {
     // Defense in depth: client should not be drag an element it doesn't
@@ -2182,6 +2226,7 @@ const App = {
    */
   getDebugState: () => {
     const ops     = OpDag.getOps(_ydoc);
+    const content = OpDag.getContent(_ydoc);
     const allIds  = [...ops.keys()];
     const joinSeq = tablesAPI.getJoinSequenceArray(_ydoc);
     const layerEl = _svgEl?.querySelector('#toys-layer') ?? null;
@@ -2190,6 +2235,8 @@ const App = {
 
     const ordered = OpDag.totalOrder(ops, shown, joinSeq).map((id, i) => {
       const op = ops.get(id);
+      const isCk = OpCheckpoint.isCheckpoint(op);
+      const mutations = isCk ? (content.get(id) ?? null) : (op?.mutations ?? []);
       return {
         i, id,
         gesture:    op?.gesture ?? null,
@@ -2197,9 +2244,9 @@ const App = {
         parents:    op?.parents ?? [],
         ts:         op?.ts ?? null,
         mine:       op?.authorId === App.user.id,
-        checkpoint: OpCheckpoint.isCheckpoint(op),
-        entries:    op?.mutations?.length ?? 0,
-        mutations:  op?.mutations ?? [],
+        checkpoint: isCk,
+        entries:    mutations?.length ?? 0,
+        mutations,
       };
     });
 
@@ -2244,6 +2291,8 @@ const App = {
       net: {
         ..._netStatus,
         offline: _offline,
+        ice:      ExternalServices.describeIceServers(),
+        peersIce: ExternalServices.getIcePeers(),
         peers,
       },
       joinSequence: joinSeq,

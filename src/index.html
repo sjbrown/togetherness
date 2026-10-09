@@ -187,6 +187,7 @@
 <script type="module">
 import * as Y                   from './lib/yjs.js';
 import { WebrtcProvider }       from './lib/y-webrtc.js';
+import { makeChunkedWrtc }      from './net_chunk.js';
 import { boot, App }            from './app.js';
 import * as UI                  from './ui.js';
 import { getMyUser } from './user.js';
@@ -259,10 +260,15 @@ Trace.net('signaling', `signaling servers: ${signalingUrls.join(', ')}`, {
   room:               tableId,
 });
 const iceServers   = ExternalServices.resolveIceServers();
-const providerOpts = { signaling: signalingUrls };
-if (iceServers.length) providerOpts.peerOpts = { config: { iceServers } };
+const peerOpts     = { wrtc: makeChunkedWrtc() };
+if (iceServers.length) peerOpts.config = { iceServers };
+const providerOpts = { signaling: signalingUrls, peerOpts };
 const provider     = new WebrtcProvider(tableId, ydoc, providerOpts);
-Trace.net('provider', 'WebrtcProvider constructed — handshakes begin', { room: tableId, iceServers });
+Trace.net('provider', 'WebrtcProvider constructed — handshakes begin', {
+  room: tableId,
+  ...ExternalServices.describeIceServers(),
+});
+ExternalServices.traceIceProvider(provider);
 const awareness    = provider.awareness;
 awareness.setLocalState({ user, cursor: null, desired: {} });
 

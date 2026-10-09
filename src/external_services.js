@@ -1,10 +1,14 @@
 /**
- * external_services.js — signaling/STUN/TURN overrides for y-webrtc.
+ * external_services.js — signaling/STUN/TURN overrides for y-webrtc, and
+ * the per-server connection state of the signalling conns it configures,
+ * and a trace of how its STUN/TURN servers performed.
  * home.html's "Advanced" panel edits these; index.html reads them when
  * constructing its WebrtcProvider. Callers do `import * as
  * ExternalServices from './external_services.js'` and call e.g.
  * ExternalServices.getSTUN() / .setSignalling(url).
  */
+
+import * as Trace from './trace.js';
 
 // ── Signalling servers ──────────────────────────────────────────────────────
 /**
@@ -260,4 +264,230 @@ export function resolveIceServers() {
       credential: resolveTURNCredential(),
     }));
   return [...stun, ...turn];
+}
+
+/**
+ * resolveIceServers() as it's safe to write down: each credential masked,
+ * plus where each kind came from. Trace rows end up in downloaded bug
+ * reports, so this is what index.html records rather than the live config.
+ */
+export function describeIceServers() {
+  const iceServers = resolveIceServers().map(entry =>
+    'credential' in entry ? { ...entry, credential: '•••' } : entry);
+  return {
+    iceServers,
+    stunOverridden: getSTUN() !== null || getSTUNFallback() !== null,
+    turnOverridden: [getTURN(), getTURNFallback(), getTURNUsername(), getTURNCredential()]
+      .some(v => v !== null),
+    turnIsPublicTestRelay: resolveTURN() === defaultTURN()
+      || resolveTURNFallback() === defaultTURNFallback(),
+  };
+}
+
+// ── Signalling connection state ─────────────────────────────────────────────
+/**
+ * Per-server state for the signalling conns a WebrtcProvider opens, which
+ * y-webrtc reports only as connect/disconnect events on each conn. app.js
+ * feeds each event to `update`; the result says whether any server is still
+ * connected, which decides how loudly a drop is recorded.
+ */
+
+/**
+ * `servers` is [{ url, connected }] in resolution order: the first is the
+ * primary, any other is a fallback.
+ */
+export function createSignalingTracker(servers, now = Date.now) {
+  const entries = servers.map((s, i) => ({
+    url:        s.url,
+    role:       i === 0 ? 'primary' : 'fallback',
+    connected:  !!s.connected,
+    lastChange: null,
+    connects:   0,
+    disconnects: 0,
+  }));
+
+  const anyConnected = () => entries.some(e => e.connected);
+
+  /**
+   * Record one conn's new state. A repeat of the state already held, or an
+   * unknown url, reports `changed: false` and touches nothing.
+   */
+  function update(url, connected) {
+    const entry = entries.find(e => e.url === url);
+    connected = !!connected;
+    if (!entry || entry.connected === connected) {
+      return { changed: false, entry: entry ? { ...entry } : null, anyConnected: anyConnected() };
+    }
+    entry.connected  = connected;
+    entry.lastChange = now();
+    if (connected) entry.connects++;
+    else entry.disconnects++;
+    return { changed: true, entry: { ...entry }, anyConnected: anyConnected() };
+  }
+
+  return {
+    update,
+    anyConnected,
+    snapshot: () => entries.map(e => ({ ...e })),
+  };
+}
+
+// ── ICE connection tracing ──────────────────────────────────────────────────
+/**
+ * Writes down what an RTCPeerConnection's ICE machinery does, on the `ice`
+ * trace channel: state changes, how many candidates of each kind it
+ * gathered, candidate errors, and the route it finally selected. That is
+ * the only evidence of whether the STUN and TURN servers configured above
+ * were actually usable — a peer that never connects otherwise looks the
+ * same as one that was never offered.
+ *
+ * Only counts and candidate types are recorded, never candidate strings
+ * or addresses: a downloaded trace shouldn't carry anyone's IP.
+ *
+ * `info` is filled in as things happen — current ICE state, candidate
+ * counts, the last candidate error, the selected route — so the Debug
+ * panel can show a peer's standing without replaying the trace.
+ *
+ * Returns a function that stops listening.
+ */
+export function traceIcePeer(peerId, pc, info = {}) {
+  Object.assign(info, {
+    peer: peerId, state: pc.iceConnectionState ?? 'new',
+    route: null, connectMs: null, candidates: null, lastError: null,
+  });
+  const started = Date.now();
+  const counts  = { host: 0, srflx: 0, relay: 0 };
+  let selectedRecorded = false;
+
+  const typeOf = (c) => c?.type ?? /\btyp (\w+)/.exec(c?.candidate ?? '')?.[1];
+
+  const onCandidate = (e) => {
+    const type = typeOf(e.candidate);
+    if (type in counts) counts[type]++;
+  };
+
+  const onGathering = () => {
+    if (pc.iceGatheringState !== 'complete') return;
+    const missing = [];
+    if (counts.srflx === 0) missing.push('no STUN reflexive candidate');
+    if (counts.relay === 0) missing.push('no TURN relay candidate');
+    info.candidates = { ...counts };
+    Trace.ice('ice-candidates',
+      `ICE gathering done${missing.length ? ` — ${missing.join(', ')}` : ''}`,
+      { peer: peerId, ...counts },
+      missing.length ? 'warn' : 'info');
+  };
+
+  const onError = (e) => {
+    info.lastError = { url: e.url ?? null, errorCode: e.errorCode ?? null, errorText: e.errorText ?? null };
+    Trace.ice('ice-error', `ICE candidate error ${e.errorCode ?? ''} from ${e.url ?? 'unknown server'}`,
+      { peer: peerId, url: e.url ?? null, errorCode: e.errorCode ?? null, errorText: e.errorText ?? null },
+      'warn');
+  };
+
+  const onState = (kind, state) => {
+    Trace.ice('ice-state', `${kind} ${state}: ${peerId}`, { peer: peerId, kind, state },
+      state === 'failed' ? 'error' : state === 'disconnected' ? 'warn' : 'info');
+  };
+
+  // The selected pair isn't always set by the first "connected" event, so
+  // each later connection event tries again until one has been recorded.
+  let selecting = false;
+  const maybeRecordRoute = async () => {
+    if (selectedRecorded || selecting) return;
+    selecting = true;
+    try { selectedRecorded = await recordSelectedRoute(); }
+    finally { selecting = false; }
+  };
+  const isUp = (s) => s === 'connected' || s === 'completed';
+
+  const onIceState = () => {
+    info.state = pc.iceConnectionState;
+    onState('ice', pc.iceConnectionState);
+    if (isUp(pc.iceConnectionState)) maybeRecordRoute();
+  };
+  const onConnState = () => {
+    onState('connection', pc.connectionState);
+    if (pc.connectionState === 'connected') maybeRecordRoute();
+  };
+
+  async function recordSelectedRoute() {
+    try {
+      const stats = new Map();
+      (await pc.getStats()).forEach((v, k) => stats.set(k, v));
+      const all = [...stats.values()];
+      const transport = all.find(s => s.type === 'transport' && s.selectedCandidatePairId);
+      const pair = (transport && stats.get(transport.selectedCandidatePairId))
+        ?? all.find(s => s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded');
+      if (!pair) return false;
+      const local  = stats.get(pair.localCandidateId)?.candidateType ?? null;
+      const remote = stats.get(pair.remoteCandidateId)?.candidateType ?? null;
+      const has    = (t) => local === t || remote === t;
+      const route  = has('relay') ? 'relay' : has('srflx') ? 'srflx' : has('prflx') ? 'prflx' : 'host';
+      info.route     = route;
+      info.connectMs = Date.now() - started;
+      Trace.ice('ice-selected', `connected via ${route}: ${peerId}`,
+        { peer: peerId, route, local, remote, ms: info.connectMs });
+      return true;
+    } catch {
+      return false; // stats are best-effort evidence, never a reason to fail
+    }
+  }
+
+  const listeners = [
+    ['icecandidate',            onCandidate],
+    ['icegatheringstatechange', onGathering],
+    ['icecandidateerror',       onError],
+    ['iceconnectionstatechange', onIceState],
+    ['connectionstatechange',   onConnState],
+  ];
+  for (const [name, fn] of listeners) pc.addEventListener(name, fn);
+  return () => { for (const [name, fn] of listeners) pc.removeEventListener(name, fn); };
+}
+
+/**
+ * Trace ICE for every WebRTC peer a WebrtcProvider creates. y-webrtc
+ * announces a peer as it creates the connection, before ICE starts, so
+ * listeners attached on that event see the whole negotiation. `_pc` is
+ * simple-peer's private handle on the RTCPeerConnection. Register this as
+ * soon as the provider exists: a joiner's connections are made while the
+ * join dialog is still probing, long before the app boots.
+ */
+export function traceIceProvider(provider) {
+  const stops = new Map();
+  provider.on('peers', ({ added = [], removed = [] }) => {
+    for (const id of added) {
+      try {
+        const pc = provider.room?.webrtcConns?.get(id)?.peer?._pc;
+        if (!pc) continue;
+        stops.get(id)?.();
+        const info = {};
+        stops.set(id, traceIcePeer(id, pc, info));
+        _icePeers.set(id, info);
+      } catch (err) {
+        console.error('[ice] could not trace peer', id, err);
+      }
+    }
+    for (const id of removed) {
+      stops.get(id)?.();
+      stops.delete(id);
+      _icePeers.delete(id);
+    }
+  });
+}
+
+const _icePeers = new Map();
+
+/** A copy of each traced peer's current standing, for the Debug panel. */
+export function getIcePeers() {
+  return [..._icePeers.values()].map(p => ({
+    ...p,
+    candidates: p.candidates && { ...p.candidates },
+    lastError:  p.lastError && { ...p.lastError },
+  }));
+}
+
+/** Test-only: forget every traced peer. */
+export function _resetIcePeers() {
+  _icePeers.clear();
 }

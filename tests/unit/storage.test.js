@@ -2,7 +2,7 @@
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { domToY, populateFromSvgDoc, buildExportSvg } from '../../src/storage.js'
-import { getOps } from '../../src/op_dag.js'
+import { getOps, getContent } from '../../src/op_dag.js'
 import { projectFrom } from '../../src/op_checkpoint.js'
 import * as Toys from '../../src/toys.js'
 import { addToy, findToy, _clearSvgTextCache, _getScriptsFragment } from '../../src/toys.js'
@@ -344,7 +344,7 @@ describe('populateFromSvgDoc', () => {
 
       const genesis = [...getOps(ydoc).values()][0]
       const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-      projectFrom(layerEl, getOps(ydoc), genesis.id)
+      projectFrom(layerEl, getOps(ydoc), getContent(ydoc), genesis.id)
 
       expect(layerEl.querySelector('[data-id="t1"]')).not.toBeNull()
     })
@@ -373,7 +373,7 @@ describe('populateFromSvgDoc', () => {
 
       const genesis = [...getOps(ydoc).values()][0]
       const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-      projectFrom(layerEl, getOps(ydoc), genesis.id)
+      projectFrom(layerEl, getOps(ydoc), getContent(ydoc), genesis.id)
       expect(layerEl.querySelector('[data-id="t1"]').hasAttribute('transform')).toBe(false)
     })
   })

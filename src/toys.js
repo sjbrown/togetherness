@@ -34,6 +34,7 @@ import * as OpDag from './op_dag.js';
 import * as OpWireMutation from './op_wire_mutation.js';
 import * as OpCheckpoint from './op_checkpoint.js';
 import * as OpReplay from './op_replay.js';
+import * as OpPrune from './op_prune.js';
 // geometry.js is shape-agnostic pure math, shared with drawing.js and
 // boun_pos.js.
 import * as Geometry from './geometry.js';
@@ -2121,11 +2122,13 @@ export function activateAllToyScriptsDom(ydoc, layerEl) {
 export function projectLayer(ydoc, layerEl, { tableId, authorId, isCreator = false, joinSequence = [] } = {}) {
   ensureLayerId(layerEl)
   const ops = OpDag.getOps(ydoc)
+  const content = OpDag.getContent(ydoc)
 
   if (ops.size === 0) {
     if (!isCreator) return null
-    const genesis = OpCheckpoint.checkpointOp(layerEl, { authorId, parents: [] })
-    OpDag.appendOp(ydoc, genesis)
+    const { op: genesis, content: snapshot } = OpCheckpoint.checkpointOp(layerEl, { authorId, parents: [] })
+    OpDag.appendCheckpoint(ydoc, genesis, snapshot)
+    OpPrune.noteSeen(genesis.id)
     if (tableId) OpHead.setHead(tableId, genesis.id)
     markProjectedAt(layerEl, [genesis.id])
     return genesis.id
@@ -2134,7 +2137,8 @@ export function projectLayer(ydoc, layerEl, { tableId, authorId, isCreator = fal
   const storedHead = (tableId && OpHead.getHead(tableId)) ?? null
   const storedMergeTips = tableId ? OpHead.getMergeTips(tableId) : []
   let tips = OpHead.maximalTips(ops, [storedHead, ...storedMergeTips])
-  if (!tips.length) tips = OpDag.heads(ops).slice(0, 1)
+    .filter(t => !OpDag.isOrphan(ops, t))
+  if (!tips.length) tips = OpDag.sharedTips(ops)
   if (!tips.length) return null
 
   const primaryHead = tips.includes(storedHead) ? storedHead : tips[0]
@@ -2143,7 +2147,7 @@ export function projectLayer(ydoc, layerEl, { tableId, authorId, isCreator = fal
   // gestures and remote operations have been maintaining in place.
   if (projectedAt(layerEl) === tipsMarker(tips)) return primaryHead
 
-  OpCheckpoint.projectTips(layerEl, ops, tips, joinSequence)
+  OpCheckpoint.projectTips(layerEl, ops, content, tips, joinSequence)
   activateAllToyScriptsDom(ydoc, layerEl)
   if (tableId) {
     OpHead.setHead(tableId, primaryHead)
@@ -2360,7 +2364,7 @@ export function canRedoToyGesture(ydoc, tableId, authorId) {
 export function adoptToyBranch(ydoc, layerEl, targetHeadId, tableId) {
   const ops = OpDag.getOps(ydoc)
   const head = tableId ? OpHead.getHead(tableId) : null
-  OpReplay.advanceTo(layerEl, ops, head, targetHeadId)
+  OpReplay.advanceTo(layerEl, ops, OpDag.getContent(ydoc), head, targetHeadId)
   activateAllToyScriptsDom(ydoc, layerEl)
   if (tableId) {
     OpHead.setHead(tableId, targetHeadId)
@@ -2382,25 +2386,41 @@ export function adoptToyBranch(ydoc, layerEl, targetHeadId, tableId) {
  * the observer's own finishes; that re-enters onOpsChanged, but as a
  * local change, which it already ignores — no deferral needed.
  */
-function writeMergeCheckpointIfWarranted(ydoc, layerEl, tableId, ops, tips) {
+function writeMergeCheckpointIfWarranted(ydoc, layerEl, tableId, ops, tips, joinSequence = []) {
   if (isInsideEnvelope() || OpReplay.isReplaying()) return null
   if (!OpCheckpoint.shouldCheckpoint(ops, tips)) return null
 
-  const ck = OpCheckpoint.mergeCheckpointOp(layerEl, tips, ops)
-  OpDag.appendOp(ydoc, ck)
+  const { op: ck, content } = OpCheckpoint.mergeCheckpointOp(layerEl, tips, ops)
+  OpDag.appendCheckpoint(ydoc, ck, content)
   OpHead.setHead(tableId, ck.id)
   OpHead.setMergeTips(tableId, [])
   markProjectedAt(layerEl, [ck.id])
+  pruneAfterCheckpoint(ydoc, tableId, ck.id, joinSequence)
   return ck
+}
+
+/**
+ * Called right after this peer writes any checkpoint (idle or merge): notes
+ * it as seen and prunes behind the root op_prune picks. Same guards as the
+ * writers: never inside a gesture envelope, never while applying a remote
+ * op. No timers; the next checkpoint write is the next chance.
+ */
+export function pruneAfterCheckpoint(ydoc, tableId, checkpointId, joinSequence = []) {
+  OpPrune.noteSeen(checkpointId)
+  if (!tableId || isInsideEnvelope() || OpReplay.isReplaying()) return null
+  const ops = OpDag.getOps(ydoc)
+  const scratch = document.createElementNS(SVG_NS, 'g')
+  return OpPrune.prune(ydoc, OpHead.localTips(tableId, ops), { scratch, joinSequence })
 }
 
 export function receiveToyOp(ydoc, layerEl, opId, tableId, joinSequence = []) {
   const ops = OpDag.getOps(ydoc)
   const head = tableId ? OpHead.getHead(tableId) : null
   const mergeTips = tableId ? OpHead.getMergeTips(tableId) : []
-  const out = OpReplay.receiveOp(layerEl, ops, head, opId, joinSequence, mergeTips)
+  const out = OpReplay.receiveOp(layerEl, ops, OpDag.getContent(ydoc), head, opId, joinSequence, mergeTips)
 
-  if (out.result !== OpReplay.RECEIVED_KNOWN && out.result !== OpReplay.RECEIVED_CONFLICT) {
+  if (out.result !== OpReplay.RECEIVED_KNOWN && out.result !== OpReplay.RECEIVED_CONFLICT
+      && out.result !== OpReplay.RECEIVED_ORPHAN) {
     activateAllToyScriptsDom(ydoc, layerEl)
   }
   if (tableId) {
@@ -2411,7 +2431,7 @@ export function receiveToyOp(ydoc, layerEl, opId, tableId, joinSequence = []) {
 
   if (tableId && out.result === OpReplay.RECEIVED_REBUILT) {
     const tips = OpHead.maximalTips(ops, [out.head, ...(out.mergeTips ?? [])])
-    const ck = writeMergeCheckpointIfWarranted(ydoc, layerEl, tableId, ops, tips)
+    const ck = writeMergeCheckpointIfWarranted(ydoc, layerEl, tableId, ops, tips, joinSequence)
     if (ck) {
       out.head = ck.id
       out.mergeTips = []
@@ -2420,6 +2440,58 @@ export function receiveToyOp(ydoc, layerEl, opId, tableId, joinSequence = []) {
   }
 
   return out
+}
+
+/**
+ * Whether pruning left this peer's own tips behind: a tip that was just
+ * deleted, or one whose ancestry now reaches a missing parent. If so, move
+ * the layer to the shared tips (the maximal non-orphan ops) and report what
+ * was orphaned. Runs before any of the same event's new ops are received, so
+ * nothing has rebuilt the layer yet.
+ *
+ * deletedIds are the keys removed by the event being handled; a head that
+ * is merely absent (not yet synced) is not stale, only one that was deleted
+ * is. Returns null when the tips are fine, else
+ * { tips, authored, orphanIds, fork }: the shared tips adopted, whether this
+ * peer authored any op on the orphaned branch, that branch's op ids, and,
+ * when it did, { seed, orderedIds } for tables.js's forkLiveDoc. The fork
+ * point is gone from the log, so the seed is this peer's own live layer,
+ * taken before the layer is rebuilt onto the shared tips.
+ */
+export function resolveOrphanedTips(ydoc, layerEl, tableId, { authorId, joinSequence = [], deletedIds = new Set() } = {}) {
+  if (!tableId) return null
+  const ops = OpDag.getOps(ydoc)
+  const memo = new Map()
+  const stored = [OpHead.getHead(tableId), ...OpHead.getMergeTips(tableId)].filter(Boolean)
+  const stale = stored.filter(id => deletedIds.has(id) || OpDag.isOrphan(ops, id, memo))
+  if (!stale.length) return null
+
+  const orphanIds = new Set()
+  for (const tip of stale) {
+    for (const id of OpDag.ancestorsInclusive(ops, tip)) {
+      if (OpDag.isOrphan(ops, id, memo)) orphanIds.add(id)
+    }
+  }
+  const authors = new Set([...orphanIds].map(id => OpDag.getOp(ops, id)?.authorId).filter(Boolean))
+  const authored = authors.has(authorId)
+
+  let fork = null
+  if (authored) {
+    const orderedIds = OpDag.forkJoinSequence(joinSequence, authors)
+    const seed = OpCheckpoint.buildLiveForkSeed(ops, orphanIds, layerEl, { authorId: orderedIds[0] })
+    fork = { seed, orderedIds }
+  }
+
+  const tips = OpDag.sharedTips(ops)
+  if (tips.length) {
+    OpReplay.withSuppressedCapture(() =>
+      OpCheckpoint.projectTips(layerEl, ops, OpDag.getContent(ydoc), tips, joinSequence))
+    activateAllToyScriptsDom(ydoc, layerEl)
+    OpHead.setHead(tableId, tips[0])
+    OpHead.setMergeTips(tableId, tips.slice(1))
+    markProjectedAt(layerEl, tips)
+  }
+  return { tips, authored, orphanIds: [...orphanIds], fork }
 }
 
 /**
@@ -2438,7 +2510,10 @@ export function resolveToyBranchConflict(ydoc, tips, { authorId, joinSequence = 
   const { leader, splitter, lca } = OpDag.labelBranches(ops, tips[0], tips[1], joinSequence)
   const authors = OpDag.branchAuthors(ops, splitter, lca)
 
-  if (!authors.has(authorId)) {
+  // With no LCA the two sides are disjoint components. The live layer is
+  // the local head's side, so only that side's author has anything to fork.
+  const ownSide = lca != null || splitter === tips[0]
+  if (!authors.has(authorId) || !ownSide) {
     return { leader, splitter, lca, authoredSplitter: false }
   }
 
@@ -2457,9 +2532,37 @@ export function resolveToyBranchConflict(ydoc, tips, { authorId, joinSequence = 
  */
 export function buildToyForkSeed(ydoc, lca, splitter, { authorId, joinSequence = [] } = {}) {
   const ops = OpDag.getOps(ydoc)
+  if (lca == null || !OpDag.getOp(ops, lca)) {
+    throw new Error('buildToyForkSeed: the fork point is not in the log; seed from the live layer instead')
+  }
   const scratch = document.createElementNS(SVG_NS, 'g')
-  OpCheckpoint.projectFrom(scratch, ops, lca, joinSequence)
-  return OpCheckpoint.buildForkSeed(ops, lca, splitter, scratch, { authorId, joinSequence })
+  const content = OpDag.getContent(ydoc)
+  OpCheckpoint.projectFrom(scratch, ops, content, lca, joinSequence)
+  return OpCheckpoint.buildForkSeed(ops, content, lca, splitter, scratch, { authorId, joinSequence })
+}
+
+/**
+ * Settle a conflicting arrival for this peer: label the branches, adopt the
+ * leader, and, if this peer authored the splitter, build the fork seed.
+ * Returns the decision plus `seed` (null when there is nothing to fork).
+ * Disjoint components have no LCA to seed from, so the seed is the live
+ * layer, taken before adopting the leader rebuilds it.
+ */
+export function settleBranchConflict(ydoc, layerEl, tableId, tips, { authorId, joinSequence = [] } = {}) {
+  const ops = OpDag.getOps(ydoc)
+  const decision = resolveToyBranchConflict(ydoc, tips, { authorId, joinSequence })
+  const forkAuthor = decision.orderedIds?.[0]
+
+  let seed = null
+  if (decision.authoredSplitter && decision.lca == null) {
+    seed = OpCheckpoint.buildLiveForkSeed(ops, OpDag.ancestorsInclusive(ops, decision.splitter),
+      layerEl, { authorId: forkAuthor })
+  }
+  adoptToyBranch(ydoc, layerEl, decision.leader, tableId)
+  if (decision.authoredSplitter && !seed) {
+    seed = buildToyForkSeed(ydoc, decision.lca, decision.splitter, { authorId: forkAuthor, joinSequence })
+  }
+  return { ...decision, seed }
 }
 
 /**

@@ -21,7 +21,7 @@ import {
   getGeom, reparentToyDom, applyMoveDom, runGesture, importToys,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
-import { getOps, appendOp } from '../../src/op_dag.js'
+import { getOps, getContent, appendOp, appendCheckpoint } from '../../src/op_dag.js'
 import { checkpointOp, projectFrom } from '../../src/op_checkpoint.js'
 import { getHead, setHead } from '../../src/op_head.js'
 import { apply as applyWire, invert } from '../../src/op_wire_mutation.js'
@@ -474,8 +474,8 @@ describe('resolveToyBranchConflict', () => {
     // L -> a1(alice, leader tip) / L -> s1(bob) -> s2(clyde) (splitter tip)
     const base = document.createElementNS(SVG_NS, 'g')
     base.innerHTML = '<rect data-id="r" x="0"/>'
-    const L = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
-    appendOp(ydoc, L)
+    const { op: L, content: lContent } = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
+    appendCheckpoint(ydoc, L, lContent)
     const a1 = { id: 'a1', parents: ['L'], authorId: 'alice', gesture: 'move', ts: 1,
       mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '1' }] }
     const s1 = { id: 's1', parents: ['L'], authorId: 'bob', gesture: 'move', ts: 1,
@@ -530,20 +530,20 @@ describe('buildToyForkSeed', () => {
     const ydoc = new Y.Doc()
     const base = document.createElementNS(SVG_NS, 'g')
     base.innerHTML = '<rect data-id="r" x="0"/>'
-    const L = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
-    appendOp(ydoc, L)
+    const { op: L, content: lContent } = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
+    appendCheckpoint(ydoc, L, lContent)
     const s1 = { id: 's1', parents: ['L'], authorId: 'bob', gesture: 'move', ts: 1,
       mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '9' }] }
     appendOp(ydoc, s1)
 
-    const { genesis, rebasedOps } = buildToyForkSeed(ydoc, 'L', 's1', { authorId: 'bob', joinSequence: ['alice', 'bob'] })
+    const { genesis, rebasedOps, content } = buildToyForkSeed(ydoc, 'L', 's1', { authorId: 'bob', joinSequence: ['alice', 'bob'] })
 
     expect(genesis.parents).toEqual([])
     expect(rebasedOps[0].parents).toEqual([genesis.id])
 
     const seeded = new Map([[genesis.id, genesis], ...rebasedOps.map(o => [o.id, o])])
     const layer = document.createElementNS(SVG_NS, 'g')
-    projectFrom(layer, seeded, 's1')
+    projectFrom(layer, seeded, content, 's1')
     expect(layer.querySelector('[data-id="r"]').getAttribute('x')).toBe('9')
   })
 })
@@ -555,8 +555,8 @@ describe('adoptToyBranch', () => {
   function fork(ydoc) {
     const base = document.createElementNS(SVG_NS, 'g')
     base.innerHTML = '<rect data-id="r" x="0"/>'
-    const L = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
-    appendOp(ydoc, L)
+    const { op: L, content: lContent } = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
+    appendCheckpoint(ydoc, L, lContent)
     const a1 = { id: 'a1', parents: ['L'], authorId: 'alice', gesture: 'move', ts: 1,
       mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '11' }] }
     const s1 = { id: 's1', parents: ['L'], authorId: 'bob', gesture: 'move', ts: 1,
@@ -569,7 +569,7 @@ describe('adoptToyBranch', () => {
     const ydoc = new Y.Doc()
     const { splitter, leader } = fork(ydoc)
     const layerEl = document.createElementNS(SVG_NS, 'g')
-    projectFrom(layerEl, getOps(ydoc), splitter)
+    projectFrom(layerEl, getOps(ydoc), getContent(ydoc), splitter)
     setHead(TABLE, splitter)
     expect(layerEl.querySelector('[data-id="r"]').getAttribute('x')).toBe('22')
 
@@ -598,8 +598,8 @@ describe('conflict resolution end to end — resolve, adopt, and fork-seed agree
   function forkedHistory(ydoc) {
     const base = document.createElementNS(SVG_NS, 'g')
     base.innerHTML = '<rect data-id="r" x="0"/>'
-    const L = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
-    appendOp(ydoc, L)
+    const { op: L, content: lContent } = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
+    appendCheckpoint(ydoc, L, lContent)
     const a1 = { id: 'a1', parents: ['L'], authorId: 'alice', gesture: 'move', ts: 1,
       mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '99' }] }
     const s1 = { id: 's1', parents: ['L'], authorId: 'bob', gesture: 'move', ts: 1,
@@ -639,11 +639,11 @@ describe('conflict resolution end to end — resolve, adopt, and fork-seed agree
     // doing on the splitter branch. Authored to orderedIds[0] (§6.5),
     // not to Bob's own id directly — same thing when Bob is the only
     // contributor, but see the next test for why the distinction matters.
-    const { genesis, rebasedOps } = buildToyForkSeed(
+    const { genesis, rebasedOps, content } = buildToyForkSeed(
       ydoc, decision.lca, decision.splitter, { authorId: decision.orderedIds[0], joinSequence })
     const seeded = new Map([[genesis.id, genesis], ...rebasedOps.map(o => [o.id, o])])
     const forkLayer = document.createElementNS(SVG_NS, 'g')
-    projectFrom(forkLayer, seeded, decision.splitter)
+    projectFrom(forkLayer, seeded, content, decision.splitter)
     expect(forkLayer.querySelector('[data-id="r"]').getAttribute('x')).toBe('55')
   })
 
@@ -659,8 +659,8 @@ describe('conflict resolution end to end — resolve, adopt, and fork-seed agree
     const ydoc = new Y.Doc()
     const base = document.createElementNS(SVG_NS, 'g')
     base.innerHTML = '<rect data-id="r" x="0"/>'
-    const L = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
-    appendOp(ydoc, L)
+    const { op: L, content: lContent } = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
+    appendCheckpoint(ydoc, L, lContent)
     const a1 = { id: 'a1', parents: ['L'], authorId: 'alice', gesture: 'move', ts: 1,
       mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '99' }] }
     // Both Bob and Clyde contributed to the splitter branch.

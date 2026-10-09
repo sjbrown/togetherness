@@ -24,7 +24,7 @@ import {
   reparentToyDom, applyMoveDom, getMenuActions, invokeMenuAction,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
-import { getOps } from '../../src/op_dag.js'
+import { getOps, getContent } from '../../src/op_dag.js'
 import { projectFrom } from '../../src/op_checkpoint.js'
 import { getHead } from '../../src/op_head.js'
 import { serializeNode } from '../../src/op_wire_mutation.js'
@@ -106,7 +106,7 @@ test(
 
     // Project the recorded log onto a fresh scratch layer and compare.
     const scratch = freshLayer()
-    projectFrom(scratch, getOps(ydoc), getHead(TABLE))
+    projectFrom(scratch, getOps(ydoc), getContent(ydoc), getHead(TABLE))
 
     const liveChildren    = [...layerEl.children].map(serializeNode)
     const scratchChildren = [...scratch.children].map(serializeNode)

@@ -655,6 +655,14 @@ describe('showBranchDialog / branchDialogJoin / branchDialogKeepWorking', () => 
     branchDialogJoin()
   })
 
+  test('the offline sentence appears only for a fork that came from pruned history', () => {
+    showBranchDialog('tt-T-v1-abc123def456')
+    expect(document.querySelector('#branchDialogBody').textContent).not.toContain('offline')
+    showBranchDialog('tt-T-v1-abc123def456', { offline: true })
+    expect(document.querySelector('#branchDialogBody').textContent.replace(/\s+/g, ' '))
+      .toContain('offline for more than 10 minutes while the other players kept playing')
+  })
+
   test('showBranchDialog opens both the scrim and the dialog, and names the branch table', () => {
     mountBranchDialogSkeleton()
     showBranchDialog('tt-T-v1-abc123def456')
