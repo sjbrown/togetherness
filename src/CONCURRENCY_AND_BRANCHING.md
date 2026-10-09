@@ -54,6 +54,16 @@ Three statements, each of which the old design violated:
    semantics. It is very good at the job it now has:
    offline sync, causal delivery, efficient encoding.
 
+**Each op layer has its own DAG.** Everything above and below describes one
+op layer, and the toys layer is the only one today. Each op layer has its own
+ops map and checkpoint-content map, its own local tips (§2.3), its own
+checkpoints and prune root (§6.3), and its own conflict resolution (§5). Op
+ids are globally unique, but an op belongs to exactly one layer: layers never
+share ops, a parent pointer never crosses layers, and a gesture never spans
+two layers (invariant 5). What a layer is called, which elements it owns and
+where its state is stored is data in its descriptor (`op_layers.js`); the op
+machinery contains no layer names.
+
 ### 1.1 Drawing, Boundaries & Postions Layers are still Yjs
 
 `Y.Xml` is fine, and stays, for `drawing` and `boundaries`. Those layers
@@ -80,10 +90,12 @@ A **gesture** is one user intention: a drag, a resize, a menu action
   `fetch`, no promise. `runInEnvelope` **throws** if a handler returns a
   thenable.
 
-* **confined to the toys layer.** All observable effect happens inside
-  `#toys-layer`. A handler that writes outside it (eg, `document.body`,
-  `localStorage`, a global) has escaped the model, and the operation we
-  record and transmit to peers will be incomplete or erroneous.
+* **confined to its layer.** All observable effect happens inside the
+  layer the gesture belongs to (`#toys-layer`, for a toy handler). A handler
+  that writes outside it (eg, `document.body`, `localStorage`, a global, or
+  another op layer) has escaped the model, and the operation we record and
+  transmit to peers will be incomplete or erroneous. An envelope opened
+  inside another layer's envelope **throws**.
 
 * **recursive.** A handler may trigger another handler, which may trigger
   another. All of it is one envelope, one batch, one operation.
@@ -122,13 +134,14 @@ actually resolved against.
 
 ### 2.3 A head is local state
 
-A peer's position is its **local tips**: its head plus zero or more
+A peer's position is its **local tips**, kept per op layer: moving in one
+layer never moves another. Within a layer they are its head plus zero or more
 **merge tips**, ops it has absorbed into its live DOM without either being
 an ancestor of the other. "What this peer has" is the inclusive ancestry of
 the whole set, not of the head alone — every place that used to reason from
 the head reasons from this set instead.
 
-Local tips are *not* in the shared document. They are per-peer, per-table
+Local tips are *not* in the shared document. They are per-peer, per-table, per-layer
 local state (localStorage, alongside the table registry). Two peers sitting
 on different tips is not an error state — an offline GM working on their
 own branch while players continue on the shared one is valid.
@@ -674,7 +687,8 @@ Cite these by number in code comments and commit messages.
    serialized subtree.
 4. Gesture execution is synchronous. A handler returning a thenable is an
    error, not a fallback.
-5. A gesture's entire observable effect is inside `#toys-layer`.
+5. A gesture's entire observable effect is inside its own layer: the one op
+   layer whose DOM its envelope observes. A gesture never spans two layers.
 6. A gesture's full reaction cascade is inside its own envelope and its own
    operation.
 7. Replay applies mutations. Replay never re-runs handler code.
