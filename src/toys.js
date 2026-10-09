@@ -32,6 +32,7 @@ export { isInsideEnvelope };
 import * as OpHead from './op_head.js';
 import * as OpDag from './op_dag.js';
 import * as OpWireMutation from './op_wire_mutation.js';
+import { resolveRef } from './op_wire_mutation.js';
 import * as OpCheckpoint from './op_checkpoint.js';
 import * as OpReplay from './op_replay.js';
 import * as OpPrune from './op_prune.js';
@@ -282,53 +283,6 @@ export function parseForeignToy(ydoc, el) {
   if (scripts.length) hoistInlineScripts(ydoc, el.getAttribute('data-toy-type'), scripts)
 
   return { parsedNode: normalizeForeignToySubtree(el), scripts }
-}
-
-/**
- * Address a node so a peer can find the same one in its own tree.
- *
- * An element answers with its data-id. A text node cannot carry one, so it
- * answers with its parent's data-id and its position among that parent's
- * childNodes. Returns null for anything unaddressable — a text node whose
- * parent has no data-id, an element that was never stamped.
- */
-export function nodeRef(node) {
-  if (!node) return null
-  if (node.nodeType === 1) {
-    const id = node.getAttribute('data-id')
-    return id ? { id } : null
-  }
-  if (node.nodeType === 3 || node.nodeType === 4) {
-    const parent = node.parentNode
-    if (!parent || parent.nodeType !== 1) return null
-    const parentId = parent.getAttribute('data-id')
-    if (!parentId) return null
-    return { parentId, index: Array.prototype.indexOf.call(parent.childNodes, node) }
-  }
-  return null
-}
-
-/**
- * Inverse of nodeRef, resolved against rootEl (which may itself be the
- * addressed element). Returns null when the ref names something absent —
- * the caller decides whether that is fatal.
- */
-export function resolveRef(ref, rootEl) {
-  if (!ref || !rootEl) return null
-  const findById = (id) =>
-    (rootEl.getAttribute?.('data-id') === id)
-      ? rootEl
-      : rootEl.querySelector(`[data-id="${id}"]`)
-
-  if (ref.id !== undefined) return findById(ref.id)
-
-  if (ref.parentId !== undefined) {
-    const parent = findById(ref.parentId)
-    if (!parent) return null
-    const child = parent.childNodes[ref.index]
-    return (child && (child.nodeType === 3 || child.nodeType === 4)) ? child : null
-  }
-  return null
 }
 
 // ── Script hoisting ──────────────────────────────────────────────────────
