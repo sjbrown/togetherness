@@ -1,10 +1,9 @@
 /**
  * tests/e2e/undo-redo.spec.js
  *
- * C7: undo/redo routes between two mechanisms — Toys.undoToyGesture (the
- * op log) for toys, UndoRedo.undo (Y.UndoManager) for drawing/boundaries —
- * based on app.js's _lastActionScope. No existing spec exercised
- * App.undo/App.redo at all before this file.
+ * Undo/redo spans three mechanisms — the toys op layer, the drawing op
+ * layer, and UndoRedo (Y.UndoManager, boundaries only) — and each press acts
+ * on whichever holds the author's most recent action, by ts.
  *
  * Redo has no wired UI button yet (see ui.js) — called directly via
  * window.App.redo(), the same way several existing specs already call
@@ -124,6 +123,83 @@ test.describe('undo / redo', () => {
     await page.evaluate(() => window.App.undo());
     await page.waitForTimeout(200);
     await expect(page.locator('[data-toy-type]')).toHaveCount(0);
+
+    await browser.close();
+  });
+
+  test('interleaved toy, drawing and boundary actions: the real Undo button reverses them newest first, Redo walks forward', async () => {
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+    const ctx  = await browser.newContext();
+    const page = await ctx.newPage();
+
+    await openAsCreator(page, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+
+    const canvas = page.locator('#canvas');
+    const box    = await canvas.boundingBox();
+
+    const placeToy = async (x, y) => {
+      await page.evaluate(() => window.UI.pillTap('d6'));
+      await page.waitForTimeout(100);
+      await page.mouse.move(box.x + x, box.y + y);
+      await page.mouse.down();
+      await page.mouse.up();
+      await page.waitForTimeout(100);
+    };
+    const drawRect = async (x, y) => {
+      await page.evaluate(({ x, y }) => window.App.commitDrawing({
+        type: 'rect', x, y, width: 80, height: 80,
+        fill: '#5a7ea8', stroke: 'none', 'stroke-width': 1.5, 'corner-r': 0,
+      }), { x, y });
+      await page.waitForTimeout(100);
+    };
+    const drawBoundary = async () => {
+      await page.evaluate(() => window.App.commitBounPos({ toolName: 'boundary', x: 500, y: 300, w: 120, h: 80 }));
+      await page.waitForTimeout(100);
+    };
+    const counts = () => page.evaluate(() => ({
+      toys:   document.querySelectorAll('[data-toy-type]').length,
+      rects:  document.querySelectorAll('#drawing-layer rect').length,
+      bounds: document.querySelectorAll('#boundaries-positions-layer > *').length,
+    }));
+
+    // toy1, draw1, bound1, toy2, draw2
+    await placeToy(100, 100);
+    await expect(page.locator('[data-toy-type]')).toHaveCount(1, { timeout: 5000 });
+    await drawRect(300, 100);
+    await drawBoundary();
+    await placeToy(100, 300);
+    await expect(page.locator('[data-toy-type]')).toHaveCount(2, { timeout: 5000 });
+    await drawRect(300, 300);
+    expect(await counts()).toEqual({ toys: 2, rects: 2, bounds: 1 });
+
+    await page.evaluate(() => window.UI.openSheet('history'));
+    await page.waitForTimeout(200);
+    const undoBtn = page.locator('.action-btn', { hasText: 'Undo last action' });
+    const redoBtn = page.locator('.action-btn', { hasText: 'Redo last undone action' });
+
+    const undoSteps = [
+      { toys: 2, rects: 1, bounds: 1 },   // draw2
+      { toys: 1, rects: 1, bounds: 1 },   // toy2
+      { toys: 1, rects: 1, bounds: 0 },   // bound1
+      { toys: 1, rects: 0, bounds: 0 },   // draw1
+      { toys: 0, rects: 0, bounds: 0 },   // toy1
+    ];
+    for (const expected of undoSteps) {
+      await undoBtn.click();
+      await expect.poll(counts, { timeout: 3000 }).toEqual(expected);
+    }
+
+    const redoSteps = [
+      { toys: 1, rects: 0, bounds: 0 },   // toy1
+      { toys: 1, rects: 1, bounds: 0 },   // draw1
+      { toys: 1, rects: 1, bounds: 1 },   // bound1
+      { toys: 2, rects: 1, bounds: 1 },   // toy2
+      { toys: 2, rects: 2, bounds: 1 },   // draw2
+    ];
+    for (const expected of redoSteps) {
+      await redoBtn.click();
+      await expect.poll(counts, { timeout: 3000 }).toEqual(expected);
+    }
 
     await browser.close();
   });

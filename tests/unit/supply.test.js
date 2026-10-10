@@ -105,7 +105,6 @@ function bindSupplyHarness(ydoc, layerEl) {
     getYdoc: () => ydoc,
     user: { id: AUTHOR, name: AUTHOR, color: '#888', gradient: null },
     getTableId: () => TABLE,
-    setLastActionScope: () => {},
     addHistory: () => {},
     addLog: () => {},
   }

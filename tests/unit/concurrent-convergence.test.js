@@ -18,6 +18,7 @@ import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ensureLayerId } from '../../src/op_layers.js'
 import { TOYS_LAYER } from '../../src/toys.js'
+import { DRAWING_LAYER, makeLayerAPI as makeDrawingAPI } from '../../src/drawing.js'
 import {
   placeToy, makeLayerAPI, activateAllToyScriptsDom, projectLayer, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
@@ -511,5 +512,136 @@ describe('merge checkpoints (§5.6)', () => {
     for (const peer of [P, Q, R, S]) expect(getContent(peer.ydoc, TOYS_LAYER).has('genesis')).toBe(true)
 
     assertConverged([P, Q, R, S])
+  })
+})
+
+// ── drawing layer ───────────────────────────────────────────────────────
+// The same harness, over the drawing op layer: peers draw and move shapes
+// through its LayerAPI and deliver each other's operations out of band.
+
+describe('concurrent convergence: drawing layer', () => {
+  function makeDrawingPeer(authorId) {
+    const tableId = `drawing-convergence-table-${_tableCounter++}`
+    const ydoc = new Y.Doc()
+    const layer = document.createElementNS(SVG_NS, 'g')
+    layer.id = 'drawing-layer'
+    ensureLayerId(layer, DRAWING_LAYER)
+    const api = makeDrawingAPI(ydoc, () => layer, { id: authorId }, tableId)
+    const peer = { id: authorId, tableId, ydoc, layer, api }
+    _drawingPeers.push(peer)
+    return peer
+  }
+  let _drawingPeers = []
+  beforeEach(() => { _drawingPeers = [] })
+
+  function seedDrawingGenesis(peers) {
+    const genesis = { id: 'genesis', parents: [], authorId: 'system', gesture: 'checkpoint', ts: 0, mutations: [] }
+    for (const p of peers) {
+      appendCheckpoint(p.ydoc, DRAWING_LAYER, genesis, [])
+      setHead(p.tableId, DRAWING_LAYER, genesis.id)
+    }
+  }
+
+  function deliverDrawing(peer, ops) {
+    for (const op of ops) getOps(peer.ydoc, DRAWING_LAYER).set(op.id, op)
+    return ops.map(op => peer.api.receive(peer.layer, op.id, []))
+  }
+
+  function drawingTipsOf(peer) {
+    return maximalTips(getOps(peer.ydoc, DRAWING_LAYER),
+      [getHead(peer.tableId, DRAWING_LAYER), ...getMergeTips(peer.tableId, DRAWING_LAYER)])
+  }
+
+  /** Every peer's live DOM matches every other's, and a from-scratch
+   * projectTips over the union of everyone's tips. */
+  function assertDrawingConverged(peers) {
+    const serialized = peers.map(p => [...p.layer.children].map(serializeNode))
+    for (let i = 1; i < peers.length; i++) expect(serialized[i]).toEqual(serialized[0])
+
+    const ops = getOps(peers[0].ydoc, DRAWING_LAYER)
+    const unionTips = maximalTips(ops, peers.flatMap(drawingTipsOf))
+    const scratch = document.createElementNS(SVG_NS, 'g')
+    ensureLayerId(scratch, DRAWING_LAYER)
+    projectTips(scratch, ops, getContent(peers[0].ydoc, DRAWING_LAYER), unionTips, [])
+    expect([...scratch.children].map(serializeNode)).toEqual(serialized[0])
+  }
+
+  const draw = (peer, id, x, y) => {
+    peer.api.add({ id, type: 'rect', x, y, width: 50, height: 50 })
+    return getOps(peer.ydoc, DRAWING_LAYER).get(getHead(peer.tableId, DRAWING_LAYER))
+  }
+  const moveTo = (peer, id, x, y) =>
+    peer.api.applyMoveCommit(peer.api.find(id), x, y).op
+
+  test('two peers drawing different shapes concurrently: rebuilt, converged', () => {
+    const P = makeDrawingPeer('alice'), Q = makeDrawingPeer('bob')
+    seedDrawingGenesis([P, Q])
+
+    const opP = draw(P, 'shapeP', 0, 0)
+    const opQ = draw(Q, 'shapeQ', 100, 100)
+
+    const [rP] = deliverDrawing(P, [opQ])
+    const [rQ] = deliverDrawing(Q, [opP])
+    // Both append a child to the layer root: order-sensitive, not
+    // conflicting, so each peer rebuilds canonically.
+    expect(rP.result).toBe(RECEIVED_REBUILT)
+    expect(rQ.result).toBe(RECEIVED_REBUILT)
+
+    expect(P.layer.children.length).toBe(2)
+    assertDrawingConverged([P, Q])
+  })
+
+  test('two peers moving different shapes: not a conflict, converged', () => {
+    const P = makeDrawingPeer('alice'), Q = makeDrawingPeer('bob')
+    seedDrawingGenesis([P, Q])
+
+    const opA = draw(P, 'a', 0, 0)
+    const opB = draw(P, 'b', 100, 100)
+    deliverDrawing(Q, [opA, opB])
+
+    const opMoveP = moveTo(P, 'a', 10, 10)
+    const opMoveQ = moveTo(Q, 'b', 200, 200)
+
+    const [rP] = deliverDrawing(P, [opMoveQ])
+    const [rQ] = deliverDrawing(Q, [opMoveP])
+    expect(rP.result).not.toBe(RECEIVED_CONFLICT)
+    expect(rQ.result).not.toBe(RECEIVED_CONFLICT)
+
+    expect(P.api.find('a').getAttribute('x')).toBe('10')
+    expect(P.api.find('b').getAttribute('x')).toBe('200')
+    assertDrawingConverged([P, Q])
+  })
+
+  test('two peers moving the same shape: a conflict', () => {
+    const P = makeDrawingPeer('alice'), Q = makeDrawingPeer('bob')
+    seedDrawingGenesis([P, Q])
+
+    const opA = draw(P, 'a', 0, 0)
+    deliverDrawing(Q, [opA])
+
+    const opMoveP = moveTo(P, 'a', 10, 10)
+    const opMoveQ = moveTo(Q, 'a', 20, 20)
+
+    const [rP] = deliverDrawing(P, [opMoveQ])
+    const [rQ] = deliverDrawing(Q, [opMoveP])
+    expect(rP.result).toBe(RECEIVED_CONFLICT)
+    expect(rQ.result).toBe(RECEIVED_CONFLICT)
+  })
+
+  test('a draw on one peer and a move on another: converged', () => {
+    const P = makeDrawingPeer('alice'), Q = makeDrawingPeer('bob')
+    seedDrawingGenesis([P, Q])
+
+    const opA = draw(P, 'a', 0, 0)
+    deliverDrawing(Q, [opA])
+
+    const opMove = moveTo(Q, 'a', 50, 50)
+    const opDraw = draw(P, 'b', 100, 100)
+
+    const [rP] = deliverDrawing(P, [opMove])
+    const [rQ] = deliverDrawing(Q, [opDraw])
+    expect(rP.result).not.toBe(RECEIVED_CONFLICT)
+    expect(rQ.result).not.toBe(RECEIVED_CONFLICT)
+    assertDrawingConverged([P, Q])
   })
 })

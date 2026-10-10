@@ -9,7 +9,10 @@ import { getOps, getContent } from '../../src/op_dag.js'
 import { projectFrom } from '../../src/op_checkpoint.js'
 import * as Toys from '../../src/toys.js'
 import { addToy, findToy, _clearSvgTextCache, _getScriptsFragment } from '../../src/toys.js'
-import { addDrawing } from '../../src/drawing.js'
+import { DRAWING_LAYER } from '../../src/drawing.js'
+import { getOps, getContent } from '../../src/op_dag.js'
+import { isCheckpoint } from '../../src/op_checkpoint.js'
+import { ensureLayerId, LAYER_MARKER } from '../../src/op_layers.js'
 import * as BounPos from '../../src/boun_pos.js'
 
 // ── Fixtures & helpers ──────────────────────────────────────────────────────
@@ -122,7 +125,6 @@ function freshLayers() {
   return {
     ydoc,
     yMeta:    ydoc.getMap('meta'),
-    yDrawing: ydoc.getXmlFragment('drawing'),
   }
 }
 
@@ -163,38 +165,66 @@ describe('populateFromSvgDoc', () => {
   })
 
   test('imports drawing-layer children and counts them', () => {
-    const { ydoc, yDrawing } = freshLayers()
-    const { drawCount } = populateFromSvgDoc(
+    const { ydoc } = freshLayers()
+    const { drawCount, importedDrawEls } = populateFromSvgDoc(
       makeDocSvg({ drawingInner: `<rect id="r1" x="0" y="0" width="10" height="10"/>` }),
       ydoc)
     expect(drawCount).toBe(1)
-    expect(yDrawing.toArray()[0].nodeName).toBe('rect')
+    expect(importedDrawEls.length).toBe(1)
+    expect(importedDrawEls[0].tagName).toBe('rect')
+    expect(importedDrawEls[0].getAttribute('data-id')).toBe('r1')
+    expect(importedDrawEls[0].getAttribute('data-module')).toBe('drawing')
+  })
+
+  test('into a live table, drawing is handed back for a gesture and no op is written', () => {
+    const { ydoc } = freshLayers()
+    populateFromSvgDoc(
+      makeDocSvg({ drawingInner: `<rect id="r1" x="0" y="0" width="10" height="10"/>` }), ydoc)
+    expect(getOps(ydoc, DRAWING_LAYER).size).toBe(0)
+  })
+
+  test('as a new table, drawing becomes a genesis checkpoint holding the shapes', () => {
+    const { ydoc } = freshLayers()
+    const { importedDrawEls } = populateFromSvgDoc(
+      makeDocSvg({ drawingInner: `<rect id="r1" x="0" y="0" width="10" height="10"/>` }),
+      ydoc, { asNewTable: true, authorId: 'me' })
+    expect(importedDrawEls).toEqual([])
+    const ops = [...getOps(ydoc, DRAWING_LAYER).values()]
+    expect(ops).toHaveLength(1)
+    expect(isCheckpoint(ops[0])).toBe(true)
+    expect(ops[0].parents).toEqual([])
+    expect(JSON.stringify(getContent(ydoc, DRAWING_LAYER).get(ops[0].id))).toContain('r1')
+  })
+
+  test('as a new table, an empty drawing layer still gets a genesis', () => {
+    const { ydoc } = freshLayers()
+    populateFromSvgDoc(makeDocSvg(), ydoc, { asNewTable: true, authorId: 'me' })
+    expect(getOps(ydoc, DRAWING_LAYER).size).toBe(1)
   })
 
   test('strips <script> elements (at any depth) from drawing-layer children before storing', () => {
-    const { ydoc, yDrawing } = freshLayers()
-    populateFromSvgDoc(
+    const { ydoc } = freshLayers()
+    const { importedDrawEls } = populateFromSvgDoc(
       makeDocSvg({ drawingInner:
         `<g id="g1"><rect id="r1"/><script>alert(1)</script></g>` }),
       ydoc)
-    const g = yDrawing.toArray()[0]
-    expect(g.toArray().some(c => c.nodeName === 'script')).toBe(false)
+    expect(importedDrawEls[0].querySelector('script')).toBeNull()
+    expect(importedDrawEls[0].querySelector('rect')).not.toBeNull()
   })
 
   test('strips <script> elements from the fallback sweep before storing', () => {
-    const { ydoc, yDrawing } = freshLayers()
-    populateFromSvgDoc(
+    const { ydoc } = freshLayers()
+    const { importedDrawEls } = populateFromSvgDoc(
       makeDocSvg({ extra: `<g id="stray"><script>alert(1)</script></g>` }), ydoc)
-    const g = yDrawing.toArray()[0]
-    expect(g.toArray().some(c => c.nodeName === 'script')).toBe(false)
+    expect(importedDrawEls[0].querySelector('script')).toBeNull()
   })
 
   test('sweeps unrecognized top-level elements into the drawing layer', () => {
-    const { ydoc, yDrawing } = freshLayers()
-    const { drawCount } = populateFromSvgDoc(
+    const { ydoc } = freshLayers()
+    const { drawCount, importedDrawEls } = populateFromSvgDoc(
       makeDocSvg({ extra: `<circle id="stray" r="5"/>` }), ydoc)
     expect(drawCount).toBe(1)
-    expect(yDrawing.toArray()[0].nodeName).toBe('circle')
+    expect(importedDrawEls[0].tagName).toBe('circle')
   })
 
   test('does not double-import known layers via the fallback sweep', () => {
@@ -465,13 +495,27 @@ describe('buildExportSvg', () => {
     expect(clone.querySelector('#toys-layer').hasAttribute(HEAD_MARKER)).toBe(false)
   })
 
-  test('rebuilds #drawing-layer from the Yjs fragment', () => {
+  test('drawing exports whatever is in the live DOM, data-id and all', () => {
     const ydoc = new Y.Doc()
-    const yDrawing = ydoc.getXmlFragment('drawing')
-    addDrawing(ydoc, yDrawing, { id: 'r1', type: 'rect', x: 1, y: 2, width: 3, height: 4 })
+    const live = liveCanvasSvg()
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
+    rect.setAttribute('data-id', 'r1')
+    live.querySelector('#drawing-layer').appendChild(rect)
 
-    const clone = buildExportSvg(liveCanvasSvg(), ydoc)
-    expect(clone.querySelector('#drawing-layer rect')).not.toBeNull()
+    const clone = buildExportSvg(live, ydoc)
+    expect(clone.querySelector('#drawing-layer [data-id="r1"]')).not.toBeNull()
+  })
+
+  test('strips the head and op-layer markers from the exported drawing layer', () => {
+    const ydoc = new Y.Doc()
+    const live = liveCanvasSvg()
+    ensureLayerId(live.querySelector('#drawing-layer'), DRAWING_LAYER)
+    live.querySelector('#drawing-layer').setAttribute(HEAD_MARKER, 'tt-op-abc123')
+
+    const layer = buildExportSvg(live, ydoc).querySelector('#drawing-layer')
+    expect(layer.hasAttribute(HEAD_MARKER)).toBe(false)
+    expect(layer.hasAttribute(LAYER_MARKER)).toBe(false)
+    expect(layer.getAttribute('inkscape:groupmode')).toBe('layer')
   })
 })
 
@@ -500,27 +544,26 @@ describe('populateFromSvgDoc — rotation reconciliation', () => {
   }
 
   const importRect = (attrs) => {
-    const { ydoc, yDrawing } = freshLayers()
-    populateFromSvgDoc(withRect(attrs), ydoc)
-    return yDrawing.toArray()[0]
+    const { ydoc } = freshLayers()
+    return populateFromSvgDoc(withRect(attrs), ydoc).importedDrawEls[0]
   }
 
   test('our own export comes back byte-identical in the fields that matter', () => {
-    const yEl = importRect({ 'data-rotate': '45', transform: 'rotate(45 200 160)' })
-    expect(yEl.getAttribute('data-rotate')).toBe('45')
-    expect(yEl.getAttribute('transform')).toBe('rotate(45 200 160)')
-    expect(yEl.getAttribute('x')).toBe('100')
-    expect(yEl.getAttribute('y')).toBe('100')
+    const el = importRect({ 'data-rotate': '45', transform: 'rotate(45 200 160)' })
+    expect(el.getAttribute('data-rotate')).toBe('45')
+    expect(el.getAttribute('transform')).toBe('rotate(45 200 160)')
+    expect(el.getAttribute('x')).toBe('100')
+    expect(el.getAttribute('y')).toBe('100')
   })
 
   test('an edit made elsewhere survives — the whole point of the exercise', () => {
     // TT last stored 45°. In the other editor the user turned it to 60° and
     // dragged it 40 right, 25 down; the editor consolidated that into one
     // matrix and left data-rotate alone, not knowing what it means.
-    const yEl = importRect({ 'data-rotate': '45', transform: 'translate(40 25) rotate(60 200 160)' })
-    expect(Number(yEl.getAttribute('data-rotate'))).toBeCloseTo(60, 6)
-    expect(yEl.getAttribute('x')).toBe('140')
-    expect(yEl.getAttribute('y')).toBe('125')
+    const el = importRect({ 'data-rotate': '45', transform: 'translate(40 25) rotate(60 200 160)' })
+    expect(Number(el.getAttribute('data-rotate'))).toBeCloseTo(60, 6)
+    expect(el.getAttribute('x')).toBe('140')
+    expect(el.getAttribute('y')).toBe('125')
   })
 
   test('it does not matter whether the editor baked the move into x/y or the matrix', () => {
@@ -535,20 +578,20 @@ describe('populateFromSvgDoc — rotation reconciliation', () => {
   })
 
   test('a scaled shape keeps the file’s transform and loses our stale degrees', () => {
-    const yEl = importRect({ 'data-rotate': '45', transform: 'scale(1.5) rotate(60 200 160)' })
-    expect(yEl.getAttribute('data-rotate')).toBeUndefined()
-    expect(yEl.getAttribute('transform')).toContain('matrix(')
+    const el = importRect({ 'data-rotate': '45', transform: 'scale(1.5) rotate(60 200 160)' })
+    expect(el.getAttribute('data-rotate')).toBeNull()
+    expect(el.getAttribute('transform')).toContain('matrix(')
   })
 
   test('a shape that was never ours is imported untouched', () => {
-    const yEl = importRect({ transform: 'skewX(10)' })
-    expect(yEl.getAttribute('transform')).toBe('skewX(10)')
-    expect(yEl.getAttribute('data-rotate')).toBeUndefined()
+    const el = importRect({ transform: 'skewX(10)' })
+    expect(el.getAttribute('transform')).toBe('skewX(10)')
+    expect(el.getAttribute('data-rotate')).toBeNull()
   })
 
   test('a plain unrotated shape is unaffected', () => {
-    const yEl = importRect({})
-    expect(yEl.getAttribute('transform')).toBeUndefined()
-    expect(yEl.getAttribute('x')).toBe('100')
+    const el = importRect({})
+    expect(el.getAttribute('transform')).toBeNull()
+    expect(el.getAttribute('x')).toBe('100')
   })
 })

@@ -9,7 +9,7 @@
  * boun_pos_resize.test.js.
  *
  * Same boot fixture as that file: one real App instance, real Yjs doc, real
- * DOM. ui.js and canvas.js are mocked.
+ * DOM; the drawing layer is read straight off the live DOM. ui.js and canvas.js are mocked.
  */
 
 // @vitest-environment jsdom
@@ -101,13 +101,14 @@ async function bootWithSquare() {
   const booted = await bootApp()
   booted.App.setLayer('drawing')
   booted.App.commitDrawing({ type: 'rect', x: 100, y: 100, width: 200, height: 200, fill: '#c8941e' })
-  const id = booted.ydoc.getXmlFragment('drawing').toArray()[0].getAttribute('id')
+  const id = firstShapeId()
   booted.App.select(id)
   return { ...booted, id }
 }
 
-const yRect = (ydoc, id) =>
-  ydoc.getXmlFragment('drawing').toArray().find(n => n.getAttribute('id') === id)
+// The live drawing-layer element: the layer's DOM is the source of truth.
+const rectEl = (id) => document.querySelector(`#drawing-layer [data-id="${id}"]`)
+const firstShapeId = () => document.querySelector('#drawing-layer > *').getAttribute('id')
 
 describe('rotate is the third mode in a rect’s cycle', () => {
   test('a fresh selection is in neither resize nor rotate mode', async () => {
@@ -144,7 +145,7 @@ describe('rotate is the third mode in a rect’s cycle', () => {
     const { App, ydoc } = await bootApp()
     App.setLayer('drawing')
     App.commitDrawing({ type: 'circle', cx: 200, cy: 200, r: 50, fill: '#5a7ea8' })
-    const id = ydoc.getXmlFragment('drawing').toArray()[0].getAttribute('id')
+    const id = firstShapeId()
     App.select(id)
 
     App.nextSelectionMode(id) // sel-resize-r
@@ -190,7 +191,7 @@ describe('dragging a rotate handle', () => {
     App.rotate(id, 2, 100, 300)         // drag it round to 135°
     App.commitRotate(id, 2, 100, 300)
 
-    expect(yRect(ydoc, id).getAttribute('data-rotate')).toBe('90')
+    expect(rectEl(id).getAttribute('data-rotate')).toBe('90')
   })
 
   test('the committed angle lands on a 15° step, never between them', async () => {
@@ -198,12 +199,12 @@ describe('dragging a rotate handle', () => {
     // ~4° past the SE corner's 45°, which snaps back to 0.
     App.startRotate(id, 2)
     App.commitRotate(id, 2, 293, 307)
-    expect(yRect(ydoc, id).getAttribute('data-rotate')).toBe('0')
+    expect(rectEl(id).getAttribute('data-rotate')).toBe('0')
 
     // ~11° past, which snaps up to 15.
     App.startRotate(id, 2)
     App.commitRotate(id, 2, 280, 316)
-    expect(yRect(ydoc, id).getAttribute('data-rotate')).toBe('15')
+    expect(rectEl(id).getAttribute('data-rotate')).toBe('15')
   })
 
   test('the snap step is a settable seam, not a hard-coded 15 — per layer', async () => {
@@ -213,12 +214,12 @@ describe('dragging a rotate handle', () => {
     App.setRotateSnapDeg('drawing', 90)
     App.startRotate(id, 2)
     App.commitRotate(id, 2, 280, 316)   // ~11° — far from 90, so snaps to 0
-    expect(yRect(ydoc, id).getAttribute('data-rotate')).toBe('0')
+    expect(rectEl(id).getAttribute('data-rotate')).toBe('0')
 
     App.setRotateSnapDeg('drawing', 5)
     App.startRotate(id, 2)
     App.commitRotate(id, 2, 280, 316)
-    expect(yRect(ydoc, id).getAttribute('data-rotate')).toBe('10')
+    expect(rectEl(id).getAttribute('data-rotate')).toBe('10')
 
     App.setRotateSnapDeg('drawing', 15)
   })
@@ -245,7 +246,7 @@ describe('dragging a rotate handle', () => {
     App.rotate(id, 2, 100, 300)
     App.cancelRotate()
 
-    expect(yRect(ydoc, id).getAttribute('data-rotate')).toBe('0')
+    expect(rectEl(id).getAttribute('data-rotate')).toBe('0')
   })
 
   test('the element stays in rotate mode after a commit, ready for another drag', async () => {
@@ -263,7 +264,7 @@ describe('dragging a rotate handle', () => {
     App.startDrag(id)
     App.commitMove(id, 300, 300)
 
-    expect(yRect(ydoc, id).getAttribute('data-rotate')).toBe('90')
+    expect(rectEl(id).getAttribute('data-rotate')).toBe('90')
     expect(svgEl.querySelector(`[data-id="${id}"]`).getAttribute('transform'))
       .toBe('rotate(90 400 400)')
   })
@@ -319,7 +320,7 @@ describe('resizing an already-rotated rect', () => {
     // Screen (50, 350) is local (350, 350) once un-rotated by the 90°.
     App.commitResize(id, 2, 50, 350)
 
-    const yEl = yRect(ydoc, id)
+    const yEl = rectEl(id)
     expect(yEl.getAttribute('width')).toBe('250')
     expect(yEl.getAttribute('height')).toBe('250')
     expect(yEl.getAttribute('data-rotate')).toBe('90')
@@ -327,19 +328,19 @@ describe('resizing an already-rotated rect', () => {
 
   test('the opposite corner stays put on the canvas, not just in local space', async () => {
     const { App, ydoc, id } = await rotatedThenResizing({ x: 100, y: 300 })  // 90°
-    const anchorBefore = onCanvas(yRect(ydoc, id), nw(yRect(ydoc, id)))
+    const anchorBefore = onCanvas(rectEl(id), nw(rectEl(id)))
 
     App.startResize(id, 2)
     App.commitResize(id, 2, 50, 350)
 
-    expectAnchorHeld(anchorBefore, yRect(ydoc, id))
+    expectAnchorHeld(anchorBefore, rectEl(id))
   })
 
   test('holds at an angle that is not a quarter turn, where the slide is worst', async () => {
     // 45°: the pivot shift and the rotation compound instead of cancelling.
     const { App, ydoc, id } = await rotatedThenResizing({ x: 200, y: 400 })
-    expect(yRect(ydoc, id).getAttribute('data-rotate')).toBe('45')
-    const anchorBefore = onCanvas(yRect(ydoc, id), nw(yRect(ydoc, id)))
+    expect(rectEl(id).getAttribute('data-rotate')).toBe('45')
+    const anchorBefore = onCanvas(rectEl(id), nw(rectEl(id)))
 
     const corner = App.getResizeCorner(id, ...Object.values(
       // the SE handle's screen position at 45°, padded out like the overlay draws it
@@ -353,8 +354,8 @@ describe('resizing an already-rotated rect', () => {
     App.startResize(id, corner)
     App.commitResize(id, corner, 260, 420)
 
-    expect(Number(yRect(ydoc, id).getAttribute('width'))).toBeGreaterThan(200)
-    expectAnchorHeld(anchorBefore, yRect(ydoc, id))
+    expect(Number(rectEl(id).getAttribute('width'))).toBeGreaterThan(200)
+    expectAnchorHeld(anchorBefore, rectEl(id))
   })
 
   test('an unrotated rect is untouched by the correction — plain local-space resize', async () => {
@@ -363,7 +364,7 @@ describe('resizing an already-rotated rect', () => {
     App.startResize(id, 2)
     App.commitResize(id, 2, 350, 350)
 
-    const yEl = yRect(ydoc, id)
+    const yEl = rectEl(id)
     expect(yEl.getAttribute('x')).toBe('100')
     expect(yEl.getAttribute('y')).toBe('100')
     expect(yEl.getAttribute('width')).toBe('250')
@@ -372,7 +373,7 @@ describe('resizing an already-rotated rect', () => {
 })
 
 describe('placing the pivot', () => {
-  const yAttr = (ydoc, id, k) => Number(yRect(ydoc, id).getAttribute(k))
+  const yAttr = (ydoc, id, k) => Number(rectEl(id).getAttribute(k))
 
   // Where a point in the shape's own space lands on the canvas, read straight
   // off the document.
@@ -408,8 +409,8 @@ describe('placing the pivot', () => {
     App.movePivot(id, 104, 297)          // near the SW corner of a 100,100 200x200 rect
     App.commitPivot(id, 104, 297)
 
-    expect(yRect(ydoc, id).getAttribute('data-pivot-x')).toBe('0')
-    expect(yRect(ydoc, id).getAttribute('data-pivot-y')).toBe('1')
+    expect(rectEl(id).getAttribute('data-pivot-x')).toBe('0')
+    expect(rectEl(id).getAttribute('data-pivot-y')).toBe('1')
   })
 
   test('placing a pivot on an UNROTATED shape moves nothing', async () => {
@@ -426,7 +427,7 @@ describe('placing the pivot', () => {
     // Turn it first.
     App.startRotate(id, 2)
     App.commitRotate(id, 2, 100, 300)          // 90°
-    const before = onCanvas(yRect(ydoc, id), nw(yRect(ydoc, id)))
+    const before = onCanvas(rectEl(id), nw(rectEl(id)))
 
     App.nextSelectionMode(id); App.nextSelectionMode(id); App.nextSelectionMode(id)
     expect(App.getRotateModeId()).toBe(id)
@@ -436,7 +437,7 @@ describe('placing the pivot', () => {
     // frame before it becomes fractions — landing on the SE corner locally.
     App.commitPivot(id, 100, 300)
 
-    const after = yRect(ydoc, id)
+    const after = rectEl(id)
     expect(after.getAttribute('data-pivot-x')).toBe('1')
     expect(after.getAttribute('data-pivot-y')).toBe('1')
     // x/y moved to compensate...
@@ -455,7 +456,7 @@ describe('placing the pivot', () => {
 
     App.startRotate(id, 2)
     App.commitRotate(id, 2, 300, 100)          // drag the SE corner up to the NE
-    expect(yRect(ydoc, id).getAttribute('data-rotate')).toBe('315')
+    expect(rectEl(id).getAttribute('data-rotate')).toBe('315')
   })
 
   test('cancelling a pivot drag writes nothing', async () => {
@@ -464,7 +465,7 @@ describe('placing the pivot', () => {
     App.movePivot(id, 100, 300)
     App.cancelPivot()
 
-    expect(yRect(ydoc, id).getAttribute('data-pivot-x')).toBe('0.5')
+    expect(rectEl(id).getAttribute('data-pivot-x')).toBe('0.5')
     expect(yAttr(ydoc, id, 'x')).toBe(100)
   })
 
@@ -475,8 +476,8 @@ describe('placing the pivot', () => {
     App.setPivotSnapFraction(0)                // free placement
     App.startPivotDrag(id)
     App.commitPivot(id, 120, 140)              // 10% / 20% in — would have snapped to the corner
-    expect(yRect(ydoc, id).getAttribute('data-pivot-x')).toBe('0.1')
-    expect(yRect(ydoc, id).getAttribute('data-pivot-y')).toBe('0.2')
+    expect(rectEl(id).getAttribute('data-pivot-x')).toBe('0.1')
+    expect(rectEl(id).getAttribute('data-pivot-y')).toBe('0.2')
 
     App.setPivotSnapFraction(0.08)
   })
@@ -486,7 +487,7 @@ describe('placing the pivot', () => {
     App.startPivotDrag(id)
     App.commitPivot(id, -9999, 9999)
 
-    expect(yRect(ydoc, id).getAttribute('data-pivot-x')).toBe('0')
-    expect(yRect(ydoc, id).getAttribute('data-pivot-y')).toBe('1')
+    expect(rectEl(id).getAttribute('data-pivot-x')).toBe('0')
+    expect(rectEl(id).getAttribute('data-pivot-y')).toBe('1')
   })
 })

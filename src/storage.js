@@ -9,28 +9,46 @@ import * as Toys     from './toys.js';
 import * as Drawing  from './drawing.js';
 import { appendCheckpoint } from './op_dag.js';
 import { checkpointOp } from './op_checkpoint.js';
-import { ensureLayerId, getOpLayer } from './op_layers.js';
+import { ensureLayerId, getOpLayer, LAYER_MARKER } from './op_layers.js';
 import { HEAD_MARKER } from './op_layer.js';
 
 // ── DOM → Yjs ────────────────────────────────────────────────────────────────
 
 // Stamp id/data-id/data-module on an imported top-level drawing or boundary
-// element, minting an id the same way app.js's commitDrawing does when the
-// source had none at all (a foreign shape with no id of its own).
-function ensureIdentity(yEl, dataModule) {
-  let id = yEl.getAttribute('id');
+// element (Y.XmlElement or DOM), minting an id the same way app.js's
+// commitDrawing does when the source had none at all (a foreign shape with
+// no id of its own).
+function ensureIdentity(el, dataModule) {
+  let id = el.getAttribute('id');
   if (!id) {
     id = 'import_' + Math.random().toString(36).slice(2, 7);
-    yEl.setAttribute('id', id);
+    el.setAttribute('id', id);
   }
-  yEl.setAttribute('data-id', id);
-  yEl.setAttribute('data-module', dataModule);
+  el.setAttribute('data-id', id);
+  el.setAttribute('data-module', dataModule);
+}
+
+// Parse one imported drawing-layer child into a live-document element ready
+// for the drawing layer: scripts removed, whitespace-only text dropped,
+// identity stamped, and its rotation reconciled against its transform.
+function parseDrawingEl(child) {
+  stripScripts(child);
+  const el = document.importNode(child, true);
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const blank = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (!n.textContent.trim()) blank.push(n);
+  }
+  blank.forEach(n => n.remove());
+  ensureIdentity(el, 'drawing');
+  Drawing.reconcileImportedTransform(el);
+  return el;
 }
 
 // Remove every <script> descendant in place. Drawing and boundaries are
-// rendered by a pure mirror with no filtering of its own (see drawing.js's
-// mirror(), boun_pos.js's mirrorBounPos()), so anything that shouldn't run
-// live has to be kept out at import instead.
+// rendered with no filtering of their own (see boun_pos.js's
+// mirrorBounPos()), so anything that shouldn't run live has to be kept out
+// at import instead.
 function stripScripts(el) {
   el.querySelectorAll('script').forEach(s => s.remove());
 }
@@ -55,7 +73,7 @@ export function domToY(node) {
 }
 
 /**
- * Populate a Yjs document (yMeta/yToys/yDrawing/yBounPos, all obtained
+ * Populate a Yjs document (yMeta/yBounPos and the op layers, all obtained
  * directly off ydoc) from a source <svg> root element — background pattern,
  * #toys-layer, #drawing-layer, #boundaries-positions-layer, and (as a
  * fallback) any other top-level elements not belonging to a known layer.
@@ -69,24 +87,22 @@ export function domToY(node) {
  *
  * opts.asNewTable — this ydoc has never had anything in it (a table just
  * created for this content, not a live one being imported into). Only
- * then are toys written as a genesis checkpoint (parents: []) rather than
- * left for the caller to place as real gestures. Appending a genesis to a
- * table that already has history forks it — the same bug closed for the
- * boot race applies here too, just triggered by an import button instead
- * of two tabs opening at once. app.js's live-table importSVG must not set
- * this; it has no gesture-based import path yet (see REVISION_PLAN.md
- * C5) and currently only writes drawing/boundaries/meta correctly when
- * used against a live table — its toy handling is a known gap, not
- * silently declared fixed here.
+ * then are toys and drawing written as genesis checkpoints (parents: [])
+ * rather than left for the caller to commit as real gestures. Appending a
+ * genesis to a table that already has history forks it — the same bug
+ * closed for the boot race applies here too, just triggered by an import
+ * button instead of two tabs opening at once. app.js's live-table importSVG
+ * must not set this: it commits importedToyEls and importedDrawEls as
+ * import gestures instead.
  *
- * Returns { toyCount, drawCount, bounPosCount, invalidToyEls }.
+ * Returns { toyCount, drawCount, bounPosCount, invalidToyEls, importedToyEls,
+ * importedDrawEls }.
  * invalidToyEls are DOM elements found directly inside #toys-layer that
  * Toys.parseForeignToy doesn't recognise as a toy; the caller decides what
  * to do with them.
  */
 export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
   const yMeta    = ydoc.getMap('meta');
-  const yDrawing = ydoc.getXmlFragment('drawing');
   const yBounPos = ydoc.getXmlFragment('boundaries');
 
   const bgPattern    = svgRootEl.querySelector('defs pattern');
@@ -97,6 +113,7 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
   let toyCount = 0, drawCount = 0, bounPosCount = 0;
   const invalidToyEls = [];
   const importedToyEls = [];
+  const importedDrawEls = [];
 
   // Background: extract bg image url/dimensions from the <pattern> in
   // <defs> and write to yMeta so the background is restored on import.
@@ -162,16 +179,17 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
     }
   }
 
+  // Drawing layer. Same shape as toys: every shape is parsed into a
+  // detached scratch layer, then either becomes the genesis checkpoint
+  // (asNewTable) or is handed back for the caller to commit as one import
+  // gesture. A new table always gets a drawing genesis, even an empty one,
+  // so a peer joining it has a checkpoint to project from.
+  const drawScratch = ensureLayerId(
+    document.createElementNS('http://www.w3.org/2000/svg', 'g'), getOpLayer('drawing'));
+
   if (drawLayerEl) {
     for (const child of drawLayerEl.children) {
-      stripScripts(child);
-      const yEl = domToY(child);
-      if (!yEl) continue;
-      // Insert FIRST: Yjs refuses attribute reads on a detached element, so
-      // reconciling before this point silently does nothing at all.
-      yDrawing.insert(yDrawing.length, [yEl]);
-      ensureIdentity(yEl, 'drawing');
-      Drawing.reconcileImportedTransform(yEl);
+      drawScratch.appendChild(parseDrawingEl(child));
       drawCount++;
     }
   }
@@ -203,32 +221,33 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
     if (id === 'boundaries-positions-layer') continue; // handled above
     // overlay-layer is UI-only and is stripped on export
     if (id === 'overlay-layer') continue;
-    stripScripts(el);
-    const yEl = domToY(el);
-    if (yEl) {
-      yDrawing.insert(yDrawing.length, [yEl]);
-      ensureIdentity(yEl, 'drawing');
-      drawCount++;
-    }
+    drawScratch.appendChild(parseDrawingEl(el));
+    drawCount++;
   }
 
-  return { toyCount, drawCount, bounPosCount, invalidToyEls, importedToyEls };
+  if (opts.asNewTable) {
+    const { op: genesis, content } = checkpointOp(drawScratch, { authorId: opts.authorId, parents: [] });
+    appendCheckpoint(ydoc, getOpLayer('drawing'), genesis, content);
+  } else {
+    importedDrawEls.push(...drawScratch.children);
+  }
+
+  return { toyCount, drawCount, bounPosCount, invalidToyEls, importedToyEls, importedDrawEls };
 }
 
 // ── Yjs → DOM (export) ────────────────────────────────────────────────────────
 
 /**
  * Build an export-ready SVG DOM tree from the live canvas element plus the
- * canonical Yjs document (yToys/yDrawing/yScripts, obtained directly off
- * ydoc). Clones the live element for the skeleton (defs, background,
- * boundaries) and strips overlay/UI-only bits, but rebuilds #toys-layer and
- * #drawing-layer directly from the Yjs fragments, and appends one
- * consolidated <script> per hoisted namespace at document root — see
- * toys.js, "Script hoisting": a toy's own Yjs subtree never carries a
- * <script> at all anymore (hoisted to the document's own `scripts`
- * fragment at placement time), so there's nothing to lose by cloning the
- * live DOM for everything else; scripts just need their own explicit pass
- * since they don't live in any per-toy subtree to clone from.
+ * document's hoisted scripts (yScripts, obtained directly off ydoc). Clones
+ * the live element, which already holds the toys and drawing layers as the
+ * op log projected them, and strips overlay/UI-only bits and op-layer
+ * bookkeeping, and appends one consolidated <script> per hoisted namespace
+ * at document root — see toys.js, "Script hoisting": a toy's own subtree
+ * never carries a <script> at all anymore (hoisted to the document's own
+ * `scripts` fragment at placement time), so there's nothing to lose by
+ * cloning the live DOM; scripts just need their own explicit pass since
+ * they don't live in any per-toy subtree to clone from.
  *
  * Also stamps the attributes an exported file needs to stand alone as a
  * real, re-importable, Inkscape-friendly SVG document: a viewBox (falling
@@ -238,7 +257,6 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
  * on the toy/drawing layers so Inkscape treats them as real layers.
  */
 export function buildExportSvg(liveSvgEl, ydoc) {
-  const yDrawing = ydoc.getXmlFragment('drawing');
   const yScripts = ydoc.getXmlFragment('scripts');
 
   const clone = liveSvgEl.cloneNode(true);
@@ -247,21 +265,16 @@ export function buildExportSvg(liveSvgEl, ydoc) {
     clone.querySelector(sel)?.remove();
   });
 
-  // Toys: the live DOM is the canonical projection of the op log (or,
-  // absent that, of Yjs — projectLayer's fallback). cloneNode(true) above
-  // already captured it faithfully, data-id and all, so there's nothing
-  // to rebuild here — only internal bookkeeping to strip before it leaks
-  // into a file a person might open in Inkscape.
-  const toysLayerEl = clone.querySelector('#toys-layer');
-  if (toysLayerEl) {
-    toysLayerEl.removeAttribute(HEAD_MARKER);
-    toysLayerEl.setAttribute('inkscape:groupmode', 'layer');
-  }
-  const drawLayerEl = clone.querySelector('#drawing-layer');
-  if (drawLayerEl) {
-    drawLayerEl.innerHTML = '';
-    Drawing.listDrawings(yDrawing).forEach(el => drawLayerEl.appendChild(el));
-    drawLayerEl.setAttribute('inkscape:groupmode', 'layer');
+  // Toys and drawing: the live DOM is the canonical projection of each op
+  // log. cloneNode(true) above already captured it faithfully, data-id and
+  // all, so there's nothing to rebuild here — only internal bookkeeping to
+  // strip before it leaks into a file a person might open in Inkscape.
+  for (const sel of ['#toys-layer', '#drawing-layer']) {
+    const layerEl = clone.querySelector(sel);
+    if (!layerEl) continue;
+    layerEl.removeAttribute(HEAD_MARKER);
+    layerEl.removeAttribute(LAYER_MARKER);
+    layerEl.setAttribute('inkscape:groupmode', 'layer');
   }
 
   // One consolidated <script> per namespace at document root — never one
