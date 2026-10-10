@@ -1896,10 +1896,10 @@ export const TOYS_LAYER = defineOpLayer({
   name:        'toys',
   selector:    '#toys-layer',
   layerDataId: 'tt-layer-toys',
-  opsKey:      'ops',
-  contentKey:  'checkpointContent',
-  headKey:     (tableId) => `tt_head_${tableId}`,
-  mergeKey:    (tableId) => `tt_head_merge_${tableId}`,
+  opsKey:      'ops:toys',
+  contentKey:  'checkpointContent:toys',
+  headKey:     (tableId) => `tt_head_toys_${tableId}`,
+  mergeKey:    (tableId) => `tt_head_merge_toys_${tableId}`,
   hooks: {
     // The contents_change / positions_change cascades run inside the
     // gesture's own op.

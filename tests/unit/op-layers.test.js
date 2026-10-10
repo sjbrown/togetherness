@@ -323,17 +323,17 @@ describe('pruning stays in its own layer', () => {
 })
 
 describe('storage keys come from the descriptor', () => {
-  test('toys keeps its legacy keys', () => {
+  test('toys uses its own namespaced keys', () => {
     const [A] = newPeers('alice')
     const op = addNode(A, TOYS_LAYER, 't1')
 
-    expect(A.ydoc.getMap('ops').get(op.id)).toEqual(op)
-    expect(localStorage.getItem(`tt_head_${A.tableId}`)).toBe(op.id)
+    expect(A.ydoc.getMap('ops:toys').get(op.id)).toEqual(op)
+    expect(localStorage.getItem(`tt_head_toys_${A.tableId}`)).toBe(op.id)
     expect(A.toysEl.getAttribute('data-op-layer')).toBe('toys')
     expect(A.toysEl.getAttribute('data-id')).toBe('tt-layer-toys')
 
     setMergeTips(A.tableId, TOYS_LAYER, ['m1'])
-    expect(localStorage.getItem(`tt_head_merge_${A.tableId}`)).toBe('["m1"]')
+    expect(localStorage.getItem(`tt_head_merge_toys_${A.tableId}`)).toBe('["m1"]')
   })
 
   test('a new layer uses its own keys and shares none of toys\'', () => {
@@ -341,9 +341,9 @@ describe('storage keys come from the descriptor', () => {
     const op = addNode(A, SCRATCH, 's1')
 
     expect(A.ydoc.getMap('ops:scratch').get(op.id)).toEqual(op)
-    expect(A.ydoc.getMap('ops').has(op.id)).toBe(false)
+    expect(A.ydoc.getMap('ops:toys').has(op.id)).toBe(false)
     expect(localStorage.getItem(`tt_head_scratch_${A.tableId}`)).toBe(op.id)
-    expect(localStorage.getItem(`tt_head_${A.tableId}`)).toBe('genesis-toys')
+    expect(localStorage.getItem(`tt_head_toys_${A.tableId}`)).toBe('genesis-toys')
     expect(A.scratchEl.getAttribute('data-op-layer')).toBe('scratch')
     expect(A.scratchEl.getAttribute('data-id')).toBe('tt-layer-scratch')
   })

@@ -199,7 +199,7 @@ describe('resetJoinSequence ordering, reset-before-hash', () => {
     // forkLiveDoc's own opsSeed branch, replicated directly — same
     // IndexedDB constraint as the test above.
     const sourceDoc = new Y.Doc()
-    const ops = sourceDoc.getMap('ops')
+    const ops = sourceDoc.getMap('ops:toys')
     ops.set('leader-op-1', { id: 'leader-op-1', parents: [], gesture: 'checkpoint' })
     ops.set('splitter-op-1', { id: 'splitter-op-1', parents: [], gesture: 'checkpoint' })
     const baseUpdate = Y.encodeStateAsUpdate(sourceDoc)
@@ -207,28 +207,28 @@ describe('resetJoinSequence ordering, reset-before-hash', () => {
     const forkDoc = new Y.Doc()
     Y.applyUpdate(forkDoc, baseUpdate)
     forkDoc.clientID = deterministicClientId(baseUpdate)
-    expect(forkDoc.getMap('ops').size).toBe(2) // inherited everything, including the leader's op
+    expect(forkDoc.getMap('ops:toys').size).toBe(2) // inherited everything, including the leader's op
 
     const opsSeed = {
       genesis: { id: 'new-genesis', parents: [], gesture: 'checkpoint' },
       rebasedOps: [{ id: 'splitter-op-1', parents: ['new-genesis'], gesture: 'move' }],
     }
 
-    const forkOps = forkDoc.getMap('ops')
+    const forkOps = forkDoc.getMap('ops:toys')
     forkDoc.transact(() => {
       forkOps.clear()
       forkOps.set(opsSeed.genesis.id, opsSeed.genesis)
       for (const op of opsSeed.rebasedOps) forkOps.set(op.id, op)
     })
 
-    const finalIds = [...forkDoc.getMap('ops').keys()]
+    const finalIds = [...forkDoc.getMap('ops:toys').keys()]
     expect(finalIds.sort()).toEqual(['new-genesis', 'splitter-op-1'])
     expect(finalIds).not.toContain('leader-op-1') // the leader branch's op did not survive the prune
   })
 
   test('two peers pruning to the same opsSeed produce byte-identical ops content', () => {
     const sourceDoc = new Y.Doc()
-    sourceDoc.getMap('ops').set('leader-op-1', { id: 'leader-op-1', parents: [] })
+    sourceDoc.getMap('ops:toys').set('leader-op-1', { id: 'leader-op-1', parents: [] })
     const baseUpdate = Y.encodeStateAsUpdate(sourceDoc)
 
     const opsSeed = { genesis: { id: 'g', parents: [] }, rebasedOps: [{ id: 's1', parents: ['g'] }] }
@@ -237,7 +237,7 @@ describe('resetJoinSequence ordering, reset-before-hash', () => {
       const doc = new Y.Doc()
       Y.applyUpdate(doc, baseUpdate)
       doc.clientID = deterministicClientId(baseUpdate)
-      const opsMap = doc.getMap('ops')
+      const opsMap = doc.getMap('ops:toys')
       doc.transact(() => {
         opsMap.clear()
         opsMap.set(opsSeed.genesis.id, opsSeed.genesis)
