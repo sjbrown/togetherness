@@ -1,9 +1,8 @@
 /**
  * tests/e2e/undo-redo.spec.js
  *
- * Undo/redo spans three mechanisms — the toys op layer, the drawing op
- * layer, and UndoRedo (Y.UndoManager, boundaries only) — and each press acts
- * on whichever holds the author's most recent action, by ts.
+ * Undo/redo spans three op layers — toys, drawing and boundaries — and each
+ * press acts on whichever holds the author's most recent action, by ts.
  *
  * Redo has no wired UI button yet (see ui.js) — called directly via
  * window.App.redo(), the same way several existing specs already call
