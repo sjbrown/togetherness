@@ -1952,8 +1952,7 @@ export function invokeMenuAction(ydoc, layerEl, svgEl, namespace, key, evt, auth
   let result
   /*
    * Note: Wrapped in an outer, unlabeled ydoc.transact() so a folded caller's
-   * commit lands under null, the same as every other folded call site (see
-   * undo_redo.js's "Atomicity" note).
+   * commit lands under null, the same as every other folded call site.
    */
   ydoc.transact(() => {
     result = runGesture(ydoc, layerEl, () => entry.handler.call(svgEl, evt),
@@ -2040,8 +2039,7 @@ export function importToys(ydoc, layerEl, toyEls, opts = {}) {
 
 /**
  * Delete several toys as one gesture, one operation — not one runGesture
- * call per id. commitGesture has no free nested-transaction collapsing the
- * way Y.UndoManager gives drawing/boundaries; a loop of individual
+ * call per id. commitGesture has no free nested-transaction collapsing; a loop of individual
  * L.delete(id) calls would mint N separate operations, and undo only ever
  * reverses "my most recent one" — a multi-delete would need N separate undo
  * presses to fully reverse instead of one. Used by app.js's

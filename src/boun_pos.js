@@ -1,26 +1,27 @@
 /**
- * boun_pos.js — complete module for the Boundaries and Positions layer.
+ * boun_pos.js — complete module for the Boundaries and Positions layer, an op
+ * layer (BOUNDARIES_LAYER).
  *
- * Both element types are Y.XmlElement('g') siblings in the yBounPos fragment.
- * data-bounpos-type="boundary" | "pos-set" distinguishes them. Yjs treats
- * the fragment as opaque — all semantic dispatch lives here.
+ * Both element types are <g> siblings in #boundaries-positions-layer.
+ * data-bounpos-type="boundary" | "pos-set" distinguishes them. Every write is
+ * a DOM operation on the live layer, run inside a gesture (OpLayer.runGesture)
+ * so the envelope captures it as one operation; the op log is the replicated
+ * state. Requires a DOM (browser or jsdom).
  *
  * World position = children's local coordinates + the group's
  * transform="translate(tx, ty)" (absent means 0, 0). A move changes only the
  * transform; elements created before this layout have absolute children and
  * no transform, and read the same way.
  *
- * Boundary Yjs structure:
+ * Boundary structure:
  *   <g id data-id data-module name data-bounpos-type="boundary" transform>
  *     <path d/>
- *     <text x y>
- *       Y.XmlText(name)
+ *     <text x y>name</text>
  *
- * Position-set Yjs structure:
+ * Position-set structure:
  *   <g id data-id data-module name data-bounpos-type="pos-set" transform data-snap-radius data-gen-type data-gen-x-spacing data-gen-y-spacing>
  *     <path d/>   ← extent rect
- *     <text x y>
- *       Y.XmlText(name)
+ *     <text x y>name</text>
  *     <circle cx cy r/>   … N snap points
  *
  * ID formats:
@@ -28,25 +29,12 @@
  *   position set: tt-ps-v1-XXXXX
  */
 
-import * as Y from 'yjs';
 import { computeResizeCornerRect } from './geometry.js';
+import { defineOpLayer } from './op_layers.js';
+import * as OpLayer from './op_layer.js';
 
 const SVG_NS   = 'http://www.w3.org/2000/svg';
 const ID_CHARS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHLMNPQRTUV2346789';
-
-/** Mirror a Y.XmlElement tree into a live, SVG-namespaced DOM element. */
-function mirrorBounPos(yNode) {
-  if (yNode instanceof Y.XmlText) return document.createTextNode(yNode.toString());
-  if (!(yNode instanceof Y.XmlElement)) return null;
-  const el = document.createElementNS(SVG_NS, yNode.nodeName);
-  const attrs = yNode.getAttributes();
-  for (const k in attrs) el.setAttribute(k, attrs[k]);
-  yNode.toArray().forEach(child => {
-    const dom = mirrorBounPos(child);
-    if (dom) el.appendChild(dom);
-  });
-  return el;
-}
 
 // ── ID helpers ────────────────────────────────────────────────────────────────
 
@@ -81,7 +69,7 @@ export function pathToRect(d) {
 
 const TRANSLATE_RE = /^\s*translate\(\s*(-?[\d.]+(?:e-?\d+)?)(?:[\s,]+(-?[\d.]+(?:e-?\d+)?))?\s*\)\s*$/i;
 
-// Reads el's translate(tx, ty) from a DOM element or Y.XmlElement. Anything
+// Reads el's translate(tx, ty) from a DOM element. Anything
 // other than a bare translate is read as (0, 0) and left alone: these
 // elements never carry rotate or scale, so an imported transform of another
 // shape isn't ours to interpret.
@@ -127,7 +115,7 @@ export function toolParamsToCreateParams(genType, toolParams, {x, y, w, h}) {
  * Compute the circle positions + shared radius for genType/xSpacing/
  * ySpacing within an extent rect ({x,y,w,h}), at the given snapRadius
  * level (1-4)
- * Exposed separately (pure, no Yjs) so a live preview can compute the
+ * Exposed separately (pure) so a live preview can compute the
  * identical result without writing anything
  */
 export function computeGridPositions(extent, genType, xSpacing, ySpacing, snapRadiusLevel) {
@@ -137,39 +125,27 @@ export function computeGridPositions(extent, genType, xSpacing, ySpacing, snapRa
   return { circles, r };
 }
 
-function rebuildPositionSetGrid(ydoc, yEl, { genType, xSpacing, ySpacing, snapRadiusLevel }) {
-  const yPath = yChildByTag(yEl, 'path');
-  if (!yPath) return;
+// Regenerates el's grid attributes and circles against its path's own extent,
+// in the element's local coordinates.
+function rebuildPositionSetGrid(el, { genType, xSpacing, ySpacing, snapRadiusLevel }) {
+  const path = childByTag(el, 'path');
+  if (!path) return;
 
-  const extent = pathToRect(yPath.getAttribute('d') ?? 'M0,0 L100,0 L100,100 L0,100 Z');
+  const extent = pathToRect(path.getAttribute('d') ?? 'M0,0 L100,0 L100,100 L0,100 Z');
   const { circles, r } = computeGridPositions(extent, genType, xSpacing, ySpacing, snapRadiusLevel);
 
-  ydoc.transact(() => {
-    yEl.setAttribute('data-gen-type',      genType);
-    yEl.setAttribute('data-gen-x-spacing', String(Math.round(xSpacing)));
-    yEl.setAttribute('data-gen-y-spacing', String(Math.round(ySpacing)));
-    yEl.setAttribute('data-snap-radius',   String(Math.round(r)));
+  el.setAttribute('data-gen-type',      genType);
+  el.setAttribute('data-gen-x-spacing', String(Math.round(xSpacing)));
+  el.setAttribute('data-gen-y-spacing', String(Math.round(ySpacing)));
+  el.setAttribute('data-snap-radius',   String(Math.round(r)));
 
-    const children = yEl.toArray();
-    for (let i = children.length - 1; i >= 0; i--) {
-      const child = children[i];
-      if (child instanceof Y.XmlElement && child.nodeName === 'circle') {
-        yEl.delete(i, 1);
-      }
-    }
-
-    const yCircles = circles.map(({ cx, cy }) => {
-      const c = new Y.XmlElement('circle');
-      c.setAttribute('cx', String(Math.round(cx)));
-      c.setAttribute('cy', String(Math.round(cy)));
-      c.setAttribute('r',  String(Math.round(r)));
-      return c;
-    });
-    yEl.insert(yEl.length, yCircles);
-  });
+  for (const child of [...el.children]) {
+    if (child.localName === 'circle') child.remove();
+  }
+  for (const { cx, cy } of circles) el.appendChild(makeCircle(cx, cy, r));
 }
 
-// ── Grid math (pure — no Yjs, fully testable) ─────────────────────────────
+// ── Grid math (pure, fully testable) ─────────────────────────────
 
 export function generateSquareGrid(origin, rows, cols, xSpacing, ySpacing = xSpacing) {
   const points = [];
@@ -318,36 +294,60 @@ function snapRadiusRadiusToLevel(radius, genType, xSpacing, ySpacing) {
 
 // ── Internal child-element helpers ────────────────────────────────────────────
 
-function yChildByTag(yEl, tag) {
-  return yEl.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === tag) ?? null;
+function childByTag(el, tag) {
+  for (const c of el?.children ?? []) if (c.localName === tag) return c;
+  return null;
 }
 
-function setYTextContent(ydoc, yEl, newText) {
-  // Update or create the Y.XmlText child of yEl within the current transaction.
-  const existing = yEl?.toArray().find(n => n instanceof Y.XmlText);
-  if (existing) {
-    existing.delete(0, existing.length);
-    existing.insert(0, newText);
-  } else if (yEl) {
-    yEl.insert(yEl.length, [new Y.XmlText(newText)]);
-  }
+function svgEl(tag, attrs = {}) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+  return el;
 }
 
-// ── CRDT operations — boundaries ─────────────────────────────────────────────
+function makeCircle(cx, cy, r) {
+  return svgEl('circle', { cx: Math.round(cx), cy: Math.round(cy), r: Math.round(r) });
+}
+
+// Change a <text>'s label in place: the existing text node's data when there
+// is one, so the envelope records a text mutation, else a fresh text node.
+function setTextContent(textEl, newText) {
+  const node = [...textEl.childNodes].find(n => n.nodeType === 3);
+  if (node) node.data = newText;
+  else textEl.appendChild(document.createTextNode(newText));
+}
+
+// The <g>, <path> and <text> shared by both element types, in local
+// coordinates with the label at the top-right corner.
+function buildGroup(bounPosType, { id, name, x, y, w, h }) {
+  const g = svgEl('g', {
+    id,
+    'data-id':           id,
+    'data-module':       'boun_pos',
+    name,
+    'data-bounpos-type': bounPosType,
+    transform:           translateAttr(x, y),
+  });
+  g.appendChild(svgEl('path', { d: rectToPath(0, 0, w, h) }));
+  const text = svgEl('text', { x: w, y: -5 });
+  text.appendChild(document.createTextNode(name));
+  g.appendChild(text);
+  return g;
+}
 
 // ── Type registry ─────────────────────────────────────────────────────────────
 // One entry per tool name. Everything that differs between a boundary, a square
 // grid, and a hex grid lives here.
 //
 // Fields:
-//   bounPosType  — the data-bounpos-type value written to Yjs ('boundary'|'pos-set')
+//   bounPosType  — the data-bounpos-type value on the element ('boundary'|'pos-set')
 //   label        — human label for the schema / layer panel
 //   iconUrl      — path to the tool icon SVG (fetched by ui.js iconFor())
 //   newId()      — returns { id, name } for a fresh element
 //   genType      — 'square'|'hex'|null (null for boundaries)
 //   schema       — ttStateSchema shape: { label, values, types }
-//   create(ydoc, yBounPos, params) — CRDT write
-//   toSVGEl(yG)  — Yjs node → live DOM element
+//   create(layerEl, params) — build the element and append it to the layer
+//                             (call inside a gesture)
 //
 // app.js builds the tool registry from Object.entries(BOUNPOS_TYPES).
 export const BOUNPOS_TYPES = {
@@ -365,30 +365,11 @@ export const BOUNPOS_TYPES = {
         name: { kind: 'string', show: ['add', 'edit'] },
       },
     },
-    create(ydoc, yBounPos, { id, name, x, y, w, h }) {
-      const d  = rectToPath(0, 0, w, h);
-      const tx = w;
-      const ty = -5;
-      const yG = new Y.XmlElement('g');
-      const yPath = new Y.XmlElement('path');
-      const yText = new Y.XmlElement('text');
-      ydoc.transact(() => {
-        yG.setAttribute('id',                id);
-        yG.setAttribute('data-id',           id);
-        yG.setAttribute('data-module',       'boun_pos');
-        yG.setAttribute('name',              name);
-        yG.setAttribute('data-bounpos-type', 'boundary');
-        yG.setAttribute('transform',         translateAttr(x, y));
-        yPath.setAttribute('d',            d);
-        yText.setAttribute('x',           String(tx));
-        yText.setAttribute('y',           String(ty));
-        yText.insert(0, [new Y.XmlText(name)]);
-        yG.insert(0, [yPath, yText]);
-        yBounPos.insert(yBounPos.length, [yG]);
-      });
-      return yG;
+    create(layerEl, params) {
+      const g = buildGroup('boundary', params);
+      layerEl.appendChild(g);
+      return g;
     },
-    toSVGEl(yG) { return mirrorBounPos(yG); },
   },
 
   'pos-grid-sq': {
@@ -409,10 +390,9 @@ export const BOUNPOS_TYPES = {
         ySpacing:   { kind: 'number', min: 30, max: 200, step: 1, show: ['edit'] },
       },
     },
-    create(ydoc, yBounPos, params) {
-      return _createPositionSet(ydoc, yBounPos, params);
+    create(layerEl, params) {
+      return _createPositionSet(layerEl, params);
     },
-    toSVGEl(yG) { return _positionSetToSVGEl(yG); },
   },
 
   'pos-grid-hex': {
@@ -432,10 +412,9 @@ export const BOUNPOS_TYPES = {
         ySpacing:   { kind: 'number', min: 30, max: 200, step: 1, show: ['edit'] },
       },
     },
-    create(ydoc, yBounPos, params) {
-      return _createPositionSet(ydoc, yBounPos, params);
+    create(layerEl, params) {
+      return _createPositionSet(layerEl, params);
     },
-    toSVGEl(yG) { return _positionSetToSVGEl(yG); },
   },
   
   'pos-grid-flat-hex': {
@@ -455,53 +434,25 @@ export const BOUNPOS_TYPES = {
         ySpacing:   { kind: 'number', min: 30, max: 200, step: 1, show: ['edit'] },
       },
     },
-    create(ydoc, yBounPos, params) {
-      return _createPositionSet(ydoc, yBounPos, params);
+    create(layerEl, params) {
+      return _createPositionSet(layerEl, params);
     },
-    toSVGEl(yG) { return _positionSetToSVGEl(yG); },
   },
 };
 
 // Helper used by all pos-set variants.
-function _createPositionSet(ydoc, yBounPos,
+function _createPositionSet(layerEl,
   { id, name, snapRadius, genType, xSpacing, ySpacing, x, y, w, h, circles }) {
-  const d  = rectToPath(0, 0, w, h);
-  const tx = w;
-  const ty = -5;
-  const yG       = new Y.XmlElement('g');
-  const yPath    = new Y.XmlElement('path');
-  const yText    = new Y.XmlElement('text');
+  const g = buildGroup('pos-set', { id, name, x, y, w, h });
+  g.setAttribute('data-snap-radius',   String(Math.round(snapRadius)));
+  g.setAttribute('data-gen-type',      genType);
+  g.setAttribute('data-gen-x-spacing', String(Math.round(xSpacing)));
+  g.setAttribute('data-gen-y-spacing', String(Math.round(ySpacing)));
   // Callers pass circles in world coordinates; they're stored relative to (x, y).
-  const yCircles = (circles ?? []).map(({ cx, cy }) => {
-    const c = new Y.XmlElement('circle');
-    c.setAttribute('cx', String(Math.round(cx - x)));
-    c.setAttribute('cy', String(Math.round(cy - y)));
-    c.setAttribute('r',  String(Math.round(snapRadius)));
-    return c;
-  });
-
-  ydoc.transact(() => {
-    yG.setAttribute('id',               id);
-    yG.setAttribute('data-id',          id);
-    yG.setAttribute('data-module',      'boun_pos');
-    yG.setAttribute('name',             name);
-    yG.setAttribute('data-bounpos-type', 'pos-set');
-    yG.setAttribute('transform',         translateAttr(x, y));
-    yG.setAttribute('data-snap-radius',  String(Math.round(snapRadius)));
-    yG.setAttribute('data-gen-type',     genType);
-    yG.setAttribute('data-gen-x-spacing', String(Math.round(xSpacing)));
-    yG.setAttribute('data-gen-y-spacing', String(Math.round(ySpacing)));
-    yPath.setAttribute('d', d);
-    yText.setAttribute('x', String(tx));
-    yText.setAttribute('y', String(ty));
-    yText.insert(0, [new Y.XmlText(name)]);
-    yG.insert(0, [yPath, yText, ...yCircles]);
-    yBounPos.insert(yBounPos.length, [yG]);
-  });
-  return yG;
+  for (const { cx, cy } of circles ?? []) g.appendChild(makeCircle(cx - x, cy - y, snapRadius));
+  layerEl.appendChild(g);
+  return g;
 }
-
-function _positionSetToSVGEl(yG) { return mirrorBounPos(yG); }
 
 // ── Elevated layer API ────────────────────────────────────────────────────────
 
@@ -509,15 +460,15 @@ function _positionSetToSVGEl(yG) { return mirrorBounPos(yG); }
  * Convenience wrappers — kept for call sites that name a specific type.
  * Internally both delegate to BOUNPOS_TYPES[toolName].create().
  */
-export function addBoundary(ydoc, yBounPos, params) {
-  return BOUNPOS_TYPES.boundary.create(ydoc, yBounPos, params);
+export function addBoundary(layerEl, params) {
+  return BOUNPOS_TYPES.boundary.create(layerEl, params);
 }
 
-export function createPositionSetElement(ydoc, yBounPos, params) {
-  return _createPositionSet(ydoc, yBounPos, params);
+export function createPositionSetElement(layerEl, params) {
+  return _createPositionSet(layerEl, params);
 }
 
-export function addPositionSet(ydoc, yBounPos,
+export function addPositionSet(layerEl,
   { x, y, w, h, toolName, toolParams }) {
   const def = BOUNPOS_TYPES[toolName];
   if (!def) return null;
@@ -529,35 +480,22 @@ export function addPositionSet(ydoc, yBounPos,
 
   if (circles.length === 0) return null;
   const { id, name } = def.newId();
-  def.create(ydoc, yBounPos,
+  def.create(layerEl,
     { id, name, snapRadius, genType, xSpacing, ySpacing, x, y, w, h, circles });
   return { id, name, genType };
 }
 
-function _toSVGEl(yG) {
-  const bounPosType = yG.getAttribute('data-bounpos-type') ?? 'boundary';
-  const genType     = yG.getAttribute('data-gen-type') ?? null;
-  const def = Object.values(BOUNPOS_TYPES).find(d =>
-    d.bounPosType === bounPosType && d.genType === genType
-  ) ?? Object.values(BOUNPOS_TYPES).find(d => d.bounPosType === bounPosType)
-    ?? BOUNPOS_TYPES.boundary;
-  return def.toSVGEl(yG);
+export function findEl(layerEl, id) {
+  for (const el of layerEl?.children ?? []) {
+    if (el.getAttribute('data-id') === id) return el;
+  }
+  return null;
 }
 
-export function findEl(yBounPos, id) {
-  return yBounPos.toArray().find(
-    e => e instanceof Y.XmlElement && e.getAttribute('id') === id
-  ) ?? null;
-}
-
-export function deleteEl(ydoc, yBounPos, id) {
-  const idx = yBounPos.toArray().findIndex(
-    e => e instanceof Y.XmlElement && e.getAttribute('id') === id
-  );
-  if (idx === -1) return false;
-  ydoc.transact(() => {
-    yBounPos.delete(idx, 1);
-  });
+export function deleteEl(layerEl, id) {
+  const el = findEl(layerEl, id);
+  if (!el) return false;
+  el.remove();
   return true;
 }
 
@@ -565,15 +503,13 @@ export function deleteEl(ydoc, yBounPos, id) {
 // on. findEl/deleteEl stay exported as-is for existing call sites/tests.
 export const find = findEl;
 
-export function applyMoveCommit(ydoc, yEl, x, y) {
-  if (!yEl) return;
-  const yPath = yChildByTag(yEl, 'path');
-  if (!yPath) return;
+export function applyMoveCommit(el, x, y) {
+  if (!el) return;
+  const path = childByTag(el, 'path');
+  if (!path) return;
 
-  const { x: localX, y: localY } = localRectOf(yPath);
-  ydoc.transact(() => {
-    yEl.setAttribute('transform', translateAttr(x - localX, y - localY));
-  });
+  const { x: localX, y: localY } = localRectOf(path);
+  el.setAttribute('transform', translateAttr(x - localX, y - localY));
 }
 
 const MIN_BOUNPOS_RESIZE_SIZE = 30; // Can't resize below this limit
@@ -583,66 +519,47 @@ export function computeResize(mode, startRect, corner, px, py) {
 }
 
 /**
- * Commit a corner-drag resize to the Yjs doc in a single transaction.
+ * Commit a corner-drag resize to the live element.
  * For a pos-set, also regenerates the circle grid
  */
-export function applyResize(ydoc, yEl, x, y, width, height) {
-  if (!yEl) return;
-  const type  = yEl.getAttribute('data-bounpos-type') ?? 'boundary';
-  const yPath = yChildByTag(yEl, 'path');
-  const yText = yChildByTag(yEl, 'text');
-  if (!yPath) return;
+export function applyResize(el, x, y, width, height) {
+  if (!el) return;
+  const type = el.getAttribute('data-bounpos-type') ?? 'boundary';
+  const path = childByTag(el, 'path');
+  const text = childByTag(el, 'text');
+  if (!path) return;
 
-  ydoc.transact(() => {
-    yEl.setAttribute('transform', translateAttr(x, y));
-    yPath.setAttribute('d', rectToPath(0, 0, width, height));
-    if (yText) {
-      yText.setAttribute('x', String(width));
-      yText.setAttribute('y', '-5');
-    }
+  el.setAttribute('transform', translateAttr(x, y));
+  path.setAttribute('d', rectToPath(0, 0, width, height));
+  if (text) {
+    text.setAttribute('x', String(width));
+    text.setAttribute('y', '-5');
+  }
 
-    if (type === 'pos-set') {
-      const genType = yEl.getAttribute('data-gen-type') ?? 'square';
-      const { xSpacing, ySpacing } = gridSpacingFromInput(genType, {
-        xSpacing: yEl.getAttribute('data-gen-x-spacing'),
-        ySpacing: yEl.getAttribute('data-gen-y-spacing'),
-        genParam: yEl.getAttribute('data-gen-param'),
-      });
-      const snapRadiusLevel = snapRadiusRadiusToLevel(
-        Number(yEl.getAttribute('data-snap-radius') ?? 30),
-        genType, xSpacing, ySpacing
-      );
-      // rebuildPositionSetGrid reads its extent off yPath's own 'd' —
-      // already updated above, in this same transaction, so it regenerates
-      // the grid against the NEW rect, not the pre-resize one.
-      rebuildPositionSetGrid(ydoc, yEl, { genType, xSpacing, ySpacing, snapRadiusLevel });
-    }
-  });
-}
-
-/**
- * Render the entire Boundaries and Positions layer into layerEl.
- */
-export function render(yBounPos, layerEl) {
-  layerEl.innerHTML = '';
-  for (const node of yBounPos.toArray()) {
-    if (!(node instanceof Y.XmlElement)) continue;
-    const svgEl = _toSVGEl(node);
-    if (svgEl) layerEl.appendChild(svgEl);
+  if (type === 'pos-set') {
+    const genType = el.getAttribute('data-gen-type') ?? 'square';
+    const { xSpacing, ySpacing } = gridSpacingFromInput(genType, {
+      xSpacing: el.getAttribute('data-gen-x-spacing'),
+      ySpacing: el.getAttribute('data-gen-y-spacing'),
+      genParam: el.getAttribute('data-gen-param'),
+    });
+    const snapRadiusLevel = snapRadiusRadiusToLevel(
+      Number(el.getAttribute('data-snap-radius') ?? 30),
+      genType, xSpacing, ySpacing
+    );
+    // rebuildPositionSetGrid reads its extent off the path's own 'd' —
+    // already updated above, so it regenerates the grid against the NEW
+    // rect, not the pre-resize one.
+    rebuildPositionSetGrid(el, { genType, xSpacing, ySpacing, snapRadiusLevel });
   }
 }
-
-// Back-compat alias — renderLayer was the original name before render()
-// became the canonical LayerAPI method name shared with drawing/toys.
-export const renderLayer = render;
 
 /**
  * All elements as layer-object descriptors for the layers panel.
  */
-export function layerData(yBounPos) {
+export function layerData(layerEl) {
   const results = [];
-  for (const node of yBounPos.toArray()) {
-    if (!(node instanceof Y.XmlElement)) continue;
+  for (const node of layerEl?.children ?? []) {
     const id   = node.getAttribute('id');
     const name = node.getAttribute('name') ?? id;
     const kind = node.getAttribute('data-bounpos-type') ?? 'boundary';
@@ -650,8 +567,6 @@ export function layerData(yBounPos) {
   }
   return results;
 }
-
-// metaFor removed — all state lives on the <g> attributes in the Yjs tree.
 
 // ── Geometry queries ──────────────────────────────────────────────────────────
 
@@ -756,34 +671,35 @@ export function getTtStateSchema(svgElOrType) {
 
 
 /**
- * Snapshot the full serialisable state of a bounPos Y.XmlElement (<g>).
- * Extracts geometry from the child <path> d attribute, so no DOM is needed.
- * Author/created are omitted — those are provenance, not element state.
+ * Snapshot the full serialisable state of a bounPos element (<g>).
+ * Extracts geometry from the child <path> d attribute and the group's
+ * transform. Author/created are omitted — those are provenance, not element
+ * state.
  */
-export function getTtState(yEl) {
-  if (!yEl) return null;
-  const id          = yEl.getAttribute('id');
-  const bounPosType = yEl.getAttribute('data-bounpos-type') ?? 'boundary';
-  const name        = yEl.getAttribute('name') ?? id;
-  const yPath       = yChildByTag(yEl, 'path');
-  const { x, y, w, h } = yPath
-    ? worldRectOf(yEl, yPath)
+export function getTtState(el) {
+  if (!el) return null;
+  const id          = el.getAttribute('id');
+  const bounPosType = el.getAttribute('data-bounpos-type') ?? 'boundary';
+  const name        = el.getAttribute('name') ?? id;
+  const path        = childByTag(el, 'path');
+  const { x, y, w, h } = path
+    ? worldRectOf(el, path)
     : { x: 0, y: 0, w: 100, h: 100 };
   const state = { id, bounPosType, name, x, y, w, h };
 
   if (bounPosType === 'pos-set') {
-    const genType = yEl.getAttribute('data-gen-type') ?? 'square';
+    const genType = el.getAttribute('data-gen-type') ?? 'square';
     const { xSpacing, ySpacing } = gridSpacingFromInput(genType, {
-      xSpacing: yEl.getAttribute('data-gen-x-spacing'),
-      ySpacing: yEl.getAttribute('data-gen-y-spacing'),
-      genParam: yEl.getAttribute('data-gen-param'),
+      xSpacing: el.getAttribute('data-gen-x-spacing'),
+      ySpacing: el.getAttribute('data-gen-y-spacing'),
+      genParam: el.getAttribute('data-gen-param'),
     });
 
     state.genType    = genType;
     state.xSpacing   = xSpacing;
     state.ySpacing   = ySpacing;
     state.snapRadius = snapRadiusRadiusToLevel(
-      yEl.getAttribute('data-snap-radius') ?? 30,
+      el.getAttribute('data-snap-radius') ?? 30,
       genType,
       xSpacing,
       ySpacing
@@ -793,12 +709,12 @@ export function getTtState(yEl) {
   return state;
 }
 
-function createBounPos(state, ydoc, yBounPos) {
+function createBounPos(state, layerEl) {
   if (state.bounPosType === 'pos-set') {
     const { xSpacing, ySpacing } = gridSpacingFromInput(state.genType, state);
     const circles = gridFillExtent(state.x, state.y, state.w, state.h, state.genType, xSpacing, ySpacing);
 
-    createPositionSetElement(ydoc, yBounPos, {
+    createPositionSetElement(layerEl, {
       id:         state.id,
       name:       state.name,
       snapRadius: snapRadiusStateToRadius(state.snapRadius ?? 10, state.genType, xSpacing, ySpacing),
@@ -812,7 +728,7 @@ function createBounPos(state, ydoc, yBounPos) {
       circles,
     });
   } else {
-    addBoundary(ydoc, yBounPos, {
+    addBoundary(layerEl, {
       id:     state.id,
       name:   state.name,
       x:      state.x,
@@ -824,91 +740,50 @@ function createBounPos(state, ydoc, yBounPos) {
 }
 
 /**
- * Write a ttState snapshot back into the Yjs bounPos fragment.
- * Used by undo/redo to reconstruct deleted boundaries and position sets.
+ * Write a ttState snapshot back onto the layer: edits the element if it
+ * exists, creates it if not.
  */
-export function applyTtState(ydoc, yBounPos, state) {
+export function applyTtState(layerEl, state) {
   if (!state?.bounPosType) {
     console.error('invalid bounPos state')
     return;
   }
   if (!state?.id) {
-    createBounPos(state, ydoc, yBounPos);
+    createBounPos(state, layerEl);
   } else {
-    editBounPos(state, ydoc, yBounPos);
+    editBounPos(state, layerEl);
   }
 }
 
-export function editBounPos(state, ydoc, yBounPos) {
+export function editBounPos(state, layerEl) {
   // Note 'state' might be partial - only update attrs that are present
-  const existing = findEl(yBounPos, state.id);
+  const existing = findEl(layerEl, state.id);
   if (!existing) {
     console.error('bounPos state id not found')
     return
   }
 
-  // Update in place — only write keys present in the state snapshot.
-  const type = existing.getAttribute('data-bounpos-type');
-  ydoc.transact(() => {
-    if (state.name !== undefined) {
-      existing.setAttribute('name', String(state.name));
-      const yText = yChildByTag(existing, 'text');
-      if (yText) setYTextContent(ydoc, yText, String(state.name));
-    }
-  });
-
-  if (type === 'pos-set' && (
-    state.snapRadius !== undefined ||
-    state.xSpacing !== undefined ||
-    state.ySpacing !== undefined ||
-    state.genType !== undefined
-  )) {
-    const genType = state.genType ?? existing.getAttribute('data-gen-type') ?? 'square';
-    const { xSpacing, ySpacing } = gridSpacingFromInput(genType, {
-      xSpacing: state.xSpacing ?? existing.getAttribute('data-gen-x-spacing'),
-      ySpacing: state.ySpacing ?? existing.getAttribute('data-gen-y-spacing'),
-      genParam: existing.getAttribute('data-gen-param'),
-    });
-
-    rebuildPositionSetGrid(ydoc, existing, {
-      genType,
-      xSpacing,
-      ySpacing,
-      snapRadiusLevel: state.snapRadius ?? snapRadiusRadiusToLevel(
-        Number(existing.getAttribute('data-snap-radius') ?? 30),
-        genType,
-        xSpacing,
-        ySpacing
-      ),
-    });
-  }
+  editEl(existing, state);
 
   if (state.x !== undefined) {
-    applyMoveCommit(ydoc, existing, state.x, state.y);
+    applyMoveCommit(existing, state.x, state.y);
   }
-}
-
-export function edit(id, editData, ydoc, yBounPos) {
-  return editBounPos({id, ...editData}, ydoc, yBounPos);
 }
 
 /**
- * Canonical LayerAPI edit signature: edit(ydoc, yEl, editData).
- * Unlike editBounPos (which looks up the element by id from the fragment),
- * this takes the already-found Y.XmlElement directly — matching drawing.edit
- * and toys.edit. Internally rebuilds the state object editBounPos expects.
+ * Canonical LayerAPI edit signature: edit(el, editData). Only keys present
+ * in editData are written: a label rename changes the name attribute and the
+ * <text>'s text node, a grid-parameter change regenerates the circles.
  */
-export function editEl(ydoc, yEl, editData) {
-  if (!yEl) return;
-  const type = yEl.getAttribute('data-bounpos-type') ?? 'boundary';
-  const yText = yChildByTag(yEl, 'text');
+export function editEl(el, editData) {
+  if (!el) return;
+  const type = el.getAttribute('data-bounpos-type') ?? 'boundary';
 
-  ydoc.transact(() => {
-    if (editData.name !== undefined) {
-      yEl.setAttribute('name', String(editData.name));
-      if (yText) setYTextContent(ydoc, yText, String(editData.name));
-    }
-  });
+  if (editData.name !== undefined) {
+    el.setAttribute('name', String(editData.name));
+    const text = childByTag(el, 'text');
+    if (text) setTextContent(text, String(editData.name));
+  }
 
   if (type === 'pos-set' && (
     editData.snapRadius !== undefined ||
@@ -916,19 +791,19 @@ export function editEl(ydoc, yEl, editData) {
     editData.ySpacing !== undefined ||
     editData.genType !== undefined
   )) {
-    const genType = editData.genType ?? yEl.getAttribute('data-gen-type') ?? 'square';
+    const genType = editData.genType ?? el.getAttribute('data-gen-type') ?? 'square';
     const { xSpacing, ySpacing } = gridSpacingFromInput(genType, {
-      xSpacing: editData.xSpacing ?? yEl.getAttribute('data-gen-x-spacing'),
-      ySpacing: editData.ySpacing ?? yEl.getAttribute('data-gen-y-spacing'),
-      genParam: yEl.getAttribute('data-gen-param'),
+      xSpacing: editData.xSpacing ?? el.getAttribute('data-gen-x-spacing'),
+      ySpacing: editData.ySpacing ?? el.getAttribute('data-gen-y-spacing'),
+      genParam: el.getAttribute('data-gen-param'),
     });
 
-    rebuildPositionSetGrid(ydoc, yEl, {
+    rebuildPositionSetGrid(el, {
       genType,
       xSpacing,
       ySpacing,
       snapRadiusLevel: editData.snapRadius ?? snapRadiusRadiusToLevel(
-        Number(yEl.getAttribute('data-snap-radius') ?? 30),
+        Number(el.getAttribute('data-snap-radius') ?? 30),
         genType,
         xSpacing,
         ySpacing
@@ -1007,22 +882,22 @@ export function previewResize(ghostEl, x, y, width, height) {
 // ── Drag context helpers ──────────────────────────────────────────────────────
 
 /**
- * Scan yBounPos for boundaries whose name ∈ toyClasses.
+ * Scan layerEl for boundaries whose name ∈ toyClasses.
  * Applies the start-inside filter: returns null if no matched boundary
  * contains the anchor point (toy moves freely when outside all its boundaries).
+ * Rects are in world coordinates.
  */
-export function computeBoundaryRects(yBounPos, toyClasses, anchor) {
+export function computeBoundaryRects(layerEl, toyClasses, anchor) {
   if (!toyClasses || toyClasses.size === 0) return null;
   const rects = [];
-  for (const node of yBounPos.toArray()) {
-    if (!(node instanceof Y.XmlElement)) continue;
+  for (const node of layerEl?.children ?? []) {
     if ((node.getAttribute('data-bounpos-type') ?? 'boundary') === 'pos-set') continue;
     const name = node.getAttribute('name');
     if (!name || !toyClasses.has(name)) continue;
-    const yPath = yChildByTag(node, 'path');
-    if (!yPath) continue;
-    if (!yPath.getAttribute('d')) continue;
-    rects.push(worldRectOf(node, yPath));
+    const path = childByTag(node, 'path');
+    if (!path) continue;
+    if (!path.getAttribute('d')) continue;
+    rects.push(worldRectOf(node, path));
   }
   if (rects.length === 0) return null;
   const startsInside = rects.some(
@@ -1032,16 +907,16 @@ export function computeBoundaryRects(yBounPos, toyClasses, anchor) {
   return startsInside ? rects : null;
 }
 
-export function getSnapPoints(yBounPos) {
+// Snap points in world coordinates.
+export function getSnapPoints(layerEl) {
   const points = [];
-  for (const node of yBounPos.toArray()) {
-    if (!(node instanceof Y.XmlElement)) continue;
+  for (const node of layerEl?.children ?? []) {
     if (node.getAttribute('data-bounpos-type') !== 'pos-set') continue;
     const name = node.getAttribute('name');
     const snapRadius = Number(node.getAttribute('data-snap-radius') ?? 30);
     const { tx, ty } = translationOf(node);
-    for (const child of node.toArray()) {
-      if (!(child instanceof Y.XmlElement) || child.nodeName !== 'circle') continue;
+    for (const child of node.children) {
+      if (child.localName !== 'circle') continue;
       const cx = Number(child.getAttribute('cx') ?? 0) + tx;
       const cy = Number(child.getAttribute('cy') ?? 0) + ty;
       points.push({ cx, cy, name, snapRadius });
@@ -1060,15 +935,105 @@ export function nextSelectMode(_domEl, currentMode) {
   return cycle[(i + 1) % cycle.length];
 }
 
+// ── The layer ─────────────────────────────────────────────────────────────────
+
+// The op layer is named 'boundaries'; the rendered elements and the _Layers
+// dispatch key stay 'boun_pos' (data-module="boun_pos"). The two names are
+// deliberately different.
+export const BOUNDARIES_LAYER = defineOpLayer({
+  name:        'boundaries',
+  selector:    '#boundaries-positions-layer',
+  layerDataId: 'tt-layer-boundaries',
+  opsKey:      'ops:boundaries',
+  contentKey:  'checkpointContent:boundaries',
+  headKey:     (tableId) => `tt_head_boundaries_${tableId}`,
+  mergeKey:    (tableId) => `tt_head_merge_boundaries_${tableId}`,
+});
+
+export const runGesture = (ydoc, layerEl, fn, opts) =>
+  OpLayer.runGesture(ydoc, BOUNDARIES_LAYER, layerEl, fn, opts);
+export const projectLayer = (ydoc, layerEl, opts) =>
+  OpLayer.projectLayer(ydoc, BOUNDARIES_LAYER, layerEl, opts);
+export const receiveBounPosOp = (ydoc, layerEl, opId, tableId, joinSequence) =>
+  OpLayer.receiveLayerOp(ydoc, BOUNDARIES_LAYER, layerEl, opId, tableId, joinSequence);
+
+// ── Batch gestures ────────────────────────────────────────────────────────────
+// A multi-select action is one gesture, one operation.
+
+/** Delete several elements as one gesture. Returns the op, or null if none existed. */
+export function deleteBoundariesBatch(ydoc, layerEl, ids, { authorId, tableId } = {}) {
+  let deletedAny = false;
+  const result = runGesture(ydoc, layerEl, () => {
+    for (const id of ids) {
+      if (deleteEl(layerEl, id)) deletedAny = true;
+    }
+  }, { gesture: 'delete-batch', authorId, tableId });
+  return deletedAny ? (result.op ?? null) : null;
+}
+
 /**
- * makeLayerAPI — returns the canonical LayerAPI for the Boundaries and
- * Positions layer, closing over (ydoc, yBounPos) so app.js can dispatch
- * by layer type without re-passing the fragment on every call.
+ * Move several elements as one gesture. moves: [{ id, x, y }] -- x/y are the
+ * anchor convention applyMoveCommit uses. Returns the op, or null if none moved.
  */
-export function makeLayerAPI(ydoc, yBounPos) {
+export function moveBoundariesBatch(ydoc, layerEl, moves, { authorId, tableId } = {}) {
+  let movedAny = false;
+  const result = runGesture(ydoc, layerEl, () => {
+    for (const { id, x, y } of moves) {
+      const el = findEl(layerEl, id);
+      if (!el) continue;
+      applyMoveCommit(el, x, y);
+      movedAny = true;
+    }
+  }, { gesture: 'move-batch', authorId, tableId });
+  return movedAny ? (result.op ?? null) : null;
+}
+
+/**
+ * Commit pre-parsed foreign elements onto a live layer as one gesture --
+ * storage.js's populateFromSvgDoc, live-table branch. An element whose id
+ * collides with one already on the layer is re-id'd: data-id is the op
+ * log's primary key.
+ */
+export function importBoundaries(ydoc, layerEl, els, opts = {}) {
+  if (!els?.length) return null;
+  return runGesture(ydoc, layerEl, () => {
+    for (const el of els) {
+      const id = el.getAttribute('data-id');
+      if (!id || findEl(layerEl, id)) {
+        const fresh = 'import_' + Math.random().toString(36).slice(2, 7);
+        el.setAttribute('id', fresh);
+        el.setAttribute('data-id', fresh);
+      }
+      layerEl.appendChild(el);
+    }
+  }, { gesture: 'import', ...opts });
+}
+
+/**
+ * makeLayerAPI -- the canonical LayerAPI for the Boundaries and Positions
+ * layer.
+ *
+ * getLayerEl returns the live #boundaries-positions-layer. Everything here
+ * reads and writes that DOM; writes run inside runGesture so the envelope
+ * captures them. Whatever find() returns is what the other methods accept.
+ */
+export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false) {
+  const layer = () => (typeof getLayerEl === 'function' ? getLayerEl() : getLayerEl);
+  const gesture = (name, fn) =>
+    runGesture(ydoc, layer(), fn, { gesture: name, authorId: user.id, tableId });
+
   return {
-    find:             (id)               => findEl(yBounPos, id),
-    delete:           (id)               => deleteEl(ydoc, yBounPos, id),
+    find:             (id)               => findEl(layer(), id),
+    add:              (toolName, params) => {
+      let el = null;
+      gesture('add', () => { el = BOUNPOS_TYPES[toolName].create(layer(), params); });
+      return el;
+    },
+    delete:           (id)               => {
+      let deleted = false;
+      gesture('delete', () => { deleted = deleteEl(layer(), id); });
+      return deleted;
+    },
     getGeom,
     getAnchor,
     getTtState,
@@ -1076,13 +1041,16 @@ export function makeLayerAPI(ydoc, yBounPos) {
     selectModes,
     nextSelectMode,
     computeResize,
-    applyMoveCommit:  (yEl, x, y)        => applyMoveCommit(ydoc, yEl, x, y),
-    applyResize:      (yEl, x, y, w, h)  => applyResize(ydoc, yEl, x, y, w, h),
-    applyTtState:     (state)            => applyTtState(ydoc, yBounPos, state),
-    edit:             (yEl, editData)    => editEl(ydoc, yEl, editData),
+    applyMoveCommit:  (el, x, y)         => gesture('move',   () => applyMoveCommit(el, x, y)),
+    applyResize:      (el, x, y, w, h)   => gesture('resize', () => applyResize(el, x, y, w, h)),
+    applyTtState:     (state)            => gesture('edit',   () => applyTtState(layer(), state)),
+    edit:             (el, editData)     => gesture('edit',   () => editEl(el, editData)),
     previewEdit,
     previewResize,
-    listData:         ()                 => layerData(yBounPos),
-    render:           (layerEl)          => render(yBounPos, layerEl),
+    listData:         ()                 => layerData(layer()),
+    render:           (layerEl, joinSequence = []) =>
+                        projectLayer(ydoc, layerEl, { tableId, authorId: user.id, isCreator, joinSequence }),
+    receive:          (layerEl, opId, joinSequence = []) =>
+                        receiveBounPosOp(ydoc, layerEl, opId, tableId, joinSequence),
   };
 }

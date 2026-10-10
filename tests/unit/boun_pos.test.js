@@ -3,11 +3,12 @@
  * boun_pos.test.js
  *
  * Tests for the Boundaries and Positions layer module.
- * Runs under jsdom because _toSVGEl builds live SVG DOM nodes.
+ * Runs under jsdom: the layer is live SVG DOM, and every write is a DOM
+ * operation, either bare (the functions) or inside a gesture (the LayerAPI).
  */
 
-import * as Y from 'yjs';
 import { describe, test, expect, beforeEach } from 'vitest';
+import * as Y from 'yjs';
 import {
   // ID helpers
   newBoundaryId, newPositionSetId,
@@ -15,40 +16,41 @@ import {
   rectToPath, pathToRect,
   // Grid math
   generateSquareGrid, generateHexGrid, generateFlatHexGrid, gridFillExtent, computeMaxSnapRadius, computeGridPositions,
-  // CRDT
-  addBoundary, addPositionSet, createPositionSetElement, findEl, deleteEl, editBounPos, applyMoveCommit,
-  // Layer API
-  renderLayer, layerData,
+  // DOM writes
+  addBoundary, createPositionSetElement, findEl, deleteEl, editBounPos, editEl, applyMoveCommit,
+  // Layer
+  BOUNDARIES_LAYER, makeLayerAPI, layerData,
   // Geometry queries
   getGeom, getAnchor, translationOf,
   // Edit schema
-  getTtStateSchema, edit, previewEdit,
+  getTtStateSchema, getTtState, previewEdit,
   // Selection modes / resize
   selectModes, nextSelectMode, computeResize, applyResize, previewResize,
   // Drag context
   computeBoundaryRects, getSnapPoints,
 } from '../../src/boun_pos.js';
-import { tablesAPI } from '../../src/tables.js';
-const { makeDoc } = tablesAPI;
+import { ensureLayerId } from '../../src/op_layers.js';
+import { getOps } from '../../src/op_dag.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
+const TABLE  = 'boun-pos-table';
+const AUTHOR = 'user-a';
+
+beforeEach(() => { localStorage.clear(); });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeLayer() {
-  const ydoc = makeDoc();
-  return { ydoc, yBounPos: ydoc.getXmlFragment('boundaries') };
-}
-
-function renderAndFind(layer, id) {
-  const root = document.createElementNS(SVG_NS, 'g');
-  renderLayer(layer.yBounPos, root);
-  return [...root.children].find(e => e.getAttribute('id') === id);
+  const ydoc    = new Y.Doc();
+  const layerEl = ensureLayerId(document.createElementNS(SVG_NS, 'g'), BOUNDARIES_LAYER);
+  const L       = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE, true);
+  L.render(layerEl);   // the creator's genesis checkpoint
+  return { ydoc, layerEl, L };
 }
 
 function addB(layer, overrides = {}) {
   const { id, name } = newBoundaryId();
-  addBoundary(layer.ydoc, layer.yBounPos, {
+  addBoundary(layer.layerEl, {
     id, name, x: 100, y: 100, w: 200, h: 150,
     ...overrides,
   });
@@ -63,19 +65,22 @@ function addPS(layer, overrides = {}) {
   const xSpacing = overrides.xSpacing ?? 80;
   const ySpacing = overrides.ySpacing ?? 80;
   const circles = gridFillExtent(x, y, w, h, genType, xSpacing, ySpacing);
-  createPositionSetElement(layer.ydoc, layer.yBounPos, {
+  createPositionSetElement(layer.layerEl, {
     id, name, snapRadius: 30, genType, xSpacing, ySpacing, x, y, w, h, circles,
     ...overrides, id, name,
   });
   return { id, name, circles };
 }
 
+const circlesOf = (el) =>
+  [...el.children].filter(c => c.localName === 'circle')
+    .map(c => ({ cx: Number(c.getAttribute('cx')), cy: Number(c.getAttribute('cy')) }));
+
 // Mirrors what overlay.js's startGhost clones from a rendered pos-set
-// element (see boun_pos.js's _positionSetToSVGEl): a <g data-bounpos-type
-// ="pos-set"> with its data-gen-*/data-snap-radius attributes, a <path>
-// (getGeom reads this for the extent), and N <circle fill="url(#...)">
-// children — the fill is what previewEdit's template-clone approach
-// exists to preserve.
+// element: a <g data-bounpos-type="pos-set"> with its
+// data-gen-*/data-snap-radius attributes, a <path> (getGeom reads this for
+// the extent), and N <circle fill="url(#...)"> children — the fill is what
+// previewEdit's template-clone approach exists to preserve.
 function makeGhostPosSet({ x = 0, y = 0, w = 200, h = 200, genType = 'square', xSpacing = 80, ySpacing = 80, snapRadius = 30, circleCount = 4 } = {}) {
   const g = document.createElementNS(SVG_NS, 'g');
   g.setAttribute('data-bounpos-type',   'pos-set');
@@ -275,32 +280,36 @@ describe('computeGridPositions', () => {
   });
 });
 
-// ── CRDT operations ───────────────────────────────────────────────────────────
+// ── DOM operations ────────────────────────────────────────────────────────────
 
 describe('addBoundary / findEl', () => {
   test('boundary is found by id and is a <g>', () => {
     const layer = makeLayer();
     const { id } = addB(layer);
-    const yEl = findEl(layer.yBounPos, id);
-    expect(yEl).not.toBeNull();
-    expect(yEl.nodeName).toBe('g');
-    expect(yEl.getAttribute('data-bounpos-type')).toBe('boundary');
+    const el = findEl(layer.layerEl, id);
+    expect(el).not.toBeNull();
+    expect(el.localName).toBe('g');
+    expect(el.getAttribute('data-bounpos-type')).toBe('boundary');
+    expect(el.getAttribute('data-module')).toBe('boun_pos');
+    expect(el.getAttribute('data-id')).toBe(id);
   });
 
-  test('boundary <g> has <path> and <text> children', () => {
+  test('boundary <g> has <path> and <text> children, laid out locally under a translate', () => {
     const layer = makeLayer();
-    const { id } = addB(layer);
-    const yEl    = findEl(layer.yBounPos, id);
-    const children = yEl.toArray().filter(c => c instanceof Y.XmlElement);
-    expect(children.map(c => c.nodeName)).toEqual(expect.arrayContaining(['path', 'text']));
+    const { id, name } = addB(layer, { x: 100, y: 100, w: 200, h: 150 });
+    const el = findEl(layer.layerEl, id);
+    expect([...el.children].map(c => c.localName)).toEqual(['path', 'text']);
+    expect(el.getAttribute('transform')).toBe('translate(100, 100)');
+    expect(pathToRect(el.querySelector('path').getAttribute('d'))).toEqual({ x: 0, y: 0, w: 200, h: 150 });
+    expect(el.querySelector('text').textContent).toBe(name);
   });
 
   test('attributes are written to the <g> wrapper', () => {
     const layer = makeLayer();
     const { id, name } = addB(layer);
-    const yEl = findEl(layer.yBounPos, id);
-    expect(yEl.getAttribute('name')).toBe(name);
-    expect(yEl.getAttribute('data-bounpos-type')).toBe('boundary');
+    const el = findEl(layer.layerEl, id);
+    expect(el.getAttribute('name')).toBe(name);
+    expect(el.getAttribute('data-bounpos-type')).toBe('boundary');
   });
 });
 
@@ -308,48 +317,63 @@ describe('addPositionSet / findEl', () => {
   test('pos-set is found by id and has correct type', () => {
     const layer = makeLayer();
     const { id } = addPS(layer);
-    const yEl = findEl(layer.yBounPos, id);
-    expect(yEl).not.toBeNull();
-    expect(yEl.nodeName).toBe('g');
-    expect(yEl.getAttribute('data-bounpos-type')).toBe('pos-set');
+    const el = findEl(layer.layerEl, id);
+    expect(el).not.toBeNull();
+    expect(el.localName).toBe('g');
+    expect(el.getAttribute('data-bounpos-type')).toBe('pos-set');
   });
 
   test('pos-set has <path>, <text>, and <circle> children', () => {
     const layer = makeLayer();
-    addPS(layer, { x: 0, y: 0, w: 400, h: 300, genType: 'square', xSpacing: 80, ySpacing: 80 });
-    const yEl = findEl(layer.yBounPos, layer.yBounPos.toArray()[0].getAttribute('id'));
-    const tags = yEl.toArray()
-      .filter(c => c instanceof Y.XmlElement)
-      .map(c => c.nodeName);
+    const { id } = addPS(layer, { x: 0, y: 0, w: 400, h: 300, genType: 'square', xSpacing: 80, ySpacing: 80 });
+    const tags = [...findEl(layer.layerEl, id).children].map(c => c.localName);
     expect(tags).toContain('path');
     expect(tags).toContain('text');
     expect(tags).toContain('circle');
   });
+
+  test('circles are stored relative to the set’s origin', () => {
+    const layer = makeLayer();
+    const { id } = addPS(layer, { x: 40, y: 50, w: 200, h: 200, genType: 'square', xSpacing: 100, ySpacing: 100 });
+    expect(circlesOf(findEl(layer.layerEl, id))[0]).toEqual({ cx: 0, cy: 0 });
+  });
 });
 
 describe('deleteEl', () => {
-  test('removes element from fragment', () => {
+  test('removes the element from the layer', () => {
     const layer = makeLayer();
     const { id } = addB(layer);
-    expect(findEl(layer.yBounPos, id)).not.toBeNull();
-    deleteEl(layer.ydoc, layer.yBounPos, id);
-    expect(findEl(layer.yBounPos, id)).toBeNull();
+    expect(findEl(layer.layerEl, id)).not.toBeNull();
+    deleteEl(layer.layerEl, id);
+    expect(findEl(layer.layerEl, id)).toBeNull();
   });
 
   test('returns false for missing id', () => {
     const layer = makeLayer();
-    expect(deleteEl(layer.ydoc, layer.yBounPos, 'nope')).toBe(false);
+    expect(deleteEl(layer.layerEl, 'nope')).toBe(false);
   });
 });
 
 describe('editBounPos rename', () => {
-  test('updates name attribute and meta', () => {
+  test('updates the name attribute and the label’s text node', () => {
     const layer = makeLayer();
     const { id } = addB(layer);
-    const yEl = findEl(layer.yBounPos, id);
-    editBounPos({ id, name: 'forest' }, layer.ydoc, layer.yBounPos);
-    expect(yEl.getAttribute('name')).toBe('forest');
-    expect(findEl(layer.yBounPos, id).getAttribute('name')).toBe('forest');
+    const el = findEl(layer.layerEl, id);
+    const textNode = el.querySelector('text').firstChild;
+    editBounPos({ id, name: 'forest' }, layer.layerEl);
+    expect(el.getAttribute('name')).toBe('forest');
+    expect(el.querySelector('text').textContent).toBe('forest');
+    expect(el.querySelector('text').firstChild).toBe(textNode);   // changed in place
+  });
+
+  test('a rename through the LayerAPI is one gesture that records a text mutation', () => {
+    const layer = makeLayer();
+    const { id, name } = newBoundaryId();
+    layer.L.add('boundary', { id, name, x: 0, y: 0, w: 100, h: 100 });
+    layer.L.edit(layer.L.find(id), { name: 'forest' });
+    const op = [...getOps(layer.ydoc, BOUNDARIES_LAYER).values()].pop();
+    expect(op.gesture).toBe('edit');
+    expect(op.mutations.map(m => m.t)).toEqual(expect.arrayContaining(['attr', 'text']));
   });
 });
 
@@ -362,30 +386,34 @@ describe('editBounPos grid resize (xSpacing/ySpacing/snapRadius)', () => {
     const layer = makeLayer();
     const { id } = addPS(layer, { x: 0, y: 0, w: 200, h: 200, genType: 'square', xSpacing: 80, ySpacing: 80 });
 
-    editBounPos({ id, xSpacing: 50, ySpacing: 80 }, layer.ydoc, layer.yBounPos);
+    editBounPos({ id, xSpacing: 50, ySpacing: 80 }, layer.layerEl);
 
-    const yEl = findEl(layer.yBounPos, id);
-    const committedCircles = yEl.toArray()
-      .filter(c => c instanceof Y.XmlElement && c.nodeName === 'circle')
-      .map(c => ({ cx: Number(c.getAttribute('cx')), cy: Number(c.getAttribute('cy')) }));
+    const el = findEl(layer.layerEl, id);
     const { circles: expectedCircles } = computeGridPositions({ x: 0, y: 0, w: 200, h: 200 }, 'square', 50, 80, 2);
-    expect(committedCircles).toEqual(expectedCircles);
-    expect(yEl.getAttribute('data-gen-x-spacing')).toBe('50');
+    expect(circlesOf(el)).toEqual(expectedCircles);
+    expect(el.getAttribute('data-gen-x-spacing')).toBe('50');
   });
 
   test('changing snapRadius level updates every circle’s r to match computeGridPositions', () => {
     const layer = makeLayer();
     const { id } = addPS(layer, { x: 0, y: 0, w: 200, h: 200, genType: 'square', xSpacing: 80, ySpacing: 80 });
 
-    editBounPos({ id, snapRadius: 4 }, layer.ydoc, layer.yBounPos);
+    editBounPos({ id, snapRadius: 4 }, layer.layerEl);
 
-    const yEl = findEl(layer.yBounPos, id);
+    const el = findEl(layer.layerEl, id);
     const { r: expectedR } = computeGridPositions({ x: 0, y: 0, w: 200, h: 200 }, 'square', 80, 80, 4);
-    const committedRadii = yEl.toArray()
-      .filter(c => c instanceof Y.XmlElement && c.nodeName === 'circle')
+    const committedRadii = [...el.children].filter(c => c.localName === 'circle')
       .map(c => Number(c.getAttribute('r')));
     expect(committedRadii.every(r => r === expectedR)).toBe(true);
-    expect(yEl.getAttribute('data-snap-radius')).toBe(String(expectedR));
+    expect(el.getAttribute('data-snap-radius')).toBe(String(expectedR));
+  });
+
+  test('editEl leaves the transform alone', () => {
+    const layer = makeLayer();
+    const { id } = addPS(layer, { x: 40, y: 50, w: 200, h: 200, genType: 'square', xSpacing: 80, ySpacing: 80 });
+    const el = findEl(layer.layerEl, id);
+    editEl(el, { xSpacing: 50 });
+    expect(translationOf(el)).toEqual({ tx: 40, ty: 50 });
   });
 });
 
@@ -471,54 +499,52 @@ describe('applyMoveCommit', () => {
   test('boundary: sets only the group transform; children stay local', () => {
     const layer = makeLayer();
     const { id } = addB(layer, { x: 100, y: 100, w: 200, h: 150 });
-    const yEl = findEl(layer.yBounPos, id);
-    applyMoveCommit(layer.ydoc, yEl, 50, 60);
-    const yPath = yEl.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'path');
-    expect(pathToRect(yPath.getAttribute('d'))).toEqual({ x: 0, y: 0, w: 200, h: 150 });
-    expect(translationOf(yEl)).toEqual({ tx: 50, ty: 60 });
-    const yText = yEl.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'text');
-    expect(Number(yText.getAttribute('x'))).toBe(200);
-    expect(Number(yText.getAttribute('y'))).toBe(-5);
+    const el = findEl(layer.layerEl, id);
+    applyMoveCommit(el, 50, 60);
+    expect(pathToRect(el.querySelector('path').getAttribute('d'))).toEqual({ x: 0, y: 0, w: 200, h: 150 });
+    expect(translationOf(el)).toEqual({ tx: 50, ty: 60 });
+    expect(Number(el.querySelector('text').getAttribute('x'))).toBe(200);
+    expect(Number(el.querySelector('text').getAttribute('y'))).toBe(-5);
   });
 
   test('pos-set: circles are untouched, world snap points shift', () => {
     const layer = makeLayer();
-    addPS(layer, { x: 0, y: 0, w: 200, h: 200, genType: 'square', xSpacing: 100, ySpacing: 100 });
-    const yEl = layer.yBounPos.toArray()[0];
-    const local = () => yEl.toArray().filter(c => c.nodeName === 'circle')
-      .map(c => [c.getAttribute('cx'), c.getAttribute('cy')]);
-    const localBefore = local();
-    const worldBefore = getSnapPoints(layer.yBounPos);
-    applyMoveCommit(layer.ydoc, yEl, 100, 100);
-    expect(local()).toEqual(localBefore);
-    getSnapPoints(layer.yBounPos).forEach((after, i) => {
+    const { id } = addPS(layer, { x: 0, y: 0, w: 200, h: 200, genType: 'square', xSpacing: 100, ySpacing: 100 });
+    const el = findEl(layer.layerEl, id);
+    const localBefore = circlesOf(el);
+    const worldBefore = getSnapPoints(layer.layerEl);
+    applyMoveCommit(el, 100, 100);
+    expect(circlesOf(el)).toEqual(localBefore);
+    getSnapPoints(layer.layerEl).forEach((after, i) => {
       expect(after.cx).toBe(worldBefore[i].cx + 100);
       expect(after.cy).toBe(worldBefore[i].cy + 100);
     });
   });
 
-  test('a move of a 121-circle position set changes exactly one attribute', () => {
+  test('a move of a 121-circle position set is one op with exactly one attr mutation, on transform', () => {
     const layer = makeLayer();
-    addPS(layer, { x: 0, y: 0, w: 1000, h: 1000, genType: 'square', xSpacing: 100, ySpacing: 100 });
-    const yEl = layer.yBounPos.toArray()[0];
-    expect(yEl.toArray().filter(c => c.nodeName === 'circle')).toHaveLength(121);
-
-    const changes = [];
-    let events = 0;
-    yEl.observeDeep(evs => {
-      for (const ev of evs) {
-        events++;
-        for (const [key, info] of ev.changes.keys) changes.push([ev.target.nodeName, key, info.action]);
-      }
+    const { id, name } = newPositionSetId();
+    const circles = gridFillExtent(0, 0, 1000, 1000, 'square', 100, 100);
+    layer.L.add('pos-grid-sq', {
+      id, name, snapRadius: 30, genType: 'square', xSpacing: 100, ySpacing: 100,
+      x: 0, y: 0, w: 1000, h: 1000, circles,
     });
-    const before = Y.encodeStateVector(layer.ydoc);
-    applyMoveCommit(layer.ydoc, yEl, 300, 400);
-    const bytes = Y.encodeStateAsUpdate(layer.ydoc, before).length;
-    console.log(`move of 121-circle pos-set: ${bytes} bytes (was ~3700 B when every circle was rewritten)`);
+    expect(circlesOf(findEl(layer.layerEl, id))).toHaveLength(121);
 
-    expect(events).toBe(1);
-    expect(changes).toEqual([['g', 'transform', 'update']]);
-    expect(bytes).toBeLessThan(300);
+    const before = getOps(layer.ydoc, BOUNDARIES_LAYER).size;
+    const sv = Y.encodeStateVector(layer.ydoc);
+    layer.L.applyMoveCommit(layer.L.find(id), 300, 400);
+    const ops = [...getOps(layer.ydoc, BOUNDARIES_LAYER).values()];
+    expect(ops).toHaveLength(before + 1);
+
+    const op = ops.at(-1);
+    expect(op.gesture).toBe('move');
+    expect(op.mutations).toHaveLength(1);
+    expect(op.mutations[0]).toMatchObject({ t: 'attr', name: 'transform' });
+
+    const bytes = Y.encodeStateAsUpdate(layer.ydoc, sv).length;
+    console.log(`move of 121-circle pos-set: op ${JSON.stringify(op).length} B serialized, ${bytes} B Yjs update`);
+    expect(JSON.stringify(op).length).toBeLessThan(1000);
   });
 });
 
@@ -527,24 +553,18 @@ describe('world geometry across create -> move -> resize -> move', () => {
   test('boundary readers report the reference world rect at each step', () => {
     const layer = makeLayer();
     const { id, name } = addB(layer, { x: 100, y: 100, w: 200, h: 150 });
-    const yEl = findEl(layer.yBounPos, id);
-    const world = () => {
-      const dom = renderAndFind(layer, id);
-      return { geom: getGeom(dom), anchor: getAnchor(dom),
-        rects: computeBoundaryRects(layer.yBounPos, new Set([name]), { x: 1e6, y: 1e6 }) };
-    };
+    const el = findEl(layer.layerEl, id);
     const steps = [
       [() => {}, { x: 100, y: 100, w: 200, h: 150 }],
-      [() => applyMoveCommit(layer.ydoc, yEl, 50, 60), { x: 50, y: 60, w: 200, h: 150 }],
-      [() => applyResize(layer.ydoc, yEl, 20, 30, 300, 220), { x: 20, y: 30, w: 300, h: 220 }],
-      [() => applyMoveCommit(layer.ydoc, yEl, 500, 400), { x: 500, y: 400, w: 300, h: 220 }],
+      [() => applyMoveCommit(el, 50, 60), { x: 50, y: 60, w: 200, h: 150 }],
+      [() => applyResize(el, 20, 30, 300, 220), { x: 20, y: 30, w: 300, h: 220 }],
+      [() => applyMoveCommit(el, 500, 400), { x: 500, y: 400, w: 300, h: 220 }],
     ];
     for (const [act, want] of steps) {
       act();
-      const { geom, anchor } = world();
-      expect(geom).toEqual({ x: want.x, y: want.y, width: want.w, height: want.h });
-      expect(anchor).toEqual({ x: want.x, y: want.y });
-      const rects = computeBoundaryRects(layer.yBounPos, new Set([name]), { x: want.x + 1, y: want.y + 1 });
+      expect(getGeom(el)).toEqual({ x: want.x, y: want.y, width: want.w, height: want.h });
+      expect(getAnchor(el)).toEqual({ x: want.x, y: want.y });
+      const rects = computeBoundaryRects(layer.layerEl, new Set([name]), { x: want.x + 1, y: want.y + 1 });
       expect(rects).toEqual([want]);
     }
   });
@@ -552,74 +572,71 @@ describe('world geometry across create -> move -> resize -> move', () => {
   test('pos-set readers report the reference world circles at each step', () => {
     const layer = makeLayer();
     const { id } = addPS(layer, { x: 40, y: 50, w: 200, h: 200, genType: 'square', xSpacing: 100, ySpacing: 100 });
-    const yEl = findEl(layer.yBounPos, id);
+    const el = findEl(layer.layerEl, id);
     const worldCircles = (x, y, w, h) =>
       gridFillExtent(x, y, w, h, 'square', 100, 100).map(({ cx, cy }) => [cx, cy]);
-    const snap = () => getSnapPoints(layer.yBounPos).map(p => [p.cx, p.cy]);
+    const snap = () => getSnapPoints(layer.layerEl).map(p => [p.cx, p.cy]);
 
     expect(snap()).toEqual(worldCircles(40, 50, 200, 200));
-    applyMoveCommit(layer.ydoc, yEl, 300, 310);
+    applyMoveCommit(el, 300, 310);
     expect(snap()).toEqual(worldCircles(300, 310, 200, 200));
-    applyResize(layer.ydoc, yEl, 10, 20, 400, 300);
+    applyResize(el, 10, 20, 400, 300);
     expect(snap()).toEqual(worldCircles(10, 20, 400, 300));
-    applyMoveCommit(layer.ydoc, yEl, 70, 80);
+    applyMoveCommit(el, 70, 80);
     expect(snap()).toEqual(worldCircles(70, 80, 400, 300));
-    expect(getGeom(renderAndFind(layer, id))).toEqual({ x: 70, y: 80, width: 400, height: 300 });
+    expect(getGeom(el)).toEqual({ x: 70, y: 80, width: 400, height: 300 });
   });
 });
 
 describe('old absolute-layout elements', () => {
+  // Imported elements from before the translate layout: absolute children,
+  // no transform. They are valid as they are.
   function oldPositionSet(layer) {
-    const yG = new Y.XmlElement('g');
-    const yPath = new Y.XmlElement('path');
-    const yText = new Y.XmlElement('text');
-    yG.setAttribute('id', 'tt-ps-v1-old');
-    yG.setAttribute('name', 'toy');
-    yG.setAttribute('data-bounpos-type', 'pos-set');
-    yG.setAttribute('data-snap-radius', '20');
-    yG.setAttribute('data-gen-type', 'square');
-    yG.setAttribute('data-gen-x-spacing', '100');
-    yG.setAttribute('data-gen-y-spacing', '100');
-    yPath.setAttribute('d', rectToPath(200, 300, 200, 100));
-    yText.setAttribute('x', '400');
-    yText.setAttribute('y', '295');
-    const circles = [[200, 300], [300, 300], [400, 300], [200, 400], [300, 400], [400, 400]].map(([cx, cy]) => {
-      const c = new Y.XmlElement('circle');
-      c.setAttribute('cx', String(cx)); c.setAttribute('cy', String(cy)); c.setAttribute('r', '20');
-      return c;
+    const g = document.createElementNS(SVG_NS, 'g');
+    const set = (el, attrs) => Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+    set(g, {
+      id: 'tt-ps-v1-old', 'data-id': 'tt-ps-v1-old', 'data-module': 'boun_pos', name: 'toy',
+      'data-bounpos-type': 'pos-set', 'data-snap-radius': '20', 'data-gen-type': 'square',
+      'data-gen-x-spacing': '100', 'data-gen-y-spacing': '100',
     });
-    layer.ydoc.transact(() => {
-      yG.insert(0, [yPath, yText, ...circles]);
-      layer.yBounPos.insert(layer.yBounPos.length, [yG]);
-    });
-    return yG;
+    const path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', rectToPath(200, 300, 200, 100));
+    const text = document.createElementNS(SVG_NS, 'text');
+    set(text, { x: '400', y: '295' });
+    g.append(path, text);
+    for (const [cx, cy] of [[200, 300], [300, 300], [400, 300], [200, 400], [300, 400], [400, 400]]) {
+      const c = document.createElementNS(SVG_NS, 'circle');
+      set(c, { cx: String(cx), cy: String(cy), r: '20' });
+      g.appendChild(c);
+    }
+    layer.layerEl.appendChild(g);
+    return g;
   }
 
   test('report world geometry without a transform', () => {
     const layer = makeLayer();
-    const yEl = oldPositionSet(layer);
-    expect(translationOf(yEl)).toEqual({ tx: 0, ty: 0 });
-    expect(getGeom(renderAndFind(layer, 'tt-ps-v1-old'))).toEqual({ x: 200, y: 300, width: 200, height: 100 });
-    expect(getSnapPoints(layer.yBounPos).map(p => [p.cx, p.cy]))
+    const el = oldPositionSet(layer);
+    expect(translationOf(el)).toEqual({ tx: 0, ty: 0 });
+    expect(getGeom(el)).toEqual({ x: 200, y: 300, width: 200, height: 100 });
+    expect(getSnapPoints(layer.layerEl).map(p => [p.cx, p.cy]))
       .toEqual([[200, 300], [300, 300], [400, 300], [200, 400], [300, 400], [400, 400]]);
   });
 
   test('a move leaves children untouched and lands the anchor on the target', () => {
     const layer = makeLayer();
-    const yEl = oldPositionSet(layer);
-    const childAttrs = () => yEl.toArray().filter(c => c instanceof Y.XmlElement)
-      .map(c => JSON.stringify(c.getAttributes()));
+    const el = oldPositionSet(layer);
+    const childAttrs = () => [...el.children].map(c => JSON.stringify([...c.attributes].map(a => [a.name, a.value])));
     const before = childAttrs();
-    applyMoveCommit(layer.ydoc, yEl, 250, 320);
+    applyMoveCommit(el, 250, 320);
     expect(childAttrs()).toEqual(before);
-    expect(translationOf(yEl)).toEqual({ tx: 50, ty: 20 });
-    expect(getGeom(renderAndFind(layer, 'tt-ps-v1-old'))).toEqual({ x: 250, y: 320, width: 200, height: 100 });
-    expect(getSnapPoints(layer.yBounPos)[0]).toMatchObject({ cx: 250, cy: 320 });
+    expect(translationOf(el)).toEqual({ tx: 50, ty: 20 });
+    expect(getGeom(el)).toEqual({ x: 250, y: 320, width: 200, height: 100 });
+    expect(getSnapPoints(layer.layerEl)[0]).toMatchObject({ cx: 250, cy: 320 });
   });
 });
 
 describe('translationOf', () => {
-  test('reads translate from DOM and Yjs elements; anything else is (0, 0)', () => {
+  test('reads translate from a DOM element; anything else is (0, 0)', () => {
     const dom = document.createElementNS(SVG_NS, 'g');
     expect(translationOf(dom)).toEqual({ tx: 0, ty: 0 });
     dom.setAttribute('transform', 'translate(12.5, -7)');
@@ -629,11 +646,6 @@ describe('translationOf', () => {
     dom.setAttribute('transform', 'rotate(30) translate(5, 5)');
     expect(translationOf(dom)).toEqual({ tx: 0, ty: 0 });
     expect(dom.getAttribute('transform')).toBe('rotate(30) translate(5, 5)');
-    const layer = makeLayer();
-    const y = new Y.XmlElement('g');
-    layer.yBounPos.insert(0, [y]);
-    y.setAttribute('transform', 'translate(1, 2)');
-    expect(translationOf(y)).toEqual({ tx: 1, ty: 2 });
   });
 });
 
@@ -675,16 +687,14 @@ describe('applyResize', () => {
   test('boundary: updates <path> d and <text> position, same shape as applyMoveCommit', () => {
     const layer = makeLayer();
     const { id } = addB(layer, { x: 100, y: 100, w: 200, h: 150 });
-    const yEl = findEl(layer.yBounPos, id);
+    const el = findEl(layer.layerEl, id);
 
-    applyResize(layer.ydoc, yEl, 50, 60, 300, 220);
+    applyResize(el, 50, 60, 300, 220);
 
-    const yPath = yEl.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'path');
-    expect(pathToRect(yPath.getAttribute('d'))).toEqual({ x: 0, y: 0, w: 300, h: 220 });
-    expect(translationOf(yEl)).toEqual({ tx: 50, ty: 60 });
-    const yText = yEl.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'text');
-    expect(Number(yText.getAttribute('x'))).toBe(300);
-    expect(Number(yText.getAttribute('y'))).toBe(-5);
+    expect(pathToRect(el.querySelector('path').getAttribute('d'))).toEqual({ x: 0, y: 0, w: 300, h: 220 });
+    expect(translationOf(el)).toEqual({ tx: 50, ty: 60 });
+    expect(Number(el.querySelector('text').getAttribute('x'))).toBe(300);
+    expect(Number(el.querySelector('text').getAttribute('y'))).toBe(-5);
   });
 
   test('pos-set: regenerates the circle grid to fill the new extent, preserving genType/spacing/snapRadius', () => {
@@ -693,26 +703,23 @@ describe('applyResize', () => {
     // (maxR = 40, level 2 = 40 * 2/4 = 20) — computeGridPositions below
     // asserts against that same level 2.
     const { id } = addPS(layer, { x: 0, y: 0, w: 200, h: 200, genType: 'square', xSpacing: 80, ySpacing: 80, snapRadius: 20 });
-    const yEl = findEl(layer.yBounPos, id);
+    const el = findEl(layer.layerEl, id);
 
-    applyResize(layer.ydoc, yEl, 0, 0, 400, 400);
+    applyResize(el, 0, 0, 400, 400);
 
     const { circles: expectedCircles, r: expectedR } =
       computeGridPositions({ x: 0, y: 0, w: 400, h: 400 }, 'square', 80, 80, 2);
-    const committedCircles = yEl.toArray()
-      .filter(c => c instanceof Y.XmlElement && c.nodeName === 'circle')
-      .map(c => ({ cx: Number(c.getAttribute('cx')), cy: Number(c.getAttribute('cy')) }));
+    const committedCircles = circlesOf(el);
     expect(committedCircles).toEqual(expectedCircles);
     expect(committedCircles.length).toBeGreaterThan(4); // strictly more points than the 200x200 extent had
-    expect(yEl.toArray().find(c => c.nodeName === 'circle')?.getAttribute('r')).toBe(String(expectedR));
+    expect(el.querySelector('circle').getAttribute('r')).toBe(String(expectedR));
     // genType/xSpacing/ySpacing/snapRadius are untouched by a resize.
-    expect(yEl.getAttribute('data-gen-type')).toBe('square');
-    expect(yEl.getAttribute('data-gen-x-spacing')).toBe('80');
+    expect(el.getAttribute('data-gen-type')).toBe('square');
+    expect(el.getAttribute('data-gen-x-spacing')).toBe('80');
   });
 
-  test('is a no-op when yEl is null', () => {
-    const layer = makeLayer();
-    expect(() => applyResize(layer.ydoc, null, 0, 0, 100, 100)).not.toThrow();
+  test('is a no-op when el is null', () => {
+    expect(() => applyResize(null, 0, 0, 100, 100)).not.toThrow();
   });
 });
 
@@ -760,23 +767,21 @@ describe('computeBoundaryRects', () => {
   test('returns null when toy has no classes', () => {
     const layer = makeLayer();
     addB(layer, { x: 0, y: 0, w: 300, h: 300 });
-    expect(computeBoundaryRects(layer.yBounPos, new Set(), { x: 50, y: 50 })).toBeNull();
+    expect(computeBoundaryRects(layer.layerEl, new Set(), { x: 50, y: 50 })).toBeNull();
   });
 
   test('returns null when no boundary name matches', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    addBoundary(layer.ydoc, layer.yBounPos,
-      { id, name: 'forest', x: 0, y: 0, w: 300, h: 300 });
-    expect(computeBoundaryRects(layer.yBounPos, new Set(['dungeon']), { x: 50, y: 50 })).toBeNull();
+    addBoundary(layer.layerEl, { id, name: 'forest', x: 0, y: 0, w: 300, h: 300 });
+    expect(computeBoundaryRects(layer.layerEl, new Set(['dungeon']), { x: 50, y: 50 })).toBeNull();
   });
 
   test('returns rects when class matches and toy starts inside', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    addBoundary(layer.ydoc, layer.yBounPos,
-      { id, name: 'forest', x: 0, y: 0, w: 300, h: 300 });
-    const rects = computeBoundaryRects(layer.yBounPos, new Set(['forest']), { x: 50, y: 50 });
+    addBoundary(layer.layerEl, { id, name: 'forest', x: 0, y: 0, w: 300, h: 300 });
+    const rects = computeBoundaryRects(layer.layerEl, new Set(['forest']), { x: 50, y: 50 });
     expect(rects).not.toBeNull();
     expect(rects).toHaveLength(1);
     expect(rects[0]).toMatchObject({ x: 0, y: 0, w: 300, h: 300 });
@@ -785,21 +790,17 @@ describe('computeBoundaryRects', () => {
   test('returns null when toy starts outside matched boundary', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    addBoundary(layer.ydoc, layer.yBounPos,
-      { id, name: 'forest', x: 0, y: 0, w: 100, h: 100 });
+    addBoundary(layer.layerEl, { id, name: 'forest', x: 0, y: 0, w: 100, h: 100 });
     // anchor is outside the boundary
-    const rects = computeBoundaryRects(layer.yBounPos, new Set(['forest']), { x: 200, y: 200 });
+    const rects = computeBoundaryRects(layer.layerEl, new Set(['forest']), { x: 200, y: 200 });
     expect(rects).toBeNull();
   });
 
   test('pos-set elements are ignored', () => {
     const layer = makeLayer();
-    addPS(layer, { x: 0, y: 0, w: 400, h: 300, genType: 'square', xSpacing: 80, ySpacing: 80 });
-    // Override the name to match
-    const yEl = layer.yBounPos.toArray()[0];
-    layer.ydoc.transact(() => yEl.setAttribute('name', 'dungeon'));
-    // computeBoundaryRects should not pick up pos-sets
-    const rects = computeBoundaryRects(layer.yBounPos, new Set(['dungeon']), { x: 50, y: 50 });
+    const { id } = addPS(layer, { x: 0, y: 0, w: 400, h: 300, genType: 'square', xSpacing: 80, ySpacing: 80 });
+    findEl(layer.layerEl, id).setAttribute('name', 'dungeon');
+    const rects = computeBoundaryRects(layer.layerEl, new Set(['dungeon']), { x: 50, y: 50 });
     expect(rects).toBeNull();
   });
 });
@@ -808,26 +809,32 @@ describe('getSnapPoints', () => {
   test('returns snap points', () => {
     const layer = makeLayer();
     const { id, circles } = addPS(layer, { x: 0, y: 0, w: 400, h: 400, genType: 'square', xSpacing: 100, ySpacing: 100 });
-    // Set name to known value
-    const yEl = findEl(layer.yBounPos, id);
-    editBounPos({ id, name: 'forest' }, layer.ydoc, layer.yBounPos);
-    const pts = getSnapPoints(layer.yBounPos);
+    editBounPos({ id, name: 'forest' }, layer.layerEl);
+    const pts = getSnapPoints(layer.layerEl);
     expect(pts.length).toBe(circles.length);
     pts.forEach(p => {
       expect(typeof p.cx).toBe('number');
       expect(typeof p.cy).toBe('number');
       expect(typeof p.snapRadius).toBe('number');
+      expect(p.name).toBe('forest');
     });
   });
+});
 
+describe('layerData / getTtState', () => {
+  test('layerData lists every element; getTtState reads the world rect back', () => {
+    const layer = makeLayer();
+    const { id } = addB(layer, { x: 10, y: 20, w: 200, h: 100 });
+    addPS(layer);
+    expect(layerData(layer.layerEl).map(d => d.kind)).toEqual(['boundary', 'pos-set']);
+    expect(getTtState(findEl(layer.layerEl, id))).toMatchObject({ x: 10, y: 20, w: 200, h: 100, bounPosType: 'boundary' });
+  });
 });
 
 // ── Edit schema ───────────────────────────────────────────────────────────────
 
 describe('getTtStateSchema via rendered DOM', () => {
   test('boundary schema has name field with string kind', () => {
-    const layer = makeLayer();
-    const { id } = addB(layer, { x: 0, y: 0, w: 200, h: 100 });
     const div = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     div.setAttribute('data-bounpos-type', 'boundary');
     div.setAttribute('name', 'dungeon');
@@ -836,5 +843,4 @@ describe('getTtStateSchema via rendered DOM', () => {
     expect(schema.types.name.kind).toBe('string');
     expect(schema.types['snap-radius']).toBeUndefined();
   });
-
 });

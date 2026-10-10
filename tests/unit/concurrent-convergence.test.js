@@ -19,6 +19,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ensureLayerId } from '../../src/op_layers.js'
 import { TOYS_LAYER } from '../../src/toys.js'
 import { DRAWING_LAYER, makeLayerAPI as makeDrawingAPI } from '../../src/drawing.js'
+import { BOUNDARIES_LAYER, makeLayerAPI as makeBoundariesAPI, gridFillExtent } from '../../src/boun_pos.js'
 import {
   placeToy, makeLayerAPI, activateAllToyScriptsDom, projectLayer, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
@@ -643,5 +644,138 @@ describe('concurrent convergence: drawing layer', () => {
     expect(rP.result).not.toBe(RECEIVED_CONFLICT)
     expect(rQ.result).not.toBe(RECEIVED_CONFLICT)
     assertDrawingConverged([P, Q])
+  })
+})
+
+// ── boundaries layer ────────────────────────────────────────────────────
+// The same harness, over the boundaries op layer.
+
+describe('concurrent convergence: boundaries layer', () => {
+  let _bounPeers = []
+  beforeEach(() => { _bounPeers = [] })
+
+  function makeBounPeer(authorId) {
+    const tableId = `boundaries-convergence-table-${_tableCounter++}`
+    const ydoc = new Y.Doc()
+    const layer = document.createElementNS(SVG_NS, 'g')
+    layer.id = 'boundaries-positions-layer'
+    ensureLayerId(layer, BOUNDARIES_LAYER)
+    const api = makeBoundariesAPI(ydoc, () => layer, { id: authorId }, tableId)
+    const peer = { id: authorId, tableId, ydoc, layer, api }
+    _bounPeers.push(peer)
+    return peer
+  }
+
+  function seedBounGenesis(peers) {
+    const genesis = { id: 'genesis', parents: [], authorId: 'system', gesture: 'checkpoint', ts: 0, mutations: [] }
+    for (const p of peers) {
+      appendCheckpoint(p.ydoc, BOUNDARIES_LAYER, genesis, [])
+      setHead(p.tableId, BOUNDARIES_LAYER, genesis.id)
+    }
+  }
+
+  function deliverBoun(peer, ops) {
+    for (const op of ops) getOps(peer.ydoc, BOUNDARIES_LAYER).set(op.id, op)
+    return ops.map(op => peer.api.receive(peer.layer, op.id, []))
+  }
+
+  function bounTipsOf(peer) {
+    return maximalTips(getOps(peer.ydoc, BOUNDARIES_LAYER),
+      [getHead(peer.tableId, BOUNDARIES_LAYER), ...getMergeTips(peer.tableId, BOUNDARIES_LAYER)])
+  }
+
+  function assertBounConverged(peers) {
+    const serialized = peers.map(p => [...p.layer.children].map(serializeNode))
+    for (let i = 1; i < peers.length; i++) expect(serialized[i]).toEqual(serialized[0])
+
+    const ops = getOps(peers[0].ydoc, BOUNDARIES_LAYER)
+    const unionTips = maximalTips(ops, peers.flatMap(bounTipsOf))
+    const scratch = ensureLayerId(document.createElementNS(SVG_NS, 'g'), BOUNDARIES_LAYER)
+    projectTips(scratch, ops, getContent(peers[0].ydoc, BOUNDARIES_LAYER), unionTips, [])
+    expect([...scratch.children].map(serializeNode)).toEqual(serialized[0])
+  }
+
+  const headOp = (peer) => getOps(peer.ydoc, BOUNDARIES_LAYER).get(getHead(peer.tableId, BOUNDARIES_LAYER))
+  const addBoundary = (peer, id, x, y) => {
+    peer.api.add('boundary', { id, name: id, x, y, w: 100, h: 80 })
+    return headOp(peer)
+  }
+  const addPosSet = (peer, id, x, y) => {
+    const circles = gridFillExtent(x, y, 200, 200, 'square', 100, 100)
+    peer.api.add('pos-grid-sq', {
+      id, name: id, snapRadius: 30, genType: 'square', xSpacing: 100, ySpacing: 100, x, y, w: 200, h: 200, circles,
+    })
+    return headOp(peer)
+  }
+  const moveTo = (peer, id, x, y) => peer.api.applyMoveCommit(peer.api.find(id), x, y).op
+
+  test('two peers adding different boundaries concurrently: rebuilt, converged', () => {
+    const P = makeBounPeer('alice'), Q = makeBounPeer('bob')
+    seedBounGenesis([P, Q])
+
+    const opP = addBoundary(P, 'boundP', 0, 0)
+    const opQ = addBoundary(Q, 'boundQ', 300, 300)
+
+    const [rP] = deliverBoun(P, [opQ])
+    const [rQ] = deliverBoun(Q, [opP])
+    expect(rP.result).toBe(RECEIVED_REBUILT)
+    expect(rQ.result).toBe(RECEIVED_REBUILT)
+
+    expect(P.layer.children.length).toBe(2)
+    assertBounConverged([P, Q])
+  })
+
+  test('two peers moving different position sets: not a conflict, converged', () => {
+    const P = makeBounPeer('alice'), Q = makeBounPeer('bob')
+    seedBounGenesis([P, Q])
+
+    const opA = addPosSet(P, 'a', 0, 0)
+    const opB = addPosSet(P, 'b', 400, 400)
+    deliverBoun(Q, [opA, opB])
+
+    const opMoveP = moveTo(P, 'a', 10, 10)
+    const opMoveQ = moveTo(Q, 'b', 500, 500)
+
+    const [rP] = deliverBoun(P, [opMoveQ])
+    const [rQ] = deliverBoun(Q, [opMoveP])
+    expect(rP.result).not.toBe(RECEIVED_CONFLICT)
+    expect(rQ.result).not.toBe(RECEIVED_CONFLICT)
+
+    expect(P.api.find('a').getAttribute('transform')).toBe('translate(10, 10)')
+    expect(P.api.find('b').getAttribute('transform')).toBe('translate(500, 500)')
+    assertBounConverged([P, Q])
+  })
+
+  test('two peers moving the same position set: a conflict', () => {
+    const P = makeBounPeer('alice'), Q = makeBounPeer('bob')
+    seedBounGenesis([P, Q])
+
+    const opA = addPosSet(P, 'a', 0, 0)
+    deliverBoun(Q, [opA])
+
+    const opMoveP = moveTo(P, 'a', 10, 10)
+    const opMoveQ = moveTo(Q, 'a', 20, 20)
+
+    const [rP] = deliverBoun(P, [opMoveQ])
+    const [rQ] = deliverBoun(Q, [opMoveP])
+    expect(rP.result).toBe(RECEIVED_CONFLICT)
+    expect(rQ.result).toBe(RECEIVED_CONFLICT)
+  })
+
+  test('an add on one peer and a move on another: converged', () => {
+    const P = makeBounPeer('alice'), Q = makeBounPeer('bob')
+    seedBounGenesis([P, Q])
+
+    const opA = addPosSet(P, 'a', 0, 0)
+    deliverBoun(Q, [opA])
+
+    const opMove = moveTo(Q, 'a', 50, 50)
+    const opAdd = addBoundary(P, 'b', 300, 300)
+
+    const [rP] = deliverBoun(P, [opMove])
+    const [rQ] = deliverBoun(Q, [opAdd])
+    expect(rP.result).not.toBe(RECEIVED_CONFLICT)
+    expect(rQ.result).not.toBe(RECEIVED_CONFLICT)
+    assertBounConverged([P, Q])
   })
 })

@@ -122,7 +122,7 @@ describe('boundary resize mode', () => {
   })
 
   test('dragging a corner handle and releasing commits a new rect', async () => {
-    const { App, ydoc } = await bootApp()
+    const { App, svgEl } = await bootApp()
     App.setLayer('boundaries-positions')
     App.commitBoundary({ x: 100, y: 100, w: 200, h: 150 })
     const id = App.getSelectedIds()[0]
@@ -143,11 +143,9 @@ describe('boundary resize mode', () => {
     // click or a fresh selection).
     expect(App.getResizeModeId()).toBe(id)
 
-    const yBounPos = ydoc.getXmlFragment('boundaries')
-    const yEl = yBounPos.toArray().find(n => n.getAttribute('id') === id)
-    const yPath = yEl.toArray().find(n => n.nodeName === 'path')
-    expect(pathToRect(yPath.getAttribute('d'))).toEqual({ x: 0, y: 0, w: 300, h: 250 })
-    expect(translationOf(yEl)).toEqual({ tx: 100, ty: 100 })
+    const el = svgEl.querySelector(`#boundaries-positions-layer [data-id="${id}"]`)
+    expect(pathToRect(el.querySelector('path').getAttribute('d'))).toEqual({ x: 0, y: 0, w: 300, h: 250 })
+    expect(translationOf(el)).toEqual({ tx: 100, ty: 100 })
   })
 
   test('a plain click-drag on a resize-mode boundary that misses the handles still moves it', async () => {
@@ -166,7 +164,7 @@ describe('boundary resize mode', () => {
 
 describe('position-set resize mode', () => {
   test('resizing regenerates the circle grid to fill the new extent', async () => {
-    const { App, ydoc } = await bootApp()
+    const { App, svgEl } = await bootApp()
     App.setLayer('boundaries-positions')
     App.commitPositionSet({ toolName: 'pos-grid-sq', x: 0, y: 0, w: 200, h: 200 })
     const id = App.getSelectedIds()[0]
@@ -183,12 +181,10 @@ describe('position-set resize mode', () => {
     App.resize(id, corner, 400, 400)
     App.commitResize(id, corner, 400, 400)
 
-    const yBounPos = ydoc.getXmlFragment('boundaries')
-    const yEl = yBounPos.toArray().find(n => n.getAttribute('id') === id)
-    const yPath = yEl.toArray().find(n => n.nodeName === 'path')
-    expect(pathToRect(yPath.getAttribute('d'))).toEqual({ x: 0, y: 0, w: 400, h: 400 })
+    const el = svgEl.querySelector(`#boundaries-positions-layer [data-id="${id}"]`)
+    expect(pathToRect(el.querySelector('path').getAttribute('d'))).toEqual({ x: 0, y: 0, w: 400, h: 400 })
 
-    const circleCount = yEl.toArray().filter(n => n.nodeName === 'circle').length
+    const circleCount = el.querySelectorAll(':scope > circle').length
     // 200x200 at the tool's default spacing produced fewer points than the
     // grown 400x400 extent does — regeneration actually ran, not a stale copy.
     expect(circleCount).toBeGreaterThan(0)

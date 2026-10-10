@@ -2,65 +2,23 @@
 /**
  * pure-mirror.test.js
  *
- * Acceptance gate for CONCURRENCY_AND_BRANCHING.md's "pure mirror" rule for
- * the boundaries/positions layer: everything render() puts on the DOM must
- * come from the Yjs tree, and nothing in the Yjs tree may be dropped. This
- * asserts the two literally match, attribute-for-attribute and
- * child-for-child, recursively — after creation AND after the apply*
- * mutators that touch geometry/rotation.
- *
- * The drawing layer is an op layer: its DOM is the source, not a mirror. Its
- * half asserts the DOM carries exactly the attributes the schema writes,
- * nothing stray, through the LayerAPI.
+ * The drawing and boundaries layers are op layers: their DOM is the source,
+ * not a mirror of anything. Each half asserts the DOM carries exactly the
+ * attributes the layer's writers set, nothing stray, through the LayerAPI.
+ * (Live equals replay is in drawing-projection-mirror.test.js and
+ * boun_pos-projection-mirror.test.js.)
  */
 
-import * as Y from 'yjs';
 import { describe, test, expect } from 'vitest';
 import { DRAWING_LAYER, SHAPE_TYPES, makeLayerAPI } from '../../src/drawing.js';
 import { ensureLayerId } from '../../src/op_layers.js';
 import {
-  addBoundary, addPositionSet, applyMoveCommit as applyBounPosMove,
-  applyResize as applyBounPosResize, render as renderBounPos,
+  BOUNDARIES_LAYER, BOUNPOS_TYPES, makeLayerAPI as makeBounPosAPI, toolParamsToCreateParams,
 } from '../../src/boun_pos.js';
 import { tablesAPI } from '../../src/tables.js';
 
 const { makeDoc } = tablesAPI;
 const SVG_NS = 'http://www.w3.org/2000/svg';
-
-// ── Structural comparison ───────────────────────────────────────────────────
-// Recursively asserts a rendered live DOM node exactly mirrors its source
-// Y.XmlElement/Y.XmlText: same tag, same attribute set and values, same
-// text content, same children in the same order. Nothing extra, nothing
-// missing.
-function assertPureMirror(domNode, yNode, path = '') {
-  if (yNode instanceof Y.XmlText) {
-    expect(domNode.nodeType, `${path}: expected a text node`).toBe(Node.TEXT_NODE);
-    expect(domNode.textContent, `${path}: text content`).toBe(yNode.toString());
-    return;
-  }
-  expect(domNode.nodeType, `${path}: expected an element`).toBe(Node.ELEMENT_NODE);
-  expect(domNode.tagName, `${path}: tag name`).toBe(yNode.nodeName);
-
-  const yAttrs = yNode.getAttributes();
-  const domAttrNames = [...domNode.attributes].map(a => a.name).sort();
-  const yAttrNames = Object.keys(yAttrs).sort();
-  expect(domAttrNames, `${path}: attribute set`).toEqual(yAttrNames);
-  for (const k of yAttrNames) {
-    expect(domNode.getAttribute(k), `${path}: attribute ${k}`).toBe(yAttrs[k]);
-  }
-
-  const yChildren = yNode.toArray();
-  expect(domNode.childNodes.length, `${path}: child count`).toBe(yChildren.length);
-  yChildren.forEach((yChild, i) => {
-    assertPureMirror(domNode.childNodes[i], yChild, `${path}>${yChild.nodeName ?? '#text'}[${i}]`);
-  });
-}
-
-function renderScratch(renderFn, yFragment) {
-  const g = document.createElementNS(SVG_NS, 'g');
-  renderFn(yFragment, g);
-  return g;
-}
 
 function findRendered(g, dataId) {
   return g.querySelector(`[data-id="${dataId}"]`);
@@ -128,41 +86,75 @@ describe('the drawing layer DOM carries exactly the attributes its schema writes
 
 // ── Boundaries / positions layer ────────────────────────────────────────────
 
-describe('boun_pos.js render() is a pure mirror of the Yjs tree', () => {
-  function seed(ydoc, yBounPos) {
-    addBoundary(ydoc, yBounPos, { id: 'b1', name: 'Hand', x: 0, y: 0, w: 200, h: 100 });
-    addPositionSet(ydoc, yBounPos, {
-      x: 0, y: 0, w: 200, h: 200, toolName: 'pos-grid-sq', toolParams: { spacing: 80, snapRadius: 2 },
-    });
-    addPositionSet(ydoc, yBounPos, {
-      x: 0, y: 0, w: 200, h: 200, toolName: 'pos-grid-hex', toolParams: { xSpacing: 60, ySpacing: 60, snapRadius: 2 },
-    });
+describe('the boundaries layer DOM carries exactly the attributes its writers set', () => {
+  function bounPosLayerAPI() {
+    const ydoc = makeDoc();
+    const layerEl = ensureLayerId(document.createElementNS(SVG_NS, 'g'), BOUNDARIES_LAYER);
+    const L = makeBounPosAPI(ydoc, () => layerEl, { id: 'me' }, 'pure-mirror-bounpos-table');
+    return { ydoc, layerEl, L };
+  }
+
+  const GROUP_ATTRS = ['id', 'data-id', 'data-module', 'name', 'data-bounpos-type', 'transform'];
+  const POS_SET_ATTRS = [...GROUP_ATTRS, 'data-snap-radius', 'data-gen-type', 'data-gen-x-spacing', 'data-gen-y-spacing'];
+
+  // Every element below the group, recursively: tag plus attribute names.
+  const shape = (el) => ({
+    tag: el.localName,
+    attrs: attrNames(el),
+    children: [...el.children].map(shape),
+  });
+
+  function seed(L) {
+    L.add('boundary', { id: 'b1', name: 'Hand', x: 0, y: 0, w: 200, h: 100 });
+    for (const [toolName, id, toolParams] of [
+      ['pos-grid-sq',  'sq',  { spacing: 80, snapRadius: 2 }],
+      ['pos-grid-hex', 'hex', { xSpacing: 60, ySpacing: 60, snapRadius: 2 }],
+    ]) {
+      const def = BOUNPOS_TYPES[toolName];
+      const p = toolParamsToCreateParams(def.genType, toolParams, { x: 0, y: 0, w: 200, h: 200 });
+      L.add(toolName, {
+        id, name: id, snapRadius: p.snapRadius, genType: def.genType,
+        xSpacing: p.xSpacing, ySpacing: p.ySpacing, x: 0, y: 0, w: 200, h: 200, circles: p.circles,
+      });
+    }
   }
 
   test('boundary, square pos-set and hex pos-set, at creation', () => {
-    const ydoc = makeDoc();
-    const yBounPos = ydoc.getXmlFragment('boundaries');
-    seed(ydoc, yBounPos);
+    const { layerEl, L } = bounPosLayerAPI();
+    seed(L);
 
-    const g = renderScratch(renderBounPos, yBounPos);
-    const yEls = yBounPos.toArray();
-    expect(g.children.length).toBe(yEls.length);
-    yEls.forEach((yEl, i) => assertPureMirror(g.children[i], yEl, yEl.getAttribute('id')));
+    expect(layerEl.children.length).toBe(3);
+    expect(attrNames(findRendered(layerEl, 'b1'))).toEqual([...GROUP_ATTRS].sort());
+    expect(attrNames(findRendered(layerEl, 'sq'))).toEqual([...POS_SET_ATTRS].sort());
+    expect(attrNames(findRendered(layerEl, 'hex'))).toEqual([...POS_SET_ATTRS].sort());
+
+    const b = shape(findRendered(layerEl, 'b1'));
+    // The envelope stamps a data-id on every added node so mutations can
+    // address them.
+    expect(b.children).toEqual([
+      { tag: 'path', attrs: ['d', 'data-id'], children: [] },
+      { tag: 'text', attrs: ['data-id', 'x', 'y'], children: [] },
+    ]);
+    const circles = findRendered(layerEl, 'sq').querySelectorAll(':scope > circle');
+    expect(circles.length).toBeGreaterThan(0);
+    circles.forEach(c => expect(attrNames(c)).toEqual(['cx', 'cy', 'data-id', 'r']));
   });
 
-  test('after move and resize, through the real apply* functions', () => {
-    const ydoc = makeDoc();
-    const yBounPos = ydoc.getXmlFragment('boundaries');
-    seed(ydoc, yBounPos);
+  test('after move and resize, through the LayerAPI: same attributes, no strays', () => {
+    const { layerEl, L } = bounPosLayerAPI();
+    seed(L);
+    const before = ['b1', 'sq', 'hex'].map(id => shape(findRendered(layerEl, id)).attrs);
 
-    const [boundary, sq, hex] = yBounPos.toArray();
-    applyBounPosMove(ydoc, boundary, 20, 30);
-    applyBounPosResize(ydoc, sq, 10, 10, 240, 180);
-    applyBounPosMove(ydoc, hex, 5, 5);
+    L.applyMoveCommit(L.find('b1'), 20, 30);
+    L.applyResize(L.find('sq'), 10, 10, 240, 180);
+    L.applyMoveCommit(L.find('hex'), 5, 5);
 
-    const g = renderScratch(renderBounPos, yBounPos);
-    for (const yEl of yBounPos.toArray()) {
-      assertPureMirror(findRendered(g, yEl.getAttribute('id')), yEl, yEl.getAttribute('id'));
-    }
+    // The mutators actually did something observable, so this isn't
+    // vacuously true.
+    expect(findRendered(layerEl, 'b1').getAttribute('transform')).toBe('translate(20, 30)');
+    expect(findRendered(layerEl, 'sq').getAttribute('transform')).toBe('translate(10, 10)');
+    expect(findRendered(layerEl, 'sq').querySelector('path').getAttribute('d')).toContain('240');
+    expect(['b1', 'sq', 'hex'].map(id => shape(findRendered(layerEl, id)).attrs)).toEqual(before);
+    expect(layerEl.children.length).toBe(3);
   });
 });
