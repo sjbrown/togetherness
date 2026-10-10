@@ -810,6 +810,9 @@ function onOpsChanged(layer, evt, transaction) {
       handleBranchConflict(layer, out.tips);
     }
   }
+  // A remote op may have removed an element this peer still holds.
+  _applySelState(Selection.dropMissingClaims(_selState(),
+    (id) => !!_svgEl.querySelector(`[data-id="${id}"]`)));
   Overlay.render();
   // The layer list reads the live DOM, which these ops just changed.
   UI.refreshFromDoc();
