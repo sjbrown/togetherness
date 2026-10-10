@@ -14,14 +14,15 @@ import {
   DRAWING_LAYER, SHAPE_TYPES, makeLayerAPI, runGesture,
   addEl, deleteEl, findEl,
   getGeom, selectModes, nextSelectMode, computeResize,
-  getRotation, syncRotation,
-  applyRotate, applyMove, applyResize, applyPivot, previewResize, previewRotate, rotationCenter,
-  resolveRotation, rotationTransform, getPivot,
+  syncRotation,
+  applyRotate, applyMove, applyResize, applyPivot, previewResize, previewRotate,
+  resolveRotation,
   snapPivot, computePivot, pivotShift, pivotRayOpacities, PIVOT_RAYS,
   reconcileImportedTransform, parseTransformList, reconcileTransform,
   PIVOT_SNAP_FRACTION,
 } from '../../src/drawing.js'
 import { ensureLayerId } from '../../src/op_layers.js'
+import { getRotation, rotationCenter, rotationTransform, getPivot } from '../../src/rotation.js'
 import { getOps } from '../../src/op_dag.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'

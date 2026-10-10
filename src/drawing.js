@@ -9,6 +9,10 @@
 
 import { normalizeAngle, computeRotate, computeResizeCornerRect, rotatePoint } from './geometry.js';
 import { defineOpLayer } from './op_layers.js';
+import * as Rotation from './rotation.js';
+import {
+  ROTATE_ATTR, PIVOT_X_ATTR, PIVOT_Y_ATTR, getRotation, getPivot, rotationCenter,
+} from './rotation.js';
 import * as OpLayer from './op_layer.js';
 
 const SVG_NS   = 'http://www.w3.org/2000/svg';
@@ -152,61 +156,23 @@ export function getGeom(svgEl) {
 }
 
 // ── Rotation ─────────────────────────────────────────────────────────────────
-// Rotation is a plain degree count (schema key `rotate`, attribute
-// data-rotate), never a baked transform -- the transform is derived as
-// `rotate(deg cx cy)`, so a move or resize re-pivots for free by calling
-// syncRotation() afterwards. getGeom() always stays in the shape's own
-// UNROTATED space; a caller needing canvas-space geometry rotates the point
-// itself via getRotation().
+// The model is rotation.js's (schema key `rotate`, attribute data-rotate),
+// about the shape's own placeable pivot (schema keys pivot-x/pivot-y).
 
 // Rects' own rotation step, in degrees; threaded through explicitly on
 // every call rather than a shared default.
 export const ROTATE_SNAP_DEG = 15;
-
-const ROTATE_ATTR = 'data-rotate';
 
 /** A transform this module didn't write -- created by external software or hand-authored */
 export function hasForeignTransform(svgEl) {
   return !!svgEl?.hasAttribute?.('transform') && !svgEl.hasAttribute(ROTATE_ATTR);
 }
 
-/** A rendered shape's rotation in degrees (0 when it has none). */
-export function getRotation(svgEl) {
-  return parseFloat(svgEl?.getAttribute?.(ROTATE_ATTR)) || 0;
-}
-
-// A pivot is fractions of the shape's own bbox ({fx:0.5,fy:0.5} = centre),
-// not canvas coordinates, so it survives a move or resize.
-const CENTER_PIVOT = { fx: 0.5, fy: 0.5 };
-
-const PIVOT_X_ATTR = 'data-pivot-x';
-const PIVOT_Y_ATTR = 'data-pivot-y';
-
 const clamp01 = n => Math.min(1, Math.max(0, n));
 
-/** A shape's pivot, defaulting to its centre. Always clamp the return value to defend against hand-edited values out of range */
-export function getPivot(svgEl) {
-  const fx = parseFloat(svgEl?.getAttribute?.(PIVOT_X_ATTR));
-  const fy = parseFloat(svgEl?.getAttribute?.(PIVOT_Y_ATTR));
-  if (!Number.isFinite(fx) && !Number.isFinite(fy)) return CENTER_PIVOT;
-  return {
-    fx: Number.isFinite(fx) ? clamp01(fx) : 0.5,
-    fy: Number.isFinite(fy) ? clamp01(fy) : 0.5,
-  };
-}
-
-/** The canvas-space point a shape rotates about, for a given pivot. */
-export function rotationCenter(geom, pivot = CENTER_PIVOT) {
-  return geom
-    ? { cx: geom.x + pivot.fx * geom.width, cy: geom.y + pivot.fy * geom.height }
-    : { cx: 0, cy: 0 };
-}
-
-/** A shape's rotation resolved against geometry: { deg, cx, cy }, or null when unrotated. */
+/** A shape's rotation resolved against geometry and its pivot: { deg, cx, cy }, or null when unrotated. */
 export function resolveRotation(svgEl, geom = getGeom(svgEl)) {
-  const deg = getRotation(svgEl);
-  if (!deg) return null;
-  return { deg, ...rotationCenter(geom, getPivot(svgEl)) };
+  return Rotation.resolveRotation(svgEl, geom, getPivot(svgEl));
 }
 
 // ── Pivot placement ──────────────────────────────────────────────────────────
@@ -301,25 +267,13 @@ export function pivotRayOpacities(fx, fy) {
   }));
 }
 
-/** Format a resolved rotation as an SVG transform, or null for none. */
-export function rotationTransform(rot) {
-  return rot ? `rotate(${rot.deg} ${rot.cx} ${rot.cy})` : null;
-}
-
 /**
- * Project a shape's stored rotation onto its live DOM element as a
- * transform. Called after every geometry write so the pivot tracks the
- * shape rather than the position it had when the rotation was set.
+ * Project a shape's stored rotation onto it as a transform, about its own
+ * pivot (see Rotation.syncRotation).
  */
 export function syncRotation(domEl) {
-  if (!domEl?.setAttribute) return;
-  // No data-rotate means this shape's transform isn't ours — a hand-authored
-  // or imported SVG can carry its own, and rewriting it would silently
-  // throw the author's geometry away.
-  if (!domEl.hasAttribute?.(ROTATE_ATTR)) return;
-  const transform = rotationTransform(resolveRotation(domEl));
-  if (transform) domEl.setAttribute('transform', transform);
-  else           domEl.removeAttribute('transform');
+  if (!domEl?.hasAttribute?.(ROTATE_ATTR)) return;
+  Rotation.syncRotation(domEl, getGeom(domEl), getPivot(domEl));
 }
 
 /** Commit a rotation. A shape whose schema has no `rotate` key (circles) is a no-op. */

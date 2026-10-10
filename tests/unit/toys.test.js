@@ -10,9 +10,10 @@ import {
   hslToRgb, colorMatrixValues, selectModes, nextSelectMode,
   _clearSvgTextCache, _resetToyScriptState, activateAllToyScriptsDom,
   newToyId, _getScriptsFragment, initializeToy,
-  getRotation, syncRotation, resolveRotation, rotationCenter, applyRotate,
+  syncRotation, resolveRotation, applyRotate,
   applyMove, applyResize, ROTATE_SNAP_DEG,
 } from '../../src/toys.js'
+import { getRotation } from '../../src/rotation.js'
 
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
 const TOY_DIR = path.resolve(__dir, '../../src/toy')
@@ -503,15 +504,18 @@ describe('rotation (toys)', () => {
     expect(getRotation(null)).toBe(0)
   })
 
-  test('rotationCenter is always the toy\'s own geometric centre -- there is no pivot argument to pass', () => {
-    const g = makeRotatableToyDom({ x: 50, y: 50, width: 100, height: 100 })
-    expect(rotationCenter(g)).toEqual({ cx: 100, cy: 100 })
-    expect(rotationCenter(g, { x: 0, y: 0, width: 40, height: 20 })).toEqual({ cx: 20, cy: 10 })
+  test('a toy always turns about its own centre, even one carrying pivot attributes', () => {
+    const g = makeRotatableToyDom({ x: 50, y: 50, width: 100, height: 100, rotate: 30 })
+    g.setAttribute('data-pivot-x', '0')
+    g.setAttribute('data-pivot-y', '0')
+    expect(resolveRotation(g)).toEqual({ deg: 30, cx: 100, cy: 100 })
+    expect(resolveRotation(g, { x: 0, y: 0, width: 40, height: 20 })).toEqual({ deg: 30, cx: 20, cy: 10 })
   })
 
-  test('rotationCenter falls back to the origin when geometry is unavailable', () => {
+  test('the centre falls back to the origin when geometry is unavailable', () => {
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g') // no embedded <svg> at all
-    expect(rotationCenter(g)).toEqual({ cx: 0, cy: 0 })
+    g.setAttribute('data-rotate', '30')
+    expect(resolveRotation(g)).toEqual({ deg: 30, cx: 0, cy: 0 })
   })
 
   test('resolveRotation is null for an unrotated toy, { deg, cx, cy } otherwise', () => {

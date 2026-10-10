@@ -31,6 +31,8 @@ import { runInEnvelope, isInsideEnvelope } from './envelope.js';
 export { isInsideEnvelope };
 import { defineOpLayer } from './op_layers.js';
 import * as OpLayer from './op_layer.js';
+import * as Rotation from './rotation.js';
+import { ROTATE_ATTR, CENTER_PIVOT, getRotation, rotationCenter } from './rotation.js';
 // geometry.js is shape-agnostic pure math, shared with drawing.js and
 // boun_pos.js.
 import * as Geometry from './geometry.js';
@@ -1095,46 +1097,27 @@ export function moveToyAndStack(layerEl, el, x, y) {
 }
 
 // ── Rotation ─────────────────────────────────────────────────────────────────
-// Offered only when a toy's embedded <svg> declares class="tt_able_rotate"
-// (chip, single_poker_card), always about the toy's own fixed centre -- no
-// placeable pivot. The rotate attribute lives on the outer <g>, the same
-// element move/resize/select already key off of; the embedded <svg> stays
-// unrotated local geometry.
-const ROTATE_ATTR = 'data-rotate'
+// The model is rotation.js's. Offered only when a toy's embedded <svg>
+// declares class="tt_able_rotate" (chip, single_poker_card), always about
+// the toy's own fixed centre -- no placeable pivot. The rotate attribute
+// lives on the outer <g>, the same element move/resize/select already key
+// off of; the embedded <svg> stays unrotated local geometry.
 
 // Chips/cards' own rotation step, in degrees -- a fixed grain, not user-adjustable.
 export const ROTATE_SNAP_DEG = 45
 
-/** A toy's rotation in degrees (0 when it has none, or it can't rotate). */
-export function getRotation(domEl) {
-  return parseFloat(domEl?.getAttribute?.(ROTATE_ATTR)) || 0
-}
-
-/** The point a toy turns about: always its own centre, never placeable. */
-export function rotationCenter(domEl, geom = getGeom(domEl)) {
-  return geom
-    ? { cx: geom.x + geom.width / 2, cy: geom.y + geom.height / 2 }
-    : { cx: 0, cy: 0 }
-}
-
-/** A toy's rotation resolved against geometry: { deg, cx, cy }, or null when unrotated. */
+/** A toy's rotation resolved against geometry: { deg, cx, cy } about its centre, or null when unrotated. */
 export function resolveRotation(domEl, geom = getGeom(domEl)) {
-  const deg = getRotation(domEl)
-  if (!deg) return null
-  return { deg, ...rotationCenter(domEl, geom) }
+  return Rotation.resolveRotation(domEl, geom, CENTER_PIVOT)
 }
 
 /**
- * Project a toy's stored rotation onto its own <g> as a transform. Called
- * after every geometry write so the pivot tracks the toy's current centre.
- * A toy with no data-rotate at all returns immediately.
+ * Project a toy's stored rotation onto its own <g> as a transform, about
+ * its centre (see Rotation.syncRotation).
  */
 export function syncRotation(domEl) {
-  if (!domEl?.setAttribute) return
-  if (!domEl.hasAttribute?.(ROTATE_ATTR)) return
-  const rot = resolveRotation(domEl)
-  if (rot) domEl.setAttribute('transform', `rotate(${rot.deg} ${rot.cx} ${rot.cy})`)
-  else     domEl.removeAttribute('transform')
+  if (!domEl?.hasAttribute?.(ROTATE_ATTR)) return
+  Rotation.syncRotation(domEl, getGeom(domEl), CENTER_PIVOT)
 }
 
 // No tt_able_rotate guard: selectModes already gates the whole rotate
@@ -2018,7 +2001,7 @@ export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false)
     computeResize: (mode, startRect, corner, px, py) => computeResizeRect(startRect, corner, px, py),
     getRotation,
     resolveRotation,
-    rotationCenter,
+    rotationCenter:  (svgEl, geom = getGeom(svgEl)) => rotationCenter(geom),
     computeRotate: Geometry.computeRotate,
     previewEdit,
     /** Place a toy from its template. Resolves to the placed element. */

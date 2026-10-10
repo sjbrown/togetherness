@@ -72,10 +72,9 @@ import { colorMatrixValues } from './toys.js';
 import { previewResize as previewBounPosResize } from './boun_pos.js';
 import {
   previewResize     as previewDrawingResize,
-  resolveRotation   as elementRotation,
-  rotationTransform,
   pivotRayOpacities,
 } from './drawing.js';
+import { resolveRotation as elementRotation, rotationTransform } from './rotation.js';
 import { normalizeAngle } from './geometry.js';
 import { LOCAL_ACTION_FILTER_ID } from './defs.js';
 import { getBowstringState, chargeOpacityFor, chargeRadiusFor, bowstringOrigin } from './delight.js';
