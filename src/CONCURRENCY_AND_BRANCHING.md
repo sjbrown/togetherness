@@ -55,7 +55,7 @@ Three statements, each of which the old design violated:
    offline sync, causal delivery, efficient encoding.
 
 **Each op layer has its own DAG.** Everything above and below describes one
-op layer, and the toys layer is the only one today. Each op layer has its own
+op layer. There are two today, toys and drawing. Each op layer has its own
 ops map and checkpoint-content map, its own local tips (§2.3), its own
 checkpoints and prune root (§6.3), and its own conflict resolution (§5). Op
 ids are globally unique, but an op belongs to exactly one layer: layers never
@@ -64,11 +64,20 @@ two layers (invariant 5). What a layer is called, which elements it owns and
 where its state is stored is data in its descriptor (`op_layers.js`); the op
 machinery contains no layer names.
 
-### 1.1 Drawing, Boundaries & Postions Layers are still Yjs
+### 1.1 The drawing layer is an op layer; boundaries and positions are still Yjs
 
-`Y.Xml` is fine, and stays, for `drawing` and `boundaries`. Those layers
-have no object identity to preserve, no reparenting, no derived values,
-and no user scripts.
+The drawing layer is an op layer, the second one registered (`DRAWING_LAYER`
+in `drawing.js`). Its writes are DOM operations on `#drawing-layer`, run as
+gestures, and its state is its own DAG (`ops:drawing`). It has no hooks: no
+scripts and no cascades. Its derived `transform` is written inside the same
+gesture as the geometry, rotation or pivot change that implies it
+(invariant 6). Concurrent writes to the same attribute of the same shape are
+a conflict (§5.1), as for toys; soft-lock is what keeps that rare for
+connected peers.
+
+Only the boundaries and positions layer is still on Yjs. `Y.Xml` is fine, and
+stays, for it: it has no object identity to preserve, no reparenting, no
+derived values, and no user scripts.
 
 ---
 
@@ -110,7 +119,7 @@ Operation {
   authorId  : string          // persistent user.js localId, never Yjs clientID
   gesture   : string          // 'move' | 'roll' | 'place' | … , for the audit log
   mutations : WireMutation[]  // §3
-  ts        : number          // wall clock, for display only, never for ordering
+  ts        : number          // wall clock; display, and one author's own undo order (below)
 }
 ```
 
@@ -120,6 +129,10 @@ Bob's two, there is no correct place in a list for Bob's first op to
 go. A map says only "these operations exist"; the `parents` pointers
 say how they relate. The DAG is computed from the map, never stored as a
 second structure that can disagree with it.
+
+`ts` is never used to merge, to order concurrent operations, or to decide
+authority. It does order one author's own actions against each other, across
+layers, for undo (§7.1).
 
 **Operations are immutable.** Never rewrite one. Never append to a
 `parents` array. Correcting something means appending a new operation
@@ -669,10 +682,22 @@ Consequences worth stating rather than discovering:
 * **Undo reaches back as far as the prune line** (§6.3), about 10 minutes.
   An op that was pruned cannot be inverted.
 
-### 7.1 Non-Toys Layers
+### 7.1 Across layers
 
-`UndoManager` **still handles** `drawing` and `boundaries` layers,
-which are still ordinary `Y.Xml` state layers where it works fine.
+Undo is per-author and per-layer, and there are three mechanisms: the toys op
+layer, the drawing op layer, and `UndoManager`, which now handles only
+`boundaries`, an ordinary `Y.Xml` state layer where it works fine.
+
+An Undo press acts on whichever of them holds the author's most recent
+undoable action, chosen by the author's own `ts`: each op layer reports the
+`ts` of the operation it would invert (`undoCandidate`), `UndoManager`
+reports the `ts` stamped on its top stack item when it landed, and the
+highest wins. Redo does the same over the redo targets, where an undo
+operation's `ts` is the moment of the undo, so redo walks forward in the
+reverse of the order the undos happened in. A layer whose target can no
+longer apply (its node is gone) is skipped for the next-latest. The choice
+looks at nothing but the author's own timestamps, so it needs no record of
+"the last layer touched".
 
 ---
 
