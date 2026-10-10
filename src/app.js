@@ -66,7 +66,7 @@ const DEFAULT_BACKGROUNDS = [
 
 
 // ── Internal app state ────────────────────────────────────────────────────────
-let _ydoc, _yMeta, _yDrawing,
+let _ydoc, _yMeta,
     _yBounPos,
     _awareness, _provider;
 
@@ -248,7 +248,6 @@ function _reanchorRotated(id, rect, rot) {
 function _writePivot(id, mtype, startRect, fromPivot, toPivot, deg) {
   const shift = _Layers[mtype].pivotShift(startRect, fromPivot, toPivot, deg);
   const el    = _Layers[mtype]?.find(id);
-  _lastActionScope = mtype;
   _Layers[mtype]?.applyPivot(el, toPivot.fx, toPivot.fy,
                              startRect.x + shift.dx, startRect.y + shift.dy);
   addHistory(`pivot ${id} → (${toPivot.fx}, ${toPivot.fy})`, { elType: mtype });
@@ -349,17 +348,6 @@ let _rotateSnapDegByLayer = {
 
 let _pivotSnapFraction = Drawing.PIVOT_SNAP_FRACTION;
 
-// Which undo mechanism App.undo/App.redo should invoke: the toys op log
-// (Toys.undoToyGesture) or the drawing/boundaries Y.UndoManager
-// (UndoRedo.undo). Set at every commit callsite to whichever the action
-// just performed actually touched.
-// Switching the active layer clears the selection (App.setLayer), so a
-// single gesture can never span both toys and drawing/boundaries.
-// Defaults to 'toys' — on a session where nothing has happened yet,
-// either mechanism reporting "nothing to undo" is equally correct, and
-// toys is this app's primary domain.
-let _lastActionScope = 'toys';   // 'toys' | 'draw_bounds'
-
 // ── Tool registry ───────────────────────────────────────────────────────────
 // Built from the layer registries + the universal Select tool.
 // _toolsByLayer: layer → ToolDef[] (Select first)
@@ -413,7 +401,6 @@ function buildToolRegistry() {
 export function boot({ ydoc, awareness, provider, user, tableId, isCreator = false, svgElement, signalingUrls = [] }) {
   _ydoc      = ydoc;
   _yMeta     = ydoc.getMap('meta');
-  _yDrawing  = ydoc.getXmlFragment('drawing');
   _yBounPos  = ydoc.getXmlFragment('boundaries');
   _awareness = awareness;
   _provider  = provider;
@@ -433,7 +420,13 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
 
   // Layers - the canonical LayerAPI dispatch table, keyed by the data-module
   _Layers = {
-    'drawing':  Drawing.makeLayerAPI(_ydoc, _yDrawing),
+    'drawing':  Drawing.makeLayerAPI(
+                  _ydoc,
+                  () => _svgEl.querySelector('#drawing-layer'),
+                  user,
+                  tableId,
+                  isCreator
+                ),
     'toys':     Toys.makeLayerAPI(
                   _ydoc,
                   () => _svgEl.querySelector('#toys-layer'),
@@ -475,11 +468,10 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   Toys.init(_ydoc);
 
   // CRDT observers
-  // Layers use observeDeep so attribute changes trigger renderDoc on
-  // every client
-  _yDrawing.observeDeep(onDrawingChanged);
+  // The boundaries layer uses observeDeep so attribute changes trigger
+  // renderDoc on every client. The op layers (toys, drawing) arrive through
+  // their ops maps instead.
   _yBounPos.observeDeep(onBounPosChanged);
-  _yDrawing.observe(onDocChanged);
   _yBounPos.observe(onDocChanged);
   _yMeta.observe(onMetaChanged);
   for (const layer of opLayers()) {
@@ -487,11 +479,11 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   }
   _awareness.on('change', onPresenceChanged);
 
-  // Undo/redo - UndoManager handles drawing + boundaries layers.
-  // Toys layer undo is a separate mechanism -- see undo_redo.js
+  // Undo/redo - UndoManager handles the boundaries layer only.
+  // The op layers' undo is a separate mechanism -- see undo_redo.js
   UndoRedo.init({
     ydoc:   _ydoc,
-    scopes: [_yDrawing, _yBounPos],
+    scopes: [_yBounPos],
     onApply: (kind, label) => {
       if (kind === 'undo') {
         addUndoHistory(label ? `undid: ${label}` : 'undid a change');
@@ -685,7 +677,7 @@ function renderToysLayer() {
 function renderDrawingLayer() {
   const layer = _svgEl.querySelector('#drawing-layer');
   if (!layer) throw new Error("renderDrawingLayer: '#drawing-layer' not found in SVG document — malformed template?");
-  _Layers.drawing.render(layer);
+  _Layers.drawing.render(layer, tablesAPI.getJoinSequenceArray(_ydoc));
   Canvas.wireShapeClicks(layer);
 }
 
@@ -838,6 +830,8 @@ function onOpsChanged(layer, evt, transaction) {
     }
   }
   Overlay.render();
+  // The layer list reads the live DOM, which these ops just changed.
+  UI.refreshFromDoc();
 }
 
 
@@ -855,36 +849,6 @@ function onBounPosChanged(events, transaction) {
           if (!(yEl instanceof Y.XmlElement)) return;
           const id = yEl.getAttribute('id') ?? '?';
           App.addLog(`remote: added boundary ${id.slice(0, 12)}`, 'remote');
-        });
-      });
-    }
-  }
-  renderDoc();
-}
-
-function onDrawingChanged(events, transaction) {
-  // Log remote structural changes (add / delete). Attribute changes (moves)
-  // arrive here too via observeDeep but don't need logging — just renderDoc.
-  if (!transaction.local) {
-    for (const event of events) {
-      if (event.target !== _yDrawing) continue; // skip attribute-change events on children
-      event.changes.added.forEach(item => {
-        item.content.getContent().forEach(yEl => {
-          if (!yEl.getAttribute) return;
-          const id     = yEl.getAttribute('id') ?? '?';
-          addHistory(`remote: added ${id}`, {
-            fill: yEl.getAttribute('fill'), elType: yEl.nodeName,
-          });
-          App.addLog(`added ${yEl.nodeName}`, 'remote');
-        });
-      });
-      event.changes.deleted.forEach(item => {
-        item.content.getContent().forEach(yEl => {
-          if (!yEl.getAttribute) return;
-          addHistory(`remote: deleted ${(yEl.getAttribute('id') ?? '?')}`, {
-            fill: yEl.getAttribute('fill'), elType: yEl.nodeName,
-          });
-          App.addLog(`remote deleted ${yEl.nodeName}`, 'del');
         });
       });
     }
@@ -1142,13 +1106,16 @@ const App = {
     const mtype   = firstEl ? moduleForElement(firstEl) : null;
 
     let deleted = 0;
+    const opts = { authorId: App.user.id, tableId: _tableId };
     if (mtype === 'toys') {
-      _lastActionScope = 'toys';
       const layerEl = _svgEl.querySelector('#toys-layer');
-      const op = layerEl ? Toys.deleteToysBatch(_ydoc, layerEl, ids, { authorId: App.user.id, tableId: _tableId }) : null;
+      const op = layerEl ? Toys.deleteToysBatch(_ydoc, layerEl, ids, opts) : null;
       deleted = op ? ids.length : 0; // one op for the whole batch; exact per-id count isn't tracked separately
+    } else if (mtype === 'drawing') {
+      const layerEl = _svgEl.querySelector('#drawing-layer');
+      const op = layerEl ? Drawing.deleteDrawingsBatch(_ydoc, layerEl, ids, opts) : null;
+      deleted = op ? ids.length : 0;
     } else {
-      _lastActionScope = 'draw_bounds';
       UndoRedo.tag(`deleted ${ids.length} objects`);
       _ydoc.transact(() => {
         for (const id of ids) {
@@ -1175,39 +1142,23 @@ const App = {
   duplicateMultiSelected: () => {
     const ids = _heldIds();
     if (ids.length === 0) return;
-    let added = 0;
-    // The inner addDrawing transactions collapse into this outer one.
-    _lastActionScope = 'draw_bounds';
-    UndoRedo.tag(`duplicated ${ids.length} objects`);
-    _ydoc.transact(() => {
-      for (const id of ids) {
-        const yEl = Drawing.findDrawing(_yDrawing, id);
-        if (!yEl) continue;
-        const attrs = yEl.getAttributes();
-        const type  = yEl.nodeName;
-        const newId = App.user.id + '_' + Math.random().toString(36).slice(2, 7);
-        const offset = { x: +(attrs.x ?? attrs.cx ?? 0) + 22, y: +(attrs.y ?? attrs.cy ?? 0) + 22 };
-        const geom   = type === 'rect'
-          ? { x: offset.x, y: offset.y, width: +attrs.width, height: +attrs.height }
-          : { cx: offset.x, cy: offset.y, r: +attrs.r };
-        Drawing.addDrawing(_ydoc, _yDrawing,
-          { ...attrs, ...geom, type, id: newId });
-        added++;
-      }
-    });
-    if (added > 0) {
-      addHistory(`duplicated ${added} objects`);
-      App.addLog(`duplicated ${added} objects`, 'local');
+    const layerEl = _svgEl.querySelector('#drawing-layer');
+    const { newIds } = layerEl
+      ? Drawing.duplicateDrawingsBatch(_ydoc, layerEl, ids, {
+          authorId: App.user.id, tableId: _tableId, newId: newDrawingId,
+        })
+      : { newIds: [] };
+    if (newIds.length > 0) {
+      addHistory(`duplicated ${newIds.length} objects`);
+      App.addLog(`duplicated ${newIds.length} objects`, 'local');
     }
     _clearClaims();
   },
 
   // ── Document mutations ────────────────────────────────────────────────────
   commitDrawing: (attrs) => {
-    const id = App.user.id + '_' + Math.random().toString(36).slice(2, 7);
-    _lastActionScope = 'draw_bounds';
-    UndoRedo.tag(`add ${attrs.type ?? 'rect'} ${id}`);
-    Drawing.addDrawing(_ydoc, _yDrawing, { ...attrs, id });
+    const id = newDrawingId();
+    _Layers.drawing.add({ ...attrs, id });
     addHistory(`added ${attrs.type ?? 'rect'} ${id}`, {
       fill: attrs.fill, elType: attrs.type,
     });
@@ -1220,7 +1171,6 @@ const App = {
     const { id, name } = def.newId();
     if (def.genType === null) {
       // boundary
-      _lastActionScope = 'draw_bounds';
       UndoRedo.tag(`add ${def.label} ${name}`);
       def.create(_ydoc, _yBounPos, { id, name, x, y, w, h });
     } else {
@@ -1230,7 +1180,6 @@ const App = {
       const genType  = def.genType;
       const createParams = BounPos.toolParamsToCreateParams(genType, params, {x, y, w, h});
       if (createParams.circles.length === 0) return;
-      _lastActionScope = 'draw_bounds';
       UndoRedo.tag(`add ${def.label} ${name}`);
       def.create(_ydoc, _yBounPos,
         {
@@ -1325,7 +1274,6 @@ const App = {
     if (!layerEl) return;
     try {
       Toys.invokeMenuAction(_ydoc, layerEl, svgEl, namespace, key, undefined, App.user.id, _tableId);
-      _lastActionScope = 'toys';
       addHistory(`${key} ${id}`, { elType: 'toys' });
     } catch (err) {
       UI.toast(`Action failed: ${err.message}`, 'warn');
@@ -1345,7 +1293,6 @@ const App = {
     const mtype = moduleForElement(svgEl);
     const L = _Layers[mtype];
     if (L) L.edit(L.find(id), editData);
-    // observeDeep fires synchronously
     // Refresh the Edit panel body to show the updated values.
     UI.refreshFromDoc();
     // endGhost's render() paints current DOM state, so it must run
@@ -1389,7 +1336,6 @@ const App = {
     // commits under null — a separate transaction, and a separate
     // operation, from placement. Deliberate: initialize is its own
     // gesture, not part of "place".
-    _lastActionScope = 'toys';
     Toys.placeToy(_ydoc, layerEl, {
       id, toyType: def.toyType, x, y, color,
     }, { authorId: App.user.id, tableId: _tableId }).then(async () => {
@@ -1418,8 +1364,7 @@ const App = {
     if (!L) return false;
     const yEl = L.find(id);
     if (!yEl) return false;
-    if (mtype === 'toys') _lastActionScope = 'toys';
-    else { _lastActionScope = 'draw_bounds'; UndoRedo.tag(`delete ${mtype}:${id}`); }
+    if (mtype === 'boun_pos') UndoRedo.tag(`delete ${mtype}:${id}`);
     L.delete(id);
     addHistory(`deleted ${mtype}:${id}`);
     App.addLog(`deleted ${id}`, 'local');
@@ -1450,15 +1395,15 @@ const App = {
       }
       return;
     }
-    const yEl = Drawing.findDrawing(_yDrawing, id);
-    if (!yEl) return;
-    const attrs = yEl.getAttributes();
-    const type  = yEl.nodeName;
-    const offset = { x: +(attrs.x ?? attrs.cx ?? 0) + 22, y: +(attrs.y ?? attrs.cy ?? 0) + 22 };
-    const geom   = type === 'rect'
-      ? { x: offset.x, y: offset.y, width: +attrs.width, height: +attrs.height }
-      : { cx: offset.x, cy: offset.y, r: +attrs.r };
-    App.commitDrawing({ ...attrs, ...geom, type, id: undefined, author: undefined });
+    const layerEl = _svgEl.querySelector('#drawing-layer');
+    const { newIds } = layerEl
+      ? Drawing.duplicateDrawingsBatch(_ydoc, layerEl, [id], {
+          authorId: App.user.id, tableId: _tableId, newId: newDrawingId,
+        })
+      : { newIds: [] };
+    if (!newIds.length) return;
+    addHistory(`duplicated ${id}`, { elType: 'drawing' });
+    App.addLog(`duplicated ${id}`, 'local');
   },
 
   // ── Drag lifecycle ────────────────────────────────────────────────────────
@@ -1580,7 +1525,6 @@ const App = {
     if (dropContainerId) {
       // Drop into a container = reparent + reposition into it, plus its
       // own contents_change_handler reaction.
-      _lastActionScope = 'toys';
       try {
         const layerEl = _svgEl.querySelector('#toys-layer');
         _ydoc.transact(() => {
@@ -1626,11 +1570,9 @@ const App = {
       return;
     }
 
-    if (mtype === 'toys') _lastActionScope = 'toys';
-    else { _lastActionScope = 'draw_bounds'; UndoRedo.tag(`move ${id} → (${rx}, ${ry})`); }
+    if (mtype === 'boun_pos') UndoRedo.tag(`move ${id} → (${rx}, ${ry})`);
     if (_Layers[mtype]) {
       _Layers[mtype].applyMoveCommit(_Layers[mtype].find(id), rx, ry);
-      // observeDeep fires on all layers and calls renderDoc()
     }
     // Ghost ends after the commit: endDragPlaceholder's own render() paints
     // the selection ring from whatever the DOM currently shows.
@@ -1772,9 +1714,7 @@ const App = {
     _resizeState = null;
 
     const el = _Layers[mtype]?.find(id);
-    _lastActionScope = mtype;
     _Layers[mtype]?.applyResize(el, toRect.x, toRect.y, toRect.width, toRect.height);
-    // observeDeep fires and calls renderDoc()
     // Ghost ends after the commit — same reasoning as commitMove:
     // endResizeGhost's own render() paints the selection ring from
     // whatever the DOM currently shows, so it has to run after the real
@@ -1842,7 +1782,6 @@ const App = {
     _rotateState = null;
 
     const el = _Layers[mtype]?.find(id);
-    _lastActionScope = mtype;
     _Layers[mtype]?.applyRotate(el, deg);
     // Ghost ends after the commit — same reasoning as commitResize.
     Overlay.endResizeGhost(id);
@@ -2016,17 +1955,17 @@ const App = {
     // switch), so every element here shares one mtype.
     const mtype = elements[0]?.mtype;
 
+    const moves = elements.map(el => ({
+      id: el.id, x: Math.round(el.anchorX + fdx), y: Math.round(el.anchorY + fdy),
+    }));
+    const batchOpts = { authorId: App.user.id, tableId: _tableId };
     if (mtype === 'toys') {
-      _lastActionScope = 'toys';
       const layerEl = _svgEl.querySelector('#toys-layer');
-      if (layerEl) {
-        const moves = elements.map(el => ({
-          id: el.id, x: Math.round(el.anchorX + fdx), y: Math.round(el.anchorY + fdy),
-        }));
-        Toys.moveToysBatch(_ydoc, layerEl, moves, { authorId: App.user.id, tableId: _tableId });
-      }
+      if (layerEl) Toys.moveToysBatch(_ydoc, layerEl, moves, batchOpts);
+    } else if (mtype === 'drawing') {
+      const layerEl = _svgEl.querySelector('#drawing-layer');
+      if (layerEl) Drawing.moveDrawingsBatch(_ydoc, layerEl, moves, batchOpts);
     } else {
-      _lastActionScope = 'draw_bounds';
       // One transaction → one undo step for the whole group move
       UndoRedo.tag(`move ${elements.length} objects`);
       _ydoc.transact(() => {
@@ -2114,53 +2053,53 @@ const App = {
     });
   },
   undo: () => {
-    // A moved/resized/deleted toy's selRing is meaningless once the
+    // A moved/resized/deleted shape's selRing is meaningless once the
     // gesture that put it there is undone
     _clearClaims();
-    const tryToys = () => {
-      const layer = _svgEl?.querySelector('#toys-layer');
-      const op = layer ? Toys.undoToyGesture(_ydoc, layer, _tableId, App.user.id) : null;
-      if (!op) return false;
-      _lastActionScope = 'toys';
-      addUndoHistory(`undid: ${describeToyGesture(op.gesture)}`);
-      UI.toast('Undone');
-      return true;
-    };
-    const tryDrawBounds = () => {
-      if (!UndoRedo.canUndo()) return false; // avoid UndoRedo's own onEmpty toast on a fallback probe
-      UndoRedo.undo();
-      _lastActionScope = 'draw_bounds';
-      return true;
-    };
-    const [primary, fallback] = _lastActionScope === 'draw_bounds'
-      ? [tryDrawBounds, tryToys] : [tryToys, tryDrawBounds];
-    if (primary() || fallback()) return;
-    UI.toast('Nothing to undo', 'warn');
+    const me = App.user.id;
+    const candidates = [];
+    for (const layer of opLayers()) {
+      const op = OpLayer.undoCandidate(_ydoc, layer, _tableId, me);
+      if (!op) continue;
+      candidates.push({ ts: op.ts, run: () => {
+        const layerEl = layerElOf(layer);
+        const done = layerEl ? OpLayer.undoGesture(_ydoc, layer, layerEl, _tableId, me) : null;
+        if (!done) return false;
+        addUndoHistory(`undid: ${describeGesture(done.gesture)}`);
+        UI.toast('Undone');
+        return true;
+      } });
+    }
+    const boundaryTs = UndoRedo.peekUndoTs();
+    if (boundaryTs != null) {
+      candidates.push({ ts: boundaryTs, run: () => { UndoRedo.undo(); return true; } });
+    }
+    if (!runLatestFirst(candidates)) UI.toast('Nothing to undo', 'warn');
   },
   redo: () => {
     _clearClaims();
-    const tryToys = () => {
-      const layer = _svgEl?.querySelector('#toys-layer');
-      const op = layer ? Toys.redoToyGesture(_ydoc, layer, _tableId, App.user.id) : null;
-      if (!op) return false;
-      _lastActionScope = 'toys';
-      addHistory(`redid: ${describeToyGesture(op.gesture)}`);
-      UI.toast('Redone');
-      return true;
-    };
-    const tryDrawBounds = () => {
-      if (!UndoRedo.canRedo()) return false;
-      UndoRedo.redo();
-      _lastActionScope = 'draw_bounds';
-      return true;
-    };
-    const [primary, fallback] = _lastActionScope === 'draw_bounds'
-      ? [tryDrawBounds, tryToys] : [tryToys, tryDrawBounds];
-    if (primary() || fallback()) return;
-    UI.toast('Nothing to redo', 'warn');
+    const me = App.user.id;
+    const candidates = [];
+    for (const layer of opLayers()) {
+      const op = OpLayer.redoCandidate(_ydoc, layer, _tableId, me);
+      if (!op) continue;
+      candidates.push({ ts: op.ts, run: () => {
+        const layerEl = layerElOf(layer);
+        const done = layerEl ? OpLayer.redoGesture(_ydoc, layer, layerEl, _tableId, me) : null;
+        if (!done) return false;
+        addHistory(`redid: ${describeGesture(done.gesture)}`);
+        UI.toast('Redone');
+        return true;
+      } });
+    }
+    const boundaryTs = UndoRedo.peekRedoTs();
+    if (boundaryTs != null) {
+      candidates.push({ ts: boundaryTs, run: () => { UndoRedo.redo(); return true; } });
+    }
+    if (!runLatestFirst(candidates)) UI.toast('Nothing to redo', 'warn');
   },
-  canUndo: () => Toys.canUndoToyGesture(_ydoc, _tableId, App.user.id) || UndoRedo.canUndo(),
-  canRedo: () => Toys.canRedoToyGesture(_ydoc, _tableId, App.user.id) || UndoRedo.canRedo(),
+  canUndo: () => opLayers().some(layer => OpLayer.canUndo(_ydoc, layer, _tableId, App.user.id)) || UndoRedo.canUndo(),
+  canRedo: () => opLayers().some(layer => OpLayer.canRedo(_ydoc, layer, _tableId, App.user.id)) || UndoRedo.canRedo(),
   exportSVG: () => {
     const clone = Storage.buildExportSvg(_svgEl, _ydoc);
     const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
@@ -2192,11 +2131,16 @@ const App = {
       _ydoc.transact(() => {
         result = Storage.populateFromSvgDoc(svgDoc.documentElement, _ydoc);
       });
-      const { toyCount, drawCount, bounPosCount, invalidToyEls, importedToyEls } = result;
+      const { toyCount, drawCount, bounPosCount, invalidToyEls, importedToyEls, importedDrawEls } = result;
 
       if (toyCount) {
         const layerEl = _svgEl.querySelector('#toys-layer');
         Toys.importToys(_ydoc, layerEl, importedToyEls, { authorId: App.user.id, tableId: _tableId });
+      }
+      if (drawCount) {
+        const layerEl = _svgEl.querySelector('#drawing-layer');
+        Drawing.importDrawings(_ydoc, layerEl, importedDrawEls, { authorId: App.user.id, tableId: _tableId });
+        UI.refreshFromDoc();
       }
 
       if (invalidToyEls.length) {
@@ -2220,9 +2164,6 @@ const App = {
     input.click();
   },
 
-  // _lastActionScope is read by undo/redo to pick which log
-  // (toys vs draw_bounds)
-  setLastActionScope: (scope) => { _lastActionScope = scope; },
   addHistory,
 
   // Application narration. `type` is one of 'local' | 'remote' | 'del' | ''.
@@ -2355,13 +2296,26 @@ const App = {
 
 // ── History log ───────────────────────────────────────────────────────────────
 
-// A human-readable label for a toy operation's gesture, for undo/redo
-// history + toast text. Toy ops don't carry a custom label the way
-// UndoRedo.tag() gives drawing/boundaries actions — this is the toys-side
+// Run the candidates highest-ts first until one applies. The ts is the
+// author's own wall clock: it picks which of this author's actions is the
+// most recent across layers, and decides nothing else. A candidate that can't
+// apply (its target vanished) falls through to the next-latest.
+function runLatestFirst(candidates) {
+  return candidates.sort((a, b) => b.ts - a.ts).some(c => c.run());
+}
+
+// A fresh id for a drawing shape.
+function newDrawingId() {
+  return App.user.id + '_' + Math.random().toString(36).slice(2, 7);
+}
+
+// A human-readable label for an operation's gesture, for undo/redo
+// history + toast text. Ops don't carry a custom label the way
+// UndoRedo.tag() gives boundaries actions — this is the op-side
 // equivalent, coarser but good enough for "undid: X" text.
-function describeToyGesture(gesture) {
-  if (gesture.startsWith('undo:')) return describeToyGesture(gesture.slice('undo:'.length));
-  if (gesture.startsWith('redo:')) return describeToyGesture(gesture.slice('redo:'.length));
+function describeGesture(gesture) {
+  if (gesture.startsWith('undo:')) return describeGesture(gesture.slice('undo:'.length));
+  if (gesture.startsWith('redo:')) return describeGesture(gesture.slice('redo:'.length));
   if (gesture.startsWith('menu:')) return gesture.slice('menu:'.length);
   if (gesture === 'delete-batch') return 'delete';
   if (gesture === 'move-batch')   return 'move';

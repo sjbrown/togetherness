@@ -52,6 +52,41 @@ test.describe('two-peer sync', () => {
     await browser.close();
   });
 
+  test('a rect drawn on peer A appears on peer B, and a move on A reaches B', async () => {
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
+    const ctx1    = await browser.newContext();
+    const ctx2    = await browser.newContext();
+    const page1   = await ctx1.newPage();
+    const page2   = await ctx2.newPage();
+
+    await openCreatorAndJoiner(page1, page2, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+    await waitForPeerCount(page1, 1);
+    await waitForPeerCount(page2, 1);
+
+    await expect(page2.locator('#drawing-layer rect')).toHaveCount(0);
+
+    await page1.evaluate(() => window.App.commitDrawing({
+      type: 'rect', x: 100, y: 100, width: 80, height: 80,
+      fill: '#5a7ea8', stroke: 'none', 'stroke-width': 1.5, 'corner-r': 0,
+    }));
+
+    await expect(page2.locator('#drawing-layer rect')).toHaveCount(1, { timeout: 5000 });
+    const id = await page1.locator('#drawing-layer rect').getAttribute('data-id');
+    await expect(page2.locator(`#drawing-layer rect[data-id="${id}"]`)).toHaveAttribute('x', '100');
+
+    // Move it on A, as a drag commit would.
+    await page1.evaluate((id) => {
+      window.App.startDrag(id);
+      window.App.commitMove(id, 300, 250);
+    }, id);
+
+    const rectB = page2.locator(`#drawing-layer rect[data-id="${id}"]`);
+    await expect(rectB).toHaveAttribute('x', '300', { timeout: 5000 });
+    await expect(rectB).toHaveAttribute('y', '250');
+
+    await browser.close();
+  });
+
   test('selecting a toy on peer A shows selection rings on both peers', async () => {
     const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
     const ctx1    = await browser.newContext();
