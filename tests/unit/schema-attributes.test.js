@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
 /**
- * pure-mirror.test.js
+ * schema-attributes.test.js
  *
- * The drawing and boundaries layers are op layers: their DOM is the source,
- * not a mirror of anything. Each half asserts the DOM carries exactly the
- * attributes the layer's writers set, nothing stray, through the LayerAPI.
- * (Live equals replay is in drawing-projection-mirror.test.js and
- * boun_pos-projection-mirror.test.js.)
+ * The drawing and boundaries layers' writers set only their own schema's
+ * attributes. Each half asserts, through the LayerAPI, that the DOM carries
+ * exactly those attributes, nothing stray. (Live equals replay is in
+ * projection-mirror.test.js.)
  */
 
 import { describe, test, expect } from 'vitest';
@@ -43,7 +42,7 @@ const attrNames = (el) => [...el.attributes].map(a => a.name).sort();
 function drawingLayerAPI() {
   const ydoc = makeDoc();
   const layerEl = ensureLayerId(document.createElementNS(SVG_NS, 'g'), DRAWING_LAYER);
-  const L = makeLayerAPI(ydoc, () => layerEl, { id: 'me' }, 'pure-mirror-table');
+  const L = makeLayerAPI(ydoc, () => layerEl, { id: 'me' }, 'schema-attributes-table');
   return { ydoc, layerEl, L };
 }
 
@@ -90,7 +89,7 @@ describe('the boundaries layer DOM carries exactly the attributes its writers se
   function bounPosLayerAPI() {
     const ydoc = makeDoc();
     const layerEl = ensureLayerId(document.createElementNS(SVG_NS, 'g'), BOUN_POS_LAYER);
-    const L = makeBounPosAPI(ydoc, () => layerEl, { id: 'me' }, 'pure-mirror-bounpos-table');
+    const L = makeBounPosAPI(ydoc, () => layerEl, { id: 'me' }, 'schema-attributes-bounpos-table');
     return { ydoc, layerEl, L };
   }
 
