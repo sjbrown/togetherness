@@ -45,11 +45,16 @@ function setup() {
     { layer: BOUNDARIES_LAYER, el: boundEl },
   ]
 
-  const toy = (id) => runToyGesture(ydoc, toysEl, () => {
+  const toy = (id, authorId = ME) => runToyGesture(ydoc, toysEl, () => {
     const g = document.createElementNS(SVG_NS, 'g')
     g.setAttribute('data-id', id)
     toysEl.appendChild(g)
-  }, { gesture: 'place', authorId: ME, tableId: TABLE })
+  }, { gesture: 'place', authorId, tableId: TABLE })
+  const drawBy = (authorId) => makeDrawingAPI(ydoc, () => drawEl, { id: authorId }, TABLE, true)
+  const boundsBy = (authorId) => makeBoundariesAPI(ydoc, () => boundEl, { id: authorId }, TABLE, true)
+  const dropFromDom = (id) => {
+    for (const el of [toysEl, drawEl, boundEl]) el.querySelector(`[data-id="${id}"]`)?.remove()
+  }
   const shape = (id) => draw.add({ id, type: 'rect', x: 0, y: 0, width: 10, height: 10 })
   const bound = (id) => bounds.add('boundary', { id, name: id, x: 0, y: 0, w: 10, h: 10 })
 
@@ -61,20 +66,24 @@ function setup() {
   ]
 
   // App.undo / App.redo's selection: highest ts wins.
-  const press = (kind) => {
+  const press = (kind, { owner = ME } = {}) => {
     const candidates = layers.flatMap(({ layer, el }) => {
-      const op = (kind === 'undo' ? OpLayer.undoCandidate : OpLayer.redoCandidate)(ydoc, layer, TABLE, ME)
+      const op = kind === 'undo'
+        ? OpLayer.undoCandidate(ydoc, layer, TABLE, ME, { owner, layerEl: el })
+        : OpLayer.redoCandidate(ydoc, layer, TABLE, ME, { layerEl: el })
       if (!op) return []
-      const run = kind === 'undo' ? OpLayer.undoGesture : OpLayer.redoGesture
-      return [{ ts: op.ts, run: () => !!run(ydoc, layer, el, TABLE, ME) }]
+      const run = () => kind === 'undo'
+        ? OpLayer.undoGesture(ydoc, layer, el, TABLE, ME, { owner })
+        : OpLayer.redoGesture(ydoc, layer, el, TABLE, ME)
+      return [{ ts: op.ts, run: () => !!run() }]
     })
     return candidates.sort((a, b) => b.ts - a.ts).some(c => c.run())
   }
 
   // Press once and name the id that left (undo) or arrived (redo).
-  const pressAndDiff = (kind) => {
+  const pressAndDiff = (kind, opts) => {
     const before = new Set(present())
-    expect(press(kind)).toBe(true)
+    expect(press(kind, opts)).toBe(true)
     const after = new Set(present())
     const changed = kind === 'undo'
       ? [...before].filter(id => !after.has(id))
@@ -83,7 +92,7 @@ function setup() {
     return changed[0]
   }
 
-  return { ydoc, bounds, boundEl, toy, shape, bound, present, press, pressAndDiff }
+  return { ydoc, toysEl, bounds, boundEl, toy, drawBy, boundsBy, dropFromDom, shape, bound, present, press, pressAndDiff }
 }
 
 describe('undo picks the most recent action across layers', () => {
@@ -150,5 +159,78 @@ describe('undo picks the most recent action across layers', () => {
     const t = setup()
     t.bound('bound1')
     expect(OpLayer.undoCandidate(t.ydoc, BOUNDARIES_LAYER, TABLE, ME).gesture).toBe('add')
+  })
+})
+
+describe('a target that can no longer apply is skipped', () => {
+  test('in the same layer: the next-newest action is offered instead', () => {
+    const t = setup()
+    t.bound('a'); t.bound('b')
+    t.bounds.applyMoveCommit(t.bounds.find('a'), 40, 50)
+    t.bounds.applyMoveCommit(t.bounds.find('b'), 60, 70)
+    t.dropFromDom('b')                 // another peer deleted it
+
+    // b's move can't apply, so a's move is undone instead.
+    expect(t.press('undo')).toBe(true)
+    expect(t.bounds.find('a').getAttribute('transform')).toBe('translate(0, 0)')
+  })
+
+  test('across layers: the newest candidate is passed over for an older layer', () => {
+    const t = setup()
+    t.toy('toy1'); t.shape('draw1')
+    t.dropFromDom('draw1')
+
+    expect(t.pressAndDiff('undo')).toBe('toy1')
+  })
+
+  test('the stuck action does not block redo of what was undone', () => {
+    const t = setup()
+    t.toy('toy1'); t.shape('draw1')
+    expect(t.pressAndDiff('undo')).toBe('draw1')
+    expect(t.pressAndDiff('undo')).toBe('toy1')
+    expect(t.pressAndDiff('redo')).toBe('toy1')
+  })
+})
+
+describe('undoFor: undoing another author’s action', () => {
+  test('picks the owner’s latest action across layers by the owner’s ts, leaving the actor’s own alone', () => {
+    const t = setup()
+    t.toy('bob-toy', 'bob')
+    t.shape('my-shape')
+    t.drawBy('bob').add({ id: 'bob-shape', type: 'rect', x: 0, y: 0, width: 10, height: 10 })
+    t.boundsBy('bob').add('boundary', { id: 'bob-bound', name: 'b', x: 0, y: 0, w: 10, h: 10 })
+
+    expect(t.pressAndDiff('undo', { owner: 'bob' })).toBe('bob-bound')
+    expect(t.pressAndDiff('undo', { owner: 'bob' })).toBe('bob-shape')
+    expect(t.pressAndDiff('undo', { owner: 'bob' })).toBe('bob-toy')
+    expect(t.press('undo', { owner: 'bob' })).toBe(false)
+    expect(t.present()).toEqual(['my-shape'])
+
+    // The actor's own undo is untouched by any of that.
+    expect(t.pressAndDiff('undo')).toBe('my-shape')
+  })
+
+  test('the owner’s own Undo then reaches their previous action, not the one just undone', () => {
+    const t = setup()
+    t.toy('bob-1', 'bob'); t.toy('bob-2', 'bob')
+    const ops = OpLayer.undoCandidate(t.ydoc, TOYS_LAYER, TABLE, 'bob')
+    expect(ops.gesture).toBe('place')
+
+    expect(t.pressAndDiff('undo', { owner: 'bob' })).toBe('bob-2')
+    // Bob's next target skips bob-2 (reverted by me) and finds bob-1.
+    expect(OpLayer.undoCandidate(t.ydoc, TOYS_LAYER, TABLE, 'bob').gesture).toBe('place')
+    expect(t.pressAndDiff('undo', { owner: 'bob' })).toBe('bob-1')
+    // Bob has no undos of his own to redo: they were mine.
+    expect(OpLayer.redoCandidate(t.ydoc, TOYS_LAYER, TABLE, 'bob')).toBeNull()
+  })
+
+  test('every revert op carries reverts', () => {
+    const t = setup()
+    t.toy('toy1')
+    OpLayer.undoGesture(t.ydoc, TOYS_LAYER, t.toysEl, TABLE, ME)
+    const ops = [...t.ydoc.getMap(TOYS_LAYER.opsKey).values()]
+    const undo = ops.find(o => o.gesture === 'undo:place')
+    const real = ops.find(o => o.gesture === 'place')
+    expect(undo.reverts).toBe(real.id)
   })
 })

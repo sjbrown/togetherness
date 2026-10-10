@@ -24,6 +24,7 @@ import {
   placeToy, makeLayerAPI, activateAllToyScriptsDom, projectLayer, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { getOps, getContent, appendOp, appendCheckpoint } from '../../src/op_dag.js'
+import { undoGesture } from '../../src/op_layer.js'
 import { projectTips, nearestCheckpoint, latestCut, isCheckpoint, opsSinceCheckpoint, CHECKPOINT_MIN_OPS } from '../../src/op_checkpoint.js'
 import { getHead, getMergeTips, maximalTips, setHead } from '../../src/op_head.js'
 import { serializeNode } from '../../src/op_wire_mutation.js'
@@ -644,6 +645,54 @@ describe('concurrent convergence: drawing layer', () => {
     expect(rP.result).not.toBe(RECEIVED_CONFLICT)
     expect(rQ.result).not.toBe(RECEIVED_CONFLICT)
     assertDrawingConverged([P, Q])
+  })
+
+  test('undoing another author\'s move while they move something else: converged', () => {
+    const P = makeDrawingPeer('alice'), Q = makeDrawingPeer('bob')
+    seedDrawingGenesis([P, Q])
+
+    const opA = draw(P, 'a', 0, 0)
+    const opB = draw(P, 'b', 100, 100)
+    deliverDrawing(Q, [opA, opB])
+
+    const opBobMove = moveTo(Q, 'a', 10, 10)
+    deliverDrawing(P, [opBobMove])
+
+    // Alice undoes Bob's move of a; Bob concurrently moves b.
+    const opUndo = undoGesture(P.ydoc, DRAWING_LAYER, P.layer, P.tableId, 'alice', { owner: 'bob' })
+    const opBobMoveB = moveTo(Q, 'b', 200, 200)
+    expect(opUndo.reverts).toBe(opBobMove.id)
+
+    const [rP] = deliverDrawing(P, [opBobMoveB])
+    const [rQ] = deliverDrawing(Q, [opUndo])
+    expect(rP.result).not.toBe(RECEIVED_CONFLICT)
+    expect(rQ.result).not.toBe(RECEIVED_CONFLICT)
+
+    expect(P.api.find('a').getAttribute('x')).toBe('0')
+    expect(P.api.find('b').getAttribute('x')).toBe('200')
+    assertDrawingConverged([P, Q])
+  })
+
+  test('two peers undoing the same move concurrently: a conflict, as for any two writes to one attribute', () => {
+    // Expected behaviour, not special-cased: both undo ops write the same
+    // attribute (§5.1, B1), so each peer sees the other's as a conflict.
+    const P = makeDrawingPeer('alice'), Q = makeDrawingPeer('bob')
+    seedDrawingGenesis([P, Q])
+
+    const opA = draw(P, 'a', 0, 0)
+    deliverDrawing(Q, [opA])
+    const opBobMove = moveTo(Q, 'a', 10, 10)
+    deliverDrawing(P, [opBobMove])
+
+    const undoP = undoGesture(P.ydoc, DRAWING_LAYER, P.layer, P.tableId, 'alice', { owner: 'bob' })
+    const undoQ = undoGesture(Q.ydoc, DRAWING_LAYER, Q.layer, Q.tableId, 'bob')
+    expect(undoP.reverts).toBe(opBobMove.id)
+    expect(undoQ.reverts).toBe(opBobMove.id)
+
+    const [rP] = deliverDrawing(P, [undoQ])
+    const [rQ] = deliverDrawing(Q, [undoP])
+    expect(rP.result).toBe(RECEIVED_CONFLICT)
+    expect(rQ.result).toBe(RECEIVED_CONFLICT)
   })
 })
 

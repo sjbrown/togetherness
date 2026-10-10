@@ -135,6 +135,7 @@ Operation {
   gesture   : string          // 'move' | 'roll' | 'place' | … , for the audit log
   mutations : WireMutation[]  // §3
   ts        : number          // wall clock; display, and one author's own undo order (below)
+  reverts?  : string          // undo/redo only: the id of the operation this one inverts (§7)
 }
 ```
 
@@ -680,31 +681,73 @@ order. Undo is a gesture like any other, with a `gesture` name that says
 so, and it appears in the activity log as an action rather than as a
 silent rewriting of history.
 
+**Undo and redo operations name what they invert.** An undo operation
+carries `reverts`, the id of the real gesture it inverts. A redo operation
+carries `reverts` too, the id of the undo operation it inverts. `gesture`
+keeps its `undo:<original>` / `redo:<original>` label for the history text.
+`reverts` exists on new operations only, so invariant 2 holds. An
+`undo:`/`redo:` operation without `reverts` reverts nothing: it is a plain
+gesture with an unusual label, and never an undo candidate.
+
+**Whether an operation is in effect is computed from the log, never
+stored:** an operation is active when no *active* operation has
+`reverts === op.id`. Undo U₁ reverts X, so X is inactive. Redo R₁ reverts
+U₁, so U₁ is inactive and X is active again. A second undo U₂ reverts X, so
+X is inactive again. The recursion settles every sequence, and every peer
+computes the same answer from the same log.
+
+**Two people are involved in any undo.** The *actor* presses the button and
+authors the undo or redo operation. The *owner* is whose action it is: the
+`authorId` of the real gesture at the root of the revert chain. "Undo my
+last action" is owner = actor; "undo Bob's last action" is owner = Bob,
+actor = me.
+
+* **Undo acts on the owner's newest active real gesture** in a layer: not a
+  checkpoint, not a `reverts` operation. The new operation's `reverts` is
+  always that real gesture, even when it is active because of a redo, and
+  its mutations are the inverse of the target's.
+* **Redo is for your own undos only.** It acts on the actor's newest active
+  undo operation, and is unavailable once the actor has committed a real
+  gesture in that layer newer than that undo: doing something new
+  invalidates what you could redo. If Alice undoes Bob's action, only Alice
+  can redo it, and Bob's own Undo goes on to his previous action.
+* **A target whose inverse can no longer apply** (its node is gone) is
+  skipped. The next-newest candidate is offered instead, within a layer and
+  across layers. A stuck target never blocks later presses.
+
 Consequences worth stating rather than discovering:
 
 * **Undo is not "reverse the current state."** It is "apply the inverse of
-  my operation on top of the current head." If Bob deleted the token
+  the target operation on top of the current head." If Bob deleted the token
   after Alice moved it, Alice's undo of her move is an operation against a
-  token that isn't there, and it does nothing visible. That is correct and
-  is what she asked for.
-* **Undoing a peer's action becomes tractable.** It is just appending an
-  inverse of an operation someone else authored — no `trackedOrigins`
-  surgery required. It stays gated on the audit trail
+  token that isn't there, so it is skipped rather than applied. That is
+  correct and is what she asked for.
+* **Undoing a peer's action is mechanically supported.** It is just
+  appending an inverse of an operation someone else authored — no
+  `trackedOrigins` surgery required. It stays gated on the audit trail
   and on being loud and visible, for social reasons rather than technical
-  ones. A trust-based table should let you undo your friend's mistake; it
-  should not let you do it invisibly.
-* **Redo is the inverse of the inverse.** Falls out. No separate stack.
+  ones: every peer's history reads "*actor* undid *owner*'s *gesture*", and
+  the owner's own peer also shows a toast. A trust-based table should let
+  you undo your friend's mistake; it should not let you do it invisibly.
+  `App.undoFor(ownerId)` is the entry point; no UI exposes it yet.
+* **Concurrent undos of the same action conflict.** Both write the same
+  attribute (§5.1, B1), which is the ordinary rule, not a special case.
 * **Undo reaches back as far as the prune line** (§6.3), about 10 minutes.
-  An op that was pruned cannot be inverted.
+  An operation that was pruned cannot be inverted.
 
 ### 7.1 Across layers
 
-Undo is per-author and per-layer, and every mechanism is an op layer: toys,
-drawing and boundaries. Yjs's undo manager is not used anywhere.
+Undo is per-layer, and every mechanism is an op layer: toys, drawing and
+boundaries. Yjs's undo manager is not used anywhere.
 
-An Undo press acts on whichever layer holds the author's most recent undoable
-action, chosen by the author's own `ts`: each op layer reports the `ts` of the
-operation it would invert (`undoCandidate`), and the highest wins. Redo does
+Within a layer the candidate search covers the union ancestry of this peer's
+local tips, not one parent chain: that is what this peer's DOM shows, so an
+owner's operations that arrived through merge parents count.
+
+An Undo press acts on whichever layer holds the owner's most recent undoable
+action, chosen by the owner's own `ts`: each op layer reports the `ts` of the
+operation it would invert (`undoCandidate`), and the highest wins, ties going
+to the op id. Redo does
 the same over the redo targets, where an undo operation's `ts` is the moment
 of the undo, so redo walks forward in the reverse of the order the undos
 happened in. A layer whose target can no longer apply (its node is gone) is
@@ -753,6 +796,9 @@ Cite these by number in code comments and commit messages.
     apply it (§6.1, §5.4).
 17. A checkpoint's content may be deleted once a newer cut with content
     exists. The root-most checkpoint's content never is (§6.1).
+18. An undo or redo operation names the operation it inverts (`reverts`).
+    Whether an operation is in effect is computed from the log, never
+    stored (§7).
 
 ---
 

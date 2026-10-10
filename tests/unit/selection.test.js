@@ -18,6 +18,7 @@ import {
   reassertClaim,
   unclaim,
   clearClaims,
+  dropMissingClaims,
   select,
   toggle,
   commitMultiSelect,
@@ -415,5 +416,30 @@ describe('reconcileMode()', () => {
   test('clears the mode when the selection grew to multi', () => {
     const s0 = { desired: { 'die-1': { ts: 1, holding: true }, 'die-2': { ts: 2, holding: true } }, activeMode: { id: 'die-1', mode: 'sel-resize' } }
     expect(reconcileMode(s0, 'sel-move').activeMode).toBeNull()
+  })
+})
+
+describe('dropMissingClaims', () => {
+  const held = (ts = 1) => ({ ts, holding: true })
+  const state = { desired: { a: held(), b: held(2), c: { ts: 3, holding: false } }, activeMode: { id: 'a', mode: 'sel-move' } }
+
+  test('drops held ids whose element is gone, keeps the rest', () => {
+    const next = dropMissingClaims(state, (id) => id !== 'b')
+    expect(Object.keys(next.desired).sort()).toEqual(['a', 'c'])
+    expect(next.activeMode).toEqual(state.activeMode)
+  })
+
+  test('leaves a bid on a missing element alone', () => {
+    const next = dropMissingClaims(state, (id) => id !== 'c')
+    expect(next).toBe(state)
+  })
+
+  test('returns the identical state when every held element exists', () => {
+    expect(dropMissingClaims(state, () => true)).toBe(state)
+  })
+
+  test('does not mutate its input', () => {
+    dropMissingClaims(state, () => false)
+    expect(Object.keys(state.desired).sort()).toEqual(['a', 'b', 'c'])
   })
 })

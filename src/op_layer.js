@@ -44,6 +44,7 @@ export function runGesture(ydoc, layer, layerEl, fn, opts = {}) {
     op = commitGesture(ydoc, layer, allRecords, {
       gesture:  opts.gesture ?? 'gesture',
       authorId: opts.authorId ?? null,
+      reverts:  opts.reverts,
       parents:  OpHead.consumeParents(tableId, layer),
     })
     if (op) {
@@ -193,85 +194,77 @@ function canApplyWire(wire, layerEl) {
 }
 
 /**
- * Undo/redo, backed by OpDag.authorUndoRedoStacks — a real undo/redo stack,
- * reconstructed by replaying this author's own ops rather than a single
- * backward pointer walk. That distinction matters: skipping past an
- * 'undo' op and continuing to its *parent* doesn't reach an older
- * action — an undo's parent IS the op it just inverted, by construction,
- * so that walk just finds the same thing again. Repeated Undo presses
- * need the full stack simulation to reach progressively older gestures
- * instead of toggling between the last two.
+ * Undo and redo commit an op whose `reverts` names the op it inverts: undo
+ * reverts a real gesture, redo reverts an undo. Which ops are still in
+ * effect is computed from the log (OpDag.isActive), so one author's undo of
+ * another author's gesture is visible to both.
  *
- * Both skip checkpoints inherently (OpDag.authorUndoRedoStacks never pushes one):
- * a genesis checkpoint is authored to whoever took it, so on a fresh
- * table it would otherwise look like "my most recent op" with nothing
- * else having happened yet — but it isn't a user action, it's
- * "reconstruct this state from scratch." Undoing it would mean deleting
- * everything.
+ * The actor presses the button and authors the new op; the owner is whose
+ * gesture sits at the root of the revert chain. Undo targets the owner's
+ * newest active real gesture across the union ancestry of this peer's local
+ * tips; redo targets the actor's own newest active undo. Checkpoints are
+ * never targets: undoing one would mean deleting everything.
+ *
+ * The candidate functions take the layer element in opts and skip any
+ * target whose inverse can't apply to it, offering the next-newest. Without
+ * layerEl the check is skipped, which is enough for existence checks.
  */
-function applyUndoRedo(ydoc, layer, layerEl, tableId, authorId, targetId, verb) {
-  if (!targetId) return null
-  const ops = OpDag.getOps(ydoc, layer)
-  const target = OpDag.getOp(ops, targetId)
+function applyUndoRedo(ydoc, layer, layerEl, tableId, actorId, target, verb) {
+  if (!target) return null
   const inverseMutations = OpWireMutation.invert(target.mutations)
-  if (!canApplyWire(inverseMutations, layerEl)) return null
 
-  // Strip one leading 'undo:'/'redo:' from the target's own gesture, so
-  // the new tag always names the ORIGINAL real action — 'undo:move',
-  // 'redo:move' — never nests ('redo:undo:move'), no matter how many
-  // times something gets toggled back and forth. This is what lets a
-  // caller show a real label ("undid: move") instead of "undid: undo".
+  // Strip one leading 'undo:'/'redo:' from the target's own gesture, so the
+  // label always names the ORIGINAL real action ('undo:move', 'redo:move').
   const describedGesture = target.gesture.replace(/^(undo|redo):/, '')
 
   const result = runGesture(ydoc, layer, layerEl, () => {
     OpWireMutation.apply(inverseMutations, layerEl)
-  }, { gesture: `${verb}:${describedGesture}`, authorId, tableId })
+  }, { gesture: `${verb}:${describedGesture}`, authorId: actorId, tableId, reverts: target.id })
 
   return result.op ?? null
 }
+
+const firstApplicable = (targets, layerEl) =>
+  targets.find(t => !layerEl || canApplyWire(OpWireMutation.invert(t.mutations), layerEl)) ?? null
+
+const localTipsOf = (ydoc, layer, tableId) =>
+  tableId ? OpHead.localTips(tableId, layer, OpDag.getOps(ydoc, layer)) : []
 
 /**
  * The op undo or redo would act on, without applying it -- null when there
  * is none. app.js compares these across layers by ts to pick which layer's
  * action the next press reverses.
  */
-export function undoCandidate(ydoc, layer, tableId, authorId) {
-  const ops = OpDag.getOps(ydoc, layer)
-  const head = tableId ? OpHead.getHead(tableId, layer) : null
-  const { undoTargetId } = OpDag.authorUndoRedoStacks(ops, head, authorId)
-  return undoTargetId ? OpDag.getOp(ops, undoTargetId) : null
+export function undoCandidate(ydoc, layer, tableId, actorId, { owner = actorId, layerEl } = {}) {
+  const targets = OpDag.undoTarget(OpDag.getOps(ydoc, layer), localTipsOf(ydoc, layer, tableId), owner)
+  return firstApplicable(targets, layerEl)
 }
 
-export function redoCandidate(ydoc, layer, tableId, authorId) {
-  const ops = OpDag.getOps(ydoc, layer)
-  const head = tableId ? OpHead.getHead(tableId, layer) : null
-  const { redoTargetId } = OpDag.authorUndoRedoStacks(ops, head, authorId)
-  return redoTargetId ? OpDag.getOp(ops, redoTargetId) : null
+export function redoCandidate(ydoc, layer, tableId, actorId, { layerEl } = {}) {
+  const targets = OpDag.redoTarget(OpDag.getOps(ydoc, layer), localTipsOf(ydoc, layer, tableId), actorId)
+  return firstApplicable(targets, layerEl)
 }
 
-export function undoGesture(ydoc, layer, layerEl, tableId, authorId) {
-  const target = undoCandidate(ydoc, layer, tableId, authorId)
-  return applyUndoRedo(ydoc, layer, layerEl, tableId, authorId, target?.id, 'undo')
+export function undoGesture(ydoc, layer, layerEl, tableId, actorId, { owner = actorId } = {}) {
+  const target = undoCandidate(ydoc, layer, tableId, actorId, { owner, layerEl })
+  return applyUndoRedo(ydoc, layer, layerEl, tableId, actorId, target, 'undo')
 }
 
-export function redoGesture(ydoc, layer, layerEl, tableId, authorId) {
-  const target = redoCandidate(ydoc, layer, tableId, authorId)
-  return applyUndoRedo(ydoc, layer, layerEl, tableId, authorId, target?.id, 'redo')
+export function redoGesture(ydoc, layer, layerEl, tableId, actorId) {
+  const target = redoCandidate(ydoc, layer, tableId, actorId, { layerEl })
+  return applyUndoRedo(ydoc, layer, layerEl, tableId, actorId, target, 'redo')
 }
 
 /**
- * Cheap existence checks for the undo/redo buttons' enabled state — no DOM
- * needed, no mutation. canApplyWire's resolvability check still runs at
- * actual undo/redo time, so a button can be enabled and the press can still
- * turn out to be a no-op if the target vanished between the check and the
- * click; that's an acceptable, minor imprecision most editors share.
+ * Existence checks for the undo/redo buttons' enabled state. Pass layerEl
+ * to also require that the target's inverse applies right now.
  */
-export function canUndo(ydoc, layer, tableId, authorId) {
-  return undoCandidate(ydoc, layer, tableId, authorId) != null
+export function canUndo(ydoc, layer, tableId, actorId, opts) {
+  return undoCandidate(ydoc, layer, tableId, actorId, opts) != null
 }
 
-export function canRedo(ydoc, layer, tableId, authorId) {
-  return redoCandidate(ydoc, layer, tableId, authorId) != null
+export function canRedo(ydoc, layer, tableId, actorId, opts) {
+  return redoCandidate(ydoc, layer, tableId, actorId, opts) != null
 }
 
 /**
