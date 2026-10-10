@@ -1,18 +1,18 @@
 /**
- * undo_redo.js — togetherness undo / redo for drawing and boundaries
+ * undo_redo.js — togetherness undo / redo for the boundaries layer
  *
- * Wraps a single Y.UndoManager over the document's drawing and boundaries
- * fragments. Toys are NOT tracked here — the toys layer's Yjs content is
- * an append-only map of immutable operation records now, and undoing "an
- * operation record was appended" removes the record without touching the
- * DOM state it described. See CONCURRENCY_AND_BRANCHING.md §8: toys undo
- * is a separate mechanism (op_layer.js's undoGesture/redoGesture —
- * append the inverse operation), and app.js decides which of the two
- * mechanisms a given Undo press invokes based on which layer the most
- * recent action actually touched (_lastActionScope). The two can never
- * need to run together for one action, because switching the active
- * layer clears the selection (App.setLayer) — a single gesture can never
- * span both toys and drawing/boundaries.
+ * Wraps a single Y.UndoManager over the document's boundaries fragment. The
+ * op layers (toys, drawing) are NOT tracked here — their Yjs content is an
+ * append-only map of immutable operation records, and undoing "an operation
+ * record was appended" removes the record without touching the DOM state it
+ * described. Their undo is a separate mechanism (op_layer.js's
+ * undoGesture/redoGesture — append the inverse operation). See
+ * CONCURRENCY_AND_BRANCHING.md §7.
+ *
+ * Which mechanism a press invokes is decided by app.js from the author's own
+ * timestamps: each op layer reports the ts of the op it would act on, and
+ * this module reports the ts of its top stack item (peekUndoTs/peekRedoTs).
+ * The highest wins.
  *
  * Depends on: nothing but Yjs. app.js owns the ydoc/fragments and the
  * side-effect callbacks (history log + toasts); this module owns the stack.
@@ -60,8 +60,8 @@ let _onChange = null;   // () => void  — fired whenever canUndo/canRedo may ha
  * Initialise the undo/redo stack.
  *
  *   ydoc     — the shared Y.Doc.
- *   scopes   — array of tracked Y.XmlFragment (drawing, boundaries — NOT
- *              toys; see the module docstring).
+ *   scopes   — array of tracked Y.XmlFragment (boundaries only; see the
+ *              module docstring).
  *   onApply  — called after a successful undo()/redo() with the popped
  *              item's label, for history logging + toasts.
  *   onEmpty  — called when undo()/redo() is a no-op (nothing to undo/redo).
@@ -74,7 +74,7 @@ export function init({ ydoc, scopes, onApply, onEmpty, onChange }) {
   _onChange = onChange ?? (() => {});
 
   _um = new Y.UndoManager(scopes, {
-    // Every tracked write (drawing, boundaries) transacts with a null
+    // Every tracked write (boundaries) transacts with a null
     // origin. Derived/lifecycle origins are intentionally absent.
     trackedOrigins: new Set([null]),
     // Each tracked transaction is its own undo step; app.js keeps one
@@ -87,6 +87,10 @@ export function init({ ydoc, scopes, onApply, onEmpty, onChange }) {
     // items (created while undoing/redoing) find _pending null and carry no
     // label — that's fine; onApply falls back to a generic phrase for them.
     event.stackItem.meta.set('label', _pending ?? '');
+    // When the item landed, in either stack: a redo item's ts is the moment
+    // of the undo that created it, which is what orders it against the op
+    // layers' redo targets.
+    event.stackItem.meta.set('ts', Date.now());
     _pending = null;
     _onChange();
   });
@@ -120,6 +124,10 @@ export function redo() {
   _um.redo();
   return true;
 }
+
+/** ts of the item undo()/redo() would pop next, or null when the stack is empty. */
+export function peekUndoTs() { return _um?.undoStack.at(-1)?.meta.get('ts') ?? null; }
+export function peekRedoTs() { return _um?.redoStack.at(-1)?.meta.get('ts') ?? null; }
 
 export function canUndo() { return !!_um && _um.canUndo(); }
 export function canRedo() { return !!_um && _um.canRedo(); }
