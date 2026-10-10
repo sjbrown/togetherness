@@ -48,14 +48,14 @@ Three statements, each of which the old design violated:
    the current projection of the DAG, reconstructible from it and
    discardable at will.
 
-3. **Yjs is transport.** For the toys layer it replicates an append-only
+3. **Yjs is transport.** For every canvas layer it replicates an append-only
    set of immutable operation records and nothing else.
-   Yjs does not hold toy document content, and has no opinion about our
+   Yjs does not hold document content, and has no opinion about our
    semantics. It is very good at the job it now has:
    offline sync, causal delivery, efficient encoding.
 
 **Each op layer has its own DAG.** Everything above and below describes one
-op layer. There are two today, toys and drawing. Each op layer has its own
+op layer. There are three today: toys, drawing and boundaries. Each op layer has its own
 ops map and checkpoint-content map, its own local tips (§2.3), its own
 checkpoints and prune root (§6.3), and its own conflict resolution (§5). Op
 ids are globally unique, but an op belongs to exactly one layer: layers never
@@ -64,20 +64,35 @@ two layers (invariant 5). What a layer is called, which elements it owns and
 where its state is stored is data in its descriptor (`op_layers.js`); the op
 machinery contains no layer names.
 
-### 1.1 The drawing layer is an op layer; boundaries and positions are still Yjs
+### 1.1 Every canvas layer is an op layer; what stays plain Yjs state
 
-The drawing layer is an op layer, the second one registered (`DRAWING_LAYER`
-in `drawing.js`). Its writes are DOM operations on `#drawing-layer`, run as
-gestures, and its state is its own DAG (`ops:drawing`). It has no hooks: no
-scripts and no cascades. Its derived `transform` is written inside the same
-gesture as the geometry, rotation or pivot change that implies it
-(invariant 6). Concurrent writes to the same attribute of the same shape are
-a conflict (§5.1), as for toys; soft-lock is what keeps that rare for
-connected peers.
+The toys, drawing and boundaries layers are op layers (`TOYS_LAYER`,
+`DRAWING_LAYER` in `drawing.js`, `BOUNDARIES_LAYER` in `boun_pos.js`). Their
+writes are DOM operations on the live layer element, run as gestures, and each
+layer's state is its own DAG (`ops:toys`, `ops:drawing`, `ops:boundaries`).
+Drawing and boundaries have no hooks: no scripts and no cascades. A derived
+value is written inside the same gesture as the change that implies it
+(invariant 6): drawing's `transform` with the geometry, rotation or pivot; a
+position set's circles with the resize or grid-parameter change. Concurrent
+writes to the same attribute of the same element are a conflict (§5.1), as for
+toys, so two people moving the same position set at once bring up the branch
+dialog. Soft-lock is what keeps that rare for connected peers.
 
-Only the boundaries and positions layer is still on Yjs. `Y.Xml` is fine, and
-stays, for it: it has no object identity to preserve, no reparenting, no
-derived values, and no user scripts.
+A boundary or position set is laid out in its own local coordinates under one
+`transform="translate(x, y)"`, so a move is a single `attr` mutation however
+many snap circles the set holds. The op layer is named `boundaries`; its
+elements carry `data-module="boun_pos"`.
+
+What is still plain Yjs state, and is not an op layer:
+
+* `meta`: the table's background and other settings
+* `joinSequence`: the order peers joined in, which breaks ties (§5.2)
+* `playerOptions`
+* the hoisted-scripts fragment
+
+Everything else the document holds is an op log, and Yjs is only its
+transport. The old `boundaries` `Y.XmlFragment` is no longer read; tables that
+still carry one keep it untouched and start with no boundaries.
 
 ---
 
@@ -684,20 +699,17 @@ Consequences worth stating rather than discovering:
 
 ### 7.1 Across layers
 
-Undo is per-author and per-layer, and there are three mechanisms: the toys op
-layer, the drawing op layer, and `UndoManager`, which now handles only
-`boundaries`, an ordinary `Y.Xml` state layer where it works fine.
+Undo is per-author and per-layer, and every mechanism is an op layer: toys,
+drawing and boundaries. Yjs's undo manager is not used anywhere.
 
-An Undo press acts on whichever of them holds the author's most recent
-undoable action, chosen by the author's own `ts`: each op layer reports the
-`ts` of the operation it would invert (`undoCandidate`), `UndoManager`
-reports the `ts` stamped on its top stack item when it landed, and the
-highest wins. Redo does the same over the redo targets, where an undo
-operation's `ts` is the moment of the undo, so redo walks forward in the
-reverse of the order the undos happened in. A layer whose target can no
-longer apply (its node is gone) is skipped for the next-latest. The choice
-looks at nothing but the author's own timestamps, so it needs no record of
-"the last layer touched".
+An Undo press acts on whichever layer holds the author's most recent undoable
+action, chosen by the author's own `ts`: each op layer reports the `ts` of the
+operation it would invert (`undoCandidate`), and the highest wins. Redo does
+the same over the redo targets, where an undo operation's `ts` is the moment
+of the undo, so redo walks forward in the reverse of the order the undos
+happened in. A layer whose target can no longer apply (its node is gone) is
+skipped for the next-latest. The choice looks at nothing but the author's own
+timestamps, so it needs no record of "the last layer touched".
 
 ---
 
