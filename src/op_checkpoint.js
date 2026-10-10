@@ -264,7 +264,7 @@ export function projectTips(layerEl, ops, content, tipIds, joinSequence = []) {
   return layerEl
 }
 
-/** The one-tip case of projectTips — kept for the fork seed and existing callers. */
+/** The one-tip case of projectTips: project from a single head. */
 export function projectFrom(layerEl, ops, content, headId, joinSequence = []) {
   return projectTips(layerEl, ops, content, headId == null ? [] : [headId], joinSequence)
 }

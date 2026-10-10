@@ -1,8 +1,7 @@
 /**
  * app.js — togetherness application bus
  *
- * The only module that imports from all others.
- * It wires the layers together through a narrow interface.
+ * Wires the modules together through a narrow interface.
  *
  * Roles:
  *   - Initialise all modules and inject this bus object as their sole dependency
@@ -66,12 +65,11 @@ let _ydoc, _yMeta,
     _awareness, _provider;
 
 // Layers — the canonical LayerAPI dispatch table, built once at boot() once
-// the Yjs fragments exist. Maps the data-module value stamped on each
-// rendered SVG element ('drawing'|'toys'|'boun_pos') to that layer's API:
+// the ydoc exists. Maps the data-module value stamped on each rendered SVG
+// element ('drawing'|'toys'|'boun_pos') to that layer's API:
 // find/delete/getGeom/getAnchor/applyMoveCommit/getTtState/getTtStateSchema/
-// edit/listData, plus applyTtState on drawing/boun_pos (toys.js's own
-// applyTtState was dead code — removed). See moduleForElement() for the
-// lookup key.
+// edit/listData, plus applyTtState on drawing/boun_pos. See
+// moduleForElement() for the lookup key.
 let _Layers = {};
 
 // Per-layer visibility (local state, not synced).
@@ -238,7 +236,7 @@ function _reanchorRotated(id, rect, rot) {
 
 // The one place a pivot change is written. Moving the pivot re-derives the
 // rotation about a new point, which would shift the shape; the compensating
-// x/y therefore ride in the SAME transaction, never as a follow-up write a
+// x/y therefore ride in the SAME gesture, never as a follow-up write a
 // peer could observe on its own.
 function _writePivot(id, mtype, startRect, fromPivot, toPivot, deg) {
   const shift = _Layers[mtype].pivotShift(startRect, fromPivot, toPivot, deg);
@@ -784,9 +782,7 @@ function onOpsChanged(layer, evt, transaction) {
   if (deletedIds.size) handleOrphanedLocalTips(layer, layerEl, deletedIds);
 
   // Gestures that are derived/internal, not independent peer intent — not
-  // worth a log line (same spirit as the old Yjs-observer version only
-  // logging structural top-level adds/deletes, but this covers every real
-  // user gesture type generically instead of just placements/deletions).
+  // worth a log line.
   const SILENT_GESTURES = new Set(['checkpoint', 'contents_change', 'initialize']);
   const ops = OpDag.getOps(_ydoc, layer);
   for (const [opId, change] of evt.changes.keys) {
@@ -1093,22 +1089,6 @@ const App = {
     Overlay.clearHoverCandidates();
   },
 
-  duplicateMultiSelected: () => {
-    const ids = _heldIds();
-    if (ids.length === 0) return;
-    const layerEl = _svgEl.querySelector('#drawing-layer');
-    const { newIds } = layerEl
-      ? Drawing.duplicateDrawingsBatch(_ydoc, layerEl, ids, {
-          authorId: App.user.id, tableId: _tableId, newId: newDrawingId,
-        })
-      : { newIds: [] };
-    if (newIds.length > 0) {
-      addHistory(`duplicated ${newIds.length} objects`);
-      App.addLog(`duplicated ${newIds.length} objects`, 'local');
-    }
-    _clearClaims();
-  },
-
   // ── Document mutations ────────────────────────────────────────────────────
   commitDrawing: (attrs) => {
     const id = newDrawingId();
@@ -1143,7 +1123,7 @@ const App = {
     App.select(id);
   },
 
-  // Legacy aliases kept for e2e tests and canvas.js call sites
+  // Per-type entry points for canvas.js's boundary and position-set tools
   commitBoundary:    (geom)   => App.commitBounPos({ toolName: 'boundary',    ...geom }),
   commitPositionSet: ({ toolName, ...geom }) => App.commitBounPos({ toolName, ...geom }),
 
@@ -1213,7 +1193,7 @@ const App = {
   /**
    * Invoke one of a toy's menu actions by (namespace, key)
    * Runs the handler inside an envelope and commits its DOM mutations,
-   * plus any triggered reactions, to Yjs as a single transaction.
+   * plus any triggered reactions, as a single op.
    */
   invokeToyMenuAction: (id, namespace, key) => {
     const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
@@ -1279,10 +1259,8 @@ const App = {
         .map(o => o.key)
         .map(k => [k, params[k]])),
     };
-    // initializeToy below runs its own outer transact() with no
-    // explicit origin, so its merged handler-plus-cascade transaction
-    // commits under null — a separate transaction, and a separate
-    // operation, from placement. Deliberate: initialize is its own
+    // initializeToy below runs its own gesture, so initialize commits as a
+    // separate op from placement. Deliberate: initialize is its own
     // gesture, not part of "place".
     Toys.placeToy(_ydoc, layerEl, {
       id, toyType: def.toyType, x, y, color,
@@ -1336,10 +1314,7 @@ const App = {
   duplicateSelected: () => {
     const id = _singleSelectedId();
     if (!id) {
-      if (_heldIds().length > 1) {
-        UI.toast('Use Duplicate N for multi-selection', 'warn');
-        console.error('duplicateSelected called with multi-selection; use duplicateMultiSelected');
-      }
+      if (_heldIds().length > 1) UI.toast('Duplicate works on a single shape', 'warn');
       return;
     }
     const layerEl = _svgEl.querySelector('#drawing-layer');
@@ -1356,8 +1331,8 @@ const App = {
   // ── Drag lifecycle ────────────────────────────────────────────────────────
   // startDrag   — called once on pointerdown when a move gesture begins
   // move        — called on every pointermove; updates overlay ghost + awareness
-  // commitMove  — called on pointerup; writes final position to Yjs once
-  // cancelMove  — called on pointercancel; reverts with no Yjs write
+  // commitMove  — called on pointerup; commits the final position as one gesture
+  // cancelMove  — called on pointercancel; reverts with no gesture
 
   startDrag: (id) => {
     // Defense in depth: client should not be drag an element it doesn't
@@ -1475,24 +1450,22 @@ const App = {
       // own contents_change_handler reaction.
       try {
         const layerEl = _svgEl.querySelector('#toys-layer');
-        _ydoc.transact(() => {
-          Toys.runGesture(_ydoc, layerEl, () => {
-            const containerEl = layerEl.querySelector(`[data-id="${dropContainerId}"]`);
-            // A container that tracks its own landing position
-            // always lands the moved item exactly there
-            const hasLandingPosition = containerEl && !!Toys.getLandingPosition(containerEl);
-            Toys.reparentToyDom(layerEl, id, dropContainerId);
-            if (!hasLandingPosition) {
-              const movedEl = layerEl.querySelector(`[data-id="${id}"]`);
-              const containerGeom = containerEl && Toys.getGeom(containerEl);
-              if (movedEl && containerGeom) {
-                Toys.applyMoveDom(movedEl, rx - containerGeom.x, ry - containerGeom.y);
-              }
+        Toys.runGesture(_ydoc, layerEl, () => {
+          const containerEl = layerEl.querySelector(`[data-id="${dropContainerId}"]`);
+          // A container that tracks its own landing position
+          // always lands the moved item exactly there
+          const hasLandingPosition = containerEl && !!Toys.getLandingPosition(containerEl);
+          Toys.reparentToyDom(layerEl, id, dropContainerId);
+          if (!hasLandingPosition) {
+            const movedEl = layerEl.querySelector(`[data-id="${id}"]`);
+            const containerGeom = containerEl && Toys.getGeom(containerEl);
+            if (movedEl && containerGeom) {
+              Toys.applyMoveDom(movedEl, rx - containerGeom.x, ry - containerGeom.y);
             }
-          }, {
-            gesture: 'reparent', authorId: App.user.id, tableId: _tableId,
-            positionEvents: Toys.departingPositionEvents(layerEl, domEl),
-          });
+          }
+        }, {
+          gesture: 'reparent', authorId: App.user.id, tableId: _tableId,
+          positionEvents: Toys.departingPositionEvents(layerEl, domEl),
         });
       } catch (err) {
         // a malformed container asset can reach here and throw.
@@ -1509,8 +1482,6 @@ const App = {
       // A toy landing inside a container leaves selection
       _clearClaims();
 
-      // observeDeep fires and calls renderDoc() — same as the ordinary
-      // move-commit path below.
       addHistory(`moved ${id} into a container`, {
         fill: domEl?.getAttribute('fill'),
         elType: mtype,
@@ -1789,8 +1760,8 @@ const App = {
   // ── Multi-element drag lifecycle ──────────────────────────────────────────
   // startMultiDrag  — called once on pointerdown with the canvas-space origin
   // moveMulti       — called on every pointermove with (ddx, ddy) offset from start
-  // commitMultiMove — called on pointerup; writes all positions in one transaction
-  // cancelMultiMove — called on pointercancel; reverts all ghosts, no Yjs write
+  // commitMultiMove — called on pointerup; commits all positions as one gesture
+  // cancelMultiMove — called on pointercancel; reverts all ghosts, no gesture
 
   startMultiDrag: (originCanvas) => {
     const elements = _heldIds().map(id => {

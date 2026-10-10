@@ -380,24 +380,12 @@ describe('batch undo — stack shape', () => {
     return { op: 'batch', entries }
   }
 
-  function makeBatchAddEntry(ids) {
-    const entries = ids.map(id => ({ op: 'add', module: 'drawing', id }))
-    return { op: 'batch', entries }
-  }
-
   test('deleteMultiSelected pushes one batch entry, not N individual entries', () => {
     // Verify the entry shape — single { op:'batch', entries:[...] }
     const batchEntry = makeBatchDeleteEntry(['a', 'b', 'c'])
     expect(batchEntry.op).toBe('batch')
     expect(batchEntry.entries).toHaveLength(3)
     expect(batchEntry.entries.every(e => e.op === 'del')).toBe(true)
-  })
-
-  test('duplicateMultiSelected pushes one batch entry of add ops', () => {
-    const batchEntry = makeBatchAddEntry(['x', 'y'])
-    expect(batchEntry.op).toBe('batch')
-    expect(batchEntry.entries).toHaveLength(2)
-    expect(batchEntry.entries.every(e => e.op === 'add')).toBe(true)
   })
 
   test('batch undo reverses entries in reverse order', () => {
@@ -445,18 +433,6 @@ describe('batch undo — stack shape', () => {
     }
     expect(promises).toHaveLength(1) // async path taken
     return expect(Promise.all(promises)).resolves.toEqual(['toy-restored'])
-  })
-
-  test('batch add entries (from duplicateMultiSelected) are undone by deletion', () => {
-    const deleted = []
-    const entries = [
-      { op: 'add', module: 'drawing', id: 'new-1' },
-      { op: 'add', module: 'drawing', id: 'new-2' },
-    ]
-    for (const entry of [...entries].reverse()) {
-      if (entry.op === 'add') deleted.push(entry.id)
-    }
-    expect(deleted).toEqual(['new-2', 'new-1'])
   })
 
   test('batch move entries (from commitMultiMove) are undone by reversing positions', () => {

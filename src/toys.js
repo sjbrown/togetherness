@@ -1,12 +1,12 @@
 /**
- * toys.js — the toys layer: tool registry, CRDT operations, and the toy
+ * toys.js — the toys layer: tool registry, DOM operations, and the toy
  * behaviour contract (script activation, menu actions, lifecycle hooks).
  *
- * Data model — same as the drawing layer: a Y.XmlFragment of Y.XmlElement.
- * The CRDT tree IS the SVG tree, so internal toy edits (recolor, flip,
- * contents) merge at the attribute/child level.
+ * Data model — the live #toys-layer is the document. Gestures mutate it in
+ * place and the op log records each one (op_layer.js), so internal toy
+ * edits (recolor, flip, contents) travel as attribute/child mutations.
  *
- * yToys (XmlFragment)
+ * #toys-layer
  *  └─ <g class="toy" data-id data-toy-type data-color>  ← placement + state
  *      └─ <svg x y width height viewBox>                    ← the live toy sub-document
  *          └─ ...toy content (defs, paths, tspans, <script>, ...)
@@ -657,18 +657,13 @@ export function addClonedToyDom(layerEl, sourceEl, newId, x, y) {
 
 /**
  * Remove a toy element from the DOM by id — searches the whole toys tree,
- * including nested. A DOM operation, like every other structural toy
- * mutation now. Call from inside runInEnvelope; this function
- * doesn't open its own envelope, so it composes with whatever else the
- * caller wants folded into the same transaction (a batch delete — see
- * app.js's deleteMultiSelected, which already wraps its own calls in one
- * outer ydoc.transact()). Returns true if found and removed, false
- * otherwise.
+ * including nested. Call from inside runInEnvelope; this function doesn't
+ * open its own envelope, so it composes with whatever else the caller
+ * folds into the same gesture (a batch delete, see deleteToysBatch).
+ * Returns true if found and removed, false otherwise.
  *
- * Deliberately does NOT run the contents_change_handler cascade itself
- * (unlike reparentToyDom's callers) — matching the old pure-Yjs
- * deleteToy's behavior, a delete relies on the observer-driven fallback
- * cascade to recompute any container a removed toy was sitting in.
+ * Does not run the contents_change_handler cascade itself; the layer's
+ * afterCapture hook runs it for whatever container the toy left.
  */
 export function deleteToyDom(layerEl, id) {
   const el = layerEl.querySelector(`[data-id="${id}"]`)
@@ -1178,7 +1173,7 @@ export function nextSelectMode(domEl, currentMode) {
 
 
 /**
- * Apply a toy move to a live DOM element only — no Yjs write.
+ * Apply a toy move to a live DOM element. Call inside a gesture.
  * domEl is the rendered <g> wrapper; updates the embedded <svg> x/y directly.
  * (cx, cy) is the centre anchor point.
  */
@@ -1196,11 +1191,9 @@ export function applyMoveDom(domEl, cx, cy) {
 // Resize corner indices — shared with overlay.js's corner-handle geometry
 // (Overlay.resizeCorners returns points in this same order) so canvas.js's
 // hit-test result can be passed straight through to computeResizeRect
-// without any translation.
+// without any translation. The order is NW, NE, SE, SW.
 export const RESIZE_CORNER_NW = 0
-export const RESIZE_CORNER_NE = 1
 export const RESIZE_CORNER_SE = 2
-export const RESIZE_CORNER_SW = 3
 
 const MIN_RESIZE_SIZE = MIN_TOY_SIZE // never let a drag shrink a toy below this
 const MAX_RESIZE_SIZE = 4000         // generous sanity cap
@@ -1219,7 +1212,7 @@ export function computeResizeRect(startRect, corner, px, py) {
 }
 
 /**
- * Apply a resize to a live DOM element only — no Yjs write.
+ * Apply a resize to a live DOM element. Call inside a gesture.
  * domEl is the rendered <g> wrapper.
  */
 export function applyResizeDom(domEl, x, y, width, height) {
@@ -1294,7 +1287,7 @@ export function toysDataDom(layerEl) {
   return listToysDom(layerEl).map(toyData)
 }
 
-/** getTtState against the rendered DOM rather than the Yjs tree. */
+/** Snapshot a rendered toy's state: id, type, color and centre. */
 export function getTtStateDom(toyEl) {
   if (!toyEl) return null
   const id      = toyEl.getAttribute('data-id')
@@ -1459,8 +1452,7 @@ function toyEditableFields(svgEl, toyType) {
 
 /**
  * Return the ttStateSchema for a rendered toy element.
- * Color is read from the data-color attribute on the <g> wrapper, which is
- * part of the Yjs tree and always in sync with the CRDT state.
+ * Color is read from the data-color attribute on the <g> wrapper.
  */
 export function getTtStateSchema(svgEl) {
   const toyId = svgEl.getAttribute?.('data-id')
@@ -1485,28 +1477,6 @@ export function getTtStateSchema(svgEl) {
     },
   };
 }
-
-/**
- * Snapshot the full serialisable state of a toy Y.XmlElement (<g>).
- * Captures the position from the inner <svg> child. Author/created are omitted;
- * those are provenance, not element state.
- */
-export function getTtState(yToy) {
-  if (!yToy) return null;
-  const id      = yToy.getAttribute('data-id');
-  const toyType = yToy.getAttribute('data-toy-type');
-  const color   = yToy.getAttribute('data-color') ?? '#888';
-  const ySvg    = yToy.toArray().find(c => c instanceof Y.XmlElement && c.nodeName === 'svg');
-  const x       = ySvg ? Number(ySvg.getAttribute('x') ?? 0) : 0;
-  const y       = ySvg ? Number(ySvg.getAttribute('y') ?? 0) : 0;
-  const width   = ySvg ? Number(ySvg.getAttribute('width')  ?? FALLBACK_TOY_SIZE) : FALLBACK_TOY_SIZE;
-  const height  = ySvg ? Number(ySvg.getAttribute('height') ?? FALLBACK_TOY_SIZE) : FALLBACK_TOY_SIZE;
-  // Center point (matches getAnchor convention)
-  const cx = x + width / 2;
-  const cy = y + height / 2;
-  return { id, toyType, color, cx, cy };
-}
-
 
 /**
  * Edit a toy's own color and/or name — a DOM operation, like every other
@@ -1549,7 +1519,7 @@ export function editDom(toyEl, editData) {
 /**
  * Preview an edit on a detached ghost clone (see overlay.js's ghost
  * system, used via App.previewEdit) — mutates ghostEl's own attributes
- * directly, never touches Yjs. Unlike drawing.js's shapes, toy editData
+ * directly, never the live layer. Unlike drawing.js's shapes, toy editData
  * keys map straight onto DOM attributes with no aliasing, so this is a
  * plain attribute-per-key loop.
  */
@@ -1752,15 +1722,13 @@ export function getMenuActions(svgEl) {
   return actions
 }
 
-// ── gesture-triggered cascade (DOM-only, no Yjs until the final commit) ────
+// ── gesture-triggered cascade ─────────────────────────────────────────────
 //
-// invokeMenuAction / initializeToy use these.
+// TOYS_LAYER's afterCapture hook runs these for every gesture.
 //
 // These walk the live DOM directly and never re-render, because a gesture's
-// handler and everything it cascades into mutate the same live DOM in place
-//
-// nothing here is ever stale relative to Yjs, because nothing here depends on
-// Yjs at all until the one commitEnvelope call at the very end.
+// handler and everything it cascades into mutate the same live DOM in place,
+// and the whole lot commits as one op at the end.
 
 /**
  * The IMMEDIATE (innermost) tt_contents-owning toy id for a DOM node —
@@ -1818,9 +1786,8 @@ function runContentsChangeHandlersFor(containerEl) {
  * appending every record it produces into allRecords.
  *
  * (allRecords is mutated in place —
- * the caller feeds this to ONE final commitEnvelope call, so the gesture
- * and its whole cascade land as a single Yjs transaction, single undo
- * step).
+ * the caller feeds this to ONE final commitGesture call, so the gesture
+ * and its whole cascade land as a single op, a single undo step).
  *
  * Each round resolves only the IMMEDIATE containing container for whatever
  * changed in the round before it
@@ -1919,8 +1886,6 @@ export const ensureEnvelope = (ydoc, layerEl, fn, opts) =>
   OpLayer.ensureEnvelope(ydoc, TOYS_LAYER, layerEl, fn, opts)
 export const projectLayer = (ydoc, layerEl, opts) =>
   OpLayer.projectLayer(ydoc, TOYS_LAYER, layerEl, opts)
-export const receiveToyOp = (ydoc, layerEl, opId, tableId, joinSequence) =>
-  OpLayer.receiveLayerOp(ydoc, TOYS_LAYER, layerEl, opId, tableId, joinSequence)
 export const undoToyGesture = (ydoc, layerEl, tableId, authorId) =>
   OpLayer.undoGesture(ydoc, TOYS_LAYER, layerEl, tableId, authorId)
 export const redoToyGesture = (ydoc, layerEl, tableId, authorId) =>
@@ -1935,10 +1900,9 @@ export const canRedoToyGesture = (ydoc, tableId, authorId) =>
  * getMenuActions() handed back. Re-validates applicable() first (UI state
  * may be stale — another peer's move could land between render and click).
  * Runs the handler inside an envelope, on the current tick, with any
- * container reaction the handler triggers folded into the SAME transaction
- * as the handler's own commit — one transaction, one undo step, no window
- * where the action landed but its reaction hadn't yet.
- *
+ * container reaction the handler triggers folded into the same op as the
+ * handler's own mutations — one op, one undo step, no window where the
+ * action landed but its reaction hadn't yet.
  */
 export function invokeMenuAction(ydoc, layerEl, svgEl, namespace, key, evt, authorId, tableId) {
   const ns    = globalThis[namespace]
@@ -1949,16 +1913,8 @@ export function invokeMenuAction(ydoc, layerEl, svgEl, namespace, key, evt, auth
   if (typeof entry.applicable === 'function' && !entry.applicable(svgEl)) {
     throw new Error(`[toys] menu action not applicable: ${namespace}.${key}`)
   }
-  let result
-  /*
-   * Note: Wrapped in an outer, unlabeled ydoc.transact() so a folded caller's
-   * commit lands under null, the same as every other folded call site.
-   */
-  ydoc.transact(() => {
-    result = runGesture(ydoc, layerEl, () => entry.handler.call(svgEl, evt),
-      { gesture: `menu:${namespace}.${key}`, authorId, tableId })
-  })
-  return result
+  return runGesture(ydoc, layerEl, () => entry.handler.call(svgEl, evt),
+    { gesture: `menu:${namespace}.${key}`, authorId, tableId })
 }
 
 // ── lifecycle ────────────────────────────────────────────────────────────
@@ -1976,11 +1932,9 @@ export function runInitializers(svgEl, toyType, initArgs) {
 
 export function initializeToy(ydoc, layerEl, svgEl, toyType, authorId, tableId, initArgs) {
   if (!getNamespacesForType(toyType).some(name => typeof globalThis[name]?.initialize === 'function')) return
-  ydoc.transact(() => {
-    runGesture(ydoc, layerEl, () => {
-      runInitializers(svgEl, toyType, initArgs)
-    }, { gesture: 'initialize', authorId, tableId })
-  })
+  runGesture(ydoc, layerEl, () => {
+    runInitializers(svgEl, toyType, initArgs)
+  }, { gesture: 'initialize', authorId, tableId })
 }
 
 /**
@@ -2096,7 +2050,8 @@ export function moveToysBatch(ydoc, layerEl, moves, { authorId, tableId } = {}) 
  * captures them. The contract app.js relies on is that whatever find()
  * returns is what the other methods accept — here, a rendered <g>.
  */
-export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false) {  const layer = () => (typeof getLayerEl === 'function' ? getLayerEl() : getLayerEl)
+export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false) {
+  const layer = () => (typeof getLayerEl === 'function' ? getLayerEl() : getLayerEl)
   const gesture = (name, fn, extraOpts = {}) =>
     runGesture(ydoc, layer(), fn, { gesture: name, authorId: user.id, tableId, ...extraOpts })
 
@@ -2135,7 +2090,5 @@ export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false)
     listData:        ()              => toysDataDom(layer()),
     render:          (layerEl, joinSequence = []) =>
                        projectLayer(ydoc, layerEl, { tableId, authorId: user.id, isCreator, joinSequence }),
-    receive:         (layerEl, opId, joinSequence = []) =>
-                       receiveToyOp(ydoc, layerEl, opId, tableId, joinSequence),
   };
 }

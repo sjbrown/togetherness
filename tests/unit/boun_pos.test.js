@@ -17,7 +17,7 @@ import {
   // Grid math
   generateSquareGrid, generateHexGrid, generateFlatHexGrid, gridFillExtent, computeMaxSnapRadius, computeGridPositions,
   // DOM writes
-  addBoundary, createPositionSetElement, findEl, deleteEl, editBounPos, editEl, applyMoveCommit,
+  BOUNPOS_TYPES, findEl, deleteEl, editBounPos, editEl, applyMoveCommit,
   // Layer
   BOUNDARIES_LAYER, makeLayerAPI, layerData,
   // Geometry queries
@@ -50,7 +50,7 @@ function makeLayer() {
 
 function addB(layer, overrides = {}) {
   const { id, name } = newBoundaryId();
-  addBoundary(layer.layerEl, {
+  BOUNPOS_TYPES.boundary.create(layer.layerEl, {
     id, name, x: 100, y: 100, w: 200, h: 150,
     ...overrides,
   });
@@ -65,7 +65,7 @@ function addPS(layer, overrides = {}) {
   const xSpacing = overrides.xSpacing ?? 80;
   const ySpacing = overrides.ySpacing ?? 80;
   const circles = gridFillExtent(x, y, w, h, genType, xSpacing, ySpacing);
-  createPositionSetElement(layer.layerEl, {
+  BOUNPOS_TYPES['pos-grid-sq'].create(layer.layerEl, {
     id, name, snapRadius: 30, genType, xSpacing, ySpacing, x, y, w, h, circles,
     ...overrides, id, name,
   });
@@ -282,7 +282,7 @@ describe('computeGridPositions', () => {
 
 // ── DOM operations ────────────────────────────────────────────────────────────
 
-describe('addBoundary / findEl', () => {
+describe('boundary create / findEl', () => {
   test('boundary is found by id and is a <g>', () => {
     const layer = makeLayer();
     const { id } = addB(layer);
@@ -313,7 +313,7 @@ describe('addBoundary / findEl', () => {
   });
 });
 
-describe('addPositionSet / findEl', () => {
+describe('pos-set create / findEl', () => {
   test('pos-set is found by id and has correct type', () => {
     const layer = makeLayer();
     const { id } = addPS(layer);
@@ -773,14 +773,14 @@ describe('computeBoundaryRects', () => {
   test('returns null when no boundary name matches', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    addBoundary(layer.layerEl, { id, name: 'forest', x: 0, y: 0, w: 300, h: 300 });
+    BOUNPOS_TYPES.boundary.create(layer.layerEl, { id, name: 'forest', x: 0, y: 0, w: 300, h: 300 });
     expect(computeBoundaryRects(layer.layerEl, new Set(['dungeon']), { x: 50, y: 50 })).toBeNull();
   });
 
   test('returns rects when class matches and toy starts inside', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    addBoundary(layer.layerEl, { id, name: 'forest', x: 0, y: 0, w: 300, h: 300 });
+    BOUNPOS_TYPES.boundary.create(layer.layerEl, { id, name: 'forest', x: 0, y: 0, w: 300, h: 300 });
     const rects = computeBoundaryRects(layer.layerEl, new Set(['forest']), { x: 50, y: 50 });
     expect(rects).not.toBeNull();
     expect(rects).toHaveLength(1);
@@ -790,7 +790,7 @@ describe('computeBoundaryRects', () => {
   test('returns null when toy starts outside matched boundary', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    addBoundary(layer.layerEl, { id, name: 'forest', x: 0, y: 0, w: 100, h: 100 });
+    BOUNPOS_TYPES.boundary.create(layer.layerEl, { id, name: 'forest', x: 0, y: 0, w: 100, h: 100 });
     // anchor is outside the boundary
     const rects = computeBoundaryRects(layer.layerEl, new Set(['forest']), { x: 200, y: 200 });
     expect(rects).toBeNull();

@@ -798,8 +798,6 @@ export const runGesture = (ydoc, layerEl, fn, opts) =>
   OpLayer.runGesture(ydoc, DRAWING_LAYER, layerEl, fn, opts);
 export const projectLayer = (ydoc, layerEl, opts) =>
   OpLayer.projectLayer(ydoc, DRAWING_LAYER, layerEl, opts);
-export const receiveDrawingOp = (ydoc, layerEl, opId, tableId, joinSequence) =>
-  OpLayer.receiveLayerOp(ydoc, DRAWING_LAYER, layerEl, opId, tableId, joinSequence);
 
 // ── Batch gestures ────────────────────────────────────────────────────────────
 // A multi-select action is one gesture, one operation: a loop of single
@@ -939,7 +937,5 @@ export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false)
     listData:        ()               => drawingsData(layer()),
     render:          (layerEl, joinSequence = []) =>
                        projectLayer(ydoc, layerEl, { tableId, authorId: user.id, isCreator, joinSequence }),
-    receive:         (layerEl, opId, joinSequence = []) =>
-                       receiveDrawingOp(ydoc, layerEl, opId, tableId, joinSequence),
   };
 }

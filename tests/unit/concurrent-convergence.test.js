@@ -24,7 +24,7 @@ import {
   placeToy, makeLayerAPI, activateAllToyScriptsDom, projectLayer, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { getOps, getContent, appendOp, appendCheckpoint } from '../../src/op_dag.js'
-import { undoGesture } from '../../src/op_layer.js'
+import { receiveLayerOp, undoGesture } from '../../src/op_layer.js'
 import { projectTips, nearestCheckpoint, latestCut, isCheckpoint, opsSinceCheckpoint, CHECKPOINT_MIN_OPS } from '../../src/op_checkpoint.js'
 import { getHead, getMergeTips, maximalTips, setHead } from '../../src/op_head.js'
 import { serializeNode } from '../../src/op_wire_mutation.js'
@@ -109,7 +109,7 @@ function deliver(peer, ops, order = ops.map((_, i) => i)) {
   }
   const results = []
   for (const i of order) {
-    results.push(peer.api.receive(peer.layer, ops[i].id, []))
+    results.push(receiveLayerOp(peer.ydoc, TOYS_LAYER, peer.layer, ops[i].id, peer.tableId, []))
   }
   return results
 }
@@ -546,7 +546,7 @@ describe('concurrent convergence: drawing layer', () => {
 
   function deliverDrawing(peer, ops) {
     for (const op of ops) getOps(peer.ydoc, DRAWING_LAYER).set(op.id, op)
-    return ops.map(op => peer.api.receive(peer.layer, op.id, []))
+    return ops.map(op => receiveLayerOp(peer.ydoc, DRAWING_LAYER, peer.layer, op.id, peer.tableId, []))
   }
 
   function drawingTipsOf(peer) {
@@ -725,7 +725,7 @@ describe('concurrent convergence: boundaries layer', () => {
 
   function deliverBoun(peer, ops) {
     for (const op of ops) getOps(peer.ydoc, BOUNDARIES_LAYER).set(op.id, op)
-    return ops.map(op => peer.api.receive(peer.layer, op.id, []))
+    return ops.map(op => receiveLayerOp(peer.ydoc, BOUNDARIES_LAYER, peer.layer, op.id, peer.tableId, []))
   }
 
   function bounTipsOf(peer) {

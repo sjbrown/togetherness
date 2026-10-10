@@ -454,36 +454,7 @@ function _createPositionSet(layerEl,
   return g;
 }
 
-// ── Elevated layer API ────────────────────────────────────────────────────────
-
-/**
- * Convenience wrappers — kept for call sites that name a specific type.
- * Internally both delegate to BOUNPOS_TYPES[toolName].create().
- */
-export function addBoundary(layerEl, params) {
-  return BOUNPOS_TYPES.boundary.create(layerEl, params);
-}
-
-export function createPositionSetElement(layerEl, params) {
-  return _createPositionSet(layerEl, params);
-}
-
-export function addPositionSet(layerEl,
-  { x, y, w, h, toolName, toolParams }) {
-  const def = BOUNPOS_TYPES[toolName];
-  if (!def) return null;
-
-  const genType = def.genType;
-  const { xSpacing, ySpacing } = gridSpacingFromInput(genType, toolParams);
-  const snapRadius = snapRadiusStateToRadius(toolParams.snapRadius ?? 10, genType, xSpacing, ySpacing);
-  const circles = gridFillExtent(x, y, w, h, genType, xSpacing, ySpacing);
-
-  if (circles.length === 0) return null;
-  const { id, name } = def.newId();
-  def.create(layerEl,
-    { id, name, snapRadius, genType, xSpacing, ySpacing, x, y, w, h, circles });
-  return { id, name, genType };
-}
+// ── Element operations ────────────────────────────────────────────────────────
 
 export function findEl(layerEl, id) {
   for (const el of layerEl?.children ?? []) {
@@ -498,10 +469,6 @@ export function deleteEl(layerEl, id) {
   el.remove();
   return true;
 }
-
-// Canonical LayerAPI aliases — find/delete are the names every layer agrees
-// on. findEl/deleteEl stay exported as-is for existing call sites/tests.
-export const find = findEl;
 
 export function applyMoveCommit(el, x, y) {
   if (!el) return;
@@ -714,7 +681,7 @@ function createBounPos(state, layerEl) {
     const { xSpacing, ySpacing } = gridSpacingFromInput(state.genType, state);
     const circles = gridFillExtent(state.x, state.y, state.w, state.h, state.genType, xSpacing, ySpacing);
 
-    createPositionSetElement(layerEl, {
+    _createPositionSet(layerEl, {
       id:         state.id,
       name:       state.name,
       snapRadius: snapRadiusStateToRadius(state.snapRadius ?? 10, state.genType, xSpacing, ySpacing),
@@ -728,7 +695,7 @@ function createBounPos(state, layerEl) {
       circles,
     });
   } else {
-    addBoundary(layerEl, {
+    BOUNPOS_TYPES.boundary.create(layerEl, {
       id:     state.id,
       name:   state.name,
       x:      state.x,
@@ -954,8 +921,6 @@ export const runGesture = (ydoc, layerEl, fn, opts) =>
   OpLayer.runGesture(ydoc, BOUNDARIES_LAYER, layerEl, fn, opts);
 export const projectLayer = (ydoc, layerEl, opts) =>
   OpLayer.projectLayer(ydoc, BOUNDARIES_LAYER, layerEl, opts);
-export const receiveBounPosOp = (ydoc, layerEl, opId, tableId, joinSequence) =>
-  OpLayer.receiveLayerOp(ydoc, BOUNDARIES_LAYER, layerEl, opId, tableId, joinSequence);
 
 // ── Batch gestures ────────────────────────────────────────────────────────────
 // A multi-select action is one gesture, one operation.
@@ -1050,7 +1015,5 @@ export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false)
     listData:         ()                 => layerData(layer()),
     render:           (layerEl, joinSequence = []) =>
                         projectLayer(ydoc, layerEl, { tableId, authorId: user.id, isCreator, joinSequence }),
-    receive:          (layerEl, opId, joinSequence = []) =>
-                        receiveBounPosOp(ydoc, layerEl, opId, tableId, joinSequence),
   };
 }

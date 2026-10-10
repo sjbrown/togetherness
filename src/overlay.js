@@ -487,9 +487,8 @@ export function endDragPlaceholder(elId) {
 
 // ── Resize ghosts ────────────────────────────────────────────────────────────
 // Local corner-drag resize — same rationale as the drag ghost above: the
-// real toy element can be wiped out mid-gesture by renderToysLayer()'s full
-// innerHTML rebuild (fired by ANY peer's Yjs transaction, not just this
-// client's own), so the live preview lives on a detached clone that
+// real element can be replaced mid-gesture when a peer's op rebuilds the
+// layer's projection, so the live preview lives on a detached clone that
 // survives render() calls, not the real element.
 // Map<elId, { placeholderEl, ghostEl, ringEl }>
 const _resizeGhosts = new Map();
@@ -612,9 +611,9 @@ export function endResizeGhost(elId) {
 // Live preview for an in-progress Edit-panel gesture
 //
 // Changes no geometry — same rationale as the resize ghost above: the real
-// element can be wiped out mid-gesture by any peer's Yjs transaction (a
-// full toys/drawing/boun_pos-layer rebuild), so the live preview lives on
-// a detached clone that survives render() calls, not the real element.
+// element can be replaced mid-gesture when a peer's op rebuilds the layer's
+// projection, so the live preview lives on a detached clone that survives
+// render() calls, not the real element.
 //
 // Map<elId, { placeholderEl, ghostEl }>
 const _ghosts = new Map();

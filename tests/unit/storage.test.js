@@ -4,7 +4,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { HEAD_MARKER } from '../../src/op_layer.js'
 import { TOYS_LAYER } from '../../src/toys.js'
 import { ensureLayerId, getOpLayer } from '../../src/op_layers.js'
-import { domToY, populateFromSvgDoc, buildExportSvg } from '../../src/storage.js'
+import { populateFromSvgDoc, buildExportSvg } from '../../src/storage.js'
 import { getOps, getContent } from '../../src/op_dag.js'
 import { projectFrom } from '../../src/op_checkpoint.js'
 import * as Toys from '../../src/toys.js'
@@ -30,16 +30,6 @@ function parseSvg(text) {
   return doc.documentElement
 }
 
-// domToY returns a *detached* Y.XmlElement/Y.XmlText — per Yjs, reading a
-// detached node (toArray/getAttribute/toString) is unreliable until it's
-// integrated into a Y.Doc. Attach it to a throwaway fragment before assertions.
-function integrate(yNode) {
-  const ydoc = new Y.Doc()
-  const frag = ydoc.getXmlFragment('test')
-  ydoc.transact(() => frag.insert(0, [yNode]))
-  return frag.toArray()[0]
-}
-
 // A document-shaped <svg> root, as importSVG/seedRoom would receive it —
 // #background-layer (with a <pattern> in <defs>), #toys-layer, #drawing-layer,
 // plus one arbitrary extra top-level element to exercise the fallback sweep.
@@ -61,56 +51,6 @@ function makeDocSvg({ toysInner = '', drawingInner = '', extra = '' } = {}) {
 const VALID_TOY_G = `<g class="toy" data-id="t1" data-toy-type="dice_d6">
     <svg x="0" y="0" width="64" height="64" viewBox="0 0 80 100"><circle r="5"/></svg>
   </g>`
-
-// ─────────────────────────────────────────────────────────────────────────────
-// domToY
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('domToY', () => {
-  test('converts an element and its attributes', () => {
-    const el = parseSvg(`<rect x="1" y="2" width="3" height="4"/>`)
-    const y = integrate(domToY(el))
-    expect(y.nodeName).toBe('rect')
-    expect(y.getAttribute('x')).toBe('1')
-    expect(y.getAttribute('height')).toBe('4')
-  })
-
-  test('recursively converts children', () => {
-    const el = parseSvg(`<g><rect/><circle/></g>`)
-    const y = integrate(domToY(el))
-    expect(y.toArray().map(c => c.nodeName)).toEqual(['rect', 'circle'])
-  })
-
-  test('drops whitespace-only text nodes', () => {
-    const el = parseSvg(`<g>   \n  </g>`)
-    const y = integrate(domToY(el))
-    expect(y.toArray().length).toBe(0)
-  })
-
-  test('preserves non-whitespace text content', () => {
-    const el = parseSvg(`<text><tspan>5</tspan></text>`)
-    const tspan = integrate(domToY(el)).toArray()[0]
-    expect(tspan.toArray()[0].toString()).toBe('5')
-  })
-
-  test('preserves <script> elements, their attrs, and CDATA text', () => {
-    const el = parseSvg(TOY_SVG)
-    const y = integrate(domToY(el))
-    const scripts = y.toArray().filter(c => c.nodeName === 'script')
-    expect(scripts.length).toBe(2)
-
-    const srcScript = scripts.find(s => s.getAttribute('src'))
-    expect(srcScript.getAttribute('src')).toBe('js/dice_utils.js')
-    expect(srcScript.getAttribute('data-namespace')).toBe('dice')
-
-    const inlineScript = scripts.find(s => s.getAttribute('data-namespace') === 'd6')
-    expect(inlineScript.toArray()[0].toString()).toContain('d6')
-  })
-
-  test('returns null for comment/other non-element, non-text nodes', () => {
-    expect(domToY(document.createComment('hi'))).toBeNull()
-  })
-})
 
 // isForeignToyG / parseForeignToy now live entirely in toys.js — see
 // tests/unit/node-identity.test.js. storage.js no longer knows the toy
@@ -241,9 +181,11 @@ describe('populateFromSvgDoc', () => {
     // layer, as BounPos created and the op log projected it.
     function exportedBounPosInner() {
       const layerEl = ensureLayerId(document.createElementNS('http://www.w3.org/2000/svg', 'g'), BOUNDARIES_LAYER)
-      BounPos.addBoundary(layerEl, { id: 'tt-b-v1-abc', name: 'Hand', x: 10, y: 20, w: 100, h: 50 })
-      BounPos.addPositionSet(layerEl, {
-        x: 0, y: 0, w: 200, h: 200, toolName: 'pos-grid-sq', toolParams: { spacing: 80, snapRadius: 2 },
+      BounPos.BOUNPOS_TYPES.boundary.create(layerEl, { id: 'tt-b-v1-abc', name: 'Hand', x: 10, y: 20, w: 100, h: 50 })
+      const rect = { x: 0, y: 0, w: 200, h: 200 }
+      BounPos.BOUNPOS_TYPES['pos-grid-sq'].create(layerEl, {
+        ...BounPos.newPositionSetId(), genType: 'square', ...rect,
+        ...BounPos.toolParamsToCreateParams('square', { spacing: 80, snapRadius: 2 }, rect),
       })
       return layerEl.innerHTML
     }

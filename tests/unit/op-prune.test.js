@@ -13,7 +13,7 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  buildLayerForkSeed, pruneAfterCheckpoint, resolveBranchConflict, resolveOrphanedTips, settleBranchConflict,
+  buildLayerForkSeed, pruneAfterCheckpoint, receiveLayerOp, resolveBranchConflict, resolveOrphanedTips, settleBranchConflict,
 } from '../../src/op_layer.js'
 import { ensureLayerId } from '../../src/op_layers.js'
 import { TOYS_LAYER } from '../../src/toys.js'
@@ -126,7 +126,7 @@ function deliver(peer, opList) {
       getOps(peer.ydoc, TOYS_LAYER).set(op.id, op)
     }
   }
-  return opList.map(op => peer.api.receive(peer.layer, op.id, []))
+  return opList.map(op => receiveLayerOp(peer.ydoc, TOYS_LAYER, peer.layer, op.id, peer.tableId, []))
 }
 
 /**
@@ -156,7 +156,7 @@ function syncInto(peer, from, { joinSequence = [] } = {}) {
         { authorId: peer.id, joinSequence, deletedIds: deleted })
     }
     for (const id of added) {
-      const r = peer.api.receive(peer.layer, id, joinSequence)
+      const r = receiveLayerOp(peer.ydoc, TOYS_LAYER, peer.layer, id, peer.tableId, joinSequence)
       out.results[id] = r
       if (r.result === RECEIVED_CONFLICT) {
         out.conflicts.push(settleBranchConflict(peer.ydoc, TOYS_LAYER, peer.layer, peer.tableId, r.tips,

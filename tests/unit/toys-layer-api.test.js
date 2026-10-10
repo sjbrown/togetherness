@@ -211,7 +211,7 @@ describe('gestures also land in the operation log', () => {
   })
 })
 
-describe('importToys — live-table SVG import (REVISION_PLAN.md C5)', () => {
+describe('importToys — live-table SVG import', () => {
   const TABLE = 'import-table'
   beforeEach(() => localStorage.clear())
 

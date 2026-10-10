@@ -1,10 +1,9 @@
 /**
- * storage.js — SVG document import/export: DOM ⇄ Yjs.
+ * storage.js — SVG document import/export.
  *
  * This module works headless (no live room, no UI) and is
  * unit-testable on its own.
  */
-import * as Y        from 'yjs';
 import * as Toys     from './toys.js';
 import * as Drawing  from './drawing.js';
 import { BOUNDARIES_LAYER } from './boun_pos.js';
@@ -13,7 +12,7 @@ import { checkpointOp } from './op_checkpoint.js';
 import { ensureLayerId, getOpLayer, LAYER_MARKER } from './op_layers.js';
 import { HEAD_MARKER } from './op_layer.js';
 
-// ── DOM → Yjs ────────────────────────────────────────────────────────────────
+// ── Import ───────────────────────────────────────────────────────────────────
 
 // Stamp id/data-id/data-module on an imported top-level drawing or boundary
 // element, minting an id the same way app.js's
@@ -51,25 +50,6 @@ function parseDrawingEl(child) {
 // that shouldn't run live has to be kept out at import instead.
 function stripScripts(el) {
   el.querySelectorAll('script').forEach(s => s.remove());
-}
-
-/**
- * Convert a DOM node into a detached Y.XmlElement (or Y.XmlText) tree.
- * <script> nodes are preserved as inert document citizens — the Yjs/SVG
- * tree is the canonical document, but nothing ever mirrors a <script> back
- * into a live DOM, so nothing executes.
- */
-export function domToY(node) {
-  if (node.nodeType === Node.TEXT_NODE || node.nodeType === Node.CDATA_SECTION_NODE) {
-    const t = node.textContent.trim();
-    return t ? new Y.XmlText(t) : null;
-  }
-  if (node.nodeType !== Node.ELEMENT_NODE) return null;
-  const yEl = new Y.XmlElement(node.localName);
-  for (const at of node.attributes) yEl.setAttribute(at.name, at.value);
-  const children = [...node.childNodes].map(domToY).filter(Boolean);
-  if (children.length) yEl.insert(0, children);
-  return yEl;
 }
 
 /**
@@ -242,7 +222,7 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
   return { toyCount, drawCount, bounPosCount, invalidToyEls, importedToyEls, importedDrawEls, importedBounPosEls };
 }
 
-// ── Yjs → DOM (export) ────────────────────────────────────────────────────────
+// ── Export ───────────────────────────────────────────────────────────────────
 
 /**
  * Build an export-ready SVG DOM tree from the live canvas element plus the
