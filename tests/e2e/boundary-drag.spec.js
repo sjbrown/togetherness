@@ -85,6 +85,8 @@ test.describe('boundary-constrained toy dragging', () => {
         metaBName:      metaB?.label ?? null,
         pathAD:         elA?.querySelector('path')?.getAttribute('d') ?? null,
         pathBD:         elB?.querySelector('path')?.getAttribute('d') ?? null,
+        transformA:     elA?.getAttribute('transform') ?? null,
+        transformB:     elB?.getAttribute('transform') ?? null,
         layerObjects:   layerObjects.map(o => ({ id: o.id, label: o.label })),
         bAIdEqualsBBId: bAId === bBId,
         elANameAttr:    elA?.getAttribute('name') ?? null,
@@ -100,8 +102,11 @@ test.describe('boundary-constrained toy dragging', () => {
     expect(boundarySanity.metaAName,    'boundary A name').toBe('toy');
     expect(boundarySanity.metaBName,    'boundary B name').toBe('toy');
     // Verify geometry: A should span x=100..300, B should span x=450..650
-    expect(boundarySanity.pathAD,  'boundary A path').toMatch(/M100.*300/);
-    expect(boundarySanity.pathBD,  'boundary B path').toMatch(/M450.*650/);
+    // Children are local; the group's transform carries the position.
+    expect(boundarySanity.pathAD,  'boundary A path').toMatch(/^M0,0 L200,0/);
+    expect(boundarySanity.pathBD,  'boundary B path').toMatch(/^M0,0 L200,0/);
+    expect(boundarySanity.transformA, 'boundary A transform').toBe('translate(100, 100)');
+    expect(boundarySanity.transformB, 'boundary B transform').toBe('translate(450, 100)');
     expect(boundarySanity.activeLayer, 'active layer after boundary creation').toBe('boundaries-positions');
 
     // ── Place a toy inside boundary A ─────────────────────────────────────────
@@ -213,6 +218,85 @@ test.describe('boundary-constrained toy dragging', () => {
     expect(finalPos.cx).toBeLessThanOrEqual(bB.x + bB.w);
     expect(finalPos.cy).toBeGreaterThanOrEqual(bB.y);
     expect(finalPos.cy).toBeLessThanOrEqual(bB.y + bB.h);
+
+    await browser.close();
+  });
+  test('moved position set: drag ghost composes with its transform, and a toy snaps to a moved circle', async () => {
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
+    const ctx     = await browser.newContext();
+    const page    = await ctx.newPage();
+
+    await openAsCreator(page, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+    await waitForPeerCount(page, 0);
+
+    const canvasBox = await page.locator('#canvas').boundingBox();
+    const sc = (svgX, svgY) => ({ x: canvasBox.x + svgX, y: canvasBox.y + svgY });
+
+    // Position set at (100,100), 200x200, default 80px spacing: circles at 100/180/260.
+    await page.evaluate(() => window.App.setLayer('boundaries-positions'));
+    await page.evaluate(() => window.App.commitPositionSet({ toolName: 'pos-grid-sq', x: 100, y: 100, w: 200, h: 200 }));
+    await page.waitForTimeout(100);
+    const psId = await page.evaluate(() => window.App.getSelectedIds()[0]);
+    expect(psId).toBeTruthy();
+
+    // ── Drag preview: <use> ghost carries its own translate on top of the element's transform
+    const preview = await page.evaluate((id) => {
+      window.App.startDrag(id);
+      window.App.move(id, 400, 300);   // anchor 100,100 -> 400,300
+      const orig  = document.querySelector(`#boundaries-positions-layer [data-id="${id}"]`).getBoundingClientRect();
+      const ghost = [...document.querySelectorAll(`#overlay-layer use[href="#${id}"]`)]
+        .find(el => el.hasAttribute('transform') && el.getAttribute('opacity'));
+      const g = ghost.getBoundingClientRect();
+      return { dx: g.left - orig.left, dy: g.top - orig.top, w0: orig.width, w1: g.width };
+    }, psId);
+    expect(preview.dx).toBeCloseTo(300, 0);
+    expect(preview.dy).toBeCloseTo(200, 0);
+    expect(preview.w1).toBeCloseTo(preview.w0, 0);
+
+    // ── Commit: only the transform changes
+    const committed = await page.evaluate((id) => {
+      window.App.commitMove(id, 400, 300);
+      const el = document.querySelector(`#boundaries-positions-layer [data-id="${id}"]`);
+      return {
+        transform: el.getAttribute('transform'),
+        d:   el.querySelector('path').getAttribute('d'),
+        cx0: el.querySelector('circle').getAttribute('cx'),
+        cy0: el.querySelector('circle').getAttribute('cy'),
+      };
+    }, psId);
+    expect(committed.transform).toBe('translate(400, 300)');
+    expect(committed.d).toMatch(/^M0,0 L200,0/);
+    expect([committed.cx0, committed.cy0]).toEqual(['0', '0']);
+
+    // ── Drop a toy outside the grid and drag it next to a circle that only exists post-move
+    await page.evaluate(() => window.App.setLayer('toys'));
+    await page.evaluate(() => window.UI.pillTap('d6'));
+    const drop = sc(150, 500);
+    await page.mouse.move(drop.x, drop.y);
+    await page.mouse.down();
+    await page.mouse.up();
+    await expect(page.locator('#toys-layer [data-toy-type]')).toHaveCount(1, { timeout: 3000 });
+    const toyId = await page.evaluate(() => document.querySelector('#toys-layer [data-toy-type]').getAttribute('data-id'));
+
+    await page.evaluate(() => window.UI.pillTap('select'));
+    const t = await page.evaluate((id) => {
+      const el = document.querySelector(`[data-id="${id}"]`);
+      const r = el.getBoundingClientRect();
+      const a = window.App.getAnchor(el);
+      return { px: r.left + r.width / 2, py: r.top + r.height / 2, ax: a.x, ay: a.y };
+    }, toyId);
+    // Target anchor 5px off the moved circle at (480,300); the old absolute
+    // circles (180,180 etc.) are nowhere near.
+    await page.mouse.move(t.px, t.py);
+    await page.mouse.down();
+    await page.mouse.move(t.px + 2, t.py);
+    await page.mouse.move(t.px + (485 - t.ax), t.py + (305 - t.ay), { steps: 5 });
+    await page.mouse.up();
+    await page.waitForTimeout(200);
+
+    const landed = await page.evaluate((id) =>
+      window.App.getAnchor(document.querySelector(`[data-id="${id}"]`)), toyId);
+    expect(landed).toEqual({ x: 480, y: 300 });
 
     await browser.close();
   });

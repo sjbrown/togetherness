@@ -17,7 +17,7 @@
 // @vitest-environment jsdom
 import * as awarenessProtocol from 'y-protocols/awareness'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { pathToRect } from '../../src/boun_pos.js'
+import { pathToRect, translationOf } from '../../src/boun_pos.js'
 import { _clearSvgTextCache } from '../../src/toys.js'
 
 // Generic stand-in content for App.boot()'s toy-svg warm-cache fetch —
@@ -146,7 +146,8 @@ describe('boundary resize mode', () => {
     const yBounPos = ydoc.getXmlFragment('boundaries')
     const yEl = yBounPos.toArray().find(n => n.getAttribute('id') === id)
     const yPath = yEl.toArray().find(n => n.nodeName === 'path')
-    expect(pathToRect(yPath.getAttribute('d'))).toEqual({ x: 100, y: 100, w: 300, h: 250 })
+    expect(pathToRect(yPath.getAttribute('d'))).toEqual({ x: 0, y: 0, w: 300, h: 250 })
+    expect(translationOf(yEl)).toEqual({ tx: 100, ty: 100 })
   })
 
   test('a plain click-drag on a resize-mode boundary that misses the handles still moves it', async () => {
