@@ -456,6 +456,11 @@ function _createPositionSet(layerEl,
 
 // ── Element operations ────────────────────────────────────────────────────────
 
+/** Build a toolName element from params and append it. Returns the element. */
+export function addEl(layerEl, toolName, params) {
+  return BOUNPOS_TYPES[toolName].create(layerEl, params);
+}
+
 export function findEl(layerEl, id) {
   for (const el of layerEl?.children ?? []) {
     if (el.getAttribute('data-id') === id) return el;
@@ -470,7 +475,7 @@ export function deleteEl(layerEl, id) {
   return true;
 }
 
-export function applyMoveCommit(el, x, y) {
+export function applyMove(el, x, y) {
   if (!el) return;
   const path = childByTag(el, 'path');
   if (!path) return;
@@ -733,7 +738,7 @@ export function editBounPos(state, layerEl) {
   editEl(existing, state);
 
   if (state.x !== undefined) {
-    applyMoveCommit(existing, state.x, state.y);
+    applyMove(existing, state.x, state.y);
   }
 }
 
@@ -905,13 +910,8 @@ export function nextSelectMode(_domEl, currentMode) {
 // ── The layer ─────────────────────────────────────────────────────────────────
 
 export const BOUN_POS_LAYER = defineOpLayer({
-  name:        'boun_pos',
-  selector:    '#boun_pos-layer',
-  layerDataId: 'tt-layer-boun_pos',
-  opsKey:      'ops:boun_pos',
-  contentKey:  'checkpointContent:boun_pos',
-  headKey:     (tableId) => `tt_head_boun_pos_${tableId}`,
-  mergeKey:    (tableId) => `tt_head_merge_boun_pos_${tableId}`,
+  name:     'boun_pos',
+  selector: '#boun_pos-layer',
 });
 
 export const runGesture = (ydoc, layerEl, fn, opts) =>
@@ -919,83 +919,21 @@ export const runGesture = (ydoc, layerEl, fn, opts) =>
 export const projectLayer = (ydoc, layerEl, opts) =>
   OpLayer.projectLayer(ydoc, BOUN_POS_LAYER, layerEl, opts);
 
-// ── Batch gestures ────────────────────────────────────────────────────────────
-// A multi-select action is one gesture, one operation.
-
-/** Delete several elements as one gesture. Returns the op, or null if none existed. */
-export function deleteBoundariesBatch(ydoc, layerEl, ids, { authorId, tableId } = {}) {
-  let deletedAny = false;
-  const result = runGesture(ydoc, layerEl, () => {
-    for (const id of ids) {
-      if (deleteEl(layerEl, id)) deletedAny = true;
-    }
-  }, { gesture: 'delete-batch', authorId, tableId });
-  return deletedAny ? (result.op ?? null) : null;
-}
-
 /**
- * Move several elements as one gesture. moves: [{ id, x, y }] -- x/y are the
- * anchor convention applyMoveCommit uses. Returns the op, or null if none moved.
- */
-export function moveBoundariesBatch(ydoc, layerEl, moves, { authorId, tableId } = {}) {
-  let movedAny = false;
-  const result = runGesture(ydoc, layerEl, () => {
-    for (const { id, x, y } of moves) {
-      const el = findEl(layerEl, id);
-      if (!el) continue;
-      applyMoveCommit(el, x, y);
-      movedAny = true;
-    }
-  }, { gesture: 'move-batch', authorId, tableId });
-  return movedAny ? (result.op ?? null) : null;
-}
-
-/**
- * Commit pre-parsed foreign elements onto a live layer as one gesture --
- * storage.js's populateFromSvgDoc, live-table branch. An element whose id
- * collides with one already on the layer is re-id'd: data-id is the op
- * log's primary key.
- */
-export function importBoundaries(ydoc, layerEl, els, opts = {}) {
-  if (!els?.length) return null;
-  return runGesture(ydoc, layerEl, () => {
-    for (const el of els) {
-      const id = el.getAttribute('data-id');
-      if (!id || findEl(layerEl, id)) {
-        const fresh = 'import_' + Math.random().toString(36).slice(2, 7);
-        el.setAttribute('id', fresh);
-        el.setAttribute('data-id', fresh);
-      }
-      layerEl.appendChild(el);
-    }
-  }, { gesture: 'import', ...opts });
-}
-
-/**
- * makeLayerAPI -- the canonical LayerAPI for the Boundaries and Positions
- * layer.
- *
- * getLayerEl returns the live #boun_pos-layer. Everything here
- * reads and writes that DOM; writes run inside runGesture so the envelope
- * captures them. Whatever find() returns is what the other methods accept.
+ * makeLayerAPI -- the Boundaries and Positions layer's LayerAPI:
+ * OpLayer.makeOpLayerAPI over this module's primitives.
  */
 export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false) {
-  const layer = () => (typeof getLayerEl === 'function' ? getLayerEl() : getLayerEl);
-  const gesture = (name, fn) =>
-    runGesture(ydoc, layer(), fn, { gesture: name, authorId: user.id, tableId });
-
-  return {
-    find:             (id)               => findEl(layer(), id),
-    add:              (toolName, params) => {
-      let el = null;
-      gesture('add', () => { el = BOUNPOS_TYPES[toolName].create(layer(), params); });
-      return el;
-    },
-    delete:           (id)               => {
-      let deleted = false;
-      gesture('delete', () => { deleted = deleteEl(layer(), id); });
-      return deleted;
-    },
+  return OpLayer.makeOpLayerAPI(BOUN_POS_LAYER, ydoc, getLayerEl, user, tableId, isCreator, {
+    find:         findEl,
+    add:          addEl,
+    delete:       deleteEl,
+    move:         (_layerEl, el, x, y) => applyMove(el, x, y),
+    resize:       applyResize,
+    edit:         editEl,
+    applyTtState,
+    list:         layerData,
+  }, () => ({
     getGeom,
     getAnchor,
     getTtState,
@@ -1003,14 +941,7 @@ export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false)
     selectModes,
     nextSelectMode,
     computeResize,
-    applyMoveCommit:  (el, x, y)         => gesture('move',   () => applyMoveCommit(el, x, y)),
-    applyResize:      (el, x, y, w, h)   => gesture('resize', () => applyResize(el, x, y, w, h)),
-    applyTtState:     (state)            => gesture('edit',   () => applyTtState(layer(), state)),
-    edit:             (el, editData)     => gesture('edit',   () => editEl(el, editData)),
     previewEdit,
     previewResize,
-    listData:         ()                 => layerData(layer()),
-    render:           (layerEl, joinSequence = []) =>
-                        projectLayer(ydoc, layerEl, { tableId, authorId: user.id, isCreator, joinSequence }),
-  };
+  }));
 }

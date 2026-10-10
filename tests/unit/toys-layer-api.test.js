@@ -20,9 +20,9 @@ import { ensureLayerId } from '../../src/op_layers.js'
 import { TOYS_LAYER } from '../../src/toys.js'
 import {
   makeLayerAPI, projectLayer, placeToy, addToy, activateAllToyScriptsDom,
-  undoToyGesture, redoToyGesture, deleteToysBatch, moveToysBatch,
+  undoToyGesture, redoToyGesture,
   canUndoToyGesture, canRedoToyGesture,
-  getGeom, reparentToyDom, applyMoveDom, runGesture, importToys,
+  getGeom, reparentToyDom, applyMove, runGesture,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { getOps, getContent, appendOp, appendCheckpoint } from '../../src/op_dag.js'
@@ -145,6 +145,29 @@ describe('writes mutate the DOM', () => {
     expect(L.find('die1')).toBeNull()
     expect(L.find('tray1')).toBeTruthy()
   })
+
+  test('add places a toy from its template and resolves to it', async () => {
+    const { L } = await setup()
+    const el = await L.add({ id: 'die9', toyType: 'dice_d6', x: 50, y: 60, color: '#ffffff' })
+    expect(el).toBe(L.find('die9'))
+    expect(L.getTtState(el)).toMatchObject({ toyType: 'dice_d6', cx: 50, cy: 60 })
+  })
+
+  test('applyTtState writes color and centre onto an existing toy', async () => {
+    const { L } = await setup(['die1', 'dice_d6'])
+    L.applyTtState({ id: 'die1', color: '#123456', cx: 250, cy: 150 })
+    expect(L.getTtState(L.find('die1'))).toMatchObject({ color: '#123456', cx: 250, cy: 150 })
+  })
+
+  test('applyTtState for a toy that is not there changes nothing', async () => {
+    const { L, layerEl } = await setup(['die1', 'dice_d6'])
+    const before = layerEl.innerHTML
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    L.applyTtState({ id: 'nope', color: '#123456', cx: 250, cy: 150 })
+    expect(error).toHaveBeenCalled()
+    expect(layerEl.innerHTML).toBe(before)
+    error.mockRestore()
+  })
 })
 
 describe('gestures also land in the operation log', () => {
@@ -205,13 +228,21 @@ describe('gestures also land in the operation log', () => {
 
   test('a delete is recorded too', async () => {
     const { ydoc, L } = await withLog(['die1', 'dice_d6'], ['tray1', 'tray_sum'])
-    L.delete('die1')
+    const returned = L.delete('die1')
     const op = getOps(ydoc, TOYS_LAYER).get(getHead(TABLE, TOYS_LAYER))
     expect(op.gesture).toBe('delete')
+    expect(returned).toEqual(op)
+    expect(L.delete('die1')).toBeNull()
+  })
+
+  test('add is recorded as one place op', async () => {
+    const { ydoc, L } = await withLog()
+    await L.add({ id: 'die9', toyType: 'dice_d6', x: 50, y: 60, color: '#ffffff' })
+    expect(getOps(ydoc, TOYS_LAYER).get(getHead(TABLE, TOYS_LAYER)).gesture).toBe('place')
   })
 })
 
-describe('importToys — live-table SVG import', () => {
+describe('importMany — live-table SVG import', () => {
   const TABLE = 'import-table'
   beforeEach(() => localStorage.clear())
 
@@ -231,7 +262,7 @@ describe('importToys — live-table SVG import', () => {
     const before = getHead(TABLE, TOYS_LAYER)
 
     const { importedToyEls } = populateFromSvgDoc(foreignSvgRoot(FOREIGN_TOY_G), ydoc)
-    importToys(ydoc, layerEl, importedToyEls, { authorId: 'user-a', tableId: TABLE })
+    makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' }, TABLE).importMany(importedToyEls)
 
     expect(getHead(TABLE, TOYS_LAYER)).not.toBe(before)
     const op = getOps(ydoc, TOYS_LAYER).get(getHead(TABLE, TOYS_LAYER))
@@ -245,7 +276,7 @@ describe('importToys — live-table SVG import', () => {
     projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a', isCreator: true })
 
     const { importedToyEls } = populateFromSvgDoc(foreignSvgRoot(FOREIGN_TOY_G), ydoc)
-    importToys(ydoc, layerEl, importedToyEls, { authorId: 'user-a', tableId: TABLE })
+    makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' }, TABLE).importMany(importedToyEls)
 
     const fresh = bareG()
     fresh.id = 'toys-layer'
@@ -260,7 +291,7 @@ describe('importToys — live-table SVG import', () => {
     projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a', isCreator: true })
     const before = getHead(TABLE, TOYS_LAYER)
 
-    importToys(ydoc, layerEl, [], { authorId: 'user-a', tableId: TABLE })
+    makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' }, TABLE).importMany([])
 
     expect(getHead(TABLE, TOYS_LAYER)).toBe(before)
   })
@@ -874,7 +905,7 @@ describe('undoToyGesture / redoToyGesture', () => {
     runGesture(ydoc, layerEl, () => {
       reparentToyDom(layerEl, 'die1', 'tray1')
       const movedEl = layerEl.querySelector('[data-id="die1"]')
-      applyMoveDom(movedEl, 320 - containerGeom.x, 320 - containerGeom.y)
+      applyMove(movedEl, 320 - containerGeom.x, 320 - containerGeom.y)
     }, { origin: 'envelope', gesture: 'reparent', authorId: 'user-a', tableId: TABLE })
 
     expect(layerEl.querySelector('[data-id="die1"]').closest('[data-id="tray1"]')).not.toBeNull()
@@ -886,7 +917,7 @@ describe('undoToyGesture / redoToyGesture', () => {
   })
 })
 
-describe('deleteToysBatch / moveToysBatch — one op for a multi-select action', () => {
+describe('deleteMany / moveMany — one op for a multi-select action', () => {
   const TABLE = 'batch-table'
   beforeEach(() => localStorage.clear())
 
@@ -898,10 +929,10 @@ describe('deleteToysBatch / moveToysBatch — one op for a multi-select action',
   }
 
   test('deletes several toys and appends exactly one operation', async () => {
-    const { ydoc, layerEl } = await seededTwo()
+    const { ydoc, layerEl, L } = await seededTwo()
     const before = [...getOps(ydoc, TOYS_LAYER).values()].length
 
-    const op = deleteToysBatch(ydoc, layerEl, ['die1', 'die2'], { authorId: 'user-a', tableId: TABLE })
+    const op = L.deleteMany(['die1', 'die2'])
 
     expect(op).not.toBeNull()
     expect(op.gesture).toBe('delete-batch')
@@ -910,8 +941,8 @@ describe('deleteToysBatch / moveToysBatch — one op for a multi-select action',
   })
 
   test('undo reverses the whole batch in one press', async () => {
-    const { ydoc, layerEl } = await seededTwo()
-    deleteToysBatch(ydoc, layerEl, ['die1', 'die2'], { authorId: 'user-a', tableId: TABLE })
+    const { ydoc, layerEl, L } = await seededTwo()
+    L.deleteMany(['die1', 'die2'])
     expect(layerEl.querySelectorAll('[data-toy-type]').length).toBe(0)
 
     undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
@@ -920,17 +951,15 @@ describe('deleteToysBatch / moveToysBatch — one op for a multi-select action',
   })
 
   test('null when every id in the batch is already gone', async () => {
-    const { ydoc, layerEl } = await seededTwo()
-    expect(deleteToysBatch(ydoc, layerEl, ['nope', 'also-nope'], { authorId: 'user-a', tableId: TABLE })).toBeNull()
+    const { L } = await seededTwo()
+    expect(L.deleteMany(['nope', 'also-nope'])).toBeNull()
   })
 
   test('moves several toys and appends exactly one operation', async () => {
     const { ydoc, layerEl, L } = await seededTwo()
     const before = [...getOps(ydoc, TOYS_LAYER).values()].length
 
-    const op = moveToysBatch(ydoc, layerEl,
-      [{ id: 'die1', x: 400, y: 400 }, { id: 'die2', x: 450, y: 450 }],
-      { authorId: 'user-a', tableId: TABLE })
+    const op = L.moveMany([{ id: 'die1', x: 400, y: 400 }, { id: 'die2', x: 450, y: 450 }])
 
     expect(op).not.toBeNull()
     expect(op.gesture).toBe('move-batch')
@@ -941,9 +970,7 @@ describe('deleteToysBatch / moveToysBatch — one op for a multi-select action',
 
   test('a single undo reverses a whole multi-move', async () => {
     const { ydoc, layerEl, L } = await seededTwo()
-    moveToysBatch(ydoc, layerEl,
-      [{ id: 'die1', x: 400, y: 400 }, { id: 'die2', x: 450, y: 450 }],
-      { authorId: 'user-a', tableId: TABLE })
+    L.moveMany([{ id: 'die1', x: 400, y: 400 }, { id: 'die2', x: 450, y: 450 }])
 
     undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
 

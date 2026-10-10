@@ -28,9 +28,9 @@ import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import { TOYS_LAYER } from '../../src/toys.js'
 import {
-  addToy, getGeom, applyMoveDom, runGesture, activateAllToyScriptsDom,
+  addToy, getGeom, applyMove, runGesture, activateAllToyScriptsDom,
   getSnapPoints, departingPositionEvents, arrivingPositionEvents,
-  promoteZOrder, moveToyAndStack, moveToysBatch,
+  promoteZOrder, moveToyAndStack,
   makeLayerAPI, listToysDom, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { getOps } from '../../src/op_dag.js'
@@ -163,7 +163,7 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
     const before = getOps(ydoc, TOYS_LAYER).size
     const stackerEl = layerEl.querySelector('[data-id="stacker1"]')
     runGesture(ydoc, layerEl, () => {
-      applyMoveDom(stackerEl, 100, 100) // land exactly on base1's point
+      applyMove(stackerEl, 100, 100) // land exactly on base1's point
     }, {
       gesture: 'move', authorId: AUTHOR, tableId: TABLE,
       positionEvents: [
@@ -356,7 +356,7 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
     const chipAEl = layerEl.querySelector('[data-id="chipA"]')
     const before = getOps(ydoc, TOYS_LAYER).size
     runGesture(ydoc, layerEl, () => {
-      applyMoveDom(chipAEl, 350, 250)
+      applyMove(chipAEl, 350, 250)
     }, { gesture: 'move', authorId: AUTHOR, tableId: TABLE })
 
     expect(getOps(ydoc, TOYS_LAYER).size - before).toBe(1)

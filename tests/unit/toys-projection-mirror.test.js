@@ -23,7 +23,7 @@ import { TOYS_LAYER } from '../../src/toys.js'
 import { ensureLayerId } from '../../src/op_layers.js'
 import {
   placeToy, makeLayerAPI, activateAllToyScriptsDom, runGesture,
-  reparentToyDom, applyMoveDom, getMenuActions, invokeMenuAction,
+  reparentToyDom, applyMove, getMenuActions, invokeMenuAction,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { getOps, getContent } from '../../src/op_dag.js'
@@ -99,7 +99,7 @@ test(
     const containerEl = layerEl.querySelector('[data-id="tray1"]')
     runGesture(ydoc, layerEl, () => {
       reparentToyDom(layerEl, 'die1', 'tray1')
-      applyMoveDom(layerEl.querySelector('[data-id="die1"]'), 10, 10)
+      applyMove(layerEl.querySelector('[data-id="die1"]'), 10, 10)
     }, { gesture: 'reparent', authorId: AUTHOR, tableId: TABLE })
 
     // menu action

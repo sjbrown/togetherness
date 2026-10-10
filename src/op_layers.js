@@ -7,9 +7,13 @@
  * exist. An op never belongs to two layers, and a gesture never spans two.
  *
  * Descriptor {
- *   name, selector, layerDataId,
- *   opsKey, contentKey,           // names of the layer's two Y.Maps
- *   headKey(tableId), mergeKey(tableId),   // per-table localStorage keys
+ *   name, selector,
+ *   layerDataId,                  // default 'tt-layer-<name>'
+ *   opsKey, contentKey,           // the layer's two Y.Maps; default
+ *                                 // 'ops:<name>', 'checkpointContent:<name>'
+ *   headKey(tableId), mergeKey(tableId),   // per-table localStorage keys;
+ *                                 // default 'tt_head_<name>_<tableId>',
+ *                                 // 'tt_head_merge_<name>_<tableId>'
  *   hooks: {
  *     afterCapture(records, layerEl, opts) → more records, captured inside
  *                                            the gesture's own op
@@ -30,10 +34,19 @@ const NO_HOOKS = {
 }
 
 export function defineOpLayer(desc) {
-  for (const k of ['name', 'selector', 'layerDataId', 'opsKey', 'contentKey', 'headKey', 'mergeKey']) {
+  for (const k of ['name', 'selector']) {
     if (!desc?.[k]) throw new Error(`defineOpLayer: ${k} is required`)
   }
-  const layer = Object.freeze({ ...desc, hooks: { ...NO_HOOKS, ...(desc.hooks ?? {}) } })
+  const { name } = desc
+  const layer = Object.freeze({
+    layerDataId: `tt-layer-${name}`,
+    opsKey:      `ops:${name}`,
+    contentKey:  `checkpointContent:${name}`,
+    headKey:     (tableId) => `tt_head_${name}_${tableId}`,
+    mergeKey:    (tableId) => `tt_head_merge_${name}_${tableId}`,
+    ...desc,
+    hooks: { ...NO_HOOKS, ...(desc.hooks ?? {}) },
+  })
   registry.set(layer.name, layer)
   return layer
 }

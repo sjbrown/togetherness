@@ -17,7 +17,7 @@ import {
   // Grid math
   generateSquareGrid, generateHexGrid, generateFlatHexGrid, gridFillExtent, computeMaxSnapRadius, computeGridPositions,
   // DOM writes
-  BOUNPOS_TYPES, findEl, deleteEl, editBounPos, editEl, applyMoveCommit,
+  BOUNPOS_TYPES, findEl, deleteEl, editBounPos, editEl, applyMove,
   // Layer
   BOUN_POS_LAYER, makeLayerAPI, layerData,
   // Geometry queries
@@ -495,12 +495,12 @@ describe('previewEdit', () => {
   });
 });
 
-describe('applyMoveCommit', () => {
+describe('applyMove', () => {
   test('boundary: sets only the group transform; children stay local', () => {
     const layer = makeLayer();
     const { id } = addB(layer, { x: 100, y: 100, w: 200, h: 150 });
     const el = findEl(layer.layerEl, id);
-    applyMoveCommit(el, 50, 60);
+    applyMove(el, 50, 60);
     expect(pathToRect(el.querySelector('path').getAttribute('d'))).toEqual({ x: 0, y: 0, w: 200, h: 150 });
     expect(translationOf(el)).toEqual({ tx: 50, ty: 60 });
     expect(Number(el.querySelector('text').getAttribute('x'))).toBe(200);
@@ -513,7 +513,7 @@ describe('applyMoveCommit', () => {
     const el = findEl(layer.layerEl, id);
     const localBefore = circlesOf(el);
     const worldBefore = getSnapPoints(layer.layerEl);
-    applyMoveCommit(el, 100, 100);
+    applyMove(el, 100, 100);
     expect(circlesOf(el)).toEqual(localBefore);
     getSnapPoints(layer.layerEl).forEach((after, i) => {
       expect(after.cx).toBe(worldBefore[i].cx + 100);
@@ -556,9 +556,9 @@ describe('world geometry across create -> move -> resize -> move', () => {
     const el = findEl(layer.layerEl, id);
     const steps = [
       [() => {}, { x: 100, y: 100, w: 200, h: 150 }],
-      [() => applyMoveCommit(el, 50, 60), { x: 50, y: 60, w: 200, h: 150 }],
+      [() => applyMove(el, 50, 60), { x: 50, y: 60, w: 200, h: 150 }],
       [() => applyResize(el, 20, 30, 300, 220), { x: 20, y: 30, w: 300, h: 220 }],
-      [() => applyMoveCommit(el, 500, 400), { x: 500, y: 400, w: 300, h: 220 }],
+      [() => applyMove(el, 500, 400), { x: 500, y: 400, w: 300, h: 220 }],
     ];
     for (const [act, want] of steps) {
       act();
@@ -578,11 +578,11 @@ describe('world geometry across create -> move -> resize -> move', () => {
     const snap = () => getSnapPoints(layer.layerEl).map(p => [p.cx, p.cy]);
 
     expect(snap()).toEqual(worldCircles(40, 50, 200, 200));
-    applyMoveCommit(el, 300, 310);
+    applyMove(el, 300, 310);
     expect(snap()).toEqual(worldCircles(300, 310, 200, 200));
     applyResize(el, 10, 20, 400, 300);
     expect(snap()).toEqual(worldCircles(10, 20, 400, 300));
-    applyMoveCommit(el, 70, 80);
+    applyMove(el, 70, 80);
     expect(snap()).toEqual(worldCircles(70, 80, 400, 300));
     expect(getGeom(el)).toEqual({ x: 70, y: 80, width: 400, height: 300 });
   });
@@ -627,7 +627,7 @@ describe('old absolute-layout elements', () => {
     const el = oldPositionSet(layer);
     const childAttrs = () => [...el.children].map(c => JSON.stringify([...c.attributes].map(a => [a.name, a.value])));
     const before = childAttrs();
-    applyMoveCommit(el, 250, 320);
+    applyMove(el, 250, 320);
     expect(childAttrs()).toEqual(before);
     expect(translationOf(el)).toEqual({ tx: 50, ty: 20 });
     expect(getGeom(el)).toEqual({ x: 250, y: 320, width: 200, height: 100 });
@@ -684,7 +684,7 @@ describe('computeResize', () => {
 });
 
 describe('applyResize', () => {
-  test('boundary: updates <path> d and <text> position, same shape as applyMoveCommit', () => {
+  test('boundary: updates <path> d and <text> position, same shape as applyMove', () => {
     const layer = makeLayer();
     const { id } = addB(layer, { x: 100, y: 100, w: 200, h: 150 });
     const el = findEl(layer.layerEl, id);

@@ -92,7 +92,7 @@ export const SHAPE_TYPES = {
 
 // ── Shape operations ──────────────────────────────────────────────────────────
 // Each takes the layer element or a shape element and mutates the live DOM.
-// Callers wrap them in a gesture (see makeLayerAPI and the batch functions).
+// Callers wrap them in a gesture (see makeLayerAPI).
 
 /**
  * Append a drawing element to the layer.
@@ -101,7 +101,7 @@ export const SHAPE_TYPES = {
  * determined by the type's schema (everything except id/type). The derived
  * `transform` is written here too, so the element is complete in one op.
  */
-export function addDrawingDom(layerEl, attrs) {
+export function addEl(layerEl, attrs) {
   const { type } = attrs;
   if (!type) throw new Error('addDrawing: attrs.type is required');
   const def = SHAPE_TYPES[type];
@@ -124,15 +124,15 @@ export function addDrawingDom(layerEl, attrs) {
 }
 
 /** Remove a drawing element by id. Returns true if found and removed. */
-export function deleteDrawingDom(layerEl, id) {
-  const el = findDrawingDom(layerEl, id);
+export function deleteEl(layerEl, id) {
+  const el = findEl(layerEl, id);
   if (!el) return false;
   el.remove();
   return true;
 }
 
 /** The layer's child with this data-id, or null. */
-export function findDrawingDom(layerEl, id) {
+export function findEl(layerEl, id) {
   for (const el of layerEl?.children ?? []) {
     if (el.getAttribute('data-id') === id) return el;
   }
@@ -323,7 +323,7 @@ export function syncRotation(domEl) {
 }
 
 /** Commit a rotation. A shape whose schema has no `rotate` key (circles) is a no-op. */
-export function applyRotateDom(domEl, deg) {
+export function applyRotate(domEl, deg) {
   if (!domEl) return;
   if (!SHAPE_TYPES[domEl.tagName]?.schema.types.rotate) return;
   domEl.setAttribute(ROTATE_ATTR, String(normalizeAngle(deg)));
@@ -434,7 +434,7 @@ export function reconcileTransform(geom, storedDeg, matrix) {
  * the pivot itself: they are one user action, and a peer that saw only half
  * of it would watch the shape jump and come back.
  */
-export function applyPivotDom(domEl, fx, fy, x, y) {
+export function applyPivot(domEl, fx, fy, x, y) {
   if (!domEl) return;
   if (!SHAPE_TYPES[domEl.tagName]?.schema.types['pivot-x']) return;
   domEl.setAttribute(PIVOT_X_ATTR, String(clamp01(fx)));
@@ -590,7 +590,7 @@ export function computeResize(mode, startRect, corner, px, py) {
  * circle, computeResizeRadiusRect's centre-preserving bbox). The integer
  * counterpart of previewResize.
  */
-export function applyResizeDom(domEl, x, y, width, height) {
+export function applyResize(domEl, x, y, width, height) {
   if (!domEl) return;
   const tag = domEl.tagName;
   if (tag === 'rect') {
@@ -614,7 +614,7 @@ export function applyResizeDom(domEl, x, y, width, height) {
  * domEl — live SVG DOM element (no-op if null)
  * x, y  — new anchor position in canvas-space
  */
-export function applyMoveDom(domEl, x, y) {
+export function applyMove(domEl, x, y) {
   if (!domEl) return;
   const tag = domEl.tagName;
   if (tag === 'rect') {
@@ -647,7 +647,7 @@ function shapeData(svgEl) {
  * All drawing elements as layer-object descriptors, in z-order.
  * Used by app.js getLayerObjects — keeps drawing internals out of the app bus.
  */
-export function drawingsData(layerEl) {
+export function layerData(layerEl) {
   return [...layerEl.children].map(shapeData);
 }
 
@@ -715,11 +715,11 @@ export function getTtState(domEl) {
  * Write a ttState snapshot back onto the layer: updates the element if it
  * exists, creates it if not.
  */
-export function applyTtStateDom(layerEl, state) {
+export function applyTtState(layerEl, state) {
   if (!state?.id || !state?.type) return;
-  const existing = findDrawingDom(layerEl, state.id);
+  const existing = findEl(layerEl, state.id);
   if (!existing) {
-    addDrawingDom(layerEl, state);
+    addEl(layerEl, state);
     return;
   }
   for (const [k, v] of Object.entries(state)) {
@@ -733,7 +733,7 @@ export function applyTtStateDom(layerEl, state) {
  * Apply an editData object to a drawing element. Only keys present in
  * editData are written. Called by App.commitEdit.
  */
-export function editDom(domEl, editData) {
+export function editEl(domEl, editData) {
   if (!domEl) return;
   const attrMap = SHAPE_TYPES[domEl.tagName]?.attrMap ?? {};
   for (const [k, v] of Object.entries(editData)) {
@@ -785,13 +785,8 @@ export function previewEdit(ghostEl, editData) {
 // ── The layer ─────────────────────────────────────────────────────────────────
 
 export const DRAWING_LAYER = defineOpLayer({
-  name:        'drawing',
-  selector:    '#drawing-layer',
-  layerDataId: 'tt-layer-drawing',
-  opsKey:      'ops:drawing',
-  contentKey:  'checkpointContent:drawing',
-  headKey:     (tableId) => `tt_head_drawing_${tableId}`,
-  mergeKey:    (tableId) => `tt_head_merge_drawing_${tableId}`,
+  name:     'drawing',
+  selector: '#drawing-layer',
 });
 
 export const runGesture = (ydoc, layerEl, fn, opts) =>
@@ -799,43 +794,13 @@ export const runGesture = (ydoc, layerEl, fn, opts) =>
 export const projectLayer = (ydoc, layerEl, opts) =>
   OpLayer.projectLayer(ydoc, DRAWING_LAYER, layerEl, opts);
 
-// ── Batch gestures ────────────────────────────────────────────────────────────
-// A multi-select action is one gesture, one operation: a loop of single
-// gestures would mint N operations and need N undo presses.
-
-/** Delete several shapes as one gesture. Returns the op, or null if none existed. */
-export function deleteDrawingsBatch(ydoc, layerEl, ids, { authorId, tableId } = {}) {
-  let deletedAny = false;
-  const result = runGesture(ydoc, layerEl, () => {
-    for (const id of ids) {
-      if (deleteDrawingDom(layerEl, id)) deletedAny = true;
-    }
-  }, { gesture: 'delete-batch', authorId, tableId });
-  return deletedAny ? (result.op ?? null) : null;
-}
-
-/**
- * Move several shapes as one gesture. moves: [{ id, x, y }] -- x/y are the
- * anchor convention applyMoveDom uses. Returns the op, or null if none moved.
- */
-export function moveDrawingsBatch(ydoc, layerEl, moves, { authorId, tableId } = {}) {
-  let movedAny = false;
-  const result = runGesture(ydoc, layerEl, () => {
-    for (const { id, x, y } of moves) {
-      const el = findDrawingDom(layerEl, id);
-      if (!el) continue;
-      applyMoveDom(el, x, y);
-      movedAny = true;
-    }
-  }, { gesture: 'move-batch', authorId, tableId });
-  return movedAny ? (result.op ?? null) : null;
-}
+// ── Duplicate ─────────────────────────────────────────────────────────────────
 
 const DUPLICATE_OFFSET = 22;
 
 /**
  * A copy of srcEl's state, offset down-right and under a new id, as
- * addDrawingDom attrs. Null for an element that isn't one of our shapes.
+ * addEl attrs. Null for an element that isn't one of our shapes.
  */
 function duplicateAttrs(srcEl, newId) {
   const state = getTtState(srcEl);
@@ -847,69 +812,28 @@ function duplicateAttrs(srcEl, newId) {
   return attrs;
 }
 
-/**
- * Duplicate several shapes as one gesture. newId() mints each copy's id.
- * Returns { op, newIds }; op is null when nothing was duplicated.
- */
-export function duplicateDrawingsBatch(ydoc, layerEl, ids, { authorId, tableId, newId } = {}) {
-  const newIds = [];
-  const result = runGesture(ydoc, layerEl, () => {
-    for (const id of ids) {
-      const srcEl = findDrawingDom(layerEl, id);
-      const attrs = srcEl && duplicateAttrs(srcEl, newId());
-      if (!attrs) continue;
-      addDrawingDom(layerEl, attrs);
-      newIds.push(attrs.id);
-    }
-  }, { gesture: 'duplicate', authorId, tableId });
-  return { op: newIds.length ? (result.op ?? null) : null, newIds };
+/** Append a copy of srcEl under newId. Returns the copy, or null. */
+export function duplicateEl(layerEl, srcEl, newId) {
+  const attrs = srcEl && duplicateAttrs(srcEl, newId);
+  return attrs ? addEl(layerEl, attrs) : null;
 }
 
 /**
- * Commit pre-parsed foreign shapes onto a live layer as one gesture --
- * storage.js's populateFromSvgDoc, live-table branch. A shape whose id
- * collides with one already on the layer is re-id'd: data-id is the op
- * log's primary key (invariant 1).
- */
-export function importDrawings(ydoc, layerEl, els, opts = {}) {
-  if (!els?.length) return null;
-  return runGesture(ydoc, layerEl, () => {
-    for (const el of els) {
-      const id = el.getAttribute('data-id');
-      if (!id || findDrawingDom(layerEl, id)) {
-        const fresh = 'import_' + Math.random().toString(36).slice(2, 7);
-        el.setAttribute('id', fresh);
-        el.setAttribute('data-id', fresh);
-      }
-      layerEl.appendChild(el);
-    }
-  }, { gesture: 'import', ...opts });
-}
-
-/**
- * makeLayerAPI -- the canonical LayerAPI for the drawing layer.
- *
- * getLayerEl returns the live #drawing-layer. Everything here reads and
- * writes that DOM; writes run inside runGesture so the envelope captures
- * them. Whatever find() returns is what the other methods accept.
+ * makeLayerAPI -- the drawing layer's LayerAPI: OpLayer.makeOpLayerAPI over
+ * this module's primitives, plus rotation, pivot and duplicate.
  */
 export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false) {
-  const layer = () => (typeof getLayerEl === 'function' ? getLayerEl() : getLayerEl);
-  const gesture = (name, fn) =>
-    runGesture(ydoc, layer(), fn, { gesture: name, authorId: user.id, tableId });
-
-  return {
-    find:            (id)            => findDrawingDom(layer(), id),
-    add:             (attrs)         => {
-      let el = null;
-      gesture('draw', () => { el = addDrawingDom(layer(), attrs); });
-      return el;
-    },
-    delete:          (id)            => {
-      let deleted = false;
-      gesture('delete', () => { deleted = deleteDrawingDom(layer(), id); });
-      return deleted;
-    },
+  return OpLayer.makeOpLayerAPI(DRAWING_LAYER, ydoc, getLayerEl, user, tableId, isCreator, {
+    find:         findEl,
+    add:          addEl,
+    delete:       deleteEl,
+    move:         (_layerEl, el, x, y) => applyMove(el, x, y),
+    resize:       applyResize,
+    rotate:       applyRotate,
+    edit:         editEl,
+    applyTtState,
+    list:         layerData,
+  }, ({ gesture, layerEl }) => ({
     getGeom,
     getAnchor,
     getTtState,
@@ -927,15 +851,13 @@ export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false)
     previewResize,
     previewRotate,
     previewPivot,
-    applyMoveCommit: (el, x, y)       => gesture('move',   () => applyMoveDom(el, x, y)),
-    applyResize:     (el, x, y, w, h) => gesture('resize', () => applyResizeDom(el, x, y, w, h)),
-    applyRotate:     (el, deg)        => gesture('rotate', () => applyRotateDom(el, deg)),
-    applyPivot:      (el, fx, fy, x, y) => gesture('pivot', () => applyPivotDom(el, fx, fy, x, y)),
-    applyTtState:    (state)          => gesture('edit',   () => applyTtStateDom(layer(), state)),
-    edit:            (el, editData)   => gesture('edit',   () => editDom(el, editData)),
     previewEdit,
-    listData:        ()               => drawingsData(layer()),
-    render:          (layerEl, joinSequence = []) =>
-                       projectLayer(ydoc, layerEl, { tableId, authorId: user.id, isCreator, joinSequence }),
-  };
+    applyPivot:      (el, fx, fy, x, y) => gesture('pivot', () => applyPivot(el, fx, fy, x, y)).op,
+    /** Duplicate one shape as one gesture. Returns the copy, or null. */
+    duplicate:       (el, newId) => {
+      let copy = null;
+      gesture('duplicate', () => { copy = duplicateEl(layerEl(), el, newId); });
+      return copy;
+    },
+  }));
 }

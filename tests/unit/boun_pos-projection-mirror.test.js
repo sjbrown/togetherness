@@ -15,7 +15,6 @@ import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
   BOUN_POS_LAYER, makeLayerAPI, gridFillExtent, toolParamsToCreateParams,
-  deleteBoundariesBatch, moveBoundariesBatch,
 } from '../../src/boun_pos.js'
 import { ensureLayerId } from '../../src/op_layers.js'
 import { getOps, getContent } from '../../src/op_dag.js'
@@ -76,9 +75,8 @@ describe('boundaries: live equals replay', () => {
     L.edit(L.find('hx'), { snapRadius: 4 })
     L.applyTtState({ id: 'hx', bounPosType: 'pos-set', name: 'hexes', x: 420, y: 20 })
 
-    const opts = { authorId: AUTHOR, tableId: TABLE }
-    moveBoundariesBatch(ydoc, layerEl, [{ id: 'b1', x: 0, y: 0 }, { id: 'hx', x: 600, y: 10 }], opts)
-    deleteBoundariesBatch(ydoc, layerEl, ['b2', 'sq'], opts)
+    L.moveMany([{ id: 'b1', x: 0, y: 0 }, { id: 'hx', x: 600, y: 10 }])
+    L.deleteMany(['b2', 'sq'])
 
     expect(layerEl.children.length).toBe(2)
     expect(serialized(replay(ydoc))).toEqual(serialized(layerEl))

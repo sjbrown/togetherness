@@ -5,18 +5,17 @@
  *
  * The drawing layer is an op layer: every write is a DOM operation on the
  * live layer, recorded as a gesture. These tests drive drawing.js directly
- * (DOM functions, batch gestures, the LayerAPI) against a jsdom layer.
+ * (DOM functions and the LayerAPI) against a jsdom layer.
  */
 
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
   DRAWING_LAYER, SHAPE_TYPES, makeLayerAPI, runGesture,
-  addDrawingDom, deleteDrawingDom, findDrawingDom,
-  deleteDrawingsBatch, moveDrawingsBatch, duplicateDrawingsBatch, importDrawings,
+  addEl, deleteEl, findEl,
   getGeom, selectModes, nextSelectMode, computeResize,
   getRotation, syncRotation,
-  applyRotateDom, applyMoveDom, applyResizeDom, applyPivotDom, previewResize, previewRotate, rotationCenter,
+  applyRotate, applyMove, applyResize, applyPivot, previewResize, previewRotate, rotationCenter,
   resolveRotation, rotationTransform, getPivot,
   snapPivot, computePivot, pivotShift, pivotRayOpacities, PIVOT_RAYS,
   reconcileImportedTransform, parseTransformList, reconcileTransform,
@@ -144,15 +143,15 @@ describe('basic operations', () => {
     const doc = makeDoc()
     add(doc, { id: 'a' })
     add(doc, { id: 'b' })
-    expect(doc.L.delete('a')).toBe(true)
+    expect(doc.L.delete('a').gesture).toBe('delete')
     expect(doc.layerEl.children.length).toBe(1)
     expect(doc.L.find('b')).not.toBeNull()
     expect(doc.L.find('a')).toBeNull()
   })
 
-  test('deleting a shape that is not there reports false', () => {
+  test('deleting a shape that is not there commits nothing', () => {
     const doc = makeDoc()
-    expect(doc.L.delete('nope')).toBe(false)
+    expect(doc.L.delete('nope')).toBeNull()
   })
 
   test('edit a shape attribute', () => {
@@ -247,7 +246,7 @@ describe('every write is one operation', () => {
   const gestures = (doc) =>
     [...getOps(doc.ydoc, DRAWING_LAYER).values()].map(o => o.gesture)
 
-  test('draw, move, resize, rotate, pivot, edit and delete each commit one named op', () => {
+  test('add, move, resize, rotate, pivot, edit and delete each commit one named op', () => {
     const doc = makeDoc()
     add(doc, { id: 'a', x: 0, y: 0, width: 100, height: 60 })
     doc.L.applyMoveCommit(doc.L.find('a'), 20, 20)
@@ -256,7 +255,7 @@ describe('every write is one operation', () => {
     doc.L.applyPivot(doc.L.find('a'), 0, 0, 25, 25)
     doc.L.edit(doc.L.find('a'), { fill: '#000' })
     doc.L.delete('a')
-    expect(gestures(doc)).toEqual(['draw', 'move', 'resize', 'rotate', 'pivot', 'edit', 'delete'])
+    expect(gestures(doc)).toEqual(['add', 'move', 'resize', 'rotate', 'pivot', 'edit', 'delete'])
   })
 
   test('a move re-derives the transform inside the same op', () => {
@@ -286,47 +285,41 @@ describe('every write is one operation', () => {
 })
 
 describe('batch gestures', () => {
-  const opts = (doc) => ({ authorId: 'me', tableId: doc.tableId })
   const gestures = (doc) =>
     [...getOps(doc.ydoc, DRAWING_LAYER).values()].map(o => o.gesture)
 
-  test('deleteDrawingsBatch is one op for the whole selection', () => {
+  test('deleteMany is one op for the whole selection', () => {
     const doc = makeDoc()
     add(doc, { id: 'a' }); add(doc, { id: 'b' }); add(doc, { id: 'c' })
-    const op = deleteDrawingsBatch(doc.ydoc, doc.layerEl, ['a', 'b', 'gone'], opts(doc))
+    const op = doc.L.deleteMany(['a', 'b', 'gone'])
     expect(op.gesture).toBe('delete-batch')
     expect(idsOf(doc.layerEl)).toEqual(['c'])
     expect(gestures(doc).filter(g => g === 'delete-batch')).toHaveLength(1)
   })
 
-  test('deleteDrawingsBatch returns null when nothing was there to delete', () => {
+  test('deleteMany returns null when nothing was there to delete', () => {
     const doc = makeDoc()
-    expect(deleteDrawingsBatch(doc.ydoc, doc.layerEl, ['nope'], opts(doc))).toBeNull()
+    expect(doc.L.deleteMany(['nope'])).toBeNull()
   })
 
-  test('moveDrawingsBatch moves every shape in one op', () => {
+  test('moveMany moves every shape in one op', () => {
     const doc = makeDoc()
     add(doc, { id: 'a', x: 0, y: 0 })
     add(doc, { id: 'c', type: 'circle', cx: 10, cy: 10, r: 5 })
-    const op = moveDrawingsBatch(doc.ydoc, doc.layerEl, [
-      { id: 'a', x: 50, y: 60 }, { id: 'c', x: 70, y: 80 },
-    ], opts(doc))
+    const op = doc.L.moveMany([{ id: 'a', x: 50, y: 60 }, { id: 'c', x: 70, y: 80 }])
     expect(op.gesture).toBe('move-batch')
     expect(doc.L.find('a').getAttribute('x')).toBe('50')
     expect(doc.L.find('c').getAttribute('cx')).toBe('70')
     expect(gestures(doc).filter(g => g === 'move-batch')).toHaveLength(1)
   })
 
-  test('duplicateDrawingsBatch copies state, offsets geometry and is one op', () => {
+  test('duplicate copies state, offsets geometry and is one op', () => {
     const doc = makeDoc()
     add(doc, { id: 'a', x: 10, y: 20, width: 100, height: 50, fill: '#abcdef', 'corner-r': 6, rotate: 30 })
     add(doc, { id: 'c', type: 'circle', cx: 40, cy: 50, r: 9 })
-    let n = 0
-    const { op, newIds } = duplicateDrawingsBatch(doc.ydoc, doc.layerEl, ['a', 'c'],
-      { ...opts(doc), newId: () => `dup${n++}` })
-    expect(op.gesture).toBe('duplicate')
-    expect(newIds).toEqual(['dup0', 'dup1'])
-    const copy = doc.L.find('dup0')
+    const copy = doc.L.duplicate(doc.L.find('a'), 'dup0')
+    doc.L.duplicate(doc.L.find('c'), 'dup1')
+    expect(copy).toBe(doc.L.find('dup0'))
     expect(copy.getAttribute('x')).toBe('32')
     expect(copy.getAttribute('y')).toBe('42')
     expect(copy.getAttribute('fill')).toBe('#abcdef')
@@ -335,33 +328,31 @@ describe('batch gestures', () => {
     expect(copy.getAttribute('transform')).toBe('rotate(30 82 67)')
     expect(doc.L.find('dup1').getAttribute('cx')).toBe('62')
     expect(doc.L.find('dup1').getAttribute('r')).toBe('9')
-    expect(gestures(doc).filter(g => g === 'duplicate')).toHaveLength(1)
+    expect(gestures(doc).filter(g => g === 'duplicate')).toHaveLength(2)
   })
 
-  test('duplicateDrawingsBatch skips ids that are not there', () => {
+  test('duplicate of nothing commits nothing', () => {
     const doc = makeDoc()
-    const { op, newIds } = duplicateDrawingsBatch(doc.ydoc, doc.layerEl, ['nope'],
-      { ...opts(doc), newId: () => 'x' })
-    expect(op).toBeNull()
-    expect(newIds).toEqual([])
+    expect(doc.L.duplicate(null, 'x')).toBeNull()
+    expect(getOps(doc.ydoc, DRAWING_LAYER).size).toBe(0)
   })
 
-  test('importDrawings appends the shapes in one import op', () => {
+  test('importMany appends the shapes in one import op', () => {
     const doc = makeDoc()
     add(doc, { id: 'a' })
     const el = document.createElementNS(SVG_NS, 'rect')
     el.setAttribute('id', 'imp'); el.setAttribute('data-id', 'imp')
-    const { op } = importDrawings(doc.ydoc, doc.layerEl, [el], opts(doc))
+    const op = doc.L.importMany([el])
     expect(op.gesture).toBe('import')
     expect(idsOf(doc.layerEl)).toEqual(['a', 'imp'])
   })
 
-  test('importDrawings re-ids a shape that collides with one already on the layer', () => {
+  test('importMany re-ids a shape that collides with one already on the layer', () => {
     const doc = makeDoc()
     add(doc, { id: 'a' })
     const el = document.createElementNS(SVG_NS, 'rect')
     el.setAttribute('id', 'a'); el.setAttribute('data-id', 'a')
-    importDrawings(doc.ydoc, doc.layerEl, [el], opts(doc))
+    doc.L.importMany([el])
     const ids = idsOf(doc.layerEl)
     expect(new Set(ids).size).toBe(2)
     expect(el.getAttribute('id')).toBe(el.getAttribute('data-id'))
@@ -487,8 +478,8 @@ describe('z-order', () => {
     add(doc, { id: 'a' }); add(doc, { id: 'b' }); add(doc, { id: 'c' })
     const state = doc.L.getTtState(doc.L.find('a'))
     runGesture(doc.ydoc, doc.layerEl, () => {
-      deleteDrawingDom(doc.layerEl, 'a')
-      addDrawingDom(doc.layerEl, state)
+      deleteEl(doc.layerEl, 'a')
+      addEl(doc.layerEl, state)
     }, { gesture: 'raise', authorId: 'me', tableId: doc.tableId })
     expect(idsOf(doc.layerEl)).toEqual(['b', 'c', 'a'])
   })
@@ -616,14 +607,14 @@ describe('applyRotate', () => {
     const doc = makeDoc()
     add(doc, { id: 'c1', type: 'circle', cx: 50, cy: 50, r: 30 })
     const el = doc.L.find('c1')
-    applyRotateDom(el, 45)
+    applyRotate(el, 45)
     expect(el.getAttribute('data-rotate')).toBeNull()
   })
 
   test('a rotated rect keeps its rotation across a move', () => {
     const doc = makeDoc()
     add(doc, { id: 'r1', x: 0, y: 0, width: 100, height: 60, rotate: 45 })
-    applyMoveDom(doc.L.find('r1'), 200, 200)
+    applyMove(doc.L.find('r1'), 200, 200)
     expect(doc.L.find('r1').getAttribute('transform')).toBe('rotate(45 250 230)')
   })
 })
@@ -1048,7 +1039,7 @@ describe('applyPivot', () => {
     const doc = makeDoc()
     add(doc, { id: 'c1', type: 'circle', cx: 50, cy: 50, r: 30 })
     const el = doc.L.find('c1')
-    applyPivotDom(el, 0, 0, 10, 10)
+    applyPivot(el, 0, 0, 10, 10)
     expect(el.getAttribute('data-pivot-x')).toBeNull()
   })
 
@@ -1077,7 +1068,7 @@ describe('a foreign transform is never claimed', () => {
 
   test('move and resize stay available — neither of them touches the transform', () => {
     const el = rectWith({ x: 0, y: 0, width: 100, height: 100, transform: 'skewX(10)' })
-    applyMoveDom(el, 50, 50)
+    applyMove(el, 50, 50)
     previewResize(el, 50, 50, 200, 200)
     expect(el.getAttribute('transform')).toBe('skewX(10)')
   })

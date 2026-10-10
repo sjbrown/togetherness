@@ -13,7 +13,7 @@
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
-  DRAWING_LAYER, makeLayerAPI, duplicateDrawingsBatch, deleteDrawingsBatch,
+  DRAWING_LAYER, makeLayerAPI,
 } from '../../src/drawing.js'
 import { ensureLayerId } from '../../src/op_layers.js'
 import { getOps, getContent } from '../../src/op_dag.js'
@@ -59,10 +59,9 @@ describe('drawing: live equals replay', () => {
     L.edit(L.find('r2'), { fill: '#ff0000', 'corner-r': 14 })
     L.applyResize(L.find('c1'), 20, 170, 100, 100)
 
-    let n = 0
-    const opts = { authorId: AUTHOR, tableId: TABLE }
-    duplicateDrawingsBatch(ydoc, layerEl, ['r1', 'c1'], { ...opts, newId: () => `dup${n++}` })
-    deleteDrawingsBatch(ydoc, layerEl, ['r2', 'dup1'], opts)
+    L.duplicate(L.find('r1'), 'dup0')
+    L.duplicate(L.find('c1'), 'dup1')
+    L.deleteMany(['r2', 'dup1'])
 
     expect(layerEl.children.length).toBe(3)
     expect(serialized(replay(ydoc))).toEqual(serialized(layerEl))
@@ -77,7 +76,7 @@ describe('drawing: live equals replay', () => {
     L.applyRotate(L.find('r1'), 45)
 
     const gestures = [...getOps(ydoc, DRAWING_LAYER).values()].map(o => o.gesture)
-    expect(gestures).toEqual(['checkpoint', 'draw', 'rotate'])
+    expect(gestures).toEqual(['checkpoint', 'add', 'rotate'])
     expect(replay(ydoc).querySelector('[data-id="r1"]').getAttribute('transform')).toBe('rotate(45 50 30)')
   })
 

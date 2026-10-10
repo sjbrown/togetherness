@@ -16,8 +16,8 @@ import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   addToy, addToyDom, buildToyDom, svgTextToDom,
-  applyResizeDom, applyMoveDom,
-  findToyDom, listToysDom, toysDataDom, getTtStateDom, editDom,
+  applyResize, applyMove,
+  findEl, listToysDom, layerData, getTtState, editEl,
   _getScriptsFragment,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
@@ -146,13 +146,13 @@ describe('buildToyDom / addToyDom', () => {
   })
 })
 
-describe('applyMoveDom', () => {
+describe('applyMove', () => {
   test('centers the toy on the new (cx, cy)', () => {
     const layerEl = bareLayer()
     const { toyEl } = buildToyDom({ id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' }, D6_SVG)
     layerEl.appendChild(toyEl)
 
-    applyMoveDom(toyEl, 250, 175)
+    applyMove(toyEl, 250, 175)
 
     const svg = toyEl.querySelector('svg')
     const w = Number(svg.getAttribute('width'))
@@ -163,35 +163,35 @@ describe('applyMoveDom', () => {
 })
 
 describe('DOM readers', () => {
-  test('getTtStateDom reports id/type/color/centre', () => {
+  test('getTtState reports id/type/color/centre', () => {
     const { toyEl } = buildToyDom(
       { id: 'die1', toyType: 'dice_d6', x: 40, y: 60, color: '#00ff00' }, D6_SVG)
-    expect(getTtStateDom(toyEl)).toMatchObject({
+    expect(getTtState(toyEl)).toMatchObject({
       id: 'die1', toyType: 'dice_d6', color: '#00ff00', cx: 40, cy: 60,
     })
   })
 
-  test('toysDataDom lists placed toys in z-order with element, type, and meta', () => {
+  test('layerData lists placed toys in z-order with element, type, and meta', () => {
     const layerEl = bareLayer()
     const ydoc = new Y.Doc()
     addToyDom(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' }, D6_SVG)
     addToyDom(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#abc' }, TRAY_SUM_SVG)
 
-    const data = toysDataDom(layerEl)
+    const data = layerData(layerEl)
     expect(data.map(d => d.id)).toEqual(['die1', 'tray1'])
     expect(data[1].kind).toBe('tray_sum')
     expect(data[1].fill).toBe('#abc')
   })
 
-  test('findToyDom finds a top-level toy', () => {
+  test('findEl finds a top-level toy', () => {
     const layerEl = bareLayer()
     const ydoc = new Y.Doc()
     addToyDom(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' }, D6_SVG)
-    expect(findToyDom(layerEl, 'die1')).toBeTruthy()
-    expect(findToyDom(layerEl, 'nope')).toBeNull()
+    expect(findEl(layerEl, 'die1')).toBeTruthy()
+    expect(findEl(layerEl, 'nope')).toBeNull()
   })
 
-  test('findToyDom does not reach into a container (top level only)', () => {
+  test('findEl does not reach into a container (top level only)', () => {
     const layerEl = bareLayer()
     const ydoc = new Y.Doc()
     addToyDom(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' }, TRAY_SUM_SVG)
@@ -200,15 +200,15 @@ describe('DOM readers', () => {
     const contents = layerEl.querySelector('[data-id="tray1"] .tt_contents')
     contents.appendChild(layerEl.querySelector('[data-id="die1"]'))
 
-    expect(findToyDom(layerEl, 'die1')).toBeNull()
+    expect(findEl(layerEl, 'die1')).toBeNull()
     expect(listToysDom(layerEl).map(el => el.getAttribute('data-id'))).toEqual(['tray1'])
   })
 
-  test('getTtStateDom reflects an editDom colour change', () => {
+  test('getTtState reflects an editEl colour change', () => {
     const { toyEl } = buildToyDom(
       { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#ffffff' }, D6_SVG)
 
-    editDom(toyEl, { color: '#123456' })
-    expect(getTtStateDom(toyEl).color).toBe('#123456')
+    editEl(toyEl, { color: '#123456' })
+    expect(getTtState(toyEl).color).toBe('#123456')
   })
 })

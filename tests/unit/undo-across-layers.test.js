@@ -149,13 +149,13 @@ describe('undo picks the most recent action across layers', () => {
     const t = setup()
     t.shape('draw1')
     const op = OpLayer.undoCandidate(t.ydoc, DRAWING_LAYER, TABLE, ME)
-    expect(op.gesture).toBe('draw')
+    expect(op.gesture).toBe('add')
     expect(t.present()).toEqual(['draw1'])
     expect(OpLayer.undoCandidate(t.ydoc, DRAWING_LAYER, TABLE, 'someone-else')).toBeNull()
     expect(OpLayer.redoCandidate(t.ydoc, DRAWING_LAYER, TABLE, ME)).toBeNull()
   })
 
-  test('a boundary add is an op-layer candidate with its own gesture name', () => {
+  test('a boundary add is an op-layer candidate', () => {
     const t = setup()
     t.bound('bound1')
     expect(OpLayer.undoCandidate(t.ydoc, BOUN_POS_LAYER, TABLE, ME).gesture).toBe('add')

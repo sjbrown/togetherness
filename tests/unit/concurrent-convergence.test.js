@@ -179,9 +179,9 @@ describe('concurrent convergence', () => {
     deliver(Q, [opPlace1, opPlace2])
 
     const elP = P.layer.querySelector('[data-id="d1"]')
-    const { op: opMoveP } = P.api.applyMoveCommit(elP, 10, 10)
+    const opMoveP = P.api.applyMoveCommit(elP, 10, 10)
     const elQ = Q.layer.querySelector('[data-id="d2"]')
-    const { op: opMoveQ } = Q.api.applyMoveCommit(elQ, 200, 200)
+    const opMoveQ = Q.api.applyMoveCommit(elQ, 200, 200)
 
     const [rP] = deliver(P, [opMoveQ])
     const [rQ] = deliver(Q, [opMoveP])
@@ -199,7 +199,7 @@ describe('concurrent convergence', () => {
     deliver(Q, [opPlace1])
 
     const elQ = Q.layer.querySelector('[data-id="d1"]')
-    const { op: opMove } = Q.api.applyMoveCommit(elQ, 50, 50)
+    const opMove = Q.api.applyMoveCommit(elQ, 50, 50)
     const opPlace2 = await place(P, 'd2', 'dice_d6', 100, 100)
 
     const [rP] = deliver(P, [opMove])
@@ -217,8 +217,8 @@ describe('concurrent convergence', () => {
     const opPlace = await place(P, 'd1', 'dice_d6', 0, 0)
     deliver(Q, [opPlace])
 
-    const { op: opDelP } = P.api.delete('d1')
-    const { op: opDelQ } = Q.api.delete('d1')
+    const opDelP = P.api.delete('d1')
+    const opDelQ = Q.api.delete('d1')
 
     const [rP] = deliver(P, [opDelQ])
     const [rQ] = deliver(Q, [opDelP])
@@ -290,8 +290,8 @@ describe('concurrent convergence', () => {
     const opPlace = await place(P, 'd1', 'dice_d6', 0, 0)
     deliver(Q, [opPlace])
 
-    const { op: opMoveP } = P.api.applyMoveCommit(P.layer.querySelector('[data-id="d1"]'), 10, 10)
-    const { op: opMoveQ } = Q.api.applyMoveCommit(Q.layer.querySelector('[data-id="d1"]'), 20, 20)
+    const opMoveP = P.api.applyMoveCommit(P.layer.querySelector('[data-id="d1"]'), 10, 10)
+    const opMoveQ = Q.api.applyMoveCommit(Q.layer.querySelector('[data-id="d1"]'), 20, 20)
 
     const [rP] = deliver(P, [opMoveQ])
     expect(rP.result).toBe(RECEIVED_CONFLICT)
@@ -304,8 +304,8 @@ describe('concurrent convergence', () => {
     const opPlace = await place(P, 'd1', 'dice_d6', 0, 0)
     deliver(Q, [opPlace])
 
-    const { op: opDel }  = P.api.delete('d1')
-    const { op: opMove } = Q.api.applyMoveCommit(Q.layer.querySelector('[data-id="d1"]'), 20, 20)
+    const opDel  = P.api.delete('d1')
+    const opMove = Q.api.applyMoveCommit(Q.layer.querySelector('[data-id="d1"]'), 20, 20)
 
     const [rP] = deliver(P, [opMove])
     expect(rP.result).toBe(RECEIVED_CONFLICT)
@@ -573,7 +573,7 @@ describe('concurrent convergence: drawing layer', () => {
     return getOps(peer.ydoc, DRAWING_LAYER).get(getHead(peer.tableId, DRAWING_LAYER))
   }
   const moveTo = (peer, id, x, y) =>
-    peer.api.applyMoveCommit(peer.api.find(id), x, y).op
+    peer.api.applyMoveCommit(peer.api.find(id), x, y)
 
   test('two peers drawing different shapes concurrently: rebuilt, converged', () => {
     const P = makeDrawingPeer('alice'), Q = makeDrawingPeer('bob')
@@ -756,7 +756,7 @@ describe('concurrent convergence: boundaries layer', () => {
     })
     return headOp(peer)
   }
-  const moveTo = (peer, id, x, y) => peer.api.applyMoveCommit(peer.api.find(id), x, y).op
+  const moveTo = (peer, id, x, y) => peer.api.applyMoveCommit(peer.api.find(id), x, y)
 
   test('two peers adding different boundaries concurrently: rebuilt, converged', () => {
     const P = makeBounPeer('alice'), Q = makeBounPeer('bob')

@@ -28,7 +28,7 @@ import * as OpHead                                from './op_head.js';
 import * as OpCheckpoint                          from './op_checkpoint.js';
 import * as OpPrune                               from './op_prune.js';
 import * as OpLayer                               from './op_layer.js';
-import { opLayers }                               from './op_layers.js';
+import { opLayers, getOpLayer }                   from './op_layers.js';
 import * as User                                  from './user.js';
 import * as Trace                                 from './trace.js';
 import * as Storage                               from './storage.js';
@@ -66,10 +66,9 @@ let _ydoc, _yMeta,
 
 // Layers — the canonical LayerAPI dispatch table, built once at boot() once
 // the ydoc exists. Maps the data-module value stamped on each rendered SVG
-// element ('drawing'|'toys'|'boun_pos') to that layer's API:
-// find/delete/getGeom/getAnchor/applyMoveCommit/getTtState/getTtStateSchema/
-// edit/listData, plus applyTtState on drawing/boun_pos. See
-// moduleForElement() for the lookup key.
+// element ('drawing'|'toys'|'boun_pos'), which is also the op layer's name,
+// to that layer's API (OpLayer.makeOpLayerAPI). See moduleForElement() for
+// the lookup key.
 let _Layers = {};
 
 // Per-layer visibility (local state, not synced).
@@ -412,27 +411,9 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
 
   // Layers - the canonical LayerAPI dispatch table, keyed by the data-module
   _Layers = {
-    'drawing':  Drawing.makeLayerAPI(
-                  _ydoc,
-                  () => _svgEl.querySelector('#drawing-layer'),
-                  user,
-                  tableId,
-                  isCreator
-                ),
-    'toys':     Toys.makeLayerAPI(
-                  _ydoc,
-                  () => _svgEl.querySelector('#toys-layer'),
-                  user,
-                  tableId,
-                  isCreator
-                ),
-    'boun_pos': BounPos.makeLayerAPI(
-                  _ydoc,
-                  () => _svgEl.querySelector('#boun_pos-layer'),
-                  user,
-                  tableId,
-                  isCreator
-                ),
+    drawing:  Drawing.makeLayerAPI(_ydoc, () => layerElOf('drawing'),  user, tableId, isCreator),
+    toys:     Toys.makeLayerAPI(_ydoc,    () => layerElOf('toys'),     user, tableId, isCreator),
+    boun_pos: BounPos.makeLayerAPI(_ydoc, () => layerElOf('boun_pos'), user, tableId, isCreator),
   };
 
   // Icons - stamp symbols into DOM before anyone builds HTML
@@ -600,9 +581,7 @@ function filterSnapPoints(domEl, snapPoints) {
 
 function renderDoc() {
   renderBackgroundLayer();
-  renderBounPosLayer();
-  renderToysLayer();
-  renderDrawingLayer();
+  renderOpLayers();
   applyLayerVisibility();
   Overlay.render();          // doc geometry may have changed under selections
 }
@@ -637,28 +616,19 @@ function applyLayerVisibility() {
   }
 }
 
-function renderBounPosLayer() {
-  const layer = _svgEl.querySelector('#boun_pos-layer');
-  if (!layer) throw new Error("renderBounPosLayer: '#boun_pos-layer' not found in SVG document — malformed template?");
-  _Layers.boun_pos.render(layer, tablesAPI.getJoinSequenceArray(_ydoc));
-  Canvas.wireShapeClicks(layer);
+function renderOpLayers() {
+  const joinSequence = tablesAPI.getJoinSequenceArray(_ydoc);
+  for (const layer of opLayers()) {
+    const layerEl = layerElOf(layer);
+    if (!layerEl) throw new Error(`renderOpLayers: '${layer.selector}' not found in SVG document — malformed template?`);
+    _Layers[layer.name].render(layerEl, joinSequence);
+    Canvas.wireShapeClicks(layerEl);
+  }
 }
 
-function renderToysLayer() {
-  const layer = _svgEl.querySelector('#toys-layer');
-  if (!layer) throw new Error("renderToysLayer: '#toys-layer' not found in SVG document — malformed template?");
-  _Layers.toys.render(layer, tablesAPI.getJoinSequenceArray(_ydoc));
-  Canvas.wireShapeClicks(layer);
-}
-
-function renderDrawingLayer() {
-  const layer = _svgEl.querySelector('#drawing-layer');
-  if (!layer) throw new Error("renderDrawingLayer: '#drawing-layer' not found in SVG document — malformed template?");
-  _Layers.drawing.render(layer, tablesAPI.getJoinSequenceArray(_ydoc));
-  Canvas.wireShapeClicks(layer);
-}
-
-const layerElOf = (layer) => _svgEl?.querySelector(layer.selector) ?? null;
+// A layer's live element, from its op layer descriptor or name.
+const layerElOf = (layer) =>
+  _svgEl?.querySelector((typeof layer === 'string' ? getOpLayer(layer) : layer).selector) ?? null;
 
 const totalOps = () =>
   opLayers().reduce((n, layer) => n + OpDag.getOps(_ydoc, layer).size, 0);
@@ -1059,21 +1029,9 @@ const App = {
     const firstEl = ids.map(id => _svgEl.querySelector(`[data-id="${id}"]`)).find(Boolean);
     const mtype   = firstEl ? moduleForElement(firstEl) : null;
 
-    let deleted = 0;
-    const opts = { authorId: App.user.id, tableId: _tableId };
-    if (mtype === 'toys') {
-      const layerEl = _svgEl.querySelector('#toys-layer');
-      const op = layerEl ? Toys.deleteToysBatch(_ydoc, layerEl, ids, opts) : null;
-      deleted = op ? ids.length : 0; // one op for the whole batch; exact per-id count isn't tracked separately
-    } else if (mtype === 'drawing') {
-      const layerEl = _svgEl.querySelector('#drawing-layer');
-      const op = layerEl ? Drawing.deleteDrawingsBatch(_ydoc, layerEl, ids, opts) : null;
-      deleted = op ? ids.length : 0;
-    } else if (mtype === 'boun_pos') {
-      const layerEl = _svgEl.querySelector('#boun_pos-layer');
-      const op = layerEl ? BounPos.deleteBoundariesBatch(_ydoc, layerEl, ids, opts) : null;
-      deleted = op ? ids.length : 0;
-    }
+    // One op for the whole batch; the exact per-id count isn't tracked.
+    const op = _Layers[mtype]?.deleteMany(ids);
+    const deleted = op ? ids.length : 0;
 
     if (deleted > 0) {
       addHistory(`deleted ${deleted} objects`);
@@ -1192,7 +1150,7 @@ const App = {
   invokeToyMenuAction: (id, namespace, key) => {
     const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
     if (!svgEl) return;
-    const layerEl = _svgEl?.querySelector('#toys-layer');
+    const layerEl = layerElOf('toys');
     if (!layerEl) return;
     try {
       Toys.invokeMenuAction(_ydoc, layerEl, svgEl, namespace, key, undefined, App.user.id, _tableId);
@@ -1242,7 +1200,7 @@ const App = {
     const def = _toolById[toolName];
     if (!def?.toyType) { UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
     const id = Toys.newToyId();
-    const layerEl = _svgEl?.querySelector('#toys-layer');
+    const layerEl = layerElOf('toys');
     if (!layerEl) return;
     const params = _toolParams[toolName] ?? {};
     // initialize()'s options always carries color + every other tool option
@@ -1256,14 +1214,12 @@ const App = {
     // initializeToy below runs its own gesture, so initialize commits as a
     // separate op from placement. Deliberate: initialize is its own
     // gesture, not part of "place".
-    Toys.placeToy(_ydoc, layerEl, {
-      id, toyType: def.toyType, x, y, color,
-    }, { authorId: App.user.id, tableId: _tableId }).then(async () => {
+    _Layers.toys.add({ id, toyType: def.toyType, x, y, color }).then(async () => {
       addHistory(`placed ${def.label} ${id}`, { elType: 'toy' });
       App.addLog(`placed ${def.label} ${id}`, 'local');
 
       // Awaiting activateToyScripts() here guarantees the namespace is actually
-      // ready before initialize() reads it off window[namespace]. placeToy
+      // ready before initialize() reads it off window[namespace]. Placing the toy
       // already kicked this off; the promise is memoized, so this just
       // waits on the same one.
       await Toys.activateToyScripts(_ydoc, def.toyType);
@@ -1311,13 +1267,8 @@ const App = {
       if (_heldIds().length > 1) UI.toast('Duplicate works on a single shape', 'warn');
       return;
     }
-    const layerEl = _svgEl.querySelector('#drawing-layer');
-    const { newIds } = layerEl
-      ? Drawing.duplicateDrawingsBatch(_ydoc, layerEl, [id], {
-          authorId: App.user.id, tableId: _tableId, newId: newDrawingId,
-        })
-      : { newIds: [] };
-    if (!newIds.length) return;
+    const src = _Layers.drawing.find(id);
+    if (!src || !_Layers.drawing.duplicate(src, newDrawingId())) return;
     addHistory(`duplicated ${id}`, { elType: 'drawing' });
     App.addLog(`duplicated ${id}`, 'local');
   },
@@ -1335,13 +1286,13 @@ const App = {
     // directly should silently no-op rather than broadcast a bogus `drag`
     // awareness field for someone else's element.
     if (App.isHeldByOther(id)) return;
-    const toysLayerEl = _svgEl.querySelector('#toys-layer');
+    const toysLayerEl = layerElOf('toys');
     const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
     const anchor = App.getAnchor(domEl);
     const bbox = App.getBBox(id);
     const isToy = moduleForElement(domEl) === 'toys';
     const toyClasses  = getToyClasses(domEl);
-    const bounPosEl   = _svgEl.querySelector('#boun_pos-layer');
+    const bounPosEl   = layerElOf('boun_pos');
     const boundsRects = isToy ? BounPos.computeBoundaryRects(bounPosEl, toyClasses, anchor) : null;
     const boundsSnap  = BounPos.getSnapPoints(bounPosEl);
     const toySnap     = Toys.getSnapPoints(toysLayerEl);
@@ -1412,7 +1363,7 @@ const App = {
     // commitMove would actually reparent into.
     const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
     if (moduleForElement(domEl) === 'toys') {
-      const toysLayerEl = _svgEl.querySelector('#toys-layer');
+      const toysLayerEl = layerElOf('toys');
       const dt = Toys.findDropTarget(toysLayerEl, id, rx, ry)
       Overlay.setDropTargetHover(dt)
     }
@@ -1432,7 +1383,7 @@ const App = {
     // Same hit-test move() used for the live hover highlight, run once more
     // against the final drop position
     const dropContainerId = mtype === 'toys'
-      ? Toys.findDropTarget(_svgEl.querySelector('#toys-layer'), id, rx, ry)
+      ? Toys.findDropTarget(layerElOf('toys'), id, rx, ry)
       : null;
 
     Overlay.setDropTargetHover(null);
@@ -1443,7 +1394,7 @@ const App = {
       // Drop into a container = reparent + reposition into it, plus its
       // own contents_change_handler reaction.
       try {
-        const layerEl = _svgEl.querySelector('#toys-layer');
+        const layerEl = layerElOf('toys');
         Toys.runGesture(_ydoc, layerEl, () => {
           const containerEl = layerEl.querySelector(`[data-id="${dropContainerId}"]`);
           // A container that tracks its own landing position
@@ -1454,7 +1405,7 @@ const App = {
             const movedEl = layerEl.querySelector(`[data-id="${id}"]`);
             const containerGeom = containerEl && Toys.getGeom(containerEl);
             if (movedEl && containerGeom) {
-              Toys.applyMoveDom(movedEl, rx - containerGeom.x, ry - containerGeom.y);
+              Toys.applyMove(movedEl, rx - containerGeom.x, ry - containerGeom.y);
             }
           }
         }, {
@@ -1776,7 +1727,7 @@ const App = {
     const anchorDom = _svgEl.querySelector(`[data-id="${leaderEl.id}"]`);
     const isToy     = leaderEl.mtype === 'toys';
     const toyClasses   = getToyClasses(anchorDom);
-    const bounPosEl    = _svgEl.querySelector('#boun_pos-layer');
+    const bounPosEl    = layerElOf('boun_pos');
     const boundsRects  = isToy ? BounPos.computeBoundaryRects(bounPosEl, toyClasses, { x: leaderEl.anchorX, y: leaderEl.anchorY }) : null;
     const snapPoints   = BounPos.getSnapPoints(bounPosEl);
 
@@ -1871,17 +1822,7 @@ const App = {
     const moves = elements.map(el => ({
       id: el.id, x: Math.round(el.anchorX + fdx), y: Math.round(el.anchorY + fdy),
     }));
-    const batchOpts = { authorId: App.user.id, tableId: _tableId };
-    if (mtype === 'toys') {
-      const layerEl = _svgEl.querySelector('#toys-layer');
-      if (layerEl) Toys.moveToysBatch(_ydoc, layerEl, moves, batchOpts);
-    } else if (mtype === 'drawing') {
-      const layerEl = _svgEl.querySelector('#drawing-layer');
-      if (layerEl) Drawing.moveDrawingsBatch(_ydoc, layerEl, moves, batchOpts);
-    } else if (mtype === 'boun_pos') {
-      const layerEl = _svgEl.querySelector('#boun_pos-layer');
-      if (layerEl) BounPos.moveBoundariesBatch(_ydoc, layerEl, moves, batchOpts);
-    }
+    _Layers[mtype]?.moveMany(moves);
 
     // Ghosts end after the commit
     for (const el of elements) Overlay.endDragPlaceholder(el.id);
@@ -2038,21 +1979,9 @@ const App = {
       });
       const { toyCount, drawCount, bounPosCount, invalidToyEls, importedToyEls, importedDrawEls, importedBounPosEls } = result;
 
-      if (toyCount) {
-        const layerEl = _svgEl.querySelector('#toys-layer');
-        Toys.importToys(_ydoc, layerEl, importedToyEls, { authorId: App.user.id, tableId: _tableId });
-      }
-      if (drawCount) {
-        const layerEl = _svgEl.querySelector('#drawing-layer');
-        Drawing.importDrawings(_ydoc, layerEl, importedDrawEls, { authorId: App.user.id, tableId: _tableId });
-        UI.refreshFromDoc();
-      }
-
-      if (bounPosCount) {
-        const layerEl = _svgEl.querySelector('#boun_pos-layer');
-        BounPos.importBoundaries(_ydoc, layerEl, importedBounPosEls, { authorId: App.user.id, tableId: _tableId });
-        UI.refreshFromDoc();
-      }
+      const imported = { toys: importedToyEls, drawing: importedDrawEls, boun_pos: importedBounPosEls };
+      for (const [name, els] of Object.entries(imported)) _Layers[name].importMany(els);
+      if (drawCount || bounPosCount) UI.refreshFromDoc();
 
       if (invalidToyEls.length) {
         let errLayer = _svgEl.querySelector('#errors-layer');
