@@ -34,6 +34,11 @@ import {
   makeLayerAPI, listToysDom, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { getOps } from '../../src/op_dag.js'
+import {
+  BOUNDARIES_LAYER, makeLayerAPI as makeBoundariesAPI, getSnapPoints as getBoundarySnapPoints,
+  computeBoundaryRects, gridFillExtent,
+} from '../../src/boun_pos.js'
+import { ensureLayerId } from '../../src/op_layers.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
 const TABLE   = 'test-table'
@@ -749,3 +754,50 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
   })
 })
 
+// ── Boundaries layer: snap points and rects are read off the DOM layer ───────
+
+describe('boun_pos snap points after a move', () => {
+  // app.js's findNearestSnap, applied to getSnapPoints(layerEl).
+  function nearestSnap(x, y, points) {
+    let best = null, bestD2 = Infinity
+    for (const { cx, cy, snapRadius } of points) {
+      const d2 = (x - cx) ** 2 + (y - cy) ** 2
+      if (d2 < snapRadius ** 2 && d2 < bestD2) { best = { cx, cy }; bestD2 = d2 }
+    }
+    return best
+  }
+
+  function setup() {
+    const ydoc = new Y.Doc()
+    const layerEl = ensureLayerId(document.createElementNS(SVG_NS, 'g'), BOUNDARIES_LAYER)
+    const L = makeBoundariesAPI(ydoc, () => layerEl, { id: AUTHOR }, 'boun-snap-table', true)
+    L.render(layerEl)
+    const circles = gridFillExtent(0, 0, 200, 200, 'square', 100, 100)
+    L.add('pos-grid-sq', {
+      id: 'ps1', name: 'chip', snapRadius: 30, genType: 'square', xSpacing: 100, ySpacing: 100,
+      x: 0, y: 0, w: 200, h: 200, circles,
+    })
+    return { L, layerEl }
+  }
+
+  test('a toy dropped near the moved set snaps to the moved circles, and no longer to the old ones', () => {
+    const { L, layerEl } = setup()
+    expect(nearestSnap(105, 95, getBoundarySnapPoints(layerEl))).toEqual({ cx: 100, cy: 100 })
+
+    L.applyMoveCommit(L.find('ps1'), 500, 300)
+
+    const points = getBoundarySnapPoints(layerEl)
+    expect(points.map(p => [p.cx, p.cy])).toContainEqual([600, 400])
+    expect(nearestSnap(605, 395, points)).toEqual({ cx: 600, cy: 400 })
+    expect(nearestSnap(105, 95, points)).toBeNull()
+  })
+
+  test('boundary rects follow a move too', () => {
+    const { L, layerEl } = setup()
+    L.add('boundary', { id: 'b1', name: 'chip', x: 0, y: 0, w: 100, h: 100 })
+    L.applyMoveCommit(L.find('b1'), 700, 700)
+    expect(computeBoundaryRects(layerEl, new Set(['chip']), { x: 750, y: 750 }))
+      .toEqual([{ x: 700, y: 700, w: 100, h: 100 }])
+    expect(computeBoundaryRects(layerEl, new Set(['chip']), { x: 50, y: 50 })).toBeNull()
+  })
+})

@@ -7,6 +7,7 @@
 import * as Y        from 'yjs';
 import * as Toys     from './toys.js';
 import * as Drawing  from './drawing.js';
+import { BOUNDARIES_LAYER } from './boun_pos.js';
 import { appendCheckpoint } from './op_dag.js';
 import { checkpointOp } from './op_checkpoint.js';
 import { ensureLayerId, getOpLayer, LAYER_MARKER } from './op_layers.js';
@@ -15,7 +16,7 @@ import { HEAD_MARKER } from './op_layer.js';
 // ── DOM → Yjs ────────────────────────────────────────────────────────────────
 
 // Stamp id/data-id/data-module on an imported top-level drawing or boundary
-// element (Y.XmlElement or DOM), minting an id the same way app.js's
+// element, minting an id the same way app.js's
 // commitDrawing does when the source had none at all (a foreign shape with
 // no id of its own).
 function ensureIdentity(el, dataModule) {
@@ -46,9 +47,8 @@ function parseDrawingEl(child) {
 }
 
 // Remove every <script> descendant in place. Drawing and boundaries are
-// rendered with no filtering of their own (see boun_pos.js's
-// mirrorBounPos()), so anything that shouldn't run live has to be kept out
-// at import instead.
+// projected into the live DOM with no filtering of their own, so anything
+// that shouldn't run live has to be kept out at import instead.
 function stripScripts(el) {
   el.querySelectorAll('script').forEach(s => s.remove());
 }
@@ -73,7 +73,7 @@ export function domToY(node) {
 }
 
 /**
- * Populate a Yjs document (yMeta/yBounPos and the op layers, all obtained
+ * Populate a Yjs document (yMeta and the op layers, all obtained
  * directly off ydoc) from a source <svg> root element — background pattern,
  * #toys-layer, #drawing-layer, #boundaries-positions-layer, and (as a
  * fallback) any other top-level elements not belonging to a known layer.
@@ -87,23 +87,22 @@ export function domToY(node) {
  *
  * opts.asNewTable — this ydoc has never had anything in it (a table just
  * created for this content, not a live one being imported into). Only
- * then are toys and drawing written as genesis checkpoints (parents: [])
+ * then are toys, drawing and boundaries written as genesis checkpoints (parents: [])
  * rather than left for the caller to commit as real gestures. Appending a
  * genesis to a table that already has history forks it — the same bug
  * closed for the boot race applies here too, just triggered by an import
  * button instead of two tabs opening at once. app.js's live-table importSVG
- * must not set this: it commits importedToyEls and importedDrawEls as
- * import gestures instead.
+ * must not set this: it commits importedToyEls, importedDrawEls and
+ * importedBounPosEls as import gestures instead.
  *
  * Returns { toyCount, drawCount, bounPosCount, invalidToyEls, importedToyEls,
- * importedDrawEls }.
+ * importedDrawEls, importedBounPosEls }.
  * invalidToyEls are DOM elements found directly inside #toys-layer that
  * Toys.parseForeignToy doesn't recognise as a toy; the caller decides what
  * to do with them.
  */
 export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
   const yMeta    = ydoc.getMap('meta');
-  const yBounPos = ydoc.getXmlFragment('boundaries');
 
   const bgPattern    = svgRootEl.querySelector('defs pattern');
   const toysLayerEl  = svgRootEl.querySelector('#toys-layer');
@@ -114,6 +113,7 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
   const invalidToyEls = [];
   const importedToyEls = [];
   const importedDrawEls = [];
+  const importedBounPosEls = [];
 
   // Background: extract bg image url/dimensions from the <pattern> in
   // <defs> and write to yMeta so the background is restored on import.
@@ -194,21 +194,28 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
     }
   }
 
-  // Boundaries and Positions layer. boun_pos.js's Yjs shape (a <g
-  // data-bounpos-type> with path/text[/circle] children) is exactly what a
-  // generic domToY() produces from the exported DOM (see boun_pos.js's
-  // mirrorBounPos) — render() mirrors these attributes back out verbatim,
-  // so nothing here needs to know the boun_pos schema.
+  // Boundaries and Positions layer. Same shape as drawing: parsed into a
+  // detached scratch layer, then either the genesis checkpoint (asNewTable,
+  // even when empty) or handed back for one import gesture. Old-layout
+  // children (absolute coordinates, no transform) are valid as they are.
+  const bounPosScratch = ensureLayerId(
+    document.createElementNS('http://www.w3.org/2000/svg', 'g'), BOUNDARIES_LAYER);
+
   if (bounPosLayerEl) {
     for (const child of bounPosLayerEl.children) {
       stripScripts(child);
-      const yEl = domToY(child);
-      if (yEl) {
-        yBounPos.insert(yBounPos.length, [yEl]);
-        ensureIdentity(yEl, 'boun_pos');
-        bounPosCount++;
-      }
+      const el = document.importNode(child, true);
+      ensureIdentity(el, 'boun_pos');
+      bounPosScratch.appendChild(el);
+      bounPosCount++;
     }
+  }
+
+  if (opts.asNewTable) {
+    const { op: genesis, content } = checkpointOp(bounPosScratch, { authorId: opts.authorId, parents: [] });
+    appendCheckpoint(ydoc, BOUNDARIES_LAYER, genesis, content);
+  } else {
+    importedBounPosEls.push(...bounPosScratch.children);
   }
 
   // Everything else → drawing layer
@@ -232,7 +239,7 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
     importedDrawEls.push(...drawScratch.children);
   }
 
-  return { toyCount, drawCount, bounPosCount, invalidToyEls, importedToyEls, importedDrawEls };
+  return { toyCount, drawCount, bounPosCount, invalidToyEls, importedToyEls, importedDrawEls, importedBounPosEls };
 }
 
 // ── Yjs → DOM (export) ────────────────────────────────────────────────────────
@@ -265,16 +272,16 @@ export function buildExportSvg(liveSvgEl, ydoc) {
     clone.querySelector(sel)?.remove();
   });
 
-  // Toys and drawing: the live DOM is the canonical projection of each op
+  // Toys, drawing and boundaries: the live DOM is the canonical projection of each op
   // log. cloneNode(true) above already captured it faithfully, data-id and
   // all, so there's nothing to rebuild here — only internal bookkeeping to
   // strip before it leaks into a file a person might open in Inkscape.
-  for (const sel of ['#toys-layer', '#drawing-layer']) {
+  for (const sel of ['#toys-layer', '#drawing-layer', '#boundaries-positions-layer']) {
     const layerEl = clone.querySelector(sel);
     if (!layerEl) continue;
     layerEl.removeAttribute(HEAD_MARKER);
     layerEl.removeAttribute(LAYER_MARKER);
-    layerEl.setAttribute('inkscape:groupmode', 'layer');
+    if (sel !== '#boundaries-positions-layer') layerEl.setAttribute('inkscape:groupmode', 'layer');
   }
 
   // One consolidated <script> per namespace at document root — never one

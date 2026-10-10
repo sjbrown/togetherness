@@ -38,15 +38,11 @@ import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
 import * as Overlay                               from './overlay.js';
 import * as Delight                               from './delight.js';
-import * as UndoRedo                              from './undo_redo.js';
 import * as Events                                from './events.js';
 import { entityGradient }            from './entity_gradient.js';
 import { isElementHeldByOther, computeTickActions } from './soft_lock.js';
 import * as Selection                              from './selection.js';
 import * as ExternalServices                      from './external_services.js';
-
-
-import * as Y from 'yjs';
 
 
 // Diagnostic logging — opt-in via ?debug=1 in the URL
@@ -67,7 +63,6 @@ const DEFAULT_BACKGROUNDS = [
 
 // ── Internal app state ────────────────────────────────────────────────────────
 let _ydoc, _yMeta,
-    _yBounPos,
     _awareness, _provider;
 
 // Layers — the canonical LayerAPI dispatch table, built once at boot() once
@@ -401,7 +396,6 @@ function buildToolRegistry() {
 export function boot({ ydoc, awareness, provider, user, tableId, isCreator = false, svgElement, signalingUrls = [] }) {
   _ydoc      = ydoc;
   _yMeta     = ydoc.getMap('meta');
-  _yBounPos  = ydoc.getXmlFragment('boundaries');
   _awareness = awareness;
   _provider  = provider;
   App.user   = user;
@@ -434,7 +428,13 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
                   tableId,
                   isCreator
                 ),
-    'boun_pos': BounPos.makeLayerAPI(_ydoc, _yBounPos),
+    'boun_pos': BounPos.makeLayerAPI(
+                  _ydoc,
+                  () => _svgEl.querySelector('#boundaries-positions-layer'),
+                  user,
+                  tableId,
+                  isCreator
+                ),
   };
 
   // Icons - stamp symbols into DOM before anyone builds HTML
@@ -468,33 +468,12 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   Toys.init(_ydoc);
 
   // CRDT observers
-  // The boundaries layer uses observeDeep so attribute changes trigger
-  // renderDoc on every client. The op layers (toys, drawing) arrive through
-  // their ops maps instead.
-  _yBounPos.observeDeep(onBounPosChanged);
-  _yBounPos.observe(onDocChanged);
+  // Every canvas layer arrives through its ops map.
   _yMeta.observe(onMetaChanged);
   for (const layer of opLayers()) {
     OpDag.getOps(_ydoc, layer).observe((evt, tx) => onOpsChanged(layer, evt, tx));
   }
   _awareness.on('change', onPresenceChanged);
-
-  // Undo/redo - UndoManager handles the boundaries layer only.
-  // The op layers' undo is a separate mechanism -- see undo_redo.js
-  UndoRedo.init({
-    ydoc:   _ydoc,
-    scopes: [_yBounPos],
-    onApply: (kind, label) => {
-      if (kind === 'undo') {
-        addUndoHistory(label ? `undid: ${label}` : 'undid a change');
-        UI.toast('Undone');
-      } else {
-        addHistory(label ? `redid: ${label}` : 'redid a change');
-        UI.toast('Redone');
-      }
-    },
-    onEmpty: (kind) => UI.toast(`Nothing to ${kind}`, 'warn'),
-  });
 
   // Provider status
   _provider.on('synced', () => {
@@ -663,7 +642,7 @@ function applyLayerVisibility() {
 function renderBounPosLayer() {
   const layer = _svgEl.querySelector('#boundaries-positions-layer');
   if (!layer) throw new Error("renderBounPosLayer: '#boundaries-positions-layer' not found in SVG document — malformed template?");
-  _Layers.boun_pos.render(layer);
+  _Layers.boun_pos.render(layer, tablesAPI.getJoinSequenceArray(_ydoc));
   Canvas.wireShapeClicks(layer);
 }
 
@@ -836,26 +815,6 @@ function onOpsChanged(layer, evt, transaction) {
 
 
 // ── CRDT observers ────────────────────────────────────────────────────────────
-function onDocChanged() {
-  UI.refreshFromDoc();
-}
-
-function onBounPosChanged(events, transaction) {
-  if (!transaction.local) {
-    for (const event of events) {
-      if (event.target !== _yBounPos) continue;
-      event.changes.added.forEach(item => {
-        item.content.getContent().forEach(yEl => {
-          if (!(yEl instanceof Y.XmlElement)) return;
-          const id = yEl.getAttribute('id') ?? '?';
-          App.addLog(`remote: added boundary ${id.slice(0, 12)}`, 'remote');
-        });
-      });
-    }
-  }
-  renderDoc();
-}
-
 function onPresenceChanged(changes, origin) {
   logAwarenessChange(changes, origin);
   renderPresence();
@@ -1115,20 +1074,10 @@ const App = {
       const layerEl = _svgEl.querySelector('#drawing-layer');
       const op = layerEl ? Drawing.deleteDrawingsBatch(_ydoc, layerEl, ids, opts) : null;
       deleted = op ? ids.length : 0;
-    } else {
-      UndoRedo.tag(`deleted ${ids.length} objects`);
-      _ydoc.transact(() => {
-        for (const id of ids) {
-          const svgEl = _svgEl.querySelector(`[data-id="${id}"]`);
-          if (!svgEl) continue;
-          const L = _Layers[moduleForElement(svgEl)];
-          if (!L) continue;
-          const yEl = L.find(id);
-          if (!yEl) continue;
-          L.delete(id);
-          deleted++;
-        }
-      });
+    } else if (mtype === 'boun_pos') {
+      const layerEl = _svgEl.querySelector('#boundaries-positions-layer');
+      const op = layerEl ? BounPos.deleteBoundariesBatch(_ydoc, layerEl, ids, opts) : null;
+      deleted = op ? ids.length : 0;
     }
 
     if (deleted > 0) {
@@ -1169,27 +1118,21 @@ const App = {
     const def = BounPos.BOUNPOS_TYPES[toolName];
     if (!def) return;
     const { id, name } = def.newId();
+    let params;
     if (def.genType === null) {
-      // boundary
-      UndoRedo.tag(`add ${def.label} ${name}`);
-      def.create(_ydoc, _yBounPos, { id, name, x, y, w, h });
+      params = { id, name, x, y, w, h };
     } else {
-      // pos-set
-      const params   = App.getToolParams(toolName);
-      console.log(params)
-      const genType  = def.genType;
-      const createParams = BounPos.toolParamsToCreateParams(genType, params, {x, y, w, h});
+      const toolParams   = App.getToolParams(toolName);
+      const createParams = BounPos.toolParamsToCreateParams(def.genType, toolParams, {x, y, w, h});
       if (createParams.circles.length === 0) return;
-      UndoRedo.tag(`add ${def.label} ${name}`);
-      def.create(_ydoc, _yBounPos,
-        {
-          id, name, snapRadius: createParams.snapRadius, genType,
-          xSpacing: createParams.xSpacing, ySpacing: createParams.ySpacing,
-          x, y, w, h,
-          circles: createParams.circles,
-        }
-      );
+      params = {
+        id, name, snapRadius: createParams.snapRadius, genType: def.genType,
+        xSpacing: createParams.xSpacing, ySpacing: createParams.ySpacing,
+        x, y, w, h,
+        circles: createParams.circles,
+      };
     }
+    _Layers.boun_pos.add(toolName, params);
     addHistory(`added ${def.label} ${name}`, { elType: 'boundaries-positions' });
     App.addLog(`added ${def.label} ${name}`, 'local');
     App.select(id);
@@ -1284,7 +1227,7 @@ const App = {
   /**
    * Apply a partial editData object to the selected element.
    * Dispatches to the appropriate layer's edit() function, which handles
-   * the Yjs transaction.  App.commitEdit is the single entry point that
+   * one gesture.  App.commitEdit is the single entry point that
    * the Edit panel UI calls for all element mutations.
    */
   commitEdit: (id, editData) => {
@@ -1364,7 +1307,6 @@ const App = {
     if (!L) return false;
     const yEl = L.find(id);
     if (!yEl) return false;
-    if (mtype === 'boun_pos') UndoRedo.tag(`delete ${mtype}:${id}`);
     L.delete(id);
     addHistory(`deleted ${mtype}:${id}`);
     App.addLog(`deleted ${id}`, 'local');
@@ -1425,8 +1367,9 @@ const App = {
     const bbox = App.getBBox(id);
     const isToy = moduleForElement(domEl) === 'toys';
     const toyClasses  = getToyClasses(domEl);
-    const boundsRects = isToy ? BounPos.computeBoundaryRects(_yBounPos, toyClasses, anchor) : null;
-    const boundsSnap  = BounPos.getSnapPoints(_yBounPos);
+    const bounPosEl   = _svgEl.querySelector('#boundaries-positions-layer');
+    const boundsRects = isToy ? BounPos.computeBoundaryRects(bounPosEl, toyClasses, anchor) : null;
+    const boundsSnap  = BounPos.getSnapPoints(bounPosEl);
     const toySnap     = Toys.getSnapPoints(toysLayerEl);
     const snapPoints  = filterSnapPoints(domEl, [...boundsSnap, ...toySnap]);
     _dragState = { id, startX: anchor.x, startY: anchor.y,
@@ -1570,7 +1513,6 @@ const App = {
       return;
     }
 
-    if (mtype === 'boun_pos') UndoRedo.tag(`move ${id} → (${rx}, ${ry})`);
     if (_Layers[mtype]) {
       _Layers[mtype].applyMoveCommit(_Layers[mtype].find(id), rx, ry);
     }
@@ -1864,8 +1806,9 @@ const App = {
     const anchorDom = _svgEl.querySelector(`[data-id="${leaderEl.id}"]`);
     const isToy     = leaderEl.mtype === 'toys';
     const toyClasses   = getToyClasses(anchorDom);
-    const boundsRects  = isToy ? BounPos.computeBoundaryRects(_yBounPos, toyClasses, { x: leaderEl.anchorX, y: leaderEl.anchorY }) : null;
-    const snapPoints   = BounPos.getSnapPoints(_yBounPos);
+    const bounPosEl    = _svgEl.querySelector('#boundaries-positions-layer');
+    const boundsRects  = isToy ? BounPos.computeBoundaryRects(bounPosEl, toyClasses, { x: leaderEl.anchorX, y: leaderEl.anchorY }) : null;
+    const snapPoints   = BounPos.getSnapPoints(bounPosEl);
 
     _multiDragState = {
       elements,
@@ -1965,17 +1908,9 @@ const App = {
     } else if (mtype === 'drawing') {
       const layerEl = _svgEl.querySelector('#drawing-layer');
       if (layerEl) Drawing.moveDrawingsBatch(_ydoc, layerEl, moves, batchOpts);
-    } else {
-      // One transaction → one undo step for the whole group move
-      UndoRedo.tag(`move ${elements.length} objects`);
-      _ydoc.transact(() => {
-        for (const el of elements) {
-          const rx = Math.round(el.anchorX + fdx);
-          const ry = Math.round(el.anchorY + fdy);
-          const L = _Layers[el.mtype];
-          if (L) L.applyMoveCommit(L.find(el.id), rx, ry);
-        }
-      });
+    } else if (mtype === 'boun_pos') {
+      const layerEl = _svgEl.querySelector('#boundaries-positions-layer');
+      if (layerEl) BounPos.moveBoundariesBatch(_ydoc, layerEl, moves, batchOpts);
     }
 
     // Ghosts end after the commit
@@ -2070,10 +2005,6 @@ const App = {
         return true;
       } });
     }
-    const boundaryTs = UndoRedo.peekUndoTs();
-    if (boundaryTs != null) {
-      candidates.push({ ts: boundaryTs, run: () => { UndoRedo.undo(); return true; } });
-    }
     if (!runLatestFirst(candidates)) UI.toast('Nothing to undo', 'warn');
   },
   redo: () => {
@@ -2092,14 +2023,10 @@ const App = {
         return true;
       } });
     }
-    const boundaryTs = UndoRedo.peekRedoTs();
-    if (boundaryTs != null) {
-      candidates.push({ ts: boundaryTs, run: () => { UndoRedo.redo(); return true; } });
-    }
     if (!runLatestFirst(candidates)) UI.toast('Nothing to redo', 'warn');
   },
-  canUndo: () => opLayers().some(layer => OpLayer.canUndo(_ydoc, layer, _tableId, App.user.id)) || UndoRedo.canUndo(),
-  canRedo: () => opLayers().some(layer => OpLayer.canRedo(_ydoc, layer, _tableId, App.user.id)) || UndoRedo.canRedo(),
+  canUndo: () => opLayers().some(layer => OpLayer.canUndo(_ydoc, layer, _tableId, App.user.id)),
+  canRedo: () => opLayers().some(layer => OpLayer.canRedo(_ydoc, layer, _tableId, App.user.id)),
   exportSVG: () => {
     const clone = Storage.buildExportSvg(_svgEl, _ydoc);
     const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
@@ -2131,7 +2058,7 @@ const App = {
       _ydoc.transact(() => {
         result = Storage.populateFromSvgDoc(svgDoc.documentElement, _ydoc);
       });
-      const { toyCount, drawCount, bounPosCount, invalidToyEls, importedToyEls, importedDrawEls } = result;
+      const { toyCount, drawCount, bounPosCount, invalidToyEls, importedToyEls, importedDrawEls, importedBounPosEls } = result;
 
       if (toyCount) {
         const layerEl = _svgEl.querySelector('#toys-layer');
@@ -2140,6 +2067,12 @@ const App = {
       if (drawCount) {
         const layerEl = _svgEl.querySelector('#drawing-layer');
         Drawing.importDrawings(_ydoc, layerEl, importedDrawEls, { authorId: App.user.id, tableId: _tableId });
+        UI.refreshFromDoc();
+      }
+
+      if (bounPosCount) {
+        const layerEl = _svgEl.querySelector('#boundaries-positions-layer');
+        BounPos.importBoundaries(_ydoc, layerEl, importedBounPosEls, { authorId: App.user.id, tableId: _tableId });
         UI.refreshFromDoc();
       }
 
@@ -2310,9 +2243,7 @@ function newDrawingId() {
 }
 
 // A human-readable label for an operation's gesture, for undo/redo
-// history + toast text. Ops don't carry a custom label the way
-// UndoRedo.tag() gives boundaries actions — this is the op-side
-// equivalent, coarser but good enough for "undid: X" text.
+// history + toast text, shared by every op layer.
 function describeGesture(gesture) {
   if (gesture.startsWith('undo:')) return describeGesture(gesture.slice('undo:'.length));
   if (gesture.startsWith('redo:')) return describeGesture(gesture.slice('redo:'.length));

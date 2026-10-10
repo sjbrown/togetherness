@@ -14,6 +14,7 @@ import { getOps, getContent } from '../../src/op_dag.js'
 import { isCheckpoint } from '../../src/op_checkpoint.js'
 import { ensureLayerId, LAYER_MARKER } from '../../src/op_layers.js'
 import * as BounPos from '../../src/boun_pos.js'
+import { BOUNDARIES_LAYER } from '../../src/boun_pos.js'
 
 // ── Fixtures & helpers ──────────────────────────────────────────────────────
 
@@ -236,74 +237,83 @@ describe('populateFromSvgDoc', () => {
   })
 
   describe('boundaries-positions-layer', () => {
-    // Build the layer's inner markup the same way buildExportSvg does: a
-    // live render of BounPos-created elements via BounPos.render().
+    // Build the layer's inner markup the way buildExportSvg does: the live
+    // layer, as BounPos created and the op log projected it.
     function exportedBounPosInner() {
-      const srcDoc = new Y.Doc()
-      const srcYBounPos = srcDoc.getXmlFragment('boundaries')
-      BounPos.addBoundary(srcDoc, srcYBounPos, { id: 'tt-b-v1-abc', name: 'Hand', x: 10, y: 20, w: 100, h: 50 })
-      BounPos.addPositionSet(srcDoc, srcYBounPos, {
+      const layerEl = ensureLayerId(document.createElementNS('http://www.w3.org/2000/svg', 'g'), BOUNDARIES_LAYER)
+      BounPos.addBoundary(layerEl, { id: 'tt-b-v1-abc', name: 'Hand', x: 10, y: 20, w: 100, h: 50 })
+      BounPos.addPositionSet(layerEl, {
         x: 0, y: 0, w: 200, h: 200, toolName: 'pos-grid-sq', toolParams: { spacing: 80, snapRadius: 2 },
       })
-      const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-      BounPos.render(srcYBounPos, layerEl)
       return layerEl.innerHTML
     }
 
-    test('imports boundaries and position sets into the boundaries Yjs fragment', () => {
+    const boundariesDoc = (inner = exportedBounPosInner()) => parseSvg(`<svg xmlns="http://www.w3.org/2000/svg">
+      <g id="boundaries-positions-layer">${inner}</g>
+      <g id="toys-layer"></g>
+      <g id="drawing-layer"></g>
+    </svg>`)
+
+    test('hands the parsed elements back for the caller to commit as one gesture', () => {
       const { ydoc } = freshLayers()
-      const yBounPos = ydoc.getXmlFragment('boundaries')
-      const { bounPosCount } = populateFromSvgDoc(
-        makeDocSvg({ extra: `` }), ydoc)
+      const { bounPosCount } = populateFromSvgDoc(makeDocSvg({ extra: `` }), ydoc)
       expect(bounPosCount).toBe(0)
-      expect(yBounPos.toArray().length).toBe(0)
 
-      const doc = parseSvg(`<svg xmlns="http://www.w3.org/2000/svg">
-        <g id="boundaries-positions-layer">${exportedBounPosInner()}</g>
-        <g id="toys-layer"></g>
-        <g id="drawing-layer"></g>
-      </svg>`)
-      const result = populateFromSvgDoc(doc, ydoc)
+      const result = populateFromSvgDoc(boundariesDoc(), ydoc)
       expect(result.bounPosCount).toBe(2)
-      expect(yBounPos.toArray().length).toBe(2)
+      expect(result.importedBounPosEls).toHaveLength(2)
+      // Nothing is written to the log: the live-table caller commits them.
+      expect(getOps(ydoc, BOUNDARIES_LAYER).size).toBe(0)
 
-      const boundary = yBounPos.toArray().find(el => el.getAttribute('data-bounpos-type') === 'boundary')
+      const [boundary, posSet] = result.importedBounPosEls
       expect(BounPos.getTtState(boundary)).toMatchObject({ id: 'tt-b-v1-abc', name: 'Hand', x: 10, y: 20, w: 100, h: 50 })
-
-      const posSet = yBounPos.toArray().find(el => el.getAttribute('data-bounpos-type') === 'pos-set')
       expect(BounPos.getTtState(posSet)).toMatchObject({ bounPosType: 'pos-set', genType: 'square' })
+      expect(boundary.getAttribute('data-module')).toBe('boun_pos')
+    })
 
-      // The imported fragment renders back into live SVG without error.
-      const rendered = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-      BounPos.render(yBounPos, rendered)
-      expect(rendered.querySelectorAll('[data-bounpos-type]').length).toBe(2)
+    test('as a new table, the elements become one genesis checkpoint that projects back intact', () => {
+      const { ydoc } = freshLayers()
+      const { importedBounPosEls } = populateFromSvgDoc(boundariesDoc(), ydoc, { asNewTable: true, authorId: 'me' })
+      expect(importedBounPosEls).toEqual([])
+
+      const ops = [...getOps(ydoc, BOUNDARIES_LAYER).values()]
+      expect(ops).toHaveLength(1)
+      expect(isCheckpoint(ops[0])).toBe(true)
+      expect(ops[0].parents).toEqual([])
+
+      const layerEl = ensureLayerId(document.createElementNS('http://www.w3.org/2000/svg', 'g'), BOUNDARIES_LAYER)
+      projectFrom(layerEl, getOps(ydoc, BOUNDARIES_LAYER), getContent(ydoc, BOUNDARIES_LAYER), ops[0].id)
+      expect(layerEl.querySelectorAll('[data-bounpos-type]').length).toBe(2)
+    })
+
+    test('as a new table, an empty boundaries layer still gets a genesis', () => {
+      const { ydoc } = freshLayers()
+      populateFromSvgDoc(makeDocSvg(), ydoc, { asNewTable: true, authorId: 'me' })
+      expect(getOps(ydoc, BOUNDARIES_LAYER).size).toBe(1)
     })
 
     test('does not double-import via the fallback sweep', () => {
       const { ydoc } = freshLayers()
-      const doc = parseSvg(`<svg xmlns="http://www.w3.org/2000/svg">
-        <g id="boundaries-positions-layer">${exportedBounPosInner()}</g>
-        <g id="toys-layer"></g>
-        <g id="drawing-layer"></g>
-      </svg>`)
-      const { bounPosCount, drawCount } = populateFromSvgDoc(doc, ydoc)
+      const { bounPosCount, drawCount } = populateFromSvgDoc(boundariesDoc(), ydoc)
       expect(bounPosCount).toBe(2)
       expect(drawCount).toBe(0)
     })
 
+    test('old-layout elements (absolute children, no transform) are imported as they are', () => {
+      const { ydoc } = freshLayers()
+      const old = `<g id="old" name="toy" data-bounpos-type="boundary"><path d="M200,300 L400,300 L400,400 L200,400 Z"/></g>`
+      const { importedBounPosEls } = populateFromSvgDoc(boundariesDoc(old), ydoc)
+      expect(importedBounPosEls[0].hasAttribute('transform')).toBe(false)
+      expect(importedBounPosEls[0].querySelector('path').getAttribute('d')).toBe('M200,300 L400,300 L400,400 L200,400 Z')
+    })
+
     test('strips <script> elements from boundaries-positions-layer children before storing', () => {
       const { ydoc } = freshLayers()
-      const yBounPos = ydoc.getXmlFragment('boundaries')
-      const doc = parseSvg(`<svg xmlns="http://www.w3.org/2000/svg">
-        <g id="boundaries-positions-layer">
-          <g data-bounpos-type="boundary"><script>alert(1)</script><path d="M0,0 L1,0 L1,1 L0,1 Z"/></g>
-        </g>
-        <g id="toys-layer"></g>
-        <g id="drawing-layer"></g>
-      </svg>`)
-      populateFromSvgDoc(doc, ydoc)
-      const g = yBounPos.toArray()[0]
-      expect(g.toArray().some(c => c.nodeName === 'script')).toBe(false)
+      const doc = boundariesDoc(
+        `<g data-bounpos-type="boundary"><script>alert(1)</script><path d="M0,0 L1,0 L1,1 L0,1 Z"/></g>`)
+      const { importedBounPosEls } = populateFromSvgDoc(doc, ydoc)
+      expect(importedBounPosEls[0].querySelector('script')).toBeNull()
+      expect(importedBounPosEls[0].querySelector('path')).not.toBeNull()
     })
   })
 
@@ -516,6 +526,21 @@ describe('buildExportSvg', () => {
     expect(layer.hasAttribute(HEAD_MARKER)).toBe(false)
     expect(layer.hasAttribute(LAYER_MARKER)).toBe(false)
     expect(layer.getAttribute('inkscape:groupmode')).toBe('layer')
+  })
+
+  test('strips the head and op-layer markers from the exported boundaries layer', () => {
+    const ydoc = new Y.Doc()
+    const live = liveCanvasSvg()
+    ensureLayerId(live.querySelector('#boundaries-positions-layer'), BOUNDARIES_LAYER)
+    live.querySelector('#boundaries-positions-layer').setAttribute(HEAD_MARKER, 'tt-op-abc123')
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    g.setAttribute('data-id', 'b1')
+    live.querySelector('#boundaries-positions-layer').appendChild(g)
+
+    const layer = buildExportSvg(live, ydoc).querySelector('#boundaries-positions-layer')
+    expect(layer.hasAttribute(HEAD_MARKER)).toBe(false)
+    expect(layer.hasAttribute(LAYER_MARKER)).toBe(false)
+    expect(layer.querySelector('[data-id="b1"]')).not.toBeNull()
   })
 })
 
