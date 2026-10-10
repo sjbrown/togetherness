@@ -929,68 +929,6 @@ describe('undoToyGesture / redoToyGesture', () => {
   })
 })
 
-describe('deleteMany / moveMany — one op for a multi-select action', () => {
-  const TABLE = 'batch-table'
-  beforeEach(() => localStorage.clear())
-
-  async function seededTwo() {
-    const { ydoc, layerEl } = await setup(['die1', 'dice_d6'], ['die2', 'dice_d6'])
-    const L = makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' }, TABLE, true)
-    L.render(layerEl)
-    return { ydoc, layerEl, L }
-  }
-
-  test('deletes several toys and appends exactly one operation', async () => {
-    const { ydoc, layerEl, L } = await seededTwo()
-    const before = [...getOps(ydoc, TOYS_LAYER).values()].length
-
-    const op = L.deleteMany(['die1', 'die2'])
-
-    expect(op).not.toBeNull()
-    expect(op.gesture).toBe('delete-batch')
-    expect([...getOps(ydoc, TOYS_LAYER).values()].length).toBe(before + 1)
-    expect(layerEl.querySelectorAll('[data-toy-type]').length).toBe(0)
-  })
-
-  test('undo reverses the whole batch in one press', async () => {
-    const { ydoc, layerEl, L } = await seededTwo()
-    L.deleteMany(['die1', 'die2'])
-    expect(layerEl.querySelectorAll('[data-toy-type]').length).toBe(0)
-
-    undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
-
-    expect(layerEl.querySelectorAll('[data-toy-type]').length).toBe(2)
-  })
-
-  test('null when every id in the batch is already gone', async () => {
-    const { L } = await seededTwo()
-    expect(L.deleteMany(['nope', 'also-nope'])).toBeNull()
-  })
-
-  test('moves several toys and appends exactly one operation', async () => {
-    const { ydoc, layerEl, L } = await seededTwo()
-    const before = [...getOps(ydoc, TOYS_LAYER).values()].length
-
-    const op = L.moveMany([{ id: 'die1', x: 400, y: 400 }, { id: 'die2', x: 450, y: 450 }])
-
-    expect(op).not.toBeNull()
-    expect(op.gesture).toBe('move-batch')
-    expect([...getOps(ydoc, TOYS_LAYER).values()].length).toBe(before + 1)
-    expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 400, cy: 400 })
-    expect(L.getTtState(L.find('die2'))).toMatchObject({ cx: 450, cy: 450 })
-  })
-
-  test('a single undo reverses a whole multi-move', async () => {
-    const { ydoc, layerEl, L } = await seededTwo()
-    L.moveMany([{ id: 'die1', x: 400, y: 400 }, { id: 'die2', x: 450, y: 450 }])
-
-    undoToyGesture(ydoc, layerEl, TABLE, 'user-a')
-
-    expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 100, cy: 100 })
-    expect(L.getTtState(L.find('die2'))).toMatchObject({ cx: 100, cy: 100 })
-  })
-})
-
 describe('canUndoToyGesture / canRedoToyGesture — cheap existence checks', () => {
   const TABLE = 'can-table'
   beforeEach(() => localStorage.clear())

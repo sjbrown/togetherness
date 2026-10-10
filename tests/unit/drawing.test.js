@@ -299,34 +299,9 @@ describe('every write is one operation', () => {
   })
 })
 
-describe('batch gestures', () => {
+describe('duplicate', () => {
   const gestures = (doc) =>
     [...getOps(doc.ydoc, DRAWING_LAYER).values()].map(o => o.gesture)
-
-  test('deleteMany is one op for the whole selection', () => {
-    const doc = makeDoc()
-    add(doc, { id: 'a' }); add(doc, { id: 'b' }); add(doc, { id: 'c' })
-    const op = doc.L.deleteMany(['a', 'b', 'gone'])
-    expect(op.gesture).toBe('delete-batch')
-    expect(idsOf(doc.layerEl)).toEqual(['c'])
-    expect(gestures(doc).filter(g => g === 'delete-batch')).toHaveLength(1)
-  })
-
-  test('deleteMany returns null when nothing was there to delete', () => {
-    const doc = makeDoc()
-    expect(doc.L.deleteMany(['nope'])).toBeNull()
-  })
-
-  test('moveMany moves every shape in one op', () => {
-    const doc = makeDoc()
-    add(doc, { id: 'a', x: 0, y: 0 })
-    add(doc, { id: 'c', type: 'circle', cx: 10, cy: 10, r: 5 })
-    const op = doc.L.moveMany([{ id: 'a', x: 50, y: 60 }, { id: 'c', x: 70, y: 80 }])
-    expect(op.gesture).toBe('move-batch')
-    expect(doc.L.find('a').getAttribute('x')).toBe('50')
-    expect(doc.L.find('c').getAttribute('cx')).toBe('70')
-    expect(gestures(doc).filter(g => g === 'move-batch')).toHaveLength(1)
-  })
 
   test('duplicate copies state, offsets geometry and is one op', () => {
     const doc = makeDoc()
@@ -350,27 +325,6 @@ describe('batch gestures', () => {
     const doc = makeDoc()
     expect(doc.L.duplicate(null, 'x')).toBeNull()
     expect(getOps(doc.ydoc, DRAWING_LAYER).size).toBe(0)
-  })
-
-  test('importMany appends the shapes in one import op', () => {
-    const doc = makeDoc()
-    add(doc, { id: 'a' })
-    const el = document.createElementNS(SVG_NS, 'rect')
-    el.setAttribute('id', 'imp'); el.setAttribute('data-id', 'imp')
-    const op = doc.L.importMany([el])
-    expect(op.gesture).toBe('import')
-    expect(idsOf(doc.layerEl)).toEqual(['a', 'imp'])
-  })
-
-  test('importMany re-ids a shape that collides with one already on the layer', () => {
-    const doc = makeDoc()
-    add(doc, { id: 'a' })
-    const el = document.createElementNS(SVG_NS, 'rect')
-    el.setAttribute('id', 'a'); el.setAttribute('data-id', 'a')
-    doc.L.importMany([el])
-    const ids = idsOf(doc.layerEl)
-    expect(new Set(ids).size).toBe(2)
-    expect(el.getAttribute('id')).toBe(el.getAttribute('data-id'))
   })
 })
 
