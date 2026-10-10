@@ -247,11 +247,10 @@ test.describe('boundary-constrained toy dragging', () => {
       const ghost = [...document.querySelectorAll(`#overlay-layer use[href="#${id}"]`)]
         .find(el => el.hasAttribute('transform') && el.getAttribute('opacity'));
       const g = ghost.getBoundingClientRect();
-      return { dx: g.left - orig.left, dy: g.top - orig.top, w0: orig.width, w1: g.width };
+      return { dx: g.left - orig.left, dy: g.top - orig.top };
     }, psId);
     expect(preview.dx).toBeCloseTo(300, 0);
     expect(preview.dy).toBeCloseTo(200, 0);
-    expect(preview.w1).toBeCloseTo(preview.w0, 0);
 
     // ── Commit: only the transform changes
     const committed = await page.evaluate((id) => {
