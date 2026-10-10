@@ -9,6 +9,8 @@ import * as Toys     from './toys.js';
 import * as Drawing  from './drawing.js';
 import { appendCheckpoint } from './op_dag.js';
 import { checkpointOp } from './op_checkpoint.js';
+import { ensureLayerId, getOpLayer } from './op_layers.js';
+import { HEAD_MARKER } from './op_layer.js';
 
 // ── DOM → Yjs ────────────────────────────────────────────────────────────────
 
@@ -134,7 +136,8 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
   // back. The caller (App.importSVG) commits them as a real gesture onto
   // the live head, the same way any other toy placement does.
   if (toysLayerEl) {
-    const scratchLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    const scratchLayer = ensureLayerId(
+      document.createElementNS('http://www.w3.org/2000/svg', 'g'), getOpLayer('toys'));
 
     for (const child of toysLayerEl.children) {
       const { parsedNode } = Toys.parseForeignToy(ydoc, child);
@@ -152,7 +155,7 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
     if (toyCount) {
       if (opts.asNewTable) {
         const { op: genesis, content } = checkpointOp(scratchLayer, { authorId: opts.authorId, parents: [] });
-        appendCheckpoint(ydoc, genesis, content);
+        appendCheckpoint(ydoc, getOpLayer('toys'), genesis, content);
       } else {
         importedToyEls.push(...scratchLayer.children);
       }
@@ -251,7 +254,7 @@ export function buildExportSvg(liveSvgEl, ydoc) {
   // into a file a person might open in Inkscape.
   const toysLayerEl = clone.querySelector('#toys-layer');
   if (toysLayerEl) {
-    toysLayerEl.removeAttribute(Toys.HEAD_MARKER);
+    toysLayerEl.removeAttribute(HEAD_MARKER);
     toysLayerEl.setAttribute('inkscape:groupmode', 'layer');
   }
   const drawLayerEl = clone.querySelector('#drawing-layer');

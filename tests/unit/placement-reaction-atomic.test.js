@@ -24,6 +24,7 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { TOYS_LAYER } from '../../src/toys.js'
 import {
   addToy, reparentToyDom, applyMoveDom, getGeom, findToyDom, runGesture,
   activateAllToyScriptsDom, undoToyGesture,
@@ -105,10 +106,10 @@ describe('placement + reaction commit as ONE atomic operation', () => {
     await new Promise(r => setTimeout(r, 0)) // flush script activation
     setDieFace(ydoc, layerEl, 'die1', 5)
 
-    const before = getOps(ydoc).size
+    const before = getOps(ydoc, TOYS_LAYER).size
     placeInTrayAtomic(ydoc, layerEl, 'die1', 'tray1')
 
-    expect(getOps(ydoc).size - before).toBe(1)
+    expect(getOps(ydoc, TOYS_LAYER).size - before).toBe(1)
   })
 
   test('the tray result is a single clean text node holding the correct sum', async () => {
@@ -169,11 +170,11 @@ describe('placement + reaction commit as ONE atomic operation', () => {
     }, { gesture: 'reparent', authorId: AUTHOR, tableId: TABLE })
     setDieFace(ydoc, layerEl, 'die1', 6)
 
-    const before = getOps(ydoc).size
+    const before = getOps(ydoc, TOYS_LAYER).size
     // Now drop the die into the (nested) inner tray, atomically.
     placeInTrayAtomic(ydoc, layerEl, 'die1', 'inner')
 
-    expect(getOps(ydoc).size - before).toBe(1) // inner's AND outer's recompute folded into one op
+    expect(getOps(ydoc, TOYS_LAYER).size - before).toBe(1) // inner's AND outer's recompute folded into one op
 
     const innerTspan = ownResultTspan(layerEl.querySelector('[data-id="inner"]'))
     const outerTspan = ownResultTspan(layerEl.querySelector('[data-id="outer"]'))

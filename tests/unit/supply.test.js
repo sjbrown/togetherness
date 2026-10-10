@@ -25,6 +25,8 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { ensureLayerId } from '../../src/op_layers.js'
+import { TOYS_LAYER } from '../../src/toys.js'
 import * as Toys from '../../src/toys.js'
 import * as Events from '../../src/events.js'
 import {
@@ -54,6 +56,7 @@ const DICE_UTILS_JS  = fs.readFileSync(path.join(TOY_DIR, 'js/dice_utils.js'), '
 function freshLayer() {
   const layerEl = document.createElementNS(SVG_NS, 'g')
   layerEl.id = 'toys-layer'
+  ensureLayerId(layerEl, TOYS_LAYER)
   return layerEl
 }
 
@@ -130,10 +133,10 @@ function clickTake(ydoc, layerEl, supplyEl) {
  * bookkeeping — those don't matter to this comparison).
  */
 function reloadedIds(ydoc) {
-  const ops = getOps(ydoc)
+  const ops = getOps(ydoc, TOYS_LAYER)
   const head = heads(ops)[0] ?? null
   const layer = freshLayer()
-  projectFrom(layer, ops, getContent(ydoc), head)
+  projectFrom(layer, ops, getContent(ydoc, TOYS_LAYER), head)
   return [...layer.querySelectorAll('[data-toy-type]')].map(el => el.getAttribute('data-id')).sort()
 }
 
@@ -499,11 +502,11 @@ describe('supply — reload parity (regression: nested-envelope duplicate clone)
     const supplyEl = findToyDom(layerEl, 'supply1')
 
     const unbind = bindSupplyHarness(ydoc, layerEl)
-    const opsBefore = getOps(ydoc).size
+    const opsBefore = getOps(ydoc, TOYS_LAYER).size
     clickTake(ydoc, layerEl, supplyEl)
     unbind()
 
-    expect(getOps(ydoc).size).toBe(opsBefore + 1)
+    expect(getOps(ydoc, TOYS_LAYER).size).toBe(opsBefore + 1)
   })
 
   test('chip scenario: replaying the op log from scratch matches the live layer exactly', async () => {
@@ -628,9 +631,9 @@ describe('supply — clone inner elements get their own data-id (regression: mov
     const liveCloneAnchor = getAnchor(findToyDom(layerEl, cloneId))
     expect(liveCloneAnchor).toEqual({ x: 800, y: 800 })
 
-    const ops = getOps(ydoc)
+    const ops = getOps(ydoc, TOYS_LAYER)
     const reloadedLayer = freshLayer()
-    projectFrom(reloadedLayer, ops, getContent(ydoc), heads(ops)[0] ?? null)
+    projectFrom(reloadedLayer, ops, getContent(ydoc, TOYS_LAYER), heads(ops)[0] ?? null)
 
     const reloadedProto = reloadedLayer.querySelector('[data-id="chip5"]')
     const reloadedClone = reloadedLayer.querySelector(`[data-id="${cloneId}"]`)

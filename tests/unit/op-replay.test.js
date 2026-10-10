@@ -8,13 +8,15 @@
 // @vitest-environment jsdom
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
+import { ensureLayerId } from '../../src/op_layers.js'
+import { TOYS_LAYER } from '../../src/toys.js'
 import {
   isReplaying, withSuppressedCapture, touchedBy, conflicts, orderSensitive, classify, advanceTo, receiveOp,
   SUBSEQUENT, MERGED, REBUILT, CONFLICTING, KNOWN,
   RECEIVED_CONFLICT, RECEIVED_SUBSEQUENT, RECEIVED_MERGED, RECEIVED_REBUILT,
 } from '../../src/op_replay.js'
 import { getHead, setHead, clearHead } from '../../src/op_head.js'
-import { checkpointOp, ensureLayerId, LAYER_DATA_ID } from '../../src/op_checkpoint.js'
+import { checkpointOp } from '../../src/op_checkpoint.js'
 import { runInEnvelope, commitGesture } from '../../src/envelope.js'
 import { getOps, appendOp } from '../../src/op_dag.js'
 
@@ -34,7 +36,7 @@ function layer(html = '') {
   const el = document.createElementNS(SVG_NS, 'g')
   el.id = 'toys-layer'
   el.innerHTML = html
-  ensureLayerId(el)
+  ensureLayerId(el, TOYS_LAYER)
   return el
 }
 
@@ -65,25 +67,25 @@ describe('op_head', () => {
   beforeEach(() => localStorage.clear())
 
   test('round-trips a head per table', () => {
-    setHead('table-a', 'op1')
-    setHead('table-b', 'op2')
-    expect(getHead('table-a')).toBe('op1')
-    expect(getHead('table-b')).toBe('op2')
+    setHead('table-a', TOYS_LAYER, 'op1')
+    setHead('table-b', TOYS_LAYER, 'op2')
+    expect(getHead('table-a', TOYS_LAYER)).toBe('op1')
+    expect(getHead('table-b', TOYS_LAYER)).toBe('op2')
   })
 
   test('an unknown table has no head', () => {
-    expect(getHead('never-seen')).toBeNull()
+    expect(getHead('never-seen', TOYS_LAYER)).toBeNull()
   })
 
   test('clearing removes it', () => {
-    setHead('t', 'op1')
-    clearHead('t')
-    expect(getHead('t')).toBeNull()
+    setHead('t', TOYS_LAYER, 'op1')
+    clearHead('t', TOYS_LAYER)
+    expect(getHead('t', TOYS_LAYER)).toBeNull()
   })
 
   test('a null tableId is a no-op rather than a throw', () => {
-    expect(() => setHead(null, 'x')).not.toThrow()
-    expect(getHead(null)).toBeNull()
+    expect(() => setHead(null, TOYS_LAYER, 'x')).not.toThrow()
+    expect(getHead(null, TOYS_LAYER)).toBeNull()
   })
 })
 
@@ -466,7 +468,7 @@ describe('advanceTo', () => {
 
 describe('a checkpoint applied as a delta contributes nothing', () => {
   function peer(ids = ['a', 'b']) {
-    const L = document.createElementNS(SVG_NS, 'g'); L.setAttribute('data-id', LAYER_DATA_ID)
+    const L = document.createElementNS(SVG_NS, 'g'); L.setAttribute('data-id', TOYS_LAYER.layerDataId)
     for (const id of ids) {
       const r = document.createElementNS(SVG_NS, 'g'); r.setAttribute('data-id', id); L.appendChild(r)
     }
@@ -493,7 +495,7 @@ describe('a checkpoint applied as a delta contributes nothing', () => {
     const ck = ckOp(P, { authorId: 'alice', parents: ['base'], id: 'ck' })
 
     const Q = peer()
-    const qe = commitGesture(new Y.Doc(),
+    const qe = commitGesture(new Y.Doc(), TOYS_LAYER,
       runInEnvelope(Q, () => Q.querySelector('[data-id="b"]').setAttribute('x', '1')),
       { id: 'qe', parents: ['base'] })
     const ops = new Map([['base', base], ['ck', ck], ['qe', qe]])
@@ -528,7 +530,7 @@ describe('a checkpoint applied as a delta contributes nothing', () => {
 
 describe('a checkpoint is left out of conflict classification', () => {
   function peer(ids = ['a', 'b']) {
-    const L = document.createElementNS(SVG_NS, 'g'); L.setAttribute('data-id', LAYER_DATA_ID)
+    const L = document.createElementNS(SVG_NS, 'g'); L.setAttribute('data-id', TOYS_LAYER.layerDataId)
     for (const id of ids) {
       const r = document.createElementNS(SVG_NS, 'g'); r.setAttribute('data-id', id); L.appendChild(r)
     }
@@ -540,7 +542,7 @@ describe('a checkpoint is left out of conflict classification', () => {
     const ops = new Map()
     const base = { id: 'base', parents: [], mutations: [] }
     const ck = ckOp(peer(), { authorId: 'alice', parents: ['base'], id: 'ck' })
-    const move = childOp('move', ['base'], LAYER_DATA_ID)
+    const move = childOp('move', ['base'], TOYS_LAYER.layerDataId)
     ops.set('base', base); ops.set('ck', ck); ops.set('move', move)
 
     expect(classify(ops, 'ck', 'move').kind).not.toBe(CONFLICTING)
@@ -549,7 +551,7 @@ describe('a checkpoint is left out of conflict classification', () => {
   test('conflicts is false whenever a checkpoint is on either side', () => {
     const ops = new Map()
     const ck = ckOp(peer(), { authorId: 'alice', id: 'ck' })
-    const move = childOp('move', [], LAYER_DATA_ID)
+    const move = childOp('move', [], TOYS_LAYER.layerDataId)
     ops.set('ck', ck); ops.set('move', move)
 
     expect(conflicts(ops, ['ck'], ['move'])).toBe(false)
@@ -571,9 +573,9 @@ describe('receiveOp: concurrent delete vs. edit', () => {
   test('a concurrent delete and an edit of the deleted node are a conflict, not a throw', () => {
     const P = peer(), Q = peer()
     const ops = new Map([['base', { id: 'base', parents: [], mutations: [] }]])
-    const del = commitGesture(new Y.Doc(),
+    const del = commitGesture(new Y.Doc(), TOYS_LAYER,
       runInEnvelope(P, () => P.querySelector('[data-id=a]').remove()), { id: 'del', parents: ['base'] })
-    const mv = commitGesture(new Y.Doc(),
+    const mv = commitGesture(new Y.Doc(), TOYS_LAYER,
       runInEnvelope(Q, () => Q.querySelector('[data-id=a]').setAttribute('x', '5')), { id: 'mv', parents: ['base'] })
     ops.set('del', del); ops.set('mv', mv)
 
@@ -590,21 +592,21 @@ describe('commitGesture', () => {
     const records = runInEnvelope(root, () =>
       root.querySelector('[data-id="r"]').setAttribute('x', '7'))
 
-    const op = commitGesture(ydoc, records, { gesture: 'move', authorId: 'alice', parents: ['cp'] })
+    const op = commitGesture(ydoc, TOYS_LAYER, records, { gesture: 'move', authorId: 'alice', parents: ['cp'] })
 
     expect(op.gesture).toBe('move')
     expect(op.authorId).toBe('alice')
     expect(op.parents).toEqual(['cp'])
     expect(op.mutations.length).toBeGreaterThan(0)
-    expect(getOps(ydoc).get(op.id)).toBeTruthy()
+    expect(getOps(ydoc, TOYS_LAYER).get(op.id)).toBeTruthy()
   })
 
   test('a gesture that changed nothing is not an operation', () => {
     const ydoc = new Y.Doc()
     const root = layer('<rect data-id="r"/>')
     const records = runInEnvelope(root, () => {})
-    expect(commitGesture(ydoc, records, { authorId: 'alice' })).toBeNull()
-    expect([...getOps(ydoc).values()].length).toBe(0)
+    expect(commitGesture(ydoc, TOYS_LAYER, records, { authorId: 'alice' })).toBeNull()
+    expect([...getOps(ydoc, TOYS_LAYER).values()].length).toBe(0)
   })
 
   test('null parents are dropped rather than stored', () => {
@@ -612,7 +614,7 @@ describe('commitGesture', () => {
     const root = layer('<rect data-id="r" x="1"/>')
     const records = runInEnvelope(root, () =>
       root.querySelector('[data-id="r"]').setAttribute('x', '2'))
-    const op = commitGesture(ydoc, records, { authorId: 'a', parents: [null] })
+    const op = commitGesture(ydoc, TOYS_LAYER, records, { authorId: 'a', parents: [null] })
     expect(op.parents).toEqual([])
   })
 
@@ -623,7 +625,7 @@ describe('commitGesture', () => {
 
     const records = runInEnvelope(root, () =>
       root.querySelector('[data-id="r"]').setAttribute('x', '7'))
-    const op = commitGesture(ydoc, records, { authorId: 'alice', parents: ['cp'] })
+    const op = commitGesture(ydoc, TOYS_LAYER, records, { authorId: 'alice', parents: ['cp'] })
 
     const peer = layer()
     advanceTo(peer, new Map([['cp', genesis], [op.id, op]]), content, null, op.id)
@@ -637,7 +639,7 @@ describe('commitGesture', () => {
     const root = layer('<rect data-id="r" x="1"/>')
     const records = runInEnvelope(root, () =>
       root.querySelector('[data-id="r"]').setAttribute('x', '7'))
-    const op = commitGesture(ydoc, records, { authorId: 'alice' })
+    const op = commitGesture(ydoc, TOYS_LAYER, records, { authorId: 'alice' })
 
     expect(() => advanceTo(layer(), new Map([[op.id, op]]), content, null, op.id))
       .toThrow(/unresolvable/)

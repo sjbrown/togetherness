@@ -16,6 +16,7 @@
 import * as Y                   from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { compareAuthority as compareAuthorityIn, getOps, getContent, appendOp, appendCheckpoint } from './op_dag.js';
+import { opLayers } from './op_layers.js';
 import * as Trace                from './trace.js';
 
 const TABLES_KEY  = 'tt_tables';
@@ -244,7 +245,7 @@ async function openTablePersistence(tableId, ydoc) {
   // in from a peer" is otherwise invisible after the fact.
   close({
     tableId,
-    ops:          getOps(ydoc).size,
+    ops:          opLayers().reduce((n, layer) => n + getOps(ydoc, layer).size, 0),
     joinSequence: getJoinSequence(ydoc).toArray(),
     docId:        ydoc.getMap('meta').get('docId') ?? null,
     schema:       ydoc.getMap('meta').get('schemaVersion') ?? null,
@@ -431,20 +432,21 @@ function deterministicClientId(bytes) {
 }
 
 /**
- * Replace a fork doc's toys log with the seed. The content map is cleared
- * along with the ops, since the fork inherited the parent's snapshots; each
- * checkpoint's content goes in with its op.
+ * Replace one layer's log in a fork doc with the seed. That layer's content
+ * map is cleared along with its ops, since the fork inherited the parent's
+ * snapshots; each checkpoint's content goes in with its op. Every other map,
+ * other op layers' included, is left as copied.
  */
-function seedForkOps(forkDoc, opsSeed) {
-  const forkOps = getOps(forkDoc);
-  const forkContent = getContent(forkDoc);
+function seedForkOps(forkDoc, layer, opsSeed) {
+  const forkOps = getOps(forkDoc, layer);
+  const forkContent = getContent(forkDoc, layer);
   forkDoc.transact(() => {
     forkOps.clear();
     forkContent.clear();
-    appendCheckpoint(forkDoc, opsSeed.genesis, opsSeed.content.get(opsSeed.genesis.id));
+    appendCheckpoint(forkDoc, layer, opsSeed.genesis, opsSeed.content.get(opsSeed.genesis.id));
     for (const op of opsSeed.rebasedOps) {
-      if (opsSeed.content.has(op.id)) appendCheckpoint(forkDoc, op, opsSeed.content.get(op.id));
-      else appendOp(forkDoc, op);
+      if (opsSeed.content.has(op.id)) appendCheckpoint(forkDoc, layer, op, opsSeed.content.get(op.id));
+      else appendOp(forkDoc, layer, op);
     }
   });
 }
@@ -467,8 +469,8 @@ function seedForkOps(forkDoc, opsSeed) {
  * forkingUserId was peer-specific; resetting first would have made the id
  * peer-specific too, defeating the entire point.)
  *
- * opsSeed, if given — { genesis, rebasedOps } from op_checkpoint.js's
- * buildForkSeed — replaces the toys op log wholesale: without it, forkDoc
+ * seed, if given — { genesis, rebasedOps } from op_checkpoint.js's
+ * buildForkSeed — replaces `layer`'s op log wholesale: without it, forkDoc
  * inherits liveDoc's entire op history including the leader branch's ops,
  * which a forked table never wants (see §7.1, "Fork"). Omitting it forks
  * the whole doc verbatim, which is exactly forkTable's behaviour and is
@@ -485,7 +487,7 @@ function seedForkOps(forkDoc, opsSeed) {
  * Does NOT touch the 'tt_tables' registry — same convention as forkTable;
  * callers register the entry themselves via touchTableRecord.
  */
-async function forkLiveDoc(liveDoc, orderedIds, opsSeed) {
+async function forkLiveDoc(liveDoc, orderedIds, { layer = null, seed = null } = {}) {
   if (!orderedIds || !orderedIds.length) {
     throw new Error('forkLiveDoc: orderedIds is required and must be non-empty (the branch\'s joinSequence must reset to its contributors)');
   }
@@ -508,7 +510,10 @@ async function forkLiveDoc(liveDoc, orderedIds, opsSeed) {
 
   resetJoinSequence(forkDoc, orderedIds);
 
-  if (opsSeed) seedForkOps(forkDoc, opsSeed);
+  if (seed) {
+    if (!layer) throw new Error('forkLiveDoc: layer is required with a seed');
+    seedForkOps(forkDoc, layer, seed);
+  }
 
   const update         = Y.encodeStateAsUpdate(forkDoc); // post-reset, post-prune bytes
   const forkedTableId = await generateForkTableId(update);

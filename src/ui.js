@@ -827,7 +827,7 @@ export function closePanel() {
 // shown when a peer's own divergent content gets forked into a new table
 // because in-place conflict recovery couldn't fully restore it.
 //
-// Called from app.js's onOpsChanged, via handleToyBranchConflict, once
+// Called from app.js's onOpsChanged, via handleBranchConflict, once
 // the fork it triggers has actually landed (see CONCURRENCY_AND_BRANCHING.md
 // §6).
 //

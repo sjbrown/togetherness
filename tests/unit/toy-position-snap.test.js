@@ -26,6 +26,7 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach } from 'vitest'
+import { TOYS_LAYER } from '../../src/toys.js'
 import {
   addToy, getGeom, applyMoveDom, runGesture, activateAllToyScriptsDom,
   getSnapPoints, departingPositionEvents, arrivingPositionEvents,
@@ -154,7 +155,7 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
     activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
-    const before = getOps(ydoc).size
+    const before = getOps(ydoc, TOYS_LAYER).size
     const stackerEl = layerEl.querySelector('[data-id="stacker1"]')
     runGesture(ydoc, layerEl, () => {
       applyMoveDom(stackerEl, 100, 100) // land exactly on base1's point
@@ -167,7 +168,7 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
     })
 
     // One atomic operation — the move and both reactions together.
-    expect(getOps(ydoc).size - before).toBe(1)
+    expect(getOps(ydoc, TOYS_LAYER).size - before).toBe(1)
     const baseEl = layerEl.querySelector('[data-id="base1"]')
     expect(baseEl.getAttribute('data-on_position_occupied-count')).toBe('1')
     expect(baseEl.getAttribute('data-on_position_occupied-last')).toBe('p0:base1:stacker1')
@@ -348,12 +349,12 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
     await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: 300, y: 200, color: '#fff' })
 
     const chipAEl = layerEl.querySelector('[data-id="chipA"]')
-    const before = getOps(ydoc).size
+    const before = getOps(ydoc, TOYS_LAYER).size
     runGesture(ydoc, layerEl, () => {
       applyMoveDom(chipAEl, 350, 250)
     }, { gesture: 'move', authorId: AUTHOR, tableId: TABLE })
 
-    expect(getOps(ydoc).size - before).toBe(1)
+    expect(getOps(ydoc, TOYS_LAYER).size - before).toBe(1)
     expect(getGeom(chipAEl).x).toBe(310) // 350 - width/2
   })
 })
@@ -654,12 +655,12 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
     await new Promise(r => setTimeout(r, 0))
 
     const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
-    const before = getOps(ydoc).size
+    const before = getOps(ydoc, TOYS_LAYER).size
     const stackerEl = api.find('stacker1')
     const posId = realPositionId(layerEl, 'base1')
     api.applyMoveCommit(stackerEl, 100, 100) // land exactly on base1's point
 
-    expect(getOps(ydoc).size - before).toBe(1) // still one atomic operation
+    expect(getOps(ydoc, TOYS_LAYER).size - before).toBe(1) // still one atomic operation
     const baseEl = layerEl.querySelector('[data-id="base1"]')
     expect(baseEl.getAttribute('data-on_position_occupied-count')).toBe('1')
     expect(baseEl.getAttribute('data-on_position_occupied-last')).toBe(`${posId}:base1:stacker1`)
@@ -677,10 +678,10 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
     await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: 300, y: 200, color: '#fff' })
 
     const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
-    const before = getOps(ydoc).size
+    const before = getOps(ydoc, TOYS_LAYER).size
     api.applyMoveCommit(api.find('chipA'), 400, 400)
 
-    expect(getOps(ydoc).size - before).toBe(1)
+    expect(getOps(ydoc, TOYS_LAYER).size - before).toBe(1)
     expect(getGeom(layerEl.querySelector('[data-id="chipA"]')).x).toBe(360)
   })
 
@@ -718,12 +719,12 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
     await new Promise(r => setTimeout(r, 0))
 
     const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
-    const before = getOps(ydoc).size
+    const before = getOps(ydoc, TOYS_LAYER).size
     const movingBaseEl = api.find('movingBase')
     const posId = realPositionId(layerEl, 'destBase')
     api.applyMoveCommit(movingBaseEl, 900, 900) // land exactly on destBase's point
 
-    expect(getOps(ydoc).size - before).toBe(1) // everything — move, stack, cascade — one operation
+    expect(getOps(ydoc, TOYS_LAYER).size - before).toBe(1) // everything — move, stack, cascade — one operation
 
     // The occupant followed movingBase to the new location (no position
     // event fires for it — only the top-level moved toy's own arrival

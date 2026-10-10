@@ -287,7 +287,7 @@ test.describe('two-peer sync', () => {
       cx = nx; cy = ny;
     }
     return page.evaluate(() => {
-      const op = window.App.maybeCheckpoint('test');
+      const op = window.App.maybeCheckpoint('test').toys;
       if (!op) return 0;
       // The snapshot lives in the content map, not on the op.
       const shown = window.App.getDebugState().ops.ordered.find(o => o.id === op.id);

@@ -103,27 +103,35 @@ function kv(label, valueHTML, cls = '') {
 // ── STATE ───────────────────────────────────────────────────────────────
 
 /**
- * This peer's stored head against the marker the toys layer is actually
+ * The layers a state describes. A state without `layers` is one anonymous
+ * layer built from its top-level `head` and `ops`.
+ */
+const layersOf = (s) => s?.layers ?? [{ name: null, head: s?.head, ops: s?.ops }]
+
+/**
+ * This peer's stored head against the marker each op layer is actually
  * projected at. It lives with the operation list it indexes into.
  */
 export function headCardHTML(s) {
   if (!s) return ''
-  const head = s.head ?? {}
-  const headWarn = head.head && !head.agrees
+  return layersOf(s).map(({ name, head: h }) => {
+    const head = h ?? {}
+    const headWarn = head.head && !head.agrees
 
-  return `
+    return `
     <div class="dbg-card ${headWarn ? 'warn' : ''}">
-      <div class="dbg-card-title">Head</div>
+      <div class="dbg-card-title">Head${name ? ` · ${esc(name)}` : ''}</div>
       ${kv('stored head', idHTML(head.head))}
       ${kv('DOM projected at', idHTML(head.projected))}
       ${headWarn
-        ? `<div class="dbg-alert">The toys layer is showing a different operation than this
+        ? `<div class="dbg-alert">The ${name ? esc(name) : 'toys'} layer is showing a different operation than this
              peer's stored head. The next gesture will be parented to the stored head.</div>`
         : ''}
       ${(head.mergeTips?.length ?? 0)
         ? kv('merge tips', head.mergeTips.map(idHTML).join(' '))
         : kv('merge tips', '<span class="dbg-nil">none pending</span>')}
     </div>`
+  }).join('')
 }
 
 export function stateHTML(s) {
@@ -351,11 +359,13 @@ export function opRowsHTML(ops, head) {
       <summary class="dbg-op-sum">
         <span class="dbg-op-i">${o.i}</span>
         <span class="dbg-op-gesture">${esc(o.gesture ?? '?')}</span>
+        ${o.layer ? `<span class="dbg-tag">${esc(o.layer)}</span>` : ''}
         ${flags}
         <span class="dbg-op-entries">${o.mutations == null ? '—' : o.entries}</span>
       </summary>
       <div class="dbg-op-body">
         ${kv('id', idHTML(o.id))}
+        ${o.layer ? kv('layer', esc(o.layer)) : ''}
         ${kv('author', idHTML(o.authorId))}
         ${kv('parents', o.parents?.length ? o.parents.map(idHTML).join(' ') : '<span class="dbg-nil">root</span>')}
         ${kv('recorded', o.ts ? esc(clockTime(o.ts)) : '—')}
@@ -526,8 +536,8 @@ export function debugBody(data, { snapshot = false, takenAt = Date.now() } = {})
         </div>`}
     ${section('sec-state', 'State', healthBadgesHTML(s?.net), stateHTML(s), open)}
     ${section('sec-ops', 'Operations',
-      `${s?.head?.agrees === false ? '<span class="dbg-bad">head mismatch</span> · ' : ''}${s?.ops?.total ?? 0}`,
-      headCardHTML(s) + opRowsHTML(s?.ops, s?.head?.head), open)}
+      `${layersOf(s).some(l => l.head?.agrees === false) ? '<span class="dbg-bad">head mismatch</span> · ' : ''}${s?.ops?.total ?? 0}`,
+      headCardHTML(s) + layersOf(s).map(l => opRowsHTML(l.ops, l.head?.head)).join(''), open)}
     ${section('sec-stream', 'Stream', streamMeta, `
       ${snapshot ? '' : `<div class="dbg-chips">${channelChipsHTML(counts)}</div>
         <div class="dbg-chips">${viewChipsHTML({ warnOnly: data?.warnOnly })}</div>`}

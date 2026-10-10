@@ -16,9 +16,10 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { ensureLayerId } from '../../src/op_layers.js'
+import { TOYS_LAYER } from '../../src/toys.js'
 import {
-  placeToy, makeLayerAPI, activateAllToyScriptsDom, projectLayer, ensureLayerId,
-  _clearSvgTextCache, _resetToyScriptState,
+  placeToy, makeLayerAPI, activateAllToyScriptsDom, projectLayer, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { getOps, getContent, appendOp, appendCheckpoint } from '../../src/op_dag.js'
 import { projectTips, nearestCheckpoint, latestCut, isCheckpoint, opsSinceCheckpoint, CHECKPOINT_MIN_OPS } from '../../src/op_checkpoint.js'
@@ -56,6 +57,7 @@ afterEach(() => { vi.unstubAllGlobals() })
 function freshLayer() {
   const el = document.createElementNS(SVG_NS, 'g')
   el.id = 'toys-layer'
+  ensureLayerId(el, TOYS_LAYER)
   return el
 }
 
@@ -66,7 +68,7 @@ function freshLayer() {
 function makePeer(authorId) {
   const tableId = `convergence-table-${_tableCounter++}`
   const ydoc = new Y.Doc()
-  const layer = ensureLayerId(freshLayer())
+  const layer = ensureLayerId(freshLayer(), TOYS_LAYER)
   const api = makeLayerAPI(ydoc, () => layer, { id: authorId }, tableId)
   const peer = { id: authorId, tableId, ydoc, layer, api }
   _peers.push(peer)
@@ -79,8 +81,8 @@ function makePeer(authorId) {
 function seedGenesis(peers) {
   const genesis = { id: 'genesis', parents: [], authorId: 'system', gesture: 'checkpoint', ts: 0, mutations: [] }
   for (const p of peers) {
-    appendCheckpoint(p.ydoc, genesis, [])
-    setHead(p.tableId, genesis.id)
+    appendCheckpoint(p.ydoc, TOYS_LAYER, genesis, [])
+    setHead(p.tableId, TOYS_LAYER, genesis.id)
   }
   return genesis
 }
@@ -93,13 +95,13 @@ function deliver(peer, ops, order = ops.map((_, i) => i)) {
   for (const op of ops) {
     if (isCheckpoint(op)) {
       // A checkpoint's content travels with it, in one update.
-      const from = _peers.find(p => getContent(p.ydoc).has(op.id))
+      const from = _peers.find(p => getContent(p.ydoc, TOYS_LAYER).has(op.id))
       peer.ydoc.transact(() => {
-        getOps(peer.ydoc).set(op.id, op)
-        if (from) getContent(peer.ydoc).set(op.id, getContent(from.ydoc).get(op.id))
+        getOps(peer.ydoc, TOYS_LAYER).set(op.id, op)
+        if (from) getContent(peer.ydoc, TOYS_LAYER).set(op.id, getContent(from.ydoc, TOYS_LAYER).get(op.id))
       })
     } else {
-      getOps(peer.ydoc).set(op.id, op)
+      getOps(peer.ydoc, TOYS_LAYER).set(op.id, op)
     }
   }
   const results = []
@@ -110,7 +112,7 @@ function deliver(peer, ops, order = ops.map((_, i) => i)) {
 }
 
 function localTipsOf(peer) {
-  return maximalTips(getOps(peer.ydoc), [getHead(peer.tableId), ...getMergeTips(peer.tableId)])
+  return maximalTips(getOps(peer.ydoc, TOYS_LAYER), [getHead(peer.tableId, TOYS_LAYER), ...getMergeTips(peer.tableId, TOYS_LAYER)])
 }
 
 /** Every peer's live DOM matches every other's, and matches a from-scratch
@@ -121,10 +123,10 @@ function assertConverged(peers) {
     expect(serialized[i]).toEqual(serialized[0])
   }
 
-  const ops = getOps(peers[0].ydoc)
+  const ops = getOps(peers[0].ydoc, TOYS_LAYER)
   const unionTips = maximalTips(ops, peers.flatMap(localTipsOf))
   const scratch = freshLayer()
-  projectTips(scratch, ops, getContent(peers[0].ydoc), unionTips, [])
+  projectTips(scratch, ops, getContent(peers[0].ydoc, TOYS_LAYER), unionTips, [])
   expect([...scratch.children].map(serializeNode)).toEqual(serialized[0])
 }
 
@@ -137,8 +139,8 @@ async function place(peer, id, toyType, x, y) {
 }
 
 function getOp(peer) {
-  const head = getHead(peer.tableId)
-  return getOps(peer.ydoc).get(head)
+  const head = getHead(peer.tableId, TOYS_LAYER)
+  return getOps(peer.ydoc, TOYS_LAYER).get(head)
 }
 
 describe('concurrent convergence', () => {
@@ -242,7 +244,7 @@ describe('concurrent convergence', () => {
     deliver(P, [opQ])
     deliver(Q, [opP])
 
-    // R commits locally: consumeParents(R) is [p, q] — exactly the
+    // R commits locally: consumeParents(R, TOYS_LAYER) is [p, q] — exactly the
     // descendant-of-a-merge-tip shape the bug is about.
     const opR = await place(R, 'dieR', 'dice_d6', 80, 80)
 
@@ -332,8 +334,8 @@ function seedGenesisWithFiller(peers, n) {
   const genesis = seedGenesis(peers)
   const chain = fillerChain(genesis.id, n)
   for (const p of peers) {
-    for (const op of chain) getOps(p.ydoc).set(op.id, op)
-    setHead(p.tableId, chain[chain.length - 1].id)
+    for (const op of chain) getOps(p.ydoc, TOYS_LAYER).set(op.id, op)
+    setHead(p.tableId, TOYS_LAYER, chain[chain.length - 1].id)
   }
   return chain[chain.length - 1].id
 }
@@ -367,26 +369,26 @@ describe('merge checkpoints (§5.6)', () => {
     expect(rP.mergeCheckpoint).toBeTruthy()
     expect(rP.mergeCheckpoint).toBe(rQ.mergeCheckpoint)
 
-    const ckP = getOps(P.ydoc).get(rP.mergeCheckpoint)
-    const ckQ = getOps(Q.ydoc).get(rQ.mergeCheckpoint)
+    const ckP = getOps(P.ydoc, TOYS_LAYER).get(rP.mergeCheckpoint)
+    const ckQ = getOps(Q.ydoc, TOYS_LAYER).get(rQ.mergeCheckpoint)
     expect(ckP).toEqual(ckQ)
 
     // Identical content too, so the shared maps collapse to one entry each.
-    const contentP = getContent(P.ydoc).get(rP.mergeCheckpoint)
-    const contentQ = getContent(Q.ydoc).get(rQ.mergeCheckpoint)
+    const contentP = getContent(P.ydoc, TOYS_LAYER).get(rP.mergeCheckpoint)
+    const contentQ = getContent(Q.ydoc, TOYS_LAYER).get(rQ.mergeCheckpoint)
     expect(contentP).toEqual(contentQ)
     expect(JSON.stringify(contentP)).toBe(JSON.stringify(contentQ))
 
     const shared = new Y.Doc()
-    appendCheckpoint(shared, ckP, contentP)
-    const sizeBefore = getOps(shared).size
-    appendCheckpoint(shared, ckQ, contentQ)
-    expect(getOps(shared).size).toBe(sizeBefore)
-    expect(getContent(shared).size).toBe(1)
+    appendCheckpoint(shared, TOYS_LAYER, ckP, contentP)
+    const sizeBefore = getOps(shared, TOYS_LAYER).size
+    appendCheckpoint(shared, TOYS_LAYER, ckQ, contentQ)
+    expect(getOps(shared, TOYS_LAYER).size).toBe(sizeBefore)
+    expect(getContent(shared, TOYS_LAYER).size).toBe(1)
 
     // Genesis keeps its content; the merge checkpoint is the newest cut.
     for (const peer of [P, Q]) {
-      expect([...getContent(peer.ydoc).keys()].sort()).toEqual(['genesis', rP.mergeCheckpoint].sort())
+      expect([...getContent(peer.ydoc, TOYS_LAYER).keys()].sort()).toEqual(['genesis', rP.mergeCheckpoint].sort())
     }
 
     assertConverged([P, Q])
@@ -430,9 +432,9 @@ describe('merge checkpoints (§5.6)', () => {
     expect(rP2.result).toBe(RECEIVED_REBUILT)
     expect(rQ2.result).toBe(RECEIVED_REBUILT)
 
-    const ops = getOps(P.ydoc)
+    const ops = getOps(P.ydoc, TOYS_LAYER)
     const tips2 = localTipsOf(P)
-    expect(nearestCheckpoint(ops, getContent(P.ydoc), tips2)).toBe(ck)
+    expect(nearestCheckpoint(ops, getContent(P.ydoc, TOYS_LAYER), tips2)).toBe(ck)
     expect(opsSinceCheckpoint(ops, tips2)).toBe(2) // just opP2, opQ2
 
     assertConverged([P, Q])
@@ -465,7 +467,7 @@ describe('merge checkpoints (§5.6)', () => {
     expect(localTipsOf(P)).toEqual([ck])
     expect(localTipsOf(Q)).toEqual([ck])
 
-    const ckOp = getOps(P.ydoc).get(ck)
+    const ckOp = getOps(P.ydoc, TOYS_LAYER).get(ck)
 
     // Case A: a peer (Q, above) that already rebuilt the same T receives
     // the literal checkpoint as SUBSEQUENT — a no-op delta collapsing its
@@ -486,7 +488,7 @@ describe('merge checkpoints (§5.6)', () => {
     const [rR] = deliver(R, [opQ, ckOp], [1])
     expect(rR.result).toBe(RECEIVED_REBUILT)
     expect(localTipsOf(R)).toEqual([ck])
-    expect(nearestCheckpoint(getOps(R.ydoc), getContent(R.ydoc), [ck])).toBe(ck)
+    expect(nearestCheckpoint(getOps(R.ydoc, TOYS_LAYER), getContent(R.ydoc, TOYS_LAYER), [ck])).toBe(ck)
 
     // Case C: S has its own concurrent op (opS), not in T. Receiving ck
     // lands S on tips [ck, opS] (or [opS, ck] — order irrelevant), and
@@ -500,13 +502,13 @@ describe('merge checkpoints (§5.6)', () => {
     // S's own merge checkpoint still needs relaying to everyone else for
     // full convergence — deliver it around like any other op, along with
     // opS itself (P, Q and R never saw S's own concurrent placement).
-    const ck2 = getOps(S.ydoc).get(rS.mergeCheckpoint)
+    const ck2 = getOps(S.ydoc, TOYS_LAYER).get(rS.mergeCheckpoint)
     deliver(P, [opS, ck2], [1])
     deliver(Q, [opS, ck2], [1])
     deliver(R, [opS, ck2], [1])
 
     // Whichever checkpoints each peer holds, genesis's content is among them.
-    for (const peer of [P, Q, R, S]) expect(getContent(peer.ydoc).has('genesis')).toBe(true)
+    for (const peer of [P, Q, R, S]) expect(getContent(peer.ydoc, TOYS_LAYER).has('genesis')).toBe(true)
 
     assertConverged([P, Q, R, S])
   })

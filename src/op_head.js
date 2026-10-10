@@ -6,29 +6,25 @@
 
 import { getOp, isAncestor } from './op_dag.js'
 
-const KEY_PREFIX = 'tt_head_'
-
-const key = (tableId) => `${KEY_PREFIX}${tableId}`
-
 const store = () => {
   try { return globalThis.localStorage ?? null } catch { return null }
 }
 
-export function getHead(tableId) {
+export function getHead(tableId, layer) {
   if (!tableId) return null
-  try { return store()?.getItem(key(tableId)) ?? null } catch { return null }
+  try { return store()?.getItem(layer.headKey(tableId)) ?? null } catch { return null }
 }
 
-export function setHead(tableId, opId) {
+export function setHead(tableId, layer, opId) {
   if (!tableId) return
   try {
-    if (opId == null) store()?.removeItem(key(tableId))
-    else              store()?.setItem(key(tableId), opId)
+    if (opId == null) store()?.removeItem(layer.headKey(tableId))
+    else              store()?.setItem(layer.headKey(tableId), opId)
   } catch { /* private mode, quota — the head recomputes from the log */ }
 }
 
-export function clearHead(tableId) {
-  setHead(tableId, null)
+export function clearHead(tableId, layer) {
+  setHead(tableId, layer, null)
 }
 
 /**
@@ -42,37 +38,35 @@ export function clearHead(tableId) {
  * does, these merge tips collapse immediately, so it's no longer only the
  * next local commit that joins branches in the graph.
  */
-const mergeKey = (tableId) => `${KEY_PREFIX}merge_${tableId}`
-
-export function getMergeTips(tableId) {
+export function getMergeTips(tableId, layer) {
   if (!tableId) return []
   try {
-    const raw = store()?.getItem(mergeKey(tableId))
+    const raw = store()?.getItem(layer.mergeKey(tableId))
     return raw ? JSON.parse(raw) : []
   } catch { return [] }
 }
 
-export function addMergeTip(tableId, opId) {
+export function addMergeTip(tableId, layer, opId) {
   if (!tableId || !opId) return
-  const tips = getMergeTips(tableId)
+  const tips = getMergeTips(tableId, layer)
   if (tips.includes(opId)) return
-  try { store()?.setItem(mergeKey(tableId), JSON.stringify([...tips, opId])) } catch { /* ignore */ }
+  try { store()?.setItem(layer.mergeKey(tableId), JSON.stringify([...tips, opId])) } catch { /* ignore */ }
 }
 
 /** Replace the whole merge-tip list — used once a receive computes the new
  * maximal tip set directly, rather than accreting one tip at a time. */
-export function setMergeTips(tableId, tips) {
+export function setMergeTips(tableId, layer, tips) {
   if (!tableId) return
   const clean = [...new Set((tips ?? []).filter(Boolean))]
   try {
-    if (!clean.length) store()?.removeItem(mergeKey(tableId))
-    else store()?.setItem(mergeKey(tableId), JSON.stringify(clean))
+    if (!clean.length) store()?.removeItem(layer.mergeKey(tableId))
+    else store()?.setItem(layer.mergeKey(tableId), JSON.stringify(clean))
   } catch { /* ignore */ }
 }
 
-export function clearMergeTips(tableId) {
+export function clearMergeTips(tableId, layer) {
   if (!tableId) return
-  try { store()?.removeItem(mergeKey(tableId)) } catch { /* ignore */ }
+  try { store()?.removeItem(layer.mergeKey(tableId)) } catch { /* ignore */ }
 }
 
 /**
@@ -89,8 +83,8 @@ export function maximalTips(ops, ids) {
 }
 
 /** This peer's local tips: head plus merge tips, kept maximal. */
-export function localTips(tableId, ops) {
-  return maximalTips(ops, [getHead(tableId), ...getMergeTips(tableId)])
+export function localTips(tableId, layer, ops) {
+  return maximalTips(ops, [getHead(tableId, layer), ...getMergeTips(tableId, layer)])
 }
 
 /**
@@ -99,9 +93,9 @@ export function localTips(tableId, ops) {
  * to be made is what folds them into the graph, so once it's built there
  * is nothing left pending.
  */
-export function consumeParents(tableId) {
-  const head = getHead(tableId)
-  const tips = getMergeTips(tableId)
-  clearMergeTips(tableId)
+export function consumeParents(tableId, layer) {
+  const head = getHead(tableId, layer)
+  const tips = getMergeTips(tableId, layer)
+  clearMergeTips(tableId, layer)
   return [head, ...tips].filter(Boolean)
 }
