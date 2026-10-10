@@ -10,6 +10,7 @@ import { apply as applyWire } from './op_wire_mutation.js'
 import { getOp, isAncestor, lca, ancestorsInclusive, totalOrder, pathFrom, heads, isOrphan } from './op_dag.js'
 import { projectFrom, projectTips, nearestCheckpoint, isCheckpoint, deltaMutations } from './op_checkpoint.js'
 import { maximalTips } from './op_head.js'
+import { layerNameOf } from './op_layers.js'
 import * as Trace from './trace.js'
 
 let _suppressed = false
@@ -239,7 +240,7 @@ const normalizeTips = (tipsOrHead) =>
  *
  * Returns { kind, D } — D is everything new, for the caller to apply.
  * Pairwise lca/tips reporting for CONFLICTING is the caller's job
- * (receiveOp) — the branch dialog (labelBranches, handleToyBranchConflict)
+ * (receiveOp) — the branch dialog (labelBranches, handleBranchConflict)
  * expects a head-vs-incoming pair, and N-way conflicts stay unhandled.
  */
 export function classify(ops, tips, incomingId, joinSequence = []) {
@@ -291,7 +292,7 @@ export function advanceTo(layerEl, ops, content, headId, targetId, joinSequence 
       // The path IS the order of application — the one thing about replay
       // that is impossible to infer from the resulting DOM.
       Trace.op('advance', `replaying ${path.length} operation${path.length === 1 ? '' : 's'}`, () => ({
-        mode: 'replay', from: headId, to: targetId,
+        layer: layerNameOf(layerEl), mode: 'replay', from: headId, to: targetId,
         path: path.map((id, i) => ({ i, id, gesture: getOp(ops, id)?.gesture ?? null,
                                      authorId: getOp(ops, id)?.authorId ?? null })),
       }))
@@ -300,7 +301,7 @@ export function advanceTo(layerEl, ops, content, headId, targetId, joinSequence 
       }
     } else {
       Trace.op('advance', 'rebuilding from the nearest checkpoint',
-        { mode: 'project', from: headId, to: targetId })
+        { layer: layerNameOf(layerEl), mode: 'project', from: headId, to: targetId })
       projectFrom(layerEl, ops, content, targetId, joinSequence)
     }
     return targetId
@@ -345,7 +346,7 @@ export const RECEIVED_ORPHAN     = 'received-orphan'
  * - rebuilt: the DOM is order-sensitive against what arrived, so it's
  *   reset to the latest cut checkpoint and replayed (projectTips) rather
  *   than patched; head stays, merge tips update the same way as merged.
- *   The caller (toys.js's receiveToyOp) may write a merge checkpoint
+ *   The caller (op_layer.js's receiveLayerOp) may write a merge checkpoint
  *   parented on this same tip set right after — when it does, the merge
  *   tips collapse immediately instead of waiting for the next commit.
  * - conflicting: nothing is applied. The caller resolves via the branch
@@ -358,7 +359,7 @@ export function receiveOp(layerEl, ops, content, headId, incomingId, joinSequenc
 
   if (isOrphan(ops, incomingId)) {
     Trace.op('classify', `${incomingId} is an orphan — ignored`, () => ({
-      incoming: incomingId, tips: localTipsArr,
+      layer: layerNameOf(layerEl), incoming: incomingId, tips: localTipsArr,
       gesture:  getOp(ops, incomingId)?.gesture ?? null,
       authorId: getOp(ops, incomingId)?.authorId ?? null,
     }), 'warn')
@@ -368,7 +369,7 @@ export function receiveOp(layerEl, ops, content, headId, incomingId, joinSequenc
   const { kind, D } = classify(ops, localTipsArr, incomingId, joinSequence)
 
   Trace.op('classify', `${incomingId} is ${kind} relative to local tips`, () => ({
-    incoming: incomingId, tips: localTipsArr, kind,
+    layer: layerNameOf(layerEl), incoming: incomingId, tips: localTipsArr, kind,
     gesture:  getOp(ops, incomingId)?.gesture ?? null,
     authorId: getOp(ops, incomingId)?.authorId ?? null,
   }), kind === CONFLICTING ? 'warn' : 'info')
@@ -401,7 +402,7 @@ export function receiveOp(layerEl, ops, content, headId, incomingId, joinSequenc
   // REBUILT
   withSuppressedCapture(() => projectTips(layerEl, ops, content, newTips, joinSequence))
   Trace.op('rebuild', `rebuilt ${newTips.length} tip${newTips.length === 1 ? '' : 's'}`, () => ({
-    tips: newTips, cut: nearestCheckpoint(ops, content, newTips), incoming: incomingId,
+    layer: layerNameOf(layerEl), tips: newTips, cut: nearestCheckpoint(ops, content, newTips), incoming: incomingId,
   }))
   return { result: RECEIVED_REBUILT, head: headId, mergeTip: incomingId, mergeTips: newMergeTips }
 }

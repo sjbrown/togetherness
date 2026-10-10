@@ -15,10 +15,9 @@
 
 import { serializeNode, apply as applyWire, ensureIds } from './op_wire_mutation.js'
 import { ancestors, ancestorsInclusive, getOp, isAncestor, pathFrom, totalOrder } from './op_dag.js'
-import { ensureLayerId, LAYER_DATA_ID } from './toys.js'
+import { layerNameOf } from './op_layers.js'
 import * as Trace from './trace.js'
 
-export { ensureLayerId, LAYER_DATA_ID }
 export const CHECKPOINT_GESTURE = 'checkpoint'
 
 // Below this many ops since the last checkpoint, writing a new one isn't
@@ -92,7 +91,6 @@ export function lastCheckpointTs(ops) {
  * byte-identical output (seeding a forked table) can supply them.
  */
 export function checkpointOp(layerEl, { authorId, parents = [], id, ts = Date.now() } = {}) {
-  ensureLayerId(layerEl)
   ensureIds(layerEl)
 
   const added = []
@@ -235,12 +233,11 @@ export function applyOps(layerEl, ops, content, ids) {
  * matter what order they received the operations in.
  */
 export function projectTips(layerEl, ops, content, tipIds, joinSequence = []) {
-  ensureLayerId(layerEl)
   while (layerEl.firstChild) layerEl.removeChild(layerEl.firstChild)
 
   const tips = normalizeTips(tipIds)
   if (!tips.length) {
-    Trace.op('project-empty', 'nothing to project — no tips', { tips: [] })
+    Trace.op('project-empty', 'nothing to project — no tips', { layer: layerNameOf(layerEl), tips: [] })
     return layerEl
   }
 
@@ -253,6 +250,7 @@ export function projectTips(layerEl, ops, content, tipIds, joinSequence = []) {
   Trace.op('project',
     `rebuilt from ${base ? 'checkpoint' : 'nothing'} + ${path.length} operation${path.length === 1 ? '' : 's'}`,
     () => ({
+      layer: layerNameOf(layerEl),
       tips,
       checkpoint: base,
       path: path.map((id, i) => ({ i, id, gesture: getOp(ops, id)?.gesture ?? null,

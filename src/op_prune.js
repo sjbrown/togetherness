@@ -36,9 +36,14 @@ export function ageOf(id) {
   return Date.now() - firstSeen.get(id)
 }
 
-/** Boot: every checkpoint already in the loaded log counts as just seen. */
-export function noteAllSeen(ops) {
+/** Forget every first sight; a page load starts all the clocks again. */
+export function resetFirstSeen() {
   firstSeen.clear()
+}
+
+/** Boot: every checkpoint already in a loaded log counts as just seen. Op
+ * ids are globally unique, so one map serves every layer. */
+export function noteAllSeen(ops) {
   for (const op of ops.values()) if (isCheckpoint(op)) noteSeen(op.id)
 }
 
@@ -105,9 +110,9 @@ function rebuildContent(scratch, ops, content, rootId, joinSequence) {
  * has to be rebuilt. Returns { root, deleted } or null if there was nothing
  * to do.
  */
-export function prune(ydoc, tips, { scratch = null, joinSequence = [] } = {}) {
-  const ops = getOps(ydoc)
-  const content = getContent(ydoc)
+export function prune(ydoc, layer, tips, { scratch = null, joinSequence = [] } = {}) {
+  const ops = getOps(ydoc, layer)
+  const content = getContent(ydoc, layer)
   const localTips = maximalTips(ops, tips)
 
   const root = choosePruneRoot(ops, localTips)
@@ -131,6 +136,6 @@ export function prune(ydoc, tips, { scratch = null, joinSequence = [] } = {}) {
     }
   })
   Trace.op('prune', `pruned ${ids.length} operation${ids.length === 1 ? '' : 's'} behind ${root}`,
-    { root, deleted: ids.length })
+    { layer: layer.name, root, deleted: ids.length })
   return { root, deleted: ids.length }
 }

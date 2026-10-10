@@ -10,12 +10,12 @@
  * REVISION_PLAN.md Phase C) — so a handler just mutates it directly:
  *
  *   const records = runInEnvelope(toyEl, () => handler.run(toyEl))
- *   commitGesture(ydoc, records, { gesture, authorId, parents })
+ *   commitGesture(ydoc, layer, records, { gesture, authorId, parents })
  *
  * runInEnvelope's only job now is capturing what a handler did, as raw
  * MutationRecord[], so commitGesture (op_wire_mutation.js's serialize) can
  * turn that into an operation. There is no Yjs tree to translate into
- * anymore; toys.js's runGesture is the one real caller.
+ * anymore; op_layer.js's runGesture is the one real caller.
  *
  * Benefits to this design:
    - a MutationObserver is transparent (handler code is unmodified, ordinary
@@ -30,6 +30,7 @@
 import { serialize as serializeRecords } from './op_wire_mutation.js'
 import { appendOp } from './op_dag.js'
 import { isReplaying } from './op_replay.js'
+import { LAYER_MARKER } from './op_layers.js'
 import * as Trace from './trace.js'
 
 const MUTATION_OPTS = {
@@ -44,17 +45,34 @@ const MUTATION_OPTS = {
 // ── raw mutation capture ──────────────────────────────────────────────
 
 let _envelopeDepth = 0
+let _openLayer = null
 
 /** True while a runInEnvelope() capture is on the call stack **/
 export const isInsideEnvelope = () => _envelopeDepth > 0
 
 /**
- * Run fn() while watching the toys layer for DOM mutations, then return the
+ * Throws if an envelope is open on a layer other than `layerName`. A gesture
+ * never spans layers, and the open envelope observes only its own layer, so
+ * work on another would be silently lost rather than captured.
+ */
+export function assertOpenOn(layerName) {
+  if (_envelopeDepth > 0 && layerName && _openLayer && layerName !== _openLayer) {
+    throw new Error(`[envelope] a gesture cannot span layers `
+      + `(open on "${_openLayer}", nested on "${layerName}")`)
+  }
+}
+
+/**
+ * Run fn() while watching an op layer for DOM mutations, then return the
  * raw MutationRecord[] produced.
  *
- * Observes the enclosing #toys-layer element — found via closest() from
- * toyEl, so a handler reaching anywhere else in the layer (a die grabbing
- * a sibling die, a tray reaching into a contained toy) is still captured.
+ * Observes the enclosing layer element — found via closest() from toyEl on
+ * the layer marker, so a handler reaching anywhere else in the layer (a die
+ * grabbing a sibling die, a tray reaching into a contained toy) is still
+ * captured.
+ *
+ * A gesture never spans layers: an envelope nested inside one open on a
+ * different layer throws.
  *
  * Synchronous handlers only: if fn returns a thenable we throw rather than
  * silently drop the mutations it would make after its first await — a loud
@@ -74,12 +92,17 @@ export function runInEnvelope(toyEl, fn) {
   }
   // scopeEl falls back to toyEl's parent, then toyEl itself, to support
   // e.g. a detached toy in a unit test
-  const scopeEl = toyEl.closest?.('#toys-layer') ?? toyEl.parentNode ?? toyEl
+  const layerRootEl = toyEl.closest?.(`[${LAYER_MARKER}]`)
+  const scopeEl = layerRootEl ?? toyEl.parentNode ?? toyEl
+  const layerName = layerRootEl?.getAttribute(LAYER_MARKER) ?? null
+  assertOpenOn(layerName)
   const records = []
   const observer = new MutationObserver(muts => records.push(...muts))
   observer.observe(scopeEl, MUTATION_OPTS)
   const depth = ++_envelopeDepth
   const nested = depth > 1
+  const outerLayer = _openLayer
+  if (!nested) _openLayer = layerName
   const close = Trace.span(Trace.ENVELOPE, nested ? 'nested' : 'capture',
     nested ? 'envelope folded into an open one' : 'envelope captured a gesture')
   let threw = null
@@ -93,6 +116,7 @@ export function runInEnvelope(toyEl, fn) {
     throw err
   } finally {
     _envelopeDepth--
+    _openLayer = outerLayer
     records.push(...observer.takeRecords())
     observer.disconnect()
     // Records themselves are never handed to Trace: a MutationRecord holds
@@ -100,6 +124,7 @@ export function runInEnvelope(toyEl, fn) {
     // whole detached subtrees alive. Counts only.
     close({
       depth,
+      layer:   layerName,
       scope:   scopeEl?.getAttribute?.('id') ?? scopeEl?.getAttribute?.('data-id') ?? null,
       records: records.length,
       types:   countRecordTypes(records),
@@ -125,7 +150,7 @@ function countRecordTypes(records) {
  * Returns null for an empty batch — a gesture that changed nothing is not
  * an operation.
  */
-export function commitGesture(ydoc, records, { gesture = 'gesture', authorId = null, parents = [], id, ts } = {}) {
+export function commitGesture(ydoc, layer, records, { gesture = 'gesture', authorId = null, parents = [], id, ts } = {}) {
   const mutations = serializeRecords(records)
   if (!mutations.length) {
     Trace.envelope('empty', `gesture "${gesture}" changed nothing — not an operation`,
@@ -142,8 +167,8 @@ export function commitGesture(ydoc, records, { gesture = 'gesture', authorId = n
     ts: ts ?? Date.now(),
   }
   Trace.envelope('commit', `${gesture} → ${op.id}`,
-    { gesture, id: op.id, parents: op.parents, records: records.length, entries: mutations.length })
-  appendOp(ydoc, op)
+    { layer: layer.name, gesture, id: op.id, parents: op.parents, records: records.length, entries: mutations.length })
+  appendOp(ydoc, layer, op)
   return op
 }
 

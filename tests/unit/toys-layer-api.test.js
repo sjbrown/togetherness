@@ -14,8 +14,12 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
+  adoptBranch, buildLayerForkSeed, resolveBranchConflict,
+} from '../../src/op_layer.js'
+import { ensureLayerId } from '../../src/op_layers.js'
+import { TOYS_LAYER } from '../../src/toys.js'
+import {
   makeLayerAPI, projectLayer, placeToy, addToy, activateAllToyScriptsDom,
-  resolveToyBranchConflict, buildToyForkSeed, adoptToyBranch,
   undoToyGesture, redoToyGesture, deleteToysBatch, moveToysBatch,
   canUndoToyGesture, canRedoToyGesture,
   getGeom, reparentToyDom, applyMoveDom, runGesture, importToys,
@@ -28,6 +32,7 @@ import { apply as applyWire, invert } from '../../src/op_wire_mutation.js'
 import { populateFromSvgDoc } from '../../src/storage.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
+const bareG = () => ensureLayerId(document.createElementNS(SVG_NS, 'g'), TOYS_LAYER)
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
 const TOY_DIR = path.resolve(__dir, '../../src/toy')
 
@@ -56,8 +61,9 @@ afterEach(() => { vi.unstubAllGlobals() })
 /** A live doc plus its rendered layer, wired the way app.js wires them. */
 async function setup(...toys) {
   const ydoc  = new Y.Doc()
-  const layerEl = document.createElementNS(SVG_NS, 'g')
+  const layerEl = bareG()
   layerEl.id = 'toys-layer'
+  ensureLayerId(layerEl, TOYS_LAYER)
   for (const [id, toyType] of toys) {
     await addToy(ydoc, layerEl, { id, toyType, x: 100, y: 100, color: '#ffffff' })
   }
@@ -153,34 +159,34 @@ describe('gestures also land in the operation log', () => {
 
   test('a move appends an operation and advances the head', async () => {
     const { ydoc, L } = await withLog(['die1', 'dice_d6'])
-    expect(getHead(TABLE)).toBeNull()
+    expect(getHead(TABLE, TOYS_LAYER)).toBeNull()
 
     L.applyMoveCommit(L.find('die1'), 300, 400)
 
-    const ops = [...getOps(ydoc).values()]
+    const ops = [...getOps(ydoc, TOYS_LAYER).values()]
     expect(ops.length).toBe(1)
     expect(ops[0].gesture).toBe('move')
     expect(ops[0].authorId).toBe('user-a')
     expect(ops[0].mutations.length).toBeGreaterThan(0)
-    expect(getHead(TABLE)).toBe(ops[0].id)
+    expect(getHead(TABLE, TOYS_LAYER)).toBe(ops[0].id)
   })
 
   test('a second gesture parents onto the first', async () => {
     const { ydoc, L } = await withLog(['die1', 'dice_d6'])
     L.applyMoveCommit(L.find('die1'), 10, 10)
-    const first = getHead(TABLE)
+    const first = getHead(TABLE, TOYS_LAYER)
     L.applyMoveCommit(L.find('die1'), 20, 20)
-    const second = getHead(TABLE)
+    const second = getHead(TABLE, TOYS_LAYER)
 
     expect(second).not.toBe(first)
-    expect(getOps(ydoc).get(second).parents).toEqual([first])
+    expect(getOps(ydoc, TOYS_LAYER).get(second).parents).toEqual([first])
   })
 
   test('the recorded mutations replay onto a peer', async () => {
     const { ydoc, layerEl, L } = await withLog(['die1', 'dice_d6'])
     L.applyMoveCommit(L.find('die1'), 250, 175)
 
-    const op = getOps(ydoc).get(getHead(TABLE))
+    const op = getOps(ydoc, TOYS_LAYER).get(getHead(TABLE, TOYS_LAYER))
     const peer = layerEl.cloneNode(true)
     // undo the move on the clone so it stands at the pre-gesture state
     applyWire(invert(op.mutations), peer)
@@ -194,13 +200,13 @@ describe('gestures also land in the operation log', () => {
     const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
     const L = makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' })  // no tableId
     L.applyMoveCommit(L.find('die1'), 5, 5)
-    expect([...getOps(ydoc).values()].length).toBe(0)
+    expect([...getOps(ydoc, TOYS_LAYER).values()].length).toBe(0)
   })
 
   test('a delete is recorded too', async () => {
     const { ydoc, L } = await withLog(['die1', 'dice_d6'], ['tray1', 'tray_sum'])
     L.delete('die1')
-    const op = getOps(ydoc).get(getHead(TABLE))
+    const op = getOps(ydoc, TOYS_LAYER).get(getHead(TABLE, TOYS_LAYER))
     expect(op.gesture).toBe('delete')
   })
 })
@@ -222,13 +228,13 @@ describe('importToys — live-table SVG import (REVISION_PLAN.md C5)', () => {
   test('imported toys land on the live head as a real op, not a dead Yjs write', async () => {
     const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
     projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a', isCreator: true })
-    const before = getHead(TABLE)
+    const before = getHead(TABLE, TOYS_LAYER)
 
     const { importedToyEls } = populateFromSvgDoc(foreignSvgRoot(FOREIGN_TOY_G), ydoc)
     importToys(ydoc, layerEl, importedToyEls, { authorId: 'user-a', tableId: TABLE })
 
-    expect(getHead(TABLE)).not.toBe(before)
-    const op = getOps(ydoc).get(getHead(TABLE))
+    expect(getHead(TABLE, TOYS_LAYER)).not.toBe(before)
+    const op = getOps(ydoc, TOYS_LAYER).get(getHead(TABLE, TOYS_LAYER))
     expect(op.gesture).toBe('import')
     expect(op.parents).toEqual([before])
     expect(layerEl.querySelector('[data-id="t1"]')).not.toBeNull()
@@ -241,8 +247,9 @@ describe('importToys — live-table SVG import (REVISION_PLAN.md C5)', () => {
     const { importedToyEls } = populateFromSvgDoc(foreignSvgRoot(FOREIGN_TOY_G), ydoc)
     importToys(ydoc, layerEl, importedToyEls, { authorId: 'user-a', tableId: TABLE })
 
-    const fresh = document.createElementNS(SVG_NS, 'g')
+    const fresh = bareG()
     fresh.id = 'toys-layer'
+    ensureLayerId(fresh, TOYS_LAYER)
     projectLayer(ydoc, fresh, { tableId: 'peer-table', authorId: 'user-b' })
 
     expect(fresh.querySelector('[data-id="t1"]')).not.toBeNull()
@@ -251,11 +258,11 @@ describe('importToys — live-table SVG import (REVISION_PLAN.md C5)', () => {
   test('no valid toys to import records no operation', async () => {
     const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
     projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a', isCreator: true })
-    const before = getHead(TABLE)
+    const before = getHead(TABLE, TOYS_LAYER)
 
     importToys(ydoc, layerEl, [], { authorId: 'user-a', tableId: TABLE })
 
-    expect(getHead(TABLE)).toBe(before)
+    expect(getHead(TABLE, TOYS_LAYER)).toBe(before)
   })
 })
 
@@ -269,11 +276,11 @@ describe('projectLayer', () => {
 
     const head = projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a', isCreator: true })
 
-    const ops = [...getOps(ydoc).values()]
+    const ops = [...getOps(ydoc, TOYS_LAYER).values()]
     expect(ops.length).toBe(1)
     expect(ops[0].gesture).toBe('checkpoint')
     expect(head).toBe(ops[0].id)
-    expect(getHead(TABLE)).toBe(head)
+    expect(getHead(TABLE, TOYS_LAYER)).toBe(head)
     expect(layerEl.innerHTML).toBe(before)
   })
 
@@ -281,8 +288,9 @@ describe('projectLayer', () => {
     const { ydoc, layerEl } = await setup(['die1', 'dice_d6'], ['tray1', 'tray_sum'])
     projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a', isCreator: true })
 
-    const fresh = document.createElementNS(SVG_NS, 'g')
+    const fresh = bareG()
     fresh.id = 'toys-layer'
+    ensureLayerId(fresh, TOYS_LAYER)
     projectLayer(ydoc, fresh, { tableId: 'peer-table', authorId: 'user-b' })
 
     expect(fresh.innerHTML).toBe(layerEl.innerHTML)
@@ -303,8 +311,9 @@ describe('projectLayer', () => {
     const L = makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' }, TABLE)
     L.applyMoveCommit(L.find('die1'), 321, 123)
 
-    const fresh = document.createElementNS(SVG_NS, 'g')
+    const fresh = bareG()
     fresh.id = 'toys-layer'
+    ensureLayerId(fresh, TOYS_LAYER)
     projectLayer(ydoc, fresh, { tableId: TABLE, authorId: 'user-a' })
 
     expect(fresh.querySelector('[data-id="die1"] > svg').getAttribute('x'))
@@ -315,7 +324,7 @@ describe('projectLayer', () => {
     const { ydoc, layerEl } = await setup(['die1', 'dice_d6'])
     projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a', isCreator: true })
     projectLayer(ydoc, layerEl, { tableId: TABLE, authorId: 'user-a' })
-    expect([...getOps(ydoc).values()].filter(o => o.gesture === 'checkpoint').length).toBe(1)
+    expect([...getOps(ydoc, TOYS_LAYER).values()].filter(o => o.gesture === 'checkpoint').length).toBe(1)
   })
 })
 
@@ -324,8 +333,9 @@ describe('placeToy', () => {
   beforeEach(() => localStorage.clear())
 
   const emptyLayer = () => {
-    const el = document.createElementNS(SVG_NS, 'g')
+    const el = bareG()
     el.id = 'toys-layer'
+    ensureLayerId(el, TOYS_LAYER)
     return el
   }
 
@@ -338,7 +348,7 @@ describe('placeToy', () => {
                    { authorId: 'user-a', tableId: TABLE })
 
     expect(layerEl.querySelector('[data-id="die1"]')).toBeTruthy()
-    const op = getOps(ydoc).get(getHead(TABLE))
+    const op = getOps(ydoc, TOYS_LAYER).get(getHead(TABLE, TOYS_LAYER))
     expect(op.gesture).toBe('place')
     expect(op.mutations.length).toBeGreaterThan(0)
   })
@@ -363,7 +373,7 @@ describe('placeToy', () => {
       await placeToy(ydoc, layerEl, { id, toyType: 'dice_d6', x: 10, y: 10, color: '#fff' },
                      { authorId: 'user-a', tableId: TABLE })
     }
-    const placements = [...getOps(ydoc).values()].filter(o => o.gesture === 'place')
+    const placements = [...getOps(ydoc, TOYS_LAYER).values()].filter(o => o.gesture === 'place')
     expect(placements.length).toBe(2)
     expect(layerEl.querySelectorAll('[data-toy-type]').length).toBe(2)
   })
@@ -379,17 +389,17 @@ describe('L.render is projectLayer, gated by isCreator', () => {
 
     const head = L.render(layerEl)
 
-    expect(head).toBe(getHead(TABLE))
-    expect([...getOps(ydoc).values()][0].gesture).toBe('checkpoint')
+    expect(head).toBe(getHead(TABLE, TOYS_LAYER))
+    expect([...getOps(ydoc, TOYS_LAYER).values()][0].gesture).toBe('checkpoint')
   })
 
   test('a non-creator LayerAPI on a fresh table renders nothing and does not fork', async () => {
     const ydoc = new Y.Doc()
-    const layerEl = document.createElementNS(SVG_NS, 'g')
+    const layerEl = bareG()
     const L = makeLayerAPI(ydoc, () => layerEl, { id: 'user-b' }, TABLE, false)
 
     expect(L.render(layerEl)).toBeNull()
-    expect([...getOps(ydoc).values()].length).toBe(0)
+    expect([...getOps(ydoc, TOYS_LAYER).values()].length).toBe(0)
   })
 
   test('a second L.render call by the creator does not re-derive genesis', async () => {
@@ -397,7 +407,7 @@ describe('L.render is projectLayer, gated by isCreator', () => {
     const L = makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' }, TABLE, true)
     L.render(layerEl)
     L.render(layerEl)
-    expect([...getOps(ydoc).values()].filter(o => o.gesture === 'checkpoint').length).toBe(1)
+    expect([...getOps(ydoc, TOYS_LAYER).values()].filter(o => o.gesture === 'checkpoint').length).toBe(1)
   })
 
   test('a gesture through the LayerAPI, then L.render again, keeps the DOM live rather than reprojecting stale', async () => {
@@ -418,19 +428,19 @@ describe('creator vs joiner — the human protocol the boot race was missing', (
 
   test('a joiner with an empty log takes no genesis and returns null', async () => {
     const b = new Y.Doc()
-    const result = projectLayer(b, document.createElementNS(SVG_NS, 'g'),
+    const result = projectLayer(b, bareG(),
       { tableId: 'peerB', authorId: 'bob', isCreator: false })
 
     expect(result).toBeNull()
-    expect([...getOps(b).values()].length).toBe(0)
+    expect([...getOps(b, TOYS_LAYER).values()].length).toBe(0)
   })
 
   test('only the creator mints a genesis; the joiner ends up on the same one after sync', async () => {
     const a = new Y.Doc()  // creator
     const b = new Y.Doc()  // joiner
 
-    const aLayer = document.createElementNS(SVG_NS, 'g')
-    const bLayer = document.createElementNS(SVG_NS, 'g')
+    const aLayer = bareG()
+    const bLayer = bareG()
 
     // Real boot order: both render locally before any network activity.
     const aHead = projectLayer(a, aLayer, { tableId: 'peerA', authorId: 'alice', isCreator: true })
@@ -443,7 +453,7 @@ describe('creator vs joiner — the human protocol the boot race was missing', (
     Y.applyUpdate(b, Y.encodeStateAsUpdate(a))
     Y.applyUpdate(a, Y.encodeStateAsUpdate(b))
 
-    const ops = getOps(a)
+    const ops = getOps(a, TOYS_LAYER)
     expect([...ops.values()].filter(o => o.gesture === 'checkpoint').length).toBe(1)
 
     // The joiner's next render (triggered by the ops-Map observer in real
@@ -462,27 +472,27 @@ describe('creator vs joiner — the human protocol the boot race was missing', (
     // enforced by this function.
     const a = new Y.Doc()
     const b = new Y.Doc()
-    projectLayer(a, document.createElementNS(SVG_NS, 'g'), { tableId: 'x', authorId: 'alice', isCreator: true })
-    projectLayer(b, document.createElementNS(SVG_NS, 'g'), { tableId: 'y', authorId: 'bob', isCreator: true })
+    projectLayer(a, bareG(), { tableId: 'x', authorId: 'alice', isCreator: true })
+    projectLayer(b, bareG(), { tableId: 'y', authorId: 'bob', isCreator: true })
     Y.applyUpdate(b, Y.encodeStateAsUpdate(a))
-    expect([...getOps(b).values()].filter(o => o.gesture === 'checkpoint').length).toBe(2)
+    expect([...getOps(b, TOYS_LAYER).values()].filter(o => o.gesture === 'checkpoint').length).toBe(2)
   })
 })
 
-describe('resolveToyBranchConflict', () => {
+describe('resolveBranchConflict', () => {
   function fork(ydoc) {
     // L -> a1(alice, leader tip) / L -> s1(bob) -> s2(clyde) (splitter tip)
-    const base = document.createElementNS(SVG_NS, 'g')
+    const base = bareG()
     base.innerHTML = '<rect data-id="r" x="0"/>'
     const { op: L, content: lContent } = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
-    appendCheckpoint(ydoc, L, lContent)
+    appendCheckpoint(ydoc, TOYS_LAYER, L, lContent)
     const a1 = { id: 'a1', parents: ['L'], authorId: 'alice', gesture: 'move', ts: 1,
       mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '1' }] }
     const s1 = { id: 's1', parents: ['L'], authorId: 'bob', gesture: 'move', ts: 1,
       mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '2' }] }
     const s2 = { id: 's2', parents: ['s1'], authorId: 'clyde', gesture: 'move', ts: 2,
       mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '2', newValue: '3' }] }
-    appendOp(ydoc, a1); appendOp(ydoc, s1); appendOp(ydoc, s2)
+    appendOp(ydoc, TOYS_LAYER, a1); appendOp(ydoc, TOYS_LAYER, s1); appendOp(ydoc, TOYS_LAYER, s2)
     return { tips: ['a1', 's2'] }
   }
 
@@ -491,7 +501,7 @@ describe('resolveToyBranchConflict', () => {
     const { tips } = fork(ydoc)
     const joinSequence = ['alice', 'bob', 'clyde']
 
-    const out = resolveToyBranchConflict(ydoc, tips, { authorId: 'bob', joinSequence })
+    const out = resolveBranchConflict(ydoc, TOYS_LAYER, tips, { authorId: 'bob', joinSequence })
     expect(out.leader).toBe('a1')
     expect(out.splitter).toBe('s2')
     expect(out.lca).toBe('L')
@@ -502,7 +512,7 @@ describe('resolveToyBranchConflict', () => {
   test('a bystander who touched neither branch gets authoredSplitter: false', () => {
     const ydoc = new Y.Doc()
     const { tips } = fork(ydoc)
-    const out = resolveToyBranchConflict(ydoc, tips, { authorId: 'zoe', joinSequence: ['alice', 'bob', 'clyde'] })
+    const out = resolveBranchConflict(ydoc, TOYS_LAYER, tips, { authorId: 'zoe', joinSequence: ['alice', 'bob', 'clyde'] })
     expect(out.authoredSplitter).toBe(false)
     expect(out.orderedIds).toBeUndefined()
   })
@@ -510,7 +520,7 @@ describe('resolveToyBranchConflict', () => {
   test('the leader author is also just a bystander to the splitter', () => {
     const ydoc = new Y.Doc()
     const { tips } = fork(ydoc)
-    const out = resolveToyBranchConflict(ydoc, tips, { authorId: 'alice', joinSequence: ['alice', 'bob', 'clyde'] })
+    const out = resolveBranchConflict(ydoc, TOYS_LAYER, tips, { authorId: 'alice', joinSequence: ['alice', 'bob', 'clyde'] })
     expect(out.authoredSplitter).toBe(false)
   })
 
@@ -518,76 +528,76 @@ describe('resolveToyBranchConflict', () => {
     const ydoc = new Y.Doc()
     const { tips } = fork(ydoc)
     const joinSequence = ['alice', 'bob', 'clyde']
-    const forward = resolveToyBranchConflict(ydoc, [tips[0], tips[1]], { authorId: 'zoe', joinSequence })
-    const reversed = resolveToyBranchConflict(ydoc, [tips[1], tips[0]], { authorId: 'zoe', joinSequence })
+    const forward = resolveBranchConflict(ydoc, TOYS_LAYER, [tips[0], tips[1]], { authorId: 'zoe', joinSequence })
+    const reversed = resolveBranchConflict(ydoc, TOYS_LAYER, [tips[1], tips[0]], { authorId: 'zoe', joinSequence })
     expect(forward.leader).toBe(reversed.leader)
     expect(forward.splitter).toBe(reversed.splitter)
   })
 })
 
-describe('buildToyForkSeed', () => {
+describe('buildLayerForkSeed', () => {
   test('produces a genesis at the LCA plus the splitter ops, ready for forkLiveDoc', () => {
     const ydoc = new Y.Doc()
-    const base = document.createElementNS(SVG_NS, 'g')
+    const base = bareG()
     base.innerHTML = '<rect data-id="r" x="0"/>'
     const { op: L, content: lContent } = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
-    appendCheckpoint(ydoc, L, lContent)
+    appendCheckpoint(ydoc, TOYS_LAYER, L, lContent)
     const s1 = { id: 's1', parents: ['L'], authorId: 'bob', gesture: 'move', ts: 1,
       mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '9' }] }
-    appendOp(ydoc, s1)
+    appendOp(ydoc, TOYS_LAYER, s1)
 
-    const { genesis, rebasedOps, content } = buildToyForkSeed(ydoc, 'L', 's1', { authorId: 'bob', joinSequence: ['alice', 'bob'] })
+    const { genesis, rebasedOps, content } = buildLayerForkSeed(ydoc, TOYS_LAYER, 'L', 's1', { authorId: 'bob', joinSequence: ['alice', 'bob'] })
 
     expect(genesis.parents).toEqual([])
     expect(rebasedOps[0].parents).toEqual([genesis.id])
 
     const seeded = new Map([[genesis.id, genesis], ...rebasedOps.map(o => [o.id, o])])
-    const layer = document.createElementNS(SVG_NS, 'g')
+    const layer = bareG()
     projectFrom(layer, seeded, content, 's1')
     expect(layer.querySelector('[data-id="r"]').getAttribute('x')).toBe('9')
   })
 })
 
-describe('adoptToyBranch', () => {
+describe('adoptBranch', () => {
   const TABLE = 'adopt-table'
   beforeEach(() => localStorage.clear())
 
   function fork(ydoc) {
-    const base = document.createElementNS(SVG_NS, 'g')
+    const base = bareG()
     base.innerHTML = '<rect data-id="r" x="0"/>'
     const { op: L, content: lContent } = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
-    appendCheckpoint(ydoc, L, lContent)
+    appendCheckpoint(ydoc, TOYS_LAYER, L, lContent)
     const a1 = { id: 'a1', parents: ['L'], authorId: 'alice', gesture: 'move', ts: 1,
       mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '11' }] }
     const s1 = { id: 's1', parents: ['L'], authorId: 'bob', gesture: 'move', ts: 1,
       mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '22' }] }
-    appendOp(ydoc, a1); appendOp(ydoc, s1)
+    appendOp(ydoc, TOYS_LAYER, a1); appendOp(ydoc, TOYS_LAYER, s1)
     return { leader: 'a1', splitter: 's1' }
   }
 
   test('moves the DOM from the current head to an unrelated target head', () => {
     const ydoc = new Y.Doc()
     const { splitter, leader } = fork(ydoc)
-    const layerEl = document.createElementNS(SVG_NS, 'g')
-    projectFrom(layerEl, getOps(ydoc), getContent(ydoc), splitter)
-    setHead(TABLE, splitter)
+    const layerEl = bareG()
+    projectFrom(layerEl, getOps(ydoc, TOYS_LAYER), getContent(ydoc, TOYS_LAYER), splitter)
+    setHead(TABLE, TOYS_LAYER, splitter)
     expect(layerEl.querySelector('[data-id="r"]').getAttribute('x')).toBe('22')
 
-    adoptToyBranch(ydoc, layerEl, leader, TABLE)
+    adoptBranch(ydoc, TOYS_LAYER, layerEl, leader, TABLE)
 
     expect(layerEl.querySelector('[data-id="r"]').getAttribute('x')).toBe('11')
-    expect(getHead(TABLE)).toBe(leader)
+    expect(getHead(TABLE, TOYS_LAYER)).toBe(leader)
   })
 
   test('works even with no prior local head at all', () => {
     const ydoc = new Y.Doc()
     const { leader } = fork(ydoc)
-    const layerEl = document.createElementNS(SVG_NS, 'g')
+    const layerEl = bareG()
 
-    adoptToyBranch(ydoc, layerEl, leader, TABLE)
+    adoptBranch(ydoc, TOYS_LAYER, layerEl, leader, TABLE)
 
     expect(layerEl.querySelector('[data-id="r"]').getAttribute('x')).toBe('11')
-    expect(getHead(TABLE)).toBe(leader)
+    expect(getHead(TABLE, TOYS_LAYER)).toBe(leader)
   })
 })
 
@@ -596,15 +606,15 @@ describe('conflict resolution end to end — resolve, adopt, and fork-seed agree
   beforeEach(() => localStorage.clear())
 
   function forkedHistory(ydoc) {
-    const base = document.createElementNS(SVG_NS, 'g')
+    const base = bareG()
     base.innerHTML = '<rect data-id="r" x="0"/>'
     const { op: L, content: lContent } = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
-    appendCheckpoint(ydoc, L, lContent)
+    appendCheckpoint(ydoc, TOYS_LAYER, L, lContent)
     const a1 = { id: 'a1', parents: ['L'], authorId: 'alice', gesture: 'move', ts: 1,
       mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '99' }] }
     const s1 = { id: 's1', parents: ['L'], authorId: 'bob', gesture: 'move', ts: 1,
       mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '55' }] }
-    appendOp(ydoc, a1); appendOp(ydoc, s1)
+    appendOp(ydoc, TOYS_LAYER, a1); appendOp(ydoc, TOYS_LAYER, s1)
   }
 
   test('a bystander (zoe) ends up viewing the leader after resolving', () => {
@@ -612,11 +622,11 @@ describe('conflict resolution end to end — resolve, adopt, and fork-seed agree
     forkedHistory(ydoc)
     const joinSequence = ['alice', 'bob', 'zoe']
 
-    const decision = resolveToyBranchConflict(ydoc, ['a1', 's1'], { authorId: 'zoe', joinSequence })
+    const decision = resolveBranchConflict(ydoc, TOYS_LAYER, ['a1', 's1'], { authorId: 'zoe', joinSequence })
     expect(decision.authoredSplitter).toBe(false)
 
-    const layerEl = document.createElementNS(SVG_NS, 'g')
-    adoptToyBranch(ydoc, layerEl, decision.leader, TABLE)
+    const layerEl = bareG()
+    adoptBranch(ydoc, TOYS_LAYER, layerEl, decision.leader, TABLE)
     expect(layerEl.querySelector('[data-id="r"]').getAttribute('x')).toBe('99')
   })
 
@@ -625,24 +635,24 @@ describe('conflict resolution end to end — resolve, adopt, and fork-seed agree
     forkedHistory(ydoc)
     const joinSequence = ['alice', 'bob']
 
-    const decision = resolveToyBranchConflict(ydoc, ['a1', 's1'], { authorId: 'bob', joinSequence })
+    const decision = resolveBranchConflict(ydoc, TOYS_LAYER, ['a1', 's1'], { authorId: 'bob', joinSequence })
     expect(decision.authoredSplitter).toBe(true)
     expect(decision.orderedIds).toEqual(['bob'])
 
     // Bob's local view still adopts the leader — the session never leaves
     // the shared table.
-    const layerEl = document.createElementNS(SVG_NS, 'g')
-    adoptToyBranch(ydoc, layerEl, decision.leader, TABLE)
+    const layerEl = bareG()
+    adoptBranch(ydoc, TOYS_LAYER, layerEl, decision.leader, TABLE)
     expect(layerEl.querySelector('[data-id="r"]').getAttribute('x')).toBe('99')
 
     // The fork seed independently reconstructs what Bob was actually
     // doing on the splitter branch. Authored to orderedIds[0] (§6.5),
     // not to Bob's own id directly — same thing when Bob is the only
     // contributor, but see the next test for why the distinction matters.
-    const { genesis, rebasedOps, content } = buildToyForkSeed(
-      ydoc, decision.lca, decision.splitter, { authorId: decision.orderedIds[0], joinSequence })
+    const { genesis, rebasedOps, content } = buildLayerForkSeed(
+      ydoc, TOYS_LAYER, decision.lca, decision.splitter, { authorId: decision.orderedIds[0], joinSequence })
     const seeded = new Map([[genesis.id, genesis], ...rebasedOps.map(o => [o.id, o])])
-    const forkLayer = document.createElementNS(SVG_NS, 'g')
+    const forkLayer = bareG()
     projectFrom(forkLayer, seeded, content, decision.splitter)
     expect(forkLayer.querySelector('[data-id="r"]').getAttribute('x')).toBe('55')
   })
@@ -657,10 +667,10 @@ describe('conflict resolution end to end — resolve, adopt, and fork-seed agree
     // which one survives at that key, reintroducing the exact
     // peer-dependence §6.5 exists to remove.
     const ydoc = new Y.Doc()
-    const base = document.createElementNS(SVG_NS, 'g')
+    const base = bareG()
     base.innerHTML = '<rect data-id="r" x="0"/>'
     const { op: L, content: lContent } = checkpointOp(base, { id: 'L', authorId: 'alice', parents: [] })
-    appendCheckpoint(ydoc, L, lContent)
+    appendCheckpoint(ydoc, TOYS_LAYER, L, lContent)
     const a1 = { id: 'a1', parents: ['L'], authorId: 'alice', gesture: 'move', ts: 1,
       mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '99' }] }
     // Both Bob and Clyde contributed to the splitter branch.
@@ -668,19 +678,19 @@ describe('conflict resolution end to end — resolve, adopt, and fork-seed agree
       mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '0', newValue: '55' }] }
     const s2 = { id: 's2', parents: ['s1'], authorId: 'clyde', gesture: 'move', ts: 2,
       mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '55', newValue: '66' }] }
-    appendOp(ydoc, a1); appendOp(ydoc, s1); appendOp(ydoc, s2)
+    appendOp(ydoc, TOYS_LAYER, a1); appendOp(ydoc, TOYS_LAYER, s1); appendOp(ydoc, TOYS_LAYER, s2)
     const joinSequence = ['alice', 'bob', 'clyde']
 
     // Resolved once "on Bob's machine", once "on Clyde's" — same shared
     // ops, different local authorId for the bystander/splitter check.
-    const asBob   = resolveToyBranchConflict(ydoc, ['a1', 's2'], { authorId: 'bob', joinSequence })
-    const asClyde = resolveToyBranchConflict(ydoc, ['a1', 's2'], { authorId: 'clyde', joinSequence })
+    const asBob   = resolveBranchConflict(ydoc, TOYS_LAYER, ['a1', 's2'], { authorId: 'bob', joinSequence })
+    const asClyde = resolveBranchConflict(ydoc, TOYS_LAYER, ['a1', 's2'], { authorId: 'clyde', joinSequence })
     expect(asBob.orderedIds).toEqual(asClyde.orderedIds) // shared, order-preserved: ['bob', 'clyde']
 
-    const seedFromBob = buildToyForkSeed(
-      ydoc, asBob.lca, asBob.splitter, { authorId: asBob.orderedIds[0], joinSequence })
-    const seedFromClyde = buildToyForkSeed(
-      ydoc, asClyde.lca, asClyde.splitter, { authorId: asClyde.orderedIds[0], joinSequence })
+    const seedFromBob = buildLayerForkSeed(
+      ydoc, TOYS_LAYER, asBob.lca, asBob.splitter, { authorId: asBob.orderedIds[0], joinSequence })
+    const seedFromClyde = buildLayerForkSeed(
+      ydoc, TOYS_LAYER, asClyde.lca, asClyde.splitter, { authorId: asClyde.orderedIds[0], joinSequence })
 
     expect(seedFromBob.genesis).toEqual(seedFromClyde.genesis)
     expect(seedFromBob.genesis.authorId).toBe('bob') // orderedIds[0], not whoever resolved it
@@ -889,13 +899,13 @@ describe('deleteToysBatch / moveToysBatch — one op for a multi-select action',
 
   test('deletes several toys and appends exactly one operation', async () => {
     const { ydoc, layerEl } = await seededTwo()
-    const before = [...getOps(ydoc).values()].length
+    const before = [...getOps(ydoc, TOYS_LAYER).values()].length
 
     const op = deleteToysBatch(ydoc, layerEl, ['die1', 'die2'], { authorId: 'user-a', tableId: TABLE })
 
     expect(op).not.toBeNull()
     expect(op.gesture).toBe('delete-batch')
-    expect([...getOps(ydoc).values()].length).toBe(before + 1)
+    expect([...getOps(ydoc, TOYS_LAYER).values()].length).toBe(before + 1)
     expect(layerEl.querySelectorAll('[data-toy-type]').length).toBe(0)
   })
 
@@ -916,7 +926,7 @@ describe('deleteToysBatch / moveToysBatch — one op for a multi-select action',
 
   test('moves several toys and appends exactly one operation', async () => {
     const { ydoc, layerEl, L } = await seededTwo()
-    const before = [...getOps(ydoc).values()].length
+    const before = [...getOps(ydoc, TOYS_LAYER).values()].length
 
     const op = moveToysBatch(ydoc, layerEl,
       [{ id: 'die1', x: 400, y: 400 }, { id: 'die2', x: 450, y: 450 }],
@@ -924,7 +934,7 @@ describe('deleteToysBatch / moveToysBatch — one op for a multi-select action',
 
     expect(op).not.toBeNull()
     expect(op.gesture).toBe('move-batch')
-    expect([...getOps(ydoc).values()].length).toBe(before + 1)
+    expect([...getOps(ydoc, TOYS_LAYER).values()].length).toBe(before + 1)
     expect(L.getTtState(L.find('die1'))).toMatchObject({ cx: 400, cy: 400 })
     expect(L.getTtState(L.find('die2'))).toMatchObject({ cx: 450, cy: 450 })
   })

@@ -12,7 +12,7 @@
  * no tree lookups.
  */
 
-import { nodeRef, resolveRef } from './toys.js'
+import { layerNameOf } from './op_layers.js'
 import * as Trace from './trace.js'
 
 const SVG_NS   = 'http://www.w3.org/2000/svg'
@@ -42,6 +42,53 @@ export function ensureIds(root) {
     for (const el of root.querySelectorAll('*')) stamp(el)
   }
   return root
+}
+
+/**
+ * Address a node so a peer can find the same one in its own tree.
+ *
+ * An element answers with its data-id. A text node cannot carry one, so it
+ * answers with its parent's data-id and its position among that parent's
+ * childNodes. Returns null for anything unaddressable — a text node whose
+ * parent has no data-id, an element that was never stamped.
+ */
+export function nodeRef(node) {
+  if (!node) return null
+  if (node.nodeType === 1) {
+    const id = node.getAttribute('data-id')
+    return id ? { id } : null
+  }
+  if (node.nodeType === 3 || node.nodeType === 4) {
+    const parent = node.parentNode
+    if (!parent || parent.nodeType !== 1) return null
+    const parentId = parent.getAttribute('data-id')
+    if (!parentId) return null
+    return { parentId, index: Array.prototype.indexOf.call(parent.childNodes, node) }
+  }
+  return null
+}
+
+/**
+ * Inverse of nodeRef, resolved against rootEl (which may itself be the
+ * addressed element). Returns null when the ref names something absent —
+ * the caller decides whether that is fatal.
+ */
+export function resolveRef(ref, rootEl) {
+  if (!ref || !rootEl) return null
+  const findById = (id) =>
+    (rootEl.getAttribute?.('data-id') === id)
+      ? rootEl
+      : rootEl.querySelector(`[data-id="${id}"]`)
+
+  if (ref.id !== undefined) return findById(ref.id)
+
+  if (ref.parentId !== undefined) {
+    const parent = findById(ref.parentId)
+    if (!parent) return null
+    const child = parent.childNodes[ref.index]
+    return (child && (child.nodeType === 3 || child.nodeType === 4)) ? child : null
+  }
+  return null
 }
 
 // ── node ⇄ plain object ─────────────────────────────────────────────────
@@ -201,6 +248,7 @@ function matchesSerialized(node, s) {
  */
 export function apply(wire, rootEl) {
   Trace.wire('apply', `applying ${wire?.length ?? 0} entries`, () => ({
+    layer:   layerNameOf(rootEl),
     entries: wire?.length ?? 0,
     root:    rootEl?.getAttribute?.('data-id') ?? rootEl?.getAttribute?.('id') ?? null,
     wire,
@@ -222,7 +270,7 @@ export function apply(wire, rootEl) {
     const target = resolveRef(entry.target, rootEl)
     if (!target) {
       Trace.wire('apply-unresolvable', `cannot resolve ${JSON.stringify(entry.target)}`,
-        { entry }, 'error')
+        { layer: layerNameOf(rootEl), entry }, 'error')
       throw new WireApplyError(`unresolvable target ${JSON.stringify(entry.target)}`)
     }
 
