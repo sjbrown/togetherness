@@ -11,7 +11,7 @@
  * persistence.
  *
  * Operation {
- *   id, parents[], authorId, gesture, mutations[], ts
+ *   id, parents[], authorId, gesture, mutations[], ts, reverts?
  * }
  */
 
@@ -207,99 +207,87 @@ export function sharedTips(ops) {
 // ── ordering ────────────────────────────────────────────────────────────
 
 /**
- * Simulate one author's own undo/redo stack by replaying their ops, in
- * causal order (oldest first), along the primary ancestry of headId.
- *
- * A real gesture pushes onto the undo stack. An op tagged 'undo:X' (X
- * names the original real gesture) pops the undo stack onto the redo stack.
- * A 'redo:X' op pops the redo stack
- * back onto the undo stack. A NEW real gesture clears the redo stack —
- * ordinary editor semantics: doing something new invalidates whatever
- * you could previously have redone.
- *
- * Walks parents[0] only — one causal path, not the full DAG. Exactly
- * right for a single peer's own linear action history, which is what
- * this reconstructs; a concurrent-merge commit's other parents are not
- * part of that peer's own sequence of gestures and are correctly ignored
- * here.
- *
- * Returns { undoTargetId, redoTargetId } — the op at the top of each
- * virtual stack, or null.
+ * Whether an op is in effect: no op that is itself active reverts it. An
+ * undo reverts a real gesture, a redo reverts an undo, so the recursion
+ * settles every sequence of undos and redos. `memo` (id → bool) is per call
+ * and also holds the reverts index, so callers checking many ids share it.
  */
-export function authorUndoRedoStacks(ops, headId, authorId) {
-  if (headId == null || !authorId) return { undoTargetId: null, redoTargetId: null }
+const REVERTERS = Symbol('reverters')
 
-  const mineNearestFirst = []
-  let cursor = headId
-  const seen = new Set()
-  while (cursor != null && !seen.has(cursor)) {
-    seen.add(cursor)
-    const op = getOp(ops, cursor)
-    if (!op) break
-    if (op.authorId === authorId && op.gesture !== 'checkpoint') mineNearestFirst.push(op)
-    cursor = op.parents?.[0] ?? null
-  }
-
-  const undoStack = []
-  const redoStack = []
-  for (const op of [...mineNearestFirst].reverse()) {
-    if (op.gesture.startsWith('undo:')) {
-      // The thing it undid is no longer active; the undo op ITSELF is
-      // what redo needs to invert next (inverting it restores what it
-      // undid — invert(invert(X)) is X again).
-      undoStack.pop()
-      redoStack.push(op)
-    } else if (op.gesture.startsWith('redo:')) {
-      // Symmetric: a redo op's own mutations are functionally identical
-      // to the original gesture's (double inversion cancels), so it's
-      // exactly what a subsequent undo should invert — same effect,
-      // fresh op id.
-      redoStack.pop()
-      undoStack.push(op)
-    } else {
-      undoStack.push(op)
-      redoStack.length = 0
+export function isActive(ops, id, memo = new Map()) {
+  if (!memo.has(REVERTERS)) {
+    const byTarget = new Map()
+    for (const op of ops.values()) {
+      if (op.reverts == null) continue
+      if (!byTarget.has(op.reverts)) byTarget.set(op.reverts, [])
+      byTarget.get(op.reverts).push(op.id)
     }
+    memo.set(REVERTERS, byTarget)
   }
+  if (memo.has(id)) return memo.get(id)
+  memo.set(id, true) // a malformed revert cycle terminates instead of recursing
+  const active = !(memo.get(REVERTERS).get(id) ?? []).some(rid => isActive(ops, rid, memo))
+  memo.set(id, active)
+  return active
+}
 
-  return {
-    undoTargetId: undoStack.length ? undoStack[undoStack.length - 1].id : null,
-    redoTargetId: redoStack.length ? redoStack[redoStack.length - 1].id : null,
+/** The ops in the union ancestry of tipIds, as a plain Map. */
+function ancestryView(ops, tipIds) {
+  const view = new Map()
+  for (const tip of tipIds ?? []) {
+    for (const id of ancestorsInclusive(ops, tip)) view.set(id, getOp(ops, id))
   }
+  return view
+}
+
+// Newest first by the author's own clock, ties by op id.
+const newestFirst = (a, b) => (b.ts - a.ts) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
+
+const isRealGesture = (op) => op.gesture !== 'checkpoint' && op.reverts == null
+
+/**
+ * The owner's real gestures that undo could revert, newest first. Looks
+ * across the union ancestry of tipIds, so ops that reached this peer as
+ * merge parents count. Checkpoints, revert ops and legacy 'undo:'/'redo:'
+ * ops without `reverts` are never candidates.
+ */
+export function undoTarget(ops, tipIds, ownerId) {
+  if (!ownerId) return []
+  const view = ancestryView(ops, tipIds)
+  const memo = new Map()
+  return [...view.values()]
+    .filter(op => op.authorId === ownerId && isRealGesture(op)
+      && !/^(undo|redo):/.test(op.gesture) && isActive(view, op.id, memo))
+    .sort(newestFirst)
 }
 
 /**
- * The nearest operation, at or behind headId, authored by authorId — a
- * breadth-first walk outward from head, so "nearest" means fewest hops
- * back through parents, not lowest ts. In a DAG with concurrent branches
- * there's no single well-defined "most recent"; BFS-nearest is the
- * deterministic choice this makes, not an approximation of a truer
- * answer. null if authorId never touched this branch's ancestry at all.
- *
- * skip(op), if given, passes over an op that matches even when it's
- * authorId's own — the search continues past it rather than stopping.
- * Generic on purpose: op_dag.js doesn't know what a checkpoint is, but a
- * caller (op_layer.js's undo, skipping isCheckpoint) does.
- *
- * This is what "my most recent operation" means in code: undo finds
- * this and inverts it, whatever its gesture — including a prior 'undo'
- * itself, which is what makes redo fall out as the same operation
- * applied again rather than needing its own stack.
+ * The actor's own active undo ops that redo could revert, newest first.
+ * Empty when the actor has committed a real gesture newer than the newest
+ * of them: doing something new invalidates what could be redone.
  */
-export function findLastAuthoredOp(ops, headId, authorId, skip) {
-  if (headId == null || !authorId) return null
+export function redoTarget(ops, tipIds, actorId) {
+  if (!actorId) return []
+  const view = ancestryView(ops, tipIds)
+  const memo = new Map()
+  const mine = [...view.values()].filter(op => op.authorId === actorId)
+  const undos = mine
+    .filter(op => op.reverts != null && op.gesture.startsWith('undo:') && isActive(view, op.id, memo))
+    .sort(newestFirst)
+  if (!undos.length) return []
+  const newestReal = Math.max(-Infinity, ...mine.filter(isRealGesture).map(op => op.ts))
+  return newestReal > undos[0].ts ? [] : undos
+}
+
+/** The real gesture at the root of op's revert chain, or null if it is gone. */
+export function revertRoot(ops, op) {
   const seen = new Set()
-  const queue = [headId]
-  while (queue.length) {
-    const id = queue.shift()
-    if (seen.has(id)) continue
-    seen.add(id)
-    const op = getOp(ops, id)
-    if (!op) continue
-    if (op.authorId === authorId && !(skip && skip(op))) return id
-    for (const p of op.parents ?? []) queue.push(p)
+  let cur = op
+  while (cur?.reverts != null && !seen.has(cur.id)) {
+    seen.add(cur.id)
+    cur = getOp(ops, cur.reverts)
   }
-  return null
+  return cur && cur.reverts == null ? cur : null
 }
 
 /**

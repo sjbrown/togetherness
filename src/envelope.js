@@ -150,7 +150,7 @@ function countRecordTypes(records) {
  * Returns null for an empty batch — a gesture that changed nothing is not
  * an operation.
  */
-export function commitGesture(ydoc, layer, records, { gesture = 'gesture', authorId = null, parents = [], id, ts } = {}) {
+export function commitGesture(ydoc, layer, records, { gesture = 'gesture', authorId = null, parents = [], id, ts, reverts } = {}) {
   const mutations = serializeRecords(records)
   if (!mutations.length) {
     Trace.envelope('empty', `gesture "${gesture}" changed nothing — not an operation`,
@@ -165,6 +165,7 @@ export function commitGesture(ydoc, layer, records, { gesture = 'gesture', autho
     gesture,
     mutations,
     ts: ts ?? Date.now(),
+    ...(reverts != null ? { reverts } : {}),
   }
   Trace.envelope('commit', `${gesture} → ${op.id}`,
     { layer: layer.name, gesture, id: op.id, parents: op.parents, records: records.length, entries: mutations.length })

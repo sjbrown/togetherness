@@ -10,9 +10,10 @@ import { describe, test, expect } from 'vitest'
 import { TOYS_LAYER } from '../../src/toys.js'
 import {
   getOps, appendOp, getOp, allOps, toOpMap,
-  ancestors, isAncestor, heads, lca, findLastAuthoredOp,
+  ancestors, isAncestor, heads, lca,
   compareAuthority, totalOrder, pathFrom,
-  branchAuthors, forkJoinSequence, labelBranches, authorUndoRedoStacks,
+  branchAuthors, forkJoinSequence, labelBranches,
+  isActive, undoTarget, redoTarget, revertRoot,
 } from '../../src/op_dag.js'
 
 /** Build a plain op map from [id, parents, authorId, ts] triples. */
@@ -136,144 +137,146 @@ describe('lca', () => {
   })
 })
 
-describe('authorUndoRedoStacks', () => {
-  const move = (id, parents, authorId, from, to) => ({
-    id, parents, authorId, gesture: 'move', ts: 0,
-    mutations: [{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: from, newValue: to }],
-  })
-  const meta = (id, parents, authorId, gesture) => ({ id, parents, authorId, gesture, ts: 0, mutations: [] })
-
-  test('three real gestures: repeated undo reaches each one in turn, not just the last', () => {
+describe('isActive / undoTarget / redoTarget', () => {
+  // A small log builder: each helper appends one op on top of the last tip(s).
+  function log() {
     const ops = new Map()
-    ops.set('M1', move('M1', [], 'alice', '0', '1'))
-    ops.set('M2', move('M2', ['M1'], 'alice', '1', '2'))
-    ops.set('M3', move('M3', ['M2'], 'alice', '2', '3'))
+    let tip = []
+    let t = 0
+    const add = (id, authorId, gesture, reverts, parents = tip) => {
+      const op = { id, parents, authorId, gesture, mutations: [], ts: ++t }
+      if (reverts) op.reverts = reverts
+      ops.set(id, op)
+      tip = [id]
+      return op
+    }
+    return {
+      ops,
+      tips: () => tip,
+      real: (id, a, parents) => add(id, a, 'move', null, parents),
+      undo: (id, a, of) => add(id, a, 'undo:move', of),
+      redo: (id, a, of) => add(id, a, 'redo:move', of),
+    }
+  }
+  const ids = (list) => list.map(o => o.id)
 
-    // Undo #1: target is M3 (the most recent real gesture).
-    let { undoTargetId } = authorUndoRedoStacks(ops, 'M3', 'alice')
-    expect(undoTargetId).toBe('M3')
-    ops.set('U1', meta('U1', ['M3'], 'alice', 'undo:move'))
+  test('1. undo, redo, undo toggles X and the targets follow', () => {
+    const l = log()
+    l.real('X', 'alice')
+    expect(ids(undoTarget(l.ops, l.tips(), 'alice'))).toEqual(['X'])
+    expect(redoTarget(l.ops, l.tips(), 'alice')).toEqual([])
 
-    // Undo #2: must reach M2, NOT M3 again — this is the exact bug.
-    ;({ undoTargetId } = authorUndoRedoStacks(ops, 'U1', 'alice'))
-    expect(undoTargetId).toBe('M2')
-    ops.set('U2', meta('U2', ['U1'], 'alice', 'undo:move'))
+    l.undo('U1', 'alice', 'X')
+    expect(isActive(l.ops, 'X')).toBe(false)
+    expect(undoTarget(l.ops, l.tips(), 'alice')).toEqual([])
+    expect(ids(redoTarget(l.ops, l.tips(), 'alice'))).toEqual(['U1'])
 
-    // Undo #3: reaches M1.
-    ;({ undoTargetId } = authorUndoRedoStacks(ops, 'U2', 'alice'))
-    expect(undoTargetId).toBe('M1')
-    ops.set('U3', meta('U3', ['U2'], 'alice', 'undo:move'))
+    l.redo('R1', 'alice', 'U1')
+    expect(isActive(l.ops, 'U1')).toBe(false)
+    expect(isActive(l.ops, 'X')).toBe(true)
+    expect(ids(undoTarget(l.ops, l.tips(), 'alice'))).toEqual(['X'])
+    expect(redoTarget(l.ops, l.tips(), 'alice')).toEqual([])
 
-    // Nothing left.
-    ;({ undoTargetId } = authorUndoRedoStacks(ops, 'U3', 'alice'))
-    expect(undoTargetId).toBeNull()
+    // Undo after redo still names the real gesture, not the redo.
+    l.undo('U2', 'alice', 'X')
+    expect(isActive(l.ops, 'X')).toBe(false)
+    expect(undoTarget(l.ops, l.tips(), 'alice')).toEqual([])
+    expect(ids(redoTarget(l.ops, l.tips(), 'alice'))).toEqual(['U2'])
   })
 
-  test('redo targets the most recently undone gesture', () => {
+  test('2. three undos reach X3, X2, X1; three redos bring back X1, X2, X3', () => {
+    const l = log()
+    for (const x of ['X1', 'X2', 'X3']) l.real(x, 'alice')
+    const undone = []
+    for (const u of ['U1', 'U2', 'U3']) {
+      const target = undoTarget(l.ops, l.tips(), 'alice')[0]
+      undone.push(target.id)
+      l.undo(u, 'alice', target.id)
+    }
+    expect(undone).toEqual(['X3', 'X2', 'X1'])
+
+    const redone = []
+    for (const r of ['R1', 'R2', 'R3']) {
+      const target = redoTarget(l.ops, l.tips(), 'alice')[0]
+      redone.push(target.reverts)
+      l.redo(r, 'alice', target.id)
+    }
+    expect(redone).toEqual(['X1', 'X2', 'X3'])
+    expect(redoTarget(l.ops, l.tips(), 'alice')).toEqual([])
+    expect(ids(undoTarget(l.ops, l.tips(), 'alice'))).toEqual(['X3', 'X2', 'X1'])
+  })
+
+  test('3. a new real gesture after an undo leaves no redo target', () => {
+    const l = log()
+    l.real('X1', 'alice'); l.real('X2', 'alice')
+    l.undo('U1', 'alice', 'X2')
+    expect(ids(redoTarget(l.ops, l.tips(), 'alice'))).toEqual(['U1'])
+    l.real('Y', 'alice')
+    expect(redoTarget(l.ops, l.tips(), 'alice')).toEqual([])
+  })
+
+  test('4. Alice undoes Bob’s X: Bob’s undo falls back, only Alice can redo', () => {
+    const l = log()
+    l.real('B0', 'bob'); l.real('X', 'bob')
+    l.undo('U', 'alice', 'X')
+
+    expect(isActive(l.ops, 'X')).toBe(false)
+    expect(ids(undoTarget(l.ops, l.tips(), 'bob'))).toEqual(['B0'])
+    expect(redoTarget(l.ops, l.tips(), 'bob')).toEqual([])
+    expect(ids(redoTarget(l.ops, l.tips(), 'alice'))).toEqual(['U'])
+
+    l.redo('R', 'alice', 'U')
+    expect(ids(undoTarget(l.ops, l.tips(), 'bob'))).toEqual(['X', 'B0'])
+  })
+
+  test('5. Bob’s ops reached only through merge parents are still found', () => {
     const ops = new Map()
-    ops.set('M1', move('M1', [], 'alice', '0', '1'))
-    ops.set('U1', meta('U1', ['M1'], 'alice', 'undo:move'))
-    const { redoTargetId } = authorUndoRedoStacks(ops, 'U1', 'alice')
-    expect(redoTargetId).toBe('U1')
+    const put = (id, parents, authorId, ts, extra = {}) =>
+      ops.set(id, { id, parents, authorId, gesture: 'move', mutations: [], ts, ...extra })
+    put('root', [], 'alice', 1)
+    put('b1', ['root'], 'bob', 2)
+    put('b2', ['b1'], 'bob', 3)
+    put('a1', ['root'], 'alice', 4)
+    put('merge', ['a1', 'b2'], 'alice', 5)
+    expect(ids(undoTarget(ops, ['merge'], 'bob'))).toEqual(['b2', 'b1'])
+    expect(ids(undoTarget(ops, ['merge'], 'alice'))).toEqual(['merge', 'a1', 'root'])
   })
 
-  test('a new real gesture after an undo clears the redo target', () => {
-    const ops = new Map()
-    ops.set('M1', move('M1', [], 'alice', '0', '1'))
-    ops.set('U1', meta('U1', ['M1'], 'alice', 'undo:move'))
-    ops.set('M2', move('M2', ['U1'], 'alice', '0', '5')) // a fresh action, not a redo
-    const { redoTargetId, undoTargetId } = authorUndoRedoStacks(ops, 'M2', 'alice')
-    expect(redoTargetId).toBeNull()
-    expect(undoTargetId).toBe('M2')
+  test('an undo outside the local ancestry does not count', () => {
+    const l = log()
+    l.real('X', 'bob')
+    l.undo('U', 'alice', 'X')
+    expect(ids(undoTarget(l.ops, ['X'], 'bob'))).toEqual(['X'])
   })
 
-  test('undo, redo, undo again reaches the same gesture — does not skip past it', () => {
-    const ops = new Map()
-    ops.set('M1', move('M1', [], 'alice', '0', '1'))
-    ops.set('M2', move('M2', ['M1'], 'alice', '1', '2'))
-    ops.set('U1', meta('U1', ['M2'], 'alice', 'undo:move')) // undoes M2
-    ops.set('R1', meta('R1', ['U1'], 'alice', 'redo:move')) // redoes M2
-
-    const { undoTargetId } = authorUndoRedoStacks(ops, 'R1', 'alice')
-    // R1's own mutations are invert(U1's mutations) == M2's mutations
-    // again (double inversion cancels) — functionally identical to
-    // undoing M2 directly, just a fresh op id rather than M2's own.
-    expect(undoTargetId).toBe('R1')
+  test('6. checkpoints and legacy undo ops without reverts are never targets', () => {
+    const l = log()
+    l.real('X', 'alice')
+    l.ops.set('CK', { id: 'CK', parents: ['X'], authorId: 'alice', gesture: 'checkpoint', mutations: [], ts: 50 })
+    l.ops.set('LEGACY', { id: 'LEGACY', parents: ['CK'], authorId: 'alice', gesture: 'undo:move', mutations: [], ts: 60 })
+    expect(ids(undoTarget(l.ops, ['LEGACY'], 'alice'))).toEqual(['X'])
+    expect(redoTarget(l.ops, ['LEGACY'], 'alice')).toEqual([])
+    expect(isActive(l.ops, 'X')).toBe(true)
   })
 
-  test('checkpoints never appear on either stack', () => {
-    const ops = new Map()
-    ops.set('L', { id: 'L', parents: [], authorId: 'alice', gesture: 'checkpoint', ts: 0, mutations: [] })
-    const { undoTargetId, redoTargetId } = authorUndoRedoStacks(ops, 'L', 'alice')
-    expect(undoTargetId).toBeNull()
-    expect(redoTargetId).toBeNull()
+  test('ties on ts go to the higher op id; no author or tips gives nothing', () => {
+    const ops = new Map([
+      ['a', { id: 'a', parents: [], authorId: 'alice', gesture: 'move', mutations: [], ts: 1 }],
+      ['b', { id: 'b', parents: ['a'], authorId: 'alice', gesture: 'move', mutations: [], ts: 1 }],
+    ])
+    expect(ids(undoTarget(ops, ['b'], 'alice'))).toEqual(['b', 'a'])
+    expect(undoTarget(ops, ['b'], null)).toEqual([])
+    expect(undoTarget(ops, [], 'alice')).toEqual([])
+    expect(redoTarget(ops, ['b'], null)).toEqual([])
   })
 
-  test('another author’s ops in between are skipped, not treated as mine', () => {
-    const ops = new Map()
-    ops.set('M1', move('M1', [], 'alice', '0', '1'))
-    ops.set('B1', move('B1', ['M1'], 'bob', '9', '9')) // bob's own action
-    const { undoTargetId } = authorUndoRedoStacks(ops, 'B1', 'alice')
-    expect(undoTargetId).toBe('M1')
-  })
-
-  test('null head or null authorId returns both null, not a throw', () => {
-    const ops = new Map()
-    expect(authorUndoRedoStacks(ops, null, 'alice')).toEqual({ undoTargetId: null, redoTargetId: null })
-    expect(authorUndoRedoStacks(ops, 'x', null)).toEqual({ undoTargetId: null, redoTargetId: null })
-  })
-})
-
-describe('findLastAuthoredOp', () => {
-  test('finds the head itself when it is the author’s own', () => {
-    expect(findLastAuthoredOp(worked(), 'A1', 'alice')).toBe('A1')
-  })
-
-  test('walks back past ops by other authors to find one of mine', () => {
-    const g = graph(['r', [], 'alice'], ['x', ['r'], 'bob'], ['y', ['x'], 'clyde'])
-    expect(findLastAuthoredOp(g, 'y', 'alice')).toBe('r')
-  })
-
-  test('nearest by hop count, not by ts', () => {
-    const g = graph(
-      ['r', [], 'alice', 100],
-      ['a_far', ['r'], 'alice', 999],
-      ['b_near', ['a_far'], 'bob'],
-      ['a_near', ['b_near'], 'alice', 1],
-    )
-    // a_near is one hop back; a_far is two, despite its much later ts.
-    expect(findLastAuthoredOp(g, 'a_near', 'alice')).toBe('a_near')
-  })
-
-  test('null when the author never touched this branch', () => {
-    expect(findLastAuthoredOp(worked(), 'C1', 'zoe')).toBeNull()
-  })
-
-  test('null for a null head', () => {
-    expect(findLastAuthoredOp(worked(), null, 'alice')).toBeNull()
-  })
-
-  test('finds an author whose own op is itself a prior undo — no special-casing', () => {
-    const g = graph(['r', [], 'alice'], ['u', ['r'], 'alice'])
-    expect(findLastAuthoredOp(g, 'u', 'alice')).toBe('u')
-  })
-
-  test('skip passes over a matching op and continues searching further back', () => {
-    const g = graph(
-      ['r', [], 'alice'],
-      ['checkpoint1', ['r'], 'alice'],
-      ['real-move', ['checkpoint1'], 'alice'],
-    )
-    const skipCheckpoints = (op) => op.gesture === 'test' && op.id === 'checkpoint1'
-    // Without skip: finds the nearer op regardless of what it is.
-    expect(findLastAuthoredOp(g, 'real-move', 'alice')).toBe('real-move')
-    // With skip on the head itself: passes over it, keeps walking back.
-    expect(findLastAuthoredOp(g, 'checkpoint1', 'alice', skipCheckpoints)).toBe('r')
-  })
-
-  test('skip that matches everything correctly returns null rather than looping', () => {
-    const g = graph(['r', [], 'alice'], ['x', ['r'], 'alice'])
-    expect(findLastAuthoredOp(g, 'x', 'alice', () => true)).toBeNull()
+  test('revertRoot follows redo → undo → real gesture', () => {
+    const l = log()
+    l.real('X', 'bob'); l.undo('U', 'alice', 'X'); l.redo('R', 'alice', 'U')
+    expect(revertRoot(l.ops, l.ops.get('R')).id).toBe('X')
+    expect(revertRoot(l.ops, l.ops.get('X')).id).toBe('X')
+    l.ops.delete('X')
+    expect(revertRoot(l.ops, l.ops.get('R'))).toBeNull()
   })
 })
 

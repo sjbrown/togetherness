@@ -12,7 +12,7 @@
  */
 
 import { test, expect, chromium } from '@playwright/test';
-import { openAsCreator } from './helpers.js';
+import { openAsCreator, openCreatorAndJoiner, waitForPeerCount } from './helpers.js';
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const SIGNALING_URL = process.env.SIGNALING_URL || 'ws://localhost:4444';
@@ -349,6 +349,62 @@ test.describe('repeated undo walks back through multiple gestures, and the real 
     await redoBtnAfter.click();
     await page.waitForTimeout(200);
     expect(await xAt()).toBe(xMoved);
+
+    await browser.close();
+  });
+});
+
+test.describe('undoing another author’s action', () => {
+  test('B undoes A’s latest move; A’s own Undo then reaches A’s earlier move, not the same one again', async () => {
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+    const pageA = await (await browser.newContext()).newPage();
+    const pageB = await (await browser.newContext()).newPage();
+
+    await openCreatorAndJoiner(pageA, pageB, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+    await waitForPeerCount(pageA, 1);
+    await waitForPeerCount(pageB, 1);
+
+    await pageA.evaluate(() => window.App.commitDrawing({
+      type: 'rect', x: 100, y: 100, width: 80, height: 80,
+      fill: '#5a7ea8', stroke: 'none', 'stroke-width': 1.5, 'corner-r': 0,
+    }));
+    const rectA = pageA.locator('#drawing-layer rect');
+    await expect(pageB.locator('#drawing-layer rect')).toHaveCount(1, { timeout: 5000 });
+    const id = await rectA.getAttribute('data-id');
+    const rectB = pageB.locator(`#drawing-layer rect[data-id="${id}"]`);
+
+    const moveOnA = (x, y) => pageA.evaluate(([id, x, y]) => {
+      window.App.startDrag(id);
+      window.App.commitMove(id, x, y);
+    }, [id, x, y]);
+
+    await moveOnA(300, 250);
+    await expect(rectB).toHaveAttribute('x', '300', { timeout: 5000 });
+    await moveOnA(500, 450);
+    await expect(rectB).toHaveAttribute('x', '500', { timeout: 5000 });
+
+    const aId = await pageA.evaluate(() => window.App.user.id);
+    await pageB.evaluate((ownerId) => window.App.undoFor(ownerId), aId);
+
+    // A's second move is undone on both pages.
+    await expect(rectB).toHaveAttribute('x', '300', { timeout: 5000 });
+    await expect(pageA.locator(`#drawing-layer rect[data-id="${id}"]`)).toHaveAttribute('x', '300', { timeout: 5000 });
+
+    // Both history panels name both people.
+    const nameA = await pageA.evaluate(() => window.App.user.name);
+    const nameB = await pageB.evaluate(() => window.App.user.name);
+    for (const page of [pageA, pageB]) {
+      await expect.poll(() => page.evaluate(() => window.App.getHistory().map(h => h.label)))
+        .toContainEqual(expect.stringMatching(new RegExp(`${nameB}.*undid.*${nameA}`)));
+    }
+
+    // A's real Undo button reverses A's earlier move, not the undone one again.
+    await pageA.evaluate(() => window.UI.openSheet('history'));
+    await pageA.waitForTimeout(200);
+    await pageA.locator('.action-btn', { hasText: 'Undo last action' }).click();
+
+    await expect(rectB).toHaveAttribute('x', '100', { timeout: 5000 });
+    await expect(pageA.locator(`#drawing-layer rect[data-id="${id}"]`)).toHaveAttribute('x', '100');
 
     await browser.close();
   });

@@ -795,9 +795,11 @@ function onOpsChanged(layer, evt, transaction) {
     Trace.op('arrived', `remote operation arrived: ${op?.gesture ?? '?'} ${opId}`,
       { layer: layer.name, ...(op ?? { id: opId }) });
     if (op && !SILENT_GESTURES.has(op.gesture)) {
-      const msg = `remote: ${op.gesture}`;
+      const named = revertLine(layer, op);
+      const msg = named ? named.line : `remote: ${op.gesture}`;
       App.addLog(msg, 'remote');
       addHistory(msg, { elType: layer.name });
+      if (named?.owner === App.user.id) UI.toast(named.line);
     }
     const out = OpLayer.receiveLayerOp(_ydoc, layer, layerEl, opId, _tableId,
       tablesAPI.getJoinSequenceArray(_ydoc));
@@ -808,6 +810,9 @@ function onOpsChanged(layer, evt, transaction) {
       handleBranchConflict(layer, out.tips);
     }
   }
+  // A remote op may have removed an element this peer still holds.
+  _applySelState(Selection.dropMissingClaims(_selState(),
+    (id) => !!_svgEl.querySelector(`[data-id="${id}"]`)));
   Overlay.render();
   // The layer list reads the live DOM, which these ops just changed.
   UI.refreshFromDoc();
@@ -1987,20 +1992,26 @@ const App = {
       mode:    _activeMode ? _activeMode.mode : null,
     });
   },
-  undo: () => {
+  undo: () => App.undoFor(App.user.id),
+  // Undo ownerId's latest action (this peer's, when ownerId is me). Layers
+  // are chosen between by the target's ts, the owner's own clock.
+  undoFor: (ownerId) => {
     // A moved/resized/deleted shape's selRing is meaningless once the
     // gesture that put it there is undone
     _clearClaims();
     const me = App.user.id;
     const candidates = [];
     for (const layer of opLayers()) {
-      const op = OpLayer.undoCandidate(_ydoc, layer, _tableId, me);
+      const layerEl = layerElOf(layer);
+      if (!layerEl) continue;
+      const op = OpLayer.undoCandidate(_ydoc, layer, _tableId, me, { owner: ownerId, layerEl });
       if (!op) continue;
       candidates.push({ ts: op.ts, run: () => {
-        const layerEl = layerElOf(layer);
-        const done = layerEl ? OpLayer.undoGesture(_ydoc, layer, layerEl, _tableId, me) : null;
+        const done = OpLayer.undoGesture(_ydoc, layer, layerEl, _tableId, me, { owner: ownerId });
         if (!done) return false;
-        addUndoHistory(`undid: ${describeGesture(done.gesture)}`);
+        const named = revertLine(layer, done);
+        if (named) addHistory(named.line);
+        else addUndoHistory(`undid: ${describeGesture(done.gesture)}`);
         UI.toast('Undone');
         return true;
       } });
@@ -2012,21 +2023,23 @@ const App = {
     const me = App.user.id;
     const candidates = [];
     for (const layer of opLayers()) {
-      const op = OpLayer.redoCandidate(_ydoc, layer, _tableId, me);
+      const layerEl = layerElOf(layer);
+      if (!layerEl) continue;
+      const op = OpLayer.redoCandidate(_ydoc, layer, _tableId, me, { layerEl });
       if (!op) continue;
       candidates.push({ ts: op.ts, run: () => {
-        const layerEl = layerElOf(layer);
-        const done = layerEl ? OpLayer.redoGesture(_ydoc, layer, layerEl, _tableId, me) : null;
+        const done = OpLayer.redoGesture(_ydoc, layer, layerEl, _tableId, me);
         if (!done) return false;
-        addHistory(`redid: ${describeGesture(done.gesture)}`);
+        const named = revertLine(layer, done);
+        addHistory(named ? named.line : `redid: ${describeGesture(done.gesture)}`);
         UI.toast('Redone');
         return true;
       } });
     }
     if (!runLatestFirst(candidates)) UI.toast('Nothing to redo', 'warn');
   },
-  canUndo: () => opLayers().some(layer => OpLayer.canUndo(_ydoc, layer, _tableId, App.user.id)),
-  canRedo: () => opLayers().some(layer => OpLayer.canRedo(_ydoc, layer, _tableId, App.user.id)),
+  canUndo: () => opLayers().some(layer => OpLayer.canUndo(_ydoc, layer, _tableId, App.user.id, { layerEl: layerElOf(layer) })),
+  canRedo: () => opLayers().some(layer => OpLayer.canRedo(_ydoc, layer, _tableId, App.user.id, { layerEl: layerElOf(layer) })),
   exportSVG: () => {
     const clone = Storage.buildExportSvg(_svgEl, _ydoc);
     const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
@@ -2235,6 +2248,27 @@ const App = {
 // apply (its target vanished) falls through to the next-latest.
 function runLatestFirst(candidates) {
   return candidates.sort((a, b) => b.ts - a.ts).some(c => c.run());
+}
+
+// A display name for a user id: the Peers panel's name for a connected
+// peer, else a short id.
+function peerName(id) {
+  if (id === App.user.id) return App.user.name;
+  return App.getPeers().find(p => p.id === id)?.name ?? String(id).slice(0, 6);
+}
+
+const escapeHtml = (str) => String(str).replace(/[&<>"]/g, c =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+// History text for an undo/redo op whose target is someone else's action:
+// { line, owner }. null for a plain op, or when the actor reverted their own.
+function revertLine(layer, op) {
+  if (op.reverts == null) return null;
+  const root = OpDag.revertRoot(OpDag.getOps(_ydoc, layer), op);
+  if (!root || root.authorId === op.authorId) return null;
+  const verb = op.gesture.startsWith('redo:') ? 'redid' : 'undid';
+  const line = `${escapeHtml(peerName(op.authorId))} ${verb} ${escapeHtml(peerName(root.authorId))}'s ${describeGesture(op.gesture)}`;
+  return { line, owner: root.authorId };
 }
 
 // A fresh id for a drawing shape.

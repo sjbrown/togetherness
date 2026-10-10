@@ -111,6 +111,16 @@ export function clearClaims(state) {
   return withDesired(state, desired);
 }
 
+// Drops claims on elements that no longer exist (`exists(id)` false), e.g.
+// after a remote operation removed them. Bids are left alone.
+export function dropMissingClaims(state, exists) {
+  const gone = heldIds(state).filter((id) => !exists(id));
+  if (gone.length === 0) return state;
+  const desired = { ...state.desired };
+  for (const id of gone) delete desired[id];
+  return withDesired(state, desired);
+}
+
 // Exclusive single-select: replaces the whole selection with just `id`
 // (or clears it if falsy). `isHeldByOther` is supplied since
 // holder-ship isn't part of this module's own state.
