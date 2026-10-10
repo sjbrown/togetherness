@@ -87,6 +87,45 @@ test.describe('two-peer sync', () => {
     await browser.close();
   });
 
+  test('a boundary drawn on peer A appears on peer B, and a position set moved on A lands in the same place on B', async () => {
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
+    const ctx1    = await browser.newContext();
+    const ctx2    = await browser.newContext();
+    const page1   = await ctx1.newPage();
+    const page2   = await ctx2.newPage();
+
+    await openCreatorAndJoiner(page1, page2, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+    await waitForPeerCount(page1, 1);
+    await waitForPeerCount(page2, 1);
+
+    const layer = '#boundaries-positions-layer';
+    await expect(page2.locator(`${layer} > g`)).toHaveCount(0);
+
+    await page1.evaluate(() => window.App.commitBoundary({ x: 50, y: 60, w: 200, h: 120 }));
+    await expect(page2.locator(`${layer} > g[data-bounpos-type="boundary"]`)).toHaveCount(1, { timeout: 5000 });
+    const bId = await page1.locator(`${layer} > g[data-bounpos-type="boundary"]`).getAttribute('data-id');
+    await expect(page2.locator(`${layer} > g[data-id="${bId}"]`)).toHaveAttribute('transform', 'translate(50, 60)');
+
+    await page1.evaluate(() => window.App.commitPositionSet({ toolName: 'pos-grid-sq', x: 0, y: 300, w: 200, h: 200 }));
+    await expect(page2.locator(`${layer} > g[data-bounpos-type="pos-set"]`)).toHaveCount(1, { timeout: 5000 });
+    const psId = await page1.locator(`${layer} > g[data-bounpos-type="pos-set"]`).getAttribute('data-id');
+    const circlesA = await page1.locator(`${layer} > g[data-id="${psId}"] > circle`).count();
+    expect(circlesA).toBeGreaterThan(0);
+    await expect(page2.locator(`${layer} > g[data-id="${psId}"] > circle`)).toHaveCount(circlesA);
+
+    // Move it on A, as a drag commit would: one transform on B, circles untouched.
+    await page1.evaluate((id) => {
+      window.App.startDrag(id);
+      window.App.commitMove(id, 400, 250);
+    }, psId);
+
+    await expect(page2.locator(`${layer} > g[data-id="${psId}"]`)).toHaveAttribute('transform', 'translate(400, 250)', { timeout: 5000 });
+    await expect(page1.locator(`${layer} > g[data-id="${psId}"]`)).toHaveAttribute('transform', 'translate(400, 250)');
+    await expect(page2.locator(`${layer} > g[data-id="${psId}"] > circle`)).toHaveCount(circlesA);
+
+    await browser.close();
+  });
+
   test('selecting a toy on peer A shows selection rings on both peers', async () => {
     const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
     const ctx1    = await browser.newContext();
