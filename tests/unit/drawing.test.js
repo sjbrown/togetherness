@@ -258,6 +258,20 @@ describe('every write is one operation', () => {
     expect(gestures(doc)).toEqual(['add', 'move', 'resize', 'rotate', 'pivot', 'edit', 'delete'])
   })
 
+  test('a move brings the shape to the front; a shape already on top is not re-appended', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'a' }); add(doc, { id: 'b' })
+    doc.L.applyMoveCommit(doc.L.find('a'), 30, 30)
+    expect(idsOf(doc.layerEl)).toEqual(['b', 'a'])
+    const ops = [...getOps(doc.ydoc, DRAWING_LAYER).values()]
+    expect(ops.at(-1).mutations.map(m => m.t)).toContain('child')
+
+    doc.L.applyMoveCommit(doc.L.find('a'), 40, 40)
+    expect(idsOf(doc.layerEl)).toEqual(['b', 'a'])
+    const again = [...getOps(doc.ydoc, DRAWING_LAYER).values()].at(-1)
+    expect(again.mutations.every(m => m.t === 'attr')).toBe(true)
+  })
+
   test('a move re-derives the transform inside the same op', () => {
     const doc = makeDoc()
     add(doc, { id: 'r1', x: 0, y: 0, width: 100, height: 60, rotate: 45 })

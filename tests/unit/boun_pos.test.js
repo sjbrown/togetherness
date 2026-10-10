@@ -521,7 +521,7 @@ describe('applyMove', () => {
     });
   });
 
-  test('a move of a 121-circle position set is one op with exactly one attr mutation, on transform', () => {
+  test('a move of a 121-circle position set already on top is one op with exactly one attr mutation, on transform', () => {
     const layer = makeLayer();
     const { id, name } = newPositionSetId();
     const circles = gridFillExtent(0, 0, 1000, 1000, 'square', 100, 100);
@@ -545,6 +545,19 @@ describe('applyMove', () => {
     const bytes = Y.encodeStateAsUpdate(layer.ydoc, sv).length;
     console.log(`move of 121-circle pos-set: op ${JSON.stringify(op).length} B serialized, ${bytes} B Yjs update`);
     expect(JSON.stringify(op).length).toBeLessThan(1000);
+  });
+
+  test('moving an element that is not on top brings it to the front in the same op', () => {
+    const layer = makeLayer();
+    const { id } = addPS(layer);
+    const { id: above } = addB(layer);
+    layer.L.applyMoveCommit(layer.L.find(id), 300, 400);
+
+    expect(layer.layerEl.lastElementChild).toBe(findEl(layer.layerEl, id));
+    expect(findEl(layer.layerEl, above)).not.toBeNull();
+    const op = [...getOps(layer.ydoc, BOUN_POS_LAYER).values()].at(-1);
+    expect(op.gesture).toBe('move');
+    expect(op.mutations.map(m => m.t)).toEqual(expect.arrayContaining(['child', 'attr']));
   });
 });
 

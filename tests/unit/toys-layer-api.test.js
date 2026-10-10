@@ -235,6 +235,18 @@ describe('gestures also land in the operation log', () => {
     expect(L.delete('die1')).toBeNull()
   })
 
+  test('a move brings the toy to the front; one already on top is not re-appended', async () => {
+    const { ydoc, layerEl, L } = await withLog(['die1', 'dice_d6'], ['die2', 'dice_d6'])
+    const lastOp = () => getOps(ydoc, TOYS_LAYER).get(getHead(TABLE, TOYS_LAYER))
+
+    L.applyMoveCommit(L.find('die1'), 300, 300)
+    expect(layerEl.lastElementChild).toBe(L.find('die1'))
+    expect(lastOp().mutations.map(m => m.t)).toContain('child')
+
+    L.applyMoveCommit(L.find('die1'), 350, 350)
+    expect(lastOp().mutations.every(m => m.t === 'attr')).toBe(true)
+  })
+
   test('add is recorded as one place op', async () => {
     const { ydoc, L } = await withLog()
     await L.add({ id: 'die9', toyType: 'dice_d6', x: 50, y: 60, color: '#ffffff' })

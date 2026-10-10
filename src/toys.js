@@ -1043,7 +1043,7 @@ export function promoteZOrder(layerEl, el, seen = new Set()) {
   seen.add(toyId)
 
   const occupantIds = new Set(directOccupantIds(layerEl, el))
-  layerEl.appendChild(el) // el itself → topmost (so far)
+  OpLayer.bringToFront(layerEl, el) // el itself → topmost (so far)
 
   if (!occupantIds.size) return
   // Promote occupants in their existing relative order (not occupantIds'
@@ -1990,18 +1990,16 @@ export function applyTtState(layerEl, state) {
  * module's primitives, plus rotation and the toy-specific move, add and
  * import.
  *
- * A batch move brings each toy (and whatever is stacked on its own
- * tt_positions) to the front, in array order. Only a single move carries
- * occupant stacks along and runs the positions_change_handler cascade.
+ * Bringing a toy to the front also raises whatever is stacked on its own
+ * tt_positions. Only a single move carries occupant stacks along and runs
+ * the positions_change_handler cascade.
  */
 export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false) {
   return OpLayer.makeOpLayerAPI(TOYS_LAYER, ydoc, getLayerEl, user, tableId, isCreator, {
     find:     findEl,
     delete:   deleteEl,
-    move:     (layerEl, el, x, y) => {
-      promoteZOrder(layerEl, el)
-      applyMove(el, x, y)
-    },
+    move:     (_layerEl, el, x, y) => applyMove(el, x, y),
+    toFront:  promoteZOrder,
     resize:   applyResize,
     rotate:   applyRotate,
     edit:     editEl,

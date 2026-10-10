@@ -494,6 +494,15 @@ function reIdOnCollision(layerEl, el, find) {
 }
 
 /**
+ * Raise el to the top of layerEl. An appendChild of the last child still
+ * records a remove plus an add, shipping the whole subtree twice, so an
+ * element already on top is left alone.
+ */
+export function bringToFront(layerEl, el) {
+  if (layerEl.lastElementChild !== el) layerEl.appendChild(el)
+}
+
+/**
  * makeOpLayerAPI — the LayerAPI app.js dispatches to, for any op layer.
  *
  * getLayerEl returns the live layer element. Every write runs inside one
@@ -507,6 +516,9 @@ function reIdOnCollision(layerEl, el, find) {
  *   add(layerEl, ...args)         → el            (optional)
  *   delete(layerEl, id)
  *   move(layerEl, el, x, y)
+ *   toFront(layerEl, el)                          (optional) — raise el to
+ *                                   the top of its layer; defaults to
+ *                                   appending it unless it is already last
  *   resize(el, x, y, w, h)
  *   rotate(el, deg)                               (optional)
  *   edit(el, editData)
@@ -514,6 +526,9 @@ function reIdOnCollision(layerEl, el, find) {
  *   list(layerEl)                 → layer-object descriptors
  *   importEl(layerEl, el)         — append one imported element; defaults
  *                                   to re-id on collision, then append
+ *
+ * A move, single or batched, brings each element to the front before moving
+ * it, so the last one moved ends up on top.
  *
  * extras({ gesture, layerEl, base }) returns the layer's own methods
  * (queries, previews, pivot), merged over the base API; base is the API
@@ -524,6 +539,11 @@ export function makeOpLayerAPI(layer, ydoc, getLayerEl, user, tableId, isCreator
   const layerEl = () => (typeof getLayerEl === 'function' ? getLayerEl() : getLayerEl)
   const gesture = (name, fn, extraOpts = {}) =>
     runGesture(ydoc, layer, layerEl(), fn, { gesture: name, authorId: user.id, tableId, ...extraOpts })
+  const toFront = p.toFront ?? bringToFront
+  const move = (root, el, x, y) => {
+    toFront(root, el)
+    p.move(root, el, x, y)
+  }
   const importEl = p.importEl ?? ((root, el) => {
     reIdOnCollision(root, el, p.find)
     root.appendChild(el)
@@ -532,7 +552,7 @@ export function makeOpLayerAPI(layer, ydoc, getLayerEl, user, tableId, isCreator
   const base = {
     find:            (id)             => p.find(layerEl(), id),
     delete:          (id)             => gesture('delete', () => p.delete(layerEl(), id)).op,
-    applyMoveCommit: (el, x, y)       => gesture('move',   () => p.move(layerEl(), el, x, y)).op,
+    applyMoveCommit: (el, x, y)       => gesture('move',   () => move(layerEl(), el, x, y)).op,
     applyResize:     (el, x, y, w, h) => gesture('resize', () => p.resize(el, x, y, w, h)).op,
     edit:            (el, editData)   => gesture('edit',   () => p.edit(el, editData)).op,
     listData:        ()               => p.list(layerEl()),
@@ -549,7 +569,7 @@ export function makeOpLayerAPI(layer, ydoc, getLayerEl, user, tableId, isCreator
     moveMany: (moves) => gesture('move-batch', () => {
       for (const { id, x, y } of moves) {
         const el = p.find(layerEl(), id)
-        if (el) p.move(layerEl(), el, x, y)
+        if (el) move(layerEl(), el, x, y)
       }
     }).op,
 
