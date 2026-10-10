@@ -295,7 +295,7 @@ var supply = {
      filter="url(#app-filter-colorize)"
    >
     <circle
-       style="fill:url(#linearGradient60896);fill-opacity:1;stroke:url(#linearGradient11730);stroke-width:0.335149;stroke-dasharray:none;paint-order:stroke fill markers;filter:url(#app-filter-colorize)"
+       style="fill:url(#linearGradient60896);fill-opacity:1;stroke:url(#linearGradient11730);stroke-width:0.335149;stroke-dasharray:none;paint-order:stroke fill markers"
        id="path11645"
        cx="14.409167"
        cy="14.409164"
@@ -303,18 +303,18 @@ var supply = {
        transform="matrix(3.466124,0,0,3.1078806,0.05604118,2.424401)" />
     <path
        id="circle927"
-       style="fill:url(#linearGradient929);stroke:url(#linearGradient931);stroke-width:0.485028;paint-order:stroke fill markers;filter:url(#app-filter-colorize)"
+       style="fill:url(#linearGradient929);stroke:url(#linearGradient931);stroke-width:0.485028;paint-order:stroke fill markers"
        transform="matrix(2.6543958,0,0,1.9376919,11.752368,47.874037)"
        d="m 28.011969,16.136785 c 1e-6,7.654206 -5.948596,11.792273 -13.602802,11.792272 -7.6542053,0 -13.60968931,-4.140939 -13.60968876,-11.795144 10e-8,-7.6542043 6.04167486,-13.9825586 13.69587976,-13.9825586 7.654205,-6e-7 13.516611,6.3312257 13.516611,13.9854306 z"
        />
     <path
        id="circle11699"
-       style="fill:url(#radialGradient21176);stroke:url(#linearGradient49500);stroke-width:0.35074;paint-order:stroke fill markers;filter:url(#app-filter-colorize)"
+       style="fill:url(#radialGradient21176);stroke:url(#linearGradient49500);stroke-width:0.35074;paint-order:stroke fill markers"
        transform="matrix(3.466124,0,0,2.3452375,0.05604118,44)"
        d="m 23.835793,14.409164 c 0,5.206182 -4.220444,9.426627 -9.426626,9.426627 -5.2061821,0 -9.4266263,-4.220445 -9.4266259,-9.426627 2e-7,-5.2061816 4.1548437,-7.299395 9.3610249,-7.2993952 5.206182,10e-8 9.492227,2.0932135 9.492227,7.2993952 z"
        />
     <ellipse
-       style="fill:none;fill-opacity:1;stroke:url(#linearGradient87248);stroke-width:0.164309;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers;filter:url(#app-filter-colorize)"
+       style="fill:none;fill-opacity:1;stroke:url(#linearGradient87248);stroke-width:0.164309;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
        id="path87240"
        cx="14.409167"
        cy="15.89019"
