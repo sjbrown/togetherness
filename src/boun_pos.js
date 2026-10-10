@@ -5,14 +5,19 @@
  * data-bounpos-type="boundary" | "pos-set" distinguishes them. Yjs treats
  * the fragment as opaque — all semantic dispatch lives here.
  *
+ * World position = children's local coordinates + the group's
+ * transform="translate(tx, ty)" (absent means 0, 0). A move changes only the
+ * transform; elements created before this layout have absolute children and
+ * no transform, and read the same way.
+ *
  * Boundary Yjs structure:
- *   <g id data-id data-module name data-bounpos-type="boundary">
+ *   <g id data-id data-module name data-bounpos-type="boundary" transform>
  *     <path d/>
  *     <text x y>
  *       Y.XmlText(name)
  *
  * Position-set Yjs structure:
- *   <g id data-id data-module name data-bounpos-type="pos-set" data-snap-radius data-gen-type data-gen-x-spacing data-gen-y-spacing>
+ *   <g id data-id data-module name data-bounpos-type="pos-set" transform data-snap-radius data-gen-type data-gen-x-spacing data-gen-y-spacing>
  *     <path d/>   ← extent rect
  *     <text x y>
  *       Y.XmlText(name)
@@ -72,6 +77,33 @@ export function pathToRect(d) {
   const nums = (d.match(/[-\d.]+/g) ?? []).map(Number);
   const [x, y, x2, , , y2] = nums;
   return { x, y, w: x2 - x, h: y2 - y };
+}
+
+const TRANSLATE_RE = /^\s*translate\(\s*(-?[\d.]+(?:e-?\d+)?)(?:[\s,]+(-?[\d.]+(?:e-?\d+)?))?\s*\)\s*$/i;
+
+// Reads el's translate(tx, ty) from a DOM element or Y.XmlElement. Anything
+// other than a bare translate is read as (0, 0) and left alone: these
+// elements never carry rotate or scale, so an imported transform of another
+// shape isn't ours to interpret.
+export function translationOf(el) {
+  const m = TRANSLATE_RE.exec(el?.getAttribute?.('transform') ?? '');
+  if (!m) return { tx: 0, ty: 0 };
+  return { tx: Number(m[1]), ty: Number(m[2] ?? 0) };
+}
+
+function translateAttr(tx, ty) {
+  return `translate(${tx}, ${ty})`;
+}
+
+// Path rect in the element's local coordinates, and in world coordinates.
+function localRectOf(pathEl, fallback = 'M0,0 L0,0 L0,0 L0,0 Z') {
+  return pathToRect(pathEl?.getAttribute('d') ?? fallback);
+}
+
+function worldRectOf(el, pathEl) {
+  const r = localRectOf(pathEl);
+  const { tx, ty } = translationOf(el);
+  return { x: r.x + tx, y: r.y + ty, w: r.w, h: r.h };
 }
 
 export function toolParamsToCreateParams(genType, toolParams, {x, y, w, h}) {
@@ -334,9 +366,9 @@ export const BOUNPOS_TYPES = {
       },
     },
     create(ydoc, yBounPos, { id, name, x, y, w, h }) {
-      const d  = rectToPath(x, y, w, h);
-      const tx = x + w;
-      const ty = y - 5;
+      const d  = rectToPath(0, 0, w, h);
+      const tx = w;
+      const ty = -5;
       const yG = new Y.XmlElement('g');
       const yPath = new Y.XmlElement('path');
       const yText = new Y.XmlElement('text');
@@ -346,6 +378,7 @@ export const BOUNPOS_TYPES = {
         yG.setAttribute('data-module',       'boun_pos');
         yG.setAttribute('name',              name);
         yG.setAttribute('data-bounpos-type', 'boundary');
+        yG.setAttribute('transform',         translateAttr(x, y));
         yPath.setAttribute('d',            d);
         yText.setAttribute('x',           String(tx));
         yText.setAttribute('y',           String(ty));
@@ -432,16 +465,17 @@ export const BOUNPOS_TYPES = {
 // Helper used by all pos-set variants.
 function _createPositionSet(ydoc, yBounPos,
   { id, name, snapRadius, genType, xSpacing, ySpacing, x, y, w, h, circles }) {
-  const d  = rectToPath(x, y, w, h);
-  const tx = x + w;
-  const ty = y - 5;
+  const d  = rectToPath(0, 0, w, h);
+  const tx = w;
+  const ty = -5;
   const yG       = new Y.XmlElement('g');
   const yPath    = new Y.XmlElement('path');
   const yText    = new Y.XmlElement('text');
+  // Callers pass circles in world coordinates; they're stored relative to (x, y).
   const yCircles = (circles ?? []).map(({ cx, cy }) => {
     const c = new Y.XmlElement('circle');
-    c.setAttribute('cx', String(Math.round(cx)));
-    c.setAttribute('cy', String(Math.round(cy)));
+    c.setAttribute('cx', String(Math.round(cx - x)));
+    c.setAttribute('cy', String(Math.round(cy - y)));
     c.setAttribute('r',  String(Math.round(snapRadius)));
     return c;
   });
@@ -452,6 +486,7 @@ function _createPositionSet(ydoc, yBounPos,
     yG.setAttribute('data-module',      'boun_pos');
     yG.setAttribute('name',             name);
     yG.setAttribute('data-bounpos-type', 'pos-set');
+    yG.setAttribute('transform',         translateAttr(x, y));
     yG.setAttribute('data-snap-radius',  String(Math.round(snapRadius)));
     yG.setAttribute('data-gen-type',     genType);
     yG.setAttribute('data-gen-x-spacing', String(Math.round(xSpacing)));
@@ -532,30 +567,12 @@ export const find = findEl;
 
 export function applyMoveCommit(ydoc, yEl, x, y) {
   if (!yEl) return;
-  const type  = yEl.getAttribute('data-bounpos-type') ?? 'boundary';
   const yPath = yChildByTag(yEl, 'path');
-  const yText = yChildByTag(yEl, 'text');
   if (!yPath) return;
 
-  const { x: oldX, y: oldY, w, h } = pathToRect(
-    yPath.getAttribute('d') ?? 'M0,0 L0,0 L0,0 L0,0 Z'
-  );
-  const dx = x - oldX;
-  const dy = y - oldY;
-
+  const { x: localX, y: localY } = localRectOf(yPath);
   ydoc.transact(() => {
-    yPath.setAttribute('d', rectToPath(x, y, w, h));
-    if (yText) {
-      yText.setAttribute('x', String(x + w));
-      yText.setAttribute('y', String(y - 5));
-    }
-    if (type === 'pos-set') {
-      for (const child of yEl.toArray()) {
-        if (!(child instanceof Y.XmlElement) || child.nodeName !== 'circle') continue;
-        child.setAttribute('cx', String(Math.round(Number(child.getAttribute('cx') ?? 0) + dx)));
-        child.setAttribute('cy', String(Math.round(Number(child.getAttribute('cy') ?? 0) + dy)));
-      }
-    }
+    yEl.setAttribute('transform', translateAttr(x - localX, y - localY));
   });
 }
 
@@ -577,10 +594,11 @@ export function applyResize(ydoc, yEl, x, y, width, height) {
   if (!yPath) return;
 
   ydoc.transact(() => {
-    yPath.setAttribute('d', rectToPath(x, y, width, height));
+    yEl.setAttribute('transform', translateAttr(x, y));
+    yPath.setAttribute('d', rectToPath(0, 0, width, height));
     if (yText) {
-      yText.setAttribute('x', String(x + width));
-      yText.setAttribute('y', String(y - 5));
+      yText.setAttribute('x', String(width));
+      yText.setAttribute('y', '-5');
     }
 
     if (type === 'pos-set') {
@@ -645,7 +663,7 @@ export function getGeom(svgEl) {
   if (!path) return null;
   const d = path.getAttribute('d');
   if (!d) return null;
-  const { x, y, w, h } = pathToRect(d);
+  const { x, y, w, h } = worldRectOf(svgEl, path);
   return { x, y, width: w, height: h };
 }
 
@@ -748,8 +766,9 @@ export function getTtState(yEl) {
   const bounPosType = yEl.getAttribute('data-bounpos-type') ?? 'boundary';
   const name        = yEl.getAttribute('name') ?? id;
   const yPath       = yChildByTag(yEl, 'path');
-  const d           = yPath?.getAttribute('d') ?? 'M0,0 L100,0 L100,100 L0,100 Z';
-  const { x, y, w, h } = pathToRect(d);
+  const { x, y, w, h } = yPath
+    ? worldRectOf(yEl, yPath)
+    : { x: 0, y: 0, w: 100, h: 100 };
   const state = { id, bounPosType, name, x, y, w, h };
 
   if (bounPosType === 'pos-set') {
@@ -948,10 +967,12 @@ export function previewEdit(ghostEl, editData) {
   const xSpacing        = editData.xSpacing   ?? current.xSpacing;
   const ySpacing        = editData.ySpacing   ?? current.ySpacing;
   const snapRadiusLevel = editData.snapRadius ?? current.snapRadius;
-  const extent = getGeom(ghostEl);
-  if (!extent) return;
+  const ghostPath = ghostEl.querySelector(':scope > path');
+  if (!ghostPath?.getAttribute('d')) return;
+  // Circles are written in the ghost's local coordinates.
+  const extent = localRectOf(ghostPath);
   const { circles, r } = computeGridPositions(
-    { x: extent.x, y: extent.y, w: extent.width, h: extent.height },
+    extent,
     genType, xSpacing, ySpacing, snapRadiusLevel
   );
 
@@ -963,11 +984,12 @@ export function previewEdit(ghostEl, editData) {
  */
 export function previewResize(ghostEl, x, y, width, height) {
   const path = ghostEl.querySelector(':scope > path');
-  if (path) path.setAttribute('d', rectToPath(x, y, width, height));
+  ghostEl.setAttribute('transform', translateAttr(x, y));
+  if (path) path.setAttribute('d', rectToPath(0, 0, width, height));
   const text = ghostEl.querySelector(':scope > text');
   if (text) {
-    text.setAttribute('x', String(x + width));
-    text.setAttribute('y', String(y - 5));
+    text.setAttribute('x', String(width));
+    text.setAttribute('y', '-5');
   }
 
   if (ghostEl.getAttribute('data-bounpos-type') !== 'pos-set') return;
@@ -975,7 +997,7 @@ export function previewResize(ghostEl, x, y, width, height) {
   const current = getTtStateSchema(ghostEl);
   const genType = ghostEl.getAttribute('data-gen-type') ?? 'square';
   const { circles, r } = computeGridPositions(
-    { x, y, w: width, h: height },
+    { x: 0, y: 0, w: width, h: height },
     genType, current.xSpacing, current.ySpacing, current.snapRadius
   );
 
@@ -999,10 +1021,8 @@ export function computeBoundaryRects(yBounPos, toyClasses, anchor) {
     if (!name || !toyClasses.has(name)) continue;
     const yPath = yChildByTag(node, 'path');
     if (!yPath) continue;
-    const d = yPath.getAttribute('d');
-    if (!d) continue;
-    const { x, y, w, h } = pathToRect(d);
-    rects.push({ x, y, w, h });
+    if (!yPath.getAttribute('d')) continue;
+    rects.push(worldRectOf(node, yPath));
   }
   if (rects.length === 0) return null;
   const startsInside = rects.some(
@@ -1019,10 +1039,11 @@ export function getSnapPoints(yBounPos) {
     if (node.getAttribute('data-bounpos-type') !== 'pos-set') continue;
     const name = node.getAttribute('name');
     const snapRadius = Number(node.getAttribute('data-snap-radius') ?? 30);
+    const { tx, ty } = translationOf(node);
     for (const child of node.toArray()) {
       if (!(child instanceof Y.XmlElement) || child.nodeName !== 'circle') continue;
-      const cx = Number(child.getAttribute('cx') ?? 0);
-      const cy = Number(child.getAttribute('cy') ?? 0);
+      const cx = Number(child.getAttribute('cx') ?? 0) + tx;
+      const cy = Number(child.getAttribute('cy') ?? 0) + ty;
       points.push({ cx, cy, name, snapRadius });
     }
   }

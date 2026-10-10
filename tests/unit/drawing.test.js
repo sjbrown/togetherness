@@ -1,60 +1,68 @@
 // @vitest-environment jsdom
 /**
- * shapes.test.js
+ * drawing.test.js
  * Run with: npx vitest run
  *
- * Tests import directly from drawing.js — the same code path as index.html.
- * Sync is simulated with Y.encodeStateAsUpdate / Y.applyUpdate.
- * Runs under jsdom because listDrawings / _toSVGEl render live SVG DOM.
+ * The drawing layer is an op layer: every write is a DOM operation on the
+ * live layer, recorded as a gesture. These tests drive drawing.js directly
+ * (DOM functions, batch gestures, the LayerAPI) against a jsdom layer.
  */
 
 import * as Y from 'yjs'
-import { describe, test, expect } from 'vitest'
+import { describe, test, expect, beforeEach } from 'vitest'
 import {
-  addDrawing, deleteDrawing, findDrawing,
-  getGeom, _toSVGEl, listDrawings, CURRENT_SCHEMA, SHAPE_TYPES,
-  selectModes, nextSelectMode, computeResize,
+  DRAWING_LAYER, SHAPE_TYPES, makeLayerAPI, runGesture,
+  addDrawingDom, deleteDrawingDom, findDrawingDom,
+  deleteDrawingsBatch, moveDrawingsBatch, duplicateDrawingsBatch, importDrawings,
+  getGeom, selectModes, nextSelectMode, computeResize,
   getRotation, syncRotation,
-  applyRotate, applyMoveCommit, applyMoveDom, previewResize, previewRotate, rotationCenter,
+  applyRotateDom, applyMoveDom, applyResizeDom, applyPivotDom, previewResize, previewRotate, rotationCenter,
   resolveRotation, rotationTransform, getPivot,
-  snapPivot, computePivot, pivotShift, pivotRayOpacities, PIVOT_RAYS, applyPivot,
+  snapPivot, computePivot, pivotShift, pivotRayOpacities, PIVOT_RAYS,
   reconcileImportedTransform, parseTransformList, reconcileTransform,
   PIVOT_SNAP_FRACTION,
 } from '../../src/drawing.js'
-import { tablesAPI } from '../../src/tables.js'
+import { ensureLayerId } from '../../src/op_layers.js'
+import { getOps } from '../../src/op_dag.js'
 
-// ── Sync helper ───────────────────────────────────────────────────────────────
+const SVG_NS = 'http://www.w3.org/2000/svg'
 
-function sync(docA, docB) {
-  Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB))
-  Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA))
+beforeEach(() => { localStorage.clear() })
+
+function freshLayer() {
+  const el = document.createElementNS(SVG_NS, 'g')
+  el.id = 'drawing-layer'
+  return ensureLayerId(el, DRAWING_LAYER)
 }
 
-// makeDoc() (tables.js) returns a bare Y.Doc now — everything below this
-// file was written against the old {ydoc, yDrawing} shape, so wrap it once
-// here rather than touching every call site.
+// A layer plus the LayerAPI over it. No tableId is passed to gestures made
+// through the bare DOM helpers; the LayerAPI commits to the op log.
+let _tables = 0
 function makeDoc() {
-  const ydoc = tablesAPI.makeDoc()
-  return { ydoc, yDrawing: ydoc.getXmlFragment('drawing') }
+  const ydoc    = new Y.Doc()
+  const layerEl = freshLayer()
+  const tableId = `drawing-test-${_tables++}`
+  const L       = makeLayerAPI(ydoc, () => layerEl, { id: 'me' }, tableId)
+  return { ydoc, layerEl, tableId, L }
 }
 
 // ── Shape factory ─────────────────────────────────────────────────────────────
 // `add` defaults to a rect. Pass type + matching geometry to get other types.
 // e.g. add(doc, { type: 'circle', cx: 50, cy: 50, r: 30 })
-// The rect defaults (x, y, width, height) are silently ignored for other types
-// because addDrawing only reads attrs listed in SHAPE_TYPES[type].geomAttrs.
 
 const uid = () => Math.random().toString(36).slice(2, 9)
 
 function add(doc, overrides = {}) {
   const id = overrides.id ?? uid()
-  addDrawing(doc.ydoc, doc.yDrawing, {
+  doc.L.add({
     id, type: 'rect', x: 10, y: 10, width: 100, height: 50,
     fill: '#c8f060', stroke: 'none', 'stroke-width': 0, opacity: 1,
     ...overrides,
   })
   return id
 }
+
+const idsOf = (layerEl) => [...layerEl.children].map(el => el.getAttribute('data-id'))
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHAPE_TYPES registry
@@ -115,47 +123,50 @@ describe('basic operations', () => {
   test('add a rect', () => {
     const doc = makeDoc()
     add(doc, { id: 'a', fill: 'red' })
-    expect(doc.yDrawing.length).toBe(1)
-    expect(findDrawing(doc.yDrawing, 'a').getAttribute('fill')).toBe('red')
+    expect(doc.layerEl.children.length).toBe(1)
+    expect(doc.L.find('a').getAttribute('fill')).toBe('red')
   })
 
   test('add a circle', () => {
     const doc = makeDoc()
     add(doc, { id: 'c', type: 'circle', cx: 50, cy: 60, r: 30 })
-    expect(doc.yDrawing.length).toBe(1)
-    const el = findDrawing(doc.yDrawing, 'c')
+    expect(doc.layerEl.children.length).toBe(1)
+    const el = doc.L.find('c')
     expect(el.getAttribute('cx')).toBe('50')
     expect(el.getAttribute('cy')).toBe('60')
     expect(el.getAttribute('r')).toBe('30')
     // a circle must not store rect-specific attrs
-    expect(el.getAttribute('width')).toBeUndefined()
-    expect(el.getAttribute('height')).toBeUndefined()
+    expect(el.getAttribute('width')).toBeNull()
+    expect(el.getAttribute('height')).toBeNull()
   })
 
   test('delete a shape', () => {
     const doc = makeDoc()
     add(doc, { id: 'a' })
     add(doc, { id: 'b' })
-    deleteDrawing(doc.ydoc, doc.yDrawing, 'a')
-    expect(doc.yDrawing.length).toBe(1)
-    expect(findDrawing(doc.yDrawing, 'b')).not.toBeNull()
-    expect(findDrawing(doc.yDrawing, 'a')).toBeNull()
+    expect(doc.L.delete('a')).toBe(true)
+    expect(doc.layerEl.children.length).toBe(1)
+    expect(doc.L.find('b')).not.toBeNull()
+    expect(doc.L.find('a')).toBeNull()
   })
 
-  test('delete removes the element from the fragment', () => {
+  test('deleting a shape that is not there reports false', () => {
     const doc = makeDoc()
-    add(doc, { id: 'a' })
-    expect(findDrawing(doc.yDrawing, 'a')).not.toBeNull()
-    deleteDrawing(doc.ydoc, doc.yDrawing, 'a')
-    expect(findDrawing(doc.yDrawing, 'a')).toBeNull()
+    expect(doc.L.delete('nope')).toBe(false)
   })
 
   test('edit a shape attribute', () => {
     const doc = makeDoc()
     add(doc, { id: 'a', fill: 'red' })
-    const el = findDrawing(doc.yDrawing, 'a')
-    doc.ydoc.transact(() => el.setAttribute('fill', 'blue'))
-    expect(findDrawing(doc.yDrawing, 'a').getAttribute('fill')).toBe('blue')
+    doc.L.edit(doc.L.find('a'), { fill: 'blue' })
+    expect(doc.L.find('a').getAttribute('fill')).toBe('blue')
+  })
+
+  test('edit maps a schema key to its SVG attribute', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'a' })
+    doc.L.edit(doc.L.find('a'), { 'corner-r': 12 })
+    expect(doc.L.find('a').getAttribute('rx')).toBe('12')
   })
 
   test('z-order: shapes render in insertion order', () => {
@@ -163,14 +174,13 @@ describe('basic operations', () => {
     add(doc, { id: 'bottom' })
     add(doc, { id: 'middle' })
     add(doc, { id: 'top' })
-    const ids = listDrawings(doc.yDrawing).map(svgEl => svgEl.getAttribute("data-id"))
-    expect(ids).toEqual(['bottom', 'middle', 'top'])
+    expect(idsOf(doc.layerEl)).toEqual(['bottom', 'middle', 'top'])
   })
 
   test('rect attributes are stored as SVG-native names', () => {
     const doc = makeDoc()
     add(doc, { id: 'a', width: 200, height: 80 })
-    const el = findDrawing(doc.yDrawing, 'a')
+    const el = doc.L.find('a')
     expect(el.getAttribute('width')).toBe('200')
     expect(el.getAttribute('height')).toBe('80')
   })
@@ -178,24 +188,183 @@ describe('basic operations', () => {
   test('circle attributes are stored as SVG-native names', () => {
     const doc = makeDoc()
     add(doc, { id: 'c', type: 'circle', cx: 100, cy: 120, r: 45 })
-    const el = findDrawing(doc.yDrawing, 'c')
+    const el = doc.L.find('c')
     expect(el.getAttribute('cx')).toBe('100')
     expect(el.getAttribute('cy')).toBe('120')
     expect(el.getAttribute('r')).toBe('45')
   })
 
-  test('element tag and id are set correctly', () => {
+  test('element tag, id, data-id and data-module are set', () => {
     const doc = makeDoc()
     add(doc, { id: 'a' })
-    const yEl = findDrawing(doc.yDrawing, 'a')
-    expect(yEl.nodeName).toBe('rect')
-    expect(yEl.getAttribute('id')).toBe('a')
+    const el = doc.L.find('a')
+    expect(el.tagName).toBe('rect')
+    expect(el.getAttribute('id')).toBe('a')
+    expect(el.getAttribute('data-id')).toBe('a')
+    expect(el.getAttribute('data-module')).toBe('drawing')
   })
 
   test('circle element has correct tag', () => {
     const doc = makeDoc()
     add(doc, { id: 'c', type: 'circle', cx: 50, cy: 50, r: 20 })
-    expect(findDrawing(doc.yDrawing, 'c').nodeName).toBe('circle')
+    expect(doc.L.find('c').tagName).toBe('circle')
+  })
+
+  test('an unknown shape type throws', () => {
+    const doc = makeDoc()
+    expect(() => doc.L.add({ id: 'x', type: 'wobble' })).toThrow(/unknown shape type/)
+    expect(() => doc.L.add({ id: 'x' })).toThrow(/type is required/)
+  })
+
+  test('the derived transform is written in the same operation as the shape', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'r1', x: 0, y: 0, width: 100, height: 60, rotate: 45 })
+    expect(doc.L.find('r1').getAttribute('transform')).toBe('rotate(45 50 30)')
+    const ops = getOps(doc.ydoc, DRAWING_LAYER)
+    expect(ops.size).toBe(1)
+  })
+
+  test('getTtState reports schema keys, mapping SVG names back', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'a', 'corner-r': 6, rotate: 30 })
+    expect(doc.L.getTtState(doc.L.find('a'))).toMatchObject({
+      type: 'rect', id: 'a', x: '10', width: '100', 'corner-r': '6', rotate: '30',
+    })
+  })
+
+  test('listData lists shapes in z-order as layer-object descriptors', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'r', type: 'rect' })
+    add(doc, { id: 'c', type: 'circle', cx: 50, cy: 50, r: 20, fill: '#123456' })
+    const data = doc.L.listData()
+    expect(data.map(d => d.id)).toEqual(['r', 'c'])
+    expect(data.map(d => d.kind)).toEqual(['rect', 'circle'])
+    expect(data[1].fill).toBe('#123456')
+  })
+})
+
+describe('every write is one operation', () => {
+  const gestures = (doc) =>
+    [...getOps(doc.ydoc, DRAWING_LAYER).values()].map(o => o.gesture)
+
+  test('draw, move, resize, rotate, pivot, edit and delete each commit one named op', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'a', x: 0, y: 0, width: 100, height: 60 })
+    doc.L.applyMoveCommit(doc.L.find('a'), 20, 20)
+    doc.L.applyResize(doc.L.find('a'), 20, 20, 150, 90)
+    doc.L.applyRotate(doc.L.find('a'), 45)
+    doc.L.applyPivot(doc.L.find('a'), 0, 0, 25, 25)
+    doc.L.edit(doc.L.find('a'), { fill: '#000' })
+    doc.L.delete('a')
+    expect(gestures(doc)).toEqual(['draw', 'move', 'resize', 'rotate', 'pivot', 'edit', 'delete'])
+  })
+
+  test('a move re-derives the transform inside the same op', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'r1', x: 0, y: 0, width: 100, height: 60, rotate: 45 })
+    doc.L.applyMoveCommit(doc.L.find('r1'), 200, 200)
+    expect(doc.L.find('r1').getAttribute('transform')).toBe('rotate(45 250 230)')
+    expect(getOps(doc.ydoc, DRAWING_LAYER).size).toBe(2)
+  })
+
+  test('resize commits integers', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'a' })
+    doc.L.applyResize(doc.L.find('a'), 1.4, 2.6, 80.5, 40.2)
+    const el = doc.L.find('a')
+    expect([el.getAttribute('x'), el.getAttribute('y'), el.getAttribute('width'), el.getAttribute('height')])
+      .toEqual(['1', '3', '81', '40'])
+  })
+
+  test('resize of a circle keeps the centre and derives r from the bbox', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'c', type: 'circle', cx: 100, cy: 100, r: 20 })
+    doc.L.applyResize(doc.L.find('c'), 60, 60, 80, 80)
+    const el = doc.L.find('c')
+    expect([el.getAttribute('cx'), el.getAttribute('cy'), el.getAttribute('r')]).toEqual(['100', '100', '40'])
+  })
+})
+
+describe('batch gestures', () => {
+  const opts = (doc) => ({ authorId: 'me', tableId: doc.tableId })
+  const gestures = (doc) =>
+    [...getOps(doc.ydoc, DRAWING_LAYER).values()].map(o => o.gesture)
+
+  test('deleteDrawingsBatch is one op for the whole selection', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'a' }); add(doc, { id: 'b' }); add(doc, { id: 'c' })
+    const op = deleteDrawingsBatch(doc.ydoc, doc.layerEl, ['a', 'b', 'gone'], opts(doc))
+    expect(op.gesture).toBe('delete-batch')
+    expect(idsOf(doc.layerEl)).toEqual(['c'])
+    expect(gestures(doc).filter(g => g === 'delete-batch')).toHaveLength(1)
+  })
+
+  test('deleteDrawingsBatch returns null when nothing was there to delete', () => {
+    const doc = makeDoc()
+    expect(deleteDrawingsBatch(doc.ydoc, doc.layerEl, ['nope'], opts(doc))).toBeNull()
+  })
+
+  test('moveDrawingsBatch moves every shape in one op', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'a', x: 0, y: 0 })
+    add(doc, { id: 'c', type: 'circle', cx: 10, cy: 10, r: 5 })
+    const op = moveDrawingsBatch(doc.ydoc, doc.layerEl, [
+      { id: 'a', x: 50, y: 60 }, { id: 'c', x: 70, y: 80 },
+    ], opts(doc))
+    expect(op.gesture).toBe('move-batch')
+    expect(doc.L.find('a').getAttribute('x')).toBe('50')
+    expect(doc.L.find('c').getAttribute('cx')).toBe('70')
+    expect(gestures(doc).filter(g => g === 'move-batch')).toHaveLength(1)
+  })
+
+  test('duplicateDrawingsBatch copies state, offsets geometry and is one op', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'a', x: 10, y: 20, width: 100, height: 50, fill: '#abcdef', 'corner-r': 6, rotate: 30 })
+    add(doc, { id: 'c', type: 'circle', cx: 40, cy: 50, r: 9 })
+    let n = 0
+    const { op, newIds } = duplicateDrawingsBatch(doc.ydoc, doc.layerEl, ['a', 'c'],
+      { ...opts(doc), newId: () => `dup${n++}` })
+    expect(op.gesture).toBe('duplicate')
+    expect(newIds).toEqual(['dup0', 'dup1'])
+    const copy = doc.L.find('dup0')
+    expect(copy.getAttribute('x')).toBe('32')
+    expect(copy.getAttribute('y')).toBe('42')
+    expect(copy.getAttribute('fill')).toBe('#abcdef')
+    expect(copy.getAttribute('rx')).toBe('6')
+    expect(copy.getAttribute('data-rotate')).toBe('30')
+    expect(copy.getAttribute('transform')).toBe('rotate(30 82 67)')
+    expect(doc.L.find('dup1').getAttribute('cx')).toBe('62')
+    expect(doc.L.find('dup1').getAttribute('r')).toBe('9')
+    expect(gestures(doc).filter(g => g === 'duplicate')).toHaveLength(1)
+  })
+
+  test('duplicateDrawingsBatch skips ids that are not there', () => {
+    const doc = makeDoc()
+    const { op, newIds } = duplicateDrawingsBatch(doc.ydoc, doc.layerEl, ['nope'],
+      { ...opts(doc), newId: () => 'x' })
+    expect(op).toBeNull()
+    expect(newIds).toEqual([])
+  })
+
+  test('importDrawings appends the shapes in one import op', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'a' })
+    const el = document.createElementNS(SVG_NS, 'rect')
+    el.setAttribute('id', 'imp'); el.setAttribute('data-id', 'imp')
+    const { op } = importDrawings(doc.ydoc, doc.layerEl, [el], opts(doc))
+    expect(op.gesture).toBe('import')
+    expect(idsOf(doc.layerEl)).toEqual(['a', 'imp'])
+  })
+
+  test('importDrawings re-ids a shape that collides with one already on the layer', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'a' })
+    const el = document.createElementNS(SVG_NS, 'rect')
+    el.setAttribute('id', 'a'); el.setAttribute('data-id', 'a')
+    importDrawings(doc.ydoc, doc.layerEl, [el], opts(doc))
+    const ids = idsOf(doc.layerEl)
+    expect(new Set(ids).size).toBe(2)
+    expect(el.getAttribute('id')).toBe(el.getAttribute('data-id'))
   })
 })
 
@@ -262,8 +431,7 @@ describe('computeResize', () => {
 })
 
 describe('getGeom', () => {
-  // Helper: render a shape to its svgEl the same way listDrawings does.
-  const elFor = (doc, id) => _toSVGEl(findDrawing(doc.yDrawing, id))
+  const elFor = (doc, id) => doc.L.find(id)
 
   test('returns numeric values for rect, not string-concatenated', () => {
     const doc = makeDoc()
@@ -310,176 +478,19 @@ describe('getGeom', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// listDrawings
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('listDrawings', () => {
-  test('returns shapes in z-order by default', () => {
-    const doc = makeDoc()
-    add(doc, { id: 'a' })
-    add(doc, { id: 'b' })
-    add(doc, { id: 'c' })
-    const ids = listDrawings(doc.yDrawing).map(svgEl => svgEl.getAttribute("data-id"))
-    expect(ids).toEqual(['a', 'b', 'c'])
-  })
-
-  test('lists shapes of mixed types in insertion order', () => {
-    const doc = makeDoc()
-    add(doc, { id: 'r', type: 'rect' })
-    add(doc, { id: 'c', type: 'circle', cx: 50, cy: 50, r: 20 })
-    const shapes = listDrawings(doc.yDrawing)
-    expect(shapes).toHaveLength(2)
-    expect(shapes[0].getAttribute('data-id')).toBe('r')
-    expect(shapes[1].getAttribute('data-id')).toBe('c')
-    // tagName reflects the actual SVG tag
-    expect(shapes[0].tagName).toBe('rect')
-    expect(shapes[1].tagName).toBe('circle')
-  })
-
-  test('skips non-element nodes', () => {
-    const doc = makeDoc()
-    add(doc, { id: 'a' })
-    const shapes = listDrawings(doc.yDrawing)
-    expect(shapes).toHaveLength(1)
-    expect(shapes.every(svgEl => svgEl && svgEl.nodeType === 1)).toBe(true)
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CRDT convergence
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('convergence', () => {
-  test('concurrent adds on two peers — both survive after sync', () => {
-    const peer1 = makeDoc()
-    const peer2 = makeDoc()
-
-    add(peer1, { id: 'from-peer1' })
-    add(peer2, { id: 'from-peer2' })
-
-    sync(peer1.ydoc, peer2.ydoc)
-
-    expect(peer1.yDrawing.length).toBe(2)
-    expect(peer2.yDrawing.length).toBe(2)
-
-    const ids1 = listDrawings(peer1.yDrawing).map(svgEl => svgEl.getAttribute("data-id")).sort()
-    const ids2 = listDrawings(peer2.yDrawing).map(svgEl => svgEl.getAttribute("data-id")).sort()
-    expect(ids1).toEqual(ids2)
-    expect(ids1).toContain('from-peer1')
-    expect(ids1).toContain('from-peer2')
-  })
-
-  test('both peers converge to identical state after sync', () => {
-    const peer1 = makeDoc()
-    const peer2 = makeDoc()
-
-    add(peer1, { id: 'a' })
-    add(peer2, { id: 'b' })
-    sync(peer1.ydoc, peer2.ydoc)
-
-    const state1 = Y.encodeStateAsUpdate(peer1.ydoc)
-    const state2 = Y.encodeStateAsUpdate(peer2.ydoc)
-    expect(Buffer.from(state1).toString('hex')).toBe(Buffer.from(state2).toString('hex'))
-  })
-
-  test('concurrent attribute edits on same shape — both applied independently', () => {
-    const peer1 = makeDoc()
-    add(peer1, { id: 'shared', fill: 'red', x: 10 })
-
-    const peer2 = makeDoc()
-    sync(peer1.ydoc, peer2.ydoc)
-
-    // Partition
-    const el1 = findDrawing(peer1.yDrawing, 'shared')
-    const el2 = findDrawing(peer2.yDrawing, 'shared')
-    peer1.ydoc.transact(() => el1.setAttribute('fill', 'blue'))
-    peer2.ydoc.transact(() => el2.setAttribute('x', '99'))
-
-    sync(peer1.ydoc, peer2.ydoc)
-
-    expect(findDrawing(peer1.yDrawing, 'shared').getAttribute('fill')).toBe('blue')
-    expect(findDrawing(peer1.yDrawing, 'shared').getAttribute('x')).toBe('99')
-    expect(findDrawing(peer2.yDrawing, 'shared').getAttribute('fill')).toBe('blue')
-    expect(findDrawing(peer2.yDrawing, 'shared').getAttribute('x')).toBe('99')
-  })
-
-  test('concurrent delete on one peer, edit on other — delete wins', () => {
-    const peer1 = makeDoc()
-    add(peer1, { id: 'doomed', fill: 'red' })
-
-    const peer2 = makeDoc()
-    sync(peer1.ydoc, peer2.ydoc)
-
-    deleteDrawing(peer1.ydoc, peer1.yDrawing, 'doomed')
-    const el2 = findDrawing(peer2.yDrawing, 'doomed')
-    peer2.ydoc.transact(() => el2.setAttribute('fill', 'blue'))
-
-    sync(peer1.ydoc, peer2.ydoc)
-
-    expect(peer1.yDrawing.length).toBe(0)
-    expect(peer2.yDrawing.length).toBe(0)
-  })
-
-  test('three-way merge — all peers converge', () => {
-    const peers = [makeDoc(), makeDoc(), makeDoc()]
-
-    add(peers[0], { id: 'p0' })
-    add(peers[1], { id: 'p1' })
-    add(peers[2], { id: 'p2' })
-
-    sync(peers[0].ydoc, peers[1].ydoc)
-    sync(peers[1].ydoc, peers[2].ydoc)
-    sync(peers[0].ydoc, peers[2].ydoc)
-
-    const lengths = peers.map(p => p.yDrawing.length)
-    expect(lengths).toEqual([3, 3, 3])
-
-    const idSets = peers.map(p =>
-      listDrawings(p.yDrawing).map(svgEl => svgEl.getAttribute("data-id")).sort().join(',')
-    )
-    expect(idSets[0]).toBe(idSets[1])
-    expect(idSets[1]).toBe(idSets[2])
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Z-order
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('z-order', () => {
-  test('delete + re-append moves an element to the end of the fragment', () => {
+  test('delete + re-add moves a shape to the end of the layer', () => {
     const doc = makeDoc()
-    add(doc, { id: 'a' })
-    add(doc, { id: 'b' })
-    add(doc, { id: 'c' })
-
-    // Bring 'a' to front
-    const old   = findDrawing(doc.yDrawing, 'a')
-    const attrs = old.getAttributes()
-    doc.ydoc.transact(() => {
-      deleteDrawing(doc.ydoc, doc.yDrawing, 'a')
-      addDrawing(doc.ydoc, doc.yDrawing, {
-        ...Object.fromEntries(Object.entries(attrs).map(([k, v]) => [k, isNaN(v) ? v : Number(v)])),
-        type: old.nodeName,
-      })
-    })
-
-    const ids = listDrawings(doc.yDrawing).map(svgEl => svgEl.getAttribute("data-id"))
-    expect(ids).toEqual(['b', 'c', 'a'])
-  })
-
-  test('concurrent adds produce consistent z-order on both peers', () => {
-    const peer1 = makeDoc()
-    const peer2 = makeDoc()
-
-    add(peer1, { id: 'p1-shape' })
-    add(peer2, { id: 'p2-shape' })
-    sync(peer1.ydoc, peer2.ydoc)
-
-    const order1 = listDrawings(peer1.yDrawing).map(svgEl => svgEl.getAttribute("data-id"))
-    const order2 = listDrawings(peer2.yDrawing).map(svgEl => svgEl.getAttribute("data-id"))
-    expect(order1).toEqual(order2)
-    expect(order1.length).toBe(2)
+    add(doc, { id: 'a' }); add(doc, { id: 'b' }); add(doc, { id: 'c' })
+    const state = doc.L.getTtState(doc.L.find('a'))
+    runGesture(doc.ydoc, doc.layerEl, () => {
+      deleteDrawingDom(doc.layerEl, 'a')
+      addDrawingDom(doc.layerEl, state)
+    }, { gesture: 'raise', authorId: 'me', tableId: doc.tableId })
+    expect(idsOf(doc.layerEl)).toEqual(['b', 'c', 'a'])
   })
 })
 
@@ -561,10 +572,10 @@ describe('rotation on the DOM', () => {
     expect(el.getAttribute('transform')).toBeNull()
   })
 
-  test('_toSVGEl renders the stored rotation as a transform', () => {
+  test('a drawn shape carries its rotation as a transform', () => {
     const doc = makeDoc()
     add(doc, { id: 'r1', x: 0, y: 0, width: 100, height: 60, rotate: 45 })
-    const el = _toSVGEl(findDrawing(doc.yDrawing, 'r1'))
+    const el = doc.L.find('r1')
     expect(el.getAttribute('data-rotate')).toBe('45')
     expect(el.getAttribute('transform')).toBe('rotate(45 50 30)')
   })
@@ -594,32 +605,26 @@ describe('rotation on the DOM', () => {
 })
 
 describe('applyRotate', () => {
-  test('writes a normalized degree count that survives sync', () => {
-    const a = makeDoc()
-    const b = makeDoc()
-    add(a, { id: 'r1' })
-    sync(a.ydoc, b.ydoc)
-
-    applyRotate(a.ydoc, findDrawing(a.yDrawing, 'r1'), -30)
-    sync(a.ydoc, b.ydoc)
-    expect(findDrawing(b.yDrawing, 'r1').getAttribute('data-rotate')).toBe('330')
+  test('writes a normalized degree count', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'r1' })
+    doc.L.applyRotate(doc.L.find('r1'), -30)
+    expect(doc.L.find('r1').getAttribute('data-rotate')).toBe('330')
   })
 
   test('is a no-op for a shape type whose schema has no rotate key', () => {
     const doc = makeDoc()
     add(doc, { id: 'c1', type: 'circle', cx: 50, cy: 50, r: 30 })
-    const yEl = findDrawing(doc.yDrawing, 'c1')
-    applyRotate(doc.ydoc, yEl, 45)
-    expect(yEl.getAttribute('data-rotate')).toBeUndefined()
+    const el = doc.L.find('c1')
+    applyRotateDom(el, 45)
+    expect(el.getAttribute('data-rotate')).toBeNull()
   })
 
   test('a rotated rect keeps its rotation across a move', () => {
     const doc = makeDoc()
     add(doc, { id: 'r1', x: 0, y: 0, width: 100, height: 60, rotate: 45 })
-    const yEl = findDrawing(doc.yDrawing, 'r1')
-    applyMoveCommit(doc.ydoc, yEl, 200, 200)
-    const el = _toSVGEl(yEl)
-    expect(el.getAttribute('transform')).toBe('rotate(45 250 230)')
+    applyMoveDom(doc.L.find('r1'), 200, 200)
+    expect(doc.L.find('r1').getAttribute('transform')).toBe('rotate(45 250 230)')
   })
 })
 
@@ -736,52 +741,50 @@ describe('reconcileTransform', () => {
 
 describe('reconcileImportedTransform', () => {
   const imported = (attrs) => {
-    const doc = makeDoc()
-    const yEl = new Y.XmlElement('rect')
+    const el = document.createElementNS(SVG_NS, 'rect')
     for (const [k, v] of Object.entries({ id: 'r1', x: 100, y: 100, width: 200, height: 120, ...attrs })) {
-      yEl.setAttribute(k, String(v))
+      el.setAttribute(k, String(v))
     }
-    doc.yDrawing.insert(0, [yEl])
-    reconcileImportedTransform(yEl)
-    return yEl
+    reconcileImportedTransform(el)
+    return el
   }
 
   test('an untouched export round-trips completely unchanged', () => {
-    const yEl = imported({ 'data-rotate': '45', transform: 'rotate(45 200 160)' })
-    expect(yEl.getAttribute('data-rotate')).toBe('45')
-    expect(yEl.getAttribute('transform')).toBe('rotate(45 200 160)')
-    expect(yEl.getAttribute('x')).toBe('100')
-    expect(yEl.getAttribute('y')).toBe('100')
+    const el = imported({ 'data-rotate': '45', transform: 'rotate(45 200 160)' })
+    expect(el.getAttribute('data-rotate')).toBe('45')
+    expect(el.getAttribute('transform')).toBe('rotate(45 200 160)')
+    expect(el.getAttribute('x')).toBe('100')
+    expect(el.getAttribute('y')).toBe('100')
   })
 
   test('an external editor\u2019s rotation AND move both survive', () => {
-    const yEl = imported({ 'data-rotate': '45', transform: 'translate(40 25) rotate(60 200 160)' })
-    expect(Number(yEl.getAttribute('data-rotate'))).toBeCloseTo(60, 6)
-    expect(yEl.getAttribute('x')).toBe('140')
-    expect(yEl.getAttribute('y')).toBe('125')
+    const el = imported({ 'data-rotate': '45', transform: 'translate(40 25) rotate(60 200 160)' })
+    expect(Number(el.getAttribute('data-rotate'))).toBeCloseTo(60, 6)
+    expect(el.getAttribute('x')).toBe('140')
+    expect(el.getAttribute('y')).toBe('125')
     // Canonical transform, re-derived about the new position \u2014 not the
     // file's original matrix.
-    expect(yEl.getAttribute('transform')).toBe('rotate(60 240 185)')
+    expect(el.getAttribute('transform')).toBe('rotate(60 240 185)')
   })
 
   test('a transform we cannot express keeps the file\u2019s own, and drops our stale degrees', () => {
-    const yEl = imported({ 'data-rotate': '45', transform: 'matrix(1.41 0.35 -0.35 1.41 40 25)' })
-    expect(yEl.getAttribute('data-rotate')).toBeUndefined()
-    expect(yEl.getAttribute('transform')).toContain('matrix(')
+    const el = imported({ 'data-rotate': '45', transform: 'matrix(1.41 0.35 -0.35 1.41 40 25)' })
+    expect(el.getAttribute('data-rotate')).toBeNull()
+    expect(el.getAttribute('transform')).toContain('matrix(')
     // ...and with no data-rotate, render leaves it exactly alone.
-    expect(_toSVGEl(yEl).getAttribute('transform')).toContain('matrix(')
+    expect(el.getAttribute('transform')).toContain('matrix(')
   })
 
   test('a shape with no rotation of ours is never touched', () => {
-    const yEl = imported({ transform: 'skewX(10)' })
-    expect(yEl.getAttribute('transform')).toBe('skewX(10)')
-    expect(yEl.getAttribute('data-rotate')).toBeUndefined()
+    const el = imported({ transform: 'skewX(10)' })
+    expect(el.getAttribute('transform')).toBe('skewX(10)')
+    expect(el.getAttribute('data-rotate')).toBeNull()
   })
 
   test('an unparseable transform is treated as foreign, not silently dropped', () => {
-    const yEl = imported({ 'data-rotate': '45', transform: 'rotate(30) wobble(3)' })
-    expect(yEl.getAttribute('transform')).toBe('rotate(30) wobble(3)')   // verbatim
-    expect(yEl.getAttribute('data-rotate')).toBeUndefined()              // ours goes instead
+    const el = imported({ 'data-rotate': '45', transform: 'rotate(30) wobble(3)' })
+    expect(el.getAttribute('transform')).toBe('rotate(30) wobble(3)')   // verbatim
+    expect(el.getAttribute('data-rotate')).toBeNull()              // ours goes instead
   })
 })
 
@@ -1018,42 +1021,41 @@ describe('pivotShift — placing a pivot never moves the shape', () => {
 })
 
 describe('applyPivot', () => {
-  test('writes the pivot and the compensating position together, and syncs', () => {
-    const a = makeDoc(), b = makeDoc()
-    add(a, { id: 'r1', x: 100, y: 100, width: 200, height: 120, rotate: 37 })
-    sync(a.ydoc, b.ydoc)
+  test('writes the pivot and the compensating position in one op, and syncs', () => {
+    const doc = makeDoc()
+    add(doc, { id: 'r1', x: 100, y: 100, width: 200, height: 120, rotate: 37 })
+    const before = getOps(doc.ydoc, DRAWING_LAYER).size
+    doc.L.applyPivot(doc.L.find('r1'), 0, 1, 140.4, 125.7)
 
-    applyPivot(a.ydoc, findDrawing(a.yDrawing, 'r1'), 0, 1, 140.4, 125.7)
-    sync(a.ydoc, b.ydoc)
-
-    const yEl = findDrawing(b.yDrawing, 'r1')
-    expect(yEl.getAttribute('data-pivot-x')).toBe('0')
-    expect(yEl.getAttribute('data-pivot-y')).toBe('1')
-    expect(yEl.getAttribute('x')).toBe('140')   // rounded, like every other geometry write
-    expect(yEl.getAttribute('y')).toBe('126')
+    const el = doc.L.find('r1')
+    expect(el.getAttribute('data-pivot-x')).toBe('0')
+    expect(el.getAttribute('data-pivot-y')).toBe('1')
+    expect(el.getAttribute('x')).toBe('140')   // rounded, like every other geometry write
+    expect(el.getAttribute('y')).toBe('126')
+    expect(getOps(doc.ydoc, DRAWING_LAYER).size).toBe(before + 1)
   })
 
-  test('clamps what it stores, so nothing out of range reaches the document', () => {
+  test('clamps what it stores, so nothing out of range reaches the layer', () => {
     const doc = makeDoc()
     add(doc, { id: 'r1' })
-    applyPivot(doc.ydoc, findDrawing(doc.yDrawing, 'r1'), -3, 8, 0, 0)
-    const yEl = findDrawing(doc.yDrawing, 'r1')
-    expect(yEl.getAttribute('data-pivot-x')).toBe('0')
-    expect(yEl.getAttribute('data-pivot-y')).toBe('1')
+    doc.L.applyPivot(doc.L.find('r1'), -3, 8, 0, 0)
+    const el = doc.L.find('r1')
+    expect(el.getAttribute('data-pivot-x')).toBe('0')
+    expect(el.getAttribute('data-pivot-y')).toBe('1')
   })
 
   test('is a no-op for a shape type with no pivot in its schema', () => {
     const doc = makeDoc()
     add(doc, { id: 'c1', type: 'circle', cx: 50, cy: 50, r: 30 })
-    const yEl = findDrawing(doc.yDrawing, 'c1')
-    applyPivot(doc.ydoc, yEl, 0, 0, 10, 10)
-    expect(yEl.getAttribute('data-pivot-x')).toBeUndefined()
+    const el = doc.L.find('c1')
+    applyPivotDom(el, 0, 0, 10, 10)
+    expect(el.getAttribute('data-pivot-x')).toBeNull()
   })
 
   test('the pivot rides a resize — fractions keep a corner pivot on the corner', () => {
     const doc = makeDoc()
     add(doc, { id: 'r1', x: 0, y: 0, width: 100, height: 100, rotate: 0, 'pivot-x': 0, 'pivot-y': 1 })
-    const el = _toSVGEl(findDrawing(doc.yDrawing, 'r1'))
+    const el = doc.L.find('r1')
     expect(rotationCenter(getGeom(el), getPivot(el))).toEqual({ cx: 0, cy: 100 })
 
     previewResize(el, 0, 0, 300, 300)

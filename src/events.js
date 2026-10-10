@@ -22,7 +22,6 @@ export function init(App, svgEl, Toys, UI) {
       }
       e.detail.retval = { id: result.id }
 
-      App.setLastActionScope('toys')
       App.addHistory(`cloned ${subjectEl.getAttribute('data-toy-type')} ${result.id}`, { elType: 'toy' })
       App.addLog(`cloned ${sourceId} → ${result.id}`, 'local')
     },
@@ -36,7 +35,6 @@ export function init(App, svgEl, Toys, UI) {
       const id = Toys.newToyId()
       e.detail.retval = { id }
 
-      App.setLastActionScope('toys')
       Toys.placeToy(ydoc, layerEl, {
         id, toyType, x: x ?? 0, y: y ?? 0, color,
       }, { authorId: myId, tableId }).then(async () => {
@@ -82,7 +80,6 @@ export function init(App, svgEl, Toys, UI) {
       const selectedIds = App.getSelectedIds()
       if (selectedIds.includes(id)) App.clearSelection()
 
-      App.setLastActionScope('toys')
       App.addLog(`reparented ${id} → ${containerId ?? 'toys-layer'}`, 'local')
     },
 
@@ -108,7 +105,6 @@ export function init(App, svgEl, Toys, UI) {
       const selectedIds = App.getSelectedIds()
       if (selectedIds.includes(id)) App.clearSelection()
 
-      App.setLastActionScope('toys')
       App.addLog(`deleted ${id}`, 'local')
     },
 

@@ -1,18 +1,17 @@
 /**
- * core CRDT operations for togetherness
+ * drawing.js — the drawing layer, an op layer (DRAWING_LAYER).
  *
- * The CRDT operations (addDrawing, deleteDrawing, findDrawing, SHAPE_TYPES) are pure
- * functions over Yjs types — no DOM, importable anywhere.
- *
- * The rendering helpers (_toSVGEl, getGeom, listDrawings) ARE DOM-coupled: they
- * mirror Yjs nodes into live SVG elements. They require a DOM (browser or jsdom).
+ * Every write is a DOM operation on the live #drawing-layer, run inside a
+ * gesture (OpLayer.runGesture) so the envelope captures it as one operation.
+ * Nothing here touches Yjs directly; the op log is the replicated state.
+ * Requires a DOM (browser or jsdom).
  */
 
-import * as Y from 'yjs';
 import { normalizeAngle, computeRotate, computeResizeCornerRect, rotatePoint } from './geometry.js';
+import { defineOpLayer } from './op_layers.js';
+import * as OpLayer from './op_layer.js';
 
 const SVG_NS   = 'http://www.w3.org/2000/svg';
-const XLINK_NS = 'http://www.w3.org/1999/xlink';
 
 // ── BBox helpers (private) ────────────────────────────────────────────────────
 function rectGetBBox(a)   { return { x: +a.x,         y: +a.y,         width: +a.width,  height: +a.height }; }
@@ -20,7 +19,7 @@ function circleGetBBox(a) { return { x: +a.cx - +a.r, y: +a.cy - +a.r, width: 2 
 
 // ── Shape-type registry ───────────────────────────────────────────────────────
 // Each entry has:
-//   tag     — SVG element name (also the Y.XmlElement nodeName)
+//   tag     — SVG element name
 //   label   — fn(attrs) → short text for the shape-list row
 //   getBBox — fn(attrs) → {x,y,width,height}
 //   schema  — full ttStateSchema for this type; values are defaults,
@@ -92,79 +91,52 @@ export const SHAPE_TYPES = {
 };
 
 // ── Shape operations ──────────────────────────────────────────────────────────
+// Each takes the layer element or a shape element and mutates the live DOM.
+// Callers wrap them in a gesture (see makeLayerAPI and the batch functions).
 
 /**
- * Add a drawing element to the doc.
+ * Append a drawing element to the layer.
  * attrs: { id, type, ...all schema keys }
  * `type` is required and must be a key of SHAPE_TYPES. All writable keys are
- * determined by the type's schema (everything except id/type).
+ * determined by the type's schema (everything except id/type). The derived
+ * `transform` is written here too, so the element is complete in one op.
  */
-export function addDrawing(ydoc, yDrawing, attrs) {
+export function addDrawingDom(layerEl, attrs) {
   const { type } = attrs;
   if (!type) throw new Error('addDrawing: attrs.type is required');
   const def = SHAPE_TYPES[type];
   if (!def) throw new Error(`unknown shape type: ${type}`);
 
-  const el = new Y.XmlElement(def.tag);
+  const el = document.createElementNS(SVG_NS, def.tag);
   const defaults = def.schema.values;
   const attrMap  = def.attrMap ?? {};
-  ydoc.transact(() => {
-    el.setAttribute('id', String(attrs.id));
-    el.setAttribute('data-id', String(attrs.id));
-    el.setAttribute('data-module', 'drawing');
-    for (const k of Object.keys(def.schema.types)) {
-      if (k === 'id' || k === 'type') continue;
-      const v = attrs[k] ?? defaults[k];
-      if (v != null) el.setAttribute(attrMap[k] ?? k, String(v));
-    }
-    yDrawing.insert(yDrawing.length, [el]);
-    syncRotationY(el);
-  });
+  el.setAttribute('id', String(attrs.id));
+  el.setAttribute('data-id', String(attrs.id));
+  el.setAttribute('data-module', 'drawing');
+  for (const k of Object.keys(def.schema.types)) {
+    if (k === 'id' || k === 'type') continue;
+    const v = attrs[k] ?? defaults[k];
+    if (v != null) el.setAttribute(attrMap[k] ?? k, String(v));
+  }
+  layerEl.appendChild(el);
+  syncRotation(el);
   return el;
 }
 
-/**
- * Delete a drawing element by id. Returns true if found and deleted.
- */
-export function deleteDrawing(ydoc, yDrawing, id) {
-  const idx = yDrawing.toArray().findIndex(
-    e => e instanceof Y.XmlElement && e.getAttribute('id') === id
-  );
-  if (idx === -1) return false;
-  ydoc.transact(() => {
-    yDrawing.delete(idx, 1);
-  });
+/** Remove a drawing element by id. Returns true if found and removed. */
+export function deleteDrawingDom(layerEl, id) {
+  const el = findDrawingDom(layerEl, id);
+  if (!el) return false;
+  el.remove();
   return true;
 }
 
-/**
- * Find a Y.XmlElement by id. Returns null if not found.
- */
-export function findDrawing(yDrawing, id) {
-  return yDrawing.toArray().find(
-    e => e instanceof Y.XmlElement && e.getAttribute('id') === id
-  ) ?? null;
-}
-
-/** Mirror a Y.XmlElement tree into a live, SVG-namespaced DOM element. */
-function mirror(yNode) {
-  if (yNode instanceof Y.XmlText) return document.createTextNode(yNode.toString());
-  if (!(yNode instanceof Y.XmlElement)) return null;
-  const el = document.createElementNS(SVG_NS, yNode.nodeName);
-  const attrs = yNode.getAttributes();
-  for (const k in attrs) {
-    if (k === 'xlink:href') el.setAttributeNS(XLINK_NS, 'href', attrs[k]);
-    else                    el.setAttribute(k, attrs[k]);
+/** The layer's child with this data-id, or null. */
+export function findDrawingDom(layerEl, id) {
+  for (const el of layerEl?.children ?? []) {
+    if (el.getAttribute('data-id') === id) return el;
   }
-  yNode.toArray().forEach(child => {
-    const dom = mirror(child);
-    if (dom) el.appendChild(dom);
-  });
-  return el;
-}
-
-export function _toSVGEl(yEl) {
-  return mirror(yEl);
+  return null;
 }
 
 /**
@@ -350,39 +322,12 @@ export function syncRotation(domEl) {
   else           domEl.removeAttribute('transform');
 }
 
-// Presents a Y.XmlElement with the subset of the DOM Element interface
-// getGeom/resolveRotation actually use, so the rotation math (which only
-// ever reads tagName/getAttribute/hasAttribute) can run against either
-// without duplicating it for Yjs.
-function yElAsSvgEl(yEl) {
-  return {
-    tagName:      yEl.nodeName,
-    getAttribute: (k) => yEl.getAttribute(k) ?? null,
-    hasAttribute: (k) => yEl.getAttribute(k) != null,
-  };
-}
-
-/**
- * The Yjs-side counterpart of syncRotation: writes the canonical
- * `transform` onto the stored Y.XmlElement itself, so the rendered DOM
- * never has to derive it. Same no-data-rotate guard as syncRotation.
- */
-function syncRotationY(yEl) {
-  if (!yEl?.getAttribute) return;
-  if (yEl.getAttribute(ROTATE_ATTR) == null) return;
-  const transform = rotationTransform(resolveRotation(yElAsSvgEl(yEl)));
-  if (transform) yEl.setAttribute('transform', transform);
-  else           yEl.removeAttribute('transform');
-}
-
 /** Commit a rotation. A shape whose schema has no `rotate` key (circles) is a no-op. */
-export function applyRotate(ydoc, yEl, deg) {
-  if (!yEl) return;
-  if (!SHAPE_TYPES[yEl.nodeName]?.schema.types.rotate) return;
-  ydoc.transact(() => {
-    yEl.setAttribute(ROTATE_ATTR, String(normalizeAngle(deg)));
-    syncRotationY(yEl);
-  });
+export function applyRotateDom(domEl, deg) {
+  if (!domEl) return;
+  if (!SHAPE_TYPES[domEl.tagName]?.schema.types.rotate) return;
+  domEl.setAttribute(ROTATE_ATTR, String(normalizeAngle(deg)));
+  syncRotation(domEl);
 }
 
 // ── Transform reconciliation (import) ────────────────────────────────────────
@@ -485,20 +430,18 @@ export function reconcileTransform(geom, storedDeg, matrix) {
 }
 
 /**
- * Commit a pivot placement. The compensating x/y ride in the SAME
- * transaction as the pivot itself: they are one user action, and a peer that
- * saw only half of it would watch the shape jump and come back.
+ * Commit a pivot placement. The compensating x/y ride in the SAME gesture as
+ * the pivot itself: they are one user action, and a peer that saw only half
+ * of it would watch the shape jump and come back.
  */
-export function applyPivot(ydoc, yEl, fx, fy, x, y) {
-  if (!yEl) return;
-  if (!SHAPE_TYPES[yEl.nodeName]?.schema.types['pivot-x']) return;
-  ydoc.transact(() => {
-    yEl.setAttribute(PIVOT_X_ATTR, String(clamp01(fx)));
-    yEl.setAttribute(PIVOT_Y_ATTR, String(clamp01(fy)));
-    yEl.setAttribute('x', String(Math.round(x)));
-    yEl.setAttribute('y', String(Math.round(y)));
-    syncRotationY(yEl);
-  });
+export function applyPivotDom(domEl, fx, fy, x, y) {
+  if (!domEl) return;
+  if (!SHAPE_TYPES[domEl.tagName]?.schema.types['pivot-x']) return;
+  domEl.setAttribute(PIVOT_X_ATTR, String(clamp01(fx)));
+  domEl.setAttribute(PIVOT_Y_ATTR, String(clamp01(fy)));
+  domEl.setAttribute('x', String(Math.round(x)));
+  domEl.setAttribute('y', String(Math.round(y)));
+  syncRotation(domEl);
 }
 
 /** DOM-only pivot preview for a ghost clone — the rotate/resize counterpart. */
@@ -514,14 +457,14 @@ export function previewPivot(ghostEl, fx, fy) {
  * arrived with. A shape with no `rotate` of ours is left completely
  * alone: its transform is the author's.
  */
-export function reconcileImportedTransform(yEl) {
-  if (yEl?.getAttribute?.(ROTATE_ATTR) == null) return;
-  const def = SHAPE_TYPES[yEl.nodeName];
+export function reconcileImportedTransform(el) {
+  if (el?.getAttribute?.(ROTATE_ATTR) == null) return;
+  const def = SHAPE_TYPES[el.localName];
   if (!def) return;
 
   const attrs = {};
   for (const k of Object.keys(def.schema.types)) {
-    attrs[k] = yEl.getAttribute((def.attrMap ?? {})[k] ?? k);
+    attrs[k] = el.getAttribute((def.attrMap ?? {})[k] ?? k);
   }
   const geom = def.getBBox(attrs);
   if (!Number.isFinite(geom?.width)) return;
@@ -529,31 +472,26 @@ export function reconcileImportedTransform(yEl) {
   // Present but unreadable is foreign by definition (we can't have written
   // it), unlike "no transform at all" -- which parseTransformList also
   // reports as null, so check the raw attribute to tell them apart.
-  const raw    = yEl.getAttribute('transform');
+  const raw    = el.getAttribute('transform');
   const matrix = parseTransformList(raw);
   if (raw != null && !matrix) {
-    yEl.removeAttribute(ROTATE_ATTR);
+    el.removeAttribute(ROTATE_ATTR);
     return;
   }
 
-  const out = reconcileTransform(geom, getRotationFromAttr(yEl), matrix);
+  const out = reconcileTransform(geom, getRotation(el), matrix);
 
-  yEl.setAttribute('x', String(Math.round(out.x)));
-  yEl.setAttribute('y', String(Math.round(out.y)));
+  el.setAttribute('x', String(Math.round(out.x)));
+  el.setAttribute('y', String(Math.round(out.y)));
 
   if (out.rotate == null) {
-    yEl.removeAttribute(ROTATE_ATTR);
-    if (out.transform) yEl.setAttribute('transform', formatMatrix(out.transform));
-    else if (yEl.getAttribute('transform') != null) yEl.removeAttribute('transform');
+    el.removeAttribute(ROTATE_ATTR);
+    if (out.transform) el.setAttribute('transform', formatMatrix(out.transform));
+    else if (el.getAttribute('transform') != null) el.removeAttribute('transform');
     return;
   }
-  yEl.setAttribute(ROTATE_ATTR, String(normalizeAngle(out.rotate)));
-  syncRotationY(yEl);
-}
-
-/** Degrees off a Yjs element's own attribute (getRotation wants a DOM node). */
-function getRotationFromAttr(yEl) {
-  return parseFloat(yEl.getAttribute(ROTATE_ATTR)) || 0;
+  el.setAttribute(ROTATE_ATTR, String(normalizeAngle(out.rotate)));
+  syncRotation(el);
 }
 
 function formatMatrix(m) {
@@ -614,30 +552,6 @@ export function nextSelectMode(svgEl, currentMode) {
   return cycle[(i + 1) % cycle.length];
 }
 
-/**
- * Commit a move to the Yjs doc in a single transaction.
- * Called once on pointerup.
- * All shape-type branching lives here; callers are type-agnostic.
- *
- * ydoc — Y.Doc
- * yEl  — Y.XmlElement (no-op if null/missing)
- * x, y — new anchor position in canvas-space (integers expected)
- */
-export function applyMoveCommit(ydoc, yEl, x, y) {
-  if (!yEl) return;
-  const tag = yEl.nodeName;
-  ydoc.transact(() => {
-    if (tag === 'rect') {
-      yEl.setAttribute('x', String(x));
-      yEl.setAttribute('y', String(y));
-    } else if (tag === 'circle') {
-      yEl.setAttribute('cx', String(x));
-      yEl.setAttribute('cy', String(y));
-    }
-    syncRotationY(yEl);
-  });
-}
-
 const MIN_CIRCLE_R = 15  // never let a radius-drag shrink a circle below this
 const MAX_CIRCLE_R = 2000 // generous sanity cap
 
@@ -671,34 +585,31 @@ export function computeResize(mode, startRect, corner, px, py) {
 }
 
 /**
- * Commit a resize to the Yjs doc in a single transaction. rect and circle —
- * mirrors applyMoveCommit's shape (type-branching lives here, callers are
- * type-agnostic). x, y, width, height are the new bbox in canvas-space
- * (for circle, computeResizeRadiusRect's centre-preserving bbox).
+ * Commit a resize. rect and circle -- type-branching lives here, callers are
+ * type-agnostic. x, y, width, height are the new bbox in canvas-space (for
+ * circle, computeResizeRadiusRect's centre-preserving bbox). The integer
+ * counterpart of previewResize.
  */
-export function applyResize(ydoc, yEl, x, y, width, height) {
-  if (!yEl) return;
-  const tag = yEl.nodeName;
-  ydoc.transact(() => {
-    if (tag === 'rect') {
-      yEl.setAttribute('x',      String(Math.round(x)));
-      yEl.setAttribute('y',      String(Math.round(y)));
-      yEl.setAttribute('width',  String(Math.round(width)));
-      yEl.setAttribute('height', String(Math.round(height)));
-    } else if (tag === 'circle') {
-      const r = width / 2;
-      yEl.setAttribute('cx', String(Math.round(x + r)));
-      yEl.setAttribute('cy', String(Math.round(y + r)));
-      yEl.setAttribute('r',  String(Math.round(r)));
-    }
-    syncRotationY(yEl);
-  });
+export function applyResizeDom(domEl, x, y, width, height) {
+  if (!domEl) return;
+  const tag = domEl.tagName;
+  if (tag === 'rect') {
+    domEl.setAttribute('x',      String(Math.round(x)));
+    domEl.setAttribute('y',      String(Math.round(y)));
+    domEl.setAttribute('width',  String(Math.round(width)));
+    domEl.setAttribute('height', String(Math.round(height)));
+  } else if (tag === 'circle') {
+    const r = width / 2;
+    domEl.setAttribute('cx', String(Math.round(x + r)));
+    domEl.setAttribute('cy', String(Math.round(y + r)));
+    domEl.setAttribute('r',  String(Math.round(r)));
+  }
+  syncRotation(domEl);
 }
 
 /**
- * Apply a move to a live DOM element only — no Yjs write.
- * Used for direct DOM manipulation outside the drag-ghost path (e.g. snap-back
- * on cancel when not using <use>-based ghosts). Type-branching lives here.
+ * Commit a move to a live DOM element (inside a gesture). Type-branching
+ * lives here; the derived transform follows the new anchor.
  *
  * domEl — live SVG DOM element (no-op if null)
  * x, y  — new anchor position in canvas-space
@@ -714,19 +625,6 @@ export function applyMoveDom(domEl, x, y) {
     domEl.setAttribute('cy', y);
   }
   syncRotation(domEl);
-}
-
-/**
- * Iterate all XmlElement children in z-order (bottom to top).
- * Returns an array of rendered SVG elements.
- */
-export function listDrawings(yDrawing) {
-  const results = [];
-  for (let node = yDrawing.firstChild; node; node = node.nextSibling) {
-    if (!(node instanceof Y.XmlElement)) continue;
-    results.push(_toSVGEl(node));
-  }
-  return results;
 }
 
 /**
@@ -749,8 +647,8 @@ function shapeData(svgEl) {
  * All drawing elements as layer-object descriptors, in z-order.
  * Used by app.js getLayerObjects — keeps drawing internals out of the app bus.
  */
-export function drawingsData(yDrawing) {
-  return listDrawings(yDrawing).map(shapeData);
+export function drawingsData(layerEl) {
+  return [...layerEl.children].map(shapeData);
 }
 
 // ── ttState / ttStateSchema ───────────────────────────────────────────────────
@@ -796,62 +694,56 @@ export function getTtStateSchema(svgElOrType) {
 }
 
 /**
- * Snapshot the full serialisable state of a drawing Y.XmlElement.
- * Reads all schema keys from Yjs attributes (mapping SVG attr names to schema keys).
+ * Snapshot the full serialisable state of a drawing element.
+ * Reads all schema keys from its attributes (mapping SVG attr names to schema keys).
  */
-export function getTtState(yEl) {
-  if (!yEl) return null;
-  const type = yEl.nodeName;
+export function getTtState(domEl) {
+  if (!domEl) return null;
+  const type = domEl.tagName;
   const def  = SHAPE_TYPES[type];
   if (!def) return null;
-  const attrs     = yEl.getAttributes();
-  const reverseMap = Object.fromEntries(Object.entries(def.attrMap ?? {}).map(([k, v]) => [v, k]));
   const state = { type };
   for (const k of Object.keys(def.schema.types)) {
     const svgAttr = (def.attrMap ?? {})[k] ?? k;
-    if (attrs[svgAttr] != null) state[k] = attrs[svgAttr];
-    else if (attrs[k]   != null) state[k] = attrs[k];
+    const v = domEl.getAttribute(svgAttr) ?? domEl.getAttribute(k);
+    if (v != null) state[k] = v;
   }
   return state;
 }
 
 /**
- * Write a ttState snapshot back into the Yjs drawing fragment.
- * Creates the element if it doesn't exist; updates it if it does.
+ * Write a ttState snapshot back onto the layer: updates the element if it
+ * exists, creates it if not.
  */
-export function applyTtState(ydoc, yDrawing, state) {
+export function applyTtStateDom(layerEl, state) {
   if (!state?.id || !state?.type) return;
-  const existing = findDrawing(yDrawing, state.id);
-  if (existing) {
-    ydoc.transact(() => {
-      for (const [k, v] of Object.entries(state)) {
-        if (k === 'id' || k === 'type') continue;
-        existing.setAttribute(k, String(v));
-      }
-      syncRotationY(existing);
-    });
-  } else {
-    addDrawing(ydoc, yDrawing, state);
+  const existing = findDrawingDom(layerEl, state.id);
+  if (!existing) {
+    addDrawingDom(layerEl, state);
+    return;
   }
+  for (const [k, v] of Object.entries(state)) {
+    if (k === 'id' || k === 'type') continue;
+    existing.setAttribute(k, String(v));
+  }
+  syncRotation(existing);
 }
 
 /**
- * Apply an editData object to a drawing Yjs element.
- * Only keys present in editData are written; unknown keys are ignored.
- * Called by App.commitEdit
+ * Apply an editData object to a drawing element. Only keys present in
+ * editData are written. Called by App.commitEdit.
  */
-export function edit(ydoc, yEl, editData) {
-  if (!yEl) return;
-  ydoc.transact(() => {
-    for (const [k, v] of Object.entries(editData)) {
-      yEl.setAttribute(k, String(v));
-    }
-    syncRotationY(yEl);
-  });
+export function editDom(domEl, editData) {
+  if (!domEl) return;
+  const attrMap = SHAPE_TYPES[domEl.tagName]?.attrMap ?? {};
+  for (const [k, v] of Object.entries(editData)) {
+    domEl.setAttribute(attrMap[k] ?? k, String(v));
+  }
+  syncRotation(domEl);
 }
 
 /**
- * Apply a live resize to a detached ghost clone — DOM only, no Yjs write.
+ * Apply a live resize to a detached ghost clone — DOM only, never recorded.
  * (x, y, width, height) is the bbox form computeResize returns; for a
  * circle that's the centre-preserving bbox.
  */
@@ -874,7 +766,7 @@ export function previewResize(ghostEl, x, y, width, height) {
 }
 
 /**
- * Apply a live rotation to a detached ghost clone — DOM only, no Yjs write.
+ * Apply a live rotation to a detached ghost clone — DOM only, never recorded.
  * The counterpart of previewResize for the rotate gesture.
  */
 export function previewRotate(ghostEl, deg) {
@@ -890,24 +782,136 @@ export function previewEdit(ghostEl, editData) {
   }
 }
 
-/**
- * Render the drawing layer: clear layerEl, then mirror every drawing element
- * as a live SVG node with the layer's interaction cursor applied.
- */
-export function render(yDrawing, layerEl) {
-  layerEl.innerHTML = '';
-  listDrawings(yDrawing).forEach(svgEl => layerEl.appendChild(svgEl));
+// ── The layer ─────────────────────────────────────────────────────────────────
+
+export const DRAWING_LAYER = defineOpLayer({
+  name:        'drawing',
+  selector:    '#drawing-layer',
+  layerDataId: 'tt-layer-drawing',
+  opsKey:      'ops:drawing',
+  contentKey:  'checkpointContent:drawing',
+  headKey:     (tableId) => `tt_head_drawing_${tableId}`,
+  mergeKey:    (tableId) => `tt_head_merge_drawing_${tableId}`,
+});
+
+export const runGesture = (ydoc, layerEl, fn, opts) =>
+  OpLayer.runGesture(ydoc, DRAWING_LAYER, layerEl, fn, opts);
+export const projectLayer = (ydoc, layerEl, opts) =>
+  OpLayer.projectLayer(ydoc, DRAWING_LAYER, layerEl, opts);
+export const receiveDrawingOp = (ydoc, layerEl, opId, tableId, joinSequence) =>
+  OpLayer.receiveLayerOp(ydoc, DRAWING_LAYER, layerEl, opId, tableId, joinSequence);
+
+// ── Batch gestures ────────────────────────────────────────────────────────────
+// A multi-select action is one gesture, one operation: a loop of single
+// gestures would mint N operations and need N undo presses.
+
+/** Delete several shapes as one gesture. Returns the op, or null if none existed. */
+export function deleteDrawingsBatch(ydoc, layerEl, ids, { authorId, tableId } = {}) {
+  let deletedAny = false;
+  const result = runGesture(ydoc, layerEl, () => {
+    for (const id of ids) {
+      if (deleteDrawingDom(layerEl, id)) deletedAny = true;
+    }
+  }, { gesture: 'delete-batch', authorId, tableId });
+  return deletedAny ? (result.op ?? null) : null;
 }
 
 /**
- * makeLayerAPI — returns the canonical LayerAPI for the drawing layer,
- * closing over (ydoc, yDrawing) so app.js can dispatch by layer type
- * without re-passing the fragment on every call.
+ * Move several shapes as one gesture. moves: [{ id, x, y }] -- x/y are the
+ * anchor convention applyMoveDom uses. Returns the op, or null if none moved.
  */
-export function makeLayerAPI(ydoc, yDrawing) {
+export function moveDrawingsBatch(ydoc, layerEl, moves, { authorId, tableId } = {}) {
+  let movedAny = false;
+  const result = runGesture(ydoc, layerEl, () => {
+    for (const { id, x, y } of moves) {
+      const el = findDrawingDom(layerEl, id);
+      if (!el) continue;
+      applyMoveDom(el, x, y);
+      movedAny = true;
+    }
+  }, { gesture: 'move-batch', authorId, tableId });
+  return movedAny ? (result.op ?? null) : null;
+}
+
+const DUPLICATE_OFFSET = 22;
+
+/**
+ * A copy of srcEl's state, offset down-right and under a new id, as
+ * addDrawingDom attrs. Null for an element that isn't one of our shapes.
+ */
+function duplicateAttrs(srcEl, newId) {
+  const state = getTtState(srcEl);
+  if (!state) return null;
+  const attrs = { ...state, id: newId };
+  for (const [k, v] of Object.entries(state)) {
+    if (k === 'x' || k === 'y' || k === 'cx' || k === 'cy') attrs[k] = +v + DUPLICATE_OFFSET;
+  }
+  return attrs;
+}
+
+/**
+ * Duplicate several shapes as one gesture. newId() mints each copy's id.
+ * Returns { op, newIds }; op is null when nothing was duplicated.
+ */
+export function duplicateDrawingsBatch(ydoc, layerEl, ids, { authorId, tableId, newId } = {}) {
+  const newIds = [];
+  const result = runGesture(ydoc, layerEl, () => {
+    for (const id of ids) {
+      const srcEl = findDrawingDom(layerEl, id);
+      const attrs = srcEl && duplicateAttrs(srcEl, newId());
+      if (!attrs) continue;
+      addDrawingDom(layerEl, attrs);
+      newIds.push(attrs.id);
+    }
+  }, { gesture: 'duplicate', authorId, tableId });
+  return { op: newIds.length ? (result.op ?? null) : null, newIds };
+}
+
+/**
+ * Commit pre-parsed foreign shapes onto a live layer as one gesture --
+ * storage.js's populateFromSvgDoc, live-table branch. A shape whose id
+ * collides with one already on the layer is re-id'd: data-id is the op
+ * log's primary key (invariant 1).
+ */
+export function importDrawings(ydoc, layerEl, els, opts = {}) {
+  if (!els?.length) return null;
+  return runGesture(ydoc, layerEl, () => {
+    for (const el of els) {
+      const id = el.getAttribute('data-id');
+      if (!id || findDrawingDom(layerEl, id)) {
+        const fresh = 'import_' + Math.random().toString(36).slice(2, 7);
+        el.setAttribute('id', fresh);
+        el.setAttribute('data-id', fresh);
+      }
+      layerEl.appendChild(el);
+    }
+  }, { gesture: 'import', ...opts });
+}
+
+/**
+ * makeLayerAPI -- the canonical LayerAPI for the drawing layer.
+ *
+ * getLayerEl returns the live #drawing-layer. Everything here reads and
+ * writes that DOM; writes run inside runGesture so the envelope captures
+ * them. Whatever find() returns is what the other methods accept.
+ */
+export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false) {
+  const layer = () => (typeof getLayerEl === 'function' ? getLayerEl() : getLayerEl);
+  const gesture = (name, fn) =>
+    runGesture(ydoc, layer(), fn, { gesture: name, authorId: user.id, tableId });
+
   return {
-    find:            (id)            => findDrawing(yDrawing, id),
-    delete:          (id)            => deleteDrawing(ydoc, yDrawing, id),
+    find:            (id)            => findDrawingDom(layer(), id),
+    add:             (attrs)         => {
+      let el = null;
+      gesture('draw', () => { el = addDrawingDom(layer(), attrs); });
+      return el;
+    },
+    delete:          (id)            => {
+      let deleted = false;
+      gesture('delete', () => { deleted = deleteDrawingDom(layer(), id); });
+      return deleted;
+    },
     getGeom,
     getAnchor,
     getTtState,
@@ -925,14 +929,17 @@ export function makeLayerAPI(ydoc, yDrawing) {
     previewResize,
     previewRotate,
     previewPivot,
-    applyMoveCommit: (yEl, x, y)     => applyMoveCommit(ydoc, yEl, x, y),
-    applyResize:     (yEl, x, y, w, h) => applyResize(ydoc, yEl, x, y, w, h),
-    applyRotate:     (yEl, deg)      => applyRotate(ydoc, yEl, deg),
-    applyPivot:      (yEl, fx, fy, x, y) => applyPivot(ydoc, yEl, fx, fy, x, y),
-    applyTtState:    (state)         => applyTtState(ydoc, yDrawing, state),
-    edit:            (yEl, editData) => edit(ydoc, yEl, editData),
+    applyMoveCommit: (el, x, y)       => gesture('move',   () => applyMoveDom(el, x, y)),
+    applyResize:     (el, x, y, w, h) => gesture('resize', () => applyResizeDom(el, x, y, w, h)),
+    applyRotate:     (el, deg)        => gesture('rotate', () => applyRotateDom(el, deg)),
+    applyPivot:      (el, fx, fy, x, y) => gesture('pivot', () => applyPivotDom(el, fx, fy, x, y)),
+    applyTtState:    (state)          => gesture('edit',   () => applyTtStateDom(layer(), state)),
+    edit:            (el, editData)   => gesture('edit',   () => editDom(el, editData)),
     previewEdit,
-    listData:        ()              => drawingsData(yDrawing),
-    render:          (layerEl)       => render(yDrawing, layerEl),
+    listData:        ()               => drawingsData(layer()),
+    render:          (layerEl, joinSequence = []) =>
+                       projectLayer(ydoc, layerEl, { tableId, authorId: user.id, isCreator, joinSequence }),
+    receive:         (layerEl, opId, joinSequence = []) =>
+                       receiveDrawingOp(ydoc, layerEl, opId, tableId, joinSequence),
   };
 }

@@ -230,18 +230,33 @@ function applyUndoRedo(ydoc, layer, layerEl, tableId, authorId, targetId, verb) 
   return result.op ?? null
 }
 
-export function undoGesture(ydoc, layer, layerEl, tableId, authorId) {
+/**
+ * The op undo or redo would act on, without applying it -- null when there
+ * is none. app.js compares these across layers by ts to pick which layer's
+ * action the next press reverses.
+ */
+export function undoCandidate(ydoc, layer, tableId, authorId) {
   const ops = OpDag.getOps(ydoc, layer)
   const head = tableId ? OpHead.getHead(tableId, layer) : null
   const { undoTargetId } = OpDag.authorUndoRedoStacks(ops, head, authorId)
-  return applyUndoRedo(ydoc, layer, layerEl, tableId, authorId, undoTargetId, 'undo')
+  return undoTargetId ? OpDag.getOp(ops, undoTargetId) : null
 }
 
-export function redoGesture(ydoc, layer, layerEl, tableId, authorId) {
+export function redoCandidate(ydoc, layer, tableId, authorId) {
   const ops = OpDag.getOps(ydoc, layer)
   const head = tableId ? OpHead.getHead(tableId, layer) : null
   const { redoTargetId } = OpDag.authorUndoRedoStacks(ops, head, authorId)
-  return applyUndoRedo(ydoc, layer, layerEl, tableId, authorId, redoTargetId, 'redo')
+  return redoTargetId ? OpDag.getOp(ops, redoTargetId) : null
+}
+
+export function undoGesture(ydoc, layer, layerEl, tableId, authorId) {
+  const target = undoCandidate(ydoc, layer, tableId, authorId)
+  return applyUndoRedo(ydoc, layer, layerEl, tableId, authorId, target?.id, 'undo')
+}
+
+export function redoGesture(ydoc, layer, layerEl, tableId, authorId) {
+  const target = redoCandidate(ydoc, layer, tableId, authorId)
+  return applyUndoRedo(ydoc, layer, layerEl, tableId, authorId, target?.id, 'redo')
 }
 
 /**
@@ -252,15 +267,11 @@ export function redoGesture(ydoc, layer, layerEl, tableId, authorId) {
  * click; that's an acceptable, minor imprecision most editors share.
  */
 export function canUndo(ydoc, layer, tableId, authorId) {
-  const ops = OpDag.getOps(ydoc, layer)
-  const head = tableId ? OpHead.getHead(tableId, layer) : null
-  return OpDag.authorUndoRedoStacks(ops, head, authorId).undoTargetId != null
+  return undoCandidate(ydoc, layer, tableId, authorId) != null
 }
 
 export function canRedo(ydoc, layer, tableId, authorId) {
-  const ops = OpDag.getOps(ydoc, layer)
-  const head = tableId ? OpHead.getHead(tableId, layer) : null
-  return OpDag.authorUndoRedoStacks(ops, head, authorId).redoTargetId != null
+  return redoCandidate(ydoc, layer, tableId, authorId) != null
 }
 
 /**

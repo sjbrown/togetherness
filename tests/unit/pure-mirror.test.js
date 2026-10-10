@@ -3,19 +3,21 @@
  * pure-mirror.test.js
  *
  * Acceptance gate for CONCURRENCY_AND_BRANCHING.md's "pure mirror" rule for
- * the drawing and boundaries/positions layers: everything render() puts on
- * the DOM must come from the Yjs tree, and nothing in the Yjs tree may be
- * dropped. This asserts the two literally match, attribute-for-attribute
- * and child-for-child, recursively — after creation AND after the apply*
+ * the boundaries/positions layer: everything render() puts on the DOM must
+ * come from the Yjs tree, and nothing in the Yjs tree may be dropped. This
+ * asserts the two literally match, attribute-for-attribute and
+ * child-for-child, recursively — after creation AND after the apply*
  * mutators that touch geometry/rotation.
+ *
+ * The drawing layer is an op layer: its DOM is the source, not a mirror. Its
+ * half asserts the DOM carries exactly the attributes the schema writes,
+ * nothing stray, through the LayerAPI.
  */
 
 import * as Y from 'yjs';
 import { describe, test, expect } from 'vitest';
-import {
-  addDrawing, applyMoveCommit as applyDrawingMove, applyResize as applyDrawingResize,
-  applyRotate, applyPivot, render as renderDrawing,
-} from '../../src/drawing.js';
+import { DRAWING_LAYER, SHAPE_TYPES, makeLayerAPI } from '../../src/drawing.js';
+import { ensureLayerId } from '../../src/op_layers.js';
 import {
   addBoundary, addPositionSet, applyMoveCommit as applyBounPosMove,
   applyResize as applyBounPosResize, render as renderBounPos,
@@ -66,40 +68,61 @@ function findRendered(g, dataId) {
 
 // ── Drawing layer ────────────────────────────────────────────────────────────
 
-describe('drawing.js render() is a pure mirror of the Yjs tree', () => {
-  test('every kind, at creation', () => {
-    const ydoc = makeDoc();
-    const yDrawing = ydoc.getXmlFragment('drawing');
+// The attribute set a shape of this type is created with: identity plus
+// every schema key under its SVG name.
+function expectedAttrNames(type, extra = []) {
+  const def = SHAPE_TYPES[type];
+  const names = ['id', 'data-id', 'data-module'];
+  for (const k of Object.keys(def.schema.types)) {
+    if (k === 'id' || k === 'type') continue;
+    names.push((def.attrMap ?? {})[k] ?? k);
+  }
+  return [...names, ...extra].sort();
+}
 
-    addDrawing(ydoc, yDrawing, { id: 'rect1', type: 'rect', x: 10, y: 20, width: 100, height: 50, fill: '#abc' });
-    addDrawing(ydoc, yDrawing, {
+const attrNames = (el) => [...el.attributes].map(a => a.name).sort();
+
+function drawingLayerAPI() {
+  const ydoc = makeDoc();
+  const layerEl = ensureLayerId(document.createElementNS(SVG_NS, 'g'), DRAWING_LAYER);
+  const L = makeLayerAPI(ydoc, () => layerEl, { id: 'me' }, 'pure-mirror-table');
+  return { ydoc, layerEl, L };
+}
+
+describe('the drawing layer DOM carries exactly the attributes its schema writes', () => {
+  test('every kind, at creation', () => {
+    const { layerEl, L } = drawingLayerAPI();
+
+    L.add({ id: 'rect1', type: 'rect', x: 10, y: 20, width: 100, height: 50, fill: '#abc' });
+    L.add({
       id: 'rect2', type: 'rect', x: 10, y: 20, width: 100, height: 50,
       rotate: 30, 'pivot-x': 0.5, 'pivot-y': 0.5,
     });
-    addDrawing(ydoc, yDrawing, { id: 'circ1', type: 'circle', cx: 40, cy: 40, r: 20 });
+    L.add({ id: 'circ1', type: 'circle', cx: 40, cy: 40, r: 20 });
 
-    const g = renderScratch(renderDrawing, yDrawing);
-    const yEls = yDrawing.toArray();
-    expect(g.children.length).toBe(yEls.length);
-    yEls.forEach((yEl, i) => assertPureMirror(g.children[i], yEl, yEl.getAttribute('id')));
+    expect(layerEl.children.length).toBe(3);
+    expect(attrNames(findRendered(layerEl, 'rect1'))).toEqual(expectedAttrNames('rect'));
+    expect(attrNames(findRendered(layerEl, 'rect2'))).toEqual(expectedAttrNames('rect', ['transform']));
+    expect(attrNames(findRendered(layerEl, 'circ1'))).toEqual(expectedAttrNames('circle'));
+    expect(findRendered(layerEl, 'rect1').getAttribute('fill')).toBe('#abc');
   });
 
-  test('after move, resize, rotate and pivot, through the real apply* functions', () => {
-    const ydoc = makeDoc();
-    const yDrawing = ydoc.getXmlFragment('drawing');
-    addDrawing(ydoc, yDrawing, { id: 'rect1', type: 'rect', x: 10, y: 20, width: 100, height: 50 });
+  test('after move, resize, rotate and pivot, through the LayerAPI', () => {
+    const { layerEl, L } = drawingLayerAPI();
+    L.add({ id: 'rect1', type: 'rect', x: 10, y: 20, width: 100, height: 50 });
 
-    const yEl = yDrawing.toArray()[0];
-    applyDrawingMove(ydoc, yEl, 30, 40);
-    applyDrawingResize(ydoc, yEl, 30, 40, 120, 60);
-    applyRotate(ydoc, yEl, 25);
-    applyPivot(ydoc, yEl, 0, 0, 30, 40);
+    L.applyMoveCommit(L.find('rect1'), 30, 40);
+    L.applyResize(L.find('rect1'), 30, 40, 120, 60);
+    L.applyRotate(L.find('rect1'), 25);
+    L.applyPivot(L.find('rect1'), 0, 0, 30, 40);
 
-    const g = renderScratch(renderDrawing, yDrawing);
-    assertPureMirror(findRendered(g, 'rect1'), yEl, 'rect1');
+    const el = findRendered(layerEl, 'rect1');
     // The mutators actually did something observable, so this isn't
     // vacuously true.
-    expect(yEl.getAttribute('transform')).toMatch(/^rotate\(/);
+    expect(el.getAttribute('transform')).toMatch(/^rotate\(25 /);
+    expect(el.getAttribute('width')).toBe('120');
+    expect(attrNames(el)).toEqual(expectedAttrNames('rect', ['transform']));
+    expect(layerEl.children.length).toBe(1);
   });
 });
 
