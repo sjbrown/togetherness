@@ -131,8 +131,7 @@ export function setIdentity({ projectName, user, tableId }) {
   const el = $('#idbar');
   if (!el) return;
   el.querySelector('.idbar-project').textContent = UIData.projectName;
-  el.querySelector('.idbar-user').textContent    = UIData.user.name;
-  el.querySelector('.idbar-table').textContent    = `#${UIData.roomId}`;
+  el.querySelector('.idbar-table').textContent   = `#${UIData.roomId}`;
 }
 export function updateInfoBar() {
   const show = UIData.menuOpen || UIData.panelOpen !== null;
