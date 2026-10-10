@@ -389,11 +389,9 @@ class ColorPicker extends HTMLElement {
     this.selectedColor.h = h;
     this.selectedColor.s = s;
     this.selectedColor.l = l;
-    this.selectedColor.a = 100;
-    
+
     this.updateSwatch();
     this.updateOpacityColumn();
-    this.clearOpacitySelection();
     this.emitColorPicked();
   }
   
