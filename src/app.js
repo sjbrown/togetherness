@@ -74,10 +74,10 @@ let _Layers = {};
 
 // Per-layer visibility (local state, not synced).
 const _layerVisibility = {
-  'background':           true,
-  'boundaries-positions': false,
-  'toys':                 true,
-  'drawing':              true,
+  'background': true,
+  'boun_pos':   false,
+  'toys':       true,
+  'drawing':    true,
 };
 let _tableId, _isCreator;
 let _svgEl;
@@ -350,10 +350,10 @@ const _toolsByLayer = {};
 const _toolById     = {};
 const _toolParams   = {};
 const _layerMeta = [
-  { id: 'background',            label: 'Background',             iconId: 'layer-bg' },
-  { id: 'boundaries-positions',  label: 'Boundaries and Positions', iconId: 'layer-bounpos' },
-  { id: 'toys',                  label: 'Toys',                   iconId: 'layer-toys' },
-  { id: 'drawing',               label: 'Drawing',                iconId: 'layer-draw' },
+  { id: 'background', label: 'Background',               iconId: 'layer-bg' },
+  { id: 'boun_pos',   label: 'Boundaries and Positions', iconId: 'layer-bounpos' },
+  { id: 'toys',       label: 'Toys',                     iconId: 'layer-toys' },
+  { id: 'drawing',    label: 'Drawing',                  iconId: 'layer-draw' },
 ];
 
 function buildToolRegistry() {
@@ -366,14 +366,14 @@ function buildToolRegistry() {
   const bounPosTools = Object.entries(BounPos.BOUNPOS_TYPES).map(([name, def]) => ({
     name,
     label:   def.label,
-    layer:   'boundaries-positions',
+    layer:   'boun_pos',
     iconUrl: def.iconUrl,
   }));
   bounPosTools.forEach(def => {
     _toolById[def.name] = def;
     _toolParams[def.name] = { ...BounPos.BOUNPOS_TYPES[def.name].schema.values };
   });
-  _toolsByLayer['boundaries-positions'] = [SELECT_TOOL, ...bounPosTools];
+  _toolsByLayer['boun_pos'] = [SELECT_TOOL, ...bounPosTools];
   Toys.TOOLS.forEach(register);
   _toolsByLayer['toys'] = [SELECT_TOOL, ...Toys.TOOLS];
   const drawTools = Object.entries(Drawing.SHAPE_TYPES).map(([name, def]) => ({
@@ -428,7 +428,7 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
                 ),
     'boun_pos': BounPos.makeLayerAPI(
                   _ydoc,
-                  () => _svgEl.querySelector('#boundaries-positions-layer'),
+                  () => _svgEl.querySelector('#boun_pos-layer'),
                   user,
                   tableId,
                   isCreator
@@ -626,7 +626,7 @@ function syncUserVisuals() {
 }
 
 // Each layer id maps to a group element id via the convention: `${id}-layer`.
-// e.g. 'toys' → '#toys-layer', 'boundaries-positions' → '#boundaries-positions-layer'.
+// e.g. 'toys' → '#toys-layer', 'boun_pos' → '#boun_pos-layer'.
 function applyLayerVisibility() {
   for (const l of _layerMeta) {
     const el = _svgEl?.querySelector(`#${l.id}-layer`);
@@ -638,8 +638,8 @@ function applyLayerVisibility() {
 }
 
 function renderBounPosLayer() {
-  const layer = _svgEl.querySelector('#boundaries-positions-layer');
-  if (!layer) throw new Error("renderBounPosLayer: '#boundaries-positions-layer' not found in SVG document — malformed template?");
+  const layer = _svgEl.querySelector('#boun_pos-layer');
+  if (!layer) throw new Error("renderBounPosLayer: '#boun_pos-layer' not found in SVG document — malformed template?");
   _Layers.boun_pos.render(layer, tablesAPI.getJoinSequenceArray(_ydoc));
   Canvas.wireShapeClicks(layer);
 }
@@ -857,12 +857,6 @@ function logAwarenessChange({ added, updated, removed }, origin) {
   if (lines.length) console.log(lines.join('\n'));
 }
 
-const LAYER_ID_TO_MODULE = {
-  'drawing':               'drawing',
-  'toys':                  'toys',
-  'boundaries-positions':  'boun_pos',
-};
-
 function moduleForElement(el) {
   return el?.getAttribute?.('data-module') ?? null;
 }
@@ -876,7 +870,7 @@ const App = {
   getLayers:       () => _layerMeta.map(l => ({
     ...l,
     visible: _layerVisibility[l.id] ?? true,
-    count: l.id === 'background' ? 1 : (_Layers[LAYER_ID_TO_MODULE[l.id]]?.listData().length ?? 0),
+    count: l.id === 'background' ? 1 : (_Layers[l.id]?.listData().length ?? 0),
   })),
   // ── Tool registry queries ──────────────────────────────────────────────────
   getTools:        (layer) => _toolsByLayer[layer] ?? [SELECT_TOOL],
@@ -944,7 +938,7 @@ const App = {
     if (!pivot || !geo) return null;
     return { ...pivot, ...layer.rotationCenter(domEl, geo) };
   },
-  getLayerObjects: (layerId) => _Layers[LAYER_ID_TO_MODULE[layerId]]?.listData() ?? [],
+  getLayerObjects: (layerId) => _Layers[layerId]?.listData() ?? [],
   // Return ids of objects on the active layer whose bbox is fully inside rect.
   // rect is canvas-space { x, y, width, height }.
   // Also updates overlay candidate rings as a side effect.
@@ -1076,7 +1070,7 @@ const App = {
       const op = layerEl ? Drawing.deleteDrawingsBatch(_ydoc, layerEl, ids, opts) : null;
       deleted = op ? ids.length : 0;
     } else if (mtype === 'boun_pos') {
-      const layerEl = _svgEl.querySelector('#boundaries-positions-layer');
+      const layerEl = _svgEl.querySelector('#boun_pos-layer');
       const op = layerEl ? BounPos.deleteBoundariesBatch(_ydoc, layerEl, ids, opts) : null;
       deleted = op ? ids.length : 0;
     }
@@ -1118,7 +1112,7 @@ const App = {
       };
     }
     _Layers.boun_pos.add(toolName, params);
-    addHistory(`added ${def.label} ${name}`, { elType: 'boundaries-positions' });
+    addHistory(`added ${def.label} ${name}`, { elType: 'boun_pos' });
     App.addLog(`added ${def.label} ${name}`, 'local');
     App.select(id);
   },
@@ -1347,7 +1341,7 @@ const App = {
     const bbox = App.getBBox(id);
     const isToy = moduleForElement(domEl) === 'toys';
     const toyClasses  = getToyClasses(domEl);
-    const bounPosEl   = _svgEl.querySelector('#boundaries-positions-layer');
+    const bounPosEl   = _svgEl.querySelector('#boun_pos-layer');
     const boundsRects = isToy ? BounPos.computeBoundaryRects(bounPosEl, toyClasses, anchor) : null;
     const boundsSnap  = BounPos.getSnapPoints(bounPosEl);
     const toySnap     = Toys.getSnapPoints(toysLayerEl);
@@ -1782,7 +1776,7 @@ const App = {
     const anchorDom = _svgEl.querySelector(`[data-id="${leaderEl.id}"]`);
     const isToy     = leaderEl.mtype === 'toys';
     const toyClasses   = getToyClasses(anchorDom);
-    const bounPosEl    = _svgEl.querySelector('#boundaries-positions-layer');
+    const bounPosEl    = _svgEl.querySelector('#boun_pos-layer');
     const boundsRects  = isToy ? BounPos.computeBoundaryRects(bounPosEl, toyClasses, { x: leaderEl.anchorX, y: leaderEl.anchorY }) : null;
     const snapPoints   = BounPos.getSnapPoints(bounPosEl);
 
@@ -1885,7 +1879,7 @@ const App = {
       const layerEl = _svgEl.querySelector('#drawing-layer');
       if (layerEl) Drawing.moveDrawingsBatch(_ydoc, layerEl, moves, batchOpts);
     } else if (mtype === 'boun_pos') {
-      const layerEl = _svgEl.querySelector('#boundaries-positions-layer');
+      const layerEl = _svgEl.querySelector('#boun_pos-layer');
       if (layerEl) BounPos.moveBoundariesBatch(_ydoc, layerEl, moves, batchOpts);
     }
 
@@ -2055,7 +2049,7 @@ const App = {
       }
 
       if (bounPosCount) {
-        const layerEl = _svgEl.querySelector('#boundaries-positions-layer');
+        const layerEl = _svgEl.querySelector('#boun_pos-layer');
         BounPos.importBoundaries(_ydoc, layerEl, importedBounPosEls, { authorId: App.user.id, tableId: _tableId });
         UI.refreshFromDoc();
       }

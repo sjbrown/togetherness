@@ -19,7 +19,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ensureLayerId } from '../../src/op_layers.js'
 import { TOYS_LAYER } from '../../src/toys.js'
 import { DRAWING_LAYER, makeLayerAPI as makeDrawingAPI } from '../../src/drawing.js'
-import { BOUNDARIES_LAYER, makeLayerAPI as makeBoundariesAPI, gridFillExtent } from '../../src/boun_pos.js'
+import { BOUN_POS_LAYER, makeLayerAPI as makeBoundariesAPI, gridFillExtent } from '../../src/boun_pos.js'
 import {
   placeToy, makeLayerAPI, activateAllToyScriptsDom, projectLayer, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
@@ -707,8 +707,8 @@ describe('concurrent convergence: boundaries layer', () => {
     const tableId = `boundaries-convergence-table-${_tableCounter++}`
     const ydoc = new Y.Doc()
     const layer = document.createElementNS(SVG_NS, 'g')
-    layer.id = 'boundaries-positions-layer'
-    ensureLayerId(layer, BOUNDARIES_LAYER)
+    layer.id = 'boun_pos-layer'
+    ensureLayerId(layer, BOUN_POS_LAYER)
     const api = makeBoundariesAPI(ydoc, () => layer, { id: authorId }, tableId)
     const peer = { id: authorId, tableId, ydoc, layer, api }
     _bounPeers.push(peer)
@@ -718,33 +718,33 @@ describe('concurrent convergence: boundaries layer', () => {
   function seedBounGenesis(peers) {
     const genesis = { id: 'genesis', parents: [], authorId: 'system', gesture: 'checkpoint', ts: 0, mutations: [] }
     for (const p of peers) {
-      appendCheckpoint(p.ydoc, BOUNDARIES_LAYER, genesis, [])
-      setHead(p.tableId, BOUNDARIES_LAYER, genesis.id)
+      appendCheckpoint(p.ydoc, BOUN_POS_LAYER, genesis, [])
+      setHead(p.tableId, BOUN_POS_LAYER, genesis.id)
     }
   }
 
   function deliverBoun(peer, ops) {
-    for (const op of ops) getOps(peer.ydoc, BOUNDARIES_LAYER).set(op.id, op)
-    return ops.map(op => receiveLayerOp(peer.ydoc, BOUNDARIES_LAYER, peer.layer, op.id, peer.tableId, []))
+    for (const op of ops) getOps(peer.ydoc, BOUN_POS_LAYER).set(op.id, op)
+    return ops.map(op => receiveLayerOp(peer.ydoc, BOUN_POS_LAYER, peer.layer, op.id, peer.tableId, []))
   }
 
   function bounTipsOf(peer) {
-    return maximalTips(getOps(peer.ydoc, BOUNDARIES_LAYER),
-      [getHead(peer.tableId, BOUNDARIES_LAYER), ...getMergeTips(peer.tableId, BOUNDARIES_LAYER)])
+    return maximalTips(getOps(peer.ydoc, BOUN_POS_LAYER),
+      [getHead(peer.tableId, BOUN_POS_LAYER), ...getMergeTips(peer.tableId, BOUN_POS_LAYER)])
   }
 
   function assertBounConverged(peers) {
     const serialized = peers.map(p => [...p.layer.children].map(serializeNode))
     for (let i = 1; i < peers.length; i++) expect(serialized[i]).toEqual(serialized[0])
 
-    const ops = getOps(peers[0].ydoc, BOUNDARIES_LAYER)
+    const ops = getOps(peers[0].ydoc, BOUN_POS_LAYER)
     const unionTips = maximalTips(ops, peers.flatMap(bounTipsOf))
-    const scratch = ensureLayerId(document.createElementNS(SVG_NS, 'g'), BOUNDARIES_LAYER)
-    projectTips(scratch, ops, getContent(peers[0].ydoc, BOUNDARIES_LAYER), unionTips, [])
+    const scratch = ensureLayerId(document.createElementNS(SVG_NS, 'g'), BOUN_POS_LAYER)
+    projectTips(scratch, ops, getContent(peers[0].ydoc, BOUN_POS_LAYER), unionTips, [])
     expect([...scratch.children].map(serializeNode)).toEqual(serialized[0])
   }
 
-  const headOp = (peer) => getOps(peer.ydoc, BOUNDARIES_LAYER).get(getHead(peer.tableId, BOUNDARIES_LAYER))
+  const headOp = (peer) => getOps(peer.ydoc, BOUN_POS_LAYER).get(getHead(peer.tableId, BOUN_POS_LAYER))
   const addBoundary = (peer, id, x, y) => {
     peer.api.add('boundary', { id, name: id, x, y, w: 100, h: 80 })
     return headOp(peer)

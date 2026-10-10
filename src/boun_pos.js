@@ -1,8 +1,8 @@
 /**
  * boun_pos.js — complete module for the Boundaries and Positions layer, an op
- * layer (BOUNDARIES_LAYER).
+ * layer (BOUN_POS_LAYER).
  *
- * Both element types are <g> siblings in #boundaries-positions-layer.
+ * Both element types are <g> siblings in #boun_pos-layer.
  * data-bounpos-type="boundary" | "pos-set" distinguishes them. Every write is
  * a DOM operation on the live layer, run inside a gesture (OpLayer.runGesture)
  * so the envelope captures it as one operation; the op log is the replicated
@@ -904,23 +904,20 @@ export function nextSelectMode(_domEl, currentMode) {
 
 // ── The layer ─────────────────────────────────────────────────────────────────
 
-// The op layer is named 'boundaries'; the rendered elements and the _Layers
-// dispatch key stay 'boun_pos' (data-module="boun_pos"). The two names are
-// deliberately different.
-export const BOUNDARIES_LAYER = defineOpLayer({
-  name:        'boundaries',
-  selector:    '#boundaries-positions-layer',
-  layerDataId: 'tt-layer-boundaries',
-  opsKey:      'ops:boundaries',
-  contentKey:  'checkpointContent:boundaries',
-  headKey:     (tableId) => `tt_head_boundaries_${tableId}`,
-  mergeKey:    (tableId) => `tt_head_merge_boundaries_${tableId}`,
+export const BOUN_POS_LAYER = defineOpLayer({
+  name:        'boun_pos',
+  selector:    '#boun_pos-layer',
+  layerDataId: 'tt-layer-boun_pos',
+  opsKey:      'ops:boun_pos',
+  contentKey:  'checkpointContent:boun_pos',
+  headKey:     (tableId) => `tt_head_boun_pos_${tableId}`,
+  mergeKey:    (tableId) => `tt_head_merge_boun_pos_${tableId}`,
 });
 
 export const runGesture = (ydoc, layerEl, fn, opts) =>
-  OpLayer.runGesture(ydoc, BOUNDARIES_LAYER, layerEl, fn, opts);
+  OpLayer.runGesture(ydoc, BOUN_POS_LAYER, layerEl, fn, opts);
 export const projectLayer = (ydoc, layerEl, opts) =>
-  OpLayer.projectLayer(ydoc, BOUNDARIES_LAYER, layerEl, opts);
+  OpLayer.projectLayer(ydoc, BOUN_POS_LAYER, layerEl, opts);
 
 // ── Batch gestures ────────────────────────────────────────────────────────────
 // A multi-select action is one gesture, one operation.
@@ -978,7 +975,7 @@ export function importBoundaries(ydoc, layerEl, els, opts = {}) {
  * makeLayerAPI -- the canonical LayerAPI for the Boundaries and Positions
  * layer.
  *
- * getLayerEl returns the live #boundaries-positions-layer. Everything here
+ * getLayerEl returns the live #boun_pos-layer. Everything here
  * reads and writes that DOM; writes run inside runGesture so the envelope
  * captures them. Whatever find() returns is what the other methods accept.
  */

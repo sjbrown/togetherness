@@ -50,7 +50,7 @@ test.describe('boundary-constrained toy dragging', () => {
     // ── Create boundary A via App.commitBoundary directly ────────────────────
     // Using the public App API rather than mouse gestures avoids fragile
     // rubber-band draw interactions in the test environment.
-    await page.evaluate(() => window.App.setLayer('boundaries-positions'));
+    await page.evaluate(() => window.App.setLayer('boun_pos'));
     await page.waitForTimeout(100);
     await page.evaluate((b) => window.App.commitBoundary(b), bA);
     await page.waitForTimeout(100);
@@ -72,15 +72,15 @@ test.describe('boundary-constrained toy dragging', () => {
       const { bAId, bBId } = ids;
       const elA = document.querySelector(`[data-id="${bAId}"]`);
       const elB = document.querySelector(`[data-id="${bBId}"]`);
-      const layerObjects = window.App.getLayerObjects('boundaries-positions');
+      const layerObjects = window.App.getLayerObjects('boun_pos');
       const metaA = layerObjects.find(o => o.id === bAId);
       const metaB = layerObjects.find(o => o.id === bBId);
       return {
         activeLayer:    window.App.getActiveLayer(),
         elAExists:      !!elA,
         elBExists:      !!elB,
-        elAInBounPos:   elA?.closest('#boundaries-positions-layer') !== null,
-        elBInBounPos:   elB?.closest('#boundaries-positions-layer') !== null,
+        elAInBounPos:   elA?.closest('#boun_pos-layer') !== null,
+        elBInBounPos:   elB?.closest('#boun_pos-layer') !== null,
         metaAName:      metaA?.label ?? null,
         metaBName:      metaB?.label ?? null,
         pathAD:         elA?.querySelector('path')?.getAttribute('d') ?? null,
@@ -107,11 +107,11 @@ test.describe('boundary-constrained toy dragging', () => {
     expect(boundarySanity.pathBD,  'boundary B path').toMatch(/^M0,0 L200,0/);
     expect(boundarySanity.transformA, 'boundary A transform').toBe('translate(100, 100)');
     expect(boundarySanity.transformB, 'boundary B transform').toBe('translate(450, 100)');
-    expect(boundarySanity.activeLayer, 'active layer after boundary creation').toBe('boundaries-positions');
+    expect(boundarySanity.activeLayer, 'active layer after boundary creation').toBe('boun_pos');
 
     // ── Place a toy inside boundary A ─────────────────────────────────────────
     // Must explicitly switch to the toys layer — drawing boundaries leaves the
-    // active layer on 'boundaries-positions', and hitForActiveLayer() will miss
+    // active layer on 'boun_pos', and hitForActiveLayer() will miss
     // the toy element until we switch back.
     await page.evaluate(() => window.App.setLayer('toys'));
     await page.waitForTimeout(100);
@@ -233,7 +233,7 @@ test.describe('boundary-constrained toy dragging', () => {
     const sc = (svgX, svgY) => ({ x: canvasBox.x + svgX, y: canvasBox.y + svgY });
 
     // Position set at (100,100), 200x200, default 80px spacing: circles at 100/180/260.
-    await page.evaluate(() => window.App.setLayer('boundaries-positions'));
+    await page.evaluate(() => window.App.setLayer('boun_pos'));
     await page.evaluate(() => window.App.commitPositionSet({ toolName: 'pos-grid-sq', x: 100, y: 100, w: 200, h: 200 }));
     await page.waitForTimeout(100);
     const psId = await page.evaluate(() => window.App.getSelectedIds()[0]);
@@ -243,7 +243,7 @@ test.describe('boundary-constrained toy dragging', () => {
     const preview = await page.evaluate((id) => {
       window.App.startDrag(id);
       window.App.move(id, 400, 300);   // anchor 100,100 -> 400,300
-      const orig  = document.querySelector(`#boundaries-positions-layer [data-id="${id}"]`).getBoundingClientRect();
+      const orig  = document.querySelector(`#boun_pos-layer [data-id="${id}"]`).getBoundingClientRect();
       const ghost = [...document.querySelectorAll(`#overlay-layer use[href="#${id}"]`)]
         .find(el => el.hasAttribute('transform') && el.getAttribute('opacity'));
       const g = ghost.getBoundingClientRect();
@@ -255,7 +255,7 @@ test.describe('boundary-constrained toy dragging', () => {
     // ── Commit: only the transform changes
     const committed = await page.evaluate((id) => {
       window.App.commitMove(id, 400, 300);
-      const el = document.querySelector(`#boundaries-positions-layer [data-id="${id}"]`);
+      const el = document.querySelector(`#boun_pos-layer [data-id="${id}"]`);
       return {
         transform: el.getAttribute('transform'),
         d:   el.querySelector('path').getAttribute('d'),

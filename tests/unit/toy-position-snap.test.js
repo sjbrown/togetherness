@@ -35,7 +35,7 @@ import {
 } from '../../src/toys.js'
 import { getOps } from '../../src/op_dag.js'
 import {
-  BOUNDARIES_LAYER, makeLayerAPI as makeBoundariesAPI, getSnapPoints as getBoundarySnapPoints,
+  BOUN_POS_LAYER, makeLayerAPI as makeBoundariesAPI, getSnapPoints as getBoundarySnapPoints,
   computeBoundaryRects, gridFillExtent,
 } from '../../src/boun_pos.js'
 import { ensureLayerId } from '../../src/op_layers.js'
@@ -769,7 +769,7 @@ describe('boun_pos snap points after a move', () => {
 
   function setup() {
     const ydoc = new Y.Doc()
-    const layerEl = ensureLayerId(document.createElementNS(SVG_NS, 'g'), BOUNDARIES_LAYER)
+    const layerEl = ensureLayerId(document.createElementNS(SVG_NS, 'g'), BOUN_POS_LAYER)
     const L = makeBoundariesAPI(ydoc, () => layerEl, { id: AUTHOR }, 'boun-snap-table', true)
     L.render(layerEl)
     const circles = gridFillExtent(0, 0, 200, 200, 'square', 100, 100)

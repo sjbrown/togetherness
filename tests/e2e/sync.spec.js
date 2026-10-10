@@ -98,7 +98,7 @@ test.describe('two-peer sync', () => {
     await waitForPeerCount(page1, 1);
     await waitForPeerCount(page2, 1);
 
-    const layer = '#boundaries-positions-layer';
+    const layer = '#boun_pos-layer';
     await expect(page2.locator(`${layer} > g`)).toHaveCount(0);
 
     await page1.evaluate(() => window.App.commitBoundary({ x: 50, y: 60, w: 200, h: 120 }));

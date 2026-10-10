@@ -6,7 +6,7 @@
  */
 import * as Toys     from './toys.js';
 import * as Drawing  from './drawing.js';
-import { BOUNDARIES_LAYER } from './boun_pos.js';
+import { BOUN_POS_LAYER } from './boun_pos.js';
 import { appendCheckpoint } from './op_dag.js';
 import { checkpointOp } from './op_checkpoint.js';
 import { ensureLayerId, getOpLayer, LAYER_MARKER } from './op_layers.js';
@@ -55,7 +55,7 @@ function stripScripts(el) {
 /**
  * Populate a Yjs document (yMeta and the op layers, all obtained
  * directly off ydoc) from a source <svg> root element — background pattern,
- * #toys-layer, #drawing-layer, #boundaries-positions-layer, and (as a
+ * #toys-layer, #drawing-layer, #boun_pos-layer, and (as a
  * fallback) any other top-level elements not belonging to a known layer.
  * Caller is responsible for wrapping this in a ydoc.transact() if atomicity
  * matters.
@@ -87,7 +87,7 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
   const bgPattern    = svgRootEl.querySelector('defs pattern');
   const toysLayerEl  = svgRootEl.querySelector('#toys-layer');
   const drawLayerEl  = svgRootEl.querySelector('#drawing-layer');
-  const bounPosLayerEl = svgRootEl.querySelector('#boundaries-positions-layer');
+  const bounPosLayerEl = svgRootEl.querySelector('#boun_pos-layer');
 
   let toyCount = 0, drawCount = 0, bounPosCount = 0;
   const invalidToyEls = [];
@@ -179,7 +179,7 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
   // even when empty) or handed back for one import gesture. Old-layout
   // children (absolute coordinates, no transform) are valid as they are.
   const bounPosScratch = ensureLayerId(
-    document.createElementNS('http://www.w3.org/2000/svg', 'g'), BOUNDARIES_LAYER);
+    document.createElementNS('http://www.w3.org/2000/svg', 'g'), BOUN_POS_LAYER);
 
   if (bounPosLayerEl) {
     for (const child of bounPosLayerEl.children) {
@@ -193,7 +193,7 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
 
   if (opts.asNewTable) {
     const { op: genesis, content } = checkpointOp(bounPosScratch, { authorId: opts.authorId, parents: [] });
-    appendCheckpoint(ydoc, BOUNDARIES_LAYER, genesis, content);
+    appendCheckpoint(ydoc, BOUN_POS_LAYER, genesis, content);
   } else {
     importedBounPosEls.push(...bounPosScratch.children);
   }
@@ -205,7 +205,7 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
     if (el.localName === 'script') continue; // handled above
     if (id === 'toys-layer' || id === 'drawing-layer') continue;
     if (id === 'background-layer') continue;
-    if (id === 'boundaries-positions-layer') continue; // handled above
+    if (id === 'boun_pos-layer') continue; // handled above
     // overlay-layer is UI-only and is stripped on export
     if (id === 'overlay-layer') continue;
     drawScratch.appendChild(parseDrawingEl(el));
@@ -256,12 +256,12 @@ export function buildExportSvg(liveSvgEl, ydoc) {
   // log. cloneNode(true) above already captured it faithfully, data-id and
   // all, so there's nothing to rebuild here — only internal bookkeeping to
   // strip before it leaks into a file a person might open in Inkscape.
-  for (const sel of ['#toys-layer', '#drawing-layer', '#boundaries-positions-layer']) {
+  for (const sel of ['#toys-layer', '#drawing-layer', '#boun_pos-layer']) {
     const layerEl = clone.querySelector(sel);
     if (!layerEl) continue;
     layerEl.removeAttribute(HEAD_MARKER);
     layerEl.removeAttribute(LAYER_MARKER);
-    if (sel !== '#boundaries-positions-layer') layerEl.setAttribute('inkscape:groupmode', 'layer');
+    if (sel !== '#boun_pos-layer') layerEl.setAttribute('inkscape:groupmode', 'layer');
   }
 
   // One consolidated <script> per namespace at document root — never one

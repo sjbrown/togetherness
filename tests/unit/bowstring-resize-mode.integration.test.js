@@ -66,7 +66,7 @@ function makeCanvasDOM() {
       <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
         <defs></defs>
         <g id="background-layer"></g>
-        <g id="boundaries-positions-layer"></g>
+        <g id="boun_pos-layer"></g>
         <g id="toys-layer"></g>
         <g id="drawing-layer"></g>
         <g id="overlay-layer" pointer-events="none"></g>

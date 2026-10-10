@@ -57,7 +57,7 @@ export function init(appBus, svgElement) {
   // #bg-pattern handling below) so panning never exposes empty space past
   // its edge.
   _transformedLayers = [
-    '#boundaries-positions-layer',
+    '#boun_pos-layer',
     '#toys-layer',
     '#drawing-layer',
     '#overlay-layer',
@@ -153,23 +153,13 @@ function onPointerLeaveStage() {
 }
 
 // ── Layer-aware hit testing ───────────────────────────────────────────────────
-// Maps the active layer id (from App.getActiveLayer) to the data-module
-// value stamped on DOM elements by shapes._toSVGEl / toys._toSVGEl.
-const LAYER_TYPE = {
-  drawing:               'drawing',
-  toys:                  'toys',
-  background:            'background',
-  'boundaries-positions': 'boun_pos',
-};
-
 // Return the [data-id] element under the pointer that belongs to the active
 // layer, or null if the pointer landed on a different layer or empty canvas.
+// A layer's id is also the data-module value stamped on its elements.
 function hitForActiveLayer(e) {
-  const activeType = LAYER_TYPE[App.getActiveLayer()];
-  if (!activeType) return null;
   const el = e.target.closest?.('[data-module]') ?? null;
   if (!el) return null;
-  return el.dataset.module === activeType ? el : null;
+  return el.dataset.module === App.getActiveLayer() ? el : null;
 }
 
 // ── Shape click wiring ────────────────────────────────────────────────────────

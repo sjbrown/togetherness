@@ -19,7 +19,7 @@ import {
   // DOM writes
   BOUNPOS_TYPES, findEl, deleteEl, editBounPos, editEl, applyMoveCommit,
   // Layer
-  BOUNDARIES_LAYER, makeLayerAPI, layerData,
+  BOUN_POS_LAYER, makeLayerAPI, layerData,
   // Geometry queries
   getGeom, getAnchor, translationOf,
   // Edit schema
@@ -42,7 +42,7 @@ beforeEach(() => { localStorage.clear(); });
 
 function makeLayer() {
   const ydoc    = new Y.Doc();
-  const layerEl = ensureLayerId(document.createElementNS(SVG_NS, 'g'), BOUNDARIES_LAYER);
+  const layerEl = ensureLayerId(document.createElementNS(SVG_NS, 'g'), BOUN_POS_LAYER);
   const L       = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE, true);
   L.render(layerEl);   // the creator's genesis checkpoint
   return { ydoc, layerEl, L };
@@ -371,7 +371,7 @@ describe('editBounPos rename', () => {
     const { id, name } = newBoundaryId();
     layer.L.add('boundary', { id, name, x: 0, y: 0, w: 100, h: 100 });
     layer.L.edit(layer.L.find(id), { name: 'forest' });
-    const op = [...getOps(layer.ydoc, BOUNDARIES_LAYER).values()].pop();
+    const op = [...getOps(layer.ydoc, BOUN_POS_LAYER).values()].pop();
     expect(op.gesture).toBe('edit');
     expect(op.mutations.map(m => m.t)).toEqual(expect.arrayContaining(['attr', 'text']));
   });
@@ -531,10 +531,10 @@ describe('applyMoveCommit', () => {
     });
     expect(circlesOf(findEl(layer.layerEl, id))).toHaveLength(121);
 
-    const before = getOps(layer.ydoc, BOUNDARIES_LAYER).size;
+    const before = getOps(layer.ydoc, BOUN_POS_LAYER).size;
     const sv = Y.encodeStateVector(layer.ydoc);
     layer.L.applyMoveCommit(layer.L.find(id), 300, 400);
-    const ops = [...getOps(layer.ydoc, BOUNDARIES_LAYER).values()];
+    const ops = [...getOps(layer.ydoc, BOUN_POS_LAYER).values()];
     expect(ops).toHaveLength(before + 1);
 
     const op = ops.at(-1);

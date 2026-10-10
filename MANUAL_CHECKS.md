@@ -171,7 +171,7 @@ Run these checks before merging large changesets. Automated tests catch logic er
 ## Layer Visibility
 
 1. Create 2 boundaries, 2 position sets, toys
-2. Toggle boundaries-positions layer off/on
+2. Toggle boun_pos layer off/on
 3. Boundaries and position sets hide/show; toys unaffected
 
 ---

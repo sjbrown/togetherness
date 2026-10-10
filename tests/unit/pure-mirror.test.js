@@ -13,7 +13,7 @@ import { describe, test, expect } from 'vitest';
 import { DRAWING_LAYER, SHAPE_TYPES, makeLayerAPI } from '../../src/drawing.js';
 import { ensureLayerId } from '../../src/op_layers.js';
 import {
-  BOUNDARIES_LAYER, BOUNPOS_TYPES, makeLayerAPI as makeBounPosAPI, toolParamsToCreateParams,
+  BOUN_POS_LAYER, BOUNPOS_TYPES, makeLayerAPI as makeBounPosAPI, toolParamsToCreateParams,
 } from '../../src/boun_pos.js';
 import { tablesAPI } from '../../src/tables.js';
 
@@ -89,7 +89,7 @@ describe('the drawing layer DOM carries exactly the attributes its schema writes
 describe('the boundaries layer DOM carries exactly the attributes its writers set', () => {
   function bounPosLayerAPI() {
     const ydoc = makeDoc();
-    const layerEl = ensureLayerId(document.createElementNS(SVG_NS, 'g'), BOUNDARIES_LAYER);
+    const layerEl = ensureLayerId(document.createElementNS(SVG_NS, 'g'), BOUN_POS_LAYER);
     const L = makeBounPosAPI(ydoc, () => layerEl, { id: 'me' }, 'pure-mirror-bounpos-table');
     return { ydoc, layerEl, L };
   }

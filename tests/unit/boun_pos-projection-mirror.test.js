@@ -14,7 +14,7 @@
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
-  BOUNDARIES_LAYER, makeLayerAPI, gridFillExtent, toolParamsToCreateParams,
+  BOUN_POS_LAYER, makeLayerAPI, gridFillExtent, toolParamsToCreateParams,
   deleteBoundariesBatch, moveBoundariesBatch,
 } from '../../src/boun_pos.js'
 import { ensureLayerId } from '../../src/op_layers.js'
@@ -32,15 +32,15 @@ beforeEach(() => { localStorage.clear() })
 
 function freshLayer() {
   const el = document.createElementNS(SVG_NS, 'g')
-  el.id = 'boundaries-positions-layer'
-  return ensureLayerId(el, BOUNDARIES_LAYER)
+  el.id = 'boun_pos-layer'
+  return ensureLayerId(el, BOUN_POS_LAYER)
 }
 
 const serialized = (layerEl) => [...layerEl.children].map(serializeNode)
 
 function replay(ydoc) {
   const scratch = freshLayer()
-  projectFrom(scratch, getOps(ydoc, BOUNDARIES_LAYER), getContent(ydoc, BOUNDARIES_LAYER), getHead(TABLE, BOUNDARIES_LAYER))
+  projectFrom(scratch, getOps(ydoc, BOUN_POS_LAYER), getContent(ydoc, BOUN_POS_LAYER), getHead(TABLE, BOUN_POS_LAYER))
   return scratch
 }
 
@@ -90,7 +90,7 @@ describe('boundaries: live equals replay', () => {
     L.applyMoveCommit(L.find('b1'), 70, 80)
     L.edit(L.find('b1'), { name: 'meadow' })
 
-    const gestures = [...getOps(ydoc, BOUNDARIES_LAYER).values()].map(o => o.gesture)
+    const gestures = [...getOps(ydoc, BOUN_POS_LAYER).values()].map(o => o.gesture)
     expect(gestures).toEqual(['checkpoint', 'add', 'move', 'edit'])
     const el = replay(ydoc).querySelector('[data-id="b1"]')
     expect(el.getAttribute('transform')).toBe('translate(70, 80)')
@@ -102,11 +102,11 @@ describe('boundaries: live equals replay', () => {
     L.add('boundary', { id: 'b1', name: 'forest', x: 0, y: 0, w: 100, h: 100 })
     L.applyMoveCommit(L.find('b1'), 70, 80)
 
-    OpLayer.undoGesture(ydoc, BOUNDARIES_LAYER, layerEl, TABLE, AUTHOR)
+    OpLayer.undoGesture(ydoc, BOUN_POS_LAYER, layerEl, TABLE, AUTHOR)
     expect(L.find('b1').getAttribute('transform')).toBe('translate(0, 0)')
     expect(serialized(replay(ydoc))).toEqual(serialized(layerEl))
 
-    OpLayer.redoGesture(ydoc, BOUNDARIES_LAYER, layerEl, TABLE, AUTHOR)
+    OpLayer.redoGesture(ydoc, BOUN_POS_LAYER, layerEl, TABLE, AUTHOR)
     expect(L.find('b1').getAttribute('transform')).toBe('translate(70, 80)')
     expect(serialized(replay(ydoc))).toEqual(serialized(layerEl))
   })
@@ -118,7 +118,7 @@ describe('boundaries: live equals replay', () => {
     L.delete('sq')
     expect(layerEl.children.length).toBe(0)
 
-    OpLayer.undoGesture(ydoc, BOUNDARIES_LAYER, layerEl, TABLE, AUTHOR)
+    OpLayer.undoGesture(ydoc, BOUN_POS_LAYER, layerEl, TABLE, AUTHOR)
     expect(serialized(layerEl)).toEqual(before)
   })
 })
