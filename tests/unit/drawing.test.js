@@ -22,7 +22,7 @@ import {
   PIVOT_SNAP_FRACTION,
 } from '../../src/drawing.js'
 import { ensureLayerId } from '../../src/op_layers.js'
-import { getRotation, rotationCenter, rotationTransform, getPivot } from '../../src/rotation.js'
+import { getRotation, rotationCenter, rotationTransform, getPivot } from '../../src/geometry.js'
 import { getOps } from '../../src/op_dag.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'

@@ -74,8 +74,7 @@ import {
   previewResize     as previewDrawingResize,
   pivotRayOpacities,
 } from './drawing.js';
-import { resolveRotation as elementRotation, rotationTransform } from './rotation.js';
-import { normalizeAngle } from './geometry.js';
+import { normalizeAngle, resolveRotation as elementRotation, rotationTransform } from './geometry.js';
 import { LOCAL_ACTION_FILTER_ID } from './defs.js';
 import { getBowstringState, chargeOpacityFor, chargeRadiusFor, bowstringOrigin } from './delight.js';
 import { drawAsteriskGlyph, drawCrosshairGlyph, drawRotateGlyph, drawPivotGlyph } from './icons.js';

@@ -13,7 +13,7 @@ import {
   syncRotation, resolveRotation, applyRotate,
   applyMove, applyResize, ROTATE_SNAP_DEG,
 } from '../../src/toys.js'
-import { getRotation } from '../../src/rotation.js'
+import { getRotation } from '../../src/geometry.js'
 
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
 const TOY_DIR = path.resolve(__dir, '../../src/toy')

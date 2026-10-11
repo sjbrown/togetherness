@@ -7,12 +7,12 @@
  * Requires a DOM (browser or jsdom).
  */
 
-import { normalizeAngle, computeRotate, computeResizeCornerRect, rotatePoint } from './geometry.js';
-import { defineOpLayer } from './op_layers.js';
-import * as Rotation from './rotation.js';
+import * as Geometry from './geometry.js';
 import {
+  normalizeAngle, computeRotate, computeResizeCornerRect, rotatePoint,
   ROTATE_ATTR, PIVOT_X_ATTR, PIVOT_Y_ATTR, getRotation, getPivot, rotationCenter,
-} from './rotation.js';
+} from './geometry.js';
+import { defineOpLayer } from './op_layers.js';
 import * as OpLayer from './op_layer.js';
 
 const SVG_NS   = 'http://www.w3.org/2000/svg';
@@ -156,7 +156,7 @@ export function getGeom(svgEl) {
 }
 
 // ── Rotation ─────────────────────────────────────────────────────────────────
-// The model is rotation.js's (schema key `rotate`, attribute data-rotate),
+// The model is geometry.js's (schema key `rotate`, attribute data-rotate),
 // about the shape's own placeable pivot (schema keys pivot-x/pivot-y).
 
 // Rects' own rotation step, in degrees; threaded through explicitly on
@@ -172,7 +172,7 @@ const clamp01 = n => Math.min(1, Math.max(0, n));
 
 /** A shape's rotation resolved against geometry and its pivot: { deg, cx, cy }, or null when unrotated. */
 export function resolveRotation(svgEl, geom = getGeom(svgEl)) {
-  return Rotation.resolveRotation(svgEl, geom, getPivot(svgEl));
+  return Geometry.resolveRotation(svgEl, geom, getPivot(svgEl));
 }
 
 // ── Pivot placement ──────────────────────────────────────────────────────────
@@ -269,11 +269,11 @@ export function pivotRayOpacities(fx, fy) {
 
 /**
  * Project a shape's stored rotation onto it as a transform, about its own
- * pivot (see Rotation.syncRotation).
+ * pivot (see Geometry.syncRotation).
  */
 export function syncRotation(domEl) {
   if (!domEl?.hasAttribute?.(ROTATE_ATTR)) return;
-  Rotation.syncRotation(domEl, getGeom(domEl), getPivot(domEl));
+  Geometry.syncRotation(domEl, getGeom(domEl), getPivot(domEl));
 }
 
 /** Commit a rotation. A shape whose schema has no `rotate` key (circles) is a no-op. */

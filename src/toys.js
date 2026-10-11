@@ -31,11 +31,10 @@ import { runInEnvelope, isInsideEnvelope } from './envelope.js';
 export { isInsideEnvelope };
 import { defineOpLayer } from './op_layers.js';
 import * as OpLayer from './op_layer.js';
-import * as Rotation from './rotation.js';
-import { ROTATE_ATTR, CENTER_PIVOT, getRotation, rotationCenter } from './rotation.js';
-// geometry.js is shape-agnostic pure math, shared with drawing.js and
+// geometry.js is shape-agnostic geometry, shared with drawing.js and
 // boun_pos.js.
 import * as Geometry from './geometry.js';
+import { ROTATE_ATTR, CENTER_PIVOT, getRotation, rotationCenter } from './geometry.js';
 
 // ── ID helpers ────────────────────────────────────────────────────────────────
 
@@ -1097,7 +1096,7 @@ export function moveToyAndStack(layerEl, el, x, y) {
 }
 
 // ── Rotation ─────────────────────────────────────────────────────────────────
-// The model is rotation.js's. Offered only when a toy's embedded <svg>
+// The model is geometry.js's. Offered only when a toy's embedded <svg>
 // declares class="tt_able_rotate" (chip, single_poker_card), always about
 // the toy's own fixed centre -- no placeable pivot. The rotate attribute
 // lives on the outer <g>, the same element move/resize/select already key
@@ -1108,16 +1107,16 @@ export const ROTATE_SNAP_DEG = 45
 
 /** A toy's rotation resolved against geometry: { deg, cx, cy } about its centre, or null when unrotated. */
 export function resolveRotation(domEl, geom = getGeom(domEl)) {
-  return Rotation.resolveRotation(domEl, geom, CENTER_PIVOT)
+  return Geometry.resolveRotation(domEl, geom, CENTER_PIVOT)
 }
 
 /**
  * Project a toy's stored rotation onto its own <g> as a transform, about
- * its centre (see Rotation.syncRotation).
+ * its centre (see Geometry.syncRotation).
  */
 export function syncRotation(domEl) {
   if (!domEl?.hasAttribute?.(ROTATE_ATTR)) return
-  Rotation.syncRotation(domEl, getGeom(domEl), CENTER_PIVOT)
+  Geometry.syncRotation(domEl, getGeom(domEl), CENTER_PIVOT)
 }
 
 // No tt_able_rotate guard: selectModes already gates the whole rotate
