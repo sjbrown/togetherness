@@ -309,11 +309,18 @@ let _undoLog      = [];      // { label } — actions undone, newest first;
 
 // Active drag — set by App.startDrag, cleared by commitMove / cancelMove.
 // Awareness state: drag: { elId, dx, dy }
-// local awareness schema: { id, color, grad, cursor, desired, drag? }
+// local awareness schema: { id, color, grad, cursor, desired, drag?, attention? }
+// attention: { x, y } | null — pointer position while the player is calling attention
 // desired: { [elId]: { ts: number, holding: boolean } }
 let _dragState    = null;    // { id, startX, startY, startBboxX, startBboxY,
                               //   boundsRects: [{x,y,w,h}]|null, lastValidX, lastValidY,
                               //   snapPoints: [{cx,cy,snapRadius}] } | null
+
+// Attention (triple-click / triple-tap) — set by App.onTripleTap, cleared when
+// the pointer idles for ATTENTION_IDLE_MS or a touch lifts.
+const ATTENTION_IDLE_MS = 3000;
+let _attention        = null;   // { pointerId, touch, timer } | null
+let _attentionMarkerId = null;  // this player's marker dropped by attention
 
 // Active multi-element drag — set by App.startMultiDrag,
 // cleared by commitMultiMove / cancelMultiMove.
@@ -966,7 +973,34 @@ const App = {
   // ── Tool mutations (canvas.js calls back into ui.js via these) ────────────
   onToolChanged:          (t)   => UI.onToolChanged(t),
   onViewReset:            ()    => UI.toast('View reset'),
-  onTripleTap:            ()    => UI.toast('Attention 3-Click'),
+  // Drops a Player Marker at (x, y), replacing this player's previous
+  // attention marker, and starts broadcasting the pointer position.
+  onTripleTap: (x, y, pointerId, touch = false) => {
+    if (_attentionMarkerId && _Layers.toys.find(_attentionMarkerId)) {
+      _Layers.toys.delete(_attentionMarkerId);
+    }
+    _attentionMarkerId = App.commitToy('marker', Math.round(x), Math.round(y)) ?? null;
+    clearTimeout(_attention?.timer);
+    _attention = { pointerId, touch, timer: null };
+    App.moveAttention(pointerId, x, y);
+  },
+  // Called for every canvas pointermove; only the attention pointer counts.
+  moveAttention: (pointerId, x, y) => {
+    if (!_attention || _attention.pointerId !== pointerId) return;
+    _awareness.setLocalStateField('attention', { x, y });
+    clearTimeout(_attention.timer);
+    _attention.timer = setTimeout(() => App.stopAttention(), ATTENTION_IDLE_MS);
+  },
+  // A touch's attention ends with the finger; a mouse's idles out instead.
+  endAttention: (pointerId) => {
+    if (_attention?.touch && _attention.pointerId === pointerId) App.stopAttention();
+  },
+  stopAttention: () => {
+    if (!_attention) return;
+    clearTimeout(_attention.timer);
+    _attention = null;
+    _awareness.setLocalStateField('attention', null);
+  },
 
   // ── Selection ────────────────────────────────────────────────────────────
 
@@ -1231,6 +1265,7 @@ const App = {
       UI.toast(`Failed to place ${def.label}`, 'warn');
       App.addLog(`place failed: ${err.message}`, 'del');
     });
+    return id;
   },
 
   deleteElement: (svgEl) => {
@@ -1894,6 +1929,7 @@ const App = {
     _awareness?.setLocalState({
       user:    App.user,
       cursor:  null,
+      attention: null,
       desired: { ..._desired },
       mode:    _activeMode ? _activeMode.mode : null,
     });

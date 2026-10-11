@@ -226,6 +226,22 @@ function onPointerDown(e) {
   ToolMode._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   _stageEl.setPointerCapture(e.pointerId);
 
+  // Third press of a tap sequence: attention. Fires on the press itself so a
+  // touch can keep the finger down and have App follow it.
+  if (ToolMode._pointers.size === 1 && ToolMode._tapCount === 2 &&
+      Date.now() - ToolMode._lastTap < 300) {
+    clearTimeout(ToolMode._tapTimer);
+    ToolMode._tapTimer = null;
+    ToolMode._tapCount = 0;
+    ToolMode._lastTap  = 0;
+    ToolMode._gesture  = 'attention';
+    ToolMode._moveRef  = null;
+    cancelDraft();
+    const p = toCanvas(e.clientX, e.clientY);
+    App.onTripleTap(p.x, p.y, e.pointerId, e.pointerType === 'touch');
+    return;
+  }
+
   // Two-finger gesture
   if (ToolMode._pointers.size === 2) {
     cancelDraft();
@@ -360,6 +376,13 @@ function onPointerMove(e) {
     App.updateAddCursor(p.x, p.y, ToolMode.tool);
   }
 
+  // Attention follows its pointer whether or not a button is down; App
+  // ignores moves from any other pointer or once attention has gone idle.
+  if (App.moveAttention) {
+    const p = toCanvas(e.clientX, e.clientY);
+    App.moveAttention(e.pointerId, p.x, p.y);
+  }
+
   if (!ToolMode._pointers.has(e.pointerId)) return;
   ToolMode._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -485,6 +508,17 @@ function onPointerUp(e) {
   _stageEl.classList.remove('pivot-dragging');
 
   const isCancelled = e.type === 'pointercancel';
+
+  // A touch's attention lasts only as long as the finger; a mouse's idles out.
+  App.endAttention?.(e.pointerId);
+  if (ToolMode._gesture === 'attention') {
+    ToolMode._gesture = null;
+    if (ToolMode._pointers.size === 0) {
+      ToolMode._tapCount = 0;
+      ToolMode._lastTap  = 0;
+    }
+    return;
+  }
 
   if (ToolMode._gesture === 'bowstring') {
     App.endBowstring(e);
@@ -623,8 +657,6 @@ function onPointerUp(e) {
         if (ToolMode._tapCount === 2) {
           resetView();
           App.onViewReset();
-        } else if (ToolMode._tapCount >= 3) {
-          App.onTripleTap();
         }
         ToolMode._tapCount = 0;
       }, 300);

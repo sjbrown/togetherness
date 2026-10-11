@@ -83,12 +83,12 @@ function makeApp(overrides = {}) {
   }
 }
 
-function makePointerEvent(type, { pointerId, clientX = 100, clientY = 100, target } = {}) {
+function makePointerEvent(type, { pointerId, clientX = 100, clientY = 100, target, pointerType = 'mouse' } = {}) {
   const stage = document.getElementById('stage')
   const ev = new PointerEvent(type, {
     bubbles: true, cancelable: true,
     clientX, clientY,
-    pointerId,
+    pointerId, pointerType,
   })
   Object.defineProperty(ev, 'target', { value: target ?? stage, writable: false })
   return ev
@@ -172,6 +172,67 @@ describe('pinch-zoom vs. tap disambiguation', () => {
 
     expect(app.onViewReset).not.toHaveBeenCalled()
     expect(app.onTripleTap).toHaveBeenCalledTimes(1)
+  })
+
+  test('attention fires on the third press, with its position, before release', () => {
+    vi.useFakeTimers()
+    const stage = document.getElementById('stage')
+    const app = makeApp()
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    tap(stage, { pointerId: 1 })
+    tap(stage, { pointerId: 2 })
+    expect(app.onTripleTap).not.toHaveBeenCalled()
+    stage.dispatchEvent(makePointerEvent('pointerdown', { pointerId: 3, clientX: 40, clientY: 50 }))
+    vi.useRealTimers()
+
+    expect(app.onTripleTap).toHaveBeenCalledTimes(1)
+    expect(app.onTripleTap).toHaveBeenCalledWith(40, 50, 3, false)
+  })
+
+  test('a held touch follows the finger and ends attention on release', () => {
+    vi.useFakeTimers()
+    const stage = document.getElementById('stage')
+    const app = makeApp({ moveAttention: vi.fn(), endAttention: vi.fn() })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    const t = { pointerType: 'touch' }
+    for (const pointerId of [1, 2]) {
+      stage.dispatchEvent(makePointerEvent('pointerdown', { pointerId, ...t }))
+      stage.dispatchEvent(makePointerEvent('pointerup',   { pointerId, ...t }))
+    }
+    stage.dispatchEvent(makePointerEvent('pointerdown', { pointerId: 3, ...t }))
+    expect(app.onTripleTap).toHaveBeenCalledWith(100, 100, 3, true)
+
+    stage.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 3, clientX: 120, clientY: 130 }))
+    expect(app.moveAttention).toHaveBeenLastCalledWith(3, 120, 130)
+
+    stage.dispatchEvent(makePointerEvent('pointerup', { pointerId: 3, ...t }))
+    expect(app.endAttention).toHaveBeenCalledWith(3)
+
+    vi.advanceTimersByTime(400)
+    vi.useRealTimers()
+    expect(app.onViewReset).not.toHaveBeenCalled()
+  })
+
+  test('a fourth quick tap after attention starts a fresh sequence', () => {
+    vi.useFakeTimers()
+    const stage = document.getElementById('stage')
+    const app = makeApp()
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    tap(stage, { pointerId: 1 })
+    tap(stage, { pointerId: 2 })
+    tap(stage, { pointerId: 3 })
+    tap(stage, { pointerId: 4 })
+    vi.advanceTimersByTime(400)
+    vi.useRealTimers()
+
+    expect(app.onTripleTap).toHaveBeenCalledTimes(1)
+    expect(app.onViewReset).not.toHaveBeenCalled()
   })
 
   test('a drag between two taps does not count as part of a tap sequence', () => {
