@@ -93,7 +93,7 @@ export function init(App, svgEl, Toys, UI) {
       let deleted = false
       try {
         Toys.ensureEnvelope(ydoc, layerEl, () => {
-          deleted = Toys.deleteToyDom(layerEl, id)
+          deleted = Toys.deleteEl(layerEl, id)
         }, { gesture: 'delete', authorId: myId, tableId })
       } catch (err) {
         e.detail.error = err.message
@@ -118,7 +118,7 @@ export function init(App, svgEl, Toys, UI) {
       if (name  !== undefined) editData.name  = name
 
       const wasInside = Toys.isInsideEnvelope()
-      Toys.ensureEnvelope(ydoc, layerEl, () => Toys.editDom(toyEl, editData),
+      Toys.ensureEnvelope(ydoc, layerEl, () => Toys.editEl(toyEl, editData),
         { gesture: 'edit', authorId: myId, tableId })
       if (!wasInside) UI.refreshFromDoc()
       e.detail.retval = {}

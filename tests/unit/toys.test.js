@@ -5,14 +5,15 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  svgTextToDom, addToy, addToyDom, deleteToyDom, TOY_TYPES, TOOLS,
-  getGeom, getTtStateSchema, editDom, previewEdit, reparentToyDom, findToyDom,
+  svgTextToDom, addToy, addToyDom, deleteEl, TOY_TYPES, TOOLS,
+  getGeom, getTtStateSchema, editEl, previewEdit, reparentToyDom, findEl,
   hslToRgb, colorMatrixValues, selectModes, nextSelectMode,
   _clearSvgTextCache, _resetToyScriptState, activateAllToyScriptsDom,
   newToyId, _getScriptsFragment, initializeToy,
-  getRotation, syncRotation, resolveRotation, rotationCenter, applyRotateDom,
-  applyMoveDom, applyResizeDom, ROTATE_SNAP_DEG,
+  syncRotation, resolveRotation, applyRotate,
+  applyMove, applyResize, ROTATE_SNAP_DEG,
 } from '../../src/toys.js'
+import { getRotation } from '../../src/geometry.js'
 
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
 const TOY_DIR = path.resolve(__dir, '../../src/toy')
@@ -206,13 +207,13 @@ describe('svgTextToDom — namespacing, url rewriting, viewBox synthesis', () =>
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// addToy / deleteToyDom / toysDataDom
+// addToy / deleteEl / layerData
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // addToy's own wrapper-attribute/positioning/id-namespacing/script-hoisting
 // behavior is comprehensively covered in toys-dom-ops.test.js (it shares
 // buildToyDom with addToyDom) -- kept here is what isn't covered there:
-// the reject-and-write-nothing failure paths, deleteToyDom's own return
+// the reject-and-write-nothing failure paths, deleteEl's own return
 // contract, and the "scripts never in the toy's own DOM" property.
 
 describe('addToy', () => {
@@ -236,25 +237,25 @@ describe('addToy', () => {
   })
 })
 
-describe('deleteToyDom', () => {
+describe('deleteEl', () => {
   test('removes the toy <g> from the layer', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     await addToy(ydoc, layerEl, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
     await addToy(ydoc, layerEl, { id: 't2', toyType: 'player_marker', x: 0, y: 0 })
 
-    expect(deleteToyDom(layerEl, 't1')).toBe(true)
+    expect(deleteEl(layerEl, 't1')).toBe(true)
     expect(layerEl.children.length).toBe(1)
     expect(layerEl.children[0].getAttribute('data-id')).toBe('t2')
   })
 
   test('returns false for an unknown id', () => {
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    expect(deleteToyDom(layerEl, 'nope')).toBe(false)
+    expect(deleteEl(layerEl, 'nope')).toBe(false)
   })
 })
 
-describe('toysDataDom / scripts stay out of the toy\'s own DOM', () => {
+describe('layerData / scripts stay out of the toy\'s own DOM', () => {
   test('scripts are never in a placed toy\'s own DOM \u2014 hoisted to the document instead', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
@@ -475,7 +476,7 @@ describe('selectModes / nextSelectMode', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('rotation (toys)', () => {
-  // getRotation/syncRotation/resolveRotation/applyRotateDom all key off the
+  // getRotation/syncRotation/resolveRotation/applyRotate all key off the
   // toy's OUTER <g> (data-id lives there), never the embedded <svg> --
   // mirrors drawing.js's rule that a shape's geometry (here: the embedded
   // svg's x/y/width/height) never reflects its own rotation.
@@ -503,15 +504,18 @@ describe('rotation (toys)', () => {
     expect(getRotation(null)).toBe(0)
   })
 
-  test('rotationCenter is always the toy\'s own geometric centre -- there is no pivot argument to pass', () => {
-    const g = makeRotatableToyDom({ x: 50, y: 50, width: 100, height: 100 })
-    expect(rotationCenter(g)).toEqual({ cx: 100, cy: 100 })
-    expect(rotationCenter(g, { x: 0, y: 0, width: 40, height: 20 })).toEqual({ cx: 20, cy: 10 })
+  test('a toy always turns about its own centre, even one carrying pivot attributes', () => {
+    const g = makeRotatableToyDom({ x: 50, y: 50, width: 100, height: 100, rotate: 30 })
+    g.setAttribute('data-pivot-x', '0')
+    g.setAttribute('data-pivot-y', '0')
+    expect(resolveRotation(g)).toEqual({ deg: 30, cx: 100, cy: 100 })
+    expect(resolveRotation(g, { x: 0, y: 0, width: 40, height: 20 })).toEqual({ deg: 30, cx: 20, cy: 10 })
   })
 
-  test('rotationCenter falls back to the origin when geometry is unavailable', () => {
+  test('the centre falls back to the origin when geometry is unavailable', () => {
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g') // no embedded <svg> at all
-    expect(rotationCenter(g)).toEqual({ cx: 0, cy: 0 })
+    g.setAttribute('data-rotate', '30')
+    expect(resolveRotation(g)).toEqual({ deg: 30, cx: 0, cy: 0 })
   })
 
   test('resolveRotation is null for an unrotated toy, { deg, cx, cy } otherwise', () => {
@@ -538,35 +542,35 @@ describe('rotation (toys)', () => {
     expect(g.getAttribute('transform')).toBe('translate(5 5)')
   })
 
-  test('applyRotateDom writes a normalized degree count and derives the transform in one call', () => {
+  test('applyRotate writes a normalized degree count and derives the transform in one call', () => {
     const g = makeRotatableToyDom()
-    applyRotateDom(g, -30)
+    applyRotate(g, -30)
     expect(g.getAttribute('data-rotate')).toBe('330')
     expect(g.getAttribute('transform')).toBe('rotate(330 100 100)')
   })
 
-  test('applyMoveDom re-pivots a rotated toy on its NEW centre', () => {
+  test('applyMove re-pivots a rotated toy on its NEW centre', () => {
     const g = makeRotatableToyDom({ rotate: 90 })
     syncRotation(g)
     expect(g.getAttribute('transform')).toBe('rotate(90 100 100)')
 
-    applyMoveDom(g, 300, 300)   // move centres the toy at (300, 300)
+    applyMove(g, 300, 300)   // move centres the toy at (300, 300)
     expect(g.getAttribute('transform')).toBe('rotate(90 300 300)')
     expect(g.getAttribute('data-rotate')).toBe('90')   // the angle itself is untouched by a move
   })
 
-  test('applyResizeDom re-pivots a rotated toy on its new size (future-proofing -- no toy today has both capabilities)', () => {
+  test('applyResize re-pivots a rotated toy on its new size (future-proofing -- no toy today has both capabilities)', () => {
     const g = makeRotatableToyDom({ x: 0, y: 0, width: 100, height: 100, rotate: 45 })
     syncRotation(g)
     expect(g.getAttribute('transform')).toBe('rotate(45 50 50)')
 
-    applyResizeDom(g, 0, 0, 200, 200)
+    applyResize(g, 0, 0, 200, 200)
     expect(g.getAttribute('transform')).toBe('rotate(45 100 100)')
   })
 
-  test('applyMoveDom on a NEVER-rotated toy never touches transform at all -- near-zero overhead for the common case', () => {
+  test('applyMove on a NEVER-rotated toy never touches transform at all -- near-zero overhead for the common case', () => {
     const g = makeRotatableToyDom()   // no data-rotate
-    applyMoveDom(g, 200, 200)
+    applyMove(g, 200, 200)
     expect(g.hasAttribute('transform')).toBe(false)
   })
 })
@@ -693,12 +697,12 @@ describe('tray_sum: color option + editable name (real assets)', () => {
     expect(traySchema.color).toBe('#5e7ea8')
   })
 
-  test('editDom() writes a new name into a tray_sum\'s own .tspan_name', async () => {
+  test('editEl() writes a new name into a tray_sum\'s own .tspan_name', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     const trayEl = await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
 
-    editDom(trayEl, { name: 'loot' })
+    editEl(trayEl, { name: 'loot' })
 
     expect(getTtStateSchema(trayEl).name).toBe('loot')
   })
@@ -713,13 +717,13 @@ describe('tray_sum: color option + editable name (real assets)', () => {
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     await addToy(ydoc, layerEl, { id: 'outer', toyType: 'tray_sum', x: 0, y: 0, color: '#5e7ea8' })
     await addToy(ydoc, layerEl, { id: 'inner', toyType: 'tray_sum', x: 0, y: 0, color: '#a8905e' })
-    editDom(layerEl.querySelector('[data-id="inner"]'), { name: 'inner-loot' })
+    editEl(layerEl.querySelector('[data-id="inner"]'), { name: 'inner-loot' })
     reparentToyDom(layerEl, 'inner', 'outer')
 
     const innerBefore = getTtStateSchema(layerEl.querySelector('[data-id="inner"]'))
     expect(innerBefore.name).toBe('inner-loot')
 
-    editDom(layerEl.querySelector('[data-id="outer"]'), { color: 'hsl(0, 100%, 50%)', name: 'outer-loot' })
+    editEl(layerEl.querySelector('[data-id="outer"]'), { color: 'hsl(0, 100%, 50%)', name: 'outer-loot' })
 
     const outerAfter = getTtStateSchema(layerEl.querySelector('[data-id="outer"]'))
     const innerAfter = getTtStateSchema(layerEl.querySelector('[data-id="inner"]'))
@@ -862,7 +866,7 @@ describe('token_glass: value from the Tools panel range slider (real assets)', (
 // reads two keys (suit, rank) off it instead of one. This block covers
 // single_poker_card's own side of that contract, plus its
 // editableFields/applyEdit hooks — toys.js's generic
-// getTtStateSchema/editDom/previewEdit delegate any non-color/name field
+// getTtStateSchema/editEl/previewEdit delegate any non-color/name field
 // to whichever namespace declares them.
 describe('single_poker_card: suit/rank from the Tools + Edit panel sliders (real assets)', () => {
   beforeEach(() => {
@@ -921,13 +925,13 @@ describe('single_poker_card: suit/rank from the Tools + Edit panel sliders (real
     expect(schema.types.rank).toEqual({ kind: 'number', min: 1, max: 13, step: 1, show: ['edit'] })
   })
 
-  test('editDom({ suit, rank }) repaints an already-placed card via applyEdit — the real commit path', async () => {
+  test('editEl({ suit, rank }) repaints an already-placed card via applyEdit — the real commit path', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     const cardEl = await placedCard(ydoc, layerEl)
     initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table', { color: '#fff', suit: 1, rank: 1 })
 
-    editDom(cardEl, { rank: 13 })
+    editEl(cardEl, { rank: 13 })
 
     expect(cardEl.querySelector('.tspan_rank').textContent).toBe('K')
     expect(cardEl.dataset.rank).toBe('13') // committed

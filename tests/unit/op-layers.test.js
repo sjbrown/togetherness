@@ -6,11 +6,13 @@
  * <g>, no hooks) is registered beside toys and driven through the real
  * op_layer.js functions: its gestures, remote ops, conflicts, forks and
  * pruning must never touch the toys layer's maps, tips or DOM, and the
- * reverse.
+ * reverse. A parent pointer never crosses layers.
  */
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach, afterEach } from 'vitest'
 import { TOYS_LAYER } from '../../src/toys.js'
+import { DRAWING_LAYER } from '../../src/drawing.js'
+import { BOUN_POS_LAYER } from '../../src/boun_pos.js'
 import { defineOpLayer, getOpLayer, opLayers, ensureLayerId } from '../../src/op_layers.js'
 import {
   runGesture, ensureEnvelope, receiveLayerOp, settleBranchConflict, pruneAfterCheckpoint, projectedAt,
@@ -26,13 +28,8 @@ import { tablesAPI } from '../../src/tables.js'
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
 const SCRATCH = defineOpLayer({
-  name:        'scratch',
-  selector:    '#scratch-layer',
-  layerDataId: 'tt-layer-scratch',
-  opsKey:      'ops:scratch',
-  contentKey:  'checkpointContent:scratch',
-  headKey:     (tableId) => `tt_head_scratch_${tableId}`,
-  mergeKey:    (tableId) => `tt_head_merge_scratch_${tableId}`,
+  name:     'scratch',
+  selector: '#scratch-layer',
 })
 
 let _n = 0
@@ -121,6 +118,25 @@ describe('registry', () => {
     expect(SCRATCH.hooks.afterCapture([], null, {})).toEqual([])
     expect(SCRATCH.hooks.afterProject(null, null)).toBeUndefined()
   })
+
+  test('storage names derive from the name, and an explicit one wins', () => {
+    expect(SCRATCH).toMatchObject({
+      layerDataId: 'tt-layer-scratch',
+      opsKey:      'ops:scratch',
+      contentKey:  'checkpointContent:scratch',
+    })
+    expect(SCRATCH.headKey('t1')).toBe('tt_head_scratch_t1')
+    expect(SCRATCH.mergeKey('t1')).toBe('tt_head_merge_scratch_t1')
+
+    const custom = defineOpLayer({ name: 'scratch-custom', selector: '#c', opsKey: 'ops:legacy' })
+    expect(custom.opsKey).toBe('ops:legacy')
+    expect(custom.contentKey).toBe('checkpointContent:scratch-custom')
+  })
+
+  test('name and selector are required', () => {
+    expect(() => defineOpLayer({ selector: '#x' })).toThrow(/name is required/)
+    expect(() => defineOpLayer({ name: 'x' })).toThrow(/selector is required/)
+  })
 })
 
 describe('gestures stay in their own layer', () => {
@@ -146,6 +162,24 @@ describe('gestures stay in their own layer', () => {
 
     expect(scratchOp.parents).toEqual(['genesis-scratch'])
     expect(toysOp.parents).toEqual(['genesis-toys'])
+  })
+
+  test('a gesture on one layer leaves the other\'s ops, content and tips untouched, both ways', () => {
+    const [A] = newPeers('alice')
+    const stateOf = (layer) => JSON.stringify({ ...mapJSON(A.ydoc, layer), ...tipsOf(A, layer) })
+    for (const [layer, other] of [[TOYS_LAYER, SCRATCH], [SCRATCH, TOYS_LAYER]]) {
+      const before = stateOf(other)
+      addNode(A, layer, `${layer.name}-1`)
+      setAttr(A, layer, `${layer.name}-1`, 'x', '1')
+      expect(stateOf(other)).toBe(before)
+    }
+  })
+
+  test('the real layers each keep their own ops and content maps', () => {
+    const ydoc = new Y.Doc()
+    const layers = [TOYS_LAYER, DRAWING_LAYER, BOUN_POS_LAYER]
+    expect(new Set(layers.map(l => getOps(ydoc, l))).size).toBe(3)
+    expect(new Set(layers.map(l => getContent(ydoc, l))).size).toBe(3)
   })
 
   test('each layer\'s projection marker follows its own head', () => {

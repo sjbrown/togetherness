@@ -482,3 +482,115 @@ export function settleBranchConflict(ydoc, layer, layerEl, tableId, tips, { auth
   }
   return { ...decision, seed }
 }
+
+/** Give an imported element a fresh id when its own is missing or taken:
+ * data-id is the op log's primary key. */
+function reIdOnCollision(layerEl, el, find) {
+  const id = el.getAttribute('data-id')
+  if (id && !find(layerEl, id)) return
+  const fresh = 'import_' + Math.random().toString(36).slice(2, 7)
+  el.setAttribute('id', fresh)
+  el.setAttribute('data-id', fresh)
+}
+
+/**
+ * Raise el to the top of layerEl. An appendChild of the last child still
+ * records a remove plus an add, shipping the whole subtree twice, so an
+ * element already on top is left alone.
+ */
+export function bringToFront(layerEl, el) {
+  if (layerEl.lastElementChild !== el) layerEl.appendChild(el)
+}
+
+/**
+ * makeOpLayerAPI — the LayerAPI app.js dispatches to, for any op layer.
+ *
+ * getLayerEl returns the live layer element. Every write runs inside one
+ * gesture, so the envelope captures it as one op; a batch is one gesture
+ * too, so it is one undo step. Every write returns its op, or null when it
+ * changed nothing; add returns the new element. Whatever find() returns is
+ * what the other methods accept.
+ *
+ * primitives are the layer's own DOM operations, called inside a gesture:
+ *   find(layerEl, id)             → el | null
+ *   add(layerEl, ...args)         → el            (optional)
+ *   delete(layerEl, id)
+ *   move(layerEl, el, x, y)
+ *   toFront(layerEl, el)                          (optional) — raise el to
+ *                                   the top of its layer; defaults to
+ *                                   appending it unless it is already last
+ *   resize(el, x, y, w, h)
+ *   rotate(el, deg)                               (optional)
+ *   edit(el, editData)
+ *   applyTtState(layerEl, state)                  (optional)
+ *   list(layerEl)                 → layer-object descriptors
+ *   importEl(layerEl, el)         — append one imported element; defaults
+ *                                   to re-id on collision, then append
+ *
+ * A move, single or batched, brings each element to the front before moving
+ * it, so the last one moved ends up on top.
+ *
+ * extras({ gesture, layerEl, base }) returns the layer's own methods
+ * (queries, previews, pivot), merged over the base API; base is the API
+ * before the merge, for an extra that wraps a base method.
+ */
+export function makeOpLayerAPI(layer, ydoc, getLayerEl, user, tableId, isCreator, primitives, extras = () => ({})) {
+  const p = primitives
+  const layerEl = () => (typeof getLayerEl === 'function' ? getLayerEl() : getLayerEl)
+  const gesture = (name, fn, extraOpts = {}) =>
+    runGesture(ydoc, layer, layerEl(), fn, { gesture: name, authorId: user.id, tableId, ...extraOpts })
+  const toFront = p.toFront ?? bringToFront
+  const move = (root, el, x, y) => {
+    toFront(root, el)
+    p.move(root, el, x, y)
+  }
+  const importEl = p.importEl ?? ((root, el) => {
+    reIdOnCollision(root, el, p.find)
+    root.appendChild(el)
+  })
+
+  const base = {
+    find:            (id)             => p.find(layerEl(), id),
+    delete:          (id)             => gesture('delete', () => p.delete(layerEl(), id)).op,
+    applyMoveCommit: (el, x, y)       => gesture('move',   () => move(layerEl(), el, x, y)).op,
+    applyResize:     (el, x, y, w, h) => gesture('resize', () => p.resize(el, x, y, w, h)).op,
+    edit:            (el, editData)   => gesture('edit',   () => p.edit(el, editData)).op,
+    listData:        ()               => p.list(layerEl()),
+    render:          (el, joinSequence = []) =>
+                       projectLayer(ydoc, layer, el, { tableId, authorId: user.id, isCreator, joinSequence }),
+
+    /** Delete several elements as one gesture. */
+    deleteMany: (ids) => gesture('delete-batch', () => {
+      for (const id of ids) p.delete(layerEl(), id)
+    }).op,
+
+    /** Move several elements as one gesture. moves: [{ id, x, y }], x/y in
+     * the anchor convention move uses. */
+    moveMany: (moves) => gesture('move-batch', () => {
+      for (const { id, x, y } of moves) {
+        const el = p.find(layerEl(), id)
+        if (el) move(layerEl(), el, x, y)
+      }
+    }).op,
+
+    /** Commit pre-parsed foreign elements (storage.js's populateFromSvgDoc,
+     * live-table branch) as one gesture. */
+    importMany: (els) => {
+      if (!els?.length) return null
+      return gesture('import', () => {
+        for (const el of els) importEl(layerEl(), el)
+      }).op
+    },
+  }
+  if (p.add) {
+    base.add = (...args) => {
+      let el = null
+      gesture('add', () => { el = p.add(layerEl(), ...args) })
+      return el
+    }
+  }
+  if (p.rotate) base.applyRotate = (el, deg) => gesture('rotate', () => p.rotate(el, deg)).op
+  if (p.applyTtState) base.applyTtState = (state) => gesture('edit', () => p.applyTtState(layerEl(), state)).op
+
+  return { ...base, ...extras({ gesture, layerEl, base }) }
+}

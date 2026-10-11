@@ -26,7 +26,7 @@ import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { TOYS_LAYER } from '../../src/toys.js'
 import {
-  addToy, reparentToyDom, applyMoveDom, getGeom, findToyDom, runGesture,
+  addToy, reparentToyDom, applyMove, getGeom, findEl, runGesture,
   activateAllToyScriptsDom, undoToyGesture,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
@@ -69,10 +69,10 @@ function ownResultTspan(trayEl) {
 function placeInTrayAtomic(ydoc, layerEl, dieId, trayId, dropX = 10, dropY = 10) {
   return runGesture(ydoc, layerEl, () => {
     reparentToyDom(layerEl, dieId, trayId)
-    const movedEl  = findToyDom(layerEl, dieId) ?? layerEl.querySelector(`[data-id="${dieId}"]`)
+    const movedEl  = findEl(layerEl, dieId) ?? layerEl.querySelector(`[data-id="${dieId}"]`)
     const trayEl   = layerEl.querySelector(`[data-id="${trayId}"]`)
     const trayGeom = trayEl && getGeom(trayEl)
-    if (trayGeom) applyMoveDom(movedEl, dropX - trayGeom.x, dropY - trayGeom.y)
+    if (trayGeom) applyMove(movedEl, dropX - trayGeom.x, dropY - trayGeom.y)
   }, { gesture: 'reparent', authorId: AUTHOR, tableId: TABLE })
 }
 
@@ -123,7 +123,7 @@ describe('placement + reaction commit as ONE atomic operation', () => {
 
     placeInTrayAtomic(ydoc, layerEl, 'die1', 'tray1')
 
-    const trayEl = findToyDom(layerEl, 'tray1')
+    const trayEl = findEl(layerEl, 'tray1')
     const tspan  = ownResultTspan(trayEl)
     expect(tspan.childNodes.length).toBe(1) // no garble — a single clean text node
     expect(tspan.textContent).toBe('5')
@@ -138,22 +138,22 @@ describe('placement + reaction commit as ONE atomic operation', () => {
     await new Promise(r => setTimeout(r, 0))
     setDieFace(ydoc, layerEl, 'die1', 4)
 
-    const trayBefore = findToyDom(layerEl, 'tray1')
+    const trayBefore = findEl(layerEl, 'tray1')
     expect(ownResultTspan(trayBefore).textContent).toBe('0') // empty tray
 
     placeInTrayAtomic(ydoc, layerEl, 'die1', 'tray1')
 
-    const trayAfter = findToyDom(layerEl, 'tray1')
+    const trayAfter = findEl(layerEl, 'tray1')
     expect(trayAfter.querySelector('.tt_contents [data-id="die1"]')).not.toBeNull() // die is in the tray
     expect(ownResultTspan(trayAfter).textContent).toBe('4')                        // sum reflects it
 
     // ONE undo must take BOTH back: die leaves, sum returns to 0.
     undoToyGesture(ydoc, layerEl, TABLE, AUTHOR)
 
-    const trayUndone = findToyDom(layerEl, 'tray1')
+    const trayUndone = findEl(layerEl, 'tray1')
     expect(trayUndone.querySelector('.tt_contents [data-id="die1"]')).toBeNull() // die removed from tray
     expect(ownResultTspan(trayUndone).textContent).toBe('0')                     // sum reverted, in the SAME step
-    expect(findToyDom(layerEl, 'die1')).toBeTruthy()                             // die restored to top level
+    expect(findEl(layerEl, 'die1')).toBeTruthy()                             // die restored to top level
   })
 
   test('a drop into a NESTED tray recomputes inner then outer, still one operation', async () => {

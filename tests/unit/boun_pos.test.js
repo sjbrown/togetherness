@@ -17,9 +17,9 @@ import {
   // Grid math
   generateSquareGrid, generateHexGrid, generateFlatHexGrid, gridFillExtent, computeMaxSnapRadius, computeGridPositions,
   // DOM writes
-  addBoundary, createPositionSetElement, findEl, deleteEl, editBounPos, editEl, applyMoveCommit,
+  BOUNPOS_TYPES, findEl, deleteEl, editBounPos, editEl, applyMove,
   // Layer
-  BOUNDARIES_LAYER, makeLayerAPI, layerData,
+  BOUN_POS_LAYER, makeLayerAPI, layerData,
   // Geometry queries
   getGeom, getAnchor, translationOf,
   // Edit schema
@@ -42,7 +42,7 @@ beforeEach(() => { localStorage.clear(); });
 
 function makeLayer() {
   const ydoc    = new Y.Doc();
-  const layerEl = ensureLayerId(document.createElementNS(SVG_NS, 'g'), BOUNDARIES_LAYER);
+  const layerEl = ensureLayerId(document.createElementNS(SVG_NS, 'g'), BOUN_POS_LAYER);
   const L       = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE, true);
   L.render(layerEl);   // the creator's genesis checkpoint
   return { ydoc, layerEl, L };
@@ -50,7 +50,7 @@ function makeLayer() {
 
 function addB(layer, overrides = {}) {
   const { id, name } = newBoundaryId();
-  addBoundary(layer.layerEl, {
+  BOUNPOS_TYPES.boundary.create(layer.layerEl, {
     id, name, x: 100, y: 100, w: 200, h: 150,
     ...overrides,
   });
@@ -65,7 +65,7 @@ function addPS(layer, overrides = {}) {
   const xSpacing = overrides.xSpacing ?? 80;
   const ySpacing = overrides.ySpacing ?? 80;
   const circles = gridFillExtent(x, y, w, h, genType, xSpacing, ySpacing);
-  createPositionSetElement(layer.layerEl, {
+  BOUNPOS_TYPES['pos-grid-sq'].create(layer.layerEl, {
     id, name, snapRadius: 30, genType, xSpacing, ySpacing, x, y, w, h, circles,
     ...overrides, id, name,
   });
@@ -282,7 +282,7 @@ describe('computeGridPositions', () => {
 
 // ── DOM operations ────────────────────────────────────────────────────────────
 
-describe('addBoundary / findEl', () => {
+describe('boundary create / findEl', () => {
   test('boundary is found by id and is a <g>', () => {
     const layer = makeLayer();
     const { id } = addB(layer);
@@ -313,7 +313,7 @@ describe('addBoundary / findEl', () => {
   });
 });
 
-describe('addPositionSet / findEl', () => {
+describe('pos-set create / findEl', () => {
   test('pos-set is found by id and has correct type', () => {
     const layer = makeLayer();
     const { id } = addPS(layer);
@@ -371,7 +371,7 @@ describe('editBounPos rename', () => {
     const { id, name } = newBoundaryId();
     layer.L.add('boundary', { id, name, x: 0, y: 0, w: 100, h: 100 });
     layer.L.edit(layer.L.find(id), { name: 'forest' });
-    const op = [...getOps(layer.ydoc, BOUNDARIES_LAYER).values()].pop();
+    const op = [...getOps(layer.ydoc, BOUN_POS_LAYER).values()].pop();
     expect(op.gesture).toBe('edit');
     expect(op.mutations.map(m => m.t)).toEqual(expect.arrayContaining(['attr', 'text']));
   });
@@ -495,12 +495,12 @@ describe('previewEdit', () => {
   });
 });
 
-describe('applyMoveCommit', () => {
+describe('applyMove', () => {
   test('boundary: sets only the group transform; children stay local', () => {
     const layer = makeLayer();
     const { id } = addB(layer, { x: 100, y: 100, w: 200, h: 150 });
     const el = findEl(layer.layerEl, id);
-    applyMoveCommit(el, 50, 60);
+    applyMove(el, 50, 60);
     expect(pathToRect(el.querySelector('path').getAttribute('d'))).toEqual({ x: 0, y: 0, w: 200, h: 150 });
     expect(translationOf(el)).toEqual({ tx: 50, ty: 60 });
     expect(Number(el.querySelector('text').getAttribute('x'))).toBe(200);
@@ -513,7 +513,7 @@ describe('applyMoveCommit', () => {
     const el = findEl(layer.layerEl, id);
     const localBefore = circlesOf(el);
     const worldBefore = getSnapPoints(layer.layerEl);
-    applyMoveCommit(el, 100, 100);
+    applyMove(el, 100, 100);
     expect(circlesOf(el)).toEqual(localBefore);
     getSnapPoints(layer.layerEl).forEach((after, i) => {
       expect(after.cx).toBe(worldBefore[i].cx + 100);
@@ -521,7 +521,7 @@ describe('applyMoveCommit', () => {
     });
   });
 
-  test('a move of a 121-circle position set is one op with exactly one attr mutation, on transform', () => {
+  test('a move of a 121-circle position set already on top is one op with exactly one attr mutation, on transform', () => {
     const layer = makeLayer();
     const { id, name } = newPositionSetId();
     const circles = gridFillExtent(0, 0, 1000, 1000, 'square', 100, 100);
@@ -531,10 +531,10 @@ describe('applyMoveCommit', () => {
     });
     expect(circlesOf(findEl(layer.layerEl, id))).toHaveLength(121);
 
-    const before = getOps(layer.ydoc, BOUNDARIES_LAYER).size;
+    const before = getOps(layer.ydoc, BOUN_POS_LAYER).size;
     const sv = Y.encodeStateVector(layer.ydoc);
     layer.L.applyMoveCommit(layer.L.find(id), 300, 400);
-    const ops = [...getOps(layer.ydoc, BOUNDARIES_LAYER).values()];
+    const ops = [...getOps(layer.ydoc, BOUN_POS_LAYER).values()];
     expect(ops).toHaveLength(before + 1);
 
     const op = ops.at(-1);
@@ -546,6 +546,19 @@ describe('applyMoveCommit', () => {
     console.log(`move of 121-circle pos-set: op ${JSON.stringify(op).length} B serialized, ${bytes} B Yjs update`);
     expect(JSON.stringify(op).length).toBeLessThan(1000);
   });
+
+  test('moving an element that is not on top brings it to the front in the same op', () => {
+    const layer = makeLayer();
+    const { id } = addPS(layer);
+    const { id: above } = addB(layer);
+    layer.L.applyMoveCommit(layer.L.find(id), 300, 400);
+
+    expect(layer.layerEl.lastElementChild).toBe(findEl(layer.layerEl, id));
+    expect(findEl(layer.layerEl, above)).not.toBeNull();
+    const op = [...getOps(layer.ydoc, BOUN_POS_LAYER).values()].at(-1);
+    expect(op.gesture).toBe('move');
+    expect(op.mutations.map(m => m.t)).toEqual(expect.arrayContaining(['child', 'attr']));
+  });
 });
 
 describe('world geometry across create -> move -> resize -> move', () => {
@@ -556,9 +569,9 @@ describe('world geometry across create -> move -> resize -> move', () => {
     const el = findEl(layer.layerEl, id);
     const steps = [
       [() => {}, { x: 100, y: 100, w: 200, h: 150 }],
-      [() => applyMoveCommit(el, 50, 60), { x: 50, y: 60, w: 200, h: 150 }],
+      [() => applyMove(el, 50, 60), { x: 50, y: 60, w: 200, h: 150 }],
       [() => applyResize(el, 20, 30, 300, 220), { x: 20, y: 30, w: 300, h: 220 }],
-      [() => applyMoveCommit(el, 500, 400), { x: 500, y: 400, w: 300, h: 220 }],
+      [() => applyMove(el, 500, 400), { x: 500, y: 400, w: 300, h: 220 }],
     ];
     for (const [act, want] of steps) {
       act();
@@ -578,11 +591,11 @@ describe('world geometry across create -> move -> resize -> move', () => {
     const snap = () => getSnapPoints(layer.layerEl).map(p => [p.cx, p.cy]);
 
     expect(snap()).toEqual(worldCircles(40, 50, 200, 200));
-    applyMoveCommit(el, 300, 310);
+    applyMove(el, 300, 310);
     expect(snap()).toEqual(worldCircles(300, 310, 200, 200));
     applyResize(el, 10, 20, 400, 300);
     expect(snap()).toEqual(worldCircles(10, 20, 400, 300));
-    applyMoveCommit(el, 70, 80);
+    applyMove(el, 70, 80);
     expect(snap()).toEqual(worldCircles(70, 80, 400, 300));
     expect(getGeom(el)).toEqual({ x: 70, y: 80, width: 400, height: 300 });
   });
@@ -627,7 +640,7 @@ describe('old absolute-layout elements', () => {
     const el = oldPositionSet(layer);
     const childAttrs = () => [...el.children].map(c => JSON.stringify([...c.attributes].map(a => [a.name, a.value])));
     const before = childAttrs();
-    applyMoveCommit(el, 250, 320);
+    applyMove(el, 250, 320);
     expect(childAttrs()).toEqual(before);
     expect(translationOf(el)).toEqual({ tx: 50, ty: 20 });
     expect(getGeom(el)).toEqual({ x: 250, y: 320, width: 200, height: 100 });
@@ -684,7 +697,7 @@ describe('computeResize', () => {
 });
 
 describe('applyResize', () => {
-  test('boundary: updates <path> d and <text> position, same shape as applyMoveCommit', () => {
+  test('boundary: updates <path> d and <text> position, same shape as applyMove', () => {
     const layer = makeLayer();
     const { id } = addB(layer, { x: 100, y: 100, w: 200, h: 150 });
     const el = findEl(layer.layerEl, id);
@@ -773,14 +786,14 @@ describe('computeBoundaryRects', () => {
   test('returns null when no boundary name matches', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    addBoundary(layer.layerEl, { id, name: 'forest', x: 0, y: 0, w: 300, h: 300 });
+    BOUNPOS_TYPES.boundary.create(layer.layerEl, { id, name: 'forest', x: 0, y: 0, w: 300, h: 300 });
     expect(computeBoundaryRects(layer.layerEl, new Set(['dungeon']), { x: 50, y: 50 })).toBeNull();
   });
 
   test('returns rects when class matches and toy starts inside', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    addBoundary(layer.layerEl, { id, name: 'forest', x: 0, y: 0, w: 300, h: 300 });
+    BOUNPOS_TYPES.boundary.create(layer.layerEl, { id, name: 'forest', x: 0, y: 0, w: 300, h: 300 });
     const rects = computeBoundaryRects(layer.layerEl, new Set(['forest']), { x: 50, y: 50 });
     expect(rects).not.toBeNull();
     expect(rects).toHaveLength(1);
@@ -790,7 +803,7 @@ describe('computeBoundaryRects', () => {
   test('returns null when toy starts outside matched boundary', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    addBoundary(layer.layerEl, { id, name: 'forest', x: 0, y: 0, w: 100, h: 100 });
+    BOUNPOS_TYPES.boundary.create(layer.layerEl, { id, name: 'forest', x: 0, y: 0, w: 100, h: 100 });
     // anchor is outside the boundary
     const rects = computeBoundaryRects(layer.layerEl, new Set(['forest']), { x: 200, y: 200 });
     expect(rects).toBeNull();

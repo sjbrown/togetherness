@@ -28,14 +28,14 @@ import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import { TOYS_LAYER } from '../../src/toys.js'
 import {
-  addToy, getGeom, applyMoveDom, runGesture, activateAllToyScriptsDom,
+  addToy, getGeom, applyMove, runGesture, activateAllToyScriptsDom,
   getSnapPoints, departingPositionEvents, arrivingPositionEvents,
-  promoteZOrder, moveToyAndStack, moveToysBatch,
+  promoteZOrder, moveToyAndStack,
   makeLayerAPI, listToysDom, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { getOps } from '../../src/op_dag.js'
 import {
-  BOUNDARIES_LAYER, makeLayerAPI as makeBoundariesAPI, getSnapPoints as getBoundarySnapPoints,
+  BOUN_POS_LAYER, makeLayerAPI as makeBoundariesAPI, getSnapPoints as getBoundarySnapPoints,
   computeBoundaryRects, gridFillExtent,
 } from '../../src/boun_pos.js'
 import { ensureLayerId } from '../../src/op_layers.js'
@@ -163,7 +163,7 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
     const before = getOps(ydoc, TOYS_LAYER).size
     const stackerEl = layerEl.querySelector('[data-id="stacker1"]')
     runGesture(ydoc, layerEl, () => {
-      applyMoveDom(stackerEl, 100, 100) // land exactly on base1's point
+      applyMove(stackerEl, 100, 100) // land exactly on base1's point
     }, {
       gesture: 'move', authorId: AUTHOR, tableId: TABLE,
       positionEvents: [
@@ -356,7 +356,7 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
     const chipAEl = layerEl.querySelector('[data-id="chipA"]')
     const before = getOps(ydoc, TOYS_LAYER).size
     runGesture(ydoc, layerEl, () => {
-      applyMoveDom(chipAEl, 350, 250)
+      applyMove(chipAEl, 350, 250)
     }, { gesture: 'move', authorId: AUTHOR, tableId: TABLE })
 
     expect(getOps(ydoc, TOYS_LAYER).size - before).toBe(1)
@@ -769,7 +769,7 @@ describe('boun_pos snap points after a move', () => {
 
   function setup() {
     const ydoc = new Y.Doc()
-    const layerEl = ensureLayerId(document.createElementNS(SVG_NS, 'g'), BOUNDARIES_LAYER)
+    const layerEl = ensureLayerId(document.createElementNS(SVG_NS, 'g'), BOUN_POS_LAYER)
     const L = makeBoundariesAPI(ydoc, () => layerEl, { id: AUTHOR }, 'boun-snap-table', true)
     L.render(layerEl)
     const circles = gridFillExtent(0, 0, 200, 200, 'square', 100, 100)

@@ -18,7 +18,7 @@ function makeDOM() {
     <div id="stage">
       <svg id="canvas">
         <g id="background-layer"></g>
-        <g id="boundaries-positions-layer"></g>
+        <g id="boun_pos-layer"></g>
         <g id="toys-layer"></g>
         <g id="drawing-layer"></g>
         <g id="overlay-layer"></g>

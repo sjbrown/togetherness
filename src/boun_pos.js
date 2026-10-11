@@ -1,8 +1,8 @@
 /**
  * boun_pos.js — complete module for the Boundaries and Positions layer, an op
- * layer (BOUNDARIES_LAYER).
+ * layer (BOUN_POS_LAYER).
  *
- * Both element types are <g> siblings in #boundaries-positions-layer.
+ * Both element types are <g> siblings in #boun_pos-layer.
  * data-bounpos-type="boundary" | "pos-set" distinguishes them. Every write is
  * a DOM operation on the live layer, run inside a gesture (OpLayer.runGesture)
  * so the envelope captures it as one operation; the op log is the replicated
@@ -454,35 +454,11 @@ function _createPositionSet(layerEl,
   return g;
 }
 
-// ── Elevated layer API ────────────────────────────────────────────────────────
+// ── Element operations ────────────────────────────────────────────────────────
 
-/**
- * Convenience wrappers — kept for call sites that name a specific type.
- * Internally both delegate to BOUNPOS_TYPES[toolName].create().
- */
-export function addBoundary(layerEl, params) {
-  return BOUNPOS_TYPES.boundary.create(layerEl, params);
-}
-
-export function createPositionSetElement(layerEl, params) {
-  return _createPositionSet(layerEl, params);
-}
-
-export function addPositionSet(layerEl,
-  { x, y, w, h, toolName, toolParams }) {
-  const def = BOUNPOS_TYPES[toolName];
-  if (!def) return null;
-
-  const genType = def.genType;
-  const { xSpacing, ySpacing } = gridSpacingFromInput(genType, toolParams);
-  const snapRadius = snapRadiusStateToRadius(toolParams.snapRadius ?? 10, genType, xSpacing, ySpacing);
-  const circles = gridFillExtent(x, y, w, h, genType, xSpacing, ySpacing);
-
-  if (circles.length === 0) return null;
-  const { id, name } = def.newId();
-  def.create(layerEl,
-    { id, name, snapRadius, genType, xSpacing, ySpacing, x, y, w, h, circles });
-  return { id, name, genType };
+/** Build a toolName element from params and append it. Returns the element. */
+export function addEl(layerEl, toolName, params) {
+  return BOUNPOS_TYPES[toolName].create(layerEl, params);
 }
 
 export function findEl(layerEl, id) {
@@ -499,11 +475,7 @@ export function deleteEl(layerEl, id) {
   return true;
 }
 
-// Canonical LayerAPI aliases — find/delete are the names every layer agrees
-// on. findEl/deleteEl stay exported as-is for existing call sites/tests.
-export const find = findEl;
-
-export function applyMoveCommit(el, x, y) {
+export function applyMove(el, x, y) {
   if (!el) return;
   const path = childByTag(el, 'path');
   if (!path) return;
@@ -714,7 +686,7 @@ function createBounPos(state, layerEl) {
     const { xSpacing, ySpacing } = gridSpacingFromInput(state.genType, state);
     const circles = gridFillExtent(state.x, state.y, state.w, state.h, state.genType, xSpacing, ySpacing);
 
-    createPositionSetElement(layerEl, {
+    _createPositionSet(layerEl, {
       id:         state.id,
       name:       state.name,
       snapRadius: snapRadiusStateToRadius(state.snapRadius ?? 10, state.genType, xSpacing, ySpacing),
@@ -728,7 +700,7 @@ function createBounPos(state, layerEl) {
       circles,
     });
   } else {
-    addBoundary(layerEl, {
+    BOUNPOS_TYPES.boundary.create(layerEl, {
       id:     state.id,
       name:   state.name,
       x:      state.x,
@@ -766,7 +738,7 @@ export function editBounPos(state, layerEl) {
   editEl(existing, state);
 
   if (state.x !== undefined) {
-    applyMoveCommit(existing, state.x, state.y);
+    applyMove(existing, state.x, state.y);
   }
 }
 
@@ -937,103 +909,31 @@ export function nextSelectMode(_domEl, currentMode) {
 
 // ── The layer ─────────────────────────────────────────────────────────────────
 
-// The op layer is named 'boundaries'; the rendered elements and the _Layers
-// dispatch key stay 'boun_pos' (data-module="boun_pos"). The two names are
-// deliberately different.
-export const BOUNDARIES_LAYER = defineOpLayer({
-  name:        'boundaries',
-  selector:    '#boundaries-positions-layer',
-  layerDataId: 'tt-layer-boundaries',
-  opsKey:      'ops:boundaries',
-  contentKey:  'checkpointContent:boundaries',
-  headKey:     (tableId) => `tt_head_boundaries_${tableId}`,
-  mergeKey:    (tableId) => `tt_head_merge_boundaries_${tableId}`,
+export const BOUN_POS_LAYER = defineOpLayer({
+  name:     'boun_pos',
+  selector: '#boun_pos-layer',
 });
 
 export const runGesture = (ydoc, layerEl, fn, opts) =>
-  OpLayer.runGesture(ydoc, BOUNDARIES_LAYER, layerEl, fn, opts);
+  OpLayer.runGesture(ydoc, BOUN_POS_LAYER, layerEl, fn, opts);
 export const projectLayer = (ydoc, layerEl, opts) =>
-  OpLayer.projectLayer(ydoc, BOUNDARIES_LAYER, layerEl, opts);
-export const receiveBounPosOp = (ydoc, layerEl, opId, tableId, joinSequence) =>
-  OpLayer.receiveLayerOp(ydoc, BOUNDARIES_LAYER, layerEl, opId, tableId, joinSequence);
-
-// ── Batch gestures ────────────────────────────────────────────────────────────
-// A multi-select action is one gesture, one operation.
-
-/** Delete several elements as one gesture. Returns the op, or null if none existed. */
-export function deleteBoundariesBatch(ydoc, layerEl, ids, { authorId, tableId } = {}) {
-  let deletedAny = false;
-  const result = runGesture(ydoc, layerEl, () => {
-    for (const id of ids) {
-      if (deleteEl(layerEl, id)) deletedAny = true;
-    }
-  }, { gesture: 'delete-batch', authorId, tableId });
-  return deletedAny ? (result.op ?? null) : null;
-}
+  OpLayer.projectLayer(ydoc, BOUN_POS_LAYER, layerEl, opts);
 
 /**
- * Move several elements as one gesture. moves: [{ id, x, y }] -- x/y are the
- * anchor convention applyMoveCommit uses. Returns the op, or null if none moved.
- */
-export function moveBoundariesBatch(ydoc, layerEl, moves, { authorId, tableId } = {}) {
-  let movedAny = false;
-  const result = runGesture(ydoc, layerEl, () => {
-    for (const { id, x, y } of moves) {
-      const el = findEl(layerEl, id);
-      if (!el) continue;
-      applyMoveCommit(el, x, y);
-      movedAny = true;
-    }
-  }, { gesture: 'move-batch', authorId, tableId });
-  return movedAny ? (result.op ?? null) : null;
-}
-
-/**
- * Commit pre-parsed foreign elements onto a live layer as one gesture --
- * storage.js's populateFromSvgDoc, live-table branch. An element whose id
- * collides with one already on the layer is re-id'd: data-id is the op
- * log's primary key.
- */
-export function importBoundaries(ydoc, layerEl, els, opts = {}) {
-  if (!els?.length) return null;
-  return runGesture(ydoc, layerEl, () => {
-    for (const el of els) {
-      const id = el.getAttribute('data-id');
-      if (!id || findEl(layerEl, id)) {
-        const fresh = 'import_' + Math.random().toString(36).slice(2, 7);
-        el.setAttribute('id', fresh);
-        el.setAttribute('data-id', fresh);
-      }
-      layerEl.appendChild(el);
-    }
-  }, { gesture: 'import', ...opts });
-}
-
-/**
- * makeLayerAPI -- the canonical LayerAPI for the Boundaries and Positions
- * layer.
- *
- * getLayerEl returns the live #boundaries-positions-layer. Everything here
- * reads and writes that DOM; writes run inside runGesture so the envelope
- * captures them. Whatever find() returns is what the other methods accept.
+ * makeLayerAPI -- the Boundaries and Positions layer's LayerAPI:
+ * OpLayer.makeOpLayerAPI over this module's primitives.
  */
 export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false) {
-  const layer = () => (typeof getLayerEl === 'function' ? getLayerEl() : getLayerEl);
-  const gesture = (name, fn) =>
-    runGesture(ydoc, layer(), fn, { gesture: name, authorId: user.id, tableId });
-
-  return {
-    find:             (id)               => findEl(layer(), id),
-    add:              (toolName, params) => {
-      let el = null;
-      gesture('add', () => { el = BOUNPOS_TYPES[toolName].create(layer(), params); });
-      return el;
-    },
-    delete:           (id)               => {
-      let deleted = false;
-      gesture('delete', () => { deleted = deleteEl(layer(), id); });
-      return deleted;
-    },
+  return OpLayer.makeOpLayerAPI(BOUN_POS_LAYER, ydoc, getLayerEl, user, tableId, isCreator, {
+    find:         findEl,
+    add:          addEl,
+    delete:       deleteEl,
+    move:         (_layerEl, el, x, y) => applyMove(el, x, y),
+    resize:       applyResize,
+    edit:         editEl,
+    applyTtState,
+    list:         layerData,
+  }, () => ({
     getGeom,
     getAnchor,
     getTtState,
@@ -1041,16 +941,7 @@ export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false)
     selectModes,
     nextSelectMode,
     computeResize,
-    applyMoveCommit:  (el, x, y)         => gesture('move',   () => applyMoveCommit(el, x, y)),
-    applyResize:      (el, x, y, w, h)   => gesture('resize', () => applyResize(el, x, y, w, h)),
-    applyTtState:     (state)            => gesture('edit',   () => applyTtState(layer(), state)),
-    edit:             (el, editData)     => gesture('edit',   () => editEl(el, editData)),
     previewEdit,
     previewResize,
-    listData:         ()                 => layerData(layer()),
-    render:           (layerEl, joinSequence = []) =>
-                        projectLayer(ydoc, layerEl, { tableId, authorId: user.id, isCreator, joinSequence }),
-    receive:          (layerEl, opId, joinSequence = []) =>
-                        receiveBounPosOp(ydoc, layerEl, opId, tableId, joinSequence),
-  };
+  }));
 }

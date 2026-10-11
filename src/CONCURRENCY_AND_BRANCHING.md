@@ -67,9 +67,9 @@ machinery contains no layer names.
 ### 1.1 Every canvas layer is an op layer; what stays plain Yjs state
 
 The toys, drawing and boundaries layers are op layers (`TOYS_LAYER`,
-`DRAWING_LAYER` in `drawing.js`, `BOUNDARIES_LAYER` in `boun_pos.js`). Their
+`DRAWING_LAYER` in `drawing.js`, `BOUN_POS_LAYER` in `boun_pos.js`). Their
 writes are DOM operations on the live layer element, run as gestures, and each
-layer's state is its own DAG (`ops:toys`, `ops:drawing`, `ops:boundaries`).
+layer's state is its own DAG (`ops:toys`, `ops:drawing`, `ops:boun_pos`).
 Drawing and boundaries have no hooks: no scripts and no cascades. A derived
 value is written inside the same gesture as the change that implies it
 (invariant 6): drawing's `transform` with the geometry, rotation or pivot; a

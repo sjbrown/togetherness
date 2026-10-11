@@ -12,7 +12,7 @@ import * as Y from 'yjs'
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import { TOYS_LAYER, runGesture as runToyGesture } from '../../src/toys.js'
 import { DRAWING_LAYER, makeLayerAPI as makeDrawingAPI } from '../../src/drawing.js'
-import { BOUNDARIES_LAYER, makeLayerAPI as makeBoundariesAPI } from '../../src/boun_pos.js'
+import { BOUN_POS_LAYER, makeLayerAPI as makeBoundariesAPI } from '../../src/boun_pos.js'
 import { ensureLayerId } from '../../src/op_layers.js'
 import * as OpLayer from '../../src/op_layer.js'
 
@@ -33,7 +33,7 @@ function setup() {
   const ydoc = new Y.Doc()
   const toysEl = ensureLayerId(document.createElementNS(SVG_NS, 'g'), TOYS_LAYER)
   const drawEl = ensureLayerId(document.createElementNS(SVG_NS, 'g'), DRAWING_LAYER)
-  const boundEl = ensureLayerId(document.createElementNS(SVG_NS, 'g'), BOUNDARIES_LAYER)
+  const boundEl = ensureLayerId(document.createElementNS(SVG_NS, 'g'), BOUN_POS_LAYER)
   const draw = makeDrawingAPI(ydoc, () => drawEl, { id: ME }, TABLE, true)
   draw.render(drawEl)
   const bounds = makeBoundariesAPI(ydoc, () => boundEl, { id: ME }, TABLE, true)
@@ -42,7 +42,7 @@ function setup() {
   const layers = [
     { layer: TOYS_LAYER,      el: toysEl },
     { layer: DRAWING_LAYER,   el: drawEl },
-    { layer: BOUNDARIES_LAYER, el: boundEl },
+    { layer: BOUN_POS_LAYER, el: boundEl },
   ]
 
   const toy = (id, authorId = ME) => runToyGesture(ydoc, toysEl, () => {
@@ -149,16 +149,16 @@ describe('undo picks the most recent action across layers', () => {
     const t = setup()
     t.shape('draw1')
     const op = OpLayer.undoCandidate(t.ydoc, DRAWING_LAYER, TABLE, ME)
-    expect(op.gesture).toBe('draw')
+    expect(op.gesture).toBe('add')
     expect(t.present()).toEqual(['draw1'])
     expect(OpLayer.undoCandidate(t.ydoc, DRAWING_LAYER, TABLE, 'someone-else')).toBeNull()
     expect(OpLayer.redoCandidate(t.ydoc, DRAWING_LAYER, TABLE, ME)).toBeNull()
   })
 
-  test('a boundary add is an op-layer candidate with its own gesture name', () => {
+  test('a boundary add is an op-layer candidate', () => {
     const t = setup()
     t.bound('bound1')
-    expect(OpLayer.undoCandidate(t.ydoc, BOUNDARIES_LAYER, TABLE, ME).gesture).toBe('add')
+    expect(OpLayer.undoCandidate(t.ydoc, BOUN_POS_LAYER, TABLE, ME).gesture).toBe('add')
   })
 })
 

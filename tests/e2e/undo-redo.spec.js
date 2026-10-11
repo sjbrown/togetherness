@@ -158,7 +158,7 @@ test.describe('undo / redo', () => {
     const counts = () => page.evaluate(() => ({
       toys:   document.querySelectorAll('[data-toy-type]').length,
       rects:  document.querySelectorAll('#drawing-layer rect').length,
-      bounds: document.querySelectorAll('#boundaries-positions-layer > *').length,
+      bounds: document.querySelectorAll('#boun_pos-layer > *').length,
     }));
 
     // toy1, draw1, bound1, toy2, draw2

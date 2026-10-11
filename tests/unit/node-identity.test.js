@@ -19,7 +19,6 @@ import {
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { nodeRef, resolveRef } from '../../src/op_wire_mutation.js'
-import { domToY } from '../../src/storage.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
@@ -228,81 +227,36 @@ describe('nodeRef / resolveRef', () => {
   })
 })
 
-describe('domToY is plain and layer-agnostic', () => {
-  // A detached Y.XmlElement holds its attributes in _prelimAttrs, which
-  // getAttribute doesn't read; they materialise on insertion into a doc.
-  const attached = (el) => {
-    const frag = new Y.Doc().getXmlFragment('t')
-    frag.insert(0, [domToY(el)])
-    return frag.get(0)
-  }
-
-  test('does not invent a data-id — that is a toys-layer concern, not domToY’s', () => {
-    const el = parseSvg('<svg xmlns="http://www.w3.org/2000/svg"><rect fill="red"/></svg>')
-      .querySelector('rect')
-    expect(attached(el).getAttribute('data-id')).toBeFalsy()
-  })
-
-  test('does not invent an id attribute either', () => {
-    const el = parseSvg('<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>').querySelector('rect')
-    expect(attached(el).getAttribute('id')).toBeFalsy()
-  })
-
-  test('preserves foreign-namespace attributes verbatim, unfiltered', () => {
-    const el = parseSvg(
-      '<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">' +
-      '<rect inkscape:label="junk"/></svg>'
-    ).querySelector('rect')
-    expect(attached(el).getAttribute('inkscape:label')).toBe('junk')
-  })
-
-  test('copies every attribute with no rewriting', () => {
-    const el = parseSvg('<svg xmlns="http://www.w3.org/2000/svg"><rect id="r1" fill="url(#gradient1)"/></svg>')
-      .querySelector('rect')
-    const yEl = attached(el)
-    expect(yEl.getAttribute('id')).toBe('r1')
-    expect(yEl.getAttribute('fill')).toBe('url(#gradient1)') // no idMap rewriting
-  })
-})
-
 describe('normalizeForeignToySubtree stamps identity on a reimported toy', () => {
-  // A detached Y.XmlElement holds its attributes in _prelimAttrs, which
-  // getAttribute doesn't read; they materialise on insertion into a doc.
-  const attached = (el) => {
-    const frag = new Y.Doc().getXmlFragment('t')
-    frag.insert(0, [domToY(el)])
-    return frag.get(0)
-  }
-
   test('an element with no data-id is given one', () => {
     const el = parseSvg('<svg xmlns="http://www.w3.org/2000/svg"><rect fill="red"/></svg>')
       .querySelector('rect')
-    const yEl = attached(Toys.normalizeForeignToySubtree(el))
-    expect(yEl.getAttribute('data-id')).toBeTruthy()
-    expect(yEl.getAttribute('fill')).toBe('red')
+    const out = Toys.normalizeForeignToySubtree(el)
+    expect(out.getAttribute('data-id')).toBeTruthy()
+    expect(out.getAttribute('fill')).toBe('red')
   })
 
   test('keeps the data-id it arrived with', () => {
     const el = parseSvg('<svg xmlns="http://www.w3.org/2000/svg"><rect data-id="kept"/></svg>')
       .querySelector('rect')
-    expect(attached(Toys.normalizeForeignToySubtree(el)).getAttribute('data-id')).toBe('kept')
+    expect(Toys.normalizeForeignToySubtree(el).getAttribute('data-id')).toBe('kept')
   })
 
   test('nested elements each get a distinct data-id', () => {
     const el = parseSvg('<svg xmlns="http://www.w3.org/2000/svg"><g><rect/><circle/></g></svg>')
       .querySelector('g')
-    const yEl = attached(Toys.normalizeForeignToySubtree(el))
-    const ids = [yEl.getAttribute('data-id'), ...yEl.toArray().map(c => c.getAttribute('data-id'))]
+    const out = Toys.normalizeForeignToySubtree(el)
+    const ids = [out.getAttribute('data-id'), ...[...out.children].map(c => c.getAttribute('data-id'))]
     expect(ids.every(Boolean)).toBe(true)
     expect(new Set(ids).size).toBe(3)
   })
 
   test('does not invent an id attribute where the source had none — only data-id', () => {
     const el = parseSvg('<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>').querySelector('rect')
-    expect(attached(Toys.normalizeForeignToySubtree(el)).getAttribute('id')).toBeFalsy()
+    expect(Toys.normalizeForeignToySubtree(el).getAttribute('id')).toBeFalsy()
   })
 
-  test('drops <script> children — never part of a toy’s own Yjs subtree', () => {
+  test('drops <script> children — never part of a toy’s own subtree', () => {
     const el = parseSvg(
       '<svg xmlns="http://www.w3.org/2000/svg"><g><script>1</script><rect/></g></svg>'
     ).querySelector('g')
@@ -324,7 +278,7 @@ describe('normalizeForeignToySubtree stamps identity on a reimported toy', () =>
     // they were already namespaced at original placement.
     const el = parseSvg('<svg xmlns="http://www.w3.org/2000/svg"><rect id="tt-t-v1-abcde__pie4"/></svg>')
       .querySelector('rect')
-    expect(attached(Toys.normalizeForeignToySubtree(el)).getAttribute('id')).toBe('tt-t-v1-abcde__pie4')
+    expect(Toys.normalizeForeignToySubtree(el).getAttribute('id')).toBe('tt-t-v1-abcde__pie4')
   })
 
   test('a whole reimported toy round-trips through storage’s import path unchanged', () => {

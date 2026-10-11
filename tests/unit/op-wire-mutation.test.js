@@ -396,7 +396,7 @@ describe('round trip over real toy gestures', () => {
       const contents  = layerEl.querySelector('[data-id="tray1"] .tt_contents')
       const dieEl     = layerEl.querySelector('[data-id="die1"]')
       contents.appendChild(dieEl)
-      // A real reposition, not a no-op — same as applyMoveDom would do.
+      // A real reposition, not a no-op — same as applyMove would do.
       dieEl.querySelector('svg').setAttribute('x', '999')
       dieEl.querySelector('svg').setAttribute('y', '888')
     }))

@@ -26,7 +26,7 @@
 // @vitest-environment jsdom
 import * as awarenessProtocol from 'y-protocols/awareness'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { addToy, applyRotateDom, _clearSvgTextCache } from '../../src/toys.js'
+import { addToy, applyRotate, _clearSvgTextCache } from '../../src/toys.js'
 import { bowstringOrigin } from '../../src/delight.js'
 
 vi.mock('../../src/ui.js', () => ({
@@ -68,7 +68,7 @@ function makeCanvasDOM() {
       <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
         <defs></defs>
         <g id="background-layer"></g>
-        <g id="boundaries-positions-layer"></g>
+        <g id="boun_pos-layer"></g>
         <g id="toys-layer"></g>
         <g id="drawing-layer"></g>
         <g id="overlay-layer" pointer-events="none"></g>
@@ -130,7 +130,7 @@ describe('bowstring handle on a rotated toy (chip-like)', () => {
     App.select('chip-1')
 
     const chipEl = svgEl.querySelector('[data-id="chip-1"]')
-    applyRotateDom(chipEl, 90)
+    applyRotate(chipEl, 90)
 
     const geo = App.getBBox('chip-1') // still the unrotated bbox
     const stalePoint = { x: geo.x + geo.width + 6, y: geo.y + geo.height + 6 }
@@ -143,7 +143,7 @@ describe('bowstring handle on a rotated toy (chip-like)', () => {
     App.select('chip-1')
 
     const chipEl = svgEl.querySelector('[data-id="chip-1"]')
-    applyRotateDom(chipEl, 90)
+    applyRotate(chipEl, 90)
 
     const geo = App.getBBox('chip-1')
     const rot = App.getRotation('chip-1')
@@ -162,7 +162,7 @@ describe('bowstring handle on a rotated toy (chip-like)', () => {
     App.select('chip-1')
 
     const chipEl = svgEl.querySelector('[data-id="chip-1"]')
-    applyRotateDom(chipEl, 90)
+    applyRotate(chipEl, 90)
 
     const geo = App.getBBox('chip-1')
     const rot = App.getRotation('chip-1')
@@ -185,7 +185,7 @@ describe('bowstring handle on a rotated toy (chip-like)', () => {
     App.select('chip-1')
 
     const chipEl = svgEl.querySelector('[data-id="chip-1"]')
-    applyRotateDom(chipEl, 90)
+    applyRotate(chipEl, 90)
 
     const geo = App.getBBox('chip-1')
     const rot = App.getRotation('chip-1')

@@ -2,7 +2,7 @@
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
-  addToyDom, computeResizeRect, applyResizeDom,
+  addToyDom, computeResizeRect, applyResize,
   RESIZE_CORNER_NW, RESIZE_CORNER_SE,
   reparentToyDom,
   _clearSvgTextCache,
@@ -52,13 +52,13 @@ describe('computeResizeRect — toys.js’s own wrapper around the shared corner
   })
 })
 
-describe('applyResizeDom', () => {
+describe('applyResize', () => {
   test('writes x/y/width/height/viewBox to the toy\u2019s own root <svg>', () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
     const trayEl = place(ydoc, layerEl, 'tray1', 'tray_fixture', TRAY_SVG, 100, 100)
 
-    applyResizeDom(trayEl, 40, 50, 300, 220)
+    applyResize(trayEl, 40, 50, 300, 220)
 
     const svg = trayEl.querySelector('svg')
     expect(svg.getAttribute('x')).toBe('40')
@@ -73,7 +73,7 @@ describe('applyResizeDom', () => {
     const layerEl = freshLayer()
     const trayEl = place(ydoc, layerEl, 'tray1', 'tray_fixture', TRAY_SVG, 100, 100)
 
-    applyResizeDom(trayEl, 40, 50, 300, 220)
+    applyResize(trayEl, 40, 50, 300, 220)
 
     const whFollowResizeEls = trayEl.querySelectorAll('.tt_wh_follow_resize')
     expect(whFollowResizeEls.length).toBeGreaterThan(0)
@@ -88,7 +88,7 @@ describe('applyResizeDom', () => {
     const layerEl = freshLayer()
     const trayEl = place(ydoc, layerEl, 'tray1', 'tray_fixture', TRAY_SVG, 100, 100)
 
-    applyResizeDom(trayEl, 0, 0, 5, 5)
+    applyResize(trayEl, 0, 0, 5, 5)
 
     const svg = trayEl.querySelector('svg')
     expect(Number(svg.getAttribute('width'))).toBeGreaterThanOrEqual(30)
@@ -100,12 +100,12 @@ describe('applyResizeDom', () => {
     const layerEl = freshLayer()
     const boardEl = place(ydoc, layerEl, 'board1', 'board_fixture', NON_TRAY_SVG, 100, 100)
 
-    expect(() => applyResizeDom(boardEl, 0, 0, 100, 100)).not.toThrow()
+    expect(() => applyResize(boardEl, 0, 0, 100, 100)).not.toThrow()
     expect(boardEl.querySelector('svg').getAttribute('width')).toBe('100')
   })
 
   test('is a no-op (never throws) for a null element', () => {
-    expect(() => applyResizeDom(null, 0, 0, 100, 100)).not.toThrow()
+    expect(() => applyResize(null, 0, 0, 100, 100)).not.toThrow()
   })
 })
 
@@ -146,7 +146,7 @@ describe('overlay.js — resizeCorners / hitTestResizeCorner', () => {
   })
 })
 
-describe('applyResizeDom — nested-toy isolation (ownYClassSelector)', () => {
+describe('applyResize — nested-toy isolation (ownYClassSelector)', () => {
   // Regression coverage for the id-prefix-matching rewrite of
   // findWhFollowResizeYEls/findContentsGroupYEl: resizing a tray must only
   // ever touch that tray's OWN tt_wh_follow_resize elements, never a nested
@@ -162,7 +162,7 @@ describe('applyResizeDom — nested-toy isolation (ownYClassSelector)', () => {
     place(ydoc, layerEl, 'inner', 'tray_fixture', TRAY_SVG, 100, 100)
     reparentToyDom(layerEl, 'inner', 'outer')
 
-    applyResizeDom(layerEl.querySelector('[data-id="outer"]'), 40, 50, 300, 220)
+    applyResize(layerEl.querySelector('[data-id="outer"]'), 40, 50, 300, 220)
 
     const outerBg = layerEl.querySelector('[data-id="outer"] .outer__tt_wh_follow_resize')
     const innerBg = layerEl.querySelector('[data-id="inner"] .inner__tt_wh_follow_resize')
@@ -182,7 +182,7 @@ describe('applyResizeDom — nested-toy isolation (ownYClassSelector)', () => {
     reparentToyDom(layerEl, 'mid', 'outer')
     reparentToyDom(layerEl, 'inner', 'mid')
 
-    applyResizeDom(layerEl.querySelector('[data-id="outer"]'), 0, 0, 400, 400)
+    applyResize(layerEl.querySelector('[data-id="outer"]'), 0, 0, 400, 400)
 
     const midBg   = layerEl.querySelector('[data-id="mid"] .mid__tt_wh_follow_resize')
     const innerBg = layerEl.querySelector('[data-id="inner"] .inner__tt_wh_follow_resize')
@@ -200,7 +200,7 @@ describe('applyResizeDom — nested-toy isolation (ownYClassSelector)', () => {
     place(ydoc, layerEl, 'inner', 'tray_fixture', TRAY_SVG, 100, 100)
     reparentToyDom(layerEl, 'inner', 'outer')
 
-    applyResizeDom(layerEl.querySelector('[data-id="inner"]'), 0, 0, 90, 90)
+    applyResize(layerEl.querySelector('[data-id="inner"]'), 0, 0, 90, 90)
 
     const outerBg = layerEl.querySelector('[data-id="outer"] .outer__tt_wh_follow_resize')
     const innerBg = layerEl.querySelector('[data-id="inner"] .inner__tt_wh_follow_resize')

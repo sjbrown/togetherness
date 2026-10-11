@@ -557,18 +557,18 @@ export function wireColorPickers(container) {
 // (fires on every drag tick) straight through — there's nothing to
 // interrupt.
 //
-// 'edit' fields are different: App.commitEdit writes to the live Yjs doc,
-// and that synchronously triggers UI.refreshFromDoc(), which replaces
+// 'edit' fields are different: App.commitEdit commits a gesture to the live
+// layer, and that synchronously triggers UI.refreshFromDoc(), which replaces
 // #panelBody's whole innerHTML — including the very <range-ticked> the
 // user has their mouse on. Calling that on every 'range-changed' tick
 // tears the element down mid-drag, killing the browser's native slider
 // tracking on it. So 'edit' mode instead treats the two range-ticked
 // events differently: 'range-changed' (every tick) only drives a local
 // preview via App.previewEdit(id, editData) — a detached ghost clone on
-// the Overlay layer, no Yjs write, so #panelBody is never touched mid-drag
+// the Overlay layer, no gesture, so #panelBody is never touched mid-drag
 // — and only 'range-committed' (fires once, when the gesture actually
 // ends) calls the real App.commitEdit(id, editData), same as any other
-// Edit-panel field, which does the Yjs write and (as part of committing)
+// Edit-panel field, which commits the gesture and (as part of committing)
 // clears the preview ghost.
 export function wireRangeTicked(container) {
   if (!container) return;
@@ -1382,8 +1382,7 @@ export function deleteSelected()    {
   else App.deleteSelected();
 }
 export function duplicateSelected() {
-  if (UIData.multiSelectionActive) App.duplicateMultiSelected();
-  else App.duplicateSelected();
+  App.duplicateSelected();
 }
 
 // -- Helpers -------------------------------------------------------------------

@@ -14,7 +14,7 @@
  * unit-testing app.js). dropIntoTray() below is a literal, minimal
  * reimplementation of exactly what commitMove does for the reparent
  * branch: findDropTarget → reparentToyDom → getGeom the tray →
- * applyMoveDom the moved toy at (dropX - trayGeom.x, dropY - trayGeom.y).
+ * applyMove the moved toy at (dropX - trayGeom.x, dropY - trayGeom.y).
  */
 
 // @vitest-environment jsdom
@@ -24,7 +24,7 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import {
-  addToy, findDropTarget, reparentToyDom, getGeom, applyMoveDom,
+  addToy, findDropTarget, reparentToyDom, getGeom, applyMove,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 
@@ -51,7 +51,7 @@ function dropIntoTray(ydoc, layerEl, draggedId, dropX, dropY) {
   const movedEl = reparentToyDom(layerEl, draggedId, dropTrayId)
   const trayEl  = layerEl.querySelector(`[data-id="${dropTrayId}"]`)
   const trayGeom = trayEl && getGeom(trayEl)
-  if (trayGeom) applyMoveDom(movedEl, dropX - trayGeom.x, dropY - trayGeom.y)
+  if (trayGeom) applyMove(movedEl, dropX - trayGeom.x, dropY - trayGeom.y)
   return { dropTrayId, movedEl, trayGeom }
 }
 
