@@ -4,7 +4,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { HEAD_MARKER } from '../../src/op_layer.js'
 import { TOYS_LAYER } from '../../src/toys.js'
 import { ensureLayerId, getOpLayer } from '../../src/op_layers.js'
-import { domToY, populateFromSvgDoc, buildExportSvg } from '../../src/storage.js'
+import { populateFromSvgDoc, buildExportSvg } from '../../src/storage.js'
 import { getOps, getContent } from '../../src/op_dag.js'
 import { projectFrom } from '../../src/op_checkpoint.js'
 import * as Toys from '../../src/toys.js'
@@ -14,7 +14,7 @@ import { getOps, getContent } from '../../src/op_dag.js'
 import { isCheckpoint } from '../../src/op_checkpoint.js'
 import { ensureLayerId, LAYER_MARKER } from '../../src/op_layers.js'
 import * as BounPos from '../../src/boun_pos.js'
-import { BOUNDARIES_LAYER } from '../../src/boun_pos.js'
+import { BOUN_POS_LAYER } from '../../src/boun_pos.js'
 
 // ── Fixtures & helpers ──────────────────────────────────────────────────────
 
@@ -30,16 +30,6 @@ function parseSvg(text) {
   return doc.documentElement
 }
 
-// domToY returns a *detached* Y.XmlElement/Y.XmlText — per Yjs, reading a
-// detached node (toArray/getAttribute/toString) is unreliable until it's
-// integrated into a Y.Doc. Attach it to a throwaway fragment before assertions.
-function integrate(yNode) {
-  const ydoc = new Y.Doc()
-  const frag = ydoc.getXmlFragment('test')
-  ydoc.transact(() => frag.insert(0, [yNode]))
-  return frag.toArray()[0]
-}
-
 // A document-shaped <svg> root, as importSVG/seedRoom would receive it —
 // #background-layer (with a <pattern> in <defs>), #toys-layer, #drawing-layer,
 // plus one arbitrary extra top-level element to exercise the fallback sweep.
@@ -51,7 +41,7 @@ function makeDocSvg({ toysInner = '', drawingInner = '', extra = '' } = {}) {
       </pattern>
     </defs>
     <g id="background-layer"><rect width="100%" height="100%" fill="url(#bg-pattern)"/></g>
-    <g id="boundaries-positions-layer"></g>
+    <g id="boun_pos-layer"></g>
     <g id="toys-layer">${toysInner}</g>
     <g id="drawing-layer">${drawingInner}</g>
     ${extra}
@@ -61,56 +51,6 @@ function makeDocSvg({ toysInner = '', drawingInner = '', extra = '' } = {}) {
 const VALID_TOY_G = `<g class="toy" data-id="t1" data-toy-type="dice_d6">
     <svg x="0" y="0" width="64" height="64" viewBox="0 0 80 100"><circle r="5"/></svg>
   </g>`
-
-// ─────────────────────────────────────────────────────────────────────────────
-// domToY
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('domToY', () => {
-  test('converts an element and its attributes', () => {
-    const el = parseSvg(`<rect x="1" y="2" width="3" height="4"/>`)
-    const y = integrate(domToY(el))
-    expect(y.nodeName).toBe('rect')
-    expect(y.getAttribute('x')).toBe('1')
-    expect(y.getAttribute('height')).toBe('4')
-  })
-
-  test('recursively converts children', () => {
-    const el = parseSvg(`<g><rect/><circle/></g>`)
-    const y = integrate(domToY(el))
-    expect(y.toArray().map(c => c.nodeName)).toEqual(['rect', 'circle'])
-  })
-
-  test('drops whitespace-only text nodes', () => {
-    const el = parseSvg(`<g>   \n  </g>`)
-    const y = integrate(domToY(el))
-    expect(y.toArray().length).toBe(0)
-  })
-
-  test('preserves non-whitespace text content', () => {
-    const el = parseSvg(`<text><tspan>5</tspan></text>`)
-    const tspan = integrate(domToY(el)).toArray()[0]
-    expect(tspan.toArray()[0].toString()).toBe('5')
-  })
-
-  test('preserves <script> elements, their attrs, and CDATA text', () => {
-    const el = parseSvg(TOY_SVG)
-    const y = integrate(domToY(el))
-    const scripts = y.toArray().filter(c => c.nodeName === 'script')
-    expect(scripts.length).toBe(2)
-
-    const srcScript = scripts.find(s => s.getAttribute('src'))
-    expect(srcScript.getAttribute('src')).toBe('js/dice_utils.js')
-    expect(srcScript.getAttribute('data-namespace')).toBe('dice')
-
-    const inlineScript = scripts.find(s => s.getAttribute('data-namespace') === 'd6')
-    expect(inlineScript.toArray()[0].toString()).toContain('d6')
-  })
-
-  test('returns null for comment/other non-element, non-text nodes', () => {
-    expect(domToY(document.createComment('hi'))).toBeNull()
-  })
-})
 
 // isForeignToyG / parseForeignToy now live entirely in toys.js — see
 // tests/unit/node-identity.test.js. storage.js no longer knows the toy
@@ -233,23 +173,25 @@ describe('populateFromSvgDoc', () => {
     const { drawCount, toyCount } = populateFromSvgDoc(
       makeDocSvg({ toysInner: VALID_TOY_G, drawingInner: `<rect/>` }), ydoc)
     expect(toyCount).toBe(1)
-    expect(drawCount).toBe(1) // only the <rect>, not toys/drawing/background/boundaries-positions layers again
+    expect(drawCount).toBe(1) // only the <rect>, not toys/drawing/background/boun_pos layers again
   })
 
-  describe('boundaries-positions-layer', () => {
+  describe('boun_pos-layer', () => {
     // Build the layer's inner markup the way buildExportSvg does: the live
     // layer, as BounPos created and the op log projected it.
     function exportedBounPosInner() {
-      const layerEl = ensureLayerId(document.createElementNS('http://www.w3.org/2000/svg', 'g'), BOUNDARIES_LAYER)
-      BounPos.addBoundary(layerEl, { id: 'tt-b-v1-abc', name: 'Hand', x: 10, y: 20, w: 100, h: 50 })
-      BounPos.addPositionSet(layerEl, {
-        x: 0, y: 0, w: 200, h: 200, toolName: 'pos-grid-sq', toolParams: { spacing: 80, snapRadius: 2 },
+      const layerEl = ensureLayerId(document.createElementNS('http://www.w3.org/2000/svg', 'g'), BOUN_POS_LAYER)
+      BounPos.BOUNPOS_TYPES.boundary.create(layerEl, { id: 'tt-b-v1-abc', name: 'Hand', x: 10, y: 20, w: 100, h: 50 })
+      const rect = { x: 0, y: 0, w: 200, h: 200 }
+      BounPos.BOUNPOS_TYPES['pos-grid-sq'].create(layerEl, {
+        ...BounPos.newPositionSetId(), genType: 'square', ...rect,
+        ...BounPos.toolParamsToCreateParams('square', { spacing: 80, snapRadius: 2 }, rect),
       })
       return layerEl.innerHTML
     }
 
     const boundariesDoc = (inner = exportedBounPosInner()) => parseSvg(`<svg xmlns="http://www.w3.org/2000/svg">
-      <g id="boundaries-positions-layer">${inner}</g>
+      <g id="boun_pos-layer">${inner}</g>
       <g id="toys-layer"></g>
       <g id="drawing-layer"></g>
     </svg>`)
@@ -263,7 +205,7 @@ describe('populateFromSvgDoc', () => {
       expect(result.bounPosCount).toBe(2)
       expect(result.importedBounPosEls).toHaveLength(2)
       // Nothing is written to the log: the live-table caller commits them.
-      expect(getOps(ydoc, BOUNDARIES_LAYER).size).toBe(0)
+      expect(getOps(ydoc, BOUN_POS_LAYER).size).toBe(0)
 
       const [boundary, posSet] = result.importedBounPosEls
       expect(BounPos.getTtState(boundary)).toMatchObject({ id: 'tt-b-v1-abc', name: 'Hand', x: 10, y: 20, w: 100, h: 50 })
@@ -276,20 +218,20 @@ describe('populateFromSvgDoc', () => {
       const { importedBounPosEls } = populateFromSvgDoc(boundariesDoc(), ydoc, { asNewTable: true, authorId: 'me' })
       expect(importedBounPosEls).toEqual([])
 
-      const ops = [...getOps(ydoc, BOUNDARIES_LAYER).values()]
+      const ops = [...getOps(ydoc, BOUN_POS_LAYER).values()]
       expect(ops).toHaveLength(1)
       expect(isCheckpoint(ops[0])).toBe(true)
       expect(ops[0].parents).toEqual([])
 
-      const layerEl = ensureLayerId(document.createElementNS('http://www.w3.org/2000/svg', 'g'), BOUNDARIES_LAYER)
-      projectFrom(layerEl, getOps(ydoc, BOUNDARIES_LAYER), getContent(ydoc, BOUNDARIES_LAYER), ops[0].id)
+      const layerEl = ensureLayerId(document.createElementNS('http://www.w3.org/2000/svg', 'g'), BOUN_POS_LAYER)
+      projectFrom(layerEl, getOps(ydoc, BOUN_POS_LAYER), getContent(ydoc, BOUN_POS_LAYER), ops[0].id)
       expect(layerEl.querySelectorAll('[data-bounpos-type]').length).toBe(2)
     })
 
     test('as a new table, an empty boundaries layer still gets a genesis', () => {
       const { ydoc } = freshLayers()
       populateFromSvgDoc(makeDocSvg(), ydoc, { asNewTable: true, authorId: 'me' })
-      expect(getOps(ydoc, BOUNDARIES_LAYER).size).toBe(1)
+      expect(getOps(ydoc, BOUN_POS_LAYER).size).toBe(1)
     })
 
     test('does not double-import via the fallback sweep', () => {
@@ -307,7 +249,7 @@ describe('populateFromSvgDoc', () => {
       expect(importedBounPosEls[0].querySelector('path').getAttribute('d')).toBe('M200,300 L400,300 L400,400 L200,400 Z')
     })
 
-    test('strips <script> elements from boundaries-positions-layer children before storing', () => {
+    test('strips <script> elements from boun_pos-layer children before storing', () => {
       const { ydoc } = freshLayers()
       const doc = boundariesDoc(
         `<g data-bounpos-type="boundary"><script>alert(1)</script><path d="M0,0 L1,0 L1,1 L0,1 Z"/></g>`)
@@ -437,7 +379,7 @@ describe('buildExportSvg', () => {
     return parseSvg(`<svg id="canvas" xmlns="http://www.w3.org/2000/svg">
       <defs></defs>
       <g id="background-layer"><rect width="100%" height="100%" pointer-events="none"/></g>
-      <g id="boundaries-positions-layer"></g>
+      <g id="boun_pos-layer"></g>
       <g id="toys-layer"></g>
       <g id="drawing-layer"></g>
       <g id="overlay-layer" pointer-events="none"></g>
@@ -531,13 +473,13 @@ describe('buildExportSvg', () => {
   test('strips the head and op-layer markers from the exported boundaries layer', () => {
     const ydoc = new Y.Doc()
     const live = liveCanvasSvg()
-    ensureLayerId(live.querySelector('#boundaries-positions-layer'), BOUNDARIES_LAYER)
-    live.querySelector('#boundaries-positions-layer').setAttribute(HEAD_MARKER, 'tt-op-abc123')
+    ensureLayerId(live.querySelector('#boun_pos-layer'), BOUN_POS_LAYER)
+    live.querySelector('#boun_pos-layer').setAttribute(HEAD_MARKER, 'tt-op-abc123')
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     g.setAttribute('data-id', 'b1')
-    live.querySelector('#boundaries-positions-layer').appendChild(g)
+    live.querySelector('#boun_pos-layer').appendChild(g)
 
-    const layer = buildExportSvg(live, ydoc).querySelector('#boundaries-positions-layer')
+    const layer = buildExportSvg(live, ydoc).querySelector('#boun_pos-layer')
     expect(layer.hasAttribute(HEAD_MARKER)).toBe(false)
     expect(layer.hasAttribute(LAYER_MARKER)).toBe(false)
     expect(layer.querySelector('[data-id="b1"]')).not.toBeNull()

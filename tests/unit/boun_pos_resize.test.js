@@ -60,7 +60,7 @@ function makeCanvasDOM() {
       <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
         <defs></defs>
         <g id="background-layer"></g>
-        <g id="boundaries-positions-layer"></g>
+        <g id="boun_pos-layer"></g>
         <g id="toys-layer"></g>
         <g id="drawing-layer"></g>
         <g id="overlay-layer" pointer-events="none"></g>
@@ -109,7 +109,7 @@ async function bootApp() {
 describe('boundary resize mode', () => {
   test('selectModes offers sel-resize as the second mode', async () => {
     const { App } = await bootApp()
-    App.setLayer('boundaries-positions')
+    App.setLayer('boun_pos')
     App.commitBoundary({ x: 100, y: 100, w: 200, h: 150 })
     const id = App.getSelectedIds()[0]
     expect(id).toBeTruthy()
@@ -123,7 +123,7 @@ describe('boundary resize mode', () => {
 
   test('dragging a corner handle and releasing commits a new rect', async () => {
     const { App, svgEl } = await bootApp()
-    App.setLayer('boundaries-positions')
+    App.setLayer('boun_pos')
     App.commitBoundary({ x: 100, y: 100, w: 200, h: 150 })
     const id = App.getSelectedIds()[0]
     App.nextSelectionMode(id)
@@ -143,14 +143,14 @@ describe('boundary resize mode', () => {
     // click or a fresh selection).
     expect(App.getResizeModeId()).toBe(id)
 
-    const el = svgEl.querySelector(`#boundaries-positions-layer [data-id="${id}"]`)
+    const el = svgEl.querySelector(`#boun_pos-layer [data-id="${id}"]`)
     expect(pathToRect(el.querySelector('path').getAttribute('d'))).toEqual({ x: 0, y: 0, w: 300, h: 250 })
     expect(translationOf(el)).toEqual({ tx: 100, ty: 100 })
   })
 
   test('a plain click-drag on a resize-mode boundary that misses the handles still moves it', async () => {
     const { App, ydoc } = await bootApp()
-    App.setLayer('boundaries-positions')
+    App.setLayer('boun_pos')
     App.commitBoundary({ x: 100, y: 100, w: 200, h: 150 })
     const id = App.getSelectedIds()[0]
     App.nextSelectionMode(id)
@@ -165,7 +165,7 @@ describe('boundary resize mode', () => {
 describe('position-set resize mode', () => {
   test('resizing regenerates the circle grid to fill the new extent', async () => {
     const { App, svgEl } = await bootApp()
-    App.setLayer('boundaries-positions')
+    App.setLayer('boun_pos')
     App.commitPositionSet({ toolName: 'pos-grid-sq', x: 0, y: 0, w: 200, h: 200 })
     const id = App.getSelectedIds()[0]
     expect(id).toBeTruthy()
@@ -181,7 +181,7 @@ describe('position-set resize mode', () => {
     App.resize(id, corner, 400, 400)
     App.commitResize(id, corner, 400, 400)
 
-    const el = svgEl.querySelector(`#boundaries-positions-layer [data-id="${id}"]`)
+    const el = svgEl.querySelector(`#boun_pos-layer [data-id="${id}"]`)
     expect(pathToRect(el.querySelector('path').getAttribute('d'))).toEqual({ x: 0, y: 0, w: 400, h: 400 })
 
     const circleCount = el.querySelectorAll(':scope > circle').length

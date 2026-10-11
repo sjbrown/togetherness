@@ -19,12 +19,12 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ensureLayerId } from '../../src/op_layers.js'
 import { TOYS_LAYER } from '../../src/toys.js'
 import { DRAWING_LAYER, makeLayerAPI as makeDrawingAPI } from '../../src/drawing.js'
-import { BOUNDARIES_LAYER, makeLayerAPI as makeBoundariesAPI, gridFillExtent } from '../../src/boun_pos.js'
+import { BOUN_POS_LAYER, makeLayerAPI as makeBoundariesAPI, gridFillExtent } from '../../src/boun_pos.js'
 import {
   placeToy, makeLayerAPI, activateAllToyScriptsDom, projectLayer, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { getOps, getContent, appendOp, appendCheckpoint } from '../../src/op_dag.js'
-import { undoGesture } from '../../src/op_layer.js'
+import { receiveLayerOp, undoGesture } from '../../src/op_layer.js'
 import { projectTips, nearestCheckpoint, latestCut, isCheckpoint, opsSinceCheckpoint, CHECKPOINT_MIN_OPS } from '../../src/op_checkpoint.js'
 import { getHead, getMergeTips, maximalTips, setHead } from '../../src/op_head.js'
 import { serializeNode } from '../../src/op_wire_mutation.js'
@@ -57,10 +57,10 @@ beforeEach(() => {
 })
 afterEach(() => { vi.unstubAllGlobals() })
 
-function freshLayer() {
+function freshLayer(layer = TOYS_LAYER) {
   const el = document.createElementNS(SVG_NS, 'g')
-  el.id = 'toys-layer'
-  ensureLayerId(el, TOYS_LAYER)
+  el.id = layer.selector.slice(1)
+  ensureLayerId(el, layer)
   return el
 }
 
@@ -68,12 +68,12 @@ function freshLayer() {
  * layer, and its own tableId — which is what keys op_head's localStorage
  * entries, so peers never share head/merge-tip state even though this test
  * runs them all in one jsdom global. */
-function makePeer(authorId) {
+function makePeer(authorId, spec = TOYS) {
   const tableId = `convergence-table-${_tableCounter++}`
   const ydoc = new Y.Doc()
-  const layer = ensureLayerId(freshLayer(), TOYS_LAYER)
-  const api = makeLayerAPI(ydoc, () => layer, { id: authorId }, tableId)
-  const peer = { id: authorId, tableId, ydoc, layer, api }
+  const layer = freshLayer(spec.layer)
+  const api = spec.makeLayerAPI(ydoc, () => layer, { id: authorId }, tableId)
+  const peer = { id: authorId, tableId, ydoc, layer, api, opLayer: spec.layer }
   _peers.push(peer)
   return peer
 }
@@ -84,8 +84,8 @@ function makePeer(authorId) {
 function seedGenesis(peers) {
   const genesis = { id: 'genesis', parents: [], authorId: 'system', gesture: 'checkpoint', ts: 0, mutations: [] }
   for (const p of peers) {
-    appendCheckpoint(p.ydoc, TOYS_LAYER, genesis, [])
-    setHead(p.tableId, TOYS_LAYER, genesis.id)
+    appendCheckpoint(p.ydoc, p.opLayer, genesis, [])
+    setHead(p.tableId, p.opLayer, genesis.id)
   }
   return genesis
 }
@@ -95,27 +95,29 @@ function seedGenesis(peers) {
  * any receive() call, exactly as Yjs would have every op present in the
  * shared Y.Map before onOpsChanged iterates the arrived keys. */
 function deliver(peer, ops, order = ops.map((_, i) => i)) {
+  const layer = peer.opLayer
   for (const op of ops) {
     if (isCheckpoint(op)) {
       // A checkpoint's content travels with it, in one update.
-      const from = _peers.find(p => getContent(p.ydoc, TOYS_LAYER).has(op.id))
+      const from = _peers.find(p => getContent(p.ydoc, layer).has(op.id))
       peer.ydoc.transact(() => {
-        getOps(peer.ydoc, TOYS_LAYER).set(op.id, op)
-        if (from) getContent(peer.ydoc, TOYS_LAYER).set(op.id, getContent(from.ydoc, TOYS_LAYER).get(op.id))
+        getOps(peer.ydoc, layer).set(op.id, op)
+        if (from) getContent(peer.ydoc, layer).set(op.id, getContent(from.ydoc, layer).get(op.id))
       })
     } else {
-      getOps(peer.ydoc, TOYS_LAYER).set(op.id, op)
+      getOps(peer.ydoc, layer).set(op.id, op)
     }
   }
   const results = []
   for (const i of order) {
-    results.push(peer.api.receive(peer.layer, ops[i].id, []))
+    results.push(receiveLayerOp(peer.ydoc, layer, peer.layer, ops[i].id, peer.tableId, []))
   }
   return results
 }
 
 function localTipsOf(peer) {
-  return maximalTips(getOps(peer.ydoc, TOYS_LAYER), [getHead(peer.tableId, TOYS_LAYER), ...getMergeTips(peer.tableId, TOYS_LAYER)])
+  const layer = peer.opLayer
+  return maximalTips(getOps(peer.ydoc, layer), [getHead(peer.tableId, layer), ...getMergeTips(peer.tableId, layer)])
 }
 
 /** Every peer's live DOM matches every other's, and matches a from-scratch
@@ -126,10 +128,11 @@ function assertConverged(peers) {
     expect(serialized[i]).toEqual(serialized[0])
   }
 
-  const ops = getOps(peers[0].ydoc, TOYS_LAYER)
+  const layer = peers[0].opLayer
+  const ops = getOps(peers[0].ydoc, layer)
   const unionTips = maximalTips(ops, peers.flatMap(localTipsOf))
-  const scratch = freshLayer()
-  projectTips(scratch, ops, getContent(peers[0].ydoc, TOYS_LAYER), unionTips, [])
+  const scratch = freshLayer(layer)
+  projectTips(scratch, ops, getContent(peers[0].ydoc, layer), unionTips, [])
   expect([...scratch.children].map(serializeNode)).toEqual(serialized[0])
 }
 
@@ -142,94 +145,135 @@ async function place(peer, id, toyType, x, y) {
 }
 
 function getOp(peer) {
-  const head = getHead(peer.tableId, TOYS_LAYER)
-  return getOps(peer.ydoc, TOYS_LAYER).get(head)
+  const head = getHead(peer.tableId, peer.opLayer)
+  return getOps(peer.ydoc, peer.opLayer).get(head)
 }
 
-describe('concurrent convergence', () => {
-  test('scenario 1: two concurrent placements of different toys — not a conflict, converges', async () => {
-    for (const order of [[0, 1], [1, 0]]) {
-      const P = makePeer('alice'), Q = makePeer('bob')
-      seedGenesis([P, Q])
+const moveTo = (peer, id, x, y) => peer.api.applyMoveCommit(peer.api.find(id), x, y)
 
-      const opP = await place(P, 'dieP', 'dice_d6', 0, 0)
-      const opQ = await place(Q, 'dieQ', 'dice_d6', 40, 40)
+// Each layer's fixtures: add(peer, id, x, y) commits one element and
+// resolves to the op.
+const TOYS = {
+  name: 'toys', layer: TOYS_LAYER, makeLayerAPI,
+  add: (peer, id, x, y) => place(peer, id, 'dice_d6', x, y),
+}
+const DRAWING = {
+  name: 'drawing', layer: DRAWING_LAYER, makeLayerAPI: makeDrawingAPI,
+  add: (peer, id, x, y) => {
+    peer.api.add({ id, type: 'rect', x, y, width: 50, height: 50 })
+    return getOp(peer)
+  },
+}
+const BOUN_POS = {
+  name: 'boun_pos', layer: BOUN_POS_LAYER, makeLayerAPI: makeBoundariesAPI,
+  add: (peer, id, x, y) => {
+    const circles = gridFillExtent(x, y, 200, 200, 'square', 100, 100)
+    peer.api.add('pos-grid-sq', {
+      id, name: id, snapRadius: 30, genType: 'square', xSpacing: 100, ySpacing: 100, x, y, w: 200, h: 200, circles,
+    })
+    return getOp(peer)
+  },
+}
 
-      const [rP] = deliver(P, [opQ])
-      const [rQ] = deliver(Q, [opP])
-      // Both placements add a top-level child to the same layer root, so
-      // this is exactly the order-sensitive, non-conflicting case §5.6
-      // resolves with a canonical rebuild.
-      expect(rP.result).toBe(RECEIVED_REBUILT)
-      expect(rQ.result).toBe(RECEIVED_REBUILT)
+describe.each([TOYS, DRAWING, BOUN_POS])('concurrent convergence, every layer: $name', (spec) => {
+  const twoPeers = () => {
+    const P = makePeer('alice', spec), Q = makePeer('bob', spec)
+    seedGenesis([P, Q])
+    return [P, Q]
+  }
+  const anchor = (peer, id) => peer.api.getAnchor(peer.api.find(id))
 
-      assertConverged([P, Q])
-      // sanity: order shouldn't matter for a single mutual delivery either way
-      void order
-    }
+  test('two peers adding different elements concurrently: rebuilt, converged', async () => {
+    const [P, Q] = twoPeers()
+    const opP = await spec.add(P, 'eP', 0, 0)
+    const opQ = await spec.add(Q, 'eQ', 300, 300)
+
+    const [rP] = deliver(P, [opQ])
+    const [rQ] = deliver(Q, [opP])
+    // Both add a top-level child to the same layer root: order-sensitive,
+    // not conflicting, so each peer rebuilds canonically (§5.6).
+    expect(rP.result).toBe(RECEIVED_REBUILT)
+    expect(rQ.result).toBe(RECEIVED_REBUILT)
+
+    expect(P.layer.children.length).toBe(2)
+    assertConverged([P, Q])
   })
 
-  test('scenario 2: two concurrent moves of different toys — not a conflict, converges', async () => {
-    const P = makePeer('alice'), Q = makePeer('bob')
-    seedGenesis([P, Q])
+  test('two peers moving different elements: not a conflict, converged', async () => {
+    const [P, Q] = twoPeers()
+    deliver(Q, [await spec.add(P, 'a', 0, 0), await spec.add(P, 'b', 400, 400)])
+    const aStart = anchor(P, 'a'), bStart = anchor(P, 'b')
 
-    // A shared starting point: alice places both toys, then both peers see it.
-    const opPlace1 = await place(P, 'd1', 'dice_d6', 0, 0)
-    const opPlace2 = await place(P, 'd2', 'dice_d6', 100, 100)
-    deliver(Q, [opPlace1, opPlace2])
-
-    const elP = P.layer.querySelector('[data-id="d1"]')
-    const { op: opMoveP } = P.api.applyMoveCommit(elP, 10, 10)
-    const elQ = Q.layer.querySelector('[data-id="d2"]')
-    const { op: opMoveQ } = Q.api.applyMoveCommit(elQ, 200, 200)
+    const opMoveP = moveTo(P, 'a', aStart.x + 10, aStart.y + 10)
+    const opMoveQ = moveTo(Q, 'b', bStart.x + 100, bStart.y + 100)
 
     const [rP] = deliver(P, [opMoveQ])
     const [rQ] = deliver(Q, [opMoveP])
     expect(rP.result).not.toBe(RECEIVED_CONFLICT)
     expect(rQ.result).not.toBe(RECEIVED_CONFLICT)
 
+    expect(anchor(P, 'a')).toEqual({ x: aStart.x + 10, y: aStart.y + 10 })
+    expect(anchor(P, 'b')).toEqual({ x: bStart.x + 100, y: bStart.y + 100 })
     assertConverged([P, Q])
   })
 
-  test('scenario 3: a placement on one peer and a move on another — not a conflict, converges', async () => {
-    const P = makePeer('alice'), Q = makePeer('bob')
-    seedGenesis([P, Q])
+  test('an add on one peer and a move on another: not a conflict, converged', async () => {
+    const [P, Q] = twoPeers()
+    deliver(Q, [await spec.add(P, 'a', 0, 0)])
 
-    const opPlace1 = await place(P, 'd1', 'dice_d6', 0, 0)
-    deliver(Q, [opPlace1])
-
-    const elQ = Q.layer.querySelector('[data-id="d1"]')
-    const { op: opMove } = Q.api.applyMoveCommit(elQ, 50, 50)
-    const opPlace2 = await place(P, 'd2', 'dice_d6', 100, 100)
+    const opMove = moveTo(Q, 'a', 50, 50)
+    const opAdd  = await spec.add(P, 'b', 300, 300)
 
     const [rP] = deliver(P, [opMove])
-    const [rQ] = deliver(Q, [opPlace2])
+    const [rQ] = deliver(Q, [opAdd])
     expect(rP.result).not.toBe(RECEIVED_CONFLICT)
     expect(rQ.result).not.toBe(RECEIVED_CONFLICT)
-
     assertConverged([P, Q])
   })
 
-  test('scenario 4: double delete of the same toy merges — the toy is gone, once', async () => {
-    const P = makePeer('alice'), Q = makePeer('bob')
-    seedGenesis([P, Q])
+  test('a double delete of the same element merges: it is gone, once', async () => {
+    const [P, Q] = twoPeers()
+    deliver(Q, [await spec.add(P, 'a', 0, 0)])
 
-    const opPlace = await place(P, 'd1', 'dice_d6', 0, 0)
-    deliver(Q, [opPlace])
-
-    const { op: opDelP } = P.api.delete('d1')
-    const { op: opDelQ } = Q.api.delete('d1')
+    const opDelP = P.api.delete('a')
+    const opDelQ = Q.api.delete('a')
 
     const [rP] = deliver(P, [opDelQ])
     const [rQ] = deliver(Q, [opDelP])
     expect(rP.result).not.toBe(RECEIVED_CONFLICT)
     expect(rQ.result).not.toBe(RECEIVED_CONFLICT)
 
-    expect(P.layer.querySelector('[data-id="d1"]')).toBeNull()
-    expect(Q.layer.querySelector('[data-id="d1"]')).toBeNull()
+    expect(P.api.find('a')).toBeNull()
+    expect(Q.api.find('a')).toBeNull()
     assertConverged([P, Q])
   })
 
+  test('must-conflict: the same element moved on both sides', async () => {
+    const [P, Q] = twoPeers()
+    deliver(Q, [await spec.add(P, 'a', 0, 0)])
+
+    const opMoveP = moveTo(P, 'a', 10, 10)
+    const opMoveQ = moveTo(Q, 'a', 20, 20)
+
+    const [rP] = deliver(P, [opMoveQ])
+    const [rQ] = deliver(Q, [opMoveP])
+    expect(rP.result).toBe(RECEIVED_CONFLICT)
+    expect(rQ.result).toBe(RECEIVED_CONFLICT)
+  })
+
+  test('must-conflict: delete vs. move of the same element', async () => {
+    const [P, Q] = twoPeers()
+    deliver(Q, [await spec.add(P, 'a', 0, 0)])
+
+    P.api.delete('a')
+    const opMove = moveTo(Q, 'a', 20, 20)
+
+    const [rP] = deliver(P, [opMove])
+    expect(rP.result).toBe(RECEIVED_CONFLICT)
+  })
+})
+
+describe('concurrent convergence: toys', () => {
   test('scenario 6 (bug 3 regression): a descendant of a merge tip does not duplicate the merged op', async () => {
     const P = makePeer('alice'), Q = makePeer('bob'), R = makePeer('carol')
     seedGenesis([P, Q, R])
@@ -283,33 +327,6 @@ describe('concurrent convergence', () => {
       .toEqual([...P.layer.children].map(serializeNode))
   })
 
-  test('must-conflict: the same toy moved on both sides still conflicts', async () => {
-    const P = makePeer('alice'), Q = makePeer('bob')
-    seedGenesis([P, Q])
-
-    const opPlace = await place(P, 'd1', 'dice_d6', 0, 0)
-    deliver(Q, [opPlace])
-
-    const { op: opMoveP } = P.api.applyMoveCommit(P.layer.querySelector('[data-id="d1"]'), 10, 10)
-    const { op: opMoveQ } = Q.api.applyMoveCommit(Q.layer.querySelector('[data-id="d1"]'), 20, 20)
-
-    const [rP] = deliver(P, [opMoveQ])
-    expect(rP.result).toBe(RECEIVED_CONFLICT)
-  })
-
-  test('must-conflict: delete vs. move of the same toy still conflicts', async () => {
-    const P = makePeer('alice'), Q = makePeer('bob')
-    seedGenesis([P, Q])
-
-    const opPlace = await place(P, 'd1', 'dice_d6', 0, 0)
-    deliver(Q, [opPlace])
-
-    const { op: opDel }  = P.api.delete('d1')
-    const { op: opMove } = Q.api.applyMoveCommit(Q.layer.querySelector('[data-id="d1"]'), 20, 20)
-
-    const [rP] = deliver(P, [opMove])
-    expect(rP.result).toBe(RECEIVED_CONFLICT)
-  })
 })
 
 // ── merge checkpoints (§5.6) ────────────────────────────────────────────
@@ -517,314 +534,54 @@ describe('merge checkpoints (§5.6)', () => {
   })
 })
 
-// ── drawing layer ───────────────────────────────────────────────────────
-// The same harness, over the drawing op layer: peers draw and move shapes
-// through its LayerAPI and deliver each other's operations out of band.
+// ── drawing layer: undo across authors ──────────────────────────────────
 
-describe('concurrent convergence: drawing layer', () => {
-  function makeDrawingPeer(authorId) {
-    const tableId = `drawing-convergence-table-${_tableCounter++}`
-    const ydoc = new Y.Doc()
-    const layer = document.createElementNS(SVG_NS, 'g')
-    layer.id = 'drawing-layer'
-    ensureLayerId(layer, DRAWING_LAYER)
-    const api = makeDrawingAPI(ydoc, () => layer, { id: authorId }, tableId)
-    const peer = { id: authorId, tableId, ydoc, layer, api }
-    _drawingPeers.push(peer)
-    return peer
-  }
-  let _drawingPeers = []
-  beforeEach(() => { _drawingPeers = [] })
-
-  function seedDrawingGenesis(peers) {
-    const genesis = { id: 'genesis', parents: [], authorId: 'system', gesture: 'checkpoint', ts: 0, mutations: [] }
-    for (const p of peers) {
-      appendCheckpoint(p.ydoc, DRAWING_LAYER, genesis, [])
-      setHead(p.tableId, DRAWING_LAYER, genesis.id)
-    }
-  }
-
-  function deliverDrawing(peer, ops) {
-    for (const op of ops) getOps(peer.ydoc, DRAWING_LAYER).set(op.id, op)
-    return ops.map(op => peer.api.receive(peer.layer, op.id, []))
-  }
-
-  function drawingTipsOf(peer) {
-    return maximalTips(getOps(peer.ydoc, DRAWING_LAYER),
-      [getHead(peer.tableId, DRAWING_LAYER), ...getMergeTips(peer.tableId, DRAWING_LAYER)])
-  }
-
-  /** Every peer's live DOM matches every other's, and a from-scratch
-   * projectTips over the union of everyone's tips. */
-  function assertDrawingConverged(peers) {
-    const serialized = peers.map(p => [...p.layer.children].map(serializeNode))
-    for (let i = 1; i < peers.length; i++) expect(serialized[i]).toEqual(serialized[0])
-
-    const ops = getOps(peers[0].ydoc, DRAWING_LAYER)
-    const unionTips = maximalTips(ops, peers.flatMap(drawingTipsOf))
-    const scratch = document.createElementNS(SVG_NS, 'g')
-    ensureLayerId(scratch, DRAWING_LAYER)
-    projectTips(scratch, ops, getContent(peers[0].ydoc, DRAWING_LAYER), unionTips, [])
-    expect([...scratch.children].map(serializeNode)).toEqual(serialized[0])
-  }
-
-  const draw = (peer, id, x, y) => {
-    peer.api.add({ id, type: 'rect', x, y, width: 50, height: 50 })
-    return getOps(peer.ydoc, DRAWING_LAYER).get(getHead(peer.tableId, DRAWING_LAYER))
-  }
-  const moveTo = (peer, id, x, y) =>
-    peer.api.applyMoveCommit(peer.api.find(id), x, y).op
-
-  test('two peers drawing different shapes concurrently: rebuilt, converged', () => {
-    const P = makeDrawingPeer('alice'), Q = makeDrawingPeer('bob')
-    seedDrawingGenesis([P, Q])
-
-    const opP = draw(P, 'shapeP', 0, 0)
-    const opQ = draw(Q, 'shapeQ', 100, 100)
-
-    const [rP] = deliverDrawing(P, [opQ])
-    const [rQ] = deliverDrawing(Q, [opP])
-    // Both append a child to the layer root: order-sensitive, not
-    // conflicting, so each peer rebuilds canonically.
-    expect(rP.result).toBe(RECEIVED_REBUILT)
-    expect(rQ.result).toBe(RECEIVED_REBUILT)
-
-    expect(P.layer.children.length).toBe(2)
-    assertDrawingConverged([P, Q])
-  })
-
-  test('two peers moving different shapes: not a conflict, converged', () => {
-    const P = makeDrawingPeer('alice'), Q = makeDrawingPeer('bob')
-    seedDrawingGenesis([P, Q])
-
-    const opA = draw(P, 'a', 0, 0)
-    const opB = draw(P, 'b', 100, 100)
-    deliverDrawing(Q, [opA, opB])
-
-    const opMoveP = moveTo(P, 'a', 10, 10)
-    const opMoveQ = moveTo(Q, 'b', 200, 200)
-
-    const [rP] = deliverDrawing(P, [opMoveQ])
-    const [rQ] = deliverDrawing(Q, [opMoveP])
-    expect(rP.result).not.toBe(RECEIVED_CONFLICT)
-    expect(rQ.result).not.toBe(RECEIVED_CONFLICT)
-
-    expect(P.api.find('a').getAttribute('x')).toBe('10')
-    expect(P.api.find('b').getAttribute('x')).toBe('200')
-    assertDrawingConverged([P, Q])
-  })
-
-  test('two peers moving the same shape: a conflict', () => {
-    const P = makeDrawingPeer('alice'), Q = makeDrawingPeer('bob')
-    seedDrawingGenesis([P, Q])
-
-    const opA = draw(P, 'a', 0, 0)
-    deliverDrawing(Q, [opA])
-
-    const opMoveP = moveTo(P, 'a', 10, 10)
-    const opMoveQ = moveTo(Q, 'a', 20, 20)
-
-    const [rP] = deliverDrawing(P, [opMoveQ])
-    const [rQ] = deliverDrawing(Q, [opMoveP])
-    expect(rP.result).toBe(RECEIVED_CONFLICT)
-    expect(rQ.result).toBe(RECEIVED_CONFLICT)
-  })
-
-  test('a draw on one peer and a move on another: converged', () => {
-    const P = makeDrawingPeer('alice'), Q = makeDrawingPeer('bob')
-    seedDrawingGenesis([P, Q])
-
-    const opA = draw(P, 'a', 0, 0)
-    deliverDrawing(Q, [opA])
-
-    const opMove = moveTo(Q, 'a', 50, 50)
-    const opDraw = draw(P, 'b', 100, 100)
-
-    const [rP] = deliverDrawing(P, [opMove])
-    const [rQ] = deliverDrawing(Q, [opDraw])
-    expect(rP.result).not.toBe(RECEIVED_CONFLICT)
-    expect(rQ.result).not.toBe(RECEIVED_CONFLICT)
-    assertDrawingConverged([P, Q])
-  })
-
+describe('concurrent convergence: drawing undo', () => {
   test('undoing another author\'s move while they move something else: converged', () => {
-    const P = makeDrawingPeer('alice'), Q = makeDrawingPeer('bob')
-    seedDrawingGenesis([P, Q])
+    const P = makePeer('alice', DRAWING), Q = makePeer('bob', DRAWING)
+    seedGenesis([P, Q])
 
-    const opA = draw(P, 'a', 0, 0)
-    const opB = draw(P, 'b', 100, 100)
-    deliverDrawing(Q, [opA, opB])
+    const opA = DRAWING.add(P, 'a', 0, 0)
+    const opB = DRAWING.add(P, 'b', 100, 100)
+    deliver(Q, [opA, opB])
 
     const opBobMove = moveTo(Q, 'a', 10, 10)
-    deliverDrawing(P, [opBobMove])
+    deliver(P, [opBobMove])
 
     // Alice undoes Bob's move of a; Bob concurrently moves b.
     const opUndo = undoGesture(P.ydoc, DRAWING_LAYER, P.layer, P.tableId, 'alice', { owner: 'bob' })
     const opBobMoveB = moveTo(Q, 'b', 200, 200)
     expect(opUndo.reverts).toBe(opBobMove.id)
 
-    const [rP] = deliverDrawing(P, [opBobMoveB])
-    const [rQ] = deliverDrawing(Q, [opUndo])
+    const [rP] = deliver(P, [opBobMoveB])
+    const [rQ] = deliver(Q, [opUndo])
     expect(rP.result).not.toBe(RECEIVED_CONFLICT)
     expect(rQ.result).not.toBe(RECEIVED_CONFLICT)
 
     expect(P.api.find('a').getAttribute('x')).toBe('0')
     expect(P.api.find('b').getAttribute('x')).toBe('200')
-    assertDrawingConverged([P, Q])
+    assertConverged([P, Q])
   })
 
   test('two peers undoing the same move concurrently: a conflict, as for any two writes to one attribute', () => {
     // Expected behaviour, not special-cased: both undo ops write the same
     // attribute (§5.1, B1), so each peer sees the other's as a conflict.
-    const P = makeDrawingPeer('alice'), Q = makeDrawingPeer('bob')
-    seedDrawingGenesis([P, Q])
+    const P = makePeer('alice', DRAWING), Q = makePeer('bob', DRAWING)
+    seedGenesis([P, Q])
 
-    const opA = draw(P, 'a', 0, 0)
-    deliverDrawing(Q, [opA])
+    const opA = DRAWING.add(P, 'a', 0, 0)
+    deliver(Q, [opA])
     const opBobMove = moveTo(Q, 'a', 10, 10)
-    deliverDrawing(P, [opBobMove])
+    deliver(P, [opBobMove])
 
     const undoP = undoGesture(P.ydoc, DRAWING_LAYER, P.layer, P.tableId, 'alice', { owner: 'bob' })
     const undoQ = undoGesture(Q.ydoc, DRAWING_LAYER, Q.layer, Q.tableId, 'bob')
     expect(undoP.reverts).toBe(opBobMove.id)
     expect(undoQ.reverts).toBe(opBobMove.id)
 
-    const [rP] = deliverDrawing(P, [undoQ])
-    const [rQ] = deliverDrawing(Q, [undoP])
+    const [rP] = deliver(P, [undoQ])
+    const [rQ] = deliver(Q, [undoP])
     expect(rP.result).toBe(RECEIVED_CONFLICT)
     expect(rQ.result).toBe(RECEIVED_CONFLICT)
-  })
-})
-
-// ── boundaries layer ────────────────────────────────────────────────────
-// The same harness, over the boundaries op layer.
-
-describe('concurrent convergence: boundaries layer', () => {
-  let _bounPeers = []
-  beforeEach(() => { _bounPeers = [] })
-
-  function makeBounPeer(authorId) {
-    const tableId = `boundaries-convergence-table-${_tableCounter++}`
-    const ydoc = new Y.Doc()
-    const layer = document.createElementNS(SVG_NS, 'g')
-    layer.id = 'boundaries-positions-layer'
-    ensureLayerId(layer, BOUNDARIES_LAYER)
-    const api = makeBoundariesAPI(ydoc, () => layer, { id: authorId }, tableId)
-    const peer = { id: authorId, tableId, ydoc, layer, api }
-    _bounPeers.push(peer)
-    return peer
-  }
-
-  function seedBounGenesis(peers) {
-    const genesis = { id: 'genesis', parents: [], authorId: 'system', gesture: 'checkpoint', ts: 0, mutations: [] }
-    for (const p of peers) {
-      appendCheckpoint(p.ydoc, BOUNDARIES_LAYER, genesis, [])
-      setHead(p.tableId, BOUNDARIES_LAYER, genesis.id)
-    }
-  }
-
-  function deliverBoun(peer, ops) {
-    for (const op of ops) getOps(peer.ydoc, BOUNDARIES_LAYER).set(op.id, op)
-    return ops.map(op => peer.api.receive(peer.layer, op.id, []))
-  }
-
-  function bounTipsOf(peer) {
-    return maximalTips(getOps(peer.ydoc, BOUNDARIES_LAYER),
-      [getHead(peer.tableId, BOUNDARIES_LAYER), ...getMergeTips(peer.tableId, BOUNDARIES_LAYER)])
-  }
-
-  function assertBounConverged(peers) {
-    const serialized = peers.map(p => [...p.layer.children].map(serializeNode))
-    for (let i = 1; i < peers.length; i++) expect(serialized[i]).toEqual(serialized[0])
-
-    const ops = getOps(peers[0].ydoc, BOUNDARIES_LAYER)
-    const unionTips = maximalTips(ops, peers.flatMap(bounTipsOf))
-    const scratch = ensureLayerId(document.createElementNS(SVG_NS, 'g'), BOUNDARIES_LAYER)
-    projectTips(scratch, ops, getContent(peers[0].ydoc, BOUNDARIES_LAYER), unionTips, [])
-    expect([...scratch.children].map(serializeNode)).toEqual(serialized[0])
-  }
-
-  const headOp = (peer) => getOps(peer.ydoc, BOUNDARIES_LAYER).get(getHead(peer.tableId, BOUNDARIES_LAYER))
-  const addBoundary = (peer, id, x, y) => {
-    peer.api.add('boundary', { id, name: id, x, y, w: 100, h: 80 })
-    return headOp(peer)
-  }
-  const addPosSet = (peer, id, x, y) => {
-    const circles = gridFillExtent(x, y, 200, 200, 'square', 100, 100)
-    peer.api.add('pos-grid-sq', {
-      id, name: id, snapRadius: 30, genType: 'square', xSpacing: 100, ySpacing: 100, x, y, w: 200, h: 200, circles,
-    })
-    return headOp(peer)
-  }
-  const moveTo = (peer, id, x, y) => peer.api.applyMoveCommit(peer.api.find(id), x, y).op
-
-  test('two peers adding different boundaries concurrently: rebuilt, converged', () => {
-    const P = makeBounPeer('alice'), Q = makeBounPeer('bob')
-    seedBounGenesis([P, Q])
-
-    const opP = addBoundary(P, 'boundP', 0, 0)
-    const opQ = addBoundary(Q, 'boundQ', 300, 300)
-
-    const [rP] = deliverBoun(P, [opQ])
-    const [rQ] = deliverBoun(Q, [opP])
-    expect(rP.result).toBe(RECEIVED_REBUILT)
-    expect(rQ.result).toBe(RECEIVED_REBUILT)
-
-    expect(P.layer.children.length).toBe(2)
-    assertBounConverged([P, Q])
-  })
-
-  test('two peers moving different position sets: not a conflict, converged', () => {
-    const P = makeBounPeer('alice'), Q = makeBounPeer('bob')
-    seedBounGenesis([P, Q])
-
-    const opA = addPosSet(P, 'a', 0, 0)
-    const opB = addPosSet(P, 'b', 400, 400)
-    deliverBoun(Q, [opA, opB])
-
-    const opMoveP = moveTo(P, 'a', 10, 10)
-    const opMoveQ = moveTo(Q, 'b', 500, 500)
-
-    const [rP] = deliverBoun(P, [opMoveQ])
-    const [rQ] = deliverBoun(Q, [opMoveP])
-    expect(rP.result).not.toBe(RECEIVED_CONFLICT)
-    expect(rQ.result).not.toBe(RECEIVED_CONFLICT)
-
-    expect(P.api.find('a').getAttribute('transform')).toBe('translate(10, 10)')
-    expect(P.api.find('b').getAttribute('transform')).toBe('translate(500, 500)')
-    assertBounConverged([P, Q])
-  })
-
-  test('two peers moving the same position set: a conflict', () => {
-    const P = makeBounPeer('alice'), Q = makeBounPeer('bob')
-    seedBounGenesis([P, Q])
-
-    const opA = addPosSet(P, 'a', 0, 0)
-    deliverBoun(Q, [opA])
-
-    const opMoveP = moveTo(P, 'a', 10, 10)
-    const opMoveQ = moveTo(Q, 'a', 20, 20)
-
-    const [rP] = deliverBoun(P, [opMoveQ])
-    const [rQ] = deliverBoun(Q, [opMoveP])
-    expect(rP.result).toBe(RECEIVED_CONFLICT)
-    expect(rQ.result).toBe(RECEIVED_CONFLICT)
-  })
-
-  test('an add on one peer and a move on another: converged', () => {
-    const P = makeBounPeer('alice'), Q = makeBounPeer('bob')
-    seedBounGenesis([P, Q])
-
-    const opA = addPosSet(P, 'a', 0, 0)
-    deliverBoun(Q, [opA])
-
-    const opMove = moveTo(Q, 'a', 50, 50)
-    const opAdd = addBoundary(P, 'b', 300, 300)
-
-    const [rP] = deliverBoun(P, [opMove])
-    const [rQ] = deliverBoun(Q, [opAdd])
-    expect(rP.result).not.toBe(RECEIVED_CONFLICT)
-    expect(rQ.result).not.toBe(RECEIVED_CONFLICT)
-    assertBounConverged([P, Q])
   })
 })

@@ -6,16 +6,16 @@
  * so {plain JavaScript + the DOM} is the clear winner.
  *
  * Toy behaviour scripts (dice, trays, tokens, ...) run against the live DOM
- * of the whole toys layer, and the DOM IS the canonical document now (see
- * REVISION_PLAN.md Phase C) — so a handler just mutates it directly:
+ * of the whole toys layer, and the DOM is the canonical document, so a
+ * handler just mutates it directly:
  *
  *   const records = runInEnvelope(toyEl, () => handler.run(toyEl))
  *   commitGesture(ydoc, layer, records, { gesture, authorId, parents })
  *
- * runInEnvelope's only job now is capturing what a handler did, as raw
+ * runInEnvelope's only job is capturing what a handler did, as raw
  * MutationRecord[], so commitGesture (op_wire_mutation.js's serialize) can
- * turn that into an operation. There is no Yjs tree to translate into
- * anymore; op_layer.js's runGesture is the one real caller.
+ * turn that into an operation. op_layer.js's runGesture is the one real
+ * caller.
  *
  * Benefits to this design:
    - a MutationObserver is transparent (handler code is unmodified, ordinary

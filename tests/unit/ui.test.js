@@ -936,7 +936,7 @@ describe('histBody — undo/redo panel layout', () => {
 describe('layer state persistence (tt_layer_state)', () => {
   const LAYERS = [
     { id: 'background',           label: 'Background',   visible: true  },
-    { id: 'boundaries-positions', label: 'Boun/Pos',     visible: false },
+    { id: 'boun_pos', label: 'Boun/Pos',     visible: false },
     { id: 'toys',                 label: 'Toys',         visible: true  },
     { id: 'drawing',              label: 'Drawing',      visible: true  },
   ]
@@ -969,7 +969,7 @@ describe('layer state persistence (tt_layer_state)', () => {
       active: 'drawing',
       layers: {
         'background':           { visible: true  },
-        'boundaries-positions': { visible: false },
+        'boun_pos': { visible: false },
         'toys':                 { visible: true  },
         'drawing':              { visible: true  },
       },
@@ -995,19 +995,19 @@ describe('layer state persistence (tt_layer_state)', () => {
     init(app)
     localStorage.setItem('tt_layer_state', JSON.stringify({
       active: 'toys',
-      layers: { 'drawing': { visible: false }, 'boundaries-positions': { visible: true } },
+      layers: { 'drawing': { visible: false }, 'boun_pos': { visible: true } },
     }))
 
     restoreLayerState()
 
     expect(app.setLayerVisible).toHaveBeenCalledWith('drawing', false)
-    expect(app.setLayerVisible).toHaveBeenCalledWith('boundaries-positions', true)
+    expect(app.setLayerVisible).toHaveBeenCalledWith('boun_pos', true)
   })
 
   test('restoreLayerState leaves a layer with no stored entry at its default', () => {
     const app = mockApp('toys')
     init(app)
-    // 'boundaries-positions' defaults to hidden and is absent from the store.
+    // 'boun_pos' defaults to hidden and is absent from the store.
     localStorage.setItem('tt_layer_state', JSON.stringify({
       active: 'toys',
       layers: { 'drawing': { visible: true } },
@@ -1015,7 +1015,7 @@ describe('layer state persistence (tt_layer_state)', () => {
 
     restoreLayerState()
 
-    expect(app.setLayerVisible).not.toHaveBeenCalledWith('boundaries-positions', expect.anything())
+    expect(app.setLayerVisible).not.toHaveBeenCalledWith('boun_pos', expect.anything())
   })
 
   test('restoreLayerState re-selects the persisted layer', () => {

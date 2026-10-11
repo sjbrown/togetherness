@@ -31,8 +31,8 @@ import * as Toys from '../../src/toys.js'
 import * as Events from '../../src/events.js'
 import {
   addToyDom, activateAllToyScriptsDom, reparentToyDom, makeLayerAPI,
-  getContentsGroup, findToyDom, getSnapPoints, getAnchor, getInnerAnchor,
-  initializeToy, newToyId, applyRotateDom,
+  getContentsGroup, findEl, getSnapPoints, getAnchor, getInnerAnchor,
+  initializeToy, newToyId, applyRotate,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 import { getOps, getContent, heads } from '../../src/op_dag.js'
@@ -178,7 +178,7 @@ describe('supply - no prototype beneath it', () => {
     document.addEventListener('warn', warnSpy)
     document.addEventListener('toy:clone', cloneSpy)
 
-    const supplyEl = findToyDom(layerEl, 'supply1')
+    const supplyEl = findEl(layerEl, 'supply1')
     expect(supplyEl.getAttribute('data-below')).toBeFalsy()
     // Direct call, not clickTake/invokeMenuAction: supply.svg's own
     // 'applicable' check already gates 'Take' out of the menu whenever
@@ -202,7 +202,7 @@ describe('supply — dispatch contract', () => {
     addToyDom(ydoc, layerEl, { id: 'chipA',   toyType: 'chip',   x: 100, y: 250, color: '#fff' }, CHIP_SVG)
     await activateAll(ydoc, layerEl)
 
-    const supplyEl = findToyDom(layerEl, 'supply1')
+    const supplyEl = findEl(layerEl, 'supply1')
     const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
     const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')
     api.applyMoveCommit(api.find('chipA'), supplyPoint.cx, supplyPoint.cy)
@@ -237,7 +237,7 @@ describe('supply — clone scenario: tray_sum with a nested dice_d6', () => {
     // carried over rather than just matching the template's starting
     // point by coincidence.
     // die1 is nested inside tray1 by now, so it's not a top-level
-    // layerEl child any more — findToyDom's :scope-restricted lookup
+    // layerEl child any more — findEl's :scope-restricted lookup
     // won't see it; a plain querySelector will.
     const die1El = layerEl.querySelector('[data-id="die1"]')
     die1El.querySelector('tspan').textContent = '4'
@@ -250,7 +250,7 @@ describe('supply — clone scenario: tray_sum with a nested dice_d6', () => {
     const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')
     api.applyMoveCommit(api.find('tray1'), supplyPoint.cx, supplyPoint.cy)
 
-    const supplyEl = findToyDom(layerEl, 'supply1')
+    const supplyEl = findEl(layerEl, 'supply1')
     expect(supplyEl.getAttribute('data-below')).toBe('tray1')
 
     const unbind = bindSupplyHarness(ydoc, layerEl)
@@ -303,7 +303,7 @@ describe('supply — clone scenario: tray_sum with a nested dice_d6', () => {
     clickTake(ydoc, layerEl, supplyEl)
     unbind()
 
-    const origTray = findToyDom(layerEl, 'tray1')
+    const origTray = findEl(layerEl, 'tray1')
     const origDie  = getContentsGroup(origTray).querySelector('[data-toy-type]')
     expect(origDie.getAttribute('data-id')).toBe('die1')
     expect(origDie.querySelector('tspan').textContent).toBe('4')
@@ -322,7 +322,7 @@ describe('supply — clone scenario: chip "5" with chip "6" stacked on top', () 
     // chip.svg's template default is "5" (matches the scenario as named);
     // give chip6 a distinct value so it's unmistakable if it were ever
     // wrongly duplicated instead of left alone.
-    findToyDom(layerEl, 'chip6').querySelector('tspan').textContent = '6'
+    findEl(layerEl, 'chip6').querySelector('tspan').textContent = '6'
 
     const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
     // chip6 lands on chip5's own snap point — real stacking, same
@@ -333,9 +333,9 @@ describe('supply — clone scenario: chip "5" with chip "6" stacked on top', () 
     const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')
     api.applyMoveCommit(api.find('chip5'), supplyPoint.cx, supplyPoint.cy)
 
-    const supplyEl = findToyDom(layerEl, 'supply1')
-    const chip5El  = findToyDom(layerEl, 'chip5')
-    const chip6El  = findToyDom(layerEl, 'chip6')
+    const supplyEl = findEl(layerEl, 'supply1')
+    const chip5El  = findEl(layerEl, 'chip5')
+    const chip6El  = findEl(layerEl, 'chip6')
     expect(supplyEl.getAttribute('data-below')).toBe('chip5')
     expect(chip5El.getAttribute('data-below')).toBe('chip6')
     expect(chip6El.getAttribute('data-above')).toBe('chip5')
@@ -354,7 +354,7 @@ describe('supply — clone scenario: chip "5" with chip "6" stacked on top', () 
     const chipsAfter = layerEl.querySelectorAll('[data-toy-type="chip"]').length
     expect(chipsAfter).toBe(chipsBefore + 1) // exactly one new chip, not two
 
-    expect(findToyDom(layerEl, 'chip6')).toBeTruthy() // still exactly the original chip6
+    expect(findEl(layerEl, 'chip6')).toBeTruthy() // still exactly the original chip6
     expect(layerEl.querySelectorAll('[data-id="chip6"]').length).toBe(1)
   })
 
@@ -377,8 +377,8 @@ describe('supply — clone scenario: chip "5" with chip "6" stacked on top', () 
     clickTake(ydoc, layerEl, supplyEl)
     unbind()
 
-    expect(findToyDom(layerEl, 'chip5').getAttribute('data-below')).toBe('chip6')
-    expect(findToyDom(layerEl, 'chip6').getAttribute('data-above')).toBe('chip5')
+    expect(findEl(layerEl, 'chip5').getAttribute('data-below')).toBe('chip6')
+    expect(findEl(layerEl, 'chip6').getAttribute('data-above')).toBe('chip5')
   })
 
   test('places the clone using supply\u2019s .tt_target marker, not supply\u2019s raw centre', async () => {
@@ -419,7 +419,7 @@ describe('supply — borrows a landed toy\u2019s color, then gives it back', () 
 
   test('landing a colored chip on supply recolors supply and stashes its original color', async () => {
     const { ydoc, layerEl, api, unbind, supplyPoint } = await setUp()
-    const supplyEl = findToyDom(layerEl, 'supply1')
+    const supplyEl = findEl(layerEl, 'supply1')
     expect(supplyEl.getAttribute('data-color')).toBe('#123456')
 
     api.applyMoveCommit(api.find('chipA'), supplyPoint.cx, supplyPoint.cy)
@@ -427,20 +427,20 @@ describe('supply — borrows a landed toy\u2019s color, then gives it back', () 
 
     expect(supplyEl.getAttribute('data-color')).toBe('#dd2222')
     expect(supplyEl.getAttribute('data-orig-color')).toBe('#123456')
-    // editDom's real effect, not just the bookkeeping attribute — the
+    // editEl's real effect, not just the bookkeeping attribute — the
     // filter matrix actually changed too.
     const values = supplyEl.querySelector('.supply1__tt_color_filter feColorMatrix').getAttribute('values')
-    const chipValues = findToyDom(layerEl, 'chipA').querySelector('.chipA__tt_color_filter feColorMatrix').getAttribute('values')
+    const chipValues = findEl(layerEl, 'chipA').querySelector('.chipA__tt_color_filter feColorMatrix').getAttribute('values')
     expect(values).toBe(chipValues)
   })
 
   test('picking the chip back up restores supply\u2019s original color and clears the stash', async () => {
     const { ydoc, layerEl, api, unbind, supplyPoint } = await setUp()
-    const supplyEl = findToyDom(layerEl, 'supply1')
+    const supplyEl = findEl(layerEl, 'supply1')
     api.applyMoveCommit(api.find('chipA'), supplyPoint.cx, supplyPoint.cy)
     expect(supplyEl.getAttribute('data-color')).toBe('#dd2222') // sanity: borrow happened
 
-    api.applyMoveCommit(findToyDom(layerEl, 'chipA'), 500, 500) // pick it back up, move away
+    api.applyMoveCommit(findEl(layerEl, 'chipA'), 500, 500) // pick it back up, move away
     unbind()
 
     expect(supplyEl.getAttribute('data-color')).toBe('#123456')
@@ -451,10 +451,10 @@ describe('supply — borrows a landed toy\u2019s color, then gives it back', () 
     const { ydoc, layerEl, api, unbind, supplyPoint } = await setUp()
     addToyDom(ydoc, layerEl, { id: 'chipB', toyType: 'chip', x: 700, y: 700, color: '#22aa22' }, CHIP_SVG)
     activateAllToyScriptsDom(ydoc, layerEl)
-    const supplyEl = findToyDom(layerEl, 'supply1')
+    const supplyEl = findEl(layerEl, 'supply1')
 
     api.applyMoveCommit(api.find('chipA'), supplyPoint.cx, supplyPoint.cy)
-    api.applyMoveCommit(findToyDom(layerEl, 'chipA'), 500, 500) // depart, restoring original
+    api.applyMoveCommit(findEl(layerEl, 'chipA'), 500, 500) // depart, restoring original
     api.applyMoveCommit(api.find('chipB'), supplyPoint.cx, supplyPoint.cy) // second, different borrow
     unbind()
 
@@ -464,7 +464,7 @@ describe('supply — borrows a landed toy\u2019s color, then gives it back', () 
 
   test('initialize() resets a stuck borrow (e.g. a clone made while mid-borrow) back to the true original', async () => {
     const { ydoc, layerEl, unbind } = await setUp()
-    const supplyEl = findToyDom(layerEl, 'supply1')
+    const supplyEl = findEl(layerEl, 'supply1')
     // Simulate "cloned while something else's color was borrowed",
     // without needing an actual clone-of-a-clone scenario to set it up.
     supplyEl.setAttribute('data-color', '#dd2222')
@@ -498,7 +498,7 @@ describe('supply — reload parity (regression: nested-envelope duplicate clone)
     const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
     const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')
     api.applyMoveCommit(api.find('chip5'), supplyPoint.cx, supplyPoint.cy)
-    const supplyEl = findToyDom(layerEl, 'supply1')
+    const supplyEl = findEl(layerEl, 'supply1')
 
     const unbind = bindSupplyHarness(ydoc, layerEl)
     const opsBefore = getOps(ydoc, TOYS_LAYER).size
@@ -524,7 +524,7 @@ describe('supply — reload parity (regression: nested-envelope duplicate clone)
     const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
     const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')
     api.applyMoveCommit(api.find('chip5'), supplyPoint.cx, supplyPoint.cy)
-    const supplyEl = findToyDom(layerEl, 'supply1')
+    const supplyEl = findEl(layerEl, 'supply1')
 
     const unbind = bindSupplyHarness(ydoc, layerEl)
     clickTake(ydoc, layerEl, supplyEl)
@@ -550,7 +550,7 @@ describe('supply — reload parity (regression: nested-envelope duplicate clone)
     const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
     const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')
     api.applyMoveCommit(api.find('tray1'), supplyPoint.cx, supplyPoint.cy)
-    const supplyEl = findToyDom(layerEl, 'supply1')
+    const supplyEl = findEl(layerEl, 'supply1')
 
     const unbind = bindSupplyHarness(ydoc, layerEl)
     clickTake(ydoc, layerEl, supplyEl)
@@ -595,7 +595,7 @@ describe('supply — clone inner elements get their own data-id (regression: mov
     const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
     const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')
     api.applyMoveCommit(api.find('chip5'), supplyPoint.cx, supplyPoint.cy)
-    const supplyEl = findToyDom(layerEl, 'supply1')
+    const supplyEl = findEl(layerEl, 'supply1')
     expect(supplyEl.getAttribute('data-below')).toBe('chip5')
 
     const unbind = bindSupplyHarness(ydoc, layerEl)
@@ -609,8 +609,8 @@ describe('supply — clone inner elements get their own data-id (regression: mov
 
   test('none of the clone’s inner data-ids collide with the prototype’s', async () => {
     const { layerEl, cloneId } = await setUp()
-    const originalEl = findToyDom(layerEl, 'chip5')
-    const cloneEl    = findToyDom(layerEl, cloneId)
+    const originalEl = findEl(layerEl, 'chip5')
+    const cloneEl    = findEl(layerEl, cloneId)
 
     const originalIds = [originalEl, ...originalEl.querySelectorAll('[data-id]')].map(el => el.getAttribute('data-id'))
     const cloneIds    = [cloneEl,    ...cloneEl.querySelectorAll('[data-id]')].map(el => el.getAttribute('data-id'))
@@ -626,8 +626,8 @@ describe('supply — clone inner elements get their own data-id (regression: mov
     // next thing a player does with what they just took.
     api.applyMoveCommit(api.find(cloneId), 800, 800)
 
-    const liveProtoAnchor = getAnchor(findToyDom(layerEl, 'chip5'))
-    const liveCloneAnchor = getAnchor(findToyDom(layerEl, cloneId))
+    const liveProtoAnchor = getAnchor(findEl(layerEl, 'chip5'))
+    const liveCloneAnchor = getAnchor(findEl(layerEl, cloneId))
     expect(liveCloneAnchor).toEqual({ x: 800, y: 800 })
 
     const ops = getOps(ydoc, TOYS_LAYER)
@@ -665,13 +665,13 @@ describe('supply — a clone always carries the prototype’s other data- attrib
     addToyDom(ydoc, layerEl, { id: 'chip5',   toyType: 'chip',   x: 500, y: 500, color: '#dd2222' }, CHIP_SVG)
     await activateAll(ydoc, layerEl)
 
-    const chip5El = findToyDom(layerEl, 'chip5')
-    applyRotateDom(chip5El, 90)
+    const chip5El = findEl(layerEl, 'chip5')
+    applyRotate(chip5El, 90)
     // Any other data-* attribute a real toy might be carrying, unrelated
     // to rotation, should ride along too.
     chip5El.setAttribute('data-my-custom', 'keep-me')
 
-    const supplyEl = findToyDom(layerEl, 'supply1')
+    const supplyEl = findEl(layerEl, 'supply1')
 
     const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
     const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')

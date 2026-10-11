@@ -72,7 +72,7 @@ entire public contract. Recognized members:
   `tools-schema.js`'s OptionField kinds). Merged in generically by
   `getTtStateSchema`; see `single_poker_card.svg`'s suit/rank sliders.
 - **`applyEdit(elem, editData)`** — counterpart to `editableFields`. Called
-  with whatever edit keys `editDom` doesn't own itself (i.e. everything
+  with whatever edit keys `editEl` doesn't own itself (i.e. everything
   but `color`/`name`) whenever one of your fields is committed — and also,
   on a detached ghost clone of `elem`, while the user is still dragging an
   edit-mode range-ticked slider (see `previewEdit`), so a live preview
