@@ -201,10 +201,6 @@ const _remoteDrags = new Map();
 // Rebuilt from awareness on each syncFromAwareness() call.
 const _remoteAddCursors = new Map();
 
-// Remote peers' attention pointers — clientId -> { x, y, color }.
-// Rebuilt from awareness on each syncFromAwareness() call.
-const _remoteAttention = new Map();
-
 // Local "adding" cursor — drawn immediately (not round-tripped through
 // awareness), same rationale as the drag ghost above: works fully offline.
 // { tool, groupEl } | null.
@@ -326,7 +322,6 @@ export function syncFromAwareness(awarenessStates, myClientId) {
   }
   _remoteDrags.clear();
   _remoteAddCursors.clear();
-  _remoteAttention.clear();
 
   const nextRemoteBowstrings = new Map();
 
@@ -404,10 +399,6 @@ export function syncFromAwareness(awarenessStates, myClientId) {
           gradId,
         });
       });
-    }
-
-    if (state?.attention && typeof state.attention.x === 'number' && typeof state.attention.y === 'number') {
-      _remoteAttention.set(clientId, { x: state.attention.x, y: state.attention.y, color });
     }
 
     // Remote add-cursor — peer is hovering/placing with a non-'select'
@@ -1368,12 +1359,6 @@ export function clearLocalAddCursor() {
 // the end of render() — z-top, like the bowstring charge.
 function renderAddCursors() {
   if (_localAddCursor) _layerEl.appendChild(_localAddCursor.groupEl);
-  for (const att of _remoteAttention.values()) {
-    const groupEl = el('g', { class: 'attention-pointer', transform: `translate(${att.x}, ${att.y})` });
-    groupEl.appendChild(el('circle', { r: 14, fill: 'none', stroke: att.color, 'stroke-width': 3, opacity: 0.8 }));
-    groupEl.appendChild(el('circle', { r: 4, fill: att.color }));
-    _layerEl.appendChild(groupEl);
-  }
   for (const cursor of _remoteAddCursors.values()) {
     const groupEl = _buildAddCursorGroup(cursor.tool, cursor.color);
     groupEl.setAttribute('transform', `translate(${cursor.x}, ${cursor.y})`);
