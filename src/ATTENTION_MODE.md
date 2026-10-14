@@ -365,5 +365,3 @@ before any of this touches `src/`.
 
 The formula functions written for the toy are lifted into the app unchanged,
 with unit tests.
-
----
