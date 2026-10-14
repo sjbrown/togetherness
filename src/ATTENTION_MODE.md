@@ -16,8 +16,9 @@ changes the table.
 
 Attention mode is pointing without touching. While in it, a player's pointer
 input never reaches the table layers. It is written to awareness instead, and
-every player, the sender included, sees it drawn as an ephemeral effect on the
-overlay.
+every player, the sender included, sees it drawn on the overlay. The trail and
+click ripples are ephemeral. The circle marking where the player started stays
+on the table until someone dismisses it.
 
 Attention mode supersedes the Player Marker toy, which existed to do this job
 with a persistent object. The toy is removed in a separate change.
@@ -70,8 +71,8 @@ Attention mode ends when either happens:
 - **Idle**: no attention input for `IDLE_MS` (default 3000).
 - **Escape** key.
 
-On exit the player's `attention` field is set to `null`. Peers fade it out
-(§5.4).
+On exit the player's `attention` field is set to `null`, and peers fade the
+trail and ripples out (§5.5). The origin circle stays (§2.5).
 
 ### 2.4 Receivers
 
@@ -81,20 +82,47 @@ awareness until the awareness timeout (~30s in y-protocols). So a receiver
 also hides any attention whose `last` is older than `IDLE_MS` by its own
 reckoning (§4).
 
+### 2.5 The origin after exit
+
+When attention mode ends, the origin circle stays on the overlay, static and
+dimmed (§5.2). It goes away in exactly two ways:
+
+- **Dismissal.** Any player, the owner included, presses inside the circle.
+  The press is consumed: it does not reach the table layers. It does still
+  count toward a triple-click, so a triple-click inside an expired circle
+  dismisses it and starts a new attention mode at the same spot.
+- **Replacement.** The owner enters attention mode again. Each player has at
+  most one origin; the old one fades out as the new one appears.
+
+While the owner's attention mode is live, the circle cannot be dismissed. The
+owner's presses on it are attention clicks, and other players' presses pass
+through to the table as if it weren't there.
+
+"Inside" is the circle's drawn radius, `ORIGIN_R / origin.scale` in canvas
+units. canvas.js checks expired origins on pointerdown before ordinary
+hit-testing, the same way it checks the bowstring handle, since nothing on the
+overlay is hit-testable.
+
+An origin also disappears when its owner leaves the table and their awareness
+state is removed.
+
 ---
 
 ## 3. Awareness schema
 
-One new top-level field on each client's awareness state:
+Three new top-level fields on each client's awareness state:
 
 ```js
-attention: {
-  origin: [x, y, t],          // entry point
+attention: {                  // live attention mode, null outside it
   trail:  [[x, y, t], ...],   // pointer positions, oldest first
   clicks: [[x, y, t], ...],   // presses after the entry, oldest first
   last:   t,                  // newest attention input of any kind
-  scale:  s,                  // sender's view scale (§5.1)
+  scale:  s,                  // sender's current view scale (§5.1)
 } | null
+
+attnOrigin: [x, y, t, s] | null   // this player's origin circle; outlives `attention`
+
+attnDismiss: [[userId, t], ...]   // origins this player has dismissed
 ```
 
 - `x`, `y` are **canvas space**, the same space as `cursor` and `drag`.
@@ -103,23 +131,43 @@ attention: {
 - Tuples rather than `{x, y, t}` objects: awareness re-sends the whole local
   state on every change, and the key names alone would roughly double the
   payload.
-- `null`, not absent, when not in attention mode, same as `cursor` and
-  `drag`.
+- `null`, not absent, when not in use, same as `cursor` and `drag`.
 
-### 3.1 Bounding the arrays
+### 3.1 Origins and dismissal
+
+`attnOrigin` is split out of `attention` because it outlives it. Its `t` is
+the entry time and doubles as the origin's identity; `s` is the sender's view
+scale at entry, fixed from then on (§5.1).
+
+No client can write another client's awareness, so a player dismisses someone
+else's origin by announcing it in their own state:
+
+1. The dismissing player appends `[ownerUserId, origin.t]` to their own
+   `attnDismiss`, and fades the circle out locally at once.
+2. Every client hides an origin that appears in any peer's `attnDismiss`. A
+   peer joining later sees the dismissal alongside the origin and never draws
+   it.
+3. The owner, on seeing its current origin dismissed, sets `attnOrigin` to
+   `null`.
+4. The dismissing player drops an entry from `attnDismiss` once the owner's
+   `attnOrigin` no longer carries that `t`. The list is capped at 8 as a
+   backstop.
+
+Owners are keyed by `user.id` rather than awareness `clientID`, which changes
+across reconnects.
+
+### 3.2 Bounding the arrays
 
 Two limits apply to `trail` and `clicks`, and the sender enforces both on
 every write:
 
-- **Age.** A trail entry older than `TRAIL_FADE_MS` is no longer drawn (§5.2),
-  and a click older than its full animation (§5.3) is finished. Both are
+- **Age.** A trail entry older than `TRAIL_FADE_MS` is no longer drawn (§5.3),
+  and a click older than its full animation (§5.4) is finished. Both are
   dropped. This is the limit that normally binds.
 - **Count.** `MAX_TRAIL = 100`, `MAX_CLICKS = 100`, oldest dropped first. A
   backstop for a burst of input inside one fade window.
 
-`origin` is never dropped while the mode lasts.
-
-### 3.2 Write rate
+### 3.3 Write rate
 
 Every awareness write sends the whole state to every peer.
 
@@ -129,7 +177,8 @@ Every awareness write sends the whole state to every peer.
 - Awareness writes are **throttled** to one per `BROADCAST_MS` (default 50,
   matching the bowstring's `BOWSTRING_BROADCAST_MS`). Points sampled between
   writes accumulate locally and go out together on the next write.
-- Entry, clicks and exit bypass the throttle and are written immediately.
+- Entry, clicks, exit and dismissals bypass the throttle and are written
+  immediately.
 
 With age trimming, a fast continuous scribble holds roughly
 `TRAIL_FADE_MS / TRAIL_MIN_MS` entries before the count cap; at ~15 bytes per
@@ -160,6 +209,9 @@ tell, without skew, and is what the receiver-side idle check in §2.4 uses.
 The anchor is per peer and survives `syncFromAwareness` rebuilds, as the
 bowstring's `firstSeenAt` does.
 
+The origin's intro and spin use `age(attnOrigin.t)` from the same anchor.
+Once its attention has ended the origin is static and needs no age.
+
 Network latency shows up as entries looking slightly younger than they are,
 which is harmless: an animation starts on arrival rather than partway in.
 
@@ -171,8 +223,8 @@ clock.
 ## 5. Rendering
 
 All three effects are drawn on `#overlay-layer` in the player's two gradient
-colours, `c1` and `c2` (`user.gradient`, §5.6). The sender draws its own effects from
-local state rather than round-tripping through awareness, same as the
+colours, `c1` and `c2` (`user.gradient`, §5.6). The sender draws its own
+effects from local state rather than round-tripping through awareness, same as the
 add-cursor and the drag ghost, so attention works offline and with no
 latency.
 
@@ -193,9 +245,11 @@ canvasSize = senderPx / attention.scale
 Receivers draw that canvas size under their own view transform, so the effect
 grows and shrinks with the table on their screen, exactly as a toy does.
 
-`scale` is the sender's current scale. If the sender zooms mid-attention,
-everything already drawn resizes with it, on the sender's screen and every
-peer's alike.
+The trail and ripples use `attention.scale`, the sender's current scale: if
+the sender zooms mid-attention, they resize with it, on the sender's screen
+and every peer's alike. The origin uses its own `s`, fixed at entry, because
+it outlives the attention and marks the patch of table the sender circled at
+that moment.
 
 ### 5.2 Origin: dashed circle
 
@@ -203,14 +257,24 @@ A dashed circle centred on `origin`.
 
 - Stroke: solid `c1`, width `ORIGIN_STROKE`, dash `ORIGIN_DASH` / gap
   `ORIGIN_GAP`.
-- Fill: a radial gradient, `c1` at the centre, `c2` at `ORIGIN_GRAD_MID`,
-  transparent at the rim. The `c1` and `c2` stops have opacity
-  `ORIGIN_FILL_OPACITY`.
+- Fill: a radial gradient, transparent at the centre, `c2` at
+  `ORIGIN_GRAD_MID`, `c1` at the rim. The `c2` and `c1` stops have opacity
+  `ORIGIN_FILL_OPACITY`. The centre stays clear so the toy being pointed at
+  shows through.
 - Radius `ORIGIN_R`.
-- Slow rotation: `stroke-dashoffset` advances at `ORIGIN_SPIN` px/s,
-  computed from `age(origin.t)` (§6).
 - Intro: radius eases from `ORIGIN_R * ORIGIN_INTRO_SCALE` to `ORIGIN_R`
   over `ORIGIN_INTRO_MS`.
+
+While its attention is live:
+
+- Slow rotation: `stroke-dashoffset` advances at `ORIGIN_SPIN` px/s,
+  computed from `age(attnOrigin.t)` (§6).
+
+After its attention ends (§2.5):
+
+- Static: no rotation, `stroke-dashoffset` 0.
+- Opacity `ORIGIN_EXPIRED_OPACITY`.
+- On dismissal or replacement, it fades from there to 0 over `EXIT_MS`.
 
 ### 5.3 Trail: tapered line
 
@@ -244,8 +308,8 @@ of different widths join without notches.
 
 ### 5.4 Clicks: ripples
 
-Each entry in `clicks` draws `CLICK_RINGS` expanding, fading rings in `c1`, ring *k*
-delayed by `k * CLICK_RING_DELAY_MS`:
+Each entry in `clicks` draws `CLICK_RINGS` expanding, fading rings in `c1`,
+ring *k* delayed by `k * CLICK_RING_DELAY_MS`:
 
 ```
 p      = clamp((age(t) - k * CLICK_RING_DELAY_MS) / CLICK_MS, 0, 1)
@@ -256,13 +320,14 @@ stroke = lerp(CLICK_STROKE0, CLICK_STROKE1, p)
 
 A ring with `p` at 0 or 1 is not drawn. A click's full animation lasts
 `CLICK_MS + (CLICK_RINGS - 1) * CLICK_RING_DELAY_MS`, which is also its trim
-age in §3.1.
+age in §3.2.
 
 ### 5.5 Exit
 
 When a peer's `attention` goes to `null`, or goes stale per §2.4, the
-receiver keeps its last copy for `EXIT_MS` and draws everything with an extra
-opacity multiplier falling from 1 to 0, then drops it. The sender does the
+receiver keeps its last copy for `EXIT_MS` and draws the trail and ripples with
+an extra opacity multiplier falling from 1 to 0, then drops it. The origin is
+not part of this; it switches to its expired look (§5.2). The sender does the
 same with its own local copy.
 
 ### 5.6 Gradient defs
@@ -289,10 +354,14 @@ node, and runs on every awareness change from any peer. So:
   gesture has its own `#delight-layer`.
 
 Every animated value in §5 is therefore a pure function of `age()`, computed
-in JS at draw time. A `requestAnimationFrame` pump renders while any
-attention effect is visible and stops itself when none is, as
+in JS at draw time. A `requestAnimationFrame` pump renders while any live
+attention, or any fade-out, is visible and stops itself when none is, as
 `_pumpRemoteCharge` does for the bowstring charge. This survives any number of
 rebuilds, and the formulas are unit-testable as plain math.
+
+Expired origins are deliberately static. One can sit on the table for an
+entire session, and a spinning one would keep the pump, and so a full
+overlay rebuild, running every frame for as long as it stayed.
 
 If the click ripple looks less smooth than a CSS version would, the fallback
 is CSS keyframes with `animation-delay: -<age>ms` on each rebuilt node, which
@@ -309,11 +378,11 @@ Values from the tuning toy (§8). Sizes are sender screen px (§5.1).
 |-----------------------|-------|---------|---------|
 | `IDLE_MS`             | 3000  | ms      | §2.3    |
 | `EXIT_MS`             | 400   | ms      | §5.5    |
-| `MAX_TRAIL`           | 100   | entries | §3.1    |
-| `MAX_CLICKS`          | 100   | entries | §3.1    |
-| `TRAIL_MIN_DIST`      | 4     | px      | §3.2    |
-| `TRAIL_MIN_MS`        | 16    | ms      | §3.2    |
-| `BROADCAST_MS`        | 50    | ms      | §3.2    |
+| `MAX_TRAIL`           | 100   | entries | §3.2    |
+| `MAX_CLICKS`          | 100   | entries | §3.2    |
+| `TRAIL_MIN_DIST`      | 4     | px      | §3.3    |
+| `TRAIL_MIN_MS`        | 16    | ms      | §3.3    |
+| `BROADCAST_MS`        | 50    | ms      | §3.3    |
 | `ORIGIN_R`            | 35    | px      | §5.2    |
 | `ORIGIN_STROKE`       | 5.75  | px      | §5.2    |
 | `ORIGIN_DASH`         | 6     | px      | §5.2    |
@@ -323,6 +392,7 @@ Values from the tuning toy (§8). Sizes are sender screen px (§5.1).
 | `ORIGIN_INTRO_MS`     | 250   | ms      | §5.2    |
 | `ORIGIN_FILL_OPACITY` | 0.35* | 0–1     | §5.2    |
 | `ORIGIN_GRAD_MID`     | 0.5*  | 0–1     | §5.2    |
+| `ORIGIN_EXPIRED_OPACITY` | 0.7* | 0–1  | §5.2    |
 | `TRAIL_MIN_W`         | 0.5   | px      | §5.3    |
 | `TRAIL_MAX_W`         | 6     | px      | §5.3    |
 | `TRAIL_FADE_MS`       | 1500  | ms      | §5.3    |
@@ -354,6 +424,9 @@ before any of this touches `src/`.
   cover the same shapes in both.
 - Input in the sender pane behaves like attention mode: triple-click enters,
   moves extend the trail, presses add clicks, idle ends it.
+- Either pane can dismiss an expired origin by clicking it. A dismissal from
+  the receiver travels back to the sender through the simulated network, per
+  §3.1.
 - A slider for every tunable in §7, live.
 - Simulated **latency** and **clock skew** sliders, driving the receiver
   through the §4 anchoring.
