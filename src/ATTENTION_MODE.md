@@ -264,6 +264,17 @@ A dashed circle centred on `origin`.
 - Radius `ORIGIN_R`.
 - Intro: radius eases from `ORIGIN_R * ORIGIN_INTRO_SCALE` to `ORIGIN_R`
   over `ORIGIN_INTRO_MS`.
+- Fly-in, receivers only: a receiver may be looking at a different part of
+  the table. When a new origin arrives together with live attention, the
+  circle starts at the centre of the receiver's current view and travels to
+  the origin over `ORIGIN_FLY_MS` (easeInOutCubic), holding its intro radius
+  on the way; the intro shrink plays on landing. The start point is the view
+  centre at the moment of receipt, in canvas space, so panning during the
+  flight doesn't bend it. If the origin is off-screen, the circle visibly
+  leaves in its direction. The sender's own circle appears in place, and an
+  origin first seen already expired (a late joiner) does not fly. Flight
+  timing is local: it starts on receipt, recorded per peer like the
+  bowstring's `firstSeenAt`.
 
 While its attention is live:
 
@@ -306,21 +317,53 @@ pointing reads bold. A segment whose `ageF` is 0 is not drawn, so the trail
 visibly shortens from its tail. `stroke-linecap: round`, so adjacent segments
 of different widths join without notches.
 
-### 5.4 Clicks: ripples
+### 5.4 Clicks: explosions
 
-Each entry in `clicks` draws `CLICK_RINGS` expanding, fading rings in `c1`,
+Each entry in `clicks` draws a burst in three parts, all from the same
+`age(t)`:
+
+**Flash.** A filled disc that blooms and fades:
+
+```
+p     = age(t) / CLICK_FLASH_MS
+r     = CLICK_FLASH_R * easeOutCubic(p)
+alpha = (1 - p)^2
+fill  = color-mix(in oklab, white CLICK_FLASH_WHITE%, c1)
+```
+
+**Sparks.** `CLICK_SPARKS` short strokes shooting outward:
+
+```
+p      = age(t) / CLICK_MS
+angle  = (j + (rand() - 0.5) * CLICK_SPARK_JITTER) / CLICK_SPARKS * 2π
+v      = 1 - rand() * CLICK_SPARK_SPREAD                 // per-spark speed
+head   = lerp(CLICK_SPARK_R0, CLICK_SPARK_DIST * v, easeOutCubic(p))
+tail   = max(CLICK_SPARK_R0, head - CLICK_SPARK_LEN * (1 - p))
+width  = CLICK_SPARK_W * (1 - p)
+alpha  = (1 - p)^CLICK_FADE_EXP
+stroke = color-mix(in oklab, c2 (p*100)%, c1)
+```
+
+Fast out of the centre, decelerating, each spark shortening and thinning to
+nothing; `c1` when fresh, `c2` as it burns out. `stroke-linecap: round`.
+
+`rand()` is a small PRNG seeded from the click tuple `(x, y, t)` and drawn
+in the same order on every render, so the spark pattern is the same on every
+rebuild and on every peer, with no extra data on the wire.
+
+**Shockwave.** `CLICK_RINGS` expanding, fading rings in `c1` (0 for none),
 ring *k* delayed by `k * CLICK_RING_DELAY_MS`:
 
 ```
-p      = clamp((age(t) - k * CLICK_RING_DELAY_MS) / CLICK_MS, 0, 1)
+p      = (age(t) - k * CLICK_RING_DELAY_MS) / CLICK_MS
 radius = lerp(CLICK_R0, CLICK_R1, easeOutCubic(p))
 alpha  = (1 - p)^CLICK_FADE_EXP
 stroke = lerp(CLICK_STROKE0, CLICK_STROKE1, p)
 ```
 
-A ring with `p` at 0 or 1 is not drawn. A click's full animation lasts
-`CLICK_MS + (CLICK_RINGS - 1) * CLICK_RING_DELAY_MS`, which is also its trim
-age in §3.2.
+A part whose `p` is outside (0, 1) is not drawn. A click is finished, and
+trimmed (§3.2), once all three parts are:
+`max(CLICK_MS, CLICK_FLASH_MS, CLICK_MS + (CLICK_RINGS - 1) * CLICK_RING_DELAY_MS)`.
 
 ### 5.5 Exit
 
@@ -372,7 +415,9 @@ fully determined when they start, which the ripple is and the trail is not.
 
 ## 7. Tunables
 
-Values from the tuning toy (§8). Sizes are sender screen px (§5.1).
+Values from the tuning toy (§8). Sizes are sender screen px (§5.1). The
+values marked † were tuned against a mock table whose toys were about a third
+of their real size (§8) and need another pass.
 
 | Name                  | Value | Unit    | Used in |
 |-----------------------|-------|---------|---------|
@@ -383,31 +428,42 @@ Values from the tuning toy (§8). Sizes are sender screen px (§5.1).
 | `TRAIL_MIN_DIST`      | 4     | px      | §3.3    |
 | `TRAIL_MIN_MS`        | 16    | ms      | §3.3    |
 | `BROADCAST_MS`        | 50    | ms      | §3.3    |
-| `ORIGIN_R`            | 35    | px      | §5.2    |
-| `ORIGIN_STROKE`       | 5.75  | px      | §5.2    |
-| `ORIGIN_DASH`         | 6     | px      | §5.2    |
-| `ORIGIN_GAP`          | 13.5  | px      | §5.2    |
-| `ORIGIN_SPIN`         | 5     | px/s    | §5.2    |
+| `ORIGIN_R`            | 35†   | px      | §5.2    |
+| `ORIGIN_STROKE`       | 5.75† | px      | §5.2    |
+| `ORIGIN_DASH`         | 6†    | px      | §5.2    |
+| `ORIGIN_GAP`          | 13.5† | px      | §5.2    |
+| `ORIGIN_SPIN`         | 5†    | px/s    | §5.2    |
 | `ORIGIN_INTRO_SCALE`  | 4     | ×       | §5.2    |
 | `ORIGIN_INTRO_MS`     | 250   | ms      | §5.2    |
+| `ORIGIN_FLY_MS`       | 600*  | ms      | §5.2    |
 | `ORIGIN_FILL_OPACITY` | 0.35* | 0–1     | §5.2    |
 | `ORIGIN_GRAD_MID`     | 0.5*  | 0–1     | §5.2    |
 | `ORIGIN_EXPIRED_OPACITY` | 0.7* | 0–1  | §5.2    |
-| `TRAIL_MIN_W`         | 0.5   | px      | §5.3    |
-| `TRAIL_MAX_W`         | 6     | px      | §5.3    |
+| `TRAIL_MIN_W`         | 0.5†  | px      | §5.3    |
+| `TRAIL_MAX_W`         | 6†    | px      | §5.3    |
 | `TRAIL_FADE_MS`       | 1500  | ms      | §5.3    |
 | `TRAIL_AGE_EXP`       | 1.5   | —       | §5.3    |
-| `TRAIL_SPEED_PX`      | 60    | px      | §5.3    |
+| `TRAIL_SPEED_PX`      | 60†   | px      | §5.3    |
 | `TRAIL_SPEED_WEIGHT`  | 0.5   | 0–1     | §5.3    |
 | `TRAIL_MIN_OPACITY`   | 0     | 0–1     | §5.3    |
 | `TRAIL_C2_AT`         | 0.5*  | 0–1     | §5.3    |
 | `CLICK_MS`            | 700   | ms      | §5.4    |
-| `CLICK_R0`            | 4     | px      | §5.4    |
-| `CLICK_R1`            | 36    | px      | §5.4    |
-| `CLICK_STROKE0`       | 4     | px      | §5.4    |
-| `CLICK_STROKE1`       | 1     | px      | §5.4    |
+| `CLICK_SPARKS`        | 10*   | count   | §5.4    |
+| `CLICK_SPARK_R0`      | 6*    | px      | §5.4    |
+| `CLICK_SPARK_DIST`    | 48*   | px      | §5.4    |
+| `CLICK_SPARK_LEN`     | 18*   | px      | §5.4    |
+| `CLICK_SPARK_W`       | 3.5*  | px      | §5.4    |
+| `CLICK_SPARK_SPREAD`  | 0.35* | 0–1     | §5.4    |
+| `CLICK_SPARK_JITTER`  | 0.5*  | 0–1     | §5.4    |
+| `CLICK_FLASH_MS`      | 220*  | ms      | §5.4    |
+| `CLICK_FLASH_R`       | 16*   | px      | §5.4    |
+| `CLICK_FLASH_WHITE`   | 0.5*  | 0–1     | §5.4    |
+| `CLICK_R0`            | 4†    | px      | §5.4    |
+| `CLICK_R1`            | 36†   | px      | §5.4    |
+| `CLICK_STROKE0`       | 4†    | px      | §5.4    |
+| `CLICK_STROKE1`       | 1†    | px      | §5.4    |
 | `CLICK_FADE_EXP`      | 1.5   | —       | §5.4    |
-| `CLICK_RINGS`         | 2     | count   | §5.4    |
+| `CLICK_RINGS`         | 1*    | count   | §5.4    |
 | `CLICK_RING_DELAY_MS` | 120   | ms      | §5.4    |
 
 \* Not yet tuned.
@@ -419,9 +475,14 @@ Values from the tuning toy (§8). Sizes are sender screen px (§5.1).
 A standalone HTML page, outside the app, for finding the §7 values by eye
 before any of this touches `src/`.
 
-- A sender pane and a receiver pane over the same mock table of toy-sized
-  shapes. Each pane has its own zoom, so §5.1 can be checked: the effect must
-  cover the same shapes in both.
+- A sender pane and a receiver pane over the same mock table. Toys are drawn
+  at their app sizes in canvas units (d6 80×80, chip 80 across, poker card
+  100×150, meeple about 80), and the sender pane opens at the app's default
+  zoom of 1, so a circle's size relative to a die is what it will be in the
+  app. Each pane has its own zoom, so §5.1 can be checked: the effect must
+  cover the same toys in both.
+- A "Look elsewhere" button pans the receiver away, to watch the fly-in
+  (§5.2).
 - Input in the sender pane behaves like attention mode: triple-click enters,
   moves extend the trail, presses add clicks, idle ends it.
 - Either pane can dismiss an expired origin by clicking it. A dismissal from
