@@ -3,8 +3,7 @@
 Design record for attention mode: a way for a player to point at the table
 and have every peer see where they are pointing.
 
-Status: **draft spec**. Values in §7 are placeholders until the tuning toy
-(§8) settles them.
+Status: **draft spec**.
 
 ---
 
@@ -33,7 +32,8 @@ A player enters attention mode with a **triple-click**, or a **triple-tap** on
 touch. The third press is the entry event: it acts on pointerdown, not after
 the release.
 
-The entry point becomes the **origin** (§3).
+The entry point becomes the **origin** (§3). The origin circle appearing
+under the pointer is the only entry feedback; no toast, no stage tint.
 
 The first two presses of the sequence are ordinary input and act on the table
 as they normally would. Only from the third press on is input diverted.
@@ -48,6 +48,8 @@ no drags, no drawing, no placement, no double-tap view reset. Instead:
 | pointermove  | append to `trail`   |
 | pointerdown  | append to `clicks`  |
 | either       | set `last`          |
+
+The stage shows `cursor: pointer` for as long as the mode lasts.
 
 Mouse and touch behave identically. The only difference is physical: a finger
 has no hover, so a touch contributes to the trail only while it is down.
@@ -168,8 +170,8 @@ clock.
 
 ## 5. Rendering
 
-All three effects are drawn on `#overlay-layer` in the player's colour (and
-gradient, where a stroke can take one). The sender draws its own effects from
+All three effects are drawn on `#overlay-layer` in the player's two gradient
+colours, `c1` and `c2` (`user.gradient`, §5.6). The sender draws its own effects from
 local state rather than round-tripping through awareness, same as the
 add-cursor and the drag ghost, so attention works offline and with no
 latency.
@@ -199,8 +201,12 @@ peer's alike.
 
 A dashed circle centred on `origin`.
 
-- Radius `ORIGIN_R`, stroke `ORIGIN_STROKE`, dash `ORIGIN_DASH` / gap
+- Stroke: solid `c1`, width `ORIGIN_STROKE`, dash `ORIGIN_DASH` / gap
   `ORIGIN_GAP`.
+- Fill: a radial gradient, `c1` at the centre, `c2` at `ORIGIN_GRAD_MID`,
+  transparent at the rim. The `c1` and `c2` stops have opacity
+  `ORIGIN_FILL_OPACITY`.
+- Radius `ORIGIN_R`.
 - Slow rotation: `stroke-dashoffset` advances at `ORIGIN_SPIN` px/s,
   computed from `age(origin.t)` (§6).
 - Intro: radius eases from `ORIGIN_R * ORIGIN_INTRO_SCALE` to `ORIGIN_R`
@@ -220,7 +226,16 @@ speedF = 1 - clamp(lengthPx / TRAIL_SPEED_PX, 0, 1)         // 1 slow, 0 fast
 widthF = ageF^TRAIL_AGE_EXP * lerp(1, speedF, TRAIL_SPEED_WEIGHT)
 width  = lerp(TRAIL_MIN_W, TRAIL_MAX_W, widthF)
 alpha  = lerp(TRAIL_MIN_OPACITY, 1, ageF)
+c2Pct  = clamp((1 - ageF) / TRAIL_C2_AT, 0, 1) * 100
+stroke = color-mix(in oklab, c2 c2Pct%, c1)
 ```
+
+The head of the trail is `c1`, shading to `c2` by the time a segment is
+`TRAIL_C2_AT` of the way through its fade. Colour is per segment rather than
+a `<linearGradient>` stroke: a gradient in objectBoundingBox units on a
+perfectly horizontal or vertical line has a zero-height box and draws
+nothing. `color-mix()` set through `style.stroke` takes the `hsl()` strings
+`user.gradient` holds directly, with no parsing.
 
 Long segments are fast flicks and read thinner, like a brush; slow, careful
 pointing reads bold. A segment whose `ageF` is 0 is not drawn, so the trail
@@ -229,7 +244,7 @@ of different widths join without notches.
 
 ### 5.4 Clicks: ripples
 
-Each entry in `clicks` draws `CLICK_RINGS` expanding, fading rings, ring *k*
+Each entry in `clicks` draws `CLICK_RINGS` expanding, fading rings in `c1`, ring *k*
 delayed by `k * CLICK_RING_DELAY_MS`:
 
 ```
@@ -249,6 +264,16 @@ When a peer's `attention` goes to `null`, or goes stale per §2.4, the
 receiver keeps its last copy for `EXIT_MS` and draws everything with an extra
 opacity multiplier falling from 1 to 0, then drops it. The sender does the
 same with its own local copy.
+
+### 5.6 Gradient defs
+
+The origin fill references a `<radialGradient>` by id, so it cannot live in
+`#overlay-layer`, which is wiped on every render. It goes in the page-root
+defs beside the player's `<linearGradient id="grad-{user.id}">`, as
+`attn-grad-{user.id}`, created and refreshed by `upsertUserGradient` (user.js
+is the one owner of gradient DOM) and removed by `pruneUserGradients`
+alongside the linear one. `ORIGIN_GRAD_MID` and `ORIGIN_FILL_OPACITY` are
+baked into its stops.
 
 ---
 
@@ -278,40 +303,44 @@ fully determined when they start, which the ripple is and the trail is not.
 
 ## 7. Tunables
 
-Starting values. The tuning toy (§8) exists to replace them. Sizes are sender
-screen px (§5.1).
+Values from the tuning toy (§8). Sizes are sender screen px (§5.1).
 
-| Name                  | Default | Unit    | Used in |
-|-----------------------|---------|---------|---------|
-| `IDLE_MS`             | 3000    | ms      | §2.3    |
-| `EXIT_MS`             | 400     | ms      | §5.5    |
-| `MAX_TRAIL`           | 100     | entries | §3.1    |
-| `MAX_CLICKS`          | 100     | entries | §3.1    |
-| `TRAIL_MIN_DIST`      | 4       | px      | §3.2    |
-| `TRAIL_MIN_MS`        | 16      | ms      | §3.2    |
-| `BROADCAST_MS`        | 50      | ms      | §3.2    |
-| `ORIGIN_R`            | 22      | px      | §5.2    |
-| `ORIGIN_STROKE`       | 2.5     | px      | §5.2    |
-| `ORIGIN_DASH`         | 6       | px      | §5.2    |
-| `ORIGIN_GAP`          | 5       | px      | §5.2    |
-| `ORIGIN_SPIN`         | 12      | px/s    | §5.2    |
-| `ORIGIN_INTRO_SCALE`  | 2.0     | ×       | §5.2    |
-| `ORIGIN_INTRO_MS`     | 250     | ms      | §5.2    |
-| `TRAIL_MIN_W`         | 0.5     | px      | §5.3    |
-| `TRAIL_MAX_W`         | 6       | px      | §5.3    |
-| `TRAIL_FADE_MS`       | 1500    | ms      | §5.3    |
-| `TRAIL_AGE_EXP`       | 1.5     | —       | §5.3    |
-| `TRAIL_SPEED_PX`      | 60      | px      | §5.3    |
-| `TRAIL_SPEED_WEIGHT`  | 0.5     | 0–1     | §5.3    |
-| `TRAIL_MIN_OPACITY`   | 0       | 0–1     | §5.3    |
-| `CLICK_MS`            | 700     | ms      | §5.4    |
-| `CLICK_R0`            | 4       | px      | §5.4    |
-| `CLICK_R1`            | 36      | px      | §5.4    |
-| `CLICK_STROKE0`       | 4       | px      | §5.4    |
-| `CLICK_STROKE1`       | 1       | px      | §5.4    |
-| `CLICK_FADE_EXP`      | 1.5     | —       | §5.4    |
-| `CLICK_RINGS`         | 2       | count   | §5.4    |
-| `CLICK_RING_DELAY_MS` | 120     | ms      | §5.4    |
+| Name                  | Value | Unit    | Used in |
+|-----------------------|-------|---------|---------|
+| `IDLE_MS`             | 3000  | ms      | §2.3    |
+| `EXIT_MS`             | 400   | ms      | §5.5    |
+| `MAX_TRAIL`           | 100   | entries | §3.1    |
+| `MAX_CLICKS`          | 100   | entries | §3.1    |
+| `TRAIL_MIN_DIST`      | 4     | px      | §3.2    |
+| `TRAIL_MIN_MS`        | 16    | ms      | §3.2    |
+| `BROADCAST_MS`        | 50    | ms      | §3.2    |
+| `ORIGIN_R`            | 35    | px      | §5.2    |
+| `ORIGIN_STROKE`       | 5.75  | px      | §5.2    |
+| `ORIGIN_DASH`         | 6     | px      | §5.2    |
+| `ORIGIN_GAP`          | 13.5  | px      | §5.2    |
+| `ORIGIN_SPIN`         | 5     | px/s    | §5.2    |
+| `ORIGIN_INTRO_SCALE`  | 4     | ×       | §5.2    |
+| `ORIGIN_INTRO_MS`     | 250   | ms      | §5.2    |
+| `ORIGIN_FILL_OPACITY` | 0.35* | 0–1     | §5.2    |
+| `ORIGIN_GRAD_MID`     | 0.5*  | 0–1     | §5.2    |
+| `TRAIL_MIN_W`         | 0.5   | px      | §5.3    |
+| `TRAIL_MAX_W`         | 6     | px      | §5.3    |
+| `TRAIL_FADE_MS`       | 1500  | ms      | §5.3    |
+| `TRAIL_AGE_EXP`       | 1.5   | —       | §5.3    |
+| `TRAIL_SPEED_PX`      | 60    | px      | §5.3    |
+| `TRAIL_SPEED_WEIGHT`  | 0.5   | 0–1     | §5.3    |
+| `TRAIL_MIN_OPACITY`   | 0     | 0–1     | §5.3    |
+| `TRAIL_C2_AT`         | 0.5*  | 0–1     | §5.3    |
+| `CLICK_MS`            | 700   | ms      | §5.4    |
+| `CLICK_R0`            | 4     | px      | §5.4    |
+| `CLICK_R1`            | 36    | px      | §5.4    |
+| `CLICK_STROKE0`       | 4     | px      | §5.4    |
+| `CLICK_STROKE1`       | 1     | px      | §5.4    |
+| `CLICK_FADE_EXP`      | 1.5   | —       | §5.4    |
+| `CLICK_RINGS`         | 2     | count   | §5.4    |
+| `CLICK_RING_DELAY_MS` | 120   | ms      | §5.4    |
+
+\* Not yet tuned.
 
 ---
 
@@ -330,7 +359,7 @@ before any of this touches `src/`.
   through the §4 anchoring.
 - The same render loop the overlay forces: full rebuild every frame, every
   animated value from `age()`.
-- A peer colour picker and a light/dark background toggle.
+- `c1` / `c2` pickers for the player gradient, and a light/dark table toggle.
 - A live readout of the encoded `attention` size in bytes and writes/s.
 - "Copy values" emits the §7 table as JS constants.
 
@@ -338,12 +367,3 @@ The formula functions written for the toy are lifted into the app unchanged,
 with unit tests.
 
 ---
-
-## 9. Open questions
-
-1. **Stage cursor.** Should the local cursor change while in attention mode
-   (a crosshair, or a glyph in the player's colour) so the player knows
-   their clicks won't touch the table?
-2. **Entry feedback on the sender.** The origin circle appears on the third
-   press. Is that enough to tell the player they've entered a mode, or does it
-   need a toast or a stage tint as well?
