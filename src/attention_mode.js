@@ -235,3 +235,175 @@ export function acceptsSample(prev, sx, sy, t) {
 export function insideOrigin(origin, x, y) {
   return Math.hypot(x - origin[0], y - origin[1]) <= T.ORIGIN_R / origin[3];
 }
+
+// ── Time ──────────────────────────────────────────────────────────────────────
+// Peers' clocks disagree, so a receiver only compares a peer's timestamps to
+// each other, pinned to its own clock when the peer's newest one arrived.
+
+export function makeAnchor(senderT, localT) {
+  return { senderT, localT };
+}
+
+/** age(t) for a peer's timestamp t, as seen at local time localNow. */
+export function anchoredAge(anchor, localNow) {
+  return (t) => (anchor.senderT - t) + (localNow - anchor.localT);
+}
+
+// ── Sender ────────────────────────────────────────────────────────────────────
+// The local player's attention. Produces the three awareness fields through
+// `write(fields)`; `now` is this client's wall clock, also used for its own
+// drawing, so its effects never wait on the network.
+//
+//   attention:   { trail, clicks, last, scale } | null   live mode only
+//   attnOrigin:  [x, y, t, s, end?] | null               outlives the mode
+//   attnDismiss: [[userId, t], ...]                      origins this player dismissed
+
+export function createSender({ userId, write, now = Date.now }) {
+  let att = null;            // live attention
+  let origin = null;
+  let exited = null;         // { att, at } — trail and clicks fading after exit
+  let fading = [];           // [{ origin, at }] — dismissed or replaced origins
+  let dismissals = [];
+  let sample = null;         // last accepted pointer sample, screen px
+  let pending = false, lastWrite = -Infinity;
+
+  const roundScale = (s) => Math.round(s * 1000) / 1000;
+
+  function flush() {
+    pending = false;
+    lastWrite = now();
+    if (att) att = trimAttention(att, lastWrite);
+    write({ attention: att });
+  }
+
+  function writeSoon() {
+    if (now() - lastWrite >= T.BROADCAST_MS) flush();
+    else pending = true;
+  }
+
+  function dropOrigin() {
+    if (!origin) return;
+    fading.push({ origin, at: now() });
+    origin = null;
+  }
+
+  function exit() {
+    if (!att) return;
+    const t = now();
+    exited = { att, at: t };
+    att = null;
+    pending = false;
+    if (origin) origin = [...origin.slice(0, 4), t];
+    lastWrite = t;
+    write({ attention: null, attnOrigin: origin });
+  }
+
+  return {
+    active: () => !!att,
+    origin: () => origin,
+    dismissals: () => dismissals,
+
+    /** Third press: start attention at canvas (x, y), screen (sx, sy). */
+    enter(x, y, sx, sy, scale) {
+      const t = now();
+      dropOrigin();
+      origin = [Math.round(x), Math.round(y), t, roundScale(scale)];
+      att = { trail: [], clicks: [], last: t, scale: roundScale(scale) };
+      exited = null;
+      sample = { sx, sy, t };
+      lastWrite = t;
+      pending = false;
+      write({ attention: att, attnOrigin: origin });
+    },
+
+    move(x, y, sx, sy, scale) {
+      if (!att) return;
+      const t = now();
+      if (!acceptsSample(sample, sx, sy, t)) return;
+      sample = { sx, sy, t };
+      att.trail.push([Math.round(x), Math.round(y), t]);
+      att.last = t;
+      att.scale = roundScale(scale);
+      writeSoon();
+    },
+
+    press(x, y) {
+      if (!att) return;
+      const t = now();
+      att.clicks.push([Math.round(x), Math.round(y), t]);
+      att.last = t;
+      flush();
+    },
+
+    exit,
+
+    /** Idle-out and the trailing throttled write. Call every frame while active. */
+    tick() {
+      if (att && now() - att.last > T.IDLE_MS) { exit(); return; }
+      if (pending && now() - lastWrite >= T.BROADCAST_MS) flush();
+    },
+
+    /** Click on this player's own expired circle. */
+    dismissOwn() {
+      if (!origin || origin[4] == null) return false;
+      dropOrigin();
+      write({ attnOrigin: null });
+      return true;
+    },
+
+    /** Click on another player's expired circle. */
+    dismiss(ownerId, t) {
+      dismissals = [...dismissals, [ownerId, t]].slice(-T.MAX_DISMISS);
+      write({ attnDismiss: dismissals });
+    },
+
+    /**
+     * Peers' awareness changed: honour a dismissal of this player's expired
+     * origin, and forget dismissals whose origin its owner has dropped.
+     * `states` is awareness.getStates(); the local entry is skipped.
+     */
+    observe(states, myClientId) {
+      const owners = new Map();   // userId -> origin t currently advertised
+      let dismissedMine = false;
+      states.forEach((st, cid) => {
+        if (cid === myClientId || !st) return;
+        if (st.user?.id && st.attnOrigin) owners.set(st.user.id, st.attnOrigin[2]);
+        if (origin && origin[4] != null &&
+            (st.attnDismiss || []).some(([u, t]) => u === userId && t === origin[2])) {
+          dismissedMine = true;
+        }
+      });
+      if (dismissedMine) { dropOrigin(); write({ attnOrigin: null }); }
+      const kept = dismissals.filter(([u, t]) => owners.get(u) === t);
+      if (kept.length !== dismissals.length) {
+        dismissals = kept;
+        write({ attnDismiss: dismissals });
+      }
+    },
+
+    /** Drawables for this player's own effects, on its own clock. */
+    scene(viewScale) {
+      const t = now();
+      const ageOf = (x) => t - x;
+      const items = [];
+      fading = fading.filter((f) => exitFade(t - f.at) > 0);
+      for (const f of fading) {
+        items.push({ kind: 'origin', origin: f.origin, ageOf, intro: null, fade: exitFade(t - f.at) });
+      }
+      if (origin) {
+        items.push({
+          kind: 'origin', origin, ageOf, fade: 1,
+          intro: { age: t - origin[2], ms: T.ORIGIN_INTRO_MS, r0Px: T.ORIGIN_R * T.ORIGIN_INTRO_SCALE },
+        });
+      }
+      // The sender's own trail follows its current zoom, not the last write's.
+      if (att) items.push({ kind: 'live', att: { ...att, scale: viewScale }, ageOf, fade: 1 });
+      else if (exited) {
+        const f = exitFade(t - exited.at);
+        if (f > 0) items.push({ kind: 'live', att: { ...exited.att, scale: viewScale }, ageOf, fade: f });
+        else exited = null;
+      }
+      return items;
+    },
+  };
+}
