@@ -465,7 +465,7 @@ fully determined when they start, which the ripple is and the trail is not.
 
 ## 7. Tunables
 
-Values from the tuning toy (§8), tuned against toys at their app sizes. Sizes
+Final values from the tuning toy (§8), tuned against toys at their app sizes. Sizes
 are sender screen px (§5.1).
 
 | Name                     | Value | Unit    | Used in |
@@ -488,8 +488,8 @@ are sender screen px (§5.1).
 | `ORIGIN_FILL_OPACITY`    | 0.35  | 0–1     | §5.2 |
 | `ORIGIN_GRAD_MID`        | 0.7   | 0–1     | §5.2 |
 | `ORIGIN_EXPIRED_OPACITY` | 0.7   | 0–1     | §5.2 |
-| `ORIGIN_DOT_W`           | 6*    | px      | §5.2 |
-| `ORIGIN_DOT_GAP`         | 5     | px      | §5.2 |
+| `ORIGIN_DOT_W`           | 4     | px      | §5.2 |
+| `ORIGIN_DOT_GAP`         | 5.5   | px      | §5.2 |
 | `TRAIL_MIN_W`            | 0.5   | px      | §5.3 |
 | `TRAIL_MAX_W`            | 15    | px      | §5.3 |
 | `TRAIL_FADE_MS`          | 1500  | ms      | §5.3 |
@@ -517,7 +517,6 @@ are sender screen px (§5.1).
 | `CLICK_STROKE1`          | 1     | px      | §5.4 |
 | `CLICK_RING_DELAY_MS`    | 120   | ms      | §5.4 |
 
-\* Untuned default.
 
 ---
 
