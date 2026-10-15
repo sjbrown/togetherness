@@ -120,7 +120,7 @@ attention: {                  // live attention mode, null outside it
   scale:  s,                  // sender's current view scale (§5.1)
 } | null
 
-attnOrigin: [x, y, t, s] | null   // this player's origin circle; outlives `attention`
+attnOrigin: [x, y, t, s, end?] | null   // this player's origin circle; outlives `attention`
 
 attnDismiss: [[userId, t], ...]   // origins this player has dismissed
 ```
@@ -137,7 +137,14 @@ attnDismiss: [[userId, t], ...]   // origins this player has dismissed
 
 `attnOrigin` is split out of `attention` because it outlives it. Its `t` is
 the entry time and doubles as the origin's identity; `s` is the sender's view
-scale at entry, fixed from then on (§5.1).
+scale at entry, fixed from then on (§5.1). `end` is absent while the
+attention is live; on exit the sender appends its `Date.now()`, which fixes
+where the spin comes to rest (§5.2). Only an origin with an `end` can be
+dismissed.
+
+A receiver whose peer goes stale (§2.4) without ever sending an `end`
+presumes one at `last + IDLE_MS`, which is when the sender would have idled
+out.
 
 No client can write another client's awareness, so a player dismisses someone
 else's origin by announcing it in their own state:
@@ -209,8 +216,9 @@ tell, without skew, and is what the receiver-side idle check in §2.4 uses.
 The anchor is per peer and survives `syncFromAwareness` rebuilds, as the
 bowstring's `firstSeenAt` does.
 
-The origin's intro and spin use `age(attnOrigin.t)` from the same anchor.
-Once its attention has ended the origin is static and needs no age.
+The origin's spin uses `age(attnOrigin.t)` and `age(attnOrigin.end)` from the
+same anchor. Once it has coasted to rest the origin is static and needs no
+age.
 
 Network latency shows up as entries looking slightly younger than they are,
 which is harmless: an animation starts on arrival rather than partway in.
@@ -262,30 +270,55 @@ A dashed circle centred on `origin`.
   `ORIGIN_FILL_OPACITY`. The centre stays clear so the toy being pointed at
   shows through.
 - Radius `ORIGIN_R`.
-- Intro: radius eases from `ORIGIN_R * ORIGIN_INTRO_SCALE` to `ORIGIN_R`
-  over `ORIGIN_INTRO_MS`.
-- Fly-in, receivers only: a receiver may be looking at a different part of
-  the table. When a new origin arrives together with live attention, the
-  circle starts at the centre of the receiver's current view and travels to
-  the origin over `ORIGIN_FLY_MS` (easeInOutCubic), holding its intro radius
-  on the way; the intro shrink plays on landing. The start point is the view
-  centre at the moment of receipt, in canvas space, so panning during the
-  flight doesn't bend it. If the origin is off-screen, the circle visibly
-  leaves in its direction. The sender's own circle appears in place, and an
-  origin first seen already expired (a late joiner) does not fly. Flight
-  timing is local: it starts on receipt, recorded per peer like the
-  bowstring's `firstSeenAt`.
 
-While its attention is live:
+**Intro.** The radius eases (easeOutCubic) from a starting radius `r0` down
+to `ORIGIN_R`.
 
-- Slow rotation: `stroke-dashoffset` advances at `ORIGIN_SPIN` px/s,
-  computed from `age(attnOrigin.t)` (§6).
+- Sender: `r0 = ORIGIN_R * ORIGIN_INTRO_SCALE`, over `ORIGIN_INTRO_MS`,
+  timed by `age(t)`.
+- Receivers: a receiver may be looking at a different part of the table, so
+  its circle starts big enough to reach it. With `(vx, vy)` the canvas-space
+  centre of the receiver's view when the origin arrives:
 
-After its attention ends (§2.5):
+  ```
+  r0 = max(hypot(vx - x, vy - y) * s, ORIGIN_R * ORIGIN_INTRO_SCALE)   // sender px
+  ```
 
-- Static: no rotation, `stroke-dashoffset` 0.
-- Opacity `ORIGIN_EXPIRED_OPACITY`.
-- On dismissal or replacement, it fades from there to 0 over `EXIT_MS`.
+  over `ORIGIN_RX_INTRO_MS`, timed from local receipt (recorded per peer, like
+  the bowstring's `firstSeenAt`). The centre never moves; only the radius
+  depends on the receiver. At its first frame the dashed rim passes through
+  the middle of the receiver's screen, then sweeps in onto the origin, so a
+  receiver looking elsewhere sees it cross their view in the direction of the
+  origin. The `max` keeps a receiver already looking at the origin from
+  getting a circle that grows instead of shrinks. An origin first seen with
+  an `end` (a late joiner) has no intro.
+
+**Spin.** While the attention is live, the dashes travel at `ORIGIN_SPIN`
+px/s. From `end` they decelerate linearly to a stop over `EXIT_MS`, while
+opacity eases from 1 to `ORIGIN_EXPIRED_OPACITY` on the same curve:
+
+```
+live:     offset  = ORIGIN_SPIN * age(t)
+expiring: τ       = clamp(age(end), 0, EXIT_MS)
+          coast   = τ - τ² / (2 * EXIT_MS)        // distance covered while slowing to 0
+          offset  = ORIGIN_SPIN * ((end - t) + coast)
+          opacity = lerp(1, ORIGIN_EXPIRED_OPACITY, coast / (EXIT_MS / 2))
+stroke-dashoffset = -offset
+```
+
+At `τ = 0` this matches the live formula exactly, and both its value and its
+speed are continuous, so the circle settles without a jump. The rest position
+is wherever the spin coasts to.
+
+No choice of `ORIGIN_SPIN` and `ORIGIN_GAP` could avoid the jump the earlier
+"snap to offset 0" rule caused. The offset at the moment of expiry is
+`ORIGIN_SPIN * (end - t)`, and `end - t` depends on how long the player
+pointed, so the phase within one dash period is effectively random. Only
+continuing from wherever the spin is removes the jump.
+
+After it settles the circle is static, at `ORIGIN_EXPIRED_OPACITY`, until it
+is dismissed or replaced (§2.5); then it fades from there to 0 over
+`EXIT_MS`.
 
 ### 5.3 Trail: tapered line
 
@@ -402,9 +435,10 @@ attention, or any fade-out, is visible and stops itself when none is, as
 `_pumpRemoteCharge` does for the bowstring charge. This survives any number of
 rebuilds, and the formulas are unit-testable as plain math.
 
-Expired origins are deliberately static. One can sit on the table for an
-entire session, and a spinning one would keep the pump, and so a full
-overlay rebuild, running every frame for as long as it stayed.
+Expired origins come to rest within `EXIT_MS` and are static from then on.
+One can sit on the table for an entire session, and a spinning one would keep
+the pump, and so a full overlay rebuild, running every frame for as long as it
+stayed.
 
 If the click ripple looks less smooth than a CSS version would, the fallback
 is CSS keyframes with `animation-delay: -<age>ms` on each rebuilt node, which
@@ -415,58 +449,57 @@ fully determined when they start, which the ripple is and the trail is not.
 
 ## 7. Tunables
 
-Values from the tuning toy (§8). Sizes are sender screen px (§5.1). The
-values marked † were tuned against a mock table whose toys were about a third
-of their real size (§8) and need another pass.
+Values from the tuning toy (§8), tuned against toys at their app sizes. Sizes
+are sender screen px (§5.1).
 
-| Name                  | Value | Unit    | Used in |
-|-----------------------|-------|---------|---------|
-| `IDLE_MS`             | 3000  | ms      | §2.3    |
-| `EXIT_MS`             | 400   | ms      | §5.5    |
-| `MAX_TRAIL`           | 100   | entries | §3.2    |
-| `MAX_CLICKS`          | 100   | entries | §3.2    |
-| `TRAIL_MIN_DIST`      | 4     | px      | §3.3    |
-| `TRAIL_MIN_MS`        | 16    | ms      | §3.3    |
-| `BROADCAST_MS`        | 50    | ms      | §3.3    |
-| `ORIGIN_R`            | 35†   | px      | §5.2    |
-| `ORIGIN_STROKE`       | 5.75† | px      | §5.2    |
-| `ORIGIN_DASH`         | 6†    | px      | §5.2    |
-| `ORIGIN_GAP`          | 13.5† | px      | §5.2    |
-| `ORIGIN_SPIN`         | 5†    | px/s    | §5.2    |
-| `ORIGIN_INTRO_SCALE`  | 4     | ×       | §5.2    |
-| `ORIGIN_INTRO_MS`     | 250   | ms      | §5.2    |
-| `ORIGIN_FLY_MS`       | 600*  | ms      | §5.2    |
-| `ORIGIN_FILL_OPACITY` | 0.35* | 0–1     | §5.2    |
-| `ORIGIN_GRAD_MID`     | 0.5*  | 0–1     | §5.2    |
-| `ORIGIN_EXPIRED_OPACITY` | 0.7* | 0–1  | §5.2    |
-| `TRAIL_MIN_W`         | 0.5†  | px      | §5.3    |
-| `TRAIL_MAX_W`         | 6†    | px      | §5.3    |
-| `TRAIL_FADE_MS`       | 1500  | ms      | §5.3    |
-| `TRAIL_AGE_EXP`       | 1.5   | —       | §5.3    |
-| `TRAIL_SPEED_PX`      | 60†   | px      | §5.3    |
-| `TRAIL_SPEED_WEIGHT`  | 0.5   | 0–1     | §5.3    |
-| `TRAIL_MIN_OPACITY`   | 0     | 0–1     | §5.3    |
-| `TRAIL_C2_AT`         | 0.5*  | 0–1     | §5.3    |
-| `CLICK_MS`            | 700   | ms      | §5.4    |
-| `CLICK_SPARKS`        | 10*   | count   | §5.4    |
-| `CLICK_SPARK_R0`      | 6*    | px      | §5.4    |
-| `CLICK_SPARK_DIST`    | 48*   | px      | §5.4    |
-| `CLICK_SPARK_LEN`     | 18*   | px      | §5.4    |
-| `CLICK_SPARK_W`       | 3.5*  | px      | §5.4    |
-| `CLICK_SPARK_SPREAD`  | 0.35* | 0–1     | §5.4    |
-| `CLICK_SPARK_JITTER`  | 0.5*  | 0–1     | §5.4    |
-| `CLICK_FLASH_MS`      | 220*  | ms      | §5.4    |
-| `CLICK_FLASH_R`       | 16*   | px      | §5.4    |
-| `CLICK_FLASH_WHITE`   | 0.5*  | 0–1     | §5.4    |
-| `CLICK_R0`            | 4†    | px      | §5.4    |
-| `CLICK_R1`            | 36†   | px      | §5.4    |
-| `CLICK_STROKE0`       | 4†    | px      | §5.4    |
-| `CLICK_STROKE1`       | 1†    | px      | §5.4    |
-| `CLICK_FADE_EXP`      | 1.5   | —       | §5.4    |
-| `CLICK_RINGS`         | 1*    | count   | §5.4    |
-| `CLICK_RING_DELAY_MS` | 120   | ms      | §5.4    |
+| Name                     | Value | Unit    | Used in |
+|--------------------------|-------|---------|------------|
+| `IDLE_MS`                | 3000  | ms      | §2.3 |
+| `EXIT_MS`                | 400   | ms      | §5.2, §5.5 |
+| `MAX_TRAIL`              | 100   | entries | §3.2 |
+| `MAX_CLICKS`             | 100   | entries | §3.2 |
+| `TRAIL_MIN_DIST`         | 4     | px      | §3.3 |
+| `TRAIL_MIN_MS`           | 16    | ms      | §3.3 |
+| `BROADCAST_MS`           | 50    | ms      | §3.3 |
+| `ORIGIN_R`               | 80    | px      | §5.2 |
+| `ORIGIN_STROKE`          | 10    | px      | §5.2 |
+| `ORIGIN_DASH`            | 6     | px      | §5.2 |
+| `ORIGIN_GAP`             | 30    | px      | §5.2 |
+| `ORIGIN_SPIN`            | 23    | px/s    | §5.2 |
+| `ORIGIN_INTRO_SCALE`     | 4     | ×       | §5.2 |
+| `ORIGIN_INTRO_MS`        | 250   | ms      | §5.2 |
+| `ORIGIN_RX_INTRO_MS`     | 600*  | ms      | §5.2 |
+| `ORIGIN_FILL_OPACITY`    | 0.35  | 0–1     | §5.2 |
+| `ORIGIN_GRAD_MID`        | 0.7   | 0–1     | §5.2 |
+| `ORIGIN_EXPIRED_OPACITY` | 0.7   | 0–1     | §5.2 |
+| `TRAIL_MIN_W`            | 0.5   | px      | §5.3 |
+| `TRAIL_MAX_W`            | 15    | px      | §5.3 |
+| `TRAIL_FADE_MS`          | 1500  | ms      | §5.3 |
+| `TRAIL_AGE_EXP`          | 1.5   | —       | §5.3 |
+| `TRAIL_SPEED_PX`         | 60    | px      | §5.3 |
+| `TRAIL_SPEED_WEIGHT`     | 0.5   | 0–1     | §5.3 |
+| `TRAIL_MIN_OPACITY`      | 0     | 0–1     | §5.3 |
+| `TRAIL_C2_AT`            | 0.5   | 0–1     | §5.3 |
+| `CLICK_MS`               | 700   | ms      | §5.4 |
+| `CLICK_FADE_EXP`         | 1.5   | —       | §5.4 |
+| `CLICK_SPARKS`           | 10    | count   | §5.4 |
+| `CLICK_SPARK_R0`         | 6     | px      | §5.4 |
+| `CLICK_SPARK_DIST`       | 48    | px      | §5.4 |
+| `CLICK_SPARK_LEN`        | 18    | px      | §5.4 |
+| `CLICK_SPARK_W`          | 3.5   | px      | §5.4 |
+| `CLICK_SPARK_SPREAD`     | 0.35  | 0–1     | §5.4 |
+| `CLICK_SPARK_JITTER`     | 0.5   | 0–1     | §5.4 |
+| `CLICK_FLASH_MS`         | 220   | ms      | §5.4 |
+| `CLICK_FLASH_R`          | 16    | px      | §5.4 |
+| `CLICK_FLASH_WHITE`      | 0.5   | 0–1     | §5.4 |
+| `CLICK_RINGS`            | 2     | count   | §5.4 |
+| `CLICK_R0`               | 4     | px      | §5.4 |
+| `CLICK_R1`               | 36    | px      | §5.4 |
+| `CLICK_STROKE0`          | 4     | px      | §5.4 |
+| `CLICK_STROKE1`          | 1     | px      | §5.4 |
+| `CLICK_RING_DELAY_MS`    | 120   | ms      | §5.4 |
 
-\* Not yet tuned.
+\* Untuned default.
 
 ---
 
@@ -481,8 +514,8 @@ before any of this touches `src/`.
   zoom of 1, so a circle's size relative to a die is what it will be in the
   app. Each pane has its own zoom, so §5.1 can be checked: the effect must
   cover the same toys in both.
-- A "Look elsewhere" button pans the receiver away, to watch the fly-in
-  (§5.2).
+- A "Look elsewhere" button pans the receiver away, to watch the receiver
+  intro (§5.2).
 - Input in the sender pane behaves like attention mode: triple-click enters,
   moves extend the trail, presses add clicks, idle ends it.
 - Either pane can dismiss an expired origin by clicking it. A dismissal from
