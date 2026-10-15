@@ -407,3 +407,143 @@ export function createSender({ userId, write, now = Date.now }) {
     },
   };
 }
+
+// ── Receiver ──────────────────────────────────────────────────────────────────
+// Every other player's attention, rebuilt from awareness states. `now` is a
+// local monotonic clock; peer timestamps are only read through each peer's
+// anchor. `viewCentre()` is the canvas point at the middle of this player's
+// view, used to size a new origin's intro.
+
+const dismissKey = (userId, t) => `${userId}\u0000${t}`;
+const settledAge = () => Infinity;
+
+export function createReceiver({ viewCentre, now = () => performance.now() }) {
+  const peers = new Map();   // clientId -> peer
+
+  // The peer's clock right now, by its anchor.
+  const peerNow = (p) => (p.anchor ? p.anchor.senderT + (now() - p.anchor.localT) : null);
+
+  function fadeOrigin(p) {
+    if (!p.origin) return;
+    let o = p.origin;
+    // A live origin that vanishes (its owner left) still needs an end to draw.
+    if (o[4] == null) o = [...o.slice(0, 4), peerNow(p) ?? o[2]];
+    p.fading.push({ origin: o, at: now() });
+    p.origin = null;
+  }
+
+  function endLive(p) {
+    if (!p.attention) return;
+    p.exited = { att: p.attention, anchor: p.anchor, at: now() };
+    p.attention = null;
+  }
+
+  function newPeer() {
+    return {
+      userId: null, colors: null, attention: null, anchor: null, staleLast: null,
+      origin: null, intro: null, exited: null, fading: [], gone: false,
+    };
+  }
+
+  return {
+    /** Awareness changed. The local client's own entry is skipped. */
+    sync(states, myClientId) {
+      const dismissed = new Set();
+      states.forEach((st) => {
+        for (const [u, t] of st?.attnDismiss || []) dismissed.add(dismissKey(u, t));
+      });
+      const seen = new Set();
+      states.forEach((st, cid) => {
+        if (cid === myClientId || !st?.user?.id) return;
+        seen.add(cid);
+        let p = peers.get(cid);
+        if (!p || p.gone) { p = newPeer(); peers.set(cid, p); }
+        p.userId = st.user.id;
+        p.colors = st.user.gradient ?? null;
+
+        // A state presumed idle and re-sent unchanged stays idle.
+        let a = st.attention ?? null;
+        if (a && a.last === p.staleLast) a = null;
+        if (a) {
+          if (!p.anchor || p.anchor.senderT !== a.last) p.anchor = makeAnchor(a.last, now());
+          p.staleLast = null;
+          p.attention = a;
+          p.exited = null;
+        } else {
+          endLive(p);
+        }
+
+        let o = st.attnOrigin ?? null;
+        if (o && dismissed.has(dismissKey(p.userId, o[2]))) o = null;
+        // Keep a presumed end until the owner sends a real one.
+        if (o && p.origin && o[2] === p.origin[2] && o[4] == null && p.origin[4] != null) o = p.origin;
+        if (p.origin && (!o || o[2] !== p.origin[2])) fadeOrigin(p);
+        if (o && !p.origin) {
+          // First seen live: intro sized to reach this player's view. First
+          // seen expired (joined late): no intro.
+          p.intro = o[4] == null ? { t: o[2], r0Px: receiverIntroR0(o, viewCentre()), at: now() } : null;
+        }
+        p.origin = o;
+      });
+      peers.forEach((p, cid) => {
+        if (seen.has(cid) || p.gone) return;
+        fadeOrigin(p);
+        endLive(p);
+        p.gone = true;
+      });
+    },
+
+    /**
+     * Presumes a peer that has gone quiet for IDLE_MS idled out, as it would
+     * have if it were still sending. Call every frame.
+     */
+    tick() {
+      peers.forEach((p) => {
+        if (!p.attention || !p.anchor) return;
+        const last = p.attention.last;
+        if (anchoredAge(p.anchor, now())(last) <= T.IDLE_MS) return;
+        p.staleLast = last;
+        endLive(p);
+        if (p.origin && p.origin[4] == null) p.origin = [...p.origin.slice(0, 4), last + T.IDLE_MS];
+      });
+    },
+
+    /** Drawables for every peer, oldest layers first. */
+    scene() {
+      const t = now();
+      const items = [];
+      peers.forEach((p, cid) => {
+        const ageOf = p.anchor ? anchoredAge(p.anchor, t) : settledAge;
+        const base = { userId: p.userId, colors: p.colors };
+        p.fading = p.fading.filter((f) => exitFade(t - f.at) > 0);
+        for (const f of p.fading) {
+          items.push({ ...base, kind: 'origin', origin: f.origin, ageOf: settledAge, intro: null, fade: exitFade(t - f.at) });
+        }
+        if (p.origin) {
+          const intro = p.intro && p.intro.t === p.origin[2]
+            ? { age: t - p.intro.at, ms: T.ORIGIN_RX_INTRO_MS, r0Px: p.intro.r0Px }
+            : null;
+          items.push({ ...base, kind: 'origin', origin: p.origin, ageOf, intro, fade: 1 });
+        }
+        if (p.attention) items.push({ ...base, kind: 'live', att: p.attention, ageOf, fade: 1 });
+        else if (p.exited) {
+          const f = exitFade(t - p.exited.at);
+          const exitAge = p.exited.anchor ? anchoredAge(p.exited.anchor, t) : settledAge;
+          if (f > 0) items.push({ ...base, kind: 'live', att: p.exited.att, ageOf: exitAge, fade: f });
+          else p.exited = null;
+        }
+        if (p.gone && !p.origin && !p.exited && !p.fading.length) peers.delete(cid);
+      });
+      return items;
+    },
+
+    /** The expired peer origin under canvas (x, y), if any: { userId, t }. */
+    hitExpired(x, y) {
+      for (const p of peers.values()) {
+        const o = p.origin;
+        if (o && o[4] != null && insideOrigin(o, x, y)) return { userId: p.userId, t: o[2] };
+      }
+      return null;
+    },
+  };
+}
