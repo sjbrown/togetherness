@@ -30,8 +30,11 @@ with a persistent object. The toy is removed in a separate change.
 ### 2.1 Entering
 
 A player enters attention mode with a **triple-click**, or a **triple-tap** on
-touch. The third press is the entry event: it acts on pointerdown, not after
-the release.
+touch, with the select tool active. The third press is the entry event: it
+acts on pointerdown, not after the release.
+
+Other tools don't enter attention mode. Their first two clicks would each
+place something on the table before the third arrived.
 
 The entry point becomes the **origin** (§3). The origin circle appearing
 under the pointer is the only entry feedback; no toast, no stage tint.
@@ -69,7 +72,8 @@ outside the mode, and its movement is not recorded.
 Attention mode ends when either happens:
 
 - **Idle**: no attention input for `IDLE_MS` (default 3000).
-- **Escape** key.
+- **Escape** key. Escape is mode-aware: in attention mode it only exits the
+  mode; outside it, it clears the selection as before.
 
 On exit the player's `attention` field is set to `null`, and peers fade the
 trail and ripples out (§5.5). The origin circle stays (§2.5).
@@ -99,9 +103,12 @@ owner's presses on it are attention clicks, and other players' presses pass
 through to the table as if it weren't there.
 
 "Inside" is the circle's drawn radius, `ORIGIN_R / origin.scale` in canvas
-units. canvas.js checks expired origins on pointerdown before ordinary
-hit-testing, the same way it checks the bowstring handle, since nothing on the
-overlay is hit-testable.
+units. canvas.js asks attention_mode.js about expired origins on pointerdown
+before ordinary hit-testing, the same way it checks the bowstring handle. The
+attention layer sits above every other layer, so a circle can be dismissed
+wherever it lies, but the layer itself is `pointer-events="none"`: the test
+is geometric, and a press that misses every circle reaches the table
+untouched.
 
 An origin also disappears when its owner leaves the table and their awareness
 state is removed.
@@ -230,8 +237,9 @@ clock.
 
 ## 5. Rendering
 
-All three effects are drawn on `#overlay-layer` in the player's two gradient
-colours, `c1` and `c2` (`user.gradient`, §5.6). The sender draws its own
+All three effects are drawn on their own layer, `#attention-layer` (§6), in
+the player's two gradient colours, `c1` and `c2` (`user.gradient`, §5.6).
+The sender draws its own
 effects from local state rather than round-tripping through awareness, same as the
 add-cursor and the drag ghost, so attention works offline and with no
 latency.
@@ -425,19 +433,30 @@ same with its own local copy.
 ### 5.6 Gradient defs
 
 The origin fill references a `<radialGradient>` by id, so it cannot live in
-`#overlay-layer`, which is wiped on every render. It goes in the page-root
-defs beside the player's `<linearGradient id="grad-{user.id}">`, as
-`attn-grad-{user.id}`, created and refreshed by `upsertUserGradient` (user.js
-is the one owner of gradient DOM) and removed by `pruneUserGradients`
-alongside the linear one. `ORIGIN_GRAD_MID` and `ORIGIN_FILL_OPACITY` are
-baked into its stops.
+the part of the layer that is rebuilt every frame. `#attention-layer` holds
+its own `<defs>`, which the per-frame rebuild never touches, with one
+`attn-grad-{user.id}` per player who has an origin, built from that player's
+`user.gradient`, refreshed when the colours change and removed with the last
+origin that uses it. `ORIGIN_GRAD_MID` and `ORIGIN_FILL_OPACITY` are baked
+into its stops. Keeping these here rather than in user.js's page-root defs
+leaves every piece of attention DOM owned by attention_mode.js.
 
 ---
 
-## 6. Animation on the overlay layer
+## 6. The attention layer and animation
 
-`Overlay.render()` starts with `_layerEl.innerHTML = ''` and rebuilds every
-node, and runs on every awareness change from any peer. So:
+Attention draws on `<g id="attention-layer" pointer-events="none">`, the last
+layer in the SVG and so above everything else, including `#overlay-layer`
+and `#delight-layer`. It pans and zooms with the rest (canvas.js's
+transformed layers). Only attention_mode.js writes to it.
+
+It is not `#overlay-layer` because `Overlay.render()` starts with
+`_layerEl.innerHTML = ''` and rebuilds every node, on every awareness change
+from any peer. Drawing attention there would mean a full overlay rebuild on
+every animation frame for as long as any attention was live.
+
+attention_mode.js rebuilds its own effects group each frame instead, so the
+same constraints apply to it:
 
 - **CSS transitions don't work.** There is never an earlier state on the same
   node to transition from.
@@ -446,15 +465,15 @@ node, and runs on every awareness change from any peer. So:
   gesture has its own `#delight-layer`.
 
 Every animated value in §5 is therefore a pure function of `age()`, computed
-in JS at draw time. A `requestAnimationFrame` pump renders while any live
-attention, or any fade-out, is visible and stops itself when none is, as
-`_pumpRemoteCharge` does for the bowstring charge. This survives any number of
+in JS at draw time. attention_mode.js runs its own `requestAnimationFrame`
+pump while any live attention, intro, coast or fade-out is visible, and stops
+it when none is, as `_pumpRemoteCharge` does for the bowstring charge. It also
+renders once on every awareness change. This survives any number of
 rebuilds, and the formulas are unit-testable as plain math.
 
 Expired origins come to rest within `EXIT_MS` and are static from then on.
 One can sit on the table for an entire session, and a spinning one would keep
-the pump, and so a full overlay rebuild, running every frame for as long as it
-stayed.
+the pump running every frame for as long as it stayed.
 
 If the click ripple looks less smooth than a CSS version would, the fallback
 is CSS keyframes with `animation-delay: -<age>ms` on each rebuilt node, which
@@ -522,30 +541,42 @@ are sender screen px (§5.1).
 
 ## 8. Tuning toy
 
-A standalone HTML page, outside the app, for finding the §7 values by eye
-before any of this touches `src/`.
+The values in §7 were found with a standalone HTML page, kept outside the
+repo: a sender pane and a receiver pane over a mock table with toys at their
+app sizes, a slider per tunable, and simulated latency and clock skew. Its
+formula functions are the ones in attention_mode.js. To retune, copy the
+pure-formula section of attention_mode.js into a page like it, adjust by eye,
+and bring the constants back.
 
-- A sender pane and a receiver pane over the same mock table. Toys are drawn
-  at their app sizes in canvas units (d6 80×80, chip 80 across, poker card
-  100×150, meeple about 80), and the sender pane opens at the app's default
-  zoom of 1, so a circle's size relative to a die is what it will be in the
-  app. Each pane has its own zoom, so §5.1 can be checked: the effect must
-  cover the same toys in both.
-- A "Look elsewhere" button pans the receiver away, to watch the receiver
-  intro (§5.2).
-- Input in the sender pane behaves like attention mode: triple-click enters,
-  moves extend the trail, presses add clicks, idle ends it.
-- Either pane can dismiss an expired origin by clicking it. A dismissal from
-  the receiver travels back to the sender through the simulated network, per
-  §3.1.
-- A slider for every tunable in §7, live.
-- Simulated **latency** and **clock skew** sliders, driving the receiver
-  through the §4 anchoring.
-- The same render loop the overlay forces: full rebuild every frame, every
-  animated value from `age()`.
-- `c1` / `c2` pickers for the player gradient, and a light/dark table toggle.
-- A live readout of the encoded `attention` size in bytes and writes/s.
-- "Copy values" emits the §7 table as JS constants.
+---
 
-The formula functions written for the toy are lifted into the app unchanged,
-with unit tests.
+## 9. Code layout
+
+attention_mode.js owns the feature. In file order:
+
+1. **Tunables**: the §7 table as one exported object.
+2. **Formulas**: pure functions of their arguments and the tunables (§5),
+   with unit tests. The only part a tuning page needs.
+3. **Time**: `age()` and the per-peer anchor (§4).
+4. **Sender**: the local player's attention state machine (§2, §3). It
+   produces the three awareness fields and is driven by an injected clock and
+   write function, so it is testable without a browser.
+5. **Receiver**: the model of every peer's attention built from awareness
+   states: anchors, intros, presumed ends, dismissals, fades (§2.4, §2.5,
+   §3.1).
+6. **Render**: draws sender and receiver models into `#attention-layer`.
+7. **Wiring**: `init()`, the rAF pump, and the handful of entry points other
+   modules call.
+
+Outside it, the feature touches:
+
+- `index.html`: the `#attention-layer` element.
+- `canvas.js`: adds the layer to its transformed layers; on pointerdown with
+  the select tool, sends input to attention mode while it is on, detects the
+  third press, and offers the press to expired-origin dismissal before
+  ordinary hit-testing; forwards pointermoves while in the mode.
+- `app.js`: calls `init()` at boot, exposes the entry points on the App bus
+  for canvas.js and events.js, and includes attention's fields when it
+  re-establishes its awareness state after a reconnect.
+- `events.js`: Escape asks the App bus whether attention mode is on.
+- `ui.css`: `cursor: pointer` on `#stage[data-attention]`.
