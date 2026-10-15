@@ -270,6 +270,22 @@ A dashed circle centred on `origin`.
   `ORIGIN_FILL_OPACITY`. The centre stays clear so the toy being pointed at
   shows through.
 - Radius `ORIGIN_R`.
+- Dots: a second circle, no fill, stroke `c1` of width `ORIGIN_DOT_W`, at
+
+  ```
+  rIn = r - (ORIGIN_STROKE / 2 + ORIGIN_DOT_GAP)
+  ```
+
+  where `r` is the outer circle's current radius (so it follows the intro).
+  Each dash of the wide outer stroke reads as a short radial bar; a dot just
+  inside it makes it an exclamation point, pointing at the centre. The dots'
+  dash, gap and dash offset are the outer circle's multiplied by `rIn / r`,
+  so each dot covers the same angle as its bar. Equal lengths in px would
+  space the dots more closely than the bars and drift out of line around the
+  ring. Both circles start their dash pattern at the same angle (an SVG
+  `<circle>` starts at 3 o'clock), so the scaled patterns stay aligned as
+  they spin. Not drawn when `rIn <= 0`. Both circles share one `<g>` that
+  carries the opacity.
 
 **Intro.** The radius eases (easeOutCubic) from a starting radius `r0` down
 to `ORIGIN_R`.
@@ -462,16 +478,18 @@ are sender screen px (§5.1).
 | `TRAIL_MIN_MS`           | 16    | ms      | §3.3 |
 | `BROADCAST_MS`           | 50    | ms      | §3.3 |
 | `ORIGIN_R`               | 80    | px      | §5.2 |
-| `ORIGIN_STROKE`          | 10    | px      | §5.2 |
+| `ORIGIN_STROKE`          | 20    | px      | §5.2 |
 | `ORIGIN_DASH`            | 6     | px      | §5.2 |
-| `ORIGIN_GAP`             | 30    | px      | §5.2 |
+| `ORIGIN_GAP`             | 50    | px      | §5.2 |
 | `ORIGIN_SPIN`            | 23    | px/s    | §5.2 |
 | `ORIGIN_INTRO_SCALE`     | 4     | ×       | §5.2 |
 | `ORIGIN_INTRO_MS`        | 250   | ms      | §5.2 |
-| `ORIGIN_RX_INTRO_MS`     | 600*  | ms      | §5.2 |
+| `ORIGIN_RX_INTRO_MS`     | 600   | ms      | §5.2 |
 | `ORIGIN_FILL_OPACITY`    | 0.35  | 0–1     | §5.2 |
 | `ORIGIN_GRAD_MID`        | 0.7   | 0–1     | §5.2 |
 | `ORIGIN_EXPIRED_OPACITY` | 0.7   | 0–1     | §5.2 |
+| `ORIGIN_DOT_W`           | 6*    | px      | §5.2 |
+| `ORIGIN_DOT_GAP`         | 5     | px      | §5.2 |
 | `TRAIL_MIN_W`            | 0.5   | px      | §5.3 |
 | `TRAIL_MAX_W`            | 15    | px      | §5.3 |
 | `TRAIL_FADE_MS`          | 1500  | ms      | §5.3 |
