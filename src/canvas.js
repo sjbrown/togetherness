@@ -62,6 +62,7 @@ export function init(appBus, svgElement) {
     '#drawing-layer',
     '#overlay-layer',
     '#delight-layer',
+    '#attention-layer',
   ].map(sel => svgElement.querySelector(sel)).filter(Boolean);
 
   _stageEl.addEventListener('pointerdown',  onPointerDown);

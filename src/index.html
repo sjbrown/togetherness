@@ -32,6 +32,10 @@
          The live bowstring gesture and its clones/sparks live here so a
          peer's cursor moving can't destroy an in-flight pull. -->
     <g id="delight-layer" pointer-events="none"></g>
+    <!-- #attention-layer is last so attention draws above everything.
+         Only attention_mode.js writes to it; dismissing an origin is a
+         geometric test in canvas.js, so it never takes pointer events. -->
+    <g id="attention-layer" pointer-events="none"></g>
   </svg>
   <div id="draw-preview"></div>
   <div id="select-preview"></div>

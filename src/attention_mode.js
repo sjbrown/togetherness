@@ -547,3 +547,150 @@ export function createReceiver({ viewCentre, now = () => performance.now() }) {
     },
   };
 }
+
+// ── Render ────────────────────────────────────────────────────────────────────
+// Draws scene items from the sender and receiver into #attention-layer. The
+// layer holds a <defs> (one radial gradient per player with an origin) and
+// an effects <g> that is rebuilt on every draw.
+//
+// Scene item: { kind: 'origin' | 'live', colors: { c1, c2 }, userId, fade,
+//               ageOf, origin + intro (origin) | att (live) }
+
+const SVGNS = 'http://www.w3.org/2000/svg';
+const FALLBACK_COLOR = '#c8941e';
+
+function svg(tag, attrs, parent) {
+  const node = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) node.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(node);
+  return node;
+}
+
+/** Whether any item still changes from frame to frame. */
+export function sceneAnimating(items) {
+  return items.some((i) =>
+    i.kind === 'live' || i.fade < 1 ||
+    (i.intro && i.intro.age < i.intro.ms) ||
+    !originSettled(i.origin, i.ageOf));
+}
+
+const gradientId = (userId) => `attn-grad-${String(userId).replace(/[^\w-]/g, '_')}`;
+
+export function createRenderer(layerEl) {
+  const defs = svg('defs', {}, layerEl);
+  const fx   = svg('g', { class: 'attention-fx' }, layerEl);
+  const grads = new Map();   // id -> { el, key }
+
+  // Transparent at the core, c2 at ORIGIN_GRAD_MID, c1 at the rim.
+  function gradientFor(userId, c1, c2) {
+    const id = gradientId(userId);
+    const key = `${c1}|${c2}`;
+    let g = grads.get(id);
+    if (!g) {
+      const el = svg('radialGradient', { id }, defs);
+      svg('stop', { offset: 0, 'stop-opacity': 0 }, el);
+      svg('stop', { offset: T.ORIGIN_GRAD_MID, 'stop-opacity': T.ORIGIN_FILL_OPACITY }, el);
+      svg('stop', { offset: 1, 'stop-opacity': T.ORIGIN_FILL_OPACITY }, el);
+      g = { el, key: null };
+      grads.set(id, g);
+    }
+    if (g.key !== key) {
+      const [s0, s1, s2] = g.el.children;
+      s0.setAttribute('stop-color', c2);
+      s1.setAttribute('stop-color', c2);
+      s2.setAttribute('stop-color', c1);
+      g.key = key;
+    }
+    return id;
+  }
+
+  function drawOrigin(item, c1, c2) {
+    const { origin, ageOf, intro, fade } = item;
+    const [x, y, , s] = origin;
+    const k = 1 / s;
+    const r = intro ? originRadius(intro.age, intro.ms, intro.r0Px) : T.ORIGIN_R;
+    const ph = originPhase(origin, ageOf);
+    const g = svg('g', { opacity: fade * ph.opacity }, fx);
+    // Each dash of the wide stroke reads as a short radial bar.
+    svg('circle', {
+      cx: x, cy: y, r: r * k,
+      fill: `url(#${gradientFor(item.userId, c1, c2)})`,
+      stroke: c1, 'stroke-width': T.ORIGIN_STROKE * k,
+      'stroke-dasharray': `${T.ORIGIN_DASH * k} ${T.ORIGIN_GAP * k}`,
+      'stroke-dashoffset': -ph.offset * k,
+    }, g);
+    // A dot under each bar makes it an exclamation point.
+    const dots = dotRing(r);
+    if (dots) {
+      const ka = k * dots.a;
+      svg('circle', {
+        cx: x, cy: y, r: dots.rIn * k, fill: 'none',
+        stroke: c1, 'stroke-width': T.ORIGIN_DOT_W * k,
+        'stroke-dasharray': `${T.ORIGIN_DASH * ka} ${T.ORIGIN_GAP * ka}`,
+        'stroke-dashoffset': -ph.offset * ka,
+      }, g);
+    }
+  }
+
+  function drawLive(item, c1, c2) {
+    const { att, ageOf, fade } = item;
+    const k = 1 / att.scale;
+    const g = svg('g', { opacity: fade }, fx);
+    const tr = att.trail;
+    for (let i = 0; i + 1 < tr.length; i++) {
+      const a = tr[i], b = tr[i + 1];
+      const st = trailSegmentStyle(ageOf(b[2]), Math.hypot(b[0] - a[0], b[1] - a[1]) * att.scale);
+      if (!st) continue;
+      const line = svg('line', {
+        x1: a[0], y1: a[1], x2: b[0], y2: b[1],
+        'stroke-width': st.width * k, 'stroke-linecap': 'round', opacity: st.alpha,
+      }, g);
+      line.style.stroke = `color-mix(in oklab, ${c2} ${st.c2Pct.toFixed(1)}%, ${c1})`;
+    }
+    for (const [cx, cy, ct] of att.clicks) {
+      const age = ageOf(ct);
+      const fl = clickFlash(age);
+      if (fl) {
+        const disc = svg('circle', { cx, cy, r: fl.r * k, opacity: fl.alpha }, g);
+        disc.style.fill = `color-mix(in oklab, white ${Math.round(T.CLICK_FLASH_WHITE * 100)}%, ${c1})`;
+      }
+      for (const sp of clickSparks(age, clickRng(cx, cy, ct))) {
+        const dx = Math.cos(sp.angle), dy = Math.sin(sp.angle);
+        const line = svg('line', {
+          x1: cx + dx * sp.tail * k, y1: cy + dy * sp.tail * k,
+          x2: cx + dx * sp.head * k, y2: cy + dy * sp.head * k,
+          'stroke-width': sp.width * k, 'stroke-linecap': 'round', opacity: sp.alpha,
+        }, g);
+        line.style.stroke = `color-mix(in oklab, ${c2} ${sp.c2Pct.toFixed(1)}%, ${c1})`;
+      }
+      for (let ring = 0; ring < T.CLICK_RINGS; ring++) {
+        const rs = clickRingStyle(age, ring);
+        if (!rs) continue;
+        svg('circle', {
+          cx, cy, r: rs.r * k, fill: 'none',
+          stroke: c1, 'stroke-width': rs.stroke * k, opacity: rs.alpha,
+        }, g);
+      }
+    }
+  }
+
+  return {
+    draw(items) {
+      fx.replaceChildren();
+      const used = new Set();
+      // Every origin under every trail.
+      for (const kind of ['origin', 'live']) {
+        for (const item of items) {
+          if (item.kind !== kind) continue;
+          const c1 = item.colors?.c1 ?? FALLBACK_COLOR;
+          const c2 = item.colors?.c2 ?? c1;
+          if (kind === 'origin') { drawOrigin(item, c1, c2); used.add(gradientId(item.userId)); }
+          else drawLive(item, c1, c2);
+        }
+      }
+      for (const [id, g] of grads) {
+        if (!used.has(id)) { g.el.remove(); grads.delete(id); }
+      }
+    },
+  };
+}
