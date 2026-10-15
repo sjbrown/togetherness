@@ -30,8 +30,10 @@ with a persistent object. The toy is removed in a separate change.
 ### 2.1 Entering
 
 A player enters attention mode with a **triple-click**, or a **triple-tap** on
-touch, with the select tool active. The third press is the entry event: it
-acts on pointerdown, not after the release.
+touch, with the select tool active: three presses within 300ms of each
+other, all within 16 screen px of one another. The third press is the entry
+event: it acts on pointerdown, not after the release. Three quick clicks on
+different things (select one toy, then another) are not a triple-click.
 
 Other tools don't enter attention mode. Their first two clicks would each
 place something on the table before the third arrived.

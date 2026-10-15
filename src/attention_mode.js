@@ -302,6 +302,8 @@ export function createSender({ userId, write, now = Date.now }) {
     active: () => !!att,
     origin: () => origin,
     dismissals: () => dismissals,
+    /** All three awareness fields, for re-establishing a lost local state. */
+    fields: () => ({ attention: att, attnOrigin: origin, attnDismiss: dismissals }),
 
     /** Third press: start attention at canvas (x, y), screen (sx, sy). */
     enter(x, y, sx, sy, scale) {
@@ -694,3 +696,112 @@ export function createRenderer(layerEl) {
     },
   };
 }
+
+// ── Wiring ────────────────────────────────────────────────────────────────────
+// init() at boot; the rest are the entry points canvas.js and events.js reach
+// through the App bus. Pointer coordinates are canvas space (x, y) plus
+// client px (sx, sy) for trail sampling.
+
+let _sender = null, _receiver = null, _renderer = null;
+let _awareness = null, _stageEl = null, _user = null, _getView = null;
+let _rafId = null;
+
+const _raf = (fn) => (globalThis.requestAnimationFrame ?? ((f) => setTimeout(f, 16)))(fn);
+
+function _viewCentre() {
+  const v = _getView();
+  const r = _stageEl?.getBoundingClientRect() ?? { left: 0, top: 0, width: 0, height: 0 };
+  return [(r.left + r.width / 2 - v.x) / v.scale, (r.top + r.height / 2 - v.y) / v.scale];
+}
+
+function _render() {
+  const mine = _sender.scene(_getView().scale)
+    .map((i) => ({ ...i, userId: _user.id, colors: _user.gradient }));
+  const items = [..._receiver.scene(), ...mine];
+  _renderer?.draw(items);
+  if (_stageEl) {
+    if (_sender.active()) _stageEl.dataset.attention = '';
+    else delete _stageEl.dataset.attention;
+  }
+  return _sender.active() || sceneAnimating(items);
+}
+
+function _pump() {
+  if (_rafId !== null) return;
+  const step = () => {
+    _rafId = null;
+    _sender.tick();
+    _receiver.tick();
+    if (_render()) _rafId = _raf(step);
+  };
+  _rafId = _raf(step);
+}
+
+function _onAwareness() {
+  const states = _awareness.getStates();
+  _sender.observe(states, _awareness.clientID);
+  _receiver.sync(states, _awareness.clientID);
+  if (_render()) _pump();
+}
+
+export function init({ awareness, layerEl, stageEl, user, getView }) {
+  _awareness = awareness;
+  _stageEl   = stageEl;
+  _user      = user;
+  _getView   = getView;
+  _sender = createSender({
+    userId: user.id,
+    write: (fields) => {
+      for (const k in fields) _awareness.setLocalStateField(k, fields[k]);
+    },
+  });
+  _receiver = createReceiver({ viewCentre: _viewCentre });
+  _renderer = layerEl ? createRenderer(layerEl) : null;
+  _awareness.on('change', _onAwareness);
+  _onAwareness();
+}
+
+export const isActive = () => !!_sender?.active();
+
+export function enter(x, y, sx, sy) {
+  _sender.enter(x, y, sx, sy, _getView().scale);
+  _render();
+  _pump();
+}
+
+export function move(x, y, sx, sy) {
+  _sender.move(x, y, sx, sy, _getView().scale);
+}
+
+export function press(x, y) {
+  _sender.press(x, y);
+  _pump();
+}
+
+export function exit() {
+  _sender.exit();
+  _render();
+  _pump();
+}
+
+/**
+ * Dismisses the expired origin under canvas (x, y), this player's own or a
+ * peer's. Returns whether one was there, so the caller can consume the press.
+ */
+export function dismissAt(x, y) {
+  const own = _sender.origin();
+  if (own && own[4] != null && insideOrigin(own, x, y)) {
+    _sender.dismissOwn();
+  } else {
+    const hit = _receiver.hitExpired(x, y);
+    if (!hit) return false;
+    _sender.dismiss(hit.userId, hit.t);
+  }
+  _render();
+  _pump();
+  return true;
+}
+
+/** Attention's awareness fields, for a full setLocalState. */
+export const awarenessFields = () =>
+  _sender ? _sender.fields() : { attention: null, attnOrigin: null, attnDismiss: [] };
