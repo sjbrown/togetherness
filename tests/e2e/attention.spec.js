@@ -32,6 +32,7 @@ test('triple-click points, Escape exits, a peer click dismisses', async () => {
   await page1.mouse.click(x, y, { clickCount: 3, delay: 20 });
   await expect(page1.locator('#stage[data-attention]')).toHaveCount(1);
   await expect(origin(page1)).toHaveCount(1);
+  await expect(page1.locator('#toasts', { hasText: 'Attention 3-Click' })).toHaveCount(1);
   await expect(origin(page2)).toHaveCount(1, { timeout: 5000 });
 
   // Moves draw a trail on the other peer.

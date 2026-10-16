@@ -38,8 +38,9 @@ different things (select one toy, then another) are not a triple-click.
 Other tools don't enter attention mode. Their first two clicks would each
 place something on the table before the third arrived.
 
-The entry point becomes the **origin** (§3). The origin circle appearing
-under the pointer is the only entry feedback; no toast, no stage tint.
+The entry point becomes the **origin** (§3). Entry feedback for the player
+entering is the origin circle appearing under the pointer and an
+"Attention 3-Click" toast; no stage tint. Peers see only the circle.
 
 The first two presses of the sequence are ordinary input and act on the table
 as they normally would. Only from the third press on is input diverted.
