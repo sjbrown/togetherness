@@ -31,7 +31,7 @@
  * decoration drawn on any element with an outstanding acquisition request.
  * It is a ring in the requester's own gradient that grows from the
  * bottom-left corner while the holder's ring, in their gradient, fades
- * toward the top-right (see request_ring.js). Both repeat until the
+ * toward the top-right (see soft_lock.js). Both repeat until the
  * request resolves.
  *
  * Drop-target hover indicator: another independent decoration,
