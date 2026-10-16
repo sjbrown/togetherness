@@ -8,7 +8,8 @@
 
 import { describe, test, expect } from 'vitest'
 import {
-  T, sparkDistFor, ringR1For, originRadius, receiverIntroR0, originPhase, originSettled, dotRing,
+  T, FANCY, isFancyClick, fancyLifeMs, clickLifeFor, fancyFrame, fancyFrameState, fancyRingPath,
+  sparkDistFor, ringR1For, originRadius, receiverIntroR0, originPhase, originSettled, dotRing,
   trailSegmentStyle, clickRng, clickSparks, clickFlash, clickRingStyle,
   clickLifeMs, exitFade, trimAttention, acceptsSample, insideOrigin,
 } from '../../src/attention_mode.js'
@@ -227,5 +228,60 @@ describe('insideOrigin', () => {
     const o = [100, 100, 1, 2]            // radius ORIGIN_R / 2 canvas units
     expect(insideOrigin(o, 100 + T.ORIGIN_R / 2, 100)).toBe(true)
     expect(insideOrigin(o, 100 + T.ORIGIN_R / 2 + 1, 100)).toBe(false)
+  })
+})
+
+describe('fancy explosion', () => {
+  const F = FANCY
+  const frames = F.ignF + F.blastF + F.shockF + (F.smokeN - 1) * F.smokeStag + F.smokeF
+
+  test('one click in FANCY_EVERY, by its own timestamp', () => {
+    expect(isFancyClick(1_791_000_000_120)).toBe(true)
+    expect(isFancyClick(1_791_000_000_121)).toBe(false)
+  })
+
+  test('lasts its whole timeline, and fancy clicks are trimmed by it', () => {
+    expect(fancyLifeMs()).toBe(frames * 1000 / F.fps)
+    expect(clickLifeFor(120)).toBe(fancyLifeMs())
+    expect(clickLifeFor(121)).toBe(clickLifeMs())
+    const now = 100_000
+    const att = { trail: [], clicks: [[0, 0, now - 1000], [0, 0, now - 1001]], last: now, scale: 1 }
+    expect(trimAttention(att, now).clicks).toEqual([[0, 0, now - 1000]])   // fancy kept, plain trimmed
+  })
+
+  test('steps at fps, and ends', () => {
+    expect(fancyFrame(-1)).toBeNull()
+    expect(fancyFrame(0)).toBe(0)
+    expect(fancyFrame(1000 / F.fps - 1)).toBe(0)
+    expect(fancyFrame(1000 / F.fps)).toBe(1)
+    expect(fancyFrame(fancyLifeMs())).toBeNull()
+  })
+
+  test('ignition, then blast, then shockwave with a growing hole, then smoke', () => {
+    const first = fancyFrameState(0)
+    expect(first.ignition.opacity).toBe(1)
+    expect(first.boom).toBeNull()
+
+    const blast = fancyFrameState(F.ignF)
+    expect(blast.boom.R).toBeGreaterThan(0)
+    expect(blast.boom.r).toBe(0)
+
+    const lastBlast = fancyFrameState(F.ignF + F.blastF - 1)
+    expect(lastBlast.boom.R).toBeCloseTo(F.blastR)
+
+    const shock = fancyFrameState(F.ignF + F.blastF + 5)
+    expect(shock.boom.r).toBeGreaterThan(0)
+    expect(shock.boom.R).toBeGreaterThan(F.blastR)
+    expect(shock.ignition).toBeNull()
+
+    const smoke = fancyFrameState(F.ignF + F.blastF + F.shockF)
+    expect(smoke.boom).toBeNull()
+    expect(smoke.smoke).toHaveLength(F.smokeN)
+    expect(fancyFrameState(frames - 1).smoke[0].opacity).toBeCloseTo(0)
+  })
+
+  test('the ring path is a disc, with a hole once r is visible', () => {
+    expect(fancyRingPath(10, 0)).toBe('M190 200a10 10 0 1 0 20 0a10 10 0 1 0 -20 0Z')
+    expect(fancyRingPath(10, 4)).toContain('M196 200')
   })
 })

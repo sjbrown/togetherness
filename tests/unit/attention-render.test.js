@@ -7,7 +7,7 @@
 
 // @vitest-environment jsdom
 import { describe, test, expect, beforeEach } from 'vitest'
-import { T, createRenderer, sceneAnimating, dotRing } from '../../src/attention_mode.js'
+import { T, FANCY, createRenderer, sceneAnimating, dotRing } from '../../src/attention_mode.js'
 
 let layer, r
 
@@ -25,7 +25,7 @@ const originItem = (over = {}) => ({
 })
 const liveItem = (over = {}) => ({
   kind: 'live', userId: 'bob', colors, fade: 1, ageOf: (t) => 5000 - t,
-  att: { trail: [[0, 0, 4900], [50, 0, 4950], [60, 0, 5000]], clicks: [[10, 10, 4900]], last: 5000, scale: 1 },
+  att: { trail: [[0, 0, 4900], [50, 0, 4950], [60, 0, 5000]], clicks: [[10, 10, 4901]], last: 5000, scale: 1 },
   ...over,
 })
 
@@ -83,6 +83,39 @@ describe('live', () => {
     r.draw([liveItem(), originItem({ userId: 'carol' })])
     const groups = [...layer.querySelectorAll('.attention-fx > g')]
     expect(groups[0].querySelector('circle[fill^="url"]')).not.toBeNull()
+  })
+})
+
+describe('fancy explosion', () => {
+  const fancyAt = (ageMs) => liveItem({
+    ageOf: (t) => 10_000 + ageMs - t,
+    att: { trail: [], clicks: [[10, 20, 10_000]], last: 10_000, scale: 2 },
+  })
+
+  test('replaces the normal explosion for a click whose t % FANCY_EVERY is 0', () => {
+    r.draw([fancyAt(10)])
+    expect(layer.querySelectorAll('.attention-fx line')).toHaveLength(0)       // no sparks
+    expect(layer.querySelector('.attention-fx filter feTurbulence')).not.toBeNull()
+  })
+
+  test('sits on the click, scaled to the sender zoom, in the player colours', () => {
+    r.draw([fancyAt(T.CLICK_MS)])            // into the blast
+    const g = layer.querySelector('.attention-fx g[transform]')
+    expect(g.getAttribute('transform')).toBe(`translate(10 20) scale(${T.FANCY_SCALE / 2}) translate(-200 -200)`)
+    const stops = [...g.querySelectorAll('stop')]
+    expect(stops.map((s) => [+s.getAttribute('offset'), s.getAttribute('stop-color')]))
+      .toEqual([[0.73, colors.c1], [1, colors.c2]])
+    expect(g.querySelector('path[fill-rule="evenodd"]').getAttribute('fill')).toMatch(/^url\(#attn-fancy-0-g\)$/)
+  })
+
+  test('smoke uses c2 and the ignition cross stays white', () => {
+    const smokeAge = (FANCY.ignF + FANCY.blastF + FANCY.shockF + 2) * 1000 / FANCY.fps
+    r.draw([fancyAt(smokeAge)])
+    const rings = layer.querySelectorAll('.attention-fx g[fill="none"] circle')
+    expect(rings).toHaveLength(FANCY.smokeN)
+    expect(rings[0].getAttribute('stroke')).toBe(colors.c2)
+    r.draw([fancyAt(0)])
+    expect(layer.querySelector('.attention-fx g[fill="#ffffff"] rect')).not.toBeNull()
   })
 })
 

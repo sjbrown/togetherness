@@ -69,6 +69,25 @@ export const T = Object.freeze({
   TRAIL_MIN_DIST:         4,
   TRAIL_MIN_MS:           16,
   BROADCAST_MS:           50,
+
+  FANCY_EVERY:            10,     // a click whose t % FANCY_EVERY is 0 gets the fancy explosion
+  FANCY_SCALE:            1,      // fancy art units per sender screen px
+});
+
+// The fancy explosion, from its own frame-by-frame tuning page. Art units on
+// a 400×400 box centred on the click; frames at `fps`. The player's c1/c2
+// replace the page's colours.
+export const FANCY = Object.freeze({
+  ignF: 6, blastF: 8, shockF: 17, smokeF: 32, smokeStag: 0, fps: 20,
+  crossV: 250, crossH: 111, crossT: 9, crossEnd: 0.14, crossThEnd: 1.35, crossEase: 2.5, fadeF: 3,
+  blurA: 9, blurB: 11.5, gainA: 1, gainB: 4.5,
+  turbFractal: false, turbFx: 0.035, turbFy: 0.035, turbOct: 2, dispA: 18, dispB: 6, turbSeed: 4, turbFlick: true,
+  blastR: 95, blastEase: 2.2, blastUseG: true,
+  shockGrow: 55, shockEase: 3, shockUseG: true,
+  smokeN: 4, smokeJit: 50, smokeR0: 130, smokeRvar: 0.2, smokeSpd: 0.1, smokeSvar: 0.8,
+  smokeW: 10, smokeWend: 0.3, smokeWvar: 0.7, smokeDash: 80, smokeGap: 80, smokeGapVar: 0.15,
+  smokeOp: 0.4, smokeSeed: 125, smokeUseG: false,
+  sTurbFractal: false, sTurbFx: 0.02, sTurbFy: 0.02, sTurbOct: 2, sDispA: 0, sDispB: 80, sTurbSeed: 11, sTurbFlick: false,
 });
 
 // ── Formulas ──────────────────────────────────────────────────────────────────
@@ -216,11 +235,11 @@ export function exitFade(sinceMs) {
  * both by count. `now` is on the clock the entries' timestamps came from.
  */
 export function trimAttention(att, now) {
-  const tl = T.TRAIL_FADE_MS, cl = clickLifeMs();
+  const tl = T.TRAIL_FADE_MS;
   return {
     ...att,
     trail:  att.trail.filter((e) => now - e[2] <= tl).slice(-T.MAX_TRAIL),
-    clicks: att.clicks.filter((e) => now - e[2] <= cl).slice(-T.MAX_CLICKS),
+    clicks: att.clicks.filter((e) => now - e[2] <= clickLifeFor(e[2])).slice(-T.MAX_CLICKS),
   };
 }
 
@@ -238,6 +257,121 @@ export function acceptsSample(prev, sx, sy, t) {
 /** Whether canvas point (x, y) is inside an origin's drawn circle. */
 export function insideOrigin(origin, x, y) {
   return Math.hypot(x - origin[0], y - origin[1]) <= T.ORIGIN_R / origin[3];
+}
+
+/** Whether the click stamped t gets the fancy explosion. */
+export const isFancyClick = (t) => t % T.FANCY_EVERY === 0;
+
+const FT = (() => {
+  const F = FANCY;
+  const tBlast = F.ignF, tShock = tBlast + F.blastF, tSmoke = tShock + F.shockF;
+  return { tBlast, tShock, tSmoke, total: tSmoke + (F.smokeN - 1) * F.smokeStag + F.smokeF };
+})();
+
+export const fancyLifeMs = () => FT.total * 1000 / FANCY.fps;
+
+/** How long the click stamped t draws anything: its trim age. */
+export const clickLifeFor = (t) => (isFancyClick(t) ? fancyLifeMs() : clickLifeMs());
+
+/** The fancy explosion's frame at ageMs, or null outside it. Stepped at FANCY.fps. */
+export function fancyFrame(ageMs) {
+  if (ageMs < 0) return null;
+  const f = Math.floor(ageMs * FANCY.fps / 1000);
+  return f < FT.total ? f : null;
+}
+
+// The fancy page's PRNG, so its smoke lands where it was tuned.
+function mulberry32(a) {
+  return () => {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+const FANCY_SMOKE = (() => {
+  const r = mulberry32(FANCY.smokeSeed * 7919 + 13), r2 = mulberry32(FANCY.smokeSeed * 104729 + 7);
+  const out = [];
+  for (let i = 0; i < FANCY.smokeN; i++) {
+    out.push({ a: r() * Math.PI * 2, d: Math.sqrt(r()), rv: r() * 2 - 1, sv: r() * 2 - 1,
+               wv: r2() * 2 - 1, gv: r2() * 2 - 1, off: r2() });
+  }
+  return out;
+})();
+
+const turbulence = (fractal, fx, fy, oct, seed) =>
+  ({ type: fractal ? 'fractalNoise' : 'turbulence', baseFrequency: `${fx} ${fy}`, numOctaves: oct, seed });
+
+/**
+ * Everything the fancy explosion draws on frame f, in art units around
+ * (200, 200): the ignition cross and its filter, the blast/shockwave ring
+ * (outer radius R, hole r), and the smoke rings and their filter.
+ */
+export function fancyFrameState(f) {
+  const F = FANCY, I = F.ignF, B = F.blastF, S = F.shockF;
+  const out = { ignition: null, boom: null, smokeFilter: null, smoke: [] };
+
+  if (f < I + F.fadeF) {
+    const p = I > 1 ? Math.min(f, I - 1) / (I - 1) : 1;
+    const e = Math.pow(p, F.crossEase), sc = lerp(1, F.crossEnd, e);
+    const V = F.crossV * sc, H = F.crossH * sc;
+    const th = Math.max(0.5, F.crossT * lerp(1, F.crossThEnd, e));
+    out.ignition = {
+      opacity: f < I ? 1 : 1 - (f - I + 1) / (F.fadeF + 1),
+      crossV: { x: -th / 2, y: -V / 2, width: th, height: V },
+      crossH: { x: -H / 2, y: -th / 2, width: H, height: th },
+      turb: turbulence(F.turbFractal, F.turbFx, F.turbFy, F.turbOct, F.turbSeed + (F.turbFlick ? f : 0)),
+      disp: lerp(F.dispA, F.dispB, e),
+      blur: Math.max(0.05, lerp(F.blurA, F.blurB, e)),
+      gain: lerp(F.gainA, F.gainB, e),
+    };
+  }
+
+  if (f >= FT.tBlast && f < FT.tSmoke) {
+    if (f < FT.tShock) {
+      const pb = (f - FT.tBlast + 1) / B;
+      out.boom = { R: F.blastR * (1 - Math.pow(1 - pb, F.blastEase)), r: 0, useG: F.blastUseG };
+    } else {
+      const ps = (f - FT.tShock + 1) / (S + 1);
+      const R = F.blastR + F.shockGrow * ps;
+      out.boom = { R, r: R * Math.pow(ps, F.shockEase), useG: F.shockUseG };
+    }
+  }
+
+  if (F.sDispA > 0 || F.sDispB > 0) {
+    const sp = Math.min(1, Math.max(0, (f - FT.tSmoke) / Math.max(1, FT.total - 1 - FT.tSmoke)));
+    out.smokeFilter = {
+      turb: turbulence(F.sTurbFractal, F.sTurbFx, F.sTurbFy, F.sTurbOct, F.sTurbSeed + (F.sTurbFlick ? f : 0)),
+      disp: lerp(F.sDispA, F.sDispB, sp),
+    };
+  }
+
+  const vRef = (F.blastR + F.shockGrow) / (B + S);
+  FANCY_SMOKE.forEach((m, i) => {
+    const age = f - (FT.tSmoke + i * F.smokeStag);
+    if (age < 0 || age >= F.smokeF) return;
+    const q = F.smokeF > 1 ? age / (F.smokeF - 1) : 0;
+    const r0 = Math.max(1, F.smokeR0 * (1 + F.smokeRvar * m.rv));
+    const v = F.smokeSpd * vRef * (1 + F.smokeSvar * m.sv);
+    const gap = Math.max(0.5, F.smokeGap * (1 + F.smokeGapVar * m.gv));
+    out.smoke.push({
+      cx: 200 + Math.cos(m.a) * m.d * F.smokeJit,
+      cy: 200 + Math.sin(m.a) * m.d * F.smokeJit,
+      r: r0 + v * age,
+      width: Math.max(0.1, F.smokeW * (1 + F.smokeWvar * m.wv) * lerp(1, F.smokeWend, q)),
+      opacity: F.smokeOp * (1 - q),
+      dash: F.smokeDash, gap, offset: m.off * (F.smokeDash + gap),
+    });
+  });
+  return out;
+}
+
+/** SVG path for a disc of radius R around (200, 200) with a hole of radius r. */
+export function fancyRingPath(R, r) {
+  R = Math.max(R, 0.5);
+  const circle = (q) => `M${200 - q} 200a${q} ${q} 0 1 0 ${2 * q} 0a${q} ${q} 0 1 0 ${-2 * q} 0Z`;
+  return circle(R) + (r > 0.5 ? circle(r) : '');
 }
 
 // ── Time ──────────────────────────────────────────────────────────────────────
@@ -638,6 +772,64 @@ export function createRenderer(layerEl) {
     }
   }
 
+  // The fancy explosion at canvas (cx, cy), k canvas units per art unit. Its
+  // filters and gradient are rebuilt with everything else, so their ids only
+  // need to be unique within one draw.
+  let fancySeq = 0;
+  function drawFancy(parent, cx, cy, k, ageMs, c1, c2) {
+    const f = fancyFrame(ageMs);
+    if (f == null) return;
+    const st = fancyFrameState(f);
+    const id = `attn-fancy-${fancySeq++}`;
+    const g = svg('g', { transform: `translate(${cx} ${cy}) scale(${k}) translate(-200 -200)` }, parent);
+    const filterAttrs = { filterUnits: 'userSpaceOnUse', x: 0, y: 0, width: 400, height: 400, 'color-interpolation-filters': 'sRGB' };
+
+    const grad = svg('radialGradient', { id: `${id}-g`, cx: 0.5, cy: 0.5, r: 0.5 }, g);
+    svg('stop', { offset: 0.73, 'stop-color': c1 }, grad);
+    svg('stop', { offset: 1, 'stop-color': c2 }, grad);
+
+    if (st.smoke.length) {
+      const smoke = svg('g', { fill: 'none' }, g);
+      if (st.smokeFilter) {
+        const flt = svg('filter', { id: `${id}-s`, ...filterAttrs }, g);
+        svg('feTurbulence', { ...st.smokeFilter.turb, result: 'noise' }, flt);
+        svg('feDisplacementMap', { in: 'SourceGraphic', in2: 'noise', scale: st.smokeFilter.disp, xChannelSelector: 'R', yChannelSelector: 'G' }, flt);
+        smoke.setAttribute('filter', `url(#${id}-s)`);
+      }
+      for (const c of st.smoke) {
+        svg('circle', {
+          cx: c.cx, cy: c.cy, r: c.r, fill: 'none',
+          stroke: FANCY.smokeUseG ? `url(#${id}-g)` : c2, 'stroke-width': c.width, opacity: c.opacity,
+          ...(c.dash > 0 ? { 'stroke-dasharray': `${c.dash} ${c.gap}`, 'stroke-dashoffset': c.offset } : {}),
+        }, smoke);
+      }
+    }
+
+    if (st.boom) {
+      svg('path', {
+        d: fancyRingPath(st.boom.R, st.boom.r), 'fill-rule': 'evenodd',
+        fill: st.boom.useG ? `url(#${id}-g)` : c1,
+      }, g);
+    }
+
+    if (st.ignition) {
+      const ig = st.ignition;
+      const flt = svg('filter', { id: `${id}-i`, ...filterAttrs }, g);
+      svg('feTurbulence', { ...ig.turb, result: 'noise' }, flt);
+      svg('feDisplacementMap', { in: 'SourceGraphic', in2: 'noise', scale: ig.disp, xChannelSelector: 'R', yChannelSelector: 'G', result: 'warped' }, flt);
+      svg('feGaussianBlur', { in: 'warped', stdDeviation: ig.blur, result: 'blur' }, flt);
+      const ct = svg('feComponentTransfer', { in: 'blur', result: 'glow' }, flt);
+      svg('feFuncA', { type: 'linear', slope: ig.gain }, ct);
+      const merge = svg('feMerge', {}, flt);
+      svg('feMergeNode', { in: 'glow' }, merge);
+      svg('feMergeNode', { in: 'warped' }, merge);
+      const ign = svg('g', { filter: `url(#${id}-i)`, opacity: ig.opacity }, g);
+      const cross = svg('g', { transform: 'translate(200 200)', fill: '#ffffff' }, ign);
+      svg('rect', ig.crossV, cross);
+      svg('rect', ig.crossH, cross);
+    }
+  }
+
   function drawLive(item, c1, c2) {
     const { att, ageOf, fade } = item;
     const k = 1 / att.scale;
@@ -655,6 +847,7 @@ export function createRenderer(layerEl) {
     }
     for (const [cx, cy, ct] of att.clicks) {
       const age = ageOf(ct);
+      if (isFancyClick(ct)) { drawFancy(g, cx, cy, k * T.FANCY_SCALE, age, c1, c2); continue; }
       const fl = clickFlash(age);
       if (fl) {
         const disc = svg('circle', { cx, cy, r: fl.r * k, opacity: fl.alpha }, g);
@@ -683,6 +876,7 @@ export function createRenderer(layerEl) {
   return {
     draw(items) {
       fx.replaceChildren();
+      fancySeq = 0;
       const used = new Set();
       // Every origin under every trail.
       for (const kind of ['origin', 'live']) {

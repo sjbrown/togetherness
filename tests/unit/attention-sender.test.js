@@ -89,6 +89,7 @@ describe('clicks', () => {
 
   test('are trimmed once their animation is over', () => {
     sender.enter(0, 0, 0, 0, 1)
+    clock += 1                              // off a multiple of FANCY_EVERY
     sender.press(1, 1)
     clock += clickLifeMs() + 1
     sender.press(2, 2)

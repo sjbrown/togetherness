@@ -433,6 +433,28 @@ A part whose `p` is outside (0, 1) is not drawn. A click is finished, and
 trimmed (§3.2), once all three parts are:
 `max(CLICK_MS, CLICK_FLASH_MS, CLICK_MS + (CLICK_RINGS - 1) * CLICK_RING_DELAY_MS)`.
 
+**Fancy explosion.** A click whose `t % FANCY_EVERY` is 0 draws a
+different, longer explosion instead of the flash, sparks and shockwave above.
+It comes from its own frame-by-frame tuning page; its values are the `FANCY`
+table in attention_mode.js, not §7. It plays once, stepped at `FANCY.fps`
+(frame = `floor(age(t) * fps / 1000)`), in four stages:
+
+1. Ignition: a white cross that shrinks and thickens, through a turbulence
+   displacement and glow filter whose noise seed changes every frame.
+2. Blast: a disc growing to `blastR`, filled with a radial gradient, `c1`
+   at 0.73 to `c2` at the rim.
+3. Shockwave: the disc keeps growing while a hole opens in its middle.
+4. Smoke: dashed rings in `c2` drifting outward and fading, through a
+   displacement filter. Their positions come from the page's fixed seed, so
+   every fancy explosion's smoke lands the same way.
+
+Its art is drawn on a 400×400 box centred on the click, at `FANCY_SCALE`
+sender px per art unit, under `translate(x y) scale(FANCY_SCALE / scale)`;
+the filters use `userSpaceOnUse` regions in art units, so they scale with it.
+Its filters and gradient live in the effects group and are rebuilt with it.
+A fancy click is finished, and trimmed, after its whole timeline
+(`fancyLifeMs()`, 3150 ms with the current table).
+
 ### 5.5 Exit
 
 When a peer's `attention` goes to `null`, or goes stale per §2.4, the
@@ -546,6 +568,8 @@ are sender screen px (§5.1).
 | `CLICK_STROKE0`          | 4     | px      | §5.4 |
 | `CLICK_STROKE1`          | 1     | px      | §5.4 |
 | `CLICK_RING_DELAY_MS`    | 120   | ms      | §5.4 |
+| `FANCY_EVERY`            | 10    | clicks  | §5.4 |
+| `FANCY_SCALE`            | 1     | px/unit | §5.4 |
 
 
 ---
