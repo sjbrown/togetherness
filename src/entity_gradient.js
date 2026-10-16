@@ -84,3 +84,21 @@ export function entityGradient(name, lumAnchor = 40, satAnchor = 100) {
 
   return { c1, c2, grad, hue1, hue2, sat1, sat2, lum1, lum2, angle };
 }
+
+/**
+ * SVG objectBoundingBox endpoints for a CSS-style gradient angle
+ * (0° = up, 90° = right), as the x1/y1/x2/y2 attributes of a
+ * <linearGradient>.
+ *
+ * @param {number} angle
+ * @returns {{ x1: number, y1: number, x2: number, y2: number }}
+ */
+export function gradientVector(angle = 90) {
+  const rad = (angle - 90) * Math.PI / 180;
+  return {
+    x1: 0.5 - Math.cos(rad) / 2,
+    y1: 0.5 - Math.sin(rad) / 2,
+    x2: 0.5 + Math.cos(rad) / 2,
+    y2: 0.5 + Math.sin(rad) / 2,
+  };
+}

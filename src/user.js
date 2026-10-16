@@ -25,7 +25,7 @@
  * and ui.js only ever reference that id; they never create or mutate it.
  */
 
-import { entityGradient } from './entity_gradient.js';
+import { entityGradient, gradientVector } from './entity_gradient.js';
 
 const STORAGE_KEY = 'tt_player';
 
@@ -238,12 +238,8 @@ export function upsertUserGradient(user) {
     lg.appendChild(stop1);
     defs.appendChild(lg);
   }
-  // Gradient direction: map CSS angle (0°=up, 90°=right) to SVG objectBoundingBox
-  const rad = ((user.gradient.angle ?? 90) - 90) * Math.PI / 180;
-  lg.setAttribute('x1', 0.5 - Math.cos(rad) / 2);
-  lg.setAttribute('y1', 0.5 - Math.sin(rad) / 2);
-  lg.setAttribute('x2', 0.5 + Math.cos(rad) / 2);
-  lg.setAttribute('y2', 0.5 + Math.sin(rad) / 2);
+  const vec = gradientVector(user.gradient.angle ?? 90);
+  for (const [k, v] of Object.entries(vec)) lg.setAttribute(k, v);
   document.getElementById(`${gradId}-stop0`).setAttribute('stop-color', user.gradient.c1);
   document.getElementById(`${gradId}-stop1`).setAttribute('stop-color', user.gradient.c2 ?? user.gradient.c1);
 }

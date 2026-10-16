@@ -28,7 +28,11 @@
  *   'locked'       — remote peer is actively editing
  *
  * Requested/contested indicator (soft_lock.js): a separate, independent
- * decoration drawn on any element with an outstanding acquisition request
+ * decoration drawn on any element with an outstanding acquisition request.
+ * It is a ring in the requester's own gradient that grows from the
+ * bottom-left corner while the holder's ring, in their gradient, fades
+ * toward the top-right (see soft_lock.js). Both repeat until the
+ * request resolves.
  *
  * Drop-target hover indicator: another independent decoration,
  * driven by App.move() during a toy drag
@@ -67,7 +71,8 @@
  *   field.
  */
 
-import { getAllContestedElementIds } from './soft_lock.js';
+import * as SoftLock from './soft_lock.js';
+import { gradientVector } from './entity_gradient.js';
 import { colorMatrixValues, buildToyPreviewSvg, toolInitArgs } from './toys.js';
 import { previewResize as previewBounPosResize } from './boun_pos.js';
 import {
@@ -82,8 +87,6 @@ import { drawAsteriskGlyph, drawCrosshairGlyph, drawRotateGlyph, drawPivotGlyph 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const HANDLE_SIZE = 12;  // px in canvas-space
 export const PAD = 6;    // selection ring padding
-const REQUESTED_PAD = PAD + 6;  // extra clearance so the requested ring
-                                // sits outside the selection ring
 const HANDLE_HIT_PAD = 6; // extra px (canvas-space, pre-scale)
                           // added to the handle's own hit box
 const PIVOT_SIZE = 9;     // px in canvas-space — the pivot handle's ray reach
@@ -206,13 +209,15 @@ const _remoteAddCursors = new Map();
 // { tool, groupEl } | null.
 let _localAddCursor = null;
 
-// Soft-lock "requested" indicator — elIds with an outstanding acquisition
-// request rebuilt on each syncFromAwareness() call.
+// Soft-lock "requested" indicator — Map<elId, { ts, requesterGrad, holderGrad }>
+// for every element with an outstanding acquisition request, rebuilt on each
+// syncFromAwareness() call. ts is the earliest request's start; the grads are
+// { c1, c2, angle } or null when that player's gradient isn't known.
 // Deliberately independent of SelectionMode: an
 // element can be contested regardless of whether it's 'local', 'remote', or
 // unselected from this client's point of view, so it's rendered as its own
 // decoration layer rather than another mutually-exclusive `kind`.
-let _contestedIds = new Set();
+let _requests = new Map();
 
 // Remote bowstring charges, keyed by clientId. Rebuilt from awareness on
 // each syncFromAwareness() call, but firstSeenAt is CARRIED OVER for a
@@ -413,7 +418,7 @@ export function syncFromAwareness(awarenessStates, myClientId) {
     }
   });
   _remoteBowstrings = nextRemoteBowstrings;
-  _contestedIds = getAllContestedElementIds(awarenessStates);
+  _requests = collectRequests(awarenessStates, myClientId);
   render();
   _pumpRemoteCharge();
 }
@@ -701,12 +706,103 @@ export function setDropTargetHover(containerElId) {
   render();
 }
 
+function gradientSpecOf(clientId, awarenessStates, myClientId) {
+  const g = clientId === myClientId ? App.user?.gradient : awarenessStates.get(clientId)?.user?.gradient;
+  return g?.c1 ? { c1: g.c1, c2: g.c2 ?? g.c1, angle: g.angle ?? 90 } : null;
+}
+
+// The earliest request per element is the one animated, matching the one
+// resolveElementWinner would pick.
+function collectRequests(awarenessStates, myClientId) {
+  const requests = new Map();
+  for (const elId of SoftLock.getAllContestedElementIds(awarenessStates)) {
+    const first = SoftLock.getAcquirersOf(elId, awarenessStates)
+      .sort((a, b) => a.ts - b.ts || a.clientId - b.clientId)[0];
+    const holderId = SoftLock.getHolderClientId(elId, awarenessStates);
+    requests.set(elId, {
+      ts:            first.ts,
+      requesterGrad: gradientSpecOf(first.clientId, awarenessStates, myClientId),
+      holderGrad:    holderId === null ? null : gradientSpecOf(holderId, awarenessStates, myClientId),
+    });
+  }
+  return requests;
+}
+
+function reducedMotion() {
+  return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
+}
+
+function requestGradientId(kind, elId) {
+  return `req-${kind}-${elId.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+}
+
+/**
+ * Builds a <linearGradient> into `defs` whose colours retreat into one
+ * corner over the request window, and returns its id.
+ *
+ *   kind 'fade': the holder's gradient, colours retreating toward its far end.
+ *   kind 'grow': the requester's gradient run backwards (vector and colour
+ *                order reversed), so the full ring looks like their normal
+ *                one but the colours emerge from the opposite corner.
+ *
+ * Stops 1 and 2 carry the motion as SMIL <animate>s. Each begins now, with
+ * its keyframes rotated to the phase the request's age puts it at, so a
+ * re-render lands on the same frame instead of restarting the animation.
+ * (Backdating `begin` instead would leave the browser's animation timer
+ * unscheduled.) Reduced motion gets the static full ring.
+ */
+function buildVanishGradient(defs, id, spec, ts, kind) {
+  const grow = kind === 'grow';
+  const vec = gradientVector(spec.angle);
+  const lg = el('linearGradient', grow
+    ? { id, x1: vec.x2, y1: vec.y2, x2: vec.x1, y2: vec.y1 }
+    : { id, ...vec });
+  const [from, to] = grow ? [spec.c2, spec.c1] : [spec.c1, spec.c2];
+  const calm = reducedMotion();
+  const elapsed = Date.now() - ts;
+  const { a, b } = SoftLock.vanishOffsets(calm ? 0 : (grow ? SoftLock.growVanish : SoftLock.fadeVanish)(SoftLock.windowProgress(elapsed)));
+
+  lg.appendChild(el('stop', { offset: 0, 'stop-color': from, 'stop-opacity': 0 }));
+  const s1 = el('stop', { offset: a, 'stop-color': from, 'stop-opacity': 0 });
+  const s2 = el('stop', { offset: b, 'stop-color': from });
+  lg.appendChild(s1);
+  lg.appendChild(s2);
+  lg.appendChild(el('stop', { offset: 1, 'stop-color': to }));
+
+  if (!calm) {
+    const frames = SoftLock.vanishFrames(grow ? SoftLock.growVanish : SoftLock.fadeVanish, SoftLock.cycleMs(elapsed));
+    const begin = `${((_svgEl?.getCurrentTime?.() ?? 0) + 0.001).toFixed(3)}s`;
+    for (const [stop, values] of [[s1, frames.a], [s2, frames.b]]) {
+      stop.appendChild(el('animate', {
+        attributeName: 'offset', values, keyTimes: frames.keyTimes,
+        dur: `${SoftLock.CYCLE_MS / 1000}s`, begin, repeatCount: 'indefinite',
+      }));
+    }
+  }
+  defs.appendChild(lg);
+  return id;
+}
+
+// A holder's selection entry while someone is asking for the element: the
+// same entry, with its ring stroked by the fading gradient. Local entries use
+// my own gradient; remote ones the holder's.
+function fadedEntry(elId, entry, defs) {
+  const req = _requests.get(elId);
+  if (!req || entry.mode === 'candidate') return entry;
+  const remote = entry.mode === 'remote' || entry.mode === 'locked';
+  const spec = remote ? req.holderGrad : (entry.grad ?? App.user?.gradient);
+  if (!spec?.c1) return entry;
+  const id = buildVanishGradient(defs, requestGradientId('fade', elId), { c2: spec.c1, angle: 90, ...spec }, req.ts, 'fade');
+  return { ...entry, ringStroke: `url(#${id})` };
+}
+
 // ── Render ────────────────────────────────────────────────────────────────────
 export function render() {
   if (!_layerEl) return;
   _layerEl.innerHTML = '';
 
   const scale = App.getViewScale();
+  const requestDefs = el('defs', {});   // attached only if a request filled it
 
   // ── 1. Dim placeholders — z-bottom (local then remote) ────────────────────
   for (const entry of _dragGhosts.values()) {
@@ -726,8 +822,9 @@ export function render() {
   }
 
   // ── Selection rings  ───────────────────────────────
-  for (const [elId, entry] of SelectionMode) {
-    if (entry.mode === 'none') continue;
+  for (const [elId, selEntry] of SelectionMode) {
+    if (selEntry.mode === 'none') continue;
+    const entry = fadedEntry(elId, selEntry, requestDefs);
     const geo = App.getBBox(elId);
     if (!geo) continue;
     // getBBox is UNROTATED; furniture rides the element's own rotation so
@@ -768,11 +865,12 @@ export function render() {
   // Drawn regardless of whether the element is 'local', 'remote', or has no
   // SelectionMode entry at all — contestedness is orthogonal to who (if
   // anyone) currently holds it from this client's point of view.
-  for (const elId of _contestedIds) {
+  for (const [elId, req] of _requests) {
     const geo = App.getBBox(elId);
     if (!geo) continue;
-    renderRequestedIndicator(geo, scale, App.getRotation?.(elId) ?? null);
+    renderRequestedIndicator(geo, scale, App.getRotation?.(elId) ?? null, elId, req, requestDefs);
   }
+  if (requestDefs.firstChild) _layerEl.appendChild(requestDefs);
 
   // ── Remote drag ghosts + rings ─────────────────────────────────────────
   for (const [elId, drag] of _remoteDrags) {
@@ -982,7 +1080,7 @@ export function handleCursor(corner, deg, kind) {
 
 function renderLocalSelection(geo, entry, scale, parent = _layerEl) {
   const { x, y, width, height } = geo;
-  const stroke = _localGradUrl();
+  const stroke = entry.ringStroke ?? _localGradUrl();
   const ring = el('rect', {
     x:      x - PAD,
     y:      y - PAD,
@@ -1000,7 +1098,7 @@ function renderLocalSelection(geo, entry, scale, parent = _layerEl) {
 
 function renderLocalResizeSelection(geo, entry, scale, rot = null, parent = _layerEl) {
   const { x, y, width, height } = geo;
-  const stroke = entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)');
+  const stroke = entry.ringStroke ?? (entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)'));
   const ring = el('rect', {
     x:      x - PAD,
     y:      y - PAD,
@@ -1070,7 +1168,7 @@ function renderPivotHandle(elId, geo, scale, parent = _layerEl) {
  */
 function renderLocalRotateSelection(geo, entry, scale, rot = null, parent = _layerEl) {
   const { x, y, width, height } = geo;
-  const stroke = entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)');
+  const stroke = entry.ringStroke ?? (entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)'));
   parent.appendChild(el('rect', {
     x:      x - PAD,
     y:      y - PAD,
@@ -1112,7 +1210,7 @@ function renderLocalRotateSelection(geo, entry, scale, rot = null, parent = _lay
  */
 function renderLocalResizeRSelection(geo, entry, scale, parent = _layerEl) {
   const { x, y, width, height } = geo;
-  const stroke = entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)');
+  const stroke = entry.ringStroke ?? (entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)'));
   const ring = el('rect', {
     x:      x - PAD,
     y:      y - PAD,
@@ -1178,7 +1276,7 @@ function renderRemoteSelection(geo, entry, scale, rot = null) {
   // Ring strokes with the peer's own <linearGradient id="grad-{id}"> (see
   // user.js's upsertUserGradient) when one is available; solid color is
   // only a fallback for peers who haven't broadcast a gradient.
-  const stroke = entry.gradId ? `url(#${entry.gradId})` : (entry.color ?? '#888');
+  const stroke = entry.ringStroke ?? (entry.gradId ? `url(#${entry.gradId})` : (entry.color ?? '#888'));
   const ring = el('rect', {
     x:      x - PAD,
     y:      y - PAD,
@@ -1221,31 +1319,29 @@ function renderRemoteSelection(geo, entry, scale, rot = null) {
   _layerEl.appendChild(group);
 }
 
-// Contested/"requested" indicator — a pulsing warm-colored outer ring drawn
-// around whatever else is being rendered for this element (local/remote
-// selection ring, or nothing at all). Deliberately visually distinct from
-// both the local (gradient) and remote (peer-colored dashed) rings so it
-// reads as "someone wants this" rather than "someone has this".
-function renderRequestedIndicator(geo, scale, rot = null) {
+// Contested/"requested" indicator — a dashed ring on the element's own
+// selection-ring rectangle, in the requester's gradient, growing from the
+// bottom-left corner over the request window. Drawn on top of whatever else
+// is rendered for the element (local/remote selection ring, or nothing at
+// all). Without a known requester gradient it falls back to a static warn
+// ring.
+function renderRequestedIndicator(geo, scale, rot, elId, req, defs) {
   const { x, y, width, height } = geo;
+  const stroke = req.requesterGrad
+    ? `url(#${buildVanishGradient(defs, requestGradientId('grow', elId), req.requesterGrad, req.ts, 'grow')})`
+    : 'var(--warn)';
   const ring = el('rect', {
-    x:      x - REQUESTED_PAD,
-    y:      y - REQUESTED_PAD,
-    width:  width  + REQUESTED_PAD * 2,
-    height: height + REQUESTED_PAD * 2,
-    rx:     8,
+    x:      x - PAD,
+    y:      y - PAD,
+    width:  width  + PAD * 2,
+    height: height + PAD * 2,
+    rx:     4,
     fill:               'none',
-    stroke:             'var(--warn)',
-    'stroke-width':     2 / scale,
+    stroke,
+    'stroke-width':     SoftLock.RING_WIDTH / scale,
     'stroke-dasharray': `${3 / scale} ${3 / scale}`,
     class:              'requestedRing',
   });
-  const anim = document.createElementNS(SVGNS, 'animate');
-  anim.setAttribute('attributeName', 'opacity');
-  anim.setAttribute('values',        '1;0.35;1');
-  anim.setAttribute('dur',           '1.2s');
-  anim.setAttribute('repeatCount',   'indefinite');
-  ring.appendChild(anim);
   if (rot) ring.setAttribute('transform', rotationTransform(rot));
   _layerEl.appendChild(ring);
 }
