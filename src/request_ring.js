@@ -51,25 +51,67 @@ export function windowProgress(elapsedMs) {
   return Math.min(1, cycleMs(elapsedMs) / REQUEST_WINDOW_MS);
 }
 
-/**
- * Keyframes for animating the two moving stops' `offset` over one cycle:
- * sampled across the window, then held to the end of the cycle. Returns
- * semicolon-joined strings ready for a SMIL <animate>.
- */
-export function vanishFrames(vOfProgress, end = FADE_END) {
-  const keyTimes = [];
-  const aValues = [];
-  const bValues = [];
-  for (let i = 0; i <= FRAME_SAMPLES; i++) {
-    const p = i / FRAME_SAMPLES;
-    const { a, b } = vanishOffsets(vOfProgress(p), end);
-    keyTimes.push(p * REQUEST_WINDOW_MS / CYCLE_MS);
-    aValues.push(a);
-    bValues.push(b);
+// Gap, in ms, over which the cycle's wrap-around is drawn when keyframes
+// start mid-cycle; keyTimes must stay increasing, so it can't be zero.
+const WRAP_MS = 3;
+
+function lerpAt(ts, vs, t) {
+  for (let i = 1; i < ts.length; i++) {
+    if (t <= ts[i]) return vs[i - 1] + (vs[i] - vs[i - 1]) * ((t - ts[i - 1]) / (ts[i] - ts[i - 1]));
   }
-  keyTimes.push(1);
-  aValues.push(aValues[aValues.length - 1]);
-  bValues.push(bValues[bValues.length - 1]);
+  return vs[vs.length - 1];
+}
+
+/**
+ * Keyframes for animating the two moving stops' `offset` over one cycle,
+ * starting `phaseMs` into it: the window sampled in FRAME_SAMPLES steps,
+ * then a flat hold to the end of the cycle, then the wrap back to the start.
+ * Returns semicolon-joined strings ready for a SMIL <animate>.
+ *
+ * Starting mid-cycle is done by rotating the keyframes rather than by
+ * backdating the animation's begin time: a dynamically inserted <animate>
+ * with a begin in the past is never scheduled by the browser, so it would
+ * sit on its first frame. The rotated cycle is seamless at its own repeat
+ * point and carries the real wrap as a near-instant step inside it.
+ */
+export function vanishFrames(vOfProgress, phaseMs = 0, end = FADE_END) {
+  const ts = [];
+  const as = [];
+  const bs = [];
+  for (let i = 0; i <= FRAME_SAMPLES; i++) {
+    const { a, b } = vanishOffsets(vOfProgress(i / FRAME_SAMPLES), end);
+    ts.push(i / FRAME_SAMPLES * REQUEST_WINDOW_MS);
+    as.push(a);
+    bs.push(b);
+  }
+  ts.push(CYCLE_MS);
+  as.push(as[as.length - 1]);
+  bs.push(bs[bs.length - 1]);
+
+  let phase = ((phaseMs % CYCLE_MS) + CYCLE_MS) % CYCLE_MS;
+  if (CYCLE_MS - phase < 2 * WRAP_MS) phase = 0;
+
+  const times = [0];
+  const aVals = [phase === 0 ? as[0] : lerpAt(ts, as, phase)];
+  const bVals = [phase === 0 ? bs[0] : lerpAt(ts, bs, phase)];
+  const push = (t, a, b) => { times.push(t); aVals.push(a); bVals.push(b); };
+
+  if (phase === 0) {
+    for (let i = 1; i < ts.length; i++) push(ts[i], as[i], bs[i]);
+  } else {
+    for (let i = 1; i < ts.length - 1; i++) {
+      if (ts[i] > phase) push(ts[i] - phase, as[i], bs[i]);
+    }
+    const last = ts.length - 1;
+    const holdEnd = CYCLE_MS - phase - WRAP_MS;
+    if (holdEnd > times[times.length - 1]) push(holdEnd, as[last], bs[last]);
+    push(CYCLE_MS - phase, as[0], bs[0]);
+    for (let i = 1; i < ts.length - 1; i++) {
+      if (ts[i] < phase) push(CYCLE_MS - phase + ts[i], as[i], bs[i]);
+    }
+    push(CYCLE_MS, aVals[0], bVals[0]);
+  }
+
   const join = (xs) => xs.map((x) => +x.toFixed(4)).join(';');
-  return { keyTimes: join(keyTimes), a: join(aValues), b: join(bValues) };
+  return { keyTimes: join(times.map((t) => t / CYCLE_MS)), a: join(aVals), b: join(bVals) };
 }

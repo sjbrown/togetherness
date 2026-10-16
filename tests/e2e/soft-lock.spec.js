@@ -86,7 +86,7 @@ async function clickToy(page, id, { shift = false } = {}) {
 
 test.describe('soft-lock: two-peer element requests', () => {
 
-  test('clicking a peer-held toy shows the amber requested ring on BOTH pages, and does not select', async () => {
+  test('clicking a peer-held toy shows the requested ring on BOTH pages, and does not select', async () => {
     // The requester-side half of this assertion is the one that would have
     // caught the phantom-drag-ghost bug: it depends on the real
     // pointerdown → select() → (no startDrag) wiring and real z-order.
@@ -101,13 +101,50 @@ test.describe('soft-lock: two-peer element requests', () => {
 
     await clickToy(page2, id);                     // B requests it
 
-    // Amber ring appears on the requester's own page (no round-trip needed)
+    // The requested ring appears on the requester's own page (no round-trip needed)
     // and on the holder's page (after propagation).
     await expect(page2.locator('#overlay-layer .requestedRing')).toHaveCount(1, { timeout: 2000 });
     await expect(page1.locator('#overlay-layer .requestedRing')).toHaveCount(1, { timeout: 2000 });
 
     // A request is not a selection: B must have no local ring of its own.
     await expect(page2.locator('#overlay-layer .selRing')).toHaveCount(0);
+
+    await browser.close();
+  });
+
+  test('an open request animates: the holder\'s ring fades while the requester\'s ring grows', async () => {
+    // SMIL isn't evaluated by jsdom, so this is the only place the real
+    // animation runs. animVal is the live animated value of a stop's offset;
+    // it keeps advancing across the continuous overlay re-renders that
+    // awareness traffic causes, which is what the timestamp-derived phase is for.
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
+    const { page1, page2 } = await twoPeers(browser);
+
+    const id = await placeToy(page1, 120, 120);
+    await expect(page2.locator('[data-toy-type]')).toHaveCount(1, { timeout: 5000 });
+
+    await clickToy(page1, id);                     // A holds
+    await expect(page1.locator('#overlay-layer .selRing')).toHaveCount(1, { timeout: 3000 });
+    await clickToy(page2, id);                     // B requests
+
+    // A's own ring is stroked by the fading gradient, B's request ring by the growing one.
+    await expect(page1.locator('#overlay-layer .selRing')).toHaveAttribute('stroke', /url\(#req-fade-/, { timeout: 2000 });
+    await expect(page2.locator('#overlay-layer .requestedRing')).toHaveAttribute('stroke', /url\(#req-grow-/, { timeout: 2000 });
+
+    // The moving stop's live offset (stop index 1 of the gradient).
+    const offset = (page, kind) => page.evaluate((k) => {
+      const stop = document.querySelector(`#overlay-layer linearGradient[id^="req-${k}-"]`)?.querySelectorAll('stop')[1];
+      return stop ? stop.offset.animVal : null;
+    }, kind);
+
+    const fade0 = await offset(page1, 'fade');
+    const grow0 = await offset(page2, 'grow');
+    await page1.waitForTimeout(1000);
+    const fade1 = await offset(page1, 'fade');
+    const grow1 = await offset(page2, 'grow');
+
+    expect(fade1).toBeGreaterThan(fade0);          // holder's colours retreating
+    expect(grow1).toBeLessThan(grow0);             // requester's colours emerging
 
     await browser.close();
   });
@@ -218,7 +255,7 @@ test.describe('soft-lock: two-peer element requests', () => {
     await page1.keyboard.up('Shift');
 
     // A ends holding only toy 2 — the held toy was silently excluded, no
-    // request was queued (no amber ring anywhere), B's holding untouched.
+    // request was queued (no requested ring anywhere), B's holding untouched.
     await expect(page1.locator('#overlay-layer .selRing')).toHaveCount(1, { timeout: 3000 });
     await expect(page1.locator('#overlay-layer .requestedRing')).toHaveCount(0);
     await expect(page2.locator('#overlay-layer .selRing')).toHaveCount(1);

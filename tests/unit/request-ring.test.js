@@ -119,6 +119,54 @@ describe('vanishFrames', () => {
   })
 })
 
+describe('vanishFrames started mid-cycle', () => {
+  // Evaluate a frames track at fraction f of the cycle by linear interpolation.
+  const at = (frames, track, f) => {
+    const kt = nums(frames.keyTimes)
+    const vs = nums(frames[track])
+    for (let i = 1; i < kt.length; i++) {
+      if (f <= kt[i]) return vs[i - 1] + (vs[i] - vs[i - 1]) * ((f - kt[i - 1]) / (kt[i] - kt[i - 1]))
+    }
+    return vs[vs.length - 1]
+  }
+  const PHASES = [0, 1, 500, 1234, REQUEST_WINDOW_MS, REQUEST_WINDOW_MS + 400, CYCLE_MS - 20, CYCLE_MS - 5, CYCLE_MS - 1]
+
+  test.each(PHASES)('phase %i: key times start at 0, end at 1, strictly increasing', (phase) => {
+    for (const curve of [fadeVanish, growVanish]) {
+      const f = vanishFrames(curve, phase)
+      const kt = nums(f.keyTimes)
+      expect(kt[0]).toBe(0)
+      expect(kt[kt.length - 1]).toBe(1)
+      for (let i = 1; i < kt.length; i++) expect(kt[i]).toBeGreaterThan(kt[i - 1])
+      expect(nums(f.a)).toHaveLength(kt.length)
+      expect(nums(f.b)).toHaveLength(kt.length)
+    }
+  })
+
+  test.each(PHASES)('phase %i: tracks the unrotated cycle shifted by the phase', (phase) => {
+    const base = vanishFrames(fadeVanish)
+    const rotated = vanishFrames(fadeVanish, phase)
+    for (let tau = 0; tau <= CYCLE_MS; tau += 53) {
+      const t = (phase + tau) % CYCLE_MS
+      // the wrap back to the start is a step; skip the few ms around it
+      if (t < 10 || CYCLE_MS - t < 10 || Math.abs(tau - (CYCLE_MS - phase)) < 10) continue
+      expect(at(rotated, 'a', tau / CYCLE_MS)).toBeCloseTo(at(base, 'a', t / CYCLE_MS), 2)
+    }
+  })
+
+  test('the rotated cycle is seamless at its own repeat point', () => {
+    const f = vanishFrames(growVanish, 1700)
+    const a = nums(f.a)
+    expect(a[a.length - 1]).toBe(a[0])
+  })
+
+  test('the first frame is where the unrotated cycle is at that phase', () => {
+    const base = vanishFrames(fadeVanish)
+    const f = vanishFrames(fadeVanish, 1500)
+    expect(nums(f.a)[0]).toBeCloseTo(at(base, 'a', 1500 / CYCLE_MS), 3)
+  })
+})
+
 describe('gradientVector', () => {
   test('90° runs left to right across the box', () => {
     expect(gradientVector(90)).toEqual({ x1: 0, y1: 0.5, x2: 1, y2: 0.5 })
