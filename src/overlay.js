@@ -71,11 +71,8 @@
  *   field.
  */
 
-import { getAllContestedElementIds, getAcquirersOf, getHolderClientId } from './soft_lock.js';
+import * as SoftLock from './soft_lock.js';
 import { gradientVector } from './entity_gradient.js';
-import {
-  RING_WIDTH, CYCLE_MS, fadeVanish, growVanish, vanishOffsets, vanishFrames, windowProgress, cycleMs,
-} from './request_ring.js';
 import { colorMatrixValues } from './toys.js';
 import { previewResize as previewBounPosResize } from './boun_pos.js';
 import {
@@ -718,10 +715,10 @@ function gradientSpecOf(clientId, awarenessStates, myClientId) {
 // resolveElementWinner would pick.
 function collectRequests(awarenessStates, myClientId) {
   const requests = new Map();
-  for (const elId of getAllContestedElementIds(awarenessStates)) {
-    const first = getAcquirersOf(elId, awarenessStates)
+  for (const elId of SoftLock.getAllContestedElementIds(awarenessStates)) {
+    const first = SoftLock.getAcquirersOf(elId, awarenessStates)
       .sort((a, b) => a.ts - b.ts || a.clientId - b.clientId)[0];
-    const holderId = getHolderClientId(elId, awarenessStates);
+    const holderId = SoftLock.getHolderClientId(elId, awarenessStates);
     requests.set(elId, {
       ts:            first.ts,
       requesterGrad: gradientSpecOf(first.clientId, awarenessStates, myClientId),
@@ -763,7 +760,7 @@ function buildVanishGradient(defs, id, spec, ts, kind) {
   const [from, to] = grow ? [spec.c2, spec.c1] : [spec.c1, spec.c2];
   const calm = reducedMotion();
   const elapsed = Date.now() - ts;
-  const { a, b } = vanishOffsets(calm ? 0 : (grow ? growVanish : fadeVanish)(windowProgress(elapsed)));
+  const { a, b } = SoftLock.vanishOffsets(calm ? 0 : (grow ? SoftLock.growVanish : SoftLock.fadeVanish)(SoftLock.windowProgress(elapsed)));
 
   lg.appendChild(el('stop', { offset: 0, 'stop-color': from, 'stop-opacity': 0 }));
   const s1 = el('stop', { offset: a, 'stop-color': from, 'stop-opacity': 0 });
@@ -773,12 +770,12 @@ function buildVanishGradient(defs, id, spec, ts, kind) {
   lg.appendChild(el('stop', { offset: 1, 'stop-color': to }));
 
   if (!calm) {
-    const frames = vanishFrames(grow ? growVanish : fadeVanish, cycleMs(elapsed));
+    const frames = SoftLock.vanishFrames(grow ? SoftLock.growVanish : SoftLock.fadeVanish, SoftLock.cycleMs(elapsed));
     const begin = `${((_svgEl?.getCurrentTime?.() ?? 0) + 0.001).toFixed(3)}s`;
     for (const [stop, values] of [[s1, frames.a], [s2, frames.b]]) {
       stop.appendChild(el('animate', {
         attributeName: 'offset', values, keyTimes: frames.keyTimes,
-        dur: `${CYCLE_MS / 1000}s`, begin, repeatCount: 'indefinite',
+        dur: `${SoftLock.CYCLE_MS / 1000}s`, begin, repeatCount: 'indefinite',
       }));
     }
   }
@@ -1341,7 +1338,7 @@ function renderRequestedIndicator(geo, scale, rot, elId, req, defs) {
     rx:     4,
     fill:               'none',
     stroke,
-    'stroke-width':     RING_WIDTH / scale,
+    'stroke-width':     SoftLock.RING_WIDTH / scale,
     'stroke-dasharray': `${3 / scale} ${3 / scale}`,
     class:              'requestedRing',
   });
