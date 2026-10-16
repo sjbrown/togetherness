@@ -87,6 +87,12 @@ export function init(appBus, svgElement) {
 
 // ── ToolMode setters (called by App) ─────────────────────────────────────────
 export function setTool(name, params = {}) {
+  // Presses made with another tool never count toward a multi-click.
+  if (name !== ToolMode.tool) {
+    ToolMode._tapCount = 0;
+    ToolMode._lastTap  = 0;
+    ToolMode._tapPts   = [];
+  }
   ToolMode.tool = name;
   ToolMode.params = { ...params };
   updateCursor();

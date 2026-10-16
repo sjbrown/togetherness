@@ -34,6 +34,8 @@ touch, with the select tool active: three presses within 300ms of each
 other, all within 16 screen px of one another. The third press is the entry
 event: it acts on pointerdown, not after the release. Three quick clicks on
 different things (select one toy, then another) are not a triple-click.
+Nor is a sequence that started with another tool: changing tools starts a
+new count, so placing a toy and then clicking it twice is not one either.
 
 Other tools don't enter attention mode. Their first two clicks would each
 place something on the table before the third arrived.

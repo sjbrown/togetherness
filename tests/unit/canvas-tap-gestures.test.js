@@ -230,6 +230,21 @@ describe('attention mode', () => {
     expect(app.attentionEnter).toHaveBeenCalledWith(44, 52, 44, 52)
   })
 
+  test('a press made with another tool does not count toward the triple-click', () => {
+    const stage = document.getElementById('stage')
+    const app = attentionApp({ commitToy: () => {}, updateAddCursor: () => {}, clearAddCursor: () => {} })
+    init(app, document.getElementById('canvas'))
+    setTool('d6', {})
+    tap(stage, { pointerId: 1 })            // places a toy
+    setTool('select', {})
+    tap(stage, { pointerId: 2 })
+    tap(stage, { pointerId: 3 })
+    expect(app.attentionEnter).not.toHaveBeenCalled()
+    setTool('select', {})                   // re-selecting the same tool keeps the sequence
+    tap(stage, { pointerId: 4 })
+    expect(app.attentionEnter).toHaveBeenCalledTimes(1)
+  })
+
   test('three quick clicks in different places do not enter it', () => {
     const stage = document.getElementById('stage')
     const app = attentionApp()
