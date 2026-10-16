@@ -18,6 +18,7 @@
 
 import { icon } from './icons.js';
 import * as Debug from './debug_panel.js';
+import { buildToyDom } from './toys.js';
 import './ui_component/color-picker.js';
 import './ui_component/range_ticked.js';
 
@@ -979,6 +980,9 @@ function gatherToolsData() {
     background:          App.getBackground(),
     defaultBackgrounds:  App.getDefaultBackgrounds(),
     toyClasses:          App.getToyClasses(),
+    toyType:             App.getTool(activeTool)?.toyType ?? null,
+    toyPreviewMarkup:    App.getToolPreviewMarkup(activeTool),
+    userColor:           App.user.color,
   };
 }
 function gatherPeersData() {
@@ -1045,6 +1049,22 @@ export function applyBackgroundPreset(url, width, height) {
   App.setBackground({ url, width, height });
 }
 
+// Full-size toy rendered with the tool's current colour, as inline SVG.
+// Empty until the toy's SVG has been fetched (the fetch re-renders the panel).
+function toyPreviewHTML(data) {
+  if (!data.toyType || !data.toyPreviewMarkup) return '';
+  const params = data.activeToolParams ?? {};
+  const { toyEl } = buildToyDom(
+    { id: 'tool-preview', toyType: data.toyType, x: 0, y: 0, color: params.fill ?? data.userColor },
+    data.toyPreviewMarkup);
+  const svg = toyEl.firstElementChild;
+  svg.setAttribute('x', '0');
+  svg.setAttribute('y', '0');
+  svg.setAttribute('width', '100%');
+  svg.setAttribute('height', '100%');
+  return `<div class="tool-preview" aria-label="${data.activeTool} preview">${svg.outerHTML}</div>`;
+}
+
 function defaultToolsBody(data) {
   const toolBtn = t =>
     `<div class="tool ${data.activeTool === t.name ? 'active' : ''}" onclick="App.setTool('${t.name}')">${iconFor(t)}<span>${t.label}</span></div>`;
@@ -1065,6 +1085,7 @@ function defaultToolsBody(data) {
     : '';
 
   return `
+    ${data.layer === 'toys' ? toyPreviewHTML(data) : ''}
     <div class="field"><label>Tool · ${data.layer} layer</label>
       <div class="tool-grid">${data.tools.map(toolBtn).join('')}</div>
     </div>
