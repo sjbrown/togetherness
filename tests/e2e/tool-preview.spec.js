@@ -43,3 +43,24 @@ test('add cursor preview is tinted with the tool colour', async ({ page }) => {
   await page.mouse.move(box.x + 220, box.y + 220);
   await expect.poll(() => clone.getAttribute('values')).not.toBe(before);
 });
+
+test('previews apply toy options via initialize', async ({ page }) => {
+  await openAsCreator(page, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+  await waitForPeerCount(page, 0);
+
+  await page.evaluate(() => { window.UI.pillTap('token_glass'); window.UI.openSheet('tools'); });
+  const icons = page.locator('#panelBody .tool-preview .game-icon:not([display="none"])');
+  await expect(page.locator('#panelBody .tool-preview svg').first()).toBeVisible({ timeout: 5000 });
+  await expect(icons).toHaveCount(0);
+
+  await page.evaluate(() => window.App.setToolParam('token_glass', 'value', 3));
+  await expect(icons).toHaveCount(1);
+  await expect(icons.first()).toHaveAttribute('data-token-style-index', '3');
+
+  await page.evaluate(() => window.UI.pillTap('meeple'));
+  const tg = page.locator('#panelBody .tool-preview .tt_transform_group');
+  await page.evaluate(() => window.App.setToolParam('meeple', 'size', 2));
+  await expect(tg).toHaveAttribute('transform', '');
+  await page.evaluate(() => window.App.setToolParam('meeple', 'size', 1));
+  await expect(tg).toHaveAttribute('transform', /scale\(0\.8\)/);
+});

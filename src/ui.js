@@ -18,7 +18,7 @@
 
 import { icon } from './icons.js';
 import * as Debug from './debug_panel.js';
-import { buildToyPreviewSvg } from './toys.js';
+import { buildToyPreviewSvg, toolInitArgs } from './toys.js';
 import './ui_component/color-picker.js';
 import './ui_component/range_ticked.js';
 
@@ -980,7 +980,7 @@ function gatherToolsData() {
     background:          App.getBackground(),
     defaultBackgrounds:  App.getDefaultBackgrounds(),
     toyClasses:          App.getToyClasses(),
-    toyType:             App.getTool(activeTool)?.toyType ?? null,
+    toolDef:             App.getTool(activeTool),
     toyPreviewMarkup:    App.getToolPreviewMarkup(activeTool),
     userColor:           App.user?.color,
   };
@@ -1052,10 +1052,21 @@ export function applyBackgroundPreset(url, width, height) {
 // Full-size toy rendered with the tool's current colour, as inline SVG.
 // Empty until the toy's SVG has been fetched (the fetch re-renders the panel).
 function toyPreviewHTML(data) {
-  if (!data.toyType || !data.toyPreviewMarkup) return '';
+  if (!data.toolDef?.toyType || !data.toyPreviewMarkup) return '';
   const params = data.activeToolParams ?? {};
-  const svg = buildToyPreviewSvg('tool-preview', data.toyPreviewMarkup, params.fill ?? data.userColor);
+  const svg = buildToyPreviewSvg('tool-preview', data.toyPreviewMarkup, data.toolDef.toyType,
+    toolInitArgs(data.toolDef, params, data.userColor));
   return `<div class="tool-preview" aria-label="${data.activeTool} preview">${svg.outerHTML}</div>`;
+}
+
+// Swaps the preview in place after a tool option changes; the panel body
+// itself isn't re-rendered, which would tear down a slider mid-drag.
+export function refreshToolPreview() {
+  if (UIData.panelOpen !== 'tools') return;
+  const old = $('#panelBody .tool-preview');
+  if (!old) return;
+  const html = toyPreviewHTML(gatherToolsData());
+  if (html) old.outerHTML = html;
 }
 
 function defaultToolsBody(data) {

@@ -1218,13 +1218,8 @@ const App = {
     if (!layerEl) return;
     const params = _toolParams[toolName] ?? {};
     // initialize()'s options always carries color + every other tool option
-    const color  = params.fill ?? App.user.color;
-    const initArgs = {
-      color,
-      ...Object.fromEntries((def.options ?? [])
-        .map(o => o.key)
-        .map(k => [k, params[k]])),
-    };
+    const initArgs = Toys.toolInitArgs(def, params, App.user.color);
+    const color    = initArgs.color;
     // initializeToy below runs its own gesture, so initialize commits as a
     // separate op from placement. Deliberate: initialize is its own
     // gesture, not part of "place".
@@ -1873,6 +1868,7 @@ const App = {
     if (toolName === _activeTool) {
       Canvas.setParams(p);
     }
+    UI.refreshToolPreview?.();
   },
 
   // ── Misc ─────────────────────────────────────────────────────────────────
