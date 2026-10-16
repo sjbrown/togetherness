@@ -5,8 +5,10 @@
  *   - Two-finger pinch must never trigger resetView(), even though the two
  *     fingers lift off as separate, closely-spaced pointerup events.
  *   - Double-click/double-tap resets the view.
- *   - Triple-click/triple-tap does NOT reset the view; it notifies via
- *     App.onTripleTap() instead.
+ *   - Triple-click/triple-tap does NOT reset the view; with the select
+ *     tool its third press enters attention mode instead.
+ *   - In attention mode presses and moves go to attention, and a press on
+ *     an expired origin is consumed by its dismissal.
  */
 
 // @vitest-environment jsdom
@@ -47,7 +49,11 @@ function makeApp(overrides = {}) {
     commitMove:        () => {},
     move:              () => {},
     onViewReset:       vi.fn(),
-    onTripleTap:       vi.fn(),
+    attentionActive:   () => false,
+    attentionEnter:    vi.fn(),
+    attentionMove:     vi.fn(),
+    attentionPress:    vi.fn(),
+    attentionDismissAt: () => false,
     requestContextMenu: () => {},
     getBoxCandidates:   () => [],
     broadcastCandidates: () => {},
@@ -153,10 +159,10 @@ describe('pinch-zoom vs. tap disambiguation', () => {
     vi.useRealTimers()
 
     expect(app.onViewReset).toHaveBeenCalledTimes(1)
-    expect(app.onTripleTap).not.toHaveBeenCalled()
+    expect(app.attentionEnter).not.toHaveBeenCalled()
   })
 
-  test('triple-click on empty canvas does NOT reset the view, and notifies onTripleTap', () => {
+  test('triple-click on empty canvas does NOT reset the view, and enters attention', () => {
     vi.useFakeTimers()
     const stage = document.getElementById('stage')
     const app = makeApp()
@@ -171,7 +177,7 @@ describe('pinch-zoom vs. tap disambiguation', () => {
     vi.useRealTimers()
 
     expect(app.onViewReset).not.toHaveBeenCalled()
-    expect(app.onTripleTap).toHaveBeenCalledTimes(1)
+    expect(app.attentionEnter).toHaveBeenCalledTimes(1)
   })
 
   test('a drag between two taps does not count as part of a tap sequence', () => {
@@ -195,6 +201,125 @@ describe('pinch-zoom vs. tap disambiguation', () => {
 
     // Only ever a single tap in a row (1, then drag breaks it, then 1) — never 2 or 3.
     expect(app.onViewReset).not.toHaveBeenCalled()
-    expect(app.onTripleTap).not.toHaveBeenCalled()
+    expect(app.attentionEnter).not.toHaveBeenCalled()
+  })
+})
+
+describe('attention mode', () => {
+  // A fake attention that turns on when entered.
+  function attentionApp(overrides = {}) {
+    let on = false
+    return makeApp({
+      attentionActive: () => on,
+      attentionEnter:  vi.fn(() => { on = true }),
+      select:          vi.fn(),
+      ...overrides,
+    })
+  }
+
+  test('enters on the third press itself, with canvas and client coordinates', () => {
+    const stage = document.getElementById('stage')
+    const app = attentionApp()
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    tap(stage, { pointerId: 1, clientX: 40, clientY: 50 })
+    tap(stage, { pointerId: 2, clientX: 42, clientY: 51 })
+    stage.dispatchEvent(makePointerEvent('pointerdown', { pointerId: 3, clientX: 44, clientY: 52 }))
+
+    expect(app.attentionEnter).toHaveBeenCalledWith(44, 52, 44, 52)
+  })
+
+  test('a press made with another tool does not count toward the triple-click', () => {
+    const stage = document.getElementById('stage')
+    const app = attentionApp({ commitToy: () => {}, updateAddCursor: () => {}, clearAddCursor: () => {} })
+    init(app, document.getElementById('canvas'))
+    setTool('d6', {})
+    tap(stage, { pointerId: 1 })            // places a toy
+    setTool('select', {})
+    tap(stage, { pointerId: 2 })
+    tap(stage, { pointerId: 3 })
+    expect(app.attentionEnter).not.toHaveBeenCalled()
+    setTool('select', {})                   // re-selecting the same tool keeps the sequence
+    tap(stage, { pointerId: 4 })
+    expect(app.attentionEnter).toHaveBeenCalledTimes(1)
+  })
+
+  test('three quick clicks in different places do not enter it', () => {
+    const stage = document.getElementById('stage')
+    const app = attentionApp()
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    tap(stage, { pointerId: 1, clientX: 100, clientY: 100 })
+    tap(stage, { pointerId: 2, clientX: 300, clientY: 100 })
+    tap(stage, { pointerId: 3, clientX: 500, clientY: 100 })
+
+    expect(app.attentionEnter).not.toHaveBeenCalled()
+  })
+
+  test('other tools never enter it', () => {
+    const stage = document.getElementById('stage')
+    const app = attentionApp({ commitDrawing: () => {}, commitToy: () => {}, updateAddCursor: () => {} })
+    init(app, document.getElementById('canvas'))
+    setTool('rect', {})
+
+    tap(stage, { pointerId: 1 })
+    tap(stage, { pointerId: 2 })
+    tap(stage, { pointerId: 3 })
+
+    expect(app.attentionEnter).not.toHaveBeenCalled()
+  })
+
+  test('while on, presses and moves go to attention, not the table', () => {
+    const stage = document.getElementById('stage')
+    const app = attentionApp()
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+    tap(stage, { pointerId: 1 })
+    tap(stage, { pointerId: 2 })
+    tap(stage, { pointerId: 3 })
+    app.select.mockClear()
+
+    stage.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 9, clientX: 70, clientY: 80 }))
+    expect(app.attentionMove).toHaveBeenLastCalledWith(70, 80, 70, 80)
+
+    tap(stage, { pointerId: 4, clientX: 15, clientY: 25 })
+    expect(app.attentionPress).toHaveBeenCalledWith(15, 25)
+    expect(app.select).not.toHaveBeenCalled()
+  })
+
+  test('attention presses never build a new tap sequence', () => {
+    vi.useFakeTimers()
+    const stage = document.getElementById('stage')
+    const app = attentionApp()
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+    tap(stage, { pointerId: 1 })
+    tap(stage, { pointerId: 2 })
+    tap(stage, { pointerId: 3 })
+    tap(stage, { pointerId: 4 })
+    tap(stage, { pointerId: 5 })
+    vi.advanceTimersByTime(400)
+    vi.useRealTimers()
+
+    expect(app.onViewReset).not.toHaveBeenCalled()
+    expect(app.attentionEnter).toHaveBeenCalledTimes(1)
+  })
+
+  test('a press on an expired origin is consumed, but counts toward a triple-click', () => {
+    const stage = document.getElementById('stage')
+    let origin = true
+    const app = attentionApp({ attentionDismissAt: vi.fn(() => { const hit = origin; origin = false; return hit }) })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    tap(stage, { pointerId: 1 })
+    expect(app.attentionDismissAt).toHaveBeenCalledTimes(1)
+    expect(app.select).not.toHaveBeenCalled()
+
+    tap(stage, { pointerId: 2 })
+    tap(stage, { pointerId: 3 })
+    expect(app.attentionEnter).toHaveBeenCalledTimes(1)
   })
 })

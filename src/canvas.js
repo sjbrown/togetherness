@@ -33,7 +33,12 @@ export const ToolMode = {
                          // the trailing pointerup(s) as fingers lift one at a time
   _tapCount:   0,
   _tapTimer:   null,
+  _tapPts:     [],      // client points of the current tap sequence
 };
+
+// A triple-click is three presses in about the same place; three quick
+// clicks on different things are not.
+const TRIPLE_TAP_SLOP = 16;
 
 // Internal
 let App      = null;
@@ -62,6 +67,7 @@ export function init(appBus, svgElement) {
     '#drawing-layer',
     '#overlay-layer',
     '#delight-layer',
+    '#attention-layer',
   ].map(sel => svgElement.querySelector(sel)).filter(Boolean);
 
   _stageEl.addEventListener('pointerdown',  onPointerDown);
@@ -81,6 +87,12 @@ export function init(appBus, svgElement) {
 
 // ── ToolMode setters (called by App) ─────────────────────────────────────────
 export function setTool(name, params = {}) {
+  // Presses made with another tool never count toward a multi-click.
+  if (name !== ToolMode.tool) {
+    ToolMode._tapCount = 0;
+    ToolMode._lastTap  = 0;
+    ToolMode._tapPts   = [];
+  }
   ToolMode.tool = name;
   ToolMode.params = { ...params };
   updateCursor();
@@ -226,6 +238,36 @@ function onPointerDown(e) {
   ToolMode._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   _stageEl.setPointerCapture(e.pointerId);
 
+  // Attention mode, select tool only: while it is on it takes every
+  // single-pointer press; otherwise the third press of a tap sequence enters
+  // it, and a press on an expired origin dismisses that origin (still
+  // counting as a tap, so a triple-click there starts a new one).
+  if (ToolMode.tool === 'select' && ToolMode._pointers.size === 1) {
+    const p = toCanvas(e.clientX, e.clientY);
+    if (App.attentionActive()) {
+      ToolMode._gesture = 'attention';
+      ToolMode._moveRef = null;
+      App.attentionPress(p.x, p.y);
+      return;
+    }
+    if (ToolMode._tapCount === 2 && Date.now() - ToolMode._lastTap < 300 &&
+        ToolMode._tapPts.every((t) => dist(t, { x: e.clientX, y: e.clientY }) <= TRIPLE_TAP_SLOP)) {
+      clearTimeout(ToolMode._tapTimer);
+      ToolMode._tapTimer = null;
+      ToolMode._tapCount = 0;
+      ToolMode._lastTap  = 0;
+      ToolMode._gesture  = 'attention';
+      ToolMode._moveRef  = null;
+      App.attentionEnter(p.x, p.y, e.clientX, e.clientY);
+      return;
+    }
+    if (App.attentionDismissAt(p.x, p.y)) {
+      ToolMode._gesture = 'attention-dismiss';
+      ToolMode._moveRef = null;
+      return;
+    }
+  }
+
   // Two-finger gesture
   if (ToolMode._pointers.size === 2) {
     cancelDraft();
@@ -360,6 +402,15 @@ function onPointerMove(e) {
     App.updateAddCursor(p.x, p.y, ToolMode.tool);
   }
 
+  // In attention mode moves go to attention, hovering or not; a pinch still
+  // pans and zooms.
+  if (App.attentionActive() && ToolMode._gesture !== 'pinch') {
+    const p = toCanvas(e.clientX, e.clientY);
+    App.attentionMove(p.x, p.y, e.clientX, e.clientY);
+    if (ToolMode._pointers.has(e.pointerId)) ToolMode._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    return;
+  }
+
   if (!ToolMode._pointers.has(e.pointerId)) return;
   ToolMode._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -486,6 +537,18 @@ function onPointerUp(e) {
 
   const isCancelled = e.type === 'pointercancel';
 
+  // An attention press never counts toward a tap sequence.
+  if (ToolMode._gesture === 'attention') {
+    ToolMode._gesture = null;
+    ToolMode._moveRef = null;
+    if (ToolMode._pointers.size === 0) {
+      ToolMode._tapCount = 0;
+      ToolMode._lastTap  = 0;
+      ToolMode._wasPinch = false;
+    }
+    return;
+  }
+
   if (ToolMode._gesture === 'bowstring') {
     App.endBowstring(e);
     ToolMode._gesture = null;
@@ -610,8 +673,10 @@ function onPointerUp(e) {
     if (isPlainTap) {
       if (now - ToolMode._lastTap < 300) {
         ToolMode._tapCount++;
+        ToolMode._tapPts.push({ x: e.clientX, y: e.clientY });
       } else {
         ToolMode._tapCount = 1;
+        ToolMode._tapPts = [{ x: e.clientX, y: e.clientY }];
       }
       ToolMode._lastTap = now;
 
@@ -623,8 +688,6 @@ function onPointerUp(e) {
         if (ToolMode._tapCount === 2) {
           resetView();
           App.onViewReset();
-        } else if (ToolMode._tapCount >= 3) {
-          App.onTripleTap();
         }
         ToolMode._tapCount = 0;
       }, 300);

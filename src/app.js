@@ -37,6 +37,7 @@ import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
 import * as Overlay                               from './overlay.js';
 import * as Delight                               from './delight.js';
+import * as Attention                             from './attention_mode.js';
 import * as Events                                from './events.js';
 import { entityGradient }            from './entity_gradient.js';
 import { isElementHeldByOther, computeTickActions } from './soft_lock.js';
@@ -429,6 +430,15 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
 
   // Delight (bowstring handle and sparks)
   Delight.init(App, _svgEl);
+
+  // Attention mode (triple-click pointing), on its own top layer
+  Attention.init({
+    awareness: _awareness,
+    layerEl:   _svgEl.querySelector('#attention-layer'),
+    stageEl:   document.getElementById('stage'),
+    user,
+    getView:   () => Canvas.getView(),
+  });
 
   // Canvas - attaches pointer listeners
   Canvas.init(App, _svgEl);
@@ -966,7 +976,12 @@ const App = {
   // ── Tool mutations (canvas.js calls back into ui.js via these) ────────────
   onToolChanged:          (t)   => UI.onToolChanged(t),
   onViewReset:            ()    => UI.toast('View reset'),
-  onTripleTap:            ()    => UI.toast('Attention 3-Click'),
+  attentionActive:        ()             => Attention.isActive(),
+  attentionEnter:         (x, y, sx, sy) => { Attention.enter(x, y, sx, sy); UI.toast('Attention 3-Click'); },
+  attentionMove:          (x, y, sx, sy) => Attention.move(x, y, sx, sy),
+  attentionPress:         (x, y)         => Attention.press(x, y),
+  attentionExit:          ()             => Attention.exit(),
+  attentionDismissAt:     (x, y)         => Attention.dismissAt(x, y),
 
   // ── Selection ────────────────────────────────────────────────────────────
 
@@ -1896,6 +1911,7 @@ const App = {
       cursor:  null,
       desired: { ..._desired },
       mode:    _activeMode ? _activeMode.mode : null,
+      ...Attention.awarenessFields(),
     });
   },
   undo: () => App.undoFor(App.user.id),

@@ -143,7 +143,7 @@ export function keyboardHandlers(App) {
   function onKeyDown(e) {
     if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
     const keys = {
-      'Escape': (e) => App.select(null),
+      'Escape': (e) => App.attentionActive() ? App.attentionExit() : App.select(null),
       'Delete': (e) => App.deleteSelected(),
       'Backspace': (e) => App.deleteSelected(),
       's': (e) => App.setTool('select'),

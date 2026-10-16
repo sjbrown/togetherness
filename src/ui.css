@@ -301,6 +301,8 @@ html, body {
    crosshair by default; text is the one deliberate exception below. */
 #stage[data-tool]:not([data-tool="select"]):not([data-tool="text"]) { cursor: crosshair; }
 #stage[data-tool="text"]    { cursor: text; }
+#stage[data-tool="select"][data-attention],
+#stage[data-tool="select"][data-attention] * { cursor: pointer; }
 
 #select-preview {
   display: none; position: absolute; pointer-events: none; z-index: 2;
