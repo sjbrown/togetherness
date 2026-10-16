@@ -68,7 +68,7 @@
  */
 
 import { getAllContestedElementIds } from './soft_lock.js';
-import { colorMatrixValues } from './toys.js';
+import { colorMatrixValues, buildToyPreviewSvg } from './toys.js';
 import { previewResize as previewBounPosResize } from './boun_pos.js';
 import {
   previewResize     as previewDrawingResize,
@@ -1310,13 +1310,24 @@ function _addCursorPreviewTemplate(toolName) {
   return template;
 }
 
+// Toy artwork tinted with the tool's selected colour, wrapped like the
+// untinted template (same size and viewBox).
+function _tintedPreviewTemplate(markup, fill) {
+  const src = buildToyPreviewSvg('add-cursor', markup, fill);
+  src.setAttribute('width',  ADD_CURSOR_CLONE_SIZE);
+  src.setAttribute('height', ADD_CURSOR_CLONE_SIZE);
+  src.setAttribute('class',  'addCursorClone');
+  return src;
+}
+
 // Builds one add-cursor group: a crosshair at the local origin, plus (if a
 // preview is available) the clone svg positioned to its right. Position on
 // the canvas is left to the caller (a transform on the returned group).
-function _buildAddCursorGroup(tool, color) {
+function _buildAddCursorGroup(tool, color, fill) {
   const groupEl = el('g', { class: 'add-cursor' });
   drawCrosshairGlyph(0, 0, ADD_CURSOR_ARM, groupEl, color);
-  const template = _addCursorPreviewTemplate(tool);
+  const markup = fill ? App.getToolPreviewMarkup(tool) : null;
+  const template = markup ? _tintedPreviewTemplate(markup, fill) : _addCursorPreviewTemplate(tool);
   if (template) {
     const cloneEl = template.cloneNode(true);
     cloneEl.style.color = color; // tints any currentColor-stroked icon paths
@@ -1337,10 +1348,13 @@ function _buildAddCursorGroup(tool, color) {
  */
 export function updateLocalAddCursor(x, y, tool) {
   if (!_layerEl) return;
-  if (!_localAddCursor || _localAddCursor.tool !== tool) {
+  const fill = App.getTool(tool)?.toyType
+    ? (App.getToolParams(tool).fill ?? App.user.color)
+    : null;
+  if (!_localAddCursor || _localAddCursor.tool !== tool || _localAddCursor.fill !== fill) {
     _localAddCursor?.groupEl.remove();
-    const groupEl = _buildAddCursorGroup(tool, App.user.color);
-    _localAddCursor = { tool, groupEl };
+    const groupEl = _buildAddCursorGroup(tool, App.user.color, fill);
+    _localAddCursor = { tool, fill, groupEl };
     _layerEl.appendChild(groupEl);
   }
   _localAddCursor.groupEl.setAttribute('transform', `translate(${x}, ${y})`);

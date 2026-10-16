@@ -442,6 +442,20 @@ export function buildToyDom(attrs, svgText) {
 }
 
 /**
+ * A toy's artwork as a standalone <svg> filling its container, tinted with
+ * `color` and with ids scoped by `id`. Decorative: scripts are dropped.
+ */
+export function buildToyPreviewSvg(id, svgText, color) {
+  const { toyEl } = buildToyDom({ id, toyType: '', x: 0, y: 0, color }, svgText)
+  const svg = toyEl.firstElementChild
+  svg.setAttribute('x', '0')
+  svg.setAttribute('y', '0')
+  svg.setAttribute('width', '100%')
+  svg.setAttribute('height', '100%')
+  return svg
+}
+
+/**
  * Place a toy into the live layer. Hoists the template's inline scripts
  * into ydoc, then appends the wrapper. Call from inside runInEnvelope.
  */

@@ -18,7 +18,7 @@
 
 import { icon } from './icons.js';
 import * as Debug from './debug_panel.js';
-import { buildToyDom } from './toys.js';
+import { buildToyPreviewSvg } from './toys.js';
 import './ui_component/color-picker.js';
 import './ui_component/range_ticked.js';
 
@@ -1054,14 +1054,7 @@ export function applyBackgroundPreset(url, width, height) {
 function toyPreviewHTML(data) {
   if (!data.toyType || !data.toyPreviewMarkup) return '';
   const params = data.activeToolParams ?? {};
-  const { toyEl } = buildToyDom(
-    { id: 'tool-preview', toyType: data.toyType, x: 0, y: 0, color: params.fill ?? data.userColor },
-    data.toyPreviewMarkup);
-  const svg = toyEl.firstElementChild;
-  svg.setAttribute('x', '0');
-  svg.setAttribute('y', '0');
-  svg.setAttribute('width', '100%');
-  svg.setAttribute('height', '100%');
+  const svg = buildToyPreviewSvg('tool-preview', data.toyPreviewMarkup, params.fill ?? data.userColor);
   return `<div class="tool-preview" aria-label="${data.activeTool} preview">${svg.outerHTML}</div>`;
 }
 
