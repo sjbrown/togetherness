@@ -34,6 +34,7 @@ export const ToolMode = {
   _tapCount:   0,
   _tapTimer:   null,
   _tapPts:     [],      // client points of the current tap sequence
+  _attnClick:  false,   // the press was attention's; swallow the click it produces
 };
 
 // A triple-click is three presses in about the same place; three quick
@@ -188,6 +189,13 @@ export function wireShapeClicks(layer) {
   _clickWired.add(layer);
 
   layer.addEventListener('click', ev => {
+    // On touch the click lands here, on the element under the finger, even
+    // when attention mode took the press that produced it.
+    if (ToolMode._attnClick || App.attentionActive()) {
+      ToolMode._attnClick = false;
+      ev.stopPropagation();
+      return;
+    }
     const el = ev.target.closest?.('[data-module]');
     if (el && layer.contains(el)) {
       if (ToolMode.tool !== 'select') return;
@@ -237,6 +245,7 @@ function onPointerDown(e) {
   // Let ui.js know to close dropdowns — it listens on document capture
   ToolMode._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   _stageEl.setPointerCapture(e.pointerId);
+  ToolMode._attnClick = false;
 
   // Attention mode, select tool only: while it is on it takes every
   // single-pointer press; otherwise the third press of a tap sequence enters
@@ -247,6 +256,7 @@ function onPointerDown(e) {
     if (App.attentionActive()) {
       ToolMode._gesture = 'attention';
       ToolMode._moveRef = null;
+      ToolMode._attnClick = true;
       App.attentionPress(p.x, p.y);
       return;
     }
@@ -258,12 +268,14 @@ function onPointerDown(e) {
       ToolMode._lastTap  = 0;
       ToolMode._gesture  = 'attention';
       ToolMode._moveRef  = null;
+      ToolMode._attnClick = true;
       App.attentionEnter(p.x, p.y, e.clientX, e.clientY);
       return;
     }
     if (App.attentionDismissAt(p.x, p.y)) {
       ToolMode._gesture = 'attention-dismiss';
       ToolMode._moveRef = null;
+      ToolMode._attnClick = true;
       return;
     }
   }

@@ -13,7 +13,7 @@
 
 // @vitest-environment jsdom
 import { describe, test, expect, beforeEach, vi } from 'vitest'
-import { init, setTool, resetView, ToolMode } from '../../src/canvas.js'
+import { init, setTool, resetView, ToolMode, wireShapeClicks } from '../../src/canvas.js'
 
 function makeDOM() {
   document.body.innerHTML = `
@@ -118,6 +118,8 @@ beforeEach(() => {
   ToolMode._lastTap   = 0
   ToolMode._wasPinch  = false
   ToolMode._tapCount  = 0
+  ToolMode._tapPts    = []
+  ToolMode._attnClick = false
   clearTimeout(ToolMode._tapTimer)
   ToolMode._tapTimer  = null
 })
@@ -321,5 +323,45 @@ describe('attention mode', () => {
     tap(stage, { pointerId: 2 })
     tap(stage, { pointerId: 3 })
     expect(app.attentionEnter).toHaveBeenCalledTimes(1)
+  })
+
+  // On touch the click after a tap is dispatched on the element under the
+  // finger, so the toy layer's click handler sees it.
+  function toyClick() {
+    const layer = document.getElementById('toys-layer')
+    layer.innerHTML = '<g data-module="toys" data-id="toy-1"><rect width="10" height="10"/></g>'
+    wireShapeClicks(layer)
+    return () => layer.querySelector('rect').dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  }
+
+  test('a toy click while attention is on selects nothing', () => {
+    const stage = document.getElementById('stage')
+    const app = attentionApp()
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+    const click = toyClick()
+    tap(stage, { pointerId: 1 })
+    tap(stage, { pointerId: 2 })
+    tap(stage, { pointerId: 3 })
+    app.select.mockClear()                  // taps 1 and 2 deselected, as ordinary taps
+    click()
+    tap(stage, { pointerId: 4 })
+    click()
+    expect(app.select).not.toHaveBeenCalled()
+  })
+
+  test('the click from a dismissing tap selects nothing; the next ordinary click does', () => {
+    const stage = document.getElementById('stage')
+    let origin = true
+    const app = attentionApp({ attentionDismissAt: () => { const hit = origin; origin = false; return hit } })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+    const click = toyClick()
+    tap(stage, { pointerId: 1 })
+    click()
+    expect(app.select).not.toHaveBeenCalled()
+    tap(stage, { pointerId: 2, clientX: 400, clientY: 400 })
+    click()
+    expect(app.select).toHaveBeenCalledWith('toy-1')
   })
 })
