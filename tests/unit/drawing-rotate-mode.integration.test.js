@@ -44,7 +44,6 @@ vi.mock('../../src/canvas.js', () => ({
   leaderId:                vi.fn(),
   setParams:               vi.fn(),
   setTool:                 vi.fn(),
-  wireShapeClicks:         vi.fn(),
   syncBackgroundTransform: vi.fn(),
 }))
 

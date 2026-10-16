@@ -62,3 +62,16 @@ test('tapping the selected toy again steps it into its next selection mode', asy
 
   await browser.close();
 });
+
+test('a tap on a toy while another layer is active does not select it', async () => {
+  const browser = await launch();
+  const { page, x, y } = await touchPageWithToy(browser);
+
+  await page.evaluate(() => window.App.setLayer('drawing'));
+  await page.waitForTimeout(100);
+  await page.touchscreen.tap(x, y);
+  await page.waitForTimeout(300);
+  await expect(selRing(page)).toHaveCount(0);
+
+  await browser.close();
+});

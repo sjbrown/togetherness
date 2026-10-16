@@ -632,7 +632,6 @@ function renderOpLayers() {
     const layerEl = layerElOf(layer);
     if (!layerEl) throw new Error(`renderOpLayers: '${layer.selector}' not found in SVG document — malformed template?`);
     _Layers[layer.name].render(layerEl, joinSequence);
-    Canvas.wireShapeClicks(layerEl);
   }
 }
 
