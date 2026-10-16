@@ -17,7 +17,7 @@
  */
 
 // @vitest-environment jsdom
-import { describe, test, expect, beforeEach } from 'vitest'
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   SelectionMode,
   localSelectionChanged,
@@ -258,5 +258,157 @@ describe('local selection precedence over a conflicting remote broadcast', () =>
 
     expect(SelectionMode.get('die-1')?.mode).toBe('local')
     expect(SelectionMode.get('die-2')?.mode).toBe('remote')
+  })
+})
+
+
+// ── Request animation: requester's ring grows, holder's ring fades ─────────
+//
+// Both are gradients whose stops carry SMIL animations. jsdom doesn't run
+// SMIL, so these assert the structure the browser animates from, plus the
+// static offsets the request's age puts the stops at.
+
+describe('request animation', () => {
+  const NOW = 1_700_000_000_000
+  const ALICE = { id: 'alice', name: 'Alice', color: '#2f80f0', gradient: { c1: '#2f80f0', c2: '#12b5c4', angle: 45 } }
+  const BAILEY = { id: 'bailey', name: 'Bailey', color: '#ee4a82', gradient: { c1: '#ee4a82', c2: '#9a45f2', angle: 45 } }
+  const layer = () => document.getElementById('overlay-layer')
+  const grad = (id) => layer().querySelector(`linearGradient[id="${id}"]`)
+  const stops = (g) => [...g.querySelectorAll('stop')]
+  const strokeOf = (sel) => layer().querySelector(sel).getAttribute('stroke')
+
+  function observe({ requestAgeMs = 0, aliceUser = ALICE, baileyUser = BAILEY } = {}) {
+    overlayInit(makeOverlayApp({ 'goblin-1': BBOX }), document.getElementById('canvas'))
+    syncFromAwareness(new Map([
+      [1, { user: aliceUser,  desired: held(['goblin-1']) }],
+      [2, { user: baileyUser, desired: bid('goblin-1', NOW - requestAgeMs) }],
+    ]), 999)
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(NOW)
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  test('the requested ring is stroked by a gradient built from the requester\'s colours', () => {
+    observe()
+    expect(strokeOf('.requestedRing')).toBe('url(#req-grow-goblin-1)')
+    const g = stops(grad('req-grow-goblin-1'))
+    expect(g).toHaveLength(4)
+    // reversed colour order: the full ring still reads c1 -> c2, but emerges from the c2 end
+    expect(g[0].getAttribute('stop-color')).toBe(BAILEY.gradient.c2)
+    expect(g[3].getAttribute('stop-color')).toBe(BAILEY.gradient.c1)
+  })
+
+  test('the grow gradient runs against the requester\'s own gradient direction', () => {
+    observe()
+    const lg = grad('req-grow-goblin-1')
+    // angle 45 normally runs bottom-left -> top-right; grown from the other end
+    expect(+lg.getAttribute('x1')).toBeGreaterThan(+lg.getAttribute('x2'))
+    expect(+lg.getAttribute('y1')).toBeLessThan(+lg.getAttribute('y2'))
+  })
+
+  test('the requested ring sits on the selection-ring rectangle, 4px wide', () => {
+    observe()
+    const ring = layer().querySelector('.requestedRing')
+    expect(+ring.getAttribute('x')).toBe(BBOX.x - 6)
+    expect(+ring.getAttribute('width')).toBe(BBOX.width + 12)
+    expect(ring.getAttribute('stroke-width')).toBe('4')
+    expect(ring.getAttribute('rx')).toBe('4')
+  })
+
+  test('a remote holder\'s ring is stroked by a fading gradient in the holder\'s colours', () => {
+    observe()
+    expect(strokeOf('.remote-sel rect')).toBe('url(#req-fade-goblin-1)')
+    const lg = grad('req-fade-goblin-1')
+    const g = stops(lg)
+    expect(g[0].getAttribute('stop-color')).toBe(ALICE.gradient.c1)
+    expect(g[3].getAttribute('stop-color')).toBe(ALICE.gradient.c2)
+    expect(+lg.getAttribute('x1')).toBeLessThan(+lg.getAttribute('x2'))
+  })
+
+  test('my own selection ring fades when someone requests what I hold', () => {
+    overlayInit(makeOverlayApp({ 'goblin-1': BBOX }), document.getElementById('canvas'))
+    localSelectionChanged(new Set(['goblin-1']))
+    syncFromAwareness(new Map([
+      [1, { desired: held(['goblin-1']) }],
+      [2, { user: BAILEY, desired: bid('goblin-1', NOW) }],
+    ]), 1)
+
+    expect(strokeOf('.selRing')).toBe('url(#req-fade-goblin-1)')
+    expect(stops(grad('req-fade-goblin-1'))[0].getAttribute('stop-color')).toBe('#5a7ea8')
+    expect(strokeOf('.requestedRing')).toBe('url(#req-grow-goblin-1)')
+  })
+
+  test('without a request the rings keep their normal gradients and no defs are added', () => {
+    overlayInit(makeOverlayApp({ 'goblin-1': BBOX }), document.getElementById('canvas'), { id: 'me' })
+    localSelectionChanged(new Set(['goblin-1']))
+    syncFromAwareness(new Map([[1, { desired: held(['goblin-1']) }]]), 1)
+
+    expect(strokeOf('.selRing')).toBe('url(#grad-me)')
+    expect(layer().querySelectorAll('defs, linearGradient')).toHaveLength(0)
+  })
+
+  test('the moving stops carry looping animations over the request window plus its buffer', () => {
+    observe()
+    for (const id of ['req-grow-goblin-1', 'req-fade-goblin-1']) {
+      const [, s1, s2] = stops(grad(id))
+      for (const stop of [s1, s2]) {
+        const anims = stop.querySelectorAll('animate')
+        expect(anims).toHaveLength(1)
+        expect(anims[0].getAttribute('attributeName')).toBe('offset')
+        expect(anims[0].getAttribute('repeatCount')).toBe('indefinite')
+        expect(anims[0].getAttribute('dur')).toBe('4s')
+      }
+    }
+  })
+
+  test('a request already half through its window starts the stops half-way, not from zero', () => {
+    observe({ requestAgeMs: 1500 })
+    const [, grow1] = stops(grad('req-grow-goblin-1'))
+    const [, fade1] = stops(grad('req-fade-goblin-1'))
+    // grow: v = 1 - 0.5; fade: v = 0.5^2. Offsets are end * v.
+    expect(+grow1.getAttribute('offset')).toBeCloseTo(0.92 * 0.5, 3)
+    expect(+fade1.getAttribute('offset')).toBeCloseTo(0.92 * 0.25, 3)
+    // begins now (a backdated begin is never scheduled); the keyframes start at that phase instead
+    const anim = grow1.querySelector('animate')
+    expect(anim.getAttribute('begin')).toBe('0.001s')
+    expect(+anim.getAttribute('values').split(';')[0]).toBeCloseTo(0.92 * 0.5, 2)
+  })
+
+  test('the phase wraps with the cycle instead of running off the end', () => {
+    observe({ requestAgeMs: 4000 + 1500 })
+    const [, grow1] = stops(grad('req-grow-goblin-1'))
+    expect(+grow1.getAttribute('offset')).toBeCloseTo(0.92 * 0.5, 3)
+  })
+
+  test('a requester with no broadcast gradient gets a static warn ring and no gradient', () => {
+    observe({ baileyUser: null })
+    expect(strokeOf('.requestedRing')).toBe('var(--warn)')
+    expect(grad('req-grow-goblin-1')).toBeNull()
+    expect(layer().querySelectorAll('.requestedRing')).toHaveLength(1)
+  })
+
+  test('with reduced motion preferred, the rings are static and unanimated', () => {
+    vi.stubGlobal('matchMedia', (q) => ({ matches: q.includes('reduce'), media: q }))
+    observe({ requestAgeMs: 1500 })
+    expect(layer().querySelectorAll('animate')).toHaveLength(0)
+    expect(+stops(grad('req-grow-goblin-1'))[1].getAttribute('offset')).toBe(0)
+  })
+
+  test('the earliest of several requests drives the animation', () => {
+    overlayInit(makeOverlayApp({ 'goblin-1': BBOX }), document.getElementById('canvas'))
+    const CASS = { id: 'cass', name: 'Cass', color: '#0a0', gradient: { c1: '#00aa00', c2: '#005500', angle: 90 } }
+    syncFromAwareness(new Map([
+      [1, { user: ALICE, desired: held(['goblin-1']) }],
+      [3, { user: CASS,  desired: bid('goblin-1', NOW - 1000) }],
+      [2, { user: BAILEY, desired: bid('goblin-1', NOW - 200) }],
+    ]), 999)
+    expect(layer().querySelectorAll('.requestedRing')).toHaveLength(1)
+    expect(stops(grad('req-grow-goblin-1'))[0].getAttribute('stop-color')).toBe(CASS.gradient.c2)
   })
 })

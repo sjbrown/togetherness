@@ -86,8 +86,8 @@ describe('drop-target hover — basic presence', () => {
   })
 })
 
-describe('drop-target hover — visual distinction from the requested/contested indicator', () => {
-  test('uses the amber --warn palette but does not pulse (no <animate>, unlike requestedRing)', () => {
+describe('drop-target hover — static warn-colored ring', () => {
+  test('uses the amber --warn palette and does not animate (no <animate>)', () => {
     setDropTargetHover('tray1')
     const ring = document.querySelector('#overlay-layer .dropTargetRing')
 
