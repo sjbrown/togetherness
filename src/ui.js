@@ -982,7 +982,7 @@ function gatherToolsData() {
     toyClasses:          App.getToyClasses(),
     toyType:             App.getTool(activeTool)?.toyType ?? null,
     toyPreviewMarkup:    App.getToolPreviewMarkup(activeTool),
-    userColor:           App.user.color,
+    userColor:           App.user?.color,
   };
 }
 function gatherPeersData() {
