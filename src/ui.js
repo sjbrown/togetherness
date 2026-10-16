@@ -18,6 +18,7 @@
 
 import { icon } from './icons.js';
 import * as Debug from './debug_panel.js';
+import { buildToyPreviewSvg, toolInitArgs } from './toys.js';
 import './ui_component/color-picker.js';
 import './ui_component/range_ticked.js';
 
@@ -979,6 +980,9 @@ function gatherToolsData() {
     background:          App.getBackground(),
     defaultBackgrounds:  App.getDefaultBackgrounds(),
     toyClasses:          App.getToyClasses(),
+    toolDef:             App.getTool(activeTool),
+    toyPreviewMarkup:    App.getToolPreviewMarkup(activeTool),
+    userColor:           App.user?.color,
   };
 }
 function gatherPeersData() {
@@ -1045,6 +1049,26 @@ export function applyBackgroundPreset(url, width, height) {
   App.setBackground({ url, width, height });
 }
 
+// Full-size toy rendered with the tool's current colour, as inline SVG.
+// Empty until the toy's SVG has been fetched (the fetch re-renders the panel).
+function toyPreviewHTML(data) {
+  if (!data.toolDef?.toyType || !data.toyPreviewMarkup) return '';
+  const params = data.activeToolParams ?? {};
+  const svg = buildToyPreviewSvg('tool-preview', data.toyPreviewMarkup, data.toolDef.toyType,
+    toolInitArgs(data.toolDef, params, data.userColor));
+  return `<div class="tool-preview" aria-label="${data.activeTool} preview">${svg.outerHTML}</div>`;
+}
+
+// Swaps the preview in place after a tool option changes; the panel body
+// itself isn't re-rendered, which would tear down a slider mid-drag.
+export function refreshToolPreview() {
+  if (UIData.panelOpen !== 'tools') return;
+  const old = $('#panelBody .tool-preview');
+  if (!old) return;
+  const html = toyPreviewHTML(gatherToolsData());
+  if (html) old.outerHTML = html;
+}
+
 function defaultToolsBody(data) {
   const toolBtn = t =>
     `<div class="tool ${data.activeTool === t.name ? 'active' : ''}" onclick="App.setTool('${t.name}')">${iconFor(t)}<span>${t.label}</span></div>`;
@@ -1065,6 +1089,7 @@ function defaultToolsBody(data) {
     : '';
 
   return `
+    ${data.layer === 'toys' ? toyPreviewHTML(data) : ''}
     <div class="field"><label>Tool · ${data.layer} layer</label>
       <div class="tool-grid">${data.tools.map(toolBtn).join('')}</div>
     </div>

@@ -442,6 +442,33 @@ export function buildToyDom(attrs, svgText) {
 }
 
 /**
+ * The options a tool's toy is initialized with: its colour plus every
+ * declared tool option's current value.
+ */
+export function toolInitArgs(def, params, fallbackColor) {
+  return {
+    color: params.fill ?? fallbackColor,
+    ...Object.fromEntries((def.options ?? []).map(o => [o.key, params[o.key]])),
+  }
+}
+
+/**
+ * A toy's artwork as a standalone <svg> filling its container, tinted with
+ * initArgs.color and run through the toy's initialize() hook so its options
+ * show. Ids are scoped by `id`. Decorative: scripts are dropped.
+ */
+export function buildToyPreviewSvg(id, svgText, toyType, initArgs) {
+  const { toyEl } = buildToyDom({ id, toyType, x: 0, y: 0, color: initArgs.color }, svgText)
+  const svg = toyEl.firstElementChild
+  try { runInitializers(toyEl, toyType, initArgs) } catch (err) { console.warn('[toys] preview initialize failed', err) }
+  svg.setAttribute('x', '0')
+  svg.setAttribute('y', '0')
+  svg.setAttribute('width', '100%')
+  svg.setAttribute('height', '100%')
+  return svg
+}
+
+/**
  * Place a toy into the live layer. Hoists the template's inline scripts
  * into ydoc, then appends the wrapper. Call from inside runInEnvelope.
  */
