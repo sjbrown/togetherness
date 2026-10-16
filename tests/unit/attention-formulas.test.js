@@ -8,7 +8,7 @@
 
 import { describe, test, expect } from 'vitest'
 import {
-  T, originRadius, receiverIntroR0, originPhase, originSettled, dotRing,
+  T, sparkDistFor, ringR1For, originRadius, receiverIntroR0, originPhase, originSettled, dotRing,
   trailSegmentStyle, clickRng, clickSparks, clickFlash, clickRingStyle,
   clickLifeMs, exitFade, trimAttention, acceptsSample, insideOrigin,
 } from '../../src/attention_mode.js'
@@ -129,36 +129,51 @@ describe('trailSegmentStyle', () => {
 
 describe('clicks', () => {
   test('the spark pattern is a function of the click tuple alone', () => {
-    const a = clickSparks(200, clickRng(10, 20, 1_791_000_000_123))
-    const b = clickSparks(200, clickRng(10, 20, 1_791_000_000_123))
-    const c = clickSparks(200, clickRng(11, 20, 1_791_000_000_123))
+    const a = clickSparks(200, clickRng(10, 20, 1_791_000_000_123), 1_791_000_000_123)
+    const b = clickSparks(200, clickRng(10, 20, 1_791_000_000_123), 1_791_000_000_123)
+    const c = clickSparks(200, clickRng(11, 20, 1_791_000_000_123), 1_791_000_000_123)
     expect(a).toEqual(b)
     expect(a).not.toEqual(c)
     expect(a).toHaveLength(T.CLICK_SPARKS)
   })
 
   test('sparks fly outward and burn out', () => {
-    const early = clickSparks(50, clickRng(0, 0, 5))
-    const late  = clickSparks(600, clickRng(0, 0, 5))
+    const early = clickSparks(50, clickRng(0, 0, 5), 5)
+    const late  = clickSparks(600, clickRng(0, 0, 5), 5)
     for (let i = 0; i < early.length; i++) {
       expect(late[i].head).toBeGreaterThan(early[i].head)
       expect(late[i].width).toBeLessThan(early[i].width)
       expect(late[i].tail).toBeLessThanOrEqual(late[i].head)
     }
-    expect(clickSparks(T.CLICK_MS, clickRng(0, 0, 5))).toEqual([])
+    expect(clickSparks(T.CLICK_MS, clickRng(0, 0, 5), 5)).toEqual([])
   })
 
   test('flash and rings draw only inside their lifetimes', () => {
     expect(clickFlash(0)).toBeNull()
     expect(clickFlash(T.CLICK_FLASH_MS / 2)).not.toBeNull()
     expect(clickFlash(T.CLICK_FLASH_MS)).toBeNull()
-    expect(clickRingStyle(T.CLICK_RING_DELAY_MS / 2, 1)).toBeNull()
-    expect(clickRingStyle(T.CLICK_RING_DELAY_MS + 10, 1)).not.toBeNull()
+    expect(clickRingStyle(T.CLICK_RING_DELAY_MS / 2, 1, 0)).toBeNull()
+    expect(clickRingStyle(T.CLICK_RING_DELAY_MS + 10, 1, 0)).not.toBeNull()
+  })
+
+  test('spark distance varies with t % 4, ring size with y % 50', () => {
+    expect([8, 9, 10, 11].map(sparkDistFor)).toEqual([0, 1, 2, 3].map((n) => T.CLICK_SPARK_DIST * n))
+    expect(ringR1For(0)).toBe(T.CLICK_R1)
+    expect(ringR1For(73)).toBe(T.CLICK_R1 + 23)
+    expect(ringR1For(-27)).toBe(T.CLICK_R1 + 23)   // canvas y can be negative
+    const full = clickRingStyle(T.CLICK_MS - 1, 0, 73).r
+    expect(full).toBeCloseTo(T.CLICK_R1 + 23, 0)
+  })
+
+  test('a click with t % 4 === 0 throws no sparks past CLICK_SPARK_R0', () => {
+    for (const sp of clickSparks(300, clickRng(0, 0, 8), 8)) {
+      expect(sp.head).toBeLessThanOrEqual(T.CLICK_SPARK_R0)
+    }
   })
 
   test('clickLifeMs covers the last ring', () => {
     expect(clickLifeMs()).toBe(T.CLICK_MS + (T.CLICK_RINGS - 1) * T.CLICK_RING_DELAY_MS)
-    expect(clickRingStyle(clickLifeMs(), T.CLICK_RINGS - 1)).toBeNull()
+    expect(clickRingStyle(clickLifeMs(), T.CLICK_RINGS - 1, 0)).toBeNull()
   })
 })
 

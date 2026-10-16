@@ -157,7 +157,11 @@ export function clickRng(x, y, t) {
 }
 
 /** Sparks of one click: radial strokes from `tail` to `head` px out. */
-export function clickSparks(ageMs, rnd) {
+// Per-click variety, from the click tuple so every peer agrees.
+export const sparkDistFor = (t) => T.CLICK_SPARK_DIST * (t % 4);
+export const ringR1For    = (y) => T.CLICK_R1 + (((y % 50) + 50) % 50);
+
+export function clickSparks(ageMs, rnd, t) {
   const p = ageMs / T.CLICK_MS;
   if (p <= 0 || p >= 1) return [];
   const e = easeOutCubic(p);
@@ -165,7 +169,7 @@ export function clickSparks(ageMs, rnd) {
   for (let j = 0; j < T.CLICK_SPARKS; j++) {
     const angle = ((j + (rnd() - 0.5) * T.CLICK_SPARK_JITTER) / T.CLICK_SPARKS) * Math.PI * 2;
     const v     = 1 - rnd() * T.CLICK_SPARK_SPREAD;
-    const head  = T.CLICK_SPARK_R0 + (T.CLICK_SPARK_DIST * v - T.CLICK_SPARK_R0) * e;
+    const head  = T.CLICK_SPARK_R0 + (sparkDistFor(t) * v - T.CLICK_SPARK_R0) * e;
     const tail  = Math.max(T.CLICK_SPARK_R0, head - T.CLICK_SPARK_LEN * (1 - p));
     out.push({
       angle, head, tail,
@@ -185,11 +189,11 @@ export function clickFlash(ageMs) {
 }
 
 /** Shockwave ring k of one click; null outside its lifetime. */
-export function clickRingStyle(ageMs, k) {
+export function clickRingStyle(ageMs, k, y) {
   const p = (ageMs - k * T.CLICK_RING_DELAY_MS) / T.CLICK_MS;
   if (p <= 0 || p >= 1) return null;
   return {
-    r:      lerp(T.CLICK_R0, T.CLICK_R1, easeOutCubic(p)),
+    r:      lerp(T.CLICK_R0, ringR1For(y), easeOutCubic(p)),
     alpha:  Math.pow(1 - p, T.CLICK_FADE_EXP),
     stroke: lerp(T.CLICK_STROKE0, T.CLICK_STROKE1, p),
   };
@@ -656,7 +660,7 @@ export function createRenderer(layerEl) {
         const disc = svg('circle', { cx, cy, r: fl.r * k, opacity: fl.alpha }, g);
         disc.style.fill = `color-mix(in oklab, white ${Math.round(T.CLICK_FLASH_WHITE * 100)}%, ${c1})`;
       }
-      for (const sp of clickSparks(age, clickRng(cx, cy, ct))) {
+      for (const sp of clickSparks(age, clickRng(cx, cy, ct), ct)) {
         const dx = Math.cos(sp.angle), dy = Math.sin(sp.angle);
         const line = svg('line', {
           x1: cx + dx * sp.tail * k, y1: cy + dy * sp.tail * k,
@@ -666,7 +670,7 @@ export function createRenderer(layerEl) {
         line.style.stroke = `color-mix(in oklab, ${c2} ${sp.c2Pct.toFixed(1)}%, ${c1})`;
       }
       for (let ring = 0; ring < T.CLICK_RINGS; ring++) {
-        const rs = clickRingStyle(age, ring);
+        const rs = clickRingStyle(age, ring, cy);
         if (!rs) continue;
         svg('circle', {
           cx, cy, r: rs.r * k, fill: 'none',

@@ -397,7 +397,7 @@ fill  = color-mix(in oklab, white CLICK_FLASH_WHITE%, c1)
 p      = age(t) / CLICK_MS
 angle  = (j + (rand() - 0.5) * CLICK_SPARK_JITTER) / CLICK_SPARKS * 2π
 v      = 1 - rand() * CLICK_SPARK_SPREAD                 // per-spark speed
-head   = lerp(CLICK_SPARK_R0, CLICK_SPARK_DIST * v, easeOutCubic(p))
+head   = lerp(CLICK_SPARK_R0, CLICK_SPARK_DIST * (t % 4) * v, easeOutCubic(p))
 tail   = max(CLICK_SPARK_R0, head - CLICK_SPARK_LEN * (1 - p))
 width  = CLICK_SPARK_W * (1 - p)
 alpha  = (1 - p)^CLICK_FADE_EXP
@@ -411,15 +411,23 @@ nothing; `c1` when fresh, `c2` as it burns out. `stroke-linecap: round`.
 in the same order on every render, so the spark pattern is the same on every
 rebuild and on every peer, with no extra data on the wire.
 
+Spark distance varies per click with the click's own `t`: some clicks
+throw sparks farther than others. A click whose `t % 4` is 0 throws none
+outward; its sparks draw inward from `CLICK_SPARK_R0` towards the centre.
+
 **Shockwave.** `CLICK_RINGS` expanding, fading rings in `c1` (0 for none),
 ring *k* delayed by `k * CLICK_RING_DELAY_MS`:
 
 ```
 p      = (age(t) - k * CLICK_RING_DELAY_MS) / CLICK_MS
-radius = lerp(CLICK_R0, CLICK_R1, easeOutCubic(p))
+radius = lerp(CLICK_R0, CLICK_R1 + (y mod 50), easeOutCubic(p))   // y mod 50 in [0, 50)
 alpha  = (1 - p)^CLICK_FADE_EXP
 stroke = lerp(CLICK_STROKE0, CLICK_STROKE1, p)
 ```
+
+Ring size varies per click with the click's own `y` (canvas units, taken
+mod 50 into [0, 50) so a negative `y` never shrinks the ring). Both
+variations come from the click tuple, so every peer draws the same burst.
 
 A part whose `p` is outside (0, 1) is not drawn. A click is finished, and
 trimmed (§3.2), once all three parts are:
