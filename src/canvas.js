@@ -174,32 +174,6 @@ function hitForActiveLayer(e) {
   return el.dataset.module === App.getActiveLayer() ? el : null;
 }
 
-// ── Shape click wiring ────────────────────────────────────────────────────────
-// Called by App after renderDocLayer. One delegated listener per layer rather
-// than one per element: elements outlive a render now, so per-element wiring
-// would stack up a fresh listener on every call.
-// Note: shift-click is handled entirely via pointer events (onPointerDown/Up) because
-// setPointerCapture routes the click event to _stage rather than the child element,
-// so a shift-click listener here would never fire on toys or shapes.
-const _clickWired = new WeakSet();
-
-export function wireShapeClicks(layer) {
-  if (!layer || _clickWired.has(layer)) return;
-  _clickWired.add(layer);
-
-  layer.addEventListener('click', ev => {
-    const el = ev.target.closest?.('[data-module]');
-    if (el && layer.contains(el)) {
-      if (ToolMode.tool !== 'select') return;
-      ev.stopPropagation();
-      App.select(el.dataset.id);
-      return;
-    }
-    // Click on empty canvas deselects, whatever the tool.
-    App.select(null);
-  });
-}
-
 // ── Draw preview (rubber-band div) ────────────────────────────────────────────
 const _preview = {
   el: null,
@@ -233,6 +207,9 @@ const _selectPreview = {
 };
 
 // ── Pointer handling ──────────────────────────────────────────────────────────
+// These handlers are the only way pointer input selects anything. Nothing
+// listens for click: on touch it lands on the element under the finger,
+// after these have already acted, and would act a second time.
 function onPointerDown(e) {
   // Let ui.js know to close dropdowns — it listens on document capture
   ToolMode._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -336,9 +313,6 @@ function onPointerDown(e) {
     if (hitId) {
       if (e.shiftKey) {
         // Shift-click: toggle selection membership.
-        // Handled entirely in the pointer-event chain — don't rely on the
-        // click event, which fires on _stage (the capture target) rather than
-        // on the original child element, so wireShapeClicks never sees it.
         ToolMode._gesture = 'shift-tap';
         ToolMode._moveRef = { id: hitId, sx: e.clientX, sy: e.clientY, moved: false };
         return;
@@ -627,8 +601,6 @@ function onPointerUp(e) {
   } else if (ToolMode._gesture === 'pan-or-deselect' && ToolMode._moveRef && !ToolMode._moveRef.moved) {
     App.select(null);
   } else if (ToolMode._gesture === 'shift-tap' && ToolMode._moveRef) {
-    // Pointer capture means click fires on _stage, not on the child element —
-    // wireShapeClicks never sees it. So we handle toggleSelection here directly.
     if (!ToolMode._moveRef.moved) {
       App.toggleSelection(ToolMode._moveRef.id);
     }
