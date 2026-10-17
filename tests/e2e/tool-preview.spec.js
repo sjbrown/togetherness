@@ -64,3 +64,19 @@ test('previews apply toy options via initialize', async ({ page }) => {
   await page.evaluate(() => window.App.setToolParam('meeple', 'size', 1));
   await expect(tg).toHaveAttribute('transform', /scale\(0\.8\)/);
 });
+
+test('preview box stays in place for non-toy tools', async ({ page }) => {
+  await openAsCreator(page, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+  await waitForPeerCount(page, 0);
+
+  await page.evaluate(() => { window.UI.pillTap('d6'); window.UI.openSheet('tools'); });
+  const box = page.locator('#panelBody .tool-preview');
+  await expect(box.locator('svg').first()).toBeVisible({ timeout: 5000 });
+  const filled = await page.locator('#panelBody .field').first().boundingBox();
+
+  await page.evaluate(() => window.App.setTool('select'));
+  await expect(box).toHaveCount(1);
+  await expect(box.locator('svg')).toHaveCount(0);
+  const empty = await page.locator('#panelBody .field').first().boundingBox();
+  expect(empty.y).toBe(filled.y);
+});
