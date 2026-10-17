@@ -1050,13 +1050,17 @@ export function applyBackgroundPreset(url, width, height) {
 }
 
 // Full-size toy rendered with the tool's current colour, as inline SVG.
-// Empty until the toy's SVG has been fetched (the fetch re-renders the panel).
+// The box is always emitted so the panel doesn't reflow; it's empty for
+// non-toy tools and until the toy's SVG has been fetched (the fetch
+// re-renders the panel).
 function toyPreviewHTML(data) {
-  if (!data.toolDef?.toyType || !data.toyPreviewMarkup) return '';
-  const params = data.activeToolParams ?? {};
-  const svg = buildToyPreviewSvg('tool-preview', data.toyPreviewMarkup, data.toolDef.toyType,
-    toolInitArgs(data.toolDef, params, data.userColor));
-  return `<div class="tool-preview" aria-label="${data.activeTool} preview">${svg.outerHTML}</div>`;
+  let svg = '';
+  if (data.toolDef?.toyType && data.toyPreviewMarkup) {
+    const params = data.activeToolParams ?? {};
+    svg = buildToyPreviewSvg('tool-preview', data.toyPreviewMarkup, data.toolDef.toyType,
+      toolInitArgs(data.toolDef, params, data.userColor)).outerHTML;
+  }
+  return `<div class="tool-preview" aria-label="${data.activeTool} preview">${svg}</div>`;
 }
 
 // Swaps the preview in place after a tool option changes; the panel body
@@ -1065,8 +1069,7 @@ export function refreshToolPreview() {
   if (UIData.panelOpen !== 'tools') return;
   const old = $('#panelBody .tool-preview');
   if (!old) return;
-  const html = toyPreviewHTML(gatherToolsData());
-  if (html) old.outerHTML = html;
+  old.outerHTML = toyPreviewHTML(gatherToolsData());
 }
 
 function defaultToolsBody(data) {
