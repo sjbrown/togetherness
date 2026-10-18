@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Radial Menu Prototype</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #f5f5f5;
+      --panel: #ffffff;
+      --text: #333;
+      --muted: #777;
+      --border: #ddd;
+      --stage: #e9e6df;
+      --spoke: rgba(40, 40, 40, 0.55);
+      --spoke-hover: rgba(40, 40, 40, 0.85);
+      --spoke-disabled: rgba(150, 150, 150, 0.25);
+      --seg-text: #fff;
+      --label: #222;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1a1a1a;
+        --panel: #242424;
+        --text: #e0e0e0;
+        --muted: #999;
+        --border: #3a3a3a;
+        --stage: #2e2c29;
+        --spoke: rgba(20, 20, 20, 0.6);
+        --spoke-hover: rgba(10, 10, 10, 0.9);
+        --spoke-disabled: rgba(120, 120, 120, 0.25);
+        --label: #eee;
+      }
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #panel {
+      width: 380px;
+      flex: none;
+      overflow-y: auto;
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      padding: 16px;
+      font-size: 13px;
+    }
+    #panel h1 { font-size: 18px; margin-bottom: 4px; }
+    #panel .subtitle { color: var(--muted); margin-bottom: 12px; }
+    #panel label { display: block; margin: 8px 0 2px; font-weight: 600; }
+    #panel select, #panel input[type=range] { width: 100%; }
+    #panel .row { display: flex; gap: 8px; align-items: center; }
+    #panel .row label { margin: 0; font-weight: normal; }
+    #panel p.notes { color: var(--muted); margin: 6px 0; white-space: pre-line; }
+    #panel h2 { font-size: 13px; margin: 14px 0 4px; text-transform: uppercase; color: var(--muted); }
+    #pending {
+      font-family: ui-monospace, Menlo, monospace;
+      padding: 6px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      min-height: 2.2em;
+    }
+    pre {
+      font-family: ui-monospace, Menlo, monospace;
+      font-size: 11px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 8px;
+      overflow-x: auto;
+      max-height: 320px;
+    }
+    #log { max-height: 220px; overflow-y: auto; }
+    #log div { padding: 1px 0; }
+    #log .handler { color: var(--muted); padding-left: 1.5em; }
+
+    #stage { flex: 1; position: relative; background: var(--stage); overflow: hidden; }
+    #stage svg { width: 100%; height: 100%; display: block; touch-action: none; }
+
+    #toast {
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+      background: #b5442c; color: white; padding: 8px 14px; border-radius: 6px;
+      font-size: 13px; opacity: 0; transition: opacity 200ms; pointer-events: none;
+    }
+    #toast.show { opacity: 1; }
+
+    .actionSquare { cursor: grab; }
+
+    #radial-layer { opacity: 0; transition: opacity 220ms ease-out; pointer-events: none; }
+    #radial-layer.show { opacity: 1; }
+
+    .spoke-seg { fill: var(--spoke); transition: fill 80ms; }
+    .spoke.hover .spoke-seg { fill: var(--spoke-hover); }
+    .spoke-seg.hover { fill: url(#player-grad); }
+    .spoke.disabled .spoke-seg { fill: var(--spoke-disabled); }
+    .spoke-outline { fill: none; stroke: url(#player-grad); stroke-width: 2.5; }
+    .seg-default { fill: none; stroke: url(#player-grad); stroke-width: 2; }
+    .spoke-fill { fill: url(#player-grad); opacity: 0.75; }
+    .seg-text { fill: var(--seg-text); font-size: 10px; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+    .spoke.disabled .seg-text { opacity: 0.4; }
+    .readout { fill: var(--seg-text); font-size: 12px; font-weight: 700; text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: rgba(0,0,0,0.5); stroke-width: 3px; }
+    .arc-label { fill: var(--label); font-size: 11px; }
+    .arc-label.param { fill: var(--muted); }
+    .spoke.disabled .arc-label { opacity: 0.4; }
+
+    .spark { animation: spark var(--spark-duration, 500ms) ease-out forwards; }
+    @keyframes spark {
+      from { transform: translate(0, 0); opacity: 1; }
+      to   { transform: translate(var(--tx), var(--ty)); opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div id="panel">
+    <h1>Radial menu prototype</h1>
+    <div class="subtitle">Press on the action square, drag onto a spoke, release.</div>
+
+    <label for="scenario">Scenario</label>
+    <select id="scenario"></select>
+    <p class="notes" id="scenario-notes"></p>
+
+    <label for="zoom">Zoom <span id="zoom-val"></span></label>
+    <input type="range" id="zoom" min="0.4" max="2.5" step="0.1" value="1">
+
+    <label for="rotation">Toy rotation <span id="rotation-val"></span></label>
+    <input type="range" id="rotation" min="-180" max="180" step="5" value="0">
+
+    <label for="position">Toy position</label>
+    <select id="position">
+      <option value="center">Centre of stage</option>
+      <option value="right">Near right edge</option>
+      <option value="bottom">Near bottom edge</option>
+      <option value="corner">Near bottom-right corner</option>
+    </select>
+
+    <label for="player">Player gradient</label>
+    <select id="player">
+      <option value="#e94e77,#f9a03f">Sunset</option>
+      <option value="#2bb5a0,#3d6cf0">Lagoon</option>
+      <option value="#8e44ad,#e84393">Orchid</option>
+      <option value="#6ab04c,#f0d43a">Meadow</option>
+    </select>
+
+    <div class="row" style="margin-top:10px">
+      <input type="checkbox" id="has-below" checked>
+      <label for="has-below">Toy has <code>data-below</code> (drives <code>applicable</code>)</label>
+    </div>
+
+    <h2>On release</h2>
+    <div id="pending">—</div>
+
+    <h2>Log</h2>
+    <pre id="log"></pre>
+
+    <h2>Toy menu source</h2>
+    <pre id="source"></pre>
+  </div>
+
+  <div id="stage">
+    <svg id="svg" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="player-grad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#e94e77"/>
+          <stop offset="1" stop-color="#f9a03f"/>
+        </linearGradient>
+        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="1.5" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <g id="canvas-layer"></g>
+      <g id="overlay-layer"></g>
+      <g id="radial-layer"></g>
+      <g id="delight-layer"></g>
+    </svg>
+    <div id="toast"></div>
+  </div>
+
+<script>
+'use strict';
+
+const SVGNS = 'http://www.w3.org/2000/svg';
+
+// ── Tunables (screen px) ─────────────────────────────────────────────────
+const HANDLE_SIDE = 22;
+const PAD = 6;                 // selection ring offset, as overlay.js
+const CLICK_THRESHOLD = 4;
+const INNER_R = 30;            // handle half-diagonal (~15.6) plus padding
+const OUTER_R = 120;
+const LABEL_GAP = 7;
+const SPOKE_GAP_DEG = 1.5;     // angular gap either side of a spoke
+const BAND_GAP = 2;            // radial gap between segments
+const MAX_SPOKES = 6;
+const MAX_SEGMENTS = 10;
+const SPOT_ORDER = [3, 4, 2, 5, 1, 6];
+const MAX_PULL = 200;
+
+// ── Spoke model ──────────────────────────────────────────────────────────
+// Pure: menu definition + element in, ordered spoke descriptors (or an
+// authoring error) out. This is the part that would move into toys.js.
+
+function paramSpec(radial) {
+  if (radial === true) return { ok: true, param: null };
+  if (!radial || typeof radial !== 'object') return { ok: false, error: 'radial must be true or an object' };
+  const labels = Object.keys(radial);
+  if (labels.length !== 1) return { ok: false, error: `radial must define exactly one parameter, got ${labels.length}` };
+  const label = labels[0];
+  const p = radial[label];
+  if (!p || typeof p.param !== 'string') return { ok: false, error: `"${label}" needs a string "param"` };
+  const base = { label, name: p.param, type: p.type };
+  if (p.type === 'integer' || p.type === 'float') {
+    if (typeof p.min !== 'number' || typeof p.max !== 'number' || p.max <= p.min) {
+      return { ok: false, error: `"${label}" needs numeric min < max` };
+    }
+    const step = p.type === 'integer' ? Math.max(1, Math.round(p.step ?? 1)) : (p.step ?? null);
+    const def = clamp(p.default ?? p.min, p.min, p.max);
+    const count = p.type === 'integer' ? Math.floor((p.max - p.min) / step) + 1 : Infinity;
+    const segmented = p.type === 'integer' && count <= MAX_SEGMENTS;
+    const values = segmented ? Array.from({ length: count }, (_, i) => p.min + i * step) : null;
+    return { ok: true, param: { ...base, min: p.min, max: p.max, step, default: def, segmented, values,
+                                 labels: values?.map(String) ?? null } };
+  }
+  if (p.type === 'enum') {
+    if (!Array.isArray(p.values) || p.values.length === 0) return { ok: false, error: `"${label}" needs a non-empty values array` };
+    if (p.labels && p.labels.length !== p.values.length) return { ok: false, error: `"${label}" labels must match values` };
+    const def = p.values.includes(p.default) ? p.default : p.values[0];
+    return { ok: true, param: { ...base, values: p.values, labels: (p.labels ?? p.values).map(String),
+                                 default: def, segmented: true } };
+  }
+  return { ok: false, error: `"${label}" has unknown type "${p.type}"` };
+}
+
+function buildSpokes(menu, elem) {
+  const entries = Object.entries(menu);
+  const radialEntries = entries.filter(([, e]) => e.radial !== undefined && e.radial !== false);
+  if (radialEntries.length > MAX_SPOKES) {
+    return { error: `${radialEntries.length} menu actions define "radial"; the maximum is ${MAX_SPOKES}` };
+  }
+  const defaultKey = entries[0]?.[0] ?? null;
+  const spokes = [];
+  for (const [i, [key, entry]] of radialEntries.entries()) {
+    const spec = paramSpec(entry.radial);
+    if (!spec.ok) return { error: `${key}: ${spec.error}` };
+    spokes.push({
+      key,
+      label: typeof entry.uiLabel === 'function' ? entry.uiLabel(elem) : (entry.uiLabel ?? key),
+      spot: SPOT_ORDER[i],
+      param: spec.param,
+      isDefault: key === defaultKey,
+      enabled: typeof entry.applicable !== 'function' || !!entry.applicable(elem),
+    });
+  }
+  return { spokes, defaultKey };
+}
+
+function defaultParams(entry) {
+  const spec = entry?.radial !== undefined ? paramSpec(entry.radial) : { ok: true, param: null };
+  if (!spec.ok || !spec.param) return {};
+  return { [spec.param.name]: spec.param.default };
+}
+
+// Spot n (1..6) spans [N + (n-1)*45°, N + n*45°] clockwise; in SVG angles
+// (0 = east, y down) north is -90.
+function spotAngles(spot) {
+  const a0 = -90 + (spot - 1) * 45;
+  return { a0, a1: a0 + 45, mid: a0 + 22.5 };
+}
+
+/**
+ * What a release at (dx, dy) from the centre would pick. Inside INNER_R,
+ * beyond OUTER_R, in the NW quadrant, or on a disabled spoke: null, which
+ * resolves the same as a tap on the square.
+ */
+function pickAt(spokes, dx, dy) {
+  const d = Math.hypot(dx, dy);
+  if (d < INNER_R || d > OUTER_R) return null;
+  let deg = Math.atan2(dy, dx) * 180 / Math.PI;      // -180..180
+  if (deg < -90) deg += 360;                         // north..west becomes -90..180
+  if (deg < -90 || deg > 180) return null;           // NW quadrant
+  const spot = Math.min(6, Math.floor((deg + 90) / 45) + 1);
+  const spoke = spokes.find(s => s.spot === spot);
+  if (!spoke || !spoke.enabled) return null;
+  const t = (d - INNER_R) / (OUTER_R - INNER_R);
+  const p = spoke.param;
+  if (!p) return { spoke, params: {}, index: null, t };
+  if (p.segmented) {
+    const index = Math.min(p.values.length - 1, Math.floor(t * p.values.length));
+    return { spoke, params: { [p.name]: p.values[index] }, index, t };
+  }
+  let v = p.min + t * (p.max - p.min);
+  if (p.step) v = p.min + Math.round((v - p.min) / p.step) * p.step;
+  v = clamp(v, p.min, p.max);
+  if (p.type === 'integer') v = Math.round(v);
+  else v = +v.toFixed(decimalsOf(p.step));
+  return { spoke, params: { [p.name]: v }, index: null, t: (v - p.min) / (p.max - p.min) };
+}
+
+function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+function decimalsOf(step) {
+  if (!step) return 2;
+  const s = String(step);
+  return s.includes('.') ? s.split('.')[1].length : 0;
+}
+
+// ── Scenarios ────────────────────────────────────────────────────────────
+// Each menu is kept as source text so the panel shows exactly what a toy
+// author would write. Handlers call ran() so the log shows what arrived.
+
+const SCENARIOS = [
+  {
+    name: 'Supply: one integer spoke',
+    notes: 'The motivating case. "Take" is the default action and its own spoke.\nUntick data-below to see it greyed.',
+    src: `{
+  'Take': {
+    eventName: 'supply_take',
+    applicable: (node) => node.getAttribute('data-below'),
+    handler: function (evt, { num }) { ran('Take', { num }) },
+    radial: {
+      'How many': { param: 'num', type: 'integer', default: 1, min: 1, max: 5 },
+    },
+  },
+}`,
+  },
+  {
+    name: 'Die: plain spoke + integer spoke',
+    notes: 'radial: true makes a spoke with no parameter.',
+    src: `{
+  'Roll': {
+    eventName: 'die_roll',
+    applicable: (elem) => true,
+    handler: function (evt) { ran('Roll', {}) },
+    radial: true,
+  },
+  'Set face': {
+    eventName: 'die_set',
+    applicable: (elem) => true,
+    handler: function (evt, { face }) { ran('Set face', { face }) },
+    radial: {
+      'Face': { param: 'face', type: 'integer', default: 6, min: 1, max: 6 },
+    },
+  },
+}`,
+  },
+  {
+    name: 'Three types: integer, float, enum',
+    notes: 'Float has no segments; its value shows in the middle of the spoke.',
+    src: `{
+  'Deal': {
+    eventName: 'deck_deal',
+    applicable: (elem) => true,
+    handler: function (evt, { count }) { ran('Deal', { count }) },
+    radial: {
+      'Cards': { param: 'count', type: 'integer', default: 2, min: 1, max: 7 },
+    },
+  },
+  'Scale': {
+    eventName: 'toy_scale',
+    applicable: (elem) => true,
+    handler: function (evt, { factor }) { ran('Scale', { factor }) },
+    radial: {
+      'Factor': { param: 'factor', type: 'float', default: 1, min: 0.25, max: 3, step: 0.05 },
+    },
+  },
+  'Shuffle': {
+    eventName: 'deck_shuffle',
+    applicable: (elem) => true,
+    handler: function (evt, { style }) { ran('Shuffle', { style }) },
+    radial: {
+      'Style': {
+        param: 'style', type: 'enum', default: 'riffle',
+        values: ['riffle', 'overhand', 'pile'],
+        labels: ['Riffle', 'Over', 'Pile'],
+      },
+    },
+  },
+}`,
+  },
+  {
+    name: 'Six spokes, mixed',
+    notes: 'Fills spots 3, 4, 2, 5, 1, 6 in declaration order.',
+    src: `{
+  'Roll':    { eventName: 'r1', applicable: () => true, handler: function (evt) { ran('Roll', {}) }, radial: true },
+  'Add':     { eventName: 'r2', applicable: () => true,
+               handler: function (evt, { n }) { ran('Add', { n }) },
+               radial: { 'Amount': { param: 'n', type: 'integer', default: 1, min: 1, max: 4 } } },
+  'Tint':    { eventName: 'r3', applicable: () => true,
+               handler: function (evt, { c }) { ran('Tint', { c }) },
+               radial: { 'Colour': { param: 'c', type: 'enum', default: 'red',
+                                     values: ['red', 'green', 'blue', 'gold'] } } },
+  'Spin':    { eventName: 'r4', applicable: () => true,
+               handler: function (evt, { deg }) { ran('Spin', { deg }) },
+               radial: { 'Degrees': { param: 'deg', type: 'float', default: 90, min: 0, max: 360, step: 15 } } },
+  'Flip':    { eventName: 'r5', applicable: () => true, handler: function (evt) { ran('Flip', {}) }, radial: true },
+  'Remove':  { eventName: 'r6', applicable: () => true,
+               handler: function (evt, { n }) { ran('Remove', { n }) },
+               radial: { 'Amount': { param: 'n', type: 'integer', default: 1, min: 1, max: 10 } } },
+}`,
+  },
+  {
+    name: 'Not applicable: greyed in fixed spots',
+    notes: 'Spokes 2 and 4 depend on data-below. Toggle it: the other spokes stay put.',
+    src: `{
+  'Take': {
+    eventName: 'supply_take',
+    applicable: (node) => node.getAttribute('data-below'),
+    handler: function (evt, { num }) { ran('Take', { num }) },
+    radial: { 'How many': { param: 'num', type: 'integer', default: 1, min: 1, max: 5 } },
+  },
+  'Count':  { eventName: 'c', applicable: () => true, handler: function (evt) { ran('Count', {}) }, radial: true },
+  'Return': {
+    eventName: 'supply_return',
+    applicable: (node) => node.getAttribute('data-below'),
+    handler: function (evt, { num }) { ran('Return', { num }) },
+    radial: { 'How many': { param: 'num', type: 'integer', default: 1, min: 1, max: 3 } },
+  },
+  'Lock':   { eventName: 'l', applicable: () => true, handler: function (evt) { ran('Lock', {}) }, radial: true },
+}`,
+  },
+  {
+    name: 'Integer over 10 values: float-style',
+    notes: '1..20 is past the 10-segment cap, so it renders like a float (step 1).',
+    src: `{
+  'Roll': {
+    eventName: 'dn_roll',
+    applicable: () => true,
+    handler: function (evt, { sides }) { ran('Roll', { sides }) },
+    radial: { 'Sides': { param: 'sides', type: 'integer', default: 20, min: 1, max: 20 } },
+  },
+  'Ten': {
+    eventName: 'dn_ten',
+    applicable: () => true,
+    handler: function (evt, { n }) { ran('Ten', { n }) },
+    radial: { 'Exactly 10': { param: 'n', type: 'integer', default: 5, min: 1, max: 10 } },
+  },
+}`,
+  },
+  {
+    name: 'Default action has no radial',
+    notes: 'The first entry is the default but declares no radial, so it gets no spoke.\nA tap, or a release off the spokes, still fires it.',
+    src: `{
+  'Roll': {
+    eventName: 'die_roll',
+    applicable: () => true,
+    handler: function (evt) { ran('Roll', {}) },
+  },
+  'Roll with advantage': {
+    eventName: 'die_roll_adv',
+    applicable: () => true,
+    handler: function (evt, { dice }) { ran('Roll with advantage', { dice }) },
+    radial: { 'Dice': { param: 'dice', type: 'integer', default: 2, min: 2, max: 4 } },
+  },
+}`,
+  },
+  {
+    name: 'Authoring error: seven spokes',
+    notes: 'Over the limit. console.warn + toast, no radial; the bowstring still works.',
+    src: `{
+  'A': { eventName: 'a', applicable: () => true, handler: function (evt) { ran('A', {}) }, radial: true },
+  'B': { eventName: 'b', applicable: () => true, handler: function (evt) { ran('B', {}) }, radial: true },
+  'C': { eventName: 'c', applicable: () => true, handler: function (evt) { ran('C', {}) }, radial: true },
+  'D': { eventName: 'd', applicable: () => true, handler: function (evt) { ran('D', {}) }, radial: true },
+  'E': { eventName: 'e', applicable: () => true, handler: function (evt) { ran('E', {}) }, radial: true },
+  'F': { eventName: 'f', applicable: () => true, handler: function (evt) { ran('F', {}) }, radial: true },
+  'G': { eventName: 'g', applicable: () => true, handler: function (evt) { ran('G', {}) }, radial: true },
+}`,
+  },
+];
+
+// ── State ────────────────────────────────────────────────────────────────
+
+const svg = document.getElementById('svg');
+const canvasLayer = document.getElementById('canvas-layer');
+const overlayLayer = document.getElementById('overlay-layer');
+const radialLayer = document.getElementById('radial-layer');
+const delightLayer = document.getElementById('delight-layer');
+
+const TOY = { w: 120, h: 90 };    // canvas units
+let menu = {};
+let toyEl = null;
+let square = null;                // { x, y } screen px, the resting centre
+let gesture = null;
+
+function el(tag, attrs = {}, parent) {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  if (parent) parent.appendChild(n);
+  return n;
+}
+
+function ran(key, params) {
+  logLine(`handler ${key}(evt, ${JSON.stringify(params)})`, 'handler');
+}
+
+function logLine(text, cls) {
+  const log = document.getElementById('log');
+  const div = document.createElement('div');
+  if (cls) div.className = cls;
+  div.textContent = text;
+  log.prepend(div);
+}
+
+let toastTimer = null;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+// ── Toy + resting action square ──────────────────────────────────────────
+
+function stageSize() {
+  const r = svg.getBoundingClientRect();
+  return { w: r.width, h: r.height };
+}
+
+function layoutToy() {
+  const zoom = +document.getElementById('zoom').value;
+  const rot = +document.getElementById('rotation').value;
+  const pos = document.getElementById('position').value;
+  document.getElementById('zoom-val').textContent = `${zoom.toFixed(1)}×`;
+  document.getElementById('rotation-val').textContent = `${rot}°`;
+
+  const { w, h } = stageSize();
+  const tw = TOY.w * zoom, th = TOY.h * zoom;
+  const cx = { center: w / 2, right: w - tw / 2 - 30, bottom: w / 2, corner: w - tw / 2 - 30 }[pos];
+  const cy = { center: h / 2, right: h / 2, bottom: h - th / 2 - 30, corner: h - th / 2 - 30 }[pos];
+
+  canvasLayer.innerHTML = '';
+  overlayLayer.innerHTML = '';
+  const g = el('g', { transform: `translate(${cx} ${cy}) rotate(${rot}) scale(${zoom})` }, canvasLayer);
+  toyEl = el('g', { class: 'toy' }, g);
+  if (document.getElementById('has-below').checked) toyEl.setAttribute('data-below', 'proto-1');
+  el('rect', { x: -TOY.w / 2, y: -TOY.h / 2, width: TOY.w, height: TOY.h, rx: 10,
+               fill: '#c9a26b', stroke: '#7a5a30', 'stroke-width': 2 }, toyEl);
+  el('text', { x: 0, y: 0, 'text-anchor': 'middle', 'dominant-baseline': 'central',
+               'font-size': 16, fill: '#3b2a12' }, toyEl).textContent = 'toy';
+  // Up-arrow so the rotation is readable.
+  el('path', { d: `M0 ${-TOY.h / 2 + 8} l-6 10 h12 z`, fill: '#3b2a12' }, toyEl);
+
+  // Selection ring, rotated with the toy, in screen space.
+  const ringW = tw + PAD * 2, ringH = th + PAD * 2;
+  const ring = el('g', { transform: `translate(${cx} ${cy}) rotate(${rot})` }, overlayLayer);
+  el('rect', { x: -ringW / 2, y: -ringH / 2, width: ringW, height: ringH, rx: 6,
+               fill: 'none', stroke: 'url(#player-grad)', 'stroke-width': 2 }, ring);
+
+  // The square sits on the ring corner that is furthest south-east once
+  // rotated, so it never ends up tucked under the toy.
+  const rad = rot * Math.PI / 180, cos = Math.cos(rad), sin = Math.sin(rad);
+  const corners = [[1, 1], [-1, 1], [-1, -1], [1, -1]].map(([sx, sy]) => {
+    const lx = sx * ringW / 2, ly = sy * ringH / 2;
+    return { x: cx + lx * cos - ly * sin, y: cy + lx * sin + ly * cos };
+  });
+  square = corners.reduce((best, c) => (c.x + c.y > best.x + best.y ? c : best));
+  drawSquare(overlayLayer, square.x, square.y, 'actionSquare');
+}
+
+function drawSquare(parent, x, y, cls) {
+  const g = el('g', { class: cls, transform: `translate(${x} ${y})` }, parent);
+  const s = HANDLE_SIDE;
+  el('rect', { x: -s / 2, y: -s / 2, width: s, height: s, rx: s * 0.25, fill: 'white',
+               stroke: 'url(#player-grad)', 'stroke-width': 1.5, filter: 'url(#glow)' }, g);
+  const len = s * 0.32;
+  for (const deg of [90, 210, 330]) {
+    const r = deg * Math.PI / 180, dx = Math.cos(r) * len, dy = Math.sin(r) * len;
+    el('line', { x1: -dx, y1: -dy, x2: dx, y2: dy, stroke: '#2a2a2a', 'stroke-width': 2,
+                 'stroke-linecap': 'round' }, g);
+  }
+  return g;
+}
+
+// ── Radial rendering ─────────────────────────────────────────────────────
+
+function polar(cx, cy, r, deg) {
+  const a = deg * Math.PI / 180;
+  return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+}
+
+function wedgePath(cx, cy, r0, r1, a0, a1) {
+  const [x0, y0] = polar(cx, cy, r1, a0), [x1, y1] = polar(cx, cy, r1, a1);
+  const [x2, y2] = polar(cx, cy, r0, a1), [x3, y3] = polar(cx, cy, r0, a0);
+  return `M${x0} ${y0} A${r1} ${r1} 0 0 1 ${x1} ${y1} L${x2} ${y2} A${r0} ${r0} 0 0 0 ${x3} ${y3} Z`;
+}
+
+function arcPath(cx, cy, r, a0, a1, reverse) {
+  const [x0, y0] = polar(cx, cy, r, reverse ? a1 : a0);
+  const [x1, y1] = polar(cx, cy, r, reverse ? a0 : a1);
+  return `M${x0} ${y0} A${r} ${r} 0 0 ${reverse ? 0 : 1} ${x1} ${y1}`;
+}
+
+let arcId = 0;
+
+function renderRadial(spokes, pick) {
+  radialLayer.innerHTML = '';
+  const { x: cx, y: cy } = square;
+  const band = OUTER_R - INNER_R;
+
+  for (const s of spokes) {
+    const { a0, a1, mid } = spotAngles(s.spot);
+    const g0 = a0 + SPOKE_GAP_DEG, g1 = a1 - SPOKE_GAP_DEG;
+    const hovered = pick?.spoke === s;
+    const g = el('g', { class: `spoke${hovered ? ' hover' : ''}${s.enabled ? '' : ' disabled'}` }, radialLayer);
+    const p = s.param;
+
+    if (p?.segmented) {
+      const n = p.values.length;
+      for (let i = 0; i < n; i++) {
+        const r0 = INNER_R + band * i / n + (i ? BAND_GAP / 2 : 0);
+        const r1 = INNER_R + band * (i + 1) / n - (i < n - 1 ? BAND_GAP / 2 : 0);
+        const segHover = hovered && pick.index === i;
+        el('path', { d: wedgePath(cx, cy, r0, r1, g0, g1), class: `spoke-seg${segHover ? ' hover' : ''}` }, g);
+        if (p.values[i] === p.default) {
+          el('path', { d: wedgePath(cx, cy, r0 + 1, r1 - 1, g0 + 0.8, g1 - 0.8), class: 'seg-default' }, g);
+        }
+        if (r1 - r0 >= 9) {
+          const [tx, ty] = polar(cx, cy, (r0 + r1) / 2, mid);
+          el('text', { x: tx, y: ty, class: 'seg-text' }, g).textContent = p.labels[i];
+        }
+      }
+    } else {
+      el('path', { d: wedgePath(cx, cy, INNER_R, OUTER_R, g0, g1), class: 'spoke-seg' }, g);
+      if (p) {
+        const shownT = hovered ? pick.t : (p.default - p.min) / (p.max - p.min);
+        const shownV = hovered ? pick.params[p.name] : p.default;
+        if (hovered) {
+          el('path', { d: wedgePath(cx, cy, INNER_R, INNER_R + band * shownT, g0, g1), class: 'spoke-fill' }, g);
+        }
+        const rd = INNER_R + band * (p.default - p.min) / (p.max - p.min);
+        el('path', { d: arcPath(cx, cy, rd, g0, g1, false), class: 'seg-default', 'stroke-width': 3 }, g);
+        const [tx, ty] = polar(cx, cy, INNER_R + band / 2, mid);
+        el('text', { x: tx, y: ty, class: 'readout' }, g).textContent = formatValue(shownV, p);
+      }
+    }
+    if (s.isDefault) {
+      el('path', { d: wedgePath(cx, cy, INNER_R, OUTER_R, g0, g1), class: 'spoke-outline' }, g);
+    }
+
+    // Labels along the outer arc. Below the horizontal the arc runs
+    // counter-clockwise so the text reads left to right, which turns the
+    // glyphs inward; the baseline moves out by a line to compensate.
+    const reverse = Math.sin(mid * Math.PI / 180) > 0;
+    const fs = 11;
+    const lines = p ? [s.label, p.label] : [s.label];
+    lines.forEach((line, li) => {
+      const r = reverse ? OUTER_R + LABEL_GAP + fs * (li + 0.8) : OUTER_R + LABEL_GAP + fs * (lines.length - 1 - li) + 2;
+      const id = `arc-${arcId++}`;
+      el('path', { id, d: arcPath(cx, cy, r, a0, a1, reverse), fill: 'none' }, g);
+      const text = el('text', { class: `arc-label${li === 1 ? ' param' : ''}` }, g);
+      const tp = el('textPath', { href: `#${id}`, startOffset: '50%', 'text-anchor': 'middle' }, text);
+      tp.textContent = line;
+    });
+  }
+}
+
+function formatValue(v, p) {
+  if (p.type === 'integer') return String(v);
+  return Number(v).toFixed(decimalsOf(p.step));
+}
+
+// ── Bowstring (simplified delight.js) ────────────────────────────────────
+// Drawn in #delight-layer, above the radial.
+
+function startGesture(e) {
+  const built = buildSpokes(menu, toyEl);
+  if (built.error) {
+    console.warn(`[radial] authoring error: ${built.error}`);
+    toast(`Radial menu error: ${built.error}`);
+  }
+  const spokes = built.spokes ?? null;
+
+  const group = el('g', {}, delightLayer);
+  const string = el('path', { fill: 'none', stroke: '#e8e8e8', 'stroke-linecap': 'round',
+                              'stroke-width': 0, opacity: 0 }, group);
+  const handle = drawSquare(group, square.x, square.y, 'handle');
+  handle.style.transition = 'none';
+
+  gesture = {
+    pointerId: e.pointerId,
+    start: { x: e.clientX, y: e.clientY },
+    moved: 0,
+    cur: { ...square },
+    spokes, group, string, handle,
+    angle: 0, last: null, spinId: null,
+    pick: null,
+  };
+  svg.setPointerCapture(e.pointerId);
+
+  if (spokes) {
+    renderRadial(spokes, null);
+    // Next frame, so the opacity transition starts from 0.
+    requestAnimationFrame(() => radialLayer.classList.add('show'));
+  }
+  updatePending();
+  gesture.spinId = requestAnimationFrame(spin);
+}
+
+function spin(now) {
+  if (!gesture) return;
+  const g = gesture;
+  const dt = g.last == null ? 0 : (now - g.last) / 1000;
+  g.last = now;
+  const dist = Math.hypot(g.cur.x - square.x, g.cur.y - square.y);
+  g.angle = (g.angle + 4 * 360 * (1 - Math.min(dist / MAX_PULL, 1)) * dt) % 360;
+  g.handle.setAttribute('transform', `translate(${g.cur.x} ${g.cur.y}) rotate(${g.angle})`);
+  g.spinId = requestAnimationFrame(spin);
+}
+
+function moveGesture(e) {
+  const g = gesture;
+  if (!g || e.pointerId !== g.pointerId) return;
+  g.moved = Math.max(g.moved, Math.hypot(e.clientX - g.start.x, e.clientY - g.start.y));
+  const r = svg.getBoundingClientRect();
+  g.cur = { x: e.clientX - r.left, y: e.clientY - r.top };
+
+  const dist = Math.hypot(g.cur.x - square.x, g.cur.y - square.y);
+  if (dist > 0.5) {
+    const w = 22 - Math.min(dist / MAX_PULL, 1) * (22 - 0.75);
+    g.string.setAttribute('d', `M${square.x} ${square.y} L${g.cur.x} ${g.cur.y}`);
+    g.string.setAttribute('stroke-width', w.toFixed(2));
+    g.string.setAttribute('opacity', '1');
+  }
+
+  if (g.spokes) {
+    const pick = g.moved >= CLICK_THRESHOLD ? pickAt(g.spokes, g.cur.x - square.x, g.cur.y - square.y) : null;
+    if (!samePick(pick, g.pick)) {
+      g.pick = pick;
+      renderRadial(g.spokes, pick);
+    }
+  }
+  updatePending();
+}
+
+function samePick(a, b) {
+  if (!a || !b) return a === b;
+  return a.spoke === b.spoke && JSON.stringify(a.params) === JSON.stringify(b.params);
+}
+
+function resolution() {
+  const g = gesture;
+  const defaultKey = Object.keys(menu)[0];
+  if (g.moved < CLICK_THRESHOLD) return { key: defaultKey, params: defaultParams(menu[defaultKey]), how: 'tap' };
+  if (g.pick) return { key: g.pick.spoke.key, params: g.pick.params, how: 'spoke' };
+  const pull = Math.round(Math.hypot(g.cur.x - square.x, g.cur.y - square.y));
+  return { key: defaultKey, params: defaultParams(menu[defaultKey]), how: `charged, pull ${pull}px` };
+}
+
+function updatePending() {
+  const out = document.getElementById('pending');
+  if (!gesture) { out.textContent = '—'; return; }
+  const r = resolution();
+  out.textContent = `→ ${r.key} ${JSON.stringify(r.params)}  (${r.how})`;
+}
+
+function endGesture(e) {
+  const g = gesture;
+  if (!g || (e && e.pointerId !== g.pointerId)) return;
+  const res = resolution();
+  cancelAnimationFrame(g.spinId);
+  radialLayer.classList.remove('show');
+  gesture = null;
+  updatePending();
+
+  const fire = () => {
+    g.group.remove();
+    radialLayer.innerHTML = '';
+    invoke(res);
+  };
+  if (res.how === 'tap') { fire(); return; }
+
+  // Snap back, then fire, as delight.js does.
+  const dist = Math.hypot(g.cur.x - square.x, g.cur.y - square.y);
+  const ms = (260 + Math.min(dist, MAX_PULL * 1.4) * 1.2) / 1.6;
+  g.handle.style.transition = `transform ${ms}ms cubic-bezier(0.34, 1.56, 0.64, 1)`;
+  g.string.style.transition = 'opacity 150ms ease-out';
+  g.handle.style.transform = `translate(${square.x - g.cur.x}px, ${square.y - g.cur.y}px)`;
+  g.string.setAttribute('opacity', '0');
+  setTimeout(() => { sparks(square.x, square.y); fire(); }, ms);
+}
+
+function invoke({ key, params, how }) {
+  const entry = menu[key];
+  logLine(`→ ${key} ${JSON.stringify(params)}  (${how})`);
+  if (typeof entry.applicable === 'function' && !entry.applicable(toyEl)) {
+    logLine(`not applicable — skipped`, 'handler');
+    return;
+  }
+  entry.handler.call(toyEl, new CustomEvent('radial'), params);
+}
+
+function sparks(x, y) {
+  for (let i = 0; i < 10; i++) {
+    const a = Math.PI * 2 * i / 10 + Math.random() * 0.4, d = 18 + Math.random() * 22;
+    const s = el('circle', { cx: x, cy: y, r: 1.6 + Math.random() * 1.4, fill: '#ffd76a', filter: 'url(#glow)' }, delightLayer);
+    s.classList.add('spark');
+    s.style.setProperty('--tx', `${Math.cos(a) * d}px`);
+    s.style.setProperty('--ty', `${Math.sin(a) * d}px`);
+    s.style.setProperty('--spark-duration', `${420 + Math.random() * 180}ms`);
+    s.addEventListener('animationend', () => s.remove());
+  }
+}
+
+svg.addEventListener('pointerdown', (e) => {
+  if (gesture || !square) return;
+  const r = svg.getBoundingClientRect();
+  const px = e.clientX - r.left, py = e.clientY - r.top;
+  if (Math.abs(px - square.x) > HANDLE_SIDE / 2 || Math.abs(py - square.y) > HANDLE_SIDE / 2) return;
+  e.preventDefault();
+  startGesture(e);
+});
+svg.addEventListener('pointermove', moveGesture);
+svg.addEventListener('pointerup', endGesture);
+svg.addEventListener('pointercancel', endGesture);
+
+// ── Wiring ───────────────────────────────────────────────────────────────
+
+function loadScenario(i) {
+  const sc = SCENARIOS[i];
+  menu = new Function('ran', `return (${sc.src})`)(ran);
+  document.getElementById('scenario-notes').textContent = sc.notes;
+  document.getElementById('source').textContent = `menu: ${sc.src}`;
+  layoutToy();
+}
+
+const sel = document.getElementById('scenario');
+SCENARIOS.forEach((sc, i) => {
+  const o = document.createElement('option');
+  o.value = i; o.textContent = sc.name;
+  sel.appendChild(o);
+});
+sel.addEventListener('change', () => loadScenario(+sel.value));
+for (const id of ['zoom', 'rotation', 'position', 'has-below']) {
+  document.getElementById(id).addEventListener('input', layoutToy);
+}
+document.getElementById('player').addEventListener('input', (e) => {
+  const [c0, c1] = e.target.value.split(',');
+  const stops = document.querySelectorAll('#player-grad stop');
+  stops[0].setAttribute('stop-color', c0);
+  stops[1].setAttribute('stop-color', c1);
+});
+window.addEventListener('resize', layoutToy);
+
+loadScenario(0);
+</script>
+</body>
+</html>
