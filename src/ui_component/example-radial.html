@@ -673,7 +673,8 @@ function renderRadial(spokes, pick) {
         }
       }
     } else {
-      el('path', { d: wedgePath(cx, cy, V.innerR, V.outerR, g0, g1), class: 'spoke-seg' }, g);
+      // A plain spoke is one segment, so hovering it highlights the whole wedge.
+      el('path', { d: wedgePath(cx, cy, V.innerR, V.outerR, g0, g1), class: `spoke-seg${hovered && !p ? ' hover' : ''}` }, g);
       if (p) {
         const shownT = hovered ? pick.t : (p.default - p.min) / (p.max - p.min);
         const shownV = hovered ? pick.params[p.name] : p.default;
