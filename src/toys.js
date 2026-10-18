@@ -35,6 +35,7 @@ import * as OpLayer from './op_layer.js';
 // boun_pos.js.
 import * as Geometry from './geometry.js';
 import { ROTATE_ATTR, CENTER_PIVOT, getRotation, rotationCenter } from './geometry.js';
+import { defaultParams } from './radial.js';
 
 // ── ID helpers ────────────────────────────────────────────────────────────────
 
@@ -1731,6 +1732,28 @@ export function getMenuActions(svgEl) {
   return actions
 }
 
+/**
+ * Every menu entry, applicable or not, in declaration order, for laying
+ * out the bowstring's radial menu (see radial.js's buildSpokes):
+ *   { namespace, key, label, enabled, radial }[]
+ * Unlike getMenuActions, nothing is filtered out: a non-applicable action
+ * still holds its spoke, greyed.
+ */
+export function getRadialItems(svgEl) {
+  const toyType = svgEl?.getAttribute?.('data-toy-type')
+  if (!toyType) return []
+  const items = []
+  for (const { name, ns } of namespacesFor(toyType)) {
+    for (const [key, entry] of Object.entries(ns.menu)) {
+      const enabled = typeof entry.applicable !== 'function' || !!entry.applicable(svgEl)
+      const label = typeof entry.uiLabel === 'function' ? entry.uiLabel(svgEl)
+                  : (entry.uiLabel ?? key)
+      items.push({ namespace: name, key, label, enabled, radial: entry.radial })
+    }
+  }
+  return items
+}
+
 // ── gesture-triggered cascade ─────────────────────────────────────────────
 //
 // TOYS_LAYER's afterCapture hook runs these for every gesture.
@@ -1907,8 +1930,12 @@ export const canRedoToyGesture = (ydoc, tableId, authorId) =>
  * container reaction the handler triggers folded into the same op as the
  * handler's own mutations — one op, one undo step, no window where the
  * action landed but its reaction hadn't yet.
+ *
+ * The handler is called as handler(evt, params). params starts from the
+ * entry's radial defaults (see radial.js), overlaid with whatever the
+ * caller picked, so it is always an object.
  */
-export function invokeMenuAction(ydoc, layerEl, svgEl, namespace, key, evt, authorId, tableId) {
+export function invokeMenuAction(ydoc, layerEl, svgEl, namespace, key, evt, authorId, tableId, params) {
   const ns    = globalThis[namespace]
   const entry = ns?.menu?.[key]
   if (!entry || typeof entry.handler !== 'function') {
@@ -1917,7 +1944,8 @@ export function invokeMenuAction(ydoc, layerEl, svgEl, namespace, key, evt, auth
   if (typeof entry.applicable === 'function' && !entry.applicable(svgEl)) {
     throw new Error(`[toys] menu action not applicable: ${namespace}.${key}`)
   }
-  return runGesture(ydoc, layerEl, () => entry.handler.call(svgEl, evt),
+  const args = { ...defaultParams(entry.radial), ...params }
+  return runGesture(ydoc, layerEl, () => entry.handler.call(svgEl, evt, args),
     { gesture: `menu:${namespace}.${key}`, authorId, tableId })
 }
 
