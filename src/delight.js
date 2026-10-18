@@ -46,6 +46,7 @@
 
 import { LOCAL_ACTION_FILTER_ID, GLOW_FILTER_ID } from './defs.js';
 import { rotatePoint } from './geometry.js';
+import * as Radial from './radial.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 
@@ -57,6 +58,7 @@ const MAX_SPIN_DEG_PER_SEC = 4 * 360;
 const MAX_STRING_WIDTH = 22;   // matches the handle's own width, so the string reads as continuous
 const MIN_STRING_WIDTH = 0.75;
 const SNAP_SPEEDUP = 1.6;
+const SNAP_EASE = [0.34, 1.56, 0.64, 1];   // snap-back cubic-bezier; radial.js's arrow follows it too
 const DELIGHT_TRANSLATE_SCALE = 0.05;
 const HANDLE_HALF = 11;        // the handle rect is 22x22
 
@@ -233,6 +235,10 @@ export function startBowstring(elId, e, stageEl) {
 
   const chrome = buildChrome(origin, scale);
   const toyEl = _svgEl.querySelector(`[data-id="${elId}"]`);
+  // Built now, under the chrome, but only shown once the pointer passes
+  // CLICK_THRESHOLD, so a tap never flashes it.
+  const menu = App.getRadialMenu?.(elId);
+  const radial = menu ? Radial.open(_layerEl, { spokes: menu.spokes, origin, scale, paint: menu.paint }) : null;
 
   _active = {
     elId, origin, scale, stageEl,
@@ -247,6 +253,7 @@ export function startBowstring(elId, e, stageEl) {
     lastMove: null,
     lastSpinTime: null,
     spinAnimId: null,
+    radial,
     ...chrome,
     ...spawnDelights(toyEl, rot),
   };
@@ -402,7 +409,15 @@ export function moveBowstring(e, canvasPoint) {
   applyHandleTransform();
   updateString();
   updateParallax();
+  updateRadial();
   broadcastCharge();
+}
+
+function updateRadial() {
+  const { radial, moved, origin, current, scale } = _active;
+  if (!radial || moved < CLICK_THRESHOLD) return;
+  Radial.show(radial);
+  Radial.setPick(radial, Radial.pickAt(radial.spokes, (current.x - origin.x) * scale, (current.y - origin.y) * scale));
 }
 
 /**
@@ -476,6 +491,7 @@ export function endBowstring(e) {
   destroyDelights();
 
   if (a.moved < CLICK_THRESHOLD) {
+    if (a.radial) Radial.close(a.radial);
     fireClickPop();
     resetHandleInstant();
     teardown();
@@ -485,9 +501,17 @@ export function endBowstring(e) {
 
   setPressed(false);
   const pull = Math.hypot(a.current.x - a.origin.x, a.current.y - a.origin.y) * a.scale;
+  // A release on a spoke fires that spoke's action; anywhere else fires
+  // the default action, as a charged pull.
+  const pick = a.radial?.pick ?? null;
+  const target = pick ? { namespace: pick.spoke.namespace, key: pick.spoke.key, params: pick.params } : {};
+  if (pick) {
+    Radial.launchChosen(a.radial, _layerEl, { ...a.current }, snapDurationFor(pull), Radial.cubicBezier(...SNAP_EASE));
+  }
+  if (a.radial) Radial.close(a.radial);
   snapBack(pull, () => {
     teardown();
-    App.fireBowstring(a.elId, { charged: true, pull });
+    App.fireBowstring(a.elId, { charged: true, pull, ...target });
   });
 }
 
@@ -520,7 +544,7 @@ function resetHandleInstant() {
 function snapBack(pull, done) {
   const a = _active;
   const duration = snapDurationFor(pull);
-  a.handle.style.transition = `transform ${duration}ms cubic-bezier(0.34, 1.56, 0.64, 1)`;
+  a.handle.style.transition = `transform ${duration}ms cubic-bezier(${SNAP_EASE.join(', ')})`;
   a.string.style.transition = 'opacity 150ms ease-out, stroke-width 150ms ease-out';
 
   let finished = false;

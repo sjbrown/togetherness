@@ -41,7 +41,7 @@ const READOUT_HALO = 1;
 const DEFAULT_SPOKE_STROKE = 4;
 const DEFAULT_VALUE_STROKE = 4;
 const FLOAT_DEFAULT_STROKE = 3;
-export const FADE_MS = 220;          // keep in step with .radial's transition in ui.css
+export const FADE_MS = 220;          // keep in step with .radial-menu's transition in ui.css
 const ARROW_END_SCALE = 0.12;
 const TEXT_DRIFT = 0.25;             // text travels this fraction of the shape's distance, outward
 const TEXT_END_SCALE = 4;
@@ -245,7 +245,7 @@ function arcPath(cx, cy, r, a0, a1, reverse) {
  * the local player's gradient as { grad: 'url(#…)', stop: color }.
  */
 export function open(hostEl, { spokes, origin, scale, paint }) {
-  const group = el('g', { class: 'radial' });
+  const group = el('g', { class: 'radial radial-menu' });
   if (paint?.grad) group.style.setProperty('--radial-grad', paint.grad);
   if (paint?.stop) group.style.setProperty('--radial-stop', paint.stop);
   hostEl.insertBefore(group, hostEl.firstChild);

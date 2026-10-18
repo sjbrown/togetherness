@@ -37,6 +37,7 @@ import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
 import * as Overlay                               from './overlay.js';
 import * as Delight                               from './delight.js';
+import * as Radial                                from './radial.js';
 import * as Attention                             from './attention_mode.js';
 import * as Events                                from './events.js';
 import { entityGradient }            from './entity_gradient.js';
@@ -1161,13 +1162,13 @@ const App = {
    * Runs the handler inside an envelope and commits its DOM mutations,
    * plus any triggered reactions, as a single op.
    */
-  invokeToyMenuAction: (id, namespace, key) => {
+  invokeToyMenuAction: (id, namespace, key, params) => {
     const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
     if (!svgEl) return;
     const layerEl = layerElOf('toys');
     if (!layerEl) return;
     try {
-      Toys.invokeMenuAction(_ydoc, layerEl, svgEl, namespace, key, undefined, App.user.id, _tableId);
+      Toys.invokeMenuAction(_ydoc, layerEl, svgEl, namespace, key, undefined, App.user.id, _tableId, params);
       addHistory(`${key} ${id}`, { elType: 'toys' });
     } catch (err) {
       UI.toast(`Action failed: ${err.message}`, 'warn');
@@ -1514,6 +1515,26 @@ const App = {
   requestOverlayRender: () => Overlay.render(),
 
   /**
+   * The radial menu for id's bowstring, as { spokes, paint }, or null when
+   * none of its menu actions declares `radial`. An authoring error (see
+   * radial.js's buildSpokes) warns, toasts, and also returns null, leaving
+   * the plain bowstring.
+   */
+  getRadialMenu: (id) => {
+    const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
+    const items = Toys.getRadialItems(svgEl);
+    if (!items.some(it => it.radial !== undefined && it.radial !== false)) return null;
+    const built = Radial.buildSpokes(items);
+    if (built.error) {
+      console.warn(`[radial] ${svgEl.getAttribute('data-toy-type')}: ${built.error}`);
+      UI.toast(`Radial menu error: ${built.error}`, 'warn');
+      return null;
+    }
+    const paint = { grad: `url(#grad-${App.user.id})`, stop: App.user.gradient?.c1 ?? App.user.color };
+    return { spokes: built.spokes, paint };
+  },
+
+  /**
    * Broadcast (or clear) the local bowstring charge so peers can see someone
    * winding up. Pass null on release.
    */
@@ -1526,16 +1547,21 @@ const App = {
 
   /**
    * Called by delight.js when a bowstring resolves — on click, or on the
-   * far end of a charged pull's snap-back.
+   * far end of a charged pull's snap-back. A release on a radial spoke
+   * names its action and params; otherwise the default action (the first
+   * applicable one) runs with its radial defaults.
    */
-  fireBowstring: (id, { charged = false, pull = 0 } = {}) => {
+  fireBowstring: (id, { charged = false, pull = 0, namespace, key, params } = {}) => {
     const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
     if (!svgEl) return;
-    const actions = Toys.getMenuActions(svgEl);
-    if (!actions.length) return;
-    const { namespace, key } = actions[0];
-    App.invokeToyMenuAction(id, namespace, key);
-    App.addLog(`bowstring ${charged ? 'charged' : 'tap'} → ${key}`, 'local');
+    if (!key) {
+      const actions = Toys.getMenuActions(svgEl);
+      if (!actions.length) return;
+      ({ namespace, key } = actions[0]);
+    }
+    App.invokeToyMenuAction(id, namespace, key, params);
+    const how = params ? 'radial' : charged ? 'charged' : 'tap';
+    App.addLog(`bowstring ${how} → ${key}${params ? ` ${JSON.stringify(params)}` : ''}`, 'local');
   },
 
   // getResizeCorner   — hit-test a canvas-space point against id's corner
