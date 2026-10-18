@@ -167,6 +167,31 @@ describe('bowstring handle on a rotated toy (chip-like)', () => {
     App.endBowstring({ pointerId: 1 })
   })
 
+  test('rotated 180°: the resting square is upright, outside any rotated group, at bowstringOrigin', async () => {
+    const { App, svgEl } = await bootApp()
+    App.select('chip-1')
+
+    const chipEl = svgEl.querySelector('[data-id="chip-1"]')
+    applyRotate(chipEl, 180)
+    App.select('chip-1') // re-render with the rotation in place
+
+    const geo = App.getBBox('chip-1')
+    const rot = App.getRotation('chip-1')
+    const origin = bowstringOrigin(geo, rot)
+
+    const layer = svgEl.querySelector('#overlay-layer')
+    const group = layer.querySelector('.bowstring')
+    expect(group).toBeTruthy()
+    expect(group.parentElement).toBe(layer)
+    expect(group.closest('[transform]')).toBeNull()
+
+    const rect = group.querySelector('rect.actionSquare')
+    const cx = Number(rect.getAttribute('x')) + Number(rect.getAttribute('width')) / 2
+    const cy = Number(rect.getAttribute('y')) + Number(rect.getAttribute('height')) / 2
+    expect(cx).toBeCloseTo(origin.x)
+    expect(cy).toBeCloseTo(origin.y)
+  })
+
   test('rotated 90°: the live gesture’s own handle chrome starts at the rotated point too', async () => {
     const { App, svgEl } = await bootApp()
     App.select('chip-1')

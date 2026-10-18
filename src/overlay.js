@@ -856,7 +856,7 @@ export function render() {
         break;
       case 'sel-action':
         renderLocalSelection(geo, entry, scale, parent);
-        renderActionAffordance(geo, scale, parent);
+        renderActionAffordance(geo, scale, rot);
         break;
     }
   }
@@ -1244,15 +1244,16 @@ const ACTION_ICON_SIZE = 22; // px
 
 // Render a single rounded-corner icon square — asterisk (*), the bowstring
 // handle's resting state
-function renderActionAffordance(geo, scale, parent = _layerEl) {
+function renderActionAffordance(geo, scale, rot = null) {
   const side = ACTION_ICON_SIZE / scale;
-  const [, , se] = resizeCorners(geo); // resizeCorners: [NW, NE, SE, SW]
-  // The SE square is the bowstring handle's resting state (see delight.js).
-  // It's wrapped in its own <g class="bowstring"> so the whole control —
-  // square plus glyph — is addressable as one unit. This layer still gets
-  // wiped on every render(); the LIVE gesture is built separately in
-  // #delight-layer, which is never wiped.
-  drawActionSquare(se, side, scale, 'bowstring', parent);
+  // Drawn straight into the layer, not the toy's rotated decorGroup, so the
+  // square sits upright on the south-east-most ring corner like the live
+  // handle (see delight.js's bowstringOrigin). It's wrapped in its own
+  // <g class="bowstring"> so the whole control — square plus glyph — is
+  // addressable as one unit. This layer still gets wiped on every render();
+  // the LIVE gesture is built separately in #delight-layer, which is never
+  // wiped.
+  drawActionSquare(bowstringOrigin(geo, rot), side, scale, 'bowstring', _layerEl);
 }
 
 function drawActionSquare({ x: cx, y: cy }, side, scale, groupClass, host = _layerEl) {
