@@ -124,17 +124,28 @@ describe('bowstring handle on a rotated toy (chip-like)', () => {
     App.endBowstring({ pointerId: 1 })
   })
 
-  test('rotated 90°: a click at the OLD un-rotated corner misses — nothing is drawn there any more', async () => {
+  test('rotated 180°: a click at the toy’s own rotated SE corner misses, at the SE-most corner fires', async () => {
     const { App, svgEl } = await bootApp()
     App.select('chip-1')
 
     const chipEl = svgEl.querySelector('[data-id="chip-1"]')
-    applyRotate(chipEl, 90)
+    applyRotate(chipEl, 180)
 
-    const geo = App.getBBox('chip-1') // still the unrotated bbox
-    const stalePoint = { x: geo.x + geo.width + 6, y: geo.y + geo.height + 6 }
+    const geo = App.getBBox('chip-1')
+    const rot = App.getRotation('chip-1')
+    expect(rot?.deg).toBe(180)
 
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, stalePoint)).toBe(false)
+    // 180° about the centre sends the own SE corner to the opposite corner.
+    const ownSE = {
+      x: 2 * rot.cx - (geo.x + geo.width + 6),
+      y: 2 * rot.cy - (geo.y + geo.height + 6),
+    }
+    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, ownSE)).toBe(false)
+
+    const seMost = bowstringOrigin(geo, rot)
+    expect(seMost.x).toBeGreaterThan(ownSE.x)
+    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, seMost)).toBe(true)
+    App.endBowstring({ pointerId: 1 })
   })
 
   test('rotated 90°: a click where the handle is actually drawn fires the bowstring', async () => {
