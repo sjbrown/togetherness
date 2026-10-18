@@ -847,31 +847,40 @@ function endGesture(e) {
 }
 
 /**
- * Copy the picked segment (and its text) onto the delight layer, under the
- * handle. The wrapper carries the spoke classes so the copy keeps its
- * hovered paint.
+ * Copy the picked segment onto the delight layer, under the handle: its
+ * shape and its text as separate groups, since they animate differently.
+ * The wrappers carry the spoke classes so the copies keep their hovered
+ * paint.
  */
 function cloneChosen() {
-  const chosen = radialLayer.querySelectorAll('.spoke.hover .chosen');
+  const chosen = [...radialLayer.querySelectorAll('.spoke.hover .chosen')];
   if (!chosen.length) return null;
-  const g = el('g', { class: 'spoke hover chosen-arrow' });
-  for (const n of chosen) g.appendChild(n.cloneNode(true));
-  delightLayer.insertBefore(g, delightLayer.firstChild);
-  return g;
+  const shape = el('g', { class: 'spoke hover chosen-arrow' });
+  const text = el('g', { class: 'spoke hover chosen-arrow' });
+  for (const n of chosen) (n.tagName === 'text' ? text : shape).appendChild(n.cloneNode(true));
+  if (text.childNodes.length) delightLayer.insertBefore(text, delightLayer.firstChild);
+  delightLayer.insertBefore(shape, delightLayer.firstChild);
+  return { shape, text, remove: () => { shape.remove(); text.remove(); } };
 }
 
 /**
- * Send the copy home with the handle, like an arrow on the string: the
+ * The shape goes home with the handle, like an arrow on the string: the
  * same translation, duration and overshoot curve as the snap-back, so the
- * point that was under the pointer lands on the centre. It shrinks about
- * that point and fades out over the last stretch.
+ * point that was under the pointer lands on the centre, shrinking about
+ * that point and fading over the last stretch. The text drifts the other
+ * way, away from the centre, covering half the distance and easing out to
+ * a stop as it fades.
  */
-function launchArrow(arrow, from, ms) {
-  arrow.style.transformOrigin = `${from.x}px ${from.y}px`;
-  arrow.style.transition = `transform ${ms}ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity ${ms}ms cubic-bezier(0.7, 0, 0.9, 0.4)`;
+function launchArrow({ shape, text }, from, ms) {
+  const dx = square.x - from.x, dy = square.y - from.y;
+  shape.style.transformOrigin = `${from.x}px ${from.y}px`;
+  shape.style.transition = `transform ${ms}ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity ${ms}ms cubic-bezier(0.7, 0, 0.9, 0.4)`;
+  text.style.transition = `transform ${ms}ms cubic-bezier(0, 0, 0.58, 1), opacity ${ms}ms ease-in`;
   requestAnimationFrame(() => {
-    arrow.style.transform = `translate(${square.x - from.x}px, ${square.y - from.y}px) scale(0.12)`;
-    arrow.style.opacity = '0';
+    shape.style.transform = `translate(${dx}px, ${dy}px) scale(0.12)`;
+    shape.style.opacity = '0';
+    text.style.transform = `translate(${-dx / 2}px, ${-dy / 2}px)`;
+    text.style.opacity = '0';
   });
 }
 
