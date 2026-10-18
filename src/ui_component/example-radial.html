@@ -102,6 +102,22 @@
     .arc-label { fill: var(--label); font-size: var(--label-font); }
     .arc-label.param { fill: var(--label-param); }
     .spoke.disabled .arc-label { fill: var(--label-disabled); }
+    .label-band { fill: var(--label-band); }
+    .arc-label.on-band { fill: var(--label-band-text); }
+    .arc-label.param.on-band { fill: var(--label-band-param); }
+
+    #panel-head { display: flex; justify-content: space-between; align-items: flex-start; }
+    #panel-close { border: none; background: none; color: var(--text); font-size: 22px; line-height: 1; cursor: pointer; padding: 0 4px; }
+    #panel-open {
+      position: absolute; top: 12px; left: 12px; display: none; z-index: 2;
+      padding: 6px 10px; font-size: 13px; border-radius: 4px; border: 1px solid var(--border);
+      background: var(--panel); color: var(--text); cursor: pointer;
+    }
+    body.panel-closed #panel { display: none; }
+    body.panel-closed #panel-open { display: block; }
+    @media (max-width: 700px) {
+      #panel { position: absolute; z-index: 3; top: 0; left: 0; bottom: 0; width: min(380px, 100vw); }
+    }
 
     #tuning fieldset { border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px 8px; margin-top: 8px; }
     #tuning legend { font-weight: 600; padding: 0 4px; }
@@ -125,7 +141,10 @@
 </head>
 <body>
   <div id="panel">
-    <h1>Radial menu prototype</h1>
+    <div id="panel-head">
+      <h1>Radial menu prototype</h1>
+      <button id="panel-close" title="Close controls" aria-label="Close controls">×</button>
+    </div>
     <div class="subtitle">Press on the action square, drag onto a spoke, release.</div>
 
     <label for="scenario">Scenario</label>
@@ -179,6 +198,7 @@
   </div>
 
   <div id="stage">
+    <button id="panel-open">☰ Controls</button>
     <svg id="svg" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="player-grad" x1="0" y1="0" x2="1" y2="1">
@@ -290,14 +310,14 @@ function spotAngles(spot) {
  */
 function pickAt(spokes, dx, dy) {
   const d = Math.hypot(dx, dy);
-  if (d < V.innerR || d > V.outerR) return null;
+  if (d < V.innerR) return null;
   let deg = Math.atan2(dy, dx) * 180 / Math.PI;      // -180..180
   if (deg < -90) deg += 360;                         // north..west becomes -90..180
   if (deg < -90 || deg > 180) return null;           // NW quadrant
   const spot = Math.min(6, Math.floor((deg + 90) / 45) + 1);
   const spoke = spokes.find(s => s.spot === spot);
   if (!spoke || !spoke.enabled) return null;
-  const t = (d - V.innerR) / (V.outerR - V.innerR);
+  const t = Math.min(1, (d - V.innerR) / (V.outerR - V.innerR));
   const p = spoke.param;
   if (!p) return { spoke, params: {}, index: null, t };
   if (p.segmented) {
@@ -310,6 +330,20 @@ function pickAt(spokes, dx, dy) {
   if (p.type === 'integer') v = Math.round(v);
   else v = +v.toFixed(decimalsOf(p.step));
   return { spoke, params: { [p.name]: v }, index: null, t: (v - p.min) / (p.max - p.min) };
+}
+
+/**
+ * The default action at its default value, shown as if hovered while the
+ * pointer isn't on another spoke — which is also what a release would fire.
+ * Null when the default action has no spoke or isn't applicable.
+ */
+function defaultPick(spokes) {
+  const spoke = spokes.find(s => s.isDefault && s.enabled);
+  if (!spoke) return null;
+  const p = spoke.param;
+  if (!p) return { spoke, params: {}, index: null, t: null };
+  if (p.segmented) return { spoke, params: { [p.name]: p.default }, index: p.values.indexOf(p.default), t: null };
+  return { spoke, params: { [p.name]: p.default }, index: null, t: (p.default - p.min) / (p.max - p.min) };
 }
 
 function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
@@ -612,6 +646,7 @@ function renderRadial(spokes, pick) {
   radialLayer.innerHTML = '';
   const { x: cx, y: cy } = square;
   const band = V.outerR - V.innerR;
+  pick = pick ?? defaultPick(spokes);
 
   for (const s of spokes) {
     const { a0, a1, mid } = spotAngles(s.spot);
@@ -627,7 +662,7 @@ function renderRadial(spokes, pick) {
         const r1 = V.innerR + band * (i + 1) / n - (i < n - 1 ? V.bandGap / 2 : 0);
         const segHover = hovered && pick.index === i;
         el('path', { d: wedgePath(cx, cy, r0, r1, g0, g1), class: `spoke-seg${segHover ? ' hover' : ''}` }, g);
-        if (p.values[i] === p.default) {
+        if (s.enabled && p.values[i] === p.default) {
           const inset = V.defaultValueStroke / 2;
           const insetDeg = inset / ((r0 + r1) / 2) * 180 / Math.PI;
           el('path', { d: wedgePath(cx, cy, r0 + inset, r1 - inset, g0 + insetDeg, g1 - insetDeg), class: 'seg-default' }, g);
@@ -645,13 +680,15 @@ function renderRadial(spokes, pick) {
         if (hovered) {
           el('path', { d: wedgePath(cx, cy, V.innerR, V.innerR + band * shownT, g0, g1), class: 'spoke-fill' }, g);
         }
-        const rd = V.innerR + band * (p.default - p.min) / (p.max - p.min);
-        el('path', { d: arcPath(cx, cy, rd, g0, g1, false), class: 'float-default' }, g);
+        if (s.enabled) {
+          const rd = V.innerR + band * (p.default - p.min) / (p.max - p.min);
+          el('path', { d: arcPath(cx, cy, rd, g0, g1, false), class: 'float-default' }, g);
+        }
         const [tx, ty] = polar(cx, cy, V.innerR + band / 2, mid);
         el('text', { x: tx, y: ty, class: 'readout' }, g).textContent = formatValue(shownV, p);
       }
     }
-    if (s.isDefault) {
+    if (s.isDefault && s.enabled) {
       el('path', { d: wedgePath(cx, cy, V.innerR, V.outerR, g0, g1), class: 'spoke-outline' }, g);
     }
 
@@ -661,11 +698,18 @@ function renderRadial(spokes, pick) {
     const reverse = Math.sin(mid * Math.PI / 180) > 0;
     const fs = V.labelFont;
     const lines = p ? [s.label, p.label] : [s.label];
+    // A hovered spoke's label sits on a band styled like a segment. It is
+    // only decoration: past the outer radius picks the spoke's max value.
+    if (hovered) {
+      const textOuter = V.outerR + V.labelGap + fs * lines.length + 2;
+      const r1 = textOuter + Math.max(0, V.labelGap - V.bandGap);
+      el('path', { d: wedgePath(cx, cy, V.outerR + V.bandGap, r1, g0, g1), class: 'label-band' }, g);
+    }
     lines.forEach((line, li) => {
       const r = reverse ? V.outerR + V.labelGap + fs * (li + 0.8) : V.outerR + V.labelGap + fs * (lines.length - 1 - li) + 2;
       const id = `arc-${arcId++}`;
       el('path', { id, d: arcPath(cx, cy, r, a0, a1, reverse), fill: 'none' }, g);
-      const text = el('text', { class: `arc-label${li === 1 ? ' param' : ''}` }, g);
+      const text = el('text', { class: `arc-label${li === 1 ? ' param' : ''}${hovered ? ' on-band' : ''}` }, g);
       const tp = el('textPath', { href: `#${id}`, startOffset: '50%', 'text-anchor': 'middle' }, text);
       tp.textContent = line;
     });
@@ -836,22 +880,20 @@ svg.addEventListener('pointercancel', endGesture);
 // custom property; colours are hex + alpha; 'paint' picks how the player's
 // colour is used (the gradient or one of its two stops).
 
-const DARK = matchMedia('(prefers-color-scheme: dark)').matches;
-
 const TUNING = [
   { group: 'Geometry (screen px)', rows: [
-    { key: 'innerR',         label: 'Inner radius',             type: 'num', min: 12, max: 100, step: 1,   def: 30 },
-    { key: 'outerR',         label: 'Outer radius',             type: 'num', min: 50, max: 260, step: 1,   def: 120 },
-    { key: 'spokeGapDeg',    label: 'Gap between spokes (deg)', type: 'num', min: 0,  max: 8,   step: 0.5, def: 1.5 },
-    { key: 'bandGap',        label: 'Gap between segments',     type: 'num', min: 0,  max: 8,   step: 0.5, def: 2 },
+    { key: 'innerR',         label: 'Inner radius',             type: 'num', min: 12, max: 100, step: 1,   def: 53 },
+    { key: 'outerR',         label: 'Outer radius',             type: 'num', min: 50, max: 400, step: 1,   def: 260 },
+    { key: 'spokeGapDeg',    label: 'Gap between spokes (deg)', type: 'num', min: 0,  max: 8,   step: 0.5, def: 4 },
+    { key: 'bandGap',        label: 'Gap between segments',     type: 'num', min: 0,  max: 8,   step: 0.5, def: 4 },
     { key: 'labelGap',       label: 'Label distance from arc',  type: 'num', min: 0,  max: 30,  step: 1,   def: 7 },
     { key: 'fadeMs',         label: 'Fade-in (ms)',             type: 'num', min: 0,  max: 1000, step: 10, def: 220, css: '--fade-ms', unit: 'ms' },
   ]},
   { group: 'Strokes (px)', rows: [
-    { key: 'defaultSpokeStroke', label: 'Default spoke outline',  type: 'num', min: 0, max: 8, step: 0.5, def: 2.5, css: '--default-spoke-stroke', unit: 'px' },
-    { key: 'defaultValueStroke', label: 'Default value outline',  type: 'num', min: 0, max: 8, step: 0.5, def: 2,   css: '--default-value-stroke', unit: 'px' },
+    { key: 'defaultSpokeStroke', label: 'Default spoke outline',  type: 'num', min: 0, max: 8, step: 0.5, def: 4, css: '--default-spoke-stroke', unit: 'px' },
+    { key: 'defaultValueStroke', label: 'Default value outline',  type: 'num', min: 0, max: 8, step: 0.5, def: 4,   css: '--default-value-stroke', unit: 'px' },
     { key: 'floatDefaultStroke', label: 'Float default marker',   type: 'num', min: 0, max: 10, step: 0.5, def: 3,  css: '--float-default-stroke', unit: 'px' },
-    { key: 'readoutHaloWidth',   label: 'Float readout halo',     type: 'num', min: 0, max: 8, step: 0.5, def: 3,   css: '--readout-halo-width', unit: 'px' },
+    { key: 'readoutHaloWidth',   label: 'Float readout halo',     type: 'num', min: 0, max: 8, step: 0.5, def: 1,   css: '--readout-halo-width', unit: 'px' },
   ]},
   { group: 'Fonts (px)', rows: [
     { key: 'labelFont',      label: 'Arc label size',           type: 'num', min: 7,  max: 20, step: 0.5, def: 11, css: '--label-font', unit: 'px' },
@@ -860,28 +902,31 @@ const TUNING = [
     { key: 'readoutFont',    label: 'Float readout size',       type: 'num', min: 7,  max: 24, step: 0.5, def: 12, css: '--readout-font', unit: 'px' },
   ]},
   { group: 'Player colour usage', rows: [
-    { key: 'defaultSpokePaint', label: 'Default spoke outline', type: 'paint', def: 'gradient', css: '--default-spoke-paint' },
+    { key: 'defaultSpokePaint', label: 'Default spoke outline', type: 'paint', def: 'stop1', css: '--default-spoke-paint' },
     { key: 'defaultValuePaint', label: 'Default value outline', type: 'paint', def: 'gradient', css: '--default-value-paint' },
     { key: 'hoverSegPaint',     label: 'Hovered segment fill',  type: 'paint', def: 'gradient', css: '--hover-seg-paint' },
     { key: 'floatFillPaint',    label: 'Float fill',            type: 'paint', def: 'gradient', css: '--float-fill-paint' },
     { key: 'floatFillOpacity',  label: 'Float fill opacity',    type: 'num', min: 0, max: 1, step: 0.05, def: 0.75, css: '--float-fill-opacity' },
   ]},
   { group: 'Spoke colours', rows: [
-    { key: 'spoke',          label: 'Normal',                   type: 'color', def: '#282828', alpha: 0.55, css: '--spoke' },
-    { key: 'spokeHover',     label: 'Under pointer',            type: 'color', def: '#282828', alpha: 0.85, css: '--spoke-hover' },
-    { key: 'spokeDisabled',  label: 'Not applicable',           type: 'color', def: '#969696', alpha: 0.25, css: '--spoke-disabled' },
+    { key: 'spoke',          label: 'Normal',                   type: 'color', def: '#282828', alpha: 0.6,  css: '--spoke' },
+    { key: 'spokeHover',     label: 'Under pointer',            type: 'color', def: '#282828', alpha: 0.9,  css: '--spoke-hover' },
+    { key: 'spokeDisabled',  label: 'Not applicable',           type: 'color', def: '#0d0c14', alpha: 0.15, css: '--spoke-disabled' },
+    { key: 'labelBand',      label: 'Hovered label band',       type: 'color', def: '#282828', alpha: 0.9,  css: '--label-band' },
   ]},
   { group: 'Text colours', rows: [
     { key: 'segText',         label: 'Segment text',            type: 'color', def: '#ffffff', alpha: 1,    css: '--seg-text' },
     { key: 'segTextDisabled', label: 'Segment text, n/a',       type: 'color', def: '#ffffff', alpha: 0.4,  css: '--seg-text-disabled' },
     { key: 'readout',         label: 'Float readout',           type: 'color', def: '#ffffff', alpha: 1,    css: '--readout' },
     { key: 'readoutHalo',     label: 'Float readout halo',      type: 'color', def: '#000000', alpha: 0.5,  css: '--readout-halo' },
-    { key: 'label',           label: 'Arc label: action',       type: 'color', def: DARK ? '#eeeeee' : '#222222', alpha: 1, css: '--label' },
-    { key: 'labelParam',      label: 'Arc label: parameter',    type: 'color', def: DARK ? '#999999' : '#777777', alpha: 1, css: '--label-param' },
-    { key: 'labelDisabled',   label: 'Arc label, n/a',          type: 'color', def: DARK ? '#eeeeee' : '#222222', alpha: 0.4, css: '--label-disabled' },
+    { key: 'label',           label: 'Arc label: action',       type: 'color', def: '#222222', alpha: 1, css: '--label' },
+    { key: 'labelParam',      label: 'Arc label: parameter',    type: 'color', def: '#777777', alpha: 1, css: '--label-param' },
+    { key: 'labelDisabled',   label: 'Arc label, n/a',          type: 'color', def: '#222222', alpha: 0.4, css: '--label-disabled' },
+    { key: 'labelBandText',   label: 'Label on band: action',   type: 'color', def: '#ffffff', alpha: 1,    css: '--label-band-text' },
+    { key: 'labelBandParam',  label: 'Label on band: parameter', type: 'color', def: '#ffffff', alpha: 0.7, css: '--label-band-param' },
   ]},
   { group: 'Preview only', rows: [
-    { key: 'stage',          label: 'Table background',         type: 'color', def: DARK ? '#2e2c29' : '#e9e6df', alpha: 1, css: '--stage' },
+    { key: 'stage',          label: 'Table background',         type: 'color', def: '#1a5fb4', alpha: 1, css: '--stage' },
   ]},
 ];
 
@@ -1050,6 +1095,14 @@ document.getElementById('player').addEventListener('input', (e) => {
   applyTuning();
 });
 window.addEventListener('resize', layoutToy);
+document.getElementById('panel-close').addEventListener('click', () => {
+  document.body.classList.add('panel-closed');
+  layoutToy();
+});
+document.getElementById('panel-open').addEventListener('click', () => {
+  document.body.classList.remove('panel-closed');
+  layoutToy();
+});
 
 initTuning();
 loadScenario(0);
