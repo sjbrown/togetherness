@@ -868,8 +868,8 @@ function cloneChosen() {
  * same translation, duration and overshoot curve as the snap-back, so the
  * point that was under the pointer lands on the centre, shrinking about
  * that point and fading over the last stretch. The text drifts the other
- * way, away from the centre, covering half the distance and easing out to
- * a stop as it fades.
+ * way, away from the centre, covering a quarter of the distance and easing
+ * out to a stop as it fades.
  */
 function launchArrow({ shape, text }, from, ms) {
   const dx = square.x - from.x, dy = square.y - from.y;
@@ -879,7 +879,7 @@ function launchArrow({ shape, text }, from, ms) {
   requestAnimationFrame(() => {
     shape.style.transform = `translate(${dx}px, ${dy}px) scale(0.12)`;
     shape.style.opacity = '0';
-    text.style.transform = `translate(${-dx / 2}px, ${-dy / 2}px)`;
+    text.style.transform = `translate(${-dx / 4}px, ${-dy / 4}px)`;
     text.style.opacity = '0';
   });
 }
