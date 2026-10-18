@@ -132,6 +132,12 @@
     #values { width: 100%; height: 90px; margin-top: 6px; font-family: ui-monospace, Menlo, monospace; font-size: 11px;
               background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
 
+    .chosen-float { animation: chosen-float 750ms ease-out forwards; pointer-events: none; }
+    @keyframes chosen-float {
+      from { transform: translateY(0); opacity: 1; }
+      to   { transform: translateY(-48px); opacity: 0; }
+    }
+
     .spark { animation: spark var(--spark-duration, 500ms) ease-out forwards; }
     @keyframes spark {
       from { transform: translate(0, 0); opacity: 1; }
@@ -229,7 +235,7 @@ const PAD = 6;                 // selection ring offset, as overlay.js
 const CLICK_THRESHOLD = 4;
 const MAX_SPOKES = 6;
 const MAX_SEGMENTS = 10;
-const SPOT_ORDER = [3, 4, 2, 5, 1, 6];
+const SPOT_ORDER = [4, 3, 5, 2, 1, 6];
 const MAX_PULL = 200;
 
 // ── Spoke model ──────────────────────────────────────────────────────────
@@ -428,7 +434,7 @@ const SCENARIOS = [
   },
   {
     name: 'Six spokes, mixed',
-    notes: 'Fills spots 3, 4, 2, 5, 1, 6 in declaration order.',
+    notes: 'Fills spots 4, 3, 5, 2, 1, 6 in declaration order.',
     src: `{
   'Roll':    { eventName: 'r1', applicable: () => true, handler: function (evt) { ran('Roll', {}) }, radial: true },
   'Add':     { eventName: 'r2', applicable: () => true,
@@ -661,7 +667,7 @@ function renderRadial(spokes, pick) {
         const r0 = V.innerR + band * i / n + (i ? V.bandGap / 2 : 0);
         const r1 = V.innerR + band * (i + 1) / n - (i < n - 1 ? V.bandGap / 2 : 0);
         const segHover = hovered && pick.index === i;
-        el('path', { d: wedgePath(cx, cy, r0, r1, g0, g1), class: `spoke-seg${segHover ? ' hover' : ''}` }, g);
+        el('path', { d: wedgePath(cx, cy, r0, r1, g0, g1), class: `spoke-seg${segHover ? ' hover chosen' : ''}` }, g);
         if (s.enabled && p.values[i] === p.default) {
           const inset = V.defaultValueStroke / 2;
           const insetDeg = inset / ((r0 + r1) / 2) * 180 / Math.PI;
@@ -669,24 +675,24 @@ function renderRadial(spokes, pick) {
         }
         if (r1 - r0 >= V.segTextMinBand) {
           const [tx, ty] = polar(cx, cy, (r0 + r1) / 2, mid);
-          el('text', { x: tx, y: ty, class: 'seg-text' }, g).textContent = p.labels[i];
+          el('text', { x: tx, y: ty, class: `seg-text${segHover ? ' chosen' : ''}` }, g).textContent = p.labels[i];
         }
       }
     } else {
       // A plain spoke is one segment, so hovering it highlights the whole wedge.
-      el('path', { d: wedgePath(cx, cy, V.innerR, V.outerR, g0, g1), class: `spoke-seg${hovered && !p ? ' hover' : ''}` }, g);
+      el('path', { d: wedgePath(cx, cy, V.innerR, V.outerR, g0, g1), class: `spoke-seg${hovered && !p ? ' hover chosen' : ''}` }, g);
       if (p) {
         const shownT = hovered ? pick.t : (p.default - p.min) / (p.max - p.min);
         const shownV = hovered ? pick.params[p.name] : p.default;
         if (hovered) {
-          el('path', { d: wedgePath(cx, cy, V.innerR, V.innerR + band * shownT, g0, g1), class: 'spoke-fill' }, g);
+          el('path', { d: wedgePath(cx, cy, V.innerR, V.innerR + band * shownT, g0, g1), class: 'spoke-fill chosen' }, g);
         }
         if (s.enabled) {
           const rd = V.innerR + band * (p.default - p.min) / (p.max - p.min);
           el('path', { d: arcPath(cx, cy, rd, g0, g1, false), class: 'float-default' }, g);
         }
         const [tx, ty] = polar(cx, cy, V.innerR + band / 2, mid);
-        el('text', { x: tx, y: ty, class: 'readout' }, g).textContent = formatValue(shownV, p);
+        el('text', { x: tx, y: ty, class: `readout${hovered ? ' chosen' : ''}` }, g).textContent = formatValue(shownV, p);
       }
     }
     if (s.isDefault && s.enabled) {
@@ -704,7 +710,8 @@ function renderRadial(spokes, pick) {
     if (hovered) {
       const textOuter = V.outerR + V.labelGap + fs * lines.length + 2;
       const r1 = textOuter + Math.max(0, V.labelGap - V.bandGap);
-      el('path', { d: wedgePath(cx, cy, V.outerR + V.bandGap, r1, g0, g1), class: 'label-band' }, g);
+      const half = (g1 - g0) / 2 * V.labelBandFrac;
+      el('path', { d: wedgePath(cx, cy, V.outerR + V.bandGap, r1, mid - half, mid + half), class: 'label-band' }, g);
     }
     lines.forEach((line, li) => {
       const r = reverse ? V.outerR + V.labelGap + fs * (li + 0.8) : V.outerR + V.labelGap + fs * (lines.length - 1 - li) + 2;
@@ -750,11 +757,9 @@ function startGesture(e) {
   };
   svg.setPointerCapture(e.pointerId);
 
-  if (spokes) {
-    renderRadial(spokes, null);
-    // Next frame, so the opacity transition starts from 0.
-    requestAnimationFrame(() => radialLayer.classList.add('show'));
-  }
+  // Built now but kept invisible: it only fades in once the pointer passes
+  // the click threshold, so a tap never flashes it.
+  if (spokes) renderRadial(spokes, null);
   updatePending();
   gesture.spinId = requestAnimationFrame(spin);
 }
@@ -785,6 +790,7 @@ function moveGesture(e) {
     g.string.setAttribute('opacity', '1');
   }
 
+  if (g.spokes && g.moved >= CLICK_THRESHOLD) radialLayer.classList.add('show');
   if (g.spokes) {
     const pick = g.moved >= CLICK_THRESHOLD ? pickAt(g.spokes, g.cur.x - square.x, g.cur.y - square.y) : null;
     if (!samePick(pick, g.pick)) {
@@ -821,6 +827,7 @@ function endGesture(e) {
   if (!g || (e && e.pointerId !== g.pointerId)) return;
   const res = resolution();
   cancelAnimationFrame(g.spinId);
+  if (res.how === 'spoke') floatChosen();
   radialLayer.classList.remove('show');
   gesture = null;
   updatePending();
@@ -840,6 +847,20 @@ function endGesture(e) {
   g.handle.style.transform = `translate(${square.x - g.cur.x}px, ${square.y - g.cur.y}px)`;
   g.string.setAttribute('opacity', '0');
   setTimeout(() => { sparks(square.x, square.y); fire(); }, ms);
+}
+
+/**
+ * Copy the picked segment (and its text) onto the delight layer, where it
+ * floats up and fades. The wrapper carries the spoke classes so the copy
+ * keeps its hovered paint.
+ */
+function floatChosen() {
+  const chosen = radialLayer.querySelectorAll('.spoke.hover .chosen');
+  if (!chosen.length) return;
+  const g = el('g', { class: 'spoke hover chosen-float' });
+  for (const n of chosen) g.appendChild(n.cloneNode(true));
+  delightLayer.insertBefore(g, delightLayer.firstChild);
+  g.addEventListener('animationend', () => g.remove());
 }
 
 function invoke({ key, params, how }) {
@@ -888,6 +909,7 @@ const TUNING = [
     { key: 'spokeGapDeg',    label: 'Gap between spokes (deg)', type: 'num', min: 0,  max: 8,   step: 0.5, def: 4 },
     { key: 'bandGap',        label: 'Gap between segments',     type: 'num', min: 0,  max: 8,   step: 0.5, def: 4 },
     { key: 'labelGap',       label: 'Label distance from arc',  type: 'num', min: 0,  max: 30,  step: 1,   def: 7 },
+    { key: 'labelBandFrac',  label: 'Label band width (of spoke)', type: 'num', min: 0.1, max: 1, step: 0.05, def: 0.5 },
     { key: 'fadeMs',         label: 'Fade-in (ms)',             type: 'num', min: 0,  max: 1000, step: 10, def: 220, css: '--fade-ms', unit: 'ms' },
   ]},
   { group: 'Strokes (px)', rows: [
