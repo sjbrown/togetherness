@@ -14,11 +14,6 @@
       --muted: #777;
       --border: #ddd;
       --stage: #e9e6df;
-      --spoke: rgba(40, 40, 40, 0.55);
-      --spoke-hover: rgba(40, 40, 40, 0.85);
-      --spoke-disabled: rgba(150, 150, 150, 0.25);
-      --seg-text: #fff;
-      --label: #222;
     }
     @media (prefers-color-scheme: dark) {
       :root {
@@ -28,10 +23,6 @@
         --muted: #999;
         --border: #3a3a3a;
         --stage: #2e2c29;
-        --spoke: rgba(20, 20, 20, 0.6);
-        --spoke-hover: rgba(10, 10, 10, 0.9);
-        --spoke-disabled: rgba(120, 120, 120, 0.25);
-        --label: #eee;
       }
     }
 
@@ -94,22 +85,36 @@
 
     .actionSquare { cursor: grab; }
 
-    #radial-layer { opacity: 0; transition: opacity 220ms ease-out; pointer-events: none; }
+    #radial-layer { opacity: 0; transition: opacity var(--fade-ms) ease-out; pointer-events: none; }
     #radial-layer.show { opacity: 1; }
 
     .spoke-seg { fill: var(--spoke); transition: fill 80ms; }
     .spoke.hover .spoke-seg { fill: var(--spoke-hover); }
-    .spoke-seg.hover { fill: url(#player-grad); }
+    .spoke .spoke-seg.hover { fill: var(--hover-seg-paint); }
     .spoke.disabled .spoke-seg { fill: var(--spoke-disabled); }
-    .spoke-outline { fill: none; stroke: url(#player-grad); stroke-width: 2.5; }
-    .seg-default { fill: none; stroke: url(#player-grad); stroke-width: 2; }
-    .spoke-fill { fill: url(#player-grad); opacity: 0.75; }
-    .seg-text { fill: var(--seg-text); font-size: 10px; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
-    .spoke.disabled .seg-text { opacity: 0.4; }
-    .readout { fill: var(--seg-text); font-size: 12px; font-weight: 700; text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: rgba(0,0,0,0.5); stroke-width: 3px; }
-    .arc-label { fill: var(--label); font-size: 11px; }
-    .arc-label.param { fill: var(--muted); }
-    .spoke.disabled .arc-label { opacity: 0.4; }
+    .spoke-outline { fill: none; stroke: var(--default-spoke-paint); stroke-width: var(--default-spoke-stroke); }
+    .seg-default { fill: none; stroke: var(--default-value-paint); stroke-width: var(--default-value-stroke); }
+    .float-default { fill: none; stroke: var(--default-value-paint); stroke-width: var(--float-default-stroke); }
+    .spoke-fill { fill: var(--float-fill-paint); opacity: var(--float-fill-opacity); }
+    .seg-text { fill: var(--seg-text); font-size: var(--seg-font); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+    .spoke.disabled .seg-text { fill: var(--seg-text-disabled); }
+    .readout { fill: var(--readout); font-size: var(--readout-font); font-weight: 700; text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: var(--readout-halo); stroke-width: var(--readout-halo-width); }
+    .arc-label { fill: var(--label); font-size: var(--label-font); }
+    .arc-label.param { fill: var(--label-param); }
+    .spoke.disabled .arc-label { fill: var(--label-disabled); }
+
+    #tuning fieldset { border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px 8px; margin-top: 8px; }
+    #tuning legend { font-weight: 600; padding: 0 4px; }
+    #tuning .t-row { display: grid; grid-template-columns: 1fr 130px 44px; gap: 6px; align-items: center; margin-top: 4px; }
+    #tuning .t-row.color { grid-template-columns: 1fr 36px 94px 44px; }
+    #tuning .t-row span.v { font-family: ui-monospace, Menlo, monospace; font-size: 11px; text-align: right; }
+    #tuning input[type=color] { width: 36px; height: 22px; padding: 0; border: none; background: none; }
+    #tuning input[type=range] { width: 100%; }
+    #tuning select { width: 100%; }
+    .t-buttons { display: flex; gap: 8px; margin-top: 10px; }
+    .t-buttons button { padding: 4px 10px; font-size: 13px; }
+    #values { width: 100%; height: 90px; margin-top: 6px; font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+              background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
 
     .spark { animation: spark var(--spark-duration, 500ms) ease-out forwards; }
     @keyframes spark {
@@ -154,6 +159,15 @@
       <label for="has-below">Toy has <code>data-below</code> (drives <code>applicable</code>)</label>
     </div>
 
+    <h2>Visual tuning</h2>
+    <div id="tuning"></div>
+    <div class="t-buttons">
+      <button id="copy-values">Copy Values</button>
+      <button id="reset-values">Reset</button>
+      <span id="copy-status" style="align-self:center;color:var(--muted)"></span>
+    </div>
+    <textarea id="values" readonly></textarea>
+
     <h2>On release</h2>
     <div id="pending">—</div>
 
@@ -193,11 +207,6 @@ const SVGNS = 'http://www.w3.org/2000/svg';
 const HANDLE_SIDE = 22;
 const PAD = 6;                 // selection ring offset, as overlay.js
 const CLICK_THRESHOLD = 4;
-const INNER_R = 30;            // handle half-diagonal (~15.6) plus padding
-const OUTER_R = 120;
-const LABEL_GAP = 7;
-const SPOKE_GAP_DEG = 1.5;     // angular gap either side of a spoke
-const BAND_GAP = 2;            // radial gap between segments
 const MAX_SPOKES = 6;
 const MAX_SEGMENTS = 10;
 const SPOT_ORDER = [3, 4, 2, 5, 1, 6];
@@ -275,20 +284,20 @@ function spotAngles(spot) {
 }
 
 /**
- * What a release at (dx, dy) from the centre would pick. Inside INNER_R,
- * beyond OUTER_R, in the NW quadrant, or on a disabled spoke: null, which
+ * What a release at (dx, dy) from the centre would pick. Inside V.innerR,
+ * beyond V.outerR, in the NW quadrant, or on a disabled spoke: null, which
  * resolves the same as a tap on the square.
  */
 function pickAt(spokes, dx, dy) {
   const d = Math.hypot(dx, dy);
-  if (d < INNER_R || d > OUTER_R) return null;
+  if (d < V.innerR || d > V.outerR) return null;
   let deg = Math.atan2(dy, dx) * 180 / Math.PI;      // -180..180
   if (deg < -90) deg += 360;                         // north..west becomes -90..180
   if (deg < -90 || deg > 180) return null;           // NW quadrant
   const spot = Math.min(6, Math.floor((deg + 90) / 45) + 1);
   const spoke = spokes.find(s => s.spot === spot);
   if (!spoke || !spoke.enabled) return null;
-  const t = (d - INNER_R) / (OUTER_R - INNER_R);
+  const t = (d - V.innerR) / (V.outerR - V.innerR);
   const p = spoke.param;
   if (!p) return { spoke, params: {}, index: null, t };
   if (p.segmented) {
@@ -602,11 +611,11 @@ let arcId = 0;
 function renderRadial(spokes, pick) {
   radialLayer.innerHTML = '';
   const { x: cx, y: cy } = square;
-  const band = OUTER_R - INNER_R;
+  const band = V.outerR - V.innerR;
 
   for (const s of spokes) {
     const { a0, a1, mid } = spotAngles(s.spot);
-    const g0 = a0 + SPOKE_GAP_DEG, g1 = a1 - SPOKE_GAP_DEG;
+    const g0 = a0 + V.spokeGapDeg, g1 = a1 - V.spokeGapDeg;
     const hovered = pick?.spoke === s;
     const g = el('g', { class: `spoke${hovered ? ' hover' : ''}${s.enabled ? '' : ' disabled'}` }, radialLayer);
     const p = s.param;
@@ -614,44 +623,46 @@ function renderRadial(spokes, pick) {
     if (p?.segmented) {
       const n = p.values.length;
       for (let i = 0; i < n; i++) {
-        const r0 = INNER_R + band * i / n + (i ? BAND_GAP / 2 : 0);
-        const r1 = INNER_R + band * (i + 1) / n - (i < n - 1 ? BAND_GAP / 2 : 0);
+        const r0 = V.innerR + band * i / n + (i ? V.bandGap / 2 : 0);
+        const r1 = V.innerR + band * (i + 1) / n - (i < n - 1 ? V.bandGap / 2 : 0);
         const segHover = hovered && pick.index === i;
         el('path', { d: wedgePath(cx, cy, r0, r1, g0, g1), class: `spoke-seg${segHover ? ' hover' : ''}` }, g);
         if (p.values[i] === p.default) {
-          el('path', { d: wedgePath(cx, cy, r0 + 1, r1 - 1, g0 + 0.8, g1 - 0.8), class: 'seg-default' }, g);
+          const inset = V.defaultValueStroke / 2;
+          const insetDeg = inset / ((r0 + r1) / 2) * 180 / Math.PI;
+          el('path', { d: wedgePath(cx, cy, r0 + inset, r1 - inset, g0 + insetDeg, g1 - insetDeg), class: 'seg-default' }, g);
         }
-        if (r1 - r0 >= 9) {
+        if (r1 - r0 >= V.segTextMinBand) {
           const [tx, ty] = polar(cx, cy, (r0 + r1) / 2, mid);
           el('text', { x: tx, y: ty, class: 'seg-text' }, g).textContent = p.labels[i];
         }
       }
     } else {
-      el('path', { d: wedgePath(cx, cy, INNER_R, OUTER_R, g0, g1), class: 'spoke-seg' }, g);
+      el('path', { d: wedgePath(cx, cy, V.innerR, V.outerR, g0, g1), class: 'spoke-seg' }, g);
       if (p) {
         const shownT = hovered ? pick.t : (p.default - p.min) / (p.max - p.min);
         const shownV = hovered ? pick.params[p.name] : p.default;
         if (hovered) {
-          el('path', { d: wedgePath(cx, cy, INNER_R, INNER_R + band * shownT, g0, g1), class: 'spoke-fill' }, g);
+          el('path', { d: wedgePath(cx, cy, V.innerR, V.innerR + band * shownT, g0, g1), class: 'spoke-fill' }, g);
         }
-        const rd = INNER_R + band * (p.default - p.min) / (p.max - p.min);
-        el('path', { d: arcPath(cx, cy, rd, g0, g1, false), class: 'seg-default', 'stroke-width': 3 }, g);
-        const [tx, ty] = polar(cx, cy, INNER_R + band / 2, mid);
+        const rd = V.innerR + band * (p.default - p.min) / (p.max - p.min);
+        el('path', { d: arcPath(cx, cy, rd, g0, g1, false), class: 'float-default' }, g);
+        const [tx, ty] = polar(cx, cy, V.innerR + band / 2, mid);
         el('text', { x: tx, y: ty, class: 'readout' }, g).textContent = formatValue(shownV, p);
       }
     }
     if (s.isDefault) {
-      el('path', { d: wedgePath(cx, cy, INNER_R, OUTER_R, g0, g1), class: 'spoke-outline' }, g);
+      el('path', { d: wedgePath(cx, cy, V.innerR, V.outerR, g0, g1), class: 'spoke-outline' }, g);
     }
 
     // Labels along the outer arc. Below the horizontal the arc runs
     // counter-clockwise so the text reads left to right, which turns the
     // glyphs inward; the baseline moves out by a line to compensate.
     const reverse = Math.sin(mid * Math.PI / 180) > 0;
-    const fs = 11;
+    const fs = V.labelFont;
     const lines = p ? [s.label, p.label] : [s.label];
     lines.forEach((line, li) => {
-      const r = reverse ? OUTER_R + LABEL_GAP + fs * (li + 0.8) : OUTER_R + LABEL_GAP + fs * (lines.length - 1 - li) + 2;
+      const r = reverse ? V.outerR + V.labelGap + fs * (li + 0.8) : V.outerR + V.labelGap + fs * (lines.length - 1 - li) + 2;
       const id = `arc-${arcId++}`;
       el('path', { id, d: arcPath(cx, cy, r, a0, a1, reverse), fill: 'none' }, g);
       const text = el('text', { class: `arc-label${li === 1 ? ' param' : ''}` }, g);
@@ -820,6 +831,197 @@ svg.addEventListener('pointermove', moveGesture);
 svg.addEventListener('pointerup', endGesture);
 svg.addEventListener('pointercancel', endGesture);
 
+// ── Visual tuning ────────────────────────────────────────────────────────
+// Every knob is a row in TUNING. Numbers feed V (geometry) and/or a CSS
+// custom property; colours are hex + alpha; 'paint' picks how the player's
+// colour is used (the gradient or one of its two stops).
+
+const DARK = matchMedia('(prefers-color-scheme: dark)').matches;
+
+const TUNING = [
+  { group: 'Geometry (screen px)', rows: [
+    { key: 'innerR',         label: 'Inner radius',             type: 'num', min: 12, max: 100, step: 1,   def: 30 },
+    { key: 'outerR',         label: 'Outer radius',             type: 'num', min: 50, max: 260, step: 1,   def: 120 },
+    { key: 'spokeGapDeg',    label: 'Gap between spokes (deg)', type: 'num', min: 0,  max: 8,   step: 0.5, def: 1.5 },
+    { key: 'bandGap',        label: 'Gap between segments',     type: 'num', min: 0,  max: 8,   step: 0.5, def: 2 },
+    { key: 'labelGap',       label: 'Label distance from arc',  type: 'num', min: 0,  max: 30,  step: 1,   def: 7 },
+    { key: 'fadeMs',         label: 'Fade-in (ms)',             type: 'num', min: 0,  max: 1000, step: 10, def: 220, css: '--fade-ms', unit: 'ms' },
+  ]},
+  { group: 'Strokes (px)', rows: [
+    { key: 'defaultSpokeStroke', label: 'Default spoke outline',  type: 'num', min: 0, max: 8, step: 0.5, def: 2.5, css: '--default-spoke-stroke', unit: 'px' },
+    { key: 'defaultValueStroke', label: 'Default value outline',  type: 'num', min: 0, max: 8, step: 0.5, def: 2,   css: '--default-value-stroke', unit: 'px' },
+    { key: 'floatDefaultStroke', label: 'Float default marker',   type: 'num', min: 0, max: 10, step: 0.5, def: 3,  css: '--float-default-stroke', unit: 'px' },
+    { key: 'readoutHaloWidth',   label: 'Float readout halo',     type: 'num', min: 0, max: 8, step: 0.5, def: 3,   css: '--readout-halo-width', unit: 'px' },
+  ]},
+  { group: 'Fonts (px)', rows: [
+    { key: 'labelFont',      label: 'Arc label size',           type: 'num', min: 7,  max: 20, step: 0.5, def: 11, css: '--label-font', unit: 'px' },
+    { key: 'segFont',        label: 'Segment text size',        type: 'num', min: 6,  max: 18, step: 0.5, def: 10, css: '--seg-font', unit: 'px' },
+    { key: 'segTextMinBand', label: 'Hide segment text below (band px)', type: 'num', min: 0, max: 30, step: 1, def: 9 },
+    { key: 'readoutFont',    label: 'Float readout size',       type: 'num', min: 7,  max: 24, step: 0.5, def: 12, css: '--readout-font', unit: 'px' },
+  ]},
+  { group: 'Player colour usage', rows: [
+    { key: 'defaultSpokePaint', label: 'Default spoke outline', type: 'paint', def: 'gradient', css: '--default-spoke-paint' },
+    { key: 'defaultValuePaint', label: 'Default value outline', type: 'paint', def: 'gradient', css: '--default-value-paint' },
+    { key: 'hoverSegPaint',     label: 'Hovered segment fill',  type: 'paint', def: 'gradient', css: '--hover-seg-paint' },
+    { key: 'floatFillPaint',    label: 'Float fill',            type: 'paint', def: 'gradient', css: '--float-fill-paint' },
+    { key: 'floatFillOpacity',  label: 'Float fill opacity',    type: 'num', min: 0, max: 1, step: 0.05, def: 0.75, css: '--float-fill-opacity' },
+  ]},
+  { group: 'Spoke colours', rows: [
+    { key: 'spoke',          label: 'Normal',                   type: 'color', def: '#282828', alpha: 0.55, css: '--spoke' },
+    { key: 'spokeHover',     label: 'Under pointer',            type: 'color', def: '#282828', alpha: 0.85, css: '--spoke-hover' },
+    { key: 'spokeDisabled',  label: 'Not applicable',           type: 'color', def: '#969696', alpha: 0.25, css: '--spoke-disabled' },
+  ]},
+  { group: 'Text colours', rows: [
+    { key: 'segText',         label: 'Segment text',            type: 'color', def: '#ffffff', alpha: 1,    css: '--seg-text' },
+    { key: 'segTextDisabled', label: 'Segment text, n/a',       type: 'color', def: '#ffffff', alpha: 0.4,  css: '--seg-text-disabled' },
+    { key: 'readout',         label: 'Float readout',           type: 'color', def: '#ffffff', alpha: 1,    css: '--readout' },
+    { key: 'readoutHalo',     label: 'Float readout halo',      type: 'color', def: '#000000', alpha: 0.5,  css: '--readout-halo' },
+    { key: 'label',           label: 'Arc label: action',       type: 'color', def: DARK ? '#eeeeee' : '#222222', alpha: 1, css: '--label' },
+    { key: 'labelParam',      label: 'Arc label: parameter',    type: 'color', def: DARK ? '#999999' : '#777777', alpha: 1, css: '--label-param' },
+    { key: 'labelDisabled',   label: 'Arc label, n/a',          type: 'color', def: DARK ? '#eeeeee' : '#222222', alpha: 0.4, css: '--label-disabled' },
+  ]},
+  { group: 'Preview only', rows: [
+    { key: 'stage',          label: 'Table background',         type: 'color', def: DARK ? '#2e2c29' : '#e9e6df', alpha: 1, css: '--stage' },
+  ]},
+];
+
+const TUNING_ROWS = TUNING.flatMap(g => g.rows);
+const STORAGE_KEY = 'radial-prototype-tuning';
+const V = {};
+
+function rgba(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
+function playerStops() {
+  return [...document.querySelectorAll('#player-grad stop')].map(s => s.getAttribute('stop-color'));
+}
+
+function paintValue(choice) {
+  const [c0, c1] = playerStops();
+  return { gradient: 'url(#player-grad)', stop1: c0, stop2: c1 }[choice];
+}
+
+function applyTuning() {
+  const root = document.documentElement.style;
+  for (const r of TUNING_ROWS) {
+    if (!r.css) continue;
+    const v = V[r.key];
+    if (r.type === 'num') root.setProperty(r.css, `${v}${r.unit ?? ''}`);
+    else if (r.type === 'color') root.setProperty(r.css, rgba(v.hex, v.alpha));
+    else if (r.type === 'paint') root.setProperty(r.css, paintValue(v));
+  }
+  document.getElementById('values').value = valuesText();
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(V)); } catch {}
+  if (gesture?.spokes) renderRadial(gesture.spokes, gesture.pick);
+}
+
+function valuesText() {
+  const out = {};
+  for (const r of TUNING_ROWS) {
+    const v = V[r.key];
+    out[r.key] = r.type === 'color' ? (v.alpha === 1 ? v.hex : `${v.hex} @ ${v.alpha}`) : v;
+  }
+  return `RADIAL VISUALS\n${JSON.stringify(out, null, 2)}`;
+}
+
+function defaultsInto(target) {
+  for (const r of TUNING_ROWS) {
+    target[r.key] = r.type === 'color' ? { hex: r.def, alpha: r.alpha } : r.def;
+  }
+}
+
+function buildTuningPanel() {
+  const host = document.getElementById('tuning');
+  host.innerHTML = '';
+  for (const g of TUNING) {
+    const fs = document.createElement('fieldset');
+    const lg = document.createElement('legend');
+    lg.textContent = g.group;
+    fs.appendChild(lg);
+    for (const r of g.rows) fs.appendChild(tuningRow(r));
+    host.appendChild(fs);
+  }
+}
+
+function tuningRow(r) {
+  const row = document.createElement('div');
+  row.className = `t-row${r.type === 'color' ? ' color' : ''}`;
+  const name = document.createElement('span');
+  name.textContent = r.label;
+  row.appendChild(name);
+  const readout = document.createElement('span');
+  readout.className = 'v';
+
+  if (r.type === 'num') {
+    const input = document.createElement('input');
+    Object.assign(input, { type: 'range', min: r.min, max: r.max, step: r.step, value: V[r.key] });
+    readout.textContent = V[r.key];
+    input.addEventListener('input', () => {
+      V[r.key] = +input.value;
+      readout.textContent = input.value;
+      applyTuning();
+    });
+    row.append(input, readout);
+  } else if (r.type === 'paint') {
+    const sel = document.createElement('select');
+    for (const [v, t] of [['gradient', 'Gradient'], ['stop1', 'Stop 1 (solid)'], ['stop2', 'Stop 2 (solid)']]) {
+      const o = document.createElement('option');
+      o.value = v; o.textContent = t;
+      sel.appendChild(o);
+    }
+    sel.value = V[r.key];
+    sel.addEventListener('input', () => { V[r.key] = sel.value; applyTuning(); });
+    row.append(sel, readout);
+  } else {
+    const color = document.createElement('input');
+    Object.assign(color, { type: 'color', value: V[r.key].hex });
+    const alpha = document.createElement('input');
+    Object.assign(alpha, { type: 'range', min: 0, max: 1, step: 0.05, value: V[r.key].alpha, title: 'opacity' });
+    readout.textContent = V[r.key].alpha;
+    const update = () => {
+      V[r.key] = { hex: color.value, alpha: +alpha.value };
+      readout.textContent = alpha.value;
+      applyTuning();
+    };
+    color.addEventListener('input', update);
+    alpha.addEventListener('input', update);
+    row.append(color, alpha, readout);
+  }
+  return row;
+}
+
+function initTuning() {
+  defaultsInto(V);
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
+    if (saved) for (const r of TUNING_ROWS) if (r.key in saved) V[r.key] = saved[r.key];
+  } catch {}
+  buildTuningPanel();
+  applyTuning();
+}
+
+document.getElementById('reset-values').addEventListener('click', () => {
+  defaultsInto(V);
+  buildTuningPanel();
+  applyTuning();
+});
+
+document.getElementById('copy-values').addEventListener('click', async () => {
+  const text = valuesText();
+  const status = document.getElementById('copy-status');
+  try {
+    await navigator.clipboard.writeText(text);
+    status.textContent = 'Copied';
+  } catch {
+    const ta = document.getElementById('values');
+    ta.focus(); ta.select();
+    status.textContent = document.execCommand('copy') ? 'Copied' : 'Select the text below and copy it';
+  }
+  setTimeout(() => { status.textContent = ''; }, 2500);
+});
+
 // ── Wiring ───────────────────────────────────────────────────────────────
 
 function loadScenario(i) {
@@ -845,9 +1047,11 @@ document.getElementById('player').addEventListener('input', (e) => {
   const stops = document.querySelectorAll('#player-grad stop');
   stops[0].setAttribute('stop-color', c0);
   stops[1].setAttribute('stop-color', c1);
+  applyTuning();
 });
 window.addEventListener('resize', layoutToy);
 
+initTuning();
 loadScenario(0);
 </script>
 </body>
