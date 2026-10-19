@@ -3,7 +3,7 @@ import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { addToy, _clearSvgTextCache,
          _resetToyScriptState, activateToyScripts, getMenuActions, getRadialItems,
-         invokeMenuAction } from '../../src/toys.js'
+         invokeMenuAction, defaultMenuAction } from '../../src/toys.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
@@ -109,6 +109,20 @@ describe('getMenuActions', () => {
   test('returns [] for an element with no data-toy-type', () => {
     const el = document.createElementNS(SVG_NS, 'g')
     expect(getMenuActions(el)).toEqual([])
+  })
+})
+
+describe('defaultMenuAction', () => {
+  test('is the first applicable action', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
+    expect(defaultMenuAction(toyEl)).toEqual(getMenuActions(toyEl)[0])
+    expect(defaultMenuAction(toyEl).key).toBe('Bump')
+  })
+
+  test('is null for an element with no data-toy-type', () => {
+    expect(defaultMenuAction(document.createElementNS(SVG_NS, 'g'))).toBeNull()
   })
 })
 

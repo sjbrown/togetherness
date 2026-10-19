@@ -1520,7 +1520,7 @@ const App = {
     for (const id of ids) {
       const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
       if (!svgEl || moduleForElement(svgEl) !== 'toys') return null;
-      const first = Toys.getMenuActions(svgEl)[0];
+      const first = Toys.defaultMenuAction(svgEl);
       if (!first) return null;
       if (shared && (shared.namespace !== first.namespace || shared.key !== first.key)) return null;
       shared = first;
@@ -1593,9 +1593,9 @@ const App = {
     const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
     if (!svgEl) return;
     if (!key) {
-      const actions = Toys.getMenuActions(svgEl);
-      if (!actions.length) return;
-      ({ namespace, key } = actions[0]);
+      const first = Toys.defaultMenuAction(svgEl);
+      if (!first) return;
+      ({ namespace, key } = first);
     }
     App.invokeToyMenuAction(id, namespace, key, params);
     const how = params ? 'radial' : charged ? 'charged' : 'tap';
