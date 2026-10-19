@@ -1515,11 +1515,6 @@ const App = {
    */
   requestOverlayRender: () => Overlay.render(),
 
-  /**
-   * Whether id has any applicable menu action right now. With none, a
-   * click or pull on the action square would do nothing, so overlay.js
-   * doesn't draw it and startBowstringAt doesn't claim the pointer.
-   */
   hasToyActions: (id) => {
     const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
     return Toys.getMenuActions(svgEl).length > 0;
@@ -1527,9 +1522,8 @@ const App = {
 
   /**
    * The radial menu for id's bowstring, as { spokes, paint }, or null when
-   * none of its menu actions declares `radial`. An authoring error (see
-   * ui_radial.js's buildSpokes) warns, toasts, and also returns null, leaving
-   * the plain bowstring.
+   * none of its menu actions declares `radial`.
+   * Errors return null emit a warn message and a toast.
    */
   getRadialMenu: (id) => {
     const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);

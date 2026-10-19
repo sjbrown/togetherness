@@ -1734,7 +1734,7 @@ export function getMenuActions(svgEl) {
 
 /**
  * Every menu entry, applicable or not, in declaration order, for laying
- * out the bowstring's radial menu (see ui_radial.js's buildSpokes):
+ * out the bowstring's radial menu:
  *   { namespace, key, label, enabled, radial }[]
  * Unlike getMenuActions, nothing is filtered out: a non-applicable action
  * still holds its spoke, greyed.
@@ -1754,9 +1754,6 @@ export function getRadialItems(svgEl) {
   return items
 }
 
-// A menu entry's radial may be a function of the toy element, for a
-// parameter whose range depends on live state (a bag's Take maxes out at
-// its contents). Resolved at gesture start and again when the action runs.
 function resolveRadial(entry, svgEl) {
   return typeof entry.radial === 'function' ? entry.radial(svgEl) : entry.radial
 }
@@ -1939,7 +1936,7 @@ export const canRedoToyGesture = (ydoc, tableId, authorId) =>
  * action landed but its reaction hadn't yet.
  *
  * The handler is called as handler(evt, params). params starts from the
- * entry's radial defaults (see ui_radial.js), overlaid with whatever the
+ * entry's radial defaults, overlaid with whatever the
  * caller picked, so it is always an object.
  */
 export function invokeMenuAction(ydoc, layerEl, svgEl, namespace, key, evt, authorId, tableId, params) {

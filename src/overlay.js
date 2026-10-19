@@ -856,7 +856,7 @@ export function render() {
         break;
       case 'sel-action':
         renderLocalSelection(geo, entry, scale, parent);
-        if (App.hasToyActions?.(elId) !== false) renderActionAffordance(geo, scale, rot);
+        if (App.hasToyActions(elId)) renderActionAffordance(geo, scale, rot);
         break;
     }
   }
