@@ -45,8 +45,6 @@ import { isElementHeldByOther, computeTickActions } from './soft_lock.js';
 import * as Selection                              from './selection.js';
 import * as ExternalServices                      from './external_services.js';
 
-const ACTION_SQUARE_SIDE = 22; // px; keep in step with overlay.js's ACTION_ICON_SIZE
-
 
 // Diagnostic logging — opt-in via ?debug=1 in the URL
 const DEBUG = typeof location !== 'undefined'
@@ -1541,8 +1539,7 @@ const App = {
   fireGroupActionAt: (canvasPoint) => {
     const group = App.getGroupAction();
     if (!group) return false;
-    const half = ACTION_SQUARE_SIDE / 2 / App.getViewScale();
-    if (Math.abs(canvasPoint.x - group.origin.x) > half || Math.abs(canvasPoint.y - group.origin.y) > half) return false;
+    if (!Delight.hitTestBowstringAt(group.origin, canvasPoint.x, canvasPoint.y, App.getViewScale())) return false;
     for (const id of group.ids) App.invokeToyMenuAction(id, group.namespace, group.key);
     App.addLog(`group ${group.key} × ${group.ids.length}`, 'local');
     return true;

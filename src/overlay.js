@@ -81,7 +81,7 @@ import {
 } from './drawing.js';
 import { normalizeAngle, resolveRotation as elementRotation, rotationTransform } from './geometry.js';
 import { LOCAL_ACTION_FILTER_ID } from './defs.js';
-import { getBowstringState, chargeOpacityFor, chargeRadiusFor, bowstringOrigin } from './delight.js';
+import { getBowstringState, chargeOpacityFor, chargeRadiusFor, bowstringOrigin, ACTION_SQUARE_SIDE } from './delight.js';
 import { drawAsteriskGlyph, drawCrosshairGlyph, drawRotateGlyph, drawPivotGlyph } from './icons.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -863,7 +863,7 @@ export function render() {
 
   // ── Group action square — one for a multi-selection sharing a default action
   const group = App.getGroupAction?.();
-  if (group) drawActionSquare(group.origin, ACTION_ICON_SIZE / scale, scale, 'groupAction');
+  if (group) drawActionSquare(group.origin, ACTION_SQUARE_SIDE / scale, scale, 'groupAction');
 
   // ── Requested/contested indicator — independent of SelectionMode kind ──
   // Drawn regardless of whether the element is 'local', 'remote', or has no
@@ -1244,12 +1244,10 @@ function renderLocalResizeRSelection(geo, entry, scale, parent = _layerEl) {
 }
 
 // ── Action-mode affordance ───────────────────────────────────────────────────
-const ACTION_ICON_SIZE = 22; // px
-
 // Render a single rounded-corner icon square — asterisk (*), the bowstring
 // handle's resting state
 function renderActionAffordance(geo, scale, rot = null) {
-  const side = ACTION_ICON_SIZE / scale;
+  const side = ACTION_SQUARE_SIDE / scale;
   // Drawn in the layer, not the rotated decorGroup, so it stays upright at
   // delight.js's bowstringOrigin like the live handle. The <g class="bowstring">
   // wrapper makes square plus glyph one unit; this layer is wiped each render(),
