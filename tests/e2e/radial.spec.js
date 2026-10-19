@@ -16,7 +16,7 @@ const SIGNALING_URL = process.env.SIGNALING_URL || 'ws://localhost:4444';
 
 const launch = () => chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
 
-// Keep in step with radial.js.
+// Keep in step with ui_radial.js.
 const INNER_R = 53;
 const OUTER_R = 260;
 

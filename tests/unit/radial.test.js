@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   paramSpec, defaultParams, buildSpokes, spotAngles, pickAt, defaultPick, samePick, cubicBezier,
   INNER_R, OUTER_R, MAX_SEGMENTS,
-} from '../../src/radial.js'
+} from '../../src/ui_radial.js'
 
 // A point at screen-px radius r along compass bearing deg (0 = north, clockwise).
 function at(r, deg) {

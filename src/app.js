@@ -37,7 +37,7 @@ import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
 import * as Overlay                               from './overlay.js';
 import * as Delight                               from './delight.js';
-import * as Radial                                from './radial.js';
+import * as Radial                                from './ui_radial.js';
 import * as Attention                             from './attention_mode.js';
 import * as Events                                from './events.js';
 import { entityGradient }            from './entity_gradient.js';
@@ -1517,7 +1517,7 @@ const App = {
   /**
    * The radial menu for id's bowstring, as { spokes, paint }, or null when
    * none of its menu actions declares `radial`. An authoring error (see
-   * radial.js's buildSpokes) warns, toasts, and also returns null, leaving
+   * ui_radial.js's buildSpokes) warns, toasts, and also returns null, leaving
    * the plain bowstring.
    */
   getRadialMenu: (id) => {

@@ -1,5 +1,5 @@
 /**
- * radial.js — the bowstring's radial menu
+ * ui_radial.js — the bowstring's radial menu
  *
  * Dragging the action square (delight.js) opens a radial menu centred on the
  * square's resting position. Every toy menu action that declares a `radial`

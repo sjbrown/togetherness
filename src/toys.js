@@ -35,7 +35,7 @@ import * as OpLayer from './op_layer.js';
 // boun_pos.js.
 import * as Geometry from './geometry.js';
 import { ROTATE_ATTR, CENTER_PIVOT, getRotation, rotationCenter } from './geometry.js';
-import { defaultParams } from './radial.js';
+import { defaultParams } from './ui_radial.js';
 
 // ── ID helpers ────────────────────────────────────────────────────────────────
 
@@ -1734,7 +1734,7 @@ export function getMenuActions(svgEl) {
 
 /**
  * Every menu entry, applicable or not, in declaration order, for laying
- * out the bowstring's radial menu (see radial.js's buildSpokes):
+ * out the bowstring's radial menu (see ui_radial.js's buildSpokes):
  *   { namespace, key, label, enabled, radial }[]
  * Unlike getMenuActions, nothing is filtered out: a non-applicable action
  * still holds its spoke, greyed.
@@ -1932,7 +1932,7 @@ export const canRedoToyGesture = (ydoc, tableId, authorId) =>
  * action landed but its reaction hadn't yet.
  *
  * The handler is called as handler(evt, params). params starts from the
- * entry's radial defaults (see radial.js), overlaid with whatever the
+ * entry's radial defaults (see ui_radial.js), overlaid with whatever the
  * caller picked, so it is always an object.
  */
 export function invokeMenuAction(ydoc, layerEl, svgEl, namespace, key, evt, authorId, tableId, params) {
