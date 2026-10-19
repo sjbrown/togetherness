@@ -191,7 +191,7 @@
 import * as Y                   from './lib/yjs.js';
 import { WebrtcProvider }       from './lib/y-webrtc.js';
 import { makeChunkedWrtc }      from './net_chunk.js';
-import { boot, App }            from './app.js';
+import { boot, watchProvider, App } from './app.js';
 import * as UI                  from './ui.js';
 import { getMyUser } from './user.js';
 import * as Defs                from './defs.js';
@@ -272,6 +272,8 @@ Trace.net('provider', 'WebrtcProvider constructed — handshakes begin', {
   ...ExternalServices.describeIceServers(),
 });
 ExternalServices.traceIceProvider(provider);
+// Before the join dialog: a joiner connects and syncs while it is still up.
+watchProvider(provider, { tableId, signalingUrls });
 const awareness    = provider.awareness;
 awareness.setLocalState({ user, cursor: null, desired: {} });
 

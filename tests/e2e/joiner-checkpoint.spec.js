@@ -41,8 +41,7 @@ test('a panel-open checkpoint leaves the projection marker on the new head', asy
   await browser.close();
 });
 
-// A joiner's provider listeners attach after the join dialog, past the events.
-test.fail("a joiner's net status reflects the connection it made during the join dialog", async () => {
+test("a joiner's net status reflects the connection it made during the join dialog", async () => {
   const browser = await launch();
   const page1 = await (await browser.newContext()).newPage();
   const page2 = await (await browser.newContext()).newPage();
