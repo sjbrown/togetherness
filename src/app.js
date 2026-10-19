@@ -1176,6 +1176,20 @@ const App = {
     }
   },
 
+  /** invokeToyMenuAction across several toys, as one op and one history entry. */
+  invokeToyMenuActions: (ids, namespace, key) => {
+    const svgEls = ids.map(id => _svgEl?.querySelector(`[data-id="${id}"]`));
+    const layerEl = layerElOf('toys');
+    if (!layerEl || svgEls.some(svgEl => !svgEl)) return;
+    try {
+      Toys.invokeMenuActionOn(_ydoc, layerEl, svgEls, namespace, key, undefined, App.user.id, _tableId);
+      addHistory(`${key} × ${ids.length}`, { elType: 'toys' });
+    } catch (err) {
+      UI.toast(`Action failed: ${err.message}`, 'warn');
+      App.addLog(`toy action failed: ${err.message}`, 'del');
+    }
+  },
+
   /**
    * Apply a partial editData object to the selected element.
    * Dispatches to the appropriate layer's edit() function, which handles
@@ -1540,7 +1554,7 @@ const App = {
     const group = App.getGroupAction();
     if (!group) return false;
     if (!Delight.hitTestBowstringAt(group.origin, canvasPoint.x, canvasPoint.y, App.getViewScale())) return false;
-    for (const id of group.ids) App.invokeToyMenuAction(id, group.namespace, group.key);
+    App.invokeToyMenuActions(group.ids, group.namespace, group.key);
     App.addLog(`group ${group.key} × ${group.ids.length}`, 'local');
     return true;
   },

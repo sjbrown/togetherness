@@ -96,17 +96,19 @@ describe('group action square', () => {
   test('clicking the square invokes the action on every die', async () => {
     const { App } = await bootApp(dice())
     App.select('a'); App.toggleSelection('b'); App.toggleSelection('c')
-    const spy = vi.spyOn(App, 'invokeToyMenuAction')
+    const spy = vi.spyOn(App, 'invokeToyMenuActions')
     const { origin } = App.getGroupAction()
     expect(App.fireGroupActionAt({ x: origin.x + 3, y: origin.y - 3 })).toBe(true)
-    expect(spy.mock.calls.map(c => c[0]).sort()).toEqual(['a', 'b', 'c'])
-    expect(spy.mock.calls.every(c => c[2] === 'Roll')).toBe(true)
+    expect(spy).toHaveBeenCalledTimes(1)
+    const [ids, , key] = spy.mock.calls[0]
+    expect([...ids].sort()).toEqual(['a', 'b', 'c'])
+    expect(key).toBe('Roll')
   })
 
   test('a click away from the square does nothing', async () => {
     const { App } = await bootApp(dice())
     App.select('a'); App.toggleSelection('b')
-    const spy = vi.spyOn(App, 'invokeToyMenuAction')
+    const spy = vi.spyOn(App, 'invokeToyMenuActions')
     expect(App.fireGroupActionAt({ x: -500, y: -500 })).toBe(false)
     expect(spy).not.toHaveBeenCalled()
   })
