@@ -1535,7 +1535,7 @@ const App = {
     for (const id of ids) {
       const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
       if (!svgEl || moduleForElement(svgEl) !== 'toys') return null;
-      const first = Toys.defaultMenuAction(svgEl);
+      const first = Toys.getMenuActions(svgEl)[0];
       if (!first) return null;
       if (shared && (shared.namespace !== first.namespace || shared.key !== first.key)) return null;
       shared = first;
@@ -1612,7 +1612,7 @@ const App = {
     const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
     if (!svgEl) return;
     if (!key) {
-      const first = Toys.defaultMenuAction(svgEl);
+      const first = Toys.getMenuActions(svgEl)[0];
       if (!first) return;
       ({ namespace, key } = first);
     }

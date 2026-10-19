@@ -1732,11 +1732,6 @@ export function getMenuActions(svgEl) {
   return actions
 }
 
-/** A toy's default action: its first applicable menu action, or null. */
-export function defaultMenuAction(svgEl) {
-  return getMenuActions(svgEl)[0] ?? null
-}
-
 /**
  * Every menu entry, applicable or not, in declaration order, for laying
  * out the bowstring's radial menu:

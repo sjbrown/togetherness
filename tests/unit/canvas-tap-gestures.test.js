@@ -67,6 +67,7 @@ function makeApp(overrides = {}) {
     cancelMultiMove:    () => {},
     getResizeModeId:    () => null,
     getResizeCorner:    () => null,
+    fireGroupActionAt:  () => false,
     startBowstringAt:   () => false,
     moveBowstring:      () => {},
     endBowstring:       () => {},
