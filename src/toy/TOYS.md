@@ -160,7 +160,7 @@ describes the parameter:
 | `param`   | all              | the property name your handler receives it as |
 | `type`    | all              | `'integer'`, `'float'` or `'enum'` |
 | `default` | all              | the value used when nothing is picked; falls back to `min`, or the first enum value |
-| `min`, `max` | integer, float | required; min >= max |
+| `min`, `max` | integer, float | required; max >= min |
 | `step`    | integer, float   | optional; picked values snap to it (integers default to 1) |
 | `values`  | enum             | required; the values, inside to outside |
 | `labels`  | enum             | optional; what to display for each value, if not the value itself |
