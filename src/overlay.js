@@ -1246,13 +1246,10 @@ const ACTION_ICON_SIZE = 22; // px
 // handle's resting state
 function renderActionAffordance(geo, scale, rot = null) {
   const side = ACTION_ICON_SIZE / scale;
-  // Drawn straight into the layer, not the toy's rotated decorGroup, so the
-  // square sits upright on the south-east-most ring corner like the live
-  // handle (see delight.js's bowstringOrigin). It's wrapped in its own
-  // <g class="bowstring"> so the whole control — square plus glyph — is
-  // addressable as one unit. This layer still gets wiped on every render();
-  // the LIVE gesture is built separately in #delight-layer, which is never
-  // wiped.
+  // Drawn in the layer, not the rotated decorGroup, so it stays upright at
+  // delight.js's bowstringOrigin like the live handle. The <g class="bowstring">
+  // wrapper makes square plus glyph one unit; this layer is wiped each render(),
+  // while the live gesture lives in #delight-layer.
   drawActionSquare(bowstringOrigin(geo, rot), side, scale, 'bowstring', _layerEl);
 }
 
