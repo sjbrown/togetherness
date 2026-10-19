@@ -123,26 +123,50 @@ describe('stringPathD', () => {
   })
 })
 
-describe('bowstringOrigin — the SE corner of the selection ring', () => {
+describe('bowstringOrigin — the south-east-most corner of the selection ring', () => {
+  const geo = { x: 0, y: 0, width: 100, height: 100 }
+
   it('sits at the padded bottom-right of the geo box', () => {
     expect(bowstringOrigin({ x: 10, y: 20, width: 100, height: 50 }))
       .toEqual({ x: 116, y: 76 })
   })
 
-  it('rides the toy’s own rotation, same as overlay.js’s decorGroup wraps its furniture in', () => {
-    // A 100x100 box centred on (50,50): its unrotated SE corner is (106,106),
-    // 56 right and 56 below centre. Rotated 90° clockwise, that becomes 56
-    // below and 56 LEFT of centre: (-6, 106).
-    const geo = { x: 0, y: 0, width: 100, height: 100 }
-    const rot = { deg: 90, cx: 50, cy: 50 }
-    const origin = bowstringOrigin(geo, rot)
-    expect(origin.x).toBeCloseTo(-6)
+  it('stays on the plain SE corner at 90°, where a ring corner lands there', () => {
+    const origin = bowstringOrigin(geo, { deg: 90, cx: 50, cy: 50 })
+    expect(origin.x).toBeCloseTo(106)
     expect(origin.y).toBeCloseTo(106)
   })
 
+  it('moves to the toy’s own NW corner at 180°, which is now bottom-right on screen', () => {
+    const origin = bowstringOrigin(geo, { deg: 180, cx: 50, cy: 50 })
+    expect(origin.x).toBeCloseTo(106)
+    expect(origin.y).toBeCloseTo(106)
+  })
+
+  it('picks the corner with the largest x + y on a non-square box', () => {
+    // 200x20 box about (100,10); 90° turns it into a tall strip, and the
+    // furthest-SE corner is the one that started at NE.
+    const origin = bowstringOrigin({ x: 0, y: 0, width: 200, height: 20 }, { deg: 90, cx: 100, cy: 10 })
+    expect(origin.x).toBeCloseTo(100 + 16)
+    expect(origin.y).toBeCloseTo(10 + 106)
+  })
+
+  it('breaks a 45° tie toward the corner lower on screen', () => {
+    // At 45° on a square ring the S and E corners tie on x + y.
+    const origin = bowstringOrigin(geo, { deg: 45, cx: 50, cy: 50 })
+    const r = 56 * Math.SQRT2
+    expect(origin.x).toBeCloseTo(50)
+    expect(origin.y).toBeCloseTo(50 + r)
+  })
+
+  it('treats deg 0 as unrotated', () => {
+    expect(bowstringOrigin(geo, { deg: 0, cx: 50, cy: 50 }))
+      .toEqual(bowstringOrigin(geo))
+  })
+
   it('is unchanged from the no-rotation case when rot is explicitly null', () => {
-    const geo = { x: 10, y: 20, width: 100, height: 50 }
-    expect(bowstringOrigin(geo, null)).toEqual(bowstringOrigin(geo))
+    const g = { x: 10, y: 20, width: 100, height: 50 }
+    expect(bowstringOrigin(g, null)).toEqual(bowstringOrigin(g))
   })
 })
 
@@ -173,21 +197,17 @@ describe('hitTestBowstring', () => {
     expect(hitTestBowstring(geo, origin.x + 20, origin.y, 0.5)).toBe(true)
   })
 
-  describe('on a rotated toy (regression: the handle drew rotated but hit-tested un-rotated)', () => {
-    const rot = { deg: 90, cx: 50, cy: 50 }
-    const rotatedOrigin = bowstringOrigin(geo, rot) // (-6, 106) — see bowstringOrigin tests
+  describe('on a rotated toy', () => {
+    const rot = { deg: 180, cx: 50, cy: 50 }
+    const seMost = bowstringOrigin(geo, rot) // (106, 106)
+    const ownSE = { x: -6, y: -6 } // the toy's own SE corner, now top-left on screen
 
-    it('hits where the handle is actually drawn once rotation is passed through', () => {
-      expect(hitTestBowstring(geo, rotatedOrigin.x, rotatedOrigin.y, 1, rot)).toBe(true)
+    it('hits at the south-east-most corner', () => {
+      expect(hitTestBowstring(geo, seMost.x, seMost.y, 1, rot)).toBe(true)
     })
 
-    it('misses the OLD un-rotated corner — a click there is empty canvas now', () => {
-      expect(hitTestBowstring(geo, origin.x, origin.y, 1, rot)).toBe(false)
-    })
-
-    it('without passing rot at all, still finds only the un-rotated spot (default stays backward-compatible)', () => {
-      expect(hitTestBowstring(geo, origin.x, origin.y, 1)).toBe(true)
-      expect(hitTestBowstring(geo, rotatedOrigin.x, rotatedOrigin.y, 1)).toBe(false)
+    it('misses the toy’s own rotated SE corner', () => {
+      expect(hitTestBowstring(geo, ownSE.x, ownSE.y, 1, rot)).toBe(false)
     })
   })
 })

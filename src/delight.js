@@ -209,10 +209,24 @@ export function hitTestBowstring(geo, px, py, scale, rot = null) {
   return Math.abs(px - origin.x) <= half && Math.abs(py - origin.y) <= half;
 }
 
-/** The handle's resting anchor: the SE corner of the selection ring, rotated with the toy. */
+/**
+ * The handle's resting anchor: whichever ring corner, after the toy's
+ * rotation, lies furthest along the screen's south-east diagonal. Near-ties
+ * (within SE_EPS) go to the corner lower on screen.
+ */
 export function bowstringOrigin(geo, rot = null) {
-  return rotatePoint({ x: geo.x + geo.width + PAD, y: geo.y + geo.height + PAD }, rot);
+  const l = geo.x - PAD, t = geo.y - PAD;
+  const r = geo.x + geo.width + PAD, b = geo.y + geo.height + PAD;
+  let best = null;
+  for (const c of [{ x: l, y: t }, { x: r, y: t }, { x: r, y: b }, { x: l, y: b }]) {
+    const p = rotatePoint(c, rot);
+    if (!best) { best = p; continue; }
+    const d = (p.x + p.y) - (best.x + best.y);
+    if (d > SE_EPS || (Math.abs(d) <= SE_EPS && p.y > best.y)) best = p;
+  }
+  return best;
 }
+const SE_EPS = 1e-6;
 const PAD = 6; // keep in step with overlay.js's PAD
 
 // ── Gesture ───────────────────────────────────────────────────────────────
