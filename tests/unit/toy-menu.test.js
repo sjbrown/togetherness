@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import * as Y from 'yjs'
+import { getOps } from '../../src/op_dag.js'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { addToy, _clearSvgTextCache,
          _resetToyScriptState, activateToyScripts, getMenuActions, getRadialItems,
-         invokeMenuAction } from '../../src/toys.js'
+         invokeMenuAction, invokeMenuActionOn, TOYS_LAYER } from '../../src/toys.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
@@ -173,6 +174,31 @@ describe('getRadialItems', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // invokeMenuAction — running a handler through the envelope
 // ─────────────────────────────────────────────────────────────────────────────
+
+describe('invokeMenuActionOn', () => {
+  test('runs the handler on every toy and commits one operation', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    await placeAndActivate(ydoc, layerEl, 't1')
+    await placeAndActivate(ydoc, layerEl, 't2')
+    const els = ['t1', 't2'].map(id => layerEl.querySelector(`[data-id="${id}"]`))
+
+    const before = getOps(ydoc, TOYS_LAYER).size
+    invokeMenuActionOn(ydoc, layerEl, els, 'widgetNs', 'Bump', undefined, 'me', 'tbl')
+
+    expect(layerEl.querySelector('#t1__tspan_count').textContent).toBe('1')
+    expect(layerEl.querySelector('#t2__tspan_count').textContent).toBe('1')
+    expect(getOps(ydoc, TOYS_LAYER).size - before).toBe(1)
+  })
+
+  test('throws before running anything if the action is missing', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
+    expect(() => invokeMenuActionOn(ydoc, layerEl, [toyEl], 'widgetNs', 'Nope')).toThrow(/no such menu action/)
+    expect(layerEl.querySelector('#t1__tspan_count').textContent).toBe('0')
+  })
+})
 
 describe('invokeMenuAction', () => {
   test('runs the handler inside an envelope; the mutation lands in the DOM', async () => {

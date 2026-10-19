@@ -271,6 +271,8 @@ function onPointerDown(e) {
     // resize corners have, so it gets the same treatment: check the pointer
     // against it FIRST, independent of hitId. A bowstring gesture takes over
     // the pointer completely; no move/select gesture starts for it.
+    if (App.fireGroupActionAt(toCanvas(e.clientX, e.clientY))) return;
+
     if (App.startBowstringAt(e, toCanvas(e.clientX, e.clientY))) {
       ToolMode._gesture = 'bowstring';
       return;

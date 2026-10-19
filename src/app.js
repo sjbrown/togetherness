@@ -1176,6 +1176,20 @@ const App = {
     }
   },
 
+  /** invokeToyMenuAction across several toys, as one op and one history entry. */
+  invokeToyMenuActions: (ids, namespace, key) => {
+    const svgEls = ids.map(id => _svgEl?.querySelector(`[data-id="${id}"]`));
+    const layerEl = layerElOf('toys');
+    if (!layerEl || svgEls.some(svgEl => !svgEl)) return;
+    try {
+      Toys.invokeMenuActionOn(_ydoc, layerEl, svgEls, namespace, key, undefined, App.user.id, _tableId);
+      addHistory(`${key} × ${ids.length}`, { elType: 'toys' });
+    } catch (err) {
+      UI.toast(`Action failed: ${err.message}`, 'warn');
+      App.addLog(`toy action failed: ${err.message}`, 'del');
+    }
+  },
+
   /**
    * Apply a partial editData object to the selected element.
    * Dispatches to the appropriate layer's edit() function, which handles
@@ -1509,6 +1523,44 @@ const App = {
   },
 
   /**
+   * The shared default action of a multi-selection, as
+   * { ids, namespace, key, origin } -- origin being the south-east-most of
+   * the members' own bowstring corners -- or null unless two or more toys
+   * are held and every one's first menu action is the same (namespace, key).
+   */
+  getGroupAction: () => {
+    const ids = _heldIds();
+    if (ids.length < 2) return null;
+    let shared = null, origin = null;
+    for (const id of ids) {
+      const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
+      if (!svgEl || moduleForElement(svgEl) !== 'toys') return null;
+      const first = Toys.getMenuActions(svgEl)[0];
+      if (!first) return null;
+      if (shared && (shared.namespace !== first.namespace || shared.key !== first.key)) return null;
+      shared = first;
+      const geo = App.getBBox(id);
+      if (!geo) return null;
+      const o = Delight.bowstringOrigin(geo, _rotationOf(id));
+      if (!origin || o.x + o.y > origin.x + origin.y) origin = o;
+    }
+    return { ids, namespace: shared.namespace, key: shared.key, origin };
+  },
+
+  /**
+   * Fire the group action if canvasPoint lands on its square. Returns true
+   * when it did, so canvas.js can swallow the click.
+   */
+  fireGroupActionAt: (canvasPoint) => {
+    const group = App.getGroupAction();
+    if (!group) return false;
+    if (!Delight.hitTestBowstringAt(group.origin, canvasPoint.x, canvasPoint.y, App.getViewScale())) return false;
+    App.invokeToyMenuActions(group.ids, group.namespace, group.key);
+    App.addLog(`group ${group.key} × ${group.ids.length}`, 'local');
+    return true;
+  },
+
+  /**
    * Repaint the overlay. Called from delight.js's rAF loop so the bowstring
    * charge indicators keep advancing while the pointer holds still (heldMs
    * changes with no pointer event to hang a repaint off).
@@ -1560,9 +1612,9 @@ const App = {
     const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
     if (!svgEl) return;
     if (!key) {
-      const actions = Toys.getMenuActions(svgEl);
-      if (!actions.length) return;
-      ({ namespace, key } = actions[0]);
+      const first = Toys.getMenuActions(svgEl)[0];
+      if (!first) return;
+      ({ namespace, key } = first);
     }
     App.invokeToyMenuAction(id, namespace, key, params);
     const how = params ? 'radial' : charged ? 'charged' : 'tap';

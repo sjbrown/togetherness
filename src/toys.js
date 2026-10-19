@@ -1940,16 +1940,24 @@ export const canRedoToyGesture = (ydoc, tableId, authorId) =>
  * caller picked, so it is always an object.
  */
 export function invokeMenuAction(ydoc, layerEl, svgEl, namespace, key, evt, authorId, tableId, params) {
-  const ns    = globalThis[namespace]
-  const entry = ns?.menu?.[key]
+  return invokeMenuActionOn(ydoc, layerEl, [svgEl], namespace, key, evt, authorId, tableId, params)
+}
+
+/**
+ * invokeMenuAction across several toys: every handler runs inside the same
+ * envelope, so the group commits as one operation. Every toy is validated
+ * before any handler runs.
+ */
+export function invokeMenuActionOn(ydoc, layerEl, svgEls, namespace, key, evt, authorId, tableId, params) {
+  const entry = globalThis[namespace]?.menu?.[key]
   if (!entry || typeof entry.handler !== 'function') {
     throw new Error(`[toys] no such menu action: ${namespace}.${key}`)
   }
-  if (typeof entry.applicable === 'function' && !entry.applicable(svgEl)) {
+  if (typeof entry.applicable === 'function' && !svgEls.every(svgEl => entry.applicable(svgEl))) {
     throw new Error(`[toys] menu action not applicable: ${namespace}.${key}`)
   }
-  const args = { ...defaultParams(resolveRadial(entry, svgEl)), ...params }
-  return runGesture(ydoc, layerEl, () => entry.handler.call(svgEl, evt, args),
+  const argsFor = (svgEl) => ({ ...defaultParams(resolveRadial(entry, svgEl)), ...params })
+  return runGesture(ydoc, layerEl, () => svgEls.forEach(svgEl => entry.handler.call(svgEl, evt, argsFor(svgEl))),
     { gesture: `menu:${namespace}.${key}`, authorId, tableId })
 }
 

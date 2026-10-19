@@ -81,7 +81,7 @@ import {
 } from './drawing.js';
 import { normalizeAngle, resolveRotation as elementRotation, rotationTransform } from './geometry.js';
 import { LOCAL_ACTION_FILTER_ID } from './defs.js';
-import { getBowstringState, chargeOpacityFor, chargeRadiusFor, bowstringOrigin } from './delight.js';
+import { getBowstringState, chargeOpacityFor, chargeRadiusFor, bowstringOrigin, ACTION_SQUARE_SIDE } from './delight.js';
 import { drawAsteriskGlyph, drawCrosshairGlyph, drawRotateGlyph, drawPivotGlyph } from './icons.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -856,10 +856,14 @@ export function render() {
         break;
       case 'sel-action':
         renderLocalSelection(geo, entry, scale, parent);
-        if (App.hasToyActions(elId)) renderActionAffordance(geo, scale, rot);
+        if (App.hasToyActions(elId)) renderActionAffordance(bowstringOrigin(geo, rot), scale);
         break;
     }
   }
+
+  // ── Group action square — one for a multi-selection sharing a default action
+  const group = App.getGroupAction?.();
+  if (group) renderActionAffordance(group.origin, scale, 'groupAction');
 
   // ── Requested/contested indicator — independent of SelectionMode kind ──
   // Drawn regardless of whether the element is 'local', 'remote', or has no
@@ -1240,17 +1244,15 @@ function renderLocalResizeRSelection(geo, entry, scale, parent = _layerEl) {
 }
 
 // ── Action-mode affordance ───────────────────────────────────────────────────
-const ACTION_ICON_SIZE = 22; // px
-
 // Render a single rounded-corner icon square — asterisk (*), the bowstring
 // handle's resting state
-function renderActionAffordance(geo, scale, rot = null) {
-  const side = ACTION_ICON_SIZE / scale;
+function renderActionAffordance(origin, scale, groupClass = 'bowstring') {
+  const side = ACTION_SQUARE_SIDE / scale;
   // Drawn in the layer, not the rotated decorGroup, so it stays upright at
   // delight.js's bowstringOrigin like the live handle. The <g class="bowstring">
   // wrapper makes square plus glyph one unit; this layer is wiped each render(),
   // while the live gesture lives in #delight-layer.
-  drawActionSquare(bowstringOrigin(geo, rot), side, scale, 'bowstring', _layerEl);
+  drawActionSquare(origin, side, scale, groupClass, _layerEl);
 }
 
 function drawActionSquare({ x: cx, y: cy }, side, scale, groupClass, host = _layerEl) {
