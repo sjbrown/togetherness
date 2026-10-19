@@ -764,11 +764,11 @@ svg.tt-icon-letter {
   100% { transform: translate(var(--tx), var(--ty)); opacity: 0; }
 }
 
-/* ── Radial menu (radial.js / #delight-layer) ─────────────────────────────
+/* ── Radial menu (ui_radial.js / #delight-layer) ─────────────────────────────
  * Colours only: sizes and stroke widths are attributes, divided by the view
  * scale so the menu is the same size at any zoom. --radial-grad and
  * --radial-stop are the local player's gradient and its first stop, set
- * per menu by radial.js. The fade is on .radial-menu alone: the copies
+ * per menu by ui_radial.js. The fade is on .radial-menu alone: the copies
  * that fly on release animate their own opacity attribute, which a CSS
  * opacity would override. */
 .radial { pointer-events: none; }

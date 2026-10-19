@@ -109,6 +109,10 @@ async function bootApp() {
     svgElement: svgEl,
   })
 
+  // The fixture toy has no menu script, and the action square only shows
+  // for a toy with an applicable action.
+  vi.spyOn(App, 'hasToyActions').mockReturnValue(true)
+
   return { App, ydoc, svgEl }
 }
 
@@ -165,6 +169,17 @@ describe('bowstring handle on a rotated toy (chip-like)', () => {
 
     expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, onScreenPoint)).toBe(true)
     App.endBowstring({ pointerId: 1 })
+  })
+
+  test('with no applicable menu action, no square is drawn and its corner is not claimed', async () => {
+    const { App, svgEl } = await bootApp()
+    App.hasToyActions.mockReturnValue(false)
+    App.select('chip-1')
+
+    expect(svgEl.querySelector('#overlay-layer .bowstring')).toBeNull()
+    const geo = App.getBBox('chip-1')
+    const point = { x: geo.x + geo.width + 6, y: geo.y + geo.height + 6 }
+    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, point)).toBe(false)
   })
 
   test('rotated 180°: the resting square is upright, outside any rotated group, at bowstringOrigin', async () => {

@@ -1,5 +1,5 @@
 /**
- * radial.js — the bowstring's radial menu
+ * ui_radial.js — the bowstring's radial menu
  *
  * Dragging the action square (delight.js) opens a radial menu centred on the
  * square's resting position. Every toy menu action that declares a `radial`
@@ -63,7 +63,10 @@ export function paramSpec(radial) {
   if (!p || typeof p.param !== 'string') return { ok: false, error: `"${label}" needs a string "param"` };
   const base = { label, name: p.param, type: p.type };
   if (p.type === 'integer' || p.type === 'float') {
-    if (typeof p.min !== 'number' || typeof p.max !== 'number' || p.max <= p.min) {
+    // An integer may have min === max: a one-segment spoke. A float can't,
+    // having no segments to fall back on.
+    if (typeof p.min !== 'number' || typeof p.max !== 'number' || p.max < p.min
+        || (p.type === 'float' && p.max === p.min)) {
       return { ok: false, error: `"${label}" needs numeric min < max` };
     }
     const step = p.type === 'integer' ? Math.max(1, Math.round(p.step ?? 1)) : (p.step ?? null);

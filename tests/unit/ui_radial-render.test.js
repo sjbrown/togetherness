@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import * as Radial from '../../src/radial.js'
+import * as Radial from '../../src/ui_radial.js'
 
 const SVGNS = 'http://www.w3.org/2000/svg'
 const item = (key, radial, enabled = true) => ({ namespace: 'ns', key, label: key, enabled, radial })

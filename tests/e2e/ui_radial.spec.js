@@ -1,5 +1,5 @@
 /**
- * tests/e2e/radial.spec.js
+ * tests/e2e/ui_radial.spec.js
  *
  * The bowstring's radial menu, driven through real pointer events on the
  * real app: a supply with a chip on it, whose 'Take' action declares a
@@ -16,7 +16,7 @@ const SIGNALING_URL = process.env.SIGNALING_URL || 'ws://localhost:4444';
 
 const launch = () => chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
 
-// Keep in step with radial.js.
+// Keep in step with ui_radial.js.
 const INNER_R = 53;
 const OUTER_R = 260;
 

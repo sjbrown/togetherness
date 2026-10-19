@@ -47,6 +47,18 @@ const TOY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
             'How many': { param: 'num', type: 'integer', default: 2, min: 1, max: 5 },
           },
         },
+        'Double': {
+          eventName: 'widget_double',
+          applicable: (elem) => true,
+          handler: function (evt, { times }) {
+            const tspan = this.$('#tspan_count')
+            tspan.textContent = String(Number(tspan.textContent) + times)
+          },
+          radial: (elem) => {
+            const n = Number(elem.$('#tspan_count').textContent)
+            return { 'Times': { param: 'times', type: 'integer', default: n + 3, min: 1, max: n + 3 } }
+          },
+        },
       },
     }
   ]]></script>
@@ -84,7 +96,7 @@ describe('getMenuActions', () => {
     const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
     const actions = getMenuActions(toyEl)
-    expect(actions.map(a => a.key).sort()).toEqual(['Add', 'Bump', 'Labeled'])
+    expect(actions.map(a => a.key).sort()).toEqual(['Add', 'Bump', 'Double', 'Labeled'])
   })
 
   test('label resolves uiLabel(svgEl) when present, falls back to the menu key otherwise', async () => {
@@ -139,7 +151,7 @@ describe('getRadialItems', () => {
 
     const items = getRadialItems(toyEl)
     expect(items.map(i => [i.key, i.enabled])).toEqual([
-      ['Bump', true], ['Hidden', false], ['Labeled', true], ['Add', true],
+      ['Bump', true], ['Hidden', false], ['Labeled', true], ['Add', true], ['Double', true],
     ])
   })
 
@@ -155,6 +167,16 @@ describe('getRadialItems', () => {
     expect(items.find(i => i.key === 'Bump').radial).toBeUndefined()
     expect(items.find(i => i.key === 'Labeled').label).toBe('Current: 0')
     expect(items[0].namespace).toBe('widgetNs')
+  })
+
+  test('resolves a function-valued radial against the toy element', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
+
+    invokeMenuAction(ydoc, layerEl, toyEl, 'widgetNs', 'Bump')
+    const double = getRadialItems(toyEl).find(i => i.key === 'Double')
+    expect(double.radial).toEqual({ 'Times': { param: 'times', type: 'integer', default: 4, min: 1, max: 4 } })
   })
 
   test('returns [] for an element with no data-toy-type', () => {
@@ -236,6 +258,16 @@ describe('invokeMenuAction', () => {
     invokeMenuAction(ydoc, layerEl, toyEl, 'widgetNs', 'Add')
 
     expect(layerEl.querySelector('#t1__tspan_count').textContent).toBe('2')
+  })
+
+  test('fills in defaults from a function-valued radial', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
+
+    invokeMenuAction(ydoc, layerEl, toyEl, 'widgetNs', 'Double')
+
+    expect(layerEl.querySelector('#t1__tspan_count').textContent).toBe('3')
   })
 
   test('rejects when the entry is not applicable, without mutating anything', async () => {
