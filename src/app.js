@@ -2148,16 +2148,18 @@ const App = {
       });
 
       const projected = OpLayer.projectedAt(layerElOf(layer));
+      const mergeTips = OpHead.getMergeTips(_tableId, layer);
       return {
         name: layer.name,
         head: {
           head:      head,
-          mergeTips: OpHead.getMergeTips(_tableId, layer),
+          mergeTips,
           projected,
-          // A projection marker that disagrees with the stored head means the
+          // A projection marker that disagrees with the stored tips means the
           // DOM is showing something other than what this peer thinks it is —
-          // the single most useful red light this panel can offer.
-          agrees:    projected === head,
+          // the single most useful red light this panel can offer. The marker
+          // names every tip, so it is compared against head plus merge tips.
+          agrees:    projected === OpLayer.tipsMarker([head, ...mergeTips]),
         },
         ops: {
           total:       allIds.length,

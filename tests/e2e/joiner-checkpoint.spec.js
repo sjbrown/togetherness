@@ -61,8 +61,7 @@ test.fail("a joiner's net status reflects the connection it made during the join
   await browser.close();
 });
 
-// getDebugState compares the head alone against a marker of every tip.
-test.fail('concurrent joiner checkpoint and creator move: both converge, debug head agrees', async () => {
+test('concurrent joiner checkpoint and creator move: both converge, debug head agrees', async () => {
   const browser = await launch();
   const page1 = await (await browser.newContext()).newPage();
   const page2 = await (await browser.newContext()).newPage();

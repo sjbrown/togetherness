@@ -160,7 +160,7 @@ export const HEAD_MARKER = 'data-tt-head'
  * string (sorted tips joined with ','). */
 export const projectedAt = (layerEl) => layerEl?.getAttribute(HEAD_MARKER) ?? null
 
-const tipsMarker = (tipsOrId) =>
+export const tipsMarker = (tipsOrId) =>
   [...new Set((Array.isArray(tipsOrId) ? tipsOrId : [tipsOrId]).filter(Boolean))].sort().join(',')
 
 /** Record the tip set (head plus any merge tips) the layer's DOM now
