@@ -1,5 +1,5 @@
 /**
- * tests/e2e/radial.spec.js
+ * tests/e2e/ui_radial.spec.js
  *
  * The bowstring's radial menu, driven through real pointer events on the
  * real app: a supply with a chip on it, whose 'Take' action declares a
