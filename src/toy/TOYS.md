@@ -107,7 +107,8 @@ menu: {
 - **`applicable(elem)`** — return whether this action should currently
   appear. Re-checked right before the handler runs, so it's safe to
   depend on live state.
-- **`handler(evt)`** — runs with `this` bound to your toy's root element.
+- **`handler(evt, params)`** — runs with `this` bound to your toy's root
+  element. `params` is covered under the radial menu, below.
   Write it as `function (evt) {...}`, not a fat arrow. A fat arrow
   doesn't have its own `this` — it captures `this` from the surrounding
   scope at the point you defined it, and nothing can rebind that
@@ -117,6 +118,78 @@ menu: {
   `this` and break that.
 - **`uiLabel`** — optional. A string, or a function of `elem` for a
   dynamic label (e.g. showing the current value).
+- **`radial`** — optional. Gives the action a spoke on the radial menu;
+  see below.
+
+The first applicable action is your toy's **default action**. It's what
+a click on the toy's action square (the `*` at the corner of its
+selection ring) runs.
+
+### The radial menu
+
+Dragging the action square opens a radial menu around it. Each action
+that declares `radial` gets a spoke, and releasing on a spoke runs that
+action. A spoke can carry one parameter, which the player picks by how
+far out along the spoke they let go:
+
+```js
+menu: {
+  'Take': {
+    eventName: 'supply_take',
+    applicable: (elem) => elem.getAttribute('data-below'),
+    handler: function (evt, { num }) { supply._take(this, num) },
+    radial: {
+      'How many': { param: 'num', type: 'integer', default: 1, min: 1, max: 5 },
+    },
+  },
+  'Shuffle': {
+    eventName: 'deck_shuffle',
+    applicable: (elem) => true,
+    handler: function (evt) { /* ... */ },
+    radial: true,
+  },
+},
+```
+
+`radial: true` is a spoke with no parameter. Otherwise `radial` is an
+object with exactly one key: the label shown on the spoke. Its value
+describes the parameter:
+
+| field     | applies to       | meaning |
+|-----------|------------------|---------|
+| `param`   | all              | the property name your handler receives it as |
+| `type`    | all              | `'integer'`, `'float'` or `'enum'` |
+| `default` | all              | the value used when nothing is picked; falls back to `min`, or the first enum value |
+| `min`, `max` | integer, float | required; the inside and outside of the spoke |
+| `step`    | integer, float   | optional; picked values snap to it (integers default to 1) |
+| `values`  | enum             | required; the values, inside to outside |
+| `labels`  | enum             | optional; what to display for each value, if not the value itself |
+
+Integers and enums are drawn as one segment per value. An integer range
+of more than 10 values, and any float, is drawn as a continuous spoke
+with the current value shown in its middle.
+
+**Your handler is called as `handler(evt, params)`.** `params` is always
+an object: the value the player picked, or the `default` when the action
+runs from a click, from the menu buttons, or from a release that missed
+every spoke. An action without `radial` gets `{}`. The exception is
+another toy calling your handler directly (as a tray's "Roll All" does):
+the platform isn't involved then, so give the destructuring a default,
+`function (evt, { num } = {})`, if your action could be reached that way.
+
+Layout rules worth knowing when you design a menu:
+
+- **At most 6 spokes.** More is an authoring error: the player gets a
+  warning toast and no radial menu, though clicking the square still
+  works.
+- **Order matters.** Spokes fill the six 45° spots between North and
+  West in the order your actions are declared, starting just below
+  East. Put the actions players will reach for most first.
+- **Spokes don't move.** When `applicable()` is false, that action's
+  spoke stays in its spot, greyed out, rather than letting the others
+  shift around.
+- **Keep labels and enum labels short.** Space along each spoke is
+  tight, especially near the centre.
 
 ## Identity: don't hardcode ids from other toys
 

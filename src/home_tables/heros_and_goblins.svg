@@ -103,22 +103,28 @@ var supply = {
       applicable: (node) =&gt; { 
          return node.getAttribute('data-below')
       },
-      handler: function(evt) {
-        supply._take(this)
+      handler: function(evt, { num }) {
+        supply._take(this, num)
       },
-    },
-    'Take 2': {
-      eventName: 'supply_take_2',
-      applicable: (node) =&gt; { 
-         return node.getAttribute('data-below')
-      },
-      handler: function(evt) {
-        supply._take2(this)
+      radial: {
+        'How many': { param: 'num', type: 'integer', default: 1, min: 1, max: 5 },
       },
     },
   },
 
-  _take: function(elem) {
+  // Each extra clone lands 10 units right of the last, so a stack of
+  // them doesn't hide under the first.
+  _take: function(elem, num = 1) {
+    const targetEl = elem.querySelector('.tt_target')
+    const origCX = targetEl &amp;&amp; parseFloat(targetEl.getAttribute('cx'))
+    for (let i = 0; i &lt; num; i++) {
+      if (targetEl) targetEl.setAttribute('cx', origCX + 10 * i)
+      supply._takeOne(elem)
+    }
+    if (targetEl) targetEl.setAttribute('cx', origCX)
+  },
+
+  _takeOne: function(elem) {
     const itemId = elem.getAttribute('data-below')
     if (!itemId) {
       supply._event('warn', {msg: 'Supply needs a prototype toy'})
@@ -126,15 +132,6 @@ var supply = {
     }
     // Note: .tt_target gets examined by the event handler
     supply._event('toy:clone', {id: itemId, sourceEl: elem})
-  },
-
-  _take2: function(elem) {
-    const targetEl = elem.querySelector('.tt_target')
-    const origCX = parseFloat(targetEl.getAttribute('cx'))
-    supply._take(elem)
-    targetEl.setAttribute('cx', origCX + 10)
-    supply._take(elem)
-    targetEl.setAttribute('cx', origCX)
   },
 
   _event: function(evName, args) {

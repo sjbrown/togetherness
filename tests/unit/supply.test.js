@@ -508,6 +508,31 @@ describe('supply — reload parity (regression: nested-envelope duplicate clone)
     expect(getOps(ydoc, TOYS_LAYER).size).toBe(opsBefore + 1)
   })
 
+  test('Take with num: 3 (a radial pick) clones three, in one op', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = freshLayer()
+    addToyDom(ydoc, layerEl, { id: 'supply1', toyType: 'supply', x: 100, y: 100, color: '#fff' }, SUPPLY_SVG)
+    addToyDom(ydoc, layerEl, { id: 'chip5',   toyType: 'chip',   x: 500, y: 500, color: '#dd2222' }, CHIP_SVG)
+    await activateAll(ydoc, layerEl)
+
+    const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
+    const supplyPoint = getSnapPoints(layerEl).find(p => p.ownerId === 'supply1')
+    api.applyMoveCommit(api.find('chip5'), supplyPoint.cx, supplyPoint.cy)
+    const supplyEl = findEl(layerEl, 'supply1')
+    const chips = () => layerEl.querySelectorAll(':scope > [data-toy-type="chip"]').length
+    const targetCX = supplyEl.querySelector('.tt_target').getAttribute('cx')
+
+    const unbind = bindSupplyHarness(ydoc, layerEl)
+    const opsBefore = getOps(ydoc, TOYS_LAYER).size
+    const chipsBefore = chips()
+    Toys.invokeMenuAction(ydoc, layerEl, supplyEl, 'supply', 'Take', {}, AUTHOR, TABLE, { num: 3 })
+    unbind()
+
+    expect(chips()).toBe(chipsBefore + 3)
+    expect(getOps(ydoc, TOYS_LAYER).size).toBe(opsBefore + 1)
+    expect(supplyEl.querySelector('.tt_target').getAttribute('cx')).toBe(targetCX)
+  })
+
   test('chip scenario: replaying the op log from scratch matches the live layer exactly', async () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()

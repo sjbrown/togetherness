@@ -764,6 +764,39 @@ svg.tt-icon-letter {
   100% { transform: translate(var(--tx), var(--ty)); opacity: 0; }
 }
 
+/* ── Radial menu (radial.js / #delight-layer) ─────────────────────────────
+ * Colours only: sizes and stroke widths are attributes, divided by the view
+ * scale so the menu is the same size at any zoom. --radial-grad and
+ * --radial-stop are the local player's gradient and its first stop, set
+ * per menu by radial.js. The fade is on .radial-menu alone: the copies
+ * that fly on release animate their own opacity attribute, which a CSS
+ * opacity would override. */
+.radial { pointer-events: none; }
+.radial-menu { opacity: 0; transition: opacity 220ms ease-out; }
+.radial-menu.show { opacity: 1; }
+
+.radial .spoke-seg { fill: rgba(40, 40, 40, 0.6); transition: fill 80ms; }
+.radial .spoke.hover .spoke-seg { fill: rgba(40, 40, 40, 0.9); }
+.radial .spoke .spoke-seg.hover { fill: var(--radial-grad); }
+.radial .spoke.disabled .spoke-seg { fill: rgba(13, 12, 20, 0.15); }
+.radial .spoke-outline { fill: none; stroke: var(--radial-stop); }
+.radial .seg-default,
+.radial .float-default { fill: none; stroke: var(--radial-grad); }
+.radial .spoke-fill { fill: var(--radial-grad); opacity: 0.75; }
+
+.radial .seg-text,
+.radial .readout { text-anchor: middle; dominant-baseline: central; }
+.radial .seg-text { fill: #fff; }
+.radial .spoke.disabled .seg-text { fill: rgba(255, 255, 255, 0.4); }
+.radial .readout { fill: #fff; font-weight: 700; paint-order: stroke; stroke: rgba(0, 0, 0, 0.5); }
+
+.radial .arc-label { fill: #222; }
+.radial .arc-label.param { fill: #777; }
+.radial .spoke.disabled .arc-label { fill: rgba(34, 34, 34, 0.4); }
+.radial .label-band { fill: rgba(40, 40, 40, 0.9); }
+.radial .arc-label.on-band { fill: #fff; }
+.radial .arc-label.param.on-band { fill: rgba(255, 255, 255, 0.7); }
+
 /* ── Debug panel (debug_panel.js) ──────────────────────────────
    Dense, monospace, information-first. This is the one panel that should
    look like an instrument rather than a control: nothing here is a thing
