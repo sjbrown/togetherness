@@ -73,6 +73,7 @@ function makeApp(overrides = {}) {
     // Bowstring handle (delight.js) — canvas.js offers every select-tool
     // pointerdown to it before ordinary hit-testing. Declining by default
     // keeps these tests exercising the normal select/move/resize paths.
+    fireGroupActionAt:  () => false,
     startBowstringAt:   () => false,
     moveBowstring:      () => {},
     endBowstring:       () => {},

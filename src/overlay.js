@@ -861,6 +861,10 @@ export function render() {
     }
   }
 
+  // ── Group action square — one for a multi-selection sharing a default action
+  const group = App.getGroupAction?.();
+  if (group) drawActionSquare(group.origin, ACTION_ICON_SIZE / scale, scale, 'groupAction');
+
   // ── Requested/contested indicator — independent of SelectionMode kind ──
   // Drawn regardless of whether the element is 'local', 'remote', or has no
   // SelectionMode entry at all — contestedness is orthogonal to who (if

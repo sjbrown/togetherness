@@ -45,6 +45,8 @@ import { isElementHeldByOther, computeTickActions } from './soft_lock.js';
 import * as Selection                              from './selection.js';
 import * as ExternalServices                      from './external_services.js';
 
+const ACTION_SQUARE_SIDE = 22; // px; keep in step with overlay.js's ACTION_ICON_SIZE
+
 
 // Diagnostic logging — opt-in via ?debug=1 in the URL
 const DEBUG = typeof location !== 'undefined'
@@ -1505,6 +1507,45 @@ const App = {
     if (!geo) return false;
     if (!Delight.hitTestBowstring(geo, canvasPoint.x, canvasPoint.y, App.getViewScale(), _rotationOf(id))) return false;
     return Delight.startBowstring(id, e, _svgEl);
+  },
+
+  /**
+   * The shared default action of a multi-selection, as
+   * { ids, namespace, key, origin } -- origin being the south-east-most of
+   * the members' own bowstring corners -- or null unless two or more toys
+   * are held and every one's first menu action is the same (namespace, key).
+   */
+  getGroupAction: () => {
+    const ids = _heldIds();
+    if (ids.length < 2) return null;
+    let shared = null, origin = null;
+    for (const id of ids) {
+      const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
+      if (!svgEl || moduleForElement(svgEl) !== 'toys') return null;
+      const first = Toys.getMenuActions(svgEl)[0];
+      if (!first) return null;
+      if (shared && (shared.namespace !== first.namespace || shared.key !== first.key)) return null;
+      shared = first;
+      const geo = App.getBBox(id);
+      if (!geo) return null;
+      const o = Delight.bowstringOrigin(geo, _rotationOf(id));
+      if (!origin || o.x + o.y > origin.x + origin.y) origin = o;
+    }
+    return { ids, namespace: shared.namespace, key: shared.key, origin };
+  },
+
+  /**
+   * Fire the group action if canvasPoint lands on its square. Returns true
+   * when it did, so canvas.js can swallow the click.
+   */
+  fireGroupActionAt: (canvasPoint) => {
+    const group = App.getGroupAction();
+    if (!group) return false;
+    const half = ACTION_SQUARE_SIDE / 2 / App.getViewScale();
+    if (Math.abs(canvasPoint.x - group.origin.x) > half || Math.abs(canvasPoint.y - group.origin.y) > half) return false;
+    for (const id of group.ids) App.invokeToyMenuAction(id, group.namespace, group.key);
+    App.addLog(`group ${group.key} × ${group.ids.length}`, 'local');
+    return true;
   },
 
   /**
