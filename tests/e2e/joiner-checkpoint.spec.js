@@ -86,3 +86,18 @@ test('concurrent joiner checkpoint and creator move: both converge, debug head a
   expect(h2.agrees).toBe(true);
   await browser.close();
 });
+
+test('an uncaught error and an unhandled rejection land in the trace', async () => {
+  const browser = await launch();
+  const page = await (await browser.newContext()).newPage();
+  await openAsCreator(page, opts);
+  await page.evaluate(() => {
+    setTimeout(() => { throw new Error('boom-sync') });
+    Promise.reject(new Error('boom-async'));
+  });
+  await expect.poll(() => page.evaluate(async () => {
+    const Trace = await import('/trace.js');
+    return Trace.events().filter(e => e.level === 'error').map(e => e.evt).sort();
+  })).toEqual(['uncaught-error', 'unhandled-rejection']);
+  await browser.close();
+});
