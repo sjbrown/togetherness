@@ -29,8 +29,7 @@ async function creatorWithDie(page, moves) {
   return { id, move };
 }
 
-// maybeCheckpoint moves the head but not the projection marker.
-test.fail('a panel-open checkpoint leaves the projection marker on the new head', async () => {
+test('a panel-open checkpoint leaves the projection marker on the new head', async () => {
   const browser = await launch();
   const page = await (await browser.newContext()).newPage();
   await creatorWithDie(page, 12);

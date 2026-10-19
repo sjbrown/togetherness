@@ -726,6 +726,7 @@ function maybeCheckpoint(layer, reason) {
   OpDag.appendCheckpoint(_ydoc, layer, op, content);
   OpHead.setHead(_tableId, layer, op.id);
   OpHead.setMergeTips(_tableId, layer, []);
+  OpLayer.markProjectedAt(layerEl, [op.id]);
   Trace.op('checkpoint', `wrote checkpoint ${op.id} (${reason})`, { layer: layer.name, id: op.id, reason });
   OpLayer.pruneAfterCheckpoint(_ydoc, layer, _tableId, op.id, tablesAPI.getJoinSequenceArray(_ydoc));
   return op;
