@@ -37,6 +37,12 @@ describe('paramSpec', () => {
     expect(param.values).toBeNull()
   })
 
+  it('allows an integer with min === max, as a single segment', () => {
+    const { ok, param } = paramSpec({ N: { param: 'n', type: 'integer', min: 1, max: 1 } })
+    expect(ok).toBe(true)
+    expect(param).toMatchObject({ segmented: true, values: [1], default: 1 })
+  })
+
   it('keeps exactly MAX_SEGMENTS values segmented', () => {
     const { param } = paramSpec({ N: { param: 'n', type: 'integer', min: 1, max: MAX_SEGMENTS } })
     expect(param.segmented).toBe(true)
@@ -63,7 +69,8 @@ describe('paramSpec', () => {
     ['two parameters', { A: { param: 'a', type: 'integer', min: 0, max: 1 }, B: { param: 'b', type: 'integer', min: 0, max: 1 } }],
     ['no parameters', {}],
     ['a missing param name', { A: { type: 'integer', min: 0, max: 1 } }],
-    ['min >= max', { A: { param: 'a', type: 'integer', min: 2, max: 2 } }],
+    ['min > max', { A: { param: 'a', type: 'integer', min: 3, max: 2 } }],
+    ['a float with min === max', { A: { param: 'a', type: 'float', min: 2, max: 2 } }],
     ['an empty enum', { A: { param: 'a', type: 'enum', values: [] } }],
     ['mismatched enum labels', { A: { param: 'a', type: 'enum', values: ['x'], labels: ['X', 'Y'] } }],
     ['an unknown type', { A: { param: 'a', type: 'colour' } }],

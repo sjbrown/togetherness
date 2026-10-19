@@ -1748,10 +1748,17 @@ export function getRadialItems(svgEl) {
       const enabled = typeof entry.applicable !== 'function' || !!entry.applicable(svgEl)
       const label = typeof entry.uiLabel === 'function' ? entry.uiLabel(svgEl)
                   : (entry.uiLabel ?? key)
-      items.push({ namespace: name, key, label, enabled, radial: entry.radial })
+      items.push({ namespace: name, key, label, enabled, radial: resolveRadial(entry, svgEl) })
     }
   }
   return items
+}
+
+// A menu entry's radial may be a function of the toy element, for a
+// parameter whose range depends on live state (a bag's Take maxes out at
+// its contents). Resolved at gesture start and again when the action runs.
+function resolveRadial(entry, svgEl) {
+  return typeof entry.radial === 'function' ? entry.radial(svgEl) : entry.radial
 }
 
 // ── gesture-triggered cascade ─────────────────────────────────────────────
@@ -1944,7 +1951,7 @@ export function invokeMenuAction(ydoc, layerEl, svgEl, namespace, key, evt, auth
   if (typeof entry.applicable === 'function' && !entry.applicable(svgEl)) {
     throw new Error(`[toys] menu action not applicable: ${namespace}.${key}`)
   }
-  const args = { ...defaultParams(entry.radial), ...params }
+  const args = { ...defaultParams(resolveRadial(entry, svgEl)), ...params }
   return runGesture(ydoc, layerEl, () => entry.handler.call(svgEl, evt, args),
     { gesture: `menu:${namespace}.${key}`, authorId, tableId })
 }

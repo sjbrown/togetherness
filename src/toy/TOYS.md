@@ -160,7 +160,7 @@ describes the parameter:
 | `param`   | all              | the property name your handler receives it as |
 | `type`    | all              | `'integer'`, `'float'` or `'enum'` |
 | `default` | all              | the value used when nothing is picked; falls back to `min`, or the first enum value |
-| `min`, `max` | integer, float | required; the inside and outside of the spoke |
+| `min`, `max` | integer, float | required; the inside and outside of the spoke (an integer may have `min` equal to `max`) |
 | `step`    | integer, float   | optional; picked values snap to it (integers default to 1) |
 | `values`  | enum             | required; the values, inside to outside |
 | `labels`  | enum             | optional; what to display for each value, if not the value itself |
@@ -168,6 +168,21 @@ describes the parameter:
 Integers and enums are drawn as one segment per value. An integer range
 of more than 10 values, and any float, is drawn as a continuous spoke
 with the current value shown in its middle.
+
+`radial` can also be a function of your toy's element, returning any of
+the above. Use it when the range depends on the toy's state:
+
+```js
+radial: (elem) => ({
+  'How many': { param: 'num', type: 'integer', default: 1, min: 1,
+                max: Math.max(1, bag._contents(elem).length) },
+}),
+```
+
+It's called when the player starts dragging, and again when the action
+runs, so it must be cheap and must not change anything. Keep the range
+valid even when the action isn't applicable (hence the `Math.max` above).
+An invalid range is an authoring error, even on a greyed-out spoke.
 
 **Your handler is called as `handler(evt, params)`.** `params` is always
 an object: the value the player picked, or the `default` when the action
