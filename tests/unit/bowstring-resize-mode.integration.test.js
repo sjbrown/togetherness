@@ -107,6 +107,10 @@ async function bootApp() {
     svgElement: svgEl,
   })
 
+  // The fixture toy has no menu script, and the action square only shows
+  // for a toy with an applicable action.
+  vi.spyOn(App, 'hasToyActions').mockReturnValue(true)
+
   return { App, ydoc, svgEl }
 }
 

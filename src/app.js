@@ -1501,6 +1501,7 @@ const App = {
     // only while the current mode still is that default -- declining
     // otherwise avoids intercepting a corner that no longer shows it.
     if (defaultMode !== 'sel-action' || _activeMode?.mode !== defaultMode) return false;
+    if (!App.hasToyActions(id)) return false;
     const geo = App.getBBox(id);
     if (!geo) return false;
     if (!Delight.hitTestBowstring(geo, canvasPoint.x, canvasPoint.y, App.getViewScale(), _rotationOf(id))) return false;
@@ -1513,6 +1514,16 @@ const App = {
    * changes with no pointer event to hang a repaint off).
    */
   requestOverlayRender: () => Overlay.render(),
+
+  /**
+   * Whether id has any applicable menu action right now. With none, a
+   * click or pull on the action square would do nothing, so overlay.js
+   * doesn't draw it and startBowstringAt doesn't claim the pointer.
+   */
+  hasToyActions: (id) => {
+    const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
+    return Toys.getMenuActions(svgEl).length > 0;
+  },
 
   /**
    * The radial menu for id's bowstring, as { spokes, paint }, or null when
