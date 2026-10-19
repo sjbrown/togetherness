@@ -466,9 +466,12 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   _awareness.on('change', onPresenceChanged);
 
   // Provider status
-  _provider.on('synced', () => {
-    _netStatus.synced = true;
-    Trace.net('synced', 'provider reports synced with peers', { ops: totalOps() });
+  // y-webrtc emits {synced:false} too, when a new peer has yet to sync.
+  _provider.on('synced', ({ synced } = {}) => {
+    _netStatus.synced = !!synced;
+    Trace.net('synced', synced ? 'provider reports synced with peers' : 'provider reports a peer not yet synced',
+      { synced: !!synced, ops: totalOps() });
+    if (!synced) return;
     UI.toast('Synced with peers');
     App.addLog('synced with peers', 'remote');
   });
