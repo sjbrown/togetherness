@@ -46,7 +46,7 @@
 
 import { LOCAL_ACTION_FILTER_ID, GLOW_FILTER_ID } from './defs.js';
 import { rotatePoint } from './geometry.js';
-import * as Radial from './radial.js';
+import * as Radial from './ui_radial.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 
@@ -58,7 +58,7 @@ const MAX_SPIN_DEG_PER_SEC = 4 * 360;
 const MAX_STRING_WIDTH = 22;   // matches the handle's own width, so the string reads as continuous
 const MIN_STRING_WIDTH = 0.75;
 const SNAP_SPEEDUP = 1.6;
-const SNAP_EASE = [0.34, 1.56, 0.64, 1];   // snap-back cubic-bezier; radial.js's arrow follows it too
+const SNAP_EASE = [0.34, 1.56, 0.64, 1];   // snap-back cubic-bezier; the radial menu's arrow follows it too
 const DELIGHT_TRANSLATE_SCALE = 0.05;
 const HANDLE_HALF = 11;        // the handle rect is 22x22
 

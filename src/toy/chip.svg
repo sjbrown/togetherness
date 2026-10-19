@@ -31,22 +31,6 @@
 var chip = {
 
   menu: {
-    'Value +1': {
-      eventName: 'value_incr_1',
-      otherEvents: ['dblclick'],
-      applicable: (node) => { return true },
-      handler: function(evt) {
-        chip.increment(this, 1)
-      },
-    },
-    'Value -1': {
-      eventName: 'value_decr_1',
-      otherEvents: ['dblclick'],
-      applicable: (node) => { return true },
-      handler: function(evt) {
-        chip.increment(this, -1)
-      },
-    },
     'Stack': {
       eventName: 'chip_stack',
       otherEvents: ['dblclick'],
@@ -120,12 +104,6 @@ var chip = {
     document.dispatchEvent(new CustomEvent(evName, { detail }));
     if (detail.error) throw new Error(detail.error);
     return detail.retval;
-  },
-
-  increment: function(elem, step) {
-    const tspan = elem.querySelector('tspan')
-    const current = parseInt(tspan.textContent)
-    tspan.textContent = String(current + step)
   },
 
   initialize: function(elem, options = {}) {

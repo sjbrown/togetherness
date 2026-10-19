@@ -37,7 +37,7 @@ import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
 import * as Overlay                               from './overlay.js';
 import * as Delight                               from './delight.js';
-import * as Radial                                from './radial.js';
+import * as Radial                                from './ui_radial.js';
 import * as Attention                             from './attention_mode.js';
 import * as Events                                from './events.js';
 import { entityGradient }            from './entity_gradient.js';
@@ -1501,6 +1501,7 @@ const App = {
     // only while the current mode still is that default -- declining
     // otherwise avoids intercepting a corner that no longer shows it.
     if (defaultMode !== 'sel-action' || _activeMode?.mode !== defaultMode) return false;
+    if (!App.hasToyActions(id)) return false;
     const geo = App.getBBox(id);
     if (!geo) return false;
     if (!Delight.hitTestBowstring(geo, canvasPoint.x, canvasPoint.y, App.getViewScale(), _rotationOf(id))) return false;
@@ -1514,11 +1515,15 @@ const App = {
    */
   requestOverlayRender: () => Overlay.render(),
 
+  hasToyActions: (id) => {
+    const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
+    return Toys.getMenuActions(svgEl).length > 0;
+  },
+
   /**
    * The radial menu for id's bowstring, as { spokes, paint }, or null when
-   * none of its menu actions declares `radial`. An authoring error (see
-   * radial.js's buildSpokes) warns, toasts, and also returns null, leaving
-   * the plain bowstring.
+   * none of its menu actions declares `radial`.
+   * Errors return null emit a warn message and a toast.
    */
   getRadialMenu: (id) => {
     const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
