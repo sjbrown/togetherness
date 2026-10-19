@@ -161,10 +161,13 @@ var bag = {
     'Take': {
       eventName: 'bag_take',
       applicable: (node) => { return bag._contents(node).length > 0 },
-      handler: function(evt) {
-        console.log('bag take', this)
-        bag._take(this)
+      handler: function(evt, { num } = {}) {
+        for (let i = 0; i < (num ?? 1); i++) bag._take(this)
       },
+      radial: (node) => ({
+        'How many': { param: 'num', type: 'integer', default: 1, min: 1,
+                      max: Math.max(1, bag._contents(node).length) },
+      }),
     },
     'Shake': {
       eventName: 'tray_roll',
@@ -172,6 +175,7 @@ var bag = {
       handler: function(evt) {
         return tray.roll_all(this)
       },
+      radial: true,
     },
   },
 
