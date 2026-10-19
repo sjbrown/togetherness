@@ -688,8 +688,12 @@ function downloadTrace() {
   const a = document.createElement('a')
   a.href = url
   a.download = `togetherness-trace-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
+  a.hidden = true
+  document.body.appendChild(a)
   a.click()
-  URL.revokeObjectURL(url)
+  // Firefox reads the blob after click() returns; revoking synchronously
+  // can cancel the download.
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(url) }, 10000)
 }
 
 function copyOp(id, btn) {
