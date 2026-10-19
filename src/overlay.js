@@ -856,14 +856,14 @@ export function render() {
         break;
       case 'sel-action':
         renderLocalSelection(geo, entry, scale, parent);
-        renderActionAffordance(geo, scale, rot);
+        renderActionAffordance(bowstringOrigin(geo, rot), scale);
         break;
     }
   }
 
   // ── Group action square — one for a multi-selection sharing a default action
   const group = App.getGroupAction?.();
-  if (group) drawActionSquare(group.origin, ACTION_SQUARE_SIDE / scale, scale, 'groupAction');
+  if (group) renderActionAffordance(group.origin, scale, 'groupAction');
 
   // ── Requested/contested indicator — independent of SelectionMode kind ──
   // Drawn regardless of whether the element is 'local', 'remote', or has no
@@ -1246,13 +1246,13 @@ function renderLocalResizeRSelection(geo, entry, scale, parent = _layerEl) {
 // ── Action-mode affordance ───────────────────────────────────────────────────
 // Render a single rounded-corner icon square — asterisk (*), the bowstring
 // handle's resting state
-function renderActionAffordance(geo, scale, rot = null) {
+function renderActionAffordance(origin, scale, groupClass = 'bowstring') {
   const side = ACTION_SQUARE_SIDE / scale;
   // Drawn in the layer, not the rotated decorGroup, so it stays upright at
   // delight.js's bowstringOrigin like the live handle. The <g class="bowstring">
   // wrapper makes square plus glyph one unit; this layer is wiped each render(),
   // while the live gesture lives in #delight-layer.
-  drawActionSquare(bowstringOrigin(geo, rot), side, scale, 'bowstring', _layerEl);
+  drawActionSquare(origin, side, scale, groupClass, _layerEl);
 }
 
 function drawActionSquare({ x: cx, y: cy }, side, scale, groupClass, host = _layerEl) {
