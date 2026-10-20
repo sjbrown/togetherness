@@ -391,6 +391,78 @@ function buildToolRegistry() {
   _toolsByLayer['drawing'] = [SELECT_TOOL, ...drawTools];
 }
 
+// ── Provider watch ──────────────────────────────────────────────────────────
+/**
+ * Network status and its trace rows: synced, WebRTC peers, signaling
+ * connect/disconnect and room traffic. index.html calls this as soon as the
+ * provider exists, because a joiner's handshake and first sync happen while
+ * the join dialog is still probing, long before boot(). Idempotent per
+ * provider.
+ */
+let _watchedProvider = null;
+export function watchProvider(provider, { tableId, signalingUrls = [] } = {}) {
+  if (_watchedProvider === provider) return;
+  _watchedProvider = provider;
+  _netStatus.signaling = signalingUrls;
+  // y-webrtc emits {synced:false} too, when a new peer has yet to sync.
+  provider.on('synced', ({ synced } = {}) => {
+    _netStatus.synced = !!synced;
+    Trace.net('synced', synced ? 'provider reports synced with peers' : 'provider reports a peer not yet synced',
+      { synced: !!synced, ops: opLayers().reduce((n, layer) => n + OpDag.getOps(provider.doc, layer).size, 0) });
+  });
+  // y-webrtc's own peer bookkeeping — the WebRTC handshakes themselves,
+  // which awareness only reflects indirectly and after the fact.
+  provider.on('peers', ({ added = [], removed = [], webrtcPeers = [], bcPeers = [] }) => {
+    _netStatus.webrtcPeers = webrtcPeers.length;
+    _netStatus.bcPeers     = bcPeers.length;
+    for (const id of added) {
+      Trace.net('peer-connected', `WebRTC peer connected: ${id}`, { peer: id, webrtcPeers, bcPeers });
+    }
+    for (const id of removed) {
+      Trace.net('peer-disconnected', `WebRTC peer left: ${id}`, { peer: id, webrtcPeers, bcPeers });
+    }
+  });
+  // NOTE: provider.on('status' is a red herring. It's just true after
+  // construction. We really want the real connect/disconnect state
+  const signalingTracker = ExternalServices.createSignalingTracker(
+    provider.signalingConns.map(conn => ({ url: conn.url, connected: conn.connected })));
+  const syncSignalingStatus = () => {
+    _netStatus.signalingConns = signalingTracker.snapshot();
+    _netStatus.connected      = signalingTracker.anyConnected();
+  };
+  syncSignalingStatus();
+  const onSignalingChange = (conn, connected) => {
+    const r = signalingTracker.update(conn.url, connected);
+    if (!r.changed) return;
+    syncSignalingStatus();
+    // Only losing every server is worth a warning; one of several going
+    // away is routine. Neither interrupts the person — a table keeps
+    // working offline and syncs when a server returns.
+    Trace.net('status',
+      `signaling ${connected ? 'connected' : 'disconnected'}: ${conn.url}`,
+      { url: conn.url, role: r.entry.role, connected, anyConnected: r.anyConnected },
+      connected || r.anyConnected ? 'info' : 'warn');
+  };
+  provider.signalingConns.forEach(conn => {
+    conn.on('connect', () => onSignalingChange(conn, true));
+    conn.on('disconnect', () => onSignalingChange(conn, false));
+    conn.on('message', (m) => {
+      if (m?.type !== 'publish' || m.topic !== tableId) return;
+      const data = m.data;
+      const mine = data?.from === provider.room?.peerId;
+      if (data?.type === 'announce') {
+        Trace.net(mine ? 'announce-sent' : 'announce-received',
+          mine ? 'announced ourselves to the room' : `peer announced itself: ${data.from}`,
+          { peerId: data.from, via: conn.url });
+      } else if (data?.type === 'signal') {
+        Trace.net(mine ? 'signal-sent' : 'signal-received',
+          `${data.signal?.type ?? 'signal'} ${mine ? 'to' : 'from'} ${mine ? data.to : data.from}`,
+          { from: data.from, to: data.to, kind: data.signal?.type, via: conn.url });
+      }
+    });
+  });
+}
+
 // ── Boot ────────────────────────────────────────────────────────────────────
 export function boot({ ydoc, awareness, provider, user, tableId, isCreator = false, svgElement, signalingUrls = [] }) {
   _ydoc      = ydoc;
@@ -465,65 +537,14 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   }
   _awareness.on('change', onPresenceChanged);
 
-  // Provider status
-  _provider.on('synced', () => {
-    _netStatus.synced = true;
-    Trace.net('synced', 'provider reports synced with peers', { ops: totalOps() });
+  // Provider status. A joiner's provider was watched from index.html,
+  // before the join dialog; this only covers callers that never did.
+  watchProvider(_provider, { tableId, signalingUrls });
+  _provider.on('synced', ({ synced } = {}) => {
+    if (!synced) return;
     UI.toast('Synced with peers');
     App.addLog('synced with peers', 'remote');
   });
-  // y-webrtc's own peer bookkeeping — the WebRTC handshakes themselves,
-  // which awareness only reflects indirectly and after the fact.
-  _provider.on('peers', ({ added = [], removed = [], webrtcPeers = [], bcPeers = [] }) => {
-    _netStatus.webrtcPeers = webrtcPeers.length;
-    _netStatus.bcPeers     = bcPeers.length;
-    for (const id of added) {
-      Trace.net('peer-connected', `WebRTC peer connected: ${id}`, { peer: id, webrtcPeers, bcPeers });
-    }
-    for (const id of removed) {
-      Trace.net('peer-disconnected', `WebRTC peer left: ${id}`, { peer: id, webrtcPeers, bcPeers });
-    }
-  });
-  // NOTE: _provider.on('status' is a red herring. It's just true after
-  // construction. We really want the real connect/disconnect state
-  const signalingTracker = ExternalServices.createSignalingTracker(
-    _provider.signalingConns.map(conn => ({ url: conn.url, connected: conn.connected })));
-  const syncSignalingStatus = () => {
-    _netStatus.signalingConns = signalingTracker.snapshot();
-    _netStatus.connected      = signalingTracker.anyConnected();
-  };
-  syncSignalingStatus();
-  const onSignalingChange = (conn, connected) => {
-    const r = signalingTracker.update(conn.url, connected);
-    if (!r.changed) return;
-    syncSignalingStatus();
-    // Only losing every server is worth a warning; one of several going
-    // away is routine. Neither interrupts the person — a table keeps
-    // working offline and syncs when a server returns.
-    Trace.net('status',
-      `signaling ${connected ? 'connected' : 'disconnected'}: ${conn.url}`,
-      { url: conn.url, role: r.entry.role, connected, anyConnected: r.anyConnected },
-      connected || r.anyConnected ? 'info' : 'warn');
-  };
-  _provider.signalingConns.forEach(conn => {
-    conn.on('connect', () => onSignalingChange(conn, true));
-    conn.on('disconnect', () => onSignalingChange(conn, false));
-    conn.on('message', (m) => {
-      if (m?.type !== 'publish' || m.topic !== tableId) return;
-      const data = m.data;
-      const mine = data?.from === _provider.room?.peerId;
-      if (data?.type === 'announce') {
-        Trace.net(mine ? 'announce-sent' : 'announce-received',
-          mine ? 'announced ourselves to the room' : `peer announced itself: ${data.from}`,
-          { peerId: data.from, via: conn.url });
-      } else if (data?.type === 'signal') {
-        Trace.net(mine ? 'signal-sent' : 'signal-received',
-          `${data.signal?.type ?? 'signal'} ${mine ? 'to' : 'from'} ${mine ? data.to : data.from}`,
-          { from: data.from, to: data.to, kind: data.signal?.type, via: conn.url });
-      }
-    });
-  });
-
 
   // Every checkpoint in the loaded log starts its prune clock now.
   OpPrune.resetFirstSeen();
@@ -726,6 +747,7 @@ function maybeCheckpoint(layer, reason) {
   OpDag.appendCheckpoint(_ydoc, layer, op, content);
   OpHead.setHead(_tableId, layer, op.id);
   OpHead.setMergeTips(_tableId, layer, []);
+  OpLayer.markProjectedAt(layerEl, [op.id]);
   Trace.op('checkpoint', `wrote checkpoint ${op.id} (${reason})`, { layer: layer.name, id: op.id, reason });
   OpLayer.pruneAfterCheckpoint(_ydoc, layer, _tableId, op.id, tablesAPI.getJoinSequenceArray(_ydoc));
   return op;
@@ -2147,16 +2169,18 @@ const App = {
       });
 
       const projected = OpLayer.projectedAt(layerElOf(layer));
+      const mergeTips = OpHead.getMergeTips(_tableId, layer);
       return {
         name: layer.name,
         head: {
           head:      head,
-          mergeTips: OpHead.getMergeTips(_tableId, layer),
+          mergeTips,
           projected,
-          // A projection marker that disagrees with the stored head means the
+          // A projection marker that disagrees with the stored tips means the
           // DOM is showing something other than what this peer thinks it is —
-          // the single most useful red light this panel can offer.
-          agrees:    projected === head,
+          // the single most useful red light this panel can offer. The marker
+          // names every tip, so it is compared against head plus merge tips.
+          agrees:    projected === OpLayer.tipsMarker([head, ...mergeTips]),
         },
         ops: {
           total:       allIds.length,

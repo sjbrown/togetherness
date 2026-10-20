@@ -191,7 +191,7 @@
 import * as Y                   from './lib/yjs.js';
 import { WebrtcProvider }       from './lib/y-webrtc.js';
 import { makeChunkedWrtc }      from './net_chunk.js';
-import { boot, App }            from './app.js';
+import { boot, watchProvider, App } from './app.js';
 import * as UI                  from './ui.js';
 import { getMyUser } from './user.js';
 import * as Defs                from './defs.js';
@@ -199,6 +199,21 @@ import { tablesAPI as tables } from './tables.js';
 import { resolveJoinIntent }    from './ui_join_dialog.js';
 import * as ExternalServices    from './external_services.js';
 import * as Trace                  from './trace.js';
+
+// Uncaught errors and rejections, including any thrown out of a Yjs observer
+// or the boot below, otherwise reach only the console.
+window.addEventListener('error', (e) => {
+  Trace.app('uncaught-error', `uncaught error: ${e.message}`, {
+    message: e.message, source: e.filename, line: e.lineno, col: e.colno,
+    stack: e.error?.stack ?? null,
+  }, 'error');
+});
+window.addEventListener('unhandledrejection', (e) => {
+  const r = e.reason;
+  Trace.app('unhandled-rejection', `unhandled rejection: ${r?.message ?? String(r)}`, {
+    message: r?.message ?? String(r), stack: r?.stack ?? null,
+  }, 'error');
+});
 
 // Inject shared SVG defs (filters etc.) into the canvas <defs> element.
 document.querySelector('#canvas defs')
@@ -272,6 +287,8 @@ Trace.net('provider', 'WebrtcProvider constructed — handshakes begin', {
   ...ExternalServices.describeIceServers(),
 });
 ExternalServices.traceIceProvider(provider);
+// Before the join dialog: a joiner connects and syncs while it is still up.
+watchProvider(provider, { tableId, signalingUrls });
 const awareness    = provider.awareness;
 awareness.setLocalState({ user, cursor: null, desired: {} });
 
