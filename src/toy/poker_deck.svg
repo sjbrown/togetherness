@@ -27,11 +27,12 @@
      id="script_poker_deck"><![CDATA[
 
 // A deck physically contains its cards: each one is a single_poker_card
-// toy inside the deck's tt_contents. Stocking places 52 cards, each of
-// which moves itself into the deck as it is initialized (see
-// single_poker_card.initialize). Drawing moves cards out onto the table;
-// 'Return to deck' / Reshuffle move them back in. Deleting a card is a
-// separate thing: it is gone, not returned.
+// toy inside the deck's tt_contents, in order: the last child is the top
+// card. Stocking places 52 cards, each of which moves itself into the deck
+// as it is initialized (see single_poker_card.initialize). Draw takes cards
+// off the top onto the table; a card's own 'Return to deck' puts it back on
+// top. Reshuffle reorders the cards in the deck and nothing else. Deleting
+// a card is a separate thing: it is gone, not returned.
 var poker_deck = {
 
   SUIT_COUNT: 4,
@@ -53,9 +54,9 @@ var poker_deck = {
     },
     'Reshuffle': {
       eventName: 'poker_deck_reshuffle',
-      applicable: (node) => poker_deck._cards_out(node).length > 0,
+      applicable: (node) => poker_deck._contents(node).length > 1,
       handler: function(evt) {
-        poker_deck._collect(this)
+        poker_deck._reshuffle(this)
       },
       radial: true,
     },
@@ -100,22 +101,14 @@ var poker_deck = {
     }
   },
 
-  // Cards dealt from this deck that are elsewhere on the table.
-  _cards_out: function(elem) {
-    const layer = elem.closest('#toys-layer')
-    const deckId = elem.getAttribute('data-id')
-    if (!layer) return []
-    return [...layer.querySelectorAll('[data-toy-type="single_poker_card"]')]
-      .filter(card => card.getAttribute('data-home-deck') === deckId && !elem.contains(card))
-  },
-
-  // Deals num random cards, fanned out to the right of the deck.
+  // Deals the top num cards, the top one first, fanned out to the right
+  // of the deck.
   _draw: function(elem, num) {
     const cards = poker_deck._contents(elem)
     const { x, y, w, h } = poker_deck._own_box(elem)
     const count = Math.min(num, cards.length)
     for (let i = 0; i < count; i++) {
-      const card = cards.splice(Math.floor(Math.random() * cards.length), 1)[0]
+      const card = cards.pop()
       card.setAttribute('data-above', '')
       card.setAttribute('data-below', '')
       const cardSvg = card.querySelector(':scope > svg')
@@ -128,9 +121,16 @@ var poker_deck = {
     }
   },
 
-  // Calls each card's own return, the way a tray calls its dice.
-  _collect: function(elem) {
-    poker_deck._cards_out(elem).forEach(card => single_poker_card.return_to_deck(card))
+  // Fisher-Yates over the cards inside the deck, then re-append them in
+  // the new order. Cards outside the deck are not touched.
+  _reshuffle: function(elem) {
+    const cards = poker_deck._contents(elem)
+    for (let i = cards.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[cards[i], cards[j]] = [cards[j], cards[i]]
+    }
+    const group = elem.querySelector('.tt_contents')
+    cards.forEach(card => group.appendChild(card))
   },
 
   _event: function(evName, args) {

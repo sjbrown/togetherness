@@ -115,7 +115,7 @@ describe('poker_deck', () => {
     expect(cards).toHaveLength(52)
     expect(new Set(cards.map(c => `${c.dataset.suit}.${c.dataset.rank}`)).size).toBe(52)
     expect(cards.every(c => c.getAttribute('data-home-deck') === 'deck1')).toBe(true)
-    expect(labels(findEl(layerEl, 'deck1'))).toEqual(['Draw (52)'])
+    expect(labels(findEl(layerEl, 'deck1'))).toEqual(['Draw (52)', 'Reshuffle'])
   })
 
   test('a detached preview does not stock itself, and a stocked deck is not restocked', async () => {
@@ -129,42 +129,59 @@ describe('poker_deck', () => {
     expect(adds).not.toHaveBeenCalled()
   })
 
-  test('Draw moves a card out of the deck onto the table', async () => {
-    const t = await table()
-    draw(t, 'deck1')
-    expect(inDeck(t.layerEl, 'deck1')).toHaveLength(51)
-    const out = t.layerEl.querySelectorAll(':scope > [data-toy-type="single_poker_card"]')
-    expect(out).toHaveLength(1)
-    expect(out[0].getAttribute('data-home-deck')).toBe('deck1')
-    expect(labels(findEl(t.layerEl, 'deck1'))).toEqual(['Draw (51)', 'Reshuffle'])
-  })
+  const order = (layerEl, deckId) => inDeck(layerEl, deckId).map(c => c.getAttribute('data-id'))
 
-  test('Draw with num deals that many distinct cards', async () => {
+  test('Draw takes the top card (the last in the deck), and the top one first', async () => {
     const t = await table()
-    draw(t, 'deck1', { num: 4 })
+    const before = order(t.layerEl, 'deck1')
+
+    draw(t, 'deck1', { num: 3 })
+
+    expect(order(t.layerEl, 'deck1')).toEqual(before.slice(0, 49))
     const out = [...t.layerEl.querySelectorAll(':scope > [data-toy-type="single_poker_card"]')]
-    expect(out).toHaveLength(4)
-    expect(new Set(out.map(c => `${c.dataset.suit}.${c.dataset.rank}`)).size).toBe(4)
+    expect(out.map(c => c.getAttribute('data-id'))).toEqual(before.slice(49).reverse())
+    expect(out.every(c => c.getAttribute('data-home-deck') === 'deck1')).toBe(true)
+    const xs = out.map(c => parseFloat(c.querySelector(':scope > svg').getAttribute('x')))
+    expect(xs[0]).toBeLessThan(xs[1])
+    expect(labels(findEl(t.layerEl, 'deck1'))).toEqual(['Draw (49)', 'Reshuffle'])
   })
 
   test('drawing from one deck leaves the other alone', async () => {
     const t = await table()
+    const other = order(t.layerEl, 'deck2')
     draw(t, 'deck1')
-    expect(inDeck(t.layerEl, 'deck2')).toHaveLength(52)
+    expect(order(t.layerEl, 'deck2')).toEqual(other)
   })
 
-  test('Reshuffle moves every card of this deck back in, from the table or a pile', async () => {
+  test('Reshuffle changes the order of the cards in the deck, keeping the same 52', async () => {
     const t = await table()
-    draw(t, 'deck1', { num: 3 })
-    draw(t, 'deck2')
-    const [a] = t.layerEl.querySelectorAll(':scope > [data-home-deck="deck1"]')
-    reparentToyDom(t.layerEl, a.getAttribute('data-id'), 'pile1')
+    const before = order(t.layerEl, 'deck1')
 
     invokeMenuAction(t.ydoc, t.layerEl, findEl(t.layerEl, 'deck1'), 'poker_deck', 'Reshuffle', undefined, AUTHOR, TABLE)
 
-    expect(inDeck(t.layerEl, 'deck1')).toHaveLength(52)
-    expect(inDeck(t.layerEl, 'deck2')).toHaveLength(51) // the other deck's card stays out
-    expect(t.layerEl.querySelectorAll(':scope > [data-home-deck="deck1"]')).toHaveLength(0)
+    const after = order(t.layerEl, 'deck1')
+    expect(after).toHaveLength(52)
+    expect([...after].sort()).toEqual([...before].sort())
+    expect(after).not.toEqual(before)
+  })
+
+  test('Reshuffle does not touch cards outside the deck, or another deck', async () => {
+    const t = await table()
+    draw(t, 'deck1', { num: 2 })
+    const out = [...t.layerEl.querySelectorAll(':scope > [data-home-deck="deck1"]')].map(c => c.getAttribute('data-id'))
+    const [first] = t.layerEl.querySelectorAll(':scope > [data-home-deck="deck1"]')
+    reparentToyDom(t.layerEl, first.getAttribute('data-id'), 'pile1')
+    const otherDeck = order(t.layerEl, 'deck2')
+    const pileBefore = [...t.layerEl.querySelectorAll('[data-id="pile1"] .tt_contents > .toy')].map(c => c.getAttribute('data-id'))
+
+    invokeMenuAction(t.ydoc, t.layerEl, findEl(t.layerEl, 'deck1'), 'poker_deck', 'Reshuffle', undefined, AUTHOR, TABLE)
+
+    expect(order(t.layerEl, 'deck1')).toHaveLength(50)
+    expect(order(t.layerEl, 'deck2')).toEqual(otherDeck)
+    const pileAfter = [...t.layerEl.querySelectorAll('[data-id="pile1"] .tt_contents > .toy')].map(c => c.getAttribute('data-id'))
+    expect(pileAfter).toEqual(pileBefore)
+    const stillOut = [...t.layerEl.querySelectorAll(':scope > [data-home-deck="deck1"]')].map(c => c.getAttribute('data-id'))
+    expect(stillOut).toEqual(out.filter(id => id !== first.getAttribute('data-id')))
   })
 
   test('deleting a drawn card discards it; the deck does not take it back', async () => {
@@ -173,7 +190,7 @@ describe('poker_deck', () => {
     const card = t.layerEl.querySelector(':scope > [data-home-deck="deck1"]')
     deleteEl(t.layerEl, card.getAttribute('data-id'))
     expect(inDeck(t.layerEl, 'deck1')).toHaveLength(51)
-    expect(labels(findEl(t.layerEl, 'deck1'))).toEqual(['Draw (51)'])
+    expect(labels(findEl(t.layerEl, 'deck1'))).toEqual(['Draw (51)', 'Reshuffle'])
   })
 })
 
@@ -208,6 +225,7 @@ describe('single_poker_card: Return to deck', () => {
     expect(inside.querySelector('.card_front + .card_back')).not.toBeNull() // face down again
     expect(inDeck(t.layerEl, 'deck2')).toHaveLength(52)
     expect(inDeck(t.layerEl, 'deck1')).toHaveLength(52)
+    expect(inDeck(t.layerEl, 'deck2').at(-1)).toBe(inside) // back on top
   })
 
   test('a card with no deck option initializes as before', async () => {

@@ -39,10 +39,12 @@ test('a deck contains its cards; draw, return, delete, pile and fan', async () =
   await expect(inDeck).toHaveCount(52, { timeout: 15000 });
   await expect(onTable).toHaveCount(0);
 
+  const stocked = await inDeck.evaluateAll(els => els.map(el => el.dataset.id));
   await invoke(page, deckId, 'poker_deck', 'Draw', { num: 3 });
   await expect(onTable).toHaveCount(3, { timeout: 5000 });
   await expect(inDeck).toHaveCount(49);
   const ids = await onTable.evaluateAll(els => els.map(el => el.dataset.id));
+  expect(ids.sort()).toEqual(stocked.slice(49).sort()); // the top three
   for (const el of await onTable.all()) {
     await expect(el).toHaveAttribute('data-home-deck', deckId);
   }
@@ -76,10 +78,13 @@ test('a deck contains its cards; draw, return, delete, pile and fan', async () =
   await expect(pile).toHaveCount(0);
   await expect(onTable).toHaveCount(2);
 
-  // Reshuffle collects whatever is still out.
+  // Reshuffle reorders what is in the deck and leaves the table alone.
+  const order = () => inDeck.evaluateAll(els => els.map(el => el.dataset.id));
+  const before = await order();
   await invoke(page, deckId, 'poker_deck', 'Reshuffle');
-  await expect(onTable).toHaveCount(0);
-  await expect(inDeck).toHaveCount(51); // 52 minus the one deleted
+  await expect.poll(order).not.toEqual(before);
+  expect([...(await order())].sort()).toEqual([...before].sort());
+  await expect(onTable).toHaveCount(2);
 
   await browser.close();
 });
