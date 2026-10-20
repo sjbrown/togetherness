@@ -96,6 +96,94 @@ var single_poker_card = {
     const rank = options.rank ?? (1 + Math.floor(Math.random() * 13))
     single_poker_card.paint_card(elem, suit, rank)
     single_poker_card.flip_card_to_back(elem)
+    elem.setAttribute('data-below', '')
+    elem.setAttribute('data-above', '')
+    // A card dealt by a deck remembers it, for 'Return to deck'.
+    if (options.deck) elem.setAttribute('data-home-deck', options.deck)
+  },
+
+  // Walk a data-above/data-below chain starting at elem, collecting the
+  // card ids found along the way (nearest neighbor first).
+  chain: function(elem, attr) {
+    const layer = elem.closest('#toys-layer')
+    const ids = []
+    let nextId = elem.getAttribute(attr)
+    while (nextId && !ids.includes(nextId)) {
+      const nextEl = layer?.querySelector(`[data-id="${nextId}"]`)
+      if (!nextEl) break
+      ids.push(nextId)
+      nextId = nextEl.getAttribute(attr)
+    }
+    return ids
+  },
+
+  // Only cards lying directly on the table stack; one already inside a
+  // pile (or any other container) has no neighbors of its own.
+  stack_applicable: function(elem) {
+    if (elem.parentNode !== elem.closest('#toys-layer')) return false
+    return single_poker_card.chain(elem, 'data-above').length > 0
+        || single_poker_card.chain(elem, 'data-below').length > 0
+  },
+
+  // Gathers the cards stacked with elem (bottom to top) into a card_pile
+  // placed where the bottom card lies.
+  stack: function(elem) {
+    const layer = elem.closest('#toys-layer')
+    // data-above walks toward the base of the pile; data-below walks
+    // toward the most recently placed (top) card.
+    const ids = [
+      ...single_poker_card.chain(elem, 'data-above').reverse(),
+      elem.getAttribute('data-id'),
+      ...single_poker_card.chain(elem, 'data-below'),
+    ]
+    const bottomEl = layer.querySelector(`[data-id="${ids[0]}"]`) ?? elem
+    const { x, y } = single_poker_card.anchor_of(bottomEl)
+    single_poker_card._event('toy:add', { toyType: 'card_pile', x, y, initArgs: ids })
+  },
+
+  // Centre point of a placed toy, in its layer's coordinate space.
+  anchor_of: function(toyEl) {
+    const svg = toyEl.querySelector(':scope > svg')
+    const x = parseFloat(svg?.getAttribute('x')) || 0
+    const y = parseFloat(svg?.getAttribute('y')) || 0
+    const w = parseFloat(svg?.getAttribute('width')) || 0
+    const h = parseFloat(svg?.getAttribute('height')) || 0
+    return { x: x + w / 2, y: y + h / 2 }
+  },
+
+  home_deck_present: function(elem) {
+    const deckId = elem.getAttribute('data-home-deck')
+    if (!deckId) return false
+    return !!elem.closest('#toys-layer')?.querySelector(`[data-id="${deckId}"]`)
+  },
+
+  // The deck counts a card as in the deck whenever it isn't on the
+  // table, so going back is just leaving the table.
+  return_to_deck: function(elem) {
+    single_poker_card._event('toy:delete', { id: elem.getAttribute('data-id') })
+  },
+
+  _event: function(evName, args) {
+    const detail = { ...args, retval: {} };
+    document.dispatchEvent(new CustomEvent(evName, { detail }));
+    if (detail.error) throw new Error(detail.error);
+    return detail.retval;
+  },
+
+  on_position_occupied: function(elem, posId, ownerId, movingId) {
+    elem.setAttribute('data-below', movingId)
+  },
+
+  on_position_vacated: function(elem, posId, ownerId, movingId) {
+    elem.setAttribute('data-below', '')
+  },
+
+  on_arrive_position: function(elem, posId, ownerId) {
+    elem.setAttribute('data-above', ownerId)
+  },
+
+  on_depart_position: function(elem, posId, ownerId) {
+    elem.setAttribute('data-above', '')
   },
 
   editableFields: function(elem) {
@@ -123,6 +211,20 @@ var single_poker_card = {
       applicable: (node) => { return true },
       handler: function(evt) {
         single_poker_card.flip_handler(evt, this)
+      },
+    },
+    'Stack': {
+      eventName: 'single_poker_card_stack',
+      applicable: (node) => single_poker_card.stack_applicable(node),
+      handler: function(evt) {
+        single_poker_card.stack(this)
+      },
+    },
+    'Return to deck': {
+      eventName: 'single_poker_card_return',
+      applicable: (node) => single_poker_card.home_deck_present(node),
+      handler: function(evt) {
+        single_poker_card.return_to_deck(this)
       },
     },
   },
@@ -219,6 +321,6 @@ var single_poker_card = {
        </g>
     </g>
   <g class="tt_positions" data-bounpos-type="pos-set" name="card">
-    <circle cx="50" cy="50" r="10" fill="#fff" fill-opacity="0.1"></circle>
+    <circle cx="50" cy="69" r="10" fill="#fff" fill-opacity="0.1"></circle>
   </g>
 </svg>

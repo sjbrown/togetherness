@@ -1422,6 +1422,18 @@ export const TOOLS = [
       { kind: 'number', key: 'rank', label: 'Rank', min: 1, max: 13, step: 1, show: ['add'] },
     ],
   },
+  {
+    name:    'poker_deck',
+    toyType: 'poker_deck',
+    file: 'poker_deck.svg',
+    label: 'Poker Deck',
+    iconUrl: 'toy/poker_deck.svg',
+    layer:   'toys',
+    defaults: { fill: '#fa2020' },
+    options: [
+      { kind: 'color-hsl', key: 'fill', label: 'Back color', show: ['add', 'edit', 'addQuick'] },
+    ],
+  },
 ];
 export const TOY_TYPES = {
   player_marker: TOOLS[0],
@@ -1433,6 +1445,17 @@ export const TOY_TYPES = {
   tray_sum: TOOLS[6],
   token_glass: TOOLS[7],
   single_poker_card: TOOLS[8],
+  poker_deck: TOOLS[9],
+  card_pile: {
+    name:    'card_pile',
+    toyType: 'card_pile',
+    file: 'card_pile.svg',
+    label: 'Card Pile',
+    iconUrl: 'toy/card_pile.svg',
+    layer:   'toys',
+    defaults: {},
+    options: [],
+  },
   stack: {
     name:    'stack',
     toyType: 'stack',

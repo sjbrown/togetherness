@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns="http://www.w3.org/2000/svg"
+   width="100"
+   height="150"
+   viewBox="0 0 100 150"
+   version="1.1"
+   id="poker_deck"
+   class="poker_deck"
+   >
+  <defs id="defs_poker_deck">
+    <filter class="tt_color_filter"
+       id="app-filter-colorize"
+       color-interpolation-filters="sRGB">
+      <feColorMatrix
+         id="recolorize-filter-matrix"
+         type="matrix"
+         values="1.0 0.0 0.0 0.0  0.0
+                 1.0 0.0 0.0 0.0  0.0
+                 1.0 0.0 0.0 0.0  0.0
+                 0.0 0.0 0.0 1.0  0.0" />
+    </filter>
+  </defs>
+  <script
+     type="text/javascript"
+     data-namespace="poker_deck"
+     id="script_poker_deck"><![CDATA[
+
+// A deck is the 52 (suit, rank) pairs minus whichever of its cards are
+// lying on the table. Drawing deals a real single_poker_card stamped with
+// this deck's id; a card going back to the deck just leaves the table (see
+// single_poker_card.return_to_deck), so the deck never has to touch a
+// card's DOM, nor a card the deck's.
+var poker_deck = {
+
+  SUIT_COUNT: 4,
+  RANK_COUNT: 13,
+  MAX_DRAW:   5,
+
+  menu: {
+    'Draw': {
+      eventName: 'poker_deck_draw',
+      applicable: (node) => poker_deck._remaining(node).length > 0,
+      handler: function(evt, { num } = {}) {
+        poker_deck._draw(this, num ?? 1)
+      },
+      uiLabel: (node) => `Draw (${poker_deck._remaining(node).length})`,
+      radial: (node) => ({
+        'How many': { param: 'num', type: 'integer', default: 1, min: 1,
+                      max: Math.max(1, Math.min(poker_deck.MAX_DRAW, poker_deck._remaining(node).length)) },
+      }),
+    },
+    'Reshuffle': {
+      eventName: 'poker_deck_reshuffle',
+      applicable: (node) => poker_deck._cards_out(node).length > 0,
+      handler: function(evt) {
+        poker_deck._collect(this)
+      },
+      radial: true,
+    },
+  },
+
+  // Every card on the table (loose, or inside a pile or other container)
+  // dealt from this deck.
+  _cards_out: function(elem) {
+    const layer = elem.closest('#toys-layer')
+    const deckId = elem.getAttribute('data-id')
+    if (!layer) return []
+    return [...layer.querySelectorAll('[data-toy-type="single_poker_card"]')]
+      .filter(card => card.getAttribute('data-home-deck') === deckId)
+  },
+
+  // [{ suit, rank }] still in the deck.
+  _remaining: function(elem) {
+    const out = new Set(poker_deck._cards_out(elem).map(c => `${c.dataset.suit}.${c.dataset.rank}`))
+    const left = []
+    for (let suit = 1; suit <= poker_deck.SUIT_COUNT; suit++) {
+      for (let rank = 1; rank <= poker_deck.RANK_COUNT; rank++) {
+        if (!out.has(`${suit}.${rank}`)) left.push({ suit, rank })
+      }
+    }
+    return left
+  },
+
+  // Deals num random cards, face down, fanned out to the right of the deck.
+  _draw: function(elem, num) {
+    const left = poker_deck._remaining(elem)
+    const deckId = elem.getAttribute('data-id')
+    const color = elem.getAttribute('data-color') || undefined
+    const svg = elem.querySelector(':scope > svg')
+    const x = parseFloat(svg?.getAttribute('x')) || 0
+    const y = parseFloat(svg?.getAttribute('y')) || 0
+    const w = parseFloat(svg?.getAttribute('width')) || 0
+    const h = parseFloat(svg?.getAttribute('height')) || 0
+
+    const count = Math.min(num, left.length)
+    for (let i = 0; i < count; i++) {
+      const pick = left.splice(Math.floor(Math.random() * left.length), 1)[0]
+      poker_deck._event('toy:add', {
+        toyType: 'single_poker_card',
+        x: x + w + 60 + 20 * i,
+        y: y + h / 2,
+        color,
+        initArgs: { color, suit: pick.suit, rank: pick.rank, deck: deckId },
+      })
+    }
+  },
+
+  _collect: function(elem) {
+    poker_deck._cards_out(elem).forEach(card => {
+      poker_deck._event('toy:delete', { id: card.getAttribute('data-id') })
+    })
+  },
+
+  _event: function(evName, args) {
+    const detail = { ...args, retval: {} };
+    document.dispatchEvent(new CustomEvent(evName, { detail }));
+    if (detail.error) throw new Error(detail.error);
+    return detail.retval;
+  },
+
+}
+
+  ]]></script>
+
+  <g class="tt_colored" filter="url(#app-filter-colorize)">
+    <rect x="4" y="6" width="90" height="140" rx="9" ry="9"
+          fill="#c0c0c0" stroke="#000" stroke-width="0.5" opacity="0.5" />
+    <rect x="2" y="3" width="94" height="144" rx="9" ry="9"
+          fill="#c0c0c0" stroke="#000" stroke-width="0.5" opacity="0.7" />
+    <rect x="0" y="0" width="100" height="150" rx="10" ry="10"
+          fill="#fff" stroke="#000" stroke-width="0.5" />
+    <rect x="5" y="5" width="90" height="140" rx="5" ry="5"
+          fill="#c0c0c0" />
+  </g>
+  <text x="50" y="86" text-anchor="middle" font-size="40" font-family="serif"
+        fill="#fff" fill-opacity="0.8">♠</text>
+</svg>
