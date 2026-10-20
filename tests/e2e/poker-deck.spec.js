@@ -19,7 +19,7 @@ const cards = (page) => page.locator('[data-toy-type="single_poker_card"]');
 const invoke = (page, id, ns, key, params) =>
   page.evaluate(([id, ns, key, params]) => window.App.invokeToyMenuAction(id, ns, key, params), [id, ns, key, params]);
 
-test('deal from a deck, return a card, pile and fan', async () => {
+test('a deck contains its cards; draw, return, delete, pile and fan', async () => {
   const browser = await launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   await openAsCreator(page, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
@@ -33,20 +33,40 @@ test('deal from a deck, return a card, pile and fan', async () => {
   await expect(deck).toHaveCount(1, { timeout: 5000 });
   const deckId = await deck.getAttribute('data-id');
 
+  // In the deck means: the card's own SVG is inside the deck's.
+  const inDeck = deck.locator('.tt_contents > [data-toy-type="single_poker_card"]');
+  const onTable = page.locator('#toys-layer > [data-toy-type="single_poker_card"]');
+  await expect(inDeck).toHaveCount(52, { timeout: 15000 });
+  await expect(onTable).toHaveCount(0);
+
   await invoke(page, deckId, 'poker_deck', 'Draw', { num: 3 });
-  await expect(cards(page)).toHaveCount(3, { timeout: 5000 });
-  const ids = await cards(page).evaluateAll(els => els.map(el => el.dataset.id));
-  for (const el of await cards(page).all()) {
+  await expect(onTable).toHaveCount(3, { timeout: 5000 });
+  await expect(inDeck).toHaveCount(49);
+  const ids = await onTable.evaluateAll(els => els.map(el => el.dataset.id));
+  for (const el of await onTable.all()) {
     await expect(el).toHaveAttribute('data-home-deck', deckId);
   }
 
+  // Return puts the card back inside the deck.
   await invoke(page, ids[0], 'single_poker_card', 'Return to deck');
-  await expect(cards(page)).toHaveCount(2);
+  await expect(inDeck).toHaveCount(50);
+  await expect(deck.locator(`.tt_contents [data-id="${ids[0]}"]`)).toHaveCount(1);
+  await expect(onTable).toHaveCount(2);
 
+  // Deleting is not returning.
+  await page.evaluate((id) => window.App.select(id), ids[1]);
+  await page.evaluate(() => window.App.deleteSelected());
+  await expect(onTable).toHaveCount(1);
+  await expect(inDeck).toHaveCount(50);
+
+  // One card left out; pile it with a card drawn for the purpose.
+  await invoke(page, deckId, 'poker_deck', 'Draw');
+  await expect(onTable).toHaveCount(2);
+  const pileIds = await onTable.evaluateAll(els => els.map(el => el.dataset.id));
   await page.evaluate((ids) => {
     const detail = { toyType: 'card_pile', x: 600, y: 300, initArgs: ids, retval: {} };
     document.dispatchEvent(new CustomEvent('toy:add', { detail }));
-  }, ids.slice(1));
+  }, pileIds);
   const pile = page.locator('[data-toy-type="card_pile"]');
   await expect(pile).toHaveCount(1, { timeout: 5000 });
   await expect(pile.locator('.tt_contents > [data-toy-type="single_poker_card"]')).toHaveCount(2);
@@ -54,7 +74,12 @@ test('deal from a deck, return a card, pile and fan', async () => {
 
   await invoke(page, await pile.getAttribute('data-id'), 'card_pile', 'Fan');
   await expect(pile).toHaveCount(0);
-  await expect(page.locator('#toys-layer > [data-toy-type="single_poker_card"]')).toHaveCount(2);
+  await expect(onTable).toHaveCount(2);
+
+  // Reshuffle collects whatever is still out.
+  await invoke(page, deckId, 'poker_deck', 'Reshuffle');
+  await expect(onTable).toHaveCount(0);
+  await expect(inDeck).toHaveCount(51); // 52 minus the one deleted
 
   await browser.close();
 });

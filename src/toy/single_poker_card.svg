@@ -98,8 +98,11 @@ var single_poker_card = {
     single_poker_card.flip_card_to_back(elem)
     elem.setAttribute('data-below', '')
     elem.setAttribute('data-above', '')
-    // A card dealt by a deck remembers it, for 'Return to deck'.
-    if (options.deck) elem.setAttribute('data-home-deck', options.deck)
+    // A card made for a deck remembers it, and moves in.
+    if (options.deck) {
+      elem.setAttribute('data-home-deck', options.deck)
+      single_poker_card.return_to_deck(elem)
+    }
   },
 
   // Walk a data-above/data-below chain starting at elem, collecting the
@@ -110,7 +113,7 @@ var single_poker_card = {
     let nextId = elem.getAttribute(attr)
     while (nextId && !ids.includes(nextId)) {
       const nextEl = layer?.querySelector(`[data-id="${nextId}"]`)
-      if (!nextEl) break
+      if (!nextEl || nextEl.parentNode !== layer) break
       ids.push(nextId)
       nextId = nextEl.getAttribute(attr)
     }
@@ -151,16 +154,31 @@ var single_poker_card = {
     return { x: x + w / 2, y: y + h / 2 }
   },
 
-  home_deck_present: function(elem) {
+  // The deck this card came from, if it is on the table.
+  home_deck: function(elem) {
     const deckId = elem.getAttribute('data-home-deck')
-    if (!deckId) return false
-    return !!elem.closest('#toys-layer')?.querySelector(`[data-id="${deckId}"]`)
+    if (!deckId) return null
+    return elem.closest('#toys-layer')?.querySelector(`[data-id="${deckId}"]`)
   },
 
-  // The deck counts a card as in the deck whenever it isn't on the
-  // table, so going back is just leaving the table.
+  // Offered when the card's own deck exists and doesn't hold it already.
+  return_applicable: function(elem) {
+    const deck = single_poker_card.home_deck(elem)
+    return !!deck && !deck.contains(elem)
+  },
+
+  // Turns the card face down and moves it into its home deck's contents.
+  // Distinct from deleting the card, which discards it.
   return_to_deck: function(elem) {
-    single_poker_card._event('toy:delete', { id: elem.getAttribute('data-id') })
+    const deck = single_poker_card.home_deck(elem)
+    if (!deck) return
+    elem.setAttribute('data-above', '')
+    elem.setAttribute('data-below', '')
+    single_poker_card.flip_card_to_back(elem)
+    single_poker_card._event('toy:reparent', {
+      id: elem.getAttribute('data-id'),
+      containerId: deck.getAttribute('data-id'),
+    })
   },
 
   _event: function(evName, args) {
@@ -222,7 +240,7 @@ var single_poker_card = {
     },
     'Return to deck': {
       eventName: 'single_poker_card_return',
-      applicable: (node) => single_poker_card.home_deck_present(node),
+      applicable: (node) => single_poker_card.return_applicable(node),
       handler: function(evt) {
         single_poker_card.return_to_deck(this)
       },

@@ -31,15 +31,23 @@ function freshLayer() {
 }
 
 // The platform side of the toy:* events the deck, card and pile fire.
-let adds, removeListeners
-function wirePlatform(layerEl) {
-  adds = []
+// toy:add places and initializes the toy at once, as the app does once its
+// template has loaded.
+let removeListeners, ydocRef
+function wirePlatform(ydoc, layerEl) {
+  ydocRef = ydoc
+  let n = 0
   const on = (name, fn) => {
     document.addEventListener(name, fn)
     return () => document.removeEventListener(name, fn)
   }
   removeListeners = [
-    on('toy:add', (e) => { adds.push(e.detail) }),
+    on('toy:add', (e) => {
+      const { toyType, x, y, color, initArgs } = e.detail
+      const svg = { single_poker_card: CARD_SVG, card_pile: PILE_SVG }[toyType]
+      const toyEl = addToyDom(ydoc, layerEl, { id: `new${n++}`, toyType, x, y, color }, svg)
+      runInitializers(toyEl, toyType, initArgs)
+    }),
     on('toy:delete', (e) => { deleteEl(layerEl, e.detail.id) }),
     on('toy:reparent', (e) => { reparentToyDom(layerEl, e.detail.id, e.detail.containerId) }),
   ]
@@ -65,28 +73,33 @@ afterEach(() => {
 async function table() {
   const ydoc = new Y.Doc()
   const layerEl = freshLayer()
-  wirePlatform(layerEl)
+  wirePlatform(ydoc, layerEl)
   const place = (id, toyType, svg, x = 100, y = 100) =>
     addToyDom(ydoc, layerEl, { id, toyType, x, y, color: '#fa2020' }, svg)
-  place('deck1', 'poker_deck', DECK_SVG)
-  place('deck2', 'poker_deck', DECK_SVG, 400, 100)
-  place('pile1', 'card_pile', PILE_SVG, 700, 100)
   place('seed', 'single_poker_card', CARD_SVG)
+  const deckEls = [place('deck1', 'poker_deck', DECK_SVG, 100), place('deck2', 'poker_deck', DECK_SVG, 400)]
+  place('pile1', 'card_pile', PILE_SVG, 700, 100)
   activateAllToyScriptsDom(ydoc, layerEl)
   await new Promise(r => setTimeout(r, 0))
   deleteEl(layerEl, 'seed')
+  // Decks are stocked on initialize, as when a user places one.
+  deckEls.forEach(el => runInitializers(el, 'poker_deck'))
   return { ydoc, layerEl, place }
 }
 
-// A card dealt the way the deck deals one: initialized with its options.
-function dealt(place, id, suit, rank, deck) {
+// A card made for no deck, lying on the table.
+function loose(place, id, suit, rank) {
   const placed = place(id, 'single_poker_card', CARD_SVG)
   const el = placed.toyEl ?? placed
-  runInitializers(el, 'single_poker_card', { suit, rank, deck })
+  runInitializers(el, 'single_poker_card', { suit, rank })
   return el
 }
 
+const inDeck = (layerEl, deckId) =>
+  [...layerEl.querySelectorAll(`[data-id="${deckId}"] > svg > .tt_contents > [data-toy-type="single_poker_card"]`)]
 const labels = (el) => getMenuActions(el).map(a => a.label)
+const draw = (t, deckId, params) =>
+  invokeMenuAction(t.ydoc, t.layerEl, findEl(t.layerEl, deckId), 'poker_deck', 'Draw', undefined, AUTHOR, TABLE, params)
 
 describe('registration', () => {
   test('the deck is a palette tool and the pile a placeable toy type', () => {
@@ -96,85 +109,110 @@ describe('registration', () => {
 })
 
 describe('poker_deck', () => {
-  test('a full deck offers Draw (52) and no Reshuffle', async () => {
+  test('a placed deck holds all 52 distinct cards inside its own contents, face down', async () => {
     const { layerEl } = await table()
+    const cards = inDeck(layerEl, 'deck1')
+    expect(cards).toHaveLength(52)
+    expect(new Set(cards.map(c => `${c.dataset.suit}.${c.dataset.rank}`)).size).toBe(52)
+    expect(cards.every(c => c.getAttribute('data-home-deck') === 'deck1')).toBe(true)
     expect(labels(findEl(layerEl, 'deck1'))).toEqual(['Draw (52)'])
   })
 
-  test('Draw deals a card stamped with its deck, never one already out', async () => {
-    const { ydoc, layerEl, place } = await table()
-    const deck = findEl(layerEl, 'deck1')
-    let i = 0
-    for (let suit = 1; suit <= 4; suit++) for (let rank = 1; rank <= 13; rank++) {
-      if (suit === 1 && rank === 1) continue // leave only the ace of hearts
-      dealt(place, `c${i++}`, suit, rank, 'deck1')
-    }
-    expect(labels(deck)).toEqual(['Draw (1)', 'Reshuffle'])
+  test('a detached preview does not stock itself, and a stocked deck is not restocked', async () => {
+    const t = await table()
+    const adds = vi.fn()
+    document.addEventListener('toy:add', adds)
+    const detached = document.createElementNS(SVG_NS, 'g')
+    runInitializers(detached, 'poker_deck')
+    runInitializers(findEl(t.layerEl, 'deck1'), 'poker_deck')
+    document.removeEventListener('toy:add', adds)
+    expect(adds).not.toHaveBeenCalled()
+  })
 
-    invokeMenuAction(ydoc, layerEl, deck, 'poker_deck', 'Draw', undefined, AUTHOR, TABLE)
-
-    expect(adds).toHaveLength(1)
-    expect(adds[0].toyType).toBe('single_poker_card')
-    expect(adds[0].initArgs).toMatchObject({ suit: 1, rank: 1, deck: 'deck1' })
+  test('Draw moves a card out of the deck onto the table', async () => {
+    const t = await table()
+    draw(t, 'deck1')
+    expect(inDeck(t.layerEl, 'deck1')).toHaveLength(51)
+    const out = t.layerEl.querySelectorAll(':scope > [data-toy-type="single_poker_card"]')
+    expect(out).toHaveLength(1)
+    expect(out[0].getAttribute('data-home-deck')).toBe('deck1')
+    expect(labels(findEl(t.layerEl, 'deck1'))).toEqual(['Draw (51)', 'Reshuffle'])
   })
 
   test('Draw with num deals that many distinct cards', async () => {
-    const { ydoc, layerEl } = await table()
-    invokeMenuAction(ydoc, layerEl, findEl(layerEl, 'deck1'), 'poker_deck', 'Draw', undefined, AUTHOR, TABLE, { num: 4 })
-    expect(adds).toHaveLength(4)
-    expect(new Set(adds.map(a => `${a.initArgs.suit}.${a.initArgs.rank}`)).size).toBe(4)
+    const t = await table()
+    draw(t, 'deck1', { num: 4 })
+    const out = [...t.layerEl.querySelectorAll(':scope > [data-toy-type="single_poker_card"]')]
+    expect(out).toHaveLength(4)
+    expect(new Set(out.map(c => `${c.dataset.suit}.${c.dataset.rank}`)).size).toBe(4)
   })
 
-  test('cards from another deck do not count against this one', async () => {
-    const { layerEl, place } = await table()
-    dealt(place, 'c1', 1, 1, 'deck2')
-    expect(labels(findEl(layerEl, 'deck1'))).toEqual(['Draw (52)'])
-    expect(labels(findEl(layerEl, 'deck2'))).toEqual(['Draw (51)', 'Reshuffle'])
+  test('drawing from one deck leaves the other alone', async () => {
+    const t = await table()
+    draw(t, 'deck1')
+    expect(inDeck(t.layerEl, 'deck2')).toHaveLength(52)
   })
 
-  test("Reshuffle takes this deck's cards off the table, wherever they are", async () => {
-    const { ydoc, layerEl, place } = await table()
-    dealt(place, 'c1', 1, 1, 'deck1')
-    dealt(place, 'c2', 2, 2, 'deck1')
-    dealt(place, 'other', 3, 3, 'deck2')
-    reparentToyDom(layerEl, 'c2', 'pile1')
+  test('Reshuffle moves every card of this deck back in, from the table or a pile', async () => {
+    const t = await table()
+    draw(t, 'deck1', { num: 3 })
+    draw(t, 'deck2')
+    const [a] = t.layerEl.querySelectorAll(':scope > [data-home-deck="deck1"]')
+    reparentToyDom(t.layerEl, a.getAttribute('data-id'), 'pile1')
 
-    invokeMenuAction(ydoc, layerEl, findEl(layerEl, 'deck1'), 'poker_deck', 'Reshuffle', undefined, AUTHOR, TABLE)
+    invokeMenuAction(t.ydoc, t.layerEl, findEl(t.layerEl, 'deck1'), 'poker_deck', 'Reshuffle', undefined, AUTHOR, TABLE)
 
-    expect(layerEl.querySelector('[data-id="c1"]')).toBeNull()
-    expect(layerEl.querySelector('[data-id="c2"]')).toBeNull()
-    expect(findEl(layerEl, 'other')).not.toBeNull()
+    expect(inDeck(t.layerEl, 'deck1')).toHaveLength(52)
+    expect(inDeck(t.layerEl, 'deck2')).toHaveLength(51) // the other deck's card stays out
+    expect(t.layerEl.querySelectorAll(':scope > [data-home-deck="deck1"]')).toHaveLength(0)
+  })
+
+  test('deleting a drawn card discards it; the deck does not take it back', async () => {
+    const t = await table()
+    draw(t, 'deck1')
+    const card = t.layerEl.querySelector(':scope > [data-home-deck="deck1"]')
+    deleteEl(t.layerEl, card.getAttribute('data-id'))
+    expect(inDeck(t.layerEl, 'deck1')).toHaveLength(51)
+    expect(labels(findEl(t.layerEl, 'deck1'))).toEqual(['Draw (51)'])
   })
 })
 
 describe('single_poker_card: Return to deck', () => {
-  test("is offered only while the card's own deck is on the table", async () => {
-    const { layerEl, place } = await table()
-    const mine = dealt(place, 'c1', 1, 1, 'deck2')
-    const loose = dealt(place, 'c2', 2, 2, undefined)
+  test("is offered only to a drawn card whose own deck is on the table", async () => {
+    const t = await table()
+    draw(t, 'deck1')
+    const drawn = t.layerEl.querySelector(':scope > [data-home-deck="deck1"]')
+    const plain = loose(t.place, 'plain', 2, 2)
 
-    expect(labels(mine)).toContain('Return to deck')
-    expect(labels(loose)).not.toContain('Return to deck')
+    expect(labels(drawn)).toContain('Return to deck')
+    expect(labels(plain)).not.toContain('Return to deck')
 
-    deleteEl(layerEl, 'deck2')
-    expect(labels(mine)).not.toContain('Return to deck')
+    deleteEl(t.layerEl, 'deck1')
+    expect(labels(drawn)).not.toContain('Return to deck')
   })
 
-  test('puts the card back in the deck it came from, not another', async () => {
-    const { ydoc, layerEl, place } = await table()
-    const card = dealt(place, 'c1', 1, 1, 'deck2')
-    expect(labels(findEl(layerEl, 'deck2'))).toEqual(['Draw (51)', 'Reshuffle'])
+  test('moves the card, face down, into the deck it came from and not another', async () => {
+    const t = await table()
+    draw(t, 'deck2')
+    const card = t.layerEl.querySelector(':scope > [data-home-deck="deck2"]')
+    const id = card.getAttribute('data-id')
+    const key = `${card.dataset.suit}.${card.dataset.rank}`
+    globalThis.single_poker_card.flip_card(card)
+    expect(card.querySelector('.card_front + .card_back')).toBeNull() // face up
 
-    invokeMenuAction(ydoc, layerEl, card, 'single_poker_card', 'Return to deck', undefined, AUTHOR, TABLE)
+    invokeMenuAction(t.ydoc, t.layerEl, card, 'single_poker_card', 'Return to deck', undefined, AUTHOR, TABLE)
 
-    expect(findEl(layerEl, 'c1')).toBeNull()
-    expect(labels(findEl(layerEl, 'deck2'))).toEqual(['Draw (52)'])
-    expect(labels(findEl(layerEl, 'deck1'))).toEqual(['Draw (52)'])
+    const inside = inDeck(t.layerEl, 'deck2').find(c => c.getAttribute('data-id') === id)
+    expect(inside).toBeTruthy()
+    expect(`${inside.dataset.suit}.${inside.dataset.rank}`).toBe(key)
+    expect(inside.querySelector('.card_front + .card_back')).not.toBeNull() // face down again
+    expect(inDeck(t.layerEl, 'deck2')).toHaveLength(52)
+    expect(inDeck(t.layerEl, 'deck1')).toHaveLength(52)
   })
 
   test('a card with no deck option initializes as before', async () => {
-    const { place } = await table()
-    const el = dealt(place, 'c1', 3, 11, undefined)
+    const t = await table()
+    const el = loose(t.place, 'c1', 3, 11)
     expect(el.dataset.suit).toBe('3')
     expect(el.hasAttribute('data-home-deck')).toBe(false)
   })
@@ -184,7 +222,7 @@ describe('stacking cards into a card_pile and fanning it', () => {
   // Cards a, b, c stacked bottom to top, the way snapping links them.
   async function stackedCards() {
     const t = await table()
-    const [a, b, c] = ['a', 'b', 'c'].map((id, i) => dealt(t.place, id, 1, i + 1, 'deck1'))
+    const [a, b, c] = ['a', 'b', 'c'].map((id, i) => loose(t.place, id, 1, i + 1))
     a.setAttribute('data-below', 'b'); b.setAttribute('data-above', 'a')
     b.setAttribute('data-below', 'c'); c.setAttribute('data-above', 'b')
     return { ...t, a, b, c }
@@ -193,13 +231,17 @@ describe('stacking cards into a card_pile and fanning it', () => {
   test('Stack is offered to any card in a chain, and not to a lone card', async () => {
     const { b, place } = await stackedCards()
     expect(labels(b)).toContain('Stack')
-    expect(labels(dealt(place, 'solo', 2, 2, 'deck1'))).not.toContain('Stack')
+    expect(labels(loose(place, 'solo', 2, 2))).not.toContain('Stack')
   })
 
   test('Stack asks for one pile, at the bottom card, holding the whole chain in order', async () => {
     const { ydoc, layerEl, b } = await stackedCards()
-
-    invokeMenuAction(ydoc, layerEl, b, 'single_poker_card', 'Stack', undefined, AUTHOR, TABLE)
+    const adds = []
+    const record = (e) => adds.push(e.detail)
+    document.addEventListener('toy:add', record)
+    try {
+      invokeMenuAction(ydoc, layerEl, b, 'single_poker_card', 'Stack', undefined, AUTHOR, TABLE)
+    } finally { document.removeEventListener('toy:add', record) }
 
     expect(adds).toHaveLength(1)
     expect(adds[0].toyType).toBe('card_pile')
