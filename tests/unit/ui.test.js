@@ -5,7 +5,7 @@
 
 // @vitest-environment jsdom
 import { describe, test, expect, vi, beforeEach } from 'vitest'
-import { layerObjectListHTML, refreshLayerList, UIData, init, toast, showBranchDialog, branchDialogJoin, branchDialogKeepWorking, peersBody, openSheet, closePanel, restorePanelState, restoreLayerState, saveLayerState, histBody, onToolChanged, editBody } from '../../src/ui.js'
+import { layerObjectListHTML, refreshLayerList, UIData, init, toast, showBranchDialog, branchDialogJoin, branchDialogKeepWorking, peersBody, openSheet, closePanel, restorePanelState, restoreLayerState, saveLayerState, histBody, agoLabel, onToolChanged, editBody } from '../../src/ui.js'
 import { SHAPE_TYPES } from '../../src/drawing.js'
 
 const mockObjects = [
@@ -747,8 +747,7 @@ describe('panel open/tab persistence (tt_panel_state)', () => {
     user: { id: 'me', name: 'Alice', color: '#4287f5', gradient: null },
     isOffline: () => false,
     getTableId: () => 'tt-T-v1-test',
-    getHistory: () => [],
-    getUndoHistory: () => [],
+    getOpHistory: () => [],
     canUndo: () => false,
     canRedo: () => false,
   }
@@ -849,88 +848,113 @@ describe('panel open/tab persistence (tt_panel_state)', () => {
   })
 })
 
-describe('histBody — undo/redo panel layout', () => {
-  const history     = [{ label: 'moved die1' }, { label: 'placed die2' }]
-  const undoHistory = [{ label: 'undid: move' }]
+describe('histBody — the op-log history list', () => {
+  const NOW = 10_000_000
+  const me  = { id: 'me',  name: 'Alice', color: '#7b5cc4', gradient: null }
+  const bob = { id: 'bob', name: 'Bob',   color: '#4f86b5', gradient: null }
 
-  function withApp(overrides) {
-    init({ getPeers: () => [], isOffline: () => false, getTableId: () => 'tt-T-v1-test',
-           canUndo: () => false, canRedo: () => false, ...overrides })
+  const row = (over = {}) => ({
+    opId: 'op1', layer: 'toys', gesture: 'move', subject: 'die tt-d1', ts: NOW - 120_000,
+    author: bob, undoneBy: null, active: true, blocked: false, canUndo: true, canRedo: false,
+    ...over,
+  })
+  const render = (rows, selectedId = null) => {
+    const div = document.createElement('div')
+    div.innerHTML = histBody(rows, selectedId, NOW)
+    return div
   }
 
-  test('renders both lists, in order: undo, history, redo, undo history', () => {
-    withApp({ canUndo: () => true, canRedo: () => true })
-    const html = histBody(history, undoHistory)
-    const undoBtnAt   = html.indexOf('Undo last action')
-    const historyAt   = html.indexOf('moved die1')
-    const redoBtnAt   = html.indexOf('Redo last undone action')
-    const undoHistAt  = html.indexOf('undid: move')
-    expect(undoBtnAt).toBeGreaterThan(-1)
-    expect(undoBtnAt).toBeLessThan(historyAt)
-    expect(historyAt).toBeLessThan(redoBtnAt)
-    expect(redoBtnAt).toBeLessThan(undoHistAt)
+  test('a row reads "<gesture> <subject>" exactly as given, with the age beneath', () => {
+    const div = render([row()])
+    expect(div.querySelector('.hist-op-title').textContent).toBe('move die tt-d1')
+    expect(div.querySelector('.hist-op-sub').textContent.trim()).toBe('2m ago')
   })
 
-  test('the gesture history list shows real actions, not undo entries — those are a separate list', () => {
-    withApp({ canUndo: () => true })
-    const div = document.createElement('div')
-    div.innerHTML = histBody(history, undoHistory)
-    const historyField = div.querySelectorAll('.field')[1]
-    expect(historyField.textContent).toContain('moved die1')
-    expect(historyField.textContent).not.toContain('undid:')
+  test('the author is an avatar with their name as a tooltip, not as text', () => {
+    const div = render([row()])
+    const avatar = div.querySelector('.hist-op-head > .avatar')
+    expect(avatar.querySelector('title').textContent).toBe('Bob')
+    expect(div.querySelector('.hist-op-main').textContent).not.toContain('Bob')
   })
 
-  test('undo button is wired to App.undo() when something is undoable', () => {
-    withApp({ canUndo: () => true })
-    const div = document.createElement('div')
-    div.innerHTML = histBody(history, [])
-    const btn = [...div.querySelectorAll('.action-btn')].find(b => b.textContent.includes('Undo last action'))
-    expect(btn.getAttribute('onclick')).toBe('App.undo()')
-    expect(btn.disabled).toBe(false)
+  test('the empty state is a single label', () => {
+    expect(render([]).textContent).toContain('No history')
   })
 
-  test('undo button is disabled, not wired, when nothing is undoable', () => {
-    withApp({ canUndo: () => false })
-    const div = document.createElement('div')
-    div.innerHTML = histBody([], [])
-    const btn = [...div.querySelectorAll('.action-btn')].find(b => b.textContent.includes('Undo last action'))
-    expect(btn.hasAttribute('onclick')).toBe(false)
-    expect(btn.disabled).toBe(true)
+  test('an undone row is struck through and shows who undid it as an avatar', () => {
+    const div = render([row({ active: false, undoneBy: me, canUndo: false })])
+    expect(div.querySelector('.hist-op').classList.contains('undone')).toBe(true)
+    const small = div.querySelector('.hist-op-sub .avatar')
+    expect(small.querySelector('title').textContent).toBe('Alice')
+    expect(div.querySelector('.hist-op-sub').textContent).toContain('undone by')
   })
 
-  test('redo button is wired to App.redo() when something is redoable — it never was before this', () => {
-    withApp({ canRedo: () => true })
-    const div = document.createElement('div')
-    div.innerHTML = histBody([], undoHistory)
-    const btn = [...div.querySelectorAll('.action-btn')].find(b => b.textContent.includes('Redo last undone action'))
-    expect(btn.getAttribute('onclick')).toBe('App.redo()')
-    expect(btn.disabled).toBe(false)
+  test('only the selected row has a button, and it is Undo, or Redo for an undone row', () => {
+    const rows = [row({ opId: 'a' }), row({ opId: 'b', active: false, undoneBy: me, canUndo: false, canRedo: true })]
+    expect(render(rows).querySelectorAll('.hist-op-go').length).toBe(0)
+
+    const a = render(rows, 'a').querySelectorAll('.hist-op-go')
+    expect(a.length).toBe(1)
+    expect(a[0].textContent).toBe('Undo')
+    expect(a[0].dataset).toMatchObject({ histAct: 'undo', op: 'a', layer: 'toys' })
+
+    const b = render(rows, 'b').querySelector('.hist-op-go')
+    expect(b.textContent).toBe('Redo')
+    expect(b.dataset.histAct).toBe('redo')
   })
 
-  test('redo button is disabled when nothing is redoable', () => {
-    withApp({ canRedo: () => false })
-    const div = document.createElement('div')
-    div.innerHTML = histBody([], [])
-    const btn = [...div.querySelectorAll('.action-btn')].find(b => b.textContent.includes('Redo last undone action'))
-    expect(btn.hasAttribute('onclick')).toBe(false)
-    expect(btn.disabled).toBe(true)
+  test('the button sits on the heading line, beside the head', () => {
+    const top = render([row()], 'op1').querySelector('.hist-op-top')
+    expect([...top.children].map(c => c.className)).toEqual(['hist-op-head', 'hist-op-go'])
   })
 
-  test('empty states are labelled distinctly for each list', () => {
-    withApp({})
-    const div = document.createElement('div')
-    div.innerHTML = histBody([], [])
-    expect(div.textContent).toContain('No history')
-    expect(div.textContent).toContain('Nothing undone')
+  test('a blocked row has no button, a warning mark, and the note once selected', () => {
+    const rows = [row({ blocked: true, canUndo: false })]
+    const closed = render(rows)
+    expect(closed.querySelector('.hist-op-warn')).not.toBeNull()
+    expect(closed.querySelector('.hist-op-note')).toBeNull()
+
+    const open = render(rows, 'op1')
+    expect(open.querySelector('.hist-op-go')).toBeNull()
+    expect(open.querySelector('.hist-op-note').textContent).toBe('Undo recent work on this element first.')
   })
 
-  test('both lists get the scrollable, 4-item-limited list class — same pattern as the Layers panel', () => {
-    withApp({})
-    const div = document.createElement('div')
-    div.innerHTML = histBody(history, undoHistory)
-    const lists = div.querySelectorAll('.hist-list')
-    expect(lists.length).toBe(2)
-    for (const list of lists) expect(list.classList.contains('shape-list')).toBe(true)
+  test('a row nobody can act on (undone by someone else) has no button and no note', () => {
+    const open = render([row({ active: false, undoneBy: bob, canUndo: false, canRedo: false })], 'op1')
+    expect(open.querySelector('.hist-op-go')).toBeNull()
+    expect(open.querySelector('.hist-op-note')).toBeNull()
+  })
+
+  test('the selected row has past and future slots, past first', () => {
+    const slots = render([row()], 'op1').querySelectorAll('.hist-previews [data-side]')
+    expect([...slots].map(s => s.dataset.side)).toEqual(['before', 'after'])
+  })
+
+  test('gestures and subjects from peers are escaped', () => {
+    const div = render([row({ gesture: '<img src=x onerror=alert(1)>', subject: '"><script>' })])
+    expect(div.querySelector('img')).toBeNull()
+    expect(div.querySelector('script')).toBeNull()
+    expect(div.querySelector('.hist-op-title').textContent).toContain('<img src=x')
+  })
+
+  test('author names are escaped in the tooltip', () => {
+    const evil = { ...bob, name: '<b>x</b>' }
+    const div = render([row({ author: evil })])
+    expect(div.querySelector('.hist-op-head b')).toBeNull()
+    expect(div.querySelector('title').textContent).toBe('<b>x</b>')
+  })
+})
+
+describe('agoLabel', () => {
+  const NOW = 10_000_000
+  test.each([
+    [5_000, 'just now'],
+    [60_000, '1m ago'],
+    [59 * 60_000, '59m ago'],
+    [3 * 3_600_000, '3h ago'],
+    [2 * 86_400_000, '2d ago'],
+  ])('%i ms ago reads %s', (ms, label) => {
+    expect(agoLabel(NOW - ms, NOW)).toBe(label)
   })
 })
 

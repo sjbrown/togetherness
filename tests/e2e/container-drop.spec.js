@@ -129,9 +129,7 @@ test.describe('two-peer container drop sync', () => {
     // Confirms the drop actually happened (die is nested, not top-level).
     await expect(page.locator(`#toys-layer > [data-id="${dieId}"]`)).toHaveCount(0);
 
-    await page.evaluate(() => window.UI.openSheet('history'));
-    await page.waitForTimeout(200);
-    await page.locator('.action-btn', { hasText: 'Undo last action' }).click();
+    await page.evaluate(() => window.App.undo());
     await page.waitForTimeout(200);
 
     // Reparented back to the top level...

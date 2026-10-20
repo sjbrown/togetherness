@@ -729,7 +729,8 @@ Consequences worth stating rather than discovering:
   ones: every peer's history reads "*actor* undid *owner*'s *gesture*", and
   the owner's own peer also shows a toast. A trust-based table should let
   you undo your friend's mistake; it should not let you do it invisibly.
-  `App.undoFor(ownerId)` is the entry point; no UI exposes it yet.
+  `App.undoFor(ownerId)` is the entry point for "undo this owner's newest",
+  and the History panel (§7.2) undoes a chosen op, anyone's.
 * **Concurrent undos of the same action conflict.** Both write the same
   attribute (§5.1, B1), which is the ordinary rule, not a special case.
 * **Undo reaches back as far as the prune line** (§6.3), about 10 minutes.
@@ -753,6 +754,34 @@ of the undo, so redo walks forward in the reverse of the order the undos
 happened in. A layer whose target can no longer apply (its node is gone) is
 skipped for the next-latest. The choice looks at nothing but the author's own
 timestamps, so it needs no record of "the last layer touched".
+
+### 7.2 The History panel
+
+The panel is a projection of the log, not a record kept beside it
+(`op_history.historyRows`). Its rows are the real gestures in the ancestry
+of this peer's local tips: not checkpoints, `initialize`,
+`contents_change`, or undo/redo operations. A row is live or undone by
+`isActive`, and an undone row shows the author of the active undo that
+reverted it. Nothing about a row is stored, so every peer draws the same
+list from the same log.
+
+Selecting a row and pressing its button undoes or redoes *that* operation
+(`OpLayer.undoOp` / `redoOp`), authored by whoever pressed it:
+
+* **Undo** is offered on any live row, whoever authored it.
+* **Redo** is offered only on a row undone by the viewer's own undo, and
+  reverts that undo. The "a newer gesture invalidates redo" rule of §7 is
+  for the newest-first Redo (`redoTarget`) and does not apply here.
+* **A row is blocked** while a later live operation contends with it
+  (`conflicts`, or the later operation edits something this one created).
+  Undoing it would write its old values over that work or remove what that
+  work edits, so no button is offered until the later work is undone.
+
+A row names its operation as the stored `gesture` and the subject's
+`data-toy-type` and `data-id` read from the layer's DOM (the id alone when
+the element or type is not there). Its Before and After are the subject on
+a copy of the layer with the operation, or its inverse, applied
+(`op_preview`).
 
 ---
 
