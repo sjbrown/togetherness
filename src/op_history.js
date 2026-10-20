@@ -41,9 +41,10 @@ const newer = (a, b) => (a.ts - b.ts) || (a.id > b.id ? 1 : a.id < b.id ? -1 : 0
  *   canUndo     active and not blocked
  *   canRedo     undone by actorId's own undo, and not blocked
  *
- * Blockers are only computed for the first `limit` rows.
+ * Blockers are only computed for the first `limit` rows; `only` narrows the
+ * result to that one op id.
  */
-export function historyRows(ops, tipIds, { joinSequence = [], actorId = null, limit = Infinity } = {}) {
+export function historyRows(ops, tipIds, { joinSequence = [], actorId = null, limit = Infinity, only = null } = {}) {
   const view = ancestryView(ops, tipIds)
   // Ordered with the hidden ops in place: they sit between real ones in the
   // chain, and dropping them first would leave the real ops unordered.
@@ -77,6 +78,7 @@ export function historyRows(ops, tipIds, { joinSequence = [], actorId = null, li
 
   const rows = []
   for (let i = order.length - 1; i >= 0 && rows.length < limit; i--) {
+    if (only != null && order[i] !== only) continue
     const op = view.get(order[i])
     const active = live.has(op.id)
     const blockedBy = order.slice(i + 1).filter(id => live.has(id) && contends(op.id, id))
