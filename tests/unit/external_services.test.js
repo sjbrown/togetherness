@@ -5,7 +5,7 @@
 // behavior this config feeds is exercised end-to-end instead; see
 // tests/e2e/join-dialog.spec.js and tests/e2e/sync.spec.js.
 
-import { beforeEach, describe, test, expect } from 'vitest'
+import { beforeEach, describe, test, expect, vi } from 'vitest'
 import * as ExternalServices from '../../src/external_services.js'
 import * as Trace from '../../src/trace.js'
 
@@ -844,5 +844,53 @@ describe('traceIceProvider', () => {
     addPeer(provider, 'peer-a')
     ExternalServices.getIcePeers()[0].state = 'tampered'
     expect(ExternalServices.getIcePeers()[0].state).toBe('new')
+  })
+})
+
+describe('loadWorkerTURN', () => {
+  const relay = { urls: ['turn:turn.cloudflare.com:3478?transport=udp'], username: 'u', credential: 'c' }
+  const stun  = { urls: ['stun:stun.cloudflare.com:3478'] }
+  const reply = (body, ok = true) => vi.fn().mockResolvedValue({ ok, json: async () => body })
+
+  beforeEach(() => ExternalServices._resetWorkerTURN())
+
+  test('uses the Worker relays in place of the public relay, keeping STUN', async () => {
+    const fetchImpl = reply({ iceServers: [stun, relay] })
+    await ExternalServices.loadWorkerTURN({ fetchImpl })
+    expect(fetchImpl.mock.calls[0][0]).toBe(ExternalServices.TURN_WORKER_URL)
+    expect(ExternalServices.resolveIceServers()).toEqual([
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' },
+      relay,
+    ])
+    expect(ExternalServices.describeIceServers()).toMatchObject({
+      turnFromWorker: true, turnIsPublicTestRelay: false,
+    })
+  })
+
+  test('a STUN-only (capped) answer leaves no relay', async () => {
+    await ExternalServices.loadWorkerTURN({ fetchImpl: reply({ iceServers: [stun], relay: false }) })
+    expect(ExternalServices.resolveIceServers().some(e => 'credential' in e)).toBe(false)
+  })
+
+  test.each([
+    ['a network error', vi.fn().mockRejectedValue(new Error('offline'))],
+    ['an HTTP error',   reply({}, false)],
+    ['a malformed body', reply({ nope: 1 })],
+  ])('%s falls back to the public relay', async (_name, fetchImpl) => {
+    await ExternalServices.loadWorkerTURN({ fetchImpl })
+    expect(ExternalServices.resolveIceServers()).toContainEqual({
+      urls:       ExternalServices.defaultTURN(),
+      username:   ExternalServices.defaultTURNUsername(),
+      credential: ExternalServices.defaultTURNCredential(),
+    })
+  })
+
+  test('is skipped when the person configured their own relay', async () => {
+    ExternalServices.setTURN('turn:turn.example.com')
+    const fetchImpl = reply({ iceServers: [relay] })
+    await ExternalServices.loadWorkerTURN({ fetchImpl })
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(ExternalServices.describeIceServers().turnFromWorker).toBe(false)
   })
 })

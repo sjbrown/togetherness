@@ -126,15 +126,51 @@ export function setSTUNFallback(url) {
 /**
  * Primary + fallback TURN URLs, plus the single credential pair both are
  * offered under — a relay, unlike a STUN server, authenticates. Unset
- * fields fall back to metered.ca's Open Relay, a free public test
- * service: enough to prove a relayed connection works, not something to
- * depend on.
+ * fields fall back to the credentials service below, and, when that is
+ * unreachable, to metered.ca's Open Relay, a free public test service:
+ * enough to prove a relayed connection works, not something to depend on.
  */
 
 export const TURN_KEY            = 'tt_external_service_turn';
 export const TURN_FALLBACK_KEY   = 'tt_external_service_turn_fallback';
 export const TURN_USERNAME_KEY   = 'tt_external_service_turn_username';
 export const TURN_CREDENTIAL_KEY = 'tt_external_service_turn_credential';
+
+export const TURN_WORKER_URL = 'https://tt-turn-credentials.sjb.workers.dev/ice';
+
+let _workerTurn = null;
+
+export function hasTURNOverride() {
+  return [getTURN(), getTURNFallback(), getTURNUsername(), getTURNCredential()]
+    .some(v => v !== null);
+}
+
+/**
+ * Asks the credentials Worker for short-lived relay entries and remembers
+ * them for resolveIceServers(). Skipped when the person has configured
+ * their own relay. Any failure leaves nothing remembered, so the built-in
+ * public relay applies. A capped Worker answers with STUN only, which
+ * remembers an empty relay list.
+ */
+export async function loadWorkerTURN({ fetchImpl = fetch, timeoutMs = 2000 } = {}) {
+  _workerTurn = null;
+  if (hasTURNOverride()) return;
+  try {
+    const res = await fetchImpl(TURN_WORKER_URL, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!res.ok) return;
+    const { iceServers } = await res.json();
+    if (!Array.isArray(iceServers)) return;
+    _workerTurn = iceServers.filter(e =>
+      [].concat(e?.urls ?? []).some(u => /^turns?:/i.test(u)));
+  } catch {
+    // offline or slow: fall back to the built-in relay
+  }
+}
+
+/** Test-only: forget what loadWorkerTURN remembered. */
+export function _resetWorkerTURN() {
+  _workerTurn = null;
+}
 
 export function isValidTURN(value) {
   if (typeof value !== 'string') return false;
@@ -251,12 +287,14 @@ const YJS_DEFAULT_STUN = ['stun:stun.l.google.com:19302', 'stun:global.stun.twil
 
 /**
  * RTCIceServer entries for the WebrtcProvider, STUN first then TURN,
- * each relay carrying the credential pair. Never empty: unset TURN
- * fields resolve to the public test relay.
+ * each relay carrying the credential pair. Never empty: STUN always
+ * resolves, and unset TURN fields use the Worker's relays if
+ * loadWorkerTURN got any, else the public test relay.
  */
 export function resolveIceServers() {
   const stored = [getSTUN(), getSTUNFallback()].filter(isValidSTUN);
   const stun   = (stored.length ? stored : YJS_DEFAULT_STUN).map(urls => ({ urls }));
+  if (_workerTurn && !hasTURNOverride()) return [...stun, ..._workerTurn];
   const turn   = [...new Set([resolveTURN(), resolveTURNFallback()].filter(isValidTURN))]
     .map(urls => ({
       urls,
@@ -277,10 +315,10 @@ export function describeIceServers() {
   return {
     iceServers,
     stunOverridden: getSTUN() !== null || getSTUNFallback() !== null,
-    turnOverridden: [getTURN(), getTURNFallback(), getTURNUsername(), getTURNCredential()]
-      .some(v => v !== null),
-    turnIsPublicTestRelay: resolveTURN() === defaultTURN()
-      || resolveTURNFallback() === defaultTURNFallback(),
+    turnOverridden: hasTURNOverride(),
+    turnFromWorker: _workerTurn !== null && !hasTURNOverride(),
+    turnIsPublicTestRelay: _workerTurn === null
+      && (resolveTURN() === defaultTURN() || resolveTURNFallback() === defaultTURNFallback()),
   };
 }
 
