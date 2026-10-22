@@ -148,9 +148,9 @@ export function hasTURNOverride() {
 /**
  * Asks the credentials Worker for short-lived relay entries and remembers
  * them for resolveIceServers(). Skipped when the person has configured
- * their own relay. Any failure leaves nothing remembered, so the built-in
- * public relay applies. A capped Worker answers with STUN only, which
- * remembers an empty relay list.
+ * their own relay. Any failure, or an answer with no relays (a capped
+ * Worker sends STUN only), leaves nothing remembered, so the built-in
+ * public relay applies.
  */
 export async function loadWorkerTURN({ fetchImpl = fetch, timeoutMs = 2000 } = {}) {
   _workerTurn = null;
@@ -160,8 +160,9 @@ export async function loadWorkerTURN({ fetchImpl = fetch, timeoutMs = 2000 } = {
     if (!res.ok) return;
     const { iceServers } = await res.json();
     if (!Array.isArray(iceServers)) return;
-    _workerTurn = iceServers.filter(e =>
+    const relays = iceServers.filter(e =>
       [].concat(e?.urls ?? []).some(u => /^turns?:/i.test(u)));
+    if (relays.length) _workerTurn = relays;
   } catch {
     // offline or slow: fall back to the built-in relay
   }

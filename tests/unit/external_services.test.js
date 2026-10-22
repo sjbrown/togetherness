@@ -868,9 +868,14 @@ describe('loadWorkerTURN', () => {
     })
   })
 
-  test('a STUN-only (capped) answer leaves no relay', async () => {
+  test('a STUN-only (capped) answer falls back to the public relay', async () => {
     await ExternalServices.loadWorkerTURN({ fetchImpl: reply({ iceServers: [stun], relay: false }) })
-    expect(ExternalServices.resolveIceServers().some(e => 'credential' in e)).toBe(false)
+    expect(ExternalServices.resolveIceServers()).toContainEqual({
+      urls:       ExternalServices.defaultTURN(),
+      username:   ExternalServices.defaultTURNUsername(),
+      credential: ExternalServices.defaultTURNCredential(),
+    })
+    expect(ExternalServices.describeIceServers().turnFromWorker).toBe(false)
   })
 
   test.each([
