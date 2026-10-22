@@ -1,0 +1,44 @@
+/**
+ * tests/e2e/network-status.spec.js
+ *
+ * The Peers tab's four-light status bar in the real app: that it renders
+ * with the connected signalling server reflected, that each light links to
+ * its section of the troubleshooting page, and that the page has those
+ * sections to land on. Status derivation itself is covered by
+ * tests/unit/network_status.test.js.
+ */
+
+import { test, expect } from '@playwright/test';
+import { openAsCreator } from './helpers.js';
+
+const APP_URL       = process.env.APP_URL || 'http://localhost:3000';
+const SIGNALING_URL = process.env.SIGNALING_URL || 'ws://localhost:4444';
+
+test.describe('network status bar', () => {
+  test('Peers tab shows four lights; signalling goes green once connected', async ({ page }) => {
+    await openAsCreator(page, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+    // openSheet throws until boot has handed ui.js its App.
+    await page.waitForFunction(() => {
+      try { window.UI.openSheet('peers'); return true; } catch { return false; }
+    });
+
+    const items = page.locator('#netStatus a.net-status-item');
+    await expect(items).toHaveText(['Signalling', 'STUN', 'TURN Creds', 'TURN']);
+    await expect(items.first()).toHaveClass(/\bok\b/);
+    expect(await items.evaluateAll(els => els.map(e => e.getAttribute('href')))).toEqual([
+      'networking-troubleshooting.html#signalling',
+      'networking-troubleshooting.html#stun',
+      'networking-troubleshooting.html#turn-creds',
+      'networking-troubleshooting.html#turn',
+    ]);
+  });
+
+  test('every light lands on a section of the troubleshooting page', async ({ page }) => {
+    await page.goto(`${APP_URL}/networking-troubleshooting.html`);
+    for (const id of ['signalling', 'stun', 'turn-creds', 'turn', 'own-it']) {
+      await expect(page.locator(`section#${id}`)).toHaveCount(1);
+    }
+    await expect(page.locator('a[href$="tt-signalling-cloudflare"]')).toHaveCount(1);
+    await expect(page.locator('a[href$="tt-turn-cloudflare"]')).toHaveCount(1);
+  });
+});
