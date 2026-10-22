@@ -1,12 +1,12 @@
 /**
- * network_status.js — the four-light summary of the network services a
+ * external_services_status.js — the four-light summary of the network services a
  * table leans on: signalling, STUN, TURN credentials, TURN. Pure: takes
  * the `net` block app.js reports (signalingConns, ice, peersIce, offline)
  * and returns plain data or HTML. The Peers tab renders the bar; each
- * light links to the matching section of networking-troubleshooting.html.
+ * light links to the matching section of external_services_info.html.
  */
 
-export const TROUBLESHOOTING_URL = 'networking-troubleshooting.html';
+export const EXTERNAL_SERVICES_INFO_URL = 'external_services_info.html';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -85,12 +85,12 @@ export function networkStatusNote(net) {
   if (net?.offline || net?.ice?.turnCredentials !== 'capped') return '';
   return `The shared relay allowance is used up for now, so peers on strict networks
     (offices, airports, cell connections) may not be able to connect.
-    <a href="${TROUBLESHOOTING_URL}#turn-creds" target="_blank" rel="noopener">What can I do?</a>`;
+    <a href="${EXTERNAL_SERVICES_INFO_URL}#turn-creds" target="_blank" rel="noopener">What can I do?</a>`;
 }
 
 export function networkStatusBarHTML(net) {
   const lights = networkStatus(net).map(i =>
-    `<a class="net-status-item ${i.state}" href="${TROUBLESHOOTING_URL}#${i.id}" target="_blank" rel="noopener"
+    `<a class="net-status-item ${i.state}" href="${EXTERNAL_SERVICES_INFO_URL}#${i.id}" target="_blank" rel="noopener"
         title="${esc(i.detail)}"><span class="net-dot"></span>${esc(i.label)}</a>`).join('');
   const note = networkStatusNote(net);
   return `<div class="net-status" id="netStatus">

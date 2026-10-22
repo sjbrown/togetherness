@@ -19,7 +19,7 @@
 import { icon } from './icons.js';
 import * as Debug from './debug_panel.js';
 import * as Trace from './trace.js';
-import { networkStatusBarHTML } from './network_status.js';
+import { networkStatusBarHTML } from './external_services_status.js';
 import { buildToyPreviewSvg, toolInitArgs } from './toys.js';
 import './ui_component/color-picker.js';
 import './ui_component/range_ticked.js';

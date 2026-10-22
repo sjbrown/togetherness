@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, test, expect } from 'vitest'
-import { networkStatus, networkStatusBarHTML, networkStatusNote, TROUBLESHOOTING_URL } from '../../src/network_status.js'
+import { networkStatus, networkStatusBarHTML, networkStatusNote, EXTERNAL_SERVICES_INFO_URL } from '../../src/external_services_status.js'
 
 const turnServer = { urls: 'turn:turn.example.com', username: 'u', credential: '•••' }
 const net = (over = {}) => ({
@@ -80,7 +80,7 @@ describe('networkStatusBarHTML', () => {
     div.innerHTML = networkStatusBarHTML(net())
     const links = [...div.querySelectorAll('a.net-status-item')]
     expect(links.map(a => a.getAttribute('href'))).toEqual(
-      ['signalling', 'stun', 'turn-creds', 'turn'].map(id => `${TROUBLESHOOTING_URL}#${id}`))
+      ['signalling', 'stun', 'turn-creds', 'turn'].map(id => `${EXTERNAL_SERVICES_INFO_URL}#${id}`))
     expect(links[0].classList.contains('ok')).toBe(true)
     expect(links.map(a => a.textContent)).toEqual(['Signalling', 'STUN', 'TURN Creds', 'TURN'])
   })
@@ -103,6 +103,6 @@ describe('networkStatusNote', () => {
   test('is rendered under the bar', () => {
     const div = document.createElement('div')
     div.innerHTML = networkStatusBarHTML(net({ ice: { iceServers: [turnServer], turnCredentials: 'capped' } }))
-    expect(div.querySelector('.net-status-note a').getAttribute('href')).toBe(`${TROUBLESHOOTING_URL}#turn-creds`)
+    expect(div.querySelector('.net-status-note a').getAttribute('href')).toBe(`${EXTERNAL_SERVICES_INFO_URL}#turn-creds`)
   })
 })

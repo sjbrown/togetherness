@@ -1,11 +1,11 @@
 /**
- * tests/e2e/network-status.spec.js
+ * tests/e2e/external-services-status.spec.js
  *
  * The Peers tab's four-light status bar in the real app: that it renders
  * with the connected signalling server reflected, that each light links to
  * its section of the troubleshooting page, and that the page has those
  * sections to land on. Status derivation itself is covered by
- * tests/unit/network_status.test.js.
+ * tests/unit/external_services_status.test.js.
  */
 
 import { test, expect } from '@playwright/test';
@@ -26,15 +26,15 @@ test.describe('network status bar', () => {
     await expect(items).toHaveText(['Signalling', 'STUN', 'TURN Creds', 'TURN']);
     await expect(items.first()).toHaveClass(/\bok\b/);
     expect(await items.evaluateAll(els => els.map(e => e.getAttribute('href')))).toEqual([
-      'networking-troubleshooting.html#signalling',
-      'networking-troubleshooting.html#stun',
-      'networking-troubleshooting.html#turn-creds',
-      'networking-troubleshooting.html#turn',
+      'external_services_info.html#signalling',
+      'external_services_info.html#stun',
+      'external_services_info.html#turn-creds',
+      'external_services_info.html#turn',
     ]);
   });
 
   test('every light lands on a section of the troubleshooting page', async ({ page }) => {
-    await page.goto(`${APP_URL}/networking-troubleshooting.html`);
+    await page.goto(`${APP_URL}/external_services_info.html`);
     for (const id of ['signalling', 'stun', 'turn-creds', 'turn', 'own-it']) {
       await expect(page.locator(`section#${id}`)).toHaveCount(1);
     }
