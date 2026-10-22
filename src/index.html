@@ -277,7 +277,7 @@ Trace.net('signaling', `signaling servers: ${signalingUrls.join(', ')}`, {
   fallbackOverridden: ExternalServices.getSignallingFallback() !== null,
   room:               tableId,
 });
-await ExternalServices.loadWorkerTURN();
+await ExternalServices.loadTURNCredentials();
 const iceServers   = ExternalServices.resolveIceServers();
 const peerOpts     = { wrtc: makeChunkedWrtc() };
 if (iceServers.length) peerOpts.config = { iceServers };
