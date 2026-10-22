@@ -460,7 +460,12 @@ export function openSnapshot() {
     <div class="dialog-scrim open" data-dbg-snapshot-close></div>
     <div class="dialog dialog-snapshot open" role="dialog" aria-modal="true" aria-labelledby="dbgSnapshotTitle">
       <div class="dialog-head"><h2 id="dbgSnapshotTitle">Debug snapshot</h2></div>
-      <div class="dialog-body dbg-snapshot">${html}</div>
+      <div class="dialog-body dbg-snapshot">
+        <div class="dbg-snapshot-row">
+          <button class="dbg-btn" data-dbg-action="download">Download trace</button>
+        </div>
+        ${html}
+      </div>
       <div class="dialog-actions">
         <button class="dialog-btn dialog-btn-primary" data-dbg-snapshot-close>Close</button>
       </div>
