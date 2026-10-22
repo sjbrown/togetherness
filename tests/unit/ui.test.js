@@ -734,6 +734,14 @@ describe('peersBody — Offline mode toggle', () => {
     expect(div.querySelector('#offToggle').classList.contains('on')).toBe(false)
   })
 
+  test('renders the network status bar when net is supplied', () => {
+    const div = document.createElement('div')
+    div.innerHTML = peersBody({ ...baseData, net: { offline: false, signalingConns: [{ connected: true }], ice: { iceServers: [] }, peersIce: [] } })
+    expect(div.querySelectorAll('#netStatus a.net-status-item')).toHaveLength(4)
+    div.innerHTML = peersBody(baseData)
+    expect(div.querySelector('#netStatus')).toBeNull()
+  })
+
   test('offline toggle reflects data.offline: on', () => {
     const div = document.createElement('div')
     div.innerHTML = peersBody({ ...baseData, offline: true })

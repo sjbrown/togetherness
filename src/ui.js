@@ -18,6 +18,8 @@
 
 import { icon } from './icons.js';
 import * as Debug from './debug_panel.js';
+import * as Trace from './trace.js';
+import { networkStatusBarHTML } from './network_status.js';
 import { buildToyPreviewSvg, toolInitArgs } from './toys.js';
 import './ui_component/color-picker.js';
 import './ui_component/range_ticked.js';
@@ -802,7 +804,8 @@ export function openSheet(which) {
     wireColorPickers(body);
     wireRangeTicked(body);
   }
-  if (which === 'peers') wirePeersToggles();
+  if (which === 'peers') { wirePeersToggles(); watchNetworkStatus(); }
+  else                   unwatchNetworkStatus();
   // The Debug tab is the one panel with live listeners of its own: it
   // subscribes to the trace so it updates as things happen, not only when
   // the document changes. Mounting is therefore paired with unmounting on
@@ -813,6 +816,7 @@ export function openSheet(which) {
 }
 export function closePanel() {
   Debug.unmount();
+  unwatchNetworkStatus();
   savePanelState(false, UIData.panelOpen); // remember the tab even though now closed
   UIData.panelOpen = null;
   $('#panel')?.classList.remove('open');
@@ -992,6 +996,7 @@ function gatherPeersData() {
     offline: App.isOffline(),
     roomId: App.getTableId(),
     checkpointFrequency: App.getCheckpointFrequency?.() ?? 0,
+    net: App.getNetStatus?.(),
   };
 }
 function gatherLayersData() {
@@ -1140,6 +1145,7 @@ export function peersBody(data) {
   const rows = peerRowsHTML(data.peers);
   const link = `${location.origin}${location.pathname}#${data.roomId}`;
   return `
+    ${data.net ? networkStatusBarHTML(data.net) : ''}
     <div class="field" id="meField">
       <label>Me</label>
       <div id="meRow">${meRowHTML(data.me)}</div>
@@ -1216,6 +1222,28 @@ export function updatePeersPanel() {
   const peers = App.getPeers();
   if (countEl) countEl.textContent = peers.filter(user => user.live).length;
   rowsEl.innerHTML = peerRowsHTML(peers);
+  updateNetworkStatus();
+}
+
+// The lights follow connection events, which arrive on the trace, so the
+// Peers tab listens to it while it is the open tab.
+let _unwatchNet = null;
+let _netFrame = 0;
+export function updateNetworkStatus() {
+  const el = document.getElementById('netStatus');
+  const net = App.getNetStatus?.();
+  if (el && net) el.outerHTML = networkStatusBarHTML(net);
+}
+function watchNetworkStatus() {
+  unwatchNetworkStatus();
+  _unwatchNet = Trace.subscribe(() => {
+    if (_netFrame) return;
+    _netFrame = requestAnimationFrame(() => { _netFrame = 0; updateNetworkStatus(); });
+  });
+}
+function unwatchNetworkStatus() {
+  _unwatchNet?.();
+  _unwatchNet = null;
 }
 function wirePeersToggles() {
   const off = $('#offToggle');

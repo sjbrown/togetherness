@@ -891,6 +891,22 @@ describe('loadTURNCredentials', () => {
     })
   })
 
+  test('records how the load went', async () => {
+    const outcome = () => ExternalServices.describeIceServers().turnCredentials
+    expect(outcome()).toBeNull()
+    await ExternalServices.loadTURNCredentials({ fetchImpl: reply({ iceServers: [stun, relay] }) })
+    expect(outcome()).toBe('service')
+    await ExternalServices.loadTURNCredentials({ fetchImpl: reply({ iceServers: [stun] }) })
+    expect(outcome()).toBe('capped')
+    await ExternalServices.loadTURNCredentials({ fetchImpl: vi.fn().mockRejectedValue(new Error('x')) })
+    expect(outcome()).toBe('unavailable')
+    await ExternalServices.loadTURNCredentials({ fetchImpl: reply({}, false) })
+    expect(outcome()).toBe('unavailable')
+    ExternalServices.setTURN('turn:turn.example.com')
+    await ExternalServices.loadTURNCredentials({ fetchImpl: reply({ iceServers: [relay] }) })
+    expect(outcome()).toBe('override')
+  })
+
   test('is skipped when the person configured their own relay', async () => {
     ExternalServices.setTURN('turn:turn.example.com')
     const fetchImpl = reply({ iceServers: [relay] })

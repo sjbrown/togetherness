@@ -139,6 +139,7 @@ export const TURN_CREDENTIAL_KEY = 'tt_external_service_turn_credential';
 export const TURN_CREDENTIALS_URL = 'https://tt-turn-credentials.sjb.workers.dev/ice';
 
 let _credentialsTurn = null;
+let _credentialsOutcome = null;
 
 export function hasTURNOverride() {
   return [getTURN(), getTURNFallback(), getTURNUsername(), getTURNCredential()]
@@ -150,11 +151,12 @@ export function hasTURNOverride() {
  * remembers them for resolveIceServers(). Skipped when the person has
  * configured their own relay. Any failure, or an answer with no relays
  * (a capped service sends STUN only), leaves nothing remembered, so the
- * built-in public relay applies.
+ * built-in public relay applies. The outcome is kept for the status bar.
  */
 export async function loadTURNCredentials({ fetchImpl = fetch, timeoutMs = 2000 } = {}) {
   _credentialsTurn = null;
-  if (hasTURNOverride()) return;
+  if (hasTURNOverride()) { _credentialsOutcome = 'override'; return; }
+  _credentialsOutcome = 'unavailable';
   try {
     const res = await fetchImpl(TURN_CREDENTIALS_URL, { signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) return;
@@ -162,7 +164,8 @@ export async function loadTURNCredentials({ fetchImpl = fetch, timeoutMs = 2000 
     if (!Array.isArray(iceServers)) return;
     const relays = iceServers.filter(e =>
       [].concat(e?.urls ?? []).some(u => /^turns?:/i.test(u)));
-    if (relays.length) _credentialsTurn = relays;
+    if (relays.length) { _credentialsTurn = relays; _credentialsOutcome = 'service'; }
+    else _credentialsOutcome = 'capped';
   } catch {
     // offline or slow: fall back to the built-in relay
   }
@@ -171,6 +174,7 @@ export async function loadTURNCredentials({ fetchImpl = fetch, timeoutMs = 2000 
 /** Test-only: forget what loadTURNCredentials remembered. */
 export function _resetTURNCredentials() {
   _credentialsTurn = null;
+  _credentialsOutcome = null;
 }
 
 export function isValidTURN(value) {
@@ -318,6 +322,9 @@ export function describeIceServers() {
     stunOverridden: getSTUN() !== null || getSTUNFallback() !== null,
     turnOverridden: hasTURNOverride(),
     turnFromCredentialsService: _credentialsTurn !== null && !hasTURNOverride(),
+    // null until loadTURNCredentials has run, then one of: 'override',
+    // 'service', 'capped' (answered with no relays), 'unavailable'.
+    turnCredentials: _credentialsOutcome,
     turnIsPublicTestRelay: _credentialsTurn === null
       && (resolveTURN() === defaultTURN() || resolveTURNFallback() === defaultTURNFallback()),
   };
