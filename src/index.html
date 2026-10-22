@@ -277,10 +277,14 @@ Trace.net('signaling', `signaling servers: ${signalingUrls.join(', ')}`, {
   fallbackOverridden: ExternalServices.getSignallingFallback() !== null,
   room:               tableId,
 });
-await ExternalServices.loadTURNCredentials();
-const iceServers   = ExternalServices.resolveIceServers();
-const peerOpts     = { wrtc: makeChunkedWrtc() };
-if (iceServers.length) peerOpts.config = { iceServers };
+const peerOpts     = { wrtc: makeChunkedWrtc(), config: { iceServers: ExternalServices.resolveIceServers() } };
+// y-webrtc reads peerOpts as each peer is created, so relays from the
+// credentials service apply to every connection made once it answers;
+// boot doesn't wait on it.
+ExternalServices.loadTURNCredentials().then(() => {
+  peerOpts.config.iceServers = ExternalServices.resolveIceServers();
+  Trace.net('turn-credentials', 'TURN credentials resolved', ExternalServices.describeIceServers());
+});
 const providerOpts = { signaling: signalingUrls, peerOpts };
 const provider     = new WebrtcProvider(tableId, ydoc, providerOpts);
 Trace.net('provider', 'WebrtcProvider constructed — handshakes begin', {

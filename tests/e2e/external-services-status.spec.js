@@ -41,4 +41,13 @@ test.describe('network status bar', () => {
     await expect(page.locator('a[href$="tt-signaling-cloudflare"]')).toHaveCount(1);
     await expect(page.locator('a[href$="tt-turn-cloudflare"]')).toHaveCount(1);
   });
+
+  test('a stalled credentials service does not hold up boot', async ({ page }) => {
+    await page.route('**/tt-turn-credentials.*/**', () => {});
+    await openAsCreator(page, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+    // The service request times out after 2s; the app must be usable well before.
+    await page.waitForFunction(() => {
+      try { window.UI.openSheet('peers'); return true; } catch { return false; }
+    }, null, { timeout: 1500 });
+  });
 });

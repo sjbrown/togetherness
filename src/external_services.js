@@ -155,20 +155,22 @@ export function hasTURNOverride() {
  */
 export async function loadTURNCredentials({ fetchImpl = fetch, timeoutMs = 2000 } = {}) {
   _credentialsTurn = null;
+  _credentialsOutcome = null;
   if (hasTURNOverride()) { _credentialsOutcome = 'override'; return; }
-  _credentialsOutcome = 'unavailable';
+  let outcome = 'unavailable';
   try {
     const res = await fetchImpl(TURN_CREDENTIALS_URL, { signal: AbortSignal.timeout(timeoutMs) });
-    if (!res.ok) return;
-    const { iceServers } = await res.json();
-    if (!Array.isArray(iceServers)) return;
-    const relays = iceServers.filter(e =>
-      [].concat(e?.urls ?? []).some(u => /^turns?:/i.test(u)));
-    if (relays.length) { _credentialsTurn = relays; _credentialsOutcome = 'service'; }
-    else _credentialsOutcome = 'capped';
+    const { iceServers } = res.ok ? await res.json() : {};
+    if (Array.isArray(iceServers)) {
+      const relays = iceServers.filter(e =>
+        [].concat(e?.urls ?? []).some(u => /^turns?:/i.test(u)));
+      if (relays.length) { _credentialsTurn = relays; outcome = 'service'; }
+      else outcome = 'capped';
+    }
   } catch {
     // offline or slow: fall back to the built-in relay
   }
+  _credentialsOutcome = outcome;
 }
 
 /** Test-only: forget what loadTURNCredentials remembered. */

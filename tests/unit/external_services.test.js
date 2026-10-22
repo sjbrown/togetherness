@@ -891,6 +891,16 @@ describe('loadTURNCredentials', () => {
     })
   })
 
+  test('the outcome stays unknown until the request settles', async () => {
+    let answer
+    const fetchImpl = vi.fn(() => new Promise(r => { answer = r }))
+    const pending = ExternalServices.loadTURNCredentials({ fetchImpl })
+    expect(ExternalServices.describeIceServers().turnCredentials).toBeNull()
+    answer({ ok: true, json: async () => ({ iceServers: [stun, relay] }) })
+    await pending
+    expect(ExternalServices.describeIceServers().turnCredentials).toBe('service')
+  })
+
   test('records how the load went', async () => {
     const outcome = () => ExternalServices.describeIceServers().turnCredentials
     expect(outcome()).toBeNull()
