@@ -38,7 +38,7 @@ test.describe('network status bar', () => {
     for (const id of ['signalling', 'stun', 'turn-creds', 'turn', 'own-it']) {
       await expect(page.locator(`section#${id}`)).toHaveCount(1);
     }
-    await expect(page.locator('a[href$="tt-signalling-cloudflare"]')).toHaveCount(1);
+    await expect(page.locator('a[href$="tt-signaling-cloudflare"]')).toHaveCount(1);
     await expect(page.locator('a[href$="tt-turn-cloudflare"]')).toHaveCount(1);
   });
 });
