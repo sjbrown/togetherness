@@ -854,7 +854,7 @@ describe('loadTURNCredentials', () => {
 
   beforeEach(() => ExternalServices._resetTURNCredentials())
 
-  test('uses the service's relays in place of the public relay, keeping STUN', async () => {
+  test('uses the service relays in place of the public relay, keeping STUN', async () => {
     const fetchImpl = reply({ iceServers: [stun, relay] })
     await ExternalServices.loadTURNCredentials({ fetchImpl })
     expect(fetchImpl.mock.calls[0][0]).toBe(ExternalServices.TURN_CREDENTIALS_URL)
