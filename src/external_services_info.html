@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Networking Troubleshooting</title>
+<link rel="icon" type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='black'/%3E%3Ctext x='3' y='26' font-size='26' fill='%23fffff0' font-family='serif' letter-spacing='-5'%3ETT%3C/text%3E%3C/svg%3E">
+<style>
+/* ── Variables (matches ui.css palette) ─────────────────── */
+:root {
+  --bg:            #0d0b13;
+  --surface:       rgba(22, 17, 34, 0.88);
+  --surface-2:     rgba(36, 29, 52, 0.75);
+  --surface-solid: #1a1228;
+  --text:          #ddd0b4;
+  --text-2:        #8a7d68;
+  --text-3:        #4e4438;
+  --border:        rgba(210,185,130,0.13);
+  --border-2:      rgba(210,185,130,0.26);
+  --primary:       #c8941e;
+  --primary-soft:  rgba(200,148,30,0.20);
+  --radius:        14px;
+  --radius-sm:     10px;
+  --emboss:
+    inset 0 2px 0 rgba(210,185,130,0.40),
+    inset 0 -1px 0 rgba(0,0,0,0.55),
+    0 0 0 1px rgba(0,0,0,0.70),
+    0 4px 18px rgba(0,0,0,0.55);
+  --emboss-lg:
+    inset 0 2px 0 rgba(210,185,130,0.40),
+    inset 0 -1px 0 rgba(0,0,0,0.55),
+    0 0 0 1px rgba(0,0,0,0.80),
+    0 12px 40px rgba(0,0,0,0.70);
+  --font-body:    -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-display: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+}
+
+
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--font-body); line-height: 1.6;
+}
+main { max-width: 720px; margin: 0 auto; padding: 32px 20px 80px; }
+h1, h2 { font-family: var(--font-display); font-weight: normal; }
+h1 { font-size: 30px; margin: 8px 0 12px; }
+h2 { font-size: 22px; margin: 0 0 6px; }
+a { color: var(--primary); }
+code { font-size: 0.9em; color: var(--text); }
+.back { font-size: 14px; }
+.lede { color: var(--text-2); font-size: 17px; }
+section {
+  margin-top: 28px; padding: 20px; border-radius: var(--radius);
+  background: var(--surface); box-shadow: var(--emboss);
+  scroll-margin-top: 16px;
+}
+section:target { box-shadow: var(--emboss), 0 0 0 2px var(--primary); }
+.tagline { color: var(--text-2); margin: 0 0 12px; font-style: italic; }
+h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-2); margin: 18px 0 4px; }
+p { margin: 6px 0; }
+ul { margin: 6px 0; padding-left: 22px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 10px 0; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--text-2); font-weight: normal; }
+.yes { color: #6a9a6a; } .no { color: var(--text-2); } .maybe { color: #d4a060; }
+.dots { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; font-size: 14px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.dot.ok { background: #6a9a6a; } .dot.warn { background: #b87820; }
+.dot.bad { background: #b04040; }
+.dot.idle { box-shadow: inset 0 0 0 1.5px var(--text-3); }
+.own {
+  margin-top: 28px; padding: 20px; border-radius: var(--radius);
+  background: var(--primary-soft); box-shadow: inset 0 0 0 1px var(--border-2);
+}
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="home.html">&larr; Back to Togetherness Table</a>
+  <h1>Networking troubleshooting</h1>
+  <p class="lede">
+    Togetherness Table keeps your table on your own device. To play with other
+    people it needs a few small helper services to introduce your devices to
+    each other. This page explains what each one does, when you need it, and
+    what to do when its light in the <strong>Peers</strong> tab isn&rsquo;t green.
+  </p>
+
+  <section id="status">
+    <h2>What the lights mean</h2>
+    <div class="dots">
+      <span class="dot ok"></span><span>Working.</span>
+      <span class="dot warn"></span><span>Partly working, or running on a backup.</span>
+      <span class="dot bad"></span><span>Not working. Hover a light in the Peers tab for the reason.</span>
+      <span class="dot idle"></span><span>Not needed, not tested yet (no one has connected), or paused by offline mode.</span>
+    </div>
+    <h3>Which services do I need?</h3>
+    <table>
+      <tr><th></th><th>Editing on your own, offline</th><th>Playing with peers</th><th>Peers on strict networks*</th></tr>
+      <tr><td>Signalling</td><td class="no">No</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+      <tr><td>STUN</td><td class="no">No</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+      <tr><td>TURN Creds</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td></tr>
+      <tr><td>TURN</td><td class="no">No</td><td class="maybe">Rarely</td><td class="yes">Yes</td></tr>
+    </table>
+    <p>
+      *Some environments, like offices, airports, and cell connections, block
+      the direct paths between devices that Togetherness normally uses.
+    </p>
+    <p>
+      Working alone needs none of this. Your table is saved on your device and
+      every light can be red without losing a thing. Changes you make offline
+      sync the next time you and your peers connect.
+    </p>
+  </section>
+
+  <section id="signalling">
+    <h2>Signalling</h2>
+    <p class="tagline">The introduction desk.</p>
+    <h3>What it&rsquo;s for</h3>
+    <p>
+      When you open a shared table, your device needs to find the others
+      who have it open. A signalling server passes along the &ldquo;hello, here&rsquo;s how
+      to reach me&rdquo; messages. It never sees your table: once two devices have
+      been introduced, they talk to each other directly.
+    </p>
+    <h3>Do I need it?</h3>
+    <p>
+      To meet new peers, yes. Peers who are already connected stay
+      connected if it goes down. Not needed for solo or offline editing.
+    </p>
+    <h3>If the light isn&rsquo;t green</h3>
+    <ul>
+      <li>Check your internet connection.</li>
+      <li>Togetherness tries two servers at once. One red and one green is fine.</li>
+      <li>Both down? Try again in a few minutes, or point at a different server in <a href="home.html#advanced">Advanced</a>.</li>
+    </ul>
+  </section>
+
+  <section id="stun">
+    <h2>STUN</h2>
+    <p class="tagline">&ldquo;What does the outside world call me?&rdquo;</p>
+    <h3>What it&rsquo;s for</h3>
+    <p>
+      Most devices sit behind a home router and don&rsquo;t know their own public
+      address. A STUN server tells your device what address the internet sees,
+      so a friend&rsquo;s device can reach it directly. It&rsquo;s a quick question and
+      answer, with no table data and almost no bandwidth.
+    </p>
+    <h3>Do I need it?</h3>
+    <p>
+      For playing with peers, yes. Togetherness includes sensible public defaults,
+      and running your own is easy.
+    </p>
+    <h3>If the light isn&rsquo;t green</h3>
+    <ul>
+      <li>Grey means no one has connected yet, so nothing has been tested.</li>
+      <li>Red means STUN answers never arrived. A firewall may be blocking them, or the server may be down.</li>
+      <li>You can set your own in <a href="home.html#advanced">Advanced</a>.</li>
+    </ul>
+  </section>
+
+  <section id="turn-creds">
+    <h2>TURN Creds</h2>
+    <p class="tagline">The key to the relay.</p>
+    <h3>What it&rsquo;s for</h3>
+    <p>
+      A TURN relay (next section) isn&rsquo;t free to run, so it can&rsquo;t be open to
+      everyone. The TURN Credentials Service hands your device a
+      short-lived username and password for the relay, so the permanent key
+      is never stored in the app. It is the default way Togetherness gets a relay.
+    </p>
+    <h3>Do I need it?</h3>
+    <p>
+      Only when your connection needs a relay. If you enter your own TURN server in
+      <a href="home.html#advanced">Advanced</a>, this light is grey because
+      it isn&rsquo;t used.
+    </p>
+    <h3>If the light isn&rsquo;t green</h3>
+    <ul>
+      <li>
+        <strong>Amber:</strong> the service couldn&rsquo;t be reached, perhaps because you&rsquo;re
+        offline. Togetherness falls back to a public test relay, which is fine for
+        trying things out but not something to rely on.
+      </li>
+      <li>
+        <strong>Red:</strong> the service has used up its monthly allowance. It
+        stops handing out relay access so the bill can&rsquo;t run away. Peers who can
+        connect directly are unaffected. Peers on strict networks may not connect until
+        the allowance resets next month, or until you use your own relay.
+      </li>
+    </ul>
+  </section>
+
+  <section id="turn">
+    <h2>TURN</h2>
+    <p class="tagline">The go-between of last resort.</p>
+    <h3>What it&rsquo;s for</h3>
+    <p>
+      Some networks, like offices, airports, and cell connections, don&rsquo;t let
+      devices connect to each other directly. A TURN relay sits in the middle
+      and passes traffic back and forth. Your table stays encrypted
+      between you and your peers, and the relay only forwards scrambled data it can&rsquo;t read.
+    </p>
+    <h3>Do I need it?</h3>
+    <p>
+      Often not. On most home networks, peers connect directly and the relay is
+      never used. When a peer is on a strict network, it can be the only way through.
+    </p>
+    <h3>If the light isn&rsquo;t green</h3>
+    <ul>
+      <li>Grey means no one has connected yet.</li>
+      <li>Red means the relay never answered or none is configured. Check <strong>TURN Creds</strong> first.</li>
+      <li>If you see &ldquo;public test relay&rdquo;, you&rsquo;re on a shared free relay. It works for a try-out but can disappear.</li>
+    </ul>
+  </section>
+
+  <section class="own" id="own-it">
+    <h2>You own this software</h2>
+    <p>
+      Togetherness Table belongs to the people who use it. None of these services
+      is a gate you have to pass through. Every one can be swapped for your own
+      in <a href="home.html#advanced">Advanced</a>, and you&rsquo;re free to run them yourself
+      or pay a company to run them for you.
+    </p>
+    <h3>Start from our working examples</h3>
+    <p>Fork these and deploy them to your own Cloudflare account:</p>
+    <ul>
+      <li><a href="https://github.com/sjbrown/tt-signaling-cloudflare" target="_blank" rel="noopener">tt-signaling-cloudflare</a>: a signalling server.</li>
+      <li><a href="https://github.com/sjbrown/tt-turn-cloudflare" target="_blank" rel="noopener">tt-TURN-cloudflare</a>: a TURN Credentials Service and relay, with a built-in monthly usage cap.</li>
+      <li><a href="https://github.com/sjbrown/togetherness" target="_blank" rel="noopener">togetherness</a>: the app itself.</li>
+    </ul>
+    <h3>Learn how to run your own</h3>
+    <ul>
+      <li><a href="https://github.com/yjs/y-webrtc" target="_blank" rel="noopener">y-webrtc</a>: the library Togetherness connects with. It includes a signalling server you can run anywhere.</li>
+      <li><a href="https://github.com/coturn/coturn" target="_blank" rel="noopener">coturn</a>: the popular open-source TURN/STUN server.</li>
+      <li><a href="https://developers.cloudflare.com/realtime/turn/" target="_blank" rel="noopener">Cloudflare Realtime TURN</a> documentation.</li>
+    </ul>
+    <h3>Prefer to pay someone?</h3>
+    <ul>
+      <li><a href="https://developers.cloudflare.com/realtime/turn/" target="_blank" rel="noopener">Cloudflare Realtime TURN</a></li>
+      <li><a href="https://www.metered.ca" target="_blank" rel="noopener">Metered TURN</a></li>
+      <li><a href="https://www.twilio.com/docs/stun-turn" target="_blank" rel="noopener">Twilio Network Traversal Service</a></li>
+    </ul>
+    <p>
+      Whichever you choose, paste the server addresses and credentials into
+      <a href="home.html#advanced">Advanced</a> and you&rsquo;re set.
+    </p>
+  </section>
+</main>
+</body>
+</html>

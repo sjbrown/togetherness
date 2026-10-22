@@ -549,13 +549,13 @@ body {
           <label class="advanced-label" for="stunServerFallback">STUN Server (fallback):</label>
           <input class="advanced-input" id="stunServerFallback" type="text" autocomplete="off" spellcheck="false" placeholder="[Yjs Default]">
           <label class="advanced-label" for="turnServer">TURN Server:</label>
-          <input class="advanced-input" id="turnServer" type="text" autocomplete="off" spellcheck="false">
+          <input class="advanced-input" id="turnServer" type="text" autocomplete="off" spellcheck="false" placeholder="[TURN Credentials Service]">
           <label class="advanced-label" for="turnServerFallback">TURN Server (fallback):</label>
-          <input class="advanced-input" id="turnServerFallback" type="text" autocomplete="off" spellcheck="false">
+          <input class="advanced-input" id="turnServerFallback" type="text" autocomplete="off" spellcheck="false" placeholder="[TURN Credentials Service]">
           <label class="advanced-label" for="turnUsername">TURN Username:</label>
-          <input class="advanced-input" id="turnUsername" type="text" autocomplete="off" spellcheck="false">
+          <input class="advanced-input" id="turnUsername" type="text" autocomplete="off" spellcheck="false" placeholder="[TURN Credentials Service]">
           <label class="advanced-label" for="turnCredential">TURN Credential:</label>
-          <input class="advanced-input" id="turnCredential" type="text" autocomplete="off" spellcheck="false">
+          <input class="advanced-input" id="turnCredential" type="text" autocomplete="off" spellcheck="false" placeholder="[TURN Credentials Service]">
         </div>
       </div>
     </div>
@@ -747,13 +747,13 @@ function setAdvancedOpen(opening) {
     // "[Yjs Default]" placeholder shows through.
     stunEl.value             = ExternalServices.getSTUN() ?? '';
     stunFallbackEl.value     = ExternalServices.getSTUNFallback() ?? '';
-    // TURN does have built-in defaults — a free public test relay — so an
-    // unset field shows what's actually in effect rather than blank. The
-    // one credential pair applies to both TURN URLs.
-    turnEl.value             = ExternalServices.resolveTURN();
-    turnFallbackEl.value     = ExternalServices.resolveTURNFallback();
-    turnUsernameEl.value     = ExternalServices.resolveTURNUsername();
-    turnCredentialEl.value   = ExternalServices.resolveTURNCredential();
+    // Unset TURN fields mean the TURN Credentials Service supplies the
+    // relays, shown by the placeholder. The one credential pair applies
+    // to both TURN URLs.
+    turnEl.value             = ExternalServices.getTURN() ?? '';
+    turnFallbackEl.value     = ExternalServices.getTURNFallback() ?? '';
+    turnUsernameEl.value     = ExternalServices.getTURNUsername() ?? '';
+    turnCredentialEl.value   = ExternalServices.getTURNCredential() ?? '';
   }
 }
 
@@ -792,28 +792,28 @@ stunFallbackEl.addEventListener('change', () => {
   stunFallbackEl.value = ExternalServices.getSTUNFallback() ?? '';
 });
 
-// TURN follows the signalling rules rather than STUN's: empty or
-// identical-to-default clears the override, an unparseable URL or a
-// fallback duplicating the primary is rejected. Re-reading afterward
-// puts the value actually in effect back in the field either way.
+// TURN: empty or identical-to-default clears the override, an unparseable
+// URL or a fallback duplicating the primary is rejected. Re-reading
+// afterward puts what's actually stored back in the field (blank if
+// nothing is).
 turnEl.addEventListener('change', () => {
   ExternalServices.setTURN(turnEl.value);
-  turnEl.value = ExternalServices.resolveTURN();
+  turnEl.value = ExternalServices.getTURN() ?? '';
 });
 
 turnFallbackEl.addEventListener('change', () => {
   ExternalServices.setTURNFallback(turnFallbackEl.value);
-  turnFallbackEl.value = ExternalServices.resolveTURNFallback();
+  turnFallbackEl.value = ExternalServices.getTURNFallback() ?? '';
 });
 
 turnUsernameEl.addEventListener('change', () => {
   ExternalServices.setTURNUsername(turnUsernameEl.value);
-  turnUsernameEl.value = ExternalServices.resolveTURNUsername();
+  turnUsernameEl.value = ExternalServices.getTURNUsername() ?? '';
 });
 
 turnCredentialEl.addEventListener('change', () => {
   ExternalServices.setTURNCredential(turnCredentialEl.value);
-  turnCredentialEl.value = ExternalServices.resolveTURNCredential();
+  turnCredentialEl.value = ExternalServices.getTURNCredential() ?? '';
 });
 
 // ── Previous tables ───────────────────────────────────────────────────────

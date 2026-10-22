@@ -2237,6 +2237,13 @@ const App = {
     };
   },
 
+  getNetStatus: () => ({
+    ..._netStatus,
+    offline:  _offline,
+    ice:      ExternalServices.describeIceServers(),
+    peersIce: ExternalServices.getIcePeers(),
+  }),
+
   getDefaultBackgrounds: () => DEFAULT_BACKGROUNDS,
   getBackground:   () => ({
     url:    _yMeta.get('bg_url')    ?? '',
