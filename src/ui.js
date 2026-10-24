@@ -78,6 +78,7 @@ export const UIData = {
   multiSelectionActive: false,
   selectedCount:        0,
   panelOpen:            null,
+  histSelected:         null, // op id of the expanded History row
   menuOpen:             false,
   toolOptsOpen:         false,
   projectName: 'Togetherness Table',
@@ -795,7 +796,7 @@ export function openSheet(which) {
       edit:     () => editBody(gatherTtStateData()),
       tools:    () => toolsBody(gatherToolsData()),
       peers:    () => peersBody(gatherPeersData()),
-      history:  () => histBody(App.getHistory(), App.getUndoHistory()),
+      history:  () => histBody(App.getOpHistory(), UIData.histSelected),
       layers:   () => layersBody(gatherLayersData()),
       save:     () => saveBody(),
       gestures: () => gesturesBody(),
@@ -803,6 +804,7 @@ export function openSheet(which) {
     }[which] ?? (() => ''))();
     wireColorPickers(body);
     wireRangeTicked(body);
+    if (which === 'history') { fillHistoryPreviews(body); wireHistory(body); }
   }
   if (which === 'peers') { wirePeersToggles(); watchNetworkStatus(); }
   else                   unwatchNetworkStatus();
@@ -1197,10 +1199,15 @@ export function onCheckpointFrequencyInput(minutes) {
   const label = $('#checkpointFreqLabel');
   if (label) label.textContent = checkpointFrequencyLabel(clamped);
 }
-function avatarSVG(p) {
+const escapeHtml = (str) => String(str).replace(/[&<>"']/g, c =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+// tip puts the name in a tooltip, for avatars that stand in for it.
+function avatarSVG(p, { size = 32, tip = false } = {}) {
   const fill = p.gradient ? `url(#grad-${p.id})` : p.color;
   const initial = p.name[0].toUpperCase();
-  return `<svg class="avatar" viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
+  const a11y = tip ? `role="img" aria-label="${escapeHtml(p.name)}"` : 'aria-hidden="true"';
+  return `<svg class="avatar" viewBox="0 0 32 32" width="${size}" height="${size}" ${a11y}>${tip ? `<title>${escapeHtml(p.name)}</title>` : ''}
     <circle cx="16" cy="16" r="16" fill="${fill}"></circle>
     <text x="16" y="21" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">${initial}</text>
   </svg>`;
@@ -1258,36 +1265,125 @@ function wirePeersToggles() {
   }
 }
 
-export function histBody(history, undoHistory = []) {
-  const rowsHtml = (entries, emptyLabel) => {
-    const rows = entries.map((entry, i) => {
-      const swatch = entry.fill
-        ? `<span class="sw-chip kind-${entry.elType}" style="background:${entry.fill};flex-shrink:0"></span>`
-        : `<span class="hist-dot"></span>`;
-      return `<div class="hist-item">${swatch}<span style="flex:1">${entry.label}</span>${i === 0 ? '<span class="meta">latest</span>' : ''}</div>`;
-    }).join('');
-    return rows || `<span class="meta">${emptyLabel}</span>`;
-  };
+export function agoLabel(ts, now = Date.now()) {
+  const secs = Math.max(0, Math.round((now - ts) / 1000));
+  if (secs < 60) return 'just now';
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  return hours < 24 ? `${hours}h ago` : `${Math.floor(hours / 24)}d ago`;
+}
 
-  // App.canUndo/canRedo are cheap (no DOM, no mutation) — safe to check on
-  // every render to decide whether these look clickable, the same way any
-  // other panel field reflects current state.
-  const undoDisabled = !App.canUndo();
-  const redoDisabled = !App.canRedo();
-
-  return `
-    <div class="field"><label>Undo</label>
-      <button class="action-btn" ${undoDisabled ? 'style="opacity:.4;cursor:not-allowed" disabled' : 'onclick="App.undo()"'}>${icon('undo')} Undo last action</button>
-    </div>
-    <div class="field"><label>History</label>
-      <div class="shape-list hist-list">${rowsHtml(history, 'No history')}</div>
-    </div>
-    <div class="field"><label>Redo</label>
-      <button class="action-btn" ${redoDisabled ? 'style="opacity:.4;cursor:not-allowed" disabled' : 'onclick="App.redo()"'}>${icon('check')} Redo last undone action</button>
-    </div>
-    <div class="field"><label>Undo history</label>
-      <div class="shape-list hist-list">${rowsHtml(undoHistory, 'Nothing undone')}</div>
+/**
+ * One row per op, from App.getOpHistory(). The selected row grows a Before →
+ * After pair (filled in by fillHistoryPreviews) and, unless later work on the
+ * same element blocks it, an Undo or Redo button.
+ */
+export function histBody(rows = [], selectedId = null, now = Date.now()) {
+  if (!rows.length) return '<div class="field"><span class="meta">No history</span></div>';
+  const items = rows.map(row => {
+    const sel   = row.opId === selectedId;
+    const verb  = row.canUndo ? 'Undo' : row.canRedo ? 'Redo' : null;
+    const sub   = row.active
+      ? agoLabel(row.ts, now)
+      : `${agoLabel(row.ts, now)} · undone by ${row.undoneBy ? avatarSVG(row.undoneBy, { size: 14, tip: true }) : ''}`;
+    const attrs = `data-layer="${escapeHtml(row.layer)}" data-op="${escapeHtml(row.opId)}"`;
+    const go    = sel && verb
+      ? `<button class="hist-op-go" data-hist-act="${verb.toLowerCase()}" ${attrs}>${verb}</button>` : '';
+    const detail = sel ? `<div class="hist-op-detail">
+        <div class="hist-previews" ${attrs}>
+          <div class="hist-pv" data-side="before"></div><span class="hist-arrow" aria-hidden="true">→</span><div class="hist-pv" data-side="after"></div>
+        </div>${row.blocked ? '<div class="hist-op-note">Undo recent work on this element first.</div>' : ''}
+      </div>` : '';
+    return `<div class="hist-op ${row.active ? '' : 'undone'} ${sel ? 'sel' : ''}">
+      <div class="hist-op-top">
+        <button class="hist-op-head" data-hist-select="${escapeHtml(row.opId)}" aria-expanded="${sel}">
+          ${avatarSVG(row.author, { size: 24, tip: true })}
+          <span class="hist-op-main"><span class="hist-op-title">${escapeHtml(row.gesture)} ${escapeHtml(row.subject)}</span><span class="hist-op-sub">${sub}</span></span>
+          ${row.blocked ? '<span class="hist-op-warn" aria-hidden="true">⚠</span>' : ''}
+        </button>${go}
+      </div>${detail}
     </div>`;
+  }).join('');
+  return `<div class="field"><div class="hist-ops">${items}</div></div>`;
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+// A preview is a copy of a live element, so it must not answer to the
+// element's identity or run anything: data-id and data-toy-type would make
+// document-wide lookups find the copy, and a script would be a second one.
+function previewSvg(el) {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 100 60');
+  svg.setAttribute('role', 'img');
+  if (!el) {
+    svg.classList.add('hist-none');
+    const mark = document.createElementNS(SVG_NS, 'text');
+    mark.setAttribute('x', '50'); mark.setAttribute('y', '42');
+    mark.setAttribute('text-anchor', 'middle'); mark.setAttribute('font-size', '34');
+    mark.textContent = '✗';
+    svg.appendChild(mark);
+    return svg;
+  }
+  for (const script of el.querySelectorAll('script')) script.remove();
+  for (const n of [el, ...el.querySelectorAll('[data-id], [data-toy-type]')]) {
+    n.removeAttribute('data-id');
+    n.removeAttribute('data-toy-type');
+  }
+  svg.appendChild(el);
+  return svg;
+}
+
+// getBBox on the outer svg covers its content with transforms applied, so
+// the element lands centred whatever its position, and a move previews the
+// same on both sides.
+function fitPreview(svg) {
+  if (svg.classList.contains('hist-none')) return;
+  try {
+    const b = svg.getBBox();
+    if (!b.width || !b.height) return;
+    const pad = Math.max(b.width, b.height) * 0.1;
+    svg.setAttribute('viewBox', `${b.x - pad} ${b.y - pad} ${b.width + 2 * pad} ${b.height + 2 * pad}`);
+  } catch { /* not laid out yet: keep the default box */ }
+}
+
+function fillHistoryPreviews(root) {
+  for (const box of root.querySelectorAll('.hist-previews')) {
+    const states = App.getOpPreview(box.dataset.layer, box.dataset.op);
+    if (!states) { box.remove(); continue; }
+    for (const side of ['before', 'after']) {
+      const svg = previewSvg(states[side]);
+      box.querySelector(`[data-side="${side}"]`).replaceChildren(svg);
+      fitPreview(svg);
+    }
+  }
+}
+
+const _histWired = new WeakSet();
+function wireHistory(body) {
+  if (_histWired.has(body)) return;
+  _histWired.add(body);
+  body.addEventListener('click', (e) => {
+    const go = e.target.closest('[data-hist-act]');
+    if (go) {
+      const { histAct, layer, op } = go.dataset;
+      (histAct === 'undo' ? App.undoOp : App.redoOp)(layer, op);
+      renderHistory(body);
+      return;
+    }
+    const head = e.target.closest('[data-hist-select]');
+    if (!head) return;
+    const id = head.dataset.histSelect;
+    UIData.histSelected = UIData.histSelected === id ? null : id;
+    renderHistory(body);
+  });
+}
+
+function renderHistory(body) {
+  body.innerHTML = histBody(App.getOpHistory(), UIData.histSelected);
+  fillHistoryPreviews(body);
+  wireHistory(body);
 }
 
 export function layerObjectListHTML(objects, selectedIds) {
@@ -1355,7 +1451,7 @@ export function refreshFromDoc() {
   if (!body) return;
   switch (UIData.panelOpen) {
     case 'edit':    body.innerHTML = editBody(gatherTtStateData());   wireColorPickers(body); wireRangeTicked(body); break;
-    case 'history': body.innerHTML = histBody(App.getHistory(), App.getUndoHistory());   break;
+    case 'history': renderHistory(body); break;
     case 'layers':  body.innerHTML = layersBody(gatherLayersData()); break;
     case 'tools':   body.innerHTML = toolsBody(gatherToolsData()); wireColorPickers(body); wireRangeTicked(body); break;
     // Debug re-renders itself in place (it owns listeners and scroll

@@ -232,7 +232,7 @@ export function isActive(ops, id, memo = new Map()) {
 }
 
 /** The ops in the union ancestry of tipIds, as a plain Map. */
-function ancestryView(ops, tipIds) {
+export function ancestryView(ops, tipIds) {
   const view = new Map()
   for (const tip of tipIds ?? []) {
     for (const id of ancestorsInclusive(ops, tip)) view.set(id, getOp(ops, id))

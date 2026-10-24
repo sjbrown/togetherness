@@ -10,6 +10,7 @@
 import { runInEnvelope, commitGesture, isInsideEnvelope, assertOpenOn } from './envelope.js';
 import * as OpHead from './op_head.js';
 import * as OpDag from './op_dag.js';
+import * as OpHistory from './op_history.js';
 import * as OpWireMutation from './op_wire_mutation.js';
 import { resolveRef } from './op_wire_mutation.js';
 import * as OpCheckpoint from './op_checkpoint.js';
@@ -253,6 +254,31 @@ export function undoGesture(ydoc, layer, layerEl, tableId, actorId, { owner = ac
 export function redoGesture(ydoc, layer, layerEl, tableId, actorId) {
   const target = redoCandidate(ydoc, layer, tableId, actorId, { layerEl })
   return applyUndoRedo(ydoc, layer, layerEl, tableId, actorId, target, 'redo')
+}
+
+/** The history rows for this layer's local tips; see op_history.historyRows. */
+export function historyOf(ydoc, layer, tableId, actorId, opts = {}) {
+  return OpHistory.historyRows(OpDag.getOps(ydoc, layer), localTipsOf(ydoc, layer, tableId), { actorId, ...opts })
+}
+
+/**
+ * Undo one chosen op rather than the newest. Null when it is not a live row,
+ * later live work contends with it, or its inverse no longer applies.
+ */
+export function undoOp(ydoc, layer, layerEl, tableId, actorId, opId, opts = {}) {
+  const row = historyOf(ydoc, layer, tableId, actorId, { ...opts, only: opId })[0]
+  if (!row?.canUndo) return null
+  if (!canApplyWire(OpWireMutation.invert(row.op.mutations), layerEl)) return null
+  return applyUndoRedo(ydoc, layer, layerEl, tableId, actorId, row.op, 'undo')
+}
+
+/** Redo one chosen op by reverting the undo that is holding it back. */
+export function redoOp(ydoc, layer, layerEl, tableId, actorId, opId, opts = {}) {
+  const row = historyOf(ydoc, layer, tableId, actorId, { ...opts, only: opId })[0]
+  if (!row?.canRedo) return null
+  const undo = OpDag.getOp(OpDag.getOps(ydoc, layer), row.reverterId)
+  if (!canApplyWire(OpWireMutation.invert(undo.mutations), layerEl)) return null
+  return applyUndoRedo(ydoc, layer, layerEl, tableId, actorId, undo, 'redo')
 }
 
 /**

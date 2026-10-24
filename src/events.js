@@ -22,7 +22,6 @@ export function init(App, svgEl, Toys, UI) {
       }
       e.detail.retval = { id: result.id }
 
-      App.addHistory(`cloned ${subjectEl.getAttribute('data-toy-type')} ${result.id}`, { elType: 'toy' })
       App.addLog(`cloned ${sourceId} → ${result.id}`, 'local')
     },
 
@@ -38,7 +37,6 @@ export function init(App, svgEl, Toys, UI) {
       Toys.placeToy(ydoc, layerEl, {
         id, toyType, x: x ?? 0, y: y ?? 0, color,
       }, { authorId: myId, tableId }).then(async () => {
-        App.addHistory(`placed ${toyType} ${id}`, { elType: 'toy' })
         App.addLog(`placed ${toyType} ${id}`, 'local')
 
         const placedEl = layerEl.querySelector(`[data-id="${id}"]`)
