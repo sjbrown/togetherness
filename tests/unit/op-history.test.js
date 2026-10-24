@@ -163,6 +163,37 @@ describe('blocked by later work', () => {
   })
 })
 
+describe('narrowing the rows', () => {
+  const log = () => linear(
+    ['a1', 'alice', 'move', [attr('d1', 'x', '1', '2')]],
+    ['b1', 'bob',   'move', [attr('d2', 'x', '1', '2')]],
+    ['a2', 'alice', 'move', [attr('d3', 'x', '1', '2')]],
+    ['ua2', 'alice', 'undo:move', [attr('d3', 'x', '2', '1')], { reverts: 'a2' }],
+    ['ub1', 'alice', 'undo:move', [attr('d2', 'x', '2', '1')], { reverts: 'b1' }],
+  )
+
+  test('by keeps one author’s rows, and limit then counts only those', () => {
+    expect(ids(rows(log(), { by: 'alice' }))).toEqual(['a2', 'a1'])
+    expect(ids(rows(log(), { by: 'alice', limit: 1 }))).toEqual(['a2'])
+  })
+
+  test('liveOnly drops undone rows, so the first row is the newest still in effect', () => {
+    expect(ids(rows(log(), { liveOnly: true }))).toEqual(['a1'])
+    expect(ids(rows(log(), { by: 'alice', liveOnly: true, limit: 1 }))).toEqual(['a1'])
+  })
+
+  test('undoneBy keeps rows reverted by that author, with when', () => {
+    const r = rows(log(), { undoneBy: 'alice' })
+    expect(ids(r)).toEqual(['a2', 'b1'])
+    expect(r.map(x => x.undoneAt)).toEqual([4, 5])
+    expect(rows(log(), { undoneBy: 'bob' })).toEqual([])
+  })
+
+  test('a live row has no undoneAt', () => {
+    expect(rows(log()).find(r => r.id === 'a1').undoneAt).toBeNull()
+  })
+})
+
 describe('redo waits for earlier undone work', () => {
   // Two rolls of one die, then both undone newest first. Redoing the newer
   // roll first would remove a face that is not there and leave two.

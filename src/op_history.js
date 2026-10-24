@@ -49,15 +49,18 @@ const newer = (a, b) => (a.ts - b.ts) || (a.id > b.id ? 1 : a.id < b.id ? -1 : 0
  *   active      in effect (no active op reverts it)
  *   reverterId  the active undo op that reverted it, when not active
  *   undoneBy    that undo op's author
+ *   undoneAt    that undo op's ts
  *   blockedBy   ids of later live ops it contends with
  *   waitingOn   ids of earlier undone ops it contends with (undone rows only)
  *   canUndo     active and not blocked
  *   canRedo     undone by actorId's own undo, and neither blocked nor waiting
  *
- * Blockers are only computed for the first `limit` rows; `only` narrows the
- * result to that one op id.
+ * Blockers are only computed for the first `limit` rows. The options narrow
+ * the rows before that count: `only` to one op id, `by` to one author's
+ * gestures, `liveOnly` to those in effect, `undoneBy` to those reverted by
+ * that author.
  */
-export function historyRows(ops, tipIds, { joinSequence = [], actorId = null, limit = Infinity, only = null } = {}) {
+export function historyRows(ops, tipIds, { joinSequence = [], actorId = null, limit = Infinity, only = null, by = null, liveOnly = false, undoneBy = null } = {}) {
   const view = ancestryView(ops, tipIds)
   // Ordered with the hidden ops in place: they sit between real ones in the
   // chain, and dropping them first would leave the real ops unordered.
@@ -94,9 +97,12 @@ export function historyRows(ops, tipIds, { joinSequence = [], actorId = null, li
     if (only != null && order[i] !== only) continue
     const op = view.get(order[i])
     const active = live.has(op.id)
+    const reverter = active ? null : reverterOf.get(op.id) ?? null
+    if (by != null && op.authorId !== by) continue
+    if (liveOnly && !active) continue
+    if (undoneBy != null && reverter?.authorId !== undoneBy) continue
     const blockedBy = order.slice(i + 1).filter(id => live.has(id) && contends(op.id, id))
     const waitingOn = active ? [] : order.slice(0, i).filter(id => !live.has(id) && contends(id, op.id))
-    const reverter = active ? null : reverterOf.get(op.id) ?? null
     rows.push({
       id: op.id,
       op,
@@ -106,6 +112,7 @@ export function historyRows(ops, tipIds, { joinSequence = [], actorId = null, li
       active,
       reverterId: reverter?.id ?? null,
       undoneBy: reverter?.authorId ?? null,
+      undoneAt: reverter?.ts ?? null,
       blockedBy,
       waitingOn,
       canUndo: active && !blockedBy.length,
