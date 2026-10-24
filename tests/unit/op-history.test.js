@@ -9,6 +9,7 @@
 
 import { describe, test, expect } from 'vitest'
 import { historyRows, HIDDEN_GESTURES, subjectId, subjectOf, previewStates } from '../../src/op_history.js'
+import { projectTips } from '../../src/op_checkpoint.js'
 
 const attr = (id, name, oldValue, newValue) =>
   ({ t: 'attr', target: { id }, name, ns: null, oldValue, newValue })
@@ -219,41 +220,86 @@ describe('subjectOf', () => {
 })
 
 describe('previewStates', () => {
-  test('a live attribute change: before is the old value, after the current one', () => {
-    const l = layer(die('5'))
-    const p = previewStates(attrOp('die1', 'x', '0', '5'), l, { live: true })
-    expect(p.before.getAttribute('x')).toBe('0')
-    expect(p.after.getAttribute('x')).toBe('5')
-    expect(l.querySelector('[data-id="die1"]').getAttribute('x')).toBe('5')   // the layer is untouched
+  // A die whose face is a tspan's text, built the way a roll writes it
+  // (textContent replaces the text node), as a real chain of ops.
+  const rollLog = () => {
+    const swap = (from, to) => [{ t: 'child', target: { id: 'ts1' }, added: [{ tx: to }], removed: [{ tx: from }], prevSibling: null, nextSibling: null }]
+    const place = childOp('layer', [{
+      el: 'g', at: [['data-id', 'die1'], ['data-toy-type', 'die']],
+      ch: [{ el: 'text', at: [['data-id', 't1']], ch: [{ el: 'tspan', at: [['data-id', 'ts1']], ch: [{ tx: '6' }] }] }],
+    }], []).mutations
+    const ops = new Map()
+    const add = (id, parents, mutations) => ops.set(id, { id, parents, authorId: 'a', gesture: 'g', mutations, ts: ops.size + 1 })
+    add('p', [], place)
+    add('r1', ['p'], swap('6', '2'))
+    add('r2', ['r1'], swap('2', '5'))
+    return ops
+  }
+  const shown = (ops, tip) => {
+    const l = layer()
+    projectTips(l, ops, new Map(), [tip])
+    return l
+  }
+  const face = (el) => el.querySelector('[data-id="ts1"]').textContent
+
+  test('a roll previews as the face it replaced and the face it wrote, even after a later roll', () => {
+    const ops = rollLog()
+    const l = shown(ops, 'r2')
+    expect(face(l)).toBe('5')
+
+    const first = previewStates(ops.get('r1'), l, { ops, content: new Map() })
+    expect(face(first.before)).toBe('6')
+    expect(face(first.after)).toBe('2')
+
+    const second = previewStates(ops.get('r2'), l, { ops, content: new Map() })
+    expect(face(second.before)).toBe('2')
+    expect(face(second.after)).toBe('5')
   })
 
-  test('an undone attribute change: before is current, after the redone value', () => {
-    const p = previewStates(attrOp('die1', 'x', '0', '5'), layer(die('0')), { live: false })
-    expect(p.before.getAttribute('x')).toBe('0')
+  test('the layer being shown is not touched', () => {
+    const ops = rollLog()
+    const l = shown(ops, 'r2')
+    previewStates(ops.get('r1'), l, { ops, content: new Map() })
+    expect(face(l)).toBe('5')
+  })
+
+  test('an attribute change is the same whether or not a later op moved it again', () => {
+    const ops = new Map()
+    const add = (id, parents, mutations) => ops.set(id, { id, parents, authorId: 'a', gesture: 'g', mutations, ts: ops.size + 1 })
+    add('p', [], childOp('layer', [ser('die1', 'die')], []).mutations)
+    add('m1', ['p'], attrOp('die1', 'x', null, '5').mutations)
+    add('m2', ['m1'], attrOp('die1', 'x', '5', '9').mutations)
+    const l = shown(ops, 'm2')
+    const p = previewStates(ops.get('m1'), l, { ops, content: new Map() })
+    expect(p.before.getAttribute('x')).toBeNull()
     expect(p.after.getAttribute('x')).toBe('5')
   })
 
-  test('a live place has nothing before it', () => {
-    const op = childOp('layer', [ser('die1', 'die')], [])
-    const p = previewStates(op, layer(die()), { live: true })
+  test('a place has nothing before it', () => {
+    const ops = new Map([['p', { id: 'p', parents: [], authorId: 'a', gesture: 'place', ts: 1, mutations: childOp('layer', [ser('die1', 'die')], []).mutations }]])
+    const p = previewStates(ops.get('p'), shown(ops, 'p'), { ops, content: new Map() })
     expect(p.before).toBeNull()
     expect(p.after.getAttribute('data-toy-type')).toBe('die')
   })
 
-  test('a live delete has nothing after it', () => {
-    const op = childOp('layer', [], [{ ...ser('die1', 'die'), ch: [] }])
-    const p = previewStates(op, layer(), { live: true })
+  test('a delete has nothing after it', () => {
+    const ops = new Map()
+    ops.set('p', { id: 'p', parents: [], authorId: 'a', gesture: 'place', ts: 1, mutations: childOp('layer', [ser('die1', 'die')], []).mutations })
+    ops.set('d', { id: 'd', parents: ['p'], authorId: 'a', gesture: 'delete', ts: 2, mutations: childOp('layer', [], [ser('die1', 'die')]).mutations })
+    const p = previewStates(ops.get('d'), shown(ops, 'd'), { ops, content: new Map() })
     expect(p.before.getAttribute('data-id')).toBe('die1')
     expect(p.after).toBeNull()
   })
 
   test('an element inside a toy previews as the whole toy', () => {
-    const op = { mutations: [{ t: 'attr', target: { id: 'face1' }, name: 'fill', ns: null, oldValue: 'red', newValue: 'blue' }] }
-    const p = previewStates(op, layer(die()), { live: true })
+    const ops = rollLog()
+    ops.set('c', { id: 'c', parents: ['r2'], authorId: 'a', gesture: 'g', ts: 9, mutations: attrOp('t1', 'fill', null, 'blue').mutations })
+    const p = previewStates(ops.get('c'), shown(ops, 'c'), { ops, content: new Map() })
     expect(p.before.getAttribute('data-toy-type')).toBe('die')
   })
 
-  test('mutations that no longer apply give no preview', () => {
-    expect(previewStates(attrOp('gone', 'x', '0', '5'), layer(), { live: true })).toBeNull()
+  test('mutations that cannot apply give no preview', () => {
+    const ops = new Map([['m', { id: 'm', parents: [], authorId: 'a', gesture: 'g', ts: 1, mutations: attrOp('gone', 'x', '0', '5').mutations }]])
+    expect(previewStates(ops.get('m'), layer(), { ops, content: new Map() })).toBeNull()
   })
 })

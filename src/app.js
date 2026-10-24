@@ -304,6 +304,7 @@ function _singleSelectedId() {
   return ids.length === 1 ? ids[0] : null;
 }
 let _activeTool   = 'select';
+let _previewCache = { key: null, states: null }; // getOpPreview's last result
 let _offline      = false;
 
 // Active drag — set by App.startDrag, cleared by commitMove / cancelMove.
@@ -2059,14 +2060,27 @@ const App = {
   },
   // The row's subject as the layer had it before and after the op, as
   // detached elements (null where it did not exist), or null if the op no
-  // longer applies.
+  // longer applies. The panel re-renders on every change while a row is
+  // open, so the last result is kept: it depends only on the op and its
+  // ancestry, which never change. Each call gets its own copies, since the
+  // panel takes them apart.
   getOpPreview: (layerName, opId) => {
-    const layer   = getOpLayer(layerName);
-    const layerEl = layerElOf(layer);
-    const ops     = OpDag.getOps(_ydoc, layer);
-    const op      = OpDag.getOp(ops, opId);
-    if (!op || !layerEl) return null;
-    return OpHistory.previewStates(op, layerEl, { live: OpDag.isActive(ops, opId) });
+    const key = `${layerName}:${opId}`;
+    if (_previewCache.key !== key) {
+      const layer   = getOpLayer(layerName);
+      const layerEl = layerElOf(layer);
+      const ops     = OpDag.getOps(_ydoc, layer);
+      const op      = OpDag.getOp(ops, opId);
+      if (!op || !layerEl) return null;
+      const states = OpHistory.previewStates(op, layerEl, {
+        ops, content: OpDag.getContent(_ydoc, layer), joinSequence: tablesAPI.getJoinSequenceArray(_ydoc),
+      });
+      // A miss is not kept: an op can arrive before the parents it needs.
+      if (!states) return null;
+      _previewCache = { key, states };
+    }
+    const { before, after } = _previewCache.states;
+    return { before: before?.cloneNode(true) ?? null, after: after?.cloneNode(true) ?? null };
   },
   undoOp: (layerName, opId) => stepOp('undo', layerName, opId),
   redoOp: (layerName, opId) => stepOp('redo', layerName, opId),

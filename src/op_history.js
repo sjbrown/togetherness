@@ -18,8 +18,8 @@
 
 import { ancestryView, isActive, totalOrder } from './op_dag.js'
 import { touchedBy, conflicts } from './op_replay.js'
-import { isCheckpoint } from './op_checkpoint.js'
-import { apply, invert } from './op_wire_mutation.js'
+import { isCheckpoint, projectTips } from './op_checkpoint.js'
+import { apply } from './op_wire_mutation.js'
 
 /** Gestures that are bookkeeping, not something a person did. */
 export const HIDDEN_GESTURES = new Set(['checkpoint', 'initialize', 'contents_change'])
@@ -145,20 +145,21 @@ const subjectIn = (root, id) => {
 
 /**
  * The subject before and after an op, as detached copies; null for a side
- * where it does not exist. `live` says whether the layer currently shows the
- * op's effect. The other side is that layer with the op, or its inverse,
- * applied to a copy. Null overall when the mutations no longer apply.
+ * where it does not exist. "Before" is the layer projected to the op's
+ * parents and "after" is that with the op applied, both on a scratch copy,
+ * so later work on the same element cannot bleed into either side. Null
+ * overall when the op no longer applies.
  */
-export function previewStates(op, layerEl, { live }) {
+export function previewStates(op, layerEl, { ops, content, joinSequence = [] }) {
   const id = subjectId(op)
   if (id == null || !layerEl) return null
-  const current = layerEl.cloneNode(true)
-  const other = layerEl.cloneNode(true)
+  const scratch = layerEl.cloneNode(false)
   try {
-    apply(live ? invert(op.mutations) : op.mutations, other)
+    projectTips(scratch, ops, content, op.parents ?? [], joinSequence)
+    const before = subjectIn(scratch, id)
+    apply(op.mutations, scratch)
+    return { before, after: subjectIn(scratch, id) }
   } catch {
     return null
   }
-  const [before, after] = live ? [other, current] : [current, other]
-  return { before: subjectIn(before, id), after: subjectIn(after, id) }
 }

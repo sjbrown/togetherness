@@ -74,6 +74,90 @@ test.describe('history panel', () => {
     await browser.close();
   });
 
+  test('two rolls of one die each preview as the face they replaced and the face they wrote', async () => {
+    const browser = await launch();
+    const page = await (await browser.newContext()).newPage();
+    await openAsCreator(page, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+
+    const box = await page.locator('#canvas').boundingBox();
+    await page.evaluate(() => window.UI.pillTap('d6'));
+    await page.waitForTimeout(100);
+    await page.mouse.move(box.x + 100, box.y + 100);
+    await page.mouse.down();
+    await page.mouse.up();
+    const toy = page.locator('#toys-layer [data-toy-type]');
+    await expect(toy).toHaveCount(1, { timeout: 5000 });
+    const toyId = await toy.getAttribute('data-id');
+
+    for (let i = 0; i < 2; i++) {
+      await page.evaluate((id) => window.App.invokeToyMenuAction(id, 'd6', 'Roll'), toyId);
+      await page.waitForTimeout(100);
+    }
+    await page.evaluate(() => window.UI.openSheet('history'));
+    const rolls = page.locator('.hist-op').filter({ has: page.locator('.hist-op-title', { hasText: /^menu:d6\.Roll / }) });
+    await expect(rolls).toHaveCount(2);
+
+    const faces = async (rollRow) => {
+      await rollRow.locator('.hist-op-head').click();
+      const sides = page.locator('.hist-op.sel .hist-pv');
+      await expect(sides).toHaveCount(2);
+      return [(await sides.nth(0).locator('tspan').textContent()).trim(), (await sides.nth(1).locator('tspan').textContent()).trim()];
+    };
+    const [olderBefore, olderAfter] = await faces(rolls.nth(1));
+    const [newerBefore, newerAfter] = await faces(rolls.nth(0));
+
+    for (const face of [olderBefore, olderAfter, newerBefore, newerAfter]) expect(face).toMatch(/^[1-6]$/);
+    expect(olderAfter).toBe(newerBefore);
+    expect(newerAfter).toBe((await toy.locator('tspan').first().textContent()).trim());
+
+    await browser.close();
+  });
+
+  test('an expanded row is projected once, however often the panel re-renders', async () => {
+    const browser = await launch();
+    const page = await (await browser.newContext()).newPage();
+    await openAsCreator(page, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+
+    const box = await page.locator('#canvas').boundingBox();
+    await page.evaluate(() => window.UI.pillTap('d6'));
+    await page.waitForTimeout(100);
+    await page.mouse.move(box.x + 100, box.y + 100);
+    await page.mouse.down();
+    await page.mouse.up();
+    const toy = page.locator('#toys-layer [data-toy-type]');
+    await expect(toy).toHaveCount(1, { timeout: 5000 });
+    const toyId = await toy.getAttribute('data-id');
+    for (let i = 0; i < 2; i++) {
+      await page.evaluate((id) => window.App.invokeToyMenuAction(id, 'd6', 'Roll'), toyId);
+      await page.waitForTimeout(100);
+    }
+
+    await page.evaluate(() => window.UI.openSheet('history'));
+    const projections = () => page.evaluate(async () => {
+      const Trace = await import('/trace.js');
+      return Trace.events().filter(e => e.ch === 'op' && e.evt === 'project').length;
+    });
+    const rolls = page.locator('.hist-op').filter({ has: page.locator('.hist-op-title', { hasText: /^menu:d6\.Roll / }) });
+
+    const before = await projections();
+    await rolls.nth(0).locator('.hist-op-head').click();
+    await expect(page.locator('.hist-pv > svg')).toHaveCount(2);
+    const afterOpen = await projections();
+    expect(afterOpen).toBe(before + 1);
+
+    // Re-renders while the row stays open reuse the result.
+    for (let i = 0; i < 3; i++) await page.evaluate(() => window.UI.refreshFromDoc());
+    await expect(page.locator('.hist-pv > svg')).toHaveCount(2);
+    expect(await projections()).toBe(afterOpen);
+
+    // A different row is a different preview.
+    await rolls.nth(1).locator('.hist-op-head').click();
+    await expect(page.locator('.hist-pv > svg')).toHaveCount(2);
+    expect(await projections()).toBe(afterOpen + 1);
+
+    await browser.close();
+  });
+
   test('one peer undoes another’s action from the list; both lists show who did it', async () => {
     const browser = await launch();
     const pageA = await (await browser.newContext()).newPage();
