@@ -217,7 +217,7 @@ export function serialize(records) {
 
 // ── apply ───────────────────────────────────────────────────────────────
 
-class WireApplyError extends Error {}
+export class WireApplyError extends Error {}
 
 // null means append. An anchor that no longer resolves inside parent means
 // the batch already moved it; appending keeps the node in the tree rather
@@ -244,7 +244,8 @@ function matchesSerialized(node, s) {
 /**
  * Apply wire entries to rootEl, in order. Throws on a target that cannot
  * be resolved: a silently skipped entry leaves the tree in a state no peer
- * ever had, which is worse than stopping.
+ * ever had, which is worse than stopping. And it stops cleanly: entries
+ * already applied are undone first, so a batch lands whole or not at all.
  */
 export function apply(wire, rootEl) {
   Trace.wire('apply', `applying ${wire?.length ?? 0} entries`, () => ({
@@ -253,6 +254,21 @@ export function apply(wire, rootEl) {
     root:    rootEl?.getAttribute?.('data-id') ?? rootEl?.getAttribute?.('id') ?? null,
     wire,
   }))
+  const progress = { done: 0 }
+  try {
+    applyEntries(wire ?? [], rootEl, progress)
+  } catch (err) {
+    // The entry that threw is not undone: an unresolvable target throws
+    // before it changes anything.
+    Trace.wire('apply-rollback', `undoing ${progress.done} applied entries`,
+      { layer: layerNameOf(rootEl), applied: progress.done }, 'warn')
+    try { applyEntries(invert((wire ?? []).slice(0, progress.done)), rootEl, { done: 0 }) } catch { /* nothing more to try */ }
+    throw err
+  }
+  return rootEl
+}
+
+function applyEntries(entries, rootEl, progress) {
   const doc = rootEl.ownerDocument ?? document
   // Nodes this SAME apply() call has already detached via removeChild,
   // keyed by data-id — a subsequent 'added' entry naming the same
@@ -266,7 +282,8 @@ export function apply(wire, rootEl) {
   // gone the moment a stale clone replaces it in the tree.
   const detached = new Map()
 
-  for (const entry of wire ?? []) {
+  for (const [i, entry] of entries.entries()) {
+    progress.done = i
     const target = resolveRef(entry.target, rootEl)
     if (!target) {
       Trace.wire('apply-unresolvable', `cannot resolve ${JSON.stringify(entry.target)}`,
@@ -313,8 +330,6 @@ export function apply(wire, rootEl) {
       }
     }
   }
-
-  return rootEl
 }
 
 // ── invert ──────────────────────────────────────────────────────────────
