@@ -1293,7 +1293,7 @@ export function histBody(rows = [], selectedId = null, now = Date.now()) {
     const detail = sel ? `<div class="hist-op-detail">
         <div class="hist-previews" ${attrs}>
           <div class="hist-pv" data-side="before"></div><span class="hist-arrow" aria-hidden="true">→</span><div class="hist-pv" data-side="after"></div>
-        </div>${row.blocked ? '<div class="hist-op-note">Undo recent work on this element first.</div>' : ''}
+        </div>${row.blocked ? `<div class="hist-op-note">${row.blocked === 'earlier' ? 'Redo earlier work on this element first.' : 'Undo recent work on this element first.'}</div>` : ''}
       </div>` : '';
     return `<div class="hist-op ${row.active ? '' : 'undone'} ${sel ? 'sel' : ''}">
       <div class="hist-op-top">

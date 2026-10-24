@@ -863,7 +863,7 @@ describe('histBody — the op-log history list', () => {
 
   const row = (over = {}) => ({
     opId: 'op1', layer: 'toys', gesture: 'move', subject: 'die tt-d1', ts: NOW - 120_000,
-    author: bob, undoneBy: null, active: true, blocked: false, canUndo: true, canRedo: false,
+    author: bob, undoneBy: null, active: true, blocked: null, canUndo: true, canRedo: false,
     ...over,
   })
   const render = (rows, selectedId = null) => {
@@ -917,7 +917,7 @@ describe('histBody — the op-log history list', () => {
   })
 
   test('a blocked row has no button, a warning mark, and the note once selected', () => {
-    const rows = [row({ blocked: true, canUndo: false })]
+    const rows = [row({ blocked: 'later', canUndo: false })]
     const closed = render(rows)
     expect(closed.querySelector('.hist-op-warn')).not.toBeNull()
     expect(closed.querySelector('.hist-op-note')).toBeNull()
@@ -925,6 +925,13 @@ describe('histBody — the op-log history list', () => {
     const open = render(rows, 'op1')
     expect(open.querySelector('.hist-op-go')).toBeNull()
     expect(open.querySelector('.hist-op-note').textContent).toBe('Undo recent work on this element first.')
+  })
+
+  test('an undone row waiting on earlier undone work says to redo that first', () => {
+    const open = render([row({ active: false, undoneBy: me, blocked: 'earlier', canUndo: false })], 'op1')
+    expect(open.querySelector('.hist-op-go')).toBeNull()
+    expect(open.querySelector('.hist-op-warn')).not.toBeNull()
+    expect(open.querySelector('.hist-op-note').textContent).toBe('Redo earlier work on this element first.')
   })
 
   test('a row nobody can act on (undone by someone else) has no button and no note', () => {
