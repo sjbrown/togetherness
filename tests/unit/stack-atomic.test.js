@@ -84,6 +84,17 @@ describe('Stack on two chips', () => {
     expect(stackEl.querySelectorAll(':scope .tt_contents > .toy').length).toBe(2)
   })
 
+  test('the sum updates as a text edit, not a replaced text node, so a peer never doubles it', async () => {
+    const t = await setup()
+    t.pressStack()
+    const tspan = t.layerEl.querySelector('[data-toy-type="stack"] .tspan_sum')
+    expect(tspan.childNodes.length).toBe(1)
+    const sumId = tspan.getAttribute('data-id')
+    const wire = t.ops().flatMap(o => o.mutations ?? [])
+    const asChild = wire.filter(m => m.t === 'child' && m.target?.id === sumId)
+    expect(asChild).toEqual([])
+  })
+
   test('one undo puts both chips back on the table and removes the stack', async () => {
     const t = await setup()
     t.pressStack()

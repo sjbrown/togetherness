@@ -203,7 +203,13 @@ var stack = {
       maxY = maxY === null ? y + h : Math.max(maxY, y + h)
     })
     const tspan = elem.querySelector('.tspan_sum')
-    if (tspan) tspan.textContent = String(sum)
+    if (tspan) {
+      // Rewrite the text node in place: replacing it syncs as remove+add,
+      // and a peer that already ran this handler ends up with both.
+      const text = String(sum)
+      if (tspan.firstChild?.nodeType === 3 && tspan.childNodes.length === 1) tspan.firstChild.data = text
+      else tspan.textContent = text
+    }
 
     if (minY === null) { minY = 0; maxY = 0 }
 
