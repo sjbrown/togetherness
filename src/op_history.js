@@ -1,19 +1,25 @@
 /**
- * op_history.js — the undo list, computed from the operation log.
+ * op_history.js — the undo list, and what each of its rows says.
  *
- * One row per real gesture in the ancestry of this peer's tips, newest
- * first. Nothing here is stored: whether a row is live or undone, and who
- * undid it, comes from the `reverts` chains (op_dag.isActive), so every peer
- * derives the same list from the same log. Pure; no DOM.
+ * historyRows is a projection of the operation log: one row per real
+ * gesture in the ancestry of this peer's tips, newest first. Nothing in it
+ * is stored: whether a row is live or undone, and who undid it, comes from
+ * the `reverts` chains (op_dag.isActive), so every peer derives the same
+ * list from the same log. It is pure and touches no DOM.
  *
  * A row is blocked while a later live op contends with it. Undoing it would
  * write its old values over that op's work, or remove an element that op
  * edits, so the row offers no button until the later work is undone.
+ *
+ * Below it, subjectOf and previewStates read a layer's DOM to name a row's
+ * subject and to show it before and after the op. No layer is special-cased:
+ * the subject is whichever element the op's first mutation addresses.
  */
 
 import { ancestryView, isActive, totalOrder } from './op_dag.js'
 import { touchedBy, conflicts } from './op_replay.js'
 import { isCheckpoint } from './op_checkpoint.js'
+import { apply, invert } from './op_wire_mutation.js'
 
 /** Gestures that are bookkeeping, not something a person did. */
 export const HIDDEN_GESTURES = new Set(['checkpoint', 'initialize', 'contents_change'])
@@ -99,4 +105,60 @@ export function historyRows(ops, tipIds, { joinSequence = [], actorId = null, li
     })
   }
   return rows
+}
+
+// ── subject and preview (read the layer's DOM) ──────────────────────────
+
+const dataIdOf = (s) => s?.at?.find(([n]) => n === 'data-id')?.[1] ?? null
+
+/** The data-id of the element an op's first mutation is about. */
+export function subjectId(op) {
+  for (const m of op?.mutations ?? []) {
+    if (m.t === 'child') return dataIdOf(m.added?.[0] ?? m.removed?.[0]) ?? m.target?.id ?? null
+    if (m.t === 'attr')  return m.target?.id ?? null
+    if (m.t === 'text')  return m.target?.parentId ?? null
+  }
+  return null
+}
+
+const findById = (root, id) =>
+  root.getAttribute?.('data-id') === id
+    ? root
+    : root.querySelector(`[data-id="${String(id).replace(/"/g, '\\"')}"]`)
+
+/**
+ * "{data-toy-type} {data-id}" for the subject as the layer shows it now, or
+ * the bare id when the element or its type is not there.
+ */
+export function subjectOf(op, layerEl) {
+  const id = subjectId(op)
+  if (id == null) return ''
+  const el = layerEl && findById(layerEl, id)
+  const toy = el?.closest('[data-toy-type]')
+  return toy ? `${toy.getAttribute('data-toy-type')} ${toy.getAttribute('data-id')}` : id
+}
+
+const subjectIn = (root, id) => {
+  const el = findById(root, id)
+  return el ? (el.closest('[data-toy-type]') ?? el).cloneNode(true) : null
+}
+
+/**
+ * The subject before and after an op, as detached copies; null for a side
+ * where it does not exist. `live` says whether the layer currently shows the
+ * op's effect. The other side is that layer with the op, or its inverse,
+ * applied to a copy. Null overall when the mutations no longer apply.
+ */
+export function previewStates(op, layerEl, { live }) {
+  const id = subjectId(op)
+  if (id == null || !layerEl) return null
+  const current = layerEl.cloneNode(true)
+  const other = layerEl.cloneNode(true)
+  try {
+    apply(live ? invert(op.mutations) : op.mutations, other)
+  } catch {
+    return null
+  }
+  const [before, after] = live ? [other, current] : [current, other]
+  return { before: subjectIn(before, id), after: subjectIn(after, id) }
 }

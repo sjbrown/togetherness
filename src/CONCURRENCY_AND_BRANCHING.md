@@ -781,7 +781,7 @@ A row names its operation as the stored `gesture` and the subject's
 `data-toy-type` and `data-id` read from the layer's DOM (the id alone when
 the element or type is not there). Its Before and After are the subject on
 a copy of the layer with the operation, or its inverse, applied
-(`op_preview`).
+(`op_history`).
 
 ---
 

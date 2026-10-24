@@ -28,7 +28,7 @@ import * as OpHead                                from './op_head.js';
 import * as OpCheckpoint                          from './op_checkpoint.js';
 import * as OpPrune                               from './op_prune.js';
 import * as OpLayer                               from './op_layer.js';
-import * as OpPreview                             from './op_preview.js';
+import * as OpHistory                             from './op_history.js';
 import { opLayers, getOpLayer }                   from './op_layers.js';
 import * as User                                  from './user.js';
 import * as Trace                                 from './trace.js';
@@ -1970,7 +1970,7 @@ const App = {
             opId:     row.id,
             layer:    layer.name,
             gesture:  row.gesture,
-            subject:  OpPreview.subjectOf(row.op, layerEl),
+            subject:  OpHistory.subjectOf(row.op, layerEl),
             ts:       row.ts,
             author:   authorProfile(row.authorId),
             undoneBy: row.undoneBy == null ? null : authorProfile(row.undoneBy),
@@ -1992,7 +1992,7 @@ const App = {
     const ops     = OpDag.getOps(_ydoc, layer);
     const op      = OpDag.getOp(ops, opId);
     if (!op || !layerEl) return null;
-    return OpPreview.previewStates(op, layerEl, { live: OpDag.isActive(ops, opId) });
+    return OpHistory.previewStates(op, layerEl, { live: OpDag.isActive(ops, opId) });
   },
   undoOp: (layerName, opId) => stepOp('undo', layerName, opId),
   redoOp: (layerName, opId) => stepOp('redo', layerName, opId),
