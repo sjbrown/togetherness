@@ -13,7 +13,7 @@ import {
   ancestors, isAncestor, heads, lca,
   compareAuthority, totalOrder, pathFrom,
   branchAuthors, forkJoinSequence, labelBranches,
-  isActive, undoTarget, redoTarget, revertRoot,
+  isActive, revertRoot,
 } from '../../src/op_dag.js'
 
 /** Build a plain op map from [id, parents, authorId, ts] triples. */
@@ -137,7 +137,7 @@ describe('lca', () => {
   })
 })
 
-describe('isActive / undoTarget / redoTarget', () => {
+describe('isActive / revertRoot', () => {
   // A small log builder: each helper appends one op on top of the last tip(s).
   function log() {
     const ops = new Map()
@@ -152,122 +152,47 @@ describe('isActive / undoTarget / redoTarget', () => {
     }
     return {
       ops,
-      tips: () => tip,
       real: (id, a, parents) => add(id, a, 'move', null, parents),
       undo: (id, a, of) => add(id, a, 'undo:move', of),
       redo: (id, a, of) => add(id, a, 'redo:move', of),
     }
   }
-  const ids = (list) => list.map(o => o.id)
 
-  test('1. undo, redo, undo toggles X and the targets follow', () => {
+  test('undo, redo, undo toggles X', () => {
     const l = log()
     l.real('X', 'alice')
-    expect(ids(undoTarget(l.ops, l.tips(), 'alice'))).toEqual(['X'])
-    expect(redoTarget(l.ops, l.tips(), 'alice')).toEqual([])
+    expect(isActive(l.ops, 'X')).toBe(true)
 
     l.undo('U1', 'alice', 'X')
     expect(isActive(l.ops, 'X')).toBe(false)
-    expect(undoTarget(l.ops, l.tips(), 'alice')).toEqual([])
-    expect(ids(redoTarget(l.ops, l.tips(), 'alice'))).toEqual(['U1'])
+    expect(isActive(l.ops, 'U1')).toBe(true)
 
     l.redo('R1', 'alice', 'U1')
     expect(isActive(l.ops, 'U1')).toBe(false)
     expect(isActive(l.ops, 'X')).toBe(true)
-    expect(ids(undoTarget(l.ops, l.tips(), 'alice'))).toEqual(['X'])
-    expect(redoTarget(l.ops, l.tips(), 'alice')).toEqual([])
 
     // Undo after redo still names the real gesture, not the redo.
     l.undo('U2', 'alice', 'X')
     expect(isActive(l.ops, 'X')).toBe(false)
-    expect(undoTarget(l.ops, l.tips(), 'alice')).toEqual([])
-    expect(ids(redoTarget(l.ops, l.tips(), 'alice'))).toEqual(['U2'])
+    expect(isActive(l.ops, 'U2')).toBe(true)
   })
 
-  test('2. three undos reach X3, X2, X1; three redos bring back X1, X2, X3', () => {
-    const l = log()
-    for (const x of ['X1', 'X2', 'X3']) l.real(x, 'alice')
-    const undone = []
-    for (const u of ['U1', 'U2', 'U3']) {
-      const target = undoTarget(l.ops, l.tips(), 'alice')[0]
-      undone.push(target.id)
-      l.undo(u, 'alice', target.id)
-    }
-    expect(undone).toEqual(['X3', 'X2', 'X1'])
-
-    const redone = []
-    for (const r of ['R1', 'R2', 'R3']) {
-      const target = redoTarget(l.ops, l.tips(), 'alice')[0]
-      redone.push(target.reverts)
-      l.redo(r, 'alice', target.id)
-    }
-    expect(redone).toEqual(['X1', 'X2', 'X3'])
-    expect(redoTarget(l.ops, l.tips(), 'alice')).toEqual([])
-    expect(ids(undoTarget(l.ops, l.tips(), 'alice'))).toEqual(['X3', 'X2', 'X1'])
-  })
-
-  test('3. a new real gesture after an undo leaves no redo target', () => {
-    const l = log()
-    l.real('X1', 'alice'); l.real('X2', 'alice')
-    l.undo('U1', 'alice', 'X2')
-    expect(ids(redoTarget(l.ops, l.tips(), 'alice'))).toEqual(['U1'])
-    l.real('Y', 'alice')
-    expect(redoTarget(l.ops, l.tips(), 'alice')).toEqual([])
-  })
-
-  test('4. Alice undoes Bob’s X: Bob’s undo falls back, only Alice can redo', () => {
+  test('another author’s undo reverts it for everyone', () => {
     const l = log()
     l.real('B0', 'bob'); l.real('X', 'bob')
     l.undo('U', 'alice', 'X')
-
     expect(isActive(l.ops, 'X')).toBe(false)
-    expect(ids(undoTarget(l.ops, l.tips(), 'bob'))).toEqual(['B0'])
-    expect(redoTarget(l.ops, l.tips(), 'bob')).toEqual([])
-    expect(ids(redoTarget(l.ops, l.tips(), 'alice'))).toEqual(['U'])
+    expect(isActive(l.ops, 'B0')).toBe(true)
 
     l.redo('R', 'alice', 'U')
-    expect(ids(undoTarget(l.ops, l.tips(), 'bob'))).toEqual(['X', 'B0'])
-  })
-
-  test('5. Bob’s ops reached only through merge parents are still found', () => {
-    const ops = new Map()
-    const put = (id, parents, authorId, ts, extra = {}) =>
-      ops.set(id, { id, parents, authorId, gesture: 'move', mutations: [], ts, ...extra })
-    put('root', [], 'alice', 1)
-    put('b1', ['root'], 'bob', 2)
-    put('b2', ['b1'], 'bob', 3)
-    put('a1', ['root'], 'alice', 4)
-    put('merge', ['a1', 'b2'], 'alice', 5)
-    expect(ids(undoTarget(ops, ['merge'], 'bob'))).toEqual(['b2', 'b1'])
-    expect(ids(undoTarget(ops, ['merge'], 'alice'))).toEqual(['merge', 'a1', 'root'])
-  })
-
-  test('an undo outside the local ancestry does not count', () => {
-    const l = log()
-    l.real('X', 'bob')
-    l.undo('U', 'alice', 'X')
-    expect(ids(undoTarget(l.ops, ['X'], 'bob'))).toEqual(['X'])
-  })
-
-  test('6. checkpoints and legacy undo ops without reverts are never targets', () => {
-    const l = log()
-    l.real('X', 'alice')
-    l.ops.set('CK', { id: 'CK', parents: ['X'], authorId: 'alice', gesture: 'checkpoint', mutations: [], ts: 50 })
-    l.ops.set('LEGACY', { id: 'LEGACY', parents: ['CK'], authorId: 'alice', gesture: 'undo:move', mutations: [], ts: 60 })
-    expect(ids(undoTarget(l.ops, ['LEGACY'], 'alice'))).toEqual(['X'])
-    expect(redoTarget(l.ops, ['LEGACY'], 'alice')).toEqual([])
     expect(isActive(l.ops, 'X')).toBe(true)
   })
 
-  test('ties on ts go to the higher op id; no author or tips gives nothing', () => {
-    const ops = new Map([
-      ['a', { id: 'a', parents: [], authorId: 'alice', gesture: 'move', mutations: [], ts: 1 }],
-      ['b', { id: 'b', parents: ['a'], authorId: 'alice', gesture: 'move', mutations: [], ts: 1 }],
-    ])
-    expect(ids(undoTarget(ops, ['b'], 'alice'))).toEqual(['b', 'a'])
-    expect(undoTarget(ops, ['b'], null)).toEqual([])
-    expect(undoTarget(ops, [], 'alice')).toEqual([])
-    expect(redoTarget(ops, ['b'], null)).toEqual([])
+  test('an undo with no reverts reverts nothing', () => {
+    const l = log()
+    l.real('X', 'alice')
+    l.ops.set('LEGACY', { id: 'LEGACY', parents: ['X'], authorId: 'alice', gesture: 'undo:move', mutations: [], ts: 60 })
+    expect(isActive(l.ops, 'X')).toBe(true)
   })
 
   test('revertRoot follows redo → undo → real gesture', () => {

@@ -387,3 +387,48 @@ test.describe('undoing another author’s action', () => {
     await browser.close();
   });
 });
+
+test.describe('Undo gives up rather than overwrite a peer', () => {
+  test('A’s Undo is refused while B’s later move of the same shape stands, and goes through once B undoes it', async () => {
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+    const pageA = await (await browser.newContext()).newPage();
+    const pageB = await (await browser.newContext()).newPage();
+
+    await openCreatorAndJoiner(pageA, pageB, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+    await waitForPeerCount(pageA, 1);
+    await waitForPeerCount(pageB, 1);
+
+    await pageA.evaluate(() => window.App.commitDrawing({
+      type: 'rect', x: 100, y: 100, width: 80, height: 80,
+      fill: '#5a7ea8', stroke: 'none', 'stroke-width': 1.5, 'corner-r': 0,
+    }));
+    await expect(pageB.locator('#drawing-layer rect')).toHaveCount(1, { timeout: 5000 });
+    const id = await pageA.locator('#drawing-layer rect').getAttribute('data-id');
+    const rectA = pageA.locator(`#drawing-layer rect[data-id="${id}"]`);
+    const rectB = pageB.locator(`#drawing-layer rect[data-id="${id}"]`);
+    const moveTo = (page, x, y) => page.evaluate(([id, x, y]) => {
+      window.App.startDrag(id);
+      window.App.commitMove(id, x, y);
+    }, [id, x, y]);
+
+    await moveTo(pageA, 300, 250);
+    await expect(rectB).toHaveAttribute('x', '300', { timeout: 5000 });
+    await moveTo(pageB, 500, 450);
+    await expect(rectA).toHaveAttribute('x', '500', { timeout: 5000 });
+
+    // A's newest move is covered by B's, so Undo says so and changes nothing.
+    await pressUndo(pageA);
+    await expect(pageA.locator('#toasts')).toContainText('Undo recent work on this element first.');
+    await expect(rectA).toHaveAttribute('x', '500');
+    await expect(rectB).toHaveAttribute('x', '500');
+
+    // Once B undoes theirs, A's goes through.
+    await pressUndo(pageB);
+    await expect(rectA).toHaveAttribute('x', '300', { timeout: 5000 });
+    await pressUndo(pageA);
+    await expect(rectA).toHaveAttribute('x', '100', { timeout: 5000 });
+    await expect(rectB).toHaveAttribute('x', '100', { timeout: 5000 });
+
+    await browser.close();
+  });
+});

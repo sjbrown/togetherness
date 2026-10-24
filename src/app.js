@@ -1990,48 +1990,26 @@ const App = {
     });
   },
   undo: () => App.undoFor(App.user.id),
-  // Undo ownerId's latest action (this peer's, when ownerId is me). Layers
-  // are chosen between by the target's ts, the owner's own clock.
+  // Undo ownerId's newest live action (this peer's, when ownerId is me),
+  // whichever layer it is in, by the owner's own clock. Best effort: if that
+  // one cannot go cleanly the toast says why, and nothing older is tried.
   undoFor: (ownerId) => {
     // A moved/resized/deleted shape's selRing is meaningless once the
     // gesture that put it there is undone
     _clearClaims();
-    const me = App.user.id;
-    const candidates = [];
-    for (const layer of opLayers()) {
-      const layerEl = layerElOf(layer);
-      if (!layerEl) continue;
-      const op = OpLayer.undoCandidate(_ydoc, layer, _tableId, me, { owner: ownerId, layerEl });
-      if (!op) continue;
-      candidates.push({ ts: op.ts, run: () => {
-        const done = OpLayer.undoGesture(_ydoc, layer, layerEl, _tableId, me, { owner: ownerId });
-        if (!done) return false;
-        UI.toast('Undone');
-        return true;
-      } });
-    }
-    if (!runLatestFirst(candidates)) UI.toast('Nothing to undo', 'warn');
+    const row = newestAcrossLayers(layer => OpLayer.newestLiveRow(_ydoc, layer, _tableId, App.user.id,
+      { owner: ownerId, joinSequence: tablesAPI.getJoinSequenceArray(_ydoc) }), row => row.ts);
+    if (!row) return UI.toast('Nothing to undo', 'warn');
+    stepOp('undo', row.layer, row.id);
   },
+  // Redo the newest thing this peer undid, by when it was undone.
   redo: () => {
     _clearClaims();
-    const me = App.user.id;
-    const candidates = [];
-    for (const layer of opLayers()) {
-      const layerEl = layerElOf(layer);
-      if (!layerEl) continue;
-      const op = OpLayer.redoCandidate(_ydoc, layer, _tableId, me, { layerEl });
-      if (!op) continue;
-      candidates.push({ ts: op.ts, run: () => {
-        const done = OpLayer.redoGesture(_ydoc, layer, layerEl, _tableId, me);
-        if (!done) return false;
-        UI.toast('Redone');
-        return true;
-      } });
-    }
-    if (!runLatestFirst(candidates)) UI.toast('Nothing to redo', 'warn');
+    const row = newestAcrossLayers(layer => OpLayer.newestUndoneRow(_ydoc, layer, _tableId, App.user.id,
+      { joinSequence: tablesAPI.getJoinSequenceArray(_ydoc) }), row => row.undoneAt);
+    if (!row) return UI.toast('Nothing to redo', 'warn');
+    stepOp('redo', row.layer, row.id);
   },
-  canUndo: () => opLayers().some(layer => OpLayer.canUndo(_ydoc, layer, _tableId, App.user.id, { layerEl: layerElOf(layer) })),
-  canRedo: () => opLayers().some(layer => OpLayer.canRedo(_ydoc, layer, _tableId, App.user.id, { layerEl: layerElOf(layer) })),
   // The history panel's rows, every layer's newest first. Authors are full
   // profiles so ui.js can draw their avatar without reaching into awareness.
   getOpHistory: () => {
@@ -2282,14 +2260,6 @@ const App = {
 
 // ── History log ───────────────────────────────────────────────────────────────
 
-// Run the candidates highest-ts first until one applies. The ts is the
-// author's own wall clock: it picks which of this author's actions is the
-// most recent across layers, and decides nothing else. A candidate that can't
-// apply (its target vanished) falls through to the next-latest.
-function runLatestFirst(candidates) {
-  return candidates.sort((a, b) => b.ts - a.ts).some(c => c.run());
-}
-
 // A display name for a user id: the Peers panel's name for a connected
 // peer, else a short id.
 function peerName(id) {
@@ -2319,7 +2289,7 @@ function authorProfile(id) {
     ?? { id, name: String(id).slice(0, 6), color: '#6b6b6b', gradient: null };
 }
 
-// Undo or redo the chosen op from a history row.
+// Undo or redo the chosen op from a history row, or say why not.
 function stepOp(kind, layerName, opId) {
   _clearClaims();
   const layer   = getOpLayer(layerName);
@@ -2328,8 +2298,25 @@ function stepOp(kind, layerName, opId) {
   const done    = layerEl && run(_ydoc, layer, layerEl, _tableId, App.user.id, opId,
     { joinSequence: tablesAPI.getJoinSequenceArray(_ydoc) });
   if (done) UI.toast(kind === 'undo' ? 'Undone' : 'Redone');
-  else UI.toast(`Nothing to ${kind}`, 'warn');
+  else UI.toast(whyNot(layer, opId), 'warn');
   return !!done;
+}
+
+function whyNot(layer, opId) {
+  const row = OpLayer.historyOf(_ydoc, layer, _tableId, App.user.id, { only: opId })[0];
+  if (row?.blockedBy.length) return 'Undo recent work on this element first.';
+  if (row?.waitingOn.length) return 'Redo earlier work on this element first.';
+  return 'That change can no longer be applied.';
+}
+
+// The row with the highest key among what each layer offers, with its layer's
+// name on it. Ties fall to the op id so peers agree.
+function newestAcrossLayers(rowOf, keyOf) {
+  const rows = opLayers().flatMap(layer => {
+    const row = rowOf(layer);
+    return row ? [{ ...row, layer: layer.name }] : [];
+  });
+  return rows.sort((a, b) => (keyOf(b) - keyOf(a)) || (a.id < b.id ? 1 : -1))[0] ?? null;
 }
 
 // A fresh id for a drawing shape.

@@ -240,45 +240,6 @@ export function ancestryView(ops, tipIds) {
   return view
 }
 
-// Newest first by the author's own clock, ties by op id.
-const newestFirst = (a, b) => (b.ts - a.ts) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
-
-const isRealGesture = (op) => op.gesture !== 'checkpoint' && op.reverts == null
-
-/**
- * The owner's real gestures that undo could revert, newest first. Looks
- * across the union ancestry of tipIds, so ops that reached this peer as
- * merge parents count. Checkpoints, revert ops and legacy 'undo:'/'redo:'
- * ops without `reverts` are never candidates.
- */
-export function undoTarget(ops, tipIds, ownerId) {
-  if (!ownerId) return []
-  const view = ancestryView(ops, tipIds)
-  const memo = new Map()
-  return [...view.values()]
-    .filter(op => op.authorId === ownerId && isRealGesture(op)
-      && !/^(undo|redo):/.test(op.gesture) && isActive(view, op.id, memo))
-    .sort(newestFirst)
-}
-
-/**
- * The actor's own active undo ops that redo could revert, newest first.
- * Empty when the actor has committed a real gesture newer than the newest
- * of them: doing something new invalidates what could be redone.
- */
-export function redoTarget(ops, tipIds, actorId) {
-  if (!actorId) return []
-  const view = ancestryView(ops, tipIds)
-  const memo = new Map()
-  const mine = [...view.values()].filter(op => op.authorId === actorId)
-  const undos = mine
-    .filter(op => op.reverts != null && op.gesture.startsWith('undo:') && isActive(view, op.id, memo))
-    .sort(newestFirst)
-  if (!undos.length) return []
-  const newestReal = Math.max(-Infinity, ...mine.filter(isRealGesture).map(op => op.ts))
-  return newestReal > undos[0].ts ? [] : undos
-}
-
 /** The real gesture at the root of op's revert chain, or null if it is gone. */
 export function revertRoot(ops, op) {
   const seen = new Set()

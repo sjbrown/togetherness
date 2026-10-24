@@ -14,7 +14,7 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  serialize, apply, invert, ensureIds, serializeNode, deserializeNode,
+  serialize, apply, invert, ensureIds, serializeNode, deserializeNode, WireApplyError,
 } from '../../src/op_wire_mutation.js'
 import {
   addToy, activateAllToyScriptsDom,
@@ -308,6 +308,30 @@ describe('apply refuses what it cannot resolve', () => {
     const root = buildTree('<rect data-id="r"/>')
     const wire = [{ t: 'attr', target: { id: 'absent' }, name: 'x', ns: null, oldValue: null, newValue: '1' }]
     expect(() => apply(wire, root)).toThrow(/unresolvable/)
+  })
+
+  test('a batch that fails partway leaves the tree as it found it', () => {
+    const root = buildTree('<g data-id="p"><rect data-id="r" x="1"/><circle data-id="c"/></g>')
+    const before = root.innerHTML
+    const wire = [
+      { t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '1', newValue: '9' },
+      { t: 'child', target: { id: 'p' }, added: [], removed: [{ el: 'circle', at: [['data-id', 'c']] }], prevSibling: null, nextSibling: null },
+      { t: 'attr', target: { id: 'absent' }, name: 'x', ns: null, oldValue: null, newValue: '1' },
+    ]
+    expect(() => apply(wire, root)).toThrow(/unresolvable/)
+    expect(root.innerHTML).toBe(before)
+  })
+
+  test('a batch that applies is not rolled back', () => {
+    const root = buildTree('<rect data-id="r" x="1"/>')
+    apply([{ t: 'attr', target: { id: 'r' }, name: 'x', ns: null, oldValue: '1', newValue: '9' }], root)
+    expect(root.querySelector('[data-id="r"]').getAttribute('x')).toBe('9')
+  })
+
+  test('the error is a WireApplyError, so a caller can tell it from a bug', () => {
+    const root = buildTree('<rect data-id="r"/>')
+    const wire = [{ t: 'attr', target: { id: 'absent' }, name: 'x', ns: null, oldValue: null, newValue: '1' }]
+    expect(() => apply(wire, root)).toThrow(WireApplyError)
   })
 })
 

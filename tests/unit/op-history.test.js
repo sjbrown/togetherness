@@ -72,6 +72,34 @@ describe('which rows exist', () => {
   })
 })
 
+describe('which ops a peer can see', () => {
+  test('another author’s ops reached only through a merge parent are rows', () => {
+    const ops = new Map()
+    const put = (id, parents, authorId, ts) =>
+      ops.set(id, { id, parents, authorId, gesture: 'move', mutations: [], ts })
+    put('root', [], 'alice', 1)
+    put('b1', ['root'], 'bob', 2)
+    put('b2', ['b1'], 'bob', 3)
+    put('a1', ['root'], 'alice', 4)
+    put('merge', ['a1', 'b2'], 'alice', 5)
+    expect(ids(historyRows(ops, ['merge'], { by: 'bob' }))).toEqual(['b2', 'b1'])
+  })
+
+  test('an undo outside the ancestry of the tips does not count', () => {
+    const log = linear(['x', 'bob', 'move', [attr('d', 'x', '1', '2')]])
+    log.ops.set('u', { id: 'u', parents: ['x'], authorId: 'alice', gesture: 'undo:move', mutations: [], ts: 9, reverts: 'x' })
+    expect(rows({ ops: log.ops, tip: 'x' })[0].active).toBe(true)
+  })
+
+  test('an undo-labelled op with no reverts is neither a row nor a revert', () => {
+    const log = linear(['x', 'alice', 'move', [attr('d', 'x', '1', '2')]])
+    log.ops.set('legacy', { id: 'legacy', parents: ['x'], authorId: 'alice', gesture: 'undo:move', mutations: [], ts: 9 })
+    const r = historyRows(log.ops, ['legacy'])
+    expect(ids(r)).toEqual(['x'])
+    expect(r[0].active).toBe(true)
+  })
+})
+
 describe('live and undone', () => {
   const undone = () => linear(
     ['m1', 'bob', 'move', [attr('die', 'x', '1', '2')]],
@@ -160,6 +188,37 @@ describe('blocked by later work', () => {
     )
     const byId = Object.fromEntries(rows(log, { actorId: 'a' }).map(r => [r.id, r]))
     expect(byId.m1).toMatchObject({ active: false, blockedBy: ['m2'], canRedo: false })
+  })
+})
+
+describe('narrowing the rows', () => {
+  const log = () => linear(
+    ['a1', 'alice', 'move', [attr('d1', 'x', '1', '2')]],
+    ['b1', 'bob',   'move', [attr('d2', 'x', '1', '2')]],
+    ['a2', 'alice', 'move', [attr('d3', 'x', '1', '2')]],
+    ['ua2', 'alice', 'undo:move', [attr('d3', 'x', '2', '1')], { reverts: 'a2' }],
+    ['ub1', 'alice', 'undo:move', [attr('d2', 'x', '2', '1')], { reverts: 'b1' }],
+  )
+
+  test('by keeps one author’s rows, and limit then counts only those', () => {
+    expect(ids(rows(log(), { by: 'alice' }))).toEqual(['a2', 'a1'])
+    expect(ids(rows(log(), { by: 'alice', limit: 1 }))).toEqual(['a2'])
+  })
+
+  test('liveOnly drops undone rows, so the first row is the newest still in effect', () => {
+    expect(ids(rows(log(), { liveOnly: true }))).toEqual(['a1'])
+    expect(ids(rows(log(), { by: 'alice', liveOnly: true, limit: 1 }))).toEqual(['a1'])
+  })
+
+  test('undoneBy keeps rows reverted by that author, with when', () => {
+    const r = rows(log(), { undoneBy: 'alice' })
+    expect(ids(r)).toEqual(['a2', 'b1'])
+    expect(r.map(x => x.undoneAt)).toEqual([4, 5])
+    expect(rows(log(), { undoneBy: 'bob' })).toEqual([])
+  })
+
+  test('a live row has no undoneAt', () => {
+    expect(rows(log()).find(r => r.id === 'a1').undoneAt).toBeNull()
   })
 })
 

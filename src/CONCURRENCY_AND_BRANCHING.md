@@ -711,16 +711,19 @@ actor = me.
   gesture in that layer newer than that undo: doing something new
   invalidates what you could redo. If Alice undoes Bob's action, only Alice
   can redo it, and Bob's own Undo goes on to his previous action.
-* **A target whose inverse can no longer apply** (its node is gone) is
-  skipped. The next-newest candidate is offered instead, within a layer and
-  across layers. A stuck target never blocks later presses.
+* **Undo and redo are best effort.** A press tries the one operation it
+  names and gives up, committing nothing and saying why, if that cannot go
+  cleanly: later live work by anyone contends with it, or its inverse no
+  longer applies (its node is gone). It never falls through to an older
+  operation. `apply` is all-or-nothing, so a give-up leaves the layer as it
+  was.
 
 Consequences worth stating rather than discovering:
 
 * **Undo is not "reverse the current state."** It is "apply the inverse of
   the target operation on top of the current head." If Bob deleted the token
   after Alice moved it, Alice's undo of her move is an operation against a
-  token that isn't there, so it is skipped rather than applied. That is
+  token that isn't there, so it is refused rather than applied. That is
   correct and is what she asked for.
 * **Undoing a peer's action is mechanically supported.** It is just
   appending an inverse of an operation someone else authored — no
@@ -744,15 +747,14 @@ Within a layer the candidate search covers the union ancestry of this peer's
 local tips, not one parent chain: that is what this peer's DOM shows, so an
 owner's operations that arrived through merge parents count.
 
-An Undo press acts on whichever layer holds the owner's most recent undoable
-action, chosen by the owner's own `ts`: each op layer reports the `ts` of the
-operation it would invert (`undoCandidate`), and the highest wins, ties going
-to the op id. Redo does
-the same over the redo targets, where an undo operation's `ts` is the moment
-of the undo, so redo walks forward in the reverse of the order the undos
-happened in. A layer whose target can no longer apply (its node is gone) is
-skipped for the next-latest. The choice looks at nothing but the author's own
-timestamps, so it needs no record of "the last layer touched".
+An Undo press acts on whichever layer holds the owner's most recent live
+gesture, chosen by the owner's own `ts`: each op layer offers its newest live
+row (`newestLiveRow`), and the highest wins, ties going to the op id. Redo
+does the same over the rows the actor undid (`newestUndoneRow`), where the
+ts that counts is the moment of the undo, so redo walks forward in the
+reverse of the order the undos happened in. The choice looks at nothing but
+the author's own timestamps, so it needs no record of "the last layer
+touched". If the winner cannot go, the press ends there.
 
 ---
 
