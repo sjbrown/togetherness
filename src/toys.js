@@ -2020,6 +2020,22 @@ export async function placeToy(ydoc, layerEl, attrs, opts = {}) {
 }
 
 /**
+ * Place a toy and run its initialize as part of the gesture already open,
+ * so a menu action that spawns a toy is one operation. Nothing here may
+ * await: the envelope closes at the first await. So it needs the template
+ * and scripts already loaded, and returns null when they are not, leaving
+ * the caller to fall back to placeToy.
+ */
+export function placeToyInGesture(ydoc, layerEl, attrs, initArgs) {
+  if (!isInsideEnvelope()) throw new Error('[toys] placeToyInGesture needs an open gesture')
+  const svgText = _svgTextCache.get(attrs.toyType)
+  if (!svgText || !isToyTypeActivated(attrs.toyType)) return null
+  const toyEl = addToyDom(ydoc, layerEl, attrs, svgText)
+  runInitializers(toyEl, attrs.toyType, initArgs)
+  return toyEl
+}
+
+/**
  * Write a ttState snapshot onto an existing toy: its color, and its centre
  * (cx, cy). A toy is only ever created from its template (placeToy), so a
  * state for a toy that isn't on the layer is an error.

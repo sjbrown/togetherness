@@ -33,11 +33,27 @@ export function init(App, svgEl, Toys, UI) {
 
       const id = Toys.newToyId()
       e.detail.retval = { id }
+      const attrs = { id, toyType, x: x ?? 0, y: y ?? 0, color }
 
-      Toys.placeToy(ydoc, layerEl, {
-        id, toyType, x: x ?? 0, y: y ?? 0, color,
-      }, { authorId: myId, tableId }).then(async () => {
+      // From inside a gesture (a menu action that spawns a toy), place and
+      // initialize it as part of that gesture: one press, one operation,
+      // one undo. The placement below cannot do that, since it awaits.
+      if (Toys.isInsideEnvelope()) {
+        try {
+          if (Toys.placeToyInGesture(ydoc, layerEl, attrs, initArgs)) {
+            App.addLog(`placed ${toyType} ${id}`, 'local')
+            return
+          }
+        } catch (err) {
+          e.detail.error = err.message
+          return
+        }
+        App.addLog(`${toyType} is not loaded yet, so it is placed outside the gesture`, 'del')
+      }
+
+      Toys.placeToy(ydoc, layerEl, attrs, { authorId: myId, tableId }).then(async () => {
         App.addLog(`placed ${toyType} ${id}`, 'local')
+        await Toys.activateToyScripts(ydoc, toyType)
 
         const placedEl = layerEl.querySelector(`[data-id="${id}"]`)
         if (placedEl) {
