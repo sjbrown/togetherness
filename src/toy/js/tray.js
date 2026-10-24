@@ -5,9 +5,10 @@
 var tray = {
 
   /**
-   * Set a tspan's text by rewriting its text node in place. Assigning
-   * textContent replaces the node, which syncs as remove+add, and a peer
-   * whose own handler already replaced it ends up with both.
+   * Set a tspan's text by rewriting its text node in place. That records
+   * as a text write, which replays to the same result wherever it lands;
+   * replacing the node records as a child remove+add, which doubles the
+   * text on a peer whose copy of the tspan already holds the final value.
    */
   set_text: function(tspan, text) {
     text = String(text)
