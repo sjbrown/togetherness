@@ -54,7 +54,7 @@ var tray_explode = {
     })
 
     let tspan = elem.querySelector(`#${elem.id} > .result_container .tspan_result`)
-    tspan.textContent = sum
+    tray.set_text(tspan, sum)
   },
 
   menu: {
@@ -86,7 +86,7 @@ var tray_explode = {
     target_tspan = elem.querySelector(`#${elem.id} > svg .tspan_rule_num`)
     howMany = parseInt(target_tspan.textContent)
     let sum = howMany + change
-    target_tspan.textContent = sum
+    tray.set_text(target_tspan, sum)
     tray_explode.contents_change_handler(elem)
   },
 

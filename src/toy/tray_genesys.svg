@@ -69,7 +69,7 @@ var tray_genesys = {
     strRepr = strRepr.replace(/,/g, ' ')
     strRepr = strRepr.replace(/"/g, '')
     let tspan = elem.querySelector(`#${elem.id} > .result_container .tspan_result`)
-    tspan.textContent = strRepr
+    tray.set_text(tspan, strRepr)
   },
 
   menu: {

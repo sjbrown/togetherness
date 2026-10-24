@@ -32,7 +32,7 @@ var tray_count = {
       count = count + (tempNum >= gate ? 1 : 0)
     })
     let tspan = elem.querySelector(`#${elem.id} > .result_container .tspan_result`)
-    tspan.textContent = count
+    tray.set_text(tspan, count)
   },
 
   menu: {
@@ -63,7 +63,7 @@ var tray_count = {
     // console.log('cond_change_handler', elem.id, change)
     condition_tspan = elem.querySelector(`#${elem.id} > svg .tspan_rule_num`)
     gate = parseInt(condition_tspan.textContent)
-    condition_tspan.textContent = gate + change
+    tray.set_text(condition_tspan, gate + change)
     tray_count.contents_change_handler(elem)
   },
 

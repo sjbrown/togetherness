@@ -37,7 +37,7 @@ var tray_tabulate = {
       }
     })
     let tspan = elem.querySelector(`#${elem.id} > svg .tspan_result`)
-    tspan.textContent = JSON.stringify(table)
+    tray.set_text(tspan, JSON.stringify(table))
   },
 
   menu: {

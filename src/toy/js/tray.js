@@ -5,6 +5,17 @@
 var tray = {
 
   /**
+   * Set a tspan's text by rewriting its text node in place. Assigning
+   * textContent replaces the node, which syncs as remove+add, and a peer
+   * whose own handler already replaced it ends up with both.
+   */
+  set_text: function(tspan, text) {
+    text = String(text)
+    if (tspan.childNodes.length === 1 && tspan.firstChild.nodeType === 3) tspan.firstChild.data = text
+    else tspan.textContent = text
+  },
+
+  /**
    * Call visitFn(childToyEl) for every toy currently placed in elem's
    * tt_contents — the direct `.toy` children (each a <g class="toy">
    * wrapper, matching the shape of a top-level placed toy).

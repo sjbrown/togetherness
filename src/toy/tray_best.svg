@@ -43,7 +43,7 @@ var tray_best = {
       }
     })
     let tspan = elem.querySelector(`#${elem.id} > .result_container .tspan_result`)
-    tspan.textContent = sign * tally.reduce((x,y) => x+y, 0)
+    tray.set_text(tspan, sign * tally.reduce((x,y) => x+y, 0))
   },
 
   menu: {
@@ -75,7 +75,7 @@ var tray_best = {
     howmany_tspan = elem.querySelector(`#${elem.id} > svg .tspan_rule_num`)
     howMany = parseInt(howmany_tspan.textContent)
     let sum = howMany + change
-    howmany_tspan.textContent = sum
+    tray.set_text(howmany_tspan, sum)
     tray_best.contents_change_handler(elem)
   },
 
