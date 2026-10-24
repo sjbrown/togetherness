@@ -11,6 +11,12 @@
  * write its old values over that op's work, or remove an element that op
  * edits, so the row offers no button until the later work is undone.
  *
+ * An undone row also waits on earlier undone ops that contend with it.
+ * Redoing it replays its mutations against the state it was made from, and
+ * with the earlier work still undone that state is not there: a roll would
+ * try to remove a face that is not showing and add its own beside the
+ * current one.
+ *
  * Below it, subjectOf and previewStates read a layer's DOM to name a row's
  * subject and to show it before and after the op. No layer is special-cased:
  * the subject is whichever element the op's first mutation addresses.
@@ -44,8 +50,9 @@ const newer = (a, b) => (a.ts - b.ts) || (a.id > b.id ? 1 : a.id < b.id ? -1 : 0
  *   reverterId  the active undo op that reverted it, when not active
  *   undoneBy    that undo op's author
  *   blockedBy   ids of later live ops it contends with
+ *   waitingOn   ids of earlier undone ops it contends with (undone rows only)
  *   canUndo     active and not blocked
- *   canRedo     undone by actorId's own undo, and not blocked
+ *   canRedo     undone by actorId's own undo, and neither blocked nor waiting
  *
  * Blockers are only computed for the first `limit` rows; `only` narrows the
  * result to that one op id.
@@ -88,6 +95,7 @@ export function historyRows(ops, tipIds, { joinSequence = [], actorId = null, li
     const op = view.get(order[i])
     const active = live.has(op.id)
     const blockedBy = order.slice(i + 1).filter(id => live.has(id) && contends(op.id, id))
+    const waitingOn = active ? [] : order.slice(0, i).filter(id => !live.has(id) && contends(id, op.id))
     const reverter = active ? null : reverterOf.get(op.id) ?? null
     rows.push({
       id: op.id,
@@ -99,8 +107,9 @@ export function historyRows(ops, tipIds, { joinSequence = [], actorId = null, li
       reverterId: reverter?.id ?? null,
       undoneBy: reverter?.authorId ?? null,
       blockedBy,
+      waitingOn,
       canUndo: active && !blockedBy.length,
-      canRedo: !active && !blockedBy.length && reverter != null
+      canRedo: !active && !blockedBy.length && !waitingOn.length && reverter != null
         && reverter.authorId === actorId && reverter.gesture.startsWith('undo:'),
     })
   }

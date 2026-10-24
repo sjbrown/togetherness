@@ -163,6 +163,63 @@ describe('blocked by later work', () => {
   })
 })
 
+describe('redo waits for earlier undone work', () => {
+  // Two rolls of one die, then both undone newest first. Redoing the newer
+  // roll first would remove a face that is not there and leave two.
+  const undoneBoth = () => linear(
+    ['r1', 'a', 'roll', [attr('die', 'face', '6', '2')]],
+    ['r2', 'a', 'roll', [attr('die', 'face', '2', '5')]],
+    ['u2', 'a', 'undo:roll', [attr('die', 'face', '5', '2')], { reverts: 'r2' }],
+    ['u1', 'a', 'undo:roll', [attr('die', 'face', '2', '6')], { reverts: 'r1' }],
+  )
+  const byId = (log, actorId = 'a') => Object.fromEntries(rows(log, { actorId }).map(r => [r.id, r]))
+
+  test('the newer undone row cannot be redone while the older one is still undone', () => {
+    const { r1, r2 } = byId(undoneBoth())
+    expect(r2).toMatchObject({ active: false, blockedBy: [], waitingOn: ['r1'], canRedo: false })
+    expect(r1).toMatchObject({ active: false, waitingOn: [], canRedo: true })
+  })
+
+  test('redoing the older row frees the newer one', () => {
+    const log = undoneBoth()
+    log.ops.set('x1', { id: 'x1', parents: ['u1'], authorId: 'a', gesture: 'redo:roll', mutations: [attr('die', 'face', '6', '2')], ts: 9, reverts: 'u1' })
+    const { r1, r2 } = Object.fromEntries(historyRows(log.ops, ['x1'], { actorId: 'a' }).map(r => [r.id, r]))
+    expect(r1.active).toBe(true)
+    expect(r2).toMatchObject({ waitingOn: [], canRedo: true })
+  })
+
+  test('undone work on a different element does not hold a row back', () => {
+    const log = linear(
+      ['m1', 'a', 'move', [attr('d1', 'x', '1', '2')]],
+      ['m2', 'a', 'move', [attr('d2', 'x', '1', '2')]],
+      ['u2', 'a', 'undo:move', [attr('d2', 'x', '2', '1')], { reverts: 'm2' }],
+      ['u1', 'a', 'undo:move', [attr('d1', 'x', '2', '1')], { reverts: 'm1' }],
+    )
+    expect(Object.values(byId(log)).every(r => r.canRedo)).toBe(true)
+  })
+
+  test('an undone placement holds back later undone work on what it created', () => {
+    const log = linear(
+      ['p1', 'a', 'place', [place('layer', 'die')]],
+      ['m1', 'a', 'move', [attr('die', 'x', '1', '2')]],
+      ['u2', 'a', 'undo:move', [attr('die', 'x', '2', '1')], { reverts: 'm1' }],
+      ['u1', 'a', 'undo:place', [], { reverts: 'p1' }],
+    )
+    const { p1, m1 } = byId(log)
+    expect(m1).toMatchObject({ waitingOn: ['p1'], canRedo: false })
+    expect(p1.canRedo).toBe(true)
+  })
+
+  test('a live row waits on nothing', () => {
+    const log = linear(
+      ['m1', 'a', 'move', [attr('die', 'x', '1', '2')]],
+      ['u1', 'a', 'undo:move', [attr('die', 'x', '2', '1')], { reverts: 'm1' }],
+      ['m2', 'a', 'move', [attr('d2', 'x', '1', '2')]],
+    )
+    expect(byId(log).m2.waitingOn).toEqual([])
+  })
+})
+
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
 function el(name, attrs = {}, children = []) {

@@ -2050,7 +2050,8 @@ const App = {
             author:   authorProfile(row.authorId),
             undoneBy: row.undoneBy == null ? null : authorProfile(row.undoneBy),
             active:   row.active,
-            blocked:  row.blockedBy.length > 0,
+            // What the row is held back by: later live work, or earlier undone work.
+            blocked:  row.blockedBy.length ? 'later' : row.waitingOn.length ? 'earlier' : null,
             canUndo:  row.canUndo,
             canRedo:  row.canRedo,
           }));

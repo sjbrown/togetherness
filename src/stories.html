@@ -156,9 +156,9 @@ const mockPeers = [
 for (const p of [mockMe, ...mockPeers]) upsertUserGradient(p);
 const now0 = Date.now();
 const mockHistory = [
-  { opId:'o3', layer:'drawing', gesture:'edit',  subject:'rect a1b2c3', ts: now0 - 60e3,  author: mockMe,       undoneBy:null,   active:true,  blocked:false, canUndo:true,  canRedo:false },
-  { opId:'o2', layer:'drawing', gesture:'move',  subject:'rect a1b2c3', ts: now0 - 240e3, author: mockPeers[0], undoneBy: mockMe, active:false, blocked:false, canUndo:false, canRedo:true  },
-  { opId:'o1', layer:'drawing', gesture:'place', subject:'circle d4e5', ts: now0 - 900e3, author: mockMe,       undoneBy:null,   active:true,  blocked:true,  canUndo:false, canRedo:false },
+  { opId:'o3', layer:'drawing', gesture:'edit',  subject:'rect a1b2c3', ts: now0 - 60e3,  author: mockMe,       undoneBy:null,   active:true,  blocked:null, canUndo:true,  canRedo:false },
+  { opId:'o2', layer:'drawing', gesture:'move',  subject:'rect a1b2c3', ts: now0 - 240e3, author: mockPeers[0], undoneBy: mockMe, active:false, blocked:null, canUndo:false, canRedo:true  },
+  { opId:'o1', layer:'drawing', gesture:'place', subject:'circle d4e5', ts: now0 - 900e3, author: mockMe,       undoneBy:null,   active:true,  blocked:'later',  canUndo:false, canRedo:false },
 ];
 const mockObjects = {
   drawing: [

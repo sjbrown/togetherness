@@ -103,6 +103,23 @@ describe('undoOp / redoOp', () => {
     expect(t.rows('alice').find(r => r.id === m1.id).active).toBe(true)
   })
 
+  test('redo goes oldest first: the newer undone op refuses until the older one is back', () => {
+    const t = setup()
+    t.place('die')
+    const m1 = t.setX('die', 5)
+    const m2 = t.setX('die', 9)
+    t.undoOp(m2.id)
+    t.undoOp(m1.id)
+    expect(t.xOf('die')).toBe('0')
+
+    expect(t.redoOp(m2.id)).toBeNull()
+    expect(t.xOf('die')).toBe('0')
+
+    expect(t.redoOp(m1.id)).not.toBeNull()
+    expect(t.redoOp(m2.id)).not.toBeNull()
+    expect(t.xOf('die')).toBe('9')
+  })
+
   test('the row says who undid it', () => {
     const t = setup()
     t.place('die')

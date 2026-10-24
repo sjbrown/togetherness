@@ -158,6 +158,56 @@ test.describe('history panel', () => {
     await browser.close();
   });
 
+  test('after undoing a die’s rolls, redo goes oldest first and never leaves two faces', async () => {
+    const browser = await launch();
+    const page = await (await browser.newContext()).newPage();
+    await openAsCreator(page, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+
+    const box = await page.locator('#canvas').boundingBox();
+    await page.evaluate(() => window.UI.pillTap('d6'));
+    await page.waitForTimeout(100);
+    await page.mouse.move(box.x + 100, box.y + 100);
+    await page.mouse.down();
+    await page.mouse.up();
+    const toy = page.locator('#toys-layer [data-toy-type]');
+    await expect(toy).toHaveCount(1, { timeout: 5000 });
+    const toyId = await toy.getAttribute('data-id');
+    const face = async () => (await toy.locator('tspan').first().textContent()).trim();
+    const original = await face();
+
+    for (let i = 0; i < 3; i++) {
+      await page.evaluate((id) => window.App.invokeToyMenuAction(id, 'd6', 'Roll'), toyId);
+      await page.waitForTimeout(100);
+    }
+    const afterRolls = await face();
+
+    await page.evaluate(() => window.UI.openSheet('history'));
+    const rolls = page.locator('.hist-op').filter({ has: page.locator('.hist-op-title', { hasText: /^menu:d6\.Roll / }) });
+    await expect(rolls).toHaveCount(3);
+
+    // Newest first down the list.
+    for (const i of [0, 1, 2]) {
+      await rolls.nth(i).locator('.hist-op-head').click();
+      await rolls.nth(i).locator('.hist-op-go').click();
+    }
+    await expect.poll(face).toBe(original);
+
+    // Back at the top, the newest roll cannot be redone yet.
+    await rolls.nth(0).locator('.hist-op-head').click();
+    await expect(page.locator('.hist-op-go')).toHaveCount(0);
+    await expect(page.locator('.hist-op-note')).toHaveText('Redo earlier work on this element first.');
+
+    // Oldest first works, and the face is always a single digit.
+    for (const i of [2, 1, 0]) {
+      await rolls.nth(i).locator('.hist-op-head').click();
+      await rolls.nth(i).locator('.hist-op-go').click();
+      expect(await face()).toMatch(/^[1-6]$/);
+    }
+    expect(await face()).toBe(afterRolls);
+
+    await browser.close();
+  });
+
   test('one peer undoes another’s action from the list; both lists show who did it', async () => {
     const browser = await launch();
     const pageA = await (await browser.newContext()).newPage();
