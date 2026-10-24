@@ -2066,7 +2066,9 @@ const App = {
     const ops     = OpDag.getOps(_ydoc, layer);
     const op      = OpDag.getOp(ops, opId);
     if (!op || !layerEl) return null;
-    return OpHistory.previewStates(op, layerEl, { live: OpDag.isActive(ops, opId) });
+    return OpHistory.previewStates(op, layerEl, {
+      ops, content: OpDag.getContent(_ydoc, layer), joinSequence: tablesAPI.getJoinSequenceArray(_ydoc),
+    });
   },
   undoOp: (layerName, opId) => stepOp('undo', layerName, opId),
   redoOp: (layerName, opId) => stepOp('redo', layerName, opId),
