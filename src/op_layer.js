@@ -12,7 +12,6 @@ import * as OpHead from './op_head.js';
 import * as OpDag from './op_dag.js';
 import * as OpHistory from './op_history.js';
 import * as OpWireMutation from './op_wire_mutation.js';
-import { resolveRef } from './op_wire_mutation.js';
 import * as OpCheckpoint from './op_checkpoint.js';
 import * as OpReplay from './op_replay.js';
 import * as OpPrune from './op_prune.js';
@@ -178,8 +177,10 @@ export function markProjectedAt(layerEl, tipsOrId) {
  * merge tips, and the projection marker (render()'s idempotence check)
  * all consistent with what actually happened.
  *
- * True only if every wire entry's target resolves against layerEl right
- * now. Read-only — touches nothing. apply() applies entries one at a
+ * True only if the wire applies to a copy of layerEl right now. Read-only —
+ * touches nothing. A dry run rather than a check that each target resolves,
+ * because an entry can target something an earlier entry in the same batch
+ * creates. apply() applies entries one at a
  * time and throws on the first unresolvable target, which can leave
  * earlier entries in a batch already mutated with nothing committed to
  * describe it; undo needs to know *before* touching anything, since a
@@ -188,10 +189,13 @@ export function markProjectedAt(layerEl, tipsOrId) {
  * different way.
  */
 function canApplyWire(wire, layerEl) {
-  for (const entry of wire ?? []) {
-    if (!resolveRef(entry.target, layerEl)) return false
+  const scratch = layerEl.cloneNode(true)
+  try {
+    OpWireMutation.apply(wire, scratch)
+    return true
+  } catch {
+    return false
   }
-  return true
 }
 
 /**

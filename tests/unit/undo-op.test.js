@@ -42,7 +42,7 @@ function setup() {
   const undoOp = (opId, actor = 'alice') => OpLayer.undoOp(ydoc, TOYS_LAYER, el, TABLE, actor, opId)
   const redoOp = (opId, actor = 'alice') => OpLayer.redoOp(ydoc, TOYS_LAYER, el, TABLE, actor, opId)
   const rows = (actor = 'alice') => OpLayer.historyOf(ydoc, TOYS_LAYER, TABLE, actor)
-  return { ydoc, el, place, setX, xOf, undoOp, redoOp, rows }
+  return { ydoc, el, gesture, place, setX, xOf, undoOp, redoOp, rows }
 }
 
 describe('undoOp / redoOp', () => {
@@ -126,6 +126,21 @@ describe('undoOp / redoOp', () => {
     const m1 = t.setX('die', 5, 'bob')
     t.undoOp(m1.id, 'alice')
     expect(t.rows('bob').find(r => r.id === m1.id)).toMatchObject({ active: false, undoneBy: 'alice' })
+  })
+
+  test('undoes and redoes an op that edits what the same op created', () => {
+    const t = setup()
+    const made = t.gesture('make', 'alice', () => {
+      const g = document.createElementNS(SVG_NS, 'g')
+      g.setAttribute('data-id', 'new')
+      t.el.appendChild(g)
+      g.setAttribute('x', '5')
+    })
+    expect(t.undoOp(made.id)).not.toBeNull()
+    expect(t.el.querySelector('[data-id="new"]')).toBeNull()
+
+    expect(t.redoOp(made.id)).not.toBeNull()
+    expect(t.xOf('new')).toBe('5')
   })
 
   test('refuses when the inverse no longer applies', () => {

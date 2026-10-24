@@ -208,6 +208,46 @@ test.describe('history panel', () => {
     await browser.close();
   });
 
+  test('Stack on two chips is one row, and undoing it puts both chips back', async () => {
+    const browser = await launch();
+    const page = await (await browser.newContext()).newPage();
+    await openAsCreator(page, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+
+    const box = await page.locator('#canvas').boundingBox();
+    for (const x of [100, 260]) {
+      await page.evaluate(() => window.UI.pillTap('chip'));
+      await page.waitForTimeout(100);
+      await page.mouse.move(box.x + x, box.y + 200);
+      await page.mouse.down();
+      await page.mouse.up();
+    }
+    const chips = page.locator('#toys-layer > [data-toy-type="chip"]');
+    await expect(chips).toHaveCount(2, { timeout: 5000 });
+    const [a, b] = await chips.evaluateAll(els => els.map(e => e.getAttribute('data-id')));
+
+    // Pile them the way a drop does, then press the chip's own Stack button.
+    await page.evaluate(([a, b]) => {
+      const layer = document.querySelector('#toys-layer');
+      layer.querySelector(`[data-id="${a}"]`).setAttribute('data-below', b);
+      layer.querySelector(`[data-id="${b}"]`).setAttribute('data-above', a);
+      window.App.invokeToyMenuAction(a, 'chip', 'Stack');
+    }, [a, b]);
+
+    await expect(page.locator('#toys-layer > [data-toy-type="stack"]')).toHaveCount(1, { timeout: 5000 });
+    await expect(chips).toHaveCount(0);
+
+    await page.evaluate(() => window.UI.openSheet('history'));
+    const stackRow = page.locator('.hist-op').filter({ has: page.locator('.hist-op-title', { hasText: /^menu:chip\.Stack / }) });
+    await expect(stackRow).toHaveCount(1);
+    await stackRow.locator('.hist-op-head').click();
+    await stackRow.locator('.hist-op-go').click();
+
+    await expect(chips).toHaveCount(2, { timeout: 5000 });
+    await expect(page.locator('#toys-layer [data-toy-type="stack"]')).toHaveCount(0);
+
+    await browser.close();
+  });
+
   test('one peer undoes another’s action from the list; both lists show who did it', async () => {
     const browser = await launch();
     const pageA = await (await browser.newContext()).newPage();
