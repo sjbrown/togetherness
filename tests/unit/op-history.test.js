@@ -72,6 +72,34 @@ describe('which rows exist', () => {
   })
 })
 
+describe('which ops a peer can see', () => {
+  test('another author’s ops reached only through a merge parent are rows', () => {
+    const ops = new Map()
+    const put = (id, parents, authorId, ts) =>
+      ops.set(id, { id, parents, authorId, gesture: 'move', mutations: [], ts })
+    put('root', [], 'alice', 1)
+    put('b1', ['root'], 'bob', 2)
+    put('b2', ['b1'], 'bob', 3)
+    put('a1', ['root'], 'alice', 4)
+    put('merge', ['a1', 'b2'], 'alice', 5)
+    expect(ids(historyRows(ops, ['merge'], { by: 'bob' }))).toEqual(['b2', 'b1'])
+  })
+
+  test('an undo outside the ancestry of the tips does not count', () => {
+    const log = linear(['x', 'bob', 'move', [attr('d', 'x', '1', '2')]])
+    log.ops.set('u', { id: 'u', parents: ['x'], authorId: 'alice', gesture: 'undo:move', mutations: [], ts: 9, reverts: 'x' })
+    expect(rows({ ops: log.ops, tip: 'x' })[0].active).toBe(true)
+  })
+
+  test('an undo-labelled op with no reverts is neither a row nor a revert', () => {
+    const log = linear(['x', 'alice', 'move', [attr('d', 'x', '1', '2')]])
+    log.ops.set('legacy', { id: 'legacy', parents: ['x'], authorId: 'alice', gesture: 'undo:move', mutations: [], ts: 9 })
+    const r = historyRows(log.ops, ['legacy'])
+    expect(ids(r)).toEqual(['x'])
+    expect(r[0].active).toBe(true)
+  })
+})
+
 describe('live and undone', () => {
   const undone = () => linear(
     ['m1', 'bob', 'move', [attr('die', 'x', '1', '2')]],

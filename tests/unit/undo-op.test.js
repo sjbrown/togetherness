@@ -120,6 +120,64 @@ describe('undoOp / redoOp', () => {
     expect(t.xOf('die')).toBe('9')
   })
 
+  test('undoGesture tries only the newest op: blocked by a peer’s later work, it gives up and undoes nothing older', () => {
+    const t = setup()
+    const placed = t.place('die')
+    const mine = t.setX('die', 5)
+    t.setX('die', 9, 'bob')
+
+    expect(OpLayer.undoGesture(t.ydoc, TOYS_LAYER, t.el, TABLE, 'alice')).toBeNull()
+    expect(t.xOf('die')).toBe('9')
+    expect(t.rows('alice').find(r => r.id === mine.id).active).toBe(true)
+    expect(t.rows('alice').find(r => r.id === placed.id).active).toBe(true)
+  })
+
+  test('undoGesture gives up, and undoes nothing older, when the newest inverse no longer applies', () => {
+    const t = setup()
+    t.place('die')
+    t.place('token')
+    t.setX('token', 5)
+    t.el.querySelector('[data-id="token"]').remove()
+
+    expect(OpLayer.undoGesture(t.ydoc, TOYS_LAYER, t.el, TABLE, 'alice')).toBeNull()
+    expect(t.el.querySelector('[data-id="die"]')).not.toBeNull()
+  })
+
+  test('redoGesture brings back what was undone last first', () => {
+    const t = setup()
+    t.place('d1'); t.place('d2'); t.place('d3')
+    for (let i = 0; i < 3; i++) OpLayer.undoGesture(t.ydoc, TOYS_LAYER, t.el, TABLE, 'alice')
+    expect(t.el.children.length).toBe(0)
+
+    const back = []
+    for (let i = 0; i < 3; i++) {
+      OpLayer.redoGesture(t.ydoc, TOYS_LAYER, t.el, TABLE, 'alice')
+      back.push([...t.el.children].map(e => e.getAttribute('data-id')).join(','))
+    }
+    expect(back).toEqual(['d1', 'd1,d2', 'd1,d2,d3'])
+  })
+
+  test('a new action after an undo leaves nothing to redo', () => {
+    const t = setup()
+    t.place('die')
+    t.setX('die', 5)
+    OpLayer.undoGesture(t.ydoc, TOYS_LAYER, t.el, TABLE, 'alice')
+    expect(OpLayer.canRedo(t.ydoc, TOYS_LAYER, TABLE, 'alice')).toBe(true)
+
+    t.place('token')
+    expect(OpLayer.newestUndoneRow(t.ydoc, TOYS_LAYER, TABLE, 'alice')).toBeNull()
+    expect(OpLayer.redoGesture(t.ydoc, TOYS_LAYER, t.el, TABLE, 'alice')).toBeNull()
+  })
+
+  test('redo is for one’s own undos: Bob cannot redo what Alice undid', () => {
+    const t = setup()
+    t.place('die')
+    const m = t.setX('die', 5, 'bob')
+    OpLayer.undoOp(t.ydoc, TOYS_LAYER, t.el, TABLE, 'alice', m.id)
+    expect(OpLayer.newestUndoneRow(t.ydoc, TOYS_LAYER, TABLE, 'bob')).toBeNull()
+    expect(OpLayer.newestUndoneRow(t.ydoc, TOYS_LAYER, TABLE, 'alice').id).toBe(m.id)
+  })
+
   test('the row says who undid it', () => {
     const t = setup()
     t.place('die')

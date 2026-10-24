@@ -65,19 +65,20 @@ function setup() {
     ...[...boundEl.children].map(e => e.getAttribute('data-id')),
   ]
 
-  // App.undo / App.redo's selection: highest ts wins.
+  // App.undo / App.redo's selection: the newest row across layers (Undo by
+  // the row's ts, Redo by when it was undone), tried once. A row that cannot
+  // go ends the press; nothing older is tried.
   const press = (kind, { owner = ME } = {}) => {
-    const candidates = layers.flatMap(({ layer, el }) => {
-      const op = kind === 'undo'
-        ? OpLayer.undoCandidate(ydoc, layer, TABLE, ME, { owner, layerEl: el })
-        : OpLayer.redoCandidate(ydoc, layer, TABLE, ME, { layerEl: el })
-      if (!op) return []
-      const run = () => kind === 'undo'
-        ? OpLayer.undoGesture(ydoc, layer, el, TABLE, ME, { owner })
-        : OpLayer.redoGesture(ydoc, layer, el, TABLE, ME)
-      return [{ ts: op.ts, run: () => !!run() }]
+    const rows = layers.flatMap(({ layer, el }) => {
+      const row = kind === 'undo'
+        ? OpLayer.newestLiveRow(ydoc, layer, TABLE, ME, { owner })
+        : OpLayer.newestUndoneRow(ydoc, layer, TABLE, ME)
+      return row ? [{ layer, el, row, key: kind === 'undo' ? row.ts : row.undoneAt }] : []
     })
-    return candidates.sort((a, b) => b.ts - a.ts).some(c => c.run())
+    const best = rows.sort((a, b) => (b.key - a.key) || (a.row.id < b.row.id ? 1 : -1))[0]
+    if (!best) return false
+    const run = kind === 'undo' ? OpLayer.undoOp : OpLayer.redoOp
+    return !!run(ydoc, best.layer, best.el, TABLE, ME, best.row.id)
   }
 
   // Press once and name the id that left (undo) or arrived (redo).
@@ -145,50 +146,66 @@ describe('undo picks the most recent action across layers', () => {
     expect(t.pressAndDiff('redo')).toBe('toy2')
   })
 
-  test('undoCandidate returns the op without applying it', () => {
+  test('newestLiveRow names the op without applying it', () => {
     const t = setup()
     t.shape('draw1')
-    const op = OpLayer.undoCandidate(t.ydoc, DRAWING_LAYER, TABLE, ME)
-    expect(op.gesture).toBe('add')
+    const row = OpLayer.newestLiveRow(t.ydoc, DRAWING_LAYER, TABLE, ME)
+    expect(row.gesture).toBe('add')
     expect(t.present()).toEqual(['draw1'])
-    expect(OpLayer.undoCandidate(t.ydoc, DRAWING_LAYER, TABLE, 'someone-else')).toBeNull()
-    expect(OpLayer.redoCandidate(t.ydoc, DRAWING_LAYER, TABLE, ME)).toBeNull()
+    expect(OpLayer.newestLiveRow(t.ydoc, DRAWING_LAYER, TABLE, 'someone-else')).toBeNull()
+    expect(OpLayer.newestUndoneRow(t.ydoc, DRAWING_LAYER, TABLE, ME)).toBeNull()
   })
 
-  test('a boundary add is an op-layer candidate', () => {
+  test('a boundary add is a row', () => {
     const t = setup()
     t.bound('bound1')
-    expect(OpLayer.undoCandidate(t.ydoc, BOUN_POS_LAYER, TABLE, ME).gesture).toBe('add')
+    expect(OpLayer.newestLiveRow(t.ydoc, BOUN_POS_LAYER, TABLE, ME).gesture).toBe('add')
   })
 })
 
-describe('a target that can no longer apply is skipped', () => {
-  test('in the same layer: the next-newest action is offered instead', () => {
+describe('a target that can no longer apply ends the press', () => {
+  test('in the same layer: nothing older is undone in its place', () => {
     const t = setup()
     t.bound('a'); t.bound('b')
     t.bounds.applyMoveCommit(t.bounds.find('a'), 40, 50)
     t.bounds.applyMoveCommit(t.bounds.find('b'), 60, 70)
     t.dropFromDom('b')                 // another peer deleted it
 
-    // b's move can't apply, so a's move is undone instead.
-    expect(t.press('undo')).toBe(true)
-    expect(t.bounds.find('a').getAttribute('transform')).toBe('translate(0, 0)')
+    expect(t.press('undo')).toBe(false)
+    expect(t.bounds.find('a').getAttribute('transform')).toBe('translate(40, 50)')
   })
 
-  test('across layers: the newest candidate is passed over for an older layer', () => {
+  test('across layers: the newest layer is the one tried, and an older layer is left alone', () => {
     const t = setup()
     t.toy('toy1'); t.shape('draw1')
     t.dropFromDom('draw1')
 
-    expect(t.pressAndDiff('undo')).toBe('toy1')
+    const before = t.present()
+    expect(t.press('undo')).toBe(false)
+    expect(t.present()).toEqual(before)
+    expect(before).toContain('toy1')
   })
 
-  test('the stuck action does not block redo of what was undone', () => {
+  test('a press that gave up leaves nothing half undone', () => {
+    const t = setup()
+    t.toy('toy1'); t.bound('bound1')
+    t.bounds.applyMoveCommit(t.bounds.find('bound1'), 40, 50)
+    t.dropFromDom('bound1')
+
+    const opsBefore = t.ydoc.getMap(BOUN_POS_LAYER.opsKey).size
+    expect(t.press('undo')).toBe(false)
+    expect(t.ydoc.getMap(BOUN_POS_LAYER.opsKey).size).toBe(opsBefore)
+  })
+})
+
+describe('redo after undo', () => {
+  test('brings back what was undone last, then the one before it', () => {
     const t = setup()
     t.toy('toy1'); t.shape('draw1')
     expect(t.pressAndDiff('undo')).toBe('draw1')
     expect(t.pressAndDiff('undo')).toBe('toy1')
     expect(t.pressAndDiff('redo')).toBe('toy1')
+    expect(t.pressAndDiff('redo')).toBe('draw1')
   })
 })
 
@@ -213,15 +230,15 @@ describe('undoFor: undoing another author’s action', () => {
   test('the owner’s own Undo then reaches their previous action, not the one just undone', () => {
     const t = setup()
     t.toy('bob-1', 'bob'); t.toy('bob-2', 'bob')
-    const ops = OpLayer.undoCandidate(t.ydoc, TOYS_LAYER, TABLE, 'bob')
-    expect(ops.gesture).toBe('place')
+    const row = OpLayer.newestLiveRow(t.ydoc, TOYS_LAYER, TABLE, 'bob')
+    expect(row.gesture).toBe('place')
 
     expect(t.pressAndDiff('undo', { owner: 'bob' })).toBe('bob-2')
     // Bob's next target skips bob-2 (reverted by me) and finds bob-1.
-    expect(OpLayer.undoCandidate(t.ydoc, TOYS_LAYER, TABLE, 'bob').gesture).toBe('place')
+    expect(OpLayer.newestLiveRow(t.ydoc, TOYS_LAYER, TABLE, 'bob').gesture).toBe('place')
     expect(t.pressAndDiff('undo', { owner: 'bob' })).toBe('bob-1')
     // Bob has no undos of his own to redo: they were mine.
-    expect(OpLayer.redoCandidate(t.ydoc, TOYS_LAYER, TABLE, 'bob')).toBeNull()
+    expect(OpLayer.newestUndoneRow(t.ydoc, TOYS_LAYER, TABLE, 'bob')).toBeNull()
   })
 
   test('every revert op carries reverts', () => {

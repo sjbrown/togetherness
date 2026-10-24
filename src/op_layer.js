@@ -173,46 +173,19 @@ export function markProjectedAt(layerEl, tipsOrId) {
 }
 
 /**
- * Apply one arriving operation to a layer, keeping the head, any
- * merge tips, and the projection marker (render()'s idempotence check)
- * all consistent with what actually happened.
- *
- * True only if the wire applies to a copy of layerEl right now. Read-only —
- * touches nothing. A dry run rather than a check that each target resolves,
- * because an entry can target something an earlier entry in the same batch
- * creates. apply() applies entries one at a
- * time and throws on the first unresolvable target, which can leave
- * earlier entries in a batch already mutated with nothing committed to
- * describe it; undo needs to know *before* touching anything, since a
- * half-applied inverse with no corresponding operation is exactly the
- * silent-divergence apply() is designed to refuse, just reached a
- * different way.
- */
-function canApplyWire(wire, layerEl) {
-  const scratch = layerEl.cloneNode(true)
-  try {
-    OpWireMutation.apply(wire, scratch)
-    return true
-  } catch {
-    return false
-  }
-}
-
-/**
  * Undo and redo commit an op whose `reverts` names the op it inverts: undo
  * reverts a real gesture, redo reverts an undo. Which ops are still in
  * effect is computed from the log (OpDag.isActive), so one author's undo of
  * another author's gesture is visible to both.
  *
  * The actor presses the button and authors the new op; the owner is whose
- * gesture sits at the root of the revert chain. Undo targets the owner's
- * newest active real gesture across the union ancestry of this peer's local
- * tips; redo targets the actor's own newest active undo. Checkpoints are
- * never targets: undoing one would mean deleting everything.
+ * gesture sits at the root of the revert chain. Checkpoints are never
+ * targets: undoing one would mean deleting everything.
  *
- * The candidate functions take the layer element in opts and skip any
- * target whose inverse can't apply to it, offering the next-newest. Without
- * layerEl the check is skipped, which is enough for existence checks.
+ * Undo and redo are best effort. They try the one op they were pointed at
+ * and give up, committing nothing, if it cannot go cleanly: a row blocked by
+ * other work, or an inverse that no longer applies (apply puts the layer
+ * back as it was). Null means they gave up.
  */
 function applyUndoRedo(ydoc, layer, layerEl, tableId, actorId, target, verb) {
   if (!target) return null
@@ -222,57 +195,30 @@ function applyUndoRedo(ydoc, layer, layerEl, tableId, actorId, target, verb) {
   // label always names the ORIGINAL real action ('undo:move', 'redo:move').
   const describedGesture = target.gesture.replace(/^(undo|redo):/, '')
 
-  const result = runGesture(ydoc, layer, layerEl, () => {
-    OpWireMutation.apply(inverseMutations, layerEl)
-  }, { gesture: `${verb}:${describedGesture}`, authorId: actorId, tableId, reverts: target.id })
-
-  return result.op ?? null
+  try {
+    const result = runGesture(ydoc, layer, layerEl, () => {
+      OpWireMutation.apply(inverseMutations, layerEl)
+    }, { gesture: `${verb}:${describedGesture}`, authorId: actorId, tableId, reverts: target.id })
+    return result.op ?? null
+  } catch (err) {
+    if (err instanceof OpWireMutation.WireApplyError) return null
+    throw err
+  }
 }
-
-const firstApplicable = (targets, layerEl) =>
-  targets.find(t => !layerEl || canApplyWire(OpWireMutation.invert(t.mutations), layerEl)) ?? null
 
 const localTipsOf = (ydoc, layer, tableId) =>
   tableId ? OpHead.localTips(tableId, layer, OpDag.getOps(ydoc, layer)) : []
-
-/**
- * The op undo or redo would act on, without applying it -- null when there
- * is none. app.js compares these across layers by ts to pick which layer's
- * action the next press reverses.
- */
-export function undoCandidate(ydoc, layer, tableId, actorId, { owner = actorId, layerEl } = {}) {
-  const targets = OpDag.undoTarget(OpDag.getOps(ydoc, layer), localTipsOf(ydoc, layer, tableId), owner)
-  return firstApplicable(targets, layerEl)
-}
-
-export function redoCandidate(ydoc, layer, tableId, actorId, { layerEl } = {}) {
-  const targets = OpDag.redoTarget(OpDag.getOps(ydoc, layer), localTipsOf(ydoc, layer, tableId), actorId)
-  return firstApplicable(targets, layerEl)
-}
-
-export function undoGesture(ydoc, layer, layerEl, tableId, actorId, { owner = actorId } = {}) {
-  const target = undoCandidate(ydoc, layer, tableId, actorId, { owner, layerEl })
-  return applyUndoRedo(ydoc, layer, layerEl, tableId, actorId, target, 'undo')
-}
-
-export function redoGesture(ydoc, layer, layerEl, tableId, actorId) {
-  const target = redoCandidate(ydoc, layer, tableId, actorId, { layerEl })
-  return applyUndoRedo(ydoc, layer, layerEl, tableId, actorId, target, 'redo')
-}
 
 /** The history rows for this layer's local tips; see op_history.historyRows. */
 export function historyOf(ydoc, layer, tableId, actorId, opts = {}) {
   return OpHistory.historyRows(OpDag.getOps(ydoc, layer), localTipsOf(ydoc, layer, tableId), { actorId, ...opts })
 }
 
-/**
- * Undo one chosen op rather than the newest. Null when it is not a live row,
- * later live work contends with it, or its inverse no longer applies.
- */
+/** Undo one chosen op rather than the newest. Null when it is not a live
+ * row, other work blocks it, or its inverse no longer applies. */
 export function undoOp(ydoc, layer, layerEl, tableId, actorId, opId, opts = {}) {
   const row = historyOf(ydoc, layer, tableId, actorId, { ...opts, only: opId })[0]
   if (!row?.canUndo) return null
-  if (!canApplyWire(OpWireMutation.invert(row.op.mutations), layerEl)) return null
   return applyUndoRedo(ydoc, layer, layerEl, tableId, actorId, row.op, 'undo')
 }
 
@@ -281,20 +227,45 @@ export function redoOp(ydoc, layer, layerEl, tableId, actorId, opId, opts = {}) 
   const row = historyOf(ydoc, layer, tableId, actorId, { ...opts, only: opId })[0]
   if (!row?.canRedo) return null
   const undo = OpDag.getOp(OpDag.getOps(ydoc, layer), row.reverterId)
-  if (!canApplyWire(OpWireMutation.invert(undo.mutations), layerEl)) return null
   return applyUndoRedo(ydoc, layer, layerEl, tableId, actorId, undo, 'redo')
 }
 
-/**
- * Existence checks for the undo/redo buttons' enabled state. Pass layerEl
- * to also require that the target's inverse applies right now.
- */
-export function canUndo(ydoc, layer, tableId, actorId, opts) {
-  return undoCandidate(ydoc, layer, tableId, actorId, opts) != null
+/** The owner's newest live row in this layer, blocked or not; null if none. */
+export function newestLiveRow(ydoc, layer, tableId, actorId, { owner = actorId, ...opts } = {}) {
+  return historyOf(ydoc, layer, tableId, actorId, { ...opts, by: owner, liveOnly: true, limit: 1 })[0] ?? null
 }
 
-export function canRedo(ydoc, layer, tableId, actorId, opts) {
-  return redoCandidate(ydoc, layer, tableId, actorId, opts) != null
+/**
+ * The row the actor undid most recently, which is what Redo acts on; null if
+ * none. Doing something new in the layer ends what can be redone, so a live
+ * gesture of the actor's newer than that undo leaves nothing.
+ */
+export function newestUndoneRow(ydoc, layer, tableId, actorId, opts = {}) {
+  const newest = historyOf(ydoc, layer, tableId, actorId, { ...opts, undoneBy: actorId })
+    .reduce((best, r) => (!best || r.undoneAt > best.undoneAt
+      || (r.undoneAt === best.undoneAt && r.reverterId > best.reverterId)) ? r : best, null)
+  if (!newest) return null
+  const latest = newestLiveRow(ydoc, layer, tableId, actorId, opts)
+  return latest && latest.ts > newest.undoneAt ? null : newest
+}
+
+export function undoGesture(ydoc, layer, layerEl, tableId, actorId, { owner = actorId } = {}) {
+  const row = newestLiveRow(ydoc, layer, tableId, actorId, { owner })
+  return row ? undoOp(ydoc, layer, layerEl, tableId, actorId, row.id) : null
+}
+
+export function redoGesture(ydoc, layer, layerEl, tableId, actorId) {
+  const row = newestUndoneRow(ydoc, layer, tableId, actorId)
+  return row ? redoOp(ydoc, layer, layerEl, tableId, actorId, row.id) : null
+}
+
+/** Whether Undo or Redo would go through for the newest row, with nothing blocking it. */
+export function canUndo(ydoc, layer, tableId, actorId, opts = {}) {
+  return newestLiveRow(ydoc, layer, tableId, actorId, opts)?.canUndo ?? false
+}
+
+export function canRedo(ydoc, layer, tableId, actorId, opts = {}) {
+  return newestUndoneRow(ydoc, layer, tableId, actorId, opts)?.canRedo ?? false
 }
 
 /**
