@@ -5,18 +5,6 @@
 var container = {
 
   /**
-   * Set a tspan's text by rewriting its text node in place. That records
-   * as a text write, which replays to the same result wherever it lands;
-   * replacing the node records as a child remove+add, which doubles the
-   * text on a peer whose copy of the tspan already holds the final value.
-   */
-  set_text: function(tspan, text) {
-    text = String(text)
-    if (tspan.childNodes.length === 1 && tspan.firstChild.nodeType === 3) tspan.firstChild.data = text
-    else tspan.textContent = text
-  },
-
-  /**
    * Call visitFn(childToyEl) for every toy currently placed in elem's
    * tt_contents — the direct `.toy` children (each <g class="toy">)
    */

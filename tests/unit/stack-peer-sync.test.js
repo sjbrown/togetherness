@@ -28,12 +28,10 @@ function mk(ydoc) {
   return { layerEl, a }
 }
 /**
- * A gesture's wire entry that adds a node snapshots it as the gesture
- * ended, then later entries in the same op replay the node's history on
- * top. Text written via characterData is idempotent under that; text
- * replaced via textContent (child remove+add) is not.
+ * An entry that adds a node must carry it as it was when it was inserted,
+ * because the entries after it replay the node's later history on top.
  */
-test("a peer receiving the Stack operation shows the same sum as the peer that pressed it", async () => {
+test("a peer receiving the Stack operation ends up with the same toys and sum as the peer that pressed it", async () => {
   _clearSvgTextCache(); _resetToyScriptState()
   vi.stubGlobal('fetch', vi.fn(async (url) => ({ ok: true, text: async () => read(FILES[url]) })))
   const ydoc = new Y.Doc()
@@ -48,7 +46,11 @@ test("a peer receiving the Stack operation shows the same sum as the peer that p
   const ops = [...getOps(ydoc, TOYS_LAYER).values()].sort((x, y) => x.ts - y.ts)
   for (const o of ops) OpLayer.receiveLayerOp(ydoc, TOYS_LAYER, P1.layerEl, o.id, 'T2')
 
+  const toys = (peer) => [...peer.layerEl.querySelectorAll('.toy')]
+    .map(e => `${e.getAttribute('data-id')} in ${e.parentNode.closest('.toy')?.getAttribute('data-id') ?? 'layer'}`).sort()
   const sum = (peer) => peer.layerEl.querySelector('.tspan_sum').textContent
   expect(sum(P2)).toBe('10')
+  expect(toys(P2).length).toBe(3)
+  expect(toys(P1)).toEqual(toys(P2))
   expect(sum(P1)).toBe(sum(P2))
 })

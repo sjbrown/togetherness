@@ -40,7 +40,7 @@ var tray_sum = {
     // would erroneously match nested elements' results
     const container = tray._findOwn(elem, '.result_container')
     const tspan = container && container.querySelector('.tspan_result')
-    if (tspan) tray.set_text(tspan, String(sum))
+    if (tspan) tspan.textContent = String(sum)
   },
 
   eject_all: function(elem) {

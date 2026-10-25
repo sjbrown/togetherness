@@ -35,7 +35,7 @@ var tray_best = {
     let centristB = tally[Math.ceil((tally.length / 2) - 0.5)]
     let median = (centristA + centristB)/2
     let tspan = elem.querySelector(`#${elem.id} > .result_container .tspan_result`)
-    tray.set_text(tspan, median)
+    tspan.textContent = median
   },
 
   menu: {

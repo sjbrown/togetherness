@@ -32,7 +32,7 @@ var tray_modifier = {
       sum = sum + tempNum
     })
     let tspan = elem.querySelector(`#${elem.id} > .result_container .tspan_result`)
-    tray.set_text(tspan, sum + modifier)
+    tspan.textContent = sum + modifier
   },
 
   menu: {
@@ -64,7 +64,7 @@ var tray_modifier = {
     modifier_tspan = elem.querySelector(`#${elem.id} > svg .tspan_rule_num`)
     modifier = parseInt(modifier_tspan.textContent)
     let sum = modifier + change
-    tray.set_text(modifier_tspan, sum < 1 ? sum : '+' + sum)
+    modifier_tspan.textContent = sum < 1 ? sum : '+' + sum
     tray_modifier.contents_change_handler(elem)
   },
 
