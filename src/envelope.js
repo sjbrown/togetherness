@@ -9,13 +9,14 @@
  * of the whole toys layer, and the DOM is the canonical document, so a
  * handler just mutates it directly:
  *
+ *   const before  = snapshot(layerEl)
  *   const records = runInEnvelope(toyEl, () => handler.run(toyEl))
- *   commitGesture(ydoc, layer, records, { gesture, authorId, parents })
+ *   commitGesture(ydoc, layer, records, { before, gesture, authorId, parents })
  *
  * runInEnvelope's only job is capturing what a handler did, as raw
  * MutationRecord[], so commitGesture (op_wire_mutation.js's serialize) can
- * turn that into an operation. op_layer.js's runGesture is the one real
- * caller.
+ * turn the difference from `before` into an operation. op_layer.js's
+ * runGesture is the one real caller.
  *
  * Benefits to this design:
    - a MutationObserver is transparent (handler code is unmodified, ordinary
@@ -143,15 +144,17 @@ function countRecordTypes(records) {
 // ── commit ───────────────────────────────────────────────────────────────
 
 /**
- * Turn a captured batch into an operation and append it to the log.
- * parents is the head this gesture was made against; the caller advances
- * its own head to the returned op's id.
+ * Turn a captured batch into an operation and append it to the log: its
+ * mutations are the layer's difference from `before`, the snapshot taken
+ * before the gesture ran (op_wire_mutation.js). parents is the head this
+ * gesture was made against; the caller advances its own head to the
+ * returned op's id.
  *
- * Returns null for an empty batch — a gesture that changed nothing is not
- * an operation.
+ * Returns null when nothing differs — a gesture that changed nothing, or
+ * changed something and put it back, is not an operation.
  */
-export function commitGesture(ydoc, layer, records, { gesture = 'gesture', authorId = null, parents = [], id, ts, reverts } = {}) {
-  const mutations = serializeRecords(records)
+export function commitGesture(ydoc, layer, records, { before, gesture = 'gesture', authorId = null, parents = [], id, ts, reverts } = {}) {
+  const mutations = serializeRecords(records, before)
   if (!mutations.length) {
     Trace.envelope('empty', `gesture "${gesture}" changed nothing — not an operation`,
       { gesture, records: records?.length ?? 0 })
