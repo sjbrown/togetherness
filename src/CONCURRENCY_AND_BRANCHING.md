@@ -186,11 +186,24 @@ tree by the time anyone serializes them.
 A wire form is needed.  Taking inspiration from MutationRecord makes things
 easy to reason about.
 
-**The wire form is a transcription, not an interpretation.** One
-`WireMutation` per `MutationRecord`, same three types, same fields, same
-order. We do *not* infer `MoveNode` from a remove-then-add pair. We do not
-coalesce two `setAttribute`s on the same node. We do not lift anything
-into a semantic vocabulary. The op log does not know what a die is.
+**An operation's mutations take the layer from the gesture's pre-state
+to its post-state.** Applied in order to the pre-state they give the
+post-state; inverted (§7) and applied to the post-state they give the
+pre-state back. That is the whole contract. It does not say whether the
+mutations are a step-by-step transcription of what the handler did or the
+difference between the layer before and after the gesture. Either is a
+valid wire form, and an operation may be distilled toward the difference
+(a remove-then-add pair as a move, two `setAttribute`s as one, a run of
+text-node replacements as one text write) so long as the contract holds.
+What is not valid is mixing the two: a payload read at one moment
+alongside entries that describe how the node got there from another.
+
+What the wire form never does is lift anything into a semantic
+vocabulary. The op log does not know what a die is.
+
+Today's form is a transcription. One `WireMutation` per `MutationRecord`,
+same three types, same fields, same order, each read as of the moment its
+record happened.
 
 ```
 WireMutation =
@@ -202,19 +215,30 @@ WireMutation =
                  prevSibling:NodeRef|null, nextSibling:NodeRef|null }
 ```
 
-Distilling/optimizing further is *deliberately deferred*. Compactness
-and a cleaner inverse can be achieved, it is known. When 
-performance or correctness demands it, it will be implemented, and
-documented in this section.
+Moving toward the difference is *deliberately deferred*. It buys
+compactness, a cleaner inverse, and fewer incidental conflicts (a value
+written and written back touches nothing). When performance or
+correctness demands it, it will be implemented, and documented in this
+section.
 
 Three things the wire form must get right, none of which are optional:
 
 **Added and removed subtrees are serialized in full.** `added` carries the
 complete markup of each inserted node, not a reference — the receiving
 peer has never seen it. `removed` likewise carries the full subtree of
-each removed node, captured *before* the removal takes effect. That second
-one costs us nothing at capture time and buys invertibility for free (§7),
-which is the whole reason undo stops being a research project.
+each removed node, as it was when the removal took effect. That buys
+invertibility for free (§7), which is the whole reason undo stops being a
+research project.
+
+**Every entry is read as of its own record.** A `MutationObserver` hands
+its records over only after the gesture, by which time an added node may
+have been filled in, edited, or moved again. Read then, an `added` payload
+would already contain changes that the entries after it replay on top,
+and a peer would apply them twice: a tspan whose text was replaced shows
+it doubled, a toy moved into a container the same gesture created appears
+in it twice. So `serialize` rewinds the layer by undoing the records
+newest-first, then walks forward, reading each entry just before redoing
+its record. The layer ends as it started.
 
 **Old values are captured.** `attributeOldValue` and
 `characterDataOldValue` stay on in the observer options. Same reason.
@@ -807,6 +831,16 @@ Cite these by number in code comments and commit messages.
 ## 9. Dragons
 
 Known-unresolved, listed so nobody thinks they're resolved.
+
+* **Edits to a node while it is detached.** A handler that removes a node,
+  changes it, and puts it back has changed it while it was outside the
+  layer, where no `MutationRecord` reports it. Rewinding (§3) cannot undo
+  those changes, so the operation's idea of the pre-state includes them:
+  undo leaves them in place, and a peer that reuses its own copy of the
+  moved node rather than the payload never sees them. Taking the
+  difference between a snapshot of the layer at the start of the envelope
+  and the layer at the end (§3) handles it exactly, at the cost of a clone
+  of the layer per gesture.
 
 * **Text node identity** (§4.1). The `{parentId, childIndex}` addressing is
   exact within an operation and only as stable as the parent's child list
