@@ -201,9 +201,13 @@ alongside entries that describe how the node got there from another.
 What the wire form never does is lift anything into a semantic
 vocabulary. The op log does not know what a die is.
 
-Today's form is a transcription. One `WireMutation` per `MutationRecord`,
-same three types, same fields, same order, each read as of the moment its
-record happened.
+Today's form is the difference. Before a gesture runs, `runGesture` takes
+a snapshot of the layer: a copy, and a map from every node to its copy.
+Afterwards `serialize` compares the layer with the snapshot and writes what
+changed, in the same three entry types a `MutationRecord` has. The records
+only say where to look; what a handler did to a node while it was out of
+the layer, which no record reports, is found by comparing that node in
+full when it comes back.
 
 ```
 WireMutation =
@@ -215,11 +219,10 @@ WireMutation =
                  prevSibling:NodeRef|null, nextSibling:NodeRef|null }
 ```
 
-Moving toward the difference is *deliberately deferred*. It buys
-compactness, a cleaner inverse, and fewer incidental conflicts (a value
-written and written back touches nothing). When performance or
-correctness demands it, it will be implemented, and documented in this
-section.
+The difference is also more compact than a transcription, and touches
+less: a value written and written back is no entry at all, so it can't
+conflict with anything (§5.1). It costs a copy of the layer per gesture,
+about 10 ms for 100 toys of 50 elements.
 
 Three things the wire form must get right, none of which are optional:
 
@@ -230,18 +233,19 @@ each removed node, as it was when the removal took effect. That buys
 invertibility for free (§7), which is the whole reason undo stops being a
 research project.
 
-**Every entry is read as of its own record.** A `MutationObserver` hands
-its records over only after the gesture, by which time an added node may
-have been filled in, edited, or moved again. Read then, an `added` payload
-would already contain changes that the entries after it replay on top,
-and a peer would apply them twice: a tspan whose text was replaced shows
-it doubled, a toy moved into a container the same gesture created appears
-in it twice. So `serialize` rewinds the layer by undoing the records
-newest-first, then walks forward, reading each entry just before redoing
-its record. The layer ends as it started.
+**Entries are worked out against the snapshot's copy, applied to it as
+they're written.** Every reference in an entry — a sibling anchor, a text
+node's index — is then valid in exactly the state a peer is in when it
+applies that entry. Removals come first, deepest parent first; then
+insertions, outermost parent first and each parent's children left to
+right; then attribute and text writes. A node the gesture created carries
+its finished subtree, and nothing inside it gets an entry of its own.
 
-**Old values are captured.** `attributeOldValue` and
-`characterDataOldValue` stay on in the observer options. Same reason.
+**Moves are the ones that happened.** Within one parent, the children that
+stay put are the longest run of them still in order, but a child the
+gesture itself re-inserted is always reported as moved. Raising a toy
+above its neighbour is a move of that toy, not of the neighbour, and
+conflict classification (§5.1) depends on that.
 
 **Sibling anchors are node references, not indices.** A `child` record
 records `previousSibling`/`nextSibling` as identities. An index is a
@@ -729,7 +733,7 @@ actor = me.
 * **Undo acts on the owner's newest active real gesture** in a layer: not a
   checkpoint, not a `reverts` operation. The new operation's `reverts` is
   always that real gesture, even when it is active because of a redo, and
-  its mutations are the inverse of the target's.
+  its mutations are what applying the inverse of the target's changed.
 * **Redo is for your own undos only.** It acts on the actor's newest active
   undo operation, and is unavailable once the actor has committed a real
   gesture in that layer newer than that undo: doing something new
@@ -831,16 +835,6 @@ Cite these by number in code comments and commit messages.
 ## 9. Dragons
 
 Known-unresolved, listed so nobody thinks they're resolved.
-
-* **Edits to a node while it is detached.** A handler that removes a node,
-  changes it, and puts it back has changed it while it was outside the
-  layer, where no `MutationRecord` reports it. Rewinding (§3) cannot undo
-  those changes, so the operation's idea of the pre-state includes them:
-  undo leaves them in place, and a peer that reuses its own copy of the
-  moved node rather than the payload never sees them. Taking the
-  difference between a snapshot of the layer at the start of the envelope
-  and the layer at the end (§3) handles it exactly, at the cost of a clone
-  of the layer per gesture.
 
 * **Text node identity** (§4.1). The `{parentId, childIndex}` addressing is
   exact within an operation and only as stable as the parent's child list
