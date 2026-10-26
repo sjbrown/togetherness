@@ -87,6 +87,70 @@ function roundTrip(root, gesture) {
   return { wire, replay, before, after: root }
 }
 
+describe('serialize: a node changed after it was added', () => {
+  test('text replaced repeatedly in a node the gesture created replays to the same markup', () => {
+    const root = buildTree('<g data-id="a"/>')
+    const { replay, after } = roundTrip(root, () => {
+      const t = document.createElementNS(SVG_NS, 'tspan')
+      t.setAttribute('data-id', 't')
+      t.textContent = '0'
+      root.appendChild(t)
+      t.textContent = '5'
+      t.textContent = '10'
+    })
+    expect(markup(replay)).toBe(markup(after))
+    expect(replay.querySelector('[data-id="t"]').textContent).toBe('10')
+  })
+
+  test('children appended and attributes set on a created node after it is inserted replay once', () => {
+    const root = buildTree()
+    const { replay, after } = roundTrip(root, () => {
+      const g = document.createElementNS(SVG_NS, 'g')
+      g.setAttribute('data-id', 'g')
+      root.appendChild(g)
+      const r = document.createElementNS(SVG_NS, 'rect')
+      r.setAttribute('data-id', 'r')
+      g.appendChild(r)
+      g.setAttribute('fill', 'red')
+      g.setAttribute('fill', 'blue')
+    })
+    expect(markup(replay)).toBe(markup(after))
+    expect(replay.querySelectorAll('rect').length).toBe(1)
+  })
+
+  test('an existing node moved into a created one is not duplicated', () => {
+    const root = buildTree('<g data-id="chip"><text data-id="x">1</text></g>')
+    const { replay, after } = roundTrip(root, () => {
+      const box = document.createElementNS(SVG_NS, 'g')
+      box.setAttribute('data-id', 'box')
+      root.appendChild(box)
+      box.appendChild(root.querySelector('[data-id="chip"]'))
+      root.querySelector('[data-id="x"]').textContent = '2'
+    })
+    expect(markup(replay)).toBe(markup(after))
+    expect(replay.querySelectorAll('[data-id="chip"]').length).toBe(1)
+  })
+
+  test('each write to one attribute reports the value it wrote', () => {
+    const root = buildTree('<g data-id="a" fill="red"/>')
+    const a = root.querySelector('[data-id="a"]')
+    const wire = serialize(capture(root, () => { a.setAttribute('fill', 'green'); a.setAttribute('fill', 'blue') }))
+    expect(wire.map(e => [e.oldValue, e.newValue])).toEqual([['red', 'green'], ['green', 'blue']])
+  })
+
+  test('the tree is left exactly as it was found', () => {
+    const root = buildTree('<g data-id="a">x</g>')
+    const records = capture(root, () => {
+      root.querySelector('[data-id="a"]').textContent = 'y'
+      const n = document.createElementNS(SVG_NS, 'g'); n.setAttribute('data-id', 'n'); root.appendChild(n)
+      root.querySelector('[data-id="a"]').remove()
+    })
+    const final = markup(root)
+    serialize(records)
+    expect(markup(root)).toBe(final)
+  })
+})
+
 describe('serializeNode / deserializeNode', () => {
   test('an element subtree survives the round trip', () => {
     const root = buildTree('<g data-id="a" fill="red"><rect data-id="b" x="3"/>hello</g>')

@@ -134,15 +134,78 @@ export function deserializeNode(s, doc = document) {
   return el
 }
 
+// ── rewind ──────────────────────────────────────────────────────────────
+
+// Where a childList record's nodes sat: before nextSibling, else after
+// previousSibling, else first (it had no previous sibling) or last.
+function placeNodes(r, nodes) {
+  const parent = r.target
+  const inParent = (n) => n && n.parentNode === parent
+  const before = inParent(r.nextSibling)     ? r.nextSibling
+               : inParent(r.previousSibling) ? r.previousSibling.nextSibling
+               : r.previousSibling == null   ? parent.firstChild
+               : null
+  for (const n of nodes) parent.insertBefore(n, before)
+}
+
+function detachNodes(r, nodes) {
+  for (const n of nodes) if (n.parentNode === r.target) r.target.removeChild(n)
+}
+
+function setAttr(el, name, ns, value) {
+  if (value === null || value === undefined) { ns ? el.removeAttributeNS(ns, name) : el.removeAttribute(name) }
+  else                                       { ns ? el.setAttributeNS(ns, name, value) : el.setAttribute(name, value) }
+}
+
+/** Put the tree back the way it was before record r happened. */
+function undoRecord(r) {
+  if (r.type === 'attributes')         setAttr(r.target, r.attributeName, r.attributeNamespace, r.oldValue)
+  else if (r.type === 'characterData') r.target.data = r.oldValue ?? ''
+  else if (r.type === 'childList')     { detachNodes(r, Array.from(r.addedNodes)); placeNodes(r, Array.from(r.removedNodes)) }
+}
+
+/** Do record r again; newValue is what it wrote, for attributes and text. */
+function redoRecord(r, newValue) {
+  if (r.type === 'attributes')         setAttr(r.target, r.attributeName, r.attributeNamespace, newValue)
+  else if (r.type === 'characterData') r.target.data = newValue
+  else if (r.type === 'childList')     { detachNodes(r, Array.from(r.removedNodes)); placeNodes(r, Array.from(r.addedNodes)) }
+}
+
+/**
+ * What each attribute or text record wrote, by index. A record reports
+ * only the value it replaced, so a write's value is the next record's old
+ * value on the same name or node, or the live value if nothing wrote it
+ * after. Read before the tree is rewound.
+ */
+function writtenValues(records) {
+  const out = new Array(records.length)
+  const later = new Map()
+  for (let i = records.length - 1; i >= 0; i--) {
+    const r = records[i]
+    if (r.type === 'attributes') {
+      const names = later.get(r.target) ?? later.set(r.target, new Map()).get(r.target)
+      out[i] = names.has(r.attributeName) ? names.get(r.attributeName) : r.target.getAttribute(r.attributeName)
+      names.set(r.attributeName, r.oldValue)
+    } else if (r.type === 'characterData') {
+      out[i] = later.has(r.target) ? later.get(r.target) : r.target.data
+      later.set(r.target, r.oldValue ?? '')
+    }
+  }
+  return out
+}
+
 // ── serialize ───────────────────────────────────────────────────────────
 
 /**
  * MutationRecord[] → wire entries.
  *
- * newValue is read from the live tree, not from the record (which only
- * reports the old one). Two writes to the same attribute in one batch
- * therefore both report the batch's final value: the intermediate step is
- * lost, while the batch's end state and its inverse both stay correct.
+ * The records are read after the gesture, when the tree is in its final
+ * state. Serialized that way, an entry adding a node would carry the node
+ * as the gesture left it, and the entries after it would then replay the
+ * node's later changes on top. So the tree is first rewound by undoing the
+ * records newest-first, then walked forward: each entry is read just before
+ * its record is redone, so a node is serialized as it was when inserted and
+ * a write reports the value it wrote. The tree ends where it started.
  *
  * Anything unaddressable — a target with no data-id, and no data-id on any
  * ancestor to hang a text node off — is dropped rather than sent as a
@@ -156,57 +219,58 @@ export function serialize(records) {
   let unaddressable = 0
   let empty = 0
 
-  for (const r of records ?? []) {
-    if (r.type === 'attributes') {
-      const target = nodeRef(r.target)
-      if (!target) { unaddressable++; continue }
-      const name = r.attributeName
-      out.push({
-        t: 'attr',
-        target,
-        name,
-        ns: r.attributeNamespace ?? null,
-        oldValue: r.oldValue ?? null,
-        newValue: r.target.getAttribute(name),
-      })
-      continue
-    }
+  records = Array.from(records ?? [])
+  const written = writtenValues(records)
+  for (let i = records.length - 1; i >= 0; i--) undoRecord(records[i])
 
-    if (r.type === 'characterData') {
+  let done = 0
+  try {
+    for (; done < records.length; done++) {
+      const r = records[done]
       const target = nodeRef(r.target)
-      if (!target) { unaddressable++; continue }
-      out.push({
-        t: 'text',
-        target,
-        oldValue: r.oldValue ?? '',
-        newValue: r.target.data,
-      })
-      continue
-    }
 
-    if (r.type === 'childList') {
-      const target = nodeRef(r.target)
-      if (!target) { unaddressable++; continue }
-      const added   = Array.from(r.addedNodes).map(n => serializeNode(ensureIds(n))).filter(Boolean)
-      const removed = Array.from(r.removedNodes).map(serializeNode).filter(Boolean)
-      if (!added.length && !removed.length) { empty++; continue }
-      out.push({
-        t: 'child',
-        target,
-        added,
-        removed,
-        prevSibling: nodeRef(r.previousSibling),
-        nextSibling: nodeRef(r.nextSibling),
-      })
+      if (r.type === 'attributes') {
+        if (!target) unaddressable++
+        else out.push({
+          t: 'attr',
+          target,
+          name: r.attributeName,
+          ns: r.attributeNamespace ?? null,
+          oldValue: r.oldValue ?? null,
+          newValue: written[done] ?? null,
+        })
+      } else if (r.type === 'characterData') {
+        if (!target) unaddressable++
+        else out.push({
+          t: 'text',
+          target: nodeRef(r.target),
+          oldValue: r.oldValue ?? '',
+          newValue: written[done],
+        })
+      } else if (r.type === 'childList') {
+        const removed = Array.from(r.removedNodes).map(serializeNode).filter(Boolean)
+        detachNodes(r, Array.from(r.removedNodes))
+        const prevSibling = nodeRef(r.previousSibling)
+        const nextSibling = nodeRef(r.nextSibling)
+        const added = Array.from(r.addedNodes).map(n => serializeNode(ensureIds(n))).filter(Boolean)
+        if (!target) unaddressable++
+        else if (!added.length && !removed.length) empty++
+        else out.push({ t: 'child', target, added, removed, prevSibling, nextSibling })
+      }
+
+      redoRecord(r, written[done])
     }
+  } finally {
+    // Leave the tree as it was found even if an entry failed to serialize.
+    for (; done < records.length; done++) redoRecord(records[done], written[done])
   }
 
   if (unaddressable) {
     Trace.wire('serialize-dropped',
       `${unaddressable} mutation${unaddressable === 1 ? '' : 's'} dropped — target not addressable`,
-      { records: records?.length ?? 0, entries: out.length, unaddressable, empty }, 'warn')
+      { records: records.length, entries: out.length, unaddressable, empty }, 'warn')
   } else if (Trace.willRecord(Trace.WIRE)) {
-    const n = records?.length ?? 0
+    const n = records.length
     Trace.wire('serialize',
       `${n} record${n === 1 ? '' : 's'} → ${out.length} entr${out.length === 1 ? 'y' : 'ies'}`,
       { records: n, entries: out.length, empty })
