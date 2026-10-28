@@ -181,33 +181,27 @@ own branch while players continue on the shared one is valid.
 
 The browser's native `MutationRecord` cannot be transmitted. It holds live
 node references, and its `addedNodes`/`removedNodes` are detached from the
-tree by the time anyone serializes them.
+tree.
 
-A wire form is needed.  Taking inspiration from MutationRecord makes things
+But taking inspiration for the wire form from MutationRecord makes things
 easy to reason about.
 
 **An operation's mutations take the layer from the gesture's pre-state
 to its post-state.** Applied in order to the pre-state they give the
-post-state; inverted (§7) and applied to the post-state they give the
+post-state; when inverted (§7), they give the
 pre-state back. That is the whole contract. It does not say whether the
 mutations are a step-by-step transcription of what the handler did or the
-difference between the layer before and after the gesture. Either is a
-valid wire form, and an operation may be distilled toward the difference
-(a remove-then-add pair as a move, two `setAttribute`s as one, a run of
-text-node replacements as one text write) so long as the contract holds.
-What is not valid is mixing the two: a payload read at one moment
-alongside entries that describe how the node got there from another.
+diff between the layer before and after the gesture. Either is valid,
+and an operation may be distilled or unoptimized so long as the contract holds.
 
-What the wire form never does is lift anything into a semantic
-vocabulary. The op log does not know what a die is.
+The wire form sticks to a DOM vocabulary, not a semantic
+vocabulary. It does not know what a die is. It does not create a special
+verb like `move:x1,y1:x2,y2`.
 
-Today's form is the difference. Before a gesture runs, `runGesture` takes
-a snapshot of the layer: a copy, and a map from every node to its copy.
-Afterwards `serialize` compares the layer with the snapshot and writes what
-changed, in the same three entry types a `MutationRecord` has. The records
-only say where to look; what a handler did to a node while it was out of
-the layer, which no record reports, is found by comparing that node in
-full when it comes back.
+Today's implementation: the diff. Before a gesture runs,
+a snapshot is taken of the layer: a copy, and a map from every node to its copy.
+Afterwards `serialize` compares the live layer with the snapshot and records what
+changed, using a structure similar to `MutationRecord`.
 
 ```
 WireMutation =
@@ -218,11 +212,6 @@ WireMutation =
                  removed:SerializedNode[], added:SerializedNode[],
                  prevSibling:NodeRef|null, nextSibling:NodeRef|null }
 ```
-
-The difference is also more compact than a transcription, and touches
-less: a value written and written back is no entry at all, so it can't
-conflict with anything (§5.1). It costs a copy of the layer per gesture,
-about 10 ms for 100 toys of 50 elements.
 
 Three things the wire form must get right, none of which are optional:
 
@@ -241,11 +230,11 @@ insertions, outermost parent first and each parent's children left to
 right; then attribute and text writes. A node the gesture created carries
 its finished subtree, and nothing inside it gets an entry of its own.
 
-**Moves are the ones that happened.** Within one parent, the children that
-stay put are the longest run of them still in order, but a child the
-gesture itself re-inserted is always reported as moved. Raising a toy
-above its neighbour is a move of that toy, not of the neighbour, and
-conflict classification (§5.1) depends on that.
+**Moves are the ones that happened.** When toy z-order changes, we need to
+clarify whether A moves *below* B or B moves *above* A inside their common
+parent. The children that stay put are the longest run of them still in
+order. A child the gesture itself re-inserted is always reported as moved.
+Raising a toy above its neighbor is a move of that toy, not the neighbor.
 
 **Sibling anchors are node references, not indices.** A `child` record
 records `previousSibling`/`nextSibling` as identities. An index is a

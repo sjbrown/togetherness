@@ -2,9 +2,11 @@
  * op_wire_mutation.js — a gesture's change to a layer ⇄ transmissible form.
  *
  * A gesture's wire is the difference between the layer before the gesture
- * (a snapshot) and after it, in three entry types: attribute and text
- * writes, and child insertions and removals. MutationRecords only say
- * where to look. No semantic vocabulary.
+ * (a snapshot) and after it, in three entry types:
+ *  * attribute writes
+ *  * text writes
+ *  * child insertions and removals
+ * DOM vocabulary, not semantic vocabulary.
  *
  * Every entry carries what is needed to undo it — an old value, or the
  * full subtree of anything removed — so invert() is a local rewrite with
