@@ -1195,7 +1195,6 @@ const App = {
     if (!layerEl || svgEls.some(svgEl => !svgEl)) return;
     try {
       Toys.invokeMenuActionOn(_ydoc, layerEl, svgEls, namespace, key, undefined, App.user.id, _tableId);
-      addHistory(`${key} × ${ids.length}`, { elType: 'toys' });
     } catch (err) {
       UI.toast(`Action failed: ${err.message}`, 'warn');
       App.addLog(`toy action failed: ${err.message}`, 'del');
