@@ -4,14 +4,12 @@
  *
  * Property test for serialize/apply/invert over random gestures: replaying
  * a gesture's wire on a copy of the pre-state gives the author's markup,
- * and applying its inverse on top gives the pre-state back.
- *
- * Gestures only change nodes while they're in the observed tree. A node
- * edited while detached is outside what a MutationObserver reports, so
- * those edits aren't part of the property.
+ * and applying its inverse on top gives the pre-state back. Gestures
+ * include taking a node out, changing it, and putting it back, which no
+ * MutationRecord reports.
  */
 import { test, expect } from 'vitest'
-import { serialize, apply, invert } from '../../src/op_wire_mutation.js'
+import { snapshot, serialize, apply, invert } from '../../src/op_wire_mutation.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 const SEEDS  = 1000
@@ -20,7 +18,8 @@ function rng(seed) {
   return () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff }
 }
 
-function capture(root, gesture) {
+function wireOf(root, gesture) {
+  const before = snapshot(root)
   const records = []
   const mo = new MutationObserver(rs => records.push(...rs))
   mo.observe(root, {
@@ -31,7 +30,7 @@ function capture(root, gesture) {
   gesture()
   records.push(...mo.takeRecords())
   mo.disconnect()
-  return records
+  return serialize(records, before)
 }
 
 function tree() {
@@ -42,6 +41,9 @@ function tree() {
     return e
   }
   const root = el()
+  // In the app the layer sits inside an <svg>; serialize must stop at the layer.
+  document.body.replaceChildren(document.createElementNS(SVG_NS, 'svg'))
+  document.body.firstChild.appendChild(root)
   for (let i = 0; i < 4; i++) {
     const g = root.appendChild(el())
     for (let j = 0; j < 2; j++) g.appendChild(el()).textContent = `v${j}`
@@ -66,6 +68,14 @@ function gesture(root, el, r) {
       pick(els).setAttribute('fill', `c${Math.floor(r() * 5)}`)
     } else if (k < 0.8 && els.length) {
       pick(els).textContent = `t${Math.floor(r() * 5)}`
+    } else if (k < 0.9 && els.length > 2) {
+      const a = pick(els)
+      a.remove()
+      a.setAttribute('x', `out${s}`)
+      const inner = a.querySelector('*')
+      if (inner && r() < 0.5) inner.remove()
+      if (r() < 0.3) a.textContent = `out${s}`
+      if (r() < 0.8) pick([root, ...root.querySelectorAll('*')]).appendChild(a)
     } else if (els.length) {
       const texts = els.flatMap(e => [...e.childNodes]).filter(x => x.nodeType === 3)
       if (texts.length) pick(texts).data = `d${Math.floor(r() * 5)}`
@@ -79,7 +89,7 @@ test(`${SEEDS} random gestures replay to the author's markup and invert to the p
     const r = rng(seed)
     const { root, el } = tree()
     const before = root.cloneNode(true)
-    const wire = serialize(capture(root, () => gesture(root, el, r)))
+    const wire = wireOf(root, () => gesture(root, el, r))
 
     const peer = before.cloneNode(true)
     try { apply(wire, peer) } catch (e) { failures.push({ seed, step: 'apply', error: e.message }); continue }

@@ -1,10 +1,10 @@
 /**
  * tests/unit/op-wire-mutation.test.js
  *
- * The property that matters: run a gesture against a tree under a real
- * MutationObserver, serialize the batch, apply it to a fresh clone of the
- * *pre*-state, and get identical markup. Then invert it and get the
- * pre-state back.
+ * The property that matters: snapshot a tree, run a gesture against it
+ * under a real MutationObserver, serialize the difference, apply it to a
+ * fresh clone of the *pre*-state, and get identical markup. Then invert it
+ * and get the pre-state back.
  */
 
 // @vitest-environment jsdom
@@ -14,7 +14,7 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  serialize, apply, invert, ensureIds, serializeNode, deserializeNode, WireApplyError,
+  snapshot, serialize, apply, invert, ensureIds, serializeNode, deserializeNode, WireApplyError,
 } from '../../src/op_wire_mutation.js'
 import {
   addToy, activateAllToyScriptsDom,
@@ -48,10 +48,11 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals() })
 
 /**
- * Run `gesture` against root under a real observer and return the batch,
- * exactly as the envelope collects it.
+ * Snapshot root, run `gesture` against it under a real observer exactly as
+ * runGesture does, and return the gesture's wire.
  */
-function capture(root, gesture) {
+function wireOf(root, gesture) {
+  const before = snapshot(root)
   const records = []
   const mo = new MutationObserver(rs => records.push(...rs))
   mo.observe(root, {
@@ -62,7 +63,7 @@ function capture(root, gesture) {
   gesture()
   records.push(...mo.takeRecords())
   mo.disconnect()
-  return records
+  return serialize(records, before)
 }
 
 const markup = (el) => el.innerHTML
@@ -81,7 +82,7 @@ function buildTree(html = '') {
  */
 function roundTrip(root, gesture) {
   const before = root.cloneNode(true)
-  const wire   = serialize(capture(root, gesture))
+  const wire   = wireOf(root, gesture)
   const replay = before.cloneNode(true)
   apply(wire, replay)
   return { wire, replay, before, after: root }
@@ -131,23 +132,51 @@ describe('serialize: a node changed after it was added', () => {
     expect(replay.querySelectorAll('[data-id="chip"]').length).toBe(1)
   })
 
-  test('each write to one attribute reports the value it wrote', () => {
+  test('two writes to one attribute are one entry, from the first value to the last', () => {
     const root = buildTree('<g data-id="a" fill="red"/>')
     const a = root.querySelector('[data-id="a"]')
-    const wire = serialize(capture(root, () => { a.setAttribute('fill', 'green'); a.setAttribute('fill', 'blue') }))
-    expect(wire.map(e => [e.oldValue, e.newValue])).toEqual([['red', 'green'], ['green', 'blue']])
+    const wire = wireOf(root, () => { a.setAttribute('fill', 'green'); a.setAttribute('fill', 'blue') })
+    expect(wire.map(e => [e.oldValue, e.newValue])).toEqual([['red', 'blue']])
   })
 
-  test('the tree is left exactly as it was found', () => {
+  test('a value changed and changed back is no entry at all', () => {
+    const root = buildTree('<g data-id="a" fill="red">x</g>')
+    const a = root.querySelector('[data-id="a"]')
+    const wire = wireOf(root, () => {
+      a.setAttribute('fill', 'blue'); a.setAttribute('fill', 'red')
+      a.firstChild.data = 'y'; a.firstChild.data = 'x'
+    })
+    expect(wire).toEqual([])
+  })
+
+  test('the live tree is left exactly as the gesture left it', () => {
     const root = buildTree('<g data-id="a">x</g>')
-    const records = capture(root, () => {
+    let final
+    wireOf(root, () => {
       root.querySelector('[data-id="a"]').textContent = 'y'
       const n = document.createElementNS(SVG_NS, 'g'); n.setAttribute('data-id', 'n'); root.appendChild(n)
       root.querySelector('[data-id="a"]').remove()
+      final = markup(root)
     })
-    const final = markup(root)
-    serialize(records)
     expect(markup(root)).toBe(final)
+  })
+})
+
+describe('serialize: a node changed while it was out of the layer', () => {
+  test('a node taken out, edited, and put back replays and inverts exactly', () => {
+    const root = buildTree('<g data-id="chip"><text data-id="label"><tspan data-id="val">5</tspan></text></g><g data-id="other"/>')
+    const before = root.cloneNode(true)
+    const wire = wireOf(root, () => {
+      const chip = root.querySelector('[data-id="chip"]')
+      chip.remove()
+      chip.querySelector('tspan').textContent = '7'
+      root.appendChild(chip)
+    })
+    const peer = before.cloneNode(true)
+    apply(wire, peer)
+    expect(markup(peer)).toBe(markup(root))
+    apply(invert(wire), peer)
+    expect(markup(peer)).toBe(markup(before))
   })
 })
 
@@ -221,7 +250,7 @@ describe('round trip — attributes', () => {
       el.setAttribute('x', '2')
       el.setAttribute('x', '3')
     })
-    expect(wire.length).toBe(2)
+    expect(wire.length).toBe(1)
     expect(markup(replay)).toBe(markup(after))
     expect(replay.querySelector('[data-id="r"]').getAttribute('x')).toBe('3')
   })
@@ -291,7 +320,7 @@ describe('round trip — children', () => {
 
   test('a removed subtree carries its whole contents', () => {
     const root = buildTree('<g data-id="p"><g data-id="a"><rect data-id="deep" x="7"/></g></g>')
-    const wire = serialize(capture(root, () => root.querySelector('[data-id="a"]').remove()))
+    const wire = wireOf(root, () => root.querySelector('[data-id="a"]').remove())
     const removed = wire[0].removed[0]
     expect(removed.ch[0].at).toContainEqual(['x', '7'])
   })
@@ -300,7 +329,7 @@ describe('round trip — children', () => {
 describe('invert', () => {
   const invertsBackTo = (root, gesture) => {
     const beforeHtml = markup(root)
-    const wire = serialize(capture(root, gesture))
+    const wire = wireOf(root, gesture)
     apply(invert(wire), root)
     return { got: markup(root), want: beforeHtml }
   }
@@ -359,10 +388,10 @@ describe('invert', () => {
 
   test('invert of invert is the original batch', () => {
     const root = buildTree('<g data-id="p"><rect data-id="r" x="1"/></g>')
-    const wire = serialize(capture(root, () => {
+    const wire = wireOf(root, () => {
       root.querySelector('[data-id="r"]').setAttribute('x', '9')
       root.querySelector('[data-id="p"]').appendChild(document.createElementNS(SVG_NS, 'circle'))
-    }))
+    })
     expect(invert(invert(wire))).toEqual(wire)
   })
 })
@@ -426,7 +455,7 @@ describe('round trip over real toy gestures', () => {
     const dieEl = layerEl.querySelector('[data-id="die1"]')
     globalThis.dice.turn_handler(dieEl, 6)
     const beforeHtml = markup(layerEl)
-    const wire = serialize(capture(layerEl, () => globalThis.dice.turn_handler(dieEl, 6)))
+    const wire = wireOf(layerEl, () => globalThis.dice.turn_handler(dieEl, 6))
     expect(markup(layerEl)).not.toBe(beforeHtml)
     apply(invert(wire), layerEl)
     expect(markup(layerEl)).toBe(beforeHtml)
@@ -453,10 +482,10 @@ describe('round trip over real toy gestures', () => {
   test('a drop into a tray inverts back out', async () => {
     const { layerEl } = await layerWith(['tray1', 'tray_sum'], ['die1', 'dice_d6'])
     const beforeHtml = markup(layerEl)
-    const wire = serialize(capture(layerEl, () => {
+    const wire = wireOf(layerEl, () => {
       const contents = layerEl.querySelector('[data-id="tray1"] .tt_contents')
       contents.appendChild(layerEl.querySelector('[data-id="die1"]'))
-    }))
+    })
     apply(invert(wire), layerEl)
     expect(markup(layerEl)).toBe(beforeHtml)
   })
@@ -480,14 +509,14 @@ describe('round trip over real toy gestures', () => {
       return { x: svg.getAttribute('x'), y: svg.getAttribute('y') }
     })()
 
-    const wire = serialize(capture(layerEl, () => {
+    const wire = wireOf(layerEl, () => {
       const contents  = layerEl.querySelector('[data-id="tray1"] .tt_contents')
       const dieEl     = layerEl.querySelector('[data-id="die1"]')
       contents.appendChild(dieEl)
       // A real reposition, not a no-op — same as applyMove would do.
       dieEl.querySelector('svg').setAttribute('x', '999')
       dieEl.querySelector('svg').setAttribute('y', '888')
-    }))
+    })
 
     apply(invert(wire), layerEl)
 

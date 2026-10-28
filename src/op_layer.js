@@ -35,6 +35,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg'
  */
 export function runGesture(ydoc, layer, layerEl, fn, opts = {}) {
   ensureLayerId(layerEl, layer)
+  const before = opts.tableId ? OpWireMutation.snapshot(layerEl) : null
   const captured = runInEnvelope(layerEl, fn)
   const allRecords = [...captured, ...layer.hooks.afterCapture(captured, layerEl, opts)]
 
@@ -42,6 +43,7 @@ export function runGesture(ydoc, layer, layerEl, fn, opts = {}) {
   let op = null
   if (tableId) {
     op = commitGesture(ydoc, layer, allRecords, {
+      before,
       gesture:  opts.gesture ?? 'gesture',
       authorId: opts.authorId ?? null,
       reverts:  opts.reverts,

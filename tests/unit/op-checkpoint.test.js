@@ -22,7 +22,7 @@ import {
 } from '../../src/op_checkpoint.js'
 import { getOps, getContent, appendOp, appendCheckpoint, isAncestor } from '../../src/op_dag.js'
 import { tablesAPI } from '../../src/tables.js'
-import { serialize } from '../../src/op_wire_mutation.js'
+import { snapshot, serialize } from '../../src/op_wire_mutation.js'
 import {
   addToy, activateAllToyScriptsDom,
   _clearSvgTextCache, _resetToyScriptState,
@@ -303,6 +303,7 @@ describe('projectFrom replays forward from a checkpoint', () => {
 
     const scratch = bareLayer('<rect data-id="r" x="1"/>')
     ensureLayerId(scratch, TOYS_LAYER)
+    const snap = snapshot(scratch)
     scratch.querySelector('[data-id="r"]').setAttribute('x', '99')
     const mo = new MutationObserver(() => {})
     const move = {
@@ -310,7 +311,7 @@ describe('projectFrom replays forward from a checkpoint', () => {
       mutations: serialize([{
         type: 'attributes', target: scratch.querySelector('[data-id="r"]'),
         attributeName: 'x', oldValue: '1',
-      }]),
+      }], snap),
     }
 
     const ops = new Map([[cp.id, cp], [move.id, move]])
@@ -328,12 +329,13 @@ describe('projectFrom replays forward from a checkpoint', () => {
       const scratch = bareLayer(markup(base))
       const el = scratch.querySelector(`[data-id="${targetId}"]`)
       const before = el.getAttribute('x')
+      const snap = snapshot(scratch)
       el.setAttribute('x', value)
       return {
         id, parents: [cp.id], authorId: 'alice', gesture: 'move', ts: 2,
         mutations: serialize([{
           type: 'attributes', target: el, attributeName: 'x', oldValue: before,
-        }]),
+        }], snap),
       }
     }
 

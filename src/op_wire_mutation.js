@@ -1,11 +1,12 @@
 /**
- * op_wire_mutation.js — MutationRecord ⇄ transmissible form.
+ * op_wire_mutation.js — a gesture's change to a layer ⇄ transmissible form.
  *
- * A MutationRecord holds live node references and its added/removed nodes
- * are detached by the time anyone looks, so it cannot be sent as-is. The
- * form here is a transcription of it: one entry per record, same three
- * types, same order. No move inference, no coalescing of repeated writes,
- * no semantic vocabulary.
+ * A gesture's wire is the difference between the layer before the gesture
+ * (a snapshot) and after it, in three entry types:
+ *  * attribute writes
+ *  * text writes
+ *  * child insertions and removals
+ * DOM vocabulary, not semantic vocabulary.
  *
  * Every entry carries what is needed to undo it — an old value, or the
  * full subtree of anything removed — so invert() is a local rewrite with
@@ -134,146 +135,189 @@ export function deserializeNode(s, doc = document) {
   return el
 }
 
-// ── rewind ──────────────────────────────────────────────────────────────
-
-// Where a childList record's nodes sat: before nextSibling, else after
-// previousSibling, else first (it had no previous sibling) or last.
-function placeNodes(r, nodes) {
-  const parent = r.target
-  const inParent = (n) => n && n.parentNode === parent
-  const before = inParent(r.nextSibling)     ? r.nextSibling
-               : inParent(r.previousSibling) ? r.previousSibling.nextSibling
-               : r.previousSibling == null   ? parent.firstChild
-               : null
-  for (const n of nodes) parent.insertBefore(n, before)
-}
-
-function detachNodes(r, nodes) {
-  for (const n of nodes) if (n.parentNode === r.target) r.target.removeChild(n)
-}
-
-function setAttr(el, name, ns, value) {
-  if (value === null || value === undefined) { ns ? el.removeAttributeNS(ns, name) : el.removeAttribute(name) }
-  else                                       { ns ? el.setAttributeNS(ns, name, value) : el.setAttribute(name, value) }
-}
-
-/** Put the tree back the way it was before record r happened. */
-function undoRecord(r) {
-  if (r.type === 'attributes')         setAttr(r.target, r.attributeName, r.attributeNamespace, r.oldValue)
-  else if (r.type === 'characterData') r.target.data = r.oldValue ?? ''
-  else if (r.type === 'childList')     { detachNodes(r, Array.from(r.addedNodes)); placeNodes(r, Array.from(r.removedNodes)) }
-}
-
-/** Do record r again; newValue is what it wrote, for attributes and text. */
-function redoRecord(r, newValue) {
-  if (r.type === 'attributes')         setAttr(r.target, r.attributeName, r.attributeNamespace, newValue)
-  else if (r.type === 'characterData') r.target.data = newValue
-  else if (r.type === 'childList')     { detachNodes(r, Array.from(r.removedNodes)); placeNodes(r, Array.from(r.addedNodes)) }
-}
+// ── snapshot ────────────────────────────────────────────────────────────
 
 /**
- * What each attribute or text record wrote, by index. A record reports
- * only the value it replaced, so a write's value is the next record's old
- * value on the same name or node, or the live value if nothing wrote it
- * after. Read before the tree is rewound.
+ * A copy of rootEl as it is now, and a map from each of its nodes to the
+ * copy's. Taken before a gesture; serialize diffs the layer against it.
  */
-function writtenValues(records) {
-  const out = new Array(records.length)
-  const later = new Map()
-  for (let i = records.length - 1; i >= 0; i--) {
-    const r = records[i]
-    if (r.type === 'attributes') {
-      const names = later.get(r.target) ?? later.set(r.target, new Map()).get(r.target)
-      out[i] = names.has(r.attributeName) ? names.get(r.attributeName) : r.target.getAttribute(r.attributeName)
-      names.set(r.attributeName, r.oldValue)
-    } else if (r.type === 'characterData') {
-      out[i] = later.has(r.target) ? later.get(r.target) : r.target.data
-      later.set(r.target, r.oldValue ?? '')
-    }
-  }
-  return out
+export function snapshot(rootEl) {
+  const copy = rootEl.cloneNode(true)
+  const map = new Map([[rootEl, copy]])
+  const doc = rootEl.ownerDocument
+  const live = doc.createTreeWalker(rootEl), copied = doc.createTreeWalker(copy)
+  while (live.nextNode() && copied.nextNode()) map.set(live.currentNode, copied.currentNode)
+  return { rootEl, copy, map }
 }
 
 // ── serialize ───────────────────────────────────────────────────────────
 
+const DOCUMENT_POSITION_FOLLOWING = 4
+const inDocumentOrder = (a, b) => (a.compareDocumentPosition(b) & DOCUMENT_POSITION_FOLLOWING) ? -1 : 1
+
 /**
- * MutationRecord[] → wire entries.
+ * Of a parent's current children, the ones that can stay where they are:
+ * the longest run of them already in the order `wanted` asks for. The rest
+ * are removed, and anything in `wanted` that isn't a stayer is inserted.
+ * The caller leaves out of `wanted` whatever the gesture itself moved, so
+ * the moves reported are the ones that happened: when one toy is raised
+ * above another, it's the raised one that moved, not the other one sinking
+ * — which matters to conflict classification.
+ */
+function stayers(current, wanted) {
+  const at = new Map(current.map((n, i) => [n, i]))
+  const seq = wanted.filter(n => at.has(n)).map(n => at.get(n))
+  const tails = [], prev = new Array(seq.length)
+  for (let i = 0; i < seq.length; i++) {
+    let lo = 0, hi = tails.length
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      if (seq[tails[mid]] < seq[i]) lo = mid + 1
+      else hi = mid
+    }
+    prev[i] = lo > 0 ? tails[lo - 1] : -1
+    tails[lo] = i
+  }
+  const keep = new Set()
+  for (let i = tails.length ? tails[tails.length - 1] : -1; i >= 0; i = prev[i]) keep.add(current[seq[i]])
+  return keep
+}
+
+/**
+ * The layer's change since `before` (a snapshot()) → wire entries.
  *
- * The records are read after the gesture, when the tree is in its final
- * state. Serialized that way, an entry adding a node would carry the node
- * as the gesture left it, and the entries after it would then replay the
- * node's later changes on top. So the tree is first rewound by undoing the
- * records newest-first, then walked forward: each entry is read just before
- * its record is redone, so a node is serialized as it was when inserted and
- * a write reports the value it wrote. The tree ends where it started.
+ * Entries are worked out against the snapshot's copy, which they're applied
+ * to as they're emitted, so every reference in them (a sibling anchor, a
+ * text node's index) is valid in the state a peer will be in when it
+ * applies them. In order:
+ *
+ * 1. Removals, deepest parent first: every child that left its parent, or
+ *    has to move within it. A removal carries the child as it was.
+ * 2. Insertions, outermost parent first, each parent's left to right: a new
+ *    node carries its subtree as it is now; a pre-existing node that moved
+ *    carries what its removal carried, and apply() reuses it.
+ * 3. Attribute and text writes on pre-existing nodes.
+ *
+ * Nodes inside a node the gesture created are covered by its payload.
+ * `records` only say which nodes to compare. A node the gesture took out
+ * of the layer and put back is compared in full, since nothing records
+ * what was done to it while it was out.
  *
  * Anything unaddressable — a target with no data-id, and no data-id on any
  * ancestor to hang a text node off — is dropped rather than sent as a
  * reference the receiver cannot resolve.
  */
-export function serialize(records) {
+export function serialize(records, before) {
+  const { rootEl, copy, map } = before
+  const doc = copy.ownerDocument
   const out = []
-  // A dropped record is a mutation a peer will never see. Silent by design
+  // A dropped entry is a change a peer will never see. Silent by design
   // (the alternative is sending a reference the receiver cannot resolve),
   // but silence is exactly what a debug panel exists to undo.
   let unaddressable = 0
-  let empty = 0
+  const emit = (entry) => {
+    if (entry.target) out.push(entry)
+    else unaddressable++
+  }
 
-  records = Array.from(records ?? [])
-  const written = writtenValues(records)
-  for (let i = records.length - 1; i >= 0; i--) undoRecord(records[i])
+  // A pre-existing node, still in the layer, and not inside one the gesture created.
+  const insideNew = (n) => {
+    if (n === rootEl) return false
+    for (let a = n.parentNode; a !== rootEl; a = a.parentNode) if (!map.has(a)) return true
+    return false
+  }
+  const settled = (n) => map.has(n) && rootEl.contains(n) && !insideNew(n)
 
-  let done = 0
-  try {
-    for (; done < records.length; done++) {
-      const r = records[done]
-      const target = nodeRef(r.target)
+  const structural = new Set(), values = new Set(), compared = new Set(), reinserted = new Set()
+  const compareAll = (n) => {
+    if (compared.has(n)) return
+    compared.add(n)
+    values.add(n)
+    if (n.nodeType !== ELEMENT) return
+    structural.add(n)
+    for (const c of n.childNodes) compareAll(c)
+  }
+  for (const r of records ?? []) {
+    if (r.type !== 'childList') { values.add(r.target); continue }
+    structural.add(r.target)
+    for (const n of r.addedNodes ?? []) if (map.has(n)) { reinserted.add(n); compareAll(n) }
+  }
+  const parents = [...structural].filter(n => n.nodeType === ELEMENT && settled(n))
 
-      if (r.type === 'attributes') {
-        if (!target) unaddressable++
-        else out.push({
-          t: 'attr',
-          target,
-          name: r.attributeName,
-          ns: r.attributeNamespace ?? null,
-          oldValue: r.oldValue ?? null,
-          newValue: written[done] ?? null,
-        })
-      } else if (r.type === 'characterData') {
-        if (!target) unaddressable++
-        else out.push({
-          t: 'text',
-          target: nodeRef(r.target),
-          oldValue: r.oldValue ?? '',
-          newValue: written[done],
-        })
-      } else if (r.type === 'childList') {
-        const removed = Array.from(r.removedNodes).map(serializeNode).filter(Boolean)
-        detachNodes(r, Array.from(r.removedNodes))
-        const prevSibling = nodeRef(r.previousSibling)
-        const nextSibling = nodeRef(r.nextSibling)
-        const added = Array.from(r.addedNodes).map(n => serializeNode(ensureIds(n))).filter(Boolean)
-        if (!target) unaddressable++
-        else if (!added.length && !removed.length) empty++
-        else out.push({ t: 'child', target, added, removed, prevSibling, nextSibling })
-      }
-
-      redoRecord(r, written[done])
+  // 1. Removals
+  const removalOrder = parents.map(p => map.get(p)).sort(inDocumentOrder).reverse()
+  const liveOf = new Map(parents.map(p => [map.get(p), p]))
+  for (const wP of removalOrder) {
+    const P = liveOf.get(wP)
+    const keep = stayers([...wP.childNodes], [...P.childNodes].filter(c => !reinserted.has(c)).map(c => map.get(c)))
+    for (const wc of [...wP.childNodes]) {
+      if (keep.has(wc)) continue
+      const s = serializeNode(wc)
+      if (s) emit({ t: 'child', target: nodeRef(wP), added: [], removed: [s],
+                    prevSibling: nodeRef(wc.previousSibling), nextSibling: nodeRef(wc.nextSibling) })
+      wP.removeChild(wc)
     }
-  } finally {
-    // Leave the tree as it was found even if an entry failed to serialize.
-    for (; done < records.length; done++) redoRecord(records[done], written[done])
+  }
+
+  // 2. Insertions
+  const placed = new Map()
+  const copyOf = (n) => map.get(n) ?? placed.get(n)
+  for (const P of [...parents].sort(inDocumentOrder)) {
+    const wP = map.get(P)
+    let wPrev = null
+    for (const c of P.childNodes) {
+      let wc = copyOf(c)
+      if (wc && wc.parentNode === wP) { wPrev = wc; continue }
+      let s
+      if (wc) {
+        s = serializeNode(wc)
+      } else {
+        s = serializeNode(ensureIds(c))
+        if (!s) continue
+        wc = deserializeNode(s, doc)
+        placed.set(c, wc)
+      }
+      const next = wPrev ? wPrev.nextSibling : wP.firstChild
+      if (s) emit({ t: 'child', target: nodeRef(wP), added: [s], removed: [],
+                    prevSibling: nodeRef(wPrev), nextSibling: nodeRef(next) })
+      wP.insertBefore(wc, next)
+      wPrev = wc
+    }
+  }
+
+  // 3. Attribute and text writes
+  for (const n of values) {
+    if (!settled(n)) continue
+    const w = map.get(n)
+    if (n.nodeType === ELEMENT) {
+      for (const attr of [...n.attributes]) {
+        const oldValue = w.getAttributeNS(attr.namespaceURI, attr.localName)
+        if (oldValue === attr.value) continue
+        emit({ t: 'attr', target: nodeRef(w), name: attr.localName, ns: attr.namespaceURI,
+               oldValue, newValue: attr.value })
+        w.setAttributeNS(attr.namespaceURI, attr.name, attr.value)
+      }
+      for (const attr of [...w.attributes]) {
+        if (n.hasAttributeNS(attr.namespaceURI, attr.localName)) continue
+        emit({ t: 'attr', target: nodeRef(w), name: attr.localName, ns: attr.namespaceURI,
+               oldValue: attr.value, newValue: null })
+        w.removeAttributeNS(attr.namespaceURI, attr.localName)
+      }
+    } else if (isTextish(n) && w.data !== n.data) {
+      emit({ t: 'text', target: nodeRef(w), oldValue: w.data, newValue: n.data })
+      w.data = n.data
+    }
   }
 
   if (unaddressable) {
     Trace.wire('serialize-dropped',
-      `${unaddressable} mutation${unaddressable === 1 ? '' : 's'} dropped — target not addressable`,
-      { records: records.length, entries: out.length, unaddressable, empty }, 'warn')
+      `${unaddressable} change${unaddressable === 1 ? '' : 's'} dropped — target not addressable`,
+      { records: records?.length ?? 0, entries: out.length, unaddressable }, 'warn')
   } else if (Trace.willRecord(Trace.WIRE)) {
-    const n = records.length
+    const n = records?.length ?? 0
     Trace.wire('serialize',
       `${n} record${n === 1 ? '' : 's'} → ${out.length} entr${out.length === 1 ? 'y' : 'ies'}`,
-      { records: n, entries: out.length, empty })
+      { records: n, entries: out.length })
   }
 
   return out
