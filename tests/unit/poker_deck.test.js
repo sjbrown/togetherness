@@ -7,7 +7,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ensureLayerId } from '../../src/op_layers.js'
 import {
   TOYS_LAYER, TOY_TYPES, addToyDom, activateAllToyScriptsDom, reparentToyDom, deleteEl,
-  findEl, getMenuActions, invokeMenuAction, runInitializers,
+  findEl, getMenuActions, invokeMenuAction, runInitializers, getTtStateSchema, editEl, TOOLS, toolInitArgs,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 
@@ -191,6 +191,63 @@ describe('poker_deck', () => {
     deleteEl(t.layerEl, card.getAttribute('data-id'))
     expect(inDeck(t.layerEl, 'deck1')).toHaveLength(51)
     expect(labels(findEl(t.layerEl, 'deck1'))).toEqual(['Draw (51)', 'Reshuffle'])
+  })
+})
+
+describe('poker_deck: deck_summary count', () => {
+  const countOf = (layerEl, id) => findEl(layerEl, id).querySelector('.deck_summary .tspan_count').textContent
+
+  test('the summary is a white pill inside tt_colored, like stack_summary', async () => {
+    const { layerEl } = await table()
+    const rect = findEl(layerEl, 'deck1').querySelector('.deck_summary > .tt_colored > .rect_deck_summary')
+    expect(rect).not.toBeNull()
+    expect(rect.getAttribute('fill')).toBe('#ffffff')
+  })
+
+  test('shows the number of cards remaining, following draws and returns', async () => {
+    const t = await table()
+    expect(countOf(t.layerEl, 'deck1')).toBe('52')
+    draw(t, 'deck1', { num: 3 })
+    expect(countOf(t.layerEl, 'deck1')).toBe('49')
+    expect(countOf(t.layerEl, 'deck2')).toBe('52')
+    const card = t.layerEl.querySelector(':scope > [data-home-deck="deck1"]')
+    invokeMenuAction(t.ydoc, t.layerEl, card, 'single_poker_card', 'Return to deck', undefined, AUTHOR, TABLE)
+    expect(countOf(t.layerEl, 'deck1')).toBe('50')
+  })
+
+  test('show_count: false from the tool option hides it; omitted shows it', async () => {
+    const t = await table()
+    // Off the toys layer, so these are not stocked.
+    const scratch = document.createElementNS(SVG_NS, 'g')
+    const make = (id, opts) => {
+      const el = addToyDom(t.ydoc, scratch, { id, toyType: 'poker_deck', x: 0, y: 0, color: '#fa2020' }, DECK_SVG)
+      runInitializers(el, 'poker_deck', opts)
+      return el
+    }
+    const hidden = make('deck3', { show_count: false })
+    const shown = make('deck4', {})
+    expect(hidden.querySelector('.deck_summary').getAttribute('display')).toBe('none')
+    expect(shown.querySelector('.deck_summary').hasAttribute('display')).toBe(false)
+  })
+
+  test('the Tools panel offers show_count (default on) and passes it through as an init arg', () => {
+    const def = TOOLS.find(t => t.toyType === 'poker_deck')
+    expect(def.defaults.show_count).toBe(true)
+    expect(def.options.find(o => o.key === 'show_count')).toMatchObject({ kind: 'bool', show: ['add'] })
+    expect(toolInitArgs(def, { fill: '#fff', show_count: false }, '#000').show_count).toBe(false)
+  })
+
+  test('the Edit panel can toggle it on a placed deck', async () => {
+    const { layerEl } = await table()
+    const deck = findEl(layerEl, 'deck1')
+    const schema = getTtStateSchema(deck)
+    expect(schema.show_count).toBe(true)
+    expect(schema.types.show_count).toMatchObject({ kind: 'bool', show: ['edit'] })
+
+    editEl(deck, { show_count: false })
+    expect(getTtStateSchema(deck).show_count).toBe(false)
+    editEl(deck, { show_count: true })
+    expect(getTtStateSchema(deck).show_count).toBe(true)
   })
 })
 

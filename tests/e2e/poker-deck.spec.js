@@ -38,11 +38,14 @@ test('a deck contains its cards; draw, return, delete, pile and fan', async () =
   const onTable = page.locator('#toys-layer > [data-toy-type="single_poker_card"]');
   await expect(inDeck).toHaveCount(52, { timeout: 15000 });
   await expect(onTable).toHaveCount(0);
+  const count = deck.locator('.deck_summary .tspan_count');
+  await expect(count).toHaveText('52');
 
   const stocked = await inDeck.evaluateAll(els => els.map(el => el.dataset.id));
   await invoke(page, deckId, 'poker_deck', 'Draw', { num: 3 });
   await expect(onTable).toHaveCount(3, { timeout: 5000 });
   await expect(inDeck).toHaveCount(49);
+  await expect(count).toHaveText('49');
   const ids = await onTable.evaluateAll(els => els.map(el => el.dataset.id));
   expect(ids.sort()).toEqual(stocked.slice(49).sort()); // the top three
   for (const el of await onTable.all()) {
