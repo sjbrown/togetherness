@@ -33,30 +33,34 @@ test('a deck contains its cards; draw, return, delete, pile and fan', async () =
   await expect(deck).toHaveCount(1, { timeout: 5000 });
   const deckId = await deck.getAttribute('data-id');
 
-  // In the deck means: the card's own SVG is inside the deck's.
-  const inDeck = deck.locator('.tt_contents > [data-toy-type="single_poker_card"]');
+  // In the deck means: the card's own SVG is nested inside the deck's.
+  const inDeck = deck.locator('.tt_contents > svg.card');
   const onTable = page.locator('#toys-layer > [data-toy-type="single_poker_card"]');
-  await expect(inDeck).toHaveCount(52, { timeout: 15000 });
-  await expect(onTable).toHaveCount(0);
   const count = deck.locator('.deck_summary .tspan_count');
+  const order = () => inDeck.evaluateAll(els => els.map(el => `${el.dataset.suit}.${el.dataset.rank}`));
+  await expect(inDeck).toHaveCount(52);
+  await expect(onTable).toHaveCount(0);
   await expect(count).toHaveText('52');
 
-  const stocked = await inDeck.evaluateAll(els => els.map(el => el.dataset.id));
+  const stocked = await order();
   await invoke(page, deckId, 'poker_deck', 'Draw', { num: 3 });
   await expect(onTable).toHaveCount(3, { timeout: 5000 });
   await expect(inDeck).toHaveCount(49);
   await expect(count).toHaveText('49');
+  const drawn = await onTable.evaluateAll(els => els.map(el => `${el.dataset.suit}.${el.dataset.rank}`));
+  expect(drawn.sort()).toEqual(stocked.slice(49).sort()); // the top three
   const ids = await onTable.evaluateAll(els => els.map(el => el.dataset.id));
-  expect(ids.sort()).toEqual(stocked.slice(49).sort()); // the top three
   for (const el of await onTable.all()) {
     await expect(el).toHaveAttribute('data-home-deck', deckId);
   }
 
-  // Return puts the card back inside the deck.
+  // Return puts the card back on top of the deck, as a nested svg.
+  const returned = await page.locator(`[data-id="${ids[0]}"]`).evaluate(el => `${el.dataset.suit}.${el.dataset.rank}`);
   await invoke(page, ids[0], 'single_poker_card', 'Return to deck');
   await expect(inDeck).toHaveCount(50);
-  await expect(deck.locator(`.tt_contents [data-id="${ids[0]}"]`)).toHaveCount(1);
+  expect((await order()).at(-1)).toBe(returned);
   await expect(onTable).toHaveCount(2);
+  await expect(count).toHaveText('50');
 
   // Deleting is not returning.
   await page.evaluate((id) => window.App.select(id), ids[1]);
@@ -82,7 +86,6 @@ test('a deck contains its cards; draw, return, delete, pile and fan', async () =
   await expect(onTable).toHaveCount(2);
 
   // Reshuffle reorders what is in the deck and leaves the table alone.
-  const order = () => inDeck.evaluateAll(els => els.map(el => el.dataset.id));
   const before = await order();
   await invoke(page, deckId, 'poker_deck', 'Reshuffle');
   await expect.poll(order).not.toEqual(before);

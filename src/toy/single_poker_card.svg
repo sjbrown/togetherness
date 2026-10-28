@@ -98,11 +98,8 @@ var single_poker_card = {
     single_poker_card.flip_card_to_back(elem)
     elem.setAttribute('data-below', '')
     elem.setAttribute('data-above', '')
-    // A card made for a deck remembers it, and moves in.
-    if (options.deck) {
-      elem.setAttribute('data-home-deck', options.deck)
-      single_poker_card.return_to_deck(elem)
-    }
+    // A card dealt by a deck remembers it, for 'Return to deck'.
+    if (options.deck) elem.setAttribute('data-home-deck', options.deck)
   },
 
   // Walk a data-above/data-below chain starting at elem, collecting the
@@ -161,24 +158,19 @@ var single_poker_card = {
     return elem.closest('#toys-layer')?.querySelector(`[data-id="${deckId}"]`)
   },
 
-  // Offered when the card's own deck exists and doesn't hold it already.
+  // Offered while the card's own deck is on the table.
   return_applicable: function(elem) {
-    const deck = single_poker_card.home_deck(elem)
-    return !!deck && !deck.contains(elem)
+    return !!single_poker_card.home_deck(elem)
   },
 
-  // Turns the card face down and moves it into its home deck's contents.
-  // Distinct from deleting the card, which discards it.
+  // The deck takes the card back as one of its own nested <svg> cards, on
+  // top, and this toy is removed. Distinct from deleting the card, which
+  // discards it.
   return_to_deck: function(elem) {
     const deck = single_poker_card.home_deck(elem)
     if (!deck) return
-    elem.setAttribute('data-above', '')
-    elem.setAttribute('data-below', '')
-    single_poker_card.flip_card_to_back(elem)
-    single_poker_card._event('toy:reparent', {
-      id: elem.getAttribute('data-id'),
-      containerId: deck.getAttribute('data-id'),
-    })
+    globalThis.poker_deck.take_back(deck, Number(elem.dataset.suit), Number(elem.dataset.rank))
+    single_poker_card._event('toy:delete', { id: elem.getAttribute('data-id') })
   },
 
   _event: function(evName, args) {
