@@ -35,6 +35,7 @@ function freshLayer() {
 // template has loaded.
 let removeListeners, ydocRef
 function wirePlatform(ydoc, layerEl) {
+  removeListeners?.forEach(off => off())
   ydocRef = ydoc
   let n = 0
   const on = (name, fn) => {
@@ -195,6 +196,111 @@ describe('poker_deck', () => {
     deleteEl(t.layerEl, onTable(t.layerEl)[0].getAttribute('data-id'))
     expect(order(t.layerEl, 'deck1')).toHaveLength(51)
     expect(labels(findEl(t.layerEl, 'deck1'))).toEqual(['Draw (51)', 'Reshuffle'])
+  })
+})
+
+describe('poker_deck: start_shuffled', () => {
+  // Off the toys layer, so a deck is placed without a table around it.
+  async function deckWith(options) {
+    const t = await table()
+    const el = addToyDom(t.ydoc, document.createElementNS(SVG_NS, 'g'),
+      { id: 'd', toyType: 'poker_deck', x: 0, y: 0, color: '#fa2020' }, DECK_SVG)
+    const pristine = [...el.querySelectorAll('.tt_contents > svg.card')].map(c => `${c.getAttribute('data-suit')}.${c.getAttribute('data-rank')}`)
+    runInitializers(el, 'poker_deck', options)
+    const after = [...el.querySelectorAll('.tt_contents > svg.card')].map(c => `${c.getAttribute('data-suit')}.${c.getAttribute('data-rank')}`)
+    return { pristine, after, el }
+  }
+
+  test('the Tools panel offers it, on by default, and passes it through as an init arg', () => {
+    const def = TOOLS.find(t => t.toyType === 'poker_deck')
+    expect(def.defaults.start_shuffled).toBe(true)
+    expect(def.options.find(o => o.key === 'start_shuffled')).toMatchObject({ kind: 'bool', show: ['add'] })
+    expect(toolInitArgs(def, { fill: '#fff', start_shuffled: false }, '#000').start_shuffled).toBe(false)
+    expect(toolInitArgs(def, { fill: '#fff', start_shuffled: true }, '#000').start_shuffled).toBe(true)
+  })
+
+  test('start_shuffled: true reorders the same 52 cards', async () => {
+    const { pristine, after } = await deckWith({ start_shuffled: true })
+    expect(after).toHaveLength(52)
+    expect([...after].sort()).toEqual([...pristine].sort())
+    expect(after).not.toEqual(pristine)
+  })
+
+  test('false or absent leaves the deck in the order the file has it', async () => {
+    const off = await deckWith({ start_shuffled: false })
+    expect(off.after).toEqual(off.pristine)
+    const none = await deckWith(undefined)
+    expect(none.after).toEqual(none.pristine)
+  })
+
+  test('a shuffled start still has every card at its own height', async () => {
+    const { el } = await deckWith({ start_shuffled: true })
+    const ys = [...el.querySelectorAll('.tt_contents > svg.card')].map(c => c.getAttribute('y'))
+    expect(ys).toEqual(Array.from({ length: 52 }, (_, i) => String(-2 * i)))
+  })
+})
+
+describe('poker_deck: the cards stack 2px apart and the deck is as tall as its stack', () => {
+  const geom = (layerEl, id) => {
+    const svg = findEl(layerEl, id).querySelector(':scope > svg')
+    const y = parseFloat(svg.getAttribute('y')), height = parseFloat(svg.getAttribute('height'))
+    return { y, height, bottom: y + height, viewBox: svg.getAttribute('viewBox') }
+  }
+  const ys = (layerEl, id) => inDeck(layerEl, id).map(c => parseFloat(c.getAttribute('y')))
+
+  test('a placed deck is 150 + 2 per extra card tall, card i sitting at y = -2i', async () => {
+    const { layerEl } = await table()
+    expect(ys(layerEl, 'deck1')).toEqual(Array.from({ length: 52 }, (_, i) => (i === 0 ? 0 : -2 * i)))
+    expect(geom(layerEl, 'deck1')).toMatchObject({ height: 252, viewBox: '0 -102 100 252' })
+  })
+
+  test('drawing shrinks the deck from the top; the bottom edge stays put', async () => {
+    const t = await table()
+    const before = geom(t.layerEl, 'deck1')
+
+    draw(t, 'deck1', { num: 3 })
+
+    const after = geom(t.layerEl, 'deck1')
+    expect(after.height).toBe(before.height - 6)
+    expect(after.bottom).toBe(before.bottom)
+    expect(after.viewBox).toBe('0 -96 100 246')
+    expect(Math.min(...ys(t.layerEl, 'deck1'))).toBe(-96)
+  })
+
+  test('returning a card grows it back', async () => {
+    const t = await table()
+    const before = geom(t.layerEl, 'deck1')
+    draw(t, 'deck1', { num: 2 })
+    giveBack(t, onTable(t.layerEl)[0])
+
+    const after = geom(t.layerEl, 'deck1')
+    expect(after.height).toBe(before.height - 2)
+    expect(after.bottom).toBe(before.bottom)
+    expect(ys(t.layerEl, 'deck1').at(-1)).toBe(-100)
+  })
+
+  test('Reshuffle keeps card heights tied to position, not to the card', async () => {
+    const t = await table()
+    const before = geom(t.layerEl, 'deck1')
+    reshuffle(t, 'deck1')
+    expect(ys(t.layerEl, 'deck1')).toEqual(Array.from({ length: 52 }, (_, i) => (i === 0 ? 0 : -2 * i)))
+    expect(geom(t.layerEl, 'deck1')).toEqual(before)
+  })
+
+  test('an emptied deck is one card tall; its outline stays at the base', async () => {
+    const t = await table()
+    const before = geom(t.layerEl, 'deck1')
+    for (let i = 0; i < 11; i++) draw(t, 'deck1', { num: 5 }) // 10 x 5, then the last 2
+    expect(inDeck(t.layerEl, 'deck1')).toHaveLength(0)
+    expect(geom(t.layerEl, 'deck1')).toMatchObject({ height: 150, bottom: before.bottom, viewBox: '0 0 100 150' })
+  })
+
+  test('draws land level with the bottom card, not the middle of the tall deck', async () => {
+    const t = await table()
+    const { bottom } = geom(t.layerEl, 'deck1')
+    draw(t, 'deck1')
+    const svg = onTable(t.layerEl)[0].querySelector(':scope > svg')
+    expect(parseFloat(svg.getAttribute('y')) + 75).toBeCloseTo(bottom - 75, 0)
   })
 })
 

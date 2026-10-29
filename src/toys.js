@@ -1429,10 +1429,11 @@ export const TOOLS = [
     label: 'Poker Deck',
     iconUrl: 'toy/poker_deck.svg',
     layer:   'toys',
-    defaults: { fill: '#fa2020', show_count: true },
+    defaults: { fill: '#fa2020', show_count: true, start_shuffled: true },
     options: [
       { kind: 'color-hsl', key: 'fill', label: 'Back color', show: ['add', 'edit', 'addQuick'] },
       { kind: 'bool', key: 'show_count', label: 'Show card count', show: ['add'] },
+      { kind: 'bool', key: 'start_shuffled', label: 'Start shuffled', show: ['add'] },
     ],
   },
 ];

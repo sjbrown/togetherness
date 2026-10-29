@@ -43,10 +43,26 @@ test('a deck contains its cards; draw, return, delete, pile and fan', async () =
   await expect(count).toHaveText('52');
 
   const stocked = await order();
+  // The Tools panel defaults to start shuffled: not the order the file has.
+  const fileOrder = [1, 2, 3, 4].flatMap(suit => Array.from({ length: 13 }, (_, r) => `${suit}.${r + 1}`));
+  expect([...stocked].sort()).toEqual([...fileOrder].sort());
+  expect(stocked).not.toEqual(fileOrder);
+
+  // Cards sit 2px apart and the deck is as tall as its stack, growing from a
+  // fixed bottom edge.
+  const geom = () => deck.locator(':scope > svg').evaluate(svg => {
+    const y = parseFloat(svg.getAttribute('y')), h = parseFloat(svg.getAttribute('height'));
+    return { h, bottom: y + h };
+  });
+  const full = await geom();
+  expect(full.h).toBe(252);
   await invoke(page, deckId, 'poker_deck', 'Draw', { num: 3 });
   await expect(onTable).toHaveCount(3, { timeout: 5000 });
   await expect(inDeck).toHaveCount(49);
   await expect(count).toHaveText('49');
+  const less = await geom();
+  expect(less.h).toBe(246);
+  expect(less.bottom).toBe(full.bottom);
   const drawn = await onTable.evaluateAll(els => els.map(el => `${el.dataset.suit}.${el.dataset.rank}`));
   expect(drawn.sort()).toEqual(stocked.slice(49).sort()); // the top three
   const ids = await onTable.evaluateAll(els => els.map(el => el.dataset.id));
