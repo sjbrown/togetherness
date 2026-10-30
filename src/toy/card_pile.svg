@@ -33,6 +33,8 @@
 
 var card_pile = {
 
+  FAN_ARC: 0.25,
+
   menu: {
     'Fan': {
       eventName: 'card_pile_fan',
@@ -103,10 +105,13 @@ var card_pile = {
       const cardW = parseFloat(childSvg?.getAttribute('width')) || 0
       const spacing = Math.min(cardW / 4, 700 / Math.max(1, total - 1))
       const offset = i - mid
+      // A parabola: the middle card stays level with the pile and the ends
+      // drop by FAN_ARC of the fan's half-width.
+      const drop = mid > 0 ? card_pile.FAN_ARC * spacing * offset * offset / mid : 0
       card_pile._eject(
         child,
         x + w / 2 + offset * spacing,
-        y + h / 2 + 0.08 * offset * offset,
+        y + h / 2 + drop,
       )
     })
 

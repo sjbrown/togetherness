@@ -519,6 +519,20 @@ describe('stacking cards into a card_pile and fanning it', () => {
     expect(xs[0]).toBeLessThan(xs[1])
     expect(xs[1]).toBeLessThan(xs[2])
   })
+
+  test('Fan curves: the middle card stays highest and the ends drop symmetrically', async () => {
+    const t = await stackedCards()
+    const pile = fillPile(t)
+
+    invokeMenuAction(t.ydoc, t.layerEl, pile, 'card_pile', 'Fan', undefined, AUTHOR, TABLE)
+
+    const [ya, yb, yc] = ['a', 'b', 'c'].map(id =>
+      parseFloat(findEl(t.layerEl, id).querySelector(':scope > svg').getAttribute('y')))
+    expect(ya).toBeGreaterThan(yb)  // y grows downward: the ends sit lower
+    expect(yc).toBeGreaterThan(yb)
+    expect(ya).toBeCloseTo(yc, 5)
+    expect(ya - yb).toBeGreaterThan(1) // a visible curve, not a rounding-error one
+  })
 })
 
 describe('card and deck markup', () => {
