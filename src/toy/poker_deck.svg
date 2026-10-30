@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
    xmlns="http://www.w3.org/2000/svg"
-   width="100"
-   height="252"
-   viewBox="0 -102 100 252"
+   width="110.2"
+   height="175.5"
+   viewBox="-10.2 -25.5 110.2 175.5"
    version="1.1"
    id="poker_deck"
    class="poker_deck"
@@ -58,9 +58,12 @@ var poker_deck = {
   RANKS:       ['A','2','3','4','5','6','7','8','9','10','J','Q','K'],
   MAX_DRAW:    5,
 
-  // Each card sits CARD_STEP higher than the one below it, so the stack
-  // shows its thickness along the bottom edge.
-  CARD_STEP:   2,
+  // Each card sits CARD_STEP_Y higher and CARD_STEP_X further left than the
+  // one below it, so the stack shows its thickness along the bottom and
+  // right edges.
+  CARD_STEP_X: 0.2,
+  CARD_STEP_Y: 0.5,
+  CARD_WIDTH:  100,
   CARD_HEIGHT: 150,
 
   menu: {
@@ -136,30 +139,44 @@ var poker_deck = {
     if (el.getAttribute(name) !== String(value)) el.setAttribute(name, String(value))
   },
 
-  // Card i sits at y = -CARD_STEP * i. Called wherever cards are added or
-  // reordered.
+  // Rounds away float noise (0.2 * 3), so attributes read cleanly.
+  _round: function(v) {
+    return Math.round(v * 100) / 100
+  },
+
+  // Card i sits CARD_STEP_X left of and CARD_STEP_Y above card 0. Called
+  // wherever cards are added or reordered.
   _place_cards: function(elem) {
+    const { CARD_STEP_X, CARD_STEP_Y, _round } = poker_deck
     poker_deck._cards(elem).forEach((card, i) => {
-      poker_deck._set(card, 'y', i === 0 ? 0 : -poker_deck.CARD_STEP * i)
+      poker_deck._set(card, 'x', i === 0 ? 0 : _round(-CARD_STEP_X * i))
+      poker_deck._set(card, 'y', i === 0 ? 0 : _round(-CARD_STEP_Y * i))
     })
   },
 
-  // The deck's own <svg> is exactly tall enough for its top card, with its
-  // bottom edge held where it is, so the deck grows and shrinks upward as
-  // cards come and go. Same technique as stack.svg, which also grows from a
-  // fixed bottom edge; unlike a stack, a deck shrinks too.
+  // The deck's own <svg> is exactly big enough for its stack of cards, with
+  // its bottom and right edges (the bottom card's) held where they are, so
+  // the deck grows and shrinks up and to the left as cards come and go.
+  // Same technique as stack.svg, which also grows from a fixed bottom edge;
+  // unlike a stack, a deck shrinks too.
   _fit: function(elem) {
     const outerSvg = elem.querySelector(':scope > svg')
     if (!outerSvg) return
-    const { CARD_STEP, CARD_HEIGHT } = poker_deck
-    const rise = CARD_STEP * Math.max(0, poker_deck._cards(elem).length - 1)
-    const height = CARD_HEIGHT + rise
-    const width = parseFloat(outerSvg.getAttribute('width')) || 100
+    const { CARD_STEP_X, CARD_STEP_Y, CARD_WIDTH, CARD_HEIGHT, _round } = poker_deck
+    const extra = Math.max(0, poker_deck._cards(elem).length - 1)
+    const lean = _round(CARD_STEP_X * extra)
+    const rise = _round(CARD_STEP_Y * extra)
+    const width = _round(CARD_WIDTH + lean)
+    const height = _round(CARD_HEIGHT + rise)
+    const right = (parseFloat(outerSvg.getAttribute('x')) || 0)
+                + (parseFloat(outerSvg.getAttribute('width')) || 0)
     const bottom = (parseFloat(outerSvg.getAttribute('y')) || 0)
                  + (parseFloat(outerSvg.getAttribute('height')) || 0)
-    poker_deck._set(outerSvg, 'y', bottom - height)
+    poker_deck._set(outerSvg, 'x', _round(right - width))
+    poker_deck._set(outerSvg, 'y', _round(bottom - height))
+    poker_deck._set(outerSvg, 'width', width)
     poker_deck._set(outerSvg, 'height', height)
-    poker_deck._set(outerSvg, 'viewBox', `0 ${-rise} ${width} ${height}`)
+    poker_deck._set(outerSvg, 'viewBox', `${-lean} ${-rise} ${width} ${height}`)
   },
 
   // The deck's cards, bottom to top.
@@ -271,7 +288,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="1" data-rank="2" x="0" y="-2" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="1" data-rank="2" x="-0.2" y="-0.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">2</tspan></text>
@@ -285,7 +302,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="1" data-rank="3" x="0" y="-4" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="1" data-rank="3" x="-0.4" y="-1" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">3</tspan></text>
@@ -299,7 +316,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="1" data-rank="4" x="0" y="-6" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="1" data-rank="4" x="-0.6" y="-1.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">4</tspan></text>
@@ -313,7 +330,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="1" data-rank="5" x="0" y="-8" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="1" data-rank="5" x="-0.8" y="-2" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">5</tspan></text>
@@ -327,7 +344,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="1" data-rank="6" x="0" y="-10" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="1" data-rank="6" x="-1" y="-2.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">6</tspan></text>
@@ -341,7 +358,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="1" data-rank="7" x="0" y="-12" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="1" data-rank="7" x="-1.2" y="-3" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">7</tspan></text>
@@ -355,7 +372,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="1" data-rank="8" x="0" y="-14" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="1" data-rank="8" x="-1.4" y="-3.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">8</tspan></text>
@@ -369,7 +386,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="1" data-rank="9" x="0" y="-16" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="1" data-rank="9" x="-1.6" y="-4" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">9</tspan></text>
@@ -383,7 +400,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="1" data-rank="10" x="0" y="-18" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="1" data-rank="10" x="-1.8" y="-4.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">10</tspan></text>
@@ -397,7 +414,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="1" data-rank="11" x="0" y="-20" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="1" data-rank="11" x="-2" y="-5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">J</tspan></text>
@@ -411,7 +428,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="1" data-rank="12" x="0" y="-22" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="1" data-rank="12" x="-2.2" y="-5.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">Q</tspan></text>
@@ -425,7 +442,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="1" data-rank="13" x="0" y="-24" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="1" data-rank="13" x="-2.4" y="-6" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">K</tspan></text>
@@ -439,7 +456,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="2" data-rank="1" x="0" y="-26" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="2" data-rank="1" x="-2.6" y="-6.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">A</tspan></text>
@@ -453,7 +470,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="2" data-rank="2" x="0" y="-28" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="2" data-rank="2" x="-2.8" y="-7" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">2</tspan></text>
@@ -467,7 +484,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="2" data-rank="3" x="0" y="-30" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="2" data-rank="3" x="-3" y="-7.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">3</tspan></text>
@@ -481,7 +498,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="2" data-rank="4" x="0" y="-32" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="2" data-rank="4" x="-3.2" y="-8" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">4</tspan></text>
@@ -495,7 +512,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="2" data-rank="5" x="0" y="-34" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="2" data-rank="5" x="-3.4" y="-8.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">5</tspan></text>
@@ -509,7 +526,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="2" data-rank="6" x="0" y="-36" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="2" data-rank="6" x="-3.6" y="-9" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">6</tspan></text>
@@ -523,7 +540,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="2" data-rank="7" x="0" y="-38" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="2" data-rank="7" x="-3.8" y="-9.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">7</tspan></text>
@@ -537,7 +554,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="2" data-rank="8" x="0" y="-40" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="2" data-rank="8" x="-4" y="-10" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">8</tspan></text>
@@ -551,7 +568,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="2" data-rank="9" x="0" y="-42" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="2" data-rank="9" x="-4.2" y="-10.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">9</tspan></text>
@@ -565,7 +582,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="2" data-rank="10" x="0" y="-44" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="2" data-rank="10" x="-4.4" y="-11" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">10</tspan></text>
@@ -579,7 +596,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="2" data-rank="11" x="0" y="-46" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="2" data-rank="11" x="-4.6" y="-11.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">J</tspan></text>
@@ -593,7 +610,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="2" data-rank="12" x="0" y="-48" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="2" data-rank="12" x="-4.8" y="-12" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">Q</tspan></text>
@@ -607,7 +624,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="2" data-rank="13" x="0" y="-50" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="2" data-rank="13" x="-5" y="-12.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">K</tspan></text>
@@ -621,7 +638,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="3" data-rank="1" x="0" y="-52" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="3" data-rank="1" x="-5.2" y="-13" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">A</tspan></text>
@@ -635,7 +652,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="3" data-rank="2" x="0" y="-54" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="3" data-rank="2" x="-5.4" y="-13.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">2</tspan></text>
@@ -649,7 +666,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="3" data-rank="3" x="0" y="-56" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="3" data-rank="3" x="-5.6" y="-14" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">3</tspan></text>
@@ -663,7 +680,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="3" data-rank="4" x="0" y="-58" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="3" data-rank="4" x="-5.8" y="-14.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">4</tspan></text>
@@ -677,7 +694,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="3" data-rank="5" x="0" y="-60" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="3" data-rank="5" x="-6" y="-15" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">5</tspan></text>
@@ -691,7 +708,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="3" data-rank="6" x="0" y="-62" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="3" data-rank="6" x="-6.2" y="-15.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">6</tspan></text>
@@ -705,7 +722,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="3" data-rank="7" x="0" y="-64" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="3" data-rank="7" x="-6.4" y="-16" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">7</tspan></text>
@@ -719,7 +736,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="3" data-rank="8" x="0" y="-66" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="3" data-rank="8" x="-6.6" y="-16.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">8</tspan></text>
@@ -733,7 +750,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="3" data-rank="9" x="0" y="-68" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="3" data-rank="9" x="-6.8" y="-17" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">9</tspan></text>
@@ -747,7 +764,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="3" data-rank="10" x="0" y="-70" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="3" data-rank="10" x="-7" y="-17.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">10</tspan></text>
@@ -761,7 +778,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="3" data-rank="11" x="0" y="-72" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="3" data-rank="11" x="-7.2" y="-18" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">J</tspan></text>
@@ -775,7 +792,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="3" data-rank="12" x="0" y="-74" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="3" data-rank="12" x="-7.4" y="-18.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">Q</tspan></text>
@@ -789,7 +806,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="3" data-rank="13" x="0" y="-76" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="3" data-rank="13" x="-7.6" y="-19" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">K</tspan></text>
@@ -803,7 +820,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="4" data-rank="1" x="0" y="-78" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="4" data-rank="1" x="-7.8" y="-19.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">A</tspan></text>
@@ -817,7 +834,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="4" data-rank="2" x="0" y="-80" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="4" data-rank="2" x="-8" y="-20" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">2</tspan></text>
@@ -831,7 +848,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="4" data-rank="3" x="0" y="-82" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="4" data-rank="3" x="-8.2" y="-20.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">3</tspan></text>
@@ -845,7 +862,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="4" data-rank="4" x="0" y="-84" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="4" data-rank="4" x="-8.4" y="-21" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">4</tspan></text>
@@ -859,7 +876,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="4" data-rank="5" x="0" y="-86" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="4" data-rank="5" x="-8.6" y="-21.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">5</tspan></text>
@@ -873,7 +890,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="4" data-rank="6" x="0" y="-88" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="4" data-rank="6" x="-8.8" y="-22" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">6</tspan></text>
@@ -887,7 +904,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="4" data-rank="7" x="0" y="-90" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="4" data-rank="7" x="-9" y="-22.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">7</tspan></text>
@@ -901,7 +918,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="4" data-rank="8" x="0" y="-92" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="4" data-rank="8" x="-9.2" y="-23" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">8</tspan></text>
@@ -915,7 +932,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="4" data-rank="9" x="0" y="-94" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="4" data-rank="9" x="-9.4" y="-23.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">9</tspan></text>
@@ -929,7 +946,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="4" data-rank="10" x="0" y="-96" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="4" data-rank="10" x="-9.6" y="-24" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">10</tspan></text>
@@ -943,7 +960,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="4" data-rank="11" x="0" y="-98" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="4" data-rank="11" x="-9.8" y="-24.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">J</tspan></text>
@@ -957,7 +974,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="4" data-rank="12" x="0" y="-100" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="4" data-rank="12" x="-10" y="-25" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">Q</tspan></text>
@@ -971,7 +988,7 @@ var poker_deck = {
         </g>
       </g>
     </svg>
-    <svg class="card" data-suit="4" data-rank="13" x="0" y="-102" width="100" height="150" viewBox="0 0 100 150">
+    <svg class="card" data-suit="4" data-rank="13" x="-10.2" y="-25.5" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text x="33" y="100" xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">K</tspan></text>

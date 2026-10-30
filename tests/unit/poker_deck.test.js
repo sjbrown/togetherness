@@ -233,38 +233,46 @@ describe('poker_deck: start_shuffled', () => {
     expect(none.after).toEqual(none.pristine)
   })
 
-  test('a shuffled start still has every card at its own height', async () => {
+  test('a shuffled start still has every card at its own place in the stack', async () => {
     const { el } = await deckWith({ start_shuffled: true })
-    const ys = [...el.querySelectorAll('.tt_contents > svg.card')].map(c => c.getAttribute('y'))
-    expect(ys).toEqual(Array.from({ length: 52 }, (_, i) => String(-2 * i)))
+    const cards = [...el.querySelectorAll('.tt_contents > svg.card')]
+    expect(cards.map(c => parseFloat(c.getAttribute('y')))).toEqual(stepsOf(52, 0.5))
+    expect(cards.map(c => parseFloat(c.getAttribute('x')))).toEqual(stepsOf(52, 0.2))
   })
 })
 
-describe('poker_deck: the cards stack 2px apart and the deck is as tall as its stack', () => {
+// Card i sits 0.2px left of and 0.5px above card 0.
+const stepsOf = (n, step) => Array.from({ length: n }, (_, i) => (i === 0 ? 0 : Math.round(-step * i * 100) / 100))
+
+describe('poker_deck: the cards fan up and to the left and the deck is as big as its stack', () => {
   const geom = (layerEl, id) => {
     const svg = findEl(layerEl, id).querySelector(':scope > svg')
-    const y = parseFloat(svg.getAttribute('y')), height = parseFloat(svg.getAttribute('height'))
-    return { y, height, bottom: y + height, viewBox: svg.getAttribute('viewBox') }
+    const [x, y, w, h] = ['x', 'y', 'width', 'height'].map(k => parseFloat(svg.getAttribute(k)))
+    return { x, y, w, h, right: Math.round((x + w) * 100) / 100, bottom: Math.round((y + h) * 100) / 100, viewBox: svg.getAttribute('viewBox') }
   }
-  const ys = (layerEl, id) => inDeck(layerEl, id).map(c => parseFloat(c.getAttribute('y')))
+  const attr = (layerEl, id, k) => inDeck(layerEl, id).map(c => parseFloat(c.getAttribute(k)))
 
-  test('a placed deck is 150 + 2 per extra card tall, card i sitting at y = -2i', async () => {
+  test('a placed deck is 100 + 0.2 and 150 + 0.5 per extra card, card i at (-0.2i, -0.5i)', async () => {
     const { layerEl } = await table()
-    expect(ys(layerEl, 'deck1')).toEqual(Array.from({ length: 52 }, (_, i) => (i === 0 ? 0 : -2 * i)))
-    expect(geom(layerEl, 'deck1')).toMatchObject({ height: 252, viewBox: '0 -102 100 252' })
+    expect(attr(layerEl, 'deck1', 'y')).toEqual(stepsOf(52, 0.5))
+    expect(attr(layerEl, 'deck1', 'x')).toEqual(stepsOf(52, 0.2))
+    expect(geom(layerEl, 'deck1')).toMatchObject({ w: 110.2, h: 175.5, viewBox: '-10.2 -25.5 110.2 175.5' })
   })
 
-  test('drawing shrinks the deck from the top; the bottom edge stays put', async () => {
+  test('drawing shrinks the deck from the top left; the bottom and right edges stay put', async () => {
     const t = await table()
     const before = geom(t.layerEl, 'deck1')
 
     draw(t, 'deck1', { num: 3 })
 
     const after = geom(t.layerEl, 'deck1')
-    expect(after.height).toBe(before.height - 6)
+    expect(after.h).toBe(174.0)
+    expect(after.w).toBe(109.6)
     expect(after.bottom).toBe(before.bottom)
-    expect(after.viewBox).toBe('0 -96 100 246')
-    expect(Math.min(...ys(t.layerEl, 'deck1'))).toBe(-96)
+    expect(after.right).toBe(before.right)
+    expect(after.viewBox).toBe('-9.6 -24 109.6 174')
+    expect(Math.min(...attr(t.layerEl, 'deck1', 'y'))).toBe(-24)
+    expect(Math.min(...attr(t.layerEl, 'deck1', 'x'))).toBe(-9.6)
   })
 
   test('returning a card grows it back', async () => {
@@ -274,25 +282,31 @@ describe('poker_deck: the cards stack 2px apart and the deck is as tall as its s
     giveBack(t, onTable(t.layerEl)[0])
 
     const after = geom(t.layerEl, 'deck1')
-    expect(after.height).toBe(before.height - 2)
+    expect(after.h).toBe(175.0)
+    expect(after.w).toBe(110.0)
     expect(after.bottom).toBe(before.bottom)
-    expect(ys(t.layerEl, 'deck1').at(-1)).toBe(-100)
+    expect(after.right).toBe(before.right)
+    expect(attr(t.layerEl, 'deck1', 'y').at(-1)).toBe(-25)
+    expect(attr(t.layerEl, 'deck1', 'x').at(-1)).toBe(-10)
   })
 
-  test('Reshuffle keeps card heights tied to position, not to the card', async () => {
+  test('Reshuffle keeps each position\'s place in the stack, and the deck the same size', async () => {
     const t = await table()
     const before = geom(t.layerEl, 'deck1')
     reshuffle(t, 'deck1')
-    expect(ys(t.layerEl, 'deck1')).toEqual(Array.from({ length: 52 }, (_, i) => (i === 0 ? 0 : -2 * i)))
+    expect(attr(t.layerEl, 'deck1', 'y')).toEqual(stepsOf(52, 0.5))
+    expect(attr(t.layerEl, 'deck1', 'x')).toEqual(stepsOf(52, 0.2))
     expect(geom(t.layerEl, 'deck1')).toEqual(before)
   })
 
-  test('an emptied deck is one card tall; its outline stays at the base', async () => {
+  test('an emptied deck is one card in size; its outline stays at the base', async () => {
     const t = await table()
     const before = geom(t.layerEl, 'deck1')
     for (let i = 0; i < 11; i++) draw(t, 'deck1', { num: 5 }) // 10 x 5, then the last 2
     expect(inDeck(t.layerEl, 'deck1')).toHaveLength(0)
-    expect(geom(t.layerEl, 'deck1')).toMatchObject({ height: 150, bottom: before.bottom, viewBox: '0 0 100 150' })
+    expect(geom(t.layerEl, 'deck1')).toMatchObject({
+      w: 100, h: 150, bottom: before.bottom, right: before.right, viewBox: '0 0 100 150',
+    })
   })
 
   test('draws land level with the bottom card, not the middle of the tall deck', async () => {

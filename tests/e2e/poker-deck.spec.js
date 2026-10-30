@@ -48,21 +48,24 @@ test('a deck contains its cards; draw, return, delete, pile and fan', async () =
   expect([...stocked].sort()).toEqual([...fileOrder].sort());
   expect(stocked).not.toEqual(fileOrder);
 
-  // Cards sit 2px apart and the deck is as tall as its stack, growing from a
-  // fixed bottom edge.
+  // Cards fan 0.5px up and 0.2px left each, and the deck is as big as its stack, growing from fixed
+  // bottom and right edges.
   const geom = () => deck.locator(':scope > svg').evaluate(svg => {
-    const y = parseFloat(svg.getAttribute('y')), h = parseFloat(svg.getAttribute('height'));
-    return { h, bottom: y + h };
+    const [x, y, w, h] = ['x', 'y', 'width', 'height'].map(k => parseFloat(svg.getAttribute(k)));
+    return { w, h, right: Math.round((x + w) * 100) / 100, bottom: Math.round((y + h) * 100) / 100 };
   });
   const full = await geom();
-  expect(full.h).toBe(252);
+  expect(full.h).toBe(175.5);
+  expect(full.w).toBe(110.2);
   await invoke(page, deckId, 'poker_deck', 'Draw', { num: 3 });
   await expect(onTable).toHaveCount(3, { timeout: 5000 });
   await expect(inDeck).toHaveCount(49);
   await expect(count).toHaveText('49');
   const less = await geom();
-  expect(less.h).toBe(246);
+  expect(less.h).toBe(174);
+  expect(less.w).toBe(109.6);
   expect(less.bottom).toBe(full.bottom);
+  expect(less.right).toBe(full.right);
   const drawn = await onTable.evaluateAll(els => els.map(el => `${el.dataset.suit}.${el.dataset.rank}`));
   expect(drawn.sort()).toEqual(stocked.slice(49).sort()); // the top three
   const ids = await onTable.evaluateAll(els => els.map(el => el.dataset.id));
