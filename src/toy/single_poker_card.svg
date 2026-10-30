@@ -294,7 +294,7 @@ var single_poker_card = {
        letter-spacing:0px;word-spacing:0px;
        fill:#F00000;fill-opacity:1;"
        x="5"
-       y="145"
+       y="142"
        id="text_sw"
        ><tspan
          id="tspan_rank_sw"
@@ -331,6 +331,6 @@ var single_poker_card = {
        </g>
     </g>
   <g class="tt_positions" data-bounpos-type="pos-set" name="card">
-    <circle cx="50" cy="50" r="10" fill="#fff" fill-opacity="0.1"></circle>
+    <circle cx="50" cy="35" r="10" fill="#fff" fill-opacity="0.1"></circle>
   </g>
 </svg>

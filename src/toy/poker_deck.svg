@@ -25,7 +25,7 @@
         <g class="card_front">
           <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
           <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">A</tspan><tspan x="55" y="45" class="tspan_suit">♥</tspan></text>
-          <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">A</tspan><tspan class="tspan_suit">♥</tspan></text>
+          <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">A</tspan><tspan class="tspan_suit">♥</tspan></text>
         </g>
         <g class="card_back">
           <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -277,7 +277,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">A</tspan><tspan x="55" y="45" class="tspan_suit">♥</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">A</tspan><tspan class="tspan_suit">♥</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">A</tspan><tspan class="tspan_suit">♥</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -290,7 +290,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">2</tspan><tspan x="55" y="45" class="tspan_suit">♥</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">2</tspan><tspan class="tspan_suit">♥</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">2</tspan><tspan class="tspan_suit">♥</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -303,7 +303,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">3</tspan><tspan x="55" y="45" class="tspan_suit">♥</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">3</tspan><tspan class="tspan_suit">♥</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">3</tspan><tspan class="tspan_suit">♥</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -316,7 +316,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">4</tspan><tspan x="55" y="45" class="tspan_suit">♥</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">4</tspan><tspan class="tspan_suit">♥</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">4</tspan><tspan class="tspan_suit">♥</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -329,7 +329,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">5</tspan><tspan x="55" y="45" class="tspan_suit">♥</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">5</tspan><tspan class="tspan_suit">♥</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">5</tspan><tspan class="tspan_suit">♥</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -342,7 +342,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">6</tspan><tspan x="55" y="45" class="tspan_suit">♥</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">6</tspan><tspan class="tspan_suit">♥</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">6</tspan><tspan class="tspan_suit">♥</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -355,7 +355,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">7</tspan><tspan x="55" y="45" class="tspan_suit">♥</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">7</tspan><tspan class="tspan_suit">♥</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">7</tspan><tspan class="tspan_suit">♥</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -368,7 +368,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">8</tspan><tspan x="55" y="45" class="tspan_suit">♥</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">8</tspan><tspan class="tspan_suit">♥</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">8</tspan><tspan class="tspan_suit">♥</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -381,7 +381,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">9</tspan><tspan x="55" y="45" class="tspan_suit">♥</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">9</tspan><tspan class="tspan_suit">♥</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">9</tspan><tspan class="tspan_suit">♥</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -394,7 +394,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">10</tspan><tspan x="55" y="45" class="tspan_suit">♥</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">10</tspan><tspan class="tspan_suit">♥</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">10</tspan><tspan class="tspan_suit">♥</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -407,7 +407,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">J</tspan><tspan x="55" y="45" class="tspan_suit">♥</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">J</tspan><tspan class="tspan_suit">♥</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">J</tspan><tspan class="tspan_suit">♥</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -420,7 +420,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">Q</tspan><tspan x="55" y="45" class="tspan_suit">♥</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">Q</tspan><tspan class="tspan_suit">♥</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">Q</tspan><tspan class="tspan_suit">♥</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -433,7 +433,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">K</tspan><tspan x="55" y="45" class="tspan_suit">♥</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">K</tspan><tspan class="tspan_suit">♥</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">K</tspan><tspan class="tspan_suit">♥</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -446,7 +446,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">A</tspan><tspan x="55" y="45" class="tspan_suit">♣</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">A</tspan><tspan class="tspan_suit">♣</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">A</tspan><tspan class="tspan_suit">♣</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -459,7 +459,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">2</tspan><tspan x="55" y="45" class="tspan_suit">♣</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">2</tspan><tspan class="tspan_suit">♣</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">2</tspan><tspan class="tspan_suit">♣</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -472,7 +472,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">3</tspan><tspan x="55" y="45" class="tspan_suit">♣</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">3</tspan><tspan class="tspan_suit">♣</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">3</tspan><tspan class="tspan_suit">♣</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -485,7 +485,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">4</tspan><tspan x="55" y="45" class="tspan_suit">♣</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">4</tspan><tspan class="tspan_suit">♣</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">4</tspan><tspan class="tspan_suit">♣</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -498,7 +498,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">5</tspan><tspan x="55" y="45" class="tspan_suit">♣</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">5</tspan><tspan class="tspan_suit">♣</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">5</tspan><tspan class="tspan_suit">♣</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -511,7 +511,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">6</tspan><tspan x="55" y="45" class="tspan_suit">♣</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">6</tspan><tspan class="tspan_suit">♣</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">6</tspan><tspan class="tspan_suit">♣</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -524,7 +524,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">7</tspan><tspan x="55" y="45" class="tspan_suit">♣</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">7</tspan><tspan class="tspan_suit">♣</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">7</tspan><tspan class="tspan_suit">♣</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -537,7 +537,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">8</tspan><tspan x="55" y="45" class="tspan_suit">♣</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">8</tspan><tspan class="tspan_suit">♣</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">8</tspan><tspan class="tspan_suit">♣</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -550,7 +550,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">9</tspan><tspan x="55" y="45" class="tspan_suit">♣</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">9</tspan><tspan class="tspan_suit">♣</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">9</tspan><tspan class="tspan_suit">♣</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -563,7 +563,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">10</tspan><tspan x="55" y="45" class="tspan_suit">♣</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">10</tspan><tspan class="tspan_suit">♣</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">10</tspan><tspan class="tspan_suit">♣</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -576,7 +576,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">J</tspan><tspan x="55" y="45" class="tspan_suit">♣</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">J</tspan><tspan class="tspan_suit">♣</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">J</tspan><tspan class="tspan_suit">♣</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -589,7 +589,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">Q</tspan><tspan x="55" y="45" class="tspan_suit">♣</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">Q</tspan><tspan class="tspan_suit">♣</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">Q</tspan><tspan class="tspan_suit">♣</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -602,7 +602,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">K</tspan><tspan x="55" y="45" class="tspan_suit">♣</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">K</tspan><tspan class="tspan_suit">♣</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(0,0,0);fill-opacity:1"><tspan class="tspan_rank">K</tspan><tspan class="tspan_suit">♣</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -615,7 +615,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">A</tspan><tspan x="55" y="45" class="tspan_suit">♦</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">A</tspan><tspan class="tspan_suit">♦</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">A</tspan><tspan class="tspan_suit">♦</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -628,7 +628,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">2</tspan><tspan x="55" y="45" class="tspan_suit">♦</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">2</tspan><tspan class="tspan_suit">♦</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">2</tspan><tspan class="tspan_suit">♦</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -641,7 +641,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">3</tspan><tspan x="55" y="45" class="tspan_suit">♦</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">3</tspan><tspan class="tspan_suit">♦</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">3</tspan><tspan class="tspan_suit">♦</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -654,7 +654,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">4</tspan><tspan x="55" y="45" class="tspan_suit">♦</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">4</tspan><tspan class="tspan_suit">♦</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">4</tspan><tspan class="tspan_suit">♦</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -667,7 +667,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">5</tspan><tspan x="55" y="45" class="tspan_suit">♦</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">5</tspan><tspan class="tspan_suit">♦</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">5</tspan><tspan class="tspan_suit">♦</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -680,7 +680,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">6</tspan><tspan x="55" y="45" class="tspan_suit">♦</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">6</tspan><tspan class="tspan_suit">♦</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">6</tspan><tspan class="tspan_suit">♦</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -693,7 +693,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">7</tspan><tspan x="55" y="45" class="tspan_suit">♦</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">7</tspan><tspan class="tspan_suit">♦</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">7</tspan><tspan class="tspan_suit">♦</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -706,7 +706,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">8</tspan><tspan x="55" y="45" class="tspan_suit">♦</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">8</tspan><tspan class="tspan_suit">♦</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">8</tspan><tspan class="tspan_suit">♦</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -719,7 +719,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">9</tspan><tspan x="55" y="45" class="tspan_suit">♦</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">9</tspan><tspan class="tspan_suit">♦</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">9</tspan><tspan class="tspan_suit">♦</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -732,7 +732,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">10</tspan><tspan x="55" y="45" class="tspan_suit">♦</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">10</tspan><tspan class="tspan_suit">♦</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">10</tspan><tspan class="tspan_suit">♦</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -745,7 +745,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">J</tspan><tspan x="55" y="45" class="tspan_suit">♦</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">J</tspan><tspan class="tspan_suit">♦</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">J</tspan><tspan class="tspan_suit">♦</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -758,7 +758,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">Q</tspan><tspan x="55" y="45" class="tspan_suit">♦</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">Q</tspan><tspan class="tspan_suit">♦</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">Q</tspan><tspan class="tspan_suit">♦</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -771,7 +771,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">K</tspan><tspan x="55" y="45" class="tspan_suit">♦</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">K</tspan><tspan class="tspan_suit">♦</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(240,0,0);fill-opacity:1"><tspan class="tspan_rank">K</tspan><tspan class="tspan_suit">♦</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -784,7 +784,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">A</tspan><tspan x="55" y="45" class="tspan_suit">♠</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">A</tspan><tspan class="tspan_suit">♠</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">A</tspan><tspan class="tspan_suit">♠</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -797,7 +797,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">2</tspan><tspan x="55" y="45" class="tspan_suit">♠</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">2</tspan><tspan class="tspan_suit">♠</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">2</tspan><tspan class="tspan_suit">♠</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -810,7 +810,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">3</tspan><tspan x="55" y="45" class="tspan_suit">♠</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">3</tspan><tspan class="tspan_suit">♠</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">3</tspan><tspan class="tspan_suit">♠</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -823,7 +823,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">4</tspan><tspan x="55" y="45" class="tspan_suit">♠</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">4</tspan><tspan class="tspan_suit">♠</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">4</tspan><tspan class="tspan_suit">♠</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -836,7 +836,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">5</tspan><tspan x="55" y="45" class="tspan_suit">♠</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">5</tspan><tspan class="tspan_suit">♠</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">5</tspan><tspan class="tspan_suit">♠</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -849,7 +849,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">6</tspan><tspan x="55" y="45" class="tspan_suit">♠</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">6</tspan><tspan class="tspan_suit">♠</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">6</tspan><tspan class="tspan_suit">♠</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -862,7 +862,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">7</tspan><tspan x="55" y="45" class="tspan_suit">♠</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">7</tspan><tspan class="tspan_suit">♠</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">7</tspan><tspan class="tspan_suit">♠</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -875,7 +875,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">8</tspan><tspan x="55" y="45" class="tspan_suit">♠</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">8</tspan><tspan class="tspan_suit">♠</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">8</tspan><tspan class="tspan_suit">♠</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -888,7 +888,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">9</tspan><tspan x="55" y="45" class="tspan_suit">♠</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">9</tspan><tspan class="tspan_suit">♠</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">9</tspan><tspan class="tspan_suit">♠</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -901,7 +901,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">10</tspan><tspan x="55" y="45" class="tspan_suit">♠</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">10</tspan><tspan class="tspan_suit">♠</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">10</tspan><tspan class="tspan_suit">♠</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -914,7 +914,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">J</tspan><tspan x="55" y="45" class="tspan_suit">♠</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">J</tspan><tspan class="tspan_suit">♠</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">J</tspan><tspan class="tspan_suit">♠</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -927,7 +927,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">Q</tspan><tspan x="55" y="45" class="tspan_suit">♠</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">Q</tspan><tspan class="tspan_suit">♠</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">Q</tspan><tspan class="tspan_suit">♠</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
@@ -940,7 +940,7 @@ var poker_deck = {
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
         <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">K</tspan><tspan x="55" y="45" class="tspan_suit">♠</tspan></text>
-        <text x="5" y="145" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">K</tspan><tspan class="tspan_suit">♠</tspan></text>
+        <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(5,10,10);fill-opacity:1"><tspan class="tspan_rank">K</tspan><tspan class="tspan_suit">♠</tspan></text>
       </g>
       <g class="card_back">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>

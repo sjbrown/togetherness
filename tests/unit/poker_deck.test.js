@@ -521,6 +521,13 @@ describe('card and deck markup', () => {
     expect([rank, suit].every(t => t.hasAttribute('x') && t.hasAttribute('y'))).toBe(true)
   })
 
+  test('the corner index sits at y=142 on every nested card and on the card toy', async () => {
+    const { layerEl } = await table()
+    const corners = inDeck(layerEl, 'deck1').map(c => c.querySelector('.card_front > text:last-of-type').getAttribute('y'))
+    expect(new Set(corners)).toEqual(new Set(['142']))
+    expect(new DOMParser().parseFromString(CARD_SVG, 'image/svg+xml').getElementById('text_sw').getAttribute('y')).toBe('142')
+  })
+
   test('a deck is a container with no landing point or snap points; a pile has a landing point', async () => {
     const t = await table()
     expect(findEl(t.layerEl, 'deck1').querySelector('[class*="tt_positions"]')).toBeNull()
@@ -530,9 +537,9 @@ describe('card and deck markup', () => {
   test("a card's snap point leaves the lower card's corner index readable when stacked face up", () => {
     const doc = new DOMParser().parseFromString(CARD_SVG, 'image/svg+xml')
     const cy = parseFloat(doc.querySelector('.tt_positions circle').getAttribute('cy'))
-    expect(cy).toBe(50)
+    expect(cy).toBe(35)
     // the card landing on the snap point has its centre there, so its bottom edge is cy + 75
-    // in the lower card's own space; the corner index (font 20, baseline 145) must start below it
+    // in the lower card's own space; the corner index (font 20, baseline 142) must start below it
     const cornerBaseline = parseFloat([...doc.querySelectorAll('text')].find(t => t.getAttribute('id') === 'text_sw').getAttribute('y'))
     expect(cy + 75).toBeLessThanOrEqual(cornerBaseline - 20)
   })
