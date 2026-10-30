@@ -321,11 +321,17 @@ describe('poker_deck: the cards fan up and to the left and the deck is as big as
 describe('poker_deck: deck_summary count', () => {
   const countOf = (layerEl, id) => findEl(layerEl, id).querySelector('.deck_summary .tspan_count').textContent
 
-  test('the summary is a white pill inside tt_colored, like stack_summary', async () => {
+  test('the summary is a white circle at the lower right, inside tt_colored, like the pile', async () => {
     const { layerEl } = await table()
-    const rect = findEl(layerEl, 'deck1').querySelector('.deck_summary > .tt_colored > .rect_deck_summary')
-    expect(rect).not.toBeNull()
-    expect(rect.getAttribute('fill')).toBe('#ffffff')
+    const circle = findEl(layerEl, 'deck1').querySelector('.deck_summary > .tt_colored > .circle_deck_summary')
+    expect(circle).not.toBeNull()
+    expect(circle.getAttribute('fill')).toBe('#ffffff')
+    const [cx, cy, r] = ['cx', 'cy', 'r'].map(k => parseFloat(circle.getAttribute(k)))
+    expect(cx).toBeGreaterThan(50)
+    expect(cy).toBeGreaterThan(75)
+    // whole badge inside the bottom card, so the deck's own svg never clips it
+    expect(cx + r).toBeLessThanOrEqual(100)
+    expect(cy + r).toBeLessThanOrEqual(150)
   })
 
   test('shows the number of cards remaining, following draws and returns', async () => {
@@ -440,19 +446,19 @@ describe('stacking cards into a card_pile and fanning it', () => {
     return { ...t, a, b, c }
   }
 
-  test('Stack is offered to any card in a chain, and not to a lone card', async () => {
+  test('Pile is offered to any card in a chain, and not to a lone card', async () => {
     const { b, place } = await stackedCards()
-    expect(labels(b)).toContain('Stack')
-    expect(labels(loose(place, 'solo', 2, 2))).not.toContain('Stack')
+    expect(labels(b)).toContain('Pile')
+    expect(labels(loose(place, 'solo', 2, 2))).not.toContain('Pile')
   })
 
-  test('Stack asks for one pile, at the bottom card, holding the whole chain in order', async () => {
+  test('Pile asks for one pile, at the bottom card, holding the whole chain in order', async () => {
     const { ydoc, layerEl, b } = await stackedCards()
     const adds = []
     const record = (e) => adds.push(e.detail)
     document.addEventListener('toy:add', record)
     try {
-      invokeMenuAction(ydoc, layerEl, b, 'single_poker_card', 'Stack', undefined, AUTHOR, TABLE)
+      invokeMenuAction(ydoc, layerEl, b, 'single_poker_card', 'Pile', undefined, AUTHOR, TABLE)
     } finally { document.removeEventListener('toy:add', record) }
 
     expect(adds).toHaveLength(1)
@@ -471,7 +477,7 @@ describe('stacking cards into a card_pile and fanning it', () => {
     const inside = [...pile.querySelectorAll('.tt_contents > .toy')]
     expect(inside.map(el => el.getAttribute('data-id'))).toEqual(['a', 'b', 'c'])
     expect(pile.querySelector('.tspan_count').textContent).toBe('3')
-    expect(labels(inside[0])).not.toContain('Stack') // inside a pile, nothing to stack with
+    expect(labels(inside[0])).not.toContain('Pile') // inside a pile, nothing to stack with
   })
 
   test('Draw takes the top card out of the pile', async () => {
@@ -500,5 +506,34 @@ describe('stacking cards into a card_pile and fanning it', () => {
     })
     expect(xs[0]).toBeLessThan(xs[1])
     expect(xs[1]).toBeLessThan(xs[2])
+  })
+})
+
+describe('card and deck markup', () => {
+  test('a nested card writes its big rank and suit as one <text> with two positioned tspans', async () => {
+    const { layerEl } = await table()
+    const card = inDeck(layerEl, 'deck1')[0]
+    const texts = card.querySelectorAll('.card_front > text')
+    expect(texts).toHaveLength(2) // rank + suit together, then the corner index
+    const [rank, suit] = texts[0].querySelectorAll('tspan')
+    expect(rank.className.baseVal).toBe('tspan_rank')
+    expect(suit.className.baseVal).toBe('tspan_suit')
+    expect([rank, suit].every(t => t.hasAttribute('x') && t.hasAttribute('y'))).toBe(true)
+  })
+
+  test('a deck is a container with no landing point or snap points; a pile has a landing point', async () => {
+    const t = await table()
+    expect(findEl(t.layerEl, 'deck1').querySelector('[class*="tt_positions"]')).toBeNull()
+    expect(findEl(t.layerEl, 'pile1').querySelector('[class*="tt_positions"] circle')).not.toBeNull()
+  })
+
+  test("a card's snap point leaves the lower card's corner index readable when stacked face up", () => {
+    const doc = new DOMParser().parseFromString(CARD_SVG, 'image/svg+xml')
+    const cy = parseFloat(doc.querySelector('.tt_positions circle').getAttribute('cy'))
+    expect(cy).toBe(50)
+    // the card landing on the snap point has its centre there, so its bottom edge is cy + 75
+    // in the lower card's own space; the corner index (font 20, baseline 145) must start below it
+    const cornerBaseline = parseFloat([...doc.querySelectorAll('text')].find(t => t.getAttribute('id') === 'text_sw').getAttribute('y'))
+    expect(cy + 75).toBeLessThanOrEqual(cornerBaseline - 20)
   })
 })

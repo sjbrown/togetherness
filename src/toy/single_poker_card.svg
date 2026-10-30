@@ -119,7 +119,7 @@ var single_poker_card = {
 
   // Only cards lying directly on the table stack; one already inside a
   // pile (or any other container) has no neighbors of its own.
-  stack_applicable: function(elem) {
+  pile_applicable: function(elem) {
     if (elem.parentNode !== elem.closest('#toys-layer')) return false
     return single_poker_card.chain(elem, 'data-above').length > 0
         || single_poker_card.chain(elem, 'data-below').length > 0
@@ -127,7 +127,7 @@ var single_poker_card = {
 
   // Gathers the cards stacked with elem (bottom to top) into a card_pile
   // placed where the bottom card lies.
-  stack: function(elem) {
+  pile: function(elem) {
     const layer = elem.closest('#toys-layer')
     // data-above walks toward the base of the pile; data-below walks
     // toward the most recently placed (top) card.
@@ -223,11 +223,11 @@ var single_poker_card = {
         single_poker_card.flip_handler(evt, this)
       },
     },
-    'Stack': {
-      eventName: 'single_poker_card_stack',
-      applicable: (node) => single_poker_card.stack_applicable(node),
+    'Pile': {
+      eventName: 'single_poker_card_pile',
+      applicable: (node) => single_poker_card.pile_applicable(node),
       handler: function(evt) {
-        single_poker_card.stack(this)
+        single_poker_card.pile(this)
       },
     },
     'Return to deck': {
@@ -331,6 +331,6 @@ var single_poker_card = {
        </g>
     </g>
   <g class="tt_positions" data-bounpos-type="pos-set" name="card">
-    <circle cx="50" cy="69" r="10" fill="#fff" fill-opacity="0.1"></circle>
+    <circle cx="50" cy="50" r="10" fill="#fff" fill-opacity="0.1"></circle>
   </g>
 </svg>
