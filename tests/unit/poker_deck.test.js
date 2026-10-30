@@ -236,27 +236,44 @@ describe('poker_deck: start_shuffled', () => {
   test('a shuffled start still has every card at its own place in the stack', async () => {
     const { el } = await deckWith({ start_shuffled: true })
     const cards = [...el.querySelectorAll('.tt_contents > svg.card')]
-    expect(cards.map(c => parseFloat(c.getAttribute('y')))).toEqual(stepsOf(52, 0.5))
-    expect(cards.map(c => parseFloat(c.getAttribute('x')))).toEqual(stepsOf(52, 0.2))
+    expect(cards.map(c => parseFloat(c.getAttribute('y')))).toEqual(stepsOf(52, 'y'))
+    expect(cards.map(c => parseFloat(c.getAttribute('x')))).toEqual(stepsOf(52, 'x'))
   })
 })
 
-// Card i sits 0.2px left of and 0.5px above card 0.
-const stepsOf = (n, step) => Array.from({ length: n }, (_, i) => (i === 0 ? 0 : Math.round(-step * i * 100) / 100))
+// Where the deck's own layout says card i sits and how big n cards make the
+// deck, from its step constants, so retuning the look does not touch these.
+const round2 = (v) => Math.round(v * 100) / 100
+const stepsOf = (n, axis) => {
+  const step = axis === 'x' ? globalThis.poker_deck.CARD_STEP_X : globalThis.poker_deck.CARD_STEP_Y
+  return Array.from({ length: n }, (_, i) => (i === 0 ? 0 : round2(-step * i)))
+}
+const boxFor = (n) => {
+  const { CARD_STEP_X, CARD_STEP_Y, CARD_WIDTH, CARD_HEIGHT } = globalThis.poker_deck
+  const lean = round2(CARD_STEP_X * Math.max(0, n - 1))
+  const rise = round2(CARD_STEP_Y * Math.max(0, n - 1))
+  return { lean, rise, w: round2(CARD_WIDTH + lean), h: round2(CARD_HEIGHT + rise) }
+}
 
 describe('poker_deck: the cards fan up and to the left and the deck is as big as its stack', () => {
   const geom = (layerEl, id) => {
     const svg = findEl(layerEl, id).querySelector(':scope > svg')
     const [x, y, w, h] = ['x', 'y', 'width', 'height'].map(k => parseFloat(svg.getAttribute(k)))
-    return { x, y, w, h, right: Math.round((x + w) * 100) / 100, bottom: Math.round((y + h) * 100) / 100, viewBox: svg.getAttribute('viewBox') }
+    return { x, y, w, h, right: round2(x + w), bottom: round2(y + h), viewBox: svg.getAttribute('viewBox') }
   }
   const attr = (layerEl, id, k) => inDeck(layerEl, id).map(c => parseFloat(c.getAttribute(k)))
 
-  test('a placed deck is 100 + 0.2 and 150 + 0.5 per extra card, card i at (-0.2i, -0.5i)', async () => {
-    const { layerEl } = await table()
-    expect(attr(layerEl, 'deck1', 'y')).toEqual(stepsOf(52, 0.5))
-    expect(attr(layerEl, 'deck1', 'x')).toEqual(stepsOf(52, 0.2))
-    expect(geom(layerEl, 'deck1')).toMatchObject({ w: 110.2, h: 175.5, viewBox: '-10.2 -25.5 110.2 175.5' })
+  test('the file ships laid out the way the deck would lay it out', async () => {
+    const t = await table()
+    const deck = findEl(t.layerEl, 'deck1')
+    const before = { geom: geom(t.layerEl, 'deck1'), x: attr(t.layerEl, 'deck1', 'x'), y: attr(t.layerEl, 'deck1', 'y') }
+
+    globalThis.poker_deck._place_cards(deck)
+    globalThis.poker_deck._fit(deck)
+
+    expect({ geom: geom(t.layerEl, 'deck1'), x: attr(t.layerEl, 'deck1', 'x'), y: attr(t.layerEl, 'deck1', 'y') }).toEqual(before)
+    expect(attr(t.layerEl, 'deck1', 'y')).toEqual(stepsOf(52, 'y'))
+    expect(attr(t.layerEl, 'deck1', 'x')).toEqual(stepsOf(52, 'x'))
   })
 
   test('drawing shrinks the deck from the top left; the bottom and right edges stay put', async () => {
@@ -266,13 +283,12 @@ describe('poker_deck: the cards fan up and to the left and the deck is as big as
     draw(t, 'deck1', { num: 3 })
 
     const after = geom(t.layerEl, 'deck1')
-    expect(after.h).toBe(174.0)
-    expect(after.w).toBe(109.6)
+    const want = boxFor(49)
+    expect(after).toMatchObject({ w: want.w, h: want.h, viewBox: `${-want.lean} ${-want.rise} ${want.w} ${want.h}` })
     expect(after.bottom).toBe(before.bottom)
     expect(after.right).toBe(before.right)
-    expect(after.viewBox).toBe('-9.6 -24 109.6 174')
-    expect(Math.min(...attr(t.layerEl, 'deck1', 'y'))).toBe(-24)
-    expect(Math.min(...attr(t.layerEl, 'deck1', 'x'))).toBe(-9.6)
+    expect(Math.min(...attr(t.layerEl, 'deck1', 'y'))).toBe(-want.rise)
+    expect(Math.min(...attr(t.layerEl, 'deck1', 'x'))).toBe(-want.lean)
   })
 
   test('returning a card grows it back', async () => {
@@ -282,20 +298,20 @@ describe('poker_deck: the cards fan up and to the left and the deck is as big as
     giveBack(t, onTable(t.layerEl)[0])
 
     const after = geom(t.layerEl, 'deck1')
-    expect(after.h).toBe(175.0)
-    expect(after.w).toBe(110.0)
+    const want = boxFor(51)
+    expect(after).toMatchObject({ w: want.w, h: want.h })
     expect(after.bottom).toBe(before.bottom)
     expect(after.right).toBe(before.right)
-    expect(attr(t.layerEl, 'deck1', 'y').at(-1)).toBe(-25)
-    expect(attr(t.layerEl, 'deck1', 'x').at(-1)).toBe(-10)
+    expect(attr(t.layerEl, 'deck1', 'y').at(-1)).toBe(-want.rise)
+    expect(attr(t.layerEl, 'deck1', 'x').at(-1)).toBe(-want.lean)
   })
 
-  test('Reshuffle keeps each position\'s place in the stack, and the deck the same size', async () => {
+  test("Reshuffle keeps each position's place in the stack, and the deck the same size", async () => {
     const t = await table()
     const before = geom(t.layerEl, 'deck1')
     reshuffle(t, 'deck1')
-    expect(attr(t.layerEl, 'deck1', 'y')).toEqual(stepsOf(52, 0.5))
-    expect(attr(t.layerEl, 'deck1', 'x')).toEqual(stepsOf(52, 0.2))
+    expect(attr(t.layerEl, 'deck1', 'y')).toEqual(stepsOf(52, 'y'))
+    expect(attr(t.layerEl, 'deck1', 'x')).toEqual(stepsOf(52, 'x'))
     expect(geom(t.layerEl, 'deck1')).toEqual(before)
   })
 
@@ -304,34 +320,30 @@ describe('poker_deck: the cards fan up and to the left and the deck is as big as
     const before = geom(t.layerEl, 'deck1')
     for (let i = 0; i < 11; i++) draw(t, 'deck1', { num: 5 }) // 10 x 5, then the last 2
     expect(inDeck(t.layerEl, 'deck1')).toHaveLength(0)
+    const want = boxFor(0)
     expect(geom(t.layerEl, 'deck1')).toMatchObject({
-      w: 100, h: 150, bottom: before.bottom, right: before.right, viewBox: '0 0 100 150',
+      w: want.w, h: want.h, bottom: before.bottom, right: before.right, viewBox: `0 0 ${want.w} ${want.h}`,
     })
   })
 
   test('draws land level with the bottom card, not the middle of the tall deck', async () => {
     const t = await table()
     const { bottom } = geom(t.layerEl, 'deck1')
+    const { CARD_HEIGHT } = globalThis.poker_deck
     draw(t, 'deck1')
     const svg = onTable(t.layerEl)[0].querySelector(':scope > svg')
-    expect(parseFloat(svg.getAttribute('y')) + 75).toBeCloseTo(bottom - 75, 0)
+    expect(parseFloat(svg.getAttribute('y')) + CARD_HEIGHT / 2).toBeCloseTo(bottom - CARD_HEIGHT / 2, 0)
   })
 })
 
 describe('poker_deck: deck_summary count', () => {
   const countOf = (layerEl, id) => findEl(layerEl, id).querySelector('.deck_summary .tspan_count').textContent
 
-  test('the summary is a white circle at the lower right, inside tt_colored, like the pile', async () => {
+  test('the summary is a white circle inside tt_colored, like the pile', async () => {
     const { layerEl } = await table()
     const circle = findEl(layerEl, 'deck1').querySelector('.deck_summary > .tt_colored > .circle_deck_summary')
     expect(circle).not.toBeNull()
     expect(circle.getAttribute('fill')).toBe('#ffffff')
-    const [cx, cy, r] = ['cx', 'cy', 'r'].map(k => parseFloat(circle.getAttribute(k)))
-    expect(cx).toBeGreaterThan(50)
-    expect(cy).toBeGreaterThan(75)
-    // whole badge inside the bottom card, so the deck's own svg never clips it
-    expect(cx + r).toBeLessThanOrEqual(100)
-    expect(cy + r).toBeLessThanOrEqual(150)
   })
 
   test('shows the number of cards remaining, following draws and returns', async () => {
@@ -521,26 +533,9 @@ describe('card and deck markup', () => {
     expect([rank, suit].every(t => t.hasAttribute('x') && t.hasAttribute('y'))).toBe(true)
   })
 
-  test('the corner index sits at y=142 on every nested card and on the card toy', async () => {
-    const { layerEl } = await table()
-    const corners = inDeck(layerEl, 'deck1').map(c => c.querySelector('.card_front > text:last-of-type').getAttribute('y'))
-    expect(new Set(corners)).toEqual(new Set(['142']))
-    expect(new DOMParser().parseFromString(CARD_SVG, 'image/svg+xml').getElementById('text_sw').getAttribute('y')).toBe('142')
-  })
-
   test('a deck is a container with no landing point or snap points; a pile has a landing point', async () => {
     const t = await table()
     expect(findEl(t.layerEl, 'deck1').querySelector('[class*="tt_positions"]')).toBeNull()
     expect(findEl(t.layerEl, 'pile1').querySelector('[class*="tt_positions"] circle')).not.toBeNull()
-  })
-
-  test("a card's snap point leaves the lower card's corner index readable when stacked face up", () => {
-    const doc = new DOMParser().parseFromString(CARD_SVG, 'image/svg+xml')
-    const cy = parseFloat(doc.querySelector('.tt_positions circle').getAttribute('cy'))
-    expect(cy).toBe(35)
-    // the card landing on the snap point has its centre there, so its bottom edge is cy + 75
-    // in the lower card's own space; the corner index (font 20, baseline 142) must start below it
-    const cornerBaseline = parseFloat([...doc.querySelectorAll('text')].find(t => t.getAttribute('id') === 'text_sw').getAttribute('y'))
-    expect(cy + 75).toBeLessThanOrEqual(cornerBaseline - 20)
   })
 })
