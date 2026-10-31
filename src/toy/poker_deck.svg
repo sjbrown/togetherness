@@ -220,11 +220,12 @@ var poker_deck = {
   },
 
   // Fisher-Yates over the nested cards, then re-append them in the new
-  // order.
+  // order. Slot i takes a random card from slot i onward, so everything
+  // before i is already settled.
   _reshuffle: function(elem) {
     const cards = poker_deck._cards(elem)
-    for (let i = cards.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
+    for (let i = 0; i < cards.length - 1; i++) {
+      const j = i + Math.floor(Math.random() * (cards.length - i))
       ;[cards[i], cards[j]] = [cards[j], cards[i]]
     }
     const group = elem.querySelector('.tt_contents')
