@@ -495,6 +495,56 @@ describe('stacking cards into a poker_card_pile and fanning it', () => {
     }
   })
 
+  const cardXY = (el) => {
+    const svg = el.querySelector(':scope > svg')
+    return [parseFloat(svg.getAttribute('x')), parseFloat(svg.getAttribute('y'))]
+  }
+
+  test('cards in a pile lie off-centre by whole pixels, within JITTER either way', async () => {
+    const t = await stackedCards()
+    const J = globalThis.poker_card_pile.JITTER
+    const pile = fillPile(t)
+    for (const card of pile.querySelectorAll('.tt_contents > .toy')) {
+      for (const v of cardXY(card)) {
+        expect(Number.isInteger(v)).toBe(true)
+        expect(Math.abs(v)).toBeLessThanOrEqual(J) // the card lands at 0, 0 before jitter
+      }
+    }
+  })
+
+  test('the random range reaches -JITTER and +JITTER and nothing past them', async () => {
+    const J = (await stackedCards(), globalThis.poker_card_pile.JITTER)
+    for (const [roll, want] of [[0, -J], [0.9999999, J], [0.5, 0]]) {
+      const t = await stackedCards()
+      const spy = vi.spyOn(Math, 'random').mockReturnValue(roll)
+      try {
+        const pile = fillPile(t)
+        for (const card of pile.querySelectorAll('.tt_contents > .toy')) {
+          expect(cardXY(card)).toEqual([want, want])
+        }
+      } finally { spy.mockRestore() }
+    }
+  })
+
+  test('different cards get different offsets', async () => {
+    const t = await stackedCards()
+    const pile = fillPile(t)
+    const spots = [...pile.querySelectorAll('.tt_contents > .toy')].map(c => cardXY(c).join(','))
+    expect(new Set(spots).size).toBeGreaterThan(1)
+  })
+
+  test("the pile leaves room around its cards for the jitter, and has no edge rectangles", async () => {
+    const t = await stackedCards()
+    const J = globalThis.poker_card_pile.JITTER
+    const pile = fillPile(t)
+    const [vx, vy, vw, vh] = pile.querySelector(':scope > svg').getAttribute('viewBox').split(/\s+/).map(Number)
+    expect(vx).toBeLessThanOrEqual(-J)
+    expect(vy).toBeLessThanOrEqual(-J)
+    expect(vx + vw).toBeGreaterThanOrEqual(100 + J)
+    expect(vy + vh).toBeGreaterThanOrEqual(150 + J)
+    expect(pile.querySelector('.pile_edge_1, .pile_edge_2')).toBeNull()
+  })
+
   test('Draw from a two-card pile deals both, since a pile of one makes no sense', async () => {
     const t = await stackedCards()
     runInitializers(findEl(t.layerEl, 'pile1'), 'poker_card_pile', ['a', 'b'])
