@@ -8,6 +8,7 @@ import { ensureLayerId } from '../../src/op_layers.js'
 import {
   TOYS_LAYER, TOY_TYPES, addToyDom, activateAllToyScriptsDom, reparentToyDom, deleteEl,
   findEl, getMenuActions, invokeMenuAction, runInitializers, getTtStateSchema, editEl, TOOLS, toolInitArgs,
+  findDropTarget,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 
@@ -22,6 +23,8 @@ const DECK_SVG = read('poker_deck.svg')
 const CARD_SVG = read('single_poker_card.svg')
 const PILE_SVG = read('poker_card_pile.svg')
 const CONTAINER_JS = read('js/container.js')
+const CHIP_SVG = read('chip.svg')
+const BAG_SVG = read('bag.svg')
 
 function freshLayer() {
   const layerEl = document.createElementNS(SVG_NS, 'g')
@@ -654,5 +657,51 @@ describe('card and deck markup', () => {
     const t = await table()
     expect(findEl(t.layerEl, 'deck1').querySelector('[class*="tt_positions"]')).toBeNull()
     expect(findEl(t.layerEl, 'pile1').querySelector('[class*="tt_positions"] circle')).not.toBeNull()
+  })
+})
+
+describe('drop filtering: `matches` on a container\'s tt_contents', () => {
+  // deck1 at (100, 100), pile1 at (700, 100); a bag at (1000, 100) has no `matches`.
+  async function dropTable() {
+    const t = await table()
+    t.place('bag1', 'bag', BAG_SVG, 1000, 100)
+    loose(t.place, 'card1', 1, 1)
+    t.place('chip1', 'chip', CHIP_SVG, 1500, 500)
+    return t
+  }
+
+  test('the deck and the pile declare .card', async () => {
+    const t = await dropTable()
+    for (const id of ['deck1', 'pile1']) {
+      expect(findEl(t.layerEl, id).querySelector('[class*="tt_contents"]').getAttribute('matches')).toBe('.card')
+    }
+  })
+
+  test('a card dropped on the deck or the pile finds it as the target', async () => {
+    const t = await dropTable()
+    expect(findDropTarget(t.layerEl, 'card1', 100, 100)).toBe('deck1')
+    expect(findDropTarget(t.layerEl, 'card1', 700, 100)).toBe('pile1')
+  })
+
+  test('a toy that is not a card finds neither', async () => {
+    const t = await dropTable()
+    expect(findDropTarget(t.layerEl, 'chip1', 100, 100)).toBeNull()
+    expect(findDropTarget(t.layerEl, 'chip1', 700, 100)).toBeNull()
+  })
+
+  test('a container without `matches` still accepts anything', async () => {
+    const t = await dropTable()
+    expect(findDropTarget(t.layerEl, 'chip1', 1000, 100)).toBe('bag1')
+    expect(findDropTarget(t.layerEl, 'card1', 1000, 100)).toBe('bag1')
+  })
+
+  test('a selector that does not parse accepts nothing, and warns', async () => {
+    const t = await dropTable()
+    t.place('bad', 'poker_deck', DECK_SVG.replace('matches=".card"', 'matches=">>>"'), 1500, 100)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(findDropTarget(t.layerEl, 'card1', 1500, 100)).toBeNull()
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('not a valid selector'))
+    } finally { warn.mockRestore() }
   })
 })
