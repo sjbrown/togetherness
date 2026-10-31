@@ -514,7 +514,7 @@ describe('stacking cards into a poker_card_pile and fanning it', () => {
 
   test('the random range reaches -JITTER and +JITTER and nothing past them', async () => {
     const J = (await stackedCards(), globalThis.poker_card_pile.JITTER)
-    for (const [roll, want] of [[0, -J], [0.9999999, J], [0.5, 0]]) {
+    for (const [roll, want] of [[0, -J], [0.9999999, J]]) {
       const t = await stackedCards()
       const spy = vi.spyOn(Math, 'random').mockReturnValue(roll)
       try {
@@ -523,6 +523,36 @@ describe('stacking cards into a poker_card_pile and fanning it', () => {
           expect(cardXY(card)).toEqual([want, want])
         }
       } finally { spy.mockRestore() }
+    }
+  })
+
+  test('a card is never left exactly on the landing point, even on a (0, 0) roll', async () => {
+    const t = await stackedCards()
+    const spy = vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    try {
+      const pile = fillPile(t)
+      for (const card of pile.querySelectorAll('.tt_contents > .toy')) {
+        expect(cardXY(card)).toEqual([1, 0])
+      }
+    } finally { spy.mockRestore() }
+  })
+
+  test('a card dropped onto an existing pile is scattered too, and the others stay where they were', async () => {
+    const t = await stackedCards()
+    const pile = fillPile(t)
+    const J = globalThis.poker_card_pile.JITTER
+    const before = Object.fromEntries([...pile.querySelectorAll('.tt_contents > .toy')].map(c => [c.getAttribute('data-id'), cardXY(c)]))
+
+    loose(t.place, 'dropped', 3, 3)
+    reparentToyDom(t.layerEl, 'dropped', 'pile1')
+
+    const dropped = pile.querySelector('.tt_contents > [data-id="dropped"]')
+    const [x, y] = cardXY(dropped)
+    expect([x, y]).not.toEqual([0, 0])
+    expect(Number.isInteger(x) && Number.isInteger(y)).toBe(true)
+    expect(Math.max(Math.abs(x), Math.abs(y))).toBeLessThanOrEqual(J)
+    for (const [id, xy] of Object.entries(before)) {
+      expect(cardXY(pile.querySelector(`.tt_contents > [data-id="${id}"]`))).toEqual(xy)
     }
   })
 

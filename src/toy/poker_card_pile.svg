@@ -57,26 +57,46 @@ var poker_card_pile = {
     for (const id of cardIds) {
       poker_card_pile._event('toy:reparent', { id, containerId })
       // The card is part of this toy's subtree now, so it can be tidied
-      // from here: it no longer rests on or under another card, and it
-      // lies a little off-centre so the pile looks hand-stacked.
+      // from here: it no longer rests on or under another card.
       const card = elem.querySelector(`[data-id="${id}"]`)
       card?.setAttribute('data-above', '')
       card?.setAttribute('data-below', '')
-      poker_card_pile._jitter(card)
     }
   },
 
-  // Moves a card by a random whole number of pixels, within JITTER of where
-  // it landed, in each direction.
+  // How far off-centre, in whole pixels either way, a card in the pile lies.
   JITTER: 10,
 
-  _jitter: function(card) {
-    const svg = card?.querySelector(':scope > svg')
-    if (!svg) return
+  // Offsets a card's <svg> by a random whole number of pixels in x and y. A
+  // card that has landed sits exactly on the pile's landing point, so a
+  // jittered card never does: (0, 0) becomes (1, 0).
+  _jitter: function(svg) {
     const { JITTER } = poker_card_pile
     const offset = () => Math.floor(Math.random() * (2 * JITTER + 1)) - JITTER
-    svg.setAttribute('x', String((parseFloat(svg.getAttribute('x')) || 0) + offset()))
-    svg.setAttribute('y', String((parseFloat(svg.getAttribute('y')) || 0) + offset()))
+    let dx = offset()
+    const dy = offset()
+    if (dx === 0 && dy === 0) dx = 1
+    svg.setAttribute('x', String((parseFloat(svg.getAttribute('x')) || 0) + dx))
+    svg.setAttribute('y', String((parseFloat(svg.getAttribute('y')) || 0) + dy))
+  },
+
+  // Scatters every card still sitting on the landing point: whichever
+  // arrived since the last change, however it got in.
+  _scatter_arrivals: function(elem) {
+    const point = elem.querySelector(':scope > svg > [class*="tt_positions"] circle')
+    if (!point) return
+    const cx = parseFloat(point.getAttribute('cx'))
+    const cy = parseFloat(point.getAttribute('cy'))
+    container.visit_contents(elem, (card) => {
+      const svg = card.querySelector(':scope > svg')
+      if (!svg) return
+      const w = parseFloat(svg.getAttribute('width'))  || 0
+      const h = parseFloat(svg.getAttribute('height')) || 0
+      if (parseFloat(svg.getAttribute('x')) === cx - w / 2 &&
+          parseFloat(svg.getAttribute('y')) === cy - h / 2) {
+        poker_card_pile._jitter(svg)
+      }
+    })
   },
 
   _own_box: function(elem) {
@@ -143,10 +163,12 @@ var poker_card_pile = {
     }
   },
 
-  // Shows the card count.
+  // Shows the card count, and lays any new arrivals a little off-centre so
+  // the pile looks hand-stacked.
   contents_change_handler: function(elem) {
     const tspan = elem.querySelector('.tspan_count')
     if (tspan) tspan.textContent = String(container.count(elem))
+    poker_card_pile._scatter_arrivals(elem)
   },
 
   _event: function(evName, args) {
