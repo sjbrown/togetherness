@@ -5,10 +5,10 @@
    height="158"
    viewBox="0 0 108 158"
    version="1.1"
-   id="card_pile"
-   class="card_pile"
+   id="poker_card_pile"
+   class="poker_card_pile"
    >
-  <defs id="defs_card_pile">
+  <defs id="defs_poker_card_pile">
     <filter class="tt_color_filter"
        id="app-filter-colorize"
        color-interpolation-filters="sRGB">
@@ -28,43 +28,35 @@
      id="script_container" />
   <script
      type="text/javascript"
-     data-namespace="card_pile"
-     id="script_card_pile"><![CDATA[
+     data-namespace="poker_card_pile"
+     id="script_poker_card_pile"><![CDATA[
 
-var card_pile = {
+var poker_card_pile = {
 
-  FAN_ARC: 0.25,
 
   menu: {
     'Fan': {
-      eventName: 'card_pile_fan',
-      otherEvents: ['dblclick'],
-      applicable: (node) => card_pile._count(node) > 0,
+      eventName: 'poker_card_pile_fan',
+      applicable: (node) => container.count(node) > 0,
       handler: function(evt) {
-        card_pile.fan_all(this)
+        poker_card_pile.fan_all(this)
       },
     },
     'Draw': {
-      eventName: 'card_pile_draw',
-      applicable: (node) => card_pile._count(node) > 0,
+      eventName: 'poker_card_pile_draw',
+      applicable: (node) => container.count(node) > 0,
       handler: function(evt) {
-        card_pile.draw_top(this)
+        poker_card_pile.draw_top(this)
       },
     },
   },
 
-  // cardIds is the ordered (bottom-to-top) list of card ids
   initialize: function(elem, cardIds) {
     if (!Array.isArray(cardIds) || !cardIds.length) return
     const containerId = elem.getAttribute('data-id')
     for (const id of cardIds) {
-      card_pile._event('toy:reparent', { id, containerId })
+      poker_card_pile._event('toy:reparent', { id, containerId })
     }
-  },
-
-  _count: function(elem) {
-    const group = elem.querySelector('.tt_contents')
-    return group ? group.querySelectorAll(':scope > .toy').length : 0
   },
 
   _own_box: function(elem) {
@@ -77,9 +69,6 @@ var card_pile = {
     }
   },
 
-  // Moves a card out of the pile onto the table with its centre at
-  // (cx, cy). The card's stacking links are cleared while it is still
-  // inside the pile.
   _eject: function(child, cx, cy) {
     child.setAttribute('data-above', '')
     child.setAttribute('data-below', '')
@@ -87,52 +76,58 @@ var card_pile = {
     if (!childSvg) return
     const w = parseFloat(childSvg.getAttribute('width'))  || 0
     const h = parseFloat(childSvg.getAttribute('height')) || 0
-    card_pile._event('toy:reparent', { id: child.getAttribute('data-id'), containerId: null })
-    // Overrides reparentToyDom's own "preserve visual position" default.
+    poker_card_pile._event(
+      'toy:reparent', { id: child.getAttribute('data-id'), containerId: null }
+    )
+    // Overrides reparentToyDom's "preserve visual position" default.
     childSvg.setAttribute('x', String(cx - w / 2))
     childSvg.setAttribute('y', String(cy - h / 2))
   },
 
-  // Spreads every card across the table in an arc centred on the pile,
-  // then removes the pile.
   fan_all: function(elem) {
-    const { x, y, w, h } = card_pile._own_box(elem)
-    const total = card_pile._count(elem)
+    const { x, y, w, h } = poker_card_pile._own_box(elem)
+    const total = container.count(elem)
     const mid = (total - 1) / 2
+    const fanArc = 0.25
 
     container.visit_contents(elem, (child, i) => {
       const childSvg = child.querySelector(':scope > svg')
       const cardW = parseFloat(childSvg?.getAttribute('width')) || 0
       const spacing = Math.min(cardW / 4, 700 / Math.max(1, total - 1))
       const offset = i - mid
-      // A parabola: the middle card stays level with the pile and the ends
-      // drop by FAN_ARC of the fan's half-width.
-      const drop = mid > 0 ? card_pile.FAN_ARC * spacing * offset * offset / mid : 0
-      card_pile._eject(
+      // Fan the cards out in a parabola, with the middle card staying level
+      const drop = mid > 0 ? fanArc * spacing * offset * offset / mid : 0
+      poker_card_pile._eject(
         child,
         x + w / 2 + offset * spacing,
         y + h / 2 + drop,
       )
     })
 
-    card_pile._event('toy:delete', { id: elem.getAttribute('data-id') })
+    poker_card_pile._event('toy:delete', { id: elem.getAttribute('data-id') })
   },
 
   // Moves the top card to the right of the pile.
   draw_top: function(elem) {
-    const { x, y, w, h } = card_pile._own_box(elem)
+    const { x, y, w, h } = poker_card_pile._own_box(elem)
     const group = elem.querySelector('.tt_contents')
     const top = group.querySelector(':scope > .toy:last-child')
     if (!top) return
-    card_pile._eject(top, x + w + 70, y + h / 2)
-    if (card_pile._count(elem) === 0) {
-      card_pile._event('toy:delete', { id: elem.getAttribute('data-id') })
+    poker_card_pile._eject(top, x + w + 70, y + h / 2)
+    // A pile of only 1 card doesn't make sense.
+    if (container.count(elem) === 1) {
+      const newtop = group.querySelector(':scope > .toy:last-child')
+      if (!newtop) return
+      poker_card_pile._eject(newtop, x + w + 20, y + h / 2)
+    }
+    if (container.count(elem) === 0) {
+      poker_card_pile._event('toy:delete', { id: elem.getAttribute('data-id') })
     }
   },
 
   // Shows the card count, and thickens the pile's edge as it grows.
   contents_change_handler: function(elem) {
-    const n = card_pile._count(elem)
+    const n = container.count(elem)
     const tspan = elem.querySelector('.tspan_count')
     if (tspan) tspan.textContent = String(n)
     const edge1 = elem.querySelector('.pile_edge_1')

@@ -1448,12 +1448,12 @@ export const TOY_TYPES = {
   token_glass: TOOLS[7],
   single_poker_card: TOOLS[8],
   poker_deck: TOOLS[9],
-  card_pile: {
-    name:    'card_pile',
-    toyType: 'card_pile',
-    file: 'card_pile.svg',
+  poker_card_pile: {
+    name:    'poker_card_pile',
+    toyType: 'poker_card_pile',
+    file: 'poker_card_pile.svg',
     label: 'Card Pile',
-    iconUrl: 'toy/card_pile.svg',
+    iconUrl: 'toy/poker_card_pile.svg',
     layer:   'toys',
     defaults: {},
     options: [],
