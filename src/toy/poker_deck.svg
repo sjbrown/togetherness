@@ -98,16 +98,12 @@ var poker_deck = {
 
   // The count lives in the deck's own deck_summary; hiding it is a
   // display attribute on that group, so the state is readable from the DOM.
-  summary_of: function(elem) {
-    return elem.querySelector('.deck_summary')
-  },
-
   show_count: function(elem) {
-    return poker_deck.summary_of(elem)?.getAttribute('display') !== 'none'
+    return elem.querySelector('.deck_summary')?.getAttribute('display') !== 'none'
   },
 
   set_show_count: function(elem, show) {
-    const summary = poker_deck.summary_of(elem)
+    const summary = elem.querySelector('.deck_summary')
     if (!summary) return
     if (show) summary.removeAttribute('display')
     else      summary.setAttribute('display', 'none')
