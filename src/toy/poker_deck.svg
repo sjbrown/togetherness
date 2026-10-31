@@ -120,14 +120,27 @@ var poker_deck = {
     if (editData.show_count !== undefined) poker_deck.set_show_count(elem, !!editData.show_count)
   },
 
-  // Keeps the summary's number equal to the cards in the deck, and the
-  // deck as tall as its stack of cards. Only touches things outside
-  // tt_contents: writing to the cards from here would count as another
-  // change to the contents.
+  // Takes in any card dropped on the deck, then keeps the summary's number
+  // equal to the cards in the deck, and the deck as tall as its stack.
   contents_change_handler: function(elem) {
+    poker_deck._absorb_dropped(elem)
     const tspan = elem.querySelector('.tspan_count')
     if (tspan) tspan.textContent = String(poker_deck._cards(elem).length)
     poker_deck._fit(elem)
+  },
+
+  // A card toy dropped on the deck lands in tt_contents as a toy of its
+  // own. It becomes one of the deck's nested cards instead, face down on
+  // top, exactly as if it had used 'Return to deck', and the toy is gone.
+  // This runs again after every contents change and finds nothing more to
+  // do, so only a drop writes here.
+  _absorb_dropped: function(elem) {
+    const group = elem.querySelector('.tt_contents')
+    if (!group) return
+    group.querySelectorAll(':scope > .toy[data-toy-type="single_poker_card"]').forEach(toy => {
+      poker_deck.take_back(elem, Number(toy.dataset.suit), Number(toy.dataset.rank))
+      toy.remove()
+    })
   },
 
   _set: function(el, name, value) {
@@ -269,7 +282,7 @@ var poker_deck = {
     <rect x="0" y="0" width="100" height="150" rx="10" ry="10"
           fill="#c0c0c0" fill-opacity="0.4" stroke="#000" stroke-width="0.5" stroke-dasharray="4 3" />
   </g>
-  <g class="tt_contents" matches=".card">
+  <g class="tt_contents" data-tt-matches=".card">
     <svg class="card" data-suit="1" data-rank="1" x="0" y="0" width="100" height="150" viewBox="0 0 100 150">
       <g class="card_front">
         <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>

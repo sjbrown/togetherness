@@ -883,19 +883,19 @@ export function findDropTarget(layerEl, draggedId, rx, ry) {
 
 /**
  * Whether a container's tt_contents group accepts toyEl. The group may carry
- * a `matches` attribute: a CSS selector (`.card`) that toyEl's wrapper or
+ * a `data-tt-matches` attribute: a CSS selector (`.card`) that toyEl's wrapper or
  * its own inner <svg> must match, the same two elements a tt_positions
- * `name` is compared against when snapping. No `matches` accepts anything.
+ * `name` is compared against when snapping. No `data-tt-matches` accepts anything.
  *
  * A selector that doesn't parse accepts nothing, and says so.
  */
 export function acceptsToy(contentsGroup, toyEl) {
-  const selector = contentsGroup.getAttribute('matches')
+  const selector = contentsGroup.getAttribute('data-tt-matches')
   if (!selector) return true
   try {
     return toyEl.matches(selector) || !!toyEl.querySelector(':scope > svg')?.matches(selector)
   } catch (err) {
-    console.warn(`[toys] tt_contents matches="${selector}" is not a valid selector`)
+    console.warn(`[toys] tt_contents data-tt-matches="${selector}" is not a valid selector`)
     return false
   }
 }

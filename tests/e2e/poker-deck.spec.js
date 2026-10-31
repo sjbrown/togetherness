@@ -119,3 +119,47 @@ test('a deck contains its cards; draw, return, delete, pile and fan', async () =
 
   await browser.close();
 });
+
+test('dragging a card onto the deck takes it back in', async () => {
+  const browser = await launch();
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const complaints = [];
+  page.on('console', m => { if (['error', 'warning'].includes(m.type())) complaints.push(m.text()); });
+  await openAsCreator(page, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+  await waitForPeerCount(page, 0);
+
+  const box = await page.locator('#canvas').boundingBox();
+  await page.evaluate(() => window.UI.pillTap('poker_deck'));
+  await page.waitForTimeout(100);
+  await page.mouse.click(box.x + 200, box.y + 500);
+  const deck = page.locator('[data-toy-type="poker_deck"]');
+  await expect(deck).toHaveCount(1, { timeout: 5000 });
+  const deckId = await deck.getAttribute('data-id');
+  const inDeck = deck.locator('.tt_contents > svg.card');
+  const onTable = page.locator('#toys-layer > [data-toy-type="single_poker_card"]');
+  await expect(inDeck).toHaveCount(52);
+
+  await invoke(page, deckId, 'poker_deck', 'Draw', { num: 1 });
+  await expect(onTable).toHaveCount(1, { timeout: 5000 });
+  await expect(inDeck).toHaveCount(51);
+  const drawn = await onTable.evaluate(el => `${el.dataset.suit}.${el.dataset.rank}`);
+
+  await page.evaluate(() => window.UI.pillTap('select'));
+  await page.waitForTimeout(100);
+  const cardBox = await onTable.locator(':scope > svg').boundingBox();
+  const deckBox = await deck.locator(':scope > svg').boundingBox();
+  await page.mouse.move(cardBox.x + cardBox.width / 2, cardBox.y + cardBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(cardBox.x + cardBox.width / 2 - 60, cardBox.y + cardBox.height / 2 + 10, { steps: 8 });
+  await page.mouse.move(deckBox.x + deckBox.width / 2, deckBox.y + deckBox.height / 2, { steps: 12 });
+  await page.mouse.up();
+
+  await expect(onTable).toHaveCount(0, { timeout: 5000 });
+  await expect(inDeck).toHaveCount(52);
+  await expect(deck.locator('.deck_summary .tspan_count')).toHaveText('52');
+  expect(await inDeck.last().evaluate(el => `${el.dataset.suit}.${el.dataset.rank}`)).toBe(drawn);
+  await expect(deck.locator('.tt_contents > .toy')).toHaveCount(0);
+  expect(complaints.filter(c => /re-run|not a valid selector/.test(c))).toEqual([]);
+
+  await browser.close();
+});

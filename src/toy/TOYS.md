@@ -364,12 +364,12 @@ If you're building a *container* — something other toys can be dropped
 into — the contract is:
 
 - Your SVG has a `<g class="tt_contents">`, the standard drop zone.
-- To accept only some toys, give that group a `matches` attribute: a CSS
+- To accept only some toys, give that group a `data-tt-matches` attribute: a CSS
   selector tested against the dragged toy's wrapper and against its own root
-  `<svg>`. `<g class="tt_contents" matches=".card">` takes only toys whose
+  `<svg>`. `<g class="tt_contents" data-tt-matches=".card">` takes only toys whose
   root `<svg>` has `class="card"`. It works like the `name` on a
   `tt_positions` group, which is compared against the dragged toy's classes
-  to decide what may snap there. Without `matches`, anything is accepted. A
+  to decide what may snap there. Without `data-tt-matches`, anything is accepted. A
   toy that doesn't match is not offered as a drop target, so it gets no hover
   highlight and isn't reparented. A selector that doesn't parse accepts
   nothing.

@@ -8,7 +8,7 @@ import { ensureLayerId } from '../../src/op_layers.js'
 import {
   TOYS_LAYER, TOY_TYPES, addToyDom, activateAllToyScriptsDom, reparentToyDom, deleteEl,
   findEl, getMenuActions, invokeMenuAction, runInitializers, getTtStateSchema, editEl, TOOLS, toolInitArgs,
-  findDropTarget,
+  findDropTarget, runGesture,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 
@@ -660,8 +660,8 @@ describe('card and deck markup', () => {
   })
 })
 
-describe('drop filtering: `matches` on a container\'s tt_contents', () => {
-  // deck1 at (100, 100), pile1 at (700, 100); a bag at (1000, 100) has no `matches`.
+describe('drop filtering: `data-tt-matches` on a container\'s tt_contents', () => {
+  // deck1 at (100, 100), pile1 at (700, 100); a bag at (1000, 100) has no `data-tt-matches`.
   async function dropTable() {
     const t = await table()
     t.place('bag1', 'bag', BAG_SVG, 1000, 100)
@@ -673,7 +673,7 @@ describe('drop filtering: `matches` on a container\'s tt_contents', () => {
   test('the deck and the pile declare .card', async () => {
     const t = await dropTable()
     for (const id of ['deck1', 'pile1']) {
-      expect(findEl(t.layerEl, id).querySelector('[class*="tt_contents"]').getAttribute('matches')).toBe('.card')
+      expect(findEl(t.layerEl, id).querySelector('[class*="tt_contents"]').getAttribute('data-tt-matches')).toBe('.card')
     }
   })
 
@@ -689,7 +689,7 @@ describe('drop filtering: `matches` on a container\'s tt_contents', () => {
     expect(findDropTarget(t.layerEl, 'chip1', 700, 100)).toBeNull()
   })
 
-  test('a container without `matches` still accepts anything', async () => {
+  test('a container without `data-tt-matches` still accepts anything', async () => {
     const t = await dropTable()
     expect(findDropTarget(t.layerEl, 'chip1', 1000, 100)).toBe('bag1')
     expect(findDropTarget(t.layerEl, 'card1', 1000, 100)).toBe('bag1')
@@ -697,11 +697,85 @@ describe('drop filtering: `matches` on a container\'s tt_contents', () => {
 
   test('a selector that does not parse accepts nothing, and warns', async () => {
     const t = await dropTable()
-    t.place('bad', 'poker_deck', DECK_SVG.replace('matches=".card"', 'matches=">>>"'), 1500, 100)
+    t.place('bad', 'poker_deck', DECK_SVG.replace('data-tt-matches=".card"', 'data-tt-matches=">>>"'), 1500, 100)
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
       expect(findDropTarget(t.layerEl, 'card1', 1500, 100)).toBeNull()
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('not a valid selector'))
     } finally { warn.mockRestore() }
+  })
+})
+
+describe('dropping a card on a deck works like Return to deck', () => {
+  // What commitMove does once findDropTarget names the deck.
+  const dropOn = (t, cardId, deckId) =>
+    runGesture(t.ydoc, t.layerEl, () => reparentToyDom(t.layerEl, cardId, deckId),
+      { gesture: 'reparent', authorId: AUTHOR, tableId: TABLE })
+
+  test("a card dropped on its own deck ends up exactly as if it had used 'Return to deck'", async () => {
+    const viaMenu = await table()
+    draw(viaMenu, 'deck1')
+    const cardA = onTable(viaMenu.layerEl)[0]
+    const keyA = key(cardA)
+    giveBack(viaMenu, cardA)
+
+    const viaDrop = await table()
+    draw(viaDrop, 'deck1')
+    const cardB = onTable(viaDrop.layerEl)[0]
+    const keyB = key(cardB)
+    dropOn(viaDrop, cardB.getAttribute('data-id'), 'deck1')
+
+    expect(findEl(viaDrop.layerEl, cardB.getAttribute('data-id'))).toBeNull()
+    expect(viaDrop.layerEl.querySelector(`[data-id="${cardB.getAttribute('data-id')}"]`)).toBeNull()
+    expect(order(viaDrop.layerEl, 'deck1')).toHaveLength(52)
+    expect(order(viaDrop.layerEl, 'deck1').at(-1)).toBe(keyB)
+    expect(order(viaMenu.layerEl, 'deck1').at(-1)).toBe(keyA)
+    // the same finished card on top, and the same finished deck around it
+    const top = (t) => inDeck(t.layerEl, 'deck1').at(-1)
+    for (const t of [viaMenu, viaDrop]) {
+      expect(top(t).querySelector('.card_front + .card_back')).not.toBeNull()
+      expect(top(t).hasAttribute('display')).toBe(false)
+    }
+    expect(findEl(viaDrop.layerEl, 'deck1').querySelector('.tspan_count').textContent).toBe('52')
+    expect(findEl(viaDrop.layerEl, 'deck1').querySelector(':scope > svg').getAttribute('height'))
+      .toBe(findEl(viaMenu.layerEl, 'deck1').querySelector(':scope > svg').getAttribute('height'))
+  })
+
+  test('the drop leaves no toy behind in the deck and logs no re-run complaint', async () => {
+    const t = await table()
+    draw(t, 'deck1', { num: 2 })
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      for (const card of onTable(t.layerEl)) dropOn(t, card.getAttribute('data-id'), 'deck1')
+      expect(spy).not.toHaveBeenCalled()
+    } finally { spy.mockRestore() }
+    expect(findEl(t.layerEl, 'deck1').querySelectorAll('.tt_contents > .toy')).toHaveLength(0)
+    expect(order(t.layerEl, 'deck1')).toHaveLength(52)
+    expect(onTable(t.layerEl)).toHaveLength(0)
+  })
+
+  test('a card from another deck, or from no deck, joins the deck it is dropped on', async () => {
+    const t = await table()
+    draw(t, 'deck2')
+    const foreign = onTable(t.layerEl)[0]
+    const foreignKey = key(foreign)
+    const plain = loose(t.place, 'plain', 4, 13)
+
+    dropOn(t, foreign.getAttribute('data-id'), 'deck1')
+    dropOn(t, 'plain', 'deck1')
+
+    expect(order(t.layerEl, 'deck1')).toHaveLength(54)
+    expect(order(t.layerEl, 'deck1').slice(-2)).toEqual([foreignKey, '4.13'])
+    expect(order(t.layerEl, 'deck2')).toHaveLength(51)
+  })
+
+  test('the deck count and height follow a drop', async () => {
+    const t = await table()
+    draw(t, 'deck1', { num: 3 })
+    const before = findEl(t.layerEl, 'deck1').querySelector(':scope > svg').getAttribute('height')
+    dropOn(t, onTable(t.layerEl)[0].getAttribute('data-id'), 'deck1')
+    const deck = findEl(t.layerEl, 'deck1')
+    expect(deck.querySelector('.tspan_count').textContent).toBe('50')
+    expect(parseFloat(deck.querySelector(':scope > svg').getAttribute('height'))).toBeGreaterThan(parseFloat(before))
   })
 })

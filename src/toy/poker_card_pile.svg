@@ -183,7 +183,7 @@ var poker_card_pile = {
   ]]></script>
 
   <rect class="tt_hit_plate" x="-10" y="-10" width="120" height="170" fill="transparent" />
-  <g class="tt_contents" matches=".card"></g>
+  <g class="tt_contents" data-tt-matches=".card"></g>
   <g class="pile_summary">
     <circle cx="96" cy="146" r="11" fill="#fff" fill-opacity="0.85" stroke="#000" stroke-width="0.5" />
     <text x="96" y="151" text-anchor="middle" font-size="14" font-family="sans-serif"
