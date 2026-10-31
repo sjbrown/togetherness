@@ -20,7 +20,7 @@ const TOY_DIR = path.resolve(__dir, '../../src/toy')
 const read = (f) => fs.readFileSync(path.join(TOY_DIR, f), 'utf8')
 const DECK_SVG = read('poker_deck.svg')
 const CARD_SVG = read('single_poker_card.svg')
-const PILE_SVG = read('card_pile.svg')
+const PILE_SVG = read('poker_card_pile.svg')
 const CONTAINER_JS = read('js/container.js')
 
 function freshLayer() {
@@ -45,7 +45,7 @@ function wirePlatform(ydoc, layerEl) {
   removeListeners = [
     on('toy:add', (e) => {
       const { toyType, x, y, color, initArgs } = e.detail
-      const svg = { single_poker_card: CARD_SVG, card_pile: PILE_SVG }[toyType]
+      const svg = { single_poker_card: CARD_SVG, poker_card_pile: PILE_SVG }[toyType]
       const toyEl = addToyDom(ydoc, layerEl, { id: `new${n++}`, toyType, x, y, color }, svg)
       runInitializers(toyEl, toyType, initArgs)
     }),
@@ -57,11 +57,11 @@ function wirePlatform(ydoc, layerEl) {
 beforeEach(() => {
   _clearSvgTextCache()
   _resetToyScriptState()
-  for (const ns of ['poker_deck', 'single_poker_card', 'card_pile', 'container']) delete globalThis[ns]
+  for (const ns of ['poker_deck', 'single_poker_card', 'poker_card_pile', 'container']) delete globalThis[ns]
   vi.stubGlobal('fetch', vi.fn(async (url) => {
     if (url === 'toy/poker_deck.svg')        return { ok: true, text: async () => DECK_SVG }
     if (url === 'toy/single_poker_card.svg') return { ok: true, text: async () => CARD_SVG }
-    if (url === 'toy/card_pile.svg')         return { ok: true, text: async () => PILE_SVG }
+    if (url === 'toy/poker_card_pile.svg')         return { ok: true, text: async () => PILE_SVG }
     if (url === 'toy/js/container.js')       return { ok: true, text: async () => CONTAINER_JS }
     throw new Error(`unexpected fetch: ${url}`)
   }))
@@ -79,7 +79,7 @@ async function table() {
     addToyDom(ydoc, layerEl, { id, toyType, x, y, color: '#fa2020' }, svg)
   place('seed', 'single_poker_card', CARD_SVG)
   const decks = [place('deck1', 'poker_deck', DECK_SVG, 100), place('deck2', 'poker_deck', DECK_SVG, 400)]
-  place('pile1', 'card_pile', PILE_SVG, 700, 100)
+  place('pile1', 'poker_card_pile', PILE_SVG, 700, 100)
   activateAllToyScriptsDom(ydoc, layerEl)
   await new Promise(r => setTimeout(r, 0))
   deleteEl(layerEl, 'seed')
@@ -112,7 +112,7 @@ const giveBack = (t, card) =>
 describe('registration', () => {
   test('the deck is a palette tool and the pile a placeable toy type', () => {
     expect(TOY_TYPES.poker_deck.file).toBe('poker_deck.svg')
-    expect(TOY_TYPES.card_pile.file).toBe('card_pile.svg')
+    expect(TOY_TYPES.poker_card_pile.file).toBe('poker_card_pile.svg')
   })
 })
 
@@ -448,7 +448,7 @@ describe('single_poker_card: Return to deck', () => {
   })
 })
 
-describe('stacking cards into a card_pile and fanning it', () => {
+describe('stacking cards into a poker_card_pile and fanning it', () => {
   // Cards a, b, c stacked bottom to top, the way snapping links them.
   async function stackedCards() {
     const t = await table()
@@ -474,14 +474,37 @@ describe('stacking cards into a card_pile and fanning it', () => {
     } finally { document.removeEventListener('toy:add', record) }
 
     expect(adds).toHaveLength(1)
-    expect(adds[0].toyType).toBe('card_pile')
+    expect(adds[0].toyType).toBe('poker_card_pile')
     expect(adds[0].initArgs).toEqual(['a', 'b', 'c'])
   })
 
   function fillPile(t) {
-    runInitializers(findEl(t.layerEl, 'pile1'), 'card_pile', ['a', 'b', 'c'])
+    runInitializers(findEl(t.layerEl, 'pile1'), 'poker_card_pile', ['a', 'b', 'c'])
     return findEl(t.layerEl, 'pile1')
   }
+
+  test('a card entering the pile is cleared of its stacking links', async () => {
+    const t = await stackedCards()
+    expect(['a', 'b', 'c'].map(id => findEl(t.layerEl, id).getAttribute('data-below'))).toEqual(['b', 'c', ''])
+
+    const pile = fillPile(t)
+
+    for (const card of pile.querySelectorAll('.tt_contents > .toy')) {
+      expect(card.getAttribute('data-above')).toBe('')
+      expect(card.getAttribute('data-below')).toBe('')
+    }
+  })
+
+  test('Draw from a two-card pile deals both, since a pile of one makes no sense', async () => {
+    const t = await stackedCards()
+    runInitializers(findEl(t.layerEl, 'pile1'), 'poker_card_pile', ['a', 'b'])
+
+    invokeMenuAction(t.ydoc, t.layerEl, findEl(t.layerEl, 'pile1'), 'poker_card_pile', 'Draw', undefined, AUTHOR, TABLE)
+
+    expect(findEl(t.layerEl, 'pile1')).toBeNull()
+    expect(findEl(t.layerEl, 'a')).not.toBeNull()
+    expect(findEl(t.layerEl, 'b')).not.toBeNull()
+  })
 
   test('the pile takes its cards in and shows how many', async () => {
     const t = await stackedCards()
@@ -496,7 +519,7 @@ describe('stacking cards into a card_pile and fanning it', () => {
     const t = await stackedCards()
     const pile = fillPile(t)
 
-    invokeMenuAction(t.ydoc, t.layerEl, pile, 'card_pile', 'Draw', undefined, AUTHOR, TABLE)
+    invokeMenuAction(t.ydoc, t.layerEl, pile, 'poker_card_pile', 'Draw', undefined, AUTHOR, TABLE)
 
     const c = findEl(t.layerEl, 'c')
     expect(c).not.toBeNull()
@@ -508,7 +531,7 @@ describe('stacking cards into a card_pile and fanning it', () => {
     const t = await stackedCards()
     const pile = fillPile(t)
 
-    invokeMenuAction(t.ydoc, t.layerEl, pile, 'card_pile', 'Fan', undefined, AUTHOR, TABLE)
+    invokeMenuAction(t.ydoc, t.layerEl, pile, 'poker_card_pile', 'Fan', undefined, AUTHOR, TABLE)
 
     expect(findEl(t.layerEl, 'pile1')).toBeNull()
     const xs = ['a', 'b', 'c'].map(id => {
@@ -524,7 +547,7 @@ describe('stacking cards into a card_pile and fanning it', () => {
     const t = await stackedCards()
     const pile = fillPile(t)
 
-    invokeMenuAction(t.ydoc, t.layerEl, pile, 'card_pile', 'Fan', undefined, AUTHOR, TABLE)
+    invokeMenuAction(t.ydoc, t.layerEl, pile, 'poker_card_pile', 'Fan', undefined, AUTHOR, TABLE)
 
     const [ya, yb, yc] = ['a', 'b', 'c'].map(id =>
       parseFloat(findEl(t.layerEl, id).querySelector(':scope > svg').getAttribute('y')))

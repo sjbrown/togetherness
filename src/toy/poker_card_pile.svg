@@ -56,6 +56,11 @@ var poker_card_pile = {
     const containerId = elem.getAttribute('data-id')
     for (const id of cardIds) {
       poker_card_pile._event('toy:reparent', { id, containerId })
+      // A card in the pile no longer rests on or under another card. It is
+      // part of this toy's subtree now, so it can be cleared from here.
+      const card = elem.querySelector(`[data-id="${id}"]`)
+      card?.setAttribute('data-above', '')
+      card?.setAttribute('data-below', '')
     }
   },
 

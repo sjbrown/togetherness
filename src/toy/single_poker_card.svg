@@ -125,7 +125,7 @@ var single_poker_card = {
         || single_poker_card.chain(elem, 'data-below').length > 0
   },
 
-  // Gathers the cards stacked with elem (bottom to top) into a card_pile
+  // Gathers the cards stacked with elem (bottom to top) into a poker_card_pile
   // placed where the bottom card lies.
   pile: function(elem) {
     const layer = elem.closest('#toys-layer')
@@ -138,7 +138,7 @@ var single_poker_card = {
     ]
     const bottomEl = layer.querySelector(`[data-id="${ids[0]}"]`) ?? elem
     const { x, y } = single_poker_card.anchor_of(bottomEl)
-    single_poker_card._event('toy:add', { toyType: 'card_pile', x, y, initArgs: ids })
+    single_poker_card._event('toy:add', { toyType: 'poker_card_pile', x, y, initArgs: ids })
   },
 
   // Centre point of a placed toy, in its layer's coordinate space.

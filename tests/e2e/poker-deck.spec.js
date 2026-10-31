@@ -2,7 +2,7 @@
  * tests/e2e/poker-deck.spec.js
  *
  * A poker deck deals real cards through toy:add, a dealt card can return to
- * the deck it came from, and cards can be gathered into a card_pile and
+ * the deck it came from, and cards can be gathered into a poker_card_pile and
  * fanned back out.
  *
  * Run via:  bin/test_e2e.sandbox.sh tests/e2e/poker-deck.spec.js
@@ -98,15 +98,15 @@ test('a deck contains its cards; draw, return, delete, pile and fan', async () =
   await expect(onTable).toHaveCount(2);
   const pileIds = await onTable.evaluateAll(els => els.map(el => el.dataset.id));
   await page.evaluate((ids) => {
-    const detail = { toyType: 'card_pile', x: 600, y: 300, initArgs: ids, retval: {} };
+    const detail = { toyType: 'poker_card_pile', x: 600, y: 300, initArgs: ids, retval: {} };
     document.dispatchEvent(new CustomEvent('toy:add', { detail }));
   }, pileIds);
-  const pile = page.locator('[data-toy-type="card_pile"]');
+  const pile = page.locator('[data-toy-type="poker_card_pile"]');
   await expect(pile).toHaveCount(1, { timeout: 5000 });
   await expect(pile.locator('.tt_contents > [data-toy-type="single_poker_card"]')).toHaveCount(2);
   await expect(pile.locator('.tspan_count')).toHaveText('2');
 
-  await invoke(page, await pile.getAttribute('data-id'), 'card_pile', 'Fan');
+  await invoke(page, await pile.getAttribute('data-id'), 'poker_card_pile', 'Fan');
   await expect(pile).toHaveCount(0);
   await expect(onTable).toHaveCount(2);
 
