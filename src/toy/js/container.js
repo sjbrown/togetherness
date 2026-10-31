@@ -14,7 +14,11 @@ var container = {
       throw new Error('[container] visit_contents: no .tt_contents')
     }
     group.querySelectorAll(':scope > .toy').forEach(visitFn)
-    // TODO: CustomEvent to 'contents_changed' here.
+  },
+
+  count: function(elem) {
+    const group = elem.querySelector('.tt_contents')
+    return group ? group.querySelectorAll(':scope > .toy').length : 0
   },
 
   /**

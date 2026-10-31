@@ -4,6 +4,66 @@ A toy is one SVG file: artwork and behaviour together, as ordinary SVG plus
 a `<script>`. You need to know JavaScript and SVG. You don't need to know
 anything about Yjs, CRDTs, or how sync works — that's handled for you.
 
+## The document is the state
+
+A table is an SVG document. Players can export it, open it in Inkscape (or
+any SVG-compliant editor), move things around, recolour them, fix a typo,
+and bring it back in — an old table, long after the session that made it
+has gone, is a file you can work on. Write every toy on the assumption that
+this is part of someone's normal workflow, not an edge case.
+
+So: **if a fact about your toy is worth remembering, it lives in the DOM.**
+Not in a JavaScript variable, not in a closure, not in a `Map` keyed by id.
+Your namespace object holds *behaviour*; the document holds *state*. The test
+is simple: export, reopen, and your toy should look and act the same.
+
+### Where state goes
+
+| State | Where it lives |
+|-------|----------------|
+| What the toy shows | Real SVG: text in `<tspan>`s, shapes, `fill`, `transform`. Not a canvas, not generated at render time. |
+| A value you need back later | An attribute or text node on your toy (`<tspan class="count">`, `class="flipped"`). A face-up card is two `<g>`s in a different order, not a boolean in a variable. |
+| Per-instance bookkeeping | A `data-*` attribute on the toy's root `<g>`. These ride along when the toy is cloned (a supply's copy, a duplicate), and survive export. |
+| Which toy is inside which | **Nesting.** A card in a deck is the card's `<svg>` *inside* the deck's `.tt_contents`. Not an id list, not a `data-held-by`. If you can drag a die out of a tray in Inkscape, the tray has lost it. |
+| Which toy is stacked on which | A `tt_positions` point where one toy's centre sits on the other's. `data-above`/`data-below` are a cache of that geometry, not the truth. |
+| A reference to another toy | Its `data-id`, in a `data-*` attribute (a dealt card's `data-home-deck`). Always check the target still exists before using it. |
+
+### What to avoid
+
+- **Hidden state.** Anything held only in JS is lost on reload, absent for
+  peers who join later, and invisible in an editor.
+- **Derived state stored as truth.** If a total, a count or a label can be
+  computed from the contents, compute it in `contents_change_handler` and
+  write the *result* where a reader can see it; never read it back as input.
+- **Markup only your code can interpret.** Prefer ordinary SVG
+  (`<text>`, `<rect>`, `transform`, `<use>`) that an editor renders correctly
+  without running your script. Scripts are saved with the document, but an
+  editor won't run them: a toy whose art is blank until `initialize` paints
+  it is a blank rectangle in Inkscape.
+- **Deleting and removing are different verbs.** Taking a card out of a deck
+  is a *reparent*; discarding it is a *delete*. Don't conflate them.
+
+### What the editor may do to your file
+
+Expect these, and design for them:
+
+- **Attributes get edited.** Position, size, colours, text. Read them fresh
+  each time rather than caching.
+- **Ids get changed.** `id` belongs to the editor's user (your own code must
+  still never alter ids; see the end of this file). Your toy's identity
+  is `data-id`, set once and never rewritten by the platform. Reference
+  other toys by `data-id`, not `id`.
+- **Foreign markup appears.** Editor-specific elements and attributes
+  (`sodipodi:*`, `inkscape:*`) may be added. Don't depend on child counts or
+  order beyond what you author.
+- **Scripts that load from `src=` are not saved with the document.** Inline
+  `<script>`s are consolidated at the document root on export; a `src=`
+  helper (`js/tray.js`) is assumed to be present from the app's own source
+  tree when the document is reopened.
+- **Valid toy, minimum.** To be taken back in, a toy needs only
+  `<g class="toy" data-toy-type="...">` containing at least one `<svg>`.
+  Everything else the platform restores.
+
 ## A minimal toy
 
 ```xml
@@ -271,12 +331,20 @@ envelope watches what you changed and translates it into the document's
 sync layer after your handler returns. You don't interact with this
 directly, but two rules follow from it:
 
-- **Stay inside your own toy.** Mutating another toy's DOM (not your own
-  subtree) is reverted and logged as a warning — not silently ignored,
-  not silently allowed. If a container needs to affect a contained toy
-  (a tray rolling every die inside it), do it by *calling that toy's own
-  menu handler* on it, the way `tray.roll_all` does — not by reaching in
-  and mutating it directly.
+- **Act on other toys through their front door.** Your handler may mutate
+  your own subtree freely — including toys contained in you. Anything
+  elsewhere on the table goes through a sanctioned route, so the platform sees
+  a gesture rather than a stray edit:
+  - *Call the other toy's own menu handler or namespace function*, as
+    `tray.roll_all` does for each die, or a deck does when it asks a card to
+    return itself.
+  - *Fire a platform event* on `document`: `toy:add`, `toy:clone`,
+    `toy:reparent`, `toy:delete`, `toy:edit`. This is how a stack gathers
+    chips, a deck deals cards, and a supply copies its prototype. Each takes
+    `detail`, and either `detail.retval` or `detail.error` comes back.
+
+  Reaching into an unrelated toy and setting its attributes yourself is
+  the one thing to avoid: the other toy's author can't know it happens.
 - **Write synchronous handlers.** `menu` handlers, `initialize`, and
   `contents_change_handler` all run and commit within a single tick — no
   `await`, no `Promise`, no `setTimeout`. This is what lets your handler's

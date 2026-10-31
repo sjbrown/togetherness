@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns="http://www.w3.org/2000/svg"
+   width="120"
+   height="170"
+   viewBox="-10 -10 120 170"
+   version="1.1"
+   id="poker_card_pile"
+   class="poker_card_pile"
+   >
+  <defs id="defs_poker_card_pile">
+    <filter class="tt_color_filter"
+       id="app-filter-colorize"
+       color-interpolation-filters="sRGB">
+      <feColorMatrix
+         id="recolorize-filter-matrix"
+         type="matrix"
+         values="1.0 0.0 0.0 0.0  0.0
+                 1.0 0.0 0.0 0.0  0.0
+                 1.0 0.0 0.0 0.0  0.0
+                 0.0 0.0 0.0 1.0  0.0" />
+    </filter>
+  </defs>
+  <script
+     type="text/javascript"
+     src="js/container.js"
+     data-namespace="container"
+     id="script_container" />
+  <script
+     type="text/javascript"
+     data-namespace="poker_card_pile"
+     id="script_poker_card_pile"><![CDATA[
+
+var poker_card_pile = {
+
+
+  menu: {
+    'Fan': {
+      eventName: 'poker_card_pile_fan',
+      applicable: (node) => container.count(node) > 0,
+      handler: function(evt) {
+        poker_card_pile.fan_all(this)
+      },
+    },
+    'Draw': {
+      eventName: 'poker_card_pile_draw',
+      applicable: (node) => container.count(node) > 0,
+      handler: function(evt) {
+        poker_card_pile.draw_top(this)
+      },
+    },
+  },
+
+  initialize: function(elem, cardIds) {
+    if (!Array.isArray(cardIds) || !cardIds.length) return
+    const containerId = elem.getAttribute('data-id')
+    for (const id of cardIds) {
+      poker_card_pile._event('toy:reparent', { id, containerId })
+      // The card is part of this toy's subtree now, so it can be tidied
+      // from here: it no longer rests on or under another card.
+      const card = elem.querySelector(`[data-id="${id}"]`)
+      card?.setAttribute('data-above', '')
+      card?.setAttribute('data-below', '')
+    }
+  },
+
+  // How far off-centre, in whole pixels either way, a card in the pile lies.
+  JITTER: 10,
+
+  // Offsets a card's <svg> by a random whole number of pixels in x and y. A
+  // card that has landed sits exactly on the pile's landing point, so a
+  // jittered card never does: (0, 0) becomes (1, 0).
+  _jitter: function(svg) {
+    const { JITTER } = poker_card_pile
+    const offset = () => Math.floor(Math.random() * (2 * JITTER + 1)) - JITTER
+    let dx = offset()
+    const dy = offset()
+    if (dx === 0 && dy === 0) dx = 1
+    svg.setAttribute('x', String((parseFloat(svg.getAttribute('x')) || 0) + dx))
+    svg.setAttribute('y', String((parseFloat(svg.getAttribute('y')) || 0) + dy))
+  },
+
+  // Scatters every card still sitting on the landing point: whichever
+  // arrived since the last change, however it got in.
+  _scatter_arrivals: function(elem) {
+    const point = elem.querySelector(':scope > svg > [class*="tt_positions"] circle')
+    if (!point) return
+    const cx = parseFloat(point.getAttribute('cx'))
+    const cy = parseFloat(point.getAttribute('cy'))
+    container.visit_contents(elem, (card) => {
+      const svg = card.querySelector(':scope > svg')
+      if (!svg) return
+      const w = parseFloat(svg.getAttribute('width'))  || 0
+      const h = parseFloat(svg.getAttribute('height')) || 0
+      if (parseFloat(svg.getAttribute('x')) === cx - w / 2 &&
+          parseFloat(svg.getAttribute('y')) === cy - h / 2) {
+        poker_card_pile._jitter(svg)
+      }
+    })
+  },
+
+  _own_box: function(elem) {
+    const svg = elem.querySelector(':scope > svg')
+    return {
+      x: parseFloat(svg?.getAttribute('x'))      || 0,
+      y: parseFloat(svg?.getAttribute('y'))      || 0,
+      w: parseFloat(svg?.getAttribute('width'))  || 0,
+      h: parseFloat(svg?.getAttribute('height')) || 0,
+    }
+  },
+
+  _eject: function(child, cx, cy) {
+    const childSvg = child.querySelector(':scope > svg')
+    if (!childSvg) return
+    const w = parseFloat(childSvg.getAttribute('width'))  || 0
+    const h = parseFloat(childSvg.getAttribute('height')) || 0
+    poker_card_pile._event(
+      'toy:reparent', { id: child.getAttribute('data-id'), containerId: null }
+    )
+    // Overrides reparentToyDom's "preserve visual position" default.
+    childSvg.setAttribute('x', String(cx - w / 2))
+    childSvg.setAttribute('y', String(cy - h / 2))
+  },
+
+  fan_all: function(elem) {
+    const { x, y, w, h } = poker_card_pile._own_box(elem)
+    const total = container.count(elem)
+    const mid = (total - 1) / 2
+    const fanArc = 0.25
+
+    container.visit_contents(elem, (child, i) => {
+      const childSvg = child.querySelector(':scope > svg')
+      const cardW = parseFloat(childSvg?.getAttribute('width')) || 0
+      const spacing = Math.min(cardW / 4, 700 / Math.max(1, total - 1))
+      const offset = i - mid
+      // Fan the cards out in a parabola, with the middle card staying level
+      const drop = mid > 0 ? fanArc * spacing * offset * offset / mid : 0
+      poker_card_pile._eject(
+        child,
+        x + w / 2 + offset * spacing,
+        y + h / 2 + drop,
+      )
+    })
+
+    poker_card_pile._event('toy:delete', { id: elem.getAttribute('data-id') })
+  },
+
+  // Moves the top card to the right of the pile.
+  draw_top: function(elem) {
+    const { x, y, w, h } = poker_card_pile._own_box(elem)
+    const group = elem.querySelector('.tt_contents')
+    const top = group.querySelector(':scope > .toy:last-child')
+    if (!top) return
+    poker_card_pile._eject(top, x + w + 70, y + h / 2)
+    // A pile of only 1 card doesn't make sense.
+    if (container.count(elem) === 1) {
+      const newtop = group.querySelector(':scope > .toy:last-child')
+      if (!newtop) return
+      poker_card_pile._eject(newtop, x + w + 20, y + h / 2)
+    }
+    if (container.count(elem) === 0) {
+      poker_card_pile._event('toy:delete', { id: elem.getAttribute('data-id') })
+    }
+  },
+
+  // Shows the card count, and lays any new arrivals a little off-centre so
+  // the pile looks hand-stacked.
+  contents_change_handler: function(elem) {
+    const tspan = elem.querySelector('.tspan_count')
+    if (tspan) tspan.textContent = String(container.count(elem))
+    poker_card_pile._scatter_arrivals(elem)
+  },
+
+  _event: function(evName, args) {
+    const detail = { ...args, retval: {} };
+    document.dispatchEvent(new CustomEvent(evName, { detail }));
+    if (detail.error) throw new Error(detail.error);
+    return detail.retval;
+  },
+
+}
+
+  ]]></script>
+
+  <rect class="tt_hit_plate" x="-10" y="-10" width="120" height="170" fill="transparent" />
+  <g class="tt_contents"></g>
+  <g class="pile_summary">
+    <circle cx="96" cy="146" r="11" fill="#fff" fill-opacity="0.85" stroke="#000" stroke-width="0.5" />
+    <text x="96" y="151" text-anchor="middle" font-size="14" font-family="sans-serif"
+          fill="#000"><tspan class="tspan_count">0</tspan></text>
+  </g>
+  <g class="tt_positions" data-bounpos-type="pos-set" name="card">
+    <circle cx="50" cy="75" r="10" fill="#fff" fill-opacity="0.1"></circle>
+  </g>
+</svg>
