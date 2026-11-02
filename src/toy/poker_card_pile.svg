@@ -95,7 +95,7 @@ var poker_card_pile = {
     })
   },
 
-  _own_box: function(elem) {
+  _bounding_box: function(elem) {
     const svg = elem.querySelector(':scope > svg')
     return {
       x: parseFloat(svg?.getAttribute('x'))      || 0,
@@ -105,6 +105,8 @@ var poker_card_pile = {
     }
   },
 
+  // Takes a card out of the pile onto the table. With a centre point
+  // (cx, cy) it lands there; without one it stays where it was drawn.
   _eject: function(child, cx, cy) {
     const childSvg = child.querySelector(':scope > svg')
     if (!childSvg) return
@@ -113,13 +115,14 @@ var poker_card_pile = {
     poker_card_pile._event(
       'toy:reparent', { id: child.getAttribute('data-id'), containerId: null }
     )
+    if (cx === undefined) return
     // Overrides reparentToyDom's "preserve visual position" default.
     childSvg.setAttribute('x', String(cx - w / 2))
     childSvg.setAttribute('y', String(cy - h / 2))
   },
 
   fan_all: function(elem) {
-    const { x, y, w, h } = poker_card_pile._own_box(elem)
+    const { x, y, w, h } = poker_card_pile._bounding_box(elem)
     const total = container.count(elem)
     const mid = (total - 1) / 2
     const fanArc = 0.25
@@ -143,7 +146,7 @@ var poker_card_pile = {
 
   // Moves the top card to the right of the pile.
   draw_top: function(elem) {
-    const { x, y, w, h } = poker_card_pile._own_box(elem)
+    const { x, y, w, h } = poker_card_pile._bounding_box(elem)
     const group = elem.querySelector('.tt_contents')
     const top = group.querySelector(':scope > .toy:last-child')
     if (!top) return
@@ -152,7 +155,7 @@ var poker_card_pile = {
     if (container.count(elem) === 1) {
       const newtop = group.querySelector(':scope > .toy:last-child')
       if (!newtop) return
-      poker_card_pile._eject(newtop, x + w + 20, y + h / 2)
+      poker_card_pile._eject(newtop)
     }
     if (container.count(elem) === 0) {
       poker_card_pile._event('toy:delete', { id: elem.getAttribute('data-id') })

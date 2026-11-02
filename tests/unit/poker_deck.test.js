@@ -107,8 +107,8 @@ const key = (el) => `${el.dataset.suit}.${el.dataset.rank}`
 const labels = (el) => getMenuActions(el).map(a => a.label)
 const draw = (t, deckId, params) =>
   invokeMenuAction(t.ydoc, t.layerEl, findEl(t.layerEl, deckId), 'poker_deck', 'Draw', undefined, AUTHOR, TABLE, params)
-const reshuffle = (t, deckId) =>
-  invokeMenuAction(t.ydoc, t.layerEl, findEl(t.layerEl, deckId), 'poker_deck', 'Reshuffle', undefined, AUTHOR, TABLE)
+const shuffleDeck = (t, deckId) =>
+  invokeMenuAction(t.ydoc, t.layerEl, findEl(t.layerEl, deckId), 'poker_deck', 'Shuffle', undefined, AUTHOR, TABLE)
 const giveBack = (t, card) =>
   invokeMenuAction(t.ydoc, t.layerEl, card, 'single_poker_card', 'Return to deck', undefined, AUTHOR, TABLE)
 
@@ -127,7 +127,7 @@ describe('poker_deck', () => {
     expect(new Set(order(layerEl, 'deck1')).size).toBe(52)
     expect(cards.every(c => c.querySelector('.card_front + .card_back'))).toBe(true)
     expect(layerEl.querySelectorAll('[data-toy-type="single_poker_card"]')).toHaveLength(0)
-    expect(labels(findEl(layerEl, 'deck1'))).toEqual(['Draw (52)', 'Reshuffle'])
+    expect(labels(findEl(layerEl, 'deck1'))).toEqual(['Draw (52)', 'Shuffle'])
   })
 
   test("the deck's colour reaches every card's back through the shared filter", async () => {
@@ -156,7 +156,7 @@ describe('poker_deck', () => {
     const out = onTable(t.layerEl)
     expect(out.map(key)).toEqual(before.slice(49).reverse())
     expect(out.every(c => c.getAttribute('data-home-deck') === 'deck1')).toBe(true)
-    expect(labels(findEl(t.layerEl, 'deck1'))).toEqual(['Draw (49)', 'Reshuffle'])
+    expect(labels(findEl(t.layerEl, 'deck1'))).toEqual(['Draw (49)', 'Shuffle'])
   })
 
   test('drawing from one deck leaves the other alone', async () => {
@@ -166,11 +166,11 @@ describe('poker_deck', () => {
     expect(order(t.layerEl, 'deck2')).toEqual(other)
   })
 
-  test('Reshuffle changes the order of the cards in the deck, keeping the same 52', async () => {
+  test('Shuffle changes the order of the cards in the deck, keeping the same 52', async () => {
     const t = await table()
     const before = order(t.layerEl, 'deck1')
 
-    reshuffle(t, 'deck1')
+    shuffleDeck(t, 'deck1')
 
     const after = order(t.layerEl, 'deck1')
     expect(after).toHaveLength(52)
@@ -178,14 +178,14 @@ describe('poker_deck', () => {
     expect(after).not.toEqual(before)
   })
 
-  test('Reshuffle does not touch cards outside the deck, or another deck', async () => {
+  test('Shuffle does not touch cards outside the deck, or another deck', async () => {
     const t = await table()
     draw(t, 'deck1', { num: 2 })
     const [first, second] = onTable(t.layerEl)
     reparentToyDom(t.layerEl, first.getAttribute('data-id'), 'pile1')
     const otherDeck = order(t.layerEl, 'deck2')
 
-    reshuffle(t, 'deck1')
+    shuffleDeck(t, 'deck1')
 
     expect(order(t.layerEl, 'deck1')).toHaveLength(50)
     expect(order(t.layerEl, 'deck2')).toEqual(otherDeck)
@@ -198,7 +198,7 @@ describe('poker_deck', () => {
     draw(t, 'deck1')
     deleteEl(t.layerEl, onTable(t.layerEl)[0].getAttribute('data-id'))
     expect(order(t.layerEl, 'deck1')).toHaveLength(51)
-    expect(labels(findEl(t.layerEl, 'deck1'))).toEqual(['Draw (51)', 'Reshuffle'])
+    expect(labels(findEl(t.layerEl, 'deck1'))).toEqual(['Draw (51)', 'Shuffle'])
   })
 })
 
@@ -309,10 +309,10 @@ describe('poker_deck: the cards fan up and to the left and the deck is as big as
     expect(attr(t.layerEl, 'deck1', 'x').at(-1)).toBe(-want.lean)
   })
 
-  test("Reshuffle keeps each position's place in the stack, and the deck the same size", async () => {
+  test("Shuffle keeps each position's place in the stack, and the deck the same size", async () => {
     const t = await table()
     const before = geom(t.layerEl, 'deck1')
-    reshuffle(t, 'deck1')
+    shuffleDeck(t, 'deck1')
     expect(attr(t.layerEl, 'deck1', 'y')).toEqual(stepsOf(52, 'y'))
     expect(attr(t.layerEl, 'deck1', 'x')).toEqual(stepsOf(52, 'x'))
     expect(geom(t.layerEl, 'deck1')).toEqual(before)
@@ -498,6 +498,10 @@ describe('stacking cards into a poker_card_pile and fanning it', () => {
     }
   })
 
+  const cardXY = (el) => {
+    const svg = el.querySelector(':scope > svg')
+    return [parseFloat(svg.getAttribute('x')), parseFloat(svg.getAttribute('y'))]
+  }
   // The circles the pile declares, in data-pos-index order, as card centres.
   const spotsOf = (pile) =>
     [...pile.querySelectorAll(':scope > svg > [class*="tt_positions"] circle')]
@@ -568,15 +572,21 @@ describe('stacking cards into a poker_card_pile and fanning it', () => {
     expect(pile.querySelector('.pile_edge_1, .pile_edge_2')).toBeNull()
   })
 
-  test('Draw from a two-card pile deals both, since a pile of one makes no sense', async () => {
+  test('Draw from a two-card pile deals both; the last card stays exactly where it was', async () => {
     const t = await stackedCards()
     runInitializers(findEl(t.layerEl, 'pile1'), 'poker_card_pile', ['a', 'b'])
+    const pile = findEl(t.layerEl, 'pile1')
+    const pileSvg = pile.querySelector(':scope > svg')
+    const [px, py] = [parseFloat(pileSvg.getAttribute('x')), parseFloat(pileSvg.getAttribute('y'))]
+    // 'a' is the one left after the top card, 'b', is dealt: where is it on the table?
+    const [ax, ay] = cardXY(pile.querySelector('.tt_contents > [data-id="a"]'))
 
-    invokeMenuAction(t.ydoc, t.layerEl, findEl(t.layerEl, 'pile1'), 'poker_card_pile', 'Draw', undefined, AUTHOR, TABLE)
+    invokeMenuAction(t.ydoc, t.layerEl, pile, 'poker_card_pile', 'Draw', undefined, AUTHOR, TABLE)
 
     expect(findEl(t.layerEl, 'pile1')).toBeNull()
     expect(findEl(t.layerEl, 'a')).not.toBeNull()
     expect(findEl(t.layerEl, 'b')).not.toBeNull()
+    expect(cardXY(findEl(t.layerEl, 'a'))).toEqual([px + ax, py + ay])
   })
 
   test('the pile takes its cards in and shows how many', async () => {

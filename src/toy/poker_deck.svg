@@ -47,7 +47,7 @@
 // file, and the deck's colour reaches their backs through the shared
 // colour filter. Draw takes cards off the top and deals them as
 // single_poker_card toys; a card's own 'Return to deck' calls take_back to
-// put its nested <svg> back on top and removes the toy. Reshuffle reorders
+// put its nested <svg> back on top and removes the toy. Shuffle reorders
 // the nested cards. Deleting a card toy discards it, and the deck stays
 // short.
 var poker_deck = {
@@ -78,11 +78,11 @@ var poker_deck = {
                       max: Math.max(1, Math.min(poker_deck.MAX_DRAW, poker_deck._cards(node).length)) },
       }),
     },
-    'Reshuffle': {
-      eventName: 'poker_deck_reshuffle',
+    'Shuffle': {
+      eventName: 'poker_deck_shuffle',
       applicable: (node) => poker_deck._cards(node).length > 1,
       handler: function(evt) {
-        poker_deck._reshuffle(this)
+        poker_deck._shuffle(this)
       },
       radial: true,
     },
@@ -93,7 +93,7 @@ var poker_deck = {
   // any and keeps the order and count setting it was copied with.
   initialize: function(elem, options = {}) {
     if (options.show_count !== undefined) poker_deck.set_show_count(elem, !!options.show_count)
-    if (options.start_shuffled) poker_deck._reshuffle(elem)
+    if (options.start_shuffled) poker_deck._shuffle(elem)
   },
 
   // The count lives in the deck's own deck_summary; hiding it is a
@@ -193,7 +193,7 @@ var poker_deck = {
     return group ? [...group.querySelectorAll(':scope > svg.card')] : []
   },
 
-  _own_box: function(elem) {
+  _bounding_box: function(elem) {
     const svg = elem.querySelector(':scope > svg')
     return {
       x: parseFloat(svg?.getAttribute('x'))      || 0,
@@ -207,7 +207,7 @@ var poker_deck = {
   // fanned out to the right of the deck, each stamped with this deck's id.
   _draw: function(elem, num) {
     const cards = poker_deck._cards(elem)
-    const { x, y, w, h } = poker_deck._own_box(elem)
+    const { x, y, w, h } = poker_deck._bounding_box(elem)
     const color = elem.getAttribute('data-color') || undefined
     const count = Math.min(num, cards.length)
     for (let i = 0; i < count; i++) {
@@ -231,7 +231,7 @@ var poker_deck = {
   // Fisher-Yates over the nested cards, then re-append them in the new
   // order. Slot i takes a random card from slot i onward, so everything
   // before i is already settled.
-  _reshuffle: function(elem) {
+  _shuffle: function(elem) {
     const cards = poker_deck._cards(elem)
     for (let i = 0; i < cards.length - 1; i++) {
       const j = i + Math.floor(Math.random() * (cards.length - i))

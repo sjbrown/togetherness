@@ -110,9 +110,9 @@ test('a deck contains its cards; draw, return, delete, pile and fan', async () =
   await expect(pile).toHaveCount(0);
   await expect(onTable).toHaveCount(2);
 
-  // Reshuffle reorders what is in the deck and leaves the table alone.
+  // Shuffle reorders what is in the deck and leaves the table alone.
   const before = await order();
-  await invoke(page, deckId, 'poker_deck', 'Reshuffle');
+  await invoke(page, deckId, 'poker_deck', 'Shuffle');
   await expect.poll(order).not.toEqual(before);
   expect([...(await order())].sort()).toEqual([...before].sort());
   await expect(onTable).toHaveCount(2);
