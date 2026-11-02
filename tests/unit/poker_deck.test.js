@@ -8,7 +8,7 @@ import { ensureLayerId } from '../../src/op_layers.js'
 import {
   TOYS_LAYER, TOY_TYPES, addToyDom, activateAllToyScriptsDom, reparentToyDom, deleteEl,
   findEl, getMenuActions, invokeMenuAction, runInitializers, getTtStateSchema, editEl, TOOLS, toolInitArgs,
-  findDropTarget, runGesture,
+  findDropTarget, runGesture, getLandingPosition,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 
@@ -498,83 +498,73 @@ describe('stacking cards into a poker_card_pile and fanning it', () => {
     }
   })
 
-  const cardXY = (el) => {
-    const svg = el.querySelector(':scope > svg')
-    return [parseFloat(svg.getAttribute('x')), parseFloat(svg.getAttribute('y'))]
+  // The circles the pile declares, in data-pos-index order, as card centres.
+  const spotsOf = (pile) =>
+    [...pile.querySelectorAll(':scope > svg > [class*="tt_positions"] circle')]
+      .sort((a, b) => Number(a.getAttribute('data-pos-index')) - Number(b.getAttribute('data-pos-index')))
+      .map(c => [parseFloat(c.getAttribute('cx')), parseFloat(c.getAttribute('cy'))])
+  const centreOf = (card) => {
+    const svg = card.querySelector(':scope > svg')
+    const [x, y, w, h] = ['x', 'y', 'width', 'height'].map(k => parseFloat(svg.getAttribute(k)))
+    return [x + w / 2, y + h / 2]
   }
+  const cardsOf = (pile) => [...pile.querySelectorAll('.tt_contents > .toy')]
 
-  test('cards in a pile lie off-centre by whole pixels, within JITTER either way', async () => {
+  test('the pile has six indexed positions laid out as a hexagon', async () => {
     const t = await stackedCards()
-    const J = globalThis.poker_card_pile.JITTER
-    const pile = fillPile(t)
-    for (const card of pile.querySelectorAll('.tt_contents > .toy')) {
-      for (const v of cardXY(card)) {
-        expect(Number.isInteger(v)).toBe(true)
-        expect(Math.abs(v)).toBeLessThanOrEqual(J) // the card lands at 0, 0 before jitter
-      }
-    }
+    const pile = findEl(t.layerEl, 'pile1')
+    const circles = [...pile.querySelectorAll(':scope > svg > [class*="tt_positions"] circle')]
+    expect(circles.map(c => c.getAttribute('data-pos-index'))).toEqual(['0', '1', '2', '3', '4', '5'])
+    const spots = spotsOf(pile)
+    expect(new Set(spots.map(p => p.join(','))).size).toBe(6)
+    // a hexagon: the six points are about one radius from their own centroid
+    const mx = spots.reduce((a, p) => a + p[0], 0) / 6
+    const my = spots.reduce((a, p) => a + p[1], 0) / 6
+    const radii = spots.map(([x, y]) => Math.hypot(x - mx, y - my))
+    expect(Math.max(...radii) - Math.min(...radii)).toBeLessThan(1.5)
+    // and the position the platform lands cards on is index 0
+    const first = getLandingPosition(pile)
+    expect([first.x, first.y]).toEqual(spots[0])
   })
 
-  test('the random range reaches -JITTER and +JITTER and nothing past them', async () => {
-    const J = (await stackedCards(), globalThis.poker_card_pile.JITTER)
-    for (const [roll, want] of [[0, -J], [0.9999999, J]]) {
-      const t = await stackedCards()
-      const spy = vi.spyOn(Math, 'random').mockReturnValue(roll)
-      try {
-        const pile = fillPile(t)
-        for (const card of pile.querySelectorAll('.tt_contents > .toy')) {
-          expect(cardXY(card)).toEqual([want, want])
-        }
-      } finally { spy.mockRestore() }
-    }
-  })
-
-  test('a card is never left exactly on the landing point, even on a (0, 0) roll', async () => {
+  test('cards cycle around the positions in order as they enter', async () => {
     const t = await stackedCards()
-    const spy = vi.spyOn(Math, 'random').mockReturnValue(0.5)
-    try {
-      const pile = fillPile(t)
-      for (const card of pile.querySelectorAll('.tt_contents > .toy')) {
-        expect(cardXY(card)).toEqual([1, 0])
-      }
-    } finally { spy.mockRestore() }
+    const pile = fillPile(t) // a, b, c
+    const spots = spotsOf(pile)
+    expect(cardsOf(pile).map(centreOf)).toEqual([spots[0], spots[1], spots[2]])
   })
 
-  test('a card dropped onto an existing pile is scattered too, and the others stay where they were', async () => {
+  test('the seventh card goes back to position 0, and so on round again', async () => {
     const t = await stackedCards()
     const pile = fillPile(t)
-    const J = globalThis.poker_card_pile.JITTER
-    const before = Object.fromEntries([...pile.querySelectorAll('.tt_contents > .toy')].map(c => [c.getAttribute('data-id'), cardXY(c)]))
-
-    loose(t.place, 'dropped', 3, 3)
-    reparentToyDom(t.layerEl, 'dropped', 'pile1')
-
-    const dropped = pile.querySelector('.tt_contents > [data-id="dropped"]')
-    const [x, y] = cardXY(dropped)
-    expect([x, y]).not.toEqual([0, 0])
-    expect(Number.isInteger(x) && Number.isInteger(y)).toBe(true)
-    expect(Math.max(Math.abs(x), Math.abs(y))).toBeLessThanOrEqual(J)
-    for (const [id, xy] of Object.entries(before)) {
-      expect(cardXY(pile.querySelector(`.tt_contents > [data-id="${id}"]`))).toEqual(xy)
+    for (let k = 3; k < 8; k++) {
+      loose(t.place, `x${k}`, 2, k)
+      reparentToyDom(t.layerEl, `x${k}`, 'pile1') // the drop path
     }
+    const spots = spotsOf(pile)
+    const cards = cardsOf(pile)
+    expect(cards).toHaveLength(8)
+    expect(cards.map(centreOf)).toEqual(cards.map((_, k) => spots[k % 6]))
   })
 
-  test('different cards get different offsets', async () => {
+  test('a change that leaves the order alone writes nothing to the cards', async () => {
     const t = await stackedCards()
     const pile = fillPile(t)
-    const spots = [...pile.querySelectorAll('.tt_contents > .toy')].map(c => cardXY(c).join(','))
-    expect(new Set(spots).size).toBeGreaterThan(1)
+    const before = cardsOf(pile).map(c => c.querySelector(':scope > svg').outerHTML)
+    globalThis.poker_card_pile.contents_change_handler(pile)
+    expect(cardsOf(pile).map(c => c.querySelector(':scope > svg').outerHTML)).toEqual(before)
   })
 
-  test("the pile leaves room around its cards for the jitter, and has no edge rectangles", async () => {
+  test('the pile leaves room around its cards at every position', async () => {
     const t = await stackedCards()
-    const J = globalThis.poker_card_pile.JITTER
     const pile = fillPile(t)
     const [vx, vy, vw, vh] = pile.querySelector(':scope > svg').getAttribute('viewBox').split(/\s+/).map(Number)
-    expect(vx).toBeLessThanOrEqual(-J)
-    expect(vy).toBeLessThanOrEqual(-J)
-    expect(vx + vw).toBeGreaterThanOrEqual(100 + J)
-    expect(vy + vh).toBeGreaterThanOrEqual(150 + J)
+    for (const [cx, cy] of spotsOf(pile)) {
+      expect(cx - 50).toBeGreaterThanOrEqual(vx)
+      expect(cy - 75).toBeGreaterThanOrEqual(vy)
+      expect(cx + 50).toBeLessThanOrEqual(vx + vw)
+      expect(cy + 75).toBeLessThanOrEqual(vy + vh)
+    }
     expect(pile.querySelector('.pile_edge_1, .pile_edge_2')).toBeNull()
   })
 

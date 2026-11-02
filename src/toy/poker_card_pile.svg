@@ -64,38 +64,34 @@ var poker_card_pile = {
     }
   },
 
-  // How far off-centre, in whole pixels either way, a card in the pile lies.
-  JITTER: 10,
-
-  // Offsets a card's <svg> by a random whole number of pixels in x and y. A
-  // card that has landed sits exactly on the pile's landing point, so a
-  // jittered card never does: (0, 0) becomes (1, 0).
-  _jitter: function(svg) {
-    const { JITTER } = poker_card_pile
-    const offset = () => Math.floor(Math.random() * (2 * JITTER + 1)) - JITTER
-    let dx = offset()
-    const dy = offset()
-    if (dx === 0 && dy === 0) dx = 1
-    svg.setAttribute('x', String((parseFloat(svg.getAttribute('x')) || 0) + dx))
-    svg.setAttribute('y', String((parseFloat(svg.getAttribute('y')) || 0) + dy))
+  // The pile's tt_positions circles, in data-pos-index order, as the
+  // [{ cx, cy }] centres a card can sit on.
+  _spots: function(elem) {
+    const circles = [...elem.querySelectorAll(':scope > svg > [class*="tt_positions"] circle')]
+    circles.sort((a, b) => Number(a.getAttribute('data-pos-index')) - Number(b.getAttribute('data-pos-index')))
+    return circles.map(c => ({
+      cx: parseFloat(c.getAttribute('cx')),
+      cy: parseFloat(c.getAttribute('cy')),
+    }))
   },
 
-  // Scatters every card still sitting on the landing point: whichever
-  // arrived since the last change, however it got in.
-  _scatter_arrivals: function(elem) {
-    const point = elem.querySelector(':scope > svg > [class*="tt_positions"] circle')
-    if (!point) return
-    const cx = parseFloat(point.getAttribute('cx'))
-    const cy = parseFloat(point.getAttribute('cy'))
-    container.visit_contents(elem, (card) => {
+  // Seats card k on spot k mod (number of spots), so the cards cycle around
+  // the hexagon as the pile grows. A card is only written to when it is
+  // not already seated, so a change that leaves the order alone writes
+  // nothing.
+  _seat_cards: function(elem) {
+    const spots = poker_card_pile._spots(elem)
+    if (!spots.length) return
+    container.visit_contents(elem, (card, i) => {
       const svg = card.querySelector(':scope > svg')
       if (!svg) return
       const w = parseFloat(svg.getAttribute('width'))  || 0
       const h = parseFloat(svg.getAttribute('height')) || 0
-      if (parseFloat(svg.getAttribute('x')) === cx - w / 2 &&
-          parseFloat(svg.getAttribute('y')) === cy - h / 2) {
-        poker_card_pile._jitter(svg)
-      }
+      const { cx, cy } = spots[i % spots.length]
+      const x = String(cx - w / 2)
+      const y = String(cy - h / 2)
+      if (svg.getAttribute('x') !== x) svg.setAttribute('x', x)
+      if (svg.getAttribute('y') !== y) svg.setAttribute('y', y)
     })
   },
 
@@ -163,12 +159,11 @@ var poker_card_pile = {
     }
   },
 
-  // Shows the card count, and lays any new arrivals a little off-centre so
-  // the pile looks hand-stacked.
+  // Shows the card count, and seats the cards around the hexagon.
   contents_change_handler: function(elem) {
     const tspan = elem.querySelector('.tspan_count')
     if (tspan) tspan.textContent = String(container.count(elem))
-    poker_card_pile._scatter_arrivals(elem)
+    poker_card_pile._seat_cards(elem)
   },
 
   _event: function(evName, args) {
@@ -190,6 +185,11 @@ var poker_card_pile = {
           fill="#000"><tspan class="tspan_count">0</tspan></text>
   </g>
   <g class="tt_positions" data-bounpos-type="pos-set" name="card">
-    <circle cx="50" cy="75" r="10" fill="#fff" fill-opacity="0.1"></circle>
+    <circle data-pos-index="0" cx="50" cy="65" r="4" fill="#fff" fill-opacity="0.1"></circle>
+    <circle data-pos-index="1" cx="59" cy="70" r="4" fill="#fff" fill-opacity="0.1"></circle>
+    <circle data-pos-index="2" cx="59" cy="80" r="4" fill="#fff" fill-opacity="0.1"></circle>
+    <circle data-pos-index="3" cx="50" cy="85" r="4" fill="#fff" fill-opacity="0.1"></circle>
+    <circle data-pos-index="4" cx="41" cy="80" r="4" fill="#fff" fill-opacity="0.1"></circle>
+    <circle data-pos-index="5" cx="41" cy="70" r="4" fill="#fff" fill-opacity="0.1"></circle>
   </g>
 </svg>
