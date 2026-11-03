@@ -34,7 +34,7 @@ test('a deck contains its cards; draw, return, delete, pile and fan', async () =
   const deckId = await deck.getAttribute('data-id');
 
   // In the deck means: the card's own SVG is nested inside the deck's.
-  const inDeck = deck.locator('.tt_contents > svg.card');
+  const inDeck = deck.locator('.tt_contents > svg.card, .tt_contents > .toy');
   const onTable = page.locator('#toys-layer > [data-toy-type="single_poker_card"]');
   const count = deck.locator('.deck_summary .tspan_count');
   const order = () => inDeck.evaluateAll(els => els.map(el => `${el.dataset.suit}.${el.dataset.rank}`));
@@ -79,11 +79,12 @@ test('a deck contains its cards; draw, return, delete, pile and fan', async () =
     await expect(el).toHaveAttribute('data-home-deck', deckId);
   }
 
-  // Return puts the card back on top of the deck, as a nested svg.
+  // Return puts the same toy back on top of the deck, and it stays a toy.
   const returned = await page.locator(`[data-id="${ids[0]}"]`).evaluate(el => `${el.dataset.suit}.${el.dataset.rank}`);
   await invoke(page, ids[0], 'single_poker_card', 'Return to deck');
   await expect(inDeck).toHaveCount(50);
   expect((await order()).at(-1)).toBe(returned);
+  await expect(deck.locator(`.tt_contents > .toy[data-id="${ids[0]}"]`)).toHaveCount(1);
   await expect(onTable).toHaveCount(2);
   await expect(count).toHaveText('50');
 
@@ -135,7 +136,7 @@ test('dragging a card onto the deck takes it back in', async () => {
   const deck = page.locator('[data-toy-type="poker_deck"]');
   await expect(deck).toHaveCount(1, { timeout: 5000 });
   const deckId = await deck.getAttribute('data-id');
-  const inDeck = deck.locator('.tt_contents > svg.card');
+  const inDeck = deck.locator('.tt_contents > svg.card, .tt_contents > .toy');
   const onTable = page.locator('#toys-layer > [data-toy-type="single_poker_card"]');
   await expect(inDeck).toHaveCount(52);
 
@@ -143,6 +144,7 @@ test('dragging a card onto the deck takes it back in', async () => {
   await expect(onTable).toHaveCount(1, { timeout: 5000 });
   await expect(inDeck).toHaveCount(51);
   const drawn = await onTable.evaluate(el => `${el.dataset.suit}.${el.dataset.rank}`);
+  const drawnId = await onTable.getAttribute('data-id');
 
   await page.evaluate(() => window.UI.pillTap('select'));
   await page.waitForTimeout(100);
@@ -158,8 +160,17 @@ test('dragging a card onto the deck takes it back in', async () => {
   await expect(inDeck).toHaveCount(52);
   await expect(deck.locator('.deck_summary .tspan_count')).toHaveText('52');
   expect(await inDeck.last().evaluate(el => `${el.dataset.suit}.${el.dataset.rank}`)).toBe(drawn);
-  await expect(deck.locator('.tt_contents > .toy')).toHaveCount(0);
-  expect(complaints.filter(c => /re-run|not a valid selector/.test(c))).toEqual([]);
+  // still the same toy, now inside the deck
+  await expect(deck.locator(`.tt_contents > .toy[data-id="${drawnId}"]`)).toHaveCount(1);
+  // Seated where the deck puts its top card, even though the app first moved
+  // the toy to the drop point (a deck has no landing position).
+  const seat = await page.evaluate(() => {
+    const d = window.poker_deck, r = (v) => Math.round(v * 100) / 100;
+    return [String(r(-d.CARD_STEP_X * 51)), String(r(-d.CARD_STEP_Y * 51))];
+  });
+  expect(await deck.locator(`.tt_contents > .toy[data-id="${drawnId}"] > svg`)
+    .evaluate(svg => [svg.getAttribute('x'), svg.getAttribute('y')])).toEqual(seat);
+  expect(complaints.filter(c => /not a valid selector/.test(c))).toEqual([]);
 
   await browser.close();
 });

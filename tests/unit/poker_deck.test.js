@@ -99,9 +99,17 @@ function loose(place, id, suit, rank) {
 }
 
 // The deck's own nested cards, bottom to top, as "suit.rank".
+// Everything in a deck, bottom to top: its nested cards and any card toys.
 const inDeck = (layerEl, deckId) =>
-  [...layerEl.querySelectorAll(`[data-id="${deckId}"] > svg > .tt_contents > svg.card`)]
-const order = (layerEl, deckId) => inDeck(layerEl, deckId).map(c => `${c.getAttribute('data-suit')}.${c.getAttribute('data-rank')}`)
+  [...layerEl.querySelectorAll(
+    `[data-id="${deckId}"] > svg > .tt_contents > svg.card, ` +
+    `[data-id="${deckId}"] > svg > .tt_contents > .toy[data-toy-type="single_poker_card"]`)]
+const keyOf = (el) => el.matches('svg')
+  ? `${el.getAttribute('data-suit')}.${el.getAttribute('data-rank')}`
+  : `${el.dataset.suit}.${el.dataset.rank}`
+const svgOfCard = (el) => (el.matches('svg') ? el : el.querySelector(':scope > svg'))
+const order = (layerEl, deckId) => inDeck(layerEl, deckId).map(keyOf)
+const toysIn = (layerEl, deckId) => inDeck(layerEl, deckId).filter(c => c.matches('.toy'))
 const onTable = (layerEl) => [...layerEl.querySelectorAll(':scope > [data-toy-type="single_poker_card"]')]
 const key = (el) => `${el.dataset.suit}.${el.dataset.rank}`
 const labels = (el) => getMenuActions(el).map(a => a.label)
@@ -264,7 +272,7 @@ describe('poker_deck: the cards fan up and to the left and the deck is as big as
     const [x, y, w, h] = ['x', 'y', 'width', 'height'].map(k => parseFloat(svg.getAttribute(k)))
     return { x, y, w, h, right: round2(x + w), bottom: round2(y + h), viewBox: svg.getAttribute('viewBox') }
   }
-  const attr = (layerEl, id, k) => inDeck(layerEl, id).map(c => parseFloat(c.getAttribute(k)))
+  const attr = (layerEl, id, k) => inDeck(layerEl, id).map(c => parseFloat(svgOfCard(c).getAttribute(k)))
 
   test('the file ships laid out the way the deck would lay it out', async () => {
     const t = await table()
@@ -409,7 +417,7 @@ describe('single_poker_card: Return to deck', () => {
     expect(labels(drawn)).not.toContain('Return to deck')
   })
 
-  test('puts the same card back on top of its own deck as a nested <svg>, and removes the toy', async () => {
+  test('moves the same toy into its own deck, on top, and not into another', async () => {
     const t = await table()
     draw(t, 'deck2')
     const card = onTable(t.layerEl)[0]
@@ -419,28 +427,82 @@ describe('single_poker_card: Return to deck', () => {
 
     giveBack(t, card)
 
-    expect(findEl(t.layerEl, id)).toBeNull()
+    expect(findEl(t.layerEl, id)).toBeNull() // no longer on the table
+    const inside = toysIn(t.layerEl, 'deck2')
+    expect(inside.map(c => c.getAttribute('data-id'))).toEqual([id]) // still a toy, same id
     expect(order(t.layerEl, 'deck2')).toHaveLength(52)
     expect(order(t.layerEl, 'deck2').at(-1)).toBe(k)
     expect(order(t.layerEl, 'deck1')).toHaveLength(52)
+    expect(toysIn(t.layerEl, 'deck1')).toHaveLength(0)
   })
 
-  test('the returned card is a complete, face-down card with the right face', async () => {
+  test('keeps whatever the user did to the card, and resets only what a deck owns', async () => {
     const t = await table()
     draw(t, 'deck1')
     const card = onTable(t.layerEl)[0]
-    const rank = card.querySelector('.tspan_rank').textContent
-    const suit = card.querySelector('.tspan_suit').textContent
+    const id = card.getAttribute('data-id')
+    // The user's own changes, and the deck-owned things made "wrong":
+    card.setAttribute('data-note', 'lucky')
+    card.setAttribute('data-color', '#123456')
+    card.setAttribute('class', `${card.getAttribute('class')} marked`)
+    globalThis.single_poker_card.flip_card(card)                     // face up
+    card.setAttribute('data-rotate', '90')
+    card.setAttribute('transform', 'rotate(90 50 75)')
+    card.setAttribute('data-above', 'somebody')
 
     giveBack(t, card)
 
-    const back = inDeck(t.layerEl, 'deck1').at(-1)
-    expect(back.querySelector('.tspan_rank').textContent).toBe(rank)
-    expect(back.querySelector('.tspan_suit').textContent).toBe(suit)
+    const back = toysIn(t.layerEl, 'deck1')[0]
+    expect(back.getAttribute('data-id')).toBe(id)
+    // kept
+    expect(back.getAttribute('data-note')).toBe('lucky')
+    expect(back.getAttribute('data-color')).toBe('#123456')
+    expect(back.getAttribute('data-home-deck')).toBe('deck1')
+    expect(back.getAttribute('class')).toContain('marked')
+    // reset by the deck
     expect(back.querySelector('.card_front + .card_back')).not.toBeNull()
-    expect(back.querySelector('.card_back .tt_colored')).not.toBeNull()
-    expect(back.hasAttribute('display')).toBe(false)
-    expect(back.hasAttribute('id')).toBe(false)
+    expect(back.getAttribute('data-rotate')).toBe('0')
+    expect(back.hasAttribute('transform')).toBe(false)
+    expect(back.getAttribute('data-above')).toBe('')
+    const svg = svgOfCard(back)
+    expect([svg.getAttribute('x'), svg.getAttribute('y')]).toEqual([
+      String(stepsOf(52, 'x').at(-1)), String(stepsOf(52, 'y').at(-1)),
+    ])
+  })
+
+  test('drawing it again takes out the same toy, still carrying what it had', async () => {
+    const t = await table()
+    draw(t, 'deck1')
+    const card = onTable(t.layerEl)[0]
+    const id = card.getAttribute('data-id')
+    card.setAttribute('data-note', 'lucky')
+    giveBack(t, card)
+    expect(onTable(t.layerEl)).toHaveLength(0)
+
+    draw(t, 'deck1')
+
+    const again = findEl(t.layerEl, id)
+    expect(again).not.toBeNull()
+    expect(again.getAttribute('data-note')).toBe('lucky')
+    expect(again.querySelector('.card_front + .card_back')).not.toBeNull() // still face down
+    expect(toysIn(t.layerEl, 'deck1')).toHaveLength(0)
+    expect(order(t.layerEl, 'deck1')).toHaveLength(51)
+  })
+
+  test('Shuffle mixes card toys in with the nested cards and keeps every card seated', async () => {
+    const t = await table()
+    draw(t, 'deck1', { num: 3 })
+    for (const card of onTable(t.layerEl)) giveBack(t, card)
+    const ids = toysIn(t.layerEl, 'deck1').map(c => c.getAttribute('data-id')).sort()
+    expect(ids).toHaveLength(3)
+
+    shuffleDeck(t, 'deck1')
+
+    expect(order(t.layerEl, 'deck1')).toHaveLength(52)
+    expect(toysIn(t.layerEl, 'deck1').map(c => c.getAttribute('data-id')).sort()).toEqual(ids)
+    const at = (k) => inDeck(t.layerEl, 'deck1').map(c => parseFloat(svgOfCard(c).getAttribute(k)))
+    expect(at('y')).toEqual(stepsOf(52, 'y'))
+    expect(at('x')).toEqual(stepsOf(52, 'x'))
   })
 
   test('a card with no deck option initializes as before', async () => {
@@ -712,61 +774,79 @@ describe('dropping a card on a deck works like Return to deck', () => {
     runGesture(t.ydoc, t.layerEl, () => reparentToyDom(t.layerEl, cardId, deckId),
       { gesture: 'reparent', authorId: AUTHOR, tableId: TABLE })
 
+  // What the deck decided about a card toy inside it.
+  const deckState = (t, id) => {
+    const card = t.layerEl.querySelector(`[data-id="deck1"] .tt_contents > [data-id="${id}"]`)
+    const svg = svgOfCard(card)
+    return {
+      isToy: card.matches('.toy'),
+      faceDown: !!card.querySelector('.card_front + .card_back'),
+      rotate: card.getAttribute('data-rotate'),
+      transform: card.hasAttribute('transform'),
+      xy: [svg.getAttribute('x'), svg.getAttribute('y')],
+      count: findEl(t.layerEl, 'deck1').querySelector('.tspan_count').textContent,
+      height: findEl(t.layerEl, 'deck1').querySelector(':scope > svg').getAttribute('height'),
+    }
+  }
+
   test("a card dropped on its own deck ends up exactly as if it had used 'Return to deck'", async () => {
+    // The same state before the card goes back: face up and rotated.
+    const mess = (card) => {
+      globalThis.single_poker_card.flip_card(card)
+      card.setAttribute('data-rotate', '45')
+      card.setAttribute('transform', 'rotate(45 50 75)')
+    }
     const viaMenu = await table()
     draw(viaMenu, 'deck1')
-    const cardA = onTable(viaMenu.layerEl)[0]
-    const keyA = key(cardA)
-    giveBack(viaMenu, cardA)
+    const a = onTable(viaMenu.layerEl)[0]
+    const idA = a.getAttribute('data-id')
+    mess(a)
+    giveBack(viaMenu, a)
 
     const viaDrop = await table()
     draw(viaDrop, 'deck1')
-    const cardB = onTable(viaDrop.layerEl)[0]
-    const keyB = key(cardB)
-    dropOn(viaDrop, cardB.getAttribute('data-id'), 'deck1')
+    const b = onTable(viaDrop.layerEl)[0]
+    const idB = b.getAttribute('data-id')
+    mess(b)
+    dropOn(viaDrop, idB, 'deck1')
 
-    expect(findEl(viaDrop.layerEl, cardB.getAttribute('data-id'))).toBeNull()
-    expect(viaDrop.layerEl.querySelector(`[data-id="${cardB.getAttribute('data-id')}"]`)).toBeNull()
-    expect(order(viaDrop.layerEl, 'deck1')).toHaveLength(52)
-    expect(order(viaDrop.layerEl, 'deck1').at(-1)).toBe(keyB)
-    expect(order(viaMenu.layerEl, 'deck1').at(-1)).toBe(keyA)
-    // the same finished card on top, and the same finished deck around it
-    const top = (t) => inDeck(t.layerEl, 'deck1').at(-1)
-    for (const t of [viaMenu, viaDrop]) {
-      expect(top(t).querySelector('.card_front + .card_back')).not.toBeNull()
-      expect(top(t).hasAttribute('display')).toBe(false)
-    }
-    expect(findEl(viaDrop.layerEl, 'deck1').querySelector('.tspan_count').textContent).toBe('52')
-    expect(findEl(viaDrop.layerEl, 'deck1').querySelector(':scope > svg').getAttribute('height'))
-      .toBe(findEl(viaMenu.layerEl, 'deck1').querySelector(':scope > svg').getAttribute('height'))
+    expect(findEl(viaDrop.layerEl, idB)).toBeNull()
+    expect(deckState(viaDrop, idB)).toEqual(deckState(viaMenu, idA))
+    expect(deckState(viaDrop, idB)).toMatchObject({ isToy: true, faceDown: true, rotate: '0', transform: false, count: '52' })
   })
 
-  test('the drop leaves no toy behind in the deck and logs no re-run complaint', async () => {
+  test('a drop keeps the card a toy and logs no re-run complaint', async () => {
     const t = await table()
     draw(t, 'deck1', { num: 2 })
+    const ids = onTable(t.layerEl).map(c => c.getAttribute('data-id'))
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
-      for (const card of onTable(t.layerEl)) dropOn(t, card.getAttribute('data-id'), 'deck1')
+      for (const id of ids) dropOn(t, id, 'deck1')
       expect(spy).not.toHaveBeenCalled()
     } finally { spy.mockRestore() }
-    expect(findEl(t.layerEl, 'deck1').querySelectorAll('.tt_contents > .toy')).toHaveLength(0)
+    expect(toysIn(t.layerEl, 'deck1').map(c => c.getAttribute('data-id')).sort()).toEqual([...ids].sort())
     expect(order(t.layerEl, 'deck1')).toHaveLength(52)
     expect(onTable(t.layerEl)).toHaveLength(0)
   })
 
-  test('a card from another deck, or from no deck, joins the deck it is dropped on', async () => {
+  test('a card from another deck, or from no deck, joins the deck it is dropped on, unchanged', async () => {
     const t = await table()
     draw(t, 'deck2')
     const foreign = onTable(t.layerEl)[0]
+    const foreignId = foreign.getAttribute('data-id')
     const foreignKey = key(foreign)
-    const plain = loose(t.place, 'plain', 4, 13)
+    foreign.setAttribute('data-note', 'from the other deck')
+    loose(t.place, 'plain', 4, 13)
 
-    dropOn(t, foreign.getAttribute('data-id'), 'deck1')
+    dropOn(t, foreignId, 'deck1')
     dropOn(t, 'plain', 'deck1')
 
     expect(order(t.layerEl, 'deck1')).toHaveLength(54)
     expect(order(t.layerEl, 'deck1').slice(-2)).toEqual([foreignKey, '4.13'])
     expect(order(t.layerEl, 'deck2')).toHaveLength(51)
+    const kept = toysIn(t.layerEl, 'deck1')[0]
+    expect(kept.getAttribute('data-note')).toBe('from the other deck')
+    expect(kept.getAttribute('data-home-deck')).toBe('deck2') // still remembers where it came from
   })
 
   test('the deck count and height follow a drop', async () => {

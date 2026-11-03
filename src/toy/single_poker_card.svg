@@ -163,14 +163,16 @@ var single_poker_card = {
     return !!single_poker_card.home_deck(elem)
   },
 
-  // The deck takes the card back as one of its own nested <svg> cards, on
-  // top, and this toy is removed. Distinct from deleting the card, which
-  // discards it.
+  // The card moves into its home deck's contents as the toy it is. The deck
+  // turns it face down and seats it; nothing else about the card changes.
+  // Distinct from deleting the card, which discards it.
   return_to_deck: function(elem) {
     const deck = single_poker_card.home_deck(elem)
     if (!deck) return
-    globalThis.poker_deck.take_back(deck, Number(elem.dataset.suit), Number(elem.dataset.rank))
-    single_poker_card._event('toy:delete', { id: elem.getAttribute('data-id') })
+    single_poker_card._event('toy:reparent', {
+      id: elem.getAttribute('data-id'),
+      containerId: deck.getAttribute('data-id'),
+    })
   },
 
   _event: function(evName, args) {

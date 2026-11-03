@@ -20,41 +20,25 @@
                  1.0 0.0 0.0 0.0  0.0
                  0.0 0.0 0.0 1.0  0.0" />
     </filter>
-    <g class="card_template_holder">
-      <svg class="card_template" x="0" y="0" width="100" height="150" viewBox="0 0 100 150">
-        <g class="card_front">
-          <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.26458332"/>
-          <text xml:space="preserve" style="font-style:normal;font-weight:bold;font-size:50px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan x="33" y="100" class="tspan_rank">A</tspan><tspan x="55" y="45" class="tspan_suit">♥</tspan></text>
-          <text x="5" y="142" xml:space="preserve" style="font-style:normal;font-weight:normal;font-size:20px;font-family:serif;fill:rgb(255,10,10);fill-opacity:1"><tspan class="tspan_rank">A</tspan><tspan class="tspan_suit">♥</tspan></text>
-        </g>
-        <g class="card_back">
-          <rect width="100" height="150" rx="10" ry="10" fill="#ffffff" stroke="#000000" stroke-width="0.5"/>
-          <g class="tt_colored" filter="url(#app-filter-colorize)">
-            <rect x="5" y="5" width="90" height="140" rx="5" ry="5" fill="#c0c0c0"/>
-          </g>
-        </g>
-      </svg>
-    </g>
   </defs>
   <script
      type="text/javascript"
      data-namespace="poker_deck"
      id="script_poker_deck"><![CDATA[
 
-// A deck is a literal collection of cards: each one is a nested <svg
-// class="card"> inside the deck's tt_contents, in order, so the last is the
-// top card. Nothing is stocked on placement; the cards are part of the
-// file, and the deck's colour reaches their backs through the shared
-// colour filter. Draw takes cards off the top and deals them as
-// single_poker_card toys; a card's own 'Return to deck' calls take_back to
-// put its nested <svg> back on top and removes the toy. Shuffle reorders
-// the nested cards. Deleting a card toy discards it, and the deck stays
+// A deck is a literal collection of cards in its tt_contents, in order, so
+// the last is the top card. It starts with 52 nested <svg class="card">
+// that are part of the file; the deck's colour reaches their backs through
+// the shared colour filter. Drawing one of those deals a new
+// single_poker_card toy. A card toy that comes back (its own 'Return to
+// deck', or a drop on the deck) is absorbed as the toy it is, keeping
+// everything it has accumulated; the deck only takes over what belongs to
+// a card in a deck: face down, unrotated, no stacking links, and its place
+// in the stack. Drawing such a card takes the same toy back out. Shuffle
+// reorders all of them. Deleting a card toy discards it, and the deck stays
 // short.
 var poker_deck = {
 
-  SUITS:       ['♥', '♣', '♦', '♠'],
-  SUIT_COLORS: ['rgb(255,10,10)', 'rgb(0,0,0)', 'rgb(240,0,0)', 'rgb(5,10,10)'],
-  RANKS:       ['A','2','3','4','5','6','7','8','9','10','J','Q','K'],
   MAX_DRAW:    5,
 
   // Each card sits CARD_STEP_Y higher and CARD_STEP_X further left than the
@@ -120,26 +104,34 @@ var poker_deck = {
     if (editData.show_count !== undefined) poker_deck.set_show_count(elem, !!editData.show_count)
   },
 
-  // Takes in any card dropped on the deck, then keeps the summary's number
-  // equal to the cards in the deck, and the deck as tall as its stack.
+  // Absorbs any card toy that has arrived, then keeps the summary's number
+  // equal to the cards in the deck, the cards in their places, and the deck
+  // as tall as its stack.
   contents_change_handler: function(elem) {
-    poker_deck._absorb_dropped(elem)
+    poker_deck._absorb_toy_cards(elem)
+    poker_deck._place_cards(elem)
     const tspan = elem.querySelector('.tspan_count')
     if (tspan) tspan.textContent = String(poker_deck._cards(elem).length)
     poker_deck._fit(elem)
   },
 
-  // A card toy dropped on the deck lands in tt_contents as a toy of its
-  // own. It becomes one of the deck's nested cards instead, face down on
-  // top, exactly as if it had used 'Return to deck', and the toy is gone.
-  // This runs again after every contents change and finds nothing more to
-  // do, so only a drop writes here.
-  _absorb_dropped: function(elem) {
-    const group = elem.querySelector('.tt_contents')
-    if (!group) return
-    group.querySelectorAll(':scope > .toy[data-toy-type="single_poker_card"]').forEach(toy => {
-      poker_deck.take_back(elem, Number(toy.dataset.suit), Number(toy.dataset.rank))
-      toy.remove()
+  // A card toy in the deck stays a toy. Only what a deck decides about its
+  // cards is set here: face down, unrotated, and not resting on or under
+  // another card. Anything else on the card (its own attributes, colour,
+  // home deck, whatever the user did to it) is left alone. Each write is
+  // skipped when it is already so, so this finds nothing to do after the
+  // first pass.
+  _absorb_toy_cards: function(elem) {
+    poker_deck._cards(elem).filter(card => card.matches('.toy')).forEach(toy => {
+      if (!toy.querySelector('.card_front + .card_back')) {
+        globalThis.single_poker_card?.flip_card_to_back(toy)
+      }
+      if (parseFloat(toy.getAttribute('data-rotate'))) {
+        toy.setAttribute('data-rotate', '0')
+        toy.removeAttribute('transform')
+      }
+      poker_deck._set(toy, 'data-above', '')
+      poker_deck._set(toy, 'data-below', '')
     })
   },
 
@@ -152,13 +144,21 @@ var poker_deck = {
     return Math.round(v * 100) / 100
   },
 
+  // The <svg> that has a card's geometry: a nested card is one, and a card
+  // toy has one of its own inside its wrapper.
+  _svg_of: function(card) {
+    return card.matches('svg') ? card : card.querySelector(':scope > svg')
+  },
+
   // Card i sits CARD_STEP_X left of and CARD_STEP_Y above card 0. Called
   // wherever cards are added or reordered.
   _place_cards: function(elem) {
-    const { CARD_STEP_X, CARD_STEP_Y, _round } = poker_deck
+    const { CARD_STEP_X, CARD_STEP_Y, _round, _svg_of } = poker_deck
     poker_deck._cards(elem).forEach((card, i) => {
-      poker_deck._set(card, 'x', i === 0 ? 0 : _round(-CARD_STEP_X * i))
-      poker_deck._set(card, 'y', i === 0 ? 0 : _round(-CARD_STEP_Y * i))
+      const svg = _svg_of(card)
+      if (!svg) return
+      poker_deck._set(svg, 'x', i === 0 ? 0 : _round(-CARD_STEP_X * i))
+      poker_deck._set(svg, 'y', i === 0 ? 0 : _round(-CARD_STEP_Y * i))
     })
   },
 
@@ -187,10 +187,12 @@ var poker_deck = {
     poker_deck._set(outerSvg, 'viewBox', `${-lean} ${-rise} ${width} ${height}`)
   },
 
-  // The deck's cards, bottom to top.
+  // The deck's cards, bottom to top: its nested cards and any card toys.
   _cards: function(elem) {
     const group = elem.querySelector('.tt_contents')
-    return group ? [...group.querySelectorAll(':scope > svg.card')] : []
+    return group
+      ? [...group.querySelectorAll(':scope > svg.card, :scope > .toy[data-toy-type="single_poker_card"]')]
+      : []
   },
 
   _bounding_box: function(elem) {
@@ -203,8 +205,9 @@ var poker_deck = {
     }
   },
 
-  // Deals the top num cards, the top one first, as single_poker_card toys
-  // fanned out to the right of the deck, each stamped with this deck's id.
+  // Deals the top num cards, the top one first, fanned out to the right of
+  // the deck. A card toy goes back out on the table as itself. A nested
+  // card becomes a new single_poker_card, stamped with this deck's id.
   _draw: function(elem, num) {
     const cards = poker_deck._cards(elem)
     const { x, y, w, h } = poker_deck._bounding_box(elem)
@@ -212,10 +215,22 @@ var poker_deck = {
     const count = Math.min(num, cards.length)
     for (let i = 0; i < count; i++) {
       const card = cards.pop()
+      const cx = x + w + 60 + 20 * i
+      const cy = y + h - poker_deck.CARD_HEIGHT / 2
+      if (card.matches('.toy')) {
+        poker_deck._event('toy:reparent', { id: card.getAttribute('data-id'), containerId: null })
+        // Overrides reparentToyDom's "preserve visual position" default.
+        const svg = poker_deck._svg_of(card)
+        const cw = parseFloat(svg.getAttribute('width'))  || poker_deck.CARD_WIDTH
+        const ch = parseFloat(svg.getAttribute('height')) || poker_deck.CARD_HEIGHT
+        svg.setAttribute('x', String(cx - cw / 2))
+        svg.setAttribute('y', String(cy - ch / 2))
+        continue
+      }
       poker_deck._event('toy:add', {
         toyType: 'single_poker_card',
-        x: x + w + 60 + 20 * i,
-        y: y + h - poker_deck.CARD_HEIGHT / 2,
+        x: cx,
+        y: cy,
         color,
         initArgs: {
           color,
@@ -228,8 +243,7 @@ var poker_deck = {
     }
   },
 
-  // Fisher-Yates over the nested cards, then re-append them in the new
-  // order. Slot i takes a random card from slot i onward, so everything
+  // Fisher-Yates over the cards, then re-append them in the new order. Slot i takes a random card from slot i onward, so everything
   // before i is already settled.
   _shuffle: function(elem) {
     const cards = poker_deck._cards(elem)
@@ -239,31 +253,6 @@ var poker_deck = {
     }
     const group = elem.querySelector('.tt_contents')
     cards.forEach(card => group.appendChild(card))
-    poker_deck._place_cards(elem)
-  },
-
-  // Puts a card (suit 1-4, rank 1-13) back on top of the deck, as a copy
-  // of the deck's card template.
-  take_back: function(elem, suit, rank) {
-    const template = elem.querySelector('.card_template')
-    const group = elem.querySelector('.tt_contents')
-    if (!template || !group) return
-    const si = ((Math.round(suit) - 1) % 4 + 4) % 4
-    const ri = ((Math.round(rank) - 1) % 13 + 13) % 13
-    const card = template.cloneNode(true)
-    card.setAttribute('class', 'card')
-    card.setAttribute('data-suit', String(si + 1))
-    card.setAttribute('data-rank', String(ri + 1))
-    card.removeAttribute('display')
-    // Ids the template's copy carries belong to the template.
-    ;[card, ...card.querySelectorAll('*')].forEach(el => {
-      el.removeAttribute('id')
-      el.removeAttribute('data-id')
-    })
-    card.querySelectorAll('.tspan_suit').forEach(t => { t.textContent = poker_deck.SUITS[si] })
-    card.querySelectorAll('.tspan_rank').forEach(t => { t.textContent = poker_deck.RANKS[ri] })
-    card.querySelectorAll('text').forEach(t => { t.style.fill = poker_deck.SUIT_COLORS[si] })
-    group.appendChild(card)
     poker_deck._place_cards(elem)
   },
 
