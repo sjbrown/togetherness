@@ -878,25 +878,41 @@ describe('dropping a card on a deck works like Return to deck', () => {
   })
 })
 
-describe('a non-card toy in a deck\'s contents', () => {
-  // data-tt-matches only steers drag-and-drop. toy:reparent and anything else
-  // that calls reparentToyDom can still put any toy there.
-  test('is not counted, drawn, shuffled or tidied as if it were a card', async () => {
+describe('a toy that is not a card cannot be put in a deck or a pile', () => {
+  // data-tt-matches is enforced where reparenting happens, so a drag, a
+  // toy:reparent event and a toy script all meet the same refusal.
+  test('reparentToyDom refuses it, and nothing changes', async () => {
     const t = await table()
     t.place('chip1', 'chip', CHIP_SVG, 1500, 500)
-    const chipBefore = findEl(t.layerEl, 'chip1').outerHTML
+    const before = t.layerEl.outerHTML
 
-    expect(() => reparentToyDom(t.layerEl, 'chip1', 'deck1')).not.toThrow()
+    for (const target of ['deck1', 'pile1']) {
+      expect(() => reparentToyDom(t.layerEl, 'chip1', target)).toThrow(/does not accept/)
+    }
 
-    const deck = findEl(t.layerEl, 'deck1')
-    expect(deck.querySelector('.tspan_count').textContent).toBe('52')
-    expect(order(t.layerEl, 'deck1')).toHaveLength(52)
-    expect(deck.querySelector('.tt_contents > [data-toy-type="chip"]')).not.toBeNull()
-    expect(deck.querySelector('.tt_contents > [data-toy-type="chip"]').getAttribute('data-above')).toBeNull()
-    expect(() => shuffleDeck(t, 'deck1')).not.toThrow()
-    expect(() => draw(t, 'deck1', { num: 5 })).not.toThrow()
-    expect(deck.querySelector('.tt_contents > [data-toy-type="chip"]')).not.toBeNull() // never drawn
-    expect(chipBefore).toContain('data-toy-type="chip"')
+    expect(t.layerEl.outerHTML).toBe(before)
+    expect(findEl(t.layerEl, 'chip1')).not.toBeNull() // still on the table
+    expect(findEl(t.layerEl, 'deck1').querySelector('.tspan_count').textContent).toBe('52')
+  })
+
+  test('a card is still accepted, and a container with no data-tt-matches still takes anything', async () => {
+    const t = await table()
+    t.place('bag1', 'bag', BAG_SVG, 1000, 100)
+    t.place('chip1', 'chip', CHIP_SVG, 1500, 500)
+    loose(t.place, 'card1', 1, 1)
+
+    expect(() => reparentToyDom(t.layerEl, 'card1', 'deck1')).not.toThrow()
+    expect(() => reparentToyDom(t.layerEl, 'chip1', 'bag1')).not.toThrow()
+  })
+
+  test('a selector that does not parse refuses everything, with a warning', async () => {
+    const t = await table()
+    t.place('bad', 'poker_deck', DECK_SVG.replace('data-tt-matches=".card"', 'data-tt-matches=">>>"'), 1500, 100)
+    loose(t.place, 'card1', 1, 1)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(() => reparentToyDom(t.layerEl, 'card1', 'bad')).toThrow(/does not accept/)
+    } finally { warn.mockRestore() }
   })
 })
 

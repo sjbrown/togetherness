@@ -711,6 +711,8 @@ export function deleteEl(layerEl, id) {
  *  - id's own element isn't found in layerEl
  *  - containerElId is given but not found in layerEl
  *  - containerElId's own element has no .tt_contents
+ *  - containerElId's .tt_contents has a data-tt-matches that id doesn't
+ *    match (see acceptsToy)
  *  - containerElId is id itself, or one of id's own contained toys
  *
  * Also directly (synchronously) runs contents_change_handler for the
@@ -747,6 +749,9 @@ export function reparentToyDom(layerEl, id, containerElId) {
     const contentsGroup = getContentsGroup(targetEl)
     if (!contentsGroup) {
       throw new Error(`[toys] reparentToy: target ${containerElId} has no .tt_contents`)
+    }
+    if (!acceptsToy(contentsGroup, el)) {
+      throw new Error(`[toys] reparentToy: ${containerElId} does not accept ${id} (see its data-tt-matches)`)
     }
     targetGroup = contentsGroup
 

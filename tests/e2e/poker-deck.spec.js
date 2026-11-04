@@ -174,3 +174,35 @@ test('dragging a card onto the deck takes it back in', async () => {
 
   await browser.close();
 });
+
+test('the toy:reparent event refuses a chip, with an error, and leaves it on the table', async () => {
+  const browser = await launch();
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await openAsCreator(page, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+  await waitForPeerCount(page, 0);
+
+  const box = await page.locator('#canvas').boundingBox();
+  await page.evaluate(() => window.UI.pillTap('poker_deck'));
+  await page.waitForTimeout(100);
+  await page.mouse.click(box.x + 200, box.y + 500);
+  await page.evaluate(() => window.UI.pillTap('chip'));
+  await page.waitForTimeout(100);
+  await page.mouse.click(box.x + 600, box.y + 300);
+  const deck = page.locator('[data-toy-type="poker_deck"]');
+  const chip = page.locator('#toys-layer > [data-toy-type="chip"]');
+  await expect(deck).toHaveCount(1, { timeout: 5000 });
+  await expect(chip).toHaveCount(1, { timeout: 5000 });
+  const [deckId, chipId] = [await deck.getAttribute('data-id'), await chip.getAttribute('data-id')];
+
+  const error = await page.evaluate(([id, containerId]) => {
+    const detail = { id, containerId, retval: {} };
+    document.dispatchEvent(new CustomEvent('toy:reparent', { detail }));
+    return detail.error ?? null;
+  }, [chipId, deckId]);
+
+  expect(error).toMatch(/does not accept/);
+  await expect(chip).toHaveCount(1); // still a top-level toy
+  await expect(deck.locator('.tt_contents > [data-toy-type="chip"]')).toHaveCount(0);
+
+  await browser.close();
+});
