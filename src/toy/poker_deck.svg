@@ -28,22 +28,13 @@
 
 // A deck is a literal collection of cards in its tt_contents, in order, so
 // the last is the top card. It starts with 52 nested <svg class="card">
-// that are part of the file; the deck's colour reaches their backs through
-// the shared colour filter. Drawing one of those deals a new
-// single_poker_card toy. A card toy that comes back (its own 'Return to
-// deck', or a drop on the deck) is absorbed as the toy it is, keeping
-// everything it has accumulated; the deck only takes over what belongs to
-// a card in a deck: face down, unrotated, no stacking links, and its place
-// in the stack. Drawing such a card takes the same toy back out. Shuffle
-// reorders all of them. Deleting a card toy discards it, and the deck stays
-// short.
+// that are part of the file
 var poker_deck = {
 
   MAX_DRAW:    5,
 
   // Each card sits CARD_STEP_Y higher and CARD_STEP_X further left than the
-  // one below it, so the stack shows its thickness along the bottom and
-  // right edges.
+  // one below it, so the deck visually shows its thickness
   CARD_STEP_X: 0.2,
   CARD_STEP_Y: 0.5,
   CARD_WIDTH:  100,
@@ -72,16 +63,11 @@ var poker_deck = {
     },
   },
 
-  // The deck's colour is already on its cards' backs by the time this
-  // runs. Options are only acted on when given: a clone runs this without
-  // any and keeps the order and count setting it was copied with.
   initialize: function(elem, options = {}) {
     if (options.show_count !== undefined) poker_deck.set_show_count(elem, !!options.show_count)
     if (options.start_shuffled) poker_deck._shuffle(elem)
   },
 
-  // The count lives in the deck's own deck_summary; hiding it is a
-  // display attribute on that group, so the state is readable from the DOM.
   show_count: function(elem) {
     return elem.querySelector('.deck_summary')?.getAttribute('display') !== 'none'
   },
@@ -104,24 +90,20 @@ var poker_deck = {
     if (editData.show_count !== undefined) poker_deck.set_show_count(elem, !!editData.show_count)
   },
 
-  // Absorbs any card toy that has arrived, then keeps the summary's number
-  // equal to the cards in the deck, the cards in their places, and the deck
-  // as tall as its stack.
   contents_change_handler: function(elem) {
-    poker_deck._absorb_toy_cards(elem)
-    poker_deck._place_cards(elem)
+    poker_deck._ingest_all(elem)
+    poker_deck._arrange_all(elem)
     const tspan = elem.querySelector('.tspan_count')
     if (tspan) tspan.textContent = String(poker_deck._cards(elem).length)
     poker_deck._fit(elem)
   },
 
-  // A card toy in the deck stays a toy. Only what a deck decides about its
-  // cards is set here: face down, unrotated, and not resting on or under
-  // another card. Anything else on the card (its own attributes, colour,
-  // home deck, whatever the user did to it) is left alone. Each write is
-  // skipped when it is already so, so this finds nothing to do after the
-  // first pass.
-  _absorb_toy_cards: function(elem) {
+  // New cards might have been added.  The deck enforces certain properties
+  // of its members: face down, unrotated, home-deck, and no data-above or
+  // data-below attributes.
+  // Preserve anything else -- this card may have been mutated in other
+  // ways by the user.
+  _ingest_all: function(elem) {
     poker_deck._cards(elem).filter(card => card.matches('.toy')).forEach(toy => {
       if (!toy.querySelector('.card_front + .card_back')) {
         globalThis.single_poker_card?.flip_card_to_back(toy)
@@ -132,6 +114,7 @@ var poker_deck = {
       }
       poker_deck._set(toy, 'data-above', '')
       poker_deck._set(toy, 'data-below', '')
+      poker_deck._set(toy, 'data-home-deck', elem.getAttribute('data-id'))
     })
   },
 
@@ -144,15 +127,11 @@ var poker_deck = {
     return Math.round(v * 100) / 100
   },
 
-  // The <svg> that has a card's geometry: a nested card is one, and a card
-  // toy has one of its own inside its wrapper.
   _svg_of: function(card) {
     return card.matches('svg') ? card : card.querySelector(':scope > svg')
   },
 
-  // Card i sits CARD_STEP_X left of and CARD_STEP_Y above card 0. Called
-  // wherever cards are added or reordered.
-  _place_cards: function(elem) {
+  _arrange_all: function(elem) {
     const { CARD_STEP_X, CARD_STEP_Y, _round, _svg_of } = poker_deck
     poker_deck._cards(elem).forEach((card, i) => {
       const svg = _svg_of(card)
@@ -162,11 +141,9 @@ var poker_deck = {
     })
   },
 
-  // The deck's own <svg> is exactly big enough for its stack of cards, with
-  // its bottom and right edges (the bottom card's) held where they are, so
-  // the deck grows and shrinks up and to the left as cards come and go.
-  // Same technique as stack.svg, which also grows from a fixed bottom edge;
-  // unlike a stack, a deck shrinks too.
+  // The deck's <svg> is exactly big enough for its stack of cards.
+  // The bottom and right edges are fixed, and it grows and shrinks up and
+  // to the left as cards come and go.
   _fit: function(elem) {
     const outerSvg = elem.querySelector(':scope > svg')
     if (!outerSvg) return
@@ -187,9 +164,9 @@ var poker_deck = {
     poker_deck._set(outerSvg, 'viewBox', `${-lean} ${-rise} ${width} ${height}`)
   },
 
-  // The deck's cards, bottom to top: its nested cards and any card toys.
   _cards: function(elem) {
     const group = elem.querySelector('.tt_contents')
+    // TODO is this selector redundant?
     return group
       ? [...group.querySelectorAll(':scope > svg.card, :scope > .toy[data-toy-type="single_poker_card"]')]
       : []
@@ -205,9 +182,6 @@ var poker_deck = {
     }
   },
 
-  // Deals the top num cards, the top one first, fanned out to the right of
-  // the deck. A card toy goes back out on the table as itself. A nested
-  // card becomes a new single_poker_card, stamped with this deck's id.
   _draw: function(elem, num) {
     const cards = poker_deck._cards(elem)
     const { x, y, w, h } = poker_deck._bounding_box(elem)
@@ -217,8 +191,15 @@ var poker_deck = {
       const card = cards.pop()
       const cx = x + w + 60 + 20 * i
       const cy = y + h - poker_deck.CARD_HEIGHT / 2
+
+      // Two possibilities - the card is already a toy (it's been a standalone
+      // toy on the table already) or it's just a primordial <svg class="card">
+      // that hasn't been initialized
       if (card.matches('.toy')) {
-        poker_deck._event('toy:reparent', { id: card.getAttribute('data-id'), containerId: null })
+        poker_deck._event(
+          'toy:reparent',
+          { id: card.getAttribute('data-id'), containerId: null }
+        )
         // Overrides reparentToyDom's "preserve visual position" default.
         const svg = poker_deck._svg_of(card)
         const cw = parseFloat(svg.getAttribute('width'))  || poker_deck.CARD_WIDTH
@@ -233,6 +214,7 @@ var poker_deck = {
         y: cy,
         color,
         initArgs: {
+          // TODO: why color? it's not a single_poker_card init arg
           color,
           suit: Number(card.getAttribute('data-suit')),
           rank: Number(card.getAttribute('data-rank')),
@@ -243,8 +225,8 @@ var poker_deck = {
     }
   },
 
-  // Fisher-Yates over the cards, then re-append them in the new order. Slot i takes a random card from slot i onward, so everything
-  // before i is already settled.
+  // Fisher-Yates https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle
+  // over the cards, then re-append them in the new order.
   _shuffle: function(elem) {
     const cards = poker_deck._cards(elem)
     for (let i = 0; i < cards.length - 1; i++) {
@@ -253,7 +235,7 @@ var poker_deck = {
     }
     const group = elem.querySelector('.tt_contents')
     cards.forEach(card => group.appendChild(card))
-    poker_deck._place_cards(elem)
+    poker_deck._arrange_all(elem)
   },
 
   _event: function(evName, args) {
