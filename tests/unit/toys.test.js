@@ -898,17 +898,93 @@ describe('single_poker_card: suit/rank from the Tools + Edit panel sliders (real
     expect(cardEl.dataset.rank).toBe('11')
   })
 
-  test('no initArgs (e.g. the clone path) still deals a valid, in-range card', async () => {
+  test('a new card with no suit and rank is an error, not a random card', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     const cardEl = await placedCard(ydoc, layerEl)
 
+    expect(() => initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table'))
+      .toThrow(/needs a suit and a rank/)
+    expect(() => initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table', { suit: 2 }))
+      .toThrow(/needs a suit and a rank/)
+  })
+
+  test('a fresh card is face up, because the template draws the front last, and initialize does not flip it', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const cardEl = await placedCard(ydoc, layerEl)
+    const flip = vi.spyOn(globalThis.single_poker_card, 'flip_card_to_back')
+
+    initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table', { color: '#fff', suit: 1, rank: 1 })
+
+    expect(flip).not.toHaveBeenCalled()
+    expect(cardEl.querySelector('.card_front + .card_back')).toBeNull() // front is last, so it is on top
+    flip.mockRestore()
+  })
+
+  describe('topSide', () => {
+    const isFaceUp = (el) => !el.querySelector('.card_front + .card_back')
+    const placed = async () => {
+      const ydoc = new Y.Doc()
+      const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+      return { ydoc, layerEl, cardEl: await placedCard(ydoc, layerEl) }
+    }
+    const init = ({ ydoc, layerEl, cardEl }, topSide) =>
+      initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table', { color: '#fff', suit: 1, rank: 1, topSide })
+
+    test('.card_back puts the back on top, so the card is face down', async () => {
+      const c = await placed()
+      init(c, '.card_back')
+      expect(isFaceUp(c.cardEl)).toBe(false)
+    })
+
+    test('.card_front puts the front on top, so the card is face up', async () => {
+      const c = await placed()
+      init(c, '.card_front')
+      expect(isFaceUp(c.cardEl)).toBe(true)
+    })
+
+    test('without it the template decides, and a face already on top is not moved', async () => {
+      const c = await placed()
+      init(c, undefined)
+      expect(isFaceUp(c.cardEl)).toBe(true)
+      const records = []
+      const observer = new MutationObserver(m => records.push(...m))
+      observer.observe(c.cardEl, { childList: true, subtree: true })
+      globalThis.single_poker_card.set_top_side(c.cardEl, '.card_front')
+      records.push(...observer.takeRecords())
+      observer.disconnect()
+      expect(records).toHaveLength(0)
+    })
+
+    test('only the faces move: the positions group stays last', async () => {
+      const c = await placed()
+      init(c, '.card_back')
+      const kids = [...c.cardEl.querySelector(':scope > svg').children].map(k => k.getAttribute('class') ?? k.tagName)
+      expect(kids.at(-1)).toMatch(/tt_positions/)
+    })
+
+    test('a selector that matches neither face is an error', async () => {
+      const c = await placed()
+      expect(() => init(c, '.nope')).toThrow(/matches neither face/)
+    })
+  })
+
+  test('initialize with no args on a card that already has a face (a clone) keeps it as it is', async () => {
+    const ydoc = new Y.Doc()
+    const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const cardEl = await placedCard(ydoc, layerEl)
+    initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table', { color: '#fff', suit: 4, rank: 12 })
+    globalThis.single_poker_card.flip_card_to_front(cardEl) // face up
+    cardEl.setAttribute('data-above', 'stale')
+
     initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table')
 
-    expect(Number(cardEl.dataset.suit)).toBeGreaterThanOrEqual(1)
-    expect(Number(cardEl.dataset.suit)).toBeLessThanOrEqual(4)
-    expect(Number(cardEl.dataset.rank)).toBeGreaterThanOrEqual(1)
-    expect(Number(cardEl.dataset.rank)).toBeLessThanOrEqual(13)
+    expect(cardEl.dataset.suit).toBe('4')
+    expect(cardEl.dataset.rank).toBe('12')
+    expect(cardEl.querySelector('.tspan_rank').textContent).toBe('Q')
+    expect(cardEl.querySelector('.card_front + .card_back')).toBeNull() // still face up
+    expect(cardEl.getAttribute('data-above')).toBe('')                    // links are not carried over
   })
 
   test('getTtStateSchema merges in suit/rank as edit-mode range fields, reading the card\'s current values', async () => {

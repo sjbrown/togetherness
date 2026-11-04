@@ -711,6 +711,8 @@ export function deleteEl(layerEl, id) {
  *  - id's own element isn't found in layerEl
  *  - containerElId is given but not found in layerEl
  *  - containerElId's own element has no .tt_contents
+ *  - containerElId's .tt_contents has a data-tt-matches that id doesn't
+ *    match (see acceptsToy)
  *  - containerElId is id itself, or one of id's own contained toys
  *
  * Also directly (synchronously) runs contents_change_handler for the
@@ -747,6 +749,9 @@ export function reparentToyDom(layerEl, id, containerElId) {
     const contentsGroup = getContentsGroup(targetEl)
     if (!contentsGroup) {
       throw new Error(`[toys] reparentToy: target ${containerElId} has no .tt_contents`)
+    }
+    if (!acceptsToy(contentsGroup, el)) {
+      throw new Error(`[toys] reparentToy: ${containerElId} does not accept ${id} (see its data-tt-matches)`)
     }
     targetGroup = contentsGroup
 
@@ -871,13 +876,33 @@ export function findDropTarget(layerEl, draggedId, rx, ry) {
     const targetId = el.getAttribute('data-id')
     // Don't match the element itself
     if (targetId === draggedId) continue
-    // Only consider .tt_contents-having elements
-    if (!getContentsGroup(el)) continue
+    // Only consider .tt_contents-having elements that accept this toy
+    const contentsGroup = getContentsGroup(el)
+    if (!contentsGroup || !acceptsToy(contentsGroup, draggedEl)) continue
 
     const targetGeom = getGeom(el)
     if (targetGeom && pointInRect(rx, ry, targetGeom)) return targetId
   }
   return null
+}
+
+/**
+ * Whether a container's tt_contents group accepts toyEl. The group may carry
+ * a `data-tt-matches` attribute: a CSS selector (`.card`) that toyEl's wrapper or
+ * its own inner <svg> must match, the same two elements a tt_positions
+ * `name` is compared against when snapping. No `data-tt-matches` accepts anything.
+ *
+ * A selector that doesn't parse accepts nothing, and says so.
+ */
+export function acceptsToy(contentsGroup, toyEl) {
+  const selector = contentsGroup.getAttribute('data-tt-matches')
+  if (!selector) return true
+  try {
+    return toyEl.matches(selector) || !!toyEl.querySelector(':scope > svg')?.matches(selector)
+  } catch (err) {
+    console.warn(`[toys] tt_contents data-tt-matches="${selector}" is not a valid selector`)
+    return false
+  }
 }
 
 export function getContentsGroup(domEl) {
@@ -1412,6 +1437,20 @@ export const TOOLS = [
       { kind: 'number', key: 'rank', label: 'Rank', min: 1, max: 13, step: 1, show: ['add'] },
     ],
   },
+  {
+    name:    'poker_deck',
+    toyType: 'poker_deck',
+    file: 'poker_deck.svg',
+    label: 'Poker Deck',
+    iconUrl: 'toy/poker_deck.svg',
+    layer:   'toys',
+    defaults: { fill: '#fa2020', show_count: true, start_shuffled: true },
+    options: [
+      { kind: 'color-hsl', key: 'fill', label: 'Back color', show: ['add', 'edit', 'addQuick'] },
+      { kind: 'bool', key: 'show_count', label: 'Show card count', show: ['add'] },
+      { kind: 'bool', key: 'start_shuffled', label: 'Start shuffled', show: ['add'] },
+    ],
+  },
 ];
 export const TOY_TYPES = {
   dice_d6: TOOLS[0],
@@ -1422,6 +1461,17 @@ export const TOY_TYPES = {
   tray_sum: TOOLS[5],
   token_glass: TOOLS[6],
   single_poker_card: TOOLS[7],
+  poker_deck: TOOLS[8],
+  poker_card_pile: {
+    name:    'poker_card_pile',
+    toyType: 'poker_card_pile',
+    file: 'poker_card_pile.svg',
+    label: 'Card Pile',
+    iconUrl: 'toy/poker_card_pile.svg',
+    layer:   'toys',
+    defaults: {},
+    options: [],
+  },
   stack: {
     name:    'stack',
     toyType: 'stack',
